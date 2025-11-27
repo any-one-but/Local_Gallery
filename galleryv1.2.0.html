@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PartyGuest Local Gallery</title>
+  <!-- PartyGuest Local Gallery v1.2.0 -->
+  <style>
+    :root {
+      --color0-primary: hsl(0, 0%, 95%);
+      --color0-secondary: hsl(0, 0%, 70%);
+      --color0-tertirary: hsl(0, 0%, 45%);
+
+      --color1-primary: hsl(200, 25%, 5%);
+      --color1-primary-transparent: hsla(200, 25%, 5%, .85);
+      --color1-secondary: hsl(208, 22%, 12%);
+      --color1-secondary-transparent: hsla(208, 22%, 12%, .5);
+      --color1-tertiary: hsl(210, 15%, 5%);
+
+      --anchor-internal-color2-primary: hsl(240, 100%, 40%);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      background: var(--color1-primary);
+      color: var(--color0-primary);
+      font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+
+    #controls {
+      position: relative;
+      z-index: 10;
+      padding: 16px 20px;
+      margin-top: 16px;
+      background: var(--color1-secondary);
+      border-radius: 4px;
+      border: 1px solid var(--color1-tertiary);
+      box-shadow: 0 10px 30px var(--color1-primary-transparent);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+      max-width: 90vw;
+    }
+
+    #controls h1 {
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+
+    #controls p {
+      font-size: 12px;
+      color: var(--color0-secondary);
+      text-align: center;
+    }
+
+    #fileInput {
+      cursor: pointer;
+    }
+
+    #startBtn {
+      margin-top: 4px;
+      font-size: 13px;
+      padding: 6px 10px;
+      font-weight: 600;
+      color: var(--color1-primary);
+      background: var(--color0-secondary);
+      border: 1px solid var(--color0-tertirary);
+      border-radius: 2px;
+      cursor: pointer;
+      text-shadow: none;
+      box-shadow: none;
+      transition: background .15s ease, border-color .15s ease, transform .05s ease;
+      display: none;
+    }
+
+    #startBtn:hover {
+      background: var(--color0-tertirary);
+    }
+
+    #startBtn:active {
+      transform: translateY(1px);
+    }
+
+    #dropHint {
+      margin-top: 4px;
+      padding: 8px 10px;
+      border-radius: 3px;
+      border: 1px dashed var(--color0-secondary);
+      background: rgba(0,0,0,0.3);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    #fileCount {
+      font-size: 11px;
+      color: var(--color0-secondary);
+      margin-top: 2px;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: var(--color1-primary-transparent);
+      z-index: 5;
+    }
+
+    #overlay.active {
+      display: flex;
+    }
+
+    #viewerInner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #viewerViewport {
+      max-width: 100%;
+      max-height: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    #viewerViewport img,
+    #viewerViewport video {
+      max-width: 100%;
+      max-height: 100%;
+      height: 100%;
+      width: auto;
+      object-fit: contain;
+      border-radius: 2px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .7);
+      background: #000;
+    }
+
+    .nav-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--color1-secondary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 2px;
+      padding: 8px 12px;
+      color: var(--color0-primary);
+      font-size: 20px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      transition: background .15s ease, border-color .15s ease, transform .05s ease;
+    }
+
+    .nav-btn:hover {
+      background: var(--color1-secondary-transparent);
+    }
+
+    .nav-btn:active {
+      transform: translateY(-50%) translateY(1px);
+    }
+
+    #prevBtn {
+      left: 16px;
+    }
+
+    #nextBtn {
+      right: 16px;
+    }
+
+    #closeBtn {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: var(--color1-secondary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 2px;
+      padding: 4px 8px;
+      color: var(--color0-primary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      transition: background .15s ease, border-color .15s ease, transform .05s ease;
+    }
+
+    #closeBtn:hover {
+      background: var(--color1-secondary-transparent);
+    }
+
+    #closeBtn:active {
+      transform: translateY(1px);
+    }
+
+    #filename {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      padding: 4px 8px;
+      border-radius: 2px;
+      font-size: 11px;
+      max-width: 80%;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    #keysHint {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--color0-secondary);
+      text-align: center;
+    }
+
+    body.drag-over #dropHint {
+      border-color: var(--anchor-internal-color2-primary);
+      color: var(--color0-primary);
+    }
+
+    /* Folder display in viewer */
+    .folder-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 200px;
+      max-width: 80%;
+      width: auto;
+      padding: 24px 32px;
+      border-radius: 4px;
+      background: var(--color1-secondary);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .7);
+    }
+
+    .folder-icon {
+      font-size: 56px;
+      margin-bottom: 12px;
+    }
+
+    .folder-name {
+      font-size: 14px;
+      color: var(--color0-primary);
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .empty-folder {
+      font-size: 13px;
+      color: var(--color0-secondary);
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.4);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="controls">
+      <h1>PartyGuest Local Gallery</h1>
+      <input id="fileInput" type="file" multiple webkitdirectory accept="image/*,video/*">
+      <button id="startBtn" type="button">Open gallery</button>
+      <div id="dropHint">or drag image/video files or folders into this window</div>
+      <div id="fileCount"></div>
+      <div id="keysHint">
+        Keys: ← / A / J = previous; → / D / L = next; Q / U / E / O = ±10s (video);
+        Space / K = play/pause (video); Esc / Backspace = close;
+        W / I = up directory; S / K = down directory (folder);
+        1 / 8 = -10 items; 3 / 0 = +10 items.
+      </div>
+    </div>
+
+    <div id="overlay">
+      <div id="viewerInner">
+        <button id="closeBtn" type="button">X</button>
+        <button id="prevBtn" type="button" class="nav-btn">‹</button>
+        <div id="viewerViewport"></div>
+        <button id="nextBtn" type="button" class="nav-btn">›</button>
+        <div id="filename"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const imgRE = /\.(jpe?g|png|gif|webp|tiff|bmp|avif)$/i;
+    const vidRE = /\.(mp4|m4v|mov|wmv|flv|avi|webm|mkv)$/i;
+
+    const fileInput = document.getElementById('fileInput');
+    const startBtn = document.getElementById('startBtn');
+    const fileCountEl = document.getElementById('fileCount');
+    const overlay = document.getElementById('overlay');
+    const viewport = document.getElementById('viewerViewport');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const closeBtn = document.getElementById('closeBtn');
+    const filenameEl = document.getElementById('filename');
+    const controls = document.getElementById('controls');
+
+    let galleryItems = []; // [{ isFolder, isVideo, url, name, node }]
+    let galleryIndex = 0;
+    let GALLERY_MODE = false;
+
+    // Directory tree
+    let rootNode = null;
+    let currentDir = null;
+
+    function isImageFile(name) {
+      return imgRE.test(name);
+    }
+
+    function isVideoFile(name) {
+      return vidRE.test(name);
+    }
+
+    function makeDirNode(name, parent) {
+      return {
+        type: 'dir',
+        name: name,
+        parent: parent,
+        children: [],
+        lastIndex: 0
+      };
+    }
+
+    function makeFileNode(file, parent) {
+      const name = file.name;
+      const lower = name.toLowerCase();
+      const isImg = isImageFile(lower);
+      const isVid = isVideoFile(lower);
+      if (!isImg && !isVid) return null;
+      return {
+        type: 'file',
+        name: name,
+        parent: parent,
+        file: file,
+        url: null,
+        isVideo: isVid
+      };
+    }
+
+    function byName(a, b) {
+      const na = (a.name || '').toLowerCase();
+      const nb = (b.name || '').toLowerCase();
+      if (na < nb) return -1;
+      if (na > nb) return 1;
+      return 0;
+    }
+
+    function rebuildGalleryItemsFromCurrentDir() {
+      galleryItems = [];
+      if (!currentDir || currentDir.type !== 'dir') return;
+
+      const dirs = currentDir.children.filter(c => c.type === 'dir').sort(byName);
+      const files = currentDir.children.filter(c => c.type === 'file').sort(byName);
+
+      dirs.forEach(dirNode => {
+        galleryItems.push({
+          isFolder: true,
+          node: dirNode,
+          name: dirNode.name
+        });
+      });
+
+      files.forEach(fileNode => {
+        if (!fileNode.url) {
+          fileNode.url = URL.createObjectURL(fileNode.file);
+        }
+        galleryItems.push({
+          isFolder: false,
+          isVideo: fileNode.isVideo,
+          url: fileNode.url,
+          name: fileNode.name,
+          node: fileNode
+        });
+      });
+    }
+
+    function buildTreeFromFileList(fileList) {
+      rootNode = makeDirNode('root', null);
+
+      for (let i = 0; i < fileList.length; i++) {
+        const f = fileList[i];
+        if (!f || !f.name) continue;
+        const relPath = f.webkitRelativePath || f.name;
+        const segments = relPath.split('/').filter(Boolean);
+        if (!segments.length) continue;
+
+        let dir = rootNode;
+        // Directories: all but last segment
+        for (let j = 0; j < segments.length - 1; j++) {
+          const segName = segments[j];
+          let child = dir.children.find(c => c.type === 'dir' && c.name === segName);
+          if (!child) {
+            child = makeDirNode(segName, dir);
+            dir.children.push(child);
+          }
+          dir = child;
+        }
+
+        const fileNode = makeFileNode(f, dir);
+        if (fileNode) dir.children.push(fileNode);
+      }
+
+      // If root has exactly one directory child and no file children,
+      // treat that child as the actual root so the "top" is the folder selected.
+      const topDirs = rootNode.children.filter(c => c.type === 'dir');
+      const topFiles = rootNode.children.filter(c => c.type === 'file');
+      if (topDirs.length === 1 && topFiles.length === 0) {
+        rootNode = topDirs[0];
+        rootNode.parent = null;
+      }
+
+      currentDir = rootNode;
+    }
+
+    function addFilesFromFileList(fileList) {
+      if (!fileList || !fileList.length) {
+        fileCountEl.textContent = 'No files detected.';
+        return;
+      }
+
+      buildTreeFromFileList(fileList);
+      if (!rootNode) {
+        fileCountEl.textContent = 'No supported image/video files detected.';
+        return;
+      }
+
+      rebuildGalleryItemsFromCurrentDir();
+      if (!galleryItems.length) {
+        fileCountEl.textContent = 'No supported image/video files detected.';
+        startBtn.style.display = 'none';
+        return;
+      }
+
+      galleryIndex = 0;
+      fileCountEl.textContent = `Loaded ${galleryItems.length} items.`;
+      startBtn.style.display = 'inline-block';
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      const files = e.target.files;
+      if (!files || !files.length) return;
+      addFilesFromFileList(files);
+    });
+
+    // Drag & drop support
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      document.body.classList.add('drag-over');
+    });
+
+    window.addEventListener('dragleave', (e) => {
+      if (e.target === document.body) {
+        document.body.classList.remove('drag-over');
+      }
+    });
+
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      document.body.classList.remove('drag-over');
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      if (dt.files && dt.files.length) {
+        addFilesFromFileList(dt.files);
+      }
+    });
+
+    function showOverlay() {
+      if (!galleryItems.length) return;
+      GALLERY_MODE = true;
+      overlay.classList.add('active');
+      if (controls) controls.style.display = 'none';
+      renderGalleryItem(galleryIndex);
+    }
+
+    function hideOverlay() {
+      overlay.classList.remove('active');
+      GALLERY_MODE = false;
+      if (controls) controls.style.display = 'flex';
+    }
+
+    function renderGalleryItem(idx) {
+      if (!galleryItems.length) {
+        viewport.innerHTML = '';
+        filenameEl.textContent = '';
+        return;
+      }
+      const n = galleryItems.length;
+      let i = idx % n;
+      if (i < 0) i += n;
+      galleryIndex = i;
+      viewport.innerHTML = '';
+      const item = galleryItems[galleryIndex];
+      if (!item) {
+        filenameEl.textContent = '';
+        return;
+      }
+
+      filenameEl.textContent = item.name || '';
+
+      if (item.isFolder) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'folder-item';
+
+        const icon = document.createElement('div');
+        icon.className = 'folder-icon';
+        icon.textContent = '📁';
+
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'folder-name';
+        nameDiv.textContent = item.name || '';
+
+        wrapper.appendChild(icon);
+        wrapper.appendChild(nameDiv);
+        viewport.appendChild(wrapper);
+      } else if (item.isVideo) {
+        const v = document.createElement('video');
+        v.src = item.url;
+        v.controls = true;
+        v.preload = 'metadata';
+        v.playsInline = true;
+        v.autoplay = true;
+        v.muted = false;
+        v.addEventListener('loadeddata', () => {
+          try { v.play(); } catch {}
+        });
+        viewport.appendChild(v);
+      } else {
+        const img = document.createElement('img');
+        img.src = item.url;
+        img.loading = 'lazy';
+        viewport.appendChild(img);
+      }
+    }
+
+    function showNextGalleryItem() {
+      if (!galleryItems.length) return;
+      renderGalleryItem(galleryIndex + 1);
+    }
+
+    function showPrevGalleryItem() {
+      if (!galleryItems.length) return;
+      renderGalleryItem(galleryIndex - 1);
+    }
+
+    function jumpRelative(delta) {
+      if (!galleryItems.length) return;
+      let idx = galleryIndex + delta;
+      if (idx < 0) idx = 0;
+      if (idx >= galleryItems.length) idx = galleryItems.length - 1;
+      renderGalleryItem(idx);
+    }
+
+    function getActiveGalleryVideo() {
+      return viewport.querySelector('video') || null;
+    }
+
+    function seekGalleryVideo(deltaSeconds) {
+      const vid = getActiveGalleryVideo();
+      if (!vid) return;
+      try {
+        let t = (vid.currentTime || 0) + deltaSeconds;
+        if (t < 0) t = 0;
+        if (!isNaN(vid.duration) && isFinite(vid.duration) && vid.duration >= 0) {
+          if (t > vid.duration) t = vid.duration;
+        }
+        vid.currentTime = t;
+      } catch {}
+    }
+
+    function toggleGalleryVideoPlayPause() {
+      const vid = getActiveGalleryVideo();
+      if (!vid) return;
+      try {
+        if (vid.paused) vid.play();
+        else vid.pause();
+      } catch {}
+    }
+
+    function enterFolder(item) {
+      if (!item || !item.isFolder || !item.node) return;
+      if (currentDir) currentDir.lastIndex = galleryIndex;
+      currentDir = item.node;
+      rebuildGalleryItemsFromCurrentDir();
+      if (galleryItems.length) {
+        let idx = typeof currentDir.lastIndex === 'number' ? currentDir.lastIndex : 0;
+        if (idx < 0) idx = 0;
+        if (idx >= galleryItems.length) idx = galleryItems.length - 1;
+        galleryIndex = idx;
+        renderGalleryItem(galleryIndex);
+      } else {
+        galleryIndex = 0;
+        viewport.innerHTML = '';
+        const msg = document.createElement('div');
+        msg.className = 'empty-folder';
+        msg.textContent = 'Empty folder';
+        viewport.appendChild(msg);
+        filenameEl.textContent = currentDir.name || item.name || '';
+      }
+    }
+
+    function goUpDirectory() {
+      if (!currentDir || !currentDir.parent) return;
+      currentDir.lastIndex = galleryIndex;
+      currentDir = currentDir.parent;
+      rebuildGalleryItemsFromCurrentDir();
+      if (galleryItems.length) {
+        let idx = typeof currentDir.lastIndex === 'number' ? currentDir.lastIndex : 0;
+        if (idx < 0) idx = 0;
+        if (idx >= galleryItems.length) idx = galleryItems.length - 1;
+        galleryIndex = idx;
+        renderGalleryItem(galleryIndex);
+      } else {
+        galleryIndex = 0;
+        viewport.innerHTML = '';
+        const msg = document.createElement('div');
+        msg.className = 'empty-folder';
+        msg.textContent = 'Empty folder';
+        viewport.appendChild(msg);
+        filenameEl.textContent = currentDir.name || '';
+      }
+    }
+
+    function handleGalleryKeydown(e) {
+      if (!GALLERY_MODE || !galleryItems.length) return;
+      const key = e.key;
+      const item = galleryItems[galleryIndex] || null;
+
+      // Always-available up-directory
+      if (key === 'w' || key === 'W' || key === 'i' || key === 'I') {
+        e.preventDefault();
+        goUpDirectory();
+        return;
+      }
+
+      // Jump ±10 items (always)
+      if (key === '1' || key === '8') {
+        e.preventDefault();
+        jumpRelative(-10);
+        return;
+      }
+      if (key === '3' || key === '0') {
+        e.preventDefault();
+        jumpRelative(10);
+        return;
+      }
+
+      // Folder-specific: down into folder
+      if (item && item.isFolder && (key === 's' || key === 'S' || key === 'k' || key === 'K')) {
+        e.preventDefault();
+        enterFolder(item);
+        return;
+      }
+
+      // Common previous/next navigation
+      if (key === 'ArrowRight' || key === 'd' || key === 'D' || key === 'l' || key === 'L') {
+        e.preventDefault();
+        showNextGalleryItem();
+        return;
+      }
+      if (key === 'ArrowLeft' || key === 'a' || key === 'A' || key === 'j' || key === 'J') {
+        e.preventDefault();
+        showPrevGalleryItem();
+        return;
+      }
+
+      // Video-specific controls (non-folder items only)
+      if (item && !item.isFolder) {
+        if (key === 'q' || key === 'Q' || key === 'u' || key === 'U') {
+          e.preventDefault();
+          seekGalleryVideo(-10);
+          return;
+        } else if (key === 'e' || key === 'E' || key === 'o' || key === 'O') {
+          e.preventDefault();
+          seekGalleryVideo(10);
+          return;
+        } else if (key === ' ' || key === 'Spacebar' || e.code === 'Space' || key === 'k' || key === 'K') {
+          e.preventDefault();
+          toggleGalleryVideoPlayPause();
+          return;
+        }
+      }
+
+      if (key === 'Escape' || key === 'Esc' || key === 'Backspace') {
+        e.preventDefault();
+        hideOverlay();
+      }
+    }
+
+    window.addEventListener('keydown', handleGalleryKeydown, true);
+
+    startBtn.addEventListener('click', () => {
+      showOverlay();
+    });
+
+    nextBtn.addEventListener('click', () => {
+      showNextGalleryItem();
+    });
+
+    prevBtn.addEventListener('click', () => {
+      showPrevGalleryItem();
+    });
+
+    closeBtn.addEventListener('click', () => {
+      hideOverlay();
+    });
+  </script>
+</body>
+</html>
