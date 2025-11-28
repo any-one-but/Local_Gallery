@@ -571,20 +571,28 @@
     });
 
     // Drag & drop support
+    function clearDragOverState() {
+      document.body.classList.remove('drag-over');
+    }
+
     window.addEventListener('dragover', (e) => {
       e.preventDefault();
       document.body.classList.add('drag-over');
     });
 
     window.addEventListener('dragleave', (e) => {
-      if (e.target === document.body) {
-        document.body.classList.remove('drag-over');
+      if (e.target === document.body || !e.relatedTarget) {
+        clearDragOverState();
       }
+    });
+
+    window.addEventListener('dragend', () => {
+      clearDragOverState();
     });
 
     window.addEventListener('drop', (e) => {
       e.preventDefault();
-      document.body.classList.remove('drag-over');
+      clearDragOverState();
       const dt = e.dataTransfer;
       if (!dt) return;
       if (dt.files && dt.files.length) {
