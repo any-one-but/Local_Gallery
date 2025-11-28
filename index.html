@@ -125,7 +125,7 @@
       display: none;
       align-items: center;
       justify-content: center;
-      background: var(--color1-primary-transparent);
+      background: #000;
       z-index: 5;
     }
 
@@ -286,6 +286,42 @@
       background: rgba(0,0,0,0.4);
       border-radius: 3px;
     }
+
+
+    #statusMessage {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      padding: 4px 8px;
+      border-radius: 2px;
+      font-size: 11px;
+      max-width: 80%;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity .15s ease;
+      pointer-events: none;
+    }
+
+    #statusMessage.visible {
+      opacity: 1;
+    }
+
+    #overlay.ui-hidden {
+      cursor: none;
+    }
+
+    #overlay.ui-hidden #closeBtn,
+    #overlay.ui-hidden #prevBtn,
+    #overlay.ui-hidden #nextBtn,
+    #overlay.ui-hidden #filename,
+    #overlay.ui-hidden #statusMessage {
+      opacity: 0;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -299,6 +335,7 @@
       <div id="keysHint">
           <p>Gallery keybinds (right hand): W = up directory; S = down directory; ← / A = previous; → / D = next; 1 = -10 files; 3 = +10 files; Q = -10s; E = +10s; Space = play/pause; Esc = close gallery.</p>
           <p>Gallery keybinds (left hand): I = up directory; K = down directory; ← / J = previous; → / L = next; 8 = -10 files; 0 = +10 files; U = -10s; O = +10s; Space = play/pause; Backspace = close gallery.</p>
+          <p>Additional keybinds: F = cycle filters (all/images/videos); R = toggle random order; P = toggle slideshow; N = hide/show folders; T = toggle folder looping.</p>
       </div>
 
     </div>
@@ -328,10 +365,22 @@
     const closeBtn = document.getElementById('closeBtn');
     const filenameEl = document.getElementById('filename');
     const controls = document.getElementById('controls');
+    const statusMessageEl = document.createElement('div');
+    statusMessageEl.id = 'statusMessage';
+    overlay.appendChild(statusMessageEl);
 
     let galleryItems = []; // [{ isFolder, isVideo, url, name, node }]
     let galleryIndex = 0;
     let GALLERY_MODE = false;
+    let slideshowActive = false;
+    let slideshowTimer = null;
+    let filterMode = 'all';
+    let randomMode = false;
+    let hideFolders = false;
+    let statusTimeout = null;
+    let loopWithinDir = false;
+    let uiHidden = false;
+    let uiHideTimer = null;
 
     // Directory tree
     let rootNode = null;
@@ -351,7 +400,8 @@
         name: name,
         parent: parent,
         children: [],
-        lastIndex: 0
+        lastIndex: 0,
+        randomFiles: null
       };
     }
 
@@ -379,20 +429,56 @@
       return 0;
     }
 
+    function shuffleArray(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+      }
+    }
+
+    function buildRandomOrdersForDir(dir) {
+      if (!dir || dir.type !== 'dir') return;
+      const files = dir.children.filter(c => c.type === 'file');
+      if (files.length) {
+        const arr = files.slice();
+        shuffleArray(arr);
+        dir.randomFiles = arr;
+      } else {
+        dir.randomFiles = null;
+      }
+      const dirs = dir.children.filter(c => c.type === 'dir');
+      dirs.forEach(child => buildRandomOrdersForDir(child));
+    }
+
     function rebuildGalleryItemsFromCurrentDir() {
       galleryItems = [];
       if (!currentDir || currentDir.type !== 'dir') return;
 
       const dirs = currentDir.children.filter(c => c.type === 'dir').sort(byName);
-      const files = currentDir.children.filter(c => c.type === 'file').sort(byName);
+      let files;
+      if (randomMode && currentDir.randomFiles && currentDir.randomFiles.length) {
+        files = currentDir.randomFiles.slice();
+      } else {
+        files = currentDir.children.filter(c => c.type === 'file').sort(byName);
+      }
 
-      dirs.forEach(dirNode => {
-        galleryItems.push({
-          isFolder: true,
-          node: dirNode,
-          name: dirNode.name
+      if (filterMode === 'images') {
+        files = files.filter(f => !f.isVideo);
+      } else if (filterMode === 'videos') {
+        files = files.filter(f => f.isVideo);
+      }
+
+      if (!hideFolders) {
+        dirs.forEach(dirNode => {
+          galleryItems.push({
+            isFolder: true,
+            node: dirNode,
+            name: dirNode.name
+          });
         });
-      });
+      }
 
       files.forEach(fileNode => {
         if (!fileNode.url) {
@@ -452,10 +538,18 @@
         return;
       }
 
+      filterMode = 'all';
+      randomMode = false;
+      hideFolders = false;
+
       buildTreeFromFileList(fileList);
       if (!rootNode) {
         fileCountEl.textContent = 'No supported image/video files detected.';
         return;
+      }
+
+      if (randomMode && rootNode) {
+        buildRandomOrdersForDir(rootNode);
       }
 
       rebuildGalleryItemsFromCurrentDir();
@@ -498,18 +592,68 @@
       }
     });
 
+    function enterFullscreenIfPossible() {
+      const elem = overlay;
+      if (!elem) return;
+      if (document.fullscreenElement) return;
+      if (elem.requestFullscreen) {
+        try { elem.requestFullscreen(); } catch {}
+      }
+    }
+
+    function exitFullscreenIfNeeded() {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        try { document.exitFullscreen(); } catch {}
+      }
+    }
+
+    function showUI() {
+      if (!overlay) return;
+      overlay.classList.remove('ui-hidden');
+      uiHidden = false;
+    }
+
+    function hideUI() {
+      if (!overlay) return;
+      overlay.classList.add('ui-hidden');
+      uiHidden = true;
+    }
+
+    function resetUIHideTimer() {
+      showUI();
+      if (uiHideTimer) {
+        clearTimeout(uiHideTimer);
+        uiHideTimer = null;
+      }
+      uiHideTimer = setTimeout(() => {
+        hideUI();
+      }, 2000);
+    }
+
     function showOverlay() {
-      if (!galleryItems.length) return;
       GALLERY_MODE = true;
       overlay.classList.add('active');
       if (controls) controls.style.display = 'none';
       renderGalleryItem(galleryIndex);
+      enterFullscreenIfPossible();
+      resetUIHideTimer();
     }
 
     function hideOverlay() {
       overlay.classList.remove('active');
       GALLERY_MODE = false;
       if (controls) controls.style.display = 'flex';
+      exitFullscreenIfNeeded();
+      if (uiHideTimer) {
+        clearTimeout(uiHideTimer);
+        uiHideTimer = null;
+      }
+      showUI();
+      stopSlideshow();
+      const vid = getActiveGalleryVideo();
+      if (vid) {
+        try { vid.pause(); } catch {}
+      }
     }
 
     function renderGalleryItem(idx) {
@@ -519,34 +663,72 @@
         return;
       }
       const n = galleryItems.length;
-      let i = idx % n;
-      if (i < 0) i += n;
+      let i = idx;
+      if (loopWithinDir) {
+        i = i % n;
+        if (i < 0) i += n;
+      } else {
+        if (i < 0) i = 0;
+        if (i >= n) i = n - 1;
+      }
       galleryIndex = i;
-      viewport.innerHTML = '';
       const item = galleryItems[galleryIndex];
       if (!item) {
+        viewport.innerHTML = '';
         filenameEl.textContent = '';
         return;
       }
 
       filenameEl.textContent = item.name || '';
 
-      if (item.isFolder) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'folder-item';
+      const type = item.isFolder ? 'folder' : (item.isVideo ? 'video' : 'image');
+      let existing = viewport.firstElementChild || null;
+      let existingType = null;
+      if (existing) {
+        if (existing.classList.contains('folder-item')) {
+          existingType = 'folder';
+        } else if (existing.tagName === 'VIDEO') {
+          existingType = 'video';
+        } else if (existing.tagName === 'IMG') {
+          existingType = 'image';
+        }
+      }
 
-        const icon = document.createElement('div');
-        icon.className = 'folder-icon';
-        icon.textContent = '📁';
+      if (type === 'video' && existingType === 'video') {
+        viewport.innerHTML = '';
+        existing = null;
+        existingType = null;
+      }
 
-        const nameDiv = document.createElement('div');
-        nameDiv.className = 'folder-name';
-        nameDiv.textContent = item.name || '';
+      if (type !== existingType) {
+        viewport.innerHTML = '';
+        existing = null;
+      }
 
-        wrapper.appendChild(icon);
-        wrapper.appendChild(nameDiv);
-        viewport.appendChild(wrapper);
-      } else if (item.isVideo) {
+      if (type === 'folder') {
+        let wrapper = existing;
+        if (!wrapper) {
+          wrapper = document.createElement('div');
+          wrapper.className = 'folder-item';
+
+          const icon = document.createElement('div');
+          icon.className = 'folder-icon';
+          icon.textContent = '📁';
+
+          const nameDiv = document.createElement('div');
+          nameDiv.className = 'folder-name';
+          nameDiv.textContent = item.name || '';
+
+          wrapper.appendChild(icon);
+          wrapper.appendChild(nameDiv);
+          viewport.appendChild(wrapper);
+        } else {
+          const nameDiv = wrapper.querySelector('.folder-name');
+          if (nameDiv) {
+            nameDiv.textContent = item.name || '';
+          }
+        }
+      } else if (type === 'video') {
         const v = document.createElement('video');
         v.src = item.url;
         v.controls = true;
@@ -554,26 +736,129 @@
         v.playsInline = true;
         v.autoplay = true;
         v.muted = false;
+        v.loop = !slideshowActive;
         v.addEventListener('loadeddata', () => {
           try { v.play(); } catch {}
         });
+        if (slideshowActive) {
+          v.addEventListener('ended', handleSlideshowVideoEnded);
+        }
         viewport.appendChild(v);
       } else {
-        const img = document.createElement('img');
+        let img = existing;
+        if (!img) {
+          img = document.createElement('img');
+          img.className = 'viewer-image';
+          viewport.appendChild(img);
+        } else {
+          img.classList.add('viewer-image');
+        }
+        img.classList.remove('ready');
+        img.onload = () => {
+          img.classList.add('ready');
+        };
         img.src = item.url;
-        img.loading = 'lazy';
-        viewport.appendChild(img);
       }
     }
 
     function showNextGalleryItem() {
       if (!galleryItems.length) return;
-      renderGalleryItem(galleryIndex + 1);
+      if (!loopWithinDir && galleryIndex === galleryItems.length - 1) {
+        if (!moveToNextDirectoryFile()) {
+          return;
+        }
+      } else {
+        renderGalleryItem(galleryIndex + 1);
+      }
     }
 
     function showPrevGalleryItem() {
       if (!galleryItems.length) return;
-      renderGalleryItem(galleryIndex - 1);
+      if (!loopWithinDir && galleryIndex === 0) {
+        if (!moveToPrevDirectoryFile()) {
+          return;
+        }
+      } else {
+        renderGalleryItem(galleryIndex - 1);
+      }
+    }
+
+    function moveToNextDirectoryFile() {
+      if (!currentDir || !currentDir.parent) return false;
+      const originalDir = currentDir;
+      const parent = currentDir.parent;
+      const siblingDirs = parent.children.filter(c => c.type === 'dir').sort(byName);
+      const idx = siblingDirs.indexOf(currentDir);
+      if (idx === -1) return false;
+
+      const targetIndex = idx + 1;
+      if (targetIndex >= siblingDirs.length) return false;
+
+      const dir = siblingDirs[targetIndex];
+      currentDir = dir;
+      rebuildGalleryItemsFromCurrentDir();
+      if (!galleryItems.length) {
+        currentDir = originalDir;
+        rebuildGalleryItemsFromCurrentDir();
+        return false;
+      }
+
+      let firstFileIndex = -1;
+      for (let j = 0; j < galleryItems.length; j++) {
+        const it = galleryItems[j];
+        if (!it.isFolder) {
+          firstFileIndex = j;
+          break;
+        }
+      }
+      if (firstFileIndex === -1) {
+        currentDir = originalDir;
+        rebuildGalleryItemsFromCurrentDir();
+        return false;
+      }
+
+      galleryIndex = firstFileIndex;
+      renderGalleryItem(galleryIndex);
+      return true;
+    }
+
+    function moveToPrevDirectoryFile() {
+      if (!currentDir || !currentDir.parent) return false;
+      const originalDir = currentDir;
+      const parent = currentDir.parent;
+      const siblingDirs = parent.children.filter(c => c.type === 'dir').sort(byName);
+      const idx = siblingDirs.indexOf(currentDir);
+      if (idx === -1) return false;
+
+      const targetIndex = idx - 1;
+      if (targetIndex < 0) return false;
+
+      const dir = siblingDirs[targetIndex];
+      currentDir = dir;
+      rebuildGalleryItemsFromCurrentDir();
+      if (!galleryItems.length) {
+        currentDir = originalDir;
+        rebuildGalleryItemsFromCurrentDir();
+        return false;
+      }
+
+      let lastFileIndex = -1;
+      for (let j = galleryItems.length - 1; j >= 0; j--) {
+        const it = galleryItems[j];
+        if (!it.isFolder) {
+          lastFileIndex = j;
+          break;
+        }
+      }
+      if (lastFileIndex === -1) {
+        currentDir = originalDir;
+        rebuildGalleryItemsFromCurrentDir();
+        return false;
+      }
+
+      galleryIndex = lastFileIndex;
+      renderGalleryItem(galleryIndex);
+      return true;
     }
 
     function jumpRelative(delta) {
@@ -634,14 +919,29 @@
 
     function goUpDirectory() {
       if (!currentDir || !currentDir.parent) return;
-      currentDir.lastIndex = galleryIndex;
-      currentDir = currentDir.parent;
+      const childDir = currentDir;
+      childDir.lastIndex = galleryIndex;
+      currentDir = childDir.parent;
+      hideFolders = false;
       rebuildGalleryItemsFromCurrentDir();
       if (galleryItems.length) {
-        let idx = typeof currentDir.lastIndex === 'number' ? currentDir.lastIndex : 0;
-        if (idx < 0) idx = 0;
-        if (idx >= galleryItems.length) idx = galleryItems.length - 1;
-        galleryIndex = idx;
+        let folderIdx = -1;
+        for (let i = 0; i < galleryItems.length; i++) {
+          const it = galleryItems[i];
+          if (it.isFolder && it.node === childDir) {
+            folderIdx = i;
+            break;
+          }
+        }
+        if (folderIdx === -1) {
+          let idx = typeof currentDir.lastIndex === 'number' ? currentDir.lastIndex : 0;
+          if (idx < 0) idx = 0;
+          if (idx >= galleryItems.length) idx = galleryItems.length - 1;
+          galleryIndex = idx;
+        } else {
+          currentDir.lastIndex = folderIdx;
+          galleryIndex = folderIdx;
+        }
         renderGalleryItem(galleryIndex);
       } else {
         galleryIndex = 0;
@@ -654,8 +954,62 @@
       }
     }
 
+    function showStatusMessage(text) {
+      if (!statusMessageEl) return;
+      statusMessageEl.textContent = text || '';
+      statusMessageEl.classList.add('visible');
+      if (statusTimeout) {
+        clearTimeout(statusTimeout);
+        statusTimeout = null;
+      }
+      statusTimeout = setTimeout(() => {
+        statusMessageEl.classList.remove('visible');
+      }, 1200);
+    }
+
+    function startSlideshow() {
+      if (slideshowActive || !galleryItems.length) return;
+      slideshowActive = true;
+      if (slideshowTimer) {
+        clearInterval(slideshowTimer);
+        slideshowTimer = null;
+      }
+      slideshowTimer = setInterval(() => {
+        if (!slideshowActive || !galleryItems.length) return;
+        const item = galleryItems[galleryIndex];
+        if (item && !item.isFolder && item.isVideo) {
+          return;
+        }
+        showNextGalleryItem();
+      }, 5000);
+      renderGalleryItem(galleryIndex);
+    }
+
+    function stopSlideshow() {
+      slideshowActive = false;
+      if (slideshowTimer) {
+        clearInterval(slideshowTimer);
+        slideshowTimer = null;
+      }
+      const vid = getActiveGalleryVideo();
+      if (vid) {
+        vid.loop = true;
+      }
+    }
+
+    function handleSlideshowVideoEnded() {
+      if (!slideshowActive) return;
+      showNextGalleryItem();
+    }
+
+    function handleOverlayMouseMove() {
+      if (!GALLERY_MODE) return;
+      resetUIHideTimer();
+    }
+
     function handleGalleryKeydown(e) {
-      if (!GALLERY_MODE || !galleryItems.length) return;
+      if (!GALLERY_MODE) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key;
       const item = galleryItems[galleryIndex] || null;
 
@@ -682,6 +1036,102 @@
       if (item && item.isFolder && (key === 's' || key === 'S' || key === 'k' || key === 'K')) {
         e.preventDefault();
         enterFolder(item);
+        return;
+      }
+
+      // Filter mode: all / images / videos
+      if (key === 'f' || key === 'F') {
+        e.preventDefault();
+        if (filterMode === 'all') {
+          filterMode = 'images';
+        } else if (filterMode === 'images') {
+          filterMode = 'videos';
+        } else {
+          filterMode = 'all';
+        }
+        rebuildGalleryItemsFromCurrentDir();
+        if (galleryItems.length) {
+          if (galleryIndex < 0) galleryIndex = 0;
+          if (galleryIndex >= galleryItems.length) galleryIndex = galleryItems.length - 1;
+          renderGalleryItem(galleryIndex);
+        } else {
+          galleryIndex = 0;
+          viewport.innerHTML = '';
+          const msg = document.createElement('div');
+          msg.className = 'empty-folder';
+          msg.textContent = 'Empty folder';
+          viewport.appendChild(msg);
+          filenameEl.textContent = currentDir ? (currentDir.name || '') : '';
+        }
+        showStatusMessage(filterMode === 'all' ? 'Filter: All media' : (filterMode === 'images' ? 'Filter: Images only' : 'Filter: Videos only'));
+        return;
+      }
+
+      // Random order toggle
+      if (key === 'r' || key === 'R') {
+        e.preventDefault();
+        randomMode = !randomMode;
+        if (randomMode && rootNode) {
+          buildRandomOrdersForDir(rootNode);
+        }
+        rebuildGalleryItemsFromCurrentDir();
+        if (galleryItems.length) {
+          if (galleryIndex < 0) galleryIndex = 0;
+          if (galleryIndex >= galleryItems.length) galleryIndex = galleryItems.length - 1;
+          renderGalleryItem(galleryIndex);
+        } else {
+          galleryIndex = 0;
+          viewport.innerHTML = '';
+          const msg = document.createElement('div');
+          msg.className = 'empty-folder';
+          msg.textContent = 'Empty folder';
+          viewport.appendChild(msg);
+          filenameEl.textContent = currentDir ? (currentDir.name || '') : '';
+        }
+        showStatusMessage('Random order: ' + (randomMode ? 'ON' : 'OFF'));
+        return;
+      }
+
+      // Hide/show folders (node hider)
+      if (key === 'n' || key === 'N') {
+        e.preventDefault();
+        hideFolders = !hideFolders;
+        rebuildGalleryItemsFromCurrentDir();
+        if (galleryItems.length) {
+          if (galleryIndex < 0) galleryIndex = 0;
+          if (galleryIndex >= galleryItems.length) galleryIndex = galleryItems.length - 1;
+          renderGalleryItem(galleryIndex);
+        } else {
+          galleryIndex = 0;
+          viewport.innerHTML = '';
+          const msg = document.createElement('div');
+          msg.className = 'empty-folder';
+          msg.textContent = 'Empty folder';
+          viewport.appendChild(msg);
+          filenameEl.textContent = currentDir ? (currentDir.name || '') : '';
+        }
+        showStatusMessage(hideFolders ? 'Folders hidden' : 'Folders shown');
+        return;
+      }
+
+      // Slideshow toggle
+      if (key === 'p' || key === 'P') {
+        e.preventDefault();
+        if (slideshowActive) {
+          stopSlideshow();
+          showStatusMessage('Slideshow: OFF');
+        } else {
+          startSlideshow();
+          showStatusMessage('Slideshow: ON');
+        }
+        return;
+      }
+
+      // Toggle folder looping
+      if (key === 't' || key === 'T') {
+        e.preventDefault();
+        loopWithinDir = !loopWithinDir;
+        showStatusMessage('Folder looping: ' + (loopWithinDir ? 'ON' : 'OFF'));
         return;
       }
 
@@ -721,6 +1171,8 @@
     }
 
     window.addEventListener('keydown', handleGalleryKeydown, true);
+
+    overlay.addEventListener('mousemove', handleOverlayMouseMove);
 
     startBtn.addEventListener('click', () => {
       showOverlay();
