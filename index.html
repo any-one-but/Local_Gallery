@@ -333,7 +333,7 @@
       <div id="dropHint">or drag image/video files or folders into this window</div>
       <div id="fileCount"></div>
       <div id="keysHint">
-          <p>Gallery keybinds (right hand): W = up directory; S = down directory; ← / A = previous; → / D = next; 1 = -10 files; 3 = +10 files; Q = -10s; E = +10s; Space = play/pause; Esc = close gallery.</p>
+          <p>Gallery keybinds (right hand): W = up directory; S = down directory; ← / A = previous; → / D = next; 1 = -10 files; 3 = +10 files; Q = -10s; E = +10s; Space = play/pause; ` = close gallery.</p>
           <p>Gallery keybinds (left hand): I = up directory; K = down directory; ← / J = previous; → / L = next; 8 = -10 files; 0 = +10 files; U = -10s; O = +10s; Space = play/pause; Backspace = close gallery.</p>
           <p>Additional keybinds: F = cycle filters (all/images/videos); R = toggle random order; P = toggle slideshow; N = hide/show folders; T = toggle folder looping.</p>
       </div>
@@ -1172,7 +1172,7 @@
         }
       }
 
-      if (key === 'Escape' || key === 'Esc' || key === 'Backspace') {
+      if (key === 'Backspace' || key === '`' || key === '~' || e.code === 'Backquote') {
         e.preventDefault();
         hideOverlay();
       }
