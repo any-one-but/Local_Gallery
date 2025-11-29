@@ -1171,7 +1171,7 @@
         }
       }
 
-      if (key === 'Backspace' || key === '`' || key === '~' || e.code === 'Backquote') {
+      if (e.key === 'Escape' || key === 'Backspace' || key === '`' || key === '~' || e.code === 'Backquote') {
         e.preventDefault();
         hideOverlay();
       }
