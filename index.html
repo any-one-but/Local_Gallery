@@ -379,6 +379,7 @@
     let loopWithinDir = false;
     let uiHidden = false;
     let uiHideTimer = null;
+    let fullscreenCheckTimeout = null;
 
     // Directory tree
     let rootNode = null;
@@ -621,6 +622,22 @@
       }
     }
 
+    function scheduleFullscreenCheck(attemptsLeft) {
+      if (fullscreenCheckTimeout) {
+        clearTimeout(fullscreenCheckTimeout);
+        fullscreenCheckTimeout = null;
+      }
+      fullscreenCheckTimeout = setTimeout(() => {
+        if (!GALLERY_MODE) return;
+        if (!document.fullscreenElement) {
+          enterFullscreenIfPossible();
+        }
+        if (attemptsLeft > 1 && GALLERY_MODE && !document.fullscreenElement) {
+          scheduleFullscreenCheck(attemptsLeft - 1);
+        }
+      }, 10000);
+    }
+
     function showUI() {
       if (!overlay) return;
       overlay.classList.remove('ui-hidden');
@@ -650,6 +667,7 @@
       if (controls) controls.style.display = 'none';
       renderGalleryItem(galleryIndex);
       enterFullscreenIfPossible();
+      scheduleFullscreenCheck(2);
       resetUIHideTimer();
     }
 
@@ -661,6 +679,10 @@
       if (uiHideTimer) {
         clearTimeout(uiHideTimer);
         uiHideTimer = null;
+      }
+      if (fullscreenCheckTimeout) {
+        clearTimeout(fullscreenCheckTimeout);
+        fullscreenCheckTimeout = null;
       }
       showUI();
       stopSlideshow();
