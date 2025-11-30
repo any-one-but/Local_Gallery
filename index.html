@@ -324,7 +324,6 @@
             <p>3 = +10 files</p>
             <p>Q = -10s</p>
             <p>E = +10s</p>
-            <p>Esc = close gallery.</p>
           </p>
           <br></br>
           <p><b>Gallery keybinds (left hand):</b> 
@@ -336,10 +335,10 @@
             <p>0 = +10 files</p>
             <p>U = -10s</p>
             <p>O = +10s</p>
-            <p>Backspace = close gallery.</p>
           </p>
           <br></br>
           <p><b>Additional keybinds:</b> 
+              <p>G = open/close gallery</p>
               <p>Space = play/pause</p>
               <p>F = cycle filters (all/images/videos)</p>
               <p>R = toggle random order</p>
@@ -418,6 +417,7 @@
 
     function makeFileNode(file, parent) {
       const name = file.name;
+      if (name[0] === '.') return null;
       const lower = name.toLowerCase();
       const isImg = isImageFile(lower);
       const isVid = isVideoFile(lower);
@@ -598,9 +598,6 @@
 
     function handleFullscreenChangeForOverlay() {
       if (!GALLERY_MODE) return;
-      if (!document.fullscreenElement) {
-        hideOverlay();
-      }
     }
 
     function showUI() {
@@ -631,7 +628,6 @@
       overlay.classList.add('active');
       if (controls) controls.style.display = 'none';
       renderGalleryItem(galleryIndex);
-      enterFullscreenIfPossible();
       resetUIHideTimer();
     }
 
@@ -1007,13 +1003,20 @@
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key;
 
-      if (!GALLERY_MODE) {
-        if (key === 'g' || key === 'G') {
+      if (key === 'g' || key === 'G') {
+        e.preventDefault();
+        if (!GALLERY_MODE) {
           if (galleryItems.length) {
-            e.preventDefault();
             showOverlay();
+            enterFullscreenIfPossible();
           }
+        } else {
+          hideOverlay();
         }
+        return;
+      }
+
+      if (!GALLERY_MODE) {
         return;
       }
 
@@ -1170,7 +1173,7 @@
         }
       }
 
-      if (e.key === 'Escape' || key === 'Backspace' || key === '`' || key === '~' || e.code === 'Backquote') {
+      if (e.key === 'Escape') {
         e.preventDefault();
         hideOverlay();
       }
