@@ -777,7 +777,6 @@
 
     function moveToNextDirectoryFile() {
       if (!currentDir || !currentDir.parent) return false;
-      const originalDir = currentDir;
       const parent = currentDir.parent;
       const siblingDirs = parent.children.filter(c => c.type === 'dir').sort(byName);
       const idx = siblingDirs.indexOf(currentDir);
@@ -789,11 +788,6 @@
       const dir = siblingDirs[targetIndex];
       currentDir = dir;
       rebuildGalleryItemsFromCurrentDir();
-      if (!galleryItems.length) {
-        currentDir = originalDir;
-        rebuildGalleryItemsFromCurrentDir();
-        return false;
-      }
 
       let firstFileIndex = -1;
       for (let j = 0; j < galleryItems.length; j++) {
@@ -804,9 +798,14 @@
         }
       }
       if (firstFileIndex === -1) {
-        currentDir = originalDir;
-        rebuildGalleryItemsFromCurrentDir();
-        return false;
+        galleryIndex = 0;
+        viewport.innerHTML = '';
+        const msg = document.createElement('div');
+        msg.className = 'empty-folder';
+        msg.textContent = 'Empty folder';
+        viewport.appendChild(msg);
+        filenameEl.textContent = currentDir.name || dir.name || '';
+        return true;
       }
 
       galleryIndex = firstFileIndex;
@@ -816,7 +815,6 @@
 
     function moveToPrevDirectoryFile() {
       if (!currentDir || !currentDir.parent) return false;
-      const originalDir = currentDir;
       const parent = currentDir.parent;
       const siblingDirs = parent.children.filter(c => c.type === 'dir').sort(byName);
       const idx = siblingDirs.indexOf(currentDir);
@@ -828,11 +826,6 @@
       const dir = siblingDirs[targetIndex];
       currentDir = dir;
       rebuildGalleryItemsFromCurrentDir();
-      if (!galleryItems.length) {
-        currentDir = originalDir;
-        rebuildGalleryItemsFromCurrentDir();
-        return false;
-      }
 
       let lastFileIndex = -1;
       for (let j = galleryItems.length - 1; j >= 0; j--) {
@@ -843,9 +836,14 @@
         }
       }
       if (lastFileIndex === -1) {
-        currentDir = originalDir;
-        rebuildGalleryItemsFromCurrentDir();
-        return false;
+        galleryIndex = 0;
+        viewport.innerHTML = '';
+        const msg = document.createElement('div');
+        msg.className = 'empty-folder';
+        msg.textContent = 'Empty folder';
+        viewport.appendChild(msg);
+        filenameEl.textContent = currentDir.name || dir.name || '';
+        return true;
       }
 
       galleryIndex = lastFileIndex;
@@ -854,11 +852,51 @@
     }
 
     function jumpRelative(delta) {
-      if (!galleryItems.length) return;
-      let idx = galleryIndex + delta;
-      if (idx < 0) idx = 0;
-      if (idx >= galleryItems.length) idx = galleryItems.length - 1;
-      renderGalleryItem(idx);
+      if (loopWithinDir) {
+        if (!galleryItems.length) return;
+        let idx = galleryIndex + delta;
+        if (idx < 0) idx = 0;
+        if (idx >= galleryItems.length) idx = galleryItems.length - 1;
+        renderGalleryItem(idx);
+        return;
+      }
+
+      if (!delta) return;
+
+      let remaining = delta;
+
+      while (remaining !== 0) {
+        if (!galleryItems.length) {
+          if (remaining > 0) {
+            if (!moveToNextDirectoryFile()) break;
+            remaining -= 1;
+          } else {
+            if (!moveToPrevDirectoryFile()) break;
+            remaining += 1;
+          }
+          continue;
+        }
+
+        if (remaining > 0) {
+          const stepsToEnd = (galleryItems.length - 1) - galleryIndex;
+          if (remaining <= stepsToEnd) {
+            renderGalleryItem(galleryIndex + remaining);
+            return;
+          } else {
+            remaining -= (stepsToEnd + 1);
+            if (!moveToNextDirectoryFile()) return;
+          }
+        } else {
+          const stepsToStart = galleryIndex;
+          if (-remaining <= stepsToStart) {
+            renderGalleryItem(galleryIndex + remaining);
+            return;
+          } else {
+            remaining += (stepsToStart + 1);
+            if (!moveToPrevDirectoryFile()) return;
+          }
+        }
+      }
     }
 
     function getActiveGalleryVideo() {
