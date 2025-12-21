@@ -71,7 +71,7 @@
     #controls p {
       font-size: 12px;
       color: var(--color0-secondary);
-      text-align: center;
+      text-align: left;
     }
 
     #fileInput {
@@ -231,7 +231,9 @@
       margin-top: 4px;
       font-size: 11px;
       color: var(--color0-secondary);
-      text-align: center;
+      text-align: left;
+      align-self: flex-start;
+      width: 100%;
     }
 
     /* Folder display in viewer */
@@ -315,7 +317,7 @@
       <button id="startBtn" type="button">Open gallery</button>
       <div id="fileCount"></div>
       <div id="keysHint">
-          <p><b>Gallery keybinds (right hand):</b> 
+          <p><b>Gallery keybinds (left hand):</b> 
             <p>W = up directory</p>
             <p>S = down directory</p>
             <p>A = previous</p>
@@ -324,9 +326,13 @@
             <p>3 = +10 files</p>
             <p>Q = -10s</p>
             <p>E = +10s</p>
+            <p>R = toggle random order</p>
+            <p>F = cycle filters (all/images/videos)</p>
+            <p>C = toggle folder looping</p>
+            <p>Shift = toggle slideshow</p>
           </p>
           <br></br>
-          <p><b>Gallery keybinds (left hand):</b> 
+          <p><b>Gallery keybinds (right hand):</b> 
             <p>I = up directory</p>
             <p>K = down directory</p>
             <p>J = previous</p>
@@ -335,17 +341,11 @@
             <p>0 = +10 files</p>
             <p>U = -10s</p>
             <p>O = +10s</p>
+            <p>Y = toggle random order</p>
+            <p>H = cycle filters (all/images/videos)</p>
+            <p>N = toggle folder looping</p>
+            <p>Shift = toggle slideshow</p>
           </p>
-          <br></br>
-          <p><b>Additional keybinds:</b> 
-              <p>G = open/close gallery</p>
-              <p>Space = play/pause</p>
-              <p>F = cycle filters (all/images/videos)</p>
-              <p>R = toggle random order</p>
-              <p>P = toggle slideshow</p>
-              <p>N = hide/show folders</p>
-              <p>T = toggle folder looping.</p>
-            </p>
       </div>
 
     </div>
@@ -386,7 +386,6 @@
     let slideshowTimer = null;
     let filterMode = 'all';
     let randomMode = false;
-    let hideFolders = false;
     let statusTimeout = null;
     let loopWithinDir = false;
     let uiHidden = false;
@@ -481,15 +480,13 @@
         files = files.filter(f => f.isVideo);
       }
 
-      if (!hideFolders) {
-        dirs.forEach(dirNode => {
-          galleryItems.push({
-            isFolder: true,
-            node: dirNode,
-            name: dirNode.name
-          });
+      dirs.forEach(dirNode => {
+        galleryItems.push({
+          isFolder: true,
+          node: dirNode,
+          name: dirNode.name
         });
-      }
+      });
 
       files.forEach(fileNode => {
         if (!fileNode.url) {
@@ -551,7 +548,6 @@
 
       filterMode = 'all';
       randomMode = false;
-      hideFolders = false;
 
       buildTreeFromFileList(fileList);
       if (!rootNode) {
@@ -566,19 +562,20 @@
       rebuildGalleryItemsFromCurrentDir();
       if (!galleryItems.length) {
         fileCountEl.textContent = 'No supported image/video files detected.';
-        startBtn.style.display = 'none';
         return;
       }
 
       galleryIndex = 0;
       fileCountEl.textContent = `Loaded ${galleryItems.length} items.`;
-      startBtn.style.display = 'inline-block';
     }
 
     fileInput.addEventListener('change', (e) => {
       const files = e.target.files;
       if (!files || !files.length) return;
       addFilesFromFileList(files);
+      if (galleryItems.length) {
+        showOverlay();
+      }
     });
 
     function enterFullscreenIfPossible() {
@@ -642,10 +639,9 @@
       }
       showUI();
       stopSlideshow();
-      const vid = getActiveGalleryVideo();
-      if (vid) {
-        try { vid.pause(); } catch {}
-      }
+      stopAndCleanupActiveVideo();
+      viewport.innerHTML = '';
+      filenameEl.textContent = '';
     }
 
     function renderGalleryItem(idx) {
@@ -687,12 +683,16 @@
       }
 
       if (type === 'video' && existingType === 'video') {
+        stopAndCleanupActiveVideo();
         viewport.innerHTML = '';
         existing = null;
         existingType = null;
       }
 
       if (type !== existingType) {
+        if (existingType === 'video') {
+          stopAndCleanupActiveVideo();
+        }
         viewport.innerHTML = '';
         existing = null;
       }
@@ -777,6 +777,7 @@
 
     function moveToNextDirectoryFile() {
       if (!currentDir || !currentDir.parent) return false;
+      const originalDir = currentDir;
       const parent = currentDir.parent;
       const siblingDirs = parent.children.filter(c => c.type === 'dir').sort(byName);
       const idx = siblingDirs.indexOf(currentDir);
@@ -788,6 +789,11 @@
       const dir = siblingDirs[targetIndex];
       currentDir = dir;
       rebuildGalleryItemsFromCurrentDir();
+      if (!galleryItems.length) {
+        currentDir = originalDir;
+        rebuildGalleryItemsFromCurrentDir();
+        return false;
+      }
 
       let firstFileIndex = -1;
       for (let j = 0; j < galleryItems.length; j++) {
@@ -798,14 +804,9 @@
         }
       }
       if (firstFileIndex === -1) {
-        galleryIndex = 0;
-        viewport.innerHTML = '';
-        const msg = document.createElement('div');
-        msg.className = 'empty-folder';
-        msg.textContent = 'Empty folder';
-        viewport.appendChild(msg);
-        filenameEl.textContent = currentDir.name || dir.name || '';
-        return true;
+        currentDir = originalDir;
+        rebuildGalleryItemsFromCurrentDir();
+        return false;
       }
 
       galleryIndex = firstFileIndex;
@@ -815,6 +816,7 @@
 
     function moveToPrevDirectoryFile() {
       if (!currentDir || !currentDir.parent) return false;
+      const originalDir = currentDir;
       const parent = currentDir.parent;
       const siblingDirs = parent.children.filter(c => c.type === 'dir').sort(byName);
       const idx = siblingDirs.indexOf(currentDir);
@@ -826,6 +828,11 @@
       const dir = siblingDirs[targetIndex];
       currentDir = dir;
       rebuildGalleryItemsFromCurrentDir();
+      if (!galleryItems.length) {
+        currentDir = originalDir;
+        rebuildGalleryItemsFromCurrentDir();
+        return false;
+      }
 
       let lastFileIndex = -1;
       for (let j = galleryItems.length - 1; j >= 0; j--) {
@@ -836,14 +843,9 @@
         }
       }
       if (lastFileIndex === -1) {
-        galleryIndex = 0;
-        viewport.innerHTML = '';
-        const msg = document.createElement('div');
-        msg.className = 'empty-folder';
-        msg.textContent = 'Empty folder';
-        viewport.appendChild(msg);
-        filenameEl.textContent = currentDir.name || dir.name || '';
-        return true;
+        currentDir = originalDir;
+        rebuildGalleryItemsFromCurrentDir();
+        return false;
       }
 
       galleryIndex = lastFileIndex;
@@ -852,55 +854,35 @@
     }
 
     function jumpRelative(delta) {
-      if (loopWithinDir) {
-        if (!galleryItems.length) return;
-        let idx = galleryIndex + delta;
-        if (idx < 0) idx = 0;
-        if (idx >= galleryItems.length) idx = galleryItems.length - 1;
-        renderGalleryItem(idx);
-        return;
-      }
-
-      if (!delta) return;
-
-      let remaining = delta;
-
-      while (remaining !== 0) {
-        if (!galleryItems.length) {
-          if (remaining > 0) {
-            if (!moveToNextDirectoryFile()) break;
-            remaining -= 1;
-          } else {
-            if (!moveToPrevDirectoryFile()) break;
-            remaining += 1;
-          }
-          continue;
-        }
-
-        if (remaining > 0) {
-          const stepsToEnd = (galleryItems.length - 1) - galleryIndex;
-          if (remaining <= stepsToEnd) {
-            renderGalleryItem(galleryIndex + remaining);
-            return;
-          } else {
-            remaining -= (stepsToEnd + 1);
-            if (!moveToNextDirectoryFile()) return;
-          }
+      if (!galleryItems.length) return;
+      const step = delta > 0 ? 1 : -1;
+      let remaining = Math.abs(delta);
+      while (remaining > 0) {
+        const prevDir = currentDir;
+        const prevIndex = galleryIndex;
+        if (step > 0) {
+          showNextGalleryItem();
         } else {
-          const stepsToStart = galleryIndex;
-          if (-remaining <= stepsToStart) {
-            renderGalleryItem(galleryIndex + remaining);
-            return;
-          } else {
-            remaining += (stepsToStart + 1);
-            if (!moveToPrevDirectoryFile()) return;
-          }
+          showPrevGalleryItem();
         }
+        if (currentDir === prevDir && galleryIndex === prevIndex) {
+          break;
+        }
+        remaining--;
       }
     }
 
     function getActiveGalleryVideo() {
       return viewport.querySelector('video') || null;
+    }
+
+    function stopAndCleanupActiveVideo() {
+      const vid = getActiveGalleryVideo();
+      if (!vid) return;
+      try { vid.pause(); } catch {}
+      try { vid.currentTime = 0; } catch {}
+      try { vid.removeAttribute('src'); } catch {}
+      try { vid.load(); } catch {}
     }
 
     function seekGalleryVideo(deltaSeconds) {
@@ -952,7 +934,6 @@
       const childDir = currentDir;
       childDir.lastIndex = galleryIndex;
       currentDir = childDir.parent;
-      hideFolders = false;
       rebuildGalleryItemsFromCurrentDir();
       if (galleryItems.length) {
         let folderIdx = -1;
@@ -1041,24 +1022,33 @@
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key;
 
-      if (key === 'g' || key === 'G') {
-        e.preventDefault();
-        if (!GALLERY_MODE) {
-          if (galleryItems.length) {
-            showOverlay();
-            enterFullscreenIfPossible();
-          }
-        } else {
-          hideOverlay();
-        }
-        return;
-      }
-
       if (!GALLERY_MODE) {
         return;
       }
 
       const item = galleryItems[galleryIndex] || null;
+
+      if (key === 'g' || key === 'G') {
+        e.preventDefault();
+        if (document.fullscreenElement) {
+          exitFullscreenIfNeeded();
+        } else {
+          enterFullscreenIfPossible();
+        }
+        return;
+      }
+
+      if (key === 'Shift') {
+        e.preventDefault();
+        if (slideshowActive) {
+          stopSlideshow();
+          showStatusMessage('Slideshow: OFF');
+        } else {
+          startSlideshow();
+          showStatusMessage('Slideshow: ON');
+        }
+        return;
+      }
 
       // Always-available up-directory
       if (key === 'w' || key === 'W' || key === 'i' || key === 'I') {
@@ -1087,7 +1077,7 @@
       }
 
       // Filter mode: all / images / videos
-      if (key === 'f' || key === 'F') {
+      if (key === 'f' || key === 'F' || key === 'h' || key === 'H') {
         e.preventDefault();
         if (filterMode === 'all') {
           filterMode = 'images';
@@ -1115,7 +1105,7 @@
       }
 
       // Random order toggle
-      if (key === 'r' || key === 'R') {
+      if (key === 'r' || key === 'R' || key === 'y' || key === 'Y') {
         e.preventDefault();
         randomMode = !randomMode;
         if (randomMode && rootNode) {
@@ -1139,43 +1129,8 @@
         return;
       }
 
-      // Hide/show folders (node hider)
-      if (key === 'n' || key === 'N') {
-        e.preventDefault();
-        hideFolders = !hideFolders;
-        rebuildGalleryItemsFromCurrentDir();
-        if (galleryItems.length) {
-          if (galleryIndex < 0) galleryIndex = 0;
-          if (galleryIndex >= galleryItems.length) galleryIndex = galleryItems.length - 1;
-          renderGalleryItem(galleryIndex);
-        } else {
-          galleryIndex = 0;
-          viewport.innerHTML = '';
-          const msg = document.createElement('div');
-          msg.className = 'empty-folder';
-          msg.textContent = 'Empty folder';
-          viewport.appendChild(msg);
-          filenameEl.textContent = currentDir ? (currentDir.name || '') : '';
-        }
-        showStatusMessage(hideFolders ? 'Folders hidden' : 'Folders shown');
-        return;
-      }
-
-      // Slideshow toggle
-      if (key === 'p' || key === 'P') {
-        e.preventDefault();
-        if (slideshowActive) {
-          stopSlideshow();
-          showStatusMessage('Slideshow: OFF');
-        } else {
-          startSlideshow();
-          showStatusMessage('Slideshow: ON');
-        }
-        return;
-      }
-
       // Toggle folder looping
-      if (key === 't' || key === 'T') {
+      if (key === 'c' || key === 'C' || key === 'n' || key === 'N') {
         e.preventDefault();
         loopWithinDir = !loopWithinDir;
         showStatusMessage('Folder looping: ' + (loopWithinDir ? 'ON' : 'OFF'));
@@ -1204,7 +1159,7 @@
           e.preventDefault();
           seekGalleryVideo(10);
           return;
-        } else if (key === ' ' || key === 'Spacebar' || e.code === 'Space' || key === 'k' || key === 'K') {
+        } else if (key === ' ' || key === 'Spacebar' || e.code === 'Space') {
           e.preventDefault();
           toggleGalleryVideoPlayPause();
           return;
@@ -1220,10 +1175,6 @@
     window.addEventListener('keydown', handleGalleryKeydown, true);
 
     overlay.addEventListener('mousemove', handleOverlayMouseMove);
-
-    startBtn.addEventListener('click', () => {
-      showOverlay();
-    });
 
     nextBtn.addEventListener('click', () => {
       showNextGalleryItem();
