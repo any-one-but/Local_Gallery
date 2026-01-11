@@ -884,6 +884,108 @@
     }
 
     /* =========================================================
+       Hold-to-show keyboard overlay
+       ========================================================= */
+    #helpHoldOverlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.75);
+      z-index: 9100;
+      padding: 16px;
+      pointer-events: none;
+    }
+    #helpHoldOverlay.active { display: flex; }
+
+    #helpHoldCard {
+      width: min(940px, 96vw);
+      background: var(--color1-secondary);
+      border-radius: 6px;
+      border: 1px solid var(--color1-tertiary);
+      box-shadow: 0 10px 30px var(--color1-primary-transparent);
+      padding: 14px 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #helpHoldHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+
+    #helpHoldHeader .hint {
+      font-weight: 500;
+      color: var(--color0-secondary);
+    }
+
+    .keyboard {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .kbRow {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .kbGroup {
+      display: flex;
+      gap: 6px;
+      flex-wrap: nowrap;
+    }
+
+    .kbKey {
+      min-width: 46px;
+      padding: 6px 6px 5px;
+      background: var(--color1-primary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 4px;
+      text-align: center;
+      font-size: 10px;
+      color: var(--color0-primary);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .kbKey .kbKeyLabel {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+
+    .kbKey.wide { min-width: 82px; }
+    .kbKey.wider { min-width: 120px; }
+    .kbKey.space { min-width: 180px; }
+
+    .kbLegend {
+      font-size: 11px;
+      color: var(--color0-secondary);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .kbLegend span {
+      background: var(--color1-primary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    /* =========================================================
        Options Overlay
        ========================================================= */
     #optionsOverlay {
@@ -1126,6 +1228,85 @@
           <button id="helpCloseBtn" type="button" class="miniBtn">X</button>
         </div>
         <div id="helpBody"></div>
+      </div>
+    </div>
+
+    <!-- =========================================================
+         Hold ? (Overlay)
+         ========================================================= -->
+    <div id="helpHoldOverlay">
+      <div id="helpHoldCard">
+        <div id="helpHoldHeader">
+          <div>Keyboard controls</div>
+          <div class="hint">Hold <strong>?</strong> to keep this on screen</div>
+        </div>
+        <div class="keyboard">
+          <div class="kbRow">
+            <div class="kbGroup">
+              <div class="kbKey"><div class="kbKeyLabel">1</div><div>-50</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">2</div><div>-10</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">3</div><div>Random</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">4</div><div>+10</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">5</div><div>+50</div></div>
+            </div>
+            <div class="kbGroup">
+              <div class="kbKey"><div class="kbKeyLabel">6</div><div>-50</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">7</div><div>-10</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">8</div><div>Random</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">9</div><div>+10</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">0</div><div>+50</div></div>
+            </div>
+          </div>
+          <div class="kbRow">
+            <div class="kbGroup">
+              <div class="kbKey"><div class="kbKeyLabel">Q</div><div>Seek -</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">W</div><div>Up</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">E</div><div>Seek +</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">R</div><div>Random</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">F</div><div>Filter</div></div>
+            </div>
+            <div class="kbGroup">
+              <div class="kbKey"><div class="kbKeyLabel">U</div><div>Seek -</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">I</div><div>Up</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">O</div><div>Seek +</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">Y</div><div>Random</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">H</div><div>Filter</div></div>
+            </div>
+          </div>
+          <div class="kbRow">
+            <div class="kbGroup">
+              <div class="kbKey"><div class="kbKeyLabel">A</div><div>Left</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">S</div><div>Down</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">D</div><div>Right</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">C</div><div>Folder</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">G</div><div>Gallery</div></div>
+            </div>
+            <div class="kbGroup">
+              <div class="kbKey"><div class="kbKeyLabel">J</div><div>Left</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">K</div><div>Down</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">L</div><div>Right</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">N</div><div>Folder</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">B</div><div>BANIC!</div></div>
+            </div>
+          </div>
+          <div class="kbRow">
+            <div class="kbGroup">
+              <div class="kbKey wide"><div class="kbKeyLabel">Shift</div><div>Slideshow</div></div>
+              <div class="kbKey space"><div class="kbKeyLabel">Space</div><div>Play/Pause</div></div>
+              <div class="kbKey wide"><div class="kbKeyLabel">Enter</div><div>Open</div></div>
+            </div>
+            <div class="kbGroup">
+              <div class="kbKey wide"><div class="kbKeyLabel">Backspace</div><div>Up</div></div>
+              <div class="kbKey wide"><div class="kbKeyLabel">Esc</div><div>Close</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">?</div><div>Cheatsheet</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="kbLegend">
+          <span>Arrow keys mirror WASD/IJKL</span>
+          <span>Folder = Stop/Loop/Slide</span>
+          <span>Filter cycles: All → Images → Videos → GIFs</span>
+        </div>
       </div>
     </div>
 
@@ -1545,6 +1726,7 @@
     const helpOverlay = $("helpOverlay");
     const helpCloseBtn = $("helpCloseBtn");
     const helpBodyEl = $("helpBody");
+    const helpHoldOverlay = $("helpHoldOverlay");
 
     // Options Overlay
     const optionsOverlay = $("optionsOverlay");
@@ -1621,6 +1803,7 @@
 
     let HELP_OPEN = false;
     let OPTIONS_OPEN = false;
+    let HELP_HOLD_ACTIVE = false;
 
     let BANIC_ACTIVE = false;
     let BANIC_STATE = { preview: null, viewer: null, slideshowWasActive: false };
@@ -1735,36 +1918,37 @@
        ========================================================= */
 
     const HELP_HTML = `
-      <div class="label" style="margin-bottom:8px;">Local Gallery is a static, local-only browser gallery for browsing folders of images/videos. All controls are keyboard-friendly.</div>
+      <div class="label" style="margin-bottom:8px;">Local Gallery is a local-only browser for folders of images and videos, with most controls mirrored so you can use it one-handed from either side of the keyboard. It loads a folder locally and never uploads files, but it can alter files by writing metadata (scores, tags, options) so use it cautiously. The root starts on the left and you navigate deeper by moving right and down; the directories pane lists the current folder’s files, while the preview pane shows the selected item in more detail.</div>
 
       <h2>Load a folder (writable)</h2>
       <ul>
-        <li>Click <code>Load Folder</code> to pick a root folder. The app will scan for images/videos and create a small <code>.local-gallery</code> folder to store your votes/tags/preferences logs.</li>
+        <li>Click <code>Load Folder</code> to pick a root folder. The app will scan for images/videos and create a small <code>.local-gallery</code> folder to store scoring, tags, and preferences.</li>
         <li>Only media files are shown (images + videos). Filter modes can restrict what appears.</li>
       </ul>
 
-      <h2>Directories pane</h2>
+      <h2>Basic navigation keys (mirrored)</h2>
       <ul>
-        <li>Use <code>↑/↓</code> (or <code>W/S</code>, <code>I/K</code>) to move selection.</li>
-        <li>Use <code>→</code> / <code>Enter</code> (or <code>D</code>, <code>L</code>) to enter a folder.</li>
-        <li>Use <code>←</code> / <code>Backspace</code> (or <code>A</code>, <code>J</code>) to leave a folder.</li>
-        <li>Press <code>G</code> to open Gallery Mode on the current selection.</li>
+        <li>Move selection: <code>↑/↓</code>, <code>W/S</code>, or <code>I/K</code>.</li>
+        <li>Enter/leave folders: <code>→</code>/<code>Enter</code>/<code>D</code>/<code>L</code> to go in, <code>←</code>/<code>Backspace</code>/<code>A</code>/<code>J</code> to go out.</li>
+        <li>Open Gallery Mode: <code>G</code>. Close preview/gallery: <code>Esc</code> (or <code>G</code> in Gallery Mode).</li>
+        <li>Fast jumps: <code>1/6</code> -50, <code>2/7</code> -10, <code>3/8</code> random, <code>4/9</code> +10, <code>5/0</code> +50.</li>
+        <li>Video controls: <code>Space</code> play/pause, <code>Q/E</code> seek back/forward, mirrored by <code>U/O</code>.</li>
+        <li>Filters & behaviors: <code>F/H</code> cycle media filter, <code>R/Y</code> toggle random order, <code>C/N</code> cycle folder behavior.</li>
+        <li>Slideshow: <code>Shift</code> toggles the slideshow speed set in Options.</li>
       </ul>
 
-      <h2>Favorites</h2>
+      <h2>Other hotkeys & controls</h2>
       <ul>
-        <li>Click a folder’s icon to toggle it as a favorite (heart).</li>
-        <li>A <code>favorites (N)</code> chip appears above search. Click it to show a global list of favorited folders from anywhere in the root.</li>
-        <li>When favorites mode is on, selecting a folder previews it; pressing <code>Enter</code>/<code>→</code> enters it and returns to normal browsing.</li>
+        <li>Hold <code>?</code> to show the keyboard cheatsheet overlay (only while the key is held down).</li>
+        <li>Use the <code>?</code> button in the title bar to open/close this help panel.</li>
       </ul>
 
-      <h2>Directory search</h2>
+      <h2>BANIC! button</h2>
       <ul>
-        <li>Use the search bar to filter the current view by name (folders and files).</li>
-        <li>Search stays active until you click <code>X</code> in the search bar.</li>
+        <li>Press <code>B</code> to trigger BANIC! (mutes Local Gallery, blacks out the screen, and opens a harmless site). Press <code>B</code> again to resume.</li>
       </ul>
 
-      <h2>Preview pane</h2>
+      <h2>Directories + preview panes</h2>
       <ul>
         <li>Selecting a folder shows its contents; selecting a file shows a large in-pane preview.</li>
         <li>The breadcrumb at the top lets you jump to any parent folder.</li>
@@ -1778,51 +1962,15 @@
         <li><code>←/→</code> leaves/enters directories (folders act like navigable items).</li>
       </ul>
 
-      <h2>Folder behavior (Stop / Loop / Slide)</h2>
+      <h2>Searching</h2>
       <ul>
-        <li>Toggle with <code>C</code>/<code>N</code> (both cycle the mode).</li>
-        <li><b>Stop</b>: reaching the end stops.</li>
-        <li><b>Loop</b>: wraps around (and lists repeat as you scroll).</li>
-        <li><b>Slide</b>: stepping past the end moves to the next/prev sibling directory that has media (respects active filters).</li>
+        <li>Use the search bar to filter the current view by name (folders and files).</li>
+        <li>Search stays active until you click <code>X</code> in the search bar.</li>
       </ul>
 
-      <h2>Random order</h2>
+      <h2>Scoring (folder scoring)</h2>
       <ul>
-        <li>Toggle random order with <code>R</code> or <code>Y</code>.</li>
-        <li>Random is deterministic per directory (stable per session/workspace seed) so it doesn’t reshuffle every time you move.</li>
-      </ul>
-
-      <h2>Media filters</h2>
-      <ul>
-        <li>Cycle filters with <code>F</code> or <code>H</code>: All → Images → Videos → GIFs → All.</li>
-      </ul>
-
-      <h2>Fast navigation</h2>
-      <ul>
-        <li><code>1/6</code> jump -50, <code>2/7</code> jump -10, <code>4/9</code> jump +10, <code>5/0</code> jump +50.</li>
-        <li><code>3/8</code> jumps to a random item.</li>
-      </ul>
-
-      <h2>Video controls</h2>
-      <ul>
-        <li><code>Space</code> toggles play/pause (in preview or gallery when a video is active).</li>
-        <li><code>Q</code>/<code>U</code> seek backward, <code>E</code>/<code>O</code> seek forward (step set in Options).</li>
-      </ul>
-
-      <h2>BANIC! button</h2>
-      <ul>
-        <li>Press <code>B</code> to trigger the BANIC! button (mutes Local Gallery, blacks out the screen, and opens a harmless site). Press <code>B</code> again to resume.</li>
-      </ul>
-
-      <h2>Slideshow</h2>
-      <ul>
-        <li>Press <code>Shift</code> to toggle the slideshow speed set in Options (or cycle if set to cycle).</li>
-        <li>Slideshow advances images automatically. Videos are allowed to play and advance on end.</li>
-      </ul>
-
-      <h2>Scores (folder voting)</h2>
-      <ul>
-        <li>Scores default to the option set in <code>Preferences</code>. Toggle with <code>Scores: Off/On</code>.</li>
+        <li>Scoring defaults to the option set in <code>Preferences</code>. Toggle with <code>Scores: Off/On</code>.</li>
         <li>When enabled, folders show ▲/▼ buttons to bump their score.</li>
         <li>Use <code>Sort: Name/Score</code> to sort folders by score or name.</li>
       </ul>
@@ -1851,6 +1999,12 @@
     function closeHelp() {
       HELP_OPEN = false;
       if (helpOverlay) helpOverlay.classList.remove("active");
+    }
+
+    function setHelpHold(active) {
+      if (active === HELP_HOLD_ACTIVE) return;
+      HELP_HOLD_ACTIVE = active;
+      if (helpHoldOverlay) helpHoldOverlay.classList.toggle("active", HELP_HOLD_ACTIVE);
     }
 
     if (helpBtn) helpBtn.addEventListener("click", () => openHelp());
@@ -5762,6 +5916,13 @@
 
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
+      if (e.key === "?") {
+        if (isTextInputTarget(e.target)) return;
+        e.preventDefault();
+        setHelpHold(true);
+        return;
+      }
+
       if (e.key === "b" || e.key === "B") {
         e.preventDefault();
         applyBanicState(!BANIC_ACTIVE);
@@ -5888,6 +6049,12 @@
         return;
       }
     });
+
+    document.addEventListener("keyup", (e) => {
+      if (e.key === "?") setHelpHold(false);
+    });
+
+    window.addEventListener("blur", () => setHelpHold(false));
 
     /* =========================================================
        Initial UI state
