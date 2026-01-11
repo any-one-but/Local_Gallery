@@ -4682,12 +4682,12 @@
 
       if (rec.type === "video") {
         const mode = previewVideoMode();
-        const doAuto = mode !== "off" && !BANIC_ACTIVE;
-        if (viewerVideoEl) { try { viewerVideoEl.pause(); } catch {} }
+        const doAuto = mode !== "off" && !BANIC_ACTIVE && !VIEWER_MODE;
+        if (!VIEWER_MODE && viewerVideoEl) { try { viewerVideoEl.pause(); } catch {} }
         previewVideoEl.autoplay = doAuto;
         previewVideoEl.onloadeddata = null;
         previewVideoEl.onended = null;
-        previewVideoEl.muted = (mode === "muted") || BANIC_ACTIVE;
+        previewVideoEl.muted = (mode === "muted") || BANIC_ACTIVE || VIEWER_MODE;
         const endBehavior = videoEndBehavior();
         if (WS.view.slideshowActive) {
           previewVideoEl.loop = false;
@@ -4715,6 +4715,7 @@
           requestAnimationFrame(() => { previewVideoEl.classList.add("ready"); });
         }
         if (doAuto) { try { previewVideoEl.play(); } catch {} }
+        else { try { previewVideoEl.pause(); } catch {} }
         preloadNextMedia(viewerItems, viewerIndex);
         return;
       }
