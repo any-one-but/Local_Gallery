@@ -1098,6 +1098,87 @@
       max-width: 320px;
     }
 
+    .remotePanel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .remoteRow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .remoteRow input[type="text"] {
+      flex: 1 1 220px;
+      background: var(--color1-primary);
+      color: var(--color0-primary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 2px;
+      padding: 6px 8px;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .remoteHint {
+      font-size: 11px;
+      color: var(--color0-secondary);
+      line-height: 1.35;
+    }
+
+    .remoteProfilesList {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .remoteProfileCard {
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 4px;
+      padding: 8px 10px;
+      background: var(--color1-primary);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .remoteProfileHeader {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .remoteProfileMeta {
+      font-size: 11px;
+      color: var(--color0-secondary);
+    }
+
+    .remoteProfileTags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .remoteTag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: 2px;
+      font-size: 11px;
+      border: 1px solid var(--color1-tertiary);
+      background: var(--color1-secondary);
+    }
+
+    .remoteStatusLine {
+      font-size: 11px;
+      color: var(--color0-secondary);
+    }
+
     #optionsFooter {
       padding: 10px 10px 10px;
       border-top: 1px solid var(--color1-tertiary);
@@ -1154,6 +1235,7 @@
       <div id="titleBtns">
         <button id="helpBtn" type="button" class="miniBtn">?</button>
         <button id="optionsBtn" type="button" class="miniBtn">⚙</button>
+        <button id="openRemoteBtn" type="button" class="miniBtn">Open Remote</button>
         <button id="openWritableBtn" type="button" class="miniBtn">Load Folder</button>
       </div>
     </div>
@@ -1343,6 +1425,36 @@
     const indexPrefixRE = /^(\d+)\s-\s/;
 
     const FAVORITE_TAG = "__favorite__";
+    const SITE_DATA_FILE_NAME = "site-data.log.json";
+    const SITE_DATA_LOCAL_KEY = "LocalGallerySiteData::v1";
+    const SITE_DATA_SCHEMA_VERSION = 1;
+    const REMOTE_PAGE_SIZE = 50;
+    const REMOTE_FETCH_DELAY_MS = 220;
+
+    const REMOTE_DEFAULT_SETTINGS = {
+      defaultSortMode: "site-order",
+      autoRefreshOnOpen: true
+    };
+
+    let SITE_DATA = {
+      schemaVersion: SITE_DATA_SCHEMA_VERSION,
+      updatedAt: null,
+      profiles: {},
+      recentProfiles: [],
+      settings: { ...REMOTE_DEFAULT_SETTINGS }
+    };
+
+    const REMOTE = {
+      active: false,
+      profileKey: "",
+      profile: null,
+      loading: false,
+      loadedPosts: 0,
+      loadedFiles: 0,
+      controller: null,
+      status: "",
+      loadStartedAt: 0
+    };
 
     function isImageName(name) { return imgRE.test((name || "").toLowerCase()); }
     function isVideoName(name) { return vidRE.test((name || "").toLowerCase()); }
@@ -1407,7 +1519,10 @@
         childrenDirs: [],
         childrenFiles: [],
         lastIndex: 0,
-        path: ""
+        path: "",
+        preserveOrder: false,
+        isRemote: false,
+        remoteMeta: null
       };
     }
 
@@ -1532,6 +1647,377 @@
       else if (ACTIVE_MEDIA_SURFACE === "preview") renderPreviewViewerItem(viewerIndex);
     }
 
+    /* =========================================================
+       Remote profiles: persistence + helpers
+       ========================================================= */
+
+    function normalizeSiteData(raw) {
+      const base = (raw && typeof raw === "object") ? raw : {};
+      const settings = (base.settings && typeof base.settings === "object") ? base.settings : {};
+      return {
+        schemaVersion: typeof base.schemaVersion === "number" ? base.schemaVersion : SITE_DATA_SCHEMA_VERSION,
+        updatedAt: base.updatedAt || null,
+        profiles: (base.profiles && typeof base.profiles === "object") ? base.profiles : {},
+        recentProfiles: Array.isArray(base.recentProfiles) ? base.recentProfiles : [],
+        settings: {
+          defaultSortMode: settings.defaultSortMode === "file-name" ? "file-name" : "site-order",
+          autoRefreshOnOpen: typeof settings.autoRefreshOnOpen === "boolean" ? settings.autoRefreshOnOpen : REMOTE_DEFAULT_SETTINGS.autoRefreshOnOpen
+        }
+      };
+    }
+
+    function siteDataMarkUpdated() {
+      SITE_DATA.updatedAt = new Date().toISOString();
+      siteDataScheduleSave();
+    }
+
+    function siteDataScheduleSave() {
+      if (SITE_DATA._saveTimer) return;
+      SITE_DATA._saveTimer = setTimeout(async () => {
+        SITE_DATA._saveTimer = null;
+        await siteDataSave();
+      }, 600);
+    }
+
+    function siteDataLocalLoad() {
+      try {
+        const raw = localStorage.getItem(SITE_DATA_LOCAL_KEY);
+        return normalizeSiteData(raw ? JSON.parse(raw) : null);
+      } catch {
+        return normalizeSiteData(null);
+      }
+    }
+
+    function siteDataLocalSave() {
+      try { localStorage.setItem(SITE_DATA_LOCAL_KEY, JSON.stringify(SITE_DATA)); } catch {}
+    }
+
+    async function siteDataEnsureFsHandle() {
+      if (!WS.meta.fsSysDirHandle) return null;
+      try {
+        if (!WS.meta.fsSiteDataFileHandle) {
+          WS.meta.fsSiteDataFileHandle = await WS.meta.fsSysDirHandle.getFileHandle(SITE_DATA_FILE_NAME, { create: true });
+        }
+        return WS.meta.fsSiteDataFileHandle;
+      } catch {
+        return null;
+      }
+    }
+
+    async function siteDataLoadFs() {
+      const fh = await siteDataEnsureFsHandle();
+      if (!fh) return null;
+      try {
+        const f = await fh.getFile();
+        const txt = await f.text();
+        return normalizeSiteData(txt ? JSON.parse(txt) : null);
+      } catch {
+        return null;
+      }
+    }
+
+    async function siteDataSaveFs() {
+      const fh = await siteDataEnsureFsHandle();
+      if (!fh) return false;
+      try {
+        const writable = await fh.createWritable();
+        await writable.write(JSON.stringify(SITE_DATA));
+        await writable.close();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function siteDataLoad() {
+      SITE_DATA = siteDataLocalLoad();
+      if (WS.meta && WS.meta.fsSysDirHandle) {
+        const fsData = await siteDataLoadFs();
+        if (fsData && Object.keys(fsData.profiles || {}).length) {
+          SITE_DATA = fsData;
+          siteDataLocalSave();
+        }
+      }
+      renderRemoteProfilesUi();
+      return SITE_DATA;
+    }
+
+    async function siteDataSave() {
+      siteDataLocalSave();
+      if (WS.meta && WS.meta.fsSysDirHandle) {
+        await siteDataSaveFs();
+      }
+    }
+
+    function recordRecentProfile(key) {
+      const list = SITE_DATA.recentProfiles || [];
+      const next = [key, ...list.filter(k => k !== key)].slice(0, 8);
+      SITE_DATA.recentProfiles = next;
+      siteDataMarkUpdated();
+    }
+
+    function profileKeyFromParts(host, service, userId) {
+      return `${host}::${service}::${userId}`;
+    }
+
+    function parseProfileUrl(input) {
+      const raw = String(input || "").trim();
+      if (!raw) return null;
+      let url = null;
+      try {
+        url = raw.startsWith("http") ? new URL(raw) : new URL(`https://${raw}`);
+      } catch {
+        return null;
+      }
+      const host = url.host;
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts.length < 3 || parts[1] !== "user") return null;
+      const service = parts[0];
+      const userId = parts[2];
+      if (!service || !userId) return null;
+      return {
+        host,
+        origin: url.origin,
+        service,
+        userId,
+        key: profileKeyFromParts(host, service, userId),
+        url: `${url.origin}/${service}/user/${userId}`
+      };
+    }
+
+    function getProfileDisplayName(profile) {
+      if (!profile) return "Remote Profile";
+      return profile.displayName || `${profile.service}/${profile.userId}`;
+    }
+
+    function normalizeProfileEntry(entry, parsed) {
+      const base = entry && typeof entry === "object" ? entry : {};
+      const tags = Array.isArray(base.tags) ? base.tags : [];
+      return {
+        key: parsed?.key || base.key || "",
+        host: parsed?.host || base.host || "",
+        origin: parsed?.origin || base.origin || "",
+        service: parsed?.service || base.service || "",
+        userId: parsed?.userId || base.userId || "",
+        url: parsed?.url || base.url || "",
+        displayName: base.displayName || "",
+        tags,
+        sortMode: base.sortMode === "file-name" ? "file-name" : (base.sortMode || SITE_DATA.settings.defaultSortMode || "site-order"),
+        lastFetchedAt: base.lastFetchedAt || null,
+        lastSeenPostId: base.lastSeenPostId || null,
+        totalPosts: typeof base.totalPosts === "number" ? base.totalPosts : 0,
+        totalFiles: typeof base.totalFiles === "number" ? base.totalFiles : 0,
+        posts: Array.isArray(base.posts) ? base.posts : [],
+        complete: !!base.complete
+      };
+    }
+
+    function inferFileTypeFromName(name) {
+      if (isVideoName(name)) return "video";
+      if (isImageName(name)) return "image";
+      return "";
+    }
+
+    function extractFilenameFromUrl(url) {
+      try {
+        const u = new URL(url);
+        const name = u.pathname.split("/").pop() || "";
+        return name || "file";
+      } catch {
+        const part = String(url || "").split("?")[0].split("/").pop();
+        return part || "file";
+      }
+    }
+
+    function resolveRemoteFileUrl(profile, value) {
+      const raw = String(value || "");
+      if (!raw) return "";
+      if (raw.startsWith("http")) return raw;
+      const base = profile?.origin || profile?.url || "";
+      if (!base) return raw;
+      const trimmed = raw.startsWith("/") ? raw : `/${raw}`;
+      return `${base}${trimmed}`;
+    }
+
+    function normalizeRemoteFileEntry(fileObj, index, profile) {
+      const raw = (fileObj && (fileObj.url || fileObj.path)) ? String(fileObj.url || fileObj.path) : "";
+      const url = resolveRemoteFileUrl(profile, raw);
+      if (!url) return null;
+      const name = fileObj.name || extractFilenameFromUrl(url);
+      const type = inferFileTypeFromName(name) || (fileObj.isVid ? "video" : "image");
+      if (!type) return null;
+      return {
+        url,
+        name,
+        type,
+        order: typeof fileObj.order === "number" ? fileObj.order : index,
+        size: typeof fileObj.size === "number" ? fileObj.size : null
+      };
+    }
+
+    function normalizeRemotePost(post, orderIndex, profile) {
+      const id = post?.id != null ? String(post.id) : "";
+      if (!id) return null;
+      const title = post.title || post.name || `post_${id}`;
+      const published = post.published || post.published_at || post.added || post.added_at || post.created || post.created_at || post.posted || post.posted_at || null;
+      const baseFiles = [];
+      const addFile = (obj, idx) => {
+        const entry = normalizeRemoteFileEntry(obj, idx, profile);
+        if (entry) baseFiles.push(entry);
+      };
+      let idx = 1;
+      if (post.file) { addFile(post.file, idx); idx += 1; }
+      if (Array.isArray(post.attachments)) {
+        for (const att of post.attachments) {
+          addFile(att, idx);
+          idx += 1;
+        }
+      }
+      return {
+        id,
+        title,
+        published,
+        order: typeof orderIndex === "number" ? orderIndex : 0,
+        files: baseFiles
+      };
+    }
+
+    function updateProfileCounts(profile) {
+      let totalPosts = 0;
+      let totalFiles = 0;
+      if (profile && Array.isArray(profile.posts)) {
+        totalPosts = profile.posts.length;
+        for (const post of profile.posts) {
+          if (post && Array.isArray(post.files)) totalFiles += post.files.length;
+        }
+      }
+      profile.totalPosts = totalPosts;
+      profile.totalFiles = totalFiles;
+    }
+
+    function mergePostsIntoProfile(profile, posts, { prepend } = {}) {
+      if (!profile || !Array.isArray(posts)) return;
+      const existing = new Set(profile.posts.map(p => String(p.id)));
+      const normalized = [];
+      for (const post of posts) {
+        if (!post || !post.id) continue;
+        if (existing.has(String(post.id))) continue;
+        normalized.push(post);
+      }
+      if (!normalized.length) return;
+      if (prepend) {
+        profile.posts = normalized.concat(profile.posts);
+      } else {
+        profile.posts = profile.posts.concat(normalized);
+      }
+      updateProfileCounts(profile);
+    }
+
+    function profilePostSort(profile) {
+      if (!profile) return [];
+      const arr = profile.posts.slice();
+      arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+      return arr;
+    }
+
+    function profileLabel(profile) {
+      if (!profile) return "Remote Profile";
+      const display = profile.displayName || `${profile.service}/${profile.userId}`;
+      return display;
+    }
+
+    function buildWorkspaceFromRemoteProfile(profile) {
+      if (!profile) return;
+      resetWorkspace();
+
+      WS.root = makeDirNode(profileLabel(profile), null);
+      WS.root.path = "";
+      WS.root.preserveOrder = true;
+      WS.root.isRemote = true;
+      WS.root.remoteMeta = { key: profile.key };
+      WS.dirByPath.set("", WS.root);
+
+      const posts = profilePostSort(profile);
+      const preferSiteOrder = profile.sortMode !== "file-name";
+
+      for (const post of posts) {
+        if (!post) continue;
+        const orderLabel = String(post.order || posts.indexOf(post) + 1).padStart(3, "0");
+        const safeTitle = String(post.title || "post").replace(/[\\/:*?"<>|]+/g, "").trim() || "post";
+        const postName = `${orderLabel} - ${safeTitle} (${post.id})`;
+        const dirPath = postName;
+        const node = makeDirNode(postName, WS.root);
+        node.path = dirPath;
+        node.preserveOrder = preferSiteOrder;
+        node.isRemote = true;
+        node.remoteMeta = { postId: post.id };
+        WS.dirByPath.set(dirPath, node);
+        WS.root.childrenDirs.push(node);
+
+        const files = Array.isArray(post.files) ? post.files.slice() : [];
+        if (!preferSiteOrder) {
+          files.sort((a, b) => compareIndexedNames(a?.name || "", b?.name || ""));
+        }
+        let fileIndex = 1;
+        for (const file of files) {
+          if (!file || !file.url) continue;
+          const name = file.name || extractFilenameFromUrl(file.url);
+          const relPath = `${postName}/${name}`;
+          const id = `remote::${profile.key}::${post.id}::${fileIndex}`;
+          const extDot = name.lastIndexOf(".");
+          const ext = extDot >= 0 ? name.slice(extDot).toLowerCase() : "";
+          const rec = {
+            id,
+            file: null,
+            name,
+            relPath,
+            dirPath,
+            ext,
+            type: file.type || inferFileTypeFromName(name),
+            size: file.size || 0,
+            lastModified: 0,
+            url: null,
+            thumbUrl: null,
+            videoThumbUrl: null,
+            indices: null,
+            thumbMode: null,
+            videoThumbMode: null,
+            isRemote: true,
+            remoteUrl: file.url,
+            remoteMeta: { profileKey: profile.key, postId: post.id, order: file.order || fileIndex }
+          };
+          WS.fileById.set(id, rec);
+          node.childrenFiles.push(id);
+          fileIndex += 1;
+        }
+      }
+
+      WS.view.randomSeed = computeWorkspaceSeed();
+      WS.view.randomCache = new Map();
+      WS.view.dirLoopRepeats = 3;
+      WS.view.previewLoopRepeats = 3;
+
+      WS.meta.storageMode = "local";
+      WS.meta.storageKey = `remote::${profile.key}`;
+      metaInitForCurrentWorkspace();
+
+      WS.nav.dirNode = WS.root;
+      syncBulkSelectionForCurrentDir();
+      syncFavoritesUi();
+      syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = 0;
+      WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      syncPreviewToSelection();
+
+      renderDirectoriesPane();
+      renderPreviewPane(true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      syncMetaButtons();
+    }
+
     const WS = {
       root: null,
       fileById: new Map(),   // id -> FileRecord
@@ -1549,6 +2035,7 @@
         fsScoresFileHandle: null,
         fsTagsFileHandle: null,
         fsOptionsFileHandle: null,
+        fsSiteDataFileHandle: null,
         fsLegacyFileHandle: null,
         saveTimer: null,
         dirty: false,
@@ -1621,13 +2108,16 @@
          id, file, name, relPath, dirPath, ext, type,
          size, lastModified,
          url, thumbUrl, videoThumbUrl,
-         indices
+         indices,
+         isRemote, remoteUrl, remoteMeta
        }
     */
 
     function revokeAllObjectURLs() {
       for (const it of WS.fileById.values()) {
-        try { if (it.url) URL.revokeObjectURL(it.url); } catch {}
+        if (it.url && typeof it.url === "string" && it.url.startsWith("blob:")) {
+          try { URL.revokeObjectURL(it.url); } catch {}
+        }
         try { if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl); } catch {}
         try { if (it.videoThumbUrl) URL.revokeObjectURL(it.videoThumbUrl); } catch {}
         it.url = null;
@@ -1655,6 +2145,7 @@
       WS.meta.fsScoresFileHandle = null;
       WS.meta.fsTagsFileHandle = null;
       WS.meta.fsOptionsFileHandle = null;
+      WS.meta.fsSiteDataFileHandle = null;
       WS.meta.fsLegacyFileHandle = null;
       WS.meta.dirty = false;
       WS.meta.options = normalizeOptions(null);
@@ -1720,6 +2211,7 @@
     // Title Pane
     const helpBtn = $("helpBtn");
     const optionsBtn = $("optionsBtn");
+    const openRemoteBtn = $("openRemoteBtn");
     const openWritableBtn = $("openWritableBtn");
 
     // Help Overlay
@@ -1905,7 +2397,8 @@
       const r = WS.view.randomMode ? "On" : "Off";
       const b = WS.view.folderBehavior === "loop" ? "Loop" : (WS.view.folderBehavior === "slide" ? "Slide" : "Stop");
       const s = WS.meta.dirSortMode === "score" ? "Score" : "Name";
-      modePill.textContent = `Media filter: ${f} | Random mode: ${r} | Folder behavior: ${b} | Dir sort: ${s}`;
+      const storage = REMOTE.active ? "Remote" : "Local";
+      modePill.textContent = `Mode: ${storage} | Media filter: ${f} | Random mode: ${r} | Folder behavior: ${b} | Dir sort: ${s}`;
     }
 
     function syncMetaButtons() {
@@ -2029,6 +2522,14 @@
       if (optionsOverlay) optionsOverlay.classList.remove("active");
     }
 
+    function openRemoteOptions() {
+      openOptions();
+      requestAnimationFrame(() => {
+        const input = $("remoteProfileInput");
+        if (input) input.focus();
+      });
+    }
+
     function renderOptionsUi() {
       if (!optionsBodyEl) return;
       const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
@@ -2147,6 +2648,27 @@
         ${makeCheckRow("Hide indices from display names", "Hide numeric prefixes like '01 - '.", "opt_hideIndicesInNames", !!opt.hideIndicesInNames)}
         ${makeCheckRow("Hide underscores from display names", "Replace underscores with spaces.", "opt_hideUnderscoresInNames", !!opt.hideUnderscoresInNames)}
         ${makeCheckRow("Force title caps in display names", "Apply Title Case to display names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
+
+        <h2>Remote Profiles</h2>
+        <div class="remotePanel">
+          <div class="remoteRow">
+            <input id="remoteProfileInput" type="text" placeholder="Paste a coomer/kemono profile URL..." />
+            <button id="remoteProfileAddBtn" type="button" class="miniBtn">Open</button>
+            <button id="remoteProfileCancelBtn" type="button" class="miniBtn">Cancel</button>
+          </div>
+          <div class="remoteHint">Remote profiles stream content from the network and keep a log in <code>${SITE_DATA_FILE_NAME}</code> when a workspace is open. Loading is incremental to avoid blocking the UI.</div>
+          <div class="remoteRow">
+            <label class="label">Default file order</label>
+            <select id="remoteDefaultSort">
+              <option value="site-order">Site order</option>
+              <option value="file-name">File name</option>
+            </select>
+            <label class="label">Auto-refresh on open</label>
+            <input id="remoteAutoRefresh" type="checkbox" />
+          </div>
+          <div id="remoteProfilesList" class="remoteProfilesList"></div>
+          <div id="remoteStatusLine" class="remoteStatusLine">—</div>
+        </div>
       `;
 
       const bindSelect = (id, key, invalidateThumbs, onChange, valueParser) => {
@@ -2209,6 +2731,205 @@
       bindCheck("opt_hideIndicesInNames", "hideIndicesInNames");
       bindCheck("opt_hideUnderscoresInNames", "hideUnderscoresInNames");
       bindCheck("opt_forceTitleCaps", "forceTitleCaps");
+
+      const remoteInput = $("remoteProfileInput");
+      const remoteAddBtn = $("remoteProfileAddBtn");
+      const remoteCancelBtn = $("remoteProfileCancelBtn");
+      const remoteDefaultSort = $("remoteDefaultSort");
+      const remoteAutoRefresh = $("remoteAutoRefresh");
+
+      if (remoteDefaultSort) {
+        remoteDefaultSort.value = SITE_DATA.settings.defaultSortMode || "site-order";
+        remoteDefaultSort.addEventListener("change", () => {
+          SITE_DATA.settings.defaultSortMode = remoteDefaultSort.value === "file-name" ? "file-name" : "site-order";
+          siteDataMarkUpdated();
+          renderRemoteProfilesUi();
+        });
+      }
+
+      if (remoteAutoRefresh) {
+        remoteAutoRefresh.checked = !!SITE_DATA.settings.autoRefreshOnOpen;
+        remoteAutoRefresh.addEventListener("change", () => {
+          SITE_DATA.settings.autoRefreshOnOpen = !!remoteAutoRefresh.checked;
+          siteDataMarkUpdated();
+        });
+      }
+
+      if (remoteAddBtn) {
+        remoteAddBtn.addEventListener("click", () => {
+          handleRemoteProfileInput(remoteInput ? remoteInput.value : "");
+        });
+      }
+
+      if (remoteInput) {
+        remoteInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            handleRemoteProfileInput(remoteInput.value);
+          }
+        });
+      }
+
+      if (remoteCancelBtn) {
+        remoteCancelBtn.addEventListener("click", () => {
+          remoteAbortFetch();
+        });
+      }
+
+      renderRemoteProfilesUi();
+    }
+
+    function renderRemoteProfilesUi() {
+      const listEl = $("remoteProfilesList");
+      const statusEl = $("remoteStatusLine");
+      if (!listEl) return;
+
+      listEl.innerHTML = "";
+      const profiles = Object.values(SITE_DATA.profiles || {}).map(p => normalizeProfileEntry(p)).filter(p => p.key);
+      profiles.forEach((profile) => {
+        SITE_DATA.profiles[profile.key] = profile;
+      });
+      profiles.sort((a, b) => String(b.lastFetchedAt || "").localeCompare(String(a.lastFetchedAt || "")));
+
+      if (!profiles.length) {
+        const empty = document.createElement("div");
+        empty.className = "remoteHint";
+        empty.textContent = "No remote profiles saved yet.";
+        listEl.appendChild(empty);
+      } else {
+        for (const profile of profiles) {
+          const card = document.createElement("div");
+          card.className = "remoteProfileCard";
+
+          const header = document.createElement("div");
+          header.className = "remoteProfileHeader";
+
+          const title = document.createElement("strong");
+          title.textContent = profileLabel(profile);
+
+          const meta = document.createElement("div");
+          meta.className = "remoteProfileMeta";
+          const last = profile.lastFetchedAt ? new Date(profile.lastFetchedAt).toLocaleString() : "never";
+          const completeness = profile.complete ? "complete" : "partial";
+          meta.textContent = `${profile.service}/${profile.userId} • ${profile.totalPosts || 0} posts • ${profile.totalFiles || 0} files • ${completeness} cache • last fetch: ${last}`;
+
+          const link = document.createElement("a");
+          link.href = profile.url || "#";
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.className = "remoteProfileMeta";
+          link.textContent = profile.url || "";
+
+          header.appendChild(title);
+          header.appendChild(meta);
+          header.appendChild(link);
+
+          const actions = document.createElement("div");
+          actions.className = "remoteRow";
+
+          const openBtn = document.createElement("button");
+          openBtn.type = "button";
+          openBtn.className = "miniBtn";
+          openBtn.textContent = "Open";
+          openBtn.addEventListener("click", () => {
+            openRemoteProfileByKey(profile.key, { refresh: false });
+          });
+
+          const refreshBtn = document.createElement("button");
+          refreshBtn.type = "button";
+          refreshBtn.className = "miniBtn";
+          refreshBtn.textContent = "Refresh";
+          refreshBtn.addEventListener("click", () => {
+            refreshRemoteProfile(profile, { fullFetch: !profile.complete });
+          });
+
+          const copyBtn = document.createElement("button");
+          copyBtn.type = "button";
+          copyBtn.className = "miniBtn";
+          copyBtn.textContent = "Copy URL";
+          copyBtn.addEventListener("click", () => {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(profile.url || "");
+            }
+          });
+
+          const removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.className = "miniBtn";
+          removeBtn.textContent = "Remove";
+          removeBtn.addEventListener("click", () => {
+            delete SITE_DATA.profiles[profile.key];
+            siteDataMarkUpdated();
+            renderRemoteProfilesUi();
+          });
+
+          const sortLabel = document.createElement("span");
+          sortLabel.className = "label";
+          sortLabel.textContent = "Sort:";
+
+          const sortSelect = document.createElement("select");
+          sortSelect.innerHTML = `
+            <option value="site-order">Site order</option>
+            <option value="file-name">File name</option>
+          `;
+          sortSelect.value = profile.sortMode === "file-name" ? "file-name" : "site-order";
+          sortSelect.addEventListener("change", () => {
+            profile.sortMode = sortSelect.value === "file-name" ? "file-name" : "site-order";
+            SITE_DATA.profiles[profile.key] = profile;
+            siteDataMarkUpdated();
+            if (REMOTE.active && REMOTE.profileKey === profile.key) {
+              buildWorkspaceFromRemoteProfile(profile);
+            }
+          });
+
+          const tagBtn = document.createElement("button");
+          tagBtn.type = "button";
+          tagBtn.className = "miniBtn";
+          tagBtn.textContent = "Edit tags";
+          tagBtn.addEventListener("click", () => {
+            const current = (profile.tags || []).join(", ");
+            const next = window.prompt("Edit profile tags (comma-separated):", current);
+            if (next === null) return;
+            profile.tags = next.split(",").map(t => t.trim()).filter(Boolean);
+            SITE_DATA.profiles[profile.key] = profile;
+            siteDataMarkUpdated();
+            renderRemoteProfilesUi();
+          });
+
+          actions.appendChild(openBtn);
+          actions.appendChild(refreshBtn);
+          actions.appendChild(copyBtn);
+          actions.appendChild(removeBtn);
+          actions.appendChild(sortLabel);
+          actions.appendChild(sortSelect);
+          actions.appendChild(tagBtn);
+
+          const tagsWrap = document.createElement("div");
+          tagsWrap.className = "remoteProfileTags";
+          if (profile.tags && profile.tags.length) {
+            for (const tag of profile.tags) {
+              const chip = document.createElement("span");
+              chip.className = "remoteTag";
+              chip.textContent = tag;
+              tagsWrap.appendChild(chip);
+            }
+          } else {
+            const none = document.createElement("span");
+            none.className = "remoteHint";
+            none.textContent = "No tags";
+            tagsWrap.appendChild(none);
+          }
+
+          card.appendChild(header);
+          card.appendChild(actions);
+          card.appendChild(tagsWrap);
+          listEl.appendChild(card);
+        }
+      }
+
+      if (statusEl) {
+        statusEl.textContent = REMOTE.status || "—";
+      }
     }
 
     function resetOptionsToDefaults() {
@@ -2221,6 +2942,7 @@
     }
 
     if (optionsBtn) optionsBtn.addEventListener("click", () => openOptions());
+    if (openRemoteBtn) openRemoteBtn.addEventListener("click", () => openRemoteOptions());
     if (optionsCloseBtn) optionsCloseBtn.addEventListener("click", () => closeOptions());
     if (optionsDoneBtn) optionsDoneBtn.addEventListener("click", () => closeOptions());
     if (optionsResetBtn) optionsResetBtn.addEventListener("click", () => resetOptionsToDefaults());
@@ -2815,12 +3537,14 @@
         const scoresFile = await sys.getFileHandle("folder-scores.log.json", { create: true });
         const tagsFile = await sys.getFileHandle("folder-tags.log.json", { create: true });
         const optionsFile = await sys.getFileHandle("preferences.log.json", { create: true });
+        const siteDataFile = await sys.getFileHandle(SITE_DATA_FILE_NAME, { create: true });
         const legacyFile = await sys.getFileHandle("folder-votes.log.json", { create: true });
         WS.meta.fsRootHandle = rootHandle;
         WS.meta.fsSysDirHandle = sys;
         WS.meta.fsScoresFileHandle = scoresFile;
         WS.meta.fsTagsFileHandle = tagsFile;
         WS.meta.fsOptionsFileHandle = optionsFile;
+        WS.meta.fsSiteDataFileHandle = siteDataFile;
         WS.meta.fsLegacyFileHandle = legacyFile;
         WS.meta.storageMode = "fs";
         return true;
@@ -2923,6 +3647,10 @@
 
     function buildWorkspaceFromFiles(fileList) {
       resetWorkspace();
+      REMOTE.active = false;
+      REMOTE.profileKey = "";
+      REMOTE.profile = null;
+      REMOTE.status = "";
 
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
@@ -3023,6 +3751,10 @@
 
     async function buildWorkspaceFromDirectoryHandle(rootHandle) {
       resetWorkspace();
+      REMOTE.active = false;
+      REMOTE.profileKey = "";
+      REMOTE.profile = null;
+      REMOTE.status = "";
 
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
@@ -3090,6 +3822,7 @@
         WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
         await metaInitForCurrentWorkspaceFs();
       }
+      await siteDataLoad();
 
       WS.nav.dirNode = WS.root;
       syncBulkSelectionForCurrentDir();
@@ -3116,6 +3849,163 @@
         await buildWorkspaceFromDirectoryHandle(rootHandle);
       } catch {}
     });
+
+    async function remoteAbortFetch() {
+      if (REMOTE.controller) {
+        try { REMOTE.controller.abort(); } catch {}
+        REMOTE.controller = null;
+      }
+      REMOTE.loading = false;
+      REMOTE.status = "Canceled";
+      renderRemoteProfilesUi();
+    }
+
+    function remoteSetStatus(text) {
+      REMOTE.status = text;
+      renderRemoteProfilesUi();
+      showStatusMessage(text);
+    }
+
+    async function fetchProfilePage(profile, offset, signal) {
+      const base = profile.origin || profile.url;
+      const url = `${base}/api/v1/${profile.service}/user/${profile.userId}/posts?o=${offset}`;
+      const resp = await fetch(url, { method: "GET", signal });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const list = Array.isArray(data) ? data : (data && (data.results || data.posts)) || [];
+      return Array.isArray(list) ? list : [];
+    }
+
+    async function refreshRemoteProfile(profile, { fullFetch } = {}) {
+      if (!profile) return;
+      if (REMOTE.loading) await remoteAbortFetch();
+      const controller = new AbortController();
+      REMOTE.controller = controller;
+      REMOTE.loading = true;
+      REMOTE.profileKey = profile.key;
+      REMOTE.profile = profile;
+      REMOTE.loadedPosts = 0;
+      REMOTE.loadedFiles = 0;
+      REMOTE.loadStartedAt = Date.now();
+      remoteSetStatus("Fetching remote profile...");
+
+      let offset = 0;
+      let pageIndex = 0;
+      let keepFetching = true;
+      let appended = false;
+      let complete = !!profile.complete;
+
+      try {
+        while (keepFetching) {
+          const page = await fetchProfilePage(profile, offset, controller.signal);
+          if (!page.length) break;
+          const normalized = page.map((post, idx) => normalizeRemotePost(post, (pageIndex * REMOTE_PAGE_SIZE) + idx + 1, profile)).filter(Boolean);
+          if (!normalized.length) break;
+          if (!profile.posts.length) {
+            mergePostsIntoProfile(profile, normalized, { prepend: false });
+            appended = true;
+          } else if (!fullFetch && profile.lastSeenPostId) {
+            const newOnes = [];
+            for (const post of normalized) {
+              if (String(post.id) === String(profile.lastSeenPostId)) {
+                keepFetching = false;
+                break;
+              }
+              newOnes.push(post);
+            }
+            if (newOnes.length) {
+              mergePostsIntoProfile(profile, newOnes, { prepend: true });
+              appended = true;
+            }
+            if (!newOnes.length) {
+              keepFetching = false;
+            }
+          } else {
+            mergePostsIntoProfile(profile, normalized, { prepend: false });
+            appended = true;
+          }
+
+          pageIndex += 1;
+          offset = pageIndex * REMOTE_PAGE_SIZE;
+          REMOTE.loadedPosts = profile.posts.length;
+          updateProfileCounts(profile);
+          REMOTE.loadedFiles = profile.totalFiles;
+          const status = `Loaded ${profile.totalPosts} posts (${profile.totalFiles} files)...`;
+          remoteSetStatus(status);
+          if (REMOTE.active && REMOTE.profileKey === profile.key) {
+            buildWorkspaceFromRemoteProfile(profile);
+          }
+
+          if (normalized.length < REMOTE_PAGE_SIZE) {
+            complete = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, REMOTE_FETCH_DELAY_MS));
+        }
+        if (profile.posts.length) {
+          const ordered = profilePostSort(profile);
+          profile.lastSeenPostId = ordered[0]?.id || profile.lastSeenPostId;
+        }
+        profile.lastFetchedAt = new Date().toISOString();
+        if (fullFetch) complete = true;
+        profile.complete = complete;
+        updateProfileCounts(profile);
+        SITE_DATA.profiles[profile.key] = profile;
+        siteDataMarkUpdated();
+        const doneLabel = appended ? "Remote profile updated." : "Remote profile is up to date.";
+        remoteSetStatus(doneLabel);
+        if (REMOTE.active && REMOTE.profileKey === profile.key) {
+          buildWorkspaceFromRemoteProfile(profile);
+        }
+      } catch (err) {
+        if (controller.signal.aborted) {
+          remoteSetStatus("Remote fetch canceled.");
+        } else {
+          remoteSetStatus("Remote fetch failed.");
+        }
+      } finally {
+        REMOTE.loading = false;
+        REMOTE.controller = null;
+      }
+    }
+
+    async function openRemoteProfileByKey(profileKey, { refresh } = {}) {
+      if (!profileKey) return;
+      const existing = SITE_DATA.profiles[profileKey];
+      if (!existing) return;
+      const profile = normalizeProfileEntry(existing);
+      SITE_DATA.profiles[profileKey] = profile;
+      REMOTE.active = true;
+      REMOTE.profileKey = profileKey;
+      REMOTE.profile = profile;
+      REMOTE.status = `Opened ${profileLabel(profile)}.`;
+      recordRecentProfile(profileKey);
+      buildWorkspaceFromRemoteProfile(profile);
+      renderRemoteProfilesUi();
+
+      const shouldRefresh = refresh || (SITE_DATA.settings.autoRefreshOnOpen && !REMOTE.loading);
+      if (shouldRefresh) {
+        await refreshRemoteProfile(profile, { fullFetch: !profile.complete });
+      }
+    }
+
+    async function handleRemoteProfileInput(input) {
+      const parsed = parseProfileUrl(input);
+      if (!parsed) {
+        remoteSetStatus("Invalid profile URL.");
+        return;
+      }
+      const existing = SITE_DATA.profiles[parsed.key];
+      const profile = normalizeProfileEntry(existing, parsed);
+      profile.url = parsed.url;
+      profile.origin = parsed.origin;
+      profile.service = parsed.service;
+      profile.userId = parsed.userId;
+      if (!profile.sortMode) profile.sortMode = SITE_DATA.settings.defaultSortMode;
+      SITE_DATA.profiles[parsed.key] = profile;
+      siteDataMarkUpdated();
+      await openRemoteProfileByKey(parsed.key, { refresh: true });
+    }
 
     /* =========================================================
        Sorting helpers
@@ -3221,7 +4111,8 @@
 
     function getChildDirsForNodeBase(dirNode) {
       if (!dirNode) return [];
-      const base = sortDirsForDisplay(dirNode.childrenDirs).filter(d => dirItemCount(d) > 0);
+      const ordered = dirNode.preserveOrder ? dirNode.childrenDirs.slice() : sortDirsForDisplay(dirNode.childrenDirs);
+      const base = ordered.filter(d => dirItemCount(d) > 0);
       return base;
     }
 
@@ -4455,6 +5346,7 @@
     function ensureThumbUrl(rec) {
       if (!rec) return null;
       if (rec.type !== "image") return rec.thumbUrl || null;
+      if (rec.isRemote && rec.remoteUrl) return rec.remoteUrl;
 
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const mode = opt ? String(opt.imageThumbSize || "medium") : "medium";
@@ -4483,6 +5375,10 @@
 
     function ensureMediaUrl(rec) {
       if (!rec) return null;
+      if (rec.isRemote && rec.remoteUrl) {
+        rec.url = rec.remoteUrl;
+        return rec.remoteUrl;
+      }
       if (rec.url) return rec.url;
       try { rec.url = URL.createObjectURL(rec.file); return rec.url; } catch { return null; }
     }
@@ -4780,7 +5676,7 @@
         renderBreadcrumbInline(null);
         updateModePill();
         itemsPill.textContent = "Items: —";
-        previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder to begin.</div>`;
+        previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder or open a remote profile to begin.</div>`;
         return;
       }
 
@@ -5029,6 +5925,7 @@
 
     function enqueueVideoThumb(rec) {
       if (!rec) return;
+      if (rec.isRemote) return;
       WS.videoThumbQueue.push(rec.id);
     }
 
@@ -5073,6 +5970,7 @@
     }
 
     async function generateVideoThumb(rec) {
+      if (rec.isRemote) return;
       const url = ensureMediaUrl(rec);
       if (!url) return;
 
@@ -5129,6 +6027,7 @@
     function enqueueImageThumb(rec) {
       if (!rec) return;
       if (rec.type !== "image") return;
+      if (rec.isRemote) return;
       WS.imageThumbQueue.push(rec.id);
       drainImageThumbQueue();
     }
@@ -5154,6 +6053,7 @@
     }
 
     async function generateImageThumb(rec) {
+      if (rec.isRemote) return;
       const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
       if (mode === "high") {
         rec.thumbMode = "high";
@@ -6063,6 +6963,7 @@
 
     if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
     syncButtons();
+    siteDataLoad();
 
   </script>
 </body>
