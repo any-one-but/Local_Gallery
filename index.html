@@ -21,6 +21,119 @@
       --anchor-internal-color2-primary: hsl(240, 100%, 40%);
     }
 
+    :root[data-theme="light"] {
+      --color0-primary: hsl(215, 25%, 15%);
+      --color0-secondary: hsl(215, 18%, 35%);
+      --color0-tertirary: hsl(215, 12%, 55%);
+
+      --color1-primary: hsl(0, 0%, 97%);
+      --color1-primary-transparent: hsla(0, 0%, 97%, .9);
+      --color1-secondary: hsl(210, 22%, 92%);
+      --color1-secondary-transparent: hsla(210, 22%, 92%, .7);
+      --color1-tertiary: hsl(210, 18%, 85%);
+
+      --anchor-internal-color2-primary: hsl(215, 85%, 35%);
+    }
+
+    :root[data-theme="superdark"] {
+      --color0-primary: hsl(0, 0%, 100%);
+      --color0-secondary: hsl(0, 0%, 70%);
+      --color0-tertirary: hsl(0, 0%, 42%);
+
+      --color1-primary: hsl(0, 0%, 0%);
+      --color1-primary-transparent: hsla(0, 0%, 0%, .9);
+      --color1-secondary: hsl(0, 0%, 0%);
+      --color1-secondary-transparent: hsla(0, 0%, 0%, .6);
+      --color1-tertiary: hsl(0, 0%, 12%);
+
+      --anchor-internal-color2-primary: hsl(0, 0%, 85%);
+      --tag-include-bg: hsl(210, 18%, 18%);
+      --tag-include-border: hsl(210, 20%, 28%);
+      --tag-include-color: hsl(210, 30%, 80%);
+      --tag-exclude-bg: hsl(0, 18%, 18%);
+      --tag-exclude-border: hsl(0, 20%, 28%);
+      --tag-exclude-color: hsl(0, 30%, 80%);
+    }
+
+    :root[data-theme="synthwave"] {
+      --color0-primary: hsl(290, 80%, 92%);
+      --color0-secondary: hsl(290, 45%, 74%);
+      --color0-tertirary: hsl(285, 32%, 52%);
+
+      --color1-primary: hsl(258, 35%, 12%);
+      --color1-primary-transparent: hsla(258, 35%, 12%, .88);
+      --color1-secondary: hsl(264, 30%, 18%);
+      --color1-secondary-transparent: hsla(264, 30%, 18%, .55);
+      --color1-tertiary: hsl(260, 30%, 8%);
+
+      --anchor-internal-color2-primary: hsl(190, 95%, 55%);
+    }
+
+    :root[data-theme="verdant"] {
+      --color0-primary: hsl(140, 30%, 92%);
+      --color0-secondary: hsl(140, 20%, 72%);
+      --color0-tertirary: hsl(140, 15%, 50%);
+
+      --color1-primary: hsl(150, 30%, 10%);
+      --color1-primary-transparent: hsla(150, 30%, 10%, .85);
+      --color1-secondary: hsl(150, 25%, 16%);
+      --color1-secondary-transparent: hsla(150, 25%, 16%, .55);
+      --color1-tertiary: hsl(150, 25%, 7%);
+
+      --anchor-internal-color2-primary: hsl(45, 90%, 55%);
+    }
+
+    :root[data-theme="azure"] {
+      --color0-primary: hsl(210, 45%, 92%);
+      --color0-secondary: hsl(210, 35%, 70%);
+      --color0-tertirary: hsl(210, 25%, 50%);
+
+      --color1-primary: hsl(210, 35%, 10%);
+      --color1-primary-transparent: hsla(210, 35%, 10%, .85);
+      --color1-secondary: hsl(210, 30%, 16%);
+      --color1-secondary-transparent: hsla(210, 30%, 16%, .55);
+      --color1-tertiary: hsl(210, 28%, 7%);
+
+      --anchor-internal-color2-primary: hsl(35, 95%, 55%);
+    }
+
+    :root[data-theme="ember"] {
+      --color0-primary: hsl(18, 60%, 92%);
+      --color0-secondary: hsl(18, 35%, 70%);
+      --color0-tertirary: hsl(18, 30%, 50%);
+
+      --color1-primary: hsl(14, 35%, 10%);
+      --color1-primary-transparent: hsla(14, 35%, 10%, .85);
+      --color1-secondary: hsl(14, 30%, 16%);
+      --color1-secondary-transparent: hsla(14, 30%, 16%, .55);
+      --color1-tertiary: hsl(14, 28%, 7%);
+
+      --anchor-internal-color2-primary: hsl(195, 90%, 55%);
+    }
+
+    :root[data-theme="amber"] {
+      --color0-primary: hsl(38, 55%, 92%);
+      --color0-secondary: hsl(38, 35%, 70%);
+      --color0-tertirary: hsl(38, 25%, 50%);
+
+      --color1-primary: hsl(32, 35%, 10%);
+      --color1-primary-transparent: hsla(32, 35%, 10%, .85);
+      --color1-secondary: hsl(32, 30%, 16%);
+      --color1-secondary-transparent: hsla(32, 30%, 16%, .55);
+      --color1-tertiary: hsl(32, 28%, 7%);
+
+      --anchor-internal-color2-primary: hsl(200, 95%, 55%);
+    }
+
+    :root {
+      --tag-include-bg: #3b82f6;
+      --tag-include-border: #1d4ed8;
+      --tag-include-color: #fff;
+      --tag-exclude-bg: #ef4444;
+      --tag-exclude-border: #b91c1c;
+      --tag-exclude-color: #fff;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     html, body {
@@ -251,13 +364,6 @@
       align-items: center;
     }
 
-    #directoriesFavoritesRow {
-      display: none;
-      gap: 6px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
     #directoriesSearchRow {
       display: flex;
       gap: 6px;
@@ -269,6 +375,13 @@
       gap: 6px;
       flex-wrap: wrap;
       align-items: center;
+    }
+
+    #directoriesActionRow {
+      display: none;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
     }
 
     #directoriesBulkRow {
@@ -336,6 +449,10 @@
       flex: 0 0 18px;
     }
 
+    .dirIcon.dirCheckbox {
+      font-size: 16px;
+    }
+
     .dirName {
       flex: 1;
       min-width: 0;
@@ -366,6 +483,64 @@
     .dirRight .voteBtn {
       width: 18px;
       text-align: center;
+    }
+
+    .dirMenu {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .dirMenuBtn {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 2px;
+      border: 1px solid var(--color1-tertiary);
+      background: var(--color1-primary);
+      color: var(--color0-primary);
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .dirMenuBtn:hover {
+      background: var(--color1-secondary);
+    }
+
+    .dropdownMenu {
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      min-width: 140px;
+      background: var(--color1-secondary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 3px;
+      box-shadow: 0 10px 30px var(--color1-primary-transparent);
+      padding: 4px;
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 50;
+    }
+
+    .dropdownMenu.open {
+      display: flex;
+    }
+
+    .dropdownMenu button {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 12px;
+      text-align: left;
+      background: var(--color1-primary);
+      color: var(--color0-primary);
+      border: 1px solid var(--color1-tertiary);
+    }
+
+    .dropdownMenu button:hover {
+      background: var(--color1-secondary);
     }
 
     /* =========================================================
@@ -602,6 +777,7 @@
     .tag {
       display: inline-block;
       font-size: 11px;
+      font-weight: 600;
       padding: 2px 8px;
       border-radius: 2px;
       border: 1px solid var(--color1-tertiary);
@@ -617,29 +793,15 @@
     }
 
     .tag.include {
-      background: #3b82f6;
-      color: #fff;
-      border-color: #1d4ed8;
+      background: var(--tag-include-bg);
+      color: var(--tag-include-color);
+      border-color: var(--tag-include-border);
     }
 
     .tag.exclude {
-      background: #ef4444;
-      color: #fff;
-      border-color: #b91c1c;
-    }
-
-    .tag.include {
-      background: #3b82f6;
-      color: #fff;
-      border-color: #1d4ed8;
-      font-weight: 800;
-    }
-
-    .tag.exclude {
-      background: #ef4444;
-      color: #fff;
-      border-color: #b91c1c;
-      font-weight: 800;
+      background: var(--tag-exclude-bg);
+      color: var(--tag-exclude-color);
+      border-color: var(--tag-exclude-border);
     }
 
     .mini {
@@ -695,8 +857,8 @@
     #filePreviewViewport video {
       max-width: 100%;
       max-height: 100%;
-      width: 100%;
-      height: 100%;
+      width: auto;
+      height: auto;
       object-fit: contain;
       background: #000;
       opacity: 0;
@@ -1231,15 +1393,23 @@
               <div class="title">Directories</div>
               <div id="directoriesBtns">
                 <button id="favoritesBtn" type="button" class="miniBtn">Favorites</button>
+                <button id="hiddenBtn" type="button" class="miniBtn">Hidden</button>
                 <button id="toggleTagsBtn" type="button" class="miniBtn">Tags</button>
               </div>
             </div>
-            <div id="directoriesFavoritesRow"></div>
             <div id="directoriesSearchRow">
               <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search this folder..." />
               <button id="directoriesSearchClearBtn" type="button" class="miniBtn">X</button>
             </div>
             <div id="directoriesTagsRow"></div>
+            <div id="directoriesActionRow">
+              <button id="directoriesSelectBtn" type="button" class="miniBtn">Select</button>
+              <div class="dirMenu">
+                <button id="directoriesMenuBtn" type="button" class="dirMenuBtn" title="Bulk actions">☰</button>
+                <div id="directoriesActionMenu" class="dropdownMenu"></div>
+              </div>
+              <button id="directoriesClearBtn" type="button" class="miniBtn">Clear</button>
+            </div>
             <div id="directoriesBulkRow"></div>
             <div id="directoriesPath">—</div>
           </div>
@@ -1293,27 +1463,27 @@
     </div>
 
     <!-- =========================================================
-         Hold ? (Overlay)
+         Hold / (Overlay)
          ========================================================= -->
     <div id="helpHoldOverlay">
       <div id="helpHoldCard">
         <div id="helpHoldHeader">
           <div>Keyboard controls</div>
-          <div class="hint">Hold <strong>?</strong> to keep this on screen</div>
+          <div class="hint">Hold <strong>/</strong> to keep this on screen</div>
         </div>
         <div class="keyboard">
           <div class="kbRow">
             <div class="kbGroup">
               <div class="kbKey"><div class="kbKeyLabel">1</div><div>-50</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">2</div><div>-10</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">3</div><div>Random</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">2</div><div>Prev folder</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">3</div><div>—</div></div>
               <div class="kbKey"><div class="kbKeyLabel">4</div><div>+10</div></div>
               <div class="kbKey"><div class="kbKeyLabel">5</div><div>+50</div></div>
             </div>
             <div class="kbGroup">
               <div class="kbKey"><div class="kbKeyLabel">6</div><div>-50</div></div>
               <div class="kbKey"><div class="kbKeyLabel">7</div><div>-10</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">8</div><div>Random</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">8</div><div>Prev folder</div></div>
               <div class="kbKey"><div class="kbKeyLabel">9</div><div>+10</div></div>
               <div class="kbKey"><div class="kbKeyLabel">0</div><div>+50</div></div>
             </div>
@@ -1341,6 +1511,7 @@
               <div class="kbKey"><div class="kbKeyLabel">D</div><div>Right</div></div>
               <div class="kbKey"><div class="kbKeyLabel">C</div><div>Folder</div></div>
               <div class="kbKey"><div class="kbKeyLabel">G</div><div>Gallery</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">X</div><div>Next folder</div></div>
             </div>
             <div class="kbGroup">
               <div class="kbKey"><div class="kbKeyLabel">J</div><div>Left</div></div>
@@ -1348,6 +1519,7 @@
               <div class="kbKey"><div class="kbKeyLabel">L</div><div>Right</div></div>
               <div class="kbKey"><div class="kbKeyLabel">N</div><div>Folder</div></div>
               <div class="kbKey"><div class="kbKeyLabel">B</div><div>BANIC!</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">M</div><div>Next folder</div></div>
             </div>
           </div>
           <div class="kbRow">
@@ -1359,7 +1531,7 @@
             <div class="kbGroup">
               <div class="kbKey wide"><div class="kbKeyLabel">Backspace</div><div>Up</div></div>
               <div class="kbKey wide"><div class="kbKeyLabel">Esc</div><div>Close</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">?</div><div>Cheatsheet</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">/</div><div>Cheatsheet</div></div>
             </div>
           </div>
         </div>
@@ -1404,6 +1576,7 @@
     const indexPrefixRE = /^(\d+)\s-\s/;
 
     const FAVORITE_TAG = "__favorite__";
+    const HIDDEN_TAG = "__hidden__";
 
     function isImageName(name) { return imgRE.test((name || "").toLowerCase()); }
     function isVideoName(name) { return vidRE.test((name || "").toLowerCase()); }
@@ -1491,7 +1664,8 @@
         slideshowDefault: "cycle",
         hideIndicesInNames: true,
         hideUnderscoresInNames: false,
-        forceTitleCaps: false
+        forceTitleCaps: false,
+        colorScheme: "classic"
       };
     }
 
@@ -1516,7 +1690,8 @@
         slideshowDefault: (src.slideshowDefault === "cycle" || src.slideshowDefault === "1" || src.slideshowDefault === "3" || src.slideshowDefault === "5" || src.slideshowDefault === "10") ? src.slideshowDefault : d.slideshowDefault,
         hideIndicesInNames: (typeof src.hideIndicesInNames === "boolean") ? src.hideIndicesInNames : d.hideIndicesInNames,
         hideUnderscoresInNames: (typeof src.hideUnderscoresInNames === "boolean") ? src.hideUnderscoresInNames : d.hideUnderscoresInNames,
-        forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps
+        forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
+        colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber") ? src.colorScheme : d.colorScheme
       };
       return out;
     }
@@ -1576,10 +1751,21 @@
       WS.view.folderBehavior = String(opt.defaultFolderBehavior || "slide");
       WS.view.showFolderScores = !!opt.showFolderScores;
       WS.view.tagFilterMode = (opt.tagFilterMode === "and") ? "and" : "or";
+      applyColorSchemeFromOptions();
+    }
+
+    function applyColorSchemeFromOptions() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const scheme = opt ? String(opt.colorScheme || "classic") : "classic";
+      const root = document.documentElement;
+      if (!root) return;
+      if (scheme === "classic") root.removeAttribute("data-theme");
+      else root.setAttribute("data-theme", scheme);
     }
 
     function applyOptionsEverywhere(invalidateThumbs = false) {
       if (!WS.root) {
+        applyColorSchemeFromOptions();
         syncButtons();
         return;
       }
@@ -1588,6 +1774,7 @@
         invalidateAllThumbs();
       }
 
+      applyColorSchemeFromOptions();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
@@ -1645,21 +1832,30 @@
         tagFilterMode: "or",
         tagIncludeFilters: new Set(),
         tagExcludeFilters: new Set(),
+        bulkSelectMode: false,
         bulkTagPanelOpen: false,
         bulkTagSelectedPaths: new Set(),
         bulkTagPickSet: new Set(),
         bulkTagSelectionsByDir: new Map(),
+        bulkActionMenuOpen: false,
+        dirActionMenuPath: "",
         dirSearchPinned: false,
         dirSearchQuery: "",
         favoritesMode: false,
         favoritesRootActive: false,
         favoritesAnchorPath: "",
         favoritesReturnState: null,
+        hiddenMode: false,
+        hiddenRootActive: false,
+        hiddenAnchorPath: "",
+        hiddenReturnState: null,
         searchRootActive: false,
         searchRootPath: "",
         searchAnchorPath: "",
         searchRootIsFavorites: false,
         searchRootFavorites: [],
+        searchRootIsHidden: false,
+        searchRootHidden: [],
         searchResults: []
       },
 
@@ -1741,21 +1937,30 @@
       WS.view.tagPanelOpen = false;
       WS.view.tagIncludeFilters.clear();
       WS.view.tagExcludeFilters.clear();
+      WS.view.bulkSelectMode = false;
       WS.view.bulkTagPanelOpen = false;
       WS.view.bulkTagSelectedPaths = new Set();
       WS.view.bulkTagPickSet.clear();
       WS.view.bulkTagSelectionsByDir = new Map();
+      WS.view.bulkActionMenuOpen = false;
+      WS.view.dirActionMenuPath = "";
       WS.view.dirSearchPinned = false;
       WS.view.dirSearchQuery = "";
       WS.view.favoritesMode = false;
       WS.view.favoritesRootActive = false;
       WS.view.favoritesAnchorPath = "";
       WS.view.favoritesReturnState = null;
+      WS.view.hiddenMode = false;
+      WS.view.hiddenRootActive = false;
+      WS.view.hiddenAnchorPath = "";
+      WS.view.hiddenReturnState = null;
       WS.view.searchRootActive = false;
       WS.view.searchRootPath = "";
       WS.view.searchAnchorPath = "";
       WS.view.searchRootIsFavorites = false;
       WS.view.searchRootFavorites = [];
+      WS.view.searchRootIsHidden = false;
+      WS.view.searchRootHidden = [];
       WS.view.searchResults = [];
       if (WS.view.slideshowTimer) { clearInterval(WS.view.slideshowTimer); WS.view.slideshowTimer = null; }
       if (WS.view.statusTimeout) { clearTimeout(WS.view.statusTimeout); WS.view.statusTimeout = null; }
@@ -1811,9 +2016,14 @@
     const directoriesPathEl = $("directoriesPath");
     const directoriesListEl = $("directoriesList");
     const favoritesBtn = $("favoritesBtn");
+    const hiddenBtn = $("hiddenBtn");
     const toggleTagsBtn = $("toggleTagsBtn");
-    const directoriesFavoritesRowEl = $("directoriesFavoritesRow");
     const directoriesTagsRowEl = $("directoriesTagsRow");
+    const directoriesActionRowEl = $("directoriesActionRow");
+    const directoriesSelectBtn = $("directoriesSelectBtn");
+    const directoriesMenuBtn = $("directoriesMenuBtn");
+    const directoriesActionMenuEl = $("directoriesActionMenu");
+    const directoriesClearBtn = $("directoriesClearBtn");
     const directoriesBulkRowEl = $("directoriesBulkRow");
     const directoriesSearchInput = $("directoriesSearchInput");
     const directoriesSearchClearBtn = $("directoriesSearchClearBtn");
@@ -1980,6 +2190,7 @@
 
     function syncMetaButtons() {
       syncFavoritesUi();
+      syncHiddenUi();
     }
 
     /* =========================================================
@@ -2000,15 +2211,17 @@
         <li>Move selection: <code>↑/↓</code>, <code>W/S</code>, or <code>I/K</code>.</li>
         <li>Enter/leave folders: <code>→</code>/<code>Enter</code>/<code>D</code>/<code>L</code> to go in, <code>←</code>/<code>Backspace</code>/<code>A</code>/<code>J</code> to go out.</li>
         <li>Open Gallery Mode: <code>G</code>. Close preview/gallery: <code>Esc</code> (or <code>G</code> in Gallery Mode).</li>
-        <li>Fast jumps: <code>1/6</code> -50, <code>2/7</code> -10, <code>3/8</code> random, <code>4/9</code> +10, <code>5/0</code> +50.</li>
+        <li>Fast jumps: <code>1/6</code> -50, <code>7</code> -10, <code>2/8</code> previous folder’s first file, <code>4/9</code> +10, <code>5/0</code> +50.</li>
         <li>Video controls: <code>Space</code> play/pause, <code>Q/E</code> seek back/forward, mirrored by <code>U/O</code>.</li>
         <li>Filters & behaviors: <code>F/H</code> cycle media filter, <code>R/Y</code> toggle random order, <code>C/N</code> cycle folder behavior.</li>
         <li>Slideshow: <code>Shift</code> toggles the slideshow speed set in Options.</li>
+        <li>Jump to next folder’s first file: <code>X</code> or <code>M</code>.</li>
+        <li>Jump to previous folder’s first file: <code>2</code> or <code>8</code>.</li>
       </ul>
 
       <h2>Other hotkeys & controls</h2>
       <ul>
-        <li>Hold <code>?</code> to show the keyboard cheatsheet overlay (only while the key is held down).</li>
+        <li>Hold <code>/</code> to show the keyboard cheatsheet overlay (only while the key is held down).</li>
         <li>Use the <code>?</code> button in the title bar to open/close this help panel.</li>
       </ul>
 
@@ -2045,16 +2258,22 @@
 
       <h2>Tags (single-folder)</h2>
       <ul>
-        <li>Click the 🏷 icon on a folder row to edit its tags (comma-separated). Press <code>Enter</code> to save or <code>Esc</code> to cancel.</li>
+        <li>Open the ⋯ menu on a folder row and choose <code>Tag</code> to edit its tags (comma-separated). Press <code>Enter</code> to save or <code>Esc</code> to cancel.</li>
         <li>When the current directory contains tagged child folders, tag chips appear (with counts). Click to include, click again to hide, click a third time to clear.</li>
       </ul>
 
       <h2>Tags (multi-folder)</h2>
       <ul>
-        <li>Use the ☑/☐ checkbox icon on folder rows to select multiple folders.</li>
-        <li>A bulk row appears showing how many folders are selected. Click <code>Tag selected</code> to apply tags to all selected folders.</li>
+        <li>Click <code>Select</code> to show folder checkboxes, then click folders to select multiple folders.</li>
+        <li>Use the ☰ menu to tag, favorite, or hide the selected folders. <code>Tag selected</code> opens the bulk tag row.</li>
         <li>In the bulk tag row, type comma-separated tags and/or click existing tag chips, then click <code>Apply</code>.</li>
-        <li>Bulk selections persist while you navigate into/out of folders (return to see your selections).</li>
+        <li>Click <code>Clear</code> to reset the selection.</li>
+      </ul>
+
+      <h2>Hidden folders</h2>
+      <ul>
+        <li>Use the <code>Hidden</code> button to switch into hidden mode and view hidden folders.</li>
+        <li>Hidden folders are only visible while hidden mode is active.</li>
       </ul>
     `;
 
@@ -2203,6 +2422,17 @@
         { value: "expanded", label: "Expanded" }
       ];
 
+      const colorSchemes = [
+        { value: "classic", label: "Classic Dark" },
+        { value: "light", label: "Light" },
+        { value: "superdark", label: "Super Dark" },
+        { value: "synthwave", label: "Synthwave" },
+        { value: "verdant", label: "Verdant" },
+        { value: "azure", label: "Azure" },
+        { value: "ember", label: "Ember" },
+        { value: "amber", label: "Amber" }
+      ];
+
       optionsBodyEl.innerHTML = `
         <div class="label" style="margin-bottom:8px;">Preferences are saved alongside scores/tags (or localStorage fallback).</div>
 
@@ -2231,6 +2461,7 @@
         ${makeSelectRow("Video thumbnail size", "Controls generated video thumbnail quality (smaller is faster).", "opt_videoThumbSize", String(opt.videoThumbSize || "medium"), thumbModes)}
 
         <h2>Display</h2>
+        ${makeSelectRow("Color scheme", "Switch the overall interface palette.", "opt_colorScheme", String(opt.colorScheme || "classic"), colorSchemes)}
         ${makeSelectRow("Preview mode", "Controls how folders are shown in the preview pane.", "opt_previewMode", String(opt.previewMode || "grid"), previewModes)}
         ${makeCheckRow("Show file extensions", "Show .jpg / .mp4 in file names.", "opt_showFileExtensions", !!opt.showFileExtensions)}
         ${makeCheckRow("Hide indices from display names", "Hide numeric prefixes like '01 - '.", "opt_hideIndicesInNames", !!opt.hideIndicesInNames)}
@@ -2306,6 +2537,9 @@
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
       bindSelect("opt_imageThumbSize", "imageThumbSize", true);
       bindSelect("opt_videoThumbSize", "videoThumbSize", true);
+      bindSelect("opt_colorScheme", "colorScheme", false, () => {
+        applyColorSchemeFromOptions();
+      });
       bindSelect("opt_previewMode", "previewMode", false, () => {
         renderPreviewPane(true);
       });
@@ -2354,8 +2588,22 @@
       WS.view.bulkTagPickSet.clear();
     }
 
+    function openBulkTagPanel() {
+      WS.view.bulkTagPanelOpen = true;
+      WS.view.bulkTagPickSet.clear();
+      closeActionMenus();
+      renderDirectoriesPane(true);
+      setTimeout(() => {
+        const input = directoriesBulkRowEl ? directoriesBulkRowEl.querySelector(".tagEditInput") : null;
+        if (input) {
+          try { input.focus(); input.select(); } catch {}
+        }
+      }, 0);
+    }
+
     function clearBulkTagSelection() {
       closeBulkTagPanel();
+      closeActionMenus();
       if (WS.view.bulkTagSelectedPaths && WS.view.bulkTagSelectedPaths.clear) WS.view.bulkTagSelectedPaths.clear();
     }
 
@@ -2541,7 +2789,7 @@
 
     function metaGetUserTags(path) {
       const tags = metaGetTags(path);
-      return tags.filter(t => t !== FAVORITE_TAG);
+      return tags.filter(t => t !== FAVORITE_TAG && t !== HIDDEN_TAG);
     }
 
     function metaHasFavorite(path) {
@@ -2549,16 +2797,26 @@
       return tags.includes(FAVORITE_TAG);
     }
 
+    function metaHasHidden(path) {
+      const tags = metaGetTags(path);
+      return tags.includes(HIDDEN_TAG);
+    }
+
     function metaSetUserTags(path, userTags) {
       const p = String(path || "");
       const fav = metaHasFavorite(p);
-      const v = normalizeTagList(userTags).filter(t => t !== FAVORITE_TAG);
-      const merged = fav ? [FAVORITE_TAG].concat(v) : v.slice();
+      const hidden = metaHasHidden(p);
+      const v = normalizeTagList(userTags).filter(t => t !== FAVORITE_TAG && t !== HIDDEN_TAG);
+      const merged = [];
+      if (fav) merged.push(FAVORITE_TAG);
+      if (hidden) merged.push(HIDDEN_TAG);
+      merged.push(...v);
       WS.meta.dirTags.set(p, merged);
       WS.meta.dirty = true;
       metaScheduleSave();
       TAG_EDIT_PATH = null;
       syncFavoritesUi();
+      syncHiddenUi();
       syncTagUiForCurrentDir();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -2589,8 +2847,28 @@
       kickImageThumbsForPreview();
     }
 
+    function metaToggleHidden(path) {
+      const p = String(path || "");
+      const tags = metaGetTags(p);
+      const has = tags.includes(HIDDEN_TAG);
+      const next = has ? tags.filter(t => t !== HIDDEN_TAG) : [HIDDEN_TAG].concat(tags.filter(t => t !== HIDDEN_TAG));
+      WS.meta.dirTags.set(p, normalizeTagList(next));
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      syncFavoritesUi();
+      syncHiddenUi();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
     function metaAddUserTagsBulk(paths, tagsToAdd) {
-      const add = normalizeTagList(tagsToAdd).filter(t => t !== FAVORITE_TAG);
+      const add = normalizeTagList(tagsToAdd).filter(t => t !== FAVORITE_TAG && t !== HIDDEN_TAG);
       if (!add.length) return;
 
       const list = Array.isArray(paths) ? paths : Array.from(paths || []);
@@ -2600,17 +2878,75 @@
         const p = String(list[i] || "");
         if (!p) continue;
         const fav = metaHasFavorite(p);
+        const hidden = metaHasHidden(p);
         const curUser = metaGetUserTags(p);
         const mergedUser = normalizeTagList(curUser.concat(add));
-        const merged = fav ? [FAVORITE_TAG].concat(mergedUser) : mergedUser.slice();
-        WS.meta.dirTags.set(p, merged);
+        const merged = [];
+        if (fav) merged.push(FAVORITE_TAG);
+        if (hidden) merged.push(HIDDEN_TAG);
+        merged.push(...mergedUser);
+        WS.meta.dirTags.set(p, normalizeTagList(merged));
       }
 
       WS.meta.dirty = true;
       metaScheduleSave();
       TAG_EDIT_PATH = null;
       syncFavoritesUi();
+      syncHiddenUi();
       syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
+    function metaSetFavoriteBulk(paths, enable) {
+      const list = Array.isArray(paths) ? paths : Array.from(paths || []);
+      if (!list.length) return;
+      const target = !!enable;
+      for (let i = 0; i < list.length; i++) {
+        const p = String(list[i] || "");
+        if (!p) continue;
+        const tags = metaGetTags(p);
+        const has = tags.includes(FAVORITE_TAG);
+        if (target === has) continue;
+        const next = target ? [FAVORITE_TAG].concat(tags.filter(t => t !== FAVORITE_TAG)) : tags.filter(t => t !== FAVORITE_TAG);
+        WS.meta.dirTags.set(p, normalizeTagList(next));
+      }
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      syncFavoritesUi();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
+    function metaSetHiddenBulk(paths, enable) {
+      const list = Array.isArray(paths) ? paths : Array.from(paths || []);
+      if (!list.length) return;
+      const target = !!enable;
+      for (let i = 0; i < list.length; i++) {
+        const p = String(list[i] || "");
+        if (!p) continue;
+        const tags = metaGetTags(p);
+        const has = tags.includes(HIDDEN_TAG);
+        if (target === has) continue;
+        const next = target ? [HIDDEN_TAG].concat(tags.filter(t => t !== HIDDEN_TAG)) : tags.filter(t => t !== HIDDEN_TAG);
+        WS.meta.dirTags.set(p, normalizeTagList(next));
+      }
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      syncFavoritesUi();
+      syncHiddenUi();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
@@ -2678,11 +3014,31 @@
       };
     }
 
+    function metaMakeTagFiltersLogObject() {
+      return {
+        include: normalizeTagList(Array.from(WS.view.tagIncludeFilters || [])),
+        exclude: normalizeTagList(Array.from(WS.view.tagExcludeFilters || []))
+      };
+    }
+
+    function metaApplyTagFiltersFromLog(log) {
+      const src = log && typeof log === "object" ? log.tagFilters : null;
+      const include = normalizeTagList(src && Array.isArray(src.include) ? src.include : []);
+      const exclude = normalizeTagList(src && Array.isArray(src.exclude) ? src.exclude : []);
+      const includeSet = new Set(include);
+      const excludeClean = exclude.filter(t => !includeSet.has(t));
+      WS.view.tagIncludeFilters.clear();
+      WS.view.tagExcludeFilters.clear();
+      for (const t of includeSet) WS.view.tagIncludeFilters.add(t);
+      for (const t of excludeClean) WS.view.tagExcludeFilters.add(t);
+    }
+
     function metaMakeOptionsLogObject() {
       return {
         schema: 1,
         updatedAt: Date.now(),
-        options: normalizeOptions(WS.meta.options || null)
+        options: normalizeOptions(WS.meta.options || null),
+        tagFilters: metaMakeTagFiltersLogObject()
       };
     }
 
@@ -2798,6 +3154,7 @@
     function metaApplyOptionsLog(log) {
       if (!log || typeof log !== "object") return;
       WS.meta.options = normalizeOptions(log.options || null);
+      metaApplyTagFiltersFromLog(log);
       applyDefaultViewFromOptions();
     }
 
@@ -2881,6 +3238,7 @@
         WS.meta.dirTags.set(path, tg.slice());
       }
 
+      metaApplyTagFiltersFromLog(log);
       applyDefaultViewFromOptions();
       syncMetaButtons();
       renderOptionsUi();
@@ -3344,10 +3702,25 @@
        - selection drives Preview Pane
        ========================================================= */
 
+    function isDirHidden(dirNode) {
+      if (!dirNode) return false;
+      return metaHasHidden(dirNode.path || "");
+    }
+
+    function isDirOrAncestorHidden(dirNode) {
+      let cur = dirNode;
+      while (cur) {
+        if (metaHasHidden(cur.path || "")) return true;
+        cur = cur.parent;
+      }
+      return false;
+    }
+
     function getChildDirsForNodeBase(dirNode) {
       if (!dirNode) return [];
       const base = sortDirsForDisplay(dirNode.childrenDirs).filter(d => dirItemCount(d) > 0);
-      return base;
+      if (WS.view.hiddenMode) return base;
+      return base.filter(d => !isDirOrAncestorHidden(d));
     }
 
     function getAvailableTagsForDir(dirNode) {
@@ -3426,6 +3799,10 @@
         return getAllFavoriteDirs();
       }
 
+      if (WS.view.hiddenMode && !WS.view.hiddenRootActive && dp && dp === String(WS.view.hiddenAnchorPath || "")) {
+        return getAllHiddenDirs();
+      }
+
       const p = dirNode?.parent;
       if (!p) return [];
       let out = getChildDirsForNodeBase(p);
@@ -3467,7 +3844,26 @@
         const p = String(path || "");
         if (!p) continue;
         if (!node || node.type !== "dir") continue;
-        if (metaHasFavorite(p)) out.push(node);
+        if (metaHasFavorite(p) && !metaHasHidden(p)) out.push(node);
+      }
+      out.sort((a, b) => {
+        const ap = displayPath(a.path || "");
+        const bp = displayPath(b.path || "");
+        const c = ap.localeCompare(bp);
+        if (c) return c;
+        return compareIndexedNames(a?.name || "", b?.name || "");
+      });
+      return out;
+    }
+
+    function getAllHiddenDirs() {
+      const out = [];
+      if (!WS.root) return out;
+      for (const [path, node] of WS.dirByPath.entries()) {
+        const p = String(path || "");
+        if (!p) continue;
+        if (!node || node.type !== "dir") continue;
+        if (metaHasHidden(p)) out.push(node);
       }
       out.sort((a, b) => {
         const ap = displayPath(a.path || "");
@@ -3487,6 +3883,8 @@
       WS.view.searchAnchorPath = "";
       WS.view.searchRootIsFavorites = false;
       WS.view.searchRootFavorites = [];
+      WS.view.searchRootIsHidden = false;
+      WS.view.searchRootHidden = [];
       WS.view.searchResults = [];
     }
 
@@ -3507,9 +3905,11 @@
 
       const addSet = new Set();
       const results = [];
+      const skipHidden = !WS.view.hiddenMode;
 
       const consider = (node, includeSelf) => {
         if (!node) return;
+        if (skipHidden && isDirOrAncestorHidden(node)) return;
         if (getCount(node) <= 0) return;
 
         const name = displayName(node.name || "").toLowerCase();
@@ -3523,6 +3923,9 @@
 
       if (WS.view.searchRootIsFavorites) {
         const roots = Array.isArray(WS.view.searchRootFavorites) ? WS.view.searchRootFavorites : [];
+        for (let i = 0; i < roots.length; i++) consider(roots[i], true);
+      } else if (WS.view.searchRootIsHidden) {
+        const roots = Array.isArray(WS.view.searchRootHidden) ? WS.view.searchRootHidden : [];
         for (let i = 0; i < roots.length; i++) consider(roots[i], true);
       } else {
         const rp = String(WS.view.searchRootPath || "");
@@ -3548,7 +3951,15 @@
         favoritesBtn.classList.toggle("active", !!WS.view.favoritesMode);
         favoritesBtn.disabled = !WS.root;
       }
-      if (!directoriesFavoritesRowEl) return;
+    }
+
+    function syncHiddenUi() {
+      if (hiddenBtn) {
+        const n = WS.root ? getAllHiddenDirs().length : 0;
+        hiddenBtn.textContent = `Hidden${n ? ` (${n})` : ""}`;
+        hiddenBtn.classList.toggle("active", !!WS.view.hiddenMode);
+        hiddenBtn.disabled = !WS.root;
+      }
     }
 
     function syncTagUiForCurrentDir() {
@@ -3568,6 +3979,12 @@
 
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
         const dirs = getAllFavoriteDirs();
+        for (const d of dirs) WS.nav.entries.push({ kind: "dir", node: d });
+        return;
+      }
+
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+        const dirs = getAllHiddenDirs();
         for (const d of dirs) WS.nav.entries.push({ kind: "dir", node: d });
         return;
       }
@@ -3623,6 +4040,7 @@
         syncButtons();
         return;
       }
+      closeActionMenus();
       const i = findNearestSelectableIndex(idx, idx >= WS.nav.selectedIndex ? 1 : -1);
       WS.nav.selectedIndex = i;
       syncPreviewToSelection();
@@ -3697,9 +4115,29 @@
         return;
       }
 
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+        WS.view.hiddenRootActive = false;
+        WS.view.hiddenAnchorPath = entry.node.path || "";
+        WS.nav.dirNode = entry.node;
+        syncBulkSelectionForCurrentDir();
+        syncHiddenUi();
+        syncTagUiForCurrentDir();
+        rebuildDirectoriesEntries();
+        WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+        syncPreviewToSelection();
+
+        renderDirectoriesPane();
+        renderPreviewPane(true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+        return;
+      }
+
       WS.nav.dirNode = entry.node;
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
+      syncHiddenUi();
       syncTagUiForCurrentDir();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
@@ -3718,6 +4156,7 @@
 
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return;
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) return;
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return;
 
       if (WS.view.dirSearchPinned && !WS.view.searchRootActive) {
         const cur = String(WS.nav.dirNode?.path || "");
@@ -3751,12 +4190,29 @@
         }
       }
 
+      if (WS.view.hiddenMode && !WS.view.hiddenRootActive) {
+        const cur = String(WS.nav.dirNode?.path || "");
+        if (cur && cur === String(WS.view.hiddenAnchorPath || "")) {
+          WS.view.hiddenRootActive = true;
+          rebuildDirectoriesEntries();
+          WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+          syncPreviewToSelection();
+          renderDirectoriesPane();
+          renderPreviewPane(true);
+          syncButtons();
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+          return;
+        }
+      }
+
       if (!WS.nav.dirNode || !WS.nav.dirNode.parent) return;
       const child = WS.nav.dirNode;
       WS.nav.dirNode = WS.nav.dirNode.parent;
 
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
+      syncHiddenUi();
       syncTagUiForCurrentDir();
       rebuildDirectoriesEntries();
 
@@ -3779,6 +4235,7 @@
       if (!WS.root) return "—";
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return "search";
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "favorites";
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return "hidden";
       if (!WS.nav.dirNode) return "—";
       if (WS.nav.dirNode === WS.root) return "root";
       const p = WS.nav.dirNode.path ? displayPath(WS.nav.dirNode.path) : "root";
@@ -3850,32 +4307,90 @@
       kickImageThumbsForPreview();
     }
 
-    function renderDirectoriesFavoritesHeader() {
-      if (!directoriesFavoritesRowEl) return;
-
-      directoriesFavoritesRowEl.innerHTML = "";
-      directoriesFavoritesRowEl.style.display = "none";
-
+    function toggleHiddenMode() {
       if (!WS.root) return;
 
-      const favDirs = getAllFavoriteDirs();
-      const n = favDirs.length;
+      if (!WS.view.hiddenMode) {
+        const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+        WS.view.hiddenReturnState = {
+          dirPath: String(WS.nav.dirNode?.path || ""),
+          sel: entry ? (entry.kind === "dir" ? { kind: "dir", path: String(entry.node?.path || "") } : { kind: "file", id: String(entry.id || "") }) : null
+        };
+        WS.view.hiddenMode = true;
+        WS.view.hiddenRootActive = true;
+        WS.view.hiddenAnchorPath = "";
+      } else {
+        WS.view.hiddenMode = false;
+        WS.view.hiddenRootActive = false;
+        WS.view.hiddenAnchorPath = "";
 
-      if (!n) return;
+        const st = WS.view.hiddenReturnState;
+        WS.view.hiddenReturnState = null;
 
-      directoriesFavoritesRowEl.style.display = "flex";
+        if (st && WS.root) {
+          const dn = WS.dirByPath.get(String(st.dirPath || "")) || WS.root;
+          WS.nav.dirNode = dn;
+          syncBulkSelectionForCurrentDir();
+          syncFavoritesUi();
+          syncHiddenUi();
+          syncTagUiForCurrentDir();
+          rebuildDirectoriesEntries();
 
-      const chip = document.createElement("span");
-      chip.className = "tag" + (WS.view.favoritesMode ? " sel" : "");
-      chip.textContent = `favorites (${n})`;
-      chip.style.cursor = "pointer";
-      chip.title = "Toggle favorites view";
-      chip.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleFavoritesMode();
-      });
+          let idx = 0;
+          if (st.sel && st.sel.kind === "dir") {
+            const p = String(st.sel.path || "");
+            for (let i = 0; i < WS.nav.entries.length; i++) {
+              const e2 = WS.nav.entries[i];
+              if (e2 && e2.kind === "dir" && String(e2.node?.path || "") === p) { idx = i; break; }
+            }
+          } else if (st.sel && st.sel.kind === "file") {
+            const id = String(st.sel.id || "");
+            for (let i = 0; i < WS.nav.entries.length; i++) {
+              const e2 = WS.nav.entries[i];
+              if (e2 && e2.kind === "file" && String(e2.id || "") === id) { idx = i; break; }
+            }
+          }
+          WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+          syncPreviewToSelection();
+          renderDirectoriesPane(true);
+          renderPreviewPane(true, true);
+          syncButtons();
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+          return;
+        }
+      }
 
-      directoriesFavoritesRowEl.appendChild(chip);
+      TAG_EDIT_PATH = null;
+      closeBulkTagPanel();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
+    function canUseBulkSelection() {
+      if (!WS.root || !WS.nav.dirNode) return false;
+      if (WS.view.dirSearchPinned && WS.view.searchRootActive) return false;
+      if (WS.view.favoritesMode && WS.view.favoritesRootActive) return false;
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return false;
+      return true;
+    }
+
+    function getSelectedPathsInCurrentDir() {
+      if (!WS.nav.dirNode) return [];
+      const baseDirs = getChildDirsForNodeBase(WS.nav.dirNode);
+      const baseSet = new Set(baseDirs.map(d => String(d.path || "")));
+      return Array.from(WS.view.bulkTagSelectedPaths || []).filter(p => baseSet.has(String(p || "")));
+    }
+
+    function closeActionMenus() {
+      WS.view.bulkActionMenuOpen = false;
+      WS.view.dirActionMenuPath = "";
     }
 
     function renderDirectoriesTagsHeader() {
@@ -3883,7 +4398,7 @@
 
       toggleTagsBtn.style.display = "none";
 
-      if (!WS.root || !WS.nav.dirNode || (WS.view.dirSearchPinned && WS.view.searchRootActive) || (WS.view.favoritesMode && WS.view.favoritesRootActive)) {
+      if (!WS.root || !WS.nav.dirNode || (WS.view.dirSearchPinned && WS.view.searchRootActive) || (WS.view.favoritesMode && WS.view.favoritesRootActive) || (WS.view.hiddenMode && WS.view.hiddenRootActive)) {
         directoriesTagsRowEl.style.display = "none";
         directoriesTagsRowEl.innerHTML = "";
         return;
@@ -3934,6 +4449,8 @@
             WS.view.tagIncludeFilters.add(t);
           }
 
+          WS.meta.dirty = true;
+          metaScheduleSave();
           rebuildDirectoriesEntries();
           WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
           syncPreviewToSelection();
@@ -3949,28 +4466,84 @@
       directoriesTagsRowEl.appendChild(frag);
     }
 
-    function renderDirectoriesBulkHeader() {
-      if (!directoriesBulkRowEl) return;
+    function renderDirectoriesActionHeader() {
+      if (!directoriesActionRowEl || !directoriesSelectBtn || !directoriesMenuBtn || !directoriesClearBtn || !directoriesActionMenuEl) return;
 
-      if (!WS.root || !WS.nav.dirNode || (WS.view.dirSearchPinned && WS.view.searchRootActive) || (WS.view.favoritesMode && WS.view.favoritesRootActive)) {
-        directoriesBulkRowEl.style.display = "none";
-        directoriesBulkRowEl.innerHTML = "";
-        if (!WS.root || !WS.nav.dirNode) clearBulkTagSelection();
+      if (!WS.root) {
+        directoriesActionRowEl.style.display = "none";
         return;
       }
 
-      const baseDirs = getChildDirsForNodeBase(WS.nav.dirNode);
-      const baseSet = new Set(baseDirs.map(d => String(d.path || "")));
+      directoriesActionRowEl.style.display = "flex";
 
-      const selectedInThisDir = Array.from(WS.view.bulkTagSelectedPaths).filter(p => baseSet.has(String(p || "")));
-      const selCount = selectedInThisDir.length;
+      const canBulk = canUseBulkSelection();
+      if (!canBulk && WS.view.bulkSelectMode) {
+        WS.view.bulkSelectMode = false;
+        clearBulkTagSelection();
+      }
+      const selected = canBulk ? getSelectedPathsInCurrentDir() : [];
+      const selCount = selected.length;
+      const hasSelection = selCount > 0;
+      if (!hasSelection && WS.view.bulkActionMenuOpen) WS.view.bulkActionMenuOpen = false;
 
-      if (!selCount) {
-        WS.view.bulkTagPanelOpen = false;
-        WS.view.bulkTagPickSet.clear();
+      directoriesSelectBtn.textContent = WS.view.bulkSelectMode ? `Select${selCount ? ` (${selCount})` : ""}` : "Select";
+      directoriesSelectBtn.disabled = !canBulk;
+      directoriesMenuBtn.disabled = !canBulk || !hasSelection;
+      directoriesClearBtn.disabled = !canBulk || !selCount;
+
+      const menuOpen = WS.view.bulkActionMenuOpen && canBulk && hasSelection;
+      directoriesActionMenuEl.classList.toggle("open", menuOpen);
+      directoriesActionMenuEl.innerHTML = "";
+
+      if (menuOpen) {
+        const allFavorite = selected.every(p => metaHasFavorite(p));
+        const allHidden = selected.every(p => metaHasHidden(p));
+
+        const makeActionBtn = (label, onClick) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = label;
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            onClick();
+          });
+          return btn;
+        };
+
+        directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          openBulkTagPanel();
+        }));
+
+        directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaSetFavoriteBulk(selected, !allFavorite);
+        }));
+
+        directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaSetHiddenBulk(selected, !allHidden);
+        }));
+      }
+    }
+
+    function renderDirectoriesBulkHeader() {
+      if (!directoriesBulkRowEl) return;
+
+      if (!canUseBulkSelection()) {
+        directoriesBulkRowEl.style.display = "none";
+        directoriesBulkRowEl.innerHTML = "";
+        return;
       }
 
-      if (!selCount && !WS.view.bulkTagPanelOpen) {
+      const selectedInThisDir = getSelectedPathsInCurrentDir();
+      const selCount = selectedInThisDir.length;
+
+      if (!selCount && WS.view.bulkTagPanelOpen) {
+        closeBulkTagPanel();
+      }
+
+      if (!selCount || !WS.view.bulkTagPanelOpen) {
         directoriesBulkRowEl.style.display = "none";
         directoriesBulkRowEl.innerHTML = "";
         return;
@@ -3981,42 +4554,9 @@
 
       const countPill = document.createElement("span");
       countPill.className = "pill";
-      countPill.textContent = `Selected folders: ${selCount}`;
-
-      const btnTag = document.createElement("button");
-      btnTag.type = "button";
-      btnTag.className = "miniBtn";
-      btnTag.textContent = "Tag selected";
-      btnTag.disabled = !selCount;
-
-      const btnClear = document.createElement("button");
-      btnClear.type = "button";
-      btnClear.className = "miniBtn";
-      btnClear.textContent = "Clear";
-      btnClear.disabled = !selCount && !WS.view.bulkTagPanelOpen;
+      countPill.textContent = `${selCount} selected`;
 
       directoriesBulkRowEl.appendChild(countPill);
-      directoriesBulkRowEl.appendChild(btnTag);
-      directoriesBulkRowEl.appendChild(btnClear);
-
-      btnClear.addEventListener("click", (e) => {
-        e.stopPropagation();
-        clearBulkTagSelection();
-        renderDirectoriesPane(true);
-      });
-
-      btnTag.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!selCount) return;
-        WS.view.bulkTagPanelOpen = true;
-        renderDirectoriesPane(true);
-        setTimeout(() => {
-          const input = directoriesBulkRowEl.querySelector(".tagEditInput");
-          if (input) { try { input.focus(); input.select(); } catch {} }
-        }, 0);
-      });
-
-      if (!WS.view.bulkTagPanelOpen) return;
 
       const input = document.createElement("input");
       input.type = "text";
@@ -4103,16 +4643,16 @@
 
       if (!WS.root) {
         directoriesPathEl.textContent = "—";
-        renderDirectoriesFavoritesHeader();
         renderDirectoriesTagsHeader();
+        renderDirectoriesActionHeader();
         renderDirectoriesBulkHeader();
         directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder to begin.</div>`;
         return;
       }
 
       directoriesPathEl.textContent = getDirectoriesPathText();
-      renderDirectoriesFavoritesHeader();
       renderDirectoriesTagsHeader();
+      renderDirectoriesActionHeader();
       renderDirectoriesBulkHeader();
 
       if (!WS.nav.entries.length) {
@@ -4140,13 +4680,15 @@
         let name = "";
         let meta = "";
         let voteHtml = "";
-        let tagBtnHtml = "";
-        let bulkBtnHtml = "";
         let rightHtml = "";
 
         if (entry.kind === "dir") {
           const p = entry.node?.path || "";
-          icon = metaHasFavorite(p) ? "♥" : "📁";
+          const isFavorite = metaHasFavorite(p);
+          const isHidden = metaHasHidden(p);
+          const canBulk = WS.view.bulkSelectMode && canUseBulkSelection();
+          const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
+          icon = canBulk ? (sel ? "☑" : "☐") : (isHidden ? "🙈" : (isFavorite ? "♥" : "📁"));
           name = displayName(entry.node?.name || "folder") || "folder";
           meta = `${dirItemCount(entry.node)} items`;
           const sc = metaGetScore(p);
@@ -4159,12 +4701,18 @@
           </div>
           `;
           }
-          if (!(WS.view.dirSearchPinned && WS.view.searchRootActive) && !(WS.view.favoritesMode && WS.view.favoritesRootActive)) {
-            const sel = WS.view.bulkTagSelectedPaths.has(p);
-            bulkBtnHtml = `<div class="voteBtn bulkSelBtn" title="Select for bulk tagging">${sel ? "☑" : "☐"}</div>`;
-          }
-          tagBtnHtml = `<div class="voteBtn tagBtn" title="Edit tags">🏷</div>`;
-          rightHtml = `<div class="dirRight"><div class="dirMeta">${escapeHtml(meta)}</div>${tagBtnHtml}${bulkBtnHtml}</div>`;
+          const menuOpen = WS.view.dirActionMenuPath === p;
+          const menuHtml = `
+          <div class="dirMenu">
+            <button class="dirMenuBtn" title="Folder actions">⋯</button>
+            <div class="dropdownMenu${menuOpen ? " open" : ""}">
+              <button type="button" data-action="tag">Tag</button>
+              <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
+              <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
+            </div>
+          </div>
+          `;
+          rightHtml = `<div class="dirRight"><div class="dirMeta">${escapeHtml(meta)}</div>${menuHtml}</div>`;
         } else {
           const rec = WS.fileById.get(entry.id);
           const isVid = rec?.type === "video";
@@ -4215,19 +4763,32 @@
           }
         }
 
-        row.addEventListener("click", () => setDirectoriesSelection(idx));
+        row.addEventListener("click", () => {
+          closeActionMenus();
+          setDirectoriesSelection(idx);
+        });
 
         if (entry.kind === "dir") {
           const p = entry.node?.path || "";
 
           const iconEl = row.querySelector(".dirIcon");
           if (iconEl) {
-            iconEl.title = "Toggle favorite";
-            iconEl.style.cursor = "pointer";
-            iconEl.addEventListener("click", (e) => {
-              e.stopPropagation();
-              metaToggleFavorite(p);
-            });
+            const canBulk = WS.view.bulkSelectMode && canUseBulkSelection();
+            const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
+            if (canBulk) {
+              iconEl.classList.add("dirCheckbox");
+              iconEl.title = sel ? "Deselect folder" : "Select folder";
+              iconEl.style.cursor = "pointer";
+              iconEl.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (!p) return;
+                if (WS.view.bulkTagSelectedPaths.has(p)) WS.view.bulkTagSelectedPaths.delete(p);
+                else WS.view.bulkTagSelectedPaths.add(p);
+                renderDirectoriesPane(true);
+              });
+            } else {
+              iconEl.style.cursor = "default";
+            }
           }
 
           const up = row.querySelector(".voteBtn.up");
@@ -4235,31 +4796,45 @@
           if (up) up.addEventListener("click", (e) => { e.stopPropagation(); metaBumpScore(entry.node?.path || "", 1); });
           if (down) down.addEventListener("click", (e) => { e.stopPropagation(); metaBumpScore(entry.node?.path || "", -1); });
 
-          const bulkBtn = row.querySelector(".voteBtn.bulkSelBtn");
-          if (bulkBtn) {
-            bulkBtn.addEventListener("click", (e) => {
+          const menuBtn = row.querySelector(".dirMenuBtn");
+          if (menuBtn) {
+            menuBtn.addEventListener("click", (e) => {
               e.stopPropagation();
-              const p = entry.node?.path || "";
-              if (!p) return;
-              if (WS.view.bulkTagSelectedPaths.has(p)) WS.view.bulkTagSelectedPaths.delete(p);
-              else WS.view.bulkTagSelectedPaths.add(p);
+              WS.view.bulkActionMenuOpen = false;
+              WS.view.dirActionMenuPath = (WS.view.dirActionMenuPath === p) ? "" : p;
               renderDirectoriesPane(true);
             });
           }
 
-          const tagBtn = row.querySelector(".voteBtn.tagBtn");
-          if (tagBtn) {
-            tagBtn.addEventListener("click", (e) => {
-              e.stopPropagation();
-              const p = entry.node?.path || "";
-              TAG_EDIT_PATH = p;
-              renderDirectoriesPane(true);
-              setTimeout(() => {
-                const input = directoriesListEl.querySelector(".dirRow.selected .tagEditInput") || row.querySelector(".tagEditInput");
-                if (input) {
-                  try { input.focus(); input.select(); } catch {}
+          const menuDropdown = row.querySelector(".dirMenu .dropdownMenu");
+          if (menuDropdown) {
+            menuDropdown.addEventListener("click", (e) => e.stopPropagation());
+            const actionButtons = Array.from(menuDropdown.querySelectorAll("button[data-action]"));
+            actionButtons.forEach((btn) => {
+              btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const action = btn.getAttribute("data-action");
+                WS.view.dirActionMenuPath = "";
+                if (action === "tag") {
+                  TAG_EDIT_PATH = p;
+                  renderDirectoriesPane(true);
+                  setTimeout(() => {
+                    const input = directoriesListEl.querySelector(".dirRow.selected .tagEditInput") || row.querySelector(".tagEditInput");
+                    if (input) {
+                      try { input.focus(); input.select(); } catch {}
+                    }
+                  }, 0);
+                  return;
                 }
-              }, 0);
+                if (action === "favorite") {
+                  metaToggleFavorite(p);
+                  return;
+                }
+                if (action === "hidden") {
+                  metaToggleHidden(p);
+                  return;
+                }
+              });
             });
           }
 
@@ -4271,6 +4846,7 @@
               if (e.key === "Escape") {
                 e.preventDefault();
                 TAG_EDIT_PATH = null;
+                closeActionMenus();
                 renderDirectoriesPane(true);
                 return;
               }
@@ -4311,6 +4887,7 @@
       if (!WS.root || !WS.nav.dirNode) return;
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return;
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) return;
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return;
       if (WS.view.scrollBusyDirs) return;
 
       const el = directoriesListEl;
@@ -4336,9 +4913,67 @@
     if (favoritesBtn) {
       favoritesBtn.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (WS.view.hiddenMode) toggleHiddenMode();
         toggleFavoritesMode();
       });
     }
+
+    if (hiddenBtn) {
+      hiddenBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (WS.view.favoritesMode) toggleFavoritesMode();
+        toggleHiddenMode();
+      });
+    }
+
+    if (directoriesSelectBtn) {
+      directoriesSelectBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!canUseBulkSelection()) return;
+        WS.view.bulkActionMenuOpen = false;
+        WS.view.dirActionMenuPath = "";
+        if (WS.view.bulkSelectMode) {
+          WS.view.bulkSelectMode = false;
+          clearBulkTagSelection();
+        } else {
+          WS.view.bulkSelectMode = true;
+        }
+        renderDirectoriesPane(true);
+      });
+    }
+
+    if (directoriesMenuBtn) {
+      directoriesMenuBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!canUseBulkSelection()) return;
+        const selected = getSelectedPathsInCurrentDir();
+        if (!selected.length) return;
+        WS.view.dirActionMenuPath = "";
+        WS.view.bulkActionMenuOpen = !WS.view.bulkActionMenuOpen;
+        renderDirectoriesPane(true);
+      });
+    }
+
+    if (directoriesClearBtn) {
+      directoriesClearBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!canUseBulkSelection()) return;
+        WS.view.bulkActionMenuOpen = false;
+        clearBulkTagSelection();
+        renderDirectoriesPane(true);
+      });
+    }
+
+    document.addEventListener("click", (e) => {
+      if (!WS.view.bulkActionMenuOpen && !WS.view.dirActionMenuPath) return;
+      const target = e.target;
+      if (target && target.closest) {
+        if (target.closest(".dirMenu")) return;
+        if (target.closest("#directoriesActionRow")) return;
+      }
+      closeActionMenus();
+      renderDirectoriesPane(true);
+    });
 
     toggleTagsBtn.addEventListener("click", () => {
       if (!WS.root || !WS.nav.dirNode) return;
@@ -4380,10 +5015,20 @@
           if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
             WS.view.searchRootIsFavorites = true;
             WS.view.searchRootFavorites = getAllFavoriteDirs();
+            WS.view.searchRootIsHidden = false;
+            WS.view.searchRootHidden = [];
+            WS.view.searchRootPath = "";
+          } else if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+            WS.view.searchRootIsFavorites = false;
+            WS.view.searchRootFavorites = [];
+            WS.view.searchRootIsHidden = true;
+            WS.view.searchRootHidden = getAllHiddenDirs();
             WS.view.searchRootPath = "";
           } else {
             WS.view.searchRootIsFavorites = false;
             WS.view.searchRootFavorites = [];
+            WS.view.searchRootIsHidden = false;
+            WS.view.searchRootHidden = [];
             WS.view.searchRootPath = String(WS.nav.dirNode?.path || "");
           }
         }
@@ -4445,6 +5090,7 @@
       if (WS.view.folderBehavior !== "slide") return { moved: false, dirChanged: false };
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return { moved: false, dirChanged: false };
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) return { moved: false, dirChanged: false };
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return { moved: false, dirChanged: false };
 
       const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
       if (!entry || entry.kind !== "file") return { moved: false, dirChanged: false };
@@ -4471,6 +5117,7 @@
         closeBulkTagPanel();
         syncBulkSelectionForCurrentDir();
         syncFavoritesUi();
+        syncHiddenUi();
         syncTagUiForCurrentDir();
         rebuildDirectoriesEntries();
         const idx = firstFileEntryIndexForDirEntries();
@@ -4486,6 +5133,7 @@
         closeBulkTagPanel();
         syncBulkSelectionForCurrentDir();
         syncFavoritesUi();
+        syncHiddenUi();
         syncTagUiForCurrentDir();
         rebuildDirectoriesEntries();
         const idx = lastFileEntryIndexForDirEntries();
@@ -4519,6 +5167,66 @@
       kickImageThumbsForPreview();
     }
 
+    function jumpToNextFolderFirstFile() {
+      if (!WS.root || !WS.nav.dirNode) return;
+      if (WS.view.dirSearchPinned && WS.view.searchRootActive) return;
+      if (WS.view.favoritesMode && WS.view.favoritesRootActive) return;
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return;
+
+      const nextDir = getNextSiblingDirWithFiles(WS.nav.dirNode);
+      if (!nextDir) return;
+
+      WS.nav.dirNode = nextDir;
+      TAG_EDIT_PATH = null;
+      closeBulkTagPanel();
+      syncBulkSelectionForCurrentDir();
+      syncFavoritesUi();
+      syncHiddenUi();
+      syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+
+      const idx = firstFileEntryIndexForDirEntries();
+      if (idx >= 0) WS.nav.selectedIndex = idx;
+      else WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+
+      syncPreviewToSelection();
+      renderDirectoriesPane();
+      renderPreviewPane(true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
+    function jumpToPrevFolderFirstFile() {
+      if (!WS.root || !WS.nav.dirNode) return;
+      if (WS.view.dirSearchPinned && WS.view.searchRootActive) return;
+      if (WS.view.favoritesMode && WS.view.favoritesRootActive) return;
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return;
+
+      const prevDir = getPrevSiblingDirWithFiles(WS.nav.dirNode);
+      if (!prevDir) return;
+
+      WS.nav.dirNode = prevDir;
+      TAG_EDIT_PATH = null;
+      closeBulkTagPanel();
+      syncBulkSelectionForCurrentDir();
+      syncFavoritesUi();
+      syncHiddenUi();
+      syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+
+      const idx = firstFileEntryIndexForDirEntries();
+      if (idx >= 0) WS.nav.selectedIndex = idx;
+      else WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+
+      syncPreviewToSelection();
+      renderDirectoriesPane();
+      renderPreviewPane(true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
     /* =========================================================
        Preview Pane
        - inline breadcrumb + counts
@@ -4541,9 +5249,15 @@
         WS.view.favoritesAnchorPath = node.path || "";
       }
 
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+        WS.view.hiddenRootActive = false;
+        WS.view.hiddenAnchorPath = node.path || "";
+      }
+
       WS.nav.dirNode = node;
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
+      syncHiddenUi();
       syncTagUiForCurrentDir();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
@@ -5261,9 +5975,15 @@
           WS.view.favoritesAnchorPath = dn.path || "";
         }
 
+        if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+          WS.view.hiddenRootActive = false;
+          WS.view.hiddenAnchorPath = dn.path || "";
+        }
+
         WS.nav.dirNode = dn;
         syncBulkSelectionForCurrentDir();
         syncFavoritesUi();
+        syncHiddenUi();
         syncTagUiForCurrentDir();
         rebuildDirectoriesEntries();
 
@@ -5556,6 +6276,10 @@
           WS.view.favoritesRootActive = false;
           WS.view.favoritesAnchorPath = entry.node?.path || "";
         }
+        if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+          WS.view.hiddenRootActive = false;
+          WS.view.hiddenAnchorPath = entry.node?.path || "";
+        }
         openGalleryForDir(entry.node, null, requestFullscreen);
       } else if (entry.kind === "file") {
         const rec = WS.fileById.get(entry.id);
@@ -5784,6 +6508,34 @@
       return false;
     }
 
+    function moveToPrevDirectoryFirstFile() {
+      if (!viewerDirNode) return false;
+      const originalDir = viewerDirNode;
+
+      const siblingDirs = getVisibleSiblingDirsForSlide(viewerDirNode);
+      const idx = siblingDirs.indexOf(viewerDirNode);
+      if (idx === -1) return false;
+
+      for (let s = idx - 1; s >= 0; s--) {
+        const dir = siblingDirs[s];
+        viewerDirNode = dir;
+        viewerItems = buildViewerItemsForDir(viewerDirNode);
+        if (!viewerItems.length) continue;
+
+        const firstFileIndex = findFirstFileIndex(viewerItems);
+        if (firstFileIndex === -1) continue;
+
+        viewerIndex = firstFileIndex;
+        if (VIEWER_MODE) renderViewerItem(viewerIndex);
+        syncDirectoriesToViewerState();
+        return true;
+      }
+
+      viewerDirNode = originalDir;
+      viewerItems = buildViewerItemsForDir(viewerDirNode);
+      return false;
+    }
+
     function viewerStep(delta) {
       if (!viewerItems.length) return false;
       const n = viewerItems.length;
@@ -5852,6 +6604,16 @@
       viewerIndex = next;
       if (VIEWER_MODE) renderViewerItem(viewerIndex);
       syncDirectoriesToViewerState();
+    }
+
+    function viewerJumpToNextFolderFirstFile() {
+      if (!viewerDirNode) return;
+      moveToNextDirectoryFile();
+    }
+
+    function viewerJumpToPrevFolderFirstFile() {
+      if (!viewerDirNode) return;
+      moveToPrevDirectoryFirstFile();
     }
 
     function renderViewerItem(idx) {
@@ -6074,8 +6836,9 @@
        ========================================================= */
 
     function syncButtons() {
-      const hasWS = !!WS.root && (!!WS.nav.dirNode || WS.view.favoritesMode);
+      const hasWS = !!WS.root && (!!WS.nav.dirNode || WS.view.favoritesMode || WS.view.hiddenMode);
       if (favoritesBtn) favoritesBtn.disabled = !hasWS;
+      if (hiddenBtn) hiddenBtn.disabled = !hasWS;
 
       if (directoriesSearchInput) {
         directoriesSearchInput.disabled = !hasWS;
@@ -6094,7 +6857,7 @@
     }
 
     function applyViewModesEverywhere(animate = false) {
-      if (!WS.root || (!WS.nav.dirNode && !WS.view.favoritesMode)) {
+      if (!WS.root || (!WS.nav.dirNode && !WS.view.favoritesMode && !WS.view.hiddenMode)) {
         renderDirectoriesPane();
         renderPreviewPane(true);
         syncButtons();
@@ -6187,7 +6950,7 @@
 
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      if (e.key === "?") {
+      if (e.key === "/") {
         if (isTextInputTarget(e.target)) return;
         e.preventDefault();
         setHelpHold(true);
@@ -6234,6 +6997,7 @@
         if (k === "f" || k === "F" || k === "h" || k === "H") { e.preventDefault(); cycleFilterMode(); return; }
         if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); toggleRandomMode(); return; }
         if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
+        if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); viewerJumpToNextFolderFirstFile(); return; }
 
         if (k === "Shift") {
           e.preventDefault();
@@ -6242,10 +7006,10 @@
         }
 
         if (k === "1" || k === "6") { e.preventDefault(); viewerJumpRelative(-50); return; }
-        if (k === "2" || k === "7") { e.preventDefault(); viewerJumpRelative(-10); return; }
+        if (k === "7") { e.preventDefault(); viewerJumpRelative(-10); return; }
+        if (k === "2" || k === "8") { e.preventDefault(); viewerJumpToPrevFolderFirstFile(); return; }
         if (k === "4" || k === "9") { e.preventDefault(); viewerJumpRelative(10); return; }
         if (k === "5" || k === "0") { e.preventDefault(); viewerJumpRelative(50); return; }
-        if (k === "3" || k === "8") { e.preventDefault(); viewerJumpRandom(); return; }
 
         return;
       }
@@ -6282,6 +7046,7 @@
         if (k === "f" || k === "F" || k === "h" || k === "H") { e.preventDefault(); cycleFilterMode(); return; }
         if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); toggleRandomMode(); return; }
         if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
+        if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); jumpToNextFolderFirstFile(); return; }
 
         if (k === "Shift") {
           e.preventDefault();
@@ -6290,10 +7055,10 @@
         }
 
         if (k === "1" || k === "6") { e.preventDefault(); viewerJumpRelative(-50); return; }
-        if (k === "2" || k === "7") { e.preventDefault(); viewerJumpRelative(-10); return; }
+        if (k === "7") { e.preventDefault(); viewerJumpRelative(-10); return; }
+        if (k === "2" || k === "8") { e.preventDefault(); viewerJumpToPrevFolderFirstFile(); return; }
         if (k === "4" || k === "9") { e.preventDefault(); viewerJumpRelative(10); return; }
         if (k === "5" || k === "0") { e.preventDefault(); viewerJumpRelative(50); return; }
-        if (k === "3" || k === "8") { e.preventDefault(); viewerJumpRandom(); return; }
 
         return;
       }
@@ -6305,14 +7070,15 @@
       if (k === "ArrowRight" || k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter") { e.preventDefault(); enterSelectedDirectory(); return; }
 
       if (k === "1" || k === "6") { e.preventDefault(); moveDirectoriesSelection(-50); return; }
-      if (k === "2" || k === "7") { e.preventDefault(); moveDirectoriesSelection(-10); return; }
+      if (k === "7") { e.preventDefault(); moveDirectoriesSelection(-10); return; }
+      if (k === "2" || k === "8") { e.preventDefault(); jumpToPrevFolderFirstFile(); return; }
       if (k === "4" || k === "9") { e.preventDefault(); moveDirectoriesSelection(10); return; }
       if (k === "5" || k === "0") { e.preventDefault(); moveDirectoriesSelection(50); return; }
-      if (k === "3" || k === "8") { e.preventDefault(); randomDirectoriesSelection(); return; }
 
       if (k === "f" || k === "F" || k === "h" || k === "H") { e.preventDefault(); cycleFilterMode(); return; }
       if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); toggleRandomMode(); return; }
       if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
+      if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); jumpToNextFolderFirstFile(); return; }
 
       if (k === "Shift") {
         e.preventDefault();
@@ -6322,7 +7088,7 @@
     });
 
     document.addEventListener("keyup", (e) => {
-      if (e.key === "?") setHelpHold(false);
+      if (e.key === "/") setHelpHold(false);
     });
 
     window.addEventListener("blur", () => setHelpHold(false));
