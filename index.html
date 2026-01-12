@@ -1346,6 +1346,18 @@
       flex-wrap: wrap;
     }
 
+    #titleMeta {
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    #remoteModePill,
+    #downloadPill {
+      display: none;
+    }
+
     #banicOverlay {
       position: fixed;
       inset: 0;
@@ -1356,6 +1368,66 @@
 
     #banicOverlay.active {
       display: block;
+    }
+
+    #remoteProfileOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 10001;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    #remoteProfileOverlay.active {
+      display: flex;
+    }
+
+    #remoteProfileCard {
+      width: min(640px, 92vw);
+      background: var(--color1-secondary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 4px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+    }
+
+    #remoteProfileCard .title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    #remoteProfileCard label {
+      font-size: 12px;
+      color: var(--color0-secondary);
+    }
+
+    #remoteProfileCard input[type="text"] {
+      width: 100%;
+      background: var(--color1-primary);
+      color: var(--color0-primary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 2px;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+
+    #remoteProfileCard .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    #remoteProfileStatus {
+      font-size: 12px;
+      color: var(--color0-secondary);
+      min-height: 18px;
     }
 
     @media (max-width: 900px) {
@@ -1379,6 +1451,11 @@
         <button id="helpBtn" type="button" class="miniBtn">?</button>
         <button id="optionsBtn" type="button" class="miniBtn">⚙</button>
         <button id="openWritableBtn" type="button" class="miniBtn">Load Folder</button>
+        <button id="openRemoteProfileBtn" type="button" class="miniBtn">Load Profile (Beta)</button>
+      </div>
+      <div id="titleMeta">
+        <span class="pill" id="remoteModePill">Remote profile (Beta)</span>
+        <span class="pill" id="downloadPill">Downloads (Beta): —</span>
       </div>
     </div>
 
@@ -1564,6 +1641,29 @@
         </div>
       </div>
     </div>
+
+    <!-- =========================================================
+         Remote Profile (Beta)
+         ========================================================= -->
+    <div id="remoteProfileOverlay">
+      <div id="remoteProfileCard">
+        <div class="title">Coomer/Kemono Profile Loader (Beta)</div>
+        <div class="label">Paste a full profile URL from coomer.st or kemono.cr. This Beta feature streams posts into a virtual workspace and follows PartyGuest naming rules.</div>
+        <div>
+          <label for="remoteProfileInput">Profile URL (Beta)</label>
+          <input id="remoteProfileInput" type="text" placeholder="https://coomer.st/{service}/user/{id}" />
+        </div>
+        <div class="row">
+          <label><input id="remoteProfileProxyToggle" type="checkbox" /> Use proxy (Beta)</label>
+          <input id="remoteProfileProxyInput" type="text" placeholder="https://your-proxy.example.com/https://coomer.st" />
+        </div>
+        <div id="remoteProfileStatus"></div>
+        <div class="row" style="justify-content:flex-end;">
+          <button id="remoteProfileCancelBtn" type="button" class="miniBtn">Cancel</button>
+          <button id="remoteProfileLoadBtn" type="button" class="miniBtn">Load Profile (Beta)</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -1574,6 +1674,7 @@
     const imgRE = /\.(jpe?g|png|gif|webp|tiff|bmp|avif)$/i;
     const vidRE = /\.(mp4|m4v|mov|wmv|flv|avi|webm|mkv)$/i;
     const indexPrefixRE = /^(\d+)\s-\s/;
+    const POSTS_PER_PAGE = 50;
 
     const FAVORITE_TAG = "__favorite__";
     const HIDDEN_TAG = "__hidden__";
@@ -1631,6 +1732,67 @@
       const parts = String(relPath || "").split("/").filter(Boolean);
       const out = parts.map(seg => displayName(seg));
       return out.join("/") || "";
+    }
+
+    function sanitizePartyguestSection(str) {
+      let s = (str || "").normalize("NFC");
+      s = s.replace(/\s+/g, "_");
+      s = s.replace(/[\\/:*?"<>|]+/g, "");
+      s = s.replace(/[\x00-\x1F\x7F]/g, "");
+      s = s.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+      return s;
+    }
+
+    function toPartyguestDateSection(post) {
+      let dateSec = "000000";
+      try {
+        const raw = post?.published || post?.published_at || post?.added || post?.added_at || post?.created || post?.created_at || post?.posted || post?.posted_at;
+        if (raw != null) {
+          let d = null;
+          if (typeof raw === "number" && isFinite(raw)) {
+            const ms = raw > 1e12 ? raw : (raw * 1000);
+            d = new Date(ms);
+          } else if (typeof raw === "string" && raw.trim()) {
+            d = new Date(raw);
+          }
+          if (d && isFinite(d.getTime())) {
+            const yy = String(d.getUTCFullYear() % 100).padStart(2, "0");
+            const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+            const dd = String(d.getUTCDate()).padStart(2, "0");
+            dateSec = `${yy}${mm}${dd}`;
+          }
+        }
+      } catch {}
+      return dateSec;
+    }
+
+    function formatPartyguestNames(post, fileObj, fileIndex, globalIndex, indexWidth) {
+      const user = post?.user || post?.username || "user";
+      const titleRaw = (post?.title && String(post.title).trim()) ? post.title : `post_${post?.id || "0"}`;
+      const userSec = sanitizePartyguestSection(user);
+      let titleSec = sanitizePartyguestSection(titleRaw).slice(0, 40);
+      if (!titleSec) titleSec = sanitizePartyguestSection(`post_${post?.id || "0"}`).slice(0, 40);
+      const ext = (fileObj?.name || fileObj?.path || fileObj?.url || "").split(".").pop().split("?")[0].toLowerCase();
+      const gPost = String(globalIndex || 0).padStart(indexWidth || 1, "0");
+      const fIdx = String(fileIndex || 0).padStart(5, "0");
+      const dateSec = toPartyguestDateSection(post);
+      const fileName = `${dateSec} - ${gPost} - ${titleSec}_${fIdx}.${ext}`;
+      const dot = fileName.lastIndexOf(".");
+      const stem = dot > 0 ? fileName.slice(0, dot) : fileName;
+      const postFolder = stem.replace(/_\d+$/, "");
+      const downloadPath = `${userSec}/${postFolder}/${fileName}`;
+      return { fileName, postFolder, downloadPath };
+    }
+
+    function resolveRemoteFileUrl(host, obj) {
+      if (!obj) return null;
+      if (obj.path) {
+        const path = obj.path.startsWith("/") ? obj.path : `/${obj.path}`;
+        if (obj.path.startsWith("http")) return obj.path;
+        return `https://${host}/data${path}`;
+      }
+      if (obj.url && String(obj.url).startsWith("http")) return obj.url;
+      return null;
     }
 
     function makeDirNode(name, parent) {
@@ -1797,6 +1959,8 @@
         dirTags: new Map(),
         dirFingerprints: new Map(),
         dirSortMode: "name",
+        workspaceType: "local",
+        remoteProfile: null,
         storageMode: "local",
         storageKey: "",
         fsRootHandle: null,
@@ -1882,20 +2046,42 @@
       imageThumbActive: 0
     };
 
+    const REMOTE_STATE = {
+      loading: false,
+      posts: [],
+      host: "",
+      service: "",
+      userId: "",
+      profileUrl: "",
+      userName: "",
+      totalPosts: 0,
+      abortController: null
+    };
+
+    const REMOTE_DOWNLOAD = {
+      active: false,
+      stopping: false,
+      queue: [],
+      completed: 0,
+      failed: 0,
+      total: 0
+    };
+
     /* FileRecord:
        {
          id, file, name, relPath, dirPath, ext, type,
          size, lastModified,
          url, thumbUrl, videoThumbUrl,
+         remoteUrl, downloadPath,
          indices
        }
     */
 
     function revokeAllObjectURLs() {
       for (const it of WS.fileById.values()) {
-        try { if (it.url) URL.revokeObjectURL(it.url); } catch {}
-        try { if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl); } catch {}
-        try { if (it.videoThumbUrl) URL.revokeObjectURL(it.videoThumbUrl); } catch {}
+        try { if (it.url && String(it.url).startsWith("blob:")) URL.revokeObjectURL(it.url); } catch {}
+        try { if (it.thumbUrl && String(it.thumbUrl).startsWith("blob:")) URL.revokeObjectURL(it.thumbUrl); } catch {}
+        try { if (it.videoThumbUrl && String(it.videoThumbUrl).startsWith("blob:")) URL.revokeObjectURL(it.videoThumbUrl); } catch {}
         it.url = null;
         it.thumbUrl = null;
         it.videoThumbUrl = null;
@@ -1914,6 +2100,8 @@
       WS.meta.dirTags.clear();
       WS.meta.dirFingerprints.clear();
       WS.meta.dirSortMode = "name";
+      WS.meta.workspaceType = "local";
+      WS.meta.remoteProfile = null;
       WS.meta.storageMode = "local";
       WS.meta.storageKey = "";
       WS.meta.fsRootHandle = null;
@@ -1980,6 +2168,27 @@
       WS.imageThumbActive = 0;
       PRELOAD_CACHE = new Map();
 
+      REMOTE_STATE.loading = false;
+      REMOTE_STATE.posts = [];
+      REMOTE_STATE.host = "";
+      REMOTE_STATE.service = "";
+      REMOTE_STATE.userId = "";
+      REMOTE_STATE.profileUrl = "";
+      REMOTE_STATE.userName = "";
+      REMOTE_STATE.totalPosts = 0;
+      if (REMOTE_STATE.abortController) {
+        try { REMOTE_STATE.abortController.abort(); } catch {}
+      }
+      REMOTE_STATE.abortController = null;
+
+      REMOTE_DOWNLOAD.active = false;
+      REMOTE_DOWNLOAD.stopping = false;
+      REMOTE_DOWNLOAD.queue = [];
+      REMOTE_DOWNLOAD.completed = 0;
+      REMOTE_DOWNLOAD.failed = 0;
+      REMOTE_DOWNLOAD.total = 0;
+      updateRemotePills();
+
       renderDirectoriesPane();
       renderPreviewPane(true);
       syncButtons();
@@ -2011,6 +2220,17 @@
     const optionsResetBtn = $("optionsResetBtn");
     const optionsDoneBtn = $("optionsDoneBtn");
     const optionsStatusLabel = $("optionsStatusLabel");
+
+    const openRemoteProfileBtn = $("openRemoteProfileBtn");
+
+    // Remote Profile (Beta) Overlay
+    const remoteProfileOverlay = $("remoteProfileOverlay");
+    const remoteProfileInput = $("remoteProfileInput");
+    const remoteProfileProxyToggle = $("remoteProfileProxyToggle");
+    const remoteProfileProxyInput = $("remoteProfileProxyInput");
+    const remoteProfileLoadBtn = $("remoteProfileLoadBtn");
+    const remoteProfileCancelBtn = $("remoteProfileCancelBtn");
+    const remoteProfileStatusEl = $("remoteProfileStatus");
 
     // Directories Pane
     const directoriesPathEl = $("directoriesPath");
@@ -2053,6 +2273,9 @@
     const banicOverlayEl = document.createElement("div");
     banicOverlayEl.id = "banicOverlay";
     document.body.appendChild(banicOverlayEl);
+
+    const remoteModePill = $("remoteModePill");
+    const downloadPill = $("downloadPill");
 
     let MAIN_STATUS_TIMEOUT = null;
 
@@ -2124,6 +2347,38 @@
       MAIN_STATUS_TIMEOUT = setTimeout(() => {
         mainStatusMessageEl.classList.remove("visible");
       }, 1200);
+    }
+
+    function setRemoteProfileStatus(text, type) {
+      if (!remoteProfileStatusEl) return;
+      remoteProfileStatusEl.textContent = text || "";
+      if (type === "error") remoteProfileStatusEl.style.color = "#b00020";
+      else if (type === "success") remoteProfileStatusEl.style.color = "#0a7d2b";
+      else remoteProfileStatusEl.style.color = "";
+    }
+
+    function updateRemotePills() {
+      if (remoteModePill) {
+        const isRemote = WS.meta.workspaceType === "remote";
+        remoteModePill.style.display = isRemote ? "inline-flex" : "none";
+        if (isRemote && WS.meta.remoteProfile?.beta) {
+          remoteModePill.textContent = `Remote profile (Beta)`;
+        }
+      }
+      if (openRemoteProfileBtn) {
+        openRemoteProfileBtn.disabled = REMOTE_STATE.loading;
+      }
+      if (remoteProfileLoadBtn) {
+        remoteProfileLoadBtn.disabled = REMOTE_STATE.loading;
+      }
+      if (downloadPill) {
+        if (REMOTE_DOWNLOAD.active || REMOTE_DOWNLOAD.total > 0) {
+          downloadPill.style.display = "inline-flex";
+          downloadPill.textContent = `Downloads (Beta): ${REMOTE_DOWNLOAD.completed}/${REMOTE_DOWNLOAD.total} • ${REMOTE_DOWNLOAD.failed} failed`;
+        } else {
+          downloadPill.style.display = "none";
+        }
+      }
     }
 
     function captureVideoState(vid) {
@@ -2198,12 +2453,19 @@
        ========================================================= */
 
     const HELP_HTML = `
-      <div class="label" style="margin-bottom:8px;">Local Gallery is a local-only browser for folders of images and videos, with most controls mirrored so you can use it one-handed from either side of the keyboard. It loads a folder locally and never uploads files, but it can alter files by writing metadata (scores, tags, options) so use it cautiously. The root starts on the left and you navigate deeper by moving right and down; the directories pane lists the current folder’s files, while the preview pane shows the selected item in more detail.</div>
+      <div class="label" style="margin-bottom:8px;">Local Gallery is a local-only browser for folders of images and videos, with most controls mirrored so you can use it one-handed from either side of the keyboard. It loads a folder locally and never uploads files, but it can alter files by writing metadata (scores, tags, options) so use it cautiously. The root starts on the left and you navigate deeper by moving right and down; the directories pane lists the current folder’s files, while the preview pane shows the selected item in more detail. A separate Coomer/Kemono Profile Loader (Beta) can stream remote media into a virtual workspace.</div>
 
       <h2>Load a folder (writable)</h2>
       <ul>
         <li>Click <code>Load Folder</code> to pick a root folder. The app will scan for images/videos and create a small <code>.local-gallery</code> folder to store scoring, tags, and preferences.</li>
         <li>Only media files are shown (images + videos). Filter modes can restrict what appears.</li>
+      </ul>
+
+      <h2>Coomer/Kemono profile loading (Beta)</h2>
+      <ul>
+        <li>Use <code>Load Profile (Beta)</code> to paste a full coomer.st or kemono.cr profile URL.</li>
+        <li>This Beta feature streams posts as they load and mirrors PartyGuest naming rules for display and downloads.</li>
+        <li>Remote loading can fail due to CORS, rate limits, or site changes; enable <code>Use proxy (Beta)</code> if needed.</li>
       </ul>
 
       <h2>Basic navigation keys (mirrored)</h2>
@@ -2299,6 +2561,44 @@
     if (helpOverlay) helpOverlay.addEventListener("click", (e) => {
       if (e.target === helpOverlay) closeHelp();
     });
+
+    /* =========================================================
+       Remote Profile (Beta) overlay
+       ========================================================= */
+
+    const REMOTE_PROXY_KEY = "LocalGalleryRemoteProxyBase";
+    const REMOTE_PROXY_ENABLED_KEY = "LocalGalleryRemoteProxyEnabled";
+
+    function loadRemoteProxySettings() {
+      if (remoteProfileProxyInput) {
+        try { remoteProfileProxyInput.value = localStorage.getItem(REMOTE_PROXY_KEY) || ""; } catch {}
+      }
+      if (remoteProfileProxyToggle) {
+        try { remoteProfileProxyToggle.checked = localStorage.getItem(REMOTE_PROXY_ENABLED_KEY) === "true"; } catch {}
+      }
+      if (remoteProfileProxyInput && remoteProfileProxyToggle) {
+        remoteProfileProxyInput.disabled = !remoteProfileProxyToggle.checked;
+      }
+    }
+
+    function saveRemoteProxySettings() {
+      try { localStorage.setItem(REMOTE_PROXY_KEY, remoteProfileProxyInput?.value || ""); } catch {}
+      try { localStorage.setItem(REMOTE_PROXY_ENABLED_KEY, remoteProfileProxyToggle?.checked ? "true" : "false"); } catch {}
+    }
+
+    function openRemoteProfileOverlay() {
+      loadRemoteProxySettings();
+      setRemoteProfileStatus("", "info");
+      if (remoteProfileOverlay) remoteProfileOverlay.classList.add("active");
+      if (remoteProfileInput) {
+        remoteProfileInput.focus();
+        remoteProfileInput.select();
+      }
+    }
+
+    function closeRemoteProfileOverlay() {
+      if (remoteProfileOverlay) remoteProfileOverlay.classList.remove("active");
+    }
 
     /* =========================================================
        Options overlay
@@ -3402,6 +3702,8 @@
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
       WS.dirByPath.set("", WS.root);
+      WS.meta.workspaceType = "local";
+      WS.meta.remoteProfile = null;
 
       const files = Array.from(fileList || []);
 
@@ -3478,6 +3780,7 @@
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
       syncMetaButtons();
+      updateRemotePills();
     }
 
     async function collectFilesFromDirHandle(dirHandle, basePath, out) {
@@ -3502,6 +3805,8 @@
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
       WS.dirByPath.set("", WS.root);
+      WS.meta.workspaceType = "local";
+      WS.meta.remoteProfile = null;
 
       const all = [];
       await collectFilesFromDirHandle(rootHandle, "", all);
@@ -3581,6 +3886,251 @@
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
       syncMetaButtons();
+      updateRemotePills();
+    }
+
+    function parseRemoteProfileUrl(raw) {
+      let url = null;
+      try { url = new URL(String(raw || "").trim()); } catch { return null; }
+      const host = url.host.toLowerCase();
+      if (host !== "coomer.st" && host !== "kemono.cr") return null;
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts.length < 3) return null;
+      const service = parts[0];
+      const userLiteral = parts[1];
+      const userId = parts[2];
+      if (userLiteral !== "user" || !service || !userId) return null;
+      return { host, service, userId, profileUrl: url.toString() };
+    }
+
+    function buildRemoteApiUrl(profile, offset, proxyBase, proxyEnabled) {
+      const apiPath = `/api/v1/${profile.service}/user/${profile.userId}/posts?o=${offset}`;
+      const baseUrl = `https://${profile.host}${apiPath}`;
+      if (!proxyEnabled || !proxyBase) return baseUrl;
+      const base = proxyBase.replace(/\/+$/, "");
+      return `${base}/${baseUrl}`;
+    }
+
+    async function fetchRemotePostsPage(profile, offset, proxyBase, proxyEnabled, signal) {
+      const url = buildRemoteApiUrl(profile, offset, proxyBase, proxyEnabled);
+      const resp = await fetch(url, { method: "GET", signal, headers: { Accept: "application/json" } });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.results)) return data.results;
+      if (data && Array.isArray(data.posts)) return data.posts;
+      return [];
+    }
+
+    function extractRemoteFiles(post, host) {
+      const out = [];
+      const add = (obj) => {
+        const url = resolveRemoteFileUrl(host, obj);
+        if (!url) return;
+        const base = (url.split("?")[0] || "").toLowerCase();
+        if (!imgRE.test(base) && !vidRE.test(base)) return;
+        out.push({ url, obj });
+      };
+      if (post?.file) add(post.file);
+      if (Array.isArray(post?.attachments)) {
+        post.attachments.forEach(add);
+      }
+      const seen = new Set();
+      const uniq = [];
+      for (const item of out) {
+        const key = (item.url.split("?")[0] || "").toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        uniq.push(item);
+      }
+      return uniq;
+    }
+
+    function buildRemoteWorkspaceBase(profile) {
+      resetWorkspace();
+      WS.root = makeDirNode("root", null);
+      WS.root.path = "";
+      WS.dirByPath.set("", WS.root);
+      WS.meta.workspaceType = "remote";
+      WS.meta.remoteProfile = {
+        host: profile.host,
+        service: profile.service,
+        userId: profile.userId,
+        profileUrl: profile.profileUrl,
+        beta: true
+      };
+      WS.view.randomSeed = hash32(`${profile.host}/${profile.service}/${profile.userId}`);
+      WS.view.randomCache = new Map();
+      WS.view.dirLoopRepeats = 3;
+      WS.view.previewLoopRepeats = 3;
+      WS.meta.storageMode = "local";
+      WS.meta.storageKey = `remote::${profile.host}::${profile.service}::${profile.userId}`;
+      metaInitForCurrentWorkspace();
+      WS.nav.dirNode = WS.root;
+      syncBulkSelectionForCurrentDir();
+      syncFavoritesUi();
+      syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = 0;
+      WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane();
+      renderPreviewPane(true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      syncMetaButtons();
+      updateRemotePills();
+    }
+
+    function rebuildRemoteWorkspaceFromPosts() {
+      if (!REMOTE_STATE.posts.length) return;
+      const cachedPosts = REMOTE_STATE.posts.slice();
+      const cachedUserName = REMOTE_STATE.userName;
+      const profile = {
+        host: REMOTE_STATE.host,
+        service: REMOTE_STATE.service,
+        userId: REMOTE_STATE.userId,
+        profileUrl: REMOTE_STATE.profileUrl
+      };
+      buildRemoteWorkspaceBase(profile);
+      REMOTE_STATE.host = profile.host;
+      REMOTE_STATE.service = profile.service;
+      REMOTE_STATE.userId = profile.userId;
+      REMOTE_STATE.profileUrl = profile.profileUrl;
+      REMOTE_STATE.posts = cachedPosts;
+      REMOTE_STATE.userName = cachedUserName;
+      const total = cachedPosts.length;
+      const width = Math.max(3, String(total).length);
+      let idx = 0;
+      for (const post of cachedPosts) {
+        idx += 1;
+        appendRemotePostToWorkspace(post, idx, width, REMOTE_STATE.userName);
+      }
+      rebuildDirectoriesEntries();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      updateRemotePills();
+    }
+
+    function appendRemotePostToWorkspace(post, postIndex, indexWidth, userName) {
+      const files = extractRemoteFiles(post, REMOTE_STATE.host);
+      if (!files.length) return;
+      const postIndexWidth = Math.max(1, indexWidth || 3);
+      const postGlobalIndex = postIndex || 0;
+      const postUser = userName || REMOTE_STATE.userName || REMOTE_STATE.userId || "user";
+      const postMeta = { ...post, user: postUser };
+
+      const sample = files[0];
+      const nameData = formatPartyguestNames(postMeta, sample?.obj || {}, 1, postGlobalIndex, postIndexWidth);
+      let folderBase = sanitizePartyguestSection(nameData.postFolder);
+      if (!folderBase) folderBase = sanitizePartyguestSection(`post_${post?.id || postGlobalIndex}`);
+      const folderName = `${String(postGlobalIndex).padStart(postIndexWidth, "0")} - ${folderBase}`;
+      const dirNode = ensureDirPath(folderName);
+      dirNode.preserveOrder = true;
+
+      files.forEach((fileInfo, idx) => {
+        const fileIndex = idx + 1;
+        const nameParts = formatPartyguestNames(postMeta, fileInfo?.obj || {}, fileIndex, postGlobalIndex, postIndexWidth);
+        const orderPrefix = String(fileIndex).padStart(5, "0");
+        const displayName = `${orderPrefix} - ${nameParts.fileName}`;
+        const relPath = `${folderName}/${displayName}`;
+        const extDot = nameParts.fileName.lastIndexOf(".");
+        const ext = extDot >= 0 ? nameParts.fileName.slice(extDot).toLowerCase() : "";
+        const isVid = vidRE.test(ext);
+        const id = `remote::${post?.id || "post"}::${fileIndex}::${fileInfo.url}`;
+        if (WS.fileById.has(id)) return;
+        const rec = {
+          id,
+          file: null,
+          name: displayName,
+          relPath,
+          dirPath: folderName,
+          ext,
+          type: isVid ? "video" : "image",
+          size: null,
+          lastModified: null,
+          url: null,
+          thumbUrl: null,
+          videoThumbUrl: null,
+          remoteUrl: fileInfo.url,
+          downloadPath: nameParts.downloadPath,
+          indices: { postIndex: postGlobalIndex, fileIndex },
+          thumbMode: null,
+          videoThumbMode: null
+        };
+        WS.fileById.set(id, rec);
+        dirNode.childrenFiles.push(id);
+      });
+    }
+
+    async function buildWorkspaceFromRemoteProfile(profile) {
+      REMOTE_STATE.loading = true;
+      REMOTE_STATE.posts = [];
+      REMOTE_STATE.host = profile.host;
+      REMOTE_STATE.service = profile.service;
+      REMOTE_STATE.userId = profile.userId;
+      REMOTE_STATE.profileUrl = profile.profileUrl;
+      REMOTE_STATE.totalPosts = 0;
+      REMOTE_STATE.userName = profile.userId;
+      if (REMOTE_STATE.abortController) {
+        try { REMOTE_STATE.abortController.abort(); } catch {}
+      }
+      REMOTE_STATE.abortController = new AbortController();
+
+      buildRemoteWorkspaceBase(profile);
+      setRemoteProfileStatus("Loading profile (Beta)…", "info");
+      showStatusMessage("Streaming profile (Beta)…");
+
+      const proxyBase = remoteProfileProxyInput?.value || "";
+      const proxyEnabled = !!remoteProfileProxyToggle?.checked;
+      saveRemoteProxySettings();
+
+      let offset = 0;
+      let page = 1;
+      let totalAdded = 0;
+      try {
+        while (true) {
+          setRemoteProfileStatus(`Loading page ${page} (Beta)…`, "info");
+          const pagePosts = await fetchRemotePostsPage(profile, offset, proxyBase, proxyEnabled, REMOTE_STATE.abortController.signal);
+          if (!pagePosts.length) break;
+          for (const post of pagePosts) {
+            totalAdded += 1;
+            REMOTE_STATE.posts.push(post);
+            appendRemotePostToWorkspace(post, totalAdded, Math.max(3, String(totalAdded).length), REMOTE_STATE.userName);
+          }
+          offset += POSTS_PER_PAGE;
+          page += 1;
+          REMOTE_STATE.totalPosts = totalAdded;
+          rebuildDirectoriesEntries();
+          renderDirectoriesPane(true);
+          renderPreviewPane(false, true);
+          syncButtons();
+          updateRemotePills();
+          showStatusMessage(`Streaming profile (Beta): ${totalAdded} posts`);
+          if (pagePosts.length < POSTS_PER_PAGE) break;
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        REMOTE_STATE.totalPosts = totalAdded;
+        rebuildRemoteWorkspaceFromPosts();
+        REMOTE_STATE.totalPosts = totalAdded;
+        setRemoteProfileStatus(`Loaded ${totalAdded} posts (Beta).`, "success");
+        showStatusMessage(`Profile ready (Beta): ${totalAdded} posts`);
+      } catch (err) {
+        if (REMOTE_STATE.abortController.signal.aborted) {
+          setRemoteProfileStatus("Profile load canceled (Beta).", "error");
+          showStatusMessage("Profile load canceled (Beta).");
+        } else {
+          setRemoteProfileStatus(`Failed to load profile (Beta): ${err?.message || "error"}`, "error");
+          showStatusMessage("Profile load failed (Beta).");
+        }
+      } finally {
+        REMOTE_STATE.loading = false;
+        updateRemotePills();
+      }
     }
 
     openWritableBtn.addEventListener("click", async () => {
@@ -3591,6 +4141,57 @@
         await buildWorkspaceFromDirectoryHandle(rootHandle);
       } catch {}
     });
+
+    if (openRemoteProfileBtn) {
+      openRemoteProfileBtn.addEventListener("click", () => openRemoteProfileOverlay());
+    }
+
+    if (remoteProfileCancelBtn) {
+      remoteProfileCancelBtn.addEventListener("click", () => {
+        if (REMOTE_STATE.loading && REMOTE_STATE.abortController) {
+          try { REMOTE_STATE.abortController.abort(); } catch {}
+        }
+        closeRemoteProfileOverlay();
+      });
+    }
+
+    if (remoteProfileLoadBtn) {
+      remoteProfileLoadBtn.addEventListener("click", async () => {
+        if (REMOTE_STATE.loading) return;
+        const profile = parseRemoteProfileUrl(remoteProfileInput?.value || "");
+        if (!profile) {
+          setRemoteProfileStatus("Invalid profile URL (Beta).", "error");
+          return;
+        }
+        closeRemoteProfileOverlay();
+        await buildWorkspaceFromRemoteProfile(profile);
+      });
+    }
+
+    if (remoteProfileProxyToggle && remoteProfileProxyInput) {
+      remoteProfileProxyToggle.addEventListener("change", () => {
+        remoteProfileProxyInput.disabled = !remoteProfileProxyToggle.checked;
+        saveRemoteProxySettings();
+      });
+      remoteProfileProxyInput.addEventListener("input", () => {
+        saveRemoteProxySettings();
+      });
+    }
+
+    if (remoteProfileInput) {
+      remoteProfileInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          remoteProfileLoadBtn?.click();
+        }
+      });
+    }
+
+    if (remoteProfileOverlay) {
+      remoteProfileOverlay.addEventListener("click", (e) => {
+        if (e.target === remoteProfileOverlay) closeRemoteProfileOverlay();
+      });
+    }
 
     /* =========================================================
        Sorting helpers
@@ -3622,6 +4223,78 @@
       if (m === "videos") return rec.type === "video";
       if (m === "gifs") return rec.ext === ".gif";
       return true;
+    }
+
+    function isRemoteWorkspace() {
+      return WS.meta.workspaceType === "remote";
+    }
+
+    function collectRemoteDownloadItemsForDir(dirNode) {
+      if (!dirNode) return [];
+      const ids = getOrderedFileIdsForDir(dirNode);
+      const items = [];
+      for (const id of ids) {
+        const rec = WS.fileById.get(id);
+        if (!rec || !rec.remoteUrl) continue;
+        if (!passesFilter(rec)) continue;
+        items.push({ url: rec.remoteUrl, name: rec.downloadPath || rec.name || "download", id });
+      }
+      return items;
+    }
+
+    async function runRemoteDownloadQueue() {
+      if (REMOTE_DOWNLOAD.active) return;
+      REMOTE_DOWNLOAD.active = true;
+      REMOTE_DOWNLOAD.stopping = false;
+      updateRemotePills();
+
+      while (REMOTE_DOWNLOAD.queue.length && !REMOTE_DOWNLOAD.stopping) {
+        const item = REMOTE_DOWNLOAD.queue.shift();
+        if (!item) continue;
+        try {
+          const resp = await fetch(item.url);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = item.name || "download";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => {
+            try { URL.revokeObjectURL(url); } catch {}
+          }, 2000);
+          REMOTE_DOWNLOAD.completed += 1;
+        } catch {
+          REMOTE_DOWNLOAD.failed += 1;
+        }
+        updateRemotePills();
+      }
+
+      REMOTE_DOWNLOAD.active = false;
+      REMOTE_DOWNLOAD.stopping = false;
+      updateRemotePills();
+      showStatusMessage("Download queue finished (Beta).");
+    }
+
+    function enqueueRemoteDownloads(items) {
+      if (!items.length) {
+        showStatusMessage("No downloadable items (Beta).");
+        return;
+      }
+      REMOTE_DOWNLOAD.queue.push(...items);
+      REMOTE_DOWNLOAD.total += items.length;
+      updateRemotePills();
+      showStatusMessage(`Queued ${items.length} downloads (Beta).`);
+      runRemoteDownloadQueue();
+    }
+
+    function stopRemoteDownloads() {
+      REMOTE_DOWNLOAD.stopping = true;
+      REMOTE_DOWNLOAD.queue = [];
+      showStatusMessage("Stopping downloads (Beta)…");
+      updateRemotePills();
     }
 
     function dirItemCount(node) {
@@ -4524,6 +5197,24 @@
           WS.view.bulkActionMenuOpen = false;
           metaSetHiddenBulk(selected, !allHidden);
         }));
+
+        if (isRemoteWorkspace()) {
+          directoriesActionMenuEl.appendChild(makeActionBtn("Download selected (Beta)", () => {
+            WS.view.bulkActionMenuOpen = false;
+            const items = [];
+            for (const path of selected) {
+              const node = WS.dirByPath.get(path);
+              if (!node) continue;
+              items.push(...collectRemoteDownloadItemsForDir(node));
+            }
+            enqueueRemoteDownloads(items);
+          }));
+
+          directoriesActionMenuEl.appendChild(makeActionBtn("Stop downloads (Beta)", () => {
+            WS.view.bulkActionMenuOpen = false;
+            stopRemoteDownloads();
+          }));
+        }
       }
     }
 
@@ -4702,6 +5393,7 @@
           `;
           }
           const menuOpen = WS.view.dirActionMenuPath === p;
+          const downloadAction = isRemoteWorkspace() ? `<button type="button" data-action="download">Download folder (Beta)</button>` : "";
           const menuHtml = `
           <div class="dirMenu">
             <button class="dirMenuBtn" title="Folder actions">⋯</button>
@@ -4709,6 +5401,7 @@
               <button type="button" data-action="tag">Tag</button>
               <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
               <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
+              ${downloadAction}
             </div>
           </div>
           `;
@@ -4832,6 +5525,13 @@
                 }
                 if (action === "hidden") {
                   metaToggleHidden(p);
+                  return;
+                }
+                if (action === "download") {
+                  if (!isRemoteWorkspace()) return;
+                  const node = WS.dirByPath.get(p);
+                  const items = collectRemoteDownloadItemsForDir(node);
+                  enqueueRemoteDownloads(items);
                   return;
                 }
               });
@@ -5325,6 +6025,11 @@
     function ensureThumbUrl(rec) {
       if (!rec) return null;
       if (rec.type !== "image") return rec.thumbUrl || null;
+      if (rec.remoteUrl && !rec.file) {
+        rec.thumbMode = "remote";
+        rec.thumbUrl = rec.remoteUrl;
+        return rec.thumbUrl;
+      }
 
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const mode = opt ? String(opt.imageThumbSize || "medium") : "medium";
@@ -5354,6 +6059,10 @@
     function ensureMediaUrl(rec) {
       if (!rec) return null;
       if (rec.url) return rec.url;
+      if (rec.remoteUrl) {
+        rec.url = rec.remoteUrl;
+        return rec.url;
+      }
       try { rec.url = URL.createObjectURL(rec.file); return rec.url; } catch { return null; }
     }
 
@@ -5418,6 +6127,7 @@
         previewVideoEl.playsInline = true;
         previewVideoEl.autoplay = true;
         previewVideoEl.muted = false;
+        previewVideoEl.crossOrigin = "anonymous";
         previewVideoEl.style.display = "none";
         previewViewportBox.appendChild(previewVideoEl);
       }
@@ -5655,7 +6365,7 @@
         renderBreadcrumbInline(null);
         updateModePill();
         itemsPill.textContent = "Items: —";
-        previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder to begin.</div>`;
+        previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder or profile (Beta) to begin.</div>`;
         return;
       }
 
@@ -6067,6 +6777,7 @@
     async function generateVideoThumb(rec) {
       const url = ensureMediaUrl(rec);
       if (!url) return;
+      if (!rec.file && rec.remoteUrl) return;
 
       const mode = WS.meta && WS.meta.options ? String(WS.meta.options.videoThumbSize || "medium") : "medium";
       if (rec.videoThumbUrl) {
@@ -6159,6 +6870,7 @@
 
       const w = imageThumbWidthForOption();
       const file = rec.file;
+      if (!file && rec.remoteUrl) return;
       if (!file) return;
 
       let bmp = null;
@@ -6311,6 +7023,7 @@
         viewerVideoEl.preload = "metadata";
         viewerVideoEl.playsInline = true;
         viewerVideoEl.autoplay = true;
+        viewerVideoEl.crossOrigin = "anonymous";
         viewerVideoEl.style.display = "none";
         viewport.appendChild(viewerVideoEl);
       }
