@@ -232,6 +232,13 @@
       flex-wrap: wrap;
     }
 
+    #directoriesHeaderLeft {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
     #directoriesHeaderTop .title {
       font-size: 12px;
       font-weight: 800;
@@ -239,16 +246,15 @@
       letter-spacing: .02em;
     }
 
+    #favoritesBtn.active {
+      background: var(--color0-primary);
+      color: var(--color1-primary);
+      border-color: var(--color0-tertirary);
+    }
+
     #directoriesBtns {
       display: flex;
       gap: 8px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    #directoriesFavoritesRow {
-      display: none;
-      gap: 6px;
       flex-wrap: wrap;
       align-items: center;
     }
@@ -524,6 +530,45 @@
     .fileCard.enter {
       opacity: 0;
       transform: translateY(6px);
+    }
+
+    .previewExpandedSection {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .previewExpandedContent {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .previewFolderBar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 4px 10px;
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 4px;
+      background: var(--color1-primary);
+      font-size: 11px;
+    }
+
+    .previewFolderBar .name {
+      font-weight: 800;
+      letter-spacing: .02em;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .previewFolderBar.selected {
+      background: var(--color0-secondary);
+      color: var(--color1-primary);
+      border-color: var(--color0-tertirary);
     }
 
     .thumb {
@@ -1248,14 +1293,14 @@
         <div id="directoriesPane">
           <div id="directoriesHeader">
             <div id="directoriesHeaderTop">
-              <div class="title">Directories</div>
+              <div id="directoriesHeaderLeft">
+                <button id="favoritesBtn" type="button" class="miniBtn">★ Favorites (0)</button>
+                <div class="title">Directories</div>
+              </div>
               <div id="directoriesBtns">
-                <button id="sortModeBtn" type="button" class="miniBtn">Sort: Name</button>
-                <button id="toggleScoresBtn" type="button" class="miniBtn">Scores: On</button>
                 <button id="toggleTagsBtn" type="button" class="miniBtn">Tags</button>
               </div>
             </div>
-            <div id="directoriesFavoritesRow"></div>
             <div id="directoriesSearchRow">
               <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search this folder..." />
               <button id="directoriesSearchClearBtn" type="button" class="miniBtn">X</button>
@@ -1536,14 +1581,16 @@
         defaultFilterMode: "all",
         defaultRandomMode: false,
         defaultFolderBehavior: "slide",
-        defaultShowScores: false,
+        showFolderScores: false,
         videoSkipStep: "10",
         preloadNextMode: "off",
         videoEndBehavior: "loop",
         slideshowDefault: "cycle",
         hideIndicesInNames: true,
         hideUnderscoresInNames: false,
-        forceTitleCaps: false
+        forceTitleCaps: false,
+        tagFilterMode: "any",
+        previewMode: "standard"
       };
     }
 
@@ -1559,14 +1606,16 @@
         defaultFilterMode: (src.defaultFilterMode === "all" || src.defaultFilterMode === "images" || src.defaultFilterMode === "videos" || src.defaultFilterMode === "gifs") ? src.defaultFilterMode : d.defaultFilterMode,
         defaultRandomMode: (typeof src.defaultRandomMode === "boolean") ? src.defaultRandomMode : d.defaultRandomMode,
         defaultFolderBehavior: (src.defaultFolderBehavior === "stop" || src.defaultFolderBehavior === "loop" || src.defaultFolderBehavior === "slide") ? src.defaultFolderBehavior : d.defaultFolderBehavior,
-        defaultShowScores: (typeof src.defaultShowScores === "boolean") ? src.defaultShowScores : d.defaultShowScores,
+        showFolderScores: (typeof src.showFolderScores === "boolean") ? src.showFolderScores : ((typeof src.defaultShowScores === "boolean") ? src.defaultShowScores : d.showFolderScores),
         videoSkipStep: (src.videoSkipStep === "3" || src.videoSkipStep === "5" || src.videoSkipStep === "10" || src.videoSkipStep === "30") ? src.videoSkipStep : d.videoSkipStep,
         preloadNextMode: (src.preloadNextMode === "off" || src.preloadNextMode === "on" || src.preloadNextMode === "ultra") ? src.preloadNextMode : d.preloadNextMode,
         videoEndBehavior: (src.videoEndBehavior === "loop" || src.videoEndBehavior === "next" || src.videoEndBehavior === "stop") ? src.videoEndBehavior : d.videoEndBehavior,
         slideshowDefault: (src.slideshowDefault === "cycle" || src.slideshowDefault === "1" || src.slideshowDefault === "3" || src.slideshowDefault === "5" || src.slideshowDefault === "10") ? src.slideshowDefault : d.slideshowDefault,
         hideIndicesInNames: (typeof src.hideIndicesInNames === "boolean") ? src.hideIndicesInNames : d.hideIndicesInNames,
         hideUnderscoresInNames: (typeof src.hideUnderscoresInNames === "boolean") ? src.hideUnderscoresInNames : d.hideUnderscoresInNames,
-        forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps
+        forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
+        tagFilterMode: (src.tagFilterMode === "all" || src.tagFilterMode === "any") ? src.tagFilterMode : d.tagFilterMode,
+        previewMode: (src.previewMode === "expanded" || src.previewMode === "standard") ? src.previewMode : d.previewMode
       };
       return out;
     }
@@ -1622,7 +1671,7 @@
       WS.view.filterMode = String(opt.defaultFilterMode || "all");
       WS.view.randomMode = !!opt.defaultRandomMode;
       WS.view.folderBehavior = String(opt.defaultFolderBehavior || "slide");
-      WS.view.showFolderScores = !!opt.defaultShowScores;
+      WS.view.showFolderScores = !!opt.showFolderScores;
     }
 
     function applyOptionsEverywhere(invalidateThumbs = false) {
@@ -2231,10 +2280,8 @@
     // Directories Pane
     const directoriesPathEl = $("directoriesPath");
     const directoriesListEl = $("directoriesList");
-    const sortModeBtn = $("sortModeBtn");
-    const toggleScoresBtn = $("toggleScoresBtn");
+    const favoritesBtn = $("favoritesBtn");
     const toggleTagsBtn = $("toggleTagsBtn");
-    const directoriesFavoritesRowEl = $("directoriesFavoritesRow");
     const directoriesTagsRowEl = $("directoriesTagsRow");
     const directoriesBulkRowEl = $("directoriesBulkRow");
     const directoriesSearchInput = $("directoriesSearchInput");
@@ -2401,9 +2448,16 @@
       modePill.textContent = `Mode: ${storage} | Media filter: ${f} | Random mode: ${r} | Folder behavior: ${b} | Dir sort: ${s}`;
     }
 
+    function updateFavoritesButton() {
+      if (!favoritesBtn) return;
+      const count = WS.root ? getAllFavoriteDirs().length : 0;
+      favoritesBtn.textContent = `★ Favorites (${count})`;
+      favoritesBtn.disabled = !WS.root;
+      favoritesBtn.classList.toggle("active", !!WS.view.favoritesMode);
+    }
+
     function syncMetaButtons() {
-      if (sortModeBtn) sortModeBtn.textContent = `Sort: ${WS.meta.dirSortMode === "score" ? "Score" : "Name"}`;
-      if (toggleScoresBtn) toggleScoresBtn.textContent = `Scores: ${WS.view.showFolderScores ? "On" : "Off"}`;
+      updateFavoritesButton();
     }
 
     /* =========================================================
@@ -2463,9 +2517,9 @@
 
       <h2>Scoring (folder scoring)</h2>
       <ul>
-        <li>Scoring defaults to the option set in <code>Preferences</code>. Toggle with <code>Scores: Off/On</code>.</li>
+        <li>Configure folder score visibility and sorting in <code>Options</code>.</li>
         <li>When enabled, folders show ▲/▼ buttons to bump their score.</li>
-        <li>Use <code>Sort: Name/Score</code> to sort folders by score or name.</li>
+        <li>Sorting by score is useful to surface favorites.</li>
       </ul>
 
       <h2>Tags (single-folder)</h2>
@@ -2587,6 +2641,11 @@
         { value: "slide", label: "Slide" }
       ];
 
+      const sortModes = [
+        { value: "name", label: "Name" },
+        { value: "score", label: "Score" }
+      ];
+
       const skipSteps = [
         { value: "3", label: "3 seconds" },
         { value: "5", label: "5 seconds" },
@@ -2620,6 +2679,16 @@
         { value: "high", label: "Very high" }
       ];
 
+      const tagFilterModes = [
+        { value: "any", label: "Any selected tag (OR)" },
+        { value: "all", label: "All selected tags (AND)" }
+      ];
+
+      const previewModes = [
+        { value: "standard", label: "Standard" },
+        { value: "expanded", label: "Expanded" }
+      ];
+
       optionsBodyEl.innerHTML = `
         <div class="label" style="margin-bottom:8px;">Preferences are saved alongside scores/tags (or localStorage fallback).</div>
 
@@ -2631,7 +2700,12 @@
         ${makeSelectRow("Default media filter", "Initial filter when loading a workspace (hotkeys can still change it).", "opt_defaultFilterMode", String(opt.defaultFilterMode || "all"), filterModes)}
         ${makeSelectRow("Default random mode", "Initial random mode (hotkeys can still change it).", "opt_defaultRandomMode", opt.defaultRandomMode ? "on" : "off", onOffModes)}
         ${makeSelectRow("Default folder behavior", "Initial folder behavior (hotkeys can still change it).", "opt_defaultFolderBehavior", String(opt.defaultFolderBehavior || "slide"), folderModes)}
-        ${makeSelectRow("Scores on/off default", "Initial folder score display state (hotkeys can still change it).", "opt_defaultShowScores", opt.defaultShowScores ? "on" : "off", onOffModes)}
+
+        <h2>Directories</h2>
+        ${makeSelectRow("Folder sort", "Sort folders by name or score.", "opt_dirSortMode", WS.meta.dirSortMode === "score" ? "score" : "name", sortModes)}
+        ${makeSelectRow("Folder scores", "Show folder score controls in lists and previews.", "opt_showFolderScores", (opt.showFolderScores ? "on" : "off"), onOffModes)}
+        ${makeSelectRow("Tag filter mode", "When multiple tags are selected, match any or all tags.", "opt_tagFilterMode", String(opt.tagFilterMode || "any"), tagFilterModes)}
+        ${makeSelectRow("Preview mode", "Choose how folders are shown in the preview pane.", "opt_previewMode", String(opt.previewMode || "standard"), previewModes)}
 
         <h2>Playback</h2>
         ${makeSelectRow("Video skip step", "Seek increment for Q/E/U/O shortcuts.", "opt_videoSkipStep", String(opt.videoSkipStep || "10"), skipSteps)}
@@ -2716,9 +2790,11 @@
       bindSelect("opt_defaultFolderBehavior", "defaultFolderBehavior", false, () => {
         applyDefaultViewFromOptions();
       });
-      bindSelect("opt_defaultShowScores", "defaultShowScores", false, () => {
-        applyDefaultViewFromOptions();
+      bindSelect("opt_showFolderScores", "showFolderScores", false, (val) => {
+        WS.view.showFolderScores = val === "on";
       }, (val) => val === "on");
+      bindSelect("opt_tagFilterMode", "tagFilterMode", false);
+      bindSelect("opt_previewMode", "previewMode", false);
       bindSelect("opt_videoSkipStep", "videoSkipStep", false);
       bindSelect("opt_preloadNextMode", "preloadNextMode", false, (val) => {
         if (val === "off") PRELOAD_CACHE = new Map();
@@ -2731,6 +2807,19 @@
       bindCheck("opt_hideIndicesInNames", "hideIndicesInNames");
       bindCheck("opt_hideUnderscoresInNames", "hideUnderscoresInNames");
       bindCheck("opt_forceTitleCaps", "forceTitleCaps");
+
+      const dirSortSelect = $("opt_dirSortMode");
+      if (dirSortSelect) {
+        dirSortSelect.addEventListener("click", (e) => e.stopPropagation());
+        dirSortSelect.addEventListener("keydown", (e) => e.stopPropagation());
+        dirSortSelect.addEventListener("change", () => {
+          WS.meta.dirSortMode = dirSortSelect.value === "score" ? "score" : "name";
+          WS.meta.dirty = true;
+          metaScheduleSave();
+          setOptionsStatus("Saved");
+          applyViewModesEverywhere(true);
+        });
+      }
 
       const remoteInput = $("remoteProfileInput");
       const remoteAddBtn = $("remoteProfileAddBtn");
@@ -2937,6 +3026,7 @@
       WS.meta.dirty = true;
       metaScheduleSave();
       setOptionsStatus("Reset");
+      applyDefaultViewFromOptions();
       renderOptionsUi();
       applyOptionsEverywhere(true);
     }
@@ -4140,12 +4230,24 @@
       return eff;
     }
 
-    function dirHasAnySelectedTag(dirNode, filterSet) {
+    function tagFilterMode() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return opt && opt.tagFilterMode === "all" ? "all" : "any";
+    }
+
+    function dirMatchesTagFilters(dirNode, filterSet) {
       if (!dirNode) return false;
       if (!filterSet || !filterSet.size) return true;
       const tags = metaGetUserTags(dirNode.path || "");
       if (!tags.length) return false;
-      for (const t of tags) {
+      const tagSet = new Set(tags);
+      if (tagFilterMode() === "all") {
+        for (const t of filterSet) {
+          if (!tagSet.has(t)) return false;
+        }
+        return true;
+      }
+      for (const t of tagSet) {
         if (filterSet.has(t)) return true;
       }
       return false;
@@ -4155,7 +4257,7 @@
       const base = getChildDirsForNodeBase(dirNode);
       const eff = getEffectiveTagFiltersForDir(dirNode);
       if (!eff) return base;
-      return base.filter(d => dirHasAnySelectedTag(d, eff));
+      return base.filter(d => dirMatchesTagFilters(d, eff));
     }
 
     function getVisibleSiblingDirsForSlide(dirNode) {
@@ -4174,7 +4276,7 @@
       let out = getChildDirsForNodeBase(p);
 
       const eff = getEffectiveTagFiltersForDir(p);
-      if (eff) out = out.filter(d => dirHasAnySelectedTag(d, eff));
+      if (eff) out = out.filter(d => dirMatchesTagFilters(d, eff));
 
       return out;
     }
@@ -4285,7 +4387,7 @@
     }
 
     function syncFavoritesUi() {
-      if (!directoriesFavoritesRowEl) return;
+      updateFavoritesButton();
     }
 
     function syncTagUiForCurrentDir() {
@@ -4522,92 +4624,73 @@
       return p || "root";
     }
 
-    function renderDirectoriesFavoritesHeader() {
-      if (!directoriesFavoritesRowEl) return;
-
-      directoriesFavoritesRowEl.innerHTML = "";
-      directoriesFavoritesRowEl.style.display = "none";
-
+    function toggleFavoritesView() {
       if (!WS.root) return;
 
-      const favDirs = getAllFavoriteDirs();
-      const n = favDirs.length;
+      if (!WS.view.favoritesMode) {
+        const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+        WS.view.favoritesReturnState = {
+          dirPath: String(WS.nav.dirNode?.path || ""),
+          sel: entry ? (entry.kind === "dir" ? { kind: "dir", path: String(entry.node?.path || "") } : { kind: "file", id: String(entry.id || "") }) : null
+        };
+        WS.view.favoritesMode = true;
+        WS.view.favoritesRootActive = true;
+        WS.view.favoritesAnchorPath = "";
+      } else {
+        WS.view.favoritesMode = false;
+        WS.view.favoritesRootActive = false;
+        WS.view.favoritesAnchorPath = "";
 
-      if (!n) return;
+        const st = WS.view.favoritesReturnState;
+        WS.view.favoritesReturnState = null;
 
-      directoriesFavoritesRowEl.style.display = "flex";
+        if (st && WS.root) {
+          const dn = WS.dirByPath.get(String(st.dirPath || "")) || WS.root;
+          WS.nav.dirNode = dn;
+          syncBulkSelectionForCurrentDir();
+          syncFavoritesUi();
+          syncTagUiForCurrentDir();
+          rebuildDirectoriesEntries();
 
-      const chip = document.createElement("span");
-      chip.className = "tag" + (WS.view.favoritesMode ? " sel" : "");
-      chip.textContent = `favorites (${n})`;
-      chip.style.cursor = "pointer";
-      chip.title = "Toggle favorites view";
-      chip.addEventListener("click", (e) => {
-        e.stopPropagation();
-
-        if (!WS.view.favoritesMode) {
-          const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
-          WS.view.favoritesReturnState = {
-            dirPath: String(WS.nav.dirNode?.path || ""),
-            sel: entry ? (entry.kind === "dir" ? { kind: "dir", path: String(entry.node?.path || "") } : { kind: "file", id: String(entry.id || "") }) : null
-          };
-          WS.view.favoritesMode = true;
-          WS.view.favoritesRootActive = true;
-          WS.view.favoritesAnchorPath = "";
-        } else {
-          WS.view.favoritesMode = false;
-          WS.view.favoritesRootActive = false;
-          WS.view.favoritesAnchorPath = "";
-
-          const st = WS.view.favoritesReturnState;
-          WS.view.favoritesReturnState = null;
-
-          if (st && WS.root) {
-            const dn = WS.dirByPath.get(String(st.dirPath || "")) || WS.root;
-            WS.nav.dirNode = dn;
-            syncBulkSelectionForCurrentDir();
-            syncFavoritesUi();
-            syncTagUiForCurrentDir();
-            rebuildDirectoriesEntries();
-
-            let idx = 0;
-            if (st.sel && st.sel.kind === "dir") {
-              const p = String(st.sel.path || "");
-              for (let i = 0; i < WS.nav.entries.length; i++) {
-                const e2 = WS.nav.entries[i];
-                if (e2 && e2.kind === "dir" && String(e2.node?.path || "") === p) { idx = i; break; }
-              }
-            } else if (st.sel && st.sel.kind === "file") {
-              const id = String(st.sel.id || "");
-              for (let i = 0; i < WS.nav.entries.length; i++) {
-                const e2 = WS.nav.entries[i];
-                if (e2 && e2.kind === "file" && String(e2.id || "") === id) { idx = i; break; }
-              }
+          let idx = 0;
+          if (st.sel && st.sel.kind === "dir") {
+            const p = String(st.sel.path || "");
+            for (let i = 0; i < WS.nav.entries.length; i++) {
+              const e2 = WS.nav.entries[i];
+              if (e2 && e2.kind === "dir" && String(e2.node?.path || "") === p) { idx = i; break; }
             }
-            WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
-            syncPreviewToSelection();
-            renderDirectoriesPane(true);
-            renderPreviewPane(true, true);
-            syncButtons();
-            kickVideoThumbsForPreview();
-            kickImageThumbsForPreview();
-            return;
+          } else if (st.sel && st.sel.kind === "file") {
+            const id = String(st.sel.id || "");
+            for (let i = 0; i < WS.nav.entries.length; i++) {
+              const e2 = WS.nav.entries[i];
+              if (e2 && e2.kind === "file" && String(e2.id || "") === id) { idx = i; break; }
+            }
           }
+          WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+          syncPreviewToSelection();
+          renderDirectoriesPane(true);
+          renderPreviewPane(true, true);
+          syncButtons();
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+          return;
         }
+      }
 
-        TAG_EDIT_PATH = null;
-        closeBulkTagPanel();
-        rebuildDirectoriesEntries();
-        WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
-        syncPreviewToSelection();
-        renderDirectoriesPane(true);
-        renderPreviewPane(true, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-      });
+      TAG_EDIT_PATH = null;
+      closeBulkTagPanel();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
 
-      directoriesFavoritesRowEl.appendChild(chip);
+    function renderDirectoriesFavoritesHeader() {
+      updateFavoritesButton();
     }
 
     function renderDirectoriesTagsHeader() {
@@ -5058,22 +5141,12 @@
       WS.view.scrollBusyDirs = false;
     });
 
-    sortModeBtn.addEventListener("click", () => {
-      WS.meta.dirSortMode = WS.meta.dirSortMode === "score" ? "name" : "score";
-      WS.meta.dirty = true;
-      metaScheduleSave();
-      syncMetaButtons();
-      applyViewModesEverywhere(true);
-      syncButtons();
-    });
-
-    toggleScoresBtn.addEventListener("click", () => {
-      WS.view.showFolderScores = !WS.view.showFolderScores;
-      syncMetaButtons();
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-    });
+    if (favoritesBtn) {
+      favoritesBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleFavoritesView();
+      });
+    }
 
     toggleTagsBtn.addEventListener("click", () => {
       if (!WS.root || !WS.nav.dirNode) return;
@@ -5668,6 +5741,161 @@
       kickImageThumbsForPreview();
     }
 
+    function isExpandedPreviewMode() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return opt && opt.previewMode === "expanded";
+    }
+
+    function makeFolderCard(dirNode) {
+      const card = document.createElement("div");
+      card.className = "folderCard";
+      card.style.cursor = "pointer";
+      const icon = "📁";
+      const nm = displayName(dirNode.name || "folder") || "folder";
+      const sc = metaGetScore(dirNode.path || "");
+      const voteSeg = WS.view.showFolderScores ? `
+          <div class="voteBox">
+            <div class="voteBtn up">▲</div>
+            <div class="voteScore">${sc}</div>
+            <div class="voteBtn down">▼</div>
+          </div>
+          ` : ``;
+      card.innerHTML = `
+        <div class="left">
+          <div class="icon">${icon}</div>
+          <div class="name" title="${escapeHtml(nm)}">${escapeHtml(nm)}</div>
+        </div>
+        <div class="folderRight">
+          ${voteSeg}
+          <div class="meta">${dirItemCount(dirNode)} items</div>
+        </div>
+      `;
+      const up = card.querySelector(".voteBtn.up");
+      const down = card.querySelector(".voteBtn.down");
+      if (up) up.addEventListener("click", (e) => { e.stopPropagation(); metaBumpScore(dirNode.path || "", 1); });
+      if (down) down.addEventListener("click", (e) => { e.stopPropagation(); metaBumpScore(dirNode.path || "", -1); });
+
+      card.addEventListener("click", () => {
+        navigateToDirectory(dirNode);
+      });
+      return card;
+    }
+
+    function appendPreviewFolderContents(dirNode, container, animate) {
+      const folders = getChildDirsForNode(dirNode);
+      if (folders.length) {
+        const gridF = document.createElement("div");
+        gridF.className = "gridFolders";
+        const fragF = document.createDocumentFragment();
+
+        for (const d of folders) {
+          fragF.appendChild(makeFolderCard(d));
+        }
+
+        gridF.appendChild(fragF);
+        container.appendChild(gridF);
+      }
+
+      const ids = getOrderedFileIdsForDir(dirNode);
+
+      if (folders.length && ids.length) {
+        container.appendChild(makeSpacer());
+      }
+
+      if (!ids.length) {
+        if (!folders.length) {
+          const empty = document.createElement("div");
+          empty.className = "label";
+          empty.style.padding = "10px";
+          empty.textContent = "Empty folder.";
+          container.appendChild(empty);
+        }
+        return;
+      }
+
+      const grid = document.createElement("div");
+      grid.className = "gridFiles";
+
+      const frag = document.createDocumentFragment();
+
+      const LIMIT = 800;
+      let rendered = 0;
+
+      for (let i = 0; i < ids.length && rendered < LIMIT; i++) {
+        const id = ids[i];
+        const rec = WS.fileById.get(id);
+        if (!rec) continue;
+
+        const card = makePreviewFileCard(rec);
+        if (animate) card.classList.add("enter");
+        frag.appendChild(card);
+        rendered++;
+      }
+
+      grid.appendChild(frag);
+      container.appendChild(grid);
+    }
+
+    function renderExpandedFolderPreview(dirNode, animate, keepScroll, prevScroll) {
+      const folders = getChildDirsForNode(dirNode);
+      if (!folders.length) return false;
+
+      const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+      const selectedPath = entry && entry.kind === "dir" ? String(entry.node?.path || "") : "";
+
+      previewBodyEl.innerHTML = "";
+      const frag = document.createDocumentFragment();
+
+      for (const folder of folders) {
+        const section = document.createElement("div");
+        section.className = "previewExpandedSection";
+        section.dataset.path = folder.path || "";
+
+        const bar = document.createElement("div");
+        bar.className = "previewFolderBar" + (selectedPath && selectedPath === folder.path ? " selected" : "");
+        bar.title = folder.path ? displayPath(folder.path) : "folder";
+        bar.innerHTML = `<span class="name">${escapeHtml(displayName(folder.name || "folder") || "folder")}</span>`;
+        bar.addEventListener("click", () => {
+          navigateToDirectory(folder);
+        });
+
+        const content = document.createElement("div");
+        content.className = "previewExpandedContent";
+        appendPreviewFolderContents(folder, content, animate);
+
+        section.appendChild(bar);
+        section.appendChild(content);
+        frag.appendChild(section);
+      }
+
+      previewBodyEl.appendChild(frag);
+
+      if (animate) {
+        requestAnimationFrame(() => {
+          const cards = previewBodyEl.querySelectorAll(".fileCard.enter");
+          cards.forEach(c => c.classList.remove("enter"));
+        });
+      }
+
+      if (keepScroll) {
+        previewBodyEl.scrollTop = prevScroll;
+        return true;
+      }
+
+      if (selectedPath) {
+        const sections = previewBodyEl.querySelectorAll(".previewExpandedSection");
+        for (const section of sections) {
+          if (section.dataset.path === selectedPath) {
+            previewBodyEl.scrollTop = Math.max(0, section.offsetTop - 4);
+            return true;
+          }
+        }
+      }
+
+      previewBodyEl.scrollTop = 0;
+      return true;
+    }
+
     function renderPreviewPane(animate = false, keepScroll = false) {
       const prevScroll = keepScroll ? previewBodyEl.scrollTop : 0;
 
@@ -5719,81 +5947,11 @@
         return;
       }
 
-      const folders = getChildDirsForNode(dirNode);
-
-      if (folders.length) {
-        const gridF = document.createElement("div");
-        gridF.className = "gridFolders";
-        const fragF = document.createDocumentFragment();
-
-        for (const d of folders) {
-          const card = document.createElement("div");
-          card.className = "folderCard";
-          card.style.cursor = "pointer";
-          const icon = "📁";
-          const nm = displayName(d.name || "folder") || "folder";
-          const sc = metaGetScore(d.path || "");
-          const voteSeg = WS.view.showFolderScores ? `
-              <div class="voteBox">
-                <div class="voteBtn up">▲</div>
-                <div class="voteScore">${sc}</div>
-                <div class="voteBtn down">▼</div>
-              </div>
-              ` : ``;
-          card.innerHTML = `
-            <div class="left">
-              <div class="icon">${icon}</div>
-              <div class="name" title="${escapeHtml(nm)}">${escapeHtml(nm)}</div>
-            </div>
-            <div class="folderRight">
-              ${voteSeg}
-              <div class="meta">${dirItemCount(d)} items</div>
-            </div>
-          `;
-          const up = card.querySelector(".voteBtn.up");
-          const down = card.querySelector(".voteBtn.down");
-          if (up) up.addEventListener("click", (e) => { e.stopPropagation(); metaBumpScore(d.path || "", 1); });
-          if (down) down.addEventListener("click", (e) => { e.stopPropagation(); metaBumpScore(d.path || "", -1); });
-
-          card.addEventListener("click", () => {
-            navigateToDirectory(d);
-          });
-          fragF.appendChild(card);
-        }
-
-        gridF.appendChild(fragF);
-        previewBodyEl.appendChild(gridF);
-        previewBodyEl.appendChild(makeSpacer());
-      }
-
-      const ids = getOrderedFileIdsForDir(dirNode);
-
-      if (!ids.length) {
-        if (!folders.length) previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">Empty folder.</div>`;
+      if (isExpandedPreviewMode() && renderExpandedFolderPreview(dirNode, animate, keepScroll, prevScroll)) {
         return;
       }
 
-      const grid = document.createElement("div");
-      grid.className = "gridFiles";
-
-      const frag = document.createDocumentFragment();
-
-      const LIMIT = 800;
-      let rendered = 0;
-
-      for (let i = 0; i < ids.length && rendered < LIMIT; i++) {
-        const id = ids[i];
-        const rec = WS.fileById.get(id);
-        if (!rec) continue;
-
-        const card = makePreviewFileCard(rec);
-        if (animate) card.classList.add("enter");
-        frag.appendChild(card);
-        rendered++;
-      }
-
-      grid.appendChild(frag);
-      previewBodyEl.appendChild(grid);
+      appendPreviewFolderContents(dirNode, previewBodyEl, animate);
 
       if (animate) {
         requestAnimationFrame(() => {
@@ -5936,17 +6094,30 @@
       return ids.filter(id => passesFilter(WS.fileById.get(id)));
     }
 
-    function kickVideoThumbsForPreview() {
+    function getPreviewDirsForThumbs() {
       const dirNode = getPreviewTargetDir();
-      if (!dirNode) return;
+      if (!dirNode) return [];
+      if (WS.preview.kind === "file") return [dirNode];
+      if (isExpandedPreviewMode()) {
+        const dirs = getChildDirsForNode(dirNode);
+        return dirs.length ? dirs : [dirNode];
+      }
+      return [dirNode];
+    }
 
-      const ids = getPreviewFileIdsForDir(dirNode);
-      for (const id of ids) {
-        const rec = WS.fileById.get(id);
-        if (!rec || rec.type !== "video") continue;
-        const mode = WS.meta && WS.meta.options ? String(WS.meta.options.videoThumbSize || "medium") : "medium";
-        if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
-        enqueueVideoThumb(rec);
+    function kickVideoThumbsForPreview() {
+      const dirs = getPreviewDirsForThumbs();
+      if (!dirs.length) return;
+
+      for (const dirNode of dirs) {
+        const ids = getPreviewFileIdsForDir(dirNode);
+        for (const id of ids) {
+          const rec = WS.fileById.get(id);
+          if (!rec || rec.type !== "video") continue;
+          const mode = WS.meta && WS.meta.options ? String(WS.meta.options.videoThumbSize || "medium") : "medium";
+          if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
+          enqueueVideoThumb(rec);
+        }
       }
       drainVideoThumbQueue();
     }
@@ -6092,17 +6263,19 @@
     }
 
     function kickImageThumbsForPreview() {
-      const dirNode = getPreviewTargetDir();
-      if (!dirNode) return;
+      const dirs = getPreviewDirsForThumbs();
+      if (!dirs.length) return;
 
-      const ids = getPreviewFileIdsForDir(dirNode);
-      for (const id of ids) {
-        const rec = WS.fileById.get(id);
-        if (!rec || rec.type !== "image") continue;
-        const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-        if (mode === "high") continue;
-        if (rec.thumbUrl && rec.thumbMode === mode) continue;
-        enqueueImageThumb(rec);
+      for (const dirNode of dirs) {
+        const ids = getPreviewFileIdsForDir(dirNode);
+        for (const id of ids) {
+          const rec = WS.fileById.get(id);
+          if (!rec || rec.type !== "image") continue;
+          const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
+          if (mode === "high") continue;
+          if (rec.thumbUrl && rec.thumbMode === mode) continue;
+          enqueueImageThumb(rec);
+        }
       }
     }
 
@@ -6703,9 +6876,7 @@
 
     function syncButtons() {
       const hasWS = !!WS.root && (!!WS.nav.dirNode || WS.view.favoritesMode);
-
-      if (sortModeBtn) sortModeBtn.disabled = !hasWS;
-      if (toggleScoresBtn) toggleScoresBtn.disabled = !hasWS;
+      if (favoritesBtn) favoritesBtn.disabled = !hasWS;
 
       if (directoriesSearchInput) {
         directoriesSearchInput.disabled = !hasWS;
