@@ -614,7 +614,18 @@
       background: var(--color0-secondary);
       color: var(--color1-primary);
       border-color: var(--color0-tertirary);
-      font-weight: 800;
+    }
+
+    .tag.include {
+      background: #3b82f6;
+      color: #fff;
+      border-color: #1d4ed8;
+    }
+
+    .tag.exclude {
+      background: #ef4444;
+      color: #fff;
+      border-color: #b91c1c;
     }
 
     .tag.include {
@@ -1490,8 +1501,8 @@
       const out = {
         videoPreview: (src.videoPreview === "unmuted" || src.videoPreview === "muted" || src.videoPreview === "off") ? src.videoPreview : d.videoPreview,
         videoGallery: (src.videoGallery === "unmuted" || src.videoGallery === "muted" || src.videoGallery === "off") ? src.videoGallery : d.videoGallery,
-        imageThumbSize: (src.imageThumbSize === "small" || src.imageThumbSize === "medium" || src.imageThumbSize === "high") ? src.imageThumbSize : d.imageThumbSize,
-        videoThumbSize: (src.videoThumbSize === "small" || src.videoThumbSize === "medium" || src.videoThumbSize === "high") ? src.videoThumbSize : d.videoThumbSize,
+        imageThumbSize: (src.imageThumbSize === "tiny" || src.imageThumbSize === "small" || src.imageThumbSize === "medium" || src.imageThumbSize === "high") ? src.imageThumbSize : d.imageThumbSize,
+        videoThumbSize: (src.videoThumbSize === "tiny" || src.videoThumbSize === "small" || src.videoThumbSize === "medium" || src.videoThumbSize === "high") ? src.videoThumbSize : d.videoThumbSize,
         showFileExtensions: (typeof src.showFileExtensions === "boolean") ? src.showFileExtensions : d.showFileExtensions,
         defaultFilterMode: (src.defaultFilterMode === "all" || src.defaultFilterMode === "images" || src.defaultFilterMode === "videos" || src.defaultFilterMode === "gifs") ? src.defaultFilterMode : d.defaultFilterMode,
         defaultRandomMode: (typeof src.defaultRandomMode === "boolean") ? src.defaultRandomMode : d.defaultRandomMode,
@@ -1537,6 +1548,7 @@
     function imageThumbWidthForOption() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const m = opt ? String(opt.imageThumbSize || "medium") : "medium";
+      if (m === "tiny") return 120;
       if (m === "small") return 220;
       if (m === "high") return 900;
       return 420;
@@ -1545,6 +1557,7 @@
     function videoThumbWidthForOption() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const m = opt ? String(opt.videoThumbSize || "medium") : "medium";
+      if (m === "tiny") return 100;
       if (m === "small") return 180;
       if (m === "high") return 520;
       return 240;
@@ -2179,6 +2192,7 @@
       ];
 
       const thumbModes = [
+        { value: "tiny", label: "Tiny" },
         { value: "small", label: "Super small" },
         { value: "medium", label: "Medium" },
         { value: "high", label: "Very high" }
@@ -3280,7 +3294,7 @@
       return out.slice();
     }
 
-    function getOrderedFileIdsForDir(dirNode) {
+    function getOrderedFileIdsForDir(dirNode, includeChildren = false) {
       if (!dirNode) return [];
       let ids = [];
 
@@ -3294,6 +3308,14 @@
       }
 
       ids = ids.filter(id => passesFilter(WS.fileById.get(id)));
+
+      if (!includeChildren) return ids;
+
+      for (const child of getChildDirsForNode(dirNode)) {
+        const childIds = getOrderedFileIdsForDir(child, false);
+        for (const id of childIds) ids.push(id);
+      }
+
       return ids;
     }
 
@@ -5272,18 +5294,28 @@
       WS.videoThumbQueue.push(rec.id);
     }
 
-    function getPreviewFileIdsForDir(dirNode) {
+    function getPreviewFileIdsForDir(dirNode, includeChildren = false) {
       if (!dirNode) return [];
       const ids = dirNode.childrenFiles.slice();
       if (!dirNode.preserveOrder) ids.sort((a,b) => compareIndexedNames(WS.fileById.get(a)?.name || "", WS.fileById.get(b)?.name || ""));
-      return ids.filter(id => passesFilter(WS.fileById.get(id)));
+      const out = ids.filter(id => passesFilter(WS.fileById.get(id)));
+
+      if (!includeChildren) return out;
+
+      for (const child of getChildDirsForNode(dirNode)) {
+        const childIds = getPreviewFileIdsForDir(child, false);
+        for (const id of childIds) out.push(id);
+      }
+
+      return out;
     }
 
     function kickVideoThumbsForPreview() {
       const dirNode = getPreviewTargetDir();
       if (!dirNode) return;
 
-      const ids = getPreviewFileIdsForDir(dirNode);
+      const includeChildren = previewDisplayMode() === "expanded" && WS.preview.kind !== "file";
+      const ids = getPreviewFileIdsForDir(dirNode, includeChildren);
       for (const id of ids) {
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "video") continue;
@@ -5295,8 +5327,8 @@
     }
 
     async function drainVideoThumbQueue() {
-      if (WS.videoThumbActive >= 2) return;
-      while (WS.videoThumbActive < 2 && WS.videoThumbQueue.length) {
+      if (WS.videoThumbActive >= 4) return;
+      while (WS.videoThumbActive < 4 && WS.videoThumbQueue.length) {
         const id = WS.videoThumbQueue.shift();
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "video") continue;
@@ -5324,7 +5356,7 @@
       rec.videoThumbMode = mode;
 
       const v = document.createElement("video");
-      v.preload = "metadata";
+      v.preload = "auto";
       v.muted = true;
       v.playsInline = true;
       v.src = url;
@@ -5374,8 +5406,8 @@
     }
 
     async function drainImageThumbQueue() {
-      if (WS.imageThumbActive >= 2) return;
-      while (WS.imageThumbActive < 2 && WS.imageThumbQueue.length) {
+      if (WS.imageThumbActive >= 4) return;
+      while (WS.imageThumbActive < 4 && WS.imageThumbQueue.length) {
         const id = WS.imageThumbQueue.shift();
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "image") continue;
