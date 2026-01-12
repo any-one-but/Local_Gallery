@@ -1,0 +1,33 @@
+{
+  "name": "local_gallery",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/any-one-but/Local_Gallery.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/any-one-but/Local_Gallery/issues"
+  },
+  "homepage": "https://github.com/any-one-but/Local_Gallery#readme",
+  "devDependencies": {
+    "electron": "^39.2.7",
+    "electron-builder": "^26.4.0"
+  },
+  "build": {
+    "productName": "Local_Gallery",
+    "appId": "com.anyonebut.localgallery",
+    "mac": {
+      "target": ["dmg", "zip"]
+    }
+  }
+}
