@@ -155,6 +155,7 @@
         hideBeforeLastDashInFileNames: false,
         hideAfterFirstUnderscoreInFileNames: false,
         forceTitleCaps: false,
+        banicOpenWindow: true,
         colorScheme: "classic"
       };
     }
@@ -186,6 +187,7 @@
         hideBeforeLastDashInFileNames: (typeof src.hideBeforeLastDashInFileNames === "boolean") ? src.hideBeforeLastDashInFileNames : d.hideBeforeLastDashInFileNames,
         hideAfterFirstUnderscoreInFileNames: (typeof src.hideAfterFirstUnderscoreInFileNames === "boolean") ? src.hideAfterFirstUnderscoreInFileNames : d.hideAfterFirstUnderscoreInFileNames,
         forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
+        banicOpenWindow: (typeof src.banicOpenWindow === "boolean") ? src.banicOpenWindow : d.banicOpenWindow,
         colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber") ? src.colorScheme : d.colorScheme
       };
       return out;
@@ -673,11 +675,15 @@
           vid.muted = true;
         });
         banicOverlayEl.classList.add("active");
-        const link = BANIC_LINKS[Math.floor(Math.random() * BANIC_LINKS.length)];
-        try {
-          const win = window.open(link, "_blank");
-          if (win && win.focus) win.focus();
-        } catch {}
+        const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+        const shouldOpenWindow = !opt || opt.banicOpenWindow !== false;
+        if (shouldOpenWindow) {
+          const link = BANIC_LINKS[Math.floor(Math.random() * BANIC_LINKS.length)];
+          try {
+            const win = window.open(link, "_blank");
+            if (win && win.focus) win.focus();
+          } catch {}
+        }
         return;
       }
 
@@ -749,7 +755,7 @@
 
       <h2>BANIC! button</h2>
       <ul>
-        <li>Press <code>B</code> to trigger BANIC! (mutes Local Gallery, blacks out the screen, and opens a harmless site). Press <code>B</code> again to resume.</li>
+        <li>Press <code>B</code> to trigger BANIC! (mutes Local Gallery, blacks out the screen, and can open a harmless site). Press <code>B</code> again to resume.</li>
       </ul>
 
       <h2>Directories + preview panes</h2>
@@ -995,6 +1001,7 @@
         ${makeSelectRow("Preload next item", "Preload the next item for smoother browsing.", "opt_preloadNextMode", String(opt.preloadNextMode || "off"), preloadModes)}
         ${makeSelectRow("Video end behavior", "What happens when a video ends (outside slideshow).", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
         ${makeSelectRow("Slideshow speed", "Controls Shift behavior for slideshows.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
+        ${makeCheckRow("BANIC! opens decoy window", "When enabled, BANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 
         <h2>Thumbnails</h2>
         ${makeSelectRow("Image thumbnail size", "Controls generated image thumbnail quality (smaller is faster).", "opt_imageThumbSize", String(opt.imageThumbSize || "medium"), thumbModes)}
@@ -1082,6 +1089,7 @@
       });
       bindSelect("opt_videoEndBehavior", "videoEndBehavior", false);
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
+      bindCheck("opt_banicOpenWindow", "banicOpenWindow");
       bindSelect("opt_imageThumbSize", "imageThumbSize", true);
       bindSelect("opt_videoThumbSize", "videoThumbSize", true);
       bindSelect("opt_mediaThumbUiSize", "mediaThumbUiSize", false);
