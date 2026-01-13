@@ -201,10 +201,22 @@
       grid-template-areas:
         "dirs preview"
         "title preview";
-      gap: 12px;
-      padding: 16px 14px;
+      gap: 0;
+      padding: 0;
       align-items: stretch;
       justify-items: stretch;
+      position: relative;
+    }
+
+    #app::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: min(320px, 28vw);
+      width: 1px;
+      background: var(--color1-tertiary);
+      pointer-events: none;
     }
 
     a { color: var(--anchor-internal-color2-primary); }
@@ -317,9 +329,9 @@
       z-index: 20;
       padding: 10px 10px;
       background: var(--color1-secondary);
-      border-radius: 4px;
-      border: 1px solid var(--color1-tertiary);
-      box-shadow: 0 10px 30px var(--color1-primary-transparent);
+      border-radius: 0;
+      border: 0;
+      box-shadow: none;
       width: 100%;
       display: flex;
       align-items: center;
@@ -346,26 +358,26 @@
        Layout shell
        ========================================================= */
     #layout {
-      width: min(1400px, 98vw);
+      width: 100%;
       flex: 1;
       min-height: 0;
       display: contents;
       flex-direction: column;
-      gap: 12px;
+      gap: 0;
     }
 
     #shell {
       flex: 1;
       min-height: 0;
       display: contents;
-      gap: 12px;
+      gap: 0;
     }
 
     #directoriesPane, #previewPane {
       background: var(--color1-secondary);
-      border-radius: 4px;
-      border: 1px solid var(--color1-tertiary);
-      box-shadow: 0 10px 30px var(--color1-primary-transparent);
+      border-radius: 0;
+      border: 0;
+      box-shadow: none;
       min-height: 0;
     }
 
@@ -382,7 +394,7 @@
 
     #directoriesHeader {
       padding: 10px 10px 8px;
-      border-bottom: 1px solid var(--color1-tertiary);
+      border-bottom: 0;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -397,6 +409,7 @@
     }
 
     #directoriesHeaderTop .title {
+      display: none;
       font-size: 12px;
       font-weight: 800;
       color: var(--color0-primary);
@@ -621,7 +634,7 @@
 
     #previewHeader {
       padding: 10px 10px 8px;
-      border-bottom: 1px solid var(--color1-tertiary);
+      border-bottom: 0;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -638,6 +651,7 @@
     }
 
     #previewHeaderLeft .title {
+      display: none;
       font-size: 12px;
       font-weight: 800;
       color: var(--color0-primary);
@@ -1441,6 +1455,9 @@
     @media (max-width: 900px) {
       #app {
         grid-template-columns: min(300px, 42vw) 1fr;
+      }
+      #app::before {
+        left: min(300px, 42vw);
       }
       .gridFolders { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
       .gridFiles { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
