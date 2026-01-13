@@ -34,8 +34,29 @@
       const opt = (typeof WS !== "undefined" && WS.meta && WS.meta.options) ? WS.meta.options : null;
       const hideIndices = opt ? !!opt.hideIndicesInNames : true;
       let out = hideIndices ? splitIndexPrefix(name).clean : String(name || "");
+      out = applyFileNameFilters(out, opt);
       if (opt && opt.hideUnderscoresInNames) out = out.replace(/_/g, " ");
       if (opt && opt.forceTitleCaps) out = toTitleCaps(out);
+      return out;
+    }
+
+    function splitNameExt(name) {
+      const raw = String(name || "");
+      const i = raw.lastIndexOf(".");
+      if (i <= 0) return { base: raw, ext: "" };
+      return { base: raw.slice(0, i), ext: raw.slice(i) };
+    }
+
+    function applyFileNameFilters(base, opt) {
+      let out = String(base || "");
+      if (opt && opt.hideBeforeLastDashInFileNames) {
+        const idx = out.lastIndexOf(" - ");
+        if (idx >= 0) out = out.slice(idx + 3);
+      }
+      if (opt && opt.hideAfterFirstUnderscoreInFileNames) {
+        const idx = out.indexOf("_");
+        if (idx >= 0) out = out.slice(0, idx);
+      }
       return out;
     }
 
@@ -131,6 +152,8 @@
         slideshowDefault: "cycle",
         hideIndicesInNames: true,
         hideUnderscoresInNames: false,
+        hideBeforeLastDashInFileNames: false,
+        hideAfterFirstUnderscoreInFileNames: false,
         forceTitleCaps: false,
         colorScheme: "classic"
       };
@@ -160,6 +183,8 @@
         slideshowDefault: (src.slideshowDefault === "cycle" || src.slideshowDefault === "1" || src.slideshowDefault === "3" || src.slideshowDefault === "5" || src.slideshowDefault === "10") ? src.slideshowDefault : d.slideshowDefault,
         hideIndicesInNames: (typeof src.hideIndicesInNames === "boolean") ? src.hideIndicesInNames : d.hideIndicesInNames,
         hideUnderscoresInNames: (typeof src.hideUnderscoresInNames === "boolean") ? src.hideUnderscoresInNames : d.hideUnderscoresInNames,
+        hideBeforeLastDashInFileNames: (typeof src.hideBeforeLastDashInFileNames === "boolean") ? src.hideBeforeLastDashInFileNames : d.hideBeforeLastDashInFileNames,
+        hideAfterFirstUnderscoreInFileNames: (typeof src.hideAfterFirstUnderscoreInFileNames === "boolean") ? src.hideAfterFirstUnderscoreInFileNames : d.hideAfterFirstUnderscoreInFileNames,
         forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
         colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber") ? src.colorScheme : d.colorScheme
       };
@@ -167,25 +192,19 @@
     }
 
     function fileDisplayName(name) {
-      const base = displayName(name || "") || "";
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      if (!opt || !opt.hideFileExtensions) return base;
-      const i = base.lastIndexOf(".");
-      if (i <= 0) return base;
-      return base.slice(0, i);
+      const parts = splitNameExt(name || "");
+      const base = displayName(parts.base || "") || "";
+      if (!opt || !opt.hideFileExtensions) return base + (parts.ext || "");
+      return base;
     }
 
     function relPathDisplayName(relPath) {
       const parts = String(relPath || "").split("/").filter(Boolean);
       if (!parts.length) return "";
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      if (!opt || !opt.hideFileExtensions) return displayRelPath(relPath);
       const out = parts.map((seg, idx) => {
-        const nm = displayName(seg || "") || "";
-        if (idx !== parts.length - 1) return nm;
-        const i = nm.lastIndexOf(".");
-        if (i <= 0) return nm;
-        return nm.slice(0, i);
+        if (idx !== parts.length - 1) return displayName(seg || "") || "";
+        return fileDisplayName(seg || "") || "";
       });
       return out.join("/") || "";
     }
@@ -989,6 +1008,8 @@
         ${makeCheckRow("Hide file extensions", "Hide .jpg / .mp4 in file names.", "opt_hideFileExtensions", !!opt.hideFileExtensions)}
         ${makeCheckRow("Hide indices from display names", "Hide numeric prefixes like '01 - '.", "opt_hideIndicesInNames", !!opt.hideIndicesInNames)}
         ${makeCheckRow("Hide underscores from display names", "Replace underscores with spaces.", "opt_hideUnderscoresInNames", !!opt.hideUnderscoresInNames)}
+        ${makeCheckRow("Hide prefix before last ' - ' in file names", "Show only text after the last ' - ' in file names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
+        ${makeCheckRow("Hide suffix after first underscore in file names", "Show only text before the first underscore in file names.", "opt_hideAfterFirstUnderscoreInFileNames", !!opt.hideAfterFirstUnderscoreInFileNames)}
         ${makeCheckRow("Force title caps in display names", "Apply Title Case to display names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
       `;
 
@@ -1074,6 +1095,8 @@
       bindCheck("opt_hideFileExtensions", "hideFileExtensions");
       bindCheck("opt_hideIndicesInNames", "hideIndicesInNames");
       bindCheck("opt_hideUnderscoresInNames", "hideUnderscoresInNames");
+      bindCheck("opt_hideBeforeLastDashInFileNames", "hideBeforeLastDashInFileNames");
+      bindCheck("opt_hideAfterFirstUnderscoreInFileNames", "hideAfterFirstUnderscoreInFileNames");
       bindCheck("opt_forceTitleCaps", "forceTitleCaps");
 
       const dirSortSelect = $("opt_dirSortMode");
@@ -3753,6 +3776,22 @@
           return btn;
         };
 
+        const scoreRow = document.createElement("div");
+        scoreRow.className = "scoreRow";
+        const scoreUpBtn = makeActionBtn("+", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaBumpScoreBulk(selectedDirs, 1);
+        });
+        scoreUpBtn.classList.add("scoreBtn");
+        const scoreDownBtn = makeActionBtn("-", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaBumpScoreBulk(selectedDirs, -1);
+        });
+        scoreDownBtn.classList.add("scoreBtn");
+        scoreRow.appendChild(scoreUpBtn);
+        scoreRow.appendChild(scoreDownBtn);
+        directoriesActionMenuEl.appendChild(scoreRow);
+
         directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
           WS.view.bulkActionMenuOpen = false;
           openBulkTagPanel();
@@ -3766,16 +3805,6 @@
         directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
           WS.view.bulkActionMenuOpen = false;
           metaSetHiddenBulk(selectedDirs, !allHidden);
-        }));
-
-        directoriesActionMenuEl.appendChild(makeActionBtn("Score +1", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaBumpScoreBulk(selectedDirs, 1);
-        }));
-
-        directoriesActionMenuEl.appendChild(makeActionBtn("Score -1", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaBumpScoreBulk(selectedDirs, -1);
         }));
 
         requestAnimationFrame(() => positionDropdownMenu(directoriesMenuBtn, directoriesActionMenuEl));
@@ -3965,14 +3994,16 @@
             <div class="dirMenu">
             <button class="dirMenuBtn" title="Folder actions">⋯</button>
             <div class="dropdownMenu${menuOpen ? " open" : ""}">
+              <div class="scoreRow">
+                <button type="button" class="scoreBtn" data-action="score-up">+</button>
+                <button type="button" class="scoreBtn" data-action="score-down">-</button>
+              </div>
               <button type="button" data-action="tag">Tag</button>
               <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
               <button type="button" data-action="batch-index-1"${canBatchIndex ? "" : " disabled"}>Batch Index I</button>
               <button type="button" data-action="batch-index-2"${canBatchIndex ? "" : " disabled"}>Batch Index II</button>
               <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
               <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
-              <button type="button" data-action="score-up">Score +1</button>
-              <button type="button" data-action="score-down">Score -1</button>
             </div>
           </div>
           `;

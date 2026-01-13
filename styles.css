@@ -593,6 +593,19 @@
       background: var(--color1-secondary);
     }
 
+    .dropdownMenu .scoreRow {
+      display: flex;
+      gap: 4px;
+    }
+
+    .dropdownMenu .scoreBtn {
+      width: 50%;
+      text-align: center;
+      padding: 6px 0;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
     /* =========================================================
        Preview Pane
        ========================================================= */
