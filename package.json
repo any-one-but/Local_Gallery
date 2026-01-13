@@ -1,6 +1,6 @@
 {
   "name": "local_gallery",
-  "version": "01.00.06",
+  "version": "01.00.07",
   "description": "",
   "main": "main.js",
   "scripts": {
@@ -26,6 +26,13 @@
   "build": {
     "productName": "Local_Gallery",
     "appId": "com.anyonebut.localgallery",
+    "files": [
+    "**/*",
+    "!dist/**",
+    "!Releases/**",
+    "!*.dmg",
+    "!*.zip"
+   ],
     "mac": {
       "icon": "assets/icon.icns",
       "target": ["dmg", "zip"]

@@ -64,6 +64,39 @@
       return out.join("/") || "";
     }
 
+    function normalizeFolderNameInput(name) {
+      return String(name || "").trim();
+    }
+
+    function isValidFolderName(name) {
+      if (!name) return false;
+      if (name === "." || name === "..") return false;
+      if (/[\/\\]/.test(name)) return false;
+      return true;
+    }
+
+    function remapPathPrefix(oldPrefix, newPrefix, path) {
+      const p = String(path || "");
+      if (!oldPrefix) return p;
+      if (p === oldPrefix) return newPrefix;
+      if (p.startsWith(oldPrefix + "/")) return newPrefix + p.slice(oldPrefix.length);
+      return p;
+    }
+
+    function remapPathSet(src, oldPrefix, newPrefix) {
+      const next = new Set();
+      for (const p of src || []) next.add(remapPathPrefix(oldPrefix, newPrefix, p));
+      return next;
+    }
+
+    function remapPathMapKeys(src, oldPrefix, newPrefix) {
+      const next = new Map();
+      for (const [key, value] of src || []) {
+        next.set(remapPathPrefix(oldPrefix, newPrefix, key), value);
+      }
+      return next;
+    }
+
     function makeDirNode(name, parent) {
       return {
         type: "dir",
@@ -369,6 +402,7 @@
       WS.root = null;
       WS.fileById.clear();
       WS.dirByPath.clear();
+      DIR_HANDLE_CACHE = new Map();
 
       WS.meta.dirScores.clear();
       WS.meta.dirTags.clear();
@@ -492,6 +526,8 @@
     const directoriesBulkRowEl = $("directoriesBulkRow");
     const directoriesSearchInput = $("directoriesSearchInput");
     const directoriesSearchClearBtn = $("directoriesSearchClearBtn");
+    const busyOverlay = $("busyOverlay");
+    const busyLabel = $("busyLabel");
 
     // Preview Pane
     const breadcrumbInlineEl = $("breadcrumbInline");
@@ -529,6 +565,8 @@
     let viewerVideoEl = null;
     let viewerFolderEl = null;
 
+    let DIR_HANDLE_CACHE = new Map();
+
     let previewViewportBox = null;
     let previewImgEl = null;
     let previewVideoEl = null;
@@ -543,6 +581,8 @@
     let PRELOAD_CACHE = new Map();
 
     let TAG_EDIT_PATH = null;
+    let RENAME_EDIT_PATH = null;
+    let RENAME_BUSY = false;
 
     let HELP_OPEN = false;
     let OPTIONS_OPEN = false;
@@ -1866,6 +1906,15 @@
       }, 500);
     }
 
+    function showBusyOverlay(text) {
+      if (busyLabel) busyLabel.textContent = text || "Working...";
+      if (busyOverlay) busyOverlay.classList.add("active");
+    }
+
+    function hideBusyOverlay() {
+      if (busyOverlay) busyOverlay.classList.remove("active");
+    }
+
     function metaInitForCurrentWorkspace() {
       metaComputeFingerprints();
 
@@ -2203,6 +2252,453 @@
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
+    }
+
+    async function getDirectoryHandleForPath(rootHandle, path) {
+      const norm = String(path || "").replace(/^\/+|\/+$/g, "");
+      if (!norm) {
+        DIR_HANDLE_CACHE.set("", rootHandle);
+        return rootHandle;
+      }
+      if (DIR_HANDLE_CACHE.has(norm)) return DIR_HANDLE_CACHE.get(norm);
+      let cur = rootHandle;
+      let acc = "";
+      const parts = norm.split("/").filter(Boolean);
+      for (const part of parts) {
+        acc = acc ? (acc + "/" + part) : part;
+        if (DIR_HANDLE_CACHE.has(acc)) {
+          cur = DIR_HANDLE_CACHE.get(acc);
+          continue;
+        }
+        cur = await cur.getDirectoryHandle(part);
+        DIR_HANDLE_CACHE.set(acc, cur);
+      }
+      return cur;
+    }
+
+    function invalidateDirHandleCache(prefix) {
+      const p = String(prefix || "");
+      if (!p) {
+        DIR_HANDLE_CACHE = new Map();
+        return;
+      }
+      for (const key of Array.from(DIR_HANDLE_CACHE.keys())) {
+        if (key === p || key.startsWith(p + "/")) DIR_HANDLE_CACHE.delete(key);
+      }
+    }
+
+    async function copyDirectoryHandle(srcHandle, dstHandle) {
+      for await (const [name, handle] of srcHandle.entries()) {
+        if (name === ".local-gallery") continue;
+        if (handle.kind === "file") {
+          const file = await handle.getFile();
+          const dstFile = await dstHandle.getFileHandle(name, { create: true });
+          const writable = await dstFile.createWritable();
+          await writable.write(file);
+          await writable.close();
+        } else if (handle.kind === "directory") {
+          const childDst = await dstHandle.getDirectoryHandle(name, { create: true });
+          await copyDirectoryHandle(handle, childDst);
+        }
+      }
+    }
+
+    async function renameDirectoryOnDisk(oldPath, newName) {
+      const rootHandle = WS.meta.fsRootHandle;
+      if (!rootHandle) throw new Error("No writable folder loaded.");
+
+      const parts = String(oldPath || "").split("/").filter(Boolean);
+      const oldName = parts.pop() || "";
+      const parentPath = parts.join("/");
+
+      const parentHandle = await getDirectoryHandleForPath(rootHandle, parentPath);
+
+      let existing = null;
+      try { existing = await parentHandle.getDirectoryHandle(newName); } catch {}
+      if (existing) throw new Error("Target folder exists.");
+
+      const srcHandle = await parentHandle.getDirectoryHandle(oldName);
+
+      if (typeof srcHandle.move === "function") {
+        try {
+          await srcHandle.move(parentHandle, newName);
+          return;
+        } catch {}
+      }
+
+      const dstHandle = await parentHandle.getDirectoryHandle(newName, { create: true });
+      await copyDirectoryHandle(srcHandle, dstHandle);
+      await parentHandle.removeEntry(oldName, { recursive: true });
+    }
+
+    async function renameFileOnDisk(dirHandle, fileHandle, oldName, newName) {
+      if (!dirHandle || !fileHandle) return false;
+      if (typeof fileHandle.move === "function") {
+        try {
+          await fileHandle.move(dirHandle, newName);
+          return true;
+        } catch {}
+      }
+      try {
+        const file = await fileHandle.getFile();
+        const dstFile = await dirHandle.getFileHandle(newName, { create: true });
+        const writable = await dstFile.createWritable();
+        await writable.write(file);
+        await writable.close();
+        await dirHandle.removeEntry(oldName);
+        return true;
+      } catch {}
+      return false;
+    }
+
+    function updateViewStatePathsForRename(oldPrefix, newPrefix) {
+      WS.view.dirActionMenuPath = remapPathPrefix(oldPrefix, newPrefix, WS.view.dirActionMenuPath);
+      WS.view.searchRootPath = remapPathPrefix(oldPrefix, newPrefix, WS.view.searchRootPath);
+      WS.view.searchAnchorPath = remapPathPrefix(oldPrefix, newPrefix, WS.view.searchAnchorPath);
+      WS.view.searchEntryRootPath = remapPathPrefix(oldPrefix, newPrefix, WS.view.searchEntryRootPath);
+      WS.view.favoritesAnchorPath = remapPathPrefix(oldPrefix, newPrefix, WS.view.favoritesAnchorPath);
+      WS.view.hiddenAnchorPath = remapPathPrefix(oldPrefix, newPrefix, WS.view.hiddenAnchorPath);
+
+      if (WS.view.favoritesReturnState) {
+        WS.view.favoritesReturnState.dirPath = remapPathPrefix(oldPrefix, newPrefix, WS.view.favoritesReturnState.dirPath);
+        if (WS.view.favoritesReturnState.sel && WS.view.favoritesReturnState.sel.kind === "dir") {
+          WS.view.favoritesReturnState.sel.path = remapPathPrefix(oldPrefix, newPrefix, WS.view.favoritesReturnState.sel.path);
+        }
+      }
+
+      if (WS.view.hiddenReturnState) {
+        WS.view.hiddenReturnState.dirPath = remapPathPrefix(oldPrefix, newPrefix, WS.view.hiddenReturnState.dirPath);
+        if (WS.view.hiddenReturnState.sel && WS.view.hiddenReturnState.sel.kind === "dir") {
+          WS.view.hiddenReturnState.sel.path = remapPathPrefix(oldPrefix, newPrefix, WS.view.hiddenReturnState.sel.path);
+        }
+      }
+
+      WS.view.bulkTagSelectionsByDir = remapPathMapKeys(WS.view.bulkTagSelectionsByDir, oldPrefix, newPrefix);
+      WS.view.bulkFileSelectionsByDir = remapPathMapKeys(WS.view.bulkFileSelectionsByDir, oldPrefix, newPrefix);
+      WS.view.bulkTagSelectedPaths = remapPathSet(WS.view.bulkTagSelectedPaths, oldPrefix, newPrefix);
+    }
+
+    function updateMetaPathsForRename(oldPrefix, newPrefix) {
+      WS.meta.dirScores = remapPathMapKeys(WS.meta.dirScores, oldPrefix, newPrefix);
+      WS.meta.dirTags = remapPathMapKeys(WS.meta.dirTags, oldPrefix, newPrefix);
+      WS.meta.dirFingerprints = remapPathMapKeys(WS.meta.dirFingerprints, oldPrefix, newPrefix);
+    }
+
+    function applyRenameInMemory(dirNode, newName) {
+      const oldPath = String(dirNode?.path || "");
+      const parentPath = String(dirNode?.parent?.path || "");
+      const newPath = parentPath ? (parentPath + "/" + newName) : newName;
+
+      dirNode.name = newName;
+
+      (function walk(node) {
+        node.path = remapPathPrefix(oldPath, newPath, node.path || "");
+        for (const d of node.childrenDirs) walk(d);
+      })(dirNode);
+
+      WS.dirByPath = remapPathMapKeys(WS.dirByPath, oldPath, newPath);
+      updateMetaPathsForRename(oldPath, newPath);
+      updateViewStatePathsForRename(oldPath, newPath);
+      invalidateDirHandleCache(oldPath);
+      return { oldPath, newPath };
+    }
+
+    function remapFileSelectionIds(idMap) {
+      const next = new Set();
+      for (const id of WS.view.bulkFileSelectedIds || []) {
+        next.add(idMap.get(id) || id);
+      }
+      WS.view.bulkFileSelectedIds = next;
+    }
+
+    function remapFileIdsInDirTree(idMap) {
+      for (const node of WS.dirByPath.values()) {
+        if (!node || !node.childrenFiles) continue;
+        for (let i = 0; i < node.childrenFiles.length; i++) {
+          const oldId = String(node.childrenFiles[i] || "");
+          if (idMap.has(oldId)) node.childrenFiles[i] = idMap.get(oldId);
+        }
+      }
+    }
+
+    function updateFileRecordsForRename(oldPrefix, newPrefix) {
+      const idMap = new Map();
+      const nextFileById = new Map();
+      for (const [id, rec] of WS.fileById.entries()) {
+        const oldDirPath = String(rec.dirPath || "");
+        const oldRelPath = String(rec.relPath || "");
+        const nextDirPath = remapPathPrefix(oldPrefix, newPrefix, oldDirPath);
+        const nextRelPath = remapPathPrefix(oldPrefix, newPrefix, oldRelPath);
+        const nextId = (nextRelPath !== oldRelPath) ? fileKey(rec.file, nextRelPath) : id;
+        rec.dirPath = nextDirPath;
+        rec.relPath = nextRelPath;
+        rec.id = nextId;
+        if (nextId !== id) idMap.set(id, nextId);
+        nextFileById.set(nextId, rec);
+      }
+      WS.fileById = nextFileById;
+      if (idMap.size) {
+        remapFileIdsInDirTree(idMap);
+        remapFileSelectionIds(idMap);
+        if (WS.preview.kind === "file" && WS.preview.fileId && idMap.has(WS.preview.fileId)) {
+          WS.preview.fileId = idMap.get(WS.preview.fileId);
+        }
+        for (const entry of WS.nav.entries || []) {
+          if (entry && entry.kind === "file" && idMap.has(String(entry.id || ""))) {
+            entry.id = idMap.get(String(entry.id || ""));
+          }
+        }
+        for (const it of viewerItems || []) {
+          if (it && !it.isFolder && idMap.has(String(it.id || ""))) it.id = idMap.get(String(it.id || ""));
+        }
+      }
+      WS.view.randomCache = remapPathMapKeys(WS.view.randomCache, oldPrefix, newPrefix);
+    }
+
+    function updateFileRecordsForFileRenames(dirNode, renameMap) {
+      if (!dirNode || !renameMap || !renameMap.size) return;
+      const dirPath = String(dirNode.path || "");
+      const idMap = new Map();
+      const nextFileById = new Map();
+
+      for (const [id, rec] of WS.fileById.entries()) {
+        if (String(rec.dirPath || "") !== dirPath) {
+          nextFileById.set(id, rec);
+          continue;
+        }
+        const oldName = String(rec.name || "");
+        if (!renameMap.has(oldName)) {
+          nextFileById.set(id, rec);
+          continue;
+        }
+        const newName = renameMap.get(oldName);
+        const extDot = newName.lastIndexOf(".");
+        const ext = extDot >= 0 ? newName.slice(extDot).toLowerCase() : "";
+        const relPath = dirPath ? (dirPath + "/" + newName) : newName;
+        rec.name = newName;
+        rec.ext = ext;
+        rec.relPath = relPath;
+        const nextId = fileKey(rec.file, relPath);
+        rec.id = nextId;
+        if (nextId !== id) idMap.set(id, nextId);
+        nextFileById.set(nextId, rec);
+      }
+
+      WS.fileById = nextFileById;
+
+      if (idMap.size) {
+        remapFileIdsInDirTree(idMap);
+        remapFileSelectionIds(idMap);
+        if (WS.preview.kind === "file" && WS.preview.fileId && idMap.has(WS.preview.fileId)) {
+          WS.preview.fileId = idMap.get(WS.preview.fileId);
+        }
+        for (const entry of WS.nav.entries || []) {
+          if (entry && entry.kind === "file" && idMap.has(String(entry.id || ""))) {
+            entry.id = idMap.get(String(entry.id || ""));
+          }
+        }
+        for (const it of viewerItems || []) {
+          if (it && !it.isFolder && idMap.has(String(it.id || ""))) it.id = idMap.get(String(it.id || ""));
+        }
+      }
+
+      WS.view.randomCache.delete(dirPath);
+    }
+
+    async function performBatchIndexForDir(dirNode, opts = {}) {
+      if (!dirNode || !WS.meta.fsRootHandle) return { renamed: false, files: 0 };
+
+      const dirPath = String(dirNode.path || "");
+      const base = String(dirNode.name || "folder");
+      const dirHandle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, dirPath);
+
+      const files = [];
+      for await (const [name, handle] of dirHandle.entries()) {
+        if (handle.kind !== "file") continue;
+        files.push({ name, handle });
+      }
+
+      files.sort((a, b) => a.name.localeCompare(b.name));
+
+      const count = files.length;
+      if (!count) return { renamed: false, files: 0 };
+      const width = String(count).length + 1;
+
+      const renameMap = new Map();
+      const labelBase = opts.label || "Batch Index";
+      for (let i = 0; i < count; i++) {
+        const idx = String(i + 1).padStart(width, "0");
+        const oldName = files[i].name;
+        const dot = oldName.lastIndexOf(".");
+        const ext = dot >= 0 ? oldName.slice(dot + 1) : "";
+        const newName = `${base}_${idx}${ext ? "." + ext : ""}`;
+        if (newName === oldName) continue;
+
+        let exists = false;
+        try {
+          await dirHandle.getFileHandle(newName);
+          exists = true;
+        } catch {}
+        if (exists) continue;
+
+        if (opts.progress) showBusyOverlay(`${labelBase}... ${opts.progress} (${i + 1}/${count})`);
+        else showBusyOverlay(`${labelBase}... ${i + 1}/${count}`);
+        const ok = await renameFileOnDisk(dirHandle, files[i].handle, oldName, newName);
+        if (ok) renameMap.set(oldName, newName);
+      }
+
+      if (renameMap.size) {
+        updateFileRecordsForFileRenames(dirNode, renameMap);
+        return { renamed: true, files: renameMap.size };
+      }
+      return { renamed: false, files: 0 };
+    }
+
+    async function batchIndexFolderFiles(dirNode) {
+      if (RENAME_BUSY) return false;
+      if (!dirNode) return false;
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Renaming files requires a writable folder.");
+        return false;
+      }
+
+      RENAME_BUSY = true;
+      showBusyOverlay("Batch Index I...");
+      try {
+        const res = await performBatchIndexForDir(dirNode, { label: "Batch Index I" });
+        if (res.renamed) {
+          rebuildDirectoriesEntries();
+          WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+          syncPreviewToSelection();
+          renderDirectoriesPane(true);
+          renderPreviewPane(true, true);
+          syncButtons();
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+          showStatusMessage("Batch Index I complete.");
+          return true;
+        }
+        showStatusMessage("No files renamed.");
+        return false;
+      } finally {
+        RENAME_BUSY = false;
+        hideBusyOverlay();
+      }
+    }
+
+    async function batchIndexChildFolderFiles(dirNode) {
+      if (RENAME_BUSY) return false;
+      if (!dirNode) return false;
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Renaming files requires a writable folder.");
+        return false;
+      }
+
+      const children = (dirNode.childrenDirs || []).slice();
+      children.sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
+      if (!children.length) {
+        showStatusMessage("No subfolders found.");
+        return false;
+      }
+
+      RENAME_BUSY = true;
+      showBusyOverlay("Batch Index II...");
+      let renamedAny = false;
+      try {
+        for (let i = 0; i < children.length; i++) {
+          const child = children[i];
+          if (!child) continue;
+          const progress = `${i + 1}/${children.length}`;
+          const res = await performBatchIndexForDir(child, { label: "Batch Index II", progress });
+          if (res.renamed) renamedAny = true;
+        }
+
+        if (renamedAny) {
+          rebuildDirectoriesEntries();
+          WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+          syncPreviewToSelection();
+          renderDirectoriesPane(true);
+          renderPreviewPane(true, true);
+          syncButtons();
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+          showStatusMessage("Batch Index II complete.");
+          return true;
+        }
+        showStatusMessage("No files renamed.");
+        return false;
+      } finally {
+        RENAME_BUSY = false;
+        hideBusyOverlay();
+      }
+    }
+
+    async function renameFolderDirNode(dirNode, nextName) {
+      if (!dirNode) return false;
+      if (!dirNode.parent) {
+        showStatusMessage("Root folder cannot be renamed.");
+        return false;
+      }
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Rename requires a writable folder.");
+        return false;
+      }
+
+      const clean = normalizeFolderNameInput(nextName);
+      if (!isValidFolderName(clean)) {
+        showStatusMessage("Invalid folder name.");
+        return false;
+      }
+      if (clean === String(dirNode.name || "")) return true;
+
+      const lower = clean.toLowerCase();
+      for (const d of dirNode.parent.childrenDirs || []) {
+        if (d !== dirNode && String(d.name || "").toLowerCase() === lower) {
+          showStatusMessage("A folder with that name already exists.");
+          return false;
+        }
+      }
+
+      const oldPath = String(dirNode.path || "");
+      const state = snapshotRefreshState();
+      showBusyOverlay("Renaming folder...");
+      try {
+        await renameDirectoryOnDisk(oldPath, clean);
+        const { oldPath: prevPath, newPath } = applyRenameInMemory(dirNode, clean);
+        updateFileRecordsForRename(prevPath, newPath);
+        metaComputeFingerprints();
+        WS.meta.dirty = true;
+
+        try {
+          if (WS.meta.storageMode === "fs") await metaSaveFsNow();
+          else metaSaveLocalNow();
+        } catch {}
+
+        const entryKey = state?.entryKey || null;
+        if (entryKey && entryKey.kind === "dir") {
+          entryKey.path = remapPathPrefix(prevPath, newPath, entryKey.path);
+        } else if (entryKey && entryKey.kind === "file") {
+          entryKey.relPath = remapPathPrefix(prevPath, newPath, entryKey.relPath);
+        }
+
+        rebuildDirectoriesEntries();
+        const idx = restoreRefreshSelection(entryKey);
+        WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+        syncPreviewToSelection();
+        renderDirectoriesPane(true);
+        renderPreviewPane(true, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+
+        showStatusMessage("Rename complete.");
+        return true;
+      } catch {
+        showStatusMessage("Rename failed.");
+        return false;
+      } finally {
+        hideBusyOverlay();
+      }
     }
 
     if (refreshBtn) refreshBtn.addEventListener("click", async () => {
@@ -2951,6 +3447,7 @@
       }
 
       TAG_EDIT_PATH = null;
+      RENAME_EDIT_PATH = null;
       closeBulkTagPanel();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
@@ -3017,6 +3514,7 @@
       }
 
       TAG_EDIT_PATH = null;
+      RENAME_EDIT_PATH = null;
       closeBulkTagPanel();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
@@ -3072,6 +3570,51 @@
     function closeActionMenus() {
       WS.view.bulkActionMenuOpen = false;
       WS.view.dirActionMenuPath = "";
+    }
+
+    function positionDropdownMenu(menuBtn, menuEl) {
+      if (!menuBtn || !menuEl) return;
+      menuEl.classList.add("fixed");
+      menuEl.style.left = "0px";
+      menuEl.style.top = "0px";
+      menuEl.style.right = "auto";
+
+      const btnRect = menuBtn.getBoundingClientRect();
+      const menuRect = menuEl.getBoundingClientRect();
+
+      let left = btnRect.right - menuRect.width;
+      if (left < 8) left = 8;
+      if (left + menuRect.width > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - menuRect.width - 8);
+      }
+
+      let top = btnRect.bottom + 4;
+      if (top + menuRect.height > window.innerHeight - 8) {
+        top = btnRect.top - 4 - menuRect.height;
+      }
+      if (top < 8) top = 8;
+
+      menuEl.style.left = `${left}px`;
+      menuEl.style.top = `${top}px`;
+    }
+
+    async function commitRenameEdit(path, inputEl) {
+      if (RENAME_BUSY) return;
+      const dirNode = WS.dirByPath.get(String(path || ""));
+      if (!dirNode) {
+        RENAME_EDIT_PATH = null;
+        renderDirectoriesPane(true);
+        return;
+      }
+      RENAME_BUSY = true;
+      const ok = await renameFolderDirNode(dirNode, inputEl.value || "");
+      RENAME_BUSY = false;
+      if (ok) {
+        RENAME_EDIT_PATH = null;
+        closeActionMenus();
+        return;
+      }
+      renderDirectoriesPane(true);
     }
 
     function renderDirectoriesTagsHeader() {
@@ -3234,6 +3777,8 @@
           WS.view.bulkActionMenuOpen = false;
           metaBumpScoreBulk(selectedDirs, -1);
         }));
+
+        requestAnimationFrame(() => positionDropdownMenu(directoriesMenuBtn, directoriesActionMenuEl));
       }
     }
 
@@ -3398,6 +3943,8 @@
           const isFavorite = metaHasFavorite(p);
           const isHidden = metaHasHidden(p);
           const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
+          const canRename = !!WS.meta.fsRootHandle;
+          const canBatchIndex = !!WS.meta.fsRootHandle;
           icon = canBulk ? (sel ? "☑" : "☐") : (isHidden ? "🙈" : (isFavorite ? "♥" : "📁"));
           name = displayName(entry.node?.name || "folder") || "folder";
           meta = `${dirItemCount(entry.node)} items`;
@@ -3419,6 +3966,9 @@
             <button class="dirMenuBtn" title="Folder actions">⋯</button>
             <div class="dropdownMenu${menuOpen ? " open" : ""}">
               <button type="button" data-action="tag">Tag</button>
+              <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
+              <button type="button" data-action="batch-index-1"${canBatchIndex ? "" : " disabled"}>Batch Index I</button>
+              <button type="button" data-action="batch-index-2"${canBatchIndex ? "" : " disabled"}>Batch Index II</button>
               <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
               <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
               <button type="button" data-action="score-up">Score +1</button>
@@ -3436,7 +3986,23 @@
           meta = isVid ? "video" : "image";
         }
 
-        if (entry.kind === "dir" && (entry.node?.path || "") === (TAG_EDIT_PATH || "")) {
+        if (entry.kind === "dir" && (entry.node?.path || "") === (RENAME_EDIT_PATH || "")) {
+          const curName = String(entry.node?.name || "");
+          if (voteHtml) {
+            row.innerHTML = `
+          <div class="dirIcon">${icon}</div>
+          <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="folder name" /></div>
+          ${voteHtml}
+          ${rightHtml}
+        `;
+          } else {
+            row.innerHTML = `
+          <div class="dirIcon">${icon}</div>
+          <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="folder name" /></div>
+          ${rightHtml}
+        `;
+          }
+        } else if (entry.kind === "dir" && (entry.node?.path || "") === (TAG_EDIT_PATH || "")) {
           const p = entry.node?.path || "";
           const curTags = metaGetUserTags(p).join(", ");
           if (voteHtml) {
@@ -3532,6 +4098,7 @@
                 WS.view.dirActionMenuPath = "";
                 if (action === "tag") {
                   TAG_EDIT_PATH = p;
+                  RENAME_EDIT_PATH = null;
                   renderDirectoriesPane(true);
                   setTimeout(() => {
                     const input = directoriesListEl.querySelector(".dirRow.selected .tagEditInput") || row.querySelector(".tagEditInput");
@@ -3539,6 +4106,38 @@
                       try { input.focus(); input.select(); } catch {}
                     }
                   }, 0);
+                  return;
+                }
+                if (action === "rename") {
+                  if (!WS.meta.fsRootHandle) {
+                    showStatusMessage("Rename requires a writable folder.");
+                    return;
+                  }
+                  RENAME_EDIT_PATH = p;
+                  TAG_EDIT_PATH = null;
+                  renderDirectoriesPane(true);
+                  setTimeout(() => {
+                    const input = directoriesListEl.querySelector(".dirRow.selected .renameEditInput") || row.querySelector(".renameEditInput");
+                    if (input) {
+                      try { input.focus(); input.select(); } catch {}
+                    }
+                  }, 0);
+                  return;
+                }
+                if (action === "batch-index-1") {
+                  if (!WS.meta.fsRootHandle) {
+                    showStatusMessage("Renaming files requires a writable folder.");
+                    return;
+                  }
+                  batchIndexFolderFiles(entry.node);
+                  return;
+                }
+                if (action === "batch-index-2") {
+                  if (!WS.meta.fsRootHandle) {
+                    showStatusMessage("Renaming files requires a writable folder.");
+                    return;
+                  }
+                  batchIndexChildFolderFiles(entry.node);
                   return;
                 }
                 if (action === "favorite") {
@@ -3559,9 +4158,35 @@
                 }
               });
             });
+            if (menuDropdown.classList.contains("open")) {
+              requestAnimationFrame(() => positionDropdownMenu(menuBtn, menuDropdown));
+            }
           }
 
-          const input = row.querySelector(".tagEditInput");
+          const renameInput = row.querySelector(".renameEditInput");
+          if (renameInput) {
+            renameInput.addEventListener("click", (e) => { e.stopPropagation(); });
+            renameInput.addEventListener("keydown", (e) => {
+              e.stopPropagation();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                RENAME_EDIT_PATH = null;
+                closeActionMenus();
+                renderDirectoriesPane(true);
+                return;
+              }
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitRenameEdit(p, renameInput);
+                return;
+              }
+            });
+            renameInput.addEventListener("blur", () => {
+              commitRenameEdit(p, renameInput);
+            });
+          }
+
+          const input = row.querySelector(".tagEditInput:not(.renameEditInput)");
           if (input) {
             input.addEventListener("click", (e) => { e.stopPropagation(); });
             input.addEventListener("keydown", (e) => {
