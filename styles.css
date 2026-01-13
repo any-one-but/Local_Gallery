@@ -964,27 +964,6 @@
     #viewerViewport img.ready,
     #viewerViewport video.ready { opacity: 1; }
 
-    .nav-btn {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      background: var(--color1-secondary);
-      border: 1px solid var(--color1-tertiary);
-      border-radius: 2px;
-      padding: 8px 12px;
-      color: var(--color0-primary);
-      font-size: 20px;
-      font-weight: 800;
-      cursor: pointer;
-      user-select: none;
-      transition: background .15s ease, border-color .15s ease, transform .05s ease;
-    }
-    .nav-btn:hover { background: var(--color1-secondary-transparent); }
-    .nav-btn:active { transform: translateY(-50%) translateY(1px); }
-
-    #prevBtn { left: 16px; }
-    #nextBtn { right: 16px; }
-
     #closeBtn {
       position: absolute;
       top: 16px;
@@ -1067,8 +1046,6 @@
 
     #overlay.ui-hidden { cursor: none; }
     #overlay.ui-hidden #closeBtn,
-    #overlay.ui-hidden #prevBtn,
-    #overlay.ui-hidden #nextBtn,
     #overlay.ui-hidden #filename {
       opacity: 0;
       pointer-events: none;

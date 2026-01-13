@@ -502,8 +502,6 @@
     /* Gallery Mode (Overlay) */
     const overlay = $("overlay");
     const viewport = $("viewerViewport");
-    const prevBtn = $("prevBtn");  // now: leave directory (LEFT)
-    const nextBtn = $("nextBtn");  // now: enter directory (RIGHT)
     const closeBtn = $("closeBtn");
     const filenameEl = $("filename");
 
@@ -5094,7 +5092,8 @@
       overlay.classList.add("active");
       ensureViewerElements();
       renderViewerItem(viewerIndex);
-      resetUIHideTimer();
+      if (uiHideTimer) { clearTimeout(uiHideTimer); uiHideTimer = null; }
+      overlay.classList.add("ui-hidden");
     }
 
     function stopSlideshow() {
@@ -5594,12 +5593,9 @@
        ========================================================= */
 
     if (closeBtn) closeBtn.addEventListener("click", (e) => { e.stopPropagation(); hideOverlay(); });
-    if (prevBtn) prevBtn.addEventListener("click", (e) => { e.stopPropagation(); if (VIEWER_MODE) { resetUIHideTimer(); viewerLeaveDir(); } });
-    if (nextBtn) nextBtn.addEventListener("click", (e) => { e.stopPropagation(); if (VIEWER_MODE) { resetUIHideTimer(); viewerEnterDir(); } });
 
     overlay.addEventListener("click", (e) => {
       if (!VIEWER_MODE) return;
-      resetUIHideTimer();
     });
 
     /* =========================================================
@@ -5750,8 +5746,6 @@
       if (isTextInputTarget(e.target)) return;
 
       if (VIEWER_MODE) {
-        resetUIHideTimer();
-
         const k = e.key;
 
         if (k === "Escape" || k === "g" || k === "G") { e.preventDefault(); hideOverlay(); return; }
