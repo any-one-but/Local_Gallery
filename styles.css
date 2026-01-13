@@ -82,12 +82,12 @@
       --color1-tertiary: #8a8a8a;
 
       --anchor-internal-color2-primary: #fff;
-      --tag-include-bg: #000;
-      --tag-include-border: #8a8a8a;
-      --tag-include-color: #fff;
-      --tag-exclude-bg: #fff;
-      --tag-exclude-border: #8a8a8a;
-      --tag-exclude-color: #000;
+      --tag-include-bg: #0b1322;
+      --tag-include-border: #2a3b5f;
+      --tag-include-color: #d6e4ff;
+      --tag-exclude-bg: #20090b;
+      --tag-exclude-border: #5a1f25;
+      --tag-exclude-color: #ffd6d6;
     }
 
     :root[data-theme="superdark"] button,

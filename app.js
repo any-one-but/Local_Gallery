@@ -505,6 +505,11 @@
       renderOptionsUi();
     }
 
+    function clearWorkspaceEmptyState() {
+      if (directoriesListEl) directoriesListEl.innerHTML = "";
+      if (previewBodyEl) previewBodyEl.innerHTML = "";
+    }
+
     /* =========================================================
        UI references
        ========================================================= */
@@ -1999,6 +2004,7 @@
 
     function buildWorkspaceFromFiles(fileList) {
       resetWorkspace();
+      clearWorkspaceEmptyState();
 
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
@@ -2099,6 +2105,7 @@
 
     async function buildWorkspaceFromDirectoryHandle(rootHandle) {
       resetWorkspace();
+      clearWorkspaceEmptyState();
 
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
@@ -6528,6 +6535,8 @@
        ========================================================= */
 
     if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
+    renderDirectoriesPane();
+    renderPreviewPane(true);
     syncButtons();
 
   
