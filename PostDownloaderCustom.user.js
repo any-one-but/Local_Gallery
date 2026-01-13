@@ -2989,7 +2989,8 @@ const downloadPost = async (parsedPost, parsedHosts, enabledHostsCB, resolvers, 
                         }
 
                         if (isFF || postSettings.zipped) {
-                            zip.file(fn, response.response);
+                            const zipPath = `${postBaseName}/${fn}`;
+                            zip.file(zipPath, response.response);
                         }
                     },
                     onerror: () => {
