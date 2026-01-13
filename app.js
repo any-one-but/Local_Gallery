@@ -311,6 +311,7 @@
         searchRootActive: false,
         searchRootPath: "",
         searchAnchorPath: "",
+        searchEntryRootPath: "",
         searchRootIsFavorites: false,
         searchRootFavorites: [],
         searchRootIsHidden: false,
@@ -418,6 +419,7 @@
       WS.view.searchRootActive = false;
       WS.view.searchRootPath = "";
       WS.view.searchAnchorPath = "";
+      WS.view.searchEntryRootPath = "";
       WS.view.searchRootIsFavorites = false;
       WS.view.searchRootFavorites = [];
       WS.view.searchRootIsHidden = false;
@@ -2133,6 +2135,7 @@
           searchRootActive: WS.view.searchRootActive,
           searchRootPath: WS.view.searchRootPath,
           searchAnchorPath: WS.view.searchAnchorPath,
+          searchEntryRootPath: WS.view.searchEntryRootPath,
           searchRootIsFavorites: WS.view.searchRootIsFavorites,
           searchRootIsHidden: WS.view.searchRootIsHidden
         }
@@ -2156,6 +2159,7 @@
       WS.view.searchRootActive = !!viewState.searchRootActive;
       WS.view.searchRootPath = String(viewState.searchRootPath || "");
       WS.view.searchAnchorPath = String(viewState.searchAnchorPath || "");
+      WS.view.searchEntryRootPath = String(viewState.searchEntryRootPath || "");
       WS.view.searchRootIsFavorites = !!viewState.searchRootIsFavorites;
       WS.view.searchRootIsHidden = !!viewState.searchRootIsHidden;
       WS.view.searchRootFavorites = WS.view.searchRootIsFavorites ? getAllFavoriteDirs() : [];
@@ -2507,6 +2511,7 @@
       WS.view.searchRootActive = false;
       WS.view.searchRootPath = "";
       WS.view.searchAnchorPath = "";
+      WS.view.searchEntryRootPath = "";
       WS.view.searchRootIsFavorites = false;
       WS.view.searchRootFavorites = [];
       WS.view.searchRootIsHidden = false;
@@ -2665,6 +2670,16 @@
       return i;
     }
 
+    function findDirEntryIndexByPath(path) {
+      const p = String(path || "");
+      if (!p) return -1;
+      for (let i = 0; i < WS.nav.entries.length; i++) {
+        const entry = WS.nav.entries[i];
+        if (entry && entry.kind === "dir" && String(entry.node?.path || "") === p) return i;
+      }
+      return -1;
+    }
+
     function setDirectoriesSelection(idx) {
       if (!WS.nav.entries.length) {
         WS.nav.selectedIndex = 0;
@@ -2682,6 +2697,22 @@
       syncPreviewToSelection();
       renderDirectoriesPane();
       renderPreviewPane(false);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
+    function returnToSearchResults() {
+      const target = String(WS.view.searchEntryRootPath || WS.view.searchAnchorPath || "");
+      WS.view.searchRootActive = true;
+      WS.view.searchAnchorPath = "";
+      WS.view.searchEntryRootPath = "";
+      rebuildDirectoriesEntries();
+      const idx = target ? findDirEntryIndexByPath(target) : -1;
+      WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane();
+      renderPreviewPane(true);
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
@@ -2716,6 +2747,7 @@
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
         WS.view.searchRootActive = false;
         WS.view.searchAnchorPath = entry.node.path || "";
+        WS.view.searchEntryRootPath = entry.node.path || "";
         WS.nav.dirNode = entry.node;
         syncBulkSelectionForCurrentDir();
         syncFavoritesUi();
@@ -2795,19 +2827,8 @@
       if (WS.view.hiddenMode && WS.view.hiddenRootActive) return;
 
       if (WS.view.dirSearchPinned && !WS.view.searchRootActive) {
-        const cur = String(WS.nav.dirNode?.path || "");
-        if (cur && cur === String(WS.view.searchAnchorPath || "")) {
-          WS.view.searchRootActive = true;
-          rebuildDirectoriesEntries();
-          WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
-          syncPreviewToSelection();
-          renderDirectoriesPane();
-          renderPreviewPane(true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          return;
-        }
+        returnToSearchResults();
+        return;
       }
 
       if (WS.view.favoritesMode && !WS.view.favoritesRootActive) {
@@ -3726,37 +3747,13 @@
 
     if (directoriesSearchInput) {
       directoriesSearchInput.addEventListener("click", (e) => { e.stopPropagation(); });
-      directoriesSearchInput.addEventListener("keydown", (e) => {
-        e.stopPropagation();
-        if (e.key === "Enter") {
-          e.preventDefault();
-          try { directoriesSearchInput.blur(); } catch {}
-        }
-      });
-      directoriesSearchInput.addEventListener("input", () => {
-        const val = directoriesSearchInput.value || "";
-        const q = String(val || "").trim();
-        WS.view.dirSearchQuery = val;
+      const startDirectorySearch = () => {
+        if (!WS.root) return;
+        const q = String(WS.view.dirSearchQuery || "").trim();
+        if (!q) return;
 
-        if (!q) {
-          cancelDirectorySearch();
-          if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
-
-          TAG_EDIT_PATH = null;
-          closeBulkTagPanel();
-          syncBulkSelectionForCurrentDir();
-          rebuildDirectoriesEntries();
-          WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
-          syncPreviewToSelection();
-          renderDirectoriesPane(true);
-          renderPreviewPane(true, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          return;
-        }
-
-        if (!WS.view.dirSearchPinned) {
+        const keepRoot = WS.view.dirSearchPinned && WS.view.searchRootActive;
+        if (!keepRoot) {
           if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
             WS.view.searchRootIsFavorites = true;
             WS.view.searchRootFavorites = getAllFavoriteDirs();
@@ -3781,6 +3778,7 @@
         WS.view.dirSearchPinned = true;
         WS.view.searchRootActive = true;
         WS.view.searchAnchorPath = "";
+        WS.view.searchEntryRootPath = "";
         computeDirectorySearchResults();
 
         if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = false;
@@ -3797,6 +3795,23 @@
         syncButtons();
         kickVideoThumbsForPreview();
         kickImageThumbsForPreview();
+      };
+
+      directoriesSearchInput.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          startDirectorySearch();
+          try { directoriesSearchInput.blur(); } catch {}
+        }
+      });
+      directoriesSearchInput.addEventListener("input", () => {
+        const val = directoriesSearchInput.value || "";
+        WS.view.dirSearchQuery = val;
+        if (directoriesSearchClearBtn) {
+          const enabled = !!(WS.view.dirSearchPinned || String(WS.view.dirSearchQuery || "").trim());
+          directoriesSearchClearBtn.disabled = !enabled;
+        }
       });
     }
 
@@ -3989,6 +4004,7 @@
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
         WS.view.searchRootActive = false;
         WS.view.searchAnchorPath = node.path || "";
+        WS.view.searchEntryRootPath = node.path || "";
       }
 
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
@@ -4716,6 +4732,7 @@
         if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
           WS.view.searchRootActive = false;
           WS.view.searchAnchorPath = dn.path || "";
+          WS.view.searchEntryRootPath = dn.path || "";
         }
 
         if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
@@ -5019,6 +5036,7 @@
         if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
           WS.view.searchRootActive = false;
           WS.view.searchAnchorPath = entry.node?.path || "";
+          WS.view.searchEntryRootPath = entry.node?.path || "";
         }
         if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
           WS.view.favoritesRootActive = false;
@@ -5504,6 +5522,11 @@
     }
 
     function viewerLeaveDir() { // Left
+      if (WS.view.dirSearchPinned && !WS.view.searchRootActive) {
+        if (VIEWER_MODE) hideOverlay();
+        returnToSearchResults();
+        return;
+      }
       if (!viewerDirNode || !viewerDirNode.parent) return;
       const child = viewerDirNode;
       child.lastIndex = viewerIndex;

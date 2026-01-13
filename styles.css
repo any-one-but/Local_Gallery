@@ -72,21 +72,21 @@
 
     :root[data-theme="superdark"] {
       --color0-primary: #fff;
-      --color0-secondary: #fff;
-      --color0-tertirary: #fff;
+      --color0-secondary: #bfbfbf;
+      --color0-tertirary: #8a8a8a;
 
       --color1-primary: #000;
       --color1-primary-transparent: hsla(0, 0%, 0%, .95);
       --color1-secondary: #000;
       --color1-secondary-transparent: hsla(0, 0%, 0%, .7);
-      --color1-tertiary: #fff;
+      --color1-tertiary: #8a8a8a;
 
       --anchor-internal-color2-primary: #fff;
       --tag-include-bg: #000;
-      --tag-include-border: #fff;
+      --tag-include-border: #8a8a8a;
       --tag-include-color: #fff;
       --tag-exclude-bg: #fff;
-      --tag-exclude-border: #fff;
+      --tag-exclude-border: #8a8a8a;
       --tag-exclude-color: #000;
     }
 
