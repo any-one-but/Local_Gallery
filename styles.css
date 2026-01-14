@@ -242,9 +242,21 @@
       background-size: 100% 100%, 3px 3px;
     }
 
-    :root[data-retro="on"] #app {
+    /* retro mode should no longer change media rendering; retro media is controlled separately */
+
+    /* heavy "retro media" effect when enabled: extreme pixelation and strong filmic filters */
+    #app[data-retro-media="on"] img,
+    #app[data-retro-media="on"] video,
+    #app[data-retro-media="on"] .thumb img,
+    #app[data-retro-media="on"] .thumb video,
+    #app[data-retro-media="on"] #viewerViewport img,
+    #app[data-retro-media="on"] #viewerViewport video,
+    #app[data-retro-media="on"] #filePreviewViewport img,
+    #app[data-retro-media="on"] #filePreviewViewport video {
       image-rendering: pixelated;
-      filter: contrast(1.12) saturate(0.85);
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+      filter: contrast(2) saturate(1.6) grayscale(0) blur(0.5px);
     }
 
 

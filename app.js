@@ -165,6 +165,7 @@
         banicOpenWindow: true,
         altGalleryMode: false,
         retroMode: false,
+        retroMediaMode: false,
         colorScheme: "classic"
       ,
       leftPaneWidthPct: 0.28
@@ -208,6 +209,8 @@
         if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
         return 0.28;
       })()
+      ,
+      retroMediaMode: (typeof src.retroMediaMode === 'boolean') ? src.retroMediaMode : d.retroMediaMode
     };
       return out;
     }
@@ -288,6 +291,15 @@
       else root.removeAttribute("data-retro");
     }
 
+    function applyRetroMediaFromOptions() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const appEl = document.getElementById("app");
+      if (!appEl) return;
+      const on = !!(opt && opt.retroMediaMode);
+      if (on) appEl.setAttribute("data-retro-media", "on");
+      else appEl.removeAttribute("data-retro-media");
+    }
+
     function applyDisplaySizesFromOptions() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const root = document.documentElement;
@@ -304,6 +316,7 @@
       if (!WS.root) {
         applyColorSchemeFromOptions();
         applyRetroModeFromOptions();
+        applyRetroMediaFromOptions();
         applyDisplaySizesFromOptions();
         applyPaneDividerFromOptions();
         syncButtons();
@@ -316,6 +329,7 @@
 
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
+      applyRetroMediaFromOptions();
       applyDisplaySizesFromOptions();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -323,6 +337,7 @@
       renderDirectoriesPane(true);
       renderPreviewPane(true, true);
       applyPaneDividerFromOptions();
+      applyRetroMediaFromOptions();
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
@@ -684,6 +699,7 @@
 
       // initial apply from saved options
       applyPaneDividerFromOptions();
+      applyRetroMediaFromOptions();
     })();
 
     let MAIN_STATUS_TIMEOUT = null;
