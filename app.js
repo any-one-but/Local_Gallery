@@ -209,7 +209,7 @@
         return 0.28;
       })()
       ,
-      mediaFilter: (src.mediaFilter === 'off' || src.mediaFilter === 'cooked' || src.mediaFilter === 'blackwhite' || src.mediaFilter === 'ultra' || src.mediaFilter === 'uv' || src.mediaFilter === 'orangeTeal' || src.mediaFilter === 'cinematic' || src.mediaFilter === 'vintage' || src.mediaFilter === 'bleach' || src.mediaFilter === 'soft') ? src.mediaFilter : d.mediaFilter
+      mediaFilter: (src.mediaFilter === 'off' || src.mediaFilter === 'cooked' || src.mediaFilter === 'blackwhite' || src.mediaFilter === 'ultra' || src.mediaFilter === 'uv' || src.mediaFilter === 'orangeTeal'/* || src.mediaFilter === 'cinematic' || src.mediaFilter === 'vintage' || src.mediaFilter === 'bleach' || src.mediaFilter === 'soft'*/) ? src.mediaFilter : d.mediaFilter
     };
       return out;
     }
@@ -1047,7 +1047,7 @@
       const preloadModes = [
         { value: "off", label: "Off" },
         { value: "on", label: "On" },
-        { value: "ultra", label: "Ultra (aggressive)" }
+        { value: "ultra", label: "Ultra" }
       ];
 
       const videoEndModes = [
@@ -1057,7 +1057,7 @@
       ];
 
       const slideshowModes = [
-        { value: "cycle", label: "Cycle speeds (current behavior)" },
+        { value: "cycle", label: "Cycle speeds" },
         { value: "1", label: "Toggle 1s" },
         { value: "3", label: "Toggle 3s" },
         { value: "5", label: "Toggle 5s" },
@@ -1066,9 +1066,9 @@
 
       const thumbModes = [
         { value: "tiny", label: "Tiny" },
-        { value: "small", label: "Super small" },
+        { value: "small", label: "Small" },
         { value: "medium", label: "Medium" },
-        { value: "high", label: "Very high" }
+        { value: "high", label: "High" }
       ];
 
       const previewModes = [
@@ -1085,7 +1085,7 @@
 
       const folderScoreModes = [
         { value: "show", label: "Show score + arrows" },
-        { value: "no-arrows", label: "Hide arrows (score only)" },
+        { value: "no-arrows", label: "Hide arrows" },
         { value: "hidden", label: "Hide score + arrows" }
       ];
 
@@ -1108,9 +1108,9 @@
         { value: "blackwhite", label: "Black and White" },
         { value: "ultra", label: "Ultra Saturated" },
         { value: "uv", label: "UV Camera" },
-        { value: "orangeTeal", label: "Orange+Teal" },
+        { value: "orangeTeal", label: "Orange+Teal" }/*
         { value: "cinematic", label: "Cinematic" },
-        { value: "soft", label: "Soft" }
+        { value: "soft", label: "Soft" }*/
       ];
 
       optionsBodyEl.innerHTML = `
