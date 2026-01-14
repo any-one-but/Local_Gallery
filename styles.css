@@ -244,15 +244,15 @@
 
     /* retro mode should no longer change media rendering; retro media is controlled separately */
 
-    /* heavy "retro media" effect when enabled: extreme pixelation and strong filmic filters */
-    #app[data-retro-media="on"] img,
-    #app[data-retro-media="on"] video,
-    #app[data-retro-media="on"] .thumb img,
-    #app[data-retro-media="on"] .thumb video,
-    #app[data-retro-media="on"] #viewerViewport img,
-    #app[data-retro-media="on"] #viewerViewport video,
-    #app[data-retro-media="on"] #filePreviewViewport img,
-    #app[data-retro-media="on"] #filePreviewViewport video {
+    /* heavy "Cooked" media filter when enabled: extreme pixelation and strong filmic filters */
+    #app[data-media-filter="cooked"] img,
+    #app[data-media-filter="cooked"] video,
+    #app[data-media-filter="cooked"] .thumb img,
+    #app[data-media-filter="cooked"] .thumb video,
+    #app[data-media-filter="cooked"] #viewerViewport img,
+    #app[data-media-filter="cooked"] #viewerViewport video,
+    #app[data-media-filter="cooked"] #filePreviewViewport img,
+    #app[data-media-filter="cooked"] #filePreviewViewport video {
       image-rendering: pixelated;
       image-rendering: -moz-crisp-edges;
       image-rendering: crisp-edges;

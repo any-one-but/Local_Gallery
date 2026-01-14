@@ -165,11 +165,10 @@
         banicOpenWindow: true,
         altGalleryMode: false,
         retroMode: false,
-        retroMediaMode: false,
-        colorScheme: "classic"
-      ,
-      leftPaneWidthPct: 0.28
-    };
+        mediaFilter: "off",
+        colorScheme: "classic",
+        leftPaneWidthPct: 0.28
+      };
     }
 
     function normalizeOptions(o) {
@@ -210,7 +209,7 @@
         return 0.28;
       })()
       ,
-      retroMediaMode: (typeof src.retroMediaMode === 'boolean') ? src.retroMediaMode : d.retroMediaMode
+      mediaFilter: (src.mediaFilter === 'off' || src.mediaFilter === 'cooked') ? src.mediaFilter : d.mediaFilter
     };
       return out;
     }
@@ -295,9 +294,9 @@
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const appEl = document.getElementById("app");
       if (!appEl) return;
-      const on = !!(opt && opt.retroMediaMode);
-      if (on) appEl.setAttribute("data-retro-media", "on");
-      else appEl.removeAttribute("data-retro-media");
+      const filter = opt && opt.mediaFilter ? String(opt.mediaFilter) : "off";
+      if (filter === "cooked") appEl.setAttribute("data-media-filter", "cooked");
+      else appEl.removeAttribute("data-media-filter");
     }
 
     function applyDisplaySizesFromOptions() {
@@ -1103,6 +1102,11 @@
         { value: "retro90s-dark", label: "Retro 90s Dark" }
       ];
 
+      const mediaFilterModes = [
+        { value: "off", label: "Off" },
+        { value: "cooked", label: "Cooked" }
+      ];
+
       optionsBodyEl.innerHTML = `
         <div class="label" style="margin-bottom:8px;">Preferences are saved alongside scores/tags (or localStorage fallback).</div>
 
@@ -1138,6 +1142,7 @@
         <h2>Display</h2>
         ${makeSelectRow("Color scheme", "Switch the overall interface palette.", "opt_colorScheme", String(opt.colorScheme || "classic"), colorSchemes)}
         ${makeCheckRow("Retro Mode", "Pixelated, low-res UI styling across themes.", "opt_retroMode", !!opt.retroMode)}
+        ${makeSelectRow("Media Filter", "Apply a visual filter to media elements (Off or Cooked).", "opt_mediaFilter", String(opt.mediaFilter || "off"), mediaFilterModes)}
         ${makeSelectRow("Preview mode", "Controls how folders are shown in the preview pane.", "opt_previewMode", String(opt.previewMode || "grid"), previewModes)}
         ${makeCheckRow("Hide file extensions", "Hide .jpg / .mp4 in file names.", "opt_hideFileExtensions", !!opt.hideFileExtensions)}
         ${makeCheckRow("Hide indices from display names", "Hide numeric prefixes like '01 - '.", "opt_hideIndicesInNames", !!opt.hideIndicesInNames)}
@@ -1230,6 +1235,9 @@
       });
       bindCheck("opt_retroMode", "retroMode", () => {
         applyRetroModeFromOptions();
+      });
+      bindSelect("opt_mediaFilter", "mediaFilter", false, (val) => {
+        applyRetroMediaFromOptions();
       });
       bindCheck("opt_hideFileExtensions", "hideFileExtensions");
       bindCheck("opt_hideIndicesInNames", "hideIndicesInNames");
