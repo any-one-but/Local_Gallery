@@ -209,7 +209,7 @@
         return 0.28;
       })()
       ,
-      mediaFilter: (src.mediaFilter === 'off' || src.mediaFilter === 'cooked') ? src.mediaFilter : d.mediaFilter
+      mediaFilter: (src.mediaFilter === 'off' || src.mediaFilter === 'cooked' || src.mediaFilter === 'blackwhite' || src.mediaFilter === 'ultra' || src.mediaFilter === 'uv' || src.mediaFilter === 'orangeTeal' || src.mediaFilter === 'cinematic' || src.mediaFilter === 'vintage' || src.mediaFilter === 'bleach' || src.mediaFilter === 'soft') ? src.mediaFilter : d.mediaFilter
     };
       return out;
     }
@@ -295,7 +295,7 @@
       const appEl = document.getElementById("app");
       if (!appEl) return;
       const filter = opt && opt.mediaFilter ? String(opt.mediaFilter) : "off";
-      if (filter === "cooked") appEl.setAttribute("data-media-filter", "cooked");
+      if (filter && filter !== "off") appEl.setAttribute("data-media-filter", filter);
       else appEl.removeAttribute("data-media-filter");
     }
 
@@ -1104,7 +1104,13 @@
 
       const mediaFilterModes = [
         { value: "off", label: "Off" },
-        { value: "cooked", label: "Cooked" }
+        { value: "cooked", label: "Cooked" },
+        { value: "blackwhite", label: "Black and White" },
+        { value: "ultra", label: "Ultra Saturated" },
+        { value: "uv", label: "UV Camera" },
+        { value: "orangeTeal", label: "Orange+Teal" },
+        { value: "cinematic", label: "Cinematic" },
+        { value: "soft", label: "Soft" }
       ];
 
       optionsBodyEl.innerHTML = `
@@ -1889,6 +1895,7 @@
       applyDefaultViewFromOptions();
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
+      applyRetroMediaFromOptions();
       applyDisplaySizesFromOptions();
     }
 
@@ -1901,6 +1908,7 @@
       WS.meta.options = normalizeOptions(log.options || null);
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
+      applyRetroMediaFromOptions();
       applyDisplaySizesFromOptions();
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
@@ -2149,6 +2157,7 @@
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
       WS.dirByPath.set("", WS.root);
+      applyRetroMediaFromOptions();
 
       const files = Array.from(fileList || []);
 
@@ -2251,6 +2260,7 @@
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
       WS.dirByPath.set("", WS.root);
+      applyRetroMediaFromOptions();
 
       const all = [];
       await collectFilesFromDirHandle(rootHandle, "", all);

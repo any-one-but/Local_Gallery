@@ -259,7 +259,64 @@
       filter: contrast(2) saturate(1.6) grayscale(0) blur(0.5px);
     }
 
+    /* Black and White: pure grayscale, keep detail */
+    #app[data-media-filter="blackwhite"] img,
+    #app[data-media-filter="blackwhite"] video,
+    #app[data-media-filter="blackwhite"] .thumb img,
+    #app[data-media-filter="blackwhite"] .thumb video,
+    #app[data-media-filter="blackwhite"] #viewerViewport img,
+    #app[data-media-filter="blackwhite"] #viewerViewport video,
+    #app[data-media-filter="blackwhite"] #filePreviewViewport img,
+    #app[data-media-filter="blackwhite"] #filePreviewViewport video {
+      filter: grayscale(1) contrast(1.1) brightness(0.98);
+      image-rendering: auto;
+    }
 
+    /* Ultra Saturated: punchy but natural — moderate saturation with increased exposure */
+    #app[data-media-filter="ultra"] img,
+    #app[data-media-filter="ultra"] video,
+    #app[data-media-filter="ultra"] .thumb img,
+    #app[data-media-filter="ultra"] .thumb video,
+    #app[data-media-filter="ultra"] #viewerViewport img,
+    #app[data-media-filter="ultra"] #viewerViewport video,
+    #app[data-media-filter="ultra"] #filePreviewViewport img,
+    #app[data-media-filter="ultra"] #filePreviewViewport video {
+      filter: saturate(1.6) contrast(1.15) brightness(1.12);
+      image-rendering: auto;
+    }
+
+    /* UV Camera: push tones toward violet/blue, boost contrast */
+    #app[data-media-filter="uv"] img,
+    #app[data-media-filter="uv"] video,
+    #app[data-media-filter="uv"] .thumb img,
+    #app[data-media-filter="uv"] .thumb video,
+    #app[data-media-filter="uv"] #viewerViewport img,
+    #app[data-media-filter="uv"] #viewerViewport video,
+    #app[data-media-filter="uv"] #filePreviewViewport img,
+    #app[data-media-filter="uv"] #filePreviewViewport video {
+      filter: saturate(1.6) hue-rotate(220deg) contrast(1.3) brightness(0.95);
+      image-rendering: auto;
+    }
+
+    /* Orange+Teal LUT-like filter: shift hues and boost mid-tones
+       Implements H_new = (H + ΔH) mod 360 via a uniform hue-rotate.
+       ΔH chosen conservatively to push shadows toward teal and highlights
+       slightly toward orange while keeping overall balance. */
+    #app[data-media-filter="orangeTeal"] img,
+    #app[data-media-filter="orangeTeal"] video,
+    #app[data-media-filter="orangeTeal"] .thumb img,
+    #app[data-media-filter="orangeTeal"] .thumb video,
+    #app[data-media-filter="orangeTeal"] #viewerViewport img,
+    #app[data-media-filter="orangeTeal"] #viewerViewport video,
+    #app[data-media-filter="orangeTeal"] #filePreviewViewport img,
+    #app[data-media-filter="orangeTeal"] #filePreviewViewport video {
+      /* ΔH = -22deg applied as hue-rotate; H_new = (H + ΔH) mod 360 */
+      /* stronger push toward teal in shadows and warmer highlights */
+      filter: hue-rotate(-22deg) saturate(1.32) contrast(1.12) brightness(1.05);
+      image-rendering: auto;
+    }
+
+    /* Retro 90s media filter removed */
     :root[data-retro="on"] .dirRow,
     :root[data-retro="on"] .folderCard,
     :root[data-retro="on"] .fileCard,
