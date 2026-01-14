@@ -1,10 +1,10 @@
 // noinspection SpellCheckingInspection,JSUnresolvedVariable,JSUnresolvedFunction,TypeScriptUMDGlobal,JSUnusedGlobalSymbols
 // ==UserScript==
 // @name PostDownloaderCustom
-// @namespace https://github.com/SkyCloudDev
+// @namespace 
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.0.01
+// @version 01.0.03
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -297,7 +297,10 @@ const h = {
     buildPostBaseName: (postDate, threadTitle, postNumber) => {
         const safeThreadTitle = threadTitle.replace(/[\\\/]/g, settings.naming.invalidCharSubstitute);
         const formattedDate = h.formatPostDate(postDate);
-        return `${formattedDate} - ${safeThreadTitle} - simpcity post_${postNumber}`;
+        const rawNumber = String(postNumber || '');
+        const cleanNumber = rawNumber.replace(/,/g, '');
+        const paddedNumber = cleanNumber.padStart(6, '0');
+        return `${formattedDate}-${safeThreadTitle} - simpcity post_${paddedNumber}`;
     },
     /**
    * @param element
@@ -2935,7 +2938,8 @@ const downloadPost = async (parsedPost, parsedHosts, enabledHostsCB, resolvers, 
 
                         if (filenames.find(f => f.original === basename)) {
                             const count = filenames.filter(f => f.original === basename).length;
-                            basename = `${h.fnNoExt(basename)} (${count + 1}).${ext}`;
+                            const dupIndex = String(count + 1).padStart(6, '0');
+                            basename = `${h.fnNoExt(basename)} (${dupIndex}).${ext}`;
                         }
 
                         if (!filename) {
