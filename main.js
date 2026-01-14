@@ -5,6 +5,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1100,
     height: 750,
+    fullscreen: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

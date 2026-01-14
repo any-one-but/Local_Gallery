@@ -163,6 +163,7 @@
         hideAfterFirstUnderscoreInFileNames: false,
         forceTitleCaps: false,
         banicOpenWindow: true,
+        altGalleryMode: false,
         retroMode: false,
         colorScheme: "classic"
       };
@@ -196,6 +197,7 @@
         hideAfterFirstUnderscoreInFileNames: (typeof src.hideAfterFirstUnderscoreInFileNames === "boolean") ? src.hideAfterFirstUnderscoreInFileNames : d.hideAfterFirstUnderscoreInFileNames,
         forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
         banicOpenWindow: (typeof src.banicOpenWindow === "boolean") ? src.banicOpenWindow : d.banicOpenWindow,
+        altGalleryMode: (typeof src.altGalleryMode === "boolean") ? src.altGalleryMode : d.altGalleryMode,
         retroMode: (typeof src.retroMode === "boolean") ? src.retroMode : d.retroMode,
         colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber" || src.colorScheme === "retro90s" || src.colorScheme === "retro90s-dark") ? src.colorScheme : d.colorScheme
       };
@@ -1035,6 +1037,7 @@
         ${makeSelectRow("Preload next item", "Preload the next item for smoother browsing.", "opt_preloadNextMode", String(opt.preloadNextMode || "off"), preloadModes)}
         ${makeSelectRow("Video end behavior", "What happens when a video ends (outside slideshow).", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
         ${makeSelectRow("Slideshow speed", "Controls Shift behavior for slideshows.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
+        ${makeCheckRow("Alt gallery mode", "Enter on a file opens Gallery; exit with A/J.", "opt_altGalleryMode", !!opt.altGalleryMode)}
         ${makeCheckRow("BANIC! opens decoy window", "When enabled, BANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 
         <h2>Thumbnails</h2>
@@ -1124,6 +1127,7 @@
       });
       bindSelect("opt_videoEndBehavior", "videoEndBehavior", false);
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
+      bindCheck("opt_altGalleryMode", "altGalleryMode");
       bindCheck("opt_banicOpenWindow", "banicOpenWindow");
       bindSelect("opt_imageThumbSize", "imageThumbSize", true);
       bindSelect("opt_videoThumbSize", "videoThumbSize", true);
@@ -3361,12 +3365,23 @@
       }
     }
 
+    function altGalleryModeEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.altGalleryMode);
+    }
+
     function enterSelectedDirectory() {
       TAG_EDIT_PATH = null;
       closeBulkTagPanel();
 
       const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
-      if (!entry || entry.kind !== "dir" || !entry.node) return;
+      if (!entry) return;
+      if (entry.kind !== "dir" || !entry.node) {
+        if (altGalleryModeEnabled() && entry.kind === "file") {
+          openGalleryFromDirectoriesSelection(true);
+        }
+        return;
+      }
 
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
         WS.view.searchRootActive = false;
@@ -6890,14 +6905,16 @@
 
       if (VIEWER_MODE) {
         const k = e.key;
+        const altGallery = altGalleryModeEnabled();
 
-        if (k === "Escape" || k === "g" || k === "G") { e.preventDefault(); hideOverlay(); return; }
+        if (k === "Escape" || (!altGallery && (k === "g" || k === "G"))) { e.preventDefault(); hideOverlay(); return; }
+        if (altGallery && (k === "a" || k === "A" || k === "j" || k === "J")) { e.preventDefault(); hideOverlay(); return; }
 
         if (k === "ArrowUp" || k === "w" || k === "W" || k === "i" || k === "I") { e.preventDefault(); viewerStep(-1); return; }
         if (k === "ArrowDown" || k === "s" || k === "S" || k === "k" || k === "K") { e.preventDefault(); viewerStep(1); return; }
 
-        if (k === "ArrowLeft" || k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace") { e.preventDefault(); viewerLeaveDir(); return; }
-        if (k === "ArrowRight" || k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter") { e.preventDefault(); viewerEnterDir(); return; }
+        if (!altGallery && (k === "ArrowLeft" || k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace")) { e.preventDefault(); viewerLeaveDir(); return; }
+        if (!altGallery && (k === "ArrowRight" || k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter")) { e.preventDefault(); viewerEnterDir(); return; }
 
         if (k === " " ) { e.preventDefault(); toggleViewerVideoPlayPause(); return; }
         if (k === "q" || k === "Q" || k === "u" || k === "U") { e.preventDefault(); seekViewerVideo(-videoSkipStepSeconds()); return; }
@@ -6929,7 +6946,7 @@
 
       const inFilePreview = (WS.preview.kind === "file" && !!WS.preview.fileId);
 
-      if (k === "g" || k === "G") {
+      if ((k === "g" || k === "G") && !altGalleryModeEnabled()) {
         e.preventDefault();
         if (inFilePreview) openGalleryFromViewerState(true);
         else openGalleryFromDirectoriesSelection(true);
@@ -6943,6 +6960,11 @@
       }
 
       if (inFilePreview) {
+        if (altGalleryModeEnabled() && (k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter")) {
+          e.preventDefault();
+          openGalleryFromDirectoriesSelection(true);
+          return;
+        }
         if (k === "ArrowUp" || k === "w" || k === "W" || k === "i" || k === "I") { e.preventDefault(); viewerStep(-1); return; }
         if (k === "ArrowDown" || k === "s" || k === "S" || k === "k" || k === "K") { e.preventDefault(); viewerStep(1); return; }
         if (k === "ArrowLeft" || k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace") { e.preventDefault(); viewerLeaveDir(); return; }
