@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.0.02
+// @version 01.0.03
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -300,7 +300,7 @@ const h = {
         const rawNumber = String(postNumber || '');
         const cleanNumber = rawNumber.replace(/,/g, '');
         const paddedNumber = cleanNumber.padStart(6, '0');
-        return `${formattedDate}-${safeThreadTitle} - simpcity post_${paddedNumber}`;
+        return `${formattedDate}-${safeThreadTitle}-${paddedNumber} - postname`;
     },
     /**
    * @param element
@@ -657,17 +657,21 @@ const parsers = {
             const messageContent = post.parentNode.parentNode.querySelector('.message-content > .message-userContent');
             const footer = post.parentNode.parentNode.querySelector('footer');
             const messageContentClone = messageContent.cloneNode(true);
-            const timeEl = post.querySelector('time') || post.parentNode.querySelector('time') || post.parentNode.parentNode.querySelector('time');
+            const postRoot = post.closest('.message') || post;
+            const timeEl = postRoot.querySelector('time.u-dt') || postRoot.querySelector('time');
             let postDate = null;
             if (timeEl) {
-                const unixTime = timeEl.getAttribute('data-time');
-                if (unixTime) {
-                    postDate = new Date(Number(unixTime) * 1000);
-                } else {
-                    const dateTime = timeEl.getAttribute('datetime');
-                    postDate = dateTime ? new Date(dateTime) : null;
-                }
+            const unixTs = timeEl.getAttribute('data-timestamp');
+            if (unixTs && !isNaN(Number(unixTs))) {
+            postDate = new Date(Number(unixTs) * 1000);
             }
+                else
+                        {
+            const dateTime = timeEl.getAttribute('datetime');
+            postDate = dateTime ? new Date(dateTime) : null;
+                 }
+            }
+
 
             const postIdAnchor = post.querySelector('li:last-of-type > a');
             const postId = /(?<=\/post-).*/i.exec(postIdAnchor.getAttribute('href'))[0];
@@ -2761,9 +2765,64 @@ const downloadPost = async (parsedPost, parsedHosts, enabledHostsCB, resolvers, 
     log.post.info(postId, `::Found ${totalDownloadable} resource(s)::`, postNumber);
     log.separator(postId);
 
-    const threadTitle = parsers.thread.parseTitle();
-    const threadFolder = threadTitle.replace(/[\\\/]/g, settings.naming.invalidCharSubstitute);
-    const postBaseName = h.buildPostBaseName(parsedPost.postDate, threadTitle, postNumber);
+    const ensureAccuratePostDate = async () => {
+    const d = parsedPost.postDate;
+    if (d instanceof Date && !isNaN(d)) {
+        return d;
+    }
+
+    try {
+        const postIdAnchor = parsedPost.post.querySelector('li:last-of-type > a');
+        const href = postIdAnchor ? postIdAnchor.getAttribute('href') : null;
+        if (!href) {
+            return null;
+        }
+
+        const postUrl = new URL(href, document.location.href).href;
+        const { dom } = await h.http.get(postUrl);
+
+        const timeEl = dom.querySelector('time[data-time]') || dom.querySelector('time[datetime]') || dom.querySelector('time');
+        if (!timeEl) {
+            return null;
+        }
+
+        const unixTime = timeEl.getAttribute('data-time');
+        if (unixTime && !isNaN(Number(unixTime))) {
+            return new Date(Number(unixTime) * 1000);
+        }
+
+        const dateTime = timeEl.getAttribute('datetime');
+        if (dateTime) {
+            const dt = new Date(dateTime);
+            if (dt instanceof Date && !isNaN(dt)) {
+                return dt;
+            }
+        }
+
+        return null;
+    } catch (e) {
+        return null;
+    }
+};
+
+const verifiedPostDate = await ensureAccuratePostDate();
+
+if (!(verifiedPostDate instanceof Date) || isNaN(verifiedPostDate)) {
+    h.ui.setElProps(statusLabel, { color: '#ff4d4d', fontWeight: 'bold' });
+    h.ui.setText(statusLabel, 'ERROR: Could not determine post date. Aborting to avoid incorrect filenames.');
+    log.post.error(postId, `::Could not determine post date. Aborting to avoid incorrect filenames:::`, postNumber);
+    h.hide(filePB);
+    h.hide(totalPB);
+    setProcessing(false, postId);
+    return;
+}
+
+parsedPost.postDate = verifiedPostDate;
+
+const threadTitle = parsers.thread.parseTitle();
+const threadFolder = threadTitle.replace(/[\\\/]/g, settings.naming.invalidCharSubstitute);
+const postBaseName = h.buildPostBaseName(parsedPost.postDate, threadTitle, postNumber);
+
 
     let customFilename = postSettings.output.find(o => o.postId === postId)?.value;
 
