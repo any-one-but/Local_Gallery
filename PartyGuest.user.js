@@ -1,7 +1,7 @@
 
 // ==UserScript==
 // @name         PartyGuest
-// @version      01.11.22
+// @version      01.11.23
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @match        *://coomer.st/*
@@ -1621,7 +1621,7 @@ function parseDurationRanges(str) {
 
 function formatFilename(post, fileObj, index, globalIndex) {
   const user = post.user || userName();
-  const sanitizeSection = s => {
+  const sanitizeUserFolder = s => {
     s = (s || '').normalize('NFC');
     s = s.replace(/\s+/g, '_');
     s = s.replace(/[\\/:*?"<>|]+/g, '');
@@ -1629,13 +1629,25 @@ function formatFilename(post, fileObj, index, globalIndex) {
     s = s.replace(/_+/g, '_').replace(/^_+|_+$/g, '');
     return s;
   };
+  const sanitizeNamePart = s => {
+    s = (s || '').normalize('NFC');
+    s = s.replace(/\s+/g, ' ');
+    s = s.replace(/ - /g, '-');
+    s = s.replace(/[\\/:*?"<>|]+/g, '');
+    s = s.replace(/[\x00-\x1F\x7F]/g, '');
+    s = s.replace(/ +/g, ' ').replace(/^ +| +$/g, '');
+    return s;
+  };
   const titleRaw = (post.title && post.title.trim()) ? post.title : ('post_' + post.id);
-  const userSec = sanitizeSection(user);
-  let titleSec = sanitizeSection(titleRaw).slice(0, 40);
-  if (!titleSec) titleSec = sanitizeSection('post_' + post.id).slice(0, 40);
+  const threadRaw = user;
+  const userSec = sanitizeUserFolder(user);
+  let threadSec = sanitizeNamePart(threadRaw).slice(0, 40);
+  if (!threadSec) threadSec = sanitizeNamePart(user).slice(0, 40);
+  let titleSec = sanitizeNamePart(titleRaw).slice(0, 40);
+  if (!titleSec) titleSec = sanitizeNamePart('post_' + post.id).slice(0, 40);
   const ext = (fileObj.name || fileObj.path || '').split('.').pop().split('?')[0].toLowerCase();
-  const gPost = String(globalIndex || 0).padStart(PG_GW || 1, '0');
-  const fIdx = String(index || 0).padStart(5, '0');
+  const gPost = String(globalIndex || 0).padStart(6, '0');
+  const fIdx = String(index || 0).padStart(6, '0');
   let dateSec = '000000';
   try {
     const raw = post.published || post.published_at || post.added || post.added_at || post.created || post.created_at || post.posted || post.posted_at;
@@ -1655,12 +1667,12 @@ function formatFilename(post, fileObj, index, globalIndex) {
       }
     }
   } catch {}
-  const fileName = `${dateSec} - ${gPost} - ${titleSec}_${fIdx}.${ext}`;
-  const dot = fileName.lastIndexOf('.');
-  const stem = dot > 0 ? fileName.slice(0, dot) : fileName;
-  const postFolder = stem.replace(/_\d+$/,'');
+  const base = `${dateSec}-${threadSec}-${gPost} - ${titleSec}`;
+  const fileName = `${base}_${fIdx}.${ext}`;
+  const postFolder = base;
   return `${userSec}/${postFolder}/${fileName}`;
 }
+
 
 let keptPosts = [];
 
