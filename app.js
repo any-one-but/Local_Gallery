@@ -1129,7 +1129,7 @@ mediaFilter: (
       ];
 
       optionsBodyEl.innerHTML = `
-        <div class="label" style="margin-bottom:8px;">Preferences are stored in preferences.log.json in the .local-gallery system folder in the root directory. They save automatically.</div>
+        <div class="label" style="margin-bottom:8px;">Option preferences are automatically stored in preferences.log.json in the .local-gallery system folder in the root directory.</div>
 
 <h1>General</h1>
 ${makeSelectRow("Folder sort", "Sort folders by name or score.", "opt_dirSortMode", WS.meta.dirSortMode === "score" ? "score" : "name", dirSortModes)}
