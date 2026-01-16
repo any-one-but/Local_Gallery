@@ -271,8 +271,8 @@
 #app[data-media-filter="kodak"] #filePreviewViewport img,
 #app[data-media-filter="kodak"] #filePreviewViewport video {
   filter:
-    contrast(1.06)
-    saturate(1.10)
+    contrast(1.02)
+    saturate(1.05)
     brightness(1.02)
     sepia(0.10)
     hue-rotate(-4deg)
