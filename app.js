@@ -167,7 +167,10 @@
         retroMode: false,
         mediaFilter: "off",
         colorScheme: "classic",
-        leftPaneWidthPct: 0.28
+        leftPaneWidthPct: 0.28,
+        treatTagsAsFolders: false,
+        treatFavoritesAsFolder: false,
+        treatHiddenAsFolder: false
       };
     }
 
@@ -201,16 +204,17 @@
         banicOpenWindow: (typeof src.banicOpenWindow === "boolean") ? src.banicOpenWindow : d.banicOpenWindow,
         altGalleryMode: (typeof src.altGalleryMode === "boolean") ? src.altGalleryMode : d.altGalleryMode,
         retroMode: (typeof src.retroMode === "boolean") ? src.retroMode : d.retroMode,
-        colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber" || src.colorScheme === "retro90s" || src.colorScheme === "retro90s-dark") ? src.colorScheme : d.colorScheme
-      ,
-      leftPaneWidthPct: (function(){
-        const v = parseFloat(src.leftPaneWidthPct);
-        if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
-        return 0.28;
-      })()
-      ,
-/* Media filters: UI */
-mediaFilter: (
+        colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber" || src.colorScheme === "retro90s" || src.colorScheme === "retro90s-dark") ? src.colorScheme : d.colorScheme,
+        treatTagsAsFolders: (typeof src.treatTagsAsFolders === "boolean") ? src.treatTagsAsFolders : d.treatTagsAsFolders,
+        treatFavoritesAsFolder: (typeof src.treatFavoritesAsFolder === "boolean") ? src.treatFavoritesAsFolder : d.treatFavoritesAsFolder,
+        treatHiddenAsFolder: (typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.treatHiddenAsFolder,
+        leftPaneWidthPct: (function(){
+          const v = parseFloat(src.leftPaneWidthPct);
+          if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
+          return 0.28;
+        })(),
+        /* Media filters: UI */
+        mediaFilter: (
   src.mediaFilter === 'off' ||
   src.mediaFilter === 'vibrant' ||
   src.mediaFilter === 'cooked' ||
@@ -414,7 +418,6 @@ mediaFilter: (
         statusTimeout: null,
         scrollBusyDirs: false,
         scrollBusyPreview: false,
-        tagPanelOpen: false,
         tagFilterMode: "or",
         tagIncludeFilters: new Set(),
         tagExcludeFilters: new Set(),
@@ -427,6 +430,8 @@ mediaFilter: (
         bulkFileSelectionsByDir: new Map(),
         bulkActionMenuOpen: false,
         dirActionMenuPath: "",
+        tagFolderActiveMode: "",
+        tagFolderActiveTag: "",
         dirSearchPinned: false,
         dirSearchQuery: "",
         dirHistory: [],
@@ -528,7 +533,6 @@ mediaFilter: (
       WS.view.previewLoopRepeats = 3;
       WS.view.slideshowModeIndex = 0;
       WS.view.slideshowActive = false;
-      WS.view.tagPanelOpen = false;
       WS.view.tagIncludeFilters.clear();
       WS.view.tagExcludeFilters.clear();
       WS.view.bulkSelectMode = false;
@@ -540,6 +544,8 @@ mediaFilter: (
       WS.view.bulkFileSelectionsByDir = new Map();
       WS.view.bulkActionMenuOpen = false;
       WS.view.dirActionMenuPath = "";
+      WS.view.tagFolderActiveMode = "";
+      WS.view.tagFolderActiveTag = "";
       WS.view.dirSearchPinned = false;
       WS.view.dirSearchQuery = "";
       WS.view.dirHistory = [];
@@ -624,7 +630,6 @@ mediaFilter: (
     const directoriesListEl = $("directoriesList");
     const favoritesBtn = $("favoritesBtn");
     const hiddenBtn = $("hiddenBtn");
-    const toggleTagsBtn = $("toggleTagsBtn");
     const directoriesTagsRowEl = $("directoriesTagsRow");
     const directoriesActionRowEl = $("directoriesActionRow");
     const directoriesSelectBtn = $("directoriesSelectBtn");
@@ -1135,6 +1140,9 @@ ${makeSelectRow("Tag filter mode", "When multiple tags are active, match any or 
 ${makeSelectRow("Tag button cycle", "Choose whether tags can be set to hide or only active/inactive.", "opt_tagChipCycle", String(opt.tagChipCycle || "tri"), tagChipCycleModes)}
 ${makeCheckRow("Alt gallery mode", "Enter on a file opens Gallery; exit with A/J.", "opt_altGalleryMode", !!opt.altGalleryMode)}
 ${makeCheckRow("BANIC! opens decoy window", "When enabled, BANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
+${makeCheckRow("Treat tags as folders", "Represent tags as virtual folders at the top of the directories pane and disable inline tag chips.", "opt_treatTagsAsFolders", !!opt.treatTagsAsFolders)}
+${makeCheckRow("Treat Favorites as Folder", "Show favorites as a dedicated tag folder above other tags when tag folders are enabled.", "opt_treatFavoritesAsFolder", !!opt.treatFavoritesAsFolder)}
+${makeCheckRow("Treat Hidden as Folder", "Show hidden items as a dedicated tag folder above other tags when tag folders are enabled.", "opt_treatHiddenAsFolder", !!opt.treatHiddenAsFolder)}
 
 <h1>Defaults</h1>
 ${makeSelectRow("Default content filter", "Initial filter when loading a root directory.", "opt_defaultFilterMode", String(opt.defaultFilterMode || "all"), filterModes)}
@@ -1241,6 +1249,26 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
       bindCheck("opt_altGalleryMode", "altGalleryMode");
       bindCheck("opt_banicOpenWindow", "banicOpenWindow");
+      bindCheck("opt_treatTagsAsFolders", "treatTagsAsFolders", (enabled) => {
+        if (enabled) {
+          clearTagFilters();
+        } else {
+          exitTagFolderView();
+        }
+        renderDirectoriesPane(true);
+      });
+      bindCheck("opt_treatFavoritesAsFolder", "treatFavoritesAsFolder", (enabled) => {
+        if (!enabled && WS.view.tagFolderActiveMode === "favorites") {
+          exitTagFolderView();
+        }
+        renderDirectoriesPane(true);
+      });
+      bindCheck("opt_treatHiddenAsFolder", "treatHiddenAsFolder", (enabled) => {
+        if (!enabled && WS.view.tagFolderActiveMode === "hidden") {
+          exitTagFolderView();
+        }
+        renderDirectoriesPane(true);
+      });
       bindSelect("opt_imageThumbSize", "imageThumbSize", true);
       bindSelect("opt_videoThumbSize", "videoThumbSize", true);
       bindSelect("opt_mediaThumbUiSize", "mediaThumbUiSize", false);
@@ -3113,6 +3141,147 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return getAvailableTagsForDir(WS.nav.dirNode);
     }
 
+    function treatTagsAsFoldersEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.treatTagsAsFolders);
+    }
+
+    function treatFavoritesAsFolderEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.treatFavoritesAsFolder);
+    }
+
+    function treatHiddenAsFolderEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.treatHiddenAsFolder);
+    }
+
+    function clearTagFilters() {
+      if (WS.view.tagIncludeFilters) WS.view.tagIncludeFilters.clear();
+      if (WS.view.tagExcludeFilters) WS.view.tagExcludeFilters.clear();
+    }
+
+    function isViewingTagFolder() {
+      return !!WS.view.tagFolderActiveMode;
+    }
+
+    function shouldIncludeDirInTagList(dirNode) {
+      if (!dirNode) return false;
+      if (dirItemCount(dirNode) <= 0) return false;
+      if (!WS.view.hiddenMode && isDirOrAncestorHidden(dirNode)) return false;
+      return true;
+    }
+
+    function getTagCountMap() {
+      const map = new Map();
+      if (!WS.root) return map;
+      for (const [path, node] of WS.dirByPath.entries()) {
+        if (!path) continue;
+        if (!node || node.type !== "dir") continue;
+        if (!shouldIncludeDirInTagList(node)) continue;
+        const tags = metaGetUserTags(path);
+        for (const t of tags) {
+          map.set(t, (map.get(t) || 0) + 1);
+        }
+      }
+      return map;
+    }
+
+    function getTagFolderEntries() {
+      if (!treatTagsAsFoldersEnabled()) return [];
+      if (!WS.root || !WS.nav.dirNode) return [];
+      if (WS.view.dirSearchPinned || WS.view.favoritesMode || WS.view.hiddenMode) return [];
+      if (WS.nav.dirNode !== WS.root) return [];
+
+      const entries = [];
+      if (treatFavoritesAsFolderEnabled()) {
+        const favs = getAllFavoriteDirs();
+        if (favs.length) {
+          entries.push({ kind: "tag", label: "Favorites", special: "favorites", count: favs.length });
+        }
+      }
+      if (treatHiddenAsFolderEnabled()) {
+        const hidden = getAllHiddenDirs();
+        if (hidden.length) {
+          entries.push({ kind: "tag", label: "Hidden", special: "hidden", count: hidden.length });
+        }
+      }
+
+      const tagCounts = getTagCountMap();
+      if (tagCounts.size) {
+        const sorted = Array.from(tagCounts.keys()).sort((a, b) => {
+          return String(a).localeCompare(String(b));
+        });
+        for (const tag of sorted) {
+          const count = tagCounts.get(tag) || 0;
+          if (count <= 0) continue;
+          entries.push({ kind: "tag", tag, label: tag, count });
+        }
+      }
+
+      return entries;
+    }
+
+    function sortTagFolderNodes(nodes) {
+      const out = nodes.slice();
+      out.sort((a, b) => {
+        const ap = displayPath(a.path || "");
+        const bp = displayPath(b.path || "");
+        const c = ap.localeCompare(bp);
+        if (c) return c;
+        return compareIndexedNames(a?.name || "", b?.name || "");
+      });
+      return out;
+    }
+
+    function getDirsWithTag(tag) {
+      if (!tag) return [];
+      const out = [];
+      for (const [path, node] of WS.dirByPath.entries()) {
+        if (!path) continue;
+        if (!node || node.type !== "dir") continue;
+        if (!shouldIncludeDirInTagList(node)) continue;
+        const tags = metaGetUserTags(path);
+        if (!tags.includes(tag)) continue;
+        out.push(node);
+      }
+      return sortTagFolderNodes(out);
+    }
+
+    function getDirsForTagFolderView() {
+      if (!isViewingTagFolder()) return [];
+      if (WS.view.tagFolderActiveMode === "favorites") return getAllFavoriteDirs();
+      if (WS.view.tagFolderActiveMode === "hidden") return getAllHiddenDirs();
+      return getDirsWithTag(WS.view.tagFolderActiveTag || "");
+    }
+
+    function exitTagFolderView() {
+      if (!isViewingTagFolder()) return;
+      WS.view.tagFolderActiveMode = "";
+      WS.view.tagFolderActiveTag = "";
+      closeActionMenus();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true);
+      syncButtons();
+    }
+
+    function openTagFolderEntry(entry) {
+      if (!entry) return;
+      const mode = entry.special ? entry.special : "tag";
+      WS.view.tagFolderActiveMode = mode;
+      WS.view.tagFolderActiveTag = entry.special ? "" : (entry.tag || "");
+      closeActionMenus();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true);
+      syncButtons();
+    }
+
     function getEffectiveTagFiltersForDir(dirNode) {
       if (!dirNode) return null;
       const available = getAvailableTagsForDir(dirNode);
@@ -3358,6 +3527,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       if (!WS.root) return;
 
+      if (isViewingTagFolder()) {
+        const nodes = getDirsForTagFolderView();
+        for (const d of nodes) WS.nav.entries.push({ kind: "dir", node: d });
+        return;
+      }
+
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
         const dirs = (WS.view.searchResults || []).slice();
         for (let i = 0; i < dirs.length; i++) WS.nav.entries.push({ kind: "dir", node: dirs[i] });
@@ -3379,6 +3554,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const dirNode = WS.nav.dirNode;
       if (!dirNode) return;
 
+      const tagEntries = getTagFolderEntries();
+      if (tagEntries.length) {
+        for (const entry of tagEntries) WS.nav.entries.push(entry);
+      }
+
       const dirs = getChildDirsForNode(dirNode);
       for (const d of dirs) WS.nav.entries.push({ kind: "dir", node: d });
 
@@ -3395,7 +3575,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function isSelectableEntry(entry) {
-      return entry && (entry.kind === "dir" || entry.kind === "file");
+      return entry && (entry.kind === "dir" || entry.kind === "file" || entry.kind === "tag");
     }
 
     function findNearestSelectableIndex(idx, direction) {
@@ -3477,10 +3657,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         WS.preview.kind = "dir";
         WS.preview.dirNode = entry.node;
         WS.preview.fileId = null;
-      } else {
+      } else if (entry.kind === "file") {
         WS.preview.kind = "file";
         WS.preview.fileId = entry.id;
         WS.preview.dirNode = null;
+      } else {
+        WS.preview.kind = null;
+        WS.preview.dirNode = null;
+        WS.preview.fileId = null;
       }
     }
 
@@ -3495,6 +3679,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
       if (!entry) return;
+      if (entry.kind === "tag") {
+        openTagFolderEntry(entry);
+        return;
+      }
+
+      if (isViewingTagFolder()) {
+        WS.view.tagFolderActiveMode = "";
+        WS.view.tagFolderActiveTag = "";
+      }
       if (entry.kind !== "dir" || !entry.node) {
         if (altGalleryModeEnabled() && entry.kind === "file") {
           openGalleryFromDirectoriesSelection(true);
@@ -3584,6 +3777,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       TAG_EDIT_PATH = null;
       closeBulkTagPanel();
 
+      if (isViewingTagFolder()) {
+        exitTagFolderView();
+        return;
+      }
+
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return;
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) return;
       if (WS.view.hiddenMode && WS.view.hiddenRootActive) return;
@@ -3661,12 +3859,22 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function goDirUp() {
+      if (isViewingTagFolder()) {
+        exitTagFolderView();
+        return;
+      }
       if (!WS.nav.dirNode || !WS.nav.dirNode.parent) return;
       leaveDirectory();
     }
 
     function getDirectoriesPathText() {
       if (!WS.root) return "—";
+      if (isViewingTagFolder()) {
+        if (WS.view.tagFolderActiveMode === "favorites") return "Tag folders · Favorites";
+        if (WS.view.tagFolderActiveMode === "hidden") return "Tag folders · Hidden";
+        const tagLabel = String(WS.view.tagFolderActiveTag || "").trim();
+        return tagLabel ? `Tag folders · ${tagLabel}` : "Tag folders";
+      }
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return "search";
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "favorites";
       if (WS.view.hiddenMode && WS.view.hiddenRootActive) return "hidden";
@@ -4079,9 +4287,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function renderDirectoriesTagsHeader() {
-      if (!directoriesTagsRowEl || !toggleTagsBtn) return;
+      if (!directoriesTagsRowEl) return;
 
-      toggleTagsBtn.style.display = "none";
+      if (treatTagsAsFoldersEnabled()) {
+        directoriesTagsRowEl.style.display = "none";
+        directoriesTagsRowEl.innerHTML = "";
+        return;
+      }
 
       if (!WS.root || !WS.nav.dirNode || (WS.view.dirSearchPinned && WS.view.searchRootActive) || (WS.view.favoritesMode && WS.view.favoritesRootActive) || (WS.view.hiddenMode && WS.view.hiddenRootActive)) {
         directoriesTagsRowEl.style.display = "none";
@@ -4379,7 +4591,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       renderDirectoriesBulkHeader();
 
       if (!WS.nav.entries.length) {
-        directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">Empty directory.</div>`;
+        let emptyMsg = "Empty directory.";
+        if (isViewingTagFolder()) {
+          if (WS.view.tagFolderActiveMode === "favorites") emptyMsg = "No favorite folders.";
+          else if (WS.view.tagFolderActiveMode === "hidden") emptyMsg = "No hidden folders.";
+          else {
+            const tagLabel = String(WS.view.tagFolderActiveTag || "");
+            emptyMsg = tagLabel ? `No folders tagged '${tagLabel}'.` : "No tagged folders.";
+          }
+        }
+        directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">${escapeHtml(emptyMsg)}</div>`;
         return;
       }
 
@@ -4398,6 +4619,20 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const row = document.createElement("div");
         row.className = "dirRow" + (idx === WS.nav.selectedIndex ? " selected" : "");
         row.tabIndex = -1;
+
+        if (entry.kind === "tag") row.classList.add("tagEntry");
+
+        if (entry.kind === "tag") {
+          const label = String(entry.label || entry.tag || "Tag");
+          const countText = entry.count ? `${entry.count} folders` : "Tag folder";
+          row.innerHTML = `
+            <div class="dirIcon">🏷</div>
+            <div class="dirName" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
+            <div class="dirMeta">${escapeHtml(countText)}</div>
+          `;
+          frag.appendChild(row);
+          return;
+        }
 
         let icon = "📁";
         let name = "";
@@ -4961,24 +5196,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     document.addEventListener("click", (e) => {
-      if (!WS.view.bulkActionMenuOpen && !WS.view.dirActionMenuPath) return;
+      if (!WS.view.bulkActionMenuOpen && !WS.view.dirActionMenuPath && !WS.view.fileActionMenuId) return;
       const target = e.target;
       if (target && target.closest) {
         if (target.closest(".dirMenu")) return;
         if (target.closest("#directoriesActionRow")) return;
       }
       closeActionMenus();
-      renderDirectoriesPane(true);
-    });
-
-    toggleTagsBtn.addEventListener("click", () => {
-      if (!WS.root || !WS.nav.dirNode) return;
-      const available = getAvailableTagsForCurrentDir();
-      if (!available.size) {
-        renderDirectoriesPane(true);
-        return;
-      }
-      WS.view.tagPanelOpen = !WS.view.tagPanelOpen;
       renderDirectoriesPane(true);
     });
 
@@ -6882,7 +7106,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         directoriesSearchClearBtn.disabled = !enabled;
       }
 
-      if (toggleTagsBtn) toggleTagsBtn.disabled = true;
       if (dirBackBtn) dirBackBtn.disabled = !(WS.view.dirHistoryIndex > 0);
       if (dirForwardBtn) dirForwardBtn.disabled = !(WS.view.dirHistoryIndex >= 0 && WS.view.dirHistoryIndex < WS.view.dirHistory.length - 1);
       if (dirUpBtn) dirUpBtn.disabled = !WS.nav.dirNode || !WS.nav.dirNode.parent || (WS.view.dirSearchPinned && WS.view.searchRootActive) || WS.view.favoritesMode || WS.view.hiddenMode;
@@ -6969,6 +7192,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       setDirectoriesSelection(idx);
     }
 
+    function bumpSelectedFolderScore(delta) {
+      const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+      if (!entry || entry.kind !== "dir") return false;
+      const path = String(entry.node?.path || "");
+      if (!path) return false;
+      metaBumpScore(path, delta);
+      return true;
+    }
+
     function closeFilePreviewToFolder() {
       if (!WS.root) return;
       if (WS.preview.kind !== "file") return;
@@ -6985,7 +7217,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      if (e.key === "/") {
+      if (e.key === ".") {
         if (isTextInputTarget(e.target)) return;
         if (VIEWER_MODE) return;
         if (directoriesSearchInput && !directoriesSearchInput.disabled) {
@@ -6993,6 +7225,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           try { directoriesSearchInput.focus(); directoriesSearchInput.select(); } catch {}
           return;
         }
+      }
+
+      if (e.key === "/") {
+        if (isTextInputTarget(e.target)) return;
+        if (VIEWER_MODE) return;
         e.preventDefault();
         setHelpHold(true);
         return;
@@ -7009,7 +7246,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (e.key === "Escape") {
         if (HELP_OPEN) { e.preventDefault(); closeHelp(); return; }
         if (OPTIONS_OPEN) { e.preventDefault(); closeOptions(); return; }
-        if (WS.view.bulkActionMenuOpen || WS.view.dirActionMenuPath) {
+        if (WS.view.bulkActionMenuOpen || WS.view.dirActionMenuPath || WS.view.fileActionMenuId) {
           e.preventDefault();
           closeActionMenus();
           renderDirectoriesPane(true);
@@ -7084,10 +7321,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           openGalleryFromDirectoriesSelection(true);
           return;
         }
+        if (k === "ArrowLeft") { e.preventDefault(); goDirHistory(-1); return; }
+        if (k === "ArrowRight") { e.preventDefault(); goDirHistory(1); return; }
         if (k === "ArrowUp" || k === "w" || k === "W" || k === "i" || k === "I") { e.preventDefault(); viewerStep(-1); return; }
         if (k === "ArrowDown" || k === "s" || k === "S" || k === "k" || k === "K") { e.preventDefault(); viewerStep(1); return; }
-        if (k === "ArrowLeft" || k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace") { e.preventDefault(); viewerLeaveDir(); return; }
-        if (k === "ArrowRight" || k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter") { e.preventDefault(); viewerEnterDir(); return; }
+        if (k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace") { e.preventDefault(); viewerLeaveDir(); return; }
+        if (k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter") { e.preventDefault(); viewerEnterDir(); return; }
 
         if (k === " " ) { e.preventDefault(); toggleViewerVideoPlayPause(); return; }
         if (k === "q" || k === "Q" || k === "u" || k === "U") { e.preventDefault(); seekViewerVideo(-videoSkipStepSeconds()); return; }
@@ -7113,11 +7352,25 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
 
-      if (k === "ArrowUp" || k === "w" || k === "W" || k === "i" || k === "I") { e.preventDefault(); moveDirectoriesSelection(-1); return; }
-      if (k === "ArrowDown" || k === "s" || k === "S" || k === "k" || k === "K") { e.preventDefault(); moveDirectoriesSelection(1); return; }
+      if (k === "ArrowUp") {
+        e.preventDefault();
+        if (!bumpSelectedFolderScore(1)) moveDirectoriesSelection(-1);
+        return;
+      }
+      if (k === "ArrowDown") {
+        e.preventDefault();
+        if (!bumpSelectedFolderScore(-1)) moveDirectoriesSelection(1);
+        return;
+      }
 
-      if (k === "ArrowLeft" || k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace") { e.preventDefault(); leaveDirectory(); return; }
-      if (k === "ArrowRight" || k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter") { e.preventDefault(); enterSelectedDirectory(); return; }
+      if (k === "ArrowLeft") { e.preventDefault(); goDirHistory(-1); return; }
+      if (k === "ArrowRight") { e.preventDefault(); goDirHistory(1); return; }
+
+      if (k === "w" || k === "W" || k === "i" || k === "I") { e.preventDefault(); moveDirectoriesSelection(-1); return; }
+      if (k === "s" || k === "S" || k === "k" || k === "K") { e.preventDefault(); moveDirectoriesSelection(1); return; }
+
+      if (k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace") { e.preventDefault(); leaveDirectory(); return; }
+      if (k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter") { e.preventDefault(); enterSelectedDirectory(); return; }
 
       if (k === "1" || k === "6") { e.preventDefault(); moveDirectoriesSelection(-50); return; }
       if (k === "2" || k === "7") { e.preventDefault(); moveDirectoriesSelection(-10); return; }
