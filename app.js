@@ -431,6 +431,7 @@
         tagFolderActiveMode: "",
         tagFolderActiveTag: "",
         tagFolderOriginPath: "",
+        tagNavStack: [],
         dirSearchPinned: false,
         dirSearchQuery: "",
         dirHistory: [],
@@ -546,6 +547,7 @@
       WS.view.tagFolderActiveMode = "";
       WS.view.tagFolderActiveTag = "";
       WS.view.tagFolderOriginPath = "";
+      WS.view.tagNavStack = [];
       WS.view.dirSearchPinned = false;
       WS.view.dirSearchQuery = "";
       WS.view.dirHistory = [];
@@ -3365,8 +3367,110 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       kickImageThumbsForPreview();
     }
 
+    function getDirectoriesScrollTop() {
+      if (!directoriesListEl) return 0;
+      return directoriesListEl.scrollTop || 0;
+    }
+
+    function setDirectoriesScrollTop(value) {
+      if (!directoriesListEl || typeof value !== "number") return;
+      directoriesListEl.scrollTop = value;
+    }
+
+    function ensureTagNavStack() {
+      if (!Array.isArray(WS.view.tagNavStack)) WS.view.tagNavStack = [];
+      return WS.view.tagNavStack;
+    }
+
+    function pushTagNavFrame(frame) {
+      if (!frame) return;
+      ensureTagNavStack().push(frame);
+    }
+
+    function pushTagEntryContext(mode, tag) {
+      pushTagNavFrame({
+        type: "tag-entry",
+        dirPath: String(WS.nav.dirNode?.path || ""),
+        entryMode: mode || "",
+        entryTag: tag || "",
+        selectedIndex: WS.nav.selectedIndex,
+        scrollTop: getDirectoriesScrollTop()
+      });
+    }
+
+    function pushTagViewContext(selectedDirPath) {
+      pushTagNavFrame({
+        type: "tag-view",
+        mode: WS.view.tagFolderActiveMode,
+        tag: WS.view.tagFolderActiveTag,
+        originPath: String(WS.view.tagFolderOriginPath || ""),
+        selectedDirPath: String(selectedDirPath || ""),
+        scrollTop: getDirectoriesScrollTop()
+      });
+    }
+
+    function restoreTagViewFromFrame(frame) {
+      if (!frame) return false;
+      const baseNode = WS.dirByPath.get(String(frame.originPath || "")) || WS.root;
+      if (!baseNode) return false;
+      WS.nav.dirNode = baseNode;
+      setTagFolderViewState(frame.mode || "", frame.tag || "", frame.originPath);
+      const idx = frame.selectedDirPath ? findDirEntryIndexByPath(frame.selectedDirPath) : -1;
+      WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      setDirectoriesScrollTop(frame.scrollTop);
+      return true;
+    }
+
+    function restoreDirectoriesFromTagEntryFrame(frame) {
+      if (!frame) return false;
+      const baseNode = WS.dirByPath.get(String(frame.dirPath || "")) || WS.root;
+      if (!baseNode) return false;
+      WS.nav.dirNode = baseNode;
+      WS.view.tagFolderActiveMode = "";
+      WS.view.tagFolderActiveTag = "";
+      WS.view.tagFolderOriginPath = "";
+      closeActionMenus();
+      rebuildDirectoriesEntries();
+      const idx = findTagEntryIndex(frame.entryMode, frame.entryTag);
+      const targetIndex = idx >= 0 ? idx : (typeof frame.selectedIndex === "number" ? frame.selectedIndex : 0);
+      WS.nav.selectedIndex = findNearestSelectableIndex(targetIndex, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      setDirectoriesScrollTop(frame.scrollTop);
+      return true;
+    }
+
+    function tryRestoreTagDirectoryContext() {
+      const stack = WS.view.tagNavStack;
+      if (!Array.isArray(stack) || !stack.length) return false;
+      const frame = stack[stack.length - 1];
+      if (frame.type !== "tag-view") return false;
+      stack.pop();
+      return restoreTagViewFromFrame(frame);
+    }
+
+    function tryRestoreTagEntryContext() {
+      const stack = WS.view.tagNavStack;
+      if (!Array.isArray(stack) || !stack.length) return false;
+      const frame = stack[stack.length - 1];
+      if (frame.type !== "tag-entry") return false;
+      stack.pop();
+      return restoreDirectoriesFromTagEntryFrame(frame);
+    }
+
     function exitTagFolderView() {
       if (!isViewingTagFolder()) return;
+      if (tryRestoreTagEntryContext()) return;
       const ctx = {
         mode: WS.view.tagFolderActiveMode,
         tag: WS.view.tagFolderActiveTag,
@@ -3381,6 +3485,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!entry) return;
       const mode = entry.special ? entry.special : "tag";
       const tag = entry.special ? "" : (entry.tag || "");
+      pushTagEntryContext(mode, tag);
       const originPath = String(WS.nav.dirNode?.path || "");
       setTagFolderViewState(mode, tag, originPath);
     }
@@ -3804,8 +3909,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       if (isViewingTagFolder()) {
+        pushTagViewContext(entry.node?.path || "");
         WS.view.tagFolderActiveMode = "";
         WS.view.tagFolderActiveTag = "";
+        WS.view.tagFolderOriginPath = "";
       }
       if (entry.kind !== "dir" || !entry.node) {
         if (altGalleryModeEnabled() && entry.kind === "file") {
@@ -3896,6 +4003,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       TAG_EDIT_PATH = null;
       closeBulkTagPanel();
 
+      if (tryRestoreTagDirectoryContext()) return;
+
       if (isViewingTagFolder()) {
         exitTagFolderView();
         return;
@@ -3978,6 +4087,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function goDirUp() {
+      if (tryRestoreTagDirectoryContext()) return;
       if (isViewingTagFolder()) {
         exitTagFolderView();
         return;
