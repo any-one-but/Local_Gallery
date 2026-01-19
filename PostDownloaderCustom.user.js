@@ -220,6 +220,11 @@ const settings = {
             toggleAllCheckboxLabel: '',
         },
     },
+    mediaFilters: {
+        videos: true,
+        images: true,
+        links: true,
+    },
     extensions: {
         documents: ['.txt', '.doc', '.docx', '.pdf'],
         compressed: ['.zip', '.rar', '.7z', '.tar', '.bz2', '.gzip'],
@@ -245,6 +250,64 @@ const settings = {
         ],
     },
 };
+
+const mediaFilterTypes = [
+    { key: 'videos', label: 'Videos' },
+    { key: 'images', label: 'Images' },
+    { key: 'links', label: 'Links' },
+];
+
+const buildMediaFilterControls = suffix => {
+    const safeSuffix = suffix || 'global';
+    const checkboxes = mediaFilterTypes
+        .map(({ key, label }) => {
+            const checked = settings.mediaFilters[key] ? 'checked' : '';
+            return `
+            <label style="display:flex; align-items:center; gap:4px;">
+                <input type="checkbox" id="media-filter-${key}-${safeSuffix}" data-media-filter="${key}" ${checked} />
+                ${label}
+            </label>`;
+        })
+        .join('');
+    return `
+        <div class="menu-row" style="margin-bottom: 6px;">
+            <div style="font-weight: bold; margin-top: 5px; margin-bottom: 4px; color: dodgerblue;">Media filters</div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">${checkboxes}</div>
+        </div>
+    `;
+};
+
+const syncMediaFilterCheckboxes = () => {
+    mediaFilterTypes.forEach(({ key }) => {
+        const shouldCheck = Boolean(settings.mediaFilters[key]);
+        document
+            .querySelectorAll(`[data-media-filter="${key}"]`)
+            .forEach(el => (el.checked = shouldCheck));
+    });
+};
+
+const handleMediaFilterChange = event => {
+    const { target } = event;
+    if (!target || !target.matches('[data-media-filter]')) {
+        return;
+    }
+
+    const type = target.dataset.mediaFilter;
+    if (!mediaFilterTypes.find(t => t.key === type)) {
+        return;
+    }
+
+    settings.mediaFilters[type] = target.checked;
+    document
+        .querySelectorAll(`[data-media-filter="${type}"]`)
+        .forEach(el => {
+            if (el !== target) {
+                el.checked = target.checked;
+            }
+        });
+};
+
+document.addEventListener('change', handleMediaFilterChange);
 
 const h = {
     /**
@@ -637,6 +700,35 @@ const h = {
             return matches;
         },
     },
+};
+
+const determineMediaType = (url, host) => {
+    if (!url) {
+        return 'links';
+    }
+
+    const cleanedUrl = url.split('?')[0].split('#')[0];
+    const ext = h.ext(cleanedUrl);
+
+    if (ext) {
+        const normalizedExt = `.${ext.toLowerCase()}`;
+        if (settings.extensions.video.includes(normalizedExt)) {
+            return 'videos';
+        }
+        if (settings.extensions.image.includes(normalizedExt)) {
+            return 'images';
+        }
+    }
+
+    const category = (host?.category || '').toLowerCase();
+    if (category.includes('video')) {
+        return 'videos';
+    }
+    if (category.includes('image')) {
+        return 'images';
+    }
+
+    return 'links';
 };
 
 Array.prototype.unique = function (cb) {
@@ -1187,6 +1279,11 @@ const ui = {
           `;
                 },
                 /**
+         * @param postId
+         * @returns {string}
+         */
+                createMediaFilterControls: postId => buildMediaFilterControls(postId),
+                /**
          * @param parsedPost
          * @param parsedHosts
          * @param defaultFilename
@@ -1226,6 +1323,7 @@ const ui = {
                     let formHtml = [
                         window.isFF ? ui.forms.config.post.createFilenameInput(customFilename, postId, color, defaultFilename) : null,
                         settingsHeading,
+                        ui.forms.config.post.createMediaFilterControls(postId),
                         !window.isFF ? ui.forms.config.post.createZippedCheckbox(postId, settings.zipped) : null,
                         ui.forms.config.post.createFlattenCheckbox(postId, settings.flatten),
                         ui.forms.config.post.createSkipDuplicatesCheckbox(postId, settings.skipDuplicates),
@@ -1243,6 +1341,7 @@ const ui = {
 
                     ui.tooltip(btnDownloadPost, configForm, {
                         onShown: instance => {
+                            syncMediaFilterCheckboxes();
                             const inputEl = h.element(`#filename-input-${postId}`);
                             if (inputEl) {
                                 inputEl.addEventListener('input', e => {
@@ -2784,6 +2883,8 @@ const downloadPost = async (parsedPost, parsedHosts, enabledHostsCB, resolvers, 
         }
     }
 
+    resolved = resolved.filter(r => settings.mediaFilters[determineMediaType(r.url, r.host)]);
+
     if (resolved.length) {
         log.separator(postId);
     }
@@ -3301,21 +3402,6 @@ const addDownloadPageButton = () => {
     return downloadAllButton;
 };
 
-/**
- * @param postFooter
- */
-const registerPostReaction = postFooter => {
-    const hasReaction = postFooter.querySelector('.has-reaction');
-    if (!hasReaction) {
-        const reactionAnchor = postFooter.querySelector('.reaction--imageHidden');
-        if (reactionAnchor) {
-            reactionAnchor.setAttribute('href', reactionAnchor.getAttribute('href').replace('_id=1', '_id=33'));
-            reactionAnchor.click();
-        }
-    }
-};
-
-
 async function cyberdrop_helper(file) {
     let url_dl;
     let error_resolved = false;
@@ -3413,6 +3499,7 @@ const ensureDownloadPageButton = () => {
 };
 
 const handleDownloadPageTooltipShown = () => {
+    syncMediaFilterCheckboxes();
     parsedPosts
         .filter(p => p.parsedHosts.length)
         .forEach(post => {
@@ -3477,7 +3564,11 @@ const refreshDownloadPageTooltip = () => {
     const btnDownloadPage = ensureDownloadPageButton();
     const color = ui.getTooltipBackgroundColor();
 
-    let html = ui.forms.createCheckbox('config-toggle-all-posts', settings.ui.checkboxes.toggleAllCheckboxLabel, false);
+    let html = '';
+    html += ui.forms.config.post.createMediaFilterControls('download-page');
+    html += ui.forms.createRow(ui.forms.createLabel('Post Selection'));
+
+    let postSelectionHtml = ui.forms.createCheckbox('config-toggle-all-posts', settings.ui.checkboxes.toggleAllCheckboxLabel, false);
 
     parsedPosts
         .filter(p => p.parsedHosts.length)
@@ -3489,10 +3580,10 @@ const refreshDownloadPageTooltip = () => {
             const ellipsedText = h.limit(defaultPostContent === '' ? threadTitle : defaultPostContent, 20);
 
             const summary = `<a id="post-content-${postId}" href="#post-${postId}" style="color: dodgerblue"> ${ellipsedText} </a>`;
-            html += ui.forms.createCheckbox(`config-download-post-${postId}`, `Post #${postNumber} ${summary}`, false);
+            postSelectionHtml += ui.forms.createCheckbox(`config-download-post-${postId}`, `Post #${postNumber} ${summary}`, false);
         });
 
-    html = `${ui.forms.createRow(ui.forms.createLabel('Post Selection'))} ${html}`;
+    html += postSelectionHtml;
     const content = ui.forms.config.page.createForm(color, html);
 
     if (!downloadPageTooltip) {
@@ -3776,13 +3867,7 @@ const registerPost = post => {
         totalPB: totalPBar,
     };
 
-    const postDownloadCallbacks = {
-        onComplete: (total, completed) => {
-            if (total > 0 && completed > 0) {
-                registerPostReaction(parsedPost.footer);
-            }
-        },
-    };
+    const postDownloadCallbacks = {};
 
     let getSettingsCB = () => postSettings;
 
