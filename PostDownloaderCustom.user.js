@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.0.04
+// @version 01.01.00
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -62,6 +62,12 @@
 // @connect cyberfile.su
 // @connect cyberfile.me
 // @connect turbo.cr
+// @connect turbovid.cr
+// @connect turbocdn.st
+// @connect dl1.turbocdn.st
+// @connect dl2.turbocdn.st
+// @connect dl3.turbocdn.st
+// @connect dl4.turbocdn.st
 // @connect saint2.su
 // @connect saint2.cr
 // @connect redd.it
@@ -1455,10 +1461,10 @@ let processing = [];
  */
 const hosts = [
     ['Simpcity:Attachments', [/(\/attachments\/|\/data\/video\/)/]],
-    ['Coomer:Profiles', [/coomer.su\/[~an@._-]+\/user/]],
-    ['Coomer:image', [/(\w+\.)?coomer.su\/(data|thumbnail)/]],
+    ['Coomer:Profiles', [/coomer.st\/[~an@._-]+\/user/]],
+    ['Coomer:image', [/(\w+\.)?coomer.st\/(data|thumbnail)/]],
     ['JPGX:image', [/(simp\d+\.)?(selti-delivery\.ru|jpg\d?\.(church|fish|fishing|pet|su|cr))\/(?!(img\/|a\/|album\/))/, /jpe?g\d\.(church|fish|fishing|pet|su|cr)(\/a\/|\/album\/)[~an@-_.]+<no_qs>/]],
-    ['kemono:direct link', [/.{2,6}\.kemono.su\/data\//]],
+    ['kemono:direct link', [/.{2,6}\.kemono.cr\/data\//]],
     ['Postimg:image', [/!!https?:\/\/(www.)?i\.?(postimg|pixxxels).cc\/(.{8})/]], //[/!!https?:\/\/(www.)?postimg.cc\/(.{8})/]],
     ['Ibb:image',
         [
@@ -1478,7 +1484,7 @@ const hosts = [
     ['Pixhost:image', [/(t|img)(\d+)?\.pixhost.to\//, /pixhost.to\/gallery\//]],
     ['Imagebam:image', [/imagebam.com\/(view|gallery)/]],
     ['Imagebam:full embed', [/images\d.imagebam.com/]],
-    ['turbo:video', [/(turbo.(cr)\/embed\/|([~an@]+\.)?turbo.(cr)\/videos)/]],
+    ['turbo:video', [/((?:turbo|turbovid)\.cr\/embed\/|([~an@]+\.)?(?:turbo|turbovid)\.cr\/videos)/]],
     ['Redgifs:video', [/!!redgifs.com(\/|\\\/)ifr.*?(?="|&quot;)/]],
     ['Bunkr:',
         [
@@ -1492,7 +1498,7 @@ const hosts = [
     ['Box.com:', [/m\.box\.com\//]],
     ['Yandex:', [/(disk\.)?yandex\.[a-z]+/]],
     ['Cyberfile:', [/!!https:\/\/cyberfile.(su|me)\/\w+(\/)?(?=")/, /cyberfile.(su|me)\/folder\//]],
-    //['Cyberdrop:', [/fs-\d+.cyberdrop.(me|to|cc|nl)\/|cyberdrop.me\/(f|e)\//, /cyberdrop.(me|to|cc|nl)\/a\//]],
+    ['Cyberdrop:', [/fs-\d+.cyberdrop.(me|to|cc|nl)\/|cyberdrop.me\/(f|e)\//, /cyberdrop.(me|to|cc|nl)\/a\//]],
     ['Pornhub:video', [/([~an@]+\.)?pornhub.com\/view_video/]],
     ['Noodlemagazine:video', [/(adult.)?noodlemagazine.com\/watch\//]],
     ['Spankbang:video', [/spankbang.com\/.*?\/video/]],
@@ -2305,16 +2311,51 @@ const resolvers = [
             };
         },
     ],
-    [[/([~an@]+\.)?turbo.(cr)\/videos/], async url => url],
+    [[/([~an@]+\.)?(?:turbo|turbovid)\.cr\/videos/], async url => url],
     [[/public.onlyfans.com\/files/], async url => url],
     [
-        [/turbo.(cr)\/embed/],
+        [/(?:turbo|turbovid)\.cr\/embed/],
         async (url, http) => {
-            // Replace turbov.cr with saint2.su
-            url = url.replace('turbo.cr', 'saint2.su');
+            const match = url.match(/\/embed\/([^\/?#]+)/i);
+            const id = match ? match[1] : null;
+            if (!id) {
+                return null;
+            }
 
-            const { dom } = await http.get(url);
-            return dom.querySelector('source')?.getAttribute('src');
+            const host = new URL(url, 'https://turbo.cr').host;
+            const embedUrl = `https://${host}/embed/${id}`;
+            const signUrls = [
+                `https://${host}/api/sign?v=${encodeURIComponent(id)}`,
+                `https://${host}/sign?v=${encodeURIComponent(id)}`,
+            ];
+
+            for (const signUrl of signUrls) {
+                try {
+                    const { source, status } = await http.get(signUrl, {}, { Referer: embedUrl }, 'text');
+                    if (status === 200 && source) {
+                        const parsed = JSON.parse(source);
+                        if (parsed && parsed.success && parsed.url) {
+                            return parsed.url;
+                        }
+                    }
+                } catch {
+                    // ignore and continue to next endpoint
+                }
+            }
+
+            try {
+                const { dom } = await http.get(embedUrl, {}, { Referer: embedUrl });
+                const src =
+                    dom?.querySelector('source[src]')?.getAttribute('src') ||
+                    dom?.querySelector('video[src]')?.getAttribute('src');
+                if (src) {
+                    return new URL(src, embedUrl).toString();
+                }
+            } catch {
+                // ignore and fall through to null
+            }
+
+            return null;
         },
     ],
     [
