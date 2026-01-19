@@ -148,6 +148,7 @@
         hideFileExtensions: false,
         defaultFilterMode: "all",
         defaultRandomMode: false,
+        randomButtonJump: false,
         defaultFolderBehavior: "slide",
         folderScoreDisplay: "no-arrows",
         previewMode: "grid",
@@ -184,6 +185,7 @@
         hideFileExtensions: (typeof src.hideFileExtensions === "boolean") ? src.hideFileExtensions : ((typeof src.showFileExtensions === "boolean") ? !src.showFileExtensions : d.hideFileExtensions),
         defaultFilterMode: (src.defaultFilterMode === "all" || src.defaultFilterMode === "images" || src.defaultFilterMode === "videos" || src.defaultFilterMode === "gifs") ? src.defaultFilterMode : d.defaultFilterMode,
         defaultRandomMode: (typeof src.defaultRandomMode === "boolean") ? src.defaultRandomMode : d.defaultRandomMode,
+        randomButtonJump: (typeof src.randomButtonJump === "boolean") ? src.randomButtonJump : d.randomButtonJump,
         defaultFolderBehavior: (src.defaultFolderBehavior === "stop" || src.defaultFolderBehavior === "loop" || src.defaultFolderBehavior === "slide") ? src.defaultFolderBehavior : d.defaultFolderBehavior,
         folderScoreDisplay: (src.folderScoreDisplay === "show" || src.folderScoreDisplay === "no-arrows" || src.folderScoreDisplay === "hidden") ? src.folderScoreDisplay : ((typeof src.showFolderScores === "boolean") ? (src.showFolderScores ? "show" : "hidden") : d.folderScoreDisplay),
         previewMode: (src.previewMode === "grid" || src.previewMode === "expanded") ? src.previewMode : d.previewMode,
@@ -1283,6 +1285,7 @@ ${makeSelectRow("Folder scores", "Choose how folder scores appear in lists + pre
 ${makeCheckRow("Alt gallery mode", "Enter on a file opens Gallery; exit with A/J.", "opt_altGalleryMode", !!opt.altGalleryMode)}
 ${makeCheckRow("BANIC! opens decoy window", "When enabled, BANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
+${makeCheckRow("Random key jumps to random item", "R/Y will move to a random file or folder instead of toggling Random Mode.", "opt_randomButtonJump", !!opt.randomButtonJump)}
 
 <h1>Defaults</h1>
 ${makeSelectRow("Default content filter", "Initial filter when loading a root directory.", "opt_defaultFilterMode", String(opt.defaultFilterMode || "all"), filterModes)}
@@ -1383,6 +1386,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
         renderDirectoriesPane(true);
       });
+      bindCheck("opt_randomButtonJump", "randomButtonJump");
       bindSelect("opt_imageThumbSize", "imageThumbSize", true);
       bindSelect("opt_videoThumbSize", "videoThumbSize", true);
       bindSelect("opt_mediaThumbUiSize", "mediaThumbUiSize", false);
@@ -7546,6 +7550,18 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       showStatusMessage(`Random: ${WS.view.randomMode ? "On" : "Off"}`);
     }
 
+    function handleRandomModeHotkey() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const jumpMode = !!(opt && opt.randomButtonJump);
+      if (jumpMode) {
+        if (VIEWER_MODE) viewerJumpRandom();
+        else randomDirectoriesSelection();
+        showStatusMessage("Random jump");
+        return;
+      }
+      toggleRandomMode();
+    }
+
     function cycleFolderBehavior() {
       const b = WS.view.folderBehavior;
       WS.view.folderBehavior = (b === "stop") ? "loop" : (b === "loop") ? "slide" : "stop";
@@ -7662,7 +7678,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (k === "e" || k === "E" || k === "o" || k === "O") { e.preventDefault(); seekViewerVideo(videoSkipStepSeconds()); return; }
 
         if (k === "f" || k === "F" || k === "h" || k === "H") { e.preventDefault(); cycleFilterMode(); return; }
-        if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); toggleRandomMode(); return; }
+        if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); handleRandomModeHotkey(); return; }
         if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
         if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); viewerJumpToNextFolderFirstFile(); return; }
 
@@ -7718,7 +7734,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (k === "e" || k === "E" || k === "o" || k === "O") { e.preventDefault(); seekViewerVideo(videoSkipStepSeconds()); return; }
 
         if (k === "f" || k === "F" || k === "h" || k === "H") { e.preventDefault(); cycleFilterMode(); return; }
-        if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); toggleRandomMode(); return; }
+        if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); handleRandomModeHotkey(); return; }
         if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
         if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); jumpToNextFolderFirstFile(); return; }
 
@@ -7764,7 +7780,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (k === "5" || k === "0") { e.preventDefault(); moveDirectoriesSelection(50); return; }
 
       if (k === "f" || k === "F" || k === "h" || k === "H") { e.preventDefault(); cycleFilterMode(); return; }
-      if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); toggleRandomMode(); return; }
+      if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); handleRandomModeHotkey(); return; }
       if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
       if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); jumpToNextFolderFirstFile(); return; }
 
