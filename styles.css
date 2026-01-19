@@ -70,6 +70,14 @@
       --anchor-internal-color2-primary: hsl(215, 85%, 35%);
     }
 
+    :root[data-theme="light"] .dropdownMenu,
+    :root[data-theme="light"] #helpCard,
+    :root[data-theme="light"] #optionsCard,
+    :root[data-theme="light"] #helpHoldCard,
+    :root[data-theme="light"] #propertiesCard {
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+
     :root[data-theme="superdark"] {
       --color0-primary: #fff;
       --color0-secondary: #bfbfbf;
@@ -653,13 +661,6 @@
       font-weight: 800;
       color: var(--color0-primary);
       letter-spacing: .02em;
-    }
-
-    #directoriesBtns {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      align-items: center;
     }
 
     #directoriesSearchRow {
@@ -1372,7 +1373,8 @@
       top: 16px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0,0,0,0.7);
+      background: rgba(0,0,0,0.55);
+      color: #fff;
       padding: 4px 8px;
       border-radius: 2px;
       font-size: 11px;
@@ -1394,7 +1396,8 @@
       top: 16px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0,0,0,0.7);
+      background: rgba(0,0,0,0.55);
+      color: #fff;
       padding: 4px 8px;
       border-radius: 2px;
       font-size: 11px;

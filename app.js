@@ -169,8 +169,7 @@
         colorScheme: "classic",
         leftPaneWidthPct: 0.28,
         treatTagsAsFolders: false,
-        treatFavoritesAsFolder: false,
-        treatHiddenAsFolder: false
+        showHiddenFolder: false
       };
     }
 
@@ -206,8 +205,7 @@
         retroMode: (typeof src.retroMode === "boolean") ? src.retroMode : d.retroMode,
         colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber" || src.colorScheme === "retro90s" || src.colorScheme === "retro90s-dark") ? src.colorScheme : d.colorScheme,
         treatTagsAsFolders: (typeof src.treatTagsAsFolders === "boolean") ? src.treatTagsAsFolders : d.treatTagsAsFolders,
-        treatFavoritesAsFolder: (typeof src.treatFavoritesAsFolder === "boolean") ? src.treatFavoritesAsFolder : d.treatFavoritesAsFolder,
-        treatHiddenAsFolder: (typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.treatHiddenAsFolder,
+        showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         leftPaneWidthPct: (function(){
           const v = parseFloat(src.leftPaneWidthPct);
           if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
@@ -430,7 +428,6 @@
         bulkFileSelectionsByDir: new Map(),
         bulkActionMenuOpen: false,
         dirActionMenuPath: "",
-        dirEntryOrigin: null,
         tagFolderActiveMode: "",
         tagFolderActiveTag: "",
         tagFolderOriginPath: "",
@@ -549,7 +546,6 @@
       WS.view.tagFolderActiveMode = "";
       WS.view.tagFolderActiveTag = "";
       WS.view.tagFolderOriginPath = "";
-      WS.view.dirEntryOrigin = null;
       WS.view.dirSearchPinned = false;
       WS.view.dirSearchQuery = "";
       WS.view.dirHistory = [];
@@ -775,16 +771,29 @@
 
     function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
-    function showStatusMessage(text) {
-      statusMessageEl.textContent = text || "";
-      statusMessageEl.classList.add("visible");
-      if (WS.view.statusTimeout) {
-        clearTimeout(WS.view.statusTimeout);
-        WS.view.statusTimeout = null;
-      }
-      WS.view.statusTimeout = setTimeout(() => {
-        statusMessageEl.classList.remove("visible");
+    function showMainStatusMessage(text) {
+      mainStatusMessageEl.textContent = text || "";
+      mainStatusMessageEl.classList.add("visible");
+      if (MAIN_STATUS_TIMEOUT) { clearTimeout(MAIN_STATUS_TIMEOUT); MAIN_STATUS_TIMEOUT = null; }
+      MAIN_STATUS_TIMEOUT = setTimeout(() => {
+        mainStatusMessageEl.classList.remove("visible");
       }, 1200);
+    }
+
+    function showStatusMessage(text) {
+      if (VIEWER_MODE) {
+        statusMessageEl.textContent = text || "";
+        statusMessageEl.classList.add("visible");
+        if (WS.view.statusTimeout) {
+          clearTimeout(WS.view.statusTimeout);
+          WS.view.statusTimeout = null;
+        }
+        WS.view.statusTimeout = setTimeout(() => {
+          statusMessageEl.classList.remove("visible");
+        }, 1200);
+        return;
+      }
+      showMainStatusMessage(text);
     }
 
     function showSlideshowMessage(text) {
@@ -792,12 +801,7 @@
         showStatusMessage(text);
         return;
       }
-      mainStatusMessageEl.textContent = text || "";
-      mainStatusMessageEl.classList.add("visible");
-      if (MAIN_STATUS_TIMEOUT) { clearTimeout(MAIN_STATUS_TIMEOUT); MAIN_STATUS_TIMEOUT = null; }
-      MAIN_STATUS_TIMEOUT = setTimeout(() => {
-        mainStatusMessageEl.classList.remove("visible");
-      }, 1200);
+      showMainStatusMessage(text);
     }
 
     function captureVideoState(vid) {
@@ -1176,8 +1180,7 @@ ${makeSelectRow("Tag button cycle", "Choose whether tags can be set to hide or o
 ${makeCheckRow("Alt gallery mode", "Enter on a file opens Gallery; exit with A/J.", "opt_altGalleryMode", !!opt.altGalleryMode)}
 ${makeCheckRow("BANIC! opens decoy window", "When enabled, BANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 ${makeCheckRow("Treat tags as folders", "Represent tags as virtual folders at the top of the directories pane and disable inline tag chips.", "opt_treatTagsAsFolders", !!opt.treatTagsAsFolders)}
-${makeCheckRow("Treat Favorites as Folder", "Show favorites as a dedicated tag folder above other tags when tag folders are enabled.", "opt_treatFavoritesAsFolder", !!opt.treatFavoritesAsFolder)}
-${makeCheckRow("Treat Hidden as Folder", "Show hidden items as a dedicated tag folder above other tags when tag folders are enabled.", "opt_treatHiddenAsFolder", !!opt.treatHiddenAsFolder)}
+${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 
 <h1>Defaults</h1>
 ${makeSelectRow("Default content filter", "Initial filter when loading a root directory.", "opt_defaultFilterMode", String(opt.defaultFilterMode || "all"), filterModes)}
@@ -1292,13 +1295,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
         renderDirectoriesPane(true);
       });
-      bindCheck("opt_treatFavoritesAsFolder", "treatFavoritesAsFolder", (enabled) => {
-        if (!enabled && WS.view.tagFolderActiveMode === "favorites") {
-          exitTagFolderView();
-        }
-        renderDirectoriesPane(true);
-      });
-      bindCheck("opt_treatHiddenAsFolder", "treatHiddenAsFolder", (enabled) => {
+      bindCheck("opt_showHiddenFolder", "showHiddenFolder", (enabled) => {
         if (!enabled && WS.view.tagFolderActiveMode === "hidden") {
           exitTagFolderView();
         }
@@ -3158,17 +3155,21 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function getChildDirsForNodeBase(dirNode) {
       if (!dirNode) return [];
       const base = sortDirsForDisplay(dirNode.childrenDirs).filter(d => dirItemCount(d) > 0);
-      if (WS.view.hiddenMode) return base;
+      const showHidden = WS.view.hiddenMode || (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden");
+      if (showHidden) return base;
       return base.filter(d => !isDirOrAncestorHidden(d));
     }
 
     function getAvailableTagsForDir(dirNode) {
       const base = getChildDirsForNodeBase(dirNode);
       const set = new Set();
+      let hasFavorites = false;
       for (const d of base) {
+        if (metaHasFavorite(d.path || "")) hasFavorites = true;
         const tags = metaGetUserTags(d.path || "");
         for (let i = 0; i < tags.length; i++) set.add(tags[i]);
       }
+      if (hasFavorites) set.add(FAVORITE_TAG);
       return set;
     }
 
@@ -3181,14 +3182,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return !!(opt && opt.treatTagsAsFolders);
     }
 
-    function treatFavoritesAsFolderEnabled() {
+    function showHiddenFolderEnabled() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return !!(opt && opt.treatFavoritesAsFolder);
-    }
-
-    function treatHiddenAsFolderEnabled() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return !!(opt && opt.treatHiddenAsFolder);
+      return !!(opt && opt.showHiddenFolder);
     }
 
     function clearTagFilters() {
@@ -3226,16 +3222,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       const dirNode = WS.nav.dirNode;
       const entries = [];
+      const allChildren = sortDirsForDisplay(dirNode.childrenDirs).filter(d => dirItemCount(d) > 0);
       const children = getChildDirsForNodeBase(dirNode);
 
-      if (treatFavoritesAsFolderEnabled()) {
-        const favs = children.filter(d => metaHasFavorite(d.path || ""));
-        if (favs.length) {
-          entries.push({ kind: "tag", label: "Favorites", special: "favorites", count: favs.length });
-        }
+      const favs = allChildren.filter(d => metaHasFavorite(d.path || ""));
+      if (favs.length) {
+        entries.push({ kind: "tag", label: "Favorites", special: "favorites", count: favs.length });
       }
-      if (treatHiddenAsFolderEnabled()) {
-        const hidden = children.filter(d => metaHasHidden(d.path || ""));
+      if (showHiddenFolderEnabled()) {
+        const hidden = allChildren.filter(d => metaHasHidden(d.path || ""));
         if (hidden.length) {
           entries.push({ kind: "tag", label: "Hidden", special: "hidden", count: hidden.length });
         }
@@ -3282,6 +3277,48 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       });
     }
 
+    function getDirsForTagEntry(entry) {
+      if (!entry || entry.kind !== "tag") return [];
+      const dirNode = WS.nav.dirNode;
+      if (!dirNode) return [];
+      const children = getChildDirsForNodeBase(dirNode);
+      if (!children.length) return [];
+      if (entry.special) {
+        if (entry.special === "favorites") {
+          return children.filter(d => metaHasFavorite(d.path || ""));
+        }
+        if (entry.special === "hidden") {
+          return children.filter(d => metaHasHidden(d.path || ""));
+        }
+        return [];
+      }
+      const tag = String(entry.tag || "");
+      if (!tag) return [];
+      return children.filter(d => {
+        const tags = metaGetUserTags(d.path || "");
+        return tags.includes(tag);
+      });
+    }
+
+    function makeTagPreviewNode(entry) {
+      const baseNode = WS.nav.dirNode;
+      if (!entry || !baseNode) return null;
+      const dirs = getDirsForTagEntry(entry);
+      const label = String(entry.label || entry.tag || entry.special || "Tag");
+      const pathSuffix = entry.special ? entry.special : entry.tag || "tag";
+      const safeSuffix = String(pathSuffix || "tag").replace(/[\/\\]/g, "_");
+      const virtualPath = `${String(baseNode.path || "")}/@tag-${safeSuffix}`;
+      return {
+        type: "dir",
+        name: label,
+        parent: baseNode,
+        childrenDirs: dirs,
+        childrenFiles: [],
+        path: virtualPath,
+        _skipTagFilters: true
+      };
+    }
+
     function findTagEntryIndex(mode, tag) {
       for (let i = 0; i < WS.nav.entries.length; i++) {
         const entry = WS.nav.entries[i];
@@ -3300,7 +3337,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.view.tagFolderActiveMode = "";
       WS.view.tagFolderActiveTag = "";
       WS.view.tagFolderOriginPath = "";
-      WS.view.dirEntryOrigin = null;
       closeActionMenus();
       rebuildDirectoriesEntries();
       const idx = findTagEntryIndex(ctx.mode, ctx.tag);
@@ -3318,7 +3354,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.view.tagFolderActiveMode = mode;
       WS.view.tagFolderActiveTag = tag;
       WS.view.tagFolderOriginPath = String(originPath || "");
-      WS.view.dirEntryOrigin = null;
       closeActionMenus();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
@@ -3332,7 +3367,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function exitTagFolderView() {
       if (!isViewingTagFolder()) return;
-      setTagFolderViewState("", "", "");
+      const ctx = {
+        mode: WS.view.tagFolderActiveMode,
+        tag: WS.view.tagFolderActiveTag,
+        originPath: WS.view.tagFolderOriginPath
+      };
+      if (!restoreTagFolderEntrySelection(ctx)) {
+        setTagFolderViewState("", "", "");
+      }
     }
 
     function openTagFolderEntry(entry) {
@@ -3345,6 +3387,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function getEffectiveTagFiltersForDir(dirNode) {
       if (!dirNode) return null;
+      if (dirNode._skipTagFilters) return null;
       const available = getAvailableTagsForDir(dirNode);
       if (!available.size) return null;
       const include = new Set();
@@ -3362,8 +3405,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function dirMatchesTagFilters(dirNode, filters) {
       if (!dirNode) return false;
       if (!filters) return true;
-      const tags = metaGetUserTags(dirNode.path || "");
-      const tagSet = new Set(tags);
+      const tags = metaGetTags(dirNode.path || "");
+      const tagSet = new Set();
+      for (const t of tags) {
+        if (!t) continue;
+        tagSet.add(t);
+      }
       const mode = filters.mode === "and" ? "and" : "or";
 
       const hasAny = (set) => {
@@ -3722,6 +3769,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         WS.preview.kind = "file";
         WS.preview.fileId = entry.id;
         WS.preview.dirNode = null;
+      } else if (entry.kind === "tag") {
+        const node = makeTagPreviewNode(entry);
+        if (node) {
+          WS.preview.kind = "dir";
+          WS.preview.dirNode = node;
+          WS.preview.fileId = null;
+        } else {
+          WS.preview.kind = null;
+          WS.preview.dirNode = null;
+          WS.preview.fileId = null;
+        }
       } else {
         WS.preview.kind = null;
         WS.preview.dirNode = null;
@@ -3743,19 +3801,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (entry.kind === "tag") {
         openTagFolderEntry(entry);
         return;
-      }
-
-      if (isViewingTagFolder() && entry.kind === "dir" && entry.node) {
-        const targetPath = String(entry.node.path || "");
-        if (targetPath) {
-          WS.view.dirEntryOrigin = {
-            path: targetPath,
-            type: "tag",
-            mode: WS.view.tagFolderActiveMode,
-            tag: WS.view.tagFolderActiveTag,
-            originPath: String(WS.view.tagFolderOriginPath || WS.nav.dirNode?.path || "")
-          };
-        }
       }
 
       if (isViewingTagFolder()) {
@@ -3847,25 +3892,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       recordDirHistory();
     }
 
-    function tryRestoreEntryOrigin() {
-      const node = WS.nav.dirNode;
-      if (!node) return false;
-      const path = String(node.path || "");
-      if (!path) return false;
-      const ctx = WS.view.dirEntryOrigin;
-      if (!ctx || ctx.path !== path) return false;
-      WS.view.dirEntryOrigin = null;
-      if (ctx.type === "tag") {
-        return restoreTagFolderEntrySelection(ctx);
-      }
-      return false;
-    }
-
     function leaveDirectory() {
       TAG_EDIT_PATH = null;
       closeBulkTagPanel();
-
-      if (tryRestoreEntryOrigin()) return;
 
       if (isViewingTagFolder()) {
         exitTagFolderView();
@@ -4393,7 +4422,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       const base = getChildDirsForNodeBase(WS.nav.dirNode);
       const counts = new Map();
+      let favCount = 0;
       for (const d of base) {
+        if (metaHasFavorite(d.path || "")) favCount++;
         const tags = metaGetUserTags(d.path || "");
         const uniq = new Set(tags);
         for (const t of uniq) {
@@ -4401,16 +4432,22 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
 
+      const availableUserTags = Array.from(counts.keys());
+      const hasTagged = availableUserTags.length > 0;
+      if (favCount > 0) counts.set(FAVORITE_TAG, favCount);
       const available = Array.from(counts.keys());
-      const hasTagged = available.length > 0;
-
-      if (!hasTagged) {
+      if (!hasTagged && favCount === 0) {
         directoriesTagsRowEl.style.display = "none";
         directoriesTagsRowEl.innerHTML = "";
         return;
       }
 
-      available.sort((a,b) => String(a).localeCompare(String(b)));
+      available.sort((a,b) => {
+        if (a === FAVORITE_TAG && b === FAVORITE_TAG) return 0;
+        if (a === FAVORITE_TAG) return -1;
+        if (b === FAVORITE_TAG) return 1;
+        return String(a).localeCompare(String(b));
+      });
 
       directoriesTagsRowEl.innerHTML = "";
       directoriesTagsRowEl.style.display = "flex";
@@ -4420,30 +4457,31 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const frag = document.createDocumentFragment();
 
       for (let i = 0; i < available.length; i++) {
-        const t = available[i];
+        const tagKey = available[i];
         const chip = document.createElement("span");
-        const state = WS.view.tagIncludeFilters.has(t) ? "include" : (WS.view.tagExcludeFilters.has(t) ? "exclude" : "off");
+        const state = WS.view.tagIncludeFilters.has(tagKey) ? "include" : (WS.view.tagExcludeFilters.has(tagKey) ? "exclude" : "off");
         chip.className = "tag" + (state === "include" ? " include" : (state === "exclude" ? " exclude" : ""));
-        chip.textContent = `${t} (${counts.get(t) || 0})`;
+        const label = (tagKey === FAVORITE_TAG) ? "Favorites" : tagKey;
+        chip.textContent = `${label} (${counts.get(tagKey) || 0})`;
         chip.style.cursor = "pointer";
         chip.title = state === "include" ? "Tag filter: include" : (state === "exclude" ? "Tag filter: hide" : "Tag filter: off");
         chip.addEventListener("click", (e) => {
           e.stopPropagation();
           if (cycle === "bi") {
-            if (WS.view.tagIncludeFilters.has(t)) {
-              WS.view.tagIncludeFilters.delete(t);
+            if (WS.view.tagIncludeFilters.has(tagKey)) {
+              WS.view.tagIncludeFilters.delete(tagKey);
             } else {
-              WS.view.tagExcludeFilters.delete(t);
-              WS.view.tagIncludeFilters.add(t);
+              WS.view.tagExcludeFilters.delete(tagKey);
+              WS.view.tagIncludeFilters.add(tagKey);
             }
           } else {
-            if (WS.view.tagIncludeFilters.has(t)) {
-              WS.view.tagIncludeFilters.delete(t);
-              WS.view.tagExcludeFilters.add(t);
-            } else if (WS.view.tagExcludeFilters.has(t)) {
-              WS.view.tagExcludeFilters.delete(t);
+            if (WS.view.tagIncludeFilters.has(tagKey)) {
+              WS.view.tagIncludeFilters.delete(tagKey);
+              WS.view.tagExcludeFilters.add(tagKey);
+            } else if (WS.view.tagExcludeFilters.has(tagKey)) {
+              WS.view.tagExcludeFilters.delete(tagKey);
             } else {
-              WS.view.tagIncludeFilters.add(t);
+              WS.view.tagIncludeFilters.add(tagKey);
             }
           }
 
@@ -4711,9 +4749,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         row.className = "dirRow" + (idx === WS.nav.selectedIndex ? " selected" : "");
         row.tabIndex = -1;
 
-        if (entry.kind === "tag") row.classList.add("tagEntry");
+        const isTagEntry = entry.kind === "tag";
+        if (isTagEntry) {
+          row.classList.add("tagEntry");
+        }
 
-        if (entry.kind === "tag") {
+        if (isTagEntry) {
           const label = String(entry.label || entry.tag || "Tag");
           const countText = entry.count ? `${entry.count} folders` : "Tag folder";
           row.innerHTML = `
@@ -4721,144 +4762,142 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             <div class="dirName" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
             <div class="dirMeta">${escapeHtml(countText)}</div>
           `;
-          frag.appendChild(row);
-          return;
-        }
+        } else {
+          let icon = "📁";
+          let name = "";
+          let meta = "";
+          let voteHtml = "";
+          let rightHtml = "";
+          let fileMenuHtml = "";
 
-        let icon = "📁";
-        let name = "";
-        let meta = "";
-        let voteHtml = "";
-        let rightHtml = "";
-        let fileMenuHtml = "";
-
-        if (entry.kind === "dir") {
-          const p = entry.node?.path || "";
-          const isFavorite = metaHasFavorite(p);
-          const isHidden = metaHasHidden(p);
-          const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
-          const canRename = !!WS.meta.fsRootHandle;
-          const canBatchIndex = !!WS.meta.fsRootHandle;
-          icon = canBulk ? (sel ? "☑" : "☐") : (isHidden ? "🙈" : (isFavorite ? "♥" : "📁"));
-          name = displayName(entry.node?.name || "folder") || "folder";
-          meta = `${dirItemCount(entry.node)} items`;
-          const sc = metaGetScore(p);
-          const scoreMode = folderScoreDisplayMode();
-          if (scoreMode !== "hidden") {
-            const arrows = scoreMode === "show";
-            voteHtml = `
+          if (entry.kind === "dir") {
+            const p = entry.node?.path || "";
+            const isFavorite = metaHasFavorite(p);
+            const isHidden = metaHasHidden(p);
+            const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
+            const canRename = !!WS.meta.fsRootHandle;
+            const canBatchIndex = !!WS.meta.fsRootHandle;
+            icon = canBulk ? (sel ? "☑" : "☐") : (isHidden ? "🙈" : (isFavorite ? "♥" : "📁"));
+            name = displayName(entry.node?.name || "folder") || "folder";
+            meta = `${dirItemCount(entry.node)} items`;
+            const sc = metaGetScore(p);
+            const scoreMode = folderScoreDisplayMode();
+            if (scoreMode !== "hidden") {
+              const arrows = scoreMode === "show";
+              voteHtml = `
           <div class="voteBox" data-path="${escapeHtml(p)}">
             ${arrows ? `<div class="voteBtn up">▲</div>` : ""}
             <div class="voteScore">${sc}</div>
             ${arrows ? `<div class="voteBtn down">▼</div>` : ""}
           </div>
           `;
-          }
-          const menuOpen = WS.view.dirActionMenuPath === p;
-          // Folder menu (three dot / ⋯) for single-folder actions.
-          const menuHtml = `
-            <div class="dirMenu">
-            <button class="dirMenuBtn" title="Folder menu">⋯</button>
-            <div class="dropdownMenu${menuOpen ? " open" : ""}">
-              <div class="scoreRow">
-                <button type="button" class="scoreBtn" data-action="score-up">+</button>
-                <button type="button" class="scoreBtn" data-action="score-down">-</button>
+            }
+            const menuOpen = WS.view.dirActionMenuPath === p;
+            // Folder menu (three dot / ⋯) for single-folder actions.
+            const menuHtml = `
+              <div class="dirMenu">
+              <button class="dirMenuBtn" title="Folder menu">⋯</button>
+              <div class="dropdownMenu${menuOpen ? " open" : ""}">
+                <div class="scoreRow">
+                  <button type="button" class="scoreBtn" data-action="score-up">+</button>
+                  <button type="button" class="scoreBtn" data-action="score-down">-</button>
+                </div>
+                <button type="button" data-action="tag">Tag</button>
+                <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
+                <button type="button" data-action="batch-index-1"${canBatchIndex ? "" : " disabled"}>Batch Index I</button>
+                <button type="button" data-action="batch-index-2"${canBatchIndex ? "" : " disabled"}>Batch Index II</button>
+                <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
+                <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
               </div>
-              <button type="button" data-action="tag">Tag</button>
-              <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
-              <button type="button" data-action="batch-index-1"${canBatchIndex ? "" : " disabled"}>Batch Index I</button>
-              <button type="button" data-action="batch-index-2"${canBatchIndex ? "" : " disabled"}>Batch Index II</button>
-              <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
-              <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
             </div>
-          </div>
-          `;
-          rightHtml = `<div class="dirRight"><div class="dirMeta">${escapeHtml(meta)}</div>${menuHtml}</div>`;
-        } else {
-          const rec = WS.fileById.get(entry.id);
-          const isVid = rec?.type === "video";
-          const sel = canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
-          icon = canBulk ? (sel ? "☑" : "☐") : (isVid ? "🎞" : "🖼");
-          name = fileDisplayName(rec?.name || "file") || "file";
-          meta = isVid ? "video" : "image";
-          const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
-          // File menu (three dot / ⋯) for single-file actions.
-          fileMenuHtml = `
-            <div class="dirMenu">
-            <button class="dirMenuBtn" title="File menu">⋯</button>
-            <div class="dropdownMenu${fileMenuOpen ? " open" : ""}">
-              <button type="button" data-action="rename-file">Rename</button>
+            `;
+            rightHtml = `<div class="dirRight"><div class="dirMeta">${escapeHtml(meta)}</div>${menuHtml}</div>`;
+          } else {
+            const rec = WS.fileById.get(entry.id);
+            const isVid = rec?.type === "video";
+            const sel = canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
+            icon = canBulk ? (sel ? "☑" : "☐") : (isVid ? "🎞" : "🖼");
+            name = fileDisplayName(rec?.name || "file") || "file";
+            meta = isVid ? "video" : "image";
+            const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
+            // File menu (three dot / ⋯) for single-file actions.
+            fileMenuHtml = `
+              <div class="dirMenu">
+              <button class="dirMenuBtn" title="File menu">⋯</button>
+              <div class="dropdownMenu${fileMenuOpen ? " open" : ""}">
+                <button type="button" data-action="rename-file">Rename</button>
+              </div>
             </div>
-          </div>
-          `;
-        }
+            `;
+          }
 
-        if (entry.kind === "dir" && (entry.node?.path || "") === (RENAME_EDIT_PATH || "")) {
-          const curName = String(entry.node?.name || "");
-          if (voteHtml) {
-            row.innerHTML = `
-          <div class="dirIcon">${icon}</div>
-          <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="folder name" /></div>
-          ${voteHtml}
-          ${rightHtml}
-        `;
-          } else {
-            row.innerHTML = `
-          <div class="dirIcon">${icon}</div>
-          <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="folder name" /></div>
-          ${rightHtml}
-        `;
-          }
-        } else if (entry.kind === "dir" && (entry.node?.path || "") === (TAG_EDIT_PATH || "")) {
-          const p = entry.node?.path || "";
-          const curTags = metaGetUserTags(p).join(", ");
-          if (voteHtml) {
-            row.innerHTML = `
-          <div class="dirIcon">${icon}</div>
-          <div class="dirName"><input class="tagEditInput" type="text" value="${escapeHtml(curTags)}" placeholder="tag1, tag2" /></div>
-          ${voteHtml}
-          ${rightHtml}
-        `;
-          } else {
-            row.innerHTML = `
-          <div class="dirIcon">${icon}</div>
-          <div class="dirName"><input class="tagEditInput" type="text" value="${escapeHtml(curTags)}" placeholder="tag1, tag2" /></div>
-          ${rightHtml}
-        `;
-          }
-        } else {
-          if (entry.kind === "dir") {
+          if (entry.kind === "dir" && (entry.node?.path || "") === (RENAME_EDIT_PATH || "")) {
+            const curName = String(entry.node?.name || "");
             if (voteHtml) {
               row.innerHTML = `
-          <div class="dirIcon">${icon}</div>
-          <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-          ${voteHtml}
-          ${rightHtml}
-        `;
+                <div class="dirIcon">${icon}</div>
+                <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="folder name" /></div>
+                ${voteHtml}
+                ${rightHtml}
+              `;
             } else {
               row.innerHTML = `
-          <div class="dirIcon">${icon}</div>
-          <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-          ${rightHtml}
-        `;
+                <div class="dirIcon">${icon}</div>
+                <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="folder name" /></div>
+                ${rightHtml}
+              `;
+            }
+          } else if (entry.kind === "dir" && (entry.node?.path || "") === (TAG_EDIT_PATH || "")) {
+            const p = entry.node?.path || "";
+            const curTags = metaGetUserTags(p).join(", ");
+            if (voteHtml) {
+              row.innerHTML = `
+                <div class="dirIcon">${icon}</div>
+                <div class="dirName"><input class="tagEditInput" type="text" value="${escapeHtml(curTags)}" placeholder="tag1, tag2" /></div>
+                ${voteHtml}
+                ${rightHtml}
+              `;
+            } else {
+              row.innerHTML = `
+                <div class="dirIcon">${icon}</div>
+                <div class="dirName"><input class="tagEditInput" type="text" value="${escapeHtml(curTags)}" placeholder="tag1, tag2" /></div>
+                ${rightHtml}
+              `;
             }
           } else {
-            if (String(entry.id || "") === String(RENAME_EDIT_FILE_ID || "")) {
-              const rec = WS.fileById.get(entry.id);
-              const curName = String(rec?.name || "");
-              row.innerHTML = `
-          <div class="dirIcon">${icon}</div>
-          <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
-          <div class="dirMeta">${escapeHtml(meta)}</div>
-          ${fileMenuHtml}
-        `;
+            if (entry.kind === "dir") {
+              if (voteHtml) {
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                  ${voteHtml}
+                  ${rightHtml}
+                `;
+              } else {
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                  ${rightHtml}
+                `;
+              }
             } else {
-              row.innerHTML = `
-          <div class="dirIcon">${icon}</div>
-          <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-          <div class="dirMeta">${escapeHtml(meta)}</div>
-          ${fileMenuHtml}
-        `;
+              if (String(entry.id || "") === String(RENAME_EDIT_FILE_ID || "")) {
+                const rec = WS.fileById.get(entry.id);
+                const curName = String(rec?.name || "");
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
+                  <div class="dirMeta">${escapeHtml(meta)}</div>
+                  ${fileMenuHtml}
+                `;
+              } else {
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                  <div class="dirMeta">${escapeHtml(meta)}</div>
+                  ${fileMenuHtml}
+                `;
+              }
             }
           }
         }
