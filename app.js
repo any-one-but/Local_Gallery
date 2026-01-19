@@ -751,6 +751,7 @@
 
     let TAG_EDIT_PATH = null;
     let TAG_CONTEXT_MENU_STATE = null;
+    let TAG_ENTRY_RENAME_STATE = null;
     let RENAME_EDIT_PATH = null;
     let RENAME_EDIT_FILE_ID = null;
     let RENAME_BUSY = false;
@@ -1679,6 +1680,44 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
+    }
+
+    function focusTagEntryRenameInput() {
+      if (!directoriesListEl) return;
+      const input = directoriesListEl.querySelector(".tagEntryRenameInput");
+      if (!input) return;
+      try { input.focus(); input.select(); } catch {}
+    }
+
+    function cancelTagEntryRename() {
+      if (!TAG_ENTRY_RENAME_STATE) return;
+      TAG_ENTRY_RENAME_STATE = null;
+      renderDirectoriesPane(true);
+    }
+
+    function commitTagEntryRename(inputEl) {
+      if (!TAG_ENTRY_RENAME_STATE || !inputEl) return;
+      const state = TAG_ENTRY_RENAME_STATE;
+      const desired = normalizeTag(inputEl.value || "");
+      TAG_ENTRY_RENAME_STATE = null;
+      if (!desired) {
+        showStatusMessage("Tag name cannot be empty.");
+        renderDirectoriesPane(true);
+        return;
+      }
+      if (desired === state.tag) {
+        showStatusMessage("Tag name unchanged.");
+        renderDirectoriesPane(true);
+        return;
+      }
+      const changed = renameTagForPaths(state.tag, desired, state.paths);
+      if (!changed) {
+        showStatusMessage("No folders updated.");
+        renderDirectoriesPane(true);
+        return;
+      }
+      metaScheduleSave();
+      refreshAfterTagMetadataChange();
     }
 
     function metaToggleFavorite(path) {
@@ -4711,24 +4750,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
       if (action === "rename") {
-        const desired = prompt(`Rename tag '${label}' to:`, label);
-        if (desired === null) return;
-        const normalized = normalizeTag(desired);
-        if (!normalized) {
-          showStatusMessage("Tag name cannot be empty.");
-          return;
-        }
-        if (normalized === tag) {
-          showStatusMessage("Tag name unchanged.");
-          return;
-        }
-        const changed = renameTagForPaths(tag, normalized, paths);
-        if (!changed) {
-          showStatusMessage("No folders updated.");
-          return;
-        }
-        metaScheduleSave();
-        refreshAfterTagMetadataChange();
+        TAG_ENTRY_RENAME_STATE = { tag, label, paths };
+        renderDirectoriesPane(true);
         return;
       }
       if (action === "delete") {
@@ -5130,14 +5153,24 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           row.classList.add("tagEntry");
         }
 
+        const renameActive = isTagEntry && !entry.special && entry.tag && TAG_ENTRY_RENAME_STATE && (entry.tag === TAG_ENTRY_RENAME_STATE.tag);
         if (isTagEntry) {
           const label = String(entry.label || entry.tag || "Tag");
           const countText = entry.count ? `${entry.count} folders` : "Tag folder";
-          row.innerHTML = `
-            <div class="dirIcon">🏷</div>
-            <div class="dirName" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
-            <div class="dirMeta">${escapeHtml(countText)}</div>
-          `;
+          if (renameActive) {
+            const initialValue = TAG_ENTRY_RENAME_STATE.label || label;
+            row.innerHTML = `
+              <div class="dirIcon">🏷</div>
+              <div class="dirName"><input class="tagEditInput tagEntryRenameInput renameEditInput" type="text" value="${escapeHtml(initialValue)}" placeholder="${escapeHtml(label)}" /></div>
+              <div class="dirMeta">${escapeHtml(countText)}</div>
+            `;
+          } else {
+            row.innerHTML = `
+              <div class="dirIcon">🏷</div>
+              <div class="dirName" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
+              <div class="dirMeta">${escapeHtml(countText)}</div>
+            `;
+          }
         } else {
           let icon = "📁";
           let name = "";
@@ -5292,6 +5325,28 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
               paths
             });
           });
+        }
+
+        if (isTagEntry && renameActive) {
+          const renameInput = row.querySelector(".tagEntryRenameInput");
+          if (renameInput) {
+            renameInput.addEventListener("click", (e) => { e.stopPropagation(); });
+            renameInput.addEventListener("keydown", (e) => {
+              e.stopPropagation();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelTagEntryRename();
+                return;
+              }
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitTagEntryRename(renameInput);
+              }
+            });
+            renameInput.addEventListener("blur", () => {
+              commitTagEntryRename(renameInput);
+            });
+          }
         }
 
         row.addEventListener("click", (e) => {
@@ -5595,6 +5650,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       if (keepScroll) {
         directoriesListEl.scrollTop = prevScroll;
+        if (TAG_ENTRY_RENAME_STATE) focusTagEntryRenameInput();
         return;
       }
 
@@ -5604,6 +5660,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const c = directoriesListEl.getBoundingClientRect();
         if (r.top < c.top || r.bottom > c.bottom) selected.scrollIntoView({ block: "nearest" });
       }
+      if (TAG_ENTRY_RENAME_STATE) focusTagEntryRenameInput();
     }
 
     directoriesListEl.addEventListener("scroll", () => {
