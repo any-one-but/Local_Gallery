@@ -1332,6 +1332,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (WS.view.bulkFileSelectedIds && WS.view.bulkFileSelectedIds.clear) WS.view.bulkFileSelectedIds.clear();
     }
 
+    function finalizeBulkSelectionAction() {
+      if (!WS.view.bulkSelectMode &&
+          !(WS.view.bulkTagSelectedPaths && WS.view.bulkTagSelectedPaths.size) &&
+          !(WS.view.bulkFileSelectedIds && WS.view.bulkFileSelectedIds.size)) {
+        return;
+      }
+      WS.view.bulkSelectMode = false;
+      clearBulkTagSelection();
+    }
+
     function syncBulkSelectionForCurrentDir() {
       const p = getBulkSelectionKey();
       if (!WS.view.bulkTagSelectionsByDir) WS.view.bulkTagSelectionsByDir = new Map();
@@ -1686,6 +1696,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (isPlaceholder) {
         clearBulkTagPlaceholder();
         metaAddUserTagsBulk(state.paths, [desired]);
+        finalizeBulkSelectionAction();
         return;
       }
       const changed = renameTagForPaths(state.tag, desired, state.paths);
@@ -4709,11 +4720,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const scoreUpBtn = makeActionBtn("+", () => {
         WS.view.bulkActionMenuOpen = false;
         metaBumpScoreBulk(selectedDirs, 1);
+        finalizeBulkSelectionAction();
       });
       scoreUpBtn.classList.add("scoreBtn");
       const scoreDownBtn = makeActionBtn("-", () => {
         WS.view.bulkActionMenuOpen = false;
         metaBumpScoreBulk(selectedDirs, -1);
+        finalizeBulkSelectionAction();
       });
       scoreDownBtn.classList.add("scoreBtn");
       scoreRow.appendChild(scoreUpBtn);
@@ -4723,18 +4736,20 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
         WS.view.bulkActionMenuOpen = false;
         if (!selectedDirs.length) return;
-        clearBulkTagSelection();
+        finalizeBulkSelectionAction();
         setBulkTagPlaceholder(selectedDirs, "New tag folder");
       }));
 
       directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
         WS.view.bulkActionMenuOpen = false;
         metaSetFavoriteBulk(selectedDirs, !allFavorite);
+        finalizeBulkSelectionAction();
       }));
 
       directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
         WS.view.bulkActionMenuOpen = false;
         metaSetHiddenBulk(selectedDirs, !allHidden);
+        finalizeBulkSelectionAction();
       }));
 
       const anchorBtn = findDirMenuButtonForPath(WS.view.bulkActionMenuAnchorPath);
