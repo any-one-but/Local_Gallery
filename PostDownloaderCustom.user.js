@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.01.00
+// @version 01.01.01
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
