@@ -607,6 +607,8 @@
     const helpCloseBtn = $("helpCloseBtn");
     const helpBodyEl = $("helpBody");
     const helpHoldOverlay = $("helpHoldOverlay");
+    const helpCard = $("helpCard");
+    const helpHeader = $("helpHeader");
 
     // Options Overlay
     const optionsOverlay = $("optionsOverlay");
@@ -615,6 +617,128 @@
     const optionsResetBtn = $("optionsResetBtn");
     const optionsDoneBtn = $("optionsDoneBtn");
     const optionsStatusLabel = $("optionsStatusLabel");
+    const optionsCard = $("optionsCard");
+    const optionsHeader = $("optionsHeader");
+
+    const overlayWindowStates = {
+      help: { x: null, y: null, width: null, height: null },
+      options: { x: null, y: null, width: null, height: null }
+    };
+    const overlayCards = {
+      help: helpCard,
+      options: optionsCard
+    };
+    const overlayCardHeaders = {
+      help: helpHeader,
+      options: optionsHeader
+    };
+    const overlayWindowNames = Object.keys(overlayWindowStates);
+    const overlayResizeObserver = (typeof ResizeObserver === "function") ? new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const name = entry.target.dataset.overlayName;
+        const state = overlayWindowStates[name];
+        if (!state) continue;
+        const width = entry.contentRect.width || state.width || (entry.target.offsetWidth || 0);
+        const height = entry.contentRect.height || state.height || (entry.target.offsetHeight || 0);
+        if (!width || !height) continue;
+        state.width = width;
+        state.height = height;
+        clampOverlayWindowPosition(name, state.x, state.y);
+      }
+    }) : null;
+
+    function clampOverlayWindowPosition(name, desiredX, desiredY) {
+      const card = overlayCards[name];
+      const state = overlayWindowStates[name];
+      if (!card || !state) return;
+      const rect = card.getBoundingClientRect();
+      const width = rect.width || state.width || card.offsetWidth || 0;
+      const height = rect.height || state.height || card.offsetHeight || 0;
+      if (!width || !height) return;
+      const maxX = Math.max(8, window.innerWidth - width - 8);
+      const maxY = Math.max(8, window.innerHeight - height - 8);
+      let x = (typeof desiredX === "number") ? desiredX : (typeof state.x === "number" ? state.x : (window.innerWidth - width) / 2);
+      let y = (typeof desiredY === "number") ? desiredY : (typeof state.y === "number" ? state.y : (window.innerHeight - height) / 2);
+      x = Math.min(maxX, Math.max(8, x));
+      y = Math.min(maxY, Math.max(8, y));
+      card.style.left = `${x}px`;
+      card.style.top = `${y}px`;
+      state.x = x;
+      state.y = y;
+      state.width = width;
+      state.height = height;
+    }
+
+    function applyOverlayWindowState(name) {
+      const card = overlayCards[name];
+      const state = overlayWindowStates[name];
+      if (!card || !state) return;
+      if (state.width) card.style.width = `${state.width}px`;
+      else card.style.removeProperty("width");
+      if (state.height) card.style.height = `${state.height}px`;
+      else card.style.removeProperty("height");
+      clampOverlayWindowPosition(name);
+    }
+
+    function registerOverlayWindow(name, card, header) {
+      if (!card) return;
+      card.dataset.overlayName = name;
+      if (overlayResizeObserver) overlayResizeObserver.observe(card);
+
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+      let activePointerId = null;
+
+      const onPointerMove = (ev) => {
+        if (!dragging) return;
+        ev.preventDefault();
+        const rect = card.getBoundingClientRect();
+        const nextX = rect.left + (ev.clientX - lastX);
+        const nextY = rect.top + (ev.clientY - lastY);
+        lastX = ev.clientX;
+        lastY = ev.clientY;
+        clampOverlayWindowPosition(name, nextX, nextY);
+      };
+
+      const stopDrag = () => {
+        if (!dragging) return;
+        dragging = false;
+        if (header && activePointerId !== null) {
+          try { header.releasePointerCapture(activePointerId); } catch (e) {}
+        }
+        document.removeEventListener("pointermove", onPointerMove);
+        document.removeEventListener("pointerup", stopDrag);
+        document.removeEventListener("pointercancel", stopDrag);
+        card.classList.remove("overlayCardDragging");
+        activePointerId = null;
+      };
+
+      if (header) {
+        header.addEventListener("pointerdown", (ev) => {
+          if (ev.button !== 0) return;
+          if (ev.target && ev.target.closest && ev.target.closest("button")) return;
+          ev.preventDefault();
+          dragging = true;
+          lastX = ev.clientX;
+          lastY = ev.clientY;
+          activePointerId = ev.pointerId;
+          try { header.setPointerCapture(activePointerId); } catch (e) {}
+          document.addEventListener("pointermove", onPointerMove);
+          document.addEventListener("pointerup", stopDrag);
+          document.addEventListener("pointercancel", stopDrag);
+          card.classList.add("overlayCardDragging");
+        });
+      }
+    }
+
+    overlayWindowNames.forEach((name) => {
+      registerOverlayWindow(name, overlayCards[name], overlayCardHeaders[name]);
+    });
+
+    window.addEventListener("resize", () => {
+      overlayWindowNames.forEach((name) => applyOverlayWindowState(name));
+    });
 
     // Directories Pane
     const directoriesListEl = $("directoriesList");
@@ -973,6 +1097,7 @@
     async function openHelp() {
       HELP_OPEN = true;
       if (helpOverlay) helpOverlay.classList.add("active");
+      requestAnimationFrame(() => applyOverlayWindowState("help"));
       if (!helpBodyEl) return;
       helpBodyEl.innerHTML = `<div class="label">Loading help...</div>`;
       const md = await loadHelpMarkdown();
@@ -992,9 +1117,6 @@
 
     if (helpBtn) helpBtn.addEventListener("click", () => openHelp());
     if (helpCloseBtn) helpCloseBtn.addEventListener("click", () => closeHelp());
-    if (helpOverlay) helpOverlay.addEventListener("click", (e) => {
-      if (e.target === helpOverlay) closeHelp();
-    });
 
     /* =========================================================
        Options overlay
@@ -1003,6 +1125,7 @@
     function openOptions() {
       OPTIONS_OPEN = true;
       if (optionsOverlay) optionsOverlay.classList.add("active");
+      requestAnimationFrame(() => applyOverlayWindowState("options"));
       renderOptionsUi();
       setOptionsStatus("Saved automatically");
     }
@@ -1310,9 +1433,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     if (optionsCloseBtn) optionsCloseBtn.addEventListener("click", () => closeOptions());
     if (optionsDoneBtn) optionsDoneBtn.addEventListener("click", () => closeOptions());
     if (optionsResetBtn) optionsResetBtn.addEventListener("click", () => resetOptionsToDefaults());
-    if (optionsOverlay) optionsOverlay.addEventListener("click", (e) => {
-      if (e.target === optionsOverlay) closeOptions();
-    });
 
     /* =========================================================
        Workspace loading (read-only input)
