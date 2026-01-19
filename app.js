@@ -427,6 +427,7 @@
         bulkFileSelectedIds: new Set(),
         bulkFileSelectionsByDir: new Map(),
         bulkActionMenuOpen: false,
+        bulkActionMenuAnchorPath: "",
         dirActionMenuPath: "",
         tagFolderActiveMode: "",
         tagFolderActiveTag: "",
@@ -543,6 +544,7 @@
       WS.view.bulkFileSelectedIds = new Set();
       WS.view.bulkFileSelectionsByDir = new Map();
       WS.view.bulkActionMenuOpen = false;
+      WS.view.bulkActionMenuAnchorPath = "";
       WS.view.dirActionMenuPath = "";
       WS.view.tagFolderActiveMode = "";
       WS.view.tagFolderActiveTag = "";
@@ -629,18 +631,14 @@
     const optionsStatusLabel = $("optionsStatusLabel");
 
     // Directories Pane
-    const directoriesPathEl = $("directoriesPath");
     const directoriesListEl = $("directoriesList");
+    const directoriesHeader = $("directoriesHeader");
     const favoritesBtn = $("favoritesBtn");
     const hiddenBtn = $("hiddenBtn");
     const directoriesTagsRowEl = $("directoriesTagsRow");
     const directoriesActionRowEl = $("directoriesActionRow");
-    const directoriesSelectBtn = $("directoriesSelectBtn");
     const directoriesSelectAllBtn = $("directoriesSelectAllBtn");
-    // Select menu (three line / ☰) button.
-    const directoriesMenuBtn = $("directoriesMenuBtn");
     const directoriesActionMenuEl = $("directoriesActionMenu");
-    const directoriesClearBtn = $("directoriesClearBtn");
     const directoriesBulkRowEl = $("directoriesBulkRow");
     const directoriesSearchInput = $("directoriesSearchInput");
     const directoriesSearchClearBtn = $("directoriesSearchClearBtn");
@@ -892,9 +890,8 @@
     }
 
     function getCurrentTitleText() {
-      if (!WS.nav.dirNode) return "—";
-      const nm = displayName(WS.nav.dirNode.name || "");
-      return nm || "—";
+      const path = getDirectoriesPathText();
+      return path || "—";
     }
 
     function updateTitleLabel() {
@@ -4289,13 +4286,49 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function closeActionMenus() {
       WS.view.bulkActionMenuOpen = false;
+      WS.view.bulkActionMenuAnchorPath = "";
       WS.view.dirActionMenuPath = "";
       WS.view.fileActionMenuId = "";
+    }
+
+    function openBulkActionMenuForSelection(path) {
+      const p = String(path || "");
+      if (!p) return false;
+      if (!WS.view.bulkSelectMode) return false;
+      const selectedDirs = getSelectedPathsInCurrentDir();
+      if (!selectedDirs.length) return false;
+      if (!selectedDirs.includes(p)) return false;
+      if (WS.view.bulkActionMenuOpen && WS.view.bulkActionMenuAnchorPath === p) {
+        closeActionMenus();
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        return true;
+      }
+      WS.view.bulkActionMenuOpen = true;
+      WS.view.bulkActionMenuAnchorPath = p;
+      WS.view.dirActionMenuPath = "";
+      WS.view.fileActionMenuId = "";
+      TAG_EDIT_PATH = null;
+      RENAME_EDIT_PATH = null;
+      RENAME_EDIT_FILE_ID = null;
+      closeBulkTagPanel();
+
+      const idx = findDirEntryIndexByPath(p);
+      if (idx >= 0) {
+        WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+        syncPreviewToSelection();
+      }
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      return true;
     }
 
     function openDirMenuForPath(path) {
       const p = String(path || "");
       if (!p) return;
+      if (openBulkActionMenuForSelection(p)) return;
       WS.view.bulkActionMenuOpen = false;
       WS.view.dirActionMenuPath = p;
       WS.view.fileActionMenuId = "";
@@ -4613,34 +4646,36 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function renderDirectoriesActionHeader() {
-      if (!directoriesActionRowEl || !directoriesSelectBtn || !directoriesMenuBtn || !directoriesClearBtn || !directoriesActionMenuEl) return;
+      if (!directoriesActionRowEl || !directoriesActionMenuEl) return;
 
       if (!WS.root) {
         directoriesActionRowEl.style.display = "none";
+        if (WS.view.bulkActionMenuOpen) {
+          WS.view.bulkActionMenuOpen = false;
+          WS.view.bulkActionMenuAnchorPath = "";
+        }
+        directoriesActionMenuEl.classList.remove("open");
+        directoriesActionMenuEl.innerHTML = "";
         return;
       }
-
-      directoriesActionRowEl.style.display = "flex";
 
       const canBulk = canUseBulkSelection();
       if (!canBulk && WS.view.bulkSelectMode) {
         WS.view.bulkSelectMode = false;
         clearBulkTagSelection();
       }
+
       const selectedDirs = canBulk ? getSelectedPathsInCurrentDir() : [];
       const selectedFiles = canBulk ? getSelectedFileIdsInCurrentView() : [];
       const selCount = selectedDirs.length + selectedFiles.length;
       const hasDirSelection = selectedDirs.length > 0;
-      if (!selCount && WS.view.bulkActionMenuOpen) WS.view.bulkActionMenuOpen = false;
+      if (!selCount) {
+        WS.view.bulkActionMenuOpen = false;
+        WS.view.bulkActionMenuAnchorPath = "";
+      }
 
-      directoriesSelectBtn.textContent = WS.view.bulkSelectMode ? `Select${selCount ? ` (${selCount})` : ""}` : "Select";
-      directoriesSelectBtn.disabled = !canBulk;
-      directoriesMenuBtn.disabled = !canBulk || !hasDirSelection;
-      directoriesClearBtn.disabled = !canBulk || !selCount;
-
-      const menuOpen = WS.view.bulkActionMenuOpen && canBulk && hasDirSelection;
-      directoriesActionMenuEl.classList.toggle("open", menuOpen);
-      directoriesActionMenuEl.innerHTML = "";
+      const rowVisible = canBulk && (WS.view.bulkSelectMode || WS.view.bulkActionMenuOpen || WS.view.bulkTagPanelOpen);
+      directoriesActionRowEl.style.display = rowVisible ? "flex" : "none";
 
       if (directoriesSelectAllBtn) {
         const visibleFiles = canBulk ? Array.from(getVisibleFileIdsInEntries()) : [];
@@ -4649,54 +4684,80 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         directoriesSelectAllBtn.disabled = !WS.view.bulkSelectMode || !visibleFiles.length || allSelected;
       }
 
-      if (menuOpen) {
-        const allFavorite = selectedDirs.every(p => metaHasFavorite(p));
-        const allHidden = selectedDirs.every(p => metaHasHidden(p));
+      const menuOpen = WS.view.bulkActionMenuOpen && canBulk && hasDirSelection;
+      directoriesActionMenuEl.classList.toggle("open", menuOpen);
+      directoriesActionMenuEl.innerHTML = "";
 
-        const makeActionBtn = (label, onClick) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.textContent = label;
-          btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            onClick();
-          });
-          return btn;
-        };
+      if (!menuOpen) return;
 
-        const scoreRow = document.createElement("div");
-        scoreRow.className = "scoreRow";
-        const scoreUpBtn = makeActionBtn("+", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaBumpScoreBulk(selectedDirs, 1);
+      const allFavorite = selectedDirs.every(p => metaHasFavorite(p));
+      const allHidden = selectedDirs.every(p => metaHasHidden(p));
+
+      const makeActionBtn = (label, onClick) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = label;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onClick();
         });
-        scoreUpBtn.classList.add("scoreBtn");
-        const scoreDownBtn = makeActionBtn("-", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaBumpScoreBulk(selectedDirs, -1);
-        });
-        scoreDownBtn.classList.add("scoreBtn");
-        scoreRow.appendChild(scoreUpBtn);
-        scoreRow.appendChild(scoreDownBtn);
-        directoriesActionMenuEl.appendChild(scoreRow);
+        return btn;
+      };
 
-        directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
-          WS.view.bulkActionMenuOpen = false;
-          openBulkTagPanel();
-        }));
+      const scoreRow = document.createElement("div");
+      scoreRow.className = "scoreRow";
+      const scoreUpBtn = makeActionBtn("+", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaBumpScoreBulk(selectedDirs, 1);
+      });
+      scoreUpBtn.classList.add("scoreBtn");
+      const scoreDownBtn = makeActionBtn("-", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaBumpScoreBulk(selectedDirs, -1);
+      });
+      scoreDownBtn.classList.add("scoreBtn");
+      scoreRow.appendChild(scoreUpBtn);
+      scoreRow.appendChild(scoreDownBtn);
+      directoriesActionMenuEl.appendChild(scoreRow);
 
-        directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaSetFavoriteBulk(selectedDirs, !allFavorite);
-        }));
+      directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
+        WS.view.bulkActionMenuOpen = false;
+        openBulkTagPanel();
+      }));
 
-        directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaSetHiddenBulk(selectedDirs, !allHidden);
-        }));
+      directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaSetFavoriteBulk(selectedDirs, !allFavorite);
+      }));
 
-        requestAnimationFrame(() => positionDropdownMenu(directoriesMenuBtn, directoriesActionMenuEl));
+      directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaSetHiddenBulk(selectedDirs, !allHidden);
+      }));
+
+      const anchorBtn = findDirMenuButtonForPath(WS.view.bulkActionMenuAnchorPath);
+      if (anchorBtn) {
+        requestAnimationFrame(() => positionDropdownMenu(anchorBtn, directoriesActionMenuEl));
       }
+    }
+
+    function findDirMenuButtonForPath(path) {
+      if (!directoriesListEl) return null;
+      const rows = directoriesListEl.querySelectorAll(".dirRow");
+      let fallback = null;
+      for (const row of rows) {
+        const btn = row.querySelector(".dirMenuBtn");
+        if (btn && !fallback) fallback = btn;
+        if (path && row.dataset && row.dataset.dirPath === path) {
+          return btn;
+        }
+      }
+      return fallback;
+    }
+
+    function setDirectoriesHeaderActive(active) {
+      if (!directoriesHeader) return;
+      directoriesHeader.classList.toggle("active", !!active);
     }
 
     function renderDirectoriesBulkHeader() {
@@ -4788,7 +4849,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       directoriesBulkRowEl.appendChild(input);
 
-      const available = Array.from(getAvailableTagsForCurrentDir()).slice().sort((a,b) => String(a).localeCompare(String(b)));
+      const available = Array.from(getAvailableTagsForCurrentDir())
+        .filter((t) => t && t !== FAVORITE_TAG)
+        .sort((a,b) => String(a).localeCompare(String(b)));
       for (let i = 0; i < available.length; i++) {
         const t = available[i];
         const chip = document.createElement("span");
@@ -4814,20 +4877,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       directoriesListEl.innerHTML = "";
       updateTitleLabel();
       const canBulk = WS.view.bulkSelectMode && canUseBulkSelection();
+      setDirectoriesHeaderActive(!!WS.root);
+
+      renderDirectoriesTagsHeader();
+      renderDirectoriesBulkHeader();
 
       if (!WS.root) {
-        directoriesPathEl.textContent = "—";
-        renderDirectoriesTagsHeader();
         renderDirectoriesActionHeader();
-        renderDirectoriesBulkHeader();
         directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder to begin.</div>`;
         return;
       }
 
-      directoriesPathEl.textContent = getDirectoriesPathText();
-      renderDirectoriesTagsHeader();
-      renderDirectoriesActionHeader();
-      renderDirectoriesBulkHeader();
 
       if (!WS.nav.entries.length) {
         let emptyMsg = "Empty directory.";
@@ -4840,6 +4900,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           }
         }
         directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">${escapeHtml(emptyMsg)}</div>`;
+        renderDirectoriesActionHeader();
         return;
       }
 
@@ -4881,6 +4942,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           let fileMenuHtml = "";
 
           if (entry.kind === "dir") {
+            row.dataset.dirPath = entry.node?.path || "";
             const p = entry.node?.path || "";
             const isFavorite = metaHasFavorite(p);
             const isHidden = metaHasHidden(p);
@@ -5081,9 +5143,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (menuBtn) {
             menuBtn.addEventListener("click", (e) => {
               e.stopPropagation();
-              WS.view.bulkActionMenuOpen = false;
-              WS.view.dirActionMenuPath = (WS.view.dirActionMenuPath === p) ? "" : p;
-              renderDirectoriesPane(true);
+              if (openBulkActionMenuForSelection(p)) return;
+              if (WS.view.dirActionMenuPath === p) {
+                closeActionMenus();
+                renderDirectoriesPane(true);
+                return;
+              }
+              openDirMenuForPath(p);
             });
           }
 
@@ -5305,6 +5371,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       });
 
       directoriesListEl.appendChild(frag);
+      renderDirectoriesActionHeader();
 
       if (keepScroll) {
         directoriesListEl.scrollTop = prevScroll;
@@ -5363,22 +5430,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       });
     }
 
-    if (directoriesSelectBtn) {
-      directoriesSelectBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!canUseBulkSelection()) return;
-        WS.view.bulkActionMenuOpen = false;
-        WS.view.dirActionMenuPath = "";
-        if (WS.view.bulkSelectMode) {
-          WS.view.bulkSelectMode = false;
-          clearBulkTagSelection();
-        } else {
-          WS.view.bulkSelectMode = true;
-        }
-        renderDirectoriesPane(true);
-      });
-    }
-
     if (directoriesSelectAllBtn) {
       directoriesSelectAllBtn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -5388,18 +5439,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (!visible.length) return;
         if (WS.view.bulkFileSelectedIds && WS.view.bulkFileSelectedIds.clear) WS.view.bulkFileSelectedIds.clear();
         for (let i = 0; i < visible.length; i++) WS.view.bulkFileSelectedIds.add(String(visible[i] || ""));
-        renderDirectoriesPane(true);
-      });
-    }
-
-    if (directoriesMenuBtn) {
-      directoriesMenuBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!canUseBulkSelection()) return;
-        const selected = getSelectedPathsInCurrentDir();
-        if (!selected.length) return;
-        WS.view.dirActionMenuPath = "";
-        WS.view.bulkActionMenuOpen = !WS.view.bulkActionMenuOpen;
         renderDirectoriesPane(true);
       });
     }
@@ -5425,17 +5464,33 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       });
     }
 
-    if (directoriesClearBtn) {
-      directoriesClearBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!canUseBulkSelection()) return;
-        WS.view.bulkActionMenuOpen = false;
-        clearBulkTagSelection();
-        renderDirectoriesPane(true);
-      });
+    function exitBulkSelectModeIfNeeded(target) {
+      if (!WS.view.bulkSelectMode) return false;
+      if (!target || !target.closest) {
+        exitBulkSelectMode();
+        return true;
+      }
+      if (target.closest(".dirRow")) return false;
+      if (target.closest(".dirMenu")) return false;
+      if (target.closest(".dropdownMenu")) return false;
+      if (target.closest("#directoriesActionRow")) return false;
+      if (target.closest("#directoriesBulkRow")) return false;
+      if (target.closest("#directoriesSearchRow")) return false;
+      if (target.closest("#directoriesTagsRow")) return false;
+      exitBulkSelectMode();
+      return true;
+    }
+
+    function exitBulkSelectMode() {
+      if (!WS.view.bulkSelectMode) return false;
+      WS.view.bulkSelectMode = false;
+      clearBulkTagSelection();
+      renderDirectoriesPane(true);
+      return true;
     }
 
     document.addEventListener("click", (e) => {
+      if (exitBulkSelectModeIfNeeded(e.target)) return;
       if (!WS.view.bulkActionMenuOpen && !WS.view.dirActionMenuPath && !WS.view.fileActionMenuId) return;
       const target = e.target;
       if (target && target.closest) {
@@ -5763,11 +5818,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return WS.nav.dirNode || WS.root;
     }
 
-    function getPreviewCounts() {
-      const dirNode = getPreviewTargetDir();
-      if (!dirNode) return { items: 0 };
-      const items = getChildDirsForNode(dirNode).length + getOrderedFileIdsForDir(dirNode).length;
-      return { items };
+    function getDirectoryItemCount(dirNode) {
+      if (!dirNode) return 0;
+      const dirs = getChildDirsForNode(dirNode);
+      const files = getOrderedFileIdsForDir(dirNode);
+      return dirs.length + files.length;
     }
 
     function getBreadcrumbNodesForDir(dirNode) {
@@ -6145,9 +6200,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       const targetDir = getPreviewTargetDir();
-      const counts = getPreviewCounts();
       updateModePill();
-      itemsPill.textContent = `Items: ${counts.items}`;
+      const currentDirCount = getDirectoryItemCount(WS.nav.dirNode || WS.root);
+      itemsPill.textContent = `Items: ${currentDirCount}`;
       renderBreadcrumbInline(targetDir);
 
       if (WS.preview.kind === "file" && WS.preview.fileId) {
@@ -7522,7 +7577,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
         if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); viewerJumpToNextFolderFirstFile(); return; }
 
-        if (k === "Shift") {
+        if (k === "v" || k === "V") {
           e.preventDefault();
           handleSlideshowHotkey(true);
           return;
@@ -7578,7 +7633,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
         if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); jumpToNextFolderFirstFile(); return; }
 
-        if (k === "Shift") {
+        if (k === "v" || k === "V") {
           e.preventDefault();
           handleSlideshowHotkey(false);
           return;
@@ -7624,7 +7679,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
       if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); jumpToNextFolderFirstFile(); return; }
 
-      if (k === "Shift") {
+      if (k === "v" || k === "V") {
         e.preventDefault();
         handleSlideshowHotkey(false);
         return;

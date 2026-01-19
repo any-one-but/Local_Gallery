@@ -26,6 +26,10 @@
           <button id="openWritableBtn" type="button" class="miniBtn">Choose Root</button>
         </div>
       </div>
+      <div id="directoriesSearchRow">
+        <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search this folder..." />
+        <button id="directoriesSearchClearBtn" type="button" class="miniBtn">X</button>
+      </div>
     </div>
 
     <div id="layout">
@@ -38,22 +42,13 @@
             <div id="directoriesHeaderTop">
               <div class="title">Directories</div>
             </div>
-            <div id="directoriesSearchRow">
-              <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search this folder..." />
-              <button id="directoriesSearchClearBtn" type="button" class="miniBtn">X</button>
-            </div>
+            <!-- Search bar moved above -->
             <div id="directoriesTagsRow"></div>
             <div id="directoriesActionRow">
-              <button id="directoriesSelectBtn" type="button" class="miniBtn">Select</button>
               <button id="directoriesSelectAllBtn" type="button" class="miniBtn">Select all</button>
-              <div class="dirMenu">
-                <button id="directoriesMenuBtn" type="button" class="dirMenuBtn" title="Select menu">☰</button>
-                <div id="directoriesActionMenu" class="dropdownMenu"></div>
-              </div>
-              <button id="directoriesClearBtn" type="button" class="miniBtn">Clear</button>
+              <div id="directoriesActionMenu" class="dropdownMenu"></div>
             </div>
             <div id="directoriesBulkRow"></div>
-            <div id="directoriesPath">—</div>
           </div>
           <div id="directoriesList"></div>
         </div>
@@ -64,7 +59,6 @@
         <div id="previewPane">
           <div id="previewHeader">
             <div id="previewHeaderLeft">
-              <div class="title">Preview</div>
               <div id="previewNavControls">
                 <button id="refreshBtn" type="button" class="miniBtn" title="Reload current folder">Refresh</button>
                 <span class="navSpacer"></span>
@@ -73,6 +67,7 @@
                 <span class="navSpacer"></span>
                 <button id="dirUpBtn" type="button" class="miniBtn navBtn" title="Up">↑</button>
               </div>
+              <div id="breadcrumbInline"></div>
             </div>
           </div>
           <div id="previewBody"></div>
