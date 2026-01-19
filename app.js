@@ -150,8 +150,6 @@
         defaultRandomMode: false,
         defaultFolderBehavior: "slide",
         folderScoreDisplay: "no-arrows",
-        tagFilterMode: "or",
-        tagChipCycle: "tri",
         previewMode: "grid",
         videoSkipStep: "10",
         preloadNextMode: "off",
@@ -168,7 +166,7 @@
         mediaFilter: "off",
         colorScheme: "classic",
         leftPaneWidthPct: 0.28,
-        treatTagsAsFolders: false,
+        treatTagsAsFolders: true,
         showHiddenFolder: false
       };
     }
@@ -188,8 +186,6 @@
         defaultRandomMode: (typeof src.defaultRandomMode === "boolean") ? src.defaultRandomMode : d.defaultRandomMode,
         defaultFolderBehavior: (src.defaultFolderBehavior === "stop" || src.defaultFolderBehavior === "loop" || src.defaultFolderBehavior === "slide") ? src.defaultFolderBehavior : d.defaultFolderBehavior,
         folderScoreDisplay: (src.folderScoreDisplay === "show" || src.folderScoreDisplay === "no-arrows" || src.folderScoreDisplay === "hidden") ? src.folderScoreDisplay : ((typeof src.showFolderScores === "boolean") ? (src.showFolderScores ? "show" : "hidden") : d.folderScoreDisplay),
-        tagFilterMode: (src.tagFilterMode === "and" || src.tagFilterMode === "or") ? src.tagFilterMode : d.tagFilterMode,
-        tagChipCycle: (src.tagChipCycle === "bi" || src.tagChipCycle === "tri") ? src.tagChipCycle : d.tagChipCycle,
         previewMode: (src.previewMode === "grid" || src.previewMode === "expanded") ? src.previewMode : d.previewMode,
         videoSkipStep: (src.videoSkipStep === "3" || src.videoSkipStep === "5" || src.videoSkipStep === "10" || src.videoSkipStep === "30") ? src.videoSkipStep : d.videoSkipStep,
         preloadNextMode: (src.preloadNextMode === "off" || src.preloadNextMode === "on" || src.preloadNextMode === "ultra") ? src.preloadNextMode : d.preloadNextMode,
@@ -204,7 +200,7 @@
         altGalleryMode: (typeof src.altGalleryMode === "boolean") ? src.altGalleryMode : d.altGalleryMode,
         retroMode: (typeof src.retroMode === "boolean") ? src.retroMode : d.retroMode,
         colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber" || src.colorScheme === "retro90s" || src.colorScheme === "retro90s-dark") ? src.colorScheme : d.colorScheme,
-        treatTagsAsFolders: (typeof src.treatTagsAsFolders === "boolean") ? src.treatTagsAsFolders : d.treatTagsAsFolders,
+        treatTagsAsFolders: d.treatTagsAsFolders,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         leftPaneWidthPct: (function(){
           const v = parseFloat(src.leftPaneWidthPct);
@@ -281,7 +277,6 @@
       WS.view.randomMode = !!opt.defaultRandomMode;
       WS.view.folderBehavior = String(opt.defaultFolderBehavior || "slide");
       WS.view.folderScoreDisplay = (opt.folderScoreDisplay === "show" || opt.folderScoreDisplay === "no-arrows" || opt.folderScoreDisplay === "hidden") ? opt.folderScoreDisplay : "hidden";
-      WS.view.tagFilterMode = (opt.tagFilterMode === "and") ? "and" : "or";
       applyColorSchemeFromOptions();
     }
 
@@ -416,13 +411,9 @@
         statusTimeout: null,
         scrollBusyDirs: false,
         scrollBusyPreview: false,
-        tagFilterMode: "or",
-        tagIncludeFilters: new Set(),
-        tagExcludeFilters: new Set(),
         bulkSelectMode: false,
         bulkTagPanelOpen: false,
         bulkTagSelectedPaths: new Set(),
-        bulkTagPickSet: new Set(),
         bulkTagSelectionsByDir: new Map(),
         bulkFileSelectedIds: new Set(),
         bulkFileSelectionsByDir: new Map(),
@@ -534,12 +525,9 @@
       WS.view.previewLoopRepeats = 3;
       WS.view.slideshowModeIndex = 0;
       WS.view.slideshowActive = false;
-      WS.view.tagIncludeFilters.clear();
-      WS.view.tagExcludeFilters.clear();
       WS.view.bulkSelectMode = false;
       WS.view.bulkTagPanelOpen = false;
       WS.view.bulkTagSelectedPaths = new Set();
-      WS.view.bulkTagPickSet.clear();
       WS.view.bulkTagSelectionsByDir = new Map();
       WS.view.bulkFileSelectedIds = new Set();
       WS.view.bulkFileSelectionsByDir = new Map();
@@ -1087,16 +1075,6 @@
         { value: "score", label: "Score" }
       ];
 
-      const tagFilterModes = [
-        { value: "or", label: "OR (match any)" },
-        { value: "and", label: "AND (match all)" }
-      ];
-
-      const tagChipCycleModes = [
-        { value: "tri", label: "Inactive → Active → Hide" },
-        { value: "bi", label: "Inactive → Active" }
-      ];
-
       const skipSteps = [
         { value: "3", label: "3 seconds" },
         { value: "5", label: "5 seconds" },
@@ -1180,11 +1158,8 @@
 <h1>General</h1>
 ${makeSelectRow("Folder sort", "Sort folders by name or score.", "opt_dirSortMode", WS.meta.dirSortMode === "score" ? "score" : "name", dirSortModes)}
 ${makeSelectRow("Folder scores", "Choose how folder scores appear in lists + previews.", "opt_folderScoreDisplay", String(opt.folderScoreDisplay || "hidden"), folderScoreModes)}
-${makeSelectRow("Tag filter mode", "When multiple tags are active, match any or all tags.", "opt_tagFilterMode", String(opt.tagFilterMode || "or"), tagFilterModes)}
-${makeSelectRow("Tag button cycle", "Choose whether tags can be set to hide or only active/inactive.", "opt_tagChipCycle", String(opt.tagChipCycle || "tri"), tagChipCycleModes)}
 ${makeCheckRow("Alt gallery mode", "Enter on a file opens Gallery; exit with A/J.", "opt_altGalleryMode", !!opt.altGalleryMode)}
 ${makeCheckRow("BANIC! opens decoy window", "When enabled, BANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
-${makeCheckRow("Treat tags as folders", "Represent tags as virtual folders at the top of the directories pane and disable inline tag chips.", "opt_treatTagsAsFolders", !!opt.treatTagsAsFolders)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 
 <h1>Defaults</h1>
@@ -1272,18 +1247,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         renderPreviewPane(false, true);
         syncButtons();
       });
-      bindSelect("opt_tagFilterMode", "tagFilterMode", false, (val) => {
-        WS.view.tagFilterMode = (val === "and") ? "and" : "or";
-        rebuildDirectoriesEntries();
-        WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-        syncPreviewToSelection();
-        renderDirectoriesPane(true);
-        renderPreviewPane(false, true);
-        syncButtons();
-      });
-      bindSelect("opt_tagChipCycle", "tagChipCycle", false, () => {
-        renderDirectoriesPane(true);
-      });
       bindSelect("opt_videoSkipStep", "videoSkipStep", false);
       bindSelect("opt_preloadNextMode", "preloadNextMode", false, (val) => {
         if (val === "off") PRELOAD_CACHE = new Map();
@@ -1292,14 +1255,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
       bindCheck("opt_altGalleryMode", "altGalleryMode");
       bindCheck("opt_banicOpenWindow", "banicOpenWindow");
-      bindCheck("opt_treatTagsAsFolders", "treatTagsAsFolders", (enabled) => {
-        if (enabled) {
-          clearTagFilters();
-        } else {
-          exitTagFolderView();
-        }
-        renderDirectoriesPane(true);
-      });
       bindCheck("opt_showHiddenFolder", "showHiddenFolder", (enabled) => {
         if (!enabled && WS.view.tagFolderActiveMode === "hidden") {
           exitTagFolderView();
@@ -1366,7 +1321,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function closeBulkTagPanel() {
       WS.view.bulkTagPanelOpen = false;
-      WS.view.bulkTagPickSet.clear();
     }
 
     function getBulkSelectionKey() {
@@ -1379,7 +1333,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function openBulkTagPanel() {
       WS.view.bulkTagPanelOpen = true;
-      WS.view.bulkTagPickSet.clear();
       closeActionMenus();
       renderDirectoriesPane(true);
       setTimeout(() => {
@@ -1906,33 +1859,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       };
     }
 
-    function metaMakeTagFiltersLogObject() {
-      return {
-        include: normalizeTagList(Array.from(WS.view.tagIncludeFilters || [])),
-        exclude: normalizeTagList(Array.from(WS.view.tagExcludeFilters || []))
-      };
-    }
-
-    function metaApplyTagFiltersFromLog(log) {
-      const src = log && typeof log === "object" ? log.tagFilters : null;
-      const include = normalizeTagList(src && Array.isArray(src.include) ? src.include : []);
-      const exclude = normalizeTagList(src && Array.isArray(src.exclude) ? src.exclude : []);
-      const includeSet = new Set(include);
-      const excludeClean = exclude.filter(t => !includeSet.has(t));
-      WS.view.tagIncludeFilters.clear();
-      WS.view.tagExcludeFilters.clear();
-      for (const t of includeSet) WS.view.tagIncludeFilters.add(t);
-      for (const t of excludeClean) WS.view.tagExcludeFilters.add(t);
-    }
-
     function metaMakeOptionsLogObject() {
       return {
         schema: 1,
         updatedAt: Date.now(),
-        options: normalizeOptions(WS.meta.options || null),
-        tagFilters: metaMakeTagFiltersLogObject()
-      };
-    }
+      options: normalizeOptions(WS.meta.options || null)
+    };
+  }
 
     function metaMakeLogObject() {
       const folders = {};
@@ -2046,7 +1979,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function metaApplyOptionsLog(log) {
       if (!log || typeof log !== "object") return;
       WS.meta.options = normalizeOptions(log.options || null);
-      metaApplyTagFiltersFromLog(log);
       applyDefaultViewFromOptions();
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
@@ -2138,7 +2070,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         WS.meta.dirTags.set(path, tg.slice());
       }
 
-      metaApplyTagFiltersFromLog(log);
       applyDefaultViewFromOptions();
       syncMetaButtons();
       renderOptionsUi();
@@ -2517,9 +2448,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           loopWithinDir: WS.view.loopWithinDir,
           folderBehavior: WS.view.folderBehavior,
           folderScoreDisplay: WS.view.folderScoreDisplay,
-          tagFilterMode: WS.view.tagFilterMode,
-          tagIncludeFilters: new Set(WS.view.tagIncludeFilters),
-          tagExcludeFilters: new Set(WS.view.tagExcludeFilters),
           favoritesMode: WS.view.favoritesMode,
           hiddenMode: WS.view.hiddenMode,
           dirSearchPinned: WS.view.dirSearchPinned,
@@ -2541,9 +2469,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.view.loopWithinDir = viewState.loopWithinDir;
       WS.view.folderBehavior = viewState.folderBehavior;
       WS.view.folderScoreDisplay = viewState.folderScoreDisplay;
-      WS.view.tagFilterMode = viewState.tagFilterMode;
-      WS.view.tagIncludeFilters = new Set(viewState.tagIncludeFilters || []);
-      WS.view.tagExcludeFilters = new Set(viewState.tagExcludeFilters || []);
       WS.view.favoritesMode = !!viewState.favoritesMode;
       WS.view.hiddenMode = !!viewState.hiddenMode;
       WS.view.dirSearchPinned = !!viewState.dirSearchPinned;
@@ -3243,36 +3168,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return base.filter(d => !isDirOrAncestorHidden(d));
     }
 
-    function getAvailableTagsForDir(dirNode) {
-      const base = getChildDirsForNodeBase(dirNode);
-      const set = new Set();
-      let hasFavorites = false;
-      for (const d of base) {
-        if (metaHasFavorite(d.path || "")) hasFavorites = true;
-        const tags = metaGetUserTags(d.path || "");
-        for (let i = 0; i < tags.length; i++) set.add(tags[i]);
-      }
-      if (hasFavorites) set.add(FAVORITE_TAG);
-      return set;
-    }
-
-    function getAvailableTagsForCurrentDir() {
-      return getAvailableTagsForDir(WS.nav.dirNode);
-    }
-
     function treatTagsAsFoldersEnabled() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return !!(opt && opt.treatTagsAsFolders);
+      return true;
     }
 
     function showHiddenFolderEnabled() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       return !!(opt && opt.showHiddenFolder);
-    }
-
-    function clearTagFilters() {
-      if (WS.view.tagIncludeFilters) WS.view.tagIncludeFilters.clear();
-      if (WS.view.tagExcludeFilters) WS.view.tagExcludeFilters.clear();
     }
 
     function isViewingTagFolder() {
@@ -3571,60 +3473,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       setTagFolderViewState(mode, tag, originPath);
     }
 
-    function getEffectiveTagFiltersForDir(dirNode) {
-      if (!dirNode) return null;
-      if (dirNode._skipTagFilters) return null;
-      const available = getAvailableTagsForDir(dirNode);
-      if (!available.size) return null;
-      const include = new Set();
-      const exclude = new Set();
-      for (const t of WS.view.tagIncludeFilters) if (available.has(t)) include.add(t);
-      for (const t of WS.view.tagExcludeFilters) if (available.has(t)) exclude.add(t);
-      if (!include.size && !exclude.size) return null;
-      return {
-        include,
-        exclude,
-        mode: WS.view.tagFilterMode === "and" ? "and" : "or"
-      };
-    }
-
-    function dirMatchesTagFilters(dirNode, filters) {
-      if (!dirNode) return false;
-      if (!filters) return true;
-      const tags = metaGetTags(dirNode.path || "");
-      const tagSet = new Set();
-      for (const t of tags) {
-        if (!t) continue;
-        tagSet.add(t);
-      }
-      const mode = filters.mode === "and" ? "and" : "or";
-
-      const hasAny = (set) => {
-        for (const t of set) if (tagSet.has(t)) return true;
-        return false;
-      };
-      const hasAll = (set) => {
-        for (const t of set) if (!tagSet.has(t)) return false;
-        return true;
-      };
-
-      const includeSet = filters.include || new Set();
-      const excludeSet = filters.exclude || new Set();
-
-      const includeOk = includeSet.size ? (mode === "and" ? hasAll(includeSet) : hasAny(includeSet)) : true;
-      if (!includeOk) return false;
-
-      const excludeHit = excludeSet.size ? (mode === "and" ? hasAll(excludeSet) : hasAny(excludeSet)) : false;
-      if (excludeHit) return false;
-
-      return true;
-    }
-
     function getChildDirsForNode(dirNode) {
-      const base = getChildDirsForNodeBase(dirNode);
-      const eff = getEffectiveTagFiltersForDir(dirNode);
-      if (!eff) return base;
-      return base.filter(d => dirMatchesTagFilters(d, eff));
+      return getChildDirsForNodeBase(dirNode);
     }
 
     function getVisibleSiblingDirsForSlide(dirNode) {
@@ -3644,12 +3494,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       const p = dirNode?.parent;
       if (!p) return [];
-      let out = getChildDirsForNodeBase(p);
-
-      const eff = getEffectiveTagFiltersForDir(p);
-      if (eff) out = out.filter(d => dirMatchesTagFilters(d, eff));
-
-      return out;
+      return getChildDirsForNodeBase(p);
     }
 
     function getNextSiblingDirWithFiles(dirNode) {
@@ -3746,12 +3591,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const addSet = new Set();
       const results = [];
       const skipHidden = !WS.view.hiddenMode;
-      const searchTagFilters = (WS.view.tagExcludeFilters.size) ? {
-        include: new Set(),
-        exclude: new Set(WS.view.tagExcludeFilters),
-        mode: WS.view.tagFilterMode === "and" ? "and" : "or"
-      } : null;
-
       const consider = (node, includeSelf) => {
         if (!node) return;
         if (skipHidden && isDirOrAncestorHidden(node)) return;
@@ -3760,9 +3599,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const name = displayName(node.name || "").toLowerCase();
         if (includeSelf && name.includes(q)) {
           const p = String(node.path || "");
-          if (searchTagFilters && !dirMatchesTagFilters(node, searchTagFilters)) {
-            // Respect tag filtering in search results.
-          } else if (p && !addSet.has(p)) {
+          if (p && !addSet.has(p)) {
             addSet.add(p);
             results.push(node);
           }
@@ -4769,108 +4606,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function renderDirectoriesTagsHeader() {
       if (!directoriesTagsRowEl) return;
-
-      if (treatTagsAsFoldersEnabled()) {
-        directoriesTagsRowEl.style.display = "none";
-        directoriesTagsRowEl.innerHTML = "";
-        return;
-      }
-
-      if (!WS.root || !WS.nav.dirNode || (WS.view.dirSearchPinned && WS.view.searchRootActive) || (WS.view.favoritesMode && WS.view.favoritesRootActive) || (WS.view.hiddenMode && WS.view.hiddenRootActive)) {
-        directoriesTagsRowEl.style.display = "none";
-        directoriesTagsRowEl.innerHTML = "";
-        return;
-      }
-
-      const base = getChildDirsForNodeBase(WS.nav.dirNode);
-      const counts = new Map();
-      let favCount = 0;
-      for (const d of base) {
-        if (metaHasFavorite(d.path || "")) favCount++;
-        const tags = metaGetUserTags(d.path || "");
-        const uniq = new Set(tags);
-        for (const t of uniq) {
-          counts.set(t, (counts.get(t) || 0) + 1);
-        }
-      }
-
-      const availableUserTags = Array.from(counts.keys());
-      const hasTagged = availableUserTags.length > 0;
-      if (favCount > 0) counts.set(FAVORITE_TAG, favCount);
-      const available = Array.from(counts.keys());
-      if (!hasTagged && favCount === 0) {
-        directoriesTagsRowEl.style.display = "none";
-        directoriesTagsRowEl.innerHTML = "";
-        return;
-      }
-
-      available.sort((a,b) => {
-        if (a === FAVORITE_TAG && b === FAVORITE_TAG) return 0;
-        if (a === FAVORITE_TAG) return -1;
-        if (b === FAVORITE_TAG) return 1;
-        return String(a).localeCompare(String(b));
-      });
-
+      directoriesTagsRowEl.style.display = "none";
       directoriesTagsRowEl.innerHTML = "";
-      directoriesTagsRowEl.style.display = "flex";
-
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const cycle = opt && opt.tagChipCycle === "bi" ? "bi" : "tri";
-      const frag = document.createDocumentFragment();
-
-      for (let i = 0; i < available.length; i++) {
-        const tagKey = available[i];
-        const chip = document.createElement("span");
-        const state = WS.view.tagIncludeFilters.has(tagKey) ? "include" : (WS.view.tagExcludeFilters.has(tagKey) ? "exclude" : "off");
-        chip.className = "tag" + (state === "include" ? " include" : (state === "exclude" ? " exclude" : ""));
-        const label = (tagKey === FAVORITE_TAG) ? "Favorites" : tagKey;
-        chip.textContent = `${label} (${counts.get(tagKey) || 0})`;
-        chip.style.cursor = "pointer";
-        chip.title = state === "include" ? "Tag filter: include" : (state === "exclude" ? "Tag filter: hide" : "Tag filter: off");
-        chip.addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (cycle === "bi") {
-            if (WS.view.tagIncludeFilters.has(tagKey)) {
-              WS.view.tagIncludeFilters.delete(tagKey);
-            } else {
-              WS.view.tagExcludeFilters.delete(tagKey);
-              WS.view.tagIncludeFilters.add(tagKey);
-            }
-          } else {
-            if (WS.view.tagIncludeFilters.has(tagKey)) {
-              WS.view.tagIncludeFilters.delete(tagKey);
-              WS.view.tagExcludeFilters.add(tagKey);
-            } else if (WS.view.tagExcludeFilters.has(tagKey)) {
-              WS.view.tagExcludeFilters.delete(tagKey);
-            } else {
-              WS.view.tagIncludeFilters.add(tagKey);
-            }
-          }
-
-          WS.meta.dirty = true;
-          metaScheduleSave();
-          rebuildDirectoriesEntries();
-          WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-          syncPreviewToSelection();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-        });
-        if (tagKey !== FAVORITE_TAG) {
-          chip.addEventListener("contextmenu", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const dirs = getDirectoriesWithTag(tagKey);
-            const paths = gatherTagPathsForDirs(dirs);
-            openTagContextMenu({ tag: tagKey, label, anchor: chip, paths });
-          });
-        }
-        frag.appendChild(chip);
-      }
-
-      directoriesTagsRowEl.appendChild(frag);
     }
 
     function renderDirectoriesActionHeader() {
@@ -5022,27 +4759,32 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const input = document.createElement("input");
       input.type = "text";
       input.className = "tagEditInput";
-      input.placeholder = "tag1, tag2";
-      input.style.width = "220px";
+      input.placeholder = "Tag folder name";
       input.addEventListener("click", (e) => e.stopPropagation());
+
+      const applyTagFolder = () => {
+        const desired = normalizeTag(input.value || "");
+        if (!desired) {
+          showStatusMessage("Tag folder name cannot be empty.");
+          try { input.focus(); } catch {}
+          return;
+        }
+        if (!selectedInThisDir.length) return;
+        metaAddUserTagsBulk(selectedInThisDir.slice(), [desired]);
+        clearBulkTagSelection();
+      };
+
       input.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "Escape") {
           e.preventDefault();
           WS.view.bulkTagPanelOpen = false;
-          WS.view.bulkTagPickSet.clear();
           renderDirectoriesPane(true);
           return;
         }
         if (e.key === "Enter") {
           e.preventDefault();
-          const typed = normalizeTagsFromText(input.value || "");
-          const picked = Array.from(WS.view.bulkTagPickSet);
-          const all = normalizeTagList(typed.concat(picked));
-          if (all.length) metaAddUserTagsBulk(selectedInThisDir, all);
-          clearBulkTagSelection();
-          renderDirectoriesPane(true);
-          return;
+          applyTagFolder();
         }
       });
 
@@ -5050,7 +4792,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       btnApply.type = "button";
       btnApply.className = "miniBtn";
       btnApply.textContent = "Apply";
-      btnApply.disabled = !selCount;
 
       const btnCancel = document.createElement("button");
       btnCancel.type = "button";
@@ -5060,42 +4801,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       btnCancel.addEventListener("click", (e) => {
         e.stopPropagation();
         WS.view.bulkTagPanelOpen = false;
-        WS.view.bulkTagPickSet.clear();
         renderDirectoriesPane(true);
       });
 
       btnApply.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (!selCount) return;
-        const typed = normalizeTagsFromText(input.value || "");
-        const picked = Array.from(WS.view.bulkTagPickSet);
-        const all = normalizeTagList(typed.concat(picked));
-        if (all.length) metaAddUserTagsBulk(selectedInThisDir, all);
-        clearBulkTagSelection();
-        renderDirectoriesPane(true);
+        applyTagFolder();
       });
 
       directoriesBulkRowEl.appendChild(input);
-
-      const available = Array.from(getAvailableTagsForCurrentDir())
-        .filter((t) => t && t !== FAVORITE_TAG)
-        .sort((a,b) => String(a).localeCompare(String(b)));
-      for (let i = 0; i < available.length; i++) {
-        const t = available[i];
-        const chip = document.createElement("span");
-        chip.className = "tag" + (WS.view.bulkTagPickSet.has(t) ? " sel" : "");
-        chip.textContent = t;
-        chip.style.cursor = "pointer";
-        chip.title = "Toggle tag to apply";
-        chip.addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (WS.view.bulkTagPickSet.has(t)) WS.view.bulkTagPickSet.delete(t);
-          else WS.view.bulkTagPickSet.add(t);
-          renderDirectoriesPane(true);
-        });
-        directoriesBulkRowEl.appendChild(chip);
-      }
-
       directoriesBulkRowEl.appendChild(btnApply);
       directoriesBulkRowEl.appendChild(btnCancel);
     }
