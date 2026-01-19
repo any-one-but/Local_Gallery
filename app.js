@@ -412,7 +412,6 @@
         scrollBusyDirs: false,
         scrollBusyPreview: false,
         bulkSelectMode: false,
-        bulkTagPanelOpen: false,
         bulkTagSelectedPaths: new Set(),
         bulkTagSelectionsByDir: new Map(),
         bulkFileSelectedIds: new Set(),
@@ -526,7 +525,6 @@
       WS.view.slideshowModeIndex = 0;
       WS.view.slideshowActive = false;
       WS.view.bulkSelectMode = false;
-      WS.view.bulkTagPanelOpen = false;
       WS.view.bulkTagSelectedPaths = new Set();
       WS.view.bulkTagSelectionsByDir = new Map();
       WS.view.bulkFileSelectedIds = new Set();
@@ -740,6 +738,7 @@
     let TAG_EDIT_PATH = null;
     let TAG_CONTEXT_MENU_STATE = null;
     let TAG_ENTRY_RENAME_STATE = null;
+    let BULK_TAG_PLACEHOLDER = null;
     let RENAME_EDIT_PATH = null;
     let RENAME_EDIT_FILE_ID = null;
     let RENAME_BUSY = false;
@@ -1318,11 +1317,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     /* =========================================================
        Workspace loading (read-only input)
        ========================================================= */
-
-    function closeBulkTagPanel() {
-      WS.view.bulkTagPanelOpen = false;
-    }
-
     function getBulkSelectionKey() {
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return "search";
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "favorites";
@@ -1331,20 +1325,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return dn ? String(dn.path || "") : "";
     }
 
-    function openBulkTagPanel() {
-      WS.view.bulkTagPanelOpen = true;
-      closeActionMenus();
-      renderDirectoriesPane(true);
-      setTimeout(() => {
-        const input = directoriesBulkRowEl ? directoriesBulkRowEl.querySelector(".tagEditInput") : null;
-        if (input) {
-          try { input.focus(); input.select(); } catch {}
-        }
-      }, 0);
-    }
-
     function clearBulkTagSelection() {
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
       closeActionMenus();
       if (WS.view.bulkTagSelectedPaths && WS.view.bulkTagSelectedPaths.clear) WS.view.bulkTagSelectedPaths.clear();
       if (WS.view.bulkFileSelectedIds && WS.view.bulkFileSelectedIds.clear) WS.view.bulkFileSelectedIds.clear();
@@ -1621,7 +1603,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function refreshAfterTagMetadataChange() {
       TAG_EDIT_PATH = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
       syncFavoritesUi();
       syncHiddenUi();
       syncTagUiForCurrentDir();
@@ -1635,6 +1617,37 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       kickImageThumbsForPreview();
     }
 
+    function clearBulkTagPlaceholder() {
+      if (!BULK_TAG_PLACEHOLDER) return false;
+      BULK_TAG_PLACEHOLDER = null;
+      TAG_ENTRY_RENAME_STATE = null;
+      return true;
+    }
+
+    function setBulkTagPlaceholder(paths, label = "New tag folder") {
+      clearBulkTagPlaceholder();
+      const unique = Array.from(new Set((paths || []).map(p => String(p || "")))).filter(p => p);
+      if (!unique.length) return false;
+      BULK_TAG_PLACEHOLDER = {
+        paths: unique,
+        label: label,
+        count: unique.length
+      };
+      TAG_ENTRY_RENAME_STATE = {
+        tag: "",
+        label,
+        paths: unique.slice(),
+        placeholder: true
+      };
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+      renderDirectoriesPane(true);
+      setTimeout(() => {
+        focusTagEntryRenameInput();
+      }, 0);
+      return true;
+    }
+
     function focusTagEntryRenameInput() {
       if (!directoriesListEl) return;
       const input = directoriesListEl.querySelector(".tagEntryRenameInput");
@@ -1643,7 +1656,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function cancelTagEntryRename() {
-      if (!TAG_ENTRY_RENAME_STATE) return;
+      const state = TAG_ENTRY_RENAME_STATE;
+      if (!state) return;
+      if (state.placeholder) {
+        clearBulkTagPlaceholder();
+        renderDirectoriesPane(true);
+        return;
+      }
       TAG_ENTRY_RENAME_STATE = null;
       renderDirectoriesPane(true);
     }
@@ -1652,15 +1671,21 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!TAG_ENTRY_RENAME_STATE || !inputEl) return;
       const state = TAG_ENTRY_RENAME_STATE;
       const desired = normalizeTag(inputEl.value || "");
-      TAG_ENTRY_RENAME_STATE = null;
       if (!desired) {
         showStatusMessage("Tag name cannot be empty.");
         renderDirectoriesPane(true);
         return;
       }
-      if (desired === state.tag) {
+      const isPlaceholder = !!state.placeholder;
+      TAG_ENTRY_RENAME_STATE = null;
+      if (!isPlaceholder && desired === state.tag) {
         showStatusMessage("Tag name unchanged.");
         renderDirectoriesPane(true);
+        return;
+      }
+      if (isPlaceholder) {
+        clearBulkTagPlaceholder();
+        metaAddUserTagsBulk(state.paths, [desired]);
         return;
       }
       const changed = renameTagForPaths(state.tag, desired, state.paths);
@@ -3205,8 +3230,18 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!WS.root || !WS.nav.dirNode) return [];
       if (WS.view.dirSearchPinned || WS.view.favoritesMode || WS.view.hiddenMode) return [];
 
-      const dirNode = WS.nav.dirNode;
       const entries = [];
+      if (BULK_TAG_PLACEHOLDER) {
+        entries.push({
+          kind: "tag",
+          label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
+          tag: "",
+          count: BULK_TAG_PLACEHOLDER.count || 0,
+          placeholder: true
+        });
+      }
+
+      const dirNode = WS.nav.dirNode;
       const allChildren = sortDirsForDisplay(dirNode.childrenDirs).filter(d => dirItemCount(d) > 0);
       const children = getChildDirsForNodeBase(dirNode);
 
@@ -3817,7 +3852,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function enterSelectedDirectory() {
       TAG_EDIT_PATH = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
 
       const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
       if (!entry) return;
@@ -3919,7 +3954,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function leaveDirectory() {
       TAG_EDIT_PATH = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
 
       if (tryRestoreTagDirectoryContext()) return;
 
@@ -4086,7 +4121,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       TAG_EDIT_PATH = null;
       RENAME_EDIT_PATH = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
       syncPreviewToSelection();
@@ -4153,7 +4188,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       TAG_EDIT_PATH = null;
       RENAME_EDIT_PATH = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
       syncPreviewToSelection();
@@ -4234,7 +4269,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       TAG_EDIT_PATH = null;
       RENAME_EDIT_PATH = null;
       RENAME_EDIT_FILE_ID = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
 
       const idx = findDirEntryIndexByPath(p);
       if (idx >= 0) {
@@ -4257,7 +4292,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       TAG_EDIT_PATH = null;
       RENAME_EDIT_PATH = null;
       RENAME_EDIT_FILE_ID = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
 
       const idx = findDirEntryIndexByPath(p);
       if (idx >= 0) {
@@ -4278,7 +4313,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       TAG_EDIT_PATH = null;
       RENAME_EDIT_PATH = null;
       RENAME_EDIT_FILE_ID = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
 
       for (let i = 0; i < WS.nav.entries.length; i++) {
         const entry = WS.nav.entries[i];
@@ -4639,7 +4674,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         WS.view.bulkActionMenuAnchorPath = "";
       }
 
-      const rowVisible = canBulk && (WS.view.bulkSelectMode || WS.view.bulkActionMenuOpen || WS.view.bulkTagPanelOpen);
+      const rowVisible = canBulk && (WS.view.bulkSelectMode || WS.view.bulkActionMenuOpen);
       directoriesActionRowEl.style.display = rowVisible ? "flex" : "none";
 
       if (directoriesSelectAllBtn) {
@@ -4687,7 +4722,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
         WS.view.bulkActionMenuOpen = false;
-        openBulkTagPanel();
+        if (!selectedDirs.length) return;
+        clearBulkTagSelection();
+        setBulkTagPlaceholder(selectedDirs, "New tag folder");
       }));
 
       directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
@@ -4727,91 +4764,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function renderDirectoriesBulkHeader() {
       if (!directoriesBulkRowEl) return;
-
-      if (!canUseBulkSelection()) {
-        directoriesBulkRowEl.style.display = "none";
-        directoriesBulkRowEl.innerHTML = "";
-        return;
-      }
-
-      const selectedInThisDir = getSelectedPathsInCurrentDir();
-      const selCount = selectedInThisDir.length;
-
-      if (!selCount && WS.view.bulkTagPanelOpen) {
-        closeBulkTagPanel();
-      }
-
-      if (!selCount || !WS.view.bulkTagPanelOpen) {
-        directoriesBulkRowEl.style.display = "none";
-        directoriesBulkRowEl.innerHTML = "";
-        return;
-      }
-
-      directoriesBulkRowEl.style.display = "flex";
+      directoriesBulkRowEl.style.display = "none";
       directoriesBulkRowEl.innerHTML = "";
-
-      const countPill = document.createElement("span");
-      countPill.className = "pill";
-      countPill.textContent = `${selCount} selected`;
-
-      directoriesBulkRowEl.appendChild(countPill);
-
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "tagEditInput";
-      input.placeholder = "Tag folder name";
-      input.addEventListener("click", (e) => e.stopPropagation());
-
-      const applyTagFolder = () => {
-        const desired = normalizeTag(input.value || "");
-        if (!desired) {
-          showStatusMessage("Tag folder name cannot be empty.");
-          try { input.focus(); } catch {}
-          return;
-        }
-        if (!selectedInThisDir.length) return;
-        metaAddUserTagsBulk(selectedInThisDir.slice(), [desired]);
-        clearBulkTagSelection();
-      };
-
-      input.addEventListener("keydown", (e) => {
-        e.stopPropagation();
-        if (e.key === "Escape") {
-          e.preventDefault();
-          WS.view.bulkTagPanelOpen = false;
-          renderDirectoriesPane(true);
-          return;
-        }
-        if (e.key === "Enter") {
-          e.preventDefault();
-          applyTagFolder();
-        }
-      });
-
-      const btnApply = document.createElement("button");
-      btnApply.type = "button";
-      btnApply.className = "miniBtn";
-      btnApply.textContent = "Apply";
-
-      const btnCancel = document.createElement("button");
-      btnCancel.type = "button";
-      btnCancel.className = "miniBtn";
-      btnCancel.textContent = "Cancel";
-
-      btnCancel.addEventListener("click", (e) => {
-        e.stopPropagation();
-        WS.view.bulkTagPanelOpen = false;
-        renderDirectoriesPane(true);
-      });
-
-      btnApply.addEventListener("click", (e) => {
-        e.stopPropagation();
-        applyTagFolder();
-      });
-
-      directoriesBulkRowEl.appendChild(input);
-      directoriesBulkRowEl.appendChild(btnApply);
-      directoriesBulkRowEl.appendChild(btnCancel);
     }
 
     function renderDirectoriesPane(keepScroll = false) {
@@ -4867,7 +4821,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           row.classList.add("tagEntry");
         }
 
-        const renameActive = isTagEntry && !entry.special && entry.tag && TAG_ENTRY_RENAME_STATE && (entry.tag === TAG_ENTRY_RENAME_STATE.tag);
+        const renameActive = isTagEntry && !entry.special && TAG_ENTRY_RENAME_STATE && (
+          (entry.placeholder && TAG_ENTRY_RENAME_STATE.placeholder) ||
+          (entry.tag && entry.tag === TAG_ENTRY_RENAME_STATE.tag)
+        );
         if (isTagEntry) {
           const label = String(entry.label || entry.tag || "Tag");
           const countText = entry.count ? `${entry.count} folders` : "Tag folder";
@@ -5537,7 +5494,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = false;
 
         TAG_EDIT_PATH = null;
-        closeBulkTagPanel();
+        clearBulkTagPlaceholder();
         syncBulkSelectionForCurrentDir();
 
         rebuildDirectoriesEntries();
@@ -5565,7 +5522,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
 
           TAG_EDIT_PATH = null;
-          closeBulkTagPanel();
+          clearBulkTagPlaceholder();
           syncBulkSelectionForCurrentDir();
 
           rebuildDirectoriesEntries();
@@ -5596,7 +5553,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         directoriesSearchClearBtn.disabled = true;
 
         TAG_EDIT_PATH = null;
-        closeBulkTagPanel();
+        clearBulkTagPlaceholder();
         syncBulkSelectionForCurrentDir();
 
         rebuildDirectoriesEntries();
@@ -5649,7 +5606,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (!nextDir) return { moved: false, dirChanged: false };
         WS.nav.dirNode = nextDir;
         TAG_EDIT_PATH = null;
-        closeBulkTagPanel();
+        clearBulkTagPlaceholder();
         syncBulkSelectionForCurrentDir();
         syncFavoritesUi();
         syncHiddenUi();
@@ -5665,7 +5622,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (!prevDir) return { moved: false, dirChanged: false };
         WS.nav.dirNode = prevDir;
         TAG_EDIT_PATH = null;
-        closeBulkTagPanel();
+        clearBulkTagPlaceholder();
         syncBulkSelectionForCurrentDir();
         syncFavoritesUi();
         syncHiddenUi();
@@ -5713,7 +5670,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       WS.nav.dirNode = nextDir;
       TAG_EDIT_PATH = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncHiddenUi();
@@ -5743,7 +5700,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       WS.nav.dirNode = prevDir;
       TAG_EDIT_PATH = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncHiddenUi();
@@ -5771,7 +5728,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function navigateToDirectory(node) {
       TAG_EDIT_PATH = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
       if (!node) return;
 
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
@@ -6151,7 +6108,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       WS.nav.dirNode = viewerDirNode;
       TAG_EDIT_PATH = null;
-      closeBulkTagPanel();
+      clearBulkTagPlaceholder();
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncTagUiForCurrentDir();
