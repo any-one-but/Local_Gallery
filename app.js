@@ -642,6 +642,10 @@
     const directoriesBulkRowEl = $("directoriesBulkRow");
     const directoriesSearchInput = $("directoriesSearchInput");
     const directoriesSearchClearBtn = $("directoriesSearchClearBtn");
+    const tagActionMenuEl = $("tagActionMenu");
+    if (tagActionMenuEl) {
+      tagActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
+    }
     const dirBackBtn = $("dirBackBtn");
     const dirForwardBtn = $("dirForwardBtn");
     const dirUpBtn = $("dirUpBtn");
@@ -746,6 +750,7 @@
     let PRELOAD_CACHE = new Map();
 
     let TAG_EDIT_PATH = null;
+    let TAG_CONTEXT_MENU_STATE = null;
     let RENAME_EDIT_PATH = null;
     let RENAME_EDIT_FILE_ID = null;
     let RENAME_BUSY = false;
@@ -1589,6 +1594,38 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return normalizeTagList(parts);
     }
 
+    function arraysEqual(a, b) {
+      if (a === b) return true;
+      if (!Array.isArray(a) || !Array.isArray(b)) return false;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+
+    function metaWriteUserTags(path, userTags) {
+      if (!WS.meta || !WS.meta.dirTags) return false;
+      const p = String(path || "");
+      const existing = metaGetTags(p);
+      const fav = existing.includes(FAVORITE_TAG);
+      const hidden = existing.includes(HIDDEN_TAG);
+      const normalized = normalizeTagList(userTags).filter(t => t !== FAVORITE_TAG && t !== HIDDEN_TAG);
+      const merged = [];
+      if (fav) merged.push(FAVORITE_TAG);
+      if (hidden) merged.push(HIDDEN_TAG);
+      for (const tag of normalized) {
+        if (!tag) continue;
+        if (merged.includes(tag)) continue;
+        merged.push(tag);
+      }
+      const prev = WS.meta.dirTags.get(p);
+      if (arraysEqual(prev || [], merged)) return false;
+      WS.meta.dirTags.set(p, merged);
+      WS.meta.dirty = true;
+      return true;
+    }
+
     function metaGetTags(path) {
       const p = String(path || "");
       const v = WS.meta.dirTags.get(p);
@@ -1611,18 +1648,26 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function metaSetUserTags(path, userTags) {
-      const p = String(path || "");
-      const fav = metaHasFavorite(p);
-      const hidden = metaHasHidden(p);
-      const v = normalizeTagList(userTags).filter(t => t !== FAVORITE_TAG && t !== HIDDEN_TAG);
-      const merged = [];
-      if (fav) merged.push(FAVORITE_TAG);
-      if (hidden) merged.push(HIDDEN_TAG);
-      merged.push(...v);
-      WS.meta.dirTags.set(p, merged);
-      WS.meta.dirty = true;
+      const changed = metaWriteUserTags(path, userTags);
+      if (!changed) return;
       metaScheduleSave();
       TAG_EDIT_PATH = null;
+      syncFavoritesUi();
+      syncHiddenUi();
+      syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
+    function refreshAfterTagMetadataChange() {
+      TAG_EDIT_PATH = null;
+      closeBulkTagPanel();
       syncFavoritesUi();
       syncHiddenUi();
       syncTagUiForCurrentDir();
@@ -4289,6 +4334,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.view.bulkActionMenuAnchorPath = "";
       WS.view.dirActionMenuPath = "";
       WS.view.fileActionMenuId = "";
+      closeTagContextMenu();
     }
 
     function openBulkActionMenuForSelection(path) {
@@ -4548,6 +4594,156 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       renderDirectoriesPane(true);
     }
 
+    function getDirectoriesWithTag(tag) {
+      if (!tag) return [];
+      if (!WS.nav.dirNode) return [];
+      const children = getChildDirsForNodeBase(WS.nav.dirNode);
+      if (!children.length) return [];
+      return children.filter(d => {
+        const tags = metaGetUserTags(d.path || "");
+        return tags.includes(tag);
+      });
+    }
+
+    function gatherTagPathsForDirs(dirs) {
+      const seen = new Set();
+      const out = [];
+      for (const dir of dirs || []) {
+        const p = String(dir?.path || "");
+        if (!p || seen.has(p)) continue;
+        seen.add(p);
+        out.push(p);
+      }
+      return out;
+    }
+
+    function closeTagContextMenu() {
+      if (!tagActionMenuEl) return;
+      tagActionMenuEl.classList.remove("open", "fixed");
+      tagActionMenuEl.innerHTML = "";
+      tagActionMenuEl.style.left = "";
+      tagActionMenuEl.style.top = "";
+      TAG_CONTEXT_MENU_STATE = null;
+    }
+
+    function openTagContextMenu(context) {
+      if (!context || !tagActionMenuEl) return;
+      const tag = String(context.tag || "").trim();
+      const paths = Array.isArray(context.paths) ? context.paths : [];
+      const anchor = context.anchor;
+      if (!tag || !paths.length || !anchor) return;
+      closeTagContextMenu();
+      closeActionMenus();
+      const menu = tagActionMenuEl;
+      menu.appendChild(createTagMenuButton("Rename tag", () => handleTagMenuAction("rename")));
+      menu.appendChild(createTagMenuButton("Delete tag", () => handleTagMenuAction("delete")));
+      TAG_CONTEXT_MENU_STATE = {
+        tag,
+        label: context.label || tag,
+        paths: paths.slice()
+      };
+      requestAnimationFrame(() => {
+        menu.classList.add("open");
+        positionDropdownMenu(anchor, menu);
+      });
+    }
+
+    function createTagMenuButton(label, onClick) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = label;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onClick();
+      });
+      return btn;
+    }
+
+    function renameTagForPaths(tag, newName, paths) {
+      const normalizedOld = String(tag || "");
+      const normalizedNew = normalizeTag(newName || "");
+      if (!normalizedOld || !normalizedNew || normalizedOld === normalizedNew) return false;
+      const uniquePaths = Array.from(new Set((paths || []).filter(p => p)));
+      let changed = false;
+      for (const p of uniquePaths) {
+        const tags = metaGetUserTags(p);
+        if (!tags.includes(normalizedOld)) continue;
+        const updated = tags.slice();
+        for (let i = 0; i < updated.length; i++) {
+          if (updated[i] === normalizedOld) updated[i] = normalizedNew;
+        }
+        const deduped = [];
+        const seen = new Set();
+        for (const t of updated) {
+          if (!t) continue;
+          if (seen.has(t)) continue;
+          seen.add(t);
+          deduped.push(t);
+        }
+        if (metaWriteUserTags(p, deduped)) changed = true;
+      }
+      return changed;
+    }
+
+    function deleteTagFromPaths(tag, paths) {
+      const normalized = String(tag || "");
+      if (!normalized) return false;
+      const uniquePaths = Array.from(new Set((paths || []).filter(p => p)));
+      let changed = false;
+      for (const p of uniquePaths) {
+        const tags = metaGetUserTags(p);
+        if (!tags.includes(normalized)) continue;
+        const filtered = tags.filter(t => t !== normalized);
+        if (metaWriteUserTags(p, filtered)) changed = true;
+      }
+      return changed;
+    }
+
+    function handleTagMenuAction(action) {
+      const ctx = TAG_CONTEXT_MENU_STATE;
+      if (!ctx) return;
+      closeTagContextMenu();
+      const tag = ctx.tag || "";
+      const label = ctx.label || tag;
+      const paths = ctx.paths || [];
+      if (!tag || !paths.length) {
+        showStatusMessage("No folders contain that tag.");
+        return;
+      }
+      if (action === "rename") {
+        const desired = prompt(`Rename tag '${label}' to:`, label);
+        if (desired === null) return;
+        const normalized = normalizeTag(desired);
+        if (!normalized) {
+          showStatusMessage("Tag name cannot be empty.");
+          return;
+        }
+        if (normalized === tag) {
+          showStatusMessage("Tag name unchanged.");
+          return;
+        }
+        const changed = renameTagForPaths(tag, normalized, paths);
+        if (!changed) {
+          showStatusMessage("No folders updated.");
+          return;
+        }
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        return;
+      }
+      if (action === "delete") {
+        const confirmed = confirm(`Remove tag '${label}' from these folders?`);
+        if (!confirmed) return;
+        const changed = deleteTagFromPaths(tag, paths);
+        if (!changed) {
+          showStatusMessage("No folders updated.");
+          return;
+        }
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+      }
+    }
+
     function renderDirectoriesTagsHeader() {
       if (!directoriesTagsRowEl) return;
 
@@ -4639,6 +4835,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           kickVideoThumbsForPreview();
           kickImageThumbsForPreview();
         });
+        if (tagKey !== FAVORITE_TAG) {
+          chip.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const dirs = getDirectoriesWithTag(tagKey);
+            const paths = gatherTagPathsForDirs(dirs);
+            openTagContextMenu({ tag: tagKey, label, anchor: chip, paths });
+          });
+        }
         frag.appendChild(chip);
       }
 
@@ -5074,6 +5279,21 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           }
         }
 
+        if (isTagEntry && !entry.special && entry.tag) {
+          row.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const dirs = getDirsForTagEntry(entry);
+            const paths = gatherTagPathsForDirs(dirs);
+            openTagContextMenu({
+              tag: String(entry.tag || ""),
+              label: String(entry.label || entry.tag || ""),
+              anchor: row,
+              paths
+            });
+          });
+        }
+
         row.addEventListener("click", (e) => {
           closeActionMenus();
           if (e.shiftKey) {
@@ -5490,9 +5710,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     document.addEventListener("click", (e) => {
-      if (exitBulkSelectModeIfNeeded(e.target)) return;
-      if (!WS.view.bulkActionMenuOpen && !WS.view.dirActionMenuPath && !WS.view.fileActionMenuId) return;
       const target = e.target;
+      if (TAG_CONTEXT_MENU_STATE) {
+        if (target && target.closest && target.closest("#tagActionMenu")) {
+          return;
+        }
+        closeTagContextMenu();
+      }
+      if (exitBulkSelectModeIfNeeded(target)) return;
+      if (!WS.view.bulkActionMenuOpen && !WS.view.dirActionMenuPath && !WS.view.fileActionMenuId) return;
       if (target && target.closest) {
         if (target.closest(".dirMenu")) return;
         if (target.closest("#directoriesActionRow")) return;
