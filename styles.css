@@ -559,11 +559,25 @@
       box-shadow: none;
       width: 100%;
       display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      grid-area: title;
+    }
+
+    #titlePaneTop {
+      display: flex;
       align-items: center;
       justify-content: space-between;
+      width: 100%;
       gap: 10px;
       flex-wrap: wrap;
-      grid-area: title;
+    }
+
+    #titleMain {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
     #titlePane h1 {
@@ -978,13 +992,16 @@
       white-space: nowrap;
     }
 
-    #breadcrumbInline {
+    #previewNavControls {
       display: flex;
-      gap: 6px;
       align-items: center;
+      gap: 4px;
       flex-wrap: wrap;
-      font-size: 12px;
-      min-width: 0;
+    }
+
+    .navSpacer {
+      flex: 0 0 10px;
+      height: 1px;
     }
 
     .crumb {
@@ -1016,13 +1033,6 @@
       color: var(--color0-secondary);
       user-select: none;
       font-size: 12px;
-    }
-
-    #previewHeaderRight {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      flex-wrap: wrap;
     }
 
     #previewBody {

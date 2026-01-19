@@ -3282,6 +3282,38 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       });
     }
 
+    function findTagEntryIndex(mode, tag) {
+      for (let i = 0; i < WS.nav.entries.length; i++) {
+        const entry = WS.nav.entries[i];
+        if (!entry || entry.kind !== "tag") continue;
+        if (mode && entry.special && entry.special === mode) return i;
+        if (mode === "tag" && entry.tag && entry.tag === tag) return i;
+      }
+      return -1;
+    }
+
+    function restoreTagFolderEntrySelection(ctx) {
+      if (!ctx) return false;
+      const baseNode = WS.dirByPath.get(String(ctx.originPath || "")) || WS.root;
+      if (!baseNode) return false;
+      WS.nav.dirNode = baseNode;
+      WS.view.tagFolderActiveMode = "";
+      WS.view.tagFolderActiveTag = "";
+      WS.view.tagFolderOriginPath = "";
+      WS.view.dirEntryOrigin = null;
+      closeActionMenus();
+      rebuildDirectoriesEntries();
+      const idx = findTagEntryIndex(ctx.mode, ctx.tag);
+      WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      return true;
+    }
+
     function setTagFolderViewState(mode, tag, originPath) {
       WS.view.tagFolderActiveMode = mode;
       WS.view.tagFolderActiveTag = tag;
@@ -3824,15 +3856,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!ctx || ctx.path !== path) return false;
       WS.view.dirEntryOrigin = null;
       if (ctx.type === "tag") {
-        const baseNode = WS.dirByPath.get(String(ctx.originPath || "")) || WS.root;
-        if (!baseNode) return false;
-        WS.nav.dirNode = baseNode;
-        syncBulkSelectionForCurrentDir();
-        syncFavoritesUi();
-        syncHiddenUi();
-        syncTagUiForCurrentDir();
-        setTagFolderViewState(ctx.mode, ctx.tag, ctx.originPath);
-        return true;
+        return restoreTagFolderEntrySelection(ctx);
       }
       return false;
     }
@@ -5606,6 +5630,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function renderBreadcrumbInline(dirNode) {
+      if (!breadcrumbInlineEl) return;
       breadcrumbInlineEl.innerHTML = "";
       if (!WS.root || !dirNode) return;
 
