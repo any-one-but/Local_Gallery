@@ -15,16 +15,23 @@
          Title Pane
          ========================================================= -->
     <div id="titlePane">
-      <div id="titlePaneTop">
-        <div id="titleMain">
-          <h1 id="titleLabel">—</h1>
-          <span class="pill" id="itemsPill">Items: —</span>
-        </div>
-        <div id="titleBtns">
-          <button id="helpBtn" type="button" class="miniBtn">?</button>
-          <button id="optionsBtn" type="button" class="miniBtn">⚙</button>
-          <button id="openWritableBtn" type="button" class="miniBtn">Choose Root</button>
-        </div>
+        <div id="titlePaneTop">
+          <div id="titleMain">
+            <h1 id="titleLabel">—</h1>
+            <div id="previewNavControls">
+              <button id="refreshBtn" type="button" class="miniBtn" title="Reload current folder">Refresh</button>
+              <span class="navSpacer"></span>
+              <button id="dirBackBtn" type="button" class="miniBtn navBtn" title="Back">◀</button>
+              <button id="dirForwardBtn" type="button" class="miniBtn navBtn" title="Forward">▶</button>
+              <span class="navSpacer"></span>
+              <button id="dirUpBtn" type="button" class="miniBtn navBtn" title="Up">↑</button>
+            </div>
+          </div>
+          <div id="titleBtns">
+            <button id="helpBtn" type="button" class="miniBtn">?</button>
+            <button id="optionsBtn" type="button" class="miniBtn">⚙</button>
+            <button id="openWritableBtn" type="button" class="miniBtn">Choose Root</button>
+          </div>
       </div>
       <div id="directoriesSearchRow">
         <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search this folder..." />
@@ -58,19 +65,6 @@
              Preview Pane
              ========================================================= -->
         <div id="previewPane">
-          <div id="previewHeader">
-            <div id="previewHeaderLeft">
-              <div id="previewNavControls">
-                <button id="refreshBtn" type="button" class="miniBtn" title="Reload current folder">Refresh</button>
-                <span class="navSpacer"></span>
-                <button id="dirBackBtn" type="button" class="miniBtn navBtn" title="Back">◀</button>
-                <button id="dirForwardBtn" type="button" class="miniBtn navBtn" title="Forward">▶</button>
-                <span class="navSpacer"></span>
-                <button id="dirUpBtn" type="button" class="miniBtn navBtn" title="Up">↑</button>
-              </div>
-              <div id="breadcrumbInline"></div>
-            </div>
-          </div>
           <div id="previewBody"></div>
         </div>
       </div>

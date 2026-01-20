@@ -22,6 +22,7 @@
       --folder-icon-width: 22px;
       --folder-name-font: 13px;
       --folder-meta-font: 11px;
+      --preview-gutter: 10px;
     }
 
     :root[data-media-size="small"] {
@@ -586,6 +587,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
     }
 
     #titlePane h1 {
@@ -968,45 +970,10 @@
       min-width: 0;
     }
 
-    #previewHeader {
-      padding: 6px 10px 8px;
-      border-bottom: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: relative;
-    }
-
-    #previewHeaderLeft {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      width: 100%;
-      justify-content: flex-start;
-      min-width: 0;
-    }
-
     #previewNavControls {
       display: flex;
       align-items: center;
       gap: 4px;
-    }
-
-    #breadcrumbInline {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      justify-content: center;
-      align-items: center;
-      max-width: 60%;
-      pointer-events: none;
-    }
-
-    #breadcrumbInline .crumb {
-      pointer-events: auto;
     }
 
     .navSpacer {
@@ -1046,12 +1013,16 @@
     }
 
     #previewBody {
-      padding: 8px;
+      padding: 0;
       overflow: auto;
       min-height: 0;
       flex: 1;
       display: flex;
       flex-direction: column;
+    }
+
+    #previewBody.preview-grid {
+      padding: var(--preview-gutter);
     }
 
     .expandedSection {
@@ -1091,13 +1062,13 @@
     .gridFolders {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(var(--folder-grid-min), 1fr));
-      gap: 10px;
+      gap: var(--preview-gutter);
     }
 
     .gridFiles {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(var(--file-grid-min), 1fr));
-      gap: 10px;
+      gap: var(--preview-gutter);
     }
 
     .folderCard {
@@ -1265,10 +1236,11 @@
     /* Single-file preview viewport */
     #filePreviewViewport {
       width: 100%;
-      border: 1px solid var(--color1-tertiary);
-      border-radius: 4px;
+      height: 100%;
+      border: 0;
+      border-radius: 0;
       background: #000;
-      box-shadow: 0 10px 30px var(--color1-primary-transparent);
+      box-shadow: none;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1279,10 +1251,10 @@
 
     #filePreviewViewport img,
     #filePreviewViewport video {
-      max-width: 100%;
-      max-height: 100%;
-      width: auto;
-      height: auto;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
       object-fit: contain;
       background: #000;
       opacity: 0;

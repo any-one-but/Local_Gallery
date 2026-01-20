@@ -765,7 +765,6 @@
     const busyLabel = $("busyLabel");
 
     // Preview Pane
-    const breadcrumbInlineEl = $("breadcrumbInline");
     const modePill = $("modePill");
     const itemsPill = $("itemsPill");
     const previewBodyEl = $("previewBody");
@@ -5926,33 +5925,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return nodes;
     }
 
-    function renderBreadcrumbInline(dirNode) {
-      if (!breadcrumbInlineEl) return;
-      breadcrumbInlineEl.innerHTML = "";
-      if (!WS.root || !dirNode) return;
-
-      const crumbs = getBreadcrumbNodesForDir(dirNode);
-      const frag = document.createDocumentFragment();
-
-      crumbs.forEach((node, i) => {
-        const el = document.createElement("div");
-        el.className = "crumb";
-        el.title = node.path ? displayPath(node.path) : "root";
-        el.innerHTML = `<span>${escapeHtml(node === WS.root ? "root" : (displayName(node.name || "folder") || "folder"))}</span>`;
-        el.addEventListener("click", () => {
-          navigateToDirectory(node);
-        });
-        frag.appendChild(el);
-
-        if (i < crumbs.length - 1) {
-          const sep = document.createElement("div");
-          sep.className = "sep";
-          sep.textContent = "›";
-          frag.appendChild(sep);
-        }
-      });
-
-      breadcrumbInlineEl.appendChild(frag);
+    function setPreviewBodyMode(mode) {
+      if (!previewBodyEl) return;
+      previewBodyEl.classList.toggle("preview-file", mode === "file");
+      previewBodyEl.classList.toggle("preview-grid", mode !== "file");
     }
 
     function ensureThumbUrl(rec) {
@@ -6285,9 +6261,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       if (!WS.root || !WS.nav.dirNode) {
         previewBodyEl.innerHTML = "";
-        renderBreadcrumbInline(null);
+        setPreviewBodyMode("grid");
         updateModePill();
-        itemsPill.textContent = "Items: —";
+        if (itemsPill) itemsPill.textContent = "Items: —";
         previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder to begin.</div>`;
         return;
       }
@@ -6295,10 +6271,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const targetDir = getPreviewTargetDir();
       updateModePill();
       const currentDirCount = getDirectoryItemCount(WS.nav.dirNode || WS.root);
-      itemsPill.textContent = `Items: ${currentDirCount}`;
-      renderBreadcrumbInline(targetDir);
+      if (itemsPill) itemsPill.textContent = `Items: ${currentDirCount}`;
 
       if (WS.preview.kind === "file" && WS.preview.fileId) {
+        setPreviewBodyMode("file");
         const rec = WS.fileById.get(WS.preview.fileId);
         if (!rec) {
           previewBodyEl.innerHTML = "";
@@ -6321,6 +6297,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
 
+      setPreviewBodyMode("grid");
       if (!VIEWER_MODE) ACTIVE_MEDIA_SURFACE = "none";
 
       previewBodyEl.innerHTML = "";
