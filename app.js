@@ -32,8 +32,7 @@
 
     function displayName(name) {
       const opt = (typeof WS !== "undefined" && WS.meta && WS.meta.options) ? WS.meta.options : null;
-      const hideIndices = opt ? !!opt.hideIndicesInNames : true;
-      let out = hideIndices ? splitIndexPrefix(name).clean : String(name || "");
+      let out = splitIndexPrefix(name).clean;
       out = applyFileNameFilters(out, opt);
       if (opt && opt.hideUnderscoresInNames) out = out.replace(/_/g, " ");
       if (opt && opt.forceTitleCaps) out = toTitleCaps(out);
@@ -156,7 +155,6 @@
         preloadNextMode: "off",
         videoEndBehavior: "loop",
         slideshowDefault: "cycle",
-        hideIndicesInNames: false,
         hideUnderscoresInNames: true,
         hideBeforeLastDashInFileNames: true,
         hideAfterFirstUnderscoreInFileNames: true,
@@ -193,7 +191,6 @@
         preloadNextMode: (src.preloadNextMode === "off" || src.preloadNextMode === "on" || src.preloadNextMode === "ultra") ? src.preloadNextMode : d.preloadNextMode,
         videoEndBehavior: (src.videoEndBehavior === "loop" || src.videoEndBehavior === "next" || src.videoEndBehavior === "stop") ? src.videoEndBehavior : d.videoEndBehavior,
         slideshowDefault: (src.slideshowDefault === "cycle" || src.slideshowDefault === "1" || src.slideshowDefault === "3" || src.slideshowDefault === "5" || src.slideshowDefault === "10") ? src.slideshowDefault : d.slideshowDefault,
-        hideIndicesInNames: (typeof src.hideIndicesInNames === "boolean") ? src.hideIndicesInNames : d.hideIndicesInNames,
         hideUnderscoresInNames: (typeof src.hideUnderscoresInNames === "boolean") ? src.hideUnderscoresInNames : d.hideUnderscoresInNames,
         hideBeforeLastDashInFileNames: (typeof src.hideBeforeLastDashInFileNames === "boolean") ? src.hideBeforeLastDashInFileNames : d.hideBeforeLastDashInFileNames,
         hideAfterFirstUnderscoreInFileNames: (typeof src.hideAfterFirstUnderscoreInFileNames === "boolean") ? src.hideAfterFirstUnderscoreInFileNames : d.hideAfterFirstUnderscoreInFileNames,
@@ -1313,7 +1310,6 @@ ${makeSelectRow("Preview mode", "Controls how folders are shown in the preview p
 
 <h1>Filenames</h1>
 ${makeCheckRow("Hide file extensions", "Hide .jpg / .mp4 in file names.", "opt_hideFileExtensions", !!opt.hideFileExtensions)}
-${makeCheckRow("Hide indices from display names", "Hide numeric prefixes like '01 - '.", "opt_hideIndicesInNames", !!opt.hideIndicesInNames)}
 ${makeCheckRow("Hide underscores from display names", "Replace underscores with spaces.", "opt_hideUnderscoresInNames", !!opt.hideUnderscoresInNames)}
 ${makeCheckRow("Hide prefix before last ' - ' in file names", "Show only text after the last ' - ' in file names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
 ${makeCheckRow("Hide suffix after first underscore in file names", "Show only text before the first underscore in file names.", "opt_hideAfterFirstUnderscoreInFileNames", !!opt.hideAfterFirstUnderscoreInFileNames)}
@@ -1403,7 +1399,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         applyRetroMediaFromOptions();
       });
       bindCheck("opt_hideFileExtensions", "hideFileExtensions");
-      bindCheck("opt_hideIndicesInNames", "hideIndicesInNames");
       bindCheck("opt_hideUnderscoresInNames", "hideUnderscoresInNames");
       bindCheck("opt_hideBeforeLastDashInFileNames", "hideBeforeLastDashInFileNames");
       bindCheck("opt_hideAfterFirstUnderscoreInFileNames", "hideAfterFirstUnderscoreInFileNames");
@@ -4156,6 +4151,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
       syncPreviewToSelection();
 
+      WS.view.centerDirOnNextRender = true;
       renderDirectoriesPane();
       renderPreviewPane(true);
       syncButtons();
@@ -4186,10 +4182,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function getDirectoriesPathText() {
       if (!WS.root) return "—";
       if (isViewingTagFolder()) {
-        if (WS.view.tagFolderActiveMode === "favorites") return "Tag folders · Favorites";
-        if (WS.view.tagFolderActiveMode === "hidden") return "Tag folders · Hidden";
+        const basePath = String(WS.view.tagFolderOriginPath || "");
+        const baseLabel = basePath ? displayPath(basePath) : "root";
+        if (WS.view.tagFolderActiveMode === "favorites") return `${baseLabel} · Favorites`;
+        if (WS.view.tagFolderActiveMode === "hidden") return `${baseLabel} · Hidden`;
         const tagLabel = String(WS.view.tagFolderActiveTag || "").trim();
-        return tagLabel ? `Tag folders · ${tagLabel}` : "Tag folders";
+        return tagLabel ? `${baseLabel} · ${tagLabel}` : baseLabel;
       }
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return "search";
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "favorites";
@@ -5464,7 +5462,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       const selected = directoriesListEl.querySelector(".dirRow.selected");
-      if (selected) {
+      const shouldCenter = !!WS.view.centerDirOnNextRender;
+      WS.view.centerDirOnNextRender = false;
+      if (selected && shouldCenter) {
+        requestAnimationFrame(() => {
+          const selectedRow = directoriesListEl.querySelector(".dirRow.selected");
+          if (!selectedRow) return;
+          const target = selectedRow.offsetTop - (directoriesListEl.clientHeight / 2) + (selectedRow.offsetHeight / 2);
+          const maxScroll = Math.max(0, directoriesListEl.scrollHeight - directoriesListEl.clientHeight);
+          directoriesListEl.scrollTop = Math.max(0, Math.min(maxScroll, target));
+        });
+      } else if (selected) {
         const r = selected.getBoundingClientRect();
         const c = directoriesListEl.getBoundingClientRect();
         if (r.top < c.top || r.bottom > c.bottom) selected.scrollIntoView({ block: "nearest" });
