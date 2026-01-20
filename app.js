@@ -410,6 +410,7 @@
         statusTimeout: null,
         scrollBusyDirs: false,
         scrollBusyPreview: false,
+        pendingDirScroll: "",
         bulkSelectMode: false,
         bulkTagSelectedPaths: new Set(),
         bulkTagSelectionsByDir: new Map(),
@@ -1750,6 +1751,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       BULK_TAG_PLACEHOLDER = null;
       TAG_ENTRY_RENAME_STATE = null;
       return true;
+    }
+
+    function canUseBulkTagPlaceholderUi() {
+      if (!treatTagsAsFoldersEnabled()) return false;
+      if (!WS.root) return false;
+      return true;
+    }
+
+    function startBulkTagging(paths) {
+      if (canUseBulkTagPlaceholderUi() && setBulkTagPlaceholder(paths, "New tag folder")) return;
     }
 
     function setBulkTagPlaceholder(paths, label = "New tag folder") {
@@ -3823,24 +3834,60 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!WS.root) return;
 
       if (isViewingTagFolder()) {
+        if (BULK_TAG_PLACEHOLDER) {
+          WS.nav.entries.push({
+            kind: "tag",
+            label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
+            tag: "",
+            count: BULK_TAG_PLACEHOLDER.count || 0,
+            placeholder: true
+          });
+        }
         const nodes = getDirsForTagFolderView();
         for (const d of nodes) WS.nav.entries.push({ kind: "dir", node: d });
         return;
       }
 
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
+        if (BULK_TAG_PLACEHOLDER) {
+          WS.nav.entries.push({
+            kind: "tag",
+            label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
+            tag: "",
+            count: BULK_TAG_PLACEHOLDER.count || 0,
+            placeholder: true
+          });
+        }
         const dirs = (WS.view.searchResults || []).slice();
         for (let i = 0; i < dirs.length; i++) WS.nav.entries.push({ kind: "dir", node: dirs[i] });
         return;
       }
 
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
+        if (BULK_TAG_PLACEHOLDER) {
+          WS.nav.entries.push({
+            kind: "tag",
+            label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
+            tag: "",
+            count: BULK_TAG_PLACEHOLDER.count || 0,
+            placeholder: true
+          });
+        }
         const dirs = getAllFavoriteDirs();
         for (const d of dirs) WS.nav.entries.push({ kind: "dir", node: d });
         return;
       }
 
       if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+        if (BULK_TAG_PLACEHOLDER) {
+          WS.nav.entries.push({
+            kind: "tag",
+            label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
+            tag: "",
+            count: BULK_TAG_PLACEHOLDER.count || 0,
+            placeholder: true
+          });
+        }
         const dirs = getAllHiddenDirs();
         for (const d of dirs) WS.nav.entries.push({ kind: "dir", node: d });
         return;
@@ -4151,7 +4198,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
       syncPreviewToSelection();
 
-      WS.view.centerDirOnNextRender = true;
+      WS.view.pendingDirScroll = "center-selected";
       renderDirectoriesPane();
       renderPreviewPane(true);
       syncButtons();
@@ -4858,7 +4905,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         WS.view.bulkActionMenuOpen = false;
         if (!selectedDirs.length) return;
         finalizeBulkSelectionAction();
-        setBulkTagPlaceholder(selectedDirs, "New tag folder");
+        startBulkTagging(selectedDirs);
       }));
 
       directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
@@ -5455,22 +5502,27 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       directoriesListEl.appendChild(frag);
       renderDirectoriesActionHeader();
 
-      if (keepScroll) {
+      const shouldCenter = WS.view.pendingDirScroll === "center-selected";
+      if (shouldCenter) WS.view.pendingDirScroll = "";
+
+      if (keepScroll && !shouldCenter) {
         directoriesListEl.scrollTop = prevScroll;
         if (TAG_ENTRY_RENAME_STATE) focusTagEntryRenameInput();
         return;
       }
 
       const selected = directoriesListEl.querySelector(".dirRow.selected");
-      const shouldCenter = !!WS.view.centerDirOnNextRender;
-      WS.view.centerDirOnNextRender = false;
       if (selected && shouldCenter) {
         requestAnimationFrame(() => {
-          const selectedRow = directoriesListEl.querySelector(".dirRow.selected");
-          if (!selectedRow) return;
-          const target = selectedRow.offsetTop - (directoriesListEl.clientHeight / 2) + (selectedRow.offsetHeight / 2);
-          const maxScroll = Math.max(0, directoriesListEl.scrollHeight - directoriesListEl.clientHeight);
-          directoriesListEl.scrollTop = Math.max(0, Math.min(maxScroll, target));
+          requestAnimationFrame(() => {
+            const selectedRow = directoriesListEl.querySelector(".dirRow.selected");
+            if (!selectedRow) return;
+            const target = selectedRow.offsetTop - (directoriesListEl.clientHeight / 2) + (selectedRow.offsetHeight / 2);
+            const maxScroll = Math.max(0, directoriesListEl.scrollHeight - directoriesListEl.clientHeight);
+            WS.view.scrollBusyDirs = true;
+            directoriesListEl.scrollTop = Math.max(0, Math.min(maxScroll, target));
+            requestAnimationFrame(() => { WS.view.scrollBusyDirs = false; });
+          });
         });
       } else if (selected) {
         const r = selected.getBoundingClientRect();
