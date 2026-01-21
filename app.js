@@ -3437,6 +3437,21 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       });
     }
 
+    function getDirsForTagViewFrame(frame) {
+      if (!frame) return [];
+      const baseNode = WS.dirByPath.get(String(frame.originPath || "")) || WS.root;
+      if (!baseNode) return [];
+      const children = getChildDirsForNodeBase(baseNode);
+      if (frame.mode === "favorites") return children.filter(d => metaHasFavorite(d.path || ""));
+      if (frame.mode === "hidden") return children.filter(d => metaHasHidden(d.path || ""));
+      const tag = String(frame.tag || "");
+      if (!tag) return [];
+      return children.filter(d => {
+        const tags = metaGetUserTags(d.path || "");
+        return tags.includes(tag);
+      });
+    }
+
     function getDirsForTagEntry(entry) {
       if (!entry || entry.kind !== "tag") return [];
       const dirNode = WS.nav.dirNode;
@@ -3557,13 +3572,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function pushTagViewContext(selectedDirPath) {
+      const orderedPaths = getDirsForTagFolderView().map(d => String(d?.path || "")).filter(Boolean);
       pushTagNavFrame({
         type: "tag-view",
         mode: WS.view.tagFolderActiveMode,
         tag: WS.view.tagFolderActiveTag,
         originPath: String(WS.view.tagFolderOriginPath || ""),
         selectedDirPath: String(selectedDirPath || ""),
-        scrollTop: getDirectoriesScrollTop()
+        scrollTop: getDirectoriesScrollTop(),
+        orderedPaths
       });
     }
 
@@ -3654,6 +3671,26 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function getVisibleSiblingDirsForSlide(dirNode) {
       const dp = String(dirNode?.path || "");
+      const stack = WS.view.tagNavStack;
+      if (Array.isArray(stack) && stack.length) {
+        const frame = stack[stack.length - 1];
+        if (frame && frame.type === "tag-view") {
+          if (Array.isArray(frame.orderedPaths) && frame.orderedPaths.length) {
+            const nodes = frame.orderedPaths
+              .map(p => WS.dirByPath.get(String(p || "")))
+              .filter(Boolean);
+            if (nodes.length) {
+              const match = nodes.some(d => String(d?.path || "") === dp);
+              if (match) return nodes;
+            }
+          }
+          const tagDirs = getDirsForTagViewFrame(frame);
+          if (tagDirs.length) {
+            const match = tagDirs.some(d => String(d?.path || "") === dp);
+            if (match) return tagDirs;
+          }
+        }
+      }
 
       if (WS.view.dirSearchPinned && !WS.view.searchRootActive && dp && dp === String(WS.view.searchAnchorPath || "")) {
         return (WS.view.searchResults || []).slice();
