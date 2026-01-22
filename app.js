@@ -145,9 +145,6 @@
         mediaThumbUiSize: "small",
         folderPreviewSize: "small",
         hideFileExtensions: false,
-        defaultFilterMode: "all",
-        defaultRandomMode: false,
-        randomButtonJump: false,
         defaultFolderBehavior: "slide",
         folderScoreDisplay: "no-arrows",
         previewMode: "grid",
@@ -160,7 +157,7 @@
         hideAfterFirstUnderscoreInFileNames: true,
         forceTitleCaps: true,
         banicOpenWindow: true,
-        altGalleryMode: false,
+        altGalleryMode: true,
         retroMode: false,
         mediaFilter: "off",
         animatedMediaFilters: true,
@@ -191,9 +188,6 @@
         mediaThumbUiSize: (src.mediaThumbUiSize === "small" || src.mediaThumbUiSize === "medium" || src.mediaThumbUiSize === "large") ? src.mediaThumbUiSize : d.mediaThumbUiSize,
         folderPreviewSize: (src.folderPreviewSize === "small" || src.folderPreviewSize === "medium" || src.folderPreviewSize === "large") ? src.folderPreviewSize : d.folderPreviewSize,
         hideFileExtensions: (typeof src.hideFileExtensions === "boolean") ? src.hideFileExtensions : ((typeof src.showFileExtensions === "boolean") ? !src.showFileExtensions : d.hideFileExtensions),
-        defaultFilterMode: (src.defaultFilterMode === "all" || src.defaultFilterMode === "images" || src.defaultFilterMode === "videos" || src.defaultFilterMode === "gifs") ? src.defaultFilterMode : d.defaultFilterMode,
-        defaultRandomMode: (typeof src.defaultRandomMode === "boolean") ? src.defaultRandomMode : d.defaultRandomMode,
-        randomButtonJump: (typeof src.randomButtonJump === "boolean") ? src.randomButtonJump : d.randomButtonJump,
         defaultFolderBehavior: (src.defaultFolderBehavior === "stop" || src.defaultFolderBehavior === "loop" || src.defaultFolderBehavior === "slide") ? src.defaultFolderBehavior : d.defaultFolderBehavior,
         folderScoreDisplay: (src.folderScoreDisplay === "show" || src.folderScoreDisplay === "no-arrows" || src.folderScoreDisplay === "hidden") ? src.folderScoreDisplay : ((typeof src.showFolderScores === "boolean") ? (src.showFolderScores ? "show" : "hidden") : d.folderScoreDisplay),
         previewMode: (src.previewMode === "grid" || src.previewMode === "expanded") ? src.previewMode : d.previewMode,
@@ -206,7 +200,7 @@
         hideAfterFirstUnderscoreInFileNames: (typeof src.hideAfterFirstUnderscoreInFileNames === "boolean") ? src.hideAfterFirstUnderscoreInFileNames : d.hideAfterFirstUnderscoreInFileNames,
         forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
         banicOpenWindow: (typeof src.banicOpenWindow === "boolean") ? src.banicOpenWindow : d.banicOpenWindow,
-        altGalleryMode: (typeof src.altGalleryMode === "boolean") ? src.altGalleryMode : d.altGalleryMode,
+        altGalleryMode: true,
         retroMode: (typeof src.retroMode === "boolean") ? src.retroMode : d.retroMode,
         colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber" || src.colorScheme === "retro90s" || src.colorScheme === "retro90s-dark") ? src.colorScheme : d.colorScheme,
         treatTagsAsFolders: d.treatTagsAsFolders,
@@ -860,8 +854,8 @@
     function applyDefaultViewFromOptions() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       if (!opt) return;
-      WS.view.filterMode = String(opt.defaultFilterMode || "all");
-      WS.view.randomMode = !!opt.defaultRandomMode;
+      WS.view.filterMode = "all";
+      WS.view.randomMode = false;
       WS.view.folderBehavior = String(opt.defaultFolderBehavior || "slide");
       WS.view.folderScoreDisplay = (opt.folderScoreDisplay === "show" || opt.folderScoreDisplay === "no-arrows" || opt.folderScoreDisplay === "hidden") ? opt.folderScoreDisplay : "hidden";
       applyColorSchemeFromOptions();
@@ -1010,6 +1004,182 @@
       }
     }
 
+    const SAFE_KEY_VALUES = (() => {
+      const out = [];
+      for (let i = 0; i < 26; i++) out.push(String.fromCharCode(97 + i));
+      for (let i = 0; i < 10; i++) out.push(String(i));
+      out.push("Space");
+      return out;
+    })();
+
+    const SAFE_KEY_SET = new Set(SAFE_KEY_VALUES);
+
+    const KEY_LABELS = {
+      Escape: "Escape",
+      Space: "Space"
+    };
+
+    function normalizeKeyValue(key) {
+      if (!key) return "";
+      if (key === " ") return "Space";
+      if (key.length === 1) return key.toLowerCase();
+      return key;
+    }
+
+    function isSafeKey(key) {
+      const norm = normalizeKeyValue(key);
+      return SAFE_KEY_SET.has(norm);
+    }
+
+    function keyLabel(key) {
+      if (!key) return "Unassigned";
+      const norm = normalizeKeyValue(key);
+      if (KEY_LABELS[norm]) return KEY_LABELS[norm];
+      if (norm.length === 1) return norm.toUpperCase();
+      return norm;
+    }
+
+    const KEYBIND_SECTIONS = [
+      { id: "navigation", label: "Navigation" },
+      { id: "media", label: "Media" },
+      { id: "jump", label: "Jump" },
+      { id: "history", label: "History" },
+      { id: "global", label: "Global" }
+    ];
+
+    const KEYBIND_ACTIONS = [
+      { id: "selectUp", label: "Up selection", hint: "Move selection up.", section: "navigation" },
+      { id: "selectDown", label: "Down selection", hint: "Move selection down.", section: "navigation" },
+      { id: "leaveDir", label: "Up directory", hint: "Go to the parent directory.", section: "navigation" },
+      { id: "enterDir", label: "Enter directory", hint: "Enter a folder or open gallery for a file.", section: "navigation" },
+      { id: "prevFolder", label: "Previous folder", hint: "Jump to the previous folder's first file.", section: "navigation" },
+      { id: "nextFolder", label: "Next folder", hint: "Jump to the next folder's first file.", section: "navigation" },
+      { id: "randomJump", label: "Random jump", hint: "Jump to a random file or folder.", section: "navigation" },
+      { id: "cycleFilter", label: "Cycle filter", hint: "Cycle the content filter.", section: "navigation" },
+      { id: "slideshow", label: "Slideshow mode", hint: "Toggle slideshow.", section: "media" },
+      { id: "seekBack", label: "Video skip backward", hint: "Seek video backward.", section: "media" },
+      { id: "seekForward", label: "Video skip forward", hint: "Seek video forward.", section: "media" },
+      { id: "playPause", label: "Pause/Play video", hint: "Toggle video playback.", section: "media" },
+      { id: "muteToggle", label: "Mute/Unmute video", hint: "Toggle video mute.", section: "media" },
+      { id: "jumpMinus50", label: "-50 items", hint: "Move selection up by 50 items.", section: "jump" },
+      { id: "jumpMinus10", label: "-10 items", hint: "Move selection up by 10 items.", section: "jump" },
+      { id: "jumpPlus10", label: "+10 items", hint: "Move selection down by 10 items.", section: "jump" },
+      { id: "jumpPlus50", label: "+50 items", hint: "Move selection down by 50 items.", section: "jump" },
+      { id: "historyBack", label: "History back", hint: "Go to the previous directory in history.", section: "history" },
+      { id: "historyForward", label: "History forward", hint: "Go to the next directory in history.", section: "history" },
+      { id: "panic", label: "PANIC!", hint: "Toggle the decoy window mode.", section: "global" },
+      { id: "back", label: "Back/Close", hint: "Close overlays or back out of special modes.", section: "global" }
+    ];
+
+    const KEYBIND_PRESETS = {
+      right: {
+        label: "Right-handed (WASD)",
+        bindings: {
+          selectUp: "w",
+          selectDown: "s",
+          leaveDir: "a",
+          enterDir: "d",
+          prevFolder: "b",
+          nextFolder: "x",
+          randomJump: "r",
+          cycleFilter: "f",
+          slideshow: "v",
+          seekBack: "z",
+          seekForward: "c",
+          playPause: "Space",
+          muteToggle: "m",
+          jumpMinus50: "1",
+          jumpMinus10: "2",
+          jumpPlus10: "3",
+          jumpPlus50: "4",
+          historyBack: "q",
+          historyForward: "e",
+          panic: "g",
+          back: "Escape"
+        }
+      },
+      left: {
+        label: "Left-handed (IJKL)",
+        bindings: {
+          selectUp: "i",
+          selectDown: "k",
+          leaveDir: "j",
+          enterDir: "l",
+          prevFolder: "h",
+          nextFolder: "n",
+          randomJump: "y",
+          cycleFilter: "t",
+          slideshow: "b",
+          seekBack: "u",
+          seekForward: "o",
+          playPause: "Space",
+          muteToggle: "g",
+          jumpMinus50: "7",
+          jumpMinus10: "8",
+          jumpPlus10: "9",
+          jumpPlus50: "0",
+          historyBack: "p",
+          historyForward: "m",
+          panic: "v",
+          back: "Escape"
+        }
+      }
+    };
+
+    function defaultKeybinds(presetId) {
+      const preset = KEYBIND_PRESETS[presetId] || KEYBIND_PRESETS.right;
+      return KEYBIND_ACTIONS.map(def => {
+        const key = preset.bindings[def.id] || "";
+        return Object.assign({}, def, { key: normalizeKeyValue(key) });
+      });
+    }
+
+    function enforceUniqueKeybinds(bindings) {
+      const used = new Set();
+      bindings.forEach((binding) => {
+        const key = normalizeKeyValue(binding.key);
+        if (!key) { binding.key = ""; return; }
+        if (used.has(key)) {
+          binding.key = "";
+          return;
+        }
+        used.add(key);
+        binding.key = key;
+      });
+    }
+
+    function normalizeKeybinds(log) {
+      const presetId = (log && log.preset && KEYBIND_PRESETS[log.preset]) ? log.preset : "right";
+      const bindings = defaultKeybinds(presetId);
+      const byId = new Map(bindings.map(b => [b.id, b]));
+      if (log && Array.isArray(log.bindings)) {
+        for (const entry of log.bindings) {
+          if (!entry || !entry.id || !byId.has(entry.id)) continue;
+          const key = normalizeKeyValue(entry.key || "");
+          if (key && !isSafeKey(key) && !(entry.id === "back" && key === "Escape")) continue;
+          byId.get(entry.id).key = key;
+        }
+      }
+      enforceUniqueKeybinds(bindings);
+      return { bindings, presetId };
+    }
+
+    const KEYBIND_INDEX = new Map();
+
+    function rebuildKeybindIndex() {
+      KEYBIND_INDEX.clear();
+      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds("right");
+      for (const binding of bindings) {
+        const key = normalizeKeyValue(binding.key);
+        if (!key || KEYBIND_INDEX.has(key)) continue;
+        KEYBIND_INDEX.set(key, binding.id);
+      }
+    }
+
+    function keybindActionFor(key) {
+      return KEYBIND_INDEX.get(key) || null;
+    }
+
     const WS = {
       root: null,
       fileById: new Map(),   // id -> FileRecord
@@ -1028,9 +1198,12 @@
         fsTagsFileHandle: null,
         fsOptionsFileHandle: null,
         fsLegacyFileHandle: null,
+        fsKeybindsFileHandle: null,
         saveTimer: null,
         dirty: false,
-        options: normalizeOptions(null)
+        options: normalizeOptions(null),
+        keybinds: defaultKeybinds("right"),
+        keybindsPreset: "right"
       },
 
       view: {
@@ -1153,11 +1326,15 @@
       WS.meta.fsTagsFileHandle = null;
       WS.meta.fsOptionsFileHandle = null;
       WS.meta.fsLegacyFileHandle = null;
+      WS.meta.fsKeybindsFileHandle = null;
       WS.meta.dirty = false;
       WS.meta.options = normalizeOptions(null);
+      WS.meta.keybinds = defaultKeybinds("right");
+      WS.meta.keybindsPreset = "right";
       if (WS.meta.saveTimer) { clearTimeout(WS.meta.saveTimer); WS.meta.saveTimer = null; }
 
       applyDefaultViewFromOptions();
+      rebuildKeybindIndex();
       WS.view.loopWithinDir = false;
       WS.view.randomSeed = 0;
       WS.view.randomCache = new Map();
@@ -1237,6 +1414,7 @@
     const $ = (id) => document.getElementById(id);
 
     // Title Pane
+    const keybindsBtn = $("keybindsBtn");
     const helpBtn = $("helpBtn");
     const optionsBtn = $("optionsBtn");
     const refreshBtn = $("refreshBtn");
@@ -1261,17 +1439,30 @@
     const optionsCard = $("optionsCard");
     const optionsHeader = $("optionsHeader");
 
+    // Keybinds Overlay
+    const keybindsOverlay = $("keybindsOverlay");
+    const keybindsCloseBtn = $("keybindsCloseBtn");
+    const keybindsBodyEl = $("keybindsBody");
+    const keybindsResetBtn = $("keybindsResetBtn");
+    const keybindsDoneBtn = $("keybindsDoneBtn");
+    const keybindsStatusLabel = $("keybindsStatusLabel");
+    const keybindsCard = $("keybindsCard");
+    const keybindsHeader = $("keybindsHeader");
+
     const overlayWindowStates = {
       help: { x: null, y: null, width: null, height: null },
-      options: { x: null, y: null, width: null, height: null }
+      options: { x: null, y: null, width: null, height: null },
+      keybinds: { x: null, y: null, width: null, height: null }
     };
     const overlayCards = {
       help: helpCard,
-      options: optionsCard
+      options: optionsCard,
+      keybinds: keybindsCard
     };
     const overlayCardHeaders = {
       help: helpHeader,
-      options: optionsHeader
+      options: optionsHeader,
+      keybinds: keybindsHeader
     };
     const overlayWindowNames = Object.keys(overlayWindowStates);
     const overlayResizeObserver = (typeof ResizeObserver === "function") ? new ResizeObserver((entries) => {
@@ -1509,6 +1700,7 @@
 
     let HELP_OPEN = false;
     let OPTIONS_OPEN = false;
+    let KEYBINDS_OPEN = false;
     let HELP_HOLD_ACTIVE = false;
     let PROPERTIES_OPEN = false;
 
@@ -1625,13 +1817,8 @@
       const parts = [];
       const filterMode = WS.view.filterMode;
       const filterLabel = filterMode === "all" ? "All" : (filterMode === "images" ? "Images only" : (filterMode === "videos" ? "Videos only" : "GIFs only"));
-      if (filterMode !== (defs.defaultFilterMode || "all")) {
+      if (filterMode !== "all") {
         parts.push(`Content filter: ${filterLabel}`);
-      }
-
-      const randomDefault = !!defs.defaultRandomMode;
-      if (WS.view.randomMode !== randomDefault) {
-        parts.push(`Random mode: ${WS.view.randomMode ? "On" : "Off"}`);
       }
 
       const behaviorLabel = WS.view.folderBehavior === "loop" ? "Loop" : (WS.view.folderBehavior === "slide" ? "Slide" : "Stop");
@@ -1775,6 +1962,162 @@
       if (optionsOverlay) optionsOverlay.classList.remove("active");
     }
 
+    /* =========================================================
+       Keybinds overlay
+       ========================================================= */
+
+    function setKeybindsStatus(text) {
+      if (!keybindsStatusLabel) return;
+      keybindsStatusLabel.textContent = text || "—";
+    }
+
+    function openKeybinds() {
+      KEYBINDS_OPEN = true;
+      if (keybindsOverlay) keybindsOverlay.classList.add("active");
+      requestAnimationFrame(() => applyOverlayWindowState("keybinds"));
+      renderKeybindsUi();
+      setKeybindsStatus("Saved automatically");
+    }
+
+    function closeKeybinds() {
+      KEYBINDS_OPEN = false;
+      if (keybindsOverlay) keybindsOverlay.classList.remove("active");
+    }
+
+    function applyKeybindPreset(presetId) {
+      const preset = KEYBIND_PRESETS[presetId] ? presetId : "right";
+      WS.meta.keybindsPreset = preset;
+      WS.meta.keybinds = defaultKeybinds(preset);
+      rebuildKeybindIndex();
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      renderKeybindsUi();
+      setKeybindsStatus("Preset applied");
+    }
+
+    function renderKeybindsUi() {
+      if (!keybindsBodyEl) return;
+      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds("right");
+      const presetId = (WS.meta && WS.meta.keybindsPreset && KEYBIND_PRESETS[WS.meta.keybindsPreset]) ? WS.meta.keybindsPreset : "right";
+
+      const bySection = new Map();
+      for (const binding of bindings) {
+        if (!bySection.has(binding.section)) bySection.set(binding.section, []);
+        bySection.get(binding.section).push(binding);
+      }
+
+      const makeOptions = (selected, allowEscape = false) => {
+        const opts = [];
+        opts.push(`<option value="">Unassigned</option>`);
+        if (allowEscape || selected === "Escape") {
+          const selectedAttr = selected === "Escape" ? " selected" : "";
+          opts.push(`<option value="Escape"${selectedAttr}>Escape</option>`);
+        }
+        for (const key of SAFE_KEY_VALUES) {
+          const val = escapeHtml(key);
+          const label = escapeHtml(keyLabel(key));
+          const isSelected = key === selected ? " selected" : "";
+          opts.push(`<option value="${val}"${isSelected}>${label}</option>`);
+        }
+        return opts.join("");
+      };
+
+      let html = `<div class="label" style="margin-bottom:8px;">Keybinds are stored in keyboard-configuration.log.json in the .local-gallery folder. Escape always closes overlays.</div>`;
+      html += `
+        <div class="optRow">
+          <div class="optLeft">
+            <div class="optTitle">Preset</div>
+            <div class="optHint">Apply a left/right-handed base layout.</div>
+          </div>
+          <div class="optRight">
+            <select id="keybindPresetSelect">
+              ${Object.entries(KEYBIND_PRESETS).map(([id, preset]) => {
+                const selected = id === presetId ? " selected" : "";
+                return `<option value="${escapeHtml(id)}"${selected}>${escapeHtml(preset.label)}</option>`;
+              }).join("")}
+            </select>
+          </div>
+        </div>
+      `;
+
+      for (const section of KEYBIND_SECTIONS) {
+        const list = bySection.get(section.id) || [];
+        if (!list.length) continue;
+        html += `<h1>${escapeHtml(section.label)}</h1>`;
+        for (const binding of list) {
+          const selected = binding.key || "";
+          const allowEscape = binding.id === "back";
+          html += `
+            <div class="optRow">
+              <div class="optLeft">
+                <div class="optTitle">${escapeHtml(binding.label)}</div>
+                <div class="optHint">${escapeHtml(binding.hint)}</div>
+              </div>
+              <div class="optRight">
+                <select data-bind-id="${escapeHtml(binding.id)}">${makeOptions(selected, allowEscape)}</select>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      keybindsBodyEl.innerHTML = html;
+
+      const presetSelect = keybindsBodyEl.querySelector("#keybindPresetSelect");
+      if (presetSelect) {
+        presetSelect.addEventListener("click", (e) => e.stopPropagation());
+        presetSelect.addEventListener("keydown", (e) => e.stopPropagation());
+        presetSelect.addEventListener("change", () => {
+          applyKeybindPreset(presetSelect.value);
+        });
+      }
+
+      const selects = keybindsBodyEl.querySelectorAll("select[data-bind-id]");
+      selects.forEach((sel) => {
+        sel.addEventListener("click", (e) => e.stopPropagation());
+        sel.addEventListener("keydown", (e) => e.stopPropagation());
+        sel.addEventListener("change", () => {
+          const id = sel.getAttribute("data-bind-id");
+          if (!id || !WS.meta || !Array.isArray(WS.meta.keybinds)) return;
+          const binding = WS.meta.keybinds.find(b => b.id === id);
+          if (!binding) return;
+
+          const nextKey = normalizeKeyValue(sel.value || "");
+          if (nextKey && !isSafeKey(nextKey) && !(binding.id === "back" && nextKey === "Escape")) return;
+
+          const prevKey = binding.key || "";
+          if (nextKey === prevKey) return;
+
+          const conflict = nextKey
+            ? WS.meta.keybinds.find(b => b.id !== binding.id && b.key === nextKey)
+            : null;
+
+          binding.key = nextKey;
+          if (conflict) conflict.key = prevKey;
+
+          rebuildKeybindIndex();
+          WS.meta.dirty = true;
+          metaScheduleSave();
+          setKeybindsStatus("Saved");
+
+          if (conflict) {
+            const otherSelect = keybindsBodyEl.querySelector(`select[data-bind-id="${conflict.id}"]`);
+            if (otherSelect) otherSelect.value = conflict.key || "";
+          }
+        });
+      });
+    }
+
+    function resetKeybindsToDefaults() {
+      const presetId = (WS.meta && WS.meta.keybindsPreset && KEYBIND_PRESETS[WS.meta.keybindsPreset]) ? WS.meta.keybindsPreset : "right";
+      WS.meta.keybinds = defaultKeybinds(presetId);
+      rebuildKeybindIndex();
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      renderKeybindsUi();
+      setKeybindsStatus("Reset");
+    }
+
     function renderOptionsUi() {
       if (!optionsBodyEl) return;
       const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
@@ -1812,18 +2155,6 @@
         { value: "unmuted", label: "Auto-play unmuted" },
         { value: "muted", label: "Auto-play muted" },
         { value: "off", label: "No autoplay" }
-      ];
-
-      const filterModes = [
-        { value: "all", label: "All media" },
-        { value: "images", label: "Images only" },
-        { value: "videos", label: "Videos only" },
-        { value: "gifs", label: "GIFs only" }
-      ];
-
-      const onOffModes = [
-        { value: "on", label: "On" },
-        { value: "off", label: "Off" }
       ];
 
       const folderModes = [
@@ -1919,15 +2250,9 @@
 <h1>General</h1>
 ${makeSelectRow("Folder sort", "Sort folders by name or score.", "opt_dirSortMode", WS.meta.dirSortMode === "score" ? "score" : "name", dirSortModes)}
 ${makeSelectRow("Folder scores", "Choose how folder scores appear in lists + previews.", "opt_folderScoreDisplay", String(opt.folderScoreDisplay || "hidden"), folderScoreModes)}
-${makeCheckRow("Alt gallery mode", "Enter on a file opens Gallery; exit with A/J.", "opt_altGalleryMode", !!opt.altGalleryMode)}
-${makeCheckRow("BANIC! opens decoy window", "When enabled, BANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
+${makeSelectRow("Folder behavior", "Sets how folders behave when browsing.", "opt_defaultFolderBehavior", String(opt.defaultFolderBehavior || "slide"), folderModes)}
+${makeCheckRow("PANIC! opens decoy window", "When enabled, PANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
-${makeCheckRow("Random key jumps to random item", "R/Y will move to a random file or folder instead of toggling Random Mode.", "opt_randomButtonJump", !!opt.randomButtonJump)}
-
-<h1>Defaults</h1>
-${makeSelectRow("Default content filter", "Initial filter when loading a root directory.", "opt_defaultFilterMode", String(opt.defaultFilterMode || "all"), filterModes)}
-${makeSelectRow("Default random mode", "Initial random mode.", "opt_defaultRandomMode", opt.defaultRandomMode ? "on" : "off", onOffModes)}
-${makeSelectRow("Default folder behavior", "Initial folder behavior.", "opt_defaultFolderBehavior", String(opt.defaultFolderBehavior || "slide"), folderModes)}
 
 <h1>Appearance</h1>
 ${makeSelectRow("Color scheme", "Switch the overall interface palette.", "opt_colorScheme", String(opt.colorScheme || "classic"), colorSchemes)}
@@ -1939,10 +2264,10 @@ ${makeCheckRow("Animated filters", "When enabled, scanlines/grain/jitter animate
 <h1>Playback</h1>
 ${makeSelectRow("Video audio (preview)", "Controls autoplay + mute in the in-pane preview player.", "opt_videoPreview", String(opt.videoPreview || "muted"), vidModes)}
 ${makeSelectRow("Video audio (gallery)", "Controls autoplay + mute in fullscreen gallery mode.", "opt_videoGallery", String(opt.videoGallery || "muted"), vidModes)}
-${makeSelectRow("Video skip step", "Seek increment for Q/E/U/O shortcuts.", "opt_videoSkipStep", String(opt.videoSkipStep || "10"), skipSteps)}
+${makeSelectRow("Video skip step", "Seek increment for video skip shortcuts.", "opt_videoSkipStep", String(opt.videoSkipStep || "10"), skipSteps)}
 ${makeSelectRow("Video end behavior", "What happens when a video ends (outside slideshow).", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
 ${makeSelectRow("Preload next item", "Preload the next item for smoother browsing.", "opt_preloadNextMode", String(opt.preloadNextMode || "off"), preloadModes)}
-${makeSelectRow("Slideshow speed", "Controls Shift behavior for slideshows.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
+${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
 
 <h1>Preview</h1>
 ${makeSelectRow("Image thumbnail size", "Controls generated image thumbnail quality (smaller is faster).", "opt_imageThumbSize", String(opt.imageThumbSize || "medium"), thumbModes)}
@@ -1995,12 +2320,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       bindSelect("opt_videoPreview", "videoPreview", false);
       bindSelect("opt_videoGallery", "videoGallery", false);
-      bindSelect("opt_defaultFilterMode", "defaultFilterMode", false, () => {
-        applyDefaultViewFromOptions();
-      });
-      bindSelect("opt_defaultRandomMode", "defaultRandomMode", false, () => {
-        applyDefaultViewFromOptions();
-      }, (val) => val === "on");
       bindSelect("opt_defaultFolderBehavior", "defaultFolderBehavior", false, () => {
         applyDefaultViewFromOptions();
       });
@@ -2016,7 +2335,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       });
       bindSelect("opt_videoEndBehavior", "videoEndBehavior", false);
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
-      bindCheck("opt_altGalleryMode", "altGalleryMode");
       bindCheck("opt_banicOpenWindow", "banicOpenWindow");
       bindCheck("opt_showHiddenFolder", "showHiddenFolder", (enabled) => {
         if (!enabled && WS.view.tagFolderActiveMode === "hidden") {
@@ -2024,7 +2342,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
         renderDirectoriesPane(true);
       });
-      bindCheck("opt_randomButtonJump", "randomButtonJump");
       bindSelect("opt_imageThumbSize", "imageThumbSize", true);
       bindSelect("opt_videoThumbSize", "videoThumbSize", true);
       bindSelect("opt_mediaThumbUiSize", "mediaThumbUiSize", false);
@@ -2075,6 +2392,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       renderOptionsUi();
       applyOptionsEverywhere(true);
     }
+
+    if (keybindsBtn) keybindsBtn.addEventListener("click", () => openKeybinds());
+    if (keybindsCloseBtn) keybindsCloseBtn.addEventListener("click", () => closeKeybinds());
+    if (keybindsDoneBtn) keybindsDoneBtn.addEventListener("click", () => closeKeybinds());
+    if (keybindsResetBtn) keybindsResetBtn.addEventListener("click", () => resetKeybindsToDefaults());
 
     if (optionsBtn) optionsBtn.addEventListener("click", () => openOptions());
     if (optionsCloseBtn) optionsCloseBtn.addEventListener("click", () => closeOptions());
@@ -2680,6 +3002,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     };
   }
 
+    function metaMakeKeybindsLogObject() {
+      const bindings = Array.isArray(WS.meta.keybinds) ? WS.meta.keybinds : defaultKeybinds("right");
+      const presetId = (WS.meta && WS.meta.keybindsPreset && KEYBIND_PRESETS[WS.meta.keybindsPreset]) ? WS.meta.keybindsPreset : "right";
+      return {
+        schema: 1,
+        updatedAt: Date.now(),
+        preset: presetId,
+        bindings: bindings.map(b => ({ id: b.id, key: b.key || "" }))
+      };
+    }
+
     function metaMakeLogObject() {
       const folders = {};
       const tagByFp = {};
@@ -2799,6 +3132,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyDisplaySizesFromOptions();
     }
 
+    function metaApplyKeybindsLog(log) {
+      if (!log || typeof log !== "object") return;
+      const normalized = normalizeKeybinds(log);
+      WS.meta.keybinds = normalized.bindings;
+      WS.meta.keybindsPreset = normalized.presetId;
+      rebuildKeybindIndex();
+    }
+
     function metaApplyFromLog(log) {
       if (!log || typeof log !== "object") return;
 
@@ -2901,6 +3242,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         scores: `LocalGalleryScores::${k}`,
         tags: `LocalGalleryTags::${k}`,
         options: `LocalGalleryPreferences::${k}`,
+        keybinds: `LocalGalleryKeyboard::${k}`,
         legacy: `LocalGalleryVotes::${k}`
       };
     }
@@ -2924,6 +3266,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       metaSaveLocalDoc(keys.scores, metaMakeScoresLogObject());
       metaSaveLocalDoc(keys.tags, metaMakeTagsLogObject());
       metaSaveLocalDoc(keys.options, metaMakeOptionsLogObject());
+      metaSaveLocalDoc(keys.keybinds, metaMakeKeybindsLogObject());
       WS.meta.dirty = false;
     }
 
@@ -2934,12 +3277,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const scoresFile = await sys.getFileHandle("folder-scores.log.json", { create: true });
         const tagsFile = await sys.getFileHandle("folder-tags.log.json", { create: true });
         const optionsFile = await sys.getFileHandle("preferences.log.json", { create: true });
+        const keybindsFile = await sys.getFileHandle("keyboard-configuration.log.json", { create: true });
         const legacyFile = await sys.getFileHandle("folder-votes.log.json", { create: true });
         WS.meta.fsRootHandle = rootHandle;
         WS.meta.fsSysDirHandle = sys;
         WS.meta.fsScoresFileHandle = scoresFile;
         WS.meta.fsTagsFileHandle = tagsFile;
         WS.meta.fsOptionsFileHandle = optionsFile;
+        WS.meta.fsKeybindsFileHandle = keybindsFile;
         WS.meta.fsLegacyFileHandle = legacyFile;
         WS.meta.storageMode = "fs";
         return true;
@@ -2973,9 +3318,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const scores = WS.meta.fsScoresFileHandle;
       const tags = WS.meta.fsTagsFileHandle;
       const options = WS.meta.fsOptionsFileHandle;
+      const keybinds = WS.meta.fsKeybindsFileHandle;
       await metaSaveFsDoc(scores, metaMakeScoresLogObject());
       await metaSaveFsDoc(tags, metaMakeTagsLogObject());
       await metaSaveFsDoc(options, metaMakeOptionsLogObject());
+      await metaSaveFsDoc(keybinds, metaMakeKeybindsLogObject());
       WS.meta.dirty = false;
     }
 
@@ -3006,12 +3353,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const scoresLog = keys ? metaLoadLocalDoc(keys.scores) : null;
         const tagsLog = keys ? metaLoadLocalDoc(keys.tags) : null;
         const optionsLog = keys ? metaLoadLocalDoc(keys.options) : null;
+        const keybindsLog = keys ? metaLoadLocalDoc(keys.keybinds) : null;
 
         if (scoresLog) metaApplyScoresLog(scoresLog);
         if (tagsLog) metaApplyTagsLog(tagsLog);
         if (optionsLog) metaApplyOptionsLog(optionsLog);
+        if (keybindsLog) metaApplyKeybindsLog(keybindsLog);
 
-        if (!scoresLog && !tagsLog && !optionsLog && keys) {
+        if (!scoresLog && !tagsLog && !optionsLog && !keybindsLog && keys) {
           /* LEGACY MIGRATION (remove later): read combined log and split it. */
           const legacyLog = metaLoadLocalDoc(keys.legacy);
           if (legacyLog) {
@@ -3031,12 +3380,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const scoresLog = await metaLoadFsDoc(WS.meta.fsScoresFileHandle);
       const tagsLog = await metaLoadFsDoc(WS.meta.fsTagsFileHandle);
       const optionsLog = await metaLoadFsDoc(WS.meta.fsOptionsFileHandle);
+      const keybindsLog = await metaLoadFsDoc(WS.meta.fsKeybindsFileHandle);
 
       if (scoresLog) metaApplyScoresLog(scoresLog);
       if (tagsLog) metaApplyTagsLog(tagsLog);
       if (optionsLog) metaApplyOptionsLog(optionsLog);
+      if (keybindsLog) metaApplyKeybindsLog(keybindsLog);
 
-      if (!scoresLog && !tagsLog && !optionsLog) {
+      if (!scoresLog && !tagsLog && !optionsLog && !keybindsLog) {
         /* LEGACY MIGRATION (remove later): read combined log and split it. */
         const legacyLog = await metaLoadFsDoc(WS.meta.fsLegacyFileHandle);
         if (legacyLog) {
@@ -3257,7 +3608,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         entryKey,
         view: {
           filterMode: WS.view.filterMode,
-          randomMode: WS.view.randomMode,
           loopWithinDir: WS.view.loopWithinDir,
           folderBehavior: WS.view.folderBehavior,
           folderScoreDisplay: WS.view.folderScoreDisplay,
@@ -3278,7 +3628,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function restoreRefreshViewState(viewState) {
       if (!viewState) return;
       WS.view.filterMode = viewState.filterMode;
-      WS.view.randomMode = viewState.randomMode;
+      WS.view.randomMode = false;
       WS.view.loopWithinDir = viewState.loopWithinDir;
       WS.view.folderBehavior = viewState.folderBehavior;
       WS.view.folderScoreDisplay = viewState.folderScoreDisplay;
@@ -3863,9 +4213,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!dirNode) return [];
       let ids = [];
 
-      if (WS.view.randomMode) {
-        ids = getRandomOrderForDir(dirNode);
-      } else if (dirNode.preserveOrder) {
+      if (dirNode.preserveOrder) {
         ids = dirNode.childrenFiles.slice();
       } else {
         ids = dirNode.childrenFiles.slice();
@@ -4707,8 +5055,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function altGalleryModeEnabled() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return !!(opt && opt.altGalleryMode);
+      return true;
     }
 
     function enterSelectedDirectory() {
@@ -8215,6 +8562,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       } catch {}
     }
 
+    function toggleViewerVideoMute() {
+      const vid = getActiveMediaVideo();
+      if (!vid) return;
+      try {
+        vid.muted = !vid.muted;
+      } catch {}
+    }
+
     /* =========================================================
        Fullscreen helpers
        ========================================================= */
@@ -8309,24 +8664,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       showStatusMessage(`Filter: ${WS.view.filterMode}`);
     }
 
-    function toggleRandomMode() {
-      WS.view.randomMode = !WS.view.randomMode;
-      applyViewModesEverywhere(true);
-      showStatusMessage(`Random: ${WS.view.randomMode ? "On" : "Off"}`);
-    }
-
-    function handleRandomModeHotkey() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const jumpMode = !!(opt && opt.randomButtonJump);
-      if (jumpMode) {
-        if (VIEWER_MODE) viewerJumpRandom();
-        else randomDirectoriesSelection();
-        showStatusMessage("Random jump");
-        return;
-      }
-      toggleRandomMode();
-    }
-
     function cycleFolderBehavior() {
       const b = WS.view.folderBehavior;
       WS.view.folderBehavior = (b === "stop") ? "loop" : (b === "loop") ? "slide" : "stop";
@@ -8356,6 +8693,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       let guard = 0;
       while (guard++ < 24 && !isSelectableEntry(WS.nav.entries[idx])) idx = Math.floor(Math.random() * n);
       setDirectoriesSelection(idx);
+      showStatusMessage("Random jump");
     }
 
     function bumpSelectedFolderScore(delta) {
@@ -8378,12 +8716,32 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       syncButtons();
     }
 
+    function handleBackAction() {
+      if (HELP_OPEN) { closeHelp(); return true; }
+      if (OPTIONS_OPEN) { closeOptions(); return true; }
+      if (KEYBINDS_OPEN) { closeKeybinds(); return true; }
+      if (WS.view.bulkActionMenuOpen || WS.view.dirActionMenuPath || WS.view.fileActionMenuId) {
+        closeActionMenus();
+        renderDirectoriesPane(true);
+        return true;
+      }
+      if (VIEWER_MODE) { hideOverlay(); return true; }
+      if (WS.preview.kind === "file" && WS.preview.fileId) {
+        closeFilePreviewToFolder();
+        return true;
+      }
+      return false;
+    }
+
     document.addEventListener("keydown", (e) => {
       if (e.defaultPrevented) return;
 
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      if (e.key === ".") {
+      const key = normalizeKeyValue(e.key);
+      if (!key) return;
+
+      if (key === ".") {
         if (isTextInputTarget(e.target)) return;
         if (VIEWER_MODE) return;
         if (directoriesSearchInput && !directoriesSearchInput.disabled) {
@@ -8393,7 +8751,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
 
-      if (e.key === "/") {
+      if (key === "/") {
         if (isTextInputTarget(e.target)) return;
         if (VIEWER_MODE) return;
         e.preventDefault();
@@ -8401,7 +8759,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
 
-      if (e.key === "b" || e.key === "B") {
+      const action = keybindActionFor(key);
+
+      if (action === "panic") {
         e.preventDefault();
         applyBanicState(!BANIC_ACTIVE);
         return;
@@ -8409,150 +8769,240 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       if (BANIC_ACTIVE) return;
 
-      if (e.key === "Escape") {
-        if (HELP_OPEN) { e.preventDefault(); closeHelp(); return; }
-        if (OPTIONS_OPEN) { e.preventDefault(); closeOptions(); return; }
-        if (WS.view.bulkActionMenuOpen || WS.view.dirActionMenuPath || WS.view.fileActionMenuId) {
-          e.preventDefault();
-          closeActionMenus();
-          renderDirectoriesPane(true);
-          return;
-        }
+      if (key === "Escape" || action === "back") {
+        const handled = handleBackAction();
+        if (handled) e.preventDefault();
+        return;
       }
 
       if (HELP_OPEN) return;
       if (OPTIONS_OPEN) return;
+      if (KEYBINDS_OPEN) return;
 
       if (isTextInputTarget(e.target)) return;
 
       if (VIEWER_MODE) {
-        const k = e.key;
-        const altGallery = altGalleryModeEnabled();
-
-        if (k === "Escape" || (!altGallery && (k === "g" || k === "G"))) { e.preventDefault(); hideOverlay(); return; }
-        if (altGallery && (k === "a" || k === "A" || k === "j" || k === "J")) { e.preventDefault(); hideOverlay(); return; }
-
-        if (k === "ArrowUp" || k === "w" || k === "W" || k === "i" || k === "I") { e.preventDefault(); viewerStep(-1); return; }
-        if (k === "ArrowDown" || k === "s" || k === "S" || k === "k" || k === "K") { e.preventDefault(); viewerStep(1); return; }
-
-        if (!altGallery && (k === "ArrowLeft" || k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace")) { e.preventDefault(); viewerLeaveDir(); return; }
-        if (!altGallery && (k === "ArrowRight" || k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter")) { e.preventDefault(); viewerEnterDir(); return; }
-
-        if (k === " " ) { e.preventDefault(); toggleViewerVideoPlayPause(); return; }
-        if (k === "q" || k === "Q" || k === "u" || k === "U") { e.preventDefault(); seekViewerVideo(-videoSkipStepSeconds()); return; }
-        if (k === "e" || k === "E" || k === "o" || k === "O") { e.preventDefault(); seekViewerVideo(videoSkipStepSeconds()); return; }
-
-        if (k === "f" || k === "F" || k === "h" || k === "H") { e.preventDefault(); cycleFilterMode(); return; }
-        if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); handleRandomModeHotkey(); return; }
-        if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
-        if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); viewerJumpToNextFolderFirstFile(); return; }
-
-        if (k === "v" || k === "V") {
-          e.preventDefault();
-          handleSlideshowHotkey(true);
-          return;
+        switch (action) {
+          case "selectUp":
+            e.preventDefault();
+            viewerStep(-1);
+            return;
+          case "selectDown":
+            e.preventDefault();
+            viewerStep(1);
+            return;
+          case "leaveDir":
+            e.preventDefault();
+            viewerLeaveDir();
+            return;
+          case "enterDir":
+            e.preventDefault();
+            viewerEnterDir();
+            return;
+          case "prevFolder":
+            e.preventDefault();
+            viewerJumpToPrevFolderFirstFile();
+            return;
+          case "nextFolder":
+            e.preventDefault();
+            viewerJumpToNextFolderFirstFile();
+            return;
+          case "randomJump":
+            e.preventDefault();
+            viewerJumpRandom();
+            showStatusMessage("Random jump");
+            return;
+          case "cycleFilter":
+            e.preventDefault();
+            cycleFilterMode();
+            return;
+          case "slideshow":
+            e.preventDefault();
+            handleSlideshowHotkey(true);
+            return;
+          case "seekBack":
+            e.preventDefault();
+            seekViewerVideo(-videoSkipStepSeconds());
+            return;
+          case "seekForward":
+            e.preventDefault();
+            seekViewerVideo(videoSkipStepSeconds());
+            return;
+          case "playPause":
+            e.preventDefault();
+            toggleViewerVideoPlayPause();
+            return;
+          case "muteToggle":
+            e.preventDefault();
+            toggleViewerVideoMute();
+            return;
+          case "jumpMinus50":
+            e.preventDefault();
+            viewerJumpRelative(-50);
+            return;
+          case "jumpMinus10":
+            e.preventDefault();
+            viewerJumpRelative(-10);
+            return;
+          case "jumpPlus10":
+            e.preventDefault();
+            viewerJumpRelative(10);
+            return;
+          case "jumpPlus50":
+            e.preventDefault();
+            viewerJumpRelative(50);
+            return;
+          default:
+            return;
         }
-
-        if (k === "1" || k === "6") { e.preventDefault(); viewerJumpRelative(-50); return; }
-        if (k === "2" || k === "7") { e.preventDefault(); viewerJumpRelative(-10); return; }
-        if (k === "3" || k === "8") { e.preventDefault(); viewerJumpToPrevFolderFirstFile(); return; }
-        if (k === "4" || k === "9") { e.preventDefault(); viewerJumpRelative(10); return; }
-        if (k === "5" || k === "0") { e.preventDefault(); viewerJumpRelative(50); return; }
-
-        return;
       }
 
       if (!WS.root) return;
 
-      const k = e.key;
-
       const inFilePreview = (WS.preview.kind === "file" && !!WS.preview.fileId);
 
-      if ((k === "g" || k === "G") && !altGalleryModeEnabled()) {
-        e.preventDefault();
-        if (inFilePreview) openGalleryFromViewerState(true);
-        else openGalleryFromDirectoriesSelection(true);
-        return;
-      }
-
-      if (k === "Escape") {
-        e.preventDefault();
-        if (inFilePreview) closeFilePreviewToFolder();
-        return;
-      }
-
       if (inFilePreview) {
-        if (altGalleryModeEnabled() && (k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter")) {
-          e.preventDefault();
-          openGalleryFromDirectoriesSelection(true);
-          return;
+        switch (action) {
+          case "selectUp":
+            e.preventDefault();
+            viewerStep(-1);
+            return;
+          case "selectDown":
+            e.preventDefault();
+            viewerStep(1);
+            return;
+          case "leaveDir":
+            e.preventDefault();
+            viewerLeaveDir();
+            return;
+          case "enterDir":
+            e.preventDefault();
+            openGalleryFromViewerState(true);
+            return;
+          case "prevFolder":
+            e.preventDefault();
+            viewerJumpToPrevFolderFirstFile();
+            return;
+          case "nextFolder":
+            e.preventDefault();
+            jumpToNextFolderFirstFile();
+            return;
+          case "randomJump":
+            e.preventDefault();
+            randomDirectoriesSelection();
+            return;
+          case "cycleFilter":
+            e.preventDefault();
+            cycleFilterMode();
+            return;
+          case "slideshow":
+            e.preventDefault();
+            handleSlideshowHotkey(false);
+            return;
+          case "seekBack":
+            e.preventDefault();
+            seekViewerVideo(-videoSkipStepSeconds());
+            return;
+          case "seekForward":
+            e.preventDefault();
+            seekViewerVideo(videoSkipStepSeconds());
+            return;
+          case "playPause":
+            e.preventDefault();
+            toggleViewerVideoPlayPause();
+            return;
+          case "muteToggle":
+            e.preventDefault();
+            toggleViewerVideoMute();
+            return;
+          case "jumpMinus50":
+            e.preventDefault();
+            viewerJumpRelative(-50);
+            return;
+          case "jumpMinus10":
+            e.preventDefault();
+            viewerJumpRelative(-10);
+            return;
+          case "jumpPlus10":
+            e.preventDefault();
+            viewerJumpRelative(10);
+            return;
+          case "jumpPlus50":
+            e.preventDefault();
+            viewerJumpRelative(50);
+            return;
+          case "historyBack":
+            e.preventDefault();
+            goDirHistory(-1);
+            return;
+          case "historyForward":
+            e.preventDefault();
+            goDirHistory(1);
+            return;
+          default:
+            return;
         }
-        if (k === "ArrowLeft") { e.preventDefault(); goDirHistory(-1); return; }
-        if (k === "ArrowRight") { e.preventDefault(); goDirHistory(1); return; }
-        if (k === "ArrowUp" || k === "w" || k === "W" || k === "i" || k === "I") { e.preventDefault(); viewerStep(-1); return; }
-        if (k === "ArrowDown" || k === "s" || k === "S" || k === "k" || k === "K") { e.preventDefault(); viewerStep(1); return; }
-        if (k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace") { e.preventDefault(); viewerLeaveDir(); return; }
-        if (k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter") { e.preventDefault(); viewerEnterDir(); return; }
+      }
 
-        if (k === " " ) { e.preventDefault(); toggleViewerVideoPlayPause(); return; }
-        if (k === "q" || k === "Q" || k === "u" || k === "U") { e.preventDefault(); seekViewerVideo(-videoSkipStepSeconds()); return; }
-        if (k === "e" || k === "E" || k === "o" || k === "O") { e.preventDefault(); seekViewerVideo(videoSkipStepSeconds()); return; }
-
-        if (k === "f" || k === "F" || k === "h" || k === "H") { e.preventDefault(); cycleFilterMode(); return; }
-        if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); handleRandomModeHotkey(); return; }
-        if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
-        if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); jumpToNextFolderFirstFile(); return; }
-
-        if (k === "v" || k === "V") {
+      switch (action) {
+        case "selectUp":
           e.preventDefault();
-          handleSlideshowHotkey(false);
+          moveDirectoriesSelection(-1);
           return;
-        }
-
-        if (k === "1" || k === "6") { e.preventDefault(); viewerJumpRelative(-50); return; }
-        if (k === "2" || k === "7") { e.preventDefault(); viewerJumpRelative(-10); return; }
-        if (k === "3" || k === "8") { e.preventDefault(); viewerJumpToPrevFolderFirstFile(); return; }
-        if (k === "4" || k === "9") { e.preventDefault(); viewerJumpRelative(10); return; }
-        if (k === "5" || k === "0") { e.preventDefault(); viewerJumpRelative(50); return; }
-
-        return;
-      }
-
-      if (k === "ArrowUp") {
-        e.preventDefault();
-        if (!bumpSelectedFolderScore(1)) moveDirectoriesSelection(-1);
-        return;
-      }
-      if (k === "ArrowDown") {
-        e.preventDefault();
-        if (!bumpSelectedFolderScore(-1)) moveDirectoriesSelection(1);
-        return;
-      }
-
-      if (k === "ArrowLeft") { e.preventDefault(); goDirHistory(-1); return; }
-      if (k === "ArrowRight") { e.preventDefault(); goDirHistory(1); return; }
-
-      if (k === "w" || k === "W" || k === "i" || k === "I") { e.preventDefault(); moveDirectoriesSelection(-1); return; }
-      if (k === "s" || k === "S" || k === "k" || k === "K") { e.preventDefault(); moveDirectoriesSelection(1); return; }
-
-      if (k === "a" || k === "A" || k === "j" || k === "J" || k === "Backspace") { e.preventDefault(); leaveDirectory(); return; }
-      if (k === "d" || k === "D" || k === "l" || k === "L" || k === "Enter") { e.preventDefault(); enterSelectedDirectory(); return; }
-
-      if (k === "1" || k === "6") { e.preventDefault(); moveDirectoriesSelection(-50); return; }
-      if (k === "2" || k === "7") { e.preventDefault(); moveDirectoriesSelection(-10); return; }
-      if (k === "3" || k === "8") { e.preventDefault(); jumpToPrevFolderFirstFile(); return; }
-      if (k === "4" || k === "9") { e.preventDefault(); moveDirectoriesSelection(10); return; }
-      if (k === "5" || k === "0") { e.preventDefault(); moveDirectoriesSelection(50); return; }
-
-      if (k === "f" || k === "F" || k === "h" || k === "H") { e.preventDefault(); cycleFilterMode(); return; }
-      if (k === "r" || k === "R" || k === "y" || k === "Y") { e.preventDefault(); handleRandomModeHotkey(); return; }
-      if (k === "c" || k === "C" || k === "n" || k === "N") { e.preventDefault(); cycleFolderBehavior(); return; }
-      if (k === "x" || k === "X" || k === "m" || k === "M") { e.preventDefault(); jumpToNextFolderFirstFile(); return; }
-
-      if (k === "v" || k === "V") {
-        e.preventDefault();
-        handleSlideshowHotkey(false);
-        return;
+        case "selectDown":
+          e.preventDefault();
+          moveDirectoriesSelection(1);
+          return;
+        case "leaveDir":
+          e.preventDefault();
+          leaveDirectory();
+          return;
+        case "enterDir":
+          e.preventDefault();
+          enterSelectedDirectory();
+          return;
+        case "prevFolder":
+          e.preventDefault();
+          jumpToPrevFolderFirstFile();
+          return;
+        case "nextFolder":
+          e.preventDefault();
+          jumpToNextFolderFirstFile();
+          return;
+        case "randomJump":
+          e.preventDefault();
+          randomDirectoriesSelection();
+          return;
+        case "cycleFilter":
+          e.preventDefault();
+          cycleFilterMode();
+          return;
+        case "jumpMinus50":
+          e.preventDefault();
+          moveDirectoriesSelection(-50);
+          return;
+        case "jumpMinus10":
+          e.preventDefault();
+          moveDirectoriesSelection(-10);
+          return;
+        case "jumpPlus10":
+          e.preventDefault();
+          moveDirectoriesSelection(10);
+          return;
+        case "jumpPlus50":
+          e.preventDefault();
+          moveDirectoriesSelection(50);
+          return;
+        case "historyBack":
+          e.preventDefault();
+          goDirHistory(-1);
+          return;
+        case "historyForward":
+          e.preventDefault();
+          goDirHistory(1);
+          return;
+        default:
+          return;
       }
     });
 
@@ -8569,6 +9019,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
     applyColorSchemeFromOptions();
     applyRetroModeFromOptions();
+    rebuildKeybindIndex();
     renderDirectoriesPane();
     renderPreviewPane(true);
     syncButtons();

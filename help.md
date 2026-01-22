@@ -1,8 +1,8 @@
 Disclaimer: Local Gallery is a web app that runs locally on your computer. It cannot delete files. No files you give it access to are ever uploaded anywhere. It uses disk write permissions to create and edit logs it keeps in a system file in any folder you load into it. It also has permissions to rename files, but only when you choose to (these actions are called Rename, Batch Index I, and Batch Index II).
 ## Basics
 Local Gallery is a media viewer designed to use hot keys for interactions and it mirrors many of it's controls down the middle of the keyboard so it can be used one handed by anyone.
-## B is for BANIC!
-You can press `B` at any point to initiate BANIC! mode, which instantly mutes all audio and blanks the window. By default, BANIC! also opens a random safe window, but you can turn this off in the Options Menu if you prefer. Press `B` again to disengage BANIC! mode.
+## PANIC!
+Press your PANIC! key at any point to instantly mute all audio and blank the window. By default, PANIC! also opens a random safe window, but you can turn this off in the Options Menu if you prefer. Press your PANIC! key again to disengage.
 ## Getting Started
 Start by choosing a folder as your root with the `Upload Folder` button. I recommend  choosing the highest level directory in your collection. The first time you choose a folder as your root, Local Gallery will make a system folder inside called `.local-gallery` to store information about the content and to save your option preferences. Loading a folder may take a few seconds. Once it's loaded, all immediate subfolders will appear on the left in the Directories Pane and the Preview Pane on the right will populate with the contents of the selected folder.
 ## Navigation
@@ -12,7 +12,7 @@ You can use the number keys above your hand and the key immediately below to mov
 ## Controls
 - Use `G` to enter Gallery Mode, which displays media fullscreen. In default Gallery Mode, you can still navigate as noraml through out your root, it's just less informative. You can enable the Alt Gallery Mode in settings, which makes your enter folder key (`D` or `L`) start Gallery Mode when you have a file selected, and you turn it off with you exit folder key (`A` or `J`). You cannot navigate as normal in Alt Gallery Mode and `G` is disabled. 
 - Use `R` or `Y` to toggle Random Mode. In Random Mode, every directory will shuffle it's file contents into a new order. Each time you toggle this mode, each directory is shuffled globally and remain in that order until it's toggled off. You can enable Random Mode as the default mode for your root in the Options Menu.
-- Use `F` or `H` to cycle through the Media Filters. The filters are: All, Images only, Videos only, and GIFs only. Each filter hides media outside it's type and folders which don't contain any of it's type. You choose the default media filter for your root in the Options Menu.
+- Use `F` or `H` to cycle through the Media Filters. The filters are: All, Images only, Videos only, and GIFs only. Each filter hides media outside it's type and folders which don't contain any of it's type.
 - Use `C` or `N` to cycle through Folder behavior modes. The modes are: Slide, Stop, and Loop. The slide behavior makes it so that when are the first or last file in a directory and move in the direction of the edge, you jump in to the nearest file in next folder in your currect parent folder (it makes sense when you use it). Stop mode makes it so then when you reach the last file in a folder, you stop and must leave the folder or go back. Loop makes it so that when you reach the last file in a folder, you can move to the next file and it loops you back to the first file in that folder. You can choose the default folder behavior for your directory in the Options Menu.
 - Use `Shift` to enter Slideshow mode. By default, `Shift` cycles through different Slideshow speeds, but you can choose a single speed that it toggles on/off in the Options Menu. Slideshow mode will act according to the Folder behavior mode you have set.
 - Use the `Q` and `E` or `U` and `O` to step forward or backward in video. You can choose the number of seconds you step in the Options Menu. Use `Space` to play or pause video.
@@ -41,8 +41,8 @@ Local Gallery is a local-only browser for folders of images and videos, with mos
 - Hold `/` to show the keyboard cheatsheet overlay (only while the key is held down).
 - Use the `?` button in the title bar to open/close this help panel.
 
-## BANIC! button
-- Press `B` to trigger BANIC! (mutes Local Gallery, blacks out the screen, and can open a harmless site). Press `B` again to resume.
+## PANIC! button
+- Press your PANIC! key to trigger PANIC! (mutes Local Gallery, blacks out the screen, and can open a harmless site). Press it again to resume.
 
 ## Directories + preview panes
 - Selecting a folder shows its contents; selecting a file shows a large in-pane preview.

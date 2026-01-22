@@ -1448,6 +1448,8 @@
     :root[data-theme="retro90s-dark"] #helpCard,
     :root[data-theme="retro90s"] #optionsCard,
     :root[data-theme="retro90s-dark"] #optionsCard,
+    :root[data-theme="retro90s"] #keybindsCard,
+    :root[data-theme="retro90s-dark"] #keybindsCard,
     :root[data-theme="retro90s"] #propertiesCard,
     :root[data-theme="retro90s-dark"] #propertiesCard,
     :root[data-theme="retro90s"] #helpHoldCard,
@@ -1477,7 +1479,8 @@
     }
 
     #helpHeader button,
-    #optionsHeader button {
+    #optionsHeader button,
+    #keybindsHeader button {
       cursor: default;
     }
 
@@ -1621,7 +1624,8 @@
     /* =========================================================
        Options Overlay
        ========================================================= */
-    #optionsOverlay {
+    #optionsOverlay,
+    #keybindsOverlay {
       position: fixed;
       inset: 0;
       display: none;
@@ -1629,9 +1633,11 @@
       background: transparent;
       z-index: 9000;
     }
-    #optionsOverlay.active { display: block; }
+    #optionsOverlay.active,
+    #keybindsOverlay.active { display: block; }
 
-    #optionsCard {
+    #optionsCard,
+    #keybindsCard {
       position: fixed;
       pointer-events: auto;
       resize: both;
@@ -1653,11 +1659,13 @@
       z-index: 10001;
     }
     #optionsCard.overlayCardDragging,
-    #helpCard.overlayCardDragging {
+    #helpCard.overlayCardDragging,
+    #keybindsCard.overlayCardDragging {
       cursor: grabbing;
     }
 
-    #optionsHeader {
+    #optionsHeader,
+    #keybindsHeader {
       padding: 10px 10px 8px;
       border-bottom: 1px solid var(--color1-tertiary);
       display: flex;
@@ -1669,14 +1677,16 @@
       user-select: none;
     }
 
-    #optionsHeader .title {
+    #optionsHeader .title,
+    #keybindsHeader .title {
       font-size: 12px;
       font-weight: 800;
       color: var(--color0-primary);
       letter-spacing: .02em;
     }
 
-    #optionsBody {
+    #optionsBody,
+    #keybindsBody {
       padding: 10px 10px 12px;
       overflow: auto;
       min-height: 0;
@@ -1685,7 +1695,8 @@
       line-height: 1.5;
     }
 
-#optionsBody h1 {
+    #optionsBody h1,
+    #keybindsBody h1 {
       font-size: 20px;
       font-weight: 800;
       letter-spacing: .02em;
@@ -1701,7 +1712,8 @@
       color: var(--color0-primary);
     }*/
 
-    #optionsBody .optRow {
+    #optionsBody .optRow,
+    #keybindsBody .optRow {
       display: flex;
       gap: 10px;
       align-items: center;
@@ -1710,7 +1722,8 @@
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
 
-    #optionsBody .optLeft {
+    #optionsBody .optLeft,
+    #keybindsBody .optLeft {
       display: flex;
       flex-direction: column;
       gap: 2px;
@@ -1718,7 +1731,8 @@
       flex: 1;
     }
 
-    #optionsBody .optTitle {
+    #optionsBody .optTitle,
+    #keybindsBody .optTitle {
       font-size: 12px;
       font-weight: 800;
       color: var(--color0-primary);
@@ -1728,7 +1742,8 @@
       white-space: nowrap;
     }
 
-    #optionsBody .optHint {
+    #optionsBody .optHint,
+    #keybindsBody .optHint {
       font-size: 11px;
       color: var(--color0-secondary);
       overflow: hidden;
@@ -1737,11 +1752,13 @@
     }
 
     #optionsBody select,
-    #optionsBody input[type="checkbox"] {
+    #optionsBody input[type="checkbox"],
+    #keybindsBody select {
       cursor: pointer;
     }
 
-    #optionsBody select {
+    #optionsBody select,
+    #keybindsBody select {
       background: var(--color1-primary);
       color: var(--color0-primary);
       border: 1px solid var(--color1-tertiary);
@@ -1753,7 +1770,8 @@
       max-width: 320px;
     }
 
-    #optionsFooter {
+    #optionsFooter,
+    #keybindsFooter {
       padding: 10px 10px 10px;
       border-top: 1px solid var(--color1-tertiary);
       display: flex;
@@ -1763,14 +1781,16 @@
       flex-wrap: wrap;
     }
 
-    #optionsFooter .left {
+    #optionsFooter .left,
+    #keybindsFooter .left {
       display: flex;
       gap: 8px;
       align-items: center;
       flex-wrap: wrap;
     }
 
-    #optionsFooter .right {
+    #optionsFooter .right,
+    #keybindsFooter .right {
       display: flex;
       gap: 8px;
       align-items: center;

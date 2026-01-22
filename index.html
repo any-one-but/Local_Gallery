@@ -23,6 +23,7 @@
             </div>
           </div>
           <div id="titleBtns">
+            <button id="keybindsBtn" type="button" class="miniBtn" title="Keybinds">KB</button>
             <button id="helpBtn" type="button" class="miniBtn">?</button>
             <button id="optionsBtn" type="button" class="miniBtn">⚙</button>
             <button id="openWritableBtn" type="button" class="miniBtn">Choose Root</button>
@@ -149,7 +150,7 @@
               <div class="kbKey"><div class="kbKeyLabel">S</div><div>Down</div></div>
               <div class="kbKey"><div class="kbKeyLabel">D</div><div>Right</div></div>
               <div class="kbKey"><div class="kbKeyLabel">C</div><div>Folder</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">G</div><div>Gallery</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">G</div><div>PANIC!</div></div>
               <div class="kbKey"><div class="kbKeyLabel">X</div><div>Next folder</div></div>
             </div>
             <div class="kbGroup">
@@ -157,7 +158,7 @@
               <div class="kbKey"><div class="kbKeyLabel">K</div><div>Down</div></div>
               <div class="kbKey"><div class="kbKeyLabel">L</div><div>Right</div></div>
               <div class="kbKey"><div class="kbKeyLabel">N</div><div>Folder</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">B</div><div>BANIC!</div></div>
+              <div class="kbKey"><div class="kbKeyLabel">V</div><div>PANIC!</div></div>
               <div class="kbKey"><div class="kbKeyLabel">M</div><div>Next folder</div></div>
             </div>
           </div>
@@ -200,6 +201,28 @@
           <div class="right">
             <button id="optionsResetBtn" type="button" class="miniBtn">Reset defaults</button>
             <button id="optionsDoneBtn" type="button" class="miniBtn">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================================
+         Keybinds (Overlay)
+         ========================================================= -->
+    <div id="keybindsOverlay">
+      <div id="keybindsCard">
+        <div id="keybindsHeader">
+          <div class="title">Keybinds</div>
+          <button id="keybindsCloseBtn" type="button" class="miniBtn">X</button>
+        </div>
+        <div id="keybindsBody"></div>
+        <div id="keybindsFooter">
+          <div class="left">
+            <span class="label" id="keybindsStatusLabel">—</span>
+          </div>
+          <div class="right">
+            <button id="keybindsResetBtn" type="button" class="miniBtn">Reset defaults</button>
+            <button id="keybindsDoneBtn" type="button" class="miniBtn">Done</button>
           </div>
         </div>
       </div>
