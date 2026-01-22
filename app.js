@@ -163,6 +163,9 @@
         altGalleryMode: false,
         retroMode: false,
         mediaFilter: "off",
+        animatedMediaFilters: true,
+        crtPixelateRes: "off",
+        crtOverlayEnabled: false,
         colorScheme: "classic",
         leftPaneWidthPct: 0.28,
         treatTagsAsFolders: true,
@@ -173,6 +176,13 @@
     function normalizeOptions(o) {
       const d = defaultOptions();
       const src = (o && typeof o === "object") ? o : {};
+      const mediaFilterRaw = (src && src.mediaFilter === "vhs") ? "crt" : src.mediaFilter;
+      const crtPixelateResRaw = (src && src.crtPixelateRes != null) ? String(src.crtPixelateRes) : null;
+      const crtOverlayEnabledRaw = (typeof src.crtOverlayEnabled === "boolean") ? src.crtOverlayEnabled : null;
+      const crtOverlayEnabled = (crtOverlayEnabledRaw !== null)
+        ? crtOverlayEnabledRaw
+        : (crtPixelateResRaw ? crtPixelateResRaw !== "off" : d.crtOverlayEnabled);
+      const crtPixelateRes = crtOverlayEnabled ? "medium" : "off";
       const out = {
         videoPreview: (src.videoPreview === "unmuted" || src.videoPreview === "muted" || src.videoPreview === "off") ? src.videoPreview : d.videoPreview,
         videoGallery: (src.videoGallery === "unmuted" || src.videoGallery === "muted" || src.videoGallery === "off") ? src.videoGallery : d.videoGallery,
@@ -208,19 +218,597 @@
         })(),
         /* Media filters: UI */
         mediaFilter: (
-  src.mediaFilter === 'off' ||
-  src.mediaFilter === 'vibrant' ||
-  src.mediaFilter === 'cooked' ||
-  src.mediaFilter === 'blackwhite' ||
-  src.mediaFilter === 'uv' ||
-  src.mediaFilter === 'orangeTeal' /* ||
-  src.mediaFilter === 'cinematic' ||
-  src.mediaFilter === 'kodak+' ||
-  src.mediaFilter === 'soft' */
-) ? src.mediaFilter : d.mediaFilter
+  mediaFilterRaw === 'off' ||
+  mediaFilterRaw === 'vibrant' ||
+  mediaFilterRaw === 'uv' ||
+  mediaFilterRaw === 'orangeTeal' ||
+  mediaFilterRaw === 'cinematic'
+) ? mediaFilterRaw : d.mediaFilter,
+        animatedMediaFilters: (typeof src.animatedMediaFilters === "boolean") ? src.animatedMediaFilters : d.animatedMediaFilters,
+        crtPixelateRes,
+        crtOverlayEnabled
     };
       return out;
     }
+
+    const MEDIA_FILTER_STATE = {
+      mode: "off",
+      animated: true
+    };
+
+    const MEDIA_FILTER_CONFIGS = {
+      vibrant: { color: "saturate(1.45) contrast(1.12) brightness(1.06) hue-rotate(-3deg)" },
+      uv: { color: "saturate(1.6) hue-rotate(220deg) contrast(1.3) brightness(0.95)" },
+      orangeTeal: { color: "hue-rotate(-22deg) saturate(1.32) contrast(1.12) brightness(1.05)" },
+      cinematic: { color: "contrast(1.3) saturate(1.2) brightness(1.02) hue-rotate(-2deg)" }
+    };
+
+    const CRT_OVERLAY_CONFIG = {
+      scanlines: 0.4,
+      scanlineBlur: 0.8,
+      chroma: 0.7,
+      vignette: 0.22,
+      jitter: 0.75,
+      blur: 0.25,
+      grain: 0.06,
+      pixelate: 2
+    };
+
+    function computeContainRect(srcW, srcH, dstW, dstH) {
+      if (!srcW || !srcH || !dstW || !dstH) return { x: 0, y: 0, w: dstW, h: dstH };
+      const srcRatio = srcW / srcH;
+      const dstRatio = dstW / dstH;
+      let w = dstW;
+      let h = dstH;
+      if (srcRatio > dstRatio) {
+        h = dstW / srcRatio;
+      } else {
+        w = dstH * srcRatio;
+      }
+      const x = (dstW - w) * 0.5;
+      const y = (dstH - h) * 0.5;
+      return { x, y, w, h };
+    }
+
+    function computeCoverRect(srcW, srcH, dstW, dstH) {
+      if (!srcW || !srcH || !dstW || !dstH) return { x: 0, y: 0, w: dstW, h: dstH };
+      const srcRatio = srcW / srcH;
+      const dstRatio = dstW / dstH;
+      let w = dstW;
+      let h = dstH;
+      if (srcRatio > dstRatio) {
+        w = dstH * srcRatio;
+      } else {
+        h = dstW / srcRatio;
+      }
+      const x = (dstW - w) * 0.5;
+      const y = (dstH - h) * 0.5;
+      return { x, y, w, h };
+    }
+
+    function getMediaFilterForType() {
+      return MEDIA_FILTER_STATE.mode || "off";
+    }
+
+    function crtPixelateScale() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return (opt && opt.crtOverlayEnabled) ? 2 : 1;
+    }
+
+    function crtOverlayEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.crtOverlayEnabled);
+    }
+
+    const THUMB_FILTER_CACHE = {
+      noiseCanvas: null,
+      noiseCtx: null,
+      scanCanvas: null,
+      scanPattern: null,
+      lastNoise: 0
+    };
+
+    function ensureThumbNoiseCanvas() {
+      if (!THUMB_FILTER_CACHE.noiseCanvas) {
+        const c = document.createElement("canvas");
+        c.width = 128;
+        c.height = 128;
+        THUMB_FILTER_CACHE.noiseCanvas = c;
+        THUMB_FILTER_CACHE.noiseCtx = c.getContext("2d");
+      }
+      return THUMB_FILTER_CACHE.noiseCanvas;
+    }
+
+    function updateThumbNoiseCanvas() {
+      const c = ensureThumbNoiseCanvas();
+      const ctx = THUMB_FILTER_CACHE.noiseCtx;
+      const imageData = ctx.createImageData(c.width, c.height);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const v = Math.floor(Math.random() * 255);
+        data[i] = v;
+        data[i + 1] = v;
+        data[i + 2] = v;
+        data[i + 3] = 255;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      THUMB_FILTER_CACHE.lastNoise = Date.now();
+    }
+
+    function ensureThumbScanlinePattern(ctx) {
+      if (!THUMB_FILTER_CACHE.scanCanvas) {
+        const c = document.createElement("canvas");
+        c.width = 2;
+        c.height = 4;
+        const sctx = c.getContext("2d");
+        sctx.fillStyle = "rgba(0,0,0,0.5)";
+        sctx.fillRect(0, 0, 2, 3);
+        sctx.fillStyle = "rgba(0,0,0,0)";
+        sctx.fillRect(0, 3, 2, 1);
+        THUMB_FILTER_CACHE.scanCanvas = c;
+        THUMB_FILTER_CACHE.scanPattern = null;
+      }
+      if (!THUMB_FILTER_CACHE.scanPattern || THUMB_FILTER_CACHE.scanPattern._ctx !== ctx) {
+        const pattern = ctx.createPattern(THUMB_FILTER_CACHE.scanCanvas, "repeat");
+        if (pattern) pattern._ctx = ctx;
+        THUMB_FILTER_CACHE.scanPattern = pattern;
+      }
+      return THUMB_FILTER_CACHE.scanPattern;
+    }
+
+    function renderFilteredToCanvas(ctx, source, srcW, srcH, dstW, dstH, mode, cover = true) {
+      if (!mode || mode === "off" || !MEDIA_FILTER_CONFIGS[mode]) {
+        const rect = cover ? computeCoverRect(srcW, srcH, dstW, dstH) : computeContainRect(srcW, srcH, dstW, dstH);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, dstW, dstH);
+        ctx.filter = "none";
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(source, rect.x, rect.y, rect.w, rect.h);
+        return;
+      }
+      const cfg = MEDIA_FILTER_CONFIGS[mode];
+      const rect = cover ? computeCoverRect(srcW, srcH, dstW, dstH) : computeContainRect(srcW, srcH, dstW, dstH);
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, dstW, dstH);
+      const colorFilter = cfg.color && cfg.color !== "none" ? cfg.color : "none";
+
+      if (cfg.pixelate) {
+        const scale = Math.max(1.5, cfg.pixelate);
+        const smallW = Math.max(1, Math.round(rect.w / scale));
+        const smallH = Math.max(1, Math.round(rect.h / scale));
+        const off = document.createElement("canvas");
+        off.width = smallW;
+        off.height = smallH;
+        const offctx = off.getContext("2d");
+        const smallRect = computeCoverRect(srcW, srcH, smallW, smallH);
+        offctx.imageSmoothingEnabled = true;
+        offctx.filter = cfg.blur ? `${colorFilter} blur(${cfg.blur}px)` : colorFilter;
+        offctx.drawImage(source, smallRect.x, smallRect.y, smallRect.w, smallRect.h);
+        ctx.imageSmoothingEnabled = false;
+        ctx.filter = "none";
+        ctx.drawImage(off, rect.x, rect.y, rect.w, rect.h);
+      } else {
+        ctx.imageSmoothingEnabled = true;
+        ctx.filter = cfg.blur ? `${colorFilter} blur(${cfg.blur}px)` : colorFilter;
+        ctx.drawImage(source, rect.x, rect.y, rect.w, rect.h);
+      }
+
+      if (cfg.chroma) {
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = 0.18;
+        ctx.filter = "none";
+        ctx.drawImage(source, rect.x + cfg.chroma, rect.y, rect.w, rect.h);
+        ctx.drawImage(source, rect.x - cfg.chroma, rect.y, rect.w, rect.h);
+        ctx.restore();
+      }
+
+      if (cfg.scanlines) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(rect.x, rect.y, rect.w, rect.h);
+        ctx.clip();
+        ctx.globalAlpha = cfg.scanlines;
+        const pattern = ensureThumbScanlinePattern(ctx);
+        if (pattern) {
+          ctx.fillStyle = pattern;
+          if (cfg.scanlineBlur) ctx.filter = `blur(${cfg.scanlineBlur}px)`;
+          ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        }
+        ctx.restore();
+      }
+
+      if (cfg.grain) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(rect.x, rect.y, rect.w, rect.h);
+        ctx.clip();
+        if (!THUMB_FILTER_CACHE.lastNoise) updateThumbNoiseCanvas();
+        const noiseCanvas = ensureThumbNoiseCanvas();
+        const pattern = ctx.createPattern(noiseCanvas, "repeat");
+        if (pattern) {
+          ctx.globalAlpha = cfg.grain;
+          ctx.globalCompositeOperation = "overlay";
+          ctx.fillStyle = pattern;
+          ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        }
+        ctx.restore();
+      }
+
+      if (cfg.vignette) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(rect.x, rect.y, rect.w, rect.h);
+        ctx.clip();
+        const cx = rect.x + rect.w * 0.5;
+        const cy = rect.y + rect.h * 0.5;
+        const g = ctx.createRadialGradient(
+          cx,
+          cy,
+          Math.min(rect.w, rect.h) * 0.2,
+          cx,
+          cy,
+          Math.max(rect.w, rect.h) * 0.7
+        );
+        g.addColorStop(0, "rgba(0,0,0,0)");
+        g.addColorStop(1, `rgba(0,0,0,${cfg.vignette})`);
+        ctx.fillStyle = g;
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.restore();
+      }
+    }
+
+    const MediaFilterEngine = (() => {
+      const surfaces = new Map();
+      let rafId = null;
+      const noise = { canvas: null, ctx: null, size: 128, lastTime: 0 };
+      const scanlines = { canvas: null, pattern: null, lastCtx: null };
+
+      function ensureNoiseCanvas() {
+        if (!noise.canvas) {
+          noise.canvas = document.createElement("canvas");
+          noise.canvas.width = noise.size;
+          noise.canvas.height = noise.size;
+          noise.ctx = noise.canvas.getContext("2d");
+        }
+        return noise.canvas;
+      }
+
+      function updateNoiseCanvas() {
+        ensureNoiseCanvas();
+        const ctx = noise.ctx;
+        const imageData = ctx.createImageData(noise.size, noise.size);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const v = Math.floor(Math.random() * 255);
+          data[i] = v;
+          data[i + 1] = v;
+          data[i + 2] = v;
+          data[i + 3] = 255;
+        }
+        ctx.putImageData(imageData, 0, 0);
+      }
+
+      function ensureScanlinePattern(ctx) {
+        if (!scanlines.canvas) {
+          scanlines.canvas = document.createElement("canvas");
+          scanlines.canvas.width = 2;
+          scanlines.canvas.height = 4;
+          const sctx = scanlines.canvas.getContext("2d");
+          sctx.fillStyle = "rgba(0,0,0,0.5)";
+          sctx.fillRect(0, 0, 2, 3);
+          sctx.fillStyle = "rgba(0,0,0,0)";
+          sctx.fillRect(0, 3, 2, 1);
+        }
+        if (scanlines.lastCtx !== ctx) {
+          scanlines.pattern = ctx.createPattern(scanlines.canvas, "repeat");
+          scanlines.lastCtx = ctx;
+        }
+        return scanlines.pattern;
+      }
+
+      function updateEngineState() {
+        const appEl = document.getElementById("app");
+        if (!appEl) return;
+        const anyDrawn = Array.from(surfaces.values()).some(s => s.active && s.hasDrawn);
+        if (anyDrawn) appEl.setAttribute("data-media-filter-engine", "on");
+        else appEl.removeAttribute("data-media-filter-engine");
+      }
+
+      function ensureSurface(name) {
+        if (surfaces.has(name)) return surfaces.get(name);
+        const surface = {
+          name,
+          container: null,
+          mediaEl: null,
+          type: null,
+          filterMode: "off",
+          canvas: null,
+          ctx: null,
+          offscreen: null,
+          offctx: null,
+          active: false,
+          bound: false,
+          hasDrawn: false,
+          videoFrameActive: false
+        };
+        surfaces.set(name, surface);
+        return surface;
+      }
+
+      function ensureCanvas(surface) {
+        if (!surface.canvas) {
+          surface.canvas = document.createElement("canvas");
+          surface.canvas.className = "mediaCanvas";
+          surface.canvas.style.display = "none";
+        }
+        if (!surface.ctx) surface.ctx = surface.canvas.getContext("2d");
+        if (!surface.offscreen) surface.offscreen = document.createElement("canvas");
+        if (!surface.offctx) surface.offctx = surface.offscreen.getContext("2d");
+        if (surface.container && !surface.container.contains(surface.canvas)) {
+          surface.container.appendChild(surface.canvas);
+        }
+      }
+
+      function bindMediaEvents(surface, el) {
+        if (!el || surface.mediaEl === el) return;
+        if (surface.mediaEl && surface.bound) {
+          surface.mediaEl.removeEventListener("loadeddata", requestRender);
+          surface.mediaEl.removeEventListener("play", requestRender);
+          surface.mediaEl.removeEventListener("pause", requestRender);
+          surface.mediaEl.removeEventListener("seeked", requestRender);
+        }
+        surface.mediaEl = el;
+        surface.bound = true;
+        el.addEventListener("loadeddata", requestRender);
+        el.addEventListener("play", requestRender);
+        el.addEventListener("pause", requestRender);
+        el.addEventListener("seeked", requestRender);
+      }
+
+      function attach(name, mediaEl, container, type, filterMode) {
+        const surface = ensureSurface(name);
+        surface.container = container;
+        surface.type = type;
+        surface.filterMode = filterMode || "off";
+        surface.active = true;
+        surface.hasDrawn = false;
+        bindMediaEvents(surface, mediaEl);
+        ensureCanvas(surface);
+        if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+        if (type === "video" && mediaEl && typeof mediaEl.requestVideoFrameCallback === "function") {
+          surface.videoFrameActive = true;
+          const onFrame = () => {
+            if (!surface.active || !surface.videoFrameActive) return;
+            requestRender();
+            mediaEl.requestVideoFrameCallback(onFrame);
+          };
+          mediaEl.requestVideoFrameCallback(onFrame);
+        } else {
+          surface.videoFrameActive = false;
+        }
+        requestRender();
+        let pulseCount = 0;
+        const pulse = () => {
+          if (!surface.active) return;
+          if (surface.hasDrawn) return;
+          pulseCount++;
+          requestRender();
+          if (pulseCount < 20) requestAnimationFrame(pulse);
+        };
+        requestAnimationFrame(pulse);
+      }
+
+      function detach(name) {
+        const surface = surfaces.get(name);
+        if (!surface) return;
+        surface.active = false;
+        surface.hasDrawn = false;
+        surface.videoFrameActive = false;
+        if (surface.canvas) surface.canvas.style.display = "none";
+        updateEngineState();
+      }
+
+      function requestRender() {
+        if (rafId) return;
+        rafId = requestAnimationFrame(render);
+      }
+
+      function render(time) {
+        rafId = null;
+        let needsMore = false;
+        for (const surface of surfaces.values()) {
+          if (!surface.active) continue;
+          if (drawSurface(surface, time)) needsMore = true;
+        }
+        updateEngineState();
+        if (needsMore) requestRender();
+      }
+
+      function drawSurface(surface, time) {
+        const mode = surface.filterMode || "off";
+        const cfg = (mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
+        const overlayEnabled = crtOverlayEnabled();
+        const overlayCfg = overlayEnabled ? CRT_OVERLAY_CONFIG : null;
+        if (!cfg && !overlayCfg) {
+          if (surface.canvas) surface.canvas.style.display = "none";
+          if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+          return false;
+        }
+        if (!surface.mediaEl || !surface.container || !surface.canvas || !surface.ctx) return false;
+
+        const el = surface.mediaEl;
+        const isVideo = surface.type === "video";
+        const ready = isVideo ? (el.readyState >= 2 && el.videoWidth > 0 && el.videoHeight > 0) : (el.complete && el.naturalWidth > 0 && el.naturalHeight > 0);
+        if (!ready) return false;
+
+        const cw = surface.container.clientWidth || 0;
+        const ch = surface.container.clientHeight || 0;
+        if (!cw || !ch) return false;
+
+        const dpr = window.devicePixelRatio || 1;
+        const pixelW = Math.max(1, Math.round(cw * dpr));
+        const pixelH = Math.max(1, Math.round(ch * dpr));
+        if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
+          surface.canvas.width = pixelW;
+          surface.canvas.height = pixelH;
+        }
+
+        const ctx = surface.ctx;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.clearRect(0, 0, cw, ch);
+
+        const srcW = isVideo ? el.videoWidth : el.naturalWidth;
+        const srcH = isVideo ? el.videoHeight : el.naturalHeight;
+        const rect = computeContainRect(srcW, srcH, cw, ch);
+
+        const jitterStrength = Math.max((cfg && cfg.jitter) ? cfg.jitter : 0, (overlayCfg && overlayCfg.jitter) ? overlayCfg.jitter : 0);
+        const jitter = jitterStrength ? (MEDIA_FILTER_STATE.animated ? Math.sin(time * 0.005) * jitterStrength : 0) : 0;
+        const dx = rect.x + jitter;
+        const dy = rect.y;
+
+        const colorFilter = (cfg && cfg.color && cfg.color !== "none") ? cfg.color : "none";
+        let drew = false;
+        try {
+          const pixelateBase = (overlayCfg && overlayCfg.pixelate) ? Math.max(2, overlayCfg.pixelate) : (cfg && cfg.pixelate ? Math.max(2, cfg.pixelate) : 0);
+          if (pixelateBase) {
+            const scale = overlayEnabled ? (pixelateBase * crtPixelateScale()) : pixelateBase;
+            const smallW = Math.max(1, Math.round(rect.w / scale));
+            const smallH = Math.max(1, Math.round(rect.h / scale));
+            surface.offscreen.width = smallW;
+            surface.offscreen.height = smallH;
+            surface.offctx.setTransform(1, 0, 0, 1, 0, 0);
+            surface.offctx.imageSmoothingEnabled = true;
+            surface.offctx.clearRect(0, 0, smallW, smallH);
+            surface.offctx.filter = "none";
+            const blur = overlayCfg && overlayCfg.blur ? overlayCfg.blur : (cfg && cfg.blur ? cfg.blur : 0);
+            if (blur) surface.offctx.filter = `blur(${blur}px)`;
+            surface.offctx.drawImage(el, 0, 0, smallW, smallH);
+            ctx.imageSmoothingEnabled = false;
+            ctx.filter = colorFilter;
+            ctx.drawImage(surface.offscreen, dx, dy, rect.w, rect.h);
+          } else {
+            ctx.imageSmoothingEnabled = true;
+            const blur = overlayCfg && overlayCfg.blur ? overlayCfg.blur : (cfg && cfg.blur ? cfg.blur : 0);
+            ctx.filter = blur ? `${colorFilter} blur(${blur}px)` : colorFilter;
+            ctx.drawImage(el, dx, dy, rect.w, rect.h);
+          }
+          drew = true;
+        } catch {
+          if (surface.canvas) surface.canvas.style.display = "none";
+          if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+          return false;
+        }
+        if (!drew) return false;
+
+        const chroma = overlayCfg && overlayCfg.chroma ? overlayCfg.chroma : (cfg && cfg.chroma ? cfg.chroma : 0);
+        if (chroma) {
+          ctx.save();
+          ctx.globalCompositeOperation = "screen";
+          ctx.globalAlpha = 0.18;
+          ctx.filter = "none";
+          ctx.drawImage(el, dx + chroma, dy, rect.w, rect.h);
+          ctx.drawImage(el, dx - chroma, dy, rect.w, rect.h);
+          ctx.restore();
+        }
+
+        const scanlines = overlayCfg && overlayCfg.scanlines ? overlayCfg.scanlines : (cfg && cfg.scanlines ? cfg.scanlines : 0);
+        if (scanlines) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(dx, dy, rect.w, rect.h);
+          ctx.clip();
+          ctx.globalAlpha = scanlines;
+          const pattern = ensureScanlinePattern(ctx);
+          if (pattern) {
+            ctx.fillStyle = pattern;
+            const slBlur = overlayCfg && overlayCfg.scanlineBlur ? overlayCfg.scanlineBlur : (cfg && cfg.scanlineBlur ? cfg.scanlineBlur : 0);
+            if (slBlur) ctx.filter = `blur(${slBlur}px)`;
+            if (MEDIA_FILTER_STATE.animated) {
+              ctx.translate(0, (time * 0.015) % 4);
+            }
+            ctx.fillRect(dx, dy, rect.w, rect.h);
+          }
+          ctx.restore();
+        }
+
+        const grain = overlayCfg && overlayCfg.grain ? overlayCfg.grain : (cfg && cfg.grain ? cfg.grain : 0);
+        if (grain) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(dx, dy, rect.w, rect.h);
+          ctx.clip();
+          const noiseCanvas = ensureNoiseCanvas();
+          if (MEDIA_FILTER_STATE.animated) {
+            if (time - noise.lastTime > 80) {
+              updateNoiseCanvas();
+              noise.lastTime = time;
+            }
+          } else if (!noise.lastTime) {
+            updateNoiseCanvas();
+            noise.lastTime = time;
+          }
+          const pattern = ctx.createPattern(noiseCanvas, "repeat");
+          if (pattern) {
+            ctx.globalAlpha = grain;
+            ctx.globalCompositeOperation = "overlay";
+            ctx.fillStyle = pattern;
+            ctx.fillRect(dx, dy, rect.w, rect.h);
+          }
+          ctx.restore();
+        }
+
+        const vignette = overlayCfg && overlayCfg.vignette ? overlayCfg.vignette : (cfg && cfg.vignette ? cfg.vignette : 0);
+        if (vignette) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(dx, dy, rect.w, rect.h);
+          ctx.clip();
+          const cx = dx + rect.w * 0.5;
+          const cy = dy + rect.h * 0.5;
+          const g = ctx.createRadialGradient(
+            cx,
+            cy,
+            Math.min(rect.w, rect.h) * 0.2,
+            cx,
+            cy,
+            Math.max(rect.w, rect.h) * 0.7
+          );
+          g.addColorStop(0, "rgba(0,0,0,0)");
+          g.addColorStop(1, `rgba(0,0,0,${vignette})`);
+          ctx.fillStyle = g;
+          ctx.fillRect(dx, dy, rect.w, rect.h);
+          ctx.restore();
+        }
+
+        surface.canvas.style.display = "block";
+        surface.canvas.classList.add("ready");
+        surface.hasDrawn = true;
+        if (surface.mediaEl) surface.mediaEl.classList.add("mediaHidden");
+
+        const needsAnim = MEDIA_FILTER_STATE.animated && ((cfg && (cfg.grain || cfg.scanlines || cfg.jitter || cfg.chroma)) || (overlayCfg && (overlayCfg.grain || overlayCfg.scanlines || overlayCfg.jitter || overlayCfg.chroma)));
+        if (isVideo) {
+          if (surface.videoFrameActive) {
+            return needsAnim;
+          }
+          if (!el.paused) return true;
+          return needsAnim;
+        }
+        return needsAnim;
+      }
+
+      return {
+        attach,
+        detach,
+        requestRender,
+        hasSurfaceDrawn: (name) => {
+          const surface = surfaces.get(name);
+          return !!(surface && surface.hasDrawn);
+        }
+      };
+    })();
 
     function fileDisplayName(name) {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
@@ -297,13 +885,66 @@
       else root.removeAttribute("data-retro");
     }
 
-    function applyRetroMediaFromOptions() {
+    function applyMediaFilterFromOptions() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const appEl = document.getElementById("app");
       if (!appEl) return;
       const filter = opt && opt.mediaFilter ? String(opt.mediaFilter) : "off";
       if (filter && filter !== "off") appEl.setAttribute("data-media-filter", filter);
       else appEl.removeAttribute("data-media-filter");
+      const root = document.documentElement;
+      if (root) {
+        const cfg = (filter && filter !== "off") ? MEDIA_FILTER_CONFIGS[filter] : null;
+        const thumbFilter = (cfg && cfg.color && cfg.color !== "none") ? cfg.color : "none";
+        root.style.setProperty("--thumb-filter", thumbFilter);
+      }
+      MEDIA_FILTER_STATE.mode = filter || "off";
+      MEDIA_FILTER_STATE.animated = !!(opt && opt.animatedMediaFilters);
+      if (!mediaFilterEnabled()) {
+        MediaFilterEngine.detach("preview");
+        MediaFilterEngine.detach("viewer");
+        if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+        if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
+        if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
+        if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
+        appEl.removeAttribute("data-media-filter-engine");
+      } else {
+        if (VIEWER_MODE) {
+          if (viewerVideoEl && viewerVideoEl.style.display !== "none") {
+            syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video");
+          } else if (viewerImgEl && viewerImgEl.style.display !== "none") {
+            syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image");
+          }
+        }
+        if (ACTIVE_MEDIA_SURFACE === "preview") {
+          if (previewVideoEl && previewVideoEl.style.display !== "none") {
+            syncMediaFilterSurface("preview", previewVideoEl, previewViewportBox, "video");
+          } else if (previewImgEl && previewImgEl.style.display !== "none") {
+            syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image");
+          }
+        }
+      }
+      MediaFilterEngine.requestRender();
+    }
+
+    function mediaFilterEnabled() {
+      const mode = getMediaFilterForType();
+      return (mode && mode !== "off" && !!MEDIA_FILTER_CONFIGS[mode]) || crtOverlayEnabled();
+    }
+
+    function syncMediaFilterSurface(surfaceName, mediaEl, container, type) {
+      if (!mediaEl || !container) return;
+      if (!mediaFilterEnabled()) {
+        mediaEl.classList.remove("mediaHidden");
+        MediaFilterEngine.detach(surfaceName);
+        return;
+      }
+      MediaFilterEngine.attach(surfaceName, mediaEl, container, type, getMediaFilterForType());
+    }
+
+    function clearMediaFilterSurface(surfaceName, mediaEl) {
+      MediaFilterEngine.detach(surfaceName);
+      if (mediaEl) mediaEl.classList.remove("mediaHidden");
     }
 
     function applyDisplaySizesFromOptions() {
@@ -322,7 +963,7 @@
       if (!WS.root) {
         applyColorSchemeFromOptions();
         applyRetroModeFromOptions();
-        applyRetroMediaFromOptions();
+        applyMediaFilterFromOptions();
         applyDisplaySizesFromOptions();
         applyPaneDividerFromOptions();
         syncButtons();
@@ -335,7 +976,7 @@
 
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
-      applyRetroMediaFromOptions();
+      applyMediaFilterFromOptions();
       applyDisplaySizesFromOptions();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -343,7 +984,7 @@
       renderDirectoriesPane(true);
       renderPreviewPane(true, true);
       applyPaneDividerFromOptions();
-      applyRetroMediaFromOptions();
+      applyMediaFilterFromOptions();
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
@@ -785,6 +1426,23 @@
     banicOverlayEl.id = "banicOverlay";
     document.body.appendChild(banicOverlayEl);
 
+    let VIEWER_MODE = false;
+    let viewerDirNode = null;
+    let viewerItems = []; // { isFolder, dirNode } or { isFolder:false, id }
+    let viewerIndex = 0;
+    let uiHideTimer = null;
+
+    let viewerImgEl = null;
+    let viewerVideoEl = null;
+    let viewerFolderEl = null;
+
+    let DIR_HANDLE_CACHE = new Map();
+
+    let previewViewportBox = null;
+    let previewImgEl = null;
+    let previewVideoEl = null;
+    let previewFolderEl = null;
+
     // Divider setup: attach drag handlers and initialize position
     (function setupDivider() {
       const appEl = document.getElementById("app");
@@ -828,27 +1486,10 @@
 
       // initial apply from saved options
       applyPaneDividerFromOptions();
-      applyRetroMediaFromOptions();
+      applyMediaFilterFromOptions();
     })();
 
     let MAIN_STATUS_TIMEOUT = null;
-
-    let VIEWER_MODE = false;
-    let viewerDirNode = null;
-    let viewerItems = []; // { isFolder, dirNode } or { isFolder:false, id }
-    let viewerIndex = 0;
-    let uiHideTimer = null;
-
-    let viewerImgEl = null;
-    let viewerVideoEl = null;
-    let viewerFolderEl = null;
-
-    let DIR_HANDLE_CACHE = new Map();
-
-    let previewViewportBox = null;
-    let previewImgEl = null;
-    let previewVideoEl = null;
-    let previewFolderEl = null;
 
     let ACTIVE_MEDIA_SURFACE = "none";
 
@@ -1264,11 +1905,10 @@
       const mediaFilterModes = [
         /* media filters: names */
        { value: "off", label: "Off" },
-       { value: "vibrant", label: "Vibrant" },   
-       { value: "cooked", label: "Cooked" },
-       { value: "blackwhite", label: "Black and White" },
-       { value: "uv", label: "UV Camera" },
-       { value: "orangeTeal", label: "Orange+Teal" }/*
+       { value: "vibrant", label: "Vibrant" },
+       { value: "cinematic", label: "Cinematic" },
+       { value: "orangeTeal", label: "Orange+Teal" },
+       { value: "uv", label: "UV Camera" }/*
        { value: "cinematic", label: "Cinematic" },
        { value: "soft", label: "Soft" }*/
       ];
@@ -1291,8 +1931,10 @@ ${makeSelectRow("Default folder behavior", "Initial folder behavior.", "opt_defa
 
 <h1>Appearance</h1>
 ${makeSelectRow("Color scheme", "Switch the overall interface palette.", "opt_colorScheme", String(opt.colorScheme || "classic"), colorSchemes)}
-${makeSelectRow("Media Filter", "Apply a visual filter to media elements.", "opt_mediaFilter", String(opt.mediaFilter || "off"), mediaFilterModes)}
 ${makeCheckRow("Retro Mode", "Pixelated, low-res UI styling across themes.", "opt_retroMode", !!opt.retroMode)}
+${makeSelectRow("Media filter", "Apply a visual filter to media.", "opt_mediaFilter", String(opt.mediaFilter || "off"), mediaFilterModes)}
+${makeCheckRow("CRT overlay", "CRT scanlines/grain with fixed intermediate pixelation.", "opt_crtOverlayEnabled", !!opt.crtOverlayEnabled)}
+${makeCheckRow("Animated filters", "When enabled, scanlines/grain/jitter animate.", "opt_animatedMediaFilters", opt.animatedMediaFilters !== false)}
 
 <h1>Playback</h1>
 ${makeSelectRow("Video audio (preview)", "Controls autoplay + mute in the in-pane preview player.", "opt_videoPreview", String(opt.videoPreview || "muted"), vidModes)}
@@ -1396,8 +2038,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       bindCheck("opt_retroMode", "retroMode", () => {
         applyRetroModeFromOptions();
       });
-      bindSelect("opt_mediaFilter", "mediaFilter", false, (val) => {
-        applyRetroMediaFromOptions();
+      bindSelect("opt_mediaFilter", "mediaFilter", true, (val) => {
+        applyMediaFilterFromOptions();
+      });
+      bindCheck("opt_crtOverlayEnabled", "crtOverlayEnabled", () => {
+        applyMediaFilterFromOptions();
+      });
+      bindCheck("opt_animatedMediaFilters", "animatedMediaFilters", () => {
+        applyMediaFilterFromOptions();
       });
       bindCheck("opt_hideFileExtensions", "hideFileExtensions");
       bindCheck("opt_hideUnderscoresInNames", "hideUnderscoresInNames");
@@ -2147,7 +2795,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyDefaultViewFromOptions();
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
-      applyRetroMediaFromOptions();
+      applyMediaFilterFromOptions();
       applyDisplaySizesFromOptions();
     }
 
@@ -2160,7 +2808,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.meta.options = normalizeOptions(log.options || null);
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
-      applyRetroMediaFromOptions();
+      applyMediaFilterFromOptions();
       applyDisplaySizesFromOptions();
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
@@ -2408,7 +3056,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
       WS.dirByPath.set("", WS.root);
-      applyRetroMediaFromOptions();
+      applyMediaFilterFromOptions();
 
       const files = Array.from(fileList || []);
 
@@ -2511,7 +3159,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.root = makeDirNode("root", null);
       WS.root.path = "";
       WS.dirByPath.set("", WS.root);
-      applyRetroMediaFromOptions();
+      applyMediaFilterFromOptions();
 
       const all = [];
       await collectFilesFromDirHandle(rootHandle, "", all);
@@ -6114,7 +6762,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!previewImgEl) {
         previewImgEl = document.createElement("img");
         previewImgEl.style.display = "none";
-        previewImgEl.onload = () => previewImgEl.classList.add("ready");
+        previewImgEl.onload = () => {
+          previewImgEl.classList.add("ready");
+          MediaFilterEngine.requestRender();
+        };
         previewViewportBox.appendChild(previewImgEl);
       }
       if (!previewVideoEl) {
@@ -6195,6 +6846,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (previewImgEl) previewImgEl.style.display = "none";
         if (previewVideoEl) previewVideoEl.style.display = "none";
         if (previewFolderEl) previewFolderEl.style.display = "none";
+        MediaFilterEngine.detach("preview");
+        if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+        if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
         return;
       }
 
@@ -6223,6 +6877,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         previewImgEl.style.display = "none";
       }
       if (previewFolderEl) previewFolderEl.style.display = "none";
+      MediaFilterEngine.detach("preview");
+      if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
+      if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
 
       if (!item) return;
 
@@ -6281,7 +6938,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         } else {
           previewVideoEl.loop = false;
         }
-        previewVideoEl.onloadeddata = () => previewVideoEl.classList.add("ready");
+        previewVideoEl.onloadeddata = () => {
+          previewVideoEl.classList.add("ready");
+          MediaFilterEngine.requestRender();
+        };
 
         const src = ensureMediaUrl(rec) || "";
         const same = previewVideoEl.src === src;
@@ -6289,6 +6949,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           previewVideoEl.src = src;
         }
         previewVideoEl.style.display = "block";
+        syncMediaFilterSurface("preview", previewVideoEl, previewViewportBox, "video");
 
         applyVideoCarryToElement(previewVideoEl, rec.id);
 
@@ -6301,11 +6962,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
 
-      previewImgEl.onload = () => previewImgEl.classList.add("ready");
+      previewImgEl.onload = () => {
+        previewImgEl.classList.add("ready");
+        MediaFilterEngine.requestRender();
+      };
       const src = ensureMediaUrl(rec) || "";
       const same = previewImgEl.src === src;
       if (!same) previewImgEl.src = src;
       previewImgEl.style.display = "block";
+      syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image");
 
       if (previewImgEl.complete && previewImgEl.naturalWidth > 0) {
         requestAnimationFrame(() => { previewImgEl.classList.add("ready"); });
@@ -6376,6 +7041,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (!rec) {
           previewBodyEl.innerHTML = "";
           previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">File not found.</div>`;
+          MediaFilterEngine.detach("preview");
+          if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+          if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
           return;
         }
 
@@ -6396,6 +7064,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       setPreviewBodyMode("grid");
       if (!VIEWER_MODE) ACTIVE_MEDIA_SURFACE = "none";
+      MediaFilterEngine.detach("preview");
+      if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+      if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
 
       previewBodyEl.innerHTML = "";
 
@@ -7017,7 +7688,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!viewerImgEl) {
         viewerImgEl = document.createElement("img");
         viewerImgEl.style.display = "none";
-        viewerImgEl.onload = () => viewerImgEl.classList.add("ready");
+        viewerImgEl.onload = () => {
+          viewerImgEl.classList.add("ready");
+          MediaFilterEngine.requestRender();
+        };
         viewport.appendChild(viewerImgEl);
       }
       if (!viewerVideoEl) {
@@ -7124,13 +7798,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         try { viewerVideoEl.removeAttribute("src"); } catch {}
         try { viewerVideoEl.load(); } catch {}
         viewerVideoEl.classList.remove("ready");
+        viewerVideoEl.classList.remove("mediaHidden");
         viewerVideoEl.style.display = "none";
       }
       if (viewerImgEl) {
         try { viewerImgEl.removeAttribute("src"); } catch {}
         viewerImgEl.classList.remove("ready");
+        viewerImgEl.classList.remove("mediaHidden");
         viewerImgEl.style.display = "none";
       }
+      MediaFilterEngine.detach("viewer");
       if (viewerFolderEl) viewerFolderEl.style.display = "none";
       filenameEl.textContent = "";
       exitFullscreenIfNeeded();
@@ -7338,6 +8015,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (viewerVideoEl) viewerVideoEl.style.display = "none";
         if (viewerFolderEl) viewerFolderEl.style.display = "none";
         filenameEl.textContent = "";
+        MediaFilterEngine.detach("viewer");
+        if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
+        if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
         return;
       }
 
@@ -7361,6 +8041,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         viewerImgEl.style.display = "none";
       }
       if (viewerFolderEl) viewerFolderEl.style.display = "none";
+      MediaFilterEngine.detach("viewer");
+      if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
+      if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
 
       if (!item) return;
 
@@ -7424,7 +8107,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         } else {
           viewerVideoEl.loop = false;
         }
-        viewerVideoEl.onloadeddata = () => viewerVideoEl.classList.add("ready");
+        viewerVideoEl.onloadeddata = () => {
+          viewerVideoEl.classList.add("ready");
+          MediaFilterEngine.requestRender();
+        };
 
         const src = ensureMediaUrl(rec) || "";
         const same = viewerVideoEl.src === src;
@@ -7433,6 +8119,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           try { viewerVideoEl.load(); } catch {}
         }
         viewerVideoEl.style.display = "block";
+        syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video");
 
         applyVideoCarryToElement(viewerVideoEl, rec.id);
 
@@ -7444,11 +8131,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
 
-      viewerImgEl.onload = () => viewerImgEl.classList.add("ready");
+      viewerImgEl.onload = () => {
+        viewerImgEl.classList.add("ready");
+        MediaFilterEngine.requestRender();
+      };
       const src = ensureMediaUrl(rec) || "";
       const same = viewerImgEl.src === src;
       if (!same) viewerImgEl.src = src;
       viewerImgEl.style.display = "block";
+      syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image");
 
       if (viewerImgEl.complete && viewerImgEl.naturalWidth > 0) {
         requestAnimationFrame(() => { viewerImgEl.classList.add("ready"); });
