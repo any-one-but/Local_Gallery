@@ -2471,6 +2471,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       try { vid.addEventListener("loadedmetadata", once); } catch {}
     }
 
+    function normalizeVideoPlaybackRate(vid) {
+      if (!vid) return;
+      try {
+        vid.defaultPlaybackRate = 1;
+        vid.playbackRate = 1;
+      } catch {}
+    }
+
     function ensureDirPath(path) {
       const norm = path || "";
       if (WS.dirByPath.has(norm)) return WS.dirByPath.get(norm);
@@ -6638,6 +6646,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     if (dirUpBtn) {
       dirUpBtn.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (VIEWER_MODE) {
+          hideOverlay();
+          return;
+        }
         goDirUp();
       });
     }
@@ -7072,6 +7084,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const vid = document.createElement("video");
       vid.preload = aggressive ? "auto" : "metadata";
       vid.muted = true;
+      normalizeVideoPlaybackRate(vid);
       vid.playsInline = true;
       vid.src = url;
       try { if (aggressive) vid.load(); } catch {}
@@ -7122,6 +7135,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         previewVideoEl.playsInline = true;
         previewVideoEl.autoplay = true;
         previewVideoEl.muted = false;
+        normalizeVideoPlaybackRate(previewVideoEl);
         previewVideoEl.style.display = "none";
         previewViewportBox.appendChild(previewVideoEl);
       }
@@ -7269,6 +7283,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const mode = previewVideoMode();
         const doAuto = mode !== "off" && !BANIC_ACTIVE && !VIEWER_MODE;
         if (!VIEWER_MODE && viewerVideoEl) { try { viewerVideoEl.pause(); } catch {} }
+        normalizeVideoPlaybackRate(previewVideoEl);
         previewVideoEl.autoplay = doAuto;
         previewVideoEl.onloadeddata = null;
         previewVideoEl.onended = null;
@@ -7810,6 +7825,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const v = document.createElement("video");
       v.preload = "auto";
       v.muted = true;
+      normalizeVideoPlaybackRate(v);
       v.playsInline = true;
       v.src = url;
       v.crossOrigin = "anonymous";
@@ -8047,6 +8063,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         viewerVideoEl.preload = "metadata";
         viewerVideoEl.playsInline = true;
         viewerVideoEl.autoplay = true;
+        normalizeVideoPlaybackRate(viewerVideoEl);
         viewerVideoEl.style.display = "none";
         viewport.appendChild(viewerVideoEl);
       }
@@ -8438,6 +8455,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const mode = galleryVideoMode();
         const doAuto = mode !== "off" && !BANIC_ACTIVE;
         if (previewVideoEl) { try { previewVideoEl.pause(); } catch {} }
+        normalizeVideoPlaybackRate(viewerVideoEl);
         viewerVideoEl.autoplay = doAuto;
         viewerVideoEl.onloadeddata = null;
         viewerVideoEl.onended = null;
@@ -8793,7 +8811,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             return;
           case "leaveDir":
             e.preventDefault();
-            viewerLeaveDir();
+            hideOverlay();
             return;
           case "enterDir":
             e.preventDefault();
