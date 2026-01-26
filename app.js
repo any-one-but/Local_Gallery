@@ -4815,6 +4815,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!Array.isArray(stack) || !stack.length) return false;
       const frame = stack[stack.length - 1];
       if (frame.type !== "tag-view") return false;
+      const curPath = String(WS.nav.dirNode?.path || "");
+      const targetPath = String(frame.selectedDirPath || "");
+      if (targetPath && curPath && curPath !== targetPath) return false;
       stack.pop();
       return restoreTagViewFromFrame(frame);
     }
