@@ -7154,6 +7154,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       clearBulkTagPlaceholder();
       if (!node) return;
 
+      if (isViewingTagFolder()) {
+        const selectedEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
+        const selectedPath = (selectedEntry && selectedEntry.kind === "dir")
+          ? (selectedEntry.node?.path || "")
+          : (node.path || "");
+        pushTagViewContext(selectedPath);
+        WS.view.tagFolderActiveMode = "";
+        WS.view.tagFolderActiveTag = "";
+        WS.view.tagFolderOriginPath = "";
+      }
+
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
         WS.view.searchRootActive = false;
         WS.view.searchAnchorPath = node.path || "";
@@ -8709,6 +8720,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function viewerLeaveDir() { // Left
+      if (tryRestoreTagDirectoryContext()) return;
+      if (isViewingTagFolder()) {
+        exitTagFolderView();
+        return;
+      }
       if (WS.view.dirSearchPinned && !WS.view.searchRootActive) {
         if (VIEWER_MODE) hideOverlay();
         returnToSearchResults();
