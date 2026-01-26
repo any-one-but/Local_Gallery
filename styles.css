@@ -1757,6 +1757,12 @@
       cursor: pointer;
     }
 
+    #optionsBody .optRight.optRange {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     #optionsBody select,
     #keybindsBody select {
       background: var(--color1-primary);
@@ -1768,6 +1774,17 @@
       outline: none;
       min-width: 220px;
       max-width: 320px;
+    }
+
+    #optionsBody input[type="range"] {
+      width: 180px;
+    }
+
+    #optionsBody .optRangeValue {
+      min-width: 40px;
+      text-align: right;
+      font-size: 11px;
+      color: var(--color0-secondary);
     }
 
     #optionsFooter,

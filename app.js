@@ -136,6 +136,12 @@
       };
     }
 
+    function clampNumber(value, min, max, fallback) {
+      const n = typeof value === "number" ? value : parseFloat(value);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, n));
+    }
+
     function defaultOptions() {
       return {
         videoPreview: "muted",
@@ -161,8 +167,14 @@
         retroMode: false,
         mediaFilter: "off",
         animatedMediaFilters: true,
-        crtPixelateRes: "off",
-        crtOverlayEnabled: false,
+        crtScanlinesEnabled: false,
+        crtPixelateEnabled: false,
+        crtGrainEnabled: false,
+        crtPixelateResolution: 4,
+        crtGrainAmount: 0.06,
+        vhsOverlayEnabled: false,
+        vhsBlurAmount: 1.2,
+        vhsChromaAmount: 1.2,
         colorScheme: "classic",
         leftPaneWidthPct: 0.28,
         treatTagsAsFolders: true,
@@ -174,12 +186,19 @@
       const d = defaultOptions();
       const src = (o && typeof o === "object") ? o : {};
       const mediaFilterRaw = (src && src.mediaFilter === "vhs") ? "crt" : src.mediaFilter;
-      const crtPixelateResRaw = (src && src.crtPixelateRes != null) ? String(src.crtPixelateRes) : null;
-      const crtOverlayEnabledRaw = (typeof src.crtOverlayEnabled === "boolean") ? src.crtOverlayEnabled : null;
-      const crtOverlayEnabled = (crtOverlayEnabledRaw !== null)
-        ? crtOverlayEnabledRaw
-        : (crtPixelateResRaw ? crtPixelateResRaw !== "off" : d.crtOverlayEnabled);
-      const crtPixelateRes = crtOverlayEnabled ? "medium" : "off";
+      const legacyCrtPixelateResRaw = (src && src.crtPixelateRes != null) ? String(src.crtPixelateRes) : null;
+      const legacyCrtOverlayEnabledRaw = (typeof src.crtOverlayEnabled === "boolean") ? src.crtOverlayEnabled : null;
+      const legacyCrtOverlayEnabled = (legacyCrtOverlayEnabledRaw !== null)
+        ? legacyCrtOverlayEnabledRaw
+        : (legacyCrtPixelateResRaw ? legacyCrtPixelateResRaw !== "off" : false);
+      const crtScanlinesEnabled = (typeof src.crtScanlinesEnabled === "boolean") ? src.crtScanlinesEnabled : legacyCrtOverlayEnabled;
+      const crtPixelateEnabled = (typeof src.crtPixelateEnabled === "boolean") ? src.crtPixelateEnabled : legacyCrtOverlayEnabled;
+      const crtGrainEnabled = (typeof src.crtGrainEnabled === "boolean") ? src.crtGrainEnabled : legacyCrtOverlayEnabled;
+      const crtPixelateResolution = clampNumber(src.crtPixelateResolution, 2, 8, d.crtPixelateResolution);
+      const crtGrainAmount = clampNumber(src.crtGrainAmount, 0, 0.25, d.crtGrainAmount);
+      const vhsOverlayEnabled = (typeof src.vhsOverlayEnabled === "boolean") ? src.vhsOverlayEnabled : d.vhsOverlayEnabled;
+      const vhsBlurAmount = clampNumber(src.vhsBlurAmount, 0, 3, d.vhsBlurAmount);
+      const vhsChromaAmount = clampNumber(src.vhsChromaAmount, 0, 3, d.vhsChromaAmount);
       const out = {
         videoPreview: (src.videoPreview === "unmuted" || src.videoPreview === "muted" || src.videoPreview === "off") ? src.videoPreview : d.videoPreview,
         videoGallery: (src.videoGallery === "unmuted" || src.videoGallery === "muted" || src.videoGallery === "off") ? src.videoGallery : d.videoGallery,
@@ -219,8 +238,14 @@
   mediaFilterRaw === 'cinematic'
 ) ? mediaFilterRaw : d.mediaFilter,
         animatedMediaFilters: (typeof src.animatedMediaFilters === "boolean") ? src.animatedMediaFilters : d.animatedMediaFilters,
-        crtPixelateRes,
-        crtOverlayEnabled
+        crtScanlinesEnabled,
+        crtPixelateEnabled,
+        crtGrainEnabled,
+        crtPixelateResolution,
+        crtGrainAmount,
+        vhsOverlayEnabled,
+        vhsBlurAmount,
+        vhsChromaAmount
     };
       return out;
     }
@@ -229,6 +254,7 @@
       mode: "off",
       animated: true
     };
+    let MEDIA_OVERLAY_STATE = null;
 
     const MEDIA_FILTER_CONFIGS = {
       vibrant: { color: "saturate(1.45) contrast(1.12) brightness(1.06) hue-rotate(-3deg)" },
@@ -245,8 +271,68 @@
       jitter: 0.75,
       blur: 0.25,
       grain: 0.06,
-      pixelate: 2
+      pixelate: 4
     };
+
+    const VHS_OVERLAY_CONFIG = {
+      scanlines: 0,
+      scanlineBlur: 0,
+      chroma: 1.2,
+      vignette: 0.08,
+      jitter: 0.55,
+      blur: 1.2,
+      grain: 0.035,
+      pixelate: 0
+    };
+
+    function buildCrtOverlayConfigFromOptions(opt) {
+      if (!opt) return null;
+      const scanlinesOn = !!opt.crtScanlinesEnabled;
+      const pixelateOn = !!opt.crtPixelateEnabled;
+      const grainOn = !!opt.crtGrainEnabled;
+      const pixelate = pixelateOn ? clampNumber(opt.crtPixelateResolution, 2, 8, CRT_OVERLAY_CONFIG.pixelate) : 0;
+      const grain = grainOn ? clampNumber(opt.crtGrainAmount, 0, 0.25, CRT_OVERLAY_CONFIG.grain) : 0;
+      const scanlines = scanlinesOn ? CRT_OVERLAY_CONFIG.scanlines : 0;
+      if (!scanlines && !pixelate && !grain) return null;
+      return {
+        scanlines,
+        scanlineBlur: scanlinesOn ? CRT_OVERLAY_CONFIG.scanlineBlur : 0,
+        chroma: pixelateOn ? CRT_OVERLAY_CONFIG.chroma : 0,
+        vignette: pixelateOn ? CRT_OVERLAY_CONFIG.vignette : 0,
+        jitter: pixelateOn ? CRT_OVERLAY_CONFIG.jitter : 0,
+        blur: pixelateOn ? CRT_OVERLAY_CONFIG.blur : 0,
+        grain,
+        pixelate
+      };
+    }
+
+    function buildVhsOverlayConfigFromOptions(opt) {
+      if (!opt || !opt.vhsOverlayEnabled) return null;
+      const blur = clampNumber(opt.vhsBlurAmount, 0, 3, VHS_OVERLAY_CONFIG.blur);
+      const chroma = clampNumber(opt.vhsChromaAmount, 0, 3, VHS_OVERLAY_CONFIG.chroma);
+      return Object.assign({}, VHS_OVERLAY_CONFIG, { blur, chroma });
+    }
+
+    function mergeOverlayConfigs(a, b) {
+      if (!a) return b || null;
+      if (!b) return a;
+      return {
+        scanlines: Math.max(a.scanlines || 0, b.scanlines || 0),
+        scanlineBlur: Math.max(a.scanlineBlur || 0, b.scanlineBlur || 0),
+        chroma: Math.max(a.chroma || 0, b.chroma || 0),
+        vignette: Math.max(a.vignette || 0, b.vignette || 0),
+        jitter: Math.max(a.jitter || 0, b.jitter || 0),
+        blur: Math.max(a.blur || 0, b.blur || 0),
+        grain: Math.max(a.grain || 0, b.grain || 0),
+        pixelate: Math.max(a.pixelate || 0, b.pixelate || 0)
+      };
+    }
+
+    function buildMediaOverlayConfigFromOptions(opt) {
+      const crt = buildCrtOverlayConfigFromOptions(opt);
+      const vhs = buildVhsOverlayConfigFromOptions(opt);
+      return mergeOverlayConfigs(crt, vhs);
+    }
 
     function computeContainRect(srcW, srcH, dstW, dstH) {
       if (!srcW || !srcH || !dstW || !dstH) return { x: 0, y: 0, w: dstW, h: dstH };
@@ -284,14 +370,11 @@
       return MEDIA_FILTER_STATE.mode || "off";
     }
 
-    function crtPixelateScale() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return (opt && opt.crtOverlayEnabled) ? 2 : 1;
-    }
-
     function crtOverlayEnabled() {
+      if (MEDIA_OVERLAY_STATE) return true;
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return !!(opt && opt.crtOverlayEnabled);
+      MEDIA_OVERLAY_STATE = buildMediaOverlayConfigFromOptions(opt);
+      return !!MEDIA_OVERLAY_STATE;
     }
 
     const THUMB_FILTER_CACHE = {
@@ -623,8 +706,7 @@
       function drawSurface(surface, time) {
         const mode = surface.filterMode || "off";
         const cfg = (mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
-        const overlayEnabled = crtOverlayEnabled();
-        const overlayCfg = overlayEnabled ? CRT_OVERLAY_CONFIG : null;
+        const overlayCfg = MEDIA_OVERLAY_STATE;
         if (!cfg && !overlayCfg) {
           if (surface.canvas) surface.canvas.style.display = "none";
           if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
@@ -668,7 +750,7 @@
         try {
           const pixelateBase = (overlayCfg && overlayCfg.pixelate) ? Math.max(2, overlayCfg.pixelate) : (cfg && cfg.pixelate ? Math.max(2, cfg.pixelate) : 0);
           if (pixelateBase) {
-            const scale = overlayEnabled ? (pixelateBase * crtPixelateScale()) : pixelateBase;
+            const scale = pixelateBase;
             const smallW = Math.max(1, Math.round(rect.w / scale));
             const smallH = Math.max(1, Math.round(rect.h / scale));
             surface.offscreen.width = smallW;
@@ -881,6 +963,7 @@
 
     function applyMediaFilterFromOptions() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      MEDIA_OVERLAY_STATE = buildMediaOverlayConfigFromOptions(opt);
       const appEl = document.getElementById("app");
       if (!appEl) return;
       const filter = opt && opt.mediaFilter ? String(opt.mediaFilter) : "off";
@@ -2151,6 +2234,21 @@
         `;
       };
 
+      const makeRangeRow = (title, hint, id, value, min, max, step, displayValue) => {
+        return `
+          <div class="optRow">
+            <div class="optLeft">
+              <div class="optTitle">${escapeHtml(title)}</div>
+              <div class="optHint">${escapeHtml(hint)}</div>
+            </div>
+            <div class="optRight optRange">
+              <input id="${escapeHtml(id)}" type="range" min="${min}" max="${max}" step="${step}" value="${escapeHtml(String(value))}" />
+              <div class="optRangeValue" id="${escapeHtml(id)}_value">${escapeHtml(displayValue)}</div>
+            </div>
+          </div>
+        `;
+      };
+
       const vidModes = [
         { value: "unmuted", label: "Auto-play unmuted" },
         { value: "muted", label: "Auto-play muted" },
@@ -2244,6 +2342,35 @@
        { value: "soft", label: "Soft" }*/
       ];
 
+      const formatPixelateResolution = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        return `${Number.isInteger(n) ? n : n.toFixed(1)}x`;
+      };
+
+      const formatGrainAmount = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        return `${Math.round(n * 100)}%`;
+      };
+
+      const pixelateResolutionValue = Number.isFinite(opt.crtPixelateResolution) ? opt.crtPixelateResolution : 4;
+      const grainAmountValue = Number.isFinite(opt.crtGrainAmount) ? opt.crtGrainAmount : 0.06;
+      const vhsBlurValue = Number.isFinite(opt.vhsBlurAmount) ? opt.vhsBlurAmount : 1.2;
+      const vhsChromaValue = Number.isFinite(opt.vhsChromaAmount) ? opt.vhsChromaAmount : 1.2;
+
+      const formatVhsBlur = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        return `${n.toFixed(1)}px`;
+      };
+
+      const formatVhsChroma = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        return `${n.toFixed(1)}px`;
+      };
+
       optionsBodyEl.innerHTML = `
         <div class="label" style="margin-bottom:8px;">Option preferences are automatically stored in preferences.log.json in the .local-gallery system folder in the root directory.</div>
 
@@ -2258,7 +2385,14 @@ ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near
 ${makeSelectRow("Color scheme", "Switch the overall interface palette.", "opt_colorScheme", String(opt.colorScheme || "classic"), colorSchemes)}
 ${makeCheckRow("Retro Mode", "Pixelated, low-res UI styling across themes.", "opt_retroMode", !!opt.retroMode)}
 ${makeSelectRow("Media filter", "Apply a visual filter to media.", "opt_mediaFilter", String(opt.mediaFilter || "off"), mediaFilterModes)}
-${makeCheckRow("CRT overlay", "CRT scanlines/grain with fixed intermediate pixelation.", "opt_crtOverlayEnabled", !!opt.crtOverlayEnabled)}
+${makeCheckRow("Scanline overlay", "Add CRT scanlines over media.", "opt_crtScanlinesEnabled", !!opt.crtScanlinesEnabled)}
+${makeCheckRow("Pixelated overlay", "Pixelate media before applying filters.", "opt_crtPixelateEnabled", !!opt.crtPixelateEnabled)}
+${makeRangeRow("Pixelation resolution", "Higher values mean chunkier pixels.", "opt_crtPixelateResolution", pixelateResolutionValue, 2, 8, 0.5, formatPixelateResolution(pixelateResolutionValue))}
+${makeCheckRow("Film grain overlay", "Adds film grain noise overlay.", "opt_crtGrainEnabled", !!opt.crtGrainEnabled)}
+${makeRangeRow("Film grain amount", "Strength of the grain overlay.", "opt_crtGrainAmount", grainAmountValue, 0, 0.25, 0.01, formatGrainAmount(grainAmountValue))}
+${makeCheckRow("VHS overlay", "Soft, lo-def magnetic tape look.", "opt_vhsOverlayEnabled", !!opt.vhsOverlayEnabled)}
+${makeRangeRow("VHS blur amount", "Controls the fuzzy tape softness.", "opt_vhsBlurAmount", vhsBlurValue, 0, 3, 0.1, formatVhsBlur(vhsBlurValue))}
+${makeRangeRow("VHS chroma amount", "Controls chromatic bleed/aberration.", "opt_vhsChromaAmount", vhsChromaValue, 0, 3, 0.1, formatVhsChroma(vhsChromaValue))}
 ${makeCheckRow("Animated filters", "When enabled, scanlines/grain/jitter animate.", "opt_animatedMediaFilters", opt.animatedMediaFilters !== false)}
 
 <h1>Playback</h1>
@@ -2318,6 +2452,32 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         });
       };
 
+      const bindRange = (id, key, onChange, formatter) => {
+        const el = $(id);
+        if (!el) return;
+        const valueEl = $(`${id}_value`);
+        const updateValue = () => {
+          if (!valueEl) return;
+          const nextVal = parseFloat(el.value);
+          valueEl.textContent = formatter ? formatter(nextVal) : String(el.value);
+        };
+        el.addEventListener("click", (e) => e.stopPropagation());
+        el.addEventListener("keydown", (e) => e.stopPropagation());
+        el.addEventListener("input", updateValue);
+        el.addEventListener("change", () => {
+          const next = {};
+          const val = parseFloat(el.value);
+          next[key] = Number.isFinite(val) ? val : 0;
+          WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
+          WS.meta.dirty = true;
+          metaScheduleSave();
+          setOptionsStatus("Saved");
+          if (typeof onChange === "function") onChange(next[key]);
+          applyOptionsEverywhere(false);
+        });
+        updateValue();
+      };
+
       bindSelect("opt_videoPreview", "videoPreview", false);
       bindSelect("opt_videoGallery", "videoGallery", false);
       bindSelect("opt_defaultFolderBehavior", "defaultFolderBehavior", false, () => {
@@ -2358,9 +2518,30 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       bindSelect("opt_mediaFilter", "mediaFilter", true, (val) => {
         applyMediaFilterFromOptions();
       });
-      bindCheck("opt_crtOverlayEnabled", "crtOverlayEnabled", () => {
+      bindCheck("opt_crtScanlinesEnabled", "crtScanlinesEnabled", () => {
         applyMediaFilterFromOptions();
       });
+      bindCheck("opt_crtPixelateEnabled", "crtPixelateEnabled", () => {
+        applyMediaFilterFromOptions();
+      });
+      bindRange("opt_crtPixelateResolution", "crtPixelateResolution", () => {
+        applyMediaFilterFromOptions();
+      }, formatPixelateResolution);
+      bindCheck("opt_crtGrainEnabled", "crtGrainEnabled", () => {
+        applyMediaFilterFromOptions();
+      });
+      bindRange("opt_crtGrainAmount", "crtGrainAmount", () => {
+        applyMediaFilterFromOptions();
+      }, formatGrainAmount);
+      bindCheck("opt_vhsOverlayEnabled", "vhsOverlayEnabled", () => {
+        applyMediaFilterFromOptions();
+      });
+      bindRange("opt_vhsBlurAmount", "vhsBlurAmount", () => {
+        applyMediaFilterFromOptions();
+      }, formatVhsBlur);
+      bindRange("opt_vhsChromaAmount", "vhsChromaAmount", () => {
+        applyMediaFilterFromOptions();
+      }, formatVhsChroma);
       bindCheck("opt_animatedMediaFilters", "animatedMediaFilters", () => {
         applyMediaFilterFromOptions();
       });
