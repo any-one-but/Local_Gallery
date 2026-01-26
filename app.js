@@ -175,10 +175,12 @@
         vhsOverlayEnabled: false,
         vhsBlurAmount: 1.2,
         vhsChromaAmount: 1.2,
+        filmCornerOverlayEnabled: false,
         colorScheme: "classic",
         leftPaneWidthPct: 0.28,
         treatTagsAsFolders: true,
-        showHiddenFolder: false
+        showHiddenFolder: false,
+        showUntaggedFolder: false
       };
     }
 
@@ -199,6 +201,7 @@
       const vhsOverlayEnabled = (typeof src.vhsOverlayEnabled === "boolean") ? src.vhsOverlayEnabled : d.vhsOverlayEnabled;
       const vhsBlurAmount = clampNumber(src.vhsBlurAmount, 0, 3, d.vhsBlurAmount);
       const vhsChromaAmount = clampNumber(src.vhsChromaAmount, 0, 3, d.vhsChromaAmount);
+      const filmCornerOverlayEnabled = (typeof src.filmCornerOverlayEnabled === "boolean") ? src.filmCornerOverlayEnabled : d.filmCornerOverlayEnabled;
       const out = {
         videoPreview: (src.videoPreview === "unmuted" || src.videoPreview === "muted" || src.videoPreview === "off") ? src.videoPreview : d.videoPreview,
         videoGallery: (src.videoGallery === "unmuted" || src.videoGallery === "muted" || src.videoGallery === "off") ? src.videoGallery : d.videoGallery,
@@ -224,6 +227,7 @@
         colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber" || src.colorScheme === "retro90s" || src.colorScheme === "retro90s-dark") ? src.colorScheme : d.colorScheme,
         treatTagsAsFolders: d.treatTagsAsFolders,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
+        showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
         leftPaneWidthPct: (function(){
           const v = parseFloat(src.leftPaneWidthPct);
           if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
@@ -245,7 +249,8 @@
         crtGrainAmount,
         vhsOverlayEnabled,
         vhsBlurAmount,
-        vhsChromaAmount
+        vhsChromaAmount,
+        filmCornerOverlayEnabled
     };
       return out;
     }
@@ -255,6 +260,7 @@
       animated: true
     };
     let MEDIA_OVERLAY_STATE = null;
+    let THUMB_FILTER_KEY = "";
 
     const MEDIA_FILTER_CONFIGS = {
       vibrant: { color: "saturate(1.45) contrast(1.12) brightness(1.06) hue-rotate(-3deg)" },
@@ -285,6 +291,10 @@
       pixelate: 0
     };
 
+    const FILM_CORNER_CONFIG = {
+      cornerRadius: 0.08
+    };
+
     function buildCrtOverlayConfigFromOptions(opt) {
       if (!opt) return null;
       const scanlinesOn = !!opt.crtScanlinesEnabled;
@@ -313,6 +323,11 @@
       return Object.assign({}, VHS_OVERLAY_CONFIG, { blur, chroma });
     }
 
+    function buildFilmCornerOverlayConfigFromOptions(opt) {
+      if (!opt || !opt.filmCornerOverlayEnabled) return null;
+      return { cornerRadius: FILM_CORNER_CONFIG.cornerRadius };
+    }
+
     function mergeOverlayConfigs(a, b) {
       if (!a) return b || null;
       if (!b) return a;
@@ -324,14 +339,16 @@
         jitter: Math.max(a.jitter || 0, b.jitter || 0),
         blur: Math.max(a.blur || 0, b.blur || 0),
         grain: Math.max(a.grain || 0, b.grain || 0),
-        pixelate: Math.max(a.pixelate || 0, b.pixelate || 0)
+        pixelate: Math.max(a.pixelate || 0, b.pixelate || 0),
+        cornerRadius: Math.max(a.cornerRadius || 0, b.cornerRadius || 0)
       };
     }
 
     function buildMediaOverlayConfigFromOptions(opt) {
       const crt = buildCrtOverlayConfigFromOptions(opt);
       const vhs = buildVhsOverlayConfigFromOptions(opt);
-      return mergeOverlayConfigs(crt, vhs);
+      const film = buildFilmCornerOverlayConfigFromOptions(opt);
+      return mergeOverlayConfigs(mergeOverlayConfigs(crt, vhs), film);
     }
 
     function computeContainRect(srcW, srcH, dstW, dstH) {
@@ -366,8 +383,47 @@
       return { x, y, w, h };
     }
 
+    function roundedRectPath(ctx, x, y, w, h, r) {
+      const radius = Math.max(0, Math.min(r, Math.min(w, h) * 0.5));
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+    }
+
+    function applyRoundedCornerMask(ctx, rect, radius) {
+      if (!radius) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-in";
+      roundedRectPath(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+      ctx.fillStyle = "#000";
+      ctx.fill();
+      ctx.restore();
+    }
+
     function getMediaFilterForType() {
       return MEDIA_FILTER_STATE.mode || "off";
+    }
+
+    function buildThumbFilterKey() {
+      const mode = MEDIA_FILTER_STATE.mode || "off";
+      const o = MEDIA_OVERLAY_STATE;
+      if (!o) return `${mode}|none`;
+      const vals = [
+        o.scanlines || 0,
+        o.scanlineBlur || 0,
+        o.chroma || 0,
+        o.vignette || 0,
+        o.jitter || 0,
+        o.blur || 0,
+        o.grain || 0,
+        o.pixelate || 0,
+        o.cornerRadius || 0
+      ];
+      return `${mode}|${vals.join(",")}`;
     }
 
     function crtOverlayEnabled() {
@@ -434,7 +490,20 @@
     }
 
     function renderFilteredToCanvas(ctx, source, srcW, srcH, dstW, dstH, mode, cover = true) {
-      if (!mode || mode === "off" || !MEDIA_FILTER_CONFIGS[mode]) {
+      const baseCfg = (mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
+      const overlayCfg = MEDIA_OVERLAY_STATE;
+      const cfg = (baseCfg || overlayCfg) ? {
+        color: baseCfg && baseCfg.color ? baseCfg.color : "none",
+        pixelate: Math.max(baseCfg && baseCfg.pixelate ? baseCfg.pixelate : 0, overlayCfg && overlayCfg.pixelate ? overlayCfg.pixelate : 0),
+        blur: Math.max(baseCfg && baseCfg.blur ? baseCfg.blur : 0, overlayCfg && overlayCfg.blur ? overlayCfg.blur : 0),
+        chroma: Math.max(baseCfg && baseCfg.chroma ? baseCfg.chroma : 0, overlayCfg && overlayCfg.chroma ? overlayCfg.chroma : 0),
+        scanlines: Math.max(baseCfg && baseCfg.scanlines ? baseCfg.scanlines : 0, overlayCfg && overlayCfg.scanlines ? overlayCfg.scanlines : 0),
+        scanlineBlur: Math.max(baseCfg && baseCfg.scanlineBlur ? baseCfg.scanlineBlur : 0, overlayCfg && overlayCfg.scanlineBlur ? overlayCfg.scanlineBlur : 0),
+        grain: Math.max(baseCfg && baseCfg.grain ? baseCfg.grain : 0, overlayCfg && overlayCfg.grain ? overlayCfg.grain : 0),
+        vignette: Math.max(baseCfg && baseCfg.vignette ? baseCfg.vignette : 0, overlayCfg && overlayCfg.vignette ? overlayCfg.vignette : 0),
+        cornerRadius: Math.max(baseCfg && baseCfg.cornerRadius ? baseCfg.cornerRadius : 0, overlayCfg && overlayCfg.cornerRadius ? overlayCfg.cornerRadius : 0)
+      } : null;
+      if (!cfg) {
         const rect = cover ? computeCoverRect(srcW, srcH, dstW, dstH) : computeContainRect(srcW, srcH, dstW, dstH);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, dstW, dstH);
@@ -443,7 +512,6 @@
         ctx.drawImage(source, rect.x, rect.y, rect.w, rect.h);
         return;
       }
-      const cfg = MEDIA_FILTER_CONFIGS[mode];
       const rect = cover ? computeCoverRect(srcW, srcH, dstW, dstH) : computeContainRect(srcW, srcH, dstW, dstH);
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -533,6 +601,11 @@
         ctx.fillStyle = g;
         ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
         ctx.restore();
+      }
+
+      if (cfg.cornerRadius) {
+        const radius = Math.max(0, Math.min(rect.w, rect.h) * cfg.cornerRadius);
+        applyRoundedCornerMask(ctx, rect, radius);
       }
     }
 
@@ -859,6 +932,12 @@
           ctx.restore();
         }
 
+        const cornerRadius = overlayCfg && overlayCfg.cornerRadius ? overlayCfg.cornerRadius : (cfg && cfg.cornerRadius ? cfg.cornerRadius : 0);
+        if (cornerRadius) {
+          const radius = Math.max(0, Math.min(rect.w, rect.h) * cornerRadius);
+          applyRoundedCornerMask(ctx, { x: dx, y: dy, w: rect.w, h: rect.h }, radius);
+        }
+
         surface.canvas.style.display = "block";
         surface.canvas.classList.add("ready");
         surface.hasDrawn = true;
@@ -971,12 +1050,20 @@
       else appEl.removeAttribute("data-media-filter");
       const root = document.documentElement;
       if (root) {
-        const cfg = (filter && filter !== "off") ? MEDIA_FILTER_CONFIGS[filter] : null;
-        const thumbFilter = (cfg && cfg.color && cfg.color !== "none") ? cfg.color : "none";
-        root.style.setProperty("--thumb-filter", thumbFilter);
+        root.style.setProperty("--thumb-filter", "none");
       }
       MEDIA_FILTER_STATE.mode = filter || "off";
       MEDIA_FILTER_STATE.animated = !!(opt && opt.animatedMediaFilters);
+      const nextThumbKey = buildThumbFilterKey();
+      if (nextThumbKey !== THUMB_FILTER_KEY) {
+        THUMB_FILTER_KEY = nextThumbKey;
+        if (WS.root) {
+          invalidateAllThumbs();
+          renderPreviewPane(false, true);
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+        }
+      }
       if (!mediaFilterEnabled()) {
         MediaFilterEngine.detach("preview");
         MediaFilterEngine.detach("viewer");
@@ -1705,6 +1792,7 @@
     let viewerItems = []; // { isFolder, dirNode } or { isFolder:false, id }
     let viewerIndex = 0;
     let uiHideTimer = null;
+    let globalCursorHideTimer = null;
 
     let viewerImgEl = null;
     let viewerVideoEl = null;
@@ -2380,6 +2468,7 @@ ${makeSelectRow("Folder scores", "Choose how folder scores appear in lists + pre
 ${makeSelectRow("Folder behavior", "Sets how folders behave when browsing.", "opt_defaultFolderBehavior", String(opt.defaultFolderBehavior || "slide"), folderModes)}
 ${makeCheckRow("PANIC! opens decoy window", "When enabled, PANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
+${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag near the top of the root directories pane when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 
 <h1>Appearance</h1>
 ${makeSelectRow("Color scheme", "Switch the overall interface palette.", "opt_colorScheme", String(opt.colorScheme || "classic"), colorSchemes)}
@@ -2391,6 +2480,7 @@ ${makeRangeRow("Pixelation resolution", "Higher values mean chunkier pixels.", "
 ${makeCheckRow("Film grain overlay", "Adds film grain noise overlay.", "opt_crtGrainEnabled", !!opt.crtGrainEnabled)}
 ${makeRangeRow("Film grain amount", "Strength of the grain overlay.", "opt_crtGrainAmount", grainAmountValue, 0, 0.25, 0.01, formatGrainAmount(grainAmountValue))}
 ${makeCheckRow("VHS overlay", "Soft, lo-def magnetic tape look.", "opt_vhsOverlayEnabled", !!opt.vhsOverlayEnabled)}
+${makeCheckRow("Film corners overlay", "Rounds media corners for an old film look.", "opt_filmCornerOverlayEnabled", !!opt.filmCornerOverlayEnabled)}
 ${makeRangeRow("VHS blur amount", "Controls the fuzzy tape softness.", "opt_vhsBlurAmount", vhsBlurValue, 0, 3, 0.1, formatVhsBlur(vhsBlurValue))}
 ${makeRangeRow("VHS chroma amount", "Controls chromatic bleed/aberration.", "opt_vhsChromaAmount", vhsChromaValue, 0, 3, 0.1, formatVhsChroma(vhsChromaValue))}
 ${makeCheckRow("Animated filters", "When enabled, scanlines/grain/jitter animate.", "opt_animatedMediaFilters", opt.animatedMediaFilters !== false)}
@@ -2502,6 +2592,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
         renderDirectoriesPane(true);
       });
+      bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
+        if (!enabled && WS.view.tagFolderActiveMode === "untagged") {
+          exitTagFolderView();
+        }
+        renderDirectoriesPane(true);
+      });
       bindSelect("opt_imageThumbSize", "imageThumbSize", true);
       bindSelect("opt_videoThumbSize", "videoThumbSize", true);
       bindSelect("opt_mediaThumbUiSize", "mediaThumbUiSize", false);
@@ -2534,6 +2630,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         applyMediaFilterFromOptions();
       }, formatGrainAmount);
       bindCheck("opt_vhsOverlayEnabled", "vhsOverlayEnabled", () => {
+        applyMediaFilterFromOptions();
+      });
+      bindCheck("opt_filmCornerOverlayEnabled", "filmCornerOverlayEnabled", () => {
         applyMediaFilterFromOptions();
       });
       bindRange("opt_vhsBlurAmount", "vhsBlurAmount", () => {
@@ -4527,6 +4626,18 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return !!(opt && opt.showHiddenFolder);
     }
 
+    function showUntaggedFolderEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.showUntaggedFolder);
+    }
+
+    function getUntaggedDirsForNode(dirNode) {
+      if (!dirNode) return [];
+      const children = getChildDirsForNodeBase(dirNode);
+      if (!children.length) return [];
+      return children.filter(d => (metaGetUserTags(d.path || "").length === 0));
+    }
+
     function isViewingTagFolder() {
       return !!WS.view.tagFolderActiveMode;
     }
@@ -4574,6 +4685,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (favs.length) {
         entries.push({ kind: "tag", label: "Favorites", special: "favorites", count: favs.length });
       }
+      if (showUntaggedFolderEnabled() && dirNode === WS.root) {
+        const untagged = getUntaggedDirsForNode(dirNode);
+        if (untagged.length) {
+          entries.push({ kind: "tag", label: "Untagged", special: "untagged", count: untagged.length });
+        }
+      }
       if (showHiddenFolderEnabled()) {
         const hidden = allChildren.filter(d => metaHasHidden(d.path || ""));
         if (hidden.length) {
@@ -4611,6 +4728,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (WS.view.tagFolderActiveMode === "favorites") {
         return children.filter(d => metaHasFavorite(d.path || ""));
       }
+      if (WS.view.tagFolderActiveMode === "untagged") {
+        return children.filter(d => metaGetUserTags(d.path || "").length === 0);
+      }
       if (WS.view.tagFolderActiveMode === "hidden") {
         return children.filter(d => metaHasHidden(d.path || ""));
       }
@@ -4628,6 +4748,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!baseNode) return [];
       const children = getChildDirsForNodeBase(baseNode);
       if (frame.mode === "favorites") return children.filter(d => metaHasFavorite(d.path || ""));
+      if (frame.mode === "untagged") return children.filter(d => metaGetUserTags(d.path || "").length === 0);
       if (frame.mode === "hidden") return children.filter(d => metaHasHidden(d.path || ""));
       const tag = String(frame.tag || "");
       if (!tag) return [];
@@ -4646,6 +4767,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (entry.special) {
         if (entry.special === "favorites") {
           return children.filter(d => metaHasFavorite(d.path || ""));
+        }
+        if (entry.special === "untagged") {
+          return children.filter(d => metaGetUserTags(d.path || "").length === 0);
         }
         if (entry.special === "hidden") {
           return children.filter(d => metaHasHidden(d.path || ""));
@@ -5456,6 +5580,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const basePath = String(WS.view.tagFolderOriginPath || "");
         const baseLabel = basePath ? displayPath(basePath) : "root";
         if (WS.view.tagFolderActiveMode === "favorites") return `${baseLabel} · Favorites`;
+        if (WS.view.tagFolderActiveMode === "untagged") return `${baseLabel} · Untagged`;
         if (WS.view.tagFolderActiveMode === "hidden") return `${baseLabel} · Hidden`;
         const tagLabel = String(WS.view.tagFolderActiveTag || "").trim();
         return tagLabel ? `${baseLabel} · ${tagLabel}` : baseLabel;
@@ -5641,6 +5766,419 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function getSelectedFileIdsInCurrentView() {
       const baseSet = getVisibleFileIdsInEntries();
       return Array.from(WS.view.bulkFileSelectedIds || []).filter(id => baseSet.has(String(id || "")));
+    }
+
+    function getSelectedFileRecordsInCurrentView() {
+      const ids = getSelectedFileIdsInCurrentView();
+      const recs = [];
+      for (const id of ids) {
+        const rec = WS.fileById.get(String(id || ""));
+        if (rec) recs.push(rec);
+      }
+      return recs;
+    }
+
+    function chooseLooseSetFolderNameFromRecords(records) {
+      const names = [];
+      for (const rec of records || []) {
+        const name = String(rec?.name || "").trim();
+        if (name) names.push(name);
+      }
+      if (!names.length) return "New Folder";
+      names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+      let first = names[0] || "New Folder";
+      let base = first;
+      if (first.includes(".") && !first.startsWith(".")) {
+        base = first.slice(0, first.lastIndexOf("."));
+      }
+      base = normalizeFolderNameInput(base);
+      return base || "New Folder";
+    }
+
+    async function entryExistsInDir(dirHandle, name) {
+      if (!dirHandle || !name) return false;
+      try { await dirHandle.getFileHandle(name); return true; } catch {}
+      try { await dirHandle.getDirectoryHandle(name); return true; } catch {}
+      return false;
+    }
+
+    function splitNameExtension(name) {
+      const raw = String(name || "");
+      if (raw.includes(".") && !raw.startsWith(".")) {
+        const idx = raw.lastIndexOf(".");
+        if (idx > 0) return { base: raw.slice(0, idx), ext: raw.slice(idx) };
+      }
+      return { base: raw, ext: "" };
+    }
+
+    async function uniqueDestNameInDir(dirHandle, name) {
+      const { base, ext } = splitNameExtension(name);
+      let candidate = `${base}${ext}`;
+      let n = 2;
+      while (await entryExistsInDir(dirHandle, candidate)) {
+        candidate = `${base} (${n})${ext}`;
+        n += 1;
+      }
+      return candidate;
+    }
+
+    async function uniqueDirNameInParent(parentHandle, name) {
+      let candidate = String(name || "") || "Merged Items";
+      let n = 2;
+      while (await entryExistsInDir(parentHandle, candidate)) {
+        candidate = `${name} (${n})`;
+        n += 1;
+      }
+      return candidate;
+    }
+
+    function normalizeSetMergeFolderBase(name) {
+      let base = String(name || "");
+      const extIdx = base.lastIndexOf(".");
+      if (extIdx > 0 && !base.startsWith(".")) base = base.slice(0, extIdx);
+      base = base.replace(/_[0-9]+$/g, "");
+      base = normalizeFolderNameInput(base);
+      return base || "Merged Items";
+    }
+
+    async function chooseSetMergeOutputName(dirHandles) {
+      const names = [];
+      for (const handle of dirHandles || []) {
+        if (!handle) continue;
+        for await (const [name] of handle.entries()) {
+          if (!name) continue;
+          if (name === ".local-gallery") continue;
+          names.push(name);
+        }
+      }
+      if (!names.length) return "Merged Items";
+      names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+      const first = names[0] || "Merged Items";
+      return normalizeSetMergeFolderBase(first);
+    }
+
+    async function moveEntryWithCollisionRename(srcDirHandle, entryHandle, entryName, destDirHandle) {
+      if (!srcDirHandle || !entryHandle || !destDirHandle) return false;
+      const desiredName = await uniqueDestNameInDir(destDirHandle, entryName);
+      if (typeof entryHandle.move === "function") {
+        try {
+          await entryHandle.move(destDirHandle, desiredName);
+          return true;
+        } catch {}
+      }
+      if (entryHandle.kind === "file") {
+        try {
+          const file = await entryHandle.getFile();
+          const dstFile = await destDirHandle.getFileHandle(desiredName, { create: true });
+          const writable = await dstFile.createWritable();
+          await writable.write(file);
+          await writable.close();
+          await srcDirHandle.removeEntry(entryName);
+          return true;
+        } catch {}
+        return false;
+      }
+      if (entryHandle.kind === "directory") {
+        try {
+          const dstDir = await destDirHandle.getDirectoryHandle(desiredName, { create: true });
+          await copyDirectoryHandle(entryHandle, dstDir);
+          await srcDirHandle.removeEntry(entryName, { recursive: true });
+          return true;
+        } catch {}
+        return false;
+      }
+      return false;
+    }
+
+    async function setMergeSelectedDirs() {
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Set Merge requires a writable folder.");
+        return false;
+      }
+      const selectedPaths = getSelectedPathsInCurrentDir().map(p => String(p || "")).filter(Boolean);
+      if (!selectedPaths.length) {
+        showStatusMessage("No folders selected.");
+        return false;
+      }
+      const uniquePaths = Array.from(new Set(selectedPaths));
+      const firstParts = uniquePaths[0].split("/").filter(Boolean);
+      const parentPath = firstParts.slice(0, -1).join("/");
+      for (const p of uniquePaths) {
+        const parts = String(p || "").split("/").filter(Boolean);
+        const parent = parts.slice(0, -1).join("/");
+        if (parent !== parentPath) {
+          showStatusMessage("Selected folders must be in the same parent folder.");
+          return false;
+        }
+      }
+
+      const rootHandle = WS.meta.fsRootHandle;
+      let parentHandle = null;
+      try { parentHandle = await getDirectoryHandleForPath(rootHandle, parentPath); } catch {}
+      if (!parentHandle) {
+        showStatusMessage("Folder handle unavailable.");
+        return false;
+      }
+
+      const dirHandles = [];
+      for (const p of uniquePaths) {
+        try {
+          dirHandles.push(await getDirectoryHandleForPath(rootHandle, p));
+        } catch {}
+      }
+      if (!dirHandles.length) {
+        showStatusMessage("No folders available.");
+        return false;
+      }
+
+      const desiredBase = await chooseSetMergeOutputName(dirHandles);
+      const tmpBase = `${desiredBase} (Merging)`;
+      const tmpName = await uniqueDirNameInParent(parentHandle, tmpBase);
+      let tmpHandle = null;
+      try { tmpHandle = await parentHandle.getDirectoryHandle(tmpName, { create: true }); } catch {}
+      if (!tmpHandle) {
+        showStatusMessage("Failed to create merge folder.");
+        return false;
+      }
+
+      for (let i = 0; i < dirHandles.length; i++) {
+        const handle = dirHandles[i];
+        const path = uniquePaths[i];
+        if (!handle || !path) continue;
+        for await (const [name, entryHandle] of handle.entries()) {
+          if (!name || name === ".local-gallery") continue;
+          const ok = await moveEntryWithCollisionRename(handle, entryHandle, name, tmpHandle);
+          if (!ok) {
+            showStatusMessage(`Move failed for ${name}.`);
+            return false;
+          }
+        }
+        const folderName = path.split("/").filter(Boolean).pop();
+        if (folderName) {
+          try { await parentHandle.removeEntry(folderName, { recursive: true }); } catch {}
+        }
+      }
+
+      let finalName = desiredBase;
+      if (await entryExistsInDir(parentHandle, finalName)) {
+        finalName = await uniqueDirNameInParent(parentHandle, desiredBase);
+      }
+
+      const tmpPath = parentPath ? (parentPath + "/" + tmpName) : tmpName;
+      try {
+        await renameDirectoryOnDisk(tmpPath, finalName);
+      } catch {
+        showStatusMessage("Failed to finalize merged folder.");
+        return false;
+      }
+
+      finalizeBulkSelectionAction();
+      closeActionMenus();
+      await refreshWorkspaceFromRootHandle();
+
+      const finalPath = parentPath ? (parentPath + "/" + finalName) : finalName;
+      const idx = findDirEntryIndexByPath(finalPath);
+      if (idx >= 0) {
+        WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+        syncPreviewToSelection();
+        renderDirectoriesPane(true);
+        renderPreviewPane(true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+      }
+      showStatusMessage("Set Merge complete.");
+      return true;
+    }
+
+    async function moveFileToDirectoryHandle(srcDirHandle, dstDirHandle, name) {
+      if (!srcDirHandle || !dstDirHandle) return false;
+      const fname = String(name || "");
+      if (!fname) return false;
+      let fileHandle = null;
+      try { fileHandle = await srcDirHandle.getFileHandle(fname); } catch {}
+      if (!fileHandle) return false;
+      if (typeof fileHandle.move === "function") {
+        try {
+          await fileHandle.move(dstDirHandle, fname);
+          return true;
+        } catch {}
+      }
+      try {
+        const file = await fileHandle.getFile();
+        const dstFile = await dstDirHandle.getFileHandle(fname, { create: true });
+        const writable = await dstFile.createWritable();
+        await writable.write(file);
+        await writable.close();
+        await srcDirHandle.removeEntry(fname);
+        return true;
+      } catch {}
+      return false;
+    }
+
+    function updateFileRecordsForFileMoves(oldDirPath, newDirPath, fileIds) {
+      const idSet = new Set((fileIds || []).map(id => String(id || "")));
+      if (!idSet.size) return;
+      const idMap = new Map();
+      const nextFileById = new Map();
+      const movedNewIds = [];
+
+      for (const [id, rec] of WS.fileById.entries()) {
+        const key = String(id || "");
+        if (!idSet.has(key)) {
+          nextFileById.set(id, rec);
+          continue;
+        }
+        const relPath = newDirPath ? (newDirPath + "/" + rec.name) : rec.name;
+        rec.dirPath = newDirPath;
+        rec.relPath = relPath;
+        const nextId = fileKey(rec.file, relPath);
+        rec.id = nextId;
+        if (nextId !== id) idMap.set(id, nextId);
+        nextFileById.set(nextId, rec);
+        movedNewIds.push(nextId);
+      }
+
+      WS.fileById = nextFileById;
+
+      const oldNode = WS.dirByPath.get(String(oldDirPath || "")) || null;
+      if (oldNode && Array.isArray(oldNode.childrenFiles)) {
+        oldNode.childrenFiles = oldNode.childrenFiles.filter(id => !idSet.has(String(id || "")));
+      }
+
+      const newNode = WS.dirByPath.get(String(newDirPath || "")) || null;
+      if (newNode && Array.isArray(newNode.childrenFiles)) {
+        for (const id of movedNewIds) {
+          if (!newNode.childrenFiles.includes(id)) newNode.childrenFiles.push(id);
+        }
+      }
+
+      if (idMap.size) {
+        remapFileIdsInDirTree(idMap);
+        remapFileSelectionIds(idMap);
+        if (WS.preview.kind === "file" && WS.preview.fileId && idMap.has(WS.preview.fileId)) {
+          WS.preview.fileId = idMap.get(WS.preview.fileId);
+        }
+        for (const entry of WS.nav.entries || []) {
+          if (entry && entry.kind === "file" && idMap.has(String(entry.id || ""))) {
+            entry.id = idMap.get(String(entry.id || ""));
+          }
+        }
+        for (const it of viewerItems || []) {
+          if (it && !it.isFolder && idMap.has(String(it.id || ""))) it.id = idMap.get(String(it.id || ""));
+        }
+      }
+    }
+
+    async function looseSetMergeSelectedFiles() {
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Loose Set Merge requires a writable folder.");
+        return false;
+      }
+      const records = getSelectedFileRecordsInCurrentView();
+      if (!records.length) {
+        showStatusMessage("No files selected.");
+        return false;
+      }
+      const parentPath = String(records[0].dirPath || "");
+      for (const rec of records) {
+        if (String(rec.dirPath || "") !== parentPath) {
+          showStatusMessage("Selected files must be in the same folder.");
+          return false;
+        }
+      }
+
+      const folderNameRaw = chooseLooseSetFolderNameFromRecords(records);
+      const folderName = normalizeFolderNameInput(folderNameRaw);
+      if (!isValidFolderName(folderName)) {
+        showStatusMessage("Invalid folder name.");
+        return false;
+      }
+
+      const rootHandle = WS.meta.fsRootHandle;
+      let parentHandle = null;
+      try { parentHandle = await getDirectoryHandleForPath(rootHandle, parentPath); } catch {}
+      if (!parentHandle) {
+        showStatusMessage("Folder handle unavailable.");
+        return false;
+      }
+
+      let existing = null;
+      try { existing = await parentHandle.getDirectoryHandle(folderName); } catch {}
+      if (existing) {
+        showStatusMessage("A folder with that name already exists.");
+        return false;
+      }
+      existing = null;
+      try { existing = await parentHandle.getFileHandle(folderName); } catch {}
+      if (existing) {
+        showStatusMessage("A file with that name already exists.");
+        return false;
+      }
+
+      let tmpName = "";
+      for (let i = 0; i < 24; i++) {
+        const cand = `.grouping_tmp.${Math.random().toString(36).slice(2, 8)}`;
+        let has = false;
+        try { await parentHandle.getDirectoryHandle(cand); has = true; } catch {}
+        if (!has) {
+          try { await parentHandle.getFileHandle(cand); has = true; } catch {}
+        }
+        if (has) continue;
+        tmpName = cand;
+        break;
+      }
+      if (!tmpName) {
+        showStatusMessage("Failed to create temporary folder.");
+        return false;
+      }
+
+      let tmpHandle = null;
+      try { tmpHandle = await parentHandle.getDirectoryHandle(tmpName, { create: true }); } catch {}
+      if (!tmpHandle) {
+        showStatusMessage("Failed to create temporary folder.");
+        return false;
+      }
+
+      for (const rec of records) {
+        const ok = await moveFileToDirectoryHandle(parentHandle, tmpHandle, rec.name);
+        if (!ok) {
+          showStatusMessage(`Move failed for ${rec.name || "file"}.`);
+          return false;
+        }
+      }
+
+      const tmpPath = parentPath ? (parentPath + "/" + tmpName) : tmpName;
+      try {
+        await renameDirectoryOnDisk(tmpPath, folderName);
+      } catch {
+        showStatusMessage("Failed to rename folder.");
+        return false;
+      }
+
+      const newDirPath = parentPath ? (parentPath + "/" + folderName) : folderName;
+      ensureDirPath(newDirPath);
+      updateFileRecordsForFileMoves(parentPath, newDirPath, records.map(r => r.id));
+      metaComputeFingerprints();
+      WS.meta.dirty = true;
+      try {
+        if (WS.meta.storageMode === "fs") await metaSaveFsNow();
+        else metaSaveLocalNow();
+      } catch {}
+
+      finalizeBulkSelectionAction();
+      closeActionMenus();
+      rebuildDirectoriesEntries();
+      const idx = findDirEntryIndexByPath(newDirPath);
+      WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : WS.nav.selectedIndex, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      showStatusMessage("Loose Set Merge complete.");
+      return true;
     }
 
     function closeActionMenus() {
@@ -6144,6 +6682,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         finalizeBulkSelectionAction();
       }));
 
+      const setMergeBtn = makeActionBtn("Set Merge", async () => {
+        WS.view.bulkActionMenuOpen = false;
+        await setMergeSelectedDirs();
+      });
+      if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
+      directoriesActionMenuEl.appendChild(setMergeBtn);
+
       const anchorBtn = findDirMenuButtonForPath(WS.view.bulkActionMenuAnchorPath);
       if (anchorBtn) {
         requestAnimationFrame(() => positionDropdownMenu(anchorBtn, directoriesActionMenuEl));
@@ -6180,6 +6725,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       directoriesListEl.innerHTML = "";
       updateTitleLabel();
       const canBulk = WS.view.bulkSelectMode && canUseBulkSelection();
+      const selectedFilesInView = canBulk ? getSelectedFileIdsInCurrentView() : [];
+      const selectedFilesInViewCount = selectedFilesInView.length;
       setDirectoriesHeaderActive(!!WS.root);
 
       renderDirectoriesTagsHeader();
@@ -6308,12 +6855,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             name = fileDisplayName(rec?.name || "file") || "file";
             meta = isVid ? "video" : "image";
             const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
+            const bulkFileMenuActive = canBulk && sel && selectedFilesInViewCount > 0;
+            const canLooseSetMerge = !!WS.meta.fsRootHandle;
+            const fileMenuButtons = bulkFileMenuActive
+              ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
+              : `<button type="button" data-action="rename-file">Rename</button>`;
             // File menu (three dot / ⋯) for single-file actions.
             fileMenuHtml = `
               <div class="dirMenu">
               <button class="dirMenuBtn" title="File menu">⋯</button>
               <div class="dropdownMenu${fileMenuOpen ? " open" : ""}">
-                <button type="button" data-action="rename-file">Rename</button>
+                ${fileMenuButtons}
               </div>
             </div>
             `;
@@ -6668,10 +7220,18 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             menuDropdown.addEventListener("click", (e) => e.stopPropagation());
             const actionButtons = Array.from(menuDropdown.querySelectorAll("button[data-action]"));
             actionButtons.forEach((btn) => {
-              btn.addEventListener("click", (e) => {
+              btn.addEventListener("click", async (e) => {
                 e.stopPropagation();
                 const action = btn.getAttribute("data-action");
                 WS.view.fileActionMenuId = "";
+                if (action === "loose-set-merge") {
+                  if (!WS.meta.fsRootHandle) {
+                    showStatusMessage("Loose Set Merge requires a writable folder.");
+                    return;
+                  }
+                  await looseSetMergeSelectedFiles();
+                  return;
+                }
                 if (action === "rename-file") {
                   if (!WS.meta.fsRootHandle) {
                     showStatusMessage("Renaming files requires a writable folder.");
@@ -7238,6 +7798,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const mode = opt ? String(opt.imageThumbSize || "medium") : "medium";
 
       if (mode === "high") {
+        if (mediaFilterEnabled()) {
+          if (rec.thumbUrl && rec.thumbMode === "high") return rec.thumbUrl;
+          if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
+            try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
+            rec.thumbUrl = null;
+          }
+          rec.thumbMode = null;
+          enqueueImageThumb(rec);
+          return ensureMediaUrl(rec) || null;
+        }
         if (rec.thumbUrl && rec.thumbMode === "high") return rec.thumbUrl;
         if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
           try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
@@ -8049,7 +8619,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(v, 0, 0, w, h);
+      renderFilteredToCanvas(ctx, v, v.videoWidth || w, v.videoHeight || h, w, h, getMediaFilterForType(), true);
 
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", mode === "high" ? 0.75 : 0.6));
       if (!blob) return;
@@ -8076,7 +8646,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (!rec || rec.type !== "image") continue;
 
         const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-        if (mode === "high") continue;
+        if (mode === "high" && !mediaFilterEnabled()) continue;
         if (rec.thumbUrl && rec.thumbMode === mode) continue;
 
         WS.imageThumbActive++;
@@ -8090,7 +8660,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     async function generateImageThumb(rec) {
       const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-      if (mode === "high") {
+      if (mode === "high" && !mediaFilterEnabled()) {
         rec.thumbMode = "high";
         return;
       }
@@ -8115,7 +8685,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(bmp, 0, 0, w, h);
+      renderFilteredToCanvas(ctx, bmp, bmp.width || w, bmp.height || h, w, h, getMediaFilterForType(), true);
 
       try { bmp.close(); } catch {}
 
@@ -8383,6 +8953,20 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function showUI() { overlay.classList.remove("ui-hidden"); }
     function hideUI() { overlay.classList.add("ui-hidden"); }
 
+    function showGlobalCursor() {
+      document.body.classList.remove("cursor-hidden");
+    }
+
+    function hideGlobalCursor() {
+      document.body.classList.add("cursor-hidden");
+    }
+
+    function resetGlobalCursorHideTimer() {
+      showGlobalCursor();
+      if (globalCursorHideTimer) { clearTimeout(globalCursorHideTimer); globalCursorHideTimer = null; }
+      globalCursorHideTimer = setTimeout(() => { hideGlobalCursor(); }, 2000);
+    }
+
     function resetUIHideTimer() {
       showUI();
       if (uiHideTimer) { clearTimeout(uiHideTimer); uiHideTimer = null; }
@@ -8393,6 +8977,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!VIEWER_MODE) return;
       resetUIHideTimer();
     });
+
+    document.addEventListener("mousemove", resetGlobalCursorHideTimer, { passive: true });
+    resetGlobalCursorHideTimer();
 
     function findFirstFileIndex(items) {
       for (let i = 0; i < items.length; i++) if (!items[i].isFolder) return i;
