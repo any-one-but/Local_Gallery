@@ -4340,8 +4340,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!count) return { renamed: false, files: 0 };
       const width = String(count).length + 1;
 
-      const renameMap = new Map();
-      const labelBase = opts.label || "Batch Index";
+      const renamePlan = [];
+      const existingNames = new Set(files.map(f => f.name));
       for (let i = 0; i < count; i++) {
         const idx = String(i + 1).padStart(width, "0");
         const oldName = orderedNames[i];
@@ -4351,18 +4351,59 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const ext = dot >= 0 ? oldName.slice(dot + 1) : "";
         const newName = `${base}_${idx}${ext ? "." + ext : ""}`;
         if (newName === oldName) continue;
+        renamePlan.push({ oldName, newName, handle, ext: ext ? "." + ext : "" });
+      }
 
-        let exists = false;
-        try {
-          await dirHandle.getFileHandle(newName);
-          exists = true;
-        } catch {}
-        if (exists) continue;
+      if (!renamePlan.length) return { renamed: false, files: 0 };
 
-        if (opts.progress) showBusyOverlay(`${labelBase}... ${opts.progress} (${i + 1}/${count})`);
-        else showBusyOverlay(`${labelBase}... ${i + 1}/${count}`);
-        const ok = await renameFileOnDisk(dirHandle, handle, oldName, newName);
-        if (ok) renameMap.set(oldName, newName);
+      const renameMap = new Map();
+      const labelBase = opts.label || "Batch Index";
+      const hasConflicts = renamePlan.some(entry => existingNames.has(entry.newName));
+
+      if (!hasConflicts) {
+        for (let i = 0; i < renamePlan.length; i++) {
+          const entry = renamePlan[i];
+          if (opts.progress) showBusyOverlay(`${labelBase}... ${opts.progress} (${i + 1}/${renamePlan.length})`);
+          else showBusyOverlay(`${labelBase}... ${i + 1}/${renamePlan.length}`);
+          const ok = await renameFileOnDisk(dirHandle, entry.handle, entry.oldName, entry.newName);
+          if (ok) renameMap.set(entry.oldName, entry.newName);
+        }
+      } else {
+        const usedNames = new Set(existingNames);
+        const tempPrefix = "__pg_tmp";
+        const tempWidth = String(renamePlan.length).length + 1;
+        const tempPlan = renamePlan.map((entry, idx) => {
+          let tempName = "";
+          do {
+            const tempIdx = String(idx + 1).padStart(tempWidth, "0");
+            const rand = Math.random().toString(36).slice(2, 10);
+            tempName = `${tempPrefix}_${tempIdx}_${rand}${entry.ext}`;
+          } while (usedNames.has(tempName));
+          usedNames.add(tempName);
+          return { ...entry, tempName };
+        });
+
+        const tempRenamed = [];
+        for (let i = 0; i < tempPlan.length; i++) {
+          const entry = tempPlan[i];
+          if (opts.progress) showBusyOverlay(`${labelBase}... ${opts.progress} (1/2 ${i + 1}/${tempPlan.length})`);
+          else showBusyOverlay(`${labelBase}... (1/2 ${i + 1}/${tempPlan.length})`);
+          const ok = await renameFileOnDisk(dirHandle, entry.handle, entry.oldName, entry.tempName);
+          if (ok) tempRenamed.push(entry);
+        }
+
+        for (let i = 0; i < tempRenamed.length; i++) {
+          const entry = tempRenamed[i];
+          if (opts.progress) showBusyOverlay(`${labelBase}... ${opts.progress} (2/2 ${i + 1}/${tempRenamed.length})`);
+          else showBusyOverlay(`${labelBase}... (2/2 ${i + 1}/${tempRenamed.length})`);
+          let tempHandle = null;
+          try {
+            tempHandle = await dirHandle.getFileHandle(entry.tempName);
+          } catch {}
+          if (!tempHandle) continue;
+          const ok = await renameFileOnDisk(dirHandle, tempHandle, entry.tempName, entry.newName);
+          if (ok) renameMap.set(entry.oldName, entry.newName);
+        }
       }
 
       if (renameMap.size) {
