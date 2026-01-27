@@ -1842,6 +1842,10 @@
     const modePill = $("modePill");
     const itemsPill = $("itemsPill");
     const previewBodyEl = $("previewBody");
+    const previewActionMenuEl = $("previewActionMenu");
+    if (previewActionMenuEl) {
+      previewActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
+    }
 
     /* Gallery Mode (Overlay) */
     const overlay = $("overlay");
@@ -1939,6 +1943,7 @@
 
     let TAG_EDIT_PATH = null;
     let TAG_CONTEXT_MENU_STATE = null;
+    let PREVIEW_CONTEXT_MENU_STATE = null;
     let TAG_ENTRY_RENAME_STATE = null;
     let BULK_TAG_PLACEHOLDER = null;
     let RENAME_EDIT_PATH = null;
@@ -4897,6 +4902,37 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return true;
     }
 
+    function reverseFilesInDir(dirNode, opts = {}) {
+      if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
+      const list = dirNode.childrenFiles;
+      if (list.length < 2) return false;
+
+      const visible = Array.isArray(opts.visibleIds) ? opts.visibleIds.map(id => String(id || "")) : null;
+      if (visible && visible.length) {
+        const visibleSet = new Set(visible);
+        const reversedVisible = visible.slice().reverse();
+        const result = new Array(list.length);
+        const slots = [];
+        for (let i = 0; i < list.length; i++) {
+          const id = String(list[i] || "");
+          if (visibleSet.has(id)) slots.push(i);
+          else result[i] = id;
+        }
+        if (slots.length !== reversedVisible.length) return false;
+        for (let i = 0; i < slots.length; i++) {
+          result[slots[i]] = reversedVisible[i];
+        }
+        list.length = 0;
+        list.push(...result);
+      } else {
+        list.reverse();
+      }
+
+      dirNode.preserveOrder = true;
+      WS.view.randomCache.delete(dirNode.path || "");
+      return true;
+    }
+
     function invalidateAllThumbs() {
       for (const it of WS.fileById.values()) {
         if (!it) continue;
@@ -6564,6 +6600,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.view.dirActionMenuPath = "";
       WS.view.fileActionMenuId = "";
       closeTagContextMenu();
+      closePreviewContextMenu();
     }
 
     function openBulkActionMenuForSelection(path) {
@@ -6780,6 +6817,31 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       menuEl.style.top = `${top}px`;
     }
 
+    function positionDropdownMenuAtPoint(menuEl, x, y) {
+      if (!menuEl) return;
+      menuEl.classList.add("fixed");
+      menuEl.style.left = "0px";
+      menuEl.style.top = "0px";
+      menuEl.style.right = "auto";
+
+      const menuRect = menuEl.getBoundingClientRect();
+      let left = x;
+      let top = y;
+
+      if (left + menuRect.width > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - menuRect.width - 8);
+      }
+      if (top + menuRect.height > window.innerHeight - 8) {
+        top = Math.max(8, window.innerHeight - menuRect.height - 8);
+      }
+
+      left = Math.max(8, left);
+      top = Math.max(8, top);
+
+      menuEl.style.left = `${left}px`;
+      menuEl.style.top = `${top}px`;
+    }
+
     async function commitRenameEdit(path, inputEl) {
       if (RENAME_BUSY) return;
       const dirNode = WS.dirByPath.get(String(path || ""));
@@ -6855,6 +6917,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       TAG_CONTEXT_MENU_STATE = null;
     }
 
+    function closePreviewContextMenu() {
+      if (!previewActionMenuEl) return;
+      previewActionMenuEl.classList.remove("open", "fixed");
+      previewActionMenuEl.innerHTML = "";
+      previewActionMenuEl.style.left = "";
+      previewActionMenuEl.style.top = "";
+      PREVIEW_CONTEXT_MENU_STATE = null;
+    }
+
     function openTagContextMenu(context) {
       if (!context || !tagActionMenuEl) return;
       const tag = String(context.tag || "").trim();
@@ -6874,6 +6945,37 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       requestAnimationFrame(() => {
         menu.classList.add("open");
         positionDropdownMenu(anchor, menu);
+      });
+    }
+
+    function openPreviewContextMenu(x, y) {
+      if (!previewActionMenuEl) return;
+      closeActionMenus();
+      renderDirectoriesPane(true);
+
+      const dirNode = getPreviewTargetDir();
+      const ids = dirNode ? getOrderedFileIdsForDir(dirNode) : [];
+      const canReverse = !!dirNode && canReorderFilesInDir(dirNode) && ids.length > 1;
+
+      const menu = previewActionMenuEl;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "Reverse file order";
+      if (!canReverse) btn.disabled = true;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!canReverse) return;
+        if (reverseFilesInDir(dirNode, { visibleIds: ids })) {
+          syncAfterDirOrderChange(null, { preserveSelection: true });
+        }
+        closePreviewContextMenu();
+      });
+      menu.appendChild(btn);
+      PREVIEW_CONTEXT_MENU_STATE = { dirPath: String(dirNode?.path || "") };
+
+      requestAnimationFrame(() => {
+        menu.classList.add("open");
+        positionDropdownMenuAtPoint(menu, x, y);
       });
     }
 
@@ -7332,58 +7434,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           }
             }
           }
-        }
-
-        if (entry.kind === "file" && canReorderFilesInCurrentDir()) {
-          const fileId = String(entry.id || "");
-          row.draggable = true;
-          row.addEventListener("dragstart", (e) => {
-            if (!canReorderFilesInCurrentDir() || WS.view.bulkSelectMode) {
-              e.preventDefault();
-              return;
-            }
-            if (!fileId) return;
-            DIR_FILE_DRAG.id = fileId;
-            DIR_FILE_DRAG.dirPath = String(WS.nav.dirNode?.path || "");
-            row.classList.add("dragging");
-            if (e.dataTransfer) {
-              e.dataTransfer.effectAllowed = "move";
-              try { e.dataTransfer.setData("text/plain", fileId); } catch {}
-            }
-          });
-          row.addEventListener("dragend", () => {
-            DIR_FILE_DRAG.id = null;
-            DIR_FILE_DRAG.dirPath = null;
-            row.classList.remove("dragging");
-            row.classList.remove("drag-over-top");
-            row.classList.remove("drag-over-bottom");
-          });
-          row.addEventListener("dragover", (e) => {
-            if (!DIR_FILE_DRAG.id || DIR_FILE_DRAG.id === fileId) return;
-            if (DIR_FILE_DRAG.dirPath !== String(WS.nav.dirNode?.path || "")) return;
-            e.preventDefault();
-            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-            const rect = row.getBoundingClientRect();
-            const placeAfter = e.clientY > rect.top + rect.height / 2;
-            row.classList.toggle("drag-over-top", !placeAfter);
-            row.classList.toggle("drag-over-bottom", placeAfter);
-          });
-          row.addEventListener("dragleave", () => {
-            row.classList.remove("drag-over-top");
-            row.classList.remove("drag-over-bottom");
-          });
-          row.addEventListener("drop", (e) => {
-            if (!DIR_FILE_DRAG.id || DIR_FILE_DRAG.dirPath !== String(WS.nav.dirNode?.path || "")) return;
-            e.preventDefault();
-            e.stopPropagation();
-            row.classList.remove("drag-over-top");
-            row.classList.remove("drag-over-bottom");
-            const rect = row.getBoundingClientRect();
-            const placeAfter = e.clientY > rect.top + rect.height / 2;
-            const visibleIds = getOrderedFileIdsForDir(WS.nav.dirNode);
-            const moved = reorderFilesInDir(WS.nav.dirNode, DIR_FILE_DRAG.id, fileId, placeAfter, { visibleIds });
-            if (moved) syncAfterDirOrderChange(DIR_FILE_DRAG.id);
-          });
         }
 
         if (isTagEntry && !entry.special && entry.tag) {
@@ -7887,8 +7937,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
         closeTagContextMenu();
       }
+      if (previewActionMenuEl && previewActionMenuEl.classList.contains("open")) {
+        if (target && target.closest && target.closest("#previewActionMenu")) {
+          return;
+        }
+        closePreviewContextMenu();
+      }
       if (exitBulkSelectModeIfNeeded(target)) return;
-      if (!WS.view.bulkActionMenuOpen && !WS.view.dirActionMenuPath && !WS.view.fileActionMenuId) return;
+      const hasActionMenu = WS.view.bulkActionMenuOpen || WS.view.dirActionMenuPath || WS.view.fileActionMenuId;
+      const hasPreviewMenu = !!(previewActionMenuEl && previewActionMenuEl.classList.contains("open"));
+      if (!hasActionMenu && !hasPreviewMenu) return;
       if (target && target.closest) {
         if (target.closest(".dirMenu")) return;
         if (target.closest("#directoriesActionRow")) return;
@@ -8693,6 +8751,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (WS.view.folderBehavior !== "loop") return;
       if (!WS.root || !WS.nav.dirNode) return;
       if (WS.preview.kind === "file") return;
+      if (DIR_FILE_DRAG.id) return;
       if (WS.view.scrollBusyPreview) return;
 
       const dirNode = getPreviewTargetDir();
@@ -8715,6 +8774,18 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       el.scrollTop = saved;
 
       WS.view.scrollBusyPreview = false;
+    });
+
+    previewBodyEl.addEventListener("contextmenu", (e) => {
+      const target = e.target;
+      if (target && target.closest) {
+        if (target.closest(".fileCard")) return;
+        if (target.closest(".folderCard")) return;
+        if (target.closest("#filePreviewViewport")) return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      openPreviewContextMenu(e.clientX, e.clientY);
     });
 
 
