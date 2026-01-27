@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.11.23
+// @version      01.11.24
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -27,7 +27,7 @@ GM_addStyle(`
   --color1-primary: hsl(200, 25%, 5%);
   --color1-primary-transparent: hsla(200, 25%, 5%, .75);
   --color1-secondary: hsl(208, 22%, 12%);
-  --color1-secondary-transparent: hsla(208, 22%, 12%, .5);
+  --color1-secondary-transparent: hsla(208, 23%, 44%, 0.50);
   --color1-tertiary: hsl(210, 15%, 5%);
 
   --anchor-internal-color2-primary: hsl(240, 100%, 40%);
