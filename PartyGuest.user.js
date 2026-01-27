@@ -1,9 +1,12 @@
 
 // ==UserScript==
 // @name         PartyGuest
+// @namespace    https://github.com/any-one-but/Local_Gallery
 // @version      01.11.23
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
+// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
+// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
 // @match        *://coomer.st/*
 // @match        *://kemono.cr/*
 // @grant        GM_download
