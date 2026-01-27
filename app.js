@@ -833,6 +833,10 @@
       entry.userLabel = userLabel;
       entry.fileCount = addedFiles;
 
+      if (applyPendingTagsToWorkspace()) {
+        WS.meta.dirty = true;
+      }
+
       if (!silent) {
         WS.view.randomSeed = computeWorkspaceSeed();
         WS.view.randomCache = new Map();
@@ -2419,6 +2423,7 @@
       meta: {
         dirScores: new Map(),
         dirTags: new Map(),
+        pendingTagsByPath: new Map(),
         dirFingerprints: new Map(),
         dirSortMode: "name",
         storageMode: "local",
@@ -2551,6 +2556,7 @@
 
       WS.meta.dirScores.clear();
       WS.meta.dirTags.clear();
+      WS.meta.pendingTagsByPath.clear();
       WS.meta.dirFingerprints.clear();
       WS.meta.dirSortMode = "name";
       WS.meta.storageMode = "local";
@@ -4563,6 +4569,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (!tagByFp[k]) tagByFp[k] = tags.slice();
         }
       }
+      const pending = WS.meta && WS.meta.pendingTagsByPath ? WS.meta.pendingTagsByPath : null;
+      if (pending && pending.size) {
+        for (const [path, tags] of pending.entries()) {
+          const p = String(path || "");
+          if (!p || folders[p]) continue;
+          const tg = normalizeTagList(tags);
+          if (!tg.length) continue;
+          folders[p] = { fp: 0, tags: tg };
+        }
+      }
       return {
         schema: 1,
         updatedAt: Date.now(),
@@ -4658,6 +4674,28 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
     }
 
+    function stashPendingTagsFromLog(oldTagsByPath) {
+      if (!WS.meta) return;
+      WS.meta.pendingTagsByPath = new Map();
+      for (const [path, tags] of oldTagsByPath.entries()) {
+        if (!tags || !tags.length) continue;
+        WS.meta.pendingTagsByPath.set(String(path || ""), normalizeTagList(tags));
+      }
+    }
+
+    function applyPendingTagsToWorkspace() {
+      const pending = WS.meta && WS.meta.pendingTagsByPath;
+      if (!pending || !pending.size) return false;
+      let applied = false;
+      for (const [path, tags] of pending.entries()) {
+        if (!WS.dirByPath.has(path)) continue;
+        WS.meta.dirTags.set(path, normalizeTagList(tags));
+        pending.delete(path);
+        applied = true;
+      }
+      return applied;
+    }
+
     function metaApplyTagsLog(log) {
       if (!log || typeof log !== "object") return;
 
@@ -4687,10 +4725,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
 
+      stashPendingTagsFromLog(oldTagsByPath);
+
       WS.meta.dirTags.clear();
       for (const [path, node] of WS.dirByPath.entries()) {
         if (oldTagsByPath.has(path)) {
           WS.meta.dirTags.set(path, oldTagsByPath.get(path).slice());
+          if (WS.meta.pendingTagsByPath) WS.meta.pendingTagsByPath.delete(path);
           continue;
         }
         const fp = WS.meta.dirFingerprints.get(path) || 0;
@@ -4766,6 +4807,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
 
+      stashPendingTagsFromLog(oldTagsByPath);
+
       const claimed = new Set();
       WS.meta.dirScores.clear();
 
@@ -4796,6 +4839,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       for (const [path, node] of WS.dirByPath.entries()) {
         if (oldTagsByPath.has(path)) {
           WS.meta.dirTags.set(path, oldTagsByPath.get(path).slice());
+          if (WS.meta.pendingTagsByPath) WS.meta.pendingTagsByPath.delete(path);
           continue;
         }
         const fp = WS.meta.dirFingerprints.get(path) || 0;
@@ -5517,6 +5561,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function updateMetaPathsForRename(oldPrefix, newPrefix) {
       WS.meta.dirScores = remapPathMapKeys(WS.meta.dirScores, oldPrefix, newPrefix);
       WS.meta.dirTags = remapPathMapKeys(WS.meta.dirTags, oldPrefix, newPrefix);
+      WS.meta.pendingTagsByPath = remapPathMapKeys(WS.meta.pendingTagsByPath, oldPrefix, newPrefix);
       WS.meta.dirFingerprints = remapPathMapKeys(WS.meta.dirFingerprints, oldPrefix, newPrefix);
     }
 
@@ -8370,6 +8415,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       const selectedDirs = canBulk ? getSelectedPathsInCurrentDir() : [];
+      const selectedDirNodes = selectedDirs.map(p => WS.dirByPath.get(String(p || ""))).filter(Boolean);
+      const selectedDirCount = selectedDirNodes.length;
+      const allOnlineDirs = selectedDirCount > 0 && selectedDirNodes.every(d => d?.onlineMeta && (d.onlineMeta.kind === "profile" || d.onlineMeta.kind === "post"));
+      const allProfileDirs = allOnlineDirs && selectedDirNodes.every(d => d?.onlineMeta?.kind === "profile");
+      const allPostDirs = allOnlineDirs && selectedDirNodes.every(d => d?.onlineMeta?.kind === "post");
       const selectedFiles = canBulk ? getSelectedFileIdsInCurrentView() : [];
       const selCount = selectedDirs.length + selectedFiles.length;
       const hasDirSelection = selectedDirs.length > 0;
@@ -8408,49 +8458,124 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return btn;
       };
 
-      const scoreRow = document.createElement("div");
-      scoreRow.className = "scoreRow";
-      const scoreUpBtn = makeActionBtn("+", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaBumpScoreBulk(selectedDirs, 1);
-        finalizeBulkSelectionAction();
-      });
-      scoreUpBtn.classList.add("scoreBtn");
-      const scoreDownBtn = makeActionBtn("-", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaBumpScoreBulk(selectedDirs, -1);
-        finalizeBulkSelectionAction();
-      });
-      scoreDownBtn.classList.add("scoreBtn");
-      scoreRow.appendChild(scoreUpBtn);
-      scoreRow.appendChild(scoreDownBtn);
-      directoriesActionMenuEl.appendChild(scoreRow);
+      if (allOnlineDirs) {
+        if (allProfileDirs) {
+          directoriesActionMenuEl.appendChild(makeActionBtn("Refresh selected profiles", async () => {
+            WS.view.bulkActionMenuOpen = false;
+            const keys = Array.from(new Set(selectedDirNodes.map(d => d?.onlineMeta?.profileKey).filter(Boolean)));
+            for (const key of keys) {
+              await refreshOnlineProfile(key);
+            }
+            finalizeBulkSelectionAction();
+          }));
+        }
 
-      directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
-        WS.view.bulkActionMenuOpen = false;
-        if (!selectedDirs.length) return;
-        finalizeBulkSelectionAction();
-        startBulkTagging(selectedDirs);
-      }));
+        directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          if (!selectedDirs.length) return;
+          finalizeBulkSelectionAction();
+          startBulkTagging(selectedDirs);
+        }));
 
-      directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaSetFavoriteBulk(selectedDirs, !allFavorite);
-        finalizeBulkSelectionAction();
-      }));
+        directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaSetFavoriteBulk(selectedDirs, !allFavorite);
+          finalizeBulkSelectionAction();
+        }));
 
-      directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaSetHiddenBulk(selectedDirs, !allHidden);
-        finalizeBulkSelectionAction();
-      }));
+        if (allProfileDirs) {
+          const renameBtn = makeActionBtn("Rename profile", () => {
+            WS.view.bulkActionMenuOpen = false;
+            const p = String(selectedDirs[0] || "");
+            if (!p) return;
+            RENAME_EDIT_PATH = p;
+            TAG_EDIT_PATH = null;
+            renderDirectoriesPane(true);
+            setTimeout(() => {
+              const row = findDirRowForPath(p);
+              const input = (row && row.querySelector(".renameEditInput")) || (directoriesListEl && directoriesListEl.querySelector(".dirRow.selected .renameEditInput"));
+              if (input) {
+                try { input.focus(); input.select(); } catch {}
+              }
+            }, 0);
+          });
+          if (selectedDirCount !== 1) renameBtn.disabled = true;
+          directoriesActionMenuEl.appendChild(renameBtn);
 
-      const setMergeBtn = makeActionBtn("Set Merge", async () => {
-        WS.view.bulkActionMenuOpen = false;
-        await setMergeSelectedDirs();
-      });
-      if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
-      directoriesActionMenuEl.appendChild(setMergeBtn);
+          directoriesActionMenuEl.appendChild(makeActionBtn("Delete selected profiles", async () => {
+            WS.view.bulkActionMenuOpen = false;
+            const confirmed = confirm("Delete selected profiles and all related folders?");
+            if (!confirmed) return;
+            const keys = Array.from(new Set(selectedDirNodes.map(d => d?.onlineMeta?.profileKey).filter(Boolean)));
+            for (const key of keys) {
+              await deleteOnlineProfile(key);
+            }
+            finalizeBulkSelectionAction();
+          }));
+        } else if (allPostDirs) {
+          const renameBtn = makeActionBtn("Rename post", () => {
+            WS.view.bulkActionMenuOpen = false;
+            const p = String(selectedDirs[0] || "");
+            if (!p) return;
+            RENAME_EDIT_PATH = p;
+            TAG_EDIT_PATH = null;
+            renderDirectoriesPane(true);
+            setTimeout(() => {
+              const row = findDirRowForPath(p);
+              const input = (row && row.querySelector(".renameEditInput")) || (directoriesListEl && directoriesListEl.querySelector(".dirRow.selected .renameEditInput"));
+              if (input) {
+                try { input.focus(); input.select(); } catch {}
+              }
+            }, 0);
+          });
+          if (selectedDirCount !== 1) renameBtn.disabled = true;
+          directoriesActionMenuEl.appendChild(renameBtn);
+        }
+      } else {
+        const scoreRow = document.createElement("div");
+        scoreRow.className = "scoreRow";
+        const scoreUpBtn = makeActionBtn("+", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaBumpScoreBulk(selectedDirs, 1);
+          finalizeBulkSelectionAction();
+        });
+        scoreUpBtn.classList.add("scoreBtn");
+        const scoreDownBtn = makeActionBtn("-", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaBumpScoreBulk(selectedDirs, -1);
+          finalizeBulkSelectionAction();
+        });
+        scoreDownBtn.classList.add("scoreBtn");
+        scoreRow.appendChild(scoreUpBtn);
+        scoreRow.appendChild(scoreDownBtn);
+        directoriesActionMenuEl.appendChild(scoreRow);
+
+        directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          if (!selectedDirs.length) return;
+          finalizeBulkSelectionAction();
+          startBulkTagging(selectedDirs);
+        }));
+
+        directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaSetFavoriteBulk(selectedDirs, !allFavorite);
+          finalizeBulkSelectionAction();
+        }));
+
+        directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaSetHiddenBulk(selectedDirs, !allHidden);
+          finalizeBulkSelectionAction();
+        }));
+
+        const setMergeBtn = makeActionBtn("Set Merge", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await setMergeSelectedDirs();
+        });
+        if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
+        directoriesActionMenuEl.appendChild(setMergeBtn);
+      }
 
       const anchorBtn = findDirMenuButtonForPath(WS.view.bulkActionMenuAnchorPath);
       if (anchorBtn) {
@@ -8470,6 +8595,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
       return fallback;
+    }
+
+    function findDirRowForPath(path) {
+      if (!directoriesListEl) return null;
+      const rows = directoriesListEl.querySelectorAll(".dirRow");
+      for (const row of rows) {
+        if (String(row?.dataset?.dirPath || "") === String(path || "")) return row;
+      }
+      return null;
     }
 
     function setDirectoriesHeaderActive(active) {
@@ -8613,6 +8747,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
               menuButtons = `
                 <button type="button" data-action="refresh-profile">Refresh profile</button>
                 <button type="button" data-action="tag">Tag</button>
+                <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="rename-profile"${canRename ? "" : " disabled"}>Rename profile</button>
                 <button type="button" data-action="delete-profile">Delete profile</button>
               `;
@@ -8620,6 +8755,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
               menuTitle = "Post menu";
               menuButtons = `
                 <button type="button" data-action="tag">Tag</button>
+                <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="rename-post"${canRename ? "" : " disabled"}>Rename post</button>
               `;
             } else {
@@ -8659,7 +8795,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const canLooseSetMerge = !!WS.meta.fsRootHandle;
             const isOnlineFile = !!rec?.online;
             const fileMenuButtons = bulkFileMenuActive
-              ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
+              ? (isOnlineFile
+                ? `<button type="button" data-action="rename-online-file"${selectedFilesInViewCount > 1 ? " disabled" : ""}>Rename file</button>`
+                : `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`)
               : (isOnlineFile
                 ? `<button type="button" data-action="rename-online-file">Rename file</button>`
                 : `<button type="button" data-action="rename-file">Rename</button>`);
