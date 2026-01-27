@@ -8133,6 +8133,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         renderDirectoriesPane(true);
         renderPreviewPane(false, true);
         syncButtons();
+        renderOnlineUi();
         return;
       }
       renderDirectoriesPane(true);
