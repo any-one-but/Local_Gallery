@@ -24,6 +24,7 @@
       --folder-meta-font: 11px;
       --preview-gutter: 10px;
       --thumb-filter: none;
+      --thumb-fit: cover;
     }
 
     :root[data-media-size="small"] {
@@ -1122,7 +1123,7 @@
     .thumb {
       width: 100%;
       aspect-ratio: 4/3;
-      object-fit: cover;
+      object-fit: var(--thumb-fit, cover);
       display: block;
       background: #000;
       user-select: none;
@@ -1304,6 +1305,7 @@
       justify-content: center;
       overflow: hidden;
       position: relative;
+      background: #000;
     }
 
     #viewerViewport img,

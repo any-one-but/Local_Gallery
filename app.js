@@ -185,7 +185,9 @@
         showDirFileTypeLabel: true,
         showPreviewFileTypeLabel: true,
         showPreviewFolderItemCount: true,
-        showPreviewFileName: true
+        showPreviewFileName: true,
+        previewThumbFiltersEnabled: false,
+        previewThumbFit: "cover"
       };
     }
 
@@ -218,6 +220,7 @@
         defaultFolderBehavior: (src.defaultFolderBehavior === "stop" || src.defaultFolderBehavior === "loop" || src.defaultFolderBehavior === "slide") ? src.defaultFolderBehavior : d.defaultFolderBehavior,
         folderScoreDisplay: (src.folderScoreDisplay === "show" || src.folderScoreDisplay === "no-arrows" || src.folderScoreDisplay === "hidden") ? src.folderScoreDisplay : ((typeof src.showFolderScores === "boolean") ? (src.showFolderScores ? "show" : "hidden") : d.folderScoreDisplay),
         previewMode: (src.previewMode === "grid" || src.previewMode === "expanded") ? src.previewMode : d.previewMode,
+        previewThumbFit: (src.previewThumbFit === "contain" || src.previewThumbFit === "cover") ? src.previewThumbFit : d.previewThumbFit,
         videoSkipStep: (src.videoSkipStep === "3" || src.videoSkipStep === "5" || src.videoSkipStep === "10" || src.videoSkipStep === "30") ? src.videoSkipStep : d.videoSkipStep,
         preloadNextMode: (src.preloadNextMode === "off" || src.preloadNextMode === "on" || src.preloadNextMode === "ultra") ? src.preloadNextMode : d.preloadNextMode,
         videoEndBehavior: (src.videoEndBehavior === "loop" || src.videoEndBehavior === "next" || src.videoEndBehavior === "stop") ? src.videoEndBehavior : d.videoEndBehavior,
@@ -238,6 +241,7 @@
         showPreviewFileTypeLabel: (typeof src.showPreviewFileTypeLabel === "boolean") ? src.showPreviewFileTypeLabel : d.showPreviewFileTypeLabel,
         showPreviewFolderItemCount: (typeof src.showPreviewFolderItemCount === "boolean") ? src.showPreviewFolderItemCount : d.showPreviewFolderItemCount,
         showPreviewFileName: (typeof src.showPreviewFileName === "boolean") ? src.showPreviewFileName : d.showPreviewFileName,
+        previewThumbFiltersEnabled: (typeof src.previewThumbFiltersEnabled === "boolean") ? src.previewThumbFiltersEnabled : d.previewThumbFiltersEnabled,
         leftPaneWidthPct: (function(){
           const v = parseFloat(src.leftPaneWidthPct);
           if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
@@ -250,7 +254,8 @@
   mediaFilterRaw === 'uv' ||
   mediaFilterRaw === 'orangeTeal' ||
   mediaFilterRaw === 'cinematic' ||
-  mediaFilterRaw === 'bw'
+  mediaFilterRaw === 'bw' ||
+  mediaFilterRaw === 'infrared'
 ) ? mediaFilterRaw : d.mediaFilter,
         animatedMediaFilters: (typeof src.animatedMediaFilters === "boolean") ? src.animatedMediaFilters : d.animatedMediaFilters,
         crtScanlinesEnabled,
@@ -278,7 +283,8 @@
       uv: { color: "saturate(1.6) hue-rotate(220deg) contrast(1.3) brightness(0.95)" },
       orangeTeal: { color: "hue-rotate(-22deg) saturate(1.32) contrast(1.12) brightness(1.05)" },
       cinematic: { color: "contrast(1.3) saturate(1.2) brightness(1.02) hue-rotate(-2deg)" },
-      bw: { color: "grayscale(1) contrast(1.08)", forceMonochrome: true }
+      bw: { color: "grayscale(1) contrast(1.08)", forceMonochrome: true },
+      infrared: { color: "saturate(1.6) hue-rotate(-45deg) contrast(1.3) brightness(1.05)" }
     };
 
     const CRT_OVERLAY_CONFIG = {
@@ -420,7 +426,17 @@
       return MEDIA_FILTER_STATE.mode || "off";
     }
 
+    function thumbFiltersEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.previewThumbFiltersEnabled);
+    }
+
+    function thumbFiltersActive() {
+      return thumbFiltersEnabled() && mediaFilterEnabled();
+    }
+
     function buildThumbFilterKey() {
+      if (!thumbFiltersActive()) return "off|none";
       const mode = MEDIA_FILTER_STATE.mode || "off";
       const o = MEDIA_OVERLAY_STATE;
       if (!o) return `${mode}|none`;
@@ -502,9 +518,10 @@
     }
 
     function renderFilteredToCanvas(ctx, source, srcW, srcH, dstW, dstH, mode, cover = true) {
-      const baseCfg = (mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
-      const overlayCfg = MEDIA_OVERLAY_STATE;
-      const forceMonochrome = !!(baseCfg && baseCfg.forceMonochrome);
+      const allowFilters = thumbFiltersActive();
+      const baseCfg = (allowFilters && mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
+      const overlayCfg = allowFilters ? MEDIA_OVERLAY_STATE : null;
+      const forceMonochrome = !!(allowFilters && baseCfg && baseCfg.forceMonochrome);
       const cfg = (baseCfg || overlayCfg) ? {
         color: baseCfg && baseCfg.color ? baseCfg.color : "none",
         pixelate: Math.max(baseCfg && baseCfg.pixelate ? baseCfg.pixelate : 0, overlayCfg && overlayCfg.pixelate ? overlayCfg.pixelate : 0),
@@ -773,6 +790,23 @@
         updateEngineState();
       }
 
+      function reset(name) {
+        const surface = surfaces.get(name);
+        if (!surface) return;
+        surface.active = false;
+        surface.hasDrawn = false;
+        surface.videoFrameActive = false;
+        if (surface.canvas && surface.canvas.parentElement) {
+          surface.canvas.parentElement.removeChild(surface.canvas);
+        }
+        surface.canvas = null;
+        surface.ctx = null;
+        surface.offscreen = null;
+        surface.offctx = null;
+        if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+        updateEngineState();
+      }
+
       function requestRender() {
         if (rafId) return;
         rafId = requestAnimationFrame(render);
@@ -970,6 +1004,7 @@
       return {
         attach,
         detach,
+        reset,
         requestRender,
         hasSurfaceDrawn: (name) => {
           const surface = surfaces.get(name);
@@ -1055,6 +1090,7 @@
 
     function applyMediaFilterFromOptions() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const prevFilterMode = MEDIA_FILTER_STATE.mode || "off";
       MEDIA_OVERLAY_STATE = buildMediaOverlayConfigFromOptions(opt);
       const appEl = document.getElementById("app");
       if (!appEl) return;
@@ -1067,6 +1103,10 @@
       }
       MEDIA_FILTER_STATE.mode = filter || "off";
       MEDIA_FILTER_STATE.animated = !!(opt && opt.animatedMediaFilters);
+      if (prevFilterMode !== MEDIA_FILTER_STATE.mode) {
+        MediaFilterEngine.detach("preview");
+        MediaFilterEngine.detach("viewer");
+      }
       const nextThumbKey = buildThumbFilterKey();
       if (nextThumbKey !== THUMB_FILTER_KEY) {
         THUMB_FILTER_KEY = nextThumbKey;
@@ -1077,9 +1117,10 @@
           kickImageThumbsForPreview();
         }
       }
-      if (!mediaFilterEnabled()) {
-        MediaFilterEngine.detach("preview");
-        MediaFilterEngine.detach("viewer");
+      const filtersActive = mediaFilterEnabled();
+      if (!filtersActive) {
+        MediaFilterEngine.reset("preview");
+        MediaFilterEngine.reset("viewer");
         if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
         if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
         if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
@@ -1102,6 +1143,14 @@
         }
       }
       MediaFilterEngine.requestRender();
+    }
+
+    function applyThumbFitFromOptions() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const root = document.documentElement;
+      if (!root) return;
+      const fit = opt ? String(opt.previewThumbFit || "cover") : "cover";
+      root.style.setProperty("--thumb-fit", fit === "contain" ? "contain" : "cover");
     }
 
     function mediaFilterEnabled() {
@@ -1141,6 +1190,7 @@
         applyColorSchemeFromOptions();
         applyRetroModeFromOptions();
         applyMediaFilterFromOptions();
+        applyThumbFitFromOptions();
         applyDisplaySizesFromOptions();
         applyPaneDividerFromOptions();
         syncButtons();
@@ -1154,6 +1204,7 @@
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
       applyMediaFilterFromOptions();
+      applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -1227,7 +1278,8 @@
       { id: "media", label: "Media" },
       { id: "jump", label: "Jump" },
       { id: "history", label: "History" },
-      { id: "global", label: "Global" }
+      { id: "global", label: "Global" },
+      { id: "extras", label: "Odds & Ends" }
     ];
 
     const KEYBIND_ACTIONS = [
@@ -1251,7 +1303,28 @@
       { id: "historyBack", label: "History back", hint: "Go to the previous directory in history.", section: "history" },
       { id: "historyForward", label: "History forward", hint: "Go to the next directory in history.", section: "history" },
       { id: "panic", label: "PANIC!", hint: "Toggle the decoy window mode.", section: "global" },
-      { id: "back", label: "Back/Close", hint: "Close overlays or back out of special modes.", section: "global" }
+      { id: "back", label: "Back/Close", hint: "Close overlays or back out of special modes.", section: "global" },
+      { id: "cycleMediaFilter", label: "Cycle media filter", hint: "Cycle the media filter preset.", section: "extras" },
+      { id: "cycleColorScheme", label: "Cycle color scheme", hint: "Cycle the UI color scheme.", section: "extras" },
+      { id: "toggleRetroMode", label: "Toggle retro mode", hint: "Toggle the retro UI styling.", section: "extras" },
+      { id: "toggleScanlinesOverlay", label: "Toggle scanline overlay", hint: "Toggle CRT scanlines over media.", section: "extras" },
+      { id: "togglePixelatedOverlay", label: "Toggle pixelated overlay", hint: "Toggle pixelated media overlay.", section: "extras" },
+      { id: "toggleFilmGrainOverlay", label: "Toggle film grain overlay", hint: "Toggle film grain overlay.", section: "extras" },
+      { id: "toggleVhsOverlay", label: "Toggle VHS overlay", hint: "Toggle VHS overlay.", section: "extras" },
+      { id: "toggleFilmCornersOverlay", label: "Toggle film corners overlay", hint: "Toggle rounded film corners overlay.", section: "extras" },
+      { id: "toggleAnimatedFilters", label: "Toggle animated filters", hint: "Toggle animated scanlines/grain/jitter.", section: "extras" },
+      { id: "cycleFolderSort", label: "Cycle folder sort", hint: "Cycle folder sort between name and score.", section: "extras" },
+      { id: "cycleFolderBehavior", label: "Cycle folder behavior", hint: "Cycle folder behavior between stop/loop/slide.", section: "extras" },
+      { id: "cycleVideoEndBehavior", label: "Cycle video end behavior", hint: "Cycle behavior when videos end.", section: "extras" },
+      { id: "toggleShowHiddenFolder", label: "Toggle hidden folder", hint: "Toggle the Hidden folder tag entry.", section: "extras" },
+      { id: "toggleShowUntaggedFolder", label: "Toggle untagged folder", hint: "Toggle the Untagged folder tag entry.", section: "extras" },
+      { id: "toggleShowPreviewFileName", label: "Toggle preview file names", hint: "Toggle file names under preview thumbnails.", section: "extras" },
+      { id: "toggleShowPreviewFileType", label: "Toggle preview file type labels", hint: "Toggle Image/Video labels under thumbnails.", section: "extras" },
+      { id: "toggleShowPreviewFolderCounts", label: "Toggle preview folder counts", hint: "Toggle item counts on preview folder cards.", section: "extras" },
+      { id: "toggleShowFolderItemCounts", label: "Toggle folder item counts", hint: "Toggle item counts in the directories pane.", section: "extras" },
+      { id: "toggleShowDirFileTypeLabel", label: "Toggle directory file type labels", hint: "Toggle Image/Video labels in the directories pane.", section: "extras" },
+      { id: "toggleHideFileExtensions", label: "Toggle hide file extensions", hint: "Toggle display of file extensions.", section: "extras" },
+      { id: "toggleHideUnderscores", label: "Toggle hide underscores", hint: "Toggle replacing underscores in display names.", section: "extras" }
     ];
 
     const KEYBIND_PRESETS = {
@@ -1862,6 +1935,8 @@
 
     let PRELOAD_CACHE = new Map();
 
+    const BLACK_POSTER_URL = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2'><rect width='2' height='2' fill='black'/></svg>";
+
     let TAG_EDIT_PATH = null;
     let TAG_CONTEXT_MENU_STATE = null;
     let TAG_ENTRY_RENAME_STATE = null;
@@ -1937,6 +2012,10 @@
 
     function applyBanicState(active) {
       if (active === BANIC_ACTIVE) return;
+      if (active && document.fullscreenElement) {
+        if (VIEWER_MODE) hideOverlay();
+        else exitFullscreenIfNeeded();
+      }
       BANIC_ACTIVE = active;
 
       if (BANIC_ACTIVE) {
@@ -2453,6 +2532,10 @@
         { value: "expanded", label: "Expanded" }
       ];
 
+      const thumbFitModes = [
+        { value: "cover", label: "Crop to fill" },
+        { value: "contain", label: "Fit inside" }
+      ];
 
       const previewSizeModes = [
         { value: "small", label: "Small" },
@@ -2486,7 +2569,8 @@
        { value: "cinematic", label: "Cinematic" },
        { value: "orangeTeal", label: "Orange+Teal" },
        { value: "bw", label: "Black + White" },
-       { value: "uv", label: "UV Camera" }/*
+       { value: "uv", label: "UV Camera" },
+       { value: "infrared", label: "Infrared Camera" }/*
        { value: "cinematic", label: "Cinematic" },
        { value: "soft", label: "Soft" }*/
       ];
@@ -2560,6 +2644,8 @@ ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "o
 ${makeCheckRow("Show file type labels (preview)", "Show Image/Video labels under file thumbnails in the preview pane.", "opt_showPreviewFileTypeLabel", opt.showPreviewFileTypeLabel !== false)}
 ${makeCheckRow("Show file names (preview)", "Show file names under thumbnails in the preview pane.", "opt_showPreviewFileName", opt.showPreviewFileName !== false)}
 ${makeCheckRow("Show folder item counts (preview)", "Show the number of items on folder cards in the preview pane.", "opt_showPreviewFolderItemCount", opt.showPreviewFolderItemCount !== false)}
+${makeCheckRow("Apply filters to thumbnails (preview)", "Apply media filters and overlays to preview thumbnails.", "opt_previewThumbFiltersEnabled", !!opt.previewThumbFiltersEnabled)}
+${makeSelectRow("Thumbnail fit (preview)", "Choose whether thumbnails crop to fill their card or fit inside it.", "opt_previewThumbFit", String(opt.previewThumbFit || "cover"), thumbFitModes)}
 ${makeSelectRow("Image thumbnail size", "Controls generated image thumbnail quality (smaller is faster).", "opt_imageThumbSize", String(opt.imageThumbSize || "medium"), thumbModes)}
 ${makeSelectRow("Video thumbnail size", "Controls generated video thumbnail quality (smaller is faster).", "opt_videoThumbSize", String(opt.videoThumbSize || "medium"), thumbModes)}
 ${makeSelectRow("Media thumbnail scale", "Controls how large media cards appear in the preview pane.", "opt_mediaThumbUiSize", String(opt.mediaThumbUiSize || "medium"), previewSizeModes)}
@@ -2679,6 +2765,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       bindCheck("opt_showPreviewFolderItemCount", "showPreviewFolderItemCount", () => {
         renderPreviewPane(true, true);
       });
+      bindCheck("opt_previewThumbFiltersEnabled", "previewThumbFiltersEnabled", () => {
+        applyMediaFilterFromOptions();
+      });
+      bindSelect("opt_previewThumbFit", "previewThumbFit", false);
       bindSelect("opt_imageThumbSize", "imageThumbSize", true);
       bindSelect("opt_videoThumbSize", "videoThumbSize", true);
       bindSelect("opt_mediaThumbUiSize", "mediaThumbUiSize", false);
@@ -3494,6 +3584,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
       applyMediaFilterFromOptions();
+      applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
     }
 
@@ -3515,6 +3606,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
       applyMediaFilterFromOptions();
+      applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
@@ -8199,6 +8291,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       try { rec.url = URL.createObjectURL(rec.file); return rec.url; } catch { return null; }
     }
 
+    function getVideoPosterForRecord(rec) {
+      if (rec && rec.videoThumbUrl) return rec.videoThumbUrl;
+      return BLACK_POSTER_URL;
+    }
+
+    function applyVideoPoster(videoEl, rec) {
+      if (!videoEl) return;
+      const poster = getVideoPosterForRecord(rec);
+      if (videoEl.poster !== poster) videoEl.poster = poster;
+    }
+
     function preloadMediaRecord(rec, aggressive) {
       if (!rec) return;
       const url = ensureMediaUrl(rec);
@@ -8265,6 +8368,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         previewVideoEl.autoplay = true;
         previewVideoEl.muted = false;
         normalizeVideoPlaybackRate(previewVideoEl);
+        previewVideoEl.poster = BLACK_POSTER_URL;
         previewVideoEl.style.display = "none";
         previewViewportBox.appendChild(previewVideoEl);
       }
@@ -8434,6 +8538,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           MediaFilterEngine.requestRender();
         };
 
+        applyVideoPoster(previewVideoEl, rec);
         const src = ensureMediaUrl(rec) || "";
         const same = previewVideoEl.src === src;
         if (!same) {
@@ -9243,7 +9348,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (!rec || rec.type !== "image") continue;
 
         const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-        if (mode === "high" && !mediaFilterEnabled()) continue;
+        if (mode === "high" && !thumbFiltersActive()) continue;
         if (rec.thumbUrl && rec.thumbMode === mode) continue;
 
         WS.imageThumbActive++;
@@ -9257,7 +9362,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     async function generateImageThumb(rec) {
       const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-      if (mode === "high" && !mediaFilterEnabled()) {
+      if (mode === "high" && !thumbFiltersActive()) {
         rec.thumbMode = "high";
         return;
       }
@@ -9426,6 +9531,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         viewerVideoEl.playsInline = true;
         viewerVideoEl.autoplay = true;
         normalizeVideoPlaybackRate(viewerVideoEl);
+        viewerVideoEl.poster = BLACK_POSTER_URL;
         viewerVideoEl.style.display = "none";
         viewport.appendChild(viewerVideoEl);
       }
@@ -9856,6 +9962,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           MediaFilterEngine.requestRender();
         };
 
+        applyVideoPoster(viewerVideoEl, rec);
         const src = ensureMediaUrl(rec) || "";
         const same = viewerVideoEl.src === src;
         if (!same) {
@@ -10076,6 +10183,35 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return false;
     }
 
+    const MEDIA_FILTER_CYCLE = [
+      { value: "off", label: "Off" },
+      { value: "vibrant", label: "Vibrant" },
+      { value: "cinematic", label: "Cinematic" },
+      { value: "orangeTeal", label: "Orange+Teal" },
+      { value: "bw", label: "Black + White" },
+      { value: "uv", label: "UV Camera" },
+      { value: "infrared", label: "Infrared Camera" }
+    ];
+
+    const COLOR_SCHEME_CYCLE = [
+      { value: "classic", label: "Classic Dark" },
+      { value: "light", label: "Light" },
+      { value: "superdark", label: "OLED Dark" },
+      { value: "synthwave", label: "Synthwave" },
+      { value: "verdant", label: "Verdant" },
+      { value: "azure", label: "Azure" },
+      { value: "ember", label: "Ember" },
+      { value: "amber", label: "Amber" },
+      { value: "retro90s", label: "Retro 90s" },
+      { value: "retro90s-dark", label: "Retro 90s Dark" }
+    ];
+
+    const VIDEO_END_BEHAVIOR_CYCLE = [
+      { value: "loop", label: "Loop video" },
+      { value: "next", label: "Advance to next item" },
+      { value: "stop", label: "Stop at end" }
+    ];
+
     function cycleFilterMode() {
       const m = WS.view.filterMode;
       WS.view.filterMode = (m === "all") ? "images" : (m === "images") ? "videos" : (m === "videos") ? "gifs" : "all";
@@ -10085,9 +10221,179 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function cycleFolderBehavior() {
       const b = WS.view.folderBehavior;
-      WS.view.folderBehavior = (b === "stop") ? "loop" : (b === "loop") ? "slide" : "stop";
+      const next = (b === "stop") ? "loop" : (b === "loop") ? "slide" : "stop";
+      WS.view.folderBehavior = next;
+      if (WS.meta && WS.meta.options) {
+        WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { defaultFolderBehavior: next }));
+        WS.meta.dirty = true;
+        metaScheduleSave();
+      }
       applyViewModesEverywhere(true);
       showStatusMessage(`Folder behavior: ${WS.view.folderBehavior}`);
+    }
+
+    function setOptionValue(key, value) {
+      if (!WS.meta) return null;
+      const next = {};
+      next[key] = value;
+      WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      return WS.meta.options ? WS.meta.options[key] : null;
+    }
+
+    function toggleOptionValue(key) {
+      const current = WS.meta && WS.meta.options ? !!WS.meta.options[key] : false;
+      return setOptionValue(key, !current);
+    }
+
+    function cycleOptionValue(key, list) {
+      const values = list.map(entry => entry.value);
+      const current = WS.meta && WS.meta.options ? String(WS.meta.options[key] || "") : "";
+      const idx = values.indexOf(current);
+      const next = values[(idx >= 0 ? idx + 1 : 0) % values.length];
+      setOptionValue(key, next);
+      return next;
+    }
+
+    function labelForCycleValue(list, value) {
+      const entry = list.find(item => item.value === value);
+      return entry ? entry.label : String(value || "");
+    }
+
+    function handleExtrasKeybindAction(action) {
+      if (!action || !WS.meta) return false;
+      switch (action) {
+        case "cycleMediaFilter": {
+          const next = cycleOptionValue("mediaFilter", MEDIA_FILTER_CYCLE);
+          applyMediaFilterFromOptions();
+          showStatusMessage(`Media filter: ${labelForCycleValue(MEDIA_FILTER_CYCLE, next)}`);
+          return true;
+        }
+        case "cycleColorScheme": {
+          const next = cycleOptionValue("colorScheme", COLOR_SCHEME_CYCLE);
+          applyColorSchemeFromOptions();
+          showStatusMessage(`Color scheme: ${labelForCycleValue(COLOR_SCHEME_CYCLE, next)}`);
+          return true;
+        }
+        case "toggleRetroMode": {
+          const next = toggleOptionValue("retroMode");
+          applyRetroModeFromOptions();
+          showStatusMessage(`Retro mode: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleScanlinesOverlay": {
+          const next = toggleOptionValue("crtScanlinesEnabled");
+          applyMediaFilterFromOptions();
+          showStatusMessage(`Scanlines: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "togglePixelatedOverlay": {
+          const next = toggleOptionValue("crtPixelateEnabled");
+          applyMediaFilterFromOptions();
+          showStatusMessage(`Pixelated overlay: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleFilmGrainOverlay": {
+          const next = toggleOptionValue("crtGrainEnabled");
+          applyMediaFilterFromOptions();
+          showStatusMessage(`Film grain: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleVhsOverlay": {
+          const next = toggleOptionValue("vhsOverlayEnabled");
+          applyMediaFilterFromOptions();
+          showStatusMessage(`VHS overlay: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleFilmCornersOverlay": {
+          const next = toggleOptionValue("filmCornerOverlayEnabled");
+          applyMediaFilterFromOptions();
+          showStatusMessage(`Film corners: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleAnimatedFilters": {
+          const next = toggleOptionValue("animatedMediaFilters");
+          applyMediaFilterFromOptions();
+          showStatusMessage(`Animated filters: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "cycleFolderSort": {
+          WS.meta.dirSortMode = WS.meta.dirSortMode === "score" ? "name" : "score";
+          WS.meta.dirty = true;
+          metaScheduleSave();
+          applyViewModesEverywhere(true);
+          showStatusMessage(`Folder sort: ${WS.meta.dirSortMode === "score" ? "Score" : "Name"}`);
+          return true;
+        }
+        case "cycleFolderBehavior": {
+          cycleFolderBehavior();
+          return true;
+        }
+        case "cycleVideoEndBehavior": {
+          const next = cycleOptionValue("videoEndBehavior", VIDEO_END_BEHAVIOR_CYCLE);
+          showStatusMessage(`Video end: ${labelForCycleValue(VIDEO_END_BEHAVIOR_CYCLE, next)}`);
+          return true;
+        }
+        case "toggleShowHiddenFolder": {
+          const next = toggleOptionValue("showHiddenFolder");
+          if (!next && WS.view.tagFolderActiveMode === "hidden") exitTagFolderView();
+          renderDirectoriesPane(true);
+          showStatusMessage(`Hidden folder: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleShowUntaggedFolder": {
+          const next = toggleOptionValue("showUntaggedFolder");
+          if (!next && WS.view.tagFolderActiveMode === "untagged") exitTagFolderView();
+          renderDirectoriesPane(true);
+          showStatusMessage(`Untagged folder: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleShowPreviewFileName": {
+          const next = toggleOptionValue("showPreviewFileName");
+          renderPreviewPane(true, true);
+          showStatusMessage(`Preview file names: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleShowPreviewFileType": {
+          const next = toggleOptionValue("showPreviewFileTypeLabel");
+          renderPreviewPane(true, true);
+          showStatusMessage(`Preview file types: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleShowPreviewFolderCounts": {
+          const next = toggleOptionValue("showPreviewFolderItemCount");
+          renderPreviewPane(true, true);
+          showStatusMessage(`Preview folder counts: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleShowFolderItemCounts": {
+          const next = toggleOptionValue("showFolderItemCount");
+          renderDirectoriesPane(true);
+          showStatusMessage(`Folder counts: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleShowDirFileTypeLabel": {
+          const next = toggleOptionValue("showDirFileTypeLabel");
+          renderDirectoriesPane(true);
+          showStatusMessage(`Directory file types: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleHideFileExtensions": {
+          const next = toggleOptionValue("hideFileExtensions");
+          applyOptionsEverywhere(false);
+          showStatusMessage(`Hide extensions: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleHideUnderscores": {
+          const next = toggleOptionValue("hideUnderscoresInNames");
+          applyOptionsEverywhere(false);
+          showStatusMessage(`Hide underscores: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        default:
+          return false;
+      }
     }
 
     function moveDirectoriesSelection(delta) {
@@ -10195,6 +10501,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (MENU_OPEN) return;
 
       if (isTextInputTarget(e.target)) return;
+
+      if (handleExtrasKeybindAction(action)) {
+        e.preventDefault();
+        return;
+      }
 
       if (VIEWER_MODE) {
         switch (action) {
