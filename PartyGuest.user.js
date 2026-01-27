@@ -176,6 +176,148 @@ GM_addStyle(`
   transform: translateY(1px);
 }
 
+/* Menu overlay */
+
+#pgMenuOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .55);
+  display: none;
+  z-index: 10001;
+}
+
+#pgMenuOverlay.active {
+  display: block;
+}
+
+#pgMenuCard {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 4px;
+  width: min(760px, 94vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+}
+
+#pgMenuHeader {
+  background: var(--color1-primary);
+  border-bottom: 1px solid var(--color1-tertiary);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#pgMenuHeader .title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+#pgMenuHeader button {
+  font-size: 12px;
+  padding: 4px 8px;
+  font-weight: 600;
+  color: var(--color1-primary);
+  background: var(--color0-secondary);
+  border: 1px solid var(--color0-tertirary);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+#pgMenuBody {
+  padding: 12px;
+  overflow: auto;
+}
+
+#pgMenuBody h1 {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  color: var(--color0-primary);
+}
+
+#pgMenuBody .pg-options-note {
+  color: var(--color0-secondary);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+#pgMenuBody .pg-opt-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color1-tertiary);
+}
+
+#pgMenuBody .pg-opt-left {
+  flex: 1;
+  min-width: 0;
+}
+
+#pgMenuBody .pg-opt-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+#pgMenuBody .pg-opt-hint {
+  font-size: 12px;
+  color: var(--color0-secondary);
+  margin-top: 2px;
+}
+
+#pgMenuBody .pg-opt-right {
+  flex: 0 0 auto;
+}
+
+#pgMenuBody input[type="checkbox"],
+#pgMenuBody input[type="number"] {
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+  border: 1px solid var(--color0-tertirary);
+  border-radius: 2px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+#pgMenuBody input[type="number"] {
+  width: 72px;
+  text-align: right;
+}
+
+#pgMenuFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color1-tertiary);
+}
+
+#pgMenuFooter .label {
+  font-size: 12px;
+  color: var(--color0-secondary);
+}
+
+#pgMenuFooter button {
+  font-size: 12px;
+  padding: 4px 8px;
+  font-weight: 600;
+  color: var(--color1-primary);
+  background: var(--color0-secondary);
+  border: 1px solid var(--color0-tertirary);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
 /* Primary / special buttons */
 
 #dlBtn {
@@ -668,8 +810,61 @@ const STALL_IMG_IDLE_MS = 45000;
 const STALL_VID_TOTAL_MS = 300000;
 const STALL_VID_IDLE_MS = 90000;
 const GALLERY_PRELOAD_VIDEO_TIMEOUT_MS = 45000;
-const GALLERY_PRELOAD_ALL_MEDIA = false  // Edit this variable to toggle between the gallery preloading filtered media (true) or loading as it goes (false)
-;
+const PG_OPTIONS_KEY = 'pg_options';
+const DEFAULT_OPTIONS = {
+  durationIndexing: false,
+  galleryPreloadAll: false,
+  parallelDownloadLimit: 3,
+  stopClearsQueue: true,
+  showLocalGalleryBtn: true,
+  showGalleryBtn: true,
+  showPageBtn: true,
+  showMediaBtn: true,
+  showPreviewBtn: true,
+  showPageInput: true,
+  showPostInput: true,
+  showFileInput: true,
+  showProgressBar: true
+};
+function clampInt(value, min, max, fallback) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+function normalizeOptions(opt) {
+  const out = Object.assign({}, DEFAULT_OPTIONS);
+  if (!opt || typeof opt !== 'object') return out;
+  if (typeof opt.durationIndexing === 'boolean') out.durationIndexing = opt.durationIndexing;
+  if (typeof opt.galleryPreloadAll === 'boolean') out.galleryPreloadAll = opt.galleryPreloadAll;
+  if (opt.parallelDownloadLimit != null) {
+    out.parallelDownloadLimit = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
+  }
+  if (typeof opt.stopClearsQueue === 'boolean') out.stopClearsQueue = opt.stopClearsQueue;
+  if (typeof opt.showLocalGalleryBtn === 'boolean') out.showLocalGalleryBtn = opt.showLocalGalleryBtn;
+  if (typeof opt.showGalleryBtn === 'boolean') out.showGalleryBtn = opt.showGalleryBtn;
+  if (typeof opt.showPageBtn === 'boolean') out.showPageBtn = opt.showPageBtn;
+  if (typeof opt.showMediaBtn === 'boolean') out.showMediaBtn = opt.showMediaBtn;
+  if (typeof opt.showPreviewBtn === 'boolean') out.showPreviewBtn = opt.showPreviewBtn;
+  if (typeof opt.showPageInput === 'boolean') out.showPageInput = opt.showPageInput;
+  if (typeof opt.showPostInput === 'boolean') out.showPostInput = opt.showPostInput;
+  if (typeof opt.showFileInput === 'boolean') out.showFileInput = opt.showFileInput;
+  if (typeof opt.showProgressBar === 'boolean') out.showProgressBar = opt.showProgressBar;
+  return out;
+}
+function loadOptions() {
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(PG_OPTIONS_KEY) || 'null'); } catch {}
+  return normalizeOptions(parsed);
+}
+function saveOptions() {
+  try { localStorage.setItem(PG_OPTIONS_KEY, JSON.stringify(PG_OPTIONS)); } catch {}
+}
+let PG_OPTIONS = loadOptions();
+let GALLERY_PRELOAD_ALL_MEDIA = false;
+let DURATION_FEATURE_ENABLED = false;
+let PARALLEL_DOWNLOAD_LIMIT = 3;
+let STOP_BUTTON_CLEARS_QUEUE = true;
+let SHOW_PROGRESS_BAR = true;
 let PG_TOTAL = null;
 let PG_GW = 1;
 let PG_ID_MAP = null;
@@ -680,7 +875,6 @@ let PENDING_FILTER_SUMMARY = null;
 let PG_FILE_TOTAL = null;
 let PG_FILE_URL_MAP = null;
 let PG_POST_FILE_RANGE_MAP = null;
-const DURATION_FEATURE_ENABLED = false; // Edit this variable to toggle on (true) or off (false) Duration filtering and video duration indexing
 const badgeToggleEvent = ('onpointerdown' in window) ? 'pointerdown' : 'mousedown';
 let lastUrl = location.href;
 let CURRENT_PROFILE_KEY = null;
@@ -701,6 +895,7 @@ let galleryStatusTimeout = null;
 let loopGallery = true;
 let GALLERY_CACHE_LIMIT = Infinity;
 let galleryCacheOrder = [];
+let MENU_OPEN = false;
 
 function apiGetJson(url) {
   return new Promise(resolve => {
@@ -1116,10 +1311,13 @@ function injectFileNumbers() {
 
 function syncFilterBoxWidth(){
   const bar = document.getElementById('partyHUD');
-  const post = document.getElementById('fPosts');
-  if (!bar || !post) return;
+  const row = document.getElementById('hudRow');
+  if (!bar || !row) return;
+  const items = [...row.children].filter(el => el.offsetParent !== null);
+  const anchor = items.length ? items[items.length - 1] : null;
+  if (!anchor) return;
   const b = bar.getBoundingClientRect();
-  const p = post.getBoundingClientRect();
+  const p = anchor.getBoundingClientRect();
   const w = Math.max(0, Math.round(p.right - b.left));
   bar.style.setProperty('--hud-row-width', w + 'px');
 }
@@ -1141,6 +1339,54 @@ function syncProgressBarVisibility(){
   } else {
     box.classList.remove('pg-dl-visible');
     box.classList.add('pg-dl-hidden');
+  }
+  const bar = document.getElementById('pgWrap');
+  if (bar) bar.style.display = SHOW_PROGRESS_BAR ? '' : 'none';
+}
+
+function setHudItemVisible(id, visible) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = visible ? '' : 'none';
+}
+
+function syncHudElementVisibility() {
+  const opt = PG_OPTIONS || DEFAULT_OPTIONS;
+  setHudItemVisible('localGalleryBtn', opt.showLocalGalleryBtn !== false);
+  setHudItemVisible('galleryBtn', opt.showGalleryBtn !== false);
+  setHudItemVisible('btnPageAll', opt.showPageBtn !== false);
+  setHudItemVisible('btnMedia', opt.showMediaBtn !== false);
+  setHudItemVisible('filterBtn', opt.showPreviewBtn !== false);
+  setHudItemVisible('fPages', opt.showPageInput !== false);
+  setHudItemVisible('fPosts', opt.showPostInput !== false);
+  setHudItemVisible('fFiles', opt.showFileInput !== false);
+  requestAnimationFrame(syncFilterBoxWidth);
+}
+
+function syncDurationInputVisibility() {
+  const durInput = document.getElementById('fDur');
+  if (!durInput) return;
+  durInput.style.display = DURATION_FEATURE_ENABLED ? '' : 'none';
+  durInput.disabled = !DURATION_FEATURE_ENABLED;
+}
+
+function applyOptions() {
+  const opt = PG_OPTIONS || DEFAULT_OPTIONS;
+  const prevDuration = DURATION_FEATURE_ENABLED;
+  DURATION_FEATURE_ENABLED = !!opt.durationIndexing;
+  GALLERY_PRELOAD_ALL_MEDIA = !!opt.galleryPreloadAll;
+  PARALLEL_DOWNLOAD_LIMIT = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
+  STOP_BUTTON_CLEARS_QUEUE = opt.stopClearsQueue !== false;
+  SHOW_PROGRESS_BAR = opt.showProgressBar !== false;
+
+  syncHudElementVisibility();
+  syncDurationInputVisibility();
+  syncProgressBarVisibility();
+
+  if (prevDuration !== DURATION_FEATURE_ENABLED && DURATION_FEATURE_ENABLED) {
+    if (PG_POSTS && PG_POSTS.length) {
+      ensureVideoDurations().then(() => scheduleFilter());
+    }
   }
 }
 
@@ -1184,8 +1430,187 @@ function lockPreviewButtonWidth(){
   btn.style.width = max + 'px';
 }
 
+function setOptionsStatus(text) {
+  const el = document.getElementById('pgOptionsStatusLabel');
+  if (!el) return;
+  el.textContent = text || '-';
+}
+
+function resetOptionsToDefaults() {
+  PG_OPTIONS = normalizeOptions(null);
+  saveOptions();
+  applyOptions();
+  renderOptionsUi();
+  setOptionsStatus('Reset');
+}
+
+function renderOptionsUi() {
+  const body = document.getElementById('pgMenuOptionsBody');
+  if (!body) return;
+  const opt = PG_OPTIONS || DEFAULT_OPTIONS;
+
+  const makeCheckRow = (title, hint, id, checked) => {
+    return `
+      <div class="pg-opt-row">
+        <div class="pg-opt-left">
+          <div class="pg-opt-title">${title}</div>
+          <div class="pg-opt-hint">${hint}</div>
+        </div>
+        <div class="pg-opt-right">
+          <input id="${id}" type="checkbox"${checked ? ' checked' : ''}>
+        </div>
+      </div>
+    `;
+  };
+
+  const makeNumberRow = (title, hint, id, value, min, max) => {
+    return `
+      <div class="pg-opt-row">
+        <div class="pg-opt-left">
+          <div class="pg-opt-title">${title}</div>
+          <div class="pg-opt-hint">${hint}</div>
+        </div>
+        <div class="pg-opt-right">
+          <input id="${id}" type="number" min="${min}" max="${max}" step="1" value="${value}">
+        </div>
+      </div>
+    `;
+  };
+
+  body.innerHTML = `
+    <div class="pg-options-note">Options are saved locally in your browser for this site.</div>
+    <h1>Downloads</h1>
+    ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
+    ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
+    ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
+    ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
+
+    <h1>HUD</h1>
+    ${makeCheckRow('Show Local Gallery button', 'Toggle the Local Gallery launcher.', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
+    ${makeCheckRow('Show Gallery button', 'Toggle the Gallery button.', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
+    ${makeCheckRow('Show Page button', 'Toggle the Page button.', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
+    ${makeCheckRow('Show media filter button', 'Toggle the media type cycle button.', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
+    ${makeCheckRow('Show Preview button', 'Toggle the Preview button.', 'pg_opt_showPreviewBtn', opt.showPreviewBtn !== false)}
+    ${makeCheckRow('Show Page input', 'Toggle the Page selector input.', 'pg_opt_showPageInput', opt.showPageInput !== false)}
+    ${makeCheckRow('Show Post input', 'Toggle the Post selector input.', 'pg_opt_showPostInput', opt.showPostInput !== false)}
+    ${makeCheckRow('Show File input', 'Toggle the File selector input.', 'pg_opt_showFileInput', opt.showFileInput !== false)}
+
+    <h1>Progress</h1>
+    ${makeCheckRow('Show progress bar', 'Toggle the download progress bar graphic.', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
+  `;
+
+  const bindCheck = (id, key, onChange) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      PG_OPTIONS[key] = !!el.checked;
+      saveOptions();
+      setOptionsStatus('Saved');
+      applyOptions();
+      if (typeof onChange === 'function') onChange(!!el.checked);
+    });
+  };
+
+  const bindNumber = (id, key, min, max, onChange) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const applyValue = () => {
+      const next = clampInt(el.value, min, max, DEFAULT_OPTIONS.parallelDownloadLimit);
+      el.value = String(next);
+      PG_OPTIONS[key] = next;
+      saveOptions();
+      setOptionsStatus('Saved');
+      applyOptions();
+      if (typeof onChange === 'function') onChange(next);
+    };
+    el.addEventListener('change', applyValue);
+    el.addEventListener('blur', applyValue);
+  };
+
+  bindCheck('pg_opt_durationIndexing', 'durationIndexing');
+  bindCheck('pg_opt_galleryPreloadAll', 'galleryPreloadAll');
+  bindNumber('pg_opt_parallelDownloadLimit', 'parallelDownloadLimit', 1, 10, () => {
+    if (dl.started) requestDispatch();
+  });
+  bindCheck('pg_opt_stopClearsQueue', 'stopClearsQueue');
+  bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
+  bindCheck('pg_opt_showGalleryBtn', 'showGalleryBtn');
+  bindCheck('pg_opt_showPageBtn', 'showPageBtn');
+  bindCheck('pg_opt_showMediaBtn', 'showMediaBtn');
+  bindCheck('pg_opt_showPreviewBtn', 'showPreviewBtn');
+  bindCheck('pg_opt_showPageInput', 'showPageInput');
+  bindCheck('pg_opt_showPostInput', 'showPostInput');
+  bindCheck('pg_opt_showFileInput', 'showFileInput');
+  bindCheck('pg_opt_showProgressBar', 'showProgressBar');
+}
+
+function buildMenu() {
+  if (document.getElementById('pgMenuOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'pgMenuOverlay';
+  overlay.innerHTML = `
+    <div id="pgMenuCard" role="dialog" aria-modal="true" aria-label="Menu">
+      <div id="pgMenuHeader">
+        <div class="title">Menu</div>
+        <button id="pgMenuCloseBtn" type="button">X</button>
+      </div>
+      <div id="pgMenuBody">
+        <div id="pgMenuOptionsBody"></div>
+        <div id="pgMenuFooter">
+          <div class="left"><span class="label" id="pgOptionsStatusLabel">-</span></div>
+          <div class="right">
+            <button id="pgOptionsResetBtn" type="button">Reset defaults</button>
+            <button id="pgOptionsDoneBtn" type="button">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeMenu();
+  });
+
+  const closeBtn = document.getElementById('pgMenuCloseBtn');
+  if (closeBtn) closeBtn.addEventListener('click', () => closeMenu());
+
+  const doneBtn = document.getElementById('pgOptionsDoneBtn');
+  if (doneBtn) doneBtn.addEventListener('click', () => closeMenu());
+
+  const resetBtn = document.getElementById('pgOptionsResetBtn');
+  if (resetBtn) resetBtn.addEventListener('click', () => resetOptionsToDefaults());
+
+  document.addEventListener('keydown', (e) => {
+    if (!MENU_OPEN) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeMenu();
+    }
+  });
+}
+
+function openMenu() {
+  buildMenu();
+  const overlay = document.getElementById('pgMenuOverlay');
+  if (!overlay) return;
+  MENU_OPEN = true;
+  overlay.classList.add('active');
+  renderOptionsUi();
+  setOptionsStatus('Saved automatically');
+}
+
+function closeMenu() {
+  const overlay = document.getElementById('pgMenuOverlay');
+  if (overlay) overlay.classList.remove('active');
+  MENU_OPEN = false;
+}
+
 function buildHUD() {
-  if ($('#partyHUD')) return;
+  if ($('#partyHUD')) {
+    applyOptions();
+    return;
+  }
 
   const w = document.createElement('div');
   w.id = 'partyHUD';
@@ -1207,6 +1632,7 @@ function buildHUD() {
       <button id="dlBtn" class="full">Download</button>
       <button id="galleryBtn" class="full">Gallery</button>
       <button id="localGalleryBtn" class="full">Local Gallery</button>
+      <button id="pgMenuBtn" class="full">Menu</button>
       <button id="filterBtn" class="full">Preview</button>
       <button id="btnMedia" class="full">All</button>
       <button id="btnPageAll">Page</button>
@@ -1225,6 +1651,9 @@ function buildHUD() {
 
   const localGalleryBtn = $('#localGalleryBtn');
   if (localGalleryBtn) localGalleryBtn.onclick = handleLocalGalleryBtn;
+
+  const menuBtn = $('#pgMenuBtn');
+  if (menuBtn) menuBtn.onclick = openMenu;
 
   restoreFilterState();
 
@@ -1261,13 +1690,7 @@ function buildHUD() {
   if (filesInput) filesInput.addEventListener('input', scheduleFilter);
 
   const durInput = $('#fDur');
-  if (durInput) {
-    if (!DURATION_FEATURE_ENABLED) {
-      durInput.style.display = 'none';
-    } else {
-      durInput.addEventListener('input', scheduleFilter);
-    }
-  }
+  if (durInput) durInput.addEventListener('input', scheduleFilter);
 
   const hudRow = document.getElementById('hudRow');
   if (hudRow && 'ResizeObserver' in window) {
@@ -1278,6 +1701,7 @@ function buildHUD() {
   requestAnimationFrame(syncProgressBarVisibility);
   requestAnimationFrame(lockMediaButtonWidth);
   requestAnimationFrame(lockPreviewButtonWidth);
+  applyOptions();
 
   if (handleProfileContextChange()) {
     scheduleFilter();
@@ -1336,7 +1760,7 @@ function getVideoDuration(u) {
 const dl = { items: [], started: false, dispatching: false };
 const cooldownTimers = new Map();
 
-function parLimit() { return 3; }
+function parLimit() { return PARALLEL_DOWNLOAD_LIMIT; }
 
 function getCounts() {
   let total = dl.items.length, completed = 0, downloading = 0, queued = 0;
@@ -2307,11 +2731,15 @@ async function handleDlBtn() {
       scheduleHUD();
     }
   } else {
-    dl.started = false;
-    DL_ACTIVE = false;
-    b.classList.remove('stop');
-    b.textContent = 'Download';
-    scheduleHUD();
+    if (STOP_BUTTON_CLEARS_QUEUE) {
+      await handleClear();
+    } else {
+      dl.started = false;
+      DL_ACTIVE = false;
+      b.classList.remove('stop');
+      b.textContent = 'Download';
+      scheduleHUD();
+    }
   }
 }
 
