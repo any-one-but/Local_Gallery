@@ -2637,6 +2637,7 @@
       ONLINE_RENAME_MAP.posts = {};
       ONLINE_RENAME_MAP.files = {};
       ONLINE_PRELOAD_CACHE.clear();
+      ONLINE_PROFILE_CACHE.clear();
 
       renderDirectoriesPane();
       renderPreviewPane(true);
