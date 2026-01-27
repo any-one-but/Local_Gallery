@@ -73,8 +73,7 @@
     }
 
     :root[data-theme="light"] .dropdownMenu,
-    :root[data-theme="light"] #helpCard,
-    :root[data-theme="light"] #optionsCard,
+    :root[data-theme="light"] #menuCard,
     :root[data-theme="light"] #helpHoldCard,
     :root[data-theme="light"] #propertiesCard {
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
@@ -109,6 +108,18 @@
     :root[data-theme="superdark"] button:hover,
     :root[data-theme="superdark"] .miniBtn:hover {
       background: #000;
+    }
+
+    :root[data-theme="superdark"] #divider::before {
+      background: transparent;
+    }
+
+    :root[data-theme="superdark"] #previewBody .fileCard {
+      border-color: transparent;
+    }
+
+    :root[data-theme="superdark"] #previewBody .folderCard {
+      border-color: transparent;
     }
 
     :root[data-theme="synthwave"] {
@@ -261,8 +272,7 @@
     :root[data-retro="on"] .dirRow,
     :root[data-retro="on"] .folderCard,
     :root[data-retro="on"] .fileCard,
-    :root[data-retro="on"] #helpCard,
-    :root[data-retro="on"] #optionsCard,
+    :root[data-retro="on"] #menuCard,
     :root[data-retro="on"] #propertiesCard {
       border-radius: 0;
     }
@@ -494,7 +504,7 @@
     #titlePane {
       position: relative;
       z-index: 20;
-      padding: 10px 10px;
+      padding: 10px 10px 0;
       background: var(--color1-secondary);
       border-radius: 0;
       border: 0;
@@ -615,6 +625,7 @@
       align-items: center;
       justify-content: flex-end;
       width: 100%;
+      margin-bottom: 6px;
     }
 
     #directoriesTagsRow {
@@ -766,6 +777,18 @@
       outline: 1px solid var(--color0-tertirary);
       border-color: var(--color1-tertiary);
       background: rgba(0,0,0,0.35);
+    }
+
+    .dirRow.dragging {
+      opacity: 0.6;
+    }
+
+    .dirRow.drag-over-top {
+      box-shadow: inset 0 2px 0 var(--color0-tertirary);
+    }
+
+    .dirRow.drag-over-bottom {
+      box-shadow: inset 0 -2px 0 var(--color0-tertirary);
     }
 
     .dirSectionHeader {
@@ -1064,6 +1087,33 @@
       transform: translateY(0);
       transition: opacity .14s ease, transform .14s ease;
     }
+    .fileCard.dragging {
+      opacity: 0.6;
+    }
+    .fileCard.drag-hidden {
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      left: -9999px;
+      top: -9999px;
+      width: 0;
+      height: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+    .fileCard.drag-placeholder {
+      border: 2px dashed var(--color0-tertirary);
+      background: transparent;
+      box-shadow: none;
+      pointer-events: none;
+    }
+    .fileCard.drag-over-before {
+      box-shadow: 0 10px 30px var(--color1-primary-transparent), inset 0 2px 0 var(--color0-tertirary);
+    }
+    .fileCard.drag-over-after {
+      box-shadow: 0 10px 30px var(--color1-primary-transparent), inset 0 -2px 0 var(--color0-tertirary);
+    }
     .fileCard.enter {
       opacity: 0;
       transform: translateY(6px);
@@ -1087,6 +1137,11 @@
       flex-direction: column;
       gap: 6px;
       min-height: 0;
+    }
+
+    .metaBlock.compact {
+      padding: 4px 8px;
+      gap: 0;
     }
 
     .metaBlock .topLine {
@@ -1418,9 +1473,9 @@
     }
 
     /* =========================================================
-       Help Overlay
+       Menu Overlay
        ========================================================= */
-    #helpOverlay {
+    #menuOverlay {
       position: fixed;
       inset: 0;
       display: none;
@@ -1428,13 +1483,13 @@
       background: transparent;
       z-index: 9000;
     }
-    #helpOverlay.active { display: block; }
+    #menuOverlay.active { display: block; }
 
-    #helpCard {
+    #menuCard {
       position: fixed;
       pointer-events: auto;
       resize: both;
-      overflow: auto;
+      overflow: hidden;
       width: min(860px, 96vw);
       max-width: calc(100vw - 32px);
       max-height: calc(100vh - 32px);
@@ -1452,12 +1507,8 @@
       z-index: 10001;
     }
 
-    :root[data-theme="retro90s"] #helpCard,
-    :root[data-theme="retro90s-dark"] #helpCard,
-    :root[data-theme="retro90s"] #optionsCard,
-    :root[data-theme="retro90s-dark"] #optionsCard,
-    :root[data-theme="retro90s"] #keybindsCard,
-    :root[data-theme="retro90s-dark"] #keybindsCard,
+    :root[data-theme="retro90s"] #menuCard,
+    :root[data-theme="retro90s-dark"] #menuCard,
     :root[data-theme="retro90s"] #propertiesCard,
     :root[data-theme="retro90s-dark"] #propertiesCard,
     :root[data-theme="retro90s"] #helpHoldCard,
@@ -1467,35 +1518,88 @@
       box-shadow: inset 1px 1px 0 rgba(255,255,255,0.35), inset -1px -1px 0 rgba(0,0,0,0.25);
     }
 
-    #helpHeader {
-      padding: 10px 10px 8px;
+    #menuCard.overlayCardDragging {
+      cursor: grabbing;
+    }
+
+    #menuHeader {
+      padding: 10px 10px 0;
       border-bottom: 1px solid var(--color1-tertiary);
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: 10px;
       flex-wrap: wrap;
       cursor: grab;
       user-select: none;
     }
 
-    #helpHeader .title {
+    #menuHeader .title {
       font-size: 12px;
       font-weight: 800;
       color: var(--color0-primary);
       letter-spacing: .02em;
+      order: 1;
     }
 
-    #helpHeader button,
-    #optionsHeader button,
-    #keybindsHeader button {
+    #menuHeader button {
       cursor: default;
+    }
+
+    #menuTabs {
+      display: flex;
+      gap: 2px;
+      align-items: center;
+      flex-wrap: wrap;
+      width: 100%;
+      order: 3;
+    }
+
+    #menuTabs .menuTabBtn {
+      white-space: nowrap;
+      border-radius: 4px 4px 0 0;
+      border-bottom-color: var(--color1-tertiary);
+      background: var(--color1-primary);
+      padding: 4px 10px;
+    }
+
+    #menuTabs .menuTabBtn.active {
+      background: var(--color1-secondary);
+      border-bottom-color: var(--color1-secondary);
+      position: relative;
+      top: 1px;
+    }
+
+    #menuCloseBtn {
+      margin-left: auto;
+      align-self: flex-start;
+      order: 2;
+    }
+
+    #menuBody {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .menuTabPanel {
+      display: none;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+      width: 100%;
+    }
+
+    .menuTabPanel.active {
+      display: flex;
     }
 
     #helpBody {
       padding: 10px 10px 12px;
       overflow: auto;
       min-height: 0;
+      flex: 1 1 auto;
       font-size: 12px;
       color: var(--color0-primary);
       line-height: 1.5;
@@ -1630,74 +1734,15 @@
     }
 
     /* =========================================================
-       Options Overlay
+       Menu Panels
        ========================================================= */
-    #optionsOverlay,
-    #keybindsOverlay {
-      position: fixed;
-      inset: 0;
-      display: none;
-      pointer-events: none;
-      background: transparent;
-      z-index: 9000;
-    }
-    #optionsOverlay.active,
-    #keybindsOverlay.active { display: block; }
-
-    #optionsCard,
-    #keybindsCard {
-      position: fixed;
-      pointer-events: auto;
-      resize: both;
-      overflow: auto;
-      width: min(860px, 96vw);
-      max-width: calc(100vw - 32px);
-      max-height: calc(100vh - 32px);
-      min-width: 320px;
-      min-height: 220px;
-      background: var(--color1-secondary);
-      border-radius: 4px;
-      border: 1px solid var(--color1-tertiary);
-      box-shadow: 0 10px 30px var(--color1-primary-transparent);
-      display: flex;
-      flex-direction: column;
-      left: 50%;
-      top: 50%;
-      transform: none;
-      z-index: 10001;
-    }
-    #optionsCard.overlayCardDragging,
-    #helpCard.overlayCardDragging,
-    #keybindsCard.overlayCardDragging {
-      cursor: grabbing;
-    }
-
-    #optionsHeader,
-    #keybindsHeader {
-      padding: 10px 10px 8px;
-      border-bottom: 1px solid var(--color1-tertiary);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      flex-wrap: wrap;
-      cursor: grab;
-      user-select: none;
-    }
-
-    #optionsHeader .title,
-    #keybindsHeader .title {
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--color0-primary);
-      letter-spacing: .02em;
-    }
 
     #optionsBody,
     #keybindsBody {
       padding: 10px 10px 12px;
       overflow: auto;
       min-height: 0;
+      flex: 1 1 auto;
       font-size: 12px;
       color: var(--color0-primary);
       line-height: 1.5;
@@ -1804,6 +1849,7 @@
       justify-content: space-between;
       gap: 10px;
       flex-wrap: wrap;
+      flex: 0 0 auto;
     }
 
     #optionsFooter .left,

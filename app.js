@@ -180,7 +180,12 @@
         leftPaneWidthPct: 0.28,
         treatTagsAsFolders: true,
         showHiddenFolder: false,
-        showUntaggedFolder: false
+        showUntaggedFolder: false,
+        showFolderItemCount: true,
+        showDirFileTypeLabel: true,
+        showPreviewFileTypeLabel: true,
+        showPreviewFolderItemCount: true,
+        showPreviewFileName: true
       };
     }
 
@@ -228,6 +233,11 @@
         treatTagsAsFolders: d.treatTagsAsFolders,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
+        showFolderItemCount: (typeof src.showFolderItemCount === "boolean") ? src.showFolderItemCount : d.showFolderItemCount,
+        showDirFileTypeLabel: (typeof src.showDirFileTypeLabel === "boolean") ? src.showDirFileTypeLabel : d.showDirFileTypeLabel,
+        showPreviewFileTypeLabel: (typeof src.showPreviewFileTypeLabel === "boolean") ? src.showPreviewFileTypeLabel : d.showPreviewFileTypeLabel,
+        showPreviewFolderItemCount: (typeof src.showPreviewFolderItemCount === "boolean") ? src.showPreviewFolderItemCount : d.showPreviewFolderItemCount,
+        showPreviewFileName: (typeof src.showPreviewFileName === "boolean") ? src.showPreviewFileName : d.showPreviewFileName,
         leftPaneWidthPct: (function(){
           const v = parseFloat(src.leftPaneWidthPct);
           if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
@@ -239,7 +249,8 @@
   mediaFilterRaw === 'vibrant' ||
   mediaFilterRaw === 'uv' ||
   mediaFilterRaw === 'orangeTeal' ||
-  mediaFilterRaw === 'cinematic'
+  mediaFilterRaw === 'cinematic' ||
+  mediaFilterRaw === 'bw'
 ) ? mediaFilterRaw : d.mediaFilter,
         animatedMediaFilters: (typeof src.animatedMediaFilters === "boolean") ? src.animatedMediaFilters : d.animatedMediaFilters,
         crtScanlinesEnabled,
@@ -266,7 +277,8 @@
       vibrant: { color: "saturate(1.45) contrast(1.12) brightness(1.06) hue-rotate(-3deg)" },
       uv: { color: "saturate(1.6) hue-rotate(220deg) contrast(1.3) brightness(0.95)" },
       orangeTeal: { color: "hue-rotate(-22deg) saturate(1.32) contrast(1.12) brightness(1.05)" },
-      cinematic: { color: "contrast(1.3) saturate(1.2) brightness(1.02) hue-rotate(-2deg)" }
+      cinematic: { color: "contrast(1.3) saturate(1.2) brightness(1.02) hue-rotate(-2deg)" },
+      bw: { color: "grayscale(1) contrast(1.08)", forceMonochrome: true }
     };
 
     const CRT_OVERLAY_CONFIG = {
@@ -492,6 +504,7 @@
     function renderFilteredToCanvas(ctx, source, srcW, srcH, dstW, dstH, mode, cover = true) {
       const baseCfg = (mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
       const overlayCfg = MEDIA_OVERLAY_STATE;
+      const forceMonochrome = !!(baseCfg && baseCfg.forceMonochrome);
       const cfg = (baseCfg || overlayCfg) ? {
         color: baseCfg && baseCfg.color ? baseCfg.color : "none",
         pixelate: Math.max(baseCfg && baseCfg.pixelate ? baseCfg.pixelate : 0, overlayCfg && overlayCfg.pixelate ? overlayCfg.pixelate : 0),
@@ -539,7 +552,7 @@
         ctx.drawImage(source, rect.x, rect.y, rect.w, rect.h);
       }
 
-      if (cfg.chroma) {
+      if (cfg.chroma && !forceMonochrome) {
         ctx.save();
         ctx.globalCompositeOperation = "screen";
         ctx.globalAlpha = 0.18;
@@ -1584,55 +1597,43 @@
     const $ = (id) => document.getElementById(id);
 
     // Title Pane
-    const keybindsBtn = $("keybindsBtn");
-    const helpBtn = $("helpBtn");
     const optionsBtn = $("optionsBtn");
     const refreshBtn = $("refreshBtn");
     const openWritableBtn = $("openWritableBtn");
     const titleLabel = $("titleLabel");
 
-    // Help Overlay
-    const helpOverlay = $("helpOverlay");
-    const helpCloseBtn = $("helpCloseBtn");
+    // Menu Overlay
+    const menuOverlay = $("menuOverlay");
+    const menuCard = $("menuCard");
+    const menuHeader = $("menuHeader");
+    const menuTabs = $("menuTabs");
+    const menuCloseBtn = $("menuCloseBtn");
+    const menuTabOptions = $("menuTabOptions");
+    const menuTabHelp = $("menuTabHelp");
+    const menuTabKeybinds = $("menuTabKeybinds");
+
     const helpBodyEl = $("helpBody");
     const helpHoldOverlay = $("helpHoldOverlay");
-    const helpCard = $("helpCard");
-    const helpHeader = $("helpHeader");
 
-    // Options Overlay
-    const optionsOverlay = $("optionsOverlay");
-    const optionsCloseBtn = $("optionsCloseBtn");
     const optionsBodyEl = $("optionsBody");
     const optionsResetBtn = $("optionsResetBtn");
     const optionsDoneBtn = $("optionsDoneBtn");
     const optionsStatusLabel = $("optionsStatusLabel");
-    const optionsCard = $("optionsCard");
-    const optionsHeader = $("optionsHeader");
 
-    // Keybinds Overlay
-    const keybindsOverlay = $("keybindsOverlay");
-    const keybindsCloseBtn = $("keybindsCloseBtn");
+    // Keybinds Panel
     const keybindsBodyEl = $("keybindsBody");
     const keybindsResetBtn = $("keybindsResetBtn");
     const keybindsDoneBtn = $("keybindsDoneBtn");
     const keybindsStatusLabel = $("keybindsStatusLabel");
-    const keybindsCard = $("keybindsCard");
-    const keybindsHeader = $("keybindsHeader");
 
     const overlayWindowStates = {
-      help: { x: null, y: null, width: null, height: null },
-      options: { x: null, y: null, width: null, height: null },
-      keybinds: { x: null, y: null, width: null, height: null }
+      menu: { x: null, y: null, width: null, height: null }
     };
     const overlayCards = {
-      help: helpCard,
-      options: optionsCard,
-      keybinds: keybindsCard
+      menu: menuCard
     };
     const overlayCardHeaders = {
-      help: helpHeader,
-      options: optionsHeader,
-      keybinds: keybindsHeader
+      menu: menuHeader
     };
     const overlayWindowNames = Object.keys(overlayWindowStates);
     const overlayResizeObserver = (typeof ResizeObserver === "function") ? new ResizeObserver((entries) => {
@@ -1869,9 +1870,11 @@
     let RENAME_EDIT_FILE_ID = null;
     let RENAME_BUSY = false;
 
-    let HELP_OPEN = false;
-    let OPTIONS_OPEN = false;
-    let KEYBINDS_OPEN = false;
+    let MENU_OPEN = false;
+    let MENU_ACTIVE_TAB = "options";
+    let MENU_LAST_TAB = "options";
+    let MENU_HAS_OPENED = false;
+    const MENU_TAB_SCROLL = { options: 0, help: 0, keybinds: 0 };
     let HELP_HOLD_ACTIVE = false;
     let PROPERTIES_OPEN = false;
 
@@ -2092,19 +2095,100 @@
       return HELP_MD_CACHE;
     }
 
-    async function openHelp() {
-      HELP_OPEN = true;
-      if (helpOverlay) helpOverlay.classList.add("active");
-      requestAnimationFrame(() => applyOverlayWindowState("help"));
+    const MENU_TAB_IDS = ["options", "help", "keybinds"];
+    const menuTabButtons = menuTabs ? Array.from(menuTabs.querySelectorAll(".menuTabBtn")) : [];
+    const menuTabPanels = {
+      options: menuTabOptions,
+      help: menuTabHelp,
+      keybinds: menuTabKeybinds
+    };
+    const menuScrollTargets = {
+      options: optionsBodyEl,
+      help: helpBodyEl,
+      keybinds: keybindsBodyEl
+    };
+
+    function saveMenuTabScroll(tab) {
+      const target = menuScrollTargets[tab];
+      if (!target) return;
+      MENU_TAB_SCROLL[tab] = target.scrollTop || 0;
+    }
+
+    function restoreMenuTabScroll(tab) {
+      const target = menuScrollTargets[tab];
+      if (!target) return;
+      const top = MENU_TAB_SCROLL[tab] || 0;
+      requestAnimationFrame(() => {
+        target.scrollTop = top;
+      });
+    }
+
+    async function ensureHelpUi() {
       if (!helpBodyEl) return;
       helpBodyEl.innerHTML = `<div class="label">Loading help...</div>`;
       const md = await loadHelpMarkdown();
       helpBodyEl.innerHTML = markdownToHtml(md);
+      restoreMenuTabScroll("help");
     }
 
-    function closeHelp() {
-      HELP_OPEN = false;
-      if (helpOverlay) helpOverlay.classList.remove("active");
+    function ensureOptionsUi() {
+      renderOptionsUi();
+      setOptionsStatus("Saved automatically");
+      restoreMenuTabScroll("options");
+    }
+
+    function ensureKeybindsUi() {
+      renderKeybindsUi();
+      setKeybindsStatus("Saved automatically");
+      restoreMenuTabScroll("keybinds");
+    }
+
+    function setMenuTab(tabId) {
+      const next = MENU_TAB_IDS.includes(tabId) ? tabId : "options";
+      if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
+      MENU_ACTIVE_TAB = next;
+      MENU_LAST_TAB = next;
+
+      menuTabButtons.forEach((btn) => {
+        const active = btn.dataset.tab === next;
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-selected", active ? "true" : "false");
+        btn.setAttribute("tabindex", active ? "0" : "-1");
+      });
+
+      Object.entries(menuTabPanels).forEach(([id, panel]) => {
+        if (!panel) return;
+        const active = id === next;
+        panel.classList.toggle("active", active);
+        panel.setAttribute("aria-hidden", active ? "false" : "true");
+      });
+
+      if (next === "help") {
+        ensureHelpUi();
+        return;
+      }
+      if (next === "keybinds") {
+        ensureKeybindsUi();
+        return;
+      }
+      ensureOptionsUi();
+    }
+
+    function openMenu(tabId) {
+      MENU_OPEN = true;
+      if (menuOverlay) menuOverlay.classList.add("active");
+      requestAnimationFrame(() => applyOverlayWindowState("menu"));
+      const next = MENU_TAB_IDS.includes(tabId)
+        ? tabId
+        : (MENU_HAS_OPENED ? MENU_LAST_TAB : "options");
+      MENU_HAS_OPENED = true;
+      setMenuTab(next);
+    }
+
+    function closeMenu() {
+      if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
+      MENU_OPEN = false;
+      if (menuOverlay) menuOverlay.classList.remove("active");
     }
 
     function setHelpHold(active) {
@@ -2113,46 +2197,22 @@
       if (helpHoldOverlay) helpHoldOverlay.classList.toggle("active", HELP_HOLD_ACTIVE);
     }
 
-    if (helpBtn) helpBtn.addEventListener("click", () => openHelp());
-    if (helpCloseBtn) helpCloseBtn.addEventListener("click", () => closeHelp());
+    if (menuCloseBtn) menuCloseBtn.addEventListener("click", () => closeMenu());
+    if (optionsBtn) optionsBtn.addEventListener("click", () => openMenu());
+    menuTabButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.tab || "options";
+        setMenuTab(tab);
+      });
+    });
 
     /* =========================================================
-       Options overlay
-       ========================================================= */
-
-    function openOptions() {
-      OPTIONS_OPEN = true;
-      if (optionsOverlay) optionsOverlay.classList.add("active");
-      requestAnimationFrame(() => applyOverlayWindowState("options"));
-      renderOptionsUi();
-      setOptionsStatus("Saved automatically");
-    }
-
-    function closeOptions() {
-      OPTIONS_OPEN = false;
-      if (optionsOverlay) optionsOverlay.classList.remove("active");
-    }
-
-    /* =========================================================
-       Keybinds overlay
+       Keybinds panel
        ========================================================= */
 
     function setKeybindsStatus(text) {
       if (!keybindsStatusLabel) return;
       keybindsStatusLabel.textContent = text || "—";
-    }
-
-    function openKeybinds() {
-      KEYBINDS_OPEN = true;
-      if (keybindsOverlay) keybindsOverlay.classList.add("active");
-      requestAnimationFrame(() => applyOverlayWindowState("keybinds"));
-      renderKeybindsUi();
-      setKeybindsStatus("Saved automatically");
-    }
-
-    function closeKeybinds() {
-      KEYBINDS_OPEN = false;
-      if (keybindsOverlay) keybindsOverlay.classList.remove("active");
     }
 
     function applyKeybindPreset(presetId) {
@@ -2409,7 +2469,7 @@
       const colorSchemes = [
         { value: "classic", label: "Classic Dark" },
         { value: "light", label: "Light" },
-        { value: "superdark", label: "Super Dark" },
+        { value: "superdark", label: "OLED Dark" },
         { value: "synthwave", label: "Synthwave" },
         { value: "verdant", label: "Verdant" },
         { value: "azure", label: "Azure" },
@@ -2425,6 +2485,7 @@
        { value: "vibrant", label: "Vibrant" },
        { value: "cinematic", label: "Cinematic" },
        { value: "orangeTeal", label: "Orange+Teal" },
+       { value: "bw", label: "Black + White" },
        { value: "uv", label: "UV Camera" }/*
        { value: "cinematic", label: "Cinematic" },
        { value: "soft", label: "Soft" }*/
@@ -2465,6 +2526,8 @@
 <h1>General</h1>
 ${makeSelectRow("Folder sort", "Sort folders by name or score.", "opt_dirSortMode", WS.meta.dirSortMode === "score" ? "score" : "name", dirSortModes)}
 ${makeSelectRow("Folder scores", "Choose how folder scores appear in lists + previews.", "opt_folderScoreDisplay", String(opt.folderScoreDisplay || "hidden"), folderScoreModes)}
+${makeCheckRow("Show folder item counts", "Show the number of items on folders in the directories pane.", "opt_showFolderItemCount", opt.showFolderItemCount !== false)}
+${makeCheckRow("Show file type labels (directories)", "Show Image/Video labels for files in the directories pane.", "opt_showDirFileTypeLabel", opt.showDirFileTypeLabel !== false)}
 ${makeSelectRow("Folder behavior", "Sets how folders behave when browsing.", "opt_defaultFolderBehavior", String(opt.defaultFolderBehavior || "slide"), folderModes)}
 ${makeCheckRow("PANIC! opens decoy window", "When enabled, PANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
@@ -2494,6 +2557,9 @@ ${makeSelectRow("Preload next item", "Preload the next item for smoother browsin
 ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
 
 <h1>Preview</h1>
+${makeCheckRow("Show file type labels (preview)", "Show Image/Video labels under file thumbnails in the preview pane.", "opt_showPreviewFileTypeLabel", opt.showPreviewFileTypeLabel !== false)}
+${makeCheckRow("Show file names (preview)", "Show file names under thumbnails in the preview pane.", "opt_showPreviewFileName", opt.showPreviewFileName !== false)}
+${makeCheckRow("Show folder item counts (preview)", "Show the number of items on folder cards in the preview pane.", "opt_showPreviewFolderItemCount", opt.showPreviewFolderItemCount !== false)}
 ${makeSelectRow("Image thumbnail size", "Controls generated image thumbnail quality (smaller is faster).", "opt_imageThumbSize", String(opt.imageThumbSize || "medium"), thumbModes)}
 ${makeSelectRow("Video thumbnail size", "Controls generated video thumbnail quality (smaller is faster).", "opt_videoThumbSize", String(opt.videoThumbSize || "medium"), thumbModes)}
 ${makeSelectRow("Media thumbnail scale", "Controls how large media cards appear in the preview pane.", "opt_mediaThumbUiSize", String(opt.mediaThumbUiSize || "medium"), previewSizeModes)}
@@ -2598,6 +2664,21 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
         renderDirectoriesPane(true);
       });
+      bindCheck("opt_showFolderItemCount", "showFolderItemCount", () => {
+        renderDirectoriesPane(true);
+      });
+      bindCheck("opt_showDirFileTypeLabel", "showDirFileTypeLabel", () => {
+        renderDirectoriesPane(true);
+      });
+      bindCheck("opt_showPreviewFileTypeLabel", "showPreviewFileTypeLabel", () => {
+        renderPreviewPane(true, true);
+      });
+      bindCheck("opt_showPreviewFileName", "showPreviewFileName", () => {
+        renderPreviewPane(true, true);
+      });
+      bindCheck("opt_showPreviewFolderItemCount", "showPreviewFolderItemCount", () => {
+        renderPreviewPane(true, true);
+      });
       bindSelect("opt_imageThumbSize", "imageThumbSize", true);
       bindSelect("opt_videoThumbSize", "videoThumbSize", true);
       bindSelect("opt_mediaThumbUiSize", "mediaThumbUiSize", false);
@@ -2673,14 +2754,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyOptionsEverywhere(true);
     }
 
-    if (keybindsBtn) keybindsBtn.addEventListener("click", () => openKeybinds());
-    if (keybindsCloseBtn) keybindsCloseBtn.addEventListener("click", () => closeKeybinds());
-    if (keybindsDoneBtn) keybindsDoneBtn.addEventListener("click", () => closeKeybinds());
+    if (keybindsDoneBtn) keybindsDoneBtn.addEventListener("click", () => closeMenu());
     if (keybindsResetBtn) keybindsResetBtn.addEventListener("click", () => resetKeybindsToDefaults());
 
-    if (optionsBtn) optionsBtn.addEventListener("click", () => openOptions());
-    if (optionsCloseBtn) optionsCloseBtn.addEventListener("click", () => closeOptions());
-    if (optionsDoneBtn) optionsDoneBtn.addEventListener("click", () => closeOptions());
+    if (optionsDoneBtn) optionsDoneBtn.addEventListener("click", () => closeMenu());
     if (optionsResetBtn) optionsResetBtn.addEventListener("click", () => resetOptionsToDefaults());
 
     /* =========================================================
@@ -4234,14 +4311,32 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const dirHandle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, dirPath);
 
       const files = [];
+      const handleByName = new Map();
       for await (const [name, handle] of dirHandle.entries()) {
         if (handle.kind !== "file") continue;
         files.push({ name, handle });
+        handleByName.set(name, handle);
       }
 
-      files.sort((a, b) => a.name.localeCompare(b.name));
+      const orderedNames = [];
+      if (dirNode.preserveOrder) {
+        const seen = new Set();
+        for (const id of dirNode.childrenFiles || []) {
+          const rec = WS.fileById.get(id);
+          const name = rec?.name;
+          if (!name || !handleByName.has(name) || seen.has(name)) continue;
+          orderedNames.push(name);
+          seen.add(name);
+        }
+        const remaining = files.map(f => f.name).sort((a, b) => compareIndexedNames(a, b));
+        for (const name of remaining) {
+          if (!seen.has(name)) orderedNames.push(name);
+        }
+      } else {
+        orderedNames.push(...files.map(f => f.name).sort((a, b) => compareIndexedNames(a, b)));
+      }
 
-      const count = files.length;
+      const count = orderedNames.length;
       if (!count) return { renamed: false, files: 0 };
       const width = String(count).length + 1;
 
@@ -4249,7 +4344,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const labelBase = opts.label || "Batch Index";
       for (let i = 0; i < count; i++) {
         const idx = String(i + 1).padStart(width, "0");
-        const oldName = files[i].name;
+        const oldName = orderedNames[i];
+        const handle = handleByName.get(oldName);
+        if (!handle) continue;
         const dot = oldName.lastIndexOf(".");
         const ext = dot >= 0 ? oldName.slice(dot + 1) : "";
         const newName = `${base}_${idx}${ext ? "." + ext : ""}`;
@@ -4264,7 +4361,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
         if (opts.progress) showBusyOverlay(`${labelBase}... ${opts.progress} (${i + 1}/${count})`);
         else showBusyOverlay(`${labelBase}... ${i + 1}/${count}`);
-        const ok = await renameFileOnDisk(dirHandle, files[i].handle, oldName, newName);
+        const ok = await renameFileOnDisk(dirHandle, handle, oldName, newName);
         if (ok) renameMap.set(oldName, newName);
       }
 
@@ -4288,6 +4385,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       try {
         const res = await performBatchIndexForDir(dirNode, { label: "Batch Index I" });
         if (res.renamed) {
+          resetDirFileOrder(dirNode, { silent: true });
           rebuildDirectoriesEntries();
           WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
           syncPreviewToSelection();
@@ -4331,7 +4429,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (!child) continue;
           const progress = `${i + 1}/${children.length}`;
           const res = await performBatchIndexForDir(child, { label: "Batch Index II", progress });
-          if (res.renamed) renamedAny = true;
+          if (res.renamed) {
+            resetDirFileOrder(child, { silent: true });
+            renamedAny = true;
+          }
         }
 
         if (renamedAny) {
@@ -4518,6 +4619,149 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       return ids;
+    }
+
+    const DIR_FILE_DRAG = { id: null, dirPath: null };
+
+    function canReorderFilesInDir(dirNode) {
+      if (!WS.root || !dirNode) return false;
+      if (WS.view.folderBehavior === "loop") return false;
+      if (WS.view.dirSearchPinned && WS.view.searchRootActive) return false;
+      if (WS.view.favoritesMode && WS.view.favoritesRootActive) return false;
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return false;
+      return true;
+    }
+
+    function canReorderFilesInCurrentDir() {
+      return canReorderFilesInDir(WS.nav.dirNode);
+    }
+
+    function findFileEntryIndexById(fileId) {
+      const id = String(fileId || "");
+      if (!id) return -1;
+      for (let i = 0; i < WS.nav.entries.length; i++) {
+        const entry = WS.nav.entries[i];
+        if (entry && entry.kind === "file" && String(entry.id || "") === id) return i;
+      }
+      return -1;
+    }
+
+    function syncAfterDirOrderChange(selectId, opts = {}) {
+      const preserveSelection = !!opts.preserveSelection;
+      const prevEntry = preserveSelection ? (WS.nav.entries[WS.nav.selectedIndex] || null) : null;
+      rebuildDirectoriesEntries();
+      if (selectId) {
+        const idx = findFileEntryIndexById(selectId);
+        if (idx >= 0) WS.nav.selectedIndex = idx;
+        else WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      } else if (preserveSelection && prevEntry) {
+        let idx = -1;
+        if (prevEntry.kind === "file") {
+          idx = findFileEntryIndexById(prevEntry.id);
+        } else if (prevEntry.kind === "dir") {
+          idx = findDirEntryIndexByPath(prevEntry.node?.path || "");
+        } else if (prevEntry.kind === "tag") {
+          const tag = String(prevEntry.tag || "");
+          const label = String(prevEntry.label || prevEntry.tag || "");
+          for (let i = 0; i < WS.nav.entries.length; i++) {
+            const entry = WS.nav.entries[i];
+            if (entry && entry.kind === "tag" && String(entry.tag || "") === tag && String(entry.label || entry.tag || "") === label) {
+              idx = i;
+              break;
+            }
+          }
+        }
+        if (idx >= 0) WS.nav.selectedIndex = idx;
+        else WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      } else {
+        WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      }
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(true, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
+    function isDirWithin(rootNode, childNode) {
+      if (!rootNode || !childNode) return false;
+      const rootPath = String(rootNode.path || "");
+      let cur = childNode;
+      while (cur) {
+        if (cur === rootNode) return true;
+        if (rootPath && String(cur.path || "") === rootPath) return true;
+        cur = cur.parent;
+      }
+      return false;
+    }
+
+    function resetDirFileOrder(dirNode, opts = {}) {
+      if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
+      dirNode.preserveOrder = false;
+      dirNode.childrenFiles.sort((a,b) => compareIndexedNames(WS.fileById.get(a)?.name || "", WS.fileById.get(b)?.name || ""));
+      WS.view.randomCache.delete(dirNode.path || "");
+      if (!opts.silent) {
+        syncAfterDirOrderChange(opts.selectId || null);
+      } else {
+        const previewTarget = getPreviewTargetDir();
+        const refreshPreview = !!(previewTarget && (isDirWithin(previewTarget, dirNode) || isDirWithin(dirNode, previewTarget)));
+        if (refreshPreview) {
+          renderPreviewPane(true, true);
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+        }
+      }
+      return true;
+    }
+
+    function reorderFilesInDir(dirNode, draggedId, targetId, placeAfter, opts = {}) {
+      if (!dirNode || !draggedId || !targetId) return false;
+      const list = dirNode.childrenFiles;
+      if (!Array.isArray(list) || list.length < 2) return false;
+      const dragId = String(draggedId);
+      const target = String(targetId);
+      if (dragId === target) return false;
+
+      const visible = Array.isArray(opts.visibleIds) ? opts.visibleIds.map(id => String(id || "")) : null;
+      if (visible && visible.length) {
+        const visibleSet = new Set(visible);
+        if (!visibleSet.has(dragId) || !visibleSet.has(target)) return false;
+        const reorderedVisible = visible.filter(id => id !== dragId);
+        const targetIdx = reorderedVisible.indexOf(target);
+        if (targetIdx < 0) return false;
+        const insertIdx = Math.max(0, Math.min(reorderedVisible.length, placeAfter ? targetIdx + 1 : targetIdx));
+        reorderedVisible.splice(insertIdx, 0, dragId);
+
+        const result = new Array(list.length);
+        const slots = [];
+        for (let i = 0; i < list.length; i++) {
+          const id = String(list[i] || "");
+          if (visibleSet.has(id)) slots.push(i);
+          else result[i] = id;
+        }
+        if (slots.length !== reorderedVisible.length) return false;
+        for (let i = 0; i < slots.length; i++) {
+          result[slots[i]] = reorderedVisible[i];
+        }
+        list.length = 0;
+        list.push(...result);
+        dirNode.preserveOrder = true;
+        WS.view.randomCache.delete(dirNode.path || "");
+        return true;
+      }
+
+      const fromIdx = list.indexOf(dragId);
+      if (fromIdx < 0) return false;
+      list.splice(fromIdx, 1);
+      let toIdx = list.indexOf(target);
+      if (toIdx < 0) return false;
+      if (placeAfter) toIdx += 1;
+      toIdx = Math.max(0, Math.min(list.length, toIdx));
+      list.splice(toIdx, 0, dragId);
+      dirNode.preserveOrder = true;
+      WS.view.randomCache.delete(dirNode.path || "");
+      return true;
     }
 
     function invalidateAllThumbs() {
@@ -6621,7 +6865,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (directoriesSelectAllBtn) {
         const visibleFiles = canBulk ? Array.from(getVisibleFileIdsInEntries()) : [];
         const allSelected = visibleFiles.length > 0 && selectedFiles.length === visibleFiles.length;
-        directoriesSelectAllBtn.style.display = WS.view.bulkSelectMode && visibleFiles.length ? "inline-flex" : "none";
+        directoriesSelectAllBtn.style.display = "none";
         directoriesSelectAllBtn.disabled = !WS.view.bulkSelectMode || !visibleFiles.length || allSelected;
       }
 
@@ -6724,16 +6968,22 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const prevScroll = keepScroll ? directoriesListEl.scrollTop : 0;
       directoriesListEl.innerHTML = "";
       updateTitleLabel();
+      const showFolderItemCount = !(WS.meta && WS.meta.options && WS.meta.options.showFolderItemCount === false);
+      const showDirFileTypeLabel = !(WS.meta && WS.meta.options && WS.meta.options.showDirFileTypeLabel === false);
       const canBulk = WS.view.bulkSelectMode && canUseBulkSelection();
       const selectedFilesInView = canBulk ? getSelectedFileIdsInCurrentView() : [];
       const selectedFilesInViewCount = selectedFilesInView.length;
-      setDirectoriesHeaderActive(!!WS.root);
-
       renderDirectoriesTagsHeader();
       renderDirectoriesBulkHeader();
+      renderDirectoriesActionHeader();
+
+      const headerActive = !!WS.root && (
+        (directoriesTagsRowEl && directoriesTagsRowEl.style.display !== "none") ||
+        (directoriesBulkRowEl && directoriesBulkRowEl.style.display !== "none")
+      );
+      setDirectoriesHeaderActive(headerActive);
 
       if (!WS.root) {
-        renderDirectoriesActionHeader();
         directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder to begin.</div>`;
         return;
       }
@@ -6754,15 +7004,19 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
 
-      let maxMetaLen = 10;
-      for (let i = 0; i < WS.nav.entries.length; i++) {
-        const entry = WS.nav.entries[i];
-        if (entry && entry.kind === "dir") {
-          const m = `${dirItemCount(entry.node)} items`;
-          if (m.length > maxMetaLen) maxMetaLen = m.length;
+      if (showFolderItemCount) {
+        let maxMetaLen = 10;
+        for (let i = 0; i < WS.nav.entries.length; i++) {
+          const entry = WS.nav.entries[i];
+          if (entry && entry.kind === "dir") {
+            const m = `${dirItemCount(entry.node)} items`;
+            if (m.length > maxMetaLen) maxMetaLen = m.length;
+          }
         }
+        try { directoriesListEl.style.setProperty("--dirMetaCh", String(maxMetaLen)); } catch {}
+      } else {
+        try { directoriesListEl.style.removeProperty("--dirMetaCh"); } catch {}
       }
-      try { directoriesListEl.style.setProperty("--dirMetaCh", String(maxMetaLen)); } catch {}
 
       const frag = document.createDocumentFragment();
       WS.nav.entries.forEach((entry, idx) => {
@@ -6812,9 +7066,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
             const canRename = !!WS.meta.fsRootHandle;
             const canBatchIndex = !!WS.meta.fsRootHandle;
+            const canResetOrder = !!entry.node?.preserveOrder;
             icon = canBulk ? (sel ? "☑" : "☐") : (isHidden ? "🙈" : (isFavorite ? "♥" : "📁"));
             name = displayName(entry.node?.name || "folder") || "folder";
-            meta = `${dirItemCount(entry.node)} items`;
+            meta = showFolderItemCount ? `${dirItemCount(entry.node)} items` : "";
             const sc = metaGetScore(p);
             const scoreMode = folderScoreDisplayMode();
             if (scoreMode !== "hidden") {
@@ -6841,19 +7096,21 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                 <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
                 <button type="button" data-action="batch-index-1"${canBatchIndex ? "" : " disabled"}>Batch Index I</button>
                 <button type="button" data-action="batch-index-2"${canBatchIndex ? "" : " disabled"}>Batch Index II</button>
+                <button type="button" data-action="reset-order"${canResetOrder ? "" : " disabled"}>Reset order</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
               </div>
             </div>
             `;
-            rightHtml = `<div class="dirRight"><div class="dirMeta">${escapeHtml(meta)}</div>${menuHtml}</div>`;
+            const metaHtml = meta ? `<div class="dirMeta">${escapeHtml(meta)}</div>` : "";
+            rightHtml = `<div class="dirRight">${metaHtml}${menuHtml}</div>`;
           } else {
             const rec = WS.fileById.get(entry.id);
             const isVid = rec?.type === "video";
             const sel = canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
             icon = canBulk ? (sel ? "☑" : "☐") : (isVid ? "🎞" : "🖼");
             name = fileDisplayName(rec?.name || "file") || "file";
-            meta = isVid ? "video" : "image";
+            meta = showDirFileTypeLabel ? (isVid ? "video" : "image") : "";
             const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
             const bulkFileMenuActive = canBulk && sel && selectedFilesInViewCount > 0;
             const canLooseSetMerge = !!WS.meta.fsRootHandle;
@@ -6924,22 +7181,76 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
               if (String(entry.id || "") === String(RENAME_EDIT_FILE_ID || "")) {
                 const rec = WS.fileById.get(entry.id);
                 const curName = String(rec?.name || "");
+                const metaHtml = meta ? `<div class="dirMeta">${escapeHtml(meta)}</div>` : "";
                 row.innerHTML = `
                   <div class="dirIcon">${icon}</div>
                   <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
-                  <div class="dirMeta">${escapeHtml(meta)}</div>
+                  ${metaHtml}
                   ${fileMenuHtml}
                 `;
               } else {
-                row.innerHTML = `
-                  <div class="dirIcon">${icon}</div>
-                  <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-                  <div class="dirMeta">${escapeHtml(meta)}</div>
-                  ${fileMenuHtml}
-                `;
-              }
+            const metaHtml = meta ? `<div class="dirMeta">${escapeHtml(meta)}</div>` : "";
+            row.innerHTML = `
+                <div class="dirIcon">${icon}</div>
+                <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                ${metaHtml}
+                ${fileMenuHtml}
+              `;
+          }
             }
           }
+        }
+
+        if (entry.kind === "file" && canReorderFilesInCurrentDir()) {
+          const fileId = String(entry.id || "");
+          row.draggable = true;
+          row.addEventListener("dragstart", (e) => {
+            if (!canReorderFilesInCurrentDir() || WS.view.bulkSelectMode) {
+              e.preventDefault();
+              return;
+            }
+            if (!fileId) return;
+            DIR_FILE_DRAG.id = fileId;
+            DIR_FILE_DRAG.dirPath = String(WS.nav.dirNode?.path || "");
+            row.classList.add("dragging");
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = "move";
+              try { e.dataTransfer.setData("text/plain", fileId); } catch {}
+            }
+          });
+          row.addEventListener("dragend", () => {
+            DIR_FILE_DRAG.id = null;
+            DIR_FILE_DRAG.dirPath = null;
+            row.classList.remove("dragging");
+            row.classList.remove("drag-over-top");
+            row.classList.remove("drag-over-bottom");
+          });
+          row.addEventListener("dragover", (e) => {
+            if (!DIR_FILE_DRAG.id || DIR_FILE_DRAG.id === fileId) return;
+            if (DIR_FILE_DRAG.dirPath !== String(WS.nav.dirNode?.path || "")) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+            const rect = row.getBoundingClientRect();
+            const placeAfter = e.clientY > rect.top + rect.height / 2;
+            row.classList.toggle("drag-over-top", !placeAfter);
+            row.classList.toggle("drag-over-bottom", placeAfter);
+          });
+          row.addEventListener("dragleave", () => {
+            row.classList.remove("drag-over-top");
+            row.classList.remove("drag-over-bottom");
+          });
+          row.addEventListener("drop", (e) => {
+            if (!DIR_FILE_DRAG.id || DIR_FILE_DRAG.dirPath !== String(WS.nav.dirNode?.path || "")) return;
+            e.preventDefault();
+            e.stopPropagation();
+            row.classList.remove("drag-over-top");
+            row.classList.remove("drag-over-bottom");
+            const rect = row.getBoundingClientRect();
+            const placeAfter = e.clientY > rect.top + rect.height / 2;
+            const visibleIds = getOrderedFileIdsForDir(WS.nav.dirNode);
+            const moved = reorderFilesInDir(WS.nav.dirNode, DIR_FILE_DRAG.id, fileId, placeAfter, { visibleIds });
+            if (moved) syncAfterDirOrderChange(DIR_FILE_DRAG.id);
+          });
         }
 
         if (isTagEntry && !entry.special && entry.tag) {
@@ -7109,6 +7420,18 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                     return;
                   }
                   batchIndexChildFolderFiles(entry.node);
+                  return;
+                }
+                if (action === "reset-order") {
+                  if (entry && entry.node) {
+                    resetDirFileOrder(entry.node, {
+                      silent: entry.node !== WS.nav.dirNode,
+                      selectId: null
+                    });
+                    if (entry.node !== WS.nav.dirNode) {
+                      showStatusMessage("Order reset.");
+                    }
+                  }
                   return;
                 }
                 if (action === "favorite") {
@@ -8153,7 +8476,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         setPreviewBodyMode("grid");
         updateModePill();
         if (itemsPill) itemsPill.textContent = "Items: —";
-        previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder to begin.</div>`;
+        previewBodyEl.innerHTML = "";
         return;
       }
 
@@ -8263,6 +8586,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const nm = displayName(dirNode?.name || "folder") || "folder";
       const sc = metaGetScore(dirNode?.path || "");
       const scoreMode = folderScoreDisplayMode();
+      const showPreviewFolderItemCount = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFolderItemCount === false);
       const voteSeg = scoreMode !== "hidden" ? `
           <div class="voteBox">
             ${scoreMode === "show" ? `<div class="voteBtn up">▲</div>` : ""}
@@ -8270,6 +8594,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             ${scoreMode === "show" ? `<div class="voteBtn down">▼</div>` : ""}
           </div>
           ` : ``;
+      const countSeg = showPreviewFolderItemCount ? `<div class="meta">${dirItemCount(dirNode)} items</div>` : ``;
       card.innerHTML = `
         <div class="left">
           <div class="icon">${icon}</div>
@@ -8277,7 +8602,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         </div>
         <div class="folderRight">
           ${voteSeg}
-          <div class="meta">${dirItemCount(dirNode)} items</div>
+          ${countSeg}
         </div>
       `;
       const up = card.querySelector(".voteBtn.up");
@@ -8295,12 +8620,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return card;
     }
 
-    function renderFilesGrid(ids, container, animate) {
+    function renderFilesGrid(ids, container, animate, dirNode) {
       const LIMIT = 800;
       if (!ids.length) return 0;
 
       const grid = document.createElement("div");
       grid.className = "gridFiles";
+      if (dirNode && canReorderFilesInPreviewDir(dirNode)) setupPreviewGridDrag(grid);
       const frag = document.createDocumentFragment();
 
       let rendered = 0;
@@ -8309,7 +8635,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const rec = WS.fileById.get(id);
         if (!rec) continue;
 
-        const card = makePreviewFileCard(rec, animate);
+        const card = makePreviewFileCard(rec, animate, dirNode, ids);
         frag.appendChild(card);
         rendered++;
       }
@@ -8340,7 +8666,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       const ids = getOrderedFileIdsForDir(dirNode);
       if (ids.length) {
-        renderFilesGrid(ids, container, animate);
+        renderFilesGrid(ids, container, animate, dirNode);
         hasContent = true;
       }
 
@@ -8393,7 +8719,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       if (baseFiles.length) {
         const section = makeSection("Files in this folder", `${baseFiles.length} files`, "");
-        renderFilesGrid(baseFiles, section, animate);
+        renderFilesGrid(baseFiles, section, animate, dirNode);
         previewBodyEl.appendChild(section);
         hasAny = true;
       }
@@ -8429,7 +8755,188 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
     }
 
-    function makePreviewFileCard(rec, animate) {
+    function canReorderFilesInPreviewDir(dirNode) {
+      const target = getPreviewTargetDir();
+      if (!target || !dirNode) return false;
+      if (String(target.path || "") !== String(dirNode.path || "")) return false;
+      return canReorderFilesInDir(dirNode);
+    }
+
+    const PREVIEW_DRAG_STATE = {
+      placeholder: null,
+      grid: null,
+      draggedId: null,
+      draggedCard: null,
+      dirNode: null,
+      visibleIds: null,
+      raf: 0,
+      lastX: 0,
+      lastY: 0,
+      pendingHide: false
+    };
+
+    function ensurePreviewDragPlaceholder(card) {
+      if (!PREVIEW_DRAG_STATE.placeholder) {
+        const ph = document.createElement("div");
+        ph.className = "fileCard drag-placeholder";
+        ph.setAttribute("aria-hidden", "true");
+        PREVIEW_DRAG_STATE.placeholder = ph;
+      }
+      const rect = card.getBoundingClientRect();
+      const ph = PREVIEW_DRAG_STATE.placeholder;
+      ph.style.width = `${Math.max(1, Math.round(rect.width))}px`;
+      ph.style.height = `${Math.max(1, Math.round(rect.height))}px`;
+      return ph;
+    }
+
+    function placePreviewDragPlaceholder(card) {
+      const grid = card.parentElement;
+      if (!grid) return;
+      const ph = ensurePreviewDragPlaceholder(card);
+      if (ph.parentElement && ph.parentElement !== grid) {
+        ph.parentElement.removeChild(ph);
+      }
+      PREVIEW_DRAG_STATE.grid = grid;
+      if (card !== ph) grid.insertBefore(ph, card);
+    }
+
+    function clearPreviewDragPlaceholder() {
+      const ph = PREVIEW_DRAG_STATE.placeholder;
+      if (ph && ph.parentElement) ph.parentElement.removeChild(ph);
+      PREVIEW_DRAG_STATE.grid = null;
+    }
+
+    function getPreviewGridCards(grid) {
+      if (!grid) return [];
+      return Array.from(grid.querySelectorAll(".fileCard"))
+        .filter(card => !card.classList.contains("drag-placeholder") && !card.classList.contains("drag-hidden"));
+    }
+
+    function updatePreviewPlaceholderFromPoint(grid, x, y) {
+      const cards = getPreviewGridCards(grid);
+      if (!cards.length) {
+        const ph = PREVIEW_DRAG_STATE.placeholder;
+        if (ph && ph.parentElement !== grid) grid.appendChild(ph);
+        return;
+      }
+      for (const card of cards) {
+        const rect = card.getBoundingClientRect();
+        const rowMid = rect.top + rect.height / 2;
+        if (y < rowMid) {
+          placePreviewDragPlaceholder(card);
+          return;
+        }
+        if (y >= rect.top && y <= rect.bottom) {
+          const colMid = rect.left + rect.width / 2;
+          if (x < colMid) {
+            placePreviewDragPlaceholder(card);
+            return;
+          }
+        }
+      }
+      const ph = PREVIEW_DRAG_STATE.placeholder;
+      if (ph && ph.parentElement !== grid) grid.appendChild(ph);
+    }
+
+    function schedulePreviewDragUpdate(grid, x, y) {
+      PREVIEW_DRAG_STATE.lastX = x;
+      PREVIEW_DRAG_STATE.lastY = y;
+      if (PREVIEW_DRAG_STATE.raf) return;
+      PREVIEW_DRAG_STATE.raf = requestAnimationFrame(() => {
+        PREVIEW_DRAG_STATE.raf = 0;
+        updatePreviewPlaceholderFromPoint(grid, PREVIEW_DRAG_STATE.lastX, PREVIEW_DRAG_STATE.lastY);
+      });
+    }
+
+    function beginPreviewDrag(card, dragDir, visibleIds) {
+      PREVIEW_DRAG_STATE.draggedCard = card;
+      PREVIEW_DRAG_STATE.draggedId = String(card?.dataset?.fileId || "");
+      PREVIEW_DRAG_STATE.dirNode = dragDir;
+      PREVIEW_DRAG_STATE.visibleIds = Array.isArray(visibleIds) ? visibleIds.slice() : null;
+      const grid = card?.parentElement || null;
+      PREVIEW_DRAG_STATE.grid = grid;
+      PREVIEW_DRAG_STATE.pendingHide = true;
+    }
+
+    function finishPreviewDrag() {
+      if (PREVIEW_DRAG_STATE.raf) {
+        cancelAnimationFrame(PREVIEW_DRAG_STATE.raf);
+        PREVIEW_DRAG_STATE.raf = 0;
+      }
+      const card = PREVIEW_DRAG_STATE.draggedCard;
+      if (card) card.classList.remove("drag-hidden");
+      PREVIEW_DRAG_STATE.draggedCard = null;
+      PREVIEW_DRAG_STATE.draggedId = null;
+      PREVIEW_DRAG_STATE.dirNode = null;
+      PREVIEW_DRAG_STATE.visibleIds = null;
+      PREVIEW_DRAG_STATE.pendingHide = false;
+      clearPreviewDragPlaceholder();
+    }
+
+    function ensurePreviewDragHidden() {
+      if (!PREVIEW_DRAG_STATE.pendingHide) return;
+      const card = PREVIEW_DRAG_STATE.draggedCard;
+      const grid = PREVIEW_DRAG_STATE.grid || card?.parentElement || null;
+      if (!card || !grid) return;
+      PREVIEW_DRAG_STATE.pendingHide = false;
+      placePreviewDragPlaceholder(card);
+      card.classList.add("drag-hidden");
+    }
+
+    function setupPreviewGridDrag(grid) {
+      if (!grid || grid.dataset.previewDragBound === "1") return;
+      grid.dataset.previewDragBound = "1";
+
+      grid.addEventListener("dragover", (e) => {
+        if (!PREVIEW_DRAG_STATE.draggedId) return;
+        if (PREVIEW_DRAG_STATE.grid && PREVIEW_DRAG_STATE.grid !== grid) return;
+        e.preventDefault();
+        ensurePreviewDragHidden();
+        schedulePreviewDragUpdate(grid, e.clientX, e.clientY);
+      });
+
+      grid.addEventListener("drop", (e) => {
+        if (!PREVIEW_DRAG_STATE.draggedId) return;
+        if (PREVIEW_DRAG_STATE.grid && PREVIEW_DRAG_STATE.grid !== grid) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const dirNode = PREVIEW_DRAG_STATE.dirNode;
+        const dragId = PREVIEW_DRAG_STATE.draggedId;
+        const ids = PREVIEW_DRAG_STATE.visibleIds || (dirNode ? getOrderedFileIdsForDir(dirNode) : []);
+        const list = ids.filter(id => String(id || "") !== String(dragId));
+        const children = Array.from(grid.children);
+        let insertIdx = 0;
+        for (const child of children) {
+          if (child === PREVIEW_DRAG_STATE.placeholder) break;
+          if (child.classList && child.classList.contains("fileCard")
+            && !child.classList.contains("drag-hidden")
+            && !child.classList.contains("drag-placeholder")) {
+            insertIdx++;
+          }
+        }
+        insertIdx = Math.max(0, Math.min(list.length, insertIdx));
+        let targetId = null;
+        let placeAfter = false;
+        if (list.length) {
+          if (insertIdx >= list.length) {
+            targetId = list[list.length - 1];
+            placeAfter = true;
+          } else {
+            targetId = list[insertIdx];
+            placeAfter = false;
+          }
+        }
+        if (dirNode && targetId) {
+          const moved = reorderFilesInDir(dirNode, dragId, targetId, placeAfter, { visibleIds: ids });
+          if (moved) syncAfterDirOrderChange(null, { preserveSelection: true });
+        }
+        DIR_FILE_DRAG.id = null;
+        DIR_FILE_DRAG.dirPath = null;
+        finishPreviewDrag();
+      });
+    }
+
+    function makePreviewFileCard(rec, animate, dirNode, visibleIds) {
       const card = document.createElement("div");
       card.className = "fileCard";
       card.style.cursor = "pointer";
@@ -8438,6 +8945,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const img = document.createElement("img");
       img.className = "thumb";
       img.loading = "lazy";
+      img.draggable = false;
       img.alt = fileDisplayName(rec.name || "") || "";
 
       if (rec.type === "image") {
@@ -8447,28 +8955,76 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (!img.src) img.style.objectFit = "contain";
       }
 
-      const meta = document.createElement("div");
-      meta.className = "metaBlock";
+      const showPreviewFileTypeLabel = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFileTypeLabel === false);
+      const showPreviewFileName = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFileName === false);
+      const showAnyMeta = showPreviewFileTypeLabel || showPreviewFileName;
+      let meta = null;
+      if (showAnyMeta) {
+        meta = document.createElement("div");
+        meta.className = (showPreviewFileTypeLabel && showPreviewFileName) ? "metaBlock" : "metaBlock compact";
 
-      const top = document.createElement("div");
-      top.className = "topLine";
+        if (showPreviewFileName) {
+          const top = document.createElement("div");
+          top.className = "topLine";
 
-      const name = document.createElement("div");
-      name.className = "name";
-      name.textContent = fileDisplayName(rec.name || "—") || "—";
-      name.title = relPathDisplayName(rec.relPath || rec.name || "");
+          const name = document.createElement("div");
+          name.className = "name";
+          name.textContent = fileDisplayName(rec.name || "—") || "—";
+          name.title = relPathDisplayName(rec.relPath || rec.name || "");
 
-      top.appendChild(name);
+          top.appendChild(name);
+          meta.appendChild(top);
+        }
 
-      const mini = document.createElement("div");
-      mini.className = "mini";
-      mini.textContent = rec.type === "video" ? "video" : "image";
-
-      meta.appendChild(top);
-      meta.appendChild(mini);
+        if (showPreviewFileTypeLabel) {
+          const mini = document.createElement("div");
+          mini.className = "mini";
+          mini.textContent = rec.type === "video" ? "video" : "image";
+          meta.appendChild(mini);
+        }
+      }
 
       card.appendChild(img);
-      card.appendChild(meta);
+      if (meta) card.appendChild(meta);
+
+      const fileId = String(rec.id || "");
+      if (fileId) card.dataset.fileId = fileId;
+      const dragDir = dirNode || WS.dirByPath.get(rec.dirPath || "") || null;
+      if (fileId && dragDir && canReorderFilesInPreviewDir(dragDir)) {
+        const handleDragStart = (e) => {
+          if (!canReorderFilesInPreviewDir(dragDir) || WS.view.bulkSelectMode) {
+            e.preventDefault();
+            return;
+          }
+          DIR_FILE_DRAG.id = fileId;
+          DIR_FILE_DRAG.dirPath = String(dragDir.path || "");
+          card.classList.add("dragging");
+          beginPreviewDrag(card, dragDir, visibleIds);
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = "move";
+            try { e.dataTransfer.setData("text/plain", fileId); } catch {}
+            try {
+              const rect = card.getBoundingClientRect();
+              e.dataTransfer.setDragImage(card, rect.width / 2, rect.height / 2);
+            } catch {}
+          }
+        };
+        const handleDragEnd = () => {
+          DIR_FILE_DRAG.id = null;
+          DIR_FILE_DRAG.dirPath = null;
+          card.classList.remove("dragging");
+          finishPreviewDrag();
+        };
+        const setupDragSource = (el) => {
+          if (!el) return;
+          el.draggable = true;
+          el.addEventListener("dragstart", handleDragStart);
+          el.addEventListener("dragend", handleDragEnd);
+        };
+        setupDragSource(card);
+        setupDragSource(img);
+        setupDragSource(meta);
+      }
 
       card.addEventListener("click", () => {
         if (!WS.root) return;
@@ -9414,6 +9970,23 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         directoriesSearchInput.disabled = !hasWS;
         const v = String(WS.view.dirSearchQuery || "");
         if (directoriesSearchInput.value !== v) directoriesSearchInput.value = v;
+        const placeholderName = (function () {
+          if (!hasWS) return "folder";
+          if (WS.view.favoritesMode) return "Favorites";
+          if (WS.view.hiddenMode) return "Hidden";
+          const node = WS.nav.dirNode;
+          if (node && node.name) {
+            const nm = displayName(node.name);
+            if (nm) return nm;
+          }
+          const p = String(node?.path || "");
+          if (p) {
+            const parts = p.split(/[/\\\\]+/).filter(Boolean);
+            if (parts.length) return parts[parts.length - 1];
+          }
+          return "folder";
+        })();
+        directoriesSearchInput.placeholder = `Search ${placeholderName}`;
       }
       if (directoriesSearchClearBtn) {
         const enabled = hasWS && (WS.view.dirSearchPinned || String(WS.view.dirSearchQuery || "").trim());
@@ -9522,9 +10095,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function handleBackAction() {
-      if (HELP_OPEN) { closeHelp(); return true; }
-      if (OPTIONS_OPEN) { closeOptions(); return true; }
-      if (KEYBINDS_OPEN) { closeKeybinds(); return true; }
+      if (MENU_OPEN) { closeMenu(); return true; }
       if (WS.view.bulkActionMenuOpen || WS.view.dirActionMenuPath || WS.view.fileActionMenuId) {
         closeActionMenus();
         renderDirectoriesPane(true);
@@ -9580,9 +10151,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
 
-      if (HELP_OPEN) return;
-      if (OPTIONS_OPEN) return;
-      if (KEYBINDS_OPEN) return;
+      if (MENU_OPEN) return;
 
       if (isTextInputTarget(e.target)) return;
 

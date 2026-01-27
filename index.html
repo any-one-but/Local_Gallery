@@ -23,14 +23,12 @@
             <div id="previewNavControls">
               <button id="refreshBtn" type="button" class="miniBtn" title="Reload current folder">Refresh</button>
             </div>
-            <button id="keybindsBtn" type="button" class="miniBtn" title="Keybinds">KB</button>
-            <button id="helpBtn" type="button" class="miniBtn">?</button>
-            <button id="optionsBtn" type="button" class="miniBtn">⚙</button>
+            <button id="optionsBtn" type="button" class="miniBtn" title="Menu">⚙</button>
             <button id="openWritableBtn" type="button" class="miniBtn">Choose Root</button>
           </div>
       </div>
       <div id="directoriesSearchRow">
-        <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search this folder..." />
+        <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search folder" />
         <button id="directoriesSearchClearBtn" type="button" class="miniBtn">X</button>
       </div>
     </div>
@@ -48,7 +46,6 @@
             <!-- Search bar moved above -->
             <div id="directoriesTagsRow"></div>
             <div id="directoriesActionRow">
-              <button id="directoriesSelectAllBtn" type="button" class="miniBtn">Select all</button>
               <div id="directoriesActionMenu" class="dropdownMenu"></div>
             </div>
             <div id="tagActionMenu" class="dropdownMenu"></div>
@@ -87,19 +84,6 @@
     <div id="busyOverlay">
       <div class="busySpinner"></div>
       <div id="busyLabel">Working...</div>
-    </div>
-
-    <!-- =========================================================
-         Help (Overlay)
-         ========================================================= -->
-    <div id="helpOverlay">
-      <div id="helpCard">
-        <div id="helpHeader">
-          <div class="title">Help</div>
-          <button id="helpCloseBtn" type="button" class="miniBtn">X</button>
-        </div>
-        <div id="helpBody"></div>
-      </div>
     </div>
 
     <!-- =========================================================
@@ -185,45 +169,47 @@
     </div>
 
     <!-- =========================================================
-         Options (Overlay)
+         Menu (Overlay)
          ========================================================= -->
-    <div id="optionsOverlay">
-      <div id="optionsCard">
-        <div id="optionsHeader">
-          <div class="title">Options</div>
-          <button id="optionsCloseBtn" type="button" class="miniBtn">X</button>
+    <div id="menuOverlay">
+      <div id="menuCard">
+        <div id="menuHeader">
+          <div class="title">Menu</div>
+          <div id="menuTabs" role="tablist" aria-label="Menu tabs">
+            <button type="button" class="miniBtn menuTabBtn" data-tab="options" role="tab" aria-controls="menuTabOptions">Options</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="help" role="tab" aria-controls="menuTabHelp">Help</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="keybinds" role="tab" aria-controls="menuTabKeybinds">Keybinds</button>
+          </div>
+          <button id="menuCloseBtn" type="button" class="miniBtn">X</button>
         </div>
-        <div id="optionsBody"></div>
-        <div id="optionsFooter">
-          <div class="left">
-            <span class="label" id="optionsStatusLabel">—</span>
-          </div>
-          <div class="right">
-            <button id="optionsResetBtn" type="button" class="miniBtn">Reset defaults</button>
-            <button id="optionsDoneBtn" type="button" class="miniBtn">Done</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- =========================================================
-         Keybinds (Overlay)
-         ========================================================= -->
-    <div id="keybindsOverlay">
-      <div id="keybindsCard">
-        <div id="keybindsHeader">
-          <div class="title">Keybinds</div>
-          <button id="keybindsCloseBtn" type="button" class="miniBtn">X</button>
-        </div>
-        <div id="keybindsBody"></div>
-        <div id="keybindsFooter">
-          <div class="left">
-            <span class="label" id="keybindsStatusLabel">—</span>
-          </div>
-          <div class="right">
-            <button id="keybindsResetBtn" type="button" class="miniBtn">Reset defaults</button>
-            <button id="keybindsDoneBtn" type="button" class="miniBtn">Done</button>
-          </div>
+        <div id="menuBody">
+          <section id="menuTabOptions" class="menuTabPanel" data-tab="options" role="tabpanel">
+            <div id="optionsBody"></div>
+            <div id="optionsFooter">
+              <div class="left">
+                <span class="label" id="optionsStatusLabel">—</span>
+              </div>
+              <div class="right">
+                <button id="optionsResetBtn" type="button" class="miniBtn">Reset defaults</button>
+                <button id="optionsDoneBtn" type="button" class="miniBtn">Done</button>
+              </div>
+            </div>
+          </section>
+          <section id="menuTabHelp" class="menuTabPanel" data-tab="help" role="tabpanel">
+            <div id="helpBody"></div>
+          </section>
+          <section id="menuTabKeybinds" class="menuTabPanel" data-tab="keybinds" role="tabpanel">
+            <div id="keybindsBody"></div>
+            <div id="keybindsFooter">
+              <div class="left">
+                <span class="label" id="keybindsStatusLabel">—</span>
+              </div>
+              <div class="right">
+                <button id="keybindsResetBtn" type="button" class="miniBtn">Reset defaults</button>
+                <button id="keybindsDoneBtn" type="button" class="miniBtn">Done</button>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
