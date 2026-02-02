@@ -992,6 +992,7 @@ const DEFAULT_OPTIONS = {
   durationIndexing: false,
   galleryPreloadAll: false,
   parallelDownloadLimit: 3,
+  timeoutRetries: true,
   stopClearsQueue: true,
   showLocalGalleryBtn: false,
   showGalleryBtn: true,
@@ -1016,6 +1017,7 @@ function normalizeOptions(opt) {
   if (opt.parallelDownloadLimit != null) {
     out.parallelDownloadLimit = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
   }
+  if (typeof opt.timeoutRetries === 'boolean') out.timeoutRetries = opt.timeoutRetries;
   if (typeof opt.stopClearsQueue === 'boolean') out.stopClearsQueue = opt.stopClearsQueue;
   if (typeof opt.showLocalGalleryBtn === 'boolean') out.showLocalGalleryBtn = opt.showLocalGalleryBtn;
   if (typeof opt.showGalleryBtn === 'boolean') out.showGalleryBtn = opt.showGalleryBtn;
@@ -1040,6 +1042,7 @@ let PG_OPTIONS = loadOptions();
 let GALLERY_PRELOAD_ALL_MEDIA = false;
 let DURATION_FEATURE_ENABLED = false;
 let PARALLEL_DOWNLOAD_LIMIT = 3;
+let TIMEOUT_RETRIES_ENABLED = true;
 let STOP_BUTTON_CLEARS_QUEUE = true;
 let SHOW_PROGRESS_BAR = true;
 let PG_TOTAL = null;
@@ -1687,6 +1690,7 @@ function applyOptions() {
   DURATION_FEATURE_ENABLED = !!opt.durationIndexing;
   GALLERY_PRELOAD_ALL_MEDIA = !!opt.galleryPreloadAll;
   PARALLEL_DOWNLOAD_LIMIT = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
+  TIMEOUT_RETRIES_ENABLED = opt.timeoutRetries !== false;
   STOP_BUTTON_CLEARS_QUEUE = opt.stopClearsQueue !== false;
   SHOW_PROGRESS_BAR = opt.showProgressBar !== false;
 
@@ -1796,6 +1800,7 @@ function renderOptionsUi() {
       ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
       ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
       ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
+      ${makeCheckRow('Retry on stall/timeout', 'When a download stalls or takes too long, abort and retry (default on).', 'pg_opt_timeoutRetries', opt.timeoutRetries !== false)}
       ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
     </div>
 
@@ -1850,6 +1855,7 @@ function renderOptionsUi() {
   bindNumber('pg_opt_parallelDownloadLimit', 'parallelDownloadLimit', 1, 10, () => {
     if (dl.started) requestDispatch();
   });
+  bindCheck('pg_opt_timeoutRetries', 'timeoutRetries');
   bindCheck('pg_opt_stopClearsQueue', 'stopClearsQueue');
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
   bindCheck('pg_opt_showGalleryBtn', 'showGalleryBtn');
@@ -2422,8 +2428,19 @@ function startDownload(item) {
   const idleMs = isVid ? STALL_VID_IDLE_MS : STALL_IMG_IDLE_MS;
   let lastProgressAt = Date.now();
   let settled = false;
+  let tTotal = null;
+  let tIdle = null;
 
-  const clearWatchers = () => { try { clearTimeout(tTotal); } catch {} try { clearInterval(tIdle); } catch {} };
+  const clearWatchers = () => {
+    if (tTotal) {
+      try { clearTimeout(tTotal); } catch {}
+      tTotal = null;
+    }
+    if (tIdle) {
+      try { clearInterval(tIdle); } catch {}
+      tIdle = null;
+    }
+  };
 
   const handleFailure = (reason, err) => {
     if (settled) return;
@@ -2466,8 +2483,12 @@ function startDownload(item) {
     setTimeout(requestDispatch, 0);
   };
 
-  const tTotal = setTimeout(() => handleFailure('Download timeout'), totalMs);
-  const tIdle = setInterval(() => {
+  tTotal = setTimeout(() => {
+    if (!TIMEOUT_RETRIES_ENABLED) return;
+    handleFailure('Download timeout');
+  }, totalMs);
+  tIdle = setInterval(() => {
+    if (!TIMEOUT_RETRIES_ENABLED) return;
     if (Date.now() - lastProgressAt > idleMs) handleFailure('Download stalled');
   }, 2000);
 
