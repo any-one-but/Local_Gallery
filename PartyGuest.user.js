@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.11.24
+// @version      01.11.26
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -20,15 +20,15 @@
 
 GM_addStyle(`
 :root {
-  --color0-primary: hsl(0, 0%, 95%);
-  --color0-secondary: hsl(0, 0%, 70%);
-  --color0-tertirary: hsl(0, 0%, 45%);
+  --color0-primary: #ffffff;
+  --color0-secondary: rgba(255, 255, 255, 0.72);
+  --color0-tertirary: rgba(255, 255, 255, 0.4);
 
-  --color1-primary: hsl(200, 25%, 5%);
-  --color1-primary-transparent: hsla(200, 25%, 5%, .75);
-  --color1-secondary: hsl(208, 22%, 12%);
-  --color1-secondary-transparent: hsla(208, 22%, 12%, .5);
-  --color1-tertiary: hsl(210, 15%, 5%);
+  --color1-primary: #000000;
+  --color1-primary-transparent: rgba(0, 0, 0, 0.92);
+  --color1-secondary: #000000;
+  --color1-secondary-transparent: rgba(0, 0, 0, 0.6);
+  --color1-tertiary: rgba(255, 255, 255, 0.2);
 
   --anchor-internal-color2-primary: hsl(240, 100%, 40%);
 
@@ -38,11 +38,11 @@ GM_addStyle(`
   --light: var(--color0-secondary);
 
   --rain-red: #ff3b30;
-  --rain-orange: #ff9500;
-  --rain-yellow: #ffcc00;
-  --rain-green: #34c759;
+  --rain-orange: var(--color0-primary);
+  --rain-yellow: var(--color0-primary);
+  --rain-green: var(--color0-primary);
   --rain-blue: var(--anchor-internal-color2-primary);
-  --rain-indigo: #5856d6;
+  --rain-indigo: var(--anchor-internal-color2-primary);
 }
 
 .post__files {
@@ -107,9 +107,9 @@ GM_addStyle(`
   background: var(--color1-primary);
   color: var(--color0-primary);
   padding: 8px 12px;
-  border-radius: 3px;
+  border-radius: 4px;
   border: 1px solid var(--color1-tertiary);
-  font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 12px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -120,6 +120,34 @@ GM_addStyle(`
 
 #partyHUD .full {
   width: auto;
+}
+
+#pgToastStack {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  pointer-events: none;
+  margin-bottom: 8px;
+  z-index: 2;
+}
+
+.pg-toast {
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-size: 11px;
+  box-shadow: 0 8px 20px var(--color1-primary-transparent);
+  max-width: min(520px, 86vw);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 #hudRow {
@@ -138,12 +166,13 @@ GM_addStyle(`
 
 #partyHUD input[type="text"],
 #partyHUD input[type="number"] {
-  background: var(--color1-secondary);
+  background: var(--color1-primary);
   color: var(--color0-primary);
-  border: 1px solid var(--color0-tertirary);
+  border: 1px solid var(--color1-tertiary);
   border-radius: 2px;
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: 12px;
+  outline: none;
 }
 
 #hudRow input[type="text"],
@@ -153,36 +182,50 @@ GM_addStyle(`
 }
 
 #partyHUD button {
-  font-size: 13px;
+  font-size: 12px;
   padding: 6px 10px;
   font-weight: 600;
-  color: var(--color1-primary);
-  background: var(--color0-secondary);
-  border: 1px solid var(--color0-tertirary);
+  color: var(--color0-primary);
+  background: var(--color1-primary);
+  border: 1px solid var(--color1-tertiary);
   border-radius: 2px;
   cursor: pointer;
   text-shadow: none;
   box-shadow: none;
   transition: background .15s ease, border-color .15s ease, transform .05s ease;
+  user-select: none;
+  white-space: nowrap;
 }
 
 #partyHUD button:hover:not(:disabled) {
-  background: var(--color0-tertirary);
-  color: var(--color1-primary);
-  border-color: var(--color0-tertirary);
+  background: var(--color1-secondary-transparent);
+  border-color: var(--color0-secondary);
 }
 
 #partyHUD button:active:not(:disabled) {
   transform: translateY(1px);
 }
 
+#partyHUD .pg-icon-btn {
+  width: 30px;
+  padding: 6px;
+  font-size: 14px;
+}
+
 /* Menu overlay */
+
+html.pg-menu-open,
+body.pg-menu-open {
+  overflow: hidden !important;
+  overscroll-behavior: contain;
+}
 
 #pgMenuOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, .55);
   display: none;
+  pointer-events: none;
+  background: transparent;
   z-index: 10001;
 }
 
@@ -191,100 +234,200 @@ GM_addStyle(`
 }
 
 #pgMenuCard {
-  position: absolute;
+  position: fixed;
+  pointer-events: auto;
+  resize: both;
+  overflow: hidden;
+  width: min(860px, 96vw);
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  min-width: 320px;
+  min-height: 240px;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: none;
   background: var(--color1-secondary);
   color: var(--color0-primary);
   border: 1px solid var(--color1-tertiary);
   border-radius: 4px;
-  width: min(760px, 94vw);
-  max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .85);
+}
+
+#pgMenuCard.pg-overlay-dragging {
+  cursor: grabbing;
 }
 
 #pgMenuHeader {
-  background: var(--color1-primary);
+  padding: 10px 10px 0;
   border-bottom: 1px solid var(--color1-tertiary);
-  padding: 10px 12px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  cursor: grab;
+  user-select: none;
 }
 
 #pgMenuHeader .title {
-  font-weight: 600;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color0-primary);
+  letter-spacing: .02em;
+  order: 1;
 }
 
-#pgMenuHeader button {
+#pgMenuTabs {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+  order: 3;
+}
+
+#pgMenuTabs .pgMenuTabBtn {
+  white-space: nowrap;
+  border-radius: 4px 4px 0 0;
+  border-bottom-color: var(--color1-tertiary);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 4px 10px;
   font-size: 12px;
-  padding: 4px 8px;
-  font-weight: 600;
-  color: var(--color1-primary);
-  background: var(--color0-secondary);
-  border: 1px solid var(--color0-tertirary);
-  border-radius: 2px;
-  cursor: pointer;
+  color: var(--color0-secondary);
+}
+
+#pgMenuTabs .pgMenuTabBtn.active {
+  background: var(--color1-secondary);
+  border-bottom-color: var(--color1-secondary);
+  position: relative;
+  top: 1px;
+  color: var(--color0-primary);
+}
+
+#pgMenuCloseBtn {
+  margin-left: auto;
+  align-self: flex-start;
+  order: 2;
 }
 
 #pgMenuBody {
-  padding: 12px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-#pgMenuBody h1 {
-  margin: 14px 0 8px;
-  font-size: 13px;
+.pgMenuTabPanel {
+  display: none;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.pgMenuTabPanel.active {
+  display: flex;
+}
+
+#pgMenuOptionsBody,
+#pgMenuKeybindsBody,
+#pgMenuErrorBody {
+  padding: 10px 10px 12px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  font-size: 12px;
   color: var(--color0-primary);
+}
+
+#pgMenuCard button {
+  font-size: 12px;
+  padding: 4px 10px;
+  font-weight: 600;
+  color: var(--color0-primary);
+  background: var(--color1-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 2px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  text-shadow: none;
+  box-shadow: none;
+  transition: background .15s ease, border-color .15s ease, transform .05s ease;
+}
+
+#pgMenuCard button:hover:not(:disabled) {
+  background: var(--color1-secondary-transparent);
+  border-color: var(--color0-secondary);
+}
+
+#pgMenuCard button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 #pgMenuBody .pg-options-note {
   color: var(--color0-secondary);
-  font-size: 12px;
-  margin-bottom: 8px;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+
+#pgMenuBody .pg-opt-section {
+  margin-bottom: 12px;
+}
+
+#pgMenuBody .pg-opt-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--color0-secondary);
+  margin: 6px 0 4px;
 }
 
 #pgMenuBody .pg-opt-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid var(--color1-tertiary);
 }
 
+#pgMenuBody .pg-opt-section .pg-opt-row:last-child {
+  border-bottom: none;
+}
+
 #pgMenuBody .pg-opt-left {
-  flex: 1;
   min-width: 0;
 }
 
 #pgMenuBody .pg-opt-title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 #pgMenuBody .pg-opt-hint {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color0-secondary);
   margin-top: 2px;
 }
 
 #pgMenuBody .pg-opt-right {
   flex: 0 0 auto;
+  justify-self: end;
 }
 
 #pgMenuBody input[type="checkbox"],
 #pgMenuBody input[type="number"] {
   background: var(--color1-primary);
   color: var(--color0-primary);
-  border: 1px solid var(--color0-tertirary);
+  border: 1px solid var(--color1-tertiary);
   border-radius: 2px;
   padding: 4px 6px;
   font-size: 12px;
+  accent-color: var(--color0-primary);
+  outline: none;
 }
 
 #pgMenuBody input[type="number"] {
@@ -297,25 +440,58 @@ GM_addStyle(`
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
+  padding: 10px;
   border-top: 1px solid var(--color1-tertiary);
+  background: var(--color1-primary);
 }
 
 #pgMenuFooter .label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color0-secondary);
 }
 
-#pgMenuFooter button {
-  font-size: 12px;
-  padding: 4px 8px;
-  font-weight: 600;
-  color: var(--color1-primary);
-  background: var(--color0-secondary);
-  border: 1px solid var(--color0-tertirary);
-  border-radius: 2px;
-  cursor: pointer;
+.pg-keybinds-section {
+  margin-bottom: 12px;
+}
+
+.pg-keybinds-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--color0-secondary);
+}
+
+.pg-keybinds-list {
+  margin: 6px 0 0 16px;
+}
+
+.pg-keybinds-list li {
+  margin: 2px 0;
+}
+
+.pg-error-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pg-error-item {
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 3px;
+  padding: 6px 8px;
+  background: var(--color1-primary);
+}
+
+.pg-error-link {
+  color: var(--anchor-internal-color2-primary);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.pg-error-meta {
+  color: var(--color0-secondary);
+  font-size: 11px;
+  margin-top: 4px;
 }
 
 /* Primary / special buttons */
@@ -350,7 +526,8 @@ GM_addStyle(`
 }
 
 #galleryBtn {
-  background: var(--color0-secondary) !important;
+  background: var(--color1-primary) !important;
+  color: var(--color0-primary);
 }
 
 #galleryBtn.active {
@@ -816,15 +993,15 @@ const DEFAULT_OPTIONS = {
   galleryPreloadAll: false,
   parallelDownloadLimit: 3,
   stopClearsQueue: true,
-  showLocalGalleryBtn: true,
+  showLocalGalleryBtn: false,
   showGalleryBtn: true,
   showPageBtn: true,
   showMediaBtn: true,
-  showPreviewBtn: true,
+  showPreviewBtn: false,
   showPageInput: true,
   showPostInput: true,
-  showFileInput: true,
-  showProgressBar: true
+  showFileInput: false,
+  showProgressBar: false
 };
 function clampInt(value, min, max, fallback) {
   const n = parseInt(value, 10);
@@ -896,6 +1073,55 @@ let loopGallery = true;
 let GALLERY_CACHE_LIMIT = Infinity;
 let galleryCacheOrder = [];
 let MENU_OPEN = false;
+let MENU_ACTIVE_TAB = 'options';
+let MENU_LAST_TAB = 'options';
+let MENU_HAS_OPENED = false;
+const MENU_TAB_SCROLL = { options: 0, keybinds: 0, errors: 0 };
+const MENU_TAB_IDS = ['options', 'keybinds', 'errors'];
+const MENU_WINDOW_STATE = { x: null, y: null, width: null, height: null };
+let MENU_TAB_BUTTONS = [];
+let MENU_TAB_PANELS = {};
+let MENU_SCROLL_TARGETS = {};
+let MENU_RESIZE_OBSERVER = null;
+const ERROR_LOG = [];
+const KEYBINDS_SECTIONS = [
+  {
+    title: 'Gallery keybinds (right hand)',
+    items: [
+      '← / A = previous',
+      '→ / D = next',
+      '1 = -10 files',
+      '3 = +10 files',
+      'Q = -10s',
+      'E = +10s',
+      'Space = play/pause',
+      '` = close gallery'
+    ]
+  },
+  {
+    title: 'Gallery keybinds (left hand)',
+    items: [
+      '← / J = previous',
+      '→ / L = next',
+      '8 = -10 files',
+      '0 = +10 files',
+      'U = -10s',
+      'O = +10s',
+      'Space = play/pause',
+      'Backspace = close gallery'
+    ]
+  },
+  {
+    title: 'Additional keybinds',
+    items: [
+      'G = toggle fullscreen',
+      'F = cycle filters (all/images/videos)',
+      'R = toggle random order',
+      'P = toggle slideshow',
+      'T = toggle looping'
+    ]
+  }
+];
 
 function apiGetJson(url) {
   return new Promise(resolve => {
@@ -920,12 +1146,97 @@ function apiGetJson(url) {
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
+function getDownloadLabel(item) {
+  if (!item) return 'file';
+  if (item.name) return item.name;
+  if (item.url) return item.url.split('/').pop() || item.url;
+  return 'file';
+}
+
+function formatDownloadErrorReason(reason, err) {
+  let detail = '';
+  if (err) {
+    if (typeof err === 'string') detail = err;
+    else if (err.error) detail = err.error;
+    else if (err.message) detail = err.message;
+  }
+  const base = reason || 'Download failed';
+  if (detail && detail !== base) return `${base}: ${detail}`;
+  return base;
+}
+
+function showErrorToast(text) {
+  const host = document.getElementById('pgToastStack');
+  if (!host) return;
+  const toast = document.createElement('div');
+  toast.className = 'pg-toast';
+  toast.textContent = text;
+  host.appendChild(toast);
+  setTimeout(() => {
+    toast.remove();
+  }, 2600);
+}
+
+function renderErrorLogUi() {
+  const body = document.getElementById('pgMenuErrorBody');
+  if (!body) return;
+  const prevScroll = body.scrollTop || 0;
+  body.innerHTML = '';
+  if (!ERROR_LOG.length) {
+    const empty = document.createElement('div');
+    empty.className = 'pg-options-note';
+    empty.textContent = 'No errors yet.';
+    body.appendChild(empty);
+    return;
+  }
+  const list = document.createElement('div');
+  list.className = 'pg-error-log';
+  for (let i = ERROR_LOG.length - 1; i >= 0; i--) {
+    const entry = ERROR_LOG[i];
+    const item = document.createElement('div');
+    item.className = 'pg-error-item';
+
+    const link = document.createElement('a');
+    link.className = 'pg-error-link';
+    link.href = entry.url || '#';
+    link.textContent = entry.label || entry.url || 'Unknown file';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    item.appendChild(link);
+
+    const meta = document.createElement('div');
+    meta.className = 'pg-error-meta';
+    const when = new Date(entry.ts || Date.now()).toLocaleTimeString();
+    meta.textContent = `${when} • ${entry.reason || 'Download failed'}`;
+    item.appendChild(meta);
+
+    list.appendChild(item);
+  }
+  body.appendChild(list);
+  requestAnimationFrame(() => {
+    body.scrollTop = prevScroll;
+  });
+}
+
+function logDownloadError(item, reason, err) {
+  const label = getDownloadLabel(item);
+  const message = formatDownloadErrorReason(reason, err);
+  ERROR_LOG.push({
+    ts: Date.now(),
+    url: item && item.url ? item.url : '',
+    label,
+    reason: message
+  });
+  renderErrorLogUi();
+  showErrorToast(`${label} — ${message}`);
+}
+
 function setStatus(text, type) {
   const el = $('#filterStatus');
   if (!el) return;
   el.textContent = text || '';
-  if (type === 'error') el.style.color = '#b00020';
-  else if (type === 'success') el.style.color = '#0a7d2b';
+  if (type === 'error') el.style.color = 'var(--rain-red)';
+  else if (type === 'success') el.style.color = 'var(--anchor-internal-color2-primary)';
   else el.style.color = '';
   syncFilterBoxVisibility();
   syncProgressBarVisibility();
@@ -939,8 +1250,8 @@ function setIndexStatus(text, type) {
     INDEX_STATUS_TIMER = null;
   }
   el.textContent = text || '';
-  if (type === 'error') el.style.color = '#b00020';
-  else if (type === 'success') el.style.color = '#0a7d2b';
+  if (type === 'error') el.style.color = 'var(--rain-red)';
+  else if (type === 'success') el.style.color = 'var(--anchor-internal-color2-primary)';
   else el.style.color = '';
   syncFilterBoxVisibility();
   syncProgressBarVisibility();
@@ -1479,24 +1790,31 @@ function renderOptionsUi() {
 
   body.innerHTML = `
     <div class="pg-options-note">Options are saved locally in your browser for this site.</div>
-    <h1>Downloads</h1>
-    ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
-    ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
-    ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
-    ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
 
-    <h1>HUD</h1>
-    ${makeCheckRow('Show Local Gallery button', 'Toggle the Local Gallery launcher.', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
-    ${makeCheckRow('Show Gallery button', 'Toggle the Gallery button.', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
-    ${makeCheckRow('Show Page button', 'Toggle the Page button.', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
-    ${makeCheckRow('Show media filter button', 'Toggle the media type cycle button.', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
-    ${makeCheckRow('Show Preview button', 'Toggle the Preview button.', 'pg_opt_showPreviewBtn', opt.showPreviewBtn !== false)}
-    ${makeCheckRow('Show Page input', 'Toggle the Page selector input.', 'pg_opt_showPageInput', opt.showPageInput !== false)}
-    ${makeCheckRow('Show Post input', 'Toggle the Post selector input.', 'pg_opt_showPostInput', opt.showPostInput !== false)}
-    ${makeCheckRow('Show File input', 'Toggle the File selector input.', 'pg_opt_showFileInput', opt.showFileInput !== false)}
+    <div class="pg-opt-section">
+      <div class="pg-opt-section-title">Downloads</div>
+      ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
+      ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
+      ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
+      ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
+    </div>
 
-    <h1>Progress</h1>
-    ${makeCheckRow('Show progress bar', 'Toggle the download progress bar graphic.', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
+    <div class="pg-opt-section">
+      <div class="pg-opt-section-title">HUD</div>
+      ${makeCheckRow('Show Local Gallery button', 'Toggle the Local Gallery launcher.', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
+      ${makeCheckRow('Show Gallery button', 'Toggle the Gallery button.', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
+      ${makeCheckRow('Show Page button', 'Toggle the Page button.', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
+      ${makeCheckRow('Show media filter button', 'Toggle the media type cycle button.', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
+      ${makeCheckRow('Show Preview button', 'Toggle the Preview button.', 'pg_opt_showPreviewBtn', opt.showPreviewBtn !== false)}
+      ${makeCheckRow('Show Page input', 'Toggle the Page selector input.', 'pg_opt_showPageInput', opt.showPageInput !== false)}
+      ${makeCheckRow('Show Post input', 'Toggle the Post selector input.', 'pg_opt_showPostInput', opt.showPostInput !== false)}
+      ${makeCheckRow('Show File input', 'Toggle the File selector input.', 'pg_opt_showFileInput', opt.showFileInput !== false)}
+    </div>
+
+    <div class="pg-opt-section">
+      <div class="pg-opt-section-title">Progress</div>
+      ${makeCheckRow('Show progress bar', 'Toggle the download progress bar graphic.', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
+    </div>
   `;
 
   const bindCheck = (id, key, onChange) => {
@@ -1544,6 +1862,201 @@ function renderOptionsUi() {
   bindCheck('pg_opt_showProgressBar', 'showProgressBar');
 }
 
+function renderKeybindsUi() {
+  const body = document.getElementById('pgMenuKeybindsBody');
+  if (!body) return;
+  const sections = KEYBINDS_SECTIONS.map(section => {
+    const items = section.items.map(item => `<li>${item}</li>`).join('');
+    return `
+      <div class="pg-keybinds-section">
+        <div class="pg-keybinds-title">${section.title}</div>
+        <ul class="pg-keybinds-list">${items}</ul>
+      </div>
+    `;
+  }).join('');
+  body.innerHTML = sections || '<div class="pg-options-note">No keybinds available.</div>';
+}
+
+function saveMenuTabScroll(tab) {
+  const target = MENU_SCROLL_TARGETS[tab];
+  if (!target) return;
+  MENU_TAB_SCROLL[tab] = target.scrollTop || 0;
+}
+
+function restoreMenuTabScroll(tab) {
+  const target = MENU_SCROLL_TARGETS[tab];
+  if (!target) return;
+  const top = MENU_TAB_SCROLL[tab] || 0;
+  requestAnimationFrame(() => {
+    target.scrollTop = top;
+  });
+}
+
+function ensureOptionsUi() {
+  renderOptionsUi();
+  setOptionsStatus('Saved automatically');
+  restoreMenuTabScroll('options');
+}
+
+function ensureKeybindsUi() {
+  renderKeybindsUi();
+  restoreMenuTabScroll('keybinds');
+}
+
+function ensureErrorLogUi() {
+  renderErrorLogUi();
+  restoreMenuTabScroll('errors');
+}
+
+function setMenuTab(tabId) {
+  const next = MENU_TAB_IDS.includes(tabId) ? tabId : 'options';
+  if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
+  MENU_ACTIVE_TAB = next;
+  MENU_LAST_TAB = next;
+
+  MENU_TAB_BUTTONS.forEach(btn => {
+    const active = btn.dataset.tab === next;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    btn.setAttribute('tabindex', active ? '0' : '-1');
+  });
+
+  Object.entries(MENU_TAB_PANELS).forEach(([id, panel]) => {
+    if (!panel) return;
+    const active = id === next;
+    panel.classList.toggle('active', active);
+    panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+  });
+
+  if (next === 'keybinds') {
+    ensureKeybindsUi();
+    return;
+  }
+  if (next === 'errors') {
+    ensureErrorLogUi();
+    return;
+  }
+  ensureOptionsUi();
+}
+
+function clampMenuWindowPosition(desiredX, desiredY) {
+  const card = document.getElementById('pgMenuCard');
+  if (!card) return;
+  const rect = card.getBoundingClientRect();
+  const width = rect.width || MENU_WINDOW_STATE.width || card.offsetWidth || 0;
+  const height = rect.height || MENU_WINDOW_STATE.height || card.offsetHeight || 0;
+  if (!width || !height) return;
+  const maxX = Math.max(8, window.innerWidth - width - 8);
+  const maxY = Math.max(8, window.innerHeight - height - 8);
+  let x = (typeof desiredX === 'number') ? desiredX : (typeof MENU_WINDOW_STATE.x === 'number' ? MENU_WINDOW_STATE.x : (window.innerWidth - width) / 2);
+  let y = (typeof desiredY === 'number') ? desiredY : (typeof MENU_WINDOW_STATE.y === 'number' ? MENU_WINDOW_STATE.y : (window.innerHeight - height) / 2);
+  x = Math.min(maxX, Math.max(8, x));
+  y = Math.min(maxY, Math.max(8, y));
+  card.style.left = `${x}px`;
+  card.style.top = `${y}px`;
+  MENU_WINDOW_STATE.x = x;
+  MENU_WINDOW_STATE.y = y;
+  MENU_WINDOW_STATE.width = width;
+  MENU_WINDOW_STATE.height = height;
+}
+
+function applyMenuWindowState() {
+  const card = document.getElementById('pgMenuCard');
+  if (!card) return;
+  if (MENU_WINDOW_STATE.width) card.style.width = `${MENU_WINDOW_STATE.width}px`;
+  else card.style.removeProperty('width');
+  if (MENU_WINDOW_STATE.height) card.style.height = `${MENU_WINDOW_STATE.height}px`;
+  else card.style.removeProperty('height');
+  clampMenuWindowPosition();
+}
+
+function registerMenuWindow(card, header) {
+  if (!card || card.dataset.pgWindowReady) return;
+  card.dataset.pgWindowReady = '1';
+
+  if (!MENU_RESIZE_OBSERVER && 'ResizeObserver' in window) {
+    MENU_RESIZE_OBSERVER = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const rect = entry.contentRect;
+        const width = rect.width || MENU_WINDOW_STATE.width || card.offsetWidth || 0;
+        const height = rect.height || MENU_WINDOW_STATE.height || card.offsetHeight || 0;
+        if (!width || !height) continue;
+        MENU_WINDOW_STATE.width = width;
+        MENU_WINDOW_STATE.height = height;
+        clampMenuWindowPosition(MENU_WINDOW_STATE.x, MENU_WINDOW_STATE.y);
+      }
+    });
+  }
+  if (MENU_RESIZE_OBSERVER) MENU_RESIZE_OBSERVER.observe(card);
+
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  let activePointerId = null;
+
+  const onPointerMove = (ev) => {
+    if (!dragging) return;
+    ev.preventDefault();
+    const rect = card.getBoundingClientRect();
+    const nextX = rect.left + (ev.clientX - lastX);
+    const nextY = rect.top + (ev.clientY - lastY);
+    lastX = ev.clientX;
+    lastY = ev.clientY;
+    clampMenuWindowPosition(nextX, nextY);
+  };
+
+  const stopDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    if (header && activePointerId !== null) {
+      try { header.releasePointerCapture(activePointerId); } catch {}
+    }
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', stopDrag);
+    document.removeEventListener('pointercancel', stopDrag);
+    card.classList.remove('pg-overlay-dragging');
+    activePointerId = null;
+  };
+
+  if (header) {
+    header.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0) return;
+      if (ev.target && ev.target.closest && ev.target.closest('button')) return;
+      ev.preventDefault();
+      dragging = true;
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      activePointerId = ev.pointerId;
+      try { header.setPointerCapture(activePointerId); } catch {}
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', stopDrag);
+      document.addEventListener('pointercancel', stopDrag);
+      card.classList.add('pg-overlay-dragging');
+    });
+  }
+}
+
+function initMenuTabs() {
+  const tabs = document.getElementById('pgMenuTabs');
+  MENU_TAB_BUTTONS = tabs ? [...tabs.querySelectorAll('.pgMenuTabBtn')] : [];
+  MENU_TAB_PANELS = {
+    options: document.getElementById('pgMenuTabOptions'),
+    keybinds: document.getElementById('pgMenuTabKeybinds'),
+    errors: document.getElementById('pgMenuTabErrors')
+  };
+  MENU_SCROLL_TARGETS = {
+    options: document.getElementById('pgMenuOptionsBody'),
+    keybinds: document.getElementById('pgMenuKeybindsBody'),
+    errors: document.getElementById('pgMenuErrorBody')
+  };
+  MENU_TAB_BUTTONS.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab || 'options';
+      setMenuTab(tab);
+    });
+  });
+}
+
 function buildMenu() {
   if (document.getElementById('pgMenuOverlay')) return;
   const overlay = document.createElement('div');
@@ -1552,25 +2065,34 @@ function buildMenu() {
     <div id="pgMenuCard" role="dialog" aria-modal="true" aria-label="Menu">
       <div id="pgMenuHeader">
         <div class="title">Menu</div>
+        <div id="pgMenuTabs" role="tablist" aria-label="Menu tabs">
+          <button type="button" class="pgMenuTabBtn" data-tab="options" role="tab" aria-controls="pgMenuTabOptions">Options</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="keybinds" role="tab" aria-controls="pgMenuTabKeybinds">Keybinds</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="errors" role="tab" aria-controls="pgMenuTabErrors">Error Log</button>
+        </div>
         <button id="pgMenuCloseBtn" type="button">X</button>
       </div>
       <div id="pgMenuBody">
-        <div id="pgMenuOptionsBody"></div>
-        <div id="pgMenuFooter">
-          <div class="left"><span class="label" id="pgOptionsStatusLabel">-</span></div>
-          <div class="right">
-            <button id="pgOptionsResetBtn" type="button">Reset defaults</button>
-            <button id="pgOptionsDoneBtn" type="button">Done</button>
+        <section id="pgMenuTabOptions" class="pgMenuTabPanel" data-tab="options" role="tabpanel">
+          <div id="pgMenuOptionsBody"></div>
+          <div id="pgMenuFooter">
+            <div class="left"><span class="label" id="pgOptionsStatusLabel">-</span></div>
+            <div class="right">
+              <button id="pgOptionsResetBtn" type="button">Reset defaults</button>
+              <button id="pgOptionsDoneBtn" type="button">Done</button>
+            </div>
           </div>
-        </div>
+        </section>
+        <section id="pgMenuTabKeybinds" class="pgMenuTabPanel" data-tab="keybinds" role="tabpanel">
+          <div id="pgMenuKeybindsBody"></div>
+        </section>
+        <section id="pgMenuTabErrors" class="pgMenuTabPanel" data-tab="errors" role="tabpanel">
+          <div id="pgMenuErrorBody"></div>
+        </section>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
-
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) closeMenu();
-  });
 
   const closeBtn = document.getElementById('pgMenuCloseBtn');
   if (closeBtn) closeBtn.addEventListener('click', () => closeMenu());
@@ -1581,6 +2103,11 @@ function buildMenu() {
   const resetBtn = document.getElementById('pgOptionsResetBtn');
   if (resetBtn) resetBtn.addEventListener('click', () => resetOptionsToDefaults());
 
+  const menuCard = document.getElementById('pgMenuCard');
+  const menuHeader = document.getElementById('pgMenuHeader');
+  registerMenuWindow(menuCard, menuHeader);
+  initMenuTabs();
+
   document.addEventListener('keydown', (e) => {
     if (!MENU_OPEN) return;
     if (e.key === 'Escape') {
@@ -1590,21 +2117,32 @@ function buildMenu() {
   });
 }
 
-function openMenu() {
+function openMenu(tabId) {
   buildMenu();
   const overlay = document.getElementById('pgMenuOverlay');
   if (!overlay) return;
   MENU_OPEN = true;
   overlay.classList.add('active');
-  renderOptionsUi();
-  setOptionsStatus('Saved automatically');
+  document.documentElement.classList.add('pg-menu-open');
+  document.body.classList.add('pg-menu-open');
+  requestAnimationFrame(() => applyMenuWindowState());
+  const next = MENU_TAB_IDS.includes(tabId)
+    ? tabId
+    : (MENU_HAS_OPENED ? MENU_LAST_TAB : 'options');
+  MENU_HAS_OPENED = true;
+  setMenuTab(next);
 }
 
 function closeMenu() {
+  if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
   const overlay = document.getElementById('pgMenuOverlay');
   if (overlay) overlay.classList.remove('active');
+  document.documentElement.classList.remove('pg-menu-open');
+  document.body.classList.remove('pg-menu-open');
   MENU_OPEN = false;
 }
+
+window.addEventListener('resize', () => applyMenuWindowState());
 
 function buildHUD() {
   if ($('#partyHUD')) {
@@ -1615,6 +2153,7 @@ function buildHUD() {
   const w = document.createElement('div');
   w.id = 'partyHUD';
   w.innerHTML = `
+    <div id="pgToastStack" aria-live="polite"></div>
     <div id="dlBox" aria-live="polite">
       <div id="dlSummaryLine">
         <span id="dlSummary"></span>
@@ -1629,10 +2168,10 @@ function buildHUD() {
       <span id="filterStatus"></span>
     </div>
     <div id="hudRow" class="hud-row">
+      <button id="pgMenuBtn" class="full pg-icon-btn" title="Menu" aria-label="Menu">⚙</button>
       <button id="dlBtn" class="full">Download</button>
       <button id="galleryBtn" class="full">Gallery</button>
       <button id="localGalleryBtn" class="full">Local Gallery</button>
-      <button id="pgMenuBtn" class="full">Menu</button>
       <button id="filterBtn" class="full">Preview</button>
       <button id="btnMedia" class="full">All</button>
       <button id="btnPageAll">Page</button>
@@ -1886,11 +2425,13 @@ function startDownload(item) {
 
   const clearWatchers = () => { try { clearTimeout(tTotal); } catch {} try { clearInterval(tIdle); } catch {} };
 
-  const handleFailure = () => {
+  const handleFailure = (reason, err) => {
     if (settled) return;
     settled = true;
     try { if (item._handle && typeof item._handle.abort === 'function') item._handle.abort(); } catch {}
     clearWatchers();
+
+    logDownloadError(item, reason || 'Download failed', err);
 
     const prev = retryMap[item.url] || 0;
     const n = prev + 1;
@@ -1925,9 +2466,9 @@ function startDownload(item) {
     setTimeout(requestDispatch, 0);
   };
 
-  const tTotal = setTimeout(() => handleFailure(), totalMs);
+  const tTotal = setTimeout(() => handleFailure('Download timeout'), totalMs);
   const tIdle = setInterval(() => {
-    if (Date.now() - lastProgressAt > idleMs) handleFailure();
+    if (Date.now() - lastProgressAt > idleMs) handleFailure('Download stalled');
   }, 2000);
 
   const handle = GM_download({
@@ -1945,7 +2486,7 @@ function startDownload(item) {
       setTimeout(requestDispatch, SPAWN_DELAY + Math.floor(Math.random() * 200));
       maybeFinishBatch();
     },
-    onerror: () => handleFailure()
+    onerror: (err) => handleFailure('Download error', err)
   });
   item._handle = handle;
 }
