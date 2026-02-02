@@ -1161,7 +1161,8 @@
         showPreviewFileName: true,
         previewThumbFiltersEnabled: false,
         previewThumbFit: "cover",
-        onlineLoadMode: "as-needed"
+        onlineLoadMode: "as-needed",
+        onlineFeaturesEnabled: true
       };
     }
 
@@ -1217,6 +1218,7 @@
         showPreviewFolderItemCount: (typeof src.showPreviewFolderItemCount === "boolean") ? src.showPreviewFolderItemCount : d.showPreviewFolderItemCount,
         showPreviewFileName: (typeof src.showPreviewFileName === "boolean") ? src.showPreviewFileName : d.showPreviewFileName,
         previewThumbFiltersEnabled: (typeof src.previewThumbFiltersEnabled === "boolean") ? src.previewThumbFiltersEnabled : d.previewThumbFiltersEnabled,
+        onlineFeaturesEnabled: (typeof src.onlineFeaturesEnabled === "boolean") ? src.onlineFeaturesEnabled : d.onlineFeaturesEnabled,
         leftPaneWidthPct: (function(){
           const v = parseFloat(src.leftPaneWidthPct);
           if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
@@ -2133,6 +2135,45 @@
       return (mode && mode !== "off" && !!MEDIA_FILTER_CONFIGS[mode]) || crtOverlayEnabled();
     }
 
+    function onlineFeaturesEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !(opt && opt.onlineFeaturesEnabled === false);
+    }
+
+    function isOnlineFolderNode(node) {
+      const kind = node?.onlineMeta?.kind;
+      return kind === "profile" || kind === "post";
+    }
+
+    function filterOnlineDirs(list) {
+      if (onlineFeaturesEnabled()) return list;
+      return (list || []).filter(d => !isOnlineFolderNode(d));
+    }
+
+    function ensureOnlineVisibilityState() {
+      if (onlineFeaturesEnabled()) return;
+      if (WS.view.tagFolderActiveMode) {
+        WS.view.tagFolderActiveMode = "";
+        WS.view.tagFolderActiveTag = "";
+        WS.view.tagFolderOriginPath = "";
+      }
+      if (WS.nav && WS.nav.dirNode && isOnlineFolderNode(WS.nav.dirNode)) {
+        WS.nav.dirNode = WS.nav.dirNode.parent || WS.root;
+      }
+    }
+
+    function applyOnlineFeatureVisibility() {
+      const enabled = onlineFeaturesEnabled();
+      if (onlineProfileRow) onlineProfileRow.style.display = enabled ? "" : "none";
+      const onlineTabBtn = menuTabs ? menuTabs.querySelector('.menuTabBtn[data-tab="online"]') : null;
+      if (onlineTabBtn) onlineTabBtn.style.display = enabled ? "" : "none";
+      if (menuTabOnline) menuTabOnline.style.display = enabled ? "" : "none";
+      if (!enabled) {
+        if (MENU_ACTIVE_TAB === "online") setMenuTab("options");
+        if (MENU_LAST_TAB === "online") MENU_LAST_TAB = "options";
+      }
+    }
+
     function syncMediaFilterSurface(surfaceName, mediaEl, container, type) {
       if (!mediaEl || !container) return;
       if (!mediaFilterEnabled()) {
@@ -2168,6 +2209,7 @@
         applyThumbFitFromOptions();
         applyDisplaySizesFromOptions();
         applyPaneDividerFromOptions();
+        applyOnlineFeatureVisibility();
         syncButtons();
         return;
       }
@@ -2181,6 +2223,7 @@
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
+      ensureOnlineVisibilityState();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
@@ -2188,6 +2231,7 @@
       renderPreviewPane(true, true);
       applyPaneDividerFromOptions();
       applyMediaFilterFromOptions();
+      applyOnlineFeatureVisibility();
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
@@ -2662,6 +2706,7 @@
     const refreshBtn = $("refreshBtn");
     const openWritableBtn = $("openWritableBtn");
     const titleLabel = $("titleLabel");
+    const onlineProfileRow = $("onlineProfileRow");
     const onlineProfileInput = $("onlineProfileInput");
     const onlineProfileAddProfileBtn = $("onlineProfileAddProfileBtn");
     const onlineProfileAddPostsBtn = $("onlineProfileAddPostsBtn");
@@ -3341,7 +3386,8 @@
     }
 
     function setMenuTab(tabId) {
-      const next = MENU_TAB_IDS.includes(tabId) ? tabId : "options";
+      const nextCandidate = MENU_TAB_IDS.includes(tabId) ? tabId : "options";
+      const next = (!onlineFeaturesEnabled() && nextCandidate === "online") ? "options" : nextCandidate;
       if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
       MENU_ACTIVE_TAB = next;
       MENU_LAST_TAB = next;
@@ -3732,6 +3778,7 @@
 <h1>General</h1>
 ${makeSelectRow("Folder sort", "Sort folders by name or score.", "opt_dirSortMode", WS.meta.dirSortMode === "score" ? "score" : "name", dirSortModes)}
 ${makeSelectRow("Folder scores", "Choose how folder scores appear in lists + previews.", "opt_folderScoreDisplay", String(opt.folderScoreDisplay || "hidden"), folderScoreModes)}
+${makeCheckRow("Show online features", "Toggles the Online tab, URL bar, and online profile/post folders.", "opt_onlineFeaturesEnabled", opt.onlineFeaturesEnabled !== false)}
 ${makeCheckRow("Show folder item counts", "Show the number of items on folders in the directories pane.", "opt_showFolderItemCount", opt.showFolderItemCount !== false)}
 ${makeCheckRow("Show file type labels (directories)", "Show Image/Video labels for files in the directories pane.", "opt_showDirFileTypeLabel", opt.showDirFileTypeLabel !== false)}
 ${makeSelectRow("Folder behavior", "Sets how folders behave when browsing.", "opt_defaultFolderBehavior", String(opt.defaultFolderBehavior || "slide"), folderModes)}
@@ -3887,6 +3934,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       bindCheck("opt_showPreviewFolderItemCount", "showPreviewFolderItemCount", () => {
         renderPreviewPane(true, true);
       });
+      bindCheck("opt_onlineFeaturesEnabled", "onlineFeaturesEnabled");
       bindCheck("opt_previewThumbFiltersEnabled", "previewThumbFiltersEnabled", () => {
         applyMediaFilterFromOptions();
       });
@@ -4708,6 +4756,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
+      applyOnlineFeatureVisibility();
     }
 
     function metaApplyKeybindsLog(log) {
@@ -4730,6 +4779,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
+      applyOnlineFeatureVisibility();
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
       const oldByPath = new Map();
@@ -6291,8 +6341,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!dirNode) return [];
       const base = sortDirsForDisplay(dirNode.childrenDirs).filter(d => dirItemCount(d) > 0);
       const showHidden = WS.view.hiddenMode || (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden");
-      if (showHidden) return base;
-      return base.filter(d => !isDirOrAncestorHidden(d));
+      const visibleBase = showHidden ? base : base.filter(d => !isDirOrAncestorHidden(d));
+      return filterOnlineDirs(visibleBase);
     }
 
     function treatTagsAsFoldersEnabled() {
@@ -6739,7 +6789,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (c) return c;
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
-      return out;
+      return filterOnlineDirs(out);
     }
 
     function getAllHiddenDirs() {
@@ -6758,7 +6808,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (c) return c;
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
-      return out;
+      return filterOnlineDirs(out);
     }
 
     function cancelDirectorySearch() {
@@ -6885,7 +6935,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             placeholder: true
           });
         }
-        const dirs = (WS.view.searchResults || []).slice();
+        const dirs = filterOnlineDirs((WS.view.searchResults || []).slice());
         for (let i = 0; i < dirs.length; i++) WS.nav.entries.push({ kind: "dir", node: dirs[i] });
         return;
       }
