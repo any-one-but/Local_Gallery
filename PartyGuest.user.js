@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.12.00
+// @version      01.12.01
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -430,6 +430,16 @@ body.pg-menu-open {
   padding: 4px 6px;
   font-size: 12px;
   accent-color: var(--color0-primary);
+  outline: none;
+}
+
+#pgMenuBody select {
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 2px;
+  padding: 4px 6px;
+  font-size: 12px;
   outline: none;
 }
 
@@ -992,6 +1002,7 @@ const STALL_VID_IDLE_MS = 90000;
 const GALLERY_PRELOAD_VIDEO_TIMEOUT_MS = 45000;
 const PG_OPTIONS_KEY = 'pg_options';
 const DEFAULT_OPTIONS = {
+  downloadMode: 'post',
   durationIndexing: false,
   galleryPreloadAll: false,
   parallelDownloadLimit: 3,
@@ -1007,6 +1018,13 @@ const DEFAULT_OPTIONS = {
   showFileInput: false,
   showProgressBar: false
 };
+const DOWNLOAD_MODE_LABELS = {
+  loose: 'Loose',
+  post: 'Archived by post',
+  queue: 'Archive by queue',
+  queue_flat: 'Archive by queue flat'
+};
+const DOWNLOAD_MODE_VALUES = ['loose', 'post', 'queue', 'queue_flat'];
 function clampInt(value, min, max, fallback) {
   const n = parseInt(value, 10);
   if (!Number.isFinite(n)) return fallback;
@@ -1015,6 +1033,9 @@ function clampInt(value, min, max, fallback) {
 function normalizeOptions(opt) {
   const out = Object.assign({}, DEFAULT_OPTIONS);
   if (!opt || typeof opt !== 'object') return out;
+  if (typeof opt.downloadMode === 'string' && DOWNLOAD_MODE_LABELS[opt.downloadMode]) {
+    out.downloadMode = opt.downloadMode;
+  }
   if (typeof opt.durationIndexing === 'boolean') out.durationIndexing = opt.durationIndexing;
   if (typeof opt.galleryPreloadAll === 'boolean') out.galleryPreloadAll = opt.galleryPreloadAll;
   if (opt.parallelDownloadLimit != null) {
@@ -1042,6 +1063,7 @@ function saveOptions() {
   try { localStorage.setItem(PG_OPTIONS_KEY, JSON.stringify(PG_OPTIONS)); } catch {}
 }
 let PG_OPTIONS = loadOptions();
+let DOWNLOAD_MODE = DEFAULT_OPTIONS.downloadMode;
 let GALLERY_PRELOAD_ALL_MEDIA = false;
 let DURATION_FEATURE_ENABLED = false;
 let PARALLEL_DOWNLOAD_LIMIT = 3;
@@ -1690,6 +1712,7 @@ function syncDurationInputVisibility() {
 function applyOptions() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   const prevDuration = DURATION_FEATURE_ENABLED;
+  DOWNLOAD_MODE = (opt.downloadMode && DOWNLOAD_MODE_LABELS[opt.downloadMode]) ? opt.downloadMode : DEFAULT_OPTIONS.downloadMode;
   DURATION_FEATURE_ENABLED = !!opt.durationIndexing;
   GALLERY_PRELOAD_ALL_MEDIA = !!opt.galleryPreloadAll;
   PARALLEL_DOWNLOAD_LIMIT = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
@@ -1767,6 +1790,24 @@ function renderOptionsUi() {
   if (!body) return;
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
 
+  const makeSelectRow = (title, hint, id, options, value) => {
+    const items = options.map(optVal => {
+      const label = DOWNLOAD_MODE_LABELS[optVal] || optVal;
+      return `<option value="${optVal}"${optVal === value ? ' selected' : ''}>${label}</option>`;
+    }).join('');
+    return `
+      <div class="pg-opt-row">
+        <div class="pg-opt-left">
+          <div class="pg-opt-title">${title}</div>
+          <div class="pg-opt-hint">${hint}</div>
+        </div>
+        <div class="pg-opt-right">
+          <select id="${id}">${items}</select>
+        </div>
+      </div>
+    `;
+  };
+
   const makeCheckRow = (title, hint, id, checked) => {
     return `
       <div class="pg-opt-row">
@@ -1800,6 +1841,7 @@ function renderOptionsUi() {
 
     <div class="pg-opt-section">
       <div class="pg-opt-section-title">Downloads</div>
+      ${makeSelectRow('Download mode', 'Choose how downloads are packaged.', 'pg_opt_downloadMode', DOWNLOAD_MODE_VALUES, opt.downloadMode || DEFAULT_OPTIONS.downloadMode)}
       ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
       ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
       ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
@@ -1853,6 +1895,22 @@ function renderOptionsUi() {
     el.addEventListener('blur', applyValue);
   };
 
+  const bindSelect = (id, key, onChange) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      const next = String(el.value || '').trim();
+      if (DOWNLOAD_MODE_LABELS[next]) {
+        PG_OPTIONS[key] = next;
+        saveOptions();
+        setOptionsStatus('Saved');
+        applyOptions();
+        if (typeof onChange === 'function') onChange(next);
+      }
+    });
+  };
+
+  bindSelect('pg_opt_downloadMode', 'downloadMode');
   bindCheck('pg_opt_durationIndexing', 'durationIndexing');
   bindCheck('pg_opt_galleryPreloadAll', 'galleryPreloadAll');
   bindNumber('pg_opt_parallelDownloadLimit', 'parallelDownloadLimit', 1, 10, () => {
@@ -2320,6 +2378,13 @@ function getCounts() {
   return { total, completed, downloading, queued };
 }
 
+function getDownloadSummaryUnit() {
+  if (DOWNLOAD_MODE === 'loose') return 'files';
+  if (DOWNLOAD_MODE === 'post') return 'posts';
+  if (DOWNLOAD_MODE === 'queue' || DOWNLOAD_MODE === 'queue_flat') return 'queues';
+  return 'items';
+}
+
 let uiScheduled = false;
 let lastDropNoteAt = 0;
 let lastDropNoteCount = 0;
@@ -2347,7 +2412,8 @@ function updateHUD() {
   if (dlSummaryEl) {
     const retries = lastDropNoteCount || 0;
     const totalItems = total || 0;
-    dlSummaryEl.textContent = `${totalItems} posts total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${retries} Retries`;
+    const unit = getDownloadSummaryUnit();
+    dlSummaryEl.textContent = `${totalItems} ${unit} total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${retries} Retries`;
   }
 
   syncFilterBoxVisibility();
@@ -2416,6 +2482,8 @@ function enqueueItems(objs) {
     const userFolder = obj.userFolder || '';
     const postFolder = obj.postFolder || '';
     const retryKey = obj.retryKey || '';
+    const archiveMode = obj.archiveMode || '';
+    const queuePostFolder = obj.queuePostFolder || '';
     toAdd.push({ url, name, meta, status: 'queued', attempts: 0, nextAt: 0 });
     if (files) {
       const it = toAdd[toAdd.length - 1];
@@ -2423,6 +2491,8 @@ function enqueueItems(objs) {
       it.userFolder = userFolder;
       it.postFolder = postFolder;
       it.retryKey = retryKey;
+      it.archiveMode = archiveMode;
+      it.queuePostFolder = queuePostFolder;
     }
   }
   if (!toAdd.length) return;
@@ -2475,6 +2545,7 @@ function startPostArchiveDownload(item) {
   const name = item.name;
   const files = Array.isArray(item.files) ? item.files : [];
   const retryKey = getRetryKey(item);
+  const archiveMode = item.archiveMode || 'post';
   let settled = false;
   let lastProgressAt = Date.now();
   let tTotal = null;
@@ -2581,7 +2652,12 @@ function startPostArchiveDownload(item) {
         const timeoutMs = vidRE.test(url) ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
         const blob = await fetchBlob(url, () => { lastProgressAt = Date.now(); }, timeoutMs, handles);
         const parts = splitDownloadPath(file.name || '');
-        const postFolder = parts.postFolder || item.postFolder || '';
+        let postFolder = parts.postFolder || item.postFolder || '';
+        if (archiveMode === 'queue') {
+          postFolder = parts.postFolder || '';
+        } else if (archiveMode === 'queue_flat') {
+          postFolder = item.queuePostFolder || parts.postFolder || '';
+        }
         const fileName = parts.fileName || getDownloadLabel(file);
         const zipPath = `${postFolder ? `${postFolder}/` : ''}${fileName}`;
         zip.file(zipPath, blob);
@@ -2881,6 +2957,11 @@ function splitDownloadPath(path) {
 
 function buildArchiveName(userFolder, postFolder) {
   const base = postFolder || 'post';
+  return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
+}
+
+function buildQueueArchiveName(userFolder) {
+  const base = userFolder || 'profile';
   return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
 }
 
@@ -3372,36 +3453,99 @@ function handlePreviewToggle() {
 
 async function queueFiltered() {
   if (!keptPosts.length) return;
+  const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
   const objs = [];
-  keptPosts.forEach(kp => {
-    const { post, allowedFiles, globalIndex } = kp;
-    if (!allowedFiles || !allowedFiles.length) return;
+  if (mode === 'loose') {
+    keptPosts.forEach(kp => {
+      const { post, allowedFiles, globalIndex } = kp;
+      if (!allowedFiles || !allowedFiles.length) return;
+      allowedFiles.forEach(fileInfo => {
+        if (!fileInfo || !fileInfo.url) return;
+        const ref = fileInfo.url;
+        const fileObj = { path: ref };
+        const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+        objs.push({ url: ref, name, meta: { post, url: ref, globalIndex, fileIndex: fileInfo.g } });
+      });
+    });
+  } else if (mode === 'queue' || mode === 'queue_flat') {
     const files = [];
     let userFolder = '';
-    let postFolder = '';
-    allowedFiles.forEach(fileInfo => {
-      if (!fileInfo || !fileInfo.url) return;
-      const ref = fileInfo.url;
-      const fileObj = { path: ref };
-      const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
-      const parts = splitDownloadPath(name);
-      if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
-      if (!postFolder && parts.postFolder) postFolder = parts.postFolder;
-      files.push({ url: ref, name, fileIndex: fileInfo.g });
+    let earliestPostFolder = '';
+    let earliestIndex = Infinity;
+    keptPosts.forEach(kp => {
+      const { post, allowedFiles, globalIndex } = kp;
+      if (!allowedFiles || !allowedFiles.length) return;
+      const isEarliestCandidate = typeof globalIndex === 'number' && globalIndex < earliestIndex;
+      if (isEarliestCandidate) {
+        earliestIndex = globalIndex;
+        earliestPostFolder = '';
+      }
+      allowedFiles.forEach(fileInfo => {
+        if (!fileInfo || !fileInfo.url) return;
+        const ref = fileInfo.url;
+        const fileObj = { path: ref };
+        const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+        const parts = splitDownloadPath(name);
+        if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
+        if (isEarliestCandidate && !earliestPostFolder && parts.postFolder) {
+          earliestPostFolder = parts.postFolder;
+        }
+        files.push({ url: ref, name, fileIndex: fileInfo.g, postFolder: parts.postFolder });
+      });
     });
-    if (!files.length) return;
-    const archiveName = buildArchiveName(userFolder, postFolder);
-    const retryKey = post && post.id ? `post:${post.id}` : `${userFolder}/${postFolder}`;
-    objs.push({
-      url: files[0].url,
-      name: archiveName,
-      meta: { post, globalIndex },
-      files,
-      userFolder,
-      postFolder,
-      retryKey
+    if (files.length) {
+      if (!earliestPostFolder) {
+        const parts = splitDownloadPath(files[0].name || '');
+        earliestPostFolder = parts.postFolder || '';
+      }
+      const archiveName = (mode === 'queue_flat')
+        ? buildArchiveName(userFolder, earliestPostFolder || 'post')
+        : buildQueueArchiveName(userFolder);
+      const retryKey = userFolder ? `queue:${userFolder}` : 'queue:profile';
+      objs.push({
+        url: files[0].url,
+        name: archiveName,
+        meta: { globalIndex: earliestIndex },
+        files,
+        userFolder,
+        postFolder: '',
+        retryKey,
+        archiveMode: mode,
+        queuePostFolder: earliestPostFolder
+      });
+    }
+  } else {
+    keptPosts.forEach(kp => {
+      const { post, allowedFiles, globalIndex } = kp;
+      if (!allowedFiles || !allowedFiles.length) return;
+      const files = [];
+      let userFolder = '';
+      let postFolder = '';
+      allowedFiles.forEach(fileInfo => {
+        if (!fileInfo || !fileInfo.url) return;
+        const ref = fileInfo.url;
+        const fileObj = { path: ref };
+        const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+        const parts = splitDownloadPath(name);
+        if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
+        if (!postFolder && parts.postFolder) postFolder = parts.postFolder;
+        files.push({ url: ref, name, fileIndex: fileInfo.g, postFolder: parts.postFolder });
+      });
+      if (!files.length) return;
+      const archiveName = buildArchiveName(userFolder, postFolder);
+      const retryKey = post && post.id ? `post:${post.id}` : `${userFolder}/${postFolder}`;
+      objs.push({
+        url: files[0].url,
+        name: archiveName,
+        meta: { post, globalIndex },
+        files,
+        userFolder,
+        postFolder,
+        retryKey,
+        archiveMode: 'post'
+      });
     });
-  });
+  }
   if (!objs.length) {
     const st = $('#filterStatus');
     if (st) st.textContent = 'No files matched your filters.';
