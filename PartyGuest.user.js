@@ -2,13 +2,14 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.11.26
+// @version      01.12.00
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
 // @match        *://coomer.st/*
 // @match        *://kemono.cr/*
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
 // @grant        GM_download
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
@@ -17,6 +18,8 @@
 // Gallery keybinds (right hand): ← / A = previous; → / D = next; 1 = -10 files; 3 = +10 files; Q = -10s; E = +10s; Space = play/pause; ` = close gallery.
 // Gallery keybinds (left hand): ← / J = previous; → / L = next; 8 = -10 files; 0 = +10 files; U = -10s; O = +10s; Space = play/pause; Backspace = close gallery.
 // Additional keybinds: G = toggle fullscreen; F = cycle filters (all/images/videos); R = toggle random order; P = toggle slideshow; T = toggle looping.
+
+const JSZip = window.JSZip;
 
 GM_addStyle(`
 :root {
@@ -2343,8 +2346,8 @@ function updateHUD() {
   const dlSummaryEl = $('#dlSummary');
   if (dlSummaryEl) {
     const retries = lastDropNoteCount || 0;
-    const totalFiles = total || 0;
-    dlSummaryEl.textContent = `${totalFiles} files total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${retries} Retries`;
+    const totalItems = total || 0;
+    dlSummaryEl.textContent = `${totalItems} posts total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${retries} Retries`;
   }
 
   syncFilterBoxVisibility();
@@ -2398,13 +2401,29 @@ function claimNext() {
   return null;
 }
 
+function getRetryKey(item) {
+  if (!item) return '';
+  return item.retryKey || item.url || item.name || '';
+}
+
 function enqueueItems(objs) {
   const toAdd = [];
   for (const obj of objs) {
     const url = obj.url;
     const name = obj.name;
     const meta = obj.meta || null;
+    const files = Array.isArray(obj.files) ? obj.files : null;
+    const userFolder = obj.userFolder || '';
+    const postFolder = obj.postFolder || '';
+    const retryKey = obj.retryKey || '';
     toAdd.push({ url, name, meta, status: 'queued', attempts: 0, nextAt: 0 });
+    if (files) {
+      const it = toAdd[toAdd.length - 1];
+      it.files = files;
+      it.userFolder = userFolder;
+      it.postFolder = postFolder;
+      it.retryKey = retryKey;
+    }
   }
   if (!toAdd.length) return;
   dl.items.push(...toAdd);
@@ -2421,7 +2440,193 @@ function maybeFinishBatch() {
   }
 }
 
+function fetchBlob(url, onprogress, timeoutMs, handles) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let handle = null;
+    const finalize = (ok, payload) => {
+      if (settled) return;
+      settled = true;
+      if (handles && handle) handles.delete(handle);
+      ok ? resolve(payload) : reject(payload);
+    };
+    handle = GM_xmlhttpRequest({
+      method: 'GET',
+      url,
+      headers: { Referer: location.href, Accept: 'text/css' },
+      responseType: 'blob',
+      timeout: timeoutMs || 0,
+      onprogress: evt => { if (typeof onprogress === 'function') onprogress(evt); },
+      onload: resp => {
+        if (resp && resp.status >= 200 && resp.status < 300 && resp.response) {
+          finalize(true, resp.response);
+        } else {
+          finalize(false, resp);
+        }
+      },
+      onerror: err => finalize(false, err),
+      ontimeout: err => finalize(false, err)
+    });
+    if (handles && handle) handles.add(handle);
+  });
+}
+
+function startPostArchiveDownload(item) {
+  const name = item.name;
+  const files = Array.isArray(item.files) ? item.files : [];
+  const retryKey = getRetryKey(item);
+  let settled = false;
+  let lastProgressAt = Date.now();
+  let tTotal = null;
+  let tIdle = null;
+  const handles = new Set();
+  item._handles = handles;
+
+  const clearWatchers = () => {
+    if (tTotal) {
+      try { clearTimeout(tTotal); } catch {}
+      tTotal = null;
+    }
+    if (tIdle) {
+      try { clearInterval(tIdle); } catch {}
+      tIdle = null;
+    }
+  };
+
+  const abortHandles = () => {
+    if (item._handle && typeof item._handle.abort === 'function') {
+      try { item._handle.abort(); } catch {}
+    }
+    for (const h of handles) {
+      if (h && typeof h.abort === 'function') {
+        try { h.abort(); } catch {}
+      }
+    }
+    handles.clear();
+  };
+
+  const handleFailure = (reason, err) => {
+    if (settled) return;
+    settled = true;
+    abortHandles();
+    clearWatchers();
+
+    logDownloadError(item, reason || 'Download failed', err);
+
+    const prev = retryMap[retryKey] || 0;
+    const n = prev + 1;
+    retryMap[retryKey] = n;
+
+    lastDropNoteAt = Date.now();
+    lastDropNoteCount++;
+
+    const level = Math.min(n, MAX_RETRIES);
+    const backoff = BACKOFF_BASE * Math.pow(2, level - 1) + Math.floor(Math.random() * 500);
+
+    item.status = 'queued';
+    item.nextAt = Date.now() + backoff;
+
+    const prevTimer = cooldownTimers.get(retryKey);
+    if (prevTimer) clearTimeout(prevTimer);
+
+    const tid = setTimeout(() => {
+      item.nextAt = 0;
+      scheduleHUD();
+      if (dl.started) requestDispatch();
+    }, backoff + 5);
+    cooldownTimers.set(retryKey, tid);
+
+    const idx = dl.items.indexOf(item);
+    if (idx >= 0) {
+      dl.items.splice(idx, 1);
+      dl.items.push(item);
+    }
+
+    scheduleHUD();
+    setTimeout(requestDispatch, 0);
+  };
+
+  if (!JSZip || typeof JSZip !== 'function') {
+    handleFailure('JSZip missing');
+    return;
+  }
+
+  const totalMs = Math.max(
+    STALL_VID_TOTAL_MS,
+    files.reduce((sum, file) => {
+      const url = file && file.url ? file.url : '';
+      return sum + (vidRE.test(url) ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS);
+    }, 0) || STALL_IMG_TOTAL_MS
+  );
+  const idleMs = files.some(file => vidRE.test((file && file.url) || '')) ? STALL_VID_IDLE_MS : STALL_IMG_IDLE_MS;
+  tTotal = setTimeout(() => {
+    if (!TIMEOUT_RETRIES_ENABLED) return;
+    handleFailure('Download timeout');
+  }, totalMs);
+  tIdle = setInterval(() => {
+    if (!TIMEOUT_RETRIES_ENABLED) return;
+    if (Date.now() - lastProgressAt > idleMs) handleFailure('Download stalled');
+  }, 2000);
+
+  (async () => {
+    const zip = new JSZip();
+    let added = 0;
+
+    for (const file of files) {
+      if (settled) return;
+      const url = file && file.url;
+      if (!url) continue;
+      try {
+        lastProgressAt = Date.now();
+        const timeoutMs = vidRE.test(url) ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
+        const blob = await fetchBlob(url, () => { lastProgressAt = Date.now(); }, timeoutMs, handles);
+        const parts = splitDownloadPath(file.name || '');
+        const postFolder = parts.postFolder || item.postFolder || '';
+        const fileName = parts.fileName || getDownloadLabel(file);
+        const zipPath = `${postFolder ? `${postFolder}/` : ''}${fileName}`;
+        zip.file(zipPath, blob);
+        added++;
+      } catch (err) {
+        logDownloadError({ url, name: file && file.name ? file.name : url }, 'Download error', err);
+      }
+    }
+
+    if (settled) return;
+    if (!added) {
+      handleFailure('No files downloaded');
+      return;
+    }
+
+    let zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipUrl = URL.createObjectURL(zipBlob);
+
+    const handle = GM_download({
+      url: zipUrl,
+      name,
+      onload: () => {
+        if (settled) return;
+        settled = true;
+        clearWatchers();
+        try { URL.revokeObjectURL(zipUrl); } catch {}
+        item.status = 'done';
+        scheduleHUD();
+        setTimeout(requestDispatch, SPAWN_DELAY + Math.floor(Math.random() * 200));
+        maybeFinishBatch();
+      },
+      onerror: err => {
+        try { URL.revokeObjectURL(zipUrl); } catch {}
+        handleFailure('Download error', err);
+      }
+    });
+    item._handle = handle;
+  })().catch(err => handleFailure('Download error', err));
+}
+
 function startDownload(item) {
+  if (item && Array.isArray(item.files)) {
+    startPostArchiveDownload(item);
+    return;
+  }
   const name = item.name;
   const isVid = vidRE.test(item.url);
   const totalMs = isVid ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
@@ -2450,9 +2655,10 @@ function startDownload(item) {
 
     logDownloadError(item, reason || 'Download failed', err);
 
-    const prev = retryMap[item.url] || 0;
+    const retryKey = getRetryKey(item);
+    const prev = retryMap[retryKey] || 0;
     const n = prev + 1;
-    retryMap[item.url] = n;
+    retryMap[retryKey] = n;
 
     lastDropNoteAt = Date.now();
     lastDropNoteCount++;
@@ -2463,7 +2669,7 @@ function startDownload(item) {
     item.status = 'queued';
     item.nextAt = Date.now() + backoff;
 
-    const prevTimer = cooldownTimers.get(item.url);
+    const prevTimer = cooldownTimers.get(retryKey);
     if (prevTimer) clearTimeout(prevTimer);
 
     const tid = setTimeout(() => {
@@ -2471,7 +2677,7 @@ function startDownload(item) {
       scheduleHUD();
       if (dl.started) requestDispatch();
     }, backoff + 5);
-    cooldownTimers.set(item.url, tid);
+    cooldownTimers.set(retryKey, tid);
 
     const idx = dl.items.indexOf(item);
     if (idx >= 0) {
@@ -2660,6 +2866,22 @@ function formatFilename(post, fileObj, index, globalIndex) {
   const fileName = `${base}_${fIdx}.${ext}`;
   const postFolder = base;
   return `${userSec}/${postFolder}/${fileName}`;
+}
+
+function splitDownloadPath(path) {
+  const cleaned = (path || '').replace(/\\/g, '/');
+  const parts = cleaned.split('/').filter(Boolean);
+  const [userFolder, postFolder, ...rest] = parts;
+  return {
+    userFolder: userFolder || '',
+    postFolder: postFolder || '',
+    fileName: rest.join('/') || ''
+  };
+}
+
+function buildArchiveName(userFolder, postFolder) {
+  const base = postFolder || 'post';
+  return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
 }
 
 
@@ -3153,12 +3375,31 @@ async function queueFiltered() {
   const objs = [];
   keptPosts.forEach(kp => {
     const { post, allowedFiles, globalIndex } = kp;
+    if (!allowedFiles || !allowedFiles.length) return;
+    const files = [];
+    let userFolder = '';
+    let postFolder = '';
     allowedFiles.forEach(fileInfo => {
       if (!fileInfo || !fileInfo.url) return;
       const ref = fileInfo.url;
       const fileObj = { path: ref };
       const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
-      objs.push({ url: ref, name, meta: { post, url: ref, globalIndex, fileIndex: fileInfo.g } });
+      const parts = splitDownloadPath(name);
+      if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
+      if (!postFolder && parts.postFolder) postFolder = parts.postFolder;
+      files.push({ url: ref, name, fileIndex: fileInfo.g });
+    });
+    if (!files.length) return;
+    const archiveName = buildArchiveName(userFolder, postFolder);
+    const retryKey = post && post.id ? `post:${post.id}` : `${userFolder}/${postFolder}`;
+    objs.push({
+      url: files[0].url,
+      name: archiveName,
+      meta: { post, globalIndex },
+      files,
+      userFolder,
+      postFolder,
+      retryKey
     });
   });
   if (!objs.length) {
