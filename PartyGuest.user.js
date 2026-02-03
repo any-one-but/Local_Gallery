@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.12.01
+// @version      01.12.04
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -1009,6 +1009,7 @@ const DEFAULT_OPTIONS = {
   timeoutRetries: true,
   stopClearsQueue: true,
   showLocalGalleryBtn: false,
+  showDownloadInfoBtn: true,
   showGalleryBtn: true,
   showPageBtn: true,
   showMediaBtn: true,
@@ -1019,12 +1020,23 @@ const DEFAULT_OPTIONS = {
   showProgressBar: false
 };
 const DOWNLOAD_MODE_LABELS = {
-  loose: 'Loose',
+  loose_post: 'Loose by post',
+  loose_flat: 'Loose flat',
+  loose_queue: 'Loose by queue',
+  loose_queue_flat: 'Loose by queue flat',
   post: 'Archived by post',
   queue: 'Archive by queue',
   queue_flat: 'Archive by queue flat'
 };
-const DOWNLOAD_MODE_VALUES = ['loose', 'post', 'queue', 'queue_flat'];
+const DOWNLOAD_MODE_VALUES = [
+  'loose_post',
+  'loose_flat',
+  'loose_queue',
+  'loose_queue_flat',
+  'post',
+  'queue',
+  'queue_flat'
+];
 function clampInt(value, min, max, fallback) {
   const n = parseInt(value, 10);
   if (!Number.isFinite(n)) return fallback;
@@ -1033,8 +1045,9 @@ function clampInt(value, min, max, fallback) {
 function normalizeOptions(opt) {
   const out = Object.assign({}, DEFAULT_OPTIONS);
   if (!opt || typeof opt !== 'object') return out;
-  if (typeof opt.downloadMode === 'string' && DOWNLOAD_MODE_LABELS[opt.downloadMode]) {
-    out.downloadMode = opt.downloadMode;
+  if (typeof opt.downloadMode === 'string') {
+    const nextMode = opt.downloadMode === 'loose' ? 'loose_post' : opt.downloadMode;
+    if (DOWNLOAD_MODE_LABELS[nextMode]) out.downloadMode = nextMode;
   }
   if (typeof opt.durationIndexing === 'boolean') out.durationIndexing = opt.durationIndexing;
   if (typeof opt.galleryPreloadAll === 'boolean') out.galleryPreloadAll = opt.galleryPreloadAll;
@@ -1044,6 +1057,7 @@ function normalizeOptions(opt) {
   if (typeof opt.timeoutRetries === 'boolean') out.timeoutRetries = opt.timeoutRetries;
   if (typeof opt.stopClearsQueue === 'boolean') out.stopClearsQueue = opt.stopClearsQueue;
   if (typeof opt.showLocalGalleryBtn === 'boolean') out.showLocalGalleryBtn = opt.showLocalGalleryBtn;
+  if (typeof opt.showDownloadInfoBtn === 'boolean') out.showDownloadInfoBtn = opt.showDownloadInfoBtn;
   if (typeof opt.showGalleryBtn === 'boolean') out.showGalleryBtn = opt.showGalleryBtn;
   if (typeof opt.showPageBtn === 'boolean') out.showPageBtn = opt.showPageBtn;
   if (typeof opt.showMediaBtn === 'boolean') out.showMediaBtn = opt.showMediaBtn;
@@ -1067,6 +1081,7 @@ let DOWNLOAD_MODE = DEFAULT_OPTIONS.downloadMode;
 let GALLERY_PRELOAD_ALL_MEDIA = false;
 let DURATION_FEATURE_ENABLED = false;
 let PARALLEL_DOWNLOAD_LIMIT = 3;
+const ARCHIVE_FETCH_CAP = 6;
 let TIMEOUT_RETRIES_ENABLED = true;
 let STOP_BUTTON_CLEARS_QUEUE = true;
 let SHOW_PROGRESS_BAR = true;
@@ -1085,6 +1100,7 @@ let lastUrl = location.href;
 let CURRENT_PROFILE_KEY = null;
 let PREVIEW_MODE = false;
 let GALLERY_MODE = false;
+let LAST_POST_CLICK = null;
 let galleryItems = [];
 let galleryIndex = 0;
 let galleryKeyHandlerAttached = false;
@@ -1379,6 +1395,7 @@ function handleProfileContextChange(){
     PG_POST_FILE_RANGE_MAP = null;
     keptPosts = [];
     CURRENT_PROFILE_KEY = null;
+    LAST_POST_CLICK = null;
     PENDING_FILTER_SUMMARY = null;
     if (INDEX_STATUS_TIMER) {
       try { clearTimeout(INDEX_STATUS_TIMER); } catch {}
@@ -1407,6 +1424,7 @@ function handleProfileContextChange(){
     PG_POST_FILE_RANGE_MAP = null;
     keptPosts = [];
     lastFilterParams = {};
+    LAST_POST_CLICK = null;
     PENDING_FILTER_SUMMARY = null;
   }
   CURRENT_PROFILE_KEY = key;
@@ -1523,7 +1541,7 @@ function injectPostNumbers() {
     badge.addEventListener(badgeToggleEvent, e => {
       e.preventDefault();
       e.stopPropagation();
-      handlePostNumberClick(badge);
+      handlePostNumberClick(badge, e);
     });
     thumb.appendChild(badge);
   });
@@ -1539,7 +1557,7 @@ function getFileFilterSet() {
   return set || new Set();
 }
 
-function handlePostNumberClick(el) {
+function handlePostNumberClick(el, ev) {
   if (!el) return;
   const numStr = el.dataset.postNumber || (el.textContent || '').trim();
   if (!numStr) return;
@@ -1549,6 +1567,20 @@ function handlePostNumberClick(el) {
   const input = document.getElementById('fPosts');
   if (!input) return;
   const set = getPostFilterSet();
+  const useRange = !!(ev && ev.shiftKey && Number.isInteger(LAST_POST_CLICK) && LAST_POST_CLICK > 0);
+  if (useRange) {
+    const a = LAST_POST_CLICK;
+    const b = num;
+    const min = Math.min(a, b);
+    const max = Math.max(a, b);
+    for (let i = min; i <= max; i++) set.add(i);
+    input.value = formatIndexRanges(set);
+    LAST_POST_CLICK = num;
+    injectPostNumbers();
+    syncPageAllButtonState();
+    scheduleFilter();
+    return;
+  }
   if (set.has(num)) {
     set.delete(num);
     el.classList.remove('active');
@@ -1556,6 +1588,7 @@ function handlePostNumberClick(el) {
     set.add(num);
     el.classList.add('active');
   }
+  LAST_POST_CLICK = num;
   input.value = formatIndexRanges(set);
   syncPageAllButtonState();
   scheduleFilter();
@@ -1692,6 +1725,7 @@ function setHudItemVisible(id, visible) {
 function syncHudElementVisibility() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   setHudItemVisible('localGalleryBtn', opt.showLocalGalleryBtn !== false);
+  setHudItemVisible('downloadInfoBtn', opt.showDownloadInfoBtn !== false);
   setHudItemVisible('galleryBtn', opt.showGalleryBtn !== false);
   setHudItemVisible('btnPageAll', opt.showPageBtn !== false);
   setHudItemVisible('btnMedia', opt.showMediaBtn !== false);
@@ -1852,6 +1886,7 @@ function renderOptionsUi() {
     <div class="pg-opt-section">
       <div class="pg-opt-section-title">HUD</div>
       ${makeCheckRow('Show Local Gallery button', 'Toggle the Local Gallery launcher.', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
+      ${makeCheckRow('Show Download Info button', 'Toggle the Download Info button.', 'pg_opt_showDownloadInfoBtn', opt.showDownloadInfoBtn !== false)}
       ${makeCheckRow('Show Gallery button', 'Toggle the Gallery button.', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
       ${makeCheckRow('Show Page button', 'Toggle the Page button.', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
       ${makeCheckRow('Show media filter button', 'Toggle the media type cycle button.', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
@@ -1919,6 +1954,7 @@ function renderOptionsUi() {
   bindCheck('pg_opt_timeoutRetries', 'timeoutRetries');
   bindCheck('pg_opt_stopClearsQueue', 'stopClearsQueue');
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
+  bindCheck('pg_opt_showDownloadInfoBtn', 'showDownloadInfoBtn');
   bindCheck('pg_opt_showGalleryBtn', 'showGalleryBtn');
   bindCheck('pg_opt_showPageBtn', 'showPageBtn');
   bindCheck('pg_opt_showMediaBtn', 'showMediaBtn');
@@ -2237,6 +2273,7 @@ function buildHUD() {
     <div id="hudRow" class="hud-row">
       <button id="pgMenuBtn" class="full pg-icon-btn" title="Menu" aria-label="Menu">⚙</button>
       <button id="dlBtn" class="full">Download</button>
+      <button id="downloadInfoBtn" class="full">Download Info</button>
       <button id="galleryBtn" class="full">Gallery</button>
       <button id="localGalleryBtn" class="full">Local Gallery</button>
       <button id="filterBtn" class="full">Preview</button>
@@ -2251,6 +2288,9 @@ function buildHUD() {
   document.body.appendChild(w);
 
   $('#dlBtn').onclick = handleDlBtn;
+
+  const downloadInfoBtn = $('#downloadInfoBtn');
+  if (downloadInfoBtn) downloadInfoBtn.onclick = handleDownloadInfo;
 
   const galleryBtn = $('#galleryBtn');
   if (galleryBtn) galleryBtn.onclick = handleGalleryToggle;
@@ -2379,7 +2419,7 @@ function getCounts() {
 }
 
 function getDownloadSummaryUnit() {
-  if (DOWNLOAD_MODE === 'loose') return 'files';
+  if (typeof DOWNLOAD_MODE === 'string' && DOWNLOAD_MODE.startsWith('loose')) return 'files';
   if (DOWNLOAD_MODE === 'post') return 'posts';
   if (DOWNLOAD_MODE === 'queue' || DOWNLOAD_MODE === 'queue_flat') return 'queues';
   return 'items';
@@ -2642,15 +2682,17 @@ function startPostArchiveDownload(item) {
   (async () => {
     const zip = new JSZip();
     let added = 0;
-
-    for (const file of files) {
+    const fetchLimit = Math.max(1, Math.min(ARCHIVE_FETCH_CAP, PARALLEL_DOWNLOAD_LIMIT || 1));
+    let cursor = 0;
+    const downloadOne = async (file) => {
       if (settled) return;
       const url = file && file.url;
-      if (!url) continue;
+      if (!url) return;
       try {
         lastProgressAt = Date.now();
         const timeoutMs = vidRE.test(url) ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
         const blob = await fetchBlob(url, () => { lastProgressAt = Date.now(); }, timeoutMs, handles);
+        if (settled) return;
         const parts = splitDownloadPath(file.name || '');
         let postFolder = parts.postFolder || item.postFolder || '';
         if (archiveMode === 'queue') {
@@ -2665,7 +2707,20 @@ function startPostArchiveDownload(item) {
       } catch (err) {
         logDownloadError({ url, name: file && file.name ? file.name : url }, 'Download error', err);
       }
+    };
+    const workerCount = Math.min(fetchLimit, files.length || 0);
+    const workers = [];
+    for (let i = 0; i < workerCount; i++) {
+      workers.push((async () => {
+        while (true) {
+          if (settled) return;
+          const idx = cursor++;
+          if (idx >= files.length) return;
+          await downloadOne(files[idx]);
+        }
+      })());
     }
+    await Promise.all(workers);
 
     if (settled) return;
     if (!added) {
@@ -2673,7 +2728,7 @@ function startPostArchiveDownload(item) {
       return;
     }
 
-    let zipBlob = await zip.generateAsync({ type: 'blob' });
+    let zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
     const zipUrl = URL.createObjectURL(zipBlob);
 
     const handle = GM_download({
@@ -3451,23 +3506,150 @@ function handlePreviewToggle() {
   handleFilter();
 }
 
+function sanitizeInfoFilePart(str, fallback) {
+  let s = (str || '').normalize('NFC');
+  s = s.replace(/\s+/g, '_');
+  s = s.replace(/[\\/:*?"<>|]+/g, '');
+  s = s.replace(/[\x00-\x1F\x7F]/g, '');
+  s = s.replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+  return s || fallback || 'profile';
+}
+
+function extractPostDate(post) {
+  if (!post) return null;
+  const raw = post.published || post.published_at || post.added || post.added_at || post.created || post.created_at || post.posted || post.posted_at;
+  if (raw == null) return null;
+  if (typeof raw === 'number' && isFinite(raw)) {
+    const ms = raw > 1e12 ? raw : raw * 1000;
+    const d = new Date(ms);
+    return isFinite(d.getTime()) ? d : null;
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    const d = new Date(raw);
+    return isFinite(d.getTime()) ? d : null;
+  }
+  return null;
+}
+
+function formatDateForInfo(d) {
+  if (!d) return 'Unknown';
+  return d.toISOString().split('T')[0];
+}
+
+async function handleDownloadInfo() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return;
+  }
+
+  setStatus('Preparing profile info...', 'info');
+
+  if (!PG_POSTS || !PG_POSTS.length) {
+    await buildGlobalIndexMapIfNeeded();
+  }
+
+  let waitCount = 0;
+  while (PG_INDEX_LOADING && waitCount < 120) {
+    await sleep(250);
+    waitCount++;
+  }
+
+  if (!PG_POSTS || !PG_POSTS.length) {
+    setStatus('Unable to build index', 'error');
+    return;
+  }
+
+  buildFileIndexFromPostsIfNeeded();
+
+  const posts = PG_POSTS;
+  const totalPosts = posts.length;
+  let totalPages = 0;
+  let minDate = null;
+  let maxDate = null;
+  let totalFiles = 0;
+  let totalImages = 0;
+  let totalGifs = 0;
+  let totalVideos = 0;
+
+  for (const post of posts) {
+    const pg = post && typeof post.pgPage === 'number' ? post.pgPage : 1;
+    if (pg > totalPages) totalPages = pg;
+
+    const d = extractPostDate(post);
+    if (d) {
+      if (!minDate || d < minDate) minDate = d;
+      if (!maxDate || d > maxDate) maxDate = d;
+    }
+
+    const files = Array.isArray(post.pgFiles) ? post.pgFiles : [];
+    for (const f of files) {
+      if (!f || !f.url) continue;
+      totalFiles++;
+      const base = (f.url.split('?')[0] || '').toLowerCase();
+      const isVid = typeof f.isVid === 'boolean' ? f.isVid : vidRE.test(base);
+      if (isVid) {
+        totalVideos++;
+      } else if (imgRE.test(base)) {
+        totalImages++;
+        if (base.endsWith('.gif')) totalGifs++;
+      }
+    }
+  }
+
+  if (!totalPages) totalPages = Math.max(1, Math.ceil(totalPosts / POSTS_PER_PAGE));
+
+  const avgFiles = totalPosts ? (totalFiles / totalPosts) : 0;
+  const avgImages = totalPosts ? (totalImages / totalPosts) : 0;
+  const avgVideos = totalPosts ? (totalVideos / totalPosts) : 0;
+
+  const parts = location.pathname.split('/');
+  const service = parts[1] || 'service';
+  const profileName = userName();
+  const downloadDate = new Date();
+  const lastPostDate = formatDateForInfo(maxDate);
+  const firstPostDate = formatDateForInfo(minDate);
+
+  const lines = [
+    `Date of doc download: ${downloadDate.toISOString()}`,
+    `Profile name: ${profileName}`,
+    `Profile service: ${service}`,
+    `Number of Pages as of ${lastPostDate}: ${totalPages}`,
+    `Number of Posts from ${firstPostDate} to ${lastPostDate}: ${totalPosts}`,
+    `Number of total files: ${totalFiles}`,
+    `Number of Images (GIFs): ${totalImages} (${totalGifs})`,
+    `Number of Videos: ${totalVideos}`,
+    `Average files per post: ${avgFiles.toFixed(2)}`,
+    `Average images per post: ${avgImages.toFixed(2)}`,
+    `Average videos per post: ${avgVideos.toFixed(2)}`
+  ];
+
+  const userFolder = sanitizeInfoFilePart(profileName, 'profile');
+  const servicePart = sanitizeInfoFilePart(service, 'service');
+  const datePart = downloadDate.toISOString().split('T')[0];
+  const fileName = `${userFolder}/${userFolder}_${servicePart}_info_${datePart}.txt`;
+  const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+
+  GM_download({
+    url,
+    name: fileName,
+    onload: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus('Profile info downloaded', 'success');
+    },
+    onerror: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus('Failed to download profile info', 'error');
+    }
+  });
+}
+
 async function queueFiltered() {
   if (!keptPosts.length) return;
   const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
   const objs = [];
-  if (mode === 'loose') {
-    keptPosts.forEach(kp => {
-      const { post, allowedFiles, globalIndex } = kp;
-      if (!allowedFiles || !allowedFiles.length) return;
-      allowedFiles.forEach(fileInfo => {
-        if (!fileInfo || !fileInfo.url) return;
-        const ref = fileInfo.url;
-        const fileObj = { path: ref };
-        const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
-        objs.push({ url: ref, name, meta: { post, url: ref, globalIndex, fileIndex: fileInfo.g } });
-      });
-    });
-  } else if (mode === 'queue' || mode === 'queue_flat') {
+  const buildQueueBundle = () => {
     const files = [];
     let userFolder = '';
     let earliestPostFolder = '';
@@ -3493,25 +3675,62 @@ async function queueFiltered() {
         files.push({ url: ref, name, fileIndex: fileInfo.g, postFolder: parts.postFolder });
       });
     });
-    if (files.length) {
-      if (!earliestPostFolder) {
-        const parts = splitDownloadPath(files[0].name || '');
-        earliestPostFolder = parts.postFolder || '';
-      }
+    if (files.length && !earliestPostFolder) {
+      const parts = splitDownloadPath(files[0].name || '');
+      earliestPostFolder = parts.postFolder || '';
+    }
+    return { files, userFolder, earliestPostFolder, earliestIndex };
+  };
+
+  if (mode === 'loose_post' || mode === 'loose_flat') {
+    keptPosts.forEach(kp => {
+      const { post, allowedFiles, globalIndex } = kp;
+      if (!allowedFiles || !allowedFiles.length) return;
+      allowedFiles.forEach(fileInfo => {
+        if (!fileInfo || !fileInfo.url) return;
+        const ref = fileInfo.url;
+        const fileObj = { path: ref };
+        let name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+        if (mode === 'loose_flat') {
+          const parts = splitDownloadPath(name);
+          const fileName = parts.fileName || getDownloadLabel({ url: ref, name });
+          name = parts.userFolder ? `${parts.userFolder}/${fileName}` : fileName;
+        }
+        objs.push({ url: ref, name, meta: { post, url: ref, globalIndex, fileIndex: fileInfo.g } });
+      });
+    });
+  } else if (mode === 'loose_queue' || mode === 'loose_queue_flat') {
+    const bundle = buildQueueBundle();
+    if (bundle.files.length) {
+      const queuePostFolder = bundle.earliestPostFolder || '';
+      bundle.files.forEach(file => {
+        const parts = splitDownloadPath(file.name || '');
+        const fileName = parts.fileName || getDownloadLabel(file);
+        let postFolder = parts.postFolder || '';
+        if (mode === 'loose_queue_flat') postFolder = queuePostFolder || postFolder;
+        const relPath = postFolder ? `${postFolder}/${fileName}` : fileName;
+        const userFolder = bundle.userFolder || parts.userFolder || '';
+        const name = userFolder ? `${userFolder}/${relPath}` : relPath;
+        objs.push({ url: file.url, name, meta: { url: file.url, globalIndex: bundle.earliestIndex, fileIndex: file.fileIndex } });
+      });
+    }
+  } else if (mode === 'queue' || mode === 'queue_flat') {
+    const bundle = buildQueueBundle();
+    if (bundle.files.length) {
       const archiveName = (mode === 'queue_flat')
-        ? buildArchiveName(userFolder, earliestPostFolder || 'post')
-        : buildQueueArchiveName(userFolder);
-      const retryKey = userFolder ? `queue:${userFolder}` : 'queue:profile';
+        ? buildArchiveName(bundle.userFolder, bundle.earliestPostFolder || 'post')
+        : buildQueueArchiveName(bundle.userFolder);
+      const retryKey = bundle.userFolder ? `queue:${bundle.userFolder}` : 'queue:profile';
       objs.push({
-        url: files[0].url,
+        url: bundle.files[0].url,
         name: archiveName,
-        meta: { globalIndex: earliestIndex },
-        files,
-        userFolder,
+        meta: { globalIndex: bundle.earliestIndex },
+        files: bundle.files,
+        userFolder: bundle.userFolder,
         postFolder: '',
         retryKey,
         archiveMode: mode,
-        queuePostFolder: earliestPostFolder
+        queuePostFolder: bundle.earliestPostFolder
       });
     }
   } else {
@@ -3605,6 +3824,7 @@ async function handleClear() {
   const b = $('#dlBtn');
   dl.started = false;
   DL_ACTIVE = false;
+  LAST_POST_CLICK = null;
   if (b) { b.classList.remove('stop'); b.textContent = 'Download'; }
   cooldownTimers.forEach(id => clearTimeout(id));
   cooldownTimers.clear();
