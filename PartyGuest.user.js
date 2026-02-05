@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.12.04
+// @version      01.12.05
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -1010,6 +1010,7 @@ const DEFAULT_OPTIONS = {
   stopClearsQueue: true,
   showLocalGalleryBtn: false,
   showDownloadInfoBtn: true,
+  showDownloadPostLinksBtn: false,
   showGalleryBtn: true,
   showPageBtn: true,
   showMediaBtn: true,
@@ -1058,6 +1059,7 @@ function normalizeOptions(opt) {
   if (typeof opt.stopClearsQueue === 'boolean') out.stopClearsQueue = opt.stopClearsQueue;
   if (typeof opt.showLocalGalleryBtn === 'boolean') out.showLocalGalleryBtn = opt.showLocalGalleryBtn;
   if (typeof opt.showDownloadInfoBtn === 'boolean') out.showDownloadInfoBtn = opt.showDownloadInfoBtn;
+  if (typeof opt.showDownloadPostLinksBtn === 'boolean') out.showDownloadPostLinksBtn = opt.showDownloadPostLinksBtn;
   if (typeof opt.showGalleryBtn === 'boolean') out.showGalleryBtn = opt.showGalleryBtn;
   if (typeof opt.showPageBtn === 'boolean') out.showPageBtn = opt.showPageBtn;
   if (typeof opt.showMediaBtn === 'boolean') out.showMediaBtn = opt.showMediaBtn;
@@ -1726,6 +1728,7 @@ function syncHudElementVisibility() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   setHudItemVisible('localGalleryBtn', opt.showLocalGalleryBtn !== false);
   setHudItemVisible('downloadInfoBtn', opt.showDownloadInfoBtn !== false);
+  setHudItemVisible('downloadPostLinksBtn', opt.showDownloadPostLinksBtn === true);
   setHudItemVisible('galleryBtn', opt.showGalleryBtn !== false);
   setHudItemVisible('btnPageAll', opt.showPageBtn !== false);
   setHudItemVisible('btnMedia', opt.showMediaBtn !== false);
@@ -1887,6 +1890,7 @@ function renderOptionsUi() {
       <div class="pg-opt-section-title">HUD</div>
       ${makeCheckRow('Show Local Gallery button', 'Toggle the Local Gallery launcher.', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
       ${makeCheckRow('Show Download Info button', 'Toggle the Download Info button.', 'pg_opt_showDownloadInfoBtn', opt.showDownloadInfoBtn !== false)}
+      ${makeCheckRow('Show Download Post Links button', 'Toggle the Download Post Links button.', 'pg_opt_showDownloadPostLinksBtn', opt.showDownloadPostLinksBtn === true)}
       ${makeCheckRow('Show Gallery button', 'Toggle the Gallery button.', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
       ${makeCheckRow('Show Page button', 'Toggle the Page button.', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
       ${makeCheckRow('Show media filter button', 'Toggle the media type cycle button.', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
@@ -1955,6 +1959,7 @@ function renderOptionsUi() {
   bindCheck('pg_opt_stopClearsQueue', 'stopClearsQueue');
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
   bindCheck('pg_opt_showDownloadInfoBtn', 'showDownloadInfoBtn');
+  bindCheck('pg_opt_showDownloadPostLinksBtn', 'showDownloadPostLinksBtn');
   bindCheck('pg_opt_showGalleryBtn', 'showGalleryBtn');
   bindCheck('pg_opt_showPageBtn', 'showPageBtn');
   bindCheck('pg_opt_showMediaBtn', 'showMediaBtn');
@@ -2274,6 +2279,7 @@ function buildHUD() {
       <button id="pgMenuBtn" class="full pg-icon-btn" title="Menu" aria-label="Menu">⚙</button>
       <button id="dlBtn" class="full">Download</button>
       <button id="downloadInfoBtn" class="full">Download Info</button>
+      <button id="downloadPostLinksBtn" class="full">Download Post Links</button>
       <button id="galleryBtn" class="full">Gallery</button>
       <button id="localGalleryBtn" class="full">Local Gallery</button>
       <button id="filterBtn" class="full">Preview</button>
@@ -2291,6 +2297,9 @@ function buildHUD() {
 
   const downloadInfoBtn = $('#downloadInfoBtn');
   if (downloadInfoBtn) downloadInfoBtn.onclick = handleDownloadInfo;
+
+  const downloadPostLinksBtn = $('#downloadPostLinksBtn');
+  if (downloadPostLinksBtn) downloadPostLinksBtn.onclick = handleDownloadPostLinks;
 
   const galleryBtn = $('#galleryBtn');
   if (galleryBtn) galleryBtn.onclick = handleGalleryToggle;
@@ -3536,6 +3545,15 @@ function formatDateForInfo(d) {
   return d.toISOString().split('T')[0];
 }
 
+function buildPostUrlFromMeta(post) {
+  if (!post || post.id == null) return '';
+  const parts = location.pathname.split('/');
+  const service = parts[1];
+  const userId = parts[3];
+  if (!service || !userId) return '';
+  return `${location.origin}/${service}/user/${userId}/post/${post.id}`;
+}
+
 async function handleDownloadInfo() {
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
@@ -3641,6 +3659,73 @@ async function handleDownloadInfo() {
     onerror: () => {
       try { URL.revokeObjectURL(url); } catch {}
       setStatus('Failed to download profile info', 'error');
+    }
+  });
+}
+
+async function handleDownloadPostLinks() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return;
+  }
+
+  setStatus('Preparing post links...', 'info');
+
+  if (!PG_POSTS || !PG_POSTS.length) {
+    await buildGlobalIndexMapIfNeeded();
+  }
+
+  let waitCount = 0;
+  while (PG_INDEX_LOADING && waitCount < 120) {
+    await sleep(250);
+    waitCount++;
+  }
+
+  if (!PG_POSTS || !PG_POSTS.length) {
+    setStatus('Unable to build index', 'error');
+    return;
+  }
+
+  await handleFilter();
+
+  if (!keptPosts || !keptPosts.length) {
+    setStatus('No filtered files', 'error');
+    return;
+  }
+
+  const lines = [];
+  const seen = new Set();
+  for (const kp of keptPosts) {
+    if (!kp || !kp.post) continue;
+    const postUrl = buildPostUrlFromMeta(kp.post);
+    if (!postUrl) continue;
+    const files = Array.isArray(kp.allowedFiles) ? kp.allowedFiles : [];
+    if (!files.length) continue;
+    if (!seen.has(postUrl)) {
+      seen.add(postUrl);
+      lines.push(postUrl);
+    }
+  }
+
+  if (!lines.length) {
+    setStatus('No filtered files', 'error');
+    return;
+  }
+
+  const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+
+  GM_download({
+    url,
+    name: 'links.txt',
+    onload: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus('Post links downloaded', 'success');
+    },
+    onerror: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus('Failed to download post links', 'error');
     }
   });
 }
