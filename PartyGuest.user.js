@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.12.05
+// @version      01.12.06
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -2697,24 +2697,43 @@ function startPostArchiveDownload(item) {
       if (settled) return;
       const url = file && file.url;
       if (!url) return;
-      try {
-        lastProgressAt = Date.now();
-        const timeoutMs = vidRE.test(url) ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
-        const blob = await fetchBlob(url, () => { lastProgressAt = Date.now(); }, timeoutMs, handles);
-        if (settled) return;
-        const parts = splitDownloadPath(file.name || '');
-        let postFolder = parts.postFolder || item.postFolder || '';
-        if (archiveMode === 'queue') {
-          postFolder = parts.postFolder || '';
-        } else if (archiveMode === 'queue_flat') {
-          postFolder = item.queuePostFolder || parts.postFolder || '';
+      const maxRetries = Math.max(0, MAX_RETRIES);
+      const maxAttempts = maxRetries + 1;
+      let attempt = 0;
+      while (!settled && attempt < maxAttempts) {
+        attempt++;
+        try {
+          lastProgressAt = Date.now();
+          const timeoutMs = vidRE.test(url) ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
+          const blob = await fetchBlob(url, () => { lastProgressAt = Date.now(); }, timeoutMs, handles);
+          if (settled) return;
+          const parts = splitDownloadPath(file.name || '');
+          let postFolder = parts.postFolder || item.postFolder || '';
+          if (archiveMode === 'queue') {
+            postFolder = parts.postFolder || '';
+          } else if (archiveMode === 'queue_flat') {
+            postFolder = item.queuePostFolder || parts.postFolder || '';
+          }
+          const fileName = parts.fileName || getDownloadLabel(file);
+          const zipPath = `${postFolder ? `${postFolder}/` : ''}${fileName}`;
+          zip.file(zipPath, blob);
+          added++;
+          return;
+        } catch (err) {
+          const label = { url, name: file && file.name ? file.name : url };
+          if (attempt <= maxRetries) {
+            logDownloadError(label, `Download error (retrying ${attempt}/${maxRetries})`, err);
+            lastDropNoteAt = Date.now();
+            lastDropNoteCount++;
+            scheduleHUD();
+            const level = Math.min(attempt, MAX_RETRIES || 1);
+            const backoff = BACKOFF_BASE * Math.pow(2, level - 1) + Math.floor(Math.random() * 500);
+            await new Promise(res => setTimeout(res, backoff));
+            continue;
+          }
+          logDownloadError(label, 'Download error', err);
+          return;
         }
-        const fileName = parts.fileName || getDownloadLabel(file);
-        const zipPath = `${postFolder ? `${postFolder}/` : ''}${fileName}`;
-        zip.file(zipPath, blob);
-        added++;
-      } catch (err) {
-        logDownloadError({ url, name: file && file.name ? file.name : url }, 'Download error', err);
       }
     };
     const workerCount = Math.min(fetchLimit, files.length || 0);
