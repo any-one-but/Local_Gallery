@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.12.07
+// @version      01.12.08
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -533,6 +533,10 @@ body.pg-menu-open {
   background: var(--rain-red) !important;
   color: #ffffff;
   border-color: var(--rain-red);
+}
+
+#dlModeBtn {
+  min-width: 140px;
 }
 
 #btnMedia {
@@ -1930,6 +1934,41 @@ function syncDurationInputVisibility() {
   durInput.disabled = !DURATION_FEATURE_ENABLED;
 }
 
+function getDownloadModeLabel(mode) {
+  return DOWNLOAD_MODE_LABELS[mode] || mode || 'Download mode';
+}
+
+function syncDownloadModeButton() {
+  const btn = document.getElementById('dlModeBtn');
+  if (!btn) return;
+  const mode = DOWNLOAD_MODE || (PG_OPTIONS && PG_OPTIONS.downloadMode) || DEFAULT_OPTIONS.downloadMode;
+  btn.textContent = getDownloadModeLabel(mode);
+}
+
+function syncDownloadModeSelect() {
+  const el = document.getElementById('pg_opt_downloadMode');
+  if (!el) return;
+  const mode = DOWNLOAD_MODE || (PG_OPTIONS && PG_OPTIONS.downloadMode) || DEFAULT_OPTIONS.downloadMode;
+  if (DOWNLOAD_MODE_LABELS[mode]) el.value = mode;
+}
+
+function setDownloadMode(nextMode) {
+  if (!DOWNLOAD_MODE_LABELS[nextMode]) return;
+  PG_OPTIONS.downloadMode = nextMode;
+  saveOptions();
+  setOptionsStatus('Saved');
+  applyOptions();
+  syncDownloadModeSelect();
+}
+
+function cycleDownloadMode() {
+  const list = DOWNLOAD_MODE_VALUES;
+  const current = DOWNLOAD_MODE || (PG_OPTIONS && PG_OPTIONS.downloadMode) || DEFAULT_OPTIONS.downloadMode;
+  const idx = list.indexOf(current);
+  const next = list[(idx + 1) % list.length] || DEFAULT_OPTIONS.downloadMode;
+  setDownloadMode(next);
+}
+
 function applyOptions() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   const prevDuration = DURATION_FEATURE_ENABLED;
@@ -1944,6 +1983,8 @@ function applyOptions() {
   syncHudElementVisibility();
   syncDurationInputVisibility();
   syncProgressBarVisibility();
+  syncDownloadModeButton();
+  syncDownloadModeSelect();
 
   if (prevDuration !== DURATION_FEATURE_ENABLED && DURATION_FEATURE_ENABLED) {
     if (PG_POSTS && PG_POSTS.length) {
@@ -1976,6 +2017,26 @@ function lockPreviewButtonWidth(){
   const btn = document.getElementById('filterBtn');
   if (!btn) return;
   const labels = ['Preview','Clear'];
+  const probe = btn.cloneNode(true);
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  probe.style.left = '-9999px';
+  probe.style.width = 'auto';
+  probe.style.whiteSpace = 'nowrap';
+  document.body.appendChild(probe);
+  let max = 0;
+  for (const t of labels){
+    probe.textContent = t;
+    max = Math.max(max, probe.offsetWidth);
+  }
+  document.body.removeChild(probe);
+  btn.style.width = max + 'px';
+}
+
+function lockDownloadModeButtonWidth(){
+  const btn = document.getElementById('dlModeBtn');
+  if (!btn) return;
+  const labels = DOWNLOAD_MODE_VALUES.map(mode => getDownloadModeLabel(mode));
   const probe = btn.cloneNode(true);
   probe.style.position = 'absolute';
   probe.style.visibility = 'hidden';
@@ -2534,6 +2595,7 @@ function buildHUD() {
     <div id="hudRow" class="hud-row">
       <button id="pgMenuBtn" class="full pg-icon-btn" title="Menu" aria-label="Menu">⚙</button>
       <button id="dlBtn" class="full">Download</button>
+      <button id="dlModeBtn" class="full" title="Download mode" aria-label="Download mode"></button>
       <button id="createGroupBtn" class="full">Create Group</button>
       <button id="clearGroupsBtn" class="full">Clear Groups</button>
       <button id="downloadInfoBtn" class="full">Download Info</button>
@@ -2552,6 +2614,12 @@ function buildHUD() {
   document.body.appendChild(w);
 
   $('#dlBtn').onclick = handleDlBtn;
+
+  const dlModeBtn = $('#dlModeBtn');
+  if (dlModeBtn) {
+    syncDownloadModeButton();
+    dlModeBtn.onclick = cycleDownloadMode;
+  }
 
   const createGroupBtn = $('#createGroupBtn');
   if (createGroupBtn) createGroupBtn.onclick = handleCreateGroup;
@@ -2620,6 +2688,7 @@ function buildHUD() {
   requestAnimationFrame(syncProgressBarVisibility);
   requestAnimationFrame(lockMediaButtonWidth);
   requestAnimationFrame(lockPreviewButtonWidth);
+  requestAnimationFrame(lockDownloadModeButtonWidth);
   applyOptions();
 
   if (handleProfileContextChange()) {
