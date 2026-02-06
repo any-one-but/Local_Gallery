@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.12.08
+// @version      01.12.09
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -23,15 +23,15 @@ const JSZip = window.JSZip;
 
 GM_addStyle(`
 :root {
-  --color0-primary: #ffffff;
-  --color0-secondary: rgba(255, 255, 255, 0.72);
-  --color0-tertirary: rgba(255, 255, 255, 0.4);
+  --color0-primary: hsl(0, 0%, 95%);
+  --color0-secondary: hsl(0, 0%, 70%);
+  --color0-tertirary: hsl(0, 0%, 45%);
 
-  --color1-primary: #000000;
-  --color1-primary-transparent: rgba(0, 0, 0, 0.92);
-  --color1-secondary: #000000;
-  --color1-secondary-transparent: rgba(0, 0, 0, 0.6);
-  --color1-tertiary: rgba(255, 255, 255, 0.2);
+  --color1-primary: hsl(200, 25%, 5%);
+  --color1-primary-transparent: hsla(200, 25%, 5%, .85);
+  --color1-secondary: hsl(208, 22%, 12%);
+  --color1-secondary-transparent: hsla(208, 22%, 12%, .5);
+  --color1-tertiary: hsl(210, 15%, 5%);
 
   --anchor-internal-color2-primary: hsl(240, 100%, 40%);
 
@@ -178,23 +178,17 @@ GM_addStyle(`
   outline: none;
 }
 
-#hudRow input[type="text"],
-#hudRow input[type="number"] {
-  width: 130px;
-  flex: 0 0 auto;
-}
-
 #partyHUD button {
   font-size: 12px;
   padding: 6px 10px;
   font-weight: 600;
   color: var(--color0-primary);
-  background: var(--color1-primary);
+  background: var(--color1-secondary);
   border: 1px solid var(--color1-tertiary);
   border-radius: 2px;
   cursor: pointer;
   text-shadow: none;
-  box-shadow: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
   transition: background .15s ease, border-color .15s ease, transform .05s ease;
   user-select: none;
   white-space: nowrap;
@@ -215,12 +209,66 @@ GM_addStyle(`
   font-size: 14px;
 }
 
+#pgMenuCard #partyHUD {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  z-index: auto;
+  width: 100%;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#pgMenuCard #hudRow {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+#pgMenuCard #hudRow > button {
+  flex: 0 0 auto;
+}
+
+.pg-hud-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color1-tertiary);
+}
+
+.pg-hud-section:last-child {
+  border-bottom: none;
+}
+
+.pg-hud-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--color0-secondary);
+}
+
+#hudFilters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+#hudFilters input[type="text"],
+#hudFilters input[type="number"] {
+  width: 100%;
+}
+
 /* Menu overlay */
 
 html.pg-menu-open,
 body.pg-menu-open {
-  overflow: hidden !important;
-  overscroll-behavior: contain;
+  overflow: auto !important;
+  overscroll-behavior: auto;
 }
 
 #pgMenuOverlay {
@@ -256,6 +304,7 @@ body.pg-menu-open {
   display: flex;
   flex-direction: column;
   box-shadow: 0 12px 40px rgba(0, 0, 0, .85);
+  overscroll-behavior: contain;
 }
 
 #pgMenuCard.pg-overlay-dragging {
@@ -309,10 +358,11 @@ body.pg-menu-open {
   color: var(--color0-primary);
 }
 
-#pgMenuCloseBtn {
+#pgMenuCollapseBtn {
   margin-left: auto;
   align-self: flex-start;
   order: 2;
+  min-width: 32px;
 }
 
 #pgMenuBody {
@@ -337,13 +387,54 @@ body.pg-menu-open {
 #pgMenuOptionsBody,
 #pgMenuGroupsBody,
 #pgMenuKeybindsBody,
-#pgMenuErrorBody {
+#pgMenuErrorBody,
+#pgMenuDownloadsBody {
   padding: 10px 10px 12px;
   overflow: auto;
   min-height: 0;
   flex: 1 1 auto;
   font-size: 12px;
   color: var(--color0-primary);
+  overscroll-behavior: contain;
+}
+
+#pgMenuDownloadsBody > .pg-hud-section {
+  padding: 10px 12px;
+}
+
+#pgMenuDownloadsBody #pgMenuGroupsBody {
+  padding: 0;
+  overflow: visible;
+  flex: 0 0 auto;
+  min-height: auto;
+}
+
+#pgMenuCard.pg-collapsed {
+  height: auto !important;
+  min-height: 0;
+  resize: none;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuBody {
+  display: none;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuTabs {
+  display: none;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuHeader {
+  padding: 12px 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuHeader .title {
+  order: 1;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuCollapseBtn {
+  align-self: center;
 }
 
 #pgMenuCard button {
@@ -389,6 +480,25 @@ body.pg-menu-open {
   margin: 6px 0 4px;
 }
 
+#pgMenuBody .pg-opt-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+
+#pgMenuBody .pg-opt-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color0-primary);
+}
+
+#pgMenuBody .pg-opt-check input {
+  margin: 0;
+}
+
 #pgMenuBody .pg-opt-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -396,6 +506,19 @@ body.pg-menu-open {
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid var(--color1-tertiary);
+}
+
+#pgMenuBody .pg-group-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 2px 0 10px;
+}
+
+#pgMenuBody .pg-group-row .pg-opt-right {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 #pgMenuBody .pg-opt-section .pg-opt-row:last-child {
@@ -430,7 +553,7 @@ body.pg-menu-open {
   border-radius: 2px;
   padding: 4px 6px;
   font-size: 12px;
-  accent-color: var(--color0-primary);
+  accent-color: var(--anchor-internal-color2-primary);
   outline: none;
 }
 
@@ -511,12 +634,12 @@ body.pg-menu-open {
 /* Primary / special buttons */
 
 #dlBtn {
-  background: var(--color0-primary);
-  color: var(--color1-primary);
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
 }
 
 #dlBtn:hover:not(:disabled) {
-  background: #ffffff;
+  background: var(--color1-secondary-transparent);
 }
 
 #dlBtn.stop {
@@ -535,16 +658,12 @@ body.pg-menu-open {
   border-color: var(--rain-red);
 }
 
-#dlModeBtn {
-  min-width: 140px;
-}
-
 #btnMedia {
   min-width: 90px;
 }
 
 #galleryBtn {
-  background: var(--color1-primary) !important;
+  background: var(--color1-secondary) !important;
   color: var(--color0-primary);
 }
 
@@ -564,7 +683,7 @@ body.pg-menu-open {
   padding: 4px 8px;
   font-size: 12px !important;
   font-weight: 500 !important;
-  box-shadow: none !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .45) !important;
   text-shadow: none !important;
   cursor: pointer;
 }
@@ -809,7 +928,7 @@ button:disabled {
   right: 0;
   top: 0;
   bottom: 0;
-  z-index: 10000;
+  z-index: 10002;
   background: #000;
   display: none;
   align-items: center;
@@ -1010,51 +1129,31 @@ const PG_GROUPS_KEY_PREFIX = 'pg_groups_';
 const PG_CACHE_DB_NAME = 'PartyGuestCache';
 const PG_CACHE_STORE = 'postIndex';
 const DEFAULT_OPTIONS = {
-  downloadMode: 'post',
+  downloadMode: 'queue_flat',
   durationIndexing: false,
   galleryPreloadAll: false,
   parallelDownloadLimit: 3,
   timeoutRetries: true,
   stopClearsQueue: true,
-  showLocalGalleryBtn: false,
-  showDownloadInfoBtn: false,
-  showDownloadPostLinksBtn: false,
+  showLocalGalleryBtn: true,
+  showDownloadInfoBtn: true,
+  showDownloadPostLinksBtn: true,
   showGalleryBtn: true,
   showPageBtn: true,
   showMediaBtn: true,
   showPreviewBtn: true,
   showPageInput: true,
   showPostInput: true,
-  showFileInput: false,
-  showProgressBar: false,
-  showCreateGroupBtn: false,
-  showClearGroupsBtn: false
+  showFileInput: true,
+  showProgressBar: true
 };
 const DOWNLOAD_MODE_LABELS = {
-  loose_post: 'Loose by post',
-  loose_flat: 'Loose flat',
-  loose_queue: 'Loose by queue',
-  loose_queue_flat: 'Loose by queue flat',
-  loose_group: 'Loose by group',
-  loose_group_flat: 'Loose by group flat',
-  post: 'Archive by post',
-  queue: 'Archive by queue',
-  queue_flat: 'Archive by queue flat',
-  group: 'Archive by group',
-  group_flat: 'Archive by group flat'
+  queue_flat: 'By queue',
+  post: 'By post'
 };
 const DOWNLOAD_MODE_VALUES = [
-  'loose_post',
-  'loose_flat',
-  'loose_queue',
-  'loose_queue_flat',
-  'loose_group',
-  'loose_group_flat',
-  'post',
-  'queue',
   'queue_flat',
-  'group',
-  'group_flat'
+  'post'
 ];
 function clampInt(value, min, max, fallback) {
   const n = parseInt(value, 10);
@@ -1065,8 +1164,7 @@ function normalizeOptions(opt) {
   const out = Object.assign({}, DEFAULT_OPTIONS);
   if (!opt || typeof opt !== 'object') return out;
   if (typeof opt.downloadMode === 'string') {
-    const nextMode = opt.downloadMode === 'loose' ? 'loose_post' : opt.downloadMode;
-    if (DOWNLOAD_MODE_LABELS[nextMode]) out.downloadMode = nextMode;
+    if (DOWNLOAD_MODE_LABELS[opt.downloadMode]) out.downloadMode = opt.downloadMode;
   }
   if (typeof opt.durationIndexing === 'boolean') out.durationIndexing = opt.durationIndexing;
   if (typeof opt.galleryPreloadAll === 'boolean') out.galleryPreloadAll = opt.galleryPreloadAll;
@@ -1086,8 +1184,6 @@ function normalizeOptions(opt) {
   if (typeof opt.showPostInput === 'boolean') out.showPostInput = opt.showPostInput;
   if (typeof opt.showFileInput === 'boolean') out.showFileInput = opt.showFileInput;
   if (typeof opt.showProgressBar === 'boolean') out.showProgressBar = opt.showProgressBar;
-  if (typeof opt.showCreateGroupBtn === 'boolean') out.showCreateGroupBtn = opt.showCreateGroupBtn;
-  if (typeof opt.showClearGroupsBtn === 'boolean') out.showClearGroupsBtn = opt.showClearGroupsBtn;
   return out;
 }
 function loadOptions() {
@@ -1143,16 +1239,17 @@ let loopGallery = true;
 let GALLERY_CACHE_LIMIT = Infinity;
 let galleryCacheOrder = [];
 let MENU_OPEN = false;
-let MENU_ACTIVE_TAB = 'options';
-let MENU_LAST_TAB = 'options';
+let MENU_ACTIVE_TAB = 'downloads';
+let MENU_LAST_TAB = 'downloads';
 let MENU_HAS_OPENED = false;
-const MENU_TAB_SCROLL = { options: 0, groups: 0, keybinds: 0, errors: 0 };
-const MENU_TAB_IDS = ['options', 'groups', 'keybinds', 'errors'];
+const MENU_TAB_SCROLL = { downloads: 0, options: 0, keybinds: 0, errors: 0 };
+const MENU_TAB_IDS = ['downloads', 'options', 'keybinds', 'errors'];
 const MENU_WINDOW_STATE = { x: null, y: null, width: null, height: null };
 let MENU_TAB_BUTTONS = [];
 let MENU_TAB_PANELS = {};
 let MENU_SCROLL_TARGETS = {};
 let MENU_RESIZE_OBSERVER = null;
+let MENU_COLLAPSED = false;
 const ERROR_LOG = [];
 const KEYBINDS_SECTIONS = [
   {
@@ -1922,8 +2019,6 @@ function syncHudElementVisibility() {
   setHudItemVisible('fPages', opt.showPageInput !== false);
   setHudItemVisible('fPosts', opt.showPostInput !== false);
   setHudItemVisible('fFiles', opt.showFileInput !== false);
-  setHudItemVisible('createGroupBtn', opt.showCreateGroupBtn === true);
-  setHudItemVisible('clearGroupsBtn', opt.showClearGroupsBtn === true);
   requestAnimationFrame(syncFilterBoxWidth);
 }
 
@@ -1935,14 +2030,7 @@ function syncDurationInputVisibility() {
 }
 
 function getDownloadModeLabel(mode) {
-  return DOWNLOAD_MODE_LABELS[mode] || mode || 'Download mode';
-}
-
-function syncDownloadModeButton() {
-  const btn = document.getElementById('dlModeBtn');
-  if (!btn) return;
-  const mode = DOWNLOAD_MODE || (PG_OPTIONS && PG_OPTIONS.downloadMode) || DEFAULT_OPTIONS.downloadMode;
-  btn.textContent = getDownloadModeLabel(mode);
+  return DOWNLOAD_MODE_LABELS[mode] || mode || 'Download Mode';
 }
 
 function syncDownloadModeSelect() {
@@ -1961,14 +2049,6 @@ function setDownloadMode(nextMode) {
   syncDownloadModeSelect();
 }
 
-function cycleDownloadMode() {
-  const list = DOWNLOAD_MODE_VALUES;
-  const current = DOWNLOAD_MODE || (PG_OPTIONS && PG_OPTIONS.downloadMode) || DEFAULT_OPTIONS.downloadMode;
-  const idx = list.indexOf(current);
-  const next = list[(idx + 1) % list.length] || DEFAULT_OPTIONS.downloadMode;
-  setDownloadMode(next);
-}
-
 function applyOptions() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   const prevDuration = DURATION_FEATURE_ENABLED;
@@ -1983,7 +2063,6 @@ function applyOptions() {
   syncHudElementVisibility();
   syncDurationInputVisibility();
   syncProgressBarVisibility();
-  syncDownloadModeButton();
   syncDownloadModeSelect();
 
   if (prevDuration !== DURATION_FEATURE_ENABLED && DURATION_FEATURE_ENABLED) {
@@ -2017,26 +2096,6 @@ function lockPreviewButtonWidth(){
   const btn = document.getElementById('filterBtn');
   if (!btn) return;
   const labels = ['Preview','Clear'];
-  const probe = btn.cloneNode(true);
-  probe.style.position = 'absolute';
-  probe.style.visibility = 'hidden';
-  probe.style.left = '-9999px';
-  probe.style.width = 'auto';
-  probe.style.whiteSpace = 'nowrap';
-  document.body.appendChild(probe);
-  let max = 0;
-  for (const t of labels){
-    probe.textContent = t;
-    max = Math.max(max, probe.offsetWidth);
-  }
-  document.body.removeChild(probe);
-  btn.style.width = max + 'px';
-}
-
-function lockDownloadModeButtonWidth(){
-  const btn = document.getElementById('dlModeBtn');
-  if (!btn) return;
-  const labels = DOWNLOAD_MODE_VALUES.map(mode => getDownloadModeLabel(mode));
   const probe = btn.cloneNode(true);
   probe.style.position = 'absolute';
   probe.style.visibility = 'hidden';
@@ -2091,11 +2150,12 @@ function renderOptionsUi() {
   };
 
   const makeCheckRow = (title, hint, id, checked) => {
+    const hintHtml = hint ? `<div class="pg-opt-hint">${hint}</div>` : '';
     return `
       <div class="pg-opt-row">
         <div class="pg-opt-left">
           <div class="pg-opt-title">${title}</div>
-          <div class="pg-opt-hint">${hint}</div>
+          ${hintHtml}
         </div>
         <div class="pg-opt-right">
           <input id="${id}" type="checkbox"${checked ? ' checked' : ''}>
@@ -2118,12 +2178,21 @@ function renderOptionsUi() {
     `;
   };
 
+  const makeCheckInline = (label, id, checked) => {
+    return `
+      <label class="pg-opt-check">
+        <input id="${id}" type="checkbox"${checked ? ' checked' : ''}>
+        <span>${label}</span>
+      </label>
+    `;
+  };
+
   body.innerHTML = `
     <div class="pg-options-note">Options are saved locally in your browser for this site.</div>
 
     <div class="pg-opt-section">
       <div class="pg-opt-section-title">Downloads</div>
-      ${makeSelectRow('Download mode', 'Choose how downloads are packaged.', 'pg_opt_downloadMode', DOWNLOAD_MODE_VALUES, opt.downloadMode || DEFAULT_OPTIONS.downloadMode)}
+      ${makeSelectRow('Download Mode', 'By queue (one archive) or by post (one archive per post).', 'pg_opt_downloadMode', DOWNLOAD_MODE_VALUES, opt.downloadMode || DEFAULT_OPTIONS.downloadMode)}
       ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
       ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
       ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
@@ -2133,23 +2202,19 @@ function renderOptionsUi() {
 
     <div class="pg-opt-section">
       <div class="pg-opt-section-title">HUD</div>
-      ${makeCheckRow('Show Local Gallery button', 'Toggle the Local Gallery launcher.', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
-      ${makeCheckRow('Show Download Info button', 'Toggle the Download Info button.', 'pg_opt_showDownloadInfoBtn', opt.showDownloadInfoBtn !== false)}
-      ${makeCheckRow('Show Download Post Links button', 'Toggle the Download Post Links button.', 'pg_opt_showDownloadPostLinksBtn', opt.showDownloadPostLinksBtn === true)}
-      ${makeCheckRow('Show Create Group button', 'Toggle the Create Group button.', 'pg_opt_showCreateGroupBtn', opt.showCreateGroupBtn === true)}
-      ${makeCheckRow('Show Clear Groups button', 'Toggle the Clear Groups button.', 'pg_opt_showClearGroupsBtn', opt.showClearGroupsBtn === true)}
-      ${makeCheckRow('Show Gallery button', 'Toggle the Gallery button.', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
-      ${makeCheckRow('Show Page button', 'Toggle the Page button.', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
-      ${makeCheckRow('Show media filter button', 'Toggle the media type cycle button.', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
-      ${makeCheckRow('Show Preview button', 'Toggle the Preview button.', 'pg_opt_showPreviewBtn', opt.showPreviewBtn !== false)}
-      ${makeCheckRow('Show Page input', 'Toggle the Page selector input.', 'pg_opt_showPageInput', opt.showPageInput !== false)}
-      ${makeCheckRow('Show Post input', 'Toggle the Post selector input.', 'pg_opt_showPostInput', opt.showPostInput !== false)}
-      ${makeCheckRow('Show File input', 'Toggle the File selector input.', 'pg_opt_showFileInput', opt.showFileInput !== false)}
-    </div>
-
-    <div class="pg-opt-section">
-      <div class="pg-opt-section-title">Progress</div>
-      ${makeCheckRow('Show progress bar', 'Toggle the download progress bar graphic.', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
+      <div class="pg-opt-block">
+        ${makeCheckInline('Local Gallery', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
+        ${makeCheckInline('Download Info', 'pg_opt_showDownloadInfoBtn', opt.showDownloadInfoBtn !== false)}
+        ${makeCheckInline('Download Post Links', 'pg_opt_showDownloadPostLinksBtn', opt.showDownloadPostLinksBtn === true)}
+        ${makeCheckInline('Gallery', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
+        ${makeCheckInline('Page', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
+        ${makeCheckInline('Media Filter', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
+        ${makeCheckInline('Preview', 'pg_opt_showPreviewBtn', opt.showPreviewBtn !== false)}
+        ${makeCheckInline('Page input', 'pg_opt_showPageInput', opt.showPageInput !== false)}
+        ${makeCheckInline('Post input', 'pg_opt_showPostInput', opt.showPostInput !== false)}
+        ${makeCheckInline('File input', 'pg_opt_showFileInput', opt.showFileInput !== false)}
+        ${makeCheckInline('Progress bar', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
+      </div>
     </div>
   `;
 
@@ -2207,8 +2272,6 @@ function renderOptionsUi() {
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
   bindCheck('pg_opt_showDownloadInfoBtn', 'showDownloadInfoBtn');
   bindCheck('pg_opt_showDownloadPostLinksBtn', 'showDownloadPostLinksBtn');
-  bindCheck('pg_opt_showCreateGroupBtn', 'showCreateGroupBtn');
-  bindCheck('pg_opt_showClearGroupsBtn', 'showClearGroupsBtn');
   bindCheck('pg_opt_showGalleryBtn', 'showGalleryBtn');
   bindCheck('pg_opt_showPageBtn', 'showPageBtn');
   bindCheck('pg_opt_showMediaBtn', 'showMediaBtn');
@@ -2230,18 +2293,19 @@ function renderGroupsUi() {
   const body = document.getElementById('pgMenuGroupsBody');
   if (!body) return;
   const profileKey = getProfileKeyFromLocation();
-  if (!profileKey) {
-    body.innerHTML = '<div class="pg-options-note">No profile detected.</div>';
-    return;
-  }
+  const hasProfile = !!profileKey;
+  const groups = hasProfile ? loadGroupsForProfile(profileKey) : [];
+  const note = hasProfile
+    ? '<div class="pg-options-note">Groups are saved per profile. Use Create Group to add one.</div>'
+    : '<div class="pg-options-note">No profile detected.</div>';
 
-  const groups = loadGroupsForProfile(profileKey);
-  const note = '<div class="pg-options-note">Groups are saved per profile. Use Create Group to add one.</div>';
-
-  if (!groups.length) {
-    body.innerHTML = note + '<div class="pg-options-note">No groups created.</div>';
-    return;
-  }
+  const actions = `
+    <div class="pg-group-actions">
+      <button type="button" id="pgGroupsCreateBtn"${hasProfile ? '' : ' disabled'}>Create Group</button>
+      <button type="button" id="pgGroupsClearBtn"${hasProfile ? '' : ' disabled'}>Delete All Groups</button>
+      <button type="button" id="pgGroupsDownloadAllBtn"${groups.length ? '' : ' disabled'}>Download All</button>
+    </div>
+  `;
 
   const rows = groups.map(group => {
     const name = group.name || group.earliestPostFolder || 'group';
@@ -2256,13 +2320,44 @@ function renderGroupsUi() {
           <div class="pg-opt-hint">${meta}</div>
         </div>
         <div class="pg-opt-right">
+          <button type="button" class="pg-group-download-btn" data-group-id="${group.id}">Download</button>
           <button type="button" class="pg-group-delete-btn" data-group-id="${group.id}">Delete</button>
         </div>
       </div>
     `;
   }).join('');
 
-  body.innerHTML = note + rows;
+  const empty = !groups.length ? '<div class="pg-options-note">No groups created.</div>' : '';
+  body.innerHTML = actions + note + empty + rows;
+
+  const createBtn = document.getElementById('pgGroupsCreateBtn');
+  if (createBtn) {
+    createBtn.addEventListener('click', () => {
+      if (hasProfile) handleCreateGroup();
+    });
+  }
+
+  const clearBtn = document.getElementById('pgGroupsClearBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (hasProfile) handleClearGroups();
+    });
+  }
+
+  const dlAllBtn = document.getElementById('pgGroupsDownloadAllBtn');
+  if (dlAllBtn) {
+    dlAllBtn.addEventListener('click', () => {
+      if (groups.length) queueAllGroupDownloads(groups);
+    });
+  }
+
+  body.querySelectorAll('.pg-group-download-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const groupId = btn.dataset.groupId || '';
+      const group = groups.find(g => g && g.id === groupId);
+      if (group) queueGroupDownload(group);
+    });
+  });
 
   body.querySelectorAll('.pg-group-delete-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2308,9 +2403,30 @@ function ensureOptionsUi() {
   restoreMenuTabScroll('options');
 }
 
-function ensureGroupsUi() {
+function renderDownloadsUi() {
+  const body = document.getElementById('pgMenuDownloadsBody');
+  if (!body) return;
+  const hud = document.getElementById('partyHUD');
+  body.innerHTML = '';
+  if (hud) {
+    body.appendChild(hud);
+  }
+  const groupsWrap = document.createElement('div');
+  groupsWrap.className = 'pg-hud-section';
+  groupsWrap.innerHTML = `
+    <div class="pg-hud-title">Groups</div>
+    <div id="pgMenuGroupsBody"></div>
+  `;
+  body.appendChild(groupsWrap);
   renderGroupsUi();
-  restoreMenuTabScroll('groups');
+}
+
+function ensureDownloadsUi() {
+  renderDownloadsUi();
+  syncHudElementVisibility();
+  syncDurationInputVisibility();
+  syncProgressBarVisibility();
+  restoreMenuTabScroll('downloads');
 }
 
 function ensureKeybindsUi() {
@@ -2321,6 +2437,19 @@ function ensureKeybindsUi() {
 function ensureErrorLogUi() {
   renderErrorLogUi();
   restoreMenuTabScroll('errors');
+}
+
+function setMenuCollapsed(next) {
+  const card = document.getElementById('pgMenuCard');
+  if (!card) return;
+  MENU_COLLAPSED = !!next;
+  card.classList.toggle('pg-collapsed', MENU_COLLAPSED);
+  const btn = document.getElementById('pgMenuCollapseBtn');
+  if (btn) btn.textContent = MENU_COLLAPSED ? '▸' : '▾';
+}
+
+function toggleMenuCollapsed() {
+  setMenuCollapsed(!MENU_COLLAPSED);
 }
 
 function setMenuTab(tabId) {
@@ -2347,8 +2476,8 @@ function setMenuTab(tabId) {
     ensureKeybindsUi();
     return;
   }
-  if (next === 'groups') {
-    ensureGroupsUi();
+  if (next === 'downloads') {
+    ensureDownloadsUi();
     return;
   }
   if (next === 'errors') {
@@ -2459,14 +2588,14 @@ function initMenuTabs() {
   const tabs = document.getElementById('pgMenuTabs');
   MENU_TAB_BUTTONS = tabs ? [...tabs.querySelectorAll('.pgMenuTabBtn')] : [];
   MENU_TAB_PANELS = {
+    downloads: document.getElementById('pgMenuTabDownloads'),
     options: document.getElementById('pgMenuTabOptions'),
-    groups: document.getElementById('pgMenuTabGroups'),
     keybinds: document.getElementById('pgMenuTabKeybinds'),
     errors: document.getElementById('pgMenuTabErrors')
   };
   MENU_SCROLL_TARGETS = {
+    downloads: document.getElementById('pgMenuDownloadsBody'),
     options: document.getElementById('pgMenuOptionsBody'),
-    groups: document.getElementById('pgMenuGroupsBody'),
     keybinds: document.getElementById('pgMenuKeybindsBody'),
     errors: document.getElementById('pgMenuErrorBody')
   };
@@ -2487,14 +2616,17 @@ function buildMenu() {
       <div id="pgMenuHeader">
         <div class="title">Menu</div>
         <div id="pgMenuTabs" role="tablist" aria-label="Menu tabs">
+          <button type="button" class="pgMenuTabBtn" data-tab="downloads" role="tab" aria-controls="pgMenuTabDownloads">Downloads</button>
           <button type="button" class="pgMenuTabBtn" data-tab="options" role="tab" aria-controls="pgMenuTabOptions">Options</button>
-          <button type="button" class="pgMenuTabBtn" data-tab="groups" role="tab" aria-controls="pgMenuTabGroups">Groups</button>
           <button type="button" class="pgMenuTabBtn" data-tab="keybinds" role="tab" aria-controls="pgMenuTabKeybinds">Keybinds</button>
           <button type="button" class="pgMenuTabBtn" data-tab="errors" role="tab" aria-controls="pgMenuTabErrors">Error Log</button>
         </div>
-        <button id="pgMenuCloseBtn" type="button">X</button>
+        <button id="pgMenuCollapseBtn" type="button" aria-label="Collapse menu">▾</button>
       </div>
       <div id="pgMenuBody">
+        <section id="pgMenuTabDownloads" class="pgMenuTabPanel" data-tab="downloads" role="tabpanel">
+          <div id="pgMenuDownloadsBody"></div>
+        </section>
         <section id="pgMenuTabOptions" class="pgMenuTabPanel" data-tab="options" role="tabpanel">
           <div id="pgMenuOptionsBody"></div>
           <div id="pgMenuFooter">
@@ -2504,9 +2636,6 @@ function buildMenu() {
               <button id="pgOptionsDoneBtn" type="button">Done</button>
             </div>
           </div>
-        </section>
-        <section id="pgMenuTabGroups" class="pgMenuTabPanel" data-tab="groups" role="tabpanel">
-          <div id="pgMenuGroupsBody"></div>
         </section>
         <section id="pgMenuTabKeybinds" class="pgMenuTabPanel" data-tab="keybinds" role="tabpanel">
           <div id="pgMenuKeybindsBody"></div>
@@ -2519,11 +2648,11 @@ function buildMenu() {
   `;
   document.body.appendChild(overlay);
 
-  const closeBtn = document.getElementById('pgMenuCloseBtn');
-  if (closeBtn) closeBtn.addEventListener('click', () => closeMenu());
+  const collapseBtn = document.getElementById('pgMenuCollapseBtn');
+  if (collapseBtn) collapseBtn.addEventListener('click', () => toggleMenuCollapsed());
 
   const doneBtn = document.getElementById('pgOptionsDoneBtn');
-  if (doneBtn) doneBtn.addEventListener('click', () => closeMenu());
+  if (doneBtn) doneBtn.addEventListener('click', () => setMenuCollapsed(true));
 
   const resetBtn = document.getElementById('pgOptionsResetBtn');
   if (resetBtn) resetBtn.addEventListener('click', () => resetOptionsToDefaults());
@@ -2532,12 +2661,59 @@ function buildMenu() {
   const menuHeader = document.getElementById('pgMenuHeader');
   registerMenuWindow(menuCard, menuHeader);
   initMenuTabs();
+  if (document.getElementById('partyHUD')) {
+    ensureDownloadsUi();
+  }
+
+  if (menuCard && !menuCard.dataset.pgScrollGuard) {
+    menuCard.dataset.pgScrollGuard = '1';
+    const scrollSelector = '#pgMenuDownloadsBody, #pgMenuOptionsBody, #pgMenuKeybindsBody, #pgMenuErrorBody';
+    const findScroller = target => {
+      if (!target || !target.closest) return null;
+      return target.closest(scrollSelector);
+    };
+    const shouldBlockScroll = (scroller, deltaY) => {
+      if (!scroller) return true;
+      const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+      if (maxScroll <= 0) return true;
+      if (deltaY < 0 && scroller.scrollTop <= 0) return true;
+      if (deltaY > 0 && scroller.scrollTop >= maxScroll - 1) return true;
+      return false;
+    };
+    menuCard.addEventListener('wheel', (ev) => {
+      const scroller = findScroller(ev.target);
+      if (shouldBlockScroll(scroller, ev.deltaY || 0)) {
+        ev.preventDefault();
+      }
+      ev.stopPropagation();
+    }, { passive: false });
+
+    let lastTouchY = null;
+    menuCard.addEventListener('touchstart', (ev) => {
+      if (ev.touches && ev.touches.length) {
+        lastTouchY = ev.touches[0].clientY;
+      }
+    }, { passive: true });
+    menuCard.addEventListener('touchmove', (ev) => {
+      if (!ev.touches || !ev.touches.length || lastTouchY == null) return;
+      const y = ev.touches[0].clientY;
+      const deltaY = lastTouchY - y;
+      lastTouchY = y;
+      const scroller = findScroller(ev.target);
+      if (shouldBlockScroll(scroller, deltaY)) {
+        ev.preventDefault();
+      }
+      ev.stopPropagation();
+    }, { passive: false });
+    menuCard.addEventListener('touchend', () => { lastTouchY = null; }, { passive: true });
+    menuCard.addEventListener('touchcancel', () => { lastTouchY = null; }, { passive: true });
+  }
 
   document.addEventListener('keydown', (e) => {
     if (!MENU_OPEN) return;
     if (e.key === 'Escape') {
       e.preventDefault();
-      closeMenu();
+      toggleMenuCollapsed();
     }
   });
 }
@@ -2551,9 +2727,10 @@ function openMenu(tabId) {
   document.documentElement.classList.add('pg-menu-open');
   document.body.classList.add('pg-menu-open');
   requestAnimationFrame(() => applyMenuWindowState());
+  setMenuCollapsed(false);
   const next = MENU_TAB_IDS.includes(tabId)
     ? tabId
-    : (MENU_HAS_OPENED ? MENU_LAST_TAB : 'options');
+    : (MENU_HAS_OPENED ? MENU_LAST_TAB : 'downloads');
   MENU_HAS_OPENED = true;
   setMenuTab(next);
 }
@@ -2579,53 +2756,48 @@ function buildHUD() {
   w.id = 'partyHUD';
   w.innerHTML = `
     <div id="pgToastStack" aria-live="polite"></div>
-    <div id="dlBox" aria-live="polite">
-      <div id="dlSummaryLine">
-        <span id="dlSummary"></span>
+    <div class="pg-hud-section">
+      <div class="pg-hud-title">Status</div>
+      <div id="dlBox" aria-live="polite">
+        <div id="dlSummaryLine">
+          <span id="dlSummary"></span>
+        </div>
+        <div id="pgWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Download progress">
+          <div id="pgTrack"><div id="pgFill"></div></div>
+          <div id="pgBarLabel" aria-hidden="true">0%</div>
+        </div>
       </div>
-      <div id="pgWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Download progress">
-        <div id="pgTrack"><div id="pgFill"></div></div>
-        <div id="pgBarLabel" aria-hidden="true">0%</div>
+      <div id="filterBox">
+        <span id="indexStatus"></span>
+        <span id="filterStatus"></span>
       </div>
     </div>
-    <div id="filterBox">
-      <span id="indexStatus"></span>
-      <span id="filterStatus"></span>
+    <div class="pg-hud-section">
+      <div class="pg-hud-title">Controls</div>
+      <div id="hudRow" class="hud-row">
+        <button id="dlBtn" class="full">Download</button>
+        <button id="downloadInfoBtn" class="full">Download Info</button>
+        <button id="downloadPostLinksBtn" class="full">Download Post Links</button>
+        <button id="galleryBtn" class="full">Gallery</button>
+        <button id="localGalleryBtn" class="full">Local Gallery</button>
+        <button id="filterBtn" class="full">Preview</button>
+      </div>
     </div>
-    <div id="hudRow" class="hud-row">
-      <button id="pgMenuBtn" class="full pg-icon-btn" title="Menu" aria-label="Menu">⚙</button>
-      <button id="dlBtn" class="full">Download</button>
-      <button id="dlModeBtn" class="full" title="Download mode" aria-label="Download mode"></button>
-      <button id="createGroupBtn" class="full">Create Group</button>
-      <button id="clearGroupsBtn" class="full">Clear Groups</button>
-      <button id="downloadInfoBtn" class="full">Download Info</button>
-      <button id="downloadPostLinksBtn" class="full">Download Post Links</button>
-      <button id="galleryBtn" class="full">Gallery</button>
-      <button id="localGalleryBtn" class="full">Local Gallery</button>
-      <button id="filterBtn" class="full">Preview</button>
-      <button id="btnMedia" class="full">All</button>
-      <button id="btnPageAll">Page</button>
-      <input id="fPages" type="text" placeholder="Page">
-      <input id="fPosts" type="text" placeholder="Post">
-      <input id="fFiles" type="text" placeholder="File">
-      <input id="fDur" type="text" placeholder="Duration">
+    <div class="pg-hud-section">
+      <div class="pg-hud-title">Filters</div>
+      <div id="hudFilters" class="hud-filters">
+        <button id="btnMedia" class="full">All</button>
+        <button id="btnPageAll">Page</button>
+        <input id="fPages" type="text" placeholder="Page">
+        <input id="fPosts" type="text" placeholder="Post">
+        <input id="fFiles" type="text" placeholder="File">
+        <input id="fDur" type="text" placeholder="Duration">
+      </div>
     </div>
   `;
   document.body.appendChild(w);
 
   $('#dlBtn').onclick = handleDlBtn;
-
-  const dlModeBtn = $('#dlModeBtn');
-  if (dlModeBtn) {
-    syncDownloadModeButton();
-    dlModeBtn.onclick = cycleDownloadMode;
-  }
-
-  const createGroupBtn = $('#createGroupBtn');
-  if (createGroupBtn) createGroupBtn.onclick = handleCreateGroup;
-
-  const clearGroupsBtn = $('#clearGroupsBtn');
-  if (clearGroupsBtn) clearGroupsBtn.onclick = handleClearGroups;
 
   const downloadInfoBtn = $('#downloadInfoBtn');
   if (downloadInfoBtn) downloadInfoBtn.onclick = handleDownloadInfo;
@@ -2638,9 +2810,6 @@ function buildHUD() {
 
   const localGalleryBtn = $('#localGalleryBtn');
   if (localGalleryBtn) localGalleryBtn.onclick = handleLocalGalleryBtn;
-
-  const menuBtn = $('#pgMenuBtn');
-  if (menuBtn) menuBtn.onclick = openMenu;
 
   restoreFilterState();
 
@@ -2688,8 +2857,10 @@ function buildHUD() {
   requestAnimationFrame(syncProgressBarVisibility);
   requestAnimationFrame(lockMediaButtonWidth);
   requestAnimationFrame(lockPreviewButtonWidth);
-  requestAnimationFrame(lockDownloadModeButtonWidth);
   applyOptions();
+  if (document.getElementById('pgMenuDownloadsBody')) {
+    ensureDownloadsUi();
+  }
 
   if (handleProfileContextChange()) {
     scheduleFilter();
@@ -2705,6 +2876,69 @@ function allowedUrl(u) {
   if (MEDIA_MODE === 'gifs') return isGif;
   if (MEDIA_MODE === 'videos') return isVid;
   return false;
+}
+
+function getPostIdFromUrl(url) {
+  try {
+    const u = new URL(url || location.href, location.origin);
+    const m = u.pathname.match(/\/post\/(\d+)/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractPostPageMeta(doc, postUrl) {
+  const titleEl = doc.querySelector('.post__title, .scrape__title');
+  const titleNode = titleEl ? (titleEl.querySelector('span') || titleEl) : null;
+  const title = titleNode ? (titleNode.textContent || '').trim() : '';
+  const userEl = doc.querySelector('.post__user-name, .scrape__user-name, .user-header__name');
+  const user = userEl ? (userEl.textContent || '').trim() : userName();
+  const pubEl = doc.querySelector('.post__published, .scrape__published, .post__date');
+  let published = null;
+  if (pubEl) {
+    const copy = pubEl.cloneNode(true);
+    if (copy.firstElementChild) copy.firstElementChild.remove();
+    const text = (copy.textContent || '').trim();
+    if (text) published = text;
+  }
+  const id = getPostIdFromUrl(postUrl || location.href);
+  return { id, user, title, published };
+}
+
+function extractPostPageFileUrls(doc, allowAll) {
+  const out = [];
+  const seen = new Set();
+  const nodes = doc.querySelectorAll(
+    '.post__files a, .post__files img, .post__files video, .post__files source, ' +
+    '.scrape__files a, .scrape__files img, .scrape__files video, .scrape__files source, ' +
+    '.post__attachments a, .scrape__attachments a, a.post__attachment-link'
+  );
+  nodes.forEach(node => {
+    let url = '';
+    if (node.tagName === 'A') url = node.getAttribute('href') || '';
+    if (!url && node.closest) {
+      const a = node.closest('a');
+      if (a) url = a.getAttribute('href') || '';
+    }
+    if (!url) {
+      url = node.getAttribute('src')
+        || node.getAttribute('data-src')
+        || node.getAttribute('data-lazy-src')
+        || node.getAttribute('data-original')
+        || node.getAttribute('data-full')
+        || '';
+    }
+    if (!url || url.startsWith('blob:') || url.startsWith('data:')) return;
+    let abs = '';
+    try { abs = new URL(url, location.origin).href; } catch { return; }
+    if (!allowAll && !allowedUrl(abs)) return;
+    const key = normalizeFileUrl(abs) || abs;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(abs);
+  });
+  return out;
 }
 
 function resolveFileUrl(obj) {
@@ -2761,11 +2995,7 @@ function getCounts() {
 }
 
 function getDownloadSummaryUnit() {
-  if (typeof DOWNLOAD_MODE === 'string' && DOWNLOAD_MODE.startsWith('loose')) return 'files';
-  if (DOWNLOAD_MODE === 'post') return 'posts';
-  if (DOWNLOAD_MODE === 'queue' || DOWNLOAD_MODE === 'queue_flat') return 'queues';
-  if (DOWNLOAD_MODE === 'group' || DOWNLOAD_MODE === 'group_flat') return 'groups';
-  return 'items';
+  return (DOWNLOAD_MODE === 'post') ? 'posts' : 'queues';
 }
 
 let uiScheduled = false;
@@ -2884,6 +3114,140 @@ function enqueueItems(objs) {
   dl.items.push(...toAdd);
   scheduleHUD();
   if (dl.started) requestDispatch();
+}
+
+function startQueueIfIdle() {
+  if (DL_ACTIVE) {
+    scheduleHUD();
+    return;
+  }
+  DL_ACTIVE = true;
+  dl.started = true;
+  const b = $('#dlBtn');
+  if (b) {
+    b.classList.add('stop');
+    b.textContent = 'Stop';
+  }
+  requestDispatch();
+  scheduleHUD();
+}
+
+function buildQueueArchiveItem(files, userFolder, queueFolder, retryKey, meta, modeOverride) {
+  if (!Array.isArray(files) || files.length === 0) return null;
+  let mode = modeOverride || DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
+  if (mode === 'post') mode = 'queue_flat';
+  const queueFolderSafe = queueFolder || 'post';
+  const archiveName = buildArchiveName(userFolder, queueFolderSafe);
+  return {
+    url: files[0].url,
+    name: archiveName,
+    meta: meta || null,
+    files,
+    userFolder: userFolder || '',
+    postFolder: '',
+    retryKey: retryKey || '',
+    archiveMode: mode,
+    queuePostFolder: queueFolderSafe
+  };
+}
+
+function buildGroupQueueItem(group, idx) {
+  if (!group || !Array.isArray(group.files) || group.files.length === 0) return null;
+  const userFolder = group.userFolder || '';
+  const queueFolder = group.earliestPostFolder || group.name || 'post';
+  const retryKey = group.id
+    ? `group:${group.id}`
+    : (userFolder ? `group:${userFolder}:${idx || 0}` : `group:${idx || 0}`);
+  return buildQueueArchiveItem(
+    group.files,
+    userFolder,
+    queueFolder,
+    retryKey,
+    { groupId: group.id || '', name: group.name || queueFolder },
+    'queue_flat'
+  );
+}
+
+function queueGroupDownload(group, idx) {
+  const item = buildGroupQueueItem(group, idx);
+  if (!item) {
+    setStatus('Group has no files to download', 'error');
+    return false;
+  }
+  enqueueItems([item]);
+  startQueueIfIdle();
+  const label = group.name || group.earliestPostFolder || 'group';
+  setStatus(`Queued group: ${label}`, 'success');
+  return true;
+}
+
+function queueAllGroupDownloads(groups) {
+  if (!Array.isArray(groups) || groups.length === 0) return false;
+  const items = [];
+  groups.forEach((group, idx) => {
+    const item = buildGroupQueueItem(group, idx);
+    if (item) items.push(item);
+  });
+  if (!items.length) {
+    setStatus('No groups with files to download', 'error');
+    return false;
+  }
+  enqueueItems(items);
+  startQueueIfIdle();
+  setStatus(`Queued ${items.length} group${items.length === 1 ? '' : 's'}`, 'success');
+  return true;
+}
+
+function buildPostPageDownloadItems(doc, postUrl) {
+  const urls = extractPostPageFileUrls(doc, true);
+  if (!urls.length) return { objs: [], count: 0 };
+  const meta = extractPostPageMeta(doc, postUrl);
+  const postId = meta.id != null ? String(meta.id) : '';
+  const gIndex = (PG_ID_MAP && postId && PG_ID_MAP.get(postId)) || (postId ? Number(postId) : 0) || 0;
+  const post = {
+    id: postId || (gIndex ? String(gIndex) : ''),
+    user: meta.user || userName(),
+    title: meta.title || (postId ? `post_${postId}` : 'post'),
+    published: meta.published || null
+  };
+
+  const files = [];
+  let userFolder = '';
+  let postFolder = '';
+  urls.forEach((url, idx) => {
+    const fileObj = { path: url };
+    const name = formatFilename(post, fileObj, idx + 1, gIndex);
+    const parts = splitDownloadPath(name);
+    if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
+    if (!postFolder && parts.postFolder) postFolder = parts.postFolder;
+    files.push({ url, name, fileIndex: idx + 1, postFolder: parts.postFolder });
+  });
+  if (!files.length) return { objs: [], count: 0 };
+  const archiveName = buildArchiveName(userFolder, postFolder);
+  const retryKey = postId ? `post:${postId}` : `${userFolder}/${postFolder || 'post'}`;
+  const objs = [{
+    url: files[0].url,
+    name: archiveName,
+    meta: { post, globalIndex: gIndex },
+    files,
+    userFolder,
+    postFolder,
+    retryKey,
+    archiveMode: 'post'
+  }];
+  return { objs, count: files.length };
+}
+
+function handlePostPageDownload(doc, postUrl) {
+  const res = buildPostPageDownloadItems(doc || document, postUrl || location.href);
+  if (!res || !res.objs || res.objs.length === 0) {
+    setStatus('No files found on this post', 'error');
+    return;
+  }
+  enqueueItems(res.objs);
+  startQueueIfIdle();
+  const n = res.count || 0;
+  setStatus(`Queued post archive (${n} file${n === 1 ? '' : 's'})`, 'success');
 }
 
 function maybeFinishBatch() {
@@ -4196,134 +4560,10 @@ function handleClearGroups() {
 }
 
 async function queueFiltered() {
+  if (!keptPosts.length) return;
   const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
-  const usesGroups = mode === 'loose_group' || mode === 'loose_group_flat' || mode === 'group' || mode === 'group_flat';
-  if (!keptPosts.length && !usesGroups) return;
-
-  const objs = [];
-  const profileKey = getProfileKeyFromLocation();
-
-  if (mode === 'loose_post' || mode === 'loose_flat') {
-    keptPosts.forEach(kp => {
-      const { post, allowedFiles, globalIndex } = kp;
-      if (!allowedFiles || !allowedFiles.length) return;
-      allowedFiles.forEach(fileInfo => {
-        if (!fileInfo || !fileInfo.url) return;
-        const ref = fileInfo.url;
-        const fileObj = { path: ref };
-        let name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
-        if (mode === 'loose_flat') {
-          const parts = splitDownloadPath(name);
-          const fileName = parts.fileName || getDownloadLabel({ url: ref, name });
-          name = parts.userFolder ? `${parts.userFolder}/${fileName}` : fileName;
-        }
-        objs.push({ url: ref, name, meta: { post, url: ref, globalIndex, fileIndex: fileInfo.g } });
-      });
-    });
-  } else if (mode === 'loose_queue' || mode === 'loose_queue_flat') {
-    const bundle = buildBundleFromKeptPosts();
-    if (bundle.files.length) {
-      const queueFolder = bundle.earliestPostFolder || '';
-      bundle.files.forEach(file => {
-        const parts = splitDownloadPath(file.name || '');
-        const fileName = parts.fileName || getDownloadLabel(file);
-        const postFolder = parts.postFolder || '';
-        let relPath = '';
-        if (mode === 'loose_queue_flat') {
-          relPath = queueFolder ? `${queueFolder}/${fileName}` : fileName;
-        } else {
-          const postPath = postFolder ? `${postFolder}/${fileName}` : fileName;
-          relPath = queueFolder ? `${queueFolder}/${postPath}` : postPath;
-        }
-        const userFolder = bundle.userFolder || parts.userFolder || '';
-        const name = userFolder ? `${userFolder}/${relPath}` : relPath;
-        objs.push({ url: file.url, name, meta: { url: file.url, globalIndex: bundle.earliestIndex, fileIndex: file.fileIndex } });
-      });
-    }
-  } else if (mode === 'queue' || mode === 'queue_flat') {
-    const bundle = buildBundleFromKeptPosts();
-    if (bundle.files.length) {
-      const queueFolder = bundle.earliestPostFolder || 'post';
-      const archiveName = (mode === 'queue_flat')
-        ? buildArchiveName(bundle.userFolder, queueFolder)
-        : buildQueueArchiveName(bundle.userFolder, queueFolder);
-      const retryKey = bundle.userFolder ? `queue:${bundle.userFolder}` : 'queue:profile';
-      objs.push({
-        url: bundle.files[0].url,
-        name: archiveName,
-        meta: { globalIndex: bundle.earliestIndex },
-        files: bundle.files,
-        userFolder: bundle.userFolder,
-        postFolder: '',
-        retryKey,
-        archiveMode: mode,
-        queuePostFolder: bundle.earliestPostFolder || queueFolder
-      });
-    }
-  } else if (mode === 'loose_group' || mode === 'loose_group_flat') {
-    if (!profileKey) {
-      setStatus('No profile detected', 'error');
-      return;
-    }
-    const groups = loadGroupsForProfile(profileKey);
-    if (!groups.length) {
-      const st = $('#filterStatus');
-      if (st) st.textContent = 'No groups created.';
-      scheduleHUD();
-      return;
-    }
-    groups.forEach(group => {
-      const files = Array.isArray(group.files) ? group.files : [];
-      if (!files.length) return;
-      const groupFolder = group.earliestPostFolder || group.name || '';
-      files.forEach(file => {
-        if (!file || !file.url) return;
-        const parts = splitDownloadPath(file.name || '');
-        const fileName = parts.fileName || getDownloadLabel(file);
-        const postFolder = parts.postFolder || file.postFolder || '';
-        let relPath = '';
-        if (mode === 'loose_group_flat') {
-          relPath = groupFolder ? `${groupFolder}/${fileName}` : fileName;
-        } else {
-          const postPath = postFolder ? `${postFolder}/${fileName}` : fileName;
-          relPath = groupFolder ? `${groupFolder}/${postPath}` : postPath;
-        }
-        const userFolder = group.userFolder || parts.userFolder || '';
-        const name = userFolder ? `${userFolder}/${relPath}` : relPath;
-        objs.push({ url: file.url, name, meta: { url: file.url, globalIndex: group.earliestIndex, fileIndex: file.fileIndex } });
-      });
-    });
-  } else if (mode === 'group' || mode === 'group_flat') {
-    if (!profileKey) {
-      setStatus('No profile detected', 'error');
-      return;
-    }
-    const groups = loadGroupsForProfile(profileKey);
-    if (!groups.length) {
-      const st = $('#filterStatus');
-      if (st) st.textContent = 'No groups created.';
-      scheduleHUD();
-      return;
-    }
-    groups.forEach((group, idx) => {
-      const files = Array.isArray(group.files) ? group.files : [];
-      if (!files.length) return;
-      const groupFolder = group.earliestPostFolder || group.name || 'post';
-      const archiveName = buildArchiveName(group.userFolder, groupFolder);
-      const retryKey = group.id ? `group:${group.id}` : (group.userFolder ? `group:${group.userFolder}:${idx}` : `group:${idx}`);
-      objs.push({
-        url: files[0].url,
-        name: archiveName,
-        meta: { globalIndex: group.earliestIndex },
-        files,
-        userFolder: group.userFolder,
-        postFolder: '',
-        retryKey,
-        archiveMode: mode,
-        groupPostFolder: groupFolder
-      });
-    });
-  } else {
+  if (mode === 'post') {
+    const items = [];
     keptPosts.forEach(kp => {
       const { post, allowedFiles, globalIndex } = kp;
       if (!allowedFiles || !allowedFiles.length) return;
@@ -4342,8 +4582,8 @@ async function queueFiltered() {
       });
       if (!files.length) return;
       const archiveName = buildArchiveName(userFolder, postFolder);
-      const retryKey = post && post.id ? `post:${post.id}` : `${userFolder}/${postFolder}`;
-      objs.push({
+      const retryKey = post && post.id ? `post:${post.id}` : `${userFolder}/${postFolder || 'post'}`;
+      items.push({
         url: files[0].url,
         name: archiveName,
         meta: { post, globalIndex },
@@ -4354,16 +4594,40 @@ async function queueFiltered() {
         archiveMode: 'post'
       });
     });
+    if (!items.length) {
+      const st = $('#filterStatus');
+      if (st) st.textContent = 'No files matched your filters.';
+      scheduleHUD();
+      return;
+    }
+    LAST_QUEUE_HAD_ITEMS = true;
+    enqueueItems(items);
+    return;
   }
-
-  if (!objs.length) {
+  const bundle = buildBundleFromKeptPosts();
+  if (!bundle.files.length) {
     const st = $('#filterStatus');
-    if (st) st.textContent = usesGroups ? 'No group files to download.' : 'No files matched your filters.';
+    if (st) st.textContent = 'No files matched your filters.';
+    scheduleHUD();
+    return;
+  }
+  const queueFolder = bundle.earliestPostFolder || 'post';
+  const retryKey = bundle.userFolder ? `queue:${bundle.userFolder}` : 'queue:profile';
+  const item = buildQueueArchiveItem(
+    bundle.files,
+    bundle.userFolder,
+    queueFolder,
+    retryKey,
+    { globalIndex: bundle.earliestIndex }
+  );
+  if (!item) {
+    const st = $('#filterStatus');
+    if (st) st.textContent = 'No files matched your filters.';
     scheduleHUD();
     return;
   }
   LAST_QUEUE_HAD_ITEMS = true;
-  enqueueItems(objs);
+  enqueueItems([item]);
 }
 
 async function handlePageAllBtn() {
@@ -4471,11 +4735,7 @@ async function handleDlBtn() {
     const qC = $('#queuedCount'); if (qC) qC.textContent = '0';
     const dropEl = $('#pgDrop'); if (dropEl) dropEl.style.display = 'none';
     const xC = $('#droppedCount'); if (xC) xC.textContent = '0';
-    const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
-    const usesGroups = mode === 'loose_group' || mode === 'loose_group_flat' || mode === 'group' || mode === 'group_flat';
-    if (!usesGroups) {
-      await handleFilter();
-    }
+    await handleFilter();
     await queueFiltered();
 
     if (LAST_QUEUE_HAD_ITEMS) {
@@ -4635,6 +4895,19 @@ function pgEnhanceUserPages(root) {
         pgSaveSummary(slugVal, s);
         btn.textContent = s.disliked ? 'Undislike' : 'Dislike';
       };
+      act.appendChild(btn);
+    }
+  }
+
+  if (upp && !$(`.${cssPrefix}__actions .pg-post-download-btn`)) {
+    const act = $(`.${cssPrefix}__actions`);
+    if (act) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pg-btn pg-post-download-btn';
+      btn.textContent = 'Download Post';
+      btn.title = 'Download this post archive (all files)';
+      btn.onclick = () => handlePostPageDownload(document, location.href);
       act.appendChild(btn);
     }
   }
@@ -5465,7 +5738,9 @@ function handleLocalGalleryBtn() {
   }
 }
 
+buildMenu();
 buildHUD();
+openMenu('downloads');
 injectPostNumbers();
 injectFileNumbers();
 
@@ -5506,3 +5781,13 @@ history.replaceState = function(...args){
   return ret;
 };
 window.addEventListener('popstate', onUrlChange);
+
+window.addEventListener('storage', (ev) => {
+  if (!ev || !ev.key) return;
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) return;
+  if (ev.key === groupsKey(profileKey)) {
+    loadGroupsForProfile(profileKey);
+    renderGroupsUi();
+  }
+});
