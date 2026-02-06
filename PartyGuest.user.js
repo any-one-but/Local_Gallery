@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.12.06
+// @version      01.12.07
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -335,6 +335,7 @@ body.pg-menu-open {
 }
 
 #pgMenuOptionsBody,
+#pgMenuGroupsBody,
 #pgMenuKeybindsBody,
 #pgMenuErrorBody {
   padding: 10px 10px 12px;
@@ -1001,6 +1002,9 @@ const STALL_VID_TOTAL_MS = 300000;
 const STALL_VID_IDLE_MS = 90000;
 const GALLERY_PRELOAD_VIDEO_TIMEOUT_MS = 45000;
 const PG_OPTIONS_KEY = 'pg_options';
+const PG_GROUPS_KEY_PREFIX = 'pg_groups_';
+const PG_CACHE_DB_NAME = 'PartyGuestCache';
+const PG_CACHE_STORE = 'postIndex';
 const DEFAULT_OPTIONS = {
   downloadMode: 'post',
   durationIndexing: false,
@@ -1009,34 +1013,44 @@ const DEFAULT_OPTIONS = {
   timeoutRetries: true,
   stopClearsQueue: true,
   showLocalGalleryBtn: false,
-  showDownloadInfoBtn: true,
+  showDownloadInfoBtn: false,
   showDownloadPostLinksBtn: false,
   showGalleryBtn: true,
   showPageBtn: true,
   showMediaBtn: true,
-  showPreviewBtn: false,
+  showPreviewBtn: true,
   showPageInput: true,
   showPostInput: true,
   showFileInput: false,
-  showProgressBar: false
+  showProgressBar: false,
+  showCreateGroupBtn: false,
+  showClearGroupsBtn: false
 };
 const DOWNLOAD_MODE_LABELS = {
   loose_post: 'Loose by post',
   loose_flat: 'Loose flat',
   loose_queue: 'Loose by queue',
   loose_queue_flat: 'Loose by queue flat',
-  post: 'Archived by post',
+  loose_group: 'Loose by group',
+  loose_group_flat: 'Loose by group flat',
+  post: 'Archive by post',
   queue: 'Archive by queue',
-  queue_flat: 'Archive by queue flat'
+  queue_flat: 'Archive by queue flat',
+  group: 'Archive by group',
+  group_flat: 'Archive by group flat'
 };
 const DOWNLOAD_MODE_VALUES = [
   'loose_post',
   'loose_flat',
   'loose_queue',
   'loose_queue_flat',
+  'loose_group',
+  'loose_group_flat',
   'post',
   'queue',
-  'queue_flat'
+  'queue_flat',
+  'group',
+  'group_flat'
 ];
 function clampInt(value, min, max, fallback) {
   const n = parseInt(value, 10);
@@ -1068,6 +1082,8 @@ function normalizeOptions(opt) {
   if (typeof opt.showPostInput === 'boolean') out.showPostInput = opt.showPostInput;
   if (typeof opt.showFileInput === 'boolean') out.showFileInput = opt.showFileInput;
   if (typeof opt.showProgressBar === 'boolean') out.showProgressBar = opt.showProgressBar;
+  if (typeof opt.showCreateGroupBtn === 'boolean') out.showCreateGroupBtn = opt.showCreateGroupBtn;
+  if (typeof opt.showClearGroupsBtn === 'boolean') out.showClearGroupsBtn = opt.showClearGroupsBtn;
   return out;
 }
 function loadOptions() {
@@ -1087,6 +1103,10 @@ const ARCHIVE_FETCH_CAP = 6;
 let TIMEOUT_RETRIES_ENABLED = true;
 let STOP_BUTTON_CLEARS_QUEUE = true;
 let SHOW_PROGRESS_BAR = true;
+let PG_GROUPS = [];
+let GROUPS_PROFILE_KEY = null;
+let PG_CACHE_DB = null;
+let PG_CACHE_DB_OPENING = null;
 let PG_TOTAL = null;
 let PG_GW = 1;
 let PG_ID_MAP = null;
@@ -1122,8 +1142,8 @@ let MENU_OPEN = false;
 let MENU_ACTIVE_TAB = 'options';
 let MENU_LAST_TAB = 'options';
 let MENU_HAS_OPENED = false;
-const MENU_TAB_SCROLL = { options: 0, keybinds: 0, errors: 0 };
-const MENU_TAB_IDS = ['options', 'keybinds', 'errors'];
+const MENU_TAB_SCROLL = { options: 0, groups: 0, keybinds: 0, errors: 0 };
+const MENU_TAB_IDS = ['options', 'groups', 'keybinds', 'errors'];
 const MENU_WINDOW_STATE = { x: null, y: null, width: null, height: null };
 let MENU_TAB_BUTTONS = [];
 let MENU_TAB_PANELS = {};
@@ -1343,6 +1363,164 @@ function filterKey() {
   return 'pg_filters_' + service + '_' + userId;
 }
 
+function openCacheDb() {
+  if (PG_CACHE_DB) return Promise.resolve(PG_CACHE_DB);
+  if (PG_CACHE_DB_OPENING) return PG_CACHE_DB_OPENING;
+  if (!('indexedDB' in window)) return Promise.resolve(null);
+  PG_CACHE_DB_OPENING = new Promise(resolve => {
+    const req = indexedDB.open(PG_CACHE_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PG_CACHE_STORE)) {
+        db.createObjectStore(PG_CACHE_STORE);
+      }
+    };
+    req.onsuccess = () => {
+      PG_CACHE_DB = req.result;
+      resolve(PG_CACHE_DB);
+    };
+    req.onerror = () => resolve(null);
+  });
+  return PG_CACHE_DB_OPENING;
+}
+
+async function idbGet(cacheKey) {
+  const db = await openCacheDb();
+  if (!db) return null;
+  return new Promise(resolve => {
+    const tx = db.transaction(PG_CACHE_STORE, 'readonly');
+    const store = tx.objectStore(PG_CACHE_STORE);
+    const req = store.get(cacheKey);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => resolve(null);
+  });
+}
+
+async function idbSet(cacheKey, payload) {
+  const db = await openCacheDb();
+  if (!db) return false;
+  return new Promise(resolve => {
+    const tx = db.transaction(PG_CACHE_STORE, 'readwrite');
+    const store = tx.objectStore(PG_CACHE_STORE);
+    const req = store.put(payload, cacheKey);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => resolve(false);
+  });
+}
+
+async function idbDelete(cacheKey) {
+  const db = await openCacheDb();
+  if (!db) return false;
+  return new Promise(resolve => {
+    const tx = db.transaction(PG_CACHE_STORE, 'readwrite');
+    const store = tx.objectStore(PG_CACHE_STORE);
+    const req = store.delete(cacheKey);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => resolve(false);
+  });
+}
+
+async function loadCachedIndex(cacheKey) {
+  let parsed = null;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) parsed = JSON.parse(raw);
+  } catch {
+    try { localStorage.removeItem(cacheKey); } catch {}
+  }
+
+  if (!parsed) {
+    parsed = await idbGet(cacheKey);
+  }
+
+  if (!parsed || !Array.isArray(parsed.posts) || !parsed.posts.length) return null;
+  return parsed;
+}
+
+async function saveCachedIndex(cacheKey, payload) {
+  try {
+    const raw = JSON.stringify(payload);
+    localStorage.setItem(cacheKey, raw);
+  } catch {
+    try { localStorage.removeItem(cacheKey); } catch {}
+  }
+  await idbSet(cacheKey, payload);
+}
+
+function groupsKey(profileKey) {
+  return profileKey ? (PG_GROUPS_KEY_PREFIX + profileKey) : null;
+}
+
+function makeGroupId() {
+  return 'g_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+}
+
+function computeGroupStats(files) {
+  const postFolders = new Set();
+  for (const file of files) {
+    if (!file) continue;
+    const parts = splitDownloadPath(file.name || '');
+    const postFolder = file.postFolder || parts.postFolder || '';
+    if (postFolder) postFolders.add(postFolder);
+  }
+  return { postCount: postFolders.size, fileCount: files.length };
+}
+
+function normalizeGroup(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const files = Array.isArray(raw.files) ? raw.files.filter(f => f && f.url) : [];
+  const stats = computeGroupStats(files);
+  const name = typeof raw.name === 'string' ? raw.name : '';
+  const earliestPostFolder = typeof raw.earliestPostFolder === 'string' ? raw.earliestPostFolder : (name || '');
+  return {
+    id: typeof raw.id === 'string' && raw.id ? raw.id : makeGroupId(),
+    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+    name: name || earliestPostFolder || 'post',
+    earliestPostFolder: earliestPostFolder || name || 'post',
+    earliestIndex: typeof raw.earliestIndex === 'number' ? raw.earliestIndex : 0,
+    userFolder: typeof raw.userFolder === 'string' ? raw.userFolder : '',
+    files,
+    postCount: typeof raw.postCount === 'number' ? raw.postCount : stats.postCount,
+    fileCount: typeof raw.fileCount === 'number' ? raw.fileCount : stats.fileCount
+  };
+}
+
+function loadGroupsForProfile(profileKey) {
+  if (!profileKey) {
+    PG_GROUPS = [];
+    GROUPS_PROFILE_KEY = null;
+    return PG_GROUPS;
+  }
+  if (GROUPS_PROFILE_KEY === profileKey && Array.isArray(PG_GROUPS)) return PG_GROUPS;
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(groupsKey(profileKey)) || '[]'); } catch {}
+  if (!Array.isArray(parsed)) parsed = [];
+  PG_GROUPS = parsed.map(normalizeGroup).filter(Boolean);
+  GROUPS_PROFILE_KEY = profileKey;
+  return PG_GROUPS;
+}
+
+function saveGroupsForProfile() {
+  if (!GROUPS_PROFILE_KEY) return;
+  try { localStorage.setItem(groupsKey(GROUPS_PROFILE_KEY), JSON.stringify(PG_GROUPS)); } catch {}
+}
+
+function deleteGroupById(groupId) {
+  if (!groupId) return false;
+  const idx = PG_GROUPS.findIndex(g => g && g.id === groupId);
+  if (idx < 0) return false;
+  PG_GROUPS.splice(idx, 1);
+  saveGroupsForProfile();
+  renderGroupsUi();
+  return true;
+}
+
+function clearGroupsForProfile() {
+  PG_GROUPS = [];
+  saveGroupsForProfile();
+  renderGroupsUi();
+}
+
 function saveFilterState(){
   const fPages = $('#fPages')?.value || '';
   const fPosts = $('#fPosts')?.value || '';
@@ -1414,6 +1592,8 @@ function handleProfileContextChange(){
     document.querySelectorAll('.post-number-badge').forEach(el => el.remove());
     syncFilterBoxVisibility();
     scheduleHUD();
+    loadGroupsForProfile(null);
+    renderGroupsUi();
     return false;
   }
   if (CURRENT_PROFILE_KEY && CURRENT_PROFILE_KEY !== key) {
@@ -1430,6 +1610,8 @@ function handleProfileContextChange(){
     PENDING_FILTER_SUMMARY = null;
   }
   CURRENT_PROFILE_KEY = key;
+  loadGroupsForProfile(key);
+  renderGroupsUi();
   return true;
 }
 
@@ -1736,6 +1918,8 @@ function syncHudElementVisibility() {
   setHudItemVisible('fPages', opt.showPageInput !== false);
   setHudItemVisible('fPosts', opt.showPostInput !== false);
   setHudItemVisible('fFiles', opt.showFileInput !== false);
+  setHudItemVisible('createGroupBtn', opt.showCreateGroupBtn === true);
+  setHudItemVisible('clearGroupsBtn', opt.showClearGroupsBtn === true);
   requestAnimationFrame(syncFilterBoxWidth);
 }
 
@@ -1891,6 +2075,8 @@ function renderOptionsUi() {
       ${makeCheckRow('Show Local Gallery button', 'Toggle the Local Gallery launcher.', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
       ${makeCheckRow('Show Download Info button', 'Toggle the Download Info button.', 'pg_opt_showDownloadInfoBtn', opt.showDownloadInfoBtn !== false)}
       ${makeCheckRow('Show Download Post Links button', 'Toggle the Download Post Links button.', 'pg_opt_showDownloadPostLinksBtn', opt.showDownloadPostLinksBtn === true)}
+      ${makeCheckRow('Show Create Group button', 'Toggle the Create Group button.', 'pg_opt_showCreateGroupBtn', opt.showCreateGroupBtn === true)}
+      ${makeCheckRow('Show Clear Groups button', 'Toggle the Clear Groups button.', 'pg_opt_showClearGroupsBtn', opt.showClearGroupsBtn === true)}
       ${makeCheckRow('Show Gallery button', 'Toggle the Gallery button.', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
       ${makeCheckRow('Show Page button', 'Toggle the Page button.', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
       ${makeCheckRow('Show media filter button', 'Toggle the media type cycle button.', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
@@ -1960,6 +2146,8 @@ function renderOptionsUi() {
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
   bindCheck('pg_opt_showDownloadInfoBtn', 'showDownloadInfoBtn');
   bindCheck('pg_opt_showDownloadPostLinksBtn', 'showDownloadPostLinksBtn');
+  bindCheck('pg_opt_showCreateGroupBtn', 'showCreateGroupBtn');
+  bindCheck('pg_opt_showClearGroupsBtn', 'showClearGroupsBtn');
   bindCheck('pg_opt_showGalleryBtn', 'showGalleryBtn');
   bindCheck('pg_opt_showPageBtn', 'showPageBtn');
   bindCheck('pg_opt_showMediaBtn', 'showMediaBtn');
@@ -1968,6 +2156,59 @@ function renderOptionsUi() {
   bindCheck('pg_opt_showPostInput', 'showPostInput');
   bindCheck('pg_opt_showFileInput', 'showFileInput');
   bindCheck('pg_opt_showProgressBar', 'showProgressBar');
+}
+
+function formatGroupDate(ts) {
+  if (!ts || typeof ts !== 'number') return '';
+  const d = new Date(ts);
+  if (!isFinite(d.getTime())) return '';
+  return 'Created ' + d.toISOString().split('T')[0];
+}
+
+function renderGroupsUi() {
+  const body = document.getElementById('pgMenuGroupsBody');
+  if (!body) return;
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    body.innerHTML = '<div class="pg-options-note">No profile detected.</div>';
+    return;
+  }
+
+  const groups = loadGroupsForProfile(profileKey);
+  const note = '<div class="pg-options-note">Groups are saved per profile. Use Create Group to add one.</div>';
+
+  if (!groups.length) {
+    body.innerHTML = note + '<div class="pg-options-note">No groups created.</div>';
+    return;
+  }
+
+  const rows = groups.map(group => {
+    const name = group.name || group.earliestPostFolder || 'group';
+    const created = formatGroupDate(group.createdAt);
+    const posts = typeof group.postCount === 'number' ? group.postCount : 0;
+    const files = typeof group.fileCount === 'number' ? group.fileCount : (group.files ? group.files.length : 0);
+    const meta = `${posts} posts • ${files} files${created ? ' • ' + created : ''}`;
+    return `
+      <div class="pg-opt-row pg-group-row">
+        <div class="pg-opt-left">
+          <div class="pg-opt-title">${name}</div>
+          <div class="pg-opt-hint">${meta}</div>
+        </div>
+        <div class="pg-opt-right">
+          <button type="button" class="pg-group-delete-btn" data-group-id="${group.id}">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  body.innerHTML = note + rows;
+
+  body.querySelectorAll('.pg-group-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const groupId = btn.dataset.groupId || '';
+      deleteGroupById(groupId);
+    });
+  });
 }
 
 function renderKeybindsUi() {
@@ -2006,6 +2247,11 @@ function ensureOptionsUi() {
   restoreMenuTabScroll('options');
 }
 
+function ensureGroupsUi() {
+  renderGroupsUi();
+  restoreMenuTabScroll('groups');
+}
+
 function ensureKeybindsUi() {
   renderKeybindsUi();
   restoreMenuTabScroll('keybinds');
@@ -2038,6 +2284,10 @@ function setMenuTab(tabId) {
 
   if (next === 'keybinds') {
     ensureKeybindsUi();
+    return;
+  }
+  if (next === 'groups') {
+    ensureGroupsUi();
     return;
   }
   if (next === 'errors') {
@@ -2149,11 +2399,13 @@ function initMenuTabs() {
   MENU_TAB_BUTTONS = tabs ? [...tabs.querySelectorAll('.pgMenuTabBtn')] : [];
   MENU_TAB_PANELS = {
     options: document.getElementById('pgMenuTabOptions'),
+    groups: document.getElementById('pgMenuTabGroups'),
     keybinds: document.getElementById('pgMenuTabKeybinds'),
     errors: document.getElementById('pgMenuTabErrors')
   };
   MENU_SCROLL_TARGETS = {
     options: document.getElementById('pgMenuOptionsBody'),
+    groups: document.getElementById('pgMenuGroupsBody'),
     keybinds: document.getElementById('pgMenuKeybindsBody'),
     errors: document.getElementById('pgMenuErrorBody')
   };
@@ -2175,6 +2427,7 @@ function buildMenu() {
         <div class="title">Menu</div>
         <div id="pgMenuTabs" role="tablist" aria-label="Menu tabs">
           <button type="button" class="pgMenuTabBtn" data-tab="options" role="tab" aria-controls="pgMenuTabOptions">Options</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="groups" role="tab" aria-controls="pgMenuTabGroups">Groups</button>
           <button type="button" class="pgMenuTabBtn" data-tab="keybinds" role="tab" aria-controls="pgMenuTabKeybinds">Keybinds</button>
           <button type="button" class="pgMenuTabBtn" data-tab="errors" role="tab" aria-controls="pgMenuTabErrors">Error Log</button>
         </div>
@@ -2190,6 +2443,9 @@ function buildMenu() {
               <button id="pgOptionsDoneBtn" type="button">Done</button>
             </div>
           </div>
+        </section>
+        <section id="pgMenuTabGroups" class="pgMenuTabPanel" data-tab="groups" role="tabpanel">
+          <div id="pgMenuGroupsBody"></div>
         </section>
         <section id="pgMenuTabKeybinds" class="pgMenuTabPanel" data-tab="keybinds" role="tabpanel">
           <div id="pgMenuKeybindsBody"></div>
@@ -2278,6 +2534,8 @@ function buildHUD() {
     <div id="hudRow" class="hud-row">
       <button id="pgMenuBtn" class="full pg-icon-btn" title="Menu" aria-label="Menu">⚙</button>
       <button id="dlBtn" class="full">Download</button>
+      <button id="createGroupBtn" class="full">Create Group</button>
+      <button id="clearGroupsBtn" class="full">Clear Groups</button>
       <button id="downloadInfoBtn" class="full">Download Info</button>
       <button id="downloadPostLinksBtn" class="full">Download Post Links</button>
       <button id="galleryBtn" class="full">Gallery</button>
@@ -2294,6 +2552,12 @@ function buildHUD() {
   document.body.appendChild(w);
 
   $('#dlBtn').onclick = handleDlBtn;
+
+  const createGroupBtn = $('#createGroupBtn');
+  if (createGroupBtn) createGroupBtn.onclick = handleCreateGroup;
+
+  const clearGroupsBtn = $('#clearGroupsBtn');
+  if (clearGroupsBtn) clearGroupsBtn.onclick = handleClearGroups;
 
   const downloadInfoBtn = $('#downloadInfoBtn');
   if (downloadInfoBtn) downloadInfoBtn.onclick = handleDownloadInfo;
@@ -2431,6 +2695,7 @@ function getDownloadSummaryUnit() {
   if (typeof DOWNLOAD_MODE === 'string' && DOWNLOAD_MODE.startsWith('loose')) return 'files';
   if (DOWNLOAD_MODE === 'post') return 'posts';
   if (DOWNLOAD_MODE === 'queue' || DOWNLOAD_MODE === 'queue_flat') return 'queues';
+  if (DOWNLOAD_MODE === 'group' || DOWNLOAD_MODE === 'group_flat') return 'groups';
   return 'items';
 }
 
@@ -2533,6 +2798,7 @@ function enqueueItems(objs) {
     const retryKey = obj.retryKey || '';
     const archiveMode = obj.archiveMode || '';
     const queuePostFolder = obj.queuePostFolder || '';
+    const groupPostFolder = obj.groupPostFolder || '';
     toAdd.push({ url, name, meta, status: 'queued', attempts: 0, nextAt: 0 });
     if (files) {
       const it = toAdd[toAdd.length - 1];
@@ -2542,6 +2808,7 @@ function enqueueItems(objs) {
       it.retryKey = retryKey;
       it.archiveMode = archiveMode;
       it.queuePostFolder = queuePostFolder;
+      it.groupPostFolder = groupPostFolder;
     }
   }
   if (!toAdd.length) return;
@@ -2709,13 +2976,20 @@ function startPostArchiveDownload(item) {
           if (settled) return;
           const parts = splitDownloadPath(file.name || '');
           let postFolder = parts.postFolder || item.postFolder || '';
+          let groupFolder = '';
           if (archiveMode === 'queue') {
             postFolder = parts.postFolder || '';
           } else if (archiveMode === 'queue_flat') {
             postFolder = item.queuePostFolder || parts.postFolder || '';
+          } else if (archiveMode === 'group') {
+            groupFolder = item.groupPostFolder || '';
+            postFolder = parts.postFolder || item.postFolder || '';
+          } else if (archiveMode === 'group_flat') {
+            groupFolder = item.groupPostFolder || '';
+            postFolder = '';
           }
           const fileName = parts.fileName || getDownloadLabel(file);
-          const zipPath = `${postFolder ? `${postFolder}/` : ''}${fileName}`;
+          const zipPath = `${groupFolder ? `${groupFolder}/` : ''}${postFolder ? `${postFolder}/` : ''}${fileName}`;
           zip.file(zipPath, blob);
           added++;
           return;
@@ -3043,9 +3317,53 @@ function buildArchiveName(userFolder, postFolder) {
   return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
 }
 
-function buildQueueArchiveName(userFolder) {
-  const base = userFolder || 'profile';
+function buildQueueArchiveName(userFolder, queueFolder) {
+  const base = queueFolder || 'post';
   return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
+}
+
+function buildBundleFromKeptPosts() {
+  const files = [];
+  let userFolder = '';
+  let earliestPostFolder = '';
+  let earliestIndex = Infinity;
+
+  keptPosts.forEach(kp => {
+    const { post, allowedFiles, globalIndex } = kp;
+    if (!allowedFiles || !allowedFiles.length) return;
+    const isEarliestCandidate = typeof globalIndex === 'number' && globalIndex < earliestIndex;
+    if (isEarliestCandidate) {
+      earliestIndex = globalIndex;
+      earliestPostFolder = '';
+    }
+    allowedFiles.forEach(fileInfo => {
+      if (!fileInfo || !fileInfo.url) return;
+      const ref = fileInfo.url;
+      const fileObj = { path: ref };
+      const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+      const parts = splitDownloadPath(name);
+      if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
+      if (isEarliestCandidate && !earliestPostFolder && parts.postFolder) {
+        earliestPostFolder = parts.postFolder;
+      }
+      files.push({ url: ref, name, fileIndex: fileInfo.g, postFolder: parts.postFolder });
+    });
+  });
+
+  if (files.length && !earliestPostFolder) {
+    const parts = splitDownloadPath(files[0].name || '');
+    earliestPostFolder = parts.postFolder || '';
+  }
+
+  const stats = computeGroupStats(files);
+  return {
+    files,
+    userFolder,
+    earliestPostFolder,
+    earliestIndex: isFinite(earliestIndex) ? earliestIndex : 0,
+    postCount: stats.postCount,
+    fileCount: stats.fileCount
+  };
 }
 
 
@@ -3232,21 +3550,15 @@ async function buildGlobalIndexMapIfNeeded() {
     const userId = isUser ? parts[3] : null;
     if (!service || !isUser || !userId) return;
     const cacheKey = 'pg_postindex_' + service + '_' + userId;
-    let parsed = null;
-    try {
-      const raw = localStorage.getItem(cacheKey);
-      if (raw) {
-        parsed = JSON.parse(raw);
-      }
-    } catch {}
+    const parsed = await loadCachedIndex(cacheKey);
     if (parsed && Array.isArray(parsed.posts) && parsed.posts.length) {
       const posts = parsed.posts;
       let useCache = true;
-      try {
-        const cachedNewest = posts[0];
-        if (!cachedNewest || !cachedNewest.id) {
-          useCache = false;
-        } else {
+      const cachedNewest = posts[0];
+      if (!cachedNewest || !cachedNewest.id) {
+        useCache = false;
+      } else {
+        try {
           const liveNewest = await fetchNewestPost(service, userId);
           if (liveNewest && liveNewest.id != null) {
             const liveId = String(liveNewest.id);
@@ -3256,9 +3568,7 @@ async function buildGlobalIndexMapIfNeeded() {
               setIndexStatus('Detected new posts. Rebuilding index...', 'info');
             }
           }
-        }
-      } catch (e) {
-        useCache = false;
+        } catch {}
       }
       if (useCache) {
         let schema = typeof parsed.schema === 'number' ? parsed.schema : 1;
@@ -3297,7 +3607,7 @@ async function buildGlobalIndexMapIfNeeded() {
           }
         });
         if (upgraded) {
-          try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), schema, meta: newMeta, posts: PG_POSTS })); } catch {}
+          await saveCachedIndex(cacheKey, { ts: Date.now(), schema, meta: newMeta, posts: PG_POSTS });
         }
         setIndexStatus('Loaded index from cache: ' + PG_TOTAL + ' posts', 'success');
         injectPostNumbers();
@@ -3336,7 +3646,7 @@ async function buildGlobalIndexMapIfNeeded() {
           unit: 'seconds'
         }
       };
-      try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), schema: 3, meta, posts: PG_POSTS })); } catch {}
+      await saveCachedIndex(cacheKey, { ts: Date.now(), schema: 3, meta, posts: PG_POSTS });
       setIndexStatus('Indexing complete: ' + PG_TOTAL + ' posts', 'success');
       injectPostNumbers();
       injectFileNumbers();
@@ -3749,42 +4059,80 @@ async function handleDownloadPostLinks() {
   });
 }
 
-async function queueFiltered() {
-  if (!keptPosts.length) return;
-  const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
-  const objs = [];
-  const buildQueueBundle = () => {
-    const files = [];
-    let userFolder = '';
-    let earliestPostFolder = '';
-    let earliestIndex = Infinity;
-    keptPosts.forEach(kp => {
-      const { post, allowedFiles, globalIndex } = kp;
-      if (!allowedFiles || !allowedFiles.length) return;
-      const isEarliestCandidate = typeof globalIndex === 'number' && globalIndex < earliestIndex;
-      if (isEarliestCandidate) {
-        earliestIndex = globalIndex;
-        earliestPostFolder = '';
-      }
-      allowedFiles.forEach(fileInfo => {
-        if (!fileInfo || !fileInfo.url) return;
-        const ref = fileInfo.url;
-        const fileObj = { path: ref };
-        const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
-        const parts = splitDownloadPath(name);
-        if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
-        if (isEarliestCandidate && !earliestPostFolder && parts.postFolder) {
-          earliestPostFolder = parts.postFolder;
-        }
-        files.push({ url: ref, name, fileIndex: fileInfo.g, postFolder: parts.postFolder });
-      });
-    });
-    if (files.length && !earliestPostFolder) {
-      const parts = splitDownloadPath(files[0].name || '');
-      earliestPostFolder = parts.postFolder || '';
-    }
-    return { files, userFolder, earliestPostFolder, earliestIndex };
+async function handleCreateGroup() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return;
+  }
+
+  const postsRaw = $('#fPosts')?.value || '';
+  const filesRaw = $('#fFiles')?.value || '';
+  const parsedPosts = parseIndices(postsRaw);
+  if (postsRaw.trim() && (!parsedPosts || parsedPosts.size === 0)) {
+    setStatus('Invalid posts', 'error');
+    return;
+  }
+  const parsedFiles = parseIndices(filesRaw);
+  if (filesRaw.trim() && (!parsedFiles || parsedFiles.size === 0)) {
+    setStatus('Invalid files', 'error');
+    return;
+  }
+
+  await handleFilter();
+
+  if (!keptPosts || !keptPosts.length) {
+    setStatus('No filtered files', 'error');
+    return;
+  }
+
+  const bundle = buildBundleFromKeptPosts();
+  if (!bundle.files.length) {
+    setStatus('No filtered files', 'error');
+    return;
+  }
+
+  loadGroupsForProfile(profileKey);
+  const name = bundle.earliestPostFolder || 'post';
+  const group = {
+    id: makeGroupId(),
+    createdAt: Date.now(),
+    name,
+    earliestPostFolder: name,
+    earliestIndex: bundle.earliestIndex,
+    userFolder: bundle.userFolder,
+    files: bundle.files,
+    postCount: bundle.postCount,
+    fileCount: bundle.fileCount
   };
+  PG_GROUPS.push(group);
+  saveGroupsForProfile();
+  renderGroupsUi();
+  setStatus(`Group created: ${name} (${bundle.postCount} posts, ${bundle.fileCount} files)`, 'success');
+}
+
+function handleClearGroups() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return;
+  }
+  loadGroupsForProfile(profileKey);
+  if (!PG_GROUPS.length) {
+    setStatus('No groups to clear', 'info');
+    return;
+  }
+  clearGroupsForProfile();
+  setStatus('Groups cleared', 'success');
+}
+
+async function queueFiltered() {
+  const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
+  const usesGroups = mode === 'loose_group' || mode === 'loose_group_flat' || mode === 'group' || mode === 'group_flat';
+  if (!keptPosts.length && !usesGroups) return;
+
+  const objs = [];
+  const profileKey = getProfileKeyFromLocation();
 
   if (mode === 'loose_post' || mode === 'loose_flat') {
     keptPosts.forEach(kp => {
@@ -3804,26 +4152,32 @@ async function queueFiltered() {
       });
     });
   } else if (mode === 'loose_queue' || mode === 'loose_queue_flat') {
-    const bundle = buildQueueBundle();
+    const bundle = buildBundleFromKeptPosts();
     if (bundle.files.length) {
-      const queuePostFolder = bundle.earliestPostFolder || '';
+      const queueFolder = bundle.earliestPostFolder || '';
       bundle.files.forEach(file => {
         const parts = splitDownloadPath(file.name || '');
         const fileName = parts.fileName || getDownloadLabel(file);
-        let postFolder = parts.postFolder || '';
-        if (mode === 'loose_queue_flat') postFolder = queuePostFolder || postFolder;
-        const relPath = postFolder ? `${postFolder}/${fileName}` : fileName;
+        const postFolder = parts.postFolder || '';
+        let relPath = '';
+        if (mode === 'loose_queue_flat') {
+          relPath = queueFolder ? `${queueFolder}/${fileName}` : fileName;
+        } else {
+          const postPath = postFolder ? `${postFolder}/${fileName}` : fileName;
+          relPath = queueFolder ? `${queueFolder}/${postPath}` : postPath;
+        }
         const userFolder = bundle.userFolder || parts.userFolder || '';
         const name = userFolder ? `${userFolder}/${relPath}` : relPath;
         objs.push({ url: file.url, name, meta: { url: file.url, globalIndex: bundle.earliestIndex, fileIndex: file.fileIndex } });
       });
     }
   } else if (mode === 'queue' || mode === 'queue_flat') {
-    const bundle = buildQueueBundle();
+    const bundle = buildBundleFromKeptPosts();
     if (bundle.files.length) {
+      const queueFolder = bundle.earliestPostFolder || 'post';
       const archiveName = (mode === 'queue_flat')
-        ? buildArchiveName(bundle.userFolder, bundle.earliestPostFolder || 'post')
-        : buildQueueArchiveName(bundle.userFolder);
+        ? buildArchiveName(bundle.userFolder, queueFolder)
+        : buildQueueArchiveName(bundle.userFolder, queueFolder);
       const retryKey = bundle.userFolder ? `queue:${bundle.userFolder}` : 'queue:profile';
       objs.push({
         url: bundle.files[0].url,
@@ -3834,9 +4188,72 @@ async function queueFiltered() {
         postFolder: '',
         retryKey,
         archiveMode: mode,
-        queuePostFolder: bundle.earliestPostFolder
+        queuePostFolder: bundle.earliestPostFolder || queueFolder
       });
     }
+  } else if (mode === 'loose_group' || mode === 'loose_group_flat') {
+    if (!profileKey) {
+      setStatus('No profile detected', 'error');
+      return;
+    }
+    const groups = loadGroupsForProfile(profileKey);
+    if (!groups.length) {
+      const st = $('#filterStatus');
+      if (st) st.textContent = 'No groups created.';
+      scheduleHUD();
+      return;
+    }
+    groups.forEach(group => {
+      const files = Array.isArray(group.files) ? group.files : [];
+      if (!files.length) return;
+      const groupFolder = group.earliestPostFolder || group.name || '';
+      files.forEach(file => {
+        if (!file || !file.url) return;
+        const parts = splitDownloadPath(file.name || '');
+        const fileName = parts.fileName || getDownloadLabel(file);
+        const postFolder = parts.postFolder || file.postFolder || '';
+        let relPath = '';
+        if (mode === 'loose_group_flat') {
+          relPath = groupFolder ? `${groupFolder}/${fileName}` : fileName;
+        } else {
+          const postPath = postFolder ? `${postFolder}/${fileName}` : fileName;
+          relPath = groupFolder ? `${groupFolder}/${postPath}` : postPath;
+        }
+        const userFolder = group.userFolder || parts.userFolder || '';
+        const name = userFolder ? `${userFolder}/${relPath}` : relPath;
+        objs.push({ url: file.url, name, meta: { url: file.url, globalIndex: group.earliestIndex, fileIndex: file.fileIndex } });
+      });
+    });
+  } else if (mode === 'group' || mode === 'group_flat') {
+    if (!profileKey) {
+      setStatus('No profile detected', 'error');
+      return;
+    }
+    const groups = loadGroupsForProfile(profileKey);
+    if (!groups.length) {
+      const st = $('#filterStatus');
+      if (st) st.textContent = 'No groups created.';
+      scheduleHUD();
+      return;
+    }
+    groups.forEach((group, idx) => {
+      const files = Array.isArray(group.files) ? group.files : [];
+      if (!files.length) return;
+      const groupFolder = group.earliestPostFolder || group.name || 'post';
+      const archiveName = buildArchiveName(group.userFolder, groupFolder);
+      const retryKey = group.id ? `group:${group.id}` : (group.userFolder ? `group:${group.userFolder}:${idx}` : `group:${idx}`);
+      objs.push({
+        url: files[0].url,
+        name: archiveName,
+        meta: { globalIndex: group.earliestIndex },
+        files,
+        userFolder: group.userFolder,
+        postFolder: '',
+        retryKey,
+        archiveMode: mode,
+        groupPostFolder: groupFolder
+      });
+    });
   } else {
     keptPosts.forEach(kp => {
       const { post, allowedFiles, globalIndex } = kp;
@@ -3869,9 +4286,10 @@ async function queueFiltered() {
       });
     });
   }
+
   if (!objs.length) {
     const st = $('#filterStatus');
-    if (st) st.textContent = 'No files matched your filters.';
+    if (st) st.textContent = usesGroups ? 'No group files to download.' : 'No files matched your filters.';
     scheduleHUD();
     return;
   }
@@ -3984,7 +4402,11 @@ async function handleDlBtn() {
     const qC = $('#queuedCount'); if (qC) qC.textContent = '0';
     const dropEl = $('#pgDrop'); if (dropEl) dropEl.style.display = 'none';
     const xC = $('#droppedCount'); if (xC) xC.textContent = '0';
-    await handleFilter();
+    const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
+    const usesGroups = mode === 'loose_group' || mode === 'loose_group_flat' || mode === 'group' || mode === 'group_flat';
+    if (!usesGroups) {
+      await handleFilter();
+    }
     await queueFiltered();
 
     if (LAST_QUEUE_HAD_ITEMS) {
