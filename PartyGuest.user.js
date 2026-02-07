@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.03
+// @version      01.13.04
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -760,6 +760,12 @@ body.pg-menu-open {
   border-color: var(--rain-red);
 }
 
+#pauseBtn.play {
+  background: var(--anchor-internal-color2-primary);
+  color: #ffffff;
+  border-color: var(--anchor-internal-color2-primary);
+}
+
 #filterBtn {
   min-width: 90px;
 }
@@ -1226,6 +1232,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const dataRoot = 'https://' + location.host + '/data';
 const userName = () => location.pathname.split('/')[3] || 'user';
 let DL_ACTIVE = false;
+let QUEUE_PAUSED = false;
 let MEDIA_MODE = 'all';
 let LAST_QUEUE_HAD_ITEMS = false;
 let lastFilterParams = {};
@@ -1267,6 +1274,7 @@ const DEFAULT_OPTIONS = {
   galleryPreloadAll: false,
   parallelDownloadLimit: 3,
   videoDurationProbeConcurrency: VIDEO_DURATION_PROBE_DEFAULT,
+  downloadAcrossProfiles: false,
   timeoutRetries: true,
   stopClearsQueue: true,
   showLocalGalleryBtn: true,
@@ -1318,6 +1326,7 @@ function normalizeOptions(opt) {
   if (opt.videoDurationProbeConcurrency != null) {
     out.videoDurationProbeConcurrency = clampInt(opt.videoDurationProbeConcurrency, 1, 10, DEFAULT_OPTIONS.videoDurationProbeConcurrency);
   }
+  if (typeof opt.downloadAcrossProfiles === 'boolean') out.downloadAcrossProfiles = opt.downloadAcrossProfiles;
   if (typeof opt.timeoutRetries === 'boolean') out.timeoutRetries = opt.timeoutRetries;
   if (typeof opt.stopClearsQueue === 'boolean') out.stopClearsQueue = opt.stopClearsQueue;
   if (typeof opt.showLocalGalleryBtn === 'boolean') out.showLocalGalleryBtn = opt.showLocalGalleryBtn;
@@ -1349,6 +1358,7 @@ let GALLERY_PRELOAD_ALL_MEDIA = false;
 let DURATION_FEATURE_ENABLED = false;
 let PARALLEL_DOWNLOAD_LIMIT = 3;
 const ARCHIVE_FETCH_CAP = 6;
+let DOWNLOAD_ACROSS_PROFILES = false;
 let TIMEOUT_RETRIES_ENABLED = true;
 let STOP_BUTTON_CLEARS_QUEUE = true;
 let SHOW_PROGRESS_BAR = true;
@@ -1459,6 +1469,12 @@ function apiGetJson(url) {
 }
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function waitWhileQueuePaused() {
+  while (QUEUE_PAUSED && dl.started) {
+    await sleep(250);
+  }
+}
 
 function getDownloadLabel(item) {
   if (!item) return 'file';
@@ -1895,7 +1911,8 @@ function renderQueueUi() {
       meta.className = 'pg-error-meta';
       const bits = [];
       bits.push('#' + (i + 1));
-      if (downloading) bits.push('Downloading');
+      if (downloading) bits.push(QUEUE_PAUSED ? 'Downloading (pause pending)' : 'Downloading');
+      else if (QUEUE_PAUSED) bits.push('Paused');
       else if (entry.nextAt && entry.nextAt > now) bits.push('Retry in ' + Math.ceil((entry.nextAt - now) / 1000) + 's');
       else bits.push('Queued');
       if (Array.isArray(entry.files)) bits.push(`${entry.files.length} files`);
@@ -2281,6 +2298,7 @@ function resetDownloadQueueState(opts = {}) {
   const clearFailures = opts.clearFailures !== false;
   dl.started = false;
   DL_ACTIVE = false;
+  setQueuePaused(false, { silentStatus: true });
   const b = $('#dlBtn');
   if (b) {
     b.classList.remove('stop');
@@ -2353,14 +2371,16 @@ function handleProfileContextChange(){
       INDEX_STATUS_TIMER = null;
     }
     PG_INDEX_LOADING = false;
-    resetDownloadQueueState({ clearFailures: true });
-    const fPages = $('#fPages'); if (fPages) fPages.value = '';
-    const fPosts = $('#fPosts'); if (fPosts) fPosts.value = '';
-    const fFiles = $('#fFiles'); if (fFiles) fFiles.value = '';
-    const fDur = $('#fDur'); if (fDur) fDur.value = '';
-    $$('article.post-card').forEach(c => { c.style.display = ''; });
-    document.querySelectorAll('.post-number-badge').forEach(el => el.remove());
-    syncFilterBoxVisibility();
+    if (!DOWNLOAD_ACROSS_PROFILES) {
+      resetDownloadQueueState({ clearFailures: true });
+      const fPages = $('#fPages'); if (fPages) fPages.value = '';
+      const fPosts = $('#fPosts'); if (fPosts) fPosts.value = '';
+      const fFiles = $('#fFiles'); if (fFiles) fFiles.value = '';
+      const fDur = $('#fDur'); if (fDur) fDur.value = '';
+      $$('article.post-card').forEach(c => { c.style.display = ''; });
+      document.querySelectorAll('.post-number-badge').forEach(el => el.remove());
+      syncFilterBoxVisibility();
+    }
     scheduleHUD();
     loadGroupsForProfile(null);
     renderGroupsUi();
@@ -2368,7 +2388,9 @@ function handleProfileContextChange(){
     return false;
   }
   if (CURRENT_PROFILE_KEY && CURRENT_PROFILE_KEY !== key) {
-    resetDownloadQueueState({ clearFailures: true });
+    if (!DOWNLOAD_ACROSS_PROFILES) {
+      resetDownloadQueueState({ clearFailures: true });
+    }
     PG_POSTS = null;
     PG_ID_MAP = null;
     PG_TOTAL = null;
@@ -2377,7 +2399,9 @@ function handleProfileContextChange(){
     PG_FILE_URL_MAP = null;
     PG_POST_FILE_RANGE_MAP = null;
     keptPosts = [];
-    lastFilterParams = {};
+    if (!DOWNLOAD_ACROSS_PROFILES) {
+      lastFilterParams = {};
+    }
     LAST_POST_CLICK = null;
     PENDING_FILTER_SUMMARY = null;
   }
@@ -2756,6 +2780,7 @@ function applyOptions() {
     10,
     DEFAULT_OPTIONS.videoDurationProbeConcurrency
   );
+  DOWNLOAD_ACROSS_PROFILES = !!opt.downloadAcrossProfiles;
   TIMEOUT_RETRIES_ENABLED = opt.timeoutRetries !== false;
   STOP_BUTTON_CLEARS_QUEUE = opt.stopClearsQueue !== false;
   SHOW_PROGRESS_BAR = opt.showProgressBar !== false;
@@ -2904,6 +2929,7 @@ function renderOptionsUi() {
       ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
       ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
       ${makeNumberRow('Video index concurrency', 'Maximum simultaneous video metadata probes.', 'pg_opt_videoDurationProbeConcurrency', opt.videoDurationProbeConcurrency, 1, 10)}
+      ${makeCheckRow('Download Across Profiles', 'Keep queue and filters when navigating between profiles.', 'pg_opt_downloadAcrossProfiles', !!opt.downloadAcrossProfiles)}
       ${makeCheckRow('Retry on stall/timeout', 'When a download stalls or takes too long, abort and retry (default on).', 'pg_opt_timeoutRetries', opt.timeoutRetries !== false)}
       ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
     </div>
@@ -2981,6 +3007,7 @@ function renderOptionsUi() {
     if (dl.started) requestDispatch();
   }, DEFAULT_OPTIONS.parallelDownloadLimit);
   bindNumber('pg_opt_videoDurationProbeConcurrency', 'videoDurationProbeConcurrency', 1, 10, null, DEFAULT_OPTIONS.videoDurationProbeConcurrency);
+  bindCheck('pg_opt_downloadAcrossProfiles', 'downloadAcrossProfiles');
   bindCheck('pg_opt_timeoutRetries', 'timeoutRetries');
   bindCheck('pg_opt_stopClearsQueue', 'stopClearsQueue');
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
@@ -3645,6 +3672,8 @@ function buildHUD() {
       <div class="pg-hud-title">Controls</div>
       <div id="hudRow" class="hud-row">
         <button id="dlBtn" class="full">Download</button>
+        <button id="addQueueBtn" class="full">Add to Queue</button>
+        <button id="pauseBtn" class="full">Pause</button>
         <button id="downloadPostLinksBtn" class="full">Download Post Links</button>
         <button id="galleryBtn" class="full">Gallery</button>
         <button id="localGalleryBtn" class="full">Local Gallery</button>
@@ -3667,6 +3696,10 @@ function buildHUD() {
   document.body.appendChild(w);
 
   $('#dlBtn').onclick = handleDlBtn;
+  const addQueueBtn = $('#addQueueBtn');
+  if (addQueueBtn) addQueueBtn.onclick = handleAddToQueueBtn;
+  const pauseBtn = $('#pauseBtn');
+  if (pauseBtn) pauseBtn.onclick = handlePauseBtn;
 
   const downloadPostLinksBtn = $('#downloadPostLinksBtn');
   if (downloadPostLinksBtn) downloadPostLinksBtn.onclick = handleDownloadPostLinks;
@@ -3723,6 +3756,7 @@ function buildHUD() {
   requestAnimationFrame(syncFilterBoxWidth);
   requestAnimationFrame(syncFilterBoxVisibility);
   requestAnimationFrame(syncProgressBarVisibility);
+  requestAnimationFrame(updatePauseButtonState);
   requestAnimationFrame(lockMediaButtonWidth);
   requestAnimationFrame(lockPreviewButtonWidth);
   applyOptions();
@@ -3800,6 +3834,20 @@ function allowedUrl(u) {
   if (MEDIA_MODE === 'gifs') return isGif;
   if (MEDIA_MODE === 'videos') return isVid;
   return false;
+}
+
+function isVideoFileRef(ref) {
+  if (!ref) return false;
+  const s = String(ref).split('?')[0];
+  return vidRE.test(s);
+}
+
+function getFileIsVideo(file) {
+  if (!file || typeof file !== 'object') return false;
+  if (typeof file.isVid === 'boolean') return file.isVid;
+  const isVid = isVideoFileRef(file.url || file.path || file.name || '');
+  file.isVid = isVid;
+  return isVid;
 }
 
 function getPostIdFromUrl(url) {
@@ -3985,9 +4033,11 @@ function updateHUD() {
     const retries = lastDropNoteCount || 0;
     const totalItems = total || 0;
     const unit = getDownloadSummaryUnit();
-    dlSummaryEl.textContent = `${totalItems} ${unit} total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${failed} Failed • ${retries} Retries`;
+    const pausedBit = QUEUE_PAUSED ? ' • Paused' : '';
+    dlSummaryEl.textContent = `${totalItems} ${unit} total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${failed} Failed • ${retries} Retries${pausedBit}`;
   }
 
+  updatePauseButtonState({ downloading, queued });
   syncFilterBoxVisibility();
   syncProgressBarVisibility();
   renderQueueUi();
@@ -3999,12 +4049,38 @@ function scheduleHUD() {
   requestAnimationFrame(updateHUD);
 }
 
+function updatePauseButtonState(counts) {
+  const btn = $('#pauseBtn');
+  if (!btn) return;
+  const state = counts || getCounts();
+  const hasQueue = DL_ACTIVE || (state.downloading + state.queued) > 0;
+  btn.disabled = !hasQueue;
+  btn.textContent = QUEUE_PAUSED ? 'Play' : 'Pause';
+  btn.classList.toggle('play', QUEUE_PAUSED);
+}
+
+function setQueuePaused(next, opts = {}) {
+  const wantPaused = !!next;
+  if (wantPaused && !DL_ACTIVE) return false;
+  const changed = QUEUE_PAUSED !== wantPaused;
+  QUEUE_PAUSED = wantPaused;
+  updatePauseButtonState();
+  if (changed) {
+    if (!opts.silentStatus) {
+      setStatus(wantPaused ? 'Queue paused' : 'Queue resumed', 'info');
+    }
+    if (!wantPaused && dl.started) requestDispatch();
+  }
+  scheduleHUD();
+  return true;
+}
+
 function requestDispatch() {
   if (dl.dispatching) return;
   dl.dispatching = true;
   queueMicrotask(() => {
     try {
-      if (!dl.started) return;
+      if (!dl.started || QUEUE_PAUSED) return;
       let startedAny = false;
       while (activeCount() < parLimit()) {
         const it = claimNext();
@@ -4015,7 +4091,7 @@ function requestDispatch() {
       if (startedAny) scheduleHUD();
     } finally {
       dl.dispatching = false;
-      if (dl.started && hasRunnableQueued() && activeCount() < parLimit()) requestDispatch();
+      if (dl.started && !QUEUE_PAUSED && hasRunnableQueued() && activeCount() < parLimit()) requestDispatch();
     }
   });
 }
@@ -4073,7 +4149,7 @@ function enqueueItems(objs) {
   if (!toAdd.length) return;
   dl.items.push(...toAdd);
   scheduleHUD();
-  if (dl.started) requestDispatch();
+  if (dl.started && !QUEUE_PAUSED) requestDispatch();
 }
 
 function startQueueIfIdle() {
@@ -4081,6 +4157,7 @@ function startQueueIfIdle() {
     scheduleHUD();
     return;
   }
+  setQueuePaused(false, { silentStatus: true });
   DL_ACTIVE = true;
   dl.started = true;
   const b = $('#dlBtn');
@@ -4199,6 +4276,7 @@ function maybeFinishBatch() {
   if (downloading === 0 && queued === 0) {
     DL_ACTIVE = false;
     dl.started = false;
+    setQueuePaused(false, { silentStatus: true });
     const b = $('#dlBtn'); if (b) { b.classList.remove('stop'); b.textContent = 'Download'; }
     renderErrorLogUi();
   }
@@ -4481,6 +4559,8 @@ function startPostArchiveDownload(item) {
       const maxAttempts = maxRetries + 1;
       let attempt = 0;
       while (!settled && attempt < maxAttempts) {
+        await waitWhileQueuePaused();
+        if (settled) return;
         attempt++;
         try {
           lastProgressAt = Date.now();
@@ -4538,6 +4618,7 @@ function startPostArchiveDownload(item) {
     for (let i = 0; i < workerCount; i++) {
       workers.push((async () => {
         while (true) {
+          await waitWhileQueuePaused();
           if (settled) return;
           const idx = cursor++;
           if (idx >= files.length) return;
@@ -4565,6 +4646,8 @@ function startPostArchiveDownload(item) {
 
     let zipBlob;
     try {
+      await waitWhileQueuePaused();
+      if (settled) return;
       setQueueItemProgress(item, {
         pct: 70,
         label: 'Building archive 0%',
@@ -4593,6 +4676,11 @@ function startPostArchiveDownload(item) {
     }
     const zipUrl = URL.createObjectURL(zipBlob);
     const saveName = sanitizeDownloadPathForSave(name || 'archive.zip');
+    await waitWhileQueuePaused();
+    if (settled) {
+      try { URL.revokeObjectURL(zipUrl); } catch {}
+      return;
+    }
     setQueueItemProgress(item, {
       pct: 95,
       label: 'Saving archive...',
@@ -5211,6 +5299,7 @@ function buildFileIndexFromPostsIfNeeded() {
     if (!Array.isArray(meta.pgFiles)) continue;
     for (const f of meta.pgFiles) {
       if (!f) continue;
+      f.isVid = getFileIsVideo(f);
       if (typeof f.dur !== 'number' || !isFinite(f.dur)) {
         f.dur = DURATION_FEATURE_ENABLED ? null : 0;
       } else if (!DURATION_FEATURE_ENABLED) {
@@ -5257,7 +5346,8 @@ async function ensureVideoDurations() {
   for (const meta of PG_POSTS) {
     if (!Array.isArray(meta.pgFiles)) continue;
     for (const f of meta.pgFiles) {
-      if (!f || !f.isVid || !f.url) continue;
+      if (!f || !f.url) continue;
+      if (!getFileIsVideo(f)) continue;
       const key = makeDurationUrlKey(f.url);
       if (!key) continue;
       let group = pendingMap.get(key);
@@ -5593,7 +5683,8 @@ async function handleFilter() {
       const ref = f && f.url;
       if (!ref) continue;
       if (!allowedUrl(ref)) continue;
-      if (f.isVid && durationFiltering) {
+      const isVideo = getFileIsVideo(f);
+      if (durationFiltering && isVideo) {
         const d = (typeof f.dur === 'number' && isFinite(f.dur)) ? f.dur : 0;
         let inRange = false;
         for (const r of durRanges) {
@@ -6070,6 +6161,36 @@ async function queueFiltered() {
   enqueueItems([item]);
 }
 
+async function handleAddToQueueBtn() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('Open a profile page to add filtered files', 'error');
+    return;
+  }
+  const before = dl.items.length;
+  await handleFilter();
+  await queueFiltered();
+  const added = Math.max(0, dl.items.length - before);
+  if (!added) {
+    setStatus('No filtered files to add', 'info');
+    return;
+  }
+  setStatus(`Added ${added} item${added === 1 ? '' : 's'} to queue`, 'success');
+}
+
+function handlePauseBtn() {
+  if (!DL_ACTIVE) {
+    const { downloading, queued } = getCounts();
+    if (downloading + queued > 0) {
+      setStatus('Queue is stopped. Press Download to continue', 'info');
+    } else {
+      setStatus('Queue is empty', 'info');
+    }
+    return;
+  }
+  setQueuePaused(!QUEUE_PAUSED);
+}
+
 async function handlePageAllBtn() {
   const input = document.getElementById('fPosts');
   if (!input) return;
@@ -6155,6 +6276,7 @@ async function handleDlBtn() {
     }
 
     if (dl.items.length > 0) {
+      setQueuePaused(false, { silentStatus: true });
       DL_ACTIVE = true;
       dl.started = true;
       b.classList.add('stop');
@@ -6166,6 +6288,7 @@ async function handleDlBtn() {
 
     dl.started = false;
     DL_ACTIVE = false;
+    setQueuePaused(false, { silentStatus: true });
     LAST_QUEUE_HAD_ITEMS = false;
     keptPosts = [];
     lastFilterParams = {};
@@ -6186,6 +6309,7 @@ async function handleDlBtn() {
     await queueFiltered();
 
     if (LAST_QUEUE_HAD_ITEMS) {
+      setQueuePaused(false, { silentStatus: true });
       DL_ACTIVE = true;
       dl.started = true;
       b.classList.add('stop');
@@ -6195,6 +6319,7 @@ async function handleDlBtn() {
     } else {
       DL_ACTIVE = false;
       dl.started = false;
+      setQueuePaused(false, { silentStatus: true });
       b.classList.remove('stop');
       b.textContent = 'Download';
       scheduleHUD();
@@ -6205,6 +6330,7 @@ async function handleDlBtn() {
     } else {
       dl.started = false;
       DL_ACTIVE = false;
+      setQueuePaused(false, { silentStatus: true });
       b.classList.remove('stop');
       b.textContent = 'Download';
       scheduleHUD();
