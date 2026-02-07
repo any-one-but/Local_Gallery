@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.01
+// @version      01.13.02
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -1221,16 +1221,36 @@ const STALL_IMG_IDLE_MS = 45000;
 const STALL_VID_TOTAL_MS = 300000;
 const STALL_VID_IDLE_MS = 90000;
 const GALLERY_PRELOAD_VIDEO_TIMEOUT_MS = 45000;
+const VIDEO_DURATION_REQUEST_TIMEOUT_MS = 45000;
+const VIDEO_DURATION_PROBE_DEFAULT = 6;
+let VIDEO_DURATION_PROBE_CONCURRENCY = VIDEO_DURATION_PROBE_DEFAULT;
 const PG_OPTIONS_KEY = 'pg_options';
 const PG_GROUPS_KEY_PREFIX = 'pg_groups_';
 const PG_MENU_STATE_KEY = 'pg_menu_state';
 const PG_CACHE_DB_NAME = 'PartyGuestCache';
 const PG_CACHE_STORE = 'postIndex';
+const PG_DURATION_CACHE_KEY_PREFIX = 'duration_';
+const SPECIAL_DOWNLOAD_BEHAVIOR_LABELS = {
+  off: 'Off',
+  smattering: 'Smattering (1/X per post)',
+  every_x: 'Only Every X Files',
+  first_x: 'Only First X Files per post'
+};
+const SPECIAL_DOWNLOAD_BEHAVIOR_VALUES = [
+  'off',
+  'smattering',
+  'every_x',
+  'first_x'
+];
+const SPECIAL_DOWNLOAD_VALUE_DEFAULT = 3;
 const DEFAULT_OPTIONS = {
   downloadMode: 'queue_flat',
+  specialDownloadBehavior: 'off',
+  specialDownloadValue: SPECIAL_DOWNLOAD_VALUE_DEFAULT,
   durationIndexing: false,
   galleryPreloadAll: false,
   parallelDownloadLimit: 3,
+  videoDurationProbeConcurrency: VIDEO_DURATION_PROBE_DEFAULT,
   timeoutRetries: true,
   stopClearsQueue: true,
   showLocalGalleryBtn: true,
@@ -1268,10 +1288,19 @@ function normalizeOptions(opt) {
   if (typeof opt.downloadMode === 'string') {
     if (DOWNLOAD_MODE_LABELS[opt.downloadMode]) out.downloadMode = opt.downloadMode;
   }
+  if (typeof opt.specialDownloadBehavior === 'string') {
+    if (SPECIAL_DOWNLOAD_BEHAVIOR_LABELS[opt.specialDownloadBehavior]) out.specialDownloadBehavior = opt.specialDownloadBehavior;
+  }
+  if (opt.specialDownloadValue != null) {
+    out.specialDownloadValue = clampInt(opt.specialDownloadValue, 1, 999, DEFAULT_OPTIONS.specialDownloadValue);
+  }
   if (typeof opt.durationIndexing === 'boolean') out.durationIndexing = opt.durationIndexing;
   if (typeof opt.galleryPreloadAll === 'boolean') out.galleryPreloadAll = opt.galleryPreloadAll;
   if (opt.parallelDownloadLimit != null) {
     out.parallelDownloadLimit = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
+  }
+  if (opt.videoDurationProbeConcurrency != null) {
+    out.videoDurationProbeConcurrency = clampInt(opt.videoDurationProbeConcurrency, 1, 10, DEFAULT_OPTIONS.videoDurationProbeConcurrency);
   }
   if (typeof opt.timeoutRetries === 'boolean') out.timeoutRetries = opt.timeoutRetries;
   if (typeof opt.stopClearsQueue === 'boolean') out.stopClearsQueue = opt.stopClearsQueue;
@@ -1298,6 +1327,8 @@ function saveOptions() {
 }
 let PG_OPTIONS = loadOptions();
 let DOWNLOAD_MODE = DEFAULT_OPTIONS.downloadMode;
+let SPECIAL_DOWNLOAD_BEHAVIOR = DEFAULT_OPTIONS.specialDownloadBehavior;
+let SPECIAL_DOWNLOAD_VALUE = DEFAULT_OPTIONS.specialDownloadValue;
 let GALLERY_PRELOAD_ALL_MEDIA = false;
 let DURATION_FEATURE_ENABLED = false;
 let PARALLEL_DOWNLOAD_LIMIT = 3;
@@ -1938,6 +1969,60 @@ async function saveCachedIndex(cacheKey, payload) {
   await idbSet(cacheKey, payload);
 }
 
+function durationCacheKey(profileKey) {
+  return profileKey ? (PG_DURATION_CACHE_KEY_PREFIX + profileKey) : '';
+}
+
+function normalizeCachedDuration(value) {
+  const n = Number(value);
+  return (isFinite(n) && n >= 0) ? n : null;
+}
+
+function normalizeDurationCacheMap(raw) {
+  const source = raw && typeof raw === 'object'
+    ? ((raw.entries && typeof raw.entries === 'object') ? raw.entries : raw)
+    : null;
+  if (!source) return {};
+  const out = {};
+  for (const key in source) {
+    if (!key) continue;
+    const n = normalizeCachedDuration(source[key]);
+    if (n != null) out[key] = n;
+  }
+  return out;
+}
+
+async function loadDurationCache(profileKey) {
+  const key = durationCacheKey(profileKey);
+  if (!key) return {};
+  let parsed = null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) parsed = JSON.parse(raw);
+  } catch {
+    try { localStorage.removeItem(key); } catch {}
+  }
+  if (!parsed) {
+    parsed = await idbGet(key);
+  }
+  return normalizeDurationCacheMap(parsed);
+}
+
+async function saveDurationCache(profileKey, entries) {
+  const key = durationCacheKey(profileKey);
+  if (!key || !entries || typeof entries !== 'object') return;
+  const payload = {
+    ts: Date.now(),
+    entries: normalizeDurationCacheMap(entries)
+  };
+  try {
+    localStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    try { localStorage.removeItem(key); } catch {}
+  }
+  await idbSet(key, payload);
+}
+
 function groupsKey(profileKey) {
   return profileKey ? (PG_GROUPS_KEY_PREFIX + profileKey) : null;
 }
@@ -2477,6 +2562,20 @@ function syncDownloadModeSelect() {
   if (DOWNLOAD_MODE_LABELS[mode]) el.value = mode;
 }
 
+function syncSpecialDownloadBehaviorSelect() {
+  const modeEl = document.getElementById('pg_opt_specialDownloadBehavior');
+  if (modeEl && SPECIAL_DOWNLOAD_BEHAVIOR_LABELS[SPECIAL_DOWNLOAD_BEHAVIOR]) {
+    modeEl.value = SPECIAL_DOWNLOAD_BEHAVIOR;
+  }
+  const valueEl = document.getElementById('pg_opt_specialDownloadValue');
+  if (valueEl) {
+    valueEl.value = String(SPECIAL_DOWNLOAD_VALUE);
+    const disabled = SPECIAL_DOWNLOAD_BEHAVIOR === 'off';
+    valueEl.disabled = disabled;
+    valueEl.title = disabled ? 'Enable a special behavior to use X.' : '';
+  }
+}
+
 function setDownloadMode(nextMode) {
   if (!DOWNLOAD_MODE_LABELS[nextMode]) return;
   PG_OPTIONS.downloadMode = nextMode;
@@ -2490,9 +2589,24 @@ function applyOptions() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   const prevDuration = DURATION_FEATURE_ENABLED;
   DOWNLOAD_MODE = (opt.downloadMode && DOWNLOAD_MODE_LABELS[opt.downloadMode]) ? opt.downloadMode : DEFAULT_OPTIONS.downloadMode;
+  SPECIAL_DOWNLOAD_BEHAVIOR = (opt.specialDownloadBehavior && SPECIAL_DOWNLOAD_BEHAVIOR_LABELS[opt.specialDownloadBehavior])
+    ? opt.specialDownloadBehavior
+    : DEFAULT_OPTIONS.specialDownloadBehavior;
+  SPECIAL_DOWNLOAD_VALUE = clampInt(
+    opt.specialDownloadValue,
+    1,
+    999,
+    DEFAULT_OPTIONS.specialDownloadValue
+  );
   DURATION_FEATURE_ENABLED = !!opt.durationIndexing;
   GALLERY_PRELOAD_ALL_MEDIA = !!opt.galleryPreloadAll;
   PARALLEL_DOWNLOAD_LIMIT = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
+  VIDEO_DURATION_PROBE_CONCURRENCY = clampInt(
+    opt.videoDurationProbeConcurrency,
+    1,
+    10,
+    DEFAULT_OPTIONS.videoDurationProbeConcurrency
+  );
   TIMEOUT_RETRIES_ENABLED = opt.timeoutRetries !== false;
   STOP_BUTTON_CLEARS_QUEUE = opt.stopClearsQueue !== false;
   SHOW_PROGRESS_BAR = opt.showProgressBar !== false;
@@ -2502,6 +2616,7 @@ function applyOptions() {
   syncDurationInputVisibility();
   syncProgressBarVisibility();
   syncDownloadModeSelect();
+  syncSpecialDownloadBehaviorSelect();
   if (document.getElementById('pgMenuDownloadsBody')) {
     renderDownloadsUi();
   }
@@ -2572,9 +2687,9 @@ function renderOptionsUi() {
   if (!body) return;
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
 
-  const makeSelectRow = (title, hint, id, options, value) => {
+  const makeSelectRow = (title, hint, id, options, value, labels) => {
     const items = options.map(optVal => {
-      const label = DOWNLOAD_MODE_LABELS[optVal] || optVal;
+      const label = (labels && labels[optVal]) || optVal;
       return `<option value="${optVal}"${optVal === value ? ' selected' : ''}>${label}</option>`;
     }).join('');
     return `
@@ -2633,10 +2748,13 @@ function renderOptionsUi() {
 
     <div class="pg-opt-section">
       <div class="pg-opt-section-title">Downloads</div>
-      ${makeSelectRow('Download Mode', 'Archive by post/queue or loose files by post/queue.', 'pg_opt_downloadMode', DOWNLOAD_MODE_VALUES, opt.downloadMode || DEFAULT_OPTIONS.downloadMode)}
+      ${makeSelectRow('Download Mode', 'Archive by post/queue or loose files by post/queue.', 'pg_opt_downloadMode', DOWNLOAD_MODE_VALUES, opt.downloadMode || DEFAULT_OPTIONS.downloadMode, DOWNLOAD_MODE_LABELS)}
+      ${makeSelectRow('Special Download Behavior', 'Optional vertical-slice behavior for oversized profiles/posts.', 'pg_opt_specialDownloadBehavior', SPECIAL_DOWNLOAD_BEHAVIOR_VALUES, opt.specialDownloadBehavior || DEFAULT_OPTIONS.specialDownloadBehavior, SPECIAL_DOWNLOAD_BEHAVIOR_LABELS)}
+      ${makeNumberRow('Special Behavior Value (X)', 'Used by the selected special behavior. Example: Smattering uses 1/X files per post.', 'pg_opt_specialDownloadValue', opt.specialDownloadValue, 1, 999)}
       ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
       ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
       ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
+      ${makeNumberRow('Video index concurrency', 'Maximum simultaneous video metadata probes.', 'pg_opt_videoDurationProbeConcurrency', opt.videoDurationProbeConcurrency, 1, 10)}
       ${makeCheckRow('Retry on stall/timeout', 'When a download stalls or takes too long, abort and retry (default on).', 'pg_opt_timeoutRetries', opt.timeoutRetries !== false)}
       ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
     </div>
@@ -2671,11 +2789,14 @@ function renderOptionsUi() {
     });
   };
 
-  const bindNumber = (id, key, min, max, onChange) => {
+  const bindNumber = (id, key, min, max, onChange, fallback) => {
     const el = document.getElementById(id);
     if (!el) return;
     const applyValue = () => {
-      const next = clampInt(el.value, min, max, DEFAULT_OPTIONS.parallelDownloadLimit);
+      const fb = (fallback != null)
+        ? fallback
+        : ((DEFAULT_OPTIONS[key] != null) ? DEFAULT_OPTIONS[key] : min);
+      const next = clampInt(el.value, min, max, fb);
       el.value = String(next);
       PG_OPTIONS[key] = next;
       saveOptions();
@@ -2687,12 +2808,12 @@ function renderOptionsUi() {
     el.addEventListener('blur', applyValue);
   };
 
-  const bindSelect = (id, key, onChange) => {
+  const bindSelect = (id, key, labels, onChange) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', () => {
       const next = String(el.value || '').trim();
-      if (DOWNLOAD_MODE_LABELS[next]) {
+      if (labels && labels[next]) {
         PG_OPTIONS[key] = next;
         saveOptions();
         setOptionsStatus('Saved');
@@ -2702,12 +2823,15 @@ function renderOptionsUi() {
     });
   };
 
-  bindSelect('pg_opt_downloadMode', 'downloadMode');
+  bindSelect('pg_opt_downloadMode', 'downloadMode', DOWNLOAD_MODE_LABELS);
+  bindSelect('pg_opt_specialDownloadBehavior', 'specialDownloadBehavior', SPECIAL_DOWNLOAD_BEHAVIOR_LABELS);
+  bindNumber('pg_opt_specialDownloadValue', 'specialDownloadValue', 1, 999, null, DEFAULT_OPTIONS.specialDownloadValue);
   bindCheck('pg_opt_durationIndexing', 'durationIndexing');
   bindCheck('pg_opt_galleryPreloadAll', 'galleryPreloadAll');
   bindNumber('pg_opt_parallelDownloadLimit', 'parallelDownloadLimit', 1, 10, () => {
     if (dl.started) requestDispatch();
-  });
+  }, DEFAULT_OPTIONS.parallelDownloadLimit);
+  bindNumber('pg_opt_videoDurationProbeConcurrency', 'videoDurationProbeConcurrency', 1, 10, null, DEFAULT_OPTIONS.videoDurationProbeConcurrency);
   bindCheck('pg_opt_timeoutRetries', 'timeoutRetries');
   bindCheck('pg_opt_stopClearsQueue', 'stopClearsQueue');
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
@@ -2721,6 +2845,7 @@ function renderOptionsUi() {
   bindCheck('pg_opt_showFileInput', 'showFileInput');
   bindCheck('pg_opt_showProgressBar', 'showProgressBar');
   bindCheck('pg_opt_showGroupsSection', 'showGroupsSection');
+  syncSpecialDownloadBehaviorSelect();
 }
 
 function formatGroupDate(ts) {
@@ -3624,15 +3749,38 @@ function normalizeFileUrl(u) {
 
 const durCache = Object.create(null);
 
+function makeDurationUrlKey(url) {
+  if (!url) return '';
+  return normalizeFileUrl(url) || normalizeDownloadUrl(url) || String(url);
+}
+
 function getVideoDuration(u) {
-  return durCache[u] ?? (durCache[u] = new Promise(res => {
+  const src = normalizeDownloadUrl(u);
+  const key = makeDurationUrlKey(src);
+  if (!key || !src) return Promise.resolve(Infinity);
+  return durCache[key] ?? (durCache[key] = new Promise(res => {
     const v = document.createElement('video');
+    let settled = false;
+    let timeoutId = null;
+    const done = d => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) {
+        try { clearTimeout(timeoutId); } catch {}
+        timeoutId = null;
+      }
+      try { v.pause(); } catch {}
+      try { v.removeAttribute('src'); } catch {}
+      try { v.load(); } catch {}
+      try { v.remove(); } catch {}
+      res(d);
+    };
     v.preload = 'metadata';
     v.crossOrigin = 'anonymous';
-    v.src = u;
-    const done = d => { try{v.remove();}catch{} try{v.src='';}catch{} res(d); };
     v.onloadedmetadata = () => done(v.duration || Infinity);
     v.onerror = () => done(Infinity);
+    timeoutId = setTimeout(() => done(Infinity), VIDEO_DURATION_REQUEST_TIMEOUT_MS);
+    v.src = src;
   }));
 }
 
@@ -4690,13 +4838,79 @@ function buildQueueArchiveName(userFolder, queueFolder) {
   return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
 }
 
-function buildBundleFromKeptPosts() {
+function applySpecialDownloadBehavior(sourceKeptPosts) {
+  const items = Array.isArray(sourceKeptPosts) ? sourceKeptPosts : [];
+  if (!items.length) return [];
+
+  const mode = SPECIAL_DOWNLOAD_BEHAVIOR || DEFAULT_OPTIONS.specialDownloadBehavior;
+  const x = clampInt(
+    SPECIAL_DOWNLOAD_VALUE,
+    1,
+    999,
+    DEFAULT_OPTIONS.specialDownloadValue
+  );
+  if (mode === 'off' || !SPECIAL_DOWNLOAD_BEHAVIOR_LABELS[mode]) {
+    return items.slice();
+  }
+
+  if (mode === 'first_x') {
+    const out = [];
+    items.forEach(kp => {
+      if (!kp || !Array.isArray(kp.allowedFiles) || !kp.allowedFiles.length) return;
+      const nextFiles = kp.allowedFiles.slice(0, x);
+      if (!nextFiles.length) return;
+      out.push({ post: kp.post, allowedFiles: nextFiles, globalIndex: kp.globalIndex });
+    });
+    return out;
+  }
+
+  if (mode === 'smattering') {
+    const out = [];
+    items.forEach(kp => {
+      if (!kp || !Array.isArray(kp.allowedFiles) || !kp.allowedFiles.length) return;
+      const files = kp.allowedFiles;
+      const keepCount = Math.max(1, Math.ceil(files.length / x));
+      if (keepCount >= files.length) {
+        out.push({ post: kp.post, allowedFiles: files.slice(), globalIndex: kp.globalIndex });
+        return;
+      }
+      const chosen = new Set();
+      while (chosen.size < keepCount) {
+        chosen.add(Math.floor(Math.random() * files.length));
+      }
+      const nextFiles = files.filter((_, idx) => chosen.has(idx));
+      if (!nextFiles.length) return;
+      out.push({ post: kp.post, allowedFiles: nextFiles, globalIndex: kp.globalIndex });
+    });
+    return out;
+  }
+
+  if (mode === 'every_x') {
+    const out = [];
+    let idxGlobal = 0;
+    items.forEach(kp => {
+      if (!kp || !Array.isArray(kp.allowedFiles) || !kp.allowedFiles.length) return;
+      const nextFiles = [];
+      kp.allowedFiles.forEach(fileInfo => {
+        if ((idxGlobal % x) === 0) nextFiles.push(fileInfo);
+        idxGlobal++;
+      });
+      if (!nextFiles.length) return;
+      out.push({ post: kp.post, allowedFiles: nextFiles, globalIndex: kp.globalIndex });
+    });
+    return out;
+  }
+
+  return items.slice();
+}
+
+function buildBundleFromKeptPosts(sourceKeptPosts = keptPosts) {
   const files = [];
   let userFolder = '';
   let earliestPostFolder = '';
   let earliestIndex = Infinity;
 
-  keptPosts.forEach(kp => {
+  sourceKeptPosts.forEach(kp => {
     const { post, allowedFiles, globalIndex } = kp;
     if (!allowedFiles || !allowedFiles.length) return;
     const isEarliestCandidate = typeof globalIndex === 'number' && globalIndex < earliestIndex;
@@ -4885,23 +5099,96 @@ function buildFileIndexFromPostsIfNeeded() {
 async function ensureVideoDurations() {
   if (!DURATION_FEATURE_ENABLED) return;
   if (!PG_POSTS || !PG_POSTS.length) return;
-  const vids = [];
+  const profileKey = getProfileKeyFromLocation();
+  const durationCache = await loadDurationCache(profileKey);
+  const pendingMap = new Map();
   for (const meta of PG_POSTS) {
     if (!Array.isArray(meta.pgFiles)) continue;
     for (const f of meta.pgFiles) {
-      if (!f || !f.isVid) continue;
-      vids.push(f);
+      if (!f || !f.isVid || !f.url) continue;
+      const key = makeDurationUrlKey(f.url);
+      if (!key) continue;
+      let group = pendingMap.get(key);
+      if (!group) {
+        group = { key, url: f.url, files: [] };
+        pendingMap.set(key, group);
+      }
+      group.files.push(f);
     }
   }
-  if (!vids.length) return;
-  let idx = 0;
-  for (const f of vids) {
-    idx++;
-    if (typeof f.dur === 'number' && isFinite(f.dur) && f.dur > 0) continue;
-    setIndexStatus('Checking video ' + idx + ' of ' + vids.length + ' (file #' + (f.g || idx) + ')...', 'info');
-    const d = await getVideoDuration(f.url);
-    const dur = (isFinite(d) && d >= 0) ? d : 0;
-    f.dur = dur;
+  if (!pendingMap.size) return;
+
+  const probeQueue = [];
+  let cachedCount = 0;
+  let cacheChanged = false;
+
+  for (const group of pendingMap.values()) {
+    const cached = normalizeCachedDuration(durationCache[group.key]);
+    if (cached != null) {
+      for (const file of group.files) file.dur = cached;
+      cachedCount++;
+      continue;
+    }
+    let known = null;
+    for (const file of group.files) {
+      const d = normalizeCachedDuration(file && file.dur);
+      if (d != null && d > 0) {
+        known = d;
+        break;
+      }
+    }
+    if (known != null) {
+      for (const file of group.files) file.dur = known;
+      durationCache[group.key] = known;
+      cacheChanged = true;
+      cachedCount++;
+      continue;
+    }
+    probeQueue.push(group);
+  }
+
+  if (!probeQueue.length) {
+    if (cacheChanged) {
+      await saveDurationCache(profileKey, durationCache);
+    }
+    return;
+  }
+
+  const total = probeQueue.length;
+  let done = 0;
+  let cursor = 0;
+  const concurrency = Math.max(1, Math.min(VIDEO_DURATION_PROBE_CONCURRENCY, total));
+
+  const updateStatus = () => {
+    const prefix = cachedCount ? (`${cachedCount} cached, `) : '';
+    setIndexStatus(prefix + 'Checking video ' + done + ' of ' + total + ` (${concurrency} workers)...`, 'info');
+  };
+
+  updateStatus();
+
+  const worker = async () => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= total) return;
+      const group = probeQueue[idx];
+      const d = await getVideoDuration(group.url);
+      const dur = (isFinite(d) && d >= 0) ? d : 0;
+      for (const file of group.files) file.dur = dur;
+      if (durationCache[group.key] !== dur) {
+        durationCache[group.key] = dur;
+        cacheChanged = true;
+      }
+      done++;
+      updateStatus();
+    }
+  };
+
+  const workers = [];
+  for (let i = 0; i < concurrency; i++) workers.push(worker());
+  await Promise.all(workers);
+
+  if (cacheChanged) {
+    await saveDurationCache(profileKey, durationCache);
   }
   setIndexStatus('', 'info');
 }
@@ -5515,10 +5802,17 @@ function handleClearGroups() {
 
 async function queueFiltered() {
   if (!keptPosts.length) return;
+  const sourcePosts = applySpecialDownloadBehavior(keptPosts);
+  if (!sourcePosts.length) {
+    const st = $('#filterStatus');
+    if (st) st.textContent = 'No files matched your filters.';
+    scheduleHUD();
+    return;
+  }
   const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
   if (mode === 'loose_post') {
     const items = [];
-    keptPosts.forEach(kp => {
+    sourcePosts.forEach(kp => {
       items.push(...buildLooseItemsForPost(kp));
     });
     if (!items.length) {
@@ -5532,7 +5826,7 @@ async function queueFiltered() {
     return;
   }
   if (mode === 'loose_queue') {
-    const bundle = buildBundleFromKeptPosts();
+    const bundle = buildBundleFromKeptPosts(sourcePosts);
     const queueFolder = bundle.earliestPostFolder || 'post';
     const userFolder = bundle.userFolder || '';
     const items = (bundle.files || []).map(file => {
@@ -5558,7 +5852,7 @@ async function queueFiltered() {
   }
   if (mode === 'post') {
     const items = [];
-    keptPosts.forEach(kp => {
+    sourcePosts.forEach(kp => {
       const { post, allowedFiles, globalIndex } = kp;
       if (!allowedFiles || !allowedFiles.length) return;
       const files = [];
@@ -5598,7 +5892,7 @@ async function queueFiltered() {
     enqueueItems(items);
     return;
   }
-  const bundle = buildBundleFromKeptPosts();
+  const bundle = buildBundleFromKeptPosts(sourcePosts);
   if (!bundle.files.length) {
     const st = $('#filterStatus');
     if (st) st.textContent = 'No files matched your filters.';
