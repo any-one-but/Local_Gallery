@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.00
+// @version      01.13.01
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -2877,32 +2877,7 @@ function ensureInfoUi() {
       return;
     }
 
-    const s = snapshot.stats;
     body.innerHTML = `
-      <div class="pg-options-note">This is the same information used by the info download file.</div>
-      <div class="pg-opt-section">
-        <div class="pg-opt-section-title">Summary</div>
-        <div class="pg-opt-row">
-          <div class="pg-opt-left"><div class="pg-opt-title">Profile</div><div class="pg-opt-hint">${s.service}</div></div>
-          <div class="pg-opt-right">${s.profileName}</div>
-        </div>
-        <div class="pg-opt-row">
-          <div class="pg-opt-left"><div class="pg-opt-title">Date Range</div><div class="pg-opt-hint">From first to latest post</div></div>
-          <div class="pg-opt-right">${s.firstPostDate} to ${s.lastPostDate}</div>
-        </div>
-        <div class="pg-opt-row">
-          <div class="pg-opt-left"><div class="pg-opt-title">Pages</div><div class="pg-opt-hint">Current index snapshot</div></div>
-          <div class="pg-opt-right">${s.totalPages}</div>
-        </div>
-        <div class="pg-opt-row">
-          <div class="pg-opt-left"><div class="pg-opt-title">Posts</div><div class="pg-opt-hint">Across indexed pages</div></div>
-          <div class="pg-opt-right">${s.totalPosts}</div>
-        </div>
-        <div class="pg-opt-row">
-          <div class="pg-opt-left"><div class="pg-opt-title">Files</div><div class="pg-opt-hint">Images / GIFs / Videos</div></div>
-          <div class="pg-opt-right">${s.totalFiles} / ${s.totalImages} (${s.totalGifs}) / ${s.totalVideos}</div>
-        </div>
-      </div>
       <div class="pg-opt-section">
         <div class="pg-opt-section-title">Document Preview</div>
         <pre class="pg-info-preview" id="pgInfoPreview"></pre>
@@ -3499,7 +3474,7 @@ function sanitizeFileNameStrict(raw, fallback) {
   s = s.replace(/\uFFFD/g, '');
   s = s.replace(/[\uD800-\uDFFF]/g, '');
   s = s.replace(/[\x00-\x1F\x7F]/g, '');
-  s = s.replace(/[^A-Za-z0-9 .]+/g, '');
+  s = s.replace(/[^A-Za-z0-9._ -]+/g, '');
   s = s.trim();
   return s || (fallback || 'download');
 }
@@ -3901,7 +3876,8 @@ function buildPostPageDownloadItems(doc, postUrl) {
   const objs = [];
   urls.forEach((url, idx) => {
     const fileObj = { path: url };
-    const name = formatFilename(post, fileObj, idx + 1, gIndex);
+    const rawName = formatFilename(post, fileObj, idx + 1, gIndex);
+    const name = rawName || sanitizeDownloadPathForSave(getDownloadLabel({ url }));
     objs.push({ url, name, meta: { post, globalIndex: gIndex } });
   });
   return { objs, count: objs.length };
@@ -4378,7 +4354,8 @@ function buildLooseItemsForPost(kp) {
     if (!fileInfo || !fileInfo.url) return;
     const ref = fileInfo.url;
     const fileObj = { path: ref };
-    const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+    const rawName = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+    const name = rawName || sanitizeDownloadPathForSave(getDownloadLabel({ url: ref }));
     out.push({
       url: ref,
       name,
@@ -5561,7 +5538,8 @@ async function queueFiltered() {
     const items = (bundle.files || []).map(file => {
       const parts = splitDownloadPath(file.name || '');
       const fileName = parts.fileName || getDownloadLabel(file);
-      const name = userFolder ? `${userFolder}/${queueFolder}/${fileName}` : `${queueFolder}/${fileName}`;
+      const rawName = userFolder ? `${userFolder}/${queueFolder}/${fileName}` : `${queueFolder}/${fileName}`;
+      const name = rawName || sanitizeDownloadPathForSave(getDownloadLabel(file));
       return {
         url: file.url,
         name,
