@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.12.09
+// @version      01.13.00
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -253,14 +253,21 @@ GM_addStyle(`
 }
 
 #hudFilters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+#hudFilters > button {
+  flex: 0 0 auto;
 }
 
 #hudFilters input[type="text"],
 #hudFilters input[type="number"] {
-  width: 100%;
+  width: auto;
+  min-width: 90px;
+  flex: 1 1 120px;
 }
 
 /* Menu overlay */
@@ -287,12 +294,12 @@ body.pg-menu-open {
 #pgMenuCard {
   position: fixed;
   pointer-events: auto;
-  resize: both;
+  resize: none;
   overflow: hidden;
   width: min(860px, 96vw);
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 32px);
-  min-width: 320px;
+  min-width: 100px;
   min-height: 240px;
   left: 50%;
   top: 50%;
@@ -309,6 +316,43 @@ body.pg-menu-open {
 
 #pgMenuCard.pg-overlay-dragging {
   cursor: grabbing;
+}
+
+#pgMenuCard .pg-menu-resize-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  z-index: 6;
+  pointer-events: auto;
+  background: transparent;
+}
+
+#pgMenuCard .pg-menu-resize-handle.pg-menu-resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+#pgMenuCard .pg-menu-resize-handle.pg-menu-resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+#pgMenuCard .pg-menu-resize-handle.pg-menu-resize-sw {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+
+#pgMenuCard .pg-menu-resize-handle.pg-menu-resize-se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+#pgMenuCard.pg-collapsed .pg-menu-resize-handle {
+  display: none;
 }
 
 #pgMenuHeader {
@@ -385,9 +429,10 @@ body.pg-menu-open {
 }
 
 #pgMenuOptionsBody,
+#pgMenuInfoBody,
 #pgMenuGroupsBody,
-#pgMenuKeybindsBody,
 #pgMenuErrorBody,
+#pgMenuQueueBody,
 #pgMenuDownloadsBody {
   padding: 10px 10px 12px;
   overflow: auto;
@@ -631,6 +676,57 @@ body.pg-menu-open {
   margin-top: 4px;
 }
 
+.pg-info-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--color1-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 3px;
+  padding: 8px;
+  color: var(--color0-primary);
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.pg-queue-progress {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pg-queue-progress-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 2px;
+  background: var(--color1-secondary);
+  overflow: hidden;
+}
+
+.pg-queue-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--anchor-internal-color2-primary);
+  transition: width .12s linear;
+}
+
+.pg-queue-progress-fill.indeterminate {
+  width: 35%;
+  animation: pg-queue-indeterminate 1s linear infinite;
+}
+
+.pg-queue-progress-text {
+  font-size: 11px;
+  color: var(--color0-primary);
+}
+
+@keyframes pg-queue-indeterminate {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
+}
+
 /* Primary / special buttons */
 
 #dlBtn {
@@ -716,12 +812,13 @@ body.pg-menu-open {
 }
 
 #indexStatus {
-  color: var(--color0-secondary);
+  color: var(--color0-primary);
 }
 
 #filterStatus {
   flex: 1 1 auto;
   min-width: 0;
+  color: var(--color0-primary);
 }
 
 #pgDrop {
@@ -1117,7 +1214,7 @@ let MEDIA_MODE = 'all';
 let LAST_QUEUE_HAD_ITEMS = false;
 let lastFilterParams = {};
 const retryMap = Object.create(null);
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
 const BACKOFF_BASE = 1200;
 const STALL_IMG_TOTAL_MS = 90000;
 const STALL_IMG_IDLE_MS = 45000;
@@ -1126,6 +1223,7 @@ const STALL_VID_IDLE_MS = 90000;
 const GALLERY_PRELOAD_VIDEO_TIMEOUT_MS = 45000;
 const PG_OPTIONS_KEY = 'pg_options';
 const PG_GROUPS_KEY_PREFIX = 'pg_groups_';
+const PG_MENU_STATE_KEY = 'pg_menu_state';
 const PG_CACHE_DB_NAME = 'PartyGuestCache';
 const PG_CACHE_STORE = 'postIndex';
 const DEFAULT_OPTIONS = {
@@ -1136,7 +1234,6 @@ const DEFAULT_OPTIONS = {
   timeoutRetries: true,
   stopClearsQueue: true,
   showLocalGalleryBtn: true,
-  showDownloadInfoBtn: true,
   showDownloadPostLinksBtn: true,
   showGalleryBtn: true,
   showPageBtn: true,
@@ -1145,15 +1242,20 @@ const DEFAULT_OPTIONS = {
   showPageInput: true,
   showPostInput: true,
   showFileInput: true,
-  showProgressBar: true
+  showProgressBar: true,
+  showGroupsSection: true
 };
 const DOWNLOAD_MODE_LABELS = {
-  queue_flat: 'By queue',
-  post: 'By post'
+  queue_flat: 'Archive by queue',
+  post: 'Archive by post',
+  loose_queue: 'Loose by queue',
+  loose_post: 'Loose by post'
 };
 const DOWNLOAD_MODE_VALUES = [
   'queue_flat',
-  'post'
+  'post',
+  'loose_queue',
+  'loose_post'
 ];
 function clampInt(value, min, max, fallback) {
   const n = parseInt(value, 10);
@@ -1174,7 +1276,6 @@ function normalizeOptions(opt) {
   if (typeof opt.timeoutRetries === 'boolean') out.timeoutRetries = opt.timeoutRetries;
   if (typeof opt.stopClearsQueue === 'boolean') out.stopClearsQueue = opt.stopClearsQueue;
   if (typeof opt.showLocalGalleryBtn === 'boolean') out.showLocalGalleryBtn = opt.showLocalGalleryBtn;
-  if (typeof opt.showDownloadInfoBtn === 'boolean') out.showDownloadInfoBtn = opt.showDownloadInfoBtn;
   if (typeof opt.showDownloadPostLinksBtn === 'boolean') out.showDownloadPostLinksBtn = opt.showDownloadPostLinksBtn;
   if (typeof opt.showGalleryBtn === 'boolean') out.showGalleryBtn = opt.showGalleryBtn;
   if (typeof opt.showPageBtn === 'boolean') out.showPageBtn = opt.showPageBtn;
@@ -1184,6 +1285,7 @@ function normalizeOptions(opt) {
   if (typeof opt.showPostInput === 'boolean') out.showPostInput = opt.showPostInput;
   if (typeof opt.showFileInput === 'boolean') out.showFileInput = opt.showFileInput;
   if (typeof opt.showProgressBar === 'boolean') out.showProgressBar = opt.showProgressBar;
+  if (typeof opt.showGroupsSection === 'boolean') out.showGroupsSection = opt.showGroupsSection;
   return out;
 }
 function loadOptions() {
@@ -1203,6 +1305,7 @@ const ARCHIVE_FETCH_CAP = 6;
 let TIMEOUT_RETRIES_ENABLED = true;
 let STOP_BUTTON_CLEARS_QUEUE = true;
 let SHOW_PROGRESS_BAR = true;
+let SHOW_GROUPS_SECTION = true;
 let PG_GROUPS = [];
 let GROUPS_PROFILE_KEY = null;
 let PG_CACHE_DB = null;
@@ -1242,53 +1345,49 @@ let MENU_OPEN = false;
 let MENU_ACTIVE_TAB = 'downloads';
 let MENU_LAST_TAB = 'downloads';
 let MENU_HAS_OPENED = false;
-const MENU_TAB_SCROLL = { downloads: 0, options: 0, keybinds: 0, errors: 0 };
-const MENU_TAB_IDS = ['downloads', 'options', 'keybinds', 'errors'];
+const MENU_TAB_SCROLL = { downloads: 0, queue: 0, info: 0, options: 0, errors: 0 };
+const MENU_TAB_IDS = ['downloads', 'queue', 'info', 'options', 'errors'];
 const MENU_WINDOW_STATE = { x: null, y: null, width: null, height: null };
+const MENU_DEFAULT_WIDTH = 100;
+const MENU_DEFAULT_HEIGHT = 550;
+const MENU_DEFAULT_MARGIN = 8;
 let MENU_TAB_BUTTONS = [];
 let MENU_TAB_PANELS = {};
 let MENU_SCROLL_TARGETS = {};
 let MENU_RESIZE_OBSERVER = null;
 let MENU_COLLAPSED = false;
+let INFO_RENDER_TOKEN = 0;
 const ERROR_LOG = [];
-const KEYBINDS_SECTIONS = [
-  {
-    title: 'Gallery keybinds (right hand)',
-    items: [
-      '← / A = previous',
-      '→ / D = next',
-      '1 = -10 files',
-      '3 = +10 files',
-      'Q = -10s',
-      'E = +10s',
-      'Space = play/pause',
-      '` = close gallery'
-    ]
-  },
-  {
-    title: 'Gallery keybinds (left hand)',
-    items: [
-      '← / J = previous',
-      '→ / L = next',
-      '8 = -10 files',
-      '0 = +10 files',
-      'U = -10s',
-      'O = +10s',
-      'Space = play/pause',
-      'Backspace = close gallery'
-    ]
-  },
-  {
-    title: 'Additional keybinds',
-    items: [
-      'G = toggle fullscreen',
-      'F = cycle filters (all/images/videos)',
-      'R = toggle random order',
-      'P = toggle slideshow',
-      'T = toggle looping'
-    ]
+const FAILED_ITEMS = [];
+
+function loadMenuState() {
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(PG_MENU_STATE_KEY) || 'null'); } catch {}
+  if (!parsed || typeof parsed !== 'object') return;
+  const keys = ['x', 'y', 'width', 'height'];
+  keys.forEach(k => {
+    const v = parsed[k];
+    if (typeof v === 'number' && isFinite(v)) MENU_WINDOW_STATE[k] = v;
+  });
+  if (typeof parsed.collapsed === 'boolean') MENU_COLLAPSED = parsed.collapsed;
+  if (typeof parsed.lastTab === 'string' && MENU_TAB_IDS.includes(parsed.lastTab)) {
+    MENU_LAST_TAB = parsed.lastTab;
   }
-];
+}
+
+function saveMenuState() {
+  const payload = {
+    x: MENU_WINDOW_STATE.x,
+    y: MENU_WINDOW_STATE.y,
+    width: MENU_WINDOW_STATE.width,
+    height: MENU_WINDOW_STATE.height,
+    collapsed: MENU_COLLAPSED,
+    lastTab: MENU_LAST_TAB
+  };
+  try { localStorage.setItem(PG_MENU_STATE_KEY, JSON.stringify(payload)); } catch {}
+}
+
+loadMenuState();
 
 function apiGetJson(url) {
   return new Promise(resolve => {
@@ -1320,16 +1419,57 @@ function getDownloadLabel(item) {
   return 'file';
 }
 
+function isLikelyHttpUrl(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url);
+}
+
+function summarizeErrorBits(err, prefix) {
+  if (!err || typeof err !== 'object') return [];
+  const bits = [];
+  const keyPrefix = prefix ? (prefix + ' ') : '';
+  if (err.stage) bits.push(`${keyPrefix}stage=${String(err.stage)}`);
+  if (typeof err.status === 'number') {
+    if (err.statusText) bits.push(`${keyPrefix}HTTP ${err.status} ${String(err.statusText)}`);
+    else bits.push(`${keyPrefix}HTTP ${err.status}`);
+  }
+  if (err.error) bits.push(`${keyPrefix}${String(err.error)}`);
+  if (err.message) bits.push(`${keyPrefix}${String(err.message)}`);
+  if (err.details) bits.push(`${keyPrefix}${String(err.details)}`);
+  if (!bits.length && err.type) bits.push(`${keyPrefix}${String(err.type)}`);
+  return bits;
+}
+
 function formatDownloadErrorReason(reason, err) {
-  let detail = '';
-  if (err) {
-    if (typeof err === 'string') detail = err;
-    else if (err.error) detail = err.error;
-    else if (err.message) detail = err.message;
+  const bits = [];
+  if (typeof err === 'string') {
+    bits.push(err);
+  } else if (err && typeof err === 'object') {
+    bits.push(...summarizeErrorBits(err));
+    if (err.native) bits.push(...summarizeErrorBits(err.native, 'native'));
+    if (err.fallback) bits.push(...summarizeErrorBits(err.fallback, 'fallback'));
+    if (!bits.length) bits.push('unknown');
   }
   const base = reason || 'Download failed';
+  const detail = bits.join(' | ');
   if (detail && detail !== base) return `${base}: ${detail}`;
   return base;
+}
+
+function buildErrorEntry(item, reason, err, attempts) {
+  const isArchive = !!(item && Array.isArray(item.files));
+  const label = isArchive ? `[Archive] ${item.name || 'archive.zip'}` : getDownloadLabel(item);
+  const sourceUrlRaw = item && (item.lastErrorUrl || item.failedUrl || item.url) ? (item.lastErrorUrl || item.failedUrl || item.url) : '';
+  const sourceUrl = isLikelyHttpUrl(sourceUrlRaw) ? sourceUrlRaw : '';
+  const stage = err && typeof err === 'object' && err.stage ? String(err.stage) : '';
+  return {
+    ts: Date.now(),
+    url: sourceUrl,
+    label,
+    reason: formatDownloadErrorReason(reason, err),
+    attempts: attempts || 0,
+    stage,
+    isArchive
+  };
 }
 
 function showErrorToast(text) {
@@ -1349,62 +1489,314 @@ function renderErrorLogUi() {
   if (!body) return;
   const prevScroll = body.scrollTop || 0;
   body.innerHTML = '';
-  if (!ERROR_LOG.length) {
+  if (!ERROR_LOG.length && !FAILED_ITEMS.length) {
     const empty = document.createElement('div');
     empty.className = 'pg-options-note';
     empty.textContent = 'No errors yet.';
     body.appendChild(empty);
     return;
   }
-  const list = document.createElement('div');
-  list.className = 'pg-error-log';
-  for (let i = ERROR_LOG.length - 1; i >= 0; i--) {
-    const entry = ERROR_LOG[i];
-    const item = document.createElement('div');
-    item.className = 'pg-error-item';
 
-    const link = document.createElement('a');
-    link.className = 'pg-error-link';
-    link.href = entry.url || '#';
-    link.textContent = entry.label || entry.url || 'Unknown file';
-    link.target = '_blank';
-    link.rel = 'noopener';
-    item.appendChild(link);
+  if (FAILED_ITEMS.length) {
+    const title = document.createElement('div');
+    title.className = 'pg-opt-section-title';
+    title.textContent = 'Failed Items';
+    body.appendChild(title);
 
-    const meta = document.createElement('div');
-    meta.className = 'pg-error-meta';
-    const when = new Date(entry.ts || Date.now()).toLocaleTimeString();
-    meta.textContent = `${when} • ${entry.reason || 'Download failed'}`;
-    item.appendChild(meta);
+    const failedList = document.createElement('div');
+    failedList.className = 'pg-error-log';
+    for (let i = FAILED_ITEMS.length - 1; i >= 0; i--) {
+      const entry = FAILED_ITEMS[i];
+      const item = document.createElement('div');
+      item.className = 'pg-error-item';
 
-    list.appendChild(item);
+      if (entry.url && isLikelyHttpUrl(entry.url)) {
+        const link = document.createElement('a');
+        link.className = 'pg-error-link';
+        link.href = entry.url;
+        link.textContent = entry.label || entry.url || 'Unknown file';
+        link.target = '_blank';
+        link.rel = 'noopener';
+        item.appendChild(link);
+      } else {
+        const label = document.createElement('div');
+        label.className = 'pg-error-link';
+        label.textContent = entry.label || 'Unknown file';
+        item.appendChild(label);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'pg-error-meta';
+      const when = new Date(entry.ts || Date.now()).toLocaleTimeString();
+      const attempts = entry.attempts || MAX_RETRIES;
+      meta.textContent = `${when} • ${entry.reason || 'Download failed'} • ${attempts}/${MAX_RETRIES} attempts`;
+      item.appendChild(meta);
+
+      failedList.appendChild(item);
+    }
+    body.appendChild(failedList);
   }
-  body.appendChild(list);
+
+  if (ERROR_LOG.length) {
+    const title = document.createElement('div');
+    title.className = 'pg-opt-section-title';
+    title.textContent = 'Recent Errors';
+    body.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'pg-error-log';
+    for (let i = ERROR_LOG.length - 1; i >= 0; i--) {
+      const entry = ERROR_LOG[i];
+      const item = document.createElement('div');
+      item.className = 'pg-error-item';
+
+      if (entry.url && isLikelyHttpUrl(entry.url)) {
+        const link = document.createElement('a');
+        link.className = 'pg-error-link';
+        link.href = entry.url;
+        link.textContent = entry.label || entry.url || 'Unknown file';
+        link.target = '_blank';
+        link.rel = 'noopener';
+        item.appendChild(link);
+      } else {
+        const label = document.createElement('div');
+        label.className = 'pg-error-link';
+        label.textContent = entry.label || 'Unknown file';
+        item.appendChild(label);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'pg-error-meta';
+      const when = new Date(entry.ts || Date.now()).toLocaleTimeString();
+      meta.textContent = `${when} • ${entry.reason || 'Download failed'}`;
+      item.appendChild(meta);
+
+      list.appendChild(item);
+    }
+    body.appendChild(list);
+  }
+
+  requestAnimationFrame(() => {
+    body.scrollTop = prevScroll;
+  });
+}
+
+function getQueueItemLabel(item) {
+  if (!item) return 'Unknown file';
+  if (Array.isArray(item.files)) return `[Archive] ${item.name || 'archive'}`;
+  return getDownloadLabel(item);
+}
+
+function clampQueuePercent(value) {
+  if (typeof value !== 'number' || !isFinite(value)) return null;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function formatByteSize(value) {
+  const n = Number(value);
+  if (!isFinite(n) || n < 0) return '0 B';
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function getQueueItemProgressState(item) {
+  if (!item) return null;
+  const hasPct = typeof item.progressPct === 'number' && isFinite(item.progressPct);
+  const hasLabel = typeof item.progressLabel === 'string' && item.progressLabel.trim() !== '';
+  const indeterminate = !!item.progressIndeterminate;
+  if (!hasPct && !hasLabel && !indeterminate) return null;
+  const pct = hasPct ? clampQueuePercent(item.progressPct) : null;
+  let label = hasLabel ? item.progressLabel.trim() : '';
+  if (!label && pct != null) label = `${pct}%`;
+  if (!label && indeterminate) label = 'Working...';
+  return { pct, label, indeterminate };
+}
+
+function setQueueItemProgress(item, next) {
+  if (!item) return;
+  const patch = next && typeof next === 'object' ? next : {};
+  let changed = false;
+
+  if ('pct' in patch) {
+    const pct = clampQueuePercent(patch.pct);
+    if (pct == null) {
+      if ('progressPct' in item) {
+        delete item.progressPct;
+        changed = true;
+      }
+    } else if (item.progressPct !== pct) {
+      item.progressPct = pct;
+      changed = true;
+    }
+  }
+
+  if ('label' in patch) {
+    const label = patch.label == null ? '' : String(patch.label);
+    if (label) {
+      if (item.progressLabel !== label) {
+        item.progressLabel = label;
+        changed = true;
+      }
+    } else if ('progressLabel' in item) {
+      delete item.progressLabel;
+      changed = true;
+    }
+  }
+
+  if ('indeterminate' in patch) {
+    const ind = !!patch.indeterminate;
+    if (item.progressIndeterminate !== ind) {
+      item.progressIndeterminate = ind;
+      changed = true;
+    }
+  }
+
+  if (changed) scheduleHUD();
+}
+
+function clearQueueItemProgress(item) {
+  if (!item) return;
+  let changed = false;
+  if ('progressPct' in item) { delete item.progressPct; changed = true; }
+  if ('progressLabel' in item) { delete item.progressLabel; changed = true; }
+  if ('progressIndeterminate' in item) { delete item.progressIndeterminate; changed = true; }
+  if (changed) scheduleHUD();
+}
+
+function renderQueueUi() {
+  const body = document.getElementById('pgMenuQueueBody');
+  if (!body) return;
+  const prevScroll = body.scrollTop || 0;
+  body.innerHTML = '';
+
+  const activeItems = dl.items.filter(item => item && item.status === 'active');
+  const queuedItems = dl.items.filter(item => item && item.status === 'queued');
+  if (!activeItems.length && !queuedItems.length) {
+    const empty = document.createElement('div');
+    empty.className = 'pg-options-note';
+    empty.textContent = 'Queue is empty.';
+    body.appendChild(empty);
+    return;
+  }
+
+  const now = Date.now();
+  const appendSection = (titleText, items, downloading) => {
+    if (!items.length) return;
+    const title = document.createElement('div');
+    title.className = 'pg-opt-section-title';
+    title.textContent = titleText;
+    body.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'pg-error-log';
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i];
+      const item = document.createElement('div');
+      item.className = 'pg-error-item';
+
+      const labelText = getQueueItemLabel(entry);
+      const sourceUrl = entry && entry.url ? normalizeDownloadUrl(entry.url) : '';
+      if (sourceUrl && isLikelyHttpUrl(sourceUrl)) {
+        const link = document.createElement('a');
+        link.className = 'pg-error-link';
+        link.href = sourceUrl;
+        link.textContent = labelText;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        item.appendChild(link);
+      } else {
+        const label = document.createElement('div');
+        label.className = 'pg-error-link';
+        label.textContent = labelText;
+        item.appendChild(label);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'pg-error-meta';
+      const bits = [];
+      bits.push('#' + (i + 1));
+      if (downloading) bits.push('Downloading');
+      else if (entry.nextAt && entry.nextAt > now) bits.push('Retry in ' + Math.ceil((entry.nextAt - now) / 1000) + 's');
+      else bits.push('Queued');
+      if (Array.isArray(entry.files)) bits.push(`${entry.files.length} files`);
+      const retryKey = getRetryKey(entry);
+      const retries = retryKey ? (retryMap[retryKey] || 0) : 0;
+      if (retries > 0) bits.push(`${retries}/${MAX_RETRIES} retries`);
+      meta.textContent = bits.join(' • ');
+      item.appendChild(meta);
+
+      if (downloading) {
+        const progress = getQueueItemProgressState(entry);
+        if (progress) {
+          const wrap = document.createElement('div');
+          wrap.className = 'pg-queue-progress';
+
+          const track = document.createElement('div');
+          track.className = 'pg-queue-progress-track';
+
+          const fill = document.createElement('div');
+          fill.className = 'pg-queue-progress-fill';
+          if (progress.indeterminate || progress.pct == null) {
+            fill.classList.add('indeterminate');
+          } else {
+            fill.style.width = progress.pct + '%';
+          }
+          track.appendChild(fill);
+
+          const txt = document.createElement('div');
+          txt.className = 'pg-queue-progress-text';
+          txt.textContent = progress.label || (progress.pct != null ? `${progress.pct}%` : 'Working...');
+
+          wrap.appendChild(track);
+          wrap.appendChild(txt);
+          item.appendChild(wrap);
+        }
+      }
+
+      list.appendChild(item);
+    }
+    body.appendChild(list);
+  };
+
+  appendSection('Downloading', activeItems, true);
+  appendSection('Queued', queuedItems, false);
+
   requestAnimationFrame(() => {
     body.scrollTop = prevScroll;
   });
 }
 
 function logDownloadError(item, reason, err) {
-  const label = getDownloadLabel(item);
-  const message = formatDownloadErrorReason(reason, err);
-  ERROR_LOG.push({
-    ts: Date.now(),
-    url: item && item.url ? item.url : '',
-    label,
-    reason: message
-  });
+  const entry = buildErrorEntry(item, reason, err, 0);
+  ERROR_LOG.push(entry);
+  if (ERROR_LOG.length > 500) {
+    ERROR_LOG.splice(0, ERROR_LOG.length - 500);
+  }
   renderErrorLogUi();
-  showErrorToast(`${label} — ${message}`);
+  showErrorToast(`${entry.label} — ${entry.reason}`);
+}
+
+function logFailedItem(item, reason, err, attempts) {
+  const entry = buildErrorEntry(item, reason, err, attempts || MAX_RETRIES);
+  const key = getRetryKey(item) || entry.url || entry.label;
+  const nextEntry = Object.assign({ key }, entry);
+  const idx = FAILED_ITEMS.findIndex(entry => entry && entry.key === key);
+  if (idx >= 0) FAILED_ITEMS[idx] = nextEntry;
+  else FAILED_ITEMS.push(nextEntry);
+  if (FAILED_ITEMS.length > 500) {
+    FAILED_ITEMS.splice(0, FAILED_ITEMS.length - 500);
+  }
+  renderErrorLogUi();
+  showErrorToast(`${nextEntry.label} — failed after ${nextEntry.attempts} attempts`);
 }
 
 function setStatus(text, type) {
   const el = $('#filterStatus');
   if (!el) return;
   el.textContent = text || '';
-  if (type === 'error') el.style.color = 'var(--rain-red)';
-  else if (type === 'success') el.style.color = 'var(--anchor-internal-color2-primary)';
-  else el.style.color = '';
+  el.style.color = 'var(--color0-primary)';
   syncFilterBoxVisibility();
   syncProgressBarVisibility();
 }
@@ -1417,9 +1809,7 @@ function setIndexStatus(text, type) {
     INDEX_STATUS_TIMER = null;
   }
   el.textContent = text || '';
-  if (type === 'error') el.style.color = 'var(--rain-red)';
-  else if (type === 'success') el.style.color = 'var(--anchor-internal-color2-primary)';
-  else el.style.color = '';
+  el.style.color = 'var(--color0-primary)';
   syncFilterBoxVisibility();
   syncProgressBarVisibility();
   if (type === 'success' && text && String(text).trim()) {
@@ -1446,7 +1836,7 @@ function setFilterSummary(msg) {
     return;
   }
   fs.textContent = msg || '';
-  fs.style.color = '';
+  fs.style.color = 'var(--color0-primary)';
 }
 
 let injectTimer = null;
@@ -1654,6 +2044,52 @@ function scheduleFilter(){
   }, 250);
 }
 
+function resetDownloadQueueState(opts = {}) {
+  const clearFailures = opts.clearFailures !== false;
+  dl.started = false;
+  DL_ACTIVE = false;
+  const b = $('#dlBtn');
+  if (b) {
+    b.classList.remove('stop');
+    b.textContent = 'Download';
+  }
+
+  for (const it of dl.items) {
+    try { if (it && it._handle && typeof it._handle.abort === 'function') it._handle.abort(); } catch {}
+    try {
+      if (it && it._handles && typeof it._handles.forEach === 'function') {
+        it._handles.forEach(h => {
+          try { if (h && typeof h.abort === 'function') h.abort(); } catch {}
+        });
+      }
+    } catch {}
+  }
+
+  cooldownTimers.forEach(id => clearTimeout(id));
+  cooldownTimers.clear();
+  for (const k in retryMap) delete retryMap[k];
+  lastDropNoteAt = 0;
+  lastDropNoteCount = 0;
+  LAST_QUEUE_HAD_ITEMS = false;
+  dl.items.length = 0;
+
+  if (clearFailures) {
+    FAILED_ITEMS.length = 0;
+    renderErrorLogUi();
+  }
+
+  const fs = $('#filterStatus'); if (fs) fs.textContent = '';
+  const is = $('#indexStatus'); if (is) is.textContent = '';
+  const fill = $('#pgFill'); if (fill) fill.style.width = '0%';
+  const barLabel = $('#pgBarLabel'); if (barLabel) barLabel.textContent = '0%';
+  const cC = $('#completedCount'); if (cC) cC.textContent = '0';
+  const qC = $('#queuedCount'); if (qC) qC.textContent = '0';
+  const xC = $('#droppedCount'); if (xC) xC.textContent = '0';
+  const dropEl = $('#pgDrop'); if (dropEl) dropEl.style.display = 'none';
+  PENDING_FILTER_SUMMARY = null;
+  scheduleHUD();
+}
+
 function getProfileKeyFromLocation(){
   const parts = location.pathname.split('/');
   if (parts.length >= 4 && parts[2] === 'user') {
@@ -1683,8 +2119,7 @@ function handleProfileContextChange(){
       INDEX_STATUS_TIMER = null;
     }
     PG_INDEX_LOADING = false;
-    const fs = $('#filterStatus'); if (fs) fs.textContent = '';
-    const is = $('#indexStatus'); if (is) is.textContent = '';
+    resetDownloadQueueState({ clearFailures: true });
     const fPages = $('#fPages'); if (fPages) fPages.value = '';
     const fPosts = $('#fPosts'); if (fPosts) fPosts.value = '';
     const fFiles = $('#fFiles'); if (fFiles) fFiles.value = '';
@@ -1695,9 +2130,11 @@ function handleProfileContextChange(){
     scheduleHUD();
     loadGroupsForProfile(null);
     renderGroupsUi();
+    if (MENU_OPEN && MENU_ACTIVE_TAB === 'info') ensureInfoUi();
     return false;
   }
   if (CURRENT_PROFILE_KEY && CURRENT_PROFILE_KEY !== key) {
+    resetDownloadQueueState({ clearFailures: true });
     PG_POSTS = null;
     PG_ID_MAP = null;
     PG_TOTAL = null;
@@ -1713,6 +2150,7 @@ function handleProfileContextChange(){
   CURRENT_PROFILE_KEY = key;
   loadGroupsForProfile(key);
   renderGroupsUi();
+  if (MENU_OPEN && MENU_ACTIVE_TAB === 'info') ensureInfoUi();
   return true;
 }
 
@@ -2010,7 +2448,6 @@ function setHudItemVisible(id, visible) {
 function syncHudElementVisibility() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   setHudItemVisible('localGalleryBtn', opt.showLocalGalleryBtn !== false);
-  setHudItemVisible('downloadInfoBtn', opt.showDownloadInfoBtn !== false);
   setHudItemVisible('downloadPostLinksBtn', opt.showDownloadPostLinksBtn === true);
   setHudItemVisible('galleryBtn', opt.showGalleryBtn !== false);
   setHudItemVisible('btnPageAll', opt.showPageBtn !== false);
@@ -2059,11 +2496,15 @@ function applyOptions() {
   TIMEOUT_RETRIES_ENABLED = opt.timeoutRetries !== false;
   STOP_BUTTON_CLEARS_QUEUE = opt.stopClearsQueue !== false;
   SHOW_PROGRESS_BAR = opt.showProgressBar !== false;
+  SHOW_GROUPS_SECTION = opt.showGroupsSection !== false;
 
   syncHudElementVisibility();
   syncDurationInputVisibility();
   syncProgressBarVisibility();
   syncDownloadModeSelect();
+  if (document.getElementById('pgMenuDownloadsBody')) {
+    renderDownloadsUi();
+  }
 
   if (prevDuration !== DURATION_FEATURE_ENABLED && DURATION_FEATURE_ENABLED) {
     if (PG_POSTS && PG_POSTS.length) {
@@ -2192,7 +2633,7 @@ function renderOptionsUi() {
 
     <div class="pg-opt-section">
       <div class="pg-opt-section-title">Downloads</div>
-      ${makeSelectRow('Download Mode', 'By queue (one archive) or by post (one archive per post).', 'pg_opt_downloadMode', DOWNLOAD_MODE_VALUES, opt.downloadMode || DEFAULT_OPTIONS.downloadMode)}
+      ${makeSelectRow('Download Mode', 'Archive by post/queue or loose files by post/queue.', 'pg_opt_downloadMode', DOWNLOAD_MODE_VALUES, opt.downloadMode || DEFAULT_OPTIONS.downloadMode)}
       ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
       ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
       ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
@@ -2204,7 +2645,6 @@ function renderOptionsUi() {
       <div class="pg-opt-section-title">HUD</div>
       <div class="pg-opt-block">
         ${makeCheckInline('Local Gallery', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
-        ${makeCheckInline('Download Info', 'pg_opt_showDownloadInfoBtn', opt.showDownloadInfoBtn !== false)}
         ${makeCheckInline('Download Post Links', 'pg_opt_showDownloadPostLinksBtn', opt.showDownloadPostLinksBtn === true)}
         ${makeCheckInline('Gallery', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
         ${makeCheckInline('Page', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
@@ -2214,6 +2654,7 @@ function renderOptionsUi() {
         ${makeCheckInline('Post input', 'pg_opt_showPostInput', opt.showPostInput !== false)}
         ${makeCheckInline('File input', 'pg_opt_showFileInput', opt.showFileInput !== false)}
         ${makeCheckInline('Progress bar', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
+        ${makeCheckInline('Groups section', 'pg_opt_showGroupsSection', opt.showGroupsSection !== false)}
       </div>
     </div>
   `;
@@ -2270,7 +2711,6 @@ function renderOptionsUi() {
   bindCheck('pg_opt_timeoutRetries', 'timeoutRetries');
   bindCheck('pg_opt_stopClearsQueue', 'stopClearsQueue');
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
-  bindCheck('pg_opt_showDownloadInfoBtn', 'showDownloadInfoBtn');
   bindCheck('pg_opt_showDownloadPostLinksBtn', 'showDownloadPostLinksBtn');
   bindCheck('pg_opt_showGalleryBtn', 'showGalleryBtn');
   bindCheck('pg_opt_showPageBtn', 'showPageBtn');
@@ -2280,6 +2720,7 @@ function renderOptionsUi() {
   bindCheck('pg_opt_showPostInput', 'showPostInput');
   bindCheck('pg_opt_showFileInput', 'showFileInput');
   bindCheck('pg_opt_showProgressBar', 'showProgressBar');
+  bindCheck('pg_opt_showGroupsSection', 'showGroupsSection');
 }
 
 function formatGroupDate(ts) {
@@ -2367,21 +2808,6 @@ function renderGroupsUi() {
   });
 }
 
-function renderKeybindsUi() {
-  const body = document.getElementById('pgMenuKeybindsBody');
-  if (!body) return;
-  const sections = KEYBINDS_SECTIONS.map(section => {
-    const items = section.items.map(item => `<li>${item}</li>`).join('');
-    return `
-      <div class="pg-keybinds-section">
-        <div class="pg-keybinds-title">${section.title}</div>
-        <ul class="pg-keybinds-list">${items}</ul>
-      </div>
-    `;
-  }).join('');
-  body.innerHTML = sections || '<div class="pg-options-note">No keybinds available.</div>';
-}
-
 function saveMenuTabScroll(tab) {
   const target = MENU_SCROLL_TARGETS[tab];
   if (!target) return;
@@ -2411,14 +2837,16 @@ function renderDownloadsUi() {
   if (hud) {
     body.appendChild(hud);
   }
-  const groupsWrap = document.createElement('div');
-  groupsWrap.className = 'pg-hud-section';
-  groupsWrap.innerHTML = `
-    <div class="pg-hud-title">Groups</div>
-    <div id="pgMenuGroupsBody"></div>
-  `;
-  body.appendChild(groupsWrap);
-  renderGroupsUi();
+  if (SHOW_GROUPS_SECTION) {
+    const groupsWrap = document.createElement('div');
+    groupsWrap.className = 'pg-hud-section';
+    groupsWrap.innerHTML = `
+      <div class="pg-hud-title">Groups</div>
+      <div id="pgMenuGroupsBody"></div>
+    `;
+    body.appendChild(groupsWrap);
+    renderGroupsUi();
+  }
 }
 
 function ensureDownloadsUi() {
@@ -2429,9 +2857,71 @@ function ensureDownloadsUi() {
   restoreMenuTabScroll('downloads');
 }
 
-function ensureKeybindsUi() {
-  renderKeybindsUi();
-  restoreMenuTabScroll('keybinds');
+function ensureQueueUi() {
+  renderQueueUi();
+  restoreMenuTabScroll('queue');
+}
+
+function ensureInfoUi() {
+  const body = document.getElementById('pgMenuInfoBody');
+  if (!body) return;
+  const token = ++INFO_RENDER_TOKEN;
+  body.innerHTML = '<div class="pg-options-note">Loading profile info...</div>';
+  restoreMenuTabScroll('info');
+  buildProfileInfoSnapshot().then(snapshot => {
+    if (token !== INFO_RENDER_TOKEN) return;
+    if (!document.getElementById('pgMenuInfoBody')) return;
+    if (!snapshot || snapshot.error) {
+      body.innerHTML = `<div class="pg-options-note">${snapshot && snapshot.error ? snapshot.error : 'Unable to load profile info.'}</div>`;
+      restoreMenuTabScroll('info');
+      return;
+    }
+
+    const s = snapshot.stats;
+    body.innerHTML = `
+      <div class="pg-options-note">This is the same information used by the info download file.</div>
+      <div class="pg-opt-section">
+        <div class="pg-opt-section-title">Summary</div>
+        <div class="pg-opt-row">
+          <div class="pg-opt-left"><div class="pg-opt-title">Profile</div><div class="pg-opt-hint">${s.service}</div></div>
+          <div class="pg-opt-right">${s.profileName}</div>
+        </div>
+        <div class="pg-opt-row">
+          <div class="pg-opt-left"><div class="pg-opt-title">Date Range</div><div class="pg-opt-hint">From first to latest post</div></div>
+          <div class="pg-opt-right">${s.firstPostDate} to ${s.lastPostDate}</div>
+        </div>
+        <div class="pg-opt-row">
+          <div class="pg-opt-left"><div class="pg-opt-title">Pages</div><div class="pg-opt-hint">Current index snapshot</div></div>
+          <div class="pg-opt-right">${s.totalPages}</div>
+        </div>
+        <div class="pg-opt-row">
+          <div class="pg-opt-left"><div class="pg-opt-title">Posts</div><div class="pg-opt-hint">Across indexed pages</div></div>
+          <div class="pg-opt-right">${s.totalPosts}</div>
+        </div>
+        <div class="pg-opt-row">
+          <div class="pg-opt-left"><div class="pg-opt-title">Files</div><div class="pg-opt-hint">Images / GIFs / Videos</div></div>
+          <div class="pg-opt-right">${s.totalFiles} / ${s.totalImages} (${s.totalGifs}) / ${s.totalVideos}</div>
+        </div>
+      </div>
+      <div class="pg-opt-section">
+        <div class="pg-opt-section-title">Document Preview</div>
+        <pre class="pg-info-preview" id="pgInfoPreview"></pre>
+      </div>
+      <div class="pg-group-actions">
+        <button type="button" id="pgInfoDownloadBtn">Download</button>
+      </div>
+    `;
+    const preview = document.getElementById('pgInfoPreview');
+    if (preview) preview.textContent = snapshot.lines.join('\n');
+    const downloadBtn = document.getElementById('pgInfoDownloadBtn');
+    if (downloadBtn) downloadBtn.addEventListener('click', () => handleDownloadInfo());
+    restoreMenuTabScroll('info');
+  }).catch(() => {
+    if (token !== INFO_RENDER_TOKEN) return;
+    if (!document.getElementById('pgMenuInfoBody')) return;
+    body.innerHTML = '<div class="pg-options-note">Unable to load profile info.</div>';
+    restoreMenuTabScroll('info');
+  });
 }
 
 function ensureErrorLogUi() {
@@ -2446,6 +2936,7 @@ function setMenuCollapsed(next) {
   card.classList.toggle('pg-collapsed', MENU_COLLAPSED);
   const btn = document.getElementById('pgMenuCollapseBtn');
   if (btn) btn.textContent = MENU_COLLAPSED ? '▸' : '▾';
+  saveMenuState();
 }
 
 function toggleMenuCollapsed() {
@@ -2457,6 +2948,7 @@ function setMenuTab(tabId) {
   if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
   MENU_ACTIVE_TAB = next;
   MENU_LAST_TAB = next;
+  saveMenuState();
 
   MENU_TAB_BUTTONS.forEach(btn => {
     const active = btn.dataset.tab === next;
@@ -2472,12 +2964,16 @@ function setMenuTab(tabId) {
     panel.setAttribute('aria-hidden', active ? 'false' : 'true');
   });
 
-  if (next === 'keybinds') {
-    ensureKeybindsUi();
-    return;
-  }
   if (next === 'downloads') {
     ensureDownloadsUi();
+    return;
+  }
+  if (next === 'queue') {
+    ensureQueueUi();
+    return;
+  }
+  if (next === 'info') {
+    ensureInfoUi();
     return;
   }
   if (next === 'errors') {
@@ -2494,27 +2990,34 @@ function clampMenuWindowPosition(desiredX, desiredY) {
   const width = rect.width || MENU_WINDOW_STATE.width || card.offsetWidth || 0;
   const height = rect.height || MENU_WINDOW_STATE.height || card.offsetHeight || 0;
   if (!width || !height) return;
-  const maxX = Math.max(8, window.innerWidth - width - 8);
-  const maxY = Math.max(8, window.innerHeight - height - 8);
-  let x = (typeof desiredX === 'number') ? desiredX : (typeof MENU_WINDOW_STATE.x === 'number' ? MENU_WINDOW_STATE.x : (window.innerWidth - width) / 2);
-  let y = (typeof desiredY === 'number') ? desiredY : (typeof MENU_WINDOW_STATE.y === 'number' ? MENU_WINDOW_STATE.y : (window.innerHeight - height) / 2);
-  x = Math.min(maxX, Math.max(8, x));
-  y = Math.min(maxY, Math.max(8, y));
+  const maxX = Math.max(MENU_DEFAULT_MARGIN, window.innerWidth - width - MENU_DEFAULT_MARGIN);
+  const maxY = Math.max(MENU_DEFAULT_MARGIN, window.innerHeight - height - MENU_DEFAULT_MARGIN);
+  let x;
+  if (typeof desiredX === 'number') x = desiredX;
+  else if (typeof MENU_WINDOW_STATE.x === 'number') x = MENU_WINDOW_STATE.x;
+  else x = window.innerWidth - width - MENU_DEFAULT_MARGIN;
+  let y;
+  if (typeof desiredY === 'number') y = desiredY;
+  else if (typeof MENU_WINDOW_STATE.y === 'number') y = MENU_WINDOW_STATE.y;
+  else y = MENU_DEFAULT_MARGIN;
+  x = Math.min(maxX, Math.max(MENU_DEFAULT_MARGIN, x));
+  y = Math.min(maxY, Math.max(MENU_DEFAULT_MARGIN, y));
   card.style.left = `${x}px`;
   card.style.top = `${y}px`;
   MENU_WINDOW_STATE.x = x;
   MENU_WINDOW_STATE.y = y;
   MENU_WINDOW_STATE.width = width;
   MENU_WINDOW_STATE.height = height;
+  saveMenuState();
 }
 
 function applyMenuWindowState() {
   const card = document.getElementById('pgMenuCard');
   if (!card) return;
   if (MENU_WINDOW_STATE.width) card.style.width = `${MENU_WINDOW_STATE.width}px`;
-  else card.style.removeProperty('width');
+  else card.style.width = `${MENU_DEFAULT_WIDTH}px`;
   if (MENU_WINDOW_STATE.height) card.style.height = `${MENU_WINDOW_STATE.height}px`;
-  else card.style.removeProperty('height');
+  else card.style.height = `${MENU_DEFAULT_HEIGHT}px`;
   clampMenuWindowPosition();
 }
 
@@ -2584,19 +3087,125 @@ function registerMenuWindow(card, header) {
   }
 }
 
+function registerMenuResizeHandles(card) {
+  if (!card || card.dataset.pgResizeReady) return;
+  card.dataset.pgResizeReady = '1';
+  const handles = [...card.querySelectorAll('.pg-menu-resize-handle[data-corner]')];
+  if (!handles.length) return;
+
+  let resizing = false;
+  let resizeCorner = 'se';
+  let resizePointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let startLeft = 0;
+  let startTop = 0;
+  let startWidth = 0;
+  let startHeight = 0;
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  const getSizeLimits = () => {
+    const cs = getComputedStyle(card);
+    const minWidth = Math.max(80, parseFloat(cs.minWidth) || 100);
+    const minHeight = Math.max(120, parseFloat(cs.minHeight) || 240);
+    const maxWidth = Math.max(minWidth, window.innerWidth - MENU_DEFAULT_MARGIN * 2);
+    const maxHeight = Math.max(minHeight, window.innerHeight - MENU_DEFAULT_MARGIN * 2);
+    return { minWidth, minHeight, maxWidth, maxHeight };
+  };
+
+  const onResizeMove = (ev) => {
+    if (!resizing) return;
+    ev.preventDefault();
+
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    const rightEdge = startLeft + startWidth;
+    const bottomEdge = startTop + startHeight;
+    const limits = getSizeLimits();
+
+    let width = startWidth;
+    let height = startHeight;
+    let left = startLeft;
+    let top = startTop;
+
+    if (resizeCorner.includes('e')) width = startWidth + dx;
+    if (resizeCorner.includes('w')) width = startWidth - dx;
+    width = clamp(width, limits.minWidth, limits.maxWidth);
+    left = resizeCorner.includes('w') ? (rightEdge - width) : startLeft;
+
+    if (resizeCorner.includes('s')) height = startHeight + dy;
+    if (resizeCorner.includes('n')) height = startHeight - dy;
+    height = clamp(height, limits.minHeight, limits.maxHeight);
+    top = resizeCorner.includes('n') ? (bottomEdge - height) : startTop;
+
+    const maxLeft = Math.max(MENU_DEFAULT_MARGIN, window.innerWidth - MENU_DEFAULT_MARGIN - width);
+    const maxTop = Math.max(MENU_DEFAULT_MARGIN, window.innerHeight - MENU_DEFAULT_MARGIN - height);
+    left = clamp(left, MENU_DEFAULT_MARGIN, maxLeft);
+    top = clamp(top, MENU_DEFAULT_MARGIN, maxTop);
+
+    card.style.width = `${width}px`;
+    card.style.height = `${height}px`;
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+    MENU_WINDOW_STATE.width = width;
+    MENU_WINDOW_STATE.height = height;
+    MENU_WINDOW_STATE.x = left;
+    MENU_WINDOW_STATE.y = top;
+  };
+
+  const stopResize = () => {
+    if (!resizing) return;
+    resizing = false;
+    document.removeEventListener('pointermove', onResizeMove);
+    document.removeEventListener('pointerup', stopResize);
+    document.removeEventListener('pointercancel', stopResize);
+    const activeHandle = handles.find(h => String(h.dataset.corner || '') === resizeCorner);
+    if (activeHandle && resizePointerId !== null) {
+      try { activeHandle.releasePointerCapture(resizePointerId); } catch {}
+    }
+    resizePointerId = null;
+    saveMenuState();
+  };
+
+  handles.forEach(handle => {
+    handle.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const rect = card.getBoundingClientRect();
+      resizing = true;
+      resizeCorner = String(handle.dataset.corner || 'se');
+      resizePointerId = ev.pointerId;
+      startX = ev.clientX;
+      startY = ev.clientY;
+      startLeft = rect.left;
+      startTop = rect.top;
+      startWidth = rect.width;
+      startHeight = rect.height;
+      try { handle.setPointerCapture(resizePointerId); } catch {}
+      document.addEventListener('pointermove', onResizeMove);
+      document.addEventListener('pointerup', stopResize);
+      document.addEventListener('pointercancel', stopResize);
+    });
+  });
+}
+
 function initMenuTabs() {
   const tabs = document.getElementById('pgMenuTabs');
   MENU_TAB_BUTTONS = tabs ? [...tabs.querySelectorAll('.pgMenuTabBtn')] : [];
   MENU_TAB_PANELS = {
     downloads: document.getElementById('pgMenuTabDownloads'),
+    queue: document.getElementById('pgMenuTabQueue'),
+    info: document.getElementById('pgMenuTabInfo'),
     options: document.getElementById('pgMenuTabOptions'),
-    keybinds: document.getElementById('pgMenuTabKeybinds'),
     errors: document.getElementById('pgMenuTabErrors')
   };
   MENU_SCROLL_TARGETS = {
     downloads: document.getElementById('pgMenuDownloadsBody'),
+    queue: document.getElementById('pgMenuQueueBody'),
+    info: document.getElementById('pgMenuInfoBody'),
     options: document.getElementById('pgMenuOptionsBody'),
-    keybinds: document.getElementById('pgMenuKeybindsBody'),
     errors: document.getElementById('pgMenuErrorBody')
   };
   MENU_TAB_BUTTONS.forEach(btn => {
@@ -2612,13 +3221,14 @@ function buildMenu() {
   const overlay = document.createElement('div');
   overlay.id = 'pgMenuOverlay';
   overlay.innerHTML = `
-    <div id="pgMenuCard" role="dialog" aria-modal="true" aria-label="Menu">
+    <div id="pgMenuCard" role="dialog" aria-modal="true" aria-label="PartyGuest">
       <div id="pgMenuHeader">
-        <div class="title">Menu</div>
+        <div class="title">PartyGuest</div>
         <div id="pgMenuTabs" role="tablist" aria-label="Menu tabs">
           <button type="button" class="pgMenuTabBtn" data-tab="downloads" role="tab" aria-controls="pgMenuTabDownloads">Downloads</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="queue" role="tab" aria-controls="pgMenuTabQueue">Queue</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="info" role="tab" aria-controls="pgMenuTabInfo">Info</button>
           <button type="button" class="pgMenuTabBtn" data-tab="options" role="tab" aria-controls="pgMenuTabOptions">Options</button>
-          <button type="button" class="pgMenuTabBtn" data-tab="keybinds" role="tab" aria-controls="pgMenuTabKeybinds">Keybinds</button>
           <button type="button" class="pgMenuTabBtn" data-tab="errors" role="tab" aria-controls="pgMenuTabErrors">Error Log</button>
         </div>
         <button id="pgMenuCollapseBtn" type="button" aria-label="Collapse menu">▾</button>
@@ -2626,6 +3236,12 @@ function buildMenu() {
       <div id="pgMenuBody">
         <section id="pgMenuTabDownloads" class="pgMenuTabPanel" data-tab="downloads" role="tabpanel">
           <div id="pgMenuDownloadsBody"></div>
+        </section>
+        <section id="pgMenuTabQueue" class="pgMenuTabPanel" data-tab="queue" role="tabpanel">
+          <div id="pgMenuQueueBody"></div>
+        </section>
+        <section id="pgMenuTabInfo" class="pgMenuTabPanel" data-tab="info" role="tabpanel">
+          <div id="pgMenuInfoBody"></div>
         </section>
         <section id="pgMenuTabOptions" class="pgMenuTabPanel" data-tab="options" role="tabpanel">
           <div id="pgMenuOptionsBody"></div>
@@ -2637,13 +3253,14 @@ function buildMenu() {
             </div>
           </div>
         </section>
-        <section id="pgMenuTabKeybinds" class="pgMenuTabPanel" data-tab="keybinds" role="tabpanel">
-          <div id="pgMenuKeybindsBody"></div>
-        </section>
         <section id="pgMenuTabErrors" class="pgMenuTabPanel" data-tab="errors" role="tabpanel">
           <div id="pgMenuErrorBody"></div>
         </section>
       </div>
+      <div class="pg-menu-resize-handle pg-menu-resize-nw" data-corner="nw" aria-hidden="true"></div>
+      <div class="pg-menu-resize-handle pg-menu-resize-ne" data-corner="ne" aria-hidden="true"></div>
+      <div class="pg-menu-resize-handle pg-menu-resize-sw" data-corner="sw" aria-hidden="true"></div>
+      <div class="pg-menu-resize-handle pg-menu-resize-se" data-corner="se" aria-hidden="true"></div>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -2660,6 +3277,7 @@ function buildMenu() {
   const menuCard = document.getElementById('pgMenuCard');
   const menuHeader = document.getElementById('pgMenuHeader');
   registerMenuWindow(menuCard, menuHeader);
+  registerMenuResizeHandles(menuCard);
   initMenuTabs();
   if (document.getElementById('partyHUD')) {
     ensureDownloadsUi();
@@ -2667,7 +3285,7 @@ function buildMenu() {
 
   if (menuCard && !menuCard.dataset.pgScrollGuard) {
     menuCard.dataset.pgScrollGuard = '1';
-    const scrollSelector = '#pgMenuDownloadsBody, #pgMenuOptionsBody, #pgMenuKeybindsBody, #pgMenuErrorBody';
+    const scrollSelector = '#pgMenuDownloadsBody, #pgMenuQueueBody, #pgMenuInfoBody, #pgMenuOptionsBody, #pgMenuErrorBody';
     const findScroller = target => {
       if (!target || !target.closest) return null;
       return target.closest(scrollSelector);
@@ -2727,10 +3345,10 @@ function openMenu(tabId) {
   document.documentElement.classList.add('pg-menu-open');
   document.body.classList.add('pg-menu-open');
   requestAnimationFrame(() => applyMenuWindowState());
-  setMenuCollapsed(false);
+  setMenuCollapsed(MENU_COLLAPSED);
   const next = MENU_TAB_IDS.includes(tabId)
     ? tabId
-    : (MENU_HAS_OPENED ? MENU_LAST_TAB : 'downloads');
+    : (MENU_TAB_IDS.includes(MENU_LAST_TAB) ? MENU_LAST_TAB : 'downloads');
   MENU_HAS_OPENED = true;
   setMenuTab(next);
 }
@@ -2776,7 +3394,6 @@ function buildHUD() {
       <div class="pg-hud-title">Controls</div>
       <div id="hudRow" class="hud-row">
         <button id="dlBtn" class="full">Download</button>
-        <button id="downloadInfoBtn" class="full">Download Info</button>
         <button id="downloadPostLinksBtn" class="full">Download Post Links</button>
         <button id="galleryBtn" class="full">Gallery</button>
         <button id="localGalleryBtn" class="full">Local Gallery</button>
@@ -2788,6 +3405,7 @@ function buildHUD() {
       <div id="hudFilters" class="hud-filters">
         <button id="btnMedia" class="full">All</button>
         <button id="btnPageAll">Page</button>
+        <button id="clearFiltersBtn">Clear Filters</button>
         <input id="fPages" type="text" placeholder="Page">
         <input id="fPosts" type="text" placeholder="Post">
         <input id="fFiles" type="text" placeholder="File">
@@ -2798,9 +3416,6 @@ function buildHUD() {
   document.body.appendChild(w);
 
   $('#dlBtn').onclick = handleDlBtn;
-
-  const downloadInfoBtn = $('#downloadInfoBtn');
-  if (downloadInfoBtn) downloadInfoBtn.onclick = handleDownloadInfo;
 
   const downloadPostLinksBtn = $('#downloadPostLinksBtn');
   if (downloadPostLinksBtn) downloadPostLinksBtn.onclick = handleDownloadPostLinks;
@@ -2832,6 +3447,8 @@ function buildHUD() {
 
   const btnPageAll = $('#btnPageAll');
   if (btnPageAll) btnPageAll.onclick = handlePageAllBtn;
+  const clearFiltersBtn = $('#clearFiltersBtn');
+  if (clearFiltersBtn) clearFiltersBtn.onclick = handleClearFilters;
 
   const postsInput = $('#fPosts');
   if (postsInput) postsInput.addEventListener('input', () => {
@@ -2865,6 +3482,62 @@ function buildHUD() {
   if (handleProfileContextChange()) {
     scheduleFilter();
   }
+}
+
+function normalizeDownloadUrl(raw) {
+  if (!raw) return '';
+  let u = String(raw || '').trim();
+  if (!u) return '';
+  if (u.includes('&amp;')) u = u.replace(/&amp;/g, '&');
+  try { return new URL(u, location.origin).href; } catch {}
+  try { return new URL(encodeURI(u), location.origin).href; } catch {}
+  return u;
+}
+
+function sanitizeFileNameStrict(raw, fallback) {
+  let s = String(raw || '').normalize('NFC');
+  s = s.replace(/\uFFFD/g, '');
+  s = s.replace(/[\uD800-\uDFFF]/g, '');
+  s = s.replace(/[\x00-\x1F\x7F]/g, '');
+  s = s.replace(/[^A-Za-z0-9 .]+/g, '');
+  s = s.trim();
+  return s || (fallback || 'download');
+}
+
+function sanitizeDownloadPathForSave(rawPath) {
+  const fallbackLeaf = 'download';
+  const parts = String(rawPath || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean);
+  if (!parts.length) return fallbackLeaf;
+  const clean = parts.map((seg, idx) => {
+    return sanitizeFileNameStrict(seg, idx === parts.length - 1 ? fallbackLeaf : 'folder');
+  });
+  return clean.join('/');
+}
+
+function getUrlExt(u) {
+  const raw = normalizeDownloadUrl(u);
+  if (!raw) return '';
+  try {
+    const url = new URL(raw, location.origin);
+    const path = url.pathname || '';
+    const dot = path.lastIndexOf('.');
+    if (dot >= 0 && dot < path.length - 1) {
+      const ext = path.slice(dot + 1).toLowerCase();
+      return ext.replace(/[^a-z0-9]+/gi, '');
+    }
+    const f = url.searchParams.get('f');
+    if (f) {
+      const fDot = f.lastIndexOf('.');
+      if (fDot >= 0 && fDot < f.length - 1) {
+        const ext = f.slice(fDot + 1).toLowerCase();
+        return ext.replace(/[^a-z0-9]+/gi, '');
+      }
+    }
+  } catch {}
+  return '';
 }
 
 function allowedUrl(u) {
@@ -2932,6 +3605,7 @@ function extractPostPageFileUrls(doc, allowAll) {
     if (!url || url.startsWith('blob:') || url.startsWith('data:')) return;
     let abs = '';
     try { abs = new URL(url, location.origin).href; } catch { return; }
+    abs = normalizeDownloadUrl(abs);
     if (!allowAll && !allowedUrl(abs)) return;
     const key = normalizeFileUrl(abs) || abs;
     if (seen.has(key)) return;
@@ -2944,11 +3618,19 @@ function extractPostPageFileUrls(doc, allowAll) {
 function resolveFileUrl(obj) {
   if (!obj) return null;
   if (obj.path) {
-    const p = obj.path.startsWith('/') ? obj.path : ('/' + obj.path);
-    if (obj.path.startsWith('http')) return obj.path;
-    return dataRoot + p;
+    const raw = String(obj.path || '').trim();
+    if (/^https?:\/\//i.test(raw)) return normalizeDownloadUrl(raw);
+    if (raw.startsWith('//')) return location.protocol + raw;
+    if (raw.startsWith('/data/')) return location.origin + raw;
+    if (raw.startsWith('data/')) return location.origin + '/' + raw;
+    if (raw.startsWith('/')) return location.origin + raw;
+    return normalizeDownloadUrl(dataRoot + '/' + raw);
   }
-  if (obj.url && obj.url.startsWith('http')) return obj.url;
+  if (obj.url) {
+    const rawUrl = String(obj.url || '').trim();
+    if (/^https?:\/\//i.test(rawUrl)) return normalizeDownloadUrl(rawUrl);
+    if (rawUrl.startsWith('//')) return location.protocol + rawUrl;
+  }
   return null;
 }
 
@@ -2995,7 +3677,9 @@ function getCounts() {
 }
 
 function getDownloadSummaryUnit() {
-  return (DOWNLOAD_MODE === 'post') ? 'posts' : 'queues';
+  if (DOWNLOAD_MODE === 'post') return 'posts';
+  if (DOWNLOAD_MODE === 'queue_flat') return 'queues';
+  return 'files';
 }
 
 let uiScheduled = false;
@@ -3007,6 +3691,7 @@ function updateHUD() {
   uiScheduled = false;
 
   const { total, completed, downloading, queued } = getCounts();
+  const failed = FAILED_ITEMS.length;
   const percent = total ? Math.round((completed / total) * 100) : 0;
   const pct = Math.max(0, Math.min(100, percent));
 
@@ -3026,11 +3711,12 @@ function updateHUD() {
     const retries = lastDropNoteCount || 0;
     const totalItems = total || 0;
     const unit = getDownloadSummaryUnit();
-    dlSummaryEl.textContent = `${totalItems} ${unit} total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${retries} Retries`;
+    dlSummaryEl.textContent = `${totalItems} ${unit} total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${failed} Failed • ${retries} Retries`;
   }
 
   syncFilterBoxVisibility();
   syncProgressBarVisibility();
+  renderQueueUi();
 }
 
 function scheduleHUD() {
@@ -3136,6 +3822,7 @@ function buildQueueArchiveItem(files, userFolder, queueFolder, retryKey, meta, m
   if (!Array.isArray(files) || files.length === 0) return null;
   let mode = modeOverride || DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
   if (mode === 'post') mode = 'queue_flat';
+  if (mode === 'loose_post' || mode === 'loose_queue') mode = 'queue_flat';
   const queueFolderSafe = queueFolder || 'post';
   const archiveName = buildArchiveName(userFolder, queueFolderSafe);
   return {
@@ -3211,31 +3898,13 @@ function buildPostPageDownloadItems(doc, postUrl) {
     published: meta.published || null
   };
 
-  const files = [];
-  let userFolder = '';
-  let postFolder = '';
+  const objs = [];
   urls.forEach((url, idx) => {
     const fileObj = { path: url };
     const name = formatFilename(post, fileObj, idx + 1, gIndex);
-    const parts = splitDownloadPath(name);
-    if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
-    if (!postFolder && parts.postFolder) postFolder = parts.postFolder;
-    files.push({ url, name, fileIndex: idx + 1, postFolder: parts.postFolder });
+    objs.push({ url, name, meta: { post, globalIndex: gIndex } });
   });
-  if (!files.length) return { objs: [], count: 0 };
-  const archiveName = buildArchiveName(userFolder, postFolder);
-  const retryKey = postId ? `post:${postId}` : `${userFolder}/${postFolder || 'post'}`;
-  const objs = [{
-    url: files[0].url,
-    name: archiveName,
-    meta: { post, globalIndex: gIndex },
-    files,
-    userFolder,
-    postFolder,
-    retryKey,
-    archiveMode: 'post'
-  }];
-  return { objs, count: files.length };
+  return { objs, count: objs.length };
 }
 
 function handlePostPageDownload(doc, postUrl) {
@@ -3247,22 +3916,78 @@ function handlePostPageDownload(doc, postUrl) {
   enqueueItems(res.objs);
   startQueueIfIdle();
   const n = res.count || 0;
-  setStatus(`Queued post archive (${n} file${n === 1 ? '' : 's'})`, 'success');
+  setStatus(`Queued post files (${n} file${n === 1 ? '' : 's'})`, 'success');
 }
 
 function maybeFinishBatch() {
-  const { total, completed, downloading, queued } = getCounts();
-  if (total > 0 && completed === total && downloading === 0 && queued === 0) {
+  const { downloading, queued } = getCounts();
+  if (downloading === 0 && queued === 0) {
     DL_ACTIVE = false;
     dl.started = false;
     const b = $('#dlBtn'); if (b) { b.classList.remove('stop'); b.textContent = 'Download'; }
   }
 }
 
-function fetchBlob(url, onprogress, timeoutMs, handles) {
+async function fetchBlobNative(url, timeoutMs, handles) {
+  const controller = new AbortController();
+  const handle = { abort: () => controller.abort() };
+  let timer = null;
+  const u = normalizeDownloadUrl(url);
+  if (handles) handles.add(handle);
+  if (timeoutMs && timeoutMs > 0) {
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+  }
+  try {
+    const resp = await fetch(u, {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      signal: controller.signal
+    });
+    if (!resp || !resp.ok) {
+      throw {
+        stage: 'fetch-native-http',
+        status: resp ? resp.status : 0,
+        statusText: resp ? (resp.statusText || '') : '',
+        url: u
+      };
+    }
+    const blob = await resp.blob();
+    if (!(blob instanceof Blob) || blob.size === 0) {
+      throw {
+        stage: 'fetch-native-empty',
+        details: 'empty blob',
+        url: u
+      };
+    }
+    return blob;
+  } catch (err) {
+    if (err && typeof err === 'object' && err.stage) throw err;
+    if (err && err.name === 'AbortError') {
+      throw {
+        stage: 'fetch-native-timeout',
+        error: 'abort',
+        message: err.message || 'aborted',
+        url: u
+      };
+    }
+    throw {
+      stage: 'fetch-native',
+      error: err && err.name ? String(err.name) : 'native fetch failed',
+      message: err && err.message ? String(err.message) : '',
+      url: u
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (handles) handles.delete(handle);
+  }
+}
+
+function fetchBlobGM(url, onprogress, timeoutMs, handles) {
   return new Promise((resolve, reject) => {
     let settled = false;
     let handle = null;
+    const u = normalizeDownloadUrl(url);
     const finalize = (ok, payload) => {
       if (settled) return;
       settled = true;
@@ -3271,28 +3996,73 @@ function fetchBlob(url, onprogress, timeoutMs, handles) {
     };
     handle = GM_xmlhttpRequest({
       method: 'GET',
-      url,
-      headers: { Referer: location.href, Accept: 'text/css' },
+      url: u,
       responseType: 'blob',
       timeout: timeoutMs || 0,
       onprogress: evt => { if (typeof onprogress === 'function') onprogress(evt); },
       onload: resp => {
-        if (resp && resp.status >= 200 && resp.status < 300 && resp.response) {
+        const status = resp && typeof resp.status === 'number' ? resp.status : 0;
+        if (status < 200 || status >= 300) {
+          finalize(false, {
+            stage: 'fetch-gm-http',
+            status,
+            statusText: resp && resp.statusText ? String(resp.statusText) : '',
+            url: u
+          });
+          return;
+        }
+        if (resp && resp.response instanceof Blob && resp.response.size > 0) {
           finalize(true, resp.response);
         } else {
-          finalize(false, resp);
+          finalize(false, {
+            stage: 'fetch-gm-empty',
+            status,
+            statusText: resp && resp.statusText ? String(resp.statusText) : '',
+            details: 'empty blob',
+            url: u
+          });
         }
       },
-      onerror: err => finalize(false, err),
-      ontimeout: err => finalize(false, err)
+      onerror: err => finalize(false, {
+        stage: 'fetch-gm-network',
+        error: err && err.error ? String(err.error) : 'gm request error',
+        message: err && err.message ? String(err.message) : '',
+        url: u
+      }),
+      ontimeout: () => finalize(false, {
+        stage: 'fetch-gm-timeout',
+        error: 'timeout',
+        url: u
+      })
     });
     if (handles && handle) handles.add(handle);
   });
 }
 
+async function fetchBlob(url, onprogress, timeoutMs, handles) {
+  let nativeErr = null;
+  try {
+    return await fetchBlobNative(url, timeoutMs, handles);
+  } catch (err) {
+    nativeErr = err;
+  }
+  try {
+    return await fetchBlobGM(url, onprogress, timeoutMs, handles);
+  } catch (gmErr) {
+    throw {
+      stage: 'fetch-failed',
+      details: 'native and GM fetch failed',
+      url: normalizeDownloadUrl(url),
+      native: nativeErr,
+      fallback: gmErr
+    };
+  }
+}
+
 function startPostArchiveDownload(item) {
   const name = item.name;
   const files = Array.isArray(item.files) ? item.files : [];
+  const totalFiles = files.length;
   const retryKey = getRetryKey(item);
   const archiveMode = item.archiveMode || 'post';
   let settled = false;
@@ -3301,6 +4071,13 @@ function startPostArchiveDownload(item) {
   let tIdle = null;
   const handles = new Set();
   item._handles = handles;
+  item.lastErrorUrl = '';
+  clearQueueItemProgress(item);
+  setQueueItemProgress(item, {
+    pct: 0,
+    label: totalFiles ? `Fetching files 0/${totalFiles}` : 'Preparing archive...',
+    indeterminate: !totalFiles
+  });
 
   const clearWatchers = () => {
     if (tTotal) {
@@ -3328,10 +4105,11 @@ function startPostArchiveDownload(item) {
   const handleFailure = (reason, err) => {
     if (settled) return;
     settled = true;
+    if (err && typeof err === 'object' && err.url && isLikelyHttpUrl(err.url)) {
+      item.lastErrorUrl = err.url;
+    }
     abortHandles();
     clearWatchers();
-
-    logDownloadError(item, reason || 'Download failed', err);
 
     const prev = retryMap[retryKey] || 0;
     const n = prev + 1;
@@ -3340,11 +4118,35 @@ function startPostArchiveDownload(item) {
     lastDropNoteAt = Date.now();
     lastDropNoteCount++;
 
+    if (n >= MAX_RETRIES) {
+      clearQueueItemProgress(item);
+      logDownloadError(item, `Retry ceiling reached (${n}/${MAX_RETRIES})`, err);
+      logFailedItem(item, reason || 'Download failed', err, n);
+      item.status = 'failed';
+      const prevTimer = cooldownTimers.get(retryKey);
+      if (prevTimer) clearTimeout(prevTimer);
+      cooldownTimers.delete(retryKey);
+      delete retryMap[retryKey];
+      const idx = dl.items.indexOf(item);
+      if (idx >= 0) dl.items.splice(idx, 1);
+      scheduleHUD();
+      maybeFinishBatch();
+      setTimeout(requestDispatch, 0);
+      return;
+    }
+
+    logDownloadError(item, reason || 'Download failed', err);
+
     const level = Math.min(n, MAX_RETRIES);
     const backoff = BACKOFF_BASE * Math.pow(2, level - 1) + Math.floor(Math.random() * 500);
 
     item.status = 'queued';
     item.nextAt = Date.now() + backoff;
+    setQueueItemProgress(item, {
+      pct: 0,
+      label: `Retrying in ${Math.ceil(backoff / 1000)}s`,
+      indeterminate: true
+    });
 
     const prevTimer = cooldownTimers.get(retryKey);
     if (prevTimer) clearTimeout(prevTimer);
@@ -3367,7 +4169,7 @@ function startPostArchiveDownload(item) {
   };
 
   if (!JSZip || typeof JSZip !== 'function') {
-    handleFailure('JSZip missing');
+    handleFailure('Archive packer missing', { stage: 'archive-init', error: 'JSZip missing' });
     return;
   }
 
@@ -3381,22 +4183,24 @@ function startPostArchiveDownload(item) {
   const idleMs = files.some(file => vidRE.test((file && file.url) || '')) ? STALL_VID_IDLE_MS : STALL_IMG_IDLE_MS;
   tTotal = setTimeout(() => {
     if (!TIMEOUT_RETRIES_ENABLED) return;
-    handleFailure('Download timeout');
+    handleFailure('Archive download timeout', { stage: 'archive-timeout' });
   }, totalMs);
   tIdle = setInterval(() => {
     if (!TIMEOUT_RETRIES_ENABLED) return;
-    if (Date.now() - lastProgressAt > idleMs) handleFailure('Download stalled');
+    if (Date.now() - lastProgressAt > idleMs) handleFailure('Archive download stalled', { stage: 'archive-stalled' });
   }, 2000);
 
   (async () => {
     const zip = new JSZip();
     let added = 0;
+    let failedFiles = 0;
     const fetchLimit = Math.max(1, Math.min(ARCHIVE_FETCH_CAP, PARALLEL_DOWNLOAD_LIMIT || 1));
     let cursor = 0;
     const downloadOne = async (file) => {
       if (settled) return;
-      const url = file && file.url;
+      const url = normalizeDownloadUrl(file && file.url);
       if (!url) return;
+      item.lastErrorUrl = url;
       const maxRetries = Math.max(0, MAX_RETRIES);
       const maxAttempts = maxRetries + 1;
       let attempt = 0;
@@ -3425,11 +4229,20 @@ function startPostArchiveDownload(item) {
           const zipPath = `${groupFolder ? `${groupFolder}/` : ''}${postFolder ? `${postFolder}/` : ''}${fileName}`;
           zip.file(zipPath, blob);
           added++;
+          if (totalFiles > 0) {
+            const fetchPct = Math.round((added / totalFiles) * 70);
+            setQueueItemProgress(item, {
+              pct: fetchPct,
+              label: `Fetching files ${added}/${totalFiles}`,
+              indeterminate: false
+            });
+          }
           return;
         } catch (err) {
+          item.lastErrorUrl = url;
           const label = { url, name: file && file.name ? file.name : url };
           if (attempt <= maxRetries) {
-            logDownloadError(label, `Download error (retrying ${attempt}/${maxRetries})`, err);
+            logDownloadError(label, `Archive file fetch retry (${attempt}/${maxRetries})`, err);
             lastDropNoteAt = Date.now();
             lastDropNoteCount++;
             scheduleHUD();
@@ -3438,7 +4251,8 @@ function startPostArchiveDownload(item) {
             await new Promise(res => setTimeout(res, backoff));
             continue;
           }
-          logDownloadError(label, 'Download error', err);
+          failedFiles++;
+          logDownloadError(label, 'Archive file fetch failed', err);
           return;
         }
       }
@@ -3459,21 +4273,84 @@ function startPostArchiveDownload(item) {
 
     if (settled) return;
     if (!added) {
-      handleFailure('No files downloaded');
+      handleFailure('All archive files failed', {
+        stage: 'archive-fetch',
+        details: `${failedFiles}/${files.length} files failed`
+      });
       return;
     }
 
-    let zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
-    const zipUrl = URL.createObjectURL(zipBlob);
+    if (failedFiles > 0) {
+      logDownloadError(item, `Archive partial (${failedFiles} file(s) failed)`, {
+        stage: 'archive-partial',
+        details: `${added}/${files.length} files included`
+      });
+    }
 
+    let zipBlob;
+    try {
+      setQueueItemProgress(item, {
+        pct: 70,
+        label: 'Building archive 0%',
+        indeterminate: false
+      });
+      zipBlob = await zip.generateAsync(
+        { type: 'blob', compression: 'STORE' },
+        (meta) => {
+          const packPctRaw = meta && typeof meta.percent === 'number' ? meta.percent : 0;
+          const packPct = Math.max(0, Math.min(100, Math.round(packPctRaw)));
+          const stagePct = 70 + Math.round((packPct / 100) * 25);
+          setQueueItemProgress(item, {
+            pct: stagePct,
+            label: `Building archive ${packPct}%`,
+            indeterminate: false
+          });
+        }
+      );
+    } catch (err) {
+      handleFailure('Archive build failed', {
+        stage: 'archive-build',
+        error: err && err.name ? String(err.name) : 'zip generation failed',
+        message: err && err.message ? String(err.message) : ''
+      });
+      return;
+    }
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const saveName = sanitizeDownloadPathForSave(name || 'archive.zip');
+    setQueueItemProgress(item, {
+      pct: 95,
+      label: 'Saving archive...',
+      indeterminate: true
+    });
     const handle = GM_download({
       url: zipUrl,
-      name,
+      name: saveName,
+      onprogress: (evt) => {
+        lastProgressAt = Date.now();
+        const loaded = evt && typeof evt.loaded === 'number' ? evt.loaded : 0;
+        const total = evt && typeof evt.total === 'number' ? evt.total : 0;
+        if (total > 0) {
+          const donePct = Math.max(0, Math.min(100, Math.round((loaded / total) * 100)));
+          const stagePct = 95 + Math.round((donePct / 100) * 4);
+          setQueueItemProgress(item, {
+            pct: stagePct,
+            label: `Saving archive ${donePct}%`,
+            indeterminate: false
+          });
+        } else {
+          setQueueItemProgress(item, {
+            pct: 95,
+            label: 'Saving archive...',
+            indeterminate: true
+          });
+        }
+      },
       onload: () => {
         if (settled) return;
         settled = true;
         clearWatchers();
         try { URL.revokeObjectURL(zipUrl); } catch {}
+        setQueueItemProgress(item, { pct: 100, label: 'Done', indeterminate: false });
         item.status = 'done';
         scheduleHUD();
         setTimeout(requestDispatch, SPAWN_DELAY + Math.floor(Math.random() * 200));
@@ -3481,11 +4358,35 @@ function startPostArchiveDownload(item) {
       },
       onerror: err => {
         try { URL.revokeObjectURL(zipUrl); } catch {}
-        handleFailure('Download error', err);
+        handleFailure('Archive save failed', Object.assign({
+          stage: 'archive-save',
+          details: saveName
+        }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') }));
       }
     });
     item._handle = handle;
-  })().catch(err => handleFailure('Download error', err));
+  })().catch(err => handleFailure('Archive pipeline failed', Object.assign({
+    stage: 'archive-pipeline'
+  }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') })));
+}
+
+function buildLooseItemsForPost(kp) {
+  const out = [];
+  if (!kp || !kp.post || !Array.isArray(kp.allowedFiles) || !kp.allowedFiles.length) return out;
+  const { post, allowedFiles, globalIndex } = kp;
+  allowedFiles.forEach(fileInfo => {
+    if (!fileInfo || !fileInfo.url) return;
+    const ref = fileInfo.url;
+    const fileObj = { path: ref };
+    const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+    out.push({
+      url: ref,
+      name,
+      meta: { post, globalIndex },
+      retryKey: ref
+    });
+  });
+  return out;
 }
 
 function startDownload(item) {
@@ -3501,6 +4402,12 @@ function startDownload(item) {
   let settled = false;
   let tTotal = null;
   let tIdle = null;
+  clearQueueItemProgress(item);
+  setQueueItemProgress(item, {
+    pct: 0,
+    label: 'Starting download...',
+    indeterminate: true
+  });
 
   const clearWatchers = () => {
     if (tTotal) {
@@ -3519,8 +4426,6 @@ function startDownload(item) {
     try { if (item._handle && typeof item._handle.abort === 'function') item._handle.abort(); } catch {}
     clearWatchers();
 
-    logDownloadError(item, reason || 'Download failed', err);
-
     const retryKey = getRetryKey(item);
     const prev = retryMap[retryKey] || 0;
     const n = prev + 1;
@@ -3529,11 +4434,35 @@ function startDownload(item) {
     lastDropNoteAt = Date.now();
     lastDropNoteCount++;
 
+    if (n >= MAX_RETRIES) {
+      clearQueueItemProgress(item);
+      logDownloadError(item, `Retry ceiling reached (${n}/${MAX_RETRIES})`, err);
+      logFailedItem(item, reason || 'Download failed', err, n);
+      item.status = 'failed';
+      const prevTimer = cooldownTimers.get(retryKey);
+      if (prevTimer) clearTimeout(prevTimer);
+      cooldownTimers.delete(retryKey);
+      delete retryMap[retryKey];
+      const idx = dl.items.indexOf(item);
+      if (idx >= 0) dl.items.splice(idx, 1);
+      scheduleHUD();
+      maybeFinishBatch();
+      setTimeout(requestDispatch, 0);
+      return;
+    }
+
+    logDownloadError(item, reason || 'Download failed', err);
+
     const level = Math.min(n, MAX_RETRIES);
     const backoff = BACKOFF_BASE * Math.pow(2, level - 1) + Math.floor(Math.random() * 500);
 
     item.status = 'queued';
     item.nextAt = Date.now() + backoff;
+    setQueueItemProgress(item, {
+      pct: 0,
+      label: `Retrying in ${Math.ceil(backoff / 1000)}s`,
+      indeterminate: true
+    });
 
     const prevTimer = cooldownTimers.get(retryKey);
     if (prevTimer) clearTimeout(prevTimer);
@@ -3557,29 +4486,54 @@ function startDownload(item) {
 
   tTotal = setTimeout(() => {
     if (!TIMEOUT_RETRIES_ENABLED) return;
-    handleFailure('Download timeout');
+    handleFailure('Direct download timeout', { stage: 'direct-timeout', url: item && item.url ? item.url : '' });
   }, totalMs);
   tIdle = setInterval(() => {
     if (!TIMEOUT_RETRIES_ENABLED) return;
-    if (Date.now() - lastProgressAt > idleMs) handleFailure('Download stalled');
+    if (Date.now() - lastProgressAt > idleMs) handleFailure('Direct download stalled', { stage: 'direct-stalled', url: item && item.url ? item.url : '' });
   }, 2000);
 
+  const saveName = sanitizeDownloadPathForSave(name || getDownloadLabel(item));
   const handle = GM_download({
-    url: item.url,
-    name,
-    headers: { Referer: location.href, Accept: 'text/css' },
+    url: normalizeDownloadUrl(item.url),
+    name: saveName,
     timeout: 0,
-    onprogress: () => { lastProgressAt = Date.now(); },
+    onprogress: (evt) => {
+      lastProgressAt = Date.now();
+      const loaded = evt && typeof evt.loaded === 'number' ? evt.loaded : 0;
+      const total = evt && typeof evt.total === 'number' ? evt.total : 0;
+      if (total > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((loaded / total) * 100)));
+        setQueueItemProgress(item, {
+          pct,
+          label: `${formatByteSize(loaded)} / ${formatByteSize(total)} (${pct}%)`,
+          indeterminate: false
+        });
+      } else {
+        setQueueItemProgress(item, {
+          pct: 0,
+          label: `${formatByteSize(loaded)} downloaded`,
+          indeterminate: true
+        });
+      }
+    },
     onload: () => {
       if (settled) return;
       settled = true;
       clearWatchers();
+      setQueueItemProgress(item, { pct: 100, label: 'Done', indeterminate: false });
       item.status = 'done';
       scheduleHUD();
       setTimeout(requestDispatch, SPAWN_DELAY + Math.floor(Math.random() * 200));
       maybeFinishBatch();
     },
-    onerror: (err) => handleFailure('Download error', err)
+    onerror: (err) => {
+      handleFailure('Direct download failed', Object.assign({
+        stage: 'direct-save',
+        url: item && item.url ? item.url : '',
+        details: saveName
+      }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') }));
+    }
   });
   item._handle = handle;
 }
@@ -3684,6 +4638,8 @@ function formatFilename(post, fileObj, index, globalIndex) {
   const user = post.user || userName();
   const sanitizeUserFolder = s => {
     s = (s || '').normalize('NFC');
+    s = s.replace(/\uFFFD/g, '');
+    s = s.replace(/[\uD800-\uDFFF]/g, '');
     s = s.replace(/\s+/g, '_');
     s = s.replace(/[\\/:*?"<>|]+/g, '');
     s = s.replace(/[\x00-\x1F\x7F]/g, '');
@@ -3692,6 +4648,8 @@ function formatFilename(post, fileObj, index, globalIndex) {
   };
   const sanitizeNamePart = s => {
     s = (s || '').normalize('NFC');
+    s = s.replace(/\uFFFD/g, '');
+    s = s.replace(/[\uD800-\uDFFF]/g, '');
     s = s.replace(/\s+/g, ' ');
     s = s.replace(/ - /g, '-');
     s = s.replace(/[\\/:*?"<>|]+/g, '');
@@ -3706,7 +4664,7 @@ function formatFilename(post, fileObj, index, globalIndex) {
   if (!threadSec) threadSec = sanitizeNamePart(user).slice(0, 40);
   let titleSec = sanitizeNamePart(titleRaw).slice(0, 40);
   if (!titleSec) titleSec = sanitizeNamePart('post_' + post.id).slice(0, 40);
-  const ext = (fileObj.name || fileObj.path || '').split('.').pop().split('?')[0].toLowerCase();
+  const ext = getUrlExt(fileObj.name || fileObj.path || '') || 'bin';
   const gPost = String(globalIndex || 0).padStart(6, '0');
   const fIdx = String(index || 0).padStart(6, '0');
   let dateSec = '000000';
@@ -4278,12 +5236,7 @@ function handlePreviewToggle() {
 }
 
 function sanitizeInfoFilePart(str, fallback) {
-  let s = (str || '').normalize('NFC');
-  s = s.replace(/\s+/g, '_');
-  s = s.replace(/[\\/:*?"<>|]+/g, '');
-  s = s.replace(/[\x00-\x1F\x7F]/g, '');
-  s = s.replace(/_+/g, '_').replace(/^_+|_+$/g, '');
-  return s || fallback || 'profile';
+  return sanitizeFileNameStrict(str, fallback || 'profile');
 }
 
 function extractPostDate(post) {
@@ -4316,14 +5269,9 @@ function buildPostUrlFromMeta(post) {
   return `${location.origin}/${service}/user/${userId}/post/${post.id}`;
 }
 
-async function handleDownloadInfo() {
+async function buildProfileInfoSnapshot() {
   const profileKey = getProfileKeyFromLocation();
-  if (!profileKey) {
-    setStatus('No profile detected', 'error');
-    return;
-  }
-
-  setStatus('Preparing profile info...', 'info');
+  if (!profileKey) return { error: 'No profile detected' };
 
   if (!PG_POSTS || !PG_POSTS.length) {
     await buildGlobalIndexMapIfNeeded();
@@ -4336,8 +5284,7 @@ async function handleDownloadInfo() {
   }
 
   if (!PG_POSTS || !PG_POSTS.length) {
-    setStatus('Unable to build index', 'error');
-    return;
+    return { error: 'Unable to build index' };
   }
 
   buildFileIndexFromPostsIfNeeded();
@@ -4386,12 +5333,12 @@ async function handleDownloadInfo() {
   const parts = location.pathname.split('/');
   const service = parts[1] || 'service';
   const profileName = userName();
-  const downloadDate = new Date();
+  const generatedAt = new Date();
   const lastPostDate = formatDateForInfo(maxDate);
   const firstPostDate = formatDateForInfo(minDate);
 
   const lines = [
-    `Date of doc download: ${downloadDate.toISOString()}`,
+    `Date of doc download: ${generatedAt.toISOString()}`,
     `Profile name: ${profileName}`,
     `Profile service: ${service}`,
     `Number of Pages as of ${lastPostDate}: ${totalPages}`,
@@ -4406,14 +5353,44 @@ async function handleDownloadInfo() {
 
   const userFolder = sanitizeInfoFilePart(profileName, 'profile');
   const servicePart = sanitizeInfoFilePart(service, 'service');
-  const datePart = downloadDate.toISOString().split('T')[0];
-  const fileName = `${userFolder}/${userFolder}_${servicePart}_info_${datePart}.txt`;
-  const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
+  const datePart = generatedAt.toISOString().split('T')[0].replace(/[^0-9]/g, '');
+  const infoFile = sanitizeDownloadPathForSave(`${userFolder}/${userFolder} ${servicePart} info ${datePart}.txt`);
+
+  return {
+    lines,
+    infoFile,
+    stats: {
+      profileName,
+      service,
+      totalPages,
+      totalPosts,
+      totalFiles,
+      totalImages,
+      totalGifs,
+      totalVideos,
+      avgFiles,
+      avgImages,
+      avgVideos,
+      firstPostDate,
+      lastPostDate,
+      generatedAt
+    }
+  };
+}
+
+async function handleDownloadInfo() {
+  setStatus('Preparing profile info...', 'info');
+  const snapshot = await buildProfileInfoSnapshot();
+  if (!snapshot || snapshot.error) {
+    setStatus(snapshot && snapshot.error ? snapshot.error : 'Unable to build index', 'error');
+    return;
+  }
+  const blob = new Blob([snapshot.lines.join('\n') + '\n'], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
 
   GM_download({
     url,
-    name: fileName,
+    name: snapshot.infoFile,
     onload: () => {
       try { URL.revokeObjectURL(url); } catch {}
       setStatus('Profile info downloaded', 'success');
@@ -4480,7 +5457,7 @@ async function handleDownloadPostLinks() {
 
   GM_download({
     url,
-    name: 'links.txt',
+    name: sanitizeDownloadPathForSave('links.txt'),
     onload: () => {
       try { URL.revokeObjectURL(url); } catch {}
       setStatus('Post links downloaded', 'success');
@@ -4562,6 +5539,45 @@ function handleClearGroups() {
 async function queueFiltered() {
   if (!keptPosts.length) return;
   const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
+  if (mode === 'loose_post') {
+    const items = [];
+    keptPosts.forEach(kp => {
+      items.push(...buildLooseItemsForPost(kp));
+    });
+    if (!items.length) {
+      const st = $('#filterStatus');
+      if (st) st.textContent = 'No files matched your filters.';
+      scheduleHUD();
+      return;
+    }
+    LAST_QUEUE_HAD_ITEMS = true;
+    enqueueItems(items);
+    return;
+  }
+  if (mode === 'loose_queue') {
+    const bundle = buildBundleFromKeptPosts();
+    const queueFolder = bundle.earliestPostFolder || 'post';
+    const userFolder = bundle.userFolder || '';
+    const items = (bundle.files || []).map(file => {
+      const parts = splitDownloadPath(file.name || '');
+      const fileName = parts.fileName || getDownloadLabel(file);
+      const name = userFolder ? `${userFolder}/${queueFolder}/${fileName}` : `${queueFolder}/${fileName}`;
+      return {
+        url: file.url,
+        name,
+        retryKey: file.url
+      };
+    });
+    if (!items.length) {
+      const st = $('#filterStatus');
+      if (st) st.textContent = 'No files matched your filters.';
+      scheduleHUD();
+      return;
+    }
+    LAST_QUEUE_HAD_ITEMS = true;
+    enqueueItems(items);
+    return;
+  }
   if (mode === 'post') {
     const items = [];
     keptPosts.forEach(kp => {
@@ -4675,27 +5691,34 @@ async function handlePageAllBtn() {
   scheduleFilter();
 }
 
-async function handleClear() {
-  const b = $('#dlBtn');
-  dl.started = false;
-  DL_ACTIVE = false;
+function handleClearFilters() {
+  const fPages = $('#fPages'); if (fPages) fPages.value = '';
+  const fPosts = $('#fPosts'); if (fPosts) fPosts.value = '';
+  const fFiles = $('#fFiles'); if (fFiles) fFiles.value = '';
+  const fDur = $('#fDur'); if (fDur) fDur.value = '';
+  MEDIA_MODE = 'all';
+  const btnMedia = $('#btnMedia');
+  if (btnMedia) btnMedia.textContent = 'All';
   LAST_POST_CLICK = null;
-  if (b) { b.classList.remove('stop'); b.textContent = 'Download'; }
-  cooldownTimers.forEach(id => clearTimeout(id));
-  cooldownTimers.clear();
-  for (const k in retryMap) delete retryMap[k];
-  lastDropNoteAt = 0;
-  lastDropNoteCount = 0;
-  dl.items.length = 0;
-  const cC = $('#completedCount'); if (cC) cC.textContent = '0';
-  const qC = $('#queuedCount'); if (qC) qC.textContent = '0';
-  const xC = $('#droppedCount'); if (xC) xC.textContent = '0';
-  const dropEl = $('#pgDrop'); if (dropEl) dropEl.style.display = 'none';
-  const fill = $('#pgFill'); if (fill) fill.style.width = '0%';
-  const barLabel = $('#pgBarLabel'); if (barLabel) barLabel.textContent = '0%';
+  PREVIEW_MODE = false;
+  const filterBtn = $('#filterBtn');
+  if (filterBtn) {
+    filterBtn.textContent = 'Preview';
+    filterBtn.classList.remove('clear');
+  }
+  $$('article.post-card').forEach(c => { c.style.display = ''; });
+  saveFilterState();
+  injectPostNumbers();
+  injectFileNumbers();
+  syncPageAllButtonState();
+  scheduleFilter();
+}
+
+async function handleClear() {
+  resetDownloadQueueState({ clearFailures: true });
+  LAST_POST_CLICK = null;
   injectPostNumbers();
   syncPageAllButtonState();
-  scheduleHUD();
 }
 
 async function handleDlBtn() {
@@ -5740,7 +6763,7 @@ function handleLocalGalleryBtn() {
 
 buildMenu();
 buildHUD();
-openMenu('downloads');
+openMenu();
 injectPostNumbers();
 injectFileNumbers();
 
