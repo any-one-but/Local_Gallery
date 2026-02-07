@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.02
+// @version      01.13.03
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -400,6 +400,22 @@ body.pg-menu-open {
   position: relative;
   top: 1px;
   color: var(--color0-primary);
+}
+
+#pgMenuTabs .pgMenuTabBtn .pg-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--rain-red);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 #pgMenuCollapseBtn {
@@ -1390,6 +1406,7 @@ let MENU_COLLAPSED = false;
 let INFO_RENDER_TOKEN = 0;
 const ERROR_LOG = [];
 const FAILED_ITEMS = [];
+let ERROR_TAB_UNREAD = 0;
 
 function loadMenuState() {
   let parsed = null;
@@ -1503,6 +1520,89 @@ function buildErrorEntry(item, reason, err, attempts) {
   };
 }
 
+function buildRetryPayloadFromQueueItem(item) {
+  if (!item || typeof item !== 'object') return null;
+  const out = {
+    url: item.url || '',
+    name: item.name || '',
+    retryKey: item.retryKey || item.url || item.name || ''
+  };
+  if (item.meta && typeof item.meta === 'object') {
+    out.meta = Object.assign({}, item.meta);
+  }
+  if (Array.isArray(item.files)) {
+    const files = item.files
+      .filter(file => file && file.url)
+      .map(file => ({
+        url: file.url,
+        name: file.name || '',
+        fileIndex: typeof file.fileIndex === 'number' ? file.fileIndex : 0,
+        postFolder: file.postFolder || ''
+      }));
+    if (!files.length) return null;
+    out.files = files;
+    out.userFolder = item.userFolder || '';
+    out.postFolder = item.postFolder || '';
+    out.archiveMode = item.archiveMode || '';
+    out.queuePostFolder = item.queuePostFolder || '';
+    out.groupPostFolder = item.groupPostFolder || '';
+    out.url = out.url || files[0].url;
+    out.retryKey = out.retryKey || out.url || out.name || '';
+  }
+  if (!out.url) return null;
+  return out;
+}
+
+function buildRetryQueueItemFromFailedEntry(entry) {
+  if (!entry || typeof entry !== 'object' || !entry.retryItem) return null;
+  return buildRetryPayloadFromQueueItem(entry.retryItem);
+}
+
+function hasRetryableFailedItems() {
+  for (const entry of FAILED_ITEMS) {
+    const src = entry && entry.retryItem;
+    if (!src || typeof src !== 'object') continue;
+    if (Array.isArray(src.files)) {
+      if (src.files.some(file => file && file.url)) return true;
+      continue;
+    }
+    if (src.url) return true;
+  }
+  return false;
+}
+
+function handleRetryFailedFiles() {
+  const { downloading, queued } = getCounts();
+  if (downloading > 0 || queued > 0) {
+    setStatus('Wait for the current queue to finish first', 'info');
+    return false;
+  }
+  if (!FAILED_ITEMS.length) {
+    setStatus('No failed files to retry', 'info');
+    return false;
+  }
+
+  const retryItems = [];
+  for (const entry of FAILED_ITEMS) {
+    const item = buildRetryQueueItemFromFailedEntry(entry);
+    if (item) retryItems.push(item);
+  }
+  if (!retryItems.length) {
+    setStatus('No retry data available for failed files', 'error');
+    return false;
+  }
+
+  FAILED_ITEMS.length = 0;
+  clearErrorTabUnread();
+  renderErrorLogUi();
+  scheduleHUD();
+
+  enqueueItems(retryItems);
+  startQueueIfIdle();
+  setStatus(`Queued ${retryItems.length} failed item${retryItems.length === 1 ? '' : 's'} for retry`, 'success');
+  return true;
+}
+
 function showErrorToast(text) {
   const host = document.getElementById('pgToastStack');
   if (!host) return;
@@ -1520,6 +1620,19 @@ function renderErrorLogUi() {
   if (!body) return;
   const prevScroll = body.scrollTop || 0;
   body.innerHTML = '';
+  const { downloading, queued } = getCounts();
+  const showRetryFailedBtn = hasRetryableFailedItems() && downloading === 0 && queued === 0;
+  if (showRetryFailedBtn) {
+    const actions = document.createElement('div');
+    actions.className = 'pg-group-actions';
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.id = 'pgRetryFailedBtn';
+    retryBtn.textContent = 'retry failed files';
+    retryBtn.addEventListener('click', () => handleRetryFailedFiles());
+    actions.appendChild(retryBtn);
+    body.appendChild(actions);
+  }
   if (!ERROR_LOG.length && !FAILED_ITEMS.length) {
     const empty = document.createElement('div');
     empty.className = 'pg-options-note';
@@ -1610,6 +1723,40 @@ function renderErrorLogUi() {
   requestAnimationFrame(() => {
     body.scrollTop = prevScroll;
   });
+}
+
+function getErrorTabButton() {
+  return document.querySelector('#pgMenuTabs .pgMenuTabBtn[data-tab="errors"]');
+}
+
+function updateErrorTabBadge() {
+  const btn = getErrorTabButton();
+  if (!btn) return;
+  let badge = btn.querySelector('.pg-tab-badge');
+  if (ERROR_TAB_UNREAD > 0) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'pg-tab-badge';
+      btn.appendChild(badge);
+    }
+    badge.textContent = ERROR_TAB_UNREAD > 999 ? '999+' : String(ERROR_TAB_UNREAD);
+    btn.setAttribute('aria-label', `Error Log (${ERROR_TAB_UNREAD} unread)`);
+  } else {
+    if (badge) badge.remove();
+    btn.setAttribute('aria-label', 'Error Log');
+  }
+}
+
+function markErrorTabUnread() {
+  if (MENU_OPEN && MENU_ACTIVE_TAB === 'errors') return;
+  ERROR_TAB_UNREAD++;
+  updateErrorTabBadge();
+}
+
+function clearErrorTabUnread() {
+  if (!ERROR_TAB_UNREAD) return;
+  ERROR_TAB_UNREAD = 0;
+  updateErrorTabBadge();
 }
 
 function getQueueItemLabel(item) {
@@ -1806,13 +1953,14 @@ function logDownloadError(item, reason, err) {
     ERROR_LOG.splice(0, ERROR_LOG.length - 500);
   }
   renderErrorLogUi();
-  showErrorToast(`${entry.label} — ${entry.reason}`);
+  markErrorTabUnread();
 }
 
 function logFailedItem(item, reason, err, attempts) {
   const entry = buildErrorEntry(item, reason, err, attempts || MAX_RETRIES);
   const key = getRetryKey(item) || entry.url || entry.label;
-  const nextEntry = Object.assign({ key }, entry);
+  const retryItem = buildRetryPayloadFromQueueItem(item);
+  const nextEntry = Object.assign({ key, retryItem }, entry);
   const idx = FAILED_ITEMS.findIndex(entry => entry && entry.key === key);
   if (idx >= 0) FAILED_ITEMS[idx] = nextEntry;
   else FAILED_ITEMS.push(nextEntry);
@@ -1820,7 +1968,7 @@ function logFailedItem(item, reason, err, attempts) {
     FAILED_ITEMS.splice(0, FAILED_ITEMS.length - 500);
   }
   renderErrorLogUi();
-  showErrorToast(`${nextEntry.label} — failed after ${nextEntry.attempts} attempts`);
+  markErrorTabUnread();
 }
 
 function setStatus(text, type) {
@@ -2160,6 +2308,7 @@ function resetDownloadQueueState(opts = {}) {
 
   if (clearFailures) {
     FAILED_ITEMS.length = 0;
+    clearErrorTabUnread();
     renderErrorLogUi();
   }
 
@@ -3077,6 +3226,7 @@ function setMenuTab(tabId) {
     return;
   }
   if (next === 'errors') {
+    clearErrorTabUnread();
     ensureErrorLogUi();
     return;
   }
@@ -3314,6 +3464,7 @@ function initMenuTabs() {
       setMenuTab(tab);
     });
   });
+  updateErrorTabBadge();
 }
 
 function buildMenu() {
@@ -4049,6 +4200,7 @@ function maybeFinishBatch() {
     DL_ACTIVE = false;
     dl.started = false;
     const b = $('#dlBtn'); if (b) { b.classList.remove('stop'); b.textContent = 'Download'; }
+    renderErrorLogUi();
   }
 }
 
