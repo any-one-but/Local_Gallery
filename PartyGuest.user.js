@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.04
+// @version      01.13.05
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -447,6 +447,7 @@ body.pg-menu-open {
 #pgMenuOptionsBody,
 #pgMenuInfoBody,
 #pgMenuGroupsBody,
+#pgMenuKeybindsBody,
 #pgMenuErrorBody,
 #pgMenuQueueBody,
 #pgMenuDownloadsBody {
@@ -531,6 +532,50 @@ body.pg-menu-open {
 
 #pgMenuBody .pg-opt-section {
   margin-bottom: 12px;
+}
+
+#pgMenuBody .pg-opt-danger-zone {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color1-tertiary);
+  display: flex;
+  justify-content: flex-end;
+}
+
+#pg_opt_clearAllIndexCachesBtn {
+  background: var(--rain-red);
+  color: #ffffff;
+  border-color: var(--rain-red);
+}
+
+#pg_opt_clearAllIndexCachesBtn:hover:not(:disabled) {
+  background: #d93028;
+  border-color: #d93028;
+}
+
+#pgMenuBody .pg-keybind-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#pgMenuBody .pg-keybind-input {
+  width: 48px;
+  text-align: center;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+
+#pgMenuBody .pg-keybind-clear-btn {
+  min-width: 56px;
+}
+
+#pgMenuBody .pg-keybind-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 #pgMenuBody .pg-opt-section-title {
@@ -1266,6 +1311,48 @@ const SPECIAL_DOWNLOAD_BEHAVIOR_VALUES = [
   'first_x'
 ];
 const SPECIAL_DOWNLOAD_VALUE_DEFAULT = 3;
+const DOWNLOAD_TAB_KEYBIND_ACTIONS = [
+  { id: 'download_toggle', label: 'Download / Stop', hint: 'Start or stop downloads.' },
+  { id: 'add_to_queue', label: 'Add to Queue', hint: 'Add currently filtered files to queue.' },
+  { id: 'pause_queue', label: 'Pause / Play Queue', hint: 'Pause or resume active queue.' },
+  { id: 'create_group', label: 'Create Group', hint: 'Create a group from current filtered results.' },
+  { id: 'rename_most_recent_group', label: 'Rename Most Recent Group', hint: 'Open rename prompt for the most recently created group.' },
+  { id: 'delete_all_groups', label: 'Delete All Groups', hint: 'Delete all groups for current profile.' },
+  { id: 'download_all_groups', label: 'Download All Groups', hint: 'Queue downloads for all groups in current profile.' },
+  { id: 'download_post_links', label: 'Download Post Links', hint: 'Download filtered post links list.' },
+  { id: 'toggle_gallery', label: 'Gallery', hint: 'Open gallery for current filtered files.' },
+  { id: 'open_local_gallery', label: 'Local Gallery', hint: 'Open Local Gallery in a new tab.' },
+  { id: 'toggle_preview', label: 'Preview / Clear Preview', hint: 'Toggle preview mode.' },
+  { id: 'clear_profile_index_cache', label: 'Clear Index Cache', hint: 'Clear current profile index cache.' },
+  { id: 'cycle_media_mode', label: 'Cycle Media Mode', hint: 'Cycle All -> Images -> GIFs -> Videos.' },
+  { id: 'page_select_toggle', label: 'Page Select', hint: 'Toggle selecting all visible post numbers.' },
+  { id: 'clear_filters', label: 'Clear Filters', hint: 'Clear all active filters.' }
+];
+const DOWNLOAD_TAB_KEYBIND_ACTION_IDS = new Set(DOWNLOAD_TAB_KEYBIND_ACTIONS.map(action => action.id));
+const DEFAULT_DOWNLOAD_TAB_KEYBINDS = Object.freeze(
+  DOWNLOAD_TAB_KEYBIND_ACTIONS.reduce((acc, action) => {
+    acc[action.id] = '';
+    return acc;
+  }, {})
+);
+function normalizeSingleKeybindValue(value) {
+  if (value == null) return '';
+  const s = String(value).trim().toLowerCase();
+  if (!s) return '';
+  if (s.length !== 1) return '';
+  return /^[a-z0-9]$/.test(s) ? s : '';
+}
+function normalizeDownloadTabKeybinds(raw) {
+  const out = {};
+  DOWNLOAD_TAB_KEYBIND_ACTIONS.forEach(action => {
+    out[action.id] = '';
+  });
+  if (!raw || typeof raw !== 'object') return out;
+  DOWNLOAD_TAB_KEYBIND_ACTIONS.forEach(action => {
+    out[action.id] = normalizeSingleKeybindValue(raw[action.id]);
+  });
+  return out;
+}
 const DEFAULT_OPTIONS = {
   downloadMode: 'queue_flat',
   specialDownloadBehavior: 'off',
@@ -1286,8 +1373,13 @@ const DEFAULT_OPTIONS = {
   showPageInput: true,
   showPostInput: true,
   showFileInput: true,
+  showAttachmentInput: true,
+  showClearIndexCacheBtn: true,
+  hidePostsWithNoAttachments: false,
+  downloadTabKeybinds: normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS),
   showProgressBar: true,
-  showGroupsSection: true
+  showGroupsSection: true,
+  showClearAllIndexCachesBtn: true
 };
 const DOWNLOAD_MODE_LABELS = {
   queue_flat: 'Archive by queue',
@@ -1308,6 +1400,7 @@ function clampInt(value, min, max, fallback) {
 }
 function normalizeOptions(opt) {
   const out = Object.assign({}, DEFAULT_OPTIONS);
+  out.downloadTabKeybinds = normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS);
   if (!opt || typeof opt !== 'object') return out;
   if (typeof opt.downloadMode === 'string') {
     if (DOWNLOAD_MODE_LABELS[opt.downloadMode]) out.downloadMode = opt.downloadMode;
@@ -1338,8 +1431,15 @@ function normalizeOptions(opt) {
   if (typeof opt.showPageInput === 'boolean') out.showPageInput = opt.showPageInput;
   if (typeof opt.showPostInput === 'boolean') out.showPostInput = opt.showPostInput;
   if (typeof opt.showFileInput === 'boolean') out.showFileInput = opt.showFileInput;
+  if (typeof opt.showAttachmentInput === 'boolean') out.showAttachmentInput = opt.showAttachmentInput;
+  if (typeof opt.showClearIndexCacheBtn === 'boolean') out.showClearIndexCacheBtn = opt.showClearIndexCacheBtn;
+  if (typeof opt.hidePostsWithNoAttachments === 'boolean') out.hidePostsWithNoAttachments = opt.hidePostsWithNoAttachments;
+  if (opt.downloadTabKeybinds && typeof opt.downloadTabKeybinds === 'object') {
+    out.downloadTabKeybinds = normalizeDownloadTabKeybinds(opt.downloadTabKeybinds);
+  }
   if (typeof opt.showProgressBar === 'boolean') out.showProgressBar = opt.showProgressBar;
   if (typeof opt.showGroupsSection === 'boolean') out.showGroupsSection = opt.showGroupsSection;
+  if (typeof opt.showClearAllIndexCachesBtn === 'boolean') out.showClearAllIndexCachesBtn = opt.showClearAllIndexCachesBtn;
   return out;
 }
 function loadOptions() {
@@ -1363,6 +1463,7 @@ let TIMEOUT_RETRIES_ENABLED = true;
 let STOP_BUTTON_CLEARS_QUEUE = true;
 let SHOW_PROGRESS_BAR = true;
 let SHOW_GROUPS_SECTION = true;
+let HIDE_POSTS_WITH_NO_ATTACHMENTS = false;
 let PG_GROUPS = [];
 let GROUPS_PROFILE_KEY = null;
 let PG_CACHE_DB = null;
@@ -1402,8 +1503,8 @@ let MENU_OPEN = false;
 let MENU_ACTIVE_TAB = 'downloads';
 let MENU_LAST_TAB = 'downloads';
 let MENU_HAS_OPENED = false;
-const MENU_TAB_SCROLL = { downloads: 0, queue: 0, info: 0, options: 0, errors: 0 };
-const MENU_TAB_IDS = ['downloads', 'queue', 'info', 'options', 'errors'];
+const MENU_TAB_SCROLL = { downloads: 0, queue: 0, info: 0, options: 0, keybinds: 0, errors: 0 };
+const MENU_TAB_IDS = ['downloads', 'queue', 'info', 'options', 'keybinds', 'errors'];
 const MENU_WINDOW_STATE = { x: null, y: null, width: null, height: null };
 const MENU_DEFAULT_WIDTH = 100;
 const MENU_DEFAULT_HEIGHT = 550;
@@ -1417,6 +1518,9 @@ let INFO_RENDER_TOKEN = 0;
 const ERROR_LOG = [];
 const FAILED_ITEMS = [];
 let ERROR_TAB_UNREAD = 0;
+let DOWNLOAD_TAB_KEYBINDS = normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS);
+let DOWNLOAD_TAB_KEYBIND_LOOKUP = new Map();
+let downloadKeyHandlerAttached = false;
 
 function loadMenuState() {
   let parsed = null;
@@ -2107,6 +2211,39 @@ async function idbDelete(cacheKey) {
   });
 }
 
+async function idbDeleteByPrefix(prefix) {
+  const db = await openCacheDb();
+  if (!db || !prefix) return 0;
+  return new Promise(resolve => {
+    let deleted = 0;
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve(deleted);
+    };
+    const tx = db.transaction(PG_CACHE_STORE, 'readwrite');
+    const store = tx.objectStore(PG_CACHE_STORE);
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      const key = String(cursor.key || '');
+      if (key.startsWith(prefix)) {
+        const del = cursor.delete();
+        del.onsuccess = () => { deleted++; cursor.continue(); };
+        del.onerror = () => cursor.continue();
+        return;
+      }
+      cursor.continue();
+    };
+    req.onerror = () => done();
+    tx.oncomplete = () => done();
+    tx.onabort = () => done();
+    tx.onerror = () => done();
+  });
+}
+
 async function loadCachedIndex(cacheKey) {
   let parsed = null;
   try {
@@ -2211,13 +2348,18 @@ function normalizeGroup(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const files = Array.isArray(raw.files) ? raw.files.filter(f => f && f.url) : [];
   const stats = computeGroupStats(files);
-  const name = typeof raw.name === 'string' ? raw.name : '';
-  const earliestPostFolder = typeof raw.earliestPostFolder === 'string' ? raw.earliestPostFolder : (name || '');
+  const rawName = typeof raw.name === 'string' ? raw.name : '';
+  let earliestPostFolder = typeof raw.earliestPostFolder === 'string' ? raw.earliestPostFolder : '';
+  if (!earliestPostFolder && files.length) {
+    const parts = splitDownloadPath(files[0].name || '');
+    earliestPostFolder = parts.postFolder || '';
+  }
+  const title = inferGroupTitle(rawName, earliestPostFolder);
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : makeGroupId(),
     createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
-    name: name || earliestPostFolder || 'post',
-    earliestPostFolder: earliestPostFolder || name || 'post',
+    name: title || 'post',
+    earliestPostFolder: earliestPostFolder || rawName || 'post',
     earliestIndex: typeof raw.earliestIndex === 'number' ? raw.earliestIndex : 0,
     userFolder: typeof raw.userFolder === 'string' ? raw.userFolder : '',
     files,
@@ -2256,6 +2398,34 @@ function deleteGroupById(groupId) {
   return true;
 }
 
+function handleRenameGroup(groupId) {
+  if (!groupId) return false;
+  const group = PG_GROUPS.find(g => g && g.id === groupId);
+  if (!group) return false;
+
+  const currentTitle = inferGroupTitle(group.name, group.earliestPostFolder) || 'post';
+  const input = prompt('Edit group title (prefix/suffix and index data are preserved):', currentTitle);
+  if (input == null) return false;
+
+  const nextTitle = sanitizeGroupEditableTitle(input, currentTitle || 'post');
+  if (!nextTitle) {
+    setStatus('Invalid group title', 'error');
+    return false;
+  }
+  if (nextTitle === currentTitle) return false;
+
+  group.name = nextTitle;
+  group.files = mapGroupFilesToTitle(group.files, nextTitle);
+
+  const currentFolder = group.earliestPostFolder || (group.files[0] ? splitDownloadPath(group.files[0].name || '').postFolder : '');
+  group.earliestPostFolder = applyEditableTitleToCompositeName(currentFolder || '', nextTitle) || currentFolder || nextTitle;
+
+  saveGroupsForProfile();
+  renderGroupsUi();
+  setStatus(`Group renamed: ${nextTitle}`, 'success');
+  return true;
+}
+
 function clearGroupsForProfile() {
   PG_GROUPS = [];
   saveGroupsForProfile();
@@ -2266,7 +2436,8 @@ function saveFilterState(){
   const fPages = $('#fPages')?.value || '';
   const fPosts = $('#fPosts')?.value || '';
   const fFiles = $('#fFiles')?.value || '';
-  const state = { pages:fPages, posts:fPosts, files:fFiles, media:MEDIA_MODE || 'all' };
+  const fAttach = $('#fAttach')?.value || '';
+  const state = { pages:fPages, posts:fPosts, files:fFiles, attach:fAttach, media:MEDIA_MODE || 'all' };
   try { localStorage.setItem(filterKey(), JSON.stringify(state)); } catch {}
 }
 
@@ -2280,6 +2451,8 @@ function restoreFilterState(){
   if (fPosts) fPosts.value = state.posts || '';
   const fFiles = $('#fFiles');
   if (fFiles) fFiles.value = state.files || '';
+  const fAttach = $('#fAttach');
+  if (fAttach) fAttach.value = state.attach || '';
   if (state.media && typeof state.media === 'string') {
     MEDIA_MODE = state.media;
   }
@@ -2352,6 +2525,61 @@ function getProfileKeyFromLocation(){
   return null;
 }
 
+function getProfileIndexCacheKeyFromLocation() {
+  const parts = location.pathname.split('/');
+  if (parts.length >= 4 && parts[2] === 'user') {
+    const service = parts[1];
+    const userId = parts[3];
+    if (service && userId) return 'pg_postindex_' + service + '_' + userId;
+  }
+  return null;
+}
+
+async function clearProfileIndexCacheForCurrentProfile() {
+  const cacheKey = getProfileIndexCacheKeyFromLocation();
+  if (!cacheKey) return false;
+  try { localStorage.removeItem(cacheKey); } catch {}
+  await idbDelete(cacheKey);
+  return true;
+}
+
+function clearLocalStorageKeysByPrefix(prefix) {
+  if (!prefix) return 0;
+  const keys = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) keys.push(key);
+    }
+  } catch {}
+  keys.forEach(key => {
+    try { localStorage.removeItem(key); } catch {}
+  });
+  return keys.length;
+}
+
+async function clearAllProfileIndexCaches() {
+  const prefix = 'pg_postindex_';
+  const localRemoved = clearLocalStorageKeysByPrefix(prefix);
+  const idbRemoved = await idbDeleteByPrefix(prefix);
+  return { localRemoved, idbRemoved };
+}
+
+function resetProfileIndexStateAfterCacheClear() {
+  PG_POSTS = null;
+  PG_ID_MAP = null;
+  PG_TOTAL = null;
+  PG_GW = 1;
+  PG_FILE_TOTAL = null;
+  PG_FILE_URL_MAP = null;
+  PG_POST_FILE_RANGE_MAP = null;
+  PG_INDEX_LOADING = false;
+  keptPosts = [];
+  LAST_POST_CLICK = null;
+  PENDING_FILTER_SUMMARY = null;
+  document.querySelectorAll('.post-number-badge').forEach(el => el.remove());
+}
+
 function handleProfileContextChange(){
   const key = getProfileKeyFromLocation();
   if (!key) {
@@ -2376,6 +2604,7 @@ function handleProfileContextChange(){
       const fPages = $('#fPages'); if (fPages) fPages.value = '';
       const fPosts = $('#fPosts'); if (fPosts) fPosts.value = '';
       const fFiles = $('#fFiles'); if (fFiles) fFiles.value = '';
+      const fAttach = $('#fAttach'); if (fAttach) fAttach.value = '';
       const fDur = $('#fDur'); if (fDur) fDur.value = '';
       $$('article.post-card').forEach(c => { c.style.display = ''; });
       document.querySelectorAll('.post-number-badge').forEach(el => el.remove());
@@ -2528,6 +2757,55 @@ function injectPostNumbers() {
   });
 
   syncPageAllButtonState();
+}
+
+function getPostMediaAttachmentCount(meta) {
+  if (!meta || !Array.isArray(meta.pgFiles)) return 0;
+  let count = 0;
+  for (const f of meta.pgFiles) {
+    const ref = f && f.url;
+    if (!ref) continue;
+    if (allowedUrl(ref)) count++;
+  }
+  return count;
+}
+
+function injectAttachmentCounts() {
+  if (!PG_POSTS || !PG_POSTS.length) return;
+  const byId = new Map();
+  PG_POSTS.forEach(meta => {
+    if (!meta || meta.id == null) return;
+    byId.set(String(meta.id), meta);
+  });
+
+  document.querySelectorAll('article.post-card').forEach(card => {
+    const id = card.getAttribute('data-id');
+    if (!id) return;
+    const meta = byId.get(String(id));
+    if (!meta) return;
+
+    const footer = card.querySelector('footer.post-card__footer');
+    if (!footer) return;
+
+    let countEl = footer.querySelector('[data-pg-attachment-count="1"]');
+    if (!countEl) {
+      const timeEl = footer.querySelector('time.timestamp, time');
+      if (timeEl) {
+        let next = timeEl.nextElementSibling;
+        while (next && next.tagName !== 'DIV') next = next.nextElementSibling;
+        if (next) countEl = next;
+      }
+    }
+    if (!countEl) {
+      const candidates = [...footer.querySelectorAll('div')].filter(el => /attachment/i.test(el.textContent || ''));
+      if (candidates.length) countEl = candidates[candidates.length - 1];
+    }
+    if (!countEl) return;
+
+    countEl.dataset.pgAttachmentCount = '1';
+    const n = getPostMediaAttachmentCount(meta);
+    countEl.textContent = `${n} attachment${n === 1 ? '' : 's'}`;
+  });
 }
 
 function getFileFilterSet() {
@@ -2708,13 +2986,21 @@ function syncHudElementVisibility() {
   setHudItemVisible('localGalleryBtn', opt.showLocalGalleryBtn !== false);
   setHudItemVisible('downloadPostLinksBtn', opt.showDownloadPostLinksBtn === true);
   setHudItemVisible('galleryBtn', opt.showGalleryBtn !== false);
+  setHudItemVisible('clearIndexCacheBtn', opt.showClearIndexCacheBtn !== false);
   setHudItemVisible('btnPageAll', opt.showPageBtn !== false);
   setHudItemVisible('btnMedia', opt.showMediaBtn !== false);
   setHudItemVisible('filterBtn', opt.showPreviewBtn !== false);
   setHudItemVisible('fPages', opt.showPageInput !== false);
   setHudItemVisible('fPosts', opt.showPostInput !== false);
   setHudItemVisible('fFiles', opt.showFileInput !== false);
+  setHudItemVisible('fAttach', opt.showAttachmentInput !== false);
   requestAnimationFrame(syncFilterBoxWidth);
+}
+
+function syncOptionsElementVisibility() {
+  const opt = PG_OPTIONS || DEFAULT_OPTIONS;
+  const danger = document.getElementById('pgOptDangerZone');
+  if (danger) danger.style.display = opt.showClearAllIndexCachesBtn !== false ? 'flex' : 'none';
 }
 
 function syncDurationInputVisibility() {
@@ -2758,9 +3044,33 @@ function setDownloadMode(nextMode) {
   syncDownloadModeSelect();
 }
 
+function mediaModeLabel(mode) {
+  return mode === 'all' ? 'All' : mode === 'images' ? 'Images' : mode === 'gifs' ? 'GIFs' : 'Videos';
+}
+
+function cycleMediaMode() {
+  MEDIA_MODE = MEDIA_MODE === 'all' ? 'images' : MEDIA_MODE === 'images' ? 'gifs' : MEDIA_MODE === 'gifs' ? 'videos' : 'all';
+  const btnMedia = $('#btnMedia');
+  if (btnMedia) btnMedia.textContent = mediaModeLabel(MEDIA_MODE);
+  scheduleFilter();
+  return MEDIA_MODE;
+}
+
+function rebuildDownloadTabKeybindLookup(bindings) {
+  const map = new Map();
+  const source = normalizeDownloadTabKeybinds(bindings);
+  DOWNLOAD_TAB_KEYBIND_ACTIONS.forEach(action => {
+    const key = source[action.id];
+    if (!key || map.has(key)) return;
+    map.set(key, action.id);
+  });
+  DOWNLOAD_TAB_KEYBIND_LOOKUP = map;
+}
+
 function applyOptions() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   const prevDuration = DURATION_FEATURE_ENABLED;
+  const prevHideEmptyPosts = HIDE_POSTS_WITH_NO_ATTACHMENTS;
   DOWNLOAD_MODE = (opt.downloadMode && DOWNLOAD_MODE_LABELS[opt.downloadMode]) ? opt.downloadMode : DEFAULT_OPTIONS.downloadMode;
   SPECIAL_DOWNLOAD_BEHAVIOR = (opt.specialDownloadBehavior && SPECIAL_DOWNLOAD_BEHAVIOR_LABELS[opt.specialDownloadBehavior])
     ? opt.specialDownloadBehavior
@@ -2785,8 +3095,12 @@ function applyOptions() {
   STOP_BUTTON_CLEARS_QUEUE = opt.stopClearsQueue !== false;
   SHOW_PROGRESS_BAR = opt.showProgressBar !== false;
   SHOW_GROUPS_SECTION = opt.showGroupsSection !== false;
+  HIDE_POSTS_WITH_NO_ATTACHMENTS = !!opt.hidePostsWithNoAttachments;
+  DOWNLOAD_TAB_KEYBINDS = normalizeDownloadTabKeybinds(opt.downloadTabKeybinds);
+  rebuildDownloadTabKeybindLookup(DOWNLOAD_TAB_KEYBINDS);
 
   syncHudElementVisibility();
+  syncOptionsElementVisibility();
   syncDurationInputVisibility();
   syncProgressBarVisibility();
   syncDownloadModeSelect();
@@ -2799,6 +3113,9 @@ function applyOptions() {
     if (PG_POSTS && PG_POSTS.length) {
       ensureVideoDurations().then(() => scheduleFilter());
     }
+  }
+  if (prevHideEmptyPosts !== HIDE_POSTS_WITH_NO_ATTACHMENTS) {
+    scheduleFilter();
   }
 }
 
@@ -2932,6 +3249,7 @@ function renderOptionsUi() {
       ${makeCheckRow('Download Across Profiles', 'Keep queue and filters when navigating between profiles.', 'pg_opt_downloadAcrossProfiles', !!opt.downloadAcrossProfiles)}
       ${makeCheckRow('Retry on stall/timeout', 'When a download stalls or takes too long, abort and retry (default on).', 'pg_opt_timeoutRetries', opt.timeoutRetries !== false)}
       ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
+      ${makeCheckRow('Auto-hide posts with no attachments', 'Automatically hide posts that have zero indexed attachments.', 'pg_opt_hidePostsWithNoAttachments', !!opt.hidePostsWithNoAttachments)}
     </div>
 
     <div class="pg-opt-section">
@@ -2943,12 +3261,25 @@ function renderOptionsUi() {
         ${makeCheckInline('Page', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
         ${makeCheckInline('Media Filter', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
         ${makeCheckInline('Preview', 'pg_opt_showPreviewBtn', opt.showPreviewBtn !== false)}
+        ${makeCheckInline('Clear Index Cache', 'pg_opt_showClearIndexCacheBtn', opt.showClearIndexCacheBtn !== false)}
         ${makeCheckInline('Page input', 'pg_opt_showPageInput', opt.showPageInput !== false)}
         ${makeCheckInline('Post input', 'pg_opt_showPostInput', opt.showPostInput !== false)}
         ${makeCheckInline('File input', 'pg_opt_showFileInput', opt.showFileInput !== false)}
+        ${makeCheckInline('Attachment input', 'pg_opt_showAttachmentInput', opt.showAttachmentInput !== false)}
         ${makeCheckInline('Progress bar', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
         ${makeCheckInline('Groups section', 'pg_opt_showGroupsSection', opt.showGroupsSection !== false)}
       </div>
+    </div>
+
+    <div class="pg-opt-section">
+      <div class="pg-opt-section-title">Maintenance</div>
+      <div class="pg-opt-block">
+        ${makeCheckInline('Clear-all cache button', 'pg_opt_showClearAllIndexCachesBtn', opt.showClearAllIndexCachesBtn !== false)}
+      </div>
+    </div>
+
+    <div class="pg-opt-danger-zone" id="pgOptDangerZone">
+      <button id="pg_opt_clearAllIndexCachesBtn" type="button">Clear All Profile Index Caches</button>
     </div>
   `;
 
@@ -3010,18 +3341,27 @@ function renderOptionsUi() {
   bindCheck('pg_opt_downloadAcrossProfiles', 'downloadAcrossProfiles');
   bindCheck('pg_opt_timeoutRetries', 'timeoutRetries');
   bindCheck('pg_opt_stopClearsQueue', 'stopClearsQueue');
+  bindCheck('pg_opt_hidePostsWithNoAttachments', 'hidePostsWithNoAttachments');
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
   bindCheck('pg_opt_showDownloadPostLinksBtn', 'showDownloadPostLinksBtn');
   bindCheck('pg_opt_showGalleryBtn', 'showGalleryBtn');
   bindCheck('pg_opt_showPageBtn', 'showPageBtn');
   bindCheck('pg_opt_showMediaBtn', 'showMediaBtn');
   bindCheck('pg_opt_showPreviewBtn', 'showPreviewBtn');
+  bindCheck('pg_opt_showClearIndexCacheBtn', 'showClearIndexCacheBtn');
   bindCheck('pg_opt_showPageInput', 'showPageInput');
   bindCheck('pg_opt_showPostInput', 'showPostInput');
   bindCheck('pg_opt_showFileInput', 'showFileInput');
+  bindCheck('pg_opt_showAttachmentInput', 'showAttachmentInput');
   bindCheck('pg_opt_showProgressBar', 'showProgressBar');
   bindCheck('pg_opt_showGroupsSection', 'showGroupsSection');
+  bindCheck('pg_opt_showClearAllIndexCachesBtn', 'showClearAllIndexCachesBtn');
+  const clearAllIndexCachesBtn = document.getElementById('pg_opt_clearAllIndexCachesBtn');
+  if (clearAllIndexCachesBtn) {
+    clearAllIndexCachesBtn.addEventListener('click', () => handleClearAllIndexCachesBtn());
+  }
   syncSpecialDownloadBehaviorSelect();
+  syncOptionsElementVisibility();
 }
 
 function formatGroupDate(ts) {
@@ -3050,7 +3390,7 @@ function renderGroupsUi() {
   `;
 
   const rows = groups.map(group => {
-    const name = group.name || group.earliestPostFolder || 'group';
+    const name = inferGroupTitle(group.name, group.earliestPostFolder) || 'group';
     const created = formatGroupDate(group.createdAt);
     const posts = typeof group.postCount === 'number' ? group.postCount : 0;
     const files = typeof group.fileCount === 'number' ? group.fileCount : (group.files ? group.files.length : 0);
@@ -3062,6 +3402,7 @@ function renderGroupsUi() {
           <div class="pg-opt-hint">${meta}</div>
         </div>
         <div class="pg-opt-right">
+          <button type="button" class="pg-group-rename-btn" data-group-id="${group.id}">Rename</button>
           <button type="button" class="pg-group-download-btn" data-group-id="${group.id}">Download</button>
           <button type="button" class="pg-group-delete-btn" data-group-id="${group.id}">Delete</button>
         </div>
@@ -3101,6 +3442,13 @@ function renderGroupsUi() {
     });
   });
 
+  body.querySelectorAll('.pg-group-rename-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const groupId = btn.dataset.groupId || '';
+      handleRenameGroup(groupId);
+    });
+  });
+
   body.querySelectorAll('.pg-group-delete-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const groupId = btn.dataset.groupId || '';
@@ -3128,6 +3476,133 @@ function ensureOptionsUi() {
   renderOptionsUi();
   setOptionsStatus('Saved automatically');
   restoreMenuTabScroll('options');
+}
+
+function assignDownloadTabKeybind(actionId, value) {
+  if (!DOWNLOAD_TAB_KEYBIND_ACTION_IDS.has(actionId)) return false;
+  const nextValue = normalizeSingleKeybindValue(value);
+  const nextBindings = normalizeDownloadTabKeybinds(
+    PG_OPTIONS && PG_OPTIONS.downloadTabKeybinds ? PG_OPTIONS.downloadTabKeybinds : DOWNLOAD_TAB_KEYBINDS
+  );
+  if (nextValue) {
+    DOWNLOAD_TAB_KEYBIND_ACTIONS.forEach(action => {
+      if (action.id !== actionId && nextBindings[action.id] === nextValue) {
+        nextBindings[action.id] = '';
+      }
+    });
+  }
+  nextBindings[actionId] = nextValue;
+  PG_OPTIONS.downloadTabKeybinds = nextBindings;
+  saveOptions();
+  setOptionsStatus('Saved');
+  applyOptions();
+  return true;
+}
+
+function clearAllDownloadTabKeybinds() {
+  PG_OPTIONS.downloadTabKeybinds = normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS);
+  saveOptions();
+  setOptionsStatus('Saved');
+  applyOptions();
+}
+
+function renderKeybindsUi() {
+  const body = document.getElementById('pgMenuKeybindsBody');
+  if (!body) return;
+  const bindings = normalizeDownloadTabKeybinds(
+    PG_OPTIONS && PG_OPTIONS.downloadTabKeybinds ? PG_OPTIONS.downloadTabKeybinds : DOWNLOAD_TAB_KEYBINDS
+  );
+  const rows = DOWNLOAD_TAB_KEYBIND_ACTIONS.map(action => {
+    const value = bindings[action.id] ? bindings[action.id].toUpperCase() : '';
+    return `
+      <div class="pg-opt-row">
+        <div class="pg-opt-left">
+          <div class="pg-opt-title">${action.label}</div>
+          <div class="pg-opt-hint">${action.hint}</div>
+        </div>
+        <div class="pg-opt-right pg-keybind-right">
+          <input
+            class="pg-keybind-input"
+            type="text"
+            data-keybind-action="${action.id}"
+            inputmode="text"
+            maxlength="1"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            value="${value}"
+            placeholder="-"
+            aria-label="${action.label} keybind"
+          />
+          <button type="button" class="pg-keybind-clear-btn" data-keybind-clear="${action.id}"${value ? '' : ' disabled'}>Clear</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  body.innerHTML = `
+    <div class="pg-options-note">Assign one key per action. Allowed keys: letters A-Z and numbers 0-9.</div>
+    <div class="pg-opt-section">
+      <div class="pg-opt-section-title">Download Controls</div>
+      ${rows}
+      <div class="pg-keybind-actions">
+        <button type="button" id="pgKeybindsClearAllBtn">Clear All Keybinds</button>
+      </div>
+    </div>
+  `;
+
+  body.querySelectorAll('input[data-keybind-action]').forEach(input => {
+    const actionId = String(input.getAttribute('data-keybind-action') || '');
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        input.blur();
+        return;
+      }
+      if (
+        ev.key === 'Backspace' ||
+        ev.key === 'Delete' ||
+        ev.key === 'Tab' ||
+        ev.key === 'ArrowLeft' ||
+        ev.key === 'ArrowRight' ||
+        ev.key === 'Home' ||
+        ev.key === 'End'
+      ) {
+        return;
+      }
+      if (ev.key && ev.key.length === 1 && /^[a-z0-9]$/i.test(ev.key)) return;
+      ev.preventDefault();
+    });
+    input.addEventListener('input', () => {
+      const n = normalizeSingleKeybindValue(input.value);
+      input.value = n ? n.toUpperCase() : '';
+    });
+    input.addEventListener('blur', () => {
+      assignDownloadTabKeybind(actionId, input.value);
+      renderKeybindsUi();
+    });
+  });
+
+  body.querySelectorAll('button[data-keybind-clear]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const actionId = String(btn.getAttribute('data-keybind-clear') || '');
+      assignDownloadTabKeybind(actionId, '');
+      renderKeybindsUi();
+    });
+  });
+
+  const clearAllBtn = document.getElementById('pgKeybindsClearAllBtn');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', () => {
+      clearAllDownloadTabKeybinds();
+      renderKeybindsUi();
+    });
+  }
+}
+
+function ensureKeybindsUi() {
+  renderKeybindsUi();
+  restoreMenuTabScroll('keybinds');
 }
 
 function renderDownloadsUi() {
@@ -3250,6 +3725,10 @@ function setMenuTab(tabId) {
   }
   if (next === 'info') {
     ensureInfoUi();
+    return;
+  }
+  if (next === 'keybinds') {
+    ensureKeybindsUi();
     return;
   }
   if (next === 'errors') {
@@ -3476,6 +3955,7 @@ function initMenuTabs() {
     queue: document.getElementById('pgMenuTabQueue'),
     info: document.getElementById('pgMenuTabInfo'),
     options: document.getElementById('pgMenuTabOptions'),
+    keybinds: document.getElementById('pgMenuTabKeybinds'),
     errors: document.getElementById('pgMenuTabErrors')
   };
   MENU_SCROLL_TARGETS = {
@@ -3483,6 +3963,7 @@ function initMenuTabs() {
     queue: document.getElementById('pgMenuQueueBody'),
     info: document.getElementById('pgMenuInfoBody'),
     options: document.getElementById('pgMenuOptionsBody'),
+    keybinds: document.getElementById('pgMenuKeybindsBody'),
     errors: document.getElementById('pgMenuErrorBody')
   };
   MENU_TAB_BUTTONS.forEach(btn => {
@@ -3507,6 +3988,7 @@ function buildMenu() {
           <button type="button" class="pgMenuTabBtn" data-tab="queue" role="tab" aria-controls="pgMenuTabQueue">Queue</button>
           <button type="button" class="pgMenuTabBtn" data-tab="info" role="tab" aria-controls="pgMenuTabInfo">Info</button>
           <button type="button" class="pgMenuTabBtn" data-tab="options" role="tab" aria-controls="pgMenuTabOptions">Options</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="keybinds" role="tab" aria-controls="pgMenuTabKeybinds">Keybinds</button>
           <button type="button" class="pgMenuTabBtn" data-tab="errors" role="tab" aria-controls="pgMenuTabErrors">Error Log</button>
         </div>
         <button id="pgMenuCollapseBtn" type="button" aria-label="Collapse menu">▾</button>
@@ -3530,6 +4012,9 @@ function buildMenu() {
               <button id="pgOptionsDoneBtn" type="button">Done</button>
             </div>
           </div>
+        </section>
+        <section id="pgMenuTabKeybinds" class="pgMenuTabPanel" data-tab="keybinds" role="tabpanel">
+          <div id="pgMenuKeybindsBody"></div>
         </section>
         <section id="pgMenuTabErrors" class="pgMenuTabPanel" data-tab="errors" role="tabpanel">
           <div id="pgMenuErrorBody"></div>
@@ -3563,7 +4048,7 @@ function buildMenu() {
 
   if (menuCard && !menuCard.dataset.pgScrollGuard) {
     menuCard.dataset.pgScrollGuard = '1';
-    const scrollSelector = '#pgMenuDownloadsBody, #pgMenuQueueBody, #pgMenuInfoBody, #pgMenuOptionsBody, #pgMenuErrorBody';
+    const scrollSelector = '#pgMenuDownloadsBody, #pgMenuQueueBody, #pgMenuInfoBody, #pgMenuOptionsBody, #pgMenuKeybindsBody, #pgMenuErrorBody';
     const findScroller = target => {
       if (!target || !target.closest) return null;
       return target.closest(scrollSelector);
@@ -3678,6 +4163,7 @@ function buildHUD() {
         <button id="galleryBtn" class="full">Gallery</button>
         <button id="localGalleryBtn" class="full">Local Gallery</button>
         <button id="filterBtn" class="full">Preview</button>
+        <button id="clearIndexCacheBtn" class="full">Clear Index Cache</button>
       </div>
     </div>
     <div class="pg-hud-section">
@@ -3689,6 +4175,7 @@ function buildHUD() {
         <input id="fPages" type="text" placeholder="Page">
         <input id="fPosts" type="text" placeholder="Post">
         <input id="fFiles" type="text" placeholder="File">
+        <input id="fAttach" type="text" placeholder="Attachments">
         <input id="fDur" type="text" placeholder="Duration">
       </div>
     </div>
@@ -3712,14 +4199,9 @@ function buildHUD() {
 
   restoreFilterState();
 
-  const mediaLabel = m => m === 'all' ? 'All' : m === 'images' ? 'Images' : m === 'gifs' ? 'GIFs' : 'Videos';
   const btnMedia = $('#btnMedia');
-  if (btnMedia) btnMedia.textContent = mediaLabel(MEDIA_MODE);
-  if (btnMedia) btnMedia.onclick = () => {
-    MEDIA_MODE = MEDIA_MODE === 'all' ? 'images' : MEDIA_MODE === 'images' ? 'gifs' : MEDIA_MODE === 'gifs' ? 'videos' : 'all';
-    btnMedia.textContent = mediaLabel(MEDIA_MODE);
-    scheduleFilter();
-  };
+  if (btnMedia) btnMedia.textContent = mediaModeLabel(MEDIA_MODE);
+  if (btnMedia) btnMedia.onclick = () => cycleMediaMode();
 
   const filterBtn = $('#filterBtn');
   if (filterBtn) {
@@ -3733,6 +4215,8 @@ function buildHUD() {
   if (btnPageAll) btnPageAll.onclick = handlePageAllBtn;
   const clearFiltersBtn = $('#clearFiltersBtn');
   if (clearFiltersBtn) clearFiltersBtn.onclick = handleClearFilters;
+  const clearIndexCacheBtn = $('#clearIndexCacheBtn');
+  if (clearIndexCacheBtn) clearIndexCacheBtn.onclick = handleClearIndexCacheBtn;
 
   const postsInput = $('#fPosts');
   if (postsInput) postsInput.addEventListener('input', () => {
@@ -3745,6 +4229,9 @@ function buildHUD() {
 
   const filesInput = $('#fFiles');
   if (filesInput) filesInput.addEventListener('input', scheduleFilter);
+
+  const attachInput = $('#fAttach');
+  if (attachInput) attachInput.addEventListener('input', scheduleFilter);
 
   const durInput = $('#fDur');
   if (durInput) durInput.addEventListener('input', scheduleFilter);
@@ -4191,17 +4678,20 @@ function buildQueueArchiveItem(files, userFolder, queueFolder, retryKey, meta, m
 
 function buildGroupQueueItem(group, idx) {
   if (!group || !Array.isArray(group.files) || group.files.length === 0) return null;
-  const userFolder = group.userFolder || '';
-  const queueFolder = group.earliestPostFolder || group.name || 'post';
+  const groupTitle = inferGroupTitle(group.name, group.earliestPostFolder);
+  const renamedFiles = mapGroupFilesToTitle(group.files, groupTitle);
+  const userFolder = group.userFolder || (renamedFiles[0] ? splitDownloadPath(renamedFiles[0].name || '').userFolder : '') || '';
+  const folderSource = group.earliestPostFolder || (renamedFiles[0] ? splitDownloadPath(renamedFiles[0].name || '').postFolder : '') || 'post';
+  const queueFolder = applyEditableTitleToCompositeName(folderSource, groupTitle) || folderSource || groupTitle || 'post';
   const retryKey = group.id
     ? `group:${group.id}`
     : (userFolder ? `group:${userFolder}:${idx || 0}` : `group:${idx || 0}`);
   return buildQueueArchiveItem(
-    group.files,
+    renamedFiles,
     userFolder,
     queueFolder,
     retryKey,
-    { groupId: group.id || '', name: group.name || queueFolder },
+    { groupId: group.id || '', name: groupTitle || queueFolder },
     'queue_flat'
   );
 }
@@ -4214,7 +4704,7 @@ function queueGroupDownload(group, idx) {
   }
   enqueueItems([item]);
   startQueueIfIdle();
-  const label = group.name || group.earliestPostFolder || 'group';
+  const label = inferGroupTitle(group.name, group.earliestPostFolder) || 'group';
   setStatus(`Queued group: ${label}`, 'success');
   return true;
 }
@@ -4999,6 +5489,18 @@ function parseDurationRanges(str) {
   return out;
 }
 
+function parseAttachmentCountRanges(str) {
+  const raw = parseDurationRanges(str);
+  const out = [];
+  for (const r of raw) {
+    const min = Math.max(0, Math.ceil(Number(r.min) || 0));
+    const max = (r.max == null) ? null : Math.floor(Number(r.max));
+    if (max != null && (!Number.isFinite(max) || max < min)) continue;
+    out.push({ min, max });
+  }
+  return out;
+}
+
 function formatFilename(post, fileObj, index, globalIndex) {
   const user = post.user || userName();
   const sanitizeUserFolder = s => {
@@ -5066,6 +5568,77 @@ function splitDownloadPath(path) {
     postFolder: postFolder || '',
     fileName: rest.join('/') || ''
   };
+}
+
+function sanitizeGroupEditableTitle(raw, fallback = 'post') {
+  let s = String(raw || '').normalize('NFC');
+  s = s.replace(/\uFFFD/g, '');
+  s = s.replace(/[\uD800-\uDFFF]/g, '');
+  s = s.replace(/\s+/g, ' ');
+  s = s.replace(/ - /g, '-');
+  s = s.replace(/[\\/:*?"<>|]+/g, '');
+  s = s.replace(/[\x00-\x1F\x7F]/g, '');
+  s = s.replace(/ +/g, ' ').replace(/^ +| +$/g, '');
+  if (!s) s = fallback || 'post';
+  return s.slice(0, 40);
+}
+
+function extractEditableTitleFromCompositeName(name) {
+  const s = String(name || '');
+  const idx = s.indexOf(' - ');
+  if (idx < 0) return '';
+  return s.slice(idx + 3).trim();
+}
+
+function applyEditableTitleToCompositeName(name, title) {
+  const s = String(name || '');
+  const idx = s.indexOf(' - ');
+  if (idx < 0) return s;
+  return s.slice(0, idx + 3) + sanitizeGroupEditableTitle(title, 'post');
+}
+
+function applyEditableTitleToFileLeaf(fileLeaf, title) {
+  const s = String(fileLeaf || '');
+  const m = s.match(/^(.* - ).*(_\d{6}\.[^.\/]+)$/);
+  if (!m) return s;
+  return m[1] + sanitizeGroupEditableTitle(title, 'post') + m[2];
+}
+
+function applyEditableTitleToDownloadPath(path, title) {
+  const parts = splitDownloadPath(path || '');
+  if (!parts.userFolder && !parts.postFolder && !parts.fileName) return String(path || '');
+  const nextPostFolder = applyEditableTitleToCompositeName(parts.postFolder, title) || parts.postFolder || 'post';
+  let nextFileName = parts.fileName || '';
+  if (nextFileName) {
+    const segs = nextFileName.split('/');
+    const leaf = segs.pop() || '';
+    segs.push(applyEditableTitleToFileLeaf(leaf, title) || leaf);
+    nextFileName = segs.join('/');
+  }
+  if (!nextFileName) nextFileName = parts.fileName || '';
+  if (parts.userFolder) return `${parts.userFolder}/${nextPostFolder}/${nextFileName}`;
+  return `${nextPostFolder}/${nextFileName}`;
+}
+
+function inferGroupTitle(rawName, earliestPostFolder) {
+  const nameRaw = String(rawName || '').trim();
+  const nameDerived = extractEditableTitleFromCompositeName(nameRaw);
+  if (nameRaw && !nameDerived) return sanitizeGroupEditableTitle(nameRaw, 'post');
+  const fromFolder = extractEditableTitleFromCompositeName(earliestPostFolder || '');
+  if (fromFolder) return sanitizeGroupEditableTitle(fromFolder, 'post');
+  if (nameDerived) return sanitizeGroupEditableTitle(nameDerived, 'post');
+  return 'post';
+}
+
+function mapGroupFilesToTitle(files, title) {
+  const safeTitle = sanitizeGroupEditableTitle(title, 'post');
+  return (Array.isArray(files) ? files : []).map(file => {
+    if (!file || !file.url) return file;
+    const srcName = file.name || '';
+    const nextName = applyEditableTitleToDownloadPath(srcName, safeTitle) || srcName;
+    const parts = splitDownloadPath(nextName);
+    return Object.assign({}, file, { name: nextName, postFolder: parts.postFolder || file.postFolder || '' });
+  });
 }
 
 function buildArchiveName(userFolder, postFolder) {
@@ -5236,18 +5809,7 @@ function buildFileIndexFromPostsIfNeeded() {
   for (const meta of PG_POSTS) {
     if (Array.isArray(meta.pgFiles) && meta.pgFiles.length) { haveFiles = true; break; }
   }
-  if (haveFiles) {
-    let maxG = 0;
-    for (const meta of PG_POSTS) {
-      if (!Array.isArray(meta.pgFiles)) continue;
-      for (const f of meta.pgFiles) {
-        if (!f || typeof f.g !== 'number') continue;
-        if (f.g > maxG) maxG = f.g;
-      }
-    }
-    PG_FILE_TOTAL = maxG || null;
-  } else {
-    let total = 0;
+  if (!haveFiles) {
     for (const meta of PG_POSTS) {
       let refs = [];
       const add = o => { const u = resolveFileUrl(o); if (u) refs.push(u); };
@@ -5268,31 +5830,47 @@ function buildFileIndexFromPostsIfNeeded() {
         const isVid = vidRE.test(base);
         if (!isImg && !isVid) continue;
         tmp.push({ url: ref, isVid });
-        total++;
       }
       if (tmp.length) meta._pgTempFiles = tmp;
     }
-    if (!total) {
-      PG_FILE_TOTAL = 0;
-      PG_FILE_URL_MAP = null;
-      PG_POST_FILE_RANGE_MAP = null;
-      for (const meta of PG_POSTS) { delete meta._pgTempFiles; }
-      return;
-    }
-    PG_FILE_TOTAL = total;
-    let g = total;
     for (const meta of PG_POSTS) {
       const tmp = meta._pgTempFiles;
       if (!tmp || !tmp.length) { delete meta._pgTempFiles; continue; }
-      const pf = [];
-      let local = 1;
-      for (const item of tmp) {
-        pf.push({ g, local, url: item.url, isVid: !!item.isVid });
-        g--;
-        local++;
-      }
-      meta.pgFiles = pf;
+      meta.pgFiles = tmp.map((item, idx) => ({
+        g: 0,
+        local: idx + 1,
+        url: item.url,
+        isVid: !!item.isVid
+      }));
       delete meta._pgTempFiles;
+    }
+  }
+
+  let totalFiles = 0;
+  for (const meta of PG_POSTS) {
+    if (!Array.isArray(meta.pgFiles)) continue;
+    for (const f of meta.pgFiles) {
+      if (f && f.url) totalFiles++;
+    }
+  }
+  if (!totalFiles) {
+    PG_FILE_TOTAL = 0;
+    PG_FILE_URL_MAP = null;
+    PG_POST_FILE_RANGE_MAP = null;
+    return;
+  }
+  PG_FILE_TOTAL = totalFiles;
+
+  // Assign global file numbers so they increase in the same order files appear within each post.
+  let g = totalFiles;
+  for (const meta of PG_POSTS) {
+    const files = Array.isArray(meta.pgFiles) ? meta.pgFiles : [];
+    for (let i = files.length - 1; i >= 0; i--) {
+      const f = files[i];
+      if (!f || !f.url) continue;
+      f.g = g;
+      f.local = i + 1;
+      g--;
     }
   }
   for (const meta of PG_POSTS) {
@@ -5446,7 +6024,8 @@ async function buildGlobalIndexMapIfNeeded() {
     const isUser = parts[2] === 'user';
     const userId = isUser ? parts[3] : null;
     if (!service || !isUser || !userId) return;
-    const cacheKey = 'pg_postindex_' + service + '_' + userId;
+    const cacheKey = getProfileIndexCacheKeyFromLocation();
+    if (!cacheKey) return;
     const parsed = await loadCachedIndex(cacheKey);
     if (parsed && Array.isArray(parsed.posts) && parsed.posts.length) {
       const posts = parsed.posts;
@@ -5509,6 +6088,7 @@ async function buildGlobalIndexMapIfNeeded() {
         setIndexStatus('Loaded index from cache: ' + PG_TOTAL + ' posts', 'success');
         injectPostNumbers();
         injectFileNumbers();
+        injectAttachmentCounts();
         scheduleFilter();
         return;
       }
@@ -5547,6 +6127,7 @@ async function buildGlobalIndexMapIfNeeded() {
       setIndexStatus('Indexing complete: ' + PG_TOTAL + ' posts', 'success');
       injectPostNumbers();
       injectFileNumbers();
+      injectAttachmentCounts();
       scheduleFilter();
     } else {
       setIndexStatus('Indexing failed', 'error');
@@ -5604,6 +6185,7 @@ async function handleFilter() {
   const pagesRaw = $('#fPages')?.value || '';
   const postsRaw = $('#fPosts')?.value || '';
   const filesRaw = $('#fFiles')?.value || '';
+  const attachRaw = $('#fAttach')?.value || '';
   const durRaw = $('#fDur')?.value || '';
   const parsedPosts = parseIndices(postsRaw);
   if (postsRaw.trim() && (!parsedPosts || parsedPosts.size === 0)) { if (st) st.textContent = 'Invalid posts'; scheduleHUD(); return; }
@@ -5614,6 +6196,9 @@ async function handleFilter() {
 
   const durRanges = parseDurationRanges(durRaw);
   const durationFiltering = DURATION_FEATURE_ENABLED && durRanges.length > 0;
+  const attachRanges = parseAttachmentCountRanges(attachRaw);
+  const attachmentFiltering = attachRaw.trim() && attachRanges.length > 0;
+  if (attachRaw.trim() && !attachmentFiltering) { if (st) st.textContent = 'Invalid attachments'; scheduleHUD(); return; }
 
   if (!PG_TOTAL) { PG_TOTAL = null; PG_GW = 1; }
 
@@ -5621,7 +6206,7 @@ async function handleFilter() {
   const usedPages = new Set();
 
   const [, service, , userId] = location.pathname.split('/');
-  lastFilterParams = { postRaw: postsRaw, service, media: MEDIA_MODE, durRaw, pagesRaw, filesRaw };
+  lastFilterParams = { postRaw: postsRaw, service, media: MEDIA_MODE, durRaw, pagesRaw, filesRaw, attachRaw };
 
   await buildGlobalIndexMapIfNeeded();
   if (!PG_POSTS || !PG_POSTS.length) {
@@ -5639,6 +6224,7 @@ async function handleFilter() {
   }
 
   const allowed = new Set();
+  const emptyAttachmentPosts = new Set();
   let totalFiles = 0;
 
   let postIndexSet = null;
@@ -5670,7 +6256,22 @@ async function handleFilter() {
     if (pagesSet && !pagesSet.has(pageNum)) continue;
 
     const allFiles = Array.isArray(meta.pgFiles) ? meta.pgFiles : [];
-    if (!allFiles.length) continue;
+    if (!allFiles.length) {
+      if (HIDE_POSTS_WITH_NO_ATTACHMENTS) emptyAttachmentPosts.add(id);
+      continue;
+    }
+
+    if (attachmentFiltering) {
+      const mediaCount = getPostMediaAttachmentCount(meta);
+      let inRange = false;
+      for (const r of attachRanges) {
+        if (mediaCount >= r.min && (r.max == null || mediaCount <= r.max)) {
+          inRange = true;
+          break;
+        }
+      }
+      if (!inRange) continue;
+    }
 
     let fileCandidates = allFiles;
     if (filteringByFiles && parsedFiles && parsedFiles.size) {
@@ -5705,22 +6306,19 @@ async function handleFilter() {
     totalFiles += allowedFilesArr.length;
   }
 
-  if (PREVIEW_MODE) {
-    $$('article.post-card').forEach(c => {
-      const id = c.getAttribute('data-id');
-      c.style.display = allowed.has(id) ? '' : 'none';
-    });
-  } else {
-    $$('article.post-card').forEach(c => {
-      c.style.display = '';
-    });
-  }
+  $$('article.post-card').forEach(c => {
+    const id = c.getAttribute('data-id') || '';
+    const hideForPreview = PREVIEW_MODE && !allowed.has(id);
+    const hideForEmpty = HIDE_POSTS_WITH_NO_ATTACHMENTS && emptyAttachmentPosts.has(id);
+    c.style.display = (hideForPreview || hideForEmpty) ? 'none' : '';
+  });
 
   let msg = 'Showing ' + keptPosts.length + ' posts and ' + totalFiles + ' files';
   msg += formatPagesClause(usedPages);
   setFilterSummary(msg);
   injectPostNumbers();
   injectFileNumbers();
+  injectAttachmentCounts();
   syncPageAllButtonState();
   scheduleHUD();
 }
@@ -6010,12 +6608,13 @@ async function handleCreateGroup() {
   }
 
   loadGroupsForProfile(profileKey);
-  const name = bundle.earliestPostFolder || 'post';
+  const folderName = bundle.earliestPostFolder || 'post';
+  const name = inferGroupTitle(folderName, folderName) || 'post';
   const group = {
     id: makeGroupId(),
     createdAt: Date.now(),
     name,
-    earliestPostFolder: name,
+    earliestPostFolder: folderName,
     earliestIndex: bundle.earliestIndex,
     userFolder: bundle.userFolder,
     files: bundle.files,
@@ -6041,6 +6640,51 @@ function handleClearGroups() {
   }
   clearGroupsForProfile();
   setStatus('Groups cleared', 'success');
+}
+
+function handleRenameMostRecentGroup() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+  const groups = loadGroupsForProfile(profileKey);
+  if (!groups.length) {
+    setStatus('No groups to rename', 'info');
+    return false;
+  }
+
+  let target = null;
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    if (!group) continue;
+    if (!target) {
+      target = group;
+      continue;
+    }
+    const a = typeof group.createdAt === 'number' ? group.createdAt : 0;
+    const b = typeof target.createdAt === 'number' ? target.createdAt : 0;
+    if (a >= b) target = group;
+  }
+  if (!target || !target.id) {
+    setStatus('No groups to rename', 'info');
+    return false;
+  }
+  return handleRenameGroup(target.id);
+}
+
+function handleDownloadAllGroups() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+  const groups = loadGroupsForProfile(profileKey);
+  if (!groups.length) {
+    setStatus('No groups to download', 'info');
+    return false;
+  }
+  return queueAllGroupDownloads(groups);
 }
 
 async function queueFiltered() {
@@ -6240,10 +6884,11 @@ function handleClearFilters() {
   const fPages = $('#fPages'); if (fPages) fPages.value = '';
   const fPosts = $('#fPosts'); if (fPosts) fPosts.value = '';
   const fFiles = $('#fFiles'); if (fFiles) fFiles.value = '';
+  const fAttach = $('#fAttach'); if (fAttach) fAttach.value = '';
   const fDur = $('#fDur'); if (fDur) fDur.value = '';
   MEDIA_MODE = 'all';
   const btnMedia = $('#btnMedia');
-  if (btnMedia) btnMedia.textContent = 'All';
+  if (btnMedia) btnMedia.textContent = mediaModeLabel(MEDIA_MODE);
   LAST_POST_CLICK = null;
   PREVIEW_MODE = false;
   const filterBtn = $('#filterBtn');
@@ -6255,8 +6900,46 @@ function handleClearFilters() {
   saveFilterState();
   injectPostNumbers();
   injectFileNumbers();
+  injectAttachmentCounts();
   syncPageAllButtonState();
   scheduleFilter();
+}
+
+async function handleClearIndexCacheBtn() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('Open a profile page to clear index cache', 'error');
+    return;
+  }
+
+  const cleared = await clearProfileIndexCacheForCurrentProfile();
+  if (!cleared) {
+    setStatus('Unable to clear index cache', 'error');
+    return;
+  }
+
+  resetProfileIndexStateAfterCacheClear();
+  setIndexStatus('Index cache cleared. Rebuilding...', 'info');
+  scheduleFilter();
+}
+
+async function handleClearAllIndexCachesBtn() {
+  const result = await clearAllProfileIndexCaches();
+  const removedTotal = (result.localRemoved || 0) + (result.idbRemoved || 0);
+
+  if (getProfileKeyFromLocation()) {
+    resetProfileIndexStateAfterCacheClear();
+    setIndexStatus('All profile index caches cleared. Rebuilding current profile...', 'info');
+    scheduleFilter();
+  }
+
+  if (removedTotal > 0) {
+    setStatus('Cleared cached indexes for all profiles', 'success');
+    setOptionsStatus('Cleared all profile index caches');
+  } else {
+    setStatus('No cached profile indexes found', 'info');
+    setOptionsStatus('No profile index caches found');
+  }
 }
 
 async function handleClear() {
@@ -6336,6 +7019,103 @@ async function handleDlBtn() {
       scheduleHUD();
     }
   }
+}
+
+function isEditableElement(target) {
+  if (!target || target === document || target === window) return false;
+  const el = target.nodeType === 1 ? target : target.parentElement;
+  if (!el) return false;
+  if (el.closest('input, textarea, select')) return true;
+  if (el.closest('[contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]')) return true;
+  return !!el.isContentEditable;
+}
+
+function keyFromKeyboardEvent(e) {
+  if (!e || typeof e.key !== 'string') return '';
+  if (e.key.length !== 1) return '';
+  const ch = e.key.toLowerCase();
+  return /^[a-z0-9]$/.test(ch) ? ch : '';
+}
+
+function runKeybindAction(fn) {
+  try {
+    const result = fn();
+    if (result && typeof result.then === 'function') {
+      result.catch(() => {});
+    }
+  } catch {}
+}
+
+function triggerDownloadTabKeybindAction(actionId) {
+  switch (actionId) {
+    case 'download_toggle':
+      runKeybindAction(() => handleDlBtn());
+      return true;
+    case 'add_to_queue':
+      runKeybindAction(() => handleAddToQueueBtn());
+      return true;
+    case 'pause_queue':
+      runKeybindAction(() => handlePauseBtn());
+      return true;
+    case 'create_group':
+      runKeybindAction(() => handleCreateGroup());
+      return true;
+    case 'rename_most_recent_group':
+      runKeybindAction(() => handleRenameMostRecentGroup());
+      return true;
+    case 'delete_all_groups':
+      runKeybindAction(() => handleClearGroups());
+      return true;
+    case 'download_all_groups':
+      runKeybindAction(() => handleDownloadAllGroups());
+      return true;
+    case 'download_post_links':
+      runKeybindAction(() => handleDownloadPostLinks());
+      return true;
+    case 'toggle_gallery':
+      runKeybindAction(() => handleGalleryToggle());
+      return true;
+    case 'open_local_gallery':
+      runKeybindAction(() => handleLocalGalleryBtn());
+      return true;
+    case 'toggle_preview':
+      runKeybindAction(() => handlePreviewToggle());
+      return true;
+    case 'clear_profile_index_cache':
+      runKeybindAction(() => handleClearIndexCacheBtn());
+      return true;
+    case 'cycle_media_mode':
+      runKeybindAction(() => cycleMediaMode());
+      return true;
+    case 'page_select_toggle':
+      runKeybindAction(() => handlePageAllBtn());
+      return true;
+    case 'clear_filters':
+      runKeybindAction(() => handleClearFilters());
+      return true;
+  }
+  return false;
+}
+
+function handleDownloadTabKeydown(e) {
+  if (GALLERY_MODE) return;
+  if (e.defaultPrevented) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.repeat) return;
+  if (isEditableElement(e.target)) return;
+  const key = keyFromKeyboardEvent(e);
+  if (!key) return;
+  const actionId = DOWNLOAD_TAB_KEYBIND_LOOKUP.get(key);
+  if (!actionId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  triggerDownloadTabKeybindAction(actionId);
+}
+
+function attachDownloadTabKeyHandler() {
+  if (downloadKeyHandlerAttached) return;
+  window.addEventListener('keydown', handleDownloadTabKeydown, true);
+  downloadKeyHandlerAttached = true;
 }
 
 function pgUserKey(slug) { return 'pg_u_' + slug; }
@@ -7313,15 +8093,20 @@ function handleLocalGalleryBtn() {
 
 buildMenu();
 buildHUD();
+attachDownloadTabKeyHandler();
 openMenu();
 injectPostNumbers();
 injectFileNumbers();
+injectAttachmentCounts();
 
 const observer = new MutationObserver(debounce(injectPostNumbers, 100));
 observer.observe(document.body, { childList: true, subtree: true });
 
 const fileObserver = new MutationObserver(debounce(injectFileNumbers, 100));
 fileObserver.observe(document.body, { childList: true, subtree: true });
+
+const attachmentObserver = new MutationObserver(debounce(injectAttachmentCounts, 100));
+attachmentObserver.observe(document.body, { childList: true, subtree: true });
 
 const optimizerObserver = new MutationObserver(muts => {
   for (const m of muts) {
