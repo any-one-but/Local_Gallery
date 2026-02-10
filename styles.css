@@ -25,6 +25,7 @@
       --preview-gutter: 10px;
       --thumb-filter: none;
       --thumb-fit: cover;
+      --thumb-bg: transparent;
     }
 
     :root[data-media-size="small"] {
@@ -840,6 +841,30 @@
       font-weight: 700;
     }
 
+    .dirNameWithBadge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      justify-content: flex-start;
+    }
+
+    .dirNameText {
+      flex: 0 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dirFavoriteHeart {
+      flex: 0 0 auto;
+      color: #ff6f91;
+      font-size: 12px;
+      line-height: 1;
+      opacity: 0.95;
+    }
+
     .dirMeta {
       flex: 0 0 auto;
       font-size: 11px;
@@ -1146,7 +1171,7 @@
       aspect-ratio: 4/3;
       object-fit: var(--thumb-fit, cover);
       display: block;
-      background: #000;
+      background: var(--thumb-bg, transparent);
       user-select: none;
       filter: var(--thumb-filter, none);
     }
@@ -1871,6 +1896,11 @@
       display: flex;
       gap: 6px;
       flex: 0 0 auto;
+    }
+
+    #optionsBody.hideHints .optHint,
+    #keybindsBody.hideHints .optHint {
+      display: none;
     }
 
     #optionsBody select,
