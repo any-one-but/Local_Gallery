@@ -158,9 +158,681 @@
 
     const ONLINE_POSTS_PER_PAGE = 50;
     const ONLINE_PAGE_DELAY_MS = 200;
+    const REDDIT_POSTS_PER_PAGE = 100;
+    const REDDIT_PAGE_DELAY_MS = 250;
+    const REDDIT_PROFILE_ORIGIN = "https://www.reddit.com";
+    const DEVIANTART_PROFILE_ORIGIN = "https://www.deviantart.com";
+    const DEVIANTART_BACKEND_ORIGIN = "https://backend.deviantart.com";
+    const DEVIANTART_PAGE_DELAY_MS = 300;
+    const REDDIT_API_USER_AGENT = "Mozilla/5.0 (compatible; LocalGallery/1.0)";
 
     function sleepMs(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function isRedditHost(hostname) {
+      const host = String(hostname || "").toLowerCase();
+      return host === "reddit.com" || host.endsWith(".reddit.com");
+    }
+
+    function isDeviantArtHost(hostname) {
+      const host = String(hostname || "").toLowerCase();
+      return host === "deviantart.com" || host.endsWith(".deviantart.com");
+    }
+
+    function normalizeRedditProfileOrigin(originRaw) {
+      try {
+        const parsed = new URL(String(originRaw || REDDIT_PROFILE_ORIGIN));
+        if (isRedditHost(parsed.hostname)) return REDDIT_PROFILE_ORIGIN;
+      } catch {}
+      return REDDIT_PROFILE_ORIGIN;
+    }
+
+    function normalizeDeviantArtProfileOrigin(originRaw) {
+      try {
+        const parsed = new URL(String(originRaw || DEVIANTART_PROFILE_ORIGIN));
+        if (isDeviantArtHost(parsed.hostname)) return DEVIANTART_PROFILE_ORIGIN;
+      } catch {}
+      return DEVIANTART_PROFILE_ORIGIN;
+    }
+
+    function buildOnlineProfileSourceUrl(profile) {
+      const source = (profile && profile.sourceUrl) ? String(profile.sourceUrl).trim() : "";
+      if (source) return source;
+      const service = String(profile && profile.service || "").toLowerCase();
+      const userId = encodeURIComponent(String(profile && profile.userId || "").trim());
+      const origin = String(profile && profile.origin || "").replace(/\/$/, "");
+      if (!userId) return "";
+      if (service === "reddit") {
+        const base = normalizeRedditProfileOrigin(origin || REDDIT_PROFILE_ORIGIN).replace(/\/$/, "");
+        return `${base}/user/${userId}`;
+      }
+      if (service === "deviantart") {
+        const base = normalizeDeviantArtProfileOrigin(origin || DEVIANTART_PROFILE_ORIGIN).replace(/\/$/, "");
+        return `${base}/${userId}`;
+      }
+      if (!origin || !service) return "";
+      return `${origin}/${service}/user/${userId}`;
+    }
+
+    function decodeHtmlEntities(raw) {
+      return String(raw || "")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, "\"")
+        .replace(/&#39;/g, "'")
+        .replace(/&#x27;/gi, "'");
+    }
+
+    function normalizeOnlineAbsoluteUrl(raw, baseOrigin) {
+      let next = decodeHtmlEntities(raw).trim();
+      if (!next) return "";
+      if (/^\/\//.test(next)) next = "https:" + next;
+      try {
+        return new URL(next, baseOrigin || "https://example.invalid").toString();
+      } catch {
+        return "";
+      }
+    }
+
+    function urlLooksLikeMedia(u) {
+      const base = (String(u || "").split("?")[0] || "").toLowerCase();
+      if (!base) return false;
+      if (imgRE.test(base) || vidRE.test(base)) return true;
+      if (/\.gifv$/i.test(base)) return true;
+      return false;
+    }
+
+    function appendUniqueUrl(target, seen, raw, baseOrigin) {
+      let url = normalizeOnlineAbsoluteUrl(raw, baseOrigin);
+      if (!url) return;
+      if (/\.gifv(\?|$)/i.test(url)) {
+        url = url.replace(/\.gifv(?=\?|$)/i, ".mp4");
+      }
+      if (!urlLooksLikeMedia(url)) return;
+      const key = (normalizeOnlineFileUrl(url, baseOrigin) || url).toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      target.push(url);
+    }
+
+    function collectRedditMediaUrlsFromPost(postData, baseOrigin) {
+      const urls = [];
+      const seen = new Set();
+      const add = (raw) => appendUniqueUrl(urls, seen, raw, baseOrigin);
+      const scan = (data) => {
+        if (!data || typeof data !== "object") return;
+
+        const rv = (data.secure_media && data.secure_media.reddit_video) || (data.media && data.media.reddit_video) || null;
+        if (rv && rv.fallback_url) add(rv.fallback_url);
+
+        const rvPreview = data.preview && data.preview.reddit_video_preview ? data.preview.reddit_video_preview : null;
+        if (rvPreview && rvPreview.fallback_url) add(rvPreview.fallback_url);
+
+        if (data.gallery_data && Array.isArray(data.gallery_data.items) && data.media_metadata && typeof data.media_metadata === "object") {
+          for (const item of data.gallery_data.items) {
+            if (!item || !item.media_id) continue;
+            const meta = data.media_metadata[item.media_id];
+            if (!meta || typeof meta !== "object") continue;
+            if (meta.s && meta.s.u) add(meta.s.u);
+            if (meta.s && meta.s.gif) add(meta.s.gif);
+            if (meta.s && meta.s.mp4) add(meta.s.mp4);
+          }
+        }
+
+        if (data.url_overridden_by_dest) add(data.url_overridden_by_dest);
+        else if (data.url && data.is_reddit_media_domain) add(data.url);
+
+        if (data.preview && Array.isArray(data.preview.images)) {
+          for (const image of data.preview.images) {
+            if (!image || typeof image !== "object") continue;
+            if (image.source && image.source.url) add(image.source.url);
+            if (image.variants && image.variants.gif && image.variants.gif.source && image.variants.gif.source.url) {
+              add(image.variants.gif.source.url);
+            }
+          }
+        }
+      };
+
+      scan(postData);
+      if (!urls.length && postData && Array.isArray(postData.crosspost_parent_list)) {
+        for (const item of postData.crosspost_parent_list) {
+          scan(item);
+          if (urls.length) break;
+        }
+      }
+
+      return urls;
+    }
+
+    function mapRedditListingToPosts(listing, page, userId, baseOrigin) {
+      const out = [];
+      const children = listing && listing.data && Array.isArray(listing.data.children) ? listing.data.children : [];
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        const data = child && child.data && typeof child.data === "object" ? child.data : null;
+        if (!data) continue;
+        const mediaUrls = collectRedditMediaUrlsFromPost(data, baseOrigin);
+        if (!mediaUrls.length) continue;
+        const post = {
+          id: data.id != null ? String(data.id) : ("reddit_post_" + String(page) + "_" + String(i + 1)),
+          user: data.author || userId,
+          service: "reddit",
+          title: data.title || "",
+          created: data.created_utc,
+          created_utc: data.created_utc,
+          permalink: data.permalink || "",
+          url: data.permalink ? `${baseOrigin}${String(data.permalink)}` : (data.url || ""),
+          pgPage: page,
+          pgIdxOnPage: i + 1,
+          attachments: mediaUrls.map(u => ({ url: u }))
+        };
+        out.push(post);
+      }
+      const after = listing && listing.data ? (listing.data.after || null) : null;
+      return { posts: out, after };
+    }
+
+    async function fetchRedditUserPosts(userId, origin, opts = {}) {
+      const posts = [];
+      const responses = [];
+      const pageSize = Number.isFinite(opts.pageSize) ? Math.max(1, Math.min(100, opts.pageSize)) : REDDIT_POSTS_PER_PAGE;
+      const delayMs = Number.isFinite(opts.pageDelayMs) ? opts.pageDelayMs : REDDIT_PAGE_DELAY_MS;
+      const fetchFn = (typeof opts.fetch === "function") ? opts.fetch : fetch;
+      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.fetchUrl === "function")
+        ? window.electronAPI
+        : null;
+      const responseBodyLimit = Number.isFinite(opts.responseBodyLimit) ? Math.max(256, opts.responseBodyLimit) : 18000;
+      const base = normalizeRedditProfileOrigin(origin);
+      const profileUrl = `${base}/user/${encodeURIComponent(String(userId || "").trim())}`;
+
+      let page = 1;
+      let after = null;
+      let lastError = null;
+
+      const pushResponse = (entry) => {
+        const rawBody = (entry && typeof entry.responseText === "string") ? entry.responseText : "";
+        const text = rawBody.length > responseBodyLimit ? rawBody.slice(0, responseBodyLimit) : rawBody;
+        responses.push(Object.assign({}, entry, {
+          ts: (entry && typeof entry.ts === "number") ? entry.ts : Date.now(),
+          responseText: text,
+          responseBytes: rawBody.length,
+          truncated: rawBody.length > responseBodyLimit
+        }));
+      };
+
+      while (true) {
+        if (typeof opts.progressCb === "function") {
+          try { opts.progressCb(page, posts.length); } catch {}
+        }
+
+        const afterParam = after ? `&after=${encodeURIComponent(after)}` : "";
+        const apiUrl = `${base}/user/${encodeURIComponent(String(userId || "").trim())}/submitted/.json?raw_json=1&limit=${pageSize}${afterParam}`;
+        let resp = null;
+        try {
+          if (electronApi) {
+            const res = await electronApi.fetchUrl({
+              url: apiUrl,
+              headers: {
+                Accept: "application/json,text/plain,*/*",
+                "X-Requested-With": "XMLHttpRequest",
+                "User-Agent": REDDIT_API_USER_AGENT
+              },
+              referrer: profileUrl
+            });
+            const status = (res && typeof res.status === "number") ? res.status : 0;
+            const responseText = (res && typeof res.text === "string") ? res.text : "";
+            if (!res || !res.ok) {
+              if (status > 0) lastError = `http_${status}`;
+              else lastError = res && res.error ? String(res.error) : "network_error";
+              pushResponse({
+                ts: Date.now(),
+                source: "electron",
+                url: apiUrl,
+                page,
+                offset: posts.length,
+                ok: false,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+            try {
+              resp = JSON.parse(responseText || "");
+              pushResponse({
+                ts: Date.now(),
+                source: "electron",
+                url: apiUrl,
+                page,
+                offset: posts.length,
+                ok: true,
+                status,
+                error: "",
+                parseOk: true,
+                responseText
+              });
+            } catch {
+              lastError = "invalid_json";
+              pushResponse({
+                ts: Date.now(),
+                source: "electron",
+                url: apiUrl,
+                page,
+                offset: posts.length,
+                ok: true,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+          } else {
+            const res = await fetchFn(apiUrl, {
+              cache: "no-store",
+              headers: {
+                Accept: "application/json,text/plain,*/*",
+                "X-Requested-With": "XMLHttpRequest"
+              },
+              referrer: profileUrl,
+              referrerPolicy: "no-referrer-when-downgrade"
+            });
+            let status = 0;
+            let responseText = "";
+            if (res) {
+              if (typeof res.status === "number") status = res.status;
+              try { responseText = await res.text(); } catch {}
+            }
+            if (!res || !res.ok) {
+              lastError = status > 0 ? `http_${status}` : "network_error";
+              pushResponse({
+                ts: Date.now(),
+                source: "browser",
+                url: apiUrl,
+                page,
+                offset: posts.length,
+                ok: !!(res && res.ok),
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+            try {
+              resp = JSON.parse(responseText || "");
+              pushResponse({
+                ts: Date.now(),
+                source: "browser",
+                url: apiUrl,
+                page,
+                offset: posts.length,
+                ok: true,
+                status,
+                error: "",
+                parseOk: true,
+                responseText
+              });
+            } catch {
+              lastError = "invalid_json";
+              pushResponse({
+                ts: Date.now(),
+                source: "browser",
+                url: apiUrl,
+                page,
+                offset: posts.length,
+                ok: true,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+          }
+        } catch {
+          lastError = "network_error";
+          pushResponse({
+            ts: Date.now(),
+            source: electronApi ? "electron" : "browser",
+            url: apiUrl,
+            page,
+            offset: posts.length,
+            ok: false,
+            status: 0,
+            error: lastError,
+            parseOk: false,
+            responseText: ""
+          });
+          break;
+        }
+
+        const mapped = mapRedditListingToPosts(resp, page, userId, base);
+        if (Array.isArray(mapped.posts) && mapped.posts.length) {
+          for (const post of mapped.posts) posts.push(post);
+        }
+        after = mapped.after || null;
+        if (!after) break;
+        page++;
+        if (delayMs > 0) await sleepMs(delayMs + Math.floor(Math.random() * 200));
+      }
+
+      return { posts, error: lastError, responses };
+    }
+
+    const DEVIANTART_RESERVED_ROUTE_HEADS = new Set([
+      "",
+      "about",
+      "account",
+      "adopt",
+      "artists",
+      "browse",
+      "core-membership",
+      "daily-deviations",
+      "download",
+      "forum",
+      "forums",
+      "help",
+      "jobs",
+      "join",
+      "notifications",
+      "messages",
+      "shop",
+      "settings",
+      "tag",
+      "watch",
+      "wishlist"
+    ]);
+
+    function parseXmlTagAttributes(attrText) {
+      const out = {};
+      const src = String(attrText || "");
+      const re = /([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+      let m = null;
+      while ((m = re.exec(src)) !== null) {
+        const key = String(m[1] || "").toLowerCase();
+        const value = decodeHtmlEntities(m[2] != null ? m[2] : m[3] != null ? m[3] : "");
+        if (key) out[key] = value;
+      }
+      return out;
+    }
+
+    function extractRssTagText(xmlChunk, tagName) {
+      const src = String(xmlChunk || "");
+      const tag = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!tag) return "";
+      const re = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
+      const m = re.exec(src);
+      if (!m) return "";
+      return decodeHtmlEntities(String(m[1] || "").trim());
+    }
+
+    function extractRssNextHref(xmlText, baseOrigin) {
+      const src = String(xmlText || "");
+      const re = /<atom:link\b([^>]*?)\/?>/gi;
+      let m = null;
+      while ((m = re.exec(src)) !== null) {
+        const attrs = parseXmlTagAttributes(m[1] || "");
+        const rel = String(attrs.rel || "").toLowerCase();
+        if (rel !== "next") continue;
+        const href = String(attrs.href || "").trim();
+        if (!href) continue;
+        try {
+          return new URL(href, baseOrigin || DEVIANTART_BACKEND_ORIGIN).toString();
+        } catch {}
+      }
+      return null;
+    }
+
+    function collectDeviantArtMediaUrlsFromItemXml(itemXml, baseOrigin) {
+      const urls = [];
+      const seen = new Set();
+      const add = (raw) => appendUniqueUrl(urls, seen, raw, baseOrigin);
+      const xml = String(itemXml || "");
+
+      const mediaContentRe = /<media:content\b([^>]*?)\/?>/gi;
+      let m = null;
+      while ((m = mediaContentRe.exec(xml)) !== null) {
+        const attrs = parseXmlTagAttributes(m[1] || "");
+        if (attrs.url) add(attrs.url);
+      }
+
+      const enclosureRe = /<enclosure\b([^>]*?)\/?>/gi;
+      while ((m = enclosureRe.exec(xml)) !== null) {
+        const attrs = parseXmlTagAttributes(m[1] || "");
+        if (attrs.url) add(attrs.url);
+      }
+
+      if (!urls.length) {
+        const desc = extractRssTagText(xml, "description");
+        const imgRe = /https?:\/\/[^\s"'<>]+/gi;
+        let dm = null;
+        while ((dm = imgRe.exec(desc)) !== null) add(dm[0]);
+      }
+
+      return urls;
+    }
+
+    function mapDeviantArtRssToPosts(xmlText, page, userId, baseOrigin) {
+      const src = String(xmlText || "");
+      if (!src.trim()) return { posts: [], nextUrl: null, error: "invalid_xml" };
+
+      const channelHead = src.split(/<item\b/i)[0] || src;
+      const channelDesc = extractRssTagText(channelHead, "description");
+      if (/error generating rss/i.test(channelDesc)) {
+        return { posts: [], nextUrl: null, error: "invalid_profile" };
+      }
+
+      const posts = [];
+      const itemRe = /<item\b[\s\S]*?<\/item>/gi;
+      let itemMatch = null;
+      let idx = 0;
+      while ((itemMatch = itemRe.exec(src)) !== null) {
+        idx++;
+        const itemXml = itemMatch[0] || "";
+        const mediaUrls = collectDeviantArtMediaUrlsFromItemXml(itemXml, baseOrigin);
+        if (!mediaUrls.length) continue;
+
+        const link = extractRssTagText(itemXml, "link");
+        const guid = extractRssTagText(itemXml, "guid");
+        const title = extractRssTagText(itemXml, "title");
+        const pubDate = extractRssTagText(itemXml, "pubDate");
+        let createdTs = null;
+        try {
+          const t = Date.parse(pubDate);
+          if (Number.isFinite(t)) createdTs = Math.floor(t / 1000);
+        } catch {}
+
+        let id = "";
+        const idSrc = link || guid;
+        const idMatch = /-(\d+)(?:[/?#]|$)/.exec(idSrc);
+        if (idMatch && idMatch[1]) id = idMatch[1];
+        if (!id && guid) id = guid;
+        if (!id && link) id = link;
+        if (!id) id = `deviantart_post_${String(page)}_${String(idx)}`;
+
+        posts.push({
+          id: String(id),
+          user: userId,
+          service: "deviantart",
+          title: title || "",
+          created: createdTs,
+          created_utc: createdTs,
+          url: link || guid || "",
+          permalink: link || guid || "",
+          pgPage: page,
+          pgIdxOnPage: idx,
+          attachments: mediaUrls.map(u => ({ url: u }))
+        });
+      }
+
+      const nextUrl = extractRssNextHref(src, baseOrigin);
+      if (!posts.length && !nextUrl) return { posts: [], nextUrl: null, error: null };
+      return { posts, nextUrl, error: null };
+    }
+
+    async function fetchDeviantArtUserPosts(userId, origin, opts = {}) {
+      const posts = [];
+      const responses = [];
+      const delayMs = Number.isFinite(opts.pageDelayMs) ? opts.pageDelayMs : DEVIANTART_PAGE_DELAY_MS;
+      const fetchFn = (typeof opts.fetch === "function") ? opts.fetch : fetch;
+      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.fetchUrl === "function")
+        ? window.electronAPI
+        : null;
+      const responseBodyLimit = Number.isFinite(opts.responseBodyLimit) ? Math.max(256, opts.responseBodyLimit) : 18000;
+      const maxPages = Number.isFinite(opts.maxPages) ? Math.max(1, Math.min(500, opts.maxPages)) : 200;
+      const baseProfile = normalizeDeviantArtProfileOrigin(origin);
+      const user = String(userId || "").trim();
+      const profileUrl = `${baseProfile.replace(/\/$/, "")}/${encodeURIComponent(user)}`;
+      const firstFeedUrl = `${DEVIANTART_BACKEND_ORIGIN}/rss.xml?type=deviation&q=${encodeURIComponent(`gallery:${user}`)}`;
+
+      let page = 1;
+      let pageUrl = firstFeedUrl;
+      let lastError = null;
+
+      const pushResponse = (entry) => {
+        const rawBody = (entry && typeof entry.responseText === "string") ? entry.responseText : "";
+        const text = rawBody.length > responseBodyLimit ? rawBody.slice(0, responseBodyLimit) : rawBody;
+        responses.push(Object.assign({}, entry, {
+          ts: (entry && typeof entry.ts === "number") ? entry.ts : Date.now(),
+          responseText: text,
+          responseBytes: rawBody.length,
+          truncated: rawBody.length > responseBodyLimit
+        }));
+      };
+
+      while (pageUrl && page <= maxPages) {
+        if (typeof opts.progressCb === "function") {
+          try { opts.progressCb(page, posts.length); } catch {}
+        }
+
+        let responseText = "";
+        let status = 0;
+        let ok = false;
+        let source = electronApi ? "electron" : "browser";
+        try {
+          if (electronApi) {
+            const res = await electronApi.fetchUrl({
+              url: pageUrl,
+              headers: {
+                Accept: "application/xml,text/xml,text/plain,*/*",
+                "X-Requested-With": "XMLHttpRequest",
+                "User-Agent": REDDIT_API_USER_AGENT
+              },
+              referrer: profileUrl
+            });
+            status = (res && typeof res.status === "number") ? res.status : 0;
+            responseText = (res && typeof res.text === "string") ? res.text : "";
+            ok = !!(res && res.ok);
+            if (!ok) {
+              if (status > 0) lastError = `http_${status}`;
+              else lastError = res && res.error ? String(res.error) : "network_error";
+              pushResponse({
+                ts: Date.now(),
+                source,
+                url: pageUrl,
+                page,
+                offset: posts.length,
+                ok: false,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+          } else {
+            const res = await fetchFn(pageUrl, {
+              cache: "no-store",
+              headers: {
+                Accept: "application/xml,text/xml,text/plain,*/*",
+                "X-Requested-With": "XMLHttpRequest"
+              },
+              referrer: profileUrl,
+              referrerPolicy: "no-referrer-when-downgrade"
+            });
+            if (res && typeof res.status === "number") status = res.status;
+            try { responseText = res ? await res.text() : ""; } catch {}
+            ok = !!(res && res.ok);
+            if (!ok) {
+              lastError = status > 0 ? `http_${status}` : "network_error";
+              pushResponse({
+                ts: Date.now(),
+                source,
+                url: pageUrl,
+                page,
+                offset: posts.length,
+                ok: false,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+          }
+        } catch {
+          lastError = "network_error";
+          pushResponse({
+            ts: Date.now(),
+            source,
+            url: pageUrl,
+            page,
+            offset: posts.length,
+            ok: false,
+            status: 0,
+            error: lastError,
+            parseOk: false,
+            responseText: ""
+          });
+          break;
+        }
+
+        const mapped = mapDeviantArtRssToPosts(responseText, page, user, baseProfile);
+        if (mapped.error) {
+          lastError = mapped.error;
+          pushResponse({
+            ts: Date.now(),
+            source,
+            url: pageUrl,
+            page,
+            offset: posts.length,
+            ok,
+            status,
+            error: lastError,
+            parseOk: false,
+            responseText
+          });
+          break;
+        }
+
+        pushResponse({
+          ts: Date.now(),
+          source,
+          url: pageUrl,
+          page,
+          offset: posts.length,
+          ok,
+          status,
+          error: "",
+          parseOk: true,
+          responseText
+        });
+
+        if (Array.isArray(mapped.posts) && mapped.posts.length) {
+          for (const post of mapped.posts) posts.push(post);
+        }
+
+        if (!mapped.nextUrl) break;
+        pageUrl = mapped.nextUrl;
+        page++;
+        if (delayMs > 0) await sleepMs(delayMs + Math.floor(Math.random() * 220));
+      }
+
+      return { posts, error: lastError, responses };
     }
 
     function parseOnlineProfileUrl(rawUrl) {
@@ -171,6 +843,54 @@
       }
       let url = null;
       try { url = new URL(raw); } catch { return { ok: false, error: "invalid-url" }; }
+      if (isDeviantArtHost(url.hostname)) {
+        let userId = "";
+        const host = String(url.hostname || "").toLowerCase();
+        if (host.endsWith(".deviantart.com") && host !== "www.deviantart.com" && host !== "deviantart.com" && host !== "backend.deviantart.com") {
+          const sub = host.slice(0, -".deviantart.com".length);
+          if (sub && !sub.includes(".")) userId = decodeURIComponent(sub).trim();
+        }
+        if (!userId) {
+          const qRaw = String(url.searchParams.get("q") || "").trim();
+          const qMatch = /^gallery:(.+)$/i.exec(qRaw);
+          if (qMatch && qMatch[1]) userId = String(qMatch[1]).trim();
+        }
+        if (!userId && host !== "backend.deviantart.com") {
+          const parts = (url.pathname || "").split("/").filter(Boolean);
+          if (parts.length) {
+            const first = decodeURIComponent(parts[0] || "").replace(/^@+/, "").trim();
+            if (first && !DEVIANTART_RESERVED_ROUTE_HEADS.has(first.toLowerCase())) userId = first;
+          }
+        }
+        if (!userId) return { ok: false, error: "invalid-profile-path" };
+        const origin = DEVIANTART_PROFILE_ORIGIN;
+        return {
+          ok: true,
+          origin,
+          service: "deviantart",
+          userId,
+          profileKey: "deviantart::" + userId,
+          dataRoot: origin.replace(/\/$/, "") + "/data"
+        };
+      }
+      if (isRedditHost(url.hostname)) {
+        const parts = (url.pathname || "").split("/").filter(Boolean);
+        const head = String(parts[0] || "").toLowerCase();
+        if ((head === "user" || head === "u") && parts.length >= 2) {
+          const userId = decodeURIComponent(parts[1] || "").trim();
+          if (!userId) return { ok: false, error: "invalid-profile-path" };
+          const origin = REDDIT_PROFILE_ORIGIN;
+          return {
+            ok: true,
+            origin,
+            service: "reddit",
+            userId,
+            profileKey: "reddit::" + userId,
+            dataRoot: origin.replace(/\/$/, "") + "/data"
+          };
+        }
+        return { ok: false, error: "invalid-profile-path" };
+      }
       const parts = (url.pathname || "").split("/").filter(Boolean);
       if (parts.length < 3 || parts[1] !== "user") {
         return { ok: false, error: "invalid-profile-path" };
@@ -272,6 +992,12 @@
     }
 
     async function fetchOnlineProfilePosts(service, userId, origin, opts = {}) {
+      if (String(service || "").toLowerCase() === "deviantart") {
+        return fetchDeviantArtUserPosts(userId, origin, opts);
+      }
+      if (String(service || "").toLowerCase() === "reddit") {
+        return fetchRedditUserPosts(userId, origin, opts);
+      }
       const posts = [];
       const responses = [];
       const pageSize = Number.isFinite(opts.pageSize) ? opts.pageSize : ONLINE_POSTS_PER_PAGE;
@@ -458,6 +1184,17 @@
       }
 
       return { posts, error: lastError, responses };
+    }
+
+    function getOnlineApiErrorMessage(err) {
+      const error = String(err || "").trim();
+      if (!error) return "Network error.";
+      if (error === "invalid_json") return "API returned non-JSON. Check Responses tab.";
+      if (error === "invalid_xml") return "API returned invalid XML. Check Responses tab.";
+      if (error === "invalid_profile") return "Profile not found or no public gallery feed.";
+      if (error.startsWith("http_")) return `API error (${error.slice(5)})`;
+      if (error === "network_error") return "Network error.";
+      return `API error (${error})`;
     }
 
     function normalizeOnlinePosts(posts, opts = {}) {
@@ -805,6 +1542,25 @@
       return { saved: true, file: fileName, ts };
     }
 
+    function inferOnlineFileExt(fileObj) {
+      const raw = String((fileObj && (fileObj.name || fileObj.path || fileObj.url)) || "").trim();
+      if (!raw) return "";
+      let pathLike = raw;
+      try {
+        pathLike = new URL(raw, "https://example.invalid").pathname || raw;
+      } catch {}
+      let base = "";
+      try {
+        base = decodeURIComponent(String(pathLike).split("/").pop() || "");
+      } catch {
+        base = String(pathLike).split("/").pop() || "";
+      }
+      base = String(base).split("?")[0].split("#")[0];
+      const m = /\.([A-Za-z0-9]{1,10})$/.exec(base);
+      if (m && m[1]) return String(m[1]).toLowerCase();
+      return "";
+    }
+
     function formatOnlineFilename(post, fileObj, index, globalIndex, userOverride) {
       const user = String(userOverride || post?.user || post?.user_name || post?.username || post?.userId || post?.author || "profile");
       const sanitizeUserFolder = s => {
@@ -831,13 +1587,19 @@
       if (!threadSec) threadSec = sanitizeNamePart(user).slice(0, 40);
       let titleSec = sanitizeNamePart(titleRaw).slice(0, 40);
       if (!titleSec) titleSec = sanitizeNamePart("post_" + (post && post.id != null ? post.id : "0")).slice(0, 40);
-      const extRaw = (fileObj && (fileObj.name || fileObj.path)) ? (fileObj.name || fileObj.path) : "";
-      const ext = String(extRaw).split(".").pop().split("?")[0].toLowerCase();
+      let ext = inferOnlineFileExt(fileObj);
+      if (!ext) {
+        const rawUrl = String(fileObj && (fileObj.path || fileObj.url || "") || "");
+        const baseUrl = (rawUrl.split("?")[0] || "").toLowerCase();
+        if (vidRE.test(baseUrl) || !!(fileObj && fileObj.isVid)) ext = "mp4";
+        else if (imgRE.test(baseUrl) || !!(fileObj && fileObj.isImg)) ext = "jpg";
+        else ext = "bin";
+      }
       const gPost = String(globalIndex || 0).padStart(6, "0");
       const fIdx = String(index || 0).padStart(6, "0");
       let dateSec = "000000";
       try {
-        const raw = post && (post.published || post.published_at || post.added || post.added_at || post.created || post.created_at || post.posted || post.posted_at);
+        const raw = post && (post.published || post.published_at || post.added || post.added_at || post.created || post.created_at || post.created_utc || post.posted || post.posted_at);
         if (raw != null) {
           let d = null;
           if (typeof raw === "number" && isFinite(raw)) {
@@ -909,6 +1671,11 @@
     function onlineLoadMode() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       return (opt && opt.onlineLoadMode === "preload") ? "preload" : "as-needed";
+    }
+
+    function listOnlineFoldersFirstEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.listOnlineFoldersFirst);
     }
 
     function shouldPreloadOnlineForDir(dirNode) {
@@ -1004,7 +1771,7 @@
           const f = files[j];
           if (!f || !f.url) continue;
           const fileIndex = (typeof f.g === "number") ? f.g : ((typeof f.local === "number") ? f.local : (j + 1));
-          const baseRel = formatOnlineFilename(post, { path: f.url }, fileIndex, postIndex, userLabel);
+          const baseRel = formatOnlineFilename(post, { path: f.url, isVid: !!f.isVid, isImg: !f.isVid }, fileIndex, postIndex, userLabel);
           const parts = String(baseRel || "").split("/").filter(Boolean);
           if (!parts.length) continue;
           const userFolder = parts[0] || "";
@@ -1243,10 +2010,7 @@
         const posts = result && Array.isArray(result.posts) ? result.posts : [];
         if (!posts.length) {
           if (result && result.error) {
-            const msg = result.error === "invalid_json"
-              ? "API returned non-JSON. Check Responses tab."
-              : (String(result.error).startsWith("http_") ? `API error (${String(result.error).slice(5)})` : "Network error.");
-            showStatusMessage(msg);
+            showStatusMessage(getOnlineApiErrorMessage(result.error));
           } else {
             showStatusMessage("No posts found.");
           }
@@ -1310,7 +2074,7 @@
           const f = files[j];
           if (!f || !f.url) continue;
           const fileIndex = (typeof f.g === "number") ? f.g : ((typeof f.local === "number") ? f.local : (j + 1));
-          const baseRel = formatOnlineFilename(post, { path: f.url }, fileIndex, postIndex, userLabel);
+          const baseRel = formatOnlineFilename(post, { path: f.url, isVid: !!f.isVid, isImg: !f.isVid }, fileIndex, postIndex, userLabel);
           const parts = String(baseRel || "").split("/").filter(Boolean);
           if (!parts.length) continue;
           const userFolder = parts[0] || "";
@@ -1367,10 +2131,7 @@
         const posts = result && Array.isArray(result.posts) ? result.posts : [];
         if (!posts.length) {
           if (result && result.error) {
-            const msg = result.error === "invalid_json"
-              ? "API returned non-JSON. Check Responses tab."
-              : (String(result.error).startsWith("http_") ? `API error (${String(result.error).slice(5)})` : "Network error.");
-            showStatusMessage(msg);
+            showStatusMessage(getOnlineApiErrorMessage(result.error));
           } else {
             showStatusMessage("No posts found.");
           }
@@ -1723,7 +2484,7 @@
 
     function getOnlineFetchReferrer(profileKey, url) {
       const entry = ONLINE_PROFILE_CACHE.get(String(profileKey || ""));
-      const source = entry && entry.profile && entry.profile.sourceUrl ? String(entry.profile.sourceUrl) : "";
+      const source = buildOnlineProfileSourceUrl(entry && entry.profile ? entry.profile : null);
       if (source) return source;
       try {
         const u = new URL(String(url || ""));
@@ -2104,6 +2865,7 @@
         previewThumbFiltersEnabled: false,
         previewThumbFit: "cover",
         onlineLoadMode: "as-needed",
+        listOnlineFoldersFirst: false,
         onlineFeaturesEnabled: true,
         hideOptionDescriptions: false,
         hideKeybindDescriptions: false,
@@ -2142,6 +2904,7 @@
         previewMode: (src.previewMode === "grid" || src.previewMode === "expanded") ? src.previewMode : d.previewMode,
         previewThumbFit: (src.previewThumbFit === "contain" || src.previewThumbFit === "cover") ? src.previewThumbFit : d.previewThumbFit,
         onlineLoadMode: (src.onlineLoadMode === "preload" || src.onlineLoadMode === "as-needed") ? src.onlineLoadMode : d.onlineLoadMode,
+        listOnlineFoldersFirst: (typeof src.listOnlineFoldersFirst === "boolean") ? src.listOnlineFoldersFirst : d.listOnlineFoldersFirst,
         videoSkipStep: (src.videoSkipStep === "3" || src.videoSkipStep === "5" || src.videoSkipStep === "10" || src.videoSkipStep === "30") ? src.videoSkipStep : d.videoSkipStep,
         preloadNextMode: (src.preloadNextMode === "off" || src.preloadNextMode === "on" || src.preloadNextMode === "ultra") ? src.preloadNextMode : d.preloadNextMode,
         videoEndBehavior: (src.videoEndBehavior === "loop" || src.videoEndBehavior === "next" || src.videoEndBehavior === "stop") ? src.videoEndBehavior : d.videoEndBehavior,
@@ -4292,6 +5055,37 @@
       optRow.appendChild(optRight);
       onlineBodyEl.appendChild(optRow);
 
+      const orderRow = document.createElement("div");
+      orderRow.className = "optRow";
+      const orderLeft = document.createElement("div");
+      orderLeft.className = "optLeft";
+      const orderTitle = document.createElement("div");
+      orderTitle.className = "optTitle";
+      orderTitle.textContent = "List online folders first";
+      const orderHint = document.createElement("div");
+      orderHint.className = "optHint";
+      orderHint.textContent = "Float online folders above local folders (tags still stay on top).";
+      orderLeft.appendChild(orderTitle);
+      orderLeft.appendChild(orderHint);
+
+      const orderRight = document.createElement("div");
+      const orderInput = document.createElement("input");
+      orderInput.type = "checkbox";
+      orderInput.checked = listOnlineFoldersFirstEnabled();
+      orderInput.addEventListener("change", () => {
+        const enabled = !!orderInput.checked;
+        WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { listOnlineFoldersFirst: enabled }));
+        WS.meta.dirty = true;
+        metaScheduleSave();
+        showStatusMessage(`List online folders first: ${enabled ? "On" : "Off"}`);
+        applyOptionsEverywhere(false);
+      });
+      orderRight.appendChild(orderInput);
+
+      orderRow.appendChild(orderLeft);
+      orderRow.appendChild(orderRight);
+      onlineBodyEl.appendChild(orderRow);
+
       const listLabel = document.createElement("div");
       listLabel.className = "label";
       listLabel.style.margin = "10px 0 6px";
@@ -4314,8 +5108,7 @@
         const profile = entry.profile;
         const nameOverride = getOnlineProfileRename(key);
         const display = nameOverride || deriveOnlineUserLabel(profile, entry.posts) || key;
-        const url = profile.sourceUrl
-          || (profile.origin && profile.service && profile.userId ? `${profile.origin}/${profile.service}/user/${profile.userId}` : "");
+        const url = buildOnlineProfileSourceUrl(profile);
         const row = document.createElement("div");
         row.className = "onlineRow";
 
@@ -6208,10 +7001,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const posts = result && Array.isArray(result.posts) ? result.posts : [];
         if (!posts || !posts.length) {
           if (result && result.error) {
-            const msg = result.error === "invalid_json"
-              ? "API returned non-JSON. Check Responses tab."
-              : (result.error.startsWith("http_") ? `API error (${result.error.slice(5)})` : "Network error.");
-            setOnlineProfileStatus(msg, "error");
+            setOnlineProfileStatus(getOnlineApiErrorMessage(result.error), "error");
           } else {
             setOnlineProfileStatus("No posts found.", "error");
           }
@@ -7202,6 +7992,19 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return compareIndexedNames(a?.name || "", b?.name || "");
     }
 
+    function sortOnlineFoldersFirstForList(dirs) {
+      const out = Array.isArray(dirs) ? dirs.slice() : [];
+      if (!listOnlineFoldersFirstEnabled() || out.length < 2) return out;
+      const online = [];
+      const local = [];
+      for (const node of out) {
+        const kind = node?.onlineMeta?.kind;
+        if (kind === "profile" || kind === "post") online.push(node);
+        else local.push(node);
+      }
+      return online.concat(local);
+    }
+
     function randomActionMode() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const mode = opt ? String(opt.randomActionMode || "firstFileJump") : "firstFileJump";
@@ -7231,10 +8034,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (sa !== sb) return sb - sa;
           return byName(a, b);
         });
-        return out;
+        return sortOnlineFoldersFirstForList(out);
       }
       out.sort(byName);
-      return out;
+      return sortOnlineFoldersFirstForList(out);
     }
 
     function passesFilter(rec) {
@@ -8014,7 +8817,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (c) return c;
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
-      return filterOnlineDirs(out);
+      return filterOnlineDirs(sortOnlineFoldersFirstForList(out));
     }
 
     function getAllHiddenDirs() {
@@ -8033,7 +8836,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (c) return c;
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
-      return filterOnlineDirs(out);
+      return filterOnlineDirs(sortOnlineFoldersFirstForList(out));
     }
 
     function cancelDirectorySearch() {
@@ -8105,7 +8908,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
 
-      WS.view.searchResults = results;
+      WS.view.searchResults = sortOnlineFoldersFirstForList(results);
     }
 
     function syncFavoritesUi() {

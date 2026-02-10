@@ -1992,7 +1992,8 @@
     #optionsBody select,
     #optionsBody input[type="checkbox"],
     #keybindsBody select,
-    #onlineBody select {
+    #onlineBody select,
+    #onlineBody input[type="checkbox"] {
       cursor: pointer;
     }
 
