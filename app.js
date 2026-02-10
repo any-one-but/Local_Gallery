@@ -187,7 +187,10 @@
         showPreviewFolderItemCount: true,
         showPreviewFileName: true,
         previewThumbFiltersEnabled: false,
-        previewThumbFit: "cover"
+        previewThumbFit: "cover",
+        hideOptionDescriptions: false,
+        hideKeybindDescriptions: false,
+        randomActionMode: "firstFileJump"
       };
     }
 
@@ -242,6 +245,9 @@
         showPreviewFolderItemCount: (typeof src.showPreviewFolderItemCount === "boolean") ? src.showPreviewFolderItemCount : d.showPreviewFolderItemCount,
         showPreviewFileName: (typeof src.showPreviewFileName === "boolean") ? src.showPreviewFileName : d.showPreviewFileName,
         previewThumbFiltersEnabled: (typeof src.previewThumbFiltersEnabled === "boolean") ? src.previewThumbFiltersEnabled : d.previewThumbFiltersEnabled,
+        hideOptionDescriptions: (typeof src.hideOptionDescriptions === "boolean") ? src.hideOptionDescriptions : d.hideOptionDescriptions,
+        hideKeybindDescriptions: (typeof src.hideKeybindDescriptions === "boolean") ? src.hideKeybindDescriptions : d.hideKeybindDescriptions,
+        randomActionMode: (src.randomActionMode === "firstFileJump" || src.randomActionMode === "randomFileSort") ? src.randomActionMode : d.randomActionMode,
         leftPaneWidthPct: (function(){
           const v = parseFloat(src.leftPaneWidthPct);
           if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
@@ -1150,7 +1156,9 @@
       const root = document.documentElement;
       if (!root) return;
       const fit = opt ? String(opt.previewThumbFit || "cover") : "cover";
-      root.style.setProperty("--thumb-fit", fit === "contain" ? "contain" : "cover");
+      const useContain = fit === "contain";
+      root.style.setProperty("--thumb-fit", useContain ? "contain" : "cover");
+      root.style.setProperty("--thumb-bg", "transparent");
     }
 
     function mediaFilterEnabled() {
@@ -1192,6 +1200,7 @@
         applyMediaFilterFromOptions();
         applyThumbFitFromOptions();
         applyDisplaySizesFromOptions();
+        applyDescriptionVisibilityFromOptions();
         applyPaneDividerFromOptions();
         syncButtons();
         return;
@@ -1206,6 +1215,7 @@
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
+      applyDescriptionVisibilityFromOptions();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
@@ -1218,6 +1228,16 @@
       kickImageThumbsForPreview();
       if (VIEWER_MODE) renderViewerItem(viewerIndex);
       else if (ACTIVE_MEDIA_SURFACE === "preview") renderPreviewViewerItem(viewerIndex);
+    }
+
+    function applyDescriptionVisibilityFromOptions() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const hideOptionDescriptions = !!(opt && opt.hideOptionDescriptions);
+      const hideKeybindDescriptions = !!(opt && opt.hideKeybindDescriptions);
+      const optionsBody = document.getElementById("optionsBody");
+      const keybindsBody = document.getElementById("keybindsBody");
+      if (optionsBody) optionsBody.classList.toggle("hideHints", hideOptionDescriptions);
+      if (keybindsBody) keybindsBody.classList.toggle("hideHints", hideKeybindDescriptions);
     }
 
     function applyPaneDividerFromOptions() {
@@ -1289,7 +1309,7 @@
       { id: "enterDir", label: "Enter directory", hint: "Enter a folder or open gallery for a file.", section: "navigation" },
       { id: "prevFolder", label: "Previous folder", hint: "Jump to the previous folder's first file.", section: "navigation" },
       { id: "nextFolder", label: "Next folder", hint: "Jump to the next folder's first file.", section: "navigation" },
-      { id: "randomJump", label: "Random jump", hint: "Jump to a random file or folder.", section: "navigation" },
+      { id: "randomJump", label: "Random action", hint: "Run the configured random action behavior.", section: "navigation" },
       { id: "cycleFilter", label: "Cycle filter", hint: "Cycle the content filter.", section: "navigation" },
       { id: "slideshow", label: "Slideshow mode", hint: "Toggle slideshow.", section: "media" },
       { id: "seekBack", label: "Video skip backward", hint: "Seek video backward.", section: "media" },
@@ -1898,7 +1918,10 @@
         const max = Math.max(min + 50, rect.width - 200);
         let left = Math.min(Math.max(clientX - rect.left, min), max);
         const pct = left / rect.width;
+        if (!WS.meta.options || typeof WS.meta.options !== "object") WS.meta.options = normalizeOptions(null);
         WS.meta.options.leftPaneWidthPct = pct;
+        WS.meta.dirty = true;
+        if (typeof metaScheduleSave === "function") metaScheduleSave();
         setDividerPositionFromPct(pct);
       }
 
@@ -2377,6 +2400,7 @@
       }
 
       keybindsBodyEl.innerHTML = html;
+      applyDescriptionVisibilityFromOptions();
 
       const presetSelect = keybindsBodyEl.querySelector("#keybindPresetSelect");
       if (presetSelect) {
@@ -2554,6 +2578,11 @@
         { value: "hidden", label: "Hide score + arrows" }
       ];
 
+      const randomActionModes = [
+        { value: "firstFileJump", label: "First file jump" },
+        { value: "randomFileSort", label: "Random file sort" }
+      ];
+
       const colorSchemes = [
         { value: "classic", label: "Classic Dark" },
         { value: "light", label: "Light" },
@@ -2618,12 +2647,15 @@ ${makeSelectRow("Folder scores", "Choose how folder scores appear in lists + pre
 ${makeCheckRow("Show folder item counts", "Show the number of items on folders in the directories pane.", "opt_showFolderItemCount", opt.showFolderItemCount !== false)}
 ${makeCheckRow("Show file type labels (directories)", "Show Image/Video labels for files in the directories pane.", "opt_showDirFileTypeLabel", opt.showDirFileTypeLabel !== false)}
 ${makeSelectRow("Folder behavior", "Sets how folders behave when browsing.", "opt_defaultFolderBehavior", String(opt.defaultFolderBehavior || "slide"), folderModes)}
+${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
 ${makeCheckRow("PANIC! opens decoy window", "When enabled, PANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag near the top of the root directories pane when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 
 <h1>Appearance</h1>
 ${makeSelectRow("Color scheme", "Switch the overall interface palette.", "opt_colorScheme", String(opt.colorScheme || "classic"), colorSchemes)}
+${makeCheckRow("Hide option descriptions", "Hide helper text under each option in this tab.", "opt_hideOptionDescriptions", !!opt.hideOptionDescriptions)}
+${makeCheckRow("Hide key bind descriptions", "Hide helper text under each keybind action in the keybinds tab.", "opt_hideKeybindDescriptions", !!opt.hideKeybindDescriptions)}
 ${makeCheckRow("Retro Mode", "Pixelated, low-res UI styling across themes.", "opt_retroMode", !!opt.retroMode)}
 ${makeSelectRow("Media filter", "Apply a visual filter to media.", "opt_mediaFilter", String(opt.mediaFilter || "off"), mediaFilterModes)}
 ${makeCheckRow("Scanline overlay", "Add CRT scanlines over media.", "opt_crtScanlinesEnabled", !!opt.crtScanlinesEnabled)}
@@ -2664,6 +2696,7 @@ ${makeCheckRow("Hide prefix before last ' - ' in file names", "Show only text af
 ${makeCheckRow("Hide suffix after first underscore in file names", "Show only text before the first underscore in file names.", "opt_hideAfterFirstUnderscoreInFileNames", !!opt.hideAfterFirstUnderscoreInFileNames)}
 ${makeCheckRow("Force title caps in display names", "Apply Title Case to display names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
       `;
+      applyDescriptionVisibilityFromOptions();
 
       const bindSelect = (id, key, invalidateThumbs, onChange, valueParser) => {
         const el = $(id);
@@ -2770,6 +2803,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       bindCheck("opt_showPreviewFolderItemCount", "showPreviewFolderItemCount", () => {
         renderPreviewPane(true, true);
       });
+      bindCheck("opt_hideOptionDescriptions", "hideOptionDescriptions", () => {
+        applyDescriptionVisibilityFromOptions();
+      });
+      bindCheck("opt_hideKeybindDescriptions", "hideKeybindDescriptions", () => {
+        applyDescriptionVisibilityFromOptions();
+      });
       bindCheck("opt_previewThumbFiltersEnabled", "previewThumbFiltersEnabled", () => {
         applyMediaFilterFromOptions();
       });
@@ -2819,6 +2858,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }, formatVhsChroma);
       bindCheck("opt_animatedMediaFilters", "animatedMediaFilters", () => {
         applyMediaFilterFromOptions();
+      });
+      bindSelect("opt_randomActionMode", "randomActionMode", false, (val) => {
+        if (val === "randomFileSort") return;
+        if (!WS.view.randomMode) return;
+        WS.view.randomMode = false;
+        WS.view.randomCache = new Map();
+        applyRandomSortModeEverywhere(true);
       });
       bindCheck("opt_hideFileExtensions", "hideFileExtensions");
       bindCheck("opt_hideUnderscoresInNames", "hideUnderscoresInNames");
@@ -3591,6 +3637,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
+      applyDescriptionVisibilityFromOptions();
+      applyPaneDividerFromOptions();
     }
 
     function metaApplyKeybindsLog(log) {
@@ -3613,6 +3661,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
+      applyDescriptionVisibilityFromOptions();
+      applyPaneDividerFromOptions();
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
       const oldByPath = new Map();
@@ -3835,6 +3885,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       metaScheduleSave();
       syncMetaButtons();
       renderOptionsUi();
+      applyDescriptionVisibilityFromOptions();
+      applyPaneDividerFromOptions();
     }
 
     async function metaInitForCurrentWorkspaceFs() {
@@ -3860,6 +3912,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       metaScheduleSave();
       syncMetaButtons();
       renderOptionsUi();
+      applyDescriptionVisibilityFromOptions();
+      applyPaneDividerFromOptions();
     }
 
     function buildWorkspaceFromFiles(fileList) {
@@ -4070,6 +4124,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         entryKey,
         view: {
           filterMode: WS.view.filterMode,
+          randomMode: !!WS.view.randomMode,
           loopWithinDir: WS.view.loopWithinDir,
           folderBehavior: WS.view.folderBehavior,
           folderScoreDisplay: WS.view.folderScoreDisplay,
@@ -4090,7 +4145,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function restoreRefreshViewState(viewState) {
       if (!viewState) return;
       WS.view.filterMode = viewState.filterMode;
-      WS.view.randomMode = false;
+      WS.view.randomMode = !!viewState.randomMode;
       WS.view.loopWithinDir = viewState.loopWithinDir;
       WS.view.folderBehavior = viewState.folderBehavior;
       WS.view.folderScoreDisplay = viewState.folderScoreDisplay;
@@ -4684,6 +4739,26 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return compareIndexedNames(a?.name || "", b?.name || "");
     }
 
+    function randomActionMode() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const mode = opt ? String(opt.randomActionMode || "firstFileJump") : "firstFileJump";
+      if (mode === "firstFileJump" || mode === "randomFileSort") return mode;
+      return "firstFileJump";
+    }
+
+    function randomSortAffectsFiles() {
+      return !!WS.view.randomMode;
+    }
+
+    function reseedRandomSortMode() {
+      const workspaceSeed = computeWorkspaceSeed();
+      const timeSeed = (Date.now() >>> 0);
+      const randSeed = (Math.floor(Math.random() * 0xffffffff) >>> 0);
+      WS.view.randomSeed = (workspaceSeed ^ timeSeed ^ randSeed) >>> 0;
+      if (!WS.view.randomSeed) WS.view.randomSeed = (workspaceSeed || 1) >>> 0;
+      WS.view.randomCache = new Map();
+    }
+
     function sortDirsForDisplay(dirs) {
       const out = dirs.slice();
       if (WS.meta.dirSortMode === "score") {
@@ -4740,7 +4815,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!dirNode) return [];
       let ids = [];
 
-      if (dirNode.preserveOrder) {
+      if (randomSortAffectsFiles()) {
+        ids = getRandomOrderForDir(dirNode);
+      } else if (dirNode.preserveOrder) {
         ids = dirNode.childrenFiles.slice();
       } else {
         ids = dirNode.childrenFiles.slice();
@@ -7288,6 +7365,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         } else {
           let icon = "📁";
           let name = "";
+          let nameHtml = "";
           let meta = "";
           let voteHtml = "";
           let rightHtml = "";
@@ -7302,9 +7380,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const canRename = !!WS.meta.fsRootHandle;
             const canBatchIndex = !!WS.meta.fsRootHandle;
             const canResetOrder = !!entry.node?.preserveOrder;
-            icon = canBulk ? (sel ? "☑" : "☐") : (isHidden ? "🙈" : (isFavorite ? "♥" : "📁"));
+            icon = canBulk ? (sel ? "☑" : "☐") : (isHidden ? "🙈" : "📁");
             name = displayName(entry.node?.name || "folder") || "folder";
+            nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>`;
             meta = showFolderItemCount ? `${dirItemCount(entry.node)} items` : "";
+            const favoriteBadgeHtml = (!canBulk && !isHidden && isFavorite)
+              ? `<span class="dirFavoriteHeart" title="Favorite">♥</span>`
+              : "";
+            nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>${favoriteBadgeHtml}`;
             const sc = metaGetScore(p);
             const scoreMode = folderScoreDisplayMode();
             if (scoreMode !== "hidden") {
@@ -7345,6 +7428,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const sel = canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
             icon = canBulk ? (sel ? "☑" : "☐") : (isVid ? "🎞" : "🖼");
             name = fileDisplayName(rec?.name || "file") || "file";
+            nameHtml = escapeHtml(name);
             meta = showDirFileTypeLabel ? (isVid ? "video" : "image") : "";
             const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
             const bulkFileMenuActive = canBulk && sel && selectedFilesInViewCount > 0;
@@ -7401,14 +7485,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
               if (voteHtml) {
                 row.innerHTML = `
                   <div class="dirIcon">${icon}</div>
-                  <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                  <div class="dirName dirNameWithBadge" title="${escapeHtml(name)}">${nameHtml}</div>
                   ${voteHtml}
                   ${rightHtml}
                 `;
               } else {
                 row.innerHTML = `
                   <div class="dirIcon">${icon}</div>
-                  <div class="dirName" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                  <div class="dirName dirNameWithBadge" title="${escapeHtml(name)}">${nameHtml}</div>
                   ${rightHtml}
                 `;
               }
@@ -8159,16 +8243,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       kickImageThumbsForPreview();
     }
 
-    function jumpToNextFolderFirstFile() {
-      if (!WS.root || !WS.nav.dirNode) return;
-      if (WS.view.dirSearchPinned && WS.view.searchRootActive) return;
-      if (WS.view.favoritesMode && WS.view.favoritesRootActive) return;
-      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return;
+    function canUseFolderJumpActions() {
+      if (!WS.root || !WS.nav.dirNode) return false;
+      if (WS.view.dirSearchPinned && WS.view.searchRootActive) return false;
+      if (WS.view.favoritesMode && WS.view.favoritesRootActive) return false;
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return false;
+      return true;
+    }
 
-      const nextDir = getNextSiblingDirWithFiles(WS.nav.dirNode);
-      if (!nextDir) return;
-
-      WS.nav.dirNode = nextDir;
+    function jumpToDirectoryFirstFile(dirNode) {
+      if (!dirNode) return false;
+      WS.nav.dirNode = dirNode;
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
       syncBulkSelectionForCurrentDir();
@@ -8187,36 +8272,53 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
+      return idx >= 0;
+    }
+
+    function pickRandomFirstFileJumpTarget(sourceDirNode) {
+      if (!sourceDirNode) return null;
+      const siblings = getVisibleSiblingDirsForSlide(sourceDirNode);
+      const sourcePath = String(sourceDirNode.path || "");
+      const eligible = siblings.filter((dir) => {
+        if (!dir) return false;
+        if (String(dir.path || "") === sourcePath) return false;
+        return getOrderedFileIdsForDir(dir).length > 0;
+      });
+      if (!eligible.length) return null;
+
+      const idx = Math.floor(Math.random() * eligible.length);
+      return eligible[idx] || null;
+    }
+
+    function jumpToNextFolderFirstFile() {
+      if (!canUseFolderJumpActions()) return;
+      const nextDir = getNextSiblingDirWithFiles(WS.nav.dirNode);
+      if (!nextDir) return;
+      jumpToDirectoryFirstFile(nextDir);
     }
 
     function jumpToPrevFolderFirstFile() {
-      if (!WS.root || !WS.nav.dirNode) return;
-      if (WS.view.dirSearchPinned && WS.view.searchRootActive) return;
-      if (WS.view.favoritesMode && WS.view.favoritesRootActive) return;
-      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return;
-
+      if (!canUseFolderJumpActions()) return;
       const prevDir = getPrevSiblingDirWithFiles(WS.nav.dirNode);
       if (!prevDir) return;
+      jumpToDirectoryFirstFile(prevDir);
+    }
 
-      WS.nav.dirNode = prevDir;
-      TAG_EDIT_PATH = null;
-      clearBulkTagPlaceholder();
-      syncBulkSelectionForCurrentDir();
-      syncFavoritesUi();
-      syncHiddenUi();
-      syncTagUiForCurrentDir();
-      rebuildDirectoriesEntries();
-
-      const idx = firstFileEntryIndexForDirEntries();
-      if (idx >= 0) WS.nav.selectedIndex = idx;
-      else WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
-
-      syncPreviewToSelection();
-      renderDirectoriesPane();
-      renderPreviewPane(true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
+    function randomFirstFileJumpFromDirectories() {
+      if (!canUseFolderJumpActions()) {
+        showStatusMessage("First File Jump unavailable here.");
+        return false;
+      }
+      const sourceDir = WS.nav.dirNode;
+      const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
+      if (!targetDir) {
+        showStatusMessage("First File Jump: no matching folder.");
+        return false;
+      }
+      const ok = jumpToDirectoryFirstFile(targetDir);
+      if (ok) showStatusMessage("First File Jump");
+      else showStatusMessage("First File Jump: no files.");
+      return ok;
     }
 
     /* =========================================================
@@ -9902,23 +10004,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
     }
 
-    function viewerJumpRandom() {
-      if (!viewerItems.length) return;
-      const fileIdxs = [];
-      for (let i = 0; i < viewerItems.length; i++) if (!viewerItems[i].isFolder) fileIdxs.push(i);
-      const pool = fileIdxs.length ? fileIdxs : viewerItems.map((_, i) => i);
-      if (!pool.length) return;
-
-      let next = pool[Math.floor(Math.random() * pool.length)];
-      if (pool.length > 1) {
-        let guard = 0;
-        while (next === viewerIndex && guard++ < 12) next = pool[Math.floor(Math.random() * pool.length)];
-      }
-      viewerIndex = next;
-      if (VIEWER_MODE) renderViewerItem(viewerIndex);
-      syncDirectoriesToViewerState();
-    }
-
     function viewerJumpToNextFolderFirstFile() {
       if (!viewerDirNode) return;
       moveToNextDirectoryFile();
@@ -9927,6 +10012,40 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function viewerJumpToPrevFolderFirstFile() {
       if (!viewerDirNode) return;
       moveToPrevDirectoryFirstFile();
+    }
+
+    function jumpViewerToDirectoryFirstFile(dirNode) {
+      if (!dirNode) return false;
+      viewerDirNode = dirNode;
+      viewerItems = buildViewerItemsForDir(viewerDirNode);
+      if (!viewerItems.length) return false;
+      const firstFileIndex = findFirstFileIndex(viewerItems);
+      if (firstFileIndex < 0) return false;
+      viewerIndex = firstFileIndex;
+      if (VIEWER_MODE) renderViewerItem(viewerIndex);
+      syncDirectoriesToViewerState();
+      return true;
+    }
+
+    function randomFirstFileJumpFromViewer() {
+      const sourceDir = viewerDirNode || WS.nav.dirNode;
+      if (!sourceDir) {
+        showStatusMessage("First File Jump unavailable here.");
+        return false;
+      }
+      if (!canUseFolderJumpActions()) {
+        showStatusMessage("First File Jump unavailable here.");
+        return false;
+      }
+      const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
+      if (!targetDir) {
+        showStatusMessage("First File Jump: no matching folder.");
+        return false;
+      }
+      const ok = jumpViewerToDirectoryFirstFile(targetDir);
+      if (ok) showStatusMessage("First File Jump");
+      else showStatusMessage("First File Jump: no files.");
+      return ok;
     }
 
     function renderViewerItem(idx) {
@@ -10242,6 +10361,86 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       kickImageThumbsForPreview();
     }
 
+    function applyRandomSortModeEverywhere(animate = false) {
+      if (VIEWER_MODE) {
+        if (!viewerDirNode) return;
+        const currentItem = viewerItems[viewerIndex] || null;
+        viewerItems = buildViewerItemsForDir(viewerDirNode);
+        if (!viewerItems.length) return;
+        let nextIndex = 0;
+        if (currentItem) {
+          if (currentItem.isFolder) {
+            const path = String(currentItem.dirNode?.path || "");
+            const found = viewerItems.findIndex(item => item.isFolder && String(item.dirNode?.path || "") === path);
+            if (found >= 0) nextIndex = found;
+          } else {
+            const found = viewerItems.findIndex(item => !item.isFolder && item.id === currentItem.id);
+            if (found >= 0) nextIndex = found;
+          }
+        }
+        viewerIndex = Math.max(0, Math.min(viewerItems.length - 1, nextIndex));
+        renderViewerItem(viewerIndex);
+        syncDirectoriesToViewerState();
+        return;
+      }
+      if (!WS.root || (!WS.nav.dirNode && !WS.view.favoritesMode && !WS.view.hiddenMode)) {
+        applyViewModesEverywhere(animate);
+        return;
+      }
+      const currentEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
+      const currentKey = currentEntry
+        ? (currentEntry.kind === "dir"
+          ? { kind: "dir", path: String(currentEntry.node?.path || "") }
+          : (currentEntry.kind === "file"
+            ? { kind: "file", id: String(currentEntry.id || "") }
+            : { kind: "tag", label: String(currentEntry.label || ""), tag: String(currentEntry.tag || ""), special: String(currentEntry.special || "") }))
+        : null;
+      rebuildDirectoriesEntries();
+      let nextIndex = -1;
+      if (currentKey) {
+        for (let i = 0; i < WS.nav.entries.length; i++) {
+          const entry = WS.nav.entries[i];
+          if (!entry || entry.kind !== currentKey.kind) continue;
+          if (entry.kind === "dir" && String(entry.node?.path || "") === currentKey.path) { nextIndex = i; break; }
+          if (entry.kind === "file" && String(entry.id || "") === currentKey.id) { nextIndex = i; break; }
+          if (entry.kind === "tag"
+            && String(entry.label || "") === currentKey.label
+            && String(entry.tag || "") === currentKey.tag
+            && String(entry.special || "") === currentKey.special) { nextIndex = i; break; }
+        }
+      }
+      const fallbackIndex = nextIndex >= 0 ? nextIndex : WS.nav.selectedIndex;
+      WS.nav.selectedIndex = findNearestSelectableIndex(fallbackIndex, 1);
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(animate, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
+    function toggleRandomSortMode() {
+      if (!WS.root) return false;
+      WS.view.randomMode = !WS.view.randomMode;
+      if (WS.view.randomMode) reseedRandomSortMode();
+      else WS.view.randomCache = new Map();
+      applyRandomSortModeEverywhere(true);
+      showStatusMessage(`Random file sort: ${WS.view.randomMode ? "On" : "Off"}`);
+      return true;
+    }
+
+    function runRandomActionForDirectories() {
+      const mode = randomActionMode();
+      if (mode === "randomFileSort") return toggleRandomSortMode();
+      return randomFirstFileJumpFromDirectories();
+    }
+
+    function runRandomActionForViewer() {
+      const mode = randomActionMode();
+      if (mode === "randomFileSort") return toggleRandomSortMode();
+      return randomFirstFileJumpFromViewer();
+    }
+
     /* =========================================================
        Key controls
        ========================================================= */
@@ -10481,17 +10680,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       setDirectoriesSelection(WS.nav.selectedIndex + delta);
     }
 
-    function randomDirectoriesSelection() {
-      if (!WS.root) return;
-      const n = WS.nav.entries.length;
-      if (!n) return;
-      let idx = Math.floor(Math.random() * n);
-      let guard = 0;
-      while (guard++ < 24 && !isSelectableEntry(WS.nav.entries[idx])) idx = Math.floor(Math.random() * n);
-      setDirectoriesSelection(idx);
-      showStatusMessage("Random jump");
-    }
-
     function bumpSelectedFolderScore(delta) {
       const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
       if (!entry || entry.kind !== "dir") return false;
@@ -10606,8 +10794,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             return;
           case "randomJump":
             e.preventDefault();
-            viewerJumpRandom();
-            showStatusMessage("Random jump");
+            runRandomActionForViewer();
             return;
           case "cycleFilter":
             e.preventDefault();
@@ -10686,7 +10873,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             return;
           case "randomJump":
             e.preventDefault();
-            randomDirectoriesSelection();
+            runRandomActionForViewer();
             return;
           case "cycleFilter":
             e.preventDefault();
@@ -10768,7 +10955,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           return;
         case "randomJump":
           e.preventDefault();
-          randomDirectoriesSelection();
+          runRandomActionForDirectories();
           return;
         case "cycleFilter":
           e.preventDefault();
