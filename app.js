@@ -7113,6 +7113,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyPaneDividerFromOptions();
     }
 
+    async function metaReapplyFsScoresAndTags() {
+      metaComputeFingerprints();
+      const scoresLog = await metaLoadFsDoc(WS.meta.fsScoresFileHandle);
+      const tagsLog = await metaLoadFsDoc(WS.meta.fsTagsFileHandle);
+      if (scoresLog) metaApplyScoresLog(scoresLog);
+      if (tagsLog) metaApplyTagsLog(tagsLog);
+    }
+
     function buildWorkspaceFromFiles(fileList) {
       resetWorkspace();
       clearWorkspaceEmptyState();
@@ -7286,15 +7294,19 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       } else {
         WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
         await metaInitForCurrentWorkspaceFs();
+        if (WS.meta.saveTimer) {
+          clearTimeout(WS.meta.saveTimer);
+          WS.meta.saveTimer = null;
+        }
         const injected = await loadOnlineProfilesFromSiteLog({ render: false });
         if (injected) {
           WS.view.randomSeed = computeWorkspaceSeed();
           WS.view.randomCache = new Map();
           WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
-          metaComputeFingerprints();
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          await metaReapplyFsScoresAndTags();
         }
+        WS.meta.dirty = true;
+        metaScheduleSave();
       }
 
       WS.nav.dirNode = WS.root;
@@ -10757,19 +10769,20 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const isFavorite = metaHasFavorite(p);
             const isHidden = metaHasHidden(p);
             const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
+            if (sel) row.classList.add("bulkSelected");
             const onlineKind = entry.node?.onlineMeta?.kind || "";
             const canRename = onlineKind ? true : !!WS.meta.fsRootHandle;
             const canBatchIndex = !!WS.meta.fsRootHandle;
             const canResetOrder = !!entry.node?.preserveOrder;
-            if (canBulk) icon = sel ? "☑" : "☐";
-            else if (onlineKind) icon = "🌐";
-            else icon = (isHidden ? "🙈" : (isFavorite ? "♥" : "📁"));
+            icon = "📁";
             name = dirDisplayName(entry.node);
             meta = showFolderItemCount ? `${dirItemCount(entry.node)} items` : "";
-            const favoriteBadgeHtml = (!canBulk && !isHidden && isFavorite)
-              ? `<span class="dirFavoriteHeart" title="Favorite">♥</span>`
-              : "";
-            nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>${favoriteBadgeHtml}`;
+            const statusBadges = [];
+            if (isFavorite) statusBadges.push(`<span class="dirFavoriteHeart dirStatusBadge" title="Favorite">♥</span>`);
+            if (onlineKind) statusBadges.push(`<span class="dirOnlineBadge dirStatusBadge" title="Online">🌐</span>`);
+            if (isHidden) statusBadges.push(`<span class="dirHiddenBadge dirStatusBadge" title="Hidden">🙈</span>`);
+            const statusBadgeHtml = statusBadges.length ? `<span class="dirStatusBadges">${statusBadges.join("")}</span>` : "";
+            nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>${statusBadgeHtml}`;
             const sc = metaGetScore(p);
             const scoreMode = folderScoreDisplayMode();
             if (scoreMode !== "hidden") {
@@ -10789,6 +10802,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             if (onlineKind === "profile") {
               menuTitle = "Profile menu";
               menuButtons = `
+                <div class="scoreRow">
+                  <button type="button" class="scoreBtn" data-action="score-up">+</button>
+                  <button type="button" class="scoreBtn" data-action="score-down">-</button>
+                </div>
                 <button type="button" data-action="download-online-folder">Download in place</button>
                 <button type="button" data-action="refresh-profile">Refresh profile</button>
                 <button type="button" data-action="tag">Tag</button>
@@ -10799,6 +10816,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             } else if (onlineKind === "post") {
               menuTitle = "Post menu";
               menuButtons = `
+                <div class="scoreRow">
+                  <button type="button" class="scoreBtn" data-action="score-up">+</button>
+                  <button type="button" class="scoreBtn" data-action="score-down">-</button>
+                </div>
                 <button type="button" data-action="download-online-folder">Download in place</button>
                 <button type="button" data-action="tag">Tag</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
@@ -10834,7 +10855,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const rec = WS.fileById.get(entry.id);
             const isVid = rec?.type === "video";
             const sel = canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
-            icon = canBulk ? (sel ? "☑" : "☐") : (isVid ? "🎞" : "🖼");
+            if (sel) row.classList.add("bulkSelected");
+            icon = isVid ? "🎞" : "🖼";
             name = fileDisplayNameForRecord(rec);
             meta = showDirFileTypeLabel ? (isVid ? "video" : "image") : "";
             const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
@@ -11019,7 +11041,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const canBulk = WS.view.bulkSelectMode && canUseBulkSelection();
             const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
             if (canBulk) {
-              iconEl.classList.add("dirCheckbox");
               iconEl.title = sel ? "Deselect folder" : "Select folder";
               iconEl.style.cursor = "pointer";
               iconEl.addEventListener("click", (e) => {
@@ -11225,7 +11246,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const id = String(entry.id || "");
             const sel = canBulk && WS.view.bulkFileSelectedIds.has(id);
             if (canBulk) {
-              iconEl.classList.add("dirCheckbox");
               iconEl.title = sel ? "Deselect file" : "Select file";
               iconEl.style.cursor = "pointer";
               iconEl.addEventListener("click", (e) => {
