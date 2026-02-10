@@ -2,13 +2,14 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.11.24
+// @version      01.13.05
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
 // @match        *://coomer.st/*
 // @match        *://kemono.cr/*
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
 // @grant        GM_download
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
@@ -18,6 +19,8 @@
 // Gallery keybinds (left hand): ← / J = previous; → / L = next; 8 = -10 files; 0 = +10 files; U = -10s; O = +10s; Space = play/pause; Backspace = close gallery.
 // Additional keybinds: G = toggle fullscreen; F = cycle filters (all/images/videos); R = toggle random order; P = toggle slideshow; T = toggle looping.
 
+const JSZip = window.JSZip;
+
 GM_addStyle(`
 :root {
   --color0-primary: hsl(0, 0%, 95%);
@@ -25,7 +28,7 @@ GM_addStyle(`
   --color0-tertirary: hsl(0, 0%, 45%);
 
   --color1-primary: hsl(200, 25%, 5%);
-  --color1-primary-transparent: hsla(200, 25%, 5%, .75);
+  --color1-primary-transparent: hsla(200, 25%, 5%, .85);
   --color1-secondary: hsl(208, 22%, 12%);
   --color1-secondary-transparent: hsla(208, 22%, 12%, .5);
   --color1-tertiary: hsl(210, 15%, 5%);
@@ -38,11 +41,11 @@ GM_addStyle(`
   --light: var(--color0-secondary);
 
   --rain-red: #ff3b30;
-  --rain-orange: #ff9500;
-  --rain-yellow: #ffcc00;
-  --rain-green: #34c759;
+  --rain-orange: var(--color0-primary);
+  --rain-yellow: var(--color0-primary);
+  --rain-green: var(--color0-primary);
   --rain-blue: var(--anchor-internal-color2-primary);
-  --rain-indigo: #5856d6;
+  --rain-indigo: var(--anchor-internal-color2-primary);
 }
 
 .post__files {
@@ -107,9 +110,9 @@ GM_addStyle(`
   background: var(--color1-primary);
   color: var(--color0-primary);
   padding: 8px 12px;
-  border-radius: 3px;
+  border-radius: 4px;
   border: 1px solid var(--color1-tertiary);
-  font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 12px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -120,6 +123,34 @@ GM_addStyle(`
 
 #partyHUD .full {
   width: auto;
+}
+
+#pgToastStack {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  pointer-events: none;
+  margin-bottom: 8px;
+  z-index: 2;
+}
+
+.pg-toast {
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-size: 11px;
+  box-shadow: 0 8px 20px var(--color1-primary-transparent);
+  max-width: min(520px, 86vw);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 #hudRow {
@@ -138,51 +169,121 @@ GM_addStyle(`
 
 #partyHUD input[type="text"],
 #partyHUD input[type="number"] {
-  background: var(--color1-secondary);
+  background: var(--color1-primary);
   color: var(--color0-primary);
-  border: 1px solid var(--color0-tertirary);
+  border: 1px solid var(--color1-tertiary);
   border-radius: 2px;
   padding: 6px 8px;
-  font-size: 13px;
-}
-
-#hudRow input[type="text"],
-#hudRow input[type="number"] {
-  width: 130px;
-  flex: 0 0 auto;
+  font-size: 12px;
+  outline: none;
 }
 
 #partyHUD button {
-  font-size: 13px;
+  font-size: 12px;
   padding: 6px 10px;
   font-weight: 600;
-  color: var(--color1-primary);
-  background: var(--color0-secondary);
-  border: 1px solid var(--color0-tertirary);
+  color: var(--color0-primary);
+  background: var(--color1-secondary);
+  border: 1px solid var(--color1-tertiary);
   border-radius: 2px;
   cursor: pointer;
   text-shadow: none;
-  box-shadow: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
   transition: background .15s ease, border-color .15s ease, transform .05s ease;
+  user-select: none;
+  white-space: nowrap;
 }
 
 #partyHUD button:hover:not(:disabled) {
-  background: var(--color0-tertirary);
-  color: var(--color1-primary);
-  border-color: var(--color0-tertirary);
+  background: var(--color1-secondary-transparent);
+  border-color: var(--color0-secondary);
 }
 
 #partyHUD button:active:not(:disabled) {
   transform: translateY(1px);
 }
 
+#partyHUD .pg-icon-btn {
+  width: 30px;
+  padding: 6px;
+  font-size: 14px;
+}
+
+#pgMenuCard #partyHUD {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  z-index: auto;
+  width: 100%;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#pgMenuCard #hudRow {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+#pgMenuCard #hudRow > button {
+  flex: 0 0 auto;
+}
+
+.pg-hud-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color1-tertiary);
+}
+
+.pg-hud-section:last-child {
+  border-bottom: none;
+}
+
+.pg-hud-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--color0-secondary);
+}
+
+#hudFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#hudFilters > button {
+  flex: 0 0 auto;
+}
+
+#hudFilters input[type="text"],
+#hudFilters input[type="number"] {
+  width: auto;
+  min-width: 90px;
+  flex: 1 1 120px;
+}
+
 /* Menu overlay */
+
+html.pg-menu-open,
+body.pg-menu-open {
+  overflow: auto !important;
+  overscroll-behavior: auto;
+}
 
 #pgMenuOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, .55);
   display: none;
+  pointer-events: none;
+  background: transparent;
   z-index: 10001;
 }
 
@@ -191,100 +292,385 @@ GM_addStyle(`
 }
 
 #pgMenuCard {
-  position: absolute;
+  position: fixed;
+  pointer-events: auto;
+  resize: none;
+  overflow: hidden;
+  width: min(860px, 96vw);
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  min-width: 100px;
+  min-height: 240px;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: none;
   background: var(--color1-secondary);
   color: var(--color0-primary);
   border: 1px solid var(--color1-tertiary);
   border-radius: 4px;
-  width: min(760px, 94vw);
-  max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .85);
+  overscroll-behavior: contain;
+}
+
+#pgMenuCard.pg-overlay-dragging {
+  cursor: grabbing;
+}
+
+#pgMenuCard .pg-menu-resize-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  z-index: 6;
+  pointer-events: auto;
+  background: transparent;
+}
+
+#pgMenuCard .pg-menu-resize-handle.pg-menu-resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+#pgMenuCard .pg-menu-resize-handle.pg-menu-resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+#pgMenuCard .pg-menu-resize-handle.pg-menu-resize-sw {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+
+#pgMenuCard .pg-menu-resize-handle.pg-menu-resize-se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+#pgMenuCard.pg-collapsed .pg-menu-resize-handle {
+  display: none;
 }
 
 #pgMenuHeader {
-  background: var(--color1-primary);
+  padding: 10px 10px 0;
   border-bottom: 1px solid var(--color1-tertiary);
-  padding: 10px 12px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  cursor: grab;
+  user-select: none;
 }
 
 #pgMenuHeader .title {
-  font-weight: 600;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color0-primary);
+  letter-spacing: .02em;
+  order: 1;
 }
 
-#pgMenuHeader button {
+#pgMenuTabs {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+  order: 3;
+}
+
+#pgMenuTabs .pgMenuTabBtn {
+  white-space: nowrap;
+  border-radius: 4px 4px 0 0;
+  border-bottom-color: var(--color1-tertiary);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 4px 10px;
   font-size: 12px;
-  padding: 4px 8px;
-  font-weight: 600;
-  color: var(--color1-primary);
-  background: var(--color0-secondary);
-  border: 1px solid var(--color0-tertirary);
-  border-radius: 2px;
-  cursor: pointer;
+  color: var(--color0-secondary);
+}
+
+#pgMenuTabs .pgMenuTabBtn.active {
+  background: var(--color1-secondary);
+  border-bottom-color: var(--color1-secondary);
+  position: relative;
+  top: 1px;
+  color: var(--color0-primary);
+}
+
+#pgMenuTabs .pgMenuTabBtn .pg-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--rain-red);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#pgMenuCollapseBtn {
+  margin-left: auto;
+  align-self: flex-start;
+  order: 2;
+  min-width: 32px;
 }
 
 #pgMenuBody {
-  padding: 12px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-#pgMenuBody h1 {
-  margin: 14px 0 8px;
-  font-size: 13px;
+.pgMenuTabPanel {
+  display: none;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.pgMenuTabPanel.active {
+  display: flex;
+}
+
+#pgMenuOptionsBody,
+#pgMenuInfoBody,
+#pgMenuGroupsBody,
+#pgMenuKeybindsBody,
+#pgMenuErrorBody,
+#pgMenuQueueBody,
+#pgMenuDownloadsBody {
+  padding: 10px 10px 12px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  font-size: 12px;
   color: var(--color0-primary);
+  overscroll-behavior: contain;
+}
+
+#pgMenuDownloadsBody > .pg-hud-section {
+  padding: 10px 12px;
+}
+
+#pgMenuDownloadsBody #pgMenuGroupsBody {
+  padding: 0;
+  overflow: visible;
+  flex: 0 0 auto;
+  min-height: auto;
+}
+
+#pgMenuCard.pg-collapsed {
+  height: auto !important;
+  min-height: 0;
+  resize: none;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuBody {
+  display: none;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuTabs {
+  display: none;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuHeader {
+  padding: 12px 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuHeader .title {
+  order: 1;
+}
+
+#pgMenuCard.pg-collapsed #pgMenuCollapseBtn {
+  align-self: center;
+}
+
+#pgMenuCard button {
+  font-size: 12px;
+  padding: 4px 10px;
+  font-weight: 600;
+  color: var(--color0-primary);
+  background: var(--color1-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 2px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  text-shadow: none;
+  box-shadow: none;
+  transition: background .15s ease, border-color .15s ease, transform .05s ease;
+}
+
+#pgMenuCard button:hover:not(:disabled) {
+  background: var(--color1-secondary-transparent);
+  border-color: var(--color0-secondary);
+}
+
+#pgMenuCard button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 #pgMenuBody .pg-options-note {
   color: var(--color0-secondary);
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+
+#pgMenuBody .pg-opt-section {
+  margin-bottom: 12px;
+}
+
+#pgMenuBody .pg-opt-danger-zone {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color1-tertiary);
+  display: flex;
+  justify-content: flex-end;
+}
+
+#pg_opt_clearAllIndexCachesBtn {
+  background: var(--rain-red);
+  color: #ffffff;
+  border-color: var(--rain-red);
+}
+
+#pg_opt_clearAllIndexCachesBtn:hover:not(:disabled) {
+  background: #d93028;
+  border-color: #d93028;
+}
+
+#pgMenuBody .pg-keybind-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#pgMenuBody .pg-keybind-input {
+  width: 48px;
+  text-align: center;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+
+#pgMenuBody .pg-keybind-clear-btn {
+  min-width: 56px;
+}
+
+#pgMenuBody .pg-keybind-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#pgMenuBody .pg-opt-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--color0-secondary);
+  margin: 6px 0 4px;
+}
+
+#pgMenuBody .pg-opt-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+
+#pgMenuBody .pg-opt-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
-  margin-bottom: 8px;
+  color: var(--color0-primary);
+}
+
+#pgMenuBody .pg-opt-check input {
+  margin: 0;
 }
 
 #pgMenuBody .pg-opt-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid var(--color1-tertiary);
 }
 
+#pgMenuBody .pg-group-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 2px 0 10px;
+}
+
+#pgMenuBody .pg-group-row .pg-opt-right {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#pgMenuBody .pg-opt-section .pg-opt-row:last-child {
+  border-bottom: none;
+}
+
 #pgMenuBody .pg-opt-left {
-  flex: 1;
   min-width: 0;
 }
 
 #pgMenuBody .pg-opt-title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 #pgMenuBody .pg-opt-hint {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color0-secondary);
   margin-top: 2px;
 }
 
 #pgMenuBody .pg-opt-right {
   flex: 0 0 auto;
+  justify-self: end;
 }
 
 #pgMenuBody input[type="checkbox"],
 #pgMenuBody input[type="number"] {
   background: var(--color1-primary);
   color: var(--color0-primary);
-  border: 1px solid var(--color0-tertirary);
+  border: 1px solid var(--color1-tertiary);
   border-radius: 2px;
   padding: 4px 6px;
   font-size: 12px;
+  accent-color: var(--anchor-internal-color2-primary);
+  outline: none;
+}
+
+#pgMenuBody select {
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 2px;
+  padding: 4px 6px;
+  font-size: 12px;
+  outline: none;
 }
 
 #pgMenuBody input[type="number"] {
@@ -297,42 +683,132 @@ GM_addStyle(`
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
+  padding: 10px;
   border-top: 1px solid var(--color1-tertiary);
+  background: var(--color1-primary);
 }
 
 #pgMenuFooter .label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color0-secondary);
 }
 
-#pgMenuFooter button {
-  font-size: 12px;
-  padding: 4px 8px;
-  font-weight: 600;
-  color: var(--color1-primary);
-  background: var(--color0-secondary);
-  border: 1px solid var(--color0-tertirary);
+.pg-keybinds-section {
+  margin-bottom: 12px;
+}
+
+.pg-keybinds-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--color0-secondary);
+}
+
+.pg-keybinds-list {
+  margin: 6px 0 0 16px;
+}
+
+.pg-keybinds-list li {
+  margin: 2px 0;
+}
+
+.pg-error-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pg-error-item {
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 3px;
+  padding: 6px 8px;
+  background: var(--color1-primary);
+}
+
+.pg-error-link {
+  color: var(--anchor-internal-color2-primary);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.pg-error-meta {
+  color: var(--color0-secondary);
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.pg-info-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--color1-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 3px;
+  padding: 8px;
+  color: var(--color0-primary);
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.pg-queue-progress {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pg-queue-progress-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border: 1px solid var(--color1-tertiary);
   border-radius: 2px;
-  cursor: pointer;
+  background: var(--color1-secondary);
+  overflow: hidden;
+}
+
+.pg-queue-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--anchor-internal-color2-primary);
+  transition: width .12s linear;
+}
+
+.pg-queue-progress-fill.indeterminate {
+  width: 35%;
+  animation: pg-queue-indeterminate 1s linear infinite;
+}
+
+.pg-queue-progress-text {
+  font-size: 11px;
+  color: var(--color0-primary);
+}
+
+@keyframes pg-queue-indeterminate {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
 }
 
 /* Primary / special buttons */
 
 #dlBtn {
-  background: var(--color0-primary);
-  color: var(--color1-primary);
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
 }
 
 #dlBtn:hover:not(:disabled) {
-  background: #ffffff;
+  background: var(--color1-secondary-transparent);
 }
 
 #dlBtn.stop {
   background: var(--rain-red);
   color: #ffffff;
   border-color: var(--rain-red);
+}
+
+#pauseBtn.play {
+  background: var(--anchor-internal-color2-primary);
+  color: #ffffff;
+  border-color: var(--anchor-internal-color2-primary);
 }
 
 #filterBtn {
@@ -350,7 +826,8 @@ GM_addStyle(`
 }
 
 #galleryBtn {
-  background: var(--color0-secondary) !important;
+  background: var(--color1-secondary) !important;
+  color: var(--color0-primary);
 }
 
 #galleryBtn.active {
@@ -369,7 +846,7 @@ GM_addStyle(`
   padding: 4px 8px;
   font-size: 12px !important;
   font-weight: 500 !important;
-  box-shadow: none !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .45) !important;
   text-shadow: none !important;
   cursor: pointer;
 }
@@ -402,12 +879,13 @@ GM_addStyle(`
 }
 
 #indexStatus {
-  color: var(--color0-secondary);
+  color: var(--color0-primary);
 }
 
 #filterStatus {
   flex: 1 1 auto;
   min-width: 0;
+  color: var(--color0-primary);
 }
 
 #pgDrop {
@@ -614,7 +1092,7 @@ button:disabled {
   right: 0;
   top: 0;
   bottom: 0;
-  z-index: 10000;
+  z-index: 10002;
   background: #000;
   display: none;
   align-items: center;
@@ -799,24 +1277,95 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const dataRoot = 'https://' + location.host + '/data';
 const userName = () => location.pathname.split('/')[3] || 'user';
 let DL_ACTIVE = false;
+let QUEUE_PAUSED = false;
 let MEDIA_MODE = 'all';
 let LAST_QUEUE_HAD_ITEMS = false;
 let lastFilterParams = {};
 const retryMap = Object.create(null);
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
 const BACKOFF_BASE = 1200;
 const STALL_IMG_TOTAL_MS = 90000;
 const STALL_IMG_IDLE_MS = 45000;
 const STALL_VID_TOTAL_MS = 300000;
 const STALL_VID_IDLE_MS = 90000;
 const GALLERY_PRELOAD_VIDEO_TIMEOUT_MS = 45000;
+const VIDEO_DURATION_REQUEST_TIMEOUT_MS = 45000;
+const VIDEO_DURATION_PROBE_DEFAULT = 6;
+let VIDEO_DURATION_PROBE_CONCURRENCY = VIDEO_DURATION_PROBE_DEFAULT;
 const PG_OPTIONS_KEY = 'pg_options';
+const PG_GROUPS_KEY_PREFIX = 'pg_groups_';
+const PG_MENU_STATE_KEY = 'pg_menu_state';
+const PG_CACHE_DB_NAME = 'PartyGuestCache';
+const PG_CACHE_STORE = 'postIndex';
+const PG_DURATION_CACHE_KEY_PREFIX = 'duration_';
+const SPECIAL_DOWNLOAD_BEHAVIOR_LABELS = {
+  off: 'Off',
+  smattering: 'Smattering (1/X per post)',
+  every_x: 'Only Every X Files',
+  first_x: 'Only First X Files per post'
+};
+const SPECIAL_DOWNLOAD_BEHAVIOR_VALUES = [
+  'off',
+  'smattering',
+  'every_x',
+  'first_x'
+];
+const SPECIAL_DOWNLOAD_VALUE_DEFAULT = 3;
+const DOWNLOAD_TAB_KEYBIND_ACTIONS = [
+  { id: 'download_toggle', label: 'Download / Stop', hint: 'Start or stop downloads.' },
+  { id: 'add_to_queue', label: 'Add to Queue', hint: 'Add currently filtered files to queue.' },
+  { id: 'pause_queue', label: 'Pause / Play Queue', hint: 'Pause or resume active queue.' },
+  { id: 'create_group', label: 'Create Group', hint: 'Create a group from current filtered results.' },
+  { id: 'rename_most_recent_group', label: 'Rename Most Recent Group', hint: 'Open rename prompt for the most recently created group.' },
+  { id: 'delete_all_groups', label: 'Delete All Groups', hint: 'Delete all groups for current profile.' },
+  { id: 'download_all_groups', label: 'Download All Groups', hint: 'Queue downloads for all groups in current profile.' },
+  { id: 'download_post_links', label: 'Download Post Links', hint: 'Download filtered post links list.' },
+  { id: 'toggle_gallery', label: 'Gallery', hint: 'Open gallery for current filtered files.' },
+  { id: 'open_local_gallery', label: 'Local Gallery', hint: 'Open Local Gallery in a new tab.' },
+  { id: 'toggle_preview', label: 'Preview / Clear Preview', hint: 'Toggle preview mode.' },
+  { id: 'clear_profile_index_cache', label: 'Clear Index Cache', hint: 'Clear current profile index cache.' },
+  { id: 'cycle_media_mode', label: 'Cycle Media Mode', hint: 'Cycle All -> Images -> GIFs -> Videos.' },
+  { id: 'page_select_toggle', label: 'Page Select', hint: 'Toggle selecting all visible post numbers.' },
+  { id: 'clear_filters', label: 'Clear Filters', hint: 'Clear all active filters.' }
+];
+const DOWNLOAD_TAB_KEYBIND_ACTION_IDS = new Set(DOWNLOAD_TAB_KEYBIND_ACTIONS.map(action => action.id));
+const DEFAULT_DOWNLOAD_TAB_KEYBINDS = Object.freeze(
+  DOWNLOAD_TAB_KEYBIND_ACTIONS.reduce((acc, action) => {
+    acc[action.id] = '';
+    return acc;
+  }, {})
+);
+function normalizeSingleKeybindValue(value) {
+  if (value == null) return '';
+  const s = String(value).trim().toLowerCase();
+  if (!s) return '';
+  if (s.length !== 1) return '';
+  return /^[a-z0-9]$/.test(s) ? s : '';
+}
+function normalizeDownloadTabKeybinds(raw) {
+  const out = {};
+  DOWNLOAD_TAB_KEYBIND_ACTIONS.forEach(action => {
+    out[action.id] = '';
+  });
+  if (!raw || typeof raw !== 'object') return out;
+  DOWNLOAD_TAB_KEYBIND_ACTIONS.forEach(action => {
+    out[action.id] = normalizeSingleKeybindValue(raw[action.id]);
+  });
+  return out;
+}
 const DEFAULT_OPTIONS = {
+  downloadMode: 'queue_flat',
+  specialDownloadBehavior: 'off',
+  specialDownloadValue: SPECIAL_DOWNLOAD_VALUE_DEFAULT,
   durationIndexing: false,
   galleryPreloadAll: false,
   parallelDownloadLimit: 3,
+  videoDurationProbeConcurrency: VIDEO_DURATION_PROBE_DEFAULT,
+  downloadAcrossProfiles: false,
+  timeoutRetries: true,
   stopClearsQueue: true,
   showLocalGalleryBtn: true,
+  showDownloadPostLinksBtn: true,
   showGalleryBtn: true,
   showPageBtn: true,
   showMediaBtn: true,
@@ -824,8 +1373,26 @@ const DEFAULT_OPTIONS = {
   showPageInput: true,
   showPostInput: true,
   showFileInput: true,
-  showProgressBar: true
+  showAttachmentInput: true,
+  showClearIndexCacheBtn: true,
+  hidePostsWithNoAttachments: false,
+  downloadTabKeybinds: normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS),
+  showProgressBar: true,
+  showGroupsSection: true,
+  showClearAllIndexCachesBtn: true
 };
+const DOWNLOAD_MODE_LABELS = {
+  queue_flat: 'Archive by queue',
+  post: 'Archive by post',
+  loose_queue: 'Loose by queue',
+  loose_post: 'Loose by post'
+};
+const DOWNLOAD_MODE_VALUES = [
+  'queue_flat',
+  'post',
+  'loose_queue',
+  'loose_post'
+];
 function clampInt(value, min, max, fallback) {
   const n = parseInt(value, 10);
   if (!Number.isFinite(n)) return fallback;
@@ -833,14 +1400,30 @@ function clampInt(value, min, max, fallback) {
 }
 function normalizeOptions(opt) {
   const out = Object.assign({}, DEFAULT_OPTIONS);
+  out.downloadTabKeybinds = normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS);
   if (!opt || typeof opt !== 'object') return out;
+  if (typeof opt.downloadMode === 'string') {
+    if (DOWNLOAD_MODE_LABELS[opt.downloadMode]) out.downloadMode = opt.downloadMode;
+  }
+  if (typeof opt.specialDownloadBehavior === 'string') {
+    if (SPECIAL_DOWNLOAD_BEHAVIOR_LABELS[opt.specialDownloadBehavior]) out.specialDownloadBehavior = opt.specialDownloadBehavior;
+  }
+  if (opt.specialDownloadValue != null) {
+    out.specialDownloadValue = clampInt(opt.specialDownloadValue, 1, 999, DEFAULT_OPTIONS.specialDownloadValue);
+  }
   if (typeof opt.durationIndexing === 'boolean') out.durationIndexing = opt.durationIndexing;
   if (typeof opt.galleryPreloadAll === 'boolean') out.galleryPreloadAll = opt.galleryPreloadAll;
   if (opt.parallelDownloadLimit != null) {
     out.parallelDownloadLimit = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
   }
+  if (opt.videoDurationProbeConcurrency != null) {
+    out.videoDurationProbeConcurrency = clampInt(opt.videoDurationProbeConcurrency, 1, 10, DEFAULT_OPTIONS.videoDurationProbeConcurrency);
+  }
+  if (typeof opt.downloadAcrossProfiles === 'boolean') out.downloadAcrossProfiles = opt.downloadAcrossProfiles;
+  if (typeof opt.timeoutRetries === 'boolean') out.timeoutRetries = opt.timeoutRetries;
   if (typeof opt.stopClearsQueue === 'boolean') out.stopClearsQueue = opt.stopClearsQueue;
   if (typeof opt.showLocalGalleryBtn === 'boolean') out.showLocalGalleryBtn = opt.showLocalGalleryBtn;
+  if (typeof opt.showDownloadPostLinksBtn === 'boolean') out.showDownloadPostLinksBtn = opt.showDownloadPostLinksBtn;
   if (typeof opt.showGalleryBtn === 'boolean') out.showGalleryBtn = opt.showGalleryBtn;
   if (typeof opt.showPageBtn === 'boolean') out.showPageBtn = opt.showPageBtn;
   if (typeof opt.showMediaBtn === 'boolean') out.showMediaBtn = opt.showMediaBtn;
@@ -848,7 +1431,15 @@ function normalizeOptions(opt) {
   if (typeof opt.showPageInput === 'boolean') out.showPageInput = opt.showPageInput;
   if (typeof opt.showPostInput === 'boolean') out.showPostInput = opt.showPostInput;
   if (typeof opt.showFileInput === 'boolean') out.showFileInput = opt.showFileInput;
+  if (typeof opt.showAttachmentInput === 'boolean') out.showAttachmentInput = opt.showAttachmentInput;
+  if (typeof opt.showClearIndexCacheBtn === 'boolean') out.showClearIndexCacheBtn = opt.showClearIndexCacheBtn;
+  if (typeof opt.hidePostsWithNoAttachments === 'boolean') out.hidePostsWithNoAttachments = opt.hidePostsWithNoAttachments;
+  if (opt.downloadTabKeybinds && typeof opt.downloadTabKeybinds === 'object') {
+    out.downloadTabKeybinds = normalizeDownloadTabKeybinds(opt.downloadTabKeybinds);
+  }
   if (typeof opt.showProgressBar === 'boolean') out.showProgressBar = opt.showProgressBar;
+  if (typeof opt.showGroupsSection === 'boolean') out.showGroupsSection = opt.showGroupsSection;
+  if (typeof opt.showClearAllIndexCachesBtn === 'boolean') out.showClearAllIndexCachesBtn = opt.showClearAllIndexCachesBtn;
   return out;
 }
 function loadOptions() {
@@ -860,11 +1451,23 @@ function saveOptions() {
   try { localStorage.setItem(PG_OPTIONS_KEY, JSON.stringify(PG_OPTIONS)); } catch {}
 }
 let PG_OPTIONS = loadOptions();
+let DOWNLOAD_MODE = DEFAULT_OPTIONS.downloadMode;
+let SPECIAL_DOWNLOAD_BEHAVIOR = DEFAULT_OPTIONS.specialDownloadBehavior;
+let SPECIAL_DOWNLOAD_VALUE = DEFAULT_OPTIONS.specialDownloadValue;
 let GALLERY_PRELOAD_ALL_MEDIA = false;
 let DURATION_FEATURE_ENABLED = false;
 let PARALLEL_DOWNLOAD_LIMIT = 3;
+const ARCHIVE_FETCH_CAP = 6;
+let DOWNLOAD_ACROSS_PROFILES = false;
+let TIMEOUT_RETRIES_ENABLED = true;
 let STOP_BUTTON_CLEARS_QUEUE = true;
 let SHOW_PROGRESS_BAR = true;
+let SHOW_GROUPS_SECTION = true;
+let HIDE_POSTS_WITH_NO_ATTACHMENTS = false;
+let PG_GROUPS = [];
+let GROUPS_PROFILE_KEY = null;
+let PG_CACHE_DB = null;
+let PG_CACHE_DB_OPENING = null;
 let PG_TOTAL = null;
 let PG_GW = 1;
 let PG_ID_MAP = null;
@@ -880,6 +1483,7 @@ let lastUrl = location.href;
 let CURRENT_PROFILE_KEY = null;
 let PREVIEW_MODE = false;
 let GALLERY_MODE = false;
+let LAST_POST_CLICK = null;
 let galleryItems = [];
 let galleryIndex = 0;
 let galleryKeyHandlerAttached = false;
@@ -896,6 +1500,56 @@ let loopGallery = true;
 let GALLERY_CACHE_LIMIT = Infinity;
 let galleryCacheOrder = [];
 let MENU_OPEN = false;
+let MENU_ACTIVE_TAB = 'downloads';
+let MENU_LAST_TAB = 'downloads';
+let MENU_HAS_OPENED = false;
+const MENU_TAB_SCROLL = { downloads: 0, queue: 0, info: 0, options: 0, keybinds: 0, errors: 0 };
+const MENU_TAB_IDS = ['downloads', 'queue', 'info', 'options', 'keybinds', 'errors'];
+const MENU_WINDOW_STATE = { x: null, y: null, width: null, height: null };
+const MENU_DEFAULT_WIDTH = 100;
+const MENU_DEFAULT_HEIGHT = 550;
+const MENU_DEFAULT_MARGIN = 8;
+let MENU_TAB_BUTTONS = [];
+let MENU_TAB_PANELS = {};
+let MENU_SCROLL_TARGETS = {};
+let MENU_RESIZE_OBSERVER = null;
+let MENU_COLLAPSED = false;
+let INFO_RENDER_TOKEN = 0;
+const ERROR_LOG = [];
+const FAILED_ITEMS = [];
+let ERROR_TAB_UNREAD = 0;
+let DOWNLOAD_TAB_KEYBINDS = normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS);
+let DOWNLOAD_TAB_KEYBIND_LOOKUP = new Map();
+let downloadKeyHandlerAttached = false;
+
+function loadMenuState() {
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(PG_MENU_STATE_KEY) || 'null'); } catch {}
+  if (!parsed || typeof parsed !== 'object') return;
+  const keys = ['x', 'y', 'width', 'height'];
+  keys.forEach(k => {
+    const v = parsed[k];
+    if (typeof v === 'number' && isFinite(v)) MENU_WINDOW_STATE[k] = v;
+  });
+  if (typeof parsed.collapsed === 'boolean') MENU_COLLAPSED = parsed.collapsed;
+  if (typeof parsed.lastTab === 'string' && MENU_TAB_IDS.includes(parsed.lastTab)) {
+    MENU_LAST_TAB = parsed.lastTab;
+  }
+}
+
+function saveMenuState() {
+  const payload = {
+    x: MENU_WINDOW_STATE.x,
+    y: MENU_WINDOW_STATE.y,
+    width: MENU_WINDOW_STATE.width,
+    height: MENU_WINDOW_STATE.height,
+    collapsed: MENU_COLLAPSED,
+    lastTab: MENU_LAST_TAB
+  };
+  try { localStorage.setItem(PG_MENU_STATE_KEY, JSON.stringify(payload)); } catch {}
+}
+
+loadMenuState();
 
 function apiGetJson(url) {
   return new Promise(resolve => {
@@ -920,13 +1574,529 @@ function apiGetJson(url) {
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
+async function waitWhileQueuePaused() {
+  while (QUEUE_PAUSED && dl.started) {
+    await sleep(250);
+  }
+}
+
+function getDownloadLabel(item) {
+  if (!item) return 'file';
+  if (item.name) return item.name;
+  if (item.url) return item.url.split('/').pop() || item.url;
+  return 'file';
+}
+
+function isLikelyHttpUrl(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url);
+}
+
+function summarizeErrorBits(err, prefix) {
+  if (!err || typeof err !== 'object') return [];
+  const bits = [];
+  const keyPrefix = prefix ? (prefix + ' ') : '';
+  if (err.stage) bits.push(`${keyPrefix}stage=${String(err.stage)}`);
+  if (typeof err.status === 'number') {
+    if (err.statusText) bits.push(`${keyPrefix}HTTP ${err.status} ${String(err.statusText)}`);
+    else bits.push(`${keyPrefix}HTTP ${err.status}`);
+  }
+  if (err.error) bits.push(`${keyPrefix}${String(err.error)}`);
+  if (err.message) bits.push(`${keyPrefix}${String(err.message)}`);
+  if (err.details) bits.push(`${keyPrefix}${String(err.details)}`);
+  if (!bits.length && err.type) bits.push(`${keyPrefix}${String(err.type)}`);
+  return bits;
+}
+
+function formatDownloadErrorReason(reason, err) {
+  const bits = [];
+  if (typeof err === 'string') {
+    bits.push(err);
+  } else if (err && typeof err === 'object') {
+    bits.push(...summarizeErrorBits(err));
+    if (err.native) bits.push(...summarizeErrorBits(err.native, 'native'));
+    if (err.fallback) bits.push(...summarizeErrorBits(err.fallback, 'fallback'));
+    if (!bits.length) bits.push('unknown');
+  }
+  const base = reason || 'Download failed';
+  const detail = bits.join(' | ');
+  if (detail && detail !== base) return `${base}: ${detail}`;
+  return base;
+}
+
+function buildErrorEntry(item, reason, err, attempts) {
+  const isArchive = !!(item && Array.isArray(item.files));
+  const label = isArchive ? `[Archive] ${item.name || 'archive.zip'}` : getDownloadLabel(item);
+  const sourceUrlRaw = item && (item.lastErrorUrl || item.failedUrl || item.url) ? (item.lastErrorUrl || item.failedUrl || item.url) : '';
+  const sourceUrl = isLikelyHttpUrl(sourceUrlRaw) ? sourceUrlRaw : '';
+  const stage = err && typeof err === 'object' && err.stage ? String(err.stage) : '';
+  return {
+    ts: Date.now(),
+    url: sourceUrl,
+    label,
+    reason: formatDownloadErrorReason(reason, err),
+    attempts: attempts || 0,
+    stage,
+    isArchive
+  };
+}
+
+function buildRetryPayloadFromQueueItem(item) {
+  if (!item || typeof item !== 'object') return null;
+  const out = {
+    url: item.url || '',
+    name: item.name || '',
+    retryKey: item.retryKey || item.url || item.name || ''
+  };
+  if (item.meta && typeof item.meta === 'object') {
+    out.meta = Object.assign({}, item.meta);
+  }
+  if (Array.isArray(item.files)) {
+    const files = item.files
+      .filter(file => file && file.url)
+      .map(file => ({
+        url: file.url,
+        name: file.name || '',
+        fileIndex: typeof file.fileIndex === 'number' ? file.fileIndex : 0,
+        postFolder: file.postFolder || ''
+      }));
+    if (!files.length) return null;
+    out.files = files;
+    out.userFolder = item.userFolder || '';
+    out.postFolder = item.postFolder || '';
+    out.archiveMode = item.archiveMode || '';
+    out.queuePostFolder = item.queuePostFolder || '';
+    out.groupPostFolder = item.groupPostFolder || '';
+    out.url = out.url || files[0].url;
+    out.retryKey = out.retryKey || out.url || out.name || '';
+  }
+  if (!out.url) return null;
+  return out;
+}
+
+function buildRetryQueueItemFromFailedEntry(entry) {
+  if (!entry || typeof entry !== 'object' || !entry.retryItem) return null;
+  return buildRetryPayloadFromQueueItem(entry.retryItem);
+}
+
+function hasRetryableFailedItems() {
+  for (const entry of FAILED_ITEMS) {
+    const src = entry && entry.retryItem;
+    if (!src || typeof src !== 'object') continue;
+    if (Array.isArray(src.files)) {
+      if (src.files.some(file => file && file.url)) return true;
+      continue;
+    }
+    if (src.url) return true;
+  }
+  return false;
+}
+
+function handleRetryFailedFiles() {
+  const { downloading, queued } = getCounts();
+  if (downloading > 0 || queued > 0) {
+    setStatus('Wait for the current queue to finish first', 'info');
+    return false;
+  }
+  if (!FAILED_ITEMS.length) {
+    setStatus('No failed files to retry', 'info');
+    return false;
+  }
+
+  const retryItems = [];
+  for (const entry of FAILED_ITEMS) {
+    const item = buildRetryQueueItemFromFailedEntry(entry);
+    if (item) retryItems.push(item);
+  }
+  if (!retryItems.length) {
+    setStatus('No retry data available for failed files', 'error');
+    return false;
+  }
+
+  FAILED_ITEMS.length = 0;
+  clearErrorTabUnread();
+  renderErrorLogUi();
+  scheduleHUD();
+
+  enqueueItems(retryItems);
+  startQueueIfIdle();
+  setStatus(`Queued ${retryItems.length} failed item${retryItems.length === 1 ? '' : 's'} for retry`, 'success');
+  return true;
+}
+
+function showErrorToast(text) {
+  const host = document.getElementById('pgToastStack');
+  if (!host) return;
+  const toast = document.createElement('div');
+  toast.className = 'pg-toast';
+  toast.textContent = text;
+  host.appendChild(toast);
+  setTimeout(() => {
+    toast.remove();
+  }, 2600);
+}
+
+function renderErrorLogUi() {
+  const body = document.getElementById('pgMenuErrorBody');
+  if (!body) return;
+  const prevScroll = body.scrollTop || 0;
+  body.innerHTML = '';
+  const { downloading, queued } = getCounts();
+  const showRetryFailedBtn = hasRetryableFailedItems() && downloading === 0 && queued === 0;
+  if (showRetryFailedBtn) {
+    const actions = document.createElement('div');
+    actions.className = 'pg-group-actions';
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.id = 'pgRetryFailedBtn';
+    retryBtn.textContent = 'retry failed files';
+    retryBtn.addEventListener('click', () => handleRetryFailedFiles());
+    actions.appendChild(retryBtn);
+    body.appendChild(actions);
+  }
+  if (!ERROR_LOG.length && !FAILED_ITEMS.length) {
+    const empty = document.createElement('div');
+    empty.className = 'pg-options-note';
+    empty.textContent = 'No errors yet.';
+    body.appendChild(empty);
+    return;
+  }
+
+  if (FAILED_ITEMS.length) {
+    const title = document.createElement('div');
+    title.className = 'pg-opt-section-title';
+    title.textContent = 'Failed Items';
+    body.appendChild(title);
+
+    const failedList = document.createElement('div');
+    failedList.className = 'pg-error-log';
+    for (let i = FAILED_ITEMS.length - 1; i >= 0; i--) {
+      const entry = FAILED_ITEMS[i];
+      const item = document.createElement('div');
+      item.className = 'pg-error-item';
+
+      if (entry.url && isLikelyHttpUrl(entry.url)) {
+        const link = document.createElement('a');
+        link.className = 'pg-error-link';
+        link.href = entry.url;
+        link.textContent = entry.label || entry.url || 'Unknown file';
+        link.target = '_blank';
+        link.rel = 'noopener';
+        item.appendChild(link);
+      } else {
+        const label = document.createElement('div');
+        label.className = 'pg-error-link';
+        label.textContent = entry.label || 'Unknown file';
+        item.appendChild(label);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'pg-error-meta';
+      const when = new Date(entry.ts || Date.now()).toLocaleTimeString();
+      const attempts = entry.attempts || MAX_RETRIES;
+      meta.textContent = `${when} • ${entry.reason || 'Download failed'} • ${attempts}/${MAX_RETRIES} attempts`;
+      item.appendChild(meta);
+
+      failedList.appendChild(item);
+    }
+    body.appendChild(failedList);
+  }
+
+  if (ERROR_LOG.length) {
+    const title = document.createElement('div');
+    title.className = 'pg-opt-section-title';
+    title.textContent = 'Recent Errors';
+    body.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'pg-error-log';
+    for (let i = ERROR_LOG.length - 1; i >= 0; i--) {
+      const entry = ERROR_LOG[i];
+      const item = document.createElement('div');
+      item.className = 'pg-error-item';
+
+      if (entry.url && isLikelyHttpUrl(entry.url)) {
+        const link = document.createElement('a');
+        link.className = 'pg-error-link';
+        link.href = entry.url;
+        link.textContent = entry.label || entry.url || 'Unknown file';
+        link.target = '_blank';
+        link.rel = 'noopener';
+        item.appendChild(link);
+      } else {
+        const label = document.createElement('div');
+        label.className = 'pg-error-link';
+        label.textContent = entry.label || 'Unknown file';
+        item.appendChild(label);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'pg-error-meta';
+      const when = new Date(entry.ts || Date.now()).toLocaleTimeString();
+      meta.textContent = `${when} • ${entry.reason || 'Download failed'}`;
+      item.appendChild(meta);
+
+      list.appendChild(item);
+    }
+    body.appendChild(list);
+  }
+
+  requestAnimationFrame(() => {
+    body.scrollTop = prevScroll;
+  });
+}
+
+function getErrorTabButton() {
+  return document.querySelector('#pgMenuTabs .pgMenuTabBtn[data-tab="errors"]');
+}
+
+function updateErrorTabBadge() {
+  const btn = getErrorTabButton();
+  if (!btn) return;
+  let badge = btn.querySelector('.pg-tab-badge');
+  if (ERROR_TAB_UNREAD > 0) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'pg-tab-badge';
+      btn.appendChild(badge);
+    }
+    badge.textContent = ERROR_TAB_UNREAD > 999 ? '999+' : String(ERROR_TAB_UNREAD);
+    btn.setAttribute('aria-label', `Error Log (${ERROR_TAB_UNREAD} unread)`);
+  } else {
+    if (badge) badge.remove();
+    btn.setAttribute('aria-label', 'Error Log');
+  }
+}
+
+function markErrorTabUnread() {
+  if (MENU_OPEN && MENU_ACTIVE_TAB === 'errors') return;
+  ERROR_TAB_UNREAD++;
+  updateErrorTabBadge();
+}
+
+function clearErrorTabUnread() {
+  if (!ERROR_TAB_UNREAD) return;
+  ERROR_TAB_UNREAD = 0;
+  updateErrorTabBadge();
+}
+
+function getQueueItemLabel(item) {
+  if (!item) return 'Unknown file';
+  if (Array.isArray(item.files)) return `[Archive] ${item.name || 'archive'}`;
+  return getDownloadLabel(item);
+}
+
+function clampQueuePercent(value) {
+  if (typeof value !== 'number' || !isFinite(value)) return null;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function formatByteSize(value) {
+  const n = Number(value);
+  if (!isFinite(n) || n < 0) return '0 B';
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function getQueueItemProgressState(item) {
+  if (!item) return null;
+  const hasPct = typeof item.progressPct === 'number' && isFinite(item.progressPct);
+  const hasLabel = typeof item.progressLabel === 'string' && item.progressLabel.trim() !== '';
+  const indeterminate = !!item.progressIndeterminate;
+  if (!hasPct && !hasLabel && !indeterminate) return null;
+  const pct = hasPct ? clampQueuePercent(item.progressPct) : null;
+  let label = hasLabel ? item.progressLabel.trim() : '';
+  if (!label && pct != null) label = `${pct}%`;
+  if (!label && indeterminate) label = 'Working...';
+  return { pct, label, indeterminate };
+}
+
+function setQueueItemProgress(item, next) {
+  if (!item) return;
+  const patch = next && typeof next === 'object' ? next : {};
+  let changed = false;
+
+  if ('pct' in patch) {
+    const pct = clampQueuePercent(patch.pct);
+    if (pct == null) {
+      if ('progressPct' in item) {
+        delete item.progressPct;
+        changed = true;
+      }
+    } else if (item.progressPct !== pct) {
+      item.progressPct = pct;
+      changed = true;
+    }
+  }
+
+  if ('label' in patch) {
+    const label = patch.label == null ? '' : String(patch.label);
+    if (label) {
+      if (item.progressLabel !== label) {
+        item.progressLabel = label;
+        changed = true;
+      }
+    } else if ('progressLabel' in item) {
+      delete item.progressLabel;
+      changed = true;
+    }
+  }
+
+  if ('indeterminate' in patch) {
+    const ind = !!patch.indeterminate;
+    if (item.progressIndeterminate !== ind) {
+      item.progressIndeterminate = ind;
+      changed = true;
+    }
+  }
+
+  if (changed) scheduleHUD();
+}
+
+function clearQueueItemProgress(item) {
+  if (!item) return;
+  let changed = false;
+  if ('progressPct' in item) { delete item.progressPct; changed = true; }
+  if ('progressLabel' in item) { delete item.progressLabel; changed = true; }
+  if ('progressIndeterminate' in item) { delete item.progressIndeterminate; changed = true; }
+  if (changed) scheduleHUD();
+}
+
+function renderQueueUi() {
+  const body = document.getElementById('pgMenuQueueBody');
+  if (!body) return;
+  const prevScroll = body.scrollTop || 0;
+  body.innerHTML = '';
+
+  const activeItems = dl.items.filter(item => item && item.status === 'active');
+  const queuedItems = dl.items.filter(item => item && item.status === 'queued');
+  if (!activeItems.length && !queuedItems.length) {
+    const empty = document.createElement('div');
+    empty.className = 'pg-options-note';
+    empty.textContent = 'Queue is empty.';
+    body.appendChild(empty);
+    return;
+  }
+
+  const now = Date.now();
+  const appendSection = (titleText, items, downloading) => {
+    if (!items.length) return;
+    const title = document.createElement('div');
+    title.className = 'pg-opt-section-title';
+    title.textContent = titleText;
+    body.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'pg-error-log';
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i];
+      const item = document.createElement('div');
+      item.className = 'pg-error-item';
+
+      const labelText = getQueueItemLabel(entry);
+      const sourceUrl = entry && entry.url ? normalizeDownloadUrl(entry.url) : '';
+      if (sourceUrl && isLikelyHttpUrl(sourceUrl)) {
+        const link = document.createElement('a');
+        link.className = 'pg-error-link';
+        link.href = sourceUrl;
+        link.textContent = labelText;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        item.appendChild(link);
+      } else {
+        const label = document.createElement('div');
+        label.className = 'pg-error-link';
+        label.textContent = labelText;
+        item.appendChild(label);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'pg-error-meta';
+      const bits = [];
+      bits.push('#' + (i + 1));
+      if (downloading) bits.push(QUEUE_PAUSED ? 'Downloading (pause pending)' : 'Downloading');
+      else if (QUEUE_PAUSED) bits.push('Paused');
+      else if (entry.nextAt && entry.nextAt > now) bits.push('Retry in ' + Math.ceil((entry.nextAt - now) / 1000) + 's');
+      else bits.push('Queued');
+      if (Array.isArray(entry.files)) bits.push(`${entry.files.length} files`);
+      const retryKey = getRetryKey(entry);
+      const retries = retryKey ? (retryMap[retryKey] || 0) : 0;
+      if (retries > 0) bits.push(`${retries}/${MAX_RETRIES} retries`);
+      meta.textContent = bits.join(' • ');
+      item.appendChild(meta);
+
+      if (downloading) {
+        const progress = getQueueItemProgressState(entry);
+        if (progress) {
+          const wrap = document.createElement('div');
+          wrap.className = 'pg-queue-progress';
+
+          const track = document.createElement('div');
+          track.className = 'pg-queue-progress-track';
+
+          const fill = document.createElement('div');
+          fill.className = 'pg-queue-progress-fill';
+          if (progress.indeterminate || progress.pct == null) {
+            fill.classList.add('indeterminate');
+          } else {
+            fill.style.width = progress.pct + '%';
+          }
+          track.appendChild(fill);
+
+          const txt = document.createElement('div');
+          txt.className = 'pg-queue-progress-text';
+          txt.textContent = progress.label || (progress.pct != null ? `${progress.pct}%` : 'Working...');
+
+          wrap.appendChild(track);
+          wrap.appendChild(txt);
+          item.appendChild(wrap);
+        }
+      }
+
+      list.appendChild(item);
+    }
+    body.appendChild(list);
+  };
+
+  appendSection('Downloading', activeItems, true);
+  appendSection('Queued', queuedItems, false);
+
+  requestAnimationFrame(() => {
+    body.scrollTop = prevScroll;
+  });
+}
+
+function logDownloadError(item, reason, err) {
+  const entry = buildErrorEntry(item, reason, err, 0);
+  ERROR_LOG.push(entry);
+  if (ERROR_LOG.length > 500) {
+    ERROR_LOG.splice(0, ERROR_LOG.length - 500);
+  }
+  renderErrorLogUi();
+  markErrorTabUnread();
+}
+
+function logFailedItem(item, reason, err, attempts) {
+  const entry = buildErrorEntry(item, reason, err, attempts || MAX_RETRIES);
+  const key = getRetryKey(item) || entry.url || entry.label;
+  const retryItem = buildRetryPayloadFromQueueItem(item);
+  const nextEntry = Object.assign({ key, retryItem }, entry);
+  const idx = FAILED_ITEMS.findIndex(entry => entry && entry.key === key);
+  if (idx >= 0) FAILED_ITEMS[idx] = nextEntry;
+  else FAILED_ITEMS.push(nextEntry);
+  if (FAILED_ITEMS.length > 500) {
+    FAILED_ITEMS.splice(0, FAILED_ITEMS.length - 500);
+  }
+  renderErrorLogUi();
+  markErrorTabUnread();
+}
+
 function setStatus(text, type) {
   const el = $('#filterStatus');
   if (!el) return;
   el.textContent = text || '';
-  if (type === 'error') el.style.color = '#b00020';
-  else if (type === 'success') el.style.color = '#0a7d2b';
-  else el.style.color = '';
+  el.style.color = 'var(--color0-primary)';
   syncFilterBoxVisibility();
   syncProgressBarVisibility();
 }
@@ -939,9 +2109,7 @@ function setIndexStatus(text, type) {
     INDEX_STATUS_TIMER = null;
   }
   el.textContent = text || '';
-  if (type === 'error') el.style.color = '#b00020';
-  else if (type === 'success') el.style.color = '#0a7d2b';
-  else el.style.color = '';
+  el.style.color = 'var(--color0-primary)';
   syncFilterBoxVisibility();
   syncProgressBarVisibility();
   if (type === 'success' && text && String(text).trim()) {
@@ -968,7 +2136,7 @@ function setFilterSummary(msg) {
     return;
   }
   fs.textContent = msg || '';
-  fs.style.color = '';
+  fs.style.color = 'var(--color0-primary)';
 }
 
 let injectTimer = null;
@@ -986,11 +2154,290 @@ function filterKey() {
   return 'pg_filters_' + service + '_' + userId;
 }
 
+function openCacheDb() {
+  if (PG_CACHE_DB) return Promise.resolve(PG_CACHE_DB);
+  if (PG_CACHE_DB_OPENING) return PG_CACHE_DB_OPENING;
+  if (!('indexedDB' in window)) return Promise.resolve(null);
+  PG_CACHE_DB_OPENING = new Promise(resolve => {
+    const req = indexedDB.open(PG_CACHE_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PG_CACHE_STORE)) {
+        db.createObjectStore(PG_CACHE_STORE);
+      }
+    };
+    req.onsuccess = () => {
+      PG_CACHE_DB = req.result;
+      resolve(PG_CACHE_DB);
+    };
+    req.onerror = () => resolve(null);
+  });
+  return PG_CACHE_DB_OPENING;
+}
+
+async function idbGet(cacheKey) {
+  const db = await openCacheDb();
+  if (!db) return null;
+  return new Promise(resolve => {
+    const tx = db.transaction(PG_CACHE_STORE, 'readonly');
+    const store = tx.objectStore(PG_CACHE_STORE);
+    const req = store.get(cacheKey);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => resolve(null);
+  });
+}
+
+async function idbSet(cacheKey, payload) {
+  const db = await openCacheDb();
+  if (!db) return false;
+  return new Promise(resolve => {
+    const tx = db.transaction(PG_CACHE_STORE, 'readwrite');
+    const store = tx.objectStore(PG_CACHE_STORE);
+    const req = store.put(payload, cacheKey);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => resolve(false);
+  });
+}
+
+async function idbDelete(cacheKey) {
+  const db = await openCacheDb();
+  if (!db) return false;
+  return new Promise(resolve => {
+    const tx = db.transaction(PG_CACHE_STORE, 'readwrite');
+    const store = tx.objectStore(PG_CACHE_STORE);
+    const req = store.delete(cacheKey);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => resolve(false);
+  });
+}
+
+async function idbDeleteByPrefix(prefix) {
+  const db = await openCacheDb();
+  if (!db || !prefix) return 0;
+  return new Promise(resolve => {
+    let deleted = 0;
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve(deleted);
+    };
+    const tx = db.transaction(PG_CACHE_STORE, 'readwrite');
+    const store = tx.objectStore(PG_CACHE_STORE);
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      const key = String(cursor.key || '');
+      if (key.startsWith(prefix)) {
+        const del = cursor.delete();
+        del.onsuccess = () => { deleted++; cursor.continue(); };
+        del.onerror = () => cursor.continue();
+        return;
+      }
+      cursor.continue();
+    };
+    req.onerror = () => done();
+    tx.oncomplete = () => done();
+    tx.onabort = () => done();
+    tx.onerror = () => done();
+  });
+}
+
+async function loadCachedIndex(cacheKey) {
+  let parsed = null;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) parsed = JSON.parse(raw);
+  } catch {
+    try { localStorage.removeItem(cacheKey); } catch {}
+  }
+
+  if (!parsed) {
+    parsed = await idbGet(cacheKey);
+  }
+
+  if (!parsed || !Array.isArray(parsed.posts) || !parsed.posts.length) return null;
+  return parsed;
+}
+
+async function saveCachedIndex(cacheKey, payload) {
+  try {
+    const raw = JSON.stringify(payload);
+    localStorage.setItem(cacheKey, raw);
+  } catch {
+    try { localStorage.removeItem(cacheKey); } catch {}
+  }
+  await idbSet(cacheKey, payload);
+}
+
+function durationCacheKey(profileKey) {
+  return profileKey ? (PG_DURATION_CACHE_KEY_PREFIX + profileKey) : '';
+}
+
+function normalizeCachedDuration(value) {
+  const n = Number(value);
+  return (isFinite(n) && n >= 0) ? n : null;
+}
+
+function normalizeDurationCacheMap(raw) {
+  const source = raw && typeof raw === 'object'
+    ? ((raw.entries && typeof raw.entries === 'object') ? raw.entries : raw)
+    : null;
+  if (!source) return {};
+  const out = {};
+  for (const key in source) {
+    if (!key) continue;
+    const n = normalizeCachedDuration(source[key]);
+    if (n != null) out[key] = n;
+  }
+  return out;
+}
+
+async function loadDurationCache(profileKey) {
+  const key = durationCacheKey(profileKey);
+  if (!key) return {};
+  let parsed = null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) parsed = JSON.parse(raw);
+  } catch {
+    try { localStorage.removeItem(key); } catch {}
+  }
+  if (!parsed) {
+    parsed = await idbGet(key);
+  }
+  return normalizeDurationCacheMap(parsed);
+}
+
+async function saveDurationCache(profileKey, entries) {
+  const key = durationCacheKey(profileKey);
+  if (!key || !entries || typeof entries !== 'object') return;
+  const payload = {
+    ts: Date.now(),
+    entries: normalizeDurationCacheMap(entries)
+  };
+  try {
+    localStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    try { localStorage.removeItem(key); } catch {}
+  }
+  await idbSet(key, payload);
+}
+
+function groupsKey(profileKey) {
+  return profileKey ? (PG_GROUPS_KEY_PREFIX + profileKey) : null;
+}
+
+function makeGroupId() {
+  return 'g_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+}
+
+function computeGroupStats(files) {
+  const postFolders = new Set();
+  for (const file of files) {
+    if (!file) continue;
+    const parts = splitDownloadPath(file.name || '');
+    const postFolder = file.postFolder || parts.postFolder || '';
+    if (postFolder) postFolders.add(postFolder);
+  }
+  return { postCount: postFolders.size, fileCount: files.length };
+}
+
+function normalizeGroup(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const files = Array.isArray(raw.files) ? raw.files.filter(f => f && f.url) : [];
+  const stats = computeGroupStats(files);
+  const rawName = typeof raw.name === 'string' ? raw.name : '';
+  let earliestPostFolder = typeof raw.earliestPostFolder === 'string' ? raw.earliestPostFolder : '';
+  if (!earliestPostFolder && files.length) {
+    const parts = splitDownloadPath(files[0].name || '');
+    earliestPostFolder = parts.postFolder || '';
+  }
+  const title = inferGroupTitle(rawName, earliestPostFolder);
+  return {
+    id: typeof raw.id === 'string' && raw.id ? raw.id : makeGroupId(),
+    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+    name: title || 'post',
+    earliestPostFolder: earliestPostFolder || rawName || 'post',
+    earliestIndex: typeof raw.earliestIndex === 'number' ? raw.earliestIndex : 0,
+    userFolder: typeof raw.userFolder === 'string' ? raw.userFolder : '',
+    files,
+    postCount: typeof raw.postCount === 'number' ? raw.postCount : stats.postCount,
+    fileCount: typeof raw.fileCount === 'number' ? raw.fileCount : stats.fileCount
+  };
+}
+
+function loadGroupsForProfile(profileKey) {
+  if (!profileKey) {
+    PG_GROUPS = [];
+    GROUPS_PROFILE_KEY = null;
+    return PG_GROUPS;
+  }
+  if (GROUPS_PROFILE_KEY === profileKey && Array.isArray(PG_GROUPS)) return PG_GROUPS;
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(groupsKey(profileKey)) || '[]'); } catch {}
+  if (!Array.isArray(parsed)) parsed = [];
+  PG_GROUPS = parsed.map(normalizeGroup).filter(Boolean);
+  GROUPS_PROFILE_KEY = profileKey;
+  return PG_GROUPS;
+}
+
+function saveGroupsForProfile() {
+  if (!GROUPS_PROFILE_KEY) return;
+  try { localStorage.setItem(groupsKey(GROUPS_PROFILE_KEY), JSON.stringify(PG_GROUPS)); } catch {}
+}
+
+function deleteGroupById(groupId) {
+  if (!groupId) return false;
+  const idx = PG_GROUPS.findIndex(g => g && g.id === groupId);
+  if (idx < 0) return false;
+  PG_GROUPS.splice(idx, 1);
+  saveGroupsForProfile();
+  renderGroupsUi();
+  return true;
+}
+
+function handleRenameGroup(groupId) {
+  if (!groupId) return false;
+  const group = PG_GROUPS.find(g => g && g.id === groupId);
+  if (!group) return false;
+
+  const currentTitle = inferGroupTitle(group.name, group.earliestPostFolder) || 'post';
+  const input = prompt('Edit group title (prefix/suffix and index data are preserved):', currentTitle);
+  if (input == null) return false;
+
+  const nextTitle = sanitizeGroupEditableTitle(input, currentTitle || 'post');
+  if (!nextTitle) {
+    setStatus('Invalid group title', 'error');
+    return false;
+  }
+  if (nextTitle === currentTitle) return false;
+
+  group.name = nextTitle;
+  group.files = mapGroupFilesToTitle(group.files, nextTitle);
+
+  const currentFolder = group.earliestPostFolder || (group.files[0] ? splitDownloadPath(group.files[0].name || '').postFolder : '');
+  group.earliestPostFolder = applyEditableTitleToCompositeName(currentFolder || '', nextTitle) || currentFolder || nextTitle;
+
+  saveGroupsForProfile();
+  renderGroupsUi();
+  setStatus(`Group renamed: ${nextTitle}`, 'success');
+  return true;
+}
+
+function clearGroupsForProfile() {
+  PG_GROUPS = [];
+  saveGroupsForProfile();
+  renderGroupsUi();
+}
+
 function saveFilterState(){
   const fPages = $('#fPages')?.value || '';
   const fPosts = $('#fPosts')?.value || '';
   const fFiles = $('#fFiles')?.value || '';
-  const state = { pages:fPages, posts:fPosts, files:fFiles, media:MEDIA_MODE || 'all' };
+  const fAttach = $('#fAttach')?.value || '';
+  const state = { pages:fPages, posts:fPosts, files:fFiles, attach:fAttach, media:MEDIA_MODE || 'all' };
   try { localStorage.setItem(filterKey(), JSON.stringify(state)); } catch {}
 }
 
@@ -1004,6 +2451,8 @@ function restoreFilterState(){
   if (fPosts) fPosts.value = state.posts || '';
   const fFiles = $('#fFiles');
   if (fFiles) fFiles.value = state.files || '';
+  const fAttach = $('#fAttach');
+  if (fAttach) fAttach.value = state.attach || '';
   if (state.media && typeof state.media === 'string') {
     MEDIA_MODE = state.media;
   }
@@ -1018,6 +2467,54 @@ function scheduleFilter(){
   }, 250);
 }
 
+function resetDownloadQueueState(opts = {}) {
+  const clearFailures = opts.clearFailures !== false;
+  dl.started = false;
+  DL_ACTIVE = false;
+  setQueuePaused(false, { silentStatus: true });
+  const b = $('#dlBtn');
+  if (b) {
+    b.classList.remove('stop');
+    b.textContent = 'Download';
+  }
+
+  for (const it of dl.items) {
+    try { if (it && it._handle && typeof it._handle.abort === 'function') it._handle.abort(); } catch {}
+    try {
+      if (it && it._handles && typeof it._handles.forEach === 'function') {
+        it._handles.forEach(h => {
+          try { if (h && typeof h.abort === 'function') h.abort(); } catch {}
+        });
+      }
+    } catch {}
+  }
+
+  cooldownTimers.forEach(id => clearTimeout(id));
+  cooldownTimers.clear();
+  for (const k in retryMap) delete retryMap[k];
+  lastDropNoteAt = 0;
+  lastDropNoteCount = 0;
+  LAST_QUEUE_HAD_ITEMS = false;
+  dl.items.length = 0;
+
+  if (clearFailures) {
+    FAILED_ITEMS.length = 0;
+    clearErrorTabUnread();
+    renderErrorLogUi();
+  }
+
+  const fs = $('#filterStatus'); if (fs) fs.textContent = '';
+  const is = $('#indexStatus'); if (is) is.textContent = '';
+  const fill = $('#pgFill'); if (fill) fill.style.width = '0%';
+  const barLabel = $('#pgBarLabel'); if (barLabel) barLabel.textContent = '0%';
+  const cC = $('#completedCount'); if (cC) cC.textContent = '0';
+  const qC = $('#queuedCount'); if (qC) qC.textContent = '0';
+  const xC = $('#droppedCount'); if (xC) xC.textContent = '0';
+  const dropEl = $('#pgDrop'); if (dropEl) dropEl.style.display = 'none';
+  PENDING_FILTER_SUMMARY = null;
+  scheduleHUD();
+}
+
 function getProfileKeyFromLocation(){
   const parts = location.pathname.split('/');
   if (parts.length >= 4 && parts[2] === 'user') {
@@ -1026,6 +2523,61 @@ function getProfileKeyFromLocation(){
     if (service && userId) return service + '::' + userId;
   }
   return null;
+}
+
+function getProfileIndexCacheKeyFromLocation() {
+  const parts = location.pathname.split('/');
+  if (parts.length >= 4 && parts[2] === 'user') {
+    const service = parts[1];
+    const userId = parts[3];
+    if (service && userId) return 'pg_postindex_' + service + '_' + userId;
+  }
+  return null;
+}
+
+async function clearProfileIndexCacheForCurrentProfile() {
+  const cacheKey = getProfileIndexCacheKeyFromLocation();
+  if (!cacheKey) return false;
+  try { localStorage.removeItem(cacheKey); } catch {}
+  await idbDelete(cacheKey);
+  return true;
+}
+
+function clearLocalStorageKeysByPrefix(prefix) {
+  if (!prefix) return 0;
+  const keys = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) keys.push(key);
+    }
+  } catch {}
+  keys.forEach(key => {
+    try { localStorage.removeItem(key); } catch {}
+  });
+  return keys.length;
+}
+
+async function clearAllProfileIndexCaches() {
+  const prefix = 'pg_postindex_';
+  const localRemoved = clearLocalStorageKeysByPrefix(prefix);
+  const idbRemoved = await idbDeleteByPrefix(prefix);
+  return { localRemoved, idbRemoved };
+}
+
+function resetProfileIndexStateAfterCacheClear() {
+  PG_POSTS = null;
+  PG_ID_MAP = null;
+  PG_TOTAL = null;
+  PG_GW = 1;
+  PG_FILE_TOTAL = null;
+  PG_FILE_URL_MAP = null;
+  PG_POST_FILE_RANGE_MAP = null;
+  PG_INDEX_LOADING = false;
+  keptPosts = [];
+  LAST_POST_CLICK = null;
+  PENDING_FILTER_SUMMARY = null;
+  document.querySelectorAll('.post-number-badge').forEach(el => el.remove());
 }
 
 function handleProfileContextChange(){
@@ -1040,25 +2592,34 @@ function handleProfileContextChange(){
     PG_POST_FILE_RANGE_MAP = null;
     keptPosts = [];
     CURRENT_PROFILE_KEY = null;
+    LAST_POST_CLICK = null;
     PENDING_FILTER_SUMMARY = null;
     if (INDEX_STATUS_TIMER) {
       try { clearTimeout(INDEX_STATUS_TIMER); } catch {}
       INDEX_STATUS_TIMER = null;
     }
     PG_INDEX_LOADING = false;
-    const fs = $('#filterStatus'); if (fs) fs.textContent = '';
-    const is = $('#indexStatus'); if (is) is.textContent = '';
-    const fPages = $('#fPages'); if (fPages) fPages.value = '';
-    const fPosts = $('#fPosts'); if (fPosts) fPosts.value = '';
-    const fFiles = $('#fFiles'); if (fFiles) fFiles.value = '';
-    const fDur = $('#fDur'); if (fDur) fDur.value = '';
-    $$('article.post-card').forEach(c => { c.style.display = ''; });
-    document.querySelectorAll('.post-number-badge').forEach(el => el.remove());
-    syncFilterBoxVisibility();
+    if (!DOWNLOAD_ACROSS_PROFILES) {
+      resetDownloadQueueState({ clearFailures: true });
+      const fPages = $('#fPages'); if (fPages) fPages.value = '';
+      const fPosts = $('#fPosts'); if (fPosts) fPosts.value = '';
+      const fFiles = $('#fFiles'); if (fFiles) fFiles.value = '';
+      const fAttach = $('#fAttach'); if (fAttach) fAttach.value = '';
+      const fDur = $('#fDur'); if (fDur) fDur.value = '';
+      $$('article.post-card').forEach(c => { c.style.display = ''; });
+      document.querySelectorAll('.post-number-badge').forEach(el => el.remove());
+      syncFilterBoxVisibility();
+    }
     scheduleHUD();
+    loadGroupsForProfile(null);
+    renderGroupsUi();
+    if (MENU_OPEN && MENU_ACTIVE_TAB === 'info') ensureInfoUi();
     return false;
   }
   if (CURRENT_PROFILE_KEY && CURRENT_PROFILE_KEY !== key) {
+    if (!DOWNLOAD_ACROSS_PROFILES) {
+      resetDownloadQueueState({ clearFailures: true });
+    }
     PG_POSTS = null;
     PG_ID_MAP = null;
     PG_TOTAL = null;
@@ -1067,10 +2628,16 @@ function handleProfileContextChange(){
     PG_FILE_URL_MAP = null;
     PG_POST_FILE_RANGE_MAP = null;
     keptPosts = [];
-    lastFilterParams = {};
+    if (!DOWNLOAD_ACROSS_PROFILES) {
+      lastFilterParams = {};
+    }
+    LAST_POST_CLICK = null;
     PENDING_FILTER_SUMMARY = null;
   }
   CURRENT_PROFILE_KEY = key;
+  loadGroupsForProfile(key);
+  renderGroupsUi();
+  if (MENU_OPEN && MENU_ACTIVE_TAB === 'info') ensureInfoUi();
   return true;
 }
 
@@ -1184,12 +2751,61 @@ function injectPostNumbers() {
     badge.addEventListener(badgeToggleEvent, e => {
       e.preventDefault();
       e.stopPropagation();
-      handlePostNumberClick(badge);
+      handlePostNumberClick(badge, e);
     });
     thumb.appendChild(badge);
   });
 
   syncPageAllButtonState();
+}
+
+function getPostMediaAttachmentCount(meta) {
+  if (!meta || !Array.isArray(meta.pgFiles)) return 0;
+  let count = 0;
+  for (const f of meta.pgFiles) {
+    const ref = f && f.url;
+    if (!ref) continue;
+    if (allowedUrl(ref)) count++;
+  }
+  return count;
+}
+
+function injectAttachmentCounts() {
+  if (!PG_POSTS || !PG_POSTS.length) return;
+  const byId = new Map();
+  PG_POSTS.forEach(meta => {
+    if (!meta || meta.id == null) return;
+    byId.set(String(meta.id), meta);
+  });
+
+  document.querySelectorAll('article.post-card').forEach(card => {
+    const id = card.getAttribute('data-id');
+    if (!id) return;
+    const meta = byId.get(String(id));
+    if (!meta) return;
+
+    const footer = card.querySelector('footer.post-card__footer');
+    if (!footer) return;
+
+    let countEl = footer.querySelector('[data-pg-attachment-count="1"]');
+    if (!countEl) {
+      const timeEl = footer.querySelector('time.timestamp, time');
+      if (timeEl) {
+        let next = timeEl.nextElementSibling;
+        while (next && next.tagName !== 'DIV') next = next.nextElementSibling;
+        if (next) countEl = next;
+      }
+    }
+    if (!countEl) {
+      const candidates = [...footer.querySelectorAll('div')].filter(el => /attachment/i.test(el.textContent || ''));
+      if (candidates.length) countEl = candidates[candidates.length - 1];
+    }
+    if (!countEl) return;
+
+    countEl.dataset.pgAttachmentCount = '1';
+    const n = getPostMediaAttachmentCount(meta);
+    countEl.textContent = `${n} attachment${n === 1 ? '' : 's'}`;
+  });
 }
 
 function getFileFilterSet() {
@@ -1200,7 +2816,7 @@ function getFileFilterSet() {
   return set || new Set();
 }
 
-function handlePostNumberClick(el) {
+function handlePostNumberClick(el, ev) {
   if (!el) return;
   const numStr = el.dataset.postNumber || (el.textContent || '').trim();
   if (!numStr) return;
@@ -1210,6 +2826,20 @@ function handlePostNumberClick(el) {
   const input = document.getElementById('fPosts');
   if (!input) return;
   const set = getPostFilterSet();
+  const useRange = !!(ev && ev.shiftKey && Number.isInteger(LAST_POST_CLICK) && LAST_POST_CLICK > 0);
+  if (useRange) {
+    const a = LAST_POST_CLICK;
+    const b = num;
+    const min = Math.min(a, b);
+    const max = Math.max(a, b);
+    for (let i = min; i <= max; i++) set.add(i);
+    input.value = formatIndexRanges(set);
+    LAST_POST_CLICK = num;
+    injectPostNumbers();
+    syncPageAllButtonState();
+    scheduleFilter();
+    return;
+  }
   if (set.has(num)) {
     set.delete(num);
     el.classList.remove('active');
@@ -1217,6 +2847,7 @@ function handlePostNumberClick(el) {
     set.add(num);
     el.classList.add('active');
   }
+  LAST_POST_CLICK = num;
   input.value = formatIndexRanges(set);
   syncPageAllButtonState();
   scheduleFilter();
@@ -1353,14 +2984,23 @@ function setHudItemVisible(id, visible) {
 function syncHudElementVisibility() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   setHudItemVisible('localGalleryBtn', opt.showLocalGalleryBtn !== false);
+  setHudItemVisible('downloadPostLinksBtn', opt.showDownloadPostLinksBtn === true);
   setHudItemVisible('galleryBtn', opt.showGalleryBtn !== false);
+  setHudItemVisible('clearIndexCacheBtn', opt.showClearIndexCacheBtn !== false);
   setHudItemVisible('btnPageAll', opt.showPageBtn !== false);
   setHudItemVisible('btnMedia', opt.showMediaBtn !== false);
   setHudItemVisible('filterBtn', opt.showPreviewBtn !== false);
   setHudItemVisible('fPages', opt.showPageInput !== false);
   setHudItemVisible('fPosts', opt.showPostInput !== false);
   setHudItemVisible('fFiles', opt.showFileInput !== false);
+  setHudItemVisible('fAttach', opt.showAttachmentInput !== false);
   requestAnimationFrame(syncFilterBoxWidth);
+}
+
+function syncOptionsElementVisibility() {
+  const opt = PG_OPTIONS || DEFAULT_OPTIONS;
+  const danger = document.getElementById('pgOptDangerZone');
+  if (danger) danger.style.display = opt.showClearAllIndexCachesBtn !== false ? 'flex' : 'none';
 }
 
 function syncDurationInputVisibility() {
@@ -1370,23 +3010,112 @@ function syncDurationInputVisibility() {
   durInput.disabled = !DURATION_FEATURE_ENABLED;
 }
 
+function getDownloadModeLabel(mode) {
+  return DOWNLOAD_MODE_LABELS[mode] || mode || 'Download Mode';
+}
+
+function syncDownloadModeSelect() {
+  const el = document.getElementById('pg_opt_downloadMode');
+  if (!el) return;
+  const mode = DOWNLOAD_MODE || (PG_OPTIONS && PG_OPTIONS.downloadMode) || DEFAULT_OPTIONS.downloadMode;
+  if (DOWNLOAD_MODE_LABELS[mode]) el.value = mode;
+}
+
+function syncSpecialDownloadBehaviorSelect() {
+  const modeEl = document.getElementById('pg_opt_specialDownloadBehavior');
+  if (modeEl && SPECIAL_DOWNLOAD_BEHAVIOR_LABELS[SPECIAL_DOWNLOAD_BEHAVIOR]) {
+    modeEl.value = SPECIAL_DOWNLOAD_BEHAVIOR;
+  }
+  const valueEl = document.getElementById('pg_opt_specialDownloadValue');
+  if (valueEl) {
+    valueEl.value = String(SPECIAL_DOWNLOAD_VALUE);
+    const disabled = SPECIAL_DOWNLOAD_BEHAVIOR === 'off';
+    valueEl.disabled = disabled;
+    valueEl.title = disabled ? 'Enable a special behavior to use X.' : '';
+  }
+}
+
+function setDownloadMode(nextMode) {
+  if (!DOWNLOAD_MODE_LABELS[nextMode]) return;
+  PG_OPTIONS.downloadMode = nextMode;
+  saveOptions();
+  setOptionsStatus('Saved');
+  applyOptions();
+  syncDownloadModeSelect();
+}
+
+function mediaModeLabel(mode) {
+  return mode === 'all' ? 'All' : mode === 'images' ? 'Images' : mode === 'gifs' ? 'GIFs' : 'Videos';
+}
+
+function cycleMediaMode() {
+  MEDIA_MODE = MEDIA_MODE === 'all' ? 'images' : MEDIA_MODE === 'images' ? 'gifs' : MEDIA_MODE === 'gifs' ? 'videos' : 'all';
+  const btnMedia = $('#btnMedia');
+  if (btnMedia) btnMedia.textContent = mediaModeLabel(MEDIA_MODE);
+  scheduleFilter();
+  return MEDIA_MODE;
+}
+
+function rebuildDownloadTabKeybindLookup(bindings) {
+  const map = new Map();
+  const source = normalizeDownloadTabKeybinds(bindings);
+  DOWNLOAD_TAB_KEYBIND_ACTIONS.forEach(action => {
+    const key = source[action.id];
+    if (!key || map.has(key)) return;
+    map.set(key, action.id);
+  });
+  DOWNLOAD_TAB_KEYBIND_LOOKUP = map;
+}
+
 function applyOptions() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
   const prevDuration = DURATION_FEATURE_ENABLED;
+  const prevHideEmptyPosts = HIDE_POSTS_WITH_NO_ATTACHMENTS;
+  DOWNLOAD_MODE = (opt.downloadMode && DOWNLOAD_MODE_LABELS[opt.downloadMode]) ? opt.downloadMode : DEFAULT_OPTIONS.downloadMode;
+  SPECIAL_DOWNLOAD_BEHAVIOR = (opt.specialDownloadBehavior && SPECIAL_DOWNLOAD_BEHAVIOR_LABELS[opt.specialDownloadBehavior])
+    ? opt.specialDownloadBehavior
+    : DEFAULT_OPTIONS.specialDownloadBehavior;
+  SPECIAL_DOWNLOAD_VALUE = clampInt(
+    opt.specialDownloadValue,
+    1,
+    999,
+    DEFAULT_OPTIONS.specialDownloadValue
+  );
   DURATION_FEATURE_ENABLED = !!opt.durationIndexing;
   GALLERY_PRELOAD_ALL_MEDIA = !!opt.galleryPreloadAll;
   PARALLEL_DOWNLOAD_LIMIT = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
+  VIDEO_DURATION_PROBE_CONCURRENCY = clampInt(
+    opt.videoDurationProbeConcurrency,
+    1,
+    10,
+    DEFAULT_OPTIONS.videoDurationProbeConcurrency
+  );
+  DOWNLOAD_ACROSS_PROFILES = !!opt.downloadAcrossProfiles;
+  TIMEOUT_RETRIES_ENABLED = opt.timeoutRetries !== false;
   STOP_BUTTON_CLEARS_QUEUE = opt.stopClearsQueue !== false;
   SHOW_PROGRESS_BAR = opt.showProgressBar !== false;
+  SHOW_GROUPS_SECTION = opt.showGroupsSection !== false;
+  HIDE_POSTS_WITH_NO_ATTACHMENTS = !!opt.hidePostsWithNoAttachments;
+  DOWNLOAD_TAB_KEYBINDS = normalizeDownloadTabKeybinds(opt.downloadTabKeybinds);
+  rebuildDownloadTabKeybindLookup(DOWNLOAD_TAB_KEYBINDS);
 
   syncHudElementVisibility();
+  syncOptionsElementVisibility();
   syncDurationInputVisibility();
   syncProgressBarVisibility();
+  syncDownloadModeSelect();
+  syncSpecialDownloadBehaviorSelect();
+  if (document.getElementById('pgMenuDownloadsBody')) {
+    renderDownloadsUi();
+  }
 
   if (prevDuration !== DURATION_FEATURE_ENABLED && DURATION_FEATURE_ENABLED) {
     if (PG_POSTS && PG_POSTS.length) {
       ensureVideoDurations().then(() => scheduleFilter());
     }
+  }
+  if (prevHideEmptyPosts !== HIDE_POSTS_WITH_NO_ATTACHMENTS) {
+    scheduleFilter();
   }
 }
 
@@ -1449,12 +3178,31 @@ function renderOptionsUi() {
   if (!body) return;
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
 
-  const makeCheckRow = (title, hint, id, checked) => {
+  const makeSelectRow = (title, hint, id, options, value, labels) => {
+    const items = options.map(optVal => {
+      const label = (labels && labels[optVal]) || optVal;
+      return `<option value="${optVal}"${optVal === value ? ' selected' : ''}>${label}</option>`;
+    }).join('');
     return `
       <div class="pg-opt-row">
         <div class="pg-opt-left">
           <div class="pg-opt-title">${title}</div>
           <div class="pg-opt-hint">${hint}</div>
+        </div>
+        <div class="pg-opt-right">
+          <select id="${id}">${items}</select>
+        </div>
+      </div>
+    `;
+  };
+
+  const makeCheckRow = (title, hint, id, checked) => {
+    const hintHtml = hint ? `<div class="pg-opt-hint">${hint}</div>` : '';
+    return `
+      <div class="pg-opt-row">
+        <div class="pg-opt-left">
+          <div class="pg-opt-title">${title}</div>
+          ${hintHtml}
         </div>
         <div class="pg-opt-right">
           <input id="${id}" type="checkbox"${checked ? ' checked' : ''}>
@@ -1477,26 +3225,62 @@ function renderOptionsUi() {
     `;
   };
 
+  const makeCheckInline = (label, id, checked) => {
+    return `
+      <label class="pg-opt-check">
+        <input id="${id}" type="checkbox"${checked ? ' checked' : ''}>
+        <span>${label}</span>
+      </label>
+    `;
+  };
+
   body.innerHTML = `
     <div class="pg-options-note">Options are saved locally in your browser for this site.</div>
-    <h1>Downloads</h1>
-    ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
-    ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
-    ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
-    ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
 
-    <h1>HUD</h1>
-    ${makeCheckRow('Show Local Gallery button', 'Toggle the Local Gallery launcher.', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
-    ${makeCheckRow('Show Gallery button', 'Toggle the Gallery button.', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
-    ${makeCheckRow('Show Page button', 'Toggle the Page button.', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
-    ${makeCheckRow('Show media filter button', 'Toggle the media type cycle button.', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
-    ${makeCheckRow('Show Preview button', 'Toggle the Preview button.', 'pg_opt_showPreviewBtn', opt.showPreviewBtn !== false)}
-    ${makeCheckRow('Show Page input', 'Toggle the Page selector input.', 'pg_opt_showPageInput', opt.showPageInput !== false)}
-    ${makeCheckRow('Show Post input', 'Toggle the Post selector input.', 'pg_opt_showPostInput', opt.showPostInput !== false)}
-    ${makeCheckRow('Show File input', 'Toggle the File selector input.', 'pg_opt_showFileInput', opt.showFileInput !== false)}
+    <div class="pg-opt-section">
+      <div class="pg-opt-section-title">Downloads</div>
+      ${makeSelectRow('Download Mode', 'Archive by post/queue or loose files by post/queue.', 'pg_opt_downloadMode', DOWNLOAD_MODE_VALUES, opt.downloadMode || DEFAULT_OPTIONS.downloadMode, DOWNLOAD_MODE_LABELS)}
+      ${makeSelectRow('Special Download Behavior', 'Optional vertical-slice behavior for oversized profiles/posts.', 'pg_opt_specialDownloadBehavior', SPECIAL_DOWNLOAD_BEHAVIOR_VALUES, opt.specialDownloadBehavior || DEFAULT_OPTIONS.specialDownloadBehavior, SPECIAL_DOWNLOAD_BEHAVIOR_LABELS)}
+      ${makeNumberRow('Special Behavior Value (X)', 'Used by the selected special behavior. Example: Smattering uses 1/X files per post.', 'pg_opt_specialDownloadValue', opt.specialDownloadValue, 1, 999)}
+      ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
+      ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
+      ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
+      ${makeNumberRow('Video index concurrency', 'Maximum simultaneous video metadata probes.', 'pg_opt_videoDurationProbeConcurrency', opt.videoDurationProbeConcurrency, 1, 10)}
+      ${makeCheckRow('Download Across Profiles', 'Keep queue and filters when navigating between profiles.', 'pg_opt_downloadAcrossProfiles', !!opt.downloadAcrossProfiles)}
+      ${makeCheckRow('Retry on stall/timeout', 'When a download stalls or takes too long, abort and retry (default on).', 'pg_opt_timeoutRetries', opt.timeoutRetries !== false)}
+      ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
+      ${makeCheckRow('Auto-hide posts with no attachments', 'Automatically hide posts that have zero indexed attachments.', 'pg_opt_hidePostsWithNoAttachments', !!opt.hidePostsWithNoAttachments)}
+    </div>
 
-    <h1>Progress</h1>
-    ${makeCheckRow('Show progress bar', 'Toggle the download progress bar graphic.', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
+    <div class="pg-opt-section">
+      <div class="pg-opt-section-title">HUD</div>
+      <div class="pg-opt-block">
+        ${makeCheckInline('Local Gallery', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
+        ${makeCheckInline('Download Post Links', 'pg_opt_showDownloadPostLinksBtn', opt.showDownloadPostLinksBtn === true)}
+        ${makeCheckInline('Gallery', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
+        ${makeCheckInline('Page', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
+        ${makeCheckInline('Media Filter', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
+        ${makeCheckInline('Preview', 'pg_opt_showPreviewBtn', opt.showPreviewBtn !== false)}
+        ${makeCheckInline('Clear Index Cache', 'pg_opt_showClearIndexCacheBtn', opt.showClearIndexCacheBtn !== false)}
+        ${makeCheckInline('Page input', 'pg_opt_showPageInput', opt.showPageInput !== false)}
+        ${makeCheckInline('Post input', 'pg_opt_showPostInput', opt.showPostInput !== false)}
+        ${makeCheckInline('File input', 'pg_opt_showFileInput', opt.showFileInput !== false)}
+        ${makeCheckInline('Attachment input', 'pg_opt_showAttachmentInput', opt.showAttachmentInput !== false)}
+        ${makeCheckInline('Progress bar', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
+        ${makeCheckInline('Groups section', 'pg_opt_showGroupsSection', opt.showGroupsSection !== false)}
+      </div>
+    </div>
+
+    <div class="pg-opt-section">
+      <div class="pg-opt-section-title">Maintenance</div>
+      <div class="pg-opt-block">
+        ${makeCheckInline('Clear-all cache button', 'pg_opt_showClearAllIndexCachesBtn', opt.showClearAllIndexCachesBtn !== false)}
+      </div>
+    </div>
+
+    <div class="pg-opt-danger-zone" id="pgOptDangerZone">
+      <button id="pg_opt_clearAllIndexCachesBtn" type="button">Clear All Profile Index Caches</button>
+    </div>
   `;
 
   const bindCheck = (id, key, onChange) => {
@@ -1511,11 +3295,14 @@ function renderOptionsUi() {
     });
   };
 
-  const bindNumber = (id, key, min, max, onChange) => {
+  const bindNumber = (id, key, min, max, onChange, fallback) => {
     const el = document.getElementById(id);
     if (!el) return;
     const applyValue = () => {
-      const next = clampInt(el.value, min, max, DEFAULT_OPTIONS.parallelDownloadLimit);
+      const fb = (fallback != null)
+        ? fallback
+        : ((DEFAULT_OPTIONS[key] != null) ? DEFAULT_OPTIONS[key] : min);
+      const next = clampInt(el.value, min, max, fb);
       el.value = String(next);
       PG_OPTIONS[key] = next;
       saveOptions();
@@ -1527,21 +3314,665 @@ function renderOptionsUi() {
     el.addEventListener('blur', applyValue);
   };
 
+  const bindSelect = (id, key, labels, onChange) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      const next = String(el.value || '').trim();
+      if (labels && labels[next]) {
+        PG_OPTIONS[key] = next;
+        saveOptions();
+        setOptionsStatus('Saved');
+        applyOptions();
+        if (typeof onChange === 'function') onChange(next);
+      }
+    });
+  };
+
+  bindSelect('pg_opt_downloadMode', 'downloadMode', DOWNLOAD_MODE_LABELS);
+  bindSelect('pg_opt_specialDownloadBehavior', 'specialDownloadBehavior', SPECIAL_DOWNLOAD_BEHAVIOR_LABELS);
+  bindNumber('pg_opt_specialDownloadValue', 'specialDownloadValue', 1, 999, null, DEFAULT_OPTIONS.specialDownloadValue);
   bindCheck('pg_opt_durationIndexing', 'durationIndexing');
   bindCheck('pg_opt_galleryPreloadAll', 'galleryPreloadAll');
   bindNumber('pg_opt_parallelDownloadLimit', 'parallelDownloadLimit', 1, 10, () => {
     if (dl.started) requestDispatch();
-  });
+  }, DEFAULT_OPTIONS.parallelDownloadLimit);
+  bindNumber('pg_opt_videoDurationProbeConcurrency', 'videoDurationProbeConcurrency', 1, 10, null, DEFAULT_OPTIONS.videoDurationProbeConcurrency);
+  bindCheck('pg_opt_downloadAcrossProfiles', 'downloadAcrossProfiles');
+  bindCheck('pg_opt_timeoutRetries', 'timeoutRetries');
   bindCheck('pg_opt_stopClearsQueue', 'stopClearsQueue');
+  bindCheck('pg_opt_hidePostsWithNoAttachments', 'hidePostsWithNoAttachments');
   bindCheck('pg_opt_showLocalGalleryBtn', 'showLocalGalleryBtn');
+  bindCheck('pg_opt_showDownloadPostLinksBtn', 'showDownloadPostLinksBtn');
   bindCheck('pg_opt_showGalleryBtn', 'showGalleryBtn');
   bindCheck('pg_opt_showPageBtn', 'showPageBtn');
   bindCheck('pg_opt_showMediaBtn', 'showMediaBtn');
   bindCheck('pg_opt_showPreviewBtn', 'showPreviewBtn');
+  bindCheck('pg_opt_showClearIndexCacheBtn', 'showClearIndexCacheBtn');
   bindCheck('pg_opt_showPageInput', 'showPageInput');
   bindCheck('pg_opt_showPostInput', 'showPostInput');
   bindCheck('pg_opt_showFileInput', 'showFileInput');
+  bindCheck('pg_opt_showAttachmentInput', 'showAttachmentInput');
   bindCheck('pg_opt_showProgressBar', 'showProgressBar');
+  bindCheck('pg_opt_showGroupsSection', 'showGroupsSection');
+  bindCheck('pg_opt_showClearAllIndexCachesBtn', 'showClearAllIndexCachesBtn');
+  const clearAllIndexCachesBtn = document.getElementById('pg_opt_clearAllIndexCachesBtn');
+  if (clearAllIndexCachesBtn) {
+    clearAllIndexCachesBtn.addEventListener('click', () => handleClearAllIndexCachesBtn());
+  }
+  syncSpecialDownloadBehaviorSelect();
+  syncOptionsElementVisibility();
+}
+
+function formatGroupDate(ts) {
+  if (!ts || typeof ts !== 'number') return '';
+  const d = new Date(ts);
+  if (!isFinite(d.getTime())) return '';
+  return 'Created ' + d.toISOString().split('T')[0];
+}
+
+function renderGroupsUi() {
+  const body = document.getElementById('pgMenuGroupsBody');
+  if (!body) return;
+  const profileKey = getProfileKeyFromLocation();
+  const hasProfile = !!profileKey;
+  const groups = hasProfile ? loadGroupsForProfile(profileKey) : [];
+  const note = hasProfile
+    ? '<div class="pg-options-note">Groups are saved per profile. Use Create Group to add one.</div>'
+    : '<div class="pg-options-note">No profile detected.</div>';
+
+  const actions = `
+    <div class="pg-group-actions">
+      <button type="button" id="pgGroupsCreateBtn"${hasProfile ? '' : ' disabled'}>Create Group</button>
+      <button type="button" id="pgGroupsClearBtn"${hasProfile ? '' : ' disabled'}>Delete All Groups</button>
+      <button type="button" id="pgGroupsDownloadAllBtn"${groups.length ? '' : ' disabled'}>Download All</button>
+    </div>
+  `;
+
+  const rows = groups.map(group => {
+    const name = inferGroupTitle(group.name, group.earliestPostFolder) || 'group';
+    const created = formatGroupDate(group.createdAt);
+    const posts = typeof group.postCount === 'number' ? group.postCount : 0;
+    const files = typeof group.fileCount === 'number' ? group.fileCount : (group.files ? group.files.length : 0);
+    const meta = `${posts} posts • ${files} files${created ? ' • ' + created : ''}`;
+    return `
+      <div class="pg-opt-row pg-group-row">
+        <div class="pg-opt-left">
+          <div class="pg-opt-title">${name}</div>
+          <div class="pg-opt-hint">${meta}</div>
+        </div>
+        <div class="pg-opt-right">
+          <button type="button" class="pg-group-rename-btn" data-group-id="${group.id}">Rename</button>
+          <button type="button" class="pg-group-download-btn" data-group-id="${group.id}">Download</button>
+          <button type="button" class="pg-group-delete-btn" data-group-id="${group.id}">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const empty = !groups.length ? '<div class="pg-options-note">No groups created.</div>' : '';
+  body.innerHTML = actions + note + empty + rows;
+
+  const createBtn = document.getElementById('pgGroupsCreateBtn');
+  if (createBtn) {
+    createBtn.addEventListener('click', () => {
+      if (hasProfile) handleCreateGroup();
+    });
+  }
+
+  const clearBtn = document.getElementById('pgGroupsClearBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (hasProfile) handleClearGroups();
+    });
+  }
+
+  const dlAllBtn = document.getElementById('pgGroupsDownloadAllBtn');
+  if (dlAllBtn) {
+    dlAllBtn.addEventListener('click', () => {
+      if (groups.length) queueAllGroupDownloads(groups);
+    });
+  }
+
+  body.querySelectorAll('.pg-group-download-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const groupId = btn.dataset.groupId || '';
+      const group = groups.find(g => g && g.id === groupId);
+      if (group) queueGroupDownload(group);
+    });
+  });
+
+  body.querySelectorAll('.pg-group-rename-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const groupId = btn.dataset.groupId || '';
+      handleRenameGroup(groupId);
+    });
+  });
+
+  body.querySelectorAll('.pg-group-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const groupId = btn.dataset.groupId || '';
+      deleteGroupById(groupId);
+    });
+  });
+}
+
+function saveMenuTabScroll(tab) {
+  const target = MENU_SCROLL_TARGETS[tab];
+  if (!target) return;
+  MENU_TAB_SCROLL[tab] = target.scrollTop || 0;
+}
+
+function restoreMenuTabScroll(tab) {
+  const target = MENU_SCROLL_TARGETS[tab];
+  if (!target) return;
+  const top = MENU_TAB_SCROLL[tab] || 0;
+  requestAnimationFrame(() => {
+    target.scrollTop = top;
+  });
+}
+
+function ensureOptionsUi() {
+  renderOptionsUi();
+  setOptionsStatus('Saved automatically');
+  restoreMenuTabScroll('options');
+}
+
+function assignDownloadTabKeybind(actionId, value) {
+  if (!DOWNLOAD_TAB_KEYBIND_ACTION_IDS.has(actionId)) return false;
+  const nextValue = normalizeSingleKeybindValue(value);
+  const nextBindings = normalizeDownloadTabKeybinds(
+    PG_OPTIONS && PG_OPTIONS.downloadTabKeybinds ? PG_OPTIONS.downloadTabKeybinds : DOWNLOAD_TAB_KEYBINDS
+  );
+  if (nextValue) {
+    DOWNLOAD_TAB_KEYBIND_ACTIONS.forEach(action => {
+      if (action.id !== actionId && nextBindings[action.id] === nextValue) {
+        nextBindings[action.id] = '';
+      }
+    });
+  }
+  nextBindings[actionId] = nextValue;
+  PG_OPTIONS.downloadTabKeybinds = nextBindings;
+  saveOptions();
+  setOptionsStatus('Saved');
+  applyOptions();
+  return true;
+}
+
+function clearAllDownloadTabKeybinds() {
+  PG_OPTIONS.downloadTabKeybinds = normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS);
+  saveOptions();
+  setOptionsStatus('Saved');
+  applyOptions();
+}
+
+function renderKeybindsUi() {
+  const body = document.getElementById('pgMenuKeybindsBody');
+  if (!body) return;
+  const bindings = normalizeDownloadTabKeybinds(
+    PG_OPTIONS && PG_OPTIONS.downloadTabKeybinds ? PG_OPTIONS.downloadTabKeybinds : DOWNLOAD_TAB_KEYBINDS
+  );
+  const rows = DOWNLOAD_TAB_KEYBIND_ACTIONS.map(action => {
+    const value = bindings[action.id] ? bindings[action.id].toUpperCase() : '';
+    return `
+      <div class="pg-opt-row">
+        <div class="pg-opt-left">
+          <div class="pg-opt-title">${action.label}</div>
+          <div class="pg-opt-hint">${action.hint}</div>
+        </div>
+        <div class="pg-opt-right pg-keybind-right">
+          <input
+            class="pg-keybind-input"
+            type="text"
+            data-keybind-action="${action.id}"
+            inputmode="text"
+            maxlength="1"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            value="${value}"
+            placeholder="-"
+            aria-label="${action.label} keybind"
+          />
+          <button type="button" class="pg-keybind-clear-btn" data-keybind-clear="${action.id}"${value ? '' : ' disabled'}>Clear</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  body.innerHTML = `
+    <div class="pg-options-note">Assign one key per action. Allowed keys: letters A-Z and numbers 0-9.</div>
+    <div class="pg-opt-section">
+      <div class="pg-opt-section-title">Download Controls</div>
+      ${rows}
+      <div class="pg-keybind-actions">
+        <button type="button" id="pgKeybindsClearAllBtn">Clear All Keybinds</button>
+      </div>
+    </div>
+  `;
+
+  body.querySelectorAll('input[data-keybind-action]').forEach(input => {
+    const actionId = String(input.getAttribute('data-keybind-action') || '');
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        input.blur();
+        return;
+      }
+      if (
+        ev.key === 'Backspace' ||
+        ev.key === 'Delete' ||
+        ev.key === 'Tab' ||
+        ev.key === 'ArrowLeft' ||
+        ev.key === 'ArrowRight' ||
+        ev.key === 'Home' ||
+        ev.key === 'End'
+      ) {
+        return;
+      }
+      if (ev.key && ev.key.length === 1 && /^[a-z0-9]$/i.test(ev.key)) return;
+      ev.preventDefault();
+    });
+    input.addEventListener('input', () => {
+      const n = normalizeSingleKeybindValue(input.value);
+      input.value = n ? n.toUpperCase() : '';
+    });
+    input.addEventListener('blur', () => {
+      assignDownloadTabKeybind(actionId, input.value);
+      renderKeybindsUi();
+    });
+  });
+
+  body.querySelectorAll('button[data-keybind-clear]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const actionId = String(btn.getAttribute('data-keybind-clear') || '');
+      assignDownloadTabKeybind(actionId, '');
+      renderKeybindsUi();
+    });
+  });
+
+  const clearAllBtn = document.getElementById('pgKeybindsClearAllBtn');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', () => {
+      clearAllDownloadTabKeybinds();
+      renderKeybindsUi();
+    });
+  }
+}
+
+function ensureKeybindsUi() {
+  renderKeybindsUi();
+  restoreMenuTabScroll('keybinds');
+}
+
+function renderDownloadsUi() {
+  const body = document.getElementById('pgMenuDownloadsBody');
+  if (!body) return;
+  const hud = document.getElementById('partyHUD');
+  body.innerHTML = '';
+  if (hud) {
+    body.appendChild(hud);
+  }
+  if (SHOW_GROUPS_SECTION) {
+    const groupsWrap = document.createElement('div');
+    groupsWrap.className = 'pg-hud-section';
+    groupsWrap.innerHTML = `
+      <div class="pg-hud-title">Groups</div>
+      <div id="pgMenuGroupsBody"></div>
+    `;
+    body.appendChild(groupsWrap);
+    renderGroupsUi();
+  }
+}
+
+function ensureDownloadsUi() {
+  renderDownloadsUi();
+  syncHudElementVisibility();
+  syncDurationInputVisibility();
+  syncProgressBarVisibility();
+  restoreMenuTabScroll('downloads');
+}
+
+function ensureQueueUi() {
+  renderQueueUi();
+  restoreMenuTabScroll('queue');
+}
+
+function ensureInfoUi() {
+  const body = document.getElementById('pgMenuInfoBody');
+  if (!body) return;
+  const token = ++INFO_RENDER_TOKEN;
+  body.innerHTML = '<div class="pg-options-note">Loading profile info...</div>';
+  restoreMenuTabScroll('info');
+  buildProfileInfoSnapshot().then(snapshot => {
+    if (token !== INFO_RENDER_TOKEN) return;
+    if (!document.getElementById('pgMenuInfoBody')) return;
+    if (!snapshot || snapshot.error) {
+      body.innerHTML = `<div class="pg-options-note">${snapshot && snapshot.error ? snapshot.error : 'Unable to load profile info.'}</div>`;
+      restoreMenuTabScroll('info');
+      return;
+    }
+
+    body.innerHTML = `
+      <div class="pg-opt-section">
+        <div class="pg-opt-section-title">Document Preview</div>
+        <pre class="pg-info-preview" id="pgInfoPreview"></pre>
+      </div>
+      <div class="pg-group-actions">
+        <button type="button" id="pgInfoDownloadBtn">Download</button>
+      </div>
+    `;
+    const preview = document.getElementById('pgInfoPreview');
+    if (preview) preview.textContent = snapshot.lines.join('\n');
+    const downloadBtn = document.getElementById('pgInfoDownloadBtn');
+    if (downloadBtn) downloadBtn.addEventListener('click', () => handleDownloadInfo());
+    restoreMenuTabScroll('info');
+  }).catch(() => {
+    if (token !== INFO_RENDER_TOKEN) return;
+    if (!document.getElementById('pgMenuInfoBody')) return;
+    body.innerHTML = '<div class="pg-options-note">Unable to load profile info.</div>';
+    restoreMenuTabScroll('info');
+  });
+}
+
+function ensureErrorLogUi() {
+  renderErrorLogUi();
+  restoreMenuTabScroll('errors');
+}
+
+function setMenuCollapsed(next) {
+  const card = document.getElementById('pgMenuCard');
+  if (!card) return;
+  MENU_COLLAPSED = !!next;
+  card.classList.toggle('pg-collapsed', MENU_COLLAPSED);
+  const btn = document.getElementById('pgMenuCollapseBtn');
+  if (btn) btn.textContent = MENU_COLLAPSED ? '▸' : '▾';
+  saveMenuState();
+}
+
+function toggleMenuCollapsed() {
+  setMenuCollapsed(!MENU_COLLAPSED);
+}
+
+function setMenuTab(tabId) {
+  const next = MENU_TAB_IDS.includes(tabId) ? tabId : 'options';
+  if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
+  MENU_ACTIVE_TAB = next;
+  MENU_LAST_TAB = next;
+  saveMenuState();
+
+  MENU_TAB_BUTTONS.forEach(btn => {
+    const active = btn.dataset.tab === next;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    btn.setAttribute('tabindex', active ? '0' : '-1');
+  });
+
+  Object.entries(MENU_TAB_PANELS).forEach(([id, panel]) => {
+    if (!panel) return;
+    const active = id === next;
+    panel.classList.toggle('active', active);
+    panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+  });
+
+  if (next === 'downloads') {
+    ensureDownloadsUi();
+    return;
+  }
+  if (next === 'queue') {
+    ensureQueueUi();
+    return;
+  }
+  if (next === 'info') {
+    ensureInfoUi();
+    return;
+  }
+  if (next === 'keybinds') {
+    ensureKeybindsUi();
+    return;
+  }
+  if (next === 'errors') {
+    clearErrorTabUnread();
+    ensureErrorLogUi();
+    return;
+  }
+  ensureOptionsUi();
+}
+
+function clampMenuWindowPosition(desiredX, desiredY) {
+  const card = document.getElementById('pgMenuCard');
+  if (!card) return;
+  const rect = card.getBoundingClientRect();
+  const width = rect.width || MENU_WINDOW_STATE.width || card.offsetWidth || 0;
+  const height = rect.height || MENU_WINDOW_STATE.height || card.offsetHeight || 0;
+  if (!width || !height) return;
+  const maxX = Math.max(MENU_DEFAULT_MARGIN, window.innerWidth - width - MENU_DEFAULT_MARGIN);
+  const maxY = Math.max(MENU_DEFAULT_MARGIN, window.innerHeight - height - MENU_DEFAULT_MARGIN);
+  let x;
+  if (typeof desiredX === 'number') x = desiredX;
+  else if (typeof MENU_WINDOW_STATE.x === 'number') x = MENU_WINDOW_STATE.x;
+  else x = window.innerWidth - width - MENU_DEFAULT_MARGIN;
+  let y;
+  if (typeof desiredY === 'number') y = desiredY;
+  else if (typeof MENU_WINDOW_STATE.y === 'number') y = MENU_WINDOW_STATE.y;
+  else y = MENU_DEFAULT_MARGIN;
+  x = Math.min(maxX, Math.max(MENU_DEFAULT_MARGIN, x));
+  y = Math.min(maxY, Math.max(MENU_DEFAULT_MARGIN, y));
+  card.style.left = `${x}px`;
+  card.style.top = `${y}px`;
+  MENU_WINDOW_STATE.x = x;
+  MENU_WINDOW_STATE.y = y;
+  MENU_WINDOW_STATE.width = width;
+  MENU_WINDOW_STATE.height = height;
+  saveMenuState();
+}
+
+function applyMenuWindowState() {
+  const card = document.getElementById('pgMenuCard');
+  if (!card) return;
+  if (MENU_WINDOW_STATE.width) card.style.width = `${MENU_WINDOW_STATE.width}px`;
+  else card.style.width = `${MENU_DEFAULT_WIDTH}px`;
+  if (MENU_WINDOW_STATE.height) card.style.height = `${MENU_WINDOW_STATE.height}px`;
+  else card.style.height = `${MENU_DEFAULT_HEIGHT}px`;
+  clampMenuWindowPosition();
+}
+
+function registerMenuWindow(card, header) {
+  if (!card || card.dataset.pgWindowReady) return;
+  card.dataset.pgWindowReady = '1';
+
+  if (!MENU_RESIZE_OBSERVER && 'ResizeObserver' in window) {
+    MENU_RESIZE_OBSERVER = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const rect = entry.contentRect;
+        const width = rect.width || MENU_WINDOW_STATE.width || card.offsetWidth || 0;
+        const height = rect.height || MENU_WINDOW_STATE.height || card.offsetHeight || 0;
+        if (!width || !height) continue;
+        MENU_WINDOW_STATE.width = width;
+        MENU_WINDOW_STATE.height = height;
+        clampMenuWindowPosition(MENU_WINDOW_STATE.x, MENU_WINDOW_STATE.y);
+      }
+    });
+  }
+  if (MENU_RESIZE_OBSERVER) MENU_RESIZE_OBSERVER.observe(card);
+
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  let activePointerId = null;
+
+  const onPointerMove = (ev) => {
+    if (!dragging) return;
+    ev.preventDefault();
+    const rect = card.getBoundingClientRect();
+    const nextX = rect.left + (ev.clientX - lastX);
+    const nextY = rect.top + (ev.clientY - lastY);
+    lastX = ev.clientX;
+    lastY = ev.clientY;
+    clampMenuWindowPosition(nextX, nextY);
+  };
+
+  const stopDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    if (header && activePointerId !== null) {
+      try { header.releasePointerCapture(activePointerId); } catch {}
+    }
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', stopDrag);
+    document.removeEventListener('pointercancel', stopDrag);
+    card.classList.remove('pg-overlay-dragging');
+    activePointerId = null;
+  };
+
+  if (header) {
+    header.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0) return;
+      if (ev.target && ev.target.closest && ev.target.closest('button')) return;
+      ev.preventDefault();
+      dragging = true;
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      activePointerId = ev.pointerId;
+      try { header.setPointerCapture(activePointerId); } catch {}
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', stopDrag);
+      document.addEventListener('pointercancel', stopDrag);
+      card.classList.add('pg-overlay-dragging');
+    });
+  }
+}
+
+function registerMenuResizeHandles(card) {
+  if (!card || card.dataset.pgResizeReady) return;
+  card.dataset.pgResizeReady = '1';
+  const handles = [...card.querySelectorAll('.pg-menu-resize-handle[data-corner]')];
+  if (!handles.length) return;
+
+  let resizing = false;
+  let resizeCorner = 'se';
+  let resizePointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let startLeft = 0;
+  let startTop = 0;
+  let startWidth = 0;
+  let startHeight = 0;
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  const getSizeLimits = () => {
+    const cs = getComputedStyle(card);
+    const minWidth = Math.max(80, parseFloat(cs.minWidth) || 100);
+    const minHeight = Math.max(120, parseFloat(cs.minHeight) || 240);
+    const maxWidth = Math.max(minWidth, window.innerWidth - MENU_DEFAULT_MARGIN * 2);
+    const maxHeight = Math.max(minHeight, window.innerHeight - MENU_DEFAULT_MARGIN * 2);
+    return { minWidth, minHeight, maxWidth, maxHeight };
+  };
+
+  const onResizeMove = (ev) => {
+    if (!resizing) return;
+    ev.preventDefault();
+
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    const rightEdge = startLeft + startWidth;
+    const bottomEdge = startTop + startHeight;
+    const limits = getSizeLimits();
+
+    let width = startWidth;
+    let height = startHeight;
+    let left = startLeft;
+    let top = startTop;
+
+    if (resizeCorner.includes('e')) width = startWidth + dx;
+    if (resizeCorner.includes('w')) width = startWidth - dx;
+    width = clamp(width, limits.minWidth, limits.maxWidth);
+    left = resizeCorner.includes('w') ? (rightEdge - width) : startLeft;
+
+    if (resizeCorner.includes('s')) height = startHeight + dy;
+    if (resizeCorner.includes('n')) height = startHeight - dy;
+    height = clamp(height, limits.minHeight, limits.maxHeight);
+    top = resizeCorner.includes('n') ? (bottomEdge - height) : startTop;
+
+    const maxLeft = Math.max(MENU_DEFAULT_MARGIN, window.innerWidth - MENU_DEFAULT_MARGIN - width);
+    const maxTop = Math.max(MENU_DEFAULT_MARGIN, window.innerHeight - MENU_DEFAULT_MARGIN - height);
+    left = clamp(left, MENU_DEFAULT_MARGIN, maxLeft);
+    top = clamp(top, MENU_DEFAULT_MARGIN, maxTop);
+
+    card.style.width = `${width}px`;
+    card.style.height = `${height}px`;
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+    MENU_WINDOW_STATE.width = width;
+    MENU_WINDOW_STATE.height = height;
+    MENU_WINDOW_STATE.x = left;
+    MENU_WINDOW_STATE.y = top;
+  };
+
+  const stopResize = () => {
+    if (!resizing) return;
+    resizing = false;
+    document.removeEventListener('pointermove', onResizeMove);
+    document.removeEventListener('pointerup', stopResize);
+    document.removeEventListener('pointercancel', stopResize);
+    const activeHandle = handles.find(h => String(h.dataset.corner || '') === resizeCorner);
+    if (activeHandle && resizePointerId !== null) {
+      try { activeHandle.releasePointerCapture(resizePointerId); } catch {}
+    }
+    resizePointerId = null;
+    saveMenuState();
+  };
+
+  handles.forEach(handle => {
+    handle.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const rect = card.getBoundingClientRect();
+      resizing = true;
+      resizeCorner = String(handle.dataset.corner || 'se');
+      resizePointerId = ev.pointerId;
+      startX = ev.clientX;
+      startY = ev.clientY;
+      startLeft = rect.left;
+      startTop = rect.top;
+      startWidth = rect.width;
+      startHeight = rect.height;
+      try { handle.setPointerCapture(resizePointerId); } catch {}
+      document.addEventListener('pointermove', onResizeMove);
+      document.addEventListener('pointerup', stopResize);
+      document.addEventListener('pointercancel', stopResize);
+    });
+  });
+}
+
+function initMenuTabs() {
+  const tabs = document.getElementById('pgMenuTabs');
+  MENU_TAB_BUTTONS = tabs ? [...tabs.querySelectorAll('.pgMenuTabBtn')] : [];
+  MENU_TAB_PANELS = {
+    downloads: document.getElementById('pgMenuTabDownloads'),
+    queue: document.getElementById('pgMenuTabQueue'),
+    info: document.getElementById('pgMenuTabInfo'),
+    options: document.getElementById('pgMenuTabOptions'),
+    keybinds: document.getElementById('pgMenuTabKeybinds'),
+    errors: document.getElementById('pgMenuTabErrors')
+  };
+  MENU_SCROLL_TARGETS = {
+    downloads: document.getElementById('pgMenuDownloadsBody'),
+    queue: document.getElementById('pgMenuQueueBody'),
+    info: document.getElementById('pgMenuInfoBody'),
+    options: document.getElementById('pgMenuOptionsBody'),
+    keybinds: document.getElementById('pgMenuKeybindsBody'),
+    errors: document.getElementById('pgMenuErrorBody')
+  };
+  MENU_TAB_BUTTONS.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab || 'options';
+      setMenuTab(tab);
+    });
+  });
+  updateErrorTabBadge();
 }
 
 function buildMenu() {
@@ -1549,62 +3980,152 @@ function buildMenu() {
   const overlay = document.createElement('div');
   overlay.id = 'pgMenuOverlay';
   overlay.innerHTML = `
-    <div id="pgMenuCard" role="dialog" aria-modal="true" aria-label="Menu">
+    <div id="pgMenuCard" role="dialog" aria-modal="true" aria-label="PartyGuest">
       <div id="pgMenuHeader">
-        <div class="title">Menu</div>
-        <button id="pgMenuCloseBtn" type="button">X</button>
+        <div class="title">PartyGuest</div>
+        <div id="pgMenuTabs" role="tablist" aria-label="Menu tabs">
+          <button type="button" class="pgMenuTabBtn" data-tab="downloads" role="tab" aria-controls="pgMenuTabDownloads">Downloads</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="queue" role="tab" aria-controls="pgMenuTabQueue">Queue</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="info" role="tab" aria-controls="pgMenuTabInfo">Info</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="options" role="tab" aria-controls="pgMenuTabOptions">Options</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="keybinds" role="tab" aria-controls="pgMenuTabKeybinds">Keybinds</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="errors" role="tab" aria-controls="pgMenuTabErrors">Error Log</button>
+        </div>
+        <button id="pgMenuCollapseBtn" type="button" aria-label="Collapse menu">▾</button>
       </div>
       <div id="pgMenuBody">
-        <div id="pgMenuOptionsBody"></div>
-        <div id="pgMenuFooter">
-          <div class="left"><span class="label" id="pgOptionsStatusLabel">-</span></div>
-          <div class="right">
-            <button id="pgOptionsResetBtn" type="button">Reset defaults</button>
-            <button id="pgOptionsDoneBtn" type="button">Done</button>
+        <section id="pgMenuTabDownloads" class="pgMenuTabPanel" data-tab="downloads" role="tabpanel">
+          <div id="pgMenuDownloadsBody"></div>
+        </section>
+        <section id="pgMenuTabQueue" class="pgMenuTabPanel" data-tab="queue" role="tabpanel">
+          <div id="pgMenuQueueBody"></div>
+        </section>
+        <section id="pgMenuTabInfo" class="pgMenuTabPanel" data-tab="info" role="tabpanel">
+          <div id="pgMenuInfoBody"></div>
+        </section>
+        <section id="pgMenuTabOptions" class="pgMenuTabPanel" data-tab="options" role="tabpanel">
+          <div id="pgMenuOptionsBody"></div>
+          <div id="pgMenuFooter">
+            <div class="left"><span class="label" id="pgOptionsStatusLabel">-</span></div>
+            <div class="right">
+              <button id="pgOptionsResetBtn" type="button">Reset defaults</button>
+              <button id="pgOptionsDoneBtn" type="button">Done</button>
+            </div>
           </div>
-        </div>
+        </section>
+        <section id="pgMenuTabKeybinds" class="pgMenuTabPanel" data-tab="keybinds" role="tabpanel">
+          <div id="pgMenuKeybindsBody"></div>
+        </section>
+        <section id="pgMenuTabErrors" class="pgMenuTabPanel" data-tab="errors" role="tabpanel">
+          <div id="pgMenuErrorBody"></div>
+        </section>
       </div>
+      <div class="pg-menu-resize-handle pg-menu-resize-nw" data-corner="nw" aria-hidden="true"></div>
+      <div class="pg-menu-resize-handle pg-menu-resize-ne" data-corner="ne" aria-hidden="true"></div>
+      <div class="pg-menu-resize-handle pg-menu-resize-sw" data-corner="sw" aria-hidden="true"></div>
+      <div class="pg-menu-resize-handle pg-menu-resize-se" data-corner="se" aria-hidden="true"></div>
     </div>
   `;
   document.body.appendChild(overlay);
 
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) closeMenu();
-  });
-
-  const closeBtn = document.getElementById('pgMenuCloseBtn');
-  if (closeBtn) closeBtn.addEventListener('click', () => closeMenu());
+  const collapseBtn = document.getElementById('pgMenuCollapseBtn');
+  if (collapseBtn) collapseBtn.addEventListener('click', () => toggleMenuCollapsed());
 
   const doneBtn = document.getElementById('pgOptionsDoneBtn');
-  if (doneBtn) doneBtn.addEventListener('click', () => closeMenu());
+  if (doneBtn) doneBtn.addEventListener('click', () => setMenuCollapsed(true));
 
   const resetBtn = document.getElementById('pgOptionsResetBtn');
   if (resetBtn) resetBtn.addEventListener('click', () => resetOptionsToDefaults());
+
+  const menuCard = document.getElementById('pgMenuCard');
+  const menuHeader = document.getElementById('pgMenuHeader');
+  registerMenuWindow(menuCard, menuHeader);
+  registerMenuResizeHandles(menuCard);
+  initMenuTabs();
+  if (document.getElementById('partyHUD')) {
+    ensureDownloadsUi();
+  }
+
+  if (menuCard && !menuCard.dataset.pgScrollGuard) {
+    menuCard.dataset.pgScrollGuard = '1';
+    const scrollSelector = '#pgMenuDownloadsBody, #pgMenuQueueBody, #pgMenuInfoBody, #pgMenuOptionsBody, #pgMenuKeybindsBody, #pgMenuErrorBody';
+    const findScroller = target => {
+      if (!target || !target.closest) return null;
+      return target.closest(scrollSelector);
+    };
+    const shouldBlockScroll = (scroller, deltaY) => {
+      if (!scroller) return true;
+      const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+      if (maxScroll <= 0) return true;
+      if (deltaY < 0 && scroller.scrollTop <= 0) return true;
+      if (deltaY > 0 && scroller.scrollTop >= maxScroll - 1) return true;
+      return false;
+    };
+    menuCard.addEventListener('wheel', (ev) => {
+      const scroller = findScroller(ev.target);
+      if (shouldBlockScroll(scroller, ev.deltaY || 0)) {
+        ev.preventDefault();
+      }
+      ev.stopPropagation();
+    }, { passive: false });
+
+    let lastTouchY = null;
+    menuCard.addEventListener('touchstart', (ev) => {
+      if (ev.touches && ev.touches.length) {
+        lastTouchY = ev.touches[0].clientY;
+      }
+    }, { passive: true });
+    menuCard.addEventListener('touchmove', (ev) => {
+      if (!ev.touches || !ev.touches.length || lastTouchY == null) return;
+      const y = ev.touches[0].clientY;
+      const deltaY = lastTouchY - y;
+      lastTouchY = y;
+      const scroller = findScroller(ev.target);
+      if (shouldBlockScroll(scroller, deltaY)) {
+        ev.preventDefault();
+      }
+      ev.stopPropagation();
+    }, { passive: false });
+    menuCard.addEventListener('touchend', () => { lastTouchY = null; }, { passive: true });
+    menuCard.addEventListener('touchcancel', () => { lastTouchY = null; }, { passive: true });
+  }
 
   document.addEventListener('keydown', (e) => {
     if (!MENU_OPEN) return;
     if (e.key === 'Escape') {
       e.preventDefault();
-      closeMenu();
+      toggleMenuCollapsed();
     }
   });
 }
 
-function openMenu() {
+function openMenu(tabId) {
   buildMenu();
   const overlay = document.getElementById('pgMenuOverlay');
   if (!overlay) return;
   MENU_OPEN = true;
   overlay.classList.add('active');
-  renderOptionsUi();
-  setOptionsStatus('Saved automatically');
+  document.documentElement.classList.add('pg-menu-open');
+  document.body.classList.add('pg-menu-open');
+  requestAnimationFrame(() => applyMenuWindowState());
+  setMenuCollapsed(MENU_COLLAPSED);
+  const next = MENU_TAB_IDS.includes(tabId)
+    ? tabId
+    : (MENU_TAB_IDS.includes(MENU_LAST_TAB) ? MENU_LAST_TAB : 'downloads');
+  MENU_HAS_OPENED = true;
+  setMenuTab(next);
 }
 
 function closeMenu() {
+  if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
   const overlay = document.getElementById('pgMenuOverlay');
   if (overlay) overlay.classList.remove('active');
+  document.documentElement.classList.remove('pg-menu-open');
+  document.body.classList.remove('pg-menu-open');
   MENU_OPEN = false;
 }
+
+window.addEventListener('resize', () => applyMenuWindowState());
 
 function buildHUD() {
   if ($('#partyHUD')) {
@@ -1615,36 +4136,60 @@ function buildHUD() {
   const w = document.createElement('div');
   w.id = 'partyHUD';
   w.innerHTML = `
-    <div id="dlBox" aria-live="polite">
-      <div id="dlSummaryLine">
-        <span id="dlSummary"></span>
+    <div id="pgToastStack" aria-live="polite"></div>
+    <div class="pg-hud-section">
+      <div class="pg-hud-title">Status</div>
+      <div id="dlBox" aria-live="polite">
+        <div id="dlSummaryLine">
+          <span id="dlSummary"></span>
+        </div>
+        <div id="pgWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Download progress">
+          <div id="pgTrack"><div id="pgFill"></div></div>
+          <div id="pgBarLabel" aria-hidden="true">0%</div>
+        </div>
       </div>
-      <div id="pgWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Download progress">
-        <div id="pgTrack"><div id="pgFill"></div></div>
-        <div id="pgBarLabel" aria-hidden="true">0%</div>
+      <div id="filterBox">
+        <span id="indexStatus"></span>
+        <span id="filterStatus"></span>
       </div>
     </div>
-    <div id="filterBox">
-      <span id="indexStatus"></span>
-      <span id="filterStatus"></span>
+    <div class="pg-hud-section">
+      <div class="pg-hud-title">Controls</div>
+      <div id="hudRow" class="hud-row">
+        <button id="dlBtn" class="full">Download</button>
+        <button id="addQueueBtn" class="full">Add to Queue</button>
+        <button id="pauseBtn" class="full">Pause</button>
+        <button id="downloadPostLinksBtn" class="full">Download Post Links</button>
+        <button id="galleryBtn" class="full">Gallery</button>
+        <button id="localGalleryBtn" class="full">Local Gallery</button>
+        <button id="filterBtn" class="full">Preview</button>
+        <button id="clearIndexCacheBtn" class="full">Clear Index Cache</button>
+      </div>
     </div>
-    <div id="hudRow" class="hud-row">
-      <button id="dlBtn" class="full">Download</button>
-      <button id="galleryBtn" class="full">Gallery</button>
-      <button id="localGalleryBtn" class="full">Local Gallery</button>
-      <button id="pgMenuBtn" class="full">Menu</button>
-      <button id="filterBtn" class="full">Preview</button>
-      <button id="btnMedia" class="full">All</button>
-      <button id="btnPageAll">Page</button>
-      <input id="fPages" type="text" placeholder="Page">
-      <input id="fPosts" type="text" placeholder="Post">
-      <input id="fFiles" type="text" placeholder="File">
-      <input id="fDur" type="text" placeholder="Duration">
+    <div class="pg-hud-section">
+      <div class="pg-hud-title">Filters</div>
+      <div id="hudFilters" class="hud-filters">
+        <button id="btnMedia" class="full">All</button>
+        <button id="btnPageAll">Page</button>
+        <button id="clearFiltersBtn">Clear Filters</button>
+        <input id="fPages" type="text" placeholder="Page">
+        <input id="fPosts" type="text" placeholder="Post">
+        <input id="fFiles" type="text" placeholder="File">
+        <input id="fAttach" type="text" placeholder="Attachments">
+        <input id="fDur" type="text" placeholder="Duration">
+      </div>
     </div>
   `;
   document.body.appendChild(w);
 
   $('#dlBtn').onclick = handleDlBtn;
+  const addQueueBtn = $('#addQueueBtn');
+  if (addQueueBtn) addQueueBtn.onclick = handleAddToQueueBtn;
+  const pauseBtn = $('#pauseBtn');
+  if (pauseBtn) pauseBtn.onclick = handlePauseBtn;
+
+  const downloadPostLinksBtn = $('#downloadPostLinksBtn');
+  if (downloadPostLinksBtn) downloadPostLinksBtn.onclick = handleDownloadPostLinks;
 
   const galleryBtn = $('#galleryBtn');
   if (galleryBtn) galleryBtn.onclick = handleGalleryToggle;
@@ -1652,19 +4197,11 @@ function buildHUD() {
   const localGalleryBtn = $('#localGalleryBtn');
   if (localGalleryBtn) localGalleryBtn.onclick = handleLocalGalleryBtn;
 
-  const menuBtn = $('#pgMenuBtn');
-  if (menuBtn) menuBtn.onclick = openMenu;
-
   restoreFilterState();
 
-  const mediaLabel = m => m === 'all' ? 'All' : m === 'images' ? 'Images' : m === 'gifs' ? 'GIFs' : 'Videos';
   const btnMedia = $('#btnMedia');
-  if (btnMedia) btnMedia.textContent = mediaLabel(MEDIA_MODE);
-  if (btnMedia) btnMedia.onclick = () => {
-    MEDIA_MODE = MEDIA_MODE === 'all' ? 'images' : MEDIA_MODE === 'images' ? 'gifs' : MEDIA_MODE === 'gifs' ? 'videos' : 'all';
-    btnMedia.textContent = mediaLabel(MEDIA_MODE);
-    scheduleFilter();
-  };
+  if (btnMedia) btnMedia.textContent = mediaModeLabel(MEDIA_MODE);
+  if (btnMedia) btnMedia.onclick = () => cycleMediaMode();
 
   const filterBtn = $('#filterBtn');
   if (filterBtn) {
@@ -1676,6 +4213,10 @@ function buildHUD() {
 
   const btnPageAll = $('#btnPageAll');
   if (btnPageAll) btnPageAll.onclick = handlePageAllBtn;
+  const clearFiltersBtn = $('#clearFiltersBtn');
+  if (clearFiltersBtn) clearFiltersBtn.onclick = handleClearFilters;
+  const clearIndexCacheBtn = $('#clearIndexCacheBtn');
+  if (clearIndexCacheBtn) clearIndexCacheBtn.onclick = handleClearIndexCacheBtn;
 
   const postsInput = $('#fPosts');
   if (postsInput) postsInput.addEventListener('input', () => {
@@ -1689,6 +4230,9 @@ function buildHUD() {
   const filesInput = $('#fFiles');
   if (filesInput) filesInput.addEventListener('input', scheduleFilter);
 
+  const attachInput = $('#fAttach');
+  if (attachInput) attachInput.addEventListener('input', scheduleFilter);
+
   const durInput = $('#fDur');
   if (durInput) durInput.addEventListener('input', scheduleFilter);
 
@@ -1699,13 +4243,73 @@ function buildHUD() {
   requestAnimationFrame(syncFilterBoxWidth);
   requestAnimationFrame(syncFilterBoxVisibility);
   requestAnimationFrame(syncProgressBarVisibility);
+  requestAnimationFrame(updatePauseButtonState);
   requestAnimationFrame(lockMediaButtonWidth);
   requestAnimationFrame(lockPreviewButtonWidth);
   applyOptions();
+  if (document.getElementById('pgMenuDownloadsBody')) {
+    ensureDownloadsUi();
+  }
 
   if (handleProfileContextChange()) {
     scheduleFilter();
   }
+}
+
+function normalizeDownloadUrl(raw) {
+  if (!raw) return '';
+  let u = String(raw || '').trim();
+  if (!u) return '';
+  if (u.includes('&amp;')) u = u.replace(/&amp;/g, '&');
+  try { return new URL(u, location.origin).href; } catch {}
+  try { return new URL(encodeURI(u), location.origin).href; } catch {}
+  return u;
+}
+
+function sanitizeFileNameStrict(raw, fallback) {
+  let s = String(raw || '').normalize('NFC');
+  s = s.replace(/\uFFFD/g, '');
+  s = s.replace(/[\uD800-\uDFFF]/g, '');
+  s = s.replace(/[\x00-\x1F\x7F]/g, '');
+  s = s.replace(/[^A-Za-z0-9._ -]+/g, '');
+  s = s.trim();
+  return s || (fallback || 'download');
+}
+
+function sanitizeDownloadPathForSave(rawPath) {
+  const fallbackLeaf = 'download';
+  const parts = String(rawPath || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean);
+  if (!parts.length) return fallbackLeaf;
+  const clean = parts.map((seg, idx) => {
+    return sanitizeFileNameStrict(seg, idx === parts.length - 1 ? fallbackLeaf : 'folder');
+  });
+  return clean.join('/');
+}
+
+function getUrlExt(u) {
+  const raw = normalizeDownloadUrl(u);
+  if (!raw) return '';
+  try {
+    const url = new URL(raw, location.origin);
+    const path = url.pathname || '';
+    const dot = path.lastIndexOf('.');
+    if (dot >= 0 && dot < path.length - 1) {
+      const ext = path.slice(dot + 1).toLowerCase();
+      return ext.replace(/[^a-z0-9]+/gi, '');
+    }
+    const f = url.searchParams.get('f');
+    if (f) {
+      const fDot = f.lastIndexOf('.');
+      if (fDot >= 0 && fDot < f.length - 1) {
+        const ext = f.slice(fDot + 1).toLowerCase();
+        return ext.replace(/[^a-z0-9]+/gi, '');
+      }
+    }
+  } catch {}
+  return '';
 }
 
 function allowedUrl(u) {
@@ -1719,14 +4323,100 @@ function allowedUrl(u) {
   return false;
 }
 
+function isVideoFileRef(ref) {
+  if (!ref) return false;
+  const s = String(ref).split('?')[0];
+  return vidRE.test(s);
+}
+
+function getFileIsVideo(file) {
+  if (!file || typeof file !== 'object') return false;
+  if (typeof file.isVid === 'boolean') return file.isVid;
+  const isVid = isVideoFileRef(file.url || file.path || file.name || '');
+  file.isVid = isVid;
+  return isVid;
+}
+
+function getPostIdFromUrl(url) {
+  try {
+    const u = new URL(url || location.href, location.origin);
+    const m = u.pathname.match(/\/post\/(\d+)/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractPostPageMeta(doc, postUrl) {
+  const titleEl = doc.querySelector('.post__title, .scrape__title');
+  const titleNode = titleEl ? (titleEl.querySelector('span') || titleEl) : null;
+  const title = titleNode ? (titleNode.textContent || '').trim() : '';
+  const userEl = doc.querySelector('.post__user-name, .scrape__user-name, .user-header__name');
+  const user = userEl ? (userEl.textContent || '').trim() : userName();
+  const pubEl = doc.querySelector('.post__published, .scrape__published, .post__date');
+  let published = null;
+  if (pubEl) {
+    const copy = pubEl.cloneNode(true);
+    if (copy.firstElementChild) copy.firstElementChild.remove();
+    const text = (copy.textContent || '').trim();
+    if (text) published = text;
+  }
+  const id = getPostIdFromUrl(postUrl || location.href);
+  return { id, user, title, published };
+}
+
+function extractPostPageFileUrls(doc, allowAll) {
+  const out = [];
+  const seen = new Set();
+  const nodes = doc.querySelectorAll(
+    '.post__files a, .post__files img, .post__files video, .post__files source, ' +
+    '.scrape__files a, .scrape__files img, .scrape__files video, .scrape__files source, ' +
+    '.post__attachments a, .scrape__attachments a, a.post__attachment-link'
+  );
+  nodes.forEach(node => {
+    let url = '';
+    if (node.tagName === 'A') url = node.getAttribute('href') || '';
+    if (!url && node.closest) {
+      const a = node.closest('a');
+      if (a) url = a.getAttribute('href') || '';
+    }
+    if (!url) {
+      url = node.getAttribute('src')
+        || node.getAttribute('data-src')
+        || node.getAttribute('data-lazy-src')
+        || node.getAttribute('data-original')
+        || node.getAttribute('data-full')
+        || '';
+    }
+    if (!url || url.startsWith('blob:') || url.startsWith('data:')) return;
+    let abs = '';
+    try { abs = new URL(url, location.origin).href; } catch { return; }
+    abs = normalizeDownloadUrl(abs);
+    if (!allowAll && !allowedUrl(abs)) return;
+    const key = normalizeFileUrl(abs) || abs;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(abs);
+  });
+  return out;
+}
+
 function resolveFileUrl(obj) {
   if (!obj) return null;
   if (obj.path) {
-    const p = obj.path.startsWith('/') ? obj.path : ('/' + obj.path);
-    if (obj.path.startsWith('http')) return obj.path;
-    return dataRoot + p;
+    const raw = String(obj.path || '').trim();
+    if (/^https?:\/\//i.test(raw)) return normalizeDownloadUrl(raw);
+    if (raw.startsWith('//')) return location.protocol + raw;
+    if (raw.startsWith('/data/')) return location.origin + raw;
+    if (raw.startsWith('data/')) return location.origin + '/' + raw;
+    if (raw.startsWith('/')) return location.origin + raw;
+    return normalizeDownloadUrl(dataRoot + '/' + raw);
   }
-  if (obj.url && obj.url.startsWith('http')) return obj.url;
+  if (obj.url) {
+    const rawUrl = String(obj.url || '').trim();
+    if (/^https?:\/\//i.test(rawUrl)) return normalizeDownloadUrl(rawUrl);
+    if (rawUrl.startsWith('//')) return location.protocol + rawUrl;
+  }
   return null;
 }
 
@@ -1745,15 +4435,38 @@ function normalizeFileUrl(u) {
 
 const durCache = Object.create(null);
 
+function makeDurationUrlKey(url) {
+  if (!url) return '';
+  return normalizeFileUrl(url) || normalizeDownloadUrl(url) || String(url);
+}
+
 function getVideoDuration(u) {
-  return durCache[u] ?? (durCache[u] = new Promise(res => {
+  const src = normalizeDownloadUrl(u);
+  const key = makeDurationUrlKey(src);
+  if (!key || !src) return Promise.resolve(Infinity);
+  return durCache[key] ?? (durCache[key] = new Promise(res => {
     const v = document.createElement('video');
+    let settled = false;
+    let timeoutId = null;
+    const done = d => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) {
+        try { clearTimeout(timeoutId); } catch {}
+        timeoutId = null;
+      }
+      try { v.pause(); } catch {}
+      try { v.removeAttribute('src'); } catch {}
+      try { v.load(); } catch {}
+      try { v.remove(); } catch {}
+      res(d);
+    };
     v.preload = 'metadata';
     v.crossOrigin = 'anonymous';
-    v.src = u;
-    const done = d => { try{v.remove();}catch{} try{v.src='';}catch{} res(d); };
     v.onloadedmetadata = () => done(v.duration || Infinity);
     v.onerror = () => done(Infinity);
+    timeoutId = setTimeout(() => done(Infinity), VIDEO_DURATION_REQUEST_TIMEOUT_MS);
+    v.src = src;
   }));
 }
 
@@ -1772,6 +4485,12 @@ function getCounts() {
   return { total, completed, downloading, queued };
 }
 
+function getDownloadSummaryUnit() {
+  if (DOWNLOAD_MODE === 'post') return 'posts';
+  if (DOWNLOAD_MODE === 'queue_flat') return 'queues';
+  return 'files';
+}
+
 let uiScheduled = false;
 let lastDropNoteAt = 0;
 let lastDropNoteCount = 0;
@@ -1781,6 +4500,7 @@ function updateHUD() {
   uiScheduled = false;
 
   const { total, completed, downloading, queued } = getCounts();
+  const failed = FAILED_ITEMS.length;
   const percent = total ? Math.round((completed / total) * 100) : 0;
   const pct = Math.max(0, Math.min(100, percent));
 
@@ -1798,12 +4518,16 @@ function updateHUD() {
   const dlSummaryEl = $('#dlSummary');
   if (dlSummaryEl) {
     const retries = lastDropNoteCount || 0;
-    const totalFiles = total || 0;
-    dlSummaryEl.textContent = `${totalFiles} files total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${retries} Retries`;
+    const totalItems = total || 0;
+    const unit = getDownloadSummaryUnit();
+    const pausedBit = QUEUE_PAUSED ? ' • Paused' : '';
+    dlSummaryEl.textContent = `${totalItems} ${unit} total • ${queued} Queued • ${downloading} Downloading • ${completed} Completed • ${failed} Failed • ${retries} Retries${pausedBit}`;
   }
 
+  updatePauseButtonState({ downloading, queued });
   syncFilterBoxVisibility();
   syncProgressBarVisibility();
+  renderQueueUi();
 }
 
 function scheduleHUD() {
@@ -1812,12 +4536,38 @@ function scheduleHUD() {
   requestAnimationFrame(updateHUD);
 }
 
+function updatePauseButtonState(counts) {
+  const btn = $('#pauseBtn');
+  if (!btn) return;
+  const state = counts || getCounts();
+  const hasQueue = DL_ACTIVE || (state.downloading + state.queued) > 0;
+  btn.disabled = !hasQueue;
+  btn.textContent = QUEUE_PAUSED ? 'Play' : 'Pause';
+  btn.classList.toggle('play', QUEUE_PAUSED);
+}
+
+function setQueuePaused(next, opts = {}) {
+  const wantPaused = !!next;
+  if (wantPaused && !DL_ACTIVE) return false;
+  const changed = QUEUE_PAUSED !== wantPaused;
+  QUEUE_PAUSED = wantPaused;
+  updatePauseButtonState();
+  if (changed) {
+    if (!opts.silentStatus) {
+      setStatus(wantPaused ? 'Queue paused' : 'Queue resumed', 'info');
+    }
+    if (!wantPaused && dl.started) requestDispatch();
+  }
+  scheduleHUD();
+  return true;
+}
+
 function requestDispatch() {
   if (dl.dispatching) return;
   dl.dispatching = true;
   queueMicrotask(() => {
     try {
-      if (!dl.started) return;
+      if (!dl.started || QUEUE_PAUSED) return;
       let startedAny = false;
       while (activeCount() < parLimit()) {
         const it = claimNext();
@@ -1828,7 +4578,7 @@ function requestDispatch() {
       if (startedAny) scheduleHUD();
     } finally {
       dl.dispatching = false;
-      if (dl.started && hasRunnableQueued() && activeCount() < parLimit()) requestDispatch();
+      if (dl.started && !QUEUE_PAUSED && hasRunnableQueued() && activeCount() < parLimit()) requestDispatch();
     }
   });
 }
@@ -1853,59 +4603,396 @@ function claimNext() {
   return null;
 }
 
+function getRetryKey(item) {
+  if (!item) return '';
+  return item.retryKey || item.url || item.name || '';
+}
+
 function enqueueItems(objs) {
   const toAdd = [];
   for (const obj of objs) {
     const url = obj.url;
     const name = obj.name;
     const meta = obj.meta || null;
+    const files = Array.isArray(obj.files) ? obj.files : null;
+    const userFolder = obj.userFolder || '';
+    const postFolder = obj.postFolder || '';
+    const retryKey = obj.retryKey || '';
+    const archiveMode = obj.archiveMode || '';
+    const queuePostFolder = obj.queuePostFolder || '';
+    const groupPostFolder = obj.groupPostFolder || '';
     toAdd.push({ url, name, meta, status: 'queued', attempts: 0, nextAt: 0 });
+    if (files) {
+      const it = toAdd[toAdd.length - 1];
+      it.files = files;
+      it.userFolder = userFolder;
+      it.postFolder = postFolder;
+      it.retryKey = retryKey;
+      it.archiveMode = archiveMode;
+      it.queuePostFolder = queuePostFolder;
+      it.groupPostFolder = groupPostFolder;
+    }
   }
   if (!toAdd.length) return;
   dl.items.push(...toAdd);
   scheduleHUD();
-  if (dl.started) requestDispatch();
+  if (dl.started && !QUEUE_PAUSED) requestDispatch();
+}
+
+function startQueueIfIdle() {
+  if (DL_ACTIVE) {
+    scheduleHUD();
+    return;
+  }
+  setQueuePaused(false, { silentStatus: true });
+  DL_ACTIVE = true;
+  dl.started = true;
+  const b = $('#dlBtn');
+  if (b) {
+    b.classList.add('stop');
+    b.textContent = 'Stop';
+  }
+  requestDispatch();
+  scheduleHUD();
+}
+
+function buildQueueArchiveItem(files, userFolder, queueFolder, retryKey, meta, modeOverride) {
+  if (!Array.isArray(files) || files.length === 0) return null;
+  let mode = modeOverride || DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
+  if (mode === 'post') mode = 'queue_flat';
+  if (mode === 'loose_post' || mode === 'loose_queue') mode = 'queue_flat';
+  const queueFolderSafe = queueFolder || 'post';
+  const archiveName = buildArchiveName(userFolder, queueFolderSafe);
+  return {
+    url: files[0].url,
+    name: archiveName,
+    meta: meta || null,
+    files,
+    userFolder: userFolder || '',
+    postFolder: '',
+    retryKey: retryKey || '',
+    archiveMode: mode,
+    queuePostFolder: queueFolderSafe
+  };
+}
+
+function buildGroupQueueItem(group, idx) {
+  if (!group || !Array.isArray(group.files) || group.files.length === 0) return null;
+  const groupTitle = inferGroupTitle(group.name, group.earliestPostFolder);
+  const renamedFiles = mapGroupFilesToTitle(group.files, groupTitle);
+  const userFolder = group.userFolder || (renamedFiles[0] ? splitDownloadPath(renamedFiles[0].name || '').userFolder : '') || '';
+  const folderSource = group.earliestPostFolder || (renamedFiles[0] ? splitDownloadPath(renamedFiles[0].name || '').postFolder : '') || 'post';
+  const queueFolder = applyEditableTitleToCompositeName(folderSource, groupTitle) || folderSource || groupTitle || 'post';
+  const retryKey = group.id
+    ? `group:${group.id}`
+    : (userFolder ? `group:${userFolder}:${idx || 0}` : `group:${idx || 0}`);
+  return buildQueueArchiveItem(
+    renamedFiles,
+    userFolder,
+    queueFolder,
+    retryKey,
+    { groupId: group.id || '', name: groupTitle || queueFolder },
+    'queue_flat'
+  );
+}
+
+function queueGroupDownload(group, idx) {
+  const item = buildGroupQueueItem(group, idx);
+  if (!item) {
+    setStatus('Group has no files to download', 'error');
+    return false;
+  }
+  enqueueItems([item]);
+  startQueueIfIdle();
+  const label = inferGroupTitle(group.name, group.earliestPostFolder) || 'group';
+  setStatus(`Queued group: ${label}`, 'success');
+  return true;
+}
+
+function queueAllGroupDownloads(groups) {
+  if (!Array.isArray(groups) || groups.length === 0) return false;
+  const items = [];
+  groups.forEach((group, idx) => {
+    const item = buildGroupQueueItem(group, idx);
+    if (item) items.push(item);
+  });
+  if (!items.length) {
+    setStatus('No groups with files to download', 'error');
+    return false;
+  }
+  enqueueItems(items);
+  startQueueIfIdle();
+  setStatus(`Queued ${items.length} group${items.length === 1 ? '' : 's'}`, 'success');
+  return true;
+}
+
+function buildPostPageDownloadItems(doc, postUrl) {
+  const urls = extractPostPageFileUrls(doc, true);
+  if (!urls.length) return { objs: [], count: 0 };
+  const meta = extractPostPageMeta(doc, postUrl);
+  const postId = meta.id != null ? String(meta.id) : '';
+  const gIndex = (PG_ID_MAP && postId && PG_ID_MAP.get(postId)) || (postId ? Number(postId) : 0) || 0;
+  const post = {
+    id: postId || (gIndex ? String(gIndex) : ''),
+    user: meta.user || userName(),
+    title: meta.title || (postId ? `post_${postId}` : 'post'),
+    published: meta.published || null
+  };
+
+  const objs = [];
+  urls.forEach((url, idx) => {
+    const fileObj = { path: url };
+    const rawName = formatFilename(post, fileObj, idx + 1, gIndex);
+    const name = rawName || sanitizeDownloadPathForSave(getDownloadLabel({ url }));
+    objs.push({ url, name, meta: { post, globalIndex: gIndex } });
+  });
+  return { objs, count: objs.length };
+}
+
+function handlePostPageDownload(doc, postUrl) {
+  const res = buildPostPageDownloadItems(doc || document, postUrl || location.href);
+  if (!res || !res.objs || res.objs.length === 0) {
+    setStatus('No files found on this post', 'error');
+    return;
+  }
+  enqueueItems(res.objs);
+  startQueueIfIdle();
+  const n = res.count || 0;
+  setStatus(`Queued post files (${n} file${n === 1 ? '' : 's'})`, 'success');
 }
 
 function maybeFinishBatch() {
-  const { total, completed, downloading, queued } = getCounts();
-  if (total > 0 && completed === total && downloading === 0 && queued === 0) {
+  const { downloading, queued } = getCounts();
+  if (downloading === 0 && queued === 0) {
     DL_ACTIVE = false;
     dl.started = false;
+    setQueuePaused(false, { silentStatus: true });
     const b = $('#dlBtn'); if (b) { b.classList.remove('stop'); b.textContent = 'Download'; }
+    renderErrorLogUi();
   }
 }
 
-function startDownload(item) {
+async function fetchBlobNative(url, timeoutMs, handles) {
+  const controller = new AbortController();
+  const handle = { abort: () => controller.abort() };
+  let timer = null;
+  const u = normalizeDownloadUrl(url);
+  if (handles) handles.add(handle);
+  if (timeoutMs && timeoutMs > 0) {
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+  }
+  try {
+    const resp = await fetch(u, {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      signal: controller.signal
+    });
+    if (!resp || !resp.ok) {
+      throw {
+        stage: 'fetch-native-http',
+        status: resp ? resp.status : 0,
+        statusText: resp ? (resp.statusText || '') : '',
+        url: u
+      };
+    }
+    const blob = await resp.blob();
+    if (!(blob instanceof Blob) || blob.size === 0) {
+      throw {
+        stage: 'fetch-native-empty',
+        details: 'empty blob',
+        url: u
+      };
+    }
+    return blob;
+  } catch (err) {
+    if (err && typeof err === 'object' && err.stage) throw err;
+    if (err && err.name === 'AbortError') {
+      throw {
+        stage: 'fetch-native-timeout',
+        error: 'abort',
+        message: err.message || 'aborted',
+        url: u
+      };
+    }
+    throw {
+      stage: 'fetch-native',
+      error: err && err.name ? String(err.name) : 'native fetch failed',
+      message: err && err.message ? String(err.message) : '',
+      url: u
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (handles) handles.delete(handle);
+  }
+}
+
+function fetchBlobGM(url, onprogress, timeoutMs, handles) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let handle = null;
+    const u = normalizeDownloadUrl(url);
+    const finalize = (ok, payload) => {
+      if (settled) return;
+      settled = true;
+      if (handles && handle) handles.delete(handle);
+      ok ? resolve(payload) : reject(payload);
+    };
+    handle = GM_xmlhttpRequest({
+      method: 'GET',
+      url: u,
+      responseType: 'blob',
+      timeout: timeoutMs || 0,
+      onprogress: evt => { if (typeof onprogress === 'function') onprogress(evt); },
+      onload: resp => {
+        const status = resp && typeof resp.status === 'number' ? resp.status : 0;
+        if (status < 200 || status >= 300) {
+          finalize(false, {
+            stage: 'fetch-gm-http',
+            status,
+            statusText: resp && resp.statusText ? String(resp.statusText) : '',
+            url: u
+          });
+          return;
+        }
+        if (resp && resp.response instanceof Blob && resp.response.size > 0) {
+          finalize(true, resp.response);
+        } else {
+          finalize(false, {
+            stage: 'fetch-gm-empty',
+            status,
+            statusText: resp && resp.statusText ? String(resp.statusText) : '',
+            details: 'empty blob',
+            url: u
+          });
+        }
+      },
+      onerror: err => finalize(false, {
+        stage: 'fetch-gm-network',
+        error: err && err.error ? String(err.error) : 'gm request error',
+        message: err && err.message ? String(err.message) : '',
+        url: u
+      }),
+      ontimeout: () => finalize(false, {
+        stage: 'fetch-gm-timeout',
+        error: 'timeout',
+        url: u
+      })
+    });
+    if (handles && handle) handles.add(handle);
+  });
+}
+
+async function fetchBlob(url, onprogress, timeoutMs, handles) {
+  let nativeErr = null;
+  try {
+    return await fetchBlobNative(url, timeoutMs, handles);
+  } catch (err) {
+    nativeErr = err;
+  }
+  try {
+    return await fetchBlobGM(url, onprogress, timeoutMs, handles);
+  } catch (gmErr) {
+    throw {
+      stage: 'fetch-failed',
+      details: 'native and GM fetch failed',
+      url: normalizeDownloadUrl(url),
+      native: nativeErr,
+      fallback: gmErr
+    };
+  }
+}
+
+function startPostArchiveDownload(item) {
   const name = item.name;
-  const isVid = vidRE.test(item.url);
-  const totalMs = isVid ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
-  const idleMs = isVid ? STALL_VID_IDLE_MS : STALL_IMG_IDLE_MS;
-  let lastProgressAt = Date.now();
+  const files = Array.isArray(item.files) ? item.files : [];
+  const totalFiles = files.length;
+  const retryKey = getRetryKey(item);
+  const archiveMode = item.archiveMode || 'post';
   let settled = false;
+  let lastProgressAt = Date.now();
+  let tTotal = null;
+  let tIdle = null;
+  const handles = new Set();
+  item._handles = handles;
+  item.lastErrorUrl = '';
+  clearQueueItemProgress(item);
+  setQueueItemProgress(item, {
+    pct: 0,
+    label: totalFiles ? `Fetching files 0/${totalFiles}` : 'Preparing archive...',
+    indeterminate: !totalFiles
+  });
 
-  const clearWatchers = () => { try { clearTimeout(tTotal); } catch {} try { clearInterval(tIdle); } catch {} };
+  const clearWatchers = () => {
+    if (tTotal) {
+      try { clearTimeout(tTotal); } catch {}
+      tTotal = null;
+    }
+    if (tIdle) {
+      try { clearInterval(tIdle); } catch {}
+      tIdle = null;
+    }
+  };
 
-  const handleFailure = () => {
+  const abortHandles = () => {
+    if (item._handle && typeof item._handle.abort === 'function') {
+      try { item._handle.abort(); } catch {}
+    }
+    for (const h of handles) {
+      if (h && typeof h.abort === 'function') {
+        try { h.abort(); } catch {}
+      }
+    }
+    handles.clear();
+  };
+
+  const handleFailure = (reason, err) => {
     if (settled) return;
     settled = true;
-    try { if (item._handle && typeof item._handle.abort === 'function') item._handle.abort(); } catch {}
+    if (err && typeof err === 'object' && err.url && isLikelyHttpUrl(err.url)) {
+      item.lastErrorUrl = err.url;
+    }
+    abortHandles();
     clearWatchers();
 
-    const prev = retryMap[item.url] || 0;
+    const prev = retryMap[retryKey] || 0;
     const n = prev + 1;
-    retryMap[item.url] = n;
+    retryMap[retryKey] = n;
 
     lastDropNoteAt = Date.now();
     lastDropNoteCount++;
+
+    if (n >= MAX_RETRIES) {
+      clearQueueItemProgress(item);
+      logDownloadError(item, `Retry ceiling reached (${n}/${MAX_RETRIES})`, err);
+      logFailedItem(item, reason || 'Download failed', err, n);
+      item.status = 'failed';
+      const prevTimer = cooldownTimers.get(retryKey);
+      if (prevTimer) clearTimeout(prevTimer);
+      cooldownTimers.delete(retryKey);
+      delete retryMap[retryKey];
+      const idx = dl.items.indexOf(item);
+      if (idx >= 0) dl.items.splice(idx, 1);
+      scheduleHUD();
+      maybeFinishBatch();
+      setTimeout(requestDispatch, 0);
+      return;
+    }
+
+    logDownloadError(item, reason || 'Download failed', err);
 
     const level = Math.min(n, MAX_RETRIES);
     const backoff = BACKOFF_BASE * Math.pow(2, level - 1) + Math.floor(Math.random() * 500);
 
     item.status = 'queued';
     item.nextAt = Date.now() + backoff;
+    setQueueItemProgress(item, {
+      pct: 0,
+      label: `Retrying in ${Math.ceil(backoff / 1000)}s`,
+      indeterminate: true
+    });
 
-    const prevTimer = cooldownTimers.get(item.url);
+    const prevTimer = cooldownTimers.get(retryKey);
     if (prevTimer) clearTimeout(prevTimer);
 
     const tid = setTimeout(() => {
@@ -1913,7 +5000,7 @@ function startDownload(item) {
       scheduleHUD();
       if (dl.started) requestDispatch();
     }, backoff + 5);
-    cooldownTimers.set(item.url, tid);
+    cooldownTimers.set(retryKey, tid);
 
     const idx = dl.items.indexOf(item);
     if (idx >= 0) {
@@ -1925,27 +5012,383 @@ function startDownload(item) {
     setTimeout(requestDispatch, 0);
   };
 
-  const tTotal = setTimeout(() => handleFailure(), totalMs);
-  const tIdle = setInterval(() => {
-    if (Date.now() - lastProgressAt > idleMs) handleFailure();
+  if (!JSZip || typeof JSZip !== 'function') {
+    handleFailure('Archive packer missing', { stage: 'archive-init', error: 'JSZip missing' });
+    return;
+  }
+
+  const totalMs = Math.max(
+    STALL_VID_TOTAL_MS,
+    files.reduce((sum, file) => {
+      const url = file && file.url ? file.url : '';
+      return sum + (vidRE.test(url) ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS);
+    }, 0) || STALL_IMG_TOTAL_MS
+  );
+  const idleMs = files.some(file => vidRE.test((file && file.url) || '')) ? STALL_VID_IDLE_MS : STALL_IMG_IDLE_MS;
+  tTotal = setTimeout(() => {
+    if (!TIMEOUT_RETRIES_ENABLED) return;
+    handleFailure('Archive download timeout', { stage: 'archive-timeout' });
+  }, totalMs);
+  tIdle = setInterval(() => {
+    if (!TIMEOUT_RETRIES_ENABLED) return;
+    if (Date.now() - lastProgressAt > idleMs) handleFailure('Archive download stalled', { stage: 'archive-stalled' });
   }, 2000);
 
+  (async () => {
+    const zip = new JSZip();
+    let added = 0;
+    let failedFiles = 0;
+    const fetchLimit = Math.max(1, Math.min(ARCHIVE_FETCH_CAP, PARALLEL_DOWNLOAD_LIMIT || 1));
+    let cursor = 0;
+    const downloadOne = async (file) => {
+      if (settled) return;
+      const url = normalizeDownloadUrl(file && file.url);
+      if (!url) return;
+      item.lastErrorUrl = url;
+      const maxRetries = Math.max(0, MAX_RETRIES);
+      const maxAttempts = maxRetries + 1;
+      let attempt = 0;
+      while (!settled && attempt < maxAttempts) {
+        await waitWhileQueuePaused();
+        if (settled) return;
+        attempt++;
+        try {
+          lastProgressAt = Date.now();
+          const timeoutMs = vidRE.test(url) ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
+          const blob = await fetchBlob(url, () => { lastProgressAt = Date.now(); }, timeoutMs, handles);
+          if (settled) return;
+          const parts = splitDownloadPath(file.name || '');
+          let postFolder = parts.postFolder || item.postFolder || '';
+          let groupFolder = '';
+          if (archiveMode === 'queue') {
+            postFolder = parts.postFolder || '';
+          } else if (archiveMode === 'queue_flat') {
+            postFolder = item.queuePostFolder || parts.postFolder || '';
+          } else if (archiveMode === 'group') {
+            groupFolder = item.groupPostFolder || '';
+            postFolder = parts.postFolder || item.postFolder || '';
+          } else if (archiveMode === 'group_flat') {
+            groupFolder = item.groupPostFolder || '';
+            postFolder = '';
+          }
+          const fileName = parts.fileName || getDownloadLabel(file);
+          const zipPath = `${groupFolder ? `${groupFolder}/` : ''}${postFolder ? `${postFolder}/` : ''}${fileName}`;
+          zip.file(zipPath, blob);
+          added++;
+          if (totalFiles > 0) {
+            const fetchPct = Math.round((added / totalFiles) * 70);
+            setQueueItemProgress(item, {
+              pct: fetchPct,
+              label: `Fetching files ${added}/${totalFiles}`,
+              indeterminate: false
+            });
+          }
+          return;
+        } catch (err) {
+          item.lastErrorUrl = url;
+          const label = { url, name: file && file.name ? file.name : url };
+          if (attempt <= maxRetries) {
+            logDownloadError(label, `Archive file fetch retry (${attempt}/${maxRetries})`, err);
+            lastDropNoteAt = Date.now();
+            lastDropNoteCount++;
+            scheduleHUD();
+            const level = Math.min(attempt, MAX_RETRIES || 1);
+            const backoff = BACKOFF_BASE * Math.pow(2, level - 1) + Math.floor(Math.random() * 500);
+            await new Promise(res => setTimeout(res, backoff));
+            continue;
+          }
+          failedFiles++;
+          logDownloadError(label, 'Archive file fetch failed', err);
+          return;
+        }
+      }
+    };
+    const workerCount = Math.min(fetchLimit, files.length || 0);
+    const workers = [];
+    for (let i = 0; i < workerCount; i++) {
+      workers.push((async () => {
+        while (true) {
+          await waitWhileQueuePaused();
+          if (settled) return;
+          const idx = cursor++;
+          if (idx >= files.length) return;
+          await downloadOne(files[idx]);
+        }
+      })());
+    }
+    await Promise.all(workers);
+
+    if (settled) return;
+    if (!added) {
+      handleFailure('All archive files failed', {
+        stage: 'archive-fetch',
+        details: `${failedFiles}/${files.length} files failed`
+      });
+      return;
+    }
+
+    if (failedFiles > 0) {
+      logDownloadError(item, `Archive partial (${failedFiles} file(s) failed)`, {
+        stage: 'archive-partial',
+        details: `${added}/${files.length} files included`
+      });
+    }
+
+    let zipBlob;
+    try {
+      await waitWhileQueuePaused();
+      if (settled) return;
+      setQueueItemProgress(item, {
+        pct: 70,
+        label: 'Building archive 0%',
+        indeterminate: false
+      });
+      zipBlob = await zip.generateAsync(
+        { type: 'blob', compression: 'STORE' },
+        (meta) => {
+          const packPctRaw = meta && typeof meta.percent === 'number' ? meta.percent : 0;
+          const packPct = Math.max(0, Math.min(100, Math.round(packPctRaw)));
+          const stagePct = 70 + Math.round((packPct / 100) * 25);
+          setQueueItemProgress(item, {
+            pct: stagePct,
+            label: `Building archive ${packPct}%`,
+            indeterminate: false
+          });
+        }
+      );
+    } catch (err) {
+      handleFailure('Archive build failed', {
+        stage: 'archive-build',
+        error: err && err.name ? String(err.name) : 'zip generation failed',
+        message: err && err.message ? String(err.message) : ''
+      });
+      return;
+    }
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const saveName = sanitizeDownloadPathForSave(name || 'archive.zip');
+    await waitWhileQueuePaused();
+    if (settled) {
+      try { URL.revokeObjectURL(zipUrl); } catch {}
+      return;
+    }
+    setQueueItemProgress(item, {
+      pct: 95,
+      label: 'Saving archive...',
+      indeterminate: true
+    });
+    const handle = GM_download({
+      url: zipUrl,
+      name: saveName,
+      onprogress: (evt) => {
+        lastProgressAt = Date.now();
+        const loaded = evt && typeof evt.loaded === 'number' ? evt.loaded : 0;
+        const total = evt && typeof evt.total === 'number' ? evt.total : 0;
+        if (total > 0) {
+          const donePct = Math.max(0, Math.min(100, Math.round((loaded / total) * 100)));
+          const stagePct = 95 + Math.round((donePct / 100) * 4);
+          setQueueItemProgress(item, {
+            pct: stagePct,
+            label: `Saving archive ${donePct}%`,
+            indeterminate: false
+          });
+        } else {
+          setQueueItemProgress(item, {
+            pct: 95,
+            label: 'Saving archive...',
+            indeterminate: true
+          });
+        }
+      },
+      onload: () => {
+        if (settled) return;
+        settled = true;
+        clearWatchers();
+        try { URL.revokeObjectURL(zipUrl); } catch {}
+        setQueueItemProgress(item, { pct: 100, label: 'Done', indeterminate: false });
+        item.status = 'done';
+        scheduleHUD();
+        setTimeout(requestDispatch, SPAWN_DELAY + Math.floor(Math.random() * 200));
+        maybeFinishBatch();
+      },
+      onerror: err => {
+        try { URL.revokeObjectURL(zipUrl); } catch {}
+        handleFailure('Archive save failed', Object.assign({
+          stage: 'archive-save',
+          details: saveName
+        }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') }));
+      }
+    });
+    item._handle = handle;
+  })().catch(err => handleFailure('Archive pipeline failed', Object.assign({
+    stage: 'archive-pipeline'
+  }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') })));
+}
+
+function buildLooseItemsForPost(kp) {
+  const out = [];
+  if (!kp || !kp.post || !Array.isArray(kp.allowedFiles) || !kp.allowedFiles.length) return out;
+  const { post, allowedFiles, globalIndex } = kp;
+  allowedFiles.forEach(fileInfo => {
+    if (!fileInfo || !fileInfo.url) return;
+    const ref = fileInfo.url;
+    const fileObj = { path: ref };
+    const rawName = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+    const name = rawName || sanitizeDownloadPathForSave(getDownloadLabel({ url: ref }));
+    out.push({
+      url: ref,
+      name,
+      meta: { post, globalIndex },
+      retryKey: ref
+    });
+  });
+  return out;
+}
+
+function startDownload(item) {
+  if (item && Array.isArray(item.files)) {
+    startPostArchiveDownload(item);
+    return;
+  }
+  const name = item.name;
+  const isVid = vidRE.test(item.url);
+  const totalMs = isVid ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
+  const idleMs = isVid ? STALL_VID_IDLE_MS : STALL_IMG_IDLE_MS;
+  let lastProgressAt = Date.now();
+  let settled = false;
+  let tTotal = null;
+  let tIdle = null;
+  clearQueueItemProgress(item);
+  setQueueItemProgress(item, {
+    pct: 0,
+    label: 'Starting download...',
+    indeterminate: true
+  });
+
+  const clearWatchers = () => {
+    if (tTotal) {
+      try { clearTimeout(tTotal); } catch {}
+      tTotal = null;
+    }
+    if (tIdle) {
+      try { clearInterval(tIdle); } catch {}
+      tIdle = null;
+    }
+  };
+
+  const handleFailure = (reason, err) => {
+    if (settled) return;
+    settled = true;
+    try { if (item._handle && typeof item._handle.abort === 'function') item._handle.abort(); } catch {}
+    clearWatchers();
+
+    const retryKey = getRetryKey(item);
+    const prev = retryMap[retryKey] || 0;
+    const n = prev + 1;
+    retryMap[retryKey] = n;
+
+    lastDropNoteAt = Date.now();
+    lastDropNoteCount++;
+
+    if (n >= MAX_RETRIES) {
+      clearQueueItemProgress(item);
+      logDownloadError(item, `Retry ceiling reached (${n}/${MAX_RETRIES})`, err);
+      logFailedItem(item, reason || 'Download failed', err, n);
+      item.status = 'failed';
+      const prevTimer = cooldownTimers.get(retryKey);
+      if (prevTimer) clearTimeout(prevTimer);
+      cooldownTimers.delete(retryKey);
+      delete retryMap[retryKey];
+      const idx = dl.items.indexOf(item);
+      if (idx >= 0) dl.items.splice(idx, 1);
+      scheduleHUD();
+      maybeFinishBatch();
+      setTimeout(requestDispatch, 0);
+      return;
+    }
+
+    logDownloadError(item, reason || 'Download failed', err);
+
+    const level = Math.min(n, MAX_RETRIES);
+    const backoff = BACKOFF_BASE * Math.pow(2, level - 1) + Math.floor(Math.random() * 500);
+
+    item.status = 'queued';
+    item.nextAt = Date.now() + backoff;
+    setQueueItemProgress(item, {
+      pct: 0,
+      label: `Retrying in ${Math.ceil(backoff / 1000)}s`,
+      indeterminate: true
+    });
+
+    const prevTimer = cooldownTimers.get(retryKey);
+    if (prevTimer) clearTimeout(prevTimer);
+
+    const tid = setTimeout(() => {
+      item.nextAt = 0;
+      scheduleHUD();
+      if (dl.started) requestDispatch();
+    }, backoff + 5);
+    cooldownTimers.set(retryKey, tid);
+
+    const idx = dl.items.indexOf(item);
+    if (idx >= 0) {
+      dl.items.splice(idx, 1);
+      dl.items.push(item);
+    }
+
+    scheduleHUD();
+    setTimeout(requestDispatch, 0);
+  };
+
+  tTotal = setTimeout(() => {
+    if (!TIMEOUT_RETRIES_ENABLED) return;
+    handleFailure('Direct download timeout', { stage: 'direct-timeout', url: item && item.url ? item.url : '' });
+  }, totalMs);
+  tIdle = setInterval(() => {
+    if (!TIMEOUT_RETRIES_ENABLED) return;
+    if (Date.now() - lastProgressAt > idleMs) handleFailure('Direct download stalled', { stage: 'direct-stalled', url: item && item.url ? item.url : '' });
+  }, 2000);
+
+  const saveName = sanitizeDownloadPathForSave(name || getDownloadLabel(item));
   const handle = GM_download({
-    url: item.url,
-    name,
-    headers: { Referer: location.href, Accept: 'text/css' },
+    url: normalizeDownloadUrl(item.url),
+    name: saveName,
     timeout: 0,
-    onprogress: () => { lastProgressAt = Date.now(); },
+    onprogress: (evt) => {
+      lastProgressAt = Date.now();
+      const loaded = evt && typeof evt.loaded === 'number' ? evt.loaded : 0;
+      const total = evt && typeof evt.total === 'number' ? evt.total : 0;
+      if (total > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((loaded / total) * 100)));
+        setQueueItemProgress(item, {
+          pct,
+          label: `${formatByteSize(loaded)} / ${formatByteSize(total)} (${pct}%)`,
+          indeterminate: false
+        });
+      } else {
+        setQueueItemProgress(item, {
+          pct: 0,
+          label: `${formatByteSize(loaded)} downloaded`,
+          indeterminate: true
+        });
+      }
+    },
     onload: () => {
       if (settled) return;
       settled = true;
       clearWatchers();
+      setQueueItemProgress(item, { pct: 100, label: 'Done', indeterminate: false });
       item.status = 'done';
       scheduleHUD();
       setTimeout(requestDispatch, SPAWN_DELAY + Math.floor(Math.random() * 200));
       maybeFinishBatch();
     },
-    onerror: () => handleFailure()
+    onerror: (err) => {
+      handleFailure('Direct download failed', Object.assign({
+        stage: 'direct-save',
+        url: item && item.url ? item.url : '',
+        details: saveName
+      }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') }));
+    }
   });
   item._handle = handle;
 }
@@ -2046,10 +5489,24 @@ function parseDurationRanges(str) {
   return out;
 }
 
+function parseAttachmentCountRanges(str) {
+  const raw = parseDurationRanges(str);
+  const out = [];
+  for (const r of raw) {
+    const min = Math.max(0, Math.ceil(Number(r.min) || 0));
+    const max = (r.max == null) ? null : Math.floor(Number(r.max));
+    if (max != null && (!Number.isFinite(max) || max < min)) continue;
+    out.push({ min, max });
+  }
+  return out;
+}
+
 function formatFilename(post, fileObj, index, globalIndex) {
   const user = post.user || userName();
   const sanitizeUserFolder = s => {
     s = (s || '').normalize('NFC');
+    s = s.replace(/\uFFFD/g, '');
+    s = s.replace(/[\uD800-\uDFFF]/g, '');
     s = s.replace(/\s+/g, '_');
     s = s.replace(/[\\/:*?"<>|]+/g, '');
     s = s.replace(/[\x00-\x1F\x7F]/g, '');
@@ -2058,6 +5515,8 @@ function formatFilename(post, fileObj, index, globalIndex) {
   };
   const sanitizeNamePart = s => {
     s = (s || '').normalize('NFC');
+    s = s.replace(/\uFFFD/g, '');
+    s = s.replace(/[\uD800-\uDFFF]/g, '');
     s = s.replace(/\s+/g, ' ');
     s = s.replace(/ - /g, '-');
     s = s.replace(/[\\/:*?"<>|]+/g, '');
@@ -2072,7 +5531,7 @@ function formatFilename(post, fileObj, index, globalIndex) {
   if (!threadSec) threadSec = sanitizeNamePart(user).slice(0, 40);
   let titleSec = sanitizeNamePart(titleRaw).slice(0, 40);
   if (!titleSec) titleSec = sanitizeNamePart('post_' + post.id).slice(0, 40);
-  const ext = (fileObj.name || fileObj.path || '').split('.').pop().split('?')[0].toLowerCase();
+  const ext = getUrlExt(fileObj.name || fileObj.path || '') || 'bin';
   const gPost = String(globalIndex || 0).padStart(6, '0');
   const fIdx = String(index || 0).padStart(6, '0');
   let dateSec = '000000';
@@ -2098,6 +5557,208 @@ function formatFilename(post, fileObj, index, globalIndex) {
   const fileName = `${base}_${fIdx}.${ext}`;
   const postFolder = base;
   return `${userSec}/${postFolder}/${fileName}`;
+}
+
+function splitDownloadPath(path) {
+  const cleaned = (path || '').replace(/\\/g, '/');
+  const parts = cleaned.split('/').filter(Boolean);
+  const [userFolder, postFolder, ...rest] = parts;
+  return {
+    userFolder: userFolder || '',
+    postFolder: postFolder || '',
+    fileName: rest.join('/') || ''
+  };
+}
+
+function sanitizeGroupEditableTitle(raw, fallback = 'post') {
+  let s = String(raw || '').normalize('NFC');
+  s = s.replace(/\uFFFD/g, '');
+  s = s.replace(/[\uD800-\uDFFF]/g, '');
+  s = s.replace(/\s+/g, ' ');
+  s = s.replace(/ - /g, '-');
+  s = s.replace(/[\\/:*?"<>|]+/g, '');
+  s = s.replace(/[\x00-\x1F\x7F]/g, '');
+  s = s.replace(/ +/g, ' ').replace(/^ +| +$/g, '');
+  if (!s) s = fallback || 'post';
+  return s.slice(0, 40);
+}
+
+function extractEditableTitleFromCompositeName(name) {
+  const s = String(name || '');
+  const idx = s.indexOf(' - ');
+  if (idx < 0) return '';
+  return s.slice(idx + 3).trim();
+}
+
+function applyEditableTitleToCompositeName(name, title) {
+  const s = String(name || '');
+  const idx = s.indexOf(' - ');
+  if (idx < 0) return s;
+  return s.slice(0, idx + 3) + sanitizeGroupEditableTitle(title, 'post');
+}
+
+function applyEditableTitleToFileLeaf(fileLeaf, title) {
+  const s = String(fileLeaf || '');
+  const m = s.match(/^(.* - ).*(_\d{6}\.[^.\/]+)$/);
+  if (!m) return s;
+  return m[1] + sanitizeGroupEditableTitle(title, 'post') + m[2];
+}
+
+function applyEditableTitleToDownloadPath(path, title) {
+  const parts = splitDownloadPath(path || '');
+  if (!parts.userFolder && !parts.postFolder && !parts.fileName) return String(path || '');
+  const nextPostFolder = applyEditableTitleToCompositeName(parts.postFolder, title) || parts.postFolder || 'post';
+  let nextFileName = parts.fileName || '';
+  if (nextFileName) {
+    const segs = nextFileName.split('/');
+    const leaf = segs.pop() || '';
+    segs.push(applyEditableTitleToFileLeaf(leaf, title) || leaf);
+    nextFileName = segs.join('/');
+  }
+  if (!nextFileName) nextFileName = parts.fileName || '';
+  if (parts.userFolder) return `${parts.userFolder}/${nextPostFolder}/${nextFileName}`;
+  return `${nextPostFolder}/${nextFileName}`;
+}
+
+function inferGroupTitle(rawName, earliestPostFolder) {
+  const nameRaw = String(rawName || '').trim();
+  const nameDerived = extractEditableTitleFromCompositeName(nameRaw);
+  if (nameRaw && !nameDerived) return sanitizeGroupEditableTitle(nameRaw, 'post');
+  const fromFolder = extractEditableTitleFromCompositeName(earliestPostFolder || '');
+  if (fromFolder) return sanitizeGroupEditableTitle(fromFolder, 'post');
+  if (nameDerived) return sanitizeGroupEditableTitle(nameDerived, 'post');
+  return 'post';
+}
+
+function mapGroupFilesToTitle(files, title) {
+  const safeTitle = sanitizeGroupEditableTitle(title, 'post');
+  return (Array.isArray(files) ? files : []).map(file => {
+    if (!file || !file.url) return file;
+    const srcName = file.name || '';
+    const nextName = applyEditableTitleToDownloadPath(srcName, safeTitle) || srcName;
+    const parts = splitDownloadPath(nextName);
+    return Object.assign({}, file, { name: nextName, postFolder: parts.postFolder || file.postFolder || '' });
+  });
+}
+
+function buildArchiveName(userFolder, postFolder) {
+  const base = postFolder || 'post';
+  return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
+}
+
+function buildQueueArchiveName(userFolder, queueFolder) {
+  const base = queueFolder || 'post';
+  return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
+}
+
+function applySpecialDownloadBehavior(sourceKeptPosts) {
+  const items = Array.isArray(sourceKeptPosts) ? sourceKeptPosts : [];
+  if (!items.length) return [];
+
+  const mode = SPECIAL_DOWNLOAD_BEHAVIOR || DEFAULT_OPTIONS.specialDownloadBehavior;
+  const x = clampInt(
+    SPECIAL_DOWNLOAD_VALUE,
+    1,
+    999,
+    DEFAULT_OPTIONS.specialDownloadValue
+  );
+  if (mode === 'off' || !SPECIAL_DOWNLOAD_BEHAVIOR_LABELS[mode]) {
+    return items.slice();
+  }
+
+  if (mode === 'first_x') {
+    const out = [];
+    items.forEach(kp => {
+      if (!kp || !Array.isArray(kp.allowedFiles) || !kp.allowedFiles.length) return;
+      const nextFiles = kp.allowedFiles.slice(0, x);
+      if (!nextFiles.length) return;
+      out.push({ post: kp.post, allowedFiles: nextFiles, globalIndex: kp.globalIndex });
+    });
+    return out;
+  }
+
+  if (mode === 'smattering') {
+    const out = [];
+    items.forEach(kp => {
+      if (!kp || !Array.isArray(kp.allowedFiles) || !kp.allowedFiles.length) return;
+      const files = kp.allowedFiles;
+      const keepCount = Math.max(1, Math.ceil(files.length / x));
+      if (keepCount >= files.length) {
+        out.push({ post: kp.post, allowedFiles: files.slice(), globalIndex: kp.globalIndex });
+        return;
+      }
+      const chosen = new Set();
+      while (chosen.size < keepCount) {
+        chosen.add(Math.floor(Math.random() * files.length));
+      }
+      const nextFiles = files.filter((_, idx) => chosen.has(idx));
+      if (!nextFiles.length) return;
+      out.push({ post: kp.post, allowedFiles: nextFiles, globalIndex: kp.globalIndex });
+    });
+    return out;
+  }
+
+  if (mode === 'every_x') {
+    const out = [];
+    let idxGlobal = 0;
+    items.forEach(kp => {
+      if (!kp || !Array.isArray(kp.allowedFiles) || !kp.allowedFiles.length) return;
+      const nextFiles = [];
+      kp.allowedFiles.forEach(fileInfo => {
+        if ((idxGlobal % x) === 0) nextFiles.push(fileInfo);
+        idxGlobal++;
+      });
+      if (!nextFiles.length) return;
+      out.push({ post: kp.post, allowedFiles: nextFiles, globalIndex: kp.globalIndex });
+    });
+    return out;
+  }
+
+  return items.slice();
+}
+
+function buildBundleFromKeptPosts(sourceKeptPosts = keptPosts) {
+  const files = [];
+  let userFolder = '';
+  let earliestPostFolder = '';
+  let earliestIndex = Infinity;
+
+  sourceKeptPosts.forEach(kp => {
+    const { post, allowedFiles, globalIndex } = kp;
+    if (!allowedFiles || !allowedFiles.length) return;
+    const isEarliestCandidate = typeof globalIndex === 'number' && globalIndex < earliestIndex;
+    if (isEarliestCandidate) {
+      earliestIndex = globalIndex;
+      earliestPostFolder = '';
+    }
+    allowedFiles.forEach(fileInfo => {
+      if (!fileInfo || !fileInfo.url) return;
+      const ref = fileInfo.url;
+      const fileObj = { path: ref };
+      const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+      const parts = splitDownloadPath(name);
+      if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
+      if (isEarliestCandidate && !earliestPostFolder && parts.postFolder) {
+        earliestPostFolder = parts.postFolder;
+      }
+      files.push({ url: ref, name, fileIndex: fileInfo.g, postFolder: parts.postFolder });
+    });
+  });
+
+  if (files.length && !earliestPostFolder) {
+    const parts = splitDownloadPath(files[0].name || '');
+    earliestPostFolder = parts.postFolder || '';
+  }
+
+  const stats = computeGroupStats(files);
+  return {
+    files,
+    userFolder,
+    earliestPostFolder,
+    earliestIndex: isFinite(earliestIndex) ? earliestIndex : 0,
+    postCount: stats.postCount,
+    fileCount: stats.fileCount
+  };
 }
 
 
@@ -2148,18 +5809,7 @@ function buildFileIndexFromPostsIfNeeded() {
   for (const meta of PG_POSTS) {
     if (Array.isArray(meta.pgFiles) && meta.pgFiles.length) { haveFiles = true; break; }
   }
-  if (haveFiles) {
-    let maxG = 0;
-    for (const meta of PG_POSTS) {
-      if (!Array.isArray(meta.pgFiles)) continue;
-      for (const f of meta.pgFiles) {
-        if (!f || typeof f.g !== 'number') continue;
-        if (f.g > maxG) maxG = f.g;
-      }
-    }
-    PG_FILE_TOTAL = maxG || null;
-  } else {
-    let total = 0;
+  if (!haveFiles) {
     for (const meta of PG_POSTS) {
       let refs = [];
       const add = o => { const u = resolveFileUrl(o); if (u) refs.push(u); };
@@ -2180,37 +5830,54 @@ function buildFileIndexFromPostsIfNeeded() {
         const isVid = vidRE.test(base);
         if (!isImg && !isVid) continue;
         tmp.push({ url: ref, isVid });
-        total++;
       }
       if (tmp.length) meta._pgTempFiles = tmp;
     }
-    if (!total) {
-      PG_FILE_TOTAL = 0;
-      PG_FILE_URL_MAP = null;
-      PG_POST_FILE_RANGE_MAP = null;
-      for (const meta of PG_POSTS) { delete meta._pgTempFiles; }
-      return;
-    }
-    PG_FILE_TOTAL = total;
-    let g = total;
     for (const meta of PG_POSTS) {
       const tmp = meta._pgTempFiles;
       if (!tmp || !tmp.length) { delete meta._pgTempFiles; continue; }
-      const pf = [];
-      let local = 1;
-      for (const item of tmp) {
-        pf.push({ g, local, url: item.url, isVid: !!item.isVid });
-        g--;
-        local++;
-      }
-      meta.pgFiles = pf;
+      meta.pgFiles = tmp.map((item, idx) => ({
+        g: 0,
+        local: idx + 1,
+        url: item.url,
+        isVid: !!item.isVid
+      }));
       delete meta._pgTempFiles;
+    }
+  }
+
+  let totalFiles = 0;
+  for (const meta of PG_POSTS) {
+    if (!Array.isArray(meta.pgFiles)) continue;
+    for (const f of meta.pgFiles) {
+      if (f && f.url) totalFiles++;
+    }
+  }
+  if (!totalFiles) {
+    PG_FILE_TOTAL = 0;
+    PG_FILE_URL_MAP = null;
+    PG_POST_FILE_RANGE_MAP = null;
+    return;
+  }
+  PG_FILE_TOTAL = totalFiles;
+
+  // Assign global file numbers so they increase in the same order files appear within each post.
+  let g = totalFiles;
+  for (const meta of PG_POSTS) {
+    const files = Array.isArray(meta.pgFiles) ? meta.pgFiles : [];
+    for (let i = files.length - 1; i >= 0; i--) {
+      const f = files[i];
+      if (!f || !f.url) continue;
+      f.g = g;
+      f.local = i + 1;
+      g--;
     }
   }
   for (const meta of PG_POSTS) {
     if (!Array.isArray(meta.pgFiles)) continue;
     for (const f of meta.pgFiles) {
       if (!f) continue;
+      f.isVid = getFileIsVideo(f);
       if (typeof f.dur !== 'number' || !isFinite(f.dur)) {
         f.dur = DURATION_FEATURE_ENABLED ? null : 0;
       } else if (!DURATION_FEATURE_ENABLED) {
@@ -2251,23 +5918,97 @@ function buildFileIndexFromPostsIfNeeded() {
 async function ensureVideoDurations() {
   if (!DURATION_FEATURE_ENABLED) return;
   if (!PG_POSTS || !PG_POSTS.length) return;
-  const vids = [];
+  const profileKey = getProfileKeyFromLocation();
+  const durationCache = await loadDurationCache(profileKey);
+  const pendingMap = new Map();
   for (const meta of PG_POSTS) {
     if (!Array.isArray(meta.pgFiles)) continue;
     for (const f of meta.pgFiles) {
-      if (!f || !f.isVid) continue;
-      vids.push(f);
+      if (!f || !f.url) continue;
+      if (!getFileIsVideo(f)) continue;
+      const key = makeDurationUrlKey(f.url);
+      if (!key) continue;
+      let group = pendingMap.get(key);
+      if (!group) {
+        group = { key, url: f.url, files: [] };
+        pendingMap.set(key, group);
+      }
+      group.files.push(f);
     }
   }
-  if (!vids.length) return;
-  let idx = 0;
-  for (const f of vids) {
-    idx++;
-    if (typeof f.dur === 'number' && isFinite(f.dur) && f.dur > 0) continue;
-    setIndexStatus('Checking video ' + idx + ' of ' + vids.length + ' (file #' + (f.g || idx) + ')...', 'info');
-    const d = await getVideoDuration(f.url);
-    const dur = (isFinite(d) && d >= 0) ? d : 0;
-    f.dur = dur;
+  if (!pendingMap.size) return;
+
+  const probeQueue = [];
+  let cachedCount = 0;
+  let cacheChanged = false;
+
+  for (const group of pendingMap.values()) {
+    const cached = normalizeCachedDuration(durationCache[group.key]);
+    if (cached != null) {
+      for (const file of group.files) file.dur = cached;
+      cachedCount++;
+      continue;
+    }
+    let known = null;
+    for (const file of group.files) {
+      const d = normalizeCachedDuration(file && file.dur);
+      if (d != null && d > 0) {
+        known = d;
+        break;
+      }
+    }
+    if (known != null) {
+      for (const file of group.files) file.dur = known;
+      durationCache[group.key] = known;
+      cacheChanged = true;
+      cachedCount++;
+      continue;
+    }
+    probeQueue.push(group);
+  }
+
+  if (!probeQueue.length) {
+    if (cacheChanged) {
+      await saveDurationCache(profileKey, durationCache);
+    }
+    return;
+  }
+
+  const total = probeQueue.length;
+  let done = 0;
+  let cursor = 0;
+  const concurrency = Math.max(1, Math.min(VIDEO_DURATION_PROBE_CONCURRENCY, total));
+
+  const updateStatus = () => {
+    const prefix = cachedCount ? (`${cachedCount} cached, `) : '';
+    setIndexStatus(prefix + 'Checking video ' + done + ' of ' + total + ` (${concurrency} workers)...`, 'info');
+  };
+
+  updateStatus();
+
+  const worker = async () => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= total) return;
+      const group = probeQueue[idx];
+      const d = await getVideoDuration(group.url);
+      const dur = (isFinite(d) && d >= 0) ? d : 0;
+      for (const file of group.files) file.dur = dur;
+      if (durationCache[group.key] !== dur) {
+        durationCache[group.key] = dur;
+        cacheChanged = true;
+      }
+      done++;
+      updateStatus();
+    }
+  };
+
+  const workers = [];
+  for (let i = 0; i < concurrency; i++) workers.push(worker());
+  await Promise.all(workers);
+
+  if (cacheChanged) {
+    await saveDurationCache(profileKey, durationCache);
   }
   setIndexStatus('', 'info');
 }
@@ -2283,22 +6024,17 @@ async function buildGlobalIndexMapIfNeeded() {
     const isUser = parts[2] === 'user';
     const userId = isUser ? parts[3] : null;
     if (!service || !isUser || !userId) return;
-    const cacheKey = 'pg_postindex_' + service + '_' + userId;
-    let parsed = null;
-    try {
-      const raw = localStorage.getItem(cacheKey);
-      if (raw) {
-        parsed = JSON.parse(raw);
-      }
-    } catch {}
+    const cacheKey = getProfileIndexCacheKeyFromLocation();
+    if (!cacheKey) return;
+    const parsed = await loadCachedIndex(cacheKey);
     if (parsed && Array.isArray(parsed.posts) && parsed.posts.length) {
       const posts = parsed.posts;
       let useCache = true;
-      try {
-        const cachedNewest = posts[0];
-        if (!cachedNewest || !cachedNewest.id) {
-          useCache = false;
-        } else {
+      const cachedNewest = posts[0];
+      if (!cachedNewest || !cachedNewest.id) {
+        useCache = false;
+      } else {
+        try {
           const liveNewest = await fetchNewestPost(service, userId);
           if (liveNewest && liveNewest.id != null) {
             const liveId = String(liveNewest.id);
@@ -2308,9 +6044,7 @@ async function buildGlobalIndexMapIfNeeded() {
               setIndexStatus('Detected new posts. Rebuilding index...', 'info');
             }
           }
-        }
-      } catch (e) {
-        useCache = false;
+        } catch {}
       }
       if (useCache) {
         let schema = typeof parsed.schema === 'number' ? parsed.schema : 1;
@@ -2349,11 +6083,12 @@ async function buildGlobalIndexMapIfNeeded() {
           }
         });
         if (upgraded) {
-          try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), schema, meta: newMeta, posts: PG_POSTS })); } catch {}
+          await saveCachedIndex(cacheKey, { ts: Date.now(), schema, meta: newMeta, posts: PG_POSTS });
         }
         setIndexStatus('Loaded index from cache: ' + PG_TOTAL + ' posts', 'success');
         injectPostNumbers();
         injectFileNumbers();
+        injectAttachmentCounts();
         scheduleFilter();
         return;
       }
@@ -2388,10 +6123,11 @@ async function buildGlobalIndexMapIfNeeded() {
           unit: 'seconds'
         }
       };
-      try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), schema: 3, meta, posts: PG_POSTS })); } catch {}
+      await saveCachedIndex(cacheKey, { ts: Date.now(), schema: 3, meta, posts: PG_POSTS });
       setIndexStatus('Indexing complete: ' + PG_TOTAL + ' posts', 'success');
       injectPostNumbers();
       injectFileNumbers();
+      injectAttachmentCounts();
       scheduleFilter();
     } else {
       setIndexStatus('Indexing failed', 'error');
@@ -2449,6 +6185,7 @@ async function handleFilter() {
   const pagesRaw = $('#fPages')?.value || '';
   const postsRaw = $('#fPosts')?.value || '';
   const filesRaw = $('#fFiles')?.value || '';
+  const attachRaw = $('#fAttach')?.value || '';
   const durRaw = $('#fDur')?.value || '';
   const parsedPosts = parseIndices(postsRaw);
   if (postsRaw.trim() && (!parsedPosts || parsedPosts.size === 0)) { if (st) st.textContent = 'Invalid posts'; scheduleHUD(); return; }
@@ -2459,6 +6196,9 @@ async function handleFilter() {
 
   const durRanges = parseDurationRanges(durRaw);
   const durationFiltering = DURATION_FEATURE_ENABLED && durRanges.length > 0;
+  const attachRanges = parseAttachmentCountRanges(attachRaw);
+  const attachmentFiltering = attachRaw.trim() && attachRanges.length > 0;
+  if (attachRaw.trim() && !attachmentFiltering) { if (st) st.textContent = 'Invalid attachments'; scheduleHUD(); return; }
 
   if (!PG_TOTAL) { PG_TOTAL = null; PG_GW = 1; }
 
@@ -2466,7 +6206,7 @@ async function handleFilter() {
   const usedPages = new Set();
 
   const [, service, , userId] = location.pathname.split('/');
-  lastFilterParams = { postRaw: postsRaw, service, media: MEDIA_MODE, durRaw, pagesRaw, filesRaw };
+  lastFilterParams = { postRaw: postsRaw, service, media: MEDIA_MODE, durRaw, pagesRaw, filesRaw, attachRaw };
 
   await buildGlobalIndexMapIfNeeded();
   if (!PG_POSTS || !PG_POSTS.length) {
@@ -2484,6 +6224,7 @@ async function handleFilter() {
   }
 
   const allowed = new Set();
+  const emptyAttachmentPosts = new Set();
   let totalFiles = 0;
 
   let postIndexSet = null;
@@ -2515,7 +6256,22 @@ async function handleFilter() {
     if (pagesSet && !pagesSet.has(pageNum)) continue;
 
     const allFiles = Array.isArray(meta.pgFiles) ? meta.pgFiles : [];
-    if (!allFiles.length) continue;
+    if (!allFiles.length) {
+      if (HIDE_POSTS_WITH_NO_ATTACHMENTS) emptyAttachmentPosts.add(id);
+      continue;
+    }
+
+    if (attachmentFiltering) {
+      const mediaCount = getPostMediaAttachmentCount(meta);
+      let inRange = false;
+      for (const r of attachRanges) {
+        if (mediaCount >= r.min && (r.max == null || mediaCount <= r.max)) {
+          inRange = true;
+          break;
+        }
+      }
+      if (!inRange) continue;
+    }
 
     let fileCandidates = allFiles;
     if (filteringByFiles && parsedFiles && parsedFiles.size) {
@@ -2528,7 +6284,8 @@ async function handleFilter() {
       const ref = f && f.url;
       if (!ref) continue;
       if (!allowedUrl(ref)) continue;
-      if (f.isVid && durationFiltering) {
+      const isVideo = getFileIsVideo(f);
+      if (durationFiltering && isVideo) {
         const d = (typeof f.dur === 'number' && isFinite(f.dur)) ? f.dur : 0;
         let inRange = false;
         for (const r of durRanges) {
@@ -2549,22 +6306,19 @@ async function handleFilter() {
     totalFiles += allowedFilesArr.length;
   }
 
-  if (PREVIEW_MODE) {
-    $$('article.post-card').forEach(c => {
-      const id = c.getAttribute('data-id');
-      c.style.display = allowed.has(id) ? '' : 'none';
-    });
-  } else {
-    $$('article.post-card').forEach(c => {
-      c.style.display = '';
-    });
-  }
+  $$('article.post-card').forEach(c => {
+    const id = c.getAttribute('data-id') || '';
+    const hideForPreview = PREVIEW_MODE && !allowed.has(id);
+    const hideForEmpty = HIDE_POSTS_WITH_NO_ATTACHMENTS && emptyAttachmentPosts.has(id);
+    c.style.display = (hideForPreview || hideForEmpty) ? 'none' : '';
+  });
 
   let msg = 'Showing ' + keptPosts.length + ' posts and ' + totalFiles + ' files';
   msg += formatPagesClause(usedPages);
   setFilterSummary(msg);
   injectPostNumbers();
   injectFileNumbers();
+  injectAttachmentCounts();
   syncPageAllButtonState();
   scheduleHUD();
 }
@@ -2586,27 +6340,499 @@ function handlePreviewToggle() {
   handleFilter();
 }
 
+function sanitizeInfoFilePart(str, fallback) {
+  return sanitizeFileNameStrict(str, fallback || 'profile');
+}
+
+function extractPostDate(post) {
+  if (!post) return null;
+  const raw = post.published || post.published_at || post.added || post.added_at || post.created || post.created_at || post.posted || post.posted_at;
+  if (raw == null) return null;
+  if (typeof raw === 'number' && isFinite(raw)) {
+    const ms = raw > 1e12 ? raw : raw * 1000;
+    const d = new Date(ms);
+    return isFinite(d.getTime()) ? d : null;
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    const d = new Date(raw);
+    return isFinite(d.getTime()) ? d : null;
+  }
+  return null;
+}
+
+function formatDateForInfo(d) {
+  if (!d) return 'Unknown';
+  return d.toISOString().split('T')[0];
+}
+
+function buildPostUrlFromMeta(post) {
+  if (!post || post.id == null) return '';
+  const parts = location.pathname.split('/');
+  const service = parts[1];
+  const userId = parts[3];
+  if (!service || !userId) return '';
+  return `${location.origin}/${service}/user/${userId}/post/${post.id}`;
+}
+
+async function buildProfileInfoSnapshot() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) return { error: 'No profile detected' };
+
+  if (!PG_POSTS || !PG_POSTS.length) {
+    await buildGlobalIndexMapIfNeeded();
+  }
+
+  let waitCount = 0;
+  while (PG_INDEX_LOADING && waitCount < 120) {
+    await sleep(250);
+    waitCount++;
+  }
+
+  if (!PG_POSTS || !PG_POSTS.length) {
+    return { error: 'Unable to build index' };
+  }
+
+  buildFileIndexFromPostsIfNeeded();
+
+  const posts = PG_POSTS;
+  const totalPosts = posts.length;
+  let totalPages = 0;
+  let minDate = null;
+  let maxDate = null;
+  let totalFiles = 0;
+  let totalImages = 0;
+  let totalGifs = 0;
+  let totalVideos = 0;
+
+  for (const post of posts) {
+    const pg = post && typeof post.pgPage === 'number' ? post.pgPage : 1;
+    if (pg > totalPages) totalPages = pg;
+
+    const d = extractPostDate(post);
+    if (d) {
+      if (!minDate || d < minDate) minDate = d;
+      if (!maxDate || d > maxDate) maxDate = d;
+    }
+
+    const files = Array.isArray(post.pgFiles) ? post.pgFiles : [];
+    for (const f of files) {
+      if (!f || !f.url) continue;
+      totalFiles++;
+      const base = (f.url.split('?')[0] || '').toLowerCase();
+      const isVid = typeof f.isVid === 'boolean' ? f.isVid : vidRE.test(base);
+      if (isVid) {
+        totalVideos++;
+      } else if (imgRE.test(base)) {
+        totalImages++;
+        if (base.endsWith('.gif')) totalGifs++;
+      }
+    }
+  }
+
+  if (!totalPages) totalPages = Math.max(1, Math.ceil(totalPosts / POSTS_PER_PAGE));
+
+  const avgFiles = totalPosts ? (totalFiles / totalPosts) : 0;
+  const avgImages = totalPosts ? (totalImages / totalPosts) : 0;
+  const avgVideos = totalPosts ? (totalVideos / totalPosts) : 0;
+
+  const parts = location.pathname.split('/');
+  const service = parts[1] || 'service';
+  const profileName = userName();
+  const generatedAt = new Date();
+  const lastPostDate = formatDateForInfo(maxDate);
+  const firstPostDate = formatDateForInfo(minDate);
+
+  const lines = [
+    `Date of doc download: ${generatedAt.toISOString()}`,
+    `Profile name: ${profileName}`,
+    `Profile service: ${service}`,
+    `Number of Pages as of ${lastPostDate}: ${totalPages}`,
+    `Number of Posts from ${firstPostDate} to ${lastPostDate}: ${totalPosts}`,
+    `Number of total files: ${totalFiles}`,
+    `Number of Images (GIFs): ${totalImages} (${totalGifs})`,
+    `Number of Videos: ${totalVideos}`,
+    `Average files per post: ${avgFiles.toFixed(2)}`,
+    `Average images per post: ${avgImages.toFixed(2)}`,
+    `Average videos per post: ${avgVideos.toFixed(2)}`
+  ];
+
+  const userFolder = sanitizeInfoFilePart(profileName, 'profile');
+  const servicePart = sanitizeInfoFilePart(service, 'service');
+  const datePart = generatedAt.toISOString().split('T')[0].replace(/[^0-9]/g, '');
+  const infoFile = sanitizeDownloadPathForSave(`${userFolder}/${userFolder} ${servicePart} info ${datePart}.txt`);
+
+  return {
+    lines,
+    infoFile,
+    stats: {
+      profileName,
+      service,
+      totalPages,
+      totalPosts,
+      totalFiles,
+      totalImages,
+      totalGifs,
+      totalVideos,
+      avgFiles,
+      avgImages,
+      avgVideos,
+      firstPostDate,
+      lastPostDate,
+      generatedAt
+    }
+  };
+}
+
+async function handleDownloadInfo() {
+  setStatus('Preparing profile info...', 'info');
+  const snapshot = await buildProfileInfoSnapshot();
+  if (!snapshot || snapshot.error) {
+    setStatus(snapshot && snapshot.error ? snapshot.error : 'Unable to build index', 'error');
+    return;
+  }
+  const blob = new Blob([snapshot.lines.join('\n') + '\n'], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+
+  GM_download({
+    url,
+    name: snapshot.infoFile,
+    onload: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus('Profile info downloaded', 'success');
+    },
+    onerror: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus('Failed to download profile info', 'error');
+    }
+  });
+}
+
+async function handleDownloadPostLinks() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return;
+  }
+
+  setStatus('Preparing post links...', 'info');
+
+  if (!PG_POSTS || !PG_POSTS.length) {
+    await buildGlobalIndexMapIfNeeded();
+  }
+
+  let waitCount = 0;
+  while (PG_INDEX_LOADING && waitCount < 120) {
+    await sleep(250);
+    waitCount++;
+  }
+
+  if (!PG_POSTS || !PG_POSTS.length) {
+    setStatus('Unable to build index', 'error');
+    return;
+  }
+
+  await handleFilter();
+
+  if (!keptPosts || !keptPosts.length) {
+    setStatus('No filtered files', 'error');
+    return;
+  }
+
+  const lines = [];
+  const seen = new Set();
+  for (const kp of keptPosts) {
+    if (!kp || !kp.post) continue;
+    const postUrl = buildPostUrlFromMeta(kp.post);
+    if (!postUrl) continue;
+    const files = Array.isArray(kp.allowedFiles) ? kp.allowedFiles : [];
+    if (!files.length) continue;
+    if (!seen.has(postUrl)) {
+      seen.add(postUrl);
+      lines.push(postUrl);
+    }
+  }
+
+  if (!lines.length) {
+    setStatus('No filtered files', 'error');
+    return;
+  }
+
+  const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+
+  GM_download({
+    url,
+    name: sanitizeDownloadPathForSave('links.txt'),
+    onload: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus('Post links downloaded', 'success');
+    },
+    onerror: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus('Failed to download post links', 'error');
+    }
+  });
+}
+
+async function handleCreateGroup() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return;
+  }
+
+  const postsRaw = $('#fPosts')?.value || '';
+  const filesRaw = $('#fFiles')?.value || '';
+  const parsedPosts = parseIndices(postsRaw);
+  if (postsRaw.trim() && (!parsedPosts || parsedPosts.size === 0)) {
+    setStatus('Invalid posts', 'error');
+    return;
+  }
+  const parsedFiles = parseIndices(filesRaw);
+  if (filesRaw.trim() && (!parsedFiles || parsedFiles.size === 0)) {
+    setStatus('Invalid files', 'error');
+    return;
+  }
+
+  await handleFilter();
+
+  if (!keptPosts || !keptPosts.length) {
+    setStatus('No filtered files', 'error');
+    return;
+  }
+
+  const bundle = buildBundleFromKeptPosts();
+  if (!bundle.files.length) {
+    setStatus('No filtered files', 'error');
+    return;
+  }
+
+  loadGroupsForProfile(profileKey);
+  const folderName = bundle.earliestPostFolder || 'post';
+  const name = inferGroupTitle(folderName, folderName) || 'post';
+  const group = {
+    id: makeGroupId(),
+    createdAt: Date.now(),
+    name,
+    earliestPostFolder: folderName,
+    earliestIndex: bundle.earliestIndex,
+    userFolder: bundle.userFolder,
+    files: bundle.files,
+    postCount: bundle.postCount,
+    fileCount: bundle.fileCount
+  };
+  PG_GROUPS.push(group);
+  saveGroupsForProfile();
+  renderGroupsUi();
+  setStatus(`Group created: ${name} (${bundle.postCount} posts, ${bundle.fileCount} files)`, 'success');
+}
+
+function handleClearGroups() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return;
+  }
+  loadGroupsForProfile(profileKey);
+  if (!PG_GROUPS.length) {
+    setStatus('No groups to clear', 'info');
+    return;
+  }
+  clearGroupsForProfile();
+  setStatus('Groups cleared', 'success');
+}
+
+function handleRenameMostRecentGroup() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+  const groups = loadGroupsForProfile(profileKey);
+  if (!groups.length) {
+    setStatus('No groups to rename', 'info');
+    return false;
+  }
+
+  let target = null;
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    if (!group) continue;
+    if (!target) {
+      target = group;
+      continue;
+    }
+    const a = typeof group.createdAt === 'number' ? group.createdAt : 0;
+    const b = typeof target.createdAt === 'number' ? target.createdAt : 0;
+    if (a >= b) target = group;
+  }
+  if (!target || !target.id) {
+    setStatus('No groups to rename', 'info');
+    return false;
+  }
+  return handleRenameGroup(target.id);
+}
+
+function handleDownloadAllGroups() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+  const groups = loadGroupsForProfile(profileKey);
+  if (!groups.length) {
+    setStatus('No groups to download', 'info');
+    return false;
+  }
+  return queueAllGroupDownloads(groups);
+}
+
 async function queueFiltered() {
   if (!keptPosts.length) return;
-  const objs = [];
-  keptPosts.forEach(kp => {
-    const { post, allowedFiles, globalIndex } = kp;
-    allowedFiles.forEach(fileInfo => {
-      if (!fileInfo || !fileInfo.url) return;
-      const ref = fileInfo.url;
-      const fileObj = { path: ref };
-      const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
-      objs.push({ url: ref, name, meta: { post, url: ref, globalIndex, fileIndex: fileInfo.g } });
+  const sourcePosts = applySpecialDownloadBehavior(keptPosts);
+  if (!sourcePosts.length) {
+    const st = $('#filterStatus');
+    if (st) st.textContent = 'No files matched your filters.';
+    scheduleHUD();
+    return;
+  }
+  const mode = DOWNLOAD_MODE || DEFAULT_OPTIONS.downloadMode;
+  if (mode === 'loose_post') {
+    const items = [];
+    sourcePosts.forEach(kp => {
+      items.push(...buildLooseItemsForPost(kp));
     });
-  });
-  if (!objs.length) {
+    if (!items.length) {
+      const st = $('#filterStatus');
+      if (st) st.textContent = 'No files matched your filters.';
+      scheduleHUD();
+      return;
+    }
+    LAST_QUEUE_HAD_ITEMS = true;
+    enqueueItems(items);
+    return;
+  }
+  if (mode === 'loose_queue') {
+    const bundle = buildBundleFromKeptPosts(sourcePosts);
+    const queueFolder = bundle.earliestPostFolder || 'post';
+    const userFolder = bundle.userFolder || '';
+    const items = (bundle.files || []).map(file => {
+      const parts = splitDownloadPath(file.name || '');
+      const fileName = parts.fileName || getDownloadLabel(file);
+      const rawName = userFolder ? `${userFolder}/${queueFolder}/${fileName}` : `${queueFolder}/${fileName}`;
+      const name = rawName || sanitizeDownloadPathForSave(getDownloadLabel(file));
+      return {
+        url: file.url,
+        name,
+        retryKey: file.url
+      };
+    });
+    if (!items.length) {
+      const st = $('#filterStatus');
+      if (st) st.textContent = 'No files matched your filters.';
+      scheduleHUD();
+      return;
+    }
+    LAST_QUEUE_HAD_ITEMS = true;
+    enqueueItems(items);
+    return;
+  }
+  if (mode === 'post') {
+    const items = [];
+    sourcePosts.forEach(kp => {
+      const { post, allowedFiles, globalIndex } = kp;
+      if (!allowedFiles || !allowedFiles.length) return;
+      const files = [];
+      let userFolder = '';
+      let postFolder = '';
+      allowedFiles.forEach(fileInfo => {
+        if (!fileInfo || !fileInfo.url) return;
+        const ref = fileInfo.url;
+        const fileObj = { path: ref };
+        const name = formatFilename(post, fileObj, fileInfo.g, globalIndex);
+        const parts = splitDownloadPath(name);
+        if (!userFolder && parts.userFolder) userFolder = parts.userFolder;
+        if (!postFolder && parts.postFolder) postFolder = parts.postFolder;
+        files.push({ url: ref, name, fileIndex: fileInfo.g, postFolder: parts.postFolder });
+      });
+      if (!files.length) return;
+      const archiveName = buildArchiveName(userFolder, postFolder);
+      const retryKey = post && post.id ? `post:${post.id}` : `${userFolder}/${postFolder || 'post'}`;
+      items.push({
+        url: files[0].url,
+        name: archiveName,
+        meta: { post, globalIndex },
+        files,
+        userFolder,
+        postFolder,
+        retryKey,
+        archiveMode: 'post'
+      });
+    });
+    if (!items.length) {
+      const st = $('#filterStatus');
+      if (st) st.textContent = 'No files matched your filters.';
+      scheduleHUD();
+      return;
+    }
+    LAST_QUEUE_HAD_ITEMS = true;
+    enqueueItems(items);
+    return;
+  }
+  const bundle = buildBundleFromKeptPosts(sourcePosts);
+  if (!bundle.files.length) {
+    const st = $('#filterStatus');
+    if (st) st.textContent = 'No files matched your filters.';
+    scheduleHUD();
+    return;
+  }
+  const queueFolder = bundle.earliestPostFolder || 'post';
+  const retryKey = bundle.userFolder ? `queue:${bundle.userFolder}` : 'queue:profile';
+  const item = buildQueueArchiveItem(
+    bundle.files,
+    bundle.userFolder,
+    queueFolder,
+    retryKey,
+    { globalIndex: bundle.earliestIndex }
+  );
+  if (!item) {
     const st = $('#filterStatus');
     if (st) st.textContent = 'No files matched your filters.';
     scheduleHUD();
     return;
   }
   LAST_QUEUE_HAD_ITEMS = true;
-  enqueueItems(objs);
+  enqueueItems([item]);
+}
+
+async function handleAddToQueueBtn() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('Open a profile page to add filtered files', 'error');
+    return;
+  }
+  const before = dl.items.length;
+  await handleFilter();
+  await queueFiltered();
+  const added = Math.max(0, dl.items.length - before);
+  if (!added) {
+    setStatus('No filtered files to add', 'info');
+    return;
+  }
+  setStatus(`Added ${added} item${added === 1 ? '' : 's'} to queue`, 'success');
+}
+
+function handlePauseBtn() {
+  if (!DL_ACTIVE) {
+    const { downloading, queued } = getCounts();
+    if (downloading + queued > 0) {
+      setStatus('Queue is stopped. Press Download to continue', 'info');
+    } else {
+      setStatus('Queue is empty', 'info');
+    }
+    return;
+  }
+  setQueuePaused(!QUEUE_PAUSED);
 }
 
 async function handlePageAllBtn() {
@@ -2654,26 +6880,73 @@ async function handlePageAllBtn() {
   scheduleFilter();
 }
 
+function handleClearFilters() {
+  const fPages = $('#fPages'); if (fPages) fPages.value = '';
+  const fPosts = $('#fPosts'); if (fPosts) fPosts.value = '';
+  const fFiles = $('#fFiles'); if (fFiles) fFiles.value = '';
+  const fAttach = $('#fAttach'); if (fAttach) fAttach.value = '';
+  const fDur = $('#fDur'); if (fDur) fDur.value = '';
+  MEDIA_MODE = 'all';
+  const btnMedia = $('#btnMedia');
+  if (btnMedia) btnMedia.textContent = mediaModeLabel(MEDIA_MODE);
+  LAST_POST_CLICK = null;
+  PREVIEW_MODE = false;
+  const filterBtn = $('#filterBtn');
+  if (filterBtn) {
+    filterBtn.textContent = 'Preview';
+    filterBtn.classList.remove('clear');
+  }
+  $$('article.post-card').forEach(c => { c.style.display = ''; });
+  saveFilterState();
+  injectPostNumbers();
+  injectFileNumbers();
+  injectAttachmentCounts();
+  syncPageAllButtonState();
+  scheduleFilter();
+}
+
+async function handleClearIndexCacheBtn() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('Open a profile page to clear index cache', 'error');
+    return;
+  }
+
+  const cleared = await clearProfileIndexCacheForCurrentProfile();
+  if (!cleared) {
+    setStatus('Unable to clear index cache', 'error');
+    return;
+  }
+
+  resetProfileIndexStateAfterCacheClear();
+  setIndexStatus('Index cache cleared. Rebuilding...', 'info');
+  scheduleFilter();
+}
+
+async function handleClearAllIndexCachesBtn() {
+  const result = await clearAllProfileIndexCaches();
+  const removedTotal = (result.localRemoved || 0) + (result.idbRemoved || 0);
+
+  if (getProfileKeyFromLocation()) {
+    resetProfileIndexStateAfterCacheClear();
+    setIndexStatus('All profile index caches cleared. Rebuilding current profile...', 'info');
+    scheduleFilter();
+  }
+
+  if (removedTotal > 0) {
+    setStatus('Cleared cached indexes for all profiles', 'success');
+    setOptionsStatus('Cleared all profile index caches');
+  } else {
+    setStatus('No cached profile indexes found', 'info');
+    setOptionsStatus('No profile index caches found');
+  }
+}
+
 async function handleClear() {
-  const b = $('#dlBtn');
-  dl.started = false;
-  DL_ACTIVE = false;
-  if (b) { b.classList.remove('stop'); b.textContent = 'Download'; }
-  cooldownTimers.forEach(id => clearTimeout(id));
-  cooldownTimers.clear();
-  for (const k in retryMap) delete retryMap[k];
-  lastDropNoteAt = 0;
-  lastDropNoteCount = 0;
-  dl.items.length = 0;
-  const cC = $('#completedCount'); if (cC) cC.textContent = '0';
-  const qC = $('#queuedCount'); if (qC) qC.textContent = '0';
-  const xC = $('#droppedCount'); if (xC) xC.textContent = '0';
-  const dropEl = $('#pgDrop'); if (dropEl) dropEl.style.display = 'none';
-  const fill = $('#pgFill'); if (fill) fill.style.width = '0%';
-  const barLabel = $('#pgBarLabel'); if (barLabel) barLabel.textContent = '0%';
+  resetDownloadQueueState({ clearFailures: true });
+  LAST_POST_CLICK = null;
   injectPostNumbers();
   syncPageAllButtonState();
-  scheduleHUD();
 }
 
 async function handleDlBtn() {
@@ -2686,6 +6959,7 @@ async function handleDlBtn() {
     }
 
     if (dl.items.length > 0) {
+      setQueuePaused(false, { silentStatus: true });
       DL_ACTIVE = true;
       dl.started = true;
       b.classList.add('stop');
@@ -2697,6 +6971,7 @@ async function handleDlBtn() {
 
     dl.started = false;
     DL_ACTIVE = false;
+    setQueuePaused(false, { silentStatus: true });
     LAST_QUEUE_HAD_ITEMS = false;
     keptPosts = [];
     lastFilterParams = {};
@@ -2717,6 +6992,7 @@ async function handleDlBtn() {
     await queueFiltered();
 
     if (LAST_QUEUE_HAD_ITEMS) {
+      setQueuePaused(false, { silentStatus: true });
       DL_ACTIVE = true;
       dl.started = true;
       b.classList.add('stop');
@@ -2726,6 +7002,7 @@ async function handleDlBtn() {
     } else {
       DL_ACTIVE = false;
       dl.started = false;
+      setQueuePaused(false, { silentStatus: true });
       b.classList.remove('stop');
       b.textContent = 'Download';
       scheduleHUD();
@@ -2736,11 +7013,109 @@ async function handleDlBtn() {
     } else {
       dl.started = false;
       DL_ACTIVE = false;
+      setQueuePaused(false, { silentStatus: true });
       b.classList.remove('stop');
       b.textContent = 'Download';
       scheduleHUD();
     }
   }
+}
+
+function isEditableElement(target) {
+  if (!target || target === document || target === window) return false;
+  const el = target.nodeType === 1 ? target : target.parentElement;
+  if (!el) return false;
+  if (el.closest('input, textarea, select')) return true;
+  if (el.closest('[contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]')) return true;
+  return !!el.isContentEditable;
+}
+
+function keyFromKeyboardEvent(e) {
+  if (!e || typeof e.key !== 'string') return '';
+  if (e.key.length !== 1) return '';
+  const ch = e.key.toLowerCase();
+  return /^[a-z0-9]$/.test(ch) ? ch : '';
+}
+
+function runKeybindAction(fn) {
+  try {
+    const result = fn();
+    if (result && typeof result.then === 'function') {
+      result.catch(() => {});
+    }
+  } catch {}
+}
+
+function triggerDownloadTabKeybindAction(actionId) {
+  switch (actionId) {
+    case 'download_toggle':
+      runKeybindAction(() => handleDlBtn());
+      return true;
+    case 'add_to_queue':
+      runKeybindAction(() => handleAddToQueueBtn());
+      return true;
+    case 'pause_queue':
+      runKeybindAction(() => handlePauseBtn());
+      return true;
+    case 'create_group':
+      runKeybindAction(() => handleCreateGroup());
+      return true;
+    case 'rename_most_recent_group':
+      runKeybindAction(() => handleRenameMostRecentGroup());
+      return true;
+    case 'delete_all_groups':
+      runKeybindAction(() => handleClearGroups());
+      return true;
+    case 'download_all_groups':
+      runKeybindAction(() => handleDownloadAllGroups());
+      return true;
+    case 'download_post_links':
+      runKeybindAction(() => handleDownloadPostLinks());
+      return true;
+    case 'toggle_gallery':
+      runKeybindAction(() => handleGalleryToggle());
+      return true;
+    case 'open_local_gallery':
+      runKeybindAction(() => handleLocalGalleryBtn());
+      return true;
+    case 'toggle_preview':
+      runKeybindAction(() => handlePreviewToggle());
+      return true;
+    case 'clear_profile_index_cache':
+      runKeybindAction(() => handleClearIndexCacheBtn());
+      return true;
+    case 'cycle_media_mode':
+      runKeybindAction(() => cycleMediaMode());
+      return true;
+    case 'page_select_toggle':
+      runKeybindAction(() => handlePageAllBtn());
+      return true;
+    case 'clear_filters':
+      runKeybindAction(() => handleClearFilters());
+      return true;
+  }
+  return false;
+}
+
+function handleDownloadTabKeydown(e) {
+  if (GALLERY_MODE) return;
+  if (e.defaultPrevented) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.repeat) return;
+  if (isEditableElement(e.target)) return;
+  const key = keyFromKeyboardEvent(e);
+  if (!key) return;
+  const actionId = DOWNLOAD_TAB_KEYBIND_LOOKUP.get(key);
+  if (!actionId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  triggerDownloadTabKeybindAction(actionId);
+}
+
+function attachDownloadTabKeyHandler() {
+  if (downloadKeyHandlerAttached) return;
+  window.addEventListener('keydown', handleDownloadTabKeydown, true);
+  downloadKeyHandlerAttached = true;
 }
 
 function pgUserKey(slug) { return 'pg_u_' + slug; }
@@ -2873,6 +7248,19 @@ function pgEnhanceUserPages(root) {
         pgSaveSummary(slugVal, s);
         btn.textContent = s.disliked ? 'Undislike' : 'Dislike';
       };
+      act.appendChild(btn);
+    }
+  }
+
+  if (upp && !$(`.${cssPrefix}__actions .pg-post-download-btn`)) {
+    const act = $(`.${cssPrefix}__actions`);
+    if (act) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pg-btn pg-post-download-btn';
+      btn.textContent = 'Download Post';
+      btn.title = 'Download this post archive (all files)';
+      btn.onclick = () => handlePostPageDownload(document, location.href);
       act.appendChild(btn);
     }
   }
@@ -3703,15 +8091,22 @@ function handleLocalGalleryBtn() {
   }
 }
 
+buildMenu();
 buildHUD();
+attachDownloadTabKeyHandler();
+openMenu();
 injectPostNumbers();
 injectFileNumbers();
+injectAttachmentCounts();
 
 const observer = new MutationObserver(debounce(injectPostNumbers, 100));
 observer.observe(document.body, { childList: true, subtree: true });
 
 const fileObserver = new MutationObserver(debounce(injectFileNumbers, 100));
 fileObserver.observe(document.body, { childList: true, subtree: true });
+
+const attachmentObserver = new MutationObserver(debounce(injectAttachmentCounts, 100));
+attachmentObserver.observe(document.body, { childList: true, subtree: true });
 
 const optimizerObserver = new MutationObserver(muts => {
   for (const m of muts) {
@@ -3744,3 +8139,13 @@ history.replaceState = function(...args){
   return ret;
 };
 window.addEventListener('popstate', onUrlChange);
+
+window.addEventListener('storage', (ev) => {
+  if (!ev || !ev.key) return;
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) return;
+  if (ev.key === groupsKey(profileKey)) {
+    loadGroupsForProfile(profileKey);
+    renderGroupsUi();
+  }
+});
