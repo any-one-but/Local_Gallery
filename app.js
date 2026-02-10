@@ -273,14 +273,27 @@
 
     async function fetchOnlineProfilePosts(service, userId, origin, opts = {}) {
       const posts = [];
+      const responses = [];
       const pageSize = Number.isFinite(opts.pageSize) ? opts.pageSize : ONLINE_POSTS_PER_PAGE;
       const delayMs = Number.isFinite(opts.pageDelayMs) ? opts.pageDelayMs : ONLINE_PAGE_DELAY_MS;
       const fetchFn = (typeof opts.fetch === "function") ? opts.fetch : fetch;
       const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.fetchUrl === "function")
         ? window.electronAPI
         : null;
+      const responseBodyLimit = Number.isFinite(opts.responseBodyLimit) ? Math.max(256, opts.responseBodyLimit) : 18000;
       let page = 1;
       let lastError = null;
+
+      const pushResponse = (entry) => {
+        const rawBody = (entry && typeof entry.responseText === "string") ? entry.responseText : "";
+        const text = rawBody.length > responseBodyLimit ? rawBody.slice(0, responseBodyLimit) : rawBody;
+        responses.push(Object.assign({}, entry, {
+          ts: (entry && typeof entry.ts === "number") ? entry.ts : Date.now(),
+          responseText: text,
+          responseBytes: rawBody.length,
+          truncated: rawBody.length > responseBodyLimit
+        }));
+      };
 
       while (true) {
         if (typeof opts.progressCb === "function") {
@@ -302,15 +315,53 @@
               },
               referrer: `${base}/${service}/user/${userId}`
             });
+            const status = (res && typeof res.status === "number") ? res.status : 0;
+            const responseText = (res && typeof res.text === "string") ? res.text : "";
             if (!res || !res.ok) {
               if (res && typeof res.status === "number" && res.status > 0) lastError = `http_${res.status}`;
               else lastError = res && res.error ? res.error : "network_error";
+              pushResponse({
+                ts: Date.now(),
+                source: "electron",
+                url: apiUrl,
+                page,
+                offset,
+                ok: false,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
               break;
             }
             try {
-              resp = JSON.parse(res.text || "");
+              resp = JSON.parse(responseText || "");
+              pushResponse({
+                ts: Date.now(),
+                source: "electron",
+                url: apiUrl,
+                page,
+                offset,
+                ok: true,
+                status,
+                error: "",
+                parseOk: true,
+                responseText
+              });
             } catch {
               lastError = "invalid_json";
+              pushResponse({
+                ts: Date.now(),
+                source: "electron",
+                url: apiUrl,
+                page,
+                offset,
+                ok: true,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
               break;
             }
           } else {
@@ -323,20 +374,73 @@
               referrer: `${base}/${service}/user/${userId}`,
               referrerPolicy: "no-referrer-when-downgrade"
             });
+            let status = 0;
+            let responseText = "";
+            if (res) {
+              if (typeof res.status === "number") status = res.status;
+              try { responseText = await res.text(); } catch {}
+            }
             if (!res || !res.ok) {
               lastError = res ? `http_${res.status}` : "network_error";
+              pushResponse({
+                ts: Date.now(),
+                source: "browser",
+                url: apiUrl,
+                page,
+                offset,
+                ok: !!(res && res.ok),
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
               break;
             }
-            const text = await res.text();
             try {
-              resp = JSON.parse(text);
+              resp = JSON.parse(responseText);
+              pushResponse({
+                ts: Date.now(),
+                source: "browser",
+                url: apiUrl,
+                page,
+                offset,
+                ok: true,
+                status,
+                error: "",
+                parseOk: true,
+                responseText
+              });
             } catch {
               lastError = "invalid_json";
+              pushResponse({
+                ts: Date.now(),
+                source: "browser",
+                url: apiUrl,
+                page,
+                offset,
+                ok: true,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
               break;
             }
           }
         } catch {
           lastError = "network_error";
+          pushResponse({
+            ts: Date.now(),
+            source: electronApi ? "electron" : "browser",
+            url: apiUrl,
+            page,
+            offset,
+            ok: false,
+            status: 0,
+            error: lastError,
+            parseOk: false,
+            responseText: ""
+          });
           break;
         }
 
@@ -353,7 +457,7 @@
         if (delayMs > 0) await sleepMs(delayMs + Math.floor(Math.random() * 150));
       }
 
-      return { posts, error: lastError };
+      return { posts, error: lastError, responses };
     }
 
     function normalizeOnlinePosts(posts, opts = {}) {
@@ -392,6 +496,148 @@
       files: {}
     };
     const ONLINE_PRELOAD_CACHE = new Set();
+    const ONLINE_MATERIALIZED_MAP = {
+      placements: {},
+      posts: {}
+    };
+    const ONLINE_DOWNLOAD_JOBS = new Map();
+    let ONLINE_DOWNLOAD_RENDER_TIMER = null;
+    const ONLINE_API_RESPONSE_LOG = [];
+    const ONLINE_API_RESPONSE_LOG_LIMIT = 250;
+    const ONLINE_API_RESPONSE_BODY_LIMIT = 18000;
+
+    function scheduleOnlineDownloadUiRefresh() {
+      if (ONLINE_DOWNLOAD_RENDER_TIMER) return;
+      ONLINE_DOWNLOAD_RENDER_TIMER = setTimeout(() => {
+        ONLINE_DOWNLOAD_RENDER_TIMER = null;
+        if (!WS.root) return;
+        renderDirectoriesPane(true);
+      }, 80);
+    }
+
+    function sanitizeOnlineMapKey(value) {
+      return String(value || "");
+    }
+
+    function getOnlinePlacementBucket(profileKey, create = false) {
+      const key = sanitizeOnlineMapKey(profileKey);
+      if (!key) return null;
+      if (!ONLINE_MATERIALIZED_MAP.placements[key] && create) {
+        ONLINE_MATERIALIZED_MAP.placements[key] = {};
+      }
+      return ONLINE_MATERIALIZED_MAP.placements[key] || null;
+    }
+
+    function getOnlinePostBucket(profileKey, placementKey, create = false) {
+      const pKey = sanitizeOnlineMapKey(profileKey);
+      const plKey = sanitizeOnlineMapKey(placementKey);
+      if (!pKey || !plKey) return null;
+      if (!ONLINE_MATERIALIZED_MAP.posts[pKey] && create) {
+        ONLINE_MATERIALIZED_MAP.posts[pKey] = {};
+      }
+      const root = ONLINE_MATERIALIZED_MAP.posts[pKey] || null;
+      if (!root) return null;
+      if (!root[plKey] && create) root[plKey] = {};
+      return root[plKey] || null;
+    }
+
+    function isOnlinePlacementMaterialized(profileKey, placementKey) {
+      const bucket = getOnlinePlacementBucket(profileKey, false);
+      if (!bucket) return false;
+      const key = sanitizeOnlineMapKey(placementKey);
+      return !!(key && bucket[key]);
+    }
+
+    function isOnlinePostMaterialized(profileKey, placementKey, postKey) {
+      const bucket = getOnlinePostBucket(profileKey, placementKey, false);
+      if (!bucket) return false;
+      const key = sanitizeOnlineMapKey(postKey);
+      return !!(key && bucket[key]);
+    }
+
+    function markOnlinePlacementMaterialized(profileKey, placementKey) {
+      const key = sanitizeOnlineMapKey(placementKey);
+      const bucket = getOnlinePlacementBucket(profileKey, true);
+      if (!bucket || !key) return false;
+      if (bucket[key]) return false;
+      bucket[key] = 1;
+      return true;
+    }
+
+    function markOnlinePostMaterialized(profileKey, placementKey, postKey) {
+      const key = sanitizeOnlineMapKey(postKey);
+      const bucket = getOnlinePostBucket(profileKey, placementKey, true);
+      if (!bucket || !key) return false;
+      if (bucket[key]) return false;
+      bucket[key] = 1;
+      return true;
+    }
+
+    function clearOnlineMaterializedProfile(profileKey) {
+      const key = sanitizeOnlineMapKey(profileKey);
+      if (!key) return;
+      delete ONLINE_MATERIALIZED_MAP.placements[key];
+      delete ONLINE_MATERIALIZED_MAP.posts[key];
+    }
+
+    function clearOnlineMaterializedPlacement(profileKey, placementKey) {
+      const pKey = sanitizeOnlineMapKey(profileKey);
+      const plKey = sanitizeOnlineMapKey(placementKey);
+      if (!pKey || !plKey) return;
+      if (ONLINE_MATERIALIZED_MAP.placements[pKey]) {
+        delete ONLINE_MATERIALIZED_MAP.placements[pKey][plKey];
+        if (!Object.keys(ONLINE_MATERIALIZED_MAP.placements[pKey]).length) {
+          delete ONLINE_MATERIALIZED_MAP.placements[pKey];
+        }
+      }
+      if (ONLINE_MATERIALIZED_MAP.posts[pKey]) {
+        delete ONLINE_MATERIALIZED_MAP.posts[pKey][plKey];
+        if (!Object.keys(ONLINE_MATERIALIZED_MAP.posts[pKey]).length) {
+          delete ONLINE_MATERIALIZED_MAP.posts[pKey];
+        }
+      }
+    }
+
+    function resetOnlineMaterializedMap(raw) {
+      ONLINE_MATERIALIZED_MAP.placements = {};
+      ONLINE_MATERIALIZED_MAP.posts = {};
+      if (!raw || typeof raw !== "object") return;
+
+      const placementsRaw = (raw.placements && typeof raw.placements === "object") ? raw.placements : {};
+      for (const profileKey of Object.keys(placementsRaw)) {
+        const src = placementsRaw[profileKey];
+        if (!src || typeof src !== "object") continue;
+        const dst = {};
+        for (const placementKey of Object.keys(src)) {
+          if (src[placementKey]) dst[String(placementKey)] = 1;
+        }
+        if (Object.keys(dst).length) ONLINE_MATERIALIZED_MAP.placements[String(profileKey)] = dst;
+      }
+
+      const postsRaw = (raw.posts && typeof raw.posts === "object") ? raw.posts : {};
+      for (const profileKey of Object.keys(postsRaw)) {
+        const byPlacement = postsRaw[profileKey];
+        if (!byPlacement || typeof byPlacement !== "object") continue;
+        const dstByPlacement = {};
+        for (const placementKey of Object.keys(byPlacement)) {
+          const srcPosts = byPlacement[placementKey];
+          if (!srcPosts || typeof srcPosts !== "object") continue;
+          const dstPosts = {};
+          for (const postKey of Object.keys(srcPosts)) {
+            if (srcPosts[postKey]) dstPosts[String(postKey)] = 1;
+          }
+          if (Object.keys(dstPosts).length) dstByPlacement[String(placementKey)] = dstPosts;
+        }
+        if (Object.keys(dstByPlacement).length) ONLINE_MATERIALIZED_MAP.posts[String(profileKey)] = dstByPlacement;
+      }
+    }
+
+    function buildOnlineMaterializedDoc() {
+      return {
+        placements: ONLINE_MATERIALIZED_MAP.placements || {},
+        posts: ONLINE_MATERIALIZED_MAP.posts || {}
+      };
+    }
 
     function normalizeOnlineBasePath(p) {
       return String(p || "").replace(/^\/+|\/+$/g, "");
@@ -503,8 +749,10 @@
         ONLINE_RENAME_MAP.profiles = doc.renames.profiles || {};
         ONLINE_RENAME_MAP.posts = doc.renames.posts || {};
         ONLINE_RENAME_MAP.files = doc.renames.files || {};
+        resetOnlineMaterializedMap(doc.materialized);
         return true;
       }
+      resetOnlineMaterializedMap(null);
       return false;
     }
 
@@ -518,7 +766,8 @@
           profiles: ONLINE_RENAME_MAP.profiles || {},
           posts: ONLINE_RENAME_MAP.posts || {},
           files: ONLINE_RENAME_MAP.files || {}
-        }
+        },
+        materialized: buildOnlineMaterializedDoc()
       };
       await metaSaveFsDoc(handles.renamesFile, doc);
       return true;
@@ -727,6 +976,9 @@
       const mode = (opts && opts.mode === "posts") ? "posts" : "profile";
       const basePath = normalizeOnlineBasePath(opts && opts.basePath ? opts.basePath : "");
       const placementKey = (opts && opts.placementId) ? String(opts.placementId) : makeOnlinePlacementId(profileKey, mode, basePath);
+      if (isOnlinePlacementMaterialized(profileKey, placementKey)) {
+        return { ok: false, error: "materialized" };
+      }
       const entry = ONLINE_PROFILE_CACHE.get(profileKey);
       if (!entry || !entry.profile) return { ok: false, error: "missing-profile" };
       const posts = Array.isArray(entry.posts) ? entry.posts : [];
@@ -747,6 +999,7 @@
         const postIndex = (typeof post.pgGlobalIndex === "number") ? post.pgGlobalIndex : (posts.length - i);
         const files = Array.isArray(post.pgFiles) ? post.pgFiles : [];
         const postKey = (post && post.id != null) ? String(post.id) : ("idx:" + String(postIndex || i + 1));
+        if (isOnlinePostMaterialized(profileKey, placementKey, postKey)) continue;
         for (let j = 0; j < files.length; j++) {
           const f = files[j];
           if (!f || !f.url) continue;
@@ -986,11 +1239,12 @@
       showBusyOverlay("Refreshing profile...");
       try {
         const result = await fetchOnlineProfilePosts(profile.service, profile.userId, profile.origin, {});
+        appendOnlineApiResponses(result && Array.isArray(result.responses) ? result.responses : []);
         const posts = result && Array.isArray(result.posts) ? result.posts : [];
         if (!posts.length) {
           if (result && result.error) {
             const msg = result.error === "invalid_json"
-              ? "API returned non-JSON."
+              ? "API returned non-JSON. Check Responses tab."
               : (String(result.error).startsWith("http_") ? `API error (${String(result.error).slice(5)})` : "Network error.");
             showStatusMessage(msg);
           } else {
@@ -1041,6 +1295,221 @@
       }
     }
 
+    function buildOnlinePlacementFileSpecs(profileKey, profile, posts, placement) {
+      const out = [];
+      const mode = placement && placement.mode === "posts" ? "posts" : "profile";
+      const basePath = normalizeOnlineBasePath(placement && placement.basePath ? placement.basePath : "");
+      const baseParts = basePath ? basePath.split("/").filter(Boolean) : [];
+      const userLabel = deriveOnlineUserLabel(profile, posts);
+      for (let i = 0; i < posts.length; i++) {
+        const post = posts[i];
+        const postIndex = (typeof post.pgGlobalIndex === "number") ? post.pgGlobalIndex : (posts.length - i);
+        const files = Array.isArray(post.pgFiles) ? post.pgFiles : [];
+        const postKey = (post && post.id != null) ? String(post.id) : ("idx:" + String(postIndex || i + 1));
+        for (let j = 0; j < files.length; j++) {
+          const f = files[j];
+          if (!f || !f.url) continue;
+          const fileIndex = (typeof f.g === "number") ? f.g : ((typeof f.local === "number") ? f.local : (j + 1));
+          const baseRel = formatOnlineFilename(post, { path: f.url }, fileIndex, postIndex, userLabel);
+          const parts = String(baseRel || "").split("/").filter(Boolean);
+          if (!parts.length) continue;
+          const userFolder = parts[0] || "";
+          const postFolder = parts[1] || "";
+          const fallbackName = parts[parts.length - 1] || "";
+          if (!fallbackName) continue;
+          if (!isImageName(fallbackName) && !isVideoName(fallbackName)) continue;
+          const fileName = resolveOnlineOutputFileName(profileKey, String(f.url || ""), fallbackName);
+          const pathParts = (mode === "posts")
+            ? baseParts.concat(postFolder ? [postFolder, fileName] : [fileName])
+            : baseParts.concat(userFolder ? [userFolder, postFolder, fileName] : [postFolder, fileName]);
+          const relPath = pathParts.filter(Boolean).join("/");
+          const dirPath = pathParts.slice(0, -1).join("/");
+          out.push({
+            profileKey: String(profileKey || ""),
+            postKey,
+            url: String(f.url || ""),
+            name: fileName,
+            dirPath,
+            relPath
+          });
+        }
+      }
+      return out;
+    }
+
+    function resolveOnlineOutputFileName(profileKey, fileUrl, fallbackName) {
+      const rawFallback = String(fallbackName || "").trim();
+      const cleanFallback = sanitizeOnlineFileNameForDisk(rawFallback || "file");
+      const override = getOnlineFileRename(profileKey, fileUrl);
+      if (!override) return cleanFallback;
+      const ext = splitNameExt(cleanFallback).ext || "";
+      let candidate = String(override);
+      const parts = splitNameExt(candidate);
+      if (!parts.ext && ext) candidate = parts.base + ext;
+      return sanitizeOnlineFileNameForDisk(candidate);
+    }
+
+    async function replaceOnlineProfile(profileKey) {
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Replace requires a writable folder.");
+        return false;
+      }
+      const current = ONLINE_PROFILE_CACHE.get(profileKey);
+      if (!current || !current.profile) {
+        showStatusMessage("Profile not available.");
+        return false;
+      }
+      const profile = current.profile;
+      showBusyOverlay("Checking remote profile...");
+      try {
+        const result = await fetchOnlineProfilePosts(profile.service, profile.userId, profile.origin, {});
+        appendOnlineApiResponses(result && Array.isArray(result.responses) ? result.responses : []);
+        const posts = result && Array.isArray(result.posts) ? result.posts : [];
+        if (!posts.length) {
+          if (result && result.error) {
+            const msg = result.error === "invalid_json"
+              ? "API returned non-JSON. Check Responses tab."
+              : (String(result.error).startsWith("http_") ? `API error (${String(result.error).slice(5)})` : "Network error.");
+            showStatusMessage(msg);
+          } else {
+            showStatusMessage("No posts found.");
+          }
+          return false;
+        }
+
+        const normalized = normalizeOnlinePosts(posts, { origin: profile.origin, dataRoot: profile.dataRoot });
+        await saveOnlineProfileVersion(profile, normalized, profile.sourceUrl || "");
+
+        ONLINE_PROFILE_CACHE.set(profileKey, {
+          profile,
+          posts: normalized,
+          fetchedAt: Date.now(),
+          injected: false,
+          injectedPlacements: current.injectedPlacements ? new Set(current.injectedPlacements) : new Set()
+        });
+
+        const index = await siteLogLoadIndex();
+        const indexEntry = index && index.profiles ? index.profiles[profileKey] : null;
+        const placements = indexEntry && Array.isArray(indexEntry.placements) ? indexEntry.placements : [];
+        if (!placements.length) {
+          showStatusMessage("No profile placements found to replace.");
+          renderOnlineUi();
+          return false;
+        }
+
+        const expectedByPath = new Map();
+        for (const pl of placements) {
+          if (!pl) continue;
+          const specs = buildOnlinePlacementFileSpecs(profileKey, profile, normalized, pl);
+          for (const spec of specs) {
+            const key = String(spec.relPath || "").toLowerCase();
+            if (!key || expectedByPath.has(key)) continue;
+            expectedByPath.set(key, spec);
+          }
+        }
+        const expected = Array.from(expectedByPath.values());
+        if (!expected.length) {
+          showStatusMessage("No remote media found for replace.");
+          renderOnlineUi();
+          return false;
+        }
+
+        const checkedDirHandles = new Map();
+        const tryGetDirHandle = async (dirPath) => {
+          const key = String(dirPath || "");
+          if (checkedDirHandles.has(key)) return checkedDirHandles.get(key);
+          let handle = null;
+          try {
+            handle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, key);
+          } catch {
+            handle = null;
+          }
+          checkedDirHandles.set(key, handle);
+          return handle;
+        };
+
+        const missing = [];
+        for (let i = 0; i < expected.length; i++) {
+          const spec = expected[i];
+          if (busyLabel) busyLabel.textContent = `Checking files ${i + 1}/${expected.length}...`;
+          const dirHandle = await tryGetDirHandle(spec.dirPath);
+          if (!dirHandle) {
+            missing.push(spec);
+            continue;
+          }
+          let exists = false;
+          try {
+            await dirHandle.getFileHandle(spec.name, { create: false });
+            exists = true;
+          } catch {}
+          if (!exists) missing.push(spec);
+        }
+
+        if (!missing.length) {
+          showStatusMessage("Replace complete: no missing files.");
+          renderOnlineUi();
+          return true;
+        }
+
+        let restored = 0;
+        let failed = 0;
+        for (let i = 0; i < missing.length; i++) {
+          const spec = missing[i];
+          if (busyLabel) busyLabel.textContent = `Replacing missing files ${i + 1}/${missing.length}...`;
+          let dirHandle = null;
+          try {
+            dirHandle = await ensureDirectoryHandleForPath(WS.meta.fsRootHandle, spec.dirPath);
+          } catch {
+            failed++;
+            continue;
+          }
+          let alreadyExists = false;
+          try {
+            await dirHandle.getFileHandle(spec.name, { create: false });
+            alreadyExists = true;
+          } catch {}
+          if (alreadyExists) continue;
+
+          const payload = await fetchOnlineBinary(spec.url, profileKey);
+          if (!payload || !payload.ok || !payload.bytes || !payload.bytes.byteLength) {
+            failed++;
+            continue;
+          }
+          try {
+            const outFile = await dirHandle.getFileHandle(spec.name, { create: true });
+            const writable = await outFile.createWritable();
+            await writable.write(payload.bytes);
+            await writable.close();
+            restored++;
+          } catch {
+            failed++;
+          }
+        }
+
+        if (restored > 0) {
+          try {
+            await refreshWorkspaceFromRootHandle();
+          } catch {}
+        }
+        renderOnlineUi();
+        if (!restored && failed > 0) {
+          showStatusMessage(`Replace failed: ${failed} file${failed === 1 ? "" : "s"} could not be restored.`);
+          return false;
+        }
+        if (failed > 0) {
+          showStatusMessage(`Replace complete: restored ${restored}, failed ${failed}.`);
+          return restored > 0;
+        }
+        showStatusMessage(`Replace complete: restored ${restored} missing file${restored === 1 ? "" : "s"}.`);
+        return true;
+      } catch {
+        showStatusMessage("Replace failed.");
+        return false;
+      } finally {
+        hideBusyOverlay();
+      }
+    }
+
     async function renameOnlineProfile(profileKey, nextName) {
       if (!profileKey) return false;
       const clean = String(nextName || "").trim();
@@ -1084,6 +1553,7 @@
       try {
         removeOnlineProfileFromWorkspace(key);
         ONLINE_PROFILE_CACHE.delete(key);
+        clearOnlineMaterializedProfile(key);
         delete ONLINE_RENAME_MAP.profiles[key];
         delete ONLINE_RENAME_MAP.posts[key];
         delete ONLINE_RENAME_MAP.files[key];
@@ -1111,6 +1581,474 @@
       } finally {
         hideBusyOverlay();
       }
+    }
+
+    function formatOnlineDownloadBytes(bytes) {
+      const n = Number(bytes);
+      if (!Number.isFinite(n) || n <= 0) return "0 B";
+      if (n < 1024) return `${Math.round(n)} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+      return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    }
+
+    function onlineDownloadPercent(job) {
+      if (!job) return 0;
+      const total = Number(job.totalFiles || 0);
+      const completed = Number(job.completedFiles || 0);
+      if (!total) return 0;
+      return Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+    }
+
+    function getOnlineDownloadJob(path) {
+      const key = String(path || "");
+      if (!key) return null;
+      return ONLINE_DOWNLOAD_JOBS.get(key) || null;
+    }
+
+    function getOnlineDownloadJobForDir(node) {
+      if (!node || !node.onlineMeta) return null;
+      return getOnlineDownloadJob(String(node.path || ""));
+    }
+
+    function startOnlineDownloadJob(path, totalFiles) {
+      const key = String(path || "");
+      if (!key) return null;
+      const job = {
+        path: key,
+        state: "running",
+        totalFiles: Math.max(0, Number(totalFiles || 0)),
+        completedFiles: 0,
+        failedFiles: 0,
+        totalBytes: 0,
+        downloadedBytes: 0,
+        currentFile: "",
+        startedAt: Date.now(),
+        finishedAt: 0,
+        error: ""
+      };
+      ONLINE_DOWNLOAD_JOBS.set(key, job);
+      scheduleOnlineDownloadUiRefresh();
+      return job;
+    }
+
+    function updateOnlineDownloadJob(job, patch = {}) {
+      if (!job) return;
+      Object.assign(job, patch || {});
+      scheduleOnlineDownloadUiRefresh();
+    }
+
+    function finishOnlineDownloadJob(job, state, error) {
+      if (!job) return;
+      job.state = String(state || "done");
+      job.finishedAt = Date.now();
+      if (error) job.error = String(error);
+      scheduleOnlineDownloadUiRefresh();
+      setTimeout(() => {
+        const cur = ONLINE_DOWNLOAD_JOBS.get(job.path);
+        if (cur !== job) return;
+        if (cur.state === "running") return;
+        ONLINE_DOWNLOAD_JOBS.delete(job.path);
+        scheduleOnlineDownloadUiRefresh();
+      }, 8000);
+    }
+
+    function buildOnlineDownloadMetaHtml(node) {
+      const job = getOnlineDownloadJobForDir(node);
+      if (!job) return "";
+      const pct = onlineDownloadPercent(job);
+      const total = Number(job.totalFiles || 0);
+      const done = Number(job.completedFiles || 0);
+      const failed = Number(job.failedFiles || 0);
+      const bytesPart = Number(job.downloadedBytes || 0) > 0
+        ? ` • ${formatOnlineDownloadBytes(job.downloadedBytes)}`
+        : "";
+      const status = job.state === "running"
+        ? `Downloading ${done}/${total}${failed ? ` • ${failed} failed` : ""}${bytesPart}`
+        : (job.state === "done"
+          ? `Downloaded ${done}/${total}${bytesPart}`
+          : (job.state === "partial"
+            ? `Partial ${done}/${total} • ${failed} failed${bytesPart}`
+            : `Failed${job.error ? ` • ${job.error}` : ""}`));
+      return `
+        <div class="onlineDlMeta" title="${escapeHtml(status)}">
+          <div class="onlineDlBar"><div class="onlineDlBarFill" style="width:${pct}%"></div></div>
+          <div class="onlineDlText">${escapeHtml(status)} • ${pct}%</div>
+        </div>
+      `;
+    }
+
+    function sanitizeOnlineFileNameForDisk(name) {
+      let out = String(name || "").trim();
+      out = out.replace(/[\x00-\x1F\x7F]+/g, "_");
+      out = out.replace(/[\/\\:*?"<>|]+/g, "_");
+      out = out.replace(/\s+/g, " ").trim();
+      if (!out || out === "." || out === "..") out = "file";
+      return out;
+    }
+
+    function makeOnlineDownloadFileName(rec, fallbackIndex) {
+      const meta = rec && rec.onlineMeta ? rec.onlineMeta : null;
+      const original = String(rec?.name || "");
+      const originalParts = splitNameExt(original);
+      const originalExt = String(originalParts.ext || "");
+      const override = meta ? getOnlineFileRename(meta.profileKey, meta.fileUrl) : null;
+      let candidate = "";
+      if (override) {
+        candidate = String(override);
+        const p = splitNameExt(candidate);
+        if (!p.ext && originalExt) candidate = p.base + originalExt;
+      } else if (original) {
+        candidate = original;
+      } else {
+        let fromUrl = "";
+        try {
+          const u = new URL(String(rec?.url || ""));
+          fromUrl = decodeURIComponent(String(u.pathname || "").split("/").pop() || "");
+        } catch {}
+        candidate = fromUrl || `file_${Number(fallbackIndex || 0) + 1}`;
+      }
+      candidate = sanitizeOnlineFileNameForDisk(candidate);
+      return candidate;
+    }
+
+    function decodeBase64ToBytes(base64) {
+      const b64 = String(base64 || "");
+      if (!b64) return new Uint8Array(0);
+      const raw = atob(b64);
+      const out = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+      return out;
+    }
+
+    function getOnlineFetchReferrer(profileKey, url) {
+      const entry = ONLINE_PROFILE_CACHE.get(String(profileKey || ""));
+      const source = entry && entry.profile && entry.profile.sourceUrl ? String(entry.profile.sourceUrl) : "";
+      if (source) return source;
+      try {
+        const u = new URL(String(url || ""));
+        return `${u.origin}/`;
+      } catch {
+        return "";
+      }
+    }
+
+    async function fetchOnlineBinary(url, profileKey) {
+      const targetUrl = String(url || "");
+      if (!targetUrl) return { ok: false, status: 0, error: "invalid_url" };
+      const referrer = getOnlineFetchReferrer(profileKey, targetUrl);
+      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.downloadUrl === "function")
+        ? window.electronAPI
+        : null;
+      if (electronApi) {
+        const res = await electronApi.downloadUrl({
+          url: targetUrl,
+          headers: {
+            Accept: "*/*",
+            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": navigator.userAgent
+          },
+          referrer
+        });
+        if (!res || !res.ok) {
+          const status = res && Number.isFinite(res.status) ? Number(res.status) : 0;
+          const error = res && res.error ? String(res.error) : (status ? `http_${status}` : "network_error");
+          return { ok: false, status, error };
+        }
+        const bytes = decodeBase64ToBytes(res.data || "");
+        return {
+          ok: true,
+          bytes,
+          byteLength: Number(res.bytes || bytes.byteLength || 0),
+          contentLength: Number(res.contentLength || bytes.byteLength || 0),
+          contentType: String(res.contentType || "")
+        };
+      }
+
+      try {
+        const resp = await fetch(targetUrl, {
+          cache: "no-store",
+          headers: {
+            Accept: "*/*",
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          referrer: referrer || undefined,
+          referrerPolicy: "no-referrer-when-downgrade"
+        });
+        if (!resp || !resp.ok) {
+          return { ok: false, status: resp ? resp.status : 0, error: resp ? `http_${resp.status}` : "network_error" };
+        }
+        const buf = await resp.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        return {
+          ok: true,
+          bytes,
+          byteLength: bytes.byteLength,
+          contentLength: Number(resp.headers.get("content-length") || 0) || bytes.byteLength,
+          contentType: String(resp.headers.get("content-type") || "")
+        };
+      } catch {
+        return { ok: false, status: 0, error: "network_error" };
+      }
+    }
+
+    function collectOnlineRecordsForDirNode(dirNode) {
+      if (!dirNode || !dirNode.onlineMeta) return [];
+      const meta = dirNode.onlineMeta;
+      const includeChildren = meta.kind === "profile";
+      const ids = getOrderedFileIdsForDir(dirNode, includeChildren);
+      const out = [];
+      const seen = new Set();
+      for (const id of ids) {
+        const key = String(id || "");
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const rec = WS.fileById.get(key);
+        if (!rec || !rec.online || !rec.onlineMeta || !rec.url) continue;
+        if (String(rec.onlineMeta.profileKey || "") !== String(meta.profileKey || "")) continue;
+        if (meta.placementKey && String(rec.onlineMeta.placementKey || "") !== String(meta.placementKey || "")) continue;
+        if (meta.kind === "post" && String(rec.onlineMeta.postKey || "") !== String(meta.postKey || "")) continue;
+        out.push(rec);
+      }
+      return out;
+    }
+
+    function onlinePlacementKeyFromNode(dirNode) {
+      const meta = dirNode && dirNode.onlineMeta ? dirNode.onlineMeta : null;
+      if (!meta) return "";
+      if (meta.placementKey) return String(meta.placementKey);
+      return makeOnlinePlacementId(meta.profileKey, meta.mode || "profile", meta.basePath || "");
+    }
+
+    async function markOnlineNodeMaterialized(dirNode) {
+      if (!dirNode || !dirNode.onlineMeta) return false;
+      const meta = dirNode.onlineMeta;
+      const profileKey = String(meta.profileKey || "");
+      const placementKey = onlinePlacementKeyFromNode(dirNode);
+      if (!profileKey || !placementKey) return false;
+      let changed = false;
+      if (meta.kind === "profile") {
+        changed = markOnlinePlacementMaterialized(profileKey, placementKey) || changed;
+      } else if (meta.kind === "post") {
+        const postKey = String(meta.postKey || "");
+        if (postKey) changed = markOnlinePostMaterialized(profileKey, placementKey, postKey) || changed;
+      }
+      if (changed) await siteLogSaveRenames();
+      return changed;
+    }
+
+    async function materializeOnlineFolderNode(dirNode, opts = {}) {
+      const meta = dirNode && dirNode.onlineMeta ? dirNode.onlineMeta : null;
+      if (!meta || (meta.kind !== "profile" && meta.kind !== "post")) {
+        if (!opts.silentStatus) showStatusMessage("Not an online folder.");
+        return { ok: false, error: "invalid_online_folder" };
+      }
+      if (!WS.meta.fsRootHandle) {
+        if (!opts.silentStatus) showStatusMessage("Downloading requires a writable folder.");
+        return { ok: false, error: "no_fs_root" };
+      }
+      const dirPath = String(dirNode.path || "");
+      if (!dirPath) {
+        if (!opts.silentStatus) showStatusMessage("Online folder path is invalid.");
+        return { ok: false, error: "invalid_path" };
+      }
+      const activeJob = getOnlineDownloadJob(dirPath);
+      if (activeJob && activeJob.state === "running") {
+        if (!opts.silentStatus) showStatusMessage("This folder is already downloading.");
+        return { ok: false, error: "already_running" };
+      }
+      const records = collectOnlineRecordsForDirNode(dirNode);
+      if (!records.length) {
+        if (!opts.silentStatus) showStatusMessage("No online media found in this folder.");
+        return { ok: false, error: "no_files" };
+      }
+      const job = startOnlineDownloadJob(dirPath, records.length);
+      if (!job) {
+        if (!opts.silentStatus) showStatusMessage("Could not start download job.");
+        return { ok: false, error: "job_start_failed" };
+      }
+
+      let completed = 0;
+      let failed = 0;
+      let bytesDone = 0;
+      let bytesExpected = 0;
+      const usedNamesByDir = new Map();
+      const targetHandleCache = new Map();
+
+      const resolveTargetDirPathForRecord = (rec) => {
+        if (!rec) return dirPath;
+        if (meta.kind !== "profile") return dirPath;
+        const recDir = String(rec.dirPath || "");
+        if (!recDir || recDir === dirPath) return dirPath;
+        if (recDir.startsWith(dirPath + "/")) return recDir;
+        return dirPath;
+      };
+
+      const getTargetDirHandle = async (targetDirPath) => {
+        const key = String(targetDirPath || dirPath);
+        if (targetHandleCache.has(key)) return targetHandleCache.get(key);
+        const handle = await ensureDirectoryHandleForPath(WS.meta.fsRootHandle, key);
+        targetHandleCache.set(key, handle);
+        return handle;
+      };
+
+      const getDirNameSet = (targetDirPath) => {
+        const key = String(targetDirPath || dirPath);
+        if (!usedNamesByDir.has(key)) usedNamesByDir.set(key, new Set());
+        return usedNamesByDir.get(key);
+      };
+
+      try {
+        await getTargetDirHandle(dirPath);
+        for (let i = 0; i < records.length; i++) {
+          const rec = records[i];
+          const metaInfo = rec && rec.onlineMeta ? rec.onlineMeta : null;
+          if (!rec || !rec.url || !metaInfo) {
+            failed++;
+            updateOnlineDownloadJob(job, { failedFiles: failed, completedFiles: completed });
+            continue;
+          }
+
+          const targetDirPath = resolveTargetDirPathForRecord(rec);
+          const targetHandle = await getTargetDirHandle(targetDirPath);
+          const dirNameSet = getDirNameSet(targetDirPath);
+
+          const desired = makeOnlineDownloadFileName(rec, i);
+          let targetName = desired;
+          if (dirNameSet.has(targetName) || await entryExistsInDir(targetHandle, targetName)) {
+            targetName = await uniqueDestNameInDir(targetHandle, targetName);
+          }
+          dirNameSet.add(targetName);
+
+          const shownPath = (targetDirPath && targetDirPath !== dirPath)
+            ? `${targetDirPath.split("/").pop() || targetDirPath}/${targetName}`
+            : targetName;
+          updateOnlineDownloadJob(job, { currentFile: shownPath, completedFiles: completed, failedFiles: failed });
+          const payload = await fetchOnlineBinary(rec.url, metaInfo.profileKey);
+          if (!payload || !payload.ok || !payload.bytes || !payload.bytes.byteLength) {
+            failed++;
+            updateOnlineDownloadJob(job, {
+              failedFiles: failed,
+              completedFiles: completed,
+              error: payload && payload.error ? String(payload.error) : "download_failed"
+            });
+            continue;
+          }
+
+          const expected = Number(payload.contentLength || payload.byteLength || payload.bytes.byteLength || 0);
+          bytesExpected += expected;
+          const got = Number(payload.byteLength || payload.bytes.byteLength || 0);
+
+          try {
+            const outFile = await targetHandle.getFileHandle(targetName, { create: true });
+            const writable = await outFile.createWritable();
+            await writable.write(payload.bytes);
+            await writable.close();
+            completed++;
+            bytesDone += got;
+          } catch {
+            failed++;
+          }
+
+          updateOnlineDownloadJob(job, {
+            completedFiles: completed,
+            failedFiles: failed,
+            downloadedBytes: bytesDone,
+            totalBytes: bytesExpected
+          });
+        }
+      } catch (err) {
+        const msg = err && err.message ? String(err.message) : "materialize_failed";
+        finishOnlineDownloadJob(job, "error", msg);
+        if (!opts.silentStatus) showStatusMessage("Download failed.");
+        return { ok: false, error: msg, completed, failed, total: records.length };
+      }
+
+      const allOk = completed === records.length && failed === 0;
+      if (!allOk) {
+        const state = completed > 0 ? "partial" : "error";
+        finishOnlineDownloadJob(job, state, failed ? `${failed} failed` : "download_failed");
+        if (!opts.silentStatus) {
+          if (completed > 0) showStatusMessage(`Download partial: ${completed}/${records.length} files completed.`);
+          else showStatusMessage("Download failed.");
+        }
+        return { ok: false, partial: completed > 0, completed, failed, total: records.length };
+      }
+
+      await markOnlineNodeMaterialized(dirNode);
+      finishOnlineDownloadJob(job, "done", "");
+
+      if (!opts.deferRefresh) {
+        try {
+          await refreshWorkspaceFromRootHandle();
+        } catch {}
+      }
+
+      if (!opts.silentStatus) {
+        showStatusMessage(`Downloaded ${completed} file${completed === 1 ? "" : "s"} in place.`);
+      }
+      return { ok: true, completed, failed: 0, total: records.length };
+    }
+
+    function dedupeOnlineMaterializeNodes(nodes) {
+      const src = Array.isArray(nodes) ? nodes.filter(n => n && n.onlineMeta && (n.onlineMeta.kind === "profile" || n.onlineMeta.kind === "post")) : [];
+      src.sort((a, b) => String(a.path || "").length - String(b.path || "").length);
+      const out = [];
+      const seen = new Set();
+      for (const node of src) {
+        const path = String(node.path || "");
+        if (!path || seen.has(path)) continue;
+        const hasAncestorProfile = out.some(prev => {
+          const prevPath = String(prev.path || "");
+          if (!prevPath) return false;
+          if (!(path === prevPath || path.startsWith(prevPath + "/"))) return false;
+          return prev.onlineMeta && prev.onlineMeta.kind === "profile";
+        });
+        if (hasAncestorProfile) continue;
+        seen.add(path);
+        out.push(node);
+      }
+      return out;
+    }
+
+    async function materializeOnlineFolderSelection(nodes) {
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Downloading requires a writable folder.");
+        return false;
+      }
+      const targets = dedupeOnlineMaterializeNodes(nodes);
+      if (!targets.length) {
+        showStatusMessage("No online folders selected.");
+        return false;
+      }
+
+      let successCount = 0;
+      let partialCount = 0;
+      let failCount = 0;
+      for (let i = 0; i < targets.length; i++) {
+        const node = targets[i];
+        const label = displayPath(node.path || node.name || "folder");
+        showStatusMessage(`Downloading ${i + 1}/${targets.length}: ${label}`);
+        const res = await materializeOnlineFolderNode(node, { deferRefresh: true, silentStatus: true });
+        if (res && res.ok) successCount++;
+        else if (res && res.partial) partialCount++;
+        else failCount++;
+      }
+
+      if (successCount > 0) {
+        try {
+          await refreshWorkspaceFromRootHandle();
+        } catch {}
+      }
+
+      if (successCount && !partialCount && !failCount) {
+        showStatusMessage(`Downloaded ${successCount} online folder${successCount === 1 ? "" : "s"} in place.`);
+      } else if (successCount || partialCount) {
+        showStatusMessage(`Downloads complete: ${successCount} full, ${partialCount} partial, ${failCount} failed.`);
+      } else {
+        showStatusMessage("All selected online folder downloads failed.");
+      }
+      return successCount > 0;
     }
 
     function clampNumber(value, min, max, fallback) {
@@ -2178,11 +3116,14 @@
       const enabled = onlineFeaturesEnabled();
       if (onlineProfileRow) onlineProfileRow.style.display = enabled ? "" : "none";
       const onlineTabBtn = menuTabs ? menuTabs.querySelector('.menuTabBtn[data-tab="online"]') : null;
+      const responsesTabBtn = menuTabs ? menuTabs.querySelector('.menuTabBtn[data-tab="responses"]') : null;
       if (onlineTabBtn) onlineTabBtn.style.display = enabled ? "" : "none";
+      if (responsesTabBtn) responsesTabBtn.style.display = enabled ? "" : "none";
       if (menuTabOnline) menuTabOnline.style.display = enabled ? "" : "none";
+      if (menuTabResponses) menuTabResponses.style.display = enabled ? "" : "none";
       if (!enabled) {
-        if (MENU_ACTIVE_TAB === "online") setMenuTab("options");
-        if (MENU_LAST_TAB === "online") MENU_LAST_TAB = "options";
+        if (MENU_ACTIVE_TAB === "online" || MENU_ACTIVE_TAB === "responses") setMenuTab("options");
+        if (MENU_LAST_TAB === "online" || MENU_LAST_TAB === "responses") MENU_LAST_TAB = "options";
       }
     }
 
@@ -2706,6 +3647,8 @@
       ONLINE_RENAME_MAP.profiles = {};
       ONLINE_RENAME_MAP.posts = {};
       ONLINE_RENAME_MAP.files = {};
+      resetOnlineMaterializedMap(null);
+      ONLINE_DOWNLOAD_JOBS.clear();
       ONLINE_PRELOAD_CACHE.clear();
       ONLINE_PROFILE_CACHE.clear();
 
@@ -2746,6 +3689,7 @@
     const menuCloseBtn = $("menuCloseBtn");
     const menuTabOptions = $("menuTabOptions");
     const menuTabOnline = $("menuTabOnline");
+    const menuTabResponses = $("menuTabResponses");
     const menuTabHelp = $("menuTabHelp");
     const menuTabKeybinds = $("menuTabKeybinds");
 
@@ -2754,6 +3698,7 @@
 
     const optionsBodyEl = $("optionsBody");
     const onlineBodyEl = $("onlineBody");
+    const responsesBodyEl = $("responsesBody");
     const optionsResetBtn = $("optionsResetBtn");
     const optionsDoneBtn = $("optionsDoneBtn");
     const optionsStatusLabel = $("optionsStatusLabel");
@@ -3022,7 +3967,7 @@
     let MENU_ACTIVE_TAB = "options";
     let MENU_LAST_TAB = "options";
     let MENU_HAS_OPENED = false;
-    const MENU_TAB_SCROLL = { options: 0, online: 0, help: 0, keybinds: 0 };
+    const MENU_TAB_SCROLL = { options: 0, online: 0, responses: 0, help: 0, keybinds: 0 };
     let HELP_HOLD_ACTIVE = false;
     let PROPERTIES_OPEN = false;
 
@@ -3247,17 +4192,19 @@
       return HELP_MD_CACHE;
     }
 
-    const MENU_TAB_IDS = ["options", "online", "help", "keybinds"];
+    const MENU_TAB_IDS = ["options", "online", "responses", "help", "keybinds"];
     const menuTabButtons = menuTabs ? Array.from(menuTabs.querySelectorAll(".menuTabBtn")) : [];
     const menuTabPanels = {
       options: menuTabOptions,
       online: menuTabOnline,
+      responses: menuTabResponses,
       help: menuTabHelp,
       keybinds: menuTabKeybinds
     };
     const menuScrollTargets = {
       options: optionsBodyEl,
       online: onlineBodyEl,
+      responses: responsesBodyEl,
       help: helpBodyEl,
       keybinds: keybindsBodyEl
     };
@@ -3385,6 +4332,11 @@
 
         const actions = document.createElement("div");
         actions.className = "onlineActions";
+        const replaceBtn = document.createElement("button");
+        replaceBtn.type = "button";
+        replaceBtn.className = "miniBtn";
+        replaceBtn.textContent = "Replace";
+        replaceBtn.addEventListener("click", () => replaceOnlineProfile(key));
         const refreshBtn = document.createElement("button");
         refreshBtn.type = "button";
         refreshBtn.className = "miniBtn";
@@ -3399,6 +4351,7 @@
           if (!confirmed) return;
           deleteOnlineProfile(key);
         });
+        actions.appendChild(replaceBtn);
         actions.appendChild(refreshBtn);
         actions.appendChild(deleteBtn);
 
@@ -3414,9 +4367,129 @@
       renderOnlineUi();
     }
 
+    function appendOnlineApiResponses(entries) {
+      if (!Array.isArray(entries) || !entries.length) return;
+      let changed = false;
+      for (const raw of entries) {
+        if (!raw || typeof raw !== "object") continue;
+        const fullText = (typeof raw.responseText === "string") ? raw.responseText : "";
+        const responseText = fullText.length > ONLINE_API_RESPONSE_BODY_LIMIT
+          ? fullText.slice(0, ONLINE_API_RESPONSE_BODY_LIMIT)
+          : fullText;
+        ONLINE_API_RESPONSE_LOG.push({
+          ts: (typeof raw.ts === "number") ? raw.ts : Date.now(),
+          source: raw.source ? String(raw.source) : "unknown",
+          url: raw.url ? String(raw.url) : "",
+          page: Number.isFinite(raw.page) ? raw.page : 0,
+          offset: Number.isFinite(raw.offset) ? raw.offset : 0,
+          status: Number.isFinite(raw.status) ? raw.status : 0,
+          ok: !!raw.ok,
+          error: raw.error ? String(raw.error) : "",
+          parseOk: raw.parseOk === true,
+          responseText,
+          responseBytes: Number.isFinite(raw.responseBytes) ? raw.responseBytes : fullText.length,
+          truncated: !!raw.truncated || fullText.length > ONLINE_API_RESPONSE_BODY_LIMIT
+        });
+        changed = true;
+      }
+      if (!changed) return;
+      while (ONLINE_API_RESPONSE_LOG.length > ONLINE_API_RESPONSE_LOG_LIMIT) ONLINE_API_RESPONSE_LOG.shift();
+      if (MENU_OPEN && MENU_ACTIVE_TAB === "responses") renderResponsesUi();
+    }
+
+    function formatOnlineResponseMeta(entry) {
+      const bits = [];
+      bits.push(new Date(entry.ts || Date.now()).toLocaleTimeString());
+      bits.push(entry.source || "unknown");
+      if (entry.page > 0) bits.push(`page ${entry.page}`);
+      bits.push(`offset ${Number.isFinite(entry.offset) ? entry.offset : 0}`);
+      if (entry.status > 0) bits.push(`HTTP ${entry.status}`);
+      else bits.push("No HTTP status");
+      bits.push(entry.parseOk ? "JSON" : "Non-JSON");
+      if (entry.error) bits.push(entry.error);
+      if (entry.truncated) bits.push(`truncated (${entry.responseBytes} chars)`);
+      return bits.join(" • ");
+    }
+
+    function renderResponsesUi() {
+      if (!responsesBodyEl) return;
+      const prevScroll = responsesBodyEl.scrollTop || 0;
+      responsesBodyEl.innerHTML = "";
+
+      const title = document.createElement("h1");
+      title.textContent = "Responses";
+      responsesBodyEl.appendChild(title);
+
+      const actions = document.createElement("div");
+      actions.className = "responseActions";
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "miniBtn";
+      clearBtn.textContent = "Clear log";
+      clearBtn.addEventListener("click", () => {
+        ONLINE_API_RESPONSE_LOG.length = 0;
+        renderResponsesUi();
+      });
+      actions.appendChild(clearBtn);
+      responsesBodyEl.appendChild(actions);
+
+      if (!ONLINE_API_RESPONSE_LOG.length) {
+        const empty = document.createElement("div");
+        empty.className = "label";
+        empty.textContent = "No API responses captured yet.";
+        responsesBodyEl.appendChild(empty);
+        restoreMenuTabScroll("responses");
+        return;
+      }
+
+      const list = document.createElement("div");
+      list.className = "responseLog";
+      for (let i = ONLINE_API_RESPONSE_LOG.length - 1; i >= 0; i--) {
+        const entry = ONLINE_API_RESPONSE_LOG[i];
+        const item = document.createElement("div");
+        item.className = "responseItem";
+
+        if (entry.url) {
+          const link = document.createElement("a");
+          link.className = "responseLink";
+          link.href = entry.url;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = entry.url;
+          item.appendChild(link);
+        } else {
+          const label = document.createElement("div");
+          label.className = "responseLink";
+          label.textContent = "Unknown URL";
+          item.appendChild(label);
+        }
+
+        const meta = document.createElement("div");
+        meta.className = "responseMeta";
+        meta.textContent = formatOnlineResponseMeta(entry);
+        item.appendChild(meta);
+
+        const pre = document.createElement("pre");
+        pre.className = "responsePreview";
+        pre.textContent = entry.responseText || "(empty response body)";
+        item.appendChild(pre);
+
+        list.appendChild(item);
+      }
+      responsesBodyEl.appendChild(list);
+      requestAnimationFrame(() => {
+        responsesBodyEl.scrollTop = prevScroll;
+      });
+    }
+
+    function ensureResponsesUi() {
+      renderResponsesUi();
+      restoreMenuTabScroll("responses");
+    }
+
     function setMenuTab(tabId) {
       const nextCandidate = MENU_TAB_IDS.includes(tabId) ? tabId : "options";
-      const next = (!onlineFeaturesEnabled() && nextCandidate === "online") ? "options" : nextCandidate;
+      const next = (!onlineFeaturesEnabled() && (nextCandidate === "online" || nextCandidate === "responses")) ? "options" : nextCandidate;
       if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
       MENU_ACTIVE_TAB = next;
       MENU_LAST_TAB = next;
@@ -3441,6 +4514,10 @@
       }
       if (next === "online") {
         ensureOnlineUi();
+        return;
+      }
+      if (next === "responses") {
+        ensureResponsesUi();
         return;
       }
       if (next === "keybinds") {
@@ -5127,11 +6204,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (onlineProfileStatus) onlineProfileStatus.textContent = `Loading page ${page}...`;
         };
         const result = await api.fetchOnlineProfilePosts(parsed.service, parsed.userId, parsed.origin, { progressCb });
+        appendOnlineApiResponses(result && Array.isArray(result.responses) ? result.responses : []);
         const posts = result && Array.isArray(result.posts) ? result.posts : [];
         if (!posts || !posts.length) {
           if (result && result.error) {
             const msg = result.error === "invalid_json"
-              ? "API returned non-JSON."
+              ? "API returned non-JSON. Check Responses tab."
               : (result.error.startsWith("http_") ? `API error (${result.error.slice(5)})` : "Network error.");
             setOnlineProfileStatus(msg, "error");
           } else {
@@ -5146,6 +6224,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           mode: addMode,
           basePath
         });
+        const resolvedPlacementKey = placementResult && placementResult.placementId ? placementResult.placementId : placementKey;
+        clearOnlineMaterializedPlacement(parsed.profileKey, resolvedPlacementKey);
+        await siteLogSaveRenames();
         ONLINE_PROFILE_CACHE.set(parsed.profileKey, {
           profile: parsed,
           posts: normalized,
@@ -5156,7 +6237,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const injected = injectOnlineProfileIntoWorkspace(parsed.profileKey, {
           mode: addMode,
           basePath,
-          placementId: placementResult && placementResult.placementId ? placementResult.placementId : placementKey
+          placementId: resolvedPlacementKey
         });
         if (injected.ok) {
           const savedNote = saveResult && saveResult.saved ? "Saved log." : "Not saved.";
@@ -5556,6 +6637,28 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           continue;
         }
         cur = await cur.getDirectoryHandle(part);
+        DIR_HANDLE_CACHE.set(acc, cur);
+      }
+      return cur;
+    }
+
+    async function ensureDirectoryHandleForPath(rootHandle, path) {
+      const norm = String(path || "").replace(/^\/+|\/+$/g, "");
+      if (!norm) {
+        DIR_HANDLE_CACHE.set("", rootHandle);
+        return rootHandle;
+      }
+      if (DIR_HANDLE_CACHE.has(norm)) return DIR_HANDLE_CACHE.get(norm);
+      let cur = rootHandle;
+      let acc = "";
+      const parts = norm.split("/").filter(Boolean);
+      for (const part of parts) {
+        acc = acc ? (acc + "/" + part) : part;
+        if (DIR_HANDLE_CACHE.has(acc)) {
+          cur = DIR_HANDLE_CACHE.get(acc);
+          continue;
+        }
+        cur = await cur.getDirectoryHandle(part, { create: true });
         DIR_HANDLE_CACHE.set(acc, cur);
       }
       return cur;
@@ -8586,6 +9689,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       };
 
       if (allOnlineDirs) {
+        directoriesActionMenuEl.appendChild(makeActionBtn("Download selected folders", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await materializeOnlineFolderSelection(selectedDirNodes);
+          finalizeBulkSelectionAction();
+        }));
+
         if (allProfileDirs) {
           directoriesActionMenuEl.appendChild(makeActionBtn("Refresh selected profiles", async () => {
             WS.view.bulkActionMenuOpen = false;
@@ -8877,6 +9986,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             if (onlineKind === "profile") {
               menuTitle = "Profile menu";
               menuButtons = `
+                <button type="button" data-action="download-online-folder">Download in place</button>
                 <button type="button" data-action="refresh-profile">Refresh profile</button>
                 <button type="button" data-action="tag">Tag</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
@@ -8886,6 +9996,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             } else if (onlineKind === "post") {
               menuTitle = "Post menu";
               menuButtons = `
+                <button type="button" data-action="download-online-folder">Download in place</button>
                 <button type="button" data-action="tag">Tag</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="rename-post"${canRename ? "" : " disabled"}>Rename post</button>
@@ -8914,7 +10025,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             </div>
             `;
             const metaHtml = meta ? `<div class="dirMeta">${escapeHtml(meta)}</div>` : "";
-            rightHtml = `<div class="dirRight">${metaHtml}${menuHtml}</div>`;
+            const onlineDlHtml = onlineKind ? buildOnlineDownloadMetaHtml(entry.node) : "";
+            rightHtml = `<div class="dirRight">${metaHtml}${onlineDlHtml}${menuHtml}</div>`;
           } else {
             const rec = WS.fileById.get(entry.id);
             const isVid = rec?.type === "video";
@@ -9147,6 +10259,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                 e.stopPropagation();
                 const action = btn.getAttribute("data-action");
                 WS.view.dirActionMenuPath = "";
+                if (action === "download-online-folder") {
+                  materializeOnlineFolderNode(entry.node).catch(() => {});
+                  return;
+                }
                 if (action === "refresh-profile") {
                   const profileKey = entry.node?.onlineMeta?.profileKey || "";
                   if (!profileKey) return;

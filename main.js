@@ -1,7 +1,21 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
 const https = require("https");
 const http = require("http");
+const zlib = require("zlib");
 const path = require("path");
+
+function decodeContentBuffer(buf, contentEncoding) {
+  const enc = String(contentEncoding || "").toLowerCase();
+  if (!buf || !buf.length || !enc || enc === "identity") return buf;
+  try {
+    if (enc.includes("gzip")) return zlib.gunzipSync(buf);
+    if (enc.includes("br")) return zlib.brotliDecompressSync(buf);
+    if (enc.includes("deflate")) return zlib.inflateSync(buf);
+  } catch {
+    return buf;
+  }
+  return buf;
+}
 
 function requestUrl(url, opts = {}) {
   return new Promise((resolve) => {
@@ -27,8 +41,32 @@ function requestUrl(url, opts = {}) {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => {
-        const text = Buffer.concat(chunks).toString("utf8");
-        resolve({ ok: status >= 200 && status < 300, status, text });
+        const rawBuf = Buffer.concat(chunks);
+        const contentEncoding = String((res.headers && res.headers["content-encoding"]) || "");
+        const buf = decodeContentBuffer(rawBuf, contentEncoding);
+        if (opts.binary) {
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            data: buf.toString("base64"),
+            bytes: buf.length,
+            contentType: String((res.headers && res.headers["content-type"]) || ""),
+            contentLength: Number((res.headers && res.headers["content-length"]) || 0) || 0,
+            contentEncoding,
+            finalUrl: String(parsed.toString())
+          });
+          return;
+        }
+        const text = buf.toString("utf8");
+        resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          text,
+          contentType: String((res.headers && res.headers["content-type"]) || ""),
+          contentLength: Number((res.headers && res.headers["content-length"]) || 0) || 0,
+          contentEncoding,
+          finalUrl: String(parsed.toString())
+        });
       });
     });
     req.on("error", (err) => {
@@ -46,6 +84,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
@@ -59,6 +98,14 @@ app.whenReady().then(() => {
     const headers = (payload && payload.headers && typeof payload.headers === "object") ? payload.headers : {};
     const referrer = payload && payload.referrer ? String(payload.referrer) : "";
     return requestUrl(url, { headers, referrer, redirects: 0 });
+  });
+
+  ipcMain.handle("online-download-file", async (event, payload) => {
+    const url = payload && payload.url ? String(payload.url) : "";
+    if (!url) return { ok: false, status: 0, error: "invalid_url" };
+    const headers = (payload && payload.headers && typeof payload.headers === "object") ? payload.headers : {};
+    const referrer = payload && payload.referrer ? String(payload.referrer) : "";
+    return requestUrl(url, { headers, referrer, redirects: 0, binary: true });
   });
 
   createWindow();
