@@ -630,6 +630,27 @@
       margin-bottom: 6px;
     }
 
+    #onlineProfileRow {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      width: 100%;
+      margin-bottom: 6px;
+    }
+
+    #onlineProfileRow .tagEditInput {
+      flex: 1 1 240px;
+      min-width: 160px;
+    }
+
+    #onlineProfileStatus {
+      flex: 0 1 auto;
+      max-width: 45%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     #directoriesTagsRow {
       display: none;
       gap: 6px;
@@ -859,6 +880,41 @@
       align-items: center;
       gap: 10px;
       flex: 0 0 auto;
+      white-space: nowrap;
+    }
+
+    .onlineDlMeta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 150px;
+      max-width: 240px;
+      flex: 0 0 auto;
+    }
+
+    .onlineDlBar {
+      position: relative;
+      width: 100%;
+      height: 6px;
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 2px;
+      background: var(--color1-secondary);
+      overflow: hidden;
+    }
+
+    .onlineDlBarFill {
+      height: 100%;
+      width: 0%;
+      background: var(--anchor-internal-color2-primary);
+      transition: width .18s ease;
+    }
+
+    .onlineDlText {
+      font-size: 10px;
+      color: var(--color0-secondary);
+      max-width: 240px;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
 
@@ -1765,7 +1821,9 @@
        ========================================================= */
 
     #optionsBody,
-    #keybindsBody {
+    #keybindsBody,
+    #onlineBody,
+    #responsesBody {
       padding: 10px 10px 12px;
       overflow: auto;
       min-height: 0;
@@ -1776,7 +1834,9 @@
     }
 
     #optionsBody h1,
-    #keybindsBody h1 {
+    #keybindsBody h1,
+    #onlineBody h1,
+    #responsesBody h1 {
       font-size: 20px;
       font-weight: 800;
       letter-spacing: .02em;
@@ -1793,7 +1853,8 @@
     }*/
 
     #optionsBody .optRow,
-    #keybindsBody .optRow {
+    #keybindsBody .optRow,
+    #onlineBody .optRow {
       display: flex;
       gap: 10px;
       align-items: center;
@@ -1803,7 +1864,8 @@
     }
 
     #optionsBody .optLeft,
-    #keybindsBody .optLeft {
+    #keybindsBody .optLeft,
+    #onlineBody .optLeft {
       display: flex;
       flex-direction: column;
       gap: 2px;
@@ -1812,7 +1874,8 @@
     }
 
     #optionsBody .optTitle,
-    #keybindsBody .optTitle {
+    #keybindsBody .optTitle,
+    #onlineBody .optTitle {
       font-size: 12px;
       font-weight: 800;
       color: var(--color0-primary);
@@ -1823,12 +1886,102 @@
     }
 
     #optionsBody .optHint,
-    #keybindsBody .optHint {
+    #keybindsBody .optHint,
+    #onlineBody .optHint {
       font-size: 11px;
       color: var(--color0-secondary);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    #onlineBody .onlineRow {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    #onlineBody .onlineLeft {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    #onlineBody .onlineTitle {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--color0-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #onlineBody .onlineMeta {
+      font-size: 11px;
+      color: var(--color0-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #onlineBody .onlineActions {
+      display: flex;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+
+    #responsesBody .responseActions {
+      display: flex;
+      gap: 6px;
+      margin: 4px 0 10px;
+    }
+
+    #responsesBody .responseLog {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #responsesBody .responseItem {
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 3px;
+      padding: 8px;
+      background: var(--color1-primary);
+    }
+
+    #responsesBody .responseLink {
+      color: var(--anchor-internal-color2-primary);
+      text-decoration: none;
+      word-break: break-all;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    #responsesBody .responseMeta {
+      color: var(--color0-secondary);
+      font-size: 11px;
+      margin-top: 4px;
+      margin-bottom: 6px;
+      word-break: break-word;
+    }
+
+    #responsesBody .responsePreview {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--color1-secondary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 3px;
+      padding: 8px;
+      color: var(--color0-primary);
+      font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      max-height: 240px;
+      overflow: auto;
     }
 
     #optionsBody.hideHints .optHint,
@@ -1838,7 +1991,8 @@
 
     #optionsBody select,
     #optionsBody input[type="checkbox"],
-    #keybindsBody select {
+    #keybindsBody select,
+    #onlineBody select {
       cursor: pointer;
     }
 
@@ -1849,7 +2003,8 @@
     }
 
     #optionsBody select,
-    #keybindsBody select {
+    #keybindsBody select,
+    #onlineBody select {
       background: var(--color1-primary);
       color: var(--color0-primary);
       border: 1px solid var(--color1-tertiary);

@@ -31,6 +31,12 @@
         <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search folder" />
         <button id="directoriesSearchClearBtn" type="button" class="miniBtn">X</button>
       </div>
+      <div id="onlineProfileRow">
+        <input id="onlineProfileInput" class="tagEditInput" type="text" placeholder="Enter URL" />
+        <button id="onlineProfileAddProfileBtn" type="button" class="miniBtn">Add Profile</button>
+        <button id="onlineProfileAddPostsBtn" type="button" class="miniBtn">Add Posts</button>
+        <div id="onlineProfileStatus" class="label">—</div>
+      </div>
     </div>
 
     <div id="layout">
@@ -178,6 +184,8 @@
           <div class="title">Menu</div>
           <div id="menuTabs" role="tablist" aria-label="Menu tabs">
             <button type="button" class="miniBtn menuTabBtn" data-tab="options" role="tab" aria-controls="menuTabOptions">Options</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="online" role="tab" aria-controls="menuTabOnline">Online</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="responses" role="tab" aria-controls="menuTabResponses">Responses</button>
             <button type="button" class="miniBtn menuTabBtn" data-tab="help" role="tab" aria-controls="menuTabHelp">Help</button>
             <button type="button" class="miniBtn menuTabBtn" data-tab="keybinds" role="tab" aria-controls="menuTabKeybinds">Keybinds</button>
           </div>
@@ -210,6 +218,12 @@
                 <button id="keybindsDoneBtn" type="button" class="miniBtn">Done</button>
               </div>
             </div>
+          </section>
+          <section id="menuTabOnline" class="menuTabPanel" data-tab="online" role="tabpanel">
+            <div id="onlineBody"></div>
+          </section>
+          <section id="menuTabResponses" class="menuTabPanel" data-tab="responses" role="tabpanel">
+            <div id="responsesBody"></div>
           </section>
         </div>
       </div>

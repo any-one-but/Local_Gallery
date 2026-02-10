@@ -73,7 +73,23 @@
     }
 
     function displayPath(path) {
-      const parts = String(path || "").split("/").filter(Boolean);
+      const p = String(path || "");
+      try {
+        if (typeof WS !== "undefined" && WS.dirByPath && WS.dirByPath.has(p)) {
+          const node = WS.dirByPath.get(p);
+          if (node) {
+            const parts = [];
+            let cur = node;
+            while (cur) {
+              parts.push(dirDisplayName(cur));
+              cur = cur.parent;
+            }
+            parts.reverse();
+            return parts.join("/") || "";
+          }
+        }
+      } catch {}
+      const parts = p.split("/").filter(Boolean);
       const out = parts.map(seg => displayName(seg));
       return out.join("/") || "";
     }
@@ -136,6 +152,1905 @@
       };
     }
 
+    /* =========================================================
+       Online profile adapter (PartyGuest parity, no UI)
+       ========================================================= */
+
+    const ONLINE_POSTS_PER_PAGE = 50;
+    const ONLINE_PAGE_DELAY_MS = 200;
+
+    function sleepMs(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function parseOnlineProfileUrl(rawUrl) {
+      let raw = String(rawUrl || "").trim();
+      if (!raw) return { ok: false, error: "invalid-url" };
+      if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) {
+        raw = "https://" + raw;
+      }
+      let url = null;
+      try { url = new URL(raw); } catch { return { ok: false, error: "invalid-url" }; }
+      const parts = (url.pathname || "").split("/").filter(Boolean);
+      if (parts.length < 3 || parts[1] !== "user") {
+        return { ok: false, error: "invalid-profile-path" };
+      }
+      const service = decodeURIComponent(parts[0] || "").trim();
+      const userId = decodeURIComponent(parts[2] || "").trim();
+      if (!service || !userId) return { ok: false, error: "invalid-profile-path" };
+      const origin = url.origin;
+      return {
+        ok: true,
+        origin,
+        service,
+        userId,
+        profileKey: service + "::" + userId,
+        dataRoot: origin.replace(/\/$/, "") + "/data"
+      };
+    }
+
+    function resolveOnlineFileUrl(obj, dataRoot) {
+      if (!obj) return null;
+      if (obj.path) {
+        if (String(obj.path).startsWith("http")) return obj.path;
+        const p = obj.path.startsWith("/") ? obj.path : ("/" + obj.path);
+        const base = String(dataRoot || "").replace(/\/$/, "");
+        return base ? (base + p) : p;
+      }
+      if (obj.url && String(obj.url).startsWith("http")) return obj.url;
+      return null;
+    }
+
+    function normalizeOnlineFileUrl(u, baseOrigin) {
+      if (!u) return "";
+      try {
+        const url = new URL(u, baseOrigin || "https://example.invalid");
+        let path = url.pathname || "";
+        const idx = path.indexOf("/data/");
+        if (idx >= 0) path = path.slice(idx);
+        return path.toLowerCase();
+      } catch {
+        return (String(u).split("?")[0] || "").toLowerCase();
+      }
+    }
+
+    function buildPgFilesForPosts(posts, opts = {}) {
+      if (!Array.isArray(posts) || !posts.length) return { totalFiles: 0 };
+      const origin = String(opts.origin || "");
+      const dataRoot = String(opts.dataRoot || (origin ? origin.replace(/\/$/, "") + "/data" : ""));
+      const perPostFiles = [];
+      let totalFiles = 0;
+
+      for (const meta of posts) {
+        const refs = [];
+        const addRef = (o) => {
+          const u = resolveOnlineFileUrl(o, dataRoot);
+          if (u) refs.push(u);
+        };
+
+        if (Array.isArray(meta.pgFiles) && meta.pgFiles.length) {
+          for (const f of meta.pgFiles) {
+            const u = (f && f.url) ? f.url : resolveOnlineFileUrl(f, dataRoot);
+            if (u) refs.push(u);
+          }
+        } else {
+          if (meta.file) addRef(meta.file);
+          if (Array.isArray(meta.attachments)) meta.attachments.forEach(addRef);
+        }
+
+        const seen = new Set();
+        const files = [];
+        for (const ref of refs) {
+          const base = (String(ref).split("?")[0] || "");
+          const isImg = imgRE.test(base);
+          const isVid = vidRE.test(base);
+          if (!isImg && !isVid) continue;
+          const key = normalizeOnlineFileUrl(ref, origin);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          files.push({ url: ref, isVid });
+        }
+        perPostFiles.push(files);
+        totalFiles += files.length;
+      }
+
+      let g = totalFiles;
+      for (let i = 0; i < posts.length; i++) {
+        const meta = posts[i];
+        const files = perPostFiles[i] || [];
+        const pgFiles = [];
+        let local = 1;
+        for (const f of files) {
+          pgFiles.push({ g, local, url: f.url, isVid: !!f.isVid });
+          g--;
+          local++;
+        }
+        meta.pgFiles = pgFiles;
+      }
+
+      return { totalFiles };
+    }
+
+    async function fetchOnlineProfilePosts(service, userId, origin, opts = {}) {
+      const posts = [];
+      const responses = [];
+      const pageSize = Number.isFinite(opts.pageSize) ? opts.pageSize : ONLINE_POSTS_PER_PAGE;
+      const delayMs = Number.isFinite(opts.pageDelayMs) ? opts.pageDelayMs : ONLINE_PAGE_DELAY_MS;
+      const fetchFn = (typeof opts.fetch === "function") ? opts.fetch : fetch;
+      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.fetchUrl === "function")
+        ? window.electronAPI
+        : null;
+      const responseBodyLimit = Number.isFinite(opts.responseBodyLimit) ? Math.max(256, opts.responseBodyLimit) : 18000;
+      let page = 1;
+      let lastError = null;
+
+      const pushResponse = (entry) => {
+        const rawBody = (entry && typeof entry.responseText === "string") ? entry.responseText : "";
+        const text = rawBody.length > responseBodyLimit ? rawBody.slice(0, responseBodyLimit) : rawBody;
+        responses.push(Object.assign({}, entry, {
+          ts: (entry && typeof entry.ts === "number") ? entry.ts : Date.now(),
+          responseText: text,
+          responseBytes: rawBody.length,
+          truncated: rawBody.length > responseBodyLimit
+        }));
+      };
+
+      while (true) {
+        if (typeof opts.progressCb === "function") {
+          try { opts.progressCb(page, posts.length); } catch {}
+        }
+
+        const offset = (page - 1) * pageSize;
+        const base = String(origin || "").replace(/\/$/, "");
+        const apiUrl = `${base}/api/v1/${service}/user/${userId}/posts?o=${offset}`;
+        let resp = null;
+        try {
+          if (electronApi) {
+            const res = await electronApi.fetchUrl({
+              url: apiUrl,
+              headers: {
+                Accept: "text/css",
+                "X-Requested-With": "XMLHttpRequest",
+                "User-Agent": navigator.userAgent
+              },
+              referrer: `${base}/${service}/user/${userId}`
+            });
+            const status = (res && typeof res.status === "number") ? res.status : 0;
+            const responseText = (res && typeof res.text === "string") ? res.text : "";
+            if (!res || !res.ok) {
+              if (res && typeof res.status === "number" && res.status > 0) lastError = `http_${res.status}`;
+              else lastError = res && res.error ? res.error : "network_error";
+              pushResponse({
+                ts: Date.now(),
+                source: "electron",
+                url: apiUrl,
+                page,
+                offset,
+                ok: false,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+            try {
+              resp = JSON.parse(responseText || "");
+              pushResponse({
+                ts: Date.now(),
+                source: "electron",
+                url: apiUrl,
+                page,
+                offset,
+                ok: true,
+                status,
+                error: "",
+                parseOk: true,
+                responseText
+              });
+            } catch {
+              lastError = "invalid_json";
+              pushResponse({
+                ts: Date.now(),
+                source: "electron",
+                url: apiUrl,
+                page,
+                offset,
+                ok: true,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+          } else {
+            const res = await fetchFn(apiUrl, {
+              cache: "no-store",
+              headers: {
+                Accept: "text/css",
+                "X-Requested-With": "XMLHttpRequest"
+              },
+              referrer: `${base}/${service}/user/${userId}`,
+              referrerPolicy: "no-referrer-when-downgrade"
+            });
+            let status = 0;
+            let responseText = "";
+            if (res) {
+              if (typeof res.status === "number") status = res.status;
+              try { responseText = await res.text(); } catch {}
+            }
+            if (!res || !res.ok) {
+              lastError = res ? `http_${res.status}` : "network_error";
+              pushResponse({
+                ts: Date.now(),
+                source: "browser",
+                url: apiUrl,
+                page,
+                offset,
+                ok: !!(res && res.ok),
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+            try {
+              resp = JSON.parse(responseText);
+              pushResponse({
+                ts: Date.now(),
+                source: "browser",
+                url: apiUrl,
+                page,
+                offset,
+                ok: true,
+                status,
+                error: "",
+                parseOk: true,
+                responseText
+              });
+            } catch {
+              lastError = "invalid_json";
+              pushResponse({
+                ts: Date.now(),
+                source: "browser",
+                url: apiUrl,
+                page,
+                offset,
+                ok: true,
+                status,
+                error: lastError,
+                parseOk: false,
+                responseText
+              });
+              break;
+            }
+          }
+        } catch {
+          lastError = "network_error";
+          pushResponse({
+            ts: Date.now(),
+            source: electronApi ? "electron" : "browser",
+            url: apiUrl,
+            page,
+            offset,
+            ok: false,
+            status: 0,
+            error: lastError,
+            parseOk: false,
+            responseText: ""
+          });
+          break;
+        }
+
+        const arr = Array.isArray(resp) ? resp : (resp && (resp.results || resp.posts)) || [];
+        if (!Array.isArray(arr) || arr.length === 0) break;
+        for (let i = 0; i < arr.length; i++) {
+          const copy = Object.assign({}, arr[i]);
+          copy.pgPage = page;
+          copy.pgIdxOnPage = i + 1;
+          posts.push(copy);
+        }
+        if (arr.length < pageSize) break;
+        page++;
+        if (delayMs > 0) await sleepMs(delayMs + Math.floor(Math.random() * 150));
+      }
+
+      return { posts, error: lastError, responses };
+    }
+
+    function normalizeOnlinePosts(posts, opts = {}) {
+      const pageSize = Number.isFinite(opts.pageSize) ? opts.pageSize : ONLINE_POSTS_PER_PAGE;
+      const origin = String(opts.origin || "");
+      const dataRoot = String(opts.dataRoot || (origin ? origin.replace(/\/$/, "") + "/data" : ""));
+      const out = Array.isArray(posts) ? posts.map(p => Object.assign({}, p)) : [];
+      const total = out.length;
+
+      for (let i = 0; i < out.length; i++) {
+        const p = out[i];
+        if (!Number.isFinite(p.pgPage) || !Number.isFinite(p.pgIdxOnPage)) {
+          p.pgPage = Math.floor(i / pageSize) + 1;
+          p.pgIdxOnPage = (i % pageSize) + 1;
+        }
+        p.pgGlobalIndex = total - i;
+      }
+
+      buildPgFilesForPosts(out, { origin, dataRoot });
+      return out;
+    }
+
+    if (typeof window !== "undefined") {
+      window.LGOnline = Object.assign(window.LGOnline || {}, {
+        parseOnlineProfileUrl,
+        fetchOnlineProfilePosts,
+        normalizeOnlinePosts,
+        buildPgFilesForPosts
+      });
+    }
+
+    const ONLINE_PROFILE_CACHE = new Map();
+    const ONLINE_RENAME_MAP = {
+      profiles: {},
+      posts: {},
+      files: {}
+    };
+    const ONLINE_PRELOAD_CACHE = new Set();
+    const ONLINE_MATERIALIZED_MAP = {
+      placements: {},
+      posts: {}
+    };
+    const ONLINE_DOWNLOAD_JOBS = new Map();
+    let ONLINE_DOWNLOAD_RENDER_TIMER = null;
+    const ONLINE_API_RESPONSE_LOG = [];
+    const ONLINE_API_RESPONSE_LOG_LIMIT = 250;
+    const ONLINE_API_RESPONSE_BODY_LIMIT = 18000;
+
+    function scheduleOnlineDownloadUiRefresh() {
+      if (ONLINE_DOWNLOAD_RENDER_TIMER) return;
+      ONLINE_DOWNLOAD_RENDER_TIMER = setTimeout(() => {
+        ONLINE_DOWNLOAD_RENDER_TIMER = null;
+        if (!WS.root) return;
+        renderDirectoriesPane(true);
+      }, 80);
+    }
+
+    function sanitizeOnlineMapKey(value) {
+      return String(value || "");
+    }
+
+    function getOnlinePlacementBucket(profileKey, create = false) {
+      const key = sanitizeOnlineMapKey(profileKey);
+      if (!key) return null;
+      if (!ONLINE_MATERIALIZED_MAP.placements[key] && create) {
+        ONLINE_MATERIALIZED_MAP.placements[key] = {};
+      }
+      return ONLINE_MATERIALIZED_MAP.placements[key] || null;
+    }
+
+    function getOnlinePostBucket(profileKey, placementKey, create = false) {
+      const pKey = sanitizeOnlineMapKey(profileKey);
+      const plKey = sanitizeOnlineMapKey(placementKey);
+      if (!pKey || !plKey) return null;
+      if (!ONLINE_MATERIALIZED_MAP.posts[pKey] && create) {
+        ONLINE_MATERIALIZED_MAP.posts[pKey] = {};
+      }
+      const root = ONLINE_MATERIALIZED_MAP.posts[pKey] || null;
+      if (!root) return null;
+      if (!root[plKey] && create) root[plKey] = {};
+      return root[plKey] || null;
+    }
+
+    function isOnlinePlacementMaterialized(profileKey, placementKey) {
+      const bucket = getOnlinePlacementBucket(profileKey, false);
+      if (!bucket) return false;
+      const key = sanitizeOnlineMapKey(placementKey);
+      return !!(key && bucket[key]);
+    }
+
+    function isOnlinePostMaterialized(profileKey, placementKey, postKey) {
+      const bucket = getOnlinePostBucket(profileKey, placementKey, false);
+      if (!bucket) return false;
+      const key = sanitizeOnlineMapKey(postKey);
+      return !!(key && bucket[key]);
+    }
+
+    function markOnlinePlacementMaterialized(profileKey, placementKey) {
+      const key = sanitizeOnlineMapKey(placementKey);
+      const bucket = getOnlinePlacementBucket(profileKey, true);
+      if (!bucket || !key) return false;
+      if (bucket[key]) return false;
+      bucket[key] = 1;
+      return true;
+    }
+
+    function markOnlinePostMaterialized(profileKey, placementKey, postKey) {
+      const key = sanitizeOnlineMapKey(postKey);
+      const bucket = getOnlinePostBucket(profileKey, placementKey, true);
+      if (!bucket || !key) return false;
+      if (bucket[key]) return false;
+      bucket[key] = 1;
+      return true;
+    }
+
+    function clearOnlineMaterializedProfile(profileKey) {
+      const key = sanitizeOnlineMapKey(profileKey);
+      if (!key) return;
+      delete ONLINE_MATERIALIZED_MAP.placements[key];
+      delete ONLINE_MATERIALIZED_MAP.posts[key];
+    }
+
+    function clearOnlineMaterializedPlacement(profileKey, placementKey) {
+      const pKey = sanitizeOnlineMapKey(profileKey);
+      const plKey = sanitizeOnlineMapKey(placementKey);
+      if (!pKey || !plKey) return;
+      if (ONLINE_MATERIALIZED_MAP.placements[pKey]) {
+        delete ONLINE_MATERIALIZED_MAP.placements[pKey][plKey];
+        if (!Object.keys(ONLINE_MATERIALIZED_MAP.placements[pKey]).length) {
+          delete ONLINE_MATERIALIZED_MAP.placements[pKey];
+        }
+      }
+      if (ONLINE_MATERIALIZED_MAP.posts[pKey]) {
+        delete ONLINE_MATERIALIZED_MAP.posts[pKey][plKey];
+        if (!Object.keys(ONLINE_MATERIALIZED_MAP.posts[pKey]).length) {
+          delete ONLINE_MATERIALIZED_MAP.posts[pKey];
+        }
+      }
+    }
+
+    function resetOnlineMaterializedMap(raw) {
+      ONLINE_MATERIALIZED_MAP.placements = {};
+      ONLINE_MATERIALIZED_MAP.posts = {};
+      if (!raw || typeof raw !== "object") return;
+
+      const placementsRaw = (raw.placements && typeof raw.placements === "object") ? raw.placements : {};
+      for (const profileKey of Object.keys(placementsRaw)) {
+        const src = placementsRaw[profileKey];
+        if (!src || typeof src !== "object") continue;
+        const dst = {};
+        for (const placementKey of Object.keys(src)) {
+          if (src[placementKey]) dst[String(placementKey)] = 1;
+        }
+        if (Object.keys(dst).length) ONLINE_MATERIALIZED_MAP.placements[String(profileKey)] = dst;
+      }
+
+      const postsRaw = (raw.posts && typeof raw.posts === "object") ? raw.posts : {};
+      for (const profileKey of Object.keys(postsRaw)) {
+        const byPlacement = postsRaw[profileKey];
+        if (!byPlacement || typeof byPlacement !== "object") continue;
+        const dstByPlacement = {};
+        for (const placementKey of Object.keys(byPlacement)) {
+          const srcPosts = byPlacement[placementKey];
+          if (!srcPosts || typeof srcPosts !== "object") continue;
+          const dstPosts = {};
+          for (const postKey of Object.keys(srcPosts)) {
+            if (srcPosts[postKey]) dstPosts[String(postKey)] = 1;
+          }
+          if (Object.keys(dstPosts).length) dstByPlacement[String(placementKey)] = dstPosts;
+        }
+        if (Object.keys(dstByPlacement).length) ONLINE_MATERIALIZED_MAP.posts[String(profileKey)] = dstByPlacement;
+      }
+    }
+
+    function buildOnlineMaterializedDoc() {
+      return {
+        placements: ONLINE_MATERIALIZED_MAP.placements || {},
+        posts: ONLINE_MATERIALIZED_MAP.posts || {}
+      };
+    }
+
+    function normalizeOnlineBasePath(p) {
+      return String(p || "").replace(/^\/+|\/+$/g, "");
+    }
+
+    function makeOnlinePlacementId(profileKey, mode, basePath) {
+      return String(profileKey || "") + "::" + String(mode || "profile") + "::" + normalizeOnlineBasePath(basePath);
+    }
+
+    function deriveOnlineUserLabel(profile, posts) {
+      const sample = Array.isArray(posts) && posts.length ? posts[0] : null;
+      const v = (sample && (sample.user || sample.user_name || sample.username || sample.userId || sample.author))
+        || (profile && profile.userId)
+        || "profile";
+      return String(v || "profile");
+    }
+
+    async function ensureSiteLogHandles() {
+      const sys = WS.meta && WS.meta.fsSysDirHandle ? WS.meta.fsSysDirHandle : null;
+      if (!sys) return null;
+      if (WS.meta.fsSiteLogDirHandle && WS.meta.fsSiteLogProfilesDirHandle && WS.meta.fsSiteLogIndexHandle && WS.meta.fsSiteLogRenamesHandle) {
+        return {
+          dir: WS.meta.fsSiteLogDirHandle,
+          profilesDir: WS.meta.fsSiteLogProfilesDirHandle,
+          indexFile: WS.meta.fsSiteLogIndexHandle,
+          renamesFile: WS.meta.fsSiteLogRenamesHandle
+        };
+      }
+      try {
+        const dir = await sys.getDirectoryHandle("site_log", { create: true });
+        const profilesDir = await dir.getDirectoryHandle("profiles", { create: true });
+        const indexFile = await dir.getFileHandle("profiles.index.json", { create: true });
+        const renamesFile = await dir.getFileHandle("renames.json", { create: true });
+        WS.meta.fsSiteLogDirHandle = dir;
+        WS.meta.fsSiteLogProfilesDirHandle = profilesDir;
+        WS.meta.fsSiteLogIndexHandle = indexFile;
+        WS.meta.fsSiteLogRenamesHandle = renamesFile;
+        return { dir, profilesDir, indexFile, renamesFile };
+      } catch {
+        return null;
+      }
+    }
+
+    async function siteLogLoadIndex() {
+      const handles = await ensureSiteLogHandles();
+      if (!handles || !handles.indexFile) return null;
+      const doc = await metaLoadFsDoc(handles.indexFile);
+      if (doc && doc.schema === 1 && doc.profiles && typeof doc.profiles === "object") return doc;
+      return { schema: 1, profiles: {} };
+    }
+
+    async function siteLogSaveIndex(doc) {
+      const handles = await ensureSiteLogHandles();
+      if (!handles || !handles.indexFile) return false;
+      await metaSaveFsDoc(handles.indexFile, doc);
+      return true;
+    }
+
+    async function siteLogUpsertPlacement(profileKey, sourceUrl, placement) {
+      const key = String(profileKey || "");
+      if (!key) return { ok: false };
+      const index = (await siteLogLoadIndex()) || { schema: 1, profiles: {} };
+      const entry = index.profiles[key] || { url: "", versions: [], latestId: null, placements: [] };
+      entry.url = String(sourceUrl || entry.url || "");
+      const placements = Array.isArray(entry.placements) ? entry.placements : [];
+      const mode = placement && placement.mode ? placement.mode : "profile";
+      const basePath = normalizeOnlineBasePath(placement && placement.basePath ? placement.basePath : "");
+      const id = (placement && placement.id) ? String(placement.id) : makeOnlinePlacementId(key, mode, basePath);
+      const now = Date.now();
+      let existing = placements.find(p => String(p.id) === id);
+      if (!existing) {
+        existing = { id, mode, basePath, addedAt: now, lastUsed: now };
+        placements.push(existing);
+      } else {
+        existing.mode = mode;
+        existing.basePath = basePath;
+        existing.lastUsed = now;
+      }
+      entry.placements = placements;
+      index.profiles[key] = entry;
+      await siteLogSaveIndex(index);
+      return { ok: true, placementId: id };
+    }
+
+    async function siteLogDeleteProfile(profileKey) {
+      const key = String(profileKey || "");
+      if (!key) return false;
+      const handles = await ensureSiteLogHandles();
+      const index = await siteLogLoadIndex();
+      if (!handles || !index || !index.profiles || !index.profiles[key]) return false;
+      const entry = index.profiles[key];
+      const versions = Array.isArray(entry.versions) ? entry.versions : [];
+      if (handles.profilesDir) {
+        for (const v of versions) {
+          if (!v || !v.file) continue;
+          try { await handles.profilesDir.removeEntry(String(v.file)); } catch {}
+        }
+      }
+      delete index.profiles[key];
+      await siteLogSaveIndex(index);
+      return true;
+    }
+
+    async function siteLogLoadRenames() {
+      const handles = await ensureSiteLogHandles();
+      if (!handles || !handles.renamesFile) return false;
+      const doc = await metaLoadFsDoc(handles.renamesFile);
+      if (doc && doc.schema === 1 && doc.renames && typeof doc.renames === "object") {
+        ONLINE_RENAME_MAP.profiles = doc.renames.profiles || {};
+        ONLINE_RENAME_MAP.posts = doc.renames.posts || {};
+        ONLINE_RENAME_MAP.files = doc.renames.files || {};
+        resetOnlineMaterializedMap(doc.materialized);
+        return true;
+      }
+      resetOnlineMaterializedMap(null);
+      return false;
+    }
+
+    async function siteLogSaveRenames() {
+      const handles = await ensureSiteLogHandles();
+      if (!handles || !handles.renamesFile) return false;
+      const doc = {
+        schema: 1,
+        updatedAt: Date.now(),
+        renames: {
+          profiles: ONLINE_RENAME_MAP.profiles || {},
+          posts: ONLINE_RENAME_MAP.posts || {},
+          files: ONLINE_RENAME_MAP.files || {}
+        },
+        materialized: buildOnlineMaterializedDoc()
+      };
+      await metaSaveFsDoc(handles.renamesFile, doc);
+      return true;
+    }
+
+    async function saveOnlineProfileVersion(profile, posts, sourceUrl) {
+      const handles = await ensureSiteLogHandles();
+      if (!handles || !handles.profilesDir) return { saved: false, reason: "no_site_log" };
+      const ts = Date.now();
+      const key = String(profile?.profileKey || "profile");
+      const profileHash = String(hash32(key));
+      const fileName = `profile_${profileHash}_${ts}.json`;
+      const doc = {
+        schema: 1,
+        profile: Object.assign({}, profile || {}, { sourceUrl: String(sourceUrl || "") }),
+        fetchedAt: ts,
+        posts: Array.isArray(posts) ? posts : []
+      };
+      try {
+        const fh = await handles.profilesDir.getFileHandle(fileName, { create: true });
+        await metaSaveFsDoc(fh, doc);
+      } catch {
+        return { saved: false, reason: "write_failed" };
+      }
+
+      const index = (await siteLogLoadIndex()) || { schema: 1, profiles: {} };
+      const entry = index.profiles[key] || { url: String(sourceUrl || ""), versions: [], latestId: null };
+      entry.url = String(sourceUrl || entry.url || "");
+      entry.versions = Array.isArray(entry.versions) ? entry.versions : [];
+      const versionId = String(ts);
+      entry.versions.push({ id: versionId, ts, file: fileName });
+      entry.latestId = versionId;
+      index.profiles[key] = entry;
+      await siteLogSaveIndex(index);
+      return { saved: true, file: fileName, ts };
+    }
+
+    function formatOnlineFilename(post, fileObj, index, globalIndex, userOverride) {
+      const user = String(userOverride || post?.user || post?.user_name || post?.username || post?.userId || post?.author || "profile");
+      const sanitizeUserFolder = s => {
+        s = (s || "").normalize("NFC");
+        s = s.replace(/\s+/g, "_");
+        s = s.replace(/[\\/:*?"<>|]+/g, "");
+        s = s.replace(/[\x00-\x1F\x7F]/g, "");
+        s = s.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+        return s;
+      };
+      const sanitizeNamePart = s => {
+        s = (s || "").normalize("NFC");
+        s = s.replace(/\s+/g, " ");
+        s = s.replace(/ - /g, "-");
+        s = s.replace(/[\\/:*?"<>|]+/g, "");
+        s = s.replace(/[\x00-\x1F\x7F]/g, "");
+        s = s.replace(/ +/g, " ").replace(/^ +| +$/g, "");
+        return s;
+      };
+      const titleRaw = (post && post.title && String(post.title).trim()) ? String(post.title) : ("post_" + (post && post.id != null ? post.id : "0"));
+      const threadRaw = user;
+      const userSec = sanitizeUserFolder(user);
+      let threadSec = sanitizeNamePart(threadRaw).slice(0, 40);
+      if (!threadSec) threadSec = sanitizeNamePart(user).slice(0, 40);
+      let titleSec = sanitizeNamePart(titleRaw).slice(0, 40);
+      if (!titleSec) titleSec = sanitizeNamePart("post_" + (post && post.id != null ? post.id : "0")).slice(0, 40);
+      const extRaw = (fileObj && (fileObj.name || fileObj.path)) ? (fileObj.name || fileObj.path) : "";
+      const ext = String(extRaw).split(".").pop().split("?")[0].toLowerCase();
+      const gPost = String(globalIndex || 0).padStart(6, "0");
+      const fIdx = String(index || 0).padStart(6, "0");
+      let dateSec = "000000";
+      try {
+        const raw = post && (post.published || post.published_at || post.added || post.added_at || post.created || post.created_at || post.posted || post.posted_at);
+        if (raw != null) {
+          let d = null;
+          if (typeof raw === "number" && isFinite(raw)) {
+            const ms = raw > 1e12 ? raw : (raw * 1000);
+            d = new Date(ms);
+          } else if (typeof raw === "string" && raw.trim()) {
+            d = new Date(raw);
+          }
+          if (d && isFinite(d.getTime())) {
+            const yy = String(d.getUTCFullYear() % 100).padStart(2, "0");
+            const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+            const dd = String(d.getUTCDate()).padStart(2, "0");
+            dateSec = yy + mm + dd;
+          }
+        }
+      } catch {}
+      const base = `${dateSec}-${threadSec}-${gPost} - ${titleSec}`;
+      const fileName = `${base}_${fIdx}.${ext}`;
+      const postFolder = base;
+      return `${userSec}/${postFolder}/${fileName}`;
+    }
+
+    function getOnlineProfileRename(profileKey) {
+      if (!profileKey) return null;
+      const name = ONLINE_RENAME_MAP.profiles ? ONLINE_RENAME_MAP.profiles[String(profileKey)] : null;
+      return name ? String(name) : null;
+    }
+
+    function getOnlinePostRename(profileKey, postKey) {
+      if (!profileKey || !postKey) return null;
+      const bucket = ONLINE_RENAME_MAP.posts ? ONLINE_RENAME_MAP.posts[String(profileKey)] : null;
+      const name = bucket ? bucket[String(postKey)] : null;
+      return name ? String(name) : null;
+    }
+
+    function getOnlineFileRename(profileKey, fileUrl) {
+      if (!profileKey || !fileUrl) return null;
+      const bucket = ONLINE_RENAME_MAP.files ? ONLINE_RENAME_MAP.files[String(profileKey)] : null;
+      const name = bucket ? bucket[String(fileUrl)] : null;
+      return name ? String(name) : null;
+    }
+
+    function dirDisplayName(node) {
+      if (node && node.onlineMeta) {
+        const meta = node.onlineMeta;
+        if (meta.kind === "profile") {
+          const override = getOnlineProfileRename(meta.profileKey);
+          if (override) return displayName(override) || displayName(node.name || "folder") || "folder";
+        } else if (meta.kind === "post") {
+          const override = getOnlinePostRename(meta.profileKey, meta.postKey);
+          if (override) return displayName(override) || displayName(node.name || "folder") || "folder";
+        }
+      }
+      return displayName(node?.name || "folder") || "folder";
+    }
+
+    function fileDisplayNameForRecord(rec) {
+      if (rec && rec.online && rec.onlineMeta) {
+        const meta = rec.onlineMeta;
+        const override = getOnlineFileRename(meta.profileKey, meta.fileUrl);
+        if (override) {
+          const ext = splitNameExt(rec.name || "").ext || "";
+          return fileDisplayName(String(override) + ext) || fileDisplayName(rec.name || "file") || "file";
+        }
+      }
+      return fileDisplayName(rec?.name || "file") || "file";
+    }
+
+    function onlineLoadMode() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return (opt && opt.onlineLoadMode === "preload") ? "preload" : "as-needed";
+    }
+
+    function shouldPreloadOnlineForDir(dirNode) {
+      if (!dirNode || onlineLoadMode() !== "preload") return false;
+      if (dirNode.onlineMeta && (dirNode.onlineMeta.kind === "profile" || dirNode.onlineMeta.kind === "post")) return true;
+      const children = dirNode.childrenDirs || [];
+      return children.some(d => d && d.onlineMeta && d.onlineMeta.kind === "post");
+    }
+
+    function preloadOnlineRecord(rec) {
+      if (!rec || !rec.online || !rec.url) return;
+      const key = String(rec.url || "");
+      if (ONLINE_PRELOAD_CACHE.has(key)) return;
+      ONLINE_PRELOAD_CACHE.add(key);
+      if (rec.type === "image") {
+        const img = new Image();
+        img.src = rec.url;
+        PRELOAD_CACHE.set(key, img);
+        return;
+      }
+      if (rec.type === "video") {
+        const v = document.createElement("video");
+        v.preload = "metadata";
+        v.muted = true;
+        normalizeVideoPlaybackRate(v);
+        v.playsInline = true;
+        v.src = rec.url;
+        try { v.load(); } catch {}
+        PRELOAD_CACHE.set(key, v);
+      }
+    }
+
+    function preloadOnlineMediaForDir(dirNode) {
+      if (!shouldPreloadOnlineForDir(dirNode)) return;
+      const hasPostChildren = !(dirNode.onlineMeta) && (dirNode.childrenDirs || []).some(d => d && d.onlineMeta && d.onlineMeta.kind === "post");
+      const includeChildren = !!(dirNode.onlineMeta && dirNode.onlineMeta.kind === "profile") || hasPostChildren;
+      const ids = getOrderedFileIdsForDir(dirNode, includeChildren);
+      for (const id of ids) {
+        const rec = WS.fileById.get(id);
+        if (!rec || !rec.online) continue;
+        preloadOnlineRecord(rec);
+      }
+    }
+
+    function ensureOnlineWorkspaceReady() {
+      if (WS.root) return;
+      clearWorkspaceEmptyState();
+      WS.root = makeDirNode("root", null);
+      WS.root.path = "";
+      WS.dirByPath.set("", WS.root);
+      applyMediaFilterFromOptions();
+      WS.view.randomSeed = computeWorkspaceSeed();
+      WS.view.randomCache = new Map();
+      WS.view.dirLoopRepeats = 3;
+      WS.view.previewLoopRepeats = 3;
+      WS.meta.storageMode = "local";
+      WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
+      metaInitForCurrentWorkspace();
+      WS.nav.dirNode = WS.root;
+    }
+
+    function injectOnlineProfileIntoWorkspace(profileKey) {
+      const opts = arguments.length > 1 ? arguments[1] : null;
+      const silent = !!(opts && opts.silent);
+      const mode = (opts && opts.mode === "posts") ? "posts" : "profile";
+      const basePath = normalizeOnlineBasePath(opts && opts.basePath ? opts.basePath : "");
+      const placementKey = (opts && opts.placementId) ? String(opts.placementId) : makeOnlinePlacementId(profileKey, mode, basePath);
+      if (isOnlinePlacementMaterialized(profileKey, placementKey)) {
+        return { ok: false, error: "materialized" };
+      }
+      const entry = ONLINE_PROFILE_CACHE.get(profileKey);
+      if (!entry || !entry.profile) return { ok: false, error: "missing-profile" };
+      const posts = Array.isArray(entry.posts) ? entry.posts : [];
+      if (!posts.length) return { ok: false, error: "no-posts" };
+      if (!entry.injectedPlacements) {
+        entry.injectedPlacements = new Set();
+        if (entry.injected === true) entry.injectedPlacements.add(placementKey);
+      }
+      if (entry.injectedPlacements.has(placementKey)) return { ok: false, error: "already-added" };
+
+      ensureOnlineWorkspaceReady();
+
+      const userLabel = deriveOnlineUserLabel(entry.profile, posts);
+      let addedFiles = 0;
+
+      for (let i = 0; i < posts.length; i++) {
+        const post = posts[i];
+        const postIndex = (typeof post.pgGlobalIndex === "number") ? post.pgGlobalIndex : (posts.length - i);
+        const files = Array.isArray(post.pgFiles) ? post.pgFiles : [];
+        const postKey = (post && post.id != null) ? String(post.id) : ("idx:" + String(postIndex || i + 1));
+        if (isOnlinePostMaterialized(profileKey, placementKey, postKey)) continue;
+        for (let j = 0; j < files.length; j++) {
+          const f = files[j];
+          if (!f || !f.url) continue;
+          const fileIndex = (typeof f.g === "number") ? f.g : ((typeof f.local === "number") ? f.local : (j + 1));
+          const baseRel = formatOnlineFilename(post, { path: f.url }, fileIndex, postIndex, userLabel);
+          const parts = String(baseRel || "").split("/").filter(Boolean);
+          if (!parts.length) continue;
+          const userFolder = parts[0] || "";
+          const postFolder = parts[1] || "";
+          const fileName = parts[parts.length - 1];
+          const baseParts = basePath ? basePath.split("/").filter(Boolean) : [];
+          const pathParts = (mode === "posts")
+            ? baseParts.concat(postFolder ? [postFolder, fileName] : [fileName])
+            : baseParts.concat(userFolder ? [userFolder, postFolder, fileName] : [postFolder, fileName]);
+          const relPath = pathParts.filter(Boolean).join("/");
+          const name = fileName;
+          const dirPath = pathParts.slice(0, -1).join("/");
+          if (!isImageName(name) && !isVideoName(name)) continue;
+          const profilePath = mode === "profile"
+            ? (baseParts.concat(userFolder ? [userFolder] : []).filter(Boolean).join("/"))
+            : "";
+          const postPath = mode === "posts"
+            ? (baseParts.concat(postFolder ? [postFolder] : []).filter(Boolean).join("/"))
+            : (baseParts.concat(userFolder ? [userFolder, postFolder] : [postFolder]).filter(Boolean).join("/"));
+          if (profilePath) {
+            const pNode = ensureDirPath(profilePath);
+            if (pNode && !pNode.onlineMeta) {
+              pNode.onlineMeta = { kind: "profile", profileKey, profilePath, placementKey, mode, basePath };
+            }
+          }
+          if (postPath) {
+            const postNode = ensureDirPath(postPath);
+            if (postNode && !postNode.onlineMeta) {
+              postNode.onlineMeta = { kind: "post", profileKey, postKey, placementKey, mode, basePath };
+            }
+          }
+          const placementToken = String(hash32(placementKey));
+          const id = "online::" + placementToken + "::" + profileKey + "::" + String(post.id != null ? post.id : postIndex) + "::" + String(fileIndex) + "::" + String(hash32(f.url));
+          if (WS.fileById.has(id)) continue;
+
+          const extDot = name.lastIndexOf(".");
+          const ext = extDot >= 0 ? name.slice(extDot).toLowerCase() : "";
+          const rec = {
+            id,
+            file: null,
+            name,
+            relPath,
+            dirPath,
+            ext,
+            type: isVideoName(name) ? "video" : "image",
+            size: 0,
+            lastModified: 0,
+            url: f.url,
+            thumbUrl: null,
+            videoThumbUrl: null,
+            indices: {
+              postId: post.id != null ? post.id : null,
+              fileIndex,
+              postIndex
+            },
+            thumbMode: null,
+            videoThumbMode: null,
+            online: true,
+            onlineMeta: {
+              profileKey,
+              postKey,
+              fileUrl: String(f.url || ""),
+              placementKey,
+              mode,
+              basePath
+            }
+          };
+
+          WS.fileById.set(id, rec);
+          const dirNode = ensureDirPath(dirPath);
+          if (!dirNode.childrenFiles.includes(id)) dirNode.childrenFiles.push(id);
+          addedFiles++;
+        }
+      }
+
+      if (!addedFiles) return { ok: false, error: "no-files" };
+
+      entry.injectedPlacements.add(placementKey);
+      entry.userLabel = userLabel;
+      entry.fileCount = addedFiles;
+
+      if (applyPendingTagsToWorkspace()) {
+        WS.meta.dirty = true;
+      }
+
+      if (!silent) {
+        WS.view.randomSeed = computeWorkspaceSeed();
+        WS.view.randomCache = new Map();
+        metaComputeFingerprints();
+        WS.meta.dirty = true;
+        metaScheduleSave();
+
+        if (!WS.nav.dirNode) WS.nav.dirNode = WS.root;
+        rebuildDirectoriesEntries();
+        WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+        syncPreviewToSelection();
+        renderDirectoriesPane(true);
+        renderPreviewPane(true, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+      }
+
+      return { ok: true, files: addedFiles };
+    }
+
+    async function loadOnlineProfilesFromSiteLog(opts = {}) {
+      const render = opts.render !== false;
+      const handles = await ensureSiteLogHandles();
+      if (!handles || !handles.profilesDir) return 0;
+      const index = await siteLogLoadIndex();
+      if (!index || !index.profiles) return 0;
+      let injected = 0;
+
+      for (const profileKey of Object.keys(index.profiles)) {
+        const entry = index.profiles[profileKey];
+        if (!entry) continue;
+        const cached = ONLINE_PROFILE_CACHE.get(profileKey);
+        const versions = Array.isArray(entry.versions) ? entry.versions : [];
+        if (!versions.length) continue;
+        let version = null;
+        if (entry.latestId) {
+          version = versions.find(v => String(v.id) === String(entry.latestId)) || null;
+        }
+        if (!version) version = versions[versions.length - 1];
+        if (!version || !version.file) continue;
+
+        let doc = null;
+        try {
+          const fh = await handles.profilesDir.getFileHandle(String(version.file), { create: false });
+          doc = await metaLoadFsDoc(fh);
+        } catch {
+          doc = null;
+        }
+        if (!doc || !Array.isArray(doc.posts) || !doc.posts.length) continue;
+
+        let profile = (doc.profile && typeof doc.profile === "object") ? Object.assign({}, doc.profile) : {};
+        if (!profile.profileKey) profile.profileKey = profileKey;
+        if (!profile.sourceUrl) profile.sourceUrl = String(entry.url || "");
+        if (!profile.origin || !profile.service || !profile.userId) {
+          const parsed = parseOnlineProfileUrl(profile.sourceUrl || "");
+          if (parsed && parsed.ok) {
+            profile = Object.assign({}, parsed, profile);
+          }
+        }
+
+        ONLINE_PROFILE_CACHE.set(profileKey, {
+          profile,
+          posts: doc.posts,
+          fetchedAt: doc.fetchedAt || version.ts || Date.now(),
+          injected: false,
+          injectedPlacements: cached && cached.injectedPlacements ? cached.injectedPlacements : new Set()
+        });
+
+        const placements = Array.isArray(entry.placements) ? entry.placements : [];
+        if (placements.length) {
+          for (const pl of placements) {
+            if (!pl) continue;
+            const res = injectOnlineProfileIntoWorkspace(profileKey, {
+              silent: !render,
+              mode: pl.mode === "posts" ? "posts" : "profile",
+              basePath: pl.basePath || "",
+              placementId: pl.id
+            });
+            if (res && res.ok) injected++;
+          }
+        } else {
+          const res = injectOnlineProfileIntoWorkspace(profileKey, { silent: !render });
+          if (res && res.ok) injected++;
+        }
+      }
+
+      if (injected && render) {
+        WS.view.randomSeed = computeWorkspaceSeed();
+        WS.view.randomCache = new Map();
+        metaComputeFingerprints();
+        WS.meta.dirty = true;
+        metaScheduleSave();
+
+        if (!WS.nav.dirNode) WS.nav.dirNode = WS.root;
+        rebuildDirectoriesEntries();
+        WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+        syncPreviewToSelection();
+        renderDirectoriesPane(true);
+        renderPreviewPane(true, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+      }
+
+      return injected;
+    }
+
+    function removeOnlineProfileFromWorkspace(profileKey) {
+      if (!profileKey) return 0;
+      let removed = 0;
+      for (const [id, rec] of WS.fileById.entries()) {
+        if (!rec || !rec.online || !rec.onlineMeta) continue;
+        if (rec.onlineMeta.profileKey !== profileKey) continue;
+        const dirNode = WS.dirByPath.get(String(rec.dirPath || ""));
+        if (dirNode) {
+          dirNode.childrenFiles = (dirNode.childrenFiles || []).filter(fid => fid !== id);
+        }
+        WS.fileById.delete(id);
+        removed++;
+      }
+
+      const dirPaths = Array.from(WS.dirByPath.keys())
+        .filter(p => p && WS.dirByPath.get(p)?.onlineMeta?.profileKey === profileKey)
+        .sort((a, b) => b.length - a.length);
+      for (const p of dirPaths) {
+        const node = WS.dirByPath.get(p);
+        if (!node) continue;
+        if ((node.childrenFiles && node.childrenFiles.length) || (node.childrenDirs && node.childrenDirs.length)) continue;
+        const parent = node.parent;
+        if (parent) {
+          parent.childrenDirs = (parent.childrenDirs || []).filter(d => d !== node);
+        }
+        WS.dirByPath.delete(p);
+      }
+
+      return removed;
+    }
+
+    async function refreshOnlineProfile(profileKey) {
+      const entry = ONLINE_PROFILE_CACHE.get(profileKey);
+      if (!entry || !entry.profile) {
+        showStatusMessage("Profile not available.");
+        return false;
+      }
+      const profile = entry.profile;
+      showBusyOverlay("Refreshing profile...");
+      try {
+        const result = await fetchOnlineProfilePosts(profile.service, profile.userId, profile.origin, {});
+        appendOnlineApiResponses(result && Array.isArray(result.responses) ? result.responses : []);
+        const posts = result && Array.isArray(result.posts) ? result.posts : [];
+        if (!posts.length) {
+          if (result && result.error) {
+            const msg = result.error === "invalid_json"
+              ? "API returned non-JSON. Check Responses tab."
+              : (String(result.error).startsWith("http_") ? `API error (${String(result.error).slice(5)})` : "Network error.");
+            showStatusMessage(msg);
+          } else {
+            showStatusMessage("No posts found.");
+          }
+          return false;
+        }
+        const normalized = normalizeOnlinePosts(posts, { origin: profile.origin, dataRoot: profile.dataRoot });
+        await saveOnlineProfileVersion(profile, normalized, profile.sourceUrl || "");
+        removeOnlineProfileFromWorkspace(profileKey);
+        ONLINE_PROFILE_CACHE.set(profileKey, {
+          profile,
+          posts: normalized,
+          fetchedAt: Date.now(),
+          injected: false,
+          injectedPlacements: new Set()
+        });
+        const index = await siteLogLoadIndex();
+        const entry = index && index.profiles ? index.profiles[profileKey] : null;
+        const placements = entry && Array.isArray(entry.placements) ? entry.placements : [];
+        let okInjected = false;
+        if (placements.length) {
+          for (const pl of placements) {
+            if (!pl) continue;
+            const res = injectOnlineProfileIntoWorkspace(profileKey, {
+              mode: pl.mode === "posts" ? "posts" : "profile",
+              basePath: pl.basePath || "",
+              placementId: pl.id
+            });
+            if (res && res.ok) okInjected = true;
+          }
+        } else {
+          const injected = injectOnlineProfileIntoWorkspace(profileKey);
+          if (injected && injected.ok) okInjected = true;
+        }
+        if (!okInjected) {
+          showStatusMessage("Refresh failed.");
+          return false;
+        }
+        renderOnlineUi();
+        showStatusMessage("Profile refreshed.");
+        return true;
+      } catch {
+        showStatusMessage("Refresh failed.");
+        return false;
+      } finally {
+        hideBusyOverlay();
+      }
+    }
+
+    function buildOnlinePlacementFileSpecs(profileKey, profile, posts, placement) {
+      const out = [];
+      const mode = placement && placement.mode === "posts" ? "posts" : "profile";
+      const basePath = normalizeOnlineBasePath(placement && placement.basePath ? placement.basePath : "");
+      const baseParts = basePath ? basePath.split("/").filter(Boolean) : [];
+      const userLabel = deriveOnlineUserLabel(profile, posts);
+      for (let i = 0; i < posts.length; i++) {
+        const post = posts[i];
+        const postIndex = (typeof post.pgGlobalIndex === "number") ? post.pgGlobalIndex : (posts.length - i);
+        const files = Array.isArray(post.pgFiles) ? post.pgFiles : [];
+        const postKey = (post && post.id != null) ? String(post.id) : ("idx:" + String(postIndex || i + 1));
+        for (let j = 0; j < files.length; j++) {
+          const f = files[j];
+          if (!f || !f.url) continue;
+          const fileIndex = (typeof f.g === "number") ? f.g : ((typeof f.local === "number") ? f.local : (j + 1));
+          const baseRel = formatOnlineFilename(post, { path: f.url }, fileIndex, postIndex, userLabel);
+          const parts = String(baseRel || "").split("/").filter(Boolean);
+          if (!parts.length) continue;
+          const userFolder = parts[0] || "";
+          const postFolder = parts[1] || "";
+          const fallbackName = parts[parts.length - 1] || "";
+          if (!fallbackName) continue;
+          if (!isImageName(fallbackName) && !isVideoName(fallbackName)) continue;
+          const fileName = resolveOnlineOutputFileName(profileKey, String(f.url || ""), fallbackName);
+          const pathParts = (mode === "posts")
+            ? baseParts.concat(postFolder ? [postFolder, fileName] : [fileName])
+            : baseParts.concat(userFolder ? [userFolder, postFolder, fileName] : [postFolder, fileName]);
+          const relPath = pathParts.filter(Boolean).join("/");
+          const dirPath = pathParts.slice(0, -1).join("/");
+          out.push({
+            profileKey: String(profileKey || ""),
+            postKey,
+            url: String(f.url || ""),
+            name: fileName,
+            dirPath,
+            relPath
+          });
+        }
+      }
+      return out;
+    }
+
+    function resolveOnlineOutputFileName(profileKey, fileUrl, fallbackName) {
+      const rawFallback = String(fallbackName || "").trim();
+      const cleanFallback = sanitizeOnlineFileNameForDisk(rawFallback || "file");
+      const override = getOnlineFileRename(profileKey, fileUrl);
+      if (!override) return cleanFallback;
+      const ext = splitNameExt(cleanFallback).ext || "";
+      let candidate = String(override);
+      const parts = splitNameExt(candidate);
+      if (!parts.ext && ext) candidate = parts.base + ext;
+      return sanitizeOnlineFileNameForDisk(candidate);
+    }
+
+    async function replaceOnlineProfile(profileKey) {
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Replace requires a writable folder.");
+        return false;
+      }
+      const current = ONLINE_PROFILE_CACHE.get(profileKey);
+      if (!current || !current.profile) {
+        showStatusMessage("Profile not available.");
+        return false;
+      }
+      const profile = current.profile;
+      showBusyOverlay("Checking remote profile...");
+      try {
+        const result = await fetchOnlineProfilePosts(profile.service, profile.userId, profile.origin, {});
+        appendOnlineApiResponses(result && Array.isArray(result.responses) ? result.responses : []);
+        const posts = result && Array.isArray(result.posts) ? result.posts : [];
+        if (!posts.length) {
+          if (result && result.error) {
+            const msg = result.error === "invalid_json"
+              ? "API returned non-JSON. Check Responses tab."
+              : (String(result.error).startsWith("http_") ? `API error (${String(result.error).slice(5)})` : "Network error.");
+            showStatusMessage(msg);
+          } else {
+            showStatusMessage("No posts found.");
+          }
+          return false;
+        }
+
+        const normalized = normalizeOnlinePosts(posts, { origin: profile.origin, dataRoot: profile.dataRoot });
+        await saveOnlineProfileVersion(profile, normalized, profile.sourceUrl || "");
+
+        ONLINE_PROFILE_CACHE.set(profileKey, {
+          profile,
+          posts: normalized,
+          fetchedAt: Date.now(),
+          injected: false,
+          injectedPlacements: current.injectedPlacements ? new Set(current.injectedPlacements) : new Set()
+        });
+
+        const index = await siteLogLoadIndex();
+        const indexEntry = index && index.profiles ? index.profiles[profileKey] : null;
+        const placements = indexEntry && Array.isArray(indexEntry.placements) ? indexEntry.placements : [];
+        if (!placements.length) {
+          showStatusMessage("No profile placements found to replace.");
+          renderOnlineUi();
+          return false;
+        }
+
+        const expectedByPath = new Map();
+        for (const pl of placements) {
+          if (!pl) continue;
+          const specs = buildOnlinePlacementFileSpecs(profileKey, profile, normalized, pl);
+          for (const spec of specs) {
+            const key = String(spec.relPath || "").toLowerCase();
+            if (!key || expectedByPath.has(key)) continue;
+            expectedByPath.set(key, spec);
+          }
+        }
+        const expected = Array.from(expectedByPath.values());
+        if (!expected.length) {
+          showStatusMessage("No remote media found for replace.");
+          renderOnlineUi();
+          return false;
+        }
+
+        const checkedDirHandles = new Map();
+        const tryGetDirHandle = async (dirPath) => {
+          const key = String(dirPath || "");
+          if (checkedDirHandles.has(key)) return checkedDirHandles.get(key);
+          let handle = null;
+          try {
+            handle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, key);
+          } catch {
+            handle = null;
+          }
+          checkedDirHandles.set(key, handle);
+          return handle;
+        };
+
+        const missing = [];
+        for (let i = 0; i < expected.length; i++) {
+          const spec = expected[i];
+          if (busyLabel) busyLabel.textContent = `Checking files ${i + 1}/${expected.length}...`;
+          const dirHandle = await tryGetDirHandle(spec.dirPath);
+          if (!dirHandle) {
+            missing.push(spec);
+            continue;
+          }
+          let exists = false;
+          try {
+            await dirHandle.getFileHandle(spec.name, { create: false });
+            exists = true;
+          } catch {}
+          if (!exists) missing.push(spec);
+        }
+
+        if (!missing.length) {
+          showStatusMessage("Replace complete: no missing files.");
+          renderOnlineUi();
+          return true;
+        }
+
+        let restored = 0;
+        let failed = 0;
+        for (let i = 0; i < missing.length; i++) {
+          const spec = missing[i];
+          if (busyLabel) busyLabel.textContent = `Replacing missing files ${i + 1}/${missing.length}...`;
+          let dirHandle = null;
+          try {
+            dirHandle = await ensureDirectoryHandleForPath(WS.meta.fsRootHandle, spec.dirPath);
+          } catch {
+            failed++;
+            continue;
+          }
+          let alreadyExists = false;
+          try {
+            await dirHandle.getFileHandle(spec.name, { create: false });
+            alreadyExists = true;
+          } catch {}
+          if (alreadyExists) continue;
+
+          const payload = await fetchOnlineBinary(spec.url, profileKey);
+          if (!payload || !payload.ok || !payload.bytes || !payload.bytes.byteLength) {
+            failed++;
+            continue;
+          }
+          try {
+            const outFile = await dirHandle.getFileHandle(spec.name, { create: true });
+            const writable = await outFile.createWritable();
+            await writable.write(payload.bytes);
+            await writable.close();
+            restored++;
+          } catch {
+            failed++;
+          }
+        }
+
+        if (restored > 0) {
+          try {
+            await refreshWorkspaceFromRootHandle();
+          } catch {}
+        }
+        renderOnlineUi();
+        if (!restored && failed > 0) {
+          showStatusMessage(`Replace failed: ${failed} file${failed === 1 ? "" : "s"} could not be restored.`);
+          return false;
+        }
+        if (failed > 0) {
+          showStatusMessage(`Replace complete: restored ${restored}, failed ${failed}.`);
+          return restored > 0;
+        }
+        showStatusMessage(`Replace complete: restored ${restored} missing file${restored === 1 ? "" : "s"}.`);
+        return true;
+      } catch {
+        showStatusMessage("Replace failed.");
+        return false;
+      } finally {
+        hideBusyOverlay();
+      }
+    }
+
+    async function renameOnlineProfile(profileKey, nextName) {
+      if (!profileKey) return false;
+      const clean = String(nextName || "").trim();
+      if (clean) ONLINE_RENAME_MAP.profiles[String(profileKey)] = clean;
+      else delete ONLINE_RENAME_MAP.profiles[String(profileKey)];
+      const saved = await siteLogSaveRenames();
+      if (!saved) showStatusMessage("Rename saved in memory only.");
+      return true;
+    }
+
+    async function renameOnlinePost(profileKey, postKey, nextName) {
+      if (!profileKey || !postKey) return false;
+      const clean = String(nextName || "").trim();
+      const bucket = ONLINE_RENAME_MAP.posts[String(profileKey)] || {};
+      if (clean) bucket[String(postKey)] = clean;
+      else delete bucket[String(postKey)];
+      if (Object.keys(bucket).length) ONLINE_RENAME_MAP.posts[String(profileKey)] = bucket;
+      else delete ONLINE_RENAME_MAP.posts[String(profileKey)];
+      const saved = await siteLogSaveRenames();
+      if (!saved) showStatusMessage("Rename saved in memory only.");
+      return true;
+    }
+
+    async function renameOnlineFile(profileKey, fileUrl, nextName) {
+      if (!profileKey || !fileUrl) return false;
+      const clean = String(nextName || "").trim();
+      const bucket = ONLINE_RENAME_MAP.files[String(profileKey)] || {};
+      if (clean) bucket[String(fileUrl)] = clean;
+      else delete bucket[String(fileUrl)];
+      if (Object.keys(bucket).length) ONLINE_RENAME_MAP.files[String(profileKey)] = bucket;
+      else delete ONLINE_RENAME_MAP.files[String(profileKey)];
+      const saved = await siteLogSaveRenames();
+      if (!saved) showStatusMessage("Rename saved in memory only.");
+      return true;
+    }
+
+    async function deleteOnlineProfile(profileKey) {
+      const key = String(profileKey || "");
+      if (!key) return false;
+      showBusyOverlay("Deleting profile...");
+      try {
+        removeOnlineProfileFromWorkspace(key);
+        ONLINE_PROFILE_CACHE.delete(key);
+        clearOnlineMaterializedProfile(key);
+        delete ONLINE_RENAME_MAP.profiles[key];
+        delete ONLINE_RENAME_MAP.posts[key];
+        delete ONLINE_RENAME_MAP.files[key];
+        await siteLogDeleteProfile(key);
+        await siteLogSaveRenames();
+        WS.view.randomSeed = computeWorkspaceSeed();
+        WS.view.randomCache = new Map();
+        metaComputeFingerprints();
+        WS.meta.dirty = true;
+        metaScheduleSave();
+        rebuildDirectoriesEntries();
+        WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+        syncPreviewToSelection();
+        renderDirectoriesPane(true);
+        renderPreviewPane(true, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+        renderOnlineUi();
+        showStatusMessage("Profile deleted.");
+        return true;
+      } catch {
+        showStatusMessage("Delete failed.");
+        return false;
+      } finally {
+        hideBusyOverlay();
+      }
+    }
+
+    function formatOnlineDownloadBytes(bytes) {
+      const n = Number(bytes);
+      if (!Number.isFinite(n) || n <= 0) return "0 B";
+      if (n < 1024) return `${Math.round(n)} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+      return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    }
+
+    function onlineDownloadPercent(job) {
+      if (!job) return 0;
+      const total = Number(job.totalFiles || 0);
+      const completed = Number(job.completedFiles || 0);
+      if (!total) return 0;
+      return Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+    }
+
+    function getOnlineDownloadJob(path) {
+      const key = String(path || "");
+      if (!key) return null;
+      return ONLINE_DOWNLOAD_JOBS.get(key) || null;
+    }
+
+    function getOnlineDownloadJobForDir(node) {
+      if (!node || !node.onlineMeta) return null;
+      return getOnlineDownloadJob(String(node.path || ""));
+    }
+
+    function startOnlineDownloadJob(path, totalFiles) {
+      const key = String(path || "");
+      if (!key) return null;
+      const job = {
+        path: key,
+        state: "running",
+        totalFiles: Math.max(0, Number(totalFiles || 0)),
+        completedFiles: 0,
+        failedFiles: 0,
+        totalBytes: 0,
+        downloadedBytes: 0,
+        currentFile: "",
+        startedAt: Date.now(),
+        finishedAt: 0,
+        error: ""
+      };
+      ONLINE_DOWNLOAD_JOBS.set(key, job);
+      scheduleOnlineDownloadUiRefresh();
+      return job;
+    }
+
+    function updateOnlineDownloadJob(job, patch = {}) {
+      if (!job) return;
+      Object.assign(job, patch || {});
+      scheduleOnlineDownloadUiRefresh();
+    }
+
+    function finishOnlineDownloadJob(job, state, error) {
+      if (!job) return;
+      job.state = String(state || "done");
+      job.finishedAt = Date.now();
+      if (error) job.error = String(error);
+      scheduleOnlineDownloadUiRefresh();
+      setTimeout(() => {
+        const cur = ONLINE_DOWNLOAD_JOBS.get(job.path);
+        if (cur !== job) return;
+        if (cur.state === "running") return;
+        ONLINE_DOWNLOAD_JOBS.delete(job.path);
+        scheduleOnlineDownloadUiRefresh();
+      }, 8000);
+    }
+
+    function buildOnlineDownloadMetaHtml(node) {
+      const job = getOnlineDownloadJobForDir(node);
+      if (!job) return "";
+      const pct = onlineDownloadPercent(job);
+      const total = Number(job.totalFiles || 0);
+      const done = Number(job.completedFiles || 0);
+      const failed = Number(job.failedFiles || 0);
+      const bytesPart = Number(job.downloadedBytes || 0) > 0
+        ? ` • ${formatOnlineDownloadBytes(job.downloadedBytes)}`
+        : "";
+      const status = job.state === "running"
+        ? `Downloading ${done}/${total}${failed ? ` • ${failed} failed` : ""}${bytesPart}`
+        : (job.state === "done"
+          ? `Downloaded ${done}/${total}${bytesPart}`
+          : (job.state === "partial"
+            ? `Partial ${done}/${total} • ${failed} failed${bytesPart}`
+            : `Failed${job.error ? ` • ${job.error}` : ""}`));
+      return `
+        <div class="onlineDlMeta" title="${escapeHtml(status)}">
+          <div class="onlineDlBar"><div class="onlineDlBarFill" style="width:${pct}%"></div></div>
+          <div class="onlineDlText">${escapeHtml(status)} • ${pct}%</div>
+        </div>
+      `;
+    }
+
+    function sanitizeOnlineFileNameForDisk(name) {
+      let out = String(name || "").trim();
+      out = out.replace(/[\x00-\x1F\x7F]+/g, "_");
+      out = out.replace(/[\/\\:*?"<>|]+/g, "_");
+      out = out.replace(/\s+/g, " ").trim();
+      if (!out || out === "." || out === "..") out = "file";
+      return out;
+    }
+
+    function makeOnlineDownloadFileName(rec, fallbackIndex) {
+      const meta = rec && rec.onlineMeta ? rec.onlineMeta : null;
+      const original = String(rec?.name || "");
+      const originalParts = splitNameExt(original);
+      const originalExt = String(originalParts.ext || "");
+      const override = meta ? getOnlineFileRename(meta.profileKey, meta.fileUrl) : null;
+      let candidate = "";
+      if (override) {
+        candidate = String(override);
+        const p = splitNameExt(candidate);
+        if (!p.ext && originalExt) candidate = p.base + originalExt;
+      } else if (original) {
+        candidate = original;
+      } else {
+        let fromUrl = "";
+        try {
+          const u = new URL(String(rec?.url || ""));
+          fromUrl = decodeURIComponent(String(u.pathname || "").split("/").pop() || "");
+        } catch {}
+        candidate = fromUrl || `file_${Number(fallbackIndex || 0) + 1}`;
+      }
+      candidate = sanitizeOnlineFileNameForDisk(candidate);
+      return candidate;
+    }
+
+    function decodeBase64ToBytes(base64) {
+      const b64 = String(base64 || "");
+      if (!b64) return new Uint8Array(0);
+      const raw = atob(b64);
+      const out = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+      return out;
+    }
+
+    function getOnlineFetchReferrer(profileKey, url) {
+      const entry = ONLINE_PROFILE_CACHE.get(String(profileKey || ""));
+      const source = entry && entry.profile && entry.profile.sourceUrl ? String(entry.profile.sourceUrl) : "";
+      if (source) return source;
+      try {
+        const u = new URL(String(url || ""));
+        return `${u.origin}/`;
+      } catch {
+        return "";
+      }
+    }
+
+    async function fetchOnlineBinary(url, profileKey) {
+      const targetUrl = String(url || "");
+      if (!targetUrl) return { ok: false, status: 0, error: "invalid_url" };
+      const referrer = getOnlineFetchReferrer(profileKey, targetUrl);
+      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.downloadUrl === "function")
+        ? window.electronAPI
+        : null;
+      if (electronApi) {
+        const res = await electronApi.downloadUrl({
+          url: targetUrl,
+          headers: {
+            Accept: "*/*",
+            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": navigator.userAgent
+          },
+          referrer
+        });
+        if (!res || !res.ok) {
+          const status = res && Number.isFinite(res.status) ? Number(res.status) : 0;
+          const error = res && res.error ? String(res.error) : (status ? `http_${status}` : "network_error");
+          return { ok: false, status, error };
+        }
+        const bytes = decodeBase64ToBytes(res.data || "");
+        return {
+          ok: true,
+          bytes,
+          byteLength: Number(res.bytes || bytes.byteLength || 0),
+          contentLength: Number(res.contentLength || bytes.byteLength || 0),
+          contentType: String(res.contentType || "")
+        };
+      }
+
+      try {
+        const resp = await fetch(targetUrl, {
+          cache: "no-store",
+          headers: {
+            Accept: "*/*",
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          referrer: referrer || undefined,
+          referrerPolicy: "no-referrer-when-downgrade"
+        });
+        if (!resp || !resp.ok) {
+          return { ok: false, status: resp ? resp.status : 0, error: resp ? `http_${resp.status}` : "network_error" };
+        }
+        const buf = await resp.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        return {
+          ok: true,
+          bytes,
+          byteLength: bytes.byteLength,
+          contentLength: Number(resp.headers.get("content-length") || 0) || bytes.byteLength,
+          contentType: String(resp.headers.get("content-type") || "")
+        };
+      } catch {
+        return { ok: false, status: 0, error: "network_error" };
+      }
+    }
+
+    function collectOnlineRecordsForDirNode(dirNode) {
+      if (!dirNode || !dirNode.onlineMeta) return [];
+      const meta = dirNode.onlineMeta;
+      const includeChildren = meta.kind === "profile";
+      const ids = getOrderedFileIdsForDir(dirNode, includeChildren);
+      const out = [];
+      const seen = new Set();
+      for (const id of ids) {
+        const key = String(id || "");
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const rec = WS.fileById.get(key);
+        if (!rec || !rec.online || !rec.onlineMeta || !rec.url) continue;
+        if (String(rec.onlineMeta.profileKey || "") !== String(meta.profileKey || "")) continue;
+        if (meta.placementKey && String(rec.onlineMeta.placementKey || "") !== String(meta.placementKey || "")) continue;
+        if (meta.kind === "post" && String(rec.onlineMeta.postKey || "") !== String(meta.postKey || "")) continue;
+        out.push(rec);
+      }
+      return out;
+    }
+
+    function onlinePlacementKeyFromNode(dirNode) {
+      const meta = dirNode && dirNode.onlineMeta ? dirNode.onlineMeta : null;
+      if (!meta) return "";
+      if (meta.placementKey) return String(meta.placementKey);
+      return makeOnlinePlacementId(meta.profileKey, meta.mode || "profile", meta.basePath || "");
+    }
+
+    async function markOnlineNodeMaterialized(dirNode) {
+      if (!dirNode || !dirNode.onlineMeta) return false;
+      const meta = dirNode.onlineMeta;
+      const profileKey = String(meta.profileKey || "");
+      const placementKey = onlinePlacementKeyFromNode(dirNode);
+      if (!profileKey || !placementKey) return false;
+      let changed = false;
+      if (meta.kind === "profile") {
+        changed = markOnlinePlacementMaterialized(profileKey, placementKey) || changed;
+      } else if (meta.kind === "post") {
+        const postKey = String(meta.postKey || "");
+        if (postKey) changed = markOnlinePostMaterialized(profileKey, placementKey, postKey) || changed;
+      }
+      if (changed) await siteLogSaveRenames();
+      return changed;
+    }
+
+    async function materializeOnlineFolderNode(dirNode, opts = {}) {
+      const meta = dirNode && dirNode.onlineMeta ? dirNode.onlineMeta : null;
+      if (!meta || (meta.kind !== "profile" && meta.kind !== "post")) {
+        if (!opts.silentStatus) showStatusMessage("Not an online folder.");
+        return { ok: false, error: "invalid_online_folder" };
+      }
+      if (!WS.meta.fsRootHandle) {
+        if (!opts.silentStatus) showStatusMessage("Downloading requires a writable folder.");
+        return { ok: false, error: "no_fs_root" };
+      }
+      const dirPath = String(dirNode.path || "");
+      if (!dirPath) {
+        if (!opts.silentStatus) showStatusMessage("Online folder path is invalid.");
+        return { ok: false, error: "invalid_path" };
+      }
+      const activeJob = getOnlineDownloadJob(dirPath);
+      if (activeJob && activeJob.state === "running") {
+        if (!opts.silentStatus) showStatusMessage("This folder is already downloading.");
+        return { ok: false, error: "already_running" };
+      }
+      const records = collectOnlineRecordsForDirNode(dirNode);
+      if (!records.length) {
+        if (!opts.silentStatus) showStatusMessage("No online media found in this folder.");
+        return { ok: false, error: "no_files" };
+      }
+      const job = startOnlineDownloadJob(dirPath, records.length);
+      if (!job) {
+        if (!opts.silentStatus) showStatusMessage("Could not start download job.");
+        return { ok: false, error: "job_start_failed" };
+      }
+
+      let completed = 0;
+      let failed = 0;
+      let bytesDone = 0;
+      let bytesExpected = 0;
+      const usedNamesByDir = new Map();
+      const targetHandleCache = new Map();
+
+      const resolveTargetDirPathForRecord = (rec) => {
+        if (!rec) return dirPath;
+        if (meta.kind !== "profile") return dirPath;
+        const recDir = String(rec.dirPath || "");
+        if (!recDir || recDir === dirPath) return dirPath;
+        if (recDir.startsWith(dirPath + "/")) return recDir;
+        return dirPath;
+      };
+
+      const getTargetDirHandle = async (targetDirPath) => {
+        const key = String(targetDirPath || dirPath);
+        if (targetHandleCache.has(key)) return targetHandleCache.get(key);
+        const handle = await ensureDirectoryHandleForPath(WS.meta.fsRootHandle, key);
+        targetHandleCache.set(key, handle);
+        return handle;
+      };
+
+      const getDirNameSet = (targetDirPath) => {
+        const key = String(targetDirPath || dirPath);
+        if (!usedNamesByDir.has(key)) usedNamesByDir.set(key, new Set());
+        return usedNamesByDir.get(key);
+      };
+
+      try {
+        await getTargetDirHandle(dirPath);
+        for (let i = 0; i < records.length; i++) {
+          const rec = records[i];
+          const metaInfo = rec && rec.onlineMeta ? rec.onlineMeta : null;
+          if (!rec || !rec.url || !metaInfo) {
+            failed++;
+            updateOnlineDownloadJob(job, { failedFiles: failed, completedFiles: completed });
+            continue;
+          }
+
+          const targetDirPath = resolveTargetDirPathForRecord(rec);
+          const targetHandle = await getTargetDirHandle(targetDirPath);
+          const dirNameSet = getDirNameSet(targetDirPath);
+
+          const desired = makeOnlineDownloadFileName(rec, i);
+          let targetName = desired;
+          if (dirNameSet.has(targetName) || await entryExistsInDir(targetHandle, targetName)) {
+            targetName = await uniqueDestNameInDir(targetHandle, targetName);
+          }
+          dirNameSet.add(targetName);
+
+          const shownPath = (targetDirPath && targetDirPath !== dirPath)
+            ? `${targetDirPath.split("/").pop() || targetDirPath}/${targetName}`
+            : targetName;
+          updateOnlineDownloadJob(job, { currentFile: shownPath, completedFiles: completed, failedFiles: failed });
+          const payload = await fetchOnlineBinary(rec.url, metaInfo.profileKey);
+          if (!payload || !payload.ok || !payload.bytes || !payload.bytes.byteLength) {
+            failed++;
+            updateOnlineDownloadJob(job, {
+              failedFiles: failed,
+              completedFiles: completed,
+              error: payload && payload.error ? String(payload.error) : "download_failed"
+            });
+            continue;
+          }
+
+          const expected = Number(payload.contentLength || payload.byteLength || payload.bytes.byteLength || 0);
+          bytesExpected += expected;
+          const got = Number(payload.byteLength || payload.bytes.byteLength || 0);
+
+          try {
+            const outFile = await targetHandle.getFileHandle(targetName, { create: true });
+            const writable = await outFile.createWritable();
+            await writable.write(payload.bytes);
+            await writable.close();
+            completed++;
+            bytesDone += got;
+          } catch {
+            failed++;
+          }
+
+          updateOnlineDownloadJob(job, {
+            completedFiles: completed,
+            failedFiles: failed,
+            downloadedBytes: bytesDone,
+            totalBytes: bytesExpected
+          });
+        }
+      } catch (err) {
+        const msg = err && err.message ? String(err.message) : "materialize_failed";
+        finishOnlineDownloadJob(job, "error", msg);
+        if (!opts.silentStatus) showStatusMessage("Download failed.");
+        return { ok: false, error: msg, completed, failed, total: records.length };
+      }
+
+      const allOk = completed === records.length && failed === 0;
+      if (!allOk) {
+        const state = completed > 0 ? "partial" : "error";
+        finishOnlineDownloadJob(job, state, failed ? `${failed} failed` : "download_failed");
+        if (!opts.silentStatus) {
+          if (completed > 0) showStatusMessage(`Download partial: ${completed}/${records.length} files completed.`);
+          else showStatusMessage("Download failed.");
+        }
+        return { ok: false, partial: completed > 0, completed, failed, total: records.length };
+      }
+
+      await markOnlineNodeMaterialized(dirNode);
+      finishOnlineDownloadJob(job, "done", "");
+
+      if (!opts.deferRefresh) {
+        try {
+          await refreshWorkspaceFromRootHandle();
+        } catch {}
+      }
+
+      if (!opts.silentStatus) {
+        showStatusMessage(`Downloaded ${completed} file${completed === 1 ? "" : "s"} in place.`);
+      }
+      return { ok: true, completed, failed: 0, total: records.length };
+    }
+
+    function dedupeOnlineMaterializeNodes(nodes) {
+      const src = Array.isArray(nodes) ? nodes.filter(n => n && n.onlineMeta && (n.onlineMeta.kind === "profile" || n.onlineMeta.kind === "post")) : [];
+      src.sort((a, b) => String(a.path || "").length - String(b.path || "").length);
+      const out = [];
+      const seen = new Set();
+      for (const node of src) {
+        const path = String(node.path || "");
+        if (!path || seen.has(path)) continue;
+        const hasAncestorProfile = out.some(prev => {
+          const prevPath = String(prev.path || "");
+          if (!prevPath) return false;
+          if (!(path === prevPath || path.startsWith(prevPath + "/"))) return false;
+          return prev.onlineMeta && prev.onlineMeta.kind === "profile";
+        });
+        if (hasAncestorProfile) continue;
+        seen.add(path);
+        out.push(node);
+      }
+      return out;
+    }
+
+    async function materializeOnlineFolderSelection(nodes) {
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Downloading requires a writable folder.");
+        return false;
+      }
+      const targets = dedupeOnlineMaterializeNodes(nodes);
+      if (!targets.length) {
+        showStatusMessage("No online folders selected.");
+        return false;
+      }
+
+      let successCount = 0;
+      let partialCount = 0;
+      let failCount = 0;
+      for (let i = 0; i < targets.length; i++) {
+        const node = targets[i];
+        const label = displayPath(node.path || node.name || "folder");
+        showStatusMessage(`Downloading ${i + 1}/${targets.length}: ${label}`);
+        const res = await materializeOnlineFolderNode(node, { deferRefresh: true, silentStatus: true });
+        if (res && res.ok) successCount++;
+        else if (res && res.partial) partialCount++;
+        else failCount++;
+      }
+
+      if (successCount > 0) {
+        try {
+          await refreshWorkspaceFromRootHandle();
+        } catch {}
+      }
+
+      if (successCount && !partialCount && !failCount) {
+        showStatusMessage(`Downloaded ${successCount} online folder${successCount === 1 ? "" : "s"} in place.`);
+      } else if (successCount || partialCount) {
+        showStatusMessage(`Downloads complete: ${successCount} full, ${partialCount} partial, ${failCount} failed.`);
+      } else {
+        showStatusMessage("All selected online folder downloads failed.");
+      }
+      return successCount > 0;
+    }
+
     function clampNumber(value, min, max, fallback) {
       const n = typeof value === "number" ? value : parseFloat(value);
       if (!Number.isFinite(n)) return fallback;
@@ -188,6 +2103,8 @@
         showPreviewFileName: true,
         previewThumbFiltersEnabled: false,
         previewThumbFit: "cover",
+        onlineLoadMode: "as-needed",
+        onlineFeaturesEnabled: true,
         hideOptionDescriptions: false,
         hideKeybindDescriptions: false,
         randomActionMode: "firstFileJump"
@@ -224,6 +2141,7 @@
         folderScoreDisplay: (src.folderScoreDisplay === "show" || src.folderScoreDisplay === "no-arrows" || src.folderScoreDisplay === "hidden") ? src.folderScoreDisplay : ((typeof src.showFolderScores === "boolean") ? (src.showFolderScores ? "show" : "hidden") : d.folderScoreDisplay),
         previewMode: (src.previewMode === "grid" || src.previewMode === "expanded") ? src.previewMode : d.previewMode,
         previewThumbFit: (src.previewThumbFit === "contain" || src.previewThumbFit === "cover") ? src.previewThumbFit : d.previewThumbFit,
+        onlineLoadMode: (src.onlineLoadMode === "preload" || src.onlineLoadMode === "as-needed") ? src.onlineLoadMode : d.onlineLoadMode,
         videoSkipStep: (src.videoSkipStep === "3" || src.videoSkipStep === "5" || src.videoSkipStep === "10" || src.videoSkipStep === "30") ? src.videoSkipStep : d.videoSkipStep,
         preloadNextMode: (src.preloadNextMode === "off" || src.preloadNextMode === "on" || src.preloadNextMode === "ultra") ? src.preloadNextMode : d.preloadNextMode,
         videoEndBehavior: (src.videoEndBehavior === "loop" || src.videoEndBehavior === "next" || src.videoEndBehavior === "stop") ? src.videoEndBehavior : d.videoEndBehavior,
@@ -245,6 +2163,7 @@
         showPreviewFolderItemCount: (typeof src.showPreviewFolderItemCount === "boolean") ? src.showPreviewFolderItemCount : d.showPreviewFolderItemCount,
         showPreviewFileName: (typeof src.showPreviewFileName === "boolean") ? src.showPreviewFileName : d.showPreviewFileName,
         previewThumbFiltersEnabled: (typeof src.previewThumbFiltersEnabled === "boolean") ? src.previewThumbFiltersEnabled : d.previewThumbFiltersEnabled,
+        onlineFeaturesEnabled: (typeof src.onlineFeaturesEnabled === "boolean") ? src.onlineFeaturesEnabled : d.onlineFeaturesEnabled,
         hideOptionDescriptions: (typeof src.hideOptionDescriptions === "boolean") ? src.hideOptionDescriptions : d.hideOptionDescriptions,
         hideKeybindDescriptions: (typeof src.hideKeybindDescriptions === "boolean") ? src.hideKeybindDescriptions : d.hideKeybindDescriptions,
         randomActionMode: (src.randomActionMode === "firstFileJump" || src.randomActionMode === "randomFileSort") ? src.randomActionMode : d.randomActionMode,
@@ -1166,6 +3085,48 @@
       return (mode && mode !== "off" && !!MEDIA_FILTER_CONFIGS[mode]) || crtOverlayEnabled();
     }
 
+    function onlineFeaturesEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !(opt && opt.onlineFeaturesEnabled === false);
+    }
+
+    function isOnlineFolderNode(node) {
+      const kind = node?.onlineMeta?.kind;
+      return kind === "profile" || kind === "post";
+    }
+
+    function filterOnlineDirs(list) {
+      if (onlineFeaturesEnabled()) return list;
+      return (list || []).filter(d => !isOnlineFolderNode(d));
+    }
+
+    function ensureOnlineVisibilityState() {
+      if (onlineFeaturesEnabled()) return;
+      if (WS.view.tagFolderActiveMode) {
+        WS.view.tagFolderActiveMode = "";
+        WS.view.tagFolderActiveTag = "";
+        WS.view.tagFolderOriginPath = "";
+      }
+      if (WS.nav && WS.nav.dirNode && isOnlineFolderNode(WS.nav.dirNode)) {
+        WS.nav.dirNode = WS.nav.dirNode.parent || WS.root;
+      }
+    }
+
+    function applyOnlineFeatureVisibility() {
+      const enabled = onlineFeaturesEnabled();
+      if (onlineProfileRow) onlineProfileRow.style.display = enabled ? "" : "none";
+      const onlineTabBtn = menuTabs ? menuTabs.querySelector('.menuTabBtn[data-tab="online"]') : null;
+      const responsesTabBtn = menuTabs ? menuTabs.querySelector('.menuTabBtn[data-tab="responses"]') : null;
+      if (onlineTabBtn) onlineTabBtn.style.display = enabled ? "" : "none";
+      if (responsesTabBtn) responsesTabBtn.style.display = enabled ? "" : "none";
+      if (menuTabOnline) menuTabOnline.style.display = enabled ? "" : "none";
+      if (menuTabResponses) menuTabResponses.style.display = enabled ? "" : "none";
+      if (!enabled) {
+        if (MENU_ACTIVE_TAB === "online" || MENU_ACTIVE_TAB === "responses") setMenuTab("options");
+        if (MENU_LAST_TAB === "online" || MENU_LAST_TAB === "responses") MENU_LAST_TAB = "options";
+      }
+    }
+
     function syncMediaFilterSurface(surfaceName, mediaEl, container, type) {
       if (!mediaEl || !container) return;
       if (!mediaFilterEnabled()) {
@@ -1202,6 +3163,7 @@
         applyDisplaySizesFromOptions();
         applyDescriptionVisibilityFromOptions();
         applyPaneDividerFromOptions();
+        applyOnlineFeatureVisibility();
         syncButtons();
         return;
       }
@@ -1215,6 +3177,7 @@
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
+      ensureOnlineVisibilityState();
       applyDescriptionVisibilityFromOptions();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -1223,6 +3186,7 @@
       renderPreviewPane(true, true);
       applyPaneDividerFromOptions();
       applyMediaFilterFromOptions();
+      applyOnlineFeatureVisibility();
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
@@ -1464,12 +3428,17 @@
       meta: {
         dirScores: new Map(),
         dirTags: new Map(),
+        pendingTagsByPath: new Map(),
         dirFingerprints: new Map(),
         dirSortMode: "name",
         storageMode: "local",
         storageKey: "",
         fsRootHandle: null,
         fsSysDirHandle: null,
+        fsSiteLogDirHandle: null,
+        fsSiteLogProfilesDirHandle: null,
+        fsSiteLogIndexHandle: null,
+        fsSiteLogRenamesHandle: null,
         fsScoresFileHandle: null,
         fsTagsFileHandle: null,
         fsOptionsFileHandle: null,
@@ -1592,12 +3561,17 @@
 
       WS.meta.dirScores.clear();
       WS.meta.dirTags.clear();
+      WS.meta.pendingTagsByPath.clear();
       WS.meta.dirFingerprints.clear();
       WS.meta.dirSortMode = "name";
       WS.meta.storageMode = "local";
       WS.meta.storageKey = "";
       WS.meta.fsRootHandle = null;
       WS.meta.fsSysDirHandle = null;
+      WS.meta.fsSiteLogDirHandle = null;
+      WS.meta.fsSiteLogProfilesDirHandle = null;
+      WS.meta.fsSiteLogIndexHandle = null;
+      WS.meta.fsSiteLogRenamesHandle = null;
       WS.meta.fsScoresFileHandle = null;
       WS.meta.fsTagsFileHandle = null;
       WS.meta.fsOptionsFileHandle = null;
@@ -1670,6 +3644,13 @@
       WS.imageThumbQueue = [];
       WS.imageThumbActive = 0;
       PRELOAD_CACHE = new Map();
+      ONLINE_RENAME_MAP.profiles = {};
+      ONLINE_RENAME_MAP.posts = {};
+      ONLINE_RENAME_MAP.files = {};
+      resetOnlineMaterializedMap(null);
+      ONLINE_DOWNLOAD_JOBS.clear();
+      ONLINE_PRELOAD_CACHE.clear();
+      ONLINE_PROFILE_CACHE.clear();
 
       renderDirectoriesPane();
       renderPreviewPane(true);
@@ -1694,6 +3675,11 @@
     const refreshBtn = $("refreshBtn");
     const openWritableBtn = $("openWritableBtn");
     const titleLabel = $("titleLabel");
+    const onlineProfileRow = $("onlineProfileRow");
+    const onlineProfileInput = $("onlineProfileInput");
+    const onlineProfileAddProfileBtn = $("onlineProfileAddProfileBtn");
+    const onlineProfileAddPostsBtn = $("onlineProfileAddPostsBtn");
+    const onlineProfileStatus = $("onlineProfileStatus");
 
     // Menu Overlay
     const menuOverlay = $("menuOverlay");
@@ -1702,6 +3688,8 @@
     const menuTabs = $("menuTabs");
     const menuCloseBtn = $("menuCloseBtn");
     const menuTabOptions = $("menuTabOptions");
+    const menuTabOnline = $("menuTabOnline");
+    const menuTabResponses = $("menuTabResponses");
     const menuTabHelp = $("menuTabHelp");
     const menuTabKeybinds = $("menuTabKeybinds");
 
@@ -1709,6 +3697,8 @@
     const helpHoldOverlay = $("helpHoldOverlay");
 
     const optionsBodyEl = $("optionsBody");
+    const onlineBodyEl = $("onlineBody");
+    const responsesBodyEl = $("responsesBody");
     const optionsResetBtn = $("optionsResetBtn");
     const optionsDoneBtn = $("optionsDoneBtn");
     const optionsStatusLabel = $("optionsStatusLabel");
@@ -1977,7 +3967,7 @@
     let MENU_ACTIVE_TAB = "options";
     let MENU_LAST_TAB = "options";
     let MENU_HAS_OPENED = false;
-    const MENU_TAB_SCROLL = { options: 0, help: 0, keybinds: 0 };
+    const MENU_TAB_SCROLL = { options: 0, online: 0, responses: 0, help: 0, keybinds: 0 };
     let HELP_HOLD_ACTIVE = false;
     let PROPERTIES_OPEN = false;
 
@@ -2202,15 +4192,19 @@
       return HELP_MD_CACHE;
     }
 
-    const MENU_TAB_IDS = ["options", "help", "keybinds"];
+    const MENU_TAB_IDS = ["options", "online", "responses", "help", "keybinds"];
     const menuTabButtons = menuTabs ? Array.from(menuTabs.querySelectorAll(".menuTabBtn")) : [];
     const menuTabPanels = {
       options: menuTabOptions,
+      online: menuTabOnline,
+      responses: menuTabResponses,
       help: menuTabHelp,
       keybinds: menuTabKeybinds
     };
     const menuScrollTargets = {
       options: optionsBodyEl,
+      online: onlineBodyEl,
+      responses: responsesBodyEl,
       help: helpBodyEl,
       keybinds: keybindsBodyEl
     };
@@ -2250,8 +4244,252 @@
       restoreMenuTabScroll("keybinds");
     }
 
+    function renderOnlineUi() {
+      if (!onlineBodyEl) return;
+      onlineBodyEl.innerHTML = "";
+
+      const title = document.createElement("h1");
+      title.textContent = "Online";
+      onlineBodyEl.appendChild(title);
+
+      const optRow = document.createElement("div");
+      optRow.className = "optRow";
+      const optLeft = document.createElement("div");
+      optLeft.className = "optLeft";
+      const optTitle = document.createElement("div");
+      optTitle.className = "optTitle";
+      optTitle.textContent = "Media loading";
+      const optHint = document.createElement("div");
+      optHint.className = "optHint";
+      optHint.textContent = "Choose when online media begins loading.";
+      optLeft.appendChild(optTitle);
+      optLeft.appendChild(optHint);
+
+      const optRight = document.createElement("div");
+      const select = document.createElement("select");
+      select.className = "optSelect";
+      select.id = "onlineLoadModeSelect";
+      const optA = document.createElement("option");
+      optA.value = "as-needed";
+      optA.textContent = "As Needed";
+      const optB = document.createElement("option");
+      optB.value = "preload";
+      optB.textContent = "Preload All";
+      select.appendChild(optA);
+      select.appendChild(optB);
+      const curMode = onlineLoadMode();
+      select.value = curMode === "preload" ? "preload" : "as-needed";
+      select.addEventListener("change", () => {
+        const next = select.value === "preload" ? "preload" : "as-needed";
+        WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { onlineLoadMode: next }));
+        WS.meta.dirty = true;
+        metaScheduleSave();
+        showStatusMessage(`Online loading: ${next === "preload" ? "Preload All" : "As Needed"}`);
+      });
+      optRight.appendChild(select);
+
+      optRow.appendChild(optLeft);
+      optRow.appendChild(optRight);
+      onlineBodyEl.appendChild(optRow);
+
+      const listLabel = document.createElement("div");
+      listLabel.className = "label";
+      listLabel.style.margin = "10px 0 6px";
+      listLabel.textContent = "Profiles";
+      onlineBodyEl.appendChild(listLabel);
+
+      const keys = Array.from(ONLINE_PROFILE_CACHE.keys()).sort((a, b) => a.localeCompare(b));
+      if (!keys.length) {
+        const empty = document.createElement("div");
+        empty.className = "label";
+        empty.textContent = "No profiles loaded.";
+        onlineBodyEl.appendChild(empty);
+        restoreMenuTabScroll("online");
+        return;
+      }
+
+      for (const key of keys) {
+        const entry = ONLINE_PROFILE_CACHE.get(key);
+        if (!entry || !entry.profile) continue;
+        const profile = entry.profile;
+        const nameOverride = getOnlineProfileRename(key);
+        const display = nameOverride || deriveOnlineUserLabel(profile, entry.posts) || key;
+        const url = profile.sourceUrl
+          || (profile.origin && profile.service && profile.userId ? `${profile.origin}/${profile.service}/user/${profile.userId}` : "");
+        const row = document.createElement("div");
+        row.className = "onlineRow";
+
+        const left = document.createElement("div");
+        left.className = "onlineLeft";
+        const t = document.createElement("div");
+        t.className = "onlineTitle";
+        t.textContent = display || key;
+        const meta = document.createElement("div");
+        meta.className = "onlineMeta";
+        meta.textContent = url || key;
+        left.appendChild(t);
+        left.appendChild(meta);
+
+        const actions = document.createElement("div");
+        actions.className = "onlineActions";
+        const replaceBtn = document.createElement("button");
+        replaceBtn.type = "button";
+        replaceBtn.className = "miniBtn";
+        replaceBtn.textContent = "Replace";
+        replaceBtn.addEventListener("click", () => replaceOnlineProfile(key));
+        const refreshBtn = document.createElement("button");
+        refreshBtn.type = "button";
+        refreshBtn.className = "miniBtn";
+        refreshBtn.textContent = "Refresh";
+        refreshBtn.addEventListener("click", () => refreshOnlineProfile(key));
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "miniBtn";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.addEventListener("click", () => {
+          const confirmed = confirm("Delete this profile and all related folders?");
+          if (!confirmed) return;
+          deleteOnlineProfile(key);
+        });
+        actions.appendChild(replaceBtn);
+        actions.appendChild(refreshBtn);
+        actions.appendChild(deleteBtn);
+
+        row.appendChild(left);
+        row.appendChild(actions);
+        onlineBodyEl.appendChild(row);
+      }
+
+      restoreMenuTabScroll("online");
+    }
+
+    function ensureOnlineUi() {
+      renderOnlineUi();
+    }
+
+    function appendOnlineApiResponses(entries) {
+      if (!Array.isArray(entries) || !entries.length) return;
+      let changed = false;
+      for (const raw of entries) {
+        if (!raw || typeof raw !== "object") continue;
+        const fullText = (typeof raw.responseText === "string") ? raw.responseText : "";
+        const responseText = fullText.length > ONLINE_API_RESPONSE_BODY_LIMIT
+          ? fullText.slice(0, ONLINE_API_RESPONSE_BODY_LIMIT)
+          : fullText;
+        ONLINE_API_RESPONSE_LOG.push({
+          ts: (typeof raw.ts === "number") ? raw.ts : Date.now(),
+          source: raw.source ? String(raw.source) : "unknown",
+          url: raw.url ? String(raw.url) : "",
+          page: Number.isFinite(raw.page) ? raw.page : 0,
+          offset: Number.isFinite(raw.offset) ? raw.offset : 0,
+          status: Number.isFinite(raw.status) ? raw.status : 0,
+          ok: !!raw.ok,
+          error: raw.error ? String(raw.error) : "",
+          parseOk: raw.parseOk === true,
+          responseText,
+          responseBytes: Number.isFinite(raw.responseBytes) ? raw.responseBytes : fullText.length,
+          truncated: !!raw.truncated || fullText.length > ONLINE_API_RESPONSE_BODY_LIMIT
+        });
+        changed = true;
+      }
+      if (!changed) return;
+      while (ONLINE_API_RESPONSE_LOG.length > ONLINE_API_RESPONSE_LOG_LIMIT) ONLINE_API_RESPONSE_LOG.shift();
+      if (MENU_OPEN && MENU_ACTIVE_TAB === "responses") renderResponsesUi();
+    }
+
+    function formatOnlineResponseMeta(entry) {
+      const bits = [];
+      bits.push(new Date(entry.ts || Date.now()).toLocaleTimeString());
+      bits.push(entry.source || "unknown");
+      if (entry.page > 0) bits.push(`page ${entry.page}`);
+      bits.push(`offset ${Number.isFinite(entry.offset) ? entry.offset : 0}`);
+      if (entry.status > 0) bits.push(`HTTP ${entry.status}`);
+      else bits.push("No HTTP status");
+      bits.push(entry.parseOk ? "JSON" : "Non-JSON");
+      if (entry.error) bits.push(entry.error);
+      if (entry.truncated) bits.push(`truncated (${entry.responseBytes} chars)`);
+      return bits.join(" • ");
+    }
+
+    function renderResponsesUi() {
+      if (!responsesBodyEl) return;
+      const prevScroll = responsesBodyEl.scrollTop || 0;
+      responsesBodyEl.innerHTML = "";
+
+      const title = document.createElement("h1");
+      title.textContent = "Responses";
+      responsesBodyEl.appendChild(title);
+
+      const actions = document.createElement("div");
+      actions.className = "responseActions";
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "miniBtn";
+      clearBtn.textContent = "Clear log";
+      clearBtn.addEventListener("click", () => {
+        ONLINE_API_RESPONSE_LOG.length = 0;
+        renderResponsesUi();
+      });
+      actions.appendChild(clearBtn);
+      responsesBodyEl.appendChild(actions);
+
+      if (!ONLINE_API_RESPONSE_LOG.length) {
+        const empty = document.createElement("div");
+        empty.className = "label";
+        empty.textContent = "No API responses captured yet.";
+        responsesBodyEl.appendChild(empty);
+        restoreMenuTabScroll("responses");
+        return;
+      }
+
+      const list = document.createElement("div");
+      list.className = "responseLog";
+      for (let i = ONLINE_API_RESPONSE_LOG.length - 1; i >= 0; i--) {
+        const entry = ONLINE_API_RESPONSE_LOG[i];
+        const item = document.createElement("div");
+        item.className = "responseItem";
+
+        if (entry.url) {
+          const link = document.createElement("a");
+          link.className = "responseLink";
+          link.href = entry.url;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = entry.url;
+          item.appendChild(link);
+        } else {
+          const label = document.createElement("div");
+          label.className = "responseLink";
+          label.textContent = "Unknown URL";
+          item.appendChild(label);
+        }
+
+        const meta = document.createElement("div");
+        meta.className = "responseMeta";
+        meta.textContent = formatOnlineResponseMeta(entry);
+        item.appendChild(meta);
+
+        const pre = document.createElement("pre");
+        pre.className = "responsePreview";
+        pre.textContent = entry.responseText || "(empty response body)";
+        item.appendChild(pre);
+
+        list.appendChild(item);
+      }
+      responsesBodyEl.appendChild(list);
+      requestAnimationFrame(() => {
+        responsesBodyEl.scrollTop = prevScroll;
+      });
+    }
+
+    function ensureResponsesUi() {
+      renderResponsesUi();
+      restoreMenuTabScroll("responses");
+    }
+
     function setMenuTab(tabId) {
-      const next = MENU_TAB_IDS.includes(tabId) ? tabId : "options";
+      const nextCandidate = MENU_TAB_IDS.includes(tabId) ? tabId : "options";
+      const next = (!onlineFeaturesEnabled() && (nextCandidate === "online" || nextCandidate === "responses")) ? "options" : nextCandidate;
       if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
       MENU_ACTIVE_TAB = next;
       MENU_LAST_TAB = next;
@@ -2272,6 +4510,14 @@
 
       if (next === "help") {
         ensureHelpUi();
+        return;
+      }
+      if (next === "online") {
+        ensureOnlineUi();
+        return;
+      }
+      if (next === "responses") {
+        ensureResponsesUi();
         return;
       }
       if (next === "keybinds") {
@@ -2644,6 +4890,7 @@
 <h1>General</h1>
 ${makeSelectRow("Folder sort", "Sort folders by name or score.", "opt_dirSortMode", WS.meta.dirSortMode === "score" ? "score" : "name", dirSortModes)}
 ${makeSelectRow("Folder scores", "Choose how folder scores appear in lists + previews.", "opt_folderScoreDisplay", String(opt.folderScoreDisplay || "hidden"), folderScoreModes)}
+${makeCheckRow("Show online features", "Toggles the Online tab, URL bar, and online profile/post folders.", "opt_onlineFeaturesEnabled", opt.onlineFeaturesEnabled !== false)}
 ${makeCheckRow("Show folder item counts", "Show the number of items on folders in the directories pane.", "opt_showFolderItemCount", opt.showFolderItemCount !== false)}
 ${makeCheckRow("Show file type labels (directories)", "Show Image/Video labels for files in the directories pane.", "opt_showDirFileTypeLabel", opt.showDirFileTypeLabel !== false)}
 ${makeSelectRow("Folder behavior", "Sets how folders behave when browsing.", "opt_defaultFolderBehavior", String(opt.defaultFolderBehavior || "slide"), folderModes)}
@@ -2803,6 +5050,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       bindCheck("opt_showPreviewFolderItemCount", "showPreviewFolderItemCount", () => {
         renderPreviewPane(true, true);
       });
+      bindCheck("opt_onlineFeaturesEnabled", "onlineFeaturesEnabled");
       bindCheck("opt_hideOptionDescriptions", "hideOptionDescriptions", () => {
         applyDescriptionVisibilityFromOptions();
       });
@@ -3492,6 +5740,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (!tagByFp[k]) tagByFp[k] = tags.slice();
         }
       }
+      const pending = WS.meta && WS.meta.pendingTagsByPath ? WS.meta.pendingTagsByPath : null;
+      if (pending && pending.size) {
+        for (const [path, tags] of pending.entries()) {
+          const p = String(path || "");
+          if (!p || folders[p]) continue;
+          const tg = normalizeTagList(tags);
+          if (!tg.length) continue;
+          folders[p] = { fp: 0, tags: tg };
+        }
+      }
       return {
         schema: 1,
         updatedAt: Date.now(),
@@ -3587,6 +5845,28 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
     }
 
+    function stashPendingTagsFromLog(oldTagsByPath) {
+      if (!WS.meta) return;
+      WS.meta.pendingTagsByPath = new Map();
+      for (const [path, tags] of oldTagsByPath.entries()) {
+        if (!tags || !tags.length) continue;
+        WS.meta.pendingTagsByPath.set(String(path || ""), normalizeTagList(tags));
+      }
+    }
+
+    function applyPendingTagsToWorkspace() {
+      const pending = WS.meta && WS.meta.pendingTagsByPath;
+      if (!pending || !pending.size) return false;
+      let applied = false;
+      for (const [path, tags] of pending.entries()) {
+        if (!WS.dirByPath.has(path)) continue;
+        WS.meta.dirTags.set(path, normalizeTagList(tags));
+        pending.delete(path);
+        applied = true;
+      }
+      return applied;
+    }
+
     function metaApplyTagsLog(log) {
       if (!log || typeof log !== "object") return;
 
@@ -3616,10 +5896,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
 
+      stashPendingTagsFromLog(oldTagsByPath);
+
       WS.meta.dirTags.clear();
       for (const [path, node] of WS.dirByPath.entries()) {
         if (oldTagsByPath.has(path)) {
           WS.meta.dirTags.set(path, oldTagsByPath.get(path).slice());
+          if (WS.meta.pendingTagsByPath) WS.meta.pendingTagsByPath.delete(path);
           continue;
         }
         const fp = WS.meta.dirFingerprints.get(path) || 0;
@@ -3639,6 +5922,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyDisplaySizesFromOptions();
       applyDescriptionVisibilityFromOptions();
       applyPaneDividerFromOptions();
+      applyOnlineFeatureVisibility();
     }
 
     function metaApplyKeybindsLog(log) {
@@ -3663,6 +5947,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyDisplaySizesFromOptions();
       applyDescriptionVisibilityFromOptions();
       applyPaneDividerFromOptions();
+      applyOnlineFeatureVisibility();
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
       const oldByPath = new Map();
@@ -3699,6 +5984,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
 
+      stashPendingTagsFromLog(oldTagsByPath);
+
       const claimed = new Set();
       WS.meta.dirScores.clear();
 
@@ -3729,6 +6016,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       for (const [path, node] of WS.dirByPath.entries()) {
         if (oldTagsByPath.has(path)) {
           WS.meta.dirTags.set(path, oldTagsByPath.get(path).slice());
+          if (WS.meta.pendingTagsByPath) WS.meta.pendingTagsByPath.delete(path);
           continue;
         }
         const fp = WS.meta.dirFingerprints.get(path) || 0;
@@ -3799,6 +6087,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         WS.meta.fsKeybindsFileHandle = keybindsFile;
         WS.meta.fsLegacyFileHandle = legacyFile;
         WS.meta.storageMode = "fs";
+        await ensureSiteLogHandles();
         return true;
       } catch {
         return false;
@@ -3857,6 +6146,123 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (busyOverlay) busyOverlay.classList.remove("active");
     }
 
+    let onlineProfileLoading = false;
+    let ONLINE_PROFILE_STATUS_TIMER = null;
+
+    function setOnlineProfileStatus(text, type, autoHide = true) {
+      if (!onlineProfileStatus) return;
+      onlineProfileStatus.textContent = text || "—";
+      if (type === "error") onlineProfileStatus.style.color = "#b00020";
+      else if (type === "success") onlineProfileStatus.style.color = "#0a7d2b";
+      else onlineProfileStatus.style.color = "";
+      if (ONLINE_PROFILE_STATUS_TIMER) {
+        clearTimeout(ONLINE_PROFILE_STATUS_TIMER);
+        ONLINE_PROFILE_STATUS_TIMER = null;
+      }
+      if (autoHide && text && text !== "—" && text !== "Loading...") {
+        ONLINE_PROFILE_STATUS_TIMER = setTimeout(() => {
+          onlineProfileStatus.textContent = "—";
+          onlineProfileStatus.style.color = "";
+          ONLINE_PROFILE_STATUS_TIMER = null;
+        }, 2500);
+      }
+    }
+
+    async function handleAddOnlineProfile(mode) {
+      if (onlineProfileLoading) return;
+      if (!onlineProfileInput || !onlineProfileAddProfileBtn || !onlineProfileAddPostsBtn) return;
+      const api = (typeof window !== "undefined") ? window.LGOnline : null;
+      if (!api || typeof api.parseOnlineProfileUrl !== "function") {
+        setOnlineProfileStatus("Online adapter unavailable.", "error");
+        return;
+      }
+      const raw = onlineProfileInput.value || "";
+      const parsed = api.parseOnlineProfileUrl(raw);
+      if (!parsed || !parsed.ok) {
+        setOnlineProfileStatus("Invalid URL.", "error");
+        return;
+      }
+      parsed.sourceUrl = raw;
+      const existing = ONLINE_PROFILE_CACHE.get(parsed.profileKey);
+      const basePath = normalizeOnlineBasePath(WS.nav?.dirNode?.path || "");
+      const addMode = mode === "posts" ? "posts" : "profile";
+      const placementKey = makeOnlinePlacementId(parsed.profileKey, addMode, basePath);
+      if (existing && existing.injectedPlacements && existing.injectedPlacements.has(placementKey)) {
+        setOnlineProfileStatus("Profile already added here.", "error");
+        return;
+      }
+
+      onlineProfileLoading = true;
+      onlineProfileInput.disabled = true;
+      onlineProfileAddProfileBtn.disabled = true;
+      onlineProfileAddPostsBtn.disabled = true;
+      setOnlineProfileStatus("Loading...", "", false);
+      showBusyOverlay("Loading profile...");
+      try {
+        const progressCb = (page, count) => {
+          if (busyLabel) busyLabel.textContent = `Loading page ${page} (${count} posts)...`;
+          if (onlineProfileStatus) onlineProfileStatus.textContent = `Loading page ${page}...`;
+        };
+        const result = await api.fetchOnlineProfilePosts(parsed.service, parsed.userId, parsed.origin, { progressCb });
+        appendOnlineApiResponses(result && Array.isArray(result.responses) ? result.responses : []);
+        const posts = result && Array.isArray(result.posts) ? result.posts : [];
+        if (!posts || !posts.length) {
+          if (result && result.error) {
+            const msg = result.error === "invalid_json"
+              ? "API returned non-JSON. Check Responses tab."
+              : (result.error.startsWith("http_") ? `API error (${result.error.slice(5)})` : "Network error.");
+            setOnlineProfileStatus(msg, "error");
+          } else {
+            setOnlineProfileStatus("No posts found.", "error");
+          }
+          return;
+        }
+        const normalized = api.normalizeOnlinePosts(posts, { origin: parsed.origin, dataRoot: parsed.dataRoot });
+        const saveResult = await saveOnlineProfileVersion(parsed, normalized, raw);
+        const placementResult = await siteLogUpsertPlacement(parsed.profileKey, raw, {
+          id: placementKey,
+          mode: addMode,
+          basePath
+        });
+        const resolvedPlacementKey = placementResult && placementResult.placementId ? placementResult.placementId : placementKey;
+        clearOnlineMaterializedPlacement(parsed.profileKey, resolvedPlacementKey);
+        await siteLogSaveRenames();
+        ONLINE_PROFILE_CACHE.set(parsed.profileKey, {
+          profile: parsed,
+          posts: normalized,
+          fetchedAt: Date.now(),
+          injected: false,
+          injectedPlacements: existing && existing.injectedPlacements ? existing.injectedPlacements : new Set()
+        });
+        const injected = injectOnlineProfileIntoWorkspace(parsed.profileKey, {
+          mode: addMode,
+          basePath,
+          placementId: resolvedPlacementKey
+        });
+        if (injected.ok) {
+          const savedNote = saveResult && saveResult.saved ? "Saved log." : "Not saved.";
+          setOnlineProfileStatus(`Added ${injected.files} files. ${savedNote}`, injected && injected.ok && saveResult && saveResult.saved ? "success" : "");
+          onlineProfileInput.value = "";
+        } else if (injected.error === "already-added") {
+          setOnlineProfileStatus("Profile already added.", "error");
+        } else if (injected.error === "no-files") {
+          setOnlineProfileStatus("No media files found.", "error");
+        } else {
+          const savedNote = saveResult && saveResult.saved ? "Saved log." : "Not saved.";
+          setOnlineProfileStatus(`Loaded ${normalized.length} posts. ${savedNote}`, saveResult && saveResult.saved ? "success" : "");
+        }
+        renderOnlineUi();
+      } catch {
+        setOnlineProfileStatus("Failed to load profile.", "error");
+      } finally {
+        onlineProfileLoading = false;
+        if (onlineProfileInput) onlineProfileInput.disabled = false;
+        if (onlineProfileAddProfileBtn) onlineProfileAddProfileBtn.disabled = false;
+        if (onlineProfileAddPostsBtn) onlineProfileAddPostsBtn.disabled = false;
+        hideBusyOverlay();
+      }
+    }
+
     function metaInitForCurrentWorkspace() {
       metaComputeFingerprints();
 
@@ -3908,6 +6314,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           metaApplyFromLog(legacyLog);
         }
       }
+      await siteLogLoadRenames();
       WS.meta.dirty = true;
       metaScheduleSave();
       syncMetaButtons();
@@ -4089,6 +6496,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       } else {
         WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
         await metaInitForCurrentWorkspaceFs();
+        const injected = await loadOnlineProfilesFromSiteLog({ render: false });
+        if (injected) {
+          WS.view.randomSeed = computeWorkspaceSeed();
+          WS.view.randomCache = new Map();
+          WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
+          metaComputeFingerprints();
+          WS.meta.dirty = true;
+          metaScheduleSave();
+        }
       }
 
       WS.nav.dirNode = WS.root;
@@ -4226,6 +6642,28 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return cur;
     }
 
+    async function ensureDirectoryHandleForPath(rootHandle, path) {
+      const norm = String(path || "").replace(/^\/+|\/+$/g, "");
+      if (!norm) {
+        DIR_HANDLE_CACHE.set("", rootHandle);
+        return rootHandle;
+      }
+      if (DIR_HANDLE_CACHE.has(norm)) return DIR_HANDLE_CACHE.get(norm);
+      let cur = rootHandle;
+      let acc = "";
+      const parts = norm.split("/").filter(Boolean);
+      for (const part of parts) {
+        acc = acc ? (acc + "/" + part) : part;
+        if (DIR_HANDLE_CACHE.has(acc)) {
+          cur = DIR_HANDLE_CACHE.get(acc);
+          continue;
+        }
+        cur = await cur.getDirectoryHandle(part, { create: true });
+        DIR_HANDLE_CACHE.set(acc, cur);
+      }
+      return cur;
+    }
+
     function invalidateDirHandleCache(prefix) {
       const p = String(prefix || "");
       if (!p) {
@@ -4331,6 +6769,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function updateMetaPathsForRename(oldPrefix, newPrefix) {
       WS.meta.dirScores = remapPathMapKeys(WS.meta.dirScores, oldPrefix, newPrefix);
       WS.meta.dirTags = remapPathMapKeys(WS.meta.dirTags, oldPrefix, newPrefix);
+      WS.meta.pendingTagsByPath = remapPathMapKeys(WS.meta.pendingTagsByPath, oldPrefix, newPrefix);
       WS.meta.dirFingerprints = remapPathMapKeys(WS.meta.dirFingerprints, oldPrefix, newPrefix);
     }
 
@@ -4731,6 +7170,30 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       } catch {}
     });
 
+    if (onlineProfileInput) {
+      onlineProfileInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          handleAddOnlineProfile("profile");
+        }
+      });
+      onlineProfileInput.addEventListener("input", () => {
+        if (!onlineProfileLoading) setOnlineProfileStatus("—");
+      });
+    }
+
+    if (onlineProfileAddProfileBtn) {
+      onlineProfileAddProfileBtn.addEventListener("click", () => {
+        handleAddOnlineProfile("profile");
+      });
+    }
+
+    if (onlineProfileAddPostsBtn) {
+      onlineProfileAddPostsBtn.addEventListener("click", () => {
+        handleAddOnlineProfile("posts");
+      });
+    }
+
     /* =========================================================
        Sorting helpers
        ========================================================= */
@@ -5103,8 +7566,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!dirNode) return [];
       const base = sortDirsForDisplay(dirNode.childrenDirs).filter(d => dirItemCount(d) > 0);
       const showHidden = WS.view.hiddenMode || (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden");
-      if (showHidden) return base;
-      return base.filter(d => !isDirOrAncestorHidden(d));
+      const visibleBase = showHidden ? base : base.filter(d => !isDirOrAncestorHidden(d));
+      return filterOnlineDirs(visibleBase);
     }
 
     function treatTagsAsFoldersEnabled() {
@@ -5551,7 +8014,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (c) return c;
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
-      return out;
+      return filterOnlineDirs(out);
     }
 
     function getAllHiddenDirs() {
@@ -5570,7 +8033,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (c) return c;
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
-      return out;
+      return filterOnlineDirs(out);
     }
 
     function cancelDirectorySearch() {
@@ -5610,7 +8073,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (skipHidden && isDirOrAncestorHidden(node)) return;
         if (getCount(node) <= 0) return;
 
-        const name = displayName(node.name || "").toLowerCase();
+        const name = dirDisplayName(node || null).toLowerCase();
         if (includeSelf && name.includes(q)) {
           const p = String(node.path || "");
           if (p && !addSet.has(p)) {
@@ -5697,7 +8160,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             placeholder: true
           });
         }
-        const dirs = (WS.view.searchResults || []).slice();
+        const dirs = filterOnlineDirs((WS.view.searchResults || []).slice());
         for (let i = 0; i < dirs.length; i++) WS.nav.entries.push({ kind: "dir", node: dirs[i] });
         return;
       }
@@ -6928,11 +9391,25 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
       RENAME_BUSY = true;
-      const ok = await renameFolderDirNode(dirNode, inputEl.value || "");
+      let ok = false;
+      if (dirNode.onlineMeta && (dirNode.onlineMeta.kind === "profile" || dirNode.onlineMeta.kind === "post")) {
+        const nextName = inputEl.value || "";
+        if (dirNode.onlineMeta.kind === "profile") {
+          ok = await renameOnlineProfile(dirNode.onlineMeta.profileKey, nextName);
+        } else {
+          ok = await renameOnlinePost(dirNode.onlineMeta.profileKey, dirNode.onlineMeta.postKey, nextName);
+        }
+      } else {
+        ok = await renameFolderDirNode(dirNode, inputEl.value || "");
+      }
       RENAME_BUSY = false;
       if (ok) {
         RENAME_EDIT_PATH = null;
         closeActionMenus();
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        renderOnlineUi();
         return;
       }
       renderDirectoriesPane(true);
@@ -6947,7 +9424,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
       RENAME_BUSY = true;
-      const ok = await renameSingleFile(rec, inputEl.value || "");
+      let ok = false;
+      if (rec.online && rec.onlineMeta) {
+        ok = await renameOnlineFile(rec.onlineMeta.profileKey, rec.onlineMeta.fileUrl, inputEl.value || "");
+      } else {
+        ok = await renameSingleFile(rec, inputEl.value || "");
+      }
       RENAME_BUSY = false;
       if (ok) {
         RENAME_EDIT_FILE_ID = null;
@@ -7163,6 +9645,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       const selectedDirs = canBulk ? getSelectedPathsInCurrentDir() : [];
+      const selectedDirNodes = selectedDirs.map(p => WS.dirByPath.get(String(p || ""))).filter(Boolean);
+      const selectedDirCount = selectedDirNodes.length;
+      const allOnlineDirs = selectedDirCount > 0 && selectedDirNodes.every(d => d?.onlineMeta && (d.onlineMeta.kind === "profile" || d.onlineMeta.kind === "post"));
+      const allProfileDirs = allOnlineDirs && selectedDirNodes.every(d => d?.onlineMeta?.kind === "profile");
+      const allPostDirs = allOnlineDirs && selectedDirNodes.every(d => d?.onlineMeta?.kind === "post");
       const selectedFiles = canBulk ? getSelectedFileIdsInCurrentView() : [];
       const selCount = selectedDirs.length + selectedFiles.length;
       const hasDirSelection = selectedDirs.length > 0;
@@ -7201,49 +9688,130 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return btn;
       };
 
-      const scoreRow = document.createElement("div");
-      scoreRow.className = "scoreRow";
-      const scoreUpBtn = makeActionBtn("+", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaBumpScoreBulk(selectedDirs, 1);
-        finalizeBulkSelectionAction();
-      });
-      scoreUpBtn.classList.add("scoreBtn");
-      const scoreDownBtn = makeActionBtn("-", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaBumpScoreBulk(selectedDirs, -1);
-        finalizeBulkSelectionAction();
-      });
-      scoreDownBtn.classList.add("scoreBtn");
-      scoreRow.appendChild(scoreUpBtn);
-      scoreRow.appendChild(scoreDownBtn);
-      directoriesActionMenuEl.appendChild(scoreRow);
+      if (allOnlineDirs) {
+        directoriesActionMenuEl.appendChild(makeActionBtn("Download selected folders", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await materializeOnlineFolderSelection(selectedDirNodes);
+          finalizeBulkSelectionAction();
+        }));
 
-      directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
-        WS.view.bulkActionMenuOpen = false;
-        if (!selectedDirs.length) return;
-        finalizeBulkSelectionAction();
-        startBulkTagging(selectedDirs);
-      }));
+        if (allProfileDirs) {
+          directoriesActionMenuEl.appendChild(makeActionBtn("Refresh selected profiles", async () => {
+            WS.view.bulkActionMenuOpen = false;
+            const keys = Array.from(new Set(selectedDirNodes.map(d => d?.onlineMeta?.profileKey).filter(Boolean)));
+            for (const key of keys) {
+              await refreshOnlineProfile(key);
+            }
+            finalizeBulkSelectionAction();
+          }));
+        }
 
-      directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaSetFavoriteBulk(selectedDirs, !allFavorite);
-        finalizeBulkSelectionAction();
-      }));
+        directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          if (!selectedDirs.length) return;
+          finalizeBulkSelectionAction();
+          startBulkTagging(selectedDirs);
+        }));
 
-      directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaSetHiddenBulk(selectedDirs, !allHidden);
-        finalizeBulkSelectionAction();
-      }));
+        directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaSetFavoriteBulk(selectedDirs, !allFavorite);
+          finalizeBulkSelectionAction();
+        }));
 
-      const setMergeBtn = makeActionBtn("Set Merge", async () => {
-        WS.view.bulkActionMenuOpen = false;
-        await setMergeSelectedDirs();
-      });
-      if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
-      directoriesActionMenuEl.appendChild(setMergeBtn);
+        if (allProfileDirs) {
+          const renameBtn = makeActionBtn("Rename profile", () => {
+            WS.view.bulkActionMenuOpen = false;
+            const p = String(selectedDirs[0] || "");
+            if (!p) return;
+            RENAME_EDIT_PATH = p;
+            TAG_EDIT_PATH = null;
+            renderDirectoriesPane(true);
+            setTimeout(() => {
+              const row = findDirRowForPath(p);
+              const input = (row && row.querySelector(".renameEditInput")) || (directoriesListEl && directoriesListEl.querySelector(".dirRow.selected .renameEditInput"));
+              if (input) {
+                try { input.focus(); input.select(); } catch {}
+              }
+            }, 0);
+          });
+          if (selectedDirCount !== 1) renameBtn.disabled = true;
+          directoriesActionMenuEl.appendChild(renameBtn);
+
+          directoriesActionMenuEl.appendChild(makeActionBtn("Delete selected profiles", async () => {
+            WS.view.bulkActionMenuOpen = false;
+            const confirmed = confirm("Delete selected profiles and all related folders?");
+            if (!confirmed) return;
+            const keys = Array.from(new Set(selectedDirNodes.map(d => d?.onlineMeta?.profileKey).filter(Boolean)));
+            for (const key of keys) {
+              await deleteOnlineProfile(key);
+            }
+            finalizeBulkSelectionAction();
+          }));
+        } else if (allPostDirs) {
+          const renameBtn = makeActionBtn("Rename post", () => {
+            WS.view.bulkActionMenuOpen = false;
+            const p = String(selectedDirs[0] || "");
+            if (!p) return;
+            RENAME_EDIT_PATH = p;
+            TAG_EDIT_PATH = null;
+            renderDirectoriesPane(true);
+            setTimeout(() => {
+              const row = findDirRowForPath(p);
+              const input = (row && row.querySelector(".renameEditInput")) || (directoriesListEl && directoriesListEl.querySelector(".dirRow.selected .renameEditInput"));
+              if (input) {
+                try { input.focus(); input.select(); } catch {}
+              }
+            }, 0);
+          });
+          if (selectedDirCount !== 1) renameBtn.disabled = true;
+          directoriesActionMenuEl.appendChild(renameBtn);
+        }
+      } else {
+        const scoreRow = document.createElement("div");
+        scoreRow.className = "scoreRow";
+        const scoreUpBtn = makeActionBtn("+", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaBumpScoreBulk(selectedDirs, 1);
+          finalizeBulkSelectionAction();
+        });
+        scoreUpBtn.classList.add("scoreBtn");
+        const scoreDownBtn = makeActionBtn("-", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaBumpScoreBulk(selectedDirs, -1);
+          finalizeBulkSelectionAction();
+        });
+        scoreDownBtn.classList.add("scoreBtn");
+        scoreRow.appendChild(scoreUpBtn);
+        scoreRow.appendChild(scoreDownBtn);
+        directoriesActionMenuEl.appendChild(scoreRow);
+
+        directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          if (!selectedDirs.length) return;
+          finalizeBulkSelectionAction();
+          startBulkTagging(selectedDirs);
+        }));
+
+        directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaSetFavoriteBulk(selectedDirs, !allFavorite);
+          finalizeBulkSelectionAction();
+        }));
+
+        directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaSetHiddenBulk(selectedDirs, !allHidden);
+          finalizeBulkSelectionAction();
+        }));
+
+        const setMergeBtn = makeActionBtn("Set Merge", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await setMergeSelectedDirs();
+        });
+        if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
+        directoriesActionMenuEl.appendChild(setMergeBtn);
+      }
 
       const anchorBtn = findDirMenuButtonForPath(WS.view.bulkActionMenuAnchorPath);
       if (anchorBtn) {
@@ -7263,6 +9831,15 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
       return fallback;
+    }
+
+    function findDirRowForPath(path) {
+      if (!directoriesListEl) return null;
+      const rows = directoriesListEl.querySelectorAll(".dirRow");
+      for (const row of rows) {
+        if (String(row?.dataset?.dirPath || "") === String(path || "")) return row;
+      }
+      return null;
     }
 
     function setDirectoriesHeaderActive(active) {
@@ -7377,12 +9954,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const isFavorite = metaHasFavorite(p);
             const isHidden = metaHasHidden(p);
             const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
-            const canRename = !!WS.meta.fsRootHandle;
+            const onlineKind = entry.node?.onlineMeta?.kind || "";
+            const canRename = onlineKind ? true : !!WS.meta.fsRootHandle;
             const canBatchIndex = !!WS.meta.fsRootHandle;
             const canResetOrder = !!entry.node?.preserveOrder;
-            icon = canBulk ? (sel ? "☑" : "☐") : (isHidden ? "🙈" : "📁");
-            name = displayName(entry.node?.name || "folder") || "folder";
-            nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>`;
+            if (canBulk) icon = sel ? "☑" : "☐";
+            else if (onlineKind) icon = "🌐";
+            else icon = (isHidden ? "🙈" : (isFavorite ? "♥" : "📁"));
+            name = dirDisplayName(entry.node);
             meta = showFolderItemCount ? `${dirItemCount(entry.node)} items` : "";
             const favoriteBadgeHtml = (!canBulk && !isHidden && isFavorite)
               ? `<span class="dirFavoriteHeart" title="Favorite">♥</span>`
@@ -7401,11 +9980,29 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           `;
             }
             const menuOpen = WS.view.dirActionMenuPath === p;
-            // Folder menu (three dot / ⋯) for single-folder actions.
-            const menuHtml = `
-              <div class="dirMenu">
-              <button class="dirMenuBtn" title="Folder menu">⋯</button>
-              <div class="dropdownMenu${menuOpen ? " open" : ""}">
+            // Menu (three dot / ⋯) for single-folder actions.
+            let menuButtons = "";
+            let menuTitle = "Folder menu";
+            if (onlineKind === "profile") {
+              menuTitle = "Profile menu";
+              menuButtons = `
+                <button type="button" data-action="download-online-folder">Download in place</button>
+                <button type="button" data-action="refresh-profile">Refresh profile</button>
+                <button type="button" data-action="tag">Tag</button>
+                <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
+                <button type="button" data-action="rename-profile"${canRename ? "" : " disabled"}>Rename profile</button>
+                <button type="button" data-action="delete-profile">Delete profile</button>
+              `;
+            } else if (onlineKind === "post") {
+              menuTitle = "Post menu";
+              menuButtons = `
+                <button type="button" data-action="download-online-folder">Download in place</button>
+                <button type="button" data-action="tag">Tag</button>
+                <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
+                <button type="button" data-action="rename-post"${canRename ? "" : " disabled"}>Rename post</button>
+              `;
+            } else {
+              menuButtons = `
                 <div class="scoreRow">
                   <button type="button" class="scoreBtn" data-action="score-up">+</button>
                   <button type="button" class="scoreBtn" data-action="score-down">-</button>
@@ -7417,29 +10014,41 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                 <button type="button" data-action="reset-order"${canResetOrder ? "" : " disabled"}>Reset order</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
+              `;
+            }
+            const menuHtml = `
+              <div class="dirMenu">
+              <button class="dirMenuBtn" title="${escapeHtml(menuTitle)}">⋯</button>
+              <div class="dropdownMenu${menuOpen ? " open" : ""}">
+                ${menuButtons}
               </div>
             </div>
             `;
             const metaHtml = meta ? `<div class="dirMeta">${escapeHtml(meta)}</div>` : "";
-            rightHtml = `<div class="dirRight">${metaHtml}${menuHtml}</div>`;
+            const onlineDlHtml = onlineKind ? buildOnlineDownloadMetaHtml(entry.node) : "";
+            rightHtml = `<div class="dirRight">${metaHtml}${onlineDlHtml}${menuHtml}</div>`;
           } else {
             const rec = WS.fileById.get(entry.id);
             const isVid = rec?.type === "video";
             const sel = canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
             icon = canBulk ? (sel ? "☑" : "☐") : (isVid ? "🎞" : "🖼");
-            name = fileDisplayName(rec?.name || "file") || "file";
-            nameHtml = escapeHtml(name);
+            name = fileDisplayNameForRecord(rec);
             meta = showDirFileTypeLabel ? (isVid ? "video" : "image") : "";
             const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
             const bulkFileMenuActive = canBulk && sel && selectedFilesInViewCount > 0;
             const canLooseSetMerge = !!WS.meta.fsRootHandle;
+            const isOnlineFile = !!rec?.online;
             const fileMenuButtons = bulkFileMenuActive
-              ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
-              : `<button type="button" data-action="rename-file">Rename</button>`;
+              ? (isOnlineFile
+                ? `<button type="button" data-action="rename-online-file"${selectedFilesInViewCount > 1 ? " disabled" : ""}>Rename file</button>`
+                : `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`)
+              : (isOnlineFile
+                ? `<button type="button" data-action="rename-online-file">Rename file</button>`
+                : `<button type="button" data-action="rename-file">Rename</button>`);
             // File menu (three dot / ⋯) for single-file actions.
             fileMenuHtml = `
               <div class="dirMenu">
-              <button class="dirMenuBtn" title="File menu">⋯</button>
+              <button class="dirMenuBtn" title="${escapeHtml(isOnlineFile ? "Media menu" : "File menu")}">⋯</button>
               <div class="dropdownMenu${fileMenuOpen ? " open" : ""}">
                 ${fileMenuButtons}
               </div>
@@ -7448,18 +10057,23 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           }
 
           if (entry.kind === "dir" && (entry.node?.path || "") === (RENAME_EDIT_PATH || "")) {
-            const curName = String(entry.node?.name || "");
+            const curName = String((entry.node?.onlineMeta?.kind === "profile" && getOnlineProfileRename(entry.node?.onlineMeta?.profileKey))
+              || (entry.node?.onlineMeta?.kind === "post" && getOnlinePostRename(entry.node?.onlineMeta?.profileKey, entry.node?.onlineMeta?.postKey))
+              || entry.node?.name || "");
+            const renamePlaceholder = entry.node?.onlineMeta?.kind === "profile"
+              ? "profile name"
+              : (entry.node?.onlineMeta?.kind === "post" ? "post name" : "folder name");
             if (voteHtml) {
               row.innerHTML = `
                 <div class="dirIcon">${icon}</div>
-                <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="folder name" /></div>
+                <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="${escapeHtml(renamePlaceholder)}" /></div>
                 ${voteHtml}
                 ${rightHtml}
               `;
             } else {
               row.innerHTML = `
                 <div class="dirIcon">${icon}</div>
-                <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="folder name" /></div>
+                <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="${escapeHtml(renamePlaceholder)}" /></div>
                 ${rightHtml}
               `;
             }
@@ -7499,7 +10113,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             } else {
               if (String(entry.id || "") === String(RENAME_EDIT_FILE_ID || "")) {
                 const rec = WS.fileById.get(entry.id);
-                const curName = String(rec?.name || "");
+                const curName = String((rec?.online && rec?.onlineMeta && getOnlineFileRename(rec.onlineMeta.profileKey, rec.onlineMeta.fileUrl)) || rec?.name || "");
                 const metaHtml = meta ? `<div class="dirMeta">${escapeHtml(meta)}</div>` : "";
                 row.innerHTML = `
                   <div class="dirIcon">${icon}</div>
@@ -7645,6 +10259,36 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                 e.stopPropagation();
                 const action = btn.getAttribute("data-action");
                 WS.view.dirActionMenuPath = "";
+                if (action === "download-online-folder") {
+                  materializeOnlineFolderNode(entry.node).catch(() => {});
+                  return;
+                }
+                if (action === "refresh-profile") {
+                  const profileKey = entry.node?.onlineMeta?.profileKey || "";
+                  if (!profileKey) return;
+                  refreshOnlineProfile(profileKey);
+                  return;
+                }
+                if (action === "delete-profile") {
+                  const profileKey = entry.node?.onlineMeta?.profileKey || "";
+                  if (!profileKey) return;
+                  const confirmed = confirm("Delete this profile and all related folders?");
+                  if (!confirmed) return;
+                  deleteOnlineProfile(profileKey);
+                  return;
+                }
+                if (action === "rename-profile" || action === "rename-post") {
+                  RENAME_EDIT_PATH = p;
+                  TAG_EDIT_PATH = null;
+                  renderDirectoriesPane(true);
+                  setTimeout(() => {
+                    const input = directoriesListEl.querySelector(".dirRow.selected .renameEditInput") || row.querySelector(".renameEditInput");
+                    if (input) {
+                      try { input.focus(); input.select(); } catch {}
+                    }
+                  }, 0);
+                  return;
+                }
                 if (action === "tag") {
                   TAG_EDIT_PATH = p;
                   RENAME_EDIT_PATH = null;
@@ -7827,6 +10471,19 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                     showStatusMessage("Renaming files requires a writable folder.");
                     return;
                   }
+                  RENAME_EDIT_FILE_ID = String(entry.id || "");
+                  RENAME_EDIT_PATH = null;
+                  TAG_EDIT_PATH = null;
+                  renderDirectoriesPane(true);
+                  setTimeout(() => {
+                    const input = directoriesListEl.querySelector(".dirRow.selected .renameEditInput") || row.querySelector(".renameEditInput");
+                    if (input) {
+                      try { input.focus(); input.select(); } catch {}
+                    }
+                  }, 0);
+                  return;
+                }
+                if (action === "rename-online-file") {
                   RENAME_EDIT_FILE_ID = String(entry.id || "");
                   RENAME_EDIT_PATH = null;
                   TAG_EDIT_PATH = null;
@@ -8409,6 +11066,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function ensureThumbUrl(rec) {
       if (!rec) return null;
       if (rec.type !== "image") return rec.thumbUrl || null;
+      if (rec.online && rec.url) return rec.url;
 
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const mode = opt ? String(opt.imageThumbSize || "medium") : "medium";
@@ -8448,6 +11106,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function ensureMediaUrl(rec) {
       if (!rec) return null;
       if (rec.url) return rec.url;
+      if (!rec.file) return null;
       try { rec.url = URL.createObjectURL(rec.file); return rec.url; } catch { return null; }
     }
 
@@ -8663,7 +11322,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         name.style.whiteSpace = "nowrap";
         name.style.overflow = "hidden";
         name.style.textOverflow = "ellipsis";
-        name.textContent = displayName(item.dirNode?.name || "Folder") || "Folder";
+        name.textContent = dirDisplayName(item.dirNode) || "Folder";
 
         previewFolderEl.appendChild(icon);
         previewFolderEl.appendChild(name);
@@ -8834,6 +11493,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       if (previewDisplayMode() === "expanded") {
         renderExpandedPreviewPane(dirNode, animate, keepScroll, prevScroll);
+        preloadOnlineMediaForDir(dirNode);
         return;
       }
 
@@ -8847,6 +11507,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       if (keepScroll) previewBodyEl.scrollTop = prevScroll;
+      preloadOnlineMediaForDir(dirNode);
     }
 
     previewBodyEl.addEventListener("scroll", () => {
@@ -8901,8 +11562,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const card = document.createElement("div");
       card.className = "folderCard";
       card.style.cursor = "pointer";
-      const icon = "📁";
-      const nm = displayName(dirNode?.name || "folder") || "folder";
+      const icon = dirNode && dirNode.onlineMeta ? "🌐" : "📁";
+      const nm = dirDisplayName(dirNode) || "folder";
       const sc = metaGetScore(dirNode?.path || "");
       const scoreMode = folderScoreDisplayMode();
       const showPreviewFolderItemCount = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFolderItemCount === false);
@@ -9044,7 +11705,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       for (const child of baseDirs) {
-        const nm = displayName(child.name || "folder") || "folder";
+        const nm = dirDisplayName(child) || "folder";
         const childFolders = getChildDirsForNode(child).length;
         const childFiles = getOrderedFileIdsForDir(child).length;
         const total = childFolders + childFiles;
@@ -9265,7 +11926,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       img.className = "thumb";
       img.loading = "lazy";
       img.draggable = false;
-      img.alt = fileDisplayName(rec.name || "") || "";
+      img.alt = fileDisplayNameForRecord(rec) || "";
 
       if (rec.type === "image") {
         img.src = ensureThumbUrl(rec) || "";
@@ -9288,7 +11949,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
           const name = document.createElement("div");
           name.className = "name";
-          name.textContent = fileDisplayName(rec.name || "—") || "—";
+          name.textContent = fileDisplayNameForRecord(rec) || "—";
           name.title = relPathDisplayName(rec.relPath || rec.name || "");
 
           top.appendChild(name);
@@ -9398,6 +12059,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function enqueueVideoThumb(rec) {
       if (!rec) return;
+      if (rec.online) return;
       WS.videoThumbQueue.push(rec.id);
     }
 
@@ -9509,6 +12171,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function enqueueImageThumb(rec) {
       if (!rec) return;
       if (rec.type !== "image") return;
+      if (rec.online) return;
       WS.imageThumbQueue.push(rec.id);
       drainImageThumbQueue();
     }
@@ -10112,12 +12775,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         name.style.whiteSpace = "nowrap";
         name.style.overflow = "hidden";
         name.style.textOverflow = "ellipsis";
-        name.textContent = displayName(item.dirNode?.name || "Folder") || "Folder";
+        name.textContent = dirDisplayName(item.dirNode) || "Folder";
 
         viewerFolderEl.appendChild(icon);
         viewerFolderEl.appendChild(name);
 
-        filenameEl.textContent = item.dirNode?.path ? displayPath(item.dirNode.path) : (displayName(item.dirNode?.name || "") || "");
+        filenameEl.textContent = item.dirNode?.path ? displayPath(item.dirNode.path) : (dirDisplayName(item.dirNode) || "");
         return;
       }
 
@@ -10314,7 +12977,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (WS.view.hiddenMode) return "Hidden";
           const node = WS.nav.dirNode;
           if (node && node.name) {
-            const nm = displayName(node.name);
+            const nm = dirDisplayName(node);
             if (nm) return nm;
           }
           const p = String(node?.path || "");

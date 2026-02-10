@@ -1,5 +1,80 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
+const https = require("https");
+const http = require("http");
+const zlib = require("zlib");
 const path = require("path");
+
+function decodeContentBuffer(buf, contentEncoding) {
+  const enc = String(contentEncoding || "").toLowerCase();
+  if (!buf || !buf.length || !enc || enc === "identity") return buf;
+  try {
+    if (enc.includes("gzip")) return zlib.gunzipSync(buf);
+    if (enc.includes("br")) return zlib.brotliDecompressSync(buf);
+    if (enc.includes("deflate")) return zlib.inflateSync(buf);
+  } catch {
+    return buf;
+  }
+  return buf;
+}
+
+function requestUrl(url, opts = {}) {
+  return new Promise((resolve) => {
+    let parsed = null;
+    try { parsed = new URL(url); } catch {
+      resolve({ ok: false, status: 0, error: "invalid_url" });
+      return;
+    }
+    const lib = parsed.protocol === "http:" ? http : https;
+    const headers = Object.assign({}, opts.headers || {});
+    if (opts.referrer) headers.Referer = opts.referrer;
+    if (!headers["User-Agent"]) headers["User-Agent"] = "Mozilla/5.0";
+
+    const req = lib.request(parsed, { method: "GET", headers }, (res) => {
+      const status = res.statusCode || 0;
+      const loc = res.headers && res.headers.location;
+      if (status >= 300 && status < 400 && loc && (opts.redirects || 0) < 4) {
+        res.resume();
+        const next = new URL(loc, parsed).toString();
+        resolve(requestUrl(next, Object.assign({}, opts, { redirects: (opts.redirects || 0) + 1 })));
+        return;
+      }
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        const rawBuf = Buffer.concat(chunks);
+        const contentEncoding = String((res.headers && res.headers["content-encoding"]) || "");
+        const buf = decodeContentBuffer(rawBuf, contentEncoding);
+        if (opts.binary) {
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            data: buf.toString("base64"),
+            bytes: buf.length,
+            contentType: String((res.headers && res.headers["content-type"]) || ""),
+            contentLength: Number((res.headers && res.headers["content-length"]) || 0) || 0,
+            contentEncoding,
+            finalUrl: String(parsed.toString())
+          });
+          return;
+        }
+        const text = buf.toString("utf8");
+        resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          text,
+          contentType: String((res.headers && res.headers["content-type"]) || ""),
+          contentLength: Number((res.headers && res.headers["content-length"]) || 0) || 0,
+          contentEncoding,
+          finalUrl: String(parsed.toString())
+        });
+      });
+    });
+    req.on("error", (err) => {
+      resolve({ ok: false, status: 0, error: err ? err.message : "network_error" });
+    });
+    req.end();
+  });
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -9,6 +84,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
@@ -16,6 +92,22 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  ipcMain.handle("online-fetch", async (event, payload) => {
+    const url = payload && payload.url ? String(payload.url) : "";
+    if (!url) return { ok: false, status: 0, error: "invalid_url" };
+    const headers = (payload && payload.headers && typeof payload.headers === "object") ? payload.headers : {};
+    const referrer = payload && payload.referrer ? String(payload.referrer) : "";
+    return requestUrl(url, { headers, referrer, redirects: 0 });
+  });
+
+  ipcMain.handle("online-download-file", async (event, payload) => {
+    const url = payload && payload.url ? String(payload.url) : "";
+    if (!url) return { ok: false, status: 0, error: "invalid_url" };
+    const headers = (payload && payload.headers && typeof payload.headers === "object") ? payload.headers : {};
+    const referrer = payload && payload.referrer ? String(payload.referrer) : "";
+    return requestUrl(url, { headers, referrer, redirects: 0, binary: true });
+  });
+
   createWindow();
 
   app.on("activate", () => {
