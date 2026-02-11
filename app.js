@@ -9603,6 +9603,150 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return recs;
     }
 
+    function getLocalMediaRecordsForDirPath(dirPath) {
+      const target = String(dirPath || "").replace(/^\/+|\/+$/g, "");
+      const prefix = target ? (target + "/") : "";
+      const out = [];
+      for (const rec of WS.fileById.values()) {
+        if (!rec || rec.online || !rec.file) continue;
+        const rel = String(rec.relPath || "").replace(/\\/g, "/");
+        if (target && !rel.startsWith(prefix)) continue;
+        out.push(rec);
+      }
+      return out;
+    }
+
+    function joinNativePath(basePath, relPath) {
+      const base = String(basePath || "");
+      const rel = String(relPath || "").replace(/^\/+|\/+$/g, "");
+      if (!rel) return base.replace(/[\/\\]+$/g, "");
+      const sep = base.includes("\\") ? "\\" : "/";
+      const cleanBase = base.replace(/[\/\\]+$/g, "");
+      return cleanBase ? (cleanBase + sep + rel.split("/").filter(Boolean).join(sep)) : rel;
+    }
+
+    function resolveAbsoluteDirectoryPath(dirPath) {
+      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.getPathForFile === "function")
+        ? window.electronAPI
+        : null;
+      if (!electronApi) return "";
+
+      const target = String(dirPath || "").replace(/^\/+|\/+$/g, "");
+      const preferred = getLocalMediaRecordsForDirPath(target)
+        .sort((a, b) => String(a?.relPath || "").length - String(b?.relPath || "").length);
+      const fallback = Array.from(WS.fileById.values())
+        .filter(rec => !!(rec && !rec.online && rec.file && rec.relPath))
+        .sort((a, b) => String(a?.relPath || "").length - String(b?.relPath || "").length);
+      const records = [];
+      const seen = new Set();
+      for (const rec of preferred.concat(fallback)) {
+        const key = `${String(rec?.id || "")}::${String(rec?.relPath || "")}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        records.push(rec);
+      }
+      if (!records.length) return "";
+
+      for (let i = 0; i < records.length; i++) {
+        const rec = records[i];
+        const absFile = String(electronApi.getPathForFile(rec.file) || "");
+        const relPath = String(rec.relPath || "").replace(/\\/g, "/");
+        if (!absFile || !relPath) continue;
+
+        const absNorm = absFile.replace(/\\/g, "/");
+        if (!absNorm.toLowerCase().endsWith(relPath.toLowerCase())) continue;
+
+        const relNative = relPath.split("/").join(absFile.includes("\\") ? "\\" : "/");
+        if (!relNative || absFile.length < relNative.length) continue;
+        const rootAbs = absFile.slice(0, absFile.length - relNative.length).replace(/[\/\\]+$/g, "");
+        const targetAbs = target ? joinNativePath(rootAbs, target) : rootAbs;
+        if (targetAbs) return targetAbs;
+      }
+      return "";
+    }
+
+    function notifyScrubMissingTools(missingTools) {
+      const list = Array.from(new Set((missingTools || []).map(v => String(v || "").trim()).filter(Boolean)));
+      if (!list.length) return;
+      const msg = `Scrub completed, but these tools are missing:\n\n${list.map(t => `- ${t}`).join("\n")}`;
+      showStatusMessage(`Scrub missing tools: ${list.join(", ")}`);
+      try {
+        if (typeof window !== "undefined" && typeof window.alert === "function") {
+          window.alert(msg);
+        }
+      } catch {}
+    }
+
+    async function scrubFoldersByPaths(paths, opts = {}) {
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Scrub requires a writable folder.");
+        return { ok: false, missingTools: [], failed: [], skipped: [] };
+      }
+      const list = Array.from(new Set((paths || []).map(p => String(p || "")).filter(Boolean)));
+      if (!list.length) {
+        showStatusMessage("No folders selected.");
+        return { ok: false, missingTools: [], failed: [], skipped: [] };
+      }
+      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.scrubFolder === "function")
+        ? window.electronAPI
+        : null;
+      if (!electronApi) {
+        showStatusMessage("Scrub is unavailable.");
+        return { ok: false, missingTools: [], failed: [], skipped: [] };
+      }
+
+      const missingSet = new Set();
+      const failed = [];
+      const skipped = [];
+
+      showBusyOverlay(list.length > 1 ? "Scrubbing folders..." : "Scrubbing folder...");
+      try {
+        for (let i = 0; i < list.length; i++) {
+          const relPath = list[i];
+          const labelPath = displayPath(relPath || "");
+          showBusyOverlay(`Scrubbing ${i + 1}/${list.length}: ${labelPath || relPath || "folder"}`);
+          const absPath = resolveAbsoluteDirectoryPath(relPath);
+          if (!absPath) {
+            skipped.push(relPath);
+            continue;
+          }
+          let result = null;
+          try {
+            result = await electronApi.scrubFolder({ path: absPath });
+          } catch (err) {
+            result = { ok: false, error: err && err.message ? String(err.message) : "scrub_failed", missingTools: [] };
+          }
+          const missing = (result && Array.isArray(result.missingTools)) ? result.missingTools : [];
+          for (const tool of missing) {
+            const t = String(tool || "").trim();
+            if (!t) continue;
+            missingSet.add(t);
+          }
+          if (!result || !result.ok) {
+            failed.push({ path: relPath, error: String(result?.error || `exit_${result?.code ?? "unknown"}`) });
+          }
+        }
+      } finally {
+        hideBusyOverlay();
+      }
+
+      if (opts.refresh !== false && WS.meta.fsRootHandle) {
+        await refreshWorkspaceFromRootHandle();
+      }
+
+      const okCount = list.length - failed.length - skipped.length;
+      if (failed.length) {
+        showStatusMessage(`Scrub finished with ${failed.length} error${failed.length === 1 ? "" : "s"}.`);
+      } else if (okCount > 0) {
+        showStatusMessage(`Scrub complete for ${okCount} folder${okCount === 1 ? "" : "s"}.`);
+      } else {
+        showStatusMessage("Scrub skipped.");
+      }
+
+      notifyScrubMissingTools(Array.from(missingSet));
+      return { ok: failed.length === 0, missingTools: Array.from(missingSet), failed, skipped };
+    }
+
     function chooseLooseSetFolderNameFromRecords(records) {
       const names = [];
       for (const rec of records || []) {
@@ -10591,6 +10735,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           finalizeBulkSelectionAction();
         }));
 
+        const scrubSelectedBtn = makeActionBtn("Scrub", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await scrubFoldersByPaths(selectedDirs);
+          finalizeBulkSelectionAction();
+        });
+        if (!WS.meta.fsRootHandle) scrubSelectedBtn.disabled = true;
+        directoriesActionMenuEl.appendChild(scrubSelectedBtn);
+
         if (allProfileDirs) {
           const renameBtn = makeActionBtn("Rename profile", () => {
             WS.view.bulkActionMenuOpen = false;
@@ -10676,6 +10828,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           metaSetHiddenBulk(selectedDirs, !allHidden);
           finalizeBulkSelectionAction();
         }));
+
+        const scrubSelectedBtn = makeActionBtn("Scrub", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await scrubFoldersByPaths(selectedDirs);
+          finalizeBulkSelectionAction();
+        });
+        if (!WS.meta.fsRootHandle) scrubSelectedBtn.disabled = true;
+        directoriesActionMenuEl.appendChild(scrubSelectedBtn);
 
         const setMergeBtn = makeActionBtn("Set Merge", async () => {
           WS.view.bulkActionMenuOpen = false;
@@ -10879,6 +11039,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                 </div>
                 <button type="button" data-action="download-online-folder">Download in place</button>
                 <button type="button" data-action="refresh-profile">Refresh profile</button>
+                <button type="button" data-action="scrub-folder"${WS.meta.fsRootHandle ? "" : " disabled"}>Scrub</button>
                 <button type="button" data-action="tag">Tag</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="rename-profile"${canRename ? "" : " disabled"}>Rename profile</button>
@@ -10892,6 +11053,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                   <button type="button" class="scoreBtn" data-action="score-down">-</button>
                 </div>
                 <button type="button" data-action="download-online-folder">Download in place</button>
+                <button type="button" data-action="scrub-folder"${WS.meta.fsRootHandle ? "" : " disabled"}>Scrub</button>
                 <button type="button" data-action="tag">Tag</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="rename-post"${canRename ? "" : " disabled"}>Rename post</button>
@@ -10907,6 +11069,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                 <button type="button" data-action="batch-index-1"${canBatchIndex ? "" : " disabled"}>Batch Index I</button>
                 <button type="button" data-action="batch-index-2"${canBatchIndex ? "" : " disabled"}>Batch Index II</button>
                 <button type="button" data-action="reset-order"${canResetOrder ? "" : " disabled"}>Reset order</button>
+                <button type="button" data-action="scrub-folder"${WS.meta.fsRootHandle ? "" : " disabled"}>Scrub</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
               `;
@@ -11152,7 +11315,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             menuDropdown.addEventListener("click", (e) => e.stopPropagation());
             const actionButtons = Array.from(menuDropdown.querySelectorAll("button[data-action]"));
             actionButtons.forEach((btn) => {
-              btn.addEventListener("click", (e) => {
+              btn.addEventListener("click", async (e) => {
                 e.stopPropagation();
                 const action = btn.getAttribute("data-action");
                 WS.view.dirActionMenuPath = "";
@@ -11240,6 +11403,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                       showStatusMessage("Order reset.");
                     }
                   }
+                  return;
+                }
+                if (action === "scrub-folder") {
+                  await scrubFoldersByPaths([p]);
                   return;
                 }
                 if (action === "favorite") {
