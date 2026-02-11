@@ -877,12 +877,37 @@
       opacity: 0.95;
     }
 
+    .onlineSourceIcon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .onlineSourceIconImg {
+      display: block;
+      object-fit: contain;
+    }
+
+    .onlineSourceIconFallback {
+      line-height: 1;
+    }
+
     .dirFavoriteHeart {
       color: #ff6f91;
     }
 
     .dirOnlineBadge {
       color: var(--color0-secondary);
+    }
+
+    .onlineDirBadgeIcon {
+      width: 12px;
+      height: 12px;
+    }
+
+    .onlineDirBadgeFallback {
+      font-size: 12px;
     }
 
     .dirHiddenBadge {
@@ -1161,6 +1186,15 @@
       width: var(--folder-icon-width);
       text-align: center;
       flex: 0 0 var(--folder-icon-width);
+      font-size: var(--folder-icon-size);
+    }
+
+    .onlineFolderCardIcon {
+      width: var(--folder-icon-size);
+      height: var(--folder-icon-size);
+    }
+
+    .onlineFolderCardIconFallback {
       font-size: var(--folder-icon-size);
     }
 

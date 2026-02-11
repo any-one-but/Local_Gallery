@@ -1242,6 +1242,54 @@
     const ONLINE_API_RESPONSE_LOG = [];
     const ONLINE_API_RESPONSE_LOG_LIMIT = 250;
     const ONLINE_API_RESPONSE_BODY_LIMIT = 18000;
+    const ONLINE_DEFAULT_ICON = "🌐";
+
+    function getOnlineProfileForDirNode(dirNode) {
+      const meta = (dirNode && dirNode.onlineMeta) ? dirNode.onlineMeta : null;
+      const profileKey = sanitizeOnlineMapKey(meta && meta.profileKey);
+      if (!profileKey) return null;
+      const entry = ONLINE_PROFILE_CACHE.get(profileKey);
+      if (!entry || !entry.profile) return null;
+      return entry.profile;
+    }
+
+    function getOnlineProfileFaviconUrl(profile) {
+      let source = buildOnlineProfileSourceUrl(profile);
+      if (!source) source = String(profile && profile.origin || "").trim();
+      if (!source) return "";
+      try {
+        const parsed = new URL(source);
+        const proto = String(parsed.protocol || "").toLowerCase();
+        if (proto !== "http:" && proto !== "https:") return "";
+        return parsed.origin.replace(/\/$/, "") + "/favicon.ico";
+      } catch {
+        return "";
+      }
+    }
+
+    function getOnlineDirFaviconUrl(dirNode) {
+      const profile = getOnlineProfileForDirNode(dirNode);
+      return getOnlineProfileFaviconUrl(profile);
+    }
+
+    function buildOnlineSourceIconHtml(dirNode, opts = {}) {
+      const className = String(opts.className || "").trim();
+      const imgClassName = String(opts.imgClassName || "").trim();
+      const fallbackClassName = String(opts.fallbackClassName || "").trim();
+      const titleText = String(opts.title || "Online");
+      const faviconUrl = getOnlineDirFaviconUrl(dirNode);
+
+      const classAttr = className ? ` class="${escapeHtml(className)}"` : "";
+      const titleAttr = titleText ? ` title="${escapeHtml(titleText)}"` : "";
+      const imgClassAttr = imgClassName ? ` class="${escapeHtml(imgClassName)}"` : "";
+      const fallbackClassAttr = fallbackClassName ? ` class="${escapeHtml(fallbackClassName)}"` : "";
+
+      if (!faviconUrl) {
+        return `<span${classAttr}${titleAttr}><span${fallbackClassAttr}>${ONLINE_DEFAULT_ICON}</span></span>`;
+      }
+
+      return `<span${classAttr}${titleAttr}><img${imgClassAttr} src="${escapeHtml(faviconUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='inline-flex';"><span${fallbackClassAttr} style="display:none;">${ONLINE_DEFAULT_ICON}</span></span>`;
+    }
 
     function scheduleOnlineDownloadUiRefresh() {
       if (ONLINE_DOWNLOAD_RENDER_TIMER) return;
@@ -10779,7 +10827,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             meta = showFolderItemCount ? `${dirItemCount(entry.node)} items` : "";
             const statusBadges = [];
             if (isFavorite) statusBadges.push(`<span class="dirFavoriteHeart dirStatusBadge" title="Favorite">♥</span>`);
-            if (onlineKind) statusBadges.push(`<span class="dirOnlineBadge dirStatusBadge" title="Online">🌐</span>`);
+            if (onlineKind) {
+              statusBadges.push(buildOnlineSourceIconHtml(entry.node, {
+                className: "dirOnlineBadge dirStatusBadge onlineSourceIcon",
+                imgClassName: "onlineSourceIconImg onlineDirBadgeIcon",
+                fallbackClassName: "onlineSourceIconFallback onlineDirBadgeFallback",
+                title: "Online"
+              }));
+            }
             if (isHidden) statusBadges.push(`<span class="dirHiddenBadge dirStatusBadge" title="Hidden">🙈</span>`);
             const statusBadgeHtml = statusBadges.length ? `<span class="dirStatusBadges">${statusBadges.join("")}</span>` : "";
             nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>${statusBadgeHtml}`;
@@ -12385,7 +12440,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const card = document.createElement("div");
       card.className = "folderCard";
       card.style.cursor = "pointer";
-      const icon = dirNode && dirNode.onlineMeta ? "🌐" : "📁";
+      const icon = dirNode && dirNode.onlineMeta
+        ? buildOnlineSourceIconHtml(dirNode, {
+          className: "onlineSourceIcon",
+          imgClassName: "onlineSourceIconImg onlineFolderCardIcon",
+          fallbackClassName: "onlineSourceIconFallback onlineFolderCardIconFallback",
+          title: "Online folder"
+        })
+        : "📁";
       const nm = dirDisplayName(dirNode) || "folder";
       const sc = metaGetScore(dirNode?.path || "");
       const scoreMode = folderScoreDisplayMode();
