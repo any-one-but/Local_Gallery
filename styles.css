@@ -76,7 +76,6 @@
 
     :root[data-theme="light"] .dropdownMenu,
     :root[data-theme="light"] #menuCard,
-    :root[data-theme="light"] #helpHoldCard,
     :root[data-theme="light"] #propertiesCard {
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
     }
@@ -918,9 +917,17 @@
       flex: 0 0 auto;
       font-size: 11px;
       color: var(--color0-secondary);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 1px;
       white-space: nowrap;
       text-align: right;
       width: calc(var(--dirMetaCh, 10) * 1ch);
+    }
+
+    .dirMetaLine {
+      line-height: 1.15;
     }
 
     .dirRight {
@@ -1651,9 +1658,7 @@
     :root[data-theme="retro90s"] #menuCard,
     :root[data-theme="retro90s-dark"] #menuCard,
     :root[data-theme="retro90s"] #propertiesCard,
-    :root[data-theme="retro90s-dark"] #propertiesCard,
-    :root[data-theme="retro90s"] #helpHoldCard,
-    :root[data-theme="retro90s-dark"] #helpHoldCard {
+    :root[data-theme="retro90s-dark"] #propertiesCard {
       border-width: 2px;
       border-color: rgba(0,0,0,0.4);
       box-shadow: inset 1px 1px 0 rgba(255,255,255,0.35), inset -1px -1px 0 rgba(0,0,0,0.25);
@@ -1734,144 +1739,6 @@
 
     .menuTabPanel.active {
       display: flex;
-    }
-
-    #helpBody {
-      padding: 10px 10px 12px;
-      overflow: auto;
-      min-height: 0;
-      flex: 1 1 auto;
-      font-size: 12px;
-      color: var(--color0-primary);
-      line-height: 1.5;
-    }
-
-    #helpBody h2 {
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: .02em;
-      margin: 12px 0 6px;
-      color: var(--color0-primary);
-    }
-
-    #helpBody ul {
-      margin: 6px 0 10px 18px;
-    }
-
-    #helpBody li {
-      margin: 2px 0;
-    }
-
-    #helpBody code {
-      background: rgba(0,0,0,0.35);
-      border: 1px solid var(--color1-tertiary);
-      padding: 1px 4px;
-      border-radius: 2px;
-      font-size: 11px;
-      color: var(--color0-primary);
-      white-space: nowrap;
-    }
-
-    /* =========================================================
-       Hold-to-show keyboard overlay
-       ========================================================= */
-    #helpHoldOverlay {
-      position: fixed;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.75);
-      z-index: 9100;
-      padding: 16px;
-      pointer-events: none;
-    }
-    #helpHoldOverlay.active { display: flex; }
-
-    #helpHoldCard {
-      width: min(940px, 96vw);
-      background: var(--color1-secondary);
-      border-radius: 6px;
-      border: 1px solid var(--color1-tertiary);
-      box-shadow: 0 10px 30px var(--color1-primary-transparent);
-      padding: 14px 16px 18px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    #helpHoldHeader {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 12px;
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: .02em;
-    }
-
-    #helpHoldHeader .hint {
-      font-weight: 500;
-      color: var(--color0-secondary);
-    }
-
-    .keyboard {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .kbRow {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .kbGroup {
-      display: flex;
-      gap: 6px;
-      flex-wrap: nowrap;
-    }
-
-    .kbKey {
-      min-width: 46px;
-      padding: 6px 6px 5px;
-      background: var(--color1-primary);
-      border: 1px solid var(--color1-tertiary);
-      border-radius: 4px;
-      text-align: center;
-      font-size: 10px;
-      color: var(--color0-primary);
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .kbKey .kbKeyLabel {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: .02em;
-    }
-
-    .kbKey.wide { min-width: 82px; }
-    .kbKey.wider { min-width: 120px; }
-    .kbKey.space { min-width: 180px; }
-
-    .kbLegend {
-      font-size: 11px;
-      color: var(--color0-secondary);
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .kbLegend span {
-      background: var(--color1-primary);
-      border: 1px solid var(--color1-tertiary);
-      border-radius: 999px;
-      padding: 2px 8px;
     }
 
     /* =========================================================
