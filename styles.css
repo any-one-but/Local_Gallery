@@ -1041,6 +1041,16 @@
       background: var(--color1-secondary);
     }
 
+    .dropdownMenu button.destructiveAction {
+      color: #ffb3b3;
+      border-color: #8f2f2f;
+      background: rgba(120, 22, 22, 0.35);
+    }
+
+    .dropdownMenu button.destructiveAction:hover:not(:disabled) {
+      background: rgba(160, 28, 28, 0.5);
+    }
+
     .dropdownMenu .scoreRow {
       display: flex;
       gap: 4px;

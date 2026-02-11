@@ -2905,6 +2905,7 @@
         treatTagsAsFolders: true,
         showHiddenFolder: false,
         showUntaggedFolder: false,
+        showTrashFolder: true,
         showFolderItemCount: true,
         showFolderSize: true,
         showDirFileTypeLabel: true,
@@ -2969,6 +2970,7 @@
         treatTagsAsFolders: d.treatTagsAsFolders,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
+        showTrashFolder: (typeof src.showTrashFolder === "boolean") ? src.showTrashFolder : d.showTrashFolder,
         showFolderItemCount: (typeof src.showFolderItemCount === "boolean") ? src.showFolderItemCount : d.showFolderItemCount,
         showFolderSize: (typeof src.showFolderSize === "boolean") ? src.showFolderSize : d.showFolderSize,
         showDirFileTypeLabel: (typeof src.showDirFileTypeLabel === "boolean") ? src.showDirFileTypeLabel : d.showDirFileTypeLabel,
@@ -4263,6 +4265,9 @@
         fsOptionsFileHandle: null,
         fsLegacyFileHandle: null,
         fsKeybindsFileHandle: null,
+        fsTrashIndexFileHandle: null,
+        trashOriginsByName: new Map(),
+        trashVirtualDirs: [],
         saveTimer: null,
         dirty: false,
         options: normalizeOptions(null),
@@ -4396,6 +4401,9 @@
       WS.meta.fsOptionsFileHandle = null;
       WS.meta.fsLegacyFileHandle = null;
       WS.meta.fsKeybindsFileHandle = null;
+      WS.meta.fsTrashIndexFileHandle = null;
+      WS.meta.trashOriginsByName = new Map();
+      WS.meta.trashVirtualDirs = [];
       WS.meta.dirty = false;
       WS.meta.options = normalizeOptions(null);
       WS.meta.keybinds = defaultKeybinds("right");
@@ -5648,6 +5656,7 @@ ${makeSelectRow("Random action behavior", "Choose what the Random action key doe
 ${makeCheckRow("PANIC! opens decoy window", "When enabled, PANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag near the top of the root directories pane when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
+${makeCheckRow("Show Trash Folder", "Display a dedicated trash-folder entry near the top of the root directories pane when trash has items.", "opt_showTrashFolder", opt.showTrashFolder !== false)}
 
 <h1>Appearance</h1>
 ${makeSelectRow("Color scheme", "Switch the overall interface palette.", "opt_colorScheme", String(opt.colorScheme || "classic"), colorSchemes)}
@@ -5781,6 +5790,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       });
       bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
         if (!enabled && WS.view.tagFolderActiveMode === "untagged") {
+          exitTagFolderView();
+        }
+        renderDirectoriesPane(true);
+      });
+      bindCheck("opt_showTrashFolder", "showTrashFolder", (enabled) => {
+        if (!enabled && WS.view.tagFolderActiveMode === "trash") {
           exitTagFolderView();
         }
         renderDirectoriesPane(true);
@@ -6823,6 +6838,129 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.meta.dirty = false;
     }
 
+    function normalizeWorkspaceRelPath(path) {
+      const raw = String(path || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+      if (!raw) return "";
+      const parts = raw.split("/").filter(Boolean);
+      if (!parts.length) return "";
+      if (parts.includes(".local-gallery")) return "";
+      return parts.join("/");
+    }
+
+    function makeTrashIndexLogObject() {
+      const folders = {};
+      for (const [name, rec] of (WS.meta.trashOriginsByName || new Map()).entries()) {
+        const folderName = String(name || "").trim();
+        const originalPath = normalizeWorkspaceRelPath(rec && rec.originalPath);
+        if (!folderName || !isValidFolderName(folderName) || !originalPath) continue;
+        const itemCount = Math.max(0, Number(rec && rec.itemCount) || 0) | 0;
+        const trashedAt = Math.max(0, Number(rec && rec.trashedAt) || 0) | 0;
+        folders[folderName] = { originalPath, itemCount, trashedAt };
+      }
+      return { version: 1, folders };
+    }
+
+    function applyTrashIndexLog(doc) {
+      const out = new Map();
+      const src = doc && doc.folders && typeof doc.folders === "object" ? doc.folders : {};
+      for (const key of Object.keys(src)) {
+        const folderName = String(key || "").trim();
+        if (!folderName || !isValidFolderName(folderName)) continue;
+        const rec = src[key];
+        const originalPath = normalizeWorkspaceRelPath(rec && rec.originalPath);
+        if (!originalPath) continue;
+        const itemCount = Math.max(0, Number(rec && rec.itemCount) || 0) | 0;
+        const trashedAt = Math.max(0, Number(rec && rec.trashedAt) || 0) | 0;
+        out.set(folderName, { originalPath, itemCount, trashedAt });
+      }
+      WS.meta.trashOriginsByName = out;
+    }
+
+    function isTrashVirtualDirNode(node) {
+      return !!(node && node.trashVirtual);
+    }
+
+    function makeTrashVirtualDirNode(name, rec) {
+      const folderName = String(name || "");
+      if (!folderName) return null;
+      const originalPath = normalizeWorkspaceRelPath(rec && rec.originalPath);
+      const itemCount = Math.max(0, Number(rec && rec.itemCount) || 0) | 0;
+      const trashedAt = Math.max(0, Number(rec && rec.trashedAt) || 0) | 0;
+      return {
+        type: "dir",
+        name: folderName,
+        parent: WS.root || null,
+        childrenDirs: [],
+        childrenFiles: [],
+        path: `@trash/${folderName}`,
+        trashVirtual: true,
+        trashName: folderName,
+        trashOriginalPath: originalPath,
+        trashItemCount: itemCount,
+        trashTrashedAt: trashedAt
+      };
+    }
+
+    async function saveTrashIndexToFs() {
+      if (!WS.meta.fsTrashIndexFileHandle) return;
+      await metaSaveFsDoc(WS.meta.fsTrashIndexFileHandle, makeTrashIndexLogObject());
+    }
+
+    async function loadTrashStateFromFs() {
+      WS.meta.trashVirtualDirs = [];
+      if (!WS.meta.fsRootHandle || !WS.meta.fsTrashIndexFileHandle) {
+        WS.meta.trashOriginsByName = new Map();
+        return;
+      }
+
+      const doc = await metaLoadFsDoc(WS.meta.fsTrashIndexFileHandle);
+      applyTrashIndexLog(doc);
+
+      const trashHandle = await ensureTrashDirectoryHandle(WS.meta.fsRootHandle);
+      if (!trashHandle) return;
+
+      const names = [];
+      for await (const [name, handle] of trashHandle.entries()) {
+        if (!name || handle.kind !== "directory") continue;
+        names.push(String(name));
+      }
+      names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+
+      const validNames = new Set(names);
+      let changed = false;
+      for (const key of Array.from(WS.meta.trashOriginsByName.keys())) {
+        if (validNames.has(key)) continue;
+        WS.meta.trashOriginsByName.delete(key);
+        changed = true;
+      }
+
+      const nodes = [];
+      for (const name of names) {
+        const rec = WS.meta.trashOriginsByName.get(name) || null;
+        const node = makeTrashVirtualDirNode(name, rec);
+        if (node) nodes.push(node);
+      }
+      nodes.sort((a, b) => {
+        const ta = Math.max(0, Number(a?.trashTrashedAt) || 0);
+        const tb = Math.max(0, Number(b?.trashTrashedAt) || 0);
+        if (ta !== tb) return tb - ta;
+        const ap = String(a?.trashOriginalPath || "");
+        const bp = String(b?.trashOriginalPath || "");
+        const c = ap.localeCompare(bp, undefined, { numeric: true, sensitivity: "base" });
+        if (c) return c;
+        return String(a?.name || "").localeCompare(String(b?.name || ""), undefined, { numeric: true, sensitivity: "base" });
+      });
+      WS.meta.trashVirtualDirs = nodes;
+
+      if (changed) {
+        await saveTrashIndexToFs();
+      }
+    }
+
+    function getTrashVirtualDirs() {
+      return Array.isArray(WS.meta.trashVirtualDirs) ? WS.meta.trashVirtualDirs.slice() : [];
+    }
+
     async function metaEnsureFsHandles(rootHandle) {
       if (!rootHandle) return false;
       try {
@@ -6832,6 +6970,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const optionsFile = await sys.getFileHandle("preferences.log.json", { create: true });
         const keybindsFile = await sys.getFileHandle("keyboard-configuration.log.json", { create: true });
         const legacyFile = await sys.getFileHandle("folder-votes.log.json", { create: true });
+        const trashIndexFile = await sys.getFileHandle("trash-index.log.json", { create: true });
         WS.meta.fsRootHandle = rootHandle;
         WS.meta.fsSysDirHandle = sys;
         WS.meta.fsScoresFileHandle = scoresFile;
@@ -6839,6 +6978,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         WS.meta.fsOptionsFileHandle = optionsFile;
         WS.meta.fsKeybindsFileHandle = keybindsFile;
         WS.meta.fsLegacyFileHandle = legacyFile;
+        WS.meta.fsTrashIndexFileHandle = trashIndexFile;
         WS.meta.storageMode = "fs";
         await ensureSiteLogHandles();
         return true;
@@ -7065,6 +7205,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
       await siteLogLoadRenames();
+      await loadTrashStateFromFs();
       WS.meta.dirty = true;
       metaScheduleSave();
       syncMetaButtons();
@@ -7306,6 +7447,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           loopWithinDir: WS.view.loopWithinDir,
           folderBehavior: WS.view.folderBehavior,
           folderScoreDisplay: WS.view.folderScoreDisplay,
+          tagFolderActiveMode: WS.view.tagFolderActiveMode,
+          tagFolderActiveTag: WS.view.tagFolderActiveTag,
+          tagFolderOriginPath: WS.view.tagFolderOriginPath,
           favoritesMode: WS.view.favoritesMode,
           hiddenMode: WS.view.hiddenMode,
           dirSearchPinned: WS.view.dirSearchPinned,
@@ -7327,6 +7471,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.view.loopWithinDir = viewState.loopWithinDir;
       WS.view.folderBehavior = viewState.folderBehavior;
       WS.view.folderScoreDisplay = viewState.folderScoreDisplay;
+      WS.view.tagFolderActiveMode = String(viewState.tagFolderActiveMode || "");
+      WS.view.tagFolderActiveTag = String(viewState.tagFolderActiveTag || "");
+      WS.view.tagFolderOriginPath = String(viewState.tagFolderOriginPath || "");
       WS.view.favoritesMode = !!viewState.favoritesMode;
       WS.view.hiddenMode = !!viewState.hiddenMode;
       WS.view.dirSearchPinned = !!viewState.dirSearchPinned;
@@ -8119,6 +8266,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function dirItemCount(node) {
+      if (isTrashVirtualDirNode(node)) {
+        return Math.max(0, Number(node.trashItemCount) || 0) | 0;
+      }
       let c = 0;
       for (const id of node.childrenFiles) {
         const rec = WS.fileById.get(id);
@@ -8456,6 +8606,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return !!(opt && opt.showUntaggedFolder);
     }
 
+    function showTrashFolderEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.showTrashFolder);
+    }
+
     function getUntaggedDirsForNode(dirNode) {
       if (!dirNode) return [];
       const children = getChildDirsForNodeBase(dirNode);
@@ -8522,6 +8677,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           entries.push({ kind: "tag", label: "Hidden", special: "hidden", count: hidden.length });
         }
       }
+      if (showTrashFolderEnabled() && dirNode === WS.root) {
+        const trashDirs = getTrashVirtualDirs();
+        if (trashDirs.length) {
+          entries.push({ kind: "tag", label: "Trash", special: "trash", count: trashDirs.length });
+        }
+      }
 
       const tagGroups = gatherTagGroupsForDir(dirNode);
       if (tagGroups.size) {
@@ -8559,6 +8720,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (WS.view.tagFolderActiveMode === "hidden") {
         return children.filter(d => metaHasHidden(d.path || ""));
       }
+      if (WS.view.tagFolderActiveMode === "trash") {
+        return getTrashVirtualDirs();
+      }
       const tag = String(WS.view.tagFolderActiveTag || "");
       if (!tag) return [];
       return children.filter(d => {
@@ -8575,6 +8739,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (frame.mode === "favorites") return children.filter(d => metaHasFavorite(d.path || ""));
       if (frame.mode === "untagged") return children.filter(d => metaGetUserTags(d.path || "").length === 0);
       if (frame.mode === "hidden") return children.filter(d => metaHasHidden(d.path || ""));
+      if (frame.mode === "trash") return getTrashVirtualDirs();
       const tag = String(frame.tag || "");
       if (!tag) return [];
       return children.filter(d => {
@@ -8587,6 +8752,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!entry || entry.kind !== "tag") return [];
       const dirNode = WS.nav.dirNode;
       if (!dirNode) return [];
+      if (entry.special === "trash") {
+        return getTrashVirtualDirs();
+      }
       const children = getChildDirsForNodeBase(dirNode);
       if (!children.length) return [];
       if (entry.special) {
@@ -9210,6 +9378,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
 
+      if (entry.kind === "dir" && isTrashVirtualDirNode(entry.node)) {
+        showStatusMessage("Use folder menu to restore this trash folder.");
+        return;
+      }
+
       if (isViewingTagFolder()) {
         pushTagViewContext(entry.node?.path || "");
         WS.view.tagFolderActiveMode = "";
@@ -9407,6 +9580,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (WS.view.tagFolderActiveMode === "favorites") return `${baseLabel} · Favorites`;
         if (WS.view.tagFolderActiveMode === "untagged") return `${baseLabel} · Untagged`;
         if (WS.view.tagFolderActiveMode === "hidden") return `${baseLabel} · Hidden`;
+        if (WS.view.tagFolderActiveMode === "trash") return `${baseLabel} · Trash`;
         const tagLabel = String(WS.view.tagFolderActiveTag || "").trim();
         return tagLabel ? `${baseLabel} · ${tagLabel}` : baseLabel;
       }
@@ -9826,12 +10000,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return normalizeSetMergeFolderBase(first);
     }
 
-    async function moveEntryWithCollisionRename(srcDirHandle, entryHandle, entryName, destDirHandle) {
+    async function moveEntryWithCollisionRename(srcDirHandle, entryHandle, entryName, destDirHandle, outInfo) {
       if (!srcDirHandle || !entryHandle || !destDirHandle) return false;
       const desiredName = await uniqueDestNameInDir(destDirHandle, entryName);
       if (typeof entryHandle.move === "function") {
         try {
           await entryHandle.move(destDirHandle, desiredName);
+          if (outInfo && typeof outInfo === "object") outInfo.movedName = desiredName;
           return true;
         } catch {}
       }
@@ -9843,6 +10018,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           await writable.write(file);
           await writable.close();
           await srcDirHandle.removeEntry(entryName);
+          if (outInfo && typeof outInfo === "object") outInfo.movedName = desiredName;
           return true;
         } catch {}
         return false;
@@ -9852,11 +10028,220 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           const dstDir = await destDirHandle.getDirectoryHandle(desiredName, { create: true });
           await copyDirectoryHandle(entryHandle, dstDir);
           await srcDirHandle.removeEntry(entryName, { recursive: true });
+          if (outInfo && typeof outInfo === "object") outInfo.movedName = desiredName;
           return true;
         } catch {}
         return false;
       }
       return false;
+    }
+
+    async function ensureTrashDirectoryHandle(rootHandle) {
+      if (!rootHandle) return null;
+      try {
+        const sysDir = await rootHandle.getDirectoryHandle(".local-gallery", { create: true });
+        DIR_HANDLE_CACHE.set(".local-gallery", sysDir);
+        const trashDir = await sysDir.getDirectoryHandle("trash", { create: true });
+        DIR_HANDLE_CACHE.set(".local-gallery/trash", trashDir);
+        return trashDir;
+      } catch {}
+      return null;
+    }
+
+    async function moveFolderPathsToTrash(paths) {
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Delete requires a writable folder.");
+        return false;
+      }
+
+      const uniquePaths = Array.from(new Set((paths || []).map(p => String(p || "").trim()).filter(Boolean)));
+      if (!uniquePaths.length) {
+        showStatusMessage("No folders selected.");
+        return false;
+      }
+
+      uniquePaths.sort((a, b) => {
+        const depthA = a.split("/").filter(Boolean).length;
+        const depthB = b.split("/").filter(Boolean).length;
+        if (depthA !== depthB) return depthB - depthA;
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+      });
+
+      const rootHandle = WS.meta.fsRootHandle;
+      const targets = [];
+      for (const path of uniquePaths) {
+        const normalizedPath = normalizeWorkspaceRelPath(path);
+        if (!normalizedPath) continue;
+        const parts = normalizedPath.split("/").filter(Boolean);
+        const folderName = parts.pop() || "";
+        const parentPath = parts.join("/");
+        if (!folderName) continue;
+        if (folderName === ".local-gallery" || parts.includes(".local-gallery")) continue;
+
+        let parentHandle = null;
+        try { parentHandle = await getDirectoryHandleForPath(rootHandle, parentPath); } catch {}
+        if (!parentHandle) continue;
+
+        let entryHandle = null;
+        try { entryHandle = await parentHandle.getDirectoryHandle(folderName); } catch {}
+        if (!entryHandle) continue;
+
+        const sourceNode = WS.dirByPath.get(normalizedPath) || null;
+        const itemCount = sourceNode ? (dirItemCount(sourceNode) | 0) : 0;
+        targets.push({ path: normalizedPath, parentPath, folderName, parentHandle, entryHandle, itemCount });
+      }
+
+      if (!targets.length) {
+        showStatusMessage("No folders available.");
+        return false;
+      }
+
+      const trashHandle = await ensureTrashDirectoryHandle(rootHandle);
+      if (!trashHandle) {
+        showStatusMessage("Trash folder unavailable.");
+        return false;
+      }
+
+      const label = targets.length === 1
+        ? "Moving folder to trash..."
+        : `Moving ${targets.length} folders to trash...`;
+      showBusyOverlay(label);
+      const nextIndex = new Map(WS.meta.trashOriginsByName || []);
+      let moved = 0;
+      let failed = 0;
+      try {
+        for (const t of targets) {
+          const moveInfo = {};
+          const ok = await moveEntryWithCollisionRename(t.parentHandle, t.entryHandle, t.folderName, trashHandle, moveInfo);
+          if (ok) {
+            moved++;
+            const trashName = String(moveInfo.movedName || t.folderName || "").trim();
+            if (trashName && isValidFolderName(trashName)) {
+              nextIndex.set(trashName, {
+                originalPath: t.path,
+                itemCount: Math.max(0, Number(t.itemCount) || 0) | 0,
+                trashedAt: Date.now()
+              });
+            }
+            invalidateDirHandleCache(t.path);
+            invalidateDirHandleCache(t.parentPath);
+            continue;
+          }
+          failed++;
+        }
+      } catch {
+        failed = Math.max(failed, targets.length - moved);
+      } finally {
+        hideBusyOverlay();
+      }
+
+      if (!moved) {
+        showStatusMessage("Move to trash failed.");
+        return false;
+      }
+
+      WS.meta.trashOriginsByName = nextIndex;
+      await saveTrashIndexToFs();
+      await loadTrashStateFromFs();
+      try { await refreshWorkspaceFromRootHandle(); } catch {}
+
+      if (failed > 0) {
+        showStatusMessage(`Moved ${moved} folder${moved === 1 ? "" : "s"} to trash. ${failed} failed.`);
+      } else {
+        showStatusMessage(`Moved ${moved} folder${moved === 1 ? "" : "s"} to trash.`);
+      }
+      return true;
+    }
+
+    async function restoreTrashFoldersByNames(names) {
+      if (!WS.meta.fsRootHandle) {
+        showStatusMessage("Restore requires a writable folder.");
+        return { restored: 0, failed: 0 };
+      }
+
+      const targets = Array.from(new Set((names || []).map(v => String(v || "").trim()).filter(Boolean)));
+      if (!targets.length) {
+        showStatusMessage("No trash folders selected.");
+        return { restored: 0, failed: 0 };
+      }
+
+      await loadTrashStateFromFs();
+      const rootHandle = WS.meta.fsRootHandle;
+      const trashHandle = await ensureTrashDirectoryHandle(rootHandle);
+      if (!trashHandle) {
+        showStatusMessage("Trash folder unavailable.");
+        return { restored: 0, failed: targets.length };
+      }
+
+      const index = new Map(WS.meta.trashOriginsByName || []);
+      const toRestore = [];
+      for (const trashName of targets) {
+        if (!trashName || !isValidFolderName(trashName)) continue;
+        let entryHandle = null;
+        try { entryHandle = await trashHandle.getDirectoryHandle(trashName); } catch {}
+        if (!entryHandle) continue;
+        const rec = index.get(trashName) || null;
+        const originalPath = normalizeWorkspaceRelPath(rec && rec.originalPath);
+        if (!originalPath) continue;
+        toRestore.push({ trashName, entryHandle, originalPath });
+      }
+
+      if (!toRestore.length) {
+        showStatusMessage("No restorable trash folders found.");
+        return { restored: 0, failed: targets.length };
+      }
+
+      showBusyOverlay(toRestore.length === 1 ? "Restoring folder..." : `Restoring ${toRestore.length} folders...`);
+      let restored = 0;
+      let failed = Math.max(0, targets.length - toRestore.length);
+      try {
+        for (const item of toRestore) {
+          const parts = item.originalPath.split("/").filter(Boolean);
+          const desiredName = parts.pop() || "";
+          const parentPath = parts.join("/");
+          if (!desiredName || !isValidFolderName(desiredName)) {
+            failed++;
+            continue;
+          }
+          let parentHandle = null;
+          try { parentHandle = await ensureDirectoryHandleForPath(rootHandle, parentPath); } catch {}
+          if (!parentHandle) {
+            failed++;
+            continue;
+          }
+
+          const moveInfo = {};
+          const ok = await moveEntryWithCollisionRename(trashHandle, item.entryHandle, item.trashName, parentHandle, moveInfo);
+          if (!ok) {
+            failed++;
+            continue;
+          }
+
+          index.delete(item.trashName);
+          restored++;
+          invalidateDirHandleCache(parentPath);
+          invalidateDirHandleCache(item.originalPath);
+        }
+      } finally {
+        hideBusyOverlay();
+      }
+
+      if (!restored) {
+        showStatusMessage("Restore failed.");
+        return { restored: 0, failed: Math.max(failed, targets.length) };
+      }
+
+      WS.meta.trashOriginsByName = index;
+      await saveTrashIndexToFs();
+      await loadTrashStateFromFs();
+      await refreshWorkspaceFromRootHandle();
+
+      if (failed > 0) {
+        showStatusMessage(`Restored ${restored} folder${restored === 1 ? "" : "s"}. ${failed} failed.`);
+      } else {
+        showStatusMessage(`Restored ${restored} folder${restored === 1 ? "" : "s"}.`);
+      }
+      return { restored, failed };
     }
 
     async function setMergeSelectedDirs() {
@@ -10661,11 +11046,24 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       const selectedDirs = canBulk ? getSelectedPathsInCurrentDir() : [];
-      const selectedDirNodes = selectedDirs.map(p => WS.dirByPath.get(String(p || ""))).filter(Boolean);
+      const visibleDirNodeByPath = new Map();
+      for (const entry of (WS.nav.entries || [])) {
+        if (!entry || entry.kind !== "dir" || !entry.node) continue;
+        const p = String(entry.node.path || "");
+        if (!p) continue;
+        visibleDirNodeByPath.set(p, entry.node);
+      }
+      const selectedDirNodes = selectedDirs.map((p) => {
+        const key = String(p || "");
+        return visibleDirNodeByPath.get(key) || WS.dirByPath.get(key) || null;
+      }).filter(Boolean);
       const selectedDirCount = selectedDirNodes.length;
       const allOnlineDirs = selectedDirCount > 0 && selectedDirNodes.every(d => d?.onlineMeta && (d.onlineMeta.kind === "profile" || d.onlineMeta.kind === "post"));
       const allProfileDirs = allOnlineDirs && selectedDirNodes.every(d => d?.onlineMeta?.kind === "profile");
       const allPostDirs = allOnlineDirs && selectedDirNodes.every(d => d?.onlineMeta?.kind === "post");
+      const allLocalDirs = selectedDirCount > 0 && selectedDirNodes.every(d => !d?.onlineMeta);
+      const allTrashDirs = selectedDirCount > 0 && selectedDirNodes.every(d => isTrashVirtualDirNode(d));
+      const inTrashTagMode = isViewingTagFolder() && WS.view.tagFolderActiveMode === "trash";
       const selectedFiles = canBulk ? getSelectedFileIdsInCurrentView() : [];
       const selCount = selectedDirs.length + selectedFiles.length;
       const hasDirSelection = selectedDirs.length > 0;
@@ -10792,6 +11190,28 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           directoriesActionMenuEl.appendChild(renameBtn);
         }
       } else {
+        if (inTrashTagMode) {
+          const restoreSelectedBtn = makeActionBtn("Restore selected folders", async () => {
+            const trashNames = selectedDirNodes
+              .filter(d => isTrashVirtualDirNode(d))
+              .map(d => String(d.trashName || ""))
+              .filter(Boolean);
+            if (!trashNames.length) {
+              showStatusMessage("No trash folders selected.");
+              return;
+            }
+            const count = trashNames.length;
+            const confirmed = confirm(`Restore ${count} folder${count === 1 ? "" : "s"} from trash?`);
+            if (!confirmed) return;
+            WS.view.bulkActionMenuOpen = false;
+            const result = await restoreTrashFoldersByNames(trashNames);
+            if (result.restored > 0) finalizeBulkSelectionAction();
+          });
+          if (!WS.meta.fsRootHandle || !allTrashDirs) restoreSelectedBtn.disabled = true;
+          directoriesActionMenuEl.appendChild(restoreSelectedBtn);
+          return;
+        }
+
         const scoreRow = document.createElement("div");
         scoreRow.className = "scoreRow";
         const scoreUpBtn = makeActionBtn("+", () => {
@@ -10843,6 +11263,26 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         });
         if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
         directoriesActionMenuEl.appendChild(setMergeBtn);
+
+        const deleteSelectedBtn = makeActionBtn("Delete selected folders", async () => {
+          const localPaths = selectedDirNodes
+            .filter(d => d && !d.onlineMeta)
+            .map(d => String(d.path || ""))
+            .filter(Boolean);
+          if (!localPaths.length) {
+            showStatusMessage("No folders selected.");
+            return;
+          }
+          const count = localPaths.length;
+          const confirmed = confirm(`Move ${count} selected folder${count === 1 ? "" : "s"} to trash?`);
+          if (!confirmed) return;
+          WS.view.bulkActionMenuOpen = false;
+          const moved = await moveFolderPathsToTrash(localPaths);
+          if (moved) finalizeBulkSelectionAction();
+        });
+        deleteSelectedBtn.classList.add("destructiveAction");
+        if (!WS.meta.fsRootHandle || !allLocalDirs) deleteSelectedBtn.disabled = true;
+        directoriesActionMenuEl.appendChild(deleteSelectedBtn);
       }
 
       const anchorBtn = findDirMenuButtonForPath(WS.view.bulkActionMenuAnchorPath);
@@ -10918,6 +11358,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (isViewingTagFolder()) {
           if (WS.view.tagFolderActiveMode === "favorites") emptyMsg = "No favorite folders.";
           else if (WS.view.tagFolderActiveMode === "hidden") emptyMsg = "No hidden folders.";
+          else if (WS.view.tagFolderActiveMode === "trash") emptyMsg = "Trash is empty.";
           else {
             const tagLabel = String(WS.view.tagFolderActiveTag || "");
             emptyMsg = tagLabel ? `No folders tagged '${tagLabel}'.` : "No tagged folders.";
@@ -10962,16 +11403,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (isTagEntry) {
           const label = String(entry.label || entry.tag || "Tag");
           const countText = entry.count ? `${entry.count} folders` : "Tag folder";
+          const iconText = entry.special === "trash" ? "🗑" : "🏷";
           if (renameActive) {
             const initialValue = TAG_ENTRY_RENAME_STATE.label || label;
             row.innerHTML = `
-              <div class="dirIcon">🏷</div>
+              <div class="dirIcon">${iconText}</div>
               <div class="dirName"><input class="tagEditInput tagEntryRenameInput renameEditInput" type="text" value="${escapeHtml(initialValue)}" placeholder="${escapeHtml(label)}" /></div>
               <div class="dirMeta">${escapeHtml(countText)}</div>
             `;
           } else {
             row.innerHTML = `
-              <div class="dirIcon">🏷</div>
+              <div class="dirIcon">${iconText}</div>
               <div class="dirName" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
               <div class="dirMeta">${escapeHtml(countText)}</div>
             `;
@@ -10992,14 +11434,19 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const isHidden = metaHasHidden(p);
             const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
             if (sel) row.classList.add("bulkSelected");
+            const isTrashFolder = isTrashVirtualDirNode(entry.node);
             const onlineKind = entry.node?.onlineMeta?.kind || "";
             const canRename = onlineKind ? true : !!WS.meta.fsRootHandle;
             const canBatchIndex = !!WS.meta.fsRootHandle;
             const canResetOrder = !!entry.node?.preserveOrder;
+            const canDeleteFolder = !onlineKind && !!WS.meta.fsRootHandle && !!entry.node?.parent;
             icon = "📁";
             name = dirDisplayName(entry.node);
             const dirMetaLines = [];
             if (showFolderItemCount) dirMetaLines.push(`${dirItemCount(entry.node)} items`);
+            if (isTrashFolder && entry.node?.trashOriginalPath) {
+              dirMetaLines.push(`From ${displayPath(entry.node.trashOriginalPath)}`);
+            }
             if (showFolderSize) dirMetaLines.push(formatOnlineDownloadBytes(dirSizeByPath.get(String(p || "")) || 0));
             const statusBadges = [];
             if (isFavorite) statusBadges.push(`<span class="dirFavoriteHeart dirStatusBadge" title="Favorite">♥</span>`);
@@ -11016,7 +11463,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>${statusBadgeHtml}`;
             const sc = metaGetScore(p);
             const scoreMode = folderScoreDisplayMode();
-            if (scoreMode !== "hidden") {
+            if (!isTrashFolder && scoreMode !== "hidden") {
               const arrows = scoreMode === "show";
               voteHtml = `
           <div class="voteBox" data-path="${escapeHtml(p)}">
@@ -11030,7 +11477,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             // Menu (three dot / ⋯) for single-folder actions.
             let menuButtons = "";
             let menuTitle = "Folder menu";
-            if (onlineKind === "profile") {
+            if (isTrashFolder) {
+              menuTitle = "Trash folder menu";
+              menuButtons = `
+                <button type="button" data-action="restore-trash-folder"${entry.node?.trashOriginalPath ? "" : " disabled"}>Restore to original location</button>
+              `;
+            } else if (onlineKind === "profile") {
               menuTitle = "Profile menu";
               menuButtons = `
                 <div class="scoreRow">
@@ -11072,6 +11524,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                 <button type="button" data-action="scrub-folder"${WS.meta.fsRootHandle ? "" : " disabled"}>Scrub</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
+                <button type="button" class="destructiveAction" data-action="delete-folder"${canDeleteFolder ? "" : " disabled"}>Delete folder</button>
               `;
             }
             const menuHtml = `
@@ -11409,12 +11862,39 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                   await scrubFoldersByPaths([p]);
                   return;
                 }
+                if (action === "restore-trash-folder") {
+                  const trashName = String(entry.node?.trashName || "").trim();
+                  if (!trashName) {
+                    showStatusMessage("Trash folder cannot be restored.");
+                    return;
+                  }
+                  const source = String(entry.node?.trashOriginalPath || "").trim();
+                  if (!source) {
+                    showStatusMessage("Original folder location is unknown.");
+                    return;
+                  }
+                  const confirmed = confirm(`Restore folder to '${displayPath(source)}'?`);
+                  if (!confirmed) return;
+                  await restoreTrashFoldersByNames([trashName]);
+                  return;
+                }
                 if (action === "favorite") {
                   metaToggleFavorite(p);
                   return;
                 }
                 if (action === "hidden") {
                   metaToggleHidden(p);
+                  return;
+                }
+                if (action === "delete-folder") {
+                  if (!WS.meta.fsRootHandle) {
+                    showStatusMessage("Delete requires a writable folder.");
+                    return;
+                  }
+                  const label = displayPath(p) || dirDisplayName(entry.node) || "folder";
+                  const confirmed = confirm(`Move folder '${label}' to trash?`);
+                  if (!confirmed) return;
+                  await moveFolderPathsToTrash([p]);
                   return;
                 }
                 if (action === "score-up") {
@@ -12052,6 +12532,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
       if (!node) return;
+      if (isTrashVirtualDirNode(node)) {
+        showStatusMessage("Use folder menu to restore this trash folder.");
+        return;
+      }
 
       if (isViewingTagFolder()) {
         const selectedEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
