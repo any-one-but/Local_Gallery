@@ -1,3 +1,4 @@
+    /* Local note: version 01.02.08 was the last version to include online features. */
     /* =========================================================
        Core model
        ========================================================= */
@@ -8,6 +9,7 @@
 
     const FAVORITE_TAG = "__favorite__";
     const HIDDEN_TAG = "__hidden__";
+    const PROCESSING_DISABLED_TAG = "__processing_disabled__";
 
     function isImageName(name) { return imgRE.test((name || "").toLowerCase()); }
     function isVideoName(name) { return vidRE.test((name || "").toLowerCase()); }
@@ -15,6 +17,18 @@
     function fileKey(file, relPathOverride) {
       const rp = relPathOverride || file.webkitRelativePath || "";
       return (file.name + "::" + file.lastModified + "::" + file.size + "::" + rp);
+    }
+
+    function fileKeyForRecord(rec, relPathOverride) {
+      const relPath = String(relPathOverride != null ? relPathOverride : (rec?.relPath || ""));
+      const name = String(rec?.name || rec?.file?.name || "");
+      const lastModified = Number.isFinite(Number(rec?.lastModified))
+        ? Number(rec.lastModified)
+        : Number(rec?.file?.lastModified || 0);
+      const size = Number.isFinite(Number(rec?.size))
+        ? Number(rec.size)
+        : Number(rec?.file?.size || 0);
+      return `${name}::${lastModified}::${size}::${relPath}`;
     }
 
     function splitIndexPrefix(name) {
@@ -153,2711 +167,15 @@
     }
 
     /* =========================================================
-       Online profile adapter (PartyGuest parity, no UI)
+       Local-only mode
        ========================================================= */
 
-    const ONLINE_POSTS_PER_PAGE = 50;
-    const ONLINE_PAGE_DELAY_MS = 200;
-    const REDDIT_POSTS_PER_PAGE = 100;
-    const REDDIT_PAGE_DELAY_MS = 250;
-    const REDDIT_PROFILE_ORIGIN = "https://www.reddit.com";
-    const DEVIANTART_PROFILE_ORIGIN = "https://www.deviantart.com";
-    const DEVIANTART_BACKEND_ORIGIN = "https://backend.deviantart.com";
-    const DEVIANTART_PAGE_DELAY_MS = 300;
-    const REDDIT_API_USER_AGENT = "Mozilla/5.0 (compatible; LocalGallery/1.0)";
-
-    function sleepMs(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    function isRedditHost(hostname) {
-      const host = String(hostname || "").toLowerCase();
-      return host === "reddit.com" || host.endsWith(".reddit.com");
-    }
-
-    function isDeviantArtHost(hostname) {
-      const host = String(hostname || "").toLowerCase();
-      return host === "deviantart.com" || host.endsWith(".deviantart.com");
-    }
-
-    function normalizeRedditProfileOrigin(originRaw) {
-      try {
-        const parsed = new URL(String(originRaw || REDDIT_PROFILE_ORIGIN));
-        if (isRedditHost(parsed.hostname)) return REDDIT_PROFILE_ORIGIN;
-      } catch {}
-      return REDDIT_PROFILE_ORIGIN;
-    }
-
-    function normalizeDeviantArtProfileOrigin(originRaw) {
-      try {
-        const parsed = new URL(String(originRaw || DEVIANTART_PROFILE_ORIGIN));
-        if (isDeviantArtHost(parsed.hostname)) return DEVIANTART_PROFILE_ORIGIN;
-      } catch {}
-      return DEVIANTART_PROFILE_ORIGIN;
-    }
-
-    function buildOnlineProfileSourceUrl(profile) {
-      const source = (profile && profile.sourceUrl) ? String(profile.sourceUrl).trim() : "";
-      if (source) return source;
-      const service = String(profile && profile.service || "").toLowerCase();
-      const userId = encodeURIComponent(String(profile && profile.userId || "").trim());
-      const origin = String(profile && profile.origin || "").replace(/\/$/, "");
-      if (!userId) return "";
-      if (service === "reddit") {
-        const base = normalizeRedditProfileOrigin(origin || REDDIT_PROFILE_ORIGIN).replace(/\/$/, "");
-        return `${base}/user/${userId}`;
-      }
-      if (service === "deviantart") {
-        const base = normalizeDeviantArtProfileOrigin(origin || DEVIANTART_PROFILE_ORIGIN).replace(/\/$/, "");
-        return `${base}/${userId}`;
-      }
-      if (!origin || !service) return "";
-      return `${origin}/${service}/user/${userId}`;
-    }
-
-    function decodeHtmlEntities(raw) {
-      return String(raw || "")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, "\"")
-        .replace(/&#39;/g, "'")
-        .replace(/&#x27;/gi, "'");
-    }
-
-    function normalizeOnlineAbsoluteUrl(raw, baseOrigin) {
-      let next = decodeHtmlEntities(raw).trim();
-      if (!next) return "";
-      if (/^\/\//.test(next)) next = "https:" + next;
-      try {
-        return new URL(next, baseOrigin || "https://example.invalid").toString();
-      } catch {
-        return "";
-      }
-    }
-
-    function urlLooksLikeMedia(u) {
-      const base = (String(u || "").split("?")[0] || "").toLowerCase();
-      if (!base) return false;
-      if (imgRE.test(base) || vidRE.test(base)) return true;
-      if (/\.gifv$/i.test(base)) return true;
-      return false;
-    }
-
-    function appendUniqueUrl(target, seen, raw, baseOrigin) {
-      let url = normalizeOnlineAbsoluteUrl(raw, baseOrigin);
-      if (!url) return;
-      if (/\.gifv(\?|$)/i.test(url)) {
-        url = url.replace(/\.gifv(?=\?|$)/i, ".mp4");
-      }
-      if (!urlLooksLikeMedia(url)) return;
-      const key = (normalizeOnlineFileUrl(url, baseOrigin) || url).toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      target.push(url);
-    }
-
-    function collectRedditMediaUrlsFromPost(postData, baseOrigin) {
-      const urls = [];
-      const seen = new Set();
-      const add = (raw) => appendUniqueUrl(urls, seen, raw, baseOrigin);
-      const scan = (data) => {
-        if (!data || typeof data !== "object") return;
-
-        const rv = (data.secure_media && data.secure_media.reddit_video) || (data.media && data.media.reddit_video) || null;
-        if (rv && rv.fallback_url) add(rv.fallback_url);
-
-        const rvPreview = data.preview && data.preview.reddit_video_preview ? data.preview.reddit_video_preview : null;
-        if (rvPreview && rvPreview.fallback_url) add(rvPreview.fallback_url);
-
-        if (data.gallery_data && Array.isArray(data.gallery_data.items) && data.media_metadata && typeof data.media_metadata === "object") {
-          for (const item of data.gallery_data.items) {
-            if (!item || !item.media_id) continue;
-            const meta = data.media_metadata[item.media_id];
-            if (!meta || typeof meta !== "object") continue;
-            if (meta.s && meta.s.u) add(meta.s.u);
-            if (meta.s && meta.s.gif) add(meta.s.gif);
-            if (meta.s && meta.s.mp4) add(meta.s.mp4);
-          }
-        }
-
-        if (data.url_overridden_by_dest) add(data.url_overridden_by_dest);
-        else if (data.url && data.is_reddit_media_domain) add(data.url);
-
-        if (data.preview && Array.isArray(data.preview.images)) {
-          for (const image of data.preview.images) {
-            if (!image || typeof image !== "object") continue;
-            if (image.source && image.source.url) add(image.source.url);
-            if (image.variants && image.variants.gif && image.variants.gif.source && image.variants.gif.source.url) {
-              add(image.variants.gif.source.url);
-            }
-          }
-        }
-      };
-
-      scan(postData);
-      if (!urls.length && postData && Array.isArray(postData.crosspost_parent_list)) {
-        for (const item of postData.crosspost_parent_list) {
-          scan(item);
-          if (urls.length) break;
-        }
-      }
-
-      return urls;
-    }
-
-    function mapRedditListingToPosts(listing, page, userId, baseOrigin) {
-      const out = [];
-      const children = listing && listing.data && Array.isArray(listing.data.children) ? listing.data.children : [];
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i];
-        const data = child && child.data && typeof child.data === "object" ? child.data : null;
-        if (!data) continue;
-        const mediaUrls = collectRedditMediaUrlsFromPost(data, baseOrigin);
-        if (!mediaUrls.length) continue;
-        const post = {
-          id: data.id != null ? String(data.id) : ("reddit_post_" + String(page) + "_" + String(i + 1)),
-          user: data.author || userId,
-          service: "reddit",
-          title: data.title || "",
-          created: data.created_utc,
-          created_utc: data.created_utc,
-          permalink: data.permalink || "",
-          url: data.permalink ? `${baseOrigin}${String(data.permalink)}` : (data.url || ""),
-          pgPage: page,
-          pgIdxOnPage: i + 1,
-          attachments: mediaUrls.map(u => ({ url: u }))
-        };
-        out.push(post);
-      }
-      const after = listing && listing.data ? (listing.data.after || null) : null;
-      return { posts: out, after };
-    }
-
-    async function fetchRedditUserPosts(userId, origin, opts = {}) {
-      const posts = [];
-      const responses = [];
-      const pageSize = Number.isFinite(opts.pageSize) ? Math.max(1, Math.min(100, opts.pageSize)) : REDDIT_POSTS_PER_PAGE;
-      const delayMs = Number.isFinite(opts.pageDelayMs) ? opts.pageDelayMs : REDDIT_PAGE_DELAY_MS;
-      const fetchFn = (typeof opts.fetch === "function") ? opts.fetch : fetch;
-      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.fetchUrl === "function")
-        ? window.electronAPI
-        : null;
-      const responseBodyLimit = Number.isFinite(opts.responseBodyLimit) ? Math.max(256, opts.responseBodyLimit) : 18000;
-      const base = normalizeRedditProfileOrigin(origin);
-      const profileUrl = `${base}/user/${encodeURIComponent(String(userId || "").trim())}`;
-
-      let page = 1;
-      let after = null;
-      let lastError = null;
-
-      const pushResponse = (entry) => {
-        const rawBody = (entry && typeof entry.responseText === "string") ? entry.responseText : "";
-        const text = rawBody.length > responseBodyLimit ? rawBody.slice(0, responseBodyLimit) : rawBody;
-        responses.push(Object.assign({}, entry, {
-          ts: (entry && typeof entry.ts === "number") ? entry.ts : Date.now(),
-          responseText: text,
-          responseBytes: rawBody.length,
-          truncated: rawBody.length > responseBodyLimit
-        }));
-      };
-
-      while (true) {
-        if (typeof opts.progressCb === "function") {
-          try { opts.progressCb(page, posts.length); } catch {}
-        }
-
-        const afterParam = after ? `&after=${encodeURIComponent(after)}` : "";
-        const apiUrl = `${base}/user/${encodeURIComponent(String(userId || "").trim())}/submitted/.json?raw_json=1&limit=${pageSize}${afterParam}`;
-        let resp = null;
-        try {
-          if (electronApi) {
-            const res = await electronApi.fetchUrl({
-              url: apiUrl,
-              headers: {
-                Accept: "application/json,text/plain,*/*",
-                "X-Requested-With": "XMLHttpRequest",
-                "User-Agent": REDDIT_API_USER_AGENT
-              },
-              referrer: profileUrl
-            });
-            const status = (res && typeof res.status === "number") ? res.status : 0;
-            const responseText = (res && typeof res.text === "string") ? res.text : "";
-            if (!res || !res.ok) {
-              if (status > 0) lastError = `http_${status}`;
-              else lastError = res && res.error ? String(res.error) : "network_error";
-              pushResponse({
-                ts: Date.now(),
-                source: "electron",
-                url: apiUrl,
-                page,
-                offset: posts.length,
-                ok: false,
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-            try {
-              resp = JSON.parse(responseText || "");
-              pushResponse({
-                ts: Date.now(),
-                source: "electron",
-                url: apiUrl,
-                page,
-                offset: posts.length,
-                ok: true,
-                status,
-                error: "",
-                parseOk: true,
-                responseText
-              });
-            } catch {
-              lastError = "invalid_json";
-              pushResponse({
-                ts: Date.now(),
-                source: "electron",
-                url: apiUrl,
-                page,
-                offset: posts.length,
-                ok: true,
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-          } else {
-            const res = await fetchFn(apiUrl, {
-              cache: "no-store",
-              headers: {
-                Accept: "application/json,text/plain,*/*",
-                "X-Requested-With": "XMLHttpRequest"
-              },
-              referrer: profileUrl,
-              referrerPolicy: "no-referrer-when-downgrade"
-            });
-            let status = 0;
-            let responseText = "";
-            if (res) {
-              if (typeof res.status === "number") status = res.status;
-              try { responseText = await res.text(); } catch {}
-            }
-            if (!res || !res.ok) {
-              lastError = status > 0 ? `http_${status}` : "network_error";
-              pushResponse({
-                ts: Date.now(),
-                source: "browser",
-                url: apiUrl,
-                page,
-                offset: posts.length,
-                ok: !!(res && res.ok),
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-            try {
-              resp = JSON.parse(responseText || "");
-              pushResponse({
-                ts: Date.now(),
-                source: "browser",
-                url: apiUrl,
-                page,
-                offset: posts.length,
-                ok: true,
-                status,
-                error: "",
-                parseOk: true,
-                responseText
-              });
-            } catch {
-              lastError = "invalid_json";
-              pushResponse({
-                ts: Date.now(),
-                source: "browser",
-                url: apiUrl,
-                page,
-                offset: posts.length,
-                ok: true,
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-          }
-        } catch {
-          lastError = "network_error";
-          pushResponse({
-            ts: Date.now(),
-            source: electronApi ? "electron" : "browser",
-            url: apiUrl,
-            page,
-            offset: posts.length,
-            ok: false,
-            status: 0,
-            error: lastError,
-            parseOk: false,
-            responseText: ""
-          });
-          break;
-        }
-
-        const mapped = mapRedditListingToPosts(resp, page, userId, base);
-        if (Array.isArray(mapped.posts) && mapped.posts.length) {
-          for (const post of mapped.posts) posts.push(post);
-        }
-        after = mapped.after || null;
-        if (!after) break;
-        page++;
-        if (delayMs > 0) await sleepMs(delayMs + Math.floor(Math.random() * 200));
-      }
-
-      return { posts, error: lastError, responses };
-    }
-
-    const DEVIANTART_RESERVED_ROUTE_HEADS = new Set([
-      "",
-      "about",
-      "account",
-      "adopt",
-      "artists",
-      "browse",
-      "core-membership",
-      "daily-deviations",
-      "download",
-      "forum",
-      "forums",
-      "help",
-      "jobs",
-      "join",
-      "notifications",
-      "messages",
-      "shop",
-      "settings",
-      "tag",
-      "watch",
-      "wishlist"
-    ]);
-
-    function parseXmlTagAttributes(attrText) {
-      const out = {};
-      const src = String(attrText || "");
-      const re = /([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-      let m = null;
-      while ((m = re.exec(src)) !== null) {
-        const key = String(m[1] || "").toLowerCase();
-        const value = decodeHtmlEntities(m[2] != null ? m[2] : m[3] != null ? m[3] : "");
-        if (key) out[key] = value;
-      }
-      return out;
-    }
-
-    function extractRssTagText(xmlChunk, tagName) {
-      const src = String(xmlChunk || "");
-      const tag = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (!tag) return "";
-      const re = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
-      const m = re.exec(src);
-      if (!m) return "";
-      return decodeHtmlEntities(String(m[1] || "").trim());
-    }
-
-    function extractRssNextHref(xmlText, baseOrigin) {
-      const src = String(xmlText || "");
-      const re = /<atom:link\b([^>]*?)\/?>/gi;
-      let m = null;
-      while ((m = re.exec(src)) !== null) {
-        const attrs = parseXmlTagAttributes(m[1] || "");
-        const rel = String(attrs.rel || "").toLowerCase();
-        if (rel !== "next") continue;
-        const href = String(attrs.href || "").trim();
-        if (!href) continue;
-        try {
-          return new URL(href, baseOrigin || DEVIANTART_BACKEND_ORIGIN).toString();
-        } catch {}
-      }
-      return null;
-    }
-
-    function collectDeviantArtMediaUrlsFromItemXml(itemXml, baseOrigin) {
-      const urls = [];
-      const seen = new Set();
-      const add = (raw) => appendUniqueUrl(urls, seen, raw, baseOrigin);
-      const xml = String(itemXml || "");
-
-      const mediaContentRe = /<media:content\b([^>]*?)\/?>/gi;
-      let m = null;
-      while ((m = mediaContentRe.exec(xml)) !== null) {
-        const attrs = parseXmlTagAttributes(m[1] || "");
-        if (attrs.url) add(attrs.url);
-      }
-
-      const enclosureRe = /<enclosure\b([^>]*?)\/?>/gi;
-      while ((m = enclosureRe.exec(xml)) !== null) {
-        const attrs = parseXmlTagAttributes(m[1] || "");
-        if (attrs.url) add(attrs.url);
-      }
-
-      if (!urls.length) {
-        const desc = extractRssTagText(xml, "description");
-        const imgRe = /https?:\/\/[^\s"'<>]+/gi;
-        let dm = null;
-        while ((dm = imgRe.exec(desc)) !== null) add(dm[0]);
-      }
-
-      return urls;
-    }
-
-    function mapDeviantArtRssToPosts(xmlText, page, userId, baseOrigin) {
-      const src = String(xmlText || "");
-      if (!src.trim()) return { posts: [], nextUrl: null, error: "invalid_xml" };
-
-      const channelHead = src.split(/<item\b/i)[0] || src;
-      const channelDesc = extractRssTagText(channelHead, "description");
-      if (/error generating rss/i.test(channelDesc)) {
-        return { posts: [], nextUrl: null, error: "invalid_profile" };
-      }
-
-      const posts = [];
-      const itemRe = /<item\b[\s\S]*?<\/item>/gi;
-      let itemMatch = null;
-      let idx = 0;
-      while ((itemMatch = itemRe.exec(src)) !== null) {
-        idx++;
-        const itemXml = itemMatch[0] || "";
-        const mediaUrls = collectDeviantArtMediaUrlsFromItemXml(itemXml, baseOrigin);
-        if (!mediaUrls.length) continue;
-
-        const link = extractRssTagText(itemXml, "link");
-        const guid = extractRssTagText(itemXml, "guid");
-        const title = extractRssTagText(itemXml, "title");
-        const pubDate = extractRssTagText(itemXml, "pubDate");
-        let createdTs = null;
-        try {
-          const t = Date.parse(pubDate);
-          if (Number.isFinite(t)) createdTs = Math.floor(t / 1000);
-        } catch {}
-
-        let id = "";
-        const idSrc = link || guid;
-        const idMatch = /-(\d+)(?:[/?#]|$)/.exec(idSrc);
-        if (idMatch && idMatch[1]) id = idMatch[1];
-        if (!id && guid) id = guid;
-        if (!id && link) id = link;
-        if (!id) id = `deviantart_post_${String(page)}_${String(idx)}`;
-
-        posts.push({
-          id: String(id),
-          user: userId,
-          service: "deviantart",
-          title: title || "",
-          created: createdTs,
-          created_utc: createdTs,
-          url: link || guid || "",
-          permalink: link || guid || "",
-          pgPage: page,
-          pgIdxOnPage: idx,
-          attachments: mediaUrls.map(u => ({ url: u }))
-        });
-      }
-
-      const nextUrl = extractRssNextHref(src, baseOrigin);
-      if (!posts.length && !nextUrl) return { posts: [], nextUrl: null, error: null };
-      return { posts, nextUrl, error: null };
-    }
-
-    async function fetchDeviantArtUserPosts(userId, origin, opts = {}) {
-      const posts = [];
-      const responses = [];
-      const delayMs = Number.isFinite(opts.pageDelayMs) ? opts.pageDelayMs : DEVIANTART_PAGE_DELAY_MS;
-      const fetchFn = (typeof opts.fetch === "function") ? opts.fetch : fetch;
-      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.fetchUrl === "function")
-        ? window.electronAPI
-        : null;
-      const responseBodyLimit = Number.isFinite(opts.responseBodyLimit) ? Math.max(256, opts.responseBodyLimit) : 18000;
-      const maxPages = Number.isFinite(opts.maxPages) ? Math.max(1, Math.min(500, opts.maxPages)) : 200;
-      const baseProfile = normalizeDeviantArtProfileOrigin(origin);
-      const user = String(userId || "").trim();
-      const profileUrl = `${baseProfile.replace(/\/$/, "")}/${encodeURIComponent(user)}`;
-      const firstFeedUrl = `${DEVIANTART_BACKEND_ORIGIN}/rss.xml?type=deviation&q=${encodeURIComponent(`gallery:${user}`)}`;
-
-      let page = 1;
-      let pageUrl = firstFeedUrl;
-      let lastError = null;
-
-      const pushResponse = (entry) => {
-        const rawBody = (entry && typeof entry.responseText === "string") ? entry.responseText : "";
-        const text = rawBody.length > responseBodyLimit ? rawBody.slice(0, responseBodyLimit) : rawBody;
-        responses.push(Object.assign({}, entry, {
-          ts: (entry && typeof entry.ts === "number") ? entry.ts : Date.now(),
-          responseText: text,
-          responseBytes: rawBody.length,
-          truncated: rawBody.length > responseBodyLimit
-        }));
-      };
-
-      while (pageUrl && page <= maxPages) {
-        if (typeof opts.progressCb === "function") {
-          try { opts.progressCb(page, posts.length); } catch {}
-        }
-
-        let responseText = "";
-        let status = 0;
-        let ok = false;
-        let source = electronApi ? "electron" : "browser";
-        try {
-          if (electronApi) {
-            const res = await electronApi.fetchUrl({
-              url: pageUrl,
-              headers: {
-                Accept: "application/xml,text/xml,text/plain,*/*",
-                "X-Requested-With": "XMLHttpRequest",
-                "User-Agent": REDDIT_API_USER_AGENT
-              },
-              referrer: profileUrl
-            });
-            status = (res && typeof res.status === "number") ? res.status : 0;
-            responseText = (res && typeof res.text === "string") ? res.text : "";
-            ok = !!(res && res.ok);
-            if (!ok) {
-              if (status > 0) lastError = `http_${status}`;
-              else lastError = res && res.error ? String(res.error) : "network_error";
-              pushResponse({
-                ts: Date.now(),
-                source,
-                url: pageUrl,
-                page,
-                offset: posts.length,
-                ok: false,
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-          } else {
-            const res = await fetchFn(pageUrl, {
-              cache: "no-store",
-              headers: {
-                Accept: "application/xml,text/xml,text/plain,*/*",
-                "X-Requested-With": "XMLHttpRequest"
-              },
-              referrer: profileUrl,
-              referrerPolicy: "no-referrer-when-downgrade"
-            });
-            if (res && typeof res.status === "number") status = res.status;
-            try { responseText = res ? await res.text() : ""; } catch {}
-            ok = !!(res && res.ok);
-            if (!ok) {
-              lastError = status > 0 ? `http_${status}` : "network_error";
-              pushResponse({
-                ts: Date.now(),
-                source,
-                url: pageUrl,
-                page,
-                offset: posts.length,
-                ok: false,
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-          }
-        } catch {
-          lastError = "network_error";
-          pushResponse({
-            ts: Date.now(),
-            source,
-            url: pageUrl,
-            page,
-            offset: posts.length,
-            ok: false,
-            status: 0,
-            error: lastError,
-            parseOk: false,
-            responseText: ""
-          });
-          break;
-        }
-
-        const mapped = mapDeviantArtRssToPosts(responseText, page, user, baseProfile);
-        if (mapped.error) {
-          lastError = mapped.error;
-          pushResponse({
-            ts: Date.now(),
-            source,
-            url: pageUrl,
-            page,
-            offset: posts.length,
-            ok,
-            status,
-            error: lastError,
-            parseOk: false,
-            responseText
-          });
-          break;
-        }
-
-        pushResponse({
-          ts: Date.now(),
-          source,
-          url: pageUrl,
-          page,
-          offset: posts.length,
-          ok,
-          status,
-          error: "",
-          parseOk: true,
-          responseText
-        });
-
-        if (Array.isArray(mapped.posts) && mapped.posts.length) {
-          for (const post of mapped.posts) posts.push(post);
-        }
-
-        if (!mapped.nextUrl) break;
-        pageUrl = mapped.nextUrl;
-        page++;
-        if (delayMs > 0) await sleepMs(delayMs + Math.floor(Math.random() * 220));
-      }
-
-      return { posts, error: lastError, responses };
-    }
-
-    function parseOnlineProfileUrl(rawUrl) {
-      let raw = String(rawUrl || "").trim();
-      if (!raw) return { ok: false, error: "invalid-url" };
-      if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) {
-        raw = "https://" + raw;
-      }
-      let url = null;
-      try { url = new URL(raw); } catch { return { ok: false, error: "invalid-url" }; }
-      if (isDeviantArtHost(url.hostname)) {
-        let userId = "";
-        const host = String(url.hostname || "").toLowerCase();
-        if (host.endsWith(".deviantart.com") && host !== "www.deviantart.com" && host !== "deviantart.com" && host !== "backend.deviantart.com") {
-          const sub = host.slice(0, -".deviantart.com".length);
-          if (sub && !sub.includes(".")) userId = decodeURIComponent(sub).trim();
-        }
-        if (!userId) {
-          const qRaw = String(url.searchParams.get("q") || "").trim();
-          const qMatch = /^gallery:(.+)$/i.exec(qRaw);
-          if (qMatch && qMatch[1]) userId = String(qMatch[1]).trim();
-        }
-        if (!userId && host !== "backend.deviantart.com") {
-          const parts = (url.pathname || "").split("/").filter(Boolean);
-          if (parts.length) {
-            const first = decodeURIComponent(parts[0] || "").replace(/^@+/, "").trim();
-            if (first && !DEVIANTART_RESERVED_ROUTE_HEADS.has(first.toLowerCase())) userId = first;
-          }
-        }
-        if (!userId) return { ok: false, error: "invalid-profile-path" };
-        const origin = DEVIANTART_PROFILE_ORIGIN;
-        return {
-          ok: true,
-          origin,
-          service: "deviantart",
-          userId,
-          profileKey: "deviantart::" + userId,
-          dataRoot: origin.replace(/\/$/, "") + "/data"
-        };
-      }
-      if (isRedditHost(url.hostname)) {
-        const parts = (url.pathname || "").split("/").filter(Boolean);
-        const head = String(parts[0] || "").toLowerCase();
-        if ((head === "user" || head === "u") && parts.length >= 2) {
-          const userId = decodeURIComponent(parts[1] || "").trim();
-          if (!userId) return { ok: false, error: "invalid-profile-path" };
-          const origin = REDDIT_PROFILE_ORIGIN;
-          return {
-            ok: true,
-            origin,
-            service: "reddit",
-            userId,
-            profileKey: "reddit::" + userId,
-            dataRoot: origin.replace(/\/$/, "") + "/data"
-          };
-        }
-        return { ok: false, error: "invalid-profile-path" };
-      }
-      const parts = (url.pathname || "").split("/").filter(Boolean);
-      if (parts.length < 3 || parts[1] !== "user") {
-        return { ok: false, error: "invalid-profile-path" };
-      }
-      const service = decodeURIComponent(parts[0] || "").trim();
-      const userId = decodeURIComponent(parts[2] || "").trim();
-      if (!service || !userId) return { ok: false, error: "invalid-profile-path" };
-      const origin = url.origin;
-      return {
-        ok: true,
-        origin,
-        service,
-        userId,
-        profileKey: service + "::" + userId,
-        dataRoot: origin.replace(/\/$/, "") + "/data"
-      };
-    }
-
-    function resolveOnlineFileUrl(obj, dataRoot) {
-      if (!obj) return null;
-      if (obj.path) {
-        if (String(obj.path).startsWith("http")) return obj.path;
-        const p = obj.path.startsWith("/") ? obj.path : ("/" + obj.path);
-        const base = String(dataRoot || "").replace(/\/$/, "");
-        return base ? (base + p) : p;
-      }
-      if (obj.url && String(obj.url).startsWith("http")) return obj.url;
-      return null;
-    }
-
-    function normalizeOnlineFileUrl(u, baseOrigin) {
-      if (!u) return "";
-      try {
-        const url = new URL(u, baseOrigin || "https://example.invalid");
-        let path = url.pathname || "";
-        const idx = path.indexOf("/data/");
-        if (idx >= 0) path = path.slice(idx);
-        return path.toLowerCase();
-      } catch {
-        return (String(u).split("?")[0] || "").toLowerCase();
-      }
-    }
-
-    function buildPgFilesForPosts(posts, opts = {}) {
-      if (!Array.isArray(posts) || !posts.length) return { totalFiles: 0 };
-      const origin = String(opts.origin || "");
-      const dataRoot = String(opts.dataRoot || (origin ? origin.replace(/\/$/, "") + "/data" : ""));
-      const perPostFiles = [];
-      let totalFiles = 0;
-
-      for (const meta of posts) {
-        const refs = [];
-        const addRef = (o) => {
-          const u = resolveOnlineFileUrl(o, dataRoot);
-          if (u) refs.push(u);
-        };
-
-        if (Array.isArray(meta.pgFiles) && meta.pgFiles.length) {
-          for (const f of meta.pgFiles) {
-            const u = (f && f.url) ? f.url : resolveOnlineFileUrl(f, dataRoot);
-            if (u) refs.push(u);
-          }
-        } else {
-          if (meta.file) addRef(meta.file);
-          if (Array.isArray(meta.attachments)) meta.attachments.forEach(addRef);
-        }
-
-        const seen = new Set();
-        const files = [];
-        for (const ref of refs) {
-          const base = (String(ref).split("?")[0] || "");
-          const isImg = imgRE.test(base);
-          const isVid = vidRE.test(base);
-          if (!isImg && !isVid) continue;
-          const key = normalizeOnlineFileUrl(ref, origin);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          files.push({ url: ref, isVid });
-        }
-        perPostFiles.push(files);
-        totalFiles += files.length;
-      }
-
-      let g = totalFiles;
-      for (let i = 0; i < posts.length; i++) {
-        const meta = posts[i];
-        const files = perPostFiles[i] || [];
-        const pgFiles = [];
-        let local = 1;
-        for (const f of files) {
-          pgFiles.push({ g, local, url: f.url, isVid: !!f.isVid });
-          g--;
-          local++;
-        }
-        meta.pgFiles = pgFiles;
-      }
-
-      return { totalFiles };
-    }
-
-    async function fetchOnlineProfilePosts(service, userId, origin, opts = {}) {
-      if (String(service || "").toLowerCase() === "deviantart") {
-        return fetchDeviantArtUserPosts(userId, origin, opts);
-      }
-      if (String(service || "").toLowerCase() === "reddit") {
-        return fetchRedditUserPosts(userId, origin, opts);
-      }
-      const posts = [];
-      const responses = [];
-      const pageSize = Number.isFinite(opts.pageSize) ? opts.pageSize : ONLINE_POSTS_PER_PAGE;
-      const delayMs = Number.isFinite(opts.pageDelayMs) ? opts.pageDelayMs : ONLINE_PAGE_DELAY_MS;
-      const fetchFn = (typeof opts.fetch === "function") ? opts.fetch : fetch;
-      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.fetchUrl === "function")
-        ? window.electronAPI
-        : null;
-      const responseBodyLimit = Number.isFinite(opts.responseBodyLimit) ? Math.max(256, opts.responseBodyLimit) : 18000;
-      let page = 1;
-      let lastError = null;
-
-      const pushResponse = (entry) => {
-        const rawBody = (entry && typeof entry.responseText === "string") ? entry.responseText : "";
-        const text = rawBody.length > responseBodyLimit ? rawBody.slice(0, responseBodyLimit) : rawBody;
-        responses.push(Object.assign({}, entry, {
-          ts: (entry && typeof entry.ts === "number") ? entry.ts : Date.now(),
-          responseText: text,
-          responseBytes: rawBody.length,
-          truncated: rawBody.length > responseBodyLimit
-        }));
-      };
-
-      while (true) {
-        if (typeof opts.progressCb === "function") {
-          try { opts.progressCb(page, posts.length); } catch {}
-        }
-
-        const offset = (page - 1) * pageSize;
-        const base = String(origin || "").replace(/\/$/, "");
-        const apiUrl = `${base}/api/v1/${service}/user/${userId}/posts?o=${offset}`;
-        let resp = null;
-        try {
-          if (electronApi) {
-            const res = await electronApi.fetchUrl({
-              url: apiUrl,
-              headers: {
-                Accept: "text/css",
-                "X-Requested-With": "XMLHttpRequest",
-                "User-Agent": navigator.userAgent
-              },
-              referrer: `${base}/${service}/user/${userId}`
-            });
-            const status = (res && typeof res.status === "number") ? res.status : 0;
-            const responseText = (res && typeof res.text === "string") ? res.text : "";
-            if (!res || !res.ok) {
-              if (res && typeof res.status === "number" && res.status > 0) lastError = `http_${res.status}`;
-              else lastError = res && res.error ? res.error : "network_error";
-              pushResponse({
-                ts: Date.now(),
-                source: "electron",
-                url: apiUrl,
-                page,
-                offset,
-                ok: false,
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-            try {
-              resp = JSON.parse(responseText || "");
-              pushResponse({
-                ts: Date.now(),
-                source: "electron",
-                url: apiUrl,
-                page,
-                offset,
-                ok: true,
-                status,
-                error: "",
-                parseOk: true,
-                responseText
-              });
-            } catch {
-              lastError = "invalid_json";
-              pushResponse({
-                ts: Date.now(),
-                source: "electron",
-                url: apiUrl,
-                page,
-                offset,
-                ok: true,
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-          } else {
-            const res = await fetchFn(apiUrl, {
-              cache: "no-store",
-              headers: {
-                Accept: "text/css",
-                "X-Requested-With": "XMLHttpRequest"
-              },
-              referrer: `${base}/${service}/user/${userId}`,
-              referrerPolicy: "no-referrer-when-downgrade"
-            });
-            let status = 0;
-            let responseText = "";
-            if (res) {
-              if (typeof res.status === "number") status = res.status;
-              try { responseText = await res.text(); } catch {}
-            }
-            if (!res || !res.ok) {
-              lastError = res ? `http_${res.status}` : "network_error";
-              pushResponse({
-                ts: Date.now(),
-                source: "browser",
-                url: apiUrl,
-                page,
-                offset,
-                ok: !!(res && res.ok),
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-            try {
-              resp = JSON.parse(responseText);
-              pushResponse({
-                ts: Date.now(),
-                source: "browser",
-                url: apiUrl,
-                page,
-                offset,
-                ok: true,
-                status,
-                error: "",
-                parseOk: true,
-                responseText
-              });
-            } catch {
-              lastError = "invalid_json";
-              pushResponse({
-                ts: Date.now(),
-                source: "browser",
-                url: apiUrl,
-                page,
-                offset,
-                ok: true,
-                status,
-                error: lastError,
-                parseOk: false,
-                responseText
-              });
-              break;
-            }
-          }
-        } catch {
-          lastError = "network_error";
-          pushResponse({
-            ts: Date.now(),
-            source: electronApi ? "electron" : "browser",
-            url: apiUrl,
-            page,
-            offset,
-            ok: false,
-            status: 0,
-            error: lastError,
-            parseOk: false,
-            responseText: ""
-          });
-          break;
-        }
-
-        const arr = Array.isArray(resp) ? resp : (resp && (resp.results || resp.posts)) || [];
-        if (!Array.isArray(arr) || arr.length === 0) break;
-        for (let i = 0; i < arr.length; i++) {
-          const copy = Object.assign({}, arr[i]);
-          copy.pgPage = page;
-          copy.pgIdxOnPage = i + 1;
-          posts.push(copy);
-        }
-        if (arr.length < pageSize) break;
-        page++;
-        if (delayMs > 0) await sleepMs(delayMs + Math.floor(Math.random() * 150));
-      }
-
-      return { posts, error: lastError, responses };
-    }
-
-    function getOnlineApiErrorMessage(err) {
-      const error = String(err || "").trim();
-      if (!error) return "Network error.";
-      if (error === "invalid_json") return "API returned non-JSON. Check Responses tab.";
-      if (error === "invalid_xml") return "API returned invalid XML. Check Responses tab.";
-      if (error === "invalid_profile") return "Profile not found or no public gallery feed.";
-      if (error.startsWith("http_")) return `API error (${error.slice(5)})`;
-      if (error === "network_error") return "Network error.";
-      return `API error (${error})`;
-    }
-
-    function normalizeOnlinePosts(posts, opts = {}) {
-      const pageSize = Number.isFinite(opts.pageSize) ? opts.pageSize : ONLINE_POSTS_PER_PAGE;
-      const origin = String(opts.origin || "");
-      const dataRoot = String(opts.dataRoot || (origin ? origin.replace(/\/$/, "") + "/data" : ""));
-      const out = Array.isArray(posts) ? posts.map(p => Object.assign({}, p)) : [];
-      const total = out.length;
-
-      for (let i = 0; i < out.length; i++) {
-        const p = out[i];
-        if (!Number.isFinite(p.pgPage) || !Number.isFinite(p.pgIdxOnPage)) {
-          p.pgPage = Math.floor(i / pageSize) + 1;
-          p.pgIdxOnPage = (i % pageSize) + 1;
-        }
-        p.pgGlobalIndex = total - i;
-      }
-
-      buildPgFilesForPosts(out, { origin, dataRoot });
-      return out;
-    }
-
-    if (typeof window !== "undefined") {
-      window.LGOnline = Object.assign(window.LGOnline || {}, {
-        parseOnlineProfileUrl,
-        fetchOnlineProfilePosts,
-        normalizeOnlinePosts,
-        buildPgFilesForPosts
-      });
-    }
-
-    const ONLINE_PROFILE_CACHE = new Map();
-    const ONLINE_RENAME_MAP = {
-      profiles: {},
-      posts: {},
-      files: {}
-    };
-    const ONLINE_PRELOAD_CACHE = new Set();
-    const ONLINE_MATERIALIZED_MAP = {
-      placements: {},
-      posts: {}
-    };
-    const ONLINE_DOWNLOAD_JOBS = new Map();
-    let ONLINE_DOWNLOAD_RENDER_TIMER = null;
-    const ONLINE_API_RESPONSE_LOG = [];
-    const ONLINE_API_RESPONSE_LOG_LIMIT = 250;
-    const ONLINE_API_RESPONSE_BODY_LIMIT = 18000;
-    const ONLINE_DEFAULT_ICON = "🌐";
-
-    function getOnlineProfileForDirNode(dirNode) {
-      const meta = (dirNode && dirNode.onlineMeta) ? dirNode.onlineMeta : null;
-      const profileKey = sanitizeOnlineMapKey(meta && meta.profileKey);
-      if (!profileKey) return null;
-      const entry = ONLINE_PROFILE_CACHE.get(profileKey);
-      if (!entry || !entry.profile) return null;
-      return entry.profile;
-    }
-
-    function getOnlineProfileFaviconUrl(profile) {
-      let source = buildOnlineProfileSourceUrl(profile);
-      if (!source) source = String(profile && profile.origin || "").trim();
-      if (!source) return "";
-      try {
-        const parsed = new URL(source);
-        const proto = String(parsed.protocol || "").toLowerCase();
-        if (proto !== "http:" && proto !== "https:") return "";
-        return parsed.origin.replace(/\/$/, "") + "/favicon.ico";
-      } catch {
-        return "";
-      }
-    }
-
-    function getOnlineDirFaviconUrl(dirNode) {
-      const profile = getOnlineProfileForDirNode(dirNode);
-      return getOnlineProfileFaviconUrl(profile);
-    }
-
-    function buildOnlineSourceIconHtml(dirNode, opts = {}) {
-      const className = String(opts.className || "").trim();
-      const imgClassName = String(opts.imgClassName || "").trim();
-      const fallbackClassName = String(opts.fallbackClassName || "").trim();
-      const titleText = String(opts.title || "Online");
-      const faviconUrl = getOnlineDirFaviconUrl(dirNode);
-
-      const classAttr = className ? ` class="${escapeHtml(className)}"` : "";
-      const titleAttr = titleText ? ` title="${escapeHtml(titleText)}"` : "";
-      const imgClassAttr = imgClassName ? ` class="${escapeHtml(imgClassName)}"` : "";
-      const fallbackClassAttr = fallbackClassName ? ` class="${escapeHtml(fallbackClassName)}"` : "";
-
-      if (!faviconUrl) {
-        return `<span${classAttr}${titleAttr}><span${fallbackClassAttr}>${ONLINE_DEFAULT_ICON}</span></span>`;
-      }
-
-      return `<span${classAttr}${titleAttr}><img${imgClassAttr} src="${escapeHtml(faviconUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='inline-flex';"><span${fallbackClassAttr} style="display:none;">${ONLINE_DEFAULT_ICON}</span></span>`;
-    }
-
-    function scheduleOnlineDownloadUiRefresh() {
-      if (ONLINE_DOWNLOAD_RENDER_TIMER) return;
-      ONLINE_DOWNLOAD_RENDER_TIMER = setTimeout(() => {
-        ONLINE_DOWNLOAD_RENDER_TIMER = null;
-        if (!WS.root) return;
-        renderDirectoriesPane(true);
-      }, 80);
-    }
-
-    function sanitizeOnlineMapKey(value) {
-      return String(value || "");
-    }
-
-    function getOnlinePlacementBucket(profileKey, create = false) {
-      const key = sanitizeOnlineMapKey(profileKey);
-      if (!key) return null;
-      if (!ONLINE_MATERIALIZED_MAP.placements[key] && create) {
-        ONLINE_MATERIALIZED_MAP.placements[key] = {};
-      }
-      return ONLINE_MATERIALIZED_MAP.placements[key] || null;
-    }
-
-    function getOnlinePostBucket(profileKey, placementKey, create = false) {
-      const pKey = sanitizeOnlineMapKey(profileKey);
-      const plKey = sanitizeOnlineMapKey(placementKey);
-      if (!pKey || !plKey) return null;
-      if (!ONLINE_MATERIALIZED_MAP.posts[pKey] && create) {
-        ONLINE_MATERIALIZED_MAP.posts[pKey] = {};
-      }
-      const root = ONLINE_MATERIALIZED_MAP.posts[pKey] || null;
-      if (!root) return null;
-      if (!root[plKey] && create) root[plKey] = {};
-      return root[plKey] || null;
-    }
-
-    function isOnlinePlacementMaterialized(profileKey, placementKey) {
-      const bucket = getOnlinePlacementBucket(profileKey, false);
-      if (!bucket) return false;
-      const key = sanitizeOnlineMapKey(placementKey);
-      return !!(key && bucket[key]);
-    }
-
-    function isOnlinePostMaterialized(profileKey, placementKey, postKey) {
-      const bucket = getOnlinePostBucket(profileKey, placementKey, false);
-      if (!bucket) return false;
-      const key = sanitizeOnlineMapKey(postKey);
-      return !!(key && bucket[key]);
-    }
-
-    function markOnlinePlacementMaterialized(profileKey, placementKey) {
-      const key = sanitizeOnlineMapKey(placementKey);
-      const bucket = getOnlinePlacementBucket(profileKey, true);
-      if (!bucket || !key) return false;
-      if (bucket[key]) return false;
-      bucket[key] = 1;
-      return true;
-    }
-
-    function markOnlinePostMaterialized(profileKey, placementKey, postKey) {
-      const key = sanitizeOnlineMapKey(postKey);
-      const bucket = getOnlinePostBucket(profileKey, placementKey, true);
-      if (!bucket || !key) return false;
-      if (bucket[key]) return false;
-      bucket[key] = 1;
-      return true;
-    }
-
-    function clearOnlineMaterializedProfile(profileKey) {
-      const key = sanitizeOnlineMapKey(profileKey);
-      if (!key) return;
-      delete ONLINE_MATERIALIZED_MAP.placements[key];
-      delete ONLINE_MATERIALIZED_MAP.posts[key];
-    }
-
-    function clearOnlineMaterializedPlacement(profileKey, placementKey) {
-      const pKey = sanitizeOnlineMapKey(profileKey);
-      const plKey = sanitizeOnlineMapKey(placementKey);
-      if (!pKey || !plKey) return;
-      if (ONLINE_MATERIALIZED_MAP.placements[pKey]) {
-        delete ONLINE_MATERIALIZED_MAP.placements[pKey][plKey];
-        if (!Object.keys(ONLINE_MATERIALIZED_MAP.placements[pKey]).length) {
-          delete ONLINE_MATERIALIZED_MAP.placements[pKey];
-        }
-      }
-      if (ONLINE_MATERIALIZED_MAP.posts[pKey]) {
-        delete ONLINE_MATERIALIZED_MAP.posts[pKey][plKey];
-        if (!Object.keys(ONLINE_MATERIALIZED_MAP.posts[pKey]).length) {
-          delete ONLINE_MATERIALIZED_MAP.posts[pKey];
-        }
-      }
-    }
-
-    function resetOnlineMaterializedMap(raw) {
-      ONLINE_MATERIALIZED_MAP.placements = {};
-      ONLINE_MATERIALIZED_MAP.posts = {};
-      if (!raw || typeof raw !== "object") return;
-
-      const placementsRaw = (raw.placements && typeof raw.placements === "object") ? raw.placements : {};
-      for (const profileKey of Object.keys(placementsRaw)) {
-        const src = placementsRaw[profileKey];
-        if (!src || typeof src !== "object") continue;
-        const dst = {};
-        for (const placementKey of Object.keys(src)) {
-          if (src[placementKey]) dst[String(placementKey)] = 1;
-        }
-        if (Object.keys(dst).length) ONLINE_MATERIALIZED_MAP.placements[String(profileKey)] = dst;
-      }
-
-      const postsRaw = (raw.posts && typeof raw.posts === "object") ? raw.posts : {};
-      for (const profileKey of Object.keys(postsRaw)) {
-        const byPlacement = postsRaw[profileKey];
-        if (!byPlacement || typeof byPlacement !== "object") continue;
-        const dstByPlacement = {};
-        for (const placementKey of Object.keys(byPlacement)) {
-          const srcPosts = byPlacement[placementKey];
-          if (!srcPosts || typeof srcPosts !== "object") continue;
-          const dstPosts = {};
-          for (const postKey of Object.keys(srcPosts)) {
-            if (srcPosts[postKey]) dstPosts[String(postKey)] = 1;
-          }
-          if (Object.keys(dstPosts).length) dstByPlacement[String(placementKey)] = dstPosts;
-        }
-        if (Object.keys(dstByPlacement).length) ONLINE_MATERIALIZED_MAP.posts[String(profileKey)] = dstByPlacement;
-      }
-    }
-
-    function buildOnlineMaterializedDoc() {
-      return {
-        placements: ONLINE_MATERIALIZED_MAP.placements || {},
-        posts: ONLINE_MATERIALIZED_MAP.posts || {}
-      };
-    }
-
-    function normalizeOnlineBasePath(p) {
-      return String(p || "").replace(/^\/+|\/+$/g, "");
-    }
-
-    function makeOnlinePlacementId(profileKey, mode, basePath) {
-      return String(profileKey || "") + "::" + String(mode || "profile") + "::" + normalizeOnlineBasePath(basePath);
-    }
-
-    function deriveOnlineUserLabel(profile, posts) {
-      const sample = Array.isArray(posts) && posts.length ? posts[0] : null;
-      const v = (sample && (sample.user || sample.user_name || sample.username || sample.userId || sample.author))
-        || (profile && profile.userId)
-        || "profile";
-      return String(v || "profile");
-    }
-
-    async function ensureSiteLogHandles() {
-      const sys = WS.meta && WS.meta.fsSysDirHandle ? WS.meta.fsSysDirHandle : null;
-      if (!sys) return null;
-      if (WS.meta.fsSiteLogDirHandle && WS.meta.fsSiteLogProfilesDirHandle && WS.meta.fsSiteLogIndexHandle && WS.meta.fsSiteLogRenamesHandle) {
-        return {
-          dir: WS.meta.fsSiteLogDirHandle,
-          profilesDir: WS.meta.fsSiteLogProfilesDirHandle,
-          indexFile: WS.meta.fsSiteLogIndexHandle,
-          renamesFile: WS.meta.fsSiteLogRenamesHandle
-        };
-      }
-      try {
-        const dir = await sys.getDirectoryHandle("site_log", { create: true });
-        const profilesDir = await dir.getDirectoryHandle("profiles", { create: true });
-        const indexFile = await dir.getFileHandle("profiles.index.json", { create: true });
-        const renamesFile = await dir.getFileHandle("renames.json", { create: true });
-        WS.meta.fsSiteLogDirHandle = dir;
-        WS.meta.fsSiteLogProfilesDirHandle = profilesDir;
-        WS.meta.fsSiteLogIndexHandle = indexFile;
-        WS.meta.fsSiteLogRenamesHandle = renamesFile;
-        return { dir, profilesDir, indexFile, renamesFile };
-      } catch {
-        return null;
-      }
-    }
-
-    async function siteLogLoadIndex() {
-      const handles = await ensureSiteLogHandles();
-      if (!handles || !handles.indexFile) return null;
-      const doc = await metaLoadFsDoc(handles.indexFile);
-      if (doc && doc.schema === 1 && doc.profiles && typeof doc.profiles === "object") return doc;
-      return { schema: 1, profiles: {} };
-    }
-
-    async function siteLogSaveIndex(doc) {
-      const handles = await ensureSiteLogHandles();
-      if (!handles || !handles.indexFile) return false;
-      await metaSaveFsDoc(handles.indexFile, doc);
-      return true;
-    }
-
-    async function siteLogUpsertPlacement(profileKey, sourceUrl, placement) {
-      const key = String(profileKey || "");
-      if (!key) return { ok: false };
-      const index = (await siteLogLoadIndex()) || { schema: 1, profiles: {} };
-      const entry = index.profiles[key] || { url: "", versions: [], latestId: null, placements: [] };
-      entry.url = String(sourceUrl || entry.url || "");
-      const placements = Array.isArray(entry.placements) ? entry.placements : [];
-      const mode = placement && placement.mode ? placement.mode : "profile";
-      const basePath = normalizeOnlineBasePath(placement && placement.basePath ? placement.basePath : "");
-      const id = (placement && placement.id) ? String(placement.id) : makeOnlinePlacementId(key, mode, basePath);
-      const now = Date.now();
-      let existing = placements.find(p => String(p.id) === id);
-      if (!existing) {
-        existing = { id, mode, basePath, addedAt: now, lastUsed: now };
-        placements.push(existing);
-      } else {
-        existing.mode = mode;
-        existing.basePath = basePath;
-        existing.lastUsed = now;
-      }
-      entry.placements = placements;
-      index.profiles[key] = entry;
-      await siteLogSaveIndex(index);
-      return { ok: true, placementId: id };
-    }
-
-    async function siteLogDeleteProfile(profileKey) {
-      const key = String(profileKey || "");
-      if (!key) return false;
-      const handles = await ensureSiteLogHandles();
-      const index = await siteLogLoadIndex();
-      if (!handles || !index || !index.profiles || !index.profiles[key]) return false;
-      const entry = index.profiles[key];
-      const versions = Array.isArray(entry.versions) ? entry.versions : [];
-      if (handles.profilesDir) {
-        for (const v of versions) {
-          if (!v || !v.file) continue;
-          try { await handles.profilesDir.removeEntry(String(v.file)); } catch {}
-        }
-      }
-      delete index.profiles[key];
-      await siteLogSaveIndex(index);
-      return true;
-    }
-
-    async function siteLogLoadRenames() {
-      const handles = await ensureSiteLogHandles();
-      if (!handles || !handles.renamesFile) return false;
-      const doc = await metaLoadFsDoc(handles.renamesFile);
-      if (doc && doc.schema === 1 && doc.renames && typeof doc.renames === "object") {
-        ONLINE_RENAME_MAP.profiles = doc.renames.profiles || {};
-        ONLINE_RENAME_MAP.posts = doc.renames.posts || {};
-        ONLINE_RENAME_MAP.files = doc.renames.files || {};
-        resetOnlineMaterializedMap(doc.materialized);
-        return true;
-      }
-      resetOnlineMaterializedMap(null);
-      return false;
-    }
-
-    async function siteLogSaveRenames() {
-      const handles = await ensureSiteLogHandles();
-      if (!handles || !handles.renamesFile) return false;
-      const doc = {
-        schema: 1,
-        updatedAt: Date.now(),
-        renames: {
-          profiles: ONLINE_RENAME_MAP.profiles || {},
-          posts: ONLINE_RENAME_MAP.posts || {},
-          files: ONLINE_RENAME_MAP.files || {}
-        },
-        materialized: buildOnlineMaterializedDoc()
-      };
-      await metaSaveFsDoc(handles.renamesFile, doc);
-      return true;
-    }
-
-    async function saveOnlineProfileVersion(profile, posts, sourceUrl) {
-      const handles = await ensureSiteLogHandles();
-      if (!handles || !handles.profilesDir) return { saved: false, reason: "no_site_log" };
-      const ts = Date.now();
-      const key = String(profile?.profileKey || "profile");
-      const profileHash = String(hash32(key));
-      const fileName = `profile_${profileHash}_${ts}.json`;
-      const doc = {
-        schema: 1,
-        profile: Object.assign({}, profile || {}, { sourceUrl: String(sourceUrl || "") }),
-        fetchedAt: ts,
-        posts: Array.isArray(posts) ? posts : []
-      };
-      try {
-        const fh = await handles.profilesDir.getFileHandle(fileName, { create: true });
-        await metaSaveFsDoc(fh, doc);
-      } catch {
-        return { saved: false, reason: "write_failed" };
-      }
-
-      const index = (await siteLogLoadIndex()) || { schema: 1, profiles: {} };
-      const entry = index.profiles[key] || { url: String(sourceUrl || ""), versions: [], latestId: null };
-      entry.url = String(sourceUrl || entry.url || "");
-      entry.versions = Array.isArray(entry.versions) ? entry.versions : [];
-      const versionId = String(ts);
-      entry.versions.push({ id: versionId, ts, file: fileName });
-      entry.latestId = versionId;
-      index.profiles[key] = entry;
-      await siteLogSaveIndex(index);
-      return { saved: true, file: fileName, ts };
-    }
-
-    function inferOnlineFileExt(fileObj) {
-      const raw = String((fileObj && (fileObj.name || fileObj.path || fileObj.url)) || "").trim();
-      if (!raw) return "";
-      let pathLike = raw;
-      try {
-        pathLike = new URL(raw, "https://example.invalid").pathname || raw;
-      } catch {}
-      let base = "";
-      try {
-        base = decodeURIComponent(String(pathLike).split("/").pop() || "");
-      } catch {
-        base = String(pathLike).split("/").pop() || "";
-      }
-      base = String(base).split("?")[0].split("#")[0];
-      const m = /\.([A-Za-z0-9]{1,10})$/.exec(base);
-      if (m && m[1]) return String(m[1]).toLowerCase();
-      return "";
-    }
-
-    function formatOnlineFilename(post, fileObj, index, globalIndex, userOverride) {
-      const user = String(userOverride || post?.user || post?.user_name || post?.username || post?.userId || post?.author || "profile");
-      const sanitizeUserFolder = s => {
-        s = (s || "").normalize("NFC");
-        s = s.replace(/\s+/g, "_");
-        s = s.replace(/[\\/:*?"<>|]+/g, "");
-        s = s.replace(/[\x00-\x1F\x7F]/g, "");
-        s = s.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
-        return s;
-      };
-      const sanitizeNamePart = s => {
-        s = (s || "").normalize("NFC");
-        s = s.replace(/\s+/g, " ");
-        s = s.replace(/ - /g, "-");
-        s = s.replace(/[\\/:*?"<>|]+/g, "");
-        s = s.replace(/[\x00-\x1F\x7F]/g, "");
-        s = s.replace(/ +/g, " ").replace(/^ +| +$/g, "");
-        return s;
-      };
-      const titleRaw = (post && post.title && String(post.title).trim()) ? String(post.title) : ("post_" + (post && post.id != null ? post.id : "0"));
-      const threadRaw = user;
-      const userSec = sanitizeUserFolder(user);
-      let threadSec = sanitizeNamePart(threadRaw).slice(0, 40);
-      if (!threadSec) threadSec = sanitizeNamePart(user).slice(0, 40);
-      let titleSec = sanitizeNamePart(titleRaw).slice(0, 40);
-      if (!titleSec) titleSec = sanitizeNamePart("post_" + (post && post.id != null ? post.id : "0")).slice(0, 40);
-      let ext = inferOnlineFileExt(fileObj);
-      if (!ext) {
-        const rawUrl = String(fileObj && (fileObj.path || fileObj.url || "") || "");
-        const baseUrl = (rawUrl.split("?")[0] || "").toLowerCase();
-        if (vidRE.test(baseUrl) || !!(fileObj && fileObj.isVid)) ext = "mp4";
-        else if (imgRE.test(baseUrl) || !!(fileObj && fileObj.isImg)) ext = "jpg";
-        else ext = "bin";
-      }
-      const gPost = String(globalIndex || 0).padStart(6, "0");
-      const fIdx = String(index || 0).padStart(6, "0");
-      let dateSec = "000000";
-      try {
-        const raw = post && (post.published || post.published_at || post.added || post.added_at || post.created || post.created_at || post.created_utc || post.posted || post.posted_at);
-        if (raw != null) {
-          let d = null;
-          if (typeof raw === "number" && isFinite(raw)) {
-            const ms = raw > 1e12 ? raw : (raw * 1000);
-            d = new Date(ms);
-          } else if (typeof raw === "string" && raw.trim()) {
-            d = new Date(raw);
-          }
-          if (d && isFinite(d.getTime())) {
-            const yy = String(d.getUTCFullYear() % 100).padStart(2, "0");
-            const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-            const dd = String(d.getUTCDate()).padStart(2, "0");
-            dateSec = yy + mm + dd;
-          }
-        }
-      } catch {}
-      const base = `${dateSec}-${threadSec}-${gPost} - ${titleSec}`;
-      const fileName = `${base}_${fIdx}.${ext}`;
-      const postFolder = base;
-      return `${userSec}/${postFolder}/${fileName}`;
-    }
-
-    function getOnlineProfileRename(profileKey) {
-      if (!profileKey) return null;
-      const name = ONLINE_RENAME_MAP.profiles ? ONLINE_RENAME_MAP.profiles[String(profileKey)] : null;
-      return name ? String(name) : null;
-    }
-
-    function getOnlinePostRename(profileKey, postKey) {
-      if (!profileKey || !postKey) return null;
-      const bucket = ONLINE_RENAME_MAP.posts ? ONLINE_RENAME_MAP.posts[String(profileKey)] : null;
-      const name = bucket ? bucket[String(postKey)] : null;
-      return name ? String(name) : null;
-    }
-
-    function getOnlineFileRename(profileKey, fileUrl) {
-      if (!profileKey || !fileUrl) return null;
-      const bucket = ONLINE_RENAME_MAP.files ? ONLINE_RENAME_MAP.files[String(profileKey)] : null;
-      const name = bucket ? bucket[String(fileUrl)] : null;
-      return name ? String(name) : null;
-    }
-
     function dirDisplayName(node) {
-      if (node && node.onlineMeta) {
-        const meta = node.onlineMeta;
-        if (meta.kind === "profile") {
-          const override = getOnlineProfileRename(meta.profileKey);
-          if (override) return displayName(override) || displayName(node.name || "folder") || "folder";
-        } else if (meta.kind === "post") {
-          const override = getOnlinePostRename(meta.profileKey, meta.postKey);
-          if (override) return displayName(override) || displayName(node.name || "folder") || "folder";
-        }
-      }
       return displayName(node?.name || "folder") || "folder";
     }
 
     function fileDisplayNameForRecord(rec) {
-      if (rec && rec.online && rec.onlineMeta) {
-        const meta = rec.onlineMeta;
-        const override = getOnlineFileRename(meta.profileKey, meta.fileUrl);
-        if (override) {
-          const ext = splitNameExt(rec.name || "").ext || "";
-          return fileDisplayName(String(override) + ext) || fileDisplayName(rec.name || "file") || "file";
-        }
-      }
       return fileDisplayName(rec?.name || "file") || "file";
-    }
-
-    function onlineLoadMode() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return (opt && opt.onlineLoadMode === "preload") ? "preload" : "as-needed";
-    }
-
-    function listOnlineFoldersFirstEnabled() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return !!(opt && opt.listOnlineFoldersFirst);
-    }
-
-    function shouldPreloadOnlineForDir(dirNode) {
-      if (!dirNode || onlineLoadMode() !== "preload") return false;
-      if (dirNode.onlineMeta && (dirNode.onlineMeta.kind === "profile" || dirNode.onlineMeta.kind === "post")) return true;
-      const children = dirNode.childrenDirs || [];
-      return children.some(d => d && d.onlineMeta && d.onlineMeta.kind === "post");
-    }
-
-    function preloadOnlineRecord(rec) {
-      if (!rec || !rec.online || !rec.url) return;
-      const key = String(rec.url || "");
-      if (ONLINE_PRELOAD_CACHE.has(key)) return;
-      ONLINE_PRELOAD_CACHE.add(key);
-      if (rec.type === "image") {
-        const img = new Image();
-        img.src = rec.url;
-        PRELOAD_CACHE.set(key, img);
-        return;
-      }
-      if (rec.type === "video") {
-        const v = document.createElement("video");
-        v.preload = "metadata";
-        v.muted = true;
-        normalizeVideoPlaybackRate(v);
-        v.playsInline = true;
-        v.src = rec.url;
-        try { v.load(); } catch {}
-        PRELOAD_CACHE.set(key, v);
-      }
-    }
-
-    function preloadOnlineMediaForDir(dirNode) {
-      if (!shouldPreloadOnlineForDir(dirNode)) return;
-      const hasPostChildren = !(dirNode.onlineMeta) && (dirNode.childrenDirs || []).some(d => d && d.onlineMeta && d.onlineMeta.kind === "post");
-      const includeChildren = !!(dirNode.onlineMeta && dirNode.onlineMeta.kind === "profile") || hasPostChildren;
-      const ids = getOrderedFileIdsForDir(dirNode, includeChildren);
-      for (const id of ids) {
-        const rec = WS.fileById.get(id);
-        if (!rec || !rec.online) continue;
-        preloadOnlineRecord(rec);
-      }
-    }
-
-    function ensureOnlineWorkspaceReady() {
-      if (WS.root) return;
-      clearWorkspaceEmptyState();
-      WS.root = makeDirNode("root", null);
-      WS.root.path = "";
-      WS.dirByPath.set("", WS.root);
-      applyMediaFilterFromOptions();
-      WS.view.randomSeed = computeWorkspaceSeed();
-      WS.view.randomCache = new Map();
-      WS.view.dirLoopRepeats = 3;
-      WS.view.previewLoopRepeats = 3;
-      WS.meta.storageMode = "local";
-      WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
-      metaInitForCurrentWorkspace();
-      WS.nav.dirNode = WS.root;
-    }
-
-    function injectOnlineProfileIntoWorkspace(profileKey) {
-      const opts = arguments.length > 1 ? arguments[1] : null;
-      const silent = !!(opts && opts.silent);
-      const mode = (opts && opts.mode === "posts") ? "posts" : "profile";
-      const basePath = normalizeOnlineBasePath(opts && opts.basePath ? opts.basePath : "");
-      const placementKey = (opts && opts.placementId) ? String(opts.placementId) : makeOnlinePlacementId(profileKey, mode, basePath);
-      if (isOnlinePlacementMaterialized(profileKey, placementKey)) {
-        return { ok: false, error: "materialized" };
-      }
-      const entry = ONLINE_PROFILE_CACHE.get(profileKey);
-      if (!entry || !entry.profile) return { ok: false, error: "missing-profile" };
-      const posts = Array.isArray(entry.posts) ? entry.posts : [];
-      if (!posts.length) return { ok: false, error: "no-posts" };
-      if (!entry.injectedPlacements) {
-        entry.injectedPlacements = new Set();
-        if (entry.injected === true) entry.injectedPlacements.add(placementKey);
-      }
-      if (entry.injectedPlacements.has(placementKey)) return { ok: false, error: "already-added" };
-
-      ensureOnlineWorkspaceReady();
-
-      const userLabel = deriveOnlineUserLabel(entry.profile, posts);
-      let addedFiles = 0;
-
-      for (let i = 0; i < posts.length; i++) {
-        const post = posts[i];
-        const postIndex = (typeof post.pgGlobalIndex === "number") ? post.pgGlobalIndex : (posts.length - i);
-        const files = Array.isArray(post.pgFiles) ? post.pgFiles : [];
-        const postKey = (post && post.id != null) ? String(post.id) : ("idx:" + String(postIndex || i + 1));
-        if (isOnlinePostMaterialized(profileKey, placementKey, postKey)) continue;
-        for (let j = 0; j < files.length; j++) {
-          const f = files[j];
-          if (!f || !f.url) continue;
-          const fileIndex = (typeof f.g === "number") ? f.g : ((typeof f.local === "number") ? f.local : (j + 1));
-          const baseRel = formatOnlineFilename(post, { path: f.url, isVid: !!f.isVid, isImg: !f.isVid }, fileIndex, postIndex, userLabel);
-          const parts = String(baseRel || "").split("/").filter(Boolean);
-          if (!parts.length) continue;
-          const userFolder = parts[0] || "";
-          const postFolder = parts[1] || "";
-          const fileName = parts[parts.length - 1];
-          const baseParts = basePath ? basePath.split("/").filter(Boolean) : [];
-          const pathParts = (mode === "posts")
-            ? baseParts.concat(postFolder ? [postFolder, fileName] : [fileName])
-            : baseParts.concat(userFolder ? [userFolder, postFolder, fileName] : [postFolder, fileName]);
-          const relPath = pathParts.filter(Boolean).join("/");
-          const name = fileName;
-          const dirPath = pathParts.slice(0, -1).join("/");
-          if (!isImageName(name) && !isVideoName(name)) continue;
-          const profilePath = mode === "profile"
-            ? (baseParts.concat(userFolder ? [userFolder] : []).filter(Boolean).join("/"))
-            : "";
-          const postPath = mode === "posts"
-            ? (baseParts.concat(postFolder ? [postFolder] : []).filter(Boolean).join("/"))
-            : (baseParts.concat(userFolder ? [userFolder, postFolder] : [postFolder]).filter(Boolean).join("/"));
-          if (profilePath) {
-            const pNode = ensureDirPath(profilePath);
-            if (pNode && !pNode.onlineMeta) {
-              pNode.onlineMeta = { kind: "profile", profileKey, profilePath, placementKey, mode, basePath };
-            }
-          }
-          if (postPath) {
-            const postNode = ensureDirPath(postPath);
-            if (postNode && !postNode.onlineMeta) {
-              postNode.onlineMeta = { kind: "post", profileKey, postKey, placementKey, mode, basePath };
-            }
-          }
-          const placementToken = String(hash32(placementKey));
-          const id = "online::" + placementToken + "::" + profileKey + "::" + String(post.id != null ? post.id : postIndex) + "::" + String(fileIndex) + "::" + String(hash32(f.url));
-          if (WS.fileById.has(id)) continue;
-
-          const extDot = name.lastIndexOf(".");
-          const ext = extDot >= 0 ? name.slice(extDot).toLowerCase() : "";
-          const rec = {
-            id,
-            file: null,
-            name,
-            relPath,
-            dirPath,
-            ext,
-            type: isVideoName(name) ? "video" : "image",
-            size: 0,
-            lastModified: 0,
-            url: f.url,
-            thumbUrl: null,
-            videoThumbUrl: null,
-            indices: {
-              postId: post.id != null ? post.id : null,
-              fileIndex,
-              postIndex
-            },
-            thumbMode: null,
-            videoThumbMode: null,
-            online: true,
-            onlineMeta: {
-              profileKey,
-              postKey,
-              fileUrl: String(f.url || ""),
-              placementKey,
-              mode,
-              basePath
-            }
-          };
-
-          WS.fileById.set(id, rec);
-          const dirNode = ensureDirPath(dirPath);
-          if (!dirNode.childrenFiles.includes(id)) dirNode.childrenFiles.push(id);
-          addedFiles++;
-        }
-      }
-
-      if (!addedFiles) return { ok: false, error: "no-files" };
-
-      entry.injectedPlacements.add(placementKey);
-      entry.userLabel = userLabel;
-      entry.fileCount = addedFiles;
-
-      if (applyPendingTagsToWorkspace()) {
-        WS.meta.dirty = true;
-      }
-
-      if (!silent) {
-        WS.view.randomSeed = computeWorkspaceSeed();
-        WS.view.randomCache = new Map();
-        metaComputeFingerprints();
-        WS.meta.dirty = true;
-        metaScheduleSave();
-
-        if (!WS.nav.dirNode) WS.nav.dirNode = WS.root;
-        rebuildDirectoriesEntries();
-        WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-        syncPreviewToSelection();
-        renderDirectoriesPane(true);
-        renderPreviewPane(true, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-      }
-
-      return { ok: true, files: addedFiles };
-    }
-
-    async function loadOnlineProfilesFromSiteLog(opts = {}) {
-      const render = opts.render !== false;
-      const handles = await ensureSiteLogHandles();
-      if (!handles || !handles.profilesDir) return 0;
-      const index = await siteLogLoadIndex();
-      if (!index || !index.profiles) return 0;
-      let injected = 0;
-
-      for (const profileKey of Object.keys(index.profiles)) {
-        const entry = index.profiles[profileKey];
-        if (!entry) continue;
-        const cached = ONLINE_PROFILE_CACHE.get(profileKey);
-        const versions = Array.isArray(entry.versions) ? entry.versions : [];
-        if (!versions.length) continue;
-        let version = null;
-        if (entry.latestId) {
-          version = versions.find(v => String(v.id) === String(entry.latestId)) || null;
-        }
-        if (!version) version = versions[versions.length - 1];
-        if (!version || !version.file) continue;
-
-        let doc = null;
-        try {
-          const fh = await handles.profilesDir.getFileHandle(String(version.file), { create: false });
-          doc = await metaLoadFsDoc(fh);
-        } catch {
-          doc = null;
-        }
-        if (!doc || !Array.isArray(doc.posts) || !doc.posts.length) continue;
-
-        let profile = (doc.profile && typeof doc.profile === "object") ? Object.assign({}, doc.profile) : {};
-        if (!profile.profileKey) profile.profileKey = profileKey;
-        if (!profile.sourceUrl) profile.sourceUrl = String(entry.url || "");
-        if (!profile.origin || !profile.service || !profile.userId) {
-          const parsed = parseOnlineProfileUrl(profile.sourceUrl || "");
-          if (parsed && parsed.ok) {
-            profile = Object.assign({}, parsed, profile);
-          }
-        }
-
-        ONLINE_PROFILE_CACHE.set(profileKey, {
-          profile,
-          posts: doc.posts,
-          fetchedAt: doc.fetchedAt || version.ts || Date.now(),
-          injected: false,
-          injectedPlacements: cached && cached.injectedPlacements ? cached.injectedPlacements : new Set()
-        });
-
-        const placements = Array.isArray(entry.placements) ? entry.placements : [];
-        if (placements.length) {
-          for (const pl of placements) {
-            if (!pl) continue;
-            const res = injectOnlineProfileIntoWorkspace(profileKey, {
-              silent: !render,
-              mode: pl.mode === "posts" ? "posts" : "profile",
-              basePath: pl.basePath || "",
-              placementId: pl.id
-            });
-            if (res && res.ok) injected++;
-          }
-        } else {
-          const res = injectOnlineProfileIntoWorkspace(profileKey, { silent: !render });
-          if (res && res.ok) injected++;
-        }
-      }
-
-      if (injected && render) {
-        WS.view.randomSeed = computeWorkspaceSeed();
-        WS.view.randomCache = new Map();
-        metaComputeFingerprints();
-        WS.meta.dirty = true;
-        metaScheduleSave();
-
-        if (!WS.nav.dirNode) WS.nav.dirNode = WS.root;
-        rebuildDirectoriesEntries();
-        WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-        syncPreviewToSelection();
-        renderDirectoriesPane(true);
-        renderPreviewPane(true, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-      }
-
-      return injected;
-    }
-
-    function removeOnlineProfileFromWorkspace(profileKey) {
-      if (!profileKey) return 0;
-      let removed = 0;
-      for (const [id, rec] of WS.fileById.entries()) {
-        if (!rec || !rec.online || !rec.onlineMeta) continue;
-        if (rec.onlineMeta.profileKey !== profileKey) continue;
-        const dirNode = WS.dirByPath.get(String(rec.dirPath || ""));
-        if (dirNode) {
-          dirNode.childrenFiles = (dirNode.childrenFiles || []).filter(fid => fid !== id);
-        }
-        WS.fileById.delete(id);
-        removed++;
-      }
-
-      const dirPaths = Array.from(WS.dirByPath.keys())
-        .filter(p => p && WS.dirByPath.get(p)?.onlineMeta?.profileKey === profileKey)
-        .sort((a, b) => b.length - a.length);
-      for (const p of dirPaths) {
-        const node = WS.dirByPath.get(p);
-        if (!node) continue;
-        if ((node.childrenFiles && node.childrenFiles.length) || (node.childrenDirs && node.childrenDirs.length)) continue;
-        const parent = node.parent;
-        if (parent) {
-          parent.childrenDirs = (parent.childrenDirs || []).filter(d => d !== node);
-        }
-        WS.dirByPath.delete(p);
-      }
-
-      return removed;
-    }
-
-    async function refreshOnlineProfile(profileKey) {
-      const entry = ONLINE_PROFILE_CACHE.get(profileKey);
-      if (!entry || !entry.profile) {
-        showStatusMessage("Profile not available.");
-        return false;
-      }
-      const profile = entry.profile;
-      showBusyOverlay("Refreshing profile...");
-      try {
-        const result = await fetchOnlineProfilePosts(profile.service, profile.userId, profile.origin, {});
-        appendOnlineApiResponses(result && Array.isArray(result.responses) ? result.responses : []);
-        const posts = result && Array.isArray(result.posts) ? result.posts : [];
-        if (!posts.length) {
-          if (result && result.error) {
-            showStatusMessage(getOnlineApiErrorMessage(result.error));
-          } else {
-            showStatusMessage("No posts found.");
-          }
-          return false;
-        }
-        const normalized = normalizeOnlinePosts(posts, { origin: profile.origin, dataRoot: profile.dataRoot });
-        await saveOnlineProfileVersion(profile, normalized, profile.sourceUrl || "");
-        removeOnlineProfileFromWorkspace(profileKey);
-        ONLINE_PROFILE_CACHE.set(profileKey, {
-          profile,
-          posts: normalized,
-          fetchedAt: Date.now(),
-          injected: false,
-          injectedPlacements: new Set()
-        });
-        const index = await siteLogLoadIndex();
-        const entry = index && index.profiles ? index.profiles[profileKey] : null;
-        const placements = entry && Array.isArray(entry.placements) ? entry.placements : [];
-        let okInjected = false;
-        if (placements.length) {
-          for (const pl of placements) {
-            if (!pl) continue;
-            const res = injectOnlineProfileIntoWorkspace(profileKey, {
-              mode: pl.mode === "posts" ? "posts" : "profile",
-              basePath: pl.basePath || "",
-              placementId: pl.id
-            });
-            if (res && res.ok) okInjected = true;
-          }
-        } else {
-          const injected = injectOnlineProfileIntoWorkspace(profileKey);
-          if (injected && injected.ok) okInjected = true;
-        }
-        if (!okInjected) {
-          showStatusMessage("Refresh failed.");
-          return false;
-        }
-        renderOnlineUi();
-        showStatusMessage("Profile refreshed.");
-        return true;
-      } catch {
-        showStatusMessage("Refresh failed.");
-        return false;
-      } finally {
-        hideBusyOverlay();
-      }
-    }
-
-    function buildOnlinePlacementFileSpecs(profileKey, profile, posts, placement) {
-      const out = [];
-      const mode = placement && placement.mode === "posts" ? "posts" : "profile";
-      const basePath = normalizeOnlineBasePath(placement && placement.basePath ? placement.basePath : "");
-      const baseParts = basePath ? basePath.split("/").filter(Boolean) : [];
-      const userLabel = deriveOnlineUserLabel(profile, posts);
-      for (let i = 0; i < posts.length; i++) {
-        const post = posts[i];
-        const postIndex = (typeof post.pgGlobalIndex === "number") ? post.pgGlobalIndex : (posts.length - i);
-        const files = Array.isArray(post.pgFiles) ? post.pgFiles : [];
-        const postKey = (post && post.id != null) ? String(post.id) : ("idx:" + String(postIndex || i + 1));
-        for (let j = 0; j < files.length; j++) {
-          const f = files[j];
-          if (!f || !f.url) continue;
-          const fileIndex = (typeof f.g === "number") ? f.g : ((typeof f.local === "number") ? f.local : (j + 1));
-          const baseRel = formatOnlineFilename(post, { path: f.url, isVid: !!f.isVid, isImg: !f.isVid }, fileIndex, postIndex, userLabel);
-          const parts = String(baseRel || "").split("/").filter(Boolean);
-          if (!parts.length) continue;
-          const userFolder = parts[0] || "";
-          const postFolder = parts[1] || "";
-          const fallbackName = parts[parts.length - 1] || "";
-          if (!fallbackName) continue;
-          if (!isImageName(fallbackName) && !isVideoName(fallbackName)) continue;
-          const fileName = resolveOnlineOutputFileName(profileKey, String(f.url || ""), fallbackName);
-          const pathParts = (mode === "posts")
-            ? baseParts.concat(postFolder ? [postFolder, fileName] : [fileName])
-            : baseParts.concat(userFolder ? [userFolder, postFolder, fileName] : [postFolder, fileName]);
-          const relPath = pathParts.filter(Boolean).join("/");
-          const dirPath = pathParts.slice(0, -1).join("/");
-          out.push({
-            profileKey: String(profileKey || ""),
-            postKey,
-            url: String(f.url || ""),
-            name: fileName,
-            dirPath,
-            relPath
-          });
-        }
-      }
-      return out;
-    }
-
-    function resolveOnlineOutputFileName(profileKey, fileUrl, fallbackName) {
-      const rawFallback = String(fallbackName || "").trim();
-      const cleanFallback = sanitizeOnlineFileNameForDisk(rawFallback || "file");
-      const override = getOnlineFileRename(profileKey, fileUrl);
-      if (!override) return cleanFallback;
-      const ext = splitNameExt(cleanFallback).ext || "";
-      let candidate = String(override);
-      const parts = splitNameExt(candidate);
-      if (!parts.ext && ext) candidate = parts.base + ext;
-      return sanitizeOnlineFileNameForDisk(candidate);
-    }
-
-    async function replaceOnlineProfile(profileKey) {
-      if (!WS.meta.fsRootHandle) {
-        showStatusMessage("Replace requires a writable folder.");
-        return false;
-      }
-      const current = ONLINE_PROFILE_CACHE.get(profileKey);
-      if (!current || !current.profile) {
-        showStatusMessage("Profile not available.");
-        return false;
-      }
-      const profile = current.profile;
-      showBusyOverlay("Checking remote profile...");
-      try {
-        const result = await fetchOnlineProfilePosts(profile.service, profile.userId, profile.origin, {});
-        appendOnlineApiResponses(result && Array.isArray(result.responses) ? result.responses : []);
-        const posts = result && Array.isArray(result.posts) ? result.posts : [];
-        if (!posts.length) {
-          if (result && result.error) {
-            showStatusMessage(getOnlineApiErrorMessage(result.error));
-          } else {
-            showStatusMessage("No posts found.");
-          }
-          return false;
-        }
-
-        const normalized = normalizeOnlinePosts(posts, { origin: profile.origin, dataRoot: profile.dataRoot });
-        await saveOnlineProfileVersion(profile, normalized, profile.sourceUrl || "");
-
-        ONLINE_PROFILE_CACHE.set(profileKey, {
-          profile,
-          posts: normalized,
-          fetchedAt: Date.now(),
-          injected: false,
-          injectedPlacements: current.injectedPlacements ? new Set(current.injectedPlacements) : new Set()
-        });
-
-        const index = await siteLogLoadIndex();
-        const indexEntry = index && index.profiles ? index.profiles[profileKey] : null;
-        const placements = indexEntry && Array.isArray(indexEntry.placements) ? indexEntry.placements : [];
-        if (!placements.length) {
-          showStatusMessage("No profile placements found to replace.");
-          renderOnlineUi();
-          return false;
-        }
-
-        const expectedByPath = new Map();
-        for (const pl of placements) {
-          if (!pl) continue;
-          const specs = buildOnlinePlacementFileSpecs(profileKey, profile, normalized, pl);
-          for (const spec of specs) {
-            const key = String(spec.relPath || "").toLowerCase();
-            if (!key || expectedByPath.has(key)) continue;
-            expectedByPath.set(key, spec);
-          }
-        }
-        const expected = Array.from(expectedByPath.values());
-        if (!expected.length) {
-          showStatusMessage("No remote media found for replace.");
-          renderOnlineUi();
-          return false;
-        }
-
-        const checkedDirHandles = new Map();
-        const tryGetDirHandle = async (dirPath) => {
-          const key = String(dirPath || "");
-          if (checkedDirHandles.has(key)) return checkedDirHandles.get(key);
-          let handle = null;
-          try {
-            handle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, key);
-          } catch {
-            handle = null;
-          }
-          checkedDirHandles.set(key, handle);
-          return handle;
-        };
-
-        const missing = [];
-        for (let i = 0; i < expected.length; i++) {
-          const spec = expected[i];
-          if (busyLabel) busyLabel.textContent = `Checking files ${i + 1}/${expected.length}...`;
-          const dirHandle = await tryGetDirHandle(spec.dirPath);
-          if (!dirHandle) {
-            missing.push(spec);
-            continue;
-          }
-          let exists = false;
-          try {
-            await dirHandle.getFileHandle(spec.name, { create: false });
-            exists = true;
-          } catch {}
-          if (!exists) missing.push(spec);
-        }
-
-        if (!missing.length) {
-          showStatusMessage("Replace complete: no missing files.");
-          renderOnlineUi();
-          return true;
-        }
-
-        let restored = 0;
-        let failed = 0;
-        for (let i = 0; i < missing.length; i++) {
-          const spec = missing[i];
-          if (busyLabel) busyLabel.textContent = `Replacing missing files ${i + 1}/${missing.length}...`;
-          let dirHandle = null;
-          try {
-            dirHandle = await ensureDirectoryHandleForPath(WS.meta.fsRootHandle, spec.dirPath);
-          } catch {
-            failed++;
-            continue;
-          }
-          let alreadyExists = false;
-          try {
-            await dirHandle.getFileHandle(spec.name, { create: false });
-            alreadyExists = true;
-          } catch {}
-          if (alreadyExists) continue;
-
-          const payload = await fetchOnlineBinary(spec.url, profileKey);
-          if (!payload || !payload.ok || !payload.bytes || !payload.bytes.byteLength) {
-            failed++;
-            continue;
-          }
-          try {
-            const outFile = await dirHandle.getFileHandle(spec.name, { create: true });
-            const writable = await outFile.createWritable();
-            await writable.write(payload.bytes);
-            await writable.close();
-            restored++;
-          } catch {
-            failed++;
-          }
-        }
-
-        if (restored > 0) {
-          try {
-            await refreshWorkspaceFromRootHandle();
-          } catch {}
-        }
-        renderOnlineUi();
-        if (!restored && failed > 0) {
-          showStatusMessage(`Replace failed: ${failed} file${failed === 1 ? "" : "s"} could not be restored.`);
-          return false;
-        }
-        if (failed > 0) {
-          showStatusMessage(`Replace complete: restored ${restored}, failed ${failed}.`);
-          return restored > 0;
-        }
-        showStatusMessage(`Replace complete: restored ${restored} missing file${restored === 1 ? "" : "s"}.`);
-        return true;
-      } catch {
-        showStatusMessage("Replace failed.");
-        return false;
-      } finally {
-        hideBusyOverlay();
-      }
-    }
-
-    async function renameOnlineProfile(profileKey, nextName) {
-      if (!profileKey) return false;
-      const clean = String(nextName || "").trim();
-      if (clean) ONLINE_RENAME_MAP.profiles[String(profileKey)] = clean;
-      else delete ONLINE_RENAME_MAP.profiles[String(profileKey)];
-      const saved = await siteLogSaveRenames();
-      if (!saved) showStatusMessage("Rename saved in memory only.");
-      return true;
-    }
-
-    async function renameOnlinePost(profileKey, postKey, nextName) {
-      if (!profileKey || !postKey) return false;
-      const clean = String(nextName || "").trim();
-      const bucket = ONLINE_RENAME_MAP.posts[String(profileKey)] || {};
-      if (clean) bucket[String(postKey)] = clean;
-      else delete bucket[String(postKey)];
-      if (Object.keys(bucket).length) ONLINE_RENAME_MAP.posts[String(profileKey)] = bucket;
-      else delete ONLINE_RENAME_MAP.posts[String(profileKey)];
-      const saved = await siteLogSaveRenames();
-      if (!saved) showStatusMessage("Rename saved in memory only.");
-      return true;
-    }
-
-    async function renameOnlineFile(profileKey, fileUrl, nextName) {
-      if (!profileKey || !fileUrl) return false;
-      const clean = String(nextName || "").trim();
-      const bucket = ONLINE_RENAME_MAP.files[String(profileKey)] || {};
-      if (clean) bucket[String(fileUrl)] = clean;
-      else delete bucket[String(fileUrl)];
-      if (Object.keys(bucket).length) ONLINE_RENAME_MAP.files[String(profileKey)] = bucket;
-      else delete ONLINE_RENAME_MAP.files[String(profileKey)];
-      const saved = await siteLogSaveRenames();
-      if (!saved) showStatusMessage("Rename saved in memory only.");
-      return true;
-    }
-
-    async function deleteOnlineProfile(profileKey) {
-      const key = String(profileKey || "");
-      if (!key) return false;
-      showBusyOverlay("Deleting profile...");
-      try {
-        removeOnlineProfileFromWorkspace(key);
-        ONLINE_PROFILE_CACHE.delete(key);
-        clearOnlineMaterializedProfile(key);
-        delete ONLINE_RENAME_MAP.profiles[key];
-        delete ONLINE_RENAME_MAP.posts[key];
-        delete ONLINE_RENAME_MAP.files[key];
-        await siteLogDeleteProfile(key);
-        await siteLogSaveRenames();
-        WS.view.randomSeed = computeWorkspaceSeed();
-        WS.view.randomCache = new Map();
-        metaComputeFingerprints();
-        WS.meta.dirty = true;
-        metaScheduleSave();
-        rebuildDirectoriesEntries();
-        WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-        syncPreviewToSelection();
-        renderDirectoriesPane(true);
-        renderPreviewPane(true, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-        renderOnlineUi();
-        showStatusMessage("Profile deleted.");
-        return true;
-      } catch {
-        showStatusMessage("Delete failed.");
-        return false;
-      } finally {
-        hideBusyOverlay();
-      }
-    }
-
-    function formatOnlineDownloadBytes(bytes) {
-      const n = Number(bytes);
-      if (!Number.isFinite(n) || n <= 0) return "0 B";
-      if (n < 1024) return `${Math.round(n)} B`;
-      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-      if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-      return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-    }
-
-    function onlineDownloadPercent(job) {
-      if (!job) return 0;
-      const total = Number(job.totalFiles || 0);
-      const completed = Number(job.completedFiles || 0);
-      if (!total) return 0;
-      return Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
-    }
-
-    function getOnlineDownloadJob(path) {
-      const key = String(path || "");
-      if (!key) return null;
-      return ONLINE_DOWNLOAD_JOBS.get(key) || null;
-    }
-
-    function getOnlineDownloadJobForDir(node) {
-      if (!node || !node.onlineMeta) return null;
-      return getOnlineDownloadJob(String(node.path || ""));
-    }
-
-    function startOnlineDownloadJob(path, totalFiles) {
-      const key = String(path || "");
-      if (!key) return null;
-      const job = {
-        path: key,
-        state: "running",
-        totalFiles: Math.max(0, Number(totalFiles || 0)),
-        completedFiles: 0,
-        failedFiles: 0,
-        totalBytes: 0,
-        downloadedBytes: 0,
-        currentFile: "",
-        startedAt: Date.now(),
-        finishedAt: 0,
-        error: ""
-      };
-      ONLINE_DOWNLOAD_JOBS.set(key, job);
-      scheduleOnlineDownloadUiRefresh();
-      return job;
-    }
-
-    function updateOnlineDownloadJob(job, patch = {}) {
-      if (!job) return;
-      Object.assign(job, patch || {});
-      scheduleOnlineDownloadUiRefresh();
-    }
-
-    function finishOnlineDownloadJob(job, state, error) {
-      if (!job) return;
-      job.state = String(state || "done");
-      job.finishedAt = Date.now();
-      if (error) job.error = String(error);
-      scheduleOnlineDownloadUiRefresh();
-      setTimeout(() => {
-        const cur = ONLINE_DOWNLOAD_JOBS.get(job.path);
-        if (cur !== job) return;
-        if (cur.state === "running") return;
-        ONLINE_DOWNLOAD_JOBS.delete(job.path);
-        scheduleOnlineDownloadUiRefresh();
-      }, 8000);
-    }
-
-    function buildOnlineDownloadMetaHtml(node) {
-      const job = getOnlineDownloadJobForDir(node);
-      if (!job) return "";
-      const pct = onlineDownloadPercent(job);
-      const total = Number(job.totalFiles || 0);
-      const done = Number(job.completedFiles || 0);
-      const failed = Number(job.failedFiles || 0);
-      const bytesPart = Number(job.downloadedBytes || 0) > 0
-        ? ` • ${formatOnlineDownloadBytes(job.downloadedBytes)}`
-        : "";
-      const status = job.state === "running"
-        ? `Downloading ${done}/${total}${failed ? ` • ${failed} failed` : ""}${bytesPart}`
-        : (job.state === "done"
-          ? `Downloaded ${done}/${total}${bytesPart}`
-          : (job.state === "partial"
-            ? `Partial ${done}/${total} • ${failed} failed${bytesPart}`
-            : `Failed${job.error ? ` • ${job.error}` : ""}`));
-      return `
-        <div class="onlineDlMeta" title="${escapeHtml(status)}">
-          <div class="onlineDlBar"><div class="onlineDlBarFill" style="width:${pct}%"></div></div>
-          <div class="onlineDlText">${escapeHtml(status)} • ${pct}%</div>
-        </div>
-      `;
-    }
-
-    function sanitizeOnlineFileNameForDisk(name) {
-      let out = String(name || "").trim();
-      out = out.replace(/[\x00-\x1F\x7F]+/g, "_");
-      out = out.replace(/[\/\\:*?"<>|]+/g, "_");
-      out = out.replace(/\s+/g, " ").trim();
-      if (!out || out === "." || out === "..") out = "file";
-      return out;
-    }
-
-    function makeOnlineDownloadFileName(rec, fallbackIndex) {
-      const meta = rec && rec.onlineMeta ? rec.onlineMeta : null;
-      const original = String(rec?.name || "");
-      const originalParts = splitNameExt(original);
-      const originalExt = String(originalParts.ext || "");
-      const override = meta ? getOnlineFileRename(meta.profileKey, meta.fileUrl) : null;
-      let candidate = "";
-      if (override) {
-        candidate = String(override);
-        const p = splitNameExt(candidate);
-        if (!p.ext && originalExt) candidate = p.base + originalExt;
-      } else if (original) {
-        candidate = original;
-      } else {
-        let fromUrl = "";
-        try {
-          const u = new URL(String(rec?.url || ""));
-          fromUrl = decodeURIComponent(String(u.pathname || "").split("/").pop() || "");
-        } catch {}
-        candidate = fromUrl || `file_${Number(fallbackIndex || 0) + 1}`;
-      }
-      candidate = sanitizeOnlineFileNameForDisk(candidate);
-      return candidate;
-    }
-
-    function decodeBase64ToBytes(base64) {
-      const b64 = String(base64 || "");
-      if (!b64) return new Uint8Array(0);
-      const raw = atob(b64);
-      const out = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-      return out;
-    }
-
-    function getOnlineFetchReferrer(profileKey, url) {
-      const entry = ONLINE_PROFILE_CACHE.get(String(profileKey || ""));
-      const source = buildOnlineProfileSourceUrl(entry && entry.profile ? entry.profile : null);
-      if (source) return source;
-      try {
-        const u = new URL(String(url || ""));
-        return `${u.origin}/`;
-      } catch {
-        return "";
-      }
-    }
-
-    async function fetchOnlineBinary(url, profileKey) {
-      const targetUrl = String(url || "");
-      if (!targetUrl) return { ok: false, status: 0, error: "invalid_url" };
-      const referrer = getOnlineFetchReferrer(profileKey, targetUrl);
-      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.downloadUrl === "function")
-        ? window.electronAPI
-        : null;
-      if (electronApi) {
-        const res = await electronApi.downloadUrl({
-          url: targetUrl,
-          headers: {
-            Accept: "*/*",
-            "X-Requested-With": "XMLHttpRequest",
-            "User-Agent": navigator.userAgent
-          },
-          referrer
-        });
-        if (!res || !res.ok) {
-          const status = res && Number.isFinite(res.status) ? Number(res.status) : 0;
-          const error = res && res.error ? String(res.error) : (status ? `http_${status}` : "network_error");
-          return { ok: false, status, error };
-        }
-        const bytes = decodeBase64ToBytes(res.data || "");
-        return {
-          ok: true,
-          bytes,
-          byteLength: Number(res.bytes || bytes.byteLength || 0),
-          contentLength: Number(res.contentLength || bytes.byteLength || 0),
-          contentType: String(res.contentType || "")
-        };
-      }
-
-      try {
-        const resp = await fetch(targetUrl, {
-          cache: "no-store",
-          headers: {
-            Accept: "*/*",
-            "X-Requested-With": "XMLHttpRequest"
-          },
-          referrer: referrer || undefined,
-          referrerPolicy: "no-referrer-when-downgrade"
-        });
-        if (!resp || !resp.ok) {
-          return { ok: false, status: resp ? resp.status : 0, error: resp ? `http_${resp.status}` : "network_error" };
-        }
-        const buf = await resp.arrayBuffer();
-        const bytes = new Uint8Array(buf);
-        return {
-          ok: true,
-          bytes,
-          byteLength: bytes.byteLength,
-          contentLength: Number(resp.headers.get("content-length") || 0) || bytes.byteLength,
-          contentType: String(resp.headers.get("content-type") || "")
-        };
-      } catch {
-        return { ok: false, status: 0, error: "network_error" };
-      }
-    }
-
-    function collectOnlineRecordsForDirNode(dirNode) {
-      if (!dirNode || !dirNode.onlineMeta) return [];
-      const meta = dirNode.onlineMeta;
-      const includeChildren = meta.kind === "profile";
-      const ids = getOrderedFileIdsForDir(dirNode, includeChildren);
-      const out = [];
-      const seen = new Set();
-      for (const id of ids) {
-        const key = String(id || "");
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        const rec = WS.fileById.get(key);
-        if (!rec || !rec.online || !rec.onlineMeta || !rec.url) continue;
-        if (String(rec.onlineMeta.profileKey || "") !== String(meta.profileKey || "")) continue;
-        if (meta.placementKey && String(rec.onlineMeta.placementKey || "") !== String(meta.placementKey || "")) continue;
-        if (meta.kind === "post" && String(rec.onlineMeta.postKey || "") !== String(meta.postKey || "")) continue;
-        out.push(rec);
-      }
-      return out;
-    }
-
-    function onlinePlacementKeyFromNode(dirNode) {
-      const meta = dirNode && dirNode.onlineMeta ? dirNode.onlineMeta : null;
-      if (!meta) return "";
-      if (meta.placementKey) return String(meta.placementKey);
-      return makeOnlinePlacementId(meta.profileKey, meta.mode || "profile", meta.basePath || "");
-    }
-
-    async function markOnlineNodeMaterialized(dirNode) {
-      if (!dirNode || !dirNode.onlineMeta) return false;
-      const meta = dirNode.onlineMeta;
-      const profileKey = String(meta.profileKey || "");
-      const placementKey = onlinePlacementKeyFromNode(dirNode);
-      if (!profileKey || !placementKey) return false;
-      let changed = false;
-      if (meta.kind === "profile") {
-        changed = markOnlinePlacementMaterialized(profileKey, placementKey) || changed;
-      } else if (meta.kind === "post") {
-        const postKey = String(meta.postKey || "");
-        if (postKey) changed = markOnlinePostMaterialized(profileKey, placementKey, postKey) || changed;
-      }
-      if (changed) await siteLogSaveRenames();
-      return changed;
-    }
-
-    async function materializeOnlineFolderNode(dirNode, opts = {}) {
-      const meta = dirNode && dirNode.onlineMeta ? dirNode.onlineMeta : null;
-      if (!meta || (meta.kind !== "profile" && meta.kind !== "post")) {
-        if (!opts.silentStatus) showStatusMessage("Not an online folder.");
-        return { ok: false, error: "invalid_online_folder" };
-      }
-      if (!WS.meta.fsRootHandle) {
-        if (!opts.silentStatus) showStatusMessage("Downloading requires a writable folder.");
-        return { ok: false, error: "no_fs_root" };
-      }
-      const dirPath = String(dirNode.path || "");
-      if (!dirPath) {
-        if (!opts.silentStatus) showStatusMessage("Online folder path is invalid.");
-        return { ok: false, error: "invalid_path" };
-      }
-      const activeJob = getOnlineDownloadJob(dirPath);
-      if (activeJob && activeJob.state === "running") {
-        if (!opts.silentStatus) showStatusMessage("This folder is already downloading.");
-        return { ok: false, error: "already_running" };
-      }
-      const records = collectOnlineRecordsForDirNode(dirNode);
-      if (!records.length) {
-        if (!opts.silentStatus) showStatusMessage("No online media found in this folder.");
-        return { ok: false, error: "no_files" };
-      }
-      const job = startOnlineDownloadJob(dirPath, records.length);
-      if (!job) {
-        if (!opts.silentStatus) showStatusMessage("Could not start download job.");
-        return { ok: false, error: "job_start_failed" };
-      }
-
-      let completed = 0;
-      let failed = 0;
-      let bytesDone = 0;
-      let bytesExpected = 0;
-      const usedNamesByDir = new Map();
-      const targetHandleCache = new Map();
-
-      const resolveTargetDirPathForRecord = (rec) => {
-        if (!rec) return dirPath;
-        if (meta.kind !== "profile") return dirPath;
-        const recDir = String(rec.dirPath || "");
-        if (!recDir || recDir === dirPath) return dirPath;
-        if (recDir.startsWith(dirPath + "/")) return recDir;
-        return dirPath;
-      };
-
-      const getTargetDirHandle = async (targetDirPath) => {
-        const key = String(targetDirPath || dirPath);
-        if (targetHandleCache.has(key)) return targetHandleCache.get(key);
-        const handle = await ensureDirectoryHandleForPath(WS.meta.fsRootHandle, key);
-        targetHandleCache.set(key, handle);
-        return handle;
-      };
-
-      const getDirNameSet = (targetDirPath) => {
-        const key = String(targetDirPath || dirPath);
-        if (!usedNamesByDir.has(key)) usedNamesByDir.set(key, new Set());
-        return usedNamesByDir.get(key);
-      };
-
-      try {
-        await getTargetDirHandle(dirPath);
-        for (let i = 0; i < records.length; i++) {
-          const rec = records[i];
-          const metaInfo = rec && rec.onlineMeta ? rec.onlineMeta : null;
-          if (!rec || !rec.url || !metaInfo) {
-            failed++;
-            updateOnlineDownloadJob(job, { failedFiles: failed, completedFiles: completed });
-            continue;
-          }
-
-          const targetDirPath = resolveTargetDirPathForRecord(rec);
-          const targetHandle = await getTargetDirHandle(targetDirPath);
-          const dirNameSet = getDirNameSet(targetDirPath);
-
-          const desired = makeOnlineDownloadFileName(rec, i);
-          let targetName = desired;
-          if (dirNameSet.has(targetName) || await entryExistsInDir(targetHandle, targetName)) {
-            targetName = await uniqueDestNameInDir(targetHandle, targetName);
-          }
-          dirNameSet.add(targetName);
-
-          const shownPath = (targetDirPath && targetDirPath !== dirPath)
-            ? `${targetDirPath.split("/").pop() || targetDirPath}/${targetName}`
-            : targetName;
-          updateOnlineDownloadJob(job, { currentFile: shownPath, completedFiles: completed, failedFiles: failed });
-          const payload = await fetchOnlineBinary(rec.url, metaInfo.profileKey);
-          if (!payload || !payload.ok || !payload.bytes || !payload.bytes.byteLength) {
-            failed++;
-            updateOnlineDownloadJob(job, {
-              failedFiles: failed,
-              completedFiles: completed,
-              error: payload && payload.error ? String(payload.error) : "download_failed"
-            });
-            continue;
-          }
-
-          const expected = Number(payload.contentLength || payload.byteLength || payload.bytes.byteLength || 0);
-          bytesExpected += expected;
-          const got = Number(payload.byteLength || payload.bytes.byteLength || 0);
-
-          try {
-            const outFile = await targetHandle.getFileHandle(targetName, { create: true });
-            const writable = await outFile.createWritable();
-            await writable.write(payload.bytes);
-            await writable.close();
-            completed++;
-            bytesDone += got;
-          } catch {
-            failed++;
-          }
-
-          updateOnlineDownloadJob(job, {
-            completedFiles: completed,
-            failedFiles: failed,
-            downloadedBytes: bytesDone,
-            totalBytes: bytesExpected
-          });
-        }
-      } catch (err) {
-        const msg = err && err.message ? String(err.message) : "materialize_failed";
-        finishOnlineDownloadJob(job, "error", msg);
-        if (!opts.silentStatus) showStatusMessage("Download failed.");
-        return { ok: false, error: msg, completed, failed, total: records.length };
-      }
-
-      const allOk = completed === records.length && failed === 0;
-      if (!allOk) {
-        const state = completed > 0 ? "partial" : "error";
-        finishOnlineDownloadJob(job, state, failed ? `${failed} failed` : "download_failed");
-        if (!opts.silentStatus) {
-          if (completed > 0) showStatusMessage(`Download partial: ${completed}/${records.length} files completed.`);
-          else showStatusMessage("Download failed.");
-        }
-        return { ok: false, partial: completed > 0, completed, failed, total: records.length };
-      }
-
-      await markOnlineNodeMaterialized(dirNode);
-      finishOnlineDownloadJob(job, "done", "");
-
-      if (!opts.deferRefresh) {
-        try {
-          await refreshWorkspaceFromRootHandle();
-        } catch {}
-      }
-
-      if (!opts.silentStatus) {
-        showStatusMessage(`Downloaded ${completed} file${completed === 1 ? "" : "s"} in place.`);
-      }
-      return { ok: true, completed, failed: 0, total: records.length };
-    }
-
-    function dedupeOnlineMaterializeNodes(nodes) {
-      const src = Array.isArray(nodes) ? nodes.filter(n => n && n.onlineMeta && (n.onlineMeta.kind === "profile" || n.onlineMeta.kind === "post")) : [];
-      src.sort((a, b) => String(a.path || "").length - String(b.path || "").length);
-      const out = [];
-      const seen = new Set();
-      for (const node of src) {
-        const path = String(node.path || "");
-        if (!path || seen.has(path)) continue;
-        const hasAncestorProfile = out.some(prev => {
-          const prevPath = String(prev.path || "");
-          if (!prevPath) return false;
-          if (!(path === prevPath || path.startsWith(prevPath + "/"))) return false;
-          return prev.onlineMeta && prev.onlineMeta.kind === "profile";
-        });
-        if (hasAncestorProfile) continue;
-        seen.add(path);
-        out.push(node);
-      }
-      return out;
-    }
-
-    async function materializeOnlineFolderSelection(nodes) {
-      if (!WS.meta.fsRootHandle) {
-        showStatusMessage("Downloading requires a writable folder.");
-        return false;
-      }
-      const targets = dedupeOnlineMaterializeNodes(nodes);
-      if (!targets.length) {
-        showStatusMessage("No online folders selected.");
-        return false;
-      }
-
-      let successCount = 0;
-      let partialCount = 0;
-      let failCount = 0;
-      for (let i = 0; i < targets.length; i++) {
-        const node = targets[i];
-        const label = displayPath(node.path || node.name || "folder");
-        showStatusMessage(`Downloading ${i + 1}/${targets.length}: ${label}`);
-        const res = await materializeOnlineFolderNode(node, { deferRefresh: true, silentStatus: true });
-        if (res && res.ok) successCount++;
-        else if (res && res.partial) partialCount++;
-        else failCount++;
-      }
-
-      if (successCount > 0) {
-        try {
-          await refreshWorkspaceFromRootHandle();
-        } catch {}
-      }
-
-      if (successCount && !partialCount && !failCount) {
-        showStatusMessage(`Downloaded ${successCount} online folder${successCount === 1 ? "" : "s"} in place.`);
-      } else if (successCount || partialCount) {
-        showStatusMessage(`Downloads complete: ${successCount} full, ${partialCount} partial, ${failCount} failed.`);
-      } else {
-        showStatusMessage("All selected online folder downloads failed.");
-      }
-      return successCount > 0;
     }
 
     function clampNumber(value, min, max, fallback) {
@@ -2866,19 +184,37 @@
       return Math.min(max, Math.max(min, n));
     }
 
+    function normalizeAnimatedMediaFiltersValue(value, fallback = "on") {
+      if (value === true) return "on";
+      if (value === false) return "off";
+      const raw = String(value == null ? "" : value).trim().toLowerCase();
+      if (raw === "on" || raw === "off") return raw;
+      if (
+        raw === "videos" ||
+        raw === "video" ||
+        raw === "video-only" ||
+        raw === "videos-only" ||
+        raw === "video_only" ||
+        raw === "videos_only"
+      ) {
+        return "videos";
+      }
+      return fallback;
+    }
+
     function defaultOptions() {
       return {
         videoPreview: "muted",
-        videoGallery: "muted",
-        imageThumbSize: "small",
-        videoThumbSize: "small",
-        mediaThumbUiSize: "small",
+        videoGallery: "unmuted",
+        imageThumbSize: "high",
+        videoThumbSize: "medium",
+        mediaThumbUiSize: "medium",
         folderPreviewSize: "small",
         hideFileExtensions: false,
         defaultFolderBehavior: "slide",
         folderScoreDisplay: "no-arrows",
         previewMode: "grid",
-        videoSkipStep: "10",
+        videoSkipStep: "5",
         preloadNextMode: "off",
         videoEndBehavior: "loop",
         slideshowDefault: "cycle",
@@ -2886,11 +222,13 @@
         hideBeforeLastDashInFileNames: true,
         hideAfterFirstUnderscoreInFileNames: true,
         forceTitleCaps: true,
-        banicOpenWindow: true,
         altGalleryMode: true,
         retroMode: false,
         mediaFilter: "off",
-        animatedMediaFilters: true,
+        mediaFilterIntensity: 1,
+        betaTallImageScrollDetect: true,
+        animatedMediaFilters: "on",
+        gifsIgnoreProcessing: false,
         crtScanlinesEnabled: false,
         crtPixelateEnabled: false,
         crtGrainEnabled: false,
@@ -2905,18 +243,14 @@
         treatTagsAsFolders: true,
         showHiddenFolder: false,
         showUntaggedFolder: false,
-        showTrashFolder: true,
         showFolderItemCount: true,
         showFolderSize: true,
         showDirFileTypeLabel: true,
-        showPreviewFileTypeLabel: true,
+        showPreviewFileTypeLabel: false,
         showPreviewFolderItemCount: true,
-        showPreviewFileName: true,
+        showPreviewFileName: false,
         previewThumbFiltersEnabled: false,
-        previewThumbFit: "cover",
-        onlineLoadMode: "as-needed",
-        listOnlineFoldersFirst: false,
-        onlineFeaturesEnabled: true,
+        previewThumbFit: "contain",
         hideOptionDescriptions: false,
         hideKeybindDescriptions: false,
         randomActionMode: "firstFileJump"
@@ -2942,45 +276,40 @@
       const vhsChromaAmount = clampNumber(src.vhsChromaAmount, 0, 3, d.vhsChromaAmount);
       const filmCornerOverlayEnabled = (typeof src.filmCornerOverlayEnabled === "boolean") ? src.filmCornerOverlayEnabled : d.filmCornerOverlayEnabled;
       const out = {
-        videoPreview: (src.videoPreview === "unmuted" || src.videoPreview === "muted" || src.videoPreview === "off") ? src.videoPreview : d.videoPreview,
-        videoGallery: (src.videoGallery === "unmuted" || src.videoGallery === "muted" || src.videoGallery === "off") ? src.videoGallery : d.videoGallery,
-        imageThumbSize: (src.imageThumbSize === "tiny" || src.imageThumbSize === "small" || src.imageThumbSize === "medium" || src.imageThumbSize === "high") ? src.imageThumbSize : d.imageThumbSize,
-        videoThumbSize: (src.videoThumbSize === "tiny" || src.videoThumbSize === "small" || src.videoThumbSize === "medium" || src.videoThumbSize === "high") ? src.videoThumbSize : d.videoThumbSize,
-        mediaThumbUiSize: (src.mediaThumbUiSize === "small" || src.mediaThumbUiSize === "medium" || src.mediaThumbUiSize === "large") ? src.mediaThumbUiSize : d.mediaThumbUiSize,
-        folderPreviewSize: (src.folderPreviewSize === "small" || src.folderPreviewSize === "medium" || src.folderPreviewSize === "large") ? src.folderPreviewSize : d.folderPreviewSize,
+        videoPreview: "muted",
+        videoGallery: "unmuted",
+        imageThumbSize: "high",
+        videoThumbSize: "medium",
+        mediaThumbUiSize: "medium",
+        folderPreviewSize: "small",
         hideFileExtensions: (typeof src.hideFileExtensions === "boolean") ? src.hideFileExtensions : ((typeof src.showFileExtensions === "boolean") ? !src.showFileExtensions : d.hideFileExtensions),
-        defaultFolderBehavior: (src.defaultFolderBehavior === "stop" || src.defaultFolderBehavior === "loop" || src.defaultFolderBehavior === "slide") ? src.defaultFolderBehavior : d.defaultFolderBehavior,
-        folderScoreDisplay: (src.folderScoreDisplay === "show" || src.folderScoreDisplay === "no-arrows" || src.folderScoreDisplay === "hidden") ? src.folderScoreDisplay : ((typeof src.showFolderScores === "boolean") ? (src.showFolderScores ? "show" : "hidden") : d.folderScoreDisplay),
-        previewMode: (src.previewMode === "grid" || src.previewMode === "expanded") ? src.previewMode : d.previewMode,
-        previewThumbFit: (src.previewThumbFit === "contain" || src.previewThumbFit === "cover") ? src.previewThumbFit : d.previewThumbFit,
-        onlineLoadMode: (src.onlineLoadMode === "preload" || src.onlineLoadMode === "as-needed") ? src.onlineLoadMode : d.onlineLoadMode,
-        listOnlineFoldersFirst: (typeof src.listOnlineFoldersFirst === "boolean") ? src.listOnlineFoldersFirst : d.listOnlineFoldersFirst,
-        videoSkipStep: (src.videoSkipStep === "3" || src.videoSkipStep === "5" || src.videoSkipStep === "10" || src.videoSkipStep === "30") ? src.videoSkipStep : d.videoSkipStep,
+        defaultFolderBehavior: "slide",
+        folderScoreDisplay: "no-arrows",
+        previewMode: "grid",
+        previewThumbFit: "contain",
+        videoSkipStep: "5",
         preloadNextMode: (src.preloadNextMode === "off" || src.preloadNextMode === "on" || src.preloadNextMode === "ultra") ? src.preloadNextMode : d.preloadNextMode,
-        videoEndBehavior: (src.videoEndBehavior === "loop" || src.videoEndBehavior === "next" || src.videoEndBehavior === "stop") ? src.videoEndBehavior : d.videoEndBehavior,
+        videoEndBehavior: "loop",
         slideshowDefault: (src.slideshowDefault === "cycle" || src.slideshowDefault === "1" || src.slideshowDefault === "3" || src.slideshowDefault === "5" || src.slideshowDefault === "10") ? src.slideshowDefault : d.slideshowDefault,
         hideUnderscoresInNames: (typeof src.hideUnderscoresInNames === "boolean") ? src.hideUnderscoresInNames : d.hideUnderscoresInNames,
         hideBeforeLastDashInFileNames: (typeof src.hideBeforeLastDashInFileNames === "boolean") ? src.hideBeforeLastDashInFileNames : d.hideBeforeLastDashInFileNames,
         hideAfterFirstUnderscoreInFileNames: (typeof src.hideAfterFirstUnderscoreInFileNames === "boolean") ? src.hideAfterFirstUnderscoreInFileNames : d.hideAfterFirstUnderscoreInFileNames,
         forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
-        banicOpenWindow: (typeof src.banicOpenWindow === "boolean") ? src.banicOpenWindow : d.banicOpenWindow,
         altGalleryMode: true,
-        retroMode: (typeof src.retroMode === "boolean") ? src.retroMode : d.retroMode,
-        colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark" || src.colorScheme === "synthwave" || src.colorScheme === "verdant" || src.colorScheme === "azure" || src.colorScheme === "ember" || src.colorScheme === "amber" || src.colorScheme === "retro90s" || src.colorScheme === "retro90s-dark") ? src.colorScheme : d.colorScheme,
+        retroMode: false,
+        colorScheme: (src.colorScheme === "classic" || src.colorScheme === "light" || src.colorScheme === "superdark") ? src.colorScheme : d.colorScheme,
         treatTagsAsFolders: d.treatTagsAsFolders,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
-        showTrashFolder: (typeof src.showTrashFolder === "boolean") ? src.showTrashFolder : d.showTrashFolder,
-        showFolderItemCount: (typeof src.showFolderItemCount === "boolean") ? src.showFolderItemCount : d.showFolderItemCount,
-        showFolderSize: (typeof src.showFolderSize === "boolean") ? src.showFolderSize : d.showFolderSize,
-        showDirFileTypeLabel: (typeof src.showDirFileTypeLabel === "boolean") ? src.showDirFileTypeLabel : d.showDirFileTypeLabel,
-        showPreviewFileTypeLabel: (typeof src.showPreviewFileTypeLabel === "boolean") ? src.showPreviewFileTypeLabel : d.showPreviewFileTypeLabel,
-        showPreviewFolderItemCount: (typeof src.showPreviewFolderItemCount === "boolean") ? src.showPreviewFolderItemCount : d.showPreviewFolderItemCount,
-        showPreviewFileName: (typeof src.showPreviewFileName === "boolean") ? src.showPreviewFileName : d.showPreviewFileName,
-        previewThumbFiltersEnabled: (typeof src.previewThumbFiltersEnabled === "boolean") ? src.previewThumbFiltersEnabled : d.previewThumbFiltersEnabled,
-        onlineFeaturesEnabled: (typeof src.onlineFeaturesEnabled === "boolean") ? src.onlineFeaturesEnabled : d.onlineFeaturesEnabled,
-        hideOptionDescriptions: (typeof src.hideOptionDescriptions === "boolean") ? src.hideOptionDescriptions : d.hideOptionDescriptions,
-        hideKeybindDescriptions: (typeof src.hideKeybindDescriptions === "boolean") ? src.hideKeybindDescriptions : d.hideKeybindDescriptions,
+        showFolderItemCount: true,
+        showFolderSize: true,
+        showDirFileTypeLabel: true,
+        showPreviewFileTypeLabel: false,
+        showPreviewFolderItemCount: true,
+        showPreviewFileName: false,
+        previewThumbFiltersEnabled: false,
+        hideOptionDescriptions: false,
+        hideKeybindDescriptions: false,
         randomActionMode: (src.randomActionMode === "firstFileJump" || src.randomActionMode === "randomFileSort") ? src.randomActionMode : d.randomActionMode,
         leftPaneWidthPct: (function(){
           const v = parseFloat(src.leftPaneWidthPct);
@@ -2991,13 +320,12 @@
         mediaFilter: (
   mediaFilterRaw === 'off' ||
   mediaFilterRaw === 'vibrant' ||
-  mediaFilterRaw === 'uv' ||
-  mediaFilterRaw === 'orangeTeal' ||
-  mediaFilterRaw === 'cinematic' ||
-  mediaFilterRaw === 'bw' ||
   mediaFilterRaw === 'infrared'
 ) ? mediaFilterRaw : d.mediaFilter,
-        animatedMediaFilters: (typeof src.animatedMediaFilters === "boolean") ? src.animatedMediaFilters : d.animatedMediaFilters,
+        mediaFilterIntensity: clampNumber(src.mediaFilterIntensity, 0, 1, d.mediaFilterIntensity),
+        betaTallImageScrollDetect: true,
+        animatedMediaFilters: normalizeAnimatedMediaFiltersValue(src.animatedMediaFilters, d.animatedMediaFilters),
+        gifsIgnoreProcessing: (typeof src.gifsIgnoreProcessing === "boolean") ? src.gifsIgnoreProcessing : d.gifsIgnoreProcessing,
         crtScanlinesEnabled,
         crtPixelateEnabled,
         crtGrainEnabled,
@@ -3013,7 +341,7 @@
 
     const MEDIA_FILTER_STATE = {
       mode: "off",
-      animated: true
+      animatedMode: "on"
     };
     let MEDIA_OVERLAY_STATE = null;
     let THUMB_FILTER_KEY = "";
@@ -3162,8 +490,339 @@
       ctx.restore();
     }
 
+    const VIDEO_BLACK_BAR_DETECT = Object.freeze({
+      sampleMax: 320,
+      nearBlackMax: 24,
+      blackRatioMin: 0.985,
+      maxSideFrac: 0.42,
+      minSideFrac: 0.05,
+      symmetryTolFrac: 0.04,
+      centerMinLuma: 24,
+      contrastMinLuma: 10
+    });
+
+    function normalizeVideoCrop(crop) {
+      if (!crop || typeof crop !== "object") return null;
+      const left = clampNumber(crop.left, 0, 0.49, 0);
+      const right = clampNumber(crop.right, 0, 0.49, 0);
+      const top = clampNumber(crop.top, 0, 0.49, 0);
+      const bottom = clampNumber(crop.bottom, 0, 0.49, 0);
+      if ((left + right) >= 0.92) return null;
+      if ((top + bottom) >= 0.92) return null;
+      if (!(left > 0 || right > 0 || top > 0 || bottom > 0)) return null;
+      return { left, right, top, bottom };
+    }
+
+    function hasVideoCrop(crop) {
+      const c = normalizeVideoCrop(crop);
+      return !!c;
+    }
+
+    function getVideoCropForRecord(rec) {
+      if (!rec || rec.type !== "video") return null;
+      return normalizeVideoCrop(rec.videoCrop);
+    }
+
+    function getVideoCropForTarget(target) {
+      if (!target || typeof target !== "object") return null;
+      return getVideoCropForRecord(target);
+    }
+
+    function computeCroppedSourceRect(srcW, srcH, crop) {
+      const c = normalizeVideoCrop(crop);
+      if (!c || !(srcW > 0) || !(srcH > 0)) {
+        return { sx: 0, sy: 0, sw: srcW, sh: srcH };
+      }
+      const sx = Math.max(0, Math.min(srcW - 1, Math.round(srcW * c.left)));
+      const sy = Math.max(0, Math.min(srcH - 1, Math.round(srcH * c.top)));
+      const ex = Math.max(sx + 1, Math.min(srcW, Math.round(srcW * (1 - c.right))));
+      const ey = Math.max(sy + 1, Math.min(srcH, Math.round(srcH * (1 - c.bottom))));
+      return {
+        sx,
+        sy,
+        sw: Math.max(1, ex - sx),
+        sh: Math.max(1, ey - sy)
+      };
+    }
+
+    function detectStaticVideoBlackBars(videoEl) {
+      const w = Number(videoEl?.videoWidth || 0);
+      const h = Number(videoEl?.videoHeight || 0);
+      if (!(w > 32 && h > 32)) return null;
+
+      const maxDim = VIDEO_BLACK_BAR_DETECT.sampleMax;
+      const scale = Math.min(1, maxDim / Math.max(w, h));
+      const sw = Math.max(32, Math.round(w * scale));
+      const sh = Math.max(32, Math.round(h * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return null;
+      try {
+        ctx.drawImage(videoEl, 0, 0, sw, sh);
+      } catch {
+        return null;
+      }
+
+      let imageData = null;
+      try {
+        imageData = ctx.getImageData(0, 0, sw, sh);
+      } catch {
+        return null;
+      }
+      const data = imageData.data;
+      const nearBlackMax = VIDEO_BLACK_BAR_DETECT.nearBlackMax;
+      const ratioMin = VIDEO_BLACK_BAR_DETECT.blackRatioMin;
+
+      const rowStats = (y) => {
+        let nearBlack = 0;
+        let lumaSum = 0;
+        const base = y * sw * 4;
+        for (let x = 0; x < sw; x++) {
+          const i = base + (x * 4);
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const maxC = Math.max(r, g, b);
+          if (maxC <= nearBlackMax) nearBlack++;
+          lumaSum += (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+        }
+        return {
+          ratio: nearBlack / sw,
+          luma: lumaSum / sw
+        };
+      };
+
+      const colStats = (x) => {
+        let nearBlack = 0;
+        let lumaSum = 0;
+        for (let y = 0; y < sh; y++) {
+          const i = ((y * sw) + x) * 4;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const maxC = Math.max(r, g, b);
+          if (maxC <= nearBlackMax) nearBlack++;
+          lumaSum += (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+        }
+        return {
+          ratio: nearBlack / sh,
+          luma: lumaSum / sh
+        };
+      };
+
+      const limitTopBottom = Math.max(1, Math.floor(sh * VIDEO_BLACK_BAR_DETECT.maxSideFrac));
+      const limitLeftRight = Math.max(1, Math.floor(sw * VIDEO_BLACK_BAR_DETECT.maxSideFrac));
+
+      let topPx = 0;
+      while (topPx < limitTopBottom) {
+        const s = rowStats(topPx);
+        if (s.ratio >= ratioMin && s.luma <= nearBlackMax) topPx++;
+        else break;
+      }
+      let bottomPx = 0;
+      while (bottomPx < limitTopBottom) {
+        const s = rowStats(sh - 1 - bottomPx);
+        if (s.ratio >= ratioMin && s.luma <= nearBlackMax) bottomPx++;
+        else break;
+      }
+      let leftPx = 0;
+      while (leftPx < limitLeftRight) {
+        const s = colStats(leftPx);
+        if (s.ratio >= ratioMin && s.luma <= nearBlackMax) leftPx++;
+        else break;
+      }
+      let rightPx = 0;
+      while (rightPx < limitLeftRight) {
+        const s = colStats(sw - 1 - rightPx);
+        if (s.ratio >= ratioMin && s.luma <= nearBlackMax) rightPx++;
+        else break;
+      }
+
+      const minTopBottom = Math.max(4, Math.round(sh * VIDEO_BLACK_BAR_DETECT.minSideFrac));
+      const minLeftRight = Math.max(4, Math.round(sw * VIDEO_BLACK_BAR_DETECT.minSideFrac));
+      const symY = Math.max(4, Math.round(sh * VIDEO_BLACK_BAR_DETECT.symmetryTolFrac));
+      const symX = Math.max(4, Math.round(sw * VIDEO_BLACK_BAR_DETECT.symmetryTolFrac));
+
+      if (topPx < minTopBottom || bottomPx < minTopBottom || Math.abs(topPx - bottomPx) > symY) {
+        topPx = 0;
+        bottomPx = 0;
+      }
+      if (leftPx < minLeftRight || rightPx < minLeftRight || Math.abs(leftPx - rightPx) > symX) {
+        leftPx = 0;
+        rightPx = 0;
+      }
+
+      if (!(topPx || bottomPx || leftPx || rightPx)) return null;
+
+      const contentX = leftPx;
+      const contentY = topPx;
+      const contentW = sw - leftPx - rightPx;
+      const contentH = sh - topPx - bottomPx;
+      if (contentW < 16 || contentH < 16) return null;
+
+      let contentLumaSum = 0;
+      let contentSamples = 0;
+      const xStep = Math.max(1, Math.floor(contentW / 64));
+      const yStep = Math.max(1, Math.floor(contentH / 64));
+      for (let y = contentY; y < contentY + contentH; y += yStep) {
+        for (let x = contentX; x < contentX + contentW; x += xStep) {
+          const i = ((y * sw) + x) * 4;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          contentLumaSum += (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+          contentSamples++;
+        }
+      }
+      const contentLuma = contentSamples ? (contentLumaSum / contentSamples) : 0;
+      if (contentLuma < VIDEO_BLACK_BAR_DETECT.centerMinLuma) return null;
+      if ((contentLuma - nearBlackMax) < VIDEO_BLACK_BAR_DETECT.contrastMinLuma) return null;
+
+      return normalizeVideoCrop({
+        left: leftPx / sw,
+        right: rightPx / sw,
+        top: topPx / sh,
+        bottom: bottomPx / sh
+      });
+    }
+
+    function updateVideoCropFromElement(rec, videoEl) {
+      if (!rec || rec.type !== "video" || !videoEl) return false;
+      if (hasVideoCrop(rec.videoCrop)) return false;
+      const crop = detectStaticVideoBlackBars(videoEl);
+      if (!crop) return false;
+      rec.videoCrop = crop;
+      const cropRect = computeCroppedSourceRect(videoEl.videoWidth || 0, videoEl.videoHeight || 0, crop);
+      if (cropRect.sw > 0 && cropRect.sh > 0) {
+        rec.previewAspect = normalizePreviewAspect(cropRect.sw / cropRect.sh, rec.previewAspect || (4 / 3));
+      }
+      if (rec.videoThumbUrl) {
+        try { URL.revokeObjectURL(rec.videoThumbUrl); } catch {}
+        rec.videoThumbUrl = null;
+        rec.videoThumbMode = null;
+      }
+      return true;
+    }
+
+    function applyVideoCropToElement(videoEl, rec) {
+      if (!videoEl) return;
+      const crop = getVideoCropForRecord(rec);
+      if (!crop) {
+        videoEl.style.removeProperty("clip-path");
+        videoEl.style.removeProperty("-webkit-clip-path");
+        videoEl.style.removeProperty("transform-origin");
+        videoEl.style.removeProperty("transform");
+        return;
+      }
+      const xVisible = Math.max(0.08, 1 - crop.left - crop.right);
+      const yVisible = Math.max(0.08, 1 - crop.top - crop.bottom);
+      const scaleX = 1 / xVisible;
+      const scaleY = 1 / yVisible;
+      const tx = ((crop.right - crop.left) * 0.5 * scaleX) * 100;
+      const ty = ((crop.bottom - crop.top) * 0.5 * scaleY) * 100;
+      const topPct = (crop.top * 100).toFixed(4);
+      const rightPct = (crop.right * 100).toFixed(4);
+      const bottomPct = (crop.bottom * 100).toFixed(4);
+      const leftPct = (crop.left * 100).toFixed(4);
+      const clip = `inset(${topPct}% ${rightPct}% ${bottomPct}% ${leftPct}%)`;
+      videoEl.style.setProperty("clip-path", clip);
+      videoEl.style.setProperty("-webkit-clip-path", clip);
+      videoEl.style.setProperty("transform-origin", "50% 50%");
+      videoEl.style.setProperty("transform", `translate(${tx.toFixed(4)}%, ${ty.toFixed(4)}%) scale(${scaleX.toFixed(6)}, ${scaleY.toFixed(6)})`);
+    }
+
     function getMediaFilterForType() {
       return MEDIA_FILTER_STATE.mode || "off";
+    }
+
+    function getMediaFilterIntensity() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const raw = opt ? opt.mediaFilterIntensity : 1;
+      return clampNumber(raw, 0, 1, 1);
+    }
+
+    function parseFilterNumberWithUnit(raw) {
+      const m = String(raw || "").trim().match(/^(-?\d*\.?\d+)([a-z%]*)$/i);
+      if (!m) return null;
+      const value = parseFloat(m[1]);
+      if (!Number.isFinite(value)) return null;
+      return { value, unit: String(m[2] || "") };
+    }
+
+    function scaleCssFilterString(filterText, intensity) {
+      const t = clampNumber(intensity, 0, 1, 1);
+      const src = String(filterText || "").trim();
+      if (!src || src === "none") return "none";
+      if (t <= 0) return "none";
+      if (t >= 1) return src;
+      const re = /([a-z-]+)\(([^)]+)\)/gi;
+      const out = [];
+      let matched = false;
+      let m = null;
+      while ((m = re.exec(src)) !== null) {
+        matched = true;
+        const fn = String(m[1] || "").toLowerCase();
+        const argRaw = String(m[2] || "").trim();
+        const parsed = parseFilterNumberWithUnit(argRaw);
+        if (!parsed) {
+          out.push(`${fn}(${argRaw})`);
+          continue;
+        }
+        const unit = parsed.unit;
+        const target = parsed.value;
+        let ident = null;
+        if (fn === "saturate" || fn === "contrast" || fn === "brightness") ident = (unit === "%") ? 100 : 1;
+        else if (fn === "hue-rotate") ident = 0;
+        else if (fn === "grayscale" || fn === "sepia" || fn === "invert") ident = 0;
+        if (ident === null) {
+          out.push(`${fn}(${argRaw})`);
+          continue;
+        }
+        const next = ident + (target - ident) * t;
+        const shown = (Math.abs(next) >= 100 || Number.isInteger(next)) ? String(Math.round(next)) : next.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+        out.push(`${fn}(${shown}${unit})`);
+      }
+      if (!matched) return src;
+      return out.length ? out.join(" ") : "none";
+    }
+
+    function scaleBaseFilterConfig(baseCfg, intensity) {
+      if (!baseCfg) return null;
+      const t = clampNumber(intensity, 0, 1, 1);
+      if (!(t > 0)) return null;
+      const out = {};
+      for (const key of Object.keys(baseCfg)) {
+        const value = baseCfg[key];
+        if (key === "color") {
+          const scaled = scaleCssFilterString(value, t);
+          if (scaled && scaled !== "none") out.color = scaled;
+          continue;
+        }
+        if (key === "forceMonochrome") {
+          out.forceMonochrome = !!value && t >= 0.999;
+          continue;
+        }
+        if (typeof value === "number" && Number.isFinite(value)) {
+          out[key] = value * t;
+          continue;
+        }
+        out[key] = value;
+      }
+      return out;
+    }
+
+    function animatedMediaFiltersMode() {
+      return normalizeAnimatedMediaFiltersValue(MEDIA_FILTER_STATE.animatedMode, "on");
+    }
+
+    function animatedMediaFiltersEnabledForType(type) {
+      const mode = animatedMediaFiltersMode();
+      if (mode === "off") return false;
+      if (mode === "videos") return type === "video";
+      return true;
     }
 
     function thumbFiltersEnabled() {
@@ -3171,15 +830,46 @@
       return !!(opt && opt.previewThumbFiltersEnabled);
     }
 
-    function thumbFiltersActive() {
-      return thumbFiltersEnabled() && mediaFilterEnabled();
+    function gifsIgnoreProcessingEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.gifsIgnoreProcessing);
+    }
+
+    function betaTallImageScrollDetectEnabled() {
+      return true;
+    }
+
+    function isGifRecord(rec) {
+      const ext = String(rec?.ext || "").toLowerCase();
+      if (ext === ".gif") return true;
+      const mime = String(rec?.file?.type || "").toLowerCase();
+      return mime === "image/gif";
+    }
+
+    function mediaProcessingEnabledForTarget(target) {
+      if (typeof target === "undefined" || target === null) return true;
+      if (typeof target === "string") {
+        return !isPathOrAncestorProcessingDisabled(target);
+      }
+      if (target && typeof target === "object") {
+        if (isGifRecord(target) && gifsIgnoreProcessingEnabled()) return false;
+        if (typeof target.dirPath === "string") return !isPathOrAncestorProcessingDisabled(target.dirPath || "");
+        if (typeof target.path === "string") return !isPathOrAncestorProcessingDisabled(target.path || "");
+      }
+      return true;
+    }
+
+    function thumbFiltersActive(target) {
+      if (!thumbFiltersEnabled() || !mediaFilterEnabled()) return false;
+      return mediaProcessingEnabledForTarget(target);
     }
 
     function buildThumbFilterKey() {
       if (!thumbFiltersActive()) return "off|none";
       const mode = MEDIA_FILTER_STATE.mode || "off";
+      const intensity = getMediaFilterIntensity();
       const o = MEDIA_OVERLAY_STATE;
-      if (!o) return `${mode}|none`;
+      if (!o) return `${mode}|${intensity.toFixed(3)}|none`;
       const vals = [
         o.scanlines || 0,
         o.scanlineBlur || 0,
@@ -3191,7 +881,7 @@
         o.pixelate || 0,
         o.cornerRadius || 0
       ];
-      return `${mode}|${vals.join(",")}`;
+      return `${mode}|${intensity.toFixed(3)}|${vals.join(",")}`;
     }
 
     function crtOverlayEnabled() {
@@ -3257,10 +947,22 @@
       return THUMB_FILTER_CACHE.scanPattern;
     }
 
-    function renderFilteredToCanvas(ctx, source, srcW, srcH, dstW, dstH, mode, cover = true) {
-      const allowFilters = thumbFiltersActive();
-      const baseCfg = (allowFilters && mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
+    function renderFilteredToCanvas(ctx, source, srcW, srcH, dstW, dstH, mode, cover = true, target = undefined) {
+      const allowFilters = thumbFiltersActive(target);
+      const intensity = getMediaFilterIntensity();
+      const baseCfgRaw = (allowFilters && mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
+      const baseCfg = scaleBaseFilterConfig(baseCfgRaw, intensity);
       const overlayCfg = allowFilters ? MEDIA_OVERLAY_STATE : null;
+      const sourceCrop = computeCroppedSourceRect(srcW, srcH, getVideoCropForTarget(target));
+      const croppedSrcW = Math.max(1, Number(sourceCrop.sw || srcW || 1));
+      const croppedSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
+      const drawCropped = (targetCtx, dx, dy, dw, dh) => {
+        if (sourceCrop.sw > 0 && sourceCrop.sh > 0) {
+          targetCtx.drawImage(source, sourceCrop.sx, sourceCrop.sy, sourceCrop.sw, sourceCrop.sh, dx, dy, dw, dh);
+          return;
+        }
+        targetCtx.drawImage(source, dx, dy, dw, dh);
+      };
       const forceMonochrome = !!(allowFilters && baseCfg && baseCfg.forceMonochrome);
       const cfg = (baseCfg || overlayCfg) ? {
         color: baseCfg && baseCfg.color ? baseCfg.color : "none",
@@ -3274,15 +976,15 @@
         cornerRadius: Math.max(baseCfg && baseCfg.cornerRadius ? baseCfg.cornerRadius : 0, overlayCfg && overlayCfg.cornerRadius ? overlayCfg.cornerRadius : 0)
       } : null;
       if (!cfg) {
-        const rect = cover ? computeCoverRect(srcW, srcH, dstW, dstH) : computeContainRect(srcW, srcH, dstW, dstH);
+        const rect = cover ? computeCoverRect(croppedSrcW, croppedSrcH, dstW, dstH) : computeContainRect(croppedSrcW, croppedSrcH, dstW, dstH);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, dstW, dstH);
         ctx.filter = "none";
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(source, rect.x, rect.y, rect.w, rect.h);
+        drawCropped(ctx, rect.x, rect.y, rect.w, rect.h);
         return;
       }
-      const rect = cover ? computeCoverRect(srcW, srcH, dstW, dstH) : computeContainRect(srcW, srcH, dstW, dstH);
+      const rect = cover ? computeCoverRect(croppedSrcW, croppedSrcH, dstW, dstH) : computeContainRect(croppedSrcW, croppedSrcH, dstW, dstH);
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, dstW, dstH);
@@ -3296,17 +998,17 @@
         off.width = smallW;
         off.height = smallH;
         const offctx = off.getContext("2d");
-        const smallRect = computeCoverRect(srcW, srcH, smallW, smallH);
+        const smallRect = computeCoverRect(croppedSrcW, croppedSrcH, smallW, smallH);
         offctx.imageSmoothingEnabled = true;
         offctx.filter = cfg.blur ? `${colorFilter} blur(${cfg.blur}px)` : colorFilter;
-        offctx.drawImage(source, smallRect.x, smallRect.y, smallRect.w, smallRect.h);
+        drawCropped(offctx, smallRect.x, smallRect.y, smallRect.w, smallRect.h);
         ctx.imageSmoothingEnabled = false;
         ctx.filter = "none";
         ctx.drawImage(off, rect.x, rect.y, rect.w, rect.h);
       } else {
         ctx.imageSmoothingEnabled = true;
         ctx.filter = cfg.blur ? `${colorFilter} blur(${cfg.blur}px)` : colorFilter;
-        ctx.drawImage(source, rect.x, rect.y, rect.w, rect.h);
+        drawCropped(ctx, rect.x, rect.y, rect.w, rect.h);
       }
 
       if (cfg.chroma && !forceMonochrome) {
@@ -3314,8 +1016,8 @@
         ctx.globalCompositeOperation = "screen";
         ctx.globalAlpha = 0.18;
         ctx.filter = "none";
-        ctx.drawImage(source, rect.x + cfg.chroma, rect.y, rect.w, rect.h);
-        ctx.drawImage(source, rect.x - cfg.chroma, rect.y, rect.w, rect.h);
+        drawCropped(ctx, rect.x + cfg.chroma, rect.y, rect.w, rect.h);
+        drawCropped(ctx, rect.x - cfg.chroma, rect.y, rect.w, rect.h);
         ctx.restore();
       }
 
@@ -3384,6 +1086,7 @@
       let rafId = null;
       const noise = { canvas: null, ctx: null, size: 128, lastTime: 0 };
       const scanlines = { canvas: null, pattern: null, lastCtx: null };
+      const GIF_FRAME_FALLBACK_MS = 100;
 
       function ensureNoiseCanvas() {
         if (!noise.canvas) {
@@ -3428,6 +1131,131 @@
         return scanlines.pattern;
       }
 
+      function gifDecodeSupported() {
+        return (typeof ImageDecoder === "function") && (typeof fetch === "function") && (typeof createImageBitmap === "function");
+      }
+
+      function closeGifBitmap(bitmap) {
+        if (!bitmap) return;
+        try { if (typeof bitmap.close === "function") bitmap.close(); } catch {}
+      }
+
+      function clearGifState(surface) {
+        if (!surface || !surface.gifState) return;
+        const state = surface.gifState;
+        surface.gifState = null;
+        closeGifBitmap(state.bitmap);
+        state.bitmap = null;
+        try {
+          if (state.decoder && typeof state.decoder.close === "function") state.decoder.close();
+        } catch {}
+        state.decoder = null;
+      }
+
+      function ensureGifState(surface, mediaEl) {
+        if (!surface || !mediaEl || !gifDecodeSupported()) return null;
+        const src = String(mediaEl.currentSrc || mediaEl.src || "").trim();
+        if (!src) return null;
+        const existing = surface.gifState;
+        if (existing && existing.src === src) return existing;
+
+        clearGifState(surface);
+        const state = {
+          src,
+          decoder: null,
+          bitmap: null,
+          frameCount: 0,
+          nextFrameIndex: 0,
+          nextDue: 0,
+          loading: true,
+          decoding: false,
+          unsupported: false
+        };
+        surface.gifState = state;
+
+        (async () => {
+          let blob = null;
+          try {
+            const res = await fetch(src, { cache: "force-cache" });
+            if (!res || !res.ok) throw new Error("gif_fetch_failed");
+            blob = await res.blob();
+          } catch {
+            if (surface.gifState === state) state.unsupported = true;
+            return;
+          }
+          if (surface.gifState !== state) return;
+          try {
+            state.decoder = new ImageDecoder({ data: blob, type: "image/gif" });
+          } catch {
+            if (surface.gifState === state) state.unsupported = true;
+            return;
+          }
+          try {
+            if (state.decoder && state.decoder.tracks && state.decoder.tracks.ready) {
+              await state.decoder.tracks.ready;
+            }
+          } catch {}
+          if (surface.gifState !== state) return;
+          const fc = Number(state.decoder?.tracks?.selectedTrack?.frameCount || 0);
+          state.frameCount = Number.isFinite(fc) && fc > 0 ? fc : 0;
+          state.nextFrameIndex = 0;
+          state.nextDue = 0;
+          requestRender();
+        })().finally(() => {
+          if (surface.gifState === state) state.loading = false;
+        });
+
+        return state;
+      }
+
+      function scheduleGifFrameDecode(surface, time) {
+        const state = surface && surface.gifState;
+        if (!state || state.unsupported || state.loading || state.decoding || !state.decoder) return;
+        if (Number.isFinite(state.nextDue) && state.nextDue > 0 && time < state.nextDue) return;
+        state.decoding = true;
+        const frameIndex = Number.isFinite(state.nextFrameIndex) ? Math.max(0, state.nextFrameIndex | 0) : 0;
+        const decoder = state.decoder;
+
+        (async () => {
+          let decoded = null;
+          try {
+            decoded = await decoder.decode({ frameIndex });
+          } catch {
+            if (surface.gifState !== state) return;
+            state.nextFrameIndex = 0;
+            state.nextDue = performance.now() + GIF_FRAME_FALLBACK_MS;
+            return;
+          }
+          if (surface.gifState !== state) {
+            try { decoded?.image?.close?.(); } catch {}
+            return;
+          }
+
+          const frame = decoded && decoded.image ? decoded.image : null;
+          const durationUs = Number(frame?.duration || 0);
+          let bitmap = null;
+          if (frame) {
+            try { bitmap = await createImageBitmap(frame); } catch {}
+            try { frame.close(); } catch {}
+          }
+          if (surface.gifState !== state) {
+            closeGifBitmap(bitmap);
+            return;
+          }
+          if (bitmap) {
+            closeGifBitmap(state.bitmap);
+            state.bitmap = bitmap;
+          }
+          if (state.frameCount > 0) state.nextFrameIndex = (frameIndex + 1) % state.frameCount;
+          else state.nextFrameIndex = frameIndex + 1;
+          const durationMs = durationUs > 0 ? Math.max(8, durationUs / 1000) : GIF_FRAME_FALLBACK_MS;
+          state.nextDue = performance.now() + durationMs;
+          requestRender();
+        })().finally(() => {
+          if (surface.gifState === state) state.decoding = false;
+        });
+      }
+
       function updateEngineState() {
         const appEl = document.getElementById("app");
         if (!appEl) return;
@@ -3442,6 +1270,7 @@
           name,
           container: null,
           mediaEl: null,
+          target: null,
           type: null,
           filterMode: "off",
           canvas: null,
@@ -3451,7 +1280,8 @@
           active: false,
           bound: false,
           hasDrawn: false,
-          videoFrameActive: false
+          videoFrameActive: false,
+          gifState: null
         };
         surfaces.set(name, surface);
         return surface;
@@ -3473,7 +1303,9 @@
 
       function bindMediaEvents(surface, el) {
         if (!el || surface.mediaEl === el) return;
+        clearGifState(surface);
         if (surface.mediaEl && surface.bound) {
+          surface.mediaEl.removeEventListener("load", requestRender);
           surface.mediaEl.removeEventListener("loadeddata", requestRender);
           surface.mediaEl.removeEventListener("play", requestRender);
           surface.mediaEl.removeEventListener("pause", requestRender);
@@ -3481,15 +1313,17 @@
         }
         surface.mediaEl = el;
         surface.bound = true;
+        el.addEventListener("load", requestRender);
         el.addEventListener("loadeddata", requestRender);
         el.addEventListener("play", requestRender);
         el.addEventListener("pause", requestRender);
         el.addEventListener("seeked", requestRender);
       }
 
-      function attach(name, mediaEl, container, type, filterMode) {
+      function attach(name, mediaEl, container, type, filterMode, target = null) {
         const surface = ensureSurface(name);
         surface.container = container;
+        surface.target = target;
         surface.type = type;
         surface.filterMode = filterMode || "off";
         surface.active = true;
@@ -3508,6 +1342,7 @@
         } else {
           surface.videoFrameActive = false;
         }
+        if (type !== "image") clearGifState(surface);
         requestRender();
         let pulseCount = 0;
         const pulse = () => {
@@ -3524,8 +1359,10 @@
         const surface = surfaces.get(name);
         if (!surface) return;
         surface.active = false;
+        surface.target = null;
         surface.hasDrawn = false;
         surface.videoFrameActive = false;
+        clearGifState(surface);
         if (surface.canvas) surface.canvas.style.display = "none";
         updateEngineState();
       }
@@ -3534,8 +1371,10 @@
         const surface = surfaces.get(name);
         if (!surface) return;
         surface.active = false;
+        surface.target = null;
         surface.hasDrawn = false;
         surface.videoFrameActive = false;
+        clearGifState(surface);
         if (surface.canvas && surface.canvas.parentElement) {
           surface.canvas.parentElement.removeChild(surface.canvas);
         }
@@ -3564,8 +1403,10 @@
       }
 
       function drawSurface(surface, time) {
+        const intensity = getMediaFilterIntensity();
         const mode = surface.filterMode || "off";
-        const cfg = (mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
+        const baseCfgRaw = (mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
+        const cfg = scaleBaseFilterConfig(baseCfgRaw, intensity);
         const overlayCfg = MEDIA_OVERLAY_STATE;
         if (!cfg && !overlayCfg) {
           if (surface.canvas) surface.canvas.style.display = "none";
@@ -3576,6 +1417,8 @@
 
         const el = surface.mediaEl;
         const isVideo = surface.type === "video";
+        const isGifImage = !isVideo && String(el.getAttribute("data-is-gif") || "") === "1";
+        if (!isGifImage) clearGifState(surface);
         const ready = isVideo ? (el.readyState >= 2 && el.videoWidth > 0 && el.videoHeight > 0) : (el.complete && el.naturalWidth > 0 && el.naturalHeight > 0);
         if (!ready) return false;
 
@@ -3596,12 +1439,37 @@
         ctx.imageSmoothingEnabled = true;
         ctx.clearRect(0, 0, cw, ch);
 
-        const srcW = isVideo ? el.videoWidth : el.naturalWidth;
-        const srcH = isVideo ? el.videoHeight : el.naturalHeight;
-        const rect = computeContainRect(srcW, srcH, cw, ch);
+        let drawSource = el;
+        let srcW = isVideo ? el.videoWidth : el.naturalWidth;
+        let srcH = isVideo ? el.videoHeight : el.naturalHeight;
+        if (isGifImage) {
+          const gifState = ensureGifState(surface, el);
+          if (gifState && !gifState.unsupported) {
+            scheduleGifFrameDecode(surface, time);
+            if (gifState.bitmap && gifState.bitmap.width > 0 && gifState.bitmap.height > 0) {
+              drawSource = gifState.bitmap;
+              srcW = gifState.bitmap.width;
+              srcH = gifState.bitmap.height;
+            }
+          }
+        }
+        const sourceCrop = isVideo
+          ? computeCroppedSourceRect(srcW, srcH, getVideoCropForTarget(surface.target))
+          : { sx: 0, sy: 0, sw: srcW, sh: srcH };
+        const croppedSrcW = Math.max(1, Number(sourceCrop.sw || srcW || 1));
+        const croppedSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
+        const drawCropped = (targetCtx, dx2, dy2, dw2, dh2) => {
+          if (sourceCrop.sw > 0 && sourceCrop.sh > 0) {
+            targetCtx.drawImage(drawSource, sourceCrop.sx, sourceCrop.sy, sourceCrop.sw, sourceCrop.sh, dx2, dy2, dw2, dh2);
+            return;
+          }
+          targetCtx.drawImage(drawSource, dx2, dy2, dw2, dh2);
+        };
+        const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
+        const animatedForSurface = animatedMediaFiltersEnabledForType(surface.type);
 
         const jitterStrength = Math.max((cfg && cfg.jitter) ? cfg.jitter : 0, (overlayCfg && overlayCfg.jitter) ? overlayCfg.jitter : 0);
-        const jitter = jitterStrength ? (MEDIA_FILTER_STATE.animated ? Math.sin(time * 0.005) * jitterStrength : 0) : 0;
+        const jitter = jitterStrength ? (animatedForSurface ? Math.sin(time * 0.005) * jitterStrength : 0) : 0;
         const dx = rect.x + jitter;
         const dy = rect.y;
 
@@ -3621,7 +1489,7 @@
             surface.offctx.filter = "none";
             const blur = overlayCfg && overlayCfg.blur ? overlayCfg.blur : (cfg && cfg.blur ? cfg.blur : 0);
             if (blur) surface.offctx.filter = `blur(${blur}px)`;
-            surface.offctx.drawImage(el, 0, 0, smallW, smallH);
+            drawCropped(surface.offctx, 0, 0, smallW, smallH);
             ctx.imageSmoothingEnabled = false;
             ctx.filter = colorFilter;
             ctx.drawImage(surface.offscreen, dx, dy, rect.w, rect.h);
@@ -3629,7 +1497,7 @@
             ctx.imageSmoothingEnabled = true;
             const blur = overlayCfg && overlayCfg.blur ? overlayCfg.blur : (cfg && cfg.blur ? cfg.blur : 0);
             ctx.filter = blur ? `${colorFilter} blur(${blur}px)` : colorFilter;
-            ctx.drawImage(el, dx, dy, rect.w, rect.h);
+            drawCropped(ctx, dx, dy, rect.w, rect.h);
           }
           drew = true;
         } catch {
@@ -3645,8 +1513,8 @@
           ctx.globalCompositeOperation = "screen";
           ctx.globalAlpha = 0.18;
           ctx.filter = "none";
-          ctx.drawImage(el, dx + chroma, dy, rect.w, rect.h);
-          ctx.drawImage(el, dx - chroma, dy, rect.w, rect.h);
+          drawCropped(ctx, dx + chroma, dy, rect.w, rect.h);
+          drawCropped(ctx, dx - chroma, dy, rect.w, rect.h);
           ctx.restore();
         }
 
@@ -3662,7 +1530,7 @@
             ctx.fillStyle = pattern;
             const slBlur = overlayCfg && overlayCfg.scanlineBlur ? overlayCfg.scanlineBlur : (cfg && cfg.scanlineBlur ? cfg.scanlineBlur : 0);
             if (slBlur) ctx.filter = `blur(${slBlur}px)`;
-            if (MEDIA_FILTER_STATE.animated) {
+            if (animatedForSurface) {
               ctx.translate(0, (time * 0.015) % 4);
             }
             ctx.fillRect(dx, dy, rect.w, rect.h);
@@ -3677,7 +1545,7 @@
           ctx.rect(dx, dy, rect.w, rect.h);
           ctx.clip();
           const noiseCanvas = ensureNoiseCanvas();
-          if (MEDIA_FILTER_STATE.animated) {
+          if (animatedForSurface) {
             if (time - noise.lastTime > 80) {
               updateNoiseCanvas();
               noise.lastTime = time;
@@ -3728,9 +1596,15 @@
         surface.canvas.style.display = "block";
         surface.canvas.classList.add("ready");
         surface.hasDrawn = true;
-        if (surface.mediaEl) surface.mediaEl.classList.add("mediaHidden");
+        if (surface.mediaEl) {
+          if (isGifImage) surface.mediaEl.classList.remove("mediaHidden");
+          else surface.mediaEl.classList.add("mediaHidden");
+        }
 
-        const needsAnim = MEDIA_FILTER_STATE.animated && ((cfg && (cfg.grain || cfg.scanlines || cfg.jitter || cfg.chroma)) || (overlayCfg && (overlayCfg.grain || overlayCfg.scanlines || overlayCfg.jitter || overlayCfg.chroma)));
+        const needsAnim = animatedForSurface && (
+          (cfg && (cfg.grain || cfg.scanlines || cfg.jitter || cfg.chroma))
+          || (overlayCfg && (overlayCfg.grain || overlayCfg.scanlines || overlayCfg.jitter || overlayCfg.chroma))
+        );
         if (isVideo) {
           if (surface.videoFrameActive) {
             return needsAnim;
@@ -3738,6 +1612,7 @@
           if (!el.paused) return true;
           return needsAnim;
         }
+        if (isGifImage) return true;
         return needsAnim;
       }
 
@@ -3842,7 +1717,7 @@
         root.style.setProperty("--thumb-filter", "none");
       }
       MEDIA_FILTER_STATE.mode = filter || "off";
-      MEDIA_FILTER_STATE.animated = !!(opt && opt.animatedMediaFilters);
+      MEDIA_FILTER_STATE.animatedMode = normalizeAnimatedMediaFiltersValue(opt ? opt.animatedMediaFilters : null, "on");
       if (prevFilterMode !== MEDIA_FILTER_STATE.mode) {
         MediaFilterEngine.detach("preview");
         MediaFilterEngine.detach("viewer");
@@ -3865,20 +1740,41 @@
         if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
         if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
         if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
+        applyScrollImageProcessingFallback(previewImgEl, null, "none");
+        applyScrollImageProcessingFallback(viewerImgEl, null, "none");
         appEl.removeAttribute("data-media-filter-engine");
       } else {
+        const activeViewerItem = viewerItems && viewerItems.length ? (viewerItems[viewerIndex] || null) : null;
+        const viewerRec = (activeViewerItem && !activeViewerItem.isFolder) ? (WS.fileById.get(activeViewerItem.id) || null) : null;
+        const previewRec = (WS.preview && WS.preview.kind === "file" && WS.preview.fileId)
+          ? (WS.fileById.get(WS.preview.fileId) || null)
+          : null;
         if (VIEWER_MODE) {
           if (viewerVideoEl && viewerVideoEl.style.display !== "none") {
-            syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video");
+            syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", viewerRec);
           } else if (viewerImgEl && viewerImgEl.style.display !== "none") {
-            syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image");
+            const mode = detectScrollImageMode(viewerRec, viewerImgEl);
+            if (mode !== "none") {
+              clearMediaFilterSurface("viewer", viewerImgEl);
+              applyScrollImageProcessingFallback(viewerImgEl, viewerRec, mode);
+            } else {
+              applyScrollImageProcessingFallback(viewerImgEl, viewerRec, "none");
+              syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", viewerRec);
+            }
           }
         }
         if (ACTIVE_MEDIA_SURFACE === "preview") {
           if (previewVideoEl && previewVideoEl.style.display !== "none") {
-            syncMediaFilterSurface("preview", previewVideoEl, previewViewportBox, "video");
+            syncMediaFilterSurface("preview", previewVideoEl, previewViewportBox, "video", previewRec);
           } else if (previewImgEl && previewImgEl.style.display !== "none") {
-            syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image");
+            const mode = detectScrollImageMode(previewRec, previewImgEl);
+            if (mode !== "none") {
+              clearMediaFilterSurface("preview", previewImgEl);
+              applyScrollImageProcessingFallback(previewImgEl, previewRec, mode);
+            } else {
+              applyScrollImageProcessingFallback(previewImgEl, previewRec, "none");
+              syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image", previewRec);
+            }
           }
         }
       }
@@ -3889,67 +1785,57 @@
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const root = document.documentElement;
       if (!root) return;
-      const fit = opt ? String(opt.previewThumbFit || "cover") : "cover";
+      const fit = previewThumbFitMode();
       const useContain = fit === "contain";
       root.style.setProperty("--thumb-fit", useContain ? "contain" : "cover");
       root.style.setProperty("--thumb-bg", "transparent");
+      if (useContain) root.setAttribute("data-thumb-fit", "contain");
+      else root.removeAttribute("data-thumb-fit");
+    }
+
+    function previewThumbFitMode() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const fit = opt ? String(opt.previewThumbFit || "cover") : "cover";
+      return fit === "contain" ? "contain" : "cover";
     }
 
     function mediaFilterEnabled() {
       const mode = getMediaFilterForType();
-      return (mode && mode !== "off" && !!MEDIA_FILTER_CONFIGS[mode]) || crtOverlayEnabled();
+      const intensity = getMediaFilterIntensity();
+      const baseFilterOn = (mode && mode !== "off" && !!MEDIA_FILTER_CONFIGS[mode] && intensity > 0);
+      return !!baseFilterOn || crtOverlayEnabled();
     }
 
-    function onlineFeaturesEnabled() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return !(opt && opt.onlineFeaturesEnabled === false);
-    }
-
-    function isOnlineFolderNode(node) {
-      const kind = node?.onlineMeta?.kind;
-      return kind === "profile" || kind === "post";
-    }
-
-    function filterOnlineDirs(list) {
-      if (onlineFeaturesEnabled()) return list;
-      return (list || []).filter(d => !isOnlineFolderNode(d));
-    }
-
-    function ensureOnlineVisibilityState() {
-      if (onlineFeaturesEnabled()) return;
-      if (WS.view.tagFolderActiveMode) {
-        WS.view.tagFolderActiveMode = "";
-        WS.view.tagFolderActiveTag = "";
-        WS.view.tagFolderOriginPath = "";
+    function formatBytes(bytes) {
+      const n = Number(bytes);
+      if (!Number.isFinite(n) || n <= 0) return "0 B";
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let value = n;
+      let idx = 0;
+      while (value >= 1024 && idx < units.length - 1) {
+        value /= 1024;
+        idx++;
       }
-      if (WS.nav && WS.nav.dirNode && isOnlineFolderNode(WS.nav.dirNode)) {
-        WS.nav.dirNode = WS.nav.dirNode.parent || WS.root;
-      }
+      const shown = value >= 100 || idx === 0 ? Math.round(value) : value.toFixed(1);
+      return `${shown} ${units[idx]}`;
     }
 
-    function applyOnlineFeatureVisibility() {
-      const enabled = onlineFeaturesEnabled();
-      if (onlineProfileRow) onlineProfileRow.style.display = enabled ? "" : "none";
-      const onlineTabBtn = menuTabs ? menuTabs.querySelector('.menuTabBtn[data-tab="online"]') : null;
-      const responsesTabBtn = menuTabs ? menuTabs.querySelector('.menuTabBtn[data-tab="responses"]') : null;
-      if (onlineTabBtn) onlineTabBtn.style.display = enabled ? "" : "none";
-      if (responsesTabBtn) responsesTabBtn.style.display = enabled ? "" : "none";
-      if (menuTabOnline) menuTabOnline.style.display = enabled ? "" : "none";
-      if (menuTabResponses) menuTabResponses.style.display = enabled ? "" : "none";
-      if (!enabled) {
-        if (MENU_ACTIVE_TAB === "online" || MENU_ACTIVE_TAB === "responses") setMenuTab("options");
-        if (MENU_LAST_TAB === "online" || MENU_LAST_TAB === "responses") MENU_LAST_TAB = "options";
-      }
-    }
-
-    function syncMediaFilterSurface(surfaceName, mediaEl, container, type) {
+    function syncMediaFilterSurface(surfaceName, mediaEl, container, type, target = undefined) {
       if (!mediaEl || !container) return;
-      if (!mediaFilterEnabled()) {
+      let processingTarget = target;
+      if (typeof processingTarget === "undefined") {
+        if (mediaEl.hasAttribute("data-dir-path")) {
+          processingTarget = mediaEl.getAttribute("data-dir-path") || "";
+        } else {
+          processingTarget = null;
+        }
+      }
+      if (!mediaFilterEnabled() || !mediaProcessingEnabledForTarget(processingTarget)) {
         mediaEl.classList.remove("mediaHidden");
         MediaFilterEngine.detach(surfaceName);
         return;
       }
-      MediaFilterEngine.attach(surfaceName, mediaEl, container, type, getMediaFilterForType());
+      MediaFilterEngine.attach(surfaceName, mediaEl, container, type, getMediaFilterForType(), processingTarget);
     }
 
     function clearMediaFilterSurface(surfaceName, mediaEl) {
@@ -3978,7 +1864,6 @@
         applyDisplaySizesFromOptions();
         applyDescriptionVisibilityFromOptions();
         applyPaneDividerFromOptions();
-        applyOnlineFeatureVisibility();
         syncButtons();
         return;
       }
@@ -3992,7 +1877,6 @@
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
-      ensureOnlineVisibilityState();
       applyDescriptionVisibilityFromOptions();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -4001,7 +1885,6 @@
       renderPreviewPane(true, true);
       applyPaneDividerFromOptions();
       applyMediaFilterFromOptions();
-      applyOnlineFeatureVisibility();
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
@@ -4049,24 +1932,94 @@
 
     const KEY_LABELS = {
       Escape: "Escape",
-      Space: "Space"
+      Space: "Space",
+      "=": "+ / =",
+      "-": "- / _"
     };
 
+    const SHIFT_DIGIT_SYMBOL_TO_KEY = Object.freeze({
+      "!": "1",
+      "@": "2",
+      "#": "3",
+      "$": "4",
+      "%": "5",
+      "^": "6",
+      "&": "7",
+      "*": "8",
+      "(": "9",
+      ")": "0"
+    });
+
+    function normalizeBaseKeyValue(key) {
+      if (!key && key !== 0) return "";
+      const raw = String(key);
+      if (!raw) return "";
+      if (raw === " ") return "Space";
+      if (raw === "+" || raw === "=") return "=";
+      if (raw === "_" || raw === "-") return "-";
+      if (SHIFT_DIGIT_SYMBOL_TO_KEY[raw]) return SHIFT_DIGIT_SYMBOL_TO_KEY[raw];
+      if (/^space$/i.test(raw)) return "Space";
+      if (/^escape$/i.test(raw) || /^esc$/i.test(raw)) return "Escape";
+      if (raw.length === 1) return raw.toLowerCase();
+      return raw;
+    }
+
     function normalizeKeyValue(key) {
-      if (!key) return "";
-      if (key === " ") return "Space";
-      if (key.length === 1) return key.toLowerCase();
-      return key;
+      if (!key && key !== 0) return "";
+      const raw = String(key).trim();
+      if (!raw) return "";
+      const shiftMatch = raw.match(/^shift\s*\+\s*/i);
+      const shift = !!shiftMatch;
+      const rest = shiftMatch ? raw.slice(shiftMatch[0].length) : raw;
+      const base = normalizeBaseKeyValue(rest);
+      if (!base) return "";
+      if (base === "=" || base === "-" || base === "Escape") return base;
+      if (shift) return `Shift+${base}`;
+      return base;
+    }
+
+    function parseKeybindValue(value) {
+      const norm = normalizeKeyValue(value);
+      if (!norm) return { key: "", shift: false };
+      if (norm.startsWith("Shift+")) return { key: norm.slice(6), shift: true };
+      return { key: norm, shift: false };
+    }
+
+    function buildKeybindValue(baseKey, shift) {
+      const base = normalizeBaseKeyValue(baseKey);
+      if (!base) return "";
+      if (base === "=" || base === "-" || base === "Escape") return base;
+      if (shift) return `Shift+${base}`;
+      return base;
+    }
+
+    function keybindValueFromEvent(e) {
+      if (!e) return "";
+      const shiftedDigitBase = SHIFT_DIGIT_SYMBOL_TO_KEY[String(e.key || "")];
+      if (shiftedDigitBase) return buildKeybindValue(shiftedDigitBase, true);
+      const base = normalizeBaseKeyValue(e.key || "");
+      if (!base) return "";
+      if (base === "=" || base === "-" || base === "Escape") return base;
+      return buildKeybindValue(base, !!e.shiftKey);
     }
 
     function isSafeKey(key) {
-      const norm = normalizeKeyValue(key);
-      return SAFE_KEY_SET.has(norm);
+      const base = normalizeBaseKeyValue(key);
+      return SAFE_KEY_SET.has(base);
+    }
+
+    function isSafeKeybindValue(keybind) {
+      const parsed = parseKeybindValue(keybind);
+      if (!parsed.key) return true;
+      return isSafeKey(parsed.key);
     }
 
     function keyLabel(key) {
       if (!key) return "Unassigned";
       const norm = normalizeKeyValue(key);
+      if (norm.startsWith("Shift+")) {
+        return `Shift+${keyLabel(norm.slice(6))}`;
+      }
       if (KEY_LABELS[norm]) return KEY_LABELS[norm];
       if (norm.length === 1) return norm.toUpperCase();
       return norm;
@@ -4104,26 +2057,25 @@
       { id: "panic", label: "PANIC!", hint: "Toggle the decoy window mode.", section: "global" },
       { id: "back", label: "Back/Close", hint: "Close overlays or back out of special modes.", section: "global" },
       { id: "cycleMediaFilter", label: "Cycle media filter", hint: "Cycle the media filter preset.", section: "extras" },
+      { id: "stepMediaFilterIntensity", label: "Step media filter intensity", hint: "Increase media filter intensity by one step, wrapping to minimum.", section: "extras" },
       { id: "cycleColorScheme", label: "Cycle color scheme", hint: "Cycle the UI color scheme.", section: "extras" },
-      { id: "toggleRetroMode", label: "Toggle retro mode", hint: "Toggle the retro UI styling.", section: "extras" },
       { id: "toggleScanlinesOverlay", label: "Toggle scanline overlay", hint: "Toggle CRT scanlines over media.", section: "extras" },
       { id: "togglePixelatedOverlay", label: "Toggle pixelated overlay", hint: "Toggle pixelated media overlay.", section: "extras" },
+      { id: "stepPixelationResolution", label: "Step pixelation resolution", hint: "Increase pixelation resolution by one step, wrapping to minimum.", section: "extras" },
       { id: "toggleFilmGrainOverlay", label: "Toggle film grain overlay", hint: "Toggle film grain overlay.", section: "extras" },
+      { id: "stepFilmGrainAmount", label: "Step film grain amount", hint: "Increase film grain amount by one step, wrapping to minimum.", section: "extras" },
       { id: "toggleVhsOverlay", label: "Toggle VHS overlay", hint: "Toggle VHS overlay.", section: "extras" },
       { id: "toggleFilmCornersOverlay", label: "Toggle film corners overlay", hint: "Toggle rounded film corners overlay.", section: "extras" },
-      { id: "toggleAnimatedFilters", label: "Toggle animated filters", hint: "Toggle animated scanlines/grain/jitter.", section: "extras" },
+      { id: "stepVhsIntensity", label: "Step VHS intensity", hint: "Increase VHS intensity by one step, wrapping to minimum.", section: "extras" },
+      { id: "toggleAnimatedFilters", label: "Cycle animated filters", hint: "Cycle animated filters: Off, On, Videos only.", section: "extras" },
       { id: "cycleFolderSort", label: "Cycle folder sort", hint: "Cycle folder sort mode.", section: "extras" },
-      { id: "cycleFolderBehavior", label: "Cycle folder behavior", hint: "Cycle folder behavior between stop/loop/slide.", section: "extras" },
-      { id: "cycleVideoEndBehavior", label: "Cycle video end behavior", hint: "Cycle behavior when videos end.", section: "extras" },
       { id: "toggleShowHiddenFolder", label: "Toggle hidden folder", hint: "Toggle the Hidden folder tag entry.", section: "extras" },
       { id: "toggleShowUntaggedFolder", label: "Toggle untagged folder", hint: "Toggle the Untagged folder tag entry.", section: "extras" },
-      { id: "toggleShowPreviewFileName", label: "Toggle preview file names", hint: "Toggle file names under preview thumbnails.", section: "extras" },
-      { id: "toggleShowPreviewFileType", label: "Toggle preview file type labels", hint: "Toggle Image/Video labels under thumbnails.", section: "extras" },
-      { id: "toggleShowPreviewFolderCounts", label: "Toggle preview folder counts", hint: "Toggle item counts on preview folder cards.", section: "extras" },
-      { id: "toggleShowFolderItemCounts", label: "Toggle folder item counts", hint: "Toggle item counts in the directories pane.", section: "extras" },
-      { id: "toggleShowDirFileTypeLabel", label: "Toggle directory file type labels", hint: "Toggle Image/Video labels in the directories pane.", section: "extras" },
       { id: "toggleHideFileExtensions", label: "Toggle hide file extensions", hint: "Toggle display of file extensions.", section: "extras" },
       { id: "toggleHideUnderscores", label: "Toggle hide underscores", hint: "Toggle replacing underscores in display names.", section: "extras" },
+      { id: "toggleHideBeforeLastDash", label: "Toggle trim before last dash", hint: "Toggle hiding text before the last ' - ' in file names.", section: "extras" },
+      { id: "toggleHideAfterFirstUnderscore", label: "Toggle trim after first underscore", hint: "Toggle hiding text after the first underscore in file names.", section: "extras" },
+      { id: "toggleForceTitleCaps", label: "Toggle force Title Case", hint: "Toggle applying Title Case to display names.", section: "extras" },
       { id: "scoreUpSelection", label: "Increase folder score", hint: "Increase score for selected/current folder(s).", section: "extras" },
       { id: "scoreDownSelection", label: "Decrease folder score", hint: "Decrease score for selected/current folder(s).", section: "extras" },
       { id: "tagSelection", label: "Tag folder selection", hint: "Start tag edit for selected/current folder(s).", section: "extras" },
@@ -4132,104 +2084,152 @@
       { id: "renameFileSelection", label: "Rename selected file", hint: "Start renaming the selected/current file.", section: "extras" }
     ];
 
-    const KEYBIND_PRESETS = {
-      right: {
-        label: "Right-handed (WASD)",
-        bindings: {
-          selectUp: "w",
-          selectDown: "s",
-          leaveDir: "a",
-          enterDir: "d",
-          prevFolder: "b",
-          nextFolder: "x",
-          randomJump: "r",
-          cycleFilter: "f",
-          slideshow: "v",
-          seekBack: "z",
-          seekForward: "c",
-          playPause: "Space",
-          muteToggle: "m",
-          jumpMinus50: "1",
-          jumpMinus10: "2",
-          jumpPlus10: "3",
-          jumpPlus50: "4",
-          historyBack: "q",
-          historyForward: "e",
-          panic: "g",
-          back: "Escape"
-        }
-      },
-      left: {
-        label: "Left-handed (IJKL)",
-        bindings: {
-          selectUp: "i",
-          selectDown: "k",
-          leaveDir: "j",
-          enterDir: "l",
-          prevFolder: "h",
-          nextFolder: "n",
-          randomJump: "y",
-          cycleFilter: "t",
-          slideshow: "b",
-          seekBack: "u",
-          seekForward: "o",
-          playPause: "Space",
-          muteToggle: "g",
-          jumpMinus50: "7",
-          jumpMinus10: "8",
-          jumpPlus10: "9",
-          jumpPlus50: "0",
-          historyBack: "p",
-          historyForward: "m",
-          panic: "v",
-          back: "Escape"
-        }
-      }
-    };
+    const KEYBIND_LOCKED_ACTIONS = Object.freeze({
+      playPause: "Space",
+      back: "Escape",
+      scoreUpSelection: "=",
+      scoreDownSelection: "-"
+    });
+    const KEYBIND_LOCKED_IDS = new Set(Object.keys(KEYBIND_LOCKED_ACTIONS));
 
-    function defaultKeybinds(presetId) {
-      const preset = KEYBIND_PRESETS[presetId] || KEYBIND_PRESETS.right;
-      return KEYBIND_ACTIONS.map(def => {
-        const key = preset.bindings[def.id] || "";
-        return Object.assign({}, def, { key: normalizeKeyValue(key) });
+    function lockedKeyForAction(actionId) {
+      return normalizeKeyValue(KEYBIND_LOCKED_ACTIONS[actionId] || "");
+    }
+
+    function isLockedKeybindAction(actionId) {
+      return KEYBIND_LOCKED_IDS.has(actionId);
+    }
+
+    function isKeyReservedForLockedAction(key, excludeActionId = "") {
+      const norm = normalizeKeyValue(key);
+      if (!norm) return false;
+      for (const [id, fixed] of Object.entries(KEYBIND_LOCKED_ACTIONS)) {
+        if (id === excludeActionId) continue;
+        if (normalizeKeyValue(fixed) === norm) return true;
+      }
+      return false;
+    }
+
+    const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
+      selectUp: "w",
+      selectDown: "s",
+      leaveDir: "a",
+      enterDir: "d",
+      prevFolder: "Shift+w",
+      nextFolder: "Shift+s",
+      randomJump: "r",
+      cycleFilter: "f",
+      slideshow: "v",
+      seekBack: "z",
+      seekForward: "c",
+      playPause: "Space",
+      muteToggle: "m",
+      jumpMinus50: "Shift+q",
+      jumpMinus10: "q",
+      jumpPlus10: "e",
+      jumpPlus50: "Shift+e",
+      historyBack: "",
+      historyForward: "",
+      panic: "g",
+      back: "Escape",
+      cycleMediaFilter: "x",
+      stepMediaFilterIntensity: "Shift+x",
+      cycleColorScheme: "i",
+      toggleScanlinesOverlay: "6",
+      togglePixelatedOverlay: "1",
+      stepPixelationResolution: "Shift+1",
+      toggleFilmGrainOverlay: "2",
+      stepFilmGrainAmount: "Shift+2",
+      toggleVhsOverlay: "3",
+      toggleFilmCornersOverlay: "4",
+      stepVhsIntensity: "Shift+3",
+      toggleAnimatedFilters: "5",
+      cycleFolderSort: "t",
+      toggleShowHiddenFolder: "h",
+      toggleShowUntaggedFolder: "u",
+      toggleHideFileExtensions: "Shift+k",
+      toggleHideUnderscores: "k",
+      toggleHideBeforeLastDash: "y",
+      toggleHideAfterFirstUnderscore: "Shift+y",
+      toggleForceTitleCaps: "",
+      scoreUpSelection: "=",
+      scoreDownSelection: "-",
+      tagSelection: "",
+      favoriteSelection: "",
+      renameFolderSelection: "",
+      renameFileSelection: ""
+    });
+
+    function applyFixedKeybinds(bindings) {
+      const byId = new Map(bindings.map(binding => [binding.id, binding]));
+      Object.entries(KEYBIND_LOCKED_ACTIONS).forEach(([id, key]) => {
+        const binding = byId.get(id);
+        if (!binding) return;
+        binding.key = normalizeKeyValue(key);
       });
     }
 
-    function enforceUniqueKeybinds(bindings) {
-      const used = new Set();
+    function defaultKeybinds() {
+      const bindings = KEYBIND_ACTIONS.map(def => {
+        const key = KEYBIND_DEFAULT_BINDINGS[def.id] || "";
+        return Object.assign({}, def, { key: normalizeKeyValue(key) });
+      });
+      applyFixedKeybinds(bindings);
+      enforceUniqueKeybinds(bindings, KEYBIND_LOCKED_IDS);
+      return bindings;
+    }
+
+    function enforceUniqueKeybinds(bindings, lockedIds = null) {
+      const used = new Map();
       bindings.forEach((binding) => {
         const key = normalizeKeyValue(binding.key);
         if (!key) { binding.key = ""; return; }
-        if (used.has(key)) {
-          binding.key = "";
+        const existing = used.get(key);
+        if (!existing) {
+          used.set(key, binding);
+          binding.key = key;
           return;
         }
-        used.add(key);
-        binding.key = key;
+        const existingLocked = !!(lockedIds && lockedIds.has(existing.id));
+        const currentLocked = !!(lockedIds && lockedIds.has(binding.id));
+        if (currentLocked && !existingLocked) {
+          existing.key = "";
+          used.set(key, binding);
+          binding.key = key;
+          return;
+        }
+        binding.key = "";
       });
     }
 
     function normalizeKeybinds(log) {
-      const presetId = (log && log.preset && KEYBIND_PRESETS[log.preset]) ? log.preset : "right";
-      const bindings = defaultKeybinds(presetId);
+      const bindings = defaultKeybinds();
       const byId = new Map(bindings.map(b => [b.id, b]));
       if (log && Array.isArray(log.bindings)) {
         for (const entry of log.bindings) {
-          if (!entry || !entry.id || !byId.has(entry.id)) continue;
+          const rawId = entry && entry.id ? String(entry.id) : "";
+          const id = (rawId === "stepVhsBlurAmount" || rawId === "stepVhsChromaAmount")
+            ? "stepVhsIntensity"
+            : rawId;
+          if (!id || !byId.has(id)) continue;
+          if (KEYBIND_LOCKED_IDS.has(id)) continue;
           const key = normalizeKeyValue(entry.key || "");
-          if (key && !isSafeKey(key) && !(entry.id === "back" && key === "Escape")) continue;
-          byId.get(entry.id).key = key;
+          if (key && !isSafeKeybindValue(key)) continue;
+          byId.get(id).key = key;
         }
       }
-      enforceUniqueKeybinds(bindings);
-      return { bindings, presetId };
+      applyFixedKeybinds(bindings);
+      enforceUniqueKeybinds(bindings, KEYBIND_LOCKED_IDS);
+      return { bindings };
     }
 
     const KEYBIND_INDEX = new Map();
 
     function rebuildKeybindIndex() {
       KEYBIND_INDEX.clear();
-      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds("right");
+      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds();
+      applyFixedKeybinds(bindings);
+      enforceUniqueKeybinds(bindings, KEYBIND_LOCKED_IDS);
       for (const binding of bindings) {
         const key = normalizeKeyValue(binding.key);
         if (!key || KEYBIND_INDEX.has(key)) continue;
@@ -4265,14 +2265,10 @@
         fsOptionsFileHandle: null,
         fsLegacyFileHandle: null,
         fsKeybindsFileHandle: null,
-        fsTrashIndexFileHandle: null,
-        trashOriginsByName: new Map(),
-        trashVirtualDirs: [],
         saveTimer: null,
         dirty: false,
         options: normalizeOptions(null),
-        keybinds: defaultKeybinds("right"),
-        keybindsPreset: "right"
+        keybinds: defaultKeybinds()
       },
 
       view: {
@@ -4401,13 +2397,9 @@
       WS.meta.fsOptionsFileHandle = null;
       WS.meta.fsLegacyFileHandle = null;
       WS.meta.fsKeybindsFileHandle = null;
-      WS.meta.fsTrashIndexFileHandle = null;
-      WS.meta.trashOriginsByName = new Map();
-      WS.meta.trashVirtualDirs = [];
       WS.meta.dirty = false;
       WS.meta.options = normalizeOptions(null);
-      WS.meta.keybinds = defaultKeybinds("right");
-      WS.meta.keybindsPreset = "right";
+      WS.meta.keybinds = defaultKeybinds();
       if (WS.meta.saveTimer) { clearTimeout(WS.meta.saveTimer); WS.meta.saveTimer = null; }
 
       applyDefaultViewFromOptions();
@@ -4471,13 +2463,6 @@
       WS.imageThumbQueue = [];
       WS.imageThumbActive = 0;
       PRELOAD_CACHE = new Map();
-      ONLINE_RENAME_MAP.profiles = {};
-      ONLINE_RENAME_MAP.posts = {};
-      ONLINE_RENAME_MAP.files = {};
-      resetOnlineMaterializedMap(null);
-      ONLINE_DOWNLOAD_JOBS.clear();
-      ONLINE_PRELOAD_CACHE.clear();
-      ONLINE_PROFILE_CACHE.clear();
 
       renderDirectoriesPane();
       renderPreviewPane(true);
@@ -4502,11 +2487,6 @@
     const refreshBtn = $("refreshBtn");
     const openWritableBtn = $("openWritableBtn");
     const titleLabel = $("titleLabel");
-    const onlineProfileRow = $("onlineProfileRow");
-    const onlineProfileInput = $("onlineProfileInput");
-    const onlineProfileAddProfileBtn = $("onlineProfileAddProfileBtn");
-    const onlineProfileAddPostsBtn = $("onlineProfileAddPostsBtn");
-    const onlineProfileStatus = $("onlineProfileStatus");
 
     // Menu Overlay
     const menuOverlay = $("menuOverlay");
@@ -4515,13 +2495,9 @@
     const menuTabs = $("menuTabs");
     const menuCloseBtn = $("menuCloseBtn");
     const menuTabOptions = $("menuTabOptions");
-    const menuTabOnline = $("menuTabOnline");
-    const menuTabResponses = $("menuTabResponses");
     const menuTabKeybinds = $("menuTabKeybinds");
 
     const optionsBodyEl = $("optionsBody");
-    const onlineBodyEl = $("onlineBody");
-    const responsesBodyEl = $("responsesBody");
     const optionsResetBtn = $("optionsResetBtn");
     const optionsDoneBtn = $("optionsDoneBtn");
     const optionsStatusLabel = $("optionsStatusLabel");
@@ -4647,6 +2623,7 @@
 
     window.addEventListener("resize", () => {
       overlayWindowNames.forEach((name) => applyOverlayWindowState(name));
+      refreshFitInsidePreviewGrids();
     });
 
     // Directories Pane
@@ -4736,6 +2713,7 @@
         WS.meta.dirty = true;
         if (typeof metaScheduleSave === "function") metaScheduleSave();
         setDividerPositionFromPct(pct);
+        refreshFitInsidePreviewGrids();
       }
 
       divider.addEventListener('pointerdown', (ev) => {
@@ -4758,7 +2736,10 @@
         if (typeof metaScheduleSave === 'function') metaScheduleSave();
       });
 
-      window.addEventListener('resize', () => { applyPaneDividerFromOptions(); });
+      window.addEventListener('resize', () => {
+        applyPaneDividerFromOptions();
+        refreshFitInsidePreviewGrids();
+      });
 
       // initial apply from saved options
       applyPaneDividerFromOptions();
@@ -4790,19 +2771,11 @@
     let MENU_ACTIVE_TAB = "options";
     let MENU_LAST_TAB = "options";
     let MENU_HAS_OPENED = false;
-    const MENU_TAB_SCROLL = { options: 0, online: 0, responses: 0, keybinds: 0 };
+    const MENU_TAB_SCROLL = { options: 0, keybinds: 0 };
     let PROPERTIES_OPEN = false;
 
     let BANIC_ACTIVE = false;
     let BANIC_STATE = { preview: null, viewer: null, slideshowWasActive: false };
-    const BANIC_LINKS = [
-      "https://www.youtube.com/",
-      "https://www.google.com/",
-      "https://www.coolmathgames.com/",
-      "https://www.wikipedia.org/",
-      "https://www.nasa.gov/"
-    ];
-
     /* =========================================================
        Status/progress helpers
        ========================================================= */
@@ -4871,15 +2844,6 @@
           vid.muted = true;
         });
         banicOverlayEl.classList.add("active");
-        const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-        const shouldOpenWindow = !opt || opt.banicOpenWindow !== false;
-        if (shouldOpenWindow) {
-          const link = BANIC_LINKS[Math.floor(Math.random() * BANIC_LINKS.length)];
-          try {
-            const win = window.open(link, "_blank");
-            if (win && win.focus) win.focus();
-          } catch {}
-        }
         return;
       }
 
@@ -4942,18 +2906,14 @@
       syncHiddenUi();
     }
 
-    const MENU_TAB_IDS = ["options", "online", "responses", "keybinds"];
+    const MENU_TAB_IDS = ["options", "keybinds"];
     const menuTabButtons = menuTabs ? Array.from(menuTabs.querySelectorAll(".menuTabBtn")) : [];
     const menuTabPanels = {
       options: menuTabOptions,
-      online: menuTabOnline,
-      responses: menuTabResponses,
       keybinds: menuTabKeybinds
     };
     const menuScrollTargets = {
       options: optionsBodyEl,
-      online: onlineBodyEl,
-      responses: responsesBodyEl,
       keybinds: keybindsBodyEl
     };
 
@@ -4984,282 +2944,9 @@
       restoreMenuTabScroll("keybinds");
     }
 
-    function renderOnlineUi() {
-      if (!onlineBodyEl) return;
-      onlineBodyEl.innerHTML = "";
-
-      const title = document.createElement("h1");
-      title.textContent = "Online";
-      onlineBodyEl.appendChild(title);
-
-      const optRow = document.createElement("div");
-      optRow.className = "optRow";
-      const optLeft = document.createElement("div");
-      optLeft.className = "optLeft";
-      const optTitle = document.createElement("div");
-      optTitle.className = "optTitle";
-      optTitle.textContent = "Media loading";
-      const optHint = document.createElement("div");
-      optHint.className = "optHint";
-      optHint.textContent = "Choose when online media begins loading.";
-      optLeft.appendChild(optTitle);
-      optLeft.appendChild(optHint);
-
-      const optRight = document.createElement("div");
-      const select = document.createElement("select");
-      select.className = "optSelect";
-      select.id = "onlineLoadModeSelect";
-      const optA = document.createElement("option");
-      optA.value = "as-needed";
-      optA.textContent = "As Needed";
-      const optB = document.createElement("option");
-      optB.value = "preload";
-      optB.textContent = "Preload All";
-      select.appendChild(optA);
-      select.appendChild(optB);
-      const curMode = onlineLoadMode();
-      select.value = curMode === "preload" ? "preload" : "as-needed";
-      select.addEventListener("change", () => {
-        const next = select.value === "preload" ? "preload" : "as-needed";
-        WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { onlineLoadMode: next }));
-        WS.meta.dirty = true;
-        metaScheduleSave();
-        showStatusMessage(`Online loading: ${next === "preload" ? "Preload All" : "As Needed"}`);
-      });
-      optRight.appendChild(select);
-
-      optRow.appendChild(optLeft);
-      optRow.appendChild(optRight);
-      onlineBodyEl.appendChild(optRow);
-
-      const orderRow = document.createElement("div");
-      orderRow.className = "optRow";
-      const orderLeft = document.createElement("div");
-      orderLeft.className = "optLeft";
-      const orderTitle = document.createElement("div");
-      orderTitle.className = "optTitle";
-      orderTitle.textContent = "List online folders first";
-      const orderHint = document.createElement("div");
-      orderHint.className = "optHint";
-      orderHint.textContent = "Float online folders above local folders (tags still stay on top).";
-      orderLeft.appendChild(orderTitle);
-      orderLeft.appendChild(orderHint);
-
-      const orderRight = document.createElement("div");
-      const orderInput = document.createElement("input");
-      orderInput.type = "checkbox";
-      orderInput.checked = listOnlineFoldersFirstEnabled();
-      orderInput.addEventListener("change", () => {
-        const enabled = !!orderInput.checked;
-        WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { listOnlineFoldersFirst: enabled }));
-        WS.meta.dirty = true;
-        metaScheduleSave();
-        showStatusMessage(`List online folders first: ${enabled ? "On" : "Off"}`);
-        applyOptionsEverywhere(false);
-      });
-      orderRight.appendChild(orderInput);
-
-      orderRow.appendChild(orderLeft);
-      orderRow.appendChild(orderRight);
-      onlineBodyEl.appendChild(orderRow);
-
-      const listLabel = document.createElement("div");
-      listLabel.className = "label";
-      listLabel.style.margin = "10px 0 6px";
-      listLabel.textContent = "Profiles";
-      onlineBodyEl.appendChild(listLabel);
-
-      const keys = Array.from(ONLINE_PROFILE_CACHE.keys()).sort((a, b) => a.localeCompare(b));
-      if (!keys.length) {
-        const empty = document.createElement("div");
-        empty.className = "label";
-        empty.textContent = "No profiles loaded.";
-        onlineBodyEl.appendChild(empty);
-        restoreMenuTabScroll("online");
-        return;
-      }
-
-      for (const key of keys) {
-        const entry = ONLINE_PROFILE_CACHE.get(key);
-        if (!entry || !entry.profile) continue;
-        const profile = entry.profile;
-        const nameOverride = getOnlineProfileRename(key);
-        const display = nameOverride || deriveOnlineUserLabel(profile, entry.posts) || key;
-        const url = buildOnlineProfileSourceUrl(profile);
-        const row = document.createElement("div");
-        row.className = "onlineRow";
-
-        const left = document.createElement("div");
-        left.className = "onlineLeft";
-        const t = document.createElement("div");
-        t.className = "onlineTitle";
-        t.textContent = display || key;
-        const meta = document.createElement("div");
-        meta.className = "onlineMeta";
-        meta.textContent = url || key;
-        left.appendChild(t);
-        left.appendChild(meta);
-
-        const actions = document.createElement("div");
-        actions.className = "onlineActions";
-        const replaceBtn = document.createElement("button");
-        replaceBtn.type = "button";
-        replaceBtn.className = "miniBtn";
-        replaceBtn.textContent = "Replace";
-        replaceBtn.addEventListener("click", () => replaceOnlineProfile(key));
-        const refreshBtn = document.createElement("button");
-        refreshBtn.type = "button";
-        refreshBtn.className = "miniBtn";
-        refreshBtn.textContent = "Refresh";
-        refreshBtn.addEventListener("click", () => refreshOnlineProfile(key));
-        const deleteBtn = document.createElement("button");
-        deleteBtn.type = "button";
-        deleteBtn.className = "miniBtn";
-        deleteBtn.textContent = "Delete";
-        deleteBtn.addEventListener("click", () => {
-          const confirmed = confirm("Delete this profile and all related folders?");
-          if (!confirmed) return;
-          deleteOnlineProfile(key);
-        });
-        actions.appendChild(replaceBtn);
-        actions.appendChild(refreshBtn);
-        actions.appendChild(deleteBtn);
-
-        row.appendChild(left);
-        row.appendChild(actions);
-        onlineBodyEl.appendChild(row);
-      }
-
-      restoreMenuTabScroll("online");
-    }
-
-    function ensureOnlineUi() {
-      renderOnlineUi();
-    }
-
-    function appendOnlineApiResponses(entries) {
-      if (!Array.isArray(entries) || !entries.length) return;
-      let changed = false;
-      for (const raw of entries) {
-        if (!raw || typeof raw !== "object") continue;
-        const fullText = (typeof raw.responseText === "string") ? raw.responseText : "";
-        const responseText = fullText.length > ONLINE_API_RESPONSE_BODY_LIMIT
-          ? fullText.slice(0, ONLINE_API_RESPONSE_BODY_LIMIT)
-          : fullText;
-        ONLINE_API_RESPONSE_LOG.push({
-          ts: (typeof raw.ts === "number") ? raw.ts : Date.now(),
-          source: raw.source ? String(raw.source) : "unknown",
-          url: raw.url ? String(raw.url) : "",
-          page: Number.isFinite(raw.page) ? raw.page : 0,
-          offset: Number.isFinite(raw.offset) ? raw.offset : 0,
-          status: Number.isFinite(raw.status) ? raw.status : 0,
-          ok: !!raw.ok,
-          error: raw.error ? String(raw.error) : "",
-          parseOk: raw.parseOk === true,
-          responseText,
-          responseBytes: Number.isFinite(raw.responseBytes) ? raw.responseBytes : fullText.length,
-          truncated: !!raw.truncated || fullText.length > ONLINE_API_RESPONSE_BODY_LIMIT
-        });
-        changed = true;
-      }
-      if (!changed) return;
-      while (ONLINE_API_RESPONSE_LOG.length > ONLINE_API_RESPONSE_LOG_LIMIT) ONLINE_API_RESPONSE_LOG.shift();
-      if (MENU_OPEN && MENU_ACTIVE_TAB === "responses") renderResponsesUi();
-    }
-
-    function formatOnlineResponseMeta(entry) {
-      const bits = [];
-      bits.push(new Date(entry.ts || Date.now()).toLocaleTimeString());
-      bits.push(entry.source || "unknown");
-      if (entry.page > 0) bits.push(`page ${entry.page}`);
-      bits.push(`offset ${Number.isFinite(entry.offset) ? entry.offset : 0}`);
-      if (entry.status > 0) bits.push(`HTTP ${entry.status}`);
-      else bits.push("No HTTP status");
-      bits.push(entry.parseOk ? "JSON" : "Non-JSON");
-      if (entry.error) bits.push(entry.error);
-      if (entry.truncated) bits.push(`truncated (${entry.responseBytes} chars)`);
-      return bits.join(" • ");
-    }
-
-    function renderResponsesUi() {
-      if (!responsesBodyEl) return;
-      const prevScroll = responsesBodyEl.scrollTop || 0;
-      responsesBodyEl.innerHTML = "";
-
-      const title = document.createElement("h1");
-      title.textContent = "Responses";
-      responsesBodyEl.appendChild(title);
-
-      const actions = document.createElement("div");
-      actions.className = "responseActions";
-      const clearBtn = document.createElement("button");
-      clearBtn.type = "button";
-      clearBtn.className = "miniBtn";
-      clearBtn.textContent = "Clear log";
-      clearBtn.addEventListener("click", () => {
-        ONLINE_API_RESPONSE_LOG.length = 0;
-        renderResponsesUi();
-      });
-      actions.appendChild(clearBtn);
-      responsesBodyEl.appendChild(actions);
-
-      if (!ONLINE_API_RESPONSE_LOG.length) {
-        const empty = document.createElement("div");
-        empty.className = "label";
-        empty.textContent = "No API responses captured yet.";
-        responsesBodyEl.appendChild(empty);
-        restoreMenuTabScroll("responses");
-        return;
-      }
-
-      const list = document.createElement("div");
-      list.className = "responseLog";
-      for (let i = ONLINE_API_RESPONSE_LOG.length - 1; i >= 0; i--) {
-        const entry = ONLINE_API_RESPONSE_LOG[i];
-        const item = document.createElement("div");
-        item.className = "responseItem";
-
-        if (entry.url) {
-          const link = document.createElement("a");
-          link.className = "responseLink";
-          link.href = entry.url;
-          link.target = "_blank";
-          link.rel = "noopener";
-          link.textContent = entry.url;
-          item.appendChild(link);
-        } else {
-          const label = document.createElement("div");
-          label.className = "responseLink";
-          label.textContent = "Unknown URL";
-          item.appendChild(label);
-        }
-
-        const meta = document.createElement("div");
-        meta.className = "responseMeta";
-        meta.textContent = formatOnlineResponseMeta(entry);
-        item.appendChild(meta);
-
-        const pre = document.createElement("pre");
-        pre.className = "responsePreview";
-        pre.textContent = entry.responseText || "(empty response body)";
-        item.appendChild(pre);
-
-        list.appendChild(item);
-      }
-      responsesBodyEl.appendChild(list);
-      requestAnimationFrame(() => {
-        responsesBodyEl.scrollTop = prevScroll;
-      });
-    }
-
-    function ensureResponsesUi() {
-      renderResponsesUi();
-      restoreMenuTabScroll("responses");
-    }
-
     function setMenuTab(tabId) {
       const nextCandidate = MENU_TAB_IDS.includes(tabId) ? tabId : "options";
-      const next = (!onlineFeaturesEnabled() && (nextCandidate === "online" || nextCandidate === "responses")) ? "options" : nextCandidate;
+      const next = nextCandidate;
       if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
       MENU_ACTIVE_TAB = next;
       MENU_LAST_TAB = next;
@@ -5278,14 +2965,6 @@
         panel.setAttribute("aria-hidden", active ? "false" : "true");
       });
 
-      if (next === "online") {
-        ensureOnlineUi();
-        return;
-      }
-      if (next === "responses") {
-        ensureResponsesUi();
-        return;
-      }
       if (next === "keybinds") {
         ensureKeybindsUi();
         return;
@@ -5328,21 +3007,9 @@
       keybindsStatusLabel.textContent = text || "—";
     }
 
-    function applyKeybindPreset(presetId) {
-      const preset = KEYBIND_PRESETS[presetId] ? presetId : "right";
-      WS.meta.keybindsPreset = preset;
-      WS.meta.keybinds = defaultKeybinds(preset);
-      rebuildKeybindIndex();
-      WS.meta.dirty = true;
-      metaScheduleSave();
-      renderKeybindsUi();
-      setKeybindsStatus("Preset applied");
-    }
-
     function renderKeybindsUi() {
       if (!keybindsBodyEl) return;
-      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds("right");
-      const presetId = (WS.meta && WS.meta.keybindsPreset && KEYBIND_PRESETS[WS.meta.keybindsPreset]) ? WS.meta.keybindsPreset : "right";
+      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds();
 
       const bySection = new Map();
       for (const binding of bindings) {
@@ -5350,55 +3017,49 @@
         bySection.get(binding.section).push(binding);
       }
 
-      const makeOptions = (selected, allowEscape = false) => {
+      const makeOptions = (bindingId, selectedBaseKey) => {
         const opts = [];
         opts.push(`<option value="">Unassigned</option>`);
-        if (allowEscape || selected === "Escape") {
-          const selectedAttr = selected === "Escape" ? " selected" : "";
-          opts.push(`<option value="Escape"${selectedAttr}>Escape</option>`);
-        }
         for (const key of SAFE_KEY_VALUES) {
+          if (isKeyReservedForLockedAction(key, bindingId) && key !== selectedBaseKey) continue;
           const val = escapeHtml(key);
           const label = escapeHtml(keyLabel(key));
-          const isSelected = key === selected ? " selected" : "";
+          const isSelected = key === selectedBaseKey ? " selected" : "";
           opts.push(`<option value="${val}"${isSelected}>${label}</option>`);
         }
         return opts.join("");
       };
 
-      let html = `<div class="label" style="margin-bottom:8px;">Keybinds are stored in keyboard-configuration.log.json in the .local-gallery folder. Escape always closes overlays.</div>`;
-      html += `
-        <div class="optRow">
-          <div class="optLeft">
-            <div class="optTitle">Preset</div>
-            <div class="optHint">Apply a left/right-handed base layout.</div>
-          </div>
-          <div class="optRight">
-            <select id="keybindPresetSelect">
-              ${Object.entries(KEYBIND_PRESETS).map(([id, preset]) => {
-                const selected = id === presetId ? " selected" : "";
-                return `<option value="${escapeHtml(id)}"${selected}>${escapeHtml(preset.label)}</option>`;
-              }).join("")}
-            </select>
-          </div>
-        </div>
-      `;
+      let html = `<div class="label" style="margin-bottom:8px;">Keybinds are stored in keyboard-configuration.log.json in the .local-gallery folder. Escape always closes overlays. Use the Shift toggle for combo binds.</div>`;
 
       for (const section of KEYBIND_SECTIONS) {
         const list = bySection.get(section.id) || [];
         if (!list.length) continue;
         html += `<h1>${escapeHtml(section.label)}</h1>`;
         for (const binding of list) {
-          const selected = binding.key || "";
-          const allowEscape = binding.id === "back";
+          const selected = parseKeybindValue(binding.key || "");
+          const isLocked = isLockedKeybindAction(binding.id);
+          const lockedLabel = isLocked ? keyLabel(lockedKeyForAction(binding.id)) : "";
+          const hintText = isLocked ? `${binding.hint} Locked to ${lockedLabel}.` : binding.hint;
+          const controlHtml = isLocked
+            ? `<div class="label">${escapeHtml(lockedLabel)} (Locked)</div>`
+            : `
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <select data-bind-id="${escapeHtml(binding.id)}">${makeOptions(binding.id, selected.key)}</select>
+                  <label style="display:flex;align-items:center;gap:4px;white-space:nowrap;">
+                    <input type="checkbox" data-bind-shift-id="${escapeHtml(binding.id)}"${selected.shift ? " checked" : ""}${selected.key ? "" : " disabled"} />
+                    Shift
+                  </label>
+                </div>
+              `;
           html += `
             <div class="optRow">
               <div class="optLeft">
                 <div class="optTitle">${escapeHtml(binding.label)}</div>
-                <div class="optHint">${escapeHtml(binding.hint)}</div>
+                <div class="optHint">${escapeHtml(hintText)}</div>
               </div>
               <div class="optRight">
-                <select data-bind-id="${escapeHtml(binding.id)}">${makeOptions(selected, allowEscape)}</select>
+                ${controlHtml}
               </div>
             </div>
           `;
@@ -5408,54 +3069,73 @@
       keybindsBodyEl.innerHTML = html;
       applyDescriptionVisibilityFromOptions();
 
-      const presetSelect = keybindsBodyEl.querySelector("#keybindPresetSelect");
-      if (presetSelect) {
-        presetSelect.addEventListener("click", (e) => e.stopPropagation());
-        presetSelect.addEventListener("keydown", (e) => e.stopPropagation());
-        presetSelect.addEventListener("change", () => {
-          applyKeybindPreset(presetSelect.value);
-        });
-      }
-
       const selects = keybindsBodyEl.querySelectorAll("select[data-bind-id]");
       selects.forEach((sel) => {
-        sel.addEventListener("click", (e) => e.stopPropagation());
-        sel.addEventListener("keydown", (e) => e.stopPropagation());
-        sel.addEventListener("change", () => {
-          const id = sel.getAttribute("data-bind-id");
+        const id = sel.getAttribute("data-bind-id");
+        const shiftInput = id ? keybindsBodyEl.querySelector(`input[data-bind-shift-id="${id}"]`) : null;
+        const commitBindingChange = () => {
           if (!id || !WS.meta || !Array.isArray(WS.meta.keybinds)) return;
+          if (isLockedKeybindAction(id)) return;
           const binding = WS.meta.keybinds.find(b => b.id === id);
           if (!binding) return;
 
-          const nextKey = normalizeKeyValue(sel.value || "");
-          if (nextKey && !isSafeKey(nextKey) && !(binding.id === "back" && nextKey === "Escape")) return;
+          const shiftEnabled = !!(shiftInput && shiftInput.checked);
+          const nextKey = buildKeybindValue(sel.value || "", shiftEnabled);
+          if (nextKey && !isSafeKeybindValue(nextKey)) return;
+          if (isKeyReservedForLockedAction(nextKey, id)) {
+            const current = parseKeybindValue(binding.key || "");
+            sel.value = current.key || "";
+            if (shiftInput) {
+              shiftInput.checked = !!current.shift;
+              shiftInput.disabled = !current.key;
+            }
+            return;
+          }
 
           const prevKey = binding.key || "";
           if (nextKey === prevKey) return;
 
           const conflict = nextKey
-            ? WS.meta.keybinds.find(b => b.id !== binding.id && b.key === nextKey)
+            ? WS.meta.keybinds.find((b) => b.id !== binding.id && normalizeKeyValue(b.key || "") === nextKey && !isLockedKeybindAction(b.id))
             : null;
 
           binding.key = nextKey;
           if (conflict) conflict.key = prevKey;
+          applyFixedKeybinds(WS.meta.keybinds);
+          enforceUniqueKeybinds(WS.meta.keybinds, KEYBIND_LOCKED_IDS);
 
           rebuildKeybindIndex();
           WS.meta.dirty = true;
           metaScheduleSave();
+          renderKeybindsUi();
           setKeybindsStatus("Saved");
+        };
 
-          if (conflict) {
-            const otherSelect = keybindsBodyEl.querySelector(`select[data-bind-id="${conflict.id}"]`);
-            if (otherSelect) otherSelect.value = conflict.key || "";
+        sel.addEventListener("click", (e) => e.stopPropagation());
+        sel.addEventListener("keydown", (e) => e.stopPropagation());
+        sel.addEventListener("change", () => {
+          if (shiftInput) {
+            if (!sel.value) {
+              shiftInput.checked = false;
+              shiftInput.disabled = true;
+            } else {
+              shiftInput.disabled = false;
+            }
           }
+          commitBindingChange();
         });
+        if (shiftInput) {
+          shiftInput.addEventListener("click", (e) => e.stopPropagation());
+          shiftInput.addEventListener("keydown", (e) => e.stopPropagation());
+          shiftInput.addEventListener("change", () => {
+            commitBindingChange();
+          });
+        }
       });
     }
 
     function resetKeybindsToDefaults() {
-      const presetId = (WS.meta && WS.meta.keybindsPreset && KEYBIND_PRESETS[WS.meta.keybindsPreset]) ? WS.meta.keybindsPreset : "right";
-      WS.meta.keybinds = defaultKeybinds(presetId);
+      WS.meta.keybinds = defaultKeybinds();
       rebuildKeybindIndex();
       WS.meta.dirty = true;
       metaScheduleSave();
@@ -5511,37 +3191,12 @@
         `;
       };
 
-      const vidModes = [
-        { value: "unmuted", label: "Auto-play unmuted" },
-        { value: "muted", label: "Auto-play muted" },
-        { value: "off", label: "No autoplay" }
-      ];
-
-      const folderModes = [
-        { value: "stop", label: "Stop" },
-        { value: "loop", label: "Loop" },
-        { value: "slide", label: "Slide" }
-      ];
-
       const dirSortModes = dirSortModeOptions();
-
-      const skipSteps = [
-        { value: "3", label: "3 seconds" },
-        { value: "5", label: "5 seconds" },
-        { value: "10", label: "10 seconds" },
-        { value: "30", label: "30 seconds" }
-      ];
 
       const preloadModes = [
         { value: "off", label: "Off" },
         { value: "on", label: "On" },
         { value: "ultra", label: "Ultra" }
-      ];
-
-      const videoEndModes = [
-        { value: "loop", label: "Loop video" },
-        { value: "next", label: "Advance to next item" },
-        { value: "stop", label: "Stop at end" }
       ];
 
       const slideshowModes = [
@@ -5552,35 +3207,6 @@
         { value: "10", label: "Toggle 10s" }
       ];
 
-      const thumbModes = [
-        { value: "tiny", label: "Tiny" },
-        { value: "small", label: "Small" },
-        { value: "medium", label: "Medium" },
-        { value: "high", label: "High" }
-      ];
-
-      const previewModes = [
-        { value: "grid", label: "Grid" },
-        { value: "expanded", label: "Expanded" }
-      ];
-
-      const thumbFitModes = [
-        { value: "cover", label: "Crop to fill" },
-        { value: "contain", label: "Fit inside" }
-      ];
-
-      const previewSizeModes = [
-        { value: "small", label: "Small" },
-        { value: "medium", label: "Medium" },
-        { value: "large", label: "Large" }
-      ];
-
-      const folderScoreModes = [
-        { value: "show", label: "Show score + arrows" },
-        { value: "no-arrows", label: "Hide arrows" },
-        { value: "hidden", label: "Hide score + arrows" }
-      ];
-
       const randomActionModes = [
         { value: "firstFileJump", label: "First file jump" },
         { value: "randomFileSort", label: "Random file sort" }
@@ -5589,27 +3215,20 @@
       const colorSchemes = [
         { value: "classic", label: "Classic Dark" },
         { value: "light", label: "Light" },
-        { value: "superdark", label: "OLED Dark" },
-        { value: "synthwave", label: "Synthwave" },
-        { value: "verdant", label: "Verdant" },
-        { value: "azure", label: "Azure" },
-        { value: "ember", label: "Ember" },
-        { value: "amber", label: "Amber" },
-        { value: "retro90s", label: "Retro 90s" },
-        { value: "retro90s-dark", label: "Retro 90s Dark" }
+        { value: "superdark", label: "OLED Dark" }
       ];
 
       const mediaFilterModes = [
         /* media filters: names */
        { value: "off", label: "Off" },
        { value: "vibrant", label: "Vibrant" },
-       { value: "cinematic", label: "Cinematic" },
-       { value: "orangeTeal", label: "Orange+Teal" },
-       { value: "bw", label: "Black + White" },
-       { value: "uv", label: "UV Camera" },
-       { value: "infrared", label: "Infrared Camera" }/*
-       { value: "cinematic", label: "Cinematic" },
-       { value: "soft", label: "Soft" }*/
+       { value: "infrared", label: "Infrared Camera" }
+      ];
+
+      const animatedFilterModes = [
+        { value: "off", label: "Off" },
+        { value: "on", label: "On" },
+        { value: "videos", label: "Videos only" }
       ];
 
       const formatPixelateResolution = (value) => {
@@ -5626,19 +3245,26 @@
 
       const pixelateResolutionValue = Number.isFinite(opt.crtPixelateResolution) ? opt.crtPixelateResolution : 4;
       const grainAmountValue = Number.isFinite(opt.crtGrainAmount) ? opt.crtGrainAmount : 0.06;
-      const vhsBlurValue = Number.isFinite(opt.vhsBlurAmount) ? opt.vhsBlurAmount : 1.2;
-      const vhsChromaValue = Number.isFinite(opt.vhsChromaAmount) ? opt.vhsChromaAmount : 1.2;
+      const vhsIntensityValue = (function() {
+        const blur = Number(opt.vhsBlurAmount);
+        const chroma = Number(opt.vhsChromaAmount);
+        const blurOk = Number.isFinite(blur);
+        const chromaOk = Number.isFinite(chroma);
+        if (blurOk && chromaOk) return clampNumber((blur + chroma) * 0.5, 0, 3, 1.2);
+        if (blurOk) return clampNumber(blur, 0, 3, 1.2);
+        if (chromaOk) return clampNumber(chroma, 0, 3, 1.2);
+        return 1.2;
+      })();
 
-      const formatVhsBlur = (value) => {
+      const formatVhsIntensity = (value) => {
         const n = Number(value);
         if (!Number.isFinite(n)) return "";
         return `${n.toFixed(1)}px`;
       };
-
-      const formatVhsChroma = (value) => {
+      const formatFilterIntensity = (value) => {
         const n = Number(value);
         if (!Number.isFinite(n)) return "";
-        return `${n.toFixed(1)}px`;
+        return `${Math.round(n * 100)}%`;
       };
 
       optionsBodyEl.innerHTML = `
@@ -5646,24 +3272,14 @@
 
 <h1>General</h1>
 ${makeSelectRow("Folder sort", "Sort folders by name, score, recursive size, recursive count, or non-recursive count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes)}
-${makeSelectRow("Folder scores", "Choose how folder scores appear in lists + previews.", "opt_folderScoreDisplay", String(opt.folderScoreDisplay || "hidden"), folderScoreModes)}
-${makeCheckRow("Show online features", "Toggles the Online tab, URL bar, and online profile/post folders.", "opt_onlineFeaturesEnabled", opt.onlineFeaturesEnabled !== false)}
-${makeCheckRow("Show folder item counts", "Show the number of items on folders in the directories pane.", "opt_showFolderItemCount", opt.showFolderItemCount !== false)}
-${makeCheckRow("Show folder size", "Show total folder size on folders in the directories pane.", "opt_showFolderSize", opt.showFolderSize !== false)}
-${makeCheckRow("Show file type labels (directories)", "Show Image/Video labels for files in the directories pane.", "opt_showDirFileTypeLabel", opt.showDirFileTypeLabel !== false)}
-${makeSelectRow("Folder behavior", "Sets how folders behave when browsing.", "opt_defaultFolderBehavior", String(opt.defaultFolderBehavior || "slide"), folderModes)}
 ${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
-${makeCheckRow("PANIC! opens decoy window", "When enabled, PANIC! opens a harmless site in a new window.", "opt_banicOpenWindow", opt.banicOpenWindow !== false)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag near the top of the root directories pane when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
-${makeCheckRow("Show Trash Folder", "Display a dedicated trash-folder entry near the top of the root directories pane when trash has items.", "opt_showTrashFolder", opt.showTrashFolder !== false)}
 
 <h1>Appearance</h1>
 ${makeSelectRow("Color scheme", "Switch the overall interface palette.", "opt_colorScheme", String(opt.colorScheme || "classic"), colorSchemes)}
-${makeCheckRow("Hide option descriptions", "Hide helper text under each option in this tab.", "opt_hideOptionDescriptions", !!opt.hideOptionDescriptions)}
-${makeCheckRow("Hide key bind descriptions", "Hide helper text under each keybind action in the keybinds tab.", "opt_hideKeybindDescriptions", !!opt.hideKeybindDescriptions)}
-${makeCheckRow("Retro Mode", "Pixelated, low-res UI styling across themes.", "opt_retroMode", !!opt.retroMode)}
 ${makeSelectRow("Media filter", "Apply a visual filter to media.", "opt_mediaFilter", String(opt.mediaFilter || "off"), mediaFilterModes)}
+${makeRangeRow("Media filter intensity", "Scales media filter strength from 0% (off) to 100% (full).", "opt_mediaFilterIntensity", Number.isFinite(opt.mediaFilterIntensity) ? opt.mediaFilterIntensity : 1, 0, 1, 0.05, formatFilterIntensity(Number.isFinite(opt.mediaFilterIntensity) ? opt.mediaFilterIntensity : 1))}
 ${makeCheckRow("Scanline overlay", "Add CRT scanlines over media.", "opt_crtScanlinesEnabled", !!opt.crtScanlinesEnabled)}
 ${makeCheckRow("Pixelated overlay", "Pixelate media before applying filters.", "opt_crtPixelateEnabled", !!opt.crtPixelateEnabled)}
 ${makeRangeRow("Pixelation resolution", "Higher values mean chunkier pixels.", "opt_crtPixelateResolution", pixelateResolutionValue, 2, 8, 0.5, formatPixelateResolution(pixelateResolutionValue))}
@@ -5671,36 +3287,20 @@ ${makeCheckRow("Film grain overlay", "Adds film grain noise overlay.", "opt_crtG
 ${makeRangeRow("Film grain amount", "Strength of the grain overlay.", "opt_crtGrainAmount", grainAmountValue, 0, 0.25, 0.01, formatGrainAmount(grainAmountValue))}
 ${makeCheckRow("VHS overlay", "Soft, lo-def magnetic tape look.", "opt_vhsOverlayEnabled", !!opt.vhsOverlayEnabled)}
 ${makeCheckRow("Film corners overlay", "Rounds media corners for an old film look.", "opt_filmCornerOverlayEnabled", !!opt.filmCornerOverlayEnabled)}
-${makeRangeRow("VHS blur amount", "Controls the fuzzy tape softness.", "opt_vhsBlurAmount", vhsBlurValue, 0, 3, 0.1, formatVhsBlur(vhsBlurValue))}
-${makeRangeRow("VHS chroma amount", "Controls chromatic bleed/aberration.", "opt_vhsChromaAmount", vhsChromaValue, 0, 3, 0.1, formatVhsChroma(vhsChromaValue))}
-${makeCheckRow("Animated filters", "When enabled, scanlines/grain/jitter animate.", "opt_animatedMediaFilters", opt.animatedMediaFilters !== false)}
+${makeRangeRow("VHS intensity", "Controls VHS blur + chroma together.", "opt_vhsIntensityAmount", vhsIntensityValue, 0, 3, 0.1, formatVhsIntensity(vhsIntensityValue))}
+${makeSelectRow("Animated filters", "Control animation for scanlines/grain/jitter.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
+${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
 
 <h1>Playback</h1>
-${makeSelectRow("Video audio (preview)", "Controls autoplay + mute in the in-pane preview player.", "opt_videoPreview", String(opt.videoPreview || "muted"), vidModes)}
-${makeSelectRow("Video audio (gallery)", "Controls autoplay + mute in fullscreen gallery mode.", "opt_videoGallery", String(opt.videoGallery || "muted"), vidModes)}
-${makeSelectRow("Video skip step", "Seek increment for video skip shortcuts.", "opt_videoSkipStep", String(opt.videoSkipStep || "10"), skipSteps)}
-${makeSelectRow("Video end behavior", "What happens when a video ends (outside slideshow).", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
 ${makeSelectRow("Preload next item", "Preload the next item for smoother browsing.", "opt_preloadNextMode", String(opt.preloadNextMode || "off"), preloadModes)}
 ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
-
-<h1>Preview</h1>
-${makeCheckRow("Show file type labels (preview)", "Show Image/Video labels under file thumbnails in the preview pane.", "opt_showPreviewFileTypeLabel", opt.showPreviewFileTypeLabel !== false)}
-${makeCheckRow("Show file names (preview)", "Show file names under thumbnails in the preview pane.", "opt_showPreviewFileName", opt.showPreviewFileName !== false)}
-${makeCheckRow("Show folder item counts (preview)", "Show the number of items on folder cards in the preview pane.", "opt_showPreviewFolderItemCount", opt.showPreviewFolderItemCount !== false)}
-${makeCheckRow("Apply filters to thumbnails (preview)", "Apply media filters and overlays to preview thumbnails.", "opt_previewThumbFiltersEnabled", !!opt.previewThumbFiltersEnabled)}
-${makeSelectRow("Thumbnail fit (preview)", "Choose whether thumbnails crop to fill their card or fit inside it.", "opt_previewThumbFit", String(opt.previewThumbFit || "cover"), thumbFitModes)}
-${makeSelectRow("Image thumbnail size", "Controls generated image thumbnail quality (smaller is faster).", "opt_imageThumbSize", String(opt.imageThumbSize || "medium"), thumbModes)}
-${makeSelectRow("Video thumbnail size", "Controls generated video thumbnail quality (smaller is faster).", "opt_videoThumbSize", String(opt.videoThumbSize || "medium"), thumbModes)}
-${makeSelectRow("Media thumbnail scale", "Controls how large media cards appear in the preview pane.", "opt_mediaThumbUiSize", String(opt.mediaThumbUiSize || "medium"), previewSizeModes)}
-${makeSelectRow("Folder preview scale", "Controls how large folder cards appear in the preview pane.", "opt_folderPreviewSize", String(opt.folderPreviewSize || "medium"), previewSizeModes)}
-${makeSelectRow("Preview mode", "Controls how folders are shown in the preview pane.", "opt_previewMode", String(opt.previewMode || "grid"), previewModes)}
 
 <h1>Filenames</h1>
 ${makeCheckRow("Hide file extensions", "Hide .jpg / .mp4 in file names.", "opt_hideFileExtensions", !!opt.hideFileExtensions)}
 ${makeCheckRow("Hide underscores from display names", "Replace underscores with spaces.", "opt_hideUnderscoresInNames", !!opt.hideUnderscoresInNames)}
-${makeCheckRow("Hide prefix before last ' - ' in file names", "Show only text after the last ' - ' in file names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
-${makeCheckRow("Hide suffix after first underscore in file names", "Show only text before the first underscore in file names.", "opt_hideAfterFirstUnderscoreInFileNames", !!opt.hideAfterFirstUnderscoreInFileNames)}
-${makeCheckRow("Force title caps in display names", "Apply Title Case to display names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
+${makeCheckRow("Trim text before last ' - '", "Show only text after the last ' - ' in file names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
+${makeCheckRow("Trim text after first underscore", "Show only text before the first underscore in file names.", "opt_hideAfterFirstUnderscoreInFileNames", !!opt.hideAfterFirstUnderscoreInFileNames)}
+${makeCheckRow("Force Title Case names", "Apply Title Case to display names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
       `;
       applyDescriptionVisibilityFromOptions();
 
@@ -5764,24 +3364,37 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         updateValue();
       };
 
-      bindSelect("opt_videoPreview", "videoPreview", false);
-      bindSelect("opt_videoGallery", "videoGallery", false);
-      bindSelect("opt_defaultFolderBehavior", "defaultFolderBehavior", false, () => {
-        applyDefaultViewFromOptions();
-      });
-      bindSelect("opt_folderScoreDisplay", "folderScoreDisplay", false, (val) => {
-        WS.view.folderScoreDisplay = (val === "show" || val === "no-arrows" || val === "hidden") ? val : "hidden";
-        renderDirectoriesPane(true);
-        renderPreviewPane(false, true);
-        syncButtons();
-      });
-      bindSelect("opt_videoSkipStep", "videoSkipStep", false);
+      const bindLinkedRange = (id, keys, onChange, formatter) => {
+        const el = $(id);
+        if (!el || !Array.isArray(keys) || !keys.length) return;
+        const valueEl = $(`${id}_value`);
+        const updateValue = () => {
+          if (!valueEl) return;
+          const nextVal = parseFloat(el.value);
+          valueEl.textContent = formatter ? formatter(nextVal) : String(el.value);
+        };
+        el.addEventListener("click", (e) => e.stopPropagation());
+        el.addEventListener("keydown", (e) => e.stopPropagation());
+        el.addEventListener("input", updateValue);
+        el.addEventListener("change", () => {
+          const val = parseFloat(el.value);
+          const nextVal = Number.isFinite(val) ? val : 0;
+          const next = {};
+          keys.forEach((k) => { next[k] = nextVal; });
+          WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
+          WS.meta.dirty = true;
+          metaScheduleSave();
+          setOptionsStatus("Saved");
+          if (typeof onChange === "function") onChange(nextVal);
+          applyOptionsEverywhere(false);
+        });
+        updateValue();
+      };
+
       bindSelect("opt_preloadNextMode", "preloadNextMode", false, (val) => {
         if (val === "off") PRELOAD_CACHE = new Map();
       });
-      bindSelect("opt_videoEndBehavior", "videoEndBehavior", false);
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
-      bindCheck("opt_banicOpenWindow", "banicOpenWindow");
       bindCheck("opt_showHiddenFolder", "showHiddenFolder", (enabled) => {
         if (!enabled && WS.view.tagFolderActiveMode === "hidden") {
           exitTagFolderView();
@@ -5794,53 +3407,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
         renderDirectoriesPane(true);
       });
-      bindCheck("opt_showTrashFolder", "showTrashFolder", (enabled) => {
-        if (!enabled && WS.view.tagFolderActiveMode === "trash") {
-          exitTagFolderView();
-        }
-        renderDirectoriesPane(true);
-      });
-      bindCheck("opt_showFolderItemCount", "showFolderItemCount", () => {
-        renderDirectoriesPane(true);
-      });
-      bindCheck("opt_showFolderSize", "showFolderSize", () => {
-        renderDirectoriesPane(true);
-      });
-      bindCheck("opt_showDirFileTypeLabel", "showDirFileTypeLabel", () => {
-        renderDirectoriesPane(true);
-      });
-      bindCheck("opt_showPreviewFileTypeLabel", "showPreviewFileTypeLabel", () => {
-        renderPreviewPane(true, true);
-      });
-      bindCheck("opt_showPreviewFileName", "showPreviewFileName", () => {
-        renderPreviewPane(true, true);
-      });
-      bindCheck("opt_showPreviewFolderItemCount", "showPreviewFolderItemCount", () => {
-        renderPreviewPane(true, true);
-      });
-      bindCheck("opt_onlineFeaturesEnabled", "onlineFeaturesEnabled");
-      bindCheck("opt_hideOptionDescriptions", "hideOptionDescriptions", () => {
-        applyDescriptionVisibilityFromOptions();
-      });
-      bindCheck("opt_hideKeybindDescriptions", "hideKeybindDescriptions", () => {
-        applyDescriptionVisibilityFromOptions();
-      });
-      bindCheck("opt_previewThumbFiltersEnabled", "previewThumbFiltersEnabled", () => {
-        applyMediaFilterFromOptions();
-      });
-      bindSelect("opt_previewThumbFit", "previewThumbFit", false);
-      bindSelect("opt_imageThumbSize", "imageThumbSize", true);
-      bindSelect("opt_videoThumbSize", "videoThumbSize", true);
-      bindSelect("opt_mediaThumbUiSize", "mediaThumbUiSize", false);
-      bindSelect("opt_folderPreviewSize", "folderPreviewSize", false);
       bindSelect("opt_colorScheme", "colorScheme", false, () => {
         applyColorSchemeFromOptions();
-      });
-      bindSelect("opt_previewMode", "previewMode", false, () => {
-        renderPreviewPane(true);
-      });
-      bindCheck("opt_retroMode", "retroMode", () => {
-        applyRetroModeFromOptions();
       });
       bindSelect("opt_mediaFilter", "mediaFilter", true, (val) => {
         applyMediaFilterFromOptions();
@@ -5866,13 +3434,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       bindCheck("opt_filmCornerOverlayEnabled", "filmCornerOverlayEnabled", () => {
         applyMediaFilterFromOptions();
       });
-      bindRange("opt_vhsBlurAmount", "vhsBlurAmount", () => {
+      bindLinkedRange("opt_vhsIntensityAmount", ["vhsBlurAmount", "vhsChromaAmount"], () => {
         applyMediaFilterFromOptions();
-      }, formatVhsBlur);
-      bindRange("opt_vhsChromaAmount", "vhsChromaAmount", () => {
+      }, formatVhsIntensity);
+      bindRange("opt_mediaFilterIntensity", "mediaFilterIntensity", () => {
         applyMediaFilterFromOptions();
-      }, formatVhsChroma);
-      bindCheck("opt_animatedMediaFilters", "animatedMediaFilters", () => {
+      }, formatFilterIntensity);
+      bindSelect("opt_animatedMediaFilters", "animatedMediaFilters", false, () => {
+        applyMediaFilterFromOptions();
+      }, (val) => normalizeAnimatedMediaFiltersValue(val, "on"));
+      bindCheck("opt_gifsIgnoreProcessing", "gifsIgnoreProcessing", () => {
         applyMediaFilterFromOptions();
       });
       bindSelect("opt_randomActionMode", "randomActionMode", false, (val) => {
@@ -6144,6 +3715,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return out;
     }
 
+    function isReservedFolderTag(tag) {
+      const t = String(tag || "");
+      return t === FAVORITE_TAG || t === HIDDEN_TAG || t === PROCESSING_DISABLED_TAG;
+    }
+
     function normalizeTagsFromText(text) {
       const raw = String(text || "");
       if (!raw.trim()) return [];
@@ -6165,12 +3741,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!WS.meta || !WS.meta.dirTags) return false;
       const p = String(path || "");
       const existing = metaGetTags(p);
-      const fav = existing.includes(FAVORITE_TAG);
-      const hidden = existing.includes(HIDDEN_TAG);
-      const normalized = normalizeTagList(userTags).filter(t => t !== FAVORITE_TAG && t !== HIDDEN_TAG);
-      const merged = [];
-      if (fav) merged.push(FAVORITE_TAG);
-      if (hidden) merged.push(HIDDEN_TAG);
+      const preserved = existing.filter(t => isReservedFolderTag(t));
+      const normalized = normalizeTagList(userTags).filter(t => !isReservedFolderTag(t));
+      const merged = preserved.slice();
       for (const tag of normalized) {
         if (!tag) continue;
         if (merged.includes(tag)) continue;
@@ -6191,7 +3764,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function metaGetUserTags(path) {
       const tags = metaGetTags(path);
-      return tags.filter(t => t !== FAVORITE_TAG && t !== HIDDEN_TAG);
+      return tags.filter(t => !isReservedFolderTag(t));
     }
 
     function metaHasFavorite(path) {
@@ -6202,6 +3775,132 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function metaHasHidden(path) {
       const tags = metaGetTags(path);
       return tags.includes(HIDDEN_TAG);
+    }
+
+    function metaHasProcessingDisabled(path) {
+      const tags = metaGetTags(path);
+      return tags.includes(PROCESSING_DISABLED_TAG);
+    }
+
+    function isPathOrAncestorProcessingDisabled(path) {
+      const p = String(path || "");
+      const node = WS.dirByPath && WS.dirByPath.get(p);
+      if (node) {
+        let cur = node;
+        while (cur) {
+          if (metaHasProcessingDisabled(cur.path || "")) return true;
+          cur = cur.parent;
+        }
+        return false;
+      }
+      let cur = p;
+      for (;;) {
+        if (metaHasProcessingDisabled(cur)) return true;
+        if (!cur) break;
+        const idx = cur.lastIndexOf("/");
+        cur = idx >= 0 ? cur.slice(0, idx) : "";
+      }
+      return false;
+    }
+
+    function collectDescendantDirPaths(path) {
+      const p = String(path || "");
+      const start = WS.dirByPath && WS.dirByPath.get(p);
+      if (!start) {
+        const out = [];
+        const prefix = p ? (p + "/") : "";
+        if (WS.dirByPath) {
+          for (const key of WS.dirByPath.keys()) {
+            const k = String(key || "");
+            if (k === p) out.push(k);
+            else if (prefix && k.startsWith(prefix)) out.push(k);
+          }
+        }
+        if (!out.length) out.push(p);
+        out.sort((a, b) => {
+          const da = String(a || "").split("/").filter(Boolean).length;
+          const db = String(b || "").split("/").filter(Boolean).length;
+          return da - db;
+        });
+        return out;
+      }
+      const out = [];
+      (function walk(node) {
+        if (!node) return;
+        out.push(String(node.path || ""));
+        const children = Array.isArray(node.childrenDirs) ? node.childrenDirs : [];
+        for (const child of children) walk(child);
+      })(start);
+      return out;
+    }
+
+    function refreshAfterProcessingMetadataChange() {
+      TAG_EDIT_PATH = null;
+      clearBulkTagPlaceholder();
+      syncFavoritesUi();
+      syncHiddenUi();
+      syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+      WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+      syncPreviewToSelection();
+      invalidateAllThumbs();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      applyMediaFilterFromOptions();
+    }
+
+    function setProcessingDisabledForPaths(paths, disable) {
+      const target = !!disable;
+      const list = Array.isArray(paths) ? paths : Array.from(paths || []);
+      let changed = false;
+      for (let i = 0; i < list.length; i++) {
+        const p = String(list[i] || "");
+        if (!p) continue;
+        const tags = metaGetTags(p);
+        const has = tags.includes(PROCESSING_DISABLED_TAG);
+        if (has === target) continue;
+        const next = target
+          ? [PROCESSING_DISABLED_TAG].concat(tags.filter(t => t !== PROCESSING_DISABLED_TAG))
+          : tags.filter(t => t !== PROCESSING_DISABLED_TAG);
+        WS.meta.dirTags.set(p, normalizeTagList(next));
+        changed = true;
+      }
+      return changed;
+    }
+
+    function metaSetProcessingDisabledRecursive(path, disable) {
+      const paths = collectDescendantDirPaths(path);
+      const changed = setProcessingDisabledForPaths(paths, disable);
+      if (!changed) return false;
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      refreshAfterProcessingMetadataChange();
+      return true;
+    }
+
+    function metaSetProcessingDisabledBulk(paths, disable) {
+      const uniqueRoots = Array.from(new Set((paths || []).map(p => String(p || "")).filter(Boolean)));
+      if (!uniqueRoots.length) return false;
+      const all = [];
+      const seen = new Set();
+      for (let i = 0; i < uniqueRoots.length; i++) {
+        const descendants = collectDescendantDirPaths(uniqueRoots[i]);
+        for (let j = 0; j < descendants.length; j++) {
+          const p = String(descendants[j] || "");
+          if (!p || seen.has(p)) continue;
+          seen.add(p);
+          all.push(p);
+        }
+      }
+      const changed = setProcessingDisabledForPaths(all, disable);
+      if (!changed) return false;
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      refreshAfterProcessingMetadataChange();
+      return true;
     }
 
     function metaSetUserTags(path, userTags) {
@@ -6370,7 +4069,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function metaAddUserTagsBulk(paths, tagsToAdd) {
-      const add = normalizeTagList(tagsToAdd).filter(t => t !== FAVORITE_TAG && t !== HIDDEN_TAG);
+      const add = normalizeTagList(tagsToAdd).filter(t => !isReservedFolderTag(t));
       if (!add.length) return;
 
       const list = Array.isArray(paths) ? paths : Array.from(paths || []);
@@ -6379,14 +4078,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       for (let i = 0; i < list.length; i++) {
         const p = String(list[i] || "");
         if (!p) continue;
-        const fav = metaHasFavorite(p);
-        const hidden = metaHasHidden(p);
-        const curUser = metaGetUserTags(p);
+        const existing = metaGetTags(p);
+        const reserved = existing.filter(t => isReservedFolderTag(t));
+        const curUser = existing.filter(t => !isReservedFolderTag(t));
         const mergedUser = normalizeTagList(curUser.concat(add));
-        const merged = [];
-        if (fav) merged.push(FAVORITE_TAG);
-        if (hidden) merged.push(HIDDEN_TAG);
-        merged.push(...mergedUser);
+        const merged = reserved.concat(mergedUser);
         WS.meta.dirTags.set(p, normalizeTagList(merged));
       }
 
@@ -6535,12 +4231,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
   }
 
     function metaMakeKeybindsLogObject() {
-      const bindings = Array.isArray(WS.meta.keybinds) ? WS.meta.keybinds : defaultKeybinds("right");
-      const presetId = (WS.meta && WS.meta.keybindsPreset && KEYBIND_PRESETS[WS.meta.keybindsPreset]) ? WS.meta.keybindsPreset : "right";
+      const bindings = Array.isArray(WS.meta.keybinds) ? WS.meta.keybinds : defaultKeybinds();
       return {
         schema: 1,
         updatedAt: Date.now(),
-        preset: presetId,
         bindings: bindings.map(b => ({ id: b.id, key: b.key || "" }))
       };
     }
@@ -6690,14 +4384,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyDisplaySizesFromOptions();
       applyDescriptionVisibilityFromOptions();
       applyPaneDividerFromOptions();
-      applyOnlineFeatureVisibility();
     }
 
     function metaApplyKeybindsLog(log) {
       if (!log || typeof log !== "object") return;
       const normalized = normalizeKeybinds(log);
       WS.meta.keybinds = normalized.bindings;
-      WS.meta.keybindsPreset = normalized.presetId;
       rebuildKeybindIndex();
     }
 
@@ -6715,7 +4407,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       applyDisplaySizesFromOptions();
       applyDescriptionVisibilityFromOptions();
       applyPaneDividerFromOptions();
-      applyOnlineFeatureVisibility();
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
       const oldByPath = new Map();
@@ -6847,120 +4538,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return parts.join("/");
     }
 
-    function makeTrashIndexLogObject() {
-      const folders = {};
-      for (const [name, rec] of (WS.meta.trashOriginsByName || new Map()).entries()) {
-        const folderName = String(name || "").trim();
-        const originalPath = normalizeWorkspaceRelPath(rec && rec.originalPath);
-        if (!folderName || !isValidFolderName(folderName) || !originalPath) continue;
-        const itemCount = Math.max(0, Number(rec && rec.itemCount) || 0) | 0;
-        const trashedAt = Math.max(0, Number(rec && rec.trashedAt) || 0) | 0;
-        folders[folderName] = { originalPath, itemCount, trashedAt };
-      }
-      return { version: 1, folders };
-    }
-
-    function applyTrashIndexLog(doc) {
-      const out = new Map();
-      const src = doc && doc.folders && typeof doc.folders === "object" ? doc.folders : {};
-      for (const key of Object.keys(src)) {
-        const folderName = String(key || "").trim();
-        if (!folderName || !isValidFolderName(folderName)) continue;
-        const rec = src[key];
-        const originalPath = normalizeWorkspaceRelPath(rec && rec.originalPath);
-        if (!originalPath) continue;
-        const itemCount = Math.max(0, Number(rec && rec.itemCount) || 0) | 0;
-        const trashedAt = Math.max(0, Number(rec && rec.trashedAt) || 0) | 0;
-        out.set(folderName, { originalPath, itemCount, trashedAt });
-      }
-      WS.meta.trashOriginsByName = out;
-    }
-
-    function isTrashVirtualDirNode(node) {
-      return !!(node && node.trashVirtual);
-    }
-
-    function makeTrashVirtualDirNode(name, rec) {
-      const folderName = String(name || "");
-      if (!folderName) return null;
-      const originalPath = normalizeWorkspaceRelPath(rec && rec.originalPath);
-      const itemCount = Math.max(0, Number(rec && rec.itemCount) || 0) | 0;
-      const trashedAt = Math.max(0, Number(rec && rec.trashedAt) || 0) | 0;
-      return {
-        type: "dir",
-        name: folderName,
-        parent: WS.root || null,
-        childrenDirs: [],
-        childrenFiles: [],
-        path: `@trash/${folderName}`,
-        trashVirtual: true,
-        trashName: folderName,
-        trashOriginalPath: originalPath,
-        trashItemCount: itemCount,
-        trashTrashedAt: trashedAt
-      };
-    }
-
-    async function saveTrashIndexToFs() {
-      if (!WS.meta.fsTrashIndexFileHandle) return;
-      await metaSaveFsDoc(WS.meta.fsTrashIndexFileHandle, makeTrashIndexLogObject());
-    }
-
-    async function loadTrashStateFromFs() {
-      WS.meta.trashVirtualDirs = [];
-      if (!WS.meta.fsRootHandle || !WS.meta.fsTrashIndexFileHandle) {
-        WS.meta.trashOriginsByName = new Map();
-        return;
-      }
-
-      const doc = await metaLoadFsDoc(WS.meta.fsTrashIndexFileHandle);
-      applyTrashIndexLog(doc);
-
-      const trashHandle = await ensureTrashDirectoryHandle(WS.meta.fsRootHandle);
-      if (!trashHandle) return;
-
-      const names = [];
-      for await (const [name, handle] of trashHandle.entries()) {
-        if (!name || handle.kind !== "directory") continue;
-        names.push(String(name));
-      }
-      names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-
-      const validNames = new Set(names);
-      let changed = false;
-      for (const key of Array.from(WS.meta.trashOriginsByName.keys())) {
-        if (validNames.has(key)) continue;
-        WS.meta.trashOriginsByName.delete(key);
-        changed = true;
-      }
-
-      const nodes = [];
-      for (const name of names) {
-        const rec = WS.meta.trashOriginsByName.get(name) || null;
-        const node = makeTrashVirtualDirNode(name, rec);
-        if (node) nodes.push(node);
-      }
-      nodes.sort((a, b) => {
-        const ta = Math.max(0, Number(a?.trashTrashedAt) || 0);
-        const tb = Math.max(0, Number(b?.trashTrashedAt) || 0);
-        if (ta !== tb) return tb - ta;
-        const ap = String(a?.trashOriginalPath || "");
-        const bp = String(b?.trashOriginalPath || "");
-        const c = ap.localeCompare(bp, undefined, { numeric: true, sensitivity: "base" });
-        if (c) return c;
-        return String(a?.name || "").localeCompare(String(b?.name || ""), undefined, { numeric: true, sensitivity: "base" });
-      });
-      WS.meta.trashVirtualDirs = nodes;
-
-      if (changed) {
-        await saveTrashIndexToFs();
-      }
-    }
-
-    function getTrashVirtualDirs() {
-      return Array.isArray(WS.meta.trashVirtualDirs) ? WS.meta.trashVirtualDirs.slice() : [];
-    }
-
     async function metaEnsureFsHandles(rootHandle) {
       if (!rootHandle) return false;
       try {
@@ -6970,7 +4547,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const optionsFile = await sys.getFileHandle("preferences.log.json", { create: true });
         const keybindsFile = await sys.getFileHandle("keyboard-configuration.log.json", { create: true });
         const legacyFile = await sys.getFileHandle("folder-votes.log.json", { create: true });
-        const trashIndexFile = await sys.getFileHandle("trash-index.log.json", { create: true });
         WS.meta.fsRootHandle = rootHandle;
         WS.meta.fsSysDirHandle = sys;
         WS.meta.fsScoresFileHandle = scoresFile;
@@ -6978,9 +4554,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         WS.meta.fsOptionsFileHandle = optionsFile;
         WS.meta.fsKeybindsFileHandle = keybindsFile;
         WS.meta.fsLegacyFileHandle = legacyFile;
-        WS.meta.fsTrashIndexFileHandle = trashIndexFile;
         WS.meta.storageMode = "fs";
-        await ensureSiteLogHandles();
         return true;
       } catch {
         return false;
@@ -7039,120 +4613,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (busyOverlay) busyOverlay.classList.remove("active");
     }
 
-    let onlineProfileLoading = false;
-    let ONLINE_PROFILE_STATUS_TIMER = null;
-
-    function setOnlineProfileStatus(text, type, autoHide = true) {
-      if (!onlineProfileStatus) return;
-      onlineProfileStatus.textContent = text || "—";
-      if (type === "error") onlineProfileStatus.style.color = "#b00020";
-      else if (type === "success") onlineProfileStatus.style.color = "#0a7d2b";
-      else onlineProfileStatus.style.color = "";
-      if (ONLINE_PROFILE_STATUS_TIMER) {
-        clearTimeout(ONLINE_PROFILE_STATUS_TIMER);
-        ONLINE_PROFILE_STATUS_TIMER = null;
-      }
-      if (autoHide && text && text !== "—" && text !== "Loading...") {
-        ONLINE_PROFILE_STATUS_TIMER = setTimeout(() => {
-          onlineProfileStatus.textContent = "—";
-          onlineProfileStatus.style.color = "";
-          ONLINE_PROFILE_STATUS_TIMER = null;
-        }, 2500);
-      }
-    }
-
-    async function handleAddOnlineProfile(mode) {
-      if (onlineProfileLoading) return;
-      if (!onlineProfileInput || !onlineProfileAddProfileBtn || !onlineProfileAddPostsBtn) return;
-      const api = (typeof window !== "undefined") ? window.LGOnline : null;
-      if (!api || typeof api.parseOnlineProfileUrl !== "function") {
-        setOnlineProfileStatus("Online adapter unavailable.", "error");
-        return;
-      }
-      const raw = onlineProfileInput.value || "";
-      const parsed = api.parseOnlineProfileUrl(raw);
-      if (!parsed || !parsed.ok) {
-        setOnlineProfileStatus("Invalid URL.", "error");
-        return;
-      }
-      parsed.sourceUrl = raw;
-      const existing = ONLINE_PROFILE_CACHE.get(parsed.profileKey);
-      const basePath = normalizeOnlineBasePath(WS.nav?.dirNode?.path || "");
-      const addMode = mode === "posts" ? "posts" : "profile";
-      const placementKey = makeOnlinePlacementId(parsed.profileKey, addMode, basePath);
-      if (existing && existing.injectedPlacements && existing.injectedPlacements.has(placementKey)) {
-        setOnlineProfileStatus("Profile already added here.", "error");
-        return;
-      }
-
-      onlineProfileLoading = true;
-      onlineProfileInput.disabled = true;
-      onlineProfileAddProfileBtn.disabled = true;
-      onlineProfileAddPostsBtn.disabled = true;
-      setOnlineProfileStatus("Loading...", "", false);
-      showBusyOverlay("Loading profile...");
-      try {
-        const progressCb = (page, count) => {
-          if (busyLabel) busyLabel.textContent = `Loading page ${page} (${count} posts)...`;
-          if (onlineProfileStatus) onlineProfileStatus.textContent = `Loading page ${page}...`;
-        };
-        const result = await api.fetchOnlineProfilePosts(parsed.service, parsed.userId, parsed.origin, { progressCb });
-        appendOnlineApiResponses(result && Array.isArray(result.responses) ? result.responses : []);
-        const posts = result && Array.isArray(result.posts) ? result.posts : [];
-        if (!posts || !posts.length) {
-          if (result && result.error) {
-            setOnlineProfileStatus(getOnlineApiErrorMessage(result.error), "error");
-          } else {
-            setOnlineProfileStatus("No posts found.", "error");
-          }
-          return;
-        }
-        const normalized = api.normalizeOnlinePosts(posts, { origin: parsed.origin, dataRoot: parsed.dataRoot });
-        const saveResult = await saveOnlineProfileVersion(parsed, normalized, raw);
-        const placementResult = await siteLogUpsertPlacement(parsed.profileKey, raw, {
-          id: placementKey,
-          mode: addMode,
-          basePath
-        });
-        const resolvedPlacementKey = placementResult && placementResult.placementId ? placementResult.placementId : placementKey;
-        clearOnlineMaterializedPlacement(parsed.profileKey, resolvedPlacementKey);
-        await siteLogSaveRenames();
-        ONLINE_PROFILE_CACHE.set(parsed.profileKey, {
-          profile: parsed,
-          posts: normalized,
-          fetchedAt: Date.now(),
-          injected: false,
-          injectedPlacements: existing && existing.injectedPlacements ? existing.injectedPlacements : new Set()
-        });
-        const injected = injectOnlineProfileIntoWorkspace(parsed.profileKey, {
-          mode: addMode,
-          basePath,
-          placementId: resolvedPlacementKey
-        });
-        if (injected.ok) {
-          const savedNote = saveResult && saveResult.saved ? "Saved log." : "Not saved.";
-          setOnlineProfileStatus(`Added ${injected.files} files. ${savedNote}`, injected && injected.ok && saveResult && saveResult.saved ? "success" : "");
-          onlineProfileInput.value = "";
-        } else if (injected.error === "already-added") {
-          setOnlineProfileStatus("Profile already added.", "error");
-        } else if (injected.error === "no-files") {
-          setOnlineProfileStatus("No media files found.", "error");
-        } else {
-          const savedNote = saveResult && saveResult.saved ? "Saved log." : "Not saved.";
-          setOnlineProfileStatus(`Loaded ${normalized.length} posts. ${savedNote}`, saveResult && saveResult.saved ? "success" : "");
-        }
-        renderOnlineUi();
-      } catch {
-        setOnlineProfileStatus("Failed to load profile.", "error");
-      } finally {
-        onlineProfileLoading = false;
-        if (onlineProfileInput) onlineProfileInput.disabled = false;
-        if (onlineProfileAddProfileBtn) onlineProfileAddProfileBtn.disabled = false;
-        if (onlineProfileAddPostsBtn) onlineProfileAddPostsBtn.disabled = false;
-        hideBusyOverlay();
-      }
-    }
-
     function metaInitForCurrentWorkspace() {
       metaComputeFingerprints();
 
@@ -7204,8 +4664,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           metaApplyFromLog(legacyLog);
         }
       }
-      await siteLogLoadRenames();
-      await loadTrashStateFromFs();
       WS.meta.dirty = true;
       metaScheduleSave();
       syncMetaButtons();
@@ -7398,13 +4856,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (WS.meta.saveTimer) {
           clearTimeout(WS.meta.saveTimer);
           WS.meta.saveTimer = null;
-        }
-        const injected = await loadOnlineProfilesFromSiteLog({ render: false });
-        if (injected) {
-          WS.view.randomSeed = computeWorkspaceSeed();
-          WS.view.randomCache = new Map();
-          WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
-          await metaReapplyFsScoresAndTags();
         }
         WS.meta.dirty = true;
         metaScheduleSave();
@@ -7709,6 +5160,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       WS.view.bulkFileSelectedIds = next;
     }
 
+    function remapIdValue(idMap, value) {
+      const key = String(value || "");
+      if (!key) return "";
+      return idMap.get(key) || key;
+    }
+
     function remapFileIdsInDirTree(idMap) {
       for (const node of WS.dirByPath.values()) {
         if (!node || !node.childrenFiles) continue;
@@ -7719,6 +5176,72 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
     }
 
+    function remapRuntimeFileStateIds(idMap) {
+      if (!idMap || !idMap.size) return;
+      WS.view.fileActionMenuId = remapIdValue(idMap, WS.view.fileActionMenuId);
+      DIR_FILE_DRAG.id = remapIdValue(idMap, DIR_FILE_DRAG.id);
+      PREVIEW_DRAG_STATE.draggedId = remapIdValue(idMap, PREVIEW_DRAG_STATE.draggedId);
+      if (Array.isArray(PREVIEW_DRAG_STATE.visibleIds)) {
+        PREVIEW_DRAG_STATE.visibleIds = PREVIEW_DRAG_STATE.visibleIds.map(id => remapIdValue(idMap, id)).filter(Boolean);
+      }
+      PREVIEW_VIDEO_PAUSE.fileId = remapIdValue(idMap, PREVIEW_VIDEO_PAUSE.fileId);
+      VIDEO_CARRY.fileId = remapIdValue(idMap, VIDEO_CARRY.fileId);
+    }
+
+    function remapFileIdsAcrossViewState(idMap) {
+      if (!idMap || !idMap.size) return;
+      remapFileIdsInDirTree(idMap);
+      remapFileSelectionIds(idMap);
+      remapRuntimeFileStateIds(idMap);
+      if (WS.preview.kind === "file" && WS.preview.fileId) {
+        WS.preview.fileId = remapIdValue(idMap, WS.preview.fileId);
+      }
+      for (const entry of WS.nav.entries || []) {
+        if (entry && entry.kind === "file" && idMap.has(String(entry.id || ""))) {
+          entry.id = idMap.get(String(entry.id || ""));
+        }
+      }
+      for (const it of viewerItems || []) {
+        if (it && !it.isFolder && idMap.has(String(it.id || ""))) it.id = idMap.get(String(it.id || ""));
+      }
+    }
+
+    async function refreshRenamedRecordFileFromDisk(rec, dirHandleOverride = null) {
+      if (!rec || !WS.meta.fsRootHandle) return false;
+      const fileName = String(rec.name || "");
+      if (!fileName) return false;
+
+      let dirHandle = dirHandleOverride || null;
+      if (!dirHandle) {
+        try {
+          dirHandle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, String(rec.dirPath || ""));
+        } catch {}
+      }
+      if (!dirHandle) return false;
+
+      let fileHandle = null;
+      try { fileHandle = await dirHandle.getFileHandle(fileName); } catch {}
+      if (!fileHandle) return false;
+
+      let freshFile = null;
+      try { freshFile = await fileHandle.getFile(); } catch {}
+      if (!freshFile) return false;
+
+      try { if (rec.url) URL.revokeObjectURL(rec.url); } catch {}
+      try { if (rec.thumbUrl) URL.revokeObjectURL(rec.thumbUrl); } catch {}
+      try { if (rec.videoThumbUrl) URL.revokeObjectURL(rec.videoThumbUrl); } catch {}
+      rec.url = null;
+      rec.thumbUrl = null;
+      rec.videoThumbUrl = null;
+      rec.thumbMode = null;
+      rec.videoThumbMode = null;
+
+      rec.file = freshFile;
+      rec.size = Number.isFinite(freshFile.size) ? freshFile.size : rec.size;
+      rec.lastModified = Number.isFinite(freshFile.lastModified) ? freshFile.lastModified : rec.lastModified;
+      return true;
+    }
+
     function updateFileRecordsForRename(oldPrefix, newPrefix) {
       const idMap = new Map();
       const nextFileById = new Map();
@@ -7727,7 +5250,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const oldRelPath = String(rec.relPath || "");
         const nextDirPath = remapPathPrefix(oldPrefix, newPrefix, oldDirPath);
         const nextRelPath = remapPathPrefix(oldPrefix, newPrefix, oldRelPath);
-        const nextId = (nextRelPath !== oldRelPath) ? fileKey(rec.file, nextRelPath) : id;
+        const nextId = (nextRelPath !== oldRelPath) ? fileKeyForRecord(rec, nextRelPath) : id;
         rec.dirPath = nextDirPath;
         rec.relPath = nextRelPath;
         rec.id = nextId;
@@ -7735,25 +5258,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         nextFileById.set(nextId, rec);
       }
       WS.fileById = nextFileById;
-      if (idMap.size) {
-        remapFileIdsInDirTree(idMap);
-        remapFileSelectionIds(idMap);
-        if (WS.preview.kind === "file" && WS.preview.fileId && idMap.has(WS.preview.fileId)) {
-          WS.preview.fileId = idMap.get(WS.preview.fileId);
-        }
-        for (const entry of WS.nav.entries || []) {
-          if (entry && entry.kind === "file" && idMap.has(String(entry.id || ""))) {
-            entry.id = idMap.get(String(entry.id || ""));
-          }
-        }
-        for (const it of viewerItems || []) {
-          if (it && !it.isFolder && idMap.has(String(it.id || ""))) it.id = idMap.get(String(it.id || ""));
-        }
-      }
+      remapFileIdsAcrossViewState(idMap);
       WS.view.randomCache = remapPathMapKeys(WS.view.randomCache, oldPrefix, newPrefix);
     }
 
-    function updateFileRecordsForFileRenames(dirNode, renameMap) {
+    async function updateFileRecordsForFileRenames(dirNode, renameMap, dirHandleForRefresh = null) {
       if (!dirNode || !renameMap || !renameMap.size) return;
       const dirPath = String(dirNode.path || "");
       const idMap = new Map();
@@ -7776,30 +5285,16 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         rec.name = newName;
         rec.ext = ext;
         rec.relPath = relPath;
-        const nextId = fileKey(rec.file, relPath);
+        rec.type = isVideoName(newName) ? "video" : "image";
+        await refreshRenamedRecordFileFromDisk(rec, dirHandleForRefresh);
+        const nextId = fileKeyForRecord(rec, relPath);
         rec.id = nextId;
         if (nextId !== id) idMap.set(id, nextId);
         nextFileById.set(nextId, rec);
       }
 
       WS.fileById = nextFileById;
-
-      if (idMap.size) {
-        remapFileIdsInDirTree(idMap);
-        remapFileSelectionIds(idMap);
-        if (WS.preview.kind === "file" && WS.preview.fileId && idMap.has(WS.preview.fileId)) {
-          WS.preview.fileId = idMap.get(WS.preview.fileId);
-        }
-        for (const entry of WS.nav.entries || []) {
-          if (entry && entry.kind === "file" && idMap.has(String(entry.id || ""))) {
-            entry.id = idMap.get(String(entry.id || ""));
-          }
-        }
-        for (const it of viewerItems || []) {
-          if (it && !it.isFolder && idMap.has(String(it.id || ""))) it.id = idMap.get(String(it.id || ""));
-        }
-      }
-
+      remapFileIdsAcrossViewState(idMap);
       WS.view.randomCache.delete(dirPath);
     }
 
@@ -7907,7 +5402,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       if (renameMap.size) {
-        updateFileRecordsForFileRenames(dirNode, renameMap);
+        await updateFileRecordsForFileRenames(dirNode, renameMap, dirHandle);
         return { renamed: true, files: renameMap.size };
       }
       return { renamed: false, files: 0 };
@@ -8079,30 +5574,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       } catch {}
     });
 
-    if (onlineProfileInput) {
-      onlineProfileInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          handleAddOnlineProfile("profile");
-        }
-      });
-      onlineProfileInput.addEventListener("input", () => {
-        if (!onlineProfileLoading) setOnlineProfileStatus("—");
-      });
-    }
-
-    if (onlineProfileAddProfileBtn) {
-      onlineProfileAddProfileBtn.addEventListener("click", () => {
-        handleAddOnlineProfile("profile");
-      });
-    }
-
-    if (onlineProfileAddPostsBtn) {
-      onlineProfileAddPostsBtn.addEventListener("click", () => {
-        handleAddOnlineProfile("posts");
-      });
-    }
-
     /* =========================================================
        Sorting helpers
        ========================================================= */
@@ -8181,19 +5652,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return { sizeByPath, recursiveCountByPath, nonRecursiveCountByPath };
     }
 
-    function sortOnlineFoldersFirstForList(dirs) {
-      const out = Array.isArray(dirs) ? dirs.slice() : [];
-      if (!listOnlineFoldersFirstEnabled() || out.length < 2) return out;
-      const online = [];
-      const local = [];
-      for (const node of out) {
-        const kind = node?.onlineMeta?.kind;
-        if (kind === "profile" || kind === "post") online.push(node);
-        else local.push(node);
-      }
-      return online.concat(local);
-    }
-
     function randomActionMode() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const mode = opt ? String(opt.randomActionMode || "firstFileJump") : "firstFileJump";
@@ -8224,7 +5682,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (sa !== sb) return sb - sa;
           return byName(a, b);
         });
-        return sortOnlineFoldersFirstForList(out);
+        return out;
       }
 
       if (sortMode === "size-desc" || sortMode === "count-recursive" || sortMode === "count-non-recursive") {
@@ -8249,11 +5707,11 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           if (va !== vb) return vb - va;
           return byName(a, b);
         });
-        return sortOnlineFoldersFirstForList(out);
+        return out;
       }
 
       out.sort(byName);
-      return sortOnlineFoldersFirstForList(out);
+      return out;
     }
 
     function passesFilter(rec) {
@@ -8266,9 +5724,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     }
 
     function dirItemCount(node) {
-      if (isTrashVirtualDirNode(node)) {
-        return Math.max(0, Number(node.trashItemCount) || 0) | 0;
-      }
       let c = 0;
       for (const id of node.childrenFiles) {
         const rec = WS.fileById.get(id);
@@ -8570,7 +6025,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const dirNode = WS.dirByPath.get(dirPath) || null;
       if (dirNode) {
         const renameMap = new Map([[String(rec.name || ""), clean]]);
-        updateFileRecordsForFileRenames(dirNode, renameMap);
+        await updateFileRecordsForFileRenames(dirNode, renameMap, dirHandle);
       }
 
       metaComputeFingerprints();
@@ -8589,7 +6044,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const base = sortDirsForDisplay(dirNode.childrenDirs).filter(d => dirItemCount(d) > 0);
       const showHidden = WS.view.hiddenMode || (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden");
       const visibleBase = showHidden ? base : base.filter(d => !isDirOrAncestorHidden(d));
-      return filterOnlineDirs(visibleBase);
+      return visibleBase;
     }
 
     function treatTagsAsFoldersEnabled() {
@@ -8604,11 +6059,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function showUntaggedFolderEnabled() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       return !!(opt && opt.showUntaggedFolder);
-    }
-
-    function showTrashFolderEnabled() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return !!(opt && opt.showTrashFolder);
     }
 
     function getUntaggedDirsForNode(dirNode) {
@@ -8677,13 +6127,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           entries.push({ kind: "tag", label: "Hidden", special: "hidden", count: hidden.length });
         }
       }
-      if (showTrashFolderEnabled() && dirNode === WS.root) {
-        const trashDirs = getTrashVirtualDirs();
-        if (trashDirs.length) {
-          entries.push({ kind: "tag", label: "Trash", special: "trash", count: trashDirs.length });
-        }
-      }
-
       const tagGroups = gatherTagGroupsForDir(dirNode);
       if (tagGroups.size) {
         const sorted = Array.from(tagGroups.keys()).sort((a, b) => String(a).localeCompare(String(b)));
@@ -8720,9 +6163,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (WS.view.tagFolderActiveMode === "hidden") {
         return children.filter(d => metaHasHidden(d.path || ""));
       }
-      if (WS.view.tagFolderActiveMode === "trash") {
-        return getTrashVirtualDirs();
-      }
       const tag = String(WS.view.tagFolderActiveTag || "");
       if (!tag) return [];
       return children.filter(d => {
@@ -8739,7 +6179,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (frame.mode === "favorites") return children.filter(d => metaHasFavorite(d.path || ""));
       if (frame.mode === "untagged") return children.filter(d => metaGetUserTags(d.path || "").length === 0);
       if (frame.mode === "hidden") return children.filter(d => metaHasHidden(d.path || ""));
-      if (frame.mode === "trash") return getTrashVirtualDirs();
       const tag = String(frame.tag || "");
       if (!tag) return [];
       return children.filter(d => {
@@ -8752,9 +6191,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!entry || entry.kind !== "tag") return [];
       const dirNode = WS.nav.dirNode;
       if (!dirNode) return [];
-      if (entry.special === "trash") {
-        return getTrashVirtualDirs();
-      }
       const children = getChildDirsForNodeBase(dirNode);
       if (!children.length) return [];
       if (entry.special) {
@@ -9054,7 +6490,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (c) return c;
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
-      return filterOnlineDirs(sortOnlineFoldersFirstForList(out));
+      return out;
     }
 
     function getAllHiddenDirs() {
@@ -9073,7 +6509,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (c) return c;
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
-      return filterOnlineDirs(sortOnlineFoldersFirstForList(out));
+      return out;
     }
 
     function cancelDirectorySearch() {
@@ -9145,7 +6581,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return compareIndexedNames(a?.name || "", b?.name || "");
       });
 
-      WS.view.searchResults = sortOnlineFoldersFirstForList(results);
+      WS.view.searchResults = results;
     }
 
     function syncFavoritesUi() {
@@ -9200,7 +6636,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             placeholder: true
           });
         }
-        const dirs = filterOnlineDirs((WS.view.searchResults || []).slice());
+        const dirs = (WS.view.searchResults || []).slice();
         for (let i = 0; i < dirs.length; i++) WS.nav.entries.push({ kind: "dir", node: dirs[i] });
         return;
       }
@@ -9375,11 +6811,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!entry) return;
       if (entry.kind === "tag") {
         openTagFolderEntry(entry);
-        return;
-      }
-
-      if (entry.kind === "dir" && isTrashVirtualDirNode(entry.node)) {
-        showStatusMessage("Use folder menu to restore this trash folder.");
         return;
       }
 
@@ -9580,7 +7011,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (WS.view.tagFolderActiveMode === "favorites") return `${baseLabel} · Favorites`;
         if (WS.view.tagFolderActiveMode === "untagged") return `${baseLabel} · Untagged`;
         if (WS.view.tagFolderActiveMode === "hidden") return `${baseLabel} · Hidden`;
-        if (WS.view.tagFolderActiveMode === "trash") return `${baseLabel} · Trash`;
         const tagLabel = String(WS.view.tagFolderActiveTag || "").trim();
         return tagLabel ? `${baseLabel} · ${tagLabel}` : baseLabel;
       }
@@ -9782,7 +7212,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const prefix = target ? (target + "/") : "";
       const out = [];
       for (const rec of WS.fileById.values()) {
-        if (!rec || rec.online || !rec.file) continue;
+        if (!rec || !rec.file) continue;
         const rel = String(rec.relPath || "").replace(/\\/g, "/");
         if (target && !rel.startsWith(prefix)) continue;
         out.push(rec);
@@ -9809,7 +7239,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const preferred = getLocalMediaRecordsForDirPath(target)
         .sort((a, b) => String(a?.relPath || "").length - String(b?.relPath || "").length);
       const fallback = Array.from(WS.fileById.values())
-        .filter(rec => !!(rec && !rec.online && rec.file && rec.relPath))
+        .filter(rec => !!(rec && rec.file && rec.relPath))
         .sort((a, b) => String(a?.relPath || "").length - String(b?.relPath || "").length);
       const records = [];
       const seen = new Set();
@@ -10036,19 +7466,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return false;
     }
 
-    async function ensureTrashDirectoryHandle(rootHandle) {
-      if (!rootHandle) return null;
-      try {
-        const sysDir = await rootHandle.getDirectoryHandle(".local-gallery", { create: true });
-        DIR_HANDLE_CACHE.set(".local-gallery", sysDir);
-        const trashDir = await sysDir.getDirectoryHandle("trash", { create: true });
-        DIR_HANDLE_CACHE.set(".local-gallery/trash", trashDir);
-        return trashDir;
-      } catch {}
-      return null;
-    }
-
-    async function moveFolderPathsToTrash(paths) {
+    async function deleteFolderPathsPermanently(paths) {
       if (!WS.meta.fsRootHandle) {
         showStatusMessage("Delete requires a writable folder.");
         return false;
@@ -10086,9 +7504,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         try { entryHandle = await parentHandle.getDirectoryHandle(folderName); } catch {}
         if (!entryHandle) continue;
 
-        const sourceNode = WS.dirByPath.get(normalizedPath) || null;
-        const itemCount = sourceNode ? (dirItemCount(sourceNode) | 0) : 0;
-        targets.push({ path: normalizedPath, parentPath, folderName, parentHandle, entryHandle, itemCount });
+        targets.push({ path: normalizedPath, parentPath, folderName, parentHandle, entryHandle });
       }
 
       if (!targets.length) {
@@ -10096,152 +7512,40 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return false;
       }
 
-      const trashHandle = await ensureTrashDirectoryHandle(rootHandle);
-      if (!trashHandle) {
-        showStatusMessage("Trash folder unavailable.");
-        return false;
-      }
-
       const label = targets.length === 1
-        ? "Moving folder to trash..."
-        : `Moving ${targets.length} folders to trash...`;
+        ? "Deleting folder..."
+        : `Deleting ${targets.length} folders...`;
       showBusyOverlay(label);
-      const nextIndex = new Map(WS.meta.trashOriginsByName || []);
-      let moved = 0;
+      let deleted = 0;
       let failed = 0;
       try {
         for (const t of targets) {
-          const moveInfo = {};
-          const ok = await moveEntryWithCollisionRename(t.parentHandle, t.entryHandle, t.folderName, trashHandle, moveInfo);
-          if (ok) {
-            moved++;
-            const trashName = String(moveInfo.movedName || t.folderName || "").trim();
-            if (trashName && isValidFolderName(trashName)) {
-              nextIndex.set(trashName, {
-                originalPath: t.path,
-                itemCount: Math.max(0, Number(t.itemCount) || 0) | 0,
-                trashedAt: Date.now()
-              });
-            }
+          try {
+            await t.parentHandle.removeEntry(t.folderName, { recursive: true });
+            deleted++;
             invalidateDirHandleCache(t.path);
             invalidateDirHandleCache(t.parentPath);
-            continue;
+          } catch {
+            failed++;
           }
-          failed++;
         }
-      } catch {
-        failed = Math.max(failed, targets.length - moved);
       } finally {
         hideBusyOverlay();
       }
 
-      if (!moved) {
-        showStatusMessage("Move to trash failed.");
+      if (!deleted) {
+        showStatusMessage("Delete failed.");
         return false;
       }
 
-      WS.meta.trashOriginsByName = nextIndex;
-      await saveTrashIndexToFs();
-      await loadTrashStateFromFs();
       try { await refreshWorkspaceFromRootHandle(); } catch {}
 
       if (failed > 0) {
-        showStatusMessage(`Moved ${moved} folder${moved === 1 ? "" : "s"} to trash. ${failed} failed.`);
+        showStatusMessage(`Deleted ${deleted} folder${deleted === 1 ? "" : "s"}. ${failed} failed.`);
       } else {
-        showStatusMessage(`Moved ${moved} folder${moved === 1 ? "" : "s"} to trash.`);
+        showStatusMessage(`Deleted ${deleted} folder${deleted === 1 ? "" : "s"}.`);
       }
       return true;
-    }
-
-    async function restoreTrashFoldersByNames(names) {
-      if (!WS.meta.fsRootHandle) {
-        showStatusMessage("Restore requires a writable folder.");
-        return { restored: 0, failed: 0 };
-      }
-
-      const targets = Array.from(new Set((names || []).map(v => String(v || "").trim()).filter(Boolean)));
-      if (!targets.length) {
-        showStatusMessage("No trash folders selected.");
-        return { restored: 0, failed: 0 };
-      }
-
-      await loadTrashStateFromFs();
-      const rootHandle = WS.meta.fsRootHandle;
-      const trashHandle = await ensureTrashDirectoryHandle(rootHandle);
-      if (!trashHandle) {
-        showStatusMessage("Trash folder unavailable.");
-        return { restored: 0, failed: targets.length };
-      }
-
-      const index = new Map(WS.meta.trashOriginsByName || []);
-      const toRestore = [];
-      for (const trashName of targets) {
-        if (!trashName || !isValidFolderName(trashName)) continue;
-        let entryHandle = null;
-        try { entryHandle = await trashHandle.getDirectoryHandle(trashName); } catch {}
-        if (!entryHandle) continue;
-        const rec = index.get(trashName) || null;
-        const originalPath = normalizeWorkspaceRelPath(rec && rec.originalPath);
-        if (!originalPath) continue;
-        toRestore.push({ trashName, entryHandle, originalPath });
-      }
-
-      if (!toRestore.length) {
-        showStatusMessage("No restorable trash folders found.");
-        return { restored: 0, failed: targets.length };
-      }
-
-      showBusyOverlay(toRestore.length === 1 ? "Restoring folder..." : `Restoring ${toRestore.length} folders...`);
-      let restored = 0;
-      let failed = Math.max(0, targets.length - toRestore.length);
-      try {
-        for (const item of toRestore) {
-          const parts = item.originalPath.split("/").filter(Boolean);
-          const desiredName = parts.pop() || "";
-          const parentPath = parts.join("/");
-          if (!desiredName || !isValidFolderName(desiredName)) {
-            failed++;
-            continue;
-          }
-          let parentHandle = null;
-          try { parentHandle = await ensureDirectoryHandleForPath(rootHandle, parentPath); } catch {}
-          if (!parentHandle) {
-            failed++;
-            continue;
-          }
-
-          const moveInfo = {};
-          const ok = await moveEntryWithCollisionRename(trashHandle, item.entryHandle, item.trashName, parentHandle, moveInfo);
-          if (!ok) {
-            failed++;
-            continue;
-          }
-
-          index.delete(item.trashName);
-          restored++;
-          invalidateDirHandleCache(parentPath);
-          invalidateDirHandleCache(item.originalPath);
-        }
-      } finally {
-        hideBusyOverlay();
-      }
-
-      if (!restored) {
-        showStatusMessage("Restore failed.");
-        return { restored: 0, failed: Math.max(failed, targets.length) };
-      }
-
-      WS.meta.trashOriginsByName = index;
-      await saveTrashIndexToFs();
-      await loadTrashStateFromFs();
-      await refreshWorkspaceFromRootHandle();
-
-      if (failed > 0) {
-        showStatusMessage(`Restored ${restored} folder${restored === 1 ? "" : "s"}. ${failed} failed.`);
-      } else {
-        showStatusMessage(`Restored ${restored} folder${restored === 1 ? "" : "s"}.`);
-      }
-      return { restored, failed };
     }
 
     async function setMergeSelectedDirs() {
@@ -10386,7 +7690,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const relPath = newDirPath ? (newDirPath + "/" + rec.name) : rec.name;
         rec.dirPath = newDirPath;
         rec.relPath = relPath;
-        const nextId = fileKey(rec.file, relPath);
+        const nextId = fileKeyForRecord(rec, relPath);
         rec.id = nextId;
         if (nextId !== id) idMap.set(id, nextId);
         nextFileById.set(nextId, rec);
@@ -10407,21 +7711,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
 
-      if (idMap.size) {
-        remapFileIdsInDirTree(idMap);
-        remapFileSelectionIds(idMap);
-        if (WS.preview.kind === "file" && WS.preview.fileId && idMap.has(WS.preview.fileId)) {
-          WS.preview.fileId = idMap.get(WS.preview.fileId);
-        }
-        for (const entry of WS.nav.entries || []) {
-          if (entry && entry.kind === "file" && idMap.has(String(entry.id || ""))) {
-            entry.id = idMap.get(String(entry.id || ""));
-          }
-        }
-        for (const it of viewerItems || []) {
-          if (it && !it.isFolder && idMap.has(String(it.id || ""))) it.id = idMap.get(String(it.id || ""));
-        }
-      }
+      remapFileIdsAcrossViewState(idMap);
     }
 
     async function looseSetMergeSelectedFiles() {
@@ -10792,17 +8082,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
       RENAME_BUSY = true;
-      let ok = false;
-      if (dirNode.onlineMeta && (dirNode.onlineMeta.kind === "profile" || dirNode.onlineMeta.kind === "post")) {
-        const nextName = inputEl.value || "";
-        if (dirNode.onlineMeta.kind === "profile") {
-          ok = await renameOnlineProfile(dirNode.onlineMeta.profileKey, nextName);
-        } else {
-          ok = await renameOnlinePost(dirNode.onlineMeta.profileKey, dirNode.onlineMeta.postKey, nextName);
-        }
-      } else {
-        ok = await renameFolderDirNode(dirNode, inputEl.value || "");
-      }
+      const ok = await renameFolderDirNode(dirNode, inputEl.value || "");
       RENAME_BUSY = false;
       if (ok) {
         RENAME_EDIT_PATH = null;
@@ -10810,7 +8090,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         renderDirectoriesPane(true);
         renderPreviewPane(false, true);
         syncButtons();
-        renderOnlineUi();
         return;
       }
       renderDirectoriesPane(true);
@@ -10825,12 +8104,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return;
       }
       RENAME_BUSY = true;
-      let ok = false;
-      if (rec.online && rec.onlineMeta) {
-        ok = await renameOnlineFile(rec.onlineMeta.profileKey, rec.onlineMeta.fileUrl, inputEl.value || "");
-      } else {
-        ok = await renameSingleFile(rec, inputEl.value || "");
-      }
+      const ok = await renameSingleFile(rec, inputEl.value || "");
       RENAME_BUSY = false;
       if (ok) {
         RENAME_EDIT_FILE_ID = null;
@@ -10896,7 +8170,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       closeActionMenus();
       const menu = tagActionMenuEl;
       menu.appendChild(createTagMenuButton("Rename tag", () => handleTagMenuAction("rename")));
-      menu.appendChild(createTagMenuButton("Delete tag", () => handleTagMenuAction("delete")));
       TAG_CONTEXT_MENU_STATE = {
         tag,
         label: context.label || tag,
@@ -11046,24 +8319,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       const selectedDirs = canBulk ? getSelectedPathsInCurrentDir() : [];
-      const visibleDirNodeByPath = new Map();
-      for (const entry of (WS.nav.entries || [])) {
-        if (!entry || entry.kind !== "dir" || !entry.node) continue;
-        const p = String(entry.node.path || "");
-        if (!p) continue;
-        visibleDirNodeByPath.set(p, entry.node);
-      }
-      const selectedDirNodes = selectedDirs.map((p) => {
-        const key = String(p || "");
-        return visibleDirNodeByPath.get(key) || WS.dirByPath.get(key) || null;
-      }).filter(Boolean);
-      const selectedDirCount = selectedDirNodes.length;
-      const allOnlineDirs = selectedDirCount > 0 && selectedDirNodes.every(d => d?.onlineMeta && (d.onlineMeta.kind === "profile" || d.onlineMeta.kind === "post"));
-      const allProfileDirs = allOnlineDirs && selectedDirNodes.every(d => d?.onlineMeta?.kind === "profile");
-      const allPostDirs = allOnlineDirs && selectedDirNodes.every(d => d?.onlineMeta?.kind === "post");
-      const allLocalDirs = selectedDirCount > 0 && selectedDirNodes.every(d => !d?.onlineMeta);
-      const allTrashDirs = selectedDirCount > 0 && selectedDirNodes.every(d => isTrashVirtualDirNode(d));
-      const inTrashTagMode = isViewingTagFolder() && WS.view.tagFolderActiveMode === "trash";
       const selectedFiles = canBulk ? getSelectedFileIdsInCurrentView() : [];
       const selCount = selectedDirs.length + selectedFiles.length;
       const hasDirSelection = selectedDirs.length > 0;
@@ -11090,6 +8345,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       const allFavorite = selectedDirs.every(p => metaHasFavorite(p));
       const allHidden = selectedDirs.every(p => metaHasHidden(p));
+      const allProcessingDisabled = selectedDirs.every(p => isPathOrAncestorProcessingDisabled(p));
 
       const makeActionBtn = (label, onClick) => {
         const btn = document.createElement("button");
@@ -11102,188 +8358,77 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         return btn;
       };
 
-      if (allOnlineDirs) {
-        directoriesActionMenuEl.appendChild(makeActionBtn("Download selected folders", async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await materializeOnlineFolderSelection(selectedDirNodes);
-          finalizeBulkSelectionAction();
-        }));
+      const scoreRow = document.createElement("div");
+      scoreRow.className = "scoreRow";
+      const scoreUpBtn = makeActionBtn("+", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaBumpScoreBulk(selectedDirs, 1);
+        finalizeBulkSelectionAction();
+      });
+      scoreUpBtn.classList.add("scoreBtn");
+      const scoreDownBtn = makeActionBtn("-", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaBumpScoreBulk(selectedDirs, -1);
+        finalizeBulkSelectionAction();
+      });
+      scoreDownBtn.classList.add("scoreBtn");
+      scoreRow.appendChild(scoreUpBtn);
+      scoreRow.appendChild(scoreDownBtn);
+      directoriesActionMenuEl.appendChild(scoreRow);
 
-        if (allProfileDirs) {
-          directoriesActionMenuEl.appendChild(makeActionBtn("Refresh selected profiles", async () => {
-            WS.view.bulkActionMenuOpen = false;
-            const keys = Array.from(new Set(selectedDirNodes.map(d => d?.onlineMeta?.profileKey).filter(Boolean)));
-            for (const key of keys) {
-              await refreshOnlineProfile(key);
-            }
-            finalizeBulkSelectionAction();
-          }));
-        }
+      directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
+        WS.view.bulkActionMenuOpen = false;
+        if (!selectedDirs.length) return;
+        finalizeBulkSelectionAction();
+        startBulkTagging(selectedDirs);
+      }));
 
-        directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
-          WS.view.bulkActionMenuOpen = false;
-          if (!selectedDirs.length) return;
-          finalizeBulkSelectionAction();
-          startBulkTagging(selectedDirs);
-        }));
+      directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaSetFavoriteBulk(selectedDirs, !allFavorite);
+        finalizeBulkSelectionAction();
+      }));
 
-        directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaSetFavoriteBulk(selectedDirs, !allFavorite);
-          finalizeBulkSelectionAction();
-        }));
+      directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaSetHiddenBulk(selectedDirs, !allHidden);
+        finalizeBulkSelectionAction();
+      }));
 
-        const scrubSelectedBtn = makeActionBtn("Scrub", async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await scrubFoldersByPaths(selectedDirs);
-          finalizeBulkSelectionAction();
-        });
-        if (!WS.meta.fsRootHandle) scrubSelectedBtn.disabled = true;
-        directoriesActionMenuEl.appendChild(scrubSelectedBtn);
-
-        if (allProfileDirs) {
-          const renameBtn = makeActionBtn("Rename profile", () => {
-            WS.view.bulkActionMenuOpen = false;
-            const p = String(selectedDirs[0] || "");
-            if (!p) return;
-            RENAME_EDIT_PATH = p;
-            TAG_EDIT_PATH = null;
-            renderDirectoriesPane(true);
-            setTimeout(() => {
-              const row = findDirRowForPath(p);
-              const input = (row && row.querySelector(".renameEditInput")) || (directoriesListEl && directoriesListEl.querySelector(".dirRow.selected .renameEditInput"));
-              if (input) {
-                try { input.focus(); input.select(); } catch {}
-              }
-            }, 0);
-          });
-          if (selectedDirCount !== 1) renameBtn.disabled = true;
-          directoriesActionMenuEl.appendChild(renameBtn);
-
-          directoriesActionMenuEl.appendChild(makeActionBtn("Delete selected profiles", async () => {
-            WS.view.bulkActionMenuOpen = false;
-            const confirmed = confirm("Delete selected profiles and all related folders?");
-            if (!confirmed) return;
-            const keys = Array.from(new Set(selectedDirNodes.map(d => d?.onlineMeta?.profileKey).filter(Boolean)));
-            for (const key of keys) {
-              await deleteOnlineProfile(key);
-            }
-            finalizeBulkSelectionAction();
-          }));
-        } else if (allPostDirs) {
-          const renameBtn = makeActionBtn("Rename post", () => {
-            WS.view.bulkActionMenuOpen = false;
-            const p = String(selectedDirs[0] || "");
-            if (!p) return;
-            RENAME_EDIT_PATH = p;
-            TAG_EDIT_PATH = null;
-            renderDirectoriesPane(true);
-            setTimeout(() => {
-              const row = findDirRowForPath(p);
-              const input = (row && row.querySelector(".renameEditInput")) || (directoriesListEl && directoriesListEl.querySelector(".dirRow.selected .renameEditInput"));
-              if (input) {
-                try { input.focus(); input.select(); } catch {}
-              }
-            }, 0);
-          });
-          if (selectedDirCount !== 1) renameBtn.disabled = true;
-          directoriesActionMenuEl.appendChild(renameBtn);
-        }
-      } else {
-        if (inTrashTagMode) {
-          const restoreSelectedBtn = makeActionBtn("Restore selected folders", async () => {
-            const trashNames = selectedDirNodes
-              .filter(d => isTrashVirtualDirNode(d))
-              .map(d => String(d.trashName || ""))
-              .filter(Boolean);
-            if (!trashNames.length) {
-              showStatusMessage("No trash folders selected.");
-              return;
-            }
-            const count = trashNames.length;
-            const confirmed = confirm(`Restore ${count} folder${count === 1 ? "" : "s"} from trash?`);
-            if (!confirmed) return;
-            WS.view.bulkActionMenuOpen = false;
-            const result = await restoreTrashFoldersByNames(trashNames);
-            if (result.restored > 0) finalizeBulkSelectionAction();
-          });
-          if (!WS.meta.fsRootHandle || !allTrashDirs) restoreSelectedBtn.disabled = true;
-          directoriesActionMenuEl.appendChild(restoreSelectedBtn);
+      directoriesActionMenuEl.appendChild(makeActionBtn(allProcessingDisabled ? "Enable Processing selected" : "Disable Processing selected", () => {
+        WS.view.bulkActionMenuOpen = false;
+        const nextDisable = !allProcessingDisabled;
+        const changed = metaSetProcessingDisabledBulk(selectedDirs, nextDisable);
+        const stillAllDisabled = selectedDirs.every(p => isPathOrAncestorProcessingDisabled(p));
+        if (!changed && allProcessingDisabled && stillAllDisabled) {
+          showStatusMessage("Processing remains disabled by a parent folder.");
           return;
         }
+        if (!changed) return;
+        if (allProcessingDisabled && stillAllDisabled) {
+          showStatusMessage("Processing remains disabled by a parent folder.");
+        } else {
+          showStatusMessage(nextDisable
+            ? "Processing disabled for selected folders and subfolders."
+            : "Processing enabled for selected folders and subfolders.");
+        }
+        finalizeBulkSelectionAction();
+      }));
 
-        const scoreRow = document.createElement("div");
-        scoreRow.className = "scoreRow";
-        const scoreUpBtn = makeActionBtn("+", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaBumpScoreBulk(selectedDirs, 1);
-          finalizeBulkSelectionAction();
-        });
-        scoreUpBtn.classList.add("scoreBtn");
-        const scoreDownBtn = makeActionBtn("-", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaBumpScoreBulk(selectedDirs, -1);
-          finalizeBulkSelectionAction();
-        });
-        scoreDownBtn.classList.add("scoreBtn");
-        scoreRow.appendChild(scoreUpBtn);
-        scoreRow.appendChild(scoreDownBtn);
-        directoriesActionMenuEl.appendChild(scoreRow);
+      const scrubSelectedBtn = makeActionBtn("Scrub", async () => {
+        WS.view.bulkActionMenuOpen = false;
+        await scrubFoldersByPaths(selectedDirs);
+        finalizeBulkSelectionAction();
+      });
+      if (!WS.meta.fsRootHandle) scrubSelectedBtn.disabled = true;
+      directoriesActionMenuEl.appendChild(scrubSelectedBtn);
 
-        directoriesActionMenuEl.appendChild(makeActionBtn("Tag selected", () => {
-          WS.view.bulkActionMenuOpen = false;
-          if (!selectedDirs.length) return;
-          finalizeBulkSelectionAction();
-          startBulkTagging(selectedDirs);
-        }));
-
-        directoriesActionMenuEl.appendChild(makeActionBtn(allFavorite ? "Unfavorite selected" : "Favorite selected", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaSetFavoriteBulk(selectedDirs, !allFavorite);
-          finalizeBulkSelectionAction();
-        }));
-
-        directoriesActionMenuEl.appendChild(makeActionBtn(allHidden ? "Unhide selected" : "Hide selected", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaSetHiddenBulk(selectedDirs, !allHidden);
-          finalizeBulkSelectionAction();
-        }));
-
-        const scrubSelectedBtn = makeActionBtn("Scrub", async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await scrubFoldersByPaths(selectedDirs);
-          finalizeBulkSelectionAction();
-        });
-        if (!WS.meta.fsRootHandle) scrubSelectedBtn.disabled = true;
-        directoriesActionMenuEl.appendChild(scrubSelectedBtn);
-
-        const setMergeBtn = makeActionBtn("Set Merge", async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await setMergeSelectedDirs();
-        });
-        if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
-        directoriesActionMenuEl.appendChild(setMergeBtn);
-
-        const deleteSelectedBtn = makeActionBtn("Delete selected folders", async () => {
-          const localPaths = selectedDirNodes
-            .filter(d => d && !d.onlineMeta)
-            .map(d => String(d.path || ""))
-            .filter(Boolean);
-          if (!localPaths.length) {
-            showStatusMessage("No folders selected.");
-            return;
-          }
-          const count = localPaths.length;
-          const confirmed = confirm(`Move ${count} selected folder${count === 1 ? "" : "s"} to trash?`);
-          if (!confirmed) return;
-          WS.view.bulkActionMenuOpen = false;
-          const moved = await moveFolderPathsToTrash(localPaths);
-          if (moved) finalizeBulkSelectionAction();
-        });
-        deleteSelectedBtn.classList.add("destructiveAction");
-        if (!WS.meta.fsRootHandle || !allLocalDirs) deleteSelectedBtn.disabled = true;
-        directoriesActionMenuEl.appendChild(deleteSelectedBtn);
-      }
+      const setMergeBtn = makeActionBtn("Set Merge", async () => {
+        WS.view.bulkActionMenuOpen = false;
+        await setMergeSelectedDirs();
+      });
+      if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
+      directoriesActionMenuEl.appendChild(setMergeBtn);
 
       const anchorBtn = findDirMenuButtonForPath(WS.view.bulkActionMenuAnchorPath);
       if (anchorBtn) {
@@ -11358,7 +8503,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (isViewingTagFolder()) {
           if (WS.view.tagFolderActiveMode === "favorites") emptyMsg = "No favorite folders.";
           else if (WS.view.tagFolderActiveMode === "hidden") emptyMsg = "No hidden folders.";
-          else if (WS.view.tagFolderActiveMode === "trash") emptyMsg = "Trash is empty.";
           else {
             const tagLabel = String(WS.view.tagFolderActiveTag || "");
             emptyMsg = tagLabel ? `No folders tagged '${tagLabel}'.` : "No tagged folders.";
@@ -11378,7 +8522,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             if (countText.length > maxMetaLen) maxMetaLen = countText.length;
           }
           if (showFolderSize) {
-            const sizeText = formatOnlineDownloadBytes(dirSizeByPath.get(String(entry.node?.path || "")) || 0);
+            const sizeText = formatBytes(dirSizeByPath.get(String(entry.node?.path || "")) || 0);
             if (sizeText.length > maxMetaLen) maxMetaLen = sizeText.length;
           }
         }
@@ -11403,7 +8547,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (isTagEntry) {
           const label = String(entry.label || entry.tag || "Tag");
           const countText = entry.count ? `${entry.count} folders` : "Tag folder";
-          const iconText = entry.special === "trash" ? "🗑" : "🏷";
+          const iconText = "🏷";
           if (renameActive) {
             const initialValue = TAG_ENTRY_RENAME_STATE.label || label;
             row.innerHTML = `
@@ -11432,38 +8576,25 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const p = entry.node?.path || "";
             const isFavorite = metaHasFavorite(p);
             const isHidden = metaHasHidden(p);
+            const processingDisabled = isPathOrAncestorProcessingDisabled(p);
             const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
             if (sel) row.classList.add("bulkSelected");
-            const isTrashFolder = isTrashVirtualDirNode(entry.node);
-            const onlineKind = entry.node?.onlineMeta?.kind || "";
-            const canRename = onlineKind ? true : !!WS.meta.fsRootHandle;
+            const canRename = !!WS.meta.fsRootHandle;
             const canBatchIndex = !!WS.meta.fsRootHandle;
             const canResetOrder = !!entry.node?.preserveOrder;
-            const canDeleteFolder = !onlineKind && !!WS.meta.fsRootHandle && !!entry.node?.parent;
             icon = "📁";
             name = dirDisplayName(entry.node);
             const dirMetaLines = [];
             if (showFolderItemCount) dirMetaLines.push(`${dirItemCount(entry.node)} items`);
-            if (isTrashFolder && entry.node?.trashOriginalPath) {
-              dirMetaLines.push(`From ${displayPath(entry.node.trashOriginalPath)}`);
-            }
-            if (showFolderSize) dirMetaLines.push(formatOnlineDownloadBytes(dirSizeByPath.get(String(p || "")) || 0));
+            if (showFolderSize) dirMetaLines.push(formatBytes(dirSizeByPath.get(String(p || "")) || 0));
             const statusBadges = [];
             if (isFavorite) statusBadges.push(`<span class="dirFavoriteHeart dirStatusBadge" title="Favorite">♥</span>`);
-            if (onlineKind) {
-              statusBadges.push(buildOnlineSourceIconHtml(entry.node, {
-                className: "dirOnlineBadge dirStatusBadge onlineSourceIcon",
-                imgClassName: "onlineSourceIconImg onlineDirBadgeIcon",
-                fallbackClassName: "onlineSourceIconFallback onlineDirBadgeFallback",
-                title: "Online"
-              }));
-            }
             if (isHidden) statusBadges.push(`<span class="dirHiddenBadge dirStatusBadge" title="Hidden">🙈</span>`);
             const statusBadgeHtml = statusBadges.length ? `<span class="dirStatusBadges">${statusBadges.join("")}</span>` : "";
             nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>${statusBadgeHtml}`;
             const sc = metaGetScore(p);
             const scoreMode = folderScoreDisplayMode();
-            if (!isTrashFolder && scoreMode !== "hidden") {
+            if (scoreMode !== "hidden") {
               const arrows = scoreMode === "show";
               voteHtml = `
           <div class="voteBox" data-path="${escapeHtml(p)}">
@@ -11477,41 +8608,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             // Menu (three dot / ⋯) for single-folder actions.
             let menuButtons = "";
             let menuTitle = "Folder menu";
-            if (isTrashFolder) {
-              menuTitle = "Trash folder menu";
-              menuButtons = `
-                <button type="button" data-action="restore-trash-folder"${entry.node?.trashOriginalPath ? "" : " disabled"}>Restore to original location</button>
-              `;
-            } else if (onlineKind === "profile") {
-              menuTitle = "Profile menu";
-              menuButtons = `
-                <div class="scoreRow">
-                  <button type="button" class="scoreBtn" data-action="score-up">+</button>
-                  <button type="button" class="scoreBtn" data-action="score-down">-</button>
-                </div>
-                <button type="button" data-action="download-online-folder">Download in place</button>
-                <button type="button" data-action="refresh-profile">Refresh profile</button>
-                <button type="button" data-action="scrub-folder"${WS.meta.fsRootHandle ? "" : " disabled"}>Scrub</button>
-                <button type="button" data-action="tag">Tag</button>
-                <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
-                <button type="button" data-action="rename-profile"${canRename ? "" : " disabled"}>Rename profile</button>
-                <button type="button" data-action="delete-profile">Delete profile</button>
-              `;
-            } else if (onlineKind === "post") {
-              menuTitle = "Post menu";
-              menuButtons = `
-                <div class="scoreRow">
-                  <button type="button" class="scoreBtn" data-action="score-up">+</button>
-                  <button type="button" class="scoreBtn" data-action="score-down">-</button>
-                </div>
-                <button type="button" data-action="download-online-folder">Download in place</button>
-                <button type="button" data-action="scrub-folder"${WS.meta.fsRootHandle ? "" : " disabled"}>Scrub</button>
-                <button type="button" data-action="tag">Tag</button>
-                <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
-                <button type="button" data-action="rename-post"${canRename ? "" : " disabled"}>Rename post</button>
-              `;
-            } else {
-              menuButtons = `
+            menuButtons = `
                 <div class="scoreRow">
                   <button type="button" class="scoreBtn" data-action="score-up">+</button>
                   <button type="button" class="scoreBtn" data-action="score-down">-</button>
@@ -11524,9 +8621,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                 <button type="button" data-action="scrub-folder"${WS.meta.fsRootHandle ? "" : " disabled"}>Scrub</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
-                <button type="button" class="destructiveAction" data-action="delete-folder"${canDeleteFolder ? "" : " disabled"}>Delete folder</button>
+                <button type="button" data-action="processing-toggle">${processingDisabled ? "Enable Processing" : "Disable Processing"}</button>
               `;
-            }
             const menuHtml = `
               <div class="dirMenu">
               <button class="dirMenuBtn" title="${escapeHtml(menuTitle)}">⋯</button>
@@ -11538,8 +8634,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const metaHtml = dirMetaLines.length
               ? `<div class="dirMeta">${dirMetaLines.map(line => `<div class="dirMetaLine">${escapeHtml(line)}</div>`).join("")}</div>`
               : "";
-            const onlineDlHtml = onlineKind ? buildOnlineDownloadMetaHtml(entry.node) : "";
-            rightHtml = `<div class="dirRight">${metaHtml}${onlineDlHtml}${menuHtml}</div>`;
+            rightHtml = `<div class="dirRight">${metaHtml}${menuHtml}</div>`;
           } else {
             const rec = WS.fileById.get(entry.id);
             const isVid = rec?.type === "video";
@@ -11551,18 +8646,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
             const bulkFileMenuActive = canBulk && sel && selectedFilesInViewCount > 0;
             const canLooseSetMerge = !!WS.meta.fsRootHandle;
-            const isOnlineFile = !!rec?.online;
             const fileMenuButtons = bulkFileMenuActive
-              ? (isOnlineFile
-                ? `<button type="button" data-action="rename-online-file"${selectedFilesInViewCount > 1 ? " disabled" : ""}>Rename file</button>`
-                : `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`)
-              : (isOnlineFile
-                ? `<button type="button" data-action="rename-online-file">Rename file</button>`
-                : `<button type="button" data-action="rename-file">Rename</button>`);
+              ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
+              : `<button type="button" data-action="rename-file">Rename</button>`;
             // File menu (three dot / ⋯) for single-file actions.
             fileMenuHtml = `
               <div class="dirMenu">
-              <button class="dirMenuBtn" title="${escapeHtml(isOnlineFile ? "Media menu" : "File menu")}">⋯</button>
+              <button class="dirMenuBtn" title="File menu">⋯</button>
               <div class="dropdownMenu${fileMenuOpen ? " open" : ""}">
                 ${fileMenuButtons}
               </div>
@@ -11571,12 +8661,8 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           }
 
           if (entry.kind === "dir" && (entry.node?.path || "") === (RENAME_EDIT_PATH || "")) {
-            const curName = String((entry.node?.onlineMeta?.kind === "profile" && getOnlineProfileRename(entry.node?.onlineMeta?.profileKey))
-              || (entry.node?.onlineMeta?.kind === "post" && getOnlinePostRename(entry.node?.onlineMeta?.profileKey, entry.node?.onlineMeta?.postKey))
-              || entry.node?.name || "");
-            const renamePlaceholder = entry.node?.onlineMeta?.kind === "profile"
-              ? "profile name"
-              : (entry.node?.onlineMeta?.kind === "post" ? "post name" : "folder name");
+            const curName = String(entry.node?.name || "");
+            const renamePlaceholder = "folder name";
             if (voteHtml) {
               row.innerHTML = `
                 <div class="dirIcon">${icon}</div>
@@ -11627,7 +8713,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
             } else {
               if (String(entry.id || "") === String(RENAME_EDIT_FILE_ID || "")) {
                 const rec = WS.fileById.get(entry.id);
-                const curName = String((rec?.online && rec?.onlineMeta && getOnlineFileRename(rec.onlineMeta.profileKey, rec.onlineMeta.fileUrl)) || rec?.name || "");
+                const curName = String(rec?.name || "");
                 const metaHtml = meta ? `<div class="dirMeta">${escapeHtml(meta)}</div>` : "";
                 row.innerHTML = `
                   <div class="dirIcon">${icon}</div>
@@ -11772,36 +8858,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                 e.stopPropagation();
                 const action = btn.getAttribute("data-action");
                 WS.view.dirActionMenuPath = "";
-                if (action === "download-online-folder") {
-                  materializeOnlineFolderNode(entry.node).catch(() => {});
-                  return;
-                }
-                if (action === "refresh-profile") {
-                  const profileKey = entry.node?.onlineMeta?.profileKey || "";
-                  if (!profileKey) return;
-                  refreshOnlineProfile(profileKey);
-                  return;
-                }
-                if (action === "delete-profile") {
-                  const profileKey = entry.node?.onlineMeta?.profileKey || "";
-                  if (!profileKey) return;
-                  const confirmed = confirm("Delete this profile and all related folders?");
-                  if (!confirmed) return;
-                  deleteOnlineProfile(profileKey);
-                  return;
-                }
-                if (action === "rename-profile" || action === "rename-post") {
-                  RENAME_EDIT_PATH = p;
-                  TAG_EDIT_PATH = null;
-                  renderDirectoriesPane(true);
-                  setTimeout(() => {
-                    const input = directoriesListEl.querySelector(".dirRow.selected .renameEditInput") || row.querySelector(".renameEditInput");
-                    if (input) {
-                      try { input.focus(); input.select(); } catch {}
-                    }
-                  }, 0);
-                  return;
-                }
                 if (action === "tag") {
                   TAG_EDIT_PATH = p;
                   RENAME_EDIT_PATH = null;
@@ -11862,22 +8918,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                   await scrubFoldersByPaths([p]);
                   return;
                 }
-                if (action === "restore-trash-folder") {
-                  const trashName = String(entry.node?.trashName || "").trim();
-                  if (!trashName) {
-                    showStatusMessage("Trash folder cannot be restored.");
-                    return;
-                  }
-                  const source = String(entry.node?.trashOriginalPath || "").trim();
-                  if (!source) {
-                    showStatusMessage("Original folder location is unknown.");
-                    return;
-                  }
-                  const confirmed = confirm(`Restore folder to '${displayPath(source)}'?`);
-                  if (!confirmed) return;
-                  await restoreTrashFoldersByNames([trashName]);
-                  return;
-                }
                 if (action === "favorite") {
                   metaToggleFavorite(p);
                   return;
@@ -11886,15 +8926,20 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                   metaToggleHidden(p);
                   return;
                 }
-                if (action === "delete-folder") {
-                  if (!WS.meta.fsRootHandle) {
-                    showStatusMessage("Delete requires a writable folder.");
+                if (action === "processing-toggle") {
+                  const currentlyDisabled = isPathOrAncestorProcessingDisabled(p);
+                  const changed = metaSetProcessingDisabledRecursive(p, !currentlyDisabled);
+                  const stillDisabled = isPathOrAncestorProcessingDisabled(p);
+                  if (!changed && currentlyDisabled && stillDisabled) {
+                    showStatusMessage("Processing remains disabled by a parent folder.");
                     return;
                   }
-                  const label = displayPath(p) || dirDisplayName(entry.node) || "folder";
-                  const confirmed = confirm(`Move folder '${label}' to trash?`);
-                  if (!confirmed) return;
-                  await moveFolderPathsToTrash([p]);
+                  if (!changed) return;
+                  if (currentlyDisabled && stillDisabled) {
+                    showStatusMessage("Processing remains disabled by a parent folder.");
+                  } else {
+                    showStatusMessage((!currentlyDisabled) ? "Processing disabled for folder and subfolders." : "Processing enabled for folder and subfolders.");
+                  }
                   return;
                 }
                 if (action === "score-up") {
@@ -12014,19 +9059,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
                     showStatusMessage("Renaming files requires a writable folder.");
                     return;
                   }
-                  RENAME_EDIT_FILE_ID = String(entry.id || "");
-                  RENAME_EDIT_PATH = null;
-                  TAG_EDIT_PATH = null;
-                  renderDirectoriesPane(true);
-                  setTimeout(() => {
-                    const input = directoriesListEl.querySelector(".dirRow.selected .renameEditInput") || row.querySelector(".renameEditInput");
-                    if (input) {
-                      try { input.focus(); input.select(); } catch {}
-                    }
-                  }, 0);
-                  return;
-                }
-                if (action === "rename-online-file") {
                   RENAME_EDIT_FILE_ID = String(entry.id || "");
                   RENAME_EDIT_PATH = null;
                   TAG_EDIT_PATH = null;
@@ -12532,11 +9564,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
       if (!node) return;
-      if (isTrashVirtualDirNode(node)) {
-        showStatusMessage("Use folder menu to restore this trash folder.");
-        return;
-      }
-
       if (isViewingTagFolder()) {
         const selectedEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
         const selectedPath = (selectedEntry && selectedEntry.kind === "dir")
@@ -12613,13 +9640,12 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function ensureThumbUrl(rec) {
       if (!rec) return null;
       if (rec.type !== "image") return rec.thumbUrl || null;
-      if (rec.online && rec.url) return rec.url;
 
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const mode = opt ? String(opt.imageThumbSize || "medium") : "medium";
 
       if (mode === "high") {
-        if (mediaFilterEnabled()) {
+        if (thumbFiltersActive(rec)) {
           if (rec.thumbUrl && rec.thumbMode === "high") return rec.thumbUrl;
           if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
             try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
@@ -12799,8 +9825,83 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return opt ? String(opt.previewMode || "grid") : "grid";
     }
 
+    const SCROLL_IMAGE_EXTREME_RATIO = 2.2;
+    const TALL_SCROLL_TARGET_ASPECT = 2 / 3;
+
+    function getImageAspectForScrollDetect(rec, imgEl) {
+      const naturalW = Number(imgEl?.naturalWidth || 0);
+      const naturalH = Number(imgEl?.naturalHeight || 0);
+      if (naturalW > 0 && naturalH > 0) {
+        return naturalW / naturalH;
+      }
+      return normalizePreviewAspect(
+        rec?.previewAspect || rec?.thumbAspect || rec?.videoAspect || rec?.aspectRatio || rec?.aspect,
+        4 / 3
+      );
+    }
+
+    function detectScrollImageMode(rec, imgEl) {
+      if (!betaTallImageScrollDetectEnabled()) return "none";
+      if (!rec || rec.type !== "image") return "none";
+      if (isGifRecord(rec)) return "none";
+      const aspect = getImageAspectForScrollDetect(rec, imgEl);
+      if (aspect <= (1 / SCROLL_IMAGE_EXTREME_RATIO)) return "tall";
+      if (aspect >= SCROLL_IMAGE_EXTREME_RATIO) return "wide";
+      return "none";
+    }
+
+    function applyScrollImageMode(containerEl, imgEl, mode, resetScroll = false) {
+      const normalizedMode = (mode === "tall" || mode === "wide") ? mode : "none";
+      if (containerEl) {
+        containerEl.classList.toggle("tallScrollMode", normalizedMode === "tall");
+        containerEl.classList.toggle("wideScrollMode", normalizedMode === "wide");
+
+        if (normalizedMode === "tall") {
+          const h = Math.max(1, Number(containerEl.clientHeight || 0));
+          const w = Math.max(1, Number(containerEl.clientWidth || 0));
+          const targetW = Math.max(220, Math.min(w, Math.round(h * TALL_SCROLL_TARGET_ASPECT)));
+          containerEl.style.setProperty("--tall-scroll-max-width", `${targetW}px`);
+        } else {
+          containerEl.style.removeProperty("--tall-scroll-max-width");
+        }
+
+        if (resetScroll) {
+          containerEl.scrollTop = 0;
+          containerEl.scrollLeft = 0;
+        }
+      }
+      if (imgEl) {
+        imgEl.classList.toggle("tallScrollImage", normalizedMode === "tall");
+        imgEl.classList.toggle("wideScrollImage", normalizedMode === "wide");
+      }
+    }
+
+    function scrollImageFallbackCssFilter(rec, mode) {
+      if (mode === "none") return "none";
+      if (!rec || rec.type !== "image") return "none";
+      if (!mediaFilterEnabled()) return "none";
+      if (!mediaProcessingEnabledForTarget(rec)) return "none";
+      const filterMode = getMediaFilterForType();
+      const intensity = getMediaFilterIntensity();
+      const baseCfgRaw = (filterMode && filterMode !== "off") ? MEDIA_FILTER_CONFIGS[filterMode] : null;
+      const baseCfg = scaleBaseFilterConfig(baseCfgRaw, intensity);
+      const colorFilter = baseCfg && baseCfg.color ? String(baseCfg.color) : "none";
+      return colorFilter && colorFilter !== "none" ? colorFilter : "none";
+    }
+
+    function applyScrollImageProcessingFallback(imgEl, rec, mode) {
+      if (!imgEl) return;
+      const cssFilter = scrollImageFallbackCssFilter(rec, mode);
+      if (cssFilter && cssFilter !== "none") {
+        imgEl.style.filter = cssFilter;
+      } else {
+        imgEl.style.removeProperty("filter");
+      }
+    }
+
     function renderPreviewViewerItem(idx) {
       ensurePreviewFileElements();
+      applyScrollImageMode(previewViewportBox, previewImgEl, "none");
 
       if (!viewerItems.length) {
         if (previewImgEl) previewImgEl.style.display = "none";
@@ -12830,7 +9931,10 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (previewVideoEl) {
         try { previewVideoEl.pause(); } catch {}
         previewVideoEl.classList.remove("ready");
-        if (!willShowVideo) previewVideoEl.style.display = "none";
+        if (!willShowVideo) {
+          previewVideoEl.style.display = "none";
+          applyVideoCropToElement(previewVideoEl, null);
+        }
       }
       if (previewImgEl) {
         previewImgEl.classList.remove("ready");
@@ -12901,22 +10005,40 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
         previewVideoEl.onloadeddata = () => {
           previewVideoEl.classList.add("ready");
+          if (updateVideoCropFromElement(rec, previewVideoEl)) {
+            applyVideoCropToElement(previewVideoEl, rec);
+            kickVideoThumbsForPreview();
+            if (VIEWER_MODE) renderViewerItem(viewerIndex);
+          } else {
+            applyVideoCropToElement(previewVideoEl, rec);
+          }
           MediaFilterEngine.requestRender();
         };
 
         applyVideoPoster(previewVideoEl, rec);
+        applyVideoCropToElement(previewVideoEl, rec);
         const src = ensureMediaUrl(rec) || "";
         const same = previewVideoEl.src === src;
         if (!same) {
           previewVideoEl.src = src;
         }
         previewVideoEl.style.display = "block";
-        syncMediaFilterSurface("preview", previewVideoEl, previewViewportBox, "video");
+        previewVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
+        syncMediaFilterSurface("preview", previewVideoEl, previewViewportBox, "video", rec);
 
         applyVideoCarryToElement(previewVideoEl, rec.id);
 
         if (previewVideoEl.readyState >= 2) {
-          requestAnimationFrame(() => { previewVideoEl.classList.add("ready"); });
+          requestAnimationFrame(() => {
+            previewVideoEl.classList.add("ready");
+            if (updateVideoCropFromElement(rec, previewVideoEl)) {
+              applyVideoCropToElement(previewVideoEl, rec);
+              kickVideoThumbsForPreview();
+              if (VIEWER_MODE) renderViewerItem(viewerIndex);
+            } else {
+              applyVideoCropToElement(previewVideoEl, rec);
+            }
+          });
         }
         if (doAuto) { try { previewVideoEl.play(); } catch {} }
         else { try { previewVideoEl.pause(); } catch {} }
@@ -12926,16 +10048,50 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       previewImgEl.onload = () => {
         previewImgEl.classList.add("ready");
+        const imageMode = detectScrollImageMode(rec, previewImgEl);
+        applyScrollImageMode(previewViewportBox, previewImgEl, imageMode, false);
+        if (imageMode !== "none") {
+          clearMediaFilterSurface("preview", previewImgEl);
+          applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
+          previewImgEl.classList.remove("mediaHidden");
+        } else {
+          applyScrollImageProcessingFallback(previewImgEl, rec, "none");
+          syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image", rec);
+        }
         MediaFilterEngine.requestRender();
       };
       const src = ensureMediaUrl(rec) || "";
       const same = previewImgEl.src === src;
       if (!same) previewImgEl.src = src;
       previewImgEl.style.display = "block";
-      syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image");
+      const previewIsGif = isGifRecord(rec);
+      previewImgEl.setAttribute("data-is-gif", previewIsGif ? "1" : "0");
+      previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
+      const previewMode = detectScrollImageMode(rec, previewImgEl);
+      applyScrollImageMode(previewViewportBox, previewImgEl, previewMode, !same);
+      if (previewMode !== "none") {
+        clearMediaFilterSurface("preview", previewImgEl);
+        applyScrollImageProcessingFallback(previewImgEl, rec, previewMode);
+        previewImgEl.classList.remove("mediaHidden");
+      } else {
+        applyScrollImageProcessingFallback(previewImgEl, rec, "none");
+        syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image", rec);
+      }
 
       if (previewImgEl.complete && previewImgEl.naturalWidth > 0) {
-        requestAnimationFrame(() => { previewImgEl.classList.add("ready"); });
+        requestAnimationFrame(() => {
+          previewImgEl.classList.add("ready");
+          const imageMode = detectScrollImageMode(rec, previewImgEl);
+          applyScrollImageMode(previewViewportBox, previewImgEl, imageMode, false);
+          if (imageMode !== "none") {
+            clearMediaFilterSurface("preview", previewImgEl);
+            applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
+            previewImgEl.classList.remove("mediaHidden");
+          } else {
+            applyScrollImageProcessingFallback(previewImgEl, rec, "none");
+            syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image", rec);
+          }
+        });
       }
       preloadNextMedia(viewerItems, viewerIndex);
     }
@@ -13040,7 +10196,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       if (previewDisplayMode() === "expanded") {
         renderExpandedPreviewPane(dirNode, animate, keepScroll, prevScroll);
-        preloadOnlineMediaForDir(dirNode);
         return;
       }
 
@@ -13054,7 +10209,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       if (keepScroll) previewBodyEl.scrollTop = prevScroll;
-      preloadOnlineMediaForDir(dirNode);
     }
 
     previewBodyEl.addEventListener("scroll", () => {
@@ -13109,14 +10263,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const card = document.createElement("div");
       card.className = "folderCard";
       card.style.cursor = "pointer";
-      const icon = dirNode && dirNode.onlineMeta
-        ? buildOnlineSourceIconHtml(dirNode, {
-          className: "onlineSourceIcon",
-          imgClassName: "onlineSourceIconImg onlineFolderCardIcon",
-          fallbackClassName: "onlineSourceIconFallback onlineFolderCardIconFallback",
-          title: "Online folder"
-        })
-        : "📁";
+      const icon = "📁";
       const nm = dirDisplayName(dirNode) || "folder";
       const sc = metaGetScore(dirNode?.path || "");
       const scoreMode = folderScoreDisplayMode();
@@ -13154,12 +10301,177 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return card;
     }
 
+    function normalizePreviewAspect(value, fallback = 4 / 3) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) return fallback;
+      return Math.max(0.2, Math.min(6, n));
+    }
+
+    function previewRowTargetHeight() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const size = opt ? String(opt.mediaThumbUiSize || "medium") : "medium";
+      if (size === "small") return 180;
+      if (size === "large") return 280;
+      return 230;
+    }
+
+    function getPreviewAspectForRecord(rec) {
+      if (!rec) return 4 / 3;
+      return normalizePreviewAspect(
+        rec.previewAspect || rec.thumbAspect || rec.videoAspect || rec.aspectRatio || rec.aspect,
+        4 / 3
+      );
+    }
+
+    function applyFitInsideJustifiedLayout(gridEl) {
+      if (!gridEl || !gridEl.classList.contains("fitInsideJustified")) return;
+      const cards = Array.from(gridEl.querySelectorAll(".fileCard"))
+        .filter(card => !card.classList.contains("drag-placeholder") && !card.classList.contains("drag-hidden"));
+      if (!cards.length) return;
+
+      const computed = getComputedStyle(gridEl);
+      const gapRaw = parseFloat(computed.columnGap || computed.gap || "0");
+      const gap = Number.isFinite(gapRaw) && gapRaw >= 0 ? gapRaw : 0;
+      const gridWidth = Math.max(1, Math.floor(gridEl.clientWidth));
+      const targetH = previewRowTargetHeight();
+      const minH = Math.max(88, Math.round(targetH * 0.86));
+      const maxH = Math.max(minH, Math.round(targetH * 1.14));
+      const aspects = cards.map(card => normalizePreviewAspect(card.dataset.aspect, 4 / 3));
+      const prefix = [0];
+      for (let i = 0; i < aspects.length; i++) prefix.push(prefix[i] + aspects[i]);
+
+      const rowAspectSum = (start, end) => prefix[end + 1] - prefix[start];
+
+      const rowHeightFor = (rowAspect, rowCount, lastRow = false) => {
+        const gapsWidth = gap * Math.max(0, rowCount - 1);
+        const available = Math.max(1, gridWidth - gapsWidth);
+        const safeAspect = Math.max(0.01, rowAspect);
+        const fitted = available / safeAspect;
+        if (lastRow) {
+          const naturalWidth = safeAspect * targetH;
+          if (naturalWidth <= available) return targetH;
+          return Math.max(minH, Math.min(targetH, fitted));
+        }
+        return Math.max(minH, Math.min(maxH, fitted));
+      };
+
+      const rowCost = (rowAspect, rowCount, lastRow = false) => {
+        if (!rowCount || rowAspect <= 0) return Number.POSITIVE_INFINITY;
+        const gapsWidth = gap * Math.max(0, rowCount - 1);
+        const available = Math.max(1, gridWidth - gapsWidth);
+        const safeAspect = Math.max(0.01, rowAspect);
+        const fitted = available / safeAspect;
+        const rowH = rowHeightFor(rowAspect, rowCount, lastRow);
+        const used = safeAspect * rowH;
+        const fillError = lastRow
+          ? Math.max(0, (used - available) / available)
+          : Math.abs(available - used) / available;
+        const scaleError = Math.abs(rowH - targetH) / Math.max(1, targetH);
+        const crowdPenalty = fitted < minH ? ((minH - fitted) / Math.max(1, targetH)) * 4.2 : 0;
+        const sparsePenalty = (!lastRow && fitted > maxH) ? ((fitted - maxH) / Math.max(1, targetH)) * 2.6 : 0;
+        const singlePenalty = rowCount === 1 ? (lastRow ? 0.7 : 2.5) : 0;
+        return (fillError * (lastRow ? 0.55 : 1.75))
+          + (scaleError * 0.95)
+          + crowdPenalty
+          + sparsePenalty
+          + singlePenalty;
+      };
+
+      const applyRow = (rowCards, rowAspect, lastRow = false) => {
+        if (!rowCards.length) return;
+        const gapsWidth = gap * Math.max(0, rowCards.length - 1);
+        const available = Math.max(1, gridWidth - gapsWidth);
+        const rowH = rowHeightFor(rowAspect, rowCards.length, lastRow);
+        const rawWidths = rowCards.map((card) => {
+          const aspect = normalizePreviewAspect(card.dataset.aspect, 4 / 3);
+          return Math.max(56, rowH * aspect);
+        });
+        const widths = rawWidths.map((w) => Math.max(56, Math.round(w)));
+        if (!lastRow) {
+          const widthSum = widths.reduce((sum, w) => sum + w, 0);
+          let delta = Math.round(available - widthSum);
+          if (delta !== 0 && widths.length) {
+            const order = rawWidths
+              .map((w, idx) => ({ idx, frac: w - Math.floor(w) }))
+              .sort((a, b) => delta > 0 ? (b.frac - a.frac) : (a.frac - b.frac));
+            let guard = 0;
+            while (delta !== 0 && guard < (Math.abs(delta) * Math.max(1, order.length))) {
+              const idx = order[guard % order.length].idx;
+              if (delta > 0) {
+                widths[idx] += 1;
+                delta -= 1;
+              } else if (widths[idx] > 56) {
+                widths[idx] -= 1;
+                delta += 1;
+              }
+              guard++;
+            }
+          }
+        }
+        for (let i = 0; i < rowCards.length; i++) {
+          const card = rowCards[i];
+          const width = widths[i] || Math.max(56, Math.round(rowH));
+          card.style.setProperty("--fit-card-h", `${Math.round(rowH)}px`);
+          card.style.setProperty("--fit-card-w", `${width}px`);
+        }
+      };
+
+      const n = cards.length;
+      const dp = new Array(n + 1).fill(Number.POSITIVE_INFINITY);
+      const nextBreak = new Array(n).fill(n - 1);
+      dp[n] = 0;
+
+      for (let i = n - 1; i >= 0; i--) {
+        let best = Number.POSITIVE_INFINITY;
+        let bestEnd = i;
+        for (let end = i; end < n && end < i + 28; end++) {
+          const count = end - i + 1;
+          const rowAspect = rowAspectSum(i, end);
+          const isLast = end === n - 1;
+          const cost = rowCost(rowAspect, count, isLast);
+          const tail = isLast ? 0 : dp[end + 1];
+          if (!Number.isFinite(cost) || !Number.isFinite(tail)) continue;
+          const total = cost + tail;
+          if (total < best) {
+            best = total;
+            bestEnd = end;
+          }
+          const gapsWidth = gap * Math.max(0, count - 1);
+          const available = Math.max(1, gridWidth - gapsWidth);
+          const fitted = available / Math.max(0.01, rowAspect);
+          if (!isLast && count > 1 && fitted < (minH * 0.72)) break;
+        }
+        dp[i] = best;
+        nextBreak[i] = bestEnd;
+      }
+
+      let start = 0;
+      while (start < n) {
+        let end = nextBreak[start];
+        if (!Number.isFinite(end) || end < start || end >= n) end = start;
+        const rowCards = cards.slice(start, end + 1);
+        const rowAspect = rowAspectSum(start, end);
+        const isLast = end === n - 1;
+        applyRow(rowCards, rowAspect, isLast);
+        start = end + 1;
+      }
+    }
+
+    function refreshFitInsidePreviewGrids() {
+      if (previewThumbFitMode() !== "contain") return;
+      if (!previewBodyEl) return;
+      const grids = Array.from(previewBodyEl.querySelectorAll(".gridFiles.fitInsideJustified"));
+      for (const grid of grids) applyFitInsideJustifiedLayout(grid);
+    }
+
     function renderFilesGrid(ids, container, animate, dirNode) {
       const LIMIT = 800;
       if (!ids.length) return 0;
 
       const grid = document.createElement("div");
       grid.className = "gridFiles";
+      const useFitInsideJustified = previewThumbFitMode() === "contain";
+      if (useFitInsideJustified) grid.classList.add("fitInsideJustified");
       if (dirNode && canReorderFilesInPreviewDir(dirNode)) setupPreviewGridDrag(grid);
       const frag = document.createDocumentFragment();
 
@@ -13169,13 +10481,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         const rec = WS.fileById.get(id);
         if (!rec) continue;
 
-        const card = makePreviewFileCard(rec, animate, dirNode, ids);
+        const card = makePreviewFileCard(rec, animate, dirNode, ids, useFitInsideJustified);
         frag.appendChild(card);
         rendered++;
       }
 
       grid.appendChild(frag);
       container.appendChild(grid);
+      if (useFitInsideJustified) applyFitInsideJustifiedLayout(grid);
       return rendered;
     }
 
@@ -13350,7 +10663,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const cards = getPreviewGridCards(grid);
       if (!cards.length) {
         const ph = PREVIEW_DRAG_STATE.placeholder;
-        if (ph && ph.parentElement !== grid) grid.appendChild(ph);
+        if (ph) grid.appendChild(ph);
         return;
       }
       for (const card of cards) {
@@ -13369,7 +10682,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
       }
       const ph = PREVIEW_DRAG_STATE.placeholder;
-      if (ph && ph.parentElement !== grid) grid.appendChild(ph);
+      if (ph) grid.appendChild(ph);
     }
 
     function schedulePreviewDragUpdate(grid, x, y) {
@@ -13434,6 +10747,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (PREVIEW_DRAG_STATE.grid && PREVIEW_DRAG_STATE.grid !== grid) return;
         e.preventDefault();
         e.stopPropagation();
+        updatePreviewPlaceholderFromPoint(grid, e.clientX, e.clientY);
         const dirNode = PREVIEW_DRAG_STATE.dirNode;
         const dragId = PREVIEW_DRAG_STATE.draggedId;
         const ids = PREVIEW_DRAG_STATE.visibleIds || (dirNode ? getOrderedFileIdsForDir(dirNode) : []);
@@ -13470,9 +10784,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       });
     }
 
-    function makePreviewFileCard(rec, animate, dirNode, visibleIds) {
+    function makePreviewFileCard(rec, animate, dirNode, visibleIds, useFitInsideJustified = false) {
       const card = document.createElement("div");
       card.className = "fileCard";
+      if (useFitInsideJustified) {
+        card.classList.add("fitInsideCard");
+        card.dataset.aspect = String(getPreviewAspectForRecord(rec));
+      }
       card.style.cursor = "pointer";
       if (animate) card.classList.add("enter");
 
@@ -13487,6 +10805,21 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       } else {
         img.src = rec.videoThumbUrl || "";
         if (!img.src) img.style.objectFit = "contain";
+      }
+      if (useFitInsideJustified) {
+        img.addEventListener("load", () => {
+          const w = Number(img.naturalWidth) || 0;
+          const h = Number(img.naturalHeight) || 0;
+          if (w > 0 && h > 0) {
+            const aspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(rec));
+            rec.previewAspect = aspect;
+            card.dataset.aspect = String(aspect);
+            const grid = card.parentElement;
+            if (grid && grid.classList.contains("fitInsideJustified")) {
+              requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
+            }
+          }
+        });
       }
 
       const showPreviewFileTypeLabel = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFileTypeLabel === false);
@@ -13613,7 +10946,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function enqueueVideoThumb(rec) {
       if (!rec) return;
-      if (rec.online) return;
       WS.videoThumbQueue.push(rec.id);
     }
 
@@ -13702,15 +11034,18 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         setTimeout(done, 350);
       });
 
+      updateVideoCropFromElement(rec, v);
       const w = videoThumbWidthForOption();
-      const ar = (v.videoWidth && v.videoHeight) ? (v.videoWidth / v.videoHeight) : (4/3);
+      const cropRect = computeCroppedSourceRect(v.videoWidth || w, v.videoHeight || Math.max(1, Math.round(w / (4 / 3))), getVideoCropForRecord(rec));
+      const ar = (cropRect.sw && cropRect.sh) ? (cropRect.sw / cropRect.sh) : ((v.videoWidth && v.videoHeight) ? (v.videoWidth / v.videoHeight) : (4/3));
+      rec.previewAspect = normalizePreviewAspect(ar, 4 / 3);
       const h = Math.max(120, Math.round(w / ar));
 
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      renderFilteredToCanvas(ctx, v, v.videoWidth || w, v.videoHeight || h, w, h, getMediaFilterForType(), true);
+      renderFilteredToCanvas(ctx, v, v.videoWidth || w, v.videoHeight || h, w, h, getMediaFilterForType(), true, rec);
 
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", mode === "high" ? 0.75 : 0.6));
       if (!blob) return;
@@ -13725,7 +11060,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     function enqueueImageThumb(rec) {
       if (!rec) return;
       if (rec.type !== "image") return;
-      if (rec.online) return;
       WS.imageThumbQueue.push(rec.id);
       drainImageThumbQueue();
     }
@@ -13738,7 +11072,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (!rec || rec.type !== "image") continue;
 
         const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-        if (mode === "high" && !thumbFiltersActive()) continue;
+        if (mode === "high" && !thumbFiltersActive(rec)) continue;
         if (rec.thumbUrl && rec.thumbMode === mode) continue;
 
         WS.imageThumbActive++;
@@ -13752,7 +11086,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     async function generateImageThumb(rec) {
       const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-      if (mode === "high" && !thumbFiltersActive()) {
+      if (mode === "high" && !thumbFiltersActive(rec)) {
         rec.thumbMode = "high";
         return;
       }
@@ -13771,13 +11105,14 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       if (!bmp) return;
 
       const ar = (bmp.width && bmp.height) ? (bmp.width / bmp.height) : (4/3);
+      rec.previewAspect = normalizePreviewAspect(ar, 4 / 3);
       const h = Math.max(120, Math.round(w / ar));
 
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      renderFilteredToCanvas(ctx, bmp, bmp.width || w, bmp.height || h, w, h, getMediaFilterForType(), true);
+      renderFilteredToCanvas(ctx, bmp, bmp.width || w, bmp.height || h, w, h, getMediaFilterForType(), true, rec);
 
       try { bmp.close(); } catch {}
 
@@ -14019,6 +11354,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         try { viewerVideoEl.pause(); } catch {}
         try { viewerVideoEl.removeAttribute("src"); } catch {}
         try { viewerVideoEl.load(); } catch {}
+        applyVideoCropToElement(viewerVideoEl, null);
         viewerVideoEl.classList.remove("ready");
         viewerVideoEl.classList.remove("mediaHidden");
         viewerVideoEl.style.display = "none";
@@ -14267,6 +11603,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
     function renderViewerItem(idx) {
       if (!viewerItems.length) {
+        applyScrollImageMode(viewport, viewerImgEl, "none");
         if (viewerImgEl) viewerImgEl.style.display = "none";
         if (viewerVideoEl) viewerVideoEl.style.display = "none";
         if (viewerFolderEl) viewerFolderEl.style.display = "none";
@@ -14278,6 +11615,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       }
 
       ensureViewerElements();
+      applyScrollImageMode(viewport, viewerImgEl, "none");
 
       const n = viewerItems.length;
       let i = idx;
@@ -14291,6 +11629,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         try { viewerVideoEl.pause(); } catch {}
         viewerVideoEl.classList.remove("ready");
         viewerVideoEl.style.display = "none";
+        applyVideoCropToElement(viewerVideoEl, null);
       }
       if (viewerImgEl) {
         viewerImgEl.classList.remove("ready");
@@ -14366,10 +11705,18 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         }
         viewerVideoEl.onloadeddata = () => {
           viewerVideoEl.classList.add("ready");
+          if (updateVideoCropFromElement(rec, viewerVideoEl)) {
+            applyVideoCropToElement(viewerVideoEl, rec);
+            kickVideoThumbsForPreview();
+            renderPreviewPane(false, true);
+          } else {
+            applyVideoCropToElement(viewerVideoEl, rec);
+          }
           MediaFilterEngine.requestRender();
         };
 
         applyVideoPoster(viewerVideoEl, rec);
+        applyVideoCropToElement(viewerVideoEl, rec);
         const src = ensureMediaUrl(rec) || "";
         const same = viewerVideoEl.src === src;
         if (!same) {
@@ -14377,12 +11724,22 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           try { viewerVideoEl.load(); } catch {}
         }
         viewerVideoEl.style.display = "block";
-        syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video");
+        viewerVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
+        syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", rec);
 
         applyVideoCarryToElement(viewerVideoEl, rec.id);
 
         if (viewerVideoEl.readyState >= 2) {
-          requestAnimationFrame(() => { viewerVideoEl.classList.add("ready"); });
+          requestAnimationFrame(() => {
+            viewerVideoEl.classList.add("ready");
+            if (updateVideoCropFromElement(rec, viewerVideoEl)) {
+              applyVideoCropToElement(viewerVideoEl, rec);
+              kickVideoThumbsForPreview();
+              renderPreviewPane(false, true);
+            } else {
+              applyVideoCropToElement(viewerVideoEl, rec);
+            }
+          });
         }
         if (doAuto) { try { viewerVideoEl.play(); } catch {} }
         preloadNextMedia(viewerItems, viewerIndex);
@@ -14391,16 +11748,50 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
 
       viewerImgEl.onload = () => {
         viewerImgEl.classList.add("ready");
+        const imageMode = detectScrollImageMode(rec, viewerImgEl);
+        applyScrollImageMode(viewport, viewerImgEl, imageMode, false);
+        if (imageMode !== "none") {
+          clearMediaFilterSurface("viewer", viewerImgEl);
+          applyScrollImageProcessingFallback(viewerImgEl, rec, imageMode);
+          viewerImgEl.classList.remove("mediaHidden");
+        } else {
+          applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
+          syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
+        }
         MediaFilterEngine.requestRender();
       };
       const src = ensureMediaUrl(rec) || "";
       const same = viewerImgEl.src === src;
       if (!same) viewerImgEl.src = src;
       viewerImgEl.style.display = "block";
-      syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image");
+      const viewerIsGif = isGifRecord(rec);
+      viewerImgEl.setAttribute("data-is-gif", viewerIsGif ? "1" : "0");
+      viewerImgEl.setAttribute("data-dir-path", rec.dirPath || "");
+      const viewerMode = detectScrollImageMode(rec, viewerImgEl);
+      applyScrollImageMode(viewport, viewerImgEl, viewerMode, !same);
+      if (viewerMode !== "none") {
+        clearMediaFilterSurface("viewer", viewerImgEl);
+        applyScrollImageProcessingFallback(viewerImgEl, rec, viewerMode);
+        viewerImgEl.classList.remove("mediaHidden");
+      } else {
+        applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
+        syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
+      }
 
       if (viewerImgEl.complete && viewerImgEl.naturalWidth > 0) {
-        requestAnimationFrame(() => { viewerImgEl.classList.add("ready"); });
+        requestAnimationFrame(() => {
+          viewerImgEl.classList.add("ready");
+          const imageMode = detectScrollImageMode(rec, viewerImgEl);
+          applyScrollImageMode(viewport, viewerImgEl, imageMode, false);
+          if (imageMode !== "none") {
+            clearMediaFilterSurface("viewer", viewerImgEl);
+            applyScrollImageProcessingFallback(viewerImgEl, rec, imageMode);
+            viewerImgEl.classList.remove("mediaHidden");
+          } else {
+            applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
+            syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
+          }
+        });
       }
       preloadNextMedia(viewerItems, viewerIndex);
     }
@@ -14674,24 +12065,13 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
     const MEDIA_FILTER_CYCLE = [
       { value: "off", label: "Off" },
       { value: "vibrant", label: "Vibrant" },
-      { value: "cinematic", label: "Cinematic" },
-      { value: "orangeTeal", label: "Orange+Teal" },
-      { value: "bw", label: "Black + White" },
-      { value: "uv", label: "UV Camera" },
       { value: "infrared", label: "Infrared Camera" }
     ];
 
     const COLOR_SCHEME_CYCLE = [
       { value: "classic", label: "Classic Dark" },
       { value: "light", label: "Light" },
-      { value: "superdark", label: "OLED Dark" },
-      { value: "synthwave", label: "Synthwave" },
-      { value: "verdant", label: "Verdant" },
-      { value: "azure", label: "Azure" },
-      { value: "ember", label: "Ember" },
-      { value: "amber", label: "Amber" },
-      { value: "retro90s", label: "Retro 90s" },
-      { value: "retro90s-dark", label: "Retro 90s Dark" }
+      { value: "superdark", label: "OLED Dark" }
     ];
 
     const VIDEO_END_BEHAVIOR_CYCLE = [
@@ -14699,6 +12079,47 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       { value: "next", label: "Advance to next item" },
       { value: "stop", label: "Stop at end" }
     ];
+
+    const ANIMATED_FILTER_CYCLE = [
+      { value: "off", label: "Off" },
+      { value: "on", label: "On" },
+      { value: "videos", label: "Videos only" }
+    ];
+
+    const SLIDER_KEYBIND_CONFIG = {
+      stepMediaFilterIntensity: {
+        keys: ["mediaFilterIntensity"],
+        min: 0,
+        max: 1,
+        step: 0.05,
+        label: "Media filter intensity",
+        format: (value) => `${Math.round(clampNumber(value, 0, 1, 1) * 100)}%`
+      },
+      stepPixelationResolution: {
+        keys: ["crtPixelateResolution"],
+        min: 2,
+        max: 8,
+        step: 0.5,
+        label: "Pixelation resolution",
+        format: (value) => `${Number(clampNumber(value, 2, 8, 4).toFixed(1)).toString()}x`
+      },
+      stepFilmGrainAmount: {
+        keys: ["crtGrainAmount"],
+        min: 0,
+        max: 0.25,
+        step: 0.01,
+        label: "Film grain amount",
+        format: (value) => `${Math.round(clampNumber(value, 0, 0.25, 0.06) * 100)}%`
+      },
+      stepVhsIntensity: {
+        keys: ["vhsBlurAmount", "vhsChromaAmount"],
+        min: 0,
+        max: 3,
+        step: 0.1,
+        label: "VHS intensity",
+        format: (value) => Number(clampNumber(value, 0, 3, 1.2).toFixed(1)).toString()
+      }
+    };
 
     function cycleFilterMode() {
       const m = WS.view.filterMode;
@@ -14720,14 +12141,17 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       showStatusMessage(`Folder behavior: ${WS.view.folderBehavior}`);
     }
 
-    function setOptionValue(key, value) {
+    function setOptionValues(nextValues) {
       if (!WS.meta) return null;
-      const next = {};
-      next[key] = value;
-      WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
+      WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, nextValues || {}));
       WS.meta.dirty = true;
       metaScheduleSave();
-      return WS.meta.options ? WS.meta.options[key] : null;
+      return WS.meta.options || null;
+    }
+
+    function setOptionValue(key, value) {
+      const options = setOptionValues({ [key]: value });
+      return options ? options[key] : null;
     }
 
     function toggleOptionValue(key) {
@@ -14749,8 +12173,53 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return entry ? entry.label : String(value || "");
     }
 
+    function decimalPlaces(value) {
+      const raw = String(value);
+      const dot = raw.indexOf(".");
+      if (dot < 0) return 0;
+      return raw.length - dot - 1;
+    }
+
+    function stepRangeOptionValue(keys, min, max, step) {
+      if (!WS.meta) return null;
+      const targetKeys = Array.isArray(keys) ? keys.filter(Boolean) : [String(keys || "")];
+      if (!targetKeys.length) return null;
+      const options = WS.meta.options || {};
+      let total = 0;
+      let count = 0;
+      for (const key of targetKeys) {
+        const currentRaw = Number(options[key]);
+        if (!Number.isFinite(currentRaw)) continue;
+        total += clampNumber(currentRaw, min, max, min);
+        count++;
+      }
+      const current = count ? (total / count) : min;
+      const totalSteps = Math.max(1, Math.round((max - min) / step));
+      const currentStep = Math.max(0, Math.min(totalSteps, Math.round((current - min) / step)));
+      const nextStep = (currentStep + 1 > totalSteps) ? 0 : (currentStep + 1);
+      const places = Math.max(decimalPlaces(step), decimalPlaces(min), decimalPlaces(max));
+      const factor = Math.pow(10, places);
+      const nextRaw = min + (nextStep * step);
+      const next = Math.round(nextRaw * factor) / factor;
+      const nextValue = clampNumber(next, min, max, min);
+      const updates = {};
+      targetKeys.forEach((key) => {
+        updates[key] = nextValue;
+      });
+      setOptionValues(updates);
+      return nextValue;
+    }
+
     function handleExtrasKeybindAction(action) {
       if (!action || !WS.meta) return false;
+      const sliderCfg = SLIDER_KEYBIND_CONFIG[action];
+      if (sliderCfg) {
+        const next = stepRangeOptionValue(sliderCfg.keys, sliderCfg.min, sliderCfg.max, sliderCfg.step);
+        applyMediaFilterFromOptions();
+        const valueLabel = typeof sliderCfg.format === "function" ? sliderCfg.format(next) : String(next);
+        showStatusMessage(`${sliderCfg.label}: ${valueLabel}`);
+        return true;
+      }
       switch (action) {
         case "cycleMediaFilter": {
           const next = cycleOptionValue("mediaFilter", MEDIA_FILTER_CYCLE);
@@ -14801,9 +12270,9 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           return true;
         }
         case "toggleAnimatedFilters": {
-          const next = toggleOptionValue("animatedMediaFilters");
+          const next = cycleOptionValue("animatedMediaFilters", ANIMATED_FILTER_CYCLE);
           applyMediaFilterFromOptions();
-          showStatusMessage(`Animated filters: ${next ? "On" : "Off"}`);
+          showStatusMessage(`Animated filters: ${labelForCycleValue(ANIMATED_FILTER_CYCLE, next)}`);
           return true;
         }
         case "cycleFolderSort": {
@@ -14877,6 +12346,24 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
           const next = toggleOptionValue("hideUnderscoresInNames");
           applyOptionsEverywhere(false);
           showStatusMessage(`Hide underscores: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleHideBeforeLastDash": {
+          const next = toggleOptionValue("hideBeforeLastDashInFileNames");
+          applyOptionsEverywhere(false);
+          showStatusMessage(`Trim before last dash: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleHideAfterFirstUnderscore": {
+          const next = toggleOptionValue("hideAfterFirstUnderscoreInFileNames");
+          applyOptionsEverywhere(false);
+          showStatusMessage(`Trim after first underscore: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleForceTitleCaps": {
+          const next = toggleOptionValue("forceTitleCaps");
+          applyOptionsEverywhere(false);
+          showStatusMessage(`Force Title Case: ${next ? "On" : "Off"}`);
           return true;
         }
         default:
@@ -15051,8 +12538,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const path = String(paths[0] || "");
       const dirNode = WS.dirByPath.get(path);
       if (!dirNode) return false;
-      const isOnline = !!(dirNode.onlineMeta && (dirNode.onlineMeta.kind === "profile" || dirNode.onlineMeta.kind === "post"));
-      if (!isOnline && !WS.meta.fsRootHandle) {
+      if (!WS.meta.fsRootHandle) {
         showStatusMessage("Rename requires a writable folder.");
         return false;
       }
@@ -15086,7 +12572,7 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       const id = String(ids[0] || "");
       const rec = WS.fileById.get(id);
       if (!rec) return false;
-      if (!rec.online && !WS.meta.fsRootHandle) {
+      if (!WS.meta.fsRootHandle) {
         showStatusMessage("Renaming files requires a writable folder.");
         return false;
       }
@@ -15152,15 +12638,26 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
       return false;
     }
 
+    // Hard-coded menu toggle: ` / ~ always opens/closes menu (not user-rebindable).
+    document.addEventListener("keydown", (e) => {
+      if (e.defaultPrevented) return;
+      if (e.code !== "Backquote") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      if (MENU_OPEN) closeMenu();
+      else openMenu();
+    }, true);
+
     document.addEventListener("keydown", (e) => {
       if (e.defaultPrevented) return;
 
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      const key = normalizeKeyValue(e.key);
+      const key = keybindValueFromEvent(e);
       if (!key) return;
 
-      if (key === ".") {
+      const baseKey = normalizeBaseKeyValue(e.key);
+      if (baseKey === ".") {
         if (isTextInputTarget(e.target)) return;
         if (VIEWER_MODE) return;
         if (directoriesSearchInput && !directoriesSearchInput.disabled) {
@@ -15185,8 +12682,6 @@ ${makeCheckRow("Force title caps in display names", "Apply Title Case to display
         if (handled) e.preventDefault();
         return;
       }
-
-      if (MENU_OPEN) return;
 
       if (isTextInputTarget(e.target)) return;
 
