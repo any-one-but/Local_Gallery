@@ -6845,6 +6845,20 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       return sampleRecursivePreviewRecords(dirs, limit, true);
     }
 
+    function pickRotatingPreviewSlotsForKey(baseKey, records, count = 4) {
+      const out = [];
+      const k = String(baseKey || "");
+      const pool = Array.isArray(records) ? records : [];
+      const laneCount = Math.max(1, Number(count) || 1);
+      if (!k || !pool.length) return out;
+      for (let i = 0; i < laneCount; i++) {
+        const laneKey = `${k}:lane:${i + 1}`;
+        const rec = pickRotatingPreviewRecordForKey(laneKey, pool);
+        out.push({ key: laneKey, rec: rec || null });
+      }
+      return out;
+    }
+
     function registerRotatingPreviewPool(key, records) {
       const k = String(key || "");
       if (!k) return;
@@ -9352,6 +9366,179 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       });
     }
 
+    function buildFolderMenuState(dirNode) {
+      const p = String(dirNode?.path || "");
+      const isFavorite = metaHasFavorite(p);
+      const isHidden = metaHasHidden(p);
+      const processingDisabled = isPathOrAncestorProcessingDisabled(p);
+      const canRename = !!WS.meta.fsRootHandle;
+      const canBatchIndex = !!WS.meta.fsRootHandle;
+      const canResetOrder = !!dirNode?.preserveOrder;
+      const folderThumbMode = metaGetFolderThumbnailMode(p);
+      const canToggleFolderThumbMode = folderEligibleForParentThumbnailPreset(dirNode);
+      return {
+        path: p,
+        isFavorite,
+        isHidden,
+        processingDisabled,
+        canRename,
+        canBatchIndex,
+        canResetOrder,
+        showSetNoThumbnail: canToggleFolderThumbMode && folderThumbMode !== "none",
+        showSetRotatingThumbnail: canToggleFolderThumbMode && folderThumbMode !== "rotate"
+      };
+    }
+
+    function buildFolderActionMenuDom(menuEl, state, onAction) {
+      if (!menuEl || !state || typeof onAction !== "function") return;
+      const makeBtn = (label, action, disabled = false) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = String(label || "");
+        btn.disabled = !!disabled;
+        btn.setAttribute("data-action", String(action || ""));
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onAction(String(action || ""));
+        });
+        return btn;
+      };
+      const appendTwoCol = (leftBtn, rightBtn) => {
+        const row = document.createElement("div");
+        row.className = "menuTwoColRow";
+        row.appendChild(leftBtn);
+        row.appendChild(rightBtn);
+        menuEl.appendChild(row);
+      };
+      const scoreRow = document.createElement("div");
+      scoreRow.className = "scoreRow";
+      scoreRow.appendChild(makeBtn("+", "score-up"));
+      scoreRow.appendChild(makeBtn("-", "score-down"));
+      menuEl.appendChild(scoreRow);
+
+      appendTwoCol(
+        makeBtn("Tag", "tag"),
+        makeBtn("Rename", "rename", !state.canRename)
+      );
+      appendTwoCol(
+        makeBtn(state.isFavorite ? "Unfavorite" : "Favorite", "favorite"),
+        makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden")
+      );
+      appendTwoCol(
+        makeBtn("Index 1", "batch-index-1", !state.canBatchIndex),
+        makeBtn("Index 2", "batch-index-2", !state.canBatchIndex)
+      );
+      menuEl.appendChild(makeBtn(state.processingDisabled ? "Enable Processing" : "Disable Processing", "processing-toggle"));
+      if (state.canResetOrder) menuEl.appendChild(makeBtn("Reset order", "reset-order"));
+      if (state.showSetNoThumbnail) menuEl.appendChild(makeBtn("No thumbnail", "thumbnail-none"));
+      if (state.showSetRotatingThumbnail) menuEl.appendChild(makeBtn("Use rotating thumbnail", "thumbnail-rotate"));
+    }
+
+    async function runFolderActionFromMenu(action, dirNode) {
+      const node = dirNode || null;
+      const p = String(node?.path || "");
+      if (!node || !p || !action) return false;
+      if (action === "tag") {
+        TAG_EDIT_PATH = p;
+        RENAME_EDIT_PATH = null;
+        selectDirectoryEntryByPath(p);
+        renderDirectoriesPane(true);
+        focusSelectedDirectoryInlineInput(".tagEditInput");
+        return true;
+      }
+      if (action === "rename") {
+        if (!WS.meta.fsRootHandle) {
+          showStatusMessage("Rename requires a writable folder.");
+          return true;
+        }
+        RENAME_EDIT_PATH = p;
+        TAG_EDIT_PATH = null;
+        selectDirectoryEntryByPath(p);
+        renderDirectoriesPane(true);
+        focusSelectedDirectoryInlineInput(".renameEditInput");
+        return true;
+      }
+      if (action === "batch-index-1") {
+        if (!WS.meta.fsRootHandle) {
+          showStatusMessage("Renaming files requires a writable folder.");
+          return true;
+        }
+        batchIndexFolderFiles(node);
+        return true;
+      }
+      if (action === "batch-index-2") {
+        if (!WS.meta.fsRootHandle) {
+          showStatusMessage("Renaming files requires a writable folder.");
+          return true;
+        }
+        batchIndexChildFolderFiles(node);
+        return true;
+      }
+      if (action === "reset-order") {
+        resetDirFileOrder(node, {
+          silent: node !== WS.nav.dirNode,
+          selectId: null
+        });
+        if (node !== WS.nav.dirNode) showStatusMessage("Order reset.");
+        return true;
+      }
+      if (action === "favorite") {
+        metaToggleFavorite(p);
+        return true;
+      }
+      if (action === "hidden") {
+        metaToggleHidden(p);
+        return true;
+      }
+      if (action === "processing-toggle") {
+        const currentlyDisabled = isPathOrAncestorProcessingDisabled(p);
+        const changed = metaSetProcessingDisabledRecursive(p, !currentlyDisabled);
+        const stillDisabled = isPathOrAncestorProcessingDisabled(p);
+        if (!changed && currentlyDisabled && stillDisabled) {
+          showStatusMessage("Processing remains disabled by a parent folder.");
+          return true;
+        }
+        if (!changed) return true;
+        if (currentlyDisabled && stillDisabled) {
+          showStatusMessage("Processing remains disabled by a parent folder.");
+        } else {
+          showStatusMessage((!currentlyDisabled) ? "Processing disabled for folder and subfolders." : "Processing enabled for folder and subfolders.");
+        }
+        return true;
+      }
+      if (action === "thumbnail-rotate") {
+        const changed = metaSetFolderThumbnailRotate(p);
+        if (!changed) return true;
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+        showStatusMessage("Folder thumbnail set to rotating.");
+        return true;
+      }
+      if (action === "thumbnail-none") {
+        const changed = metaSetFolderThumbnailNone(p);
+        if (!changed) return true;
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+        showStatusMessage("Folder thumbnail removed.");
+        return true;
+      }
+      if (action === "score-up") {
+        metaBumpScore(p, 1);
+        return true;
+      }
+      if (action === "score-down") {
+        metaBumpScore(p, -1);
+        return true;
+      }
+      return false;
+    }
+
     function openPreviewFolderActionMenu(dirNode, opts = {}) {
       if (!previewActionMenuEl || !dirNode) return;
       const p = String(dirNode.path || "");
@@ -9361,74 +9548,11 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
 
       const menu = previewActionMenuEl;
       menu.innerHTML = "";
-
-      const addBtn = (label, onClick, disabled = false) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = label;
-        btn.disabled = !!disabled;
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          closePreviewContextMenu();
-          onClick();
-        });
-        menu.appendChild(btn);
-      };
-
-      addBtn("Open folder", () => {
-        navigateToDirectory(dirNode);
+      const menuState = buildFolderMenuState(dirNode);
+      buildFolderActionMenuDom(menu, menuState, (action) => {
+        closePreviewContextMenu();
+        runFolderActionFromMenu(action, dirNode).catch(() => {});
       });
-
-      addBtn(metaHasFavorite(p) ? "Unfavorite" : "Favorite", () => {
-        metaToggleFavorite(p);
-      });
-
-      addBtn(metaHasHidden(p) ? "Unhide" : "Hide", () => {
-        metaToggleHidden(p);
-      });
-
-      const processingDisabled = isPathOrAncestorProcessingDisabled(p);
-      addBtn(processingDisabled ? "Enable Processing" : "Disable Processing", () => {
-        const changed = metaSetProcessingDisabledRecursive(p, !processingDisabled);
-        const stillDisabled = isPathOrAncestorProcessingDisabled(p);
-        if (!changed && processingDisabled && stillDisabled) {
-          showStatusMessage("Processing remains disabled by a parent folder.");
-          return;
-        }
-        if (!changed) return;
-        if (processingDisabled && stillDisabled) {
-          showStatusMessage("Processing remains disabled by a parent folder.");
-        } else {
-          showStatusMessage((!processingDisabled) ? "Processing disabled for folder and subfolders." : "Processing enabled for folder and subfolders.");
-        }
-      });
-
-      const folderThumbMode = metaGetFolderThumbnailMode(p);
-      const canToggleFolderThumbMode = folderEligibleForParentThumbnailPreset(dirNode);
-      if (canToggleFolderThumbMode && folderThumbMode !== "none") {
-        addBtn("No thumbnail", () => {
-          const changed = metaSetFolderThumbnailNone(p);
-          if (!changed) return;
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Folder thumbnail removed.");
-        });
-      }
-      if (canToggleFolderThumbMode && folderThumbMode !== "rotate") {
-        addBtn("Use rotating thumbnail", () => {
-          const changed = metaSetFolderThumbnailRotate(p);
-          if (!changed) return;
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Folder thumbnail set to rotating.");
-        });
-      }
 
       PREVIEW_CONTEXT_MENU_STATE = { dirPath: p };
       requestAnimationFrame(() => {
@@ -9959,21 +10083,35 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
           const tagRotateKey = entry.special
             ? `tag:${tagRotateScope}:special:${entry.special}`
             : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
-          const leadRec = tagPool.length ? pickRotatingPreviewRecordForKey(tagRotateKey, tagPool) : null;
-          let inlinePreviewHtml = "";
-          if (leadRec) {
-            registerRotatingPreviewPool(tagRotateKey, tagPool);
-            const previewId = String(leadRec.id || "");
-            if (leadRec.type === "video" && !leadRec.videoThumbUrl) enqueueVideoThumb(leadRec);
-            const previewSrc = leadRec.type === "video"
-              ? getVideoPosterForRecord(leadRec)
-              : (ensureThumbUrl(leadRec) || "");
-            const previewAspect = getPreviewAspectForRecord(leadRec);
-            if (previewSrc) {
-              inlinePreviewHtml = `<img class="dirInlinePreview" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+          const quadSlots = tagPool.length ? pickRotatingPreviewSlotsForKey(tagRotateKey, tagPool, 4) : [];
+          let squareMediaHtml = `<div class="dirSquareFallback">${escapeHtml(iconText)}</div>`;
+          if (quadSlots.length) {
+            const quadHtml = [];
+            for (let i = 0; i < quadSlots.length; i++) {
+              const slot = quadSlots[i];
+              const rec = slot && slot.rec ? slot.rec : null;
+              if (!rec) {
+                quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`);
+                continue;
+              }
+              const previewId = String(rec.id || "");
+              if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
+              const previewSrc = rec.type === "video"
+                ? getVideoPosterForRecord(rec)
+                : (ensureThumbUrl(rec) || "");
+              const previewAspect = getPreviewAspectForRecord(rec);
+              if (!previewSrc) {
+                quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`);
+                continue;
+              }
+              quadHtml.push(
+                `<div class="dirTagQuadCell"><img class="dirInlinePreview dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`
+              );
+            }
+            if (quadHtml.length) {
+              squareMediaHtml = `<div class="dirTagQuadGrid">${quadHtml.join("")}</div>`;
             }
           }
-          const squareMediaHtml = inlinePreviewHtml || `<div class="dirSquareFallback">${escapeHtml(iconText)}</div>`;
           const canOpenTagMenu = !entry.special && !entry.placeholder && !!String(entry.tag || "").trim() && countNum > 0;
           const tagMenuHtml = `
             <div class="dirMenu dirTagMenu">
@@ -10426,116 +10564,7 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
                 e.stopPropagation();
                 const action = btn.getAttribute("data-action");
                 WS.view.dirActionMenuPath = "";
-                if (action === "tag") {
-                  TAG_EDIT_PATH = p;
-                  RENAME_EDIT_PATH = null;
-                  renderDirectoriesPane(true);
-                  setTimeout(() => {
-                    const input = directoriesListEl.querySelector(".dirRow.selected .tagEditInput") || row.querySelector(".tagEditInput");
-                    if (input) {
-                      try { input.focus(); input.select(); } catch {}
-                    }
-                  }, 0);
-                  return;
-                }
-                if (action === "rename") {
-                  if (!WS.meta.fsRootHandle) {
-                    showStatusMessage("Rename requires a writable folder.");
-                    return;
-                  }
-                  RENAME_EDIT_PATH = p;
-                  TAG_EDIT_PATH = null;
-                  renderDirectoriesPane(true);
-                  setTimeout(() => {
-                    const input = directoriesListEl.querySelector(".dirRow.selected .renameEditInput") || row.querySelector(".renameEditInput");
-                    if (input) {
-                      try { input.focus(); input.select(); } catch {}
-                    }
-                  }, 0);
-                  return;
-                }
-                if (action === "batch-index-1") {
-                  if (!WS.meta.fsRootHandle) {
-                    showStatusMessage("Renaming files requires a writable folder.");
-                    return;
-                  }
-                  batchIndexFolderFiles(entry.node);
-                  return;
-                }
-                if (action === "batch-index-2") {
-                  if (!WS.meta.fsRootHandle) {
-                    showStatusMessage("Renaming files requires a writable folder.");
-                    return;
-                  }
-                  batchIndexChildFolderFiles(entry.node);
-                  return;
-                }
-                if (action === "reset-order") {
-                  if (entry && entry.node) {
-                    resetDirFileOrder(entry.node, {
-                      silent: entry.node !== WS.nav.dirNode,
-                      selectId: null
-                    });
-                    if (entry.node !== WS.nav.dirNode) {
-                      showStatusMessage("Order reset.");
-                    }
-                  }
-                  return;
-                }
-                if (action === "favorite") {
-                  metaToggleFavorite(p);
-                  return;
-                }
-                if (action === "hidden") {
-                  metaToggleHidden(p);
-                  return;
-                }
-                if (action === "processing-toggle") {
-                  const currentlyDisabled = isPathOrAncestorProcessingDisabled(p);
-                  const changed = metaSetProcessingDisabledRecursive(p, !currentlyDisabled);
-                  const stillDisabled = isPathOrAncestorProcessingDisabled(p);
-                  if (!changed && currentlyDisabled && stillDisabled) {
-                    showStatusMessage("Processing remains disabled by a parent folder.");
-                    return;
-                  }
-                  if (!changed) return;
-                  if (currentlyDisabled && stillDisabled) {
-                    showStatusMessage("Processing remains disabled by a parent folder.");
-                  } else {
-                    showStatusMessage((!currentlyDisabled) ? "Processing disabled for folder and subfolders." : "Processing enabled for folder and subfolders.");
-                  }
-                  return;
-                }
-                if (action === "thumbnail-rotate") {
-                  const changed = metaSetFolderThumbnailRotate(p);
-                  if (!changed) return;
-                  renderDirectoriesPane(true);
-                  renderPreviewPane(false, true);
-                  syncButtons();
-                  kickVideoThumbsForPreview();
-                  kickImageThumbsForPreview();
-                  showStatusMessage("Folder thumbnail set to rotating.");
-                  return;
-                }
-                if (action === "thumbnail-none") {
-                  const changed = metaSetFolderThumbnailNone(p);
-                  if (!changed) return;
-                  renderDirectoriesPane(true);
-                  renderPreviewPane(false, true);
-                  syncButtons();
-                  kickVideoThumbsForPreview();
-                  kickImageThumbsForPreview();
-                  showStatusMessage("Folder thumbnail removed.");
-                  return;
-                }
-                if (action === "score-up") {
-                  metaBumpScore(p, 1);
-                  return;
-                }
-                if (action === "score-down") {
-                  metaBumpScore(p, -1);
-                  return;
-                }
+                await runFolderActionFromMenu(action, entry.node);
               });
             });
             if (menuDropdown.classList.contains("open")) {
