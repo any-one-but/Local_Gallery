@@ -363,132 +363,12 @@
       return out;
     }
 
-    function defaultUsageStats() {
-      return {
-        schema: 1,
-        updatedAt: 0,
-        fileByPath: {},
-        heatmapByLocalHour: {},
-        folderVisits: {},
-        compareDecisions: {},
-        scoreSnapshots: []
-      };
-    }
-
-    function normalizeUsageStats(raw) {
-      const src = (raw && typeof raw === "object") ? raw : {};
-      const out = defaultUsageStats();
-      out.updatedAt = Number.isFinite(Number(src.updatedAt)) ? Number(src.updatedAt) : 0;
-
-      const fileByPath = (src.fileByPath && typeof src.fileByPath === "object") ? src.fileByPath : {};
-      const nextFiles = {};
-      for (const key of Object.keys(fileByPath)) {
-        const relPath = normalizeWorkspaceRelPath(key);
-        if (!relPath) continue;
-        const item = fileByPath[key] && typeof fileByPath[key] === "object" ? fileByPath[key] : {};
-        const views = Math.max(0, Number(item.views) || 0);
-        const lastViewedAt = Math.max(0, Number(item.lastViewedAt) || 0);
-        const maxCompletion = clampNumber(Number(item.maxCompletion), 0, 1, 0);
-        const watchSeconds = Math.max(0, Number(item.watchSeconds) || 0);
-        nextFiles[relPath] = {
-          views: views | 0,
-          lastViewedAt: lastViewedAt | 0,
-          maxCompletion,
-          watchSeconds,
-          type: String(item.type || ""),
-          name: String(item.name || ""),
-          dirPath: String(item.dirPath || "")
-        };
-      }
-      out.fileByPath = nextFiles;
-
-      const heatmapByLocalHour = (src.heatmapByLocalHour && typeof src.heatmapByLocalHour === "object")
-        ? src.heatmapByLocalHour
-        : {};
-      const nextHeat = {};
-      for (const key of Object.keys(heatmapByLocalHour)) {
-        if (!/^[0-6]-([0-9]|1[0-9]|2[0-3])$/.test(key)) continue;
-        const count = Math.max(0, Number(heatmapByLocalHour[key]) || 0);
-        if (!count) continue;
-        nextHeat[key] = count | 0;
-      }
-      out.heatmapByLocalHour = nextHeat;
-
-      const folderVisits = (src.folderVisits && typeof src.folderVisits === "object") ? src.folderVisits : {};
-      const nextVisits = {};
-      for (const key of Object.keys(folderVisits)) {
-        const path = normalizeDirPathValue(key);
-        if (path == null) continue;
-        const count = Math.max(0, Number(folderVisits[key]) || 0);
-        if (!count) continue;
-        nextVisits[path] = count | 0;
-      }
-      out.folderVisits = nextVisits;
-
-      const compareDecisions = (src.compareDecisions && typeof src.compareDecisions === "object")
-        ? src.compareDecisions
-        : {};
-      const nextDecisions = {};
-      for (const key of Object.keys(compareDecisions)) {
-        const item = compareDecisions[key] && typeof compareDecisions[key] === "object" ? compareDecisions[key] : null;
-        if (!item) continue;
-        const leftPath = normalizeWorkspaceRelPath(item.leftPath || "");
-        const rightPath = normalizeWorkspaceRelPath(item.rightPath || "");
-        const winnerPath = normalizeWorkspaceRelPath(item.winnerPath || "");
-        if (!leftPath || !rightPath || !winnerPath) continue;
-        if (winnerPath !== leftPath && winnerPath !== rightPath) continue;
-        const decidedAt = Math.max(0, Number(item.decidedAt) || 0);
-        const pairKey = usageStatsPairKey(leftPath, rightPath);
-        if (!pairKey) continue;
-        nextDecisions[pairKey] = {
-          leftPath,
-          rightPath,
-          winnerPath,
-          decidedAt: decidedAt | 0
-        };
-      }
-      out.compareDecisions = nextDecisions;
-
-      const rawSnapshots = Array.isArray(src.scoreSnapshots) ? src.scoreSnapshots : [];
-      const snapshots = [];
-      for (let i = 0; i < rawSnapshots.length; i++) {
-        const item = rawSnapshots[i] && typeof rawSnapshots[i] === "object" ? rawSnapshots[i] : null;
-        if (!item) continue;
-        const ts = Math.max(0, Number(item.ts) || 0);
-        const avgScore = Number(item.avgScore);
-        const folderCount = Math.max(0, Number(item.folderCount) || 0);
-        if (!ts || !Number.isFinite(avgScore) || !folderCount) continue;
-        snapshots.push({
-          ts: ts | 0,
-          avgScore,
-          folderCount: folderCount | 0
-        });
-      }
-      snapshots.sort((a, b) => a.ts - b.ts);
-      out.scoreSnapshots = snapshots.slice(-120);
-
-      return out;
-    }
-
-    function usageStatsFileKeyForRecord(rec) {
-      return normalizeWorkspaceRelPath(rec?.relPath || "");
-    }
-
-    function usageStatsPairKey(pathA, pathB) {
-      const a = normalizeWorkspaceRelPath(pathA);
-      const b = normalizeWorkspaceRelPath(pathB);
-      if (!a || !b || a === b) return "";
-      return a < b ? `${a}||${b}` : `${b}||${a}`;
-    }
-
     const MEDIA_FILTER_STATE = {
       mode: "off",
       animatedMode: "on"
     };
     let MEDIA_OVERLAY_STATE = null;
     let THUMB_FILTER_KEY = "";
-    let LAST_STATS_VIEW_EVENT = { path: "", at: 0 };
-    let LAST_STATS_FOLDER_VISIT = { context: "", at: 0 };
 
     const MEDIA_FILTER_CONFIGS = {
       vibrant: { color: "saturate(1.45) contrast(1.12) brightness(1.06) hue-rotate(-3deg)" },
@@ -2328,10 +2208,6 @@
       { id: "seekForward", label: "Video skip forward", hint: "Seek video forward.", section: "media" },
       { id: "playPause", label: "Pause/Play video", hint: "Toggle video playback.", section: "media" },
       { id: "muteToggle", label: "Mute/Unmute video", hint: "Toggle video mute.", section: "media" },
-      { id: "toggleComparePanel", label: "Toggle A/B compare panel", hint: "Open or close A/B compare using the selected file as anchor.", section: "media" },
-      { id: "comparePickLeft", label: "A/B winner left", hint: "Pick the left compare file as winner.", section: "media" },
-      { id: "comparePickRight", label: "A/B winner right", hint: "Pick the right compare file as winner.", section: "media" },
-      { id: "compareNextCandidate", label: "A/B next candidate", hint: "Swap in the next compare candidate on the right side.", section: "media" },
       { id: "jumpMinus50", label: "-50 items", hint: "Move selection up by 50 items.", section: "jump" },
       { id: "jumpMinus10", label: "-10 items", hint: "Move selection up by 10 items.", section: "jump" },
       { id: "jumpPlus10", label: "+10 items", hint: "Move selection down by 10 items.", section: "jump" },
@@ -2406,10 +2282,6 @@
       seekForward: "e",
       playPause: "Space",
       muteToggle: "m",
-      toggleComparePanel: "",
-      comparePickLeft: "",
-      comparePickRight: "",
-      compareNextCandidate: "",
       jumpMinus50: "Command+Shift+w",
       jumpMinus10: "Shift+w",
       jumpPlus10: "Shift+s",
@@ -2579,12 +2451,10 @@
         fsOptionsFileHandle: null,
         fsLegacyFileHandle: null,
         fsKeybindsFileHandle: null,
-        fsStatsFileHandle: null,
         saveTimer: null,
         dirty: false,
         options: normalizeOptions(null),
-        keybinds: defaultKeybinds(),
-        stats: normalizeUsageStats(null)
+        keybinds: defaultKeybinds()
       },
 
       view: {
@@ -2644,13 +2514,7 @@
         searchRootFavorites: [],
         searchRootIsHidden: false,
         searchRootHidden: [],
-        searchResults: [],
-        abCompare: {
-          active: false,
-          dirPath: "",
-          leftId: "",
-          rightId: ""
-        }
+        searchResults: []
       },
 
       // Directories Pane navigation state
@@ -2724,11 +2588,9 @@
       WS.meta.fsOptionsFileHandle = null;
       WS.meta.fsLegacyFileHandle = null;
       WS.meta.fsKeybindsFileHandle = null;
-      WS.meta.fsStatsFileHandle = null;
       WS.meta.dirty = false;
       WS.meta.options = normalizeOptions(null);
       WS.meta.keybinds = defaultKeybinds();
-      WS.meta.stats = normalizeUsageStats(null);
       if (WS.meta.saveTimer) { clearTimeout(WS.meta.saveTimer); WS.meta.saveTimer = null; }
 
       applyDefaultViewFromOptions();
@@ -2779,12 +2641,6 @@
       WS.view.searchRootIsHidden = false;
       WS.view.searchRootHidden = [];
       WS.view.searchResults = [];
-      WS.view.abCompare = {
-        active: false,
-        dirPath: "",
-        leftId: "",
-        rightId: ""
-      };
       if (WS.view.slideshowTimer) { clearInterval(WS.view.slideshowTimer); WS.view.slideshowTimer = null; }
       if (WS.view.statusTimeout) { clearTimeout(WS.view.statusTimeout); WS.view.statusTimeout = null; }
 
@@ -3514,107 +3370,6 @@
       setKeybindsStatus("Reset");
     }
 
-    function buildStatsDashboardHtml() {
-      const stats = usageStatsSummaryData();
-      const topViewed = stats.viewed.slice(0, 6);
-      const recent = stats.recent.slice(0, 6);
-      const orphans = stats.orphanFolders.slice(0, 5);
-      const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      let heatMax = 0;
-      for (const key of Object.keys(stats.heatmapByLocalHour || {})) {
-        const v = Math.max(0, Number(stats.heatmapByLocalHour[key]) || 0);
-        if (v > heatMax) heatMax = v;
-      }
-      const heatRows = [];
-      for (let day = 0; day < 7; day++) {
-        const cells = [];
-        for (let hour = 0; hour < 24; hour++) {
-          const key = `${day}-${hour}`;
-          const count = Math.max(0, Number(stats.heatmapByLocalHour[key]) || 0);
-          const intensity = heatMax > 0 ? (count / heatMax) : 0;
-          const pct = Math.round(intensity * 100);
-          cells.push(`<div class="statsHeatCell" style="--stats-intensity:${pct}%" title="${escapeStatsText(`${dayLabels[day]} ${String(hour).padStart(2, "0")}:00 · ${count} view${count === 1 ? "" : "s"}`)}"></div>`);
-        }
-        heatRows.push(`
-          <div class="statsHeatRow">
-            <div class="statsHeatDay">${dayLabels[day]}</div>
-            <div class="statsHeatCells">${cells.join("")}</div>
-          </div>
-        `);
-      }
-
-      const fmtList = (items, renderItem) => {
-        if (!items.length) return `<li class="statsEmpty">None yet.</li>`;
-        return items.map(renderItem).join("");
-      };
-
-      const topViewedHtml = fmtList(topViewed, (item) => {
-        const rel = relPathDisplayName(item.relPath || item.name || "");
-        return `<li><span class="statsLabel" title="${escapeStatsText(rel)}">${escapeStatsText(rel)}</span><span class="statsValue">${item.views}x</span></li>`;
-      });
-      const recentHtml = fmtList(recent, (item) => {
-        const rel = relPathDisplayName(item.relPath || item.name || "");
-        return `<li><span class="statsLabel" title="${escapeStatsText(rel)}">${escapeStatsText(rel)}</span><span class="statsValue">${escapeStatsText(formatStatsRelativeTime(item.lastViewedAt))}</span></li>`;
-      });
-      const orphanHtml = fmtList(orphans, (item) => {
-        return `<li><span class="statsLabel" title="${escapeStatsText(displayPath(item.path || item.name || ""))}">${escapeStatsText(item.name || item.path || "folder")}</span><span class="statsValue">${item.files}</span></li>`;
-      });
-
-      const completionPct = Math.round(clampNumber(stats.videoCompletionAvg, 0, 1, 0) * 100);
-      const trend = Number(stats.avgScoreDelta) || 0;
-      const trendSign = trend > 0 ? "+" : "";
-      const trendText = `${trendSign}${trend.toFixed(2)}`;
-      const snapshotCount = stats.latestScoreSnapshot ? Math.max(0, Number(stats.latestScoreSnapshot.folderCount) || 0) : 0;
-
-      return `
-        <div class="optSection statsDashboard">
-          <div class="optTitle">Stats dashboard</div>
-          <div class="optHint">Live local usage stats and folder-quality signals.</div>
-          <div class="statsSummaryGrid">
-            <div class="statsSummaryCard">
-              <div class="statsSummaryLabel">Views tracked</div>
-              <div class="statsSummaryValue">${stats.viewed.length}</div>
-            </div>
-            <div class="statsSummaryCard">
-              <div class="statsSummaryLabel">A/B decisions</div>
-              <div class="statsSummaryValue">${stats.compareDecisionCount}</div>
-            </div>
-            <div class="statsSummaryCard">
-              <div class="statsSummaryLabel">Avg video completion</div>
-              <div class="statsSummaryValue">${completionPct}%</div>
-            </div>
-            <div class="statsSummaryCard">
-              <div class="statsSummaryLabel">Folder score trend</div>
-              <div class="statsSummaryValue">${trendText}</div>
-              <div class="statsSummaryHint">${snapshotCount} folders in latest snapshot</div>
-            </div>
-          </div>
-          <div class="statsListsGrid">
-            <div class="statsListCard">
-              <div class="statsListTitle">Most viewed</div>
-              <ul>${topViewedHtml}</ul>
-            </div>
-            <div class="statsListCard">
-              <div class="statsListTitle">Recently viewed</div>
-              <ul>${recentHtml}</ul>
-            </div>
-            <div class="statsListCard">
-              <div class="statsListTitle">Orphaned content alerts</div>
-              <ul>${orphanHtml}</ul>
-            </div>
-          </div>
-          <div class="statsHeatmapCard">
-            <div class="statsListTitle">Activity heatmap</div>
-            <div class="statsHeatmap">${heatRows.join("")}</div>
-          </div>
-          <div class="statsActions">
-            <button id="opt_statsRefreshBtn" type="button" class="miniBtn">Refresh stats</button>
-            <button id="opt_statsResetBtn" type="button" class="miniBtn">Reset stats</button>
-          </div>
-        </div>
-      `;
-    }
-
     function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       if (!optionsBodyEl) return;
       const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
@@ -3778,7 +3533,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         <div class="label" style="margin-bottom:8px;">Option preferences are automatically stored in preferences.log.json in the .local-gallery system folder in the root directory.</div>
         <h1>${escapeHtml(section.title)}</h1>
         ${section.rows}
-        ${activeSection === "general" ? buildStatsDashboardHtml() : ""}
       `;
       applyDescriptionVisibilityFromOptions();
 
@@ -3934,27 +3688,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       bindCheck("opt_forceTitleCaps", "forceTitleCaps");
       bindCheck("opt_hideBeforeLastDashInFileNames", "hideBeforeLastDashInFileNames");
       bindCheck("opt_hideAfterFirstUnderscoreInFileNames", "hideAfterFirstUnderscoreInFileNames");
-
-      const statsRefreshBtn = $("opt_statsRefreshBtn");
-      if (statsRefreshBtn) {
-        statsRefreshBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          renderOptionsUi("general");
-        });
-      }
-      const statsResetBtn = $("opt_statsResetBtn");
-      if (statsResetBtn) {
-        statsResetBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const ok = confirm("Reset all local usage stats?");
-          if (!ok) return;
-          WS.meta.stats = normalizeUsageStats(null);
-          WS.meta.dirty = true;
-          metaScheduleSave();
-          setOptionsStatus("Usage stats reset");
-          renderOptionsUi("general");
-        });
-      }
 
       const dirSortSelect = $("opt_dirSortMode");
       if (dirSortSelect) {
@@ -4160,7 +3893,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       WS.meta.dirScores.set(p, v);
       WS.meta.dirty = true;
       metaScheduleSave();
-      usageStatsCaptureScoreSnapshot(false);
       syncMetaButtons();
       if (WS.meta.dirSortMode === "score") {
         rebuildDirectoriesEntries();
@@ -4205,7 +3937,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       }
       WS.meta.dirty = true;
       metaScheduleSave();
-      usageStatsCaptureScoreSnapshot(false);
       syncMetaButtons();
       if (WS.meta.dirSortMode === "score") {
         rebuildDirectoriesEntries();
@@ -4896,12 +4627,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       };
     }
 
-    function metaMakeStatsLogObject() {
-      const stats = normalizeUsageStats(WS.meta.stats || null);
-      stats.updatedAt = Date.now();
-      return stats;
-    }
-
     function metaMakeLogObject() {
       const folders = {};
       const tagByFp = {};
@@ -5075,243 +4800,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       rebuildKeybindIndex();
     }
 
-    function metaApplyStatsLog(log) {
-      if (!log || typeof log !== "object") return;
-      WS.meta.stats = normalizeUsageStats(log);
-    }
-
-    function usageStatsGetEntryForRecord(rec, createIfMissing = false) {
-      if (!WS.meta) return null;
-      if (!WS.meta.stats || typeof WS.meta.stats !== "object") WS.meta.stats = normalizeUsageStats(null);
-      if (!WS.meta.stats.fileByPath || typeof WS.meta.stats.fileByPath !== "object") WS.meta.stats.fileByPath = {};
-      const key = usageStatsFileKeyForRecord(rec);
-      if (!key) return null;
-      let entry = WS.meta.stats.fileByPath[key] || null;
-      if (!entry && createIfMissing) {
-        entry = {
-          views: 0,
-          lastViewedAt: 0,
-          maxCompletion: 0,
-          watchSeconds: 0,
-          type: String(rec?.type || ""),
-          name: String(rec?.name || ""),
-          dirPath: String(rec?.dirPath || "")
-        };
-        WS.meta.stats.fileByPath[key] = entry;
-      }
-      return entry;
-    }
-
-    function usageStatsRecordFileView(rec, source = "") {
-      if (!rec || !WS.meta) return;
-      const key = usageStatsFileKeyForRecord(rec);
-      if (!key) return;
-      const now = Date.now();
-      if (LAST_STATS_VIEW_EVENT.path === key && (now - LAST_STATS_VIEW_EVENT.at) < 3500) return;
-      LAST_STATS_VIEW_EVENT.path = key;
-      LAST_STATS_VIEW_EVENT.at = now;
-
-      const entry = usageStatsGetEntryForRecord(rec, true);
-      if (!entry) return;
-      entry.views = (Math.max(0, Number(entry.views) || 0) + 1) | 0;
-      entry.lastViewedAt = now;
-      entry.type = String(rec.type || entry.type || "");
-      entry.name = String(rec.name || entry.name || "");
-      entry.dirPath = String(rec.dirPath || entry.dirPath || "");
-
-      const local = new Date(now);
-      const day = Number(local.getDay());
-      const hour = Number(local.getHours());
-      const bucket = `${day}-${hour}`;
-      if (!WS.meta.stats.heatmapByLocalHour || typeof WS.meta.stats.heatmapByLocalHour !== "object") {
-        WS.meta.stats.heatmapByLocalHour = {};
-      }
-      const heatCount = Math.max(0, Number(WS.meta.stats.heatmapByLocalHour[bucket]) || 0) + 1;
-      WS.meta.stats.heatmapByLocalHour[bucket] = heatCount | 0;
-
-      WS.meta.dirty = true;
-      metaScheduleSave();
-    }
-
-    function usageStatsRecordVideoProgress(rec, currentTime, duration) {
-      if (!rec || rec.type !== "video" || !WS.meta) return;
-      if (!Number.isFinite(currentTime) || !Number.isFinite(duration) || duration <= 0) return;
-      const progress = clampNumber(currentTime / duration, 0, 1, 0);
-      const entry = usageStatsGetEntryForRecord(rec, true);
-      if (!entry) return;
-      const prevCompletion = clampNumber(Number(entry.maxCompletion), 0, 1, 0);
-      const nextCompletion = Math.max(prevCompletion, progress);
-      const prevWatch = Math.max(0, Number(entry.watchSeconds) || 0);
-      const nextWatch = Math.max(prevWatch, currentTime);
-      let changed = false;
-      if (nextCompletion > prevCompletion + 0.0001) {
-        entry.maxCompletion = nextCompletion;
-        changed = true;
-      }
-      if (nextWatch > prevWatch + 0.25) {
-        entry.watchSeconds = nextWatch;
-        changed = true;
-      }
-      if (changed) {
-        WS.meta.dirty = true;
-        metaScheduleSave();
-      }
-    }
-
-    function usageStatsRecordVideoProgressFromElement(videoEl) {
-      if (!videoEl) return;
-      const fileId = String(videoEl.dataset.statsFileId || "");
-      if (!fileId) return;
-      const rec = WS.fileById.get(fileId) || null;
-      if (!rec || rec.type !== "video") return;
-      usageStatsRecordVideoProgress(rec, Number(videoEl.currentTime), Number(videoEl.duration));
-    }
-
-    function usageStatsRecordFolderVisitForContext(contextKey) {
-      if (!WS.meta || !contextKey) return;
-      const key = String(contextKey || "");
-      if (!key.startsWith("dir:")) return;
-      const path = String(key.slice(4) || "");
-      const now = Date.now();
-      if (LAST_STATS_FOLDER_VISIT.context === key && (now - LAST_STATS_FOLDER_VISIT.at) < 500) return;
-      LAST_STATS_FOLDER_VISIT.context = key;
-      LAST_STATS_FOLDER_VISIT.at = now;
-      if (!WS.meta.stats || typeof WS.meta.stats !== "object") WS.meta.stats = normalizeUsageStats(null);
-      if (!WS.meta.stats.folderVisits || typeof WS.meta.stats.folderVisits !== "object") WS.meta.stats.folderVisits = {};
-      WS.meta.stats.folderVisits[path] = ((Number(WS.meta.stats.folderVisits[path]) || 0) + 1) | 0;
-      WS.meta.dirty = true;
-      metaScheduleSave();
-    }
-
-    function usageStatsCaptureScoreSnapshot(force = false) {
-      if (!WS.meta || !WS.meta.stats) return;
-      const now = Date.now();
-      const snapshots = Array.isArray(WS.meta.stats.scoreSnapshots) ? WS.meta.stats.scoreSnapshots : [];
-      const last = snapshots.length ? snapshots[snapshots.length - 1] : null;
-      if (!force && last && (now - Number(last.ts || 0)) < (15 * 60 * 1000)) return;
-
-      let total = 0;
-      let count = 0;
-      for (const [path] of WS.dirByPath.entries()) {
-        total += metaGetScore(path);
-        count++;
-      }
-      if (!count) return;
-      snapshots.push({
-        ts: now,
-        avgScore: total / count,
-        folderCount: count
-      });
-      if (snapshots.length > 120) snapshots.splice(0, snapshots.length - 120);
-      WS.meta.stats.scoreSnapshots = snapshots;
-      WS.meta.dirty = true;
-      metaScheduleSave();
-    }
-
-    function usageStatsPruneToWorkspace() {
-      if (!WS.meta || !WS.meta.stats) return;
-      const stats = WS.meta.stats;
-      if (!stats.fileByPath || typeof stats.fileByPath !== "object") stats.fileByPath = {};
-      const valid = new Set();
-      for (const rec of WS.fileById.values()) {
-        const key = usageStatsFileKeyForRecord(rec);
-        if (key) valid.add(key);
-      }
-      const next = {};
-      let changed = false;
-      for (const key of Object.keys(stats.fileByPath)) {
-        if (!valid.has(key)) {
-          changed = true;
-          continue;
-        }
-        next[key] = stats.fileByPath[key];
-      }
-      if (changed) {
-        stats.fileByPath = next;
-        WS.meta.dirty = true;
-        metaScheduleSave();
-      }
-    }
-
-    function usageStatsSummaryData() {
-      const stats = normalizeUsageStats(WS.meta && WS.meta.stats ? WS.meta.stats : null);
-      const files = [];
-      for (const relPath of Object.keys(stats.fileByPath || {})) {
-        const item = stats.fileByPath[relPath] || {};
-        files.push({
-          relPath,
-          views: Math.max(0, Number(item.views) || 0),
-          lastViewedAt: Math.max(0, Number(item.lastViewedAt) || 0),
-          maxCompletion: clampNumber(Number(item.maxCompletion), 0, 1, 0),
-          name: String(item.name || relPath.split("/").pop() || relPath),
-          dirPath: String(item.dirPath || "")
-        });
-      }
-      const viewed = files.filter((f) => f.views > 0);
-      viewed.sort((a, b) => b.views - a.views || b.lastViewedAt - a.lastViewedAt);
-      const recent = viewed.slice().sort((a, b) => b.lastViewedAt - a.lastViewedAt);
-
-      const videoEntries = files.filter((f) => {
-        const known = stats.fileByPath[f.relPath] || {};
-        return String(known.type || "").toLowerCase() === "video";
-      });
-      const videoCompletionAvg = videoEntries.length
-        ? (videoEntries.reduce((acc, item) => acc + clampNumber(item.maxCompletion, 0, 1, 0), 0) / videoEntries.length)
-        : 0;
-
-      const snapshots = Array.isArray(stats.scoreSnapshots) ? stats.scoreSnapshots.slice() : [];
-      snapshots.sort((a, b) => Number(a.ts || 0) - Number(b.ts || 0));
-      const latest = snapshots.length ? snapshots[snapshots.length - 1] : null;
-      const previous = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
-      const avgScoreDelta = (latest && previous)
-        ? (Number(latest.avgScore) - Number(previous.avgScore))
-        : 0;
-
-      const orphanFolders = [];
-      for (const [path, dirNode] of WS.dirByPath.entries()) {
-        if (!path) continue;
-        const directFiles = Array.isArray(dirNode?.childrenFiles) ? dirNode.childrenFiles.length : 0;
-        if (!directFiles) continue;
-        const hasTag = metaGetUserTags(path).length > 0;
-        const fav = metaHasFavorite(path);
-        const score = metaGetScore(path);
-        if (hasTag || fav || score > 0) continue;
-        orphanFolders.push({
-          path,
-          name: dirDisplayName(dirNode) || path.split("/").pop() || path,
-          files: directFiles
-        });
-      }
-      orphanFolders.sort((a, b) => b.files - a.files || a.name.localeCompare(b.name));
-
-      return {
-        files,
-        viewed,
-        recent,
-        videoCompletionAvg,
-        avgScoreDelta,
-        latestScoreSnapshot: latest,
-        previousScoreSnapshot: previous,
-        orphanFolders,
-        heatmapByLocalHour: stats.heatmapByLocalHour || {},
-        compareDecisionCount: Object.keys(stats.compareDecisions || {}).length
-      };
-    }
-
-    function formatStatsRelativeTime(ts) {
-      const n = Number(ts);
-      if (!Number.isFinite(n) || n <= 0) return "—";
-      const diff = Date.now() - n;
-      if (diff < 60 * 1000) return "just now";
-      if (diff < 60 * 60 * 1000) return `${Math.max(1, Math.round(diff / (60 * 1000)))}m ago`;
-      if (diff < 24 * 60 * 60 * 1000) return `${Math.max(1, Math.round(diff / (60 * 60 * 1000)))}h ago`;
-      return `${Math.max(1, Math.round(diff / (24 * 60 * 60 * 1000)))}d ago`;
-    }
-
-    function escapeStatsText(value) {
-      return escapeHtml(String(value || ""));
-    }
-
     function metaApplyFromLog(log) {
       if (!log || typeof log !== "object") return;
 
@@ -5422,7 +4910,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         tags: `LocalGalleryTags::${k}`,
         options: `LocalGalleryPreferences::${k}`,
         keybinds: `LocalGalleryKeyboard::${k}`,
-        stats: `LocalGalleryUsageStats::${k}`,
         legacy: `LocalGalleryVotes::${k}`
       };
     }
@@ -5447,7 +4934,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       metaSaveLocalDoc(keys.tags, metaMakeTagsLogObject());
       metaSaveLocalDoc(keys.options, metaMakeOptionsLogObject());
       metaSaveLocalDoc(keys.keybinds, metaMakeKeybindsLogObject());
-      metaSaveLocalDoc(keys.stats, metaMakeStatsLogObject());
       WS.meta.dirty = false;
     }
 
@@ -5468,7 +4954,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         const tagsFile = await sys.getFileHandle("folder-tags.log.json", { create: true });
         const optionsFile = await sys.getFileHandle("preferences.log.json", { create: true });
         const keybindsFile = await sys.getFileHandle("keyboard-configuration.log.json", { create: true });
-        const statsFile = await sys.getFileHandle("usage-stats.log.json", { create: true });
         const legacyFile = await sys.getFileHandle("folder-votes.log.json", { create: true });
         WS.meta.fsRootHandle = rootHandle;
         WS.meta.fsSysDirHandle = sys;
@@ -5476,7 +4961,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         WS.meta.fsTagsFileHandle = tagsFile;
         WS.meta.fsOptionsFileHandle = optionsFile;
         WS.meta.fsKeybindsFileHandle = keybindsFile;
-        WS.meta.fsStatsFileHandle = statsFile;
         WS.meta.fsLegacyFileHandle = legacyFile;
         WS.meta.storageMode = "fs";
         return true;
@@ -5511,12 +4995,10 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       const tags = WS.meta.fsTagsFileHandle;
       const options = WS.meta.fsOptionsFileHandle;
       const keybinds = WS.meta.fsKeybindsFileHandle;
-      const stats = WS.meta.fsStatsFileHandle;
       await metaSaveFsDoc(scores, metaMakeScoresLogObject());
       await metaSaveFsDoc(tags, metaMakeTagsLogObject());
       await metaSaveFsDoc(options, metaMakeOptionsLogObject());
       await metaSaveFsDoc(keybinds, metaMakeKeybindsLogObject());
-      await metaSaveFsDoc(stats, metaMakeStatsLogObject());
       WS.meta.dirty = false;
     }
 
@@ -5548,26 +5030,19 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         const tagsLog = keys ? metaLoadLocalDoc(keys.tags) : null;
         const optionsLog = keys ? metaLoadLocalDoc(keys.options) : null;
         const keybindsLog = keys ? metaLoadLocalDoc(keys.keybinds) : null;
-        const statsLog = keys ? metaLoadLocalDoc(keys.stats) : null;
 
         if (scoresLog) metaApplyScoresLog(scoresLog);
         if (tagsLog) metaApplyTagsLog(tagsLog);
         if (optionsLog) metaApplyOptionsLog(optionsLog);
         if (keybindsLog) metaApplyKeybindsLog(keybindsLog);
-        if (statsLog) metaApplyStatsLog(statsLog);
 
-        if (!scoresLog && !tagsLog && !optionsLog && !keybindsLog && !statsLog && keys) {
+        if (!scoresLog && !tagsLog && !optionsLog && !keybindsLog && keys) {
           /* LEGACY MIGRATION (remove later): read combined log and split it. */
           const legacyLog = metaLoadLocalDoc(keys.legacy);
           if (legacyLog) {
             metaApplyFromLog(legacyLog);
           }
         }
-      }
-
-      usageStatsPruneToWorkspace();
-      if (!Array.isArray(WS.meta.stats?.scoreSnapshots) || !WS.meta.stats.scoreSnapshots.length) {
-        usageStatsCaptureScoreSnapshot(true);
       }
 
       WS.meta.dirty = true;
@@ -5584,24 +5059,18 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       const tagsLog = await metaLoadFsDoc(WS.meta.fsTagsFileHandle);
       const optionsLog = await metaLoadFsDoc(WS.meta.fsOptionsFileHandle);
       const keybindsLog = await metaLoadFsDoc(WS.meta.fsKeybindsFileHandle);
-      const statsLog = await metaLoadFsDoc(WS.meta.fsStatsFileHandle);
 
       if (scoresLog) metaApplyScoresLog(scoresLog);
       if (tagsLog) metaApplyTagsLog(tagsLog);
       if (optionsLog) metaApplyOptionsLog(optionsLog);
       if (keybindsLog) metaApplyKeybindsLog(keybindsLog);
-      if (statsLog) metaApplyStatsLog(statsLog);
 
-      if (!scoresLog && !tagsLog && !optionsLog && !keybindsLog && !statsLog) {
+      if (!scoresLog && !tagsLog && !optionsLog && !keybindsLog) {
         /* LEGACY MIGRATION (remove later): read combined log and split it. */
         const legacyLog = await metaLoadFsDoc(WS.meta.fsLegacyFileHandle);
         if (legacyLog) {
           metaApplyFromLog(legacyLog);
         }
-      }
-      usageStatsPruneToWorkspace();
-      if (!Array.isArray(WS.meta.stats?.scoreSnapshots) || !WS.meta.stats.scoreSnapshots.length) {
-        usageStatsCaptureScoreSnapshot(true);
       }
       WS.meta.dirty = true;
       metaScheduleSave();
@@ -8297,21 +7766,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         WS.preview.dirNode = null;
         WS.preview.fileId = null;
       }
-
-      const compareState = getAbCompareState();
-      if (compareState.active) {
-        let keepCompare = false;
-        if (entry && entry.kind === "file") {
-          const rec = WS.fileById.get(String(entry.id || ""));
-          keepCompare = !!rec && String(rec.dirPath || "") === String(compareState.dirPath || "");
-        }
-        if (!keepCompare) {
-          compareState.active = false;
-          compareState.dirPath = "";
-          compareState.leftId = "";
-          compareState.rightId = "";
-        }
-      }
     }
 
     function altGalleryModeEnabled() {
@@ -10515,7 +9969,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
     function renderDirectoriesPane(keepScroll = false) {
       const nextContextKey = directoriesScrollContextKey();
       const contextChanged = nextContextKey !== LAST_DIRECTORIES_SCROLL_CONTEXT;
-      if (contextChanged) usageStatsRecordFolderVisitForContext(nextContextKey);
       const preserveScroll = !!keepScroll && !contextChanged;
       const prevScroll = preserveScroll ? directoriesListEl.scrollTop : 0;
       const prevFilesOnlyChromeMode = !!(document && document.body && document.body.classList.contains("directories-files-only"));
@@ -10847,7 +10300,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
               ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
               : `
                   <button type="button" data-action="set-parent-thumbnail"${parentThumbTarget ? "" : " disabled"}>Set parent thumbnail</button>
-                  <button type="button" data-action="ab-compare">A/B compare from this file</button>
                   <button type="button" data-action="rename-file">Rename</button>
                 `;
             const fileTypeLabel = toTitleCaps(String(rec?.type || (isVid ? "video" : "image")));
@@ -11224,10 +10676,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
                     return;
                   }
                   setParentThumbnailFromRecord(rec);
-                  return;
-                }
-                if (action === "ab-compare") {
-                  startAbCompareFromFileId(String(entry.id || ""));
                   return;
                 }
                 if (action === "rename-file") {
@@ -11963,7 +11411,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         normalizeVideoPlaybackRate(previewVideoEl);
         previewVideoEl.poster = BLACK_POSTER_URL;
         previewVideoEl.style.display = "none";
-        previewVideoEl.addEventListener("timeupdate", () => usageStatsRecordVideoProgressFromElement(previewVideoEl));
         previewViewportBox.appendChild(previewVideoEl);
       }
       if (!previewFolderEl) {
@@ -11988,267 +11435,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       const found = viewerItems.findIndex(it => !it.isFolder && it.id === fileId);
       if (found >= 0) idx = found;
       viewerIndex = idx;
-    }
-
-    function getAbCompareState() {
-      if (!WS.view.abCompare || typeof WS.view.abCompare !== "object") {
-        WS.view.abCompare = { active: false, dirPath: "", leftId: "", rightId: "" };
-      }
-      return WS.view.abCompare;
-    }
-
-    function stopAbCompare(showMessage = false) {
-      const state = getAbCompareState();
-      if (!state.active) return false;
-      state.active = false;
-      state.dirPath = "";
-      state.leftId = "";
-      state.rightId = "";
-      if (showMessage) showStatusMessage("A/B compare: Off");
-      renderPreviewPane(false, true);
-      return true;
-    }
-
-    function nextCompareCandidateId(dirNode, anchorId, cursorId = "") {
-      if (!dirNode) return "";
-      const ids = getOrderedFileIdsForDir(dirNode).filter((id) => WS.fileById.has(id) && id !== anchorId);
-      if (!ids.length) return "";
-      const startCursor = cursorId && cursorId !== anchorId ? cursorId : anchorId;
-      const startIdx = startCursor ? ids.indexOf(startCursor) : -1;
-      if (startIdx >= 0 && startIdx + 1 < ids.length) return ids[startIdx + 1];
-      return ids[0] || "";
-    }
-
-    function startAbCompareFromFileId(fileId) {
-      const id = String(fileId || "");
-      const rec = WS.fileById.get(id);
-      if (!rec) {
-        showStatusMessage("A/B compare: file unavailable.");
-        return false;
-      }
-      const dirPath = String(rec.dirPath || "");
-      const dirNode = WS.dirByPath.get(dirPath) || WS.nav.dirNode || null;
-      if (!dirNode) {
-        showStatusMessage("A/B compare unavailable here.");
-        return false;
-      }
-      const rightId = nextCompareCandidateId(dirNode, id, id);
-      if (!rightId) {
-        showStatusMessage("Need at least two files for A/B compare.");
-        return false;
-      }
-      const state = getAbCompareState();
-      state.active = true;
-      state.dirPath = String(dirNode.path || "");
-      state.leftId = id;
-      state.rightId = rightId;
-      WS.preview.kind = "file";
-      WS.preview.fileId = id;
-      WS.preview.dirNode = null;
-      selectFileEntryById(id);
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      showStatusMessage("A/B compare: On");
-      return true;
-    }
-
-    function recordAbCompareDecision(leftRec, rightRec, winnerRec) {
-      if (!leftRec || !rightRec || !winnerRec) return;
-      if (!WS.meta || !WS.meta.stats || typeof WS.meta.stats !== "object") WS.meta.stats = normalizeUsageStats(null);
-      if (!WS.meta.stats.compareDecisions || typeof WS.meta.stats.compareDecisions !== "object") {
-        WS.meta.stats.compareDecisions = {};
-      }
-      const leftPath = usageStatsFileKeyForRecord(leftRec);
-      const rightPath = usageStatsFileKeyForRecord(rightRec);
-      const winnerPath = usageStatsFileKeyForRecord(winnerRec);
-      const pairKey = usageStatsPairKey(leftPath, rightPath);
-      if (!pairKey || !winnerPath) return;
-      WS.meta.stats.compareDecisions[pairKey] = {
-        leftPath: leftPath < rightPath ? leftPath : rightPath,
-        rightPath: leftPath < rightPath ? rightPath : leftPath,
-        winnerPath,
-        decidedAt: Date.now()
-      };
-      WS.meta.dirty = true;
-      metaScheduleSave();
-    }
-
-    function abComparePickWinner(side) {
-      const state = getAbCompareState();
-      if (!state.active) return false;
-      const leftRec = WS.fileById.get(String(state.leftId || "")) || null;
-      const rightRec = WS.fileById.get(String(state.rightId || "")) || null;
-      if (!leftRec || !rightRec) {
-        stopAbCompare(false);
-        return false;
-      }
-      const winnerRec = side === "right" ? rightRec : leftRec;
-      recordAbCompareDecision(leftRec, rightRec, winnerRec);
-      const dirNode = WS.dirByPath.get(String(state.dirPath || "")) || WS.nav.dirNode || null;
-      const nextRight = nextCompareCandidateId(dirNode, winnerRec.id, rightRec.id);
-      if (!nextRight || nextRight === winnerRec.id) {
-        state.active = false;
-        state.dirPath = "";
-        state.leftId = "";
-        state.rightId = "";
-        WS.preview.kind = "file";
-        WS.preview.fileId = winnerRec.id;
-        WS.preview.dirNode = null;
-        selectFileEntryById(winnerRec.id);
-        renderDirectoriesPane(true);
-        renderPreviewPane(false, true);
-        syncButtons();
-        showStatusMessage("A/B compare complete.");
-        return true;
-      }
-      state.leftId = winnerRec.id;
-      state.rightId = nextRight;
-      WS.preview.kind = "file";
-      WS.preview.fileId = winnerRec.id;
-      WS.preview.dirNode = null;
-      selectFileEntryById(winnerRec.id);
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      showStatusMessage(`Winner: ${fileDisplayNameForRecord(winnerRec) || "file"}`);
-      return true;
-    }
-
-    function abCompareStepCandidate() {
-      const state = getAbCompareState();
-      if (!state.active) return false;
-      const leftId = String(state.leftId || "");
-      const rightId = String(state.rightId || "");
-      if (!leftId || !rightId) {
-        stopAbCompare(false);
-        return false;
-      }
-      const dirNode = WS.dirByPath.get(String(state.dirPath || "")) || WS.nav.dirNode || null;
-      const nextRight = nextCompareCandidateId(dirNode, leftId, rightId);
-      if (!nextRight || nextRight === rightId) return false;
-      state.rightId = nextRight;
-      renderPreviewPane(false, true);
-      return true;
-    }
-
-    function toggleAbCompareFromSelection() {
-      const state = getAbCompareState();
-      if (state.active) return stopAbCompare(true);
-      const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
-      if (!entry || entry.kind !== "file") {
-        showStatusMessage("Select a file to start A/B compare.");
-        return false;
-      }
-      return startAbCompareFromFileId(String(entry.id || ""));
-    }
-
-    function makeAbCompareMediaCard(rec, labelText) {
-      const card = document.createElement("div");
-      card.className = "abCompareCard";
-      const mediaWrap = document.createElement("div");
-      mediaWrap.className = "abCompareMediaWrap";
-      if (rec && rec.type === "video") {
-        const vid = document.createElement("video");
-        vid.className = "abCompareMedia";
-        vid.controls = true;
-        vid.preload = "metadata";
-        vid.playsInline = true;
-        vid.autoplay = true;
-        vid.loop = true;
-        vid.muted = true;
-        normalizeVideoPlaybackRate(vid);
-        vid.poster = BLACK_POSTER_URL;
-        const src = ensureMediaUrl(rec) || "";
-        if (src) vid.src = src;
-        vid.dataset.statsFileId = String(rec.id || "");
-        vid.addEventListener("timeupdate", () => usageStatsRecordVideoProgressFromElement(vid));
-        mediaWrap.appendChild(vid);
-      } else if (rec) {
-        const img = document.createElement("img");
-        img.className = "abCompareMedia";
-        img.alt = fileDisplayNameForRecord(rec) || "";
-        img.src = ensureMediaUrl(rec) || ensureThumbUrl(rec) || "";
-        mediaWrap.appendChild(img);
-      } else {
-        const empty = document.createElement("div");
-        empty.className = "abCompareMediaPlaceholder";
-        empty.textContent = "Unavailable";
-        mediaWrap.appendChild(empty);
-      }
-      const meta = document.createElement("div");
-      meta.className = "abCompareMeta";
-      const title = document.createElement("div");
-      title.className = "abCompareMetaTitle";
-      title.textContent = labelText;
-      const name = document.createElement("div");
-      name.className = "abCompareMetaName";
-      name.textContent = rec ? (relPathDisplayName(rec.relPath || rec.name || "") || "—") : "—";
-      meta.appendChild(title);
-      meta.appendChild(name);
-      card.appendChild(mediaWrap);
-      card.appendChild(meta);
-      return card;
-    }
-
-    function renderAbComparePane() {
-      const state = getAbCompareState();
-      if (!state.active) return false;
-      const leftRec = WS.fileById.get(String(state.leftId || "")) || null;
-      const rightRec = WS.fileById.get(String(state.rightId || "")) || null;
-      if (!leftRec || !rightRec) {
-        stopAbCompare(false);
-        return false;
-      }
-
-      usageStatsRecordFileView(leftRec, "ab-compare");
-      usageStatsRecordFileView(rightRec, "ab-compare");
-
-      setPreviewBodyMode("file");
-      if (!VIEWER_MODE) ACTIVE_MEDIA_SURFACE = "none";
-      MediaFilterEngine.detach("preview");
-      previewBodyEl.innerHTML = "";
-
-      const wrap = document.createElement("div");
-      wrap.className = "abCompareWrap";
-      wrap.innerHTML = `
-        <div class="abCompareHeader">
-          <div class="abCompareTitle">A/B Compare</div>
-          <div class="abCompareHint">Pick a winner, then continue with the winner as anchor.</div>
-        </div>
-      `;
-
-      const grid = document.createElement("div");
-      grid.className = "abCompareGrid";
-      grid.appendChild(makeAbCompareMediaCard(leftRec, "A / Left"));
-      grid.appendChild(makeAbCompareMediaCard(rightRec, "B / Right"));
-      wrap.appendChild(grid);
-
-      const controls = document.createElement("div");
-      controls.className = "abCompareControls";
-      const makeBtn = (text, action) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "miniBtn";
-        btn.textContent = text;
-        btn.dataset.action = action;
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (action === "pick-left") abComparePickWinner("left");
-          else if (action === "pick-right") abComparePickWinner("right");
-          else if (action === "next") abCompareStepCandidate();
-          else if (action === "stop") stopAbCompare(true);
-        });
-        return btn;
-      };
-      controls.appendChild(makeBtn("Pick Left", "pick-left"));
-      controls.appendChild(makeBtn("Pick Right", "pick-right"));
-      controls.appendChild(makeBtn("Next Candidate", "next"));
-      controls.appendChild(makeBtn("Exit Compare", "stop"));
-      wrap.appendChild(controls);
-
-      previewBodyEl.appendChild(wrap);
-      return true;
     }
 
     function previewVideoMode() {
@@ -12444,7 +11630,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       }
 
       if (!rec) return;
-      usageStatsRecordFileView(rec, "preview");
 
       if (rec.type === "video") {
         const mode = previewVideoMode();
@@ -12486,7 +11671,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         if (!same) {
           previewVideoEl.src = src;
         }
-        previewVideoEl.dataset.statsFileId = String(rec.id || "");
         previewVideoEl.style.display = "block";
         previewVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
         syncMediaFilterSurface("preview", previewVideoEl, previewViewportBox, "video", rec);
@@ -12622,15 +11806,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
       updateModePill();
       const currentDirCount = getDirectoryItemCount(WS.nav.dirNode || WS.root);
       if (itemsPill) itemsPill.textContent = `Items: ${currentDirCount}`;
-
-      const compareState = getAbCompareState();
-      if (compareState.active) {
-        const rendered = renderAbComparePane();
-        if (rendered) {
-          if (keepScroll) previewBodyEl.scrollTop = prevScroll;
-          return;
-        }
-      }
 
       if (WS.preview.kind === "file" && WS.preview.fileId) {
         setPreviewBodyMode("file");
@@ -13920,7 +13095,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         normalizeVideoPlaybackRate(viewerVideoEl);
         viewerVideoEl.poster = BLACK_POSTER_URL;
         viewerVideoEl.style.display = "none";
-        viewerVideoEl.addEventListener("timeupdate", () => usageStatsRecordVideoProgressFromElement(viewerVideoEl));
         viewport.appendChild(viewerVideoEl);
       }
       if (!viewerFolderEl) {
@@ -14342,7 +13516,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
 
       const rec = WS.fileById.get(item.id);
       if (!rec) return;
-      usageStatsRecordFileView(rec, "viewer");
 
       filenameEl.textContent = relPathDisplayName(rec.relPath || rec.name || "");
 
@@ -14387,7 +13560,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
           viewerVideoEl.src = src;
           try { viewerVideoEl.load(); } catch {}
         }
-        viewerVideoEl.dataset.statsFileId = String(rec.id || "");
         viewerVideoEl.style.display = "block";
         viewerVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
         syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", rec);
@@ -14902,22 +14074,6 @@ ${makeCheckRow("Hide name after first underscore", "Show only text before the fi
         return true;
       }
       switch (action) {
-        case "toggleComparePanel": {
-          if (VIEWER_MODE) return false;
-          return toggleAbCompareFromSelection();
-        }
-        case "comparePickLeft": {
-          if (VIEWER_MODE) return false;
-          return abComparePickWinner("left");
-        }
-        case "comparePickRight": {
-          if (VIEWER_MODE) return false;
-          return abComparePickWinner("right");
-        }
-        case "compareNextCandidate": {
-          if (VIEWER_MODE) return false;
-          return abCompareStepCandidate();
-        }
         case "toggleVibrantOverlay": {
           const next = toggleOptionValue("vibrantOverlayEnabled");
           applyMediaFilterFromOptions();
