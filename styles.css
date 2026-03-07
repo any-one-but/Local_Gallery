@@ -2601,5 +2601,240 @@
       .gridFiles.fitInsideJustified {
         gap: max(8px, var(--preview-gutter));
       }
+      .abCompareGrid {
+        grid-template-columns: 1fr;
+      }
+      .statsListsGrid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .abCompareWrap {
+      display: grid;
+      gap: 10px;
+      padding: 10px;
+      height: 100%;
+      align-content: start;
+      box-sizing: border-box;
+    }
+
+    .abCompareHeader {
+      display: grid;
+      gap: 4px;
+    }
+
+    .abCompareTitle {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--color0-primary);
+    }
+
+    .abCompareHint {
+      font-size: 12px;
+      color: var(--color1-primary);
+      opacity: 0.9;
+    }
+
+    .abCompareGrid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      min-height: min(58vh, 520px);
+    }
+
+    .abCompareCard {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      border: 1px solid var(--color1-secondary);
+      background: var(--color2-primary);
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .abCompareMediaWrap {
+      min-height: 0;
+      background: #000;
+      display: grid;
+      place-items: center;
+    }
+
+    .abCompareMedia {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #000;
+    }
+
+    .abCompareMediaPlaceholder {
+      color: var(--color1-primary);
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .abCompareMeta {
+      border-top: 1px solid var(--color1-secondary);
+      padding: 6px 8px;
+      display: grid;
+      gap: 2px;
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    .abCompareMetaTitle {
+      font-size: 11px;
+      color: var(--color1-primary);
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+
+    .abCompareMetaName {
+      font-size: 12px;
+      color: var(--color0-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .abCompareControls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .statsDashboard {
+      margin-top: 10px;
+      border-top: 1px solid var(--color2-primary);
+      padding-top: 10px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .statsSummaryGrid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .statsSummaryCard {
+      border: 1px solid var(--color1-secondary);
+      background: var(--color2-primary);
+      padding: 8px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .statsSummaryLabel {
+      font-size: 11px;
+      color: var(--color1-primary);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .statsSummaryValue {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--color0-primary);
+    }
+
+    .statsSummaryHint {
+      font-size: 11px;
+      color: var(--color1-primary);
+      opacity: 0.85;
+    }
+
+    .statsListsGrid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .statsListCard {
+      border: 1px solid var(--color1-secondary);
+      background: var(--color2-primary);
+      padding: 8px;
+    }
+
+    .statsListTitle {
+      font-size: 12px;
+      color: var(--color0-primary);
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    .statsListCard ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .statsListCard li {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--color0-primary);
+    }
+
+    .statsLabel {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      opacity: 0.95;
+    }
+
+    .statsValue {
+      color: var(--color1-primary);
+      flex: 0 0 auto;
+    }
+
+    .statsEmpty {
+      opacity: 0.7;
+    }
+
+    .statsHeatmapCard {
+      border: 1px solid var(--color1-secondary);
+      background: var(--color2-primary);
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .statsHeatmap {
+      display: grid;
+      gap: 4px;
+    }
+
+    .statsHeatRow {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .statsHeatDay {
+      font-size: 11px;
+      color: var(--color1-primary);
+      text-transform: uppercase;
+    }
+
+    .statsHeatCells {
+      display: grid;
+      grid-template-columns: repeat(24, minmax(0, 1fr));
+      gap: 2px;
+    }
+
+    .statsHeatCell {
+      height: 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: color-mix(in srgb, #fff var(--stats-intensity, 0%), transparent);
+      opacity: 0.9;
+    }
+
+    .statsActions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
     }
   
