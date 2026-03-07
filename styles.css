@@ -1234,6 +1234,14 @@
       letter-spacing: .04em;
     }
 
+    .dirSquareTypeIcon {
+      flex: 0 0 auto;
+      font-size: 12px;
+      line-height: 1;
+      color: rgba(255, 255, 255, 0.92);
+      opacity: 0.95;
+    }
+
     .dirSquareRenameInput {
       min-width: 0;
       flex: 1 1 auto;
@@ -1395,6 +1403,16 @@
       padding: 6px 0;
       font-weight: 800;
       font-size: 14px;
+    }
+
+    .dropdownMenu .menuTwoColRow {
+      display: flex;
+      gap: 4px;
+    }
+
+    .dropdownMenu .menuTwoColRow button {
+      flex: 1 1 0;
+      width: auto;
     }
 
     /* =========================================================

@@ -1,6 +1,6 @@
 {
   "name": "local_gallery",
-  "version": "01.03.01",
+  "version": "01.04.00",
   "description": "",
   "main": "main.js",
   "scripts": {
@@ -27,15 +27,18 @@
     "productName": "Local_Gallery",
     "appId": "com.anyonebut.localgallery",
     "files": [
-    "**/*",
-    "!dist/**",
-    "!Releases/**",
-    "!*.dmg",
-    "!*.zip"
-   ],
+      "**/*",
+      "!dist/**",
+      "!Releases/**",
+      "!*.dmg",
+      "!*.zip"
+    ],
     "mac": {
       "icon": "assets/icon.icns",
-      "target": ["dmg", "zip"]
+      "target": [
+        "dmg",
+        "zip"
+      ]
     }
   }
 }
