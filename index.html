@@ -31,12 +31,6 @@
         <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search folder" />
         <button id="directoriesSearchClearBtn" type="button" class="miniBtn">X</button>
       </div>
-      <div id="onlineProfileRow">
-        <input id="onlineProfileInput" class="tagEditInput" type="text" placeholder="Enter URL" />
-        <button id="onlineProfileAddProfileBtn" type="button" class="miniBtn">Add Profile</button>
-        <button id="onlineProfileAddPostsBtn" type="button" class="miniBtn">Add Posts</button>
-        <div id="onlineProfileStatus" class="label">—</div>
-      </div>
     </div>
 
     <div id="layout">
@@ -94,88 +88,6 @@
     </div>
 
     <!-- =========================================================
-         Hold / (Overlay)
-         ========================================================= -->
-    <div id="helpHoldOverlay">
-      <div id="helpHoldCard">
-        <div id="helpHoldHeader">
-          <div>Keyboard controls</div>
-          <div class="hint">Hold <strong>/</strong> to keep this on screen</div>
-        </div>
-        <div class="keyboard">
-          <div class="kbRow">
-            <div class="kbGroup">
-              <div class="kbKey"><div class="kbKeyLabel">1</div><div>-50</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">2</div><div>-10</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">3</div><div>Prev folder</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">4</div><div>+10</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">5</div><div>+50</div></div>
-            </div>
-            <div class="kbGroup">
-              <div class="kbKey"><div class="kbKeyLabel">6</div><div>-50</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">7</div><div>-10</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">8</div><div>Prev folder</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">9</div><div>+10</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">0</div><div>+50</div></div>
-            </div>
-          </div>
-          <div class="kbRow">
-            <div class="kbGroup">
-              <div class="kbKey"><div class="kbKeyLabel">Q</div><div>Seek -</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">W</div><div>Up</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">E</div><div>Seek +</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">R</div><div>Random</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">F</div><div>Filter</div></div>
-            </div>
-            <div class="kbGroup">
-              <div class="kbKey"><div class="kbKeyLabel">U</div><div>Seek -</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">I</div><div>Up</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">O</div><div>Seek +</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">Y</div><div>Random</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">H</div><div>Filter</div></div>
-            </div>
-          </div>
-          <div class="kbRow">
-            <div class="kbGroup">
-              <div class="kbKey"><div class="kbKeyLabel">A</div><div>Left</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">S</div><div>Down</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">D</div><div>Right</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">C</div><div>Folder</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">G</div><div>PANIC!</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">X</div><div>Next folder</div></div>
-            </div>
-            <div class="kbGroup">
-              <div class="kbKey"><div class="kbKeyLabel">J</div><div>Left</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">K</div><div>Down</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">L</div><div>Right</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">N</div><div>Folder</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">V</div><div>PANIC!</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">M</div><div>Next folder</div></div>
-            </div>
-          </div>
-          <div class="kbRow">
-            <div class="kbGroup">
-              <div class="kbKey wide"><div class="kbKeyLabel">Shift</div><div>Slideshow</div></div>
-              <div class="kbKey space"><div class="kbKeyLabel">Space</div><div>Play/Pause</div></div>
-              <div class="kbKey wide"><div class="kbKeyLabel">Enter</div><div>Open</div></div>
-            </div>
-            <div class="kbGroup">
-              <div class="kbKey wide"><div class="kbKeyLabel">Backspace</div><div>Up</div></div>
-              <div class="kbKey wide"><div class="kbKeyLabel">Esc</div><div>Close</div></div>
-              <div class="kbKey"><div class="kbKeyLabel">/</div><div>Cheatsheet</div></div>
-            </div>
-          </div>
-        </div>
-        <div class="kbLegend">
-          <span>Arrow ↑/↓ adjust the selected folder's score; use W/S/I/K to move selections.</span>
-          <span>Arrow ←/→ walk directory history; Backspace/Enter or A/D still leave/enter.</span>
-          <span>Folder = Stop/Loop/Slide</span>
-          <span>Filter cycles: All → Images → Videos → GIFs</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- =========================================================
          Menu (Overlay)
          ========================================================= -->
     <div id="menuOverlay">
@@ -183,11 +95,11 @@
         <div id="menuHeader">
           <div class="title">Menu</div>
           <div id="menuTabs" role="tablist" aria-label="Menu tabs">
-            <button type="button" class="miniBtn menuTabBtn" data-tab="options" role="tab" aria-controls="menuTabOptions">Options</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="online" role="tab" aria-controls="menuTabOnline">Online</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="responses" role="tab" aria-controls="menuTabResponses">Responses</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="help" role="tab" aria-controls="menuTabHelp">Help</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="keybinds" role="tab" aria-controls="menuTabKeybinds">Keybinds</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="general" role="tab" aria-controls="menuTabOptions">General</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="appearance" role="tab" aria-controls="menuTabOptions">Appearance</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="playback" role="tab" aria-controls="menuTabOptions">Playback</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="filenames" role="tab" aria-controls="menuTabOptions">Filenames</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="controls" role="tab" aria-controls="menuTabKeybinds">Controls</button>
           </div>
           <button id="menuCloseBtn" type="button" class="miniBtn">X</button>
         </div>
@@ -204,9 +116,6 @@
               </div>
             </div>
           </section>
-          <section id="menuTabHelp" class="menuTabPanel" data-tab="help" role="tabpanel">
-            <div id="helpBody"></div>
-          </section>
           <section id="menuTabKeybinds" class="menuTabPanel" data-tab="keybinds" role="tabpanel">
             <div id="keybindsBody"></div>
             <div id="keybindsFooter">
@@ -218,12 +127,6 @@
                 <button id="keybindsDoneBtn" type="button" class="miniBtn">Done</button>
               </div>
             </div>
-          </section>
-          <section id="menuTabOnline" class="menuTabPanel" data-tab="online" role="tabpanel">
-            <div id="onlineBody"></div>
-          </section>
-          <section id="menuTabResponses" class="menuTabPanel" data-tab="responses" role="tabpanel">
-            <div id="responsesBody"></div>
           </section>
         </div>
       </div>
