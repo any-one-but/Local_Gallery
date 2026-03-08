@@ -2614,7 +2614,9 @@
         searchRootFavorites: [],
         searchRootIsHidden: false,
         searchRootHidden: [],
-        searchResults: []
+        searchResults: [],
+        previewScrollByDir: new Map(),
+        previewScrollActiveKey: ""
       },
 
       // Directories Pane navigation state
@@ -2745,6 +2747,8 @@
       WS.view.searchRootIsHidden = false;
       WS.view.searchRootHidden = [];
       WS.view.searchResults = [];
+      WS.view.previewScrollByDir = new Map();
+      WS.view.previewScrollActiveKey = "";
       if (WS.view.slideshowTimer) { clearInterval(WS.view.slideshowTimer); WS.view.slideshowTimer = null; }
       if (WS.view.statusTimeout) { clearTimeout(WS.view.statusTimeout); WS.view.statusTimeout = null; }
 
@@ -13646,6 +13650,29 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return WS.nav.dirNode || WS.root;
     }
 
+    function previewScrollKeyForDir(dirNode) {
+      if (!dirNode) return "";
+      const p = String(dirNode.path || "");
+      return p || "__root__";
+    }
+
+    function savePreviewScrollForActiveDir() {
+      if (!previewBodyEl) return;
+      const key = String(WS.view.previewScrollActiveKey || "");
+      if (!key) return;
+      if (!previewBodyEl.classList.contains("preview-grid")) return;
+      if (!(WS.view.previewScrollByDir instanceof Map)) WS.view.previewScrollByDir = new Map();
+      WS.view.previewScrollByDir.set(key, Math.max(0, Number(previewBodyEl.scrollTop) || 0));
+    }
+
+    function getSavedPreviewScrollForDir(dirNode) {
+      const key = previewScrollKeyForDir(dirNode);
+      if (!key || !(WS.view.previewScrollByDir instanceof Map)) return null;
+      const val = WS.view.previewScrollByDir.get(key);
+      if (!Number.isFinite(val)) return null;
+      return Math.max(0, Number(val) || 0);
+    }
+
     function getDirectoryItemCount(dirNode) {
       if (!dirNode) return 0;
       const dirs = getChildDirsForNode(dirNode);
@@ -14218,9 +14245,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     function renderPreviewPane(animate = false, keepScroll = false) {
+      savePreviewScrollForActiveDir();
       const prevScroll = keepScroll ? previewBodyEl.scrollTop : 0;
 
       if (!WS.root || !WS.nav.dirNode) {
+        WS.view.previewScrollActiveKey = "";
         previewBodyEl.innerHTML = "";
         setPreviewBodyMode("grid");
         updateModePill();
@@ -14271,12 +14300,18 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       const dirNode = targetDir;
       if (!dirNode) {
+        WS.view.previewScrollActiveKey = "";
         previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">No preview.</div>`;
         return;
       }
+      const previewDirKey = previewScrollKeyForDir(dirNode);
+      const savedScroll = getSavedPreviewScrollForDir(dirNode);
+      const shouldRestoreScroll = !!keepScroll || savedScroll !== null;
+      const restoreScroll = keepScroll ? prevScroll : Math.max(0, Number(savedScroll) || 0);
 
       if (previewDisplayMode() === "expanded") {
-        renderExpandedPreviewPane(dirNode, animate, keepScroll, prevScroll);
+        renderExpandedPreviewPane(dirNode, animate, shouldRestoreScroll, restoreScroll);
+        WS.view.previewScrollActiveKey = previewDirKey;
         return;
       }
 
@@ -14290,10 +14325,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         });
       }
 
-      if (keepScroll) previewBodyEl.scrollTop = prevScroll;
+      if (shouldRestoreScroll) previewBodyEl.scrollTop = restoreScroll;
+      WS.view.previewScrollActiveKey = previewDirKey;
     }
 
     previewBodyEl.addEventListener("scroll", () => {
+      savePreviewScrollForActiveDir();
       if (WS.view.folderBehavior !== "loop") return;
       if (!WS.root || !WS.nav.dirNode) return;
       if (WS.preview.kind === "file") return;
