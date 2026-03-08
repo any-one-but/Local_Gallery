@@ -950,6 +950,7 @@
       position: relative;
       display: block;
       width: 100%;
+      aspect-ratio: 1 / 1;
       max-width: 100%;
       border-radius: 4px;
       overflow: hidden;
@@ -1134,6 +1135,7 @@
       width: 100%;
       height: 100%;
       display: block;
+      position: relative;
     }
 
     .dirTagQuadGrid {
@@ -1949,6 +1951,18 @@
       user-select: none;
     }
 
+    .thumbCropApplied {
+      will-change: width, height, left, top;
+    }
+
+    .thumbCropAbsolute {
+      position: absolute !important;
+      max-width: none !important;
+      max-height: none !important;
+      aspect-ratio: auto !important;
+      margin: 0 !important;
+    }
+
     .folderThumbFallback {
       display: flex;
       align-items: center;
@@ -2684,6 +2698,20 @@
       gap: 8px;
     }
 
+    #optionsBody .optRight.optActions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+      max-width: 58%;
+    }
+
+    #optionsBody .optRight.optActions button {
+      font-size: 11px;
+      padding: 5px 8px;
+    }
+
     #optionsBody select,
     #keybindsBody select {
       background: var(--color1-primary);
@@ -2746,6 +2774,167 @@
 
     #banicOverlay.active {
       display: block;
+    }
+
+    .thumbCropEditorOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.72);
+      z-index: 16000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .thumbCropEditorPanel {
+      width: min(420px, calc(100vw - 24px));
+      background: rgba(16, 18, 22, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 10px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      color: #fff;
+    }
+
+    .thumbCropEditorTitle {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .thumbCropEditorSubtitle {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.76);
+      margin-top: -2px;
+    }
+
+    .thumbCropEditorPreviewWrap {
+      --editor-ar: 1;
+      width: min(100%, calc(56vh * var(--editor-ar)));
+      max-width: 100%;
+      aspect-ratio: var(--editor-ar);
+      max-height: 56vh;
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(0, 0, 0, 0.65);
+      touch-action: none;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      align-self: center;
+    }
+
+    .thumbCropEditorPreviewWrap.dragging {
+      cursor: grabbing;
+    }
+
+    .thumbCropEditorPreviewFull {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      position: absolute;
+      left: 0;
+      top: 0;
+      pointer-events: none;
+    }
+
+    .thumbCropEditorShade {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.58);
+      pointer-events: none;
+    }
+
+    .thumbCropEditorCropBox {
+      position: absolute;
+      border: 2px solid rgba(255, 255, 255, 0.94);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+
+    .thumbCropEditorResizeHandle {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.94);
+      border-radius: 2px;
+      background: rgba(0, 0, 0, 0.5);
+      transform: translate(-100%, -100%);
+      z-index: 6;
+      pointer-events: auto;
+      touch-action: none;
+      cursor: nwse-resize;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+    }
+
+    .thumbCropEditorResizeHandle:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .thumbCropEditorPreviewWrap.resizing {
+      cursor: nwse-resize;
+    }
+
+    .thumbCropEditorHint {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.78);
+      margin-top: -2px;
+    }
+
+    .thumbCropEditorControl {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .thumbCropEditorControl > label {
+      grid-column: 1 / 2;
+      color: rgba(255, 255, 255, 0.86);
+    }
+
+    .thumbCropEditorControl > input[type="range"] {
+      grid-column: 1 / 2;
+      width: 100%;
+    }
+
+    .thumbCropEditorControl > span {
+      grid-column: 2 / 3;
+      justify-self: end;
+      font-variant-numeric: tabular-nums;
+      color: rgba(255, 255, 255, 0.92);
+      min-width: 46px;
+      text-align: right;
+    }
+
+    .thumbCropEditorActions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .thumbCropEditorActions > button {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.26);
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .thumbCropEditorActions > button:hover {
+      background: rgba(255, 255, 255, 0.2);
     }
 
     @media (max-width: 900px) {

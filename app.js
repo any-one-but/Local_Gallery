@@ -2436,6 +2436,7 @@
         dirScores: new Map(),
         dirTags: new Map(),
         dirThumbPresets: new Map(),
+        fileThumbCrop: new Map(),
         tagThumbModes: new Map(),
         tagThumbPresets: new Map(),
         pendingTagsByPath: new Map(),
@@ -2576,6 +2577,7 @@
       WS.meta.dirScores.clear();
       WS.meta.dirTags.clear();
       WS.meta.dirThumbPresets.clear();
+      WS.meta.fileThumbCrop.clear();
       WS.meta.tagThumbModes.clear();
       WS.meta.tagThumbPresets.clear();
       WS.meta.pendingTagsByPath.clear();
@@ -2666,6 +2668,7 @@
       WS.imageThumbActive = 0;
       PRELOAD_CACHE = new Map();
       PREVIEW_BULK_TAG_EDIT = null;
+      closeThumbnailCropEditor();
 
       renderDirectoriesPane();
       renderPreviewPane(true);
@@ -2967,6 +2970,7 @@
     let TAG_ENTRY_RENAME_STATE = null;
     let BULK_TAG_PLACEHOLDER = null;
     let PREVIEW_BULK_TAG_EDIT = null;
+    let THUMB_CROP_EDITOR = null;
     let RENAME_EDIT_PATH = null;
     let RENAME_EDIT_FILE_ID = null;
     let RENAME_BUSY = false;
@@ -3427,6 +3431,20 @@
         `;
       };
 
+      const makeActionRow = (title, hint, actionsHtml) => {
+        return `
+          <div class="optRow">
+            <div class="optLeft">
+              <div class="optTitle">${escapeHtml(title)}</div>
+              <div class="optHint">${escapeHtml(hint)}</div>
+            </div>
+            <div class="optRight optActions">
+              ${actionsHtml}
+            </div>
+          </div>
+        `;
+      };
+
       const dirSortModes = dirSortModeOptions();
 
       const preloadModes = [
@@ -3500,6 +3518,12 @@ ${makeSelectRow("Random action behavior", "Choose what the Random action key doe
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag near the top of the root directories pane when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
+${makeActionRow("Thumbnail tools", "Quick maintenance actions for custom thumbnail crops, assignments, and cache.", `
+  <button type="button" id="opt_thumb_reset_crops">Reset Edited Crops</button>
+  <button type="button" id="opt_thumb_reset_assignments">Reset Thumbnail Assignments</button>
+  <button type="button" id="opt_thumb_reset_all">Reset All Thumbnail Customizations</button>
+  <button type="button" id="opt_thumb_rebuild_cache">Rebuild Thumbnail Cache</button>
+`)}
           `
         },
         appearance: {
@@ -3632,6 +3656,17 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         updateValue();
       };
 
+      const bindActionBtn = (id, onClick) => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof onClick === "function") onClick();
+        });
+        el.addEventListener("keydown", (e) => e.stopPropagation());
+      };
+
       bindSelect("opt_preloadNextMode", "preloadNextMode", false, (val) => {
         if (val === "off") PRELOAD_CACHE = new Map();
       });
@@ -3697,6 +3732,61 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       bindCheck("opt_forceTitleCaps", "forceTitleCaps");
       bindCheck("opt_hideBeforeLastDashInFileNames", "hideBeforeLastDashInFileNames");
       bindCheck("opt_hideAfterFirstUnderscoreInFileNames", "hideAfterFirstUnderscoreInFileNames");
+      bindActionBtn("opt_thumb_reset_crops", () => {
+        const count = WS.meta && WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
+        if (!count) {
+          setOptionsStatus("No changes");
+          showStatusMessage("No edited thumbnail crops to reset.");
+          return;
+        }
+        const ok = confirm(`Reset ${count} edited thumbnail crop${count === 1 ? "" : "s"}?`);
+        if (!ok) return;
+        const removed = clearEditedThumbnailCrops();
+        applyOptionsEverywhere(false);
+        setOptionsStatus("Saved");
+        showStatusMessage(`Reset ${removed} edited thumbnail crop${removed === 1 ? "" : "s"}.`);
+      });
+      bindActionBtn("opt_thumb_reset_assignments", () => {
+        const dirCount = WS.meta && WS.meta.dirThumbPresets ? WS.meta.dirThumbPresets.size : 0;
+        const tagPresetCount = WS.meta && WS.meta.tagThumbPresets ? WS.meta.tagThumbPresets.size : 0;
+        const tagModeCount = WS.meta && WS.meta.tagThumbModes ? WS.meta.tagThumbModes.size : 0;
+        const total = dirCount + tagPresetCount + tagModeCount;
+        if (!total) {
+          setOptionsStatus("No changes");
+          showStatusMessage("No custom thumbnail assignments to reset.");
+          return;
+        }
+        const ok = confirm(`Reset ${total} custom thumbnail assignment${total === 1 ? "" : "s"} to defaults?`);
+        if (!ok) return;
+        const removed = clearThumbnailAssignmentsToDefaults();
+        applyOptionsEverywhere(false);
+        setOptionsStatus("Saved");
+        showStatusMessage(`Reset ${removed} thumbnail assignment${removed === 1 ? "" : "s"} to defaults.`);
+      });
+      bindActionBtn("opt_thumb_reset_all", () => {
+        const cropCount = WS.meta && WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
+        const dirCount = WS.meta && WS.meta.dirThumbPresets ? WS.meta.dirThumbPresets.size : 0;
+        const tagPresetCount = WS.meta && WS.meta.tagThumbPresets ? WS.meta.tagThumbPresets.size : 0;
+        const tagModeCount = WS.meta && WS.meta.tagThumbModes ? WS.meta.tagThumbModes.size : 0;
+        const total = cropCount + dirCount + tagPresetCount + tagModeCount;
+        if (!total) {
+          setOptionsStatus("No changes");
+          showStatusMessage("No custom thumbnail data to reset.");
+          return;
+        }
+        const ok = confirm("Reset all thumbnail edits and assignments to defaults?");
+        if (!ok) return;
+        const summary = clearAllThumbnailCustomizations();
+        applyOptionsEverywhere(false);
+        setOptionsStatus("Saved");
+        showStatusMessage(`Reset ${summary.total} thumbnail customization${summary.total === 1 ? "" : "s"}.`);
+      });
+      bindActionBtn("opt_thumb_rebuild_cache", () => {
+        invalidateAllThumbs();
+        applyOptionsEverywhere(false);
+        setOptionsStatus("Saved");
+        showStatusMessage("Thumbnail cache rebuild queued.");
+      });
 
       const dirSortSelect = $("opt_dirSortMode");
       if (dirSortSelect) {
@@ -4074,6 +4164,108 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return String(path || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     }
 
+    function normalizeThumbCropValue(crop) {
+      const src = (crop && typeof crop === "object") ? crop : {};
+      const xRaw = Number(src.x);
+      const yRaw = Number(src.y);
+      const zoomRaw = Number(src.zoom);
+      const x = Number.isFinite(xRaw) ? Math.min(100, Math.max(0, xRaw)) : 50;
+      const y = Number.isFinite(yRaw) ? Math.min(100, Math.max(0, yRaw)) : 50;
+      const zoom = Number.isFinite(zoomRaw) ? Math.min(4, Math.max(1, zoomRaw)) : 1;
+      return {
+        x: Math.round(x * 1000) / 1000,
+        y: Math.round(y * 1000) / 1000,
+        zoom: Math.round(zoom * 1000) / 1000
+      };
+    }
+
+    function isThumbCropDefault(crop) {
+      const normalized = normalizeThumbCropValue(crop);
+      return normalized.x === 50 && normalized.y === 50 && normalized.zoom === 1;
+    }
+
+    function metaGetFileThumbnailCropByRelPath(relPath) {
+      const key = normalizeWorkspaceRelPath(relPath);
+      if (!key || !WS.meta || !WS.meta.fileThumbCrop || !WS.meta.fileThumbCrop.has(key)) return null;
+      return normalizeThumbCropValue(WS.meta.fileThumbCrop.get(key));
+    }
+
+    function metaGetFileThumbnailCropForRecord(rec) {
+      return metaGetFileThumbnailCropByRelPath(rec && rec.relPath);
+    }
+
+    function metaSetFileThumbnailCropForRecord(rec, crop) {
+      const key = normalizeWorkspaceRelPath(rec && rec.relPath);
+      if (!key || !WS.meta || !WS.meta.fileThumbCrop) return false;
+      const normalized = normalizeThumbCropValue(crop);
+      if (isThumbCropDefault(normalized)) {
+        const had = WS.meta.fileThumbCrop.delete(key);
+        if (had) {
+          WS.meta.dirty = true;
+          metaScheduleSave();
+        }
+        return had;
+      }
+      const prev = metaGetFileThumbnailCropByRelPath(key);
+      if (prev && prev.x === normalized.x && prev.y === normalized.y && prev.zoom === normalized.zoom) return false;
+      WS.meta.fileThumbCrop.set(key, normalized);
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      return true;
+    }
+
+    function computeCoverCropLayout(aspect, crop) {
+      const ar = (Number.isFinite(Number(aspect)) && Number(aspect) > 0) ? Number(aspect) : 1;
+      const c = normalizeThumbCropValue(crop);
+      const baseW = ar >= 1 ? ar : 1;
+      const baseH = ar >= 1 ? 1 : (1 / ar);
+      const w = baseW * c.zoom;
+      const h = baseH * c.zoom;
+      const u = c.x / 100;
+      const v = c.y / 100;
+      const minX = 1 - w;
+      const minY = 1 - h;
+      const left = Math.min(0, Math.max(minX, minX * u));
+      const top = Math.min(0, Math.max(minY, minY * v));
+      return {
+        widthPct: Math.round(w * 100000) / 1000,
+        heightPct: Math.round(h * 100000) / 1000,
+        leftPct: Math.round(left * 100000) / 1000,
+        topPct: Math.round(top * 100000) / 1000
+      };
+    }
+
+    function computeEditorCropWindow(aspect, crop) {
+      const ar = (Number.isFinite(Number(aspect)) && Number(aspect) > 0) ? Number(aspect) : 1;
+      const c = normalizeThumbCropValue(crop);
+      const safeZoom = Math.max(1, c.zoom);
+      const widthFrac = ar >= 1 ? (1 / (ar * safeZoom)) : (1 / safeZoom);
+      const heightFrac = ar >= 1 ? (1 / safeZoom) : (ar / safeZoom);
+      const clampedW = Math.max(0.0001, Math.min(1, widthFrac));
+      const clampedH = Math.max(0.0001, Math.min(1, heightFrac));
+      const rangeX = Math.max(0, 1 - clampedW);
+      const rangeY = Math.max(0, 1 - clampedH);
+      const left = rangeX * (c.x / 100);
+      const top = rangeY * (c.y / 100);
+      return {
+        leftPct: Math.round(left * 100000) / 1000,
+        topPct: Math.round(top * 100000) / 1000,
+        widthPct: Math.round(clampedW * 100000) / 1000,
+        heightPct: Math.round(clampedH * 100000) / 1000,
+        rangeXPct: Math.round(rangeX * 100000) / 1000,
+        rangeYPct: Math.round(rangeY * 100000) / 1000
+      };
+    }
+
+    function fileThumbCropLayoutStyle(rec, rotateKey = "") {
+      if (!rec || rotateKey) return "";
+      const crop = metaGetFileThumbnailCropForRecord(rec);
+      if (!crop) return "";
+      const aspect = getPreviewAspectForRecord(rec);
+      const layout = computeCoverCropLayout(aspect, crop);
+      return `width:${layout.widthPct}% !important;height:${layout.heightPct}% !important;left:${layout.leftPct}% !important;top:${layout.topPct}% !important;`;
+    }
+
     function inferFolderThumbnailDefaultMode(path) {
       const p = normalizeDirPathValue(path);
       if (!p) return "rotate";
@@ -4179,6 +4371,17 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           nextTag.set(String(tagKey || ""), normalized);
         }
         WS.meta.tagThumbPresets = nextTag;
+      }
+      if (WS.meta.fileThumbCrop) {
+        const nextFile = new Map();
+        for (const [relPath, crop] of WS.meta.fileThumbCrop.entries()) {
+          const from = normalizeWorkspaceRelPath(relPath);
+          const to = relPathMap.get(from) || from;
+          const normalized = normalizeWorkspaceRelPath(to);
+          if (!normalized) continue;
+          nextFile.set(normalized, normalizeThumbCropValue(crop));
+        }
+        WS.meta.fileThumbCrop = nextFile;
       }
     }
 
@@ -4720,6 +4923,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const thumbnailByFolder = {};
       const tagThumbnailModeByTag = {};
       const tagThumbnailByTag = {};
+      const fileThumbnailCropByRelPath = {};
       for (const [path, node] of WS.dirByPath.entries()) {
         const fp = WS.meta.dirFingerprints.get(path) || 0;
         const tags = metaGetTags(path);
@@ -4756,6 +4960,15 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           tagThumbnailByTag[key] = relPath;
         }
       }
+      if (WS.meta && WS.meta.fileThumbCrop) {
+        for (const [relPathRaw, cropRaw] of WS.meta.fileThumbCrop.entries()) {
+          const relPath = normalizeWorkspaceRelPath(relPathRaw);
+          if (!relPath) continue;
+          const normalizedCrop = normalizeThumbCropValue(cropRaw);
+          if (isThumbCropDefault(normalizedCrop)) continue;
+          fileThumbnailCropByRelPath[relPath] = normalizedCrop;
+        }
+      }
       const pending = WS.meta && WS.meta.pendingTagsByPath ? WS.meta.pendingTagsByPath : null;
       if (pending && pending.size) {
         for (const [path, tags] of pending.entries()) {
@@ -4773,7 +4986,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         tagByFp,
         thumbnailByFolder,
         tagThumbnailModeByTag,
-        tagThumbnailByTag
+        tagThumbnailByTag,
+        fileThumbnailCropByRelPath
       };
     }
 
@@ -4971,6 +5185,18 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       for (const key of WS.meta.tagThumbPresets.keys()) {
         const mode = metaGetTagThumbnailModeByKey(key);
         if (mode !== "single") WS.meta.tagThumbModes.set(key, "single");
+      }
+
+      WS.meta.fileThumbCrop.clear();
+      const fileThumbnailCropByRelPath = (log.fileThumbnailCropByRelPath && typeof log.fileThumbnailCropByRelPath === "object")
+        ? log.fileThumbnailCropByRelPath
+        : {};
+      for (const rawRelPath of Object.keys(fileThumbnailCropByRelPath)) {
+        const relPath = normalizeWorkspaceRelPath(rawRelPath);
+        if (!relPath) continue;
+        const crop = normalizeThumbCropValue(fileThumbnailCropByRelPath[rawRelPath]);
+        if (isThumbCropDefault(crop)) continue;
+        WS.meta.fileThumbCrop.set(relPath, crop);
       }
     }
 
@@ -5745,6 +5971,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.meta.dirFingerprints = remapPathMapKeys(WS.meta.dirFingerprints, oldPrefix, newPrefix);
       WS.meta.dirThumbPresets = remapPathMapKeys(WS.meta.dirThumbPresets, oldPrefix, newPrefix);
       WS.meta.dirThumbPresets = remapPathMapValues(WS.meta.dirThumbPresets, oldPrefix, newPrefix);
+      WS.meta.fileThumbCrop = remapPathMapKeys(WS.meta.fileThumbCrop, oldPrefix, newPrefix);
     }
 
     function applyRenameInMemory(dirNode, newName) {
@@ -7187,6 +7414,56 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return cleared || modeChanged;
     }
 
+    function clearEditedThumbnailCrops() {
+      if (!WS.meta || !WS.meta.fileThumbCrop) return 0;
+      const count = WS.meta.fileThumbCrop.size;
+      if (!count) return 0;
+      WS.meta.fileThumbCrop.clear();
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      return count;
+    }
+
+    function clearThumbnailAssignmentsToDefaults() {
+      if (!WS.meta) return 0;
+      let count = 0;
+      if (WS.meta.dirThumbPresets && WS.meta.dirThumbPresets.size) {
+        count += WS.meta.dirThumbPresets.size;
+        WS.meta.dirThumbPresets.clear();
+      }
+      if (WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.size) {
+        count += WS.meta.tagThumbPresets.size;
+        WS.meta.tagThumbPresets.clear();
+      }
+      if (WS.meta.tagThumbModes && WS.meta.tagThumbModes.size) {
+        count += WS.meta.tagThumbModes.size;
+        WS.meta.tagThumbModes.clear();
+      }
+      if (!count) return 0;
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      return count;
+    }
+
+    function clearAllThumbnailCustomizations() {
+      if (!WS.meta) return { cropCount: 0, assignmentCount: 0, total: 0 };
+      const cropCount = WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
+      const dirCount = WS.meta.dirThumbPresets ? WS.meta.dirThumbPresets.size : 0;
+      const tagPresetCount = WS.meta.tagThumbPresets ? WS.meta.tagThumbPresets.size : 0;
+      const tagModeCount = WS.meta.tagThumbModes ? WS.meta.tagThumbModes.size : 0;
+      const assignmentCount = dirCount + tagPresetCount + tagModeCount;
+      if (WS.meta.fileThumbCrop) WS.meta.fileThumbCrop.clear();
+      if (WS.meta.dirThumbPresets) WS.meta.dirThumbPresets.clear();
+      if (WS.meta.tagThumbPresets) WS.meta.tagThumbPresets.clear();
+      if (WS.meta.tagThumbModes) WS.meta.tagThumbModes.clear();
+      const total = cropCount + assignmentCount;
+      if (total > 0) {
+        WS.meta.dirty = true;
+        metaScheduleSave();
+      }
+      return { cropCount, assignmentCount, total };
+    }
+
     function getRootPresetPreviewRecord(rootNode, rootPool = null) {
       if (!rootNode) return null;
       const key = rootThumbnailKey();
@@ -7280,6 +7557,455 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       } catch {
         return "";
       }
+    }
+
+    function closeThumbnailCropEditor() {
+      if (!THUMB_CROP_EDITOR) return;
+      try { THUMB_CROP_EDITOR.remove(); } catch {}
+      THUMB_CROP_EDITOR = null;
+    }
+
+    function openThumbnailCropEditor(rec) {
+      const targetLabel = "this file";
+      if (!rec) return false;
+
+      const previewSrc = (rec.type === "video")
+        ? getVideoPosterForRecord(rec)
+        : (ensureThumbUrl(rec) || "");
+      if (!previewSrc) {
+        showStatusMessage("Thumbnail preview is unavailable.");
+        return false;
+      }
+
+      closeThumbnailCropEditor();
+
+      const crop = normalizeThumbCropValue(metaGetFileThumbnailCropForRecord(rec) || { x: 50, y: 50, zoom: 1 });
+      const overlay = document.createElement("div");
+      overlay.className = "thumbCropEditorOverlay";
+      overlay.tabIndex = -1;
+      overlay.innerHTML = `
+        <div class="thumbCropEditorPanel" role="dialog" aria-modal="true" aria-label="Edit thumbnail">
+          <div class="thumbCropEditorTitle">Edit thumbnail</div>
+          <div class="thumbCropEditorSubtitle">${escapeHtml(targetLabel)}</div>
+          <div class="thumbCropEditorPreviewWrap">
+            <img class="thumbCropEditorPreviewFull" src="${escapeHtml(previewSrc)}" alt="" />
+            <div class="thumbCropEditorShade" data-crop-shade="top"></div>
+            <div class="thumbCropEditorShade" data-crop-shade="left"></div>
+            <div class="thumbCropEditorShade" data-crop-shade="right"></div>
+            <div class="thumbCropEditorShade" data-crop-shade="bottom"></div>
+            <div class="thumbCropEditorCropBox" data-crop-box="1"></div>
+            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" aria-label="Resize crop viewport" tabindex="-1"></button>
+          </div>
+          <div class="thumbCropEditorHint">Drag to pan. Drag corner or pinch to zoom.</div>
+          <div class="thumbCropEditorControl">
+            <label>Horizontal focus</label>
+            <input type="range" min="0" max="100" step="1" value="${escapeHtml(String(crop.x))}" data-crop-field="x" />
+            <span data-crop-value="x">${escapeHtml(String(Math.round(crop.x)))}</span>
+          </div>
+          <div class="thumbCropEditorControl">
+            <label>Vertical focus</label>
+            <input type="range" min="0" max="100" step="1" value="${escapeHtml(String(crop.y))}" data-crop-field="y" />
+            <span data-crop-value="y">${escapeHtml(String(Math.round(crop.y)))}</span>
+          </div>
+          <div class="thumbCropEditorControl">
+            <label>Zoom</label>
+            <input type="range" min="1" max="4" step="0.01" value="${escapeHtml(String(crop.zoom))}" data-crop-field="zoom" />
+            <span data-crop-value="zoom">${escapeHtml(crop.zoom.toFixed(2))}</span>
+          </div>
+          <div class="thumbCropEditorActions">
+            <button type="button" data-crop-action="reset">Reset</button>
+            <button type="button" data-crop-action="cancel">Cancel</button>
+            <button type="button" data-crop-action="save">Save</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      THUMB_CROP_EDITOR = overlay;
+
+      const panel = overlay.querySelector(".thumbCropEditorPanel");
+      const previewWrap = overlay.querySelector(".thumbCropEditorPreviewWrap");
+      const previewImage = overlay.querySelector(".thumbCropEditorPreviewFull");
+      const cropBox = overlay.querySelector('[data-crop-box="1"]');
+      const shadeTop = overlay.querySelector('[data-crop-shade="top"]');
+      const shadeLeft = overlay.querySelector('[data-crop-shade="left"]');
+      const shadeRight = overlay.querySelector('[data-crop-shade="right"]');
+      const shadeBottom = overlay.querySelector('[data-crop-shade="bottom"]');
+      const resizeHandle = overlay.querySelector('[data-crop-handle="resize"]');
+      const rangeX = overlay.querySelector('input[data-crop-field="x"]');
+      const rangeY = overlay.querySelector('input[data-crop-field="y"]');
+      const rangeZoom = overlay.querySelector('input[data-crop-field="zoom"]');
+      const valX = overlay.querySelector('[data-crop-value="x"]');
+      const valY = overlay.querySelector('[data-crop-value="y"]');
+      const valZoom = overlay.querySelector('[data-crop-value="zoom"]');
+      let editorAspect = normalizePreviewAspect(getPreviewAspectForRecord(rec), 4 / 3);
+      const getEditorAspect = () => normalizePreviewAspect(editorAspect, 4 / 3);
+      const applyEditorAspect = (nextAspect) => {
+        editorAspect = normalizePreviewAspect(nextAspect, getEditorAspect());
+        if (previewWrap) previewWrap.style.setProperty("--editor-ar", String(editorAspect));
+      };
+      const getCurrent = () => normalizeThumbCropValue({
+        x: Number(rangeX?.value || 50),
+        y: Number(rangeY?.value || 50),
+        zoom: Number(rangeZoom?.value || 1)
+      });
+      const applyPreview = () => {
+        const cur = getCurrent();
+        const overlayWin = computeEditorCropWindow(getEditorAspect(), cur);
+        const left = Number(overlayWin.leftPct) || 0;
+        const top = Number(overlayWin.topPct) || 0;
+        const width = Number(overlayWin.widthPct) || 0;
+        const height = Number(overlayWin.heightPct) || 0;
+        const right = Math.max(0, 100 - (left + width));
+        const bottom = Math.max(0, 100 - (top + height));
+        if (valX) valX.textContent = String(Math.round(cur.x));
+        if (valY) valY.textContent = String(Math.round(cur.y));
+        if (valZoom) valZoom.textContent = cur.zoom.toFixed(2);
+        if (cropBox) {
+          cropBox.style.left = `${left}%`;
+          cropBox.style.top = `${top}%`;
+          cropBox.style.width = `${width}%`;
+          cropBox.style.height = `${height}%`;
+        }
+        if (shadeTop) {
+          shadeTop.style.left = "0%";
+          shadeTop.style.top = "0%";
+          shadeTop.style.width = "100%";
+          shadeTop.style.height = `${top}%`;
+        }
+        if (shadeBottom) {
+          shadeBottom.style.left = "0%";
+          shadeBottom.style.top = `${top + height}%`;
+          shadeBottom.style.width = "100%";
+          shadeBottom.style.height = `${bottom}%`;
+        }
+        if (shadeLeft) {
+          shadeLeft.style.left = "0%";
+          shadeLeft.style.top = `${top}%`;
+          shadeLeft.style.width = `${left}%`;
+          shadeLeft.style.height = `${height}%`;
+        }
+        if (shadeRight) {
+          shadeRight.style.left = `${left + width}%`;
+          shadeRight.style.top = `${top}%`;
+          shadeRight.style.width = `${right}%`;
+          shadeRight.style.height = `${height}%`;
+        }
+        if (resizeHandle) {
+          resizeHandle.style.left = `${left + width}%`;
+          resizeHandle.style.top = `${top + height}%`;
+        }
+      };
+      const setCurrent = (nextCrop) => {
+        const next = normalizeThumbCropValue(nextCrop);
+        if (rangeX) rangeX.value = String(next.x);
+        if (rangeY) rangeY.value = String(next.y);
+        if (rangeZoom) rangeZoom.value = String(next.zoom);
+        applyPreview();
+      };
+      const getWrapSize = () => {
+        const rect = previewWrap && previewWrap.getBoundingClientRect
+          ? previewWrap.getBoundingClientRect()
+          : null;
+        return {
+          width: Math.max(1, Number(rect && rect.width) || 1),
+          height: Math.max(1, Number(rect && rect.height) || 1)
+        };
+      };
+      const cropWithZoomAroundAnchor = (startCrop, nextZoom, anchorU = null, anchorV = null) => {
+        const base = normalizeThumbCropValue(startCrop || getCurrent());
+        const zoom = Math.min(4, Math.max(1, Number(nextZoom) || base.zoom || 1));
+        const baseWin = computeEditorCropWindow(getEditorAspect(), base);
+        const baseLeft = (Number(baseWin.leftPct) || 0) / 100;
+        const baseTop = (Number(baseWin.topPct) || 0) / 100;
+        const baseW = (Number(baseWin.widthPct) || 0) / 100;
+        const baseH = (Number(baseWin.heightPct) || 0) / 100;
+        const focusU = Number.isFinite(Number(anchorU))
+          ? Math.max(0, Math.min(1, Number(anchorU)))
+          : Math.max(0, Math.min(1, baseLeft + (baseW * 0.5)));
+        const focusV = Number.isFinite(Number(anchorV))
+          ? Math.max(0, Math.min(1, Number(anchorV)))
+          : Math.max(0, Math.min(1, baseTop + (baseH * 0.5)));
+        const probe = computeEditorCropWindow(getEditorAspect(), { x: 50, y: 50, zoom });
+        const nextW = (Number(probe.widthPct) || 0) / 100;
+        const nextH = (Number(probe.heightPct) || 0) / 100;
+        const nextRangeX = (Number(probe.rangeXPct) || 0) / 100;
+        const nextRangeY = (Number(probe.rangeYPct) || 0) / 100;
+        const nextLeft = Math.min(nextRangeX, Math.max(0, focusU - (nextW * 0.5)));
+        const nextTop = Math.min(nextRangeY, Math.max(0, focusV - (nextH * 0.5)));
+        const nextX = nextRangeX > 0.000001 ? (nextLeft / nextRangeX) * 100 : 50;
+        const nextY = nextRangeY > 0.000001 ? (nextTop / nextRangeY) * 100 : 50;
+        return normalizeThumbCropValue({ x: nextX, y: nextY, zoom });
+      };
+      const cropFromPanPixels = (startCrop, dx, dy, zoomOverride = null) => {
+        const hasZoomOverride = zoomOverride !== null && zoomOverride !== undefined && zoomOverride !== "";
+        const overrideZoom = hasZoomOverride ? Number(zoomOverride) : NaN;
+        const liveZoom = Number(rangeZoom?.value);
+        const currentZoom = Number(getCurrent().zoom);
+        const startZoom = Number(startCrop && startCrop.zoom);
+        const zoom = Number.isFinite(overrideZoom)
+          ? overrideZoom
+          : (Number.isFinite(liveZoom)
+            ? liveZoom
+            : (Number.isFinite(currentZoom)
+              ? currentZoom
+              : (Number.isFinite(startZoom) ? startZoom : 1)));
+        const base = normalizeThumbCropValue({ x: Number(startCrop && startCrop.x), y: Number(startCrop && startCrop.y), zoom });
+        const wrapSize = getWrapSize();
+        const overlayWin = computeEditorCropWindow(getEditorAspect(), base);
+        const rangeX = Math.max(0, Number(overlayWin.rangeXPct) / 100);
+        const rangeY = Math.max(0, Number(overlayWin.rangeYPct) / 100);
+        const nextX = rangeX > 0.000001
+          ? base.x + (((Number(dx) || 0) / wrapSize.width) * (100 / rangeX))
+          : base.x;
+        const nextY = rangeY > 0.000001
+          ? base.y + (((Number(dy) || 0) / wrapSize.height) * (100 / rangeY))
+          : base.y;
+        return normalizeThumbCropValue({
+          x: nextX,
+          y: nextY,
+          zoom: base.zoom
+        });
+      };
+
+      [rangeX, rangeY, rangeZoom].forEach((el) => {
+        if (!el) return;
+        el.addEventListener("input", applyPreview);
+      });
+      applyEditorAspect(getEditorAspect());
+      if (previewImage) {
+        previewImage.addEventListener("load", () => {
+          const w = Number(previewImage.naturalWidth) || 0;
+          const h = Number(previewImage.naturalHeight) || 0;
+          if (w > 0 && h > 0) {
+            const naturalAspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(rec));
+            applyEditorAspect(naturalAspect);
+            // Keep render-time crop math in sync with editor math, even before thumb jobs finish.
+            if (rec && (rec.type === "image" || previewSrc !== BLACK_POSTER_URL)) {
+              rec.previewAspect = naturalAspect;
+            }
+          }
+          applyPreview();
+        });
+      }
+      applyPreview();
+
+      if (previewWrap) {
+        let resizeGesture = null;
+        const activePointers = new Map();
+        let gesture = null;
+        const pointerPosInWrap = (e) => {
+          const rect = previewWrap && previewWrap.getBoundingClientRect
+            ? previewWrap.getBoundingClientRect()
+            : null;
+          const left = Number(rect && rect.left) || 0;
+          const top = Number(rect && rect.top) || 0;
+          return {
+            x: (Number(e && e.clientX) || 0) - left,
+            y: (Number(e && e.clientY) || 0) - top
+          };
+        };
+        const getFirstTwoPointers = () => {
+          const vals = Array.from(activePointers.values());
+          if (vals.length < 2) return null;
+          return [vals[0], vals[1]];
+        };
+        const pointerDistance = (a, b) => Math.hypot(Number(a && a.x) - Number(b && b.x), Number(a && a.y) - Number(b && b.y));
+        const pointerCenter = (a, b) => ({
+          x: (Number(a && a.x) + Number(b && b.x)) * 0.5,
+          y: (Number(a && a.y) + Number(b && b.y)) * 0.5
+        });
+        const refreshGesture = () => {
+          if (activePointers.size >= 2) {
+            const pair = getFirstTwoPointers();
+            if (!pair) return;
+            const center = pointerCenter(pair[0], pair[1]);
+            gesture = {
+              type: "pinch",
+              startCrop: getCurrent(),
+              startDist: Math.max(0.0001, pointerDistance(pair[0], pair[1])),
+              startCenterX: center.x,
+              startCenterY: center.y
+            };
+            previewWrap.classList.add("dragging");
+            return;
+          }
+          if (activePointers.size === 1) {
+            const point = Array.from(activePointers.values())[0];
+            gesture = {
+              type: "pan",
+              startCrop: getCurrent(),
+              startX: Number(point && point.x) || 0,
+              startY: Number(point && point.y) || 0
+            };
+            previewWrap.classList.add("dragging");
+            return;
+          }
+          gesture = null;
+          previewWrap.classList.remove("dragging");
+        };
+        const onPointerEnd = (e) => {
+          if (!activePointers.has(e.pointerId)) return;
+          activePointers.delete(e.pointerId);
+          try { previewWrap.releasePointerCapture(e.pointerId); } catch {}
+          refreshGesture();
+        };
+
+        previewWrap.addEventListener("pointerdown", (e) => {
+          if (resizeGesture) return;
+          if (e.target && e.target.closest && e.target.closest('[data-crop-handle="resize"]')) return;
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          activePointers.set(e.pointerId, { x: Number(e.clientX) || 0, y: Number(e.clientY) || 0 });
+          try { previewWrap.setPointerCapture(e.pointerId); } catch {}
+          refreshGesture();
+          e.preventDefault();
+        });
+        previewWrap.addEventListener("pointermove", (e) => {
+          if (!activePointers.has(e.pointerId)) return;
+          activePointers.set(e.pointerId, { x: Number(e.clientX) || 0, y: Number(e.clientY) || 0 });
+          if (!gesture) {
+            refreshGesture();
+            return;
+          }
+          if (gesture.type === "pinch" && activePointers.size >= 2) {
+            const pair = getFirstTwoPointers();
+            if (!pair) return;
+            const dist = pointerDistance(pair[0], pair[1]);
+            const center = pointerCenter(pair[0], pair[1]);
+            const scale = Math.max(0.25, Math.min(4, dist / Math.max(0.0001, Number(gesture.startDist) || 1)));
+            const nextZoom = Math.min(4, Math.max(1, Number(gesture.startCrop.zoom || 1) * scale));
+            const dx = center.x - Number(gesture.startCenterX || 0);
+            const dy = center.y - Number(gesture.startCenterY || 0);
+            const next = cropFromPanPixels(gesture.startCrop, dx, dy, nextZoom);
+            setCurrent(next);
+            e.preventDefault();
+            return;
+          }
+          if (gesture.type === "pan" && activePointers.size === 1) {
+            const point = Array.from(activePointers.values())[0];
+            const dx = (Number(point && point.x) || 0) - Number(gesture.startX || 0);
+            const dy = (Number(point && point.y) || 0) - Number(gesture.startY || 0);
+            const next = cropFromPanPixels(gesture.startCrop, dx, dy);
+            setCurrent(next);
+            e.preventDefault();
+            return;
+          }
+          refreshGesture();
+        });
+        previewWrap.addEventListener("pointerup", onPointerEnd);
+        previewWrap.addEventListener("pointercancel", onPointerEnd);
+        previewWrap.addEventListener("lostpointercapture", onPointerEnd);
+        previewWrap.addEventListener("wheel", (e) => {
+          if (!e.ctrlKey && !e.metaKey) return;
+          const cur = getCurrent();
+          const delta = Number(e.deltaY) || 0;
+          if (!delta) return;
+          const factor = Math.exp(-delta * 0.0025);
+          const nextZoom = Math.min(4, Math.max(1, cur.zoom * factor));
+          if (Math.abs(nextZoom - cur.zoom) < 0.0001) return;
+          setCurrent({ x: cur.x, y: cur.y, zoom: nextZoom });
+          e.preventDefault();
+        }, { passive: false });
+
+        if (resizeHandle) {
+          const onResizeEnd = (e) => {
+            if (!resizeGesture || e.pointerId !== resizeGesture.pointerId) return;
+            try { resizeHandle.releasePointerCapture(e.pointerId); } catch {}
+            resizeGesture = null;
+            previewWrap.classList.remove("resizing");
+          };
+          resizeHandle.addEventListener("pointerdown", (e) => {
+            if (e.pointerType === "mouse" && e.button !== 0) return;
+            const startCrop = getCurrent();
+            const startWin = computeEditorCropWindow(getEditorAspect(), startCrop);
+            const anchorU = ((Number(startWin.leftPct) || 0) + ((Number(startWin.widthPct) || 0) * 0.5)) / 100;
+            const anchorV = ((Number(startWin.topPct) || 0) + ((Number(startWin.heightPct) || 0) * 0.5)) / 100;
+            const wrapSize = getWrapSize();
+            const centerPx = {
+              x: anchorU * wrapSize.width,
+              y: anchorV * wrapSize.height
+            };
+            const pos = pointerPosInWrap(e);
+            const startDist = Math.max(8, Math.hypot(pos.x - centerPx.x, pos.y - centerPx.y));
+            resizeGesture = {
+              pointerId: e.pointerId,
+              startCrop,
+              startDist,
+              centerPx,
+              anchorU,
+              anchorV
+            };
+            try { resizeHandle.setPointerCapture(e.pointerId); } catch {}
+            previewWrap.classList.add("resizing");
+            e.preventDefault();
+            e.stopPropagation();
+          });
+          resizeHandle.addEventListener("pointermove", (e) => {
+            if (!resizeGesture || e.pointerId !== resizeGesture.pointerId) return;
+            const pos = pointerPosInWrap(e);
+            const dist = Math.max(1, Math.hypot(pos.x - resizeGesture.centerPx.x, pos.y - resizeGesture.centerPx.y));
+            const scale = dist / Math.max(1, resizeGesture.startDist);
+            const nextZoom = Math.min(4, Math.max(1, Number(resizeGesture.startCrop.zoom || 1) / Math.max(0.2, scale)));
+            const next = cropWithZoomAroundAnchor(
+              resizeGesture.startCrop,
+              nextZoom,
+              resizeGesture.anchorU,
+              resizeGesture.anchorV
+            );
+            setCurrent(next);
+            e.preventDefault();
+            e.stopPropagation();
+          });
+          resizeHandle.addEventListener("pointerup", onResizeEnd);
+          resizeHandle.addEventListener("pointercancel", onResizeEnd);
+          resizeHandle.addEventListener("lostpointercapture", onResizeEnd);
+        }
+      }
+
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) closeThumbnailCropEditor();
+      });
+      overlay.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeThumbnailCropEditor();
+        }
+      });
+      if (panel) panel.addEventListener("click", (e) => e.stopPropagation());
+
+      const actionBtns = Array.from(overlay.querySelectorAll("[data-crop-action]"));
+      actionBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const action = String(btn.getAttribute("data-crop-action") || "");
+          if (action === "cancel") {
+            closeThumbnailCropEditor();
+            return;
+          }
+          if (action === "reset") {
+            if (rangeX) rangeX.value = "50";
+            if (rangeY) rangeY.value = "50";
+            if (rangeZoom) rangeZoom.value = "1";
+            applyPreview();
+            return;
+          }
+          if (action === "save") {
+            const nextCrop = getCurrent();
+            metaSetFileThumbnailCropForRecord(rec, nextCrop);
+            closeThumbnailCropEditor();
+            renderDirectoriesPane(true);
+            renderPreviewPane(false, true);
+            syncButtons();
+            kickVideoThumbsForPreview();
+            kickImageThumbsForPreview();
+            showStatusMessage(`Saved thumbnail crop for ${targetLabel}.`);
+          }
+        });
+      });
+
+      requestAnimationFrame(() => {
+        try { overlay.focus(); } catch {}
+        try { rangeZoom?.focus(); } catch {}
+      });
+      return true;
     }
 
     function setTagThumbnailFromRecordByKey(rec, tagKey) {
@@ -9603,6 +10329,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         return true;
       }
 
+      if (action === "edit-thumbnail") {
+        openThumbnailCropEditor(rec);
+        return true;
+      }
+
       if (action === "set-parent-thumbnail") {
         setParentThumbnailFromRecord(rec);
         return true;
@@ -10022,6 +10753,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         if (!label || !key) continue;
         menu.appendChild(makeBtn(label, tagThumbnailActionForKey(key)));
       }
+      menu.appendChild(makeBtn("Edit thumbnail", "edit-thumbnail"));
       menu.appendChild(makeBtn("Rename", "rename-file"));
       PREVIEW_CONTEXT_MENU_STATE = { fileId };
 
@@ -11054,7 +11786,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
                 : (ensureThumbUrl(presetRec) || "");
               const previewAspect = getPreviewAspectForRecord(presetRec);
               if (previewSrc) {
-                squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                const cropStyle = fileThumbCropLayoutStyle(presetRec, "");
+                const cropClass = cropStyle ? " thumbCropApplied thumbCropAbsolute" : "";
+                squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
               }
             } else if (tagThumbMode === "single" && tagPool.length) {
               const singleKey = `${tagRotateKey}:single`;
@@ -11199,7 +11933,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
               if (firstRec.type === "video" && !firstRec.videoThumbUrl) enqueueVideoThumb(firstRec);
               if (previewSrc) {
                 const rotateAttr = rotateKey ? ` data-rotate-key="${escapeHtml(rotateKey)}"` : "";
-                inlinePreviewHtml = `<img class="dirInlinePreview" data-dir-preview-id="${escapeHtml(previewId)}"${rotateAttr} src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                const cropStyle = fileThumbCropLayoutStyle(firstRec, rotateKey);
+                const cropClass = cropStyle ? " thumbCropApplied thumbCropAbsolute" : "";
+                inlinePreviewHtml = `<img class="dirInlinePreview${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}"${rotateAttr} src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
               }
             }
             const sc = metaGetScore(p);
@@ -11304,7 +12040,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
                       : (ensureThumbUrl(rootPresetRec) || "");
                     const previewAspect = getPreviewAspectForRecord(rootPresetRec);
                     if (previewSrc) {
-                      rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                      const cropStyle = fileThumbCropLayoutStyle(rootPresetRec, "");
+                      const cropClass = cropStyle ? " thumbCropApplied thumbCropAbsolute" : "";
+                      rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
                     }
                   } else if (rootMode === "single" && rootPool.length) {
                     const singleKey = `root:${rootScope}:single`;
@@ -11433,6 +12171,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
                   <button type="button" data-action="set-parent-thumbnail"${parentThumbTarget ? "" : " disabled"}>Set parent thumbnail</button>
                   <button type="button" data-action="set-root-thumbnail"${canSetRootThumbnail ? "" : " disabled"}>Set root thumbnail</button>
                   ${tagThumbButtonsHtml}
+                  <button type="button" data-action="edit-thumbnail">Edit thumbnail</button>
                   <button type="button" data-action="rename-file">Rename</button>
                 `;
             const fileTypeLabel = toTitleCaps(String(rec?.type || (isVid ? "video" : "image")));
@@ -11454,7 +12193,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
               const previewAspect = getPreviewAspectForRecord(rec);
               if (isVid && !rec.videoThumbUrl) enqueueVideoThumb(rec);
               if (previewSrc) {
-                inlinePreviewHtml = `<img class="dirInlinePreview" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                const cropStyle = fileThumbCropLayoutStyle(rec, "");
+                const cropClass = cropStyle ? " thumbCropApplied thumbCropAbsolute" : "";
+                inlinePreviewHtml = `<img class="dirInlinePreview${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
               }
             }
             const fileMediaHtml = inlinePreviewHtml
@@ -13200,6 +13941,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             });
           }
           if (rotateKey) thumb.setAttribute("data-rotate-key", rotateKey);
+          const cropStyle = fileThumbCropLayoutStyle(leadRec, rotateKey);
+          if (cropStyle) {
+            thumb.classList.add("thumbCropApplied", "thumbCropAbsolute");
+            thumb.style.cssText += cropStyle;
+          }
           card.appendChild(thumb);
         } else {
           const fallback = document.createElement("div");
@@ -13979,6 +14725,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             }
           }
         });
+      }
+      if (!useFitInsideJustified && useSquareMediaCards) {
+        const cropStyle = fileThumbCropLayoutStyle(rec, "");
+        if (cropStyle) {
+          img.classList.add("thumbCropApplied", "thumbCropAbsolute");
+          img.style.cssText += cropStyle;
+        }
       }
 
       const showPreviewFileTypeLabel = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFileTypeLabel === false);
