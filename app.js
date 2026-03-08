@@ -1981,6 +1981,7 @@
       for (let i = 0; i < 26; i++) out.push(String.fromCharCode(97 + i));
       for (let i = 0; i < 10; i++) out.push(String(i));
       out.push("Space");
+      out.push("ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown");
       return out;
     })();
 
@@ -2013,6 +2014,10 @@
     const KEY_LABELS = {
       Escape: "Escape",
       Space: "Space",
+      ArrowLeft: "Left Arrow",
+      ArrowRight: "Right Arrow",
+      ArrowUp: "Up Arrow",
+      ArrowDown: "Down Arrow",
       "=": "+ / =",
       "-": "- / _"
     };
@@ -2240,7 +2245,11 @@
       { id: "tagSelection", label: "Tag folder selection", hint: "Start tag edit for selected/current folder(s).", section: "extras" },
       { id: "favoriteSelection", label: "Favorite folder selection", hint: "Favorite or unfavorite selected/current folder(s).", section: "extras" },
       { id: "renameFolderSelection", label: "Rename selected folder", hint: "Start renaming the selected/current folder.", section: "extras" },
-      { id: "renameFileSelection", label: "Rename selected file", hint: "Start renaming the selected/current file.", section: "extras" }
+      { id: "renameFileSelection", label: "Rename selected file", hint: "Start renaming the selected/current file.", section: "extras" },
+      { id: "moveThumbViewportLeft", label: "Move thumbnail viewport left", hint: "Move thumbnail framing left for the selected item's source thumbnail.", section: "extras" },
+      { id: "moveThumbViewportRight", label: "Move thumbnail viewport right", hint: "Move thumbnail framing right for the selected item's source thumbnail.", section: "extras" },
+      { id: "moveThumbViewportUp", label: "Move thumbnail viewport up", hint: "Move thumbnail framing up for the selected item's source thumbnail.", section: "extras" },
+      { id: "moveThumbViewportDown", label: "Move thumbnail viewport down", hint: "Move thumbnail framing down for the selected item's source thumbnail.", section: "extras" }
     ];
 
     const KEYBIND_LOCKED_ACTIONS = Object.freeze({
@@ -2314,7 +2323,11 @@
       tagSelection: "",
       favoriteSelection: "Ctrl+f",
       renameFolderSelection: "",
-      renameFileSelection: ""
+      renameFileSelection: "",
+      moveThumbViewportLeft: "ArrowLeft",
+      moveThumbViewportRight: "ArrowRight",
+      moveThumbViewportUp: "ArrowUp",
+      moveThumbViewportDown: "ArrowDown"
     });
 
     function applyFixedKeybinds(bindings) {
@@ -2971,6 +2984,7 @@
     let BULK_TAG_PLACEHOLDER = null;
     let PREVIEW_BULK_TAG_EDIT = null;
     let THUMB_CROP_EDITOR = null;
+    const THUMB_ASPECT_RESOLVE_PENDING = new Set();
     let RENAME_EDIT_PATH = null;
     let RENAME_EDIT_FILE_ID = null;
     let RENAME_BUSY = false;
@@ -5577,6 +5591,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
 
       metaInitForCurrentWorkspace();
+      hydrateEditedThumbnailAspects().then((changed) => {
+        if (!changed || !WS.root) return;
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+      }).catch(() => {});
 
       // Initialize Directories Pane at root listing
       WS.nav.dirNode = WS.root;
@@ -5692,6 +5714,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         WS.meta.dirty = true;
         metaScheduleSave();
       }
+
+      try { await hydrateEditedThumbnailAspects(); } catch {}
 
       WS.nav.dirNode = WS.root;
       WS.view.aboveRootView = true;
@@ -7464,6 +7488,121 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return { cropCount, assignmentCount, total };
     }
 
+    function hasKnownPreviewAspect(rec) {
+      const ar = Number(rec && rec.previewAspect);
+      return Number.isFinite(ar) && ar > 0;
+    }
+
+    async function detectRecordPreviewAspect(rec) {
+      if (!rec) return null;
+      if (hasKnownPreviewAspect(rec)) {
+        return normalizePreviewAspect(rec.previewAspect, 4 / 3);
+      }
+
+      if (rec.type === "image") {
+        let w = 0;
+        let h = 0;
+        if (rec.file) {
+          try {
+            const bmp = await createImageBitmap(rec.file);
+            w = Number(bmp && bmp.width) || 0;
+            h = Number(bmp && bmp.height) || 0;
+            try { bmp.close(); } catch {}
+          } catch {}
+        }
+        if (!(w > 0 && h > 0)) {
+          const src = ensureMediaUrl(rec);
+          if (src) {
+            try {
+              const dims = await new Promise((resolve) => {
+                const img = new Image();
+                const done = (out) => resolve(out || { w: 0, h: 0 });
+                img.onload = () => done({ w: Number(img.naturalWidth) || 0, h: Number(img.naturalHeight) || 0 });
+                img.onerror = () => done({ w: 0, h: 0 });
+                img.src = src;
+              });
+              w = Number(dims && dims.w) || 0;
+              h = Number(dims && dims.h) || 0;
+            } catch {}
+          }
+        }
+        if (w > 0 && h > 0) return normalizePreviewAspect(w / h, 4 / 3);
+        return null;
+      }
+
+      if (rec.type === "video") {
+        const knownVideoAspect = Number(rec.videoAspect);
+        if (Number.isFinite(knownVideoAspect) && knownVideoAspect > 0) {
+          return normalizePreviewAspect(knownVideoAspect, 4 / 3);
+        }
+        const src = ensureMediaUrl(rec);
+        if (!src) return null;
+        try {
+          const dims = await new Promise((resolve) => {
+            const v = document.createElement("video");
+            let settled = false;
+            const done = (out) => {
+              if (settled) return;
+              settled = true;
+              try {
+                v.pause();
+                v.removeAttribute("src");
+                v.load();
+              } catch {}
+              resolve(out || { w: 0, h: 0 });
+            };
+            const timer = setTimeout(() => done({ w: 0, h: 0 }), 2000);
+            v.preload = "metadata";
+            v.muted = true;
+            v.playsInline = true;
+            v.onloadedmetadata = () => {
+              clearTimeout(timer);
+              done({ w: Number(v.videoWidth) || 0, h: Number(v.videoHeight) || 0 });
+            };
+            v.onerror = () => {
+              clearTimeout(timer);
+              done({ w: 0, h: 0 });
+            };
+            v.src = src;
+          });
+          const w = Number(dims && dims.w) || 0;
+          const h = Number(dims && dims.h) || 0;
+          if (w > 0 && h > 0) return normalizePreviewAspect(w / h, 4 / 3);
+        } catch {}
+      }
+
+      return null;
+    }
+
+    async function hydrateEditedThumbnailAspects() {
+      if (!WS.meta || !WS.meta.fileThumbCrop || !WS.meta.fileThumbCrop.size) return false;
+      const records = [];
+      const seen = new Set();
+      for (const relPath of WS.meta.fileThumbCrop.keys()) {
+        const rec = findFileRecordByRelPath(relPath);
+        if (!rec) continue;
+        const id = String(rec.id || "");
+        if (!id || seen.has(id)) continue;
+        if (hasKnownPreviewAspect(rec)) continue;
+        seen.add(id);
+        records.push(rec);
+      }
+      if (!records.length) return false;
+
+      let changed = false;
+      for (let i = 0; i < records.length; i++) {
+        const rec = records[i];
+        const detected = await detectRecordPreviewAspect(rec);
+        if (!detected) continue;
+        const prev = Number(rec.previewAspect);
+        if (!Number.isFinite(prev) || Math.abs(prev - detected) > 0.0001) {
+          rec.previewAspect = detected;
+          changed = true;
+        }
+      }
+      return changed;
+    }
+
     function getRootPresetPreviewRecord(rootNode, rootPool = null) {
       if (!rootNode) return null;
       const key = rootThumbnailKey();
@@ -8116,6 +8255,169 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (!Number.isFinite(idx) || idx < 0 || idx >= order.length) idx = 0;
       const rec = WS.fileById.get(order[idx]) || null;
       return rec || records[0] || null;
+    }
+
+    function getRootThumbnailReferenceRecord(rootNode) {
+      if (!rootNode) return null;
+      const rootPool = getRecursivePreviewRecordsForDir(rootNode, 0, true);
+      if (!rootPool.length) return null;
+      const rootMode = getRootThumbnailMode();
+      if (rootMode === "none") return null;
+      const presetRec = getRootPresetPreviewRecord(rootNode, rootPool);
+      if (presetRec) return presetRec;
+      const rootScope = String(WS.meta && WS.meta.storageKey ? WS.meta.storageKey : "workspace");
+      if (rootMode === "single" || rootPool.length < 4) {
+        const singleKey = `root:${rootScope}:${rootMode === "single" ? "single" : "single-fallback"}`;
+        return pickRotatingPreviewRecordForKey(singleKey, rootPool) || null;
+      }
+      const slots = pickRotatingPreviewSlotsForKey(`root:${rootScope}:quad`, rootPool, 4);
+      for (let i = 0; i < slots.length; i++) {
+        const rec = slots[i] && slots[i].rec ? slots[i].rec : null;
+        if (rec) return rec;
+      }
+      return null;
+    }
+
+    function getTagThumbnailReferenceRecord(entry) {
+      if (!entry || entry.kind !== "tag" || entry.placeholder) return null;
+      const key = tagThumbnailKeyForEntry(entry);
+      if (!key) return null;
+      const mode = metaGetTagThumbnailModeByKey(key);
+      if (mode === "none") return null;
+      const tagPool = getRecursivePreviewRecordsForTagEntry(entry, 0);
+      if (!tagPool.length) return null;
+      const presetRec = getTagPresetPreviewRecordForEntry(entry, tagPool);
+      if (presetRec) return presetRec;
+
+      const tagRotateScope = String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : "");
+      const tagRotateKey = entry.special
+        ? `tag:${tagRotateScope}:special:${entry.special}`
+        : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
+
+      if (mode === "single" || tagPool.length < 4) {
+        const singleKey = `${tagRotateKey}:${mode === "single" ? "single" : "single-fallback"}`;
+        return pickRotatingPreviewRecordForKey(singleKey, tagPool) || null;
+      }
+      const slots = pickRotatingPreviewSlotsForKey(tagRotateKey, tagPool, 4);
+      for (let i = 0; i < slots.length; i++) {
+        const rec = slots[i] && slots[i].rec ? slots[i].rec : null;
+        if (rec) return rec;
+      }
+      return null;
+    }
+
+    function getSelectedThumbnailSourceRecordFromUi() {
+      if (!directoriesListEl || !directoriesListEl.querySelector) return null;
+      const selectedRow = directoriesListEl.querySelector(".dirRow.selected");
+      if (!selectedRow) return null;
+      const img = selectedRow.querySelector(".dirInlinePreview[data-dir-preview-id]");
+      if (!img || !img.dataset) return null;
+      const recId = String(img.dataset.dirPreviewId || "");
+      if (!recId) return null;
+      return WS.fileById.get(recId) || null;
+    }
+
+    function getSelectedThumbnailSourceRecord() {
+      if (!WS.root || !WS.nav || !Array.isArray(WS.nav.entries) || !WS.nav.entries.length) return null;
+      const uiRec = getSelectedThumbnailSourceRecordFromUi();
+      if (uiRec) return uiRec;
+      const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+      if (!entry) return null;
+
+      if (entry.kind === "file") {
+        return WS.fileById.get(String(entry.id || "")) || null;
+      }
+
+      if (entry.kind === "tag") {
+        return getTagThumbnailReferenceRecord(entry);
+      }
+
+      if (entry.kind === "dir") {
+        const node = entry.node || null;
+        if (!node) return null;
+        if (node === WS.root && WS.view && WS.view.aboveRootView) {
+          return getRootThumbnailReferenceRecord(node);
+        }
+        const leadInfo = getDisplayLeadPreviewForDir(node, "dir");
+        return leadInfo && leadInfo.record ? leadInfo.record : null;
+      }
+
+      return null;
+    }
+
+    const THUMB_VIEWPORT_NUDGE_STEP = 8;
+
+    function nudgeSelectedThumbnailViewport(dx, dy, opts = null) {
+      const options = (opts && typeof opts === "object") ? opts : {};
+      const quietNoTarget = !!options.quietNoTarget;
+      const quietAtEdge = !!options.quietAtEdge;
+      const quietSuccess = !!options.quietSuccess;
+      const skipAspectResolve = !!options.skipAspectResolve;
+      const rec = getSelectedThumbnailSourceRecord();
+      if (!rec) {
+        if (!quietNoTarget) showStatusMessage("Selected item has no editable thumbnail source.");
+        return false;
+      }
+      const stepX = Number(dx) || 0;
+      const stepY = Number(dy) || 0;
+      if (!stepX && !stepY) return false;
+      if (!skipAspectResolve && !hasKnownPreviewAspect(rec)) {
+        const pendingKey = String(rec.id || rec.relPath || "");
+        const canQueue = pendingKey && !THUMB_ASPECT_RESOLVE_PENDING.has(pendingKey);
+        if (canQueue) {
+          THUMB_ASPECT_RESOLVE_PENDING.add(pendingKey);
+          detectRecordPreviewAspect(rec).then((detected) => {
+            if (!detected) return;
+            rec.previewAspect = normalizePreviewAspect(detected, 4 / 3);
+            nudgeSelectedThumbnailViewport(stepX, stepY, Object.assign({}, options, {
+              skipAspectResolve: true,
+              quietNoTarget: true
+            }));
+          }).finally(() => {
+            THUMB_ASPECT_RESOLVE_PENDING.delete(pendingKey);
+          });
+        }
+        if (!quietSuccess) showStatusMessage("Preparing thumbnail framing...");
+        return true;
+      }
+      const current = normalizeThumbCropValue(metaGetFileThumbnailCropForRecord(rec) || { x: 50, y: 50, zoom: 1 });
+      const aspect = getPreviewAspectForRecord(rec);
+      const movementWindow = computeEditorCropWindow(aspect, current);
+      const rangeX = Math.max(0, Number(movementWindow && movementWindow.rangeXPct) || 0);
+      const rangeY = Math.max(0, Number(movementWindow && movementWindow.rangeYPct) || 0);
+      const wantsX = !!stepX;
+      const wantsY = !!stepY;
+      const canMoveX = rangeX > 0.0001;
+      const canMoveY = rangeY > 0.0001;
+      if (wantsX && !canMoveX) {
+        if (!quietAtEdge) showStatusMessage("No horizontal movement available at current zoom.");
+        return false;
+      }
+      if (wantsY && !canMoveY) {
+        if (!quietAtEdge) showStatusMessage("No vertical movement available at current zoom.");
+        return false;
+      }
+      const next = normalizeThumbCropValue({
+        x: current.x + stepX,
+        y: current.y + stepY,
+        zoom: current.zoom
+      });
+      if (next.x === current.x && next.y === current.y) {
+        if (!quietAtEdge) showStatusMessage("Thumbnail viewport already at edge.");
+        return false;
+      }
+      metaSetFileThumbnailCropForRecord(rec, next);
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+
+      const direction = stepX < 0
+        ? "left"
+        : (stepX > 0 ? "right" : (stepY < 0 ? "up" : "down"));
+      if (!quietSuccess) showStatusMessage(`Thumbnail viewport moved ${direction}.`);
+      return true;
     }
 
     function applyPreviewRecordToImageElement(imgEl, rec) {
@@ -16303,6 +16605,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           showStatusMessage(`Hide name after last underscore: ${next ? "On" : "Off"}`);
           return true;
         }
+        case "moveThumbViewportLeft":
+          return nudgeSelectedThumbnailViewport(-THUMB_VIEWPORT_NUDGE_STEP, 0);
+        case "moveThumbViewportRight":
+          return nudgeSelectedThumbnailViewport(THUMB_VIEWPORT_NUDGE_STEP, 0);
+        case "moveThumbViewportUp":
+          return nudgeSelectedThumbnailViewport(0, -THUMB_VIEWPORT_NUDGE_STEP);
+        case "moveThumbViewportDown":
+          return nudgeSelectedThumbnailViewport(0, THUMB_VIEWPORT_NUDGE_STEP);
         case "toggleShowPreviewFileName": {
           const next = toggleOptionValue("showPreviewFileName");
           renderPreviewPane(true, true);
@@ -16915,6 +17225,36 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             return;
           default:
             return;
+        }
+      }
+
+      // Directory mode arrow priority:
+      // If arrow keys are unbound or still mapped to selection movement from older keybind sets,
+      // prefer thumbnail viewport nudging first so arrows do not scroll the list instead.
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        let nudgeDx = 0;
+        let nudgeDy = 0;
+        if (baseKey === "ArrowLeft") nudgeDx = -THUMB_VIEWPORT_NUDGE_STEP;
+        else if (baseKey === "ArrowRight") nudgeDx = THUMB_VIEWPORT_NUDGE_STEP;
+        else if (baseKey === "ArrowUp") nudgeDy = -THUMB_VIEWPORT_NUDGE_STEP;
+        else if (baseKey === "ArrowDown") nudgeDy = THUMB_VIEWPORT_NUDGE_STEP;
+        if (nudgeDx || nudgeDy) {
+          const actionAllowsArrowNudge = !action
+            || action === "selectUp"
+            || action === "selectDown"
+            || action === "leaveDir"
+            || action === "enterDir";
+          if (actionAllowsArrowNudge) {
+            const nudged = nudgeSelectedThumbnailViewport(nudgeDx, nudgeDy, {
+              quietNoTarget: true,
+              quietAtEdge: false,
+              quietSuccess: false
+            });
+            if (nudged) {
+              e.preventDefault();
+              return;
+            }
+          }
         }
       }
 
