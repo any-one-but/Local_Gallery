@@ -8573,7 +8573,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (imgEl.src !== previewSrc) imgEl.src = previewSrc;
       imgEl.setAttribute("data-dir-preview-id", previewId);
       const previewAspect = getPreviewAspectForRecord(rec);
-      imgEl.style.setProperty("--dir-inline-ar", Number(previewAspect).toFixed(4));
+      applyDirectoryInlineAspect(imgEl, previewAspect);
+      if (rec.type === "image" && !syncDirectoryInlineAspectFromNaturalSize(imgEl, rec)) {
+        if (imgEl.dataset.dirAspectPending !== "1") {
+          imgEl.dataset.dirAspectPending = "1";
+          imgEl.addEventListener("load", () => {
+            delete imgEl.dataset.dirAspectPending;
+            syncDirectoryInlineAspectFromNaturalSize(imgEl, rec);
+          }, { once: true });
+        }
+      }
       const fitCard = imgEl.closest(".fitInsideCard");
       if (fitCard) {
         fitCard.dataset.aspect = String(previewAspect);
@@ -13709,6 +13718,26 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return BLACK_POSTER_URL;
     }
 
+    function applyDirectoryInlineAspect(imgEl, aspectValue) {
+      if (!imgEl) return;
+      const aspect = normalizePreviewAspect(aspectValue, 4 / 3);
+      const cssAspect = Number(aspect).toFixed(4);
+      imgEl.style.setProperty("--dir-inline-ar", cssAspect);
+      const card = imgEl.closest(".dirFileThumbCard, .dirSquareCard");
+      if (card) card.style.setProperty("--dir-card-ar", cssAspect);
+    }
+
+    function syncDirectoryInlineAspectFromNaturalSize(imgEl, rec) {
+      if (!imgEl || !rec || rec.type !== "image") return false;
+      const w = Number(imgEl.naturalWidth) || 0;
+      const h = Number(imgEl.naturalHeight) || 0;
+      if (!(w > 0 && h > 0)) return false;
+      const naturalAspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(rec));
+      rec.previewAspect = naturalAspect;
+      applyDirectoryInlineAspect(imgEl, naturalAspect);
+      return true;
+    }
+
     function refreshDirectoryInlinePreviewThumbForRecord(rec) {
       if (!rec || !directoriesEl) return;
       const recId = String(rec.id || "");
@@ -13722,7 +13751,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       for (const img of imgs) {
         if (String(img.dataset.dirPreviewId || "") !== recId) continue;
         if (img.src !== src) img.src = src;
-        img.style.setProperty("--dir-inline-ar", Number(aspect).toFixed(4));
+        applyDirectoryInlineAspect(img, aspect);
+        if (rec.type === "image" && !syncDirectoryInlineAspectFromNaturalSize(img, rec)) {
+          if (img.dataset.dirAspectPending !== "1") {
+            img.dataset.dirAspectPending = "1";
+            img.addEventListener("load", () => {
+              delete img.dataset.dirAspectPending;
+              syncDirectoryInlineAspectFromNaturalSize(img, rec);
+            }, { once: true });
+          }
+        }
       }
     }
 
