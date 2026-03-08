@@ -953,6 +953,8 @@
       max-width: 100%;
       border-radius: 4px;
       overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(0, 0, 0, 0.35);
     }
 
     .dirFileThumbCard .dirInlinePreview {
@@ -973,7 +975,14 @@
 
     .dirFileOverlayTop {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .dirFileOverlayBottom {
+      display: flex;
+      align-items: flex-end;
       gap: 6px;
       min-width: 0;
     }
@@ -984,7 +993,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 11px;
+      font-size: 28px;
       line-height: 1.15;
       font-weight: 700;
       color: #fff;
@@ -1009,8 +1018,14 @@
       align-items: center;
       gap: 4px;
       min-width: 0;
+      flex: 1 1 auto;
       font-size: 10px;
       color: rgba(255,255,255,0.9);
+    }
+
+    .dirFileOverlay .dirFileMenu {
+      margin-left: auto;
+      flex: 0 0 auto;
     }
 
     .dirFileMetaDot {
@@ -1065,7 +1080,8 @@
       height: auto;
       aspect-ratio: 1 / 1;
       max-width: none;
-      border-color: rgba(255, 255, 255, 0.35);
+      border: 0;
+      border-radius: 0;
       object-fit: cover;
       object-position: center;
       display: block;
@@ -1075,6 +1091,24 @@
       padding: 4px 0;
       background: transparent;
       border-color: transparent;
+    }
+
+    .dirRow.fileRow {
+      padding: 4px 0;
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+      outline: none;
+      gap: 0;
+    }
+
+    .dirRow.fileRow:hover,
+    .dirRow.fileRow.selected,
+    .dirRow.fileRow.bulkSelected {
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+      outline: none;
     }
 
     .dirRow.folderRow.folderSquareCard:hover,
@@ -1172,7 +1206,14 @@
 
     .dirSquareTop {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .dirSquareBottom {
+      display: flex;
+      align-items: flex-end;
       gap: 6px;
       min-width: 0;
     }
@@ -1183,6 +1224,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      font-size: 28px;
       font-weight: 700;
       color: #fff;
     }
@@ -1196,6 +1238,8 @@
     }
 
     .dirSquareMeta {
+      flex: 1 1 auto;
+      min-width: 0;
       font-size: 10px;
       line-height: 1.2;
       color: rgba(255, 255, 255, 0.88);
@@ -1204,12 +1248,26 @@
       white-space: nowrap;
     }
 
+    .dirSquareRightMeta {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      min-width: 0;
+      flex: 0 0 auto;
+    }
+
     .dirSquareOverlay .dirStatusBadges {
       gap: 3px;
     }
 
     .dirSquareOverlay .dirMenu {
-      margin-left: auto;
+      margin-left: 0;
+    }
+
+    .dirSquareRightMeta .dirMenu {
+      align-self: flex-end;
     }
 
     .dirSquareOverlay .dirMenuBtn {
@@ -1594,13 +1652,69 @@
       min-width: 0;
     }
 
+    .gridFiles.previewSquareCards .previewThumbOverlayBottomLine {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .gridFiles.previewSquareCards .previewThumbOverlayBottomLine .previewThumbOverlayMini {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .gridFiles.previewSquareCards .previewThumbOverlayBottomLine .previewThumbOverlayMenu {
+      margin-left: auto;
+      align-self: flex-end;
+    }
+
+    .gridFiles.previewSquareCards .previewThumbOverlayMenuBtn {
+      min-width: 22px;
+      width: 22px;
+      height: 18px;
+      padding: 0 4px;
+      font-size: 14px;
+      background: rgba(255,255,255,0.14);
+      border-color: rgba(255,255,255,0.34);
+      color: #fff;
+    }
+
     .gridFiles.previewSquareCards .previewThumbOverlayMeta .name {
+      font-size: 18px;
+      line-height: 1.1;
+      font-weight: 700;
       color: #fff;
     }
 
     .gridFiles.previewSquareCards .previewThumbOverlayMini {
       color: rgba(255,255,255,0.9);
       text-transform: none;
+    }
+
+    .previewThumbBottomLine,
+    .metaBottomLine {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .previewThumbBottomLine .mini,
+    .metaBottomLine .mini {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .previewThumbBottomLine .dirMenu,
+    .metaBottomLine .dirMenu {
+      margin-left: auto;
     }
 
     .gridFiles.fitInsideJustified {
@@ -1735,6 +1849,23 @@
       min-width: 0;
     }
 
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayBottomLine {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayRightMeta {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      min-width: 0;
+      flex: 0 0 auto;
+    }
+
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore {
       flex: 0 0 auto;
       font-size: 11px;
@@ -1744,11 +1875,17 @@
     }
 
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMini {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       color: rgba(255,255,255,0.9);
     }
 
-    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayTopLine .thumbOverlayMenu {
-      margin-left: auto;
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayBottomLine .thumbOverlayMenu {
+      margin-left: 0;
+      align-self: center;
     }
 
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtn {
@@ -1774,6 +1911,12 @@
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .name,
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .mini {
       color: #fff;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .name {
+      font-size: 18px;
+      line-height: 1.1;
+      font-weight: 700;
     }
 
     .folderThumb {
