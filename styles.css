@@ -23,6 +23,8 @@
       --folder-name-font: 13px;
       --folder-meta-font: 11px;
       --preview-gutter: 10px;
+      --thumb-scale-media: 1;
+      --thumb-scale-folder: 1;
       --thumb-filter: none;
       --thumb-fit: cover;
       --thumb-bg: transparent;
@@ -950,7 +952,7 @@
       position: relative;
       display: block;
       width: 100%;
-      aspect-ratio: 1 / 1;
+      aspect-ratio: var(--dir-card-ar, 1 / 1);
       max-width: 100%;
       border-radius: 4px;
       overflow: hidden;
@@ -1088,6 +1090,11 @@
       display: block;
     }
 
+    :root[data-natural-thumb-cards="on"] .dirRow.fileRow .dirInlinePreview {
+      height: 100%;
+      aspect-ratio: auto;
+    }
+
     .dirRow.folderRow.folderSquareCard {
       padding: 4px 0;
       background: transparent;
@@ -1124,7 +1131,7 @@
     .dirSquareCard {
       position: relative;
       width: 100%;
-      aspect-ratio: 1 / 1;
+      aspect-ratio: var(--dir-card-ar, 1 / 1);
       border-radius: 4px;
       overflow: hidden;
       border: 1px solid rgba(255, 255, 255, 0.18);
@@ -1612,13 +1619,13 @@
 
     .gridFolders {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(var(--folder-grid-min), 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(calc(var(--folder-grid-min) * var(--thumb-scale-folder)), 1fr));
       gap: var(--preview-gutter);
     }
 
     .gridFiles {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(var(--file-grid-min), 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(calc(var(--file-grid-min) * var(--thumb-scale-media)), 1fr));
       gap: var(--preview-gutter);
     }
 
@@ -1697,6 +1704,82 @@
       text-transform: none;
     }
 
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard {
+      position: relative;
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 4px;
+      background: var(--color1-secondary);
+      box-shadow: 0 10px 30px var(--color1-primary-transparent);
+      overflow: hidden;
+      display: block;
+    }
+
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .thumb {
+      width: 100%;
+      height: var(--fit-card-h, 150px);
+      object-fit: cover;
+      object-position: center;
+      background: transparent;
+    }
+
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 6px 8px;
+      gap: 2px;
+      background: linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.52));
+      color: #fff;
+    }
+
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayTopLine {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayBottomLine {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayBottomLine .previewThumbOverlayMini {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: rgba(255,255,255,0.9);
+      text-transform: none;
+    }
+
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayBottomLine .previewThumbOverlayMenu {
+      margin-left: auto;
+      align-self: flex-end;
+    }
+
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMenuBtn {
+      min-width: 22px;
+      width: 22px;
+      height: 18px;
+      padding: 0 4px;
+      font-size: 14px;
+      background: rgba(255,255,255,0.14);
+      border-color: rgba(255,255,255,0.34);
+      color: #fff;
+    }
+
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta .name {
+      font-size: 18px;
+      line-height: 1.1;
+      font-weight: 700;
+      color: #fff;
+    }
+
     .previewThumbBottomLine,
     .metaBottomLine {
       display: flex;
@@ -1768,6 +1851,34 @@
       aspect-ratio: auto;
       object-fit: contain;
       background: transparent;
+    }
+
+    .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard {
+      position: relative;
+      aspect-ratio: auto;
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 4px;
+      background: var(--color1-secondary);
+      box-shadow: 0 10px 30px var(--color1-primary-transparent);
+      overflow: hidden;
+    }
+
+    .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard .folderThumb {
+      width: 100%;
+      height: var(--fit-card-h, 150px);
+      object-fit: cover;
+      object-position: center;
+      background: transparent;
+    }
+
+    .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard .thumbOverlayMeta {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 6px 8px;
+      background: linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.52));
+      color: #fff;
     }
 
     .gridFiles.fitInsideJustified .metaBlock,
@@ -2948,8 +3059,8 @@
       .dirDetailsRow {
         grid-template-columns: 1fr 70px 70px 110px;
       }
-      .gridFolders { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-      .gridFiles { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+      .gridFolders { grid-template-columns: repeat(auto-fill, minmax(calc(220px * var(--thumb-scale-folder)), 1fr)); }
+      .gridFiles { grid-template-columns: repeat(auto-fill, minmax(calc(160px * var(--thumb-scale-media)), 1fr)); }
       .gridFiles.fitInsideJustified {
         gap: max(8px, var(--preview-gutter));
       }
