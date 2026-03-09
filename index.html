@@ -15,9 +15,13 @@
          Title Pane
          ========================================================= -->
       <div id="titlePane">
-        <div id="titlePaneTop">
+      <div id="titlePaneTop">
           <div id="titleMain">
             <h1 id="titleLabel">—</h1>
+          </div>
+          <div id="directoriesSearchRow">
+            <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search folder" />
+            <button id="directoriesSearchClearBtn" type="button" class="miniBtn">X</button>
           </div>
           <div id="titleBtns">
             <div id="previewNavControls">
@@ -26,10 +30,6 @@
             <button id="optionsBtn" type="button" class="miniBtn" title="Menu">⚙</button>
             <button id="openWritableBtn" type="button" class="miniBtn">Choose Root</button>
           </div>
-      </div>
-      <div id="directoriesSearchRow">
-        <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search folder" />
-        <button id="directoriesSearchClearBtn" type="button" class="miniBtn">X</button>
       </div>
     </div>
 
@@ -101,6 +101,7 @@
             <button type="button" class="miniBtn menuTabBtn" data-tab="thumbnails" role="tab" aria-controls="menuTabOptions">Thumbnails</button>
             <button type="button" class="miniBtn menuTabBtn" data-tab="filenames" role="tab" aria-controls="menuTabOptions">Filenames</button>
             <button type="button" class="miniBtn menuTabBtn" data-tab="controls" role="tab" aria-controls="menuTabKeybinds">Controls</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="gridcontrols" role="tab" aria-controls="menuTabKeybinds">Grid Controls</button>
           </div>
           <button id="menuCloseBtn" type="button" class="miniBtn">X</button>
         </div>
@@ -134,9 +135,9 @@
     </div>
   </div>
 
-  /*=========================================================
-         Palm Tree Filter
-         ========================================================= */
+  <!-- =========================================================
+       Palm Tree Filter
+       ========================================================= -->
 <svg
   width="0"
   height="0"
@@ -156,9 +157,9 @@
 </svg>
 
 
-/*=========================================================
-         Kodak Film Filter
-         ========================================================= */
+<!-- =========================================================
+     Kodak Film Filter
+     ========================================================= -->
 <svg width="0" height="0" style="position:absolute; left:-9999px; top:-9999px;">
   <!-- Tone curve + slight warm grade + subtle halation -->
   <filter id="kodak-film" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
@@ -199,9 +200,9 @@
   </filter>
 </svg>
 
-/*=========================================================
-         Polaroid Film Filter
-         ========================================================= */
+<!-- =========================================================
+     Polaroid Film Filter
+     ========================================================= -->
 
 <svg width="0" height="0" style="position:absolute; left:-9999px; top:-9999px;">
   <!-- Polaroid tone: lifted blacks, muted saturation, slight green shift, softer contrast -->
