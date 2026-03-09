@@ -9562,7 +9562,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         return;
       }
 
-      if (isViewingTagFolder()) {
+      if (isViewingTagFolder() && entry.kind === "dir" && entry.node) {
         pushTagViewContext(entry.node?.path || "");
         WS.view.tagFolderActiveMode = "";
         WS.view.tagFolderActiveTag = "";
@@ -13750,6 +13750,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const aspect = normalizePreviewAspect(aspectValue, 4 / 3);
       const cssAspect = Number(aspect).toFixed(4);
       imgEl.style.setProperty("--dir-inline-ar", cssAspect);
+      if (!naturalAspectThumbnailCardsEnabled()) return;
+      if (imgEl.closest(".dirTagQuadGrid")) return;
       const card = imgEl.closest(".dirFileThumbCard, .dirSquareCard");
       if (card) card.style.setProperty("--dir-card-ar", cssAspect);
     }
@@ -15411,46 +15413,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       card.addEventListener("click", () => {
         if (!WS.root) return;
-
-        const p = rec.dirPath || "";
-        const dn = WS.dirByPath.get(p) || WS.nav.dirNode || WS.root;
-
-        if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
-          WS.view.searchRootActive = false;
-          WS.view.searchAnchorPath = dn.path || "";
-          WS.view.searchEntryRootPath = dn.path || "";
-        }
-
-        if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-          WS.view.favoritesRootActive = false;
-          WS.view.favoritesAnchorPath = dn.path || "";
-        }
-
-        if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
-          WS.view.hiddenRootActive = false;
-          WS.view.hiddenAnchorPath = dn.path || "";
-        }
-
-        WS.nav.dirNode = dn;
-        syncBulkSelectionForCurrentDir();
-        syncFavoritesUi();
-        syncHiddenUi();
-        syncTagUiForCurrentDir();
-        rebuildDirectoriesEntries();
-
-        let idx = 0;
-        for (let i = 0; i < WS.nav.entries.length; i++) {
-          const e = WS.nav.entries[i];
-          if (e && e.kind === "file" && e.id === rec.id) { idx = i; break; }
-        }
-        WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
-        syncPreviewToSelection();
-
-        renderDirectoriesPane(true);
-        renderPreviewPane(true, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
+        focusDirectoriesOnFileRecord(rec);
       });
 
       card.addEventListener("contextmenu", (e) => {
@@ -15727,6 +15690,22 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (requestFullscreen) enterFullscreenIfPossible();
     }
 
+    function openGalleryForFileRecord(rec, requestFullscreen = false) {
+      if (!rec) return;
+      const p = String(rec.dirPath || "");
+      const dn = WS.dirByPath.get(p) || WS.nav.dirNode || WS.root || null;
+      viewerDirNode = dn;
+      viewerItems = buildViewerItemsForDir(viewerDirNode);
+      let idx = viewerItems.findIndex(it => !it.isFolder && it.id === rec.id);
+      if (idx < 0) {
+        viewerItems = [{ isFolder: false, id: rec.id }];
+        idx = 0;
+      }
+      viewerIndex = idx;
+      showOverlay();
+      if (requestFullscreen) enterFullscreenIfPossible();
+    }
+
     function openGalleryFromDirectoriesSelection(requestFullscreen) {
       if (!WS.nav.entries.length) return;
       const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
@@ -15749,9 +15728,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         openGalleryForDir(entry.node, null, requestFullscreen);
       } else if (entry.kind === "file") {
         const rec = WS.fileById.get(entry.id);
-        const p = rec ? (rec.dirPath || "") : (WS.nav.dirNode?.path || "");
-        const dn = WS.dirByPath.get(p) || WS.nav.dirNode;
-        openGalleryForDir(dn, entry.id, requestFullscreen);
+        if (rec) openGalleryForFileRecord(rec, requestFullscreen);
       }
     }
 
