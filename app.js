@@ -23,6 +23,24 @@
       xxl: 3,
       xxxl: 2
     });
+    const TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT = "sunset-soft";
+    const TAG_FOLDER_TITLE_COLOR_PAIRS = Object.freeze([
+      Object.freeze({ value: "sunset-soft", label: "Soft Sunset (Orange + Pink)", tag: "#ffd6a0", favorite: "#ffb8dd" }),
+      Object.freeze({ value: "sunset-vivid", label: "Vivid Sunset (Orange + Pink)", tag: "#ffb35c", favorite: "#ff7cc7" }),
+      Object.freeze({ value: "sunset-electric", label: "Electric Sunset (Orange + Pink)", tag: "#ff9300", favorite: "#ff43b5" }),
+      Object.freeze({ value: "neon-arcade", label: "Neon Arcade", tag: "#ff9f1a", favorite: "#ff4dff" }),
+      Object.freeze({ value: "disco-fever", label: "Disco Fever", tag: "#ffe45e", favorite: "#ff2ea6" }),
+      Object.freeze({ value: "laser-party", label: "Laser Party", tag: "#63f5ff", favorite: "#ff6eff" }),
+      Object.freeze({ value: "candy-pop", label: "Candy Pop", tag: "#ffc27a", favorite: "#ff95d0" }),
+      Object.freeze({ value: "tropical-glow", label: "Tropical Glow", tag: "#9fffb2", favorite: "#ff9fba" })
+    ]);
+    const TAG_FOLDER_TITLE_COLOR_PAIR_BY_VALUE = (() => {
+      const byValue = new Map();
+      for (const pair of TAG_FOLDER_TITLE_COLOR_PAIRS) {
+        byValue.set(String(pair.value || ""), pair);
+      }
+      return byValue;
+    })();
 
     function isImageName(name) { return imgRE.test((name || "").toLowerCase()); }
     function isVideoName(name) { return vidRE.test((name || "").toLowerCase()); }
@@ -242,6 +260,17 @@
       return fallback;
     }
 
+    function normalizeTagFolderTitleColorPairValue(value, fallback = TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT) {
+      const raw = String(value == null ? "" : value).trim().toLowerCase();
+      if (TAG_FOLDER_TITLE_COLOR_PAIR_BY_VALUE.has(raw)) return raw;
+      return TAG_FOLDER_TITLE_COLOR_PAIR_BY_VALUE.has(String(fallback || "")) ? String(fallback || "") : TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT;
+    }
+
+    function getTagFolderTitleColorPairByValue(value) {
+      const key = normalizeTagFolderTitleColorPairValue(value, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT);
+      return TAG_FOLDER_TITLE_COLOR_PAIR_BY_VALUE.get(key) || TAG_FOLDER_TITLE_COLOR_PAIR_BY_VALUE.get(TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT);
+    }
+
     function defaultOptions() {
       return {
         videoPreview: "muted",
@@ -283,6 +312,7 @@
         showGridUpDirectoryEntry: true,
         showHiddenFolder: false,
         showUntaggedFolder: false,
+        tagFolderTitleColorPair: TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT,
         showFolderItemCount: true,
         showFolderSize: true,
         showDirFileTypeLabel: true,
@@ -365,6 +395,7 @@
         showGridUpDirectoryEntry: (typeof src.showGridUpDirectoryEntry === "boolean") ? src.showGridUpDirectoryEntry : d.showGridUpDirectoryEntry,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
+        tagFolderTitleColorPair: normalizeTagFolderTitleColorPairValue(src.tagFolderTitleColorPair, d.tagFolderTitleColorPair),
         showFolderItemCount: true,
         showFolderSize: true,
         showDirFileTypeLabel: true,
@@ -1780,12 +1811,24 @@
       WS.view.folderBehavior = normalizeFolderBehavior(opt.defaultFolderBehavior, "slide");
       WS.view.folderScoreDisplay = (opt.folderScoreDisplay === "show" || opt.folderScoreDisplay === "no-arrows" || opt.folderScoreDisplay === "hidden") ? opt.folderScoreDisplay : "hidden";
       applyColorSchemeFromOptions();
+      applyTagFolderTitleColorsFromOptions();
     }
 
     function applyColorSchemeFromOptions() {
       const root = document.documentElement;
       if (!root) return;
       root.setAttribute("data-theme", "superdark");
+    }
+
+    function applyTagFolderTitleColorsFromOptions() {
+      const root = document.documentElement;
+      if (!root) return;
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const pair = getTagFolderTitleColorPairByValue(opt ? opt.tagFolderTitleColorPair : null);
+      const tagColor = String(pair && pair.tag ? pair.tag : "#ffd6a0");
+      const favoriteColor = String(pair && pair.favorite ? pair.favorite : "#ffb8dd");
+      root.style.setProperty("--dir-tag-title-color", tagColor);
+      root.style.setProperty("--dir-tag-favorite-title-color", favoriteColor);
     }
 
     function applyRetroModeFromOptions() {
@@ -2039,6 +2082,7 @@
     function applyOptionsEverywhere(invalidateThumbs = false) {
       if (!WS.root) {
         applyColorSchemeFromOptions();
+        applyTagFolderTitleColorsFromOptions();
         applyRetroModeFromOptions();
         applyMediaFilterFromOptions();
         applyThumbFitFromOptions();
@@ -2059,6 +2103,7 @@
       }
 
       applyColorSchemeFromOptions();
+      applyTagFolderTitleColorsFromOptions();
       applyRetroModeFromOptions();
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
@@ -2691,6 +2736,7 @@
         dirTags: new Map(),
         dirThumbPresets: new Map(),
         fileThumbCrop: new Map(),
+        videoThumbTime: new Map(),
         tagThumbModes: new Map(),
         tagThumbPresets: new Map(),
         pendingTagsByPath: new Map(),
@@ -2794,6 +2840,9 @@
       // video thumbs
       videoThumbQueue: [],
       videoThumbActive: 0,
+      videoThumbQueuedIds: new Set(),
+      videoThumbInFlightIds: new Set(),
+      videoThumbWorkspaceKickTimer: 0,
 
       // image thumbs
       imageThumbQueue: [],
@@ -2833,6 +2882,7 @@
       WS.meta.dirTags.clear();
       WS.meta.dirThumbPresets.clear();
       WS.meta.fileThumbCrop.clear();
+      WS.meta.videoThumbTime.clear();
       WS.meta.tagThumbModes.clear();
       WS.meta.tagThumbPresets.clear();
       WS.meta.pendingTagsByPath.clear();
@@ -2918,8 +2968,14 @@
       WS.preview.dirNode = null;
       WS.preview.fileId = null;
 
+      if (WS.videoThumbWorkspaceKickTimer) {
+        try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
+      }
       WS.videoThumbQueue = [];
       WS.videoThumbActive = 0;
+      WS.videoThumbQueuedIds = new Set();
+      WS.videoThumbInFlightIds = new Set();
+      WS.videoThumbWorkspaceKickTimer = 0;
 
       WS.imageThumbQueue = [];
       WS.imageThumbActive = 0;
@@ -3800,6 +3856,10 @@
         { value: "randomFileSort", label: "Random file sort" },
         { value: "randomFolderSort", label: "Random folder sort" }
       ];
+      const tagFolderTitleColorPairModes = TAG_FOLDER_TITLE_COLOR_PAIRS.map((pair) => ({
+        value: String(pair.value || ""),
+        label: String(pair.label || "")
+      }));
       const interactionModes = [
         { value: "grid", label: "Grid Mode" },
         { value: "pane", label: "Pane Mode" }
@@ -3876,6 +3936,7 @@ ${makeCheckRow("Show Up Directory item", "Show the synthetic Up Directory tile i
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag near the top of the root directories pane when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
+${makeSelectRow("Tag folder title colors", "Set paired title text colors for regular tag folders and Favorites tag folders in Grid Mode.", "opt_tagFolderTitleColorPair", normalizeTagFolderTitleColorPairValue(opt.tagFolderTitleColorPair, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT), tagFolderTitleColorPairModes)}
           `
         },
         appearance: {
@@ -4074,6 +4135,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           exitTagFolderView();
         }
         renderDirectoriesPane(true);
+      });
+      bindSelect("opt_tagFolderTitleColorPair", "tagFolderTitleColorPair", false, null, (val) => {
+        return normalizeTagFolderTitleColorPairValue(val, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT);
       });
       bindCheck("opt_clickSelectedRotatingThumbTeleports", "clickSelectedRotatingThumbTeleports");
       bindCheck("opt_vibrantOverlayEnabled", "vibrantOverlayEnabled", () => {
@@ -4606,6 +4670,49 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return normalized.x === 50 && normalized.y === 50 && normalized.zoom === 1;
     }
 
+    function normalizeVideoThumbTimeValue(timeValue, durationHint = null) {
+      const raw = Number(timeValue);
+      if (!Number.isFinite(raw)) return null;
+      let out = Math.max(0, raw);
+      const duration = Number(durationHint);
+      if (Number.isFinite(duration) && duration > 0) {
+        out = Math.min(out, Math.max(0, duration - 0.05));
+      }
+      return Math.round(out * 1000) / 1000;
+    }
+
+    function metaGetVideoThumbnailTimeByRelPath(relPath) {
+      const key = normalizeWorkspaceRelPath(relPath);
+      if (!key || !WS.meta || !WS.meta.videoThumbTime || !WS.meta.videoThumbTime.has(key)) return null;
+      return normalizeVideoThumbTimeValue(WS.meta.videoThumbTime.get(key));
+    }
+
+    function metaGetVideoThumbnailTimeForRecord(rec) {
+      if (!rec || rec.type !== "video") return null;
+      return metaGetVideoThumbnailTimeByRelPath(rec.relPath);
+    }
+
+    function metaSetVideoThumbnailTimeForRecord(rec, timeValue, durationHint = null) {
+      if (!rec || rec.type !== "video") return false;
+      const key = normalizeWorkspaceRelPath(rec.relPath);
+      if (!key || !WS.meta || !WS.meta.videoThumbTime) return false;
+      const normalized = normalizeVideoThumbTimeValue(timeValue, durationHint);
+      if (!Number.isFinite(normalized)) {
+        const had = WS.meta.videoThumbTime.delete(key);
+        if (had) {
+          WS.meta.dirty = true;
+          metaScheduleSave();
+        }
+        return had;
+      }
+      const prev = metaGetVideoThumbnailTimeByRelPath(key);
+      if (Number.isFinite(prev) && Math.abs(prev - normalized) < 0.001) return false;
+      WS.meta.videoThumbTime.set(key, normalized);
+      WS.meta.dirty = true;
+      metaScheduleSave();
+      return true;
+    }
+
     function metaGetFileThumbnailCropByRelPath(relPath) {
       const key = normalizeWorkspaceRelPath(relPath);
       if (!key || !WS.meta || !WS.meta.fileThumbCrop || !WS.meta.fileThumbCrop.has(key)) return null;
@@ -4805,6 +4912,18 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           nextFile.set(normalized, normalizeThumbCropValue(crop));
         }
         WS.meta.fileThumbCrop = nextFile;
+      }
+      if (WS.meta.videoThumbTime) {
+        const nextVideoTime = new Map();
+        for (const [relPath, timeValue] of WS.meta.videoThumbTime.entries()) {
+          const from = normalizeWorkspaceRelPath(relPath);
+          const to = relPathMap.get(from) || from;
+          const normalized = normalizeWorkspaceRelPath(to);
+          const normalizedTime = normalizeVideoThumbTimeValue(timeValue);
+          if (!normalized || !Number.isFinite(normalizedTime)) continue;
+          nextVideoTime.set(normalized, normalizedTime);
+        }
+        WS.meta.videoThumbTime = nextVideoTime;
       }
     }
 
@@ -5347,6 +5466,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const tagThumbnailModeByTag = {};
       const tagThumbnailByTag = {};
       const fileThumbnailCropByRelPath = {};
+      const videoThumbnailTimeByRelPath = {};
       for (const [path, node] of WS.dirByPath.entries()) {
         const fp = WS.meta.dirFingerprints.get(path) || 0;
         const tags = metaGetTags(path);
@@ -5392,6 +5512,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           fileThumbnailCropByRelPath[relPath] = normalizedCrop;
         }
       }
+      if (WS.meta && WS.meta.videoThumbTime) {
+        for (const [relPathRaw, timeRaw] of WS.meta.videoThumbTime.entries()) {
+          const relPath = normalizeWorkspaceRelPath(relPathRaw);
+          const timeValue = normalizeVideoThumbTimeValue(timeRaw);
+          if (!relPath || !Number.isFinite(timeValue)) continue;
+          videoThumbnailTimeByRelPath[relPath] = timeValue;
+        }
+      }
       const pending = WS.meta && WS.meta.pendingTagsByPath ? WS.meta.pendingTagsByPath : null;
       if (pending && pending.size) {
         for (const [path, tags] of pending.entries()) {
@@ -5410,7 +5538,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         thumbnailByFolder,
         tagThumbnailModeByTag,
         tagThumbnailByTag,
-        fileThumbnailCropByRelPath
+        fileThumbnailCropByRelPath,
+        videoThumbnailTimeByRelPath
       };
     }
 
@@ -5622,6 +5751,18 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         const crop = normalizeThumbCropValue(fileThumbnailCropByRelPath[rawRelPath]);
         if (isThumbCropDefault(crop)) continue;
         WS.meta.fileThumbCrop.set(relPath, crop);
+      }
+
+      WS.meta.videoThumbTime.clear();
+      const videoThumbnailTimeByRelPath = (log.videoThumbnailTimeByRelPath && typeof log.videoThumbnailTimeByRelPath === "object")
+        ? log.videoThumbnailTimeByRelPath
+        : {};
+      for (const rawRelPath of Object.keys(videoThumbnailTimeByRelPath)) {
+        const relPath = normalizeWorkspaceRelPath(rawRelPath);
+        if (!relPath) continue;
+        const timeValue = normalizeVideoThumbTimeValue(videoThumbnailTimeByRelPath[rawRelPath]);
+        if (!Number.isFinite(timeValue)) continue;
+        WS.meta.videoThumbTime.set(relPath, timeValue);
       }
     }
 
@@ -6028,6 +6169,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       renderPreviewPane(true);
       syncButtons();
       kickVideoThumbsForPreview();
+      scheduleVideoThumbWorkspaceKick(0);
       kickImageThumbsForPreview();
       syncMetaButtons();
       initDirHistory();
@@ -6142,6 +6284,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       renderPreviewPane(true);
       syncButtons();
       kickVideoThumbsForPreview();
+      scheduleVideoThumbWorkspaceKick(0);
       kickImageThumbsForPreview();
       syncMetaButtons();
       initDirHistory();
@@ -6249,6 +6392,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       renderPreviewPane(true, true);
       syncButtons();
       kickVideoThumbsForPreview();
+      scheduleVideoThumbWorkspaceKick(0);
       kickImageThumbsForPreview();
     }
 
@@ -6407,6 +6551,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.meta.dirThumbPresets = remapPathMapKeys(WS.meta.dirThumbPresets, oldPrefix, newPrefix);
       WS.meta.dirThumbPresets = remapPathMapValues(WS.meta.dirThumbPresets, oldPrefix, newPrefix);
       WS.meta.fileThumbCrop = remapPathMapKeys(WS.meta.fileThumbCrop, oldPrefix, newPrefix);
+      WS.meta.videoThumbTime = remapPathMapKeys(WS.meta.videoThumbTime, oldPrefix, newPrefix);
     }
 
     function applyRenameInMemory(dirNode, newName) {
@@ -7283,7 +7428,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         it.videoThumbMode = null;
       }
       WS.videoThumbQueue = [];
+      if (WS.videoThumbQueuedIds instanceof Set) WS.videoThumbQueuedIds.clear();
+      else WS.videoThumbQueuedIds = new Set();
+      if (WS.videoThumbInFlightIds instanceof Set) WS.videoThumbInFlightIds.clear();
+      else WS.videoThumbInFlightIds = new Set();
       WS.imageThumbQueue = [];
+      if (WS.videoThumbWorkspaceKickTimer) {
+        try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
+        WS.videoThumbWorkspaceKickTimer = 0;
+      }
+      if (WS.root) scheduleVideoThumbWorkspaceKick(0);
     }
 
     /* =========================================================
@@ -7850,10 +8004,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     function clearEditedThumbnailCrops() {
-      if (!WS.meta || !WS.meta.fileThumbCrop) return 0;
-      const count = WS.meta.fileThumbCrop.size;
+      if (!WS.meta) return 0;
+      const cropCount = WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
+      const frameCount = WS.meta.videoThumbTime ? WS.meta.videoThumbTime.size : 0;
+      const count = cropCount + frameCount;
       if (!count) return 0;
-      WS.meta.fileThumbCrop.clear();
+      if (WS.meta.fileThumbCrop) WS.meta.fileThumbCrop.clear();
+      if (WS.meta.videoThumbTime) WS.meta.videoThumbTime.clear();
       WS.meta.dirty = true;
       metaScheduleSave();
       return count;
@@ -7882,12 +8039,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
     function clearAllThumbnailCustomizations() {
       if (!WS.meta) return { cropCount: 0, assignmentCount: 0, total: 0 };
-      const cropCount = WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
+      const cropCount = (WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0)
+        + (WS.meta.videoThumbTime ? WS.meta.videoThumbTime.size : 0);
       const dirCount = WS.meta.dirThumbPresets ? WS.meta.dirThumbPresets.size : 0;
       const tagPresetCount = WS.meta.tagThumbPresets ? WS.meta.tagThumbPresets.size : 0;
       const tagModeCount = WS.meta.tagThumbModes ? WS.meta.tagThumbModes.size : 0;
       const assignmentCount = dirCount + tagPresetCount + tagModeCount;
       if (WS.meta.fileThumbCrop) WS.meta.fileThumbCrop.clear();
+      if (WS.meta.videoThumbTime) WS.meta.videoThumbTime.clear();
       if (WS.meta.dirThumbPresets) WS.meta.dirThumbPresets.clear();
       if (WS.meta.tagThumbPresets) WS.meta.tagThumbPresets.clear();
       if (WS.meta.tagThumbModes) WS.meta.tagThumbModes.clear();
@@ -8111,16 +8270,33 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
     function closeThumbnailCropEditor() {
       if (!THUMB_CROP_EDITOR) return;
+      const editorVideo = THUMB_CROP_EDITOR.querySelector
+        ? THUMB_CROP_EDITOR.querySelector("video.thumbCropEditorPreviewFull")
+        : null;
+      if (editorVideo) {
+        try { editorVideo.pause(); } catch {}
+        try { editorVideo.removeAttribute("src"); } catch {}
+        try { editorVideo.load(); } catch {}
+      }
       try { THUMB_CROP_EDITOR.remove(); } catch {}
       THUMB_CROP_EDITOR = null;
+    }
+
+    function formatThumbnailEditorTimeLabel(secondsRaw) {
+      const seconds = Math.max(0, Number(secondsRaw) || 0);
+      const whole = Math.floor(seconds);
+      const mins = Math.floor(whole / 60);
+      const secs = whole % 60;
+      const frac = Math.floor((seconds - whole) * 100);
+      return `${mins}:${String(secs).padStart(2, "0")}.${String(frac).padStart(2, "0")}`;
     }
 
     function openThumbnailCropEditor(rec) {
       const targetLabel = "this file";
       if (!rec) return false;
-
-      const previewSrc = (rec.type === "video")
-        ? getVideoPosterForRecord(rec)
+      const isVideoEditor = rec.type === "video";
+      const previewSrc = isVideoEditor
+        ? (ensureMediaUrl(rec) || "")
         : (ensureThumbUrl(rec) || "");
       if (!previewSrc) {
         showStatusMessage("Thumbnail preview is unavailable.");
@@ -8130,6 +8306,19 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       closeThumbnailCropEditor();
 
       const crop = normalizeThumbCropValue(metaGetFileThumbnailCropForRecord(rec) || { x: 50, y: 50, zoom: 1 });
+      const savedVideoFrameTime = isVideoEditor ? metaGetVideoThumbnailTimeForRecord(rec) : null;
+      const mediaHtml = isVideoEditor
+        ? `<video class="thumbCropEditorPreviewFull thumbCropEditorPreviewVideo" src="${escapeHtml(previewSrc)}" preload="metadata" playsinline muted></video>`
+        : `<img class="thumbCropEditorPreviewFull" src="${escapeHtml(previewSrc)}" alt="" />`;
+      const frameControlHtml = isVideoEditor
+        ? `
+          <div class="thumbCropEditorControl">
+            <label>Frame</label>
+            <input type="range" min="0" max="0" step="0.01" value="0" data-crop-field="frame" disabled />
+            <span data-crop-value="frame">0:00.00</span>
+          </div>
+        `
+        : "";
       const overlay = document.createElement("div");
       overlay.className = "thumbCropEditorOverlay";
       overlay.tabIndex = -1;
@@ -8138,7 +8327,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           <div class="thumbCropEditorTitle">Edit thumbnail</div>
           <div class="thumbCropEditorSubtitle">${escapeHtml(targetLabel)}</div>
           <div class="thumbCropEditorPreviewWrap">
-            <img class="thumbCropEditorPreviewFull" src="${escapeHtml(previewSrc)}" alt="" />
+            ${mediaHtml}
             <div class="thumbCropEditorShade" data-crop-shade="top"></div>
             <div class="thumbCropEditorShade" data-crop-shade="left"></div>
             <div class="thumbCropEditorShade" data-crop-shade="right"></div>
@@ -8146,6 +8335,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             <div class="thumbCropEditorCropBox" data-crop-box="1"></div>
             <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" aria-label="Resize crop viewport" tabindex="-1"></button>
           </div>
+          ${frameControlHtml}
           <div class="thumbCropEditorHint">Drag to pan. Drag corner or pinch to zoom.</div>
           <div class="thumbCropEditorControl">
             <label>Horizontal focus</label>
@@ -8174,7 +8364,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       const panel = overlay.querySelector(".thumbCropEditorPanel");
       const previewWrap = overlay.querySelector(".thumbCropEditorPreviewWrap");
-      const previewImage = overlay.querySelector(".thumbCropEditorPreviewFull");
+      const previewMedia = overlay.querySelector(".thumbCropEditorPreviewFull");
+      const previewImage = (isVideoEditor ? null : previewMedia);
+      const previewVideo = (isVideoEditor ? previewMedia : null);
       const cropBox = overlay.querySelector('[data-crop-box="1"]');
       const shadeTop = overlay.querySelector('[data-crop-shade="top"]');
       const shadeLeft = overlay.querySelector('[data-crop-shade="left"]');
@@ -8184,10 +8376,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const rangeX = overlay.querySelector('input[data-crop-field="x"]');
       const rangeY = overlay.querySelector('input[data-crop-field="y"]');
       const rangeZoom = overlay.querySelector('input[data-crop-field="zoom"]');
+      const rangeFrame = overlay.querySelector('input[data-crop-field="frame"]');
       const valX = overlay.querySelector('[data-crop-value="x"]');
       const valY = overlay.querySelector('[data-crop-value="y"]');
       const valZoom = overlay.querySelector('[data-crop-value="zoom"]');
+      const valFrame = overlay.querySelector('[data-crop-value="frame"]');
       let editorAspect = normalizePreviewAspect(getPreviewAspectForRecord(rec), 4 / 3);
+      let editorVideoDuration = 0;
       const getEditorAspect = () => normalizePreviewAspect(editorAspect, 4 / 3);
       const applyEditorAspect = (nextAspect) => {
         editorAspect = normalizePreviewAspect(nextAspect, getEditorAspect());
@@ -8251,6 +8446,51 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         if (rangeY) rangeY.value = String(next.y);
         if (rangeZoom) rangeZoom.value = String(next.zoom);
         applyPreview();
+      };
+      const clampEditorVideoTime = (timeValue) => normalizeVideoThumbTimeValue(timeValue, editorVideoDuration);
+      const getDefaultEditorVideoTime = () => {
+        if (!isVideoEditor) return 0;
+        const seekTimes = computeVideoThumbSeekTimes(editorVideoDuration || 0);
+        return clampEditorVideoTime(seekTimes[0] || 0) || 0;
+      };
+      const getCurrentEditorVideoTime = () => {
+        if (!isVideoEditor || !rangeFrame) return null;
+        return clampEditorVideoTime(rangeFrame.value);
+      };
+      const updateEditorVideoFrameLabel = (timeValue) => {
+        if (!valFrame) return;
+        valFrame.textContent = formatThumbnailEditorTimeLabel(timeValue);
+      };
+      const syncEditorVideoTimeToSlider = (timeValue) => {
+        if (!rangeFrame) return;
+        const clamped = clampEditorVideoTime(timeValue);
+        const safeValue = Number.isFinite(clamped) ? clamped : 0;
+        rangeFrame.value = String(safeValue);
+        updateEditorVideoFrameLabel(safeValue);
+      };
+      const seekEditorVideoToTime = (timeValue) => {
+        if (!previewVideo) return;
+        const clamped = clampEditorVideoTime(timeValue);
+        if (!Number.isFinite(clamped)) return;
+        syncEditorVideoTimeToSlider(clamped);
+        try { previewVideo.currentTime = clamped; } catch {}
+      };
+      const updateEditorVideoFrameRange = () => {
+        if (!rangeFrame) return;
+        if (!(editorVideoDuration > 0)) {
+          rangeFrame.min = "0";
+          rangeFrame.max = "0";
+          rangeFrame.step = "0.01";
+          rangeFrame.value = "0";
+          rangeFrame.disabled = true;
+          updateEditorVideoFrameLabel(0);
+          return;
+        }
+        const step = Math.max(0.01, Math.min(0.25, editorVideoDuration / 1000));
+        rangeFrame.min = "0";
+        rangeFrame.max = String(Math.max(0, editorVideoDuration - 0.05));
+        rangeFrame.step = String(Math.round(step * 1000) / 1000);
+        rangeFrame.disabled = false;
       };
       const getWrapSize = () => {
         const rect = previewWrap && previewWrap.getBoundingClientRect
@@ -8317,8 +8557,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         });
       };
 
-      [rangeX, rangeY, rangeZoom].forEach((el) => {
+      [rangeX, rangeY, rangeZoom, rangeFrame].forEach((el) => {
         if (!el) return;
+        if (el === rangeFrame) {
+          el.addEventListener("input", () => {
+            const nextTime = getCurrentEditorVideoTime();
+            if (!Number.isFinite(nextTime)) return;
+            seekEditorVideoToTime(nextTime);
+          });
+          return;
+        }
         el.addEventListener("input", applyPreview);
       });
       applyEditorAspect(getEditorAspect());
@@ -8333,6 +8581,44 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             if (rec && (rec.type === "image" || previewSrc !== BLACK_POSTER_URL)) {
               rec.previewAspect = naturalAspect;
             }
+          }
+          applyPreview();
+        });
+      }
+      if (previewVideo) {
+        previewVideo.controls = false;
+        previewVideo.autoplay = false;
+        previewVideo.loop = false;
+        previewVideo.muted = true;
+        previewVideo.addEventListener("play", () => {
+          try { previewVideo.pause(); } catch {}
+        });
+        previewVideo.addEventListener("loadedmetadata", () => {
+          editorVideoDuration = Math.max(0, Number(previewVideo.duration || 0));
+          updateEditorVideoFrameRange();
+          const w = Number(previewVideo.videoWidth) || 0;
+          const h = Number(previewVideo.videoHeight) || 0;
+          if (w > 0 && h > 0) {
+            const naturalAspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(rec));
+            applyEditorAspect(naturalAspect);
+            rec.previewAspect = naturalAspect;
+          }
+          const initial = Number.isFinite(savedVideoFrameTime)
+            ? clampEditorVideoTime(savedVideoFrameTime)
+            : getDefaultEditorVideoTime();
+          seekEditorVideoToTime(initial);
+          applyPreview();
+        });
+        previewVideo.addEventListener("seeked", () => {
+          syncEditorVideoTimeToSlider(previewVideo.currentTime || 0);
+        });
+        previewVideo.addEventListener("loadeddata", () => {
+          const w = Number(previewVideo.videoWidth) || 0;
+          const h = Number(previewVideo.videoHeight) || 0;
+          if (w > 0 && h > 0) {
+            const naturalAspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(rec));
+            applyEditorAspect(naturalAspect);
+            rec.previewAspect = naturalAspect;
           }
           applyPreview();
         });
@@ -8534,26 +8820,43 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             if (rangeX) rangeX.value = "50";
             if (rangeY) rangeY.value = "50";
             if (rangeZoom) rangeZoom.value = "1";
+            if (isVideoEditor) {
+              seekEditorVideoToTime(getDefaultEditorVideoTime());
+            }
             applyPreview();
             return;
           }
           if (action === "save") {
             const nextCrop = getCurrent();
             metaSetFileThumbnailCropForRecord(rec, nextCrop);
+            if (isVideoEditor) {
+              const selectedFrameTime = getCurrentEditorVideoTime();
+              metaSetVideoThumbnailTimeForRecord(rec, selectedFrameTime, editorVideoDuration);
+              if (rec.videoThumbUrl) {
+                try { URL.revokeObjectURL(rec.videoThumbUrl); } catch {}
+                rec.videoThumbUrl = null;
+              }
+              rec.videoThumbMode = null;
+              enqueueVideoThumb(rec);
+            }
             closeThumbnailCropEditor();
             renderDirectoriesPane(true);
             renderPreviewPane(false, true);
             syncButtons();
             kickVideoThumbsForPreview();
             kickImageThumbsForPreview();
-            showStatusMessage(`Saved thumbnail crop for ${targetLabel}.`);
+            showStatusMessage(`Saved thumbnail settings for ${targetLabel}.`);
           }
         });
       });
 
       requestAnimationFrame(() => {
         try { overlay.focus(); } catch {}
-        try { rangeZoom?.focus(); } catch {}
+        if (isVideoEditor) {
+          try { rangeFrame?.focus(); } catch {}
+        } else {
+          try { rangeZoom?.focus(); } catch {}
+        }
       });
       return true;
     }
@@ -13087,7 +13390,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           `;
           const topNameHtml = renameActive
             ? `<input class="tagEditInput tagEntryRenameInput renameEditInput dirSquareRenameInput" type="text" value="${escapeHtml(TAG_ENTRY_RENAME_STATE.label || label)}" placeholder="${escapeHtml(label)}" />`
-            : `<span class="dirSquareName" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+            : `<span class="dirSquareName ${entry.special === "favorites" ? "dirSquareNameTagFavorite" : "dirSquareNameTag"}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
           const typeIconHtml = `<span class="dirSquareTypeIcon" title="Tag folder type">${escapeHtml(iconText)}</span>`;
           const specialBadgeHtml = specialText ? `<span class="dirTagKindBadge">${escapeHtml(specialText)}</span>` : "";
           const tagCardStyle = (naturalThumbCards && presetRec)
@@ -16189,9 +16492,23 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
        Video thumbnails (lazy, low quality) for Preview Pane
        ========================================================= */
 
-    function enqueueVideoThumb(rec) {
-      if (!rec) return;
-      WS.videoThumbQueue.push(rec.id);
+    function currentVideoThumbMode() {
+      return WS.meta && WS.meta.options ? String(WS.meta.options.videoThumbSize || "medium") : "medium";
+    }
+
+    function enqueueVideoThumb(rec, opts = null) {
+      if (!rec || rec.type !== "video") return false;
+      const id = String(rec.id || "");
+      if (!id) return false;
+      const mode = currentVideoThumbMode();
+      if (rec.videoThumbUrl && rec.videoThumbMode === mode) return false;
+      if (!(WS.videoThumbQueuedIds instanceof Set)) WS.videoThumbQueuedIds = new Set();
+      if (!(WS.videoThumbInFlightIds instanceof Set)) WS.videoThumbInFlightIds = new Set();
+      if (WS.videoThumbQueuedIds.has(id) || WS.videoThumbInFlightIds.has(id)) return false;
+      WS.videoThumbQueue.push(id);
+      WS.videoThumbQueuedIds.add(id);
+      if (!(opts && opts.deferDrain)) drainVideoThumbQueue();
+      return true;
     }
 
     function getPreviewFileIdsForDir(dirNode, includeChildren = false) {
@@ -16216,28 +16533,67 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       const includeChildren = previewDisplayMode() === "expanded" && WS.preview.kind !== "file";
       const ids = getPreviewFileIdsForDir(dirNode, includeChildren);
+      const mode = currentVideoThumbMode();
       for (const id of ids) {
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "video") continue;
-        const mode = WS.meta && WS.meta.options ? String(WS.meta.options.videoThumbSize || "medium") : "medium";
         if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
         enqueueVideoThumb(rec);
       }
       drainVideoThumbQueue();
     }
 
+    function kickVideoThumbsForWorkspace() {
+      if (!WS.root) return;
+      kickVideoThumbsForPreview();
+      const mode = currentVideoThumbMode();
+      const previewPriorityIds = new Set();
+      const previewDir = getPreviewTargetDir();
+      if (previewDir) {
+        const includeChildren = previewDisplayMode() === "expanded" && WS.preview.kind !== "file";
+        const ids = getPreviewFileIdsForDir(previewDir, includeChildren);
+        for (const id of ids) previewPriorityIds.add(String(id || ""));
+      }
+      for (const rec of WS.fileById.values()) {
+        if (!rec || rec.type !== "video") continue;
+        const id = String(rec.id || "");
+        if (previewPriorityIds.has(id)) continue;
+        if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
+        enqueueVideoThumb(rec, { deferDrain: true });
+      }
+      drainVideoThumbQueue();
+    }
+
+    function scheduleVideoThumbWorkspaceKick(delayMs = 0) {
+      if (WS.videoThumbWorkspaceKickTimer) {
+        try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
+      }
+      const waitMs = Math.max(0, Number(delayMs) || 0);
+      WS.videoThumbWorkspaceKickTimer = setTimeout(() => {
+        WS.videoThumbWorkspaceKickTimer = 0;
+        kickVideoThumbsForWorkspace();
+      }, waitMs);
+    }
+
     async function drainVideoThumbQueue() {
+      if (!(WS.videoThumbQueuedIds instanceof Set)) WS.videoThumbQueuedIds = new Set();
+      if (!(WS.videoThumbInFlightIds instanceof Set)) WS.videoThumbInFlightIds = new Set();
       if (WS.videoThumbActive >= 4) return;
       while (WS.videoThumbActive < 4 && WS.videoThumbQueue.length) {
-        const id = WS.videoThumbQueue.shift();
+        const id = String(WS.videoThumbQueue.shift() || "");
+        if (!id) continue;
+        WS.videoThumbQueuedIds.delete(id);
+        if (WS.videoThumbInFlightIds.has(id)) continue;
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "video") continue;
-        const mode = WS.meta && WS.meta.options ? String(WS.meta.options.videoThumbSize || "medium") : "medium";
+        const mode = currentVideoThumbMode();
         if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
 
+        WS.videoThumbInFlightIds.add(id);
         WS.videoThumbActive++;
         generateVideoThumb(rec).catch(() => {}).finally(() => {
-          WS.videoThumbActive--;
+          WS.videoThumbInFlightIds.delete(id);
+          WS.videoThumbActive = Math.max(0, (WS.videoThumbActive | 0) - 1);
           renderPreviewPane(false);
           refreshDirectoryInlinePreviewThumbForRecord(rec);
           drainVideoThumbQueue();
@@ -16245,11 +16601,160 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
     }
 
+    async function waitForVideoLoadedData(videoEl, timeoutMs = 1500) {
+      if (!videoEl) return;
+      if (videoEl.readyState >= 2 && (videoEl.videoWidth || 0) > 0 && (videoEl.videoHeight || 0) > 0) return;
+      await new Promise((resolve) => {
+        let done = false;
+        let timer = 0;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          if (timer) clearTimeout(timer);
+          videoEl.removeEventListener("loadeddata", onReady);
+          videoEl.removeEventListener("canplay", onReady);
+          resolve();
+        };
+        const onReady = () => {
+          if (videoEl.readyState >= 2 && (videoEl.videoWidth || 0) > 0 && (videoEl.videoHeight || 0) > 0) finish();
+        };
+        videoEl.addEventListener("loadeddata", onReady);
+        videoEl.addEventListener("canplay", onReady);
+        timer = setTimeout(finish, Math.max(300, timeoutMs | 0));
+        onReady();
+      });
+    }
+
+    async function waitForVideoFrameReady(videoEl, timeoutMs = 1200) {
+      if (!videoEl) return;
+      await new Promise((resolve) => {
+        let done = false;
+        let timer = 0;
+        let pollTimer = 0;
+        let frameHandle = 0;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          if (timer) clearTimeout(timer);
+          if (pollTimer) clearInterval(pollTimer);
+          if (typeof videoEl.cancelVideoFrameCallback === "function" && frameHandle) {
+            try { videoEl.cancelVideoFrameCallback(frameHandle); } catch {}
+          }
+          videoEl.removeEventListener("loadeddata", onReadySignal);
+          videoEl.removeEventListener("canplay", onReadySignal);
+          videoEl.removeEventListener("canplaythrough", onReadySignal);
+          resolve();
+        };
+        const onReadySignal = () => {
+          if (videoEl.readyState >= 2 && (videoEl.videoWidth || 0) > 0 && (videoEl.videoHeight || 0) > 0) finish();
+        };
+        videoEl.addEventListener("loadeddata", onReadySignal);
+        videoEl.addEventListener("canplay", onReadySignal);
+        videoEl.addEventListener("canplaythrough", onReadySignal);
+        if (typeof videoEl.requestVideoFrameCallback === "function") {
+          try {
+            frameHandle = videoEl.requestVideoFrameCallback(() => finish());
+          } catch {}
+        }
+        pollTimer = setInterval(onReadySignal, 50);
+        timer = setTimeout(finish, Math.max(250, timeoutMs | 0));
+        onReadySignal();
+      });
+    }
+
+    async function seekVideoForThumb(videoEl, targetTime, timeoutMs = 1400) {
+      if (!videoEl) return;
+      const duration = Number(videoEl.duration || 0);
+      const maxTime = Number.isFinite(duration) && duration > 0
+        ? Math.max(0, duration - 0.05)
+        : 0;
+      const target = clampNumber(targetTime, 0, maxTime, 0);
+      await new Promise((resolve) => {
+        let done = false;
+        let timer = 0;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          if (timer) clearTimeout(timer);
+          videoEl.removeEventListener("seeked", onSeeked);
+          resolve();
+        };
+        const onSeeked = () => finish();
+        videoEl.addEventListener("seeked", onSeeked);
+        timer = setTimeout(finish, Math.max(350, timeoutMs | 0));
+        try {
+          const cur = Number(videoEl.currentTime || 0);
+          if (Math.abs(cur - target) < 0.03) finish();
+          else videoEl.currentTime = target;
+        } catch {
+          finish();
+        }
+      });
+      await waitForVideoFrameReady(videoEl, timeoutMs);
+    }
+
+    function computeVideoThumbSeekTimes(durationValue, preferredTime = null) {
+      const duration = Number(durationValue || 0);
+      if (!Number.isFinite(duration) || duration <= 0) return [0];
+      const maxTime = Math.max(0, duration - 0.05);
+      const preferred = normalizeVideoThumbTimeValue(preferredTime, duration);
+      const raw = [];
+      if (Number.isFinite(preferred)) raw.push(preferred);
+      raw.push(
+        clampNumber(duration * 0.12, 0, maxTime, 0),
+        clampNumber(0.8, 0, maxTime, 0),
+        clampNumber(duration * 0.33, 0, maxTime, 0),
+        clampNumber(duration * 0.5, 0, maxTime, 0)
+      );
+      const out = [];
+      for (const t of raw) {
+        if (!Number.isFinite(t)) continue;
+        if (!out.length || Math.abs(out[out.length - 1] - t) > 0.08) out.push(t);
+      }
+      if (!out.length) out.push(0);
+      return out;
+    }
+
+    function isVideoFrameLikelyBlank(videoEl) {
+      const srcW = Number(videoEl?.videoWidth || 0);
+      const srcH = Number(videoEl?.videoHeight || 0);
+      if (!(srcW > 0 && srcH > 0)) return true;
+      const maxSide = 96;
+      const scale = Math.min(1, maxSide / Math.max(srcW, srcH));
+      const w = Math.max(16, Math.round(srcW * scale));
+      const h = Math.max(16, Math.round(srcH * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return false;
+      try {
+        ctx.drawImage(videoEl, 0, 0, w, h);
+        const data = ctx.getImageData(0, 0, w, h).data;
+        let lumaSum = 0;
+        let brightCount = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const luma = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+          lumaSum += luma;
+          if (Math.max(r, g, b) >= 26) brightCount++;
+        }
+        const px = Math.max(1, w * h);
+        const avgLuma = lumaSum / px;
+        const brightRatio = brightCount / px;
+        return avgLuma < 12 || brightRatio < 0.015;
+      } catch {
+        return false;
+      }
+    }
+
     async function generateVideoThumb(rec) {
       const url = ensureMediaUrl(rec);
       if (!url) return;
 
-      const mode = WS.meta && WS.meta.options ? String(WS.meta.options.videoThumbSize || "medium") : "medium";
+      const mode = currentVideoThumbMode();
       if (rec.videoThumbUrl) {
         try { URL.revokeObjectURL(rec.videoThumbUrl); } catch {}
         rec.videoThumbUrl = null;
@@ -16261,45 +16766,59 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       v.muted = true;
       normalizeVideoPlaybackRate(v);
       v.playsInline = true;
-      v.src = url;
       v.crossOrigin = "anonymous";
+      v.src = url;
 
-      await new Promise((resolve, reject) => {
-        const onMeta = () => resolve();
-        const onErr = () => reject(new Error("video load failed"));
-        v.addEventListener("loadedmetadata", onMeta, { once: true });
-        v.addEventListener("error", onErr, { once: true });
-      });
+      try {
+        await new Promise((resolve, reject) => {
+          const onMeta = () => resolve();
+          const onErr = () => reject(new Error("video load failed"));
+          v.addEventListener("loadedmetadata", onMeta, { once: true });
+          v.addEventListener("error", onErr, { once: true });
+        });
+        await waitForVideoLoadedData(v, 1500);
 
-      const t = Math.min(0.25, Math.max(0, (v.duration || 0) * 0.10));
-      try { v.currentTime = isFinite(t) ? t : 0; } catch {}
+        const seekTimes = computeVideoThumbSeekTimes(v.duration || 0, metaGetVideoThumbnailTimeForRecord(rec));
+        const w = videoThumbWidthForOption();
+        const jpgQuality = isGridInteractionMode()
+          ? (mode === "high" ? 0.85 : (mode === "medium" ? 0.75 : 0.65))
+          : (mode === "high" ? 0.75 : 0.6);
 
-      await new Promise((resolve) => {
-        const done = () => resolve();
-        v.addEventListener("seeked", done, { once: true });
-        setTimeout(done, 350);
-      });
+        let blob = null;
+        for (let i = 0; i < seekTimes.length; i++) {
+          await seekVideoForThumb(v, seekTimes[i], 1400);
+          const frameLooksBlank = isVideoFrameLikelyBlank(v);
+          if (frameLooksBlank && i < seekTimes.length - 1) continue;
 
-      updateVideoCropFromElement(rec, v);
-      const w = videoThumbWidthForOption();
-      const cropRect = computeCroppedSourceRect(v.videoWidth || w, v.videoHeight || Math.max(1, Math.round(w / (4 / 3))), getVideoCropForRecord(rec));
-      const ar = (cropRect.sw && cropRect.sh) ? (cropRect.sw / cropRect.sh) : ((v.videoWidth && v.videoHeight) ? (v.videoWidth / v.videoHeight) : (4/3));
-      rec.previewAspect = normalizePreviewAspect(ar, 4 / 3);
-      const h = Math.max(120, Math.round(w / ar));
+          updateVideoCropFromElement(rec, v);
+          const cropRect = computeCroppedSourceRect(
+            v.videoWidth || w,
+            v.videoHeight || Math.max(1, Math.round(w / (4 / 3))),
+            getVideoCropForRecord(rec)
+          );
+          const ar = (cropRect.sw && cropRect.sh)
+            ? (cropRect.sw / cropRect.sh)
+            : ((v.videoWidth && v.videoHeight) ? (v.videoWidth / v.videoHeight) : (4 / 3));
+          rec.previewAspect = normalizePreviewAspect(ar, 4 / 3);
+          const h = Math.max(120, Math.round(w / ar));
 
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      renderFilteredToCanvas(ctx, v, v.videoWidth || w, v.videoHeight || h, w, h, getMediaFilterForType(), true, rec);
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          renderFilteredToCanvas(ctx, v, v.videoWidth || w, v.videoHeight || h, w, h, getMediaFilterForType(), true, rec);
 
-      const jpgQuality = isGridInteractionMode()
-        ? (mode === "high" ? 0.85 : (mode === "medium" ? 0.75 : 0.65))
-        : (mode === "high" ? 0.75 : 0.6);
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", jpgQuality));
-      if (!blob) return;
+          blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", jpgQuality));
+          if (blob) break;
+        }
 
-      rec.videoThumbUrl = URL.createObjectURL(blob);
+        if (!blob) return;
+        rec.videoThumbUrl = URL.createObjectURL(blob);
+      } finally {
+        try { v.pause(); } catch {}
+        try { v.removeAttribute("src"); } catch {}
+        try { v.load(); } catch {}
+      }
     }
 
     /* =========================================================

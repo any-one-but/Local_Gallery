@@ -28,6 +28,8 @@
       --thumb-filter: none;
       --thumb-fit: cover;
       --thumb-bg: transparent;
+      --dir-tag-title-color: #ffd6a0;
+      --dir-tag-favorite-title-color: #ffb8dd;
     }
 
     :root[data-media-size="small"] {
@@ -1390,9 +1392,17 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 18px;
+      font-size: 28px;
       font-weight: 700;
       color: #fff;
+    }
+
+    .dirSquareNameTag {
+      color: var(--dir-tag-title-color, #ffd6a0);
+    }
+
+    .dirSquareNameTagFavorite {
+      color: var(--dir-tag-favorite-title-color, #ffb8dd);
     }
 
     .dirSquareScore {
@@ -3113,6 +3123,10 @@
       pointer-events: none;
     }
 
+    .thumbCropEditorPreviewVideo {
+      background: #000;
+    }
+
     .thumbCropEditorShade {
       position: absolute;
       background: rgba(0, 0, 0, 0.58);
@@ -3181,6 +3195,10 @@
       color: rgba(255, 255, 255, 0.92);
       min-width: 46px;
       text-align: right;
+    }
+
+    .thumbCropEditorControl > span[data-crop-value="frame"] {
+      min-width: 72px;
     }
 
     .thumbCropEditorActions {
