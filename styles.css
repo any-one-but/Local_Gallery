@@ -303,6 +303,14 @@
       position: relative;
     }
 
+    #app.grid-mode {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: auto 1fr;
+      grid-template-areas:
+        "title"
+        "dirs";
+    }
+
     /* old pseudo-divider left in place for legacy; hidden now to allow real divider element */
     #app::before { display: none; }
 
@@ -520,6 +528,17 @@
       grid-area: title;
     }
 
+    #app:not(.grid-mode) #titlePane {
+      padding-bottom: 10px;
+    }
+
+    #app.grid-mode #titlePane {
+      padding: 4px 8px;
+      gap: 4px;
+      border-bottom: 1px solid var(--color1-tertiary);
+      display: block;
+    }
+
     body.directories-files-only #titlePane,
     body.directories-files-only #directoriesHeader {
       display: none !important;
@@ -535,12 +554,27 @@
       flex-wrap: wrap;
     }
 
+    #app.grid-mode #titlePaneTop {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 560px) minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+
     #titleMain {
       display: flex;
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
       width: 100%;
+    }
+
+    #app.grid-mode #titleMain {
+      grid-column: 1;
+      width: auto;
+      flex: 1 1 auto;
+      min-width: 0;
     }
 
     #titlePane h1 {
@@ -555,6 +589,15 @@
       align-items: center;
       flex-wrap: wrap;
       width: 100%;
+    }
+
+    #app.grid-mode #titleBtns {
+      grid-column: 3;
+      width: auto;
+      flex: 0 0 auto;
+      gap: 6px;
+      flex-wrap: nowrap;
+      justify-self: end;
     }
 
     /* =========================================================
@@ -593,6 +636,37 @@
       flex-direction: column;
       min-height: 0;
       grid-area: dirs;
+      overflow: hidden;
+    }
+
+    #app.grid-mode #previewPane,
+    #app.grid-mode #divider {
+      display: none !important;
+    }
+
+    #app.grid-mode #directoriesHeader {
+      display: block !important;
+      height: 0 !important;
+      min-height: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      overflow: visible !important;
+    }
+
+    #app.grid-mode #directoriesHeaderTop,
+    #app.grid-mode #directoriesTagsRow,
+    #app.grid-mode #directoriesBulkRow {
+      display: none !important;
+    }
+
+    #app.grid-mode #directoriesActionRow {
+      height: 0;
+      min-height: 0;
+      overflow: visible;
+    }
+
+    #app.grid-mode #directoriesActionMenu {
+      pointer-events: auto;
     }
 
     #directoriesHeader {
@@ -636,6 +710,19 @@
       margin-bottom: 6px;
     }
 
+    #app.grid-mode #directoriesSearchRow {
+      grid-column: 2;
+      grid-row: 1;
+      margin-bottom: 0;
+      flex: 1 1 auto;
+      min-width: 0;
+      max-width: 560px;
+      align-self: center;
+      justify-self: center;
+      width: 100%;
+      justify-content: center;
+    }
+
     #directoriesTagsRow {
       display: none;
       gap: 6px;
@@ -677,6 +764,39 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
+    }
+
+    #directoriesList.gridModeList {
+      --grid-card-min: calc(var(--folder-grid-min) * var(--thumb-scale-folder));
+      --grid-card-size: var(--grid-card-min);
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 10px 12px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    #directoriesList.gridModeList .dirRow {
+      display: block;
+      height: auto;
+      min-height: max-content;
+      margin: 0;
+      align-self: flex-start;
+      padding: 0;
+      flex: 0 0 var(--grid-card-size);
+      width: min(100%, var(--grid-card-size));
+      max-width: 100%;
+    }
+
+    #directoriesList.gridModeList .dirSquareCard,
+    #directoriesList.gridModeList .dirFileThumbCard {
+      width: 100%;
+      height: auto;
+      max-height: none;
     }
 
     .statusBar {
@@ -1090,7 +1210,8 @@
       display: block;
     }
 
-    :root[data-natural-thumb-cards="on"] .dirRow.fileRow .dirInlinePreview {
+    :root[data-natural-thumb-cards="on"] .dirRow.fileRow .dirInlinePreview,
+    #directoriesList.naturalThumbCards .dirRow.fileRow .dirInlinePreview {
       height: 100%;
       aspect-ratio: auto;
     }
@@ -1233,7 +1354,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 28px;
+      font-size: 18px;
       font-weight: 700;
       color: #fff;
     }

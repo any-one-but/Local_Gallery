@@ -12,6 +12,17 @@
     const PROCESSING_DISABLED_TAG = "__processing_disabled__";
     const FOLDER_THUMB_NONE_SENTINEL = "__thumb_none__";
     const FOLDER_THUMB_ROTATE_SENTINEL = "__thumb_rotate__";
+    // Legacy thumbnail style switch. "aspect" mode remains in code for future reactivation,
+    // but the app currently runs cropped thumbnails only.
+    const ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE = false;
+    const GRID_CROPPED_COLS_BY_SCALE = Object.freeze({
+      small: 7,
+      medium: 6,
+      large: 5,
+      xl: 4,
+      xxl: 3,
+      xxxl: 2
+    });
 
     function isImageName(name) { return imgRE.test((name || "").toLowerCase()); }
     function isVideoName(name) { return vidRE.test((name || "").toLowerCase()); }
@@ -276,6 +287,7 @@
         previewThumbFit: "contain",
         hideOptionDescriptions: false,
         hideKeybindDescriptions: false,
+        interactionMode: "grid",
         randomActionMode: "firstFileJump",
         clickSelectedRotatingThumbTeleports: false,
         thumbnailStyle: "cropped",
@@ -312,9 +324,11 @@
       const vhsChromaAmount = clampNumber(src.vhsChromaAmount, 0, 3, d.vhsChromaAmount);
       const filmCornerOverlayEnabled = (typeof src.filmCornerOverlayEnabled === "boolean") ? src.filmCornerOverlayEnabled : d.filmCornerOverlayEnabled;
       const thumbnailStyleRaw = String(src.thumbnailStyle || "").trim().toLowerCase();
-      const thumbnailStyle = (thumbnailStyleRaw === "cropped" || thumbnailStyleRaw === "aspect")
-        ? thumbnailStyleRaw
-        : (((typeof src.betaAspectRatioThumbCards === "boolean") && src.betaAspectRatioThumbCards) ? "aspect" : d.thumbnailStyle);
+      const thumbnailStyle = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
+        ? ((thumbnailStyleRaw === "cropped" || thumbnailStyleRaw === "aspect")
+          ? thumbnailStyleRaw
+          : (((typeof src.betaAspectRatioThumbCards === "boolean") && src.betaAspectRatioThumbCards) ? "aspect" : d.thumbnailStyle))
+        : "cropped";
       const thumbnailScaleCropped = normalizeThumbnailScaleValue(src.thumbnailScaleCropped, d.thumbnailScaleCropped);
       const thumbnailScaleAspect = normalizeThumbnailScaleValue(src.thumbnailScaleAspect, d.thumbnailScaleAspect);
       const out = {
@@ -352,6 +366,7 @@
         previewThumbFiltersEnabled: false,
         hideOptionDescriptions: false,
         hideKeybindDescriptions: false,
+        interactionMode: (String(src.interactionMode || "").toLowerCase() === "pane") ? "pane" : "grid",
         randomActionMode: (
           src.randomActionMode === "firstFileJump"
           || src.randomActionMode === "randomFileSort"
@@ -1702,6 +1717,15 @@
       return "hidden";
     }
 
+    function getInteractionModeFromOptions(opt = null) {
+      const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+      return (String(src && src.interactionMode || "grid").toLowerCase() === "pane") ? "pane" : "grid";
+    }
+
+    function isGridInteractionMode() {
+      return getInteractionModeFromOptions() === "grid";
+    }
+
     function imageThumbWidthForOption() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const m = opt ? String(opt.imageThumbSize || "medium") : "medium";
@@ -1851,6 +1875,7 @@
     }
 
     function getThumbnailStyleFromOptions(opt = null) {
+      if (!ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE) return "cropped";
       const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
       const raw = String(src && src.thumbnailStyle || "cropped").toLowerCase();
       return raw === "aspect" ? "aspect" : "cropped";
@@ -1983,6 +2008,13 @@
       else root.removeAttribute("data-natural-thumb-cards");
     }
 
+    function applyInteractionModeFromOptions() {
+      const appEl = document.getElementById("app");
+      if (!appEl) return;
+      const grid = isGridInteractionMode();
+      appEl.classList.toggle("grid-mode", grid);
+    }
+
     function applyOptionsEverywhere(invalidateThumbs = false) {
       if (!WS.root) {
         applyColorSchemeFromOptions();
@@ -1994,6 +2026,7 @@
         applyDirectoryFileThumbLayoutFromOptions();
         applyDirectoryFolderCardLayoutFromOptions();
         applyNaturalAspectThumbnailModeFromOptions();
+        applyInteractionModeFromOptions();
         applyDescriptionVisibilityFromOptions();
         applyPaneDividerFromOptions();
         syncButtons();
@@ -2013,6 +2046,7 @@
       applyDirectoryFileThumbLayoutFromOptions();
       applyDirectoryFolderCardLayoutFromOptions();
       applyNaturalAspectThumbnailModeFromOptions();
+      applyInteractionModeFromOptions();
       applyDescriptionVisibilityFromOptions();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -2045,9 +2079,16 @@
     }
 
     function setDividerPositionFromPct(pct) {
-      pct = Math.max(0.05, Math.min(0.9, Number(pct) || 0.28));
       const appEl = document.getElementById("app");
       if (!appEl) return;
+      if (isGridInteractionMode()) {
+        appEl.style.removeProperty("grid-template-columns");
+        const dividerEl = document.getElementById("divider");
+        if (dividerEl) dividerEl.style.removeProperty("left");
+        MediaFilterEngine.requestRender();
+        return;
+      }
+      pct = Math.max(0.05, Math.min(0.9, Number(pct) || 0.28));
       appEl.style.gridTemplateColumns = `${(pct * 100).toFixed(2)}% 1fr`;
       const dividerEl = document.getElementById("divider");
       if (dividerEl) {
@@ -2063,6 +2104,7 @@
       for (let i = 0; i < 26; i++) out.push(String.fromCharCode(97 + i));
       for (let i = 0; i < 10; i++) out.push(String(i));
       out.push("Space");
+      out.push("Tab");
       out.push("ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown");
       return out;
     })();
@@ -2096,6 +2138,7 @@
     const KEY_LABELS = {
       Escape: "Escape",
       Space: "Space",
+      Tab: "Tab",
       ArrowLeft: "Left Arrow",
       ArrowRight: "Right Arrow",
       ArrowUp: "Up Arrow",
@@ -2334,6 +2377,23 @@
       { id: "moveThumbViewportDown", label: "Move thumbnail viewport down", hint: "Move thumbnail framing down for the selected item's source thumbnail.", section: "extras" }
     ];
 
+    const GRID_KEYBIND_SECTIONS = [
+      { id: "gridnav", label: "Grid Navigation" },
+      { id: "gridgallery", label: "Grid Gallery" }
+    ];
+
+    const GRID_KEYBIND_ACTIONS = [
+      { id: "gridMoveUp", label: "Move selection up", hint: "Move grid selection up.", section: "gridnav" },
+      { id: "gridMoveDown", label: "Move selection down", hint: "Move grid selection down.", section: "gridnav" },
+      { id: "gridMoveLeft", label: "Move selection left", hint: "Move grid selection left.", section: "gridnav" },
+      { id: "gridMoveRight", label: "Move selection right", hint: "Move grid selection right.", section: "gridnav" },
+      { id: "gridOpenSelection", label: "Open selection", hint: "Open selected item in grid mode.", section: "gridnav" },
+      { id: "gridUpDirectory", label: "Up directory", hint: "Go to parent directory in grid mode.", section: "gridnav" },
+      { id: "gridGalleryPrev", label: "Previous media", hint: "In gallery, move to previous media.", section: "gridgallery" },
+      { id: "gridGalleryNext", label: "Next media", hint: "In gallery, move to next media.", section: "gridgallery" },
+      { id: "gridGalleryBack", label: "Back from gallery", hint: "Exit gallery to the prior grid context.", section: "gridgallery" }
+    ];
+
     const KEYBIND_LOCKED_ACTIONS = Object.freeze({
       playPause: "Space",
       back: "Escape",
@@ -2412,6 +2472,18 @@
       moveThumbViewportDown: "ArrowDown"
     });
 
+    const GRID_KEYBIND_DEFAULT_BINDINGS = Object.freeze({
+      gridMoveUp: "w",
+      gridMoveDown: "s",
+      gridMoveLeft: "a",
+      gridMoveRight: "d",
+      gridOpenSelection: "Space",
+      gridUpDirectory: "",
+      gridGalleryPrev: "",
+      gridGalleryNext: "",
+      gridGalleryBack: ""
+    });
+
     function applyFixedKeybinds(bindings) {
       const byId = new Map(bindings.map(binding => [binding.id, binding]));
       Object.entries(KEYBIND_LOCKED_ACTIONS).forEach(([id, key]) => {
@@ -2428,6 +2500,15 @@
       });
       applyFixedKeybinds(bindings);
       enforceUniqueKeybinds(bindings, KEYBIND_LOCKED_IDS);
+      return bindings;
+    }
+
+    function defaultGridKeybinds() {
+      const bindings = GRID_KEYBIND_ACTIONS.map(def => {
+        const key = GRID_KEYBIND_DEFAULT_BINDINGS[def.id] || "";
+        return Object.assign({}, def, { key: normalizeKeyValue(key) });
+      });
+      enforceUniqueKeybinds(bindings);
       return bindings;
     }
 
@@ -2504,7 +2585,24 @@
       return { bindings };
     }
 
+    function normalizeGridKeybinds(log) {
+      const bindings = defaultGridKeybinds();
+      const byId = new Map(bindings.map(b => [b.id, b]));
+      if (log && Array.isArray(log.gridBindings)) {
+        for (const entry of log.gridBindings) {
+          const id = entry && entry.id ? String(entry.id) : "";
+          if (!id || !byId.has(id)) continue;
+          const key = normalizeKeyValue(entry.key || "");
+          if (key && !isSafeKeybindValue(key)) continue;
+          byId.get(id).key = key;
+        }
+      }
+      enforceUniqueKeybinds(bindings);
+      return { bindings };
+    }
+
     const KEYBIND_INDEX = new Map();
+    const GRID_KEYBIND_INDEX = new Map();
 
     function rebuildKeybindIndex() {
       KEYBIND_INDEX.clear();
@@ -2516,10 +2614,22 @@
         if (!key || KEYBIND_INDEX.has(key)) continue;
         KEYBIND_INDEX.set(key, binding.id);
       }
+      GRID_KEYBIND_INDEX.clear();
+      const gridBindings = (WS.meta && Array.isArray(WS.meta.gridKeybinds)) ? WS.meta.gridKeybinds : defaultGridKeybinds();
+      enforceUniqueKeybinds(gridBindings);
+      for (const binding of gridBindings) {
+        const key = normalizeKeyValue(binding.key);
+        if (!key || GRID_KEYBIND_INDEX.has(key)) continue;
+        GRID_KEYBIND_INDEX.set(key, binding.id);
+      }
     }
 
     function keybindActionFor(key) {
       return KEYBIND_INDEX.get(key) || null;
+    }
+
+    function gridKeybindActionFor(key) {
+      return GRID_KEYBIND_INDEX.get(key) || null;
     }
 
     const WS = {
@@ -2553,7 +2663,8 @@
         saveTimer: null,
         dirty: false,
         options: normalizeOptions(null),
-        keybinds: defaultKeybinds()
+        keybinds: defaultKeybinds(),
+        gridKeybinds: defaultGridKeybinds()
       },
 
       view: {
@@ -2616,7 +2727,8 @@
         searchRootHidden: [],
         searchResults: [],
         previewScrollByDir: new Map(),
-        previewScrollActiveKey: ""
+        previewScrollActiveKey: "",
+        gridSelectionByContext: new Map()
       },
 
       // Directories Pane navigation state
@@ -2696,6 +2808,7 @@
       WS.meta.dirty = false;
       WS.meta.options = normalizeOptions(null);
       WS.meta.keybinds = defaultKeybinds();
+      WS.meta.gridKeybinds = defaultGridKeybinds();
       if (WS.meta.saveTimer) { clearTimeout(WS.meta.saveTimer); WS.meta.saveTimer = null; }
 
       applyDefaultViewFromOptions();
@@ -2749,6 +2862,7 @@
       WS.view.searchResults = [];
       WS.view.previewScrollByDir = new Map();
       WS.view.previewScrollActiveKey = "";
+      WS.view.gridSelectionByContext = new Map();
       if (WS.view.slideshowTimer) { clearInterval(WS.view.slideshowTimer); WS.view.slideshowTimer = null; }
       if (WS.view.statusTimeout) { clearTimeout(WS.view.statusTimeout); WS.view.statusTimeout = null; }
 
@@ -2929,6 +3043,7 @@
     window.addEventListener("resize", () => {
       overlayWindowNames.forEach((name) => applyOverlayWindowState(name));
       refreshFitInsidePreviewGrids();
+      scheduleGridModeCardSizing();
     });
 
     // Directories Pane
@@ -3252,8 +3367,8 @@
       restoreMenuTabScroll(section);
     }
 
-    function ensureKeybindsUi() {
-      renderKeybindsUi();
+    function ensureKeybindsUi(scope = "pane") {
+      renderKeybindsUi(scope);
       setKeybindsStatus("Saved automatically");
       restoreMenuTabScroll("controls");
     }
@@ -3276,14 +3391,14 @@
       Object.entries(menuTabPanels).forEach(([id, panel]) => {
         if (!panel) return;
         const active = (id === "controls")
-          ? next === "controls"
+          ? (next === "controls")
           : OPTION_SECTION_TABS.has(next);
         panel.classList.toggle("active", active);
         panel.setAttribute("aria-hidden", active ? "false" : "true");
       });
 
       if (next === "controls") {
-        ensureKeybindsUi();
+        ensureKeybindsUi("pane");
         return;
       }
       ensureOptionsUi(next);
@@ -3325,54 +3440,80 @@
       keybindsStatusLabel.textContent = text || "—";
     }
 
+    function isGridKeybindAction(actionId) {
+      return GRID_KEYBIND_ACTIONS.some(action => action.id === actionId);
+    }
+
+    function isLockedGridKeybindAction() {
+      return false;
+    }
+
+    function isAnyLockedKeybindAction(actionId) {
+      return isLockedKeybindAction(actionId) || isLockedGridKeybindAction(actionId);
+    }
+
     function assignKeybindForAction(actionId, rawKeybind) {
-      if (!actionId || !WS.meta || !Array.isArray(WS.meta.keybinds)) return { ok: false, message: "Keybinds unavailable." };
-      if (isLockedKeybindAction(actionId)) return { ok: false, message: "This action is locked." };
-      const binding = WS.meta.keybinds.find(b => b.id === actionId);
+      if (!actionId || !WS.meta) return { ok: false, message: "Keybinds unavailable." };
+      const isGrid = isGridKeybindAction(actionId);
+      const bindingList = isGrid
+        ? (Array.isArray(WS.meta.gridKeybinds) ? WS.meta.gridKeybinds : defaultGridKeybinds())
+        : (Array.isArray(WS.meta.keybinds) ? WS.meta.keybinds : defaultKeybinds());
+      const locked = isGrid ? isLockedGridKeybindAction(actionId) : isLockedKeybindAction(actionId);
+      const lockedIds = isGrid ? null : KEYBIND_LOCKED_IDS;
+      if (locked) return { ok: false, message: "This action is locked." };
+      const binding = bindingList.find(b => b.id === actionId);
       if (!binding) return { ok: false, message: "Action not found." };
 
       const nextKey = normalizeKeyValue(rawKeybind || "");
       if (nextKey && !isSafeKeybindValue(nextKey)) return { ok: false, message: "That key is not allowed." };
-      if (isKeyReservedForLockedAction(nextKey, actionId)) return { ok: false, message: "That key is reserved." };
+      if (!isGrid && isKeyReservedForLockedAction(nextKey, actionId)) return { ok: false, message: "That key is reserved." };
 
       const prevKey = normalizeKeyValue(binding.key || "");
       if (nextKey === prevKey) return { ok: true, unchanged: true };
 
       const conflict = nextKey
-        ? WS.meta.keybinds.find((b) => b.id !== binding.id && normalizeKeyValue(b.key || "") === nextKey && !isLockedKeybindAction(b.id))
+        ? bindingList.find((b) => b.id !== binding.id && normalizeKeyValue(b.key || "") === nextKey && !(isGrid ? isLockedGridKeybindAction(b.id) : isLockedKeybindAction(b.id)))
         : null;
 
       binding.key = nextKey;
       if (conflict) conflict.key = prevKey;
-      applyFixedKeybinds(WS.meta.keybinds);
-      enforceUniqueKeybinds(WS.meta.keybinds, KEYBIND_LOCKED_IDS);
+      if (!isGrid) applyFixedKeybinds(bindingList);
+      enforceUniqueKeybinds(bindingList, lockedIds);
+      if (isGrid) WS.meta.gridKeybinds = bindingList;
+      else WS.meta.keybinds = bindingList;
       rebuildKeybindIndex();
       WS.meta.dirty = true;
       metaScheduleSave();
       return { ok: true, swapped: !!conflict };
     }
 
-    function renderKeybindsUi() {
+    function renderKeybindsUi(scope = "pane") {
       if (!keybindsBodyEl) return;
-      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds();
-      if (KEYBIND_CAPTURE_ACTION_ID && !bindings.some(binding => binding.id === KEYBIND_CAPTURE_ACTION_ID)) {
+      const paneBindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds();
+      const gridBindings = (WS.meta && Array.isArray(WS.meta.gridKeybinds)) ? WS.meta.gridKeybinds : defaultGridKeybinds();
+      const allBindings = paneBindings.concat(gridBindings);
+      if (KEYBIND_CAPTURE_ACTION_ID && !allBindings.some(binding => binding.id === KEYBIND_CAPTURE_ACTION_ID)) {
         KEYBIND_CAPTURE_ACTION_ID = "";
       }
 
-      const bySection = new Map();
-      for (const binding of bindings) {
-        if (!bySection.has(binding.section)) bySection.set(binding.section, []);
-        bySection.get(binding.section).push(binding);
+      const paneBySection = new Map();
+      for (const binding of paneBindings) {
+        if (!paneBySection.has(binding.section)) paneBySection.set(binding.section, []);
+        paneBySection.get(binding.section).push(binding);
       }
 
-      let html = `<div class="label" style="margin-bottom:8px;">Keybinds are stored in keyboard-configuration.log.json in the .local-gallery folder. Click Set keybind for an action, then hold modifiers and press a key to assign the combo.</div>`;
+      const gridBySection = new Map();
+      for (const binding of gridBindings) {
+        if (!gridBySection.has(binding.section)) gridBySection.set(binding.section, []);
+        gridBySection.get(binding.section).push(binding);
+      }
 
-      for (const section of KEYBIND_SECTIONS) {
-        const list = bySection.get(section.id) || [];
-        if (!list.length) continue;
-        html += `<h1>${escapeHtml(section.label)}</h1>`;
+      let html = `<div class="label" style="margin-bottom:8px;">Controls are stored in keyboard-configuration.log.json in the .local-gallery folder. Click Set keybind for an action, then hold modifiers and press a key to assign the combo.</div>`;
+
+      const renderBindingRows = (list) => {
+        let out = "";
         for (const binding of list) {
-          const isLocked = isLockedKeybindAction(binding.id);
+          const isLocked = isAnyLockedKeybindAction(binding.id);
           const isCapturing = !isLocked && KEYBIND_CAPTURE_ACTION_ID === binding.id;
           const currentLabel = keyLabel(binding.key || "");
           const lockedLabel = isLocked ? keyLabel(lockedKeyForAction(binding.id)) : "";
@@ -3388,7 +3529,7 @@
                   <button type="button" data-bind-clear-id="${escapeHtml(binding.id)}"${binding.key ? "" : " disabled"}>Clear</button>
                 </div>
               `;
-          html += `
+          out += `
             <div class="optRow">
               <div class="optLeft">
                 <div class="optTitle">${escapeHtml(binding.label)}</div>
@@ -3399,6 +3540,23 @@
               </div>
             </div>
           `;
+        }
+        return out;
+      };
+
+      if (scope === "grid") {
+        for (const section of GRID_KEYBIND_SECTIONS) {
+          const list = gridBySection.get(section.id) || [];
+          if (!list.length) continue;
+          html += `<h1>${escapeHtml(section.label)}</h1>`;
+          html += renderBindingRows(list);
+        }
+      } else {
+        for (const section of KEYBIND_SECTIONS) {
+          const list = paneBySection.get(section.id) || [];
+          if (!list.length) continue;
+          html += `<h1>${escapeHtml(section.label)}</h1>`;
+          html += renderBindingRows(list);
         }
       }
 
@@ -3411,10 +3569,10 @@
           e.preventDefault();
           e.stopPropagation();
           const id = btn.getAttribute("data-bind-capture-id") || "";
-          if (!id || isLockedKeybindAction(id)) return;
+          if (!id || isAnyLockedKeybindAction(id)) return;
           KEYBIND_CAPTURE_ACTION_ID = (KEYBIND_CAPTURE_ACTION_ID === id) ? "" : id;
           setKeybindsStatus(KEYBIND_CAPTURE_ACTION_ID ? "Press key combination to set bind." : "Capture canceled.");
-          renderKeybindsUi();
+          renderKeybindsUi(scope);
         });
         btn.addEventListener("keydown", (e) => {
           e.preventDefault();
@@ -3428,10 +3586,10 @@
           e.preventDefault();
           e.stopPropagation();
           const id = btn.getAttribute("data-bind-clear-id") || "";
-          if (!id || isLockedKeybindAction(id)) return;
+          if (!id || isAnyLockedKeybindAction(id)) return;
           const result = assignKeybindForAction(id, "");
           KEYBIND_CAPTURE_ACTION_ID = "";
-          renderKeybindsUi();
+          renderKeybindsUi(scope);
           setKeybindsStatus(result.ok ? "Saved" : (result.message || "Unable to update keybind."));
         });
         btn.addEventListener("keydown", (e) => {
@@ -3459,7 +3617,7 @@
       );
       if (isPlainEscape) {
         KEYBIND_CAPTURE_ACTION_ID = "";
-        renderKeybindsUi();
+        renderKeybindsUi("pane");
         setKeybindsStatus("Capture canceled.");
         return;
       }
@@ -3470,17 +3628,18 @@
       const actionId = KEYBIND_CAPTURE_ACTION_ID;
       KEYBIND_CAPTURE_ACTION_ID = "";
       const result = assignKeybindForAction(actionId, key);
-      renderKeybindsUi();
+      renderKeybindsUi("pane");
       setKeybindsStatus(result.ok ? "Saved" : (result.message || "Unable to update keybind."));
     }, true);
 
     function resetKeybindsToDefaults() {
       WS.meta.keybinds = defaultKeybinds();
+      WS.meta.gridKeybinds = defaultGridKeybinds();
       rebuildKeybindIndex();
       WS.meta.dirty = true;
       metaScheduleSave();
       KEYBIND_CAPTURE_ACTION_ID = "";
-      renderKeybindsUi();
+      renderKeybindsUi("pane");
       setKeybindsStatus("Reset");
     }
 
@@ -3567,6 +3726,10 @@
         { value: "randomFileSort", label: "Random file sort" },
         { value: "randomFolderSort", label: "Random folder sort" }
       ];
+      const interactionModes = [
+        { value: "grid", label: "Grid Mode" },
+        { value: "pane", label: "Pane Mode" }
+      ];
 
       const animatedFilterModes = [
         { value: "off", label: "Off" },
@@ -3585,6 +3748,12 @@
         { value: "xxl", label: "XXL" },
         { value: "xxxl", label: "3XL" }
       ];
+      const thumbnailStyleRow = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
+        ? makeSelectRow("Thumbnail Style", "Choose between fixed cropped thumbnails or natural aspect ratio cards.", "opt_thumbnailStyle", String(opt.thumbnailStyle || "cropped"), thumbnailStyleModes)
+        : "";
+      const thumbnailScaleHint = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
+        ? "Small through 3XL are saved separately for each thumbnail style."
+        : "Set cropped thumbnail size from Small through 3XL.";
 
       const formatPixelateResolution = (value) => {
         const n = Number(value);
@@ -3626,6 +3795,7 @@
         general: {
           title: "General",
           rows: `
+${makeSelectRow("Interaction mode", "Choose between full-screen Grid Mode and classic Pane Mode.", "opt_interactionMode", getInteractionModeFromOptions(opt), interactionModes)}
 ${makeSelectRow("Folder sort", "Sort folders by name, score, recursive size, recursive count, or non-recursive count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes)}
 ${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
@@ -3653,8 +3823,8 @@ ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when medi
         thumbnails: {
           title: "Thumbnails",
           rows: `
-${makeSelectRow("Thumbnail Style", "Choose between fixed cropped thumbnails or natural aspect ratio cards.", "opt_thumbnailStyle", String(opt.thumbnailStyle || "cropped"), thumbnailStyleModes)}
-${makeSelectRow("Thumbnail Scale", "Small through 3XL are saved separately for each thumbnail style.", "opt_thumbnailScale", getActiveThumbnailScale(opt), thumbnailScaleModes)}
+${thumbnailStyleRow}
+${makeSelectRow("Thumbnail Scale", thumbnailScaleHint, "opt_thumbnailScale", getActiveThumbnailScale(opt), thumbnailScaleModes)}
 ${makeActionRow("Reset Edited Crops", "Reset custom crop/zoom edits for thumbnails while keeping thumbnail assignments.", `
   <button type="button" id="opt_thumb_reset_crops">Reset Edited Crops</button>
 `)}
@@ -3795,6 +3965,19 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       bindSelect("opt_preloadNextMode", "preloadNextMode", false, (val) => {
         if (val === "off") PRELOAD_CACHE = new Map();
+      });
+      bindSelect("opt_interactionMode", "interactionMode", false, (val) => {
+        if (String(val || "") === "grid" && WS.nav.dirNode === WS.root) {
+          WS.view.aboveRootView = false;
+          rebuildDirectoriesEntries();
+          WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+          syncPreviewToSelection();
+          renderDirectoriesPane(true);
+          renderPreviewPane(false, true);
+          syncButtons();
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+        }
       });
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
       bindCheck("opt_showHiddenFolder", "showHiddenFolder", (enabled) => {
@@ -5158,10 +5341,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
     function metaMakeKeybindsLogObject() {
       const bindings = Array.isArray(WS.meta.keybinds) ? WS.meta.keybinds : defaultKeybinds();
+      const gridBindings = Array.isArray(WS.meta.gridKeybinds) ? WS.meta.gridKeybinds : defaultGridKeybinds();
       return {
         schema: 1,
         updatedAt: Date.now(),
-        bindings: bindings.map(b => ({ id: b.id, key: b.key || "" }))
+        bindings: bindings.map(b => ({ id: b.id, key: b.key || "" })),
+        gridBindings: gridBindings.map(b => ({ id: b.id, key: b.key || "" }))
       };
     }
 
@@ -5368,6 +5553,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       applyDisplaySizesFromOptions();
       applyDirectoryMiniThumbSizeFromOptions();
       applyDescriptionVisibilityFromOptions();
+      applyInteractionModeFromOptions();
       applyPaneDividerFromOptions();
     }
 
@@ -5375,6 +5561,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (!log || typeof log !== "object") return;
       const normalized = normalizeKeybinds(log);
       WS.meta.keybinds = normalized.bindings;
+      const normalizedGrid = normalizeGridKeybinds(log);
+      WS.meta.gridKeybinds = normalizedGrid.bindings;
       rebuildKeybindIndex();
     }
 
@@ -5392,6 +5580,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       applyDisplaySizesFromOptions();
       applyDirectoryMiniThumbSizeFromOptions();
       applyDescriptionVisibilityFromOptions();
+      applyInteractionModeFromOptions();
       applyPaneDividerFromOptions();
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
@@ -5745,7 +5934,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       // Initialize Directories Pane at root listing
       WS.nav.dirNode = WS.root;
-      WS.view.aboveRootView = true;
+      WS.view.aboveRootView = !isGridInteractionMode();
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncTagUiForCurrentDir();
@@ -5861,7 +6050,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       try { await hydrateEditedThumbnailAspects(); } catch {}
 
       WS.nav.dirNode = WS.root;
-      WS.view.aboveRootView = true;
+      WS.view.aboveRootView = !isGridInteractionMode();
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncTagUiForCurrentDir();
@@ -8722,7 +8911,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.view.tagFolderOriginPath = String(originPath || "");
       closeActionMenus();
       rebuildDirectoriesEntries();
-      WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+      WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
       syncPreviewToSelection();
       renderDirectoriesPane(true);
       renderPreviewPane(true);
@@ -9140,16 +9329,51 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (!WS.root || !WS.nav.dirNode) return;
     }
 
+    function shouldIncludeGridUpDirectoryEntry() {
+      if (!isGridInteractionMode()) return false;
+      if (!WS.root || !WS.nav.dirNode) return false;
+      if (WS.view.aboveRootView) return false;
+      if (isViewingTagFolder()) return true;
+      if (WS.view.dirSearchPinned && WS.view.searchRootActive) return false;
+      if (WS.view.favoritesMode && WS.view.favoritesRootActive) return false;
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return false;
+      return WS.nav.dirNode !== WS.root;
+    }
+
+    function buildGridUpDirectoryEntry() {
+      let parentLabel = "parent folder";
+      if (isViewingTagFolder()) {
+        const originPath = String(WS.view.tagFolderOriginPath || "");
+        const originNode = WS.dirByPath.get(originPath) || WS.root;
+        if (originNode) parentLabel = dirDisplayName(originNode);
+      } else if (WS.nav.dirNode && WS.nav.dirNode.parent) {
+        parentLabel = dirDisplayName(WS.nav.dirNode.parent);
+      }
+      return {
+        kind: "up",
+        label: "Up Directory",
+        icon: "↩",
+        parentLabel
+      };
+    }
+
+    function selectionIndexForDirectoryEnter() {
+      if (isGridInteractionMode()) return findNearestSelectableIndex(0, 1);
+      return restoreGridSelectionForCurrentContext(0);
+    }
+
     function rebuildDirectoriesEntries() {
       WS.nav.entries = [];
 
       if (!WS.root) return;
+      const includeGridUpEntry = shouldIncludeGridUpDirectoryEntry();
       if (WS.view.aboveRootView && WS.nav.dirNode === WS.root) {
         WS.nav.entries.push({ kind: "dir", node: WS.root });
         return;
       }
 
       if (isViewingTagFolder()) {
+        if (includeGridUpEntry) WS.nav.entries.push(buildGridUpDirectoryEntry());
         if (BULK_TAG_PLACEHOLDER) {
           WS.nav.entries.push({
             kind: "tag",
@@ -9165,6 +9389,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
+        if (includeGridUpEntry) WS.nav.entries.push(buildGridUpDirectoryEntry());
         if (BULK_TAG_PLACEHOLDER) {
           WS.nav.entries.push({
             kind: "tag",
@@ -9180,6 +9405,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
+        if (includeGridUpEntry) WS.nav.entries.push(buildGridUpDirectoryEntry());
         if (BULK_TAG_PLACEHOLDER) {
           WS.nav.entries.push({
             kind: "tag",
@@ -9195,6 +9421,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+        if (includeGridUpEntry) WS.nav.entries.push(buildGridUpDirectoryEntry());
         if (BULK_TAG_PLACEHOLDER) {
           WS.nav.entries.push({
             kind: "tag",
@@ -9211,6 +9438,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       const dirNode = WS.nav.dirNode;
       if (!dirNode) return;
+
+      if (includeGridUpEntry) WS.nav.entries.push(buildGridUpDirectoryEntry());
 
       const tagEntries = getTagFolderEntries();
       if (tagEntries.length) {
@@ -9233,7 +9462,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     function isSelectableEntry(entry) {
-      return entry && (entry.kind === "dir" || entry.kind === "file" || entry.kind === "tag");
+      return entry && (entry.kind === "dir" || entry.kind === "file" || entry.kind === "tag" || entry.kind === "up");
     }
 
     function findNearestSelectableIndex(idx, direction) {
@@ -9268,6 +9497,40 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     // This shared centering routine is the stable path for both folder and file selection scroll behavior.
     // Regressions here have repeatedly caused major frustration ("super pissed off"). If modified, manually
     // test keyboard selection in folder lists and file-only folders before shipping.
+    function getDirectoryViewportRange(container) {
+      const view = container || directoriesListEl;
+      if (!view) {
+        return {
+          topInset: 0,
+          viewTop: 0,
+          viewBottom: 0,
+          viewHeight: 0
+        };
+      }
+
+      let topInset = 0;
+      if (isGridInteractionMode()) {
+        const title = document.getElementById("titlePane");
+        if (title) {
+          const cRect = view.getBoundingClientRect();
+          const tRect = title.getBoundingClientRect();
+          const overlap = tRect.bottom - cRect.top;
+          if (Number.isFinite(overlap) && overlap > 0) {
+            topInset = Math.max(0, Math.min(view.clientHeight - 1, overlap));
+          }
+        }
+      }
+
+      const viewTop = (view.scrollTop || 0) + topInset;
+      const viewHeight = Math.max(1, (view.clientHeight || 1) - topInset);
+      return {
+        topInset,
+        viewTop,
+        viewBottom: viewTop + viewHeight,
+        viewHeight
+      };
+    }
+
     function centerSelectedDirectoryRow(deferFrames = 0, lockRowCenterOffset = null) {
       const schedule = (frames) => {
         if (frames <= 0) {
@@ -9275,9 +9538,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           const selectedRow = container ? container.querySelector(".dirRow.selected") : null;
           if (!container || !selectedRow) return;
           const rowMid = selectedRow.offsetTop + (selectedRow.offsetHeight * 0.5);
+          const viewport = getDirectoryViewportRange(container);
           const desiredMid = Number.isFinite(lockRowCenterOffset)
             ? Number(lockRowCenterOffset)
-            : (container.clientHeight * 0.5);
+            : (viewport.topInset + (viewport.viewHeight * 0.5));
           const target = rowMid - desiredMid;
           const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
           WS.view.scrollBusyDirs = true;
@@ -9294,8 +9558,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const container = directoriesListEl;
       const selectedRow = container ? container.querySelector(".dirRow.selected") : null;
       if (!container || !selectedRow) return { state: "missing", container: null, row: null };
-      const viewTop = container.scrollTop;
-      const viewBottom = viewTop + container.clientHeight;
+      const viewport = getDirectoryViewportRange(container);
+      const viewTop = viewport.viewTop;
+      const viewBottom = viewport.viewBottom;
       const rowTop = selectedRow.offsetTop;
       const rowBottom = rowTop + selectedRow.offsetHeight;
       if (rowBottom <= viewTop || rowTop >= viewBottom) {
@@ -9311,12 +9576,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const vis = getSelectedDirectoryRowVisibility();
       if (vis.state !== "partial" || !vis.container) return;
       const { container, row, rowTop, rowBottom, viewTop, viewBottom } = vis;
+      const viewport = getDirectoryViewportRange(container);
       const rowHeight = Math.max(0, rowBottom - rowTop);
       let target = container.scrollTop;
-      if (rowHeight >= container.clientHeight) {
-        target = rowTop;
+      if (rowHeight >= viewport.viewHeight) {
+        target = rowTop - viewport.topInset;
       } else if (rowTop < viewTop) {
-        target = rowTop;
+        target = rowTop - viewport.topInset;
       } else if (rowBottom > viewBottom) {
         target = rowBottom - container.clientHeight;
       }
@@ -9325,6 +9591,95 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.view.scrollBusyDirs = true;
       container.scrollTop = nextScroll;
       requestAnimationFrame(() => { WS.view.scrollBusyDirs = false; });
+    }
+
+    function revealSelectedDirectoryRowInGridMode(center = false) {
+      if (!directoriesListEl) return;
+      const selectedRow = directoriesListEl.querySelector(".dirRow.selected");
+      if (!selectedRow) return;
+      WS.view.scrollBusyDirs = true;
+      const container = directoriesListEl;
+      const viewport = getDirectoryViewportRange(container);
+      const rowTop = selectedRow.offsetTop;
+      const rowBottom = rowTop + selectedRow.offsetHeight;
+      const rowLeft = selectedRow.offsetLeft;
+      const rowRight = rowLeft + selectedRow.offsetWidth;
+
+      const viewTop = viewport.viewTop;
+      const viewBottom = viewport.viewBottom;
+      const viewLeft = container.scrollLeft;
+      const viewRight = viewLeft + container.clientWidth;
+
+      let nextTop = viewTop;
+      let nextLeft = viewLeft;
+
+      if (center) {
+        const rowMid = rowTop + (selectedRow.offsetHeight * 0.5);
+        nextTop = rowMid - (viewport.topInset + (viewport.viewHeight * 0.5));
+      } else {
+        if (rowTop < viewTop) nextTop = rowTop - viewport.topInset;
+        else if (rowBottom > viewBottom) nextTop = rowBottom - container.clientHeight;
+      }
+
+      if (rowLeft < viewLeft) nextLeft = rowLeft;
+      else if (rowRight > viewRight) nextLeft = rowRight - container.clientWidth;
+
+      const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const maxLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+      container.scrollTop = Math.max(0, Math.min(maxTop, nextTop));
+      container.scrollLeft = Math.max(0, Math.min(maxLeft, nextLeft));
+      requestAnimationFrame(() => { WS.view.scrollBusyDirs = false; });
+    }
+
+    function canUseFastGridSelectionUpdate() {
+      if (!isGridInteractionMode()) return false;
+      if (!directoriesListEl || !directoriesListEl.classList.contains("gridModeList")) return false;
+      if (WS.view.bulkActionMenuOpen || WS.view.dirActionMenuPath || WS.view.fileActionMenuId) return false;
+      if (TAG_EDIT_PATH || RENAME_EDIT_PATH || RENAME_EDIT_FILE_ID || TAG_ENTRY_RENAME_STATE) return false;
+      if (WS.view.bulkSelectMode) return false;
+      return true;
+    }
+
+    function fastUpdateGridSelectedRow(prevIdx, nextIdx) {
+      if (!directoriesListEl) return false;
+      const nextRow = directoriesListEl.querySelector(`.dirRow[data-entry-index="${String(nextIdx)}"]`);
+      if (!nextRow) return false;
+      const prevRow = directoriesListEl.querySelector(`.dirRow[data-entry-index="${String(prevIdx)}"]`);
+      if (prevRow) prevRow.classList.remove("selected");
+      nextRow.classList.add("selected");
+      return true;
+    }
+
+    function canUseFastPaneSelectionUpdate(hadTransientUi) {
+      if (isGridInteractionMode()) return false;
+      if (!directoriesListEl || directoriesListEl.classList.contains("gridModeList")) return false;
+      if (hadTransientUi) return false;
+      if (WS.view.bulkSelectMode) return false;
+      return true;
+    }
+
+    function fastUpdatePaneSelectedRow(prevIdx, nextIdx) {
+      if (!directoriesListEl) return false;
+      const nextRow = directoriesListEl.querySelector(`.dirRow[data-entry-index="${String(nextIdx)}"]`);
+      if (!nextRow) return false;
+      const prevRow = directoriesListEl.querySelector(`.dirRow[data-entry-index="${String(prevIdx)}"]`);
+      if (prevRow) prevRow.classList.remove("selected");
+      nextRow.classList.add("selected");
+      return true;
+    }
+
+    let PREVIEW_SELECTION_RENDER_RAF = 0;
+    function schedulePreviewRenderForSelection() {
+      if (PREVIEW_SELECTION_RENDER_RAF) {
+        try { cancelAnimationFrame(PREVIEW_SELECTION_RENDER_RAF); } catch {}
+        PREVIEW_SELECTION_RENDER_RAF = 0;
+      }
+      PREVIEW_SELECTION_RENDER_RAF = requestAnimationFrame(() => {
+        PREVIEW_SELECTION_RENDER_RAF = 0;
+        renderPreviewPane(false);
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+      });
     }
 
     function reconcileSelectedDirectoryRowVisibility(preferCenter = false, forceCenter = false) {
@@ -9378,10 +9733,43 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         syncButtons();
         return;
       }
+      const hadTransientUi = !!(
+        WS.view.bulkActionMenuOpen ||
+        WS.view.dirActionMenuPath ||
+        WS.view.fileActionMenuId ||
+        TAG_EDIT_PATH ||
+        RENAME_EDIT_PATH ||
+        RENAME_EDIT_FILE_ID ||
+        TAG_ENTRY_RENAME_STATE
+      );
       closeActionMenus();
+      const prevIdx = WS.nav.selectedIndex;
       const i = findNearestSelectableIndex(idx, idx >= WS.nav.selectedIndex ? 1 : -1);
       WS.nav.selectedIndex = i;
+      saveGridSelectionForCurrentContext();
       syncPreviewToSelection();
+
+      if (canUseFastGridSelectionUpdate() && fastUpdateGridSelectedRow(prevIdx, i)) {
+        const shouldCenter = WS.view.pendingDirScroll === "center-selected";
+        const shouldGridReveal = WS.view.pendingDirScroll === "grid-nearest";
+        if (shouldCenter || shouldGridReveal) WS.view.pendingDirScroll = "";
+        if (shouldCenter) revealSelectedDirectoryRowInGridMode(true);
+        else if (shouldGridReveal) revealSelectedDirectoryRowInGridMode(false);
+        else scheduleSelectedDirectoryRowReconcile(0, false, false);
+        syncButtons();
+        return;
+      }
+
+      if (canUseFastPaneSelectionUpdate(hadTransientUi) && fastUpdatePaneSelectedRow(prevIdx, i)) {
+        const shouldCenter = WS.view.pendingDirScroll === "center-selected";
+        if (shouldCenter) WS.view.pendingDirScroll = "";
+        if (shouldCenter) centerSelectedDirectoryRow(0);
+        else scheduleSelectedDirectoryRowReconcile(0, false, false);
+        schedulePreviewRenderForSelection();
+        syncButtons();
+        return;
+      }
+
       renderDirectoriesPane(keepScroll);
       renderPreviewPane(false);
       syncButtons();
@@ -9417,6 +9805,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (entry.kind === "dir") {
         WS.preview.kind = "dir";
         WS.preview.dirNode = entry.node;
+        WS.preview.fileId = null;
+      } else if (entry.kind === "up") {
+        WS.preview.kind = null;
+        WS.preview.dirNode = null;
         WS.preview.fileId = null;
       } else if (entry.kind === "file") {
         WS.preview.kind = "file";
@@ -9546,7 +9938,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           syncHiddenUi();
           syncTagUiForCurrentDir();
           rebuildDirectoriesEntries();
-          WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+          WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
           syncPreviewToSelection();
           renderDirectoriesPane();
           renderPreviewPane(true);
@@ -9584,7 +9976,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         syncFavoritesUi();
         syncTagUiForCurrentDir();
         rebuildDirectoriesEntries();
-        WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+        WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
 
         renderDirectoriesPane();
@@ -9604,7 +9996,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         syncFavoritesUi();
         syncTagUiForCurrentDir();
         rebuildDirectoriesEntries();
-        WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+        WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
 
         renderDirectoriesPane();
@@ -9624,7 +10016,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         syncHiddenUi();
         syncTagUiForCurrentDir();
         rebuildDirectoriesEntries();
-        WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+        WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
 
         renderDirectoriesPane();
@@ -9643,7 +10035,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       syncHiddenUi();
       syncTagUiForCurrentDir();
       rebuildDirectoriesEntries();
-      WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+      WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
       syncPreviewToSelection();
 
       renderDirectoriesPane();
@@ -10685,6 +11077,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       } else if (key.startsWith("tag:")) {
         const tagKey = key.slice(4);
         if (!selectedTags.includes(tagKey)) return false;
+      } else if (key.startsWith("file:")) {
+        const fileId = key.slice(5);
+        if (!getSelectedFileIdsInCurrentView().includes(fileId)) return false;
       } else {
         return false;
       }
@@ -10709,6 +11104,15 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         idx = findDirEntryIndexByPath(key.slice(4));
       } else if (key.startsWith("tag:")) {
         idx = findTagEntryIndexBySelectionKey(key.slice(4));
+      } else if (key.startsWith("file:")) {
+        const id = key.slice(5);
+        for (let i = 0; i < WS.nav.entries.length; i++) {
+          const e = WS.nav.entries[i];
+          if (e && e.kind === "file" && String(e.id || "") === id) {
+            idx = i;
+            break;
+          }
+        }
       }
       if (idx >= 0) {
         WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
@@ -10746,6 +11150,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     function openFileMenuForId(fileId) {
       const id = String(fileId || "");
       if (!id) return;
+      if (openBulkActionMenuForSelection(`file:${id}`)) return;
       WS.view.bulkActionMenuOpen = false;
       WS.view.dirActionMenuPath = "";
       WS.view.fileActionMenuId = id;
@@ -10842,6 +11247,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (entry.kind === "dir") return `dir:${String(entry.node?.path || "")}`;
       if (entry.kind === "file") return `file:${String(entry.id || "")}`;
       if (entry.kind === "tag") return `tag:${tagEntrySelectionKey(entry)}`;
+      if (entry.kind === "up") return `up:${directoriesScrollContextKey()}`;
       return "";
     }
 
@@ -11838,7 +12244,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const selectedTagEntries = canBulk ? getSelectedTagEntriesInCurrentView() : [];
       const selectedFiles = canBulk ? getSelectedFileIdsInCurrentView() : [];
       const selCount = selectedDirs.length + selectedTagFolders.length + selectedFiles.length;
-      const hasActionSelection = (selectedDirs.length + selectedTagFolders.length) > 0;
+      const hasActionSelection = (selectedDirs.length + selectedTagFolders.length + selectedFiles.length) > 0;
       if (!selCount) {
         WS.view.bulkActionMenuOpen = false;
         WS.view.bulkActionMenuAnchorPath = "";
@@ -11866,7 +12272,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const deletableTagEntries = selectedTagEntries.filter((entry) => (
         entry && entry.kind === "tag" && !entry.special && !entry.placeholder && String(entry.tag || "").trim()
       ));
-      if (!selectedDirs.length && !deletableTagEntries.length) {
+      if (!selectedDirs.length && !deletableTagEntries.length && !selectedFiles.length) {
         WS.view.bulkActionMenuOpen = false;
         directoriesActionMenuEl.classList.remove("open");
         return;
@@ -12070,6 +12476,29 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         directoriesActionMenuEl.appendChild(setMergeBtn);
       }
 
+      if (selectedFiles.length) {
+        const selectedFileRecords = selectedFiles
+          .map((id) => WS.fileById.get(String(id || "")))
+          .filter(Boolean);
+        const singleFile = selectedFileRecords.length === 1 ? selectedFileRecords[0] : null;
+        const allSameDir = selectedFileRecords.length > 0
+          && selectedFileRecords.every((rec) => String(rec.dirPath || "") === String(selectedFileRecords[0].dirPath || ""));
+
+        const renameBtn = makeActionBtn("Rename file", () => {
+          WS.view.bulkActionMenuOpen = false;
+          startFileRenameSelection();
+        });
+        if (!singleFile || !WS.meta.fsRootHandle) renameBtn.disabled = true;
+        directoriesActionMenuEl.appendChild(renameBtn);
+
+        const mergeBtn = makeActionBtn("Loose Set Merge", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await looseSetMergeSelectedFiles();
+        });
+        if (!WS.meta.fsRootHandle || !allSameDir) mergeBtn.disabled = true;
+        directoriesActionMenuEl.appendChild(mergeBtn);
+      }
+
       const anchorBtn = findDirMenuButtonForAnchorKey(WS.view.bulkActionMenuAnchorPath);
       if (anchorBtn) {
         requestAnimationFrame(() => positionDropdownMenu(anchorBtn, directoriesActionMenuEl));
@@ -12131,11 +12560,61 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return `dir:${String(WS.nav.dirNode?.path || "")}`;
     }
 
+    let GRID_CARD_SIZE_RAF = 0;
+    function gridModeColumnCountForScale(scaleValue) {
+      const scale = normalizeThumbnailScaleValue(scaleValue, "medium");
+      const cols = GRID_CROPPED_COLS_BY_SCALE[scale];
+      if (Number.isFinite(cols) && cols >= 1) return cols;
+      return GRID_CROPPED_COLS_BY_SCALE.medium;
+    }
+
+    function applyGridModeCardSizing() {
+      if (!directoriesListEl) return;
+      if (!isGridInteractionMode() || !directoriesListEl.classList.contains("gridModeList")) {
+        directoriesListEl.style.removeProperty("--grid-card-size");
+        directoriesListEl.style.removeProperty("--grid-cols");
+        invalidateGridRowMetricsCache();
+        return;
+      }
+      const cs = getComputedStyle(directoriesListEl);
+      const padLeft = parseFloat(cs.paddingLeft || "0") || 0;
+      const padRight = parseFloat(cs.paddingRight || "0") || 0;
+      const gap = Math.max(0, parseFloat(cs.columnGap || cs.gap || "0") || 0);
+      const available = Math.max(0, directoriesListEl.clientWidth - padLeft - padRight);
+      if (available <= 0) return;
+      const activeScale = getActiveThumbnailScale(WS.meta && WS.meta.options ? WS.meta.options : null);
+      let cols = gridModeColumnCountForScale(activeScale);
+      const baseMin = Math.max(120, parseFloat(cs.getPropertyValue("--grid-card-min") || "0") || 120);
+      while (cols > 1) {
+        const candidate = (available - (gap * Math.max(0, cols - 1))) / cols;
+        if (candidate >= (baseMin * 0.6)) break;
+        cols -= 1;
+      }
+      if (!Number.isFinite(cols) || cols < 1) cols = 1;
+      // Fit cards exactly to the width for each scale tier so rows stay gapless.
+      const card = Math.max(80, (available - (gap * Math.max(0, cols - 1))) / cols);
+      directoriesListEl.style.setProperty("--grid-cols", String(cols));
+      directoriesListEl.style.setProperty("--grid-card-size", `${card.toFixed(3)}px`);
+      invalidateGridRowMetricsCache();
+    }
+
+    function scheduleGridModeCardSizing() {
+      if (GRID_CARD_SIZE_RAF) {
+        try { cancelAnimationFrame(GRID_CARD_SIZE_RAF); } catch {}
+        GRID_CARD_SIZE_RAF = 0;
+      }
+      GRID_CARD_SIZE_RAF = requestAnimationFrame(() => {
+        GRID_CARD_SIZE_RAF = 0;
+        applyGridModeCardSizing();
+      });
+    }
+
     function renderDirectoriesPane(keepScroll = false) {
       const nextContextKey = directoriesScrollContextKey();
       const contextChanged = nextContextKey !== LAST_DIRECTORIES_SCROLL_CONTEXT;
       const preserveScroll = !!keepScroll && !contextChanged;
       const prevScroll = preserveScroll ? directoriesListEl.scrollTop : 0;
+      const gridModeActive = isGridInteractionMode();
       const prevFilesOnlyChromeMode = !!(document && document.body && document.body.classList.contains("directories-files-only"));
       const prevSelectedRowCenterOffset = (() => {
         const container = directoriesListEl;
@@ -12148,10 +12627,18 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         if (rowTop < viewTop || rowBottom > viewBottom) return null;
         return (rowTop - viewTop) + (prevSelected.offsetHeight * 0.5);
       })();
+      invalidateGridRowMetricsCache();
       directoriesListEl.innerHTML = "";
+      directoriesListEl.classList.toggle("gridModeList", gridModeActive);
       updateTitleLabel();
       const folderSquareCardMode = true;
       const naturalThumbCards = naturalAspectThumbnailCardsEnabled();
+      directoriesListEl.classList.toggle("naturalThumbCards", !!naturalThumbCards);
+      if (gridModeActive) scheduleGridModeCardSizing();
+      else {
+        directoriesListEl.style.removeProperty("--grid-card-size");
+        directoriesListEl.style.removeProperty("--grid-cols");
+      }
       const showFolderItemCount = !(WS.meta && WS.meta.options && WS.meta.options.showFolderItemCount === false);
       const showFolderSize = !(WS.meta && WS.meta.options && WS.meta.options.showFolderSize === false);
       const showDirFileTypeLabel = !(WS.meta && WS.meta.options && WS.meta.options.showDirFileTypeLabel === false);
@@ -12175,8 +12662,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const leadingTagEntries = !!(WS.nav.entries.length && WS.nav.entries[0] && WS.nav.entries[0].kind === "tag");
       const spawnUnderControls = contextChanged && leadingTagEntries;
       const filesOnlyModeChanged = prevFilesOnlyChromeMode !== filesOnlyDirView;
-      applyDirectoriesFilesOnlyChromeMode(filesOnlyDirView);
-      setDirectoriesHeaderActive(!filesOnlyDirView && headerActive);
+      applyDirectoriesFilesOnlyChromeMode(gridModeActive ? false : filesOnlyDirView);
+      setDirectoriesHeaderActive(gridModeActive ? false : (!filesOnlyDirView && headerActive));
 
       if (!WS.root) {
         LAST_DIRECTORIES_SCROLL_CONTEXT = nextContextKey;
@@ -12224,8 +12711,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         const row = document.createElement("div");
         row.className = "dirRow" + (idx === WS.nav.selectedIndex ? " selected" : "");
         row.tabIndex = -1;
+        row.dataset.entryIndex = String(idx);
 
         const isTagEntry = entry.kind === "tag";
+        const isUpEntry = entry.kind === "up";
         if (isTagEntry) {
           row.classList.add("tagEntry");
           const selectionKey = tagEntrySelectionKey(entry);
@@ -12238,7 +12727,27 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           (entry.placeholder && TAG_ENTRY_RENAME_STATE.placeholder) ||
           (entry.tag && entry.tag === TAG_ENTRY_RENAME_STATE.tag)
         );
-        if (isTagEntry) {
+        if (isUpEntry) {
+          const upLabel = String(entry.label || "Up Directory");
+          const upIcon = String(entry.icon || "↩");
+          const upMeta = `Back to ${String(entry.parentLabel || "parent folder")}`;
+          row.classList.add("folderRow", "folderSquareCard", "upNavRow");
+          row.innerHTML = `
+            <div class="dirSquareCard">
+              <div class="dirSquareMedia">
+                <div class="dirSquareFallback">${escapeHtml(upIcon)}</div>
+              </div>
+              <div class="dirSquareOverlay">
+                <div class="dirSquareTop">
+                  <span class="dirSquareName" title="${escapeHtml(upLabel)}">${escapeHtml(upLabel)}</span>
+                </div>
+                <div class="dirSquareBottom">
+                  <div class="dirSquareMeta">${escapeHtml(upMeta)}</div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (isTagEntry) {
           const label = String(entry.label || entry.tag || "Tag");
           const countNum = Number(entry.count) || 0;
           const countText = countNum ? `${countNum} folders` : "Tag folder";
@@ -12363,6 +12872,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             </div>
           `;
         } else {
+          row.dataset.bulkAnchor = `file:${String(entry.id || "")}`;
           const dirPath = entry.kind === "dir" ? String(entry?.node?.path || "") : "";
           const isRenameEditingDir = entry.kind === "dir"
             && RENAME_EDIT_PATH !== null
@@ -12825,6 +13335,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           const priorSelectedIndex = WS.nav.selectedIndex;
           const isCmdOrCtrl = eventCmdOrCtrlHeld(e);
           const isShift = eventShiftHeld(e);
+          if (entry.kind === "up") {
+            WS.view.dirSelectAnchorIndex = idx;
+            setDirectoriesSelection(idx, { keepScroll: true });
+            return;
+          }
           if (!isShift && !isCmdOrCtrl && idx === WS.nav.selectedIndex) {
             if (teleportFromRotatingThumbnail(entry, row)) return;
           }
@@ -13022,11 +13537,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           if (menuBtn) {
             menuBtn.addEventListener("click", (e) => {
               e.stopPropagation();
-              WS.view.bulkActionMenuOpen = false;
-              WS.view.dirActionMenuPath = "";
               const id = String(entry.id || "");
-              WS.view.fileActionMenuId = (WS.view.fileActionMenuId === id) ? "" : id;
-              renderDirectoriesPane(true);
+              if (!id) return;
+              if (WS.view.fileActionMenuId === id && !WS.view.bulkActionMenuOpen) {
+                closeActionMenus();
+                renderDirectoriesPane(true);
+                return;
+              }
+              openFileMenuForId(id);
             });
           }
 
@@ -13083,10 +13601,15 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       });
 
       directoriesListEl.appendChild(frag);
+      invalidateGridRowMetricsCache();
+      if (naturalThumbCards) syncDirectoryInlineAspectForRenderedImages();
+      if (gridModeActive) scheduleGridModeCardSizing();
       renderDirectoriesActionHeader();
 
       const shouldCenter = WS.view.pendingDirScroll === "center-selected";
+      const shouldGridReveal = WS.view.pendingDirScroll === "grid-nearest";
       if (shouldCenter) WS.view.pendingDirScroll = "";
+      if (shouldGridReveal) WS.view.pendingDirScroll = "";
 
       if (preserveScroll) {
         directoriesListEl.scrollTop = prevScroll;
@@ -13097,7 +13620,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       if (shouldCenter) {
-        centerSelectedDirectoryRow(0, prevSelectedRowCenterOffset);
+        if (gridModeActive) revealSelectedDirectoryRowInGridMode(true);
+        else centerSelectedDirectoryRow(0, prevSelectedRowCenterOffset);
+      } else if (gridModeActive && shouldGridReveal) {
+        revealSelectedDirectoryRowInGridMode(false);
       } else {
         const vis = getSelectedDirectoryRowVisibility();
         if (vis.state === "offscreen") {
@@ -13110,6 +13636,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       LAST_DIRECTORIES_SCROLL_CONTEXT = nextContextKey;
+
+      if (gridModeActive) {
+        if (TAG_ENTRY_RENAME_STATE) focusTagEntryRenameInput();
+        return;
+      }
 
       if (preserveScroll && !shouldCenter) {
         scheduleSelectedDirectoryRowReconcile(filesOnlyModeChanged ? 260 : 0, false, filesOnlyModeChanged);
@@ -13611,7 +14142,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       syncHiddenUi();
       syncTagUiForCurrentDir();
       rebuildDirectoriesEntries();
-      WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+      WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
       syncPreviewToSelection();
       renderDirectoriesPane();
       renderPreviewPane(true);
@@ -13790,6 +14321,24 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             }, { once: true });
           }
         }
+      }
+    }
+
+    function syncDirectoryInlineAspectForRenderedImages() {
+      if (!directoriesListEl || !naturalAspectThumbnailCardsEnabled()) return;
+      const imgs = directoriesListEl.querySelectorAll(".dirInlinePreview[data-dir-preview-id]");
+      for (const img of imgs) {
+        const recId = String(img?.dataset?.dirPreviewId || "");
+        if (!recId) continue;
+        const rec = WS.fileById.get(recId);
+        if (!rec || rec.type !== "image") continue;
+        if (syncDirectoryInlineAspectFromNaturalSize(img, rec)) continue;
+        if (img.dataset.dirAspectPending === "1") continue;
+        img.dataset.dirAspectPending = "1";
+        img.addEventListener("load", () => {
+          delete img.dataset.dirAspectPending;
+          syncDirectoryInlineAspectFromNaturalSize(img, rec);
+        }, { once: true });
       }
     }
 
@@ -14235,10 +14784,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+      saveGridSelectionForCurrentContext();
       syncPreviewToSelection();
 
       // Critical for file-row autoscroll parity with folders.
-      WS.view.pendingDirScroll = "center-selected";
+      WS.view.pendingDirScroll = isGridInteractionMode() ? "grid-nearest" : "center-selected";
       renderDirectoriesPane(false);
       renderPreviewPane(false, true);
       syncButtons();
@@ -14257,6 +14807,20 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         updateModePill();
         if (itemsPill) itemsPill.textContent = "Items: —";
         previewBodyEl.innerHTML = "";
+        return;
+      }
+
+      if (isGridInteractionMode()) {
+        WS.view.previewScrollActiveKey = "";
+        previewBodyEl.innerHTML = "";
+        setPreviewBodyMode("grid");
+        if (!VIEWER_MODE) ACTIVE_MEDIA_SURFACE = "none";
+        MediaFilterEngine.detach("preview");
+        if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+        if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
+        updateModePill();
+        const currentDirCount = getDirectoryItemCount(WS.nav.dirNode || WS.root);
+        if (itemsPill) itemsPill.textContent = `Items: ${currentDirCount}`;
         return;
       }
 
@@ -16899,6 +17463,136 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       setDirectoriesSelection(WS.nav.selectedIndex + delta);
     }
 
+    function saveGridSelectionForCurrentContext() {
+      if (!isGridInteractionMode()) return;
+      if (!WS.view.gridSelectionByContext || !(WS.view.gridSelectionByContext instanceof Map)) {
+        WS.view.gridSelectionByContext = new Map();
+      }
+      const key = directoriesScrollContextKey();
+      if (!key) return;
+      WS.view.gridSelectionByContext.set(key, WS.nav.selectedIndex | 0);
+    }
+
+    function restoreGridSelectionForCurrentContext(fallbackIndex = 0) {
+      if (!isGridInteractionMode()) return findNearestSelectableIndex(fallbackIndex, 1);
+      const key = directoriesScrollContextKey();
+      const saved = (WS.view.gridSelectionByContext && WS.view.gridSelectionByContext instanceof Map)
+        ? WS.view.gridSelectionByContext.get(key)
+        : null;
+      const seed = Number.isFinite(saved) ? Number(saved) : Number(fallbackIndex);
+      return findNearestSelectableIndex(seed, 1);
+    }
+
+    let GRID_ROW_METRICS_CACHE_KEY = "";
+    let GRID_ROW_METRICS_CACHE = null;
+    function invalidateGridRowMetricsCache() {
+      GRID_ROW_METRICS_CACHE_KEY = "";
+      GRID_ROW_METRICS_CACHE = null;
+    }
+
+    function getGridRowMetrics() {
+      if (!directoriesListEl) return [];
+      const cacheKey = [
+        directoriesScrollContextKey(),
+        WS.nav.entries.length,
+        directoriesListEl.clientWidth,
+        directoriesListEl.clientHeight,
+        directoriesListEl.scrollHeight,
+        directoriesListEl.scrollWidth
+      ].join("|");
+      if (GRID_ROW_METRICS_CACHE && GRID_ROW_METRICS_CACHE_KEY === cacheKey) {
+        return GRID_ROW_METRICS_CACHE;
+      }
+      const rows = Array.from(directoriesListEl.querySelectorAll(".dirRow"));
+      const out = [];
+      for (const rowEl of rows) {
+        const idx = Number(rowEl?.dataset?.entryIndex);
+        if (!Number.isFinite(idx)) continue;
+        const left = Number(rowEl.offsetLeft) || 0;
+        const top = Number(rowEl.offsetTop) || 0;
+        const width = Number(rowEl.offsetWidth) || 0;
+        const height = Number(rowEl.offsetHeight) || 0;
+        out.push({
+          idx,
+          rowEl,
+          cx: left + (width * 0.5),
+          cy: top + (height * 0.5)
+        });
+      }
+      GRID_ROW_METRICS_CACHE_KEY = cacheKey;
+      GRID_ROW_METRICS_CACHE = out;
+      return out;
+    }
+
+    function moveGridSelectionByDirection(direction) {
+      if (!WS.root || !WS.nav.entries.length) return false;
+      const metrics = getGridRowMetrics();
+      if (!metrics.length) return false;
+      const selected = metrics.find((m) => m.idx === WS.nav.selectedIndex);
+      if (!selected) return false;
+
+      let best = null;
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (const m of metrics) {
+        if (!m || m.idx === selected.idx) continue;
+        const dx = m.cx - selected.cx;
+        const dy = m.cy - selected.cy;
+        const ax = Math.abs(dx);
+        const ay = Math.abs(dy);
+        let primary = 0;
+        let secondary = 0;
+        let valid = false;
+        if (direction === "up" && dy < -2) {
+          valid = true;
+          primary = -dy;
+          secondary = ax;
+        } else if (direction === "down" && dy > 2) {
+          valid = true;
+          primary = dy;
+          secondary = ax;
+        } else if (direction === "left" && dx < -2) {
+          valid = true;
+          primary = -dx;
+          secondary = ay;
+        } else if (direction === "right" && dx > 2) {
+          valid = true;
+          primary = dx;
+          secondary = ay;
+        }
+        if (!valid) continue;
+        const score = primary * 1000 + secondary;
+        if (score < bestScore) {
+          bestScore = score;
+          best = m;
+        }
+      }
+      if (!best) return false;
+      WS.view.pendingDirScroll = "grid-nearest";
+      setDirectoriesSelection(best.idx, { keepScroll: true });
+      return true;
+    }
+
+    function openSelectedEntryInGridMode(requestFullscreen = true) {
+      if (!WS.root || !WS.nav.entries.length) return false;
+      const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+      if (!entry) return false;
+      if (entry.kind === "up") {
+        goDirUp();
+        return true;
+      }
+      if (entry.kind === "file") {
+        openGalleryFromDirectoriesSelection(!!requestFullscreen);
+        return true;
+      }
+      if (entry.kind === "tag") {
+        enterSelectedDirectory();
+        return true;
+      }
+      if (entry.kind !== "dir" || !entry.node) return false;
+      enterSelectedDirectory();
+      return true;
+    }
+
     function getDirectorySelectionForKeybindAction() {
       const out = [];
       const seen = new Set();
@@ -17198,6 +17892,117 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
     }
 
+    function isGridExclusiveAction(action) {
+      return action === "selectUp"
+        || action === "selectDown"
+        || action === "leaveDir"
+        || action === "enterDir"
+        || action === "playPause"
+        || action === "historyBack"
+        || action === "historyForward"
+        || action === "gridMoveUp"
+        || action === "gridMoveDown"
+        || action === "gridMoveLeft"
+        || action === "gridMoveRight"
+        || action === "gridOpenSelection"
+        || action === "gridUpDirectory"
+        || action === "gridGalleryPrev"
+        || action === "gridGalleryNext"
+        || action === "gridGalleryBack";
+    }
+
+    function handleGridKeybindAction(action) {
+      if (!action || !isGridInteractionMode() || !WS.root) return false;
+      if (VIEWER_MODE) {
+        switch (action) {
+          case "selectUp":
+          case "gridMoveUp":
+          case "gridGalleryPrev":
+            viewerStep(-1);
+            return true;
+          case "selectDown":
+          case "gridMoveDown":
+          case "gridGalleryNext":
+            viewerStep(1);
+            return true;
+          case "leaveDir":
+          case "gridMoveLeft":
+          case "gridGalleryBack":
+            hideOverlay();
+            return true;
+          case "seekBack":
+            seekViewerVideo(-videoSkipStepSeconds());
+            return true;
+          case "seekForward":
+            seekViewerVideo(videoSkipStepSeconds());
+            return true;
+          case "playPause":
+            toggleViewerVideoPlayPause();
+            return true;
+          case "muteToggle":
+            toggleViewerVideoMute();
+            return true;
+          case "jumpMinus50":
+            viewerJumpRelative(-50);
+            return true;
+          case "jumpMinus10":
+            viewerJumpRelative(-10);
+            return true;
+          case "jumpPlus10":
+            viewerJumpRelative(10);
+            return true;
+          case "jumpPlus50":
+            viewerJumpRelative(50);
+            return true;
+          default:
+            return false;
+        }
+      }
+      switch (action) {
+        case "selectUp":
+          moveGridSelectionByDirection("up");
+          return true;
+        case "selectDown":
+          moveGridSelectionByDirection("down");
+          return true;
+        case "leaveDir":
+          moveGridSelectionByDirection("left");
+          return true;
+        case "enterDir":
+          moveGridSelectionByDirection("right");
+          return true;
+        case "playPause":
+          openSelectedEntryInGridMode(true);
+          return true;
+        case "historyBack":
+          goDirHistory(-1);
+          return true;
+        case "historyForward":
+          goDirHistory(1);
+          return true;
+        case "gridMoveUp":
+          moveGridSelectionByDirection("up");
+          return true;
+        case "gridMoveDown":
+          moveGridSelectionByDirection("down");
+          return true;
+        case "gridMoveLeft":
+          moveGridSelectionByDirection("left");
+          return true;
+        case "gridMoveRight":
+          moveGridSelectionByDirection("right");
+          return true;
+        case "gridOpenSelection":
+          openSelectedEntryInGridMode(true);
+          return true;
+        case "gridUpDirectory":
+          goDirUp();
+          return true;
+        default:
+          return false;
+      }
+    }
+
     function closeFilePreviewToFolder() {
       if (!WS.root) return;
       if (WS.preview.kind !== "file") return;
@@ -17241,7 +18046,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       clearModifierKeyState();
     });
 
-    // Hard-coded menu toggles: ` / ~ opens the last-used menu tab, Tab opens Controls tab (not user-rebindable).
+    // Hard-coded menu toggles: ` / ~ opens the last-used menu tab.
+    // Tab opens Controls only in Pane Mode.
     document.addEventListener("keydown", (e) => {
       if (e.defaultPrevented) return;
       if (e.repeat) return;
@@ -17258,6 +18064,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (e.code !== "Tab") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTextInputTarget(e.target)) return;
+      if (isGridInteractionMode()) return;
       e.preventDefault();
       toggleMenuForTab("controls");
     }, true);
@@ -17280,6 +18087,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       const action = keybindActionFor(key);
+      const gridAction = isGridInteractionMode()
+        ? (gridKeybindActionFor(key) || action)
+        : null;
 
       if (action === "panic") {
         e.preventDefault();
@@ -17305,6 +18115,18 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (handleSelectionKeybindAction(action)) {
         e.preventDefault();
         return;
+      }
+
+      if (isGridInteractionMode()) {
+        if (baseKey === "Tab") e.preventDefault();
+        if (handleGridKeybindAction(gridAction)) {
+          e.preventDefault();
+          return;
+        }
+        if (isGridExclusiveAction(gridAction)) {
+          e.preventDefault();
+          return;
+        }
       }
 
       if (VIEWER_MODE) {
@@ -17571,6 +18393,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
     applyDirectoryFolderCardLayoutFromOptions();
+    applyInteractionModeFromOptions();
     rebuildKeybindIndex();
     renderDirectoriesPane();
     renderPreviewPane(true);
