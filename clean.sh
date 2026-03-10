@@ -37,6 +37,7 @@ progress_draw() {
   local label="$1"
   local current="${2:-0}"
   local total="${3:-1}"
+  local mode="${4:-inline}"
   local pct filled empty
   local bar_filled bar_empty
 
@@ -51,7 +52,7 @@ progress_draw() {
   bar_filled=$(printf "%${filled}s" "" | tr ' ' '#')
   bar_empty=$(printf "%${empty}s" "" | tr ' ' '-')
 
-  if [[ -t 1 ]]; then
+  if [[ -t 1 && "$mode" != "line" ]]; then
     printf "\r%s%s%s [%s%s] %3d%% (%d/%d)" "$C_DIM" "$label" "$C_RESET" "$bar_filled" "$bar_empty" "$pct" "$current" "$total"
     if [[ "$current" -ge "$total" ]]; then
       printf "\n"
@@ -59,6 +60,36 @@ progress_draw() {
   else
     printf "%s [%s%s] %3d%% (%d/%d)\n" "$label" "$bar_filled" "$bar_empty" "$pct" "$current" "$total"
   fi
+}
+
+run_with_spinner() {
+  local label="$1"
+  shift
+  local pid rc i=0
+  local spinner='|/-\'
+  local mark
+
+  if [[ ! -t 1 ]]; then
+    "$@"
+    return $?
+  fi
+
+  "$@" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    mark="${spinner:$(( i % 4 )):1}"
+    printf "\r%s%s%s %s" "$C_DIM" "$label" "$C_RESET" "$mark"
+    i=$((i + 1))
+    sleep 0.1
+  done
+  wait "$pid"
+  rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    printf "\r%s%s%s done\n" "$C_DIM" "$label" "$C_RESET"
+  else
+    printf "\r%s%s%s failed\n" "$C_DIM" "$label" "$C_RESET"
+  fi
+  return "$rc"
 }
 
 is_int() {
@@ -143,17 +174,42 @@ run_step() {
 }
 
 step1_dedupe() {
-  local phase_total=3
+  local phase_total=3 phase=0
+  local count_tmp dedupe_log
   local file_count
 
   log_info "Running recursive dedupe with fdupes (-r -A -d -N)."
   log_info "Duplicates are auto-removed; first occurrence is kept."
-  progress_draw "Step 1 Dedupe" 1 "$phase_total"
-  file_count=$(find . -type f | wc -l | tr -d ' ')
+  count_tmp="$(mktemp)"
+  if ! run_with_spinner "Step 1: counting files recursively" bash -c 'find . -type f | wc -l | tr -d " " > "$1"' _ "$count_tmp"; then
+    rm -f "$count_tmp"
+    log_err "Unable to count files for dedupe step."
+    exit 1
+  fi
+  file_count="$(cat "$count_tmp" 2>/dev/null || printf "0")"
+  rm -f "$count_tmp"
+  phase=$((phase + 1))
+  progress_draw "Step 1 Dedupe" "$phase" "$phase_total" "line"
   log_info "Files discovered: ${file_count:-0}"
-  progress_draw "Step 1 Dedupe" 2 "$phase_total"
-  fdupes -r -A -d -N . || { log_err "fdupes failed."; exit 1; }
-  progress_draw "Step 1 Dedupe" 3 "$phase_total"
+  dedupe_log="$(mktemp)"
+  if ! run_with_spinner "Step 1: running fdupes dedupe pass" bash -c 'fdupes -r -A -d -N . > "$1" 2>&1' _ "$dedupe_log"; then
+    phase=$((phase + 1))
+    progress_draw "Step 1 Dedupe" "$phase" "$phase_total" "line"
+    log_err "fdupes failed. Last output:"
+    tail -n 20 "$dedupe_log" >&2 || true
+    rm -f "$dedupe_log"
+    exit 1
+  fi
+  phase=$((phase + 1))
+  progress_draw "Step 1 Dedupe" "$phase" "$phase_total" "line"
+  if [[ -s "$dedupe_log" ]]; then
+    log_info "fdupes produced output (ordered capture enabled)."
+  else
+    log_info "fdupes completed with no output."
+  fi
+  rm -f "$dedupe_log"
+  phase=$((phase + 1))
+  progress_draw "Step 1 Dedupe" "$phase" "$phase_total" "line"
 }
 
 step2_convert_videos() {
@@ -434,27 +490,72 @@ step5_move_empty_items() {
   local zero_files=()
   local empty_dirs=()
   local selected_empty_dirs=()
+  local pre_zero_tmp pre_empty_tmp list_zero_tmp list_empty_tmp
   local file dir parent
+  local first_zero first_empty
   local i j total progress
+  local phase_total=4 phase=0
   local zero_file_count=0 empty_dir_count=0 selected_dir_count=0
   local moved_files=0 moved_dirs=0 failed=0
   local keep
 
+  log_info "Scanning recursively for 0-byte files and empty folders..."
+  progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
+
+  # Fast early exit before building full file/dir lists.
+  first_zero=""
+  first_empty=""
+  pre_zero_tmp="$(mktemp)"
+  pre_empty_tmp="$(mktemp)"
+  if ! run_with_spinner "Step 5: quick-checking zero-byte files" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print -quit > "$2"' _ "$bucket_root" "$pre_zero_tmp"; then
+    rm -f "$pre_zero_tmp" "$pre_empty_tmp"
+    log_err "Step 5 pre-check failed (zero-byte file scan)."
+    exit 1
+  fi
+  if ! run_with_spinner "Step 5: quick-checking empty folders" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print -quit > "$2"' _ "$bucket_root" "$pre_empty_tmp"; then
+    rm -f "$pre_zero_tmp" "$pre_empty_tmp"
+    log_err "Step 5 pre-check failed (empty folder scan)."
+    exit 1
+  fi
+  first_zero="$(cat "$pre_zero_tmp" 2>/dev/null || true)"
+  first_empty="$(cat "$pre_empty_tmp" 2>/dev/null || true)"
+  rm -f "$pre_zero_tmp" "$pre_empty_tmp"
+  phase=$((phase + 1))
+  progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
+  if [[ -z "$first_zero" && -z "$first_empty" ]]; then
+    log_info "No 0-byte files or empty folders found. Nothing to move."
+    return 0
+  fi
+
+  list_zero_tmp="$(mktemp)"
+  list_empty_tmp="$(mktemp)"
+  if ! run_with_spinner "Step 5: scanning zero-byte files recursively" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print0 > "$2"' _ "$bucket_root" "$list_zero_tmp"; then
+    rm -f "$list_zero_tmp" "$list_empty_tmp"
+    log_err "Step 5 scan failed (zero-byte file scan)."
+    exit 1
+  fi
+  if ! run_with_spinner "Step 5: scanning empty folders recursively" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print0 > "$2"' _ "$bucket_root" "$list_empty_tmp"; then
+    rm -f "$list_zero_tmp" "$list_empty_tmp"
+    log_err "Step 5 scan failed (empty folder scan)."
+    exit 1
+  fi
   while IFS= read -r -d '' file; do
     zero_files+=("$file")
     zero_file_count=$((zero_file_count + 1))
-  done < <(
-    find . -path "$bucket_root" -prune -o -type f -size 0 -print0
-  )
+  done < "$list_zero_tmp"
 
   while IFS= read -r -d '' dir; do
     empty_dirs+=("$dir")
     empty_dir_count=$((empty_dir_count + 1))
-  done < <(
-    find . -path "$bucket_root" -prune -o -mindepth 1 -type d -empty -print0
-  )
+  done < "$list_empty_tmp"
+  rm -f "$list_zero_tmp" "$list_empty_tmp"
+  phase=$((phase + 1))
+  progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
 
   # Keep only top-most empty directories so nested empties are moved with parents.
+  if [[ "$empty_dir_count" -gt 0 ]]; then
+    progress=0
+  fi
   for ((i=0; i<empty_dir_count; i++)); do
     dir="${empty_dirs[$i]}"
     keep=1
@@ -474,14 +575,13 @@ step5_move_empty_items() {
       selected_empty_dirs+=("$dir")
       selected_dir_count=$((selected_dir_count + 1))
     fi
+    progress=$((progress + 1))
+    progress_draw "Step 5: filtering empty dirs" "$progress" "$empty_dir_count"
   done
+  phase=$((phase + 1))
+  progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
 
   total=$(( zero_file_count + selected_dir_count ))
-  if [[ "$total" -eq 0 ]]; then
-    log_info "No 0-byte files or empty folders found. Nothing to move."
-    return 0
-  fi
-
   log_info "Moving ${zero_file_count} zero-byte file(s) and ${selected_dir_count} empty folder(s)."
   log_info "Bucket folder: ${bucket_root}"
   mkdir -p "$bucket_root/zero_size_files" "$bucket_root/empty_folders"
@@ -523,6 +623,8 @@ step5_move_empty_items() {
   printf "  - Empty folders moved:   %d\n" "$moved_dirs"
   printf "  - Failed:                %d\n" "$failed"
   printf "  - Bucket:                %s\n" "$bucket_root"
+  phase=$((phase + 1))
+  progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
 }
 
 choose_resize_height() {
