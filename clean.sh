@@ -2,9 +2,10 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.4.0"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
+EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
 
 # Optional terminal colors when stdout is a TTY.
 if [[ -t 1 ]]; then
@@ -82,6 +83,7 @@ step_description() {
     2) printf "Convert multiple video formats to .mp4" ;;
     3) printf "Resize media" ;;
     4) printf "Remove metadata from images and videos" ;;
+    5) printf "Move 0-byte files and empty folders into a local bucket folder" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -92,6 +94,7 @@ step_function_name() {
     2) printf "step2_convert_videos" ;;
     3) printf "step3_resize_media" ;;
     4) printf "step4_remove_metadata" ;;
+    5) printf "step5_move_empty_items" ;;
     *) printf "" ;;
   esac
 }
@@ -112,6 +115,11 @@ ensure_step_requirements() {
       ;;
     4)
       require_cmd mat2
+      ;;
+    5)
+      require_cmd find
+      require_cmd mv
+      require_cmd mkdir
       ;;
     *)
       return 1
@@ -389,6 +397,134 @@ step4_remove_metadata() {
   printf "  - Failed:  %d\n" "$failed"
 }
 
+unique_target_path() {
+  local target="$1"
+  local i=1
+  local candidate="$target"
+  if [[ ! -e "$candidate" ]]; then
+    printf "%s" "$candidate"
+    return 0
+  fi
+  while :; do
+    candidate="${target}__dup${i}"
+    if [[ ! -e "$candidate" ]]; then
+      printf "%s" "$candidate"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+}
+
+move_item_into_bucket() {
+  local src="$1"
+  local bucket_root="$2"
+  local bucket_subdir="$3"
+  local rel target target_dir
+
+  rel="${src#./}"
+  target="${bucket_root}/${bucket_subdir}/${rel}"
+  target_dir="$(dirname "$target")"
+  mkdir -p "$target_dir"
+  target="$(unique_target_path "$target")"
+  mv "$src" "$target"
+}
+
+step5_move_empty_items() {
+  local bucket_root="./${EMPTY_ITEMS_BUCKET_NAME}"
+  local zero_files=()
+  local empty_dirs=()
+  local selected_empty_dirs=()
+  local file dir parent
+  local i j total progress
+  local zero_file_count=0 empty_dir_count=0 selected_dir_count=0
+  local moved_files=0 moved_dirs=0 failed=0
+  local keep
+
+  while IFS= read -r -d '' file; do
+    zero_files+=("$file")
+    zero_file_count=$((zero_file_count + 1))
+  done < <(
+    find . -path "$bucket_root" -prune -o -type f -size 0 -print0
+  )
+
+  while IFS= read -r -d '' dir; do
+    empty_dirs+=("$dir")
+    empty_dir_count=$((empty_dir_count + 1))
+  done < <(
+    find . -path "$bucket_root" -prune -o -mindepth 1 -type d -empty -print0
+  )
+
+  # Keep only top-most empty directories so nested empties are moved with parents.
+  for ((i=0; i<empty_dir_count; i++)); do
+    dir="${empty_dirs[$i]}"
+    keep=1
+    for ((j=0; j<empty_dir_count; j++)); do
+      parent="${empty_dirs[$j]}"
+      if [[ "$dir" == "$parent" ]]; then
+        continue
+      fi
+      case "$dir" in
+        "$parent"/*)
+          keep=0
+          break
+          ;;
+      esac
+    done
+    if [[ "$keep" -eq 1 && "$dir" != "$bucket_root" && "$dir" != "$bucket_root/"* ]]; then
+      selected_empty_dirs+=("$dir")
+      selected_dir_count=$((selected_dir_count + 1))
+    fi
+  done
+
+  total=$(( zero_file_count + selected_dir_count ))
+  if [[ "$total" -eq 0 ]]; then
+    log_info "No 0-byte files or empty folders found. Nothing to move."
+    return 0
+  fi
+
+  log_info "Moving ${zero_file_count} zero-byte file(s) and ${selected_dir_count} empty folder(s)."
+  log_info "Bucket folder: ${bucket_root}"
+  mkdir -p "$bucket_root/zero_size_files" "$bucket_root/empty_folders"
+
+  progress=0
+  for ((i=0; i<zero_file_count; i++)); do
+    file="${zero_files[$i]}"
+    if move_item_into_bucket "$file" "$bucket_root" "zero_size_files"; then
+      moved_files=$((moved_files + 1))
+    else
+      failed=$((failed + 1))
+      log_err "Failed to move file: $file"
+    fi
+    progress=$((progress + 1))
+    progress_draw "Step 5 Empty Items" "$progress" "$total"
+  done
+
+  for ((i=0; i<selected_dir_count; i++)); do
+    dir="${selected_empty_dirs[$i]}"
+    if [[ ! -d "$dir" ]]; then
+      # Might have become non-existent after parent move; count as moved.
+      moved_dirs=$((moved_dirs + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 5 Empty Items" "$progress" "$total"
+      continue
+    fi
+    if move_item_into_bucket "$dir" "$bucket_root" "empty_folders"; then
+      moved_dirs=$((moved_dirs + 1))
+    else
+      failed=$((failed + 1))
+      log_err "Failed to move folder: $dir"
+    fi
+    progress=$((progress + 1))
+    progress_draw "Step 5 Empty Items" "$progress" "$total"
+  done
+
+  log_info "Empty item move summary:"
+  printf "  - Zero-byte files moved: %d\n" "$moved_files"
+  printf "  - Empty folders moved:   %d\n" "$moved_dirs"
+  printf "  - Failed:                %d\n" "$failed"
+  printf "  - Bucket:                %s\n" "$bucket_root"
+}
+
 choose_resize_height() {
   local choice custom
 
@@ -445,11 +581,12 @@ main() {
   echo "2. $(step_description 2)"
   echo "3. $(step_description 3)"
   echo "4. $(step_description 4)"
+  echo "5. $(step_description 5)"
   read -r -p "> " input
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
-    selected=(1 2 3 4)
+    selected=(1 2 3 4 5)
   else
     IFS=',' read -r -a raw <<< "$input"
     for token in "${raw[@]}"; do
@@ -477,7 +614,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]}"; do
-    if [[ "$num" -ge 1 && "$num" -le 4 ]]; then
+    if [[ "$num" -ge 1 && "$num" -le 5 ]]; then
       valid_selected+=("$num")
     else
       log_warn "Skipping out-of-range step: $num"
