@@ -528,6 +528,10 @@
       grid-area: title;
     }
 
+    #app:not(.grid-mode) #titlePane {
+      padding-bottom: 10px;
+    }
+
     #app.grid-mode #titlePane {
       padding: 4px 8px;
       gap: 4px;
@@ -632,6 +636,7 @@
       flex-direction: column;
       min-height: 0;
       grid-area: dirs;
+      overflow: hidden;
     }
 
     #app.grid-mode #previewPane,
