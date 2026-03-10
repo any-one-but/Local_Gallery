@@ -925,6 +925,17 @@
       return out;
     }
 
+    function buildCanvasFilterValue(colorFilter, blurPx = 0) {
+      const color = String(colorFilter || "").trim();
+      const hasColor = !!color && color !== "none";
+      const blur = Number(blurPx);
+      const hasBlur = Number.isFinite(blur) && blur > 0;
+      if (hasColor && hasBlur) return `${color} blur(${blur}px)`;
+      if (hasColor) return color;
+      if (hasBlur) return `blur(${blur}px)`;
+      return "none";
+    }
+
     function animatedMediaFiltersMode() {
       return normalizeAnimatedMediaFiltersValue(MEDIA_FILTER_STATE.animatedMode, "on");
     }
@@ -1111,14 +1122,14 @@
         const offctx = off.getContext("2d");
         const smallRect = computeCoverRect(croppedSrcW, croppedSrcH, smallW, smallH);
         offctx.imageSmoothingEnabled = true;
-        offctx.filter = cfg.blur ? `${colorFilter} blur(${cfg.blur}px)` : colorFilter;
+        offctx.filter = buildCanvasFilterValue(colorFilter, cfg.blur || 0);
         drawCropped(offctx, smallRect.x, smallRect.y, smallRect.w, smallRect.h);
         ctx.imageSmoothingEnabled = false;
         ctx.filter = "none";
         ctx.drawImage(off, rect.x, rect.y, rect.w, rect.h);
       } else {
         ctx.imageSmoothingEnabled = true;
-        ctx.filter = cfg.blur ? `${colorFilter} blur(${cfg.blur}px)` : colorFilter;
+        ctx.filter = buildCanvasFilterValue(colorFilter, cfg.blur || 0);
         drawCropped(ctx, rect.x, rect.y, rect.w, rect.h);
       }
 
@@ -1607,7 +1618,7 @@
           } else {
             ctx.imageSmoothingEnabled = true;
             const blur = overlayCfg && overlayCfg.blur ? overlayCfg.blur : (cfg && cfg.blur ? cfg.blur : 0);
-            ctx.filter = blur ? `${colorFilter} blur(${blur}px)` : colorFilter;
+            ctx.filter = buildCanvasFilterValue(colorFilter, blur);
             drawCropped(ctx, dx, dy, rect.w, rect.h);
           }
           drew = true;
