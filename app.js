@@ -1748,6 +1748,12 @@
     function videoThumbWidthForOption() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const m = opt ? String(opt.videoThumbSize || "medium") : "medium";
+      if (isGridInteractionMode()) {
+        if (m === "tiny") return 120;
+        if (m === "small") return 220;
+        if (m === "high") return 900;
+        return 420;
+      }
       if (m === "tiny") return 100;
       if (m === "small") return 180;
       if (m === "high") return 520;
@@ -9692,6 +9698,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (WS.view.bulkActionMenuOpen || WS.view.dirActionMenuPath || WS.view.fileActionMenuId) return false;
       if (TAG_EDIT_PATH || RENAME_EDIT_PATH || RENAME_EDIT_FILE_ID || TAG_ENTRY_RENAME_STATE) return false;
       if (WS.view.bulkSelectMode) return false;
+      if (directoriesActionMenuEl && directoriesActionMenuEl.classList.contains("open")) return false;
+      if (directoriesListEl.querySelector(".dropdownMenu.open")) return false;
+      if (directoriesListEl.querySelector(".dirRow.bulkSelected")) return false;
       return true;
     }
 
@@ -12327,7 +12336,25 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const deletableTagEntries = selectedTagEntries.filter((entry) => (
         entry && entry.kind === "tag" && !entry.special && !entry.placeholder && String(entry.tag || "").trim()
       ));
-      if (!selectedDirs.length && !deletableTagEntries.length && !selectedFiles.length) {
+      const tagThumbTargets = (() => {
+        const out = [];
+        const seen = new Set();
+        for (let i = 0; i < selectedTagEntries.length; i++) {
+          const entry = selectedTagEntries[i];
+          const key = tagThumbnailKeyForEntry(entry);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          out.push(key);
+        }
+        return out;
+      })();
+      const allTagThumbNone = !!tagThumbTargets.length && tagThumbTargets.every((key) => metaGetTagThumbnailModeByKey(key) === "none");
+      const allTagThumbSingleNoPreset = !!tagThumbTargets.length && tagThumbTargets.every((key) => (
+        metaGetTagThumbnailModeByKey(key) === "single" && !metaHasTagThumbnailPresetByKey(key)
+      ));
+      const allTagThumbQuad = !!tagThumbTargets.length && tagThumbTargets.every((key) => metaGetTagThumbnailModeByKey(key) === "quad");
+      const canUseGridTagThumbBulkActions = isGridInteractionMode() && !!tagThumbTargets.length;
+      if (!selectedDirs.length && !deletableTagEntries.length && !canUseGridTagThumbBulkActions && !selectedFiles.length) {
         WS.view.bulkActionMenuOpen = false;
         directoriesActionMenuEl.classList.remove("open");
         return;
@@ -12386,6 +12413,65 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         }));
       }
 
+      if (canUseGridTagThumbBulkActions) {
+        if (!allTagThumbNone) {
+          directoriesActionMenuEl.appendChild(makeActionBtn("No tag thumbnail", () => {
+            WS.view.bulkActionMenuOpen = false;
+            let changed = false;
+            for (let i = 0; i < tagThumbTargets.length; i++) {
+              if (metaSetTagThumbnailModeByKey(tagThumbTargets[i], "none")) changed = true;
+            }
+            if (!changed) return;
+            finalizeBulkSelectionAction();
+            renderDirectoriesPane(true);
+            renderPreviewPane(false, true);
+            syncButtons();
+            kickVideoThumbsForPreview();
+            kickImageThumbsForPreview();
+            showStatusMessage("Tag folder thumbnails removed.");
+          }));
+        }
+
+        if (!naturalAspectThumbnailCardsEnabled() && !allTagThumbSingleNoPreset) {
+          directoriesActionMenuEl.appendChild(makeActionBtn("Use rotating tag thumbnail", () => {
+            WS.view.bulkActionMenuOpen = false;
+            let changed = false;
+            for (let i = 0; i < tagThumbTargets.length; i++) {
+              const key = tagThumbTargets[i];
+              const presetCleared = metaClearTagThumbnailPresetByKey(key);
+              const modeChanged = metaSetTagThumbnailModeByKey(key, "single");
+              if (presetCleared || modeChanged) changed = true;
+            }
+            if (!changed) return;
+            finalizeBulkSelectionAction();
+            renderDirectoriesPane(true);
+            renderPreviewPane(false, true);
+            syncButtons();
+            kickVideoThumbsForPreview();
+            kickImageThumbsForPreview();
+            showStatusMessage("Tag folder thumbnails set to rotating.");
+          }));
+        }
+
+        if (!naturalAspectThumbnailCardsEnabled() && !allTagThumbQuad) {
+          directoriesActionMenuEl.appendChild(makeActionBtn("Use quad tag thumbnail", () => {
+            WS.view.bulkActionMenuOpen = false;
+            let changed = false;
+            for (let i = 0; i < tagThumbTargets.length; i++) {
+              if (metaSetTagThumbnailModeByKey(tagThumbTargets[i], "quad")) changed = true;
+            }
+            if (!changed) return;
+            finalizeBulkSelectionAction();
+            renderDirectoriesPane(true);
+            renderPreviewPane(false, true);
+            syncButtons();
+            kickVideoThumbsForPreview();
+            kickImageThumbsForPreview();
+            showStatusMessage("Tag folder thumbnails set to quad.");
+          }));
+        }
+      }
+
       if (selectedDirs.length) {
         const selectedDirNodes = selectedDirs.map((p) => WS.dirByPath.get(String(p || ""))).filter(Boolean);
         const singleSelectedDirNode = selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
@@ -12396,6 +12482,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           .filter((node) => folderEligibleForParentThumbnailPreset(node))
           .map((node) => String(node.path || ""))
           .filter(Boolean);
+        const thumbDefaultPaths = thumbTogglePaths.filter((p) => metaHasFolderThumbnailPreset(p));
         const allThumbNone = !!thumbTogglePaths.length && thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "none");
         const allThumbRotate = !!thumbTogglePaths.length && thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "rotate");
 
@@ -12492,6 +12579,24 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           }
           finalizeBulkSelectionAction();
         }));
+
+        if (isGridInteractionMode() && thumbDefaultPaths.length) {
+          directoriesActionMenuEl.appendChild(makeActionBtn("Use default thumbnail", () => {
+            WS.view.bulkActionMenuOpen = false;
+            let changed = false;
+            for (let i = 0; i < thumbDefaultPaths.length; i++) {
+              if (metaClearFolderThumbnailPreset(thumbDefaultPaths[i])) changed = true;
+            }
+            if (!changed) return;
+            finalizeBulkSelectionAction();
+            renderDirectoriesPane(true);
+            renderPreviewPane(false, true);
+            syncButtons();
+            kickVideoThumbsForPreview();
+            kickImageThumbsForPreview();
+            showStatusMessage("Folder thumbnails reset to default.");
+          }));
+        }
 
         if (thumbTogglePaths.length && !allThumbNone) {
           directoriesActionMenuEl.appendChild(makeActionBtn("No thumbnail", () => {
@@ -16107,7 +16212,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const ctx = canvas.getContext("2d");
       renderFilteredToCanvas(ctx, v, v.videoWidth || w, v.videoHeight || h, w, h, getMediaFilterForType(), true, rec);
 
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", mode === "high" ? 0.75 : 0.6));
+      const jpgQuality = isGridInteractionMode()
+        ? (mode === "high" ? 0.85 : (mode === "medium" ? 0.75 : 0.65))
+        : (mode === "high" ? 0.75 : 0.6);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", jpgQuality));
       if (!blob) return;
 
       rec.videoThumbUrl = URL.createObjectURL(blob);
