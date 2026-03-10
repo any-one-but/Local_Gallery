@@ -299,6 +299,7 @@
         interactionMode: "grid",
         randomActionMode: "firstFileJump",
         clickSelectedRotatingThumbTeleports: false,
+        fileOnlyFoldersOpenInGallery: false,
         thumbnailStyle: "cropped",
         thumbnailScaleCropped: "medium",
         thumbnailScaleAspect: "small"
@@ -385,6 +386,9 @@
         clickSelectedRotatingThumbTeleports: (typeof src.clickSelectedRotatingThumbTeleports === "boolean")
           ? src.clickSelectedRotatingThumbTeleports
           : d.clickSelectedRotatingThumbTeleports,
+        fileOnlyFoldersOpenInGallery: (typeof src.fileOnlyFoldersOpenInGallery === "boolean")
+          ? src.fileOnlyFoldersOpenInGallery
+          : d.fileOnlyFoldersOpenInGallery,
         thumbnailStyle,
         thumbnailScaleCropped,
         thumbnailScaleAspect,
@@ -3140,6 +3144,7 @@
     let viewerDirNode = null;
     let viewerItems = []; // { isFolder, dirNode } or { isFolder:false, id }
     let viewerIndex = 0;
+    let VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
     let uiHideTimer = null;
     let globalCursorHideTimer = null;
 
@@ -3533,6 +3538,7 @@
       if (!keybindsBodyEl) return;
       const paneBindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds();
       const gridBindings = (WS.meta && Array.isArray(WS.meta.gridKeybinds)) ? WS.meta.gridKeybinds : defaultGridKeybinds();
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
       const allBindings = paneBindings.concat(gridBindings);
       if (KEYBIND_CAPTURE_ACTION_ID && !allBindings.some(binding => binding.id === KEYBIND_CAPTURE_ACTION_ID)) {
         KEYBIND_CAPTURE_ACTION_ID = "";
@@ -3551,6 +3557,17 @@
       }
 
       let html = `<div class="label" style="margin-bottom:8px;">Controls are stored in keyboard-configuration.log.json in the .local-gallery folder. Click Set keybind for an action, then hold modifiers and press a key to assign the combo.</div>`;
+      html += `
+        <div class="optRow">
+          <div class="optLeft">
+            <div class="optTitle">File-only folders open in gallery</div>
+            <div class="optHint">Open file-only folders directly in Gallery Mode on the first file, and on close return straight to the parent folder view.</div>
+          </div>
+          <div class="optRight">
+            <input id="ctl_fileOnlyFoldersOpenInGallery" type="checkbox"${opt.fileOnlyFoldersOpenInGallery ? " checked" : ""} />
+          </div>
+        </div>
+      `;
 
       const renderBindingRows = (list) => {
         let out = "";
@@ -3604,6 +3621,21 @@
 
       keybindsBodyEl.innerHTML = html;
       applyDescriptionVisibilityFromOptions();
+
+      const fileOnlyFoldersToggle = $("ctl_fileOnlyFoldersOpenInGallery");
+      if (fileOnlyFoldersToggle) {
+        fileOnlyFoldersToggle.addEventListener("click", (e) => e.stopPropagation());
+        fileOnlyFoldersToggle.addEventListener("keydown", (e) => e.stopPropagation());
+        fileOnlyFoldersToggle.addEventListener("change", () => {
+          const next = {};
+          next.fileOnlyFoldersOpenInGallery = !!fileOnlyFoldersToggle.checked;
+          WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
+          WS.meta.dirty = true;
+          metaScheduleSave();
+          setKeybindsStatus("Saved");
+          applyOptionsEverywhere(false);
+        });
+      }
 
       const captureButtons = keybindsBodyEl.querySelectorAll("button[data-bind-capture-id]");
       captureButtons.forEach((btn) => {
@@ -9987,6 +10019,17 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return focusDirectoriesOnFileRecord(rec);
     }
 
+    function firstFileIdForDirectFolderGalleryEntry(dirNode) {
+      if (!dirNode) return "";
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      if (!opt || !opt.fileOnlyFoldersOpenInGallery) return "";
+      const childDirs = getChildDirsForNode(dirNode);
+      if (childDirs.length > 0) return "";
+      const fileIds = getOrderedFileIdsForDir(dirNode);
+      if (!fileIds.length) return "";
+      return String(fileIds[0] || "");
+    }
+
     function enterSelectedDirectory() {
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
@@ -10018,17 +10061,55 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         return;
       }
 
-      if (isViewingTagFolder() && entry.kind === "dir" && entry.node) {
-        pushTagViewContext(entry.node?.path || "");
-        WS.view.tagFolderActiveMode = "";
-        WS.view.tagFolderActiveTag = "";
-        WS.view.tagFolderOriginPath = "";
-      }
       if (entry.kind !== "dir" || !entry.node) {
         if (altGalleryModeEnabled() && entry.kind === "file") {
           openGalleryFromDirectoriesSelection(true);
         }
         return;
+      }
+      const directGalleryFirstId = firstFileIdForDirectFolderGalleryEntry(entry.node);
+      if (directGalleryFirstId) {
+        if (isViewingTagFolder()) {
+          pushTagViewContext(entry.node?.path || "");
+          WS.view.tagFolderActiveMode = "";
+          WS.view.tagFolderActiveTag = "";
+          WS.view.tagFolderOriginPath = "";
+        }
+        if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
+          WS.view.searchRootActive = false;
+          WS.view.searchAnchorPath = entry.node.path || "";
+          WS.view.searchEntryRootPath = entry.node.path || "";
+        }
+        if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
+          WS.view.favoritesRootActive = false;
+          WS.view.favoritesAnchorPath = entry.node.path || "";
+        }
+        if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+          WS.view.hiddenRootActive = false;
+          WS.view.hiddenAnchorPath = entry.node.path || "";
+        }
+
+        // Enter the folder context first so gallery controls operate on this folder's files.
+        WS.nav.dirNode = entry.node;
+        WS.view.aboveRootView = false;
+        syncBulkSelectionForCurrentDir();
+        syncFavoritesUi();
+        syncHiddenUi();
+        syncTagUiForCurrentDir();
+        rebuildDirectoriesEntries();
+        const fileIdx = findFileEntryIndexById(directGalleryFirstId);
+        WS.nav.selectedIndex = findNearestSelectableIndex(fileIdx >= 0 ? fileIdx : selectionIndexForDirectoryEnter(), 1);
+        syncPreviewToSelection();
+        recordDirHistory();
+        openGalleryForDir(entry.node, directGalleryFirstId, true, true);
+        return;
+      }
+
+      if (isViewingTagFolder()) {
+        pushTagViewContext(entry.node?.path || "");
+        WS.view.tagFolderActiveMode = "";
+        WS.view.tagFolderActiveTag = "";
+        WS.view.tagFolderOriginPath = "";
       }
 
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
@@ -16354,11 +16435,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       applyVideoCarryToElement(previewVideoEl, VIDEO_CARRY.fileId || "");
     }
 
-    function openGalleryForDir(dirNode, startId = null, requestFullscreen = false) {
+    function openGalleryForDir(dirNode, startId = null, requestFullscreen = false, skipDirSyncOnClose = false) {
       viewerDirNode = dirNode;
       viewerItems = buildViewerItemsForDir(viewerDirNode);
 
-      if (!viewerItems.length) return;
+      if (!viewerItems.length) {
+        VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
+        return;
+      }
 
       let idx = 0;
       if (startId) {
@@ -16366,6 +16450,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         if (found >= 0) idx = found;
       }
       viewerIndex = idx;
+      VIEWER_SKIP_DIR_SYNC_ON_CLOSE = !!skipDirSyncOnClose;
 
       showOverlay();
       if (requestFullscreen) enterFullscreenIfPossible();
@@ -16383,6 +16468,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         idx = 0;
       }
       viewerIndex = idx;
+      VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
       showOverlay();
       if (requestFullscreen) enterFullscreenIfPossible();
     }
@@ -16556,9 +16642,15 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       overlay.classList.remove("ui-hidden");
       stopSlideshow();
       statusMessageEl.classList.remove("visible");
-      syncDirectoriesToViewerState();
-      // In grid mode, closing gallery should always land on the Up Directory tile when available.
-      selectGridUpEntryIfAvailable();
+      const skipDirSyncOnClose = !!VIEWER_SKIP_DIR_SYNC_ON_CLOSE;
+      VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
+      if (skipDirSyncOnClose) {
+        leaveDirectory();
+      } else {
+        syncDirectoriesToViewerState();
+        // In grid mode, closing gallery should always land on the Up Directory tile when available.
+        selectGridUpEntryIfAvailable();
+      }
       if (!VIEWER_MODE && WS.preview.kind === "file" && WS.preview.fileId) ACTIVE_MEDIA_SURFACE = "preview";
       else if (!VIEWER_MODE) ACTIVE_MEDIA_SURFACE = "none";
       resumePreviewVideoAfterOverlay();
