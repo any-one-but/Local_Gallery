@@ -101,6 +101,7 @@
             <button type="button" class="miniBtn menuTabBtn" data-tab="thumbnails" role="tab" aria-controls="menuTabOptions">Thumbnails</button>
             <button type="button" class="miniBtn menuTabBtn" data-tab="filenames" role="tab" aria-controls="menuTabOptions">Filenames</button>
             <button type="button" class="miniBtn menuTabBtn" data-tab="controls" role="tab" aria-controls="menuTabKeybinds">Controls</button>
+            <button type="button" class="miniBtn menuTabBtn" data-tab="calendar" role="tab" aria-controls="menuTabCalendar">Calendar</button>
           </div>
           <button id="menuCloseBtn" type="button" class="miniBtn">X</button>
         </div>
@@ -126,6 +127,18 @@
               <div class="right">
                 <button id="keybindsResetBtn" type="button" class="miniBtn">Reset defaults</button>
                 <button id="keybindsDoneBtn" type="button" class="miniBtn">Done</button>
+              </div>
+            </div>
+          </section>
+          <section id="menuTabCalendar" class="menuTabPanel" data-tab="calendar" role="tabpanel">
+            <div id="calendarBody"></div>
+            <div id="calendarFooter">
+              <div class="left">
+                <span class="label" id="calendarStatusLabel">—</span>
+              </div>
+              <div class="right">
+                <button id="calendarDeleteAllBtn" type="button" class="miniBtn">Delete all logs</button>
+                <button id="calendarDoneBtn" type="button" class="miniBtn">Done</button>
               </div>
             </div>
           </section>

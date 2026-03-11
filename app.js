@@ -23,7 +23,7 @@
       xxl: 3,
       xxxl: 2
     });
-    const TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT = "sunset-soft";
+    const TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT = "sunset-electric";
     const TAG_FOLDER_TITLE_COLOR_PAIRS = Object.freeze([
       Object.freeze({ value: "sunset-soft", label: "Soft Sunset (Orange + Pink)", tag: "#ffd6a0", favorite: "#ffb8dd" }),
       Object.freeze({ value: "sunset-vivid", label: "Vivid Sunset (Orange + Pink)", tag: "#ffb35c", favorite: "#ff7cc7" }),
@@ -72,6 +72,13 @@
     function displayName(name) {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       return applyDisplayNameRules(name, opt, { isFile: false });
+    }
+
+    function displayTagFolderLabel(name) {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      let out = String(name || "");
+      if (opt && opt.forceTitleCaps) out = toTitleCaps(out);
+      return out;
     }
 
     function splitNameExt(name) {
@@ -312,6 +319,7 @@
         showGridUpDirectoryEntry: true,
         showHiddenFolder: false,
         showUntaggedFolder: false,
+        showTagFolderSpacerRow: false,
         tagFolderTitleColorPair: TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT,
         showFolderItemCount: true,
         showFolderSize: true,
@@ -395,6 +403,7 @@
         showGridUpDirectoryEntry: (typeof src.showGridUpDirectoryEntry === "boolean") ? src.showGridUpDirectoryEntry : d.showGridUpDirectoryEntry,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
+        showTagFolderSpacerRow: (typeof src.showTagFolderSpacerRow === "boolean") ? src.showTagFolderSpacerRow : d.showTagFolderSpacerRow,
         tagFolderTitleColorPair: normalizeTagFolderTitleColorPairValue(src.tagFolderTitleColorPair, d.tagFolderTitleColorPair),
         showFolderItemCount: true,
         showFolderSize: true,
@@ -1834,12 +1843,13 @@
     function applyTagFolderTitleColorsFromOptions() {
       const root = document.documentElement;
       if (!root) return;
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const pair = getTagFolderTitleColorPairByValue(opt ? opt.tagFolderTitleColorPair : null);
-      const tagColor = String(pair && pair.tag ? pair.tag : "#ffd6a0");
-      const favoriteColor = String(pair && pair.favorite ? pair.favorite : "#ffb8dd");
+      const pair = getTagFolderTitleColorPairByValue(TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT);
+      const tagColor = String(pair && pair.tag ? pair.tag : "#ff9300");
+      const favoriteColor = String(pair && pair.favorite ? pair.favorite : "#ff43b5");
+      const albumColor = "#ff6b63";
       root.style.setProperty("--dir-tag-title-color", tagColor);
       root.style.setProperty("--dir-tag-favorite-title-color", favoriteColor);
+      root.style.setProperty("--dir-tag-album-title-color", albumColor);
     }
 
     function applyRetroModeFromOptions() {
@@ -2745,12 +2755,14 @@
       meta: {
         dirScores: new Map(),
         dirTags: new Map(),
+        tagAlbumByTag: new Map(),
         dirThumbPresets: new Map(),
         fileThumbCrop: new Map(),
         videoThumbTime: new Map(),
         tagThumbModes: new Map(),
         tagThumbPresets: new Map(),
         pendingTagsByPath: new Map(),
+        scoreHistory: [],
         dirFingerprints: new Map(),
         dirSortMode: "name",
         storageMode: "local",
@@ -2804,6 +2816,7 @@
         aboveRootView: false,
         tagFolderActiveMode: "",
         tagFolderActiveTag: "",
+        tagFolderActiveAlbum: "",
         tagFolderOriginPath: "",
         tagNavStack: [],
         dirSearchPinned: false,
@@ -2891,12 +2904,14 @@
 
       WS.meta.dirScores.clear();
       WS.meta.dirTags.clear();
+      WS.meta.tagAlbumByTag.clear();
       WS.meta.dirThumbPresets.clear();
       WS.meta.fileThumbCrop.clear();
       WS.meta.videoThumbTime.clear();
       WS.meta.tagThumbModes.clear();
       WS.meta.tagThumbPresets.clear();
       WS.meta.pendingTagsByPath.clear();
+      WS.meta.scoreHistory = [];
       WS.meta.dirFingerprints.clear();
       WS.meta.dirSortMode = "name";
       WS.meta.storageMode = "local";
@@ -2940,6 +2955,7 @@
       WS.view.aboveRootView = false;
       WS.view.tagFolderActiveMode = "";
       WS.view.tagFolderActiveTag = "";
+      WS.view.tagFolderActiveAlbum = "";
       WS.view.tagFolderOriginPath = "";
       WS.view.tagNavStack = [];
       WS.view.dirSearchPinned = false;
@@ -3026,6 +3042,7 @@
     const menuCloseBtn = $("menuCloseBtn");
     const menuTabOptions = $("menuTabOptions");
     const menuTabKeybinds = $("menuTabKeybinds");
+    const menuTabCalendar = $("menuTabCalendar");
 
     const optionsBodyEl = $("optionsBody");
     const optionsResetBtn = $("optionsResetBtn");
@@ -3037,6 +3054,10 @@
     const keybindsResetBtn = $("keybindsResetBtn");
     const keybindsDoneBtn = $("keybindsDoneBtn");
     const keybindsStatusLabel = $("keybindsStatusLabel");
+    const calendarBodyEl = $("calendarBody");
+    const calendarDoneBtn = $("calendarDoneBtn");
+    const calendarDeleteAllBtn = $("calendarDeleteAllBtn");
+    const calendarStatusLabel = $("calendarStatusLabel");
 
     const overlayWindowStates = {
       menu: { x: null, y: null, width: null, height: null }
@@ -3307,7 +3328,7 @@
     let MENU_ACTIVE_TAB = "general";
     let MENU_LAST_TAB = "general";
     let MENU_HAS_OPENED = false;
-    const MENU_TAB_SCROLL = { general: 0, appearance: 0, playback: 0, thumbnails: 0, filenames: 0, controls: 0 };
+    const MENU_TAB_SCROLL = { general: 0, appearance: 0, playback: 0, thumbnails: 0, filenames: 0, controls: 0, calendar: 0 };
     let KEYBIND_CAPTURE_ACTION_ID = "";
     let PROPERTIES_OPEN = false;
 
@@ -3444,12 +3465,21 @@
       syncHiddenUi();
     }
 
-    const MENU_TAB_IDS = ["general", "appearance", "playback", "thumbnails", "filenames", "controls"];
-    const OPTION_SECTION_TABS = new Set(["general", "appearance", "playback", "thumbnails", "filenames"]);
+    const MENU_TAB_IDS = ["general", "appearance", "playback", "thumbnails", "filenames", "controls", "calendar"];
+    const MENU_PANEL_BY_TAB = {
+      general: "options",
+      appearance: "options",
+      playback: "options",
+      thumbnails: "options",
+      filenames: "options",
+      controls: "controls",
+      calendar: "calendar"
+    };
     const menuTabButtons = menuTabs ? Array.from(menuTabs.querySelectorAll(".menuTabBtn")) : [];
     const menuTabPanels = {
       options: menuTabOptions,
-      controls: menuTabKeybinds
+      controls: menuTabKeybinds,
+      calendar: menuTabCalendar
     };
     const menuScrollTargets = {
       general: optionsBodyEl,
@@ -3457,7 +3487,8 @@
       playback: optionsBodyEl,
       thumbnails: optionsBodyEl,
       filenames: optionsBodyEl,
-      controls: keybindsBodyEl
+      controls: keybindsBodyEl,
+      calendar: calendarBodyEl
     };
 
     function saveMenuTabScroll(tab) {
@@ -3502,17 +3533,22 @@
         btn.setAttribute("tabindex", active ? "0" : "-1");
       });
 
+      const activePanelId = MENU_PANEL_BY_TAB[next] || "options";
       Object.entries(menuTabPanels).forEach(([id, panel]) => {
         if (!panel) return;
-        const active = (id === "controls")
-          ? (next === "controls")
-          : OPTION_SECTION_TABS.has(next);
+        const active = id === activePanelId;
         panel.classList.toggle("active", active);
         panel.setAttribute("aria-hidden", active ? "false" : "true");
       });
 
       if (next === "controls") {
         ensureKeybindsUi("pane");
+        return;
+      }
+      if (next === "calendar") {
+        renderCalendarUi();
+        setCalendarStatus("Saved automatically");
+        restoreMenuTabScroll("calendar");
         return;
       }
       ensureOptionsUi(next);
@@ -3552,6 +3588,224 @@
     function setKeybindsStatus(text) {
       if (!keybindsStatusLabel) return;
       keybindsStatusLabel.textContent = text || "—";
+    }
+
+    function setCalendarStatus(text) {
+      if (!calendarStatusLabel) return;
+      calendarStatusLabel.textContent = text || "—";
+    }
+
+    function scoreHistoryDateLabel(dateKey) {
+      const m = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return String(dateKey || "");
+      const y = Number(m[1]);
+      const mo = Number(m[2]) - 1;
+      const d = Number(m[3]);
+      const dt = new Date(y, mo, d);
+      if (!Number.isFinite(dt.getTime())) return String(dateKey || "");
+      return dt.toLocaleDateString(undefined, {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      });
+    }
+
+    function scoreHistoryTimeLabel(ts) {
+      const dt = new Date(Number(ts) || Date.now());
+      if (!Number.isFinite(dt.getTime())) return "";
+      return dt.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+
+    function scoreHistoryChartColor(index) {
+      const hue = ((index * 53) % 360 + 360) % 360;
+      return `hsl(${hue} 70% 54%)`;
+    }
+
+    function getRootFolderScoreRows() {
+      const root = WS.root;
+      if (!root || !Array.isArray(root.childrenDirs)) return [];
+      const out = [];
+      for (let i = 0; i < root.childrenDirs.length; i++) {
+        const node = root.childrenDirs[i];
+        if (!node || node.type !== "dir") continue;
+        const path = String(node.path || "");
+        out.push({
+          path,
+          name: dirDisplayName(node),
+          score: metaGetScore(path)
+        });
+      }
+      out.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+      return out;
+    }
+
+    function buildRootPositivePieHtml(rootRows) {
+      const positives = rootRows.filter((row) => Number(row.score) > 0);
+      const total = positives.reduce((sum, row) => sum + (Number(row.score) || 0), 0);
+      if (!(total > 0)) {
+        return `
+          <div class="scorePieWrap scorePieWrapEmpty">
+            <div class="scorePieEmpty">No positive root scores yet.</div>
+          </div>
+        `;
+      }
+      let acc = 0;
+      const gradientParts = [];
+      for (let i = 0; i < positives.length; i++) {
+        const row = positives[i];
+        const startDeg = acc * 360;
+        const part = (Number(row.score) || 0) / total;
+        acc += part;
+        const endDeg = acc * 360;
+        gradientParts.push(`${scoreHistoryChartColor(i)} ${startDeg.toFixed(3)}deg ${endDeg.toFixed(3)}deg`);
+      }
+      const legend = positives.map((row, idx) => {
+        const score = Number(row.score) || 0;
+        const pct = total > 0 ? (score / total) * 100 : 0;
+        return `
+          <div class="scorePieLegendRow">
+            <span class="scorePieSwatch" style="background:${escapeHtml(scoreHistoryChartColor(idx))};"></span>
+            <span class="scorePieName" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</span>
+            <span class="scorePieValue">${escapeHtml(String(score))}</span>
+            <span class="scorePiePct">${escapeHtml(pct.toFixed(1))}%</span>
+          </div>
+        `;
+      }).join("");
+      return `
+        <div class="scorePieWrap">
+          <div class="scorePieChart" style="background:conic-gradient(${gradientParts.join(", ")});"></div>
+          <div class="scorePieLegend">
+            ${legend}
+          </div>
+        </div>
+      `;
+    }
+
+    function buildRootScoreBarsHtml(rootRows) {
+      if (!rootRows.length) {
+        return `<div class="scoreBarsEmpty">No root folders available.</div>`;
+      }
+      const maxAbs = Math.max(1, ...rootRows.map((row) => Math.abs(Number(row.score) || 0)));
+      const rowsHtml = rootRows.map((row) => {
+        const score = Number(row.score) || 0;
+        const widthPct = Math.max(0, Math.min(50, Math.abs(score) / maxAbs * 50));
+        const leftPct = score >= 0 ? 50 : Math.max(0, 50 - widthPct);
+        const signClass = score >= 0 ? "positive" : "negative";
+        const shown = score > 0 ? `+${score}` : String(score);
+        return `
+          <div class="scoreBarRow">
+            <div class="scoreBarLabel" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</div>
+            <div class="scoreBarTrack">
+              <div class="scoreBarAxis"></div>
+              <div class="scoreBarFill ${signClass}" style="left:${leftPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%;"></div>
+            </div>
+            <div class="scoreBarValue">${escapeHtml(shown)}</div>
+          </div>
+        `;
+      }).join("");
+      return `
+        <div class="scoreBarsWrap">
+          ${rowsHtml}
+        </div>
+      `;
+    }
+
+    function renderCalendarUi() {
+      if (!calendarBodyEl) return;
+      const history = normalizeScoreHistoryList(WS.meta && Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : []);
+      WS.meta.scoreHistory = history;
+      const rootRows = getRootFolderScoreRows();
+      const positiveCount = rootRows.filter((row) => Number(row.score) > 0).length;
+      const totalScore = rootRows.reduce((sum, row) => sum + (Number(row.score) || 0), 0);
+      const grouped = new Map();
+      for (let i = 0; i < history.length; i++) {
+        const entry = history[i];
+        const key = scoreHistoryDateKey(entry.at);
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(entry);
+      }
+      const dateKeys = Array.from(grouped.keys()).sort((a, b) => String(b).localeCompare(String(a)));
+      const historyHtml = dateKeys.length
+        ? dateKeys.map((key) => {
+          const rows = grouped.get(key) || [];
+          const eventRowsHtml = rows.map((entry) => {
+            const changedRows = entry.changed.map((item) => {
+              const delta = Number(item.delta) || 0;
+              const deltaShown = delta > 0 ? `+${delta}` : String(delta);
+              const pathShown = String(item.path || "") || "(root)";
+              return `
+                <div class="scoreHistoryChangeRow">
+                  <span class="scoreHistoryChangePath" title="${escapeHtml(pathShown)}">${escapeHtml(pathShown)}</span>
+                  <span class="scoreHistoryChangeDelta">${escapeHtml(deltaShown)}</span>
+                  <span class="scoreHistoryChangeRange">${escapeHtml(String(item.before))} -> ${escapeHtml(String(item.after))}</span>
+                </div>
+              `;
+            }).join("");
+            const selectedCount = Array.isArray(entry.selectedPaths) ? entry.selectedPaths.length : 0;
+            const changedCount = Array.isArray(entry.changed) ? entry.changed.length : 0;
+            const actionLabel = selectedCount > 0
+              ? `${selectedCount} selected, ${changedCount} updated`
+              : `${changedCount} updated`;
+            return `
+              <div class="scoreHistoryEvent">
+                <div class="scoreHistoryEventHeader">
+                  <div class="scoreHistoryEventMeta">
+                    <span class="scoreHistoryTime">${escapeHtml(scoreHistoryTimeLabel(entry.at))}</span>
+                    <span class="scoreHistorySummary">${escapeHtml(actionLabel)}</span>
+                  </div>
+                  <button type="button" class="miniBtn scoreHistoryDeleteBtn" data-score-history-delete-event="${escapeHtml(entry.id)}">Delete</button>
+                </div>
+                <div class="scoreHistoryChanges">
+                  ${changedRows}
+                </div>
+              </div>
+            `;
+          }).join("");
+          return `
+            <section class="scoreHistoryDay">
+              <div class="scoreHistoryDayHeader">
+                <h2>${escapeHtml(scoreHistoryDateLabel(key))}</h2>
+                <div class="scoreHistoryDayMeta">
+                  <span>${escapeHtml(String(rows.length))} event${rows.length === 1 ? "" : "s"}</span>
+                  <button type="button" class="miniBtn scoreHistoryDeleteDayBtn" data-score-history-delete-day="${escapeHtml(key)}">Delete day</button>
+                </div>
+              </div>
+              <div class="scoreHistoryDayEvents">
+                ${eventRowsHtml}
+              </div>
+            </section>
+          `;
+        }).join("")
+        : `<div class="scoreHistoryEmpty">No score changes logged yet.</div>`;
+
+      calendarBodyEl.innerHTML = `
+        <div class="calendarPanelIntro">
+          <h1>Score Calendar</h1>
+          <div class="label">Track score changes by date, and inspect root-folder score distribution.</div>
+        </div>
+        <section class="calendarAnalytics">
+          <div class="calendarAnalyticsCard">
+            <h2>Positive score share (root folders)</h2>
+            <div class="label">Root folders with positive score: ${escapeHtml(String(positiveCount))}. Total root score sum: ${escapeHtml(String(totalScore))}.</div>
+            ${buildRootPositivePieHtml(rootRows)}
+          </div>
+          <div class="calendarAnalyticsCard">
+            <h2>Root folder scores</h2>
+            <div class="label">Bars are centered at zero. Positive extends right; negative extends left.</div>
+            ${buildRootScoreBarsHtml(rootRows)}
+          </div>
+        </section>
+        <section class="calendarHistory">
+          <h2>Score change history</h2>
+          ${historyHtml}
+        </section>
+      `;
+      if (calendarDeleteAllBtn) calendarDeleteAllBtn.disabled = !history.length;
     }
 
     function isGridKeybindAction(actionId) {
@@ -3867,10 +4121,6 @@
         { value: "randomFileSort", label: "Random file sort" },
         { value: "randomFolderSort", label: "Random folder sort" }
       ];
-      const tagFolderTitleColorPairModes = TAG_FOLDER_TITLE_COLOR_PAIRS.map((pair) => ({
-        value: String(pair.value || ""),
-        label: String(pair.label || "")
-      }));
       const interactionModes = [
         { value: "grid", label: "Grid Mode" },
         { value: "pane", label: "Pane Mode" }
@@ -3947,7 +4197,7 @@ ${makeCheckRow("Show Up Directory item", "Show the synthetic Up Directory tile i
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag near the top of the root directories pane when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
-${makeSelectRow("Tag folder title colors", "Set paired title text colors for regular tag folders and Favorites tag folders in Grid Mode.", "opt_tagFolderTitleColorPair", normalizeTagFolderTitleColorPairValue(opt.tagFolderTitleColorPair, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT), tagFolderTitleColorPairModes)}
+${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
           `
         },
         appearance: {
@@ -4147,9 +4397,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         }
         renderDirectoriesPane(true);
       });
-      bindSelect("opt_tagFolderTitleColorPair", "tagFolderTitleColorPair", false, null, (val) => {
-        return normalizeTagFolderTitleColorPairValue(val, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT);
-      });
+      bindCheck("opt_showTagFolderSpacerRow", "showTagFolderSpacerRow");
       bindCheck("opt_clickSelectedRotatingThumbTeleports", "clickSelectedRotatingThumbTeleports");
       bindCheck("opt_vibrantOverlayEnabled", "vibrantOverlayEnabled", () => {
         applyMediaFilterFromOptions();
@@ -4313,11 +4561,74 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
     if (optionsDoneBtn) optionsDoneBtn.addEventListener("click", () => closeMenu());
     if (optionsResetBtn) optionsResetBtn.addEventListener("click", () => resetOptionsToDefaults());
+    if (calendarDoneBtn) calendarDoneBtn.addEventListener("click", () => closeMenu());
+    if (calendarDeleteAllBtn) {
+      calendarDeleteAllBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const count = Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory.length : 0;
+        if (!count) {
+          setCalendarStatus("No logs");
+          return;
+        }
+        const ok = confirm(`Delete all ${count} score log event${count === 1 ? "" : "s"}?`);
+        if (!ok) return;
+        WS.meta.scoreHistory = [];
+        WS.meta.dirty = true;
+        metaScheduleSave();
+        renderCalendarUi();
+        setCalendarStatus("Saved");
+        showStatusMessage("Score history cleared.");
+      });
+    }
+    if (calendarBodyEl) {
+      calendarBodyEl.addEventListener("click", (e) => {
+        const eventBtn = e.target && e.target.closest ? e.target.closest("button[data-score-history-delete-event]") : null;
+        if (eventBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const id = String(eventBtn.getAttribute("data-score-history-delete-event") || "");
+          const removed = removeScoreHistoryEntryById(id);
+          if (removed > 0) {
+            WS.meta.dirty = true;
+            metaScheduleSave();
+            renderCalendarUi();
+            setCalendarStatus("Saved");
+            showStatusMessage("Score log entry deleted.");
+          } else {
+            setCalendarStatus("No changes");
+          }
+          return;
+        }
+        const dayBtn = e.target && e.target.closest ? e.target.closest("button[data-score-history-delete-day]") : null;
+        if (dayBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const dayKey = String(dayBtn.getAttribute("data-score-history-delete-day") || "");
+          if (!dayKey) return;
+          const ok = confirm(`Delete all score log events on ${scoreHistoryDateLabel(dayKey)}?`);
+          if (!ok) return;
+          const removed = removeScoreHistoryEntriesByDateKey(dayKey);
+          if (removed > 0) {
+            WS.meta.dirty = true;
+            metaScheduleSave();
+            renderCalendarUi();
+            setCalendarStatus("Saved");
+            showStatusMessage(`Deleted ${removed} score log event${removed === 1 ? "" : "s"}.`);
+          } else {
+            setCalendarStatus("No changes");
+          }
+        }
+      });
+    }
 
     /* =========================================================
        Workspace loading (read-only input)
        ========================================================= */
     function getBulkSelectionKey() {
+      if (isViewingTagFolder()) {
+        return `tag:${String(WS.view.tagFolderActiveMode || "")}:${String(WS.view.tagFolderActiveTag || "")}:${String(WS.view.tagFolderActiveAlbum || "")}:${String(WS.view.tagFolderOriginPath || "")}`;
+      }
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return "search";
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "favorites";
       if (WS.view.hiddenMode && WS.view.hiddenRootActive) return "hidden";
@@ -4496,6 +4807,138 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return h >>> 0;
     }
 
+    const SCORE_HISTORY_MAX_ENTRIES = 4000;
+
+    function scoreHistoryDateKey(ts) {
+      const d = new Date(Number(ts) || Date.now());
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+
+    function normalizeScoreHistoryEntry(raw) {
+      if (!raw || typeof raw !== "object") return null;
+      const atRaw = Number(raw.at);
+      const at = Number.isFinite(atRaw) && atRaw > 0 ? Math.floor(atRaw) : Date.now();
+      const idRaw = String(raw.id || "").trim();
+      const id = idRaw || `score-${at}-${Math.random().toString(36).slice(2, 10)}`;
+      const selectedPathsRaw = Array.isArray(raw.selectedPaths) ? raw.selectedPaths : [];
+      const selectedPaths = [];
+      const selectedSeen = new Set();
+      for (let i = 0; i < selectedPathsRaw.length; i++) {
+        if (selectedPathsRaw[i] == null) continue;
+        const p = String(selectedPathsRaw[i]);
+        if (!p && p !== "") continue;
+        if (selectedSeen.has(p)) continue;
+        selectedSeen.add(p);
+        selectedPaths.push(p);
+      }
+      const changedRaw = Array.isArray(raw.changed) ? raw.changed : [];
+      const changed = [];
+      for (let i = 0; i < changedRaw.length; i++) {
+        const it = changedRaw[i];
+        if (!it || typeof it !== "object") continue;
+        const path = String(it.path || "");
+        if (!path && path !== "") continue;
+        const delta = Number(it.delta) | 0;
+        const before = Number(it.before) | 0;
+        const after = Number(it.after) | 0;
+        changed.push({ path, delta, before, after });
+      }
+      if (!changed.length) return null;
+      changed.sort((a, b) => {
+        const da = String(a.path || "").split("/").filter(Boolean).length;
+        const db = String(b.path || "").split("/").filter(Boolean).length;
+        if (da !== db) return db - da;
+        return String(a.path || "").localeCompare(String(b.path || ""));
+      });
+      return { id, at, selectedPaths, changed };
+    }
+
+    function normalizeScoreHistoryList(list) {
+      const src = Array.isArray(list) ? list : [];
+      const out = [];
+      const seenIds = new Set();
+      for (let i = 0; i < src.length; i++) {
+        const entry = normalizeScoreHistoryEntry(src[i]);
+        if (!entry) continue;
+        if (seenIds.has(entry.id)) continue;
+        seenIds.add(entry.id);
+        out.push(entry);
+      }
+      out.sort((a, b) => (b.at | 0) - (a.at | 0));
+      if (out.length > SCORE_HISTORY_MAX_ENTRIES) out.length = SCORE_HISTORY_MAX_ENTRIES;
+      return out;
+    }
+
+    function addScoreHistoryEntry(entry) {
+      const normalized = normalizeScoreHistoryEntry(entry);
+      if (!normalized) return false;
+      const src = Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [];
+      src.unshift(normalized);
+      const out = normalizeScoreHistoryList(src);
+      WS.meta.scoreHistory = out;
+      return true;
+    }
+
+    function removeScoreHistoryEntryById(id) {
+      const key = String(id || "");
+      if (!key) return 0;
+      const src = Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [];
+      const next = src.filter((entry) => String(entry && entry.id || "") !== key);
+      const removed = src.length - next.length;
+      if (removed > 0) WS.meta.scoreHistory = normalizeScoreHistoryList(next);
+      return removed;
+    }
+
+    function removeScoreHistoryEntriesByDateKey(dateKey) {
+      const key = String(dateKey || "");
+      if (!key) return 0;
+      const src = Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [];
+      const next = src.filter((entry) => scoreHistoryDateKey(entry && entry.at) !== key);
+      const removed = src.length - next.length;
+      if (removed > 0) WS.meta.scoreHistory = normalizeScoreHistoryList(next);
+      return removed;
+    }
+
+    function scorePropagationChain(path) {
+      const raw = String(path || "").trim();
+      if (!raw) return [""];
+      const segs = raw.split("/").filter(Boolean);
+      if (!segs.length) return [""];
+      const out = [];
+      for (let i = segs.length; i > 0; i--) {
+        out.push(segs.slice(0, i).join("/"));
+      }
+      out.push("");
+      return out;
+    }
+
+    function applyScoreMutationRender(focusPath = "") {
+      syncMetaButtons();
+      if (MENU_OPEN && MENU_ACTIVE_TAB === "calendar") {
+        renderCalendarUi();
+        setCalendarStatus("Saved");
+      }
+      if (WS.meta.dirSortMode === "score") {
+        rebuildDirectoriesEntries();
+        const idx = findDirEntryIndexByPath(String(focusPath || ""));
+        WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : WS.nav.selectedIndex, 1);
+        syncPreviewToSelection();
+        WS.view.pendingDirScroll = "center-selected";
+        renderDirectoriesPane(false);
+        renderPreviewPane(true, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+        return;
+      }
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+    }
+
     function metaGetScore(path) {
       const p = String(path || "");
       const v = WS.meta.dirScores.get(p);
@@ -4508,72 +4951,83 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.meta.dirScores.set(p, v);
       WS.meta.dirty = true;
       metaScheduleSave();
-      syncMetaButtons();
-      if (WS.meta.dirSortMode === "score") {
-        rebuildDirectoriesEntries();
-        const idx = findDirEntryIndexByPath(p);
-        WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : WS.nav.selectedIndex, 1);
-        syncPreviewToSelection();
-        WS.view.pendingDirScroll = "center-selected";
-        renderDirectoriesPane(false);
-        renderPreviewPane(true, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-        return;
-      }
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
+      applyScoreMutationRender(p);
     }
 
     function metaBumpScore(path, delta) {
       const p = String(path || "");
-      const cur = metaGetScore(p);
-      metaSetScore(p, (cur + (delta | 0)) | 0);
+      metaBumpScoreBulk([p], delta);
     }
 
     function metaBumpScoreBulk(paths, delta) {
       const list = Array.isArray(paths) ? paths : Array.from(paths || []);
       if (!list.length) return;
       const d = delta | 0;
+      if (!d) return;
       const currentEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
       const currentPath = (currentEntry && currentEntry.kind === "dir")
         ? String(currentEntry.node?.path || "")
         : "";
-      let focusPath = currentPath && list.some((p) => String(p || "") === currentPath)
-        ? currentPath
-        : String(list[0] || "");
+      const selectedPaths = [];
+      const selectedSeen = new Set();
       for (let i = 0; i < list.length; i++) {
-        const p = String(list[i] || "");
-        if (!p) continue;
-        const cur = metaGetScore(p);
-        WS.meta.dirScores.set(p, (cur + d) | 0);
+        if (list[i] == null) continue;
+        const p = String(list[i]);
+        if (!p && p !== "") continue;
+        if (p !== "" && !WS.dirByPath.has(p)) continue;
+        if (selectedSeen.has(p)) continue;
+        selectedSeen.add(p);
+        selectedPaths.push(p);
       }
+      if (!selectedPaths.length) return;
+
+      let focusPath = currentPath && selectedPaths.some((p) => String(p || "") === currentPath)
+        ? currentPath
+        : String(selectedPaths[0] || "");
+
+      const deltaByPath = new Map();
+      for (let i = 0; i < selectedPaths.length; i++) {
+        const p = selectedPaths[i];
+        const chain = scorePropagationChain(p);
+        for (let j = 0; j < chain.length; j++) {
+          const targetPath = chain[j];
+          if (targetPath !== "" && !WS.dirByPath.has(targetPath)) continue;
+          deltaByPath.set(targetPath, (deltaByPath.get(targetPath) || 0) + d);
+        }
+      }
+      if (!deltaByPath.size) return;
+
+      const changed = [];
+      for (const [path, scoreDelta] of deltaByPath.entries()) {
+        const before = metaGetScore(path);
+        const after = (before + (scoreDelta | 0)) | 0;
+        WS.meta.dirScores.set(path, after);
+        changed.push({
+          path,
+          delta: scoreDelta | 0,
+          before,
+          after
+        });
+      }
+
+      addScoreHistoryEntry({
+        at: Date.now(),
+        selectedPaths,
+        changed
+      });
+
       WS.meta.dirty = true;
       metaScheduleSave();
-      syncMetaButtons();
-      if (WS.meta.dirSortMode === "score") {
-        rebuildDirectoriesEntries();
-        const idx = findDirEntryIndexByPath(focusPath);
-        WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : WS.nav.selectedIndex, 1);
-        syncPreviewToSelection();
-        WS.view.pendingDirScroll = "center-selected";
-        renderDirectoriesPane(false);
-        renderPreviewPane(true, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-        return;
-      }
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
+      applyScoreMutationRender(focusPath);
     }
 
     function normalizeTag(t) {
       const s = String(t || "").trim().toLowerCase();
       return s;
+    }
+
+    function normalizeTagAlbumName(name) {
+      return normalizeTag(name);
     }
 
     function normalizeTagList(list) {
@@ -4640,6 +5094,29 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     function metaGetUserTags(path) {
       const tags = metaGetTags(path);
       return tags.filter(t => !isReservedFolderTag(t));
+    }
+
+    function metaGetTagAlbumForTag(tagName) {
+      const tag = normalizeTag(tagName);
+      if (!tag || !WS.meta || !WS.meta.tagAlbumByTag) return "";
+      return normalizeTagAlbumName(WS.meta.tagAlbumByTag.get(tag));
+    }
+
+    function metaSetTagAlbumForTag(tagName, albumName) {
+      const tag = normalizeTag(tagName);
+      if (!tag || !WS.meta || !WS.meta.tagAlbumByTag) return false;
+      const album = normalizeTagAlbumName(albumName);
+      const prev = metaGetTagAlbumForTag(tag);
+      if (!album) {
+        if (!prev) return false;
+        WS.meta.tagAlbumByTag.delete(tag);
+        WS.meta.dirty = true;
+        return true;
+      }
+      if (prev === album) return false;
+      WS.meta.tagAlbumByTag.set(tag, album);
+      WS.meta.dirty = true;
+      return true;
     }
 
     function metaHasFavorite(path) {
@@ -4967,6 +5444,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return `tag:${tag}`;
     }
 
+    function tagThumbnailKeyForAlbum(albumName) {
+      const album = normalizeTagAlbumName(String(albumName || ""));
+      if (!album) return "";
+      return `tag-album:${album}`;
+    }
+
     function tagThumbnailScopeKeyFromPath(path) {
       const normalized = normalizeDirPathValue(path);
       return normalized ? normalized : "__root__";
@@ -4989,6 +5472,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           return `special:favorites:${tagThumbnailScopeKeyFromPath(scopePath)}`;
         }
         return `special:${String(entry.special || "")}`;
+      }
+      if (entry.album && !entry.tag) {
+        return tagThumbnailKeyForAlbum(entry.album);
       }
       return tagThumbnailKeyForTag(entry.tag || "");
     }
@@ -5229,23 +5715,35 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     function startBulkTagging(paths) {
-      if (canUseBulkTagPlaceholderUi() && setBulkTagPlaceholder(paths, "New tag folder")) return;
+      if (canUseBulkTagPlaceholderUi() && setBulkTagPlaceholder(paths, "New tag folder", "tag")) return;
     }
 
-    function setBulkTagPlaceholder(paths, label = "New tag folder") {
+    function startBulkTagAlbuming(tags) {
+      if (canUseBulkTagPlaceholderUi() && setBulkTagPlaceholder(tags, "New tag album", "album")) return;
+    }
+
+    function setBulkTagPlaceholder(items, label = "New tag folder", placeholderType = "tag") {
       clearBulkTagPlaceholder();
-      const unique = Array.from(new Set((paths || []).map(p => String(p || "")))).filter(p => p);
+      const type = String(placeholderType || "tag") === "album" ? "album" : "tag";
+      let unique = [];
+      if (type === "album") {
+        unique = normalizeTagList(items).filter((tag) => !isReservedFolderTag(tag));
+      } else {
+        unique = Array.from(new Set((items || []).map(p => String(p || "")))).filter(p => p);
+      }
       if (!unique.length) return false;
       BULK_TAG_PLACEHOLDER = {
-        paths: unique,
+        type,
         label: label,
         count: unique.length
       };
       TAG_ENTRY_RENAME_STATE = {
         tag: "",
         label,
-        paths: unique.slice(),
-        placeholder: true
+        paths: type === "tag" ? unique.slice() : [],
+        tags: type === "album" ? unique.slice() : [],
+        placeholder: true,
+        placeholderType: type
       };
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
@@ -5293,7 +5791,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
       if (isPlaceholder) {
         clearBulkTagPlaceholder();
-        metaAddUserTagsBulk(state.paths, [desired]);
+        if (state.placeholderType === "album") {
+          const changed = assignTagAlbumForTagsBulk(state.tags, desired);
+          if (!changed) {
+            showStatusMessage("No tags updated.");
+            renderDirectoriesPane(true);
+            return;
+          }
+        } else {
+          metaAddUserTagsBulk(state.paths, [desired]);
+        }
         finalizeBulkSelectionAction();
         return;
       }
@@ -5305,6 +5812,26 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
       metaScheduleSave();
       refreshAfterTagMetadataChange();
+    }
+
+    function assignTagAlbumForTagsBulk(tags, albumName) {
+      const album = normalizeTagAlbumName(albumName);
+      if (!album) return false;
+      const normalizedTags = normalizeTagList(tags).filter((tag) => !isReservedFolderTag(tag));
+      if (!normalizedTags.length) return false;
+      let changed = false;
+      let changedCount = 0;
+      for (let i = 0; i < normalizedTags.length; i++) {
+        if (metaSetTagAlbumForTag(normalizedTags[i], album)) {
+          changed = true;
+          changedCount++;
+        }
+      }
+      if (!changed) return false;
+      metaScheduleSave();
+      refreshAfterTagMetadataChange();
+      showStatusMessage(`Assigned ${changedCount} tag${changedCount === 1 ? "" : "s"} to album '${album}'.`);
+      return true;
     }
 
     function metaToggleFavorite(path) {
@@ -5463,10 +5990,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         folders[path] = { score: metaGetScore(path), fp: fp >>> 0 };
       }
       return {
-        schema: 1,
+        schema: 2,
         updatedAt: Date.now(),
         sortMode: normalizeDirSortMode(WS.meta.dirSortMode),
-        folders
+        folders,
+        scoreHistory: normalizeScoreHistoryList(WS.meta && Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [])
       };
     }
 
@@ -5476,6 +6004,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const thumbnailByFolder = {};
       const tagThumbnailModeByTag = {};
       const tagThumbnailByTag = {};
+      const tagAlbumByTag = {};
       const fileThumbnailCropByRelPath = {};
       const videoThumbnailTimeByRelPath = {};
       for (const [path, node] of WS.dirByPath.entries()) {
@@ -5514,6 +6043,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           tagThumbnailByTag[key] = relPath;
         }
       }
+      if (WS.meta && WS.meta.tagAlbumByTag) {
+        for (const [tagRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
+          const tag = normalizeTag(tagRaw);
+          const album = normalizeTagAlbumName(albumRaw);
+          if (!tag || !album) continue;
+          tagAlbumByTag[tag] = album;
+        }
+      }
       if (WS.meta && WS.meta.fileThumbCrop) {
         for (const [relPathRaw, cropRaw] of WS.meta.fileThumbCrop.entries()) {
           const relPath = normalizeWorkspaceRelPath(relPathRaw);
@@ -5549,6 +6086,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         thumbnailByFolder,
         tagThumbnailModeByTag,
         tagThumbnailByTag,
+        tagAlbumByTag,
         fileThumbnailCropByRelPath,
         videoThumbnailTimeByRelPath
       };
@@ -5600,6 +6138,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       const sortMode = normalizeDirSortMode(log.sortMode);
       WS.meta.dirSortMode = sortMode;
+      WS.meta.scoreHistory = normalizeScoreHistoryList(log.scoreHistory || []);
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
       const oldByPath = new Map();
@@ -5750,6 +6289,17 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       for (const key of WS.meta.tagThumbPresets.keys()) {
         const mode = metaGetTagThumbnailModeByKey(key);
         if (mode !== "single") WS.meta.tagThumbModes.set(key, "single");
+      }
+
+      WS.meta.tagAlbumByTag.clear();
+      const tagAlbumByTag = (log.tagAlbumByTag && typeof log.tagAlbumByTag === "object")
+        ? log.tagAlbumByTag
+        : {};
+      for (const rawTag of Object.keys(tagAlbumByTag)) {
+        const tag = normalizeTag(rawTag);
+        const album = normalizeTagAlbumName(tagAlbumByTag[rawTag]);
+        if (!tag || !album) continue;
+        WS.meta.tagAlbumByTag.set(tag, album);
       }
 
       WS.meta.fileThumbCrop.clear();
@@ -6324,6 +6874,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           aboveRootView: !!WS.view.aboveRootView,
           tagFolderActiveMode: WS.view.tagFolderActiveMode,
           tagFolderActiveTag: WS.view.tagFolderActiveTag,
+          tagFolderActiveAlbum: WS.view.tagFolderActiveAlbum,
           tagFolderOriginPath: WS.view.tagFolderOriginPath,
           favoritesMode: WS.view.favoritesMode,
           hiddenMode: WS.view.hiddenMode,
@@ -6350,6 +6901,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.view.aboveRootView = !!viewState.aboveRootView;
       WS.view.tagFolderActiveMode = String(viewState.tagFolderActiveMode || "");
       WS.view.tagFolderActiveTag = String(viewState.tagFolderActiveTag || "");
+      WS.view.tagFolderActiveAlbum = String(viewState.tagFolderActiveAlbum || "");
       WS.view.tagFolderOriginPath = String(viewState.tagFolderOriginPath || "");
       WS.view.favoritesMode = !!viewState.favoritesMode;
       WS.view.hiddenMode = !!viewState.hiddenMode;
@@ -6563,6 +7115,21 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.meta.dirThumbPresets = remapPathMapValues(WS.meta.dirThumbPresets, oldPrefix, newPrefix);
       WS.meta.fileThumbCrop = remapPathMapKeys(WS.meta.fileThumbCrop, oldPrefix, newPrefix);
       WS.meta.videoThumbTime = remapPathMapKeys(WS.meta.videoThumbTime, oldPrefix, newPrefix);
+      if (Array.isArray(WS.meta.scoreHistory) && WS.meta.scoreHistory.length) {
+        WS.meta.scoreHistory = normalizeScoreHistoryList(WS.meta.scoreHistory.map((entry) => {
+          if (!entry || typeof entry !== "object") return entry;
+          const selectedRaw = Array.isArray(entry.selectedPaths) ? entry.selectedPaths : [];
+          const changedRaw = Array.isArray(entry.changed) ? entry.changed : [];
+          const selectedPaths = selectedRaw.map((p) => remapPathPrefix(oldPrefix, newPrefix, p));
+          const changed = changedRaw.map((it) => {
+            if (!it || typeof it !== "object") return it;
+            return Object.assign({}, it, {
+              path: remapPathPrefix(oldPrefix, newPrefix, it.path)
+            });
+          });
+          return Object.assign({}, entry, { selectedPaths, changed });
+        }));
+      }
     }
 
     function applyRenameInMemory(dirNode, newName) {
@@ -7543,6 +8110,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return !!(opt && opt.showUntaggedFolder);
     }
 
+    function showTagFolderSpacerRowEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.showTagFolderSpacerRow);
+    }
+
     function getUntaggedDirsForNode(dirNode) {
       if (!dirNode) return [];
       const children = getChildDirsForNodeBase(dirNode);
@@ -7573,21 +8145,49 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return groups;
     }
 
+    function collectTagAlbumStatsForGroups(tagGroups) {
+      const byAlbum = new Map();
+      for (const [tag, nodes] of (tagGroups || []).entries()) {
+        const album = metaGetTagAlbumForTag(tag);
+        if (!album) continue;
+        let bucket = byAlbum.get(album);
+        if (!bucket) {
+          bucket = {
+            tags: new Set(),
+            folderPaths: new Set()
+          };
+          byAlbum.set(album, bucket);
+        }
+        bucket.tags.add(String(tag || ""));
+        for (let i = 0; i < (nodes || []).length; i++) {
+          const path = String(nodes[i]?.path || "");
+          if (path) bucket.folderPaths.add(path);
+        }
+      }
+      return byAlbum;
+    }
+
+    function buildBulkTagPlaceholderEntry() {
+      if (!BULK_TAG_PLACEHOLDER) return null;
+      const type = String(BULK_TAG_PLACEHOLDER.type || "tag") === "album" ? "album" : "tag";
+      return {
+        kind: "tag",
+        label: BULK_TAG_PLACEHOLDER.label || (type === "album" ? "New tag album" : "New tag folder"),
+        tag: "",
+        count: BULK_TAG_PLACEHOLDER.count || 0,
+        placeholder: true,
+        placeholderType: type
+      };
+    }
+
     function getTagFolderEntries() {
       if (!treatTagsAsFoldersEnabled()) return [];
       if (!WS.root || !WS.nav.dirNode) return [];
       if (WS.view.dirSearchPinned || WS.view.favoritesMode || WS.view.hiddenMode) return [];
 
       const entries = [];
-      if (BULK_TAG_PLACEHOLDER) {
-        entries.push({
-          kind: "tag",
-          label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
-          tag: "",
-          count: BULK_TAG_PLACEHOLDER.count || 0,
-          placeholder: true
-        });
-      }
+      const placeholderEntry = buildBulkTagPlaceholderEntry();
+      if (placeholderEntry) entries.push(placeholderEntry);
 
       const dirNode = WS.nav.dirNode;
       const originPath = String(dirNode.path || "");
@@ -7612,8 +8212,26 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
       const tagGroups = gatherTagGroupsForDir(dirNode);
       if (tagGroups.size) {
+        const albumStats = collectTagAlbumStatsForGroups(tagGroups);
+        if (albumStats.size) {
+          const sortedAlbums = Array.from(albumStats.keys()).sort((a, b) => String(a).localeCompare(String(b)));
+          for (let i = 0; i < sortedAlbums.length; i++) {
+            const album = sortedAlbums[i];
+            const stats = albumStats.get(album);
+            if (!stats || !stats.tags.size) continue;
+            entries.push({
+              kind: "tag",
+              album,
+              label: album,
+              count: stats.folderPaths.size,
+              tagCount: stats.tags.size,
+              originPath
+            });
+          }
+        }
         const sorted = Array.from(tagGroups.keys()).sort((a, b) => String(a).localeCompare(String(b)));
         for (const tag of sorted) {
+          if (metaGetTagAlbumForTag(tag)) continue;
           const nodes = tagGroups.get(tag) || [];
           if (!nodes.length) continue;
           entries.push({ kind: "tag", tag, label: tag, count: nodes.length, originPath });
@@ -7632,6 +8250,36 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return WS.nav.dirNode || WS.root;
     }
 
+    function getTagEntriesForTagFolderView() {
+      if (!isViewingTagFolder()) return [];
+      if (WS.view.tagFolderActiveMode !== "album") return [];
+      const album = normalizeTagAlbumName(WS.view.tagFolderActiveAlbum || "");
+      if (!album) return [];
+      const baseNode = getTagFolderBaseNode();
+      if (!baseNode) return [];
+      const tagGroups = gatherTagGroupsForDir(baseNode);
+      if (!tagGroups.size) return [];
+      const sorted = Array.from(tagGroups.keys()).sort((a, b) => String(a).localeCompare(String(b)));
+      const out = [];
+      for (let i = 0; i < sorted.length; i++) {
+        const tag = String(sorted[i] || "");
+        if (!tag) continue;
+        if (metaGetTagAlbumForTag(tag) !== album) continue;
+        const nodes = tagGroups.get(tag) || [];
+        if (!nodes.length) continue;
+        out.push({
+          kind: "tag",
+          tag,
+          album,
+          label: tag,
+          count: nodes.length,
+          originPath: String(baseNode.path || ""),
+          albumTag: true
+        });
+      }
+      return out;
+    }
+
     function getDirsForTagFolderView() {
       if (!isViewingTagFolder()) return [];
       const baseNode = getTagFolderBaseNode();
@@ -7645,6 +8293,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
       if (WS.view.tagFolderActiveMode === "hidden") {
         return children.filter(d => metaHasHidden(d.path || ""));
+      }
+      if (WS.view.tagFolderActiveMode === "album") {
+        return [];
       }
       const tag = String(WS.view.tagFolderActiveTag || "");
       if (!tag) return [];
@@ -7662,6 +8313,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (frame.mode === "favorites") return children.filter(d => metaHasFavorite(d.path || ""));
       if (frame.mode === "untagged") return children.filter(d => metaGetUserTags(d.path || "").length === 0);
       if (frame.mode === "hidden") return children.filter(d => metaHasHidden(d.path || ""));
+      if (frame.mode === "album") return [];
       const tag = String(frame.tag || "");
       if (!tag) return [];
       return children.filter(d => {
@@ -7677,6 +8329,25 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (!dirNode) return [];
       const children = getChildDirsForNodeBase(dirNode);
       if (!children.length) return [];
+      if (entry.album && !entry.tag) {
+        const album = normalizeTagAlbumName(entry.album);
+        if (!album) return [];
+        const tagGroups = gatherTagGroupsForDir(dirNode);
+        if (!tagGroups.size) return [];
+        const out = [];
+        const seen = new Set();
+        for (const [tag, nodes] of tagGroups.entries()) {
+          if (metaGetTagAlbumForTag(tag) !== album) continue;
+          for (let i = 0; i < (nodes || []).length; i++) {
+            const node = nodes[i];
+            const path = String(node?.path || "");
+            if (!path || seen.has(path)) continue;
+            seen.add(path);
+            out.push(node);
+          }
+        }
+        return out;
+      }
       if (entry.special) {
         if (entry.special === "favorites") {
           return children.filter(d => metaHasFavorite(d.path || ""));
@@ -7699,10 +8370,27 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
     function getTagEntryDisplayIcon(entry) {
       if (!entry || entry.kind !== "tag") return "🏷";
+      if (entry.album && !entry.tag) return "🗂";
       if (entry.special === "favorites") return "♥";
       if (entry.special === "hidden") return "🙈";
       if (entry.special === "untagged") return "📂";
       return "🏷";
+    }
+
+    function getTagEntryCountText(entry) {
+      const folderCount = Math.max(0, Number(entry && entry.count) || 0);
+      const type = String(entry && entry.placeholderType || "");
+      if (entry && entry.album && !entry.tag) {
+        const tagCount = Math.max(0, Number(entry.tagCount) || 0);
+        if (tagCount && folderCount) return `${tagCount} tags • ${folderCount} folders`;
+        if (tagCount) return `${tagCount} tags`;
+        if (folderCount) return `${folderCount} folders`;
+        return "Tag album";
+      }
+      if (type === "album") {
+        return folderCount ? `${folderCount} tags` : "Tag album";
+      }
+      return folderCount ? `${folderCount} folders` : "Tag folder";
     }
 
     const ROTATING_PREVIEW_POOLS = new Map();
@@ -8202,6 +8890,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const key = String(tagKey || "");
       if (!key) return "tag";
       if (key.startsWith("tag:")) return key.slice(4) || "tag";
+      if (key.startsWith("tag-album:")) return `Album ${key.slice("tag-album:".length) || "tag"}`;
       if (key === rootThumbnailKey()) return "Root";
       if (key.startsWith("special:favorites:")) {
         const scope = key.slice("special:favorites:".length);
@@ -8234,13 +8923,25 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             label: tag,
             actionLabel: `Set '${tag}' thumbnail`
           });
+          const album = metaGetTagAlbumForTag(tag);
+          const albumKey = tagThumbnailKeyForAlbum(album);
+          if (album && albumKey && !seen.has(albumKey)) {
+            seen.add(albumKey);
+            out.push({
+              key: albumKey,
+              label: `Album: ${album}`,
+              actionLabel: `Set '${album}' album thumbnail`
+            });
+          }
         }
         if (metaHasFavorite(cur.path || "")) {
-          const scopeKey = tagThumbnailScopeKeyFromPath(cur.path || "");
+          const scopeNode = cur.parent || WS.root || null;
+          const scopePath = String(scopeNode ? scopeNode.path || "" : "");
+          const scopeKey = tagThumbnailScopeKeyFromPath(scopePath);
           const key = `special:favorites:${scopeKey}`;
           if (!seen.has(key)) {
             seen.add(key);
-            const scopeLabel = dirDisplayName(cur);
+            const scopeLabel = scopeNode ? dirDisplayName(scopeNode) : "root";
             out.push({
               key,
               label: `Favorites in ${scopeLabel}`,
@@ -9019,7 +9720,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const tagRotateScope = String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : "");
       const tagRotateKey = entry.special
         ? `tag:${tagRotateScope}:special:${entry.special}`
-        : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
+        : (entry.album && !entry.tag)
+          ? `tag:${tagRotateScope}:album:${String(entry.album || "")}`
+          : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
 
       if (mode === "single" || tagPool.length < 4) {
         const singleKey = `${tagRotateKey}:${mode === "single" ? "single" : "single-fallback"}`;
@@ -9252,7 +9955,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (!entry || !baseNode) return null;
       const dirs = getDirsForTagEntry(entry);
       const label = String(entry.label || entry.tag || entry.special || "Tag");
-      const pathSuffix = entry.special ? entry.special : entry.tag || "tag";
+      const pathSuffix = entry.special
+        ? entry.special
+        : (entry.album && !entry.tag)
+          ? `album-${String(entry.album || "")}`
+          : (entry.tag || "tag");
       const safeSuffix = String(pathSuffix || "tag").replace(/[\/\\]/g, "_");
       const virtualPath = `${String(baseNode.path || "")}/@tag-${safeSuffix}`;
       return {
@@ -9266,12 +9973,18 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       };
     }
 
-    function findTagEntryIndex(mode, tag) {
+    function findTagEntryIndex(mode, tag, album = "") {
+      const albumKey = normalizeTagAlbumName(album);
       for (let i = 0; i < WS.nav.entries.length; i++) {
         const entry = WS.nav.entries[i];
         if (!entry || entry.kind !== "tag") continue;
         if (mode && entry.special && entry.special === mode) return i;
-        if (mode === "tag" && entry.tag && entry.tag === tag) return i;
+        if (mode === "album" && entry.album && !entry.tag && normalizeTagAlbumName(entry.album) === albumKey) return i;
+        if (mode === "tag" && entry.tag && entry.tag === tag) {
+          const entryAlbum = normalizeTagAlbumName(entry.album || "");
+          if (albumKey && entryAlbum !== albumKey) continue;
+          return i;
+        }
       }
       return -1;
     }
@@ -9283,10 +9996,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.nav.dirNode = baseNode;
       WS.view.tagFolderActiveMode = "";
       WS.view.tagFolderActiveTag = "";
+      WS.view.tagFolderActiveAlbum = "";
       WS.view.tagFolderOriginPath = "";
       closeActionMenus();
       rebuildDirectoriesEntries();
-      const idx = findTagEntryIndex(ctx.mode, ctx.tag);
+      const idx = findTagEntryIndex(ctx.mode, ctx.tag, ctx.album);
       WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
       syncPreviewToSelection();
       renderDirectoriesPane(true);
@@ -9297,9 +10011,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return true;
     }
 
-    function setTagFolderViewState(mode, tag, originPath) {
+    function setTagFolderViewState(mode, tag, originPath, album = "") {
       WS.view.tagFolderActiveMode = mode;
       WS.view.tagFolderActiveTag = tag;
+      WS.view.tagFolderActiveAlbum = String(album || "");
       WS.view.tagFolderOriginPath = String(originPath || "");
       closeActionMenus();
       rebuildDirectoriesEntries();
@@ -9399,12 +10114,17 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       ensureTagNavStack().push(frame);
     }
 
-    function pushTagEntryContext(mode, tag) {
+    function pushTagEntryContext(mode, tag, album = "") {
       pushTagNavFrame({
         type: "tag-entry",
         dirPath: String(WS.nav.dirNode?.path || ""),
         entryMode: mode || "",
         entryTag: tag || "",
+        entryAlbum: String(album || ""),
+        prevMode: String(WS.view.tagFolderActiveMode || ""),
+        prevTag: String(WS.view.tagFolderActiveTag || ""),
+        prevAlbum: String(WS.view.tagFolderActiveAlbum || ""),
+        prevOriginPath: String(WS.view.tagFolderOriginPath || ""),
         selectedIndex: WS.nav.selectedIndex,
         scrollTop: getDirectoriesScrollTop()
       });
@@ -9416,6 +10136,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         type: "tag-view",
         mode: WS.view.tagFolderActiveMode,
         tag: WS.view.tagFolderActiveTag,
+        album: WS.view.tagFolderActiveAlbum,
         originPath: String(WS.view.tagFolderOriginPath || ""),
         selectedDirPath: String(selectedDirPath || ""),
         scrollTop: getDirectoriesScrollTop(),
@@ -9428,7 +10149,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const baseNode = WS.dirByPath.get(String(frame.originPath || "")) || WS.root;
       if (!baseNode) return false;
       WS.nav.dirNode = baseNode;
-      setTagFolderViewState(frame.mode || "", frame.tag || "", frame.originPath);
+      setTagFolderViewState(frame.mode || "", frame.tag || "", frame.originPath, frame.album || "");
       const idx = frame.selectedDirPath ? findDirEntryIndexByPath(frame.selectedDirPath) : -1;
       WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
       syncPreviewToSelection();
@@ -9446,12 +10167,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const baseNode = WS.dirByPath.get(String(frame.dirPath || "")) || WS.root;
       if (!baseNode) return false;
       WS.nav.dirNode = baseNode;
-      WS.view.tagFolderActiveMode = "";
-      WS.view.tagFolderActiveTag = "";
-      WS.view.tagFolderOriginPath = "";
+      WS.view.tagFolderActiveMode = String(frame.prevMode || "");
+      WS.view.tagFolderActiveTag = String(frame.prevTag || "");
+      WS.view.tagFolderActiveAlbum = String(frame.prevAlbum || "");
+      WS.view.tagFolderOriginPath = String(frame.prevOriginPath || "");
       closeActionMenus();
       rebuildDirectoriesEntries();
-      const idx = findTagEntryIndex(frame.entryMode, frame.entryTag);
+      const idx = findTagEntryIndex(frame.entryMode, frame.entryTag, frame.entryAlbum);
       const targetIndex = idx >= 0 ? idx : (typeof frame.selectedIndex === "number" ? frame.selectedIndex : 0);
       WS.nav.selectedIndex = findNearestSelectableIndex(targetIndex, 1);
       syncPreviewToSelection();
@@ -9499,25 +10221,29 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const ctx = {
         mode: WS.view.tagFolderActiveMode,
         tag: WS.view.tagFolderActiveTag,
+        album: WS.view.tagFolderActiveAlbum,
         originPath: WS.view.tagFolderOriginPath
       };
       if (!restoreTagFolderEntrySelection(ctx)) {
-        setTagFolderViewState("", "", "");
+        setTagFolderViewState("", "", "", "");
       }
     }
 
     function openTagFolderEntry(entry) {
       if (!entry) return;
+      if (entry.placeholder) return;
       // Keep nested tag/favorites portal history. We only drop frames that are no longer relevant to
       // the current real directory path; this avoids the old bug where entering a child tag folder
       // replaced outer portal context and caused bad exits back to the real tree.
       pruneStaleVirtualPortalFramesForPath(WS.nav.dirNode?.path || "");
       pruneStaleTagEntryFramesForPath(WS.nav.dirNode?.path || "");
-      const mode = entry.special ? entry.special : "tag";
-      const tag = entry.special ? "" : (entry.tag || "");
-      pushTagEntryContext(mode, tag);
+      const album = String(entry.album || "");
+      const isAlbumEntry = !!album && !entry.tag && !entry.special;
+      const mode = entry.special ? entry.special : (isAlbumEntry ? "album" : "tag");
+      const tag = (mode === "tag") ? (entry.tag || "") : "";
+      pushTagEntryContext(mode, tag, album);
       const originPath = String(WS.nav.dirNode?.path || "");
-      setTagFolderViewState(mode, tag, originPath);
+      setTagFolderViewState(mode, tag, originPath, album);
     }
 
     function getChildDirsForNode(dirNode) {
@@ -9768,15 +10494,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       if (isViewingTagFolder()) {
         if (includeGridUpEntry) WS.nav.entries.push(buildGridUpDirectoryEntry());
-        if (BULK_TAG_PLACEHOLDER) {
-          WS.nav.entries.push({
-            kind: "tag",
-            label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
-            tag: "",
-            count: BULK_TAG_PLACEHOLDER.count || 0,
-            placeholder: true
-          });
-        }
+        const placeholderEntry = buildBulkTagPlaceholderEntry();
+        if (placeholderEntry) WS.nav.entries.push(placeholderEntry);
+        const virtualTagEntries = getTagEntriesForTagFolderView();
+        for (let i = 0; i < virtualTagEntries.length; i++) WS.nav.entries.push(virtualTagEntries[i]);
+        if (virtualTagEntries.length) return;
         const nodes = getDirsForTagFolderView();
         for (const d of nodes) WS.nav.entries.push({ kind: "dir", node: d });
         return;
@@ -9784,15 +10506,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
         if (includeGridUpEntry) WS.nav.entries.push(buildGridUpDirectoryEntry());
-        if (BULK_TAG_PLACEHOLDER) {
-          WS.nav.entries.push({
-            kind: "tag",
-            label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
-            tag: "",
-            count: BULK_TAG_PLACEHOLDER.count || 0,
-            placeholder: true
-          });
-        }
+        const placeholderEntry = buildBulkTagPlaceholderEntry();
+        if (placeholderEntry) WS.nav.entries.push(placeholderEntry);
         const dirs = (WS.view.searchResults || []).slice();
         for (let i = 0; i < dirs.length; i++) WS.nav.entries.push({ kind: "dir", node: dirs[i] });
         return;
@@ -9800,15 +10515,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
         if (includeGridUpEntry) WS.nav.entries.push(buildGridUpDirectoryEntry());
-        if (BULK_TAG_PLACEHOLDER) {
-          WS.nav.entries.push({
-            kind: "tag",
-            label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
-            tag: "",
-            count: BULK_TAG_PLACEHOLDER.count || 0,
-            placeholder: true
-          });
-        }
+        const placeholderEntry = buildBulkTagPlaceholderEntry();
+        if (placeholderEntry) WS.nav.entries.push(placeholderEntry);
         const dirs = getAllFavoriteDirs();
         for (const d of dirs) WS.nav.entries.push({ kind: "dir", node: d });
         return;
@@ -9816,15 +10524,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
         if (includeGridUpEntry) WS.nav.entries.push(buildGridUpDirectoryEntry());
-        if (BULK_TAG_PLACEHOLDER) {
-          WS.nav.entries.push({
-            kind: "tag",
-            label: BULK_TAG_PLACEHOLDER.label || "New tag folder",
-            tag: "",
-            count: BULK_TAG_PLACEHOLDER.count || 0,
-            placeholder: true
-          });
-        }
+        const placeholderEntry = buildBulkTagPlaceholderEntry();
+        if (placeholderEntry) WS.nav.entries.push(placeholderEntry);
         const dirs = getAllHiddenDirs();
         for (const d of dirs) WS.nav.entries.push({ kind: "dir", node: d });
         return;
@@ -10277,6 +10978,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         pushTagViewContext(dn.path || "");
         WS.view.tagFolderActiveMode = "";
         WS.view.tagFolderActiveTag = "";
+        WS.view.tagFolderActiveAlbum = "";
         WS.view.tagFolderOriginPath = "";
       }
 
@@ -10387,6 +11089,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           pushTagViewContext(entry.node?.path || "");
           WS.view.tagFolderActiveMode = "";
           WS.view.tagFolderActiveTag = "";
+          WS.view.tagFolderActiveAlbum = "";
           WS.view.tagFolderOriginPath = "";
         }
         if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
@@ -10423,6 +11126,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         pushTagViewContext(entry.node?.path || "");
         WS.view.tagFolderActiveMode = "";
         WS.view.tagFolderActiveTag = "";
+        WS.view.tagFolderActiveAlbum = "";
         WS.view.tagFolderOriginPath = "";
       }
 
@@ -10630,7 +11334,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         if (WS.view.tagFolderActiveMode === "favorites") return `${baseLabel} · Favorites`;
         if (WS.view.tagFolderActiveMode === "untagged") return `${baseLabel} · Untagged`;
         if (WS.view.tagFolderActiveMode === "hidden") return `${baseLabel} · Hidden`;
-        const tagLabel = String(WS.view.tagFolderActiveTag || "").trim();
+        if (WS.view.tagFolderActiveMode === "album") {
+          const albumLabel = displayTagFolderLabel(String(WS.view.tagFolderActiveAlbum || "").trim());
+          return albumLabel ? `${baseLabel} · ${albumLabel}` : `${baseLabel} · Album`;
+        }
+        const albumLabel = displayTagFolderLabel(String(WS.view.tagFolderActiveAlbum || "").trim());
+        const tagLabel = displayTagFolderLabel(String(WS.view.tagFolderActiveTag || "").trim());
+        if (albumLabel && tagLabel) return `${baseLabel} · ${albumLabel} · ${tagLabel}`;
         return tagLabel ? `${baseLabel} · ${tagLabel}` : baseLabel;
       }
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) return "search";
@@ -10648,6 +11358,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.view.aboveRootView = false;
       WS.view.tagFolderActiveMode = "";
       WS.view.tagFolderActiveTag = "";
+      WS.view.tagFolderActiveAlbum = "";
       WS.view.tagFolderOriginPath = "";
 
       if (!WS.view.favoritesMode) {
@@ -10719,6 +11430,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.view.aboveRootView = false;
       WS.view.tagFolderActiveMode = "";
       WS.view.tagFolderActiveTag = "";
+      WS.view.tagFolderActiveAlbum = "";
       WS.view.tagFolderOriginPath = "";
 
       if (!WS.view.hiddenMode) {
@@ -10824,6 +11536,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     function tagEntrySelectionKey(entry) {
       if (!entry || entry.kind !== "tag") return "";
       if (entry.placeholder) return "";
+      if (entry.album && !entry.tag) {
+        const album = normalizeTagAlbumName(entry.album);
+        return album ? `tag-album:${album}` : "";
+      }
       if (entry.special) {
         if (entry.special === "favorites") {
           return tagThumbnailKeyForEntry(entry);
@@ -11819,6 +12535,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       clearTagNavigationStack();
       WS.view.tagFolderActiveMode = "";
       WS.view.tagFolderActiveTag = "";
+      WS.view.tagFolderActiveAlbum = "";
       WS.view.tagFolderOriginPath = "";
       const node = WS.dirByPath.get(String(entry.path || "")) || WS.root;
       WS.nav.dirNode = node;
@@ -11979,12 +12696,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     function openTagContextMenu(context) {
       if (!context || !tagActionMenuEl) return;
       const tag = String(context.tag || "").trim();
+      const album = normalizeTagAlbumName(context.album || "");
       const tagKey = String(context.tagKey || "").trim();
       const paths = Array.isArray(context.paths) ? context.paths : [];
       const anchor = context.anchor;
-      if (!tagKey || !paths.length || !anchor) return;
+      if (!tagKey || !anchor) return;
+      const isAlbumEntry = !!album && !tag && !context.special;
       const canRename = !!tag && !context.special;
-      const canDelete = !!tag && !context.special;
+      const canDelete = !context.special && (!!tag || isAlbumEntry);
       const thumbMode = metaGetTagThumbnailModeByKey(tagKey);
       const allowRotatingThumbnails = !naturalAspectThumbnailCardsEnabled();
       const hasPreset = metaHasTagThumbnailPresetByKey(tagKey);
@@ -11992,14 +12711,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       closeActionMenus();
       const menu = tagActionMenuEl;
       if (canRename) menu.appendChild(createTagMenuButton("Rename tag", () => handleTagMenuAction("rename")));
-      if (canDelete) menu.appendChild(createTagMenuButton("Delete tag", () => handleTagMenuAction("delete")));
+      if (canDelete) menu.appendChild(createTagMenuButton(isAlbumEntry ? "Delete tag album" : "Delete tag", () => handleTagMenuAction("delete")));
       if (thumbMode !== "none") menu.appendChild(createTagMenuButton("No thumbnail", () => handleTagMenuAction("thumbnail-none")));
       if (allowRotatingThumbnails && (thumbMode !== "single" || hasPreset)) menu.appendChild(createTagMenuButton("Use rotating thumbnail", () => handleTagMenuAction("thumbnail-single")));
       if (allowRotatingThumbnails && thumbMode !== "quad") menu.appendChild(createTagMenuButton("Use quad thumbnail", () => handleTagMenuAction("thumbnail-quad")));
       TAG_CONTEXT_MENU_STATE = {
         tag,
+        album,
+        isAlbumEntry,
         tagKey,
-        label: context.label || tag,
+        label: context.label || tag || album,
         paths: paths.slice(),
         canRename,
         canDelete
@@ -12574,6 +13295,15 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         }
         if (metaChanged) changed = true;
       }
+      const oldAlbum = metaGetTagAlbumForTag(normalizedOld);
+      if (oldAlbum) {
+        let albumChanged = false;
+        if (!metaGetTagAlbumForTag(normalizedNew)) {
+          if (metaSetTagAlbumForTag(normalizedNew, oldAlbum)) albumChanged = true;
+        }
+        if (metaSetTagAlbumForTag(normalizedOld, "")) albumChanged = true;
+        if (albumChanged) changed = true;
+      }
       return changed;
     }
 
@@ -12594,7 +13324,34 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         const presetChanged = WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(key);
         if (modeChanged || presetChanged) changed = true;
       }
+      if (metaSetTagAlbumForTag(normalized, "")) changed = true;
       return changed;
+    }
+
+    function deleteTagAlbumByName(albumName) {
+      const album = normalizeTagAlbumName(albumName || "");
+      if (!album) return { changed: false, clearedTags: 0, album: "" };
+      let changed = false;
+      let clearedTags = 0;
+      if (WS.meta && WS.meta.tagAlbumByTag) {
+        const entries = Array.from(WS.meta.tagAlbumByTag.entries());
+        for (let i = 0; i < entries.length; i++) {
+          const tag = String(entries[i][0] || "");
+          const assignedAlbum = normalizeTagAlbumName(entries[i][1] || "");
+          if (!tag || assignedAlbum !== album) continue;
+          if (metaSetTagAlbumForTag(tag, "")) {
+            changed = true;
+            clearedTags++;
+          }
+        }
+      }
+      const albumKey = tagThumbnailKeyForAlbum(album);
+      if (albumKey) {
+        const modeChanged = WS.meta.tagThumbModes && WS.meta.tagThumbModes.delete(albumKey);
+        const presetChanged = WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(albumKey);
+        if (modeChanged || presetChanged) changed = true;
+      }
+      return { changed, clearedTags, album };
     }
 
     function handleTagMenuAction(action) {
@@ -12602,21 +13359,41 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (!ctx) return;
       closeTagContextMenu();
       const tag = ctx.tag || "";
+      const album = normalizeTagAlbumName(ctx.album || "");
+      const isAlbumEntry = !!ctx.isAlbumEntry && !!album;
       const tagKey = String(ctx.tagKey || "");
-      const label = ctx.label || tag;
+      const label = ctx.label || tag || album;
       const paths = ctx.paths || [];
-      if (!tagKey || !paths.length) {
-        showStatusMessage("No folders contain that tag.");
-        return;
-      }
       if (action === "rename") {
         if (!ctx.canRename) return;
+        if (!paths.length) {
+          showStatusMessage("No folders contain that tag.");
+          return;
+        }
         TAG_ENTRY_RENAME_STATE = { tag, label, paths };
         renderDirectoriesPane(true);
         return;
       }
       if (action === "delete") {
         if (!ctx.canDelete) return;
+        if (isAlbumEntry) {
+          const confirmed = confirm(`Delete tag album '${label}'? This keeps all tags and just ungroups them from the album.`);
+          if (!confirmed) return;
+          const result = deleteTagAlbumByName(album);
+          if (!result.changed) {
+            showStatusMessage("No tags updated.");
+            return;
+          }
+          metaScheduleSave();
+          refreshAfterTagMetadataChange();
+          const ungroupedCount = Number(result.clearedTags) || 0;
+          showStatusMessage(`Deleted tag album '${label}' and ungrouped ${ungroupedCount} tag${ungroupedCount === 1 ? "" : "s"}.`);
+          return;
+        }
+        if (!paths.length) {
+          showStatusMessage("No folders contain that tag.");
+          return;
+        }
         const confirmed = confirm(`Remove tag '${label}' from these folders?`);
         if (!confirmed) return;
         const changed = deleteTagFromPaths(tag, paths);
@@ -12627,6 +13404,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         metaScheduleSave();
         refreshAfterTagMetadataChange();
         showStatusMessage(`Removed tag '${label}'.`);
+        return;
+      }
+      if (!tagKey) {
+        showStatusMessage("No folders contain that tag.");
         return;
       }
       if (action === "thumbnail-none") {
@@ -12728,8 +13509,17 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const allFavorite = !!selectedDirs.length && selectedDirs.every(p => metaHasFavorite(p));
       const allHidden = !!selectedDirs.length && selectedDirs.every(p => metaHasHidden(p));
       const allProcessingDisabled = !!selectedDirs.length && selectedDirs.every(p => isPathOrAncestorProcessingDisabled(p));
-      const deletableTagEntries = selectedTagEntries.filter((entry) => (
+      const albumAssignableTagEntries = selectedTagEntries.filter((entry) => (
         entry && entry.kind === "tag" && !entry.special && !entry.placeholder && String(entry.tag || "").trim()
+      ));
+      const deletableTagEntries = albumAssignableTagEntries;
+      const deletableTagAlbumEntries = selectedTagEntries.filter((entry) => (
+        entry
+        && entry.kind === "tag"
+        && !entry.special
+        && !entry.placeholder
+        && !String(entry.tag || "").trim()
+        && !!normalizeTagAlbumName(entry.album || "")
       ));
       const tagThumbTargets = (() => {
         const out = [];
@@ -12749,7 +13539,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       ));
       const allTagThumbQuad = !!tagThumbTargets.length && tagThumbTargets.every((key) => metaGetTagThumbnailModeByKey(key) === "quad");
       const canUseGridTagThumbBulkActions = isGridInteractionMode() && !!tagThumbTargets.length;
-      if (!selectedDirs.length && !deletableTagEntries.length && !canUseGridTagThumbBulkActions && !selectedFiles.length) {
+      if (!selectedDirs.length && !albumAssignableTagEntries.length && !deletableTagAlbumEntries.length && !canUseGridTagThumbBulkActions && !selectedFiles.length) {
         WS.view.bulkActionMenuOpen = false;
         directoriesActionMenuEl.classList.remove("open");
         return;
@@ -12773,6 +13563,19 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         row.appendChild(rightBtn);
         return row;
       };
+
+      if (albumAssignableTagEntries.length) {
+        directoriesActionMenuEl.appendChild(makeActionBtn("Tag album", () => {
+          WS.view.bulkActionMenuOpen = false;
+          const tags = normalizeTagList(albumAssignableTagEntries.map((entry) => String(entry.tag || "")));
+          if (!tags.length) {
+            showStatusMessage("No tags selected.");
+            return;
+          }
+          finalizeBulkSelectionAction();
+          startBulkTagAlbuming(tags);
+        }));
+      }
 
       if (deletableTagEntries.length) {
         directoriesActionMenuEl.appendChild(makeActionBtn("Delete tags", () => {
@@ -12804,6 +13607,45 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           metaScheduleSave();
           refreshAfterTagMetadataChange();
           showStatusMessage(`Removed ${count} tag${count === 1 ? "" : "s"}.`);
+          finalizeBulkSelectionAction();
+        }));
+      }
+
+      if (deletableTagAlbumEntries.length) {
+        directoriesActionMenuEl.appendChild(makeActionBtn("Delete tag albums", () => {
+          WS.view.bulkActionMenuOpen = false;
+          const albums = [];
+          const seenAlbums = new Set();
+          for (const entry of deletableTagAlbumEntries) {
+            const album = normalizeTagAlbumName(entry.album || "");
+            if (!album || seenAlbums.has(album)) continue;
+            seenAlbums.add(album);
+            albums.push(album);
+          }
+          if (!albums.length) {
+            showStatusMessage("No tag albums available to delete.");
+            return;
+          }
+          const selectedCount = albums.length;
+          const confirmed = confirm(`Delete ${selectedCount} selected tag album${selectedCount === 1 ? "" : "s"}? Tags stay and will be ungrouped.`);
+          if (!confirmed) return;
+          let changed = false;
+          let deletedCount = 0;
+          let ungroupedTotal = 0;
+          for (let i = 0; i < albums.length; i++) {
+            const result = deleteTagAlbumByName(albums[i]);
+            if (!result.changed) continue;
+            changed = true;
+            deletedCount++;
+            ungroupedTotal += Number(result.clearedTags) || 0;
+          }
+          if (!changed) {
+            showStatusMessage("No tags updated.");
+            return;
+          }
+          metaScheduleSave();
+          refreshAfterTagMetadataChange();
+          showStatusMessage(`Deleted ${deletedCount} tag album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`);
           finalizeBulkSelectionAction();
         }));
       }
@@ -13105,7 +13947,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (!WS.root) return "none";
       if (WS.view.aboveRootView) return "above-root";
       if (isViewingTagFolder()) {
-        return `tag:${String(WS.view.tagFolderActiveMode || "")}:${String(WS.view.tagFolderActiveTag || "")}:${String(WS.view.tagFolderOriginPath || "")}`;
+        return `tag:${String(WS.view.tagFolderActiveMode || "")}:${String(WS.view.tagFolderActiveTag || "")}:${String(WS.view.tagFolderActiveAlbum || "")}:${String(WS.view.tagFolderOriginPath || "")}`;
       }
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
         return `search:${String(WS.view.searchRootPath || "")}`;
@@ -13236,6 +14078,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         if (isViewingTagFolder()) {
           if (WS.view.tagFolderActiveMode === "favorites") emptyMsg = "No favorite folders.";
           else if (WS.view.tagFolderActiveMode === "hidden") emptyMsg = "No hidden folders.";
+          else if (WS.view.tagFolderActiveMode === "album") {
+            const albumLabel = String(WS.view.tagFolderActiveAlbum || "");
+            emptyMsg = albumLabel ? `No tags in album '${albumLabel}'.` : "No tags in this album.";
+          }
           else {
             const tagLabel = String(WS.view.tagFolderActiveTag || "");
             emptyMsg = tagLabel ? `No folders tagged '${tagLabel}'.` : "No tagged folders.";
@@ -13263,7 +14109,21 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       try { directoriesListEl.style.setProperty("--dirMetaCh", String(maxMetaLen)); } catch {}
 
       const frag = document.createDocumentFragment();
+      const showTagSpacer = showTagFolderSpacerRowEnabled()
+        && WS.nav.entries.some((entry) => entry && entry.kind === "tag")
+        && WS.nav.entries.some((entry) => entry && entry.kind === "dir");
+      let seenTagEntryBeforeCurrent = false;
+      let insertedTagSpacer = false;
       WS.nav.entries.forEach((entry, idx) => {
+        if (showTagSpacer && !insertedTagSpacer && seenTagEntryBeforeCurrent && entry && entry.kind === "dir") {
+          const spacerEl = document.createElement("div");
+          spacerEl.className = "tagSpacerVisualRow";
+          spacerEl.setAttribute("aria-hidden", "true");
+          spacerEl.innerHTML = `<div class="tagSpacerCell" aria-hidden="true"></div>`;
+          frag.appendChild(spacerEl);
+          insertedTagSpacer = true;
+        }
+
         const row = document.createElement("div");
         row.className = "dirRow" + (idx === WS.nav.selectedIndex ? " selected" : "");
         row.tabIndex = -1;
@@ -13305,10 +14165,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           `;
         } else if (isTagEntry) {
           const label = String(entry.label || entry.tag || "Tag");
+          const labelDisplay = displayTagFolderLabel(label);
           const countNum = Number(entry.count) || 0;
-          const countText = countNum ? `${countNum} folders` : "Tag folder";
+          const countText = getTagEntryCountText(entry);
           const iconText = getTagEntryDisplayIcon(entry);
-          const specialText = entry.special ? toTitleCaps(String(entry.special || "")) : "";
+          const specialText = entry.special
+            ? toTitleCaps(String(entry.special || ""))
+            : ((entry.album && !entry.tag) ? "Album" : "");
           const tagPool = getRecursivePreviewRecordsForTagEntry(entry, 0);
           const tagThumbKey = tagThumbnailKeyForEntry(entry);
           const tagThumbMode = metaGetTagThumbnailModeByKey(tagThumbKey);
@@ -13317,6 +14180,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           const tagRotateScope = String(WS.nav.dirNode?.path || "");
           const tagRotateKey = entry.special
             ? `tag:${tagRotateScope}:special:${entry.special}`
+            : (entry.album && !entry.tag)
+              ? `tag:${tagRotateScope}:album:${String(entry.album || "")}`
             : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
           let squareMediaHtml = `<div class="dirSquareFallback">${escapeHtml(iconText)}</div>`;
           if (tagThumbMode !== "none") {
@@ -13399,9 +14264,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
               <button class="dirMenuBtn" title="Tag menu"${canOpenTagMenu ? "" : " disabled"}>⋯</button>
             </div>
           `;
+          const tagTitleClass = entry.special === "favorites"
+            ? "dirSquareNameTagFavorite"
+            : ((entry.album && !entry.tag) ? "dirSquareNameTagAlbum" : "dirSquareNameTag");
           const topNameHtml = renameActive
             ? `<input class="tagEditInput tagEntryRenameInput renameEditInput dirSquareRenameInput" type="text" value="${escapeHtml(TAG_ENTRY_RENAME_STATE.label || label)}" placeholder="${escapeHtml(label)}" />`
-            : `<span class="dirSquareName ${entry.special === "favorites" ? "dirSquareNameTagFavorite" : "dirSquareNameTag"}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+            : `<span class="dirSquareName ${tagTitleClass}" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`;
           const typeIconHtml = `<span class="dirSquareTypeIcon" title="Tag folder type">${escapeHtml(iconText)}</span>`;
           const specialBadgeHtml = specialText ? `<span class="dirTagKindBadge">${escapeHtml(specialText)}</span>` : "";
           const tagCardStyle = (naturalThumbCards && presetRec)
@@ -13829,6 +14697,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             const tagKey = tagThumbnailKeyForEntry(entry);
             openTagContextMenu({
               tag: String(entry.tag || ""),
+              album: String(entry.album || ""),
               tagKey,
               special: entry.special || "",
               label: String(entry.label || entry.tag || ""),
@@ -13848,6 +14717,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
               const tagKey = tagThumbnailKeyForEntry(entry);
               openTagContextMenu({
                 tag: String(entry.tag || ""),
+                album: String(entry.album || ""),
                 tagKey,
                 special: entry.special || "",
                 label: String(entry.label || entry.tag || ""),
@@ -14153,6 +15023,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           }
         }
 
+        if (isTagEntry) seenTagEntryBeforeCurrent = true;
         frag.appendChild(row);
       });
 
@@ -14652,6 +15523,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         pushTagViewContext(selectedPath);
         WS.view.tagFolderActiveMode = "";
         WS.view.tagFolderActiveTag = "";
+        WS.view.tagFolderActiveAlbum = "";
         WS.view.tagFolderOriginPath = "";
       }
 

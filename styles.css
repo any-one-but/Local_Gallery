@@ -28,8 +28,9 @@
       --thumb-filter: none;
       --thumb-fit: cover;
       --thumb-bg: transparent;
-      --dir-tag-title-color: #ffd6a0;
-      --dir-tag-favorite-title-color: #ffb8dd;
+      --dir-tag-title-color: #ff9300;
+      --dir-tag-favorite-title-color: #ff43b5;
+      --dir-tag-album-title-color: #ff6b63;
     }
 
     :root[data-media-size="small"] {
@@ -830,6 +831,16 @@
       max-width: 100%;
     }
 
+    #directoriesList.gridModeList .tagSpacerVisualRow {
+      flex: 0 0 100%;
+      width: 100%;
+      max-width: 100%;
+      min-height: 0;
+      height: calc(var(--grid-card-size) + 10px);
+      padding: 0;
+      margin: 0;
+    }
+
     #directoriesList.gridModeList .dirSquareCard,
     #directoriesList.gridModeList .dirFileThumbCard {
       width: 100%;
@@ -961,6 +972,23 @@
 
     .dirRow.drag-over-bottom {
       box-shadow: inset 0 -2px 0 var(--color0-tertirary);
+    }
+
+    .tagSpacerVisualRow {
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      outline: none;
+      cursor: default;
+      pointer-events: none;
+      min-height: 0;
+      height: 20px;
+      padding: 0;
+    }
+
+    .tagSpacerCell {
+      width: 100%;
+      height: 100%;
     }
 
     .dirSectionHeader {
@@ -1398,11 +1426,15 @@
     }
 
     .dirSquareNameTag {
-      color: var(--dir-tag-title-color, #ffd6a0);
+      color: var(--dir-tag-title-color, #ff9300);
     }
 
     .dirSquareNameTagFavorite {
-      color: var(--dir-tag-favorite-title-color, #ffb8dd);
+      color: var(--dir-tag-favorite-title-color, #ff43b5);
+    }
+
+    .dirSquareNameTagAlbum {
+      color: var(--dir-tag-album-title-color, #ff6b63);
     }
 
     .dirSquareScore {
@@ -2893,7 +2925,8 @@
        ========================================================= */
 
     #optionsBody,
-    #keybindsBody {
+    #keybindsBody,
+    #calendarBody {
       padding: 10px 10px 12px;
       overflow: auto;
       min-height: 0;
@@ -2904,7 +2937,8 @@
     }
 
     #optionsBody h1,
-    #keybindsBody h1 {
+    #keybindsBody h1,
+    #calendarBody h1 {
       font-size: 20px;
       font-weight: 800;
       letter-spacing: .02em;
@@ -3015,7 +3049,8 @@
     }
 
     #optionsFooter,
-    #keybindsFooter {
+    #keybindsFooter,
+    #calendarFooter {
       padding: 10px 10px 10px;
       border-top: 1px solid var(--color1-tertiary);
       display: flex;
@@ -3027,7 +3062,8 @@
     }
 
     #optionsFooter .left,
-    #keybindsFooter .left {
+    #keybindsFooter .left,
+    #calendarFooter .left {
       display: flex;
       gap: 8px;
       align-items: center;
@@ -3035,11 +3071,318 @@
     }
 
     #optionsFooter .right,
-    #keybindsFooter .right {
+    #keybindsFooter .right,
+    #calendarFooter .right {
       display: flex;
       gap: 8px;
       align-items: center;
       flex-wrap: wrap;
+    }
+
+    #calendarBody h2 {
+      font-size: 15px;
+      font-weight: 800;
+      margin: 12px 0 8px;
+      color: var(--color0-primary);
+    }
+
+    .calendarPanelIntro {
+      margin-bottom: 10px;
+    }
+
+    .calendarAnalytics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .calendarAnalyticsCard {
+      border: 1px solid var(--color1-tertiary);
+      background: var(--color1-secondary);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .scorePieWrap {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 12px;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    .scorePieWrapEmpty {
+      display: block;
+    }
+
+    .scorePieChart {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+      background: conic-gradient(#666 0deg 360deg);
+    }
+
+    .scorePieEmpty {
+      padding: 10px;
+      border: 1px dashed var(--color1-tertiary);
+      border-radius: 6px;
+      color: var(--color0-secondary);
+      background: var(--color1-primary);
+    }
+
+    .scorePieLegend {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .scorePieLegendRow {
+      display: grid;
+      grid-template-columns: 12px 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+      font-size: 11px;
+    }
+
+    .scorePieSwatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      border: 1px solid rgba(0, 0, 0, 0.35);
+    }
+
+    .scorePieName {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .scorePieValue {
+      color: var(--color0-primary);
+      font-weight: 700;
+    }
+
+    .scorePiePct {
+      color: var(--color0-secondary);
+      min-width: 46px;
+      text-align: right;
+    }
+
+    .scoreBarsWrap {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .scoreBarsEmpty {
+      margin-top: 8px;
+      padding: 10px;
+      border: 1px dashed var(--color1-tertiary);
+      border-radius: 6px;
+      color: var(--color0-secondary);
+      background: var(--color1-primary);
+    }
+
+    .scoreBarRow {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) minmax(170px, 2fr) auto;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .scoreBarLabel {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      color: var(--color0-primary);
+    }
+
+    .scoreBarTrack {
+      position: relative;
+      height: 14px;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+
+    .scoreBarAxis {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: rgba(255, 255, 255, 0.35);
+      transform: translateX(-0.5px);
+      z-index: 2;
+    }
+
+    .scoreBarFill {
+      position: absolute;
+      top: 1px;
+      bottom: 1px;
+      border-radius: 2px;
+      z-index: 1;
+      min-width: 0;
+    }
+
+    .scoreBarFill.positive {
+      background: linear-gradient(90deg, #2ea76d, #57d98f);
+    }
+
+    .scoreBarFill.negative {
+      background: linear-gradient(90deg, #d45f68, #f28a93);
+    }
+
+    .scoreBarValue {
+      min-width: 54px;
+      text-align: right;
+      color: var(--color0-secondary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+    }
+
+    .calendarHistory {
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      padding-top: 10px;
+    }
+
+    .scoreHistoryEmpty {
+      margin-top: 8px;
+      padding: 10px;
+      border: 1px dashed var(--color1-tertiary);
+      border-radius: 6px;
+      color: var(--color0-secondary);
+      background: var(--color1-primary);
+    }
+
+    .scoreHistoryDay {
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 6px;
+      background: var(--color1-secondary);
+      margin-top: 10px;
+      overflow: hidden;
+    }
+
+    .scoreHistoryDayHeader {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: rgba(0, 0, 0, 0.18);
+    }
+
+    .scoreHistoryDayHeader h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--color0-primary);
+    }
+
+    .scoreHistoryDayMeta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--color0-secondary);
+      font-size: 11px;
+    }
+
+    .scoreHistoryDayEvents {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .scoreHistoryEvent {
+      padding: 8px 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .scoreHistoryEvent:first-child {
+      border-top: 0;
+    }
+
+    .scoreHistoryEventHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    .scoreHistoryEventMeta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .scoreHistoryTime {
+      color: var(--color0-primary);
+      font-weight: 800;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+    }
+
+    .scoreHistorySummary {
+      color: var(--color0-secondary);
+      font-size: 11px;
+    }
+
+    .scoreHistoryDeleteBtn,
+    .scoreHistoryDeleteDayBtn {
+      padding: 3px 7px;
+      font-size: 11px;
+    }
+
+    .scoreHistoryChanges {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .scoreHistoryChangeRow {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+      min-width: 0;
+    }
+
+    .scoreHistoryChangePath {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      color: var(--color0-primary);
+    }
+
+    .scoreHistoryChangeDelta {
+      color: var(--color0-secondary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      min-width: 40px;
+      text-align: right;
+    }
+
+    .scoreHistoryChangeRange {
+      color: var(--color0-secondary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      min-width: 74px;
+      text-align: right;
     }
 
     #banicOverlay {
