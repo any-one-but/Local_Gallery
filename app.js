@@ -2862,10 +2862,13 @@
       },
 
       // video thumbs
+      videoThumbPriorityQueue: [],
       videoThumbQueue: [],
       videoThumbActive: 0,
       videoThumbQueuedIds: new Set(),
       videoThumbInFlightIds: new Set(),
+      videoThumbInFlightBackgroundIds: new Set(),
+      videoThumbPrewarmBlocking: false,
       videoThumbWorkspaceKickTimer: 0,
 
       // image thumbs
@@ -2998,10 +3001,13 @@
       if (WS.videoThumbWorkspaceKickTimer) {
         try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
       }
+      WS.videoThumbPriorityQueue = [];
       WS.videoThumbQueue = [];
       WS.videoThumbActive = 0;
       WS.videoThumbQueuedIds = new Set();
       WS.videoThumbInFlightIds = new Set();
+      WS.videoThumbInFlightBackgroundIds = new Set();
+      WS.videoThumbPrewarmBlocking = false;
       WS.videoThumbWorkspaceKickTimer = 0;
 
       WS.imageThumbQueue = [];
@@ -6640,7 +6646,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (tagsLog) metaApplyTagsLog(tagsLog);
     }
 
-    function buildWorkspaceFromFiles(fileList) {
+    async function buildWorkspaceFromFiles(fileList) {
       resetWorkspace();
       clearWorkspaceEmptyState();
 
@@ -6725,6 +6731,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.nav.selectedIndex = 0;
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
+
+      await prewarmVideoThumbsBeforeInitialRender();
 
       renderDirectoriesPane();
       renderPreviewPane(true);
@@ -6840,6 +6848,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.nav.selectedIndex = 0;
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
+
+      await prewarmVideoThumbsBeforeInitialRender();
 
       renderDirectoriesPane();
       renderPreviewPane(true);
@@ -8005,11 +8015,15 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         }
         it.videoThumbMode = null;
       }
+      WS.videoThumbPriorityQueue = [];
       WS.videoThumbQueue = [];
       if (WS.videoThumbQueuedIds instanceof Set) WS.videoThumbQueuedIds.clear();
       else WS.videoThumbQueuedIds = new Set();
       if (WS.videoThumbInFlightIds instanceof Set) WS.videoThumbInFlightIds.clear();
       else WS.videoThumbInFlightIds = new Set();
+      if (WS.videoThumbInFlightBackgroundIds instanceof Set) WS.videoThumbInFlightBackgroundIds.clear();
+      else WS.videoThumbInFlightBackgroundIds = new Set();
+      WS.videoThumbPrewarmBlocking = false;
       WS.imageThumbQueue = [];
       if (WS.videoThumbWorkspaceKickTimer) {
         try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
@@ -17382,19 +17396,83 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return WS.meta && WS.meta.options ? String(WS.meta.options.videoThumbSize || "medium") : "medium";
     }
 
+    function videoThumbPendingCount() {
+      const priorityLen = Array.isArray(WS.videoThumbPriorityQueue) ? WS.videoThumbPriorityQueue.length : 0;
+      const queueLen = Array.isArray(WS.videoThumbQueue) ? WS.videoThumbQueue.length : 0;
+      const inFlight = (WS.videoThumbInFlightIds instanceof Set) ? WS.videoThumbInFlightIds.size : 0;
+      return Math.max(0, priorityLen + queueLen + inFlight);
+    }
+
+    async function prewarmVideoThumbsBeforeInitialRender() {
+      if (!WS.root) return;
+      const mode = currentVideoThumbMode();
+      const targets = [];
+      for (const rec of WS.fileById.values()) {
+        if (!rec || rec.type !== "video") continue;
+        if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
+        targets.push(rec);
+      }
+      const total = targets.length;
+      if (!total) return;
+
+      let overlayShown = false;
+      WS.videoThumbPrewarmBlocking = true;
+      try {
+        for (let i = 0; i < targets.length; i++) {
+          enqueueVideoThumb(targets[i], { deferDrain: true, priority: true });
+        }
+        drainVideoThumbQueue();
+        while (true) {
+          const pending = videoThumbPendingCount();
+          const done = Math.max(0, total - pending);
+          showBusyOverlay(`Preparing video thumbnails... ${done}/${total}`);
+          overlayShown = true;
+          if (pending <= 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 120));
+        }
+      } finally {
+        WS.videoThumbPrewarmBlocking = false;
+        if (overlayShown) hideBusyOverlay();
+      }
+    }
+
+    function removeVideoThumbIdFromQueue(queue, id) {
+      if (!Array.isArray(queue)) return false;
+      const idx = queue.indexOf(String(id || ""));
+      if (idx < 0) return false;
+      queue.splice(idx, 1);
+      return true;
+    }
+
     function enqueueVideoThumb(rec, opts = null) {
       if (!rec || rec.type !== "video") return false;
       const id = String(rec.id || "");
       if (!id) return false;
       const mode = currentVideoThumbMode();
+      const deferDrain = !!(opts && opts.deferDrain);
+      const priority = !opts || opts.priority !== false;
       if (rec.videoThumbUrl && rec.videoThumbMode === mode) return false;
+      if (!Array.isArray(WS.videoThumbPriorityQueue)) WS.videoThumbPriorityQueue = [];
+      if (!Array.isArray(WS.videoThumbQueue)) WS.videoThumbQueue = [];
       if (!(WS.videoThumbQueuedIds instanceof Set)) WS.videoThumbQueuedIds = new Set();
       if (!(WS.videoThumbInFlightIds instanceof Set)) WS.videoThumbInFlightIds = new Set();
-      if (WS.videoThumbQueuedIds.has(id) || WS.videoThumbInFlightIds.has(id)) return false;
-      WS.videoThumbQueue.push(id);
-      WS.videoThumbQueuedIds.add(id);
-      if (!(opts && opts.deferDrain)) drainVideoThumbQueue();
-      return true;
+      if (!(WS.videoThumbInFlightBackgroundIds instanceof Set)) WS.videoThumbInFlightBackgroundIds = new Set();
+
+      let changed = false;
+      if (WS.videoThumbQueuedIds.has(id)) {
+        if (priority && removeVideoThumbIdFromQueue(WS.videoThumbQueue, id)) {
+          WS.videoThumbPriorityQueue.push(id);
+          changed = true;
+        }
+      } else if (!WS.videoThumbInFlightIds.has(id)) {
+        if (priority) WS.videoThumbPriorityQueue.push(id);
+        else WS.videoThumbQueue.push(id);
+        WS.videoThumbQueuedIds.add(id);
+        changed = true;
+      }
+
+      if (!deferDrain) drainVideoThumbQueue();
+      return changed;
     }
 
     function getPreviewFileIdsForDir(dirNode, includeChildren = false) {
@@ -17424,7 +17502,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "video") continue;
         if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
-        enqueueVideoThumb(rec);
+        enqueueVideoThumb(rec, { priority: true });
       }
       drainVideoThumbQueue();
     }
@@ -17445,7 +17523,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         const id = String(rec.id || "");
         if (previewPriorityIds.has(id)) continue;
         if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
-        enqueueVideoThumb(rec, { deferDrain: true });
+        enqueueVideoThumb(rec, { deferDrain: true, priority: false });
       }
       drainVideoThumbQueue();
     }
@@ -17462,11 +17540,22 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     async function drainVideoThumbQueue() {
+      const MAX_VIDEO_THUMB_ACTIVE = 4;
+      const MAX_VIDEO_THUMB_BACKGROUND_ACTIVE = 2;
+      if (!Array.isArray(WS.videoThumbPriorityQueue)) WS.videoThumbPriorityQueue = [];
+      if (!Array.isArray(WS.videoThumbQueue)) WS.videoThumbQueue = [];
       if (!(WS.videoThumbQueuedIds instanceof Set)) WS.videoThumbQueuedIds = new Set();
       if (!(WS.videoThumbInFlightIds instanceof Set)) WS.videoThumbInFlightIds = new Set();
-      if (WS.videoThumbActive >= 4) return;
-      while (WS.videoThumbActive < 4 && WS.videoThumbQueue.length) {
-        const id = String(WS.videoThumbQueue.shift() || "");
+      if (!(WS.videoThumbInFlightBackgroundIds instanceof Set)) WS.videoThumbInFlightBackgroundIds = new Set();
+      if (WS.videoThumbActive >= MAX_VIDEO_THUMB_ACTIVE) return;
+      while (WS.videoThumbActive < MAX_VIDEO_THUMB_ACTIVE) {
+        const fromPriority = WS.videoThumbPriorityQueue.length > 0;
+        if (!fromPriority && WS.videoThumbQueue.length <= 0) break;
+        if (!fromPriority && WS.videoThumbInFlightBackgroundIds.size >= MAX_VIDEO_THUMB_BACKGROUND_ACTIVE) break;
+
+        const id = String(fromPriority
+          ? (WS.videoThumbPriorityQueue.shift() || "")
+          : (WS.videoThumbQueue.shift() || ""));
         if (!id) continue;
         WS.videoThumbQueuedIds.delete(id);
         if (WS.videoThumbInFlightIds.has(id)) continue;
@@ -17476,12 +17565,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
 
         WS.videoThumbInFlightIds.add(id);
+        if (!fromPriority) WS.videoThumbInFlightBackgroundIds.add(id);
         WS.videoThumbActive++;
         generateVideoThumb(rec).catch(() => {}).finally(() => {
           WS.videoThumbInFlightIds.delete(id);
+          WS.videoThumbInFlightBackgroundIds.delete(id);
           WS.videoThumbActive = Math.max(0, (WS.videoThumbActive | 0) - 1);
-          renderPreviewPane(false);
-          refreshDirectoryInlinePreviewThumbForRecord(rec);
+          if (!WS.videoThumbPrewarmBlocking) {
+            renderPreviewPane(false);
+            refreshDirectoryInlinePreviewThumbForRecord(rec);
+          }
           drainVideoThumbQueue();
         });
       }
@@ -17508,6 +17601,29 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         videoEl.addEventListener("canplay", onReady);
         timer = setTimeout(finish, Math.max(300, timeoutMs | 0));
         onReady();
+      });
+    }
+
+    async function waitForVideoMetadata(videoEl, timeoutMs = 2500) {
+      if (!videoEl) return;
+      if (videoEl.readyState >= 1 && Number(videoEl.videoWidth || 0) > 0 && Number(videoEl.videoHeight || 0) > 0) return;
+      await new Promise((resolve, reject) => {
+        let done = false;
+        let timer = 0;
+        const finish = (err = null) => {
+          if (done) return;
+          done = true;
+          if (timer) clearTimeout(timer);
+          try { videoEl.removeEventListener("loadedmetadata", onMeta); } catch {}
+          try { videoEl.removeEventListener("error", onErr); } catch {}
+          if (err) reject(err);
+          else resolve();
+        };
+        const onMeta = () => finish();
+        const onErr = () => finish(new Error("video load failed"));
+        try { videoEl.addEventListener("loadedmetadata", onMeta); } catch {}
+        try { videoEl.addEventListener("error", onErr); } catch {}
+        timer = setTimeout(() => finish(new Error("video metadata timeout")), Math.max(400, timeoutMs | 0));
       });
     }
 
@@ -17656,12 +17772,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       v.src = url;
 
       try {
-        await new Promise((resolve, reject) => {
-          const onMeta = () => resolve();
-          const onErr = () => reject(new Error("video load failed"));
-          v.addEventListener("loadedmetadata", onMeta, { once: true });
-          v.addEventListener("error", onErr, { once: true });
-        });
+        await waitForVideoMetadata(v, 2500);
         await waitForVideoLoadedData(v, 1500);
 
         const seekTimes = computeVideoThumbSeekTimes(v.duration || 0, metaGetVideoThumbnailTimeForRecord(rec));
