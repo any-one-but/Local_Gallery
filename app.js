@@ -5456,16 +5456,126 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return "quad";
     }
 
-    function tagThumbnailKeyForTag(tagName) {
+    function tagThumbnailKeyForTag(tagName, scopePath = null) {
       const tag = normalizeTag(String(tagName || ""));
       if (!tag) return "";
-      return `tag:${tag}`;
+      if (scopePath == null) return `tag:${tag}`;
+      const scopeKey = tagThumbnailScopeKeyFromPath(scopePath);
+      return `tag-scope:${encodeURIComponent(tag)}:${encodeURIComponent(scopeKey)}`;
     }
 
-    function tagThumbnailKeyForAlbum(albumName) {
+    function tagThumbnailKeyForAlbum(albumName, scopePath = null) {
       const album = normalizeTagAlbumName(String(albumName || ""));
       if (!album) return "";
-      return `tag-album:${album}`;
+      if (scopePath == null) return `tag-album:${album}`;
+      const scopeKey = tagThumbnailScopeKeyFromPath(scopePath);
+      return `tag-album-scope:${encodeURIComponent(album)}:${encodeURIComponent(scopeKey)}`;
+    }
+
+    function parseTagThumbnailStructuredKey(tagKey) {
+      const key = String(tagKey || "");
+      if (!key) return null;
+      if (key.startsWith("tag-scope:")) {
+        const body = key.slice("tag-scope:".length);
+        const sep = body.indexOf(":");
+        if (sep <= 0) return null;
+        try {
+          const tag = normalizeTag(decodeURIComponent(body.slice(0, sep)));
+          const scopeRaw = decodeURIComponent(body.slice(sep + 1));
+          const scopePath = tagThumbnailScopePathFromKey(scopeRaw);
+          if (!tag) return null;
+          return { kind: "tag", value: tag, scopePath, scoped: true };
+        } catch {
+          return null;
+        }
+      }
+      if (key.startsWith("tag-album-scope:")) {
+        const body = key.slice("tag-album-scope:".length);
+        const sep = body.indexOf(":");
+        if (sep <= 0) return null;
+        try {
+          const album = normalizeTagAlbumName(decodeURIComponent(body.slice(0, sep)));
+          const scopeRaw = decodeURIComponent(body.slice(sep + 1));
+          const scopePath = tagThumbnailScopePathFromKey(scopeRaw);
+          if (!album) return null;
+          return { kind: "album", value: album, scopePath, scoped: true };
+        } catch {
+          return null;
+        }
+      }
+      if (key.startsWith("tag:")) {
+        const tag = normalizeTag(key.slice(4));
+        if (!tag) return null;
+        return { kind: "tag", value: tag, scopePath: "", scoped: false };
+      }
+      if (key.startsWith("tag-album:")) {
+        const album = normalizeTagAlbumName(key.slice("tag-album:".length));
+        if (!album) return null;
+        return { kind: "album", value: album, scopePath: "", scoped: false };
+      }
+      return null;
+    }
+
+    function tagThumbnailScopeLabelForPath(scopePath) {
+      const normalized = normalizeDirPathValue(scopePath);
+      if (!normalized) return "root";
+      const node = WS.dirByPath.get(normalized) || null;
+      return displayPath(normalized) || dirDisplayName(node) || normalized || "folder";
+    }
+
+    function getAllTagThumbnailStateKeys() {
+      const out = new Set();
+      if (WS.meta && WS.meta.tagThumbModes) {
+        for (const key of WS.meta.tagThumbModes.keys()) {
+          const raw = String(key || "");
+          if (raw) out.add(raw);
+        }
+      }
+      if (WS.meta && WS.meta.tagThumbPresets) {
+        for (const key of WS.meta.tagThumbPresets.keys()) {
+          const raw = String(key || "");
+          if (raw) out.add(raw);
+        }
+      }
+      return Array.from(out);
+    }
+
+    function rekeyTagThumbnailState(oldKey, newKey) {
+      const source = String(oldKey || "");
+      const target = String(newKey || "");
+      if (!source || !target || source === target) return false;
+      let changed = false;
+      if (WS.meta && WS.meta.tagThumbModes && WS.meta.tagThumbModes.has(source)) {
+        const oldMode = metaGetTagThumbnailModeByKey(source);
+        if (!WS.meta.tagThumbModes.has(target)) {
+          WS.meta.tagThumbModes.set(target, oldMode);
+        }
+        WS.meta.tagThumbModes.delete(source);
+        changed = true;
+      }
+      if (WS.meta && WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.has(source)) {
+        const oldPreset = metaGetTagThumbnailPresetRelPathByKey(source);
+        if (!WS.meta.tagThumbPresets.has(target) && oldPreset) {
+          WS.meta.tagThumbPresets.set(target, oldPreset);
+        }
+        WS.meta.tagThumbPresets.delete(source);
+        changed = true;
+      }
+      return changed;
+    }
+
+    function clearTagThumbnailStateByMatch(matchFn) {
+      if (typeof matchFn !== "function") return false;
+      const keys = getAllTagThumbnailStateKeys();
+      let changed = false;
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        if (!key || !matchFn(key)) continue;
+        const modeChanged = !!(WS.meta && WS.meta.tagThumbModes && WS.meta.tagThumbModes.delete(key));
+        const presetChanged = !!(WS.meta && WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(key));
+        if (modeChanged || presetChanged) changed = true;
+      }
+      return changed;
     }
 
     function tagThumbnailScopeKeyFromPath(path) {
@@ -5484,17 +5594,17 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
     function tagThumbnailKeyForEntry(entry) {
       if (!entry || entry.kind !== "tag") return "";
+      const scopePath = String(entry.originPath != null ? entry.originPath : (WS.nav?.dirNode?.path || ""));
       if (entry.special) {
         if (entry.special === "favorites") {
-          const scopePath = String(entry.originPath != null ? entry.originPath : (WS.nav?.dirNode?.path || ""));
           return `special:favorites:${tagThumbnailScopeKeyFromPath(scopePath)}`;
         }
         return `special:${String(entry.special || "")}`;
       }
       if (entry.album && !entry.tag) {
-        return tagThumbnailKeyForAlbum(entry.album);
+        return tagThumbnailKeyForAlbum(entry.album, scopePath);
       }
-      return tagThumbnailKeyForTag(entry.tag || "");
+      return tagThumbnailKeyForTag(entry.tag || "", scopePath);
     }
 
     function metaGetTagThumbnailModeByKey(tagKey) {
@@ -8687,9 +8797,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     const ROTATING_PREVIEW_INDEX = new Map();
     const ROTATING_PREVIEW_NEXT_AT = new Map();
     let ROTATING_PREVIEW_TIMER = 0;
-    const ROTATING_PREVIEW_INTERVAL_MS = 6000;
-    const ROTATING_PREVIEW_JITTER_MS = 2000;
-    const ROTATING_PREVIEW_POLL_MS = 550;
+    const ROTATING_PREVIEW_INTERVAL_MS = 24000;
+    const ROTATING_PREVIEW_JITTER_RATIO = 0.5;
+    const ROTATING_PREVIEW_JITTER_MS = Math.round(ROTATING_PREVIEW_INTERVAL_MS * ROTATING_PREVIEW_JITTER_RATIO);
+    const ROTATING_PREVIEW_POLL_MS = 1000;
     const ROTATING_PREVIEW_FADE_MS = 900;
 
     function shuffleArrayInPlace(arr) {
@@ -9174,14 +9285,24 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     function tagThumbnailLabelForKey(tagKey) {
       const key = String(tagKey || "");
       if (!key) return "tag";
-      if (key.startsWith("tag:")) return key.slice(4) || "tag";
-      if (key.startsWith("tag-album:")) return `Album ${key.slice("tag-album:".length) || "tag"}`;
+      const parsed = parseTagThumbnailStructuredKey(key);
+      if (parsed) {
+        const value = String(parsed.value || "");
+        const scopeLabel = parsed.scoped ? tagThumbnailScopeLabelForPath(parsed.scopePath) : "";
+        if (parsed.kind === "tag") {
+          if (!value) return "tag";
+          return parsed.scoped ? `${value} in ${scopeLabel}` : value;
+        }
+        if (parsed.kind === "album") {
+          if (!value) return "Album";
+          return parsed.scoped ? `Album ${value} in ${scopeLabel}` : `Album ${value}`;
+        }
+      }
       if (key === rootThumbnailKey()) return "Root";
       if (key.startsWith("special:favorites:")) {
         const scope = key.slice("special:favorites:".length);
         const scopePath = tagThumbnailScopePathFromKey(scope);
-        const node = WS.dirByPath.get(scopePath) || null;
-        const scopeLabel = node ? dirDisplayName(node) : "folder";
+        const scopeLabel = tagThumbnailScopeLabelForPath(scopePath);
         return `Favorites in ${scopeLabel}`;
       }
       if (key === "special:favorites") return "Favorites";
@@ -9196,26 +9317,29 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const seen = new Set();
       let cur = WS.dirByPath.get(String(rec?.dirPath || "")) || null;
       while (cur) {
+        const scopeNode = cur.parent || WS.root || null;
+        const scopePath = String(scopeNode ? scopeNode.path || "" : "");
+        const scopeLabel = tagThumbnailScopeLabelForPath(scopePath);
         const tags = metaGetUserTags(cur.path || "");
         for (let i = 0; i < tags.length; i++) {
           const tag = normalizeTag(tags[i] || "");
           if (!tag) continue;
-          const key = tagThumbnailKeyForTag(tag);
+          const key = tagThumbnailKeyForTag(tag, scopePath);
           if (!key || seen.has(key)) continue;
           seen.add(key);
           out.push({
             key,
-            label: tag,
-            actionLabel: `Set '${tag}' thumbnail`
+            label: `${tag} in ${scopeLabel}`,
+            actionLabel: `Set '${tag}' thumbnail in ${scopeLabel}`
           });
           const album = metaGetTagAlbumForTag(tag);
-          const albumKey = tagThumbnailKeyForAlbum(album);
+          const albumKey = tagThumbnailKeyForAlbum(album, scopePath);
           if (album && albumKey && !seen.has(albumKey)) {
             seen.add(albumKey);
             out.push({
               key: albumKey,
-              label: `Album: ${album}`,
-              actionLabel: `Set '${album}' album thumbnail`
+              label: `Album: ${album} in ${scopeLabel}`,
+              actionLabel: `Set '${album}' album thumbnail in ${scopeLabel}`
             });
           }
         }
@@ -9242,22 +9366,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
     function getFolderThumbnailTargetsForRecord(rec) {
       const out = [];
-      if (!rec || !WS.root) return out;
+      if (!rec) return out;
       const startPath = String(rec.dirPath || "");
       const seen = new Set();
       let cur = WS.dirByPath.get(startPath) || null;
       while (cur) {
         const p = String(cur.path || "");
-        const key = p || "__root__";
+        const key = p;
         if (!seen.has(key)) {
           seen.add(key);
-          if (!p) {
-            out.push({
-              path: "",
-              label: "Root",
-              actionLabel: "Set root thumbnail"
-            });
-          } else {
+          if (p) {
             const folderLabel = displayPath(p) || dirDisplayName(cur) || "folder";
             out.push({
               path: p,
@@ -9268,7 +9386,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         }
         cur = cur.parent || null;
       }
-      if (!out.length) {
+      if (!out.some((item) => String(item?.path || "") === "")) {
         out.push({
           path: "",
           label: "Root",
@@ -10009,8 +10127,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         ROTATING_PREVIEW_INDEX.set(k, 0);
       }
       if (!ROTATING_PREVIEW_NEXT_AT.has(k)) {
-        const initialDelay = (ROTATING_PREVIEW_INTERVAL_MS * 0.6) + (Math.random() * ROTATING_PREVIEW_INTERVAL_MS * 0.8);
-        ROTATING_PREVIEW_NEXT_AT.set(k, Date.now() + initialDelay);
+        const initialDelay = ROTATING_PREVIEW_INTERVAL_MS + ((Math.random() * 2 - 1) * ROTATING_PREVIEW_JITTER_MS);
+        ROTATING_PREVIEW_NEXT_AT.set(k, Date.now() + Math.max(ROTATING_PREVIEW_POLL_MS, initialDelay));
       }
       ensureRotatingPreviewTicker();
     }
@@ -10275,7 +10393,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         if (!rec) continue;
         list.forEach((imgEl) => crossfadePreviewRecordOnImageElement(imgEl, rec));
         let nextDelay = ROTATING_PREVIEW_INTERVAL_MS + ((Math.random() * 2 - 1) * ROTATING_PREVIEW_JITTER_MS);
-        if (!Number.isFinite(nextDelay) || nextDelay < 3000) nextDelay = 3000;
+        const minDelay = Math.max(3000, Math.floor(ROTATING_PREVIEW_INTERVAL_MS * 0.2));
+        if (!Number.isFinite(nextDelay) || nextDelay < minDelay) nextDelay = minDelay;
         ROTATING_PREVIEW_NEXT_AT.set(key, now + nextDelay);
         const grid = list[0] ? list[0].closest(".fitInsideJustified") : null;
         if (grid) requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
@@ -13629,27 +13748,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         }
         if (metaWriteUserTags(p, deduped)) changed = true;
       }
-      const oldKey = tagThumbnailKeyForTag(normalizedOld);
-      const newKey = tagThumbnailKeyForTag(normalizedNew);
-      if (oldKey && newKey) {
-        let metaChanged = false;
-        const oldMode = metaGetTagThumbnailModeByKey(oldKey);
-        const oldPreset = metaGetTagThumbnailPresetRelPathByKey(oldKey);
-        if (WS.meta.tagThumbModes.has(oldKey)) {
-          if (!WS.meta.tagThumbModes.has(newKey)) {
-            WS.meta.tagThumbModes.set(newKey, oldMode);
-          }
-          WS.meta.tagThumbModes.delete(oldKey);
-          metaChanged = true;
-        }
-        if (WS.meta.tagThumbPresets.has(oldKey)) {
-          if (!WS.meta.tagThumbPresets.has(newKey) && oldPreset) {
-            WS.meta.tagThumbPresets.set(newKey, oldPreset);
-          }
-          WS.meta.tagThumbPresets.delete(oldKey);
-          metaChanged = true;
-        }
-        if (metaChanged) changed = true;
+      const thumbKeys = getAllTagThumbnailStateKeys();
+      for (let i = 0; i < thumbKeys.length; i++) {
+        const oldKey = thumbKeys[i];
+        const parsed = parseTagThumbnailStructuredKey(oldKey);
+        if (!parsed || parsed.kind !== "tag" || String(parsed.value || "") !== normalizedOld) continue;
+        const newKey = parsed.scoped
+          ? tagThumbnailKeyForTag(normalizedNew, parsed.scopePath)
+          : tagThumbnailKeyForTag(normalizedNew);
+        if (!newKey) continue;
+        if (rekeyTagThumbnailState(oldKey, newKey)) changed = true;
       }
       const oldAlbum = metaGetTagAlbumForTag(normalizedOld);
       if (oldAlbum) {
@@ -13674,12 +13782,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         const filtered = tags.filter(t => t !== normalized);
         if (metaWriteUserTags(p, filtered)) changed = true;
       }
-      const key = tagThumbnailKeyForTag(normalized);
-      if (key) {
-        const modeChanged = WS.meta.tagThumbModes && WS.meta.tagThumbModes.delete(key);
-        const presetChanged = WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(key);
-        if (modeChanged || presetChanged) changed = true;
-      }
+      if (clearTagThumbnailStateByMatch((key) => {
+        const parsed = parseTagThumbnailStructuredKey(key);
+        return !!parsed && parsed.kind === "tag" && String(parsed.value || "") === normalized;
+      })) changed = true;
       if (metaSetTagAlbumForTag(normalized, "")) changed = true;
       return changed;
     }
@@ -13701,12 +13807,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           }
         }
       }
-      const albumKey = tagThumbnailKeyForAlbum(album);
-      if (albumKey) {
-        const modeChanged = WS.meta.tagThumbModes && WS.meta.tagThumbModes.delete(albumKey);
-        const presetChanged = WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(albumKey);
-        if (modeChanged || presetChanged) changed = true;
-      }
+      if (clearTagThumbnailStateByMatch((key) => {
+        const parsed = parseTagThumbnailStructuredKey(key);
+        return !!parsed && parsed.kind === "album" && String(parsed.value || "") === album;
+      })) changed = true;
       return { changed, clearedTags, album };
     }
 
