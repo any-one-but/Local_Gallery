@@ -13551,6 +13551,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         btn.textContent = label;
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
+          closeActionMenus();
+          renderDirectoriesPane(true);
           onClick();
         });
         return btn;
@@ -14867,7 +14869,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
               btn.addEventListener("click", async (e) => {
                 e.stopPropagation();
                 const action = btn.getAttribute("data-action");
-                WS.view.dirActionMenuPath = "";
+                closeActionMenus();
+                renderDirectoriesPane(true);
                 await runFolderActionFromMenu(action, entry.node);
               });
             });
@@ -14982,7 +14985,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
               btn.addEventListener("click", async (e) => {
                 e.stopPropagation();
                 const action = btn.getAttribute("data-action");
-                WS.view.fileActionMenuId = "";
+                closeActionMenus();
+                renderDirectoriesPane(true);
                 await runFileActionFromMenu(String(action || ""), String(entry.id || ""), row);
               });
             });
@@ -15212,7 +15216,6 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (!hasActionMenu && !hasPreviewMenu) return;
       if (target && target.closest) {
         if (target.closest(".dirMenu")) return;
-        if (target.closest("#directoriesActionRow")) return;
       }
       closeActionMenus();
       renderDirectoriesPane(true);
