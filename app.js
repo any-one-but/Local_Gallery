@@ -317,6 +317,7 @@
         leftPaneWidthPct: 0.28,
         treatTagsAsFolders: true,
         showGridUpDirectoryEntry: true,
+        showRootView: true,
         showHiddenFolder: false,
         showUntaggedFolder: false,
         showTagFolderSpacerRow: false,
@@ -401,6 +402,7 @@
         colorScheme: "superdark",
         treatTagsAsFolders: d.treatTagsAsFolders,
         showGridUpDirectoryEntry: (typeof src.showGridUpDirectoryEntry === "boolean") ? src.showGridUpDirectoryEntry : d.showGridUpDirectoryEntry,
+        showRootView: (typeof src.showRootView === "boolean") ? src.showRootView : d.showRootView,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
         showTagFolderSpacerRow: (typeof src.showTagFolderSpacerRow === "boolean") ? src.showTagFolderSpacerRow : d.showTagFolderSpacerRow,
@@ -2900,6 +2902,7 @@
 
     function resetWorkspace() {
       revokeAllObjectURLs();
+      invalidateDirMetricsCaches();
       WS.root = null;
       WS.fileById.clear();
       WS.dirByPath.clear();
@@ -4200,9 +4203,10 @@ ${makeSelectRow("Interaction mode", "Choose between full-screen Grid Mode and cl
 ${makeSelectRow("Folder sort", "Sort folders by name, score, recursive size, recursive count, or non-recursive count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes)}
 ${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
 ${makeCheckRow("Show Up Directory item", "Show the synthetic Up Directory tile in Grid Mode folders.", "opt_showGridUpDirectoryEntry", !!opt.showGridUpDirectoryEntry)}
+${makeCheckRow("Show root view", "Allow navigating above the root to a single root-folder portal card.", "opt_showRootView", opt.showRootView !== false)}
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
-${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag near the top of the root directories pane when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
+${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag in any folder view when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
           `
         },
@@ -4390,6 +4394,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         renderDirectoriesPane(true);
         renderPreviewPane(false, true);
         syncButtons();
+      });
+      bindCheck("opt_showRootView", "showRootView", (enabled) => {
+        if (enabled) return;
+        if (WS.view.aboveRootView) {
+          WS.view.aboveRootView = false;
+          if (!WS.nav.dirNode && WS.root) WS.nav.dirNode = WS.root;
+        }
+        initDirHistory();
       });
       bindCheck("opt_showHiddenFolder", "showHiddenFolder", (enabled) => {
         if (!enabled && WS.view.tagFolderActiveMode === "hidden") {
@@ -6723,7 +6735,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       // Initialize Directories Pane at root listing
       WS.nav.dirNode = WS.root;
-      WS.view.aboveRootView = !isGridInteractionMode();
+      WS.view.aboveRootView = showRootViewEnabled() ? !isGridInteractionMode() : false;
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncTagUiForCurrentDir();
@@ -6840,7 +6852,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       try { await hydrateEditedThumbnailAspects(); } catch {}
 
       WS.nav.dirNode = WS.root;
-      WS.view.aboveRootView = !isGridInteractionMode();
+      WS.view.aboveRootView = showRootViewEnabled() ? !isGridInteractionMode() : false;
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncTagUiForCurrentDir();
@@ -6908,7 +6920,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.view.loopWithinDir = viewState.loopWithinDir;
       WS.view.folderBehavior = normalizeFolderBehavior(viewState.folderBehavior, "slide");
       WS.view.folderScoreDisplay = viewState.folderScoreDisplay;
-      WS.view.aboveRootView = !!viewState.aboveRootView;
+      WS.view.aboveRootView = !!viewState.aboveRootView && showRootViewEnabled();
       WS.view.tagFolderActiveMode = String(viewState.tagFolderActiveMode || "");
       WS.view.tagFolderActiveTag = String(viewState.tagFolderActiveTag || "");
       WS.view.tagFolderActiveAlbum = String(viewState.tagFolderActiveAlbum || "");
@@ -7592,6 +7604,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
        Sorting helpers
        ========================================================= */
 
+    let DIR_SORT_METRICS_CACHE = null;
+    let DIR_ITEM_COUNT_CACHE = new Map();
+    let DIR_ITEM_COUNT_CACHE_FILTER_MODE = "";
+
+    function invalidateDirMetricsCaches() {
+      DIR_SORT_METRICS_CACHE = null;
+      DIR_ITEM_COUNT_CACHE = new Map();
+      DIR_ITEM_COUNT_CACHE_FILTER_MODE = "";
+    }
+
     function byName(a, b) {
       return compareIndexedNames(a?.name || "", b?.name || "");
     }
@@ -7627,6 +7649,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     function buildDirSortMetrics() {
+      if (DIR_SORT_METRICS_CACHE) return DIR_SORT_METRICS_CACHE;
       const sizeByPath = new Map();
       const recursiveCountByPath = new Map();
       const nonRecursiveCountByPath = new Map();
@@ -7663,7 +7686,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         nonRecursiveCountByPath.set(path, ownCount);
       })(WS.root);
 
-      return { sizeByPath, recursiveCountByPath, nonRecursiveCountByPath };
+      DIR_SORT_METRICS_CACHE = { sizeByPath, recursiveCountByPath, nonRecursiveCountByPath };
+      return DIR_SORT_METRICS_CACHE;
     }
 
     function randomActionMode() {
@@ -7775,12 +7799,21 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     function dirItemCount(node) {
+      if (!node) return 0;
+      const filterMode = String(WS?.view?.filterMode || "all");
+      if (DIR_ITEM_COUNT_CACHE_FILTER_MODE !== filterMode) {
+        DIR_ITEM_COUNT_CACHE_FILTER_MODE = filterMode;
+        DIR_ITEM_COUNT_CACHE.clear();
+      }
+      const pathKey = String(node.path || "");
+      if (DIR_ITEM_COUNT_CACHE.has(pathKey)) return DIR_ITEM_COUNT_CACHE.get(pathKey) || 0;
       let c = 0;
       for (const id of node.childrenFiles) {
         const rec = WS.fileById.get(id);
         if (passesFilter(rec)) c++;
       }
       for (const d of node.childrenDirs) c += dirItemCount(d);
+      DIR_ITEM_COUNT_CACHE.set(pathKey, c);
       return c;
     }
 
@@ -7828,6 +7861,243 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     const DIR_FILE_DRAG = { id: null, dirPath: null };
+    const DIRECTORIES_GRID_DRAG_STATE = {
+      placeholder: null,
+      container: null,
+      draggedId: null,
+      draggedRow: null,
+      dirNode: null,
+      visibleIds: null,
+      raf: 0,
+      lastX: 0,
+      lastY: 0,
+      pendingHide: false
+    };
+
+    function ensureDirectoriesGridDragPlaceholder(row) {
+      if (!DIRECTORIES_GRID_DRAG_STATE.placeholder) {
+        const ph = document.createElement("div");
+        ph.className = "dirRow fileRow drag-placeholder";
+        ph.setAttribute("aria-hidden", "true");
+        DIRECTORIES_GRID_DRAG_STATE.placeholder = ph;
+      }
+      const rect = row.getBoundingClientRect();
+      const ph = DIRECTORIES_GRID_DRAG_STATE.placeholder;
+      ph.style.width = `${Math.max(1, Math.round(rect.width))}px`;
+      ph.style.height = `${Math.max(1, Math.round(rect.height))}px`;
+      return ph;
+    }
+
+    function placeDirectoriesGridDragPlaceholder(row) {
+      const container = row?.parentElement || directoriesListEl;
+      if (!container || !row) return;
+      const ph = ensureDirectoriesGridDragPlaceholder(row);
+      if (ph.parentElement && ph.parentElement !== container) {
+        ph.parentElement.removeChild(ph);
+      }
+      DIRECTORIES_GRID_DRAG_STATE.container = container;
+      if (row !== ph) container.insertBefore(ph, row);
+    }
+
+    function clearDirectoriesGridDragPlaceholder() {
+      const ph = DIRECTORIES_GRID_DRAG_STATE.placeholder;
+      if (ph && ph.parentElement) ph.parentElement.removeChild(ph);
+      DIRECTORIES_GRID_DRAG_STATE.container = null;
+    }
+
+    function getDirectoriesGridDragRows(container) {
+      if (!container) return [];
+      return Array.from(container.querySelectorAll(".dirRow.fileRow[data-file-id]"))
+        .filter((row) => !row.classList.contains("drag-placeholder") && !row.classList.contains("drag-hidden"));
+    }
+
+    function updateDirectoriesGridPlaceholderFromPoint(container, x, y) {
+      const rows = getDirectoriesGridDragRows(container);
+      if (!rows.length) {
+        const ph = DIRECTORIES_GRID_DRAG_STATE.placeholder;
+        if (ph) container.appendChild(ph);
+        return;
+      }
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        const rowMid = rect.top + rect.height / 2;
+        if (y < rowMid) {
+          placeDirectoriesGridDragPlaceholder(row);
+          return;
+        }
+        if (y >= rect.top && y <= rect.bottom) {
+          const colMid = rect.left + rect.width / 2;
+          if (x < colMid) {
+            placeDirectoriesGridDragPlaceholder(row);
+            return;
+          }
+        }
+      }
+      const ph = DIRECTORIES_GRID_DRAG_STATE.placeholder;
+      if (ph) container.appendChild(ph);
+    }
+
+    function scheduleDirectoriesGridDragUpdate(container, x, y) {
+      DIRECTORIES_GRID_DRAG_STATE.lastX = x;
+      DIRECTORIES_GRID_DRAG_STATE.lastY = y;
+      if (DIRECTORIES_GRID_DRAG_STATE.raf) return;
+      DIRECTORIES_GRID_DRAG_STATE.raf = requestAnimationFrame(() => {
+        DIRECTORIES_GRID_DRAG_STATE.raf = 0;
+        updateDirectoriesGridPlaceholderFromPoint(
+          container,
+          DIRECTORIES_GRID_DRAG_STATE.lastX,
+          DIRECTORIES_GRID_DRAG_STATE.lastY
+        );
+      });
+    }
+
+    function beginDirectoriesGridFileDrag(row, dragDir, visibleIds) {
+      DIRECTORIES_GRID_DRAG_STATE.draggedRow = row;
+      DIRECTORIES_GRID_DRAG_STATE.draggedId = String(row?.dataset?.fileId || "");
+      DIRECTORIES_GRID_DRAG_STATE.dirNode = dragDir;
+      DIRECTORIES_GRID_DRAG_STATE.visibleIds = Array.isArray(visibleIds)
+        ? visibleIds.map((id) => String(id || ""))
+        : null;
+      DIRECTORIES_GRID_DRAG_STATE.container = row?.parentElement || null;
+      DIRECTORIES_GRID_DRAG_STATE.pendingHide = true;
+    }
+
+    function finishDirectoriesGridFileDrag() {
+      if (DIRECTORIES_GRID_DRAG_STATE.raf) {
+        cancelAnimationFrame(DIRECTORIES_GRID_DRAG_STATE.raf);
+        DIRECTORIES_GRID_DRAG_STATE.raf = 0;
+      }
+      const row = DIRECTORIES_GRID_DRAG_STATE.draggedRow;
+      if (row) {
+        row.classList.remove("drag-hidden");
+        row.classList.remove("dragging");
+      }
+      DIRECTORIES_GRID_DRAG_STATE.draggedRow = null;
+      DIRECTORIES_GRID_DRAG_STATE.draggedId = null;
+      DIRECTORIES_GRID_DRAG_STATE.dirNode = null;
+      DIRECTORIES_GRID_DRAG_STATE.visibleIds = null;
+      DIRECTORIES_GRID_DRAG_STATE.pendingHide = false;
+      clearDirectoriesGridDragPlaceholder();
+    }
+
+    function ensureDirectoriesGridDragHidden() {
+      if (!DIRECTORIES_GRID_DRAG_STATE.pendingHide) return;
+      const row = DIRECTORIES_GRID_DRAG_STATE.draggedRow;
+      const container = DIRECTORIES_GRID_DRAG_STATE.container || row?.parentElement || null;
+      if (!row || !container) return;
+      DIRECTORIES_GRID_DRAG_STATE.pendingHide = false;
+      placeDirectoriesGridDragPlaceholder(row);
+      row.classList.add("drag-hidden");
+    }
+
+    function setupDirectoriesGridFileDropZone(container) {
+      if (!container || container.dataset.gridFileDropBound === "1") return;
+      container.dataset.gridFileDropBound = "1";
+
+      container.addEventListener("dragover", (e) => {
+        if (!DIRECTORIES_GRID_DRAG_STATE.draggedId) return;
+        if (DIRECTORIES_GRID_DRAG_STATE.container && DIRECTORIES_GRID_DRAG_STATE.container !== container) return;
+        if (!container.classList.contains("gridModeList")) return;
+        e.preventDefault();
+        ensureDirectoriesGridDragHidden();
+        scheduleDirectoriesGridDragUpdate(container, e.clientX, e.clientY);
+      });
+
+      container.addEventListener("drop", (e) => {
+        if (!DIRECTORIES_GRID_DRAG_STATE.draggedId) return;
+        if (DIRECTORIES_GRID_DRAG_STATE.container && DIRECTORIES_GRID_DRAG_STATE.container !== container) return;
+        if (!container.classList.contains("gridModeList")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        updateDirectoriesGridPlaceholderFromPoint(container, e.clientX, e.clientY);
+        const dirNode = DIRECTORIES_GRID_DRAG_STATE.dirNode;
+        const dragId = DIRECTORIES_GRID_DRAG_STATE.draggedId;
+        const ids = (DIRECTORIES_GRID_DRAG_STATE.visibleIds && DIRECTORIES_GRID_DRAG_STATE.visibleIds.length)
+          ? DIRECTORIES_GRID_DRAG_STATE.visibleIds
+          : (dirNode ? getOrderedFileIdsForDir(dirNode) : []);
+        const list = ids.filter((id) => String(id || "") !== String(dragId));
+        const children = Array.from(container.children);
+        let insertIdx = 0;
+        for (const child of children) {
+          if (child === DIRECTORIES_GRID_DRAG_STATE.placeholder) break;
+          if (child.classList
+            && child.classList.contains("dirRow")
+            && child.classList.contains("fileRow")
+            && !child.classList.contains("drag-hidden")
+            && !child.classList.contains("drag-placeholder")) {
+            insertIdx++;
+          }
+        }
+        insertIdx = Math.max(0, Math.min(list.length, insertIdx));
+        let targetId = null;
+        let placeAfter = false;
+        if (list.length) {
+          if (insertIdx >= list.length) {
+            targetId = list[list.length - 1];
+            placeAfter = true;
+          } else {
+            targetId = list[insertIdx];
+            placeAfter = false;
+          }
+        }
+        if (dirNode && targetId) {
+          const moved = reorderFilesInDir(dirNode, dragId, targetId, placeAfter, { visibleIds: ids });
+          if (moved) syncAfterDirOrderChange(null, { preserveSelection: true });
+        }
+        DIR_FILE_DRAG.id = null;
+        DIR_FILE_DRAG.dirPath = null;
+        finishDirectoriesGridFileDrag();
+      });
+    }
+
+    function setupDirectoriesGridFileDragSource(row, dragDir, visibleIds) {
+      if (!row || row.dataset.gridFileDragBound === "1") return;
+      row.dataset.gridFileDragBound = "1";
+      const fileId = String(row.dataset.fileId || "");
+      if (!fileId || !dragDir) return;
+
+      const handleDragStart = (e) => {
+        if (!isGridInteractionMode() || !directoriesListEl || !directoriesListEl.classList.contains("gridModeList")) {
+          e.preventDefault();
+          return;
+        }
+        if (!canReorderFilesInDir(dragDir) || WS.view.bulkSelectMode) {
+          e.preventDefault();
+          return;
+        }
+        DIR_FILE_DRAG.id = fileId;
+        DIR_FILE_DRAG.dirPath = String(dragDir.path || "");
+        row.classList.add("dragging");
+        beginDirectoriesGridFileDrag(row, dragDir, visibleIds);
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "move";
+          try { e.dataTransfer.setData("text/plain", fileId); } catch {}
+          try {
+            const rect = row.getBoundingClientRect();
+            e.dataTransfer.setDragImage(row, rect.width / 2, rect.height / 2);
+          } catch {}
+        }
+      };
+
+      const handleDragEnd = () => {
+        DIR_FILE_DRAG.id = null;
+        DIR_FILE_DRAG.dirPath = null;
+        row.classList.remove("dragging");
+        finishDirectoriesGridFileDrag();
+      };
+
+      const setupDragSource = (el) => {
+        if (!el) return;
+        el.draggable = true;
+        el.addEventListener("dragstart", handleDragStart);
+        el.addEventListener("dragend", handleDragEnd);
+      };
+
+      setupDragSource(row);
+      setupDragSource(row.querySelector(".dirFileThumbCard"));
+      setupDragSource(row.querySelector(".dirInlinePreview"));
+      setupDragSource(row.querySelector(".dirFileOverlay"));
+    }
 
     function canReorderFilesInDir(dirNode) {
       if (!WS.root || !dirNode) return false;
@@ -8114,6 +8384,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return true;
     }
 
+    function showRootViewEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !(opt && opt.showRootView === false);
+    }
+
     function showHiddenFolderEnabled() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       return !!(opt && opt.showHiddenFolder);
@@ -8212,7 +8487,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (favs.length) {
         entries.push({ kind: "tag", label: "Favorites", special: "favorites", count: favs.length, originPath });
       }
-      if (showUntaggedFolderEnabled() && dirNode === WS.root) {
+      if (showUntaggedFolderEnabled()) {
         const untagged = getUntaggedDirsForNode(dirNode);
         if (untagged.length) {
           entries.push({ kind: "tag", label: "Untagged", special: "untagged", count: untagged.length, originPath });
@@ -10497,9 +10772,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     function rebuildDirectoriesEntries() {
+      invalidateDirMetricsCaches();
       WS.nav.entries = [];
 
       if (!WS.root) return;
+      if (WS.view.aboveRootView && !showRootViewEnabled()) {
+        WS.view.aboveRootView = false;
+      }
       const includeGridUpEntry = shouldIncludeGridUpDirectoryEntry();
       if (WS.view.aboveRootView && WS.nav.dirNode === WS.root) {
         WS.nav.entries.push({ kind: "dir", node: WS.root });
@@ -11253,7 +11532,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
           syncPreviewToSelection();
           renderDirectoriesPane();
-          renderPreviewPane(true);
+          renderPreviewPane(false);
           syncButtons();
           kickVideoThumbsForPreview();
           kickImageThumbsForPreview();
@@ -11269,7 +11548,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
           syncPreviewToSelection();
           renderDirectoriesPane();
-          renderPreviewPane(true);
+          renderPreviewPane(false);
           syncButtons();
           kickVideoThumbsForPreview();
           kickImageThumbsForPreview();
@@ -11278,12 +11557,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       if (WS.nav.dirNode === WS.root) {
+        if (!showRootViewEnabled()) return;
         WS.view.aboveRootView = true;
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
         syncPreviewToSelection();
         renderDirectoriesPane();
-        renderPreviewPane(true);
+        renderPreviewPane(false);
         syncButtons();
         kickVideoThumbsForPreview();
         kickImageThumbsForPreview();
@@ -11312,7 +11592,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       WS.view.pendingDirScroll = "center-selected";
       renderDirectoriesPane();
-      renderPreviewPane(true);
+      renderPreviewPane(false);
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
@@ -11335,7 +11615,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         return;
       }
       if (!WS.nav.dirNode) return;
-      if (!WS.nav.dirNode.parent && !(WS.nav.dirNode === WS.root && !WS.view.aboveRootView)) return;
+      if (!WS.nav.dirNode.parent && !(WS.nav.dirNode === WS.root && !WS.view.aboveRootView && showRootViewEnabled())) return;
       leaveDirectory();
     }
 
@@ -12553,7 +12833,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       WS.view.tagFolderOriginPath = "";
       const node = WS.dirByPath.get(String(entry.path || "")) || WS.root;
       WS.nav.dirNode = node;
-      WS.view.aboveRootView = !!entry.aboveRoot && node === WS.root;
+      WS.view.aboveRootView = !!entry.aboveRoot && node === WS.root && showRootViewEnabled();
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncHiddenUi();
@@ -14059,9 +14339,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const dirSortMetrics = buildDirSortMetrics();
       const dirSizeByPath = dirSortMetrics.sizeByPath;
       const canBulk = WS.view.bulkSelectMode && canUseBulkSelection();
+      const canReorderGridFileEntries = gridModeActive && canReorderFilesInCurrentDir();
+      const visibleFileIdsForGridReorder = canReorderGridFileEntries ? Array.from(getVisibleFileIdsInEntries()) : [];
       const selectedFilesInView = canBulk ? getSelectedFileIdsInCurrentView() : [];
       const selectedFilesInViewCount = selectedFilesInView.length;
       const parentThumbTargetByDirPath = new Map();
+      if (gridModeActive) setupDirectoriesGridFileDropZone(directoriesListEl);
+      else finishDirectoriesGridFileDrag();
       renderDirectoriesTagsHeader();
       renderDirectoriesBulkHeader();
       renderDirectoriesActionHeader();
@@ -14144,6 +14428,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         row.className = "dirRow" + (idx === WS.nav.selectedIndex ? " selected" : "");
         row.tabIndex = -1;
         row.dataset.entryIndex = String(idx);
+        if (entry.kind === "file") row.dataset.fileId = String(entry.id || "");
 
         const isTagEntry = entry.kind === "tag";
         const isUpEntry = entry.kind === "up";
@@ -15038,6 +15323,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
               closeActionMenus();
               renderDirectoriesPane(true);
             });
+          }
+
+          const fileId = String(entry.id || "");
+          if (canReorderGridFileEntries
+            && fileId
+            && String(RENAME_EDIT_FILE_ID || "") !== fileId) {
+            setupDirectoriesGridFileDragSource(row, WS.nav.dirNode || null, visibleFileIdsForGridReorder);
           }
         }
 
@@ -16220,7 +16512,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       kickImageThumbsForPreview();
     }
 
+    let PREVIEW_FILES_RENDER_TOKEN = 0;
+    function nextPreviewFilesRenderToken() {
+      PREVIEW_FILES_RENDER_TOKEN = (PREVIEW_FILES_RENDER_TOKEN + 1) >>> 0;
+      return PREVIEW_FILES_RENDER_TOKEN;
+    }
+
     function renderPreviewPane(animate = false, keepScroll = false) {
+      const previewRenderToken = nextPreviewFilesRenderToken();
       savePreviewScrollForActiveDir();
       const prevScroll = keepScroll ? previewBodyEl.scrollTop : 0;
 
@@ -16300,13 +16599,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const restoreScroll = keepScroll ? prevScroll : Math.max(0, Number(savedScroll) || 0);
 
       if (previewDisplayMode() === "expanded") {
-        renderExpandedPreviewPane(dirNode, animate, shouldRestoreScroll, restoreScroll);
+        renderExpandedPreviewPane(dirNode, animate, shouldRestoreScroll, restoreScroll, previewRenderToken);
         WS.view.previewScrollActiveKey = previewDirKey;
         return;
       }
 
       const showRootFoldersOnly = WS.view.aboveRootView && dirNode === WS.root;
-      renderFolderContents(dirNode, previewBodyEl, animate, { includeFiles: !showRootFoldersOnly });
+      renderFolderContents(dirNode, previewBodyEl, animate, { includeFiles: !showRootFoldersOnly }, previewRenderToken);
 
       if (animate) {
         requestAnimationFrame(() => {
@@ -16887,7 +17186,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       for (const grid of grids) applyFitInsideJustifiedLayout(grid);
     }
 
-    function renderFilesGrid(ids, container, animate, dirNode) {
+    function renderFilesGrid(ids, container, animate, dirNode, renderToken = PREVIEW_FILES_RENDER_TOKEN) {
       const LIMIT = 800;
       if (!ids.length) return 0;
 
@@ -16900,26 +17199,47 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (useSquareMediaCards) grid.classList.add("previewSquareCards");
       if (useNaturalAspectCards) grid.classList.add("previewNaturalAspectCards");
       if (dirNode && canReorderFilesInPreviewDir(dirNode)) setupPreviewGridDrag(grid);
-      const frag = document.createDocumentFragment();
-
-      let rendered = 0;
-      for (let i = 0; i < ids.length && rendered < LIMIT; i++) {
-        const id = ids[i];
-        const rec = WS.fileById.get(id);
-        if (!rec) continue;
-
-        const card = makePreviewFileCard(rec, animate, dirNode, ids, useFitInsideJustified, useSquareMediaCards);
-        frag.appendChild(card);
-        rendered++;
-      }
-
-      grid.appendChild(frag);
       container.appendChild(grid);
-      if (useFitInsideJustified) applyFitInsideJustifiedLayout(grid);
-      return rendered;
+
+      const visibleIds = ids.slice(0, LIMIT);
+      const totalToRender = visibleIds.length;
+      if (!totalToRender) return 0;
+      const ANIMATE_CARD_LIMIT = 96;
+      const FIRST_CHUNK = 72;
+      const NEXT_CHUNK = 56;
+      let index = 0;
+      let didFirstLayout = false;
+
+      const renderChunk = (chunkSize) => {
+        if (renderToken !== PREVIEW_FILES_RENDER_TOKEN) return;
+        if (!grid.isConnected) return;
+        const frag = document.createDocumentFragment();
+        let chunkCount = 0;
+        while (index < totalToRender && chunkCount < chunkSize) {
+          const id = visibleIds[index];
+          index++;
+          const rec = WS.fileById.get(id);
+          if (!rec) continue;
+          const shouldAnimateCard = !!animate && index <= ANIMATE_CARD_LIMIT;
+          const card = makePreviewFileCard(rec, shouldAnimateCard, dirNode, visibleIds, useFitInsideJustified, useSquareMediaCards);
+          frag.appendChild(card);
+          chunkCount++;
+        }
+        if (frag.childNodes.length) grid.appendChild(frag);
+        if (useFitInsideJustified && (!didFirstLayout || index >= totalToRender)) {
+          applyFitInsideJustifiedLayout(grid);
+          didFirstLayout = true;
+        }
+        if (index < totalToRender) {
+          requestAnimationFrame(() => renderChunk(NEXT_CHUNK));
+        }
+      };
+
+      renderChunk(FIRST_CHUNK);
+      return totalToRender;
     }
 
-    function renderFolderContents(dirNode, container, animate, opts = null) {
+    function renderFolderContents(dirNode, container, animate, opts = null, renderToken = PREVIEW_FILES_RENDER_TOKEN) {
       const folders = getChildDirsForNode(dirNode);
       const includeFiles = !(opts && opts.includeFiles === false);
       let hasContent = false;
@@ -16945,7 +17265,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       const ids = includeFiles ? getOrderedFileIdsForDir(dirNode) : [];
       if (ids.length) {
-        renderFilesGrid(ids, container, animate, dirNode);
+        renderFilesGrid(ids, container, animate, dirNode, renderToken);
         hasContent = true;
       }
 
@@ -16964,7 +17284,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       };
     }
 
-    function renderExpandedPreviewPane(dirNode, animate, keepScroll, prevScroll) {
+    function renderExpandedPreviewPane(dirNode, animate, keepScroll, prevScroll, renderToken = PREVIEW_FILES_RENDER_TOKEN) {
       previewBodyEl.innerHTML = "";
 
       const baseDirs = getChildDirsForNode(dirNode);
@@ -16998,7 +17318,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       if (baseFiles.length) {
         const section = makeSection("Files in this folder", `${baseFiles.length} files`, "");
-        renderFilesGrid(baseFiles, section, animate, dirNode);
+        renderFilesGrid(baseFiles, section, animate, dirNode, renderToken);
         previewBodyEl.appendChild(section);
         hasAny = true;
       }
@@ -17009,7 +17329,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         const childFiles = getOrderedFileIdsForDir(child).length;
         const total = childFolders + childFiles;
         const section = makeSection(nm, `${total} items`, child.path || "");
-        renderFolderContents(child, section, animate);
+        renderFolderContents(child, section, animate, null, renderToken);
         previewBodyEl.appendChild(section);
         hasAny = true;
         if (targetPath && String(child.path || "") === targetPath) scrollTarget = section;
@@ -18728,7 +19048,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (dirBackBtn) dirBackBtn.disabled = !(WS.view.dirHistoryIndex > 0);
       if (dirForwardBtn) dirForwardBtn.disabled = !(WS.view.dirHistoryIndex >= 0 && WS.view.dirHistoryIndex < WS.view.dirHistory.length - 1);
       if (dirUpBtn) {
-        const canExitRoot = WS.nav.dirNode === WS.root && !WS.view.aboveRootView;
+        const canExitRoot = WS.nav.dirNode === WS.root && !WS.view.aboveRootView && showRootViewEnabled();
         const canGoUp = !!WS.nav.dirNode && (!!WS.nav.dirNode.parent || canExitRoot);
         dirUpBtn.disabled = !canGoUp || (WS.view.dirSearchPinned && WS.view.searchRootActive) || WS.view.favoritesMode || WS.view.hiddenMode;
       }
