@@ -3699,8 +3699,13 @@
       if (!rootRows.length) {
         return `<div class="scoreBarsEmpty">No root folders available.</div>`;
       }
-      const maxAbs = Math.max(1, ...rootRows.map((row) => Math.abs(Number(row.score) || 0)));
-      const rowsHtml = rootRows.map((row) => {
+      const sortedRows = rootRows.slice().sort((a, b) => {
+        const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
+        if (scoreDiff) return scoreDiff;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+      const maxAbs = Math.max(1, ...sortedRows.map((row) => Math.abs(Number(row.score) || 0)));
+      const rowsHtml = sortedRows.map((row) => {
         const score = Number(row.score) || 0;
         const widthPct = Math.max(0, Math.min(50, Math.abs(score) / maxAbs * 50));
         const leftPct = score >= 0 ? 50 : Math.max(0, 50 - widthPct);
@@ -3724,6 +3729,42 @@
       `;
     }
 
+    function scoreHistoryRootPathFromChangedPath(path) {
+      const normalized = normalizeDirPathValue(path);
+      if (!normalized) return "";
+      const parts = normalized.split("/").filter(Boolean);
+      return parts.length ? String(parts[0] || "") : "";
+    }
+
+    function scoreHistoryRootLabelFromPath(path) {
+      const rootPath = scoreHistoryRootPathFromChangedPath(path);
+      if (!rootPath) return "root";
+      const node = WS.dirByPath.get(rootPath) || null;
+      return dirDisplayName(node) || rootPath;
+    }
+
+    function getRootScoreHistoryLinesForEntry(entry) {
+      const out = [];
+      if (!entry || !Array.isArray(entry.changed)) return out;
+      for (let i = 0; i < entry.changed.length; i++) {
+        const item = entry.changed[i];
+        if (!item || typeof item !== "object") continue;
+        const itemPath = normalizeDirPathValue(item.path);
+        if (!itemPath) continue;
+        const depth = itemPath.split("/").filter(Boolean).length;
+        if (depth !== 1) continue;
+        const delta = Number(item.delta) || 0;
+        out.push({
+          at: Number(entry.at) || Date.now(),
+          eventId: String(entry.id || ""),
+          rootPath: itemPath,
+          rootLabel: scoreHistoryRootLabelFromPath(itemPath),
+          delta
+        });
+      }
+      return out;
+    }
+
     function renderCalendarUi() {
       if (!calendarBodyEl) return;
       const history = normalizeScoreHistoryList(WS.meta && Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : []);
@@ -3734,44 +3775,34 @@
       const grouped = new Map();
       for (let i = 0; i < history.length; i++) {
         const entry = history[i];
-        const key = scoreHistoryDateKey(entry.at);
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key).push(entry);
+        const rows = getRootScoreHistoryLinesForEntry(entry);
+        for (let j = 0; j < rows.length; j++) {
+          const row = rows[j];
+          const key = scoreHistoryDateKey(row.at);
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key).push(row);
+        }
       }
       const dateKeys = Array.from(grouped.keys()).sort((a, b) => String(b).localeCompare(String(a)));
       const historyHtml = dateKeys.length
         ? dateKeys.map((key) => {
           const rows = grouped.get(key) || [];
-          const eventRowsHtml = rows.map((entry) => {
-            const changedRows = entry.changed.map((item) => {
-              const delta = Number(item.delta) || 0;
-              const deltaShown = delta > 0 ? `+${delta}` : String(delta);
-              const pathShown = String(item.path || "") || "(root)";
-              return `
-                <div class="scoreHistoryChangeRow">
-                  <span class="scoreHistoryChangePath" title="${escapeHtml(pathShown)}">${escapeHtml(pathShown)}</span>
-                  <span class="scoreHistoryChangeDelta">${escapeHtml(deltaShown)}</span>
-                  <span class="scoreHistoryChangeRange">${escapeHtml(String(item.before))} -> ${escapeHtml(String(item.after))}</span>
-                </div>
-              `;
-            }).join("");
-            const selectedCount = Array.isArray(entry.selectedPaths) ? entry.selectedPaths.length : 0;
-            const changedCount = Array.isArray(entry.changed) ? entry.changed.length : 0;
-            const actionLabel = selectedCount > 0
-              ? `${selectedCount} selected, ${changedCount} updated`
-              : `${changedCount} updated`;
+          rows.sort((a, b) => {
+            const timeDiff = (Number(b.at) || 0) - (Number(a.at) || 0);
+            if (timeDiff) return timeDiff;
+            return String(a.rootPath || "").localeCompare(String(b.rootPath || ""));
+          });
+          const lineRowsHtml = rows.map((row) => {
+            const deltaShown = row.delta > 0 ? `+${row.delta}` : String(row.delta || 0);
             return `
-              <div class="scoreHistoryEvent">
-                <div class="scoreHistoryEventHeader">
-                  <div class="scoreHistoryEventMeta">
-                    <span class="scoreHistoryTime">${escapeHtml(scoreHistoryTimeLabel(entry.at))}</span>
-                    <span class="scoreHistorySummary">${escapeHtml(actionLabel)}</span>
-                  </div>
-                  <button type="button" class="miniBtn scoreHistoryDeleteBtn" data-score-history-delete-event="${escapeHtml(entry.id)}">Delete</button>
-                </div>
-                <div class="scoreHistoryChanges">
-                  ${changedRows}
-                </div>
+              <div class="scoreHistorySimpleRow">
+                <span class="scoreHistorySimpleText">${escapeHtml(scoreHistoryTimeLabel(row.at))} - ${escapeHtml(row.rootLabel)} - ${escapeHtml(deltaShown)}</span>
+                <button
+                  type="button"
+                  class="miniBtn scoreHistoryDeleteBtn"
+                  data-score-history-delete-line-event="${escapeHtml(row.eventId)}"
+                  data-score-history-delete-line-root="${escapeHtml(row.rootPath)}"
+                >Delete</button>
               </div>
             `;
           }).join("");
@@ -3780,12 +3811,12 @@
               <div class="scoreHistoryDayHeader">
                 <h2>${escapeHtml(scoreHistoryDateLabel(key))}</h2>
                 <div class="scoreHistoryDayMeta">
-                  <span>${escapeHtml(String(rows.length))} event${rows.length === 1 ? "" : "s"}</span>
+                  <span>${escapeHtml(String(rows.length))} change${rows.length === 1 ? "" : "s"}</span>
                   <button type="button" class="miniBtn scoreHistoryDeleteDayBtn" data-score-history-delete-day="${escapeHtml(key)}">Delete day</button>
                 </div>
               </div>
               <div class="scoreHistoryDayEvents">
-                ${eventRowsHtml}
+                ${lineRowsHtml}
               </div>
             </section>
           `;
@@ -4601,6 +4632,24 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
     if (calendarBodyEl) {
       calendarBodyEl.addEventListener("click", (e) => {
+        const lineBtn = e.target && e.target.closest ? e.target.closest("button[data-score-history-delete-line-event][data-score-history-delete-line-root]") : null;
+        if (lineBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const id = String(lineBtn.getAttribute("data-score-history-delete-line-event") || "");
+          const rootPath = String(lineBtn.getAttribute("data-score-history-delete-line-root") || "");
+          const removed = removeScoreHistoryLineByEventAndRoot(id, rootPath);
+          if (removed > 0) {
+            WS.meta.dirty = true;
+            metaScheduleSave();
+            renderCalendarUi();
+            setCalendarStatus("Saved");
+            showStatusMessage("Score log line deleted.");
+          } else {
+            setCalendarStatus("No changes");
+          }
+          return;
+        }
         const eventBtn = e.target && e.target.closest ? e.target.closest("button[data-score-history-delete-event]") : null;
         if (eventBtn) {
           e.preventDefault();
@@ -4916,6 +4965,37 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const src = Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [];
       const next = src.filter((entry) => scoreHistoryDateKey(entry && entry.at) !== key);
       const removed = src.length - next.length;
+      if (removed > 0) WS.meta.scoreHistory = normalizeScoreHistoryList(next);
+      return removed;
+    }
+
+    function removeScoreHistoryLineByEventAndRoot(eventId, rootPath) {
+      const id = String(eventId || "").trim();
+      const root = normalizeDirPathValue(rootPath);
+      if (!id || !root) return 0;
+      const src = Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [];
+      if (!src.length) return 0;
+      const next = [];
+      let removed = 0;
+      for (let i = 0; i < src.length; i++) {
+        const normalizedEntry = normalizeScoreHistoryEntry(src[i]);
+        if (!normalizedEntry) continue;
+        if (String(normalizedEntry.id || "") !== id) {
+          next.push(normalizedEntry);
+          continue;
+        }
+        const removedFromEntry = getRootScoreHistoryLinesForEntry(normalizedEntry).filter((line) => String(line.rootPath || "") === root).length;
+        if (!removedFromEntry) {
+          next.push(normalizedEntry);
+          continue;
+        }
+        const changed = normalizedEntry.changed.filter((item) => scoreHistoryRootPathFromChangedPath(item.path) !== root);
+        const nextEntry = Object.assign({}, normalizedEntry, { changed });
+        if (getRootScoreHistoryLinesForEntry(nextEntry).length) {
+          next.push(nextEntry);
+        }
+        removed += removedFromEntry;
+      }
       if (removed > 0) WS.meta.scoreHistory = normalizeScoreHistoryList(next);
       return removed;
     }
@@ -10500,6 +10580,21 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       directoriesListEl.scrollTop = value;
     }
 
+    function restoreDirectoriesScrollWithSelectionReveal(value) {
+      setDirectoriesScrollTop(Number(value) || 0);
+      if (!directoriesListEl) return;
+      if (isGridInteractionMode()) {
+        revealSelectedDirectoryRowInGridMode(false);
+        return;
+      }
+      const vis = getSelectedDirectoryRowVisibility();
+      if (vis.state === "offscreen") {
+        centerSelectedDirectoryRow(0);
+      } else if (vis.state === "partial") {
+        snapSelectedDirectoryRowFullyIntoView();
+      }
+    }
+
     function ensureTagNavStack() {
       if (!Array.isArray(WS.view.tagNavStack)) WS.view.tagNavStack = [];
       return WS.view.tagNavStack;
@@ -10621,7 +10716,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
-      setDirectoriesScrollTop(frame.scrollTop);
+      restoreDirectoriesScrollWithSelectionReveal(frame.scrollTop);
       return true;
     }
 
@@ -10645,7 +10740,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
-      setDirectoriesScrollTop(frame.scrollTop);
+      restoreDirectoriesScrollWithSelectionReveal(frame.scrollTop);
       return true;
     }
 
