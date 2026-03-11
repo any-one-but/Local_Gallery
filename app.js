@@ -8894,36 +8894,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return null;
     }
 
-    function setParentThumbnailFromRecord(rec) {
-      const targetNode = findNearestPresettableParentForRecord(rec);
-      if (!targetNode || !targetNode.path) {
-        showStatusMessage("No eligible parent folder found.");
-        return false;
+    function setFolderThumbnailTargetFromRecord(rec, targetPath) {
+      const normalizedPath = normalizeDirPathValue(targetPath);
+      if (!normalizedPath) {
+        return setRootThumbnailFromRecord(rec);
       }
-      const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
-      if (!relPath) {
-        showStatusMessage("Selected file is unavailable.");
-        return false;
-      }
-      const changed = metaSetFolderThumbnailPreset(targetNode.path, relPath);
-      if (!changed) {
-        showStatusMessage(`Thumbnail already set for ${dirDisplayName(targetNode)}.`);
-        return false;
-      }
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
-      showStatusMessage(`Set thumbnail for ${dirDisplayName(targetNode)}.`);
-      return true;
-    }
-
-    function setFolderThumbnailFromRecord(rec) {
-      const folderPath = String(rec?.dirPath || "");
-      const folderNode = WS.dirByPath.get(folderPath);
-      if (!folderNode || !folderPath) {
-        showStatusMessage("Selected file has no target folder.");
+      const folderNode = WS.dirByPath.get(normalizedPath);
+      if (!folderNode) {
+        showStatusMessage("Target folder is unavailable.");
         return false;
       }
       const relPath = normalizeWorkspaceRelPath(rec?.relPath);
@@ -8931,7 +8909,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         showStatusMessage("Selected file is unavailable.");
         return false;
       }
-      const changed = metaSetFolderThumbnailPreset(folderPath, relPath);
+      const changed = metaSetFolderThumbnailPreset(normalizedPath, relPath);
       if (!changed) {
         showStatusMessage(`Thumbnail already set for ${dirDisplayName(folderNode)}.`);
         return false;
@@ -8943,6 +8921,24 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       kickImageThumbsForPreview();
       showStatusMessage(`Set thumbnail for ${dirDisplayName(folderNode)}.`);
       return true;
+    }
+
+    function setParentThumbnailFromRecord(rec) {
+      const targetNode = findNearestPresettableParentForRecord(rec);
+      if (!targetNode || !targetNode.path) {
+        showStatusMessage("No eligible parent folder found.");
+        return false;
+      }
+      return setFolderThumbnailTargetFromRecord(rec, String(targetNode.path || ""));
+    }
+
+    function setFolderThumbnailFromRecord(rec) {
+      const folderPath = String(rec?.dirPath || "");
+      if (!folderPath || !WS.dirByPath.has(folderPath)) {
+        showStatusMessage("Selected file has no target folder.");
+        return false;
+      }
+      return setFolderThumbnailTargetFromRecord(rec, folderPath);
     }
 
     function setRootThumbnailFromRecord(rec) {
@@ -9244,6 +9240,44 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return out;
     }
 
+    function getFolderThumbnailTargetsForRecord(rec) {
+      const out = [];
+      if (!rec || !WS.root) return out;
+      const startPath = String(rec.dirPath || "");
+      const seen = new Set();
+      let cur = WS.dirByPath.get(startPath) || null;
+      while (cur) {
+        const p = String(cur.path || "");
+        const key = p || "__root__";
+        if (!seen.has(key)) {
+          seen.add(key);
+          if (!p) {
+            out.push({
+              path: "",
+              label: "Root",
+              actionLabel: "Set root thumbnail"
+            });
+          } else {
+            const folderLabel = displayPath(p) || dirDisplayName(cur) || "folder";
+            out.push({
+              path: p,
+              label: folderLabel,
+              actionLabel: `Set '${folderLabel}' thumbnail`
+            });
+          }
+        }
+        cur = cur.parent || null;
+      }
+      if (!out.length) {
+        out.push({
+          path: "",
+          label: "Root",
+          actionLabel: "Set root thumbnail"
+        });
+      }
+      return out;
+    }
+
     function isRecordInAnyDirSubtree(rec, dirs) {
       if (!rec || !Array.isArray(dirs) || !dirs.length) return false;
       for (let i = 0; i < dirs.length; i++) {
@@ -9254,6 +9288,27 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
     function tagThumbnailActionForKey(tagKey) {
       return `set-tag-thumbnail:${encodeURIComponent(String(tagKey || ""))}`;
+    }
+
+    function folderThumbnailActionForPath(path) {
+      const normalized = normalizeDirPathValue(path);
+      const key = normalized ? normalized : "__root__";
+      return `set-folder-thumbnail-target:${encodeURIComponent(key)}`;
+    }
+
+    function parseFolderThumbnailAction(action) {
+      const raw = String(action || "");
+      const prefix = "set-folder-thumbnail-target:";
+      if (!raw.startsWith(prefix)) return null;
+      const encoded = raw.slice(prefix.length);
+      if (!encoded) return null;
+      try {
+        const decoded = decodeURIComponent(encoded);
+        if (decoded === "__root__") return "";
+        return normalizeDirPathValue(decoded);
+      } catch {
+        return null;
+      }
     }
 
     function parseTagThumbnailAction(action) {
@@ -12665,6 +12720,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         return true;
       }
 
+      const setFolderThumbPath = parseFolderThumbnailAction(action);
+      if (setFolderThumbPath !== null) {
+        setFolderThumbnailTargetFromRecord(rec, setFolderThumbPath);
+        return true;
+      }
+
       if (action === "set-parent-thumbnail") {
         setParentThumbnailFromRecord(rec);
         return true;
@@ -13061,10 +13122,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       const menu = previewActionMenuEl;
       const fileId = String(rec.id || "");
-      const recDirPath = String(rec.dirPath || "");
-      const canSetFolderThumbnail = !!recDirPath && WS.dirByPath.has(recDirPath);
-      const parentThumbTarget = findNearestPresettableParentForRecord(rec);
-      const canSetRootThumbnail = !!WS.root;
+      const folderThumbTargets = getFolderThumbnailTargetsForRecord(rec);
       const tagThumbTargets = getTagThumbnailTargetsForRecord(rec);
 
       const makeBtn = (label, action, disabled = false) => {
@@ -13081,9 +13139,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         return btn;
       };
 
-      menu.appendChild(makeBtn("Set folder thumbnail", "set-folder-thumbnail", !canSetFolderThumbnail));
-      menu.appendChild(makeBtn("Set parent thumbnail", "set-parent-thumbnail", !parentThumbTarget));
-      menu.appendChild(makeBtn("Set root thumbnail", "set-root-thumbnail", !canSetRootThumbnail));
+      for (let i = 0; i < folderThumbTargets.length; i++) {
+        const t = folderThumbTargets[i];
+        const label = String(t && (t.actionLabel || t.label) || "");
+        const path = String(t && t.path || "");
+        if (!label && path !== "") continue;
+        menu.appendChild(makeBtn(label || "Set thumbnail", folderThumbnailActionForPath(path)));
+      }
       for (let i = 0; i < tagThumbTargets.length; i++) {
         const t = tagThumbTargets[i];
         const label = String(t && (t.actionLabel || t.label) || "");
@@ -14343,7 +14405,6 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const visibleFileIdsForGridReorder = canReorderGridFileEntries ? Array.from(getVisibleFileIdsInEntries()) : [];
       const selectedFilesInView = canBulk ? getSelectedFileIdsInCurrentView() : [];
       const selectedFilesInViewCount = selectedFilesInView.length;
-      const parentThumbTargetByDirPath = new Map();
       if (gridModeActive) setupDirectoriesGridFileDropZone(directoriesListEl);
       else finishDirectoriesGridFileDrag();
       renderDirectoriesTagsHeader();
@@ -14869,19 +14930,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
             const bulkFileMenuActive = canBulk && sel && selectedFilesInViewCount > 0;
             const canLooseSetMerge = !!WS.meta.fsRootHandle;
-            const recDirPath = String(rec?.dirPath || "");
-            const canSetFolderThumbnail = !!recDirPath && WS.dirByPath.has(recDirPath);
-            const canSetRootThumbnail = !!WS.root;
-            let parentThumbTarget = null;
+            const folderThumbTargets = rec ? getFolderThumbnailTargetsForRecord(rec) : [];
             const tagThumbTargets = rec ? getTagThumbnailTargetsForRecord(rec) : [];
-            if (recDirPath) {
-              if (parentThumbTargetByDirPath.has(recDirPath)) {
-                parentThumbTarget = parentThumbTargetByDirPath.get(recDirPath);
-              } else {
-                parentThumbTarget = rec ? findNearestPresettableParentForRecord(rec) : null;
-                parentThumbTargetByDirPath.set(recDirPath, parentThumbTarget || null);
-              }
-            }
+            const folderThumbButtonsHtml = folderThumbTargets.map((t) => {
+              const label = String(t && (t.actionLabel || t.label) || "");
+              const path = String(t && t.path || "");
+              if (!label && path !== "") return "";
+              return `<button type="button" data-action="${escapeHtml(folderThumbnailActionForPath(path))}">${escapeHtml(label || "Set thumbnail")}</button>`;
+            }).join("");
             const tagThumbButtonsHtml = tagThumbTargets.map((t) => {
               const label = String(t && (t.actionLabel || t.label) || "");
               const key = String(t && t.key || "");
@@ -14891,9 +14947,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             const fileMenuButtons = bulkFileMenuActive
               ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
               : `
-                  <button type="button" data-action="set-folder-thumbnail"${canSetFolderThumbnail ? "" : " disabled"}>Set folder thumbnail</button>
-                  <button type="button" data-action="set-parent-thumbnail"${parentThumbTarget ? "" : " disabled"}>Set parent thumbnail</button>
-                  <button type="button" data-action="set-root-thumbnail"${canSetRootThumbnail ? "" : " disabled"}>Set root thumbnail</button>
+                  ${folderThumbButtonsHtml}
                   ${tagThumbButtonsHtml}
                   <button type="button" data-action="edit-thumbnail">Edit thumbnail</button>
                   <button type="button" data-action="rename-file">Rename</button>

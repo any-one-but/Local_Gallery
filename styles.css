@@ -1297,6 +1297,31 @@
       gap: 0;
     }
 
+    .dirRow.fileRow.dragging .dirFileThumbCard {
+      opacity: 0.6;
+    }
+
+    .dirRow.fileRow.drag-hidden {
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      left: -9999px;
+      top: -9999px;
+      width: 0 !important;
+      height: 0 !important;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .dirRow.fileRow.drag-placeholder {
+      background: transparent;
+      border: 2px dashed var(--color0-tertirary);
+      border-radius: 4px;
+      box-shadow: none;
+      pointer-events: none;
+    }
+
     .dirRow.fileRow:hover,
     .dirRow.fileRow.selected,
     .dirRow.fileRow.bulkSelected {
