@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.4.0"
+SCRIPT_VERSION="1.5.0"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
 EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
@@ -115,6 +115,7 @@ step_description() {
     3) printf "Resize media" ;;
     4) printf "Remove metadata from images and videos" ;;
     5) printf "Move 0-byte files and empty folders into a local bucket folder" ;;
+    6) printf "Trim trailing spaces from file and folder names recursively" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -126,6 +127,7 @@ step_function_name() {
     3) printf "step3_resize_media" ;;
     4) printf "step4_remove_metadata" ;;
     5) printf "step5_move_empty_items" ;;
+    6) printf "step6_trim_trailing_spaces" ;;
     *) printf "" ;;
   esac
 }
@@ -151,6 +153,10 @@ ensure_step_requirements() {
       require_cmd find
       require_cmd mv
       require_cmd mkdir
+      ;;
+    6)
+      require_cmd find
+      require_cmd mv
       ;;
     *)
       return 1
@@ -627,6 +633,70 @@ step5_move_empty_items() {
   progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
 }
 
+trim_trailing_spaces() {
+  local value="$1"
+  while [[ "$value" == *" " ]]; do
+    value="${value% }"
+  done
+  printf "%s" "$value"
+}
+
+step6_trim_trailing_spaces() {
+  local paths=()
+  local path parent base trimmed target
+  local i total progress=0
+  local renamed=0 failed=0
+
+  while IFS= read -r -d '' path; do
+    paths+=("$path")
+  done < <(find . -depth -mindepth 1 -name "* " -print0)
+
+  total=${#paths[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No files or folders end with a trailing space."
+    return 0
+  fi
+
+  log_info "Found $total file/folder name(s) ending with a trailing space."
+  for ((i=0; i<total; i++)); do
+    path="${paths[$i]}"
+    parent="${path%/*}"
+    base="${path##*/}"
+    trimmed="$(trim_trailing_spaces "$base")"
+    target="${parent}/${trimmed}"
+
+    if [[ -z "$trimmed" ]]; then
+      failed=$((failed + 1))
+      log_err "Rename skipped (name would become empty): $path"
+      progress=$((progress + 1))
+      progress_draw "Step 6 Rename" "$progress" "$total"
+      continue
+    fi
+
+    if [[ -e "$target" ]]; then
+      failed=$((failed + 1))
+      log_err "Rename skipped (target exists): $path -> $target"
+      progress=$((progress + 1))
+      progress_draw "Step 6 Rename" "$progress" "$total"
+      continue
+    fi
+
+    if mv "$path" "$target"; then
+      renamed=$((renamed + 1))
+    else
+      failed=$((failed + 1))
+      log_err "Rename failed: $path"
+    fi
+
+    progress=$((progress + 1))
+    progress_draw "Step 6 Rename" "$progress" "$total"
+  done
+
+  log_info "Trailing-space trim summary:"
+  printf "  - Renamed: %d\n" "$renamed"
+  printf "  - Failed:  %d\n" "$failed"
+}
+
 choose_resize_height() {
   local choice custom
 
@@ -684,11 +754,12 @@ main() {
   echo "3. $(step_description 3)"
   echo "4. $(step_description 4)"
   echo "5. $(step_description 5)"
+  echo "6. $(step_description 6)"
   read -r -p "> " input
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
-    selected=(1 2 3 4 5)
+    selected=(1 2 3 4 5 6)
   else
     IFS=',' read -r -a raw <<< "$input"
     for token in "${raw[@]}"; do
@@ -716,7 +787,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]}"; do
-    if [[ "$num" -ge 1 && "$num" -le 5 ]]; then
+    if [[ "$num" -ge 1 && "$num" -le 6 ]]; then
       valid_selected+=("$num")
     else
       log_warn "Skipping out-of-range step: $num"
