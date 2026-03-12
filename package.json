@@ -4,7 +4,9 @@
   "description": "",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "npm run build:singlefile && electron .",
+    "build:singlefile": "node scripts/generate-singlefile-html.js",
+    "watch:singlefile": "node scripts/generate-singlefile-html.js --watch",
     "dist": "electron-builder"
   },
   "repository": {
