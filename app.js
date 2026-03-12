@@ -2048,8 +2048,27 @@
       MediaFilterEngine.attach(surfaceName, mediaEl, container, type, getMediaFilterForType(), processingTarget);
     }
 
+    function clearPendingFilmCornerMask(mediaEl) {
+      if (!mediaEl) return;
+      mediaEl.classList.remove("pendingFilmCorners");
+      mediaEl.style.removeProperty("--pending-film-corner-radius");
+    }
+
+    function applyPendingFilmCornerMask(mediaEl, processingTarget = null) {
+      if (!mediaEl) return;
+      clearPendingFilmCornerMask(mediaEl);
+      if (!mediaFilterEnabled()) return;
+      if (!mediaProcessingEnabledForTarget(processingTarget)) return;
+      const cornerRadius = Number((MEDIA_OVERLAY_STATE && MEDIA_OVERLAY_STATE.cornerRadius) || 0);
+      if (!(cornerRadius > 0)) return;
+      const pct = Math.max(0, Math.min(50, cornerRadius * 100));
+      mediaEl.style.setProperty("--pending-film-corner-radius", `${pct}%`);
+      mediaEl.classList.add("pendingFilmCorners");
+    }
+
     function clearMediaFilterSurface(surfaceName, mediaEl) {
       MediaFilterEngine.detach(surfaceName);
+      clearPendingFilmCornerMask(mediaEl);
       if (mediaEl) mediaEl.classList.remove("mediaHidden");
     }
 
@@ -18715,12 +18734,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         applyVideoCropToElement(viewerVideoEl, null);
         viewerVideoEl.classList.remove("ready");
         viewerVideoEl.classList.remove("mediaHidden");
+        clearPendingFilmCornerMask(viewerVideoEl);
         viewerVideoEl.style.display = "none";
       }
       if (viewerImgEl) {
         try { viewerImgEl.removeAttribute("src"); } catch {}
         viewerImgEl.classList.remove("ready");
         viewerImgEl.classList.remove("mediaHidden");
+        clearPendingFilmCornerMask(viewerImgEl);
         viewerImgEl.style.display = "none";
       }
       MediaFilterEngine.detach("viewer");
@@ -18967,8 +18988,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         if (viewerFolderEl) viewerFolderEl.style.display = "none";
         filenameEl.textContent = "";
         MediaFilterEngine.detach("viewer");
-        if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
-        if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
+        if (viewerImgEl) {
+          viewerImgEl.classList.remove("mediaHidden");
+          clearPendingFilmCornerMask(viewerImgEl);
+        }
+        if (viewerVideoEl) {
+          viewerVideoEl.classList.remove("mediaHidden");
+          clearPendingFilmCornerMask(viewerVideoEl);
+        }
         return;
       }
 
@@ -18988,10 +19015,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         viewerVideoEl.classList.remove("ready");
         viewerVideoEl.style.display = "none";
         applyVideoCropToElement(viewerVideoEl, null);
+        clearPendingFilmCornerMask(viewerVideoEl);
       }
       if (viewerImgEl) {
         viewerImgEl.classList.remove("ready");
         viewerImgEl.style.display = "none";
+        clearPendingFilmCornerMask(viewerImgEl);
       }
       if (viewerFolderEl) viewerFolderEl.style.display = "none";
       MediaFilterEngine.detach("viewer");
@@ -19083,6 +19112,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         }
         viewerVideoEl.style.display = "block";
         viewerVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
+        applyPendingFilmCornerMask(viewerVideoEl, rec.dirPath || "");
         syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", rec);
 
         applyVideoCarryToElement(viewerVideoEl, rec.id);
@@ -19128,10 +19158,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       const viewerMode = detectScrollImageMode(rec, viewerImgEl);
       applyScrollImageMode(viewport, viewerImgEl, viewerMode, !same);
       if (viewerMode !== "none") {
+        clearPendingFilmCornerMask(viewerImgEl);
         clearMediaFilterSurface("viewer", viewerImgEl);
         applyScrollImageProcessingFallback(viewerImgEl, rec, viewerMode);
         viewerImgEl.classList.remove("mediaHidden");
       } else {
+        applyPendingFilmCornerMask(viewerImgEl, rec.dirPath || "");
         applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
         syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
       }
@@ -19142,10 +19174,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           const imageMode = detectScrollImageMode(rec, viewerImgEl);
           applyScrollImageMode(viewport, viewerImgEl, imageMode, false);
           if (imageMode !== "none") {
+            clearPendingFilmCornerMask(viewerImgEl);
             clearMediaFilterSurface("viewer", viewerImgEl);
             applyScrollImageProcessingFallback(viewerImgEl, rec, imageMode);
             viewerImgEl.classList.remove("mediaHidden");
           } else {
+            applyPendingFilmCornerMask(viewerImgEl, rec.dirPath || "");
             applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
             syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
           }

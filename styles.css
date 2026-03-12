@@ -2640,6 +2640,10 @@
     }
     #viewerViewport img.ready,
     #viewerViewport video.ready { opacity: 1; }
+    #viewerViewport img.pendingFilmCorners,
+    #viewerViewport video.pendingFilmCorners {
+      border-radius: var(--pending-film-corner-radius, 8%);
+    }
     #viewerViewport.tallScrollMode {
       overflow-y: auto;
       overflow-x: hidden;
