@@ -2,13 +2,19 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.7.0"
+SCRIPT_VERSION="1.8.0"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
 EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
 SIMILAR_ITEMS_BUCKET_NAME="_clean_similar_media"
-STEP5_COMBINE_FOLDERS=0
-STEP7_TRIM_SECONDS=10
+WAIFU2X_INSTALL_DIR="${HOME}/.local/share/local_gallery/waifu2x-ncnn-vulkan"
+WAIFU2X_RELEASE_URL_MACOS="https://github.com/nihui/waifu2x-ncnn-vulkan/releases/download/20250915/waifu2x-ncnn-vulkan-20250915-macos.zip"
+WAIFU2X_SCALE=2
+WAIFU2X_NOISE=3
+STEP3_MEDIA_MODE="images"
+STEP3_PARALLEL_JOBS=2
+STEP6_COMBINE_FOLDERS=0
+STEP8_TRIM_SECONDS=10
 
 # Optional terminal colors when stdout is a TTY.
 if [[ -t 1 ]]; then
@@ -147,12 +153,129 @@ find_czkawka_command() {
   return 1
 }
 
+find_waifu2x_command() {
+  if [[ -x "${WAIFU2X_INSTALL_DIR}/waifu2x-ncnn-vulkan" ]]; then
+    printf "%s/waifu2x-ncnn-vulkan" "${WAIFU2X_INSTALL_DIR}"
+    return 0
+  fi
+  if [[ -x "${HOME}/.local/bin/waifu2x-ncnn-vulkan" ]]; then
+    printf "%s/.local/bin/waifu2x-ncnn-vulkan" "${HOME}"
+    return 0
+  fi
+  if command -v waifu2x-ncnn-vulkan >/dev/null 2>&1; then
+    command -v waifu2x-ncnn-vulkan
+    return 0
+  fi
+  return 1
+}
+
+find_waifu2x_model_dir() {
+  local bin_path="${1:-}"
+  local bin_dir
+  if [[ -n "${WAIFU2X_MODEL_PATH:-}" && -d "${WAIFU2X_MODEL_PATH}" ]]; then
+    printf "%s" "${WAIFU2X_MODEL_PATH}"
+    return 0
+  fi
+  if [[ -n "$bin_path" ]]; then
+    bin_dir="$(dirname "$bin_path")"
+    if [[ -d "$bin_dir/models-cunet" ]]; then
+      printf "%s/models-cunet" "$bin_dir"
+      return 0
+    fi
+  fi
+  if [[ -d "${WAIFU2X_INSTALL_DIR}/models-cunet" ]]; then
+    printf "%s/models-cunet" "${WAIFU2X_INSTALL_DIR}"
+    return 0
+  fi
+  return 1
+}
+
+resolve_waifu2x_release_url() {
+  local api_url="https://api.github.com/repos/nihui/waifu2x-ncnn-vulkan/releases/latest"
+  local detected
+  detected="$(curl -fsSL "$api_url" 2>/dev/null | awk -F'"' '/"browser_download_url":/ && /waifu2x-ncnn-vulkan-.*-macos.zip/ { print $4; exit }')"
+  if [[ -n "$detected" ]]; then
+    printf "%s" "$detected"
+    return 0
+  fi
+  printf "%s" "$WAIFU2X_RELEASE_URL_MACOS"
+}
+
+install_waifu2x_ncnn_vulkan() {
+  local os_name
+  local tmpdir zip_path unpack_dir stage_dir
+  local release_url bin_src
+  local link_dir link_path
+  local models_src_dir
+
+  os_name="$(uname -s 2>/dev/null || printf "")"
+  if [[ "$os_name" != "Darwin" ]]; then
+    log_err "Automatic waifu2x install is currently implemented for macOS only."
+    return 1
+  fi
+
+  require_cmd curl || return 1
+  require_cmd unzip || return 1
+  require_cmd chmod || return 1
+
+  release_url="$(resolve_waifu2x_release_url)"
+  tmpdir="$(mktemp -d)"
+  zip_path="${tmpdir}/waifu2x.zip"
+  unpack_dir="${tmpdir}/unpack"
+  stage_dir="${tmpdir}/stage"
+  mkdir -p "$unpack_dir" "$stage_dir"
+
+  log_info "Downloading waifu2x ncnn package..."
+  if ! curl -fsSL "$release_url" -o "$zip_path"; then
+    rm -rf "$tmpdir"
+    log_err "Failed to download waifu2x package."
+    return 1
+  fi
+
+  log_info "Extracting waifu2x package..."
+  if ! unzip -q "$zip_path" -d "$unpack_dir"; then
+    rm -rf "$tmpdir"
+    log_err "Failed to extract waifu2x package."
+    return 1
+  fi
+
+  bin_src="$(find "$unpack_dir" -type f -name 'waifu2x-ncnn-vulkan' | head -n 1)"
+  models_src_dir="$(find "$unpack_dir" -type d -name 'models-cunet' | head -n 1)"
+  if [[ -z "$bin_src" || -z "$models_src_dir" ]]; then
+    rm -rf "$tmpdir"
+    log_err "waifu2x package did not contain expected files."
+    return 1
+  fi
+
+  cp "$bin_src" "${stage_dir}/waifu2x-ncnn-vulkan"
+  chmod +x "${stage_dir}/waifu2x-ncnn-vulkan"
+  while IFS= read -r -d '' model_dir; do
+    cp -R "$model_dir" "${stage_dir}/"
+  done < <(find "$unpack_dir" -maxdepth 3 -type d -name 'models*' -print0)
+
+  rm -rf "${WAIFU2X_INSTALL_DIR}"
+  mkdir -p "$(dirname "${WAIFU2X_INSTALL_DIR}")"
+  mv "$stage_dir" "${WAIFU2X_INSTALL_DIR}"
+
+  link_dir="${HOME}/.local/bin"
+  link_path="${link_dir}/waifu2x-ncnn-vulkan"
+  mkdir -p "$link_dir"
+  rm -f "$link_path"
+  ln -s "${WAIFU2X_INSTALL_DIR}/waifu2x-ncnn-vulkan" "$link_path" || true
+
+  rm -rf "$tmpdir"
+  log_ok "Installed waifu2x to ${WAIFU2X_INSTALL_DIR}"
+  return 0
+}
+
 ensure_prerequisites() {
   local missing_labels=()
   local missing_formulas=()
   local label formula ans
   local brew_installed=1
   local czkawka_cmd
+  local waifu2x_cmd
+  local waifu2x_model_dir
 
   load_homebrew_env || true
   if ! command -v brew >/dev/null 2>&1; then
@@ -174,6 +297,11 @@ ensure_prerequisites() {
   if ! czkawka_cmd="$(find_czkawka_command 2>/dev/null)"; then
     missing_labels+=("czkawka")
     missing_formulas+=("czkawka")
+  fi
+  if ! waifu2x_cmd="$(find_waifu2x_command 2>/dev/null)"; then
+    missing_labels+=("waifu2x-ncnn-vulkan")
+  elif ! waifu2x_model_dir="$(find_waifu2x_model_dir "$waifu2x_cmd" 2>/dev/null)"; then
+    missing_labels+=("waifu2x model files")
   fi
 
   if [[ "${#missing_labels[@]}" -eq 0 ]]; then
@@ -212,12 +340,24 @@ ensure_prerequisites() {
     brew install "$formula"
   done
 
+  if ! waifu2x_cmd="$(find_waifu2x_command 2>/dev/null)"; then
+    install_waifu2x_ncnn_vulkan
+  elif ! find_waifu2x_model_dir "$waifu2x_cmd" >/dev/null 2>&1; then
+    log_info "Refreshing waifu2x package to ensure model files are present..."
+    install_waifu2x_ncnn_vulkan
+  fi
+
   load_homebrew_env || true
   if ! command -v fdupes >/dev/null 2>&1 || \
      ! command -v ffmpeg >/dev/null 2>&1 || \
      ! command -v ffprobe >/dev/null 2>&1 || \
      ! command -v mat2 >/dev/null 2>&1 || \
-     ! find_czkawka_command >/dev/null 2>&1; then
+     ! find_czkawka_command >/dev/null 2>&1 || \
+     ! find_waifu2x_command >/dev/null 2>&1; then
+    log_err "One or more prerequisites are still missing after install."
+    exit 1
+  fi
+  if ! waifu2x_model_dir="$(find_waifu2x_model_dir "$(find_waifu2x_command)" 2>/dev/null)"; then
     log_err "One or more prerequisites are still missing after install."
     exit 1
   fi
@@ -229,12 +369,13 @@ step_description() {
   case "${1:-}" in
     1) printf "Deduplicate files (remove exact duplicates)" ;;
     2) printf "Convert multiple video formats to .mp4" ;;
-    3) printf "Resize media" ;;
-    4) printf "Remove metadata from images and videos" ;;
-    5) printf "Find similar images/videos and move them into a local bucket folder" ;;
-    6) printf "Trim trailing spaces from file and folder names recursively" ;;
-    7) printf "Trim the first few seconds from video files" ;;
-    8) printf "Move 0-byte files and empty folders into a local bucket folder" ;;
+    3) printf "Upscale and denoise media" ;;
+    4) printf "Resize media" ;;
+    5) printf "Remove metadata from images and videos" ;;
+    6) printf "Find similar images/videos and move them into a local bucket folder" ;;
+    7) printf "Trim trailing spaces from file and folder names recursively" ;;
+    8) printf "Trim the first few seconds from video files" ;;
+    9) printf "Move 0-byte files and empty folders into a local bucket folder" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -243,12 +384,13 @@ step_function_name() {
   case "${1:-}" in
     1) printf "step1_dedupe" ;;
     2) printf "step2_convert_videos" ;;
-    3) printf "step3_resize_media" ;;
-    4) printf "step4_remove_metadata" ;;
-    5) printf "step5_move_similar_media" ;;
-    6) printf "step6_trim_trailing_spaces" ;;
-    7) printf "step7_trim_video_lead" ;;
-    8) printf "step8_move_empty_items" ;;
+    3) printf "step3_process_media" ;;
+    4) printf "step4_resize_media" ;;
+    5) printf "step5_remove_metadata" ;;
+    6) printf "step6_move_similar_media" ;;
+    7) printf "step7_trim_trailing_spaces" ;;
+    8) printf "step8_trim_video_lead" ;;
+    9) printf "step9_move_empty_items" ;;
     *) printf "" ;;
   esac
 }
@@ -263,14 +405,30 @@ ensure_step_requirements() {
       require_cmd ffmpeg
       ;;
     3)
+      require_cmd find
+      require_cmd sips
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      if ! find_waifu2x_command >/dev/null 2>&1; then
+        log_err "Required command not found: waifu2x-ncnn-vulkan"
+        return 1
+      fi
+      if ! find_waifu2x_model_dir "$(find_waifu2x_command)" >/dev/null 2>&1; then
+        log_err "waifu2x model files not found."
+        return 1
+      fi
+      ;;
+    4)
       require_cmd sips
       require_cmd ffprobe
       require_cmd ffmpeg
       ;;
-    4)
+    5)
       require_cmd mat2
       ;;
-    5)
+    6)
       require_cmd find
       require_cmd grep
       require_cmd mv
@@ -282,16 +440,16 @@ ensure_step_requirements() {
         return 1
       }
       ;;
-    6)
+    7)
       require_cmd find
       require_cmd mv
       ;;
-    7)
+    8)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
       ;;
-    8)
+    9)
       require_cmd find
       require_cmd mv
       require_cmd mkdir
@@ -419,7 +577,377 @@ step2_convert_videos() {
   printf "  - Failed:        %d\n" "$failed"
 }
 
-step3_resize_media() {
+is_waifu2x_supported_image_ext() {
+  local ext
+  ext="$(printf "%s" "${1##*.}" | tr '[:upper:]' '[:lower:]')"
+  case "$ext" in
+    jpg|jpeg|png|webp)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+step3_process_image_file() {
+  local file="$1"
+  local waifu2x_cmd="$2"
+  local model_dir="$3"
+  local result_file="$4"
+  local ext format base tmp
+  local width height long_edge
+  local tile tile_seen upscale_ok tile_fallback=0
+
+  ext="$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')"
+  case "$ext" in
+    jpg|jpeg) format="jpg" ;;
+    png) format="png" ;;
+    webp) format="webp" ;;
+    *)
+      printf "unsupported|0\n" > "$result_file"
+      return 0
+      ;;
+  esac
+
+  width="$(sips -g pixelWidth "$file" 2>/dev/null | awk '/pixelWidth:/ {print $2; exit}')"
+  height="$(sips -g pixelHeight "$file" 2>/dev/null | awk '/pixelHeight:/ {print $2; exit}')"
+  if ! is_int "$width" || ! is_int "$height" || [[ "$width" -le 0 || "$height" -le 0 ]]; then
+    printf "probe_failed|0\n" > "$result_file"
+    return 0
+  fi
+
+  if [[ "$width" -ge "$height" ]]; then
+    long_edge="$width"
+  else
+    long_edge="$height"
+  fi
+
+  base="${file%.*}"
+  tmp="${base}.upscale-tmp.$$.$ext"
+  upscale_ok=0
+  tile_seen="|"
+  for tile in "$long_edge" 4096 3072 2048 1536 1024 768 512 256 0; do
+    if ! is_int "$tile"; then
+      continue
+    fi
+    if [[ "$tile" -ne 0 && "$tile" -lt 32 ]]; then
+      continue
+    fi
+    case "$tile_seen" in
+      *"|${tile}|"*) continue ;;
+    esac
+    tile_seen="${tile_seen}${tile}|"
+    rm -f "$tmp"
+    if "$waifu2x_cmd" -i "$file" -o "$tmp" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -f "$format" >/dev/null 2>&1 && [[ -s "$tmp" ]]; then
+      upscale_ok=1
+      if [[ "$tile" != "$long_edge" ]]; then
+        tile_fallback=1
+      fi
+      break
+    fi
+  done
+
+  if [[ "$upscale_ok" -eq 1 && -s "$tmp" ]]; then
+    mv -f "$tmp" "$file"
+    printf "processed|%s\n" "$tile_fallback" > "$result_file"
+  else
+    rm -f "$tmp" 2>/dev/null || true
+    printf "failed|0\n" > "$result_file"
+  fi
+  return 0
+}
+
+step3_probe_video_frame_rate() {
+  local file="$1"
+  local rate
+
+  rate="$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=nokey=1:noprint_wrappers=1 "$file" 2>/dev/null | head -n 1)"
+  case "$rate" in
+    ""|0/0|N/A)
+      rate="$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nokey=1:noprint_wrappers=1 "$file" 2>/dev/null | head -n 1)"
+      ;;
+  esac
+  case "$rate" in
+    ""|0/0|N/A) rate="30" ;;
+  esac
+  printf "%s" "$rate"
+}
+
+step3_process_video_file() {
+  local file="$1"
+  local waifu2x_cmd="$2"
+  local model_dir="$3"
+  local fps base final_output tmp_output workdir frames_dir upscaled_dir
+  local name phase=0 phase_total=3
+
+  fps="$(step3_probe_video_frame_rate "$file")"
+  base="${file%.*}"
+  final_output="${base}.mp4"
+  tmp_output="${base}.upscale-tmp.$$.mp4"
+  name="$(basename "$file")"
+  workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_step3_video.XXXXXX")"
+  frames_dir="${workdir}/frames"
+  upscaled_dir="${workdir}/upscaled"
+  mkdir -p "$frames_dir" "$upscaled_dir"
+
+  progress_draw "Step 3 Video Phase" "$phase" "$phase_total" "line"
+  if ! run_with_spinner "Extracting frames: ${name}" ffmpeg -hide_banner -loglevel error -y -i "$file" "${frames_dir}/frame_%06d.png"; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  if [[ -z "$(find "$frames_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  phase=$((phase + 1))
+  progress_draw "Step 3 Video Phase" "$phase" "$phase_total" "line"
+
+  if ! run_with_spinner "Upscaling frames: ${name}" "$waifu2x_cmd" -i "$frames_dir" -o "$upscaled_dir" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -f png; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  if [[ -z "$(find "$upscaled_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  phase=$((phase + 1))
+  progress_draw "Step 3 Video Phase" "$phase" "$phase_total" "line"
+
+  rm -f "$tmp_output"
+  if ! run_with_spinner "Rebuilding video: ${name}" ffmpeg -hide_banner -loglevel error -y -framerate "$fps" -i "${upscaled_dir}/frame_%06d.png" -i "$file" -map 0:v:0 -map 1:a? -c:v libx264 -pix_fmt yuv420p -c:a copy -shortest "$tmp_output"; then
+    rm -f "$tmp_output" 2>/dev/null || true
+    if ! run_with_spinner "Rebuilding video (AAC): ${name}" ffmpeg -hide_banner -loglevel error -y -framerate "$fps" -i "${upscaled_dir}/frame_%06d.png" -i "$file" -map 0:v:0 -map 1:a? -c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest "$tmp_output"; then
+      rm -f "$tmp_output" 2>/dev/null || true
+      rm -rf "$workdir"
+      return 1
+    fi
+  fi
+
+  if [[ ! -s "$tmp_output" ]]; then
+    rm -f "$tmp_output" 2>/dev/null || true
+    rm -rf "$workdir"
+    return 1
+  fi
+
+  if [[ "$file" != "$final_output" ]]; then
+    rm -f "$file"
+  fi
+  mv -f "$tmp_output" "$final_output"
+  phase=$((phase + 1))
+  progress_draw "Step 3 Video Phase" "$phase" "$phase_total" "line"
+  rm -rf "$workdir"
+  return 0
+}
+
+step3_upscale_images() {
+  local files=() candidates=()
+  local waifu2x_cmd model_dir
+  local file
+  local i total progress=0
+  local all_images=0
+  local upscaled=0 skipped_unsupported=0 skipped_probe=0 failed=0
+  local tile_fallback_used=0
+  local worker_count
+  local -a pids result_files job_files
+  local status fallback
+
+  if ! waifu2x_cmd="$(find_waifu2x_command)"; then
+    log_err "waifu2x binary not found."
+    exit 1
+  fi
+  if ! model_dir="$(find_waifu2x_model_dir "$waifu2x_cmd")"; then
+    log_err "waifu2x models directory not found."
+    exit 1
+  fi
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(
+    find . -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" \
+                      -o -iname "*.gif" -o -iname "*.bmp" -o -iname "*.tif" -o -iname "*.tiff" \
+                      -o -iname "*.heic" -o -iname "*.heif" -o -iname "*.avif" \) -print0
+  )
+
+  all_images=${#files[@]}
+  if [[ "$all_images" -eq 0 ]]; then
+    log_warn "No images found to evaluate for upscaling."
+    return 0
+  fi
+
+  for ((i=0; i<all_images; i++)); do
+    file="${files[$i]}"
+    if is_waifu2x_supported_image_ext "$file"; then
+      candidates+=("$file")
+    else
+      skipped_unsupported=$((skipped_unsupported + 1))
+    fi
+  done
+
+  total=${#candidates[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No waifu2x-supported images found (.jpg/.jpeg/.png/.webp)."
+    return 0
+  fi
+
+  worker_count="${STEP3_PARALLEL_JOBS}"
+  if ! is_int "$worker_count" || [[ "$worker_count" -lt 1 ]]; then
+    worker_count=1
+  fi
+
+  log_info "Upscaling and denoising $total supported image(s) with waifu2x (scale=${WAIFU2X_SCALE}x, noise=${WAIFU2X_NOISE}, workers=${worker_count})."
+
+  for ((i=0; i<total; i++)); do
+    file="${candidates[$i]}"
+    result_files+=("$(mktemp "${TMPDIR:-/tmp}/local_gallery_step3_img.XXXXXX")")
+    job_files+=("$file")
+    step3_process_image_file "$file" "$waifu2x_cmd" "$model_dir" "${result_files[${#result_files[@]}-1]}" &
+    pids+=("$!")
+
+    if [[ "${#pids[@]}" -ge "$worker_count" ]]; then
+      wait "${pids[0]}" || true
+      if [[ -f "${result_files[0]}" ]]; then
+        IFS='|' read -r status fallback < "${result_files[0]}"
+      else
+        status="failed"
+        fallback=0
+      fi
+      case "$status" in
+        processed)
+          upscaled=$((upscaled + 1))
+          if [[ "$fallback" == "1" ]]; then
+            tile_fallback_used=$((tile_fallback_used + 1))
+          fi
+          ;;
+        probe_failed)
+          skipped_probe=$((skipped_probe + 1))
+          ;;
+        unsupported)
+          skipped_unsupported=$((skipped_unsupported + 1))
+          ;;
+        *)
+          failed=$((failed + 1))
+          log_err "Upscale failed: ${job_files[0]}"
+          ;;
+      esac
+      rm -f "${result_files[0]}"
+      pids=("${pids[@]:1}")
+      result_files=("${result_files[@]:1}")
+      job_files=("${job_files[@]:1}")
+      progress=$((progress + 1))
+      progress_draw "Step 3 Upscale" "$progress" "$total"
+    fi
+  done
+
+  while [[ "${#pids[@]}" -gt 0 ]]; do
+    wait "${pids[0]}" || true
+    if [[ -f "${result_files[0]}" ]]; then
+      IFS='|' read -r status fallback < "${result_files[0]}"
+    else
+      status="failed"
+      fallback=0
+    fi
+    case "$status" in
+      processed)
+        upscaled=$((upscaled + 1))
+        if [[ "$fallback" == "1" ]]; then
+          tile_fallback_used=$((tile_fallback_used + 1))
+        fi
+        ;;
+      probe_failed)
+        skipped_probe=$((skipped_probe + 1))
+        ;;
+      unsupported)
+        skipped_unsupported=$((skipped_unsupported + 1))
+        ;;
+      *)
+        failed=$((failed + 1))
+        log_err "Upscale failed: ${job_files[0]}"
+        ;;
+    esac
+    rm -f "${result_files[0]}"
+    pids=("${pids[@]:1}")
+    result_files=("${result_files[@]:1}")
+    job_files=("${job_files[@]:1}")
+    progress=$((progress + 1))
+    progress_draw "Step 3 Upscale" "$progress" "$total"
+  done
+
+  log_info "Step 3 upscale+denoise summary:"
+  printf "  - Images found (all):      %d\n" "$all_images"
+  printf "  - Supported candidates:    %d\n" "$total"
+  printf "  - Processed:               %d\n" "$upscaled"
+  printf "  - Skipped (unsupported):   %d\n" "$skipped_unsupported"
+  printf "  - Skipped (probe failed):  %d\n" "$skipped_probe"
+  printf "  - Tile fallbacks used:     %d\n" "$tile_fallback_used"
+  printf "  - Parallel workers:        %d\n" "$worker_count"
+  printf "  - Failed:                  %d\n" "$failed"
+}
+
+step3_upscale_videos() {
+  local files=()
+  local waifu2x_cmd model_dir
+  local file
+  local i total progress=0
+  local processed=0 failed=0
+
+  if ! waifu2x_cmd="$(find_waifu2x_command)"; then
+    log_err "waifu2x binary not found."
+    exit 1
+  fi
+  if ! model_dir="$(find_waifu2x_model_dir "$waifu2x_cmd")"; then
+    log_err "waifu2x models directory not found."
+    exit 1
+  fi
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(
+    find . -type f \( -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" -o -iname "*.wmv" -o -iname "*.flv" \
+                      -o -iname "*.avi" -o -iname "*.webm" -o -iname "*.mkv" -o -iname "*.mpg" -o -iname "*.mpeg" \
+                      -o -iname "*.3gp" -o -iname "*.m2ts" -o -iname "*.vob" -o -iname "*.ogv" -o -iname "*.gifv" \) -print0
+  )
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No videos found to evaluate for upscaling."
+    return 0
+  fi
+
+  log_info "Upscaling and denoising $total video file(s) with waifu2x (scale=${WAIFU2X_SCALE}x, noise=${WAIFU2X_NOISE})."
+  log_info "Video mode rebuilds processed files as .mp4."
+
+  for ((i=0; i<total; i++)); do
+    file="${files[$i]}"
+    log_info "Processing video $((i + 1))/$total: $(basename "$file")"
+    if step3_process_video_file "$file" "$waifu2x_cmd" "$model_dir"; then
+      processed=$((processed + 1))
+    else
+      failed=$((failed + 1))
+      log_err "Video upscale failed: $file"
+    fi
+    progress=$((progress + 1))
+    progress_draw "Step 3 Video" "$progress" "$total"
+  done
+
+  log_info "Step 3 video upscale+denoise summary:"
+  printf "  - Videos found: %d\n" "$total"
+  printf "  - Processed:    %d\n" "$processed"
+  printf "  - Failed:       %d\n" "$failed"
+}
+
+step3_process_media() {
+  case "$STEP3_MEDIA_MODE" in
+    videos)
+      step3_upscale_videos
+      ;;
+    *)
+      step3_upscale_images
+      ;;
+  esac
+}
+
+step4_resize_media() {
   local images=() videos=()
   local file ext base tmp
   local i total w h nw
@@ -458,13 +986,13 @@ step3_resize_media() {
       if ! is_int "$w" || ! is_int "$h"; then
         img_skipped=$((img_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 3 Resize" "$all_done" "$all_total"
+        progress_draw "Step 4 Resize" "$all_done" "$all_total"
         continue
       fi
       if [[ "$h" -le "$MAX_MEDIA_HEIGHT" ]]; then
         img_skipped=$((img_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 3 Resize" "$all_done" "$all_total"
+        progress_draw "Step 4 Resize" "$all_done" "$all_total"
         continue
       fi
 
@@ -477,7 +1005,7 @@ step3_resize_media() {
         log_err "Resize failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 3 Resize" "$all_done" "$all_total"
+      progress_draw "Step 4 Resize" "$all_done" "$all_total"
     done
   else
     log_warn "No images found to evaluate for resizing."
@@ -485,7 +1013,7 @@ step3_resize_media() {
 
   total=${#videos[@]}
   if [[ "$all_done" -gt 0 ]]; then
-    progress_draw "Step 3 Resize" "$all_done" "$all_total"
+    progress_draw "Step 4 Resize" "$all_done" "$all_total"
   fi
   if [[ "$total" -gt 0 ]]; then
     log_info "Checking $total video file(s) for height > ${MAX_MEDIA_HEIGHT}px."
@@ -497,13 +1025,13 @@ step3_resize_media() {
       if ! is_int "$w" || ! is_int "$h"; then
         vid_skipped=$((vid_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 3 Resize" "$all_done" "$all_total"
+        progress_draw "Step 4 Resize" "$all_done" "$all_total"
         continue
       fi
       if [[ "$h" -le "$MAX_MEDIA_HEIGHT" ]]; then
         vid_skipped=$((vid_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 3 Resize" "$all_done" "$all_total"
+        progress_draw "Step 4 Resize" "$all_done" "$all_total"
         continue
       fi
 
@@ -528,7 +1056,7 @@ step3_resize_media() {
         *)
           vid_skipped=$((vid_skipped + 1))
           all_done=$((all_done + 1))
-          progress_draw "Step 3 Resize" "$all_done" "$all_total"
+          progress_draw "Step 4 Resize" "$all_done" "$all_total"
           continue
           ;;
       esac
@@ -543,7 +1071,7 @@ step3_resize_media() {
         log_err "Resize failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 3 Resize" "$all_done" "$all_total"
+      progress_draw "Step 4 Resize" "$all_done" "$all_total"
     done
   else
     log_warn "No videos found to evaluate for resizing."
@@ -559,7 +1087,7 @@ step3_resize_media() {
   printf "  - Videos failed:  %d\n" "$vid_failed"
 }
 
-step4_remove_metadata() {
+step5_remove_metadata() {
   local files=()
   local file
   local i total
@@ -589,7 +1117,7 @@ step4_remove_metadata() {
       log_err "mat2 failed: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 4 Metadata" "$progress" "$total"
+    progress_draw "Step 5 Metadata" "$progress" "$total"
   done
 
   log_info "Metadata scrub summary:"
@@ -629,7 +1157,7 @@ move_item_into_bucket() {
   mv "$src" "$target"
 }
 
-step8_move_empty_items() {
+step9_move_empty_items() {
   local bucket_root="./${EMPTY_ITEMS_BUCKET_NAME}"
   local zero_files=()
   local empty_dirs=()
@@ -644,28 +1172,28 @@ step8_move_empty_items() {
   local keep
 
   log_info "Scanning recursively for 0-byte files and empty folders..."
-  progress_draw "Step 8 Phase" "$phase" "$phase_total" "line"
+  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
 
   # Fast early exit before building full file/dir lists.
   first_zero=""
   first_empty=""
   pre_zero_tmp="$(mktemp)"
   pre_empty_tmp="$(mktemp)"
-  if ! run_with_spinner "Step 8: quick-checking zero-byte files" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print -quit > "$2"' _ "$bucket_root" "$pre_zero_tmp"; then
+  if ! run_with_spinner "Step 9: quick-checking zero-byte files" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print -quit > "$2"' _ "$bucket_root" "$pre_zero_tmp"; then
     rm -f "$pre_zero_tmp" "$pre_empty_tmp"
-    log_err "Step 8 pre-check failed (zero-byte file scan)."
+    log_err "Step 9 pre-check failed (zero-byte file scan)."
     exit 1
   fi
-  if ! run_with_spinner "Step 8: quick-checking empty folders" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print -quit > "$2"' _ "$bucket_root" "$pre_empty_tmp"; then
+  if ! run_with_spinner "Step 9: quick-checking empty folders" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print -quit > "$2"' _ "$bucket_root" "$pre_empty_tmp"; then
     rm -f "$pre_zero_tmp" "$pre_empty_tmp"
-    log_err "Step 8 pre-check failed (empty folder scan)."
+    log_err "Step 9 pre-check failed (empty folder scan)."
     exit 1
   fi
   first_zero="$(cat "$pre_zero_tmp" 2>/dev/null || true)"
   first_empty="$(cat "$pre_empty_tmp" 2>/dev/null || true)"
   rm -f "$pre_zero_tmp" "$pre_empty_tmp"
   phase=$((phase + 1))
-  progress_draw "Step 8 Phase" "$phase" "$phase_total" "line"
+  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
   if [[ -z "$first_zero" && -z "$first_empty" ]]; then
     log_info "No 0-byte files or empty folders found. Nothing to move."
     return 0
@@ -673,14 +1201,14 @@ step8_move_empty_items() {
 
   list_zero_tmp="$(mktemp)"
   list_empty_tmp="$(mktemp)"
-  if ! run_with_spinner "Step 8: scanning zero-byte files recursively" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print0 > "$2"' _ "$bucket_root" "$list_zero_tmp"; then
+  if ! run_with_spinner "Step 9: scanning zero-byte files recursively" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print0 > "$2"' _ "$bucket_root" "$list_zero_tmp"; then
     rm -f "$list_zero_tmp" "$list_empty_tmp"
-    log_err "Step 8 scan failed (zero-byte file scan)."
+    log_err "Step 9 scan failed (zero-byte file scan)."
     exit 1
   fi
-  if ! run_with_spinner "Step 8: scanning empty folders recursively" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print0 > "$2"' _ "$bucket_root" "$list_empty_tmp"; then
+  if ! run_with_spinner "Step 9: scanning empty folders recursively" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print0 > "$2"' _ "$bucket_root" "$list_empty_tmp"; then
     rm -f "$list_zero_tmp" "$list_empty_tmp"
-    log_err "Step 8 scan failed (empty folder scan)."
+    log_err "Step 9 scan failed (empty folder scan)."
     exit 1
   fi
   while IFS= read -r -d '' file; do
@@ -694,7 +1222,7 @@ step8_move_empty_items() {
   done < "$list_empty_tmp"
   rm -f "$list_zero_tmp" "$list_empty_tmp"
   phase=$((phase + 1))
-  progress_draw "Step 8 Phase" "$phase" "$phase_total" "line"
+  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
 
   # Keep only top-most empty directories so nested empties are moved with parents.
   if [[ "$empty_dir_count" -gt 0 ]]; then
@@ -720,10 +1248,10 @@ step8_move_empty_items() {
       selected_dir_count=$((selected_dir_count + 1))
     fi
     progress=$((progress + 1))
-    progress_draw "Step 8: filtering empty dirs" "$progress" "$empty_dir_count"
+    progress_draw "Step 9: filtering empty dirs" "$progress" "$empty_dir_count"
   done
   phase=$((phase + 1))
-  progress_draw "Step 8 Phase" "$phase" "$phase_total" "line"
+  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
 
   total=$(( zero_file_count + selected_dir_count ))
   log_info "Moving ${zero_file_count} zero-byte file(s) and ${selected_dir_count} empty folder(s)."
@@ -740,7 +1268,7 @@ step8_move_empty_items() {
       log_err "Failed to move file: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 8 Empty Items" "$progress" "$total"
+    progress_draw "Step 9 Empty Items" "$progress" "$total"
   done
 
   for ((i=0; i<selected_dir_count; i++)); do
@@ -749,7 +1277,7 @@ step8_move_empty_items() {
       # Might have become non-existent after parent move; count as moved.
       moved_dirs=$((moved_dirs + 1))
       progress=$((progress + 1))
-      progress_draw "Step 8 Empty Items" "$progress" "$total"
+      progress_draw "Step 9 Empty Items" "$progress" "$total"
       continue
     fi
     if move_item_into_bucket "$dir" "$bucket_root" "empty_folders"; then
@@ -759,7 +1287,7 @@ step8_move_empty_items() {
       log_err "Failed to move folder: $dir"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 8 Empty Items" "$progress" "$total"
+    progress_draw "Step 9 Empty Items" "$progress" "$total"
   done
 
   log_info "Empty item move summary:"
@@ -768,7 +1296,7 @@ step8_move_empty_items() {
   printf "  - Failed:                %d\n" "$failed"
   printf "  - Bucket:                %s\n" "$bucket_root"
   phase=$((phase + 1))
-  progress_draw "Step 8 Phase" "$phase" "$phase_total" "line"
+  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
 }
 
 trim_trailing_spaces() {
@@ -779,7 +1307,7 @@ trim_trailing_spaces() {
   printf "%s" "$value"
 }
 
-step6_trim_trailing_spaces() {
+step7_trim_trailing_spaces() {
   local paths=()
   local path parent base trimmed target
   local i total progress=0
@@ -807,7 +1335,7 @@ step6_trim_trailing_spaces() {
       failed=$((failed + 1))
       log_err "Rename skipped (name would become empty): $path"
       progress=$((progress + 1))
-      progress_draw "Step 6 Rename" "$progress" "$total"
+      progress_draw "Step 7 Rename" "$progress" "$total"
       continue
     fi
 
@@ -815,7 +1343,7 @@ step6_trim_trailing_spaces() {
       failed=$((failed + 1))
       log_err "Rename skipped (target exists): $path -> $target"
       progress=$((progress + 1))
-      progress_draw "Step 6 Rename" "$progress" "$total"
+      progress_draw "Step 7 Rename" "$progress" "$total"
       continue
     fi
 
@@ -827,7 +1355,7 @@ step6_trim_trailing_spaces() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 6 Rename" "$progress" "$total"
+    progress_draw "Step 7 Rename" "$progress" "$total"
   done
 
   log_info "Trailing-space trim summary:"
@@ -1262,7 +1790,7 @@ group_conflicts_with_registry() {
   return 1
 }
 
-step5_combine_related_folders() {
+step6_combine_related_folders() {
   local image_report="$1"
   local video_report="$2"
   local groups_tmp plans_tmp plans_sorted_tmp moved_registry
@@ -1273,7 +1801,7 @@ step5_combine_related_folders() {
   dirs=()
   local groups_planned=0 groups_created=0 groups_skipped=0 folders_moved=0 folders_failed=0
 
-  if [[ "${STEP5_COMBINE_FOLDERS:-0}" -ne 1 ]]; then
+  if [[ "${STEP6_COMBINE_FOLDERS:-0}" -ne 1 ]]; then
     return 0
   fi
 
@@ -1366,7 +1894,7 @@ step5_combine_related_folders() {
   printf "  - Failed moves:   %d\n" "$folders_failed"
 }
 
-step5_move_similar_media() {
+step6_move_similar_media() {
   local czkawka_cmd
   local bucket_root="./${SIMILAR_ITEMS_BUCKET_NAME}"
   local bucket_root_abs="${PWD}/${SIMILAR_ITEMS_BUCKET_NAME}"
@@ -1386,11 +1914,11 @@ step5_move_similar_media() {
     log_err "czkawka is not installed. Install it (brew install czkawka) and retry."
     exit 1
   fi
-  if [[ "${STEP5_COMBINE_FOLDERS:-0}" -eq 1 ]]; then
+  if [[ "${STEP6_COMBINE_FOLDERS:-0}" -eq 1 ]]; then
     combine_state="enabled"
   fi
-  log_info "Step 5 similar-media flow: keep best item in each group, move the rest."
-  log_info "Step 5 folder combine substep: ${combine_state}."
+  log_info "Step 6 similar-media flow: keep best item in each group, move the rest."
+  log_info "Step 6 folder combine substep: ${combine_state}."
 
   image_report="$(mktemp)"
   video_report="$(mktemp)"
@@ -1399,22 +1927,22 @@ step5_move_similar_media() {
   filtered_move_list="$(mktemp)"
 
   log_info "Running czkawka similar-image scan..."
-  if ! run_with_spinner "Step 5: scanning similar images with czkawka" "$czkawka_cmd" image -d "$PWD" -e "$bucket_root_abs" -x IMAGE -f "$image_report" -W -N; then
+  if ! run_with_spinner "Step 6: scanning similar images with czkawka" "$czkawka_cmd" image -d "$PWD" -e "$bucket_root_abs" -x IMAGE -f "$image_report" -W -N; then
     rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
     log_err "Czkawka image scan failed."
     exit 1
   fi
   phase=$((phase + 1))
-  progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
+  progress_draw "Step 6 Phase" "$phase" "$phase_total" "line"
 
   log_info "Running czkawka similar-video scan..."
-  if ! run_with_spinner "Step 5: scanning similar videos with czkawka" "$czkawka_cmd" video -d "$PWD" -e "$bucket_root_abs" -x VIDEO -f "$video_report" -W -N; then
+  if ! run_with_spinner "Step 6: scanning similar videos with czkawka" "$czkawka_cmd" video -d "$PWD" -e "$bucket_root_abs" -x VIDEO -f "$video_report" -W -N; then
     rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
     log_err "Czkawka video scan failed."
     exit 1
   fi
   phase=$((phase + 1))
-  progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
+  progress_draw "Step 6 Phase" "$phase" "$phase_total" "line"
 
   image_stats="$(collect_similar_media_moves_from_report "image" "$image_report" "$keep_list" "$move_list")"
   IFS='|' read -r image_groups image_entries image_keep image_move <<< "$image_stats"
@@ -1444,14 +1972,14 @@ step5_move_similar_media() {
   if [[ "$skipped_keep_conflicts" -lt 0 ]]; then skipped_keep_conflicts=0; fi
 
   phase=$((phase + 1))
-  progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
+  progress_draw "Step 6 Phase" "$phase" "$phase_total" "line"
 
   if [[ "$total_planned_moves" -eq 0 ]]; then
-    step5_combine_related_folders "$image_report" "$video_report"
+    step6_combine_related_folders "$image_report" "$video_report"
     rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
     log_info "No similar media files selected for moving."
     phase=$((phase + 1))
-    progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
+    progress_draw "Step 6 Phase" "$phase" "$phase_total" "line"
     return 0
   fi
 
@@ -1464,7 +1992,7 @@ step5_move_similar_media() {
     if [[ ! -e "$rel" ]]; then
       missing=$((missing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 5 Move" "$progress" "$total_planned_moves"
+      progress_draw "Step 6 Move" "$progress" "$total_planned_moves"
       continue
     fi
 
@@ -1475,7 +2003,7 @@ step5_move_similar_media() {
     else
       missing=$((missing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 5 Move" "$progress" "$total_planned_moves"
+      progress_draw "Step 6 Move" "$progress" "$total_planned_moves"
       continue
     fi
 
@@ -1487,10 +2015,10 @@ step5_move_similar_media() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 5 Move" "$progress" "$total_planned_moves"
+    progress_draw "Step 6 Move" "$progress" "$total_planned_moves"
   done < "$filtered_move_list"
 
-  step5_combine_related_folders "$image_report" "$video_report"
+  step6_combine_related_folders "$image_report" "$video_report"
   rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
   log_info "Similar-media move summary:"
   printf "  - Image groups found: %d\n" "$image_groups"
@@ -1503,24 +2031,70 @@ step5_move_similar_media() {
   printf "  - Failed: %d\n" "$failed"
   printf "  - Bucket: %s\n" "$bucket_root"
   phase=$((phase + 1))
-  progress_draw "Step 5 Phase" "$phase" "$phase_total" "line"
+  progress_draw "Step 6 Phase" "$phase" "$phase_total" "line"
 }
 
-choose_step5_combine_option() {
+choose_step6_combine_option() {
   local choice
   print_divider
   read -r -p "Combine folders with containing similar media? [y/N] " choice
   choice="${choice:-N}"
   if [[ "$choice" =~ ^[Yy]$ ]]; then
-    STEP5_COMBINE_FOLDERS=1
-    log_info "Step 5 folder combine substep: enabled."
+    STEP6_COMBINE_FOLDERS=1
+    log_info "Step 6 folder combine substep: enabled."
   else
-    STEP5_COMBINE_FOLDERS=0
-    log_info "Step 5 folder combine substep: disabled."
+    STEP6_COMBINE_FOLDERS=0
+    log_info "Step 6 folder combine substep: disabled."
   fi
 }
 
-choose_step7_trim_seconds() {
+choose_step3_upscale_options() {
+  local mode scale noise
+
+  print_divider
+  read -r -p "Process videos or images? [images] " mode
+  mode="${mode:-images}"
+  while true; do
+    case "$mode" in
+      images|image|i)
+        STEP3_MEDIA_MODE="images"
+        break
+        ;;
+      videos|video|v)
+        STEP3_MEDIA_MODE="videos"
+        break
+        ;;
+      *)
+        read -r -p "Process videos or images? [images] " mode
+        mode="${mode:-images}"
+        ;;
+    esac
+  done
+
+  read -r -p "Upscale level [2] (1, 2, or 4): " scale
+  scale="${scale:-2}"
+  while true; do
+    case "$scale" in
+      1|2|4) break ;;
+      *) read -r -p "Choose upscale level (1, 2, or 4): " scale ;;
+    esac
+  done
+  WAIFU2X_SCALE="$scale"
+
+  read -r -p "Denoise level [3] (0, 1, 2, or 3): " noise
+  noise="${noise:-3}"
+  while true; do
+    case "$noise" in
+      0|1|2|3) break ;;
+      *) read -r -p "Choose denoise level (0, 1, 2, or 3): " noise ;;
+    esac
+  done
+  WAIFU2X_NOISE="$noise"
+
+  log_info "Step 3 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}."
+}
+
+choose_step8_trim_seconds() {
   local seconds
   print_divider
   read -r -p "Trim how many seconds from start of each video? [10] " seconds
@@ -1531,15 +2105,15 @@ choose_step7_trim_seconds() {
     seconds="${seconds:-10}"
   done
   if awk -v s="$seconds" 'BEGIN { exit !(s > 0) }'; then
-    STEP7_TRIM_SECONDS="$seconds"
+    STEP8_TRIM_SECONDS="$seconds"
   else
-    STEP7_TRIM_SECONDS="10"
+    STEP8_TRIM_SECONDS="10"
     log_warn "Value must be greater than 0. Using default 10 seconds."
   fi
-  log_info "Step 7 trim amount set to ${STEP7_TRIM_SECONDS}s."
+  log_info "Step 8 trim amount set to ${STEP8_TRIM_SECONDS}s."
 }
 
-step7_trim_video_lead() {
+step8_trim_video_lead() {
   local files=()
   local file duration ext base tmp
   local i total progress=0
@@ -1559,14 +2133,14 @@ step7_trim_video_lead() {
     return 0
   fi
 
-  log_info "Trimming first ${STEP7_TRIM_SECONDS}s from $total video file(s)."
+  log_info "Trimming first ${STEP8_TRIM_SECONDS}s from $total video file(s)."
   for ((i=0; i<total; i++)); do
     file="${files[$i]}"
     duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$file" 2>/dev/null | head -n 1)"
-    if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP7_TRIM_SECONDS" 'BEGIN { exit !(d <= s) }'; then
+    if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP8_TRIM_SECONDS" 'BEGIN { exit !(d <= s) }'; then
       skipped_short=$((skipped_short + 1))
       progress=$((progress + 1))
-      progress_draw "Step 7 Trim" "$progress" "$total"
+      progress_draw "Step 8 Trim" "$progress" "$total"
       continue
     fi
 
@@ -1575,16 +2149,16 @@ step7_trim_video_lead() {
     tmp="${base}.trimstart-tmp.$$.$ext"
     rm -f "$tmp"
 
-    if ffmpeg -hide_banner -loglevel error -y -ss "$STEP7_TRIM_SECONDS" -i "$file" -map 0 -c copy -avoid_negative_ts make_zero "$tmp" && [[ -s "$tmp" ]]; then
+    if ffmpeg -hide_banner -loglevel error -y -ss "$STEP8_TRIM_SECONDS" -i "$file" -map 0 -c copy -avoid_negative_ts make_zero "$tmp" && [[ -s "$tmp" ]]; then
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
-      progress_draw "Step 7 Trim" "$progress" "$total"
+      progress_draw "Step 8 Trim" "$progress" "$total"
       continue
     fi
 
     rm -f "$tmp" 2>/dev/null || true
-    if ffmpeg -hide_banner -loglevel error -y -ss "$STEP7_TRIM_SECONDS" -i "$file" -map 0 -c:v libx264 -crf 20 -preset medium -c:a aac "$tmp" && [[ -s "$tmp" ]]; then
+    if ffmpeg -hide_banner -loglevel error -y -ss "$STEP8_TRIM_SECONDS" -i "$file" -map 0 -c:v libx264 -crf 20 -preset medium -c:a aac "$tmp" && [[ -s "$tmp" ]]; then
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
     else
@@ -1594,11 +2168,11 @@ step7_trim_video_lead() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 7 Trim" "$progress" "$total"
+    progress_draw "Step 8 Trim" "$progress" "$total"
   done
 
-  log_info "Step 7 trim summary:"
-  printf "  - Trim seconds:        %ss\n" "$STEP7_TRIM_SECONDS"
+  log_info "Step 8 trim summary:"
+  printf "  - Trim seconds:        %ss\n" "$STEP8_TRIM_SECONDS"
   printf "  - Files trimmed:       %d\n" "$trimmed"
   printf "  - Skipped (too short): %d\n" "$skipped_short"
   printf "  - Failed:              %d\n" "$failed"
@@ -1608,7 +2182,7 @@ choose_resize_height() {
   local choice custom
 
   print_divider
-  echo "Step 3 Resize: choose max media height"
+  echo "Step 4 Resize: choose max media height"
   echo "1. 3200 (Default)"
   echo "2. 2400"
   echo "3. 2800"
@@ -1665,12 +2239,13 @@ main() {
   echo "6. $(step_description 6)"
   echo "7. $(step_description 7)"
   echo "8. $(step_description 8)"
+  echo "9. $(step_description 9)"
   echo "Example: 1-3,5,7"
   read -r -p "> " input
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
-    selected=(1 2 3 4 5 6 7 8)
+    selected=(1 2 3 4 5 6 7 8 9)
   else
     IFS=',' read -r -a raw <<< "$input"
     for token in "${raw[@]+"${raw[@]}"}"; do
@@ -1711,7 +2286,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -ge 1 && "$num" -le 8 ]]; then
+    if [[ "$num" -ge 1 && "$num" -le 9 ]]; then
       valid_selected+=("$num")
     else
       log_warn "Skipping out-of-range step: $num"
@@ -1731,9 +2306,10 @@ main() {
 
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
     case "$num" in
-      3) choose_resize_height ;;
-      5) choose_step5_combine_option ;;
-      7) choose_step7_trim_seconds ;;
+      3) choose_step3_upscale_options ;;
+      4) choose_resize_height ;;
+      6) choose_step6_combine_option ;;
+      8) choose_step8_trim_seconds ;;
     esac
   done
 
