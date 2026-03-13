@@ -12,7 +12,7 @@ WAIFU2X_RELEASE_URL_MACOS="https://github.com/nihui/waifu2x-ncnn-vulkan/releases
 WAIFU2X_SCALE=2
 WAIFU2X_NOISE=3
 STEP3_MEDIA_MODE="images"
-STEP3_PARALLEL_JOBS=2
+STEP3_CPU_FALLBACK=1
 STEP6_COMBINE_FOLDERS=0
 STEP8_TRIM_SECONDS=10
 
@@ -590,14 +590,107 @@ is_waifu2x_supported_image_ext() {
   esac
 }
 
+step3_probe_image_dimensions() {
+  local path="$1"
+  local out width height
+
+  out="$(sips -g pixelWidth -g pixelHeight "$path" 2>/dev/null || true)"
+  width="$(printf "%s\n" "$out" | awk '/pixelWidth:/ {print $2; exit}')"
+  height="$(printf "%s\n" "$out" | awk '/pixelHeight:/ {print $2; exit}')"
+  if ! is_int "$width"; then width=0; fi
+  if ! is_int "$height"; then height=0; fi
+  printf "%s|%s" "$width" "$height"
+}
+
+step3_probe_image_luma_metrics() {
+  local path="$1"
+  local stats yavg yhigh
+
+  stats="$(ffmpeg -hide_banner -loglevel error -i "$path" -vf signalstats,metadata=print:file=- -frames:v 1 -f null - 2>/dev/null || true)"
+  yavg="$(printf "%s\n" "$stats" | awk -F= '/lavfi.signalstats.YAVG=/{print $2; exit}')"
+  yhigh="$(printf "%s\n" "$stats" | awk -F= '/lavfi.signalstats.YHIGH=/{print $2; exit}')"
+  if ! is_number "$yavg"; then yavg=999; fi
+  if ! is_number "$yhigh"; then yhigh=999; fi
+  printf "%s|%s" "$yavg" "$yhigh"
+}
+
+step3_validate_output_image() {
+  local src="$1"
+  local out="$2"
+  local src_dims out_dims metrics
+  local src_w src_h out_w out_h
+  local src_px out_px
+  local yavg yhigh
+
+  src_dims="$(step3_probe_image_dimensions "$src")"
+  out_dims="$(step3_probe_image_dimensions "$out")"
+  IFS='|' read -r src_w src_h <<< "$src_dims"
+  IFS='|' read -r out_w out_h <<< "$out_dims"
+  if ! is_int "$src_w" || ! is_int "$src_h" || ! is_int "$out_w" || ! is_int "$out_h"; then
+    return 1
+  fi
+  if [[ "$src_w" -le 0 || "$src_h" -le 0 || "$out_w" -le 0 || "$out_h" -le 0 ]]; then
+    return 1
+  fi
+
+  src_px=$(( src_w * src_h ))
+  out_px=$(( out_w * out_h ))
+  if [[ "$out_px" -lt "$src_px" ]]; then
+    return 1
+  fi
+
+  metrics="$(step3_probe_image_luma_metrics "$out")"
+  IFS='|' read -r yavg yhigh <<< "$metrics"
+  if awk -v avg="$yavg" -v hi="$yhigh" 'BEGIN { exit !(avg <= 1.0 && hi <= 4.0) }'; then
+    return 1
+  fi
+
+  return 0
+}
+
+step3_run_waifu2x_image_attempt() {
+  local file="$1"
+  local tmp="$2"
+  local waifu2x_cmd="$3"
+  local model_dir="$4"
+  local format="$5"
+  local tile="$6"
+  local device="${7:-auto}"
+
+  rm -f "$tmp"
+  if [[ "$device" == "cpu" ]]; then
+    "$waifu2x_cmd" -i "$file" -o "$tmp" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -g -1 -f "$format" >/dev/null 2>&1
+  else
+    "$waifu2x_cmd" -i "$file" -o "$tmp" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -f "$format" >/dev/null 2>&1
+  fi
+}
+
+step3_run_waifu2x_dir_attempt() {
+  local input_dir="$1"
+  local output_dir="$2"
+  local waifu2x_cmd="$3"
+  local model_dir="$4"
+  local tile="$5"
+  local device="${6:-auto}"
+
+  rm -rf "$output_dir"
+  mkdir -p "$output_dir"
+  if [[ "$device" == "cpu" ]]; then
+    "$waifu2x_cmd" -i "$input_dir" -o "$output_dir" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -g -1 -f png >/dev/null 2>&1
+  else
+    "$waifu2x_cmd" -i "$input_dir" -o "$output_dir" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -f png >/dev/null 2>&1
+  fi
+}
+
 step3_process_image_file() {
   local file="$1"
   local waifu2x_cmd="$2"
   local model_dir="$3"
   local result_file="$4"
   local ext format base tmp
-  local width height long_edge
-  local tile tile_seen upscale_ok tile_fallback=0
+  local width height
+  local tile upscale_ok tile_fallback=0
+  local cpu_fallback_used=0 rejected_outputs=0
 
   ext="$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')"
   case "$ext" in
@@ -605,7 +698,7 @@ step3_process_image_file() {
     png) format="png" ;;
     webp) format="webp" ;;
     *)
-      printf "unsupported|0\n" > "$result_file"
+      printf "unsupported|0|0|0\n" > "$result_file"
       return 0
       ;;
   esac
@@ -613,47 +706,48 @@ step3_process_image_file() {
   width="$(sips -g pixelWidth "$file" 2>/dev/null | awk '/pixelWidth:/ {print $2; exit}')"
   height="$(sips -g pixelHeight "$file" 2>/dev/null | awk '/pixelHeight:/ {print $2; exit}')"
   if ! is_int "$width" || ! is_int "$height" || [[ "$width" -le 0 || "$height" -le 0 ]]; then
-    printf "probe_failed|0\n" > "$result_file"
+    printf "probe_failed|0|0|0\n" > "$result_file"
     return 0
-  fi
-
-  if [[ "$width" -ge "$height" ]]; then
-    long_edge="$width"
-  else
-    long_edge="$height"
   fi
 
   base="${file%.*}"
   tmp="${base}.upscale-tmp.$$.$ext"
   upscale_ok=0
-  tile_seen="|"
-  for tile in "$long_edge" 4096 3072 2048 1536 1024 768 512 256 0; do
-    if ! is_int "$tile"; then
-      continue
-    fi
-    if [[ "$tile" -ne 0 && "$tile" -lt 32 ]]; then
-      continue
-    fi
-    case "$tile_seen" in
-      *"|${tile}|"*) continue ;;
-    esac
-    tile_seen="${tile_seen}${tile}|"
-    rm -f "$tmp"
-    if "$waifu2x_cmd" -i "$file" -o "$tmp" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -f "$format" >/dev/null 2>&1 && [[ -s "$tmp" ]]; then
-      upscale_ok=1
-      if [[ "$tile" != "$long_edge" ]]; then
-        tile_fallback=1
+  for tile in 512 256 0; do
+    if step3_run_waifu2x_image_attempt "$file" "$tmp" "$waifu2x_cmd" "$model_dir" "$format" "$tile" "auto" && [[ -s "$tmp" ]]; then
+      if step3_validate_output_image "$file" "$tmp"; then
+        upscale_ok=1
+        if [[ "$tile" != "512" ]]; then
+          tile_fallback=1
+        fi
+        break
       fi
-      break
+      rejected_outputs=$((rejected_outputs + 1))
+      rm -f "$tmp" 2>/dev/null || true
     fi
   done
 
+  if [[ "$upscale_ok" -eq 0 && "$STEP3_CPU_FALLBACK" -eq 1 ]]; then
+    for tile in 256 128 0; do
+      if step3_run_waifu2x_image_attempt "$file" "$tmp" "$waifu2x_cmd" "$model_dir" "$format" "$tile" "cpu" && [[ -s "$tmp" ]]; then
+        if step3_validate_output_image "$file" "$tmp"; then
+          upscale_ok=1
+          tile_fallback=1
+          cpu_fallback_used=1
+          break
+        fi
+        rejected_outputs=$((rejected_outputs + 1))
+        rm -f "$tmp" 2>/dev/null || true
+      fi
+    done
+  fi
+
   if [[ "$upscale_ok" -eq 1 && -s "$tmp" ]]; then
     mv -f "$tmp" "$file"
-    printf "processed|%s\n" "$tile_fallback" > "$result_file"
+    printf "processed|%s|%s|%s\n" "$tile_fallback" "$cpu_fallback_used" "$rejected_outputs" > "$result_file"
   else
     rm -f "$tmp" 2>/dev/null || true
-    printf "failed|0\n" > "$result_file"
+    printf "failed|0|%s|%s\n" "$cpu_fallback_used" "$rejected_outputs" > "$result_file"
   fi
   return 0
 }
@@ -680,6 +774,9 @@ step3_process_video_file() {
   local model_dir="$3"
   local fps base final_output tmp_output workdir frames_dir upscaled_dir
   local name phase=0 phase_total=3
+  local waifu2x_ok=0 cpu_fallback_used=0
+
+  STEP3_LAST_VIDEO_CPU_FALLBACK=0
 
   fps="$(step3_probe_video_frame_rate "$file")"
   base="${file%.*}"
@@ -703,11 +800,14 @@ step3_process_video_file() {
   phase=$((phase + 1))
   progress_draw "Step 3 Video Phase" "$phase" "$phase_total" "line"
 
-  if ! run_with_spinner "Upscaling frames: ${name}" "$waifu2x_cmd" -i "$frames_dir" -o "$upscaled_dir" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -f png; then
-    rm -rf "$workdir"
-    return 1
+  if run_with_spinner "Upscaling frames: ${name}" step3_run_waifu2x_dir_attempt "$frames_dir" "$upscaled_dir" "$waifu2x_cmd" "$model_dir" 512 "auto" && [[ -n "$(find "$upscaled_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
+    waifu2x_ok=1
+  elif [[ "$STEP3_CPU_FALLBACK" -eq 1 ]] && run_with_spinner "Upscaling frames (CPU): ${name}" step3_run_waifu2x_dir_attempt "$frames_dir" "$upscaled_dir" "$waifu2x_cmd" "$model_dir" 256 "cpu" && [[ -n "$(find "$upscaled_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
+    waifu2x_ok=1
+    cpu_fallback_used=1
+    STEP3_LAST_VIDEO_CPU_FALLBACK=1
   fi
-  if [[ -z "$(find "$upscaled_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
+  if [[ "$waifu2x_ok" -ne 1 ]]; then
     rm -rf "$workdir"
     return 1
   fi
@@ -718,9 +818,9 @@ step3_process_video_file() {
   if ! run_with_spinner "Rebuilding video: ${name}" ffmpeg -hide_banner -loglevel error -y -framerate "$fps" -i "${upscaled_dir}/frame_%06d.png" -i "$file" -map 0:v:0 -map 1:a? -c:v libx264 -pix_fmt yuv420p -c:a copy -shortest "$tmp_output"; then
     rm -f "$tmp_output" 2>/dev/null || true
     if ! run_with_spinner "Rebuilding video (AAC): ${name}" ffmpeg -hide_banner -loglevel error -y -framerate "$fps" -i "${upscaled_dir}/frame_%06d.png" -i "$file" -map 0:v:0 -map 1:a? -c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest "$tmp_output"; then
-      rm -f "$tmp_output" 2>/dev/null || true
-      rm -rf "$workdir"
-      return 1
+        rm -f "$tmp_output" 2>/dev/null || true
+        rm -rf "$workdir"
+        return 1
     fi
   fi
 
@@ -743,14 +843,12 @@ step3_process_video_file() {
 step3_upscale_images() {
   local files=() candidates=()
   local waifu2x_cmd model_dir
-  local file
+  local file result_file
   local i total progress=0
   local all_images=0
   local upscaled=0 skipped_unsupported=0 skipped_probe=0 failed=0
-  local tile_fallback_used=0
-  local worker_count
-  local -a pids result_files job_files
-  local status fallback
+  local tile_fallback_used=0 cpu_fallback_used=0 rejected_outputs=0
+  local status fallback cpu_used rejected
 
   if ! waifu2x_cmd="$(find_waifu2x_command)"; then
     log_err "waifu2x binary not found."
@@ -790,68 +888,28 @@ step3_upscale_images() {
     return 0
   fi
 
-  worker_count="${STEP3_PARALLEL_JOBS}"
-  if ! is_int "$worker_count" || [[ "$worker_count" -lt 1 ]]; then
-    worker_count=1
-  fi
-
-  log_info "Upscaling and denoising $total supported image(s) with waifu2x (scale=${WAIFU2X_SCALE}x, noise=${WAIFU2X_NOISE}, workers=${worker_count})."
+  log_info "Upscaling and denoising $total supported image(s) with waifu2x (scale=${WAIFU2X_SCALE}x, noise=${WAIFU2X_NOISE})."
 
   for ((i=0; i<total; i++)); do
     file="${candidates[$i]}"
-    result_files+=("$(mktemp "${TMPDIR:-/tmp}/local_gallery_step3_img.XXXXXX")")
-    job_files+=("$file")
-    step3_process_image_file "$file" "$waifu2x_cmd" "$model_dir" "${result_files[${#result_files[@]}-1]}" &
-    pids+=("$!")
-
-    if [[ "${#pids[@]}" -ge "$worker_count" ]]; then
-      wait "${pids[0]}" || true
-      if [[ -f "${result_files[0]}" ]]; then
-        IFS='|' read -r status fallback < "${result_files[0]}"
-      else
-        status="failed"
-        fallback=0
-      fi
-      case "$status" in
-        processed)
-          upscaled=$((upscaled + 1))
-          if [[ "$fallback" == "1" ]]; then
-            tile_fallback_used=$((tile_fallback_used + 1))
-          fi
-          ;;
-        probe_failed)
-          skipped_probe=$((skipped_probe + 1))
-          ;;
-        unsupported)
-          skipped_unsupported=$((skipped_unsupported + 1))
-          ;;
-        *)
-          failed=$((failed + 1))
-          log_err "Upscale failed: ${job_files[0]}"
-          ;;
-      esac
-      rm -f "${result_files[0]}"
-      pids=("${pids[@]:1}")
-      result_files=("${result_files[@]:1}")
-      job_files=("${job_files[@]:1}")
-      progress=$((progress + 1))
-      progress_draw "Step 3 Upscale" "$progress" "$total"
-    fi
-  done
-
-  while [[ "${#pids[@]}" -gt 0 ]]; do
-    wait "${pids[0]}" || true
-    if [[ -f "${result_files[0]}" ]]; then
-      IFS='|' read -r status fallback < "${result_files[0]}"
+    result_file="$(mktemp "${TMPDIR:-/tmp}/local_gallery_step3_img.XXXXXX")"
+    step3_process_image_file "$file" "$waifu2x_cmd" "$model_dir" "$result_file"
+    if [[ -f "$result_file" ]]; then
+      IFS='|' read -r status fallback cpu_used rejected < "$result_file"
     else
       status="failed"
       fallback=0
+      cpu_used=0
+      rejected=0
     fi
     case "$status" in
       processed)
         upscaled=$((upscaled + 1))
         if [[ "$fallback" == "1" ]]; then
           tile_fallback_used=$((tile_fallback_used + 1))
+        fi
+        if [[ "$cpu_used" == "1" ]]; then
+          cpu_fallback_used=$((cpu_fallback_used + 1))
         fi
         ;;
       probe_failed)
@@ -862,13 +920,16 @@ step3_upscale_images() {
         ;;
       *)
         failed=$((failed + 1))
-        log_err "Upscale failed: ${job_files[0]}"
+        if [[ "$cpu_used" == "1" ]]; then
+          cpu_fallback_used=$((cpu_fallback_used + 1))
+        fi
+        log_err "Upscale failed: $file"
         ;;
     esac
-    rm -f "${result_files[0]}"
-    pids=("${pids[@]:1}")
-    result_files=("${result_files[@]:1}")
-    job_files=("${job_files[@]:1}")
+    if is_int "$rejected"; then
+      rejected_outputs=$((rejected_outputs + rejected))
+    fi
+    rm -f "$result_file"
     progress=$((progress + 1))
     progress_draw "Step 3 Upscale" "$progress" "$total"
   done
@@ -879,8 +940,9 @@ step3_upscale_images() {
   printf "  - Processed:               %d\n" "$upscaled"
   printf "  - Skipped (unsupported):   %d\n" "$skipped_unsupported"
   printf "  - Skipped (probe failed):  %d\n" "$skipped_probe"
+  printf "  - Rejected bad outputs:    %d\n" "$rejected_outputs"
   printf "  - Tile fallbacks used:     %d\n" "$tile_fallback_used"
-  printf "  - Parallel workers:        %d\n" "$worker_count"
+  printf "  - CPU fallbacks used:      %d\n" "$cpu_fallback_used"
   printf "  - Failed:                  %d\n" "$failed"
 }
 
@@ -889,7 +951,7 @@ step3_upscale_videos() {
   local waifu2x_cmd model_dir
   local file
   local i total progress=0
-  local processed=0 failed=0
+  local processed=0 failed=0 cpu_fallback_used=0
 
   if ! waifu2x_cmd="$(find_waifu2x_command)"; then
     log_err "waifu2x binary not found."
@@ -922,6 +984,9 @@ step3_upscale_videos() {
     log_info "Processing video $((i + 1))/$total: $(basename "$file")"
     if step3_process_video_file "$file" "$waifu2x_cmd" "$model_dir"; then
       processed=$((processed + 1))
+      if [[ "${STEP3_LAST_VIDEO_CPU_FALLBACK:-0}" -eq 1 ]]; then
+        cpu_fallback_used=$((cpu_fallback_used + 1))
+      fi
     else
       failed=$((failed + 1))
       log_err "Video upscale failed: $file"
@@ -933,6 +998,7 @@ step3_upscale_videos() {
   log_info "Step 3 video upscale+denoise summary:"
   printf "  - Videos found: %d\n" "$total"
   printf "  - Processed:    %d\n" "$processed"
+  printf "  - CPU fallback: %d\n" "$cpu_fallback_used"
   printf "  - Failed:       %d\n" "$failed"
 }
 
@@ -2049,7 +2115,7 @@ choose_step6_combine_option() {
 }
 
 choose_step3_upscale_options() {
-  local mode scale noise
+  local mode scale noise cpu_fallback
 
   print_divider
   read -r -p "Process videos or images? [images] " mode
@@ -2091,7 +2157,19 @@ choose_step3_upscale_options() {
   done
   WAIFU2X_NOISE="$noise"
 
-  log_info "Step 3 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}."
+  read -r -p "Use CPU fallback if needed? [Y/n] " cpu_fallback
+  cpu_fallback="${cpu_fallback:-Y}"
+  if [[ "$cpu_fallback" =~ ^[Nn]$ ]]; then
+    STEP3_CPU_FALLBACK=0
+  else
+    STEP3_CPU_FALLBACK=1
+  fi
+
+  if [[ "$STEP3_CPU_FALLBACK" -eq 1 ]]; then
+    log_info "Step 3 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback enabled."
+  else
+    log_info "Step 3 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback disabled."
+  fi
 }
 
 choose_step8_trim_seconds() {
