@@ -9411,86 +9411,74 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return key;
     }
 
-    function getTagThumbnailTargetsForRecord(rec) {
+    function thumbnailMenuScopeLabel(node) {
+      const scopePath = String(node?.path || "");
+      if (!scopePath) return "root";
+      return dirDisplayName(node) || "folder";
+    }
+
+    function thumbnailMenuFolderLabel(node) {
+      const folderPath = String(node?.path || "");
+      if (!folderPath) return "Root";
+      return dirDisplayName(node) || "folder";
+    }
+
+    function getThumbnailMenuTargetsForRecord(rec) {
       const out = [];
-      const seen = new Set();
-      let cur = WS.dirByPath.get(String(rec?.dirPath || "")) || null;
+      if (!rec) return out;
+      const seenFolders = new Set();
+      const seenTags = new Set();
+      let cur = WS.dirByPath.get(String(rec.dirPath || "")) || WS.root || null;
       while (cur) {
+        const folderPath = String(cur.path || "");
+        if (!seenFolders.has(folderPath)) {
+          seenFolders.add(folderPath);
+          const folderLabel = thumbnailMenuFolderLabel(cur);
+          out.push({
+            action: folderThumbnailActionForPath(folderPath),
+            label: folderPath ? `Set '${folderLabel}' thumbnail` : "Set root thumbnail"
+          });
+        }
+
         const scopeNode = cur.parent || WS.root || null;
-        const scopePath = String(scopeNode ? scopeNode.path || "" : "");
-        const scopeLabel = tagThumbnailScopeLabelForPath(scopePath);
+        const scopePath = String(scopeNode?.path || "");
+        const scopeLabel = thumbnailMenuScopeLabel(scopeNode);
         const tags = metaGetUserTags(cur.path || "");
         for (let i = 0; i < tags.length; i++) {
           const tag = normalizeTag(tags[i] || "");
           if (!tag) continue;
           const key = tagThumbnailKeyForTag(tag, scopePath);
-          if (!key || seen.has(key)) continue;
-          seen.add(key);
+          if (!key || seenTags.has(key)) continue;
+          seenTags.add(key);
           out.push({
-            key,
-            label: `${tag} in ${scopeLabel}`,
-            actionLabel: `Set '${tag}' thumbnail in ${scopeLabel}`
+            action: tagThumbnailActionForKey(key),
+            label: `Set '${tag}' thumbnail in ${scopeLabel}`
           });
+
           const album = metaGetTagAlbumForTag(tag);
           const albumKey = tagThumbnailKeyForAlbum(album, scopePath);
-          if (album && albumKey && !seen.has(albumKey)) {
-            seen.add(albumKey);
+          if (album && albumKey && !seenTags.has(albumKey)) {
+            seenTags.add(albumKey);
             out.push({
-              key: albumKey,
-              label: `Album: ${album} in ${scopeLabel}`,
-              actionLabel: `Set '${album}' album thumbnail in ${scopeLabel}`
+              action: tagThumbnailActionForKey(albumKey),
+              label: `Set album '${album}' thumbnail in ${scopeLabel}`
             });
           }
         }
+
         if (metaHasFavorite(cur.path || "")) {
-          const scopeNode = cur.parent || WS.root || null;
-          const scopePath = String(scopeNode ? scopeNode.path || "" : "");
           const scopeKey = tagThumbnailScopeKeyFromPath(scopePath);
           const key = `special:favorites:${scopeKey}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            const scopeLabel = scopeNode ? dirDisplayName(scopeNode) : "root";
+          if (!seenTags.has(key)) {
+            seenTags.add(key);
             out.push({
-              key,
-              label: `Favorites in ${scopeLabel}`,
-              actionLabel: `Set favorites thumbnail in ${scopeLabel}`
+              action: tagThumbnailActionForKey(key),
+              label: `Set favorites thumbnail in ${scopeLabel}`
             });
           }
         }
-        cur = cur.parent || null;
-      }
-      out.sort((a, b) => String(a.actionLabel || a.label || "").localeCompare(String(b.actionLabel || b.label || "")));
-      return out;
-    }
 
-    function getFolderThumbnailTargetsForRecord(rec) {
-      const out = [];
-      if (!rec) return out;
-      const startPath = String(rec.dirPath || "");
-      const seen = new Set();
-      let cur = WS.dirByPath.get(startPath) || null;
-      while (cur) {
-        const p = String(cur.path || "");
-        const key = p;
-        if (!seen.has(key)) {
-          seen.add(key);
-          if (p) {
-            const folderLabel = displayPath(p) || dirDisplayName(cur) || "folder";
-            out.push({
-              path: p,
-              label: folderLabel,
-              actionLabel: `Set '${folderLabel}' thumbnail`
-            });
-          }
-        }
         cur = cur.parent || null;
-      }
-      if (!out.some((item) => String(item?.path || "") === "")) {
-        out.push({
-          path: "",
-          label: "Root",
-          actionLabel: "Set root thumbnail"
-        });
       }
       return out;
     }
@@ -13355,8 +13343,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       const menu = previewActionMenuEl;
       const fileId = String(rec.id || "");
-      const folderThumbTargets = getFolderThumbnailTargetsForRecord(rec);
-      const tagThumbTargets = getTagThumbnailTargetsForRecord(rec);
+      const thumbnailTargets = getThumbnailMenuTargetsForRecord(rec);
 
       const makeBtn = (label, action, disabled = false) => {
         const btn = document.createElement("button");
@@ -13372,19 +13359,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         return btn;
       };
 
-      for (let i = 0; i < folderThumbTargets.length; i++) {
-        const t = folderThumbTargets[i];
-        const label = String(t && (t.actionLabel || t.label) || "");
-        const path = String(t && t.path || "");
-        if (!label && path !== "") continue;
-        menu.appendChild(makeBtn(label || "Set thumbnail", folderThumbnailActionForPath(path)));
-      }
-      for (let i = 0; i < tagThumbTargets.length; i++) {
-        const t = tagThumbTargets[i];
-        const label = String(t && (t.actionLabel || t.label) || "");
-        const key = String(t && t.key || "");
-        if (!label || !key) continue;
-        menu.appendChild(makeBtn(label, tagThumbnailActionForKey(key)));
+      for (let i = 0; i < thumbnailTargets.length; i++) {
+        const t = thumbnailTargets[i];
+        const label = String(t?.label || "");
+        const action = String(t?.action || "");
+        if (!label || !action) continue;
+        menu.appendChild(makeBtn(label, action));
       }
       menu.appendChild(makeBtn("Edit thumbnail", "edit-thumbnail"));
       menu.appendChild(makeBtn("Rename", "rename-file"));
@@ -15148,25 +15128,17 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             const fileMenuOpen = WS.view.fileActionMenuId === String(entry.id || "");
             const bulkFileMenuActive = canBulk && sel && selectedFilesInViewCount > 0;
             const canLooseSetMerge = !!WS.meta.fsRootHandle;
-            const folderThumbTargets = rec ? getFolderThumbnailTargetsForRecord(rec) : [];
-            const tagThumbTargets = rec ? getTagThumbnailTargetsForRecord(rec) : [];
-            const folderThumbButtonsHtml = folderThumbTargets.map((t) => {
-              const label = String(t && (t.actionLabel || t.label) || "");
-              const path = String(t && t.path || "");
-              if (!label && path !== "") return "";
-              return `<button type="button" data-action="${escapeHtml(folderThumbnailActionForPath(path))}">${escapeHtml(label || "Set thumbnail")}</button>`;
-            }).join("");
-            const tagThumbButtonsHtml = tagThumbTargets.map((t) => {
-              const label = String(t && (t.actionLabel || t.label) || "");
-              const key = String(t && t.key || "");
-              if (!label || !key) return "";
-              return `<button type="button" data-action="${escapeHtml(tagThumbnailActionForKey(key))}">${escapeHtml(label)}</button>`;
+            const thumbnailTargets = rec ? getThumbnailMenuTargetsForRecord(rec) : [];
+            const thumbnailButtonsHtml = thumbnailTargets.map((t) => {
+              const label = String(t?.label || "");
+              const action = String(t?.action || "");
+              if (!label || !action) return "";
+              return `<button type="button" data-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`;
             }).join("");
             const fileMenuButtons = bulkFileMenuActive
               ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
               : `
-                  ${folderThumbButtonsHtml}
-                  ${tagThumbButtonsHtml}
+                  ${thumbnailButtonsHtml}
                   <button type="button" data-action="edit-thumbnail">Edit thumbnail</button>
                   <button type="button" data-action="rename-file">Rename</button>
                 `;
