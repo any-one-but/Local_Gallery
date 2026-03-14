@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.05
+// @version      01.13.07
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -625,6 +625,45 @@ body.pg-menu-open {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+#pgMenuBody .pg-group-page-section {
+  border-top: 1px solid var(--color1-tertiary);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+#pgMenuBody .pg-group-page-section:first-of-type {
+  margin-top: 6px;
+}
+
+#pgMenuBody .pg-group-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+#pgMenuBody .pg-group-page-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#pgMenuBody .pg-group-select {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+#pgMenuBody .pg-group-select input {
+  margin-top: 2px;
+}
+
+#pgMenuBody .pg-group-select-text {
+  min-width: 0;
 }
 
 #pgMenuBody .pg-opt-section .pg-opt-row:last-child {
@@ -1317,8 +1356,8 @@ const DOWNLOAD_TAB_KEYBIND_ACTIONS = [
   { id: 'pause_queue', label: 'Pause / Play Queue', hint: 'Pause or resume active queue.' },
   { id: 'create_group', label: 'Create Group', hint: 'Create a group from current filtered results.' },
   { id: 'rename_most_recent_group', label: 'Rename Most Recent Group', hint: 'Open rename prompt for the most recently created group.' },
-  { id: 'delete_all_groups', label: 'Delete All Groups', hint: 'Delete all groups for current profile.' },
-  { id: 'download_all_groups', label: 'Download All Groups', hint: 'Queue downloads for all groups in current profile.' },
+  { id: 'delete_all_groups', label: 'Delete Selected Groups', hint: 'Delete selected groups for current profile.' },
+  { id: 'download_all_groups', label: 'Download Selected Groups', hint: 'Queue downloads for selected groups in current profile.' },
   { id: 'download_post_links', label: 'Download Post Links', hint: 'Download filtered post links list.' },
   { id: 'toggle_gallery', label: 'Gallery', hint: 'Open gallery for current filtered files.' },
   { id: 'open_local_gallery', label: 'Local Gallery', hint: 'Open Local Gallery in a new tab.' },
@@ -1465,7 +1504,10 @@ let SHOW_PROGRESS_BAR = true;
 let SHOW_GROUPS_SECTION = true;
 let HIDE_POSTS_WITH_NO_ATTACHMENTS = false;
 let PG_GROUPS = [];
+let PG_SELECTED_GROUP_IDS = new Set();
+let PG_LAST_SELECTED_GROUP_ID = '';
 let GROUPS_PROFILE_KEY = null;
+let GROUPS_CACHE_LOADING_KEY = '';
 let PG_CACHE_DB = null;
 let PG_CACHE_DB_OPENING = null;
 let PG_TOTAL = null;
@@ -1477,7 +1519,9 @@ let INDEX_STATUS_TIMER = null;
 let PENDING_FILTER_SUMMARY = null;
 let PG_FILE_TOTAL = null;
 let PG_FILE_URL_MAP = null;
+let PG_FILE_POST_META_MAP = null;
 let PG_POST_FILE_RANGE_MAP = null;
+let GROUP_PAGE_METADATA_LOADING = false;
 const badgeToggleEvent = ('onpointerdown' in window) ? 'pointerdown' : 'mousedown';
 let lastUrl = location.href;
 let CURRENT_PROFILE_KEY = null;
@@ -2344,6 +2388,20 @@ function computeGroupStats(files) {
   return { postCount: postFolders.size, fileCount: files.length };
 }
 
+function extractStoredGroups(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === 'object' && Array.isArray(raw.groups)) return raw.groups;
+  return [];
+}
+
+function buildStoredGroupsPayload(groups) {
+  return {
+    ts: Date.now(),
+    schema: 1,
+    groups: Array.isArray(groups) ? groups : []
+  };
+}
+
 function normalizeGroup(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const files = Array.isArray(raw.files) ? raw.files.filter(f => f && f.url) : [];
@@ -2361,6 +2419,7 @@ function normalizeGroup(raw) {
     name: title || 'post',
     earliestPostFolder: earliestPostFolder || rawName || 'post',
     earliestIndex: typeof raw.earliestIndex === 'number' ? raw.earliestIndex : 0,
+    earliestPage: typeof raw.earliestPage === 'number' && raw.earliestPage > 0 ? raw.earliestPage : 0,
     userFolder: typeof raw.userFolder === 'string' ? raw.userFolder : '',
     files,
     postCount: typeof raw.postCount === 'number' ? raw.postCount : stats.postCount,
@@ -2368,24 +2427,196 @@ function normalizeGroup(raw) {
   };
 }
 
+function getGroupDisplayName(group) {
+  if (!group || typeof group !== 'object') return 'group';
+  const rawName = typeof group.name === 'string' ? group.name : '';
+  const groupTitle = inferGroupTitle(rawName, group.earliestPostFolder) || 'group';
+  const fileParts = group.files && group.files[0] ? splitDownloadPath(group.files[0].name || '') : null;
+  const folderSource = group.earliestPostFolder || rawName || (fileParts ? fileParts.postFolder : '') || '';
+  return applyEditableTitleToCompositeName(folderSource, groupTitle) || folderSource || groupTitle;
+}
+
+function syncSelectedGroups(groups) {
+  const validIds = new Set((Array.isArray(groups) ? groups : []).map(group => group && group.id).filter(Boolean));
+  const next = new Set();
+  PG_SELECTED_GROUP_IDS.forEach(groupId => {
+    if (validIds.has(groupId)) next.add(groupId);
+  });
+  PG_SELECTED_GROUP_IDS = next;
+  if (PG_LAST_SELECTED_GROUP_ID && !validIds.has(PG_LAST_SELECTED_GROUP_ID)) {
+    PG_LAST_SELECTED_GROUP_ID = '';
+  }
+}
+
+function setSelectedGroups(groupIds, anchorGroupId) {
+  const ids = (Array.isArray(groupIds) ? groupIds : []).filter(Boolean);
+  PG_SELECTED_GROUP_IDS = new Set(ids);
+  if (anchorGroupId && PG_SELECTED_GROUP_IDS.has(anchorGroupId)) {
+    PG_LAST_SELECTED_GROUP_ID = anchorGroupId;
+  } else {
+    PG_LAST_SELECTED_GROUP_ID = ids.length ? ids[ids.length - 1] : '';
+  }
+}
+
+function getGroupPageInfo(group) {
+  const fallbackIndex = group && typeof group.earliestIndex === 'number' ? group.earliestIndex : 0;
+  if (group && Array.isArray(group.files) && PG_FILE_POST_META_MAP instanceof Map) {
+    let best = null;
+    for (const file of group.files) {
+      const key = normalizeFileUrl(file && file.url);
+      if (!key) continue;
+      const meta = PG_FILE_POST_META_MAP.get(key);
+      if (!meta) continue;
+      if (!best || meta.globalIndex < best.globalIndex) best = meta;
+    }
+    if (best) {
+      return {
+        page: best.page || 0,
+        sortIndex: best.globalIndex || fallbackIndex || 0
+      };
+    }
+  }
+  if (group && typeof group.earliestPage === 'number' && group.earliestPage > 0) {
+    return {
+      page: group.earliestPage,
+      sortIndex: fallbackIndex || 0
+    };
+  }
+  if (PG_TOTAL && fallbackIndex > 0) {
+    return {
+      page: Math.max(1, Math.floor((PG_TOTAL - fallbackIndex) / POSTS_PER_PAGE) + 1),
+      sortIndex: fallbackIndex
+    };
+  }
+  return {
+    page: 0,
+    sortIndex: fallbackIndex || 0
+  };
+}
+
+function buildGroupPageSections(groups) {
+  const sections = new Map();
+  (Array.isArray(groups) ? groups : []).forEach(group => {
+    if (!group || !group.id) return;
+    const info = getGroupPageInfo(group);
+    const page = info.page > 0 ? info.page : 0;
+    const key = page > 0 ? `page:${page}` : 'page:unknown';
+    let section = sections.get(key);
+    if (!section) {
+      section = {
+        key,
+        page,
+        label: page > 0 ? `Page ${page}` : 'Unknown Page',
+        groups: []
+      };
+      sections.set(key, section);
+    }
+    section.groups.push({ group, sortIndex: info.sortIndex || 0 });
+  });
+  const out = Array.from(sections.values());
+  out.sort((a, b) => {
+    if (!a.page && !b.page) return 0;
+    if (!a.page) return 1;
+    if (!b.page) return -1;
+    return a.page - b.page;
+  });
+  out.forEach(section => {
+    section.groups.sort((a, b) => {
+      if (a.sortIndex !== b.sortIndex) return b.sortIndex - a.sortIndex;
+      const aCreated = typeof a.group.createdAt === 'number' ? a.group.createdAt : 0;
+      const bCreated = typeof b.group.createdAt === 'number' ? b.group.createdAt : 0;
+      return bCreated - aCreated;
+    });
+    section.groups = section.groups.map(entry => entry.group);
+  });
+  return out;
+}
+
+async function ensureGroupPageMetadata() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey || GROUP_PAGE_METADATA_LOADING) return;
+  const groups = loadGroupsForProfile(profileKey);
+  if (!groups.length) return;
+  const needsStoredPage = groups.some(group => !(typeof group.earliestPage === 'number' && group.earliestPage > 0));
+  if (!needsStoredPage) return;
+  GROUP_PAGE_METADATA_LOADING = true;
+  try {
+    await buildGlobalIndexMapIfNeeded();
+    if (!(PG_FILE_POST_META_MAP instanceof Map) || !PG_FILE_POST_META_MAP.size) return;
+    let changed = false;
+    PG_GROUPS.forEach(group => {
+      const info = getGroupPageInfo(group);
+      if (info.page > 0 && group.earliestPage !== info.page) {
+        group.earliestPage = info.page;
+        changed = true;
+      }
+    });
+    if (changed) saveGroupsForProfile();
+    renderGroupsUi();
+  } finally {
+    GROUP_PAGE_METADATA_LOADING = false;
+  }
+}
+
+async function hydrateGroupsFromBrowserCache(profileKey) {
+  const key = groupsKey(profileKey);
+  if (!key || GROUPS_CACHE_LOADING_KEY === key) return;
+  GROUPS_CACHE_LOADING_KEY = key;
+  try {
+    const raw = await idbGet(key);
+    const groups = extractStoredGroups(raw).map(normalizeGroup).filter(Boolean);
+    if (!groups.length) return;
+    if (GROUPS_PROFILE_KEY !== profileKey) return;
+    if (Array.isArray(PG_GROUPS) && PG_GROUPS.length) return;
+    PG_GROUPS = groups;
+    syncSelectedGroups(PG_GROUPS);
+    try {
+      localStorage.setItem(key, JSON.stringify(buildStoredGroupsPayload(PG_GROUPS)));
+    } catch {}
+    renderGroupsUi();
+  } finally {
+    if (GROUPS_CACHE_LOADING_KEY === key) GROUPS_CACHE_LOADING_KEY = '';
+  }
+}
+
 function loadGroupsForProfile(profileKey) {
   if (!profileKey) {
     PG_GROUPS = [];
+    PG_SELECTED_GROUP_IDS = new Set();
+    PG_LAST_SELECTED_GROUP_ID = '';
+    GROUPS_CACHE_LOADING_KEY = '';
     GROUPS_PROFILE_KEY = null;
     return PG_GROUPS;
   }
-  if (GROUPS_PROFILE_KEY === profileKey && Array.isArray(PG_GROUPS)) return PG_GROUPS;
+  if (GROUPS_PROFILE_KEY === profileKey && Array.isArray(PG_GROUPS)) {
+    syncSelectedGroups(PG_GROUPS);
+    return PG_GROUPS;
+  }
   let parsed = null;
-  try { parsed = JSON.parse(localStorage.getItem(groupsKey(profileKey)) || '[]'); } catch {}
-  if (!Array.isArray(parsed)) parsed = [];
-  PG_GROUPS = parsed.map(normalizeGroup).filter(Boolean);
+  const key = groupsKey(profileKey);
+  try { parsed = JSON.parse(localStorage.getItem(key) || 'null'); } catch {
+    try { localStorage.removeItem(key); } catch {}
+  }
+  PG_GROUPS = extractStoredGroups(parsed).map(normalizeGroup).filter(Boolean);
+  if (GROUPS_PROFILE_KEY !== profileKey) {
+    PG_SELECTED_GROUP_IDS = new Set();
+    PG_LAST_SELECTED_GROUP_ID = '';
+  }
+  syncSelectedGroups(PG_GROUPS);
   GROUPS_PROFILE_KEY = profileKey;
+  if (!PG_GROUPS.length) {
+    hydrateGroupsFromBrowserCache(profileKey).catch(() => {});
+  }
   return PG_GROUPS;
 }
 
 function saveGroupsForProfile() {
   if (!GROUPS_PROFILE_KEY) return;
-  try { localStorage.setItem(groupsKey(GROUPS_PROFILE_KEY), JSON.stringify(PG_GROUPS)); } catch {}
+  const key = groupsKey(GROUPS_PROFILE_KEY);
+  if (!key) return;
+  const payload = buildStoredGroupsPayload(PG_GROUPS);
+  try { localStorage.setItem(key, JSON.stringify(payload)); } catch {}
+  idbSet(key, payload).catch(() => {});
 }
 
 function deleteGroupById(groupId) {
@@ -2393,6 +2624,8 @@ function deleteGroupById(groupId) {
   const idx = PG_GROUPS.findIndex(g => g && g.id === groupId);
   if (idx < 0) return false;
   PG_GROUPS.splice(idx, 1);
+  PG_SELECTED_GROUP_IDS.delete(groupId);
+  if (PG_LAST_SELECTED_GROUP_ID === groupId) PG_LAST_SELECTED_GROUP_ID = '';
   saveGroupsForProfile();
   renderGroupsUi();
   return true;
@@ -2428,6 +2661,8 @@ function handleRenameGroup(groupId) {
 
 function clearGroupsForProfile() {
   PG_GROUPS = [];
+  PG_SELECTED_GROUP_IDS = new Set();
+  PG_LAST_SELECTED_GROUP_ID = '';
   saveGroupsForProfile();
   renderGroupsUi();
 }
@@ -2572,6 +2807,7 @@ function resetProfileIndexStateAfterCacheClear() {
   PG_GW = 1;
   PG_FILE_TOTAL = null;
   PG_FILE_URL_MAP = null;
+  PG_FILE_POST_META_MAP = null;
   PG_POST_FILE_RANGE_MAP = null;
   PG_INDEX_LOADING = false;
   keptPosts = [];
@@ -2589,6 +2825,7 @@ function handleProfileContextChange(){
     PG_GW = 1;
     PG_FILE_TOTAL = null;
     PG_FILE_URL_MAP = null;
+    PG_FILE_POST_META_MAP = null;
     PG_POST_FILE_RANGE_MAP = null;
     keptPosts = [];
     CURRENT_PROFILE_KEY = null;
@@ -2626,6 +2863,7 @@ function handleProfileContextChange(){
     PG_GW = 1;
     PG_FILE_TOTAL = null;
     PG_FILE_URL_MAP = null;
+    PG_FILE_POST_META_MAP = null;
     PG_POST_FILE_RANGE_MAP = null;
     keptPosts = [];
     if (!DOWNLOAD_ACROSS_PROFILES) {
@@ -3371,41 +3609,260 @@ function formatGroupDate(ts) {
   return 'Created ' + d.toISOString().split('T')[0];
 }
 
+function buildGroupsExportPayload(profileKey, groups) {
+  const parts = location.pathname.split('/');
+  const service = parts[1] || '';
+  const userId = parts[3] || '';
+  return {
+    format: 'partyguest-groups-log',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    profile: {
+      key: profileKey,
+      service,
+      userId,
+      userName: userName(),
+      origin: location.origin
+    },
+    groups: (Array.isArray(groups) ? groups : []).map(group => normalizeGroup(group)).filter(Boolean)
+  };
+}
+
+function buildGroupsExportFileName() {
+  const parts = location.pathname.split('/');
+  const service = parts[1] || 'service';
+  const profile = userName() || 'profile';
+  const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/[:]/g, '-');
+  const raw = `${profile} ${service} groups ${stamp}.pg-groups.json`;
+  return raw.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() || 'partyguest-groups.pg-groups.json';
+}
+
+function ensureGroupsImportInput() {
+  let input = document.getElementById('pgGroupsImportInput');
+  if (input) return input;
+  input = document.createElement('input');
+  input.type = 'file';
+  input.id = 'pgGroupsImportInput';
+  input.accept = '.json,.log,.txt,application/json,text/plain';
+  input.style.display = 'none';
+  input.addEventListener('change', () => {
+    const file = input.files && input.files[0] ? input.files[0] : null;
+    input.value = '';
+    if (file) handleImportGroupsFile(file).catch(() => {
+      setStatus('Failed to import groups', 'error');
+    });
+  });
+  document.body.appendChild(input);
+  return input;
+}
+
+function readTextFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
+    reader.readAsText(file);
+  });
+}
+
+function handleExportGroups() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+  const groups = loadGroupsForProfile(profileKey);
+  if (!groups.length) {
+    setStatus('No groups to export', 'info');
+    return false;
+  }
+  const payload = buildGroupsExportPayload(profileKey, groups);
+  const blob = new Blob([JSON.stringify(payload, null, 2) + '\n'], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  GM_download({
+    url,
+    name: buildGroupsExportFileName(),
+    onload: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus(`Exported ${groups.length} group${groups.length === 1 ? '' : 's'}`, 'success');
+    },
+    onerror: () => {
+      try { URL.revokeObjectURL(url); } catch {}
+      setStatus('Failed to export groups', 'error');
+    }
+  });
+  return true;
+}
+
+function handleImportGroups() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+  const input = ensureGroupsImportInput();
+  input.click();
+  return true;
+}
+
+async function handleImportGroupsFile(file) {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+  if (!file) {
+    setStatus('No import file selected', 'info');
+    return false;
+  }
+  const text = await readTextFile(file);
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    setStatus('Import file is not valid JSON', 'error');
+    return false;
+  }
+  const importedGroups = extractStoredGroups(parsed).map(normalizeGroup).filter(Boolean);
+  if (!importedGroups.length) {
+    setStatus('No groups found in import file', 'error');
+    return false;
+  }
+  loadGroupsForProfile(profileKey);
+  const nextGroups = importedGroups.map((group, idx) => Object.assign({}, group, {
+    id: makeGroupId(),
+    createdAt: typeof group.createdAt === 'number' ? group.createdAt : (Date.now() + idx)
+  }));
+  PG_GROUPS.push(...nextGroups);
+  saveGroupsForProfile();
+  renderGroupsUi();
+  setStatus(`Imported ${nextGroups.length} group${nextGroups.length === 1 ? '' : 's'}`, 'success');
+  return true;
+}
+
+function handleDeleteSelectedGroups() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+  const groups = loadGroupsForProfile(profileKey);
+  if (!groups.length) {
+    setStatus('No groups to delete', 'info');
+    return false;
+  }
+  syncSelectedGroups(groups);
+  const selectedIds = groups.filter(group => group && group.id && PG_SELECTED_GROUP_IDS.has(group.id)).map(group => group.id);
+  if (!selectedIds.length) {
+    setStatus('No groups selected', 'info');
+    return false;
+  }
+  const confirmed = confirm(`Delete ${selectedIds.length} selected group${selectedIds.length === 1 ? '' : 's'}?`);
+  if (!confirmed) return false;
+  const selectedSet = new Set(selectedIds);
+  PG_GROUPS = PG_GROUPS.filter(group => !(group && group.id && selectedSet.has(group.id)));
+  PG_SELECTED_GROUP_IDS = new Set();
+  PG_LAST_SELECTED_GROUP_ID = '';
+  saveGroupsForProfile();
+  renderGroupsUi();
+  setStatus(`Deleted ${selectedIds.length} group${selectedIds.length === 1 ? '' : 's'}`, 'success');
+  return true;
+}
+
+function handleDownloadSelectedGroups() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+  const groups = loadGroupsForProfile(profileKey);
+  if (!groups.length) {
+    setStatus('No groups to download', 'info');
+    return false;
+  }
+  syncSelectedGroups(groups);
+  const selectedGroups = groups.filter(group => group && group.id && PG_SELECTED_GROUP_IDS.has(group.id));
+  if (!selectedGroups.length) {
+    setStatus('No groups selected', 'info');
+    return false;
+  }
+  return queueAllGroupDownloads(selectedGroups);
+}
+
 function renderGroupsUi() {
   const body = document.getElementById('pgMenuGroupsBody');
   if (!body) return;
   const profileKey = getProfileKeyFromLocation();
   const hasProfile = !!profileKey;
   const groups = hasProfile ? loadGroupsForProfile(profileKey) : [];
+  if (hasProfile && groups.length) {
+    ensureGroupPageMetadata().catch(() => {});
+  }
+  syncSelectedGroups(groups);
+  const selectedCount = groups.reduce((count, group) => count + (group && group.id && PG_SELECTED_GROUP_IDS.has(group.id) ? 1 : 0), 0);
+  const allSelected = !!groups.length && selectedCount === groups.length;
+  const sections = buildGroupPageSections(groups);
+  const orderedGroupIds = sections.flatMap(section => section.groups.map(group => group.id).filter(Boolean));
+  const sectionGroupIds = new Map(sections.map(section => [section.key, section.groups.map(group => group.id).filter(Boolean)]));
   const note = hasProfile
-    ? '<div class="pg-options-note">Groups are saved per profile. Use Create Group to add one.</div>'
+    ? '<div class="pg-options-note">Groups are saved per profile. Use Create Group to add one. Shift-click checkboxes to select a range.</div>'
     : '<div class="pg-options-note">No profile detected.</div>';
 
   const actions = `
     <div class="pg-group-actions">
       <button type="button" id="pgGroupsCreateBtn"${hasProfile ? '' : ' disabled'}>Create Group</button>
-      <button type="button" id="pgGroupsClearBtn"${hasProfile ? '' : ' disabled'}>Delete All Groups</button>
-      <button type="button" id="pgGroupsDownloadAllBtn"${groups.length ? '' : ' disabled'}>Download All</button>
+      <button type="button" id="pgGroupsExportBtn"${groups.length ? '' : ' disabled'}>Export Groups</button>
+      <button type="button" id="pgGroupsImportBtn"${hasProfile ? '' : ' disabled'}>Import Groups</button>
+      <button type="button" id="pgGroupsDownloadSelectedBtn"${selectedCount ? '' : ' disabled'}>Download Selected</button>
+      <button type="button" id="pgGroupsDeleteSelectedBtn"${selectedCount ? '' : ' disabled'}>Delete Selected</button>
+      <label class="pg-opt-check">
+        <input id="pgGroupsSelectAll" type="checkbox"${allSelected ? ' checked' : ''}${groups.length ? '' : ' disabled'}>
+        Select all
+      </label>
     </div>
   `;
 
-  const rows = groups.map(group => {
-    const name = inferGroupTitle(group.name, group.earliestPostFolder) || 'group';
-    const created = formatGroupDate(group.createdAt);
-    const posts = typeof group.postCount === 'number' ? group.postCount : 0;
-    const files = typeof group.fileCount === 'number' ? group.fileCount : (group.files ? group.files.length : 0);
-    const meta = `${posts} posts • ${files} files${created ? ' • ' + created : ''}`;
+  const rows = sections.map(section => {
+    const pageIds = sectionGroupIds.get(section.key) || [];
+    const pageSelectedCount = pageIds.reduce((count, groupId) => count + (PG_SELECTED_GROUP_IDS.has(groupId) ? 1 : 0), 0);
+    const rowHtml = section.groups.map(group => {
+      const name = getGroupDisplayName(group);
+      const created = formatGroupDate(group.createdAt);
+      const posts = typeof group.postCount === 'number' ? group.postCount : 0;
+      const files = typeof group.fileCount === 'number' ? group.fileCount : (group.files ? group.files.length : 0);
+      const meta = `${posts} posts • ${files} files${created ? ' • ' + created : ''}`;
+      return `
+        <div class="pg-opt-row pg-group-row">
+          <div class="pg-opt-left">
+            <label class="pg-group-select">
+              <input type="checkbox" class="pg-group-select-input" data-group-id="${group.id}"${PG_SELECTED_GROUP_IDS.has(group.id) ? ' checked' : ''}>
+              <span class="pg-group-select-text">
+                <div class="pg-opt-title">${name}</div>
+                <div class="pg-opt-hint">${meta}</div>
+              </span>
+            </label>
+          </div>
+          <div class="pg-opt-right">
+            <button type="button" class="pg-group-rename-btn" data-group-id="${group.id}">Rename</button>
+            <button type="button" class="pg-group-download-btn" data-group-id="${group.id}">Download</button>
+            <button type="button" class="pg-group-delete-btn" data-group-id="${group.id}">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join('');
     return `
-      <div class="pg-opt-row pg-group-row">
-        <div class="pg-opt-left">
-          <div class="pg-opt-title">${name}</div>
-          <div class="pg-opt-hint">${meta}</div>
+      <div class="pg-group-page-section">
+        <div class="pg-group-page-header">
+          <div class="pg-opt-left">
+            <div class="pg-opt-title">${section.label}</div>
+            <div class="pg-opt-hint">${section.groups.length} group${section.groups.length === 1 ? '' : 's'} • ${pageSelectedCount} selected</div>
+          </div>
+          <div class="pg-group-page-actions">
+            <button type="button" class="pg-group-page-select-btn" data-page-key="${section.key}"${pageIds.length ? '' : ' disabled'}>Select Page</button>
+            <button type="button" class="pg-group-page-clear-btn" data-page-key="${section.key}"${pageSelectedCount ? '' : ' disabled'}>Clear Page</button>
+          </div>
         </div>
-        <div class="pg-opt-right">
-          <button type="button" class="pg-group-rename-btn" data-group-id="${group.id}">Rename</button>
-          <button type="button" class="pg-group-download-btn" data-group-id="${group.id}">Download</button>
-          <button type="button" class="pg-group-delete-btn" data-group-id="${group.id}">Delete</button>
-        </div>
+        ${rowHtml}
       </div>
     `;
   }).join('');
@@ -3420,19 +3877,95 @@ function renderGroupsUi() {
     });
   }
 
-  const clearBtn = document.getElementById('pgGroupsClearBtn');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      if (hasProfile) handleClearGroups();
+  const exportBtn = document.getElementById('pgGroupsExportBtn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      if (groups.length) handleExportGroups();
     });
   }
 
-  const dlAllBtn = document.getElementById('pgGroupsDownloadAllBtn');
-  if (dlAllBtn) {
-    dlAllBtn.addEventListener('click', () => {
-      if (groups.length) queueAllGroupDownloads(groups);
+  const importBtn = document.getElementById('pgGroupsImportBtn');
+  if (importBtn) {
+    importBtn.addEventListener('click', () => {
+      if (hasProfile) handleImportGroups();
     });
   }
+
+  const dlSelectedBtn = document.getElementById('pgGroupsDownloadSelectedBtn');
+  if (dlSelectedBtn) {
+    dlSelectedBtn.addEventListener('click', () => {
+      if (hasProfile) handleDownloadSelectedGroups();
+    });
+  }
+
+  const deleteSelectedBtn = document.getElementById('pgGroupsDeleteSelectedBtn');
+  if (deleteSelectedBtn) {
+    deleteSelectedBtn.addEventListener('click', () => {
+      if (hasProfile) handleDeleteSelectedGroups();
+    });
+  }
+
+  const selectAll = document.getElementById('pgGroupsSelectAll');
+  if (selectAll) {
+    selectAll.addEventListener('change', () => {
+      setSelectedGroups(
+        selectAll.checked ? orderedGroupIds : [],
+        selectAll.checked ? orderedGroupIds[orderedGroupIds.length - 1] || '' : ''
+      );
+      renderGroupsUi();
+    });
+  }
+
+  body.querySelectorAll('.pg-group-select-input').forEach(input => {
+    input.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const groupId = input.dataset.groupId || '';
+      if (!groupId) return;
+      const currentSelected = PG_SELECTED_GROUP_IDS.has(groupId);
+      const nextSelected = !currentSelected;
+      const next = new Set(PG_SELECTED_GROUP_IDS);
+      let startIdx = orderedGroupIds.indexOf(groupId);
+      let endIdx = startIdx;
+      if (ev.shiftKey && PG_LAST_SELECTED_GROUP_ID) {
+        const anchorIdx = orderedGroupIds.indexOf(PG_LAST_SELECTED_GROUP_ID);
+        if (anchorIdx !== -1 && startIdx !== -1) {
+          startIdx = Math.min(anchorIdx, startIdx);
+          endIdx = Math.max(anchorIdx, endIdx);
+        }
+      }
+      if (startIdx === -1) return;
+      for (let i = startIdx; i <= endIdx; i++) {
+        const id = orderedGroupIds[i];
+        if (!id) continue;
+        if (nextSelected) next.add(id);
+        else next.delete(id);
+      }
+      setSelectedGroups(Array.from(next), groupId);
+      renderGroupsUi();
+    });
+  });
+
+  body.querySelectorAll('.pg-group-page-select-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pageKey = btn.dataset.pageKey || '';
+      const pageIds = sectionGroupIds.get(pageKey) || [];
+      const next = new Set(PG_SELECTED_GROUP_IDS);
+      pageIds.forEach(groupId => next.add(groupId));
+      setSelectedGroups(Array.from(next), pageIds[pageIds.length - 1] || '');
+      renderGroupsUi();
+    });
+  });
+
+  body.querySelectorAll('.pg-group-page-clear-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pageKey = btn.dataset.pageKey || '';
+      const pageIds = sectionGroupIds.get(pageKey) || [];
+      const next = new Set(PG_SELECTED_GROUP_IDS);
+      pageIds.forEach(groupId => next.delete(groupId));
+      setSelectedGroups(Array.from(next), '');
+      renderGroupsUi();
+    });
+  });
 
   body.querySelectorAll('.pg-group-download-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -5722,6 +6255,7 @@ function buildBundleFromKeptPosts(sourceKeptPosts = keptPosts) {
   let userFolder = '';
   let earliestPostFolder = '';
   let earliestIndex = Infinity;
+  let earliestPage = 0;
 
   sourceKeptPosts.forEach(kp => {
     const { post, allowedFiles, globalIndex } = kp;
@@ -5730,6 +6264,7 @@ function buildBundleFromKeptPosts(sourceKeptPosts = keptPosts) {
     if (isEarliestCandidate) {
       earliestIndex = globalIndex;
       earliestPostFolder = '';
+      earliestPage = post && typeof post.pgPage === 'number' && post.pgPage > 0 ? post.pgPage : 0;
     }
     allowedFiles.forEach(fileInfo => {
       if (!fileInfo || !fileInfo.url) return;
@@ -5756,6 +6291,7 @@ function buildBundleFromKeptPosts(sourceKeptPosts = keptPosts) {
     userFolder,
     earliestPostFolder,
     earliestIndex: isFinite(earliestIndex) ? earliestIndex : 0,
+    earliestPage,
     postCount: stats.postCount,
     fileCount: stats.fileCount
   };
@@ -5802,6 +6338,7 @@ function buildFileIndexFromPostsIfNeeded() {
   if (!PG_POSTS || !PG_POSTS.length) {
     PG_FILE_TOTAL = null;
     PG_FILE_URL_MAP = null;
+    PG_FILE_POST_META_MAP = null;
     PG_POST_FILE_RANGE_MAP = null;
     return;
   }
@@ -5856,6 +6393,7 @@ function buildFileIndexFromPostsIfNeeded() {
   if (!totalFiles) {
     PG_FILE_TOTAL = 0;
     PG_FILE_URL_MAP = null;
+    PG_FILE_POST_META_MAP = null;
     PG_POST_FILE_RANGE_MAP = null;
     return;
   }
@@ -5886,13 +6424,21 @@ function buildFileIndexFromPostsIfNeeded() {
     }
   }
   PG_FILE_URL_MAP = new Map();
+  PG_FILE_POST_META_MAP = new Map();
   for (const meta of PG_POSTS) {
     if (!Array.isArray(meta.pgFiles)) continue;
+    const postGlobalIndex = typeof meta.pgGlobalIndex === 'number'
+      ? meta.pgGlobalIndex
+      : ((PG_ID_MAP && meta.id != null) ? (PG_ID_MAP.get(String(meta.id)) || 0) : 0);
+    const page = typeof meta.pgPage === 'number' && meta.pgPage > 0 ? meta.pgPage : 0;
     for (const f of meta.pgFiles) {
       if (!f || !f.url || typeof f.g !== 'number') continue;
       const key = normalizeFileUrl(f.url);
       if (!key) continue;
       if (!PG_FILE_URL_MAP.has(key)) PG_FILE_URL_MAP.set(key, f.g);
+      if (!PG_FILE_POST_META_MAP.has(key)) {
+        PG_FILE_POST_META_MAP.set(key, { globalIndex: postGlobalIndex, page });
+      }
     }
   }
 
@@ -6616,6 +7162,7 @@ async function handleCreateGroup() {
     name,
     earliestPostFolder: folderName,
     earliestIndex: bundle.earliestIndex,
+    earliestPage: bundle.earliestPage,
     userFolder: bundle.userFolder,
     files: bundle.files,
     postCount: bundle.postCount,
@@ -7064,10 +7611,10 @@ function triggerDownloadTabKeybindAction(actionId) {
       runKeybindAction(() => handleRenameMostRecentGroup());
       return true;
     case 'delete_all_groups':
-      runKeybindAction(() => handleClearGroups());
+      runKeybindAction(() => handleDeleteSelectedGroups());
       return true;
     case 'download_all_groups':
-      runKeybindAction(() => handleDownloadAllGroups());
+      runKeybindAction(() => handleDownloadSelectedGroups());
       return true;
     case 'download_post_links':
       runKeybindAction(() => handleDownloadPostLinks());
