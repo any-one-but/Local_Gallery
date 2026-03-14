@@ -31,6 +31,10 @@
       --dir-tag-title-color: #ff9300;
       --dir-tag-favorite-title-color: #ff43b5;
       --dir-tag-album-title-color: #ff6b63;
+      --ui-hover-lift: -1px;
+      --ui-active-press: 1px;
+      --ui-hover-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
+      --ui-focus-ring: 0 0 0 2px rgba(255, 255, 255, 0.12);
     }
 
     :root[data-media-size="small"] {
@@ -77,6 +81,8 @@
       --color1-tertiary: hsl(210, 18%, 85%);
 
       --anchor-internal-color2-primary: hsl(215, 85%, 35%);
+      --ui-hover-shadow: 0 8px 20px rgba(19, 34, 59, 0.12);
+      --ui-focus-ring: 0 0 0 2px rgba(33, 98, 180, 0.22);
     }
 
     :root[data-theme="light"] .dropdownMenu,
@@ -103,6 +109,8 @@
       --tag-exclude-bg: #20090b;
       --tag-exclude-border: #5a1f25;
       --tag-exclude-color: #ffd6d6;
+      --ui-hover-shadow: 0 8px 18px rgba(255, 255, 255, 0.04);
+      --ui-focus-ring: 0 0 0 2px rgba(255, 255, 255, 0.16);
     }
 
     :root[data-theme="superdark"] button,
@@ -216,6 +224,8 @@
       --tag-exclude-bg: #7a2b33;
       --tag-exclude-border: #541820;
       --tag-exclude-color: #ffe9ec;
+      --ui-hover-shadow: 0 3px 0 rgba(0, 0, 0, 0.18);
+      --ui-focus-ring: 0 0 0 2px rgba(26, 75, 140, 0.24);
     }
 
     :root[data-theme="retro90s-dark"] {
@@ -236,6 +246,8 @@
       --tag-exclude-bg: #4a1e24;
       --tag-exclude-border: #2f0f14;
       --tag-exclude-color: #ffe6ea;
+      --ui-hover-shadow: 0 3px 0 rgba(0, 0, 0, 0.28);
+      --ui-focus-ring: 0 0 0 2px rgba(111, 160, 255, 0.24);
     }
 
     :root {
@@ -391,13 +403,25 @@
       border: 1px solid var(--color0-tertirary);
       border-radius: 2px;
       cursor: pointer;
-      transition: background .15s ease, border-color .15s ease, transform .05s ease;
+      transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
       user-select: none;
       white-space: nowrap;
+      box-shadow: 0 0 0 rgba(0, 0, 0, 0);
     }
-    button:hover { background: var(--color0-tertirary); }
-    button:active { transform: translateY(1px); }
+    button:hover:not(:disabled) {
+      background: var(--color0-tertirary);
+      transform: translateY(var(--ui-hover-lift));
+      box-shadow: var(--ui-hover-shadow);
+    }
+    button:active:not(:disabled) {
+      transform: translateY(var(--ui-active-press));
+      box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    }
     button:disabled { opacity: .55; cursor: not-allowed; }
+    button:focus-visible {
+      outline: none;
+      box-shadow: var(--ui-focus-ring), var(--ui-hover-shadow);
+    }
 
     :root[data-theme="retro90s"] button,
     :root[data-theme="retro90s"] .miniBtn {
@@ -487,6 +511,8 @@
       background: var(--color1-secondary);
       color: var(--color0-primary);
       border: 1px solid var(--color1-tertiary);
+      transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+      box-shadow: 0 0 0 rgba(0, 0, 0, 0);
     }
 
     .miniBtn.navBtn {
@@ -500,8 +526,19 @@
       text-align: center;
       line-height: 1;
     }
-    .miniBtn:hover { background: var(--color1-secondary-transparent); }
-    .miniBtn:active { transform: translateY(1px); }
+    .miniBtn:hover:not(:disabled) {
+      background: var(--color1-secondary-transparent);
+      transform: translateY(var(--ui-hover-lift));
+      box-shadow: var(--ui-hover-shadow);
+    }
+    .miniBtn:active:not(:disabled) {
+      transform: translateY(var(--ui-active-press));
+      box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    }
+    .miniBtn:focus-visible {
+      outline: none;
+      box-shadow: var(--ui-focus-ring), var(--ui-hover-shadow);
+    }
     .miniBtn.active {
       background: var(--color0-secondary);
       color: var(--color1-primary);
@@ -1662,10 +1699,24 @@
       color: var(--color0-primary);
       font-size: 16px;
       cursor: pointer;
+      transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+      box-shadow: 0 0 0 rgba(0, 0, 0, 0);
     }
 
-    .dirMenuBtn:hover {
+    .dirMenuBtn:hover:not(:disabled) {
       background: var(--color1-secondary);
+      transform: translateY(var(--ui-hover-lift));
+      box-shadow: var(--ui-hover-shadow);
+    }
+
+    .dirMenuBtn:active:not(:disabled) {
+      transform: translateY(var(--ui-active-press));
+      box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    .dirMenuBtn:focus-visible {
+      outline: none;
+      box-shadow: var(--ui-focus-ring), var(--ui-hover-shadow);
     }
 
     .dropdownMenu {
