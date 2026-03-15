@@ -14,6 +14,7 @@ WAIFU2X_NOISE=3
 STEP3_MEDIA_MODE="images"
 STEP3_CPU_FALLBACK=1
 STEP8_TRIM_SECONDS=10
+STEP_ORDER=(1 2 3 4 5 6 7 8 9)
 
 # Optional terminal colors when stdout is a TTY.
 if [[ -t 1 ]]; then
@@ -374,13 +375,13 @@ step_description() {
   case "${1:-}" in
     1) printf "Remove duplicate files" ;;
     2) printf "Move similar files" ;;
-    3) printf "AI upscale and denoise media" ;;
-    4) printf "Converts all videos to mp4" ;;
-    5) printf "Resize media" ;;
-    6) printf "Scrub metadata" ;;
-    7) printf "Remove trailing spaces in file names" ;;
-    8) printf "Trim video starts" ;;
-    9) printf "Move empty files" ;;
+    3) printf "Converts all videos to mp4" ;;
+    4) printf "Resize media" ;;
+    5) printf "Scrub metadata" ;;
+    6) printf "Remove trailing spaces in file names" ;;
+    7) printf "Move empty files" ;;
+    8) printf "AI upscale and denoise media" ;;
+    9) printf "Trim video starts" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -389,13 +390,13 @@ step_function_name() {
   case "${1:-}" in
     1) printf "step1_dedupe" ;;
     2) printf "step6_move_similar_media" ;;
-    3) printf "step3_process_media" ;;
-    4) printf "step2_convert_videos" ;;
-    5) printf "step4_resize_media" ;;
-    6) printf "step5_remove_metadata" ;;
-    7) printf "step7_trim_trailing_spaces" ;;
-    8) printf "step8_trim_video_lead" ;;
-    9) printf "step9_move_empty_items" ;;
+    3) printf "step2_convert_videos" ;;
+    4) printf "step4_resize_media" ;;
+    5) printf "step5_remove_metadata" ;;
+    6) printf "step7_trim_trailing_spaces" ;;
+    7) printf "step9_move_empty_items" ;;
+    8) printf "step3_process_media" ;;
+    9) printf "step8_trim_video_lead" ;;
     *) printf "" ;;
   esac
 }
@@ -419,6 +420,26 @@ ensure_step_requirements() {
       }
       ;;
     3)
+      require_cmd ffmpeg
+      ;;
+    4)
+      require_cmd sips
+      require_cmd ffprobe
+      require_cmd ffmpeg
+      ;;
+    5)
+      require_cmd mat2
+      ;;
+    6)
+      require_cmd find
+      require_cmd mv
+      ;;
+    7)
+      require_cmd find
+      require_cmd mv
+      require_cmd mkdir
+      ;;
+    8)
       require_cmd find
       require_cmd sips
       require_cmd ffmpeg
@@ -427,30 +448,10 @@ ensure_step_requirements() {
       require_cmd rm
       ensure_waifu2x_ready || return 1
       ;;
-    4)
-      require_cmd ffmpeg
-      ;;
-    5)
-      require_cmd sips
-      require_cmd ffprobe
-      require_cmd ffmpeg
-      ;;
-    6)
-      require_cmd mat2
-      ;;
-    7)
-      require_cmd find
-      require_cmd mv
-      ;;
-    8)
-      require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      ;;
     9)
       require_cmd find
-      require_cmd mv
-      require_cmd mkdir
+      require_cmd ffmpeg
+      require_cmd ffprobe
       ;;
     *)
       return 1
@@ -2274,7 +2275,7 @@ main() {
   local input token confirm
   local selected=() raw=() invalid=()
   local sorted=() valid_selected=()
-  local num fn desc
+  local num fn desc selected_num
 
   print_divider
   printf "%sLocal Gallery Cleaner v%s%s\n" "$C_BOLD" "$SCRIPT_VERSION" "$C_RESET"
@@ -2284,20 +2285,14 @@ main() {
 
   echo "Select which steps to run:"
   echo "0. Run all steps in order"
-  echo "1. $(step_description 1)"
-  echo "2. $(step_description 2)"
-  echo "3. $(step_description 3)"
-  echo "4. $(step_description 4)"
-  echo "5. $(step_description 5)"
-  echo "6. $(step_description 6)"
-  echo "7. $(step_description 7)"
-  echo "8. $(step_description 8)"
-  echo "9. $(step_description 9)"
+  for num in "${STEP_ORDER[@]}"; do
+    echo "$num. $(step_description "$num")"
+  done
   read -r -p "> " input
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
-    selected=(1 2 3 4 5 6 7 8 9)
+    selected=("${STEP_ORDER[@]}")
   else
     IFS=',' read -r -a raw <<< "$input"
     for token in "${raw[@]+"${raw[@]}"}"; do
@@ -2338,11 +2333,18 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -ge 1 && "$num" -le 9 ]]; then
-      valid_selected+=("$num")
-    else
+    if [[ "$num" -lt 1 || "$num" -gt 9 ]]; then
       log_warn "Skipping out-of-range step: $num"
     fi
+  done
+
+  for num in "${STEP_ORDER[@]}"; do
+    for selected_num in "${sorted[@]+"${sorted[@]}"}"; do
+      if [[ "$selected_num" == "$num" ]]; then
+        valid_selected+=("$num")
+        break
+      fi
+    done
   done
 
   if [[ "${#valid_selected[@]}" -eq 0 ]]; then
@@ -2358,9 +2360,9 @@ main() {
 
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
     case "$num" in
-      3) choose_step3_upscale_options ;;
-      5) choose_resize_height ;;
-      8) choose_step8_trim_seconds ;;
+      4) choose_resize_height ;;
+      8) choose_step3_upscale_options ;;
+      9) choose_step8_trim_seconds ;;
     esac
   done
 
