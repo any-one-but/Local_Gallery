@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.07
+// @version      01.13.08
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -1399,6 +1399,8 @@ const DEFAULT_OPTIONS = {
   durationIndexing: false,
   galleryPreloadAll: false,
   parallelDownloadLimit: 3,
+  globalRequestDelayEnabled: false,
+  globalRequestDelayMs: 1000,
   videoDurationProbeConcurrency: VIDEO_DURATION_PROBE_DEFAULT,
   downloadAcrossProfiles: false,
   timeoutRetries: true,
@@ -1455,6 +1457,10 @@ function normalizeOptions(opt) {
   if (opt.parallelDownloadLimit != null) {
     out.parallelDownloadLimit = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
   }
+  if (typeof opt.globalRequestDelayEnabled === 'boolean') out.globalRequestDelayEnabled = opt.globalRequestDelayEnabled;
+  if (opt.globalRequestDelayMs != null) {
+    out.globalRequestDelayMs = clampInt(opt.globalRequestDelayMs, 0, 60000, DEFAULT_OPTIONS.globalRequestDelayMs);
+  }
   if (opt.videoDurationProbeConcurrency != null) {
     out.videoDurationProbeConcurrency = clampInt(opt.videoDurationProbeConcurrency, 1, 10, DEFAULT_OPTIONS.videoDurationProbeConcurrency);
   }
@@ -1496,6 +1502,10 @@ let SPECIAL_DOWNLOAD_VALUE = DEFAULT_OPTIONS.specialDownloadValue;
 let GALLERY_PRELOAD_ALL_MEDIA = false;
 let DURATION_FEATURE_ENABLED = false;
 let PARALLEL_DOWNLOAD_LIMIT = 3;
+let GLOBAL_REQUEST_DELAY_ENABLED = false;
+let GLOBAL_REQUEST_DELAY_MS = DEFAULT_OPTIONS.globalRequestDelayMs;
+let GLOBAL_REQUEST_DELAY_LAST_START_AT = 0;
+let GLOBAL_REQUEST_DELAY_CHAIN = Promise.resolve();
 const ARCHIVE_FETCH_CAP = 6;
 let DOWNLOAD_ACROSS_PROFILES = false;
 let TIMEOUT_RETRIES_ENABLED = true;
@@ -1597,26 +1607,76 @@ loadMenuState();
 
 function apiGetJson(url) {
   return new Promise(resolve => {
-    GM_xmlhttpRequest({
-      method: 'GET',
-      url,
-      headers: {
-        Accept: 'text/css',
-        Referer: location.href,
-        'User-Agent': navigator.userAgent,
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      onload: resp => {
-        if (resp.status >= 200 && resp.status < 300) {
-          try { resolve(JSON.parse(resp.responseText)); } catch { resolve(null); }
-        } else { resolve(null); }
-      },
-      onerror: () => resolve(null)
-    });
+    (async () => {
+      try {
+        await waitForGlobalRequestSlot();
+      } catch {
+        resolve(null);
+        return;
+      }
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        headers: {
+          Accept: 'text/css',
+          Referer: location.href,
+          'User-Agent': navigator.userAgent,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        onload: resp => {
+          if (resp.status >= 200 && resp.status < 300) {
+            try { resolve(JSON.parse(resp.responseText)); } catch { resolve(null); }
+          } else { resolve(null); }
+        },
+        onerror: () => resolve(null)
+      });
+    })();
   });
 }
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+function createAbortFlag() {
+  return {
+    aborted: false,
+    abort() {
+      this.aborted = true;
+    }
+  };
+}
+
+function isRequestCancelledError(err) {
+  return !!(err && typeof err === 'object' && err.cancelled);
+}
+
+function getGlobalRequestDelayMs() {
+  return GLOBAL_REQUEST_DELAY_ENABLED
+    ? clampInt(GLOBAL_REQUEST_DELAY_MS, 0, 60000, DEFAULT_OPTIONS.globalRequestDelayMs)
+    : 0;
+}
+
+async function waitForGlobalRequestSlot(cancelCheck) {
+  const prior = GLOBAL_REQUEST_DELAY_CHAIN;
+  let release = null;
+  GLOBAL_REQUEST_DELAY_CHAIN = new Promise(resolve => {
+    release = resolve;
+  });
+  try {
+    await prior;
+    while (true) {
+      if (typeof cancelCheck === 'function' && cancelCheck()) {
+        throw { stage: 'request-delay-cancelled', cancelled: true };
+      }
+      const delayMs = getGlobalRequestDelayMs();
+      const waitMs = Math.max(0, GLOBAL_REQUEST_DELAY_LAST_START_AT + delayMs - Date.now());
+      if (waitMs <= 0) break;
+      await sleep(Math.min(waitMs, 100));
+    }
+    GLOBAL_REQUEST_DELAY_LAST_START_AT = Date.now();
+  } finally {
+    if (typeof release === 'function') release();
+  }
+}
 
 async function waitWhileQueuePaused() {
   while (QUEUE_PAUSED && dl.started) {
@@ -3273,6 +3333,17 @@ function syncSpecialDownloadBehaviorSelect() {
   }
 }
 
+function syncGlobalRequestDelayInputs() {
+  const enabledEl = document.getElementById('pg_opt_globalRequestDelayEnabled');
+  const delayEl = document.getElementById('pg_opt_globalRequestDelayMs');
+  if (enabledEl) enabledEl.checked = !!GLOBAL_REQUEST_DELAY_ENABLED;
+  if (delayEl) {
+    delayEl.value = String(clampInt(GLOBAL_REQUEST_DELAY_MS, 0, 60000, DEFAULT_OPTIONS.globalRequestDelayMs));
+    delayEl.disabled = !GLOBAL_REQUEST_DELAY_ENABLED;
+    delayEl.title = GLOBAL_REQUEST_DELAY_ENABLED ? '' : 'Enable global request delay to edit this value.';
+  }
+}
+
 function setDownloadMode(nextMode) {
   if (!DOWNLOAD_MODE_LABELS[nextMode]) return;
   PG_OPTIONS.downloadMode = nextMode;
@@ -3322,6 +3393,8 @@ function applyOptions() {
   DURATION_FEATURE_ENABLED = !!opt.durationIndexing;
   GALLERY_PRELOAD_ALL_MEDIA = !!opt.galleryPreloadAll;
   PARALLEL_DOWNLOAD_LIMIT = clampInt(opt.parallelDownloadLimit, 1, 10, DEFAULT_OPTIONS.parallelDownloadLimit);
+  GLOBAL_REQUEST_DELAY_ENABLED = !!opt.globalRequestDelayEnabled;
+  GLOBAL_REQUEST_DELAY_MS = clampInt(opt.globalRequestDelayMs, 0, 60000, DEFAULT_OPTIONS.globalRequestDelayMs);
   VIDEO_DURATION_PROBE_CONCURRENCY = clampInt(
     opt.videoDurationProbeConcurrency,
     1,
@@ -3343,6 +3416,7 @@ function applyOptions() {
   syncProgressBarVisibility();
   syncDownloadModeSelect();
   syncSpecialDownloadBehaviorSelect();
+  syncGlobalRequestDelayInputs();
   if (document.getElementById('pgMenuDownloadsBody')) {
     renderDownloadsUi();
   }
@@ -3483,6 +3557,8 @@ function renderOptionsUi() {
       ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
       ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
       ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
+      ${makeCheckRow('Global request delay', 'Apply one shared delay between all fetches and download starts.', 'pg_opt_globalRequestDelayEnabled', !!opt.globalRequestDelayEnabled)}
+      ${makeNumberRow('Global request delay (ms)', 'Milliseconds to wait between outbound fetch/download requests.', 'pg_opt_globalRequestDelayMs', opt.globalRequestDelayMs, 0, 60000)}
       ${makeNumberRow('Video index concurrency', 'Maximum simultaneous video metadata probes.', 'pg_opt_videoDurationProbeConcurrency', opt.videoDurationProbeConcurrency, 1, 10)}
       ${makeCheckRow('Download Across Profiles', 'Keep queue and filters when navigating between profiles.', 'pg_opt_downloadAcrossProfiles', !!opt.downloadAcrossProfiles)}
       ${makeCheckRow('Retry on stall/timeout', 'When a download stalls or takes too long, abort and retry (default on).', 'pg_opt_timeoutRetries', opt.timeoutRetries !== false)}
@@ -3575,6 +3651,12 @@ function renderOptionsUi() {
   bindNumber('pg_opt_parallelDownloadLimit', 'parallelDownloadLimit', 1, 10, () => {
     if (dl.started) requestDispatch();
   }, DEFAULT_OPTIONS.parallelDownloadLimit);
+  bindCheck('pg_opt_globalRequestDelayEnabled', 'globalRequestDelayEnabled', () => {
+    syncGlobalRequestDelayInputs();
+  });
+  bindNumber('pg_opt_globalRequestDelayMs', 'globalRequestDelayMs', 0, 60000, () => {
+    syncGlobalRequestDelayInputs();
+  }, DEFAULT_OPTIONS.globalRequestDelayMs);
   bindNumber('pg_opt_videoDurationProbeConcurrency', 'videoDurationProbeConcurrency', 1, 10, null, DEFAULT_OPTIONS.videoDurationProbeConcurrency);
   bindCheck('pg_opt_downloadAcrossProfiles', 'downloadAcrossProfiles');
   bindCheck('pg_opt_timeoutRetries', 'timeoutRetries');
@@ -3599,6 +3681,7 @@ function renderOptionsUi() {
     clearAllIndexCachesBtn.addEventListener('click', () => handleClearAllIndexCachesBtn());
   }
   syncSpecialDownloadBehaviorSelect();
+  syncGlobalRequestDelayInputs();
   syncOptionsElementVisibility();
 }
 
@@ -5141,6 +5224,14 @@ function getRetryKey(item) {
   return item.retryKey || item.url || item.name || '';
 }
 
+function isQueueItemStartCancelled(item, extraCheck) {
+  if (typeof extraCheck === 'function' && extraCheck()) return true;
+  if (!item) return true;
+  if (!dl.started || !DL_ACTIVE) return true;
+  if (item.status !== 'active') return true;
+  return !dl.items.includes(item);
+}
+
 function enqueueItems(objs) {
   const toAdd = [];
   for (const obj of objs) {
@@ -5305,16 +5396,23 @@ function maybeFinishBatch() {
   }
 }
 
-async function fetchBlobNative(url, timeoutMs, handles) {
+async function fetchBlobNative(url, timeoutMs, handles, cancelCheck) {
   const controller = new AbortController();
-  const handle = { abort: () => controller.abort() };
+  const gateAbort = createAbortFlag();
+  const handle = {
+    abort: () => {
+      gateAbort.abort();
+      controller.abort();
+    }
+  };
   let timer = null;
   const u = normalizeDownloadUrl(url);
   if (handles) handles.add(handle);
-  if (timeoutMs && timeoutMs > 0) {
-    timer = setTimeout(() => controller.abort(), timeoutMs);
-  }
   try {
+    await waitForGlobalRequestSlot(() => gateAbort.aborted || (typeof cancelCheck === 'function' && cancelCheck()));
+    if (timeoutMs && timeoutMs > 0) {
+      timer = setTimeout(() => controller.abort(), timeoutMs);
+    }
     const resp = await fetch(u, {
       method: 'GET',
       mode: 'cors',
@@ -5339,6 +5437,7 @@ async function fetchBlobNative(url, timeoutMs, handles) {
     }
     return blob;
   } catch (err) {
+    if (isRequestCancelledError(err)) throw Object.assign({ url: u }, err);
     if (err && typeof err === 'object' && err.stage) throw err;
     if (err && err.name === 'AbortError') {
       throw {
@@ -5360,72 +5459,104 @@ async function fetchBlobNative(url, timeoutMs, handles) {
   }
 }
 
-function fetchBlobGM(url, onprogress, timeoutMs, handles) {
+function fetchBlobGM(url, onprogress, timeoutMs, handles, cancelCheck) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    let handle = null;
+    let requestHandle = null;
+    const gateAbort = createAbortFlag();
     const u = normalizeDownloadUrl(url);
+    const handle = {
+      abort: () => {
+        gateAbort.abort();
+        try {
+          if (requestHandle && typeof requestHandle.abort === 'function') requestHandle.abort();
+        } catch {}
+      }
+    };
+    const shouldCancel = () => gateAbort.aborted || (typeof cancelCheck === 'function' && cancelCheck());
     const finalize = (ok, payload) => {
       if (settled) return;
       settled = true;
       if (handles && handle) handles.delete(handle);
       ok ? resolve(payload) : reject(payload);
     };
-    handle = GM_xmlhttpRequest({
-      method: 'GET',
-      url: u,
-      responseType: 'blob',
-      timeout: timeoutMs || 0,
-      onprogress: evt => { if (typeof onprogress === 'function') onprogress(evt); },
-      onload: resp => {
-        const status = resp && typeof resp.status === 'number' ? resp.status : 0;
-        if (status < 200 || status >= 300) {
-          finalize(false, {
-            stage: 'fetch-gm-http',
-            status,
-            statusText: resp && resp.statusText ? String(resp.statusText) : '',
-            url: u
-          });
+    if (handles && handle) handles.add(handle);
+    (async () => {
+      try {
+        await waitForGlobalRequestSlot(shouldCancel);
+        if (shouldCancel()) {
+          finalize(false, { stage: 'request-delay-cancelled', cancelled: true, url: u });
           return;
         }
-        if (resp && resp.response instanceof Blob && resp.response.size > 0) {
-          finalize(true, resp.response);
-        } else {
-          finalize(false, {
-            stage: 'fetch-gm-empty',
-            status,
-            statusText: resp && resp.statusText ? String(resp.statusText) : '',
-            details: 'empty blob',
+        requestHandle = GM_xmlhttpRequest({
+          method: 'GET',
+          url: u,
+          responseType: 'blob',
+          timeout: timeoutMs || 0,
+          onprogress: evt => { if (typeof onprogress === 'function') onprogress(evt); },
+          onload: resp => {
+            const status = resp && typeof resp.status === 'number' ? resp.status : 0;
+            if (status < 200 || status >= 300) {
+              finalize(false, {
+                stage: 'fetch-gm-http',
+                status,
+                statusText: resp && resp.statusText ? String(resp.statusText) : '',
+                url: u
+              });
+              return;
+            }
+            if (resp && resp.response instanceof Blob && resp.response.size > 0) {
+              finalize(true, resp.response);
+            } else {
+              finalize(false, {
+                stage: 'fetch-gm-empty',
+                status,
+                statusText: resp && resp.statusText ? String(resp.statusText) : '',
+                details: 'empty blob',
+                url: u
+              });
+            }
+          },
+          onerror: err => finalize(false, {
+            stage: 'fetch-gm-network',
+            error: err && err.error ? String(err.error) : 'gm request error',
+            message: err && err.message ? String(err.message) : '',
             url: u
-          });
+          }),
+          ontimeout: () => finalize(false, {
+            stage: 'fetch-gm-timeout',
+            error: 'timeout',
+            url: u
+          })
+        });
+      } catch (err) {
+        if (isRequestCancelledError(err)) {
+          finalize(false, Object.assign({ url: u }, err));
+          return;
         }
-      },
-      onerror: err => finalize(false, {
-        stage: 'fetch-gm-network',
-        error: err && err.error ? String(err.error) : 'gm request error',
-        message: err && err.message ? String(err.message) : '',
-        url: u
-      }),
-      ontimeout: () => finalize(false, {
-        stage: 'fetch-gm-timeout',
-        error: 'timeout',
-        url: u
-      })
-    });
-    if (handles && handle) handles.add(handle);
+        finalize(false, {
+          stage: 'fetch-gm-start',
+          error: err && err.name ? String(err.name) : 'gm request start failed',
+          message: err && err.message ? String(err.message) : '',
+          url: u
+        });
+      }
+    })();
   });
 }
 
-async function fetchBlob(url, onprogress, timeoutMs, handles) {
+async function fetchBlob(url, onprogress, timeoutMs, handles, cancelCheck) {
   let nativeErr = null;
   try {
-    return await fetchBlobNative(url, timeoutMs, handles);
+    return await fetchBlobNative(url, timeoutMs, handles, cancelCheck);
   } catch (err) {
+    if (isRequestCancelledError(err)) throw err;
     nativeErr = err;
   }
   try {
-    return await fetchBlobGM(url, onprogress, timeoutMs, handles);
+    return await fetchBlobGM(url, onprogress, timeoutMs, handles, cancelCheck);
   } catch (gmErr) {
+    if (isRequestCancelledError(gmErr)) throw gmErr;
     throw {
       stage: 'fetch-failed',
       details: 'native and GM fetch failed',
@@ -5449,6 +5580,7 @@ function startPostArchiveDownload(item) {
   const handles = new Set();
   item._handles = handles;
   item.lastErrorUrl = '';
+  const isCancelled = () => isQueueItemStartCancelled(item, () => settled);
   clearQueueItemProgress(item);
   setQueueItemProgress(item, {
     pct: 0,
@@ -5558,14 +5690,6 @@ function startPostArchiveDownload(item) {
     }, 0) || STALL_IMG_TOTAL_MS
   );
   const idleMs = files.some(file => vidRE.test((file && file.url) || '')) ? STALL_VID_IDLE_MS : STALL_IMG_IDLE_MS;
-  tTotal = setTimeout(() => {
-    if (!TIMEOUT_RETRIES_ENABLED) return;
-    handleFailure('Archive download timeout', { stage: 'archive-timeout' });
-  }, totalMs);
-  tIdle = setInterval(() => {
-    if (!TIMEOUT_RETRIES_ENABLED) return;
-    if (Date.now() - lastProgressAt > idleMs) handleFailure('Archive download stalled', { stage: 'archive-stalled' });
-  }, 2000);
 
   (async () => {
     const zip = new JSZip();
@@ -5583,13 +5707,13 @@ function startPostArchiveDownload(item) {
       let attempt = 0;
       while (!settled && attempt < maxAttempts) {
         await waitWhileQueuePaused();
-        if (settled) return;
+        if (isCancelled()) return;
         attempt++;
         try {
           lastProgressAt = Date.now();
           const timeoutMs = vidRE.test(url) ? STALL_VID_TOTAL_MS : STALL_IMG_TOTAL_MS;
-          const blob = await fetchBlob(url, () => { lastProgressAt = Date.now(); }, timeoutMs, handles);
-          if (settled) return;
+          const blob = await fetchBlob(url, () => { lastProgressAt = Date.now(); }, timeoutMs, handles, isCancelled);
+          if (isCancelled()) return;
           const parts = splitDownloadPath(file.name || '');
           let postFolder = parts.postFolder || item.postFolder || '';
           let groupFolder = '';
@@ -5618,6 +5742,7 @@ function startPostArchiveDownload(item) {
           }
           return;
         } catch (err) {
+          if (isRequestCancelledError(err) || isCancelled()) return;
           item.lastErrorUrl = url;
           const label = { url, name: file && file.name ? file.name : url };
           if (attempt <= maxRetries) {
@@ -5642,7 +5767,7 @@ function startPostArchiveDownload(item) {
       workers.push((async () => {
         while (true) {
           await waitWhileQueuePaused();
-          if (settled) return;
+          if (isCancelled()) return;
           const idx = cursor++;
           if (idx >= files.length) return;
           await downloadOne(files[idx]);
@@ -5652,6 +5777,10 @@ function startPostArchiveDownload(item) {
     await Promise.all(workers);
 
     if (settled) return;
+    if (isCancelled()) {
+      clearWatchers();
+      return;
+    }
     if (!added) {
       handleFailure('All archive files failed', {
         stage: 'archive-fetch',
@@ -5670,7 +5799,10 @@ function startPostArchiveDownload(item) {
     let zipBlob;
     try {
       await waitWhileQueuePaused();
-      if (settled) return;
+      if (isCancelled()) {
+        clearWatchers();
+        return;
+      }
       setQueueItemProgress(item, {
         pct: 70,
         label: 'Building archive 0%',
@@ -5700,7 +5832,8 @@ function startPostArchiveDownload(item) {
     const zipUrl = URL.createObjectURL(zipBlob);
     const saveName = sanitizeDownloadPathForSave(name || 'archive.zip');
     await waitWhileQueuePaused();
-    if (settled) {
+    if (isCancelled()) {
+      clearWatchers();
       try { URL.revokeObjectURL(zipUrl); } catch {}
       return;
     }
@@ -5709,7 +5842,32 @@ function startPostArchiveDownload(item) {
       label: 'Saving archive...',
       indeterminate: true
     });
-    const handle = GM_download({
+    const saveAbort = createAbortFlag();
+    let saveHandle = null;
+    item._handle = {
+      abort: () => {
+        saveAbort.abort();
+        try {
+          if (saveHandle && typeof saveHandle.abort === 'function') saveHandle.abort();
+        } catch {}
+      }
+    };
+    const saveCancelled = () => saveAbort.aborted || isCancelled();
+    await waitForGlobalRequestSlot(saveCancelled);
+    if (saveCancelled()) {
+      clearWatchers();
+      try { URL.revokeObjectURL(zipUrl); } catch {}
+      return;
+    }
+    tTotal = setTimeout(() => {
+      if (!TIMEOUT_RETRIES_ENABLED) return;
+      handleFailure('Archive download timeout', { stage: 'archive-timeout' });
+    }, totalMs);
+    tIdle = setInterval(() => {
+      if (!TIMEOUT_RETRIES_ENABLED) return;
+      if (Date.now() - lastProgressAt > idleMs) handleFailure('Archive download stalled', { stage: 'archive-stalled' });
+    }, 2000);
+    saveHandle = GM_download({
       url: zipUrl,
       name: saveName,
       onprogress: (evt) => {
@@ -5733,7 +5891,11 @@ function startPostArchiveDownload(item) {
         }
       },
       onload: () => {
-        if (settled) return;
+        if (saveCancelled()) {
+          clearWatchers();
+          try { URL.revokeObjectURL(zipUrl); } catch {}
+          return;
+        }
         settled = true;
         clearWatchers();
         try { URL.revokeObjectURL(zipUrl); } catch {}
@@ -5744,6 +5906,11 @@ function startPostArchiveDownload(item) {
         maybeFinishBatch();
       },
       onerror: err => {
+        if (saveCancelled()) {
+          clearWatchers();
+          try { URL.revokeObjectURL(zipUrl); } catch {}
+          return;
+        }
         try { URL.revokeObjectURL(zipUrl); } catch {}
         handleFailure('Archive save failed', Object.assign({
           stage: 'archive-save',
@@ -5751,10 +5918,15 @@ function startPostArchiveDownload(item) {
         }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') }));
       }
     });
-    item._handle = handle;
-  })().catch(err => handleFailure('Archive pipeline failed', Object.assign({
+  })().catch(err => {
+    if (isRequestCancelledError(err) || isCancelled()) {
+      clearWatchers();
+      return;
+    }
+    handleFailure('Archive pipeline failed', Object.assign({
     stage: 'archive-pipeline'
-  }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') })));
+    }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') }));
+  });
 }
 
 function buildLooseItemsForPost(kp) {
@@ -5790,6 +5962,9 @@ function startDownload(item) {
   let settled = false;
   let tTotal = null;
   let tIdle = null;
+  const gateAbort = createAbortFlag();
+  let requestHandle = null;
+  const isCancelled = () => gateAbort.aborted || isQueueItemStartCancelled(item, () => settled);
   clearQueueItemProgress(item);
   setQueueItemProgress(item, {
     pct: 0,
@@ -5872,58 +6047,94 @@ function startDownload(item) {
     setTimeout(requestDispatch, 0);
   };
 
-  tTotal = setTimeout(() => {
-    if (!TIMEOUT_RETRIES_ENABLED) return;
-    handleFailure('Direct download timeout', { stage: 'direct-timeout', url: item && item.url ? item.url : '' });
-  }, totalMs);
-  tIdle = setInterval(() => {
-    if (!TIMEOUT_RETRIES_ENABLED) return;
-    if (Date.now() - lastProgressAt > idleMs) handleFailure('Direct download stalled', { stage: 'direct-stalled', url: item && item.url ? item.url : '' });
-  }, 2000);
-
   const saveName = sanitizeDownloadPathForSave(name || getDownloadLabel(item));
-  const handle = GM_download({
-    url: normalizeDownloadUrl(item.url),
-    name: saveName,
-    timeout: 0,
-    onprogress: (evt) => {
-      lastProgressAt = Date.now();
-      const loaded = evt && typeof evt.loaded === 'number' ? evt.loaded : 0;
-      const total = evt && typeof evt.total === 'number' ? evt.total : 0;
-      if (total > 0) {
-        const pct = Math.max(0, Math.min(100, Math.round((loaded / total) * 100)));
-        setQueueItemProgress(item, {
-          pct,
-          label: `${formatByteSize(loaded)} / ${formatByteSize(total)} (${pct}%)`,
-          indeterminate: false
-        });
-      } else {
-        setQueueItemProgress(item, {
-          pct: 0,
-          label: `${formatByteSize(loaded)} downloaded`,
-          indeterminate: true
-        });
-      }
-    },
-    onload: () => {
-      if (settled) return;
-      settled = true;
-      clearWatchers();
-      setQueueItemProgress(item, { pct: 100, label: 'Done', indeterminate: false });
-      item.status = 'done';
-      scheduleHUD();
-      setTimeout(requestDispatch, SPAWN_DELAY + Math.floor(Math.random() * 200));
-      maybeFinishBatch();
-    },
-    onerror: (err) => {
-      handleFailure('Direct download failed', Object.assign({
-        stage: 'direct-save',
-        url: item && item.url ? item.url : '',
-        details: saveName
-      }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') }));
+  item._handle = {
+    abort: () => {
+      gateAbort.abort();
+      try {
+        if (requestHandle && typeof requestHandle.abort === 'function') requestHandle.abort();
+      } catch {}
     }
+  };
+
+  (async () => {
+    await waitWhileQueuePaused();
+    if (isCancelled()) {
+      clearWatchers();
+      return;
+    }
+    await waitForGlobalRequestSlot(isCancelled);
+    if (isCancelled()) {
+      clearWatchers();
+      return;
+    }
+    tTotal = setTimeout(() => {
+      if (!TIMEOUT_RETRIES_ENABLED) return;
+      handleFailure('Direct download timeout', { stage: 'direct-timeout', url: item && item.url ? item.url : '' });
+    }, totalMs);
+    tIdle = setInterval(() => {
+      if (!TIMEOUT_RETRIES_ENABLED) return;
+      if (Date.now() - lastProgressAt > idleMs) handleFailure('Direct download stalled', { stage: 'direct-stalled', url: item && item.url ? item.url : '' });
+    }, 2000);
+    requestHandle = GM_download({
+      url: normalizeDownloadUrl(item.url),
+      name: saveName,
+      timeout: 0,
+      onprogress: (evt) => {
+        lastProgressAt = Date.now();
+        const loaded = evt && typeof evt.loaded === 'number' ? evt.loaded : 0;
+        const total = evt && typeof evt.total === 'number' ? evt.total : 0;
+        if (total > 0) {
+          const pct = Math.max(0, Math.min(100, Math.round((loaded / total) * 100)));
+          setQueueItemProgress(item, {
+            pct,
+            label: `${formatByteSize(loaded)} / ${formatByteSize(total)} (${pct}%)`,
+            indeterminate: false
+          });
+        } else {
+          setQueueItemProgress(item, {
+            pct: 0,
+            label: `${formatByteSize(loaded)} downloaded`,
+            indeterminate: true
+          });
+        }
+      },
+      onload: () => {
+        if (isCancelled()) {
+          clearWatchers();
+          return;
+        }
+        settled = true;
+        clearWatchers();
+        setQueueItemProgress(item, { pct: 100, label: 'Done', indeterminate: false });
+        item.status = 'done';
+        scheduleHUD();
+        setTimeout(requestDispatch, SPAWN_DELAY + Math.floor(Math.random() * 200));
+        maybeFinishBatch();
+      },
+      onerror: (err) => {
+        if (isCancelled()) {
+          clearWatchers();
+          return;
+        }
+        handleFailure('Direct download failed', Object.assign({
+          stage: 'direct-save',
+          url: item && item.url ? item.url : '',
+          details: saveName
+        }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') }));
+      }
+    });
+  })().catch(err => {
+    if (isRequestCancelledError(err) || isCancelled()) {
+      clearWatchers();
+      return;
+    }
+    handleFailure('Direct download failed', Object.assign({
+      stage: 'direct-start',
+      url: item && item.url ? item.url : '',
+      details: saveName
+    }, (err && typeof err === 'object') ? err : { error: String(err || 'unknown error') }));
   });
-  item._handle = handle;
 }
 
 function parsePages(str) {
@@ -7038,19 +7249,24 @@ async function handleDownloadInfo() {
   }
   const blob = new Blob([snapshot.lines.join('\n') + '\n'], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
-
-  GM_download({
-    url,
-    name: snapshot.infoFile,
-    onload: () => {
-      try { URL.revokeObjectURL(url); } catch {}
-      setStatus('Profile info downloaded', 'success');
-    },
-    onerror: () => {
-      try { URL.revokeObjectURL(url); } catch {}
-      setStatus('Failed to download profile info', 'error');
-    }
-  });
+  try {
+    await waitForGlobalRequestSlot();
+    GM_download({
+      url,
+      name: snapshot.infoFile,
+      onload: () => {
+        try { URL.revokeObjectURL(url); } catch {}
+        setStatus('Profile info downloaded', 'success');
+      },
+      onerror: () => {
+        try { URL.revokeObjectURL(url); } catch {}
+        setStatus('Failed to download profile info', 'error');
+      }
+    });
+  } catch {
+    try { URL.revokeObjectURL(url); } catch {}
+    setStatus('Failed to download profile info', 'error');
+  }
 }
 
 async function handleDownloadPostLinks() {
@@ -7105,19 +7321,24 @@ async function handleDownloadPostLinks() {
 
   const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
-
-  GM_download({
-    url,
-    name: sanitizeDownloadPathForSave('links.txt'),
-    onload: () => {
-      try { URL.revokeObjectURL(url); } catch {}
-      setStatus('Post links downloaded', 'success');
-    },
-    onerror: () => {
-      try { URL.revokeObjectURL(url); } catch {}
-      setStatus('Failed to download post links', 'error');
-    }
-  });
+  try {
+    await waitForGlobalRequestSlot();
+    GM_download({
+      url,
+      name: sanitizeDownloadPathForSave('links.txt'),
+      onload: () => {
+        try { URL.revokeObjectURL(url); } catch {}
+        setStatus('Post links downloaded', 'success');
+      },
+      onerror: () => {
+        try { URL.revokeObjectURL(url); } catch {}
+        setStatus('Failed to download post links', 'error');
+      }
+    });
+  } catch {
+    try { URL.revokeObjectURL(url); } catch {}
+    setStatus('Failed to download post links', 'error');
+  }
 }
 
 async function handleCreateGroup() {
