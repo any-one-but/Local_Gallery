@@ -17446,10 +17446,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       });
     }
 
-    function openReverseFilesContextMenu(dirNode, x, y) {
+    function openPreviewContextMenu(x, y) {
       if (!previewActionMenuEl) return;
       closeActionMenus();
 
+      const dirNode = getPreviewTargetDir();
       const ids = dirNode ? getOrderedFileIdsForDir(dirNode) : [];
       const canReverse = !!dirNode && canReorderFilesInDir(dirNode) && ids.length > 1;
 
@@ -17473,10 +17474,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         menu.classList.add("open");
         positionDropdownMenuAtPoint(menu, x, y);
       });
-    }
-
-    function openPreviewContextMenu(x, y) {
-      openReverseFilesContextMenu(getPreviewTargetDir(), x, y);
     }
 
     function openPreviewFileActionMenu(rec, opts = {}) {
@@ -21027,25 +21024,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       e.preventDefault();
       e.stopPropagation();
       openPreviewContextMenu(e.clientX, e.clientY);
-    });
-
-    directoriesListEl.addEventListener("contextmenu", (e) => {
-      const target = e.target;
-      if (!isGridInteractionMode() || !target || !target.closest) return;
-      if (!directoriesListEl.classList.contains("gridModeList")) return;
-      if (target.closest(".dirRow")) return;
-      if (target.closest(".dirMenu")) return;
-      if (target.closest(".dropdownMenu")) return;
-
-      const dirNode = WS.nav.dirNode || null;
-      if (!dirNode || !canReorderFilesInDir(dirNode)) return;
-      if (!Array.isArray(WS.nav.entries) || !WS.nav.entries.length) return;
-      if (!WS.nav.entries.every((entry) => entry && entry.kind === "file")) return;
-      if (getChildDirsForNode(dirNode).length > 0) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      openReverseFilesContextMenu(dirNode, e.clientX, e.clientY);
     });
 
 
@@ -25220,6 +25198,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const actionAllowsArrowNudge = !action
             || action === "selectUp"
             || action === "selectDown"
+            || action === "selectLeft"
+            || action === "selectRight"
             || action === "leaveDir"
             || action === "enterDir";
           if (actionAllowsArrowNudge) {

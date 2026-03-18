@@ -21194,6 +21194,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const actionAllowsArrowNudge = !action
             || action === "selectUp"
             || action === "selectDown"
+            || action === "selectLeft"
+            || action === "selectRight"
             || action === "leaveDir"
             || action === "enterDir";
           if (actionAllowsArrowNudge) {
