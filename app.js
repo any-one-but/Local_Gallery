@@ -101,8 +101,11 @@
         const idx = out.lastIndexOf(" - ");
         if (idx >= 0) out = out.slice(idx + 3);
       }
+      if (isFile && opt && opt.hideUnderscoresInFileNames) {
+        out = out.replace(/_/g, " ");
+      }
       if (isFile && opt && opt.hideAfterFirstUnderscoreInFileNames) {
-        const idx = out.lastIndexOf("_");
+        const idx = out.indexOf("_");
         if (idx >= 0) out = out.slice(0, idx);
       }
       if (opt && opt.forceTitleCaps) out = toTitleCaps(out);
@@ -329,6 +332,8 @@
         showPreviewFolderItemCount: true,
         showPreviewFileName: false,
         forceTitleCaps: false,
+        hideFileExtensionsInFileNames: false,
+        hideUnderscoresInFileNames: false,
         hideBeforeLastDashInFileNames: false,
         hideAfterFirstUnderscoreInFileNames: false,
         previewThumbFiltersEnabled: false,
@@ -414,6 +419,8 @@
         showPreviewFolderItemCount: true,
         showPreviewFileName: false,
         forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
+        hideFileExtensionsInFileNames: (typeof src.hideFileExtensionsInFileNames === "boolean") ? src.hideFileExtensionsInFileNames : d.hideFileExtensionsInFileNames,
+        hideUnderscoresInFileNames: (typeof src.hideUnderscoresInFileNames === "boolean") ? src.hideUnderscoresInFileNames : d.hideUnderscoresInFileNames,
         hideBeforeLastDashInFileNames: (typeof src.hideBeforeLastDashInFileNames === "boolean") ? src.hideBeforeLastDashInFileNames : d.hideBeforeLastDashInFileNames,
         hideAfterFirstUnderscoreInFileNames: (typeof src.hideAfterFirstUnderscoreInFileNames === "boolean") ? src.hideAfterFirstUnderscoreInFileNames : d.hideAfterFirstUnderscoreInFileNames,
         previewThumbFiltersEnabled: false,
@@ -1765,7 +1772,7 @@
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const parts = splitNameExt(name || "");
       const base = applyDisplayNameRules(parts.base || "", opt, { isFile: true });
-      return `${base}${parts.ext || ""}`;
+      return `${base}${opt && opt.hideFileExtensionsInFileNames ? "" : (parts.ext || "")}`;
     }
 
     function relPathDisplayName(relPath) {
@@ -1881,6 +1888,12 @@
       if (prevFilterMode !== MEDIA_FILTER_STATE.mode) {
         MediaFilterEngine.detach("preview");
         MediaFilterEngine.detach("viewer");
+        const quadSlots = getQuadPlaybackSlots();
+        for (let i = 0; i < quadSlots.length; i++) {
+          const slot = quadSlots[i];
+          if (!slot) continue;
+          MediaFilterEngine.detach(slot.surfaceName);
+        }
       }
       const nextThumbKey = buildThumbFilterKey();
       if (nextThumbKey !== THUMB_FILTER_KEY) {
@@ -1900,6 +1913,13 @@
         if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
         if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
         if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
+        const quadSlots = getQuadPlaybackSlots();
+        for (let i = 0; i < quadSlots.length; i++) {
+          const slot = quadSlots[i];
+          if (!slot || !slot.videoEl) continue;
+          MediaFilterEngine.reset(slot.surfaceName);
+          slot.videoEl.classList.remove("mediaHidden");
+        }
         applyScrollImageProcessingFallback(previewImgEl, null, "none");
         applyScrollImageProcessingFallback(viewerImgEl, null, "none");
         appEl.removeAttribute("data-media-filter-engine");
@@ -1910,7 +1930,14 @@
           ? (WS.fileById.get(WS.preview.fileId) || null)
           : null;
         if (VIEWER_MODE) {
-          if (viewerVideoEl && viewerVideoEl.style.display !== "none") {
+          if (isQuadPlaybackMode()) {
+            const quadSlots = getQuadPlaybackSlots();
+            for (let i = 0; i < quadSlots.length; i++) {
+              const slot = quadSlots[i];
+              if (!slot || !slot.videoEl || slot.videoEl.style.display === "none" || !slot.rec) continue;
+              syncMediaFilterSurface(slot.surfaceName, slot.videoEl, slot.cellEl, "video", slot.rec);
+            }
+          } else if (viewerVideoEl && viewerVideoEl.style.display !== "none") {
             syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", viewerRec);
           } else if (viewerImgEl && viewerImgEl.style.display !== "none") {
             const mode = detectScrollImageMode(viewerRec, viewerImgEl);
@@ -2426,63 +2453,49 @@
 
     const KEYBIND_SECTIONS = [
       { id: "navigation", label: "Navigation" },
-      { id: "media", label: "Media" },
-      { id: "jump", label: "Jump" },
-      { id: "history", label: "History" },
-      { id: "global", label: "Global" },
-      { id: "extras", label: "Odds & Ends" }
+      { id: "general", label: "General" },
+      { id: "playback", label: "Playback" },
+      { id: "overlays", label: "Overlays" },
+      { id: "filenames", label: "Filenames" }
     ];
 
     const KEYBIND_ACTIONS = [
       { id: "selectUp", label: "Up selection", hint: "Move selection up.", section: "navigation" },
       { id: "selectDown", label: "Down selection", hint: "Move selection down.", section: "navigation" },
-      { id: "leaveDir", label: "Up directory", hint: "Go to the parent directory.", section: "navigation" },
-      { id: "enterDir", label: "Enter directory", hint: "Enter a folder or open gallery for a file.", section: "navigation" },
-      { id: "prevFolder", label: "Previous folder", hint: "Jump to the previous folder's first file.", section: "navigation" },
-      { id: "nextFolder", label: "Next folder", hint: "Jump to the next folder's first file.", section: "navigation" },
-      { id: "randomJump", label: "Random action", hint: "Run the configured random action behavior.", section: "navigation" },
-      { id: "cycleFilter", label: "Cycle filter", hint: "Cycle the content filter.", section: "navigation" },
-      { id: "slideshow", label: "Slideshow mode", hint: "Toggle slideshow.", section: "media" },
-      { id: "seekBack", label: "Video skip backward", hint: "Seek video backward.", section: "media" },
-      { id: "seekForward", label: "Video skip forward", hint: "Seek video forward.", section: "media" },
-      { id: "playPause", label: "Pause/Play video", hint: "Toggle video playback.", section: "media" },
-      { id: "muteToggle", label: "Mute/Unmute video", hint: "Toggle video mute.", section: "media" },
-      { id: "jumpMinus50", label: "-50 items", hint: "Move selection up by 50 items.", section: "jump" },
-      { id: "jumpMinus10", label: "-10 items", hint: "Move selection up by 10 items.", section: "jump" },
-      { id: "jumpPlus10", label: "+10 items", hint: "Move selection down by 10 items.", section: "jump" },
-      { id: "jumpPlus50", label: "+50 items", hint: "Move selection down by 50 items.", section: "jump" },
-      { id: "historyBack", label: "History back", hint: "Go to the previous directory in history.", section: "history" },
-      { id: "historyForward", label: "History forward", hint: "Go to the next directory in history.", section: "history" },
-      { id: "panic", label: "PANIC!", hint: "Toggle the decoy window mode.", section: "global" },
-      { id: "back", label: "Back/Close", hint: "Close overlays or back out of special modes.", section: "global" },
-      { id: "toggleVibrantOverlay", label: "Toggle vibrant overlay", hint: "Toggle the Vibrant color overlay.", section: "extras" },
-      { id: "stepVibrantOverlayIntensity", label: "Step vibrant overlay intensity", hint: "Increase vibrant overlay intensity by one step, wrapping to minimum.", section: "extras" },
-      { id: "cycleColorScheme", label: "Cycle color scheme", hint: "Cycle the UI color scheme.", section: "extras" },
-      { id: "toggleScanlinesOverlay", label: "Toggle scanline overlay", hint: "Toggle CRT scanlines over media.", section: "extras" },
-      { id: "togglePixelatedOverlay", label: "Toggle pixelated overlay", hint: "Toggle pixelated media overlay.", section: "extras" },
-      { id: "stepPixelationResolution", label: "Step pixelation resolution", hint: "Increase pixelation resolution by one step, wrapping to minimum.", section: "extras" },
-      { id: "toggleFilmGrainOverlay", label: "Toggle film grain overlay", hint: "Toggle film grain overlay.", section: "extras" },
-      { id: "stepFilmGrainAmount", label: "Step film grain amount", hint: "Increase film grain amount by one step, wrapping to minimum.", section: "extras" },
-      { id: "toggleVhsOverlay", label: "Toggle VHS overlay", hint: "Toggle VHS overlay.", section: "extras" },
-      { id: "toggleFilmCornersOverlay", label: "Toggle film corners overlay", hint: "Toggle rounded film corners overlay.", section: "extras" },
-      { id: "stepVhsIntensity", label: "Step VHS intensity", hint: "Increase VHS intensity by one step, wrapping to minimum.", section: "extras" },
-      { id: "toggleAnimatedFilters", label: "Cycle animated filters", hint: "Cycle animated filters: Off, On, Videos only.", section: "extras" },
-      { id: "cycleFolderSort", label: "Cycle folder sort", hint: "Cycle folder sort mode.", section: "extras" },
-      { id: "toggleShowHiddenFolder", label: "Toggle hidden folder", hint: "Toggle the Hidden folder tag entry.", section: "extras" },
-      { id: "toggleShowUntaggedFolder", label: "Toggle untagged folder", hint: "Toggle the Untagged folder tag entry.", section: "extras" },
-      { id: "toggleForceTitleCaps", label: "Toggle force Title Case", hint: "Toggle Title Case for displayed file names.", section: "extras" },
-      { id: "toggleHideBeforeLastDash", label: "Toggle hide name before last dash", hint: "Toggle hiding everything before the last ' - ' in names.", section: "extras" },
-      { id: "toggleHideAfterFirstUnderscore", label: "Toggle hide name after last underscore", hint: "Toggle hiding everything after the last underscore in file names.", section: "extras" },
-      { id: "scoreUpSelection", label: "Increase folder score", hint: "Increase score for selected/current folder(s).", section: "extras" },
-      { id: "scoreDownSelection", label: "Decrease folder score", hint: "Decrease score for selected/current folder(s).", section: "extras" },
-      { id: "tagSelection", label: "Tag folder selection", hint: "Start tag edit for selected/current folder(s).", section: "extras" },
-      { id: "favoriteSelection", label: "Favorite folder selection", hint: "Favorite or unfavorite selected/current folder(s).", section: "extras" },
-      { id: "renameFolderSelection", label: "Rename selected folder", hint: "Start renaming the selected/current folder.", section: "extras" },
-      { id: "renameFileSelection", label: "Rename selected file", hint: "Start renaming the selected/current file.", section: "extras" },
-      { id: "moveThumbViewportLeft", label: "Move thumbnail viewport left", hint: "Move thumbnail framing left for the selected item's source thumbnail.", section: "extras" },
-      { id: "moveThumbViewportRight", label: "Move thumbnail viewport right", hint: "Move thumbnail framing right for the selected item's source thumbnail.", section: "extras" },
-      { id: "moveThumbViewportUp", label: "Move thumbnail viewport up", hint: "Move thumbnail framing up for the selected item's source thumbnail.", section: "extras" },
-      { id: "moveThumbViewportDown", label: "Move thumbnail viewport down", hint: "Move thumbnail framing down for the selected item's source thumbnail.", section: "extras" }
+      { id: "selectLeft", label: "Left selection", hint: "Move selection left.", section: "navigation" },
+      { id: "selectRight", label: "Right selection", hint: "Move selection right.", section: "navigation" },
+      { id: "enterDir", label: "Open selection", hint: "Open the selected item.", section: "navigation" },
+      { id: "leaveDir", label: "Exit selection", hint: "Exit the current item or folder.", section: "navigation" },
+      { id: "randomJump", label: "Random action", hint: "Run the configured random action behavior.", section: "general" },
+      { id: "cycleFilter", label: "Cycle filter", hint: "Cycle the content filter.", section: "general" },
+      { id: "slideshow", label: "Slideshow mode", hint: "Toggle slideshow.", section: "general" },
+      { id: "panic", label: "PANIC!", hint: "Toggle the decoy window mode.", section: "general" },
+      { id: "cycleFolderSort", label: "Cycle folder sort", hint: "Cycle folder sort mode.", section: "general" },
+      { id: "toggleShowHiddenFolder", label: "Toggle hidden folder", hint: "Toggle the Hidden folder tag entry.", section: "general" },
+      { id: "toggleShowUntaggedFolder", label: "Toggle untagged folder", hint: "Toggle the Untagged folder tag entry.", section: "general" },
+      { id: "toggleFileOnlyFoldersOpenInGallery", label: "Toggle file-only folders open directly in gallery mode", hint: "Toggle opening file-only folders directly in gallery mode.", section: "general" },
+      { id: "favoriteSelection", label: "Favorite folder selection", hint: "Favorite or unfavorite selected/current folder(s).", section: "general" },
+      { id: "tagSelection", label: "Tag folder selection", hint: "Start tag edit for selected/current folder(s).", section: "general" },
+      { id: "renameSelection", label: "Rename selected item", hint: "Start renaming the selected item.", section: "general" },
+      { id: "seekBack", label: "Video skip backward", hint: "Seek video backward.", section: "playback" },
+      { id: "seekForward", label: "Video skip forward", hint: "Seek video forward.", section: "playback" },
+      { id: "playPause", label: "Pause/Play video", hint: "Toggle video playback.", section: "playback" },
+      { id: "muteToggle", label: "Mute/Unmute video", hint: "Toggle video mute.", section: "playback" },
+      { id: "toggleVibrantOverlay", label: "Toggle vibrant overlay", hint: "Toggle the vibrant color overlay.", section: "overlays" },
+      { id: "stepVibrantOverlayIntensity", label: "Step vibrant overlay intensity", hint: "Increase vibrant overlay intensity by one step.", section: "overlays" },
+      { id: "toggleFilmGrainOverlay", label: "Toggle film grain overlay", hint: "Toggle film grain overlay.", section: "overlays" },
+      { id: "stepFilmGrainAmount", label: "Step film grain amount", hint: "Increase film grain amount by one step.", section: "overlays" },
+      { id: "toggleVhsOverlay", label: "Toggle VHS overlay", hint: "Toggle VHS overlay.", section: "overlays" },
+      { id: "stepVhsIntensity", label: "Step VHS intensity", hint: "Increase VHS intensity by one step.", section: "overlays" },
+      { id: "toggleFilmCornersOverlay", label: "Toggle film corners overlay", hint: "Toggle film corners overlay.", section: "overlays" },
+      { id: "togglePixelatedOverlay", label: "Toggle pixelated overlay", hint: "Toggle pixelated overlay.", section: "overlays" },
+      { id: "stepPixelationResolution", label: "Step pixelation resolution", hint: "Increase pixelation resolution by one step.", section: "overlays" },
+      { id: "toggleAnimatedFilters", label: "Cycle animated filters", hint: "Cycle animated filters.", section: "overlays" },
+      { id: "toggleHideFileExtensions", label: "Toggle hide file extensions", hint: "Toggle hiding file extensions.", section: "filenames" },
+      { id: "toggleHideBeforeLastDash", label: "Toggle trim before last dash", hint: "Toggle trimming before the last dash.", section: "filenames" },
+      { id: "toggleHideAfterFirstUnderscore", label: "Toggle trim after first underscore", hint: "Toggle trimming after the first underscore.", section: "filenames" },
+      { id: "scoreUpSelection", label: "Increase folder score", hint: "Increase score for selected/current folder(s).", section: "filenames" },
+      { id: "scoreDownSelection", label: "Decrease folder score", hint: "Decrease score for selected/current folder(s).", section: "filenames" }
     ];
 
     const GRID_KEYBIND_SECTIONS = [
@@ -2503,8 +2516,6 @@
     ];
 
     const KEYBIND_LOCKED_ACTIONS = Object.freeze({
-      playPause: "Space",
-      back: "Escape",
       scoreUpSelection: "=",
       scoreDownSelection: "-"
     });
@@ -2531,62 +2542,49 @@
     const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
       selectUp: "w",
       selectDown: "s",
-      leaveDir: "a",
-      enterDir: "d",
-      prevFolder: "Command+w",
-      nextFolder: "Command+s",
-      randomJump: "x",
-      cycleFilter: "Command+x",
-      slideshow: "Command+Shift+x",
-      seekBack: "q",
-      seekForward: "e",
-      playPause: "Space",
-      muteToggle: "m",
-      jumpMinus50: "Command+Shift+w",
-      jumpMinus10: "Shift+w",
-      jumpPlus10: "Shift+s",
-      jumpPlus50: "Command+Shift+s",
-      historyBack: "",
-      historyForward: "",
+      selectLeft: "a",
+      selectRight: "d",
+      leaveDir: "q",
+      enterDir: "e",
+      randomJump: "r",
+      cycleFilter: "f",
+      slideshow: "v",
       panic: "g",
-      back: "Escape",
-      toggleVibrantOverlay: "5",
-      stepVibrantOverlayIntensity: "Command+5",
-      cycleColorScheme: "i",
-      toggleScanlinesOverlay: "",
-      togglePixelatedOverlay: "1",
-      stepPixelationResolution: "Command+1",
+      cycleFolderSort: "t",
+      toggleShowHiddenFolder: "h",
+      toggleShowUntaggedFolder: "Command+h",
+      toggleFileOnlyFoldersOpenInGallery: "Command+t",
+      favoriteSelection: "f",
+      tagSelection: "",
+      renameSelection: "Command+r",
+      seekBack: "z",
+      seekForward: "c",
+      playPause: "x",
+      muteToggle: "m",
+      toggleVibrantOverlay: "1",
+      stepVibrantOverlayIntensity: "Command+1",
       toggleFilmGrainOverlay: "2",
       stepFilmGrainAmount: "Command+2",
       toggleVhsOverlay: "3",
       toggleFilmCornersOverlay: "4",
       stepVhsIntensity: "Command+3",
+      togglePixelatedOverlay: "5",
+      stepPixelationResolution: "Command+5",
       toggleAnimatedFilters: "6",
-      cycleFolderSort: "t",
-      toggleShowHiddenFolder: "h",
-      toggleShowUntaggedFolder: "Command+h",
-      toggleForceTitleCaps: "n",
+      toggleHideFileExtensions: "n",
       toggleHideBeforeLastDash: "Command+n",
-      toggleHideAfterFirstUnderscore: "Shift+n",
+      toggleHideAfterFirstUnderscore: "Command+Shift+n",
       scoreUpSelection: "=",
-      scoreDownSelection: "-",
-      tagSelection: "",
-      favoriteSelection: "Ctrl+f",
-      renameFolderSelection: "",
-      renameFileSelection: "",
-      moveThumbViewportLeft: "ArrowLeft",
-      moveThumbViewportRight: "ArrowRight",
-      moveThumbViewportUp: "ArrowUp",
-      moveThumbViewportDown: "ArrowDown"
+      scoreDownSelection: "-"
     });
 
     const GRID_KEYBIND_DEFAULT_BINDINGS = Object.freeze({
-      gridMoveUp: "w",
-      gridMoveDown: "s",
-      gridMoveLeft: "a",
-      gridMoveRight: "d",
-      gridOpenSelection: "e",
-      gridUpDirectory: "q",
+      gridMoveUp: "",
+      gridMoveDown: "",
+      gridMoveLeft: "",
+      gridMoveRight: "",
+      gridOpenSelection: "",
+      gridUpDirectory: "",
       gridGalleryPrev: "",
       gridGalleryNext: "",
       gridGalleryBack: ""
@@ -2646,6 +2644,12 @@
     function normalizeKeybinds(log) {
       const bindings = defaultKeybinds();
       const byId = new Map(bindings.map(b => [b.id, b]));
+      const migrateIfKeyMatches = (id, legacyKey, nextKey) => {
+        const binding = byId.get(id);
+        if (!binding) return;
+        if (normalizeKeyValue(binding.key || "") !== normalizeKeyValue(legacyKey)) return;
+        binding.key = normalizeKeyValue(nextKey || "");
+      };
       if (log && Array.isArray(log.bindings)) {
         for (const entry of log.bindings) {
           const rawId = entry && entry.id ? String(entry.id) : "";
@@ -2662,30 +2666,32 @@
           byId.get(id).key = key;
         }
       }
-      // Migrate the old F-key action trio to X-key equivalents when unchanged from legacy defaults.
-      const legacyCluster = [
-        ["randomJump", "f", "x"],
-        ["cycleFilter", "Command+f", "Command+x"],
-        ["slideshow", "Command+Shift+f", "Command+Shift+x"]
-      ];
-      const legacyUnchanged = legacyCluster.every(([id, legacyKey]) => {
-        const binding = byId.get(id);
-        return binding && normalizeKeyValue(binding.key || "") === normalizeKeyValue(legacyKey);
-      });
-      if (legacyUnchanged) {
-        const blocked = new Set();
-        for (const binding of bindings) {
-          if (!binding) continue;
-          if (binding.id === "randomJump" || binding.id === "cycleFilter" || binding.id === "slideshow") continue;
-          const key = normalizeKeyValue(binding.key || "");
-          if (key) blocked.add(key);
-        }
-        const canMigrate = legacyCluster.every(([, , nextKey]) => !blocked.has(normalizeKeyValue(nextKey)));
-        if (canMigrate) {
-          legacyCluster.forEach(([id, , nextKey]) => {
-            const binding = byId.get(id);
-            if (binding) binding.key = normalizeKeyValue(nextKey);
-          });
+      migrateIfKeyMatches("leaveDir", "a", "q");
+      migrateIfKeyMatches("enterDir", "d", "e");
+      migrateIfKeyMatches("randomJump", "x", "r");
+      migrateIfKeyMatches("cycleFilter", "Command+f", "f");
+      migrateIfKeyMatches("cycleFilter", "Command+x", "f");
+      migrateIfKeyMatches("slideshow", "v", "v");
+      migrateIfKeyMatches("slideshow", "Command+Shift+x", "v");
+      migrateIfKeyMatches("seekBack", "Command+q", "z");
+      migrateIfKeyMatches("seekBack", "q", "z");
+      migrateIfKeyMatches("seekForward", "Command+e", "c");
+      migrateIfKeyMatches("seekForward", "e", "c");
+      migrateIfKeyMatches("playPause", "Space", "x");
+      migrateIfKeyMatches("toggleVibrantOverlay", "", "1");
+      migrateIfKeyMatches("stepVibrantOverlayIntensity", "", "Command+1");
+      migrateIfKeyMatches("togglePixelatedOverlay", "1", "5");
+      migrateIfKeyMatches("stepPixelationResolution", "Command+1", "Command+5");
+      migrateIfKeyMatches("toggleAnimatedFilters", "5", "6");
+      migrateIfKeyMatches("favoriteSelection", "Ctrl+f", "f");
+      const fileOnlyFoldersBinding = byId.get("toggleFileOnlyFoldersOpenInGallery");
+      const tagSelectionBinding = byId.get("tagSelection");
+      if (fileOnlyFoldersBinding && tagSelectionBinding) {
+        const fileOnlyFoldersKey = normalizeKeyValue(fileOnlyFoldersBinding.key || "");
+        const tagSelectionKey = normalizeKeyValue(tagSelectionBinding.key || "");
+        if (!fileOnlyFoldersKey && tagSelectionKey === normalizeKeyValue("Command+t")) {
+          fileOnlyFoldersBinding.key = normalizeKeyValue("Command+t");
+          tagSelectionBinding.key = "";
         }
       }
       applyFixedKeybinds(bindings);
@@ -2705,6 +2711,21 @@
           byId.get(id).key = key;
         }
       }
+      const legacyGridDefaults = {
+        gridMoveUp: "w",
+        gridMoveDown: "s",
+        gridMoveLeft: "a",
+        gridMoveRight: "d",
+        gridOpenSelection: "e",
+        gridUpDirectory: "q"
+      };
+      Object.entries(legacyGridDefaults).forEach(([id, legacyKey]) => {
+        const binding = byId.get(id);
+        if (!binding) return;
+        if (normalizeKeyValue(binding.key || "") === normalizeKeyValue(legacyKey)) {
+          binding.key = "";
+        }
+      });
       enforceUniqueKeybinds(bindings);
       return { bindings };
     }
@@ -2738,34 +2759,6 @@
 
     function gridKeybindActionFor(key) {
       return GRID_KEYBIND_INDEX.get(key) || null;
-    }
-
-    function getPaneKeybindForAction(actionId) {
-      const id = String(actionId || "");
-      if (!id) return "";
-      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds();
-      for (let i = 0; i < bindings.length; i++) {
-        const binding = bindings[i];
-        if (!binding || binding.id !== id) continue;
-        return normalizeKeyValue(binding.key || "");
-      }
-      return "";
-    }
-
-    function gridCommandSeekActionForBaseKey(e, baseKey) {
-      if (!isGridInteractionMode()) return null;
-      if (!e || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return null;
-      const base = normalizeBaseKeyValue(baseKey);
-      if (!base) return null;
-      const seekBackKey = getPaneKeybindForAction("seekBack");
-      const seekForwardKey = getPaneKeybindForAction("seekForward");
-      const parsedBack = parseKeybindValue(seekBackKey);
-      const parsedForward = parseKeybindValue(seekForwardKey);
-      const backPlain = parsedBack.key && !parsedBack.mods.Cmd && !parsedBack.mods.Ctrl && !parsedBack.mods.Alt && !parsedBack.mods.Shift;
-      const forwardPlain = parsedForward.key && !parsedForward.mods.Cmd && !parsedForward.mods.Ctrl && !parsedForward.mods.Alt && !parsedForward.mods.Shift;
-      if (backPlain && parsedBack.key === base) return "seekBack";
-      if (forwardPlain && parsedForward.key === base) return "seekForward";
-      return null;
     }
 
     const WS = {
@@ -3260,6 +3253,7 @@
     let viewerDirNode = null;
     let viewerItems = []; // { isFolder, dirNode } or { isFolder:false, id }
     let viewerIndex = 0;
+    let VIEWER_LAYOUT_MODE = "single";
     let VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
     let uiHideTimer = null;
     let globalCursorHideTimer = null;
@@ -3267,6 +3261,9 @@
     let viewerImgEl = null;
     let viewerVideoEl = null;
     let viewerFolderEl = null;
+    let viewerQuadGridEl = null;
+    let viewerQuadSlots = [];
+    let QUAD_PLAYBACK = { active: false, fileIds: [], activeId: "", muted: false };
 
     let DIR_HANDLE_CACHE = new Map();
 
@@ -3361,7 +3358,7 @@
     let PROPERTIES_OPEN = false;
 
     let BANIC_ACTIVE = false;
-    let BANIC_STATE = { preview: null, viewer: null, slideshowWasActive: false };
+    let BANIC_STATE = { preview: null, viewer: null, quad: [], slideshowWasActive: false };
     /* =========================================================
        Status/progress helpers
        ========================================================= */
@@ -3405,8 +3402,104 @@
       if (!vid) return null;
       return {
         muted: !!vid.muted,
-        paused: !!vid.paused
+        paused: !!vid.paused,
+        volume: clampNumber(vid.volume, 0, 1, 1)
       };
+    }
+
+    function isQuadPlaybackMode() {
+      return VIEWER_LAYOUT_MODE === "quad" && !!QUAD_PLAYBACK.active;
+    }
+
+    function getQuadPlaybackSlots() {
+      return Array.isArray(viewerQuadSlots) ? viewerQuadSlots : [];
+    }
+
+    function getQuadPlaybackVideos() {
+      return getQuadPlaybackSlots()
+        .map((slot) => slot?.videoEl || null)
+        .filter((videoEl) => !!videoEl && !!videoEl.dataset.quadFileId);
+    }
+
+    function getQuadPlaybackRecords() {
+      const ids = Array.isArray(QUAD_PLAYBACK.fileIds) ? QUAD_PLAYBACK.fileIds : [];
+      const recs = [];
+      for (let i = 0; i < ids.length; i++) {
+        const rec = WS.fileById.get(String(ids[i] || ""));
+        if (rec && rec.type === "video") recs.push(rec);
+      }
+      return recs;
+    }
+
+    function getQuadPlaybackFocusedRecord() {
+      const activeId = String(QUAD_PLAYBACK.activeId || "");
+      if (activeId) {
+        const activeRec = WS.fileById.get(activeId);
+        if (activeRec && activeRec.type === "video") return activeRec;
+      }
+      const recs = getQuadPlaybackRecords();
+      return recs[0] || null;
+    }
+
+    function updateQuadPlaybackFilename() {
+      if (!filenameEl) return;
+      if (!isQuadPlaybackMode()) return;
+      filenameEl.textContent = "";
+    }
+
+    function applyQuadPlaybackAudioState() {
+      const slots = getQuadPlaybackSlots();
+      if (!slots.length) return;
+      const activeId = String(QUAD_PLAYBACK.activeId || "") || String(slots[0]?.fileId || "");
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        if (!slot || !slot.videoEl) continue;
+        const focused = !!slot.fileId && String(slot.fileId) === activeId;
+        slot.cellEl.classList.toggle("active", focused);
+        slot.videoEl.volume = focused ? 1 : 0.05;
+        slot.videoEl.muted = !!QUAD_PLAYBACK.muted || BANIC_ACTIVE;
+      }
+      updateQuadPlaybackFilename();
+    }
+
+    function setQuadPlaybackFocus(fileId) {
+      const id = String(fileId || "");
+      if (!id || !isQuadPlaybackMode()) return;
+      if (QUAD_PLAYBACK.activeId === id) return;
+      QUAD_PLAYBACK.activeId = id;
+      applyQuadPlaybackAudioState();
+    }
+
+    function clearQuadPlaybackSlot(slot) {
+      if (!slot || !slot.videoEl) return;
+      slot.fileId = "";
+      slot.rec = null;
+      slot.cellEl.classList.remove("active");
+      slot.cellEl.style.display = "none";
+      slot.videoEl.dataset.quadFileId = "";
+      slot.videoEl.dataset.playbackSrc = "";
+      slot.videoEl.onloadeddata = null;
+      slot.videoEl.onended = null;
+      try { slot.videoEl.pause(); } catch {}
+      try { slot.videoEl.removeAttribute("src"); } catch {}
+      try { slot.videoEl.load(); } catch {}
+      slot.videoEl.classList.remove("ready");
+      slot.videoEl.volume = 0;
+      slot.videoEl.muted = true;
+      applyVideoCropToElement(slot.videoEl, null);
+      clearPendingFilmCornerMask(slot.videoEl);
+      clearMediaFilterSurface(slot.surfaceName, slot.videoEl);
+    }
+
+    function clearQuadPlaybackSession() {
+      const slots = getQuadPlaybackSlots();
+      for (let i = 0; i < slots.length; i++) clearQuadPlaybackSlot(slots[i]);
+      if (viewerQuadGridEl) {
+        viewerQuadGridEl.classList.remove("active");
+        viewerQuadGridEl.style.display = "none";
+      }
+      QUAD_PLAYBACK = { active: false, fileIds: [], activeId: "", muted: false };
+      if (viewport) viewport.classList.remove("viewerQuadMode");
     }
 
     function applyBanicState(active) {
@@ -3420,6 +3513,10 @@
       if (BANIC_ACTIVE) {
         BANIC_STATE.preview = captureVideoState(previewVideoEl);
         BANIC_STATE.viewer = captureVideoState(viewerVideoEl);
+        BANIC_STATE.quad = getQuadPlaybackSlots().map((slot) => ({
+          id: String(slot?.fileId || ""),
+          state: captureVideoState(slot?.videoEl || null)
+        })).filter((entry) => !!entry.id && !!entry.state);
         BANIC_STATE.slideshowWasActive = WS.view.slideshowActive;
 
         if (WS.view.slideshowActive) stopSlideshow();
@@ -3437,10 +3534,19 @@
       const restore = (vid, state) => {
         if (!vid || !state) return;
         vid.muted = !!state.muted;
+        vid.volume = clampNumber(state.volume, 0, 1, vid.volume);
         if (!state.paused) { try { vid.play(); } catch {} }
       };
       restore(previewVideoEl, BANIC_STATE.preview);
       restore(viewerVideoEl, BANIC_STATE.viewer);
+      if (BANIC_STATE.quad.length) {
+        const byId = new Map(BANIC_STATE.quad.map((entry) => [String(entry.id || ""), entry.state]));
+        for (const slot of getQuadPlaybackSlots()) {
+          const state = byId.get(String(slot?.fileId || ""));
+          restore(slot?.videoEl || null, state || null);
+        }
+        if (isQuadPlaybackMode()) applyQuadPlaybackAudioState();
+      }
       if (BANIC_STATE.slideshowWasActive) {
         const mode = slideshowBehavior();
         if (mode === "cycle") {
@@ -3451,7 +3557,7 @@
           if (Number.isFinite(seconds) && seconds > 0) startSlideshow(seconds * 1000);
         }
       }
-      BANIC_STATE = { preview: null, viewer: null, slideshowWasActive: false };
+      BANIC_STATE = { preview: null, viewer: null, quad: [], slideshowWasActive: false };
     }
 
     function updateModePill() {
@@ -4307,8 +4413,10 @@ ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "o
           title: "Filenames",
           rows: `
 ${makeCheckRow("Force Title Case", "Apply Title Case to displayed file names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
-${makeCheckRow("Hide name before last ' - '", "Show only text after the last ' - ' in names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
-${makeCheckRow("Hide name after last underscore", "Show only text before the last underscore in file names.", "opt_hideAfterFirstUnderscoreInFileNames", !!opt.hideAfterFirstUnderscoreInFileNames)}
+${makeCheckRow("Hide file extensions", "Hide file extensions in displayed file names.", "opt_hideFileExtensionsInFileNames", !!opt.hideFileExtensionsInFileNames)}
+${makeCheckRow("Hide underscores", "Hide underscores in displayed file names.", "opt_hideUnderscoresInFileNames", !!opt.hideUnderscoresInFileNames)}
+${makeCheckRow("Trim before last dash", "Show only text after the last dash in names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
+${makeCheckRow("Trim after first underscore", "Show only text before the first underscore in file names.", "opt_hideAfterFirstUnderscoreInFileNames", !!opt.hideAfterFirstUnderscoreInFileNames)}
           `
         }
       };
@@ -4543,6 +4651,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         applyRandomSortModeEverywhere(true);
       });
       bindCheck("opt_forceTitleCaps", "forceTitleCaps");
+      bindCheck("opt_hideFileExtensionsInFileNames", "hideFileExtensionsInFileNames");
+      bindCheck("opt_hideUnderscoresInFileNames", "hideUnderscoresInFileNames");
       bindCheck("opt_hideBeforeLastDashInFileNames", "hideBeforeLastDashInFileNames");
       bindCheck("opt_hideAfterFirstUnderscoreInFileNames", "hideAfterFirstUnderscoreInFileNames");
       bindActionBtn("opt_thumb_reset_crops", () => {
@@ -6915,9 +7025,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           videoThumbUrl: null,
           indices: null,
           thumbMode: null,
-          videoThumbMode: null
+          videoThumbMode: null,
+          nativePath: ""
         };
 
+        rec.nativePath = getNativePathForFile(f);
         WS.fileById.set(id, rec);
         const dirNode = ensureDirPath(dirPath);
         dirNode.childrenFiles.push(id);
@@ -7028,9 +7140,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           videoThumbUrl: null,
           indices: null,
           thumbMode: null,
-          videoThumbMode: null
+          videoThumbMode: null,
+          nativePath: ""
         };
 
+        rec.nativePath = getNativePathForFile(f);
         WS.fileById.set(id, rec);
         const dirNode = ensureDirPath(dirPath);
         dirNode.childrenFiles.push(id);
@@ -12157,10 +12271,15 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     function getSelectedFileRecordsInCurrentView() {
-      const ids = getSelectedFileIdsInCurrentView();
+      const selectedIds = new Set(getSelectedFileIdsInCurrentView().map((id) => String(id || "")));
+      if (!selectedIds.size) return [];
       const recs = [];
-      for (const id of ids) {
-        const rec = WS.fileById.get(String(id || ""));
+      for (let i = 0; i < WS.nav.entries.length; i++) {
+        const entry = WS.nav.entries[i];
+        if (!entry || entry.kind !== "file") continue;
+        const id = String(entry.id || "");
+        if (!id || !selectedIds.has(id)) continue;
+        const rec = WS.fileById.get(id);
         if (rec) recs.push(rec);
       }
       return recs;
@@ -12188,10 +12307,26 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return cleanBase ? (cleanBase + sep + rel.split("/").filter(Boolean).join(sep)) : rel;
     }
 
+    function getElectronApi() {
+      if (typeof window === "undefined") return null;
+      if (!window.electronAPI || typeof window.electronAPI !== "object") return null;
+      return window.electronAPI;
+    }
+
+    function getNativePathForFile(file) {
+      if (!file) return "";
+      const electronApi = getElectronApi();
+      if (electronApi && typeof electronApi.getPathForFile === "function") {
+        try {
+          const resolved = String(electronApi.getPathForFile(file) || "");
+          if (resolved) return resolved;
+        } catch {}
+      }
+      return String(file?.path || "");
+    }
+
     function resolveAbsoluteDirectoryPath(dirPath) {
-      const electronApi = (typeof window !== "undefined" && window.electronAPI && typeof window.electronAPI.getPathForFile === "function")
-        ? window.electronAPI
-        : null;
+      const electronApi = getElectronApi();
       if (!electronApi) return "";
 
       const target = String(dirPath || "").replace(/^\/+|\/+$/g, "");
@@ -12212,7 +12347,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
       for (let i = 0; i < records.length; i++) {
         const rec = records[i];
-        const absFile = String(electronApi.getPathForFile(rec.file) || "");
+        const absFile = String(rec.nativePath || getNativePathForFile(rec.file) || "");
         const relPath = String(rec.relPath || "").replace(/\\/g, "/");
         if (!absFile || !relPath) continue;
 
@@ -14430,12 +14565,20 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       if (selectedFiles.length) {
-        const selectedFileRecords = selectedFiles
-          .map((id) => WS.fileById.get(String(id || "")))
-          .filter(Boolean);
+        const selectedFileRecords = getSelectedFileRecordsInCurrentView();
         const singleFile = selectedFileRecords.length === 1 ? selectedFileRecords[0] : null;
         const allSameDir = selectedFileRecords.length > 0
           && selectedFileRecords.every((rec) => String(rec.dirPath || "") === String(selectedFileRecords[0].dirPath || ""));
+        const canQuadPlay = selCount === 4
+          && selectedFileRecords.length === 4
+          && selectedFileRecords.every((rec) => rec.type === "video");
+
+        if (canQuadPlay) {
+          directoriesActionMenuEl.appendChild(makeActionBtn("Play", () => {
+            WS.view.bulkActionMenuOpen = false;
+            openQuadPlaybackForRecords(selectedFileRecords, true);
+          }));
+        }
 
         const renameBtn = makeActionBtn("Rename file", () => {
           WS.view.bulkActionMenuOpen = false;
@@ -16644,6 +16787,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
         if (previewVideoEl.readyState >= 2) {
           requestAnimationFrame(() => {
+            if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
             previewVideoEl.classList.add("ready");
             if (updateVideoCropFromElement(rec, previewVideoEl)) {
               applyVideoCropToElement(previewVideoEl, rec);
@@ -18515,7 +18659,38 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       applyVideoCarryToElement(previewVideoEl, VIDEO_CARRY.fileId || "");
     }
 
+    function openQuadPlaybackForRecords(records, requestFullscreen = false) {
+      const videoRecords = Array.isArray(records)
+        ? records.filter((rec) => !!rec && rec.type === "video")
+        : [];
+      if (videoRecords.length !== 4) return false;
+
+      stopSlideshow();
+      QUAD_PLAYBACK = {
+        active: true,
+        fileIds: videoRecords.map((rec) => String(rec.id || "")),
+        activeId: String(videoRecords[0]?.id || ""),
+        muted: false
+      };
+      VIEWER_LAYOUT_MODE = "quad";
+      VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
+      showOverlay();
+      if (requestFullscreen) enterFullscreenIfPossible();
+      return true;
+    }
+
+    function openQuadPlaybackFromSelection(requestFullscreen = false) {
+      const records = getSelectedFileRecordsInCurrentView();
+      if (records.length !== 4 || records.some((rec) => rec.type !== "video")) {
+        showStatusMessage("Select exactly four videos.");
+        return false;
+      }
+      return openQuadPlaybackForRecords(records, requestFullscreen);
+    }
+
     function openGalleryForDir(dirNode, startId = null, requestFullscreen = false, skipDirSyncOnClose = false) {
+      clearQuadPlaybackSession();
+      VIEWER_LAYOUT_MODE = "single";
       viewerDirNode = dirNode;
       viewerItems = buildViewerItemsForDir(viewerDirNode);
 
@@ -18538,6 +18713,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
     function openGalleryForFileRecord(rec, requestFullscreen = false) {
       if (!rec) return;
+      clearQuadPlaybackSession();
+      VIEWER_LAYOUT_MODE = "single";
       const p = String(rec.dirPath || "");
       const dn = WS.dirByPath.get(p) || WS.nav.dirNode || WS.root || null;
       viewerDirNode = dn;
@@ -18614,6 +18791,38 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         viewerFolderEl.style.display = "none";
         viewport.appendChild(viewerFolderEl);
       }
+      if (!viewerQuadGridEl) {
+        viewerQuadGridEl = document.createElement("div");
+        viewerQuadGridEl.id = "viewerQuadGrid";
+        viewerQuadGridEl.style.display = "none";
+        viewerQuadSlots = [];
+        for (let i = 0; i < 4; i++) {
+          const cellEl = document.createElement("div");
+          cellEl.className = "viewerQuadCell";
+          const videoEl = document.createElement("video");
+          videoEl.preload = "metadata";
+          videoEl.playsInline = true;
+          videoEl.autoplay = true;
+          videoEl.controls = false;
+          videoEl.poster = BLACK_POSTER_URL;
+          normalizeVideoPlaybackRate(videoEl);
+          cellEl.appendChild(videoEl);
+          const slot = { cellEl, videoEl, surfaceName: `viewerQuad${i}`, fileId: "", rec: null };
+          cellEl.addEventListener("pointerenter", () => {
+            if (slot.fileId) setQuadPlaybackFocus(slot.fileId);
+          });
+          cellEl.addEventListener("pointermove", () => {
+            if (slot.fileId) setQuadPlaybackFocus(slot.fileId);
+          });
+          cellEl.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (slot.fileId) setQuadPlaybackFocus(slot.fileId);
+          });
+          viewerQuadSlots.push(slot);
+          viewerQuadGridEl.appendChild(cellEl);
+        }
+        viewport.appendChild(viewerQuadGridEl);
+      }
     }
 
     function showOverlay() {
@@ -18684,9 +18893,10 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     }
 
     function hideOverlay() {
+      const quadMode = isQuadPlaybackMode();
       try {
         const item = viewerItems[viewerIndex] || null;
-        if (item && !item.isFolder) {
+        if (!quadMode && item && !item.isFolder) {
           const rec = WS.fileById.get(item.id);
           if (rec && rec.type === "video" && viewerVideoEl && viewerVideoEl.style.display !== "none") {
             VIDEO_CARRY.active = true;
@@ -18703,6 +18913,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         try { viewerVideoEl.pause(); } catch {}
         try { viewerVideoEl.removeAttribute("src"); } catch {}
         try { viewerVideoEl.load(); } catch {}
+        viewerVideoEl.dataset.playbackSrc = "";
         applyVideoCropToElement(viewerVideoEl, null);
         viewerVideoEl.classList.remove("ready");
         viewerVideoEl.classList.remove("mediaHidden");
@@ -18718,15 +18929,19 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
       MediaFilterEngine.detach("viewer");
       if (viewerFolderEl) viewerFolderEl.style.display = "none";
+      clearQuadPlaybackSession();
       filenameEl.textContent = "";
       exitFullscreenIfNeeded();
       if (uiHideTimer) { clearTimeout(uiHideTimer); uiHideTimer = null; }
       overlay.classList.remove("ui-hidden");
       stopSlideshow();
       statusMessageEl.classList.remove("visible");
-      const skipDirSyncOnClose = !!VIEWER_SKIP_DIR_SYNC_ON_CLOSE;
+      const skipDirSyncOnClose = !quadMode && !!VIEWER_SKIP_DIR_SYNC_ON_CLOSE;
       VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
-      if (skipDirSyncOnClose) {
+      VIEWER_LAYOUT_MODE = "single";
+      if (quadMode) {
+        // Special quad playback preserves the existing file selection and directory state.
+      } else if (skipDirSyncOnClose) {
         leaveDirectory();
       } else {
         syncDirectoriesToViewerState();
@@ -18952,8 +19167,111 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return ok;
     }
 
+    function renderQuadPlaybackView() {
+      ensureViewerElements();
+      applyScrollImageMode(viewport, viewerImgEl, "none");
+      viewport.classList.add("viewerQuadMode");
+
+      if (viewerVideoEl) {
+        try { viewerVideoEl.pause(); } catch {}
+        viewerVideoEl.classList.remove("ready");
+        viewerVideoEl.style.display = "none";
+        applyVideoCropToElement(viewerVideoEl, null);
+        clearPendingFilmCornerMask(viewerVideoEl);
+      }
+      if (viewerImgEl) {
+        viewerImgEl.classList.remove("ready");
+        viewerImgEl.style.display = "none";
+        clearPendingFilmCornerMask(viewerImgEl);
+      }
+      if (viewerFolderEl) viewerFolderEl.style.display = "none";
+      MediaFilterEngine.detach("viewer");
+      if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
+      if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
+
+      const slots = getQuadPlaybackSlots();
+      const records = getQuadPlaybackRecords();
+      viewerQuadGridEl.style.display = "grid";
+      viewerQuadGridEl.classList.add("active");
+      filenameEl.textContent = "";
+
+      const shouldLoop = videoEndBehavior() === "loop";
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        const rec = records[i] || null;
+        if (!slot) continue;
+        if (!rec) {
+          clearQuadPlaybackSlot(slot);
+          continue;
+        }
+
+        slot.fileId = String(rec.id || "");
+        slot.rec = rec;
+        slot.cellEl.style.display = "block";
+        slot.videoEl.dataset.quadFileId = slot.fileId;
+        slot.videoEl.autoplay = !BANIC_ACTIVE;
+        slot.videoEl.loop = shouldLoop;
+        slot.videoEl.onended = null;
+        slot.videoEl.onloadeddata = () => {
+          slot.videoEl.classList.add("ready");
+          if (updateVideoCropFromElement(rec, slot.videoEl)) {
+            applyVideoCropToElement(slot.videoEl, rec);
+            kickVideoThumbsForPreview();
+            renderPreviewPane(false, true);
+          } else {
+            applyVideoCropToElement(slot.videoEl, rec);
+          }
+        };
+
+        applyVideoPoster(slot.videoEl, rec);
+        applyVideoCropToElement(slot.videoEl, rec);
+        applyPendingFilmCornerMask(slot.videoEl, rec.dirPath || "");
+        const src = ensureMediaUrl(rec) || "";
+        const same = slot.videoEl.src === src;
+        if (!same) {
+          slot.videoEl.classList.remove("ready");
+          slot.videoEl.src = src;
+          try { slot.videoEl.load(); } catch {}
+        }
+        slot.videoEl.style.display = "block";
+        slot.videoEl.setAttribute("data-dir-path", rec.dirPath || "");
+        syncMediaFilterSurface(slot.surfaceName, slot.videoEl, slot.cellEl, "video", rec);
+        if (slot.videoEl.readyState >= 2) {
+          requestAnimationFrame(() => {
+            if (slot.videoEl.dataset.quadFileId !== slot.fileId) return;
+            slot.videoEl.classList.add("ready");
+            if (updateVideoCropFromElement(rec, slot.videoEl)) {
+              applyVideoCropToElement(slot.videoEl, rec);
+              kickVideoThumbsForPreview();
+              renderPreviewPane(false, true);
+            } else {
+              applyVideoCropToElement(slot.videoEl, rec);
+            }
+          });
+        }
+      }
+
+      applyQuadPlaybackAudioState();
+      if (!BANIC_ACTIVE) {
+        for (let i = 0; i < slots.length; i++) {
+          const videoEl = slots[i]?.videoEl || null;
+          if (!videoEl || !videoEl.dataset.quadFileId) continue;
+          try { videoEl.play(); } catch {}
+        }
+      }
+    }
+
     function renderViewerItem(idx) {
+      if (isQuadPlaybackMode()) {
+        renderQuadPlaybackView();
+        return;
+      }
       if (!viewerItems.length) {
+        if (viewerQuadGridEl) {
+          viewerQuadGridEl.style.display = "none";
+          viewerQuadGridEl.classList.remove("active");
+        }
+        viewport.classList.remove("viewerQuadMode");
         applyScrollImageMode(viewport, viewerImgEl, "none");
         if (viewerImgEl) viewerImgEl.style.display = "none";
         if (viewerVideoEl) viewerVideoEl.style.display = "none";
@@ -18972,6 +19290,11 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       ensureViewerElements();
+      if (viewerQuadGridEl) {
+        viewerQuadGridEl.style.display = "none";
+        viewerQuadGridEl.classList.remove("active");
+      }
+      viewport.classList.remove("viewerQuadMode");
       applyScrollImageMode(viewport, viewerImgEl, "none");
 
       const n = viewerItems.length;
@@ -19091,6 +19414,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
 
         if (viewerVideoEl.readyState >= 2) {
           requestAnimationFrame(() => {
+            const activeItem = viewerItems[viewerIndex] || null;
+            if (!activeItem || activeItem.isFolder || String(activeItem.id || "") !== String(rec.id || "")) return;
             viewerVideoEl.classList.add("ready");
             if (updateVideoCropFromElement(rec, viewerVideoEl)) {
               applyVideoCropToElement(viewerVideoEl, rec);
@@ -19204,37 +19529,53 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       syncDirectoriesToViewerState();
     }
 
+    function getActiveMediaVideos() {
+      if (VIEWER_MODE && isQuadPlaybackMode()) return getQuadPlaybackVideos();
+      if (VIEWER_MODE) return viewerVideoEl && viewerVideoEl.style.display !== "none" ? [viewerVideoEl] : [];
+      if (ACTIVE_MEDIA_SURFACE === "preview") return previewVideoEl && previewVideoEl.style.display !== "none" ? [previewVideoEl] : [];
+      return [];
+    }
+
     function getActiveMediaVideo() {
-      if (VIEWER_MODE) return viewerVideoEl && viewerVideoEl.style.display !== "none" ? viewerVideoEl : null;
-      if (ACTIVE_MEDIA_SURFACE === "preview") return previewVideoEl && previewVideoEl.style.display !== "none" ? previewVideoEl : null;
-      return null;
+      const vids = getActiveMediaVideos();
+      return vids.length ? vids[0] : null;
     }
 
     function seekViewerVideo(deltaSeconds) {
-      const vid = getActiveMediaVideo();
-      if (!vid) return;
-      try {
-        let t = (vid.currentTime || 0) + deltaSeconds;
-        if (t < 0) t = 0;
-        if (!isNaN(vid.duration) && isFinite(vid.duration) && vid.duration >= 0) {
-          if (t > vid.duration) t = vid.duration;
-        }
-        vid.currentTime = t;
-      } catch {}
+      const vids = getActiveMediaVideos();
+      if (!vids.length) return;
+      for (let i = 0; i < vids.length; i++) {
+        const vid = vids[i];
+        try {
+          let t = (vid.currentTime || 0) + deltaSeconds;
+          if (t < 0) t = 0;
+          if (!isNaN(vid.duration) && isFinite(vid.duration) && vid.duration >= 0) {
+            if (t > vid.duration) t = vid.duration;
+          }
+          vid.currentTime = t;
+        } catch {}
+      }
     }
 
     function toggleViewerVideoPlayPause() {
-      const vid = getActiveMediaVideo();
-      if (!vid) return;
-      try {         if (vid.paused) {
-          vid.play();
-        } else {
-          vid.pause();
-        }
-      } catch {}
+      const vids = getActiveMediaVideos();
+      if (!vids.length) return;
+      const shouldPlay = vids.some((vid) => !!vid.paused);
+      for (let i = 0; i < vids.length; i++) {
+        const vid = vids[i];
+        try {
+          if (shouldPlay) vid.play();
+          else vid.pause();
+        } catch {}
+      }
     }
 
     function toggleViewerVideoMute() {
+      if (VIEWER_MODE && isQuadPlaybackMode()) {
+        QUAD_PLAYBACK.muted = !QUAD_PLAYBACK.muted;
+        applyQuadPlaybackAudioState();
+        return;
+      }
       const vid = getActiveMediaVideo();
       if (!vid) return;
       try {
@@ -19609,9 +19950,9 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           return true;
         }
         case "cycleColorScheme": {
-          setOptionValues({ colorScheme: "superdark" });
+          const next = cycleOptionValue("colorScheme", COLOR_SCHEME_CYCLE);
           applyColorSchemeFromOptions();
-          showStatusMessage("Color scheme: OLED Dark (locked)");
+          showStatusMessage(`Color scheme: ${labelForCycleValue(COLOR_SCHEME_CYCLE, next)}`);
           return true;
         }
         case "toggleRetroMode": {
@@ -19687,6 +20028,24 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           showStatusMessage(`Untagged folder: ${next ? "On" : "Off"}`);
           return true;
         }
+        case "toggleFileOnlyFoldersOpenInGallery": {
+          const next = toggleOptionValue("fileOnlyFoldersOpenInGallery");
+          applyOptionsEverywhere(false);
+          showStatusMessage(`File-only folders open in gallery: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleHideFileExtensions": {
+          const next = toggleOptionValue("hideFileExtensionsInFileNames");
+          applyOptionsEverywhere(false);
+          showStatusMessage(`Hide file extensions: ${next ? "On" : "Off"}`);
+          return true;
+        }
+        case "toggleHideUnderscores": {
+          const next = toggleOptionValue("hideUnderscoresInFileNames");
+          applyOptionsEverywhere(false);
+          showStatusMessage(`Hide underscores: ${next ? "On" : "Off"}`);
+          return true;
+        }
         case "toggleForceTitleCaps": {
           const next = toggleOptionValue("forceTitleCaps");
           applyOptionsEverywhere(false);
@@ -19696,13 +20055,13 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         case "toggleHideBeforeLastDash": {
           const next = toggleOptionValue("hideBeforeLastDashInFileNames");
           applyOptionsEverywhere(false);
-          showStatusMessage(`Hide name before last dash: ${next ? "On" : "Off"}`);
+          showStatusMessage(`Trim before last dash: ${next ? "On" : "Off"}`);
           return true;
         }
         case "toggleHideAfterFirstUnderscore": {
           const next = toggleOptionValue("hideAfterFirstUnderscoreInFileNames");
           applyOptionsEverywhere(false);
-          showStatusMessage(`Hide name after last underscore: ${next ? "On" : "Off"}`);
+          showStatusMessage(`Trim after first underscore: ${next ? "On" : "Off"}`);
           return true;
         }
         case "moveThumbViewportLeft":
@@ -20252,6 +20611,12 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       return true;
     }
 
+    function startRenameSelection() {
+      const { ids } = getFileSelectionForKeybindAction();
+      if (ids.length) return startFileRenameSelection();
+      return startFolderRenameSelection();
+    }
+
     function handleSelectionKeybindAction(action) {
       if (!action || !WS.root || VIEWER_MODE) return false;
       switch (action) {
@@ -20263,10 +20628,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           return startTagSelectionEdit();
         case "favoriteSelection":
           return toggleFavoriteSelection();
-        case "renameFolderSelection":
-          return startFolderRenameSelection();
-        case "renameFileSelection":
-          return startFileRenameSelection();
+        case "renameSelection":
+          return startRenameSelection();
         default:
           return false;
       }
@@ -20275,6 +20638,8 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     function isGridExclusiveAction(action) {
       return action === "selectUp"
         || action === "selectDown"
+        || action === "selectLeft"
+        || action === "selectRight"
         || action === "leaveDir"
         || action === "enterDir"
         || action === "playPause"
@@ -20294,6 +20659,45 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
     function handleGridKeybindAction(action) {
       if (!action || !isGridInteractionMode() || !WS.root) return false;
       if (VIEWER_MODE) {
+        if (isQuadPlaybackMode()) {
+          switch (action) {
+            case "gridGalleryBack":
+            case "gridUpDirectory":
+            case "leaveDir":
+              hideOverlay();
+              return true;
+            case "seekBack":
+              seekViewerVideo(-videoSkipStepSeconds());
+              return true;
+            case "seekForward":
+              seekViewerVideo(videoSkipStepSeconds());
+              return true;
+            case "playPause":
+              toggleViewerVideoPlayPause();
+              return true;
+            case "muteToggle":
+              toggleViewerVideoMute();
+              return true;
+            case "selectUp":
+            case "selectDown":
+            case "selectLeft":
+            case "selectRight":
+            case "enterDir":
+            case "gridMoveUp":
+            case "gridMoveDown":
+            case "gridMoveLeft":
+            case "gridMoveRight":
+            case "gridGalleryPrev":
+            case "gridGalleryNext":
+            case "jumpMinus50":
+            case "jumpMinus10":
+            case "jumpPlus10":
+            case "jumpPlus50":
+              return true;
+            default:
+              return false;
+          }
+        }
         switch (action) {
           case "selectUp":
           case "gridMoveUp":
@@ -20305,17 +20709,21 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
           case "gridGalleryNext":
             moveGridGallerySelectionByDirection("down");
             return true;
-          case "leaveDir":
+          case "selectLeft":
           case "gridMoveLeft":
             moveGridGallerySelectionByDirection("left");
             return true;
-          case "enterDir":
+          case "selectRight":
           case "gridMoveRight":
             moveGridGallerySelectionByDirection("right");
             return true;
           case "gridGalleryBack":
           case "gridUpDirectory":
+          case "leaveDir":
             hideOverlay();
+            return true;
+          case "enterDir":
+          case "gridOpenSelection":
             return true;
           case "seekBack":
             seekViewerVideo(-videoSkipStepSeconds());
@@ -20324,7 +20732,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             seekViewerVideo(videoSkipStepSeconds());
             return true;
           case "playPause":
-            hideOverlay();
+            toggleViewerVideoPlayPause();
             return true;
           case "muteToggle":
             toggleViewerVideoMute();
@@ -20352,11 +20760,17 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         case "selectDown":
           moveGridSelectionByDirection("down");
           return true;
-        case "leaveDir":
+        case "selectLeft":
           moveGridSelectionByDirection("left");
           return true;
-        case "enterDir":
+        case "selectRight":
           moveGridSelectionByDirection("right");
+          return true;
+        case "leaveDir":
+          goDirUp();
+          return true;
+        case "enterDir":
+          openSelectedEntryInGridMode(true);
           return true;
         case "playPause":
           // Space is intentionally unbound for opening items in Grid Mode.
@@ -20440,6 +20854,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (e.repeat) return;
       if (e.code !== "Backquote") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (VIEWER_MODE && isQuadPlaybackMode()) return;
       if (isTextInputTarget(e.target)) return;
       e.preventDefault();
       toggleMenuForTab(MENU_LAST_TAB || "general");
@@ -20450,6 +20865,7 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (e.repeat) return;
       if (e.code !== "Tab") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (VIEWER_MODE && isQuadPlaybackMode()) return;
       if (isTextInputTarget(e.target)) return;
       e.preventDefault();
       toggleMenuForTab("controls");
@@ -20462,7 +20878,6 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       if (!key) return;
 
       const baseKey = normalizeBaseKeyValue(e.key);
-      const gridCommandSeekAction = gridCommandSeekActionForBaseKey(e, baseKey);
       if (baseKey === ".") {
         if (isTextInputTarget(e.target)) return;
         if (VIEWER_MODE) return;
@@ -20473,18 +20888,40 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         }
       }
 
-      const action = gridCommandSeekAction || keybindActionFor(key);
+      const action = keybindActionFor(key);
       const gridAction = isGridInteractionMode()
         ? (function() {
             let next = gridKeybindActionFor(key) || action;
-            const plainNoMods = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
-            // Hard guard: Space must never open/enter in Grid Mode, even if legacy saved grid binds map it.
             if (key === "Space" && next === "gridOpenSelection") next = "playPause";
-            if (plainNoMods && action === "seekBack") next = "gridUpDirectory";
-            else if (plainNoMods && action === "seekForward") next = "gridOpenSelection";
             return next;
           })()
         : null;
+
+      if (VIEWER_MODE && isQuadPlaybackMode()) {
+        const quadOverlayActions = new Set([
+          "toggleVibrantOverlay",
+          "stepVibrantOverlayIntensity",
+          "toggleFilmGrainOverlay",
+          "stepFilmGrainAmount",
+          "toggleVhsOverlay",
+          "stepVhsIntensity",
+          "toggleFilmCornersOverlay",
+          "togglePixelatedOverlay",
+          "stepPixelationResolution",
+          "toggleAnimatedFilters"
+        ]);
+        const allowedQuadAction = key === "Escape"
+          || action === "back"
+          || action === "seekBack"
+          || action === "seekForward"
+          || action === "playPause"
+          || action === "muteToggle"
+          || quadOverlayActions.has(action);
+        if (!allowedQuadAction) {
+          e.preventDefault();
+          return;
+        }
+      }
 
       if (action === "panic") {
         e.preventDefault();
@@ -20524,12 +20961,62 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
       }
 
       if (VIEWER_MODE) {
+        if (isQuadPlaybackMode()) {
+          switch (action) {
+            case "selectUp":
+            case "selectDown":
+            case "selectLeft":
+            case "selectRight":
+            case "enterDir":
+            case "prevFolder":
+            case "nextFolder":
+            case "randomJump":
+            case "cycleFilter":
+            case "slideshow":
+            case "jumpMinus50":
+            case "jumpMinus10":
+            case "jumpPlus10":
+            case "jumpPlus50":
+              e.preventDefault();
+              return;
+            case "leaveDir":
+              e.preventDefault();
+              hideOverlay();
+              return;
+            case "seekBack":
+              e.preventDefault();
+              seekViewerVideo(-videoSkipStepSeconds());
+              return;
+            case "seekForward":
+              e.preventDefault();
+              seekViewerVideo(videoSkipStepSeconds());
+              return;
+            case "playPause":
+              e.preventDefault();
+              toggleViewerVideoPlayPause();
+              return;
+            case "muteToggle":
+              e.preventDefault();
+              toggleViewerVideoMute();
+              return;
+            default:
+              return;
+          }
+        }
         switch (action) {
           case "selectUp":
             e.preventDefault();
             viewerStep(-1);
             return;
           case "selectDown":
+            e.preventDefault();
+            viewerStep(1);
+            return;
+          case "selectLeft":
+            e.preventDefault();
+            viewerStep(-1);
+            return;
+          case "selectRight":
             e.preventDefault();
             viewerStep(1);
             return;
@@ -20609,6 +21096,14 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
             viewerStep(-1);
             return;
           case "selectDown":
+            e.preventDefault();
+            viewerStep(1);
+            return;
+          case "selectLeft":
+            e.preventDefault();
+            viewerStep(-1);
+            return;
+          case "selectRight":
             e.preventDefault();
             viewerStep(1);
             return;
@@ -20723,6 +21218,16 @@ ${makeCheckRow("Hide name after last underscore", "Show only text before the las
         case "selectDown":
           e.preventDefault();
           moveDirectoriesSelection(1);
+          return;
+        case "selectLeft":
+          e.preventDefault();
+          if (isGridInteractionMode()) moveGridSelectionByDirection("left");
+          else moveDirectoriesSelection(-1);
+          return;
+        case "selectRight":
+          e.preventDefault();
+          if (isGridInteractionMode()) moveGridSelectionByDirection("right");
+          else moveDirectoriesSelection(1);
           return;
         case "leaveDir":
           e.preventDefault();
