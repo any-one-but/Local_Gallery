@@ -589,8 +589,7 @@
 
     const BUILTIN_NULL_APPEARANCE_PRESET_ID = "builtin-null";
     const PREVIEW_THUMB_PRIORITY_LIMIT = 72;
-    const PREVIEW_VIDEO_PREWARM_LIMIT = 12;
-    const BACKGROUND_VIDEO_THUMB_WORKSPACE_FILE_LIMIT = 240;
+    const PREVIEW_VIDEO_PREWARM_LIMIT = 36;
 
     const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
       Object.freeze({
@@ -2870,28 +2869,22 @@
       return getInteractionModeFromOptions() === "grid";
     }
 
+    function sharedThumbWidthForMode(modeRaw) {
+      const mode = String(modeRaw || "medium");
+      if (mode === "tiny") return 96;
+      if (mode === "small") return 128;
+      if (mode === "high") return 224;
+      return 160;
+    }
+
     function imageThumbWidthForOption() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const m = opt ? String(opt.imageThumbSize || "medium") : "medium";
-      if (m === "tiny") return 120;
-      if (m === "small") return 220;
-      if (m === "high") return 900;
-      return 420;
+      return sharedThumbWidthForMode(opt ? String(opt.imageThumbSize || "medium") : "medium");
     }
 
     function videoThumbWidthForOption() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const m = opt ? String(opt.videoThumbSize || "medium") : "medium";
-      if (isGridInteractionMode()) {
-        if (m === "tiny") return 120;
-        if (m === "small") return 220;
-        if (m === "high") return 900;
-        return 420;
-      }
-      if (m === "tiny") return 100;
-      if (m === "small") return 180;
-      if (m === "high") return 520;
-      return 240;
+      return sharedThumbWidthForMode(opt ? String(opt.videoThumbSize || "medium") : "medium");
     }
 
     function setOptionsStatus(text) {
@@ -9687,6 +9680,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       updateMetaPathsForRename(oldPath, newPath);
       updateViewStatePathsForRename(oldPath, newPath);
       invalidateDirHandleCache(oldPath);
+      invalidateDirMetricsCaches();
       return { oldPath, newPath };
     }
 
@@ -10125,10 +10119,18 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     let DIR_ITEM_COUNT_CACHE = new Map();
     let DIR_ITEM_COUNT_CACHE_FILTER_MODE = "";
 
-    function invalidateDirMetricsCaches() {
+    function invalidateDirSortMetricsCache() {
       DIR_SORT_METRICS_CACHE = null;
+    }
+
+    function invalidateDirItemCountCache() {
       DIR_ITEM_COUNT_CACHE = new Map();
       DIR_ITEM_COUNT_CACHE_FILTER_MODE = "";
+    }
+
+    function invalidateDirMetricsCaches() {
+      invalidateDirSortMetricsCache();
+      invalidateDirItemCountCache();
     }
 
     function byName(a, b) {
@@ -12542,7 +12544,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function getRootThumbnailReferenceRecord(rootNode) {
       if (!rootNode) return null;
-      const rootPool = getRecursivePreviewRecordsForDir(rootNode, 0, true);
+      const rootPool = getRecursivePreviewRecordsForDir(rootNode, PREVIEW_THUMB_PRIORITY_LIMIT, true);
       if (!rootPool.length) return null;
       const rootMode = getRootThumbnailMode();
       if (rootMode === "none") return null;
@@ -12568,7 +12570,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!key) return null;
       const mode = metaGetTagThumbnailModeByKey(key);
       if (mode === "none") return null;
-      const tagPool = getRecursivePreviewRecordsForTagEntry(entry, 0);
+      const tagPool = getRecursivePreviewRecordsForTagEntry(entry, PREVIEW_THUMB_PRIORITY_LIMIT);
       if (!tagPool.length) return null;
       const presetRec = getTagPresetPreviewRecordForEntry(entry, tagPool);
       if (presetRec) return presetRec;
@@ -13347,7 +13349,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function rebuildDirectoriesEntries() {
-      invalidateDirMetricsCaches();
       WS.nav.entries = [];
 
       if (!WS.root) return;
@@ -15002,6 +15003,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       }
 
+      invalidateDirMetricsCaches();
       remapFileIdsAcrossViewState(idMap);
       remapFolderThumbnailPresetValues(relPathMap);
     }
@@ -17248,7 +17250,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const specialText = entry.special
             ? toTitleCaps(String(entry.special || ""))
             : ((entry.album && !entry.tag) ? "Album" : "");
-          const tagPool = getRecursivePreviewRecordsForTagEntry(entry, 0);
+          const tagPool = getRecursivePreviewRecordsForTagEntry(entry, PREVIEW_THUMB_PRIORITY_LIMIT);
           const tagThumbKey = tagThumbnailKeyForEntry(entry);
           const tagThumbMode = metaGetTagThumbnailModeByKey(tagThumbKey);
           const presetRec = getTagPresetPreviewRecordForEntry(entry, tagPool);
@@ -17521,7 +17523,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               let squareAspectRec = firstRec || null;
               let rootPortalMediaHtml = "";
               if (isRootPortalCard) {
-                const rootPool = getRecursivePreviewRecordsForDir(entry.node, 0, true);
+                const rootPool = getRecursivePreviewRecordsForDir(entry.node, PREVIEW_THUMB_PRIORITY_LIMIT, true);
                 const rootMode = getRootThumbnailMode();
                 const rootPresetRec = getRootPresetPreviewRecord(entry.node, rootPool);
                 const rootScope = String(WS.meta.storageKey || "workspace");
@@ -20532,8 +20534,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function backgroundVideoThumbWorkEnabled() {
-      const totalFiles = WS.fileById instanceof Map ? WS.fileById.size : 0;
-      return totalFiles > 0 && totalFiles <= BACKGROUND_VIDEO_THUMB_WORKSPACE_FILE_LIMIT;
+      return !!(WS.root && WS.fileById instanceof Map && WS.fileById.size > 0);
     }
 
     async function prewarmVideoThumbsBeforeInitialRender() {
@@ -20653,7 +20654,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (WS.videoThumbWorkspaceKickTimer) {
         try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
       }
-      const waitMs = Math.max(1500, Number(delayMs) || 0);
+      const rawDelay = Number(delayMs);
+      const waitMs = (Number.isFinite(rawDelay) && rawDelay <= 0)
+        ? 0
+        : Math.max(1500, rawDelay || 0);
       WS.videoThumbWorkspaceKickTimer = setTimeout(() => {
         WS.videoThumbWorkspaceKickTimer = 0;
         kickVideoThumbsForWorkspace();
@@ -20662,7 +20666,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     async function drainVideoThumbQueue() {
       const MAX_VIDEO_THUMB_ACTIVE = 4;
-      const MAX_VIDEO_THUMB_BACKGROUND_ACTIVE = 2;
+      const MAX_VIDEO_THUMB_BACKGROUND_ACTIVE = 4;
       if (!Array.isArray(WS.videoThumbPriorityQueue)) WS.videoThumbPriorityQueue = [];
       if (!Array.isArray(WS.videoThumbQueue)) WS.videoThumbQueue = [];
       if (!(WS.videoThumbQueuedIds instanceof Set)) WS.videoThumbQueuedIds = new Set();
@@ -20945,10 +20949,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function shouldGenerateImageThumb(rec, modeValue = null) {
       if (!rec || rec.type !== "image") return false;
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const mode = String(modeValue || (opt ? opt.imageThumbSize || "medium" : "medium"));
-      if (mode === "high") return !!thumbFiltersActive(rec);
-      return !!thumbFiltersActive(rec);
+      return true;
     }
 
     function enqueueImageThumb(rec) {
@@ -21042,7 +21043,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function kickImageThumbsForPreview() {
       const dirNode = getPreviewTargetDir();
       if (!dirNode) return;
-      if (!thumbFiltersEnabled() || !anyMediaFilterEnabled()) return;
 
       const ids = getPreviewFileIdsForDir(dirNode);
       let queued = 0;
