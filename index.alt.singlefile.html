@@ -4619,11 +4619,15 @@
     const NAV_THUMB_READY_PROMISES = new Map();
     let NAVIGATION_PREP_TOKEN = 0;
     const HOT_NAV_DIR_PATHS = new Map();
+    const PINNED_HOT_NAV_DIR_PATHS = new Set();
+    const PINNED_HOT_NAV_DECODE_CACHE = new Map();
     let HOT_NAV_CACHE_TOKEN = 0;
     let HOT_NAV_CACHE_TIMER = 0;
     const HOT_NAV_MAX_DIRS = 24;
     const HOT_NAV_NEARBY_SIBLING_RADIUS = 3;
     const HOT_NAV_CHILD_LIMIT = 8;
+    const HOT_NAV_LARGE_DIR_LIMIT = 16;
+    const PINNED_HOT_NAV_DECODE_LIMIT = 2400;
     let DIRECTORIES_VIRTUAL_SCROLL_RAF = 0;
     let PREVIEW_VIRTUAL_SCROLL_RAF = 0;
     let ACTIVE_PREVIEW_FILE_VIRTUALIZERS = [];
@@ -8117,6 +8121,8 @@
       NAV_THUMB_READY_PROMISES.clear();
       NAVIGATION_PREP_TOKEN = 0;
       HOT_NAV_DIR_PATHS.clear();
+      PINNED_HOT_NAV_DIR_PATHS.clear();
+      PINNED_HOT_NAV_DECODE_CACHE.clear();
       HOT_NAV_CACHE_TOKEN = 0;
       if (HOT_NAV_CACHE_TIMER) {
         try { clearTimeout(HOT_NAV_CACHE_TIMER); } catch {}
@@ -14236,6 +14242,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       invalidateDirItemCountCache();
       DIR_NAV_MANIFESTS.clear();
       HOT_NAV_DIR_PATHS.clear();
+      PINNED_HOT_NAV_DIR_PATHS.clear();
+      PINNED_HOT_NAV_DECODE_CACHE.clear();
     }
 
     function byName(a, b) {
@@ -19144,6 +19152,102 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return out;
     }
 
+    function collectPinnedHotDirectoryPaths(rootNode = null) {
+      const startNode = rootNode || WS.root;
+      if (!startNode) return [];
+      const scoreMemo = new Map();
+      const scoreDir = (dirNode) => {
+        if (!dirNode) return 0;
+        const key = String(dirNode.path || "");
+        if (scoreMemo.has(key)) return scoreMemo.get(key) || 0;
+        let score = getOrderedFileIdsForDir(dirNode, false).length + getChildDirsForNode(dirNode).length;
+        const children = getChildDirsForNode(dirNode);
+        for (let i = 0; i < children.length; i++) score += scoreDir(children[i]);
+        scoreMemo.set(key, score);
+        return score;
+      };
+      const allDirs = [];
+      const stack = [startNode];
+      while (stack.length) {
+        const dirNode = stack.pop();
+        if (!dirNode) continue;
+        allDirs.push(dirNode);
+        const children = getChildDirsForNode(dirNode);
+        for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
+      }
+      allDirs.sort((a, b) => scoreDir(b) - scoreDir(a));
+      const out = [];
+      const seen = new Set();
+      const pushPath = (dirNode) => {
+        if (!dirNode) return;
+        const path = String(dirNode.path || "");
+        if (seen.has(path)) return;
+        seen.add(path);
+        out.push(path);
+      };
+      pushPath(startNode);
+      for (let i = 0; i < allDirs.length && out.length < (HOT_NAV_LARGE_DIR_LIMIT + 1); i++) {
+        pushPath(allDirs[i]);
+      }
+      return out;
+    }
+
+    function syncPinnedHotNavigationDirectories(rootNode = null) {
+      PINNED_HOT_NAV_DIR_PATHS.clear();
+      const paths = collectPinnedHotDirectoryPaths(rootNode || WS.root);
+      for (let i = 0; i < paths.length; i++) PINNED_HOT_NAV_DIR_PATHS.add(String(paths[i] || ""));
+      return paths;
+    }
+
+    function collectEffectiveHotDirectoryPaths(snapshot) {
+      const paths = [];
+      const seen = new Set();
+      const pushPath = (pathValue) => {
+        const path = String(pathValue || "");
+        if (seen.has(path)) return;
+        seen.add(path);
+        paths.push(path);
+      };
+      PINNED_HOT_NAV_DIR_PATHS.forEach((path) => pushPath(path));
+      const nearby = collectNearbyDirectoryPaths(snapshot);
+      for (let i = 0; i < nearby.length; i++) pushPath(nearby[i]);
+      return paths;
+    }
+
+    function rememberPinnedHotDecode(img, key) {
+      if (!img || !key) return;
+      if (PINNED_HOT_NAV_DECODE_CACHE.has(key)) PINNED_HOT_NAV_DECODE_CACHE.delete(key);
+      PINNED_HOT_NAV_DECODE_CACHE.set(key, img);
+      while (PINNED_HOT_NAV_DECODE_CACHE.size > PINNED_HOT_NAV_DECODE_LIMIT) {
+        const oldest = PINNED_HOT_NAV_DECODE_CACHE.keys().next();
+        if (oldest && !oldest.done) PINNED_HOT_NAV_DECODE_CACHE.delete(oldest.value);
+        else break;
+      }
+    }
+
+    async function warmPinnedNavigationThumbDecode(rec) {
+      if (!rec || !rec.id) return;
+      const src = rec.type === "video"
+        ? String(rec.videoThumbUrl || "")
+        : String(rec.thumbUrl || "");
+      if (!src) return;
+      const key = `${String(rec.id || "")}###${src}`;
+      if (PINNED_HOT_NAV_DECODE_CACHE.has(key)) {
+        const img = PINNED_HOT_NAV_DECODE_CACHE.get(key);
+        PINNED_HOT_NAV_DECODE_CACHE.delete(key);
+        PINNED_HOT_NAV_DECODE_CACHE.set(key, img);
+        return;
+      }
+      const img = new Image();
+      img.decoding = "async";
+      img.loading = "eager";
+      img.src = src;
+      try {
+        if (typeof img.decode === "function") await img.decode();
+      } catch {}
+      rememberPinnedHotDecode(img, key);
+    }
+
     function touchHotNavigationDirectoryPaths(paths) {
       const list = Array.isArray(paths) ? paths : [];
       for (let i = 0; i < list.length; i++) {
@@ -19163,11 +19267,18 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     async function warmNearbyDirectoriesInRam(snapshot) {
-      const paths = collectNearbyDirectoryPaths(snapshot);
+      const paths = collectEffectiveHotDirectoryPaths(snapshot);
       if (!paths.length) return;
       touchHotNavigationDirectoryPaths(paths);
       const records = collectManifestNavigationRecordsForPaths(paths);
       if (records.length) await runWithConcurrency(records, navigationThumbWorkerLimit("background"), ensureNavigationThumbReady);
+      const pinnedRecords = records.filter((rec) => {
+        if (!rec) return false;
+        return PINNED_HOT_NAV_DIR_PATHS.has(String(rec.dirPath || ""));
+      });
+      if (pinnedRecords.length) {
+        await runWithConcurrency(pinnedRecords, navigationThumbWorkerLimit("background"), warmPinnedNavigationThumbDecode);
+      }
       releaseColdNavigationThumbs();
     }
 
@@ -19225,6 +19336,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     async function ingestWorkspaceNavigationThumbsBeforeInitialRender() {
       if (!WS.root) return;
+      syncPinnedHotNavigationDirectories(WS.root);
       const records = collectWorkspaceNavigationRecords(WS.root);
       const total = records.length;
       if (!total) {
