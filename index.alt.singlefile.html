@@ -4636,7 +4636,6 @@
 
     const BUILTIN_NULL_APPEARANCE_PRESET_ID = "builtin-null";
     const PREVIEW_THUMB_PRIORITY_LIMIT = 72;
-    const PREVIEW_VIDEO_PREWARM_LIMIT = 36;
 
     const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
       Object.freeze({
@@ -15446,7 +15445,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (directRec) return { record: directRec, rotateKey: "" };
       if (naturalAspectThumbnailCardsEnabled()) return { record: null, rotateKey: "" };
       if (!dirPath && dirNode !== WS.root) return { record: null, rotateKey: "" };
-      const recursivePool = getRecursivePreviewRecordsForDir(dirNode, PREVIEW_THUMB_PRIORITY_LIMIT, false);
+      const recursivePool = getRecursivePreviewRecordsForDir(dirNode, 0, false);
       if (!recursivePool.length) return { record: null, rotateKey: "" };
       const rotateKey = `${String(rotateKeyPrefix || "dir")}:${dirPath}:recursive`;
       const record = pickRotatingPreviewRecordForKey(rotateKey, recursivePool);
@@ -16591,7 +16590,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function getRootThumbnailReferenceRecord(rootNode) {
       if (!rootNode) return null;
-      const rootPool = getRecursivePreviewRecordsForDir(rootNode, PREVIEW_THUMB_PRIORITY_LIMIT, true);
+      const rootPool = getRecursivePreviewRecordsForDir(rootNode, 0, true);
       if (!rootPool.length) return null;
       const rootMode = getRootThumbnailMode();
       if (rootMode === "none") return null;
@@ -16617,7 +16616,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!key) return null;
       const mode = metaGetTagThumbnailModeByKey(key);
       if (mode === "none") return null;
-      const tagPool = getRecursivePreviewRecordsForTagEntry(entry, PREVIEW_THUMB_PRIORITY_LIMIT);
+      const tagPool = getRecursivePreviewRecordsForTagEntry(entry, 0);
       if (!tagPool.length) return null;
       const presetRec = getTagPresetPreviewRecordForEntry(entry, tagPool);
       if (presetRec) return presetRec;
@@ -17706,15 +17705,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         renderPreviewPane(false);
         kickVideoThumbsForPreview();
         kickImageThumbsForPreview();
-      });
-    }
-
-    let PREVIEW_THUMB_REFRESH_RAF = 0;
-    function schedulePreviewPaneRefreshFromThumbs() {
-      if (PREVIEW_THUMB_REFRESH_RAF) return;
-      PREVIEW_THUMB_REFRESH_RAF = requestAnimationFrame(() => {
-        PREVIEW_THUMB_REFRESH_RAF = 0;
-        renderPreviewPane(false);
       });
     }
 
@@ -21297,7 +21287,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const specialText = entry.special
             ? toTitleCaps(String(entry.special || ""))
             : ((entry.album && !entry.tag) ? "Album" : "");
-          const tagPool = getRecursivePreviewRecordsForTagEntry(entry, PREVIEW_THUMB_PRIORITY_LIMIT);
+          const tagPool = getRecursivePreviewRecordsForTagEntry(entry, 0);
           const tagThumbKey = tagThumbnailKeyForEntry(entry);
           const tagThumbMode = metaGetTagThumbnailModeByKey(tagThumbKey);
           const presetRec = getTagPresetPreviewRecordForEntry(entry, tagPool);
@@ -22789,10 +22779,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const mode = opt ? String(opt.imageThumbSize || "medium") : "medium";
-      const shouldGenerate = shouldGenerateImageThumb(rec, mode);
 
       if (mode === "high") {
-        if (shouldGenerate) {
+        if (thumbFiltersActive(rec)) {
           if (rec.thumbUrl && rec.thumbMode === "high") return rec.thumbUrl;
           if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
             try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
@@ -22818,10 +22807,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rec.thumbUrl = null;
       }
       rec.thumbMode = null;
-
-      if (!shouldGenerate) {
-        return ensureMediaUrl(rec) || null;
-      }
 
       enqueueImageThumb(rec);
       return ensureMediaUrl(rec) || null;
@@ -23163,12 +23148,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         previewImgEl.style.display = "none";
       }
       if (previewFolderEl) previewFolderEl.style.display = "none";
-      const preservePreviewFrame = mediaFilterEnabled();
-      MediaFilterEngine.detach("preview", { preserveFrame: preservePreviewFrame });
-      if (!preservePreviewFrame) {
-        if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
-        if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
-      }
+      MediaFilterEngine.detach("preview");
+      if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
+      if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
 
       if (!item) return;
 
@@ -24580,25 +24562,37 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return Math.max(0, priorityLen + queueLen + inFlight);
     }
 
-    function backgroundVideoThumbWorkEnabled() {
-      return !!(WS.root && WS.fileById instanceof Map && WS.fileById.size > 0);
-    }
-
     async function prewarmVideoThumbsBeforeInitialRender() {
-      if (!WS.root || !backgroundVideoThumbWorkEnabled()) return;
-      const dirNode = getPreviewTargetDir();
-      if (!dirNode) return;
-      const includeChildren = previewDisplayMode() === "expanded" && WS.preview.kind !== "file";
-      const ids = getPreviewFileIdsForDir(dirNode, includeChildren);
-      let queued = 0;
-      for (let i = 0; i < ids.length; i++) {
-        const rec = WS.fileById.get(ids[i]);
+      if (!WS.root) return;
+      const mode = currentVideoThumbMode();
+      const targets = [];
+      for (const rec of WS.fileById.values()) {
         if (!rec || rec.type !== "video") continue;
-        if (!enqueueVideoThumb(rec, { deferDrain: true, priority: true })) continue;
-        queued++;
-        if (queued >= PREVIEW_VIDEO_PREWARM_LIMIT) break;
+        if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
+        targets.push(rec);
       }
-      if (queued) drainVideoThumbQueue();
+      const total = targets.length;
+      if (!total) return;
+
+      let overlayShown = false;
+      WS.videoThumbPrewarmBlocking = true;
+      try {
+        for (let i = 0; i < targets.length; i++) {
+          enqueueVideoThumb(targets[i], { deferDrain: true, priority: true });
+        }
+        drainVideoThumbQueue();
+        while (true) {
+          const pending = videoThumbPendingCount();
+          const done = Math.max(0, total - pending);
+          showBusyOverlay(`Preparing video thumbnails... ${done}/${total}`);
+          overlayShown = true;
+          if (pending <= 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 120));
+        }
+      } finally {
+        WS.videoThumbPrewarmBlocking = false;
+        if (overlayShown) hideBusyOverlay();
+      }
     }
 
     function removeVideoThumbIdFromQueue(queue, id) {
@@ -24663,20 +24657,17 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const includeChildren = previewDisplayMode() === "expanded" && WS.preview.kind !== "file";
       const ids = getPreviewFileIdsForDir(dirNode, includeChildren);
       const mode = currentVideoThumbMode();
-      let queued = 0;
       for (const id of ids) {
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "video") continue;
         if (rec.videoThumbUrl && rec.videoThumbMode === mode) continue;
         enqueueVideoThumb(rec, { priority: true });
-        queued++;
-        if (queued >= PREVIEW_THUMB_PRIORITY_LIMIT) break;
       }
       drainVideoThumbQueue();
     }
 
     function kickVideoThumbsForWorkspace() {
-      if (!WS.root || !backgroundVideoThumbWorkEnabled()) return;
+      if (!WS.root) return;
       kickVideoThumbsForPreview();
       const mode = currentVideoThumbMode();
       const previewPriorityIds = new Set();
@@ -24697,14 +24688,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function scheduleVideoThumbWorkspaceKick(delayMs = 0) {
-      if (!backgroundVideoThumbWorkEnabled()) return;
       if (WS.videoThumbWorkspaceKickTimer) {
         try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
       }
-      const rawDelay = Number(delayMs);
-      const waitMs = (Number.isFinite(rawDelay) && rawDelay <= 0)
-        ? 0
-        : Math.max(1500, rawDelay || 0);
+      const waitMs = Math.max(0, Number(delayMs) || 0);
       WS.videoThumbWorkspaceKickTimer = setTimeout(() => {
         WS.videoThumbWorkspaceKickTimer = 0;
         kickVideoThumbsForWorkspace();
@@ -24713,7 +24700,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     async function drainVideoThumbQueue() {
       const MAX_VIDEO_THUMB_ACTIVE = 4;
-      const MAX_VIDEO_THUMB_BACKGROUND_ACTIVE = 4;
+      const MAX_VIDEO_THUMB_BACKGROUND_ACTIVE = 2;
       if (!Array.isArray(WS.videoThumbPriorityQueue)) WS.videoThumbPriorityQueue = [];
       if (!Array.isArray(WS.videoThumbQueue)) WS.videoThumbQueue = [];
       if (!(WS.videoThumbQueuedIds instanceof Set)) WS.videoThumbQueuedIds = new Set();
@@ -24744,7 +24731,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           WS.videoThumbInFlightBackgroundIds.delete(id);
           WS.videoThumbActive = Math.max(0, (WS.videoThumbActive | 0) - 1);
           if (!WS.videoThumbPrewarmBlocking) {
-            schedulePreviewPaneRefreshFromThumbs();
+            renderPreviewPane(false);
             refreshDirectoryInlinePreviewThumbForRecord(rec);
           }
           drainVideoThumbQueue();
@@ -24994,50 +24981,28 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
        Image thumbnails (lazy) for Preview Pane
        ========================================================= */
 
-    function shouldGenerateImageThumb(rec, modeValue = null) {
-      if (!rec || rec.type !== "image") return false;
-      return true;
-    }
-
     function enqueueImageThumb(rec) {
       if (!rec) return;
       if (rec.type !== "image") return;
-      const id = String(rec.id || "");
-      if (!id) return;
-      const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-      if (!shouldGenerateImageThumb(rec, mode)) return;
-      if (!Array.isArray(WS.imageThumbQueue)) WS.imageThumbQueue = [];
-      if (!(WS.imageThumbQueuedIds instanceof Set)) WS.imageThumbQueuedIds = new Set();
-      if (!(WS.imageThumbInFlightIds instanceof Set)) WS.imageThumbInFlightIds = new Set();
-      if (WS.imageThumbQueuedIds.has(id) || WS.imageThumbInFlightIds.has(id)) return;
-      WS.imageThumbQueue.push(id);
-      WS.imageThumbQueuedIds.add(id);
+      WS.imageThumbQueue.push(rec.id);
       drainImageThumbQueue();
     }
 
     async function drainImageThumbQueue() {
-      if (!Array.isArray(WS.imageThumbQueue)) WS.imageThumbQueue = [];
-      if (!(WS.imageThumbQueuedIds instanceof Set)) WS.imageThumbQueuedIds = new Set();
-      if (!(WS.imageThumbInFlightIds instanceof Set)) WS.imageThumbInFlightIds = new Set();
       if (WS.imageThumbActive >= 4) return;
       while (WS.imageThumbActive < 4 && WS.imageThumbQueue.length) {
-        const id = String(WS.imageThumbQueue.shift() || "");
-        if (!id) continue;
-        WS.imageThumbQueuedIds.delete(id);
-        if (WS.imageThumbInFlightIds.has(id)) continue;
+        const id = WS.imageThumbQueue.shift();
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "image") continue;
 
         const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-        if (!shouldGenerateImageThumb(rec, mode)) continue;
+        if (mode === "high" && !thumbFiltersActive(rec)) continue;
         if (rec.thumbUrl && rec.thumbMode === mode) continue;
 
-        WS.imageThumbInFlightIds.add(id);
         WS.imageThumbActive++;
         generateImageThumb(rec).catch(() => {}).finally(() => {
-          WS.imageThumbInFlightIds.delete(id);
           WS.imageThumbActive--;
-          schedulePreviewPaneRefreshFromThumbs();
+          renderPreviewPane(false);
           refreshDirectoryInlinePreviewThumbForRecord(rec);
           drainImageThumbQueue();
         });
@@ -25046,12 +25011,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     async function generateImageThumb(rec) {
       const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-      if (!shouldGenerateImageThumb(rec, mode)) {
-        if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
-          try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
-          rec.thumbUrl = null;
-        }
-        rec.thumbMode = (mode === "high") ? "high" : null;
+      if (mode === "high" && !thumbFiltersActive(rec)) {
+        rec.thumbMode = "high";
         return;
       }
 
@@ -25092,16 +25053,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!dirNode) return;
 
       const ids = getPreviewFileIdsForDir(dirNode);
-      let queued = 0;
       for (const id of ids) {
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "image") continue;
         const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-        if (!shouldGenerateImageThumb(rec, mode)) continue;
+        if (mode === "high") continue;
         if (rec.thumbUrl && rec.thumbMode === mode) continue;
         enqueueImageThumb(rec);
-        queued++;
-        if (queued >= PREVIEW_THUMB_PRIORITY_LIMIT) break;
       }
     }
 
