@@ -887,6 +887,18 @@
       margin: 0;
     }
 
+    .virtualFlexSpacer {
+      flex: 0 0 100%;
+      width: 100%;
+      max-width: 100%;
+      min-height: 0;
+      padding: 0;
+      margin: 0;
+      border: 0;
+      pointer-events: none;
+      visibility: hidden;
+    }
+
     #directoriesList.gridModeList .dirSquareCard,
     #directoriesList.gridModeList .dirFileThumbCard {
       width: 100%;
@@ -1911,6 +1923,16 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(calc(var(--file-grid-min) * var(--thumb-scale-media)), 1fr));
       gap: var(--preview-gutter);
+    }
+
+    .virtualGridSpacer {
+      grid-column: 1 / -1;
+      min-height: 0;
+      padding: 0;
+      margin: 0;
+      border: 0;
+      pointer-events: none;
+      visibility: hidden;
     }
 
     .gridFiles.previewSquareCards .fileCard {
@@ -4589,6 +4611,22 @@
     };
     let MEDIA_OVERLAY_STATE = null;
     let THUMB_FILTER_KEY = "";
+    const THUMB_DISK_CACHE_SCHEMA_VERSION = "nav-v2";
+    let THUMB_DISK_SCOPE_KEY = "";
+    const THUMB_DISK_READ_PROMISES = new Map();
+    const THUMB_DISK_WRITE_PROMISES = new Map();
+    const DIR_NAV_MANIFESTS = new Map();
+    const NAV_THUMB_READY_PROMISES = new Map();
+    let NAVIGATION_PREP_TOKEN = 0;
+    const HOT_NAV_DIR_PATHS = new Map();
+    let HOT_NAV_CACHE_TOKEN = 0;
+    let HOT_NAV_CACHE_TIMER = 0;
+    const HOT_NAV_MAX_DIRS = 24;
+    const HOT_NAV_NEARBY_SIBLING_RADIUS = 3;
+    const HOT_NAV_CHILD_LIMIT = 8;
+    let DIRECTORIES_VIRTUAL_SCROLL_RAF = 0;
+    let PREVIEW_VIRTUAL_SCROLL_RAF = 0;
+    let ACTIVE_PREVIEW_FILE_VIRTUALIZERS = [];
 
     const MEDIA_FILTER_CONFIGS = {};
 
@@ -5948,8 +5986,7 @@
     }
 
     function buildThumbFilterKey() {
-      if (!thumbFiltersEnabled() || !anyMediaFilterEnabled()) return "off|none";
-      return `custom|${buildAppearancePresetCacheKey()}`;
+      return "nav-neutral";
     }
 
     function resizeCanvasBuffer(canvas, width, height) {
@@ -8074,6 +8111,17 @@
 
     function resetWorkspace() {
       revokeAllObjectURLs();
+      THUMB_DISK_SCOPE_KEY = "";
+      THUMB_DISK_READ_PROMISES.clear();
+      THUMB_DISK_WRITE_PROMISES.clear();
+      NAV_THUMB_READY_PROMISES.clear();
+      NAVIGATION_PREP_TOKEN = 0;
+      HOT_NAV_DIR_PATHS.clear();
+      HOT_NAV_CACHE_TOKEN = 0;
+      if (HOT_NAV_CACHE_TIMER) {
+        try { clearTimeout(HOT_NAV_CACHE_TIMER); } catch {}
+      }
+      HOT_NAV_CACHE_TIMER = 0;
       invalidateDirMetricsCaches();
       WS.root = null;
       WS.fileById.clear();
@@ -8360,6 +8408,8 @@
       refreshFitInsidePreviewGrids();
       scheduleGridModeCardSizing();
       updateGridModeListTopInset();
+      scheduleDirectoriesVirtualViewportRefresh();
+      schedulePreviewVirtualGridRefresh();
     });
 
     // Directories Pane
@@ -8392,6 +8442,10 @@
     if (previewActionMenuEl) {
       previewActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
     }
+    directoriesListEl.addEventListener("scroll", () => {
+      if (WS.view.scrollBusyDirs) return;
+      scheduleDirectoriesVirtualViewportRefresh();
+    });
 
     /* Gallery Mode (Overlay) */
     const overlay = $("overlay");
@@ -13297,14 +13351,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.nav.selectedIndex = 0;
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
+      primeDirectoryNavManifests(WS.root);
 
-      await prewarmVideoThumbsBeforeInitialRender();
+      await ingestWorkspaceNavigationThumbsBeforeInitialRender();
+      await prepareNavigationSnapshot(currentNavigationSnapshot(), "Preparing directory thumbnails...");
 
       renderDirectoriesPane();
       renderPreviewPane(true);
       syncButtons();
       kickVideoThumbsForPreview();
-      scheduleVideoThumbWorkspaceKick(0);
       kickImageThumbsForPreview();
       syncMetaButtons();
       initDirHistory();
@@ -13415,14 +13470,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.nav.selectedIndex = 0;
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
+      primeDirectoryNavManifests(WS.root);
 
-      await prewarmVideoThumbsBeforeInitialRender();
+      await ingestWorkspaceNavigationThumbsBeforeInitialRender();
+      await prepareNavigationSnapshot(currentNavigationSnapshot(), "Preparing directory thumbnails...");
 
       renderDirectoriesPane();
       renderPreviewPane(true);
       syncButtons();
       kickVideoThumbsForPreview();
-      scheduleVideoThumbWorkspaceKick(0);
       kickImageThumbsForPreview();
       syncMetaButtons();
       initDirHistory();
@@ -13528,11 +13584,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const idx = restoreRefreshSelection(state?.entryKey);
       WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
       syncPreviewToSelection();
+      const ready = await prepareNavigationSnapshot(currentNavigationSnapshot(), "Preparing directory thumbnails...");
+      if (!ready) return;
       renderDirectoriesPane(true);
       renderPreviewPane(true, true);
       syncButtons();
       kickVideoThumbsForPreview();
-      scheduleVideoThumbWorkspaceKick(0);
       kickImageThumbsForPreview();
     }
 
@@ -14177,6 +14234,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function invalidateDirMetricsCaches() {
       invalidateDirSortMetricsCache();
       invalidateDirItemCountCache();
+      DIR_NAV_MANIFESTS.clear();
+      HOT_NAV_DIR_PATHS.clear();
     }
 
     function byName(a, b) {
@@ -15388,6 +15447,104 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const ids = getOrderedFileIdsForDir(dirNode, false);
       if (!ids.length) return null;
       return WS.fileById.get(ids[0]) || null;
+    }
+
+    function directoryNavManifestKey(dirNode) {
+      if (!dirNode) return "";
+      return String(dirNode.path || "__root__");
+    }
+
+    function getDirectoryNavManifest(dirNode) {
+      if (!dirNode) return null;
+      const key = directoryNavManifestKey(dirNode);
+      if (DIR_NAV_MANIFESTS.has(key)) return DIR_NAV_MANIFESTS.get(key) || null;
+
+      const fileIds = getOrderedFileIdsForDir(dirNode, false).map((id) => String(id || "")).filter(Boolean);
+      const childDirs = getChildDirsForNode(dirNode);
+      const childDirPaths = [];
+      const childLeadRecordIds = [];
+      for (let i = 0; i < childDirs.length; i++) {
+        const child = childDirs[i];
+        if (!child) continue;
+        childDirPaths.push(String(child.path || ""));
+        const childManifest = getDirectoryNavManifest(child);
+        const childLeadId = String(childManifest && childManifest.leadRecordId || "");
+        if (childLeadId) childLeadRecordIds.push(childLeadId);
+      }
+
+      const presetRec = getPresetPreviewRecordForDir(dirNode);
+      const directRec = getFirstDirectPreviewRecordForDir(dirNode);
+      const leadRecordId = String(
+        (presetRec && presetRec.id)
+        || (directRec && directRec.id)
+        || (childLeadRecordIds[0] || "")
+      );
+      const navRecordIds = [];
+      const seen = new Set();
+      const pushId = (id) => {
+        const normalized = String(id || "");
+        if (!normalized || seen.has(normalized)) return;
+        seen.add(normalized);
+        navRecordIds.push(normalized);
+      };
+      for (let i = 0; i < fileIds.length; i++) pushId(fileIds[i]);
+      for (let i = 0; i < childLeadRecordIds.length; i++) pushId(childLeadRecordIds[i]);
+
+      const manifest = {
+        key,
+        path: String(dirNode.path || ""),
+        fileIds,
+        childDirPaths,
+        childLeadRecordIds,
+        leadRecordId,
+        navRecordIds
+      };
+      DIR_NAV_MANIFESTS.set(key, manifest);
+      return manifest;
+    }
+
+    function primeDirectoryNavManifests(rootNode = null) {
+      const startNode = rootNode || WS.root;
+      if (!startNode) return;
+      getDirectoryNavManifest(startNode);
+    }
+
+    function manifestPathKey(pathValue) {
+      const path = String(pathValue || "");
+      return path || "__root__";
+    }
+
+    function collectManifestNavigationRecordsForPaths(paths) {
+      const out = [];
+      const seen = new Set();
+      const list = Array.isArray(paths) ? paths : [];
+      for (let i = 0; i < list.length; i++) {
+        const key = manifestPathKey(list[i]);
+        const manifest = DIR_NAV_MANIFESTS.get(key);
+        const ids = Array.isArray(manifest && manifest.navRecordIds) ? manifest.navRecordIds : [];
+        for (let j = 0; j < ids.length; j++) {
+          const id = String(ids[j] || "");
+          if (!id || seen.has(id)) continue;
+          const rec = WS.fileById.get(id);
+          if (!rec) continue;
+          seen.add(id);
+          out.push(rec);
+        }
+      }
+      return out;
+    }
+
+    function collectWorkspaceNavigationRecords(rootNode = null) {
+      const startNode = rootNode || WS.root;
+      if (!startNode) return [];
+      primeDirectoryNavManifests(startNode);
+      const rootPath = String(startNode.path || "");
+      const paths = [];
+      for (const manifest of DIR_NAV_MANIFESTS.values()) {
+        const path = String(manifest && manifest.path || "");
+        if (!rootPath || path === rootPath || path.startsWith(rootPath + "/")) paths.push(path);
+      }
+      return collectManifestNavigationRecordsForPaths(paths);
     }
 
     function findFileRecordByRelPath(relPath) {
@@ -17747,7 +17904,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
     }
 
-    function setDirectoriesSelection(idx, opts = null) {
+    async function setDirectoriesSelection(idx, opts = null) {
       const keepScroll = !!(opts && opts.keepScroll);
       if (!WS.nav.entries.length) {
         WS.nav.selectedIndex = 0;
@@ -17774,6 +17931,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.nav.selectedIndex = i;
       saveGridSelectionForCurrentContext();
       syncPreviewToSelection();
+      const snapshot = currentNavigationSnapshot();
+
+      const shouldBlockForPreview = !isGridInteractionMode();
+      if (shouldBlockForPreview) {
+        const ready = await prepareNavigationSnapshot(snapshot, "Preparing selection thumbnails...");
+        if (!ready) return;
+      } else {
+        scheduleNearbyDirectoryRamWarm(snapshot);
+      }
 
       if (canUseFastGridSelectionUpdate() && fastUpdateGridSelectedRow(prevIdx, i)) {
         const shouldCenter = WS.view.pendingDirScroll === "center-selected";
@@ -17803,7 +17969,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       kickImageThumbsForPreview();
     }
 
-    function returnToSearchResults() {
+    async function returnToSearchResults() {
       const target = String(WS.view.searchEntryRootPath || WS.view.searchAnchorPath || "");
       WS.view.searchRootActive = true;
       WS.view.searchAnchorPath = "";
@@ -17812,6 +17978,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const idx = target ? findDirEntryIndexByPath(target) : -1;
       WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
       syncPreviewToSelection();
+      const ready = await prepareNavigationSnapshot({
+        dirNode: WS.nav.dirNode,
+        preview: {
+          kind: WS.preview.kind,
+          dirNode: WS.preview.dirNode,
+          fileId: WS.preview.fileId
+        }
+      }, "Preparing directory thumbnails...");
+      if (!ready) return;
       renderDirectoriesPane();
       renderPreviewPane(true);
       syncButtons();
@@ -17822,40 +17997,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function syncPreviewToSelection() {
       const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
-      if (!entry || !isSelectableEntry(entry)) {
-        WS.preview.kind = null;
-        WS.preview.dirNode = null;
-        WS.preview.fileId = null;
-        return;
-      }
-      if (entry.kind === "dir") {
-        WS.preview.kind = "dir";
-        WS.preview.dirNode = entry.node;
-        WS.preview.fileId = null;
-      } else if (entry.kind === "up") {
-        WS.preview.kind = null;
-        WS.preview.dirNode = null;
-        WS.preview.fileId = null;
-      } else if (entry.kind === "file") {
-        WS.preview.kind = "file";
-        WS.preview.fileId = entry.id;
-        WS.preview.dirNode = null;
-      } else if (entry.kind === "tag") {
-        const node = makeTagPreviewNode(entry);
-        if (node) {
-          WS.preview.kind = "dir";
-          WS.preview.dirNode = node;
-          WS.preview.fileId = null;
-        } else {
-          WS.preview.kind = null;
-          WS.preview.dirNode = null;
-          WS.preview.fileId = null;
-        }
-      } else {
-        WS.preview.kind = null;
-        WS.preview.dirNode = null;
-        WS.preview.fileId = null;
-      }
+      applyPreviewState(previewStateForEntry(entry));
     }
 
     function altGalleryModeEnabled() {
@@ -17961,7 +18103,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return String(fileIds[0] || "");
     }
 
-    function enterSelectedDirectory() {
+    async function enterSelectedDirectory() {
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
 
@@ -17978,6 +18120,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           rebuildDirectoriesEntries();
           WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
           syncPreviewToSelection();
+          const ready = await prepareNavigationSnapshot({
+            dirNode: WS.nav.dirNode,
+            preview: {
+              kind: WS.preview.kind,
+              dirNode: WS.preview.dirNode,
+              fileId: WS.preview.fileId
+            }
+          }, "Preparing directory thumbnails...");
+          if (!ready) return;
           renderDirectoriesPane();
           renderPreviewPane(true);
           syncButtons();
@@ -18032,6 +18183,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const fileIdx = findFileEntryIndexById(directGalleryFirstId);
         WS.nav.selectedIndex = findNearestSelectableIndex(fileIdx >= 0 ? fileIdx : selectionIndexForDirectoryEnter(), 1);
         syncPreviewToSelection();
+        const ready = await prepareNavigationSnapshot({
+          dirNode: WS.nav.dirNode,
+          preview: {
+            kind: WS.preview.kind,
+            dirNode: WS.preview.dirNode,
+            fileId: WS.preview.fileId
+          }
+        }, "Preparing directory thumbnails...");
+        if (!ready) return;
         recordDirHistory();
         openGalleryForDir(entry.node, directGalleryFirstId, true, true);
         return;
@@ -18056,7 +18216,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
-
+        const ready = await prepareNavigationSnapshot({
+          dirNode: WS.nav.dirNode,
+          preview: {
+            kind: WS.preview.kind,
+            dirNode: WS.preview.dirNode,
+            fileId: WS.preview.fileId
+          }
+        }, "Preparing directory thumbnails...");
+        if (!ready) return;
         renderDirectoriesPane();
         renderPreviewPane(true);
         syncButtons();
@@ -18076,7 +18244,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
-
+        const ready = await prepareNavigationSnapshot({
+          dirNode: WS.nav.dirNode,
+          preview: {
+            kind: WS.preview.kind,
+            dirNode: WS.preview.dirNode,
+            fileId: WS.preview.fileId
+          }
+        }, "Preparing directory thumbnails...");
+        if (!ready) return;
         renderDirectoriesPane();
         renderPreviewPane(true);
         syncButtons();
@@ -18096,7 +18272,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
-
+        const ready = await prepareNavigationSnapshot({
+          dirNode: WS.nav.dirNode,
+          preview: {
+            kind: WS.preview.kind,
+            dirNode: WS.preview.dirNode,
+            fileId: WS.preview.fileId
+          }
+        }, "Preparing directory thumbnails...");
+        if (!ready) return;
         renderDirectoriesPane();
         renderPreviewPane(true);
         syncButtons();
@@ -18115,7 +18299,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
       syncPreviewToSelection();
-
+      const ready = await prepareNavigationSnapshot({
+        dirNode: WS.nav.dirNode,
+        preview: {
+          kind: WS.preview.kind,
+          dirNode: WS.preview.dirNode,
+          fileId: WS.preview.fileId
+        }
+      }, "Preparing directory thumbnails...");
+      if (!ready) return;
       renderDirectoriesPane();
       renderPreviewPane(true);
       syncButtons();
@@ -18124,7 +18316,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       recordDirHistory();
     }
 
-    function leaveDirectory() {
+    async function leaveDirectory() {
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
 
@@ -18153,6 +18345,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           rebuildDirectoriesEntries();
           WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
           syncPreviewToSelection();
+          const ready = await prepareNavigationSnapshot({
+            dirNode: WS.nav.dirNode,
+            preview: {
+              kind: WS.preview.kind,
+              dirNode: WS.preview.dirNode,
+              fileId: WS.preview.fileId
+            }
+          }, "Preparing directory thumbnails...");
+          if (!ready) return;
           renderDirectoriesPane();
           renderPreviewPane(false);
           syncButtons();
@@ -18169,6 +18370,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           rebuildDirectoriesEntries();
           WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
           syncPreviewToSelection();
+          const ready = await prepareNavigationSnapshot({
+            dirNode: WS.nav.dirNode,
+            preview: {
+              kind: WS.preview.kind,
+              dirNode: WS.preview.dirNode,
+              fileId: WS.preview.fileId
+            }
+          }, "Preparing directory thumbnails...");
+          if (!ready) return;
           renderDirectoriesPane();
           renderPreviewPane(false);
           syncButtons();
@@ -18184,6 +18394,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
         syncPreviewToSelection();
+        const ready = await prepareNavigationSnapshot({
+          dirNode: WS.nav.dirNode,
+          preview: {
+            kind: WS.preview.kind,
+            dirNode: WS.preview.dirNode,
+            fileId: WS.preview.fileId
+          }
+        }, "Preparing directory thumbnails...");
+        if (!ready) return;
         renderDirectoriesPane();
         renderPreviewPane(false);
         syncButtons();
@@ -18211,6 +18430,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
       WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
       syncPreviewToSelection();
+      const ready = await prepareNavigationSnapshot({
+        dirNode: WS.nav.dirNode,
+        preview: {
+          kind: WS.preview.kind,
+          dirNode: WS.preview.dirNode,
+          fileId: WS.preview.fileId
+        }
+      }, "Preparing directory thumbnails...");
+      if (!ready) return;
 
       WS.view.pendingDirScroll = "center-selected";
       renderDirectoriesPane();
@@ -18593,6 +18821,430 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (targetAbs) return targetAbs;
       }
       return "";
+    }
+
+    function thumbDiskCacheAvailable() {
+      const electronApi = getElectronApi();
+      return !!(electronApi
+        && typeof electronApi.readThumbCache === "function"
+        && typeof electronApi.writeThumbCache === "function");
+    }
+
+    function currentThumbDiskScopeKey() {
+      if (!thumbDiskCacheAvailable()) return "";
+      if (THUMB_DISK_SCOPE_KEY) return THUMB_DISK_SCOPE_KEY;
+      const absRoot = resolveAbsoluteDirectoryPath("");
+      if (absRoot) {
+        THUMB_DISK_SCOPE_KEY = `root:${absRoot}`;
+        return THUMB_DISK_SCOPE_KEY;
+      }
+      const storageKey = String(WS.meta && WS.meta.storageKey || "").trim();
+      if (storageKey) {
+        THUMB_DISK_SCOPE_KEY = `storage:${storageKey}`;
+        return THUMB_DISK_SCOPE_KEY;
+      }
+      return "";
+    }
+
+    function thumbDiskRecordIdentity(rec) {
+      if (!rec) return "";
+      const nativePath = String(rec.nativePath || getNativePathForFile(rec.file) || "");
+      const relPath = String(rec.relPath || "");
+      const size = Number.isFinite(Number(rec.size)) ? Number(rec.size) : Number(rec.file && rec.file.size || 0);
+      const lastModified = Number.isFinite(Number(rec.lastModified)) ? Number(rec.lastModified) : Number(rec.file && rec.file.lastModified || 0);
+      return `${String(rec.type || "")}|${nativePath || relPath}|${size}|${lastModified}`;
+    }
+
+    function serializeThumbDiskCrop(crop) {
+      const normalized = normalizeVideoCrop(crop);
+      if (!normalized) return "none";
+      return [
+        normalized.left,
+        normalized.right,
+        normalized.top,
+        normalized.bottom
+      ].map((value) => Number(value || 0).toFixed(4)).join(",");
+    }
+
+    function currentThumbProcessingCacheKey() {
+      return THUMB_FILTER_KEY || buildThumbFilterKey();
+    }
+
+    function imageThumbDiskCacheKey(rec, mode) {
+      if (!rec || rec.type !== "image") return "";
+      const normalizedMode = String(mode || "medium");
+      if (normalizedMode === "high" && !thumbFiltersActive(rec)) return "";
+      return [
+        THUMB_DISK_CACHE_SCHEMA_VERSION,
+        "image",
+        thumbDiskRecordIdentity(rec),
+        `mode:${normalizedMode}`,
+        `width:${imageThumbWidthForOption()}`,
+        "variant:nav-neutral"
+      ].join("###");
+    }
+
+    function videoThumbDiskCacheKey(rec, mode) {
+      if (!rec || rec.type !== "video") return "";
+      const normalizedMode = String(mode || "medium");
+      return [
+        THUMB_DISK_CACHE_SCHEMA_VERSION,
+        "video",
+        thumbDiskRecordIdentity(rec),
+        `mode:${normalizedMode}`,
+        `width:${videoThumbWidthForOption()}`,
+        `frame:${String(metaGetVideoThumbnailTimeForRecord(rec) ?? "auto")}`,
+        `crop:${serializeThumbDiskCrop(getVideoCropForRecord(rec))}`,
+        "variant:nav-neutral"
+      ].join("###");
+    }
+
+    async function readThumbDiskCacheUrl(scopeKey, cacheKey) {
+      if (!scopeKey || !cacheKey || !thumbDiskCacheAvailable()) return "";
+      const promiseKey = `${scopeKey}###${cacheKey}`;
+      if (THUMB_DISK_READ_PROMISES.has(promiseKey)) {
+        return THUMB_DISK_READ_PROMISES.get(promiseKey);
+      }
+      const electronApi = getElectronApi();
+      const loadPromise = (async () => {
+        try {
+          const url = await electronApi.readThumbCache({ scopeKey, cacheKey, ext: "jpg" });
+          return String(url || "");
+        } catch {
+          return "";
+        } finally {
+          THUMB_DISK_READ_PROMISES.delete(promiseKey);
+        }
+      })();
+      THUMB_DISK_READ_PROMISES.set(promiseKey, loadPromise);
+      return loadPromise;
+    }
+
+    async function writeThumbDiskCacheUrl(scopeKey, cacheKey, blob) {
+      if (!scopeKey || !cacheKey || !blob || !thumbDiskCacheAvailable()) return "";
+      const promiseKey = `${scopeKey}###${cacheKey}`;
+      if (THUMB_DISK_WRITE_PROMISES.has(promiseKey)) {
+        return THUMB_DISK_WRITE_PROMISES.get(promiseKey);
+      }
+      const electronApi = getElectronApi();
+      const writePromise = (async () => {
+        try {
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          const url = await electronApi.writeThumbCache({ scopeKey, cacheKey, ext: "jpg", bytes });
+          return String(url || "");
+        } catch {
+          return "";
+        } finally {
+          THUMB_DISK_WRITE_PROMISES.delete(promiseKey);
+        }
+      })();
+      THUMB_DISK_WRITE_PROMISES.set(promiseKey, writePromise);
+      return writePromise;
+    }
+
+    async function hydrateImageThumbFromDiskCache(rec, mode) {
+      if (!rec || rec.type !== "image") return false;
+      if (rec.thumbUrl && rec.thumbMode === mode) return true;
+      const scopeKey = currentThumbDiskScopeKey();
+      const cacheKey = imageThumbDiskCacheKey(rec, mode);
+      if (!scopeKey || !cacheKey) return false;
+      const cachedUrl = await readThumbDiskCacheUrl(scopeKey, cacheKey);
+      if (!cachedUrl) return false;
+      if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
+        try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
+      }
+      rec.thumbUrl = cachedUrl;
+      rec.thumbMode = mode;
+      return true;
+    }
+
+    async function hydrateVideoThumbFromDiskCache(rec, mode) {
+      if (!rec || rec.type !== "video") return false;
+      if (rec.videoThumbUrl && rec.videoThumbMode === mode) return true;
+      const scopeKey = currentThumbDiskScopeKey();
+      const cacheKey = videoThumbDiskCacheKey(rec, mode);
+      if (!scopeKey || !cacheKey) return false;
+      const cachedUrl = await readThumbDiskCacheUrl(scopeKey, cacheKey);
+      if (!cachedUrl) return false;
+      if (rec.videoThumbUrl) {
+        try { URL.revokeObjectURL(rec.videoThumbUrl); } catch {}
+      }
+      rec.videoThumbUrl = cachedUrl;
+      rec.videoThumbMode = mode;
+      return true;
+    }
+
+    async function persistImageThumbToDiskCache(rec, mode, blob) {
+      const scopeKey = currentThumbDiskScopeKey();
+      const cacheKey = imageThumbDiskCacheKey(rec, mode);
+      if (!scopeKey || !cacheKey) return "";
+      return writeThumbDiskCacheUrl(scopeKey, cacheKey, blob);
+    }
+
+    async function persistVideoThumbToDiskCache(rec, mode, blob) {
+      const scopeKey = currentThumbDiskScopeKey();
+      const cacheKey = videoThumbDiskCacheKey(rec, mode);
+      if (!scopeKey || !cacheKey) return "";
+      return writeThumbDiskCacheUrl(scopeKey, cacheKey, blob);
+    }
+
+    function currentImageThumbMode() {
+      return WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
+    }
+
+    function previewStateForEntry(entry) {
+      if (!entry || !isSelectableEntry(entry)) {
+        return { kind: null, dirNode: null, fileId: null };
+      }
+      if (entry.kind === "dir") {
+        return { kind: "dir", dirNode: entry.node || null, fileId: null };
+      }
+      if (entry.kind === "file") {
+        return { kind: "file", dirNode: null, fileId: entry.id || null };
+      }
+      if (entry.kind === "tag") {
+        const node = makeTagPreviewNode(entry);
+        return node
+          ? { kind: "dir", dirNode: node, fileId: null }
+          : { kind: null, dirNode: null, fileId: null };
+      }
+      return { kind: null, dirNode: null, fileId: null };
+    }
+
+    function applyPreviewState(state) {
+      const next = state && typeof state === "object" ? state : {};
+      WS.preview.kind = next.kind || null;
+      WS.preview.dirNode = next.dirNode || null;
+      WS.preview.fileId = next.fileId || null;
+    }
+
+    function currentNavigationSnapshot() {
+      return {
+        dirNode: WS.nav.dirNode,
+        preview: {
+          kind: WS.preview.kind,
+          dirNode: WS.preview.dirNode,
+          fileId: WS.preview.fileId
+        }
+      };
+    }
+
+    async function runWithConcurrency(items, limit, worker) {
+      const list = Array.isArray(items) ? items.slice() : [];
+      if (!list.length) return;
+      const concurrency = Math.max(1, Math.min(list.length, Number(limit) || 1));
+      let index = 0;
+      async function pump() {
+        while (index < list.length) {
+          const currentIndex = index++;
+          await worker(list[currentIndex], currentIndex);
+        }
+      }
+      const workers = [];
+      for (let i = 0; i < concurrency; i++) workers.push(pump());
+      await Promise.all(workers);
+    }
+
+    async function ensureNavigationThumbReady(rec) {
+      if (!rec || !rec.id) return false;
+      if (rec.type === "video") {
+        const mode = currentVideoThumbMode();
+        if (rec.videoThumbUrl && rec.videoThumbMode === mode) return true;
+        const key = `video###${String(rec.id || "")}###${videoThumbDiskCacheKey(rec, mode)}`;
+        if (NAV_THUMB_READY_PROMISES.has(key)) return NAV_THUMB_READY_PROMISES.get(key);
+        const promise = generateVideoThumb(rec).then(() => !!(rec.videoThumbUrl && rec.videoThumbMode === mode)).catch(() => false).finally(() => {
+          NAV_THUMB_READY_PROMISES.delete(key);
+        });
+        NAV_THUMB_READY_PROMISES.set(key, promise);
+        return promise;
+      }
+      if (rec.type === "image") {
+        const mode = currentImageThumbMode();
+        if (rec.thumbUrl && rec.thumbMode === mode) return true;
+        const key = `image###${String(rec.id || "")}###${imageThumbDiskCacheKey(rec, mode) || mode}`;
+        if (NAV_THUMB_READY_PROMISES.has(key)) return NAV_THUMB_READY_PROMISES.get(key);
+        const promise = generateImageThumb(rec).then(() => !!(rec.thumbUrl && rec.thumbMode === mode)).catch(() => false).finally(() => {
+          NAV_THUMB_READY_PROMISES.delete(key);
+        });
+        NAV_THUMB_READY_PROMISES.set(key, promise);
+        return promise;
+      }
+      return false;
+    }
+
+    function collectNavigationSnapshotRecords(snapshot) {
+      const out = [];
+      const seen = new Set();
+      const addRecord = (rec) => {
+        const id = String(rec && rec.id || "");
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        out.push(rec);
+      };
+      const addDir = (dirNode) => {
+        if (!dirNode) return;
+        const manifest = getDirectoryNavManifest(dirNode);
+        const ids = Array.isArray(manifest && manifest.navRecordIds) ? manifest.navRecordIds : [];
+        for (let i = 0; i < ids.length; i++) {
+          const rec = WS.fileById.get(ids[i]);
+          if (!rec) continue;
+          addRecord(rec);
+        }
+      };
+      if (snapshot && snapshot.dirNode) addDir(snapshot.dirNode);
+      if (snapshot && snapshot.preview && snapshot.preview.kind === "dir" && snapshot.preview.dirNode) {
+        addDir(snapshot.preview.dirNode);
+      }
+      return out;
+    }
+
+    function collectNearbyDirectoryPaths(snapshot) {
+      const out = [];
+      const seen = new Set();
+      const pushPath = (pathValue) => {
+        const path = String(pathValue || "");
+        if (seen.has(path)) return;
+        seen.add(path);
+        out.push(path);
+      };
+      const pushDir = (dirNode) => {
+        if (!dirNode) return;
+        pushPath(dirNode.path || "");
+      };
+      const pushChildDirs = (dirNode, limit = HOT_NAV_CHILD_LIMIT) => {
+        if (!dirNode) return;
+        const children = getChildDirsForNode(dirNode);
+        for (let i = 0; i < children.length && i < limit; i++) pushDir(children[i]);
+      };
+
+      const navDir = snapshot && snapshot.dirNode ? snapshot.dirNode : null;
+      const previewDir = snapshot && snapshot.preview && snapshot.preview.kind === "dir" ? snapshot.preview.dirNode : null;
+      pushDir(navDir);
+      pushDir(previewDir);
+      if (navDir && navDir.parent) pushDir(navDir.parent);
+      if (previewDir && previewDir.parent) pushDir(previewDir.parent);
+
+      const selectedIndex = Number(WS.nav.selectedIndex || 0);
+      const start = Math.max(0, selectedIndex - HOT_NAV_NEARBY_SIBLING_RADIUS);
+      const end = Math.min(WS.nav.entries.length - 1, selectedIndex + HOT_NAV_NEARBY_SIBLING_RADIUS);
+      for (let i = start; i <= end; i++) {
+        const entry = WS.nav.entries[i];
+        if (!entry || entry.kind !== "dir" || !entry.node) continue;
+        pushDir(entry.node);
+      }
+
+      const selectedEntry = WS.nav.entries[selectedIndex] || null;
+      if (selectedEntry && selectedEntry.kind === "dir" && selectedEntry.node) {
+        pushDir(selectedEntry.node);
+        pushChildDirs(selectedEntry.node, HOT_NAV_CHILD_LIMIT);
+      }
+
+      pushChildDirs(navDir, HOT_NAV_CHILD_LIMIT);
+      pushChildDirs(previewDir, Math.max(2, Math.floor(HOT_NAV_CHILD_LIMIT / 2)));
+      return out;
+    }
+
+    function touchHotNavigationDirectoryPaths(paths) {
+      const list = Array.isArray(paths) ? paths : [];
+      for (let i = 0; i < list.length; i++) {
+        const path = String(list[i] || "");
+        if (HOT_NAV_DIR_PATHS.has(path)) HOT_NAV_DIR_PATHS.delete(path);
+        HOT_NAV_DIR_PATHS.set(path, Date.now());
+      }
+      while (HOT_NAV_DIR_PATHS.size > HOT_NAV_MAX_DIRS) {
+        const oldest = HOT_NAV_DIR_PATHS.keys().next();
+        if (oldest && !oldest.done) HOT_NAV_DIR_PATHS.delete(oldest.value);
+        else break;
+      }
+    }
+
+    function releaseColdNavigationThumbs() {
+      return;
+    }
+
+    async function warmNearbyDirectoriesInRam(snapshot) {
+      const paths = collectNearbyDirectoryPaths(snapshot);
+      if (!paths.length) return;
+      touchHotNavigationDirectoryPaths(paths);
+      const records = collectManifestNavigationRecordsForPaths(paths);
+      if (records.length) await runWithConcurrency(records, navigationThumbWorkerLimit("background"), ensureNavigationThumbReady);
+      releaseColdNavigationThumbs();
+    }
+
+    function scheduleNearbyDirectoryRamWarm(snapshot, delayMs = 0) {
+      const token = ++HOT_NAV_CACHE_TOKEN;
+      if (HOT_NAV_CACHE_TIMER) {
+        try { clearTimeout(HOT_NAV_CACHE_TIMER); } catch {}
+      }
+      const waitMs = Math.max(0, Number(delayMs) || 0);
+      HOT_NAV_CACHE_TIMER = setTimeout(() => {
+        HOT_NAV_CACHE_TIMER = 0;
+        if (token !== HOT_NAV_CACHE_TOKEN) return;
+        warmNearbyDirectoriesInRam(snapshot).catch(() => {});
+      }, waitMs);
+    }
+
+    function navigationSnapshotPendingRecords(snapshot) {
+      const records = collectNavigationSnapshotRecords(snapshot);
+      return records.filter((rec) => {
+        if (!rec) return false;
+        if (rec.type === "video") {
+          const mode = currentVideoThumbMode();
+          return !(rec.videoThumbUrl && rec.videoThumbMode === mode);
+        }
+        if (rec.type === "image") {
+          const mode = currentImageThumbMode();
+          return !(rec.thumbUrl && rec.thumbMode === mode);
+        }
+        return false;
+      });
+    }
+
+    async function ensureNavigationSnapshotReady(snapshot) {
+      const records = navigationSnapshotPendingRecords(snapshot);
+      if (!records.length) return;
+      await runWithConcurrency(records, navigationThumbWorkerLimit("blocking"), ensureNavigationThumbReady);
+    }
+
+    async function prepareNavigationSnapshot(snapshot, label = "Preparing thumbnails...") {
+      const pending = navigationSnapshotPendingRecords(snapshot);
+      if (!pending.length) {
+        scheduleNearbyDirectoryRamWarm(snapshot);
+        return true;
+      }
+      const token = ++NAVIGATION_PREP_TOKEN;
+      showBusyOverlay(label);
+      try {
+        await runWithConcurrency(pending, navigationThumbWorkerLimit("blocking"), ensureNavigationThumbReady);
+      } finally {
+        if (token === NAVIGATION_PREP_TOKEN) hideBusyOverlay();
+      }
+      if (token === NAVIGATION_PREP_TOKEN) scheduleNearbyDirectoryRamWarm(snapshot);
+      return token === NAVIGATION_PREP_TOKEN;
+    }
+
+    async function ingestWorkspaceNavigationThumbsBeforeInitialRender() {
+      if (!WS.root) return;
+      const records = collectWorkspaceNavigationRecords(WS.root);
+      const total = records.length;
+      if (!total) {
+        await warmNearbyDirectoriesInRam(currentNavigationSnapshot());
+        return;
+      }
+      let done = 0;
+      showBusyOverlay(`Preparing root thumbnails... 0/${total}`);
+      try {
+        await runWithConcurrency(records, navigationThumbWorkerLimit("startup"), async (rec) => {
+          await ensureNavigationThumbReady(rec);
+          done++;
+          if (done === total || done === 1 || (done % 25) === 0) {
+            showBusyOverlay(`Preparing root thumbnails... ${done}/${total}`);
+          }
+        });
+      } finally {
+        hideBusyOverlay();
+      }
+      await warmNearbyDirectoriesInRam(currentNavigationSnapshot());
     }
 
     function notifyScrubMissingTools(missingTools) {
@@ -19474,7 +20126,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.view.dirHistoryIndex = 0;
     }
 
-    function restoreDirHistoryEntry(entry) {
+    async function restoreDirHistoryEntry(entry) {
       if (!entry || !WS.root) return;
       clearTagNavigationStack();
       WS.view.tagFolderActiveMode = "";
@@ -19492,6 +20144,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const idx = findEntryIndexByKey(String(entry.selectedKey || ""));
       WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
       syncPreviewToSelection();
+      const ready = await prepareNavigationSnapshot({
+        dirNode: WS.nav.dirNode,
+        preview: {
+          kind: WS.preview.kind,
+          dirNode: WS.preview.dirNode,
+          fileId: WS.preview.fileId
+        }
+      }, "Preparing directory thumbnails...");
+      if (!ready) return;
       renderDirectoriesPane(true);
       renderPreviewPane(true, true);
       syncButtons();
@@ -21116,7 +21777,108 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       });
     }
 
-    function renderDirectoriesPane(keepScroll = false) {
+    function currentThumbWorkerCpuBudget() {
+      const reported = Number((typeof navigator !== "undefined" && navigator && navigator.hardwareConcurrency) || 0);
+      const cores = Number.isFinite(reported) && reported > 0 ? reported : 4;
+      return Math.max(2, Math.min(12, Math.round(cores)));
+    }
+
+    function navigationThumbWorkerLimit(kind = "blocking") {
+      const cores = currentThumbWorkerCpuBudget();
+      if (kind === "startup") return Math.max(4, Math.min(8, cores));
+      if (kind === "background") return Math.max(2, Math.min(4, Math.floor(cores / 2)));
+      return Math.max(3, Math.min(6, Math.floor((cores * 3) / 4)));
+    }
+
+    function videoThumbPoolLimits() {
+      const cores = currentThumbWorkerCpuBudget();
+      if (WS.videoThumbPrewarmBlocking) {
+        const active = Math.max(4, Math.min(8, cores));
+        return { active, background: 0 };
+      }
+      const active = Math.max(2, Math.min(5, Math.floor((cores + 2) / 2)));
+      const background = Math.max(1, Math.min(2, Math.floor(cores / 4)));
+      return { active, background };
+    }
+
+    function imageThumbPoolLimit() {
+      const cores = currentThumbWorkerCpuBudget();
+      return Math.max(2, Math.min(5, Math.floor((cores + 3) / 3)));
+    }
+
+    function shouldVirtualizeDirectoriesPane(gridModeActive) {
+      if (!gridModeActive) return false;
+      if ((WS.nav.entries || []).length < 220) return false;
+      for (let i = 0; i < WS.nav.entries.length; i++) {
+        const entry = WS.nav.entries[i];
+        if (!entry) continue;
+        if (entry.kind === "tag" || entry.kind === "up") return false;
+      }
+      if (WS.view.dirActionMenuPath || WS.view.fileActionMenuId || WS.view.bulkActionMenuOpen) return false;
+      if (TAG_ENTRY_RENAME_STATE || RENAME_EDIT_PATH || RENAME_EDIT_FILE_ID) return false;
+      return true;
+    }
+
+    function measureDirectoriesGridVirtualMetrics() {
+      if (!directoriesListEl) return null;
+      const cs = getComputedStyle(directoriesListEl);
+      const gap = Math.max(0, parseFloat(cs.rowGap || cs.gap || "0") || 0);
+      const card = Math.max(80, parseFloat(cs.getPropertyValue("--grid-card-size") || "0") || 0);
+      const colsRaw = parseInt(cs.getPropertyValue("--grid-cols"), 10);
+      const cols = Math.max(1, Number.isFinite(colsRaw) ? colsRaw : 1);
+      const rowHeight = Math.max(96, card) + gap;
+      return { gap, card, cols, rowHeight };
+    }
+
+    function computeDirectoriesVirtualWindow(entryCount, metrics, suppressSelectionReveal = false) {
+      if (!directoriesListEl || !metrics || !entryCount) return null;
+      const totalRows = Math.max(1, Math.ceil(entryCount / Math.max(1, metrics.cols)));
+      const scrollTop = Math.max(0, Number(directoriesListEl.scrollTop) || 0);
+      const clientHeight = Math.max(1, Number(directoriesListEl.clientHeight) || 1);
+      let anchorRow = Math.max(0, Math.floor(scrollTop / Math.max(1, metrics.rowHeight)));
+      const viewportRows = Math.max(1, Math.ceil((clientHeight + metrics.gap) / Math.max(1, metrics.rowHeight)));
+      const selectedRow = Math.max(0, Math.floor(Math.max(0, Number(WS.nav.selectedIndex) || 0) / Math.max(1, metrics.cols)));
+      if (!suppressSelectionReveal && (
+        WS.view.pendingDirScroll === "center-selected"
+        || WS.view.pendingDirScroll === "grid-nearest"
+        || selectedRow < anchorRow
+        || selectedRow > (anchorRow + viewportRows)
+      )) {
+        anchorRow = Math.max(0, selectedRow - Math.floor(viewportRows / 2));
+      }
+      const overscanRows = 2;
+      const startRow = Math.max(0, anchorRow - overscanRows);
+      const endRow = Math.min(totalRows - 1, anchorRow + viewportRows + overscanRows);
+      return {
+        startIndex: startRow * metrics.cols,
+        endIndexExclusive: Math.min(entryCount, (endRow + 1) * metrics.cols),
+        topSpacerHeight: startRow * metrics.rowHeight,
+        bottomSpacerHeight: Math.max(0, (totalRows - endRow - 1) * metrics.rowHeight)
+      };
+    }
+
+    function appendVirtualFlexSpacer(frag, heightPx) {
+      const height = Math.max(0, Math.round(Number(heightPx) || 0));
+      if (!frag || height <= 0) return;
+      const spacer = document.createElement("div");
+      spacer.className = "virtualFlexSpacer";
+      spacer.setAttribute("aria-hidden", "true");
+      spacer.style.height = `${height}px`;
+      frag.appendChild(spacer);
+    }
+
+    function scheduleDirectoriesVirtualViewportRefresh() {
+      if (!directoriesListEl || directoriesListEl.dataset.virtualized !== "1") return;
+      if (DIRECTORIES_VIRTUAL_SCROLL_RAF) return;
+      DIRECTORIES_VIRTUAL_SCROLL_RAF = requestAnimationFrame(() => {
+        DIRECTORIES_VIRTUAL_SCROLL_RAF = 0;
+        if (!directoriesListEl || directoriesListEl.dataset.virtualized !== "1") return;
+        renderDirectoriesPane(true, { suppressSelectionReveal: true });
+      });
+    }
+
+    function renderDirectoriesPane(keepScroll = false, opts = null) {
+      const suppressSelectionReveal = !!(opts && opts.suppressSelectionReveal);
       syncThumbFilterKeyWithCurrentAppearanceContext();
       const nextContextKey = directoriesScrollContextKey();
       const contextChanged = nextContextKey !== LAST_DIRECTORIES_SCROLL_CONTEXT;
@@ -21143,7 +21905,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const folderSquareCardMode = true;
       const naturalThumbCards = naturalAspectThumbnailCardsEnabled();
       directoriesListEl.classList.toggle("naturalThumbCards", !!naturalThumbCards);
-      if (gridModeActive) scheduleGridModeCardSizing();
+      if (gridModeActive) {
+        applyGridModeCardSizing();
+        scheduleGridModeCardSizing();
+      }
       else {
         directoriesListEl.style.removeProperty("--grid-card-size");
         directoriesListEl.style.removeProperty("--grid-cols");
@@ -21223,12 +21988,20 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       try { directoriesListEl.style.setProperty("--dirMetaCh", String(maxMetaLen)); } catch {}
 
       const frag = document.createDocumentFragment();
+      const virtualizeGrid = shouldVirtualizeDirectoriesPane(gridModeActive);
+      const virtualMetrics = virtualizeGrid ? measureDirectoriesGridVirtualMetrics() : null;
+      const virtualWindow = virtualizeGrid ? computeDirectoriesVirtualWindow(WS.nav.entries.length, virtualMetrics, suppressSelectionReveal) : null;
+      const entryStart = virtualWindow ? Math.max(0, virtualWindow.startIndex) : 0;
+      const entryEndExclusive = virtualWindow ? Math.max(entryStart, virtualWindow.endIndexExclusive) : WS.nav.entries.length;
+      directoriesListEl.dataset.virtualized = virtualWindow ? "1" : "0";
+      appendVirtualFlexSpacer(frag, virtualWindow ? virtualWindow.topSpacerHeight : 0);
       const showTagSpacer = showTagFolderSpacerRowEnabled()
         && WS.nav.entries.some((entry) => entry && entry.kind === "tag")
         && WS.nav.entries.some((entry) => entry && entry.kind === "dir");
       let seenTagEntryBeforeCurrent = false;
       let insertedTagSpacer = false;
-      WS.nav.entries.forEach((entry, idx) => {
+      for (let idx = entryStart; idx < entryEndExclusive; idx++) {
+        const entry = WS.nav.entries[idx];
         if (showTagSpacer && !insertedTagSpacer && seenTagEntryBeforeCurrent && entry && entry.kind === "dir") {
           const spacerEl = document.createElement("div");
           spacerEl.className = "tagSpacerVisualRow";
@@ -22167,7 +22940,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
         if (isTagEntry) seenTagEntryBeforeCurrent = true;
         frag.appendChild(row);
-      });
+      }
+      appendVirtualFlexSpacer(frag, virtualWindow ? virtualWindow.bottomSpacerHeight : 0);
 
       directoriesListEl.appendChild(frag);
       invalidateGridRowMetricsCache();
@@ -22193,19 +22967,21 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         directoriesListEl.scrollTop = 0;
       }
 
-      if (shouldCenter) {
-        if (gridModeActive) revealSelectedDirectoryRowInGridMode(true);
-        else centerSelectedDirectoryRow(0, prevSelectedRowCenterOffset);
-      } else if (gridModeActive && shouldGridReveal) {
-        revealSelectedDirectoryRowInGridMode(false);
-      } else {
-        const vis = getSelectedDirectoryRowVisibility();
-        if (vis.state === "offscreen") {
-          // If selection is fully off-screen, jump to centered "read head" position.
-          centerSelectedDirectoryRow(0);
-        } else if (vis.state === "partial") {
-          // If selection is clipped, jump immediately so it is fully visible.
-          snapSelectedDirectoryRowFullyIntoView();
+      if (!suppressSelectionReveal) {
+        if (shouldCenter) {
+          if (gridModeActive) revealSelectedDirectoryRowInGridMode(true);
+          else centerSelectedDirectoryRow(0, prevSelectedRowCenterOffset);
+        } else if (gridModeActive && shouldGridReveal) {
+          revealSelectedDirectoryRowInGridMode(false);
+        } else {
+          const vis = getSelectedDirectoryRowVisibility();
+          if (vis.state === "offscreen") {
+            // If selection is fully off-screen, jump to centered "read head" position.
+            centerSelectedDirectoryRow(0);
+          } else if (vis.state === "partial") {
+            // If selection is clipped, jump immediately so it is fully visible.
+            snapSelectedDirectoryRowFullyIntoView();
+          }
         }
       }
 
@@ -23357,6 +24133,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function renderPreviewPane(animate = false, keepScroll = false) {
+      clearPreviewFileVirtualizers();
       syncThumbFilterKeyWithCurrentAppearanceContext();
       const previewRenderToken = nextPreviewFilesRenderToken();
       savePreviewScrollForActiveDir();
@@ -23459,6 +24236,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     previewBodyEl.addEventListener("scroll", () => {
       savePreviewScrollForActiveDir();
+      schedulePreviewVirtualGridRefresh();
     });
 
     previewBodyEl.addEventListener("contextmenu", (e) => {
@@ -24025,6 +24803,113 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       for (const grid of grids) applyFitInsideJustifiedLayout(grid);
     }
 
+    function clearPreviewFileVirtualizers() {
+      ACTIVE_PREVIEW_FILE_VIRTUALIZERS = [];
+    }
+
+    function shouldVirtualizePreviewFilesGrid(ids, useFitInsideJustified, dirNode) {
+      if (!Array.isArray(ids) || ids.length < 220) return false;
+      if (useFitInsideJustified) return false;
+      if (dirNode && canReorderFilesInPreviewDir(dirNode)) return false;
+      return true;
+    }
+
+    function measurePreviewFilesGridMetrics(grid, useSquareMediaCards = false) {
+      if (!grid) return null;
+      const cs = getComputedStyle(grid);
+      const gap = Math.max(0, parseFloat(cs.rowGap || cs.gap || "0") || 0);
+      const minCard = Math.max(96, parseFloat(cs.getPropertyValue("--file-grid-min") || "160") * (parseFloat(cs.getPropertyValue("--thumb-scale-media") || "1") || 1));
+      const width = Math.max(1, Number(grid.clientWidth) || 1);
+      const cols = Math.max(1, Math.floor((width + gap) / Math.max(1, minCard + gap)));
+      const colWidth = Math.max(96, (width - (gap * Math.max(0, cols - 1))) / cols);
+      const rowHeight = useSquareMediaCards
+        ? Math.max(120, Math.round(colWidth + 48))
+        : Math.max(150, Math.round((colWidth * 0.75) + 74));
+      return { gap, cols, colWidth, rowHeight };
+    }
+
+    function offsetTopWithinAncestor(el, ancestor) {
+      let top = 0;
+      let node = el;
+      while (node && node !== ancestor) {
+        top += Number(node.offsetTop || 0);
+        node = node.offsetParent;
+      }
+      return top;
+    }
+
+    function computePreviewFilesVirtualWindow(state) {
+      if (!state || !state.grid || !previewBodyEl) return null;
+      const metrics = measurePreviewFilesGridMetrics(state.grid, state.useSquareMediaCards);
+      if (!metrics) return null;
+      const totalRows = Math.max(1, Math.ceil(state.ids.length / Math.max(1, metrics.cols)));
+      const gridTop = offsetTopWithinAncestor(state.grid, previewBodyEl);
+      const viewTop = Math.max(0, (previewBodyEl.scrollTop || 0) - gridTop);
+      const viewportRows = Math.max(1, Math.ceil(((previewBodyEl.clientHeight || 1) + metrics.gap) / Math.max(1, metrics.rowHeight)));
+      const startRow = Math.max(0, Math.floor(viewTop / Math.max(1, metrics.rowHeight)) - 2);
+      const endRow = Math.min(totalRows - 1, startRow + viewportRows + 4);
+      return {
+        metrics,
+        startIndex: startRow * metrics.cols,
+        endIndexExclusive: Math.min(state.ids.length, (endRow + 1) * metrics.cols),
+        topSpacerHeight: startRow * metrics.rowHeight,
+        bottomSpacerHeight: Math.max(0, (totalRows - endRow - 1) * metrics.rowHeight)
+      };
+    }
+
+    function appendVirtualGridSpacer(grid, heightPx) {
+      const height = Math.max(0, Math.round(Number(heightPx) || 0));
+      if (!grid || height <= 0) return;
+      const spacer = document.createElement("div");
+      spacer.className = "virtualGridSpacer";
+      spacer.setAttribute("aria-hidden", "true");
+      spacer.style.height = `${height}px`;
+      grid.appendChild(spacer);
+    }
+
+    function updateVirtualPreviewFilesGrid(state, force = false) {
+      if (!state || !state.grid || !state.grid.isConnected) return;
+      if (state.renderToken !== PREVIEW_FILES_RENDER_TOKEN) return;
+      const windowInfo = computePreviewFilesVirtualWindow(state);
+      if (!windowInfo) return;
+      if (!force
+        && state.currentStart === windowInfo.startIndex
+        && state.currentEnd === windowInfo.endIndexExclusive) {
+        return;
+      }
+      state.currentStart = windowInfo.startIndex;
+      state.currentEnd = windowInfo.endIndexExclusive;
+      state.grid.innerHTML = "";
+      appendVirtualGridSpacer(state.grid, windowInfo.topSpacerHeight);
+      const frag = document.createDocumentFragment();
+      for (let i = windowInfo.startIndex; i < windowInfo.endIndexExclusive; i++) {
+        const id = state.ids[i];
+        const rec = WS.fileById.get(id);
+        if (!rec) continue;
+        const shouldAnimateCard = !!state.animate && (i - windowInfo.startIndex) < 96;
+        frag.appendChild(makePreviewFileCard(rec, shouldAnimateCard, state.dirNode, state.ids, state.useFitInsideJustified, state.useSquareMediaCards));
+      }
+      state.grid.appendChild(frag);
+      appendVirtualGridSpacer(state.grid, windowInfo.bottomSpacerHeight);
+      state.animate = false;
+    }
+
+    function registerPreviewFileVirtualizer(state) {
+      if (!state) return;
+      ACTIVE_PREVIEW_FILE_VIRTUALIZERS.push(state);
+      updateVirtualPreviewFilesGrid(state, true);
+    }
+
+    function schedulePreviewVirtualGridRefresh() {
+      if (!ACTIVE_PREVIEW_FILE_VIRTUALIZERS.length) return;
+      if (PREVIEW_VIRTUAL_SCROLL_RAF) return;
+      PREVIEW_VIRTUAL_SCROLL_RAF = requestAnimationFrame(() => {
+        PREVIEW_VIRTUAL_SCROLL_RAF = 0;
+        const list = ACTIVE_PREVIEW_FILE_VIRTUALIZERS.slice();
+        for (let i = 0; i < list.length; i++) updateVirtualPreviewFilesGrid(list[i], false);
+      });
+    }
+
     function renderFilesGrid(ids, container, animate, dirNode, renderToken = PREVIEW_FILES_RENDER_TOKEN) {
       const LIMIT = 800;
       if (!ids.length) return 0;
@@ -24039,6 +24924,21 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (useNaturalAspectCards) grid.classList.add("previewNaturalAspectCards");
       if (dirNode && canReorderFilesInPreviewDir(dirNode)) setupPreviewGridDrag(grid);
       container.appendChild(grid);
+
+      if (shouldVirtualizePreviewFilesGrid(ids, useFitInsideJustified, dirNode)) {
+        registerPreviewFileVirtualizer({
+          grid,
+          ids: ids.slice(),
+          dirNode,
+          animate: !!animate,
+          renderToken,
+          useFitInsideJustified,
+          useSquareMediaCards,
+          currentStart: -1,
+          currentEnd: -1
+        });
+        return ids.length;
+      }
 
       const visibleIds = ids.slice(0, LIMIT);
       const totalToRender = visibleIds.length;
@@ -24699,8 +25599,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     async function drainVideoThumbQueue() {
-      const MAX_VIDEO_THUMB_ACTIVE = 4;
-      const MAX_VIDEO_THUMB_BACKGROUND_ACTIVE = 2;
+      const poolLimits = videoThumbPoolLimits();
+      const MAX_VIDEO_THUMB_ACTIVE = poolLimits.active;
+      const MAX_VIDEO_THUMB_BACKGROUND_ACTIVE = poolLimits.background;
       if (!Array.isArray(WS.videoThumbPriorityQueue)) WS.videoThumbPriorityQueue = [];
       if (!Array.isArray(WS.videoThumbQueue)) WS.videoThumbQueue = [];
       if (!(WS.videoThumbQueuedIds instanceof Set)) WS.videoThumbQueuedIds = new Set();
@@ -24912,10 +25813,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     async function generateVideoThumb(rec) {
+      const mode = currentVideoThumbMode();
+      if (await hydrateVideoThumbFromDiskCache(rec, mode)) return;
+
       const url = ensureMediaUrl(rec);
       if (!url) return;
 
-      const mode = currentVideoThumbMode();
       if (rec.videoThumbUrl) {
         try { URL.revokeObjectURL(rec.videoThumbUrl); } catch {}
         rec.videoThumbUrl = null;
@@ -24962,14 +25865,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           canvas.width = w;
           canvas.height = h;
           const ctx = canvas.getContext("2d");
-          renderFilteredToCanvas(ctx, v, v.videoWidth || w, v.videoHeight || h, w, h, getMediaFilterForType(), true, rec);
+          renderFilteredToCanvas(ctx, v, v.videoWidth || w, v.videoHeight || h, w, h, "off", true, rec);
 
           blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", jpgQuality));
           if (blob) break;
         }
 
         if (!blob) return;
-        rec.videoThumbUrl = URL.createObjectURL(blob);
+        const cachedUrl = await persistVideoThumbToDiskCache(rec, mode, blob);
+        rec.videoThumbUrl = cachedUrl || URL.createObjectURL(blob);
       } finally {
         try { v.pause(); } catch {}
         try { v.removeAttribute("src"); } catch {}
@@ -24984,23 +25888,38 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function enqueueImageThumb(rec) {
       if (!rec) return;
       if (rec.type !== "image") return;
-      WS.imageThumbQueue.push(rec.id);
+      const id = String(rec.id || "");
+      if (!id) return;
+      const mode = currentImageThumbMode();
+      if (rec.thumbUrl && rec.thumbMode === mode) return;
+      if (!(WS.imageThumbQueuedIds instanceof Set)) WS.imageThumbQueuedIds = new Set();
+      if (!(WS.imageThumbInFlightIds instanceof Set)) WS.imageThumbInFlightIds = new Set();
+      if (WS.imageThumbQueuedIds.has(id) || WS.imageThumbInFlightIds.has(id)) return;
+      WS.imageThumbQueuedIds.add(id);
+      WS.imageThumbQueue.push(id);
       drainImageThumbQueue();
     }
 
     async function drainImageThumbQueue() {
-      if (WS.imageThumbActive >= 4) return;
-      while (WS.imageThumbActive < 4 && WS.imageThumbQueue.length) {
-        const id = WS.imageThumbQueue.shift();
+      const maxActive = imageThumbPoolLimit();
+      if (!(WS.imageThumbQueuedIds instanceof Set)) WS.imageThumbQueuedIds = new Set();
+      if (!(WS.imageThumbInFlightIds instanceof Set)) WS.imageThumbInFlightIds = new Set();
+      if (WS.imageThumbActive >= maxActive) return;
+      while (WS.imageThumbActive < maxActive && WS.imageThumbQueue.length) {
+        const id = String(WS.imageThumbQueue.shift() || "");
+        if (!id) continue;
+        WS.imageThumbQueuedIds.delete(id);
+        if (WS.imageThumbInFlightIds.has(id)) continue;
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "image") continue;
 
         const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-        if (mode === "high" && !thumbFiltersActive(rec)) continue;
         if (rec.thumbUrl && rec.thumbMode === mode) continue;
 
+        WS.imageThumbInFlightIds.add(id);
         WS.imageThumbActive++;
         generateImageThumb(rec).catch(() => {}).finally(() => {
+          WS.imageThumbInFlightIds.delete(id);
           WS.imageThumbActive--;
           renderPreviewPane(false);
           refreshDirectoryInlinePreviewThumbForRecord(rec);
@@ -25011,10 +25930,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     async function generateImageThumb(rec) {
       const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-      if (mode === "high" && !thumbFiltersActive(rec)) {
-        rec.thumbMode = "high";
-        return;
-      }
+      if (await hydrateImageThumbFromDiskCache(rec, mode)) return;
 
       if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
         try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
@@ -25037,14 +25953,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      renderFilteredToCanvas(ctx, bmp, bmp.width || w, bmp.height || h, w, h, getMediaFilterForType(), true, rec);
+      renderFilteredToCanvas(ctx, bmp, bmp.width || w, bmp.height || h, w, h, "off", true, rec);
 
       try { bmp.close(); } catch {}
 
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", mode === "high" ? 0.85 : (mode === "medium" ? 0.75 : 0.65)));
       if (!blob) return;
 
-      rec.thumbUrl = URL.createObjectURL(blob);
+      const cachedUrl = await persistImageThumbToDiskCache(rec, mode, blob);
+      rec.thumbUrl = cachedUrl || URL.createObjectURL(blob);
       rec.thumbMode = mode;
     }
 
@@ -25057,7 +25974,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const rec = WS.fileById.get(id);
         if (!rec || rec.type !== "image") continue;
         const mode = WS.meta && WS.meta.options ? String(WS.meta.options.imageThumbSize || "medium") : "medium";
-        if (mode === "high") continue;
         if (rec.thumbUrl && rec.thumbMode === mode) continue;
         enqueueImageThumb(rec);
       }
