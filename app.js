@@ -2906,11 +2906,7 @@
     }
 
     function sharedThumbWidthForMode(modeRaw) {
-      const mode = String(modeRaw || "medium");
-      if (mode === "tiny") return 96;
-      if (mode === "small") return 128;
-      if (mode === "high") return 224;
-      return 160;
+      return 384;
     }
 
     function imageThumbWidthForOption() {
@@ -22645,9 +22641,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
         const seekTimes = computeVideoThumbSeekTimes(v.duration || 0, metaGetVideoThumbnailTimeForRecord(rec));
         const w = videoThumbWidthForOption();
-        const jpgQuality = isGridInteractionMode()
-          ? (mode === "high" ? 0.85 : (mode === "medium" ? 0.75 : 0.65))
-          : (mode === "high" ? 0.75 : 0.6);
+        const jpgQuality = 0.86;
 
         let blob = null;
         for (let i = 0; i < seekTimes.length; i++) {
@@ -22763,7 +22757,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       try { bmp.close(); } catch {}
 
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", mode === "high" ? 0.85 : (mode === "medium" ? 0.75 : 0.65)));
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.90));
       if (!blob) return;
 
       const cachedUrl = await persistImageThumbToDiskCache(rec, mode, blob);
