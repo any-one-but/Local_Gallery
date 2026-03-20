@@ -64,6 +64,61 @@ ipcMain.handle("thumb-cache-write", async (_event, payload = {}) => {
   }
 });
 
+function safeDownloadFileName(inputName) {
+  const raw = String(inputName || "").trim();
+  const base = raw || "local-gallery-export.gif";
+  const cleaned = base
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\.+$/g, "");
+  return cleaned || "local-gallery-export.gif";
+}
+
+function splitFileNameExt(fileName) {
+  const src = String(fileName || "");
+  const idx = src.lastIndexOf(".");
+  if (idx <= 0) return { base: src || "file", ext: "" };
+  return { base: src.slice(0, idx), ext: src.slice(idx) };
+}
+
+async function uniqueDownloadPath(preferredName) {
+  const downloadsDir = app.getPath("downloads");
+  const safeName = safeDownloadFileName(preferredName);
+  const parts = splitFileNameExt(safeName);
+  const ext = parts.ext || ".gif";
+  const base = parts.base || "local-gallery-export";
+  let candidate = path.join(downloadsDir, `${base}${ext}`);
+  let counter = 1;
+  while (counter < 10000) {
+    try {
+      await fs.access(candidate);
+      candidate = path.join(downloadsDir, `${base} (${counter})${ext}`);
+      counter++;
+    } catch {
+      return candidate;
+    }
+  }
+  return path.join(downloadsDir, `${base}-${Date.now()}${ext}`);
+}
+
+ipcMain.handle("downloads-write-file", async (_event, payload = {}) => {
+  const fileName = String(payload && payload.fileName || "").trim();
+  const rawBytes = payload ? payload.bytes : null;
+  if (!rawBytes) return "";
+  try {
+    const bytes = ArrayBuffer.isView(rawBytes)
+      ? Buffer.from(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength)
+      : Buffer.from(rawBytes);
+    const targetPath = await uniqueDownloadPath(fileName || "local-gallery-export.gif");
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, bytes);
+    return targetPath;
+  } catch {
+    return "";
+  }
+});
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100,

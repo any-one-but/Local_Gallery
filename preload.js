@@ -15,4 +15,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   writeThumbCache(payload) {
     return ipcRenderer.invoke("thumb-cache-write", payload || {});
   },
+  writeDownloadFile(payload) {
+    return ipcRenderer.invoke("downloads-write-file", payload || {});
+  },
 });

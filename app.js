@@ -1473,6 +1473,17 @@
       return MEDIA_OVERLAY_STATE || buildMediaOverlayConfigFromOptions(WS.meta && WS.meta.options ? WS.meta.options : null);
     }
 
+    function resolveFolderOnlyMediaOverlayConfigForTarget(target) {
+      if (!mediaProcessingEnabledForTarget(target)) return null;
+      const dirPath = resolveDirPathForAppearanceTarget(target);
+      const folderPresetId = nearestFolderAppearancePresetIdForPath(dirPath);
+      if (folderPresetId) {
+        const preset = getAppearancePresetById(folderPresetId);
+        if (preset) return buildMediaOverlayConfigFromOptions(preset.values || null);
+      }
+      return buildMediaOverlayConfigFromOptions(WS.meta && WS.meta.options ? WS.meta.options : null);
+    }
+
     function anyMediaFilterEnabled() {
       if (MEDIA_OVERLAY_STATE || buildMediaOverlayConfigFromOptions(WS.meta && WS.meta.options ? WS.meta.options : null)) return true;
       if (WS.meta && WS.meta.dirAppearancePresetIds) {
@@ -2067,9 +2078,14 @@
       return THUMB_FILTER_CACHE.scanPattern;
     }
 
-    function renderFilteredToCanvas(ctx, source, srcW, srcH, dstW, dstH, mode, cover = true, target = undefined) {
-      const allowFilters = thumbFiltersActive(target);
-      const overlayCfg = allowFilters ? resolveMediaOverlayConfigForTarget(target) : null;
+    function renderFilteredToCanvas(ctx, source, srcW, srcH, dstW, dstH, mode, cover = true, target = undefined, options = null) {
+      const forceOverlayConfig = (options && Object.prototype.hasOwnProperty.call(options, "overlayConfig"))
+        ? options.overlayConfig
+        : undefined;
+      const allowFilters = (typeof forceOverlayConfig !== "undefined") ? true : thumbFiltersActive(target);
+      const overlayCfg = (typeof forceOverlayConfig !== "undefined")
+        ? forceOverlayConfig
+        : (allowFilters ? resolveMediaOverlayConfigForTarget(target) : null);
       const sourceCrop = computeCroppedSourceRect(srcW, srcH, getVideoCropForTarget(target));
       const croppedSrcW = Math.max(1, Number(sourceCrop.sw || srcW || 1));
       const croppedSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
@@ -5321,6 +5337,11 @@
     }
 
     document.addEventListener("keydown", (e) => {
+      if (busyOverlayActive()) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (!KEYBIND_CAPTURE_ACTION_ID) return;
       if (!MENU_OPEN || MENU_ACTIVE_TAB !== "controls") {
         KEYBIND_CAPTURE_ACTION_ID = "";
@@ -9035,6 +9056,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function hideBusyOverlay() {
       if (busyOverlay) busyOverlay.classList.remove("active");
+    }
+
+    function busyOverlayActive() {
+      return !!(busyOverlay && busyOverlay.classList.contains("active"));
     }
 
     function metaInitForCurrentWorkspace() {
@@ -16559,6 +16584,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       };
       if (state.isRootNode) {
         menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
+        menuEl.appendChild(makeBtn("Generate GIF", "generate-gif"));
         if (state.showUseDefaultThumbnail) menuEl.appendChild(makeBtn("Use default thumbnail", "thumbnail-default"));
         if (state.showSetNoThumbnail) menuEl.appendChild(makeBtn("No thumbnail", "thumbnail-none"));
         if (state.showSetRotatingThumbnail) menuEl.appendChild(makeBtn("Use rotating thumbnail", "thumbnail-rotate"));
@@ -16588,10 +16614,688 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         menuEl.appendChild(makeBtn("Clear media preset override", "appearance-preset-clear"));
       }
       if (state.canResetOrder) menuEl.appendChild(makeBtn("Reset order", "reset-order"));
+      menuEl.appendChild(makeBtn("Generate GIF", "generate-gif"));
       if (state.showUseDefaultThumbnail) menuEl.appendChild(makeBtn("Use default thumbnail", "thumbnail-default"));
       if (state.showSetNoThumbnail) menuEl.appendChild(makeBtn("No thumbnail", "thumbnail-none"));
       if (state.showSetRotatingThumbnail) menuEl.appendChild(makeBtn("Use rotating thumbnail", "thumbnail-rotate"));
       if (state.showSetQuadThumbnail) menuEl.appendChild(makeBtn("Use quad thumbnail", "thumbnail-quad"));
+    }
+
+    const GIF_EXPORT_GLOBAL_PALETTE_RGB332 = (() => {
+      const out = new Uint8Array(256 * 3);
+      for (let i = 0; i < 256; i++) {
+        const r3 = (i >> 5) & 0x07;
+        const g3 = (i >> 2) & 0x07;
+        const b2 = i & 0x03;
+        out[(i * 3) + 0] = Math.round((r3 / 7) * 255);
+        out[(i * 3) + 1] = Math.round((g3 / 7) * 255);
+        out[(i * 3) + 2] = Math.round((b2 / 3) * 255);
+      }
+      return out;
+    })();
+    const GIF_EXPORT_FRAME_DELAY_CS = 12;
+
+    function waitForNextPaint() {
+      return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    }
+
+    function getOrderedMediaFileIdsForDirAll(dirNode) {
+      if (!dirNode) return [];
+      let ids = [];
+      if (randomSortAffectsFiles()) {
+        ids = getRandomOrderForDir(dirNode);
+      } else if (dirNode.preserveOrder) {
+        ids = dirNode.childrenFiles.slice();
+      } else {
+        ids = dirNode.childrenFiles.slice();
+        ids.sort((a, b) => compareIndexedNames(WS.fileById.get(a)?.name || "", WS.fileById.get(b)?.name || ""));
+      }
+      return ids.filter((id) => {
+        const rec = WS.fileById.get(id);
+        return !!rec && (rec.type === "image" || rec.type === "video");
+      });
+    }
+
+    function collectOrderedMediaRecordsForDirRecursive(dirNode, out = []) {
+      if (!dirNode) return out;
+      const fileIds = getOrderedMediaFileIdsForDirAll(dirNode);
+      for (let i = 0; i < fileIds.length; i++) {
+        const rec = WS.fileById.get(fileIds[i]);
+        if (rec) out.push(rec);
+      }
+      const children = sortDirsForDisplay(Array.isArray(dirNode.childrenDirs) ? dirNode.childrenDirs : []);
+      for (let i = 0; i < children.length; i++) {
+        collectOrderedMediaRecordsForDirRecursive(children[i], out);
+      }
+      return out;
+    }
+
+    function resolveOrderedUniqueDirNodesForPaths(paths) {
+      const inputPaths = (paths || []).map((p) => String(p || "")).filter(Boolean);
+      if (!inputPaths.length) return [];
+      const wanted = new Set(inputPaths);
+      const out = [];
+      const seen = new Set();
+
+      for (let i = 0; i < WS.nav.entries.length; i++) {
+        const entry = WS.nav.entries[i];
+        if (!entry || entry.kind !== "dir" || !entry.node) continue;
+        const p = String(entry.node.path || "");
+        if (!p || !wanted.has(p) || seen.has(p)) continue;
+        seen.add(p);
+        out.push(entry.node);
+      }
+
+      for (let i = 0; i < inputPaths.length; i++) {
+        const p = inputPaths[i];
+        if (!p || seen.has(p)) continue;
+        const node = WS.dirByPath.get(p);
+        if (!node) continue;
+        seen.add(p);
+        out.push(node);
+      }
+      return out;
+    }
+
+    function collectOrderedMediaRecordsForDirNodesRecursive(dirNodes) {
+      const nodes = Array.isArray(dirNodes) ? dirNodes : [];
+      const out = [];
+      const seenRecordIds = new Set();
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        if (!node) continue;
+        const collected = collectOrderedMediaRecordsForDirRecursive(node, []);
+        for (let j = 0; j < collected.length; j++) {
+          const rec = collected[j];
+          const id = String(rec?.id || "");
+          if (!id || seenRecordIds.has(id)) continue;
+          seenRecordIds.add(id);
+          out.push(rec);
+        }
+      }
+      return out;
+    }
+
+    async function resolveAspectRatioForGifRecord(rec) {
+      if (!rec) return 4 / 3;
+      const known = Number(rec.previewAspect);
+      if (!(Number.isFinite(known) && known > 0)) {
+        const detected = await detectRecordPreviewAspect(rec);
+        if (detected) rec.previewAspect = normalizePreviewAspect(detected, 4 / 3);
+      }
+      return getPreviewAspectForRecord(rec);
+    }
+
+    function gifAspectBucketKey(aspect) {
+      return normalizePreviewAspect(aspect, 4 / 3).toFixed(3);
+    }
+
+    function approximateAspectFraction(aspect, maxDen = 64) {
+      const target = normalizePreviewAspect(aspect, 4 / 3);
+      let bestNum = Math.round(target);
+      let bestDen = 1;
+      let bestErr = Math.abs(target - bestNum);
+      for (let den = 1; den <= maxDen; den++) {
+        const num = Math.max(1, Math.round(target * den));
+        const err = Math.abs(target - (num / den));
+        if (err < bestErr) {
+          bestNum = num;
+          bestDen = den;
+          bestErr = err;
+        }
+      }
+      return { num: bestNum, den: bestDen };
+    }
+
+    function gifAspectBucketLabel(aspect) {
+      const ratio = normalizePreviewAspect(aspect, 4 / 3);
+      const approx = approximateAspectFraction(ratio, 72);
+      return `${approx.num}x${approx.den}`;
+    }
+
+    function gifAspectBucketDisplayLabel(bucket) {
+      const explicit = String(bucket?.label || "").trim();
+      if (explicit) return explicit;
+      return gifAspectBucketLabel(bucket?.aspect || (4 / 3));
+    }
+
+    function gifFrameSizeForAspect(aspect) {
+      const ratio = normalizePreviewAspect(aspect, 4 / 3);
+      const maxSide = 480;
+      if (ratio >= 1) {
+        return {
+          width: Math.max(2, Math.round(maxSide)),
+          height: Math.max(2, Math.round(maxSide / ratio))
+        };
+      }
+      return {
+        width: Math.max(2, Math.round(maxSide * ratio)),
+        height: Math.max(2, Math.round(maxSide))
+      };
+    }
+
+    function gifFrameSizeForBucket(bucket) {
+      if (bucket && bucket.square) {
+        return { width: 480, height: 480 };
+      }
+      return gifFrameSizeForAspect(bucket?.aspect || (4 / 3));
+    }
+
+    function buildMixedSquareGifBucket(records) {
+      return {
+        key: "__mixed_square__",
+        aspect: 1,
+        label: "mixed-square",
+        square: true,
+        records: Array.isArray(records) ? records.slice() : []
+      };
+    }
+
+    function consolidateGifAspectBuckets(rawBuckets) {
+      const normalized = (Array.isArray(rawBuckets) ? rawBuckets : [])
+        .map((bucket) => {
+          const records = Array.isArray(bucket?.records) ? bucket.records.filter(Boolean) : [];
+          if (!records.length) return null;
+          return {
+            key: String(bucket?.key || gifAspectBucketKey(bucket?.aspect || (4 / 3))),
+            aspect: normalizePreviewAspect(bucket?.aspect, 4 / 3),
+            records
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => Number(a.aspect) - Number(b.aspect));
+
+      if (normalized.length <= 1) return normalized;
+
+      const counts = normalized.map((bucket) => Math.max(0, Number(bucket.records.length || 0)));
+      const totalFrames = counts.reduce((sum, count) => sum + count, 0);
+      if (totalFrames <= 0) return [];
+      const maxCount = Math.max(...counts);
+      if (maxCount <= 1) {
+        return [buildMixedSquareGifBucket(normalized.flatMap((bucket) => bucket.records))];
+      }
+
+      const meanCount = totalFrames / normalized.length;
+      const rareByShareThreshold = (1 / normalized.length) * 0.70;
+      const rareByCountThreshold = Math.max(1, Math.floor(maxCount * 0.35));
+
+      const kept = [];
+      const mixedRecords = [];
+      for (let i = 0; i < normalized.length; i++) {
+        const bucket = normalized[i];
+        const count = Math.max(0, Number(bucket.records.length || 0));
+        const share = totalFrames > 0 ? (count / totalFrames) : 0;
+        const singletonInSparseSet = (count === 1 && normalized.length >= 5 && maxCount >= 2);
+        const rareByRelativeShare = (share <= rareByShareThreshold) && (count <= rareByCountThreshold) && (count < meanCount);
+        if (singletonInSparseSet || rareByRelativeShare) {
+          mixedRecords.push(...bucket.records);
+          continue;
+        }
+        kept.push(bucket);
+      }
+
+      if (!mixedRecords.length) return normalized;
+      if (!kept.length) return [buildMixedSquareGifBucket(mixedRecords)];
+
+      const out = kept.slice();
+      out.push(buildMixedSquareGifBucket(mixedRecords));
+      out.sort((a, b) => {
+        const aMixed = !!a.square;
+        const bMixed = !!b.square;
+        if (aMixed !== bMixed) return aMixed ? 1 : -1;
+        return Number(a.aspect) - Number(b.aspect);
+      });
+      return out;
+    }
+
+    function sanitizeDownloadFileNamePart(input, fallback = "file") {
+      const src = String(input || "")
+        .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/\.+$/g, "");
+      return src || fallback;
+    }
+
+    function gifRgb332Index(r, g, b) {
+      const rr = (Number(r) >>> 5) & 0x07;
+      const gg = (Number(g) >>> 5) & 0x07;
+      const bb = (Number(b) >>> 6) & 0x03;
+      return (rr << 5) | (gg << 2) | bb;
+    }
+
+    function createByteCollector() {
+      const parts = [];
+      let total = 0;
+      const pushBytes = (bytes) => {
+        if (!bytes || !bytes.length) return;
+        const typed = (bytes instanceof Uint8Array) ? bytes : Uint8Array.from(bytes);
+        parts.push(typed);
+        total += typed.length;
+      };
+      return {
+        pushByte(value) {
+          pushBytes([Number(value) & 0xff]);
+        },
+        pushWordLE(value) {
+          const v = Number(value) & 0xffff;
+          pushBytes([v & 0xff, (v >> 8) & 0xff]);
+        },
+        pushBytes,
+        toUint8Array() {
+          const out = new Uint8Array(total);
+          let offset = 0;
+          for (let i = 0; i < parts.length; i++) {
+            out.set(parts[i], offset);
+            offset += parts[i].length;
+          }
+          return out;
+        }
+      };
+    }
+
+    function gifPackLzwCodes(codes, minCodeSize = 8) {
+      const clearCode = 1 << minCodeSize;
+      const endCode = clearCode + 1;
+      let codeSize = minCodeSize + 1;
+      let nextCode = endCode + 1;
+      let hasPrevCode = false;
+      const out = [];
+      let bitBuffer = 0;
+      let bitCount = 0;
+
+      const writeCode = (code) => {
+        bitBuffer |= (Number(code) & ((1 << codeSize) - 1)) << bitCount;
+        bitCount += codeSize;
+        while (bitCount >= 8) {
+          out.push(bitBuffer & 0xff);
+          bitBuffer >>>= 8;
+          bitCount -= 8;
+        }
+      };
+
+      for (let i = 0; i < codes.length; i++) {
+        const code = Number(codes[i]) || 0;
+        writeCode(code);
+        if (code === clearCode) {
+          codeSize = minCodeSize + 1;
+          nextCode = endCode + 1;
+          hasPrevCode = false;
+          continue;
+        }
+        if (code === endCode) break;
+        if (hasPrevCode) {
+          nextCode++;
+          if (nextCode === (1 << codeSize) && codeSize < 12) codeSize++;
+        }
+        hasPrevCode = true;
+      }
+
+      if (bitCount > 0) out.push(bitBuffer & 0xff);
+      return Uint8Array.from(out);
+    }
+
+    function gifLzwEncodeIndices(indices, minCodeSize = 8) {
+      const data = (indices instanceof Uint8Array) ? indices : Uint8Array.from(indices || []);
+      const clearCode = 1 << minCodeSize;
+      const endCode = clearCode + 1;
+      let nextCode = endCode + 1;
+      let encoderCodeSize = minCodeSize + 1;
+      const dictionary = new Map();
+      const codes = [clearCode];
+
+      if (!data.length) {
+        codes.push(endCode);
+        return gifPackLzwCodes(codes, minCodeSize);
+      }
+
+      let prefixCode = data[0];
+      for (let i = 1; i < data.length; i++) {
+        const k = data[i];
+        const key = (prefixCode << 8) | k;
+        const existing = dictionary.get(key);
+        if (existing != null) {
+          prefixCode = existing;
+          continue;
+        }
+
+        codes.push(prefixCode);
+        if (nextCode < 4096) {
+          dictionary.set(key, nextCode);
+          nextCode++;
+          if (nextCode === (1 << encoderCodeSize) && encoderCodeSize < 12) encoderCodeSize++;
+        } else {
+          codes.push(clearCode);
+          dictionary.clear();
+          nextCode = endCode + 1;
+          encoderCodeSize = minCodeSize + 1;
+        }
+        prefixCode = k;
+      }
+
+      codes.push(prefixCode);
+      codes.push(endCode);
+      return gifPackLzwCodes(codes, minCodeSize);
+    }
+
+    function gifWrapSubBlocks(dataBytes) {
+      const data = (dataBytes instanceof Uint8Array) ? dataBytes : Uint8Array.from(dataBytes || []);
+      const out = createByteCollector();
+      let offset = 0;
+      while (offset < data.length) {
+        const chunk = Math.min(255, data.length - offset);
+        out.pushByte(chunk);
+        out.pushBytes(data.subarray(offset, offset + chunk));
+        offset += chunk;
+      }
+      out.pushByte(0x00);
+      return out.toUint8Array();
+    }
+
+    function createGifWriter(width, height, globalPalette = GIF_EXPORT_GLOBAL_PALETTE_RGB332) {
+      const w = Math.max(1, Math.min(65535, Math.round(width || 1)));
+      const h = Math.max(1, Math.min(65535, Math.round(height || 1)));
+      const writer = createByteCollector();
+      writer.pushBytes([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]); // GIF89a
+      writer.pushWordLE(w);
+      writer.pushWordLE(h);
+      writer.pushByte(0xf7); // global color table, 8-bit color resolution, 256-color table
+      writer.pushByte(0x00); // background color index
+      writer.pushByte(0x00); // pixel aspect ratio
+      writer.pushBytes(globalPalette);
+
+      return {
+        addFrame(indexData, delayCs = 24) {
+          const pixels = (indexData instanceof Uint8Array) ? indexData : Uint8Array.from(indexData || []);
+          const frameDelay = Math.max(1, Math.min(65535, Math.round(delayCs || 24)));
+          writer.pushBytes([0x21, 0xf9, 0x04, 0x00, frameDelay & 0xff, (frameDelay >> 8) & 0xff, 0x00, 0x00]);
+          writer.pushByte(0x2c);
+          writer.pushWordLE(0);
+          writer.pushWordLE(0);
+          writer.pushWordLE(w);
+          writer.pushWordLE(h);
+          writer.pushByte(0x00);
+          writer.pushByte(8); // LZW minimum code size for 8-bit palette
+          const lzwBytes = gifLzwEncodeIndices(pixels, 8);
+          writer.pushBytes(gifWrapSubBlocks(lzwBytes));
+        },
+        finish() {
+          writer.pushByte(0x3b);
+          return writer.toUint8Array();
+        }
+      };
+    }
+
+    async function loadImageFrameSourceForGifRecord(rec) {
+      if (!rec) return null;
+      if (rec.file) {
+        try {
+          const bmp = await createImageBitmap(rec.file);
+          return {
+            source: bmp,
+            width: Number(bmp.width) || 0,
+            height: Number(bmp.height) || 0,
+            cleanup() {
+              try { bmp.close(); } catch {}
+            }
+          };
+        } catch {}
+      }
+      const src = ensureMediaUrl(rec);
+      if (!src) return null;
+      return await new Promise((resolve) => {
+        const img = new Image();
+        let settled = false;
+        const done = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        img.onload = () => {
+          done({
+            source: img,
+            width: Number(img.naturalWidth) || 0,
+            height: Number(img.naturalHeight) || 0,
+            cleanup() {
+              try { img.src = ""; } catch {}
+            }
+          });
+        };
+        img.onerror = () => done(null);
+        img.src = src;
+      });
+    }
+
+    async function loadVideoFrameSourceForGifRecord(rec) {
+      if (!rec) return null;
+      const src = ensureMediaUrl(rec);
+      if (!src) return null;
+      const v = document.createElement("video");
+      v.preload = "auto";
+      v.muted = true;
+      v.playsInline = true;
+      normalizeVideoPlaybackRate(v);
+      v.crossOrigin = "anonymous";
+      v.src = src;
+      const cleanup = () => {
+        try { v.pause(); } catch {}
+        try { v.removeAttribute("src"); } catch {}
+        try { v.load(); } catch {}
+      };
+      try {
+        await waitForVideoMetadata(v, 3000);
+        await waitForVideoLoadedData(v, 2200);
+        const seekTimes = computeVideoThumbSeekTimes(v.duration || 0, metaGetVideoThumbnailTimeForRecord(rec));
+        for (let i = 0; i < seekTimes.length; i++) {
+          await seekVideoForThumb(v, seekTimes[i], 1800);
+          if (!isVideoFrameLikelyBlank(v) || i === seekTimes.length - 1) break;
+        }
+        updateVideoCropFromElement(rec, v);
+        return {
+          source: v,
+          width: Number(v.videoWidth) || 0,
+          height: Number(v.videoHeight) || 0,
+          cleanup
+        };
+      } catch {
+        cleanup();
+        return null;
+      }
+    }
+
+    async function loadGifFrameSourceForRecord(rec) {
+      if (!rec) return null;
+      if (rec.type === "video") return await loadVideoFrameSourceForGifRecord(rec);
+      if (rec.type === "image") return await loadImageFrameSourceForGifRecord(rec);
+      return null;
+    }
+
+    async function renderGifFrameIndexBuffer(rec, canvas, ctx) {
+      if (!rec || !canvas || !ctx) return null;
+      const loaded = await loadGifFrameSourceForRecord(rec);
+      if (!loaded) return null;
+      try {
+        const source = loaded.source;
+        const srcW = Number(loaded.width || source?.videoWidth || source?.naturalWidth || source?.width || 0);
+        const srcH = Number(loaded.height || source?.videoHeight || source?.naturalHeight || source?.height || 0);
+        if (!(srcW > 0 && srcH > 0)) return null;
+        const overlayCfg = resolveFolderOnlyMediaOverlayConfigForTarget(rec);
+        renderFilteredToCanvas(ctx, source, srcW, srcH, canvas.width, canvas.height, "off", false, rec, { overlayConfig: overlayCfg });
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const rgba = imageData && imageData.data ? imageData.data : null;
+        if (!rgba || !rgba.length) return null;
+        const idx = new Uint8Array(canvas.width * canvas.height);
+        for (let p = 0, i = 0; p < idx.length; p++, i += 4) {
+          const a = rgba[i + 3];
+          if (a < 8) {
+            idx[p] = 0;
+            continue;
+          }
+          idx[p] = gifRgb332Index(rgba[i], rgba[i + 1], rgba[i + 2]);
+        }
+        return idx;
+      } catch {
+        return null;
+      } finally {
+        try { loaded.cleanup && loaded.cleanup(); } catch {}
+      }
+    }
+
+    async function writeGeneratedGifToDownloads(fileName, bytes) {
+      const safeFileName = sanitizeDownloadFileNamePart(fileName || "local-gallery-export.gif", "local-gallery-export.gif");
+      const data = (bytes instanceof Uint8Array) ? bytes : Uint8Array.from(bytes || []);
+      if (!data.length) return "";
+
+      const electronApi = getElectronApi();
+      if (electronApi && typeof electronApi.writeDownloadFile === "function") {
+        try {
+          return String(await electronApi.writeDownloadFile({ fileName: safeFileName, bytes: data }) || "");
+        } catch {}
+      }
+
+      const blob = new Blob([data], { type: "image/gif" });
+      const blobUrl = URL.createObjectURL(blob);
+      try {
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = safeFileName;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } finally {
+        try { URL.revokeObjectURL(blobUrl); } catch {}
+      }
+      return "";
+    }
+
+    function buildGifExportFileName(baseLabel, bucket, index, total) {
+      const folderLabel = sanitizeDownloadFileNamePart(String(baseLabel || "folder"), "folder");
+      const aspectLabel = sanitizeDownloadFileNamePart(gifAspectBucketDisplayLabel(bucket), "aspect");
+      const frameCount = Math.max(1, Number(bucket?.records?.length || 1));
+      const idxSuffix = total > 1 ? `_${String(index + 1).padStart(2, "0")}` : "";
+      return `${folderLabel}_ratio_${aspectLabel}_${frameCount}f${idxSuffix}.gif`;
+    }
+
+    async function generateGifBucketsForRecordSet(orderedRecords, options = {}) {
+      const records = Array.isArray(orderedRecords) ? orderedRecords.filter(Boolean) : [];
+      const sourceLabel = String(options?.sourceLabel || "folder tree");
+      const outputLabel = String(options?.outputLabel || "folder");
+      const emptyStatus = String(options?.emptyStatus || `No media files found in ${sourceLabel}.`);
+      if (!records.length) {
+        showStatusMessage(emptyStatus);
+        return true;
+      }
+
+      const bucketByKey = new Map();
+      try {
+        showBusyOverlay("Generating GIFs... Scanning aspect ratios.");
+        await waitForNextPaint();
+
+        for (let i = 0; i < records.length; i++) {
+          const rec = records[i];
+          showBusyOverlay(`Generating GIFs... scanning ${i + 1}/${records.length}`);
+          const aspect = await resolveAspectRatioForGifRecord(rec);
+          const key = gifAspectBucketKey(aspect);
+          let bucket = bucketByKey.get(key);
+          if (!bucket) {
+            bucket = { key, aspect: normalizePreviewAspect(aspect, 4 / 3), records: [] };
+            bucketByKey.set(key, bucket);
+          }
+          bucket.records.push(rec);
+          if ((i % 8) === 0) await waitForNextPaint();
+        }
+
+        const buckets = consolidateGifAspectBuckets(Array.from(bucketByKey.values()));
+        if (!buckets.length) {
+          showStatusMessage("No GIF buckets were created.");
+          return true;
+        }
+
+        const generated = [];
+        for (let b = 0; b < buckets.length; b++) {
+          const bucket = buckets[b];
+          const bucketLabel = gifAspectBucketDisplayLabel(bucket);
+          const frameSize = gifFrameSizeForBucket(bucket);
+          const canvas = document.createElement("canvas");
+          canvas.width = frameSize.width;
+          canvas.height = frameSize.height;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (!ctx) continue;
+
+          const writer = createGifWriter(canvas.width, canvas.height, GIF_EXPORT_GLOBAL_PALETTE_RGB332);
+          let addedFrames = 0;
+          for (let i = 0; i < bucket.records.length; i++) {
+            showBusyOverlay(
+              `Generating GIF ${b + 1}/${buckets.length} (${bucketLabel}) frame ${i + 1}/${bucket.records.length}`
+            );
+            const frameIndices = await renderGifFrameIndexBuffer(bucket.records[i], canvas, ctx);
+            if (!frameIndices || !frameIndices.length) continue;
+            writer.addFrame(frameIndices, GIF_EXPORT_FRAME_DELAY_CS);
+            addedFrames++;
+            if ((i % 4) === 0) await waitForNextPaint();
+          }
+
+          if (!addedFrames) continue;
+          const fileName = buildGifExportFileName(outputLabel, bucket, b, buckets.length);
+          const bytes = writer.finish();
+          const savedPath = await writeGeneratedGifToDownloads(fileName, bytes);
+          generated.push({
+            fileName,
+            savedPath,
+            frames: addedFrames,
+            aspectLabel: bucketLabel
+          });
+          await waitForNextPaint();
+        }
+
+        if (!generated.length) {
+          showStatusMessage("No GIFs were generated.");
+          return true;
+        }
+
+        if (generated.length === 1) {
+          const one = generated[0];
+          showStatusMessage(`Generated GIF (${one.aspectLabel}, ${one.frames} frames).`);
+          return true;
+        }
+
+        showStatusMessage(`Generated ${generated.length} GIFs across aspect-ratio buckets.`);
+        return true;
+      } catch {
+        showStatusMessage("GIF generation failed.");
+        return true;
+      } finally {
+        hideBusyOverlay();
+      }
+    }
+
+    async function generateGifBucketsForFolder(dirNode) {
+      if (!dirNode) return false;
+      const orderedRecords = collectOrderedMediaRecordsForDirRecursive(dirNode, []);
+      const outputLabel = dirDisplayName(dirNode) || String(dirNode?.name || "folder");
+      return await generateGifBucketsForRecordSet(orderedRecords, {
+        sourceLabel: "this folder tree",
+        outputLabel,
+        emptyStatus: "No media files found in this folder tree."
+      });
+    }
+
+    async function generateGifBucketsForFolderSelection(paths) {
+      const dirNodes = resolveOrderedUniqueDirNodesForPaths(paths);
+      if (!dirNodes.length) {
+        showStatusMessage("No folders selected.");
+        return true;
+      }
+      const orderedRecords = collectOrderedMediaRecordsForDirNodesRecursive(dirNodes);
+      const outputLabel = dirNodes.length === 1
+        ? (dirDisplayName(dirNodes[0]) || String(dirNodes[0]?.name || "folder"))
+        : `selected_folders_${dirNodes.length}`;
+      return await generateGifBucketsForRecordSet(orderedRecords, {
+        sourceLabel: "selected folders",
+        outputLabel,
+        emptyStatus: "No media files found in selected folders."
+      });
     }
 
     async function runFolderActionFromMenu(action, dirNode) {
@@ -16641,6 +17345,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           selectId: null
         });
         if (node !== WS.nav.dirNode) showStatusMessage("Order reset.");
+        return true;
+      }
+      if (action === "generate-gif") {
+        await generateGifBucketsForFolder(node);
         return true;
       }
       if (action === "favorite") {
@@ -16873,6 +17581,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
         }));
       }
+
+      menu.appendChild(makeBtn("Generate GIF", async () => {
+        await generateGifBucketsForFolderSelection(selectedPaths);
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+      }));
 
       if (thumbTogglePaths.length && !allThumbNone) {
         menu.appendChild(makeBtn("No thumbnail", () => {
@@ -17659,6 +18372,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           }));
         }
 
+        directoriesActionMenuEl.appendChild(makeActionBtn("Generate GIF", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await generateGifBucketsForFolderSelection(selectedDirs);
+          finalizeBulkSelectionAction();
+        }));
+
         if (isGridInteractionMode() && thumbDefaultPaths.length) {
           directoriesActionMenuEl.appendChild(makeActionBtn("Use default thumbnail", () => {
             WS.view.bulkActionMenuOpen = false;
@@ -18348,6 +19067,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             if (isRootNode) {
               menuButtons = `
                 <button type="button" data-action="appearance-preset-set">Set media preset</button>
+                <button type="button" data-action="generate-gif">Generate GIF</button>
                 ${showUseDefaultThumbnail ? `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>` : ``}
                 ${showSetNoThumbnail ? `<button type="button" data-action="thumbnail-none">No thumbnail</button>` : ``}
                 ${showSetRotatingThumbnail ? `<button type="button" data-action="thumbnail-rotate">Use rotating thumbnail</button>` : ``}
@@ -18374,6 +19094,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                 <button type="button" data-action="appearance-preset-set">Set media preset</button>
                 ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
+                <button type="button" data-action="generate-gif">Generate GIF</button>
                 ${showUseDefaultThumbnail ? `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>` : ``}
                 ${showSetNoThumbnail ? `<button type="button" data-action="thumbnail-none">No thumbnail</button>` : ``}
                 ${showSetRotatingThumbnail ? `<button type="button" data-action="thumbnail-rotate">Use rotating thumbnail</button>` : ``}
@@ -24247,6 +24968,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     // Hard-coded menu toggles: ` / ~ opens the last-used menu tab.
     // Tab toggles between pane and grid interaction modes.
     document.addEventListener("keydown", (e) => {
+      if (busyOverlayActive()) {
+        e.preventDefault();
+        return;
+      }
       if (e.defaultPrevented) return;
       if (e.repeat) return;
       if (e.code !== "Backquote") return;
@@ -24258,6 +24983,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }, true);
 
     document.addEventListener("keydown", (e) => {
+      if (busyOverlayActive()) {
+        e.preventDefault();
+        return;
+      }
       if (e.defaultPrevented) return;
       if (e.repeat) return;
       if (e.code !== "Tab") return;
@@ -24269,6 +24998,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }, true);
 
     document.addEventListener("keydown", (e) => {
+      if (busyOverlayActive()) {
+        e.preventDefault();
+        return;
+      }
       if (e.defaultPrevented) return;
 
       const key = keybindValueFromEvent(e);
