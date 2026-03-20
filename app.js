@@ -4933,22 +4933,92 @@
       return `hsl(${hue} 70% 54%)`;
     }
 
-    function getRootFolderScoreRows() {
+    function isPathOrAncestorHidden(path) {
+      const normalized = normalizeDirPathValue(path);
+      if (!normalized) return false;
+      const parts = normalized.split("/").filter(Boolean);
+      for (let i = parts.length; i > 0; i--) {
+        const current = parts.slice(0, i).join("/");
+        if (metaHasHidden(current)) return true;
+      }
+      return false;
+    }
+
+    function getCalendarVisibleMetricsForDir(dirNode, memo = new Map()) {
+      if (!dirNode || dirNode.type !== "dir") return { score: 0, size: 0 };
+      const key = String(dirNode.path || "");
+      if (memo.has(key)) return memo.get(key);
+      if (isPathOrAncestorHidden(key)) {
+        const hiddenMetrics = { score: 0, size: 0 };
+        memo.set(key, hiddenMetrics);
+        return hiddenMetrics;
+      }
+
+      const children = Array.isArray(dirNode.childrenDirs)
+        ? dirNode.childrenDirs.filter((child) => child && child.type === "dir")
+        : [];
+
+      let childStoredScoreSum = 0;
+      let visibleChildScoreSum = 0;
+      let visibleChildSizeSum = 0;
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        const childPath = String(child.path || "");
+        childStoredScoreSum += Number(metaGetScore(childPath)) || 0;
+        const childMetrics = getCalendarVisibleMetricsForDir(child, memo);
+        if (isPathOrAncestorHidden(childPath)) continue;
+        visibleChildScoreSum += Number(childMetrics.score) || 0;
+        visibleChildSizeSum += 1 + (Number(childMetrics.size) || 0);
+      }
+
+      const directFiles = getOrderedFileIdsForDir(dirNode, false).length;
+      const directScore = (Number(metaGetScore(key)) || 0) - childStoredScoreSum;
+      const metrics = {
+        score: directScore + visibleChildScoreSum,
+        size: directFiles + visibleChildSizeSum
+      };
+      memo.set(key, metrics);
+      return metrics;
+    }
+
+    function getVisibleRootFolderScoreRows() {
       const root = WS.root;
       if (!root || !Array.isArray(root.childrenDirs)) return [];
       const out = [];
+      const metricMemo = new Map();
       for (let i = 0; i < root.childrenDirs.length; i++) {
         const node = root.childrenDirs[i];
         if (!node || node.type !== "dir") continue;
         const path = String(node.path || "");
+        if (isPathOrAncestorHidden(path)) continue;
+        const metrics = getCalendarVisibleMetricsForDir(node, metricMemo);
+        const size = Math.max(0, Number(metrics.size) || 0);
+        const score = Number(metrics.score) || 0;
         out.push({
           path,
           name: dirDisplayName(node),
-          score: metaGetScore(path)
+          score,
+          size,
+          efficiency: score / Math.max(1, size)
         });
       }
       out.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
       return out;
+    }
+
+    function scorePiePoint(cx, cy, radius, deg) {
+      const rad = (deg - 90) * Math.PI / 180;
+      return {
+        x: cx + (radius * Math.cos(rad)),
+        y: cy + (radius * Math.sin(rad))
+      };
+    }
+
+    function buildScorePieSlicePath(cx, cy, radius, startDeg, endDeg) {
+      const start = scorePiePoint(cx, cy, radius, startDeg);
+      const end = scorePiePoint(cx, cy, radius, endDeg);
+      const largeArcFlag = (endDeg - startDeg) > 180 ? 1 : 0;
+      return `M ${cx.toFixed(3)} ${cy.toFixed(3)} L ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${radius.toFixed(3)} ${radius.toFixed(3)} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)} Z`;
     }
 
     function buildRootPositivePieHtml(rootRows) {
@@ -4962,14 +5032,19 @@
         `;
       }
       let acc = 0;
-      const gradientParts = [];
+      const slices = [];
       for (let i = 0; i < positives.length; i++) {
         const row = positives[i];
         const startDeg = acc * 360;
         const part = (Number(row.score) || 0) / total;
         acc += part;
         const endDeg = acc * 360;
-        gradientParts.push(`${scoreHistoryChartColor(i)} ${startDeg.toFixed(3)}deg ${endDeg.toFixed(3)}deg`);
+        const color = scoreHistoryChartColor(i);
+        if (positives.length === 1) {
+          slices.push(`<circle cx="60" cy="60" r="54" fill="${escapeHtml(color)}"></circle>`);
+        } else {
+          slices.push(`<path d="${buildScorePieSlicePath(60, 60, 54, startDeg, endDeg)}" fill="${escapeHtml(color)}"></path>`);
+        }
       }
       const legend = positives.map((row, idx) => {
         const score = Number(row.score) || 0;
@@ -4985,7 +5060,13 @@
       }).join("");
       return `
         <div class="scorePieWrap">
-          <div class="scorePieChart" style="background:conic-gradient(${gradientParts.join(", ")});"></div>
+          <div class="scorePieChart">
+            <svg class="scorePieSvg" viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+              <circle class="scorePieBackdrop" cx="60" cy="60" r="54"></circle>
+              ${slices.join("")}
+              <circle class="scorePieOutline" cx="60" cy="60" r="54"></circle>
+            </svg>
+          </div>
           <div class="scorePieLegend">
             ${legend}
           </div>
@@ -4994,10 +5075,11 @@
     }
 
     function buildRootScoreBarsHtml(rootRows) {
-      if (!rootRows.length) {
-        return `<div class="scoreBarsEmpty">No root folders available.</div>`;
+      const rows = rootRows.filter((row) => (Number(row.score) || 0) !== 0);
+      if (!rows.length) {
+        return `<div class="scoreBarsEmpty">No non-zero visible root scores yet.</div>`;
       }
-      const sortedRows = rootRows.slice().sort((a, b) => {
+      const sortedRows = rows.slice().sort((a, b) => {
         const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
         if (scoreDiff) return scoreDiff;
         return String(a.name || "").localeCompare(String(b.name || ""));
@@ -5027,6 +5109,64 @@
       `;
     }
 
+    function buildCalendarEfficiencyListHtml(rows, emptyLabel) {
+      if (!rows.length) {
+        return `<div class="calendarRankingsEmpty">${escapeHtml(emptyLabel)}</div>`;
+      }
+      return rows.map((row, idx) => `
+        <div class="calendarRankingRow">
+          <div class="calendarRankingPosition">${escapeHtml(String(idx + 1))}</div>
+          <div class="calendarRankingMain">
+            <div class="calendarRankingName" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</div>
+            <div class="calendarRankingMeta">Score ${escapeHtml(String(row.score))} / Size ${escapeHtml(String(row.size))} = ${escapeHtml((Number(row.efficiency) || 0).toFixed(2))}</div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function buildRootEfficiencySummaryHtml(rootRows) {
+      if (!rootRows.length) {
+        return `
+          <section class="calendarRankingsCard">
+            <h2>Root score efficiency</h2>
+            <div class="calendarRankingsEmpty">No visible root folders available.</div>
+          </section>
+        `;
+      }
+
+      const desc = rootRows.slice().sort((a, b) => {
+        const efficiencyDiff = (Number(b.efficiency) || 0) - (Number(a.efficiency) || 0);
+        if (efficiencyDiff) return efficiencyDiff;
+        const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
+        if (scoreDiff) return scoreDiff;
+        const sizeDiff = (Number(a.size) || 0) - (Number(b.size) || 0);
+        if (sizeDiff) return sizeDiff;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+      const asc = desc.slice().reverse();
+      const best = desc.slice(0, 3);
+      const bestPaths = new Set(best.map((row) => String(row.path || "")));
+      const worstLimit = Math.min(3, Math.max(0, rootRows.length - best.length));
+      const worst = asc.filter((row) => !bestPaths.has(String(row.path || ""))).slice(0, worstLimit);
+
+      return `
+        <section class="calendarRankingsCard">
+          <h2>Root score efficiency</h2>
+          <div class="label">Higher score and lower recursive size rank better. Hidden folders and hidden subtree contributions are excluded.</div>
+          <div class="calendarRankingsGrid">
+            <div class="calendarRankingSection">
+              <h3>Top 3</h3>
+              ${buildCalendarEfficiencyListHtml(best, "No visible folders to rank.")}
+            </div>
+            <div class="calendarRankingSection">
+              <h3>Bottom 3</h3>
+              ${buildCalendarEfficiencyListHtml(worst, "Not enough visible folders for a separate bottom list.")}
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
     function scoreHistoryRootPathFromChangedPath(path) {
       const normalized = normalizeDirPathValue(path);
       if (!normalized) return "";
@@ -5044,11 +5184,46 @@
     function getRootScoreHistoryLinesForEntry(entry) {
       const out = [];
       if (!entry || !Array.isArray(entry.changed)) return out;
+      const selectedPaths = Array.isArray(entry.selectedPaths) ? entry.selectedPaths : [];
+      if (selectedPaths.length) {
+        const changedByPath = new Map();
+        for (let i = 0; i < entry.changed.length; i++) {
+          const item = entry.changed[i];
+          if (!item || typeof item !== "object") continue;
+          const itemPath = normalizeDirPathValue(item.path);
+          if (!itemPath) continue;
+          changedByPath.set(itemPath, item);
+        }
+        const grouped = new Map();
+        for (let i = 0; i < selectedPaths.length; i++) {
+          const itemPath = normalizeDirPathValue(selectedPaths[i]);
+          if (!itemPath) continue;
+          if (isPathOrAncestorHidden(itemPath)) continue;
+          const rootPath = scoreHistoryRootPathFromChangedPath(itemPath);
+          if (!rootPath || isPathOrAncestorHidden(rootPath)) continue;
+          const change = changedByPath.get(itemPath);
+          const delta = change ? (Number(change.delta) || 0) : 0;
+          if (!delta) continue;
+          grouped.set(rootPath, (grouped.get(rootPath) || 0) + delta);
+        }
+        for (const [rootPath, delta] of grouped.entries()) {
+          out.push({
+            at: Number(entry.at) || Date.now(),
+            eventId: String(entry.id || ""),
+            rootPath,
+            rootLabel: scoreHistoryRootLabelFromPath(rootPath),
+            delta
+          });
+        }
+        out.sort((a, b) => String(a.rootPath || "").localeCompare(String(b.rootPath || "")));
+        return out;
+      }
       for (let i = 0; i < entry.changed.length; i++) {
         const item = entry.changed[i];
         if (!item || typeof item !== "object") continue;
         const itemPath = normalizeDirPathValue(item.path);
         if (!itemPath) continue;
+        if (isPathOrAncestorHidden(itemPath)) continue;
         const depth = itemPath.split("/").filter(Boolean).length;
         if (depth !== 1) continue;
         const delta = Number(item.delta) || 0;
@@ -5067,7 +5242,7 @@
       if (!calendarBodyEl) return;
       const history = normalizeScoreHistoryList(WS.meta && Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : []);
       WS.meta.scoreHistory = history;
-      const rootRows = getRootFolderScoreRows();
+      const rootRows = getVisibleRootFolderScoreRows();
       const positiveCount = rootRows.filter((row) => Number(row.score) > 0).length;
       const totalScore = rootRows.reduce((sum, row) => sum + (Number(row.score) || 0), 0);
       const grouped = new Map();
@@ -5124,17 +5299,18 @@
       calendarBodyEl.innerHTML = `
         <div class="calendarPanelIntro">
           <h1>Score Calendar</h1>
-          <div class="label">Track score changes by date, and inspect root-folder score distribution.</div>
+          <div class="label">Track visible score changes by date, inspect root-folder score distribution, and compare score efficiency.</div>
         </div>
+        ${buildRootEfficiencySummaryHtml(rootRows)}
         <section class="calendarAnalytics">
           <div class="calendarAnalyticsCard">
             <h2>Positive score share (root folders)</h2>
-            <div class="label">Root folders with positive score: ${escapeHtml(String(positiveCount))}. Total root score sum: ${escapeHtml(String(totalScore))}.</div>
+            <div class="label">Visible root folders with positive score: ${escapeHtml(String(positiveCount))}. Visible root score sum: ${escapeHtml(String(totalScore))}.</div>
             ${buildRootPositivePieHtml(rootRows)}
           </div>
           <div class="calendarAnalyticsCard">
             <h2>Root folder scores</h2>
-            <div class="label">Bars are centered at zero. Positive extends right; negative extends left.</div>
+            <div class="label">Bars are centered at zero. Positive extends right; negative extends left. Zero-score folders are omitted.</div>
             ${buildRootScoreBarsHtml(rootRows)}
           </div>
         </section>
