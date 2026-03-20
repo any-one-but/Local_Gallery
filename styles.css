@@ -2944,7 +2944,7 @@
       overflow: hidden;
       width: min(860px, 96vw);
       max-width: calc(100vw - 32px);
-      max-height: calc(100vh - 32px);
+      max-height: calc(100vh - 16px);
       min-width: 320px;
       min-height: 220px;
       background: var(--color1-secondary);
@@ -3135,6 +3135,33 @@
       gap: 8px;
     }
 
+    #optionsBody .optRow.optOverlayRow {
+      align-items: center;
+      gap: 12px;
+    }
+
+    #optionsBody .optOverlayMiddle {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex: 0 0 auto;
+      min-width: 240px;
+    }
+
+    #optionsBody .optRight.optOverlayToggle {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex: 0 0 28px;
+      min-width: 28px;
+    }
+
+    #optionsBody .optOverlayToggleSpacer {
+      width: 16px;
+      height: 16px;
+    }
+
     #optionsBody .optRight.optActions {
       display: flex;
       align-items: center;
@@ -3147,6 +3174,18 @@
     #optionsBody .optRight.optActions button {
       font-size: 11px;
       padding: 5px 8px;
+    }
+
+    #optionsBody .optRight.optActions input[type="text"] {
+      background: var(--color1-primary);
+      color: var(--color0-primary);
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 2px;
+      padding: 6px 8px;
+      font-size: 12px;
+      outline: none;
+      min-width: 220px;
+      max-width: 320px;
     }
 
     #optionsBody select,
@@ -3163,6 +3202,10 @@
     }
 
     #optionsBody input[type="range"] {
+      width: 180px;
+    }
+
+    #optionsBody .optOverlayMiddle input[type="range"] {
       width: 180px;
     }
 

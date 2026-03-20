@@ -9,7 +9,7 @@
 
     const FAVORITE_TAG = "__favorite__";
     const HIDDEN_TAG = "__hidden__";
-    const PROCESSING_DISABLED_TAG = "__processing_disabled__";
+    const LEGACY_PROCESSING_DISABLED_TAG = "__processing_disabled__";
     const FOLDER_THUMB_NONE_SENTINEL = "__thumb_none__";
     const FOLDER_THUMB_ROTATE_SENTINEL = "__thumb_rotate__";
     // Legacy thumbnail style switch. "aspect" mode remains in code for future reactivation,
@@ -302,24 +302,49 @@
         retroMode: false,
         mediaFilter: "off",
         mediaFilterIntensity: 1,
-        vibrantOverlayEnabled: false,
-        vibrantOverlayIntensity: 1,
+        activeAppearancePresetId: "builtin-null",
+        solarizeOverlayEnabled: true,
+        solarizeOverlayIntensity: null,
+        hueShiftOverlayEnabled: true,
+        hueShiftOverlayIntensity: null,
+        saturationOverlayEnabled: true,
+        saturationOverlayIntensity: null,
+        contrastOverlayEnabled: true,
+        contrastOverlayIntensity: null,
+        brightnessOverlayEnabled: true,
+        brightnessOverlayIntensity: null,
+        warmthOverlayEnabled: true,
+        warmthOverlayIntensity: null,
+        colorCrushOverlayEnabled: true,
+        colorCrushOverlayIntensity: null,
+        blackCrushOverlayEnabled: true,
+        blackCrushOverlayIntensity: null,
+        whiteCrushOverlayEnabled: true,
+        whiteCrushOverlayIntensity: null,
         betaTallImageScrollDetect: true,
         animatedMediaFilters: "on",
         gifsIgnoreProcessing: false,
-        crtScanlinesEnabled: false,
-        crtPixelateEnabled: false,
-        crtGrainEnabled: false,
-        crtPixelateResolution: 4,
-        crtGrainAmount: 0.06,
-        vhsOverlayEnabled: false,
-        vhsBlurAmount: 1.2,
-        vhsChromaAmount: 1.2,
-        filmCornerOverlayEnabled: false,
+        scanlinesOverlayEnabled: true,
+        scanlinesOverlayIntensity: null,
+        scanlineBlurOverlayEnabled: true,
+        scanlineBlurOverlayIntensity: null,
+        pixelateOverlayEnabled: true,
+        pixelateOverlayIntensity: null,
+        blurOverlayEnabled: true,
+        blurOverlayIntensity: null,
+        chromaOverlayEnabled: true,
+        chromaOverlayIntensity: null,
+        jitterOverlayEnabled: true,
+        jitterOverlayIntensity: null,
+        grainOverlayEnabled: true,
+        grainOverlayIntensity: null,
+        vignetteOverlayEnabled: true,
+        vignetteOverlayIntensity: null,
+        filmCornerOverlayEnabled: true,
+        filmCornerOverlayIntensity: null,
         colorScheme: "superdark",
         leftPaneWidthPct: 0.28,
         treatTagsAsFolders: true,
-        showGridUpDirectoryEntry: true,
         showRootView: true,
         showHiddenFolder: false,
         showUntaggedFolder: false,
@@ -353,30 +378,49 @@
     function normalizeOptions(o) {
       const d = defaultOptions();
       const src = (o && typeof o === "object") ? o : {};
-      const mediaFilterRaw = (src && src.mediaFilter === "vhs") ? "crt" : src.mediaFilter;
-      const vibrantOverlayEnabled = (typeof src.vibrantOverlayEnabled === "boolean")
-        ? src.vibrantOverlayEnabled
-        : (mediaFilterRaw === "vibrant");
-      const vibrantOverlayIntensity = clampNumber(
-        (src && src.vibrantOverlayIntensity != null) ? src.vibrantOverlayIntensity : src.mediaFilterIntensity,
-        0,
-        1,
-        d.vibrantOverlayIntensity
-      );
-      const legacyCrtPixelateResRaw = (src && src.crtPixelateRes != null) ? String(src.crtPixelateRes) : null;
-      const legacyCrtOverlayEnabledRaw = (typeof src.crtOverlayEnabled === "boolean") ? src.crtOverlayEnabled : null;
-      const legacyCrtOverlayEnabled = (legacyCrtOverlayEnabledRaw !== null)
-        ? legacyCrtOverlayEnabledRaw
-        : (legacyCrtPixelateResRaw ? legacyCrtPixelateResRaw !== "off" : false);
-      const crtScanlinesEnabled = (typeof src.crtScanlinesEnabled === "boolean") ? src.crtScanlinesEnabled : legacyCrtOverlayEnabled;
-      const crtPixelateEnabled = (typeof src.crtPixelateEnabled === "boolean") ? src.crtPixelateEnabled : legacyCrtOverlayEnabled;
-      const crtGrainEnabled = (typeof src.crtGrainEnabled === "boolean") ? src.crtGrainEnabled : legacyCrtOverlayEnabled;
-      const crtPixelateResolution = clampNumber(src.crtPixelateResolution, 2, 8, d.crtPixelateResolution);
-      const crtGrainAmount = clampNumber(src.crtGrainAmount, 0, 0.25, d.crtGrainAmount);
-      const vhsOverlayEnabled = (typeof src.vhsOverlayEnabled === "boolean") ? src.vhsOverlayEnabled : d.vhsOverlayEnabled;
-      const vhsBlurAmount = clampNumber(src.vhsBlurAmount, 0, 3, d.vhsBlurAmount);
-      const vhsChromaAmount = clampNumber(src.vhsChromaAmount, 0, 3, d.vhsChromaAmount);
-      const filmCornerOverlayEnabled = (typeof src.filmCornerOverlayEnabled === "boolean") ? src.filmCornerOverlayEnabled : d.filmCornerOverlayEnabled;
+      const activeAppearancePresetId = String(src.activeAppearancePresetId || "").trim() || null;
+      const normalizeOptionalClampedNumber = (value, min, max) => {
+        if (value == null || value === "") return null;
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return null;
+        return clampNumber(parsed, min, max, 0);
+      };
+      const solarizeOverlayEnabled = true;
+      const solarizeOverlayIntensity = normalizeOptionalClampedNumber(src.solarizeOverlayIntensity, 0, 1);
+      const hueShiftOverlayEnabled = true;
+      const hueShiftOverlayIntensity = normalizeOptionalClampedNumber(src.hueShiftOverlayIntensity, -180, 180);
+      const saturationOverlayEnabled = true;
+      const saturationOverlayIntensity = normalizeOptionalClampedNumber(src.saturationOverlayIntensity, -1, 3);
+      const contrastOverlayEnabled = true;
+      const contrastOverlayIntensity = normalizeOptionalClampedNumber(src.contrastOverlayIntensity, -0.75, 2);
+      const brightnessOverlayEnabled = true;
+      const brightnessOverlayIntensity = normalizeOptionalClampedNumber(src.brightnessOverlayIntensity, -0.6, 1.5);
+      const warmthOverlayEnabled = true;
+      const warmthOverlayIntensity = normalizeOptionalClampedNumber(src.warmthOverlayIntensity, -1, 1);
+      const colorCrushOverlayEnabled = true;
+      const colorCrushOverlayIntensity = normalizeOptionalClampedNumber(src.colorCrushOverlayIntensity, 0, 2);
+      const blackCrushOverlayEnabled = true;
+      const blackCrushOverlayIntensity = normalizeOptionalClampedNumber(src.blackCrushOverlayIntensity, 0, 0.8);
+      const whiteCrushOverlayEnabled = true;
+      const whiteCrushOverlayIntensity = normalizeOptionalClampedNumber(src.whiteCrushOverlayIntensity, 0, 0.8);
+      const scanlinesOverlayEnabled = true;
+      const scanlinesOverlayIntensity = normalizeOptionalClampedNumber(src.scanlinesOverlayIntensity, 0, 1.5);
+      const scanlineBlurOverlayEnabled = true;
+      const scanlineBlurOverlayIntensity = normalizeOptionalClampedNumber(src.scanlineBlurOverlayIntensity, 0, 6);
+      const pixelateOverlayEnabled = true;
+      const pixelateOverlayIntensity = normalizeOptionalClampedNumber(src.pixelateOverlayIntensity, 1, 16);
+      const blurOverlayEnabled = true;
+      const blurOverlayIntensity = normalizeOptionalClampedNumber(src.blurOverlayIntensity, 0, 8);
+      const chromaOverlayEnabled = true;
+      const chromaOverlayIntensity = normalizeOptionalClampedNumber(src.chromaOverlayIntensity, 0, 8);
+      const jitterOverlayEnabled = true;
+      const jitterOverlayIntensity = normalizeOptionalClampedNumber(src.jitterOverlayIntensity, 0, 3);
+      const grainOverlayEnabled = true;
+      const grainOverlayIntensity = normalizeOptionalClampedNumber(src.grainOverlayIntensity, 0, 0.5);
+      const vignetteOverlayEnabled = true;
+      const vignetteOverlayIntensity = normalizeOptionalClampedNumber(src.vignetteOverlayIntensity, 0, 0.6);
+      const filmCornerOverlayEnabled = true;
+      const filmCornerOverlayIntensity = normalizeOptionalClampedNumber(src.filmCornerOverlayIntensity, 0, 0.25);
       const thumbnailStyleRaw = String(src.thumbnailStyle || "").trim().toLowerCase();
       const thumbnailStyle = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
         ? ((thumbnailStyleRaw === "cropped" || thumbnailStyleRaw === "aspect")
@@ -406,7 +450,6 @@
         retroMode: false,
         colorScheme: "superdark",
         treatTagsAsFolders: d.treatTagsAsFolders,
-        showGridUpDirectoryEntry: (typeof src.showGridUpDirectoryEntry === "boolean") ? src.showGridUpDirectoryEntry : d.showGridUpDirectoryEntry,
         showRootView: (typeof src.showRootView === "boolean") ? src.showRootView : d.showRootView,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
@@ -448,21 +491,47 @@
         })(),
         /* Media filters: UI */
         mediaFilter: "off",
-        mediaFilterIntensity: vibrantOverlayIntensity,
-        vibrantOverlayEnabled,
-        vibrantOverlayIntensity,
+        mediaFilterIntensity: 1,
+        activeAppearancePresetId,
+        solarizeOverlayEnabled,
+        solarizeOverlayIntensity,
+        hueShiftOverlayEnabled,
+        hueShiftOverlayIntensity,
+        saturationOverlayEnabled,
+        saturationOverlayIntensity,
+        contrastOverlayEnabled,
+        contrastOverlayIntensity,
+        brightnessOverlayEnabled,
+        brightnessOverlayIntensity,
+        warmthOverlayEnabled,
+        warmthOverlayIntensity,
+        colorCrushOverlayEnabled,
+        colorCrushOverlayIntensity,
+        blackCrushOverlayEnabled,
+        blackCrushOverlayIntensity,
+        whiteCrushOverlayEnabled,
+        whiteCrushOverlayIntensity,
         betaTallImageScrollDetect: true,
         animatedMediaFilters: normalizeAnimatedMediaFiltersValue(src.animatedMediaFilters, d.animatedMediaFilters),
         gifsIgnoreProcessing: (typeof src.gifsIgnoreProcessing === "boolean") ? src.gifsIgnoreProcessing : d.gifsIgnoreProcessing,
-        crtScanlinesEnabled,
-        crtPixelateEnabled,
-        crtGrainEnabled,
-        crtPixelateResolution,
-        crtGrainAmount,
-        vhsOverlayEnabled,
-        vhsBlurAmount,
-        vhsChromaAmount,
-        filmCornerOverlayEnabled
+        scanlinesOverlayEnabled,
+        scanlinesOverlayIntensity,
+        scanlineBlurOverlayEnabled,
+        scanlineBlurOverlayIntensity,
+        pixelateOverlayEnabled,
+        pixelateOverlayIntensity,
+        blurOverlayEnabled,
+        blurOverlayIntensity,
+        chromaOverlayEnabled,
+        chromaOverlayIntensity,
+        jitterOverlayEnabled,
+        jitterOverlayIntensity,
+        grainOverlayEnabled,
+        grainOverlayIntensity,
+        vignetteOverlayEnabled,
+        vignetteOverlayIntensity,
+        filmCornerOverlayEnabled,
+        filmCornerOverlayIntensity
     };
       return out;
     }
@@ -474,95 +543,929 @@
     let MEDIA_OVERLAY_STATE = null;
     let THUMB_FILTER_KEY = "";
 
-    const MEDIA_FILTER_CONFIGS = {
-      vibrant: { color: "saturate(1.45) contrast(1.12) brightness(1.06) hue-rotate(-3deg)" },
-      uv: { color: "saturate(1.6) hue-rotate(220deg) contrast(1.3) brightness(0.95)" },
-      orangeTeal: { color: "hue-rotate(-22deg) saturate(1.32) contrast(1.12) brightness(1.05)" },
-      cinematic: { color: "contrast(1.3) saturate(1.2) brightness(1.02) hue-rotate(-2deg)" },
-      bw: { color: "grayscale(1) contrast(1.08)", forceMonochrome: true },
-      infrared: { color: "saturate(1.6) hue-rotate(-45deg) contrast(1.3) brightness(1.05)" }
-    };
+    const MEDIA_FILTER_CONFIGS = {};
 
-    const CRT_OVERLAY_CONFIG = {
-      scanlines: 0.4,
-      scanlineBlur: 0.8,
-      chroma: 0.7,
-      vignette: 0.22,
-      jitter: 0.75,
-      blur: 0.25,
-      grain: 0.06,
-      pixelate: 4
-    };
+    const OVERLAY_SLIDER_LIMITS = Object.freeze({
+      solarize: { min: 0, max: 1, step: 0.05 },
+      hueShift: { min: -180, max: 180, step: 5 },
+      saturation: { min: -1, max: 3, step: 0.05 },
+      contrast: { min: -0.75, max: 2, step: 0.05 },
+      brightness: { min: -0.6, max: 1.5, step: 0.05 },
+      warmth: { min: -1, max: 1, step: 0.05 },
+      colorCrush: { min: 0, max: 2, step: 0.02 },
+      blackCrush: { min: 0, max: 0.8, step: 0.01 },
+      whiteCrush: { min: 0, max: 0.8, step: 0.01 },
+      scanlines: { min: 0, max: 1.5, step: 0.02 },
+      scanlineBlur: { min: 0, max: 6, step: 0.1 },
+      pixelate: { min: 1, max: 16, step: 0.5 },
+      blur: { min: 0, max: 8, step: 0.1 },
+      chroma: { min: 0, max: 8, step: 0.1 },
+      jitter: { min: 0, max: 3, step: 0.05 },
+      grain: { min: 0, max: 0.5, step: 0.01 },
+      vignette: { min: 0, max: 0.6, step: 0.01 },
+      filmCorner: { min: 0, max: 0.25, step: 0.01 }
+    });
 
-    const VHS_OVERLAY_CONFIG = {
-      scanlines: 0,
-      scanlineBlur: 0,
-      chroma: 1.2,
-      vignette: 0.08,
-      jitter: 0.55,
-      blur: 1.2,
-      grain: 0.035,
-      pixelate: 0
-    };
+    const APPEARANCE_SLIDER_OPTION_KEYS = Object.freeze([
+      "solarizeOverlayIntensity",
+      "hueShiftOverlayIntensity",
+      "saturationOverlayIntensity",
+      "contrastOverlayIntensity",
+      "brightnessOverlayIntensity",
+      "warmthOverlayIntensity",
+      "colorCrushOverlayIntensity",
+      "blackCrushOverlayIntensity",
+      "whiteCrushOverlayIntensity",
+      "scanlinesOverlayIntensity",
+      "scanlineBlurOverlayIntensity",
+      "pixelateOverlayIntensity",
+      "blurOverlayIntensity",
+      "chromaOverlayIntensity",
+      "jitterOverlayIntensity",
+      "grainOverlayIntensity",
+      "vignetteOverlayIntensity",
+      "filmCornerOverlayIntensity"
+    ]);
 
-    const FILM_CORNER_CONFIG = {
-      cornerRadius: 0.08
-    };
+    const BUILTIN_NULL_APPEARANCE_PRESET_ID = "builtin-null";
+    const PREVIEW_THUMB_PRIORITY_LIMIT = 72;
 
-    function buildCrtOverlayConfigFromOptions(opt) {
-      if (!opt) return null;
-      const scanlinesOn = !!opt.crtScanlinesEnabled;
-      const pixelateOn = !!opt.crtPixelateEnabled;
-      const grainOn = !!opt.crtGrainEnabled;
-      const pixelate = pixelateOn ? clampNumber(opt.crtPixelateResolution, 2, 8, CRT_OVERLAY_CONFIG.pixelate) : 0;
-      const grain = grainOn ? clampNumber(opt.crtGrainAmount, 0, 0.25, CRT_OVERLAY_CONFIG.grain) : 0;
-      const scanlines = scanlinesOn ? CRT_OVERLAY_CONFIG.scanlines : 0;
-      if (!scanlines && !pixelate && !grain) return null;
+    const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
+      Object.freeze({
+        id: BUILTIN_NULL_APPEARANCE_PRESET_ID,
+        name: "Default",
+        locked: true,
+        values: Object.freeze({
+          solarizeOverlayIntensity: null,
+          hueShiftOverlayIntensity: null,
+          saturationOverlayIntensity: null,
+          contrastOverlayIntensity: null,
+          brightnessOverlayIntensity: null,
+          warmthOverlayIntensity: null,
+          colorCrushOverlayIntensity: null,
+          blackCrushOverlayIntensity: null,
+          whiteCrushOverlayIntensity: null,
+          scanlinesOverlayIntensity: null,
+          scanlineBlurOverlayIntensity: null,
+          pixelateOverlayIntensity: null,
+          blurOverlayIntensity: null,
+          chromaOverlayIntensity: null,
+          jitterOverlayIntensity: null,
+          grainOverlayIntensity: null,
+          vignetteOverlayIntensity: null,
+          filmCornerOverlayIntensity: null
+        })
+      })
+    ]);
+
+    const META_DOC_IDS = Object.freeze({
+      scores: "scores",
+      scoreHistory: "scoreHistory",
+      tags: "tags",
+      tagAlbums: "tagAlbums",
+      thumbnails: "thumbnails",
+      appearancePresets: "appearancePresets",
+      appearanceAssignments: "appearanceAssignments",
+      prefGeneral: "prefGeneral",
+      prefAppearance: "prefAppearance",
+      prefPlayback: "prefPlayback",
+      prefThumbnails: "prefThumbnails",
+      prefFilenames: "prefFilenames",
+      prefControls: "prefControls",
+      keybinds: "keybinds"
+    });
+
+    const META_DOC_FILE_NAMES = Object.freeze({
+      [META_DOC_IDS.scores]: "scores.log.json",
+      [META_DOC_IDS.scoreHistory]: "score-history.log.json",
+      [META_DOC_IDS.tags]: "tags.log.json",
+      [META_DOC_IDS.tagAlbums]: "tag-albums.log.json",
+      [META_DOC_IDS.thumbnails]: "custom-thumbnails.log.json",
+      [META_DOC_IDS.appearancePresets]: "appearance-presets.log.json",
+      [META_DOC_IDS.appearanceAssignments]: "appearance-assignments.log.json",
+      [META_DOC_IDS.prefGeneral]: "preferences.general.log.json",
+      [META_DOC_IDS.prefAppearance]: "preferences.appearance.log.json",
+      [META_DOC_IDS.prefPlayback]: "preferences.playback.log.json",
+      [META_DOC_IDS.prefThumbnails]: "preferences.thumbnails.log.json",
+      [META_DOC_IDS.prefFilenames]: "preferences.filenames.log.json",
+      [META_DOC_IDS.prefControls]: "preferences.controls.log.json",
+      [META_DOC_IDS.keybinds]: "keyboard-configuration.log.json"
+    });
+
+    const META_LOCAL_KEY_PREFIXES = Object.freeze({
+      [META_DOC_IDS.scores]: "LocalGalleryScoresV2",
+      [META_DOC_IDS.scoreHistory]: "LocalGalleryScoreHistoryV2",
+      [META_DOC_IDS.tags]: "LocalGalleryTagsV2",
+      [META_DOC_IDS.tagAlbums]: "LocalGalleryTagAlbumsV2",
+      [META_DOC_IDS.thumbnails]: "LocalGalleryThumbnailsV2",
+      [META_DOC_IDS.appearancePresets]: "LocalGalleryAppearancePresetsV2",
+      [META_DOC_IDS.appearanceAssignments]: "LocalGalleryAppearanceAssignmentsV2",
+      [META_DOC_IDS.prefGeneral]: "LocalGalleryPreferencesGeneralV2",
+      [META_DOC_IDS.prefAppearance]: "LocalGalleryPreferencesAppearanceV2",
+      [META_DOC_IDS.prefPlayback]: "LocalGalleryPreferencesPlaybackV2",
+      [META_DOC_IDS.prefThumbnails]: "LocalGalleryPreferencesThumbnailsV2",
+      [META_DOC_IDS.prefFilenames]: "LocalGalleryPreferencesFilenamesV2",
+      [META_DOC_IDS.prefControls]: "LocalGalleryPreferencesControlsV2",
+      [META_DOC_IDS.keybinds]: "LocalGalleryKeyboard"
+    });
+
+    const META_ALL_DOC_IDS = Object.freeze([
+      META_DOC_IDS.scores,
+      META_DOC_IDS.scoreHistory,
+      META_DOC_IDS.tags,
+      META_DOC_IDS.tagAlbums,
+      META_DOC_IDS.thumbnails,
+      META_DOC_IDS.appearancePresets,
+      META_DOC_IDS.appearanceAssignments,
+      META_DOC_IDS.prefGeneral,
+      META_DOC_IDS.prefAppearance,
+      META_DOC_IDS.prefPlayback,
+      META_DOC_IDS.prefThumbnails,
+      META_DOC_IDS.prefFilenames,
+      META_DOC_IDS.prefControls,
+      META_DOC_IDS.keybinds
+    ]);
+
+    const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
+      appearance: Object.freeze([].concat(
+        APPEARANCE_SLIDER_OPTION_KEYS,
+        [
+          "activeAppearancePresetId",
+          "animatedMediaFilters",
+          "gifsIgnoreProcessing"
+        ]
+      )),
+      playback: Object.freeze([
+        "preloadNextMode",
+        "slideshowDefault",
+        "videoPreview",
+        "videoGallery",
+        "videoSkipStep",
+        "videoEndBehavior"
+      ]),
+      thumbnails: Object.freeze([
+        "thumbnailStyle",
+        "thumbnailScaleCropped",
+        "thumbnailScaleAspect",
+        "imageThumbSize",
+        "videoThumbSize",
+        "mediaThumbUiSize",
+        "folderPreviewSize",
+        "previewThumbFiltersEnabled",
+        "previewThumbFit",
+        "betaDirFileThumbFullCard",
+        "betaDirFolderSquareCard"
+      ]),
+      filenames: Object.freeze([
+        "forceTitleCaps",
+        "hideFileExtensionsInFileNames",
+        "hideUnderscoresInFileNames",
+        "hideBeforeLastDashInFileNames",
+        "hideAfterFirstUnderscoreInFileNames"
+      ]),
+      controls: Object.freeze([
+        "fileOnlyFoldersOpenInGallery",
+        "hideOptionDescriptions",
+        "hideKeybindDescriptions"
+      ])
+    });
+
+    const META_PREFERENCE_DOC_BY_OPTION_KEY = (() => {
+      const out = new Map();
+      const pairs = [
+        [META_DOC_IDS.prefAppearance, META_PREFERENCE_SECTION_OPTION_KEYS.appearance],
+        [META_DOC_IDS.prefPlayback, META_PREFERENCE_SECTION_OPTION_KEYS.playback],
+        [META_DOC_IDS.prefThumbnails, META_PREFERENCE_SECTION_OPTION_KEYS.thumbnails],
+        [META_DOC_IDS.prefFilenames, META_PREFERENCE_SECTION_OPTION_KEYS.filenames],
+        [META_DOC_IDS.prefControls, META_PREFERENCE_SECTION_OPTION_KEYS.controls]
+      ];
+      for (let i = 0; i < pairs.length; i++) {
+        const [docId, keys] = pairs[i];
+        for (let j = 0; j < keys.length; j++) out.set(String(keys[j] || ""), docId);
+      }
+      return out;
+    })();
+
+    const META_GENERAL_PREFERENCE_OPTION_KEYS = Object.freeze(
+      Object.keys(normalizeOptions(defaultOptions())).filter((key) => !META_PREFERENCE_DOC_BY_OPTION_KEY.has(String(key || "")))
+    );
+
+    function metaPreferenceDocIdForOptionKey(key) {
+      const normalizedKey = String(key || "");
+      return META_PREFERENCE_DOC_BY_OPTION_KEY.get(normalizedKey) || META_DOC_IDS.prefGeneral;
+    }
+
+    function metaPreferenceDocIdsForOptionKeys(keys) {
+      const out = new Set();
+      const list = Array.isArray(keys) ? keys : Array.from(keys || []);
+      for (let i = 0; i < list.length; i++) {
+        out.add(metaPreferenceDocIdForOptionKey(list[i]));
+      }
+      return Array.from(out);
+    }
+
+    function normalizeAppearancePresetIdValue(value) {
+      return String(value || "").trim() || "";
+    }
+
+    function normalizeAppearancePresetName(name, fallback = "Preset") {
+      const text = String(name || "").replace(/\s+/g, " ").trim();
+      return text || fallback;
+    }
+
+    function normalizeAppearancePresetValues(values) {
+      const normalized = normalizeOptions(Object.assign({}, values || {}));
+      const out = {};
+      for (let i = 0; i < APPEARANCE_SLIDER_OPTION_KEYS.length; i++) {
+        const key = APPEARANCE_SLIDER_OPTION_KEYS[i];
+        out[key] = normalized[key] == null ? null : normalized[key];
+      }
+      return out;
+    }
+
+    function cloneAppearancePreset(preset) {
+      const src = (preset && typeof preset === "object") ? preset : {};
       return {
-        scanlines,
-        scanlineBlur: scanlinesOn ? CRT_OVERLAY_CONFIG.scanlineBlur : 0,
-        chroma: pixelateOn ? CRT_OVERLAY_CONFIG.chroma : 0,
-        vignette: pixelateOn ? CRT_OVERLAY_CONFIG.vignette : 0,
-        jitter: pixelateOn ? CRT_OVERLAY_CONFIG.jitter : 0,
-        blur: pixelateOn ? CRT_OVERLAY_CONFIG.blur : 0,
-        grain,
-        pixelate
+        id: normalizeAppearancePresetIdValue(src.id),
+        name: normalizeAppearancePresetName(src.name),
+        locked: !!src.locked,
+        values: normalizeAppearancePresetValues(src.values || {})
       };
     }
 
-    function buildVhsOverlayConfigFromOptions(opt) {
-      if (!opt || !opt.vhsOverlayEnabled) return null;
-      const blur = clampNumber(opt.vhsBlurAmount, 0, 3, VHS_OVERLAY_CONFIG.blur);
-      const chroma = clampNumber(opt.vhsChromaAmount, 0, 3, VHS_OVERLAY_CONFIG.chroma);
-      return Object.assign({}, VHS_OVERLAY_CONFIG, { blur, chroma });
+    function defaultAppearancePresets() {
+      return DEFAULT_APPEARANCE_PRESETS.map((preset) => cloneAppearancePreset(preset));
     }
 
-    function buildFilmCornerOverlayConfigFromOptions(opt) {
-      if (!opt || !opt.filmCornerOverlayEnabled) return null;
-      return { cornerRadius: FILM_CORNER_CONFIG.cornerRadius };
-    }
-
-    function mergeOverlayConfigs(a, b) {
-      if (!a) return b || null;
-      if (!b) return a;
-      return {
-        scanlines: Math.max(a.scanlines || 0, b.scanlines || 0),
-        scanlineBlur: Math.max(a.scanlineBlur || 0, b.scanlineBlur || 0),
-        chroma: Math.max(a.chroma || 0, b.chroma || 0),
-        vignette: Math.max(a.vignette || 0, b.vignette || 0),
-        jitter: Math.max(a.jitter || 0, b.jitter || 0),
-        blur: Math.max(a.blur || 0, b.blur || 0),
-        grain: Math.max(a.grain || 0, b.grain || 0),
-        pixelate: Math.max(a.pixelate || 0, b.pixelate || 0),
-        cornerRadius: Math.max(a.cornerRadius || 0, b.cornerRadius || 0)
+    function normalizeAppearancePresetList(rawList, useDefaultsIfMissing = true) {
+      const source = Array.isArray(rawList)
+        ? rawList
+        : (useDefaultsIfMissing ? defaultAppearancePresets() : []);
+      const out = [];
+      const seenIds = new Set();
+      const seenNames = new Set();
+      const pushPreset = (preset, fallbackName = "Preset") => {
+        const cloned = cloneAppearancePreset(preset);
+        let id = normalizeAppearancePresetIdValue(cloned.id);
+        if (!id) id = `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        if (seenIds.has(id)) return;
+        let name = normalizeAppearancePresetName(cloned.name, fallbackName);
+        let suffix = 2;
+        let uniqueName = name;
+        while (seenNames.has(uniqueName.toLowerCase())) {
+          uniqueName = `${name} ${suffix++}`;
+        }
+        cloned.id = id;
+        cloned.name = uniqueName;
+        seenIds.add(id);
+        seenNames.add(uniqueName.toLowerCase());
+        out.push(cloned);
       };
+      let sawDefault = false;
+      for (let i = 0; i < source.length; i++) {
+        const preset = source[i];
+        const id = normalizeAppearancePresetIdValue(preset && preset.id);
+        if (id === BUILTIN_NULL_APPEARANCE_PRESET_ID) {
+          sawDefault = true;
+          pushPreset(Object.assign({}, preset, { id: BUILTIN_NULL_APPEARANCE_PRESET_ID, name: "Default", locked: true }));
+          continue;
+        }
+        if (id.startsWith("builtin-")) {
+          continue;
+        }
+        pushPreset(preset, `Preset ${out.length + 1}`);
+      }
+      if (!sawDefault) {
+        pushPreset(DEFAULT_APPEARANCE_PRESETS[0], "Default");
+      }
+      out.sort((a, b) => {
+        if (a.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return -1;
+        if (b.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return 1;
+        return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+      });
+      return out;
+    }
+
+    function currentAppearanceValuesFromOptions(opt = null) {
+      const source = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+      const out = {};
+      const normalized = source ? normalizeOptions(source) : normalizeOptions(null);
+      for (let i = 0; i < APPEARANCE_SLIDER_OPTION_KEYS.length; i++) {
+        const key = APPEARANCE_SLIDER_OPTION_KEYS[i];
+        out[key] = normalized[key] == null ? null : normalized[key];
+      }
+      return out;
+    }
+
+    function appearanceValuesEqual(a, b) {
+      for (let i = 0; i < APPEARANCE_SLIDER_OPTION_KEYS.length; i++) {
+        const key = APPEARANCE_SLIDER_OPTION_KEYS[i];
+        const av = a && Object.prototype.hasOwnProperty.call(a, key) ? a[key] : null;
+        const bv = b && Object.prototype.hasOwnProperty.call(b, key) ? b[key] : null;
+        if (av == null && bv == null) continue;
+        if (Number(av) !== Number(bv)) return false;
+      }
+      return true;
+    }
+
+    function getAppearancePresetById(id) {
+      const presetId = normalizeAppearancePresetIdValue(id);
+      if (!presetId || !WS.meta || !Array.isArray(WS.meta.appearancePresets)) return null;
+      for (let i = 0; i < WS.meta.appearancePresets.length; i++) {
+        const preset = WS.meta.appearancePresets[i];
+        if (normalizeAppearancePresetIdValue(preset && preset.id) === presetId) return preset;
+      }
+      return null;
+    }
+
+    function findAppearancePresetByName(name) {
+      const normalizedName = normalizeAppearancePresetName(name, "").toLowerCase();
+      if (!normalizedName || !WS.meta || !Array.isArray(WS.meta.appearancePresets)) return null;
+      for (let i = 0; i < WS.meta.appearancePresets.length; i++) {
+        const preset = WS.meta.appearancePresets[i];
+        if (normalizeAppearancePresetName(preset && preset.name, "").toLowerCase() === normalizedName) return preset;
+      }
+      return null;
+    }
+
+    function effectiveActiveAppearancePresetId() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const raw = normalizeAppearancePresetIdValue(opt && opt.activeAppearancePresetId);
+      if (!raw) return "";
+      return getAppearancePresetById(raw) ? raw : "";
+    }
+
+    function buildOptionsWithAppearanceValues(values, activePresetId = null, baseOptions = null) {
+      const base = Object.assign({}, baseOptions || (WS.meta && WS.meta.options ? WS.meta.options : {}));
+      const next = {};
+      for (let i = 0; i < APPEARANCE_SLIDER_OPTION_KEYS.length; i++) {
+        const key = APPEARANCE_SLIDER_OPTION_KEYS[i];
+        next[key] = values && Object.prototype.hasOwnProperty.call(values, key) ? values[key] : null;
+      }
+      next.activeAppearancePresetId = normalizeAppearancePresetIdValue(activePresetId) || null;
+      return normalizeOptions(Object.assign(base, next));
+    }
+
+    function syncActiveAppearancePresetSelection(options = null) {
+      if (!WS.meta) return "";
+      const opt = options || WS.meta.options || normalizeOptions(null);
+      const values = currentAppearanceValuesFromOptions(opt);
+      let nextId = "";
+      const presets = Array.isArray(WS.meta.appearancePresets) ? WS.meta.appearancePresets : [];
+      for (let i = 0; i < presets.length; i++) {
+        const preset = presets[i];
+        if (!preset || !preset.values) continue;
+        if (appearanceValuesEqual(values, preset.values)) {
+          nextId = normalizeAppearancePresetIdValue(preset.id);
+          break;
+        }
+      }
+      const currentId = normalizeAppearancePresetIdValue(opt.activeAppearancePresetId);
+      if (currentId === nextId) return nextId;
+      opt.activeAppearancePresetId = nextId || null;
+      return nextId;
+    }
+
+    function currentAppearanceBucket(options = null) {
+      const rawActiveId = normalizeAppearancePresetIdValue((options || (WS.meta && WS.meta.options) || {}).activeAppearancePresetId);
+      const activeId = getAppearancePresetById(rawActiveId) ? rawActiveId : "";
+      if (activeId === BUILTIN_NULL_APPEARANCE_PRESET_ID) return "default";
+      if (activeId) return "saved";
+      return "editing";
+    }
+
+    function currentAppearanceEditingTargetId() {
+      const activeId = effectiveActiveAppearancePresetId();
+      if (activeId) return activeId;
+      const raw = normalizeAppearancePresetIdValue(WS.view && WS.view.appearancePresetEditingId);
+      if (raw && getAppearancePresetById(raw)) return raw;
+      return BUILTIN_NULL_APPEARANCE_PRESET_ID;
+    }
+
+    function createAppearancePresetId() {
+      return `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    function appearancePresetDisplayName(id, fallback = "Custom") {
+      const preset = getAppearancePresetById(id);
+      return preset ? String(preset.name || "") : fallback;
+    }
+
+    function currentAppearanceStatusLabel(options = null) {
+      const bucket = currentAppearanceBucket(options);
+      const activeId = effectiveActiveAppearancePresetId();
+      if (bucket !== "editing") return appearancePresetDisplayName(activeId, "Default");
+      const editingId = currentAppearanceEditingTargetId();
+      return `${appearancePresetDisplayName(editingId, "Default")} (unsaved changes)`;
+    }
+
+    function buildAppearancePresetChoiceMenu(menuEl, options = {}) {
+      if (!menuEl) return;
+      const currentPresetId = normalizeAppearancePresetIdValue(options.currentPresetId);
+      const presets = Array.isArray(WS.meta && WS.meta.appearancePresets ? WS.meta.appearancePresets : null)
+        ? WS.meta.appearancePresets
+        : defaultAppearancePresets();
+      menuEl.innerHTML = "";
+      const appendButton = (label, onClick, disabled = false) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = String(label || "");
+        btn.disabled = !!disabled;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (btn.disabled) return;
+          if (typeof onClick === "function") onClick();
+        });
+        menuEl.appendChild(btn);
+        return btn;
+      };
+      if (typeof options.onBack === "function") {
+        appendButton("Back", options.onBack);
+      }
+      for (let i = 0; i < presets.length; i++) {
+        const preset = presets[i];
+        const presetId = normalizeAppearancePresetIdValue(preset && preset.id);
+        if (!presetId) continue;
+        const label = presetId === currentPresetId
+          ? `Current: ${String(preset.name || "Preset")}`
+          : String(preset.name || "Preset");
+        appendButton(label, () => {
+          if (typeof options.onChoosePreset === "function") options.onChoosePreset(presetId);
+        });
+      }
+      if (typeof options.onRendered === "function") {
+        requestAnimationFrame(() => options.onRendered());
+      }
+    }
+
+    function effectiveAppearancePresetIdForMenuPath(path) {
+      const normalized = normalizeDirPathValue(path);
+      if (normalized === "" && WS.root) return effectiveActiveAppearancePresetId();
+      return nearestFolderAppearancePresetIdForPath(normalized);
+    }
+
+    function updateAppearancePresetUiState() {
+      const bucket = currentAppearanceBucket();
+      const activeId = effectiveActiveAppearancePresetId();
+      const uiTargetId = (bucket === "editing")
+        ? currentAppearanceEditingTargetId()
+        : (activeId || BUILTIN_NULL_APPEARANCE_PRESET_ID);
+      if (bucket !== "editing" && WS.view) {
+        WS.view.appearancePresetEditingId = uiTargetId;
+      }
+      const statusEl = $("appearancePresetActiveStatus");
+      if (statusEl) {
+        statusEl.textContent = `Current appearance: ${currentAppearanceStatusLabel()}`;
+      }
+      const presetSelectEl = $("opt_appearancePresetLibrary");
+      if (presetSelectEl && presetSelectEl.value !== uiTargetId) {
+        presetSelectEl.value = uiTargetId;
+      }
+      const disablePresetDelete = uiTargetId === BUILTIN_NULL_APPEARANCE_PRESET_ID;
+      const saveBtn = $("opt_appearancePreset_save");
+      const deleteBtn = $("opt_appearancePreset_delete");
+      if (saveBtn) saveBtn.disabled = false;
+      if (deleteBtn) deleteBtn.disabled = disablePresetDelete;
+    }
+
+    function markAppearanceStateChanged(invalidateThumbs = true) {
+      if (!WS.meta) return;
+      syncActiveAppearancePresetSelection(WS.meta.options);
+      metaMarkDirty(META_DOC_IDS.prefAppearance);
+      setOptionsStatus("Saved");
+      applyOptionsEverywhere(!!invalidateThumbs);
+      updateAppearancePresetUiState();
+    }
+
+    function applyAppearancePresetById(presetId, options = {}) {
+      const id = normalizeAppearancePresetIdValue(presetId);
+      const preset = getAppearancePresetById(id);
+      if (!preset) return false;
+      WS.meta.options = buildOptionsWithAppearanceValues(preset.values || {}, id);
+      if (WS.view) {
+        WS.view.appearancePresetEditingId = id;
+        WS.view.appearancePresetPromptMode = "";
+        WS.view.appearancePresetDraftName = id === BUILTIN_NULL_APPEARANCE_PRESET_ID ? "" : String(preset.name || "");
+      }
+      markAppearanceStateChanged(options.invalidateThumbs !== false);
+      return true;
+    }
+
+    function saveAppearancePresetFromCurrent(name) {
+      if (!WS.meta) return { ok: false, reason: "missing-meta" };
+      const presetName = normalizeAppearancePresetName(name, "");
+      if (!presetName) return { ok: false, reason: "missing-name" };
+      if (presetName.toLowerCase() === "default") return { ok: false, reason: "reserved-name" };
+      const values = currentAppearanceValuesFromOptions(WS.meta.options);
+      const existing = findAppearancePresetByName(presetName);
+      let presetId = "";
+      let replaced = false;
+      if (existing && normalizeAppearancePresetIdValue(existing.id) !== BUILTIN_NULL_APPEARANCE_PRESET_ID) {
+        presetId = normalizeAppearancePresetIdValue(existing.id);
+        WS.meta.appearancePresets = (WS.meta.appearancePresets || []).map((preset) => {
+          if (normalizeAppearancePresetIdValue(preset && preset.id) !== presetId) return preset;
+          return Object.assign({}, preset, {
+            name: presetName,
+            values
+          });
+        });
+        replaced = true;
+      } else {
+        presetId = createAppearancePresetId();
+        WS.meta.appearancePresets = [].concat(WS.meta.appearancePresets || [], [{
+          id: presetId,
+          name: presetName,
+          locked: false,
+          values
+        }]);
+      }
+      WS.meta.appearancePresets = normalizeAppearancePresetList(WS.meta.appearancePresets, false);
+      syncPaneKeybindBindingsWithCurrentActions(false);
+      rebuildKeybindIndex();
+      if (MENU_OPEN && MENU_ACTIVE_TAB === "controls") renderKeybindsUi("pane");
+      const savedPreset = findAppearancePresetByName(presetName);
+      const nextId = normalizeAppearancePresetIdValue(savedPreset && savedPreset.id) || presetId;
+      if (WS.meta.options) WS.meta.options.activeAppearancePresetId = nextId;
+      if (WS.view) {
+        WS.view.appearancePresetEditingId = nextId;
+        WS.view.appearancePresetPromptMode = "";
+        WS.view.appearancePresetDraftName = presetName;
+      }
+      metaMarkDirty(META_DOC_IDS.appearancePresets, META_DOC_IDS.keybinds, META_DOC_IDS.prefAppearance);
+      setOptionsStatus("Saved");
+      applyOptionsEverywhere(true);
+      updateAppearancePresetUiState();
+      return {
+        ok: true,
+        replaced,
+        preset: getAppearancePresetById(nextId)
+      };
+    }
+
+    function createAppearancePresetFromCurrent(name) {
+      if (!WS.meta) return null;
+      const presetName = normalizeAppearancePresetName(name, "Preset");
+      const preset = {
+        id: createAppearancePresetId(),
+        name: presetName,
+        locked: false,
+        values: currentAppearanceValuesFromOptions(WS.meta.options)
+      };
+      WS.meta.appearancePresets = normalizeAppearancePresetList([].concat(WS.meta.appearancePresets || [], [preset]), false);
+      syncPaneKeybindBindingsWithCurrentActions(false);
+      rebuildKeybindIndex();
+      if (WS.view) WS.view.appearancePresetEditingId = preset.id;
+      if (WS.meta.options) WS.meta.options.activeAppearancePresetId = preset.id;
+      metaMarkDirty(META_DOC_IDS.appearancePresets, META_DOC_IDS.keybinds, META_DOC_IDS.prefAppearance);
+      setOptionsStatus("Saved");
+      return getAppearancePresetById(preset.id);
+    }
+
+    function updateAppearancePresetFromCurrent(presetId) {
+      const id = normalizeAppearancePresetIdValue(presetId);
+      if (!id || id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return false;
+      const presets = Array.isArray(WS.meta && WS.meta.appearancePresets ? WS.meta.appearancePresets : null)
+        ? WS.meta.appearancePresets
+        : [];
+      let changed = false;
+      WS.meta.appearancePresets = presets.map((preset) => {
+        if (normalizeAppearancePresetIdValue(preset && preset.id) !== id) return preset;
+        changed = true;
+        return Object.assign({}, preset, { values: currentAppearanceValuesFromOptions(WS.meta.options) });
+      });
+      if (!changed) return false;
+      if (WS.meta.options) WS.meta.options.activeAppearancePresetId = id;
+      if (WS.view) WS.view.appearancePresetEditingId = id;
+      if (WS.view) WS.view.appearancePresetDraftName = String((getAppearancePresetById(id) || {}).name || "");
+      metaMarkDirty(META_DOC_IDS.appearancePresets, META_DOC_IDS.prefAppearance);
+      setOptionsStatus("Saved");
+      return true;
+    }
+
+    function renameAppearancePresetById(presetId, nextName) {
+      const id = normalizeAppearancePresetIdValue(presetId);
+      if (!id || id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return false;
+      const normalizedName = normalizeAppearancePresetName(nextName, "Preset");
+      const existing = Array.isArray(WS.meta && WS.meta.appearancePresets ? WS.meta.appearancePresets : null)
+        ? WS.meta.appearancePresets
+        : [];
+      let changed = false;
+      WS.meta.appearancePresets = existing.map((preset) => {
+        if (normalizeAppearancePresetIdValue(preset && preset.id) !== id) return preset;
+        if (String(preset.name || "") === normalizedName) return preset;
+        changed = true;
+        return Object.assign({}, preset, { name: normalizedName });
+      });
+      if (!changed) return false;
+      WS.meta.appearancePresets = normalizeAppearancePresetList(WS.meta.appearancePresets, false);
+      syncPaneKeybindBindingsWithCurrentActions(false);
+      rebuildKeybindIndex();
+      if (MENU_OPEN && MENU_ACTIVE_TAB === "controls") renderKeybindsUi("pane");
+      metaMarkDirty(META_DOC_IDS.appearancePresets, META_DOC_IDS.keybinds);
+      setOptionsStatus("Saved");
+      return true;
+    }
+
+    function clearDeletedAppearancePresetReferences(presetId) {
+      const id = normalizeAppearancePresetIdValue(presetId);
+      if (!id || !WS.meta) return false;
+      let changed = false;
+      if (WS.meta.dirAppearancePresetIds) {
+        for (const [path, assignedId] of Array.from(WS.meta.dirAppearancePresetIds.entries())) {
+          if (normalizeAppearancePresetIdValue(assignedId) !== id) continue;
+          WS.meta.dirAppearancePresetIds.delete(path);
+          changed = true;
+        }
+      }
+      if (WS.meta.tagAppearancePresetIds) {
+        for (const [tagKey, assignedId] of Array.from(WS.meta.tagAppearancePresetIds.entries())) {
+          if (normalizeAppearancePresetIdValue(assignedId) !== id) continue;
+          WS.meta.tagAppearancePresetIds.delete(tagKey);
+          changed = true;
+        }
+      }
+      if (WS.meta.options && normalizeAppearancePresetIdValue(WS.meta.options.activeAppearancePresetId) === id) {
+        WS.meta.options.activeAppearancePresetId = null;
+        changed = true;
+      }
+      return changed;
+    }
+
+    function deleteAppearancePresetById(presetId) {
+      const id = normalizeAppearancePresetIdValue(presetId);
+      if (!id || id === BUILTIN_NULL_APPEARANCE_PRESET_ID || !WS.meta) return false;
+      const before = Array.isArray(WS.meta.appearancePresets) ? WS.meta.appearancePresets.length : 0;
+      WS.meta.appearancePresets = (WS.meta.appearancePresets || []).filter((preset) => normalizeAppearancePresetIdValue(preset && preset.id) !== id);
+      if (WS.meta.appearancePresets.length === before) return false;
+      clearDeletedAppearancePresetReferences(id);
+      syncActiveAppearancePresetSelection(WS.meta.options);
+      if (WS.view && normalizeAppearancePresetIdValue(WS.view.appearancePresetEditingId) === id) {
+        WS.view.appearancePresetEditingId = effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
+      }
+      if (WS.view) {
+        WS.view.appearancePresetPromptMode = "";
+        if (normalizeAppearancePresetIdValue(WS.view.appearancePresetEditingId) === BUILTIN_NULL_APPEARANCE_PRESET_ID) {
+          WS.view.appearancePresetDraftName = "";
+        }
+      }
+      syncPaneKeybindBindingsWithCurrentActions(false);
+      rebuildKeybindIndex();
+      if (MENU_OPEN && MENU_ACTIVE_TAB === "controls") renderKeybindsUi("pane");
+      metaMarkDirty(META_DOC_IDS.appearancePresets, META_DOC_IDS.appearanceAssignments, META_DOC_IDS.prefAppearance, META_DOC_IDS.keybinds);
+      setOptionsStatus("Saved");
+      return true;
+    }
+
+    function addColorFilter(filters, filterText) {
+      const text = String(filterText || "").trim();
+      if (!text || text === "none") return;
+      filters.push(text);
+    }
+
+    function optionalOverlayAmount(value, min, max) {
+      if (value == null || value === "") return null;
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) return null;
+      return clampNumber(parsed, min, max, 0);
     }
 
     function buildMediaOverlayConfigFromOptions(opt) {
-      const crt = buildCrtOverlayConfigFromOptions(opt);
-      const vhs = buildVhsOverlayConfigFromOptions(opt);
-      const film = buildFilmCornerOverlayConfigFromOptions(opt);
-      return mergeOverlayConfigs(mergeOverlayConfigs(crt, vhs), film);
+      if (!opt) return null;
+      const colorFilters = [];
+      const hueShiftAmount = optionalOverlayAmount(opt.hueShiftOverlayIntensity, OVERLAY_SLIDER_LIMITS.hueShift.min, OVERLAY_SLIDER_LIMITS.hueShift.max);
+      if (hueShiftAmount != null && Math.abs(hueShiftAmount) > 0.0001) addColorFilter(colorFilters, `hue-rotate(${hueShiftAmount.toFixed(1)}deg)`);
+      const saturationAmount = optionalOverlayAmount(opt.saturationOverlayIntensity, OVERLAY_SLIDER_LIMITS.saturation.min, OVERLAY_SLIDER_LIMITS.saturation.max);
+      if (saturationAmount != null && Math.abs(saturationAmount) > 0.0001) {
+        const amount = saturationAmount;
+        addColorFilter(colorFilters, `saturate(${Math.max(0, 1 + amount).toFixed(3)})`);
+      }
+      const contrastAmount = optionalOverlayAmount(opt.contrastOverlayIntensity, OVERLAY_SLIDER_LIMITS.contrast.min, OVERLAY_SLIDER_LIMITS.contrast.max);
+      if (contrastAmount != null && Math.abs(contrastAmount) > 0.0001) {
+        const amount = contrastAmount;
+        addColorFilter(colorFilters, `contrast(${Math.max(0, 1 + amount).toFixed(3)})`);
+      }
+      const brightnessAmount = optionalOverlayAmount(opt.brightnessOverlayIntensity, OVERLAY_SLIDER_LIMITS.brightness.min, OVERLAY_SLIDER_LIMITS.brightness.max);
+      if (brightnessAmount != null && Math.abs(brightnessAmount) > 0.0001) {
+        const amount = brightnessAmount;
+        addColorFilter(colorFilters, `brightness(${Math.max(0, 1 + amount).toFixed(3)})`);
+      }
+      const temperatureAmount = optionalOverlayAmount(opt.warmthOverlayIntensity, OVERLAY_SLIDER_LIMITS.warmth.min, OVERLAY_SLIDER_LIMITS.warmth.max);
+      const temperature = (temperatureAmount != null && Math.abs(temperatureAmount) > 0.0001) ? temperatureAmount : 0;
+
+      const colorCrushAmount = optionalOverlayAmount(opt.colorCrushOverlayIntensity, OVERLAY_SLIDER_LIMITS.colorCrush.min, OVERLAY_SLIDER_LIMITS.colorCrush.max);
+      const colorCrush = (colorCrushAmount != null && colorCrushAmount > 0.0001) ? colorCrushAmount : 0;
+      const blackCrushAmount = optionalOverlayAmount(opt.blackCrushOverlayIntensity, OVERLAY_SLIDER_LIMITS.blackCrush.min, OVERLAY_SLIDER_LIMITS.blackCrush.max);
+      const blackCrush = (blackCrushAmount != null && blackCrushAmount > 0.0001) ? blackCrushAmount : 0;
+      const whiteCrushAmount = optionalOverlayAmount(opt.whiteCrushOverlayIntensity, OVERLAY_SLIDER_LIMITS.whiteCrush.min, OVERLAY_SLIDER_LIMITS.whiteCrush.max);
+      const whiteCrush = (whiteCrushAmount != null && whiteCrushAmount > 0.0001) ? whiteCrushAmount : 0;
+      const solarizeAmount = optionalOverlayAmount(opt.solarizeOverlayIntensity, OVERLAY_SLIDER_LIMITS.solarize.min, OVERLAY_SLIDER_LIMITS.solarize.max);
+      const solarize = (solarizeAmount != null && solarizeAmount > 0.0001) ? solarizeAmount : 0;
+      const scanlinesAmount = optionalOverlayAmount(opt.scanlinesOverlayIntensity, OVERLAY_SLIDER_LIMITS.scanlines.min, OVERLAY_SLIDER_LIMITS.scanlines.max);
+      const scanlines = (scanlinesAmount != null && scanlinesAmount > 0.0001) ? scanlinesAmount : 0;
+      const scanlineBlurAmount = optionalOverlayAmount(opt.scanlineBlurOverlayIntensity, OVERLAY_SLIDER_LIMITS.scanlineBlur.min, OVERLAY_SLIDER_LIMITS.scanlineBlur.max);
+      const scanlineBlur = scanlines > 0 && scanlineBlurAmount != null && scanlineBlurAmount > 0.0001 ? scanlineBlurAmount : 0;
+      const pixelateAmount = optionalOverlayAmount(opt.pixelateOverlayIntensity, OVERLAY_SLIDER_LIMITS.pixelate.min, OVERLAY_SLIDER_LIMITS.pixelate.max);
+      const pixelate = (pixelateAmount != null && pixelateAmount > (OVERLAY_SLIDER_LIMITS.pixelate.min + 0.0001)) ? pixelateAmount : 0;
+      const blurAmount = optionalOverlayAmount(opt.blurOverlayIntensity, OVERLAY_SLIDER_LIMITS.blur.min, OVERLAY_SLIDER_LIMITS.blur.max);
+      const blur = (blurAmount != null && blurAmount > 0.0001) ? blurAmount : 0;
+      const chromaAmount = optionalOverlayAmount(opt.chromaOverlayIntensity, OVERLAY_SLIDER_LIMITS.chroma.min, OVERLAY_SLIDER_LIMITS.chroma.max);
+      const chroma = (chromaAmount != null && chromaAmount > 0.0001) ? chromaAmount : 0;
+      const jitterAmount = optionalOverlayAmount(opt.jitterOverlayIntensity, OVERLAY_SLIDER_LIMITS.jitter.min, OVERLAY_SLIDER_LIMITS.jitter.max);
+      const jitter = (jitterAmount != null && jitterAmount > 0.0001) ? jitterAmount : 0;
+      const grainAmount = optionalOverlayAmount(opt.grainOverlayIntensity, OVERLAY_SLIDER_LIMITS.grain.min, OVERLAY_SLIDER_LIMITS.grain.max);
+      const grain = (grainAmount != null && grainAmount > 0.0001) ? grainAmount : 0;
+      const vignetteAmount = optionalOverlayAmount(opt.vignetteOverlayIntensity, OVERLAY_SLIDER_LIMITS.vignette.min, OVERLAY_SLIDER_LIMITS.vignette.max);
+      const vignette = (vignetteAmount != null && vignetteAmount > 0.0001) ? vignetteAmount : 0;
+      const cornerAmount = optionalOverlayAmount(opt.filmCornerOverlayIntensity, OVERLAY_SLIDER_LIMITS.filmCorner.min, OVERLAY_SLIDER_LIMITS.filmCorner.max);
+      const cornerRadius = (cornerAmount != null && cornerAmount > 0.0001) ? cornerAmount : 0;
+
+      if (!colorFilters.length && !temperature && !colorCrush && !blackCrush && !whiteCrush && !solarize && !scanlines && !scanlineBlur && !pixelate && !blur && !chroma && !jitter && !grain && !vignette && !cornerRadius) {
+        return null;
+      }
+      return {
+        colorFilters,
+        temperature,
+        colorCrush,
+        blackCrush,
+        whiteCrush,
+        solarize,
+        scanlines,
+        scanlineBlur,
+        pixelate,
+        blur,
+        chroma,
+        jitter,
+        grain,
+        vignette,
+        cornerRadius
+      };
+    }
+
+    function serializeAppearanceValues(values) {
+      const parts = [];
+      for (let i = 0; i < APPEARANCE_SLIDER_OPTION_KEYS.length; i++) {
+        const key = APPEARANCE_SLIDER_OPTION_KEYS[i];
+        const value = values && Object.prototype.hasOwnProperty.call(values, key) ? values[key] : null;
+        parts.push(`${key}:${value == null ? "null" : String(value)}`);
+      }
+      return parts.join("|");
+    }
+
+    function buildAppearancePresetCacheKey() {
+      const currentValues = currentAppearanceValuesFromOptions(WS.meta && WS.meta.options ? WS.meta.options : null);
+      const presetSig = Array.isArray(WS.meta && WS.meta.appearancePresets ? WS.meta.appearancePresets : null)
+        ? WS.meta.appearancePresets.map((preset) => {
+          const id = normalizeAppearancePresetIdValue(preset && preset.id);
+          return `${id}:${serializeAppearanceValues(preset && preset.values ? preset.values : {})}`;
+        }).join("||")
+        : "";
+      const folderSig = WS.meta && WS.meta.dirAppearancePresetIds
+        ? Array.from(WS.meta.dirAppearancePresetIds.entries())
+          .map(([path, presetId]) => `${normalizeDirPathValue(path)}=>${normalizeAppearancePresetIdValue(presetId)}`)
+          .sort()
+          .join("||")
+        : "";
+      const tagSig = WS.meta && WS.meta.tagAppearancePresetIds
+        ? Array.from(WS.meta.tagAppearancePresetIds.entries())
+          .map(([tagKey, presetId]) => `${String(tagKey || "")}=>${normalizeAppearancePresetIdValue(presetId)}`)
+          .sort()
+          .join("||")
+        : "";
+      const activeContextSig = (() => {
+        const direct = [
+          String(WS.view && WS.view.tagFolderActiveMode || ""),
+          String(WS.view && WS.view.tagFolderActiveTag || ""),
+          String(WS.view && WS.view.tagFolderActiveAlbum || ""),
+          String(WS.view && WS.view.tagFolderOriginPath || "")
+        ].join("|");
+        const stackSig = Array.isArray(WS.view && WS.view.tagNavStack)
+          ? WS.view.tagNavStack
+            .map((frame) => {
+              if (!frame || frame.type !== "tag-view") return "";
+              return [
+                "tag-view",
+                String(frame.mode || ""),
+                String(frame.tag || ""),
+                String(frame.album || ""),
+                String(frame.originPath || ""),
+                String(frame.selectedDirPath || "")
+              ].join("|");
+            })
+            .filter(Boolean)
+            .join("||")
+          : "";
+        return `${direct}###${stackSig}`;
+      })();
+      const gifsIgnore = gifsIgnoreProcessingEnabled() ? "gif:1" : "gif:0";
+      return `${serializeAppearanceValues(currentValues)}###${presetSig}###${folderSig}###${tagSig}###${activeContextSig}###${gifsIgnore}`;
+    }
+
+    function resolveDirPathForAppearanceTarget(target) {
+      if (typeof target === "string") return normalizeDirPathValue(target);
+      if (target && typeof target === "object") {
+        if (typeof target.dirPath === "string") return normalizeDirPathValue(target.dirPath);
+        if (typeof target.path === "string") return normalizeDirPathValue(target.path);
+      }
+      return "";
+    }
+
+    function contextualAppearancePresetIdForTagContext(mode, tag, album, originPath) {
+      const contextMode = String(mode || "");
+      const contextTag = normalizeTag(tag || "");
+      const contextAlbum = normalizeTagAlbumName(album || "");
+      const scopePath = normalizeDirPathValue(originPath);
+      if (contextMode === "tag" && contextTag) {
+        const tagPresetId = metaGetTagAppearancePresetIdByKey(tagThumbnailKeyForTag(contextTag, scopePath));
+        if (tagPresetId) return tagPresetId;
+        if (contextAlbum) {
+          const albumPresetId = metaGetTagAppearancePresetIdByKey(tagThumbnailKeyForAlbum(contextAlbum, scopePath));
+          if (albumPresetId) return albumPresetId;
+        }
+        return "";
+      }
+      if (contextMode === "album" && contextAlbum) {
+        return metaGetTagAppearancePresetIdByKey(tagThumbnailKeyForAlbum(contextAlbum, scopePath));
+      }
+      return "";
+    }
+
+    function contextualAppearancePresetIdForDirPath(dirPath) {
+      const normalized = normalizeDirPathValue(dirPath);
+      if (!normalized) return "";
+      const activeMode = String(WS.view && WS.view.tagFolderActiveMode || "");
+      if (activeMode === "tag") {
+        const originPath = String(WS.view && WS.view.tagFolderOriginPath || "");
+        const node = WS.dirByPath.get(normalized) || null;
+        if (node && String(node.parent?.path || "") === originPath) {
+          const activeTag = normalizeTag(WS.view && WS.view.tagFolderActiveTag || "");
+          if (activeTag) {
+            const userTags = metaGetUserTags(normalized);
+            if (userTags.includes(activeTag)) {
+              const directPresetId = contextualAppearancePresetIdForTagContext(
+                activeMode,
+                activeTag,
+                WS.view && WS.view.tagFolderActiveAlbum,
+                originPath
+              );
+              if (directPresetId) return directPresetId;
+            }
+          }
+        }
+      }
+      const stack = Array.isArray(WS.view && WS.view.tagNavStack) ? WS.view.tagNavStack : [];
+      for (let i = stack.length - 1; i >= 0; i--) {
+        const frame = stack[i];
+        if (!frame || frame.type !== "tag-view") continue;
+        const rootPath = findMatchingVirtualPortalRootPath(frame, normalized);
+        if (!rootPath) continue;
+        const presetId = contextualAppearancePresetIdForTagContext(frame.mode, frame.tag, frame.album, frame.originPath);
+        if (presetId) return presetId;
+      }
+      return "";
+    }
+
+    function resolveAppearancePresetIdForTarget(target) {
+      const dirPath = resolveDirPathForAppearanceTarget(target);
+      const contextualPresetId = contextualAppearancePresetIdForDirPath(dirPath);
+      if (contextualPresetId) return contextualPresetId;
+      return nearestFolderAppearancePresetIdForPath(dirPath);
+    }
+
+    function resolveAppearanceValuesForTarget(target) {
+      const presetId = resolveAppearancePresetIdForTarget(target);
+      if (presetId) {
+        const preset = getAppearancePresetById(presetId);
+        if (!preset || !preset.values) return {};
+        return preset.values;
+      }
+      return currentAppearanceValuesFromOptions(WS.meta && WS.meta.options ? WS.meta.options : null);
+    }
+
+    function resolveMediaOverlayConfigForTarget(target) {
+      if (!mediaProcessingEnabledForTarget(target)) return null;
+      const presetId = resolveAppearancePresetIdForTarget(target);
+      if (presetId) {
+        const preset = getAppearancePresetById(presetId);
+        if (preset) return buildMediaOverlayConfigFromOptions(preset.values || null);
+      }
+      return MEDIA_OVERLAY_STATE || buildMediaOverlayConfigFromOptions(WS.meta && WS.meta.options ? WS.meta.options : null);
+    }
+
+    function anyMediaFilterEnabled() {
+      if (MEDIA_OVERLAY_STATE || buildMediaOverlayConfigFromOptions(WS.meta && WS.meta.options ? WS.meta.options : null)) return true;
+      if (WS.meta && WS.meta.dirAppearancePresetIds) {
+        for (const presetId of WS.meta.dirAppearancePresetIds.values()) {
+          const preset = getAppearancePresetById(presetId);
+          if (preset && buildMediaOverlayConfigFromOptions(preset.values || null)) return true;
+        }
+      }
+      if (WS.meta && WS.meta.tagAppearancePresetIds) {
+        for (const presetId of WS.meta.tagAppearancePresetIds.values()) {
+          const preset = getAppearancePresetById(presetId);
+          if (preset && buildMediaOverlayConfigFromOptions(preset.values || null)) return true;
+        }
+      }
+      return false;
     }
 
     function computeContainRect(srcW, srcH, dstW, dstH) {
@@ -862,15 +1765,13 @@
       videoEl.style.setProperty("transform", `translate(${tx.toFixed(4)}%, ${ty.toFixed(4)}%) scale(${scaleX.toFixed(6)}, ${scaleY.toFixed(6)})`);
     }
 
-    function getMediaFilterForType() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return (opt && opt.vibrantOverlayEnabled) ? "vibrant" : "off";
+    function getMediaFilterForType(target = undefined) {
+      const cfg = resolveMediaOverlayConfigForTarget(target);
+      return cfg ? "custom" : "off";
     }
 
     function getMediaFilterIntensity() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const raw = opt ? opt.vibrantOverlayIntensity : 1;
-      return clampNumber(raw, 0, 1, 1);
+      return 1;
     }
 
     function parseFilterNumberWithUnit(raw) {
@@ -882,7 +1783,7 @@
     }
 
     function scaleCssFilterString(filterText, intensity) {
-      const t = clampNumber(intensity, 0, 1, 1);
+      const t = Math.max(0, Number.isFinite(Number(intensity)) ? Number(intensity) : 1);
       const src = String(filterText || "").trim();
       if (!src || src === "none") return "none";
       if (t <= 0) return "none";
@@ -988,47 +1889,105 @@
 
     function mediaProcessingEnabledForTarget(target) {
       if (typeof target === "undefined" || target === null) return true;
-      if (typeof target === "string") {
-        return !isPathOrAncestorProcessingDisabled(target);
-      }
       if (target && typeof target === "object") {
         if (isGifRecord(target) && gifsIgnoreProcessingEnabled()) return false;
-        if (typeof target.dirPath === "string") return !isPathOrAncestorProcessingDisabled(target.dirPath || "");
-        if (typeof target.path === "string") return !isPathOrAncestorProcessingDisabled(target.path || "");
       }
       return true;
     }
 
     function thumbFiltersActive(target) {
-      if (!thumbFiltersEnabled() || !mediaFilterEnabled()) return false;
-      return mediaProcessingEnabledForTarget(target);
+      if (!thumbFiltersEnabled()) return false;
+      return !!resolveMediaOverlayConfigForTarget(target);
     }
 
     function buildThumbFilterKey() {
-      if (!thumbFiltersActive()) return "off|none";
-      const mode = getMediaFilterForType();
-      const intensity = getMediaFilterIntensity();
-      const o = MEDIA_OVERLAY_STATE;
-      if (!o) return `${mode}|${intensity.toFixed(3)}|none`;
-      const vals = [
-        o.scanlines || 0,
-        o.scanlineBlur || 0,
-        o.chroma || 0,
-        o.vignette || 0,
-        o.jitter || 0,
-        o.blur || 0,
-        o.grain || 0,
-        o.pixelate || 0,
-        o.cornerRadius || 0
-      ];
-      return `${mode}|${intensity.toFixed(3)}|${vals.join(",")}`;
+      if (!thumbFiltersEnabled() || !anyMediaFilterEnabled()) return "off|none";
+      return `custom|${buildAppearancePresetCacheKey()}`;
     }
 
-    function crtOverlayEnabled() {
-      if (MEDIA_OVERLAY_STATE) return true;
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      MEDIA_OVERLAY_STATE = buildMediaOverlayConfigFromOptions(opt);
-      return !!MEDIA_OVERLAY_STATE;
+    function resizeCanvasBuffer(canvas, width, height) {
+      if (!canvas) return;
+      const w = Math.max(1, Math.round(width || 1));
+      const h = Math.max(1, Math.round(height || 1));
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+    }
+
+    function applyPixelOpsToCanvas(canvas, config) {
+      if (!canvas || !config) return;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+      const width = canvas.width || 0;
+      const height = canvas.height || 0;
+      if (!width || !height) return;
+      const temperature = clampNumber(config.temperature, OVERLAY_SLIDER_LIMITS.warmth.min, OVERLAY_SLIDER_LIMITS.warmth.max, 0);
+      const colorCrush = clampNumber(config.colorCrush, 0, OVERLAY_SLIDER_LIMITS.colorCrush.max, 0);
+      const blackCrush = clampNumber(config.blackCrush, 0, OVERLAY_SLIDER_LIMITS.blackCrush.max, 0);
+      const whiteCrush = clampNumber(config.whiteCrush, 0, OVERLAY_SLIDER_LIMITS.whiteCrush.max, 0);
+      const solarize = clampNumber(config.solarize, 0, OVERLAY_SLIDER_LIMITS.solarize.max, 0);
+      if (!(Math.abs(temperature) > 0.0001 || colorCrush > 0 || blackCrush > 0 || whiteCrush > 0 || solarize > 0)) return;
+      let imageData = null;
+      try { imageData = ctx.getImageData(0, 0, width, height); } catch { imageData = null; }
+      if (!imageData) return;
+      const data = imageData.data;
+      const crushLevels = colorCrush > 0 ? Math.max(2, Math.round(24 - (colorCrush * 10))) : 0;
+      const blackFloor = blackCrush > 0 ? blackCrush * 255 : 0;
+      const whiteCeil = whiteCrush > 0 ? (255 - (whiteCrush * 255)) : 255;
+      const solarizeThreshold = solarize > 0 ? (255 * Math.max(0.1, 0.75 - (solarize * 0.4))) : 255;
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i];
+        let g = data[i + 1];
+        let b = data[i + 2];
+
+        if (Math.abs(temperature) > 0.0001) {
+          const prevLuma = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+          const redMul = 1 + (temperature * 0.22);
+          const greenMul = 1 + (temperature * 0.05);
+          const blueMul = 1 - (temperature * 0.24);
+          r *= redMul;
+          g *= greenMul;
+          b *= blueMul;
+          const nextLuma = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+          const lumaOffset = prevLuma - nextLuma;
+          r += lumaOffset;
+          g += lumaOffset;
+          b += lumaOffset;
+        }
+
+        if (solarize > 0) {
+          if (r >= solarizeThreshold) r = (r * (1 - solarize)) + ((255 - r) * solarize);
+          if (g >= solarizeThreshold) g = (g * (1 - solarize)) + ((255 - g) * solarize);
+          if (b >= solarizeThreshold) b = (b * (1 - solarize)) + ((255 - b) * solarize);
+        }
+
+        if (colorCrush > 0 && crushLevels > 1) {
+          const snap = 255 / (crushLevels - 1);
+          r = Math.round(r / snap) * snap;
+          g = Math.round(g / snap) * snap;
+          b = Math.round(b / snap) * snap;
+        }
+
+        if (blackFloor > 0) {
+          r = r <= blackFloor ? 0 : ((r - blackFloor) / Math.max(1, 255 - blackFloor)) * 255;
+          g = g <= blackFloor ? 0 : ((g - blackFloor) / Math.max(1, 255 - blackFloor)) * 255;
+          b = b <= blackFloor ? 0 : ((b - blackFloor) / Math.max(1, 255 - blackFloor)) * 255;
+        }
+        if (whiteCeil < 255) {
+          r = r >= whiteCeil ? 255 : (r / Math.max(1, whiteCeil)) * 255;
+          g = g >= whiteCeil ? 255 : (g / Math.max(1, whiteCeil)) * 255;
+          b = b >= whiteCeil ? 255 : (b / Math.max(1, whiteCeil)) * 255;
+        }
+
+        data[i] = clampNumber(r, 0, 255, 0);
+        data[i + 1] = clampNumber(g, 0, 255, 0);
+        data[i + 2] = clampNumber(b, 0, 255, 0);
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    function crtOverlayEnabled(target = undefined) {
+      if (typeof target !== "undefined") return !!resolveMediaOverlayConfigForTarget(target);
+      return anyMediaFilterEnabled();
     }
 
     const THUMB_FILTER_CACHE = {
@@ -1089,10 +2048,7 @@
 
     function renderFilteredToCanvas(ctx, source, srcW, srcH, dstW, dstH, mode, cover = true, target = undefined) {
       const allowFilters = thumbFiltersActive(target);
-      const intensity = getMediaFilterIntensity();
-      const baseCfgRaw = (allowFilters && mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
-      const baseCfg = scaleBaseFilterConfig(baseCfgRaw, intensity);
-      const overlayCfg = allowFilters ? MEDIA_OVERLAY_STATE : null;
+      const overlayCfg = allowFilters ? resolveMediaOverlayConfigForTarget(target) : null;
       const sourceCrop = computeCroppedSourceRect(srcW, srcH, getVideoCropForTarget(target));
       const croppedSrcW = Math.max(1, Number(sourceCrop.sw || srcW || 1));
       const croppedSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
@@ -1103,19 +2059,7 @@
         }
         targetCtx.drawImage(source, dx, dy, dw, dh);
       };
-      const forceMonochrome = !!(allowFilters && baseCfg && baseCfg.forceMonochrome);
-      const cfg = (baseCfg || overlayCfg) ? {
-        color: baseCfg && baseCfg.color ? baseCfg.color : "none",
-        pixelate: Math.max(baseCfg && baseCfg.pixelate ? baseCfg.pixelate : 0, overlayCfg && overlayCfg.pixelate ? overlayCfg.pixelate : 0),
-        blur: Math.max(baseCfg && baseCfg.blur ? baseCfg.blur : 0, overlayCfg && overlayCfg.blur ? overlayCfg.blur : 0),
-        chroma: Math.max(baseCfg && baseCfg.chroma ? baseCfg.chroma : 0, overlayCfg && overlayCfg.chroma ? overlayCfg.chroma : 0),
-        scanlines: Math.max(baseCfg && baseCfg.scanlines ? baseCfg.scanlines : 0, overlayCfg && overlayCfg.scanlines ? overlayCfg.scanlines : 0),
-        scanlineBlur: Math.max(baseCfg && baseCfg.scanlineBlur ? baseCfg.scanlineBlur : 0, overlayCfg && overlayCfg.scanlineBlur ? overlayCfg.scanlineBlur : 0),
-        grain: Math.max(baseCfg && baseCfg.grain ? baseCfg.grain : 0, overlayCfg && overlayCfg.grain ? overlayCfg.grain : 0),
-        vignette: Math.max(baseCfg && baseCfg.vignette ? baseCfg.vignette : 0, overlayCfg && overlayCfg.vignette ? overlayCfg.vignette : 0),
-        cornerRadius: Math.max(baseCfg && baseCfg.cornerRadius ? baseCfg.cornerRadius : 0, overlayCfg && overlayCfg.cornerRadius ? overlayCfg.cornerRadius : 0)
-      } : null;
-      if (!cfg) {
+      if (!overlayCfg) {
         const rect = cover ? computeCoverRect(croppedSrcW, croppedSrcH, dstW, dstH) : computeContainRect(croppedSrcW, croppedSrcH, dstW, dstH);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, dstW, dstH);
@@ -1125,58 +2069,107 @@
         return;
       }
       const rect = cover ? computeCoverRect(croppedSrcW, croppedSrcH, dstW, dstH) : computeContainRect(croppedSrcW, croppedSrcH, dstW, dstH);
-
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, dstW, dstH);
-      const colorFilter = cfg.color && cfg.color !== "none" ? cfg.color : "none";
 
-      if (cfg.pixelate) {
-        const scale = Math.max(1.5, cfg.pixelate);
-        const smallW = Math.max(1, Math.round(rect.w / scale));
-        const smallH = Math.max(1, Math.round(rect.h / scale));
-        const off = document.createElement("canvas");
-        off.width = smallW;
-        off.height = smallH;
+      const work = document.createElement("canvas");
+      const scratch = document.createElement("canvas");
+      const off = document.createElement("canvas");
+      resizeCanvasBuffer(work, rect.w, rect.h);
+      resizeCanvasBuffer(scratch, rect.w, rect.h);
+      const workctx = work.getContext("2d");
+      const scratchctx = scratch.getContext("2d", { willReadFrequently: true });
+      const fitRect = cover ? computeCoverRect(croppedSrcW, croppedSrcH, work.width, work.height) : computeContainRect(croppedSrcW, croppedSrcH, work.width, work.height);
+      workctx.setTransform(1, 0, 0, 1, 0, 0);
+      workctx.clearRect(0, 0, work.width, work.height);
+      workctx.imageSmoothingEnabled = true;
+      workctx.filter = "none";
+      drawCropped(workctx, fitRect.x, fitRect.y, fitRect.w, fitRect.h);
+
+      let currentCanvas = work;
+      let currentCtx = workctx;
+      let scratchCanvas = scratch;
+      let scratchCtx = scratchctx;
+      const swapBuffers = () => {
+        const oldCanvas = currentCanvas;
+        const oldCtx = currentCtx;
+        currentCanvas = scratchCanvas;
+        currentCtx = scratchCtx;
+        scratchCanvas = oldCanvas;
+        scratchCtx = oldCtx;
+      };
+      const colorFilter = Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length
+        ? overlayCfg.colorFilters.join(" ")
+        : "none";
+      if (colorFilter !== "none") {
+        resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
+        scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+        scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
+        scratchCtx.imageSmoothingEnabled = true;
+        scratchCtx.filter = colorFilter;
+        scratchCtx.drawImage(currentCanvas, 0, 0, scratchCanvas.width, scratchCanvas.height);
+        scratchCtx.filter = "none";
+        swapBuffers();
+      }
+      applyPixelOpsToCanvas(currentCanvas, overlayCfg);
+      if (overlayCfg.pixelate > 0) {
+        const scale = Math.max(1, overlayCfg.pixelate);
+        resizeCanvasBuffer(off, Math.max(1, Math.round(currentCanvas.width / scale)), Math.max(1, Math.round(currentCanvas.height / scale)));
         const offctx = off.getContext("2d");
-        const smallRect = computeCoverRect(croppedSrcW, croppedSrcH, smallW, smallH);
+        offctx.setTransform(1, 0, 0, 1, 0, 0);
+        offctx.clearRect(0, 0, off.width, off.height);
         offctx.imageSmoothingEnabled = true;
-        offctx.filter = buildCanvasFilterValue(colorFilter, cfg.blur || 0);
-        drawCropped(offctx, smallRect.x, smallRect.y, smallRect.w, smallRect.h);
-        ctx.imageSmoothingEnabled = false;
-        ctx.filter = "none";
-        ctx.drawImage(off, rect.x, rect.y, rect.w, rect.h);
-      } else {
-        ctx.imageSmoothingEnabled = true;
-        ctx.filter = buildCanvasFilterValue(colorFilter, cfg.blur || 0);
-        drawCropped(ctx, rect.x, rect.y, rect.w, rect.h);
+        offctx.filter = "none";
+        offctx.drawImage(currentCanvas, 0, 0, off.width, off.height);
+        resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
+        scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+        scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
+        scratchCtx.imageSmoothingEnabled = false;
+        scratchCtx.filter = "none";
+        scratchCtx.drawImage(off, 0, 0, scratchCanvas.width, scratchCanvas.height);
+        swapBuffers();
+      }
+      if (overlayCfg.blur > 0) {
+        resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
+        scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+        scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
+        scratchCtx.imageSmoothingEnabled = true;
+        scratchCtx.filter = `blur(${overlayCfg.blur}px)`;
+        scratchCtx.drawImage(currentCanvas, 0, 0, scratchCanvas.width, scratchCanvas.height);
+        scratchCtx.filter = "none";
+        swapBuffers();
       }
 
-      if (cfg.chroma && !forceMonochrome) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.filter = "none";
+      ctx.drawImage(currentCanvas, rect.x, rect.y, rect.w, rect.h);
+
+      if (overlayCfg.chroma) {
         ctx.save();
         ctx.globalCompositeOperation = "screen";
         ctx.globalAlpha = 0.18;
         ctx.filter = "none";
-        drawCropped(ctx, rect.x + cfg.chroma, rect.y, rect.w, rect.h);
-        drawCropped(ctx, rect.x - cfg.chroma, rect.y, rect.w, rect.h);
+        ctx.drawImage(currentCanvas, rect.x + overlayCfg.chroma, rect.y, rect.w, rect.h);
+        ctx.drawImage(currentCanvas, rect.x - overlayCfg.chroma, rect.y, rect.w, rect.h);
         ctx.restore();
       }
 
-      if (cfg.scanlines) {
+      if (overlayCfg.scanlines) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(rect.x, rect.y, rect.w, rect.h);
         ctx.clip();
-        ctx.globalAlpha = cfg.scanlines;
+        ctx.globalAlpha = overlayCfg.scanlines;
         const pattern = ensureThumbScanlinePattern(ctx);
         if (pattern) {
           ctx.fillStyle = pattern;
-          if (cfg.scanlineBlur) ctx.filter = `blur(${cfg.scanlineBlur}px)`;
+          if (overlayCfg.scanlineBlur) ctx.filter = `blur(${overlayCfg.scanlineBlur}px)`;
           ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
         }
         ctx.restore();
       }
 
-      if (cfg.grain) {
+      if (overlayCfg.grain) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(rect.x, rect.y, rect.w, rect.h);
@@ -1185,7 +2178,7 @@
         const noiseCanvas = ensureThumbNoiseCanvas();
         const pattern = ctx.createPattern(noiseCanvas, "repeat");
         if (pattern) {
-          ctx.globalAlpha = cfg.grain;
+          ctx.globalAlpha = overlayCfg.grain;
           ctx.globalCompositeOperation = "overlay";
           ctx.fillStyle = pattern;
           ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
@@ -1193,7 +2186,7 @@
         ctx.restore();
       }
 
-      if (cfg.vignette) {
+      if (overlayCfg.vignette) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(rect.x, rect.y, rect.w, rect.h);
@@ -1209,14 +2202,14 @@
           Math.max(rect.w, rect.h) * 0.7
         );
         g.addColorStop(0, "rgba(0,0,0,0)");
-        g.addColorStop(1, `rgba(0,0,0,${cfg.vignette})`);
+        g.addColorStop(1, `rgba(0,0,0,${overlayCfg.vignette})`);
         ctx.fillStyle = g;
         ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
         ctx.restore();
       }
 
-      if (cfg.cornerRadius) {
-        const radius = Math.max(0, Math.min(rect.w, rect.h) * cfg.cornerRadius);
+      if (overlayCfg.cornerRadius) {
+        const radius = Math.max(0, Math.min(rect.w, rect.h) * overlayCfg.cornerRadius);
         applyRoundedCornerMask(ctx, rect, radius);
       }
     }
@@ -1417,11 +2410,18 @@
           ctx: null,
           offscreen: null,
           offctx: null,
+          workscreen: null,
+          workctx: null,
+          scratchscreen: null,
+          scratchctx: null,
           active: false,
           bound: false,
           hasDrawn: false,
+          awaitingFreshFrame: false,
           videoFrameActive: false,
-          gifState: null
+          gifState: null,
+          framescreen: null,
+          framectx: null
         };
         surfaces.set(name, surface);
         return surface;
@@ -1436,6 +2436,12 @@
         if (!surface.ctx) surface.ctx = surface.canvas.getContext("2d");
         if (!surface.offscreen) surface.offscreen = document.createElement("canvas");
         if (!surface.offctx) surface.offctx = surface.offscreen.getContext("2d");
+        if (!surface.workscreen) surface.workscreen = document.createElement("canvas");
+        if (!surface.workctx) surface.workctx = surface.workscreen.getContext("2d");
+        if (!surface.scratchscreen) surface.scratchscreen = document.createElement("canvas");
+        if (!surface.scratchctx) surface.scratchctx = surface.scratchscreen.getContext("2d", { willReadFrequently: true });
+        if (!surface.framescreen) surface.framescreen = document.createElement("canvas");
+        if (!surface.framectx) surface.framectx = surface.framescreen.getContext("2d");
         if (surface.container && !surface.container.contains(surface.canvas)) {
           surface.container.appendChild(surface.canvas);
         }
@@ -1467,10 +2473,13 @@
         surface.type = type;
         surface.filterMode = filterMode || "off";
         surface.active = true;
-        surface.hasDrawn = false;
+        surface.awaitingFreshFrame = true;
         bindMediaEvents(surface, mediaEl);
         ensureCanvas(surface);
-        if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+        if (surface.mediaEl && surface.hasDrawn) {
+          const keepRawVisible = type === "image" && String(surface.mediaEl.getAttribute("data-is-gif") || "") === "1";
+          if (!keepRawVisible) surface.mediaEl.classList.add("mediaHidden");
+        }
         if (type === "video" && mediaEl && typeof mediaEl.requestVideoFrameCallback === "function") {
           surface.videoFrameActive = true;
           const onFrame = () => {
@@ -1483,6 +2492,7 @@
           surface.videoFrameActive = false;
         }
         if (type !== "image") clearGifState(surface);
+        updateEngineState();
         requestRender();
         let pulseCount = 0;
         const pulse = () => {
@@ -1495,15 +2505,22 @@
         requestAnimationFrame(pulse);
       }
 
-      function detach(name) {
+      function detach(name, options = null) {
         const surface = surfaces.get(name);
         if (!surface) return;
+        const preserveFrame = !!(options && options.preserveFrame);
         surface.active = false;
         surface.target = null;
-        surface.hasDrawn = false;
+        surface.awaitingFreshFrame = false;
         surface.videoFrameActive = false;
         clearGifState(surface);
-        if (surface.canvas) surface.canvas.style.display = "none";
+        if (!preserveFrame) {
+          surface.hasDrawn = false;
+          if (surface.canvas) {
+            surface.canvas.style.display = "none";
+            surface.canvas.classList.remove("ready");
+          }
+        }
         updateEngineState();
       }
 
@@ -1513,6 +2530,7 @@
         surface.active = false;
         surface.target = null;
         surface.hasDrawn = false;
+        surface.awaitingFreshFrame = false;
         surface.videoFrameActive = false;
         clearGifState(surface);
         if (surface.canvas && surface.canvas.parentElement) {
@@ -1522,6 +2540,12 @@
         surface.ctx = null;
         surface.offscreen = null;
         surface.offctx = null;
+        surface.workscreen = null;
+        surface.workctx = null;
+        surface.scratchscreen = null;
+        surface.scratchctx = null;
+        surface.framescreen = null;
+        surface.framectx = null;
         if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
         updateEngineState();
       }
@@ -1543,24 +2567,28 @@
       }
 
       function drawSurface(surface, time) {
-        const intensity = getMediaFilterIntensity();
-        const mode = surface.filterMode || "off";
-        const baseCfgRaw = (mode && mode !== "off") ? MEDIA_FILTER_CONFIGS[mode] : null;
-        const cfg = scaleBaseFilterConfig(baseCfgRaw, intensity);
-        const overlayCfg = MEDIA_OVERLAY_STATE;
-        if (!cfg && !overlayCfg) {
+        const overlayCfg = resolveMediaOverlayConfigForTarget(surface.target);
+        if (!overlayCfg) {
           if (surface.canvas) surface.canvas.style.display = "none";
           if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+          surface.hasDrawn = false;
+          surface.awaitingFreshFrame = false;
           return false;
         }
-        if (!surface.mediaEl || !surface.container || !surface.canvas || !surface.ctx) return false;
+        if (!surface.mediaEl || !surface.container || !surface.canvas || !surface.ctx || !surface.framescreen || !surface.framectx) return false;
 
         const el = surface.mediaEl;
         const isVideo = surface.type === "video";
         const isGifImage = !isVideo && String(el.getAttribute("data-is-gif") || "") === "1";
         if (!isGifImage) clearGifState(surface);
         const ready = isVideo ? (el.readyState >= 2 && el.videoWidth > 0 && el.videoHeight > 0) : (el.complete && el.naturalWidth > 0 && el.naturalHeight > 0);
-        if (!ready) return false;
+        if (!ready) {
+          if (!surface.hasDrawn) {
+            if (surface.canvas) surface.canvas.style.display = "none";
+            if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+          }
+          return false;
+        }
 
         const cw = surface.container.clientWidth || 0;
         const ch = surface.container.clientHeight || 0;
@@ -1575,9 +2603,11 @@
         }
 
         const ctx = surface.ctx;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.imageSmoothingEnabled = true;
-        ctx.clearRect(0, 0, cw, ch);
+        const frameCtx = surface.framectx;
+        resizeCanvasBuffer(surface.framescreen, pixelW, pixelH);
+        frameCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        frameCtx.imageSmoothingEnabled = true;
+        frameCtx.clearRect(0, 0, cw, ch);
 
         let drawSource = el;
         let srcW = isVideo ? el.videoWidth : el.naturalWidth;
@@ -1607,83 +2637,120 @@
         };
         const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
         const animatedForSurface = animatedMediaFiltersEnabledForType(surface.type);
-
-        const jitterStrength = Math.max((cfg && cfg.jitter) ? cfg.jitter : 0, (overlayCfg && overlayCfg.jitter) ? overlayCfg.jitter : 0);
-        const jitter = jitterStrength ? (animatedForSurface ? Math.sin(time * 0.005) * jitterStrength : 0) : 0;
+        const jitter = overlayCfg.jitter ? (animatedForSurface ? Math.sin(time * 0.005) * overlayCfg.jitter : 0) : 0;
         const dx = rect.x + jitter;
         const dy = rect.y;
 
-        const colorFilter = (cfg && cfg.color && cfg.color !== "none") ? cfg.color : "none";
-        let drew = false;
+        let currentCanvas = surface.workscreen;
+        let currentCtx = surface.workctx;
+        let scratchCanvas = surface.scratchscreen;
+        let scratchCtx = surface.scratchctx;
+        resizeCanvasBuffer(currentCanvas, rect.w, rect.h);
+        resizeCanvasBuffer(scratchCanvas, rect.w, rect.h);
+        currentCtx.setTransform(1, 0, 0, 1, 0, 0);
+        currentCtx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
+        currentCtx.imageSmoothingEnabled = true;
+        currentCtx.filter = "none";
+        const fitRect = computeContainRect(croppedSrcW, croppedSrcH, currentCanvas.width, currentCanvas.height);
+        drawCropped(currentCtx, fitRect.x, fitRect.y, fitRect.w, fitRect.h);
+        const swapBuffers = () => {
+          const oldCanvas = currentCanvas;
+          const oldCtx = currentCtx;
+          currentCanvas = scratchCanvas;
+          currentCtx = scratchCtx;
+          scratchCanvas = oldCanvas;
+          scratchCtx = oldCtx;
+        };
+
         try {
-          const pixelateBase = (overlayCfg && overlayCfg.pixelate) ? Math.max(2, overlayCfg.pixelate) : (cfg && cfg.pixelate ? Math.max(2, cfg.pixelate) : 0);
-          if (pixelateBase) {
-            const scale = pixelateBase;
-            const smallW = Math.max(1, Math.round(rect.w / scale));
-            const smallH = Math.max(1, Math.round(rect.h / scale));
-            surface.offscreen.width = smallW;
-            surface.offscreen.height = smallH;
-            surface.offctx.setTransform(1, 0, 0, 1, 0, 0);
-            surface.offctx.imageSmoothingEnabled = true;
-            surface.offctx.clearRect(0, 0, smallW, smallH);
-            surface.offctx.filter = "none";
-            const blur = overlayCfg && overlayCfg.blur ? overlayCfg.blur : (cfg && cfg.blur ? cfg.blur : 0);
-            if (blur) surface.offctx.filter = `blur(${blur}px)`;
-            drawCropped(surface.offctx, 0, 0, smallW, smallH);
-            ctx.imageSmoothingEnabled = false;
-            ctx.filter = colorFilter;
-            ctx.drawImage(surface.offscreen, dx, dy, rect.w, rect.h);
-          } else {
-            ctx.imageSmoothingEnabled = true;
-            const blur = overlayCfg && overlayCfg.blur ? overlayCfg.blur : (cfg && cfg.blur ? cfg.blur : 0);
-            ctx.filter = buildCanvasFilterValue(colorFilter, blur);
-            drawCropped(ctx, dx, dy, rect.w, rect.h);
+          const colorFilter = Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length
+            ? overlayCfg.colorFilters.join(" ")
+            : "none";
+          if (colorFilter !== "none") {
+            resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
+            scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+            scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
+            scratchCtx.imageSmoothingEnabled = true;
+            scratchCtx.filter = colorFilter;
+            scratchCtx.drawImage(currentCanvas, 0, 0, scratchCanvas.width, scratchCanvas.height);
+            scratchCtx.filter = "none";
+            swapBuffers();
           }
-          drew = true;
+          applyPixelOpsToCanvas(currentCanvas, overlayCfg);
+          if (overlayCfg.pixelate > 0) {
+            const scale = Math.max(1, overlayCfg.pixelate);
+            resizeCanvasBuffer(surface.offscreen, Math.max(1, Math.round(currentCanvas.width / scale)), Math.max(1, Math.round(currentCanvas.height / scale)));
+            surface.offctx.setTransform(1, 0, 0, 1, 0, 0);
+            surface.offctx.clearRect(0, 0, surface.offscreen.width, surface.offscreen.height);
+            surface.offctx.imageSmoothingEnabled = true;
+            surface.offctx.filter = "none";
+            surface.offctx.drawImage(currentCanvas, 0, 0, surface.offscreen.width, surface.offscreen.height);
+            resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
+            scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+            scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
+            scratchCtx.imageSmoothingEnabled = false;
+            scratchCtx.filter = "none";
+            scratchCtx.drawImage(surface.offscreen, 0, 0, scratchCanvas.width, scratchCanvas.height);
+            swapBuffers();
+          }
+          if (overlayCfg.blur > 0) {
+            resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
+            scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+            scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
+            scratchCtx.imageSmoothingEnabled = true;
+            scratchCtx.filter = `blur(${overlayCfg.blur}px)`;
+            scratchCtx.drawImage(currentCanvas, 0, 0, scratchCanvas.width, scratchCanvas.height);
+            scratchCtx.filter = "none";
+            swapBuffers();
+          }
         } catch {
-          if (surface.canvas) surface.canvas.style.display = "none";
-          if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+          if (!surface.hasDrawn) {
+            if (surface.canvas) {
+              surface.canvas.style.display = "none";
+              surface.canvas.classList.remove("ready");
+            }
+            if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+          }
           return false;
         }
-        if (!drew) return false;
 
-        const chroma = overlayCfg && overlayCfg.chroma ? overlayCfg.chroma : (cfg && cfg.chroma ? cfg.chroma : 0);
-        if (chroma) {
-          ctx.save();
-          ctx.globalCompositeOperation = "screen";
-          ctx.globalAlpha = 0.18;
-          ctx.filter = "none";
-          drawCropped(ctx, dx + chroma, dy, rect.w, rect.h);
-          drawCropped(ctx, dx - chroma, dy, rect.w, rect.h);
-          ctx.restore();
+        frameCtx.imageSmoothingEnabled = true;
+        frameCtx.filter = "none";
+        frameCtx.drawImage(currentCanvas, dx, dy, rect.w, rect.h);
+
+        if (overlayCfg.chroma) {
+          frameCtx.save();
+          frameCtx.globalCompositeOperation = "screen";
+          frameCtx.globalAlpha = 0.18;
+          frameCtx.filter = "none";
+          frameCtx.drawImage(currentCanvas, dx + overlayCfg.chroma, dy, rect.w, rect.h);
+          frameCtx.drawImage(currentCanvas, dx - overlayCfg.chroma, dy, rect.w, rect.h);
+          frameCtx.restore();
         }
 
-        const scanlines = overlayCfg && overlayCfg.scanlines ? overlayCfg.scanlines : (cfg && cfg.scanlines ? cfg.scanlines : 0);
-        if (scanlines) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(dx, dy, rect.w, rect.h);
-          ctx.clip();
-          ctx.globalAlpha = scanlines;
-          const pattern = ensureScanlinePattern(ctx);
+        if (overlayCfg.scanlines) {
+          frameCtx.save();
+          frameCtx.beginPath();
+          frameCtx.rect(dx, dy, rect.w, rect.h);
+          frameCtx.clip();
+          frameCtx.globalAlpha = overlayCfg.scanlines;
+          const pattern = ensureScanlinePattern(frameCtx);
           if (pattern) {
-            ctx.fillStyle = pattern;
-            const slBlur = overlayCfg && overlayCfg.scanlineBlur ? overlayCfg.scanlineBlur : (cfg && cfg.scanlineBlur ? cfg.scanlineBlur : 0);
-            if (slBlur) ctx.filter = `blur(${slBlur}px)`;
+            frameCtx.fillStyle = pattern;
+            if (overlayCfg.scanlineBlur) frameCtx.filter = `blur(${overlayCfg.scanlineBlur}px)`;
             if (animatedForSurface) {
-              ctx.translate(0, (time * 0.015) % 4);
+              frameCtx.translate(0, (time * 0.015) % 4);
             }
-            ctx.fillRect(dx, dy, rect.w, rect.h);
+            frameCtx.fillRect(dx, dy, rect.w, rect.h);
           }
-          ctx.restore();
+          frameCtx.restore();
         }
 
-        const grain = overlayCfg && overlayCfg.grain ? overlayCfg.grain : (cfg && cfg.grain ? cfg.grain : 0);
-        if (grain) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(dx, dy, rect.w, rect.h);
-          ctx.clip();
+        if (overlayCfg.grain) {
+          frameCtx.save();
+          frameCtx.beginPath();
+          frameCtx.rect(dx, dy, rect.w, rect.h);
+          frameCtx.clip();
           const noiseCanvas = ensureNoiseCanvas();
           if (animatedForSurface) {
             if (time - noise.lastTime > 80) {
@@ -1694,25 +2761,24 @@
             updateNoiseCanvas();
             noise.lastTime = time;
           }
-          const pattern = ctx.createPattern(noiseCanvas, "repeat");
+          const pattern = frameCtx.createPattern(noiseCanvas, "repeat");
           if (pattern) {
-            ctx.globalAlpha = grain;
-            ctx.globalCompositeOperation = "overlay";
-            ctx.fillStyle = pattern;
-            ctx.fillRect(dx, dy, rect.w, rect.h);
+            frameCtx.globalAlpha = overlayCfg.grain;
+            frameCtx.globalCompositeOperation = "overlay";
+            frameCtx.fillStyle = pattern;
+            frameCtx.fillRect(dx, dy, rect.w, rect.h);
           }
-          ctx.restore();
+          frameCtx.restore();
         }
 
-        const vignette = overlayCfg && overlayCfg.vignette ? overlayCfg.vignette : (cfg && cfg.vignette ? cfg.vignette : 0);
-        if (vignette) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(dx, dy, rect.w, rect.h);
-          ctx.clip();
+        if (overlayCfg.vignette) {
+          frameCtx.save();
+          frameCtx.beginPath();
+          frameCtx.rect(dx, dy, rect.w, rect.h);
+          frameCtx.clip();
           const cx = dx + rect.w * 0.5;
           const cy = dy + rect.h * 0.5;
-          const g = ctx.createRadialGradient(
+          const g = frameCtx.createRadialGradient(
             cx,
             cy,
             Math.min(rect.w, rect.h) * 0.2,
@@ -1721,30 +2787,32 @@
             Math.max(rect.w, rect.h) * 0.7
           );
           g.addColorStop(0, "rgba(0,0,0,0)");
-          g.addColorStop(1, `rgba(0,0,0,${vignette})`);
-          ctx.fillStyle = g;
-          ctx.fillRect(dx, dy, rect.w, rect.h);
-          ctx.restore();
+          g.addColorStop(1, `rgba(0,0,0,${overlayCfg.vignette})`);
+          frameCtx.fillStyle = g;
+          frameCtx.fillRect(dx, dy, rect.w, rect.h);
+          frameCtx.restore();
         }
 
-        const cornerRadius = overlayCfg && overlayCfg.cornerRadius ? overlayCfg.cornerRadius : (cfg && cfg.cornerRadius ? cfg.cornerRadius : 0);
-        if (cornerRadius) {
-          const radius = Math.max(0, Math.min(rect.w, rect.h) * cornerRadius);
-          applyRoundedCornerMask(ctx, { x: dx, y: dy, w: rect.w, h: rect.h }, radius);
+        if (overlayCfg.cornerRadius) {
+          const radius = Math.max(0, Math.min(rect.w, rect.h) * overlayCfg.cornerRadius);
+          applyRoundedCornerMask(frameCtx, { x: dx, y: dy, w: rect.w, h: rect.h }, radius);
         }
 
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.filter = "none";
+        ctx.clearRect(0, 0, pixelW, pixelH);
+        ctx.drawImage(surface.framescreen, 0, 0, pixelW, pixelH);
         surface.canvas.style.display = "block";
         surface.canvas.classList.add("ready");
         surface.hasDrawn = true;
+        surface.awaitingFreshFrame = false;
         if (surface.mediaEl) {
           if (isGifImage) surface.mediaEl.classList.remove("mediaHidden");
           else surface.mediaEl.classList.add("mediaHidden");
         }
 
-        const needsAnim = animatedForSurface && (
-          (cfg && (cfg.grain || cfg.scanlines || cfg.jitter || cfg.chroma))
-          || (overlayCfg && (overlayCfg.grain || overlayCfg.scanlines || overlayCfg.jitter || overlayCfg.chroma))
-        );
+        const needsAnim = animatedForSurface && !!(overlayCfg.grain || overlayCfg.scanlines || overlayCfg.jitter || overlayCfg.chroma);
         if (isVideo) {
           if (surface.videoFrameActive) {
             return needsAnim;
@@ -1800,28 +2868,22 @@
       return getInteractionModeFromOptions() === "grid";
     }
 
+    function sharedThumbWidthForMode(modeRaw) {
+      const mode = String(modeRaw || "medium");
+      if (mode === "tiny") return 96;
+      if (mode === "small") return 128;
+      if (mode === "high") return 224;
+      return 160;
+    }
+
     function imageThumbWidthForOption() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const m = opt ? String(opt.imageThumbSize || "medium") : "medium";
-      if (m === "tiny") return 120;
-      if (m === "small") return 220;
-      if (m === "high") return 900;
-      return 420;
+      return sharedThumbWidthForMode(opt ? String(opt.imageThumbSize || "medium") : "medium");
     }
 
     function videoThumbWidthForOption() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const m = opt ? String(opt.videoThumbSize || "medium") : "medium";
-      if (isGridInteractionMode()) {
-        if (m === "tiny") return 120;
-        if (m === "small") return 220;
-        if (m === "high") return 900;
-        return 420;
-      }
-      if (m === "tiny") return 100;
-      if (m === "small") return 180;
-      if (m === "high") return 520;
-      return 240;
+      return sharedThumbWidthForMode(opt ? String(opt.videoThumbSize || "medium") : "medium");
     }
 
     function setOptionsStatus(text) {
@@ -1870,14 +2932,22 @@
       else root.removeAttribute("data-retro");
     }
 
+    function syncThumbFilterKeyWithCurrentAppearanceContext() {
+      const nextThumbKey = buildThumbFilterKey();
+      if (nextThumbKey === THUMB_FILTER_KEY) return false;
+      THUMB_FILTER_KEY = nextThumbKey;
+      if (WS.root) invalidateAllThumbs();
+      return true;
+    }
+
     function applyMediaFilterFromOptions() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const prevFilterMode = MEDIA_FILTER_STATE.mode || "off";
       MEDIA_OVERLAY_STATE = buildMediaOverlayConfigFromOptions(opt);
       const appEl = document.getElementById("app");
       if (!appEl) return;
-      const filter = getMediaFilterForType();
-      if (filter && filter !== "off") appEl.setAttribute("data-media-filter", "vibrant-overlay");
+      const filter = anyMediaFilterEnabled() ? "custom" : "off";
+      if (filter && filter !== "off") appEl.setAttribute("data-media-filter", "custom-overlay");
       else appEl.removeAttribute("data-media-filter");
       const root = document.documentElement;
       if (root) {
@@ -1895,17 +2965,14 @@
           MediaFilterEngine.detach(slot.surfaceName);
         }
       }
-      const nextThumbKey = buildThumbFilterKey();
-      if (nextThumbKey !== THUMB_FILTER_KEY) {
-        THUMB_FILTER_KEY = nextThumbKey;
+      if (syncThumbFilterKeyWithCurrentAppearanceContext()) {
         if (WS.root) {
-          invalidateAllThumbs();
           renderPreviewPane(false, true);
           kickVideoThumbsForPreview();
           kickImageThumbsForPreview();
         }
       }
-      const filtersActive = mediaFilterEnabled();
+      const filtersActive = anyMediaFilterEnabled();
       if (!filtersActive) {
         MediaFilterEngine.reset("preview");
         MediaFilterEngine.reset("viewer");
@@ -2037,10 +3104,7 @@
     }
 
     function mediaFilterEnabled() {
-      const mode = getMediaFilterForType();
-      const intensity = getMediaFilterIntensity();
-      const baseFilterOn = (mode && mode !== "off" && !!MEDIA_FILTER_CONFIGS[mode] && intensity > 0);
-      return !!baseFilterOn || crtOverlayEnabled();
+      return anyMediaFilterEnabled();
     }
 
     function formatBytes(bytes) {
@@ -2067,12 +3131,12 @@
           processingTarget = null;
         }
       }
-      if (!mediaFilterEnabled() || !mediaProcessingEnabledForTarget(processingTarget)) {
+      if (!resolveMediaOverlayConfigForTarget(processingTarget)) {
         mediaEl.classList.remove("mediaHidden");
         MediaFilterEngine.detach(surfaceName);
         return;
       }
-      MediaFilterEngine.attach(surfaceName, mediaEl, container, type, getMediaFilterForType(), processingTarget);
+      MediaFilterEngine.attach(surfaceName, mediaEl, container, type, getMediaFilterForType(processingTarget), processingTarget);
     }
 
     function clearPendingFilmCornerMask(mediaEl) {
@@ -2084,9 +3148,9 @@
     function applyPendingFilmCornerMask(mediaEl, processingTarget = null) {
       if (!mediaEl) return;
       clearPendingFilmCornerMask(mediaEl);
-      if (!mediaFilterEnabled()) return;
-      if (!mediaProcessingEnabledForTarget(processingTarget)) return;
-      const cornerRadius = Number((MEDIA_OVERLAY_STATE && MEDIA_OVERLAY_STATE.cornerRadius) || 0);
+      const overlayCfg = resolveMediaOverlayConfigForTarget(processingTarget);
+      if (!overlayCfg) return;
+      const cornerRadius = Number((overlayCfg && overlayCfg.cornerRadius) || 0);
       if (!(cornerRadius > 0)) return;
       const pct = Math.max(0, Math.min(50, cornerRadius * 100));
       mediaEl.style.setProperty("--pending-film-corner-radius", `${pct}%`);
@@ -2455,7 +3519,7 @@
       { id: "navigation", label: "Navigation" },
       { id: "general", label: "General" },
       { id: "playback", label: "Playback" },
-      { id: "overlays", label: "Overlays" },
+      { id: "overlays", label: "Appearance" },
       { id: "filenames", label: "Filenames" }
     ];
 
@@ -2466,6 +3530,8 @@
       { id: "selectRight", label: "Right selection", hint: "Move selection right.", section: "navigation" },
       { id: "enterDir", label: "Open selection", hint: "Open the selected item.", section: "navigation" },
       { id: "leaveDir", label: "Exit selection", hint: "Exit the current item or folder.", section: "navigation" },
+      { id: "prevFolder", label: "Previous folder", hint: "Jump to the previous folder and focus its first file.", section: "navigation" },
+      { id: "nextFolder", label: "Next folder", hint: "Jump to the next folder and focus its first file.", section: "navigation" },
       { id: "randomJump", label: "Random action", hint: "Run the configured random action behavior.", section: "general" },
       { id: "cycleFilter", label: "Cycle filter", hint: "Cycle the content filter.", section: "general" },
       { id: "slideshow", label: "Slideshow mode", hint: "Toggle slideshow.", section: "general" },
@@ -2481,15 +3547,6 @@
       { id: "seekForward", label: "Video skip forward", hint: "Seek video forward.", section: "playback" },
       { id: "playPause", label: "Pause/Play video", hint: "Toggle video playback.", section: "playback" },
       { id: "muteToggle", label: "Mute/Unmute video", hint: "Toggle video mute.", section: "playback" },
-      { id: "toggleVibrantOverlay", label: "Toggle vibrant overlay", hint: "Toggle the vibrant color overlay.", section: "overlays" },
-      { id: "stepVibrantOverlayIntensity", label: "Step vibrant overlay intensity", hint: "Increase vibrant overlay intensity by one step.", section: "overlays" },
-      { id: "toggleFilmGrainOverlay", label: "Toggle film grain overlay", hint: "Toggle film grain overlay.", section: "overlays" },
-      { id: "stepFilmGrainAmount", label: "Step film grain amount", hint: "Increase film grain amount by one step.", section: "overlays" },
-      { id: "toggleVhsOverlay", label: "Toggle VHS overlay", hint: "Toggle VHS overlay.", section: "overlays" },
-      { id: "stepVhsIntensity", label: "Step VHS intensity", hint: "Increase VHS intensity by one step.", section: "overlays" },
-      { id: "toggleFilmCornersOverlay", label: "Toggle film corners overlay", hint: "Toggle film corners overlay.", section: "overlays" },
-      { id: "togglePixelatedOverlay", label: "Toggle pixelated overlay", hint: "Toggle pixelated overlay.", section: "overlays" },
-      { id: "stepPixelationResolution", label: "Step pixelation resolution", hint: "Increase pixelation resolution by one step.", section: "overlays" },
       { id: "toggleAnimatedFilters", label: "Cycle animated filters", hint: "Cycle animated filters.", section: "overlays" },
       { id: "toggleHideFileExtensions", label: "Toggle hide file extensions", hint: "Toggle hiding file extensions.", section: "filenames" },
       { id: "toggleHideBeforeLastDash", label: "Toggle trim before last dash", hint: "Toggle trimming before the last dash.", section: "filenames" },
@@ -2514,6 +3571,45 @@
       { id: "gridGalleryNext", label: "Next media", hint: "In gallery, move to next media.", section: "gridgallery" },
       { id: "gridGalleryBack", label: "Back from gallery", hint: "Exit gallery to the prior grid context.", section: "gridgallery" }
     ];
+
+    const APPEARANCE_PRESET_KEYBIND_ACTION_PREFIX = "toggleAppearancePreset:";
+
+    function appearancePresetKeybindActionId(presetId) {
+      const id = normalizeAppearancePresetIdValue(presetId);
+      return id ? `${APPEARANCE_PRESET_KEYBIND_ACTION_PREFIX}${id}` : "";
+    }
+
+    function appearancePresetIdFromKeybindAction(actionId) {
+      const raw = String(actionId || "");
+      if (!raw.startsWith(APPEARANCE_PRESET_KEYBIND_ACTION_PREFIX)) return "";
+      return normalizeAppearancePresetIdValue(raw.slice(APPEARANCE_PRESET_KEYBIND_ACTION_PREFIX.length));
+    }
+
+    function isAppearancePresetKeybindAction(actionId) {
+      return !!appearancePresetIdFromKeybindAction(actionId);
+    }
+
+    function getAppearancePresetKeybindActions(presets = null) {
+      const source = Array.isArray(presets) ? presets : defaultAppearancePresets();
+      const out = [];
+      for (let i = 0; i < source.length; i++) {
+        const preset = source[i];
+        const presetId = normalizeAppearancePresetIdValue(preset && preset.id);
+        if (!presetId || presetId === BUILTIN_NULL_APPEARANCE_PRESET_ID) continue;
+        const presetName = normalizeAppearancePresetName(preset && preset.name, "Preset");
+        out.push({
+          id: appearancePresetKeybindActionId(presetId),
+          label: `Toggle preset: ${presetName}`,
+          hint: `Toggle appearance preset '${presetName}' on or off.`,
+          section: "overlays"
+        });
+      }
+      return out;
+    }
+
+    function paneKeybindActions(presets = null) {
+      return KEYBIND_ACTIONS.concat(getAppearancePresetKeybindActions(presets));
+    }
 
     const KEYBIND_LOCKED_ACTIONS = Object.freeze({
       scoreUpSelection: "=",
@@ -2546,6 +3642,8 @@
       selectRight: "d",
       leaveDir: "q",
       enterDir: "e",
+      prevFolder: "Command+w",
+      nextFolder: "Command+s",
       randomJump: "r",
       cycleFilter: "f",
       slideshow: "v",
@@ -2561,16 +3659,7 @@
       seekForward: "c",
       playPause: "x",
       muteToggle: "m",
-      toggleVibrantOverlay: "1",
-      stepVibrantOverlayIntensity: "Command+1",
-      toggleFilmGrainOverlay: "2",
-      stepFilmGrainAmount: "Command+2",
-      toggleVhsOverlay: "3",
-      toggleFilmCornersOverlay: "4",
-      stepVhsIntensity: "Command+3",
-      togglePixelatedOverlay: "5",
-      stepPixelationResolution: "Command+5",
-      toggleAnimatedFilters: "6",
+      toggleAnimatedFilters: "Command+i",
       toggleHideFileExtensions: "n",
       toggleHideBeforeLastDash: "Command+n",
       toggleHideAfterFirstUnderscore: "Command+Shift+n",
@@ -2599,8 +3688,8 @@
       });
     }
 
-    function defaultKeybinds() {
-      const bindings = KEYBIND_ACTIONS.map(def => {
+    function defaultKeybinds(presets = null) {
+      const bindings = paneKeybindActions(presets).map(def => {
         const key = KEYBIND_DEFAULT_BINDINGS[def.id] || "";
         return Object.assign({}, def, { key: normalizeKeyValue(key) });
       });
@@ -2641,8 +3730,8 @@
       });
     }
 
-    function normalizeKeybinds(log) {
-      const bindings = defaultKeybinds();
+    function normalizeKeybinds(log, presets = null) {
+      const bindings = defaultKeybinds(presets);
       const byId = new Map(bindings.map(b => [b.id, b]));
       const migrateIfKeyMatches = (id, legacyKey, nextKey) => {
         const binding = byId.get(id);
@@ -2652,13 +3741,7 @@
       };
       if (log && Array.isArray(log.bindings)) {
         for (const entry of log.bindings) {
-          const rawId = entry && entry.id ? String(entry.id) : "";
-          const id = (
-            (rawId === "stepVhsBlurAmount" || rawId === "stepVhsChromaAmount") ? "stepVhsIntensity"
-            : (rawId === "cycleMediaFilter") ? "toggleVibrantOverlay"
-            : (rawId === "stepMediaFilterIntensity") ? "stepVibrantOverlayIntensity"
-            : rawId
-          );
+          const id = entry && entry.id ? String(entry.id) : "";
           if (!id || !byId.has(id)) continue;
           if (KEYBIND_LOCKED_IDS.has(id)) continue;
           const key = normalizeKeyValue(entry.key || "");
@@ -2678,11 +3761,8 @@
       migrateIfKeyMatches("seekForward", "Command+e", "c");
       migrateIfKeyMatches("seekForward", "e", "c");
       migrateIfKeyMatches("playPause", "Space", "x");
-      migrateIfKeyMatches("toggleVibrantOverlay", "", "1");
-      migrateIfKeyMatches("stepVibrantOverlayIntensity", "", "Command+1");
-      migrateIfKeyMatches("togglePixelatedOverlay", "1", "5");
-      migrateIfKeyMatches("stepPixelationResolution", "Command+1", "Command+5");
-      migrateIfKeyMatches("toggleAnimatedFilters", "5", "6");
+      migrateIfKeyMatches("toggleAnimatedFilters", "5", "Command+i");
+      migrateIfKeyMatches("toggleAnimatedFilters", "6", "Command+i");
       migrateIfKeyMatches("favoriteSelection", "Ctrl+f", "f");
       const fileOnlyFoldersBinding = byId.get("toggleFileOnlyFoldersOpenInGallery");
       const tagSelectionBinding = byId.get("tagSelection");
@@ -2697,6 +3777,37 @@
       applyFixedKeybinds(bindings);
       enforceUniqueKeybinds(bindings, KEYBIND_LOCKED_IDS);
       return { bindings };
+    }
+
+    function syncPaneKeybindBindingsWithCurrentActions(markDirty = false) {
+      if (!WS || !WS.meta) return defaultKeybinds(defaultAppearancePresets());
+      const bindings = defaultKeybinds(WS.meta.appearancePresets);
+      const current = Array.isArray(WS.meta.keybinds) ? WS.meta.keybinds : [];
+      const currentById = new Map(current.map((binding) => [String(binding && binding.id || ""), binding]));
+      let changed = current.length !== bindings.length;
+      for (let i = 0; i < bindings.length; i++) {
+        const binding = bindings[i];
+        const existing = currentById.get(binding.id);
+        if (!existing) {
+          changed = true;
+          continue;
+        }
+        binding.key = normalizeKeyValue(existing.key || "");
+        if (
+          String(existing.label || "") !== String(binding.label || "")
+          || String(existing.hint || "") !== String(binding.hint || "")
+          || String(existing.section || "") !== String(binding.section || "")
+        ) {
+          changed = true;
+        }
+      }
+      applyFixedKeybinds(bindings);
+      enforceUniqueKeybinds(bindings, KEYBIND_LOCKED_IDS);
+      WS.meta.keybinds = bindings;
+      if (changed && markDirty) {
+        metaMarkDirty(META_DOC_IDS.keybinds);
+      }
+      return bindings;
     }
 
     function normalizeGridKeybinds(log) {
@@ -2735,9 +3846,9 @@
 
     function rebuildKeybindIndex() {
       KEYBIND_INDEX.clear();
-      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds();
-      applyFixedKeybinds(bindings);
-      enforceUniqueKeybinds(bindings, KEYBIND_LOCKED_IDS);
+      const bindings = (WS.meta && Array.isArray(WS.meta.keybinds))
+        ? syncPaneKeybindBindingsWithCurrentActions(false)
+        : defaultKeybinds(WS.meta && WS.meta.appearancePresets);
       for (const binding of bindings) {
         const key = normalizeKeyValue(binding.key);
         if (!key || KEYBIND_INDEX.has(key)) continue;
@@ -2771,6 +3882,8 @@
         dirTags: new Map(),
         tagAlbumByTag: new Map(),
         dirThumbPresets: new Map(),
+        dirAppearancePresetIds: new Map(),
+        tagAppearancePresetIds: new Map(),
         fileThumbCrop: new Map(),
         videoThumbTime: new Map(),
         tagThumbModes: new Map(),
@@ -2783,19 +3896,14 @@
         storageKey: "",
         fsRootHandle: null,
         fsSysDirHandle: null,
-        fsSiteLogDirHandle: null,
-        fsSiteLogProfilesDirHandle: null,
-        fsSiteLogIndexHandle: null,
-        fsSiteLogRenamesHandle: null,
-        fsScoresFileHandle: null,
-        fsTagsFileHandle: null,
-        fsOptionsFileHandle: null,
-        fsLegacyFileHandle: null,
-        fsKeybindsFileHandle: null,
+        fsDocHandles: Object.create(null),
+        fsLegacyDocHandles: Object.create(null),
         saveTimer: null,
         dirty: false,
+        dirtyDocIds: new Set(),
         options: normalizeOptions(null),
-        keybinds: defaultKeybinds(),
+        appearancePresets: defaultAppearancePresets(),
+        keybinds: defaultKeybinds(defaultAppearancePresets()),
         gridKeybinds: defaultGridKeybinds()
       },
 
@@ -2813,6 +3921,9 @@
         slideshowModeIndex: 0,
         slideshowActive: false,
         slideshowTimer: null,
+        appearancePresetDraftName: "",
+        appearancePresetEditingId: BUILTIN_NULL_APPEARANCE_PRESET_ID,
+        appearancePresetPromptMode: "",
         statusTimeout: null,
         scrollBusyDirs: false,
         scrollBusyPreview: false,
@@ -2887,7 +3998,9 @@
 
       // image thumbs
       imageThumbQueue: [],
-      imageThumbActive: 0
+      imageThumbActive: 0,
+      imageThumbQueuedIds: new Set(),
+      imageThumbInFlightIds: new Set()
     };
 
     /* FileRecord:
@@ -2924,6 +4037,8 @@
       WS.meta.dirTags.clear();
       WS.meta.tagAlbumByTag.clear();
       WS.meta.dirThumbPresets.clear();
+      WS.meta.dirAppearancePresetIds.clear();
+      WS.meta.tagAppearancePresetIds.clear();
       WS.meta.fileThumbCrop.clear();
       WS.meta.videoThumbTime.clear();
       WS.meta.tagThumbModes.clear();
@@ -2936,18 +4051,13 @@
       WS.meta.storageKey = "";
       WS.meta.fsRootHandle = null;
       WS.meta.fsSysDirHandle = null;
-      WS.meta.fsSiteLogDirHandle = null;
-      WS.meta.fsSiteLogProfilesDirHandle = null;
-      WS.meta.fsSiteLogIndexHandle = null;
-      WS.meta.fsSiteLogRenamesHandle = null;
-      WS.meta.fsScoresFileHandle = null;
-      WS.meta.fsTagsFileHandle = null;
-      WS.meta.fsOptionsFileHandle = null;
-      WS.meta.fsLegacyFileHandle = null;
-      WS.meta.fsKeybindsFileHandle = null;
+      WS.meta.fsDocHandles = Object.create(null);
+      WS.meta.fsLegacyDocHandles = Object.create(null);
       WS.meta.dirty = false;
+      WS.meta.dirtyDocIds = new Set();
       WS.meta.options = normalizeOptions(null);
-      WS.meta.keybinds = defaultKeybinds();
+      WS.meta.appearancePresets = defaultAppearancePresets();
+      WS.meta.keybinds = defaultKeybinds(WS.meta.appearancePresets);
       WS.meta.gridKeybinds = defaultGridKeybinds();
       if (WS.meta.saveTimer) { clearTimeout(WS.meta.saveTimer); WS.meta.saveTimer = null; }
 
@@ -2960,6 +4070,9 @@
       WS.view.randomFolderCache = new Map();
       WS.view.slideshowModeIndex = 0;
       WS.view.slideshowActive = false;
+      WS.view.appearancePresetDraftName = "";
+      WS.view.appearancePresetEditingId = BUILTIN_NULL_APPEARANCE_PRESET_ID;
+      WS.view.appearancePresetPromptMode = "";
       WS.view.bulkSelectMode = false;
       WS.view.bulkTagSelectedPaths = new Set();
       WS.view.bulkTagSelectionsByDir = new Map();
@@ -3027,6 +4140,8 @@
 
       WS.imageThumbQueue = [];
       WS.imageThumbActive = 0;
+      WS.imageThumbQueuedIds = new Set();
+      WS.imageThumbInFlightIds = new Set();
       PRELOAD_CACHE = new Map();
       PREVIEW_BULK_TAG_EDIT = null;
       closeThumbnailCropEditor();
@@ -3289,7 +4404,7 @@
         const pct = left / rect.width;
         if (!WS.meta.options || typeof WS.meta.options !== "object") WS.meta.options = normalizeOptions(null);
         WS.meta.options.leftPaneWidthPct = pct;
-        WS.meta.dirty = true;
+        metaTrackDirtyDocIds([META_DOC_IDS.prefGeneral]);
         if (typeof metaScheduleSave === "function") metaScheduleSave();
         setDividerPositionFromPct(pct);
         refreshFitInsidePreviewGrids();
@@ -3691,6 +4806,12 @@
     function openMenu(tabId) {
       MENU_OPEN = true;
       if (menuOverlay) menuOverlay.classList.add("active");
+      if (!MENU_HAS_OPENED) {
+        overlayWindowStates.menu.x = 8;
+        overlayWindowStates.menu.y = 8;
+        overlayWindowStates.menu.width = null;
+        overlayWindowStates.menu.height = Math.max(220, window.innerHeight - 16);
+      }
       requestAnimationFrame(() => applyOverlayWindowState("menu"));
       const next = MENU_TAB_IDS.includes(tabId)
         ? tabId
@@ -3990,7 +5111,7 @@
       const isGrid = isGridKeybindAction(actionId);
       const bindingList = isGrid
         ? (Array.isArray(WS.meta.gridKeybinds) ? WS.meta.gridKeybinds : defaultGridKeybinds())
-        : (Array.isArray(WS.meta.keybinds) ? WS.meta.keybinds : defaultKeybinds());
+        : syncPaneKeybindBindingsWithCurrentActions(false);
       const locked = isGrid ? isLockedGridKeybindAction(actionId) : isLockedKeybindAction(actionId);
       const lockedIds = isGrid ? null : KEYBIND_LOCKED_IDS;
       if (locked) return { ok: false, message: "This action is locked." };
@@ -4015,14 +5136,15 @@
       if (isGrid) WS.meta.gridKeybinds = bindingList;
       else WS.meta.keybinds = bindingList;
       rebuildKeybindIndex();
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.keybinds);
       return { ok: true, swapped: !!conflict };
     }
 
     function renderKeybindsUi(scope = "pane") {
       if (!keybindsBodyEl) return;
-      const paneBindings = (WS.meta && Array.isArray(WS.meta.keybinds)) ? WS.meta.keybinds : defaultKeybinds();
+      const paneBindings = (WS.meta && Array.isArray(WS.meta.keybinds))
+        ? syncPaneKeybindBindingsWithCurrentActions(false)
+        : defaultKeybinds(WS.meta && WS.meta.appearancePresets);
       const gridBindings = (WS.meta && Array.isArray(WS.meta.gridKeybinds)) ? WS.meta.gridKeybinds : defaultGridKeybinds();
       const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
       const allBindings = paneBindings.concat(gridBindings);
@@ -4116,8 +5238,7 @@
           const next = {};
           next.fileOnlyFoldersOpenInGallery = !!fileOnlyFoldersToggle.checked;
           WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(META_DOC_IDS.prefControls);
           setKeybindsStatus("Saved");
           applyOptionsEverywhere(false);
         });
@@ -4193,11 +5314,10 @@
     }, true);
 
     function resetKeybindsToDefaults() {
-      WS.meta.keybinds = defaultKeybinds();
+      WS.meta.keybinds = defaultKeybinds(WS.meta.appearancePresets);
       WS.meta.gridKeybinds = defaultGridKeybinds();
       rebuildKeybindIndex();
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.keybinds);
       KEYBIND_CAPTURE_ACTION_ID = "";
       renderKeybindsUi("pane");
       setKeybindsStatus("Reset");
@@ -4223,11 +5343,12 @@
       };
 
       const makeCheckRow = (title, hint, id, checked) => {
+        const hintHtml = hint ? `<div class="optHint">${escapeHtml(hint)}</div>` : "";
         return `
           <div class="optRow">
             <div class="optLeft">
               <div class="optTitle">${escapeHtml(title)}</div>
-              <div class="optHint">${escapeHtml(hint)}</div>
+              ${hintHtml}
             </div>
             <div class="optRight">
               <input id="${escapeHtml(id)}" type="checkbox"${checked ? " checked" : ""} />
@@ -4237,11 +5358,12 @@
       };
 
       const makeRangeRow = (title, hint, id, value, min, max, step, displayValue) => {
+        const hintHtml = hint ? `<div class="optHint">${escapeHtml(hint)}</div>` : "";
         return `
           <div class="optRow">
             <div class="optLeft">
               <div class="optTitle">${escapeHtml(title)}</div>
-              <div class="optHint">${escapeHtml(hint)}</div>
+              ${hintHtml}
             </div>
             <div class="optRight optRange">
               <input id="${escapeHtml(id)}" type="range" min="${min}" max="${max}" step="${step}" value="${escapeHtml(String(value))}" />
@@ -4252,14 +5374,56 @@
       };
 
       const makeActionRow = (title, hint, actionsHtml) => {
+        const hintHtml = hint ? `<div class="optHint">${escapeHtml(hint)}</div>` : "";
         return `
           <div class="optRow">
             <div class="optLeft">
               <div class="optTitle">${escapeHtml(title)}</div>
-              <div class="optHint">${escapeHtml(hint)}</div>
+              ${hintHtml}
             </div>
             <div class="optRight optActions">
               ${actionsHtml}
+            </div>
+          </div>
+        `;
+      };
+
+      const makeTextInputRow = (title, hint, id, value, placeholder = "") => {
+        const hintHtml = hint ? `<div class="optHint">${escapeHtml(hint)}</div>` : "";
+        return `
+          <div class="optRow">
+            <div class="optLeft">
+              <div class="optTitle">${escapeHtml(title)}</div>
+              ${hintHtml}
+            </div>
+            <div class="optRight optActions">
+              <input id="${escapeHtml(id)}" type="text" value="${escapeHtml(String(value || ""))}" placeholder="${escapeHtml(String(placeholder || ""))}" />
+            </div>
+          </div>
+        `;
+      };
+
+      const makeOverlayControlRow = (row) => {
+        const neutralValue = Number.isFinite(Number(row.neutralValue)) ? Number(row.neutralValue) : row.limits.min;
+        const currentValue = (row.nullable && row.value == null)
+          ? neutralValue
+          : (Number.isFinite(Number(row.value)) ? Number(row.value) : neutralValue);
+        const toggleHtml = row.showToggle === false
+          ? `<div class="optOverlayToggleSpacer" aria-hidden="true"></div>`
+          : `<input id="${escapeHtml(row.enabledId)}" type="checkbox"${opt[row.enabledKey] ? " checked" : ""} />`;
+        const hintHtml = row.hint ? `<div class="optHint">${escapeHtml(row.hint)}</div>` : "";
+        return `
+          <div class="optRow optOverlayRow">
+            <div class="optLeft">
+              <div class="optTitle">${escapeHtml(row.title)}</div>
+              ${hintHtml}
+            </div>
+            <div class="optOverlayMiddle optRange">
+              <input id="${escapeHtml(row.rangeId)}" type="range" min="${row.limits.min}" max="${row.limits.max}" step="${row.limits.step}" value="${escapeHtml(String(currentValue))}" />
+              <div class="optRangeValue" id="${escapeHtml(row.rangeId)}_value">${escapeHtml(row.formatter(currentValue))}</div>
+            </div>
+            <div class="optRight optOverlayToggle">
+              ${toggleHtml}
             </div>
           </div>
         `;
@@ -4296,6 +5460,30 @@
         { value: "on", label: "On" },
         { value: "videos", label: "Videos only" }
       ];
+      const activeAppearancePresetId = effectiveActiveAppearancePresetId();
+      const editingAppearancePresetId = (() => {
+        return currentAppearanceEditingTargetId();
+      })();
+      if (WS.view) WS.view.appearancePresetEditingId = editingAppearancePresetId;
+      const editingAppearancePreset = getAppearancePresetById(editingAppearancePresetId);
+      const appearancePresetPromptModeRaw = String(WS.view && WS.view.appearancePresetPromptMode || "");
+      const appearancePresetPromptMode = (appearancePresetPromptModeRaw === "save" || appearancePresetPromptModeRaw === "delete")
+        ? appearancePresetPromptModeRaw
+        : "";
+      const appearancePresetDraftName = (() => {
+        const raw = String(WS.view && typeof WS.view.appearancePresetDraftName === "string" ? WS.view.appearancePresetDraftName : "");
+        if (raw) return raw;
+        if (editingAppearancePreset && editingAppearancePresetId !== BUILTIN_NULL_APPEARANCE_PRESET_ID) return String(editingAppearancePreset.name || "");
+        return "";
+      })();
+      const appearancePresetSelectOptions = (Array.isArray(WS.meta && WS.meta.appearancePresets ? WS.meta.appearancePresets : null)
+        ? WS.meta.appearancePresets
+        : defaultAppearancePresets()
+      ).map((preset) => ({
+        value: normalizeAppearancePresetIdValue(preset && preset.id),
+        label: String(preset && preset.name ? preset.name : "Preset")
+      }));
+      const activeAppearancePresetLabel = currentAppearanceStatusLabel(opt);
       const thumbnailStyleModes = [
         { value: "cropped", label: "Cropped" },
         { value: "aspect", label: "Aspect Ratio" }
@@ -4321,35 +5509,59 @@
         return `${Number.isInteger(n) ? n : n.toFixed(1)}x`;
       };
 
+      const formatPercentAmount = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        return `${Math.round(n * 100)}%`;
+      };
+
+      const formatSignedPercentAmount = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        const pct = Math.round(n * 100);
+        return `${pct > 0 ? "+" : ""}${pct}%`;
+      };
+
+      const formatDegreesAmount = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        return `${n > 0 ? "+" : ""}${Math.round(n)}deg`;
+      };
+
+      const formatPixelOffset = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        return `${Number(n.toFixed(2)).toString()}px`;
+      };
+
       const formatGrainAmount = (value) => {
         const n = Number(value);
         if (!Number.isFinite(n)) return "";
-        return `${Math.round(n * 100)}%`;
+        return formatPercentAmount(n);
       };
-
-      const pixelateResolutionValue = Number.isFinite(opt.crtPixelateResolution) ? opt.crtPixelateResolution : 4;
-      const grainAmountValue = Number.isFinite(opt.crtGrainAmount) ? opt.crtGrainAmount : 0.06;
-      const vhsIntensityValue = (function() {
-        const blur = Number(opt.vhsBlurAmount);
-        const chroma = Number(opt.vhsChromaAmount);
-        const blurOk = Number.isFinite(blur);
-        const chromaOk = Number.isFinite(chroma);
-        if (blurOk && chromaOk) return clampNumber((blur + chroma) * 0.5, 0, 3, 1.2);
-        if (blurOk) return clampNumber(blur, 0, 3, 1.2);
-        if (chromaOk) return clampNumber(chroma, 0, 3, 1.2);
-        return 1.2;
-      })();
-
-      const formatVhsIntensity = (value) => {
-        const n = Number(value);
-        if (!Number.isFinite(n)) return "";
-        return `${n.toFixed(1)}px`;
-      };
-      const formatVibrantOverlayIntensity = (value) => {
-        const n = Number(value);
-        if (!Number.isFinite(n)) return "";
-        return `${Math.round(n * 100)}%`;
-      };
+      const colorOverlayRows = [
+        { title: "Brightness", hint: "Bias the image brighter or darker.", enabledId: "opt_brightnessOverlayEnabled", enabledKey: "brightnessOverlayEnabled", rangeId: "opt_brightnessOverlayIntensity", amountKey: "brightnessOverlayIntensity", value: opt.brightnessOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.brightness, formatter: formatSignedPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Contrast", hint: "Lift or flatten contrast.", enabledId: "opt_contrastOverlayEnabled", enabledKey: "contrastOverlayEnabled", rangeId: "opt_contrastOverlayIntensity", amountKey: "contrastOverlayIntensity", value: opt.contrastOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.contrast, formatter: formatSignedPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Saturation", hint: "Push or crush saturation in either direction.", enabledId: "opt_saturationOverlayEnabled", enabledKey: "saturationOverlayEnabled", rangeId: "opt_saturationOverlayIntensity", amountKey: "saturationOverlayIntensity", value: opt.saturationOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.saturation, formatter: formatSignedPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Temperature", hint: "Warmer yellow/red positive, cooler blue negative.", enabledId: "opt_warmthOverlayEnabled", enabledKey: "warmthOverlayEnabled", rangeId: "opt_warmthOverlayIntensity", amountKey: "warmthOverlayIntensity", value: opt.warmthOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.warmth, formatter: formatSignedPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Hue shift", hint: "Rotate hue across a broad bipolar range.", enabledId: "opt_hueShiftOverlayEnabled", enabledKey: "hueShiftOverlayEnabled", rangeId: "opt_hueShiftOverlayIntensity", amountKey: "hueShiftOverlayIntensity", value: opt.hueShiftOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.hueShift, formatter: formatDegreesAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Black crush", hint: "Clip and remap shadow detail.", enabledId: "opt_blackCrushOverlayEnabled", enabledKey: "blackCrushOverlayEnabled", rangeId: "opt_blackCrushOverlayIntensity", amountKey: "blackCrushOverlayIntensity", value: opt.blackCrushOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.blackCrush, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "White crush", hint: "Clip and remap highlights.", enabledId: "opt_whiteCrushOverlayEnabled", enabledKey: "whiteCrushOverlayEnabled", rangeId: "opt_whiteCrushOverlayIntensity", amountKey: "whiteCrushOverlayIntensity", value: opt.whiteCrushOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.whiteCrush, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Color crush", hint: "Posterize colors into fewer steps.", enabledId: "opt_colorCrushOverlayEnabled", enabledKey: "colorCrushOverlayEnabled", rangeId: "opt_colorCrushOverlayIntensity", amountKey: "colorCrushOverlayIntensity", value: opt.colorCrushOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.colorCrush, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Solarize", hint: "Reverse the brighter values for a more wild analog-lab look.", enabledId: "opt_solarizeOverlayEnabled", enabledKey: "solarizeOverlayEnabled", rangeId: "opt_solarizeOverlayIntensity", amountKey: "solarizeOverlayIntensity", value: opt.solarizeOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.solarize, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 }
+      ];
+      const effectOverlayRows = [
+        { title: "Blur", hint: "Blur the image after pixelation, so block edges soften instead of sharpen.", enabledId: "opt_blurOverlayEnabled", enabledKey: "blurOverlayEnabled", rangeId: "opt_blurOverlayIntensity", amountKey: "blurOverlayIntensity", value: opt.blurOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.blur, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Grain", hint: "Noise/grain pass.", enabledId: "opt_grainOverlayEnabled", enabledKey: "grainOverlayEnabled", rangeId: "opt_grainOverlayIntensity", amountKey: "grainOverlayIntensity", value: opt.grainOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.grain, formatter: formatGrainAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Vignette", hint: "Edge darkening.", enabledId: "opt_vignetteOverlayEnabled", enabledKey: "vignetteOverlayEnabled", rangeId: "opt_vignetteOverlayIntensity", amountKey: "vignetteOverlayIntensity", value: opt.vignetteOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.vignette, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Pixelation", hint: "Pixelate the processed image. Pixelation always happens before blur.", enabledId: "opt_pixelateOverlayEnabled", enabledKey: "pixelateOverlayEnabled", rangeId: "opt_pixelateOverlayIntensity", amountKey: "pixelateOverlayIntensity", value: opt.pixelateOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.pixelate, formatter: formatPixelateResolution, showToggle: false, nullable: true, neutralValue: OVERLAY_SLIDER_LIMITS.pixelate.min },
+        { title: "Scanlines", hint: "Fixed-order scanline pass after the image render.", enabledId: "opt_scanlinesOverlayEnabled", enabledKey: "scanlinesOverlayEnabled", rangeId: "opt_scanlinesOverlayIntensity", amountKey: "scanlinesOverlayIntensity", value: opt.scanlinesOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.scanlines, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Chroma split", hint: "Color-channel split/fringe.", enabledId: "opt_chromaOverlayEnabled", enabledKey: "chromaOverlayEnabled", rangeId: "opt_chromaOverlayIntensity", amountKey: "chromaOverlayIntensity", value: opt.chromaOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.chroma, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Jitter", hint: "Horizontal wobble on animated media.", enabledId: "opt_jitterOverlayEnabled", enabledKey: "jitterOverlayEnabled", rangeId: "opt_jitterOverlayIntensity", amountKey: "jitterOverlayIntensity", value: opt.jitterOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.jitter, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Scanline blur", hint: "Softens the scanline pass separately.", enabledId: "opt_scanlineBlurOverlayEnabled", enabledKey: "scanlineBlurOverlayEnabled", rangeId: "opt_scanlineBlurOverlayIntensity", amountKey: "scanlineBlurOverlayIntensity", value: opt.scanlineBlurOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.scanlineBlur, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Film corners", hint: "Rounded, old-film style corners.", enabledId: "opt_filmCornerOverlayEnabled", enabledKey: "filmCornerOverlayEnabled", rangeId: "opt_filmCornerOverlayIntensity", amountKey: "filmCornerOverlayIntensity", value: opt.filmCornerOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.filmCorner, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 }
+      ];
+      const buildOverlayRowsHtml = (rows) => rows.map((row) => makeOverlayControlRow(row)).join("");
 
       const sections = {
         general: {
@@ -4358,7 +5570,6 @@
 ${makeSelectRow("Interaction mode", "Choose between full-screen Grid Mode and classic Pane Mode.", "opt_interactionMode", getInteractionModeFromOptions(opt), interactionModes)}
 ${makeSelectRow("Folder sort", "Sort folders by name, score, recursive size, recursive count, or non-recursive count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes)}
 ${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
-${makeCheckRow("Show Up Directory item", "Show the synthetic Up Directory tile in Grid Mode folders.", "opt_showGridUpDirectoryEntry", !!opt.showGridUpDirectoryEntry)}
 ${makeCheckRow("Show root view", "Allow navigating above the root to a single root-folder portal card.", "opt_showRootView", opt.showRootView !== false)}
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
@@ -4369,16 +5580,26 @@ ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between
         appearance: {
           title: "Appearance",
           rows: `
-${makeCheckRow("Vibrant overlay", "Apply the Vibrant color treatment as an overlay.", "opt_vibrantOverlayEnabled", !!opt.vibrantOverlayEnabled)}
-${makeRangeRow("Vibrant overlay intensity", "Scales vibrant overlay strength from 0% (off) to 100% (full).", "opt_vibrantOverlayIntensity", Number.isFinite(opt.vibrantOverlayIntensity) ? opt.vibrantOverlayIntensity : 1, 0, 1, 0.05, formatVibrantOverlayIntensity(Number.isFinite(opt.vibrantOverlayIntensity) ? opt.vibrantOverlayIntensity : 1))}
-${makeCheckRow("Scanline overlay", "Add CRT scanlines over media.", "opt_crtScanlinesEnabled", !!opt.crtScanlinesEnabled)}
-${makeCheckRow("Pixelated overlay", "Pixelate media before applying filters.", "opt_crtPixelateEnabled", !!opt.crtPixelateEnabled)}
-${makeRangeRow("Pixelation resolution", "Higher values mean chunkier pixels.", "opt_crtPixelateResolution", pixelateResolutionValue, 2, 8, 0.5, formatPixelateResolution(pixelateResolutionValue))}
-${makeCheckRow("Film grain overlay", "Adds film grain noise overlay.", "opt_crtGrainEnabled", !!opt.crtGrainEnabled)}
-${makeRangeRow("Film grain amount", "Strength of the grain overlay.", "opt_crtGrainAmount", grainAmountValue, 0, 0.25, 0.01, formatGrainAmount(grainAmountValue))}
-${makeCheckRow("VHS overlay", "Soft, lo-def magnetic tape look.", "opt_vhsOverlayEnabled", !!opt.vhsOverlayEnabled)}
-${makeCheckRow("Film corners overlay", "Rounds media corners for an old film look.", "opt_filmCornerOverlayEnabled", !!opt.filmCornerOverlayEnabled)}
-${makeRangeRow("VHS intensity", "Controls VHS blur + chroma together.", "opt_vhsIntensityAmount", vhsIntensityValue, 0, 3, 0.1, formatVhsIntensity(vhsIntensityValue))}
+<div class="label" style="margin-bottom:8px;">Color processing always runs first. Pixelation always runs before blur. The processing order is fixed regardless of toggle order.</div>
+<div class="label" id="appearancePresetActiveStatus" style="margin-bottom:8px;">Current appearance: ${escapeHtml(activeAppearancePresetLabel)}</div>
+${makeSelectRow("Preset library", "Choose a saved preset to apply it immediately. Default is the no-processing preset. Edited sliders stay attached to the selected preset until you save or switch.", "opt_appearancePresetLibrary", editingAppearancePresetId, appearancePresetSelectOptions)}
+${makeActionRow("Preset actions", "Save asks for a preset name in this menu. Saving with an existing name replaces that preset. Delete removes the selected preset unless it is Default.", `
+  <button type="button" id="opt_appearancePreset_save">Save</button>
+  <button type="button" id="opt_appearancePreset_delete"${editingAppearancePresetId === BUILTIN_NULL_APPEARANCE_PRESET_ID ? " disabled" : ""}>Delete</button>
+`)}
+${appearancePresetPromptMode === "save" ? makeActionRow("Save preset", "Enter a preset name. Using an existing preset name replaces that preset with the current slider values.", `
+  <input id="opt_appearancePresetPromptName" type="text" value="${escapeHtml(appearancePresetDraftName)}" placeholder="Preset name" />
+  <button type="button" id="opt_appearancePresetPromptConfirm">Save</button>
+  <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
+`) : ``}
+${appearancePresetPromptMode === "delete" ? makeActionRow("Delete preset", `Delete '${appearancePresetDisplayName(editingAppearancePresetId, "Preset")}'? Folder and tag overrides using it will fall back to their next available appearance.`, `
+  <button type="button" id="opt_appearancePresetDeleteConfirm">Delete</button>
+  <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
+`) : ``}
+<h2>Color</h2>
+${buildOverlayRowsHtml(colorOverlayRows)}
+<h2 style="margin-top:18px;">Effects</h2>
+${buildOverlayRowsHtml(effectOverlayRows)}
 ${makeSelectRow("Animated filters", "Control animation for scanlines/grain/jitter.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
 ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
           `
@@ -4424,7 +5645,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const section = sections[activeSection];
 
       optionsBodyEl.innerHTML = `
-        <div class="label" style="margin-bottom:8px;">Option preferences are automatically stored in preferences.log.json in the .local-gallery system folder in the root directory.</div>
+        <div class="label" style="margin-bottom:8px;">Preferences are automatically stored in per-tab log files in the .local-gallery system folder in the root directory.</div>
         <h1>${escapeHtml(section.title)}</h1>
         ${section.rows}
       `;
@@ -4439,8 +5660,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const next = {};
           next[key] = valueParser ? valueParser(el.value) : el.value;
           WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
           setOptionsStatus("Saved");
           if (typeof onChange === "function") onChange(el.value);
           applyOptionsEverywhere(!!invalidateThumbs);
@@ -4456,18 +5676,23 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const next = {};
           next[key] = !!el.checked;
           WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
           setOptionsStatus("Saved");
           if (typeof onChange === "function") onChange(!!el.checked);
           applyOptionsEverywhere(false);
         });
       };
 
-      const bindRange = (id, key, onChange, formatter) => {
+      const bindRange = (id, key, onChange, formatter, config = null) => {
         const el = $(id);
         if (!el) return;
         const valueEl = $(`${id}_value`);
+        const neutralValue = config && Number.isFinite(Number(config.neutralValue)) ? Number(config.neutralValue) : null;
+        const nullable = !!(config && config.nullable);
+        const stepValue = Math.abs(Number(el.step) || 0);
+        const neutralEpsilon = Number.isFinite(Number(config && config.snapEpsilon))
+          ? Math.abs(Number(config.snapEpsilon))
+          : (stepValue > 0 ? (stepValue * 0.5) : 0.0001);
         const updateValue = () => {
           if (!valueEl) return;
           const nextVal = parseFloat(el.value);
@@ -4479,14 +5704,32 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         el.addEventListener("change", () => {
           const next = {};
           const val = parseFloat(el.value);
-          next[key] = Number.isFinite(val) ? val : 0;
+          let nextValue = Number.isFinite(val) ? val : 0;
+          if (nullable && neutralValue !== null && Math.abs(nextValue - neutralValue) <= neutralEpsilon) nextValue = null;
+          next[key] = nextValue;
           WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
           setOptionsStatus("Saved");
           if (typeof onChange === "function") onChange(next[key]);
           applyOptionsEverywhere(false);
         });
+        const rowEl = el.closest(".optOverlayRow");
+        if (rowEl && nullable && neutralValue !== null && !rowEl.dataset.overlayResetBound) {
+          rowEl.dataset.overlayResetBound = "1";
+          rowEl.addEventListener("dblclick", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const next = {};
+            next[key] = null;
+            WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
+            metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+            el.value = String(neutralValue);
+            updateValue();
+            setOptionsStatus("Saved");
+            if (typeof onChange === "function") onChange(next[key]);
+            applyOptionsEverywhere(false);
+          });
+        }
         updateValue();
       };
 
@@ -4508,8 +5751,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const next = {};
           keys.forEach((k) => { next[k] = nextVal; });
           WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
           setOptionsStatus("Saved");
           if (typeof onChange === "function") onChange(nextVal);
           applyOptionsEverywhere(false);
@@ -4545,14 +5787,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       });
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
-      bindCheck("opt_showGridUpDirectoryEntry", "showGridUpDirectoryEntry", () => {
-        rebuildDirectoriesEntries();
-        WS.nav.selectedIndex = findNearestSelectableIndex(Math.min(WS.nav.selectedIndex, Math.max(0, WS.nav.entries.length - 1)), 1);
-        syncPreviewToSelection();
-        renderDirectoriesPane(true);
-        renderPreviewPane(false, true);
-        syncButtons();
-      });
       bindCheck("opt_showRootView", "showRootView", (enabled) => {
         if (enabled) return;
         if (WS.view.aboveRootView) {
@@ -4575,36 +5809,73 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       });
       bindCheck("opt_showTagFolderSpacerRow", "showTagFolderSpacerRow");
       bindCheck("opt_clickSelectedRotatingThumbTeleports", "clickSelectedRotatingThumbTeleports");
-      bindCheck("opt_vibrantOverlayEnabled", "vibrantOverlayEnabled", () => {
-        applyMediaFilterFromOptions();
+      colorOverlayRows.forEach((row) => {
+        if (row.showToggle !== false) {
+          bindCheck(row.enabledId, row.enabledKey, () => {
+            applyMediaFilterFromOptions();
+          });
+        }
+        bindRange(row.rangeId, row.amountKey, () => {
+          applyMediaFilterFromOptions();
+          syncActiveAppearancePresetSelection(WS.meta.options);
+          updateAppearancePresetUiState();
+        }, row.formatter, { nullable: !!row.nullable, neutralValue: row.neutralValue });
       });
-      bindRange("opt_vibrantOverlayIntensity", "vibrantOverlayIntensity", () => {
-        applyMediaFilterFromOptions();
-      }, formatVibrantOverlayIntensity);
-      bindCheck("opt_crtScanlinesEnabled", "crtScanlinesEnabled", () => {
-        applyMediaFilterFromOptions();
+      effectOverlayRows.forEach((row) => {
+        if (row.showToggle !== false) {
+          bindCheck(row.enabledId, row.enabledKey, () => {
+            applyMediaFilterFromOptions();
+          });
+        }
+        bindRange(row.rangeId, row.amountKey, () => {
+          applyMediaFilterFromOptions();
+          syncActiveAppearancePresetSelection(WS.meta.options);
+          updateAppearancePresetUiState();
+        }, row.formatter, { nullable: !!row.nullable, neutralValue: row.neutralValue });
       });
-      bindCheck("opt_crtPixelateEnabled", "crtPixelateEnabled", () => {
-        applyMediaFilterFromOptions();
-      });
-      bindRange("opt_crtPixelateResolution", "crtPixelateResolution", () => {
-        applyMediaFilterFromOptions();
-      }, formatPixelateResolution);
-      bindCheck("opt_crtGrainEnabled", "crtGrainEnabled", () => {
-        applyMediaFilterFromOptions();
-      });
-      bindRange("opt_crtGrainAmount", "crtGrainAmount", () => {
-        applyMediaFilterFromOptions();
-      }, formatGrainAmount);
-      bindCheck("opt_vhsOverlayEnabled", "vhsOverlayEnabled", () => {
-        applyMediaFilterFromOptions();
-      });
-      bindCheck("opt_filmCornerOverlayEnabled", "filmCornerOverlayEnabled", () => {
-        applyMediaFilterFromOptions();
-      });
-      bindLinkedRange("opt_vhsIntensityAmount", ["vhsBlurAmount", "vhsChromaAmount"], () => {
-        applyMediaFilterFromOptions();
-      }, formatVhsIntensity);
+      const appearancePresetSelect = $("opt_appearancePresetLibrary");
+      const appearancePresetPromptInput = $("opt_appearancePresetPromptName");
+      const readAppearancePresetPromptInput = () => {
+        const raw = appearancePresetPromptInput ? appearancePresetPromptInput.value : (WS.view && WS.view.appearancePresetDraftName ? WS.view.appearancePresetDraftName : "");
+        return String(raw || "").replace(/\s+/g, " ").trim();
+      };
+      if (appearancePresetPromptInput) {
+        appearancePresetPromptInput.addEventListener("click", (e) => e.stopPropagation());
+        appearancePresetPromptInput.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+          if (e.key === "Escape") {
+            e.preventDefault();
+            if (WS.view) WS.view.appearancePresetPromptMode = "";
+            renderOptionsUi("appearance");
+            return;
+          }
+          if (e.key === "Enter") {
+            e.preventDefault();
+            const confirmBtn = $("opt_appearancePresetPromptConfirm");
+            if (confirmBtn) confirmBtn.click();
+          }
+        });
+        appearancePresetPromptInput.addEventListener("input", () => {
+          if (WS.view) WS.view.appearancePresetDraftName = appearancePresetPromptInput.value || "";
+        });
+      }
+      if (appearancePresetSelect) {
+        appearancePresetSelect.addEventListener("click", (e) => e.stopPropagation());
+        appearancePresetSelect.addEventListener("keydown", (e) => e.stopPropagation());
+        appearancePresetSelect.addEventListener("change", () => {
+          const presetId = normalizeAppearancePresetIdValue(appearancePresetSelect.value);
+          if (!presetId) return;
+          if (WS.view) {
+            WS.view.appearancePresetEditingId = presetId;
+            WS.view.appearancePresetPromptMode = "";
+            const preset = getAppearancePresetById(presetId);
+            WS.view.appearancePresetDraftName = (presetId === BUILTIN_NULL_APPEARANCE_PRESET_ID || !preset) ? "" : String(preset.name || "");
+          }
+          if (!applyAppearancePresetById(presetId)) return;
+          renderOptionsUi("appearance");
+          showStatusMessage(`Applied preset '${appearancePresetDisplayName(presetId)}'.`);
+        });
+      }
       bindSelect("opt_animatedMediaFilters", "animatedMediaFilters", false, () => {
         applyMediaFilterFromOptions();
       }, (val) => normalizeAnimatedMediaFiltersValue(val, "on"));
@@ -4631,8 +5902,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const next = {};
           next[key] = nextScale;
           WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, next));
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
           setOptionsStatus("Saved");
           applyOptionsEverywhere(false);
           if (MENU_ACTIVE_TAB === "thumbnails") {
@@ -4655,6 +5925,59 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       bindCheck("opt_hideUnderscoresInFileNames", "hideUnderscoresInFileNames");
       bindCheck("opt_hideBeforeLastDashInFileNames", "hideBeforeLastDashInFileNames");
       bindCheck("opt_hideAfterFirstUnderscoreInFileNames", "hideAfterFirstUnderscoreInFileNames");
+      bindActionBtn("opt_appearancePreset_save", () => {
+        if (WS.view) {
+          WS.view.appearancePresetPromptMode = "save";
+          if (!WS.view.appearancePresetDraftName) {
+            const editingPreset = getAppearancePresetById(currentAppearanceEditingTargetId());
+            WS.view.appearancePresetDraftName = editingPreset && editingPreset.id !== BUILTIN_NULL_APPEARANCE_PRESET_ID
+              ? String(editingPreset.name || "")
+              : "";
+          }
+        }
+        renderOptionsUi("appearance");
+        const promptInput = $("opt_appearancePresetPromptName");
+        if (promptInput) {
+          try { promptInput.focus(); promptInput.select(); } catch {}
+        }
+      });
+      bindActionBtn("opt_appearancePresetPromptConfirm", () => {
+        const presetName = readAppearancePresetPromptInput();
+        const result = saveAppearancePresetFromCurrent(presetName);
+        if (!result.ok) {
+          if (result.reason === "missing-name") showStatusMessage("Enter a preset name first.");
+          else if (result.reason === "reserved-name") showStatusMessage("'Default' is reserved.");
+          else showStatusMessage("Preset was not saved.");
+          return;
+        }
+        renderOptionsUi("appearance");
+        updateAppearancePresetUiState();
+        showStatusMessage(`${result.replaced ? "Updated" : "Saved"} preset '${appearancePresetDisplayName(result.preset && result.preset.id)}'.`);
+      });
+      bindActionBtn("opt_appearancePresetPromptCancel", () => {
+        if (WS.view) WS.view.appearancePresetPromptMode = "";
+        renderOptionsUi("appearance");
+      });
+      bindActionBtn("opt_appearancePreset_delete", () => {
+        const presetId = normalizeAppearancePresetIdValue(WS.view && WS.view.appearancePresetEditingId);
+        const preset = getAppearancePresetById(presetId);
+        if (!preset || preset.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return;
+        if (WS.view) WS.view.appearancePresetPromptMode = "delete";
+        renderOptionsUi("appearance");
+      });
+      bindActionBtn("opt_appearancePresetDeleteConfirm", () => {
+        const presetId = normalizeAppearancePresetIdValue(WS.view && WS.view.appearancePresetEditingId);
+        const preset = getAppearancePresetById(presetId);
+        if (!preset || preset.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return;
+        if (!deleteAppearancePresetById(presetId)) {
+          showStatusMessage("Preset could not be deleted.");
+          return;
+        }
+        renderOptionsUi("appearance");
+        updateAppearancePresetUiState();
+        applyOptionsEverywhere(true);
+        showStatusMessage(`Deleted preset '${preset.name}'.`);
+      });
       bindActionBtn("opt_thumb_reset_crops", () => {
         const count = WS.meta && WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
         if (!count) {
@@ -4717,8 +6040,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         dirSortSelect.addEventListener("keydown", (e) => e.stopPropagation());
         dirSortSelect.addEventListener("change", () => {
           WS.meta.dirSortMode = normalizeDirSortMode(dirSortSelect.value);
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(META_DOC_IDS.prefGeneral);
           setOptionsStatus("Saved");
           applyViewModesEverywhere(true);
         });
@@ -4727,8 +6049,20 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function resetOptionsToDefaults() {
       WS.meta.options = normalizeOptions(defaultOptions());
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      syncActiveAppearancePresetSelection(WS.meta.options);
+      if (WS.view) {
+        WS.view.appearancePresetEditingId = effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
+        WS.view.appearancePresetDraftName = "";
+        WS.view.appearancePresetPromptMode = "";
+      }
+      metaMarkDirty(
+        META_DOC_IDS.prefGeneral,
+        META_DOC_IDS.prefAppearance,
+        META_DOC_IDS.prefPlayback,
+        META_DOC_IDS.prefThumbnails,
+        META_DOC_IDS.prefFilenames,
+        META_DOC_IDS.prefControls
+      );
       setOptionsStatus("Reset");
       renderOptionsUi();
       applyOptionsEverywhere(true);
@@ -4752,8 +6086,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const ok = confirm(`Delete all ${count} score log event${count === 1 ? "" : "s"}?`);
         if (!ok) return;
         WS.meta.scoreHistory = [];
-        WS.meta.dirty = true;
-        metaScheduleSave();
+        metaMarkDirty(META_DOC_IDS.scoreHistory);
         renderCalendarUi();
         setCalendarStatus("Saved");
         showStatusMessage("Score history cleared.");
@@ -4769,8 +6102,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const rootPath = String(lineBtn.getAttribute("data-score-history-delete-line-root") || "");
           const removed = removeScoreHistoryLineByEventAndRoot(id, rootPath);
           if (removed > 0) {
-            WS.meta.dirty = true;
-            metaScheduleSave();
+            metaMarkDirty(META_DOC_IDS.scoreHistory);
             renderCalendarUi();
             setCalendarStatus("Saved");
             showStatusMessage("Score log line deleted.");
@@ -4786,8 +6118,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const id = String(eventBtn.getAttribute("data-score-history-delete-event") || "");
           const removed = removeScoreHistoryEntryById(id);
           if (removed > 0) {
-            WS.meta.dirty = true;
-            metaScheduleSave();
+            metaMarkDirty(META_DOC_IDS.scoreHistory);
             renderCalendarUi();
             setCalendarStatus("Saved");
             showStatusMessage("Score log entry deleted.");
@@ -4806,8 +6137,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           if (!ok) return;
           const removed = removeScoreHistoryEntriesByDateKey(dayKey);
           if (removed > 0) {
-            WS.meta.dirty = true;
-            metaScheduleSave();
+            metaMarkDirty(META_DOC_IDS.scoreHistory);
             renderCalendarUi();
             setCalendarStatus("Saved");
             showStatusMessage(`Deleted ${removed} score log event${removed === 1 ? "" : "s"}.`);
@@ -5176,8 +6506,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const p = String(path || "");
       const v = Number(score || 0) | 0;
       WS.meta.dirScores.set(p, v);
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.scores);
       applyScoreMutationRender(p);
     }
 
@@ -5243,8 +6572,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         changed
       });
 
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.scores, META_DOC_IDS.scoreHistory);
       applyScoreMutationRender(focusPath);
     }
 
@@ -5264,6 +6592,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       for (let i = 0; i < arr.length; i++) {
         const t = normalizeTag(arr[i]);
         if (!t) continue;
+        if (t === LEGACY_PROCESSING_DISABLED_TAG) continue;
         if (seen.has(t)) continue;
         seen.add(t);
         out.push(t);
@@ -5273,7 +6602,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function isReservedFolderTag(tag) {
       const t = String(tag || "");
-      return t === FAVORITE_TAG || t === HIDDEN_TAG || t === PROCESSING_DISABLED_TAG;
+      return t === FAVORITE_TAG || t === HIDDEN_TAG;
     }
 
     function normalizeTagsFromText(text) {
@@ -5308,7 +6637,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const prev = WS.meta.dirTags.get(p);
       if (arraysEqual(prev || [], merged)) return false;
       WS.meta.dirTags.set(p, merged);
-      WS.meta.dirty = true;
+      metaTrackDirtyDocIds([META_DOC_IDS.tags]);
       return true;
     }
 
@@ -5337,12 +6666,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!album) {
         if (!prev) return false;
         WS.meta.tagAlbumByTag.delete(tag);
-        WS.meta.dirty = true;
+        metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
         return true;
       }
       if (prev === album) return false;
       WS.meta.tagAlbumByTag.set(tag, album);
-      WS.meta.dirty = true;
+      metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
       return true;
     }
 
@@ -5356,9 +6685,110 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return tags.includes(HIDDEN_TAG);
     }
 
-    function metaHasProcessingDisabled(path) {
-      const tags = metaGetTags(path);
-      return tags.includes(PROCESSING_DISABLED_TAG);
+    function metaGetFolderAppearancePresetId(path) {
+      const p = normalizeDirPathValue(path);
+      if (!WS.meta || !WS.meta.dirAppearancePresetIds) return "";
+      const id = normalizeAppearancePresetIdValue(WS.meta.dirAppearancePresetIds.get(p));
+      return getAppearancePresetById(id) ? id : "";
+    }
+
+    function metaHasFolderAppearancePreset(path) {
+      return !!metaGetFolderAppearancePresetId(path);
+    }
+
+    function metaSetFolderAppearancePresetId(path, presetId) {
+      if (!WS.meta || !WS.meta.dirAppearancePresetIds) return false;
+      const p = normalizeDirPathValue(path);
+      const id = normalizeAppearancePresetIdValue(presetId);
+      if (!p && p !== "") return false;
+      if (p !== "" && !WS.dirByPath.has(p)) return false;
+      if (id && !getAppearancePresetById(id)) return false;
+      const prev = metaGetFolderAppearancePresetId(p);
+      if (prev === id) return false;
+      if (id) WS.meta.dirAppearancePresetIds.set(p, id);
+      else WS.meta.dirAppearancePresetIds.delete(p);
+      metaMarkDirty(META_DOC_IDS.appearanceAssignments);
+      return true;
+    }
+
+    function metaClearFolderAppearancePreset(path) {
+      return metaSetFolderAppearancePresetId(path, "");
+    }
+
+    function collectLegacyProcessingDisabledPathsFromLog(log) {
+      const out = new Set();
+      if (!log || typeof log !== "object") return out;
+      const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
+      for (const rawPath of Object.keys(folders)) {
+        const entry = folders[rawPath];
+        const rawTags = entry && Array.isArray(entry.tags) ? entry.tags : [];
+        for (let i = 0; i < rawTags.length; i++) {
+          if (normalizeTag(rawTags[i]) !== LEGACY_PROCESSING_DISABLED_TAG) continue;
+          out.add(normalizeDirPathValue(rawPath));
+          break;
+        }
+      }
+      return out;
+    }
+
+    function nearestFolderAppearancePresetIdForPath(path) {
+      if (!WS.meta || !WS.meta.dirAppearancePresetIds) return "";
+      const normalized = normalizeDirPathValue(path);
+      const node = WS.dirByPath && WS.dirByPath.get(normalized);
+      if (node) {
+        let cur = node;
+        while (cur) {
+          const id = metaGetFolderAppearancePresetId(cur.path || "");
+          if (id) return id;
+          cur = cur.parent;
+        }
+        return "";
+      }
+      let cur = normalized;
+      for (;;) {
+        const id = metaGetFolderAppearancePresetId(cur);
+        if (id) return id;
+        if (!cur) break;
+        const idx = cur.lastIndexOf("/");
+        cur = idx >= 0 ? cur.slice(0, idx) : "";
+      }
+      return "";
+    }
+
+    function cleanupLegacyProcessingDisabledMetadata(legacyDisabledPaths = null) {
+      if (!WS.meta) return false;
+      let changed = false;
+      const stripLegacyTagFromMap = (map, normalizeKey, deleteEmpty = false) => {
+        if (!map || typeof map.entries !== "function") return;
+        for (const [rawKey, rawTags] of Array.from(map.entries())) {
+          const tags = Array.isArray(rawTags) ? rawTags : [];
+          let hadLegacy = false;
+          for (let i = 0; i < tags.length; i++) {
+            if (normalizeTag(tags[i]) !== LEGACY_PROCESSING_DISABLED_TAG) continue;
+            hadLegacy = true;
+            break;
+          }
+          if (!hadLegacy) continue;
+          const nextTags = normalizeTagList(tags);
+          const key = typeof normalizeKey === "function" ? normalizeKey(rawKey) : rawKey;
+          if (deleteEmpty && !nextTags.length) map.delete(rawKey);
+          else map.set(key, nextTags);
+          changed = true;
+        }
+      };
+      stripLegacyTagFromMap(WS.meta.dirTags, normalizeDirPathValue, false);
+      stripLegacyTagFromMap(WS.meta.pendingTagsByPath, (path) => String(path || ""), true);
+      if (legacyDisabledPaths instanceof Set && WS.meta.dirAppearancePresetIds) {
+        for (const rawPath of legacyDisabledPaths) {
+          const path = normalizeDirPathValue(rawPath);
+          if (!WS.meta.dirAppearancePresetIds.has(path)) continue;
+          const presetId = normalizeAppearancePresetIdValue(WS.meta.dirAppearancePresetIds.get(path));
+          if (presetId !== BUILTIN_NULL_APPEARANCE_PRESET_ID) continue;
+          WS.meta.dirAppearancePresetIds.delete(path);
+          changed = true;
+        }
+      }
+      return changed;
     }
 
     function normalizeDirPathValue(path) {
@@ -5415,16 +6845,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!Number.isFinite(normalized)) {
         const had = WS.meta.videoThumbTime.delete(key);
         if (had) {
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(META_DOC_IDS.thumbnails);
         }
         return had;
       }
       const prev = metaGetVideoThumbnailTimeByRelPath(key);
       if (Number.isFinite(prev) && Math.abs(prev - normalized) < 0.001) return false;
       WS.meta.videoThumbTime.set(key, normalized);
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return true;
     }
 
@@ -5445,16 +6873,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (isThumbCropDefault(normalized)) {
         const had = WS.meta.fileThumbCrop.delete(key);
         if (had) {
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(META_DOC_IDS.thumbnails);
         }
         return had;
       }
       const prev = metaGetFileThumbnailCropByRelPath(key);
       if (prev && prev.x === normalized.x && prev.y === normalized.y && prev.zoom === normalized.zoom) return false;
       WS.meta.fileThumbCrop.set(key, normalized);
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return true;
     }
 
@@ -5553,8 +6979,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const prev = metaGetFolderThumbnailPresetRelPath(p);
       if (prev === normalizedRelPath && metaGetFolderThumbnailMode(p) === "manual") return false;
       WS.meta.dirThumbPresets.set(p, normalizedRelPath);
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return true;
     }
 
@@ -5564,8 +6989,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!WS.dirByPath.has(p)) return false;
       if (metaGetFolderThumbnailMode(p) === "none") return false;
       WS.meta.dirThumbPresets.set(p, FOLDER_THUMB_NONE_SENTINEL);
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return true;
     }
 
@@ -5575,8 +6999,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!WS.dirByPath.has(p)) return false;
       if (metaGetFolderThumbnailMode(p) === "rotate") return false;
       WS.meta.dirThumbPresets.set(p, FOLDER_THUMB_ROTATE_SENTINEL);
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return true;
     }
 
@@ -5585,8 +7008,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const p = normalizeDirPathValue(path);
       if (!WS.meta.dirThumbPresets.has(p)) return false;
       WS.meta.dirThumbPresets.delete(p);
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return true;
     }
 
@@ -5749,6 +7171,44 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return Array.from(out);
     }
 
+    function getAllTagAppearancePresetStateKeys() {
+      const out = new Set();
+      if (WS.meta && WS.meta.tagAppearancePresetIds) {
+        for (const key of WS.meta.tagAppearancePresetIds.keys()) {
+          const raw = String(key || "");
+          if (raw) out.add(raw);
+        }
+      }
+      return Array.from(out);
+    }
+
+    function rekeyTagAppearancePresetState(oldKey, newKey) {
+      const source = String(oldKey || "");
+      const target = String(newKey || "");
+      if (!source || !target || source === target) return false;
+      if (!WS.meta || !WS.meta.tagAppearancePresetIds || !WS.meta.tagAppearancePresetIds.has(source)) return false;
+      const presetId = normalizeAppearancePresetIdValue(WS.meta.tagAppearancePresetIds.get(source));
+      if (!WS.meta.tagAppearancePresetIds.has(target) && presetId) {
+        WS.meta.tagAppearancePresetIds.set(target, presetId);
+      }
+      WS.meta.tagAppearancePresetIds.delete(source);
+      metaTrackDirtyDocIds([META_DOC_IDS.appearanceAssignments]);
+      return true;
+    }
+
+    function clearTagAppearancePresetStateByMatch(matchFn) {
+      if (typeof matchFn !== "function" || !WS.meta || !WS.meta.tagAppearancePresetIds) return false;
+      const keys = getAllTagAppearancePresetStateKeys();
+      let changed = false;
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        if (!key || !matchFn(key)) continue;
+        if (WS.meta.tagAppearancePresetIds.delete(key)) changed = true;
+      }
+      if (changed) metaTrackDirtyDocIds([META_DOC_IDS.appearanceAssignments]);
+      return changed;
+    }
+
     function rekeyTagThumbnailState(oldKey, newKey) {
       const source = String(oldKey || "");
       const target = String(newKey || "");
@@ -5770,6 +7230,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         WS.meta.tagThumbPresets.delete(source);
         changed = true;
       }
+      if (changed) metaTrackDirtyDocIds([META_DOC_IDS.thumbnails]);
       return changed;
     }
 
@@ -5784,6 +7245,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const presetChanged = !!(WS.meta && WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(key));
         if (modeChanged || presetChanged) changed = true;
       }
+      if (changed) metaTrackDirtyDocIds([META_DOC_IDS.thumbnails]);
       return changed;
     }
 
@@ -5840,8 +7302,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
       if (!changed && !hadPreset) return false;
       if (changed) {
-        WS.meta.dirty = true;
-        metaScheduleSave();
+        metaMarkDirty(META_DOC_IDS.thumbnails);
       }
       return changed;
     }
@@ -5866,8 +7327,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (prevRelPath === normalizedRelPath && prevMode === "single") return false;
       WS.meta.tagThumbPresets.set(key, normalizedRelPath);
       WS.meta.tagThumbModes.set(key, "single");
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return true;
     }
 
@@ -5876,30 +7336,36 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!key || !WS.meta || !WS.meta.tagThumbPresets) return false;
       if (!WS.meta.tagThumbPresets.has(key)) return false;
       WS.meta.tagThumbPresets.delete(key);
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return true;
     }
 
-    function isPathOrAncestorProcessingDisabled(path) {
-      const p = String(path || "");
-      const node = WS.dirByPath && WS.dirByPath.get(p);
-      if (node) {
-        let cur = node;
-        while (cur) {
-          if (metaHasProcessingDisabled(cur.path || "")) return true;
-          cur = cur.parent;
-        }
-        return false;
-      }
-      let cur = p;
-      for (;;) {
-        if (metaHasProcessingDisabled(cur)) return true;
-        if (!cur) break;
-        const idx = cur.lastIndexOf("/");
-        cur = idx >= 0 ? cur.slice(0, idx) : "";
-      }
-      return false;
+    function metaGetTagAppearancePresetIdByKey(tagKey) {
+      const key = String(tagKey || "");
+      if (!key || !WS.meta || !WS.meta.tagAppearancePresetIds) return "";
+      const id = normalizeAppearancePresetIdValue(WS.meta.tagAppearancePresetIds.get(key));
+      return getAppearancePresetById(id) ? id : "";
+    }
+
+    function metaHasTagAppearancePresetByKey(tagKey) {
+      return !!metaGetTagAppearancePresetIdByKey(tagKey);
+    }
+
+    function metaSetTagAppearancePresetIdByKey(tagKey, presetId) {
+      const key = String(tagKey || "");
+      const id = normalizeAppearancePresetIdValue(presetId);
+      if (!key || !WS.meta || !WS.meta.tagAppearancePresetIds) return false;
+      if (id && !getAppearancePresetById(id)) return false;
+      const prev = metaGetTagAppearancePresetIdByKey(key);
+      if (prev === id) return false;
+      if (id) WS.meta.tagAppearancePresetIds.set(key, id);
+      else WS.meta.tagAppearancePresetIds.delete(key);
+      metaMarkDirty(META_DOC_IDS.appearanceAssignments);
+      return true;
+    }
+
+    function metaClearTagAppearancePresetByKey(tagKey) {
+      return metaSetTagAppearancePresetIdByKey(tagKey, "");
     }
 
     function collectDescendantDirPaths(path) {
@@ -5949,57 +7415,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
       applyMediaFilterFromOptions();
-    }
-
-    function setProcessingDisabledForPaths(paths, disable) {
-      const target = !!disable;
-      const list = Array.isArray(paths) ? paths : Array.from(paths || []);
-      let changed = false;
-      for (let i = 0; i < list.length; i++) {
-        const p = String(list[i] || "");
-        if (!p) continue;
-        const tags = metaGetTags(p);
-        const has = tags.includes(PROCESSING_DISABLED_TAG);
-        if (has === target) continue;
-        const next = target
-          ? [PROCESSING_DISABLED_TAG].concat(tags.filter(t => t !== PROCESSING_DISABLED_TAG))
-          : tags.filter(t => t !== PROCESSING_DISABLED_TAG);
-        WS.meta.dirTags.set(p, normalizeTagList(next));
-        changed = true;
-      }
-      return changed;
-    }
-
-    function metaSetProcessingDisabledRecursive(path, disable) {
-      const paths = collectDescendantDirPaths(path);
-      const changed = setProcessingDisabledForPaths(paths, disable);
-      if (!changed) return false;
-      WS.meta.dirty = true;
-      metaScheduleSave();
-      refreshAfterProcessingMetadataChange();
-      return true;
-    }
-
-    function metaSetProcessingDisabledBulk(paths, disable) {
-      const uniqueRoots = Array.from(new Set((paths || []).map(p => String(p || "")).filter(Boolean)));
-      if (!uniqueRoots.length) return false;
-      const all = [];
-      const seen = new Set();
-      for (let i = 0; i < uniqueRoots.length; i++) {
-        const descendants = collectDescendantDirPaths(uniqueRoots[i]);
-        for (let j = 0; j < descendants.length; j++) {
-          const p = String(descendants[j] || "");
-          if (!p || seen.has(p)) continue;
-          seen.add(p);
-          all.push(p);
-        }
-      }
-      const changed = setProcessingDisabledForPaths(all, disable);
-      if (!changed) return false;
-      WS.meta.dirty = true;
-      metaScheduleSave();
-      refreshAfterProcessingMetadataChange();
-      return true;
     }
 
     function metaSetUserTags(path, userTags) {
@@ -6177,8 +7592,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const has = tags.includes(FAVORITE_TAG);
       const next = has ? tags.filter(t => t !== FAVORITE_TAG) : [FAVORITE_TAG].concat(tags.filter(t => t !== FAVORITE_TAG));
       WS.meta.dirTags.set(p, normalizeTagList(next));
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.tags);
       syncFavoritesUi();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -6196,8 +7610,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const has = tags.includes(HIDDEN_TAG);
       const next = has ? tags.filter(t => t !== HIDDEN_TAG) : [HIDDEN_TAG].concat(tags.filter(t => t !== HIDDEN_TAG));
       WS.meta.dirTags.set(p, normalizeTagList(next));
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.tags);
       syncFavoritesUi();
       syncHiddenUi();
       rebuildDirectoriesEntries();
@@ -6228,8 +7641,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         WS.meta.dirTags.set(p, normalizeTagList(merged));
       }
 
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.tags);
       TAG_EDIT_PATH = null;
       syncFavoritesUi();
       syncHiddenUi();
@@ -6257,8 +7669,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const next = target ? [FAVORITE_TAG].concat(tags.filter(t => t !== FAVORITE_TAG)) : tags.filter(t => t !== FAVORITE_TAG);
         WS.meta.dirTags.set(p, normalizeTagList(next));
       }
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.tags);
       syncFavoritesUi();
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -6283,8 +7694,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const next = target ? [HIDDEN_TAG].concat(tags.filter(t => t !== HIDDEN_TAG)) : tags.filter(t => t !== HIDDEN_TAG);
         WS.meta.dirTags.set(p, normalizeTagList(next));
       }
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.tags);
       syncFavoritesUi();
       syncHiddenUi();
       rebuildDirectoriesEntries();
@@ -6339,6 +7749,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const folders = {};
       const tagByFp = {};
       const thumbnailByFolder = {};
+      const mediaPresetByFolder = {};
+      const mediaPresetByTagContext = {};
       const tagThumbnailModeByTag = {};
       const tagThumbnailByTag = {};
       const tagAlbumByTag = {};
@@ -6346,7 +7758,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const videoThumbnailTimeByRelPath = {};
       for (const [path, node] of WS.dirByPath.entries()) {
         const fp = WS.meta.dirFingerprints.get(path) || 0;
-        const tags = metaGetTags(path);
+        const tags = metaGetTags(path).filter((tag) => tag !== LEGACY_PROCESSING_DISABLED_TAG);
         folders[path] = { fp: fp >>> 0, tags: tags };
         if (WS.meta && WS.meta.dirThumbPresets && WS.meta.dirThumbPresets.has(path)) {
           const rawThumb = String(WS.meta.dirThumbPresets.get(path) || "");
@@ -6356,6 +7768,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             const presetRelPath = normalizeWorkspaceRelPath(rawThumb);
             if (presetRelPath) thumbnailByFolder[path] = presetRelPath;
           }
+        }
+        if (WS.meta && WS.meta.dirAppearancePresetIds && WS.meta.dirAppearancePresetIds.has(path)) {
+          const presetId = normalizeAppearancePresetIdValue(WS.meta.dirAppearancePresetIds.get(path));
+          if (presetId) mediaPresetByFolder[path] = presetId;
         }
         if (tags && tags.length) {
           const k = String(fp >>> 0);
@@ -6386,6 +7802,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const album = normalizeTagAlbumName(albumRaw);
           if (!tag || !album) continue;
           tagAlbumByTag[tag] = album;
+        }
+      }
+      if (WS.meta && WS.meta.tagAppearancePresetIds) {
+        for (const [tagKeyRaw, presetIdRaw] of WS.meta.tagAppearancePresetIds.entries()) {
+          const tagKey = String(tagKeyRaw || "");
+          const presetId = normalizeAppearancePresetIdValue(presetIdRaw);
+          if (!tagKey || !presetId) continue;
+          mediaPresetByTagContext[tagKey] = presetId;
         }
       }
       if (WS.meta && WS.meta.fileThumbCrop) {
@@ -6421,6 +7845,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         folders,
         tagByFp,
         thumbnailByFolder,
+        mediaPresetByFolder,
+        mediaPresetByTagContext,
         tagThumbnailModeByTag,
         tagThumbnailByTag,
         tagAlbumByTag,
@@ -6431,14 +7857,17 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function metaMakeOptionsLogObject() {
       return {
-        schema: 1,
+        schema: 2,
         updatedAt: Date.now(),
-      options: normalizeOptions(WS.meta.options || null)
-    };
-  }
+        options: normalizeOptions(WS.meta.options || null),
+        appearancePresets: normalizeAppearancePresetList(WS.meta && Array.isArray(WS.meta.appearancePresets) ? WS.meta.appearancePresets : null)
+      };
+    }
 
     function metaMakeKeybindsLogObject() {
-      const bindings = Array.isArray(WS.meta.keybinds) ? WS.meta.keybinds : defaultKeybinds();
+      const bindings = Array.isArray(WS.meta.keybinds)
+        ? syncPaneKeybindBindingsWithCurrentActions(false)
+        : defaultKeybinds(WS.meta && WS.meta.appearancePresets);
       const gridBindings = Array.isArray(WS.meta.gridKeybinds) ? WS.meta.gridKeybinds : defaultGridKeybinds();
       return {
         schema: 1,
@@ -6544,9 +7973,16 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
       const oldTagsByPath = new Map();
+      const legacyProcessingDisabledPaths = new Set();
 
       for (const p of Object.keys(folders)) {
         const it = folders[p];
+        const rawTags = it && Array.isArray(it.tags) ? it.tags : [];
+        for (let i = 0; i < rawTags.length; i++) {
+          if (normalizeTag(rawTags[i]) !== LEGACY_PROCESSING_DISABLED_TAG) continue;
+          legacyProcessingDisabledPaths.add(normalizeDirPathValue(p));
+          break;
+        }
         const tg = it && Array.isArray(it.tags) ? normalizeTagList(it.tags) : [];
         if (tg.length) oldTagsByPath.set(p, tg);
       }
@@ -6598,6 +8034,31 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         } else {
           WS.meta.dirThumbPresets.set(normalizedDirPath, normalizedRelPath);
         }
+      }
+
+      WS.meta.dirAppearancePresetIds.clear();
+      const mediaPresetByFolder = (log.mediaPresetByFolder && typeof log.mediaPresetByFolder === "object")
+        ? log.mediaPresetByFolder
+        : {};
+      for (const dirPath of Object.keys(mediaPresetByFolder)) {
+        const normalizedDirPath = normalizeDirPathValue(dirPath);
+        const presetId = normalizeAppearancePresetIdValue(mediaPresetByFolder[dirPath]);
+        if (!presetId) continue;
+        if (presetId === BUILTIN_NULL_APPEARANCE_PRESET_ID && legacyProcessingDisabledPaths.has(normalizedDirPath)) continue;
+        if (!normalizedDirPath && !WS.dirByPath.has("")) continue;
+        if (!WS.dirByPath.has(normalizedDirPath)) continue;
+        WS.meta.dirAppearancePresetIds.set(normalizedDirPath, presetId);
+      }
+
+      WS.meta.tagAppearancePresetIds.clear();
+      const mediaPresetByTagContext = (log.mediaPresetByTagContext && typeof log.mediaPresetByTagContext === "object")
+        ? log.mediaPresetByTagContext
+        : {};
+      for (const rawTagKey of Object.keys(mediaPresetByTagContext)) {
+        const tagKey = String(rawTagKey || "");
+        const presetId = normalizeAppearancePresetIdValue(mediaPresetByTagContext[rawTagKey]);
+        if (!tagKey || !presetId) continue;
+        WS.meta.tagAppearancePresetIds.set(tagKey, presetId);
       }
 
       WS.meta.tagThumbModes.clear();
@@ -6662,11 +8123,20 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (!Number.isFinite(timeValue)) continue;
         WS.meta.videoThumbTime.set(relPath, timeValue);
       }
+
+      if (cleanupLegacyProcessingDisabledMetadata()) {
+        metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+      }
     }
 
     function metaApplyOptionsLog(log) {
       if (!log || typeof log !== "object") return;
+      WS.meta.appearancePresets = normalizeAppearancePresetList(log.appearancePresets, !Array.isArray(log.appearancePresets));
       WS.meta.options = normalizeOptions(log.options || null);
+      syncActiveAppearancePresetSelection(WS.meta.options);
+      WS.view.appearancePresetEditingId = effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
+      WS.view.appearancePresetDraftName = "";
+      WS.view.appearancePresetPromptMode = "";
       applyDefaultViewFromOptions();
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
@@ -6681,7 +8151,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function metaApplyKeybindsLog(log) {
       if (!log || typeof log !== "object") return;
-      const normalized = normalizeKeybinds(log);
+      const normalized = normalizeKeybinds(log, WS.meta && WS.meta.appearancePresets);
       WS.meta.keybinds = normalized.bindings;
       const normalizedGrid = normalizeGridKeybinds(log);
       WS.meta.gridKeybinds = normalizedGrid.bindings;
@@ -6694,7 +8164,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const sortMode = normalizeDirSortMode(log.sortMode);
       WS.meta.dirSortMode = sortMode;
 
+      WS.meta.appearancePresets = defaultAppearancePresets();
       WS.meta.options = normalizeOptions(log.options || null);
+      syncActiveAppearancePresetSelection(WS.meta.options);
+      WS.view.appearancePresetEditingId = effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
+      WS.view.appearancePresetDraftName = "";
+      WS.view.appearancePresetPromptMode = "";
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
       applyMediaFilterFromOptions();
@@ -6780,9 +8255,556 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         WS.meta.dirTags.set(path, tg.slice());
       }
 
+      WS.meta.dirAppearancePresetIds.clear();
+      if (cleanupLegacyProcessingDisabledMetadata()) {
+        metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+      }
+
       applyDefaultViewFromOptions();
       syncMetaButtons();
       renderOptionsUi();
+    }
+
+    function metaMakeScoresDocObject() {
+      const folders = {};
+      for (const [path] of WS.dirByPath.entries()) {
+        const fp = WS.meta.dirFingerprints.get(path) || 0;
+        folders[path] = { score: metaGetScore(path), fp: fp >>> 0 };
+      }
+      return {
+        schema: 1,
+        updatedAt: Date.now(),
+        folders
+      };
+    }
+
+    function metaMakeScoreHistoryDocObject() {
+      return {
+        schema: 1,
+        updatedAt: Date.now(),
+        history: normalizeScoreHistoryList(WS.meta && Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [])
+      };
+    }
+
+    function metaMakeTagsDocObject() {
+      const folders = {};
+      const tagByFp = {};
+      for (const [path] of WS.dirByPath.entries()) {
+        const fp = WS.meta.dirFingerprints.get(path) || 0;
+        const tags = metaGetTags(path).filter((tag) => tag !== LEGACY_PROCESSING_DISABLED_TAG);
+        folders[path] = { fp: fp >>> 0, tags };
+        if (tags && tags.length) {
+          const key = String(fp >>> 0);
+          if (!tagByFp[key]) tagByFp[key] = tags.slice();
+        }
+      }
+      const pending = WS.meta && WS.meta.pendingTagsByPath ? WS.meta.pendingTagsByPath : null;
+      if (pending && pending.size) {
+        for (const [path, tags] of pending.entries()) {
+          const normalizedPath = String(path || "");
+          if (!normalizedPath || folders[normalizedPath]) continue;
+          const normalizedTags = normalizeTagList(tags);
+          if (!normalizedTags.length) continue;
+          folders[normalizedPath] = { fp: 0, tags: normalizedTags };
+        }
+      }
+      return {
+        schema: 1,
+        updatedAt: Date.now(),
+        folders,
+        tagByFp
+      };
+    }
+
+    function metaMakeTagAlbumsDocObject() {
+      const tagAlbumByTag = {};
+      if (WS.meta && WS.meta.tagAlbumByTag) {
+        for (const [tagRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
+          const tag = normalizeTag(tagRaw);
+          const album = normalizeTagAlbumName(albumRaw);
+          if (!tag || !album) continue;
+          tagAlbumByTag[tag] = album;
+        }
+      }
+      return {
+        schema: 1,
+        updatedAt: Date.now(),
+        tagAlbumByTag
+      };
+    }
+
+    function metaMakeThumbnailsDocObject() {
+      const thumbnailByFolder = {};
+      const tagThumbnailModeByTag = {};
+      const tagThumbnailByTag = {};
+      const fileThumbnailCropByRelPath = {};
+      const videoThumbnailTimeByRelPath = {};
+      if (WS.meta && WS.meta.dirThumbPresets) {
+        for (const [path, rawThumbValue] of WS.meta.dirThumbPresets.entries()) {
+          const rawThumb = String(rawThumbValue || "");
+          if (rawThumb === FOLDER_THUMB_NONE_SENTINEL || rawThumb === FOLDER_THUMB_ROTATE_SENTINEL) {
+            thumbnailByFolder[path] = rawThumb;
+            continue;
+          }
+          const presetRelPath = normalizeWorkspaceRelPath(rawThumb);
+          if (presetRelPath) thumbnailByFolder[path] = presetRelPath;
+        }
+      }
+      if (WS.meta && WS.meta.tagThumbModes) {
+        for (const [tagKey, modeRaw] of WS.meta.tagThumbModes.entries()) {
+          const key = String(tagKey || "");
+          if (!key) continue;
+          const mode = normalizeTagThumbnailMode(modeRaw);
+          if (mode === "quad") continue;
+          tagThumbnailModeByTag[key] = mode;
+        }
+      }
+      if (WS.meta && WS.meta.tagThumbPresets) {
+        for (const [tagKey, relPathRaw] of WS.meta.tagThumbPresets.entries()) {
+          const key = String(tagKey || "");
+          if (!key) continue;
+          const relPath = normalizeWorkspaceRelPath(relPathRaw);
+          if (!relPath) continue;
+          tagThumbnailByTag[key] = relPath;
+        }
+      }
+      if (WS.meta && WS.meta.fileThumbCrop) {
+        for (const [relPathRaw, cropRaw] of WS.meta.fileThumbCrop.entries()) {
+          const relPath = normalizeWorkspaceRelPath(relPathRaw);
+          if (!relPath) continue;
+          const normalizedCrop = normalizeThumbCropValue(cropRaw);
+          if (isThumbCropDefault(normalizedCrop)) continue;
+          fileThumbnailCropByRelPath[relPath] = normalizedCrop;
+        }
+      }
+      if (WS.meta && WS.meta.videoThumbTime) {
+        for (const [relPathRaw, timeRaw] of WS.meta.videoThumbTime.entries()) {
+          const relPath = normalizeWorkspaceRelPath(relPathRaw);
+          const timeValue = normalizeVideoThumbTimeValue(timeRaw);
+          if (!relPath || !Number.isFinite(timeValue)) continue;
+          videoThumbnailTimeByRelPath[relPath] = timeValue;
+        }
+      }
+      return {
+        schema: 1,
+        updatedAt: Date.now(),
+        thumbnailByFolder,
+        tagThumbnailModeByTag,
+        tagThumbnailByTag,
+        fileThumbnailCropByRelPath,
+        videoThumbnailTimeByRelPath
+      };
+    }
+
+    function metaMakeAppearancePresetsDocObject() {
+      return {
+        schema: 1,
+        updatedAt: Date.now(),
+        presets: normalizeAppearancePresetList(WS.meta && Array.isArray(WS.meta.appearancePresets) ? WS.meta.appearancePresets : null)
+      };
+    }
+
+    function metaMakeAppearanceAssignmentsDocObject() {
+      const mediaPresetByFolder = {};
+      const mediaPresetByTagContext = {};
+      if (WS.meta && WS.meta.dirAppearancePresetIds) {
+        for (const [path, presetIdRaw] of WS.meta.dirAppearancePresetIds.entries()) {
+          const presetId = normalizeAppearancePresetIdValue(presetIdRaw);
+          if (!presetId) continue;
+          mediaPresetByFolder[path] = presetId;
+        }
+      }
+      if (WS.meta && WS.meta.tagAppearancePresetIds) {
+        for (const [tagKeyRaw, presetIdRaw] of WS.meta.tagAppearancePresetIds.entries()) {
+          const tagKey = String(tagKeyRaw || "");
+          const presetId = normalizeAppearancePresetIdValue(presetIdRaw);
+          if (!tagKey || !presetId) continue;
+          mediaPresetByTagContext[tagKey] = presetId;
+        }
+      }
+      return {
+        schema: 1,
+        updatedAt: Date.now(),
+        mediaPresetByFolder,
+        mediaPresetByTagContext
+      };
+    }
+
+    function metaMakePreferenceSectionLogObject(docId) {
+      const optionKeys = docId === META_DOC_IDS.prefGeneral
+        ? META_GENERAL_PREFERENCE_OPTION_KEYS
+        : (docId === META_DOC_IDS.prefAppearance
+          ? META_PREFERENCE_SECTION_OPTION_KEYS.appearance
+          : (docId === META_DOC_IDS.prefPlayback
+            ? META_PREFERENCE_SECTION_OPTION_KEYS.playback
+            : (docId === META_DOC_IDS.prefThumbnails
+              ? META_PREFERENCE_SECTION_OPTION_KEYS.thumbnails
+              : (docId === META_DOC_IDS.prefFilenames
+                ? META_PREFERENCE_SECTION_OPTION_KEYS.filenames
+                : (docId === META_DOC_IDS.prefControls
+                  ? META_PREFERENCE_SECTION_OPTION_KEYS.controls
+                  : [])))));
+      const source = WS.meta && WS.meta.options ? normalizeOptions(WS.meta.options) : normalizeOptions(null);
+      const options = {};
+      for (let i = 0; i < optionKeys.length; i++) {
+        const key = String(optionKeys[i] || "");
+        if (!key) continue;
+        options[key] = Object.prototype.hasOwnProperty.call(source, key) ? source[key] : null;
+      }
+      const out = {
+        schema: 1,
+        updatedAt: Date.now(),
+        options
+      };
+      if (docId === META_DOC_IDS.prefGeneral) {
+        out.dirSortMode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
+      }
+      return out;
+    }
+
+    function metaDocObjectForId(docId) {
+      switch (docId) {
+        case META_DOC_IDS.scores: return metaMakeScoresDocObject();
+        case META_DOC_IDS.scoreHistory: return metaMakeScoreHistoryDocObject();
+        case META_DOC_IDS.tags: return metaMakeTagsDocObject();
+        case META_DOC_IDS.tagAlbums: return metaMakeTagAlbumsDocObject();
+        case META_DOC_IDS.thumbnails: return metaMakeThumbnailsDocObject();
+        case META_DOC_IDS.appearancePresets: return metaMakeAppearancePresetsDocObject();
+        case META_DOC_IDS.appearanceAssignments: return metaMakeAppearanceAssignmentsDocObject();
+        case META_DOC_IDS.prefGeneral:
+        case META_DOC_IDS.prefAppearance:
+        case META_DOC_IDS.prefPlayback:
+        case META_DOC_IDS.prefThumbnails:
+        case META_DOC_IDS.prefFilenames:
+        case META_DOC_IDS.prefControls:
+          return metaMakePreferenceSectionLogObject(docId);
+        case META_DOC_IDS.keybinds: return metaMakeKeybindsLogObject();
+        default: return null;
+      }
+    }
+
+    function metaApplyScoresDocLog(log) {
+      if (!log || typeof log !== "object") return;
+      const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
+      const oldByPath = new Map();
+      const oldByFp = new Map();
+
+      for (const p of Object.keys(folders)) {
+        const it = folders[p];
+        const sc = (it && Number.isFinite(it.score)) ? (it.score | 0) : 0;
+        const fp = (it && Number.isFinite(it.fp)) ? (it.fp >>> 0) : 0;
+        oldByPath.set(p, { score: sc, fp });
+        if (!oldByFp.has(fp)) oldByFp.set(fp, []);
+        oldByFp.get(fp).push({ path: p, score: sc });
+      }
+
+      const claimed = new Set();
+      WS.meta.dirScores.clear();
+      for (const [path] of WS.dirByPath.entries()) {
+        const fp = WS.meta.dirFingerprints.get(path) || 0;
+        if (oldByPath.has(path)) {
+          WS.meta.dirScores.set(path, oldByPath.get(path).score | 0);
+          claimed.add(path);
+          continue;
+        }
+        const list = oldByFp.get(fp >>> 0) || null;
+        if (list && list.length) {
+          let picked = null;
+          for (let i = 0; i < list.length; i++) {
+            const cand = list[i];
+            if (!claimed.has(cand.path)) { picked = cand; break; }
+          }
+          if (picked) {
+            WS.meta.dirScores.set(path, picked.score | 0);
+            claimed.add(picked.path);
+            continue;
+          }
+        }
+        WS.meta.dirScores.set(path, 0);
+      }
+    }
+
+    function metaApplyScoreHistoryDocLog(log) {
+      if (!log || typeof log !== "object") return;
+      WS.meta.scoreHistory = normalizeScoreHistoryList(log.history || log.scoreHistory || []);
+    }
+
+    function metaApplyTagsDocLog(log) {
+      if (!log || typeof log !== "object") return;
+      const folders = log.folders && typeof log.folders === "object" ? log.folders : {};
+      const oldTagsByPath = new Map();
+
+      for (const p of Object.keys(folders)) {
+        const it = folders[p];
+        const tg = it && Array.isArray(it.tags) ? normalizeTagList(it.tags) : [];
+        if (tg.length) oldTagsByPath.set(p, tg);
+      }
+
+      const oldTagByFp = new Map();
+      if (log.tagByFp && typeof log.tagByFp === "object") {
+        for (const k of Object.keys(log.tagByFp)) {
+          const fp = (Number(k) >>> 0) || 0;
+          const tg = normalizeTagList(log.tagByFp[k]);
+          if (tg.length) oldTagByFp.set(fp >>> 0, tg);
+        }
+      }
+      if (!oldTagByFp.size) {
+        for (const [p, tg] of oldTagsByPath.entries()) {
+          const it = folders[p];
+          const fp = (it && Number.isFinite(it.fp)) ? (it.fp >>> 0) : 0;
+          if (!fp) continue;
+          if (!oldTagByFp.has(fp)) oldTagByFp.set(fp, tg.slice());
+        }
+      }
+
+      stashPendingTagsFromLog(oldTagsByPath);
+
+      WS.meta.dirTags.clear();
+      for (const [path] of WS.dirByPath.entries()) {
+        if (oldTagsByPath.has(path)) {
+          WS.meta.dirTags.set(path, oldTagsByPath.get(path).slice());
+          if (WS.meta.pendingTagsByPath) WS.meta.pendingTagsByPath.delete(path);
+          continue;
+        }
+        const fp = WS.meta.dirFingerprints.get(path) || 0;
+        const tg = oldTagByFp.get(fp >>> 0) || [];
+        WS.meta.dirTags.set(path, tg.slice());
+      }
+    }
+
+    function metaApplyTagAlbumsDocLog(log) {
+      if (!log || typeof log !== "object") return;
+      WS.meta.tagAlbumByTag.clear();
+      const tagAlbumByTag = (log.tagAlbumByTag && typeof log.tagAlbumByTag === "object")
+        ? log.tagAlbumByTag
+        : {};
+      for (const rawTag of Object.keys(tagAlbumByTag)) {
+        const tag = normalizeTag(rawTag);
+        const album = normalizeTagAlbumName(tagAlbumByTag[rawTag]);
+        if (!tag || !album) continue;
+        WS.meta.tagAlbumByTag.set(tag, album);
+      }
+    }
+
+    function metaApplyThumbnailsDocLog(log) {
+      if (!log || typeof log !== "object") return;
+
+      WS.meta.dirThumbPresets.clear();
+      const thumbnailByFolder = (log.thumbnailByFolder && typeof log.thumbnailByFolder === "object")
+        ? log.thumbnailByFolder
+        : {};
+      for (const dirPath of Object.keys(thumbnailByFolder)) {
+        const normalizedDirPath = normalizeDirPathValue(dirPath);
+        const rawValue = String(thumbnailByFolder[dirPath] || "");
+        const normalizedRelPath = normalizeWorkspaceRelPath(rawValue);
+        if (!normalizedDirPath && !WS.dirByPath.has("")) continue;
+        if (!normalizedRelPath && rawValue !== FOLDER_THUMB_NONE_SENTINEL && rawValue !== FOLDER_THUMB_ROTATE_SENTINEL) continue;
+        if (!WS.dirByPath.has(normalizedDirPath)) continue;
+        if (rawValue === FOLDER_THUMB_NONE_SENTINEL || rawValue === FOLDER_THUMB_ROTATE_SENTINEL) {
+          WS.meta.dirThumbPresets.set(normalizedDirPath, rawValue);
+        } else {
+          WS.meta.dirThumbPresets.set(normalizedDirPath, normalizedRelPath);
+        }
+      }
+
+      WS.meta.tagThumbModes.clear();
+      const tagThumbnailModeByTag = (log.tagThumbnailModeByTag && typeof log.tagThumbnailModeByTag === "object")
+        ? log.tagThumbnailModeByTag
+        : {};
+      for (const rawKey of Object.keys(tagThumbnailModeByTag)) {
+        const key = String(rawKey || "");
+        if (!key) continue;
+        const mode = normalizeTagThumbnailMode(tagThumbnailModeByTag[rawKey]);
+        if (mode === "quad") continue;
+        WS.meta.tagThumbModes.set(key, mode);
+      }
+
+      WS.meta.tagThumbPresets.clear();
+      const tagThumbnailByTag = (log.tagThumbnailByTag && typeof log.tagThumbnailByTag === "object")
+        ? log.tagThumbnailByTag
+        : {};
+      for (const rawKey of Object.keys(tagThumbnailByTag)) {
+        const key = String(rawKey || "");
+        if (!key) continue;
+        const relPath = normalizeWorkspaceRelPath(tagThumbnailByTag[rawKey]);
+        if (!relPath) continue;
+        WS.meta.tagThumbPresets.set(key, relPath);
+      }
+      for (const key of WS.meta.tagThumbPresets.keys()) {
+        const mode = metaGetTagThumbnailModeByKey(key);
+        if (mode !== "single") WS.meta.tagThumbModes.set(key, "single");
+      }
+
+      WS.meta.fileThumbCrop.clear();
+      const fileThumbnailCropByRelPath = (log.fileThumbnailCropByRelPath && typeof log.fileThumbnailCropByRelPath === "object")
+        ? log.fileThumbnailCropByRelPath
+        : {};
+      for (const rawRelPath of Object.keys(fileThumbnailCropByRelPath)) {
+        const relPath = normalizeWorkspaceRelPath(rawRelPath);
+        if (!relPath) continue;
+        const crop = normalizeThumbCropValue(fileThumbnailCropByRelPath[rawRelPath]);
+        if (isThumbCropDefault(crop)) continue;
+        WS.meta.fileThumbCrop.set(relPath, crop);
+      }
+
+      WS.meta.videoThumbTime.clear();
+      const videoThumbnailTimeByRelPath = (log.videoThumbnailTimeByRelPath && typeof log.videoThumbnailTimeByRelPath === "object")
+        ? log.videoThumbnailTimeByRelPath
+        : {};
+      for (const rawRelPath of Object.keys(videoThumbnailTimeByRelPath)) {
+        const relPath = normalizeWorkspaceRelPath(rawRelPath);
+        if (!relPath) continue;
+        const timeValue = normalizeVideoThumbTimeValue(videoThumbnailTimeByRelPath[rawRelPath]);
+        if (!Number.isFinite(timeValue)) continue;
+        WS.meta.videoThumbTime.set(relPath, timeValue);
+      }
+    }
+
+    function metaApplyAppearancePresetsDocLog(log) {
+      if (!log || typeof log !== "object") return;
+      WS.meta.appearancePresets = normalizeAppearancePresetList(log.presets || log.appearancePresets, !Array.isArray(log.presets || log.appearancePresets));
+    }
+
+    function metaMergeOptionsPartial(partialOptions) {
+      const source = (partialOptions && typeof partialOptions === "object") ? partialOptions : {};
+      WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || normalizeOptions(null), source));
+    }
+
+    function metaApplyPreferenceSectionDocLog(docId, log) {
+      if (!log || typeof log !== "object") return;
+      if (docId === META_DOC_IDS.prefGeneral) {
+        WS.meta.dirSortMode = normalizeDirSortMode(log.dirSortMode || WS.meta.dirSortMode);
+      }
+      metaMergeOptionsPartial(log.options || null);
+    }
+
+    function metaApplyAppearanceAssignmentsDocLog(log) {
+      if (!log || typeof log !== "object") return;
+
+      WS.meta.dirAppearancePresetIds.clear();
+      const mediaPresetByFolder = (log.mediaPresetByFolder && typeof log.mediaPresetByFolder === "object")
+        ? log.mediaPresetByFolder
+        : {};
+      for (const dirPath of Object.keys(mediaPresetByFolder)) {
+        const normalizedDirPath = normalizeDirPathValue(dirPath);
+        const presetId = normalizeAppearancePresetIdValue(mediaPresetByFolder[dirPath]);
+        if (!presetId) continue;
+        if (!normalizedDirPath && !WS.dirByPath.has("")) continue;
+        if (!WS.dirByPath.has(normalizedDirPath)) continue;
+        WS.meta.dirAppearancePresetIds.set(normalizedDirPath, presetId);
+      }
+
+      WS.meta.tagAppearancePresetIds.clear();
+      const mediaPresetByTagContext = (log.mediaPresetByTagContext && typeof log.mediaPresetByTagContext === "object")
+        ? log.mediaPresetByTagContext
+        : {};
+      for (const rawTagKey of Object.keys(mediaPresetByTagContext)) {
+        const tagKey = String(rawTagKey || "");
+        const presetId = normalizeAppearancePresetIdValue(mediaPresetByTagContext[rawTagKey]);
+        if (!tagKey || !presetId) continue;
+        WS.meta.tagAppearancePresetIds.set(tagKey, presetId);
+      }
+    }
+
+    function metaApplyDocLogById(docId, log) {
+      switch (docId) {
+        case META_DOC_IDS.scores:
+          metaApplyScoresDocLog(log);
+          return;
+        case META_DOC_IDS.scoreHistory:
+          metaApplyScoreHistoryDocLog(log);
+          return;
+        case META_DOC_IDS.tags:
+          metaApplyTagsDocLog(log);
+          return;
+        case META_DOC_IDS.tagAlbums:
+          metaApplyTagAlbumsDocLog(log);
+          return;
+        case META_DOC_IDS.thumbnails:
+          metaApplyThumbnailsDocLog(log);
+          return;
+        case META_DOC_IDS.appearancePresets:
+          metaApplyAppearancePresetsDocLog(log);
+          return;
+        case META_DOC_IDS.appearanceAssignments:
+          metaApplyAppearanceAssignmentsDocLog(log);
+          return;
+        case META_DOC_IDS.prefGeneral:
+        case META_DOC_IDS.prefAppearance:
+        case META_DOC_IDS.prefPlayback:
+        case META_DOC_IDS.prefThumbnails:
+        case META_DOC_IDS.prefFilenames:
+        case META_DOC_IDS.prefControls:
+          metaApplyPreferenceSectionDocLog(docId, log);
+          return;
+        case META_DOC_IDS.keybinds:
+          metaApplyKeybindsLog(log);
+          return;
+      }
+    }
+
+    function metaFinalizeLoadedState() {
+      syncActiveAppearancePresetSelection(WS.meta.options);
+      WS.view.appearancePresetEditingId = effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
+      WS.view.appearancePresetDraftName = "";
+      WS.view.appearancePresetPromptMode = "";
+      applyDefaultViewFromOptions();
+      applyColorSchemeFromOptions();
+      applyRetroModeFromOptions();
+      applyMediaFilterFromOptions();
+      applyThumbFitFromOptions();
+      applyDisplaySizesFromOptions();
+      applyDirectoryMiniThumbSizeFromOptions();
+      applyDescriptionVisibilityFromOptions();
+      applyInteractionModeFromOptions();
+      applyPaneDividerFromOptions();
+    }
+
+    function metaNormalizeDocIdsToSave(docIds = null) {
+      const requested = Array.isArray(docIds) ? docIds.slice() : Array.from(docIds || []);
+      const unique = [];
+      const seen = new Set();
+      const push = (docId) => {
+        const id = String(docId || "");
+        if (!id || seen.has(id) || !META_ALL_DOC_IDS.includes(id)) return;
+        seen.add(id);
+        unique.push(id);
+      };
+      for (let i = 0; i < requested.length; i++) push(requested[i]);
+      if (unique.length) return unique;
+      if (WS.meta && WS.meta.dirtyDocIds && WS.meta.dirtyDocIds.size) {
+        for (const docId of WS.meta.dirtyDocIds) push(docId);
+      }
+      if (!unique.length && WS.meta && WS.meta.dirty) {
+        for (let i = 0; i < META_ALL_DOC_IDS.length; i++) push(META_ALL_DOC_IDS[i]);
+      }
+      return unique;
+    }
+
+    function metaTrackDirtyDocIds(docIds = null) {
+      if (!WS.meta) return;
+      const list = Array.isArray(docIds) ? docIds.slice() : Array.from(docIds || []);
+      const targetIds = list.length ? list : META_ALL_DOC_IDS.slice();
+      if (!(WS.meta.dirtyDocIds instanceof Set)) WS.meta.dirtyDocIds = new Set();
+      for (let i = 0; i < targetIds.length; i++) {
+        const docId = String(targetIds[i] || "");
+        if (!META_ALL_DOC_IDS.includes(docId)) continue;
+        WS.meta.dirtyDocIds.add(docId);
+      }
+      WS.meta.dirty = !!WS.meta.dirtyDocIds.size;
+    }
+
+    function metaMarkDirty(...docIds) {
+      metaTrackDirtyDocIds(docIds);
+      metaScheduleSave();
+    }
+
+    function metaClearSavedDocIds(docIds = null) {
+      if (!WS.meta) return;
+      const list = metaNormalizeDocIdsToSave(docIds);
+      if (!(WS.meta.dirtyDocIds instanceof Set)) WS.meta.dirtyDocIds = new Set();
+      for (let i = 0; i < list.length; i++) WS.meta.dirtyDocIds.delete(list[i]);
+      WS.meta.dirty = !!WS.meta.dirtyDocIds.size;
     }
 
     function metaParseText(text) {
@@ -6794,12 +8816,22 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function metaLocalKeys() {
       const k = String(WS.meta.storageKey || "");
       if (!k) return null;
+      const docs = {};
+      for (let i = 0; i < META_ALL_DOC_IDS.length; i++) {
+        const docId = META_ALL_DOC_IDS[i];
+        const prefix = META_LOCAL_KEY_PREFIXES[docId];
+        if (!prefix) continue;
+        docs[docId] = `${prefix}::${k}`;
+      }
       return {
-        scores: `LocalGalleryScores::${k}`,
-        tags: `LocalGalleryTags::${k}`,
-        options: `LocalGalleryPreferences::${k}`,
-        keybinds: `LocalGalleryKeyboard::${k}`,
-        legacy: `LocalGalleryVotes::${k}`
+        docs,
+        legacy: {
+          scores: `LocalGalleryScores::${k}`,
+          tags: `LocalGalleryTags::${k}`,
+          options: `LocalGalleryPreferences::${k}`,
+          keybinds: `LocalGalleryKeyboard::${k}`,
+          combined: `LocalGalleryVotes::${k}`
+        }
       };
     }
 
@@ -6816,14 +8848,29 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       try { localStorage.setItem(key, JSON.stringify(obj)); } catch {}
     }
 
-    function metaSaveLocalNow() {
+    function metaClearLegacyLocalDocs(keys) {
+      const legacy = keys && keys.legacy;
+      if (!legacy) return;
+      const doomed = [legacy.combined, legacy.scores, legacy.tags, legacy.options];
+      for (let i = 0; i < doomed.length; i++) {
+        const key = doomed[i];
+        if (!key) continue;
+        try { localStorage.removeItem(key); } catch {}
+      }
+    }
+
+    function metaSaveLocalNow(docIds = null) {
       const keys = metaLocalKeys();
       if (!keys) return;
-      metaSaveLocalDoc(keys.scores, metaMakeScoresLogObject());
-      metaSaveLocalDoc(keys.tags, metaMakeTagsLogObject());
-      metaSaveLocalDoc(keys.options, metaMakeOptionsLogObject());
-      metaSaveLocalDoc(keys.keybinds, metaMakeKeybindsLogObject());
-      WS.meta.dirty = false;
+      const ids = metaNormalizeDocIdsToSave(docIds);
+      for (let i = 0; i < ids.length; i++) {
+        const docId = ids[i];
+        const key = keys.docs && keys.docs[docId];
+        const obj = metaDocObjectForId(docId);
+        if (!key || !obj) continue;
+        metaSaveLocalDoc(key, obj);
+      }
+      metaClearSavedDocIds(ids);
     }
 
     function normalizeWorkspaceRelPath(path) {
@@ -6839,18 +8886,24 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!rootHandle) return false;
       try {
         const sys = await rootHandle.getDirectoryHandle(".local-gallery", { create: true });
-        const scoresFile = await sys.getFileHandle("folder-scores.log.json", { create: true });
-        const tagsFile = await sys.getFileHandle("folder-tags.log.json", { create: true });
-        const optionsFile = await sys.getFileHandle("preferences.log.json", { create: true });
-        const keybindsFile = await sys.getFileHandle("keyboard-configuration.log.json", { create: true });
-        const legacyFile = await sys.getFileHandle("folder-votes.log.json", { create: true });
+        const docHandles = Object.create(null);
+        for (let i = 0; i < META_ALL_DOC_IDS.length; i++) {
+          const docId = META_ALL_DOC_IDS[i];
+          const fileName = META_DOC_FILE_NAMES[docId];
+          if (!fileName) continue;
+          docHandles[docId] = await sys.getFileHandle(fileName, { create: true });
+        }
+        const legacyHandles = {
+          scores: await sys.getFileHandle("folder-scores.log.json", { create: true }),
+          tags: await sys.getFileHandle("folder-tags.log.json", { create: true }),
+          options: await sys.getFileHandle("preferences.log.json", { create: true }),
+          keybinds: docHandles[META_DOC_IDS.keybinds] || await sys.getFileHandle("keyboard-configuration.log.json", { create: true }),
+          combined: await sys.getFileHandle("folder-votes.log.json", { create: true })
+        };
         WS.meta.fsRootHandle = rootHandle;
         WS.meta.fsSysDirHandle = sys;
-        WS.meta.fsScoresFileHandle = scoresFile;
-        WS.meta.fsTagsFileHandle = tagsFile;
-        WS.meta.fsOptionsFileHandle = optionsFile;
-        WS.meta.fsKeybindsFileHandle = keybindsFile;
-        WS.meta.fsLegacyFileHandle = legacyFile;
+        WS.meta.fsDocHandles = docHandles;
+        WS.meta.fsLegacyDocHandles = legacyHandles;
         WS.meta.storageMode = "fs";
         return true;
       } catch {
@@ -6879,25 +8932,50 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       } catch {}
     }
 
-    async function metaSaveFsNow() {
-      const scores = WS.meta.fsScoresFileHandle;
-      const tags = WS.meta.fsTagsFileHandle;
-      const options = WS.meta.fsOptionsFileHandle;
-      const keybinds = WS.meta.fsKeybindsFileHandle;
-      await metaSaveFsDoc(scores, metaMakeScoresLogObject());
-      await metaSaveFsDoc(tags, metaMakeTagsLogObject());
-      await metaSaveFsDoc(options, metaMakeOptionsLogObject());
-      await metaSaveFsDoc(keybinds, metaMakeKeybindsLogObject());
-      WS.meta.dirty = false;
+    async function metaClearFsDoc(fh) {
+      if (!fh) return;
+      try {
+        const writable = await fh.createWritable();
+        await writable.write("");
+        await writable.close();
+      } catch {}
     }
 
-    function metaScheduleSave() {
+    async function metaClearLegacyFsDocs(handles) {
+      if (!handles || typeof handles !== "object") return;
+      const doomed = [handles.combined, handles.scores, handles.tags, handles.options];
+      for (let i = 0; i < doomed.length; i++) {
+        await metaClearFsDoc(doomed[i]);
+      }
+    }
+
+    function metaFsHandleForDocId(docId) {
+      const handles = WS.meta && WS.meta.fsDocHandles;
+      if (!handles || typeof handles !== "object") return null;
+      return handles[String(docId || "")] || null;
+    }
+
+    async function metaSaveFsNow(docIds = null) {
+      const ids = metaNormalizeDocIdsToSave(docIds);
+      for (let i = 0; i < ids.length; i++) {
+        const docId = ids[i];
+        const fh = metaFsHandleForDocId(docId);
+        const obj = metaDocObjectForId(docId);
+        if (!fh || !obj) continue;
+        await metaSaveFsDoc(fh, obj);
+      }
+      metaClearSavedDocIds(ids);
+    }
+
+    function metaScheduleSave(...docIds) {
+      if (docIds.length) metaTrackDirtyDocIds(docIds);
       if (WS.meta.saveTimer) return;
       WS.meta.saveTimer = setTimeout(async () => {
         WS.meta.saveTimer = null;
-        if (!WS.meta.dirty) return;
-        if (WS.meta.storageMode === "fs") await metaSaveFsNow();
-        else metaSaveLocalNow();
+        const ids = metaNormalizeDocIdsToSave();
+        if (!ids.length) return;
+        if (WS.meta.storageMode === "fs") await metaSaveFsNow(ids);
+        else metaSaveLocalNow(ids);
       }, 500);
     }
 
@@ -6912,30 +8990,85 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function metaInitForCurrentWorkspace() {
       metaComputeFingerprints();
+      const dirtyDocs = new Set();
 
       if (WS.meta.storageMode === "local") {
         const keys = metaLocalKeys();
-        const scoresLog = keys ? metaLoadLocalDoc(keys.scores) : null;
-        const tagsLog = keys ? metaLoadLocalDoc(keys.tags) : null;
-        const optionsLog = keys ? metaLoadLocalDoc(keys.options) : null;
-        const keybindsLog = keys ? metaLoadLocalDoc(keys.keybinds) : null;
+        if (keys) {
+          const loadOrder = [
+            META_DOC_IDS.appearancePresets,
+            META_DOC_IDS.prefGeneral,
+            META_DOC_IDS.prefAppearance,
+            META_DOC_IDS.prefPlayback,
+            META_DOC_IDS.prefThumbnails,
+            META_DOC_IDS.prefFilenames,
+            META_DOC_IDS.prefControls,
+            META_DOC_IDS.scores,
+            META_DOC_IDS.scoreHistory,
+            META_DOC_IDS.tags,
+            META_DOC_IDS.tagAlbums,
+            META_DOC_IDS.thumbnails,
+            META_DOC_IDS.appearanceAssignments,
+            META_DOC_IDS.keybinds
+          ];
+          const splitDocs = [];
+          for (let i = 0; i < loadOrder.length; i++) {
+            const docId = loadOrder[i];
+            const log = metaLoadLocalDoc(keys.docs && keys.docs[docId]);
+            if (!log) continue;
+            splitDocs.push([docId, log]);
+          }
 
-        if (scoresLog) metaApplyScoresLog(scoresLog);
-        if (tagsLog) metaApplyTagsLog(tagsLog);
-        if (optionsLog) metaApplyOptionsLog(optionsLog);
-        if (keybindsLog) metaApplyKeybindsLog(keybindsLog);
+          if (splitDocs.length) {
+            for (let i = 0; i < splitDocs.length; i++) {
+              metaApplyDocLogById(splitDocs[i][0], splitDocs[i][1]);
+            }
+            const legacyDisabledPaths = new Set();
+            const legacyCombinedLog = metaLoadLocalDoc(keys.legacy.combined);
+            const legacyTagsLog = metaLoadLocalDoc(keys.legacy.tags);
+            for (const path of collectLegacyProcessingDisabledPathsFromLog(legacyCombinedLog)) legacyDisabledPaths.add(path);
+            for (const path of collectLegacyProcessingDisabledPathsFromLog(legacyTagsLog)) legacyDisabledPaths.add(path);
+            if (cleanupLegacyProcessingDisabledMetadata(legacyDisabledPaths)) {
+              dirtyDocs.add(META_DOC_IDS.tags);
+              dirtyDocs.add(META_DOC_IDS.appearanceAssignments);
+            }
+            metaClearLegacyLocalDocs(keys);
+          } else {
+            const legacyCombinedLog = metaLoadLocalDoc(keys.legacy.combined);
+            const legacyScoresLog = metaLoadLocalDoc(keys.legacy.scores);
+            const legacyTagsLog = metaLoadLocalDoc(keys.legacy.tags);
+            const legacyOptionsLog = metaLoadLocalDoc(keys.legacy.options);
 
-        if (!scoresLog && !tagsLog && !optionsLog && !keybindsLog && keys) {
-          /* LEGACY MIGRATION (remove later): read combined log and split it. */
-          const legacyLog = metaLoadLocalDoc(keys.legacy);
-          if (legacyLog) {
-            metaApplyFromLog(legacyLog);
+            if (legacyCombinedLog) {
+              metaApplyFromLog(legacyCombinedLog);
+              for (let i = 0; i < META_ALL_DOC_IDS.length; i++) dirtyDocs.add(META_ALL_DOC_IDS[i]);
+            }
+            if (legacyScoresLog) {
+              metaApplyScoresLog(legacyScoresLog);
+              for (let i = 0; i < META_ALL_DOC_IDS.length; i++) dirtyDocs.add(META_ALL_DOC_IDS[i]);
+            }
+            if (legacyTagsLog) {
+              metaApplyTagsLog(legacyTagsLog);
+              for (let i = 0; i < META_ALL_DOC_IDS.length; i++) dirtyDocs.add(META_ALL_DOC_IDS[i]);
+            }
+            if (legacyOptionsLog) {
+              metaApplyOptionsLog(legacyOptionsLog);
+              for (let i = 0; i < META_ALL_DOC_IDS.length; i++) dirtyDocs.add(META_ALL_DOC_IDS[i]);
+            }
           }
         }
       }
 
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      if (cleanupLegacyProcessingDisabledMetadata()) {
+        dirtyDocs.add(META_DOC_IDS.tags);
+        dirtyDocs.add(META_DOC_IDS.appearanceAssignments);
+      }
+
+      metaFinalizeLoadedState();
+      if (dirtyDocs.size) {
+        const list = Array.from(dirtyDocs);
+        metaMarkDirty(...list);
+      }
       syncMetaButtons();
       renderOptionsUi();
       applyDescriptionVisibilityFromOptions();
@@ -6944,25 +9077,78 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     async function metaInitForCurrentWorkspaceFs() {
       metaComputeFingerprints();
-      const scoresLog = await metaLoadFsDoc(WS.meta.fsScoresFileHandle);
-      const tagsLog = await metaLoadFsDoc(WS.meta.fsTagsFileHandle);
-      const optionsLog = await metaLoadFsDoc(WS.meta.fsOptionsFileHandle);
-      const keybindsLog = await metaLoadFsDoc(WS.meta.fsKeybindsFileHandle);
+      const dirtyDocs = new Set();
+      const legacyHandles = WS.meta && WS.meta.fsLegacyDocHandles ? WS.meta.fsLegacyDocHandles : {};
 
-      if (scoresLog) metaApplyScoresLog(scoresLog);
-      if (tagsLog) metaApplyTagsLog(tagsLog);
-      if (optionsLog) metaApplyOptionsLog(optionsLog);
-      if (keybindsLog) metaApplyKeybindsLog(keybindsLog);
+      const loadOrder = [
+        META_DOC_IDS.appearancePresets,
+        META_DOC_IDS.prefGeneral,
+        META_DOC_IDS.prefAppearance,
+        META_DOC_IDS.prefPlayback,
+        META_DOC_IDS.prefThumbnails,
+        META_DOC_IDS.prefFilenames,
+        META_DOC_IDS.prefControls,
+        META_DOC_IDS.scores,
+        META_DOC_IDS.scoreHistory,
+        META_DOC_IDS.tags,
+        META_DOC_IDS.tagAlbums,
+        META_DOC_IDS.thumbnails,
+        META_DOC_IDS.appearanceAssignments,
+        META_DOC_IDS.keybinds
+      ];
+      const splitDocs = [];
+      for (let i = 0; i < loadOrder.length; i++) {
+        const docId = loadOrder[i];
+        const log = await metaLoadFsDoc(metaFsHandleForDocId(docId));
+        if (!log) continue;
+        splitDocs.push([docId, log]);
+      }
 
-      if (!scoresLog && !tagsLog && !optionsLog && !keybindsLog) {
-        /* LEGACY MIGRATION (remove later): read combined log and split it. */
-        const legacyLog = await metaLoadFsDoc(WS.meta.fsLegacyFileHandle);
-        if (legacyLog) {
-          metaApplyFromLog(legacyLog);
+      if (splitDocs.length) {
+        for (let i = 0; i < splitDocs.length; i++) {
+          metaApplyDocLogById(splitDocs[i][0], splitDocs[i][1]);
+        }
+        const legacyDisabledPaths = new Set();
+        const legacyCombinedLog = await metaLoadFsDoc(legacyHandles.combined);
+        const legacyTagsLog = await metaLoadFsDoc(legacyHandles.tags);
+        for (const path of collectLegacyProcessingDisabledPathsFromLog(legacyCombinedLog)) legacyDisabledPaths.add(path);
+        for (const path of collectLegacyProcessingDisabledPathsFromLog(legacyTagsLog)) legacyDisabledPaths.add(path);
+        if (cleanupLegacyProcessingDisabledMetadata(legacyDisabledPaths)) {
+          dirtyDocs.add(META_DOC_IDS.tags);
+          dirtyDocs.add(META_DOC_IDS.appearanceAssignments);
+        }
+        await metaClearLegacyFsDocs(legacyHandles);
+      } else {
+        const legacyCombinedLog = await metaLoadFsDoc(legacyHandles.combined);
+        const legacyScoresLog = await metaLoadFsDoc(legacyHandles.scores);
+        const legacyTagsLog = await metaLoadFsDoc(legacyHandles.tags);
+        const legacyOptionsLog = await metaLoadFsDoc(legacyHandles.options);
+
+        if (legacyCombinedLog) {
+          metaApplyFromLog(legacyCombinedLog);
+          for (let i = 0; i < META_ALL_DOC_IDS.length; i++) dirtyDocs.add(META_ALL_DOC_IDS[i]);
+        }
+        if (legacyScoresLog) {
+          metaApplyScoresLog(legacyScoresLog);
+          for (let i = 0; i < META_ALL_DOC_IDS.length; i++) dirtyDocs.add(META_ALL_DOC_IDS[i]);
+        }
+        if (legacyTagsLog) {
+          metaApplyTagsLog(legacyTagsLog);
+          for (let i = 0; i < META_ALL_DOC_IDS.length; i++) dirtyDocs.add(META_ALL_DOC_IDS[i]);
+        }
+        if (legacyOptionsLog) {
+          metaApplyOptionsLog(legacyOptionsLog);
+          for (let i = 0; i < META_ALL_DOC_IDS.length; i++) dirtyDocs.add(META_ALL_DOC_IDS[i]);
         }
       }
-      WS.meta.dirty = true;
-      metaScheduleSave();
+
+      if (cleanupLegacyProcessingDisabledMetadata()) {
+        dirtyDocs.add(META_DOC_IDS.tags);
+        dirtyDocs.add(META_DOC_IDS.appearanceAssignments);
+      }
+
+      metaFinalizeLoadedState();
+      if (dirtyDocs.size) metaMarkDirty(...Array.from(dirtyDocs));
       syncMetaButtons();
       renderOptionsUi();
       applyDescriptionVisibilityFromOptions();
@@ -6971,10 +9157,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     async function metaReapplyFsScoresAndTags() {
       metaComputeFingerprints();
-      const scoresLog = await metaLoadFsDoc(WS.meta.fsScoresFileHandle);
-      const tagsLog = await metaLoadFsDoc(WS.meta.fsTagsFileHandle);
-      if (scoresLog) metaApplyScoresLog(scoresLog);
-      if (tagsLog) metaApplyTagsLog(tagsLog);
+      const scoresLog = await metaLoadFsDoc(metaFsHandleForDocId(META_DOC_IDS.scores));
+      const tagsLog = await metaLoadFsDoc(metaFsHandleForDocId(META_DOC_IDS.tags));
+      if (scoresLog) metaApplyScoresDocLog(scoresLog);
+      if (tagsLog) metaApplyTagsDocLog(tagsLog);
     }
 
     async function buildWorkspaceFromFiles(fileList) {
@@ -7168,8 +9354,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           clearTimeout(WS.meta.saveTimer);
           WS.meta.saveTimer = null;
         }
-        WS.meta.dirty = true;
-        metaScheduleSave();
+        if (WS.meta.dirtyDocIds && WS.meta.dirtyDocIds.size) metaScheduleSave();
       }
 
       try { await hydrateEditedThumbnailAspects(); } catch {}
@@ -7457,6 +9642,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.meta.pendingTagsByPath = remapPathMapKeys(WS.meta.pendingTagsByPath, oldPrefix, newPrefix);
       WS.meta.dirFingerprints = remapPathMapKeys(WS.meta.dirFingerprints, oldPrefix, newPrefix);
       WS.meta.dirThumbPresets = remapPathMapKeys(WS.meta.dirThumbPresets, oldPrefix, newPrefix);
+      WS.meta.dirAppearancePresetIds = remapPathMapKeys(WS.meta.dirAppearancePresetIds, oldPrefix, newPrefix);
       WS.meta.dirThumbPresets = remapPathMapValues(WS.meta.dirThumbPresets, oldPrefix, newPrefix);
       WS.meta.fileThumbCrop = remapPathMapKeys(WS.meta.fileThumbCrop, oldPrefix, newPrefix);
       WS.meta.videoThumbTime = remapPathMapKeys(WS.meta.videoThumbTime, oldPrefix, newPrefix);
@@ -7493,6 +9679,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       updateMetaPathsForRename(oldPath, newPath);
       updateViewStatePathsForRename(oldPath, newPath);
       invalidateDirHandleCache(oldPath);
+      invalidateDirMetricsCaches();
       return { oldPath, newPath };
     }
 
@@ -7874,7 +10061,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const { oldPath: prevPath, newPath } = applyRenameInMemory(dirNode, clean);
         updateFileRecordsForRename(prevPath, newPath);
         metaComputeFingerprints();
-        WS.meta.dirty = true;
+        metaTrackDirtyDocIds([META_DOC_IDS.scores, META_DOC_IDS.tags, META_DOC_IDS.thumbnails, META_DOC_IDS.appearanceAssignments]);
 
         try {
           if (WS.meta.storageMode === "fs") await metaSaveFsNow();
@@ -7931,10 +10118,18 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     let DIR_ITEM_COUNT_CACHE = new Map();
     let DIR_ITEM_COUNT_CACHE_FILTER_MODE = "";
 
-    function invalidateDirMetricsCaches() {
+    function invalidateDirSortMetricsCache() {
       DIR_SORT_METRICS_CACHE = null;
+    }
+
+    function invalidateDirItemCountCache() {
       DIR_ITEM_COUNT_CACHE = new Map();
       DIR_ITEM_COUNT_CACHE_FILTER_MODE = "";
+    }
+
+    function invalidateDirMetricsCaches() {
+      invalidateDirSortMetricsCache();
+      invalidateDirItemCountCache();
     }
 
     function byName(a, b) {
@@ -8618,11 +10813,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       else WS.videoThumbInFlightBackgroundIds = new Set();
       WS.videoThumbPrewarmBlocking = false;
       WS.imageThumbQueue = [];
+      if (WS.imageThumbQueuedIds instanceof Set) WS.imageThumbQueuedIds.clear();
+      else WS.imageThumbQueuedIds = new Set();
+      if (WS.imageThumbInFlightIds instanceof Set) WS.imageThumbInFlightIds.clear();
+      else WS.imageThumbInFlightIds = new Set();
       if (WS.videoThumbWorkspaceKickTimer) {
         try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
         WS.videoThumbWorkspaceKickTimer = 0;
       }
-      if (WS.root) scheduleVideoThumbWorkspaceKick(0);
     }
 
     /* =========================================================
@@ -8685,7 +10883,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
 
       metaComputeFingerprints();
-      WS.meta.dirty = true;
+      metaTrackDirtyDocIds([META_DOC_IDS.scores, META_DOC_IDS.tags, META_DOC_IDS.thumbnails, META_DOC_IDS.appearanceAssignments]);
       try {
         if (WS.meta.storageMode === "fs") await metaSaveFsNow();
         else metaSaveLocalNow();
@@ -9113,8 +11311,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const root = roots[r];
         if (!root) continue;
         const queue = [root];
-        while (queue.length) {
-          const cur = queue.shift();
+        for (let q = 0; q < queue.length; q++) {
+          const cur = queue[q];
           if (!cur) continue;
           const includeHere = includeRootFiles || cur !== root;
           if (includeHere) {
@@ -9319,8 +11517,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!count) return 0;
       if (WS.meta.fileThumbCrop) WS.meta.fileThumbCrop.clear();
       if (WS.meta.videoThumbTime) WS.meta.videoThumbTime.clear();
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return count;
     }
 
@@ -9340,8 +11537,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         WS.meta.tagThumbModes.clear();
       }
       if (!count) return 0;
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(META_DOC_IDS.thumbnails);
       return count;
     }
 
@@ -9360,8 +11556,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (WS.meta.tagThumbModes) WS.meta.tagThumbModes.clear();
       const total = cropCount + assignmentCount;
       if (total > 0) {
-        WS.meta.dirty = true;
-        metaScheduleSave();
+        metaMarkDirty(META_DOC_IDS.thumbnails);
       }
       return { cropCount, assignmentCount, total };
     }
@@ -11127,16 +13322,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function shouldIncludeGridUpDirectoryEntry() {
-      if (!isGridInteractionMode()) return false;
-      if (!WS.root || !WS.nav.dirNode) return false;
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      if (opt && opt.showGridUpDirectoryEntry === false) return false;
-      if (WS.view.aboveRootView) return false;
-      if (isViewingTagFolder()) return true;
-      if (WS.view.dirSearchPinned && WS.view.searchRootActive) return false;
-      if (WS.view.favoritesMode && WS.view.favoritesRootActive) return false;
-      if (WS.view.hiddenMode && WS.view.hiddenRootActive) return false;
-      return WS.nav.dirNode !== WS.root;
+      return false;
     }
 
     function buildGridUpDirectoryEntry() {
@@ -11162,7 +13348,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function rebuildDirectoriesEntries() {
-      invalidateDirMetricsCaches();
       WS.nav.entries = [];
 
       if (!WS.root) return;
@@ -12808,6 +14993,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       }
 
+      invalidateDirMetricsCaches();
       remapFileIdsAcrossViewState(idMap);
       remapFolderThumbnailPresetValues(relPathMap);
     }
@@ -12902,7 +15088,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       ensureDirPath(newDirPath);
       updateFileRecordsForFileMoves(parentPath, newDirPath, records.map(r => r.id));
       metaComputeFingerprints();
-      WS.meta.dirty = true;
+      metaTrackDirtyDocIds([META_DOC_IDS.scores, META_DOC_IDS.tags, META_DOC_IDS.thumbnails, META_DOC_IDS.appearanceAssignments]);
       try {
         if (WS.meta.storageMode === "fs") await metaSaveFsNow();
         else metaSaveLocalNow();
@@ -13416,6 +15602,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const canRename = !!tag && !context.special;
       const canDelete = !context.special && (!!tag || isAlbumEntry);
       const thumbMode = metaGetTagThumbnailModeByKey(tagKey);
+      const canAppearancePreset = !!tagKey && !context.special && (!!tag || isAlbumEntry);
+      const assignedAppearancePresetId = canAppearancePreset ? metaGetTagAppearancePresetIdByKey(tagKey) : "";
       const allowRotatingThumbnails = !naturalAspectThumbnailCardsEnabled();
       const hasPreset = metaHasTagThumbnailPresetByKey(tagKey);
       closeTagContextMenu();
@@ -13423,6 +15611,28 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const menu = tagActionMenuEl;
       if (canRename) menu.appendChild(createTagMenuButton("Rename tag", () => handleTagMenuAction("rename")));
       if (canDelete) menu.appendChild(createTagMenuButton(isAlbumEntry ? "Delete tag album" : "Delete tag", () => handleTagMenuAction("delete")));
+      if (canAppearancePreset) {
+        menu.appendChild(createTagMenuButton("Set media preset", () => {
+          buildAppearancePresetChoiceMenu(menu, {
+            currentPresetId: assignedAppearancePresetId,
+            onBack: () => {
+              openTagContextMenu(context);
+            },
+            onChoosePreset: (presetId) => {
+              closeTagContextMenu();
+              if (!metaSetTagAppearancePresetIdByKey(tagKey, presetId)) return;
+              refreshAfterProcessingMetadataChange();
+              showStatusMessage(`${isAlbumEntry ? "Tag album" : "Tag"} media preset: ${appearancePresetDisplayName(presetId)}.`);
+            },
+            onRendered: () => {
+              positionDropdownMenu(anchor, menu);
+            }
+          });
+        }));
+      }
+      if (assignedAppearancePresetId) {
+        menu.appendChild(createTagMenuButton("Clear media preset override", () => handleTagMenuAction("appearance-preset-clear")));
+      }
       if (thumbMode !== "none") menu.appendChild(createTagMenuButton("No thumbnail", () => handleTagMenuAction("thumbnail-none")));
       if (allowRotatingThumbnails && (thumbMode !== "single" || hasPreset)) menu.appendChild(createTagMenuButton("Use rotating thumbnail", () => handleTagMenuAction("thumbnail-single")));
       if (allowRotatingThumbnails && thumbMode !== "quad") menu.appendChild(createTagMenuButton("Use quad thumbnail", () => handleTagMenuAction("thumbnail-quad")));
@@ -13434,7 +15644,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         label: context.label || tag || album,
         paths: paths.slice(),
         canRename,
-        canDelete
+        canDelete,
+        canAppearancePreset
       };
       requestAnimationFrame(() => {
         menu.classList.add("open");
@@ -13517,7 +15728,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const isRootNode = !!dirNode && dirNode === WS.root;
       const isFavorite = metaHasFavorite(p);
       const isHidden = metaHasHidden(p);
-      const processingDisabled = isPathOrAncestorProcessingDisabled(p);
+      const assignedAppearancePresetId = isRootNode ? effectiveActiveAppearancePresetId() : metaGetFolderAppearancePresetId(p);
       const canRename = !!WS.meta.fsRootHandle;
       const canBatchIndex = !!WS.meta.fsRootHandle;
       const canResetOrder = !!dirNode?.preserveOrder;
@@ -13530,7 +15741,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         isRootNode,
         isFavorite,
         isHidden,
-        processingDisabled,
+        assignedAppearancePresetId,
         canRename,
         canBatchIndex,
         canResetOrder,
@@ -13541,7 +15752,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       };
     }
 
-    function buildFolderActionMenuDom(menuEl, state, onAction) {
+    function buildFolderActionMenuDom(menuEl, state, onAction, customHandlers = null) {
       if (!menuEl || !state || typeof onAction !== "function") return;
       const makeBtn = (label, action, disabled = false) => {
         const btn = document.createElement("button");
@@ -13551,6 +15762,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         btn.setAttribute("data-action", String(action || ""));
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
+          const handler = customHandlers && typeof customHandlers[action] === "function"
+            ? customHandlers[action]
+            : null;
+          if (handler) {
+            handler(e);
+            return;
+          }
           onAction(String(action || ""));
         });
         return btn;
@@ -13563,6 +15781,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         menuEl.appendChild(row);
       };
       if (state.isRootNode) {
+        menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
         if (state.showUseDefaultThumbnail) menuEl.appendChild(makeBtn("Use default thumbnail", "thumbnail-default"));
         if (state.showSetNoThumbnail) menuEl.appendChild(makeBtn("No thumbnail", "thumbnail-none"));
         if (state.showSetRotatingThumbnail) menuEl.appendChild(makeBtn("Use rotating thumbnail", "thumbnail-rotate"));
@@ -13587,7 +15806,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         makeBtn("Index 1", "batch-index-1", !state.canBatchIndex),
         makeBtn("Index 2", "batch-index-2", !state.canBatchIndex)
       );
-      menuEl.appendChild(makeBtn(state.processingDisabled ? "Enable Processing" : "Disable Processing", "processing-toggle"));
+      menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
+      if (state.assignedAppearancePresetId) {
+        menuEl.appendChild(makeBtn("Clear media preset override", "appearance-preset-clear"));
+      }
       if (state.canResetOrder) menuEl.appendChild(makeBtn("Reset order", "reset-order"));
       if (state.showUseDefaultThumbnail) menuEl.appendChild(makeBtn("Use default thumbnail", "thumbnail-default"));
       if (state.showSetNoThumbnail) menuEl.appendChild(makeBtn("No thumbnail", "thumbnail-none"));
@@ -13652,20 +15874,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         metaToggleHidden(p);
         return true;
       }
-      if (action === "processing-toggle") {
-        const currentlyDisabled = isPathOrAncestorProcessingDisabled(p);
-        const changed = metaSetProcessingDisabledRecursive(p, !currentlyDisabled);
-        const stillDisabled = isPathOrAncestorProcessingDisabled(p);
-        if (!changed && currentlyDisabled && stillDisabled) {
-          showStatusMessage("Processing remains disabled by a parent folder.");
-          return true;
-        }
-        if (!changed) return true;
-        if (currentlyDisabled && stillDisabled) {
-          showStatusMessage("Processing remains disabled by a parent folder.");
-        } else {
-          showStatusMessage((!currentlyDisabled) ? "Processing disabled for folder and subfolders." : "Processing enabled for folder and subfolders.");
-        }
+      if (action === "appearance-preset-clear") {
+        if (isRootNode) return true;
+        if (!metaClearFolderAppearancePreset(p)) return true;
+        refreshAfterProcessingMetadataChange();
+        showStatusMessage("Folder media preset reset to inherited.");
         return true;
       }
       if (action === "thumbnail-rotate") {
@@ -13758,7 +15971,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       const menu = previewActionMenuEl;
       menu.innerHTML = "";
-      const makeBtn = (label, onClick, disabled = false) => {
+      const makeBtn = (label, onClick, disabled = false, closeMenu = true) => {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.textContent = String(label || "");
@@ -13766,7 +15979,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
           if (btn.disabled) return;
-          closePreviewContextMenu();
+          if (closeMenu) closePreviewContextMenu();
           onClick();
         });
         return btn;
@@ -13785,7 +15998,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const canIndexBulk = !!singleSelectedDirNode && !!WS.meta.fsRootHandle;
       const allFavorite = !!selectedPaths.length && selectedPaths.every((p) => metaHasFavorite(p));
       const allHidden = !!selectedPaths.length && selectedPaths.every((p) => metaHasHidden(p));
-      const allProcessingDisabled = !!selectedPaths.length && selectedPaths.every((p) => isPathOrAncestorProcessingDisabled(p));
+      const anyAssignedAppearancePreset = !!selectedPaths.length && selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
       const thumbTogglePaths = selectedDirNodes
         .filter((node) => folderEligibleForParentThumbnailPreset(node))
         .map((node) => String(node.path || ""))
@@ -13843,24 +16056,42 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }, !canIndexBulk || !singleSelectedDirNode)
       );
 
-      menu.appendChild(makeBtn(allProcessingDisabled ? "Enable Processing" : "Disable Processing", () => {
-        const nextDisable = !allProcessingDisabled;
-        const changed = metaSetProcessingDisabledBulk(selectedPaths, nextDisable);
-        const stillAllDisabled = selectedPaths.every((p) => isPathOrAncestorProcessingDisabled(p));
-        if (!changed && allProcessingDisabled && stillAllDisabled) {
-          showStatusMessage("Processing remains disabled by a parent folder.");
-          return;
-        }
-        if (!changed) return;
-        if (allProcessingDisabled && stillAllDisabled) {
-          showStatusMessage("Processing remains disabled by a parent folder.");
-        } else {
-          showStatusMessage(nextDisable
-            ? "Processing disabled for selected folders and subfolders."
-            : "Processing enabled for selected folders and subfolders.");
-        }
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-      }));
+      menu.appendChild(makeBtn("Set media preset", () => {
+        const currentPresetId = selectedPaths.length === 1 ? effectiveAppearancePresetIdForMenuPath(selectedPaths[0]) : "";
+        buildAppearancePresetChoiceMenu(menu, {
+          currentPresetId,
+          onBack: () => {
+            openPreviewBulkFolderActionMenu(selectedPaths, anchorPath, opts);
+          },
+          onChoosePreset: (presetId) => {
+            closePreviewContextMenu();
+            let changed = false;
+            for (let i = 0; i < selectedPaths.length; i++) {
+              if (metaSetFolderAppearancePresetId(selectedPaths[i], presetId)) changed = true;
+            }
+            if (!changed) return;
+            refreshAfterProcessingMetadataChange();
+            showStatusMessage(`Folder media preset: ${appearancePresetDisplayName(presetId)}.`);
+            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+          },
+          onRendered: () => {
+            if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
+            else positionDropdownMenuAtPoint(menu, Number(opts.x) || 0, Number(opts.y) || 0);
+          }
+        });
+      }, false, false));
+      if (anyAssignedAppearancePreset) {
+        menu.appendChild(makeBtn("Clear media preset override", () => {
+          let changed = false;
+          for (let i = 0; i < selectedPaths.length; i++) {
+            if (metaClearFolderAppearancePreset(selectedPaths[i])) changed = true;
+          }
+          if (!changed) return;
+          refreshAfterProcessingMetadataChange();
+          showStatusMessage("Folder media preset reset to inherited.");
+          if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+        }));
+      }
 
       if (thumbTogglePaths.length && !allThumbNone) {
         menu.appendChild(makeBtn("No thumbnail", () => {
@@ -13933,6 +16164,26 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           return;
         }
         runFolderActionFromMenu(action, dirNode).catch(() => {});
+      }, {
+        "appearance-preset-set": () => {
+          const currentPresetId = effectiveAppearancePresetIdForMenuPath(p);
+          buildAppearancePresetChoiceMenu(menu, {
+            currentPresetId,
+            onBack: () => {
+              openPreviewFolderActionMenu(dirNode, opts);
+            },
+            onChoosePreset: (presetId) => {
+              closePreviewContextMenu();
+              if (!metaSetFolderAppearancePresetId(p, presetId)) return;
+              refreshAfterProcessingMetadataChange();
+              showStatusMessage(`Folder media preset: ${appearancePresetDisplayName(presetId)}.`);
+            },
+            onRendered: () => {
+              if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
+              else positionDropdownMenuAtPoint(menu, Number(opts.x) || 0, Number(opts.y) || 0);
+            }
+          });
+        }
       });
 
       PREVIEW_CONTEXT_MENU_STATE = { dirPath: p };
@@ -13988,6 +16239,17 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (!newKey) continue;
         if (rekeyTagThumbnailState(oldKey, newKey)) changed = true;
       }
+      const appearanceKeys = getAllTagAppearancePresetStateKeys();
+      for (let i = 0; i < appearanceKeys.length; i++) {
+        const oldKey = appearanceKeys[i];
+        const parsed = parseTagThumbnailStructuredKey(oldKey);
+        if (!parsed || parsed.kind !== "tag" || String(parsed.value || "") !== normalizedOld) continue;
+        const newKey = parsed.scoped
+          ? tagThumbnailKeyForTag(normalizedNew, parsed.scopePath)
+          : tagThumbnailKeyForTag(normalizedNew);
+        if (!newKey) continue;
+        if (rekeyTagAppearancePresetState(oldKey, newKey)) changed = true;
+      }
       const oldAlbum = metaGetTagAlbumForTag(normalizedOld);
       if (oldAlbum) {
         let albumChanged = false;
@@ -14015,6 +16277,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const parsed = parseTagThumbnailStructuredKey(key);
         return !!parsed && parsed.kind === "tag" && String(parsed.value || "") === normalized;
       })) changed = true;
+      if (clearTagAppearancePresetStateByMatch((key) => {
+        const parsed = parseTagThumbnailStructuredKey(key);
+        return !!parsed && parsed.kind === "tag" && String(parsed.value || "") === normalized;
+      })) changed = true;
       if (metaSetTagAlbumForTag(normalized, "")) changed = true;
       return changed;
     }
@@ -14037,6 +16303,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       }
       if (clearTagThumbnailStateByMatch((key) => {
+        const parsed = parseTagThumbnailStructuredKey(key);
+        return !!parsed && parsed.kind === "album" && String(parsed.value || "") === album;
+      })) changed = true;
+      if (clearTagAppearancePresetStateByMatch((key) => {
         const parsed = parseTagThumbnailStructuredKey(key);
         return !!parsed && parsed.kind === "album" && String(parsed.value || "") === album;
       })) changed = true;
@@ -14093,6 +16363,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         metaScheduleSave();
         refreshAfterTagMetadataChange();
         showStatusMessage(`Removed tag '${label}'.`);
+        return;
+      }
+      if (action === "appearance-preset-clear") {
+        if (!ctx.canAppearancePreset || !tagKey) return;
+        if (!metaClearTagAppearancePresetByKey(tagKey)) return;
+        refreshAfterProcessingMetadataChange();
+        showStatusMessage(`${isAlbumEntry ? "Tag album" : "Tag"} media preset reset.`);
         return;
       }
       if (!tagKey) {
@@ -14197,7 +16474,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       const allFavorite = !!selectedDirs.length && selectedDirs.every(p => metaHasFavorite(p));
       const allHidden = !!selectedDirs.length && selectedDirs.every(p => metaHasHidden(p));
-      const allProcessingDisabled = !!selectedDirs.length && selectedDirs.every(p => isPathOrAncestorProcessingDisabled(p));
+      const anyAssignedAppearancePreset = !!selectedDirs.length && selectedDirs.some(p => metaHasFolderAppearancePreset(p));
       const albumAssignableTagEntries = selectedTagEntries.filter((entry) => (
         entry && entry.kind === "tag" && !entry.special && !entry.placeholder && String(entry.tag || "").trim()
       ));
@@ -14210,6 +16487,25 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         && !String(entry.tag || "").trim()
         && !!normalizeTagAlbumName(entry.album || "")
       ));
+      const presetAssignableTagEntries = selectedTagEntries.filter((entry) => (
+        entry
+        && entry.kind === "tag"
+        && !entry.special
+        && !entry.placeholder
+        && (!!String(entry.tag || "").trim() || !!normalizeTagAlbumName(entry.album || ""))
+      ));
+      const tagAppearancePresetKeys = (() => {
+        const out = [];
+        const seen = new Set();
+        for (let i = 0; i < presetAssignableTagEntries.length; i++) {
+          const key = tagThumbnailKeyForEntry(presetAssignableTagEntries[i]);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          out.push(key);
+        }
+        return out;
+      })();
+      const anyAssignedTagAppearancePreset = !!tagAppearancePresetKeys.length && tagAppearancePresetKeys.some((key) => metaHasTagAppearancePresetByKey(key));
       const tagThumbTargets = (() => {
         const out = [];
         const seen = new Set();
@@ -14234,14 +16530,16 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         return;
       }
 
-      const makeActionBtn = (label, onClick) => {
+      const makeActionBtn = (label, onClick, closeMenu = true) => {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.textContent = label;
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
-          closeActionMenus();
-          renderDirectoriesPane(true);
+          if (closeMenu) {
+            closeActionMenus();
+            renderDirectoriesPane(true);
+          }
           onClick();
         });
         return btn;
@@ -14337,6 +16635,50 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           metaScheduleSave();
           refreshAfterTagMetadataChange();
           showStatusMessage(`Deleted ${deletedCount} tag album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`);
+          finalizeBulkSelectionAction();
+        }));
+      }
+
+      if (tagAppearancePresetKeys.length) {
+        directoriesActionMenuEl.appendChild(makeActionBtn("Set media preset", () => {
+          const currentPresetId = tagAppearancePresetKeys.length === 1 ? metaGetTagAppearancePresetIdByKey(tagAppearancePresetKeys[0]) : "";
+          buildAppearancePresetChoiceMenu(directoriesActionMenuEl, {
+            currentPresetId,
+            onBack: () => {
+              renderDirectoriesActionHeader();
+              if (directoriesActionMenuEl.classList.contains("open") && anchorBtn) {
+                requestAnimationFrame(() => positionDropdownMenu(anchorBtn, directoriesActionMenuEl));
+              }
+            },
+            onChoosePreset: (presetId) => {
+              closeActionMenus();
+              renderDirectoriesPane(true);
+              let changed = false;
+              for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
+                if (metaSetTagAppearancePresetIdByKey(tagAppearancePresetKeys[i], presetId)) changed = true;
+              }
+              if (!changed) return;
+              refreshAfterProcessingMetadataChange();
+              showStatusMessage(`Tag media preset: ${appearancePresetDisplayName(presetId)}.`);
+              finalizeBulkSelectionAction();
+            },
+            onRendered: () => {
+              if (anchorBtn) positionDropdownMenu(anchorBtn, directoriesActionMenuEl);
+            }
+          });
+        }, false));
+      }
+
+      if (anyAssignedTagAppearancePreset) {
+        directoriesActionMenuEl.appendChild(makeActionBtn("Clear media preset override", () => {
+          WS.view.bulkActionMenuOpen = false;
+          let changed = false;
+          for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
+            if (metaClearTagAppearancePresetByKey(tagAppearancePresetKeys[i])) changed = true;
+          }
+          if (!changed) return;
+          refreshAfterProcessingMetadataChange();
+          showStatusMessage("Tag media preset reset.");
           finalizeBulkSelectionAction();
         }));
       }
@@ -14488,25 +16830,47 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
         directoriesActionMenuEl.appendChild(makeTwoColRow(index1Btn, index2Btn));
 
-        directoriesActionMenuEl.appendChild(makeActionBtn(allProcessingDisabled ? "Enable Processing" : "Disable Processing", () => {
-          WS.view.bulkActionMenuOpen = false;
-          const nextDisable = !allProcessingDisabled;
-          const changed = metaSetProcessingDisabledBulk(selectedDirs, nextDisable);
-          const stillAllDisabled = selectedDirs.every(p => isPathOrAncestorProcessingDisabled(p));
-          if (!changed && allProcessingDisabled && stillAllDisabled) {
-            showStatusMessage("Processing remains disabled by a parent folder.");
-            return;
-          }
-          if (!changed) return;
-          if (allProcessingDisabled && stillAllDisabled) {
-            showStatusMessage("Processing remains disabled by a parent folder.");
-          } else {
-            showStatusMessage(nextDisable
-              ? "Processing disabled for selected folders and subfolders."
-              : "Processing enabled for selected folders and subfolders.");
-          }
-          finalizeBulkSelectionAction();
-        }));
+        directoriesActionMenuEl.appendChild(makeActionBtn("Set media preset", () => {
+          const currentPresetId = selectedDirs.length === 1 ? effectiveAppearancePresetIdForMenuPath(selectedDirs[0]) : "";
+          buildAppearancePresetChoiceMenu(directoriesActionMenuEl, {
+            currentPresetId,
+            onBack: () => {
+              renderDirectoriesActionHeader();
+              if (directoriesActionMenuEl.classList.contains("open") && anchorBtn) {
+                requestAnimationFrame(() => positionDropdownMenu(anchorBtn, directoriesActionMenuEl));
+              }
+            },
+            onChoosePreset: (presetId) => {
+              closeActionMenus();
+              renderDirectoriesPane(true);
+              let changed = false;
+              for (let i = 0; i < selectedDirs.length; i++) {
+                if (metaSetFolderAppearancePresetId(selectedDirs[i], presetId)) changed = true;
+              }
+              if (!changed) return;
+              refreshAfterProcessingMetadataChange();
+              showStatusMessage(`Folder media preset: ${appearancePresetDisplayName(presetId)}.`);
+              finalizeBulkSelectionAction();
+            },
+            onRendered: () => {
+              if (anchorBtn) positionDropdownMenu(anchorBtn, directoriesActionMenuEl);
+            }
+          });
+        }, false));
+
+        if (anyAssignedAppearancePreset) {
+          directoriesActionMenuEl.appendChild(makeActionBtn("Clear media preset override", () => {
+            WS.view.bulkActionMenuOpen = false;
+            let changed = false;
+            for (let i = 0; i < selectedDirs.length; i++) {
+              if (metaClearFolderAppearancePreset(selectedDirs[i])) changed = true;
+            }
+            if (!changed) return;
+            refreshAfterProcessingMetadataChange();
+            showStatusMessage("Folder media preset reset to inherited.");
+            finalizeBulkSelectionAction();
+          }));
+        }
 
         if (isGridInteractionMode() && thumbDefaultPaths.length) {
           directoriesActionMenuEl.appendChild(makeActionBtn("Use default thumbnail", () => {
@@ -14706,6 +17070,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function renderDirectoriesPane(keepScroll = false) {
+      syncThumbFilterKeyWithCurrentAppearanceContext();
       const nextContextKey = directoriesScrollContextKey();
       const contextChanged = nextContextKey !== LAST_DIRECTORIES_SCROLL_CONTEXT;
       const preserveScroll = !!keepScroll && !contextChanged;
@@ -15022,7 +17387,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             row.dataset.bulkAnchor = `dir:${p}`;
             const isFavorite = metaHasFavorite(p);
             const isHidden = metaHasHidden(p);
-            const processingDisabled = isPathOrAncestorProcessingDisabled(p);
+            const assignedAppearancePresetId = metaGetFolderAppearancePresetId(p);
             const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
             if (sel) row.classList.add("bulkSelected");
             const canRename = !!WS.meta.fsRootHandle;
@@ -15083,6 +17448,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             let menuTitle = "Folder menu";
             if (isRootNode) {
               menuButtons = `
+                <button type="button" data-action="appearance-preset-set">Set media preset</button>
                 ${showUseDefaultThumbnail ? `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>` : ``}
                 ${showSetNoThumbnail ? `<button type="button" data-action="thumbnail-none">No thumbnail</button>` : ``}
                 ${showSetRotatingThumbnail ? `<button type="button" data-action="thumbnail-rotate">Use rotating thumbnail</button>` : ``}
@@ -15106,7 +17472,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                   <button type="button" data-action="batch-index-1"${canBatchIndex ? "" : " disabled"}>Index 1</button>
                   <button type="button" data-action="batch-index-2"${canBatchIndex ? "" : " disabled"}>Index 2</button>
                 </div>
-                <button type="button" data-action="processing-toggle">${processingDisabled ? "Enable Processing" : "Disable Processing"}</button>
+                <button type="button" data-action="appearance-preset-set">Set media preset</button>
+                ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
                 ${showUseDefaultThumbnail ? `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>` : ``}
                 ${showSetNoThumbnail ? `<button type="button" data-action="thumbnail-none">No thumbnail</button>` : ``}
@@ -15146,7 +17513,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               let squareAspectRec = firstRec || null;
               let rootPortalMediaHtml = "";
               if (isRootPortalCard) {
-                const rootPool = getRecursivePreviewRecordsForDir(entry.node, 0, true);
+                const rootPool = getRecursivePreviewRecordsForDir(entry.node, PREVIEW_THUMB_PRIORITY_LIMIT, true);
                 const rootMode = getRootThumbnailMode();
                 const rootPresetRec = getRootPresetPreviewRecord(entry.node, rootPool);
                 const rootScope = String(WS.meta.storageKey || "workspace");
@@ -15555,6 +17922,37 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               btn.addEventListener("click", async (e) => {
                 e.stopPropagation();
                 const action = btn.getAttribute("data-action");
+                if (action === "appearance-preset-set") {
+                  const isRootNode = entry.node === WS.root;
+                  const currentPresetId = isRootNode
+                    ? effectiveActiveAppearancePresetId()
+                    : effectiveAppearancePresetIdForMenuPath(p);
+                  buildAppearancePresetChoiceMenu(menuDropdown, {
+                    currentPresetId,
+                    onBack: () => {
+                      renderDirectoriesPane(true);
+                      renderPreviewPane(false, true);
+                      syncButtons();
+                    },
+                    onChoosePreset: (presetId) => {
+                      closeActionMenus();
+                      renderDirectoriesPane(true);
+                      if (isRootNode) {
+                        if (!applyAppearancePresetById(presetId)) return;
+                        if (MENU_ACTIVE_TAB === "appearance") renderOptionsUi("appearance");
+                        showStatusMessage(`Root media preset: ${appearancePresetDisplayName(presetId)}.`);
+                        return;
+                      }
+                      if (!metaSetFolderAppearancePresetId(p, presetId)) return;
+                      refreshAfterProcessingMetadataChange();
+                      showStatusMessage(`Folder media preset: ${appearancePresetDisplayName(presetId)}.`);
+                    },
+                    onRendered: () => {
+                      if (menuBtn) positionDropdownMenu(menuBtn, menuDropdown);
+                    }
+                  });
+                  return;
+                }
                 closeActionMenus();
                 renderDirectoriesPane(true);
                 await runFolderActionFromMenu(action, entry.node);
@@ -16636,13 +19034,18 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function scrollImageFallbackCssFilter(rec, mode) {
       if (mode === "none") return "none";
       if (!rec || rec.type !== "image") return "none";
-      if (!mediaFilterEnabled()) return "none";
-      if (!mediaProcessingEnabledForTarget(rec)) return "none";
-      const filterMode = getMediaFilterForType();
+      const overlayCfg = resolveMediaOverlayConfigForTarget(rec);
+      if (!overlayCfg) return "none";
+      const filterMode = getMediaFilterForType(rec);
       const intensity = getMediaFilterIntensity();
       const baseCfgRaw = (filterMode && filterMode !== "off") ? MEDIA_FILTER_CONFIGS[filterMode] : null;
       const baseCfg = scaleBaseFilterConfig(baseCfgRaw, intensity);
-      const colorFilter = baseCfg && baseCfg.color ? String(baseCfg.color) : "none";
+      const overlayColorFilter = Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length
+        ? overlayCfg.colorFilters.join(" ")
+        : "none";
+      const colorFilter = (overlayColorFilter && overlayColorFilter !== "none")
+        ? overlayColorFilter
+        : (baseCfg && baseCfg.color ? String(baseCfg.color) : "none");
       return colorFilter && colorFilter !== "none" ? colorFilter : "none";
     }
 
@@ -16907,6 +19310,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function renderPreviewPane(animate = false, keepScroll = false) {
+      syncThumbFilterKeyWithCurrentAppearanceContext();
       const previewRenderToken = nextPreviewFilesRenderToken();
       savePreviewScrollForActiveDir();
       const prevScroll = keepScroll ? previewBodyEl.scrollTop : 0;
@@ -19185,9 +21589,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         clearPendingFilmCornerMask(viewerImgEl);
       }
       if (viewerFolderEl) viewerFolderEl.style.display = "none";
-      MediaFilterEngine.detach("viewer");
-      if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
-      if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
+      const preserveViewerFrame = mediaFilterEnabled();
+      MediaFilterEngine.detach("viewer", { preserveFrame: preserveViewerFrame });
+      if (!preserveViewerFrame) {
+        if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
+        if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
+      }
 
       const slots = getQuadPlaybackSlots();
       const records = getQuadPlaybackRecords();
@@ -19318,9 +21725,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         clearPendingFilmCornerMask(viewerImgEl);
       }
       if (viewerFolderEl) viewerFolderEl.style.display = "none";
-      MediaFilterEngine.detach("viewer");
-      if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
-      if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
+      const preserveViewerFrame = mediaFilterEnabled();
+      MediaFilterEngine.detach("viewer", { preserveFrame: preserveViewerFrame });
+      if (!preserveViewerFrame) {
+        if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
+        if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
+      }
 
       if (!item) return;
 
@@ -19808,41 +22218,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       { value: "videos", label: "Videos only" }
     ];
 
-    const SLIDER_KEYBIND_CONFIG = {
-      stepVibrantOverlayIntensity: {
-        keys: ["vibrantOverlayIntensity"],
-        min: 0,
-        max: 1,
-        step: 0.05,
-        label: "Vibrant overlay intensity",
-        format: (value) => `${Math.round(clampNumber(value, 0, 1, 1) * 100)}%`
-      },
-      stepPixelationResolution: {
-        keys: ["crtPixelateResolution"],
-        min: 2,
-        max: 8,
-        step: 0.5,
-        label: "Pixelation resolution",
-        format: (value) => `${Number(clampNumber(value, 2, 8, 4).toFixed(1)).toString()}x`
-      },
-      stepFilmGrainAmount: {
-        keys: ["crtGrainAmount"],
-        min: 0,
-        max: 0.25,
-        step: 0.01,
-        label: "Film grain amount",
-        format: (value) => `${Math.round(clampNumber(value, 0, 0.25, 0.06) * 100)}%`
-      },
-      stepVhsIntensity: {
-        keys: ["vhsBlurAmount", "vhsChromaAmount"],
-        min: 0,
-        max: 3,
-        step: 0.1,
-        label: "VHS intensity",
-        format: (value) => Number(clampNumber(value, 0, 3, 1.2).toFixed(1)).toString()
-      }
-    };
-
     function cycleFilterMode() {
       const m = WS.view.filterMode;
       WS.view.filterMode = (m === "all") ? "images" : (m === "images") ? "videos" : (m === "videos") ? "gifs" : "all";
@@ -19856,8 +22231,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.view.folderBehavior = next;
       if (WS.meta && WS.meta.options) {
         WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { defaultFolderBehavior: next }));
-        WS.meta.dirty = true;
-        metaScheduleSave();
+        metaMarkDirty(META_DOC_IDS.prefGeneral);
       }
       applyViewModesEverywhere(true);
       showStatusMessage(`Folder behavior: ${WS.view.folderBehavior}`);
@@ -19866,8 +22240,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function setOptionValues(nextValues) {
       if (!WS.meta) return null;
       WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, nextValues || {}));
-      WS.meta.dirty = true;
-      metaScheduleSave();
+      metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(nextValues || {})));
       return WS.meta.options || null;
     }
 
@@ -19895,60 +22268,21 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return entry ? entry.label : String(value || "");
     }
 
-    function decimalPlaces(value) {
-      const raw = String(value);
-      const dot = raw.indexOf(".");
-      if (dot < 0) return 0;
-      return raw.length - dot - 1;
-    }
-
-    function stepRangeOptionValue(keys, min, max, step) {
-      if (!WS.meta) return null;
-      const targetKeys = Array.isArray(keys) ? keys.filter(Boolean) : [String(keys || "")];
-      if (!targetKeys.length) return null;
-      const options = WS.meta.options || {};
-      let total = 0;
-      let count = 0;
-      for (const key of targetKeys) {
-        const currentRaw = Number(options[key]);
-        if (!Number.isFinite(currentRaw)) continue;
-        total += clampNumber(currentRaw, min, max, min);
-        count++;
-      }
-      const current = count ? (total / count) : min;
-      const totalSteps = Math.max(1, Math.round((max - min) / step));
-      const currentStep = Math.max(0, Math.min(totalSteps, Math.round((current - min) / step)));
-      const nextStep = (currentStep + 1 > totalSteps) ? 0 : (currentStep + 1);
-      const places = Math.max(decimalPlaces(step), decimalPlaces(min), decimalPlaces(max));
-      const factor = Math.pow(10, places);
-      const nextRaw = min + (nextStep * step);
-      const next = Math.round(nextRaw * factor) / factor;
-      const nextValue = clampNumber(next, min, max, min);
-      const updates = {};
-      targetKeys.forEach((key) => {
-        updates[key] = nextValue;
-      });
-      setOptionValues(updates);
-      return nextValue;
-    }
 
     function handleExtrasKeybindAction(action) {
       if (!action || !WS.meta) return false;
-      const sliderCfg = SLIDER_KEYBIND_CONFIG[action];
-      if (sliderCfg) {
-        const next = stepRangeOptionValue(sliderCfg.keys, sliderCfg.min, sliderCfg.max, sliderCfg.step);
-        applyMediaFilterFromOptions();
-        const valueLabel = typeof sliderCfg.format === "function" ? sliderCfg.format(next) : String(next);
-        showStatusMessage(`${sliderCfg.label}: ${valueLabel}`);
+      const presetId = appearancePresetIdFromKeybindAction(action);
+      if (presetId) {
+        const preset = getAppearancePresetById(presetId);
+        if (!preset) return false;
+        const activeId = effectiveActiveAppearancePresetId();
+        const currentlyApplied = activeId === presetId && currentAppearanceBucket() !== "editing";
+        const nextPresetId = currentlyApplied ? BUILTIN_NULL_APPEARANCE_PRESET_ID : presetId;
+        if (!applyAppearancePresetById(nextPresetId)) return false;
+        showStatusMessage(`Appearance preset: ${appearancePresetDisplayName(nextPresetId, "Default")}`);
         return true;
       }
       switch (action) {
-        case "toggleVibrantOverlay": {
-          const next = toggleOptionValue("vibrantOverlayEnabled");
-          applyMediaFilterFromOptions();
-          showStatusMessage(`Vibrant overlay: ${next ? "On" : "Off"}`);
-          return true;
-        }
         case "cycleColorScheme": {
           const next = cycleOptionValue("colorScheme", COLOR_SCHEME_CYCLE);
           applyColorSchemeFromOptions();
@@ -19961,36 +22295,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           showStatusMessage(`Retro mode: ${next ? "On" : "Off"}`);
           return true;
         }
-        case "toggleScanlinesOverlay": {
-          const next = toggleOptionValue("crtScanlinesEnabled");
-          applyMediaFilterFromOptions();
-          showStatusMessage(`Scanlines: ${next ? "On" : "Off"}`);
-          return true;
-        }
-        case "togglePixelatedOverlay": {
-          const next = toggleOptionValue("crtPixelateEnabled");
-          applyMediaFilterFromOptions();
-          showStatusMessage(`Pixelated overlay: ${next ? "On" : "Off"}`);
-          return true;
-        }
-        case "toggleFilmGrainOverlay": {
-          const next = toggleOptionValue("crtGrainEnabled");
-          applyMediaFilterFromOptions();
-          showStatusMessage(`Film grain: ${next ? "On" : "Off"}`);
-          return true;
-        }
-        case "toggleVhsOverlay": {
-          const next = toggleOptionValue("vhsOverlayEnabled");
-          applyMediaFilterFromOptions();
-          showStatusMessage(`VHS overlay: ${next ? "On" : "Off"}`);
-          return true;
-        }
-        case "toggleFilmCornersOverlay": {
-          const next = toggleOptionValue("filmCornerOverlayEnabled");
-          applyMediaFilterFromOptions();
-          showStatusMessage(`Film corners: ${next ? "On" : "Off"}`);
-          return true;
-        }
         case "toggleAnimatedFilters": {
           const next = cycleOptionValue("animatedMediaFilters", ANIMATED_FILTER_CYCLE);
           applyMediaFilterFromOptions();
@@ -19999,8 +22303,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
         case "cycleFolderSort": {
           WS.meta.dirSortMode = cycleDirSortMode(WS.meta.dirSortMode);
-          WS.meta.dirty = true;
-          metaScheduleSave();
+          metaMarkDirty(META_DOC_IDS.prefGeneral);
           applyViewModesEverywhere(true);
           showStatusMessage(`Folder sort: ${dirSortModeLabel(WS.meta.dirSortMode)}`);
           return true;
@@ -20835,6 +23138,52 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       else openMenu(tabId);
     }
 
+    function refreshAfterInteractionModeToggle(animatePreview = false, keepPreviewScroll = true) {
+      syncPreviewToSelection();
+      renderDirectoriesPane(true);
+      renderPreviewPane(animatePreview, keepPreviewScroll);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+
+    function setInteractionModeValue(nextMode) {
+      if (!WS.meta) return false;
+      const normalizedMode = String(nextMode || "").toLowerCase() === "pane" ? "pane" : "grid";
+      if (getInteractionModeFromOptions() === normalizedMode) return false;
+      WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { interactionMode: normalizedMode }));
+      metaMarkDirty(META_DOC_IDS.prefGeneral);
+      applyInteractionModeFromOptions();
+      return true;
+    }
+
+    function toggleInteractionModeFromTabShortcut() {
+      if (!WS.meta) return false;
+      if (VIEWER_MODE) return false;
+      const currentMode = getInteractionModeFromOptions();
+      const nextMode = currentMode === "grid" ? "pane" : "grid";
+      const selectedEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
+      if (!setInteractionModeValue(nextMode)) return false;
+
+      if (nextMode === "pane") {
+        const priorDirNode = WS.nav.dirNode || null;
+        const priorAboveRoot = !!WS.view.aboveRootView;
+        leaveDirectory();
+        if (priorDirNode === (WS.nav.dirNode || null) && priorAboveRoot === !!WS.view.aboveRootView) {
+          refreshAfterInteractionModeToggle(false, true);
+        }
+      } else if (selectedEntry && selectedEntry.kind === "dir" && selectedEntry.node) {
+        navigateToDirectory(selectedEntry.node);
+      } else if (selectedEntry && selectedEntry.kind === "tag") {
+        openTagFolderEntry(selectedEntry);
+      } else {
+        refreshAfterInteractionModeToggle(false, true);
+      }
+
+      showStatusMessage(`Interaction mode: ${nextMode === "pane" ? "Pane" : "Grid"}`);
+      return true;
+    }
+
     document.addEventListener("keydown", (e) => {
       syncModifierKeyStateFromEvent(e);
     }, true);
@@ -20848,7 +23197,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     });
 
     // Hard-coded menu toggles: ` / ~ opens the last-used menu tab.
-    // Tab opens Controls only in Pane Mode.
+    // Tab toggles between pane and grid interaction modes.
     document.addEventListener("keydown", (e) => {
       if (e.defaultPrevented) return;
       if (e.repeat) return;
@@ -20868,7 +23217,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (VIEWER_MODE && isQuadPlaybackMode()) return;
       if (isTextInputTarget(e.target)) return;
       e.preventDefault();
-      toggleMenuForTab("controls");
+      toggleInteractionModeFromTabShortcut();
     }, true);
 
     document.addEventListener("keydown", (e) => {
@@ -20898,25 +23247,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         : null;
 
       if (VIEWER_MODE && isQuadPlaybackMode()) {
-        const quadOverlayActions = new Set([
-          "toggleVibrantOverlay",
-          "stepVibrantOverlayIntensity",
-          "toggleFilmGrainOverlay",
-          "stepFilmGrainAmount",
-          "toggleVhsOverlay",
-          "stepVhsIntensity",
-          "toggleFilmCornersOverlay",
-          "togglePixelatedOverlay",
-          "stepPixelationResolution",
-          "toggleAnimatedFilters"
-        ]);
         const allowedQuadAction = key === "Escape"
           || action === "back"
           || action === "seekBack"
           || action === "seekForward"
           || action === "playPause"
           || action === "muteToggle"
-          || quadOverlayActions.has(action);
+          || action === "toggleAnimatedFilters"
+          || isAppearancePresetKeybindAction(action);
         if (!allowedQuadAction) {
           e.preventDefault();
           return;
