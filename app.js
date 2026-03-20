@@ -15,6 +15,8 @@
     // Legacy thumbnail style switch. "aspect" mode remains in code for future reactivation,
     // but the app currently runs cropped thumbnails only.
     const ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE = false;
+    // Keep quad thumbnail logic in code, but force it off in the shipped UI/runtime path.
+    const ENABLE_QUAD_THUMBNAILS = false;
     const GRID_CROPPED_COLS_BY_SCALE = Object.freeze({
       small: 7,
       medium: 6,
@@ -7119,10 +7121,19 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return changed;
     }
 
+    function quadThumbnailsEnabled() {
+      return !!ENABLE_QUAD_THUMBNAILS;
+    }
+
+    function defaultRotatingThumbnailMode() {
+      return quadThumbnailsEnabled() ? "quad" : "single";
+    }
+
     function normalizeTagThumbnailMode(mode) {
       const raw = String(mode || "").trim().toLowerCase();
-      if (raw === "none" || raw === "single" || raw === "quad") return raw;
-      return "quad";
+      if (raw === "none" || raw === "single") return raw;
+      if (raw === "quad") return quadThumbnailsEnabled() ? "quad" : "single";
+      return defaultRotatingThumbnailMode();
     }
 
     function tagThumbnailKeyForTag(tagName, scopePath = null) {
@@ -7318,7 +7329,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function metaGetTagThumbnailModeByKey(tagKey) {
       const key = String(tagKey || "");
-      if (!key || !WS.meta || !WS.meta.tagThumbModes) return "quad";
+      if (!key || !WS.meta || !WS.meta.tagThumbModes) return defaultRotatingThumbnailMode();
       const mode = WS.meta.tagThumbModes.get(key);
       return normalizeTagThumbnailMode(mode);
     }
@@ -11634,6 +11645,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return metaGetTagThumbnailModeByKey(rootThumbnailKey());
     }
 
+    function isRootThumbnailModeDefault(mode) {
+      return String(mode || "") === defaultRotatingThumbnailMode();
+    }
+
     function rootThumbnailHasPreset() {
       return metaHasTagThumbnailPresetByKey(rootThumbnailKey());
     }
@@ -11648,7 +11663,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function resetRootThumbnailToDefault() {
       const cleared = clearRootThumbnailPreset();
-      const modeChanged = setRootThumbnailMode("quad");
+      const modeChanged = setRootThumbnailMode(defaultRotatingThumbnailMode());
       return cleared || modeChanged;
     }
 
@@ -12856,7 +12871,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const previewId = String(rec.id || "");
       const previewSrc = rec.type === "video"
         ? getVideoPosterForRecord(rec)
-        : (ensureThumbUrl(rec) || "");
+        : (ensureNavigationThumbUrl(rec) || "");
       if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
       if (!previewSrc) return false;
       if (imgEl.src !== previewSrc) imgEl.src = previewSrc;
@@ -13766,8 +13781,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!directoriesListEl) return false;
       const nextRow = directoriesListEl.querySelector(`.dirRow[data-entry-index="${String(nextIdx)}"]`);
       if (!nextRow) return false;
-      const prevRow = directoriesListEl.querySelector(`.dirRow[data-entry-index="${String(prevIdx)}"]`);
-      if (prevRow) prevRow.classList.remove("selected");
+      const selectedRows = directoriesListEl.querySelectorAll(".dirRow.selected");
+      if (selectedRows && selectedRows.length) {
+        selectedRows.forEach((row) => {
+          if (row && row !== nextRow) row.classList.remove("selected");
+        });
+      }
       nextRow.classList.add("selected");
       return true;
     }
@@ -13775,6 +13794,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function canUseFastPaneSelectionUpdate(hadTransientUi) {
       if (isGridInteractionMode()) return false;
       if (!directoriesListEl || directoriesListEl.classList.contains("gridModeList")) return false;
+      if (busyOverlay && busyOverlay.classList.contains("active")) return false;
       if (hadTransientUi) return false;
       if (WS.view.bulkSelectMode) return false;
       return true;
@@ -13784,8 +13804,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!directoriesListEl) return false;
       const nextRow = directoriesListEl.querySelector(`.dirRow[data-entry-index="${String(nextIdx)}"]`);
       if (!nextRow) return false;
-      const prevRow = directoriesListEl.querySelector(`.dirRow[data-entry-index="${String(prevIdx)}"]`);
-      if (prevRow) prevRow.classList.remove("selected");
+      const selectedRows = directoriesListEl.querySelectorAll(".dirRow.selected");
+      if (selectedRows && selectedRows.length) {
+        selectedRows.forEach((row) => {
+          if (row && row !== nextRow) row.classList.remove("selected");
+        });
+      }
       nextRow.classList.add("selected");
       return true;
     }
@@ -16386,7 +16410,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
       if (thumbMode !== "none") menu.appendChild(createTagMenuButton("No thumbnail", () => handleTagMenuAction("thumbnail-none")));
       if (allowRotatingThumbnails && (thumbMode !== "single" || hasPreset)) menu.appendChild(createTagMenuButton("Use rotating thumbnail", () => handleTagMenuAction("thumbnail-single")));
-      if (allowRotatingThumbnails && thumbMode !== "quad") menu.appendChild(createTagMenuButton("Use quad thumbnail", () => handleTagMenuAction("thumbnail-quad")));
+      if (quadThumbnailsEnabled() && allowRotatingThumbnails && thumbMode !== "quad") {
+        menu.appendChild(createTagMenuButton("Use quad thumbnail", () => handleTagMenuAction("thumbnail-quad")));
+      }
       TAG_CONTEXT_MENU_STATE = {
         tag,
         album,
@@ -16496,10 +16522,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         canRename,
         canBatchIndex,
         canResetOrder,
-        showUseDefaultThumbnail: hasPreset || (isRootNode && folderThumbMode !== "quad"),
+        showUseDefaultThumbnail: hasPreset || (isRootNode && !isRootThumbnailModeDefault(folderThumbMode)),
         showSetNoThumbnail: canToggleFolderThumbMode && folderThumbMode !== "none",
         showSetRotatingThumbnail: allowRotatingThumbnails && canToggleFolderThumbMode && (isRootNode ? (folderThumbMode !== "single" || hasPreset) : folderThumbMode !== "rotate"),
-        showSetQuadThumbnail: allowRotatingThumbnails && canToggleFolderThumbMode && isRootNode && folderThumbMode !== "quad"
+        showSetQuadThumbnail: quadThumbnailsEnabled() && allowRotatingThumbnails && canToggleFolderThumbMode && isRootNode && folderThumbMode !== "quad"
       };
     }
 
@@ -16676,6 +16702,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         return true;
       }
       if (action === "thumbnail-quad") {
+        if (!quadThumbnailsEnabled()) {
+          showStatusMessage("Quad thumbnails are disabled.");
+          return true;
+        }
         if (naturalAspectThumbnailCardsEnabled()) {
           showStatusMessage("Rotating thumbnails are disabled in natural aspect thumbnail mode.");
           return true;
@@ -17155,6 +17185,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         return;
       }
       if (action === "thumbnail-quad") {
+        if (!quadThumbnailsEnabled()) {
+          showStatusMessage("Quad thumbnails are disabled.");
+          return;
+        }
         if (naturalAspectThumbnailCardsEnabled()) {
           showStatusMessage("Rotating thumbnails are disabled in natural aspect thumbnail mode.");
           return;
@@ -17273,7 +17307,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const allTagThumbSingleNoPreset = !!tagThumbTargets.length && tagThumbTargets.every((key) => (
         metaGetTagThumbnailModeByKey(key) === "single" && !metaHasTagThumbnailPresetByKey(key)
       ));
-      const allTagThumbQuad = !!tagThumbTargets.length && tagThumbTargets.every((key) => metaGetTagThumbnailModeByKey(key) === "quad");
+      const allTagThumbQuad = quadThumbnailsEnabled()
+        && !!tagThumbTargets.length
+        && tagThumbTargets.every((key) => metaGetTagThumbnailModeByKey(key) === "quad");
       const canUseGridTagThumbBulkActions = isGridInteractionMode() && !!tagThumbTargets.length;
       if (!selectedDirs.length && !albumAssignableTagEntries.length && !deletableTagAlbumEntries.length && !canUseGridTagThumbBulkActions && !selectedFiles.length) {
         WS.view.bulkActionMenuOpen = false;
@@ -17474,7 +17510,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           }));
         }
 
-        if (!naturalAspectThumbnailCardsEnabled() && !allTagThumbQuad) {
+        if (quadThumbnailsEnabled() && !naturalAspectThumbnailCardsEnabled() && !allTagThumbQuad) {
           directoriesActionMenuEl.appendChild(makeActionBtn("Use quad tag thumbnail", () => {
             WS.view.bulkActionMenuOpen = false;
             let changed = false;
@@ -18121,7 +18157,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               if (presetRec.type === "video" && !presetRec.videoThumbUrl) enqueueVideoThumb(presetRec);
               const previewSrc = presetRec.type === "video"
                 ? getVideoPosterForRecord(presetRec)
-                : (ensureThumbUrl(presetRec) || "");
+                : (ensureNavigationThumbUrl(presetRec) || "");
               const previewAspect = getPreviewAspectForRecord(presetRec);
               if (previewSrc) {
                 const cropStyle = fileThumbCropLayoutStyle(presetRec, "");
@@ -18136,7 +18172,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                 if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
                 const previewSrc = rec.type === "video"
                   ? getVideoPosterForRecord(rec)
-                  : (ensureThumbUrl(rec) || "");
+                  : (ensureNavigationThumbUrl(rec) || "");
                 const previewAspect = getPreviewAspectForRecord(rec);
                 if (previewSrc) {
                   squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -18151,7 +18187,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                   if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
                   const previewSrc = rec.type === "video"
                     ? getVideoPosterForRecord(rec)
-                    : (ensureThumbUrl(rec) || "");
+                    : (ensureNavigationThumbUrl(rec) || "");
                   const previewAspect = getPreviewAspectForRecord(rec);
                   if (previewSrc) {
                     squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -18172,7 +18208,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                     if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
                     const previewSrc = rec.type === "video"
                       ? getVideoPosterForRecord(rec)
-                      : (ensureThumbUrl(rec) || "");
+                      : (ensureNavigationThumbUrl(rec) || "");
                     const previewAspect = getPreviewAspectForRecord(rec);
                     if (!previewSrc) {
                       quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`);
@@ -18273,7 +18309,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               const previewId = String(firstRec.id || "");
               const previewSrc = (firstRec.type === "video")
                 ? getVideoPosterForRecord(firstRec)
-                : (ensureThumbUrl(firstRec) || "");
+                : (ensureNavigationThumbUrl(firstRec) || "");
               const previewAspect = getPreviewAspectForRecord(firstRec);
               if (firstRec.type === "video" && !firstRec.videoThumbUrl) enqueueVideoThumb(firstRec);
               if (previewSrc) {
@@ -18302,10 +18338,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             const allowRotatingThumbnails = !naturalThumbCards;
             const canToggleFolderThumbMode = isRootNode ? true : folderEligibleForParentThumbnailPreset(entry.node);
             const hasThumbPreset = isRootNode ? rootThumbnailHasPreset() : metaHasFolderThumbnailPreset(p);
-            const showUseDefaultThumbnail = hasThumbPreset || (isRootNode && folderThumbMode !== "quad");
+            const showUseDefaultThumbnail = hasThumbPreset || (isRootNode && !isRootThumbnailModeDefault(folderThumbMode));
             const showSetNoThumbnail = canToggleFolderThumbMode && folderThumbMode !== "none";
             const showSetRotatingThumbnail = allowRotatingThumbnails && canToggleFolderThumbMode && (isRootNode ? (folderThumbMode !== "single" || hasThumbPreset) : folderThumbMode !== "rotate");
-            const showSetQuadThumbnail = allowRotatingThumbnails && canToggleFolderThumbMode && isRootNode && folderThumbMode !== "quad";
+            const showSetQuadThumbnail = quadThumbnailsEnabled() && allowRotatingThumbnails && canToggleFolderThumbMode && isRootNode && folderThumbMode !== "quad";
             // Menu (three dot / ⋯) for single-folder actions.
             let menuButtons = "";
             let menuTitle = "Folder menu";
@@ -18387,7 +18423,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                     if (rootPresetRec.type === "video" && !rootPresetRec.videoThumbUrl) enqueueVideoThumb(rootPresetRec);
                     const previewSrc = rootPresetRec.type === "video"
                       ? getVideoPosterForRecord(rootPresetRec)
-                      : (ensureThumbUrl(rootPresetRec) || "");
+                      : (ensureNavigationThumbUrl(rootPresetRec) || "");
                     const previewAspect = getPreviewAspectForRecord(rootPresetRec);
                     if (previewSrc) {
                       const cropStyle = fileThumbCropLayoutStyle(rootPresetRec, "");
@@ -18403,7 +18439,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                       if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
                       const previewSrc = rec.type === "video"
                         ? getVideoPosterForRecord(rec)
-                        : (ensureThumbUrl(rec) || "");
+                        : (ensureNavigationThumbUrl(rec) || "");
                       const previewAspect = getPreviewAspectForRecord(rec);
                       if (previewSrc) {
                         rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -18419,7 +18455,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                         if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
                         const previewSrc = rec.type === "video"
                           ? getVideoPosterForRecord(rec)
-                          : (ensureThumbUrl(rec) || "");
+                          : (ensureNavigationThumbUrl(rec) || "");
                         const previewAspect = getPreviewAspectForRecord(rec);
                         if (previewSrc) {
                           rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -18441,7 +18477,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                           if (slotRec.type === "video" && !slotRec.videoThumbUrl) enqueueVideoThumb(slotRec);
                           const previewSrc = slotRec.type === "video"
                             ? getVideoPosterForRecord(slotRec)
-                            : (ensureThumbUrl(slotRec) || "");
+                            : (ensureNavigationThumbUrl(slotRec) || "");
                           const previewAspect = getPreviewAspectForRecord(slotRec);
                           if (!previewSrc) {
                             quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">📁</div></div>`);
@@ -18530,7 +18566,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               const previewId = String(rec.id || "");
               const previewSrc = isVid
                 ? getVideoPosterForRecord(rec)
-                : (ensureThumbUrl(rec) || "");
+                : (ensureNavigationThumbUrl(rec) || "");
               const previewAspect = getPreviewAspectForRecord(rec);
               if (isVid && !rec.videoThumbUrl) enqueueVideoThumb(rec);
               if (previewSrc) {
@@ -19592,10 +19628,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       previewBodyEl.classList.toggle("preview-grid", mode !== "file");
     }
 
-    function ensureThumbUrl(rec) {
+    function ensureThumbUrl(rec, opts = null) {
       if (!rec) return null;
       if (rec.type !== "image") return rec.thumbUrl || null;
 
+      const options = (opts && typeof opts === "object") ? opts : null;
+      const allowMediaFallback = !(options && options.allowMediaFallback === false);
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const mode = opt ? String(opt.imageThumbSize || "medium") : "medium";
 
@@ -19608,7 +19646,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           }
           rec.thumbMode = null;
           enqueueImageThumb(rec);
-          return ensureMediaUrl(rec) || null;
+          return allowMediaFallback ? (ensureMediaUrl(rec) || null) : null;
         }
         if (rec.thumbUrl && rec.thumbMode === "high") return rec.thumbUrl;
         if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
@@ -19628,7 +19666,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       rec.thumbMode = null;
 
       enqueueImageThumb(rec);
-      return ensureMediaUrl(rec) || null;
+      return allowMediaFallback ? (ensureMediaUrl(rec) || null) : null;
+    }
+
+    function ensureNavigationThumbUrl(rec) {
+      return ensureThumbUrl(rec, { allowMediaFallback: false });
     }
 
     function ensureMediaUrl(rec) {
@@ -19671,7 +19713,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!recId) return;
       const src = rec.type === "video"
         ? getVideoPosterForRecord(rec)
-        : (ensureThumbUrl(rec) || "");
+        : (ensureNavigationThumbUrl(rec) || "");
       if (!src) return;
       const aspect = normalizePreviewAspect(getPreviewAspectForRecord(rec), 4 / 3);
       const imgs = directoriesEl.querySelectorAll(".dirInlinePreview[data-dir-preview-id]");
@@ -20406,7 +20448,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             thumb.src = getVideoPosterForRecord(leadRec);
             if (!leadRec.videoThumbUrl) enqueueVideoThumb(leadRec);
           } else {
-            thumb.src = ensureThumbUrl(leadRec) || "";
+            thumb.src = ensureNavigationThumbUrl(leadRec) || "";
           }
           if (thumbContainMode) {
             thumb.addEventListener("load", () => {
@@ -24431,6 +24473,38 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       if (!WS.root) return;
 
+      // Directory mode arrow priority:
+      // If arrow keys are unbound or still mapped to selection movement from older keybind sets,
+      // prefer thumbnail viewport nudging first so arrows do not scroll the list instead.
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        let nudgeDx = 0;
+        let nudgeDy = 0;
+        if (baseKey === "ArrowLeft") nudgeDx = -THUMB_VIEWPORT_NUDGE_STEP;
+        else if (baseKey === "ArrowRight") nudgeDx = THUMB_VIEWPORT_NUDGE_STEP;
+        else if (baseKey === "ArrowUp") nudgeDy = -THUMB_VIEWPORT_NUDGE_STEP;
+        else if (baseKey === "ArrowDown") nudgeDy = THUMB_VIEWPORT_NUDGE_STEP;
+        if (nudgeDx || nudgeDy) {
+          const actionAllowsArrowNudge = !action
+            || action === "selectUp"
+            || action === "selectDown"
+            || action === "selectLeft"
+            || action === "selectRight"
+            || action === "leaveDir"
+            || action === "enterDir";
+          if (actionAllowsArrowNudge) {
+            const nudged = nudgeSelectedThumbnailViewport(nudgeDx, nudgeDy, {
+              quietNoTarget: true,
+              quietAtEdge: false,
+              quietSuccess: false
+            });
+            if (nudged) {
+              e.preventDefault();
+              return;
+            }
+          }
+        }
+      }
+
       const inFilePreview = (WS.preview.kind === "file" && !!WS.preview.fileId);
 
       if (inFilePreview) {
@@ -24521,38 +24595,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             return;
           default:
             return;
-        }
-      }
-
-      // Directory mode arrow priority:
-      // If arrow keys are unbound or still mapped to selection movement from older keybind sets,
-      // prefer thumbnail viewport nudging first so arrows do not scroll the list instead.
-      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-        let nudgeDx = 0;
-        let nudgeDy = 0;
-        if (baseKey === "ArrowLeft") nudgeDx = -THUMB_VIEWPORT_NUDGE_STEP;
-        else if (baseKey === "ArrowRight") nudgeDx = THUMB_VIEWPORT_NUDGE_STEP;
-        else if (baseKey === "ArrowUp") nudgeDy = -THUMB_VIEWPORT_NUDGE_STEP;
-        else if (baseKey === "ArrowDown") nudgeDy = THUMB_VIEWPORT_NUDGE_STEP;
-        if (nudgeDx || nudgeDy) {
-          const actionAllowsArrowNudge = !action
-            || action === "selectUp"
-            || action === "selectDown"
-            || action === "selectLeft"
-            || action === "selectRight"
-            || action === "leaveDir"
-            || action === "enterDir";
-          if (actionAllowsArrowNudge) {
-            const nudged = nudgeSelectedThumbnailViewport(nudgeDx, nudgeDy, {
-              quietNoTarget: true,
-              quietAtEdge: false,
-              quietSuccess: false
-            });
-            if (nudged) {
-              e.preventDefault();
-              return;
-            }
-          }
         }
       }
 
