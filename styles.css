@@ -878,6 +878,18 @@
       margin: 0;
     }
 
+    .virtualFlexSpacer {
+      flex: 0 0 100%;
+      width: 100%;
+      max-width: 100%;
+      min-height: 0;
+      padding: 0;
+      margin: 0;
+      border: 0;
+      pointer-events: none;
+      visibility: hidden;
+    }
+
     #directoriesList.gridModeList .dirSquareCard,
     #directoriesList.gridModeList .dirFileThumbCard {
       width: 100%;
@@ -1902,6 +1914,16 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(calc(var(--file-grid-min) * var(--thumb-scale-media)), 1fr));
       gap: var(--preview-gutter);
+    }
+
+    .virtualGridSpacer {
+      grid-column: 1 / -1;
+      min-height: 0;
+      padding: 0;
+      margin: 0;
+      border: 0;
+      pointer-events: none;
+      visibility: hidden;
     }
 
     .gridFiles.previewSquareCards .fileCard {
