@@ -5191,6 +5191,138 @@
       }
     }
 
+    const GIF_EXPORT_MODE_BY_ASPECT_RATIO = "by-aspect-ratio";
+    const GIF_EXPORT_MODE_ALL_IN_ONE = "all-in-one";
+    const GIF_EXPORT_ORDER_SORT = "sort";
+    const GIF_EXPORT_ORDER_ASPECT_RATIO = "aspect-ratio";
+    const GIF_EXPORT_FRAME_DELAY_OPTIONS_CS = [1, 2, 4, 8, 12, 16, 20, 24];
+    const GIF_EXPORT_DEFAULT_FRAME_DELAY_CS = 12;
+
+    function appendChoiceMenuButton(menuEl, label, onClick, disabled = false) {
+      if (!menuEl) return null;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = String(label || "");
+      btn.disabled = !!disabled;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (btn.disabled) return;
+        if (typeof onClick === "function") onClick();
+      });
+      menuEl.appendChild(btn);
+      return btn;
+    }
+
+    function normalizeGifExportMode(value) {
+      return String(value || "") === GIF_EXPORT_MODE_ALL_IN_ONE
+        ? GIF_EXPORT_MODE_ALL_IN_ONE
+        : GIF_EXPORT_MODE_BY_ASPECT_RATIO;
+    }
+
+    function normalizeGifExportOrder(value) {
+      return String(value || "") === GIF_EXPORT_ORDER_ASPECT_RATIO
+        ? GIF_EXPORT_ORDER_ASPECT_RATIO
+        : GIF_EXPORT_ORDER_SORT;
+    }
+
+    function normalizeGifExportFrameDelayCs(value) {
+      const n = Math.round(Number(value) || 0);
+      return GIF_EXPORT_FRAME_DELAY_OPTIONS_CS.includes(n) ? n : GIF_EXPORT_DEFAULT_FRAME_DELAY_CS;
+    }
+
+    function buildGifFrameDelayChoiceMenu(menuEl, options = {}) {
+      if (!menuEl) return;
+      menuEl.innerHTML = "";
+      if (typeof options.onBack === "function") {
+        appendChoiceMenuButton(menuEl, "Back", options.onBack);
+      }
+      for (let i = 0; i < GIF_EXPORT_FRAME_DELAY_OPTIONS_CS.length; i++) {
+        const delayCs = GIF_EXPORT_FRAME_DELAY_OPTIONS_CS[i];
+        appendChoiceMenuButton(menuEl, `${delayCs} cs`, () => {
+          if (typeof options.onChooseDelay === "function") {
+            options.onChooseDelay(delayCs);
+          }
+        });
+      }
+      if (typeof options.onRendered === "function") {
+        requestAnimationFrame(() => options.onRendered());
+      }
+    }
+
+    function buildGifAllInOneOrderChoiceMenu(menuEl, options = {}) {
+      if (!menuEl) return;
+      menuEl.innerHTML = "";
+      if (typeof options.onBack === "function") {
+        appendChoiceMenuButton(menuEl, "Back", options.onBack);
+      }
+      appendChoiceMenuButton(menuEl, "Ordered by Sort", () => {
+        buildGifFrameDelayChoiceMenu(menuEl, {
+          onBack: () => buildGifAllInOneOrderChoiceMenu(menuEl, options),
+          onChooseDelay: (frameDelayCs) => {
+            if (typeof options.onChooseConfig === "function") {
+              options.onChooseConfig({
+                mode: GIF_EXPORT_MODE_ALL_IN_ONE,
+                order: GIF_EXPORT_ORDER_SORT,
+                frameDelayCs: normalizeGifExportFrameDelayCs(frameDelayCs)
+              });
+            }
+          },
+          onRendered: options.onRendered
+        });
+      });
+      appendChoiceMenuButton(menuEl, "Ordered by Aspect Ratio", () => {
+        buildGifFrameDelayChoiceMenu(menuEl, {
+          onBack: () => buildGifAllInOneOrderChoiceMenu(menuEl, options),
+          onChooseDelay: (frameDelayCs) => {
+            if (typeof options.onChooseConfig === "function") {
+              options.onChooseConfig({
+                mode: GIF_EXPORT_MODE_ALL_IN_ONE,
+                order: GIF_EXPORT_ORDER_ASPECT_RATIO,
+                frameDelayCs: normalizeGifExportFrameDelayCs(frameDelayCs)
+              });
+            }
+          },
+          onRendered: options.onRendered
+        });
+      });
+      if (typeof options.onRendered === "function") {
+        requestAnimationFrame(() => options.onRendered());
+      }
+    }
+
+    function buildGifExportChoiceMenu(menuEl, options = {}) {
+      if (!menuEl) return;
+      menuEl.innerHTML = "";
+      if (typeof options.onBack === "function") {
+        appendChoiceMenuButton(menuEl, "Back", options.onBack);
+      }
+      appendChoiceMenuButton(menuEl, "By Aspect Ratio", () => {
+        buildGifFrameDelayChoiceMenu(menuEl, {
+          onBack: () => buildGifExportChoiceMenu(menuEl, options),
+          onChooseDelay: (frameDelayCs) => {
+            if (typeof options.onChooseConfig === "function") {
+              options.onChooseConfig({
+                mode: GIF_EXPORT_MODE_BY_ASPECT_RATIO,
+                order: GIF_EXPORT_ORDER_SORT,
+                frameDelayCs: normalizeGifExportFrameDelayCs(frameDelayCs)
+              });
+            }
+          },
+          onRendered: options.onRendered
+        });
+      });
+      appendChoiceMenuButton(menuEl, "All-In-One", () => {
+        buildGifAllInOneOrderChoiceMenu(menuEl, {
+          onBack: () => buildGifExportChoiceMenu(menuEl, options),
+          onChooseConfig: options.onChooseConfig,
+          onRendered: options.onRendered
+        });
+      });
+      if (typeof options.onRendered === "function") {
+        requestAnimationFrame(() => options.onRendered());
+      }
+    }
+
     function effectiveAppearancePresetIdForMenuPath(path) {
       const normalized = normalizeDirPathValue(path);
       if (normalized === "" && WS.root) return effectiveActiveAppearancePresetId();
@@ -10994,6 +11126,49 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return normalizeTag(name);
     }
 
+    function normalizeTagAlbumScopePath(scopePath) {
+      return normalizeDirPathValue(scopePath);
+    }
+
+    function tagAlbumMembershipKey(tagName, scopePath = null) {
+      const tag = normalizeTag(tagName);
+      if (!tag) return "";
+      if (scopePath == null) return tag;
+      const normalizedScope = normalizeTagAlbumScopePath(scopePath);
+      return `scope:${encodeURIComponent(normalizedScope)}:${encodeURIComponent(tag)}`;
+    }
+
+    function parseTagAlbumMembershipKey(rawKey) {
+      const key = String(rawKey || "");
+      if (!key) return null;
+      if (key.startsWith("scope:")) {
+        const body = key.slice("scope:".length);
+        const sep = body.indexOf(":");
+        if (sep < 0) return null;
+        try {
+          const scopePath = normalizeTagAlbumScopePath(decodeURIComponent(body.slice(0, sep)));
+          const tag = normalizeTag(decodeURIComponent(body.slice(sep + 1)));
+          if (!tag) return null;
+          return {
+            tag,
+            scopePath,
+            scoped: true,
+            key: tagAlbumMembershipKey(tag, scopePath)
+          };
+        } catch {
+          return null;
+        }
+      }
+      const tag = normalizeTag(key);
+      if (!tag) return null;
+      return {
+        tag,
+        scopePath: "",
+        scoped: false,
+        key: tagAlbumMembershipKey(tag, null)
+      };
+    }
+
     function normalizeTagList(list) {
       const out = [];
       const seen = new Set();
@@ -11061,27 +11236,59 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return tags.filter(t => !isReservedFolderTag(t));
     }
 
-    function metaGetTagAlbumForTag(tagName) {
+    function metaGetTagAlbumForTag(tagName, scopePath = null) {
       const tag = normalizeTag(tagName);
       if (!tag || !WS.meta || !WS.meta.tagAlbumByTag) return "";
+      if (scopePath != null) {
+        const scopedKey = tagAlbumMembershipKey(tag, scopePath);
+        if (scopedKey && WS.meta.tagAlbumByTag.has(scopedKey)) {
+          return normalizeTagAlbumName(WS.meta.tagAlbumByTag.get(scopedKey));
+        }
+      }
       return normalizeTagAlbumName(WS.meta.tagAlbumByTag.get(tag));
     }
 
-    function metaSetTagAlbumForTag(tagName, albumName) {
+    function metaSetTagAlbumForTag(tagName, albumName, scopePath = null) {
       const tag = normalizeTag(tagName);
       if (!tag || !WS.meta || !WS.meta.tagAlbumByTag) return false;
+      const mapKey = tagAlbumMembershipKey(tag, scopePath);
+      if (!mapKey) return false;
       const album = normalizeTagAlbumName(albumName);
-      const prev = metaGetTagAlbumForTag(tag);
+      const hasExactKey = WS.meta.tagAlbumByTag.has(mapKey);
+      const prevExact = normalizeTagAlbumName(WS.meta.tagAlbumByTag.get(mapKey));
       if (!album) {
-        if (!prev) return false;
-        WS.meta.tagAlbumByTag.delete(tag);
-        metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
-        return true;
+        if (hasExactKey) {
+          WS.meta.tagAlbumByTag.delete(mapKey);
+          metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+          return true;
+        }
+        if (scopePath != null && WS.meta.tagAlbumByTag.has(tag)) {
+          WS.meta.tagAlbumByTag.delete(tag);
+          metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+          return true;
+        }
+        return false;
       }
-      if (prev === album) return false;
-      WS.meta.tagAlbumByTag.set(tag, album);
+      if (hasExactKey && prevExact === album) return false;
+      WS.meta.tagAlbumByTag.set(mapKey, album);
+      if (scopePath != null && hasExactKey === false) {
+        const legacyAlbum = normalizeTagAlbumName(WS.meta.tagAlbumByTag.get(tag));
+        if (legacyAlbum === album) {
+          WS.meta.tagAlbumByTag.delete(tag);
+        }
+      }
       metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
       return true;
+    }
+
+    function tagAlbumHasScopedAssignmentsForScope(scopePath) {
+      if (!WS.meta || !WS.meta.tagAlbumByTag) return false;
+      const normalizedScope = normalizeTagAlbumScopePath(scopePath);
+      for (const rawKey of WS.meta.tagAlbumByTag.keys()) {
+        const parsed = parseTagAlbumMembershipKey(rawKey);
+        if (parsed && parsed.scoped && parsed.scopePath === normalizedScope) return true;
+      }
+      return false;
     }
 
     function metaHasFavorite(path) {
@@ -11888,11 +12095,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (canUseBulkTagPlaceholderUi() && setBulkTagPlaceholder(paths, "New tag folder", "tag")) return;
     }
 
-    function startBulkTagAlbuming(tags) {
-      if (canUseBulkTagPlaceholderUi() && setBulkTagPlaceholder(tags, "New tag album", "album")) return;
+    function startBulkTagAlbuming(tags, originPath = "") {
+      if (canUseBulkTagPlaceholderUi() && setBulkTagPlaceholder(tags, "New tag album", "album", originPath)) return;
     }
 
-    function setBulkTagPlaceholder(items, label = "New tag folder", placeholderType = "tag") {
+    function setBulkTagPlaceholder(items, label = "New tag folder", placeholderType = "tag", originPath = "") {
       clearBulkTagPlaceholder();
       const type = String(placeholderType || "tag") === "album" ? "album" : "tag";
       let unique = [];
@@ -11912,6 +12119,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         label,
         paths: type === "tag" ? unique.slice() : [],
         tags: type === "album" ? unique.slice() : [],
+        originPath: type === "album" ? String(originPath || "") : "",
         placeholder: true,
         placeholderType: type
       };
@@ -11962,7 +12170,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (isPlaceholder) {
         clearBulkTagPlaceholder();
         if (state.placeholderType === "album") {
-          const changed = assignTagAlbumForTagsBulk(state.tags, desired);
+          const changed = assignTagAlbumForTagsBulk(state.tags, desired, state.originPath);
           if (!changed) {
             showStatusMessage("No tags updated.");
             renderDirectoriesPane(true);
@@ -11974,7 +12182,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         finalizeBulkSelectionAction();
         return;
       }
-      const changed = renameTagForPaths(state.tag, desired, state.paths);
+      const changed = renameTagForPaths(state.tag, desired, state.paths, state.originPath);
       if (!changed) {
         showStatusMessage("No folders updated.");
         renderDirectoriesPane(true);
@@ -11984,7 +12192,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       refreshAfterTagMetadataChange();
     }
 
-    function assignTagAlbumForTagsBulk(tags, albumName) {
+    function assignTagAlbumForTagsBulk(tags, albumName, scopePath = null) {
       const album = normalizeTagAlbumName(albumName);
       if (!album) return false;
       const normalizedTags = normalizeTagList(tags).filter((tag) => !isReservedFolderTag(tag));
@@ -11992,7 +12200,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       let changed = false;
       let changedCount = 0;
       for (let i = 0; i < normalizedTags.length; i++) {
-        if (metaSetTagAlbumForTag(normalizedTags[i], album)) {
+        if (metaSetTagAlbumForTag(normalizedTags[i], album, scopePath)) {
           changed = true;
           changedCount++;
         }
@@ -12215,11 +12423,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       }
       if (WS.meta && WS.meta.tagAlbumByTag) {
-        for (const [tagRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
-          const tag = normalizeTag(tagRaw);
+        for (const [tagKeyRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
+          const parsed = parseTagAlbumMembershipKey(tagKeyRaw);
           const album = normalizeTagAlbumName(albumRaw);
-          if (!tag || !album) continue;
-          tagAlbumByTag[tag] = album;
+          if (!parsed || !album) continue;
+          tagAlbumByTag[parsed.key] = album;
         }
       }
       if (WS.meta && WS.meta.tagAppearancePresetIds) {
@@ -12511,11 +12719,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const tagAlbumByTag = (log.tagAlbumByTag && typeof log.tagAlbumByTag === "object")
         ? log.tagAlbumByTag
         : {};
-      for (const rawTag of Object.keys(tagAlbumByTag)) {
-        const tag = normalizeTag(rawTag);
-        const album = normalizeTagAlbumName(tagAlbumByTag[rawTag]);
-        if (!tag || !album) continue;
-        WS.meta.tagAlbumByTag.set(tag, album);
+      for (const rawKey of Object.keys(tagAlbumByTag)) {
+        const parsed = parseTagAlbumMembershipKey(rawKey);
+        const album = normalizeTagAlbumName(tagAlbumByTag[rawKey]);
+        if (!parsed || !album) continue;
+        WS.meta.tagAlbumByTag.set(parsed.key, album);
       }
 
       WS.meta.fileThumbCrop.clear();
@@ -12737,11 +12945,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function metaMakeTagAlbumsDocObject() {
       const tagAlbumByTag = {};
       if (WS.meta && WS.meta.tagAlbumByTag) {
-        for (const [tagRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
-          const tag = normalizeTag(tagRaw);
+        for (const [tagKeyRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
+          const parsed = parseTagAlbumMembershipKey(tagKeyRaw);
           const album = normalizeTagAlbumName(albumRaw);
-          if (!tag || !album) continue;
-          tagAlbumByTag[tag] = album;
+          if (!parsed || !album) continue;
+          tagAlbumByTag[parsed.key] = album;
         }
       }
       return {
@@ -12996,11 +13204,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const tagAlbumByTag = (log.tagAlbumByTag && typeof log.tagAlbumByTag === "object")
         ? log.tagAlbumByTag
         : {};
-      for (const rawTag of Object.keys(tagAlbumByTag)) {
-        const tag = normalizeTag(rawTag);
-        const album = normalizeTagAlbumName(tagAlbumByTag[rawTag]);
-        if (!tag || !album) continue;
-        WS.meta.tagAlbumByTag.set(tag, album);
+      for (const rawKey of Object.keys(tagAlbumByTag)) {
+        const parsed = parseTagAlbumMembershipKey(rawKey);
+        const album = normalizeTagAlbumName(tagAlbumByTag[rawKey]);
+        if (!parsed || !album) continue;
+        WS.meta.tagAlbumByTag.set(parsed.key, album);
       }
     }
 
@@ -15386,10 +15594,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return groups;
     }
 
-    function collectTagAlbumStatsForGroups(tagGroups) {
+    function collectTagAlbumStatsForGroups(tagGroups, scopePath = null) {
       const byAlbum = new Map();
       for (const [tag, nodes] of (tagGroups || []).entries()) {
-        const album = metaGetTagAlbumForTag(tag);
+        const album = metaGetTagAlbumForTag(tag, scopePath);
         if (!album) continue;
         let bucket = byAlbum.get(album);
         if (!bucket) {
@@ -15453,7 +15661,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
       const tagGroups = gatherTagGroupsForDir(dirNode);
       if (tagGroups.size) {
-        const albumStats = collectTagAlbumStatsForGroups(tagGroups);
+        const albumStats = collectTagAlbumStatsForGroups(tagGroups, originPath);
         if (albumStats.size) {
           const sortedAlbums = Array.from(albumStats.keys()).sort((a, b) => String(a).localeCompare(String(b)));
           for (let i = 0; i < sortedAlbums.length; i++) {
@@ -15472,7 +15680,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
         const sorted = Array.from(tagGroups.keys()).sort((a, b) => String(a).localeCompare(String(b)));
         for (const tag of sorted) {
-          if (metaGetTagAlbumForTag(tag)) continue;
+          if (metaGetTagAlbumForTag(tag, originPath)) continue;
           const nodes = tagGroups.get(tag) || [];
           if (!nodes.length) continue;
           entries.push({ kind: "tag", tag, label: tag, count: nodes.length, originPath });
@@ -15505,7 +15713,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       for (let i = 0; i < sorted.length; i++) {
         const tag = String(sorted[i] || "");
         if (!tag) continue;
-        if (metaGetTagAlbumForTag(tag) !== album) continue;
+        if (metaGetTagAlbumForTag(tag, String(baseNode.path || "")) !== album) continue;
         const nodes = tagGroups.get(tag) || [];
         if (!nodes.length) continue;
         out.push({
@@ -15578,7 +15786,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const out = [];
         const seen = new Set();
         for (const [tag, nodes] of tagGroups.entries()) {
-          if (metaGetTagAlbumForTag(tag) !== album) continue;
+          if (metaGetTagAlbumForTag(tag, originPath) !== album) continue;
           for (let i = 0; i < (nodes || []).length; i++) {
             const node = nodes[i];
             const path = String(node?.path || "");
@@ -16297,7 +16505,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             label: `Set '${tag}' thumbnail in ${scopeLabel}`
           });
 
-          const album = metaGetTagAlbumForTag(tag);
+          const album = metaGetTagAlbumForTag(tag, scopePath);
           const albumKey = tagThumbnailKeyForAlbum(album, scopePath);
           if (album && albumKey && !seenTags.has(albumKey)) {
             seenTags.add(albumKey);
@@ -20866,6 +21074,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         tagKey,
         label: context.label || tag || album,
         paths: paths.slice(),
+        originPath: String(context.originPath || ""),
         canRename,
         canDelete,
         canAppearancePreset
@@ -21042,19 +21251,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (state.showSetQuadThumbnail) menuEl.appendChild(makeBtn("Use quad thumbnail", "thumbnail-quad"));
     }
 
-    const GIF_EXPORT_GLOBAL_PALETTE_RGB332 = (() => {
-      const out = new Uint8Array(256 * 3);
-      for (let i = 0; i < 256; i++) {
-        const r3 = (i >> 5) & 0x07;
-        const g3 = (i >> 2) & 0x07;
-        const b2 = i & 0x03;
-        out[(i * 3) + 0] = Math.round((r3 / 7) * 255);
-        out[(i * 3) + 1] = Math.round((g3 / 7) * 255);
-        out[(i * 3) + 2] = Math.round((b2 / 3) * 255);
-      }
-      return out;
-    })();
-    const GIF_EXPORT_FRAME_DELAY_CS = 12;
+    const GIF_EXPORT_MAX_SIDE = 640;
+    const GIF_EXPORT_SQUARE_SIZE = 640;
+    const GIF_EXPORT_ALPHA_THRESHOLD = 8;
+    const GIF_EXPORT_PALETTE_SIZE = 256;
+    const GIF_EXPORT_PALETTE_SAMPLE_CAP = 16000;
 
     function waitForNextPaint() {
       return new Promise((resolve) => requestAnimationFrame(() => resolve()));
@@ -21182,7 +21383,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function gifFrameSizeForAspect(aspect) {
       const ratio = normalizePreviewAspect(aspect, 4 / 3);
-      const maxSide = 480;
+      const maxSide = GIF_EXPORT_MAX_SIDE;
       if (ratio >= 1) {
         return {
           width: Math.max(2, Math.round(maxSide)),
@@ -21197,7 +21398,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function gifFrameSizeForBucket(bucket) {
       if (bucket && bucket.square) {
-        return { width: 480, height: 480 };
+        return { width: GIF_EXPORT_SQUARE_SIZE, height: GIF_EXPORT_SQUARE_SIZE };
       }
       return gifFrameSizeForAspect(bucket?.aspect || (4 / 3));
     }
@@ -21208,6 +21409,21 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         aspect: 1,
         label: "mixed-square",
         square: true,
+        records: Array.isArray(records) ? records.slice() : []
+      };
+    }
+
+    function buildAllInOneGifBucket(records, order) {
+      const normalizedOrder = normalizeGifExportOrder(order);
+      return {
+        key: `__all_in_one__${normalizedOrder}`,
+        aspect: 1,
+        label: normalizedOrder === GIF_EXPORT_ORDER_ASPECT_RATIO
+          ? "all-in-one-aspect-order"
+          : "all-in-one-sort-order",
+        square: true,
+        allInOne: true,
+        order: normalizedOrder,
         records: Array.isArray(records) ? records.slice() : []
       };
     }
@@ -21278,11 +21494,236 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return src || fallback;
     }
 
-    function gifRgb332Index(r, g, b) {
-      const rr = (Number(r) >>> 5) & 0x07;
-      const gg = (Number(g) >>> 5) & 0x07;
-      const bb = (Number(b) >>> 6) & 0x03;
-      return (rr << 5) | (gg << 2) | bb;
+    function createEmptyGifPaletteBytes() {
+      return new Uint8Array(GIF_EXPORT_PALETTE_SIZE * 3);
+    }
+
+    function gifPaletteColorKey(r, g, b) {
+      return (((Number(r) >>> 3) & 0x1f) << 10)
+        | (((Number(g) >>> 3) & 0x1f) << 5)
+        | ((Number(b) >>> 3) & 0x1f);
+    }
+
+    function addGifPaletteSamplesFromRgba(histogram, rgba) {
+      if (!(histogram instanceof Map) || !rgba || !rgba.length) return;
+      const pixelCount = Math.max(0, Math.floor(rgba.length / 4));
+      if (!pixelCount) return;
+      const sampleStep = Math.max(1, Math.floor(pixelCount / GIF_EXPORT_PALETTE_SAMPLE_CAP));
+      for (let p = 0, i = 0; p < pixelCount; p += sampleStep, i = p * 4) {
+        const a = rgba[i + 3];
+        if (a < GIF_EXPORT_ALPHA_THRESHOLD) continue;
+        const r = rgba[i];
+        const g = rgba[i + 1];
+        const b = rgba[i + 2];
+        const key = gifPaletteColorKey(r, g, b);
+        const existing = histogram.get(key);
+        if (existing) {
+          existing.count += 1;
+          existing.rSum += r;
+          existing.gSum += g;
+          existing.bSum += b;
+        } else {
+          histogram.set(key, {
+            count: 1,
+            rSum: r,
+            gSum: g,
+            bSum: b
+          });
+        }
+      }
+    }
+
+    function gifPaletteEntriesFromHistogram(histogram) {
+      const out = [];
+      if (!(histogram instanceof Map)) return out;
+      for (const entry of histogram.values()) {
+        const count = Math.max(0, Number(entry?.count || 0));
+        if (!count) continue;
+        out.push({
+          r: Math.round(Number(entry.rSum || 0) / count),
+          g: Math.round(Number(entry.gSum || 0) / count),
+          b: Math.round(Number(entry.bSum || 0) / count),
+          count
+        });
+      }
+      return out;
+    }
+
+    function computeGifQuantBoxStats(colors) {
+      const entries = Array.isArray(colors) ? colors : [];
+      let rMin = 255;
+      let rMax = 0;
+      let gMin = 255;
+      let gMax = 0;
+      let bMin = 255;
+      let bMax = 0;
+      let weight = 0;
+      for (let i = 0; i < entries.length; i++) {
+        const c = entries[i];
+        const r = Math.max(0, Math.min(255, Math.round(Number(c?.r || 0))));
+        const g = Math.max(0, Math.min(255, Math.round(Number(c?.g || 0))));
+        const b = Math.max(0, Math.min(255, Math.round(Number(c?.b || 0))));
+        const count = Math.max(0, Number(c?.count || 0));
+        if (r < rMin) rMin = r;
+        if (r > rMax) rMax = r;
+        if (g < gMin) gMin = g;
+        if (g > gMax) gMax = g;
+        if (b < bMin) bMin = b;
+        if (b > bMax) bMax = b;
+        weight += count;
+      }
+      if (!entries.length) {
+        rMin = rMax = gMin = gMax = bMin = bMax = 0;
+      }
+      return {
+        rMin,
+        rMax,
+        gMin,
+        gMax,
+        bMin,
+        bMax,
+        weight
+      };
+    }
+
+    function gifQuantBoxPriority(box) {
+      const colors = Array.isArray(box?.colors) ? box.colors : [];
+      if (colors.length <= 1) return 0;
+      const stats = box.stats || computeGifQuantBoxStats(colors);
+      const range = Math.max(
+        stats.rMax - stats.rMin,
+        stats.gMax - stats.gMin,
+        stats.bMax - stats.bMin
+      );
+      return range * Math.max(1, stats.weight);
+    }
+
+    function gifQuantBoxSplitChannel(stats) {
+      const rRange = stats.rMax - stats.rMin;
+      const gRange = stats.gMax - stats.gMin;
+      const bRange = stats.bMax - stats.bMin;
+      if (rRange >= gRange && rRange >= bRange) return "r";
+      if (gRange >= rRange && gRange >= bRange) return "g";
+      return "b";
+    }
+
+    function splitGifQuantBox(box) {
+      const colors = Array.isArray(box?.colors) ? box.colors.slice() : [];
+      if (colors.length <= 1) return null;
+      const stats = box.stats || computeGifQuantBoxStats(colors);
+      const channel = gifQuantBoxSplitChannel(stats);
+      colors.sort((a, b) => Number(a?.[channel] || 0) - Number(b?.[channel] || 0));
+      const totalWeight = Math.max(0, Number(stats.weight || 0));
+      if (totalWeight <= 0) return null;
+      let runningWeight = 0;
+      let splitIndex = 1;
+      for (let i = 0; i < colors.length; i++) {
+        runningWeight += Math.max(0, Number(colors[i]?.count || 0));
+        if (runningWeight >= (totalWeight / 2)) {
+          splitIndex = i + 1;
+          break;
+        }
+      }
+      splitIndex = Math.max(1, Math.min(colors.length - 1, splitIndex));
+      const leftColors = colors.slice(0, splitIndex);
+      const rightColors = colors.slice(splitIndex);
+      if (!leftColors.length || !rightColors.length) return null;
+      return [
+        { colors: leftColors, stats: computeGifQuantBoxStats(leftColors) },
+        { colors: rightColors, stats: computeGifQuantBoxStats(rightColors) }
+      ];
+    }
+
+    function buildAdaptiveGifPalette(histogram) {
+      const sourceColors = gifPaletteEntriesFromHistogram(histogram);
+      if (!sourceColors.length) {
+        return {
+          bytes: createEmptyGifPaletteBytes(),
+          colors: [{ r: 0, g: 0, b: 0 }]
+        };
+      }
+
+      let boxes = [{
+        colors: sourceColors,
+        stats: computeGifQuantBoxStats(sourceColors)
+      }];
+
+      while (boxes.length < (GIF_EXPORT_PALETTE_SIZE - 1)) {
+        let bestIndex = -1;
+        let bestPriority = 0;
+        for (let i = 0; i < boxes.length; i++) {
+          const priority = gifQuantBoxPriority(boxes[i]);
+          if (priority > bestPriority) {
+            bestPriority = priority;
+            bestIndex = i;
+          }
+        }
+        if (bestIndex < 0) break;
+        const split = splitGifQuantBox(boxes[bestIndex]);
+        if (!split) break;
+        boxes.splice(bestIndex, 1, split[0], split[1]);
+      }
+
+      const paletteColors = [{ r: 0, g: 0, b: 0 }];
+      for (let i = 0; i < boxes.length && paletteColors.length < GIF_EXPORT_PALETTE_SIZE; i++) {
+        const colors = Array.isArray(boxes[i]?.colors) ? boxes[i].colors : [];
+        let weight = 0;
+        let rSum = 0;
+        let gSum = 0;
+        let bSum = 0;
+        for (let j = 0; j < colors.length; j++) {
+          const c = colors[j];
+          const count = Math.max(0, Number(c?.count || 0));
+          weight += count;
+          rSum += Math.max(0, Math.min(255, Number(c?.r || 0))) * count;
+          gSum += Math.max(0, Math.min(255, Number(c?.g || 0))) * count;
+          bSum += Math.max(0, Math.min(255, Number(c?.b || 0))) * count;
+        }
+        if (!weight) continue;
+        paletteColors.push({
+          r: Math.round(rSum / weight),
+          g: Math.round(gSum / weight),
+          b: Math.round(bSum / weight)
+        });
+      }
+
+      const bytes = createEmptyGifPaletteBytes();
+      for (let i = 0; i < paletteColors.length && i < GIF_EXPORT_PALETTE_SIZE; i++) {
+        const color = paletteColors[i];
+        bytes[(i * 3) + 0] = Math.max(0, Math.min(255, Math.round(Number(color?.r || 0))));
+        bytes[(i * 3) + 1] = Math.max(0, Math.min(255, Math.round(Number(color?.g || 0))));
+        bytes[(i * 3) + 2] = Math.max(0, Math.min(255, Math.round(Number(color?.b || 0))));
+      }
+      return {
+        bytes,
+        colors: paletteColors
+      };
+    }
+
+    function createGifPaletteIndexer(paletteInfo) {
+      const colors = Array.isArray(paletteInfo?.colors) ? paletteInfo.colors : [{ r: 0, g: 0, b: 0 }];
+      const cache = new Map();
+      return (r, g, b) => {
+        const key = gifPaletteColorKey(r, g, b);
+        const existing = cache.get(key);
+        if (existing != null) return existing;
+        let bestIndex = 0;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < colors.length; i++) {
+          const color = colors[i];
+          const dr = Number(r) - Number(color?.r || 0);
+          const dg = Number(g) - Number(color?.g || 0);
+          const db = Number(b) - Number(color?.b || 0);
+          const distance = (dr * dr) + (dg * dg) + (db * db);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = i;
+            if (distance === 0) break;
+          }
+        }
+        cache.set(key, bestIndex);
+        return bestIndex;
+      };
     }
 
     function createByteCollector() {
@@ -21413,7 +21854,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return out.toUint8Array();
     }
 
-    function createGifWriter(width, height, globalPalette = GIF_EXPORT_GLOBAL_PALETTE_RGB332) {
+    function createGifWriter(width, height, globalPalette = createEmptyGifPaletteBytes()) {
       const w = Math.max(1, Math.min(65535, Math.round(width || 1)));
       const h = Math.max(1, Math.min(65535, Math.round(height || 1)));
       const writer = createByteCollector();
@@ -21531,7 +21972,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return null;
     }
 
-    async function renderGifFrameIndexBuffer(rec, canvas, ctx) {
+    async function renderGifFrameRgbaBuffer(rec, canvas, ctx) {
       if (!rec || !canvas || !ctx) return null;
       const loaded = await loadGifFrameSourceForRecord(rec);
       if (!loaded) return null;
@@ -21544,22 +21985,27 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         renderFilteredToCanvas(ctx, source, srcW, srcH, canvas.width, canvas.height, "off", false, rec, { overlayConfig: overlayCfg });
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const rgba = imageData && imageData.data ? imageData.data : null;
-        if (!rgba || !rgba.length) return null;
-        const idx = new Uint8Array(canvas.width * canvas.height);
-        for (let p = 0, i = 0; p < idx.length; p++, i += 4) {
-          const a = rgba[i + 3];
-          if (a < 8) {
-            idx[p] = 0;
-            continue;
-          }
-          idx[p] = gifRgb332Index(rgba[i], rgba[i + 1], rgba[i + 2]);
-        }
-        return idx;
+        return (rgba && rgba.length) ? rgba : null;
       } catch {
         return null;
       } finally {
         try { loaded.cleanup && loaded.cleanup(); } catch {}
       }
+    }
+
+    function quantizeGifFrameRgbaToPalette(rgba, width, height, paletteIndexer) {
+      const pixelCount = Math.max(0, Math.round(Number(width || 0) * Number(height || 0)));
+      if (!rgba || !rgba.length || !pixelCount || typeof paletteIndexer !== "function") return null;
+      const idx = new Uint8Array(pixelCount);
+      for (let p = 0, i = 0; p < pixelCount; p++, i += 4) {
+        const a = rgba[i + 3];
+        if (a < GIF_EXPORT_ALPHA_THRESHOLD) {
+          idx[p] = 0;
+          continue;
+        }
+        idx[p] = paletteIndexer(rgba[i], rgba[i + 1], rgba[i + 2]);
+      }
+      return idx;
     }
 
     async function writeGeneratedGifToDownloads(fileName, bytes) {
@@ -21592,10 +22038,100 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function buildGifExportFileName(baseLabel, bucket, index, total) {
       const folderLabel = sanitizeDownloadFileNamePart(String(baseLabel || "folder"), "folder");
+      if (bucket?.allInOne) {
+        const orderLabel = sanitizeDownloadFileNamePart(String(bucket?.order || GIF_EXPORT_ORDER_SORT), GIF_EXPORT_ORDER_SORT);
+        const frameCount = Math.max(1, Number(bucket?.records?.length || 1));
+        return `${folderLabel}_all_in_one_${orderLabel}_${frameCount}f.gif`;
+      }
       const aspectLabel = sanitizeDownloadFileNamePart(gifAspectBucketDisplayLabel(bucket), "aspect");
       const frameCount = Math.max(1, Number(bucket?.records?.length || 1));
       const idxSuffix = total > 1 ? `_${String(index + 1).padStart(2, "0")}` : "";
       return `${folderLabel}_ratio_${aspectLabel}_${frameCount}f${idxSuffix}.gif`;
+    }
+
+    async function resolveGifAspectEntriesForRecords(records, progressLabel) {
+      const entries = [];
+      const list = Array.isArray(records) ? records : [];
+      for (let i = 0; i < list.length; i++) {
+        const rec = list[i];
+        if (!rec) continue;
+        if (progressLabel) {
+          showBusyOverlay(`${progressLabel} ${i + 1}/${list.length}`);
+        }
+        const aspect = await resolveAspectRatioForGifRecord(rec);
+        entries.push({
+          rec,
+          aspect: normalizePreviewAspect(aspect, 4 / 3),
+          orderIndex: i
+        });
+        if ((i % 8) === 0) await waitForNextPaint();
+      }
+      return entries;
+    }
+
+    function sortGifAspectEntries(entries, order) {
+      const normalizedOrder = normalizeGifExportOrder(order);
+      const list = Array.isArray(entries) ? entries.slice() : [];
+      if (normalizedOrder === GIF_EXPORT_ORDER_ASPECT_RATIO) {
+        list.sort((a, b) => {
+          const aspectDiff = Number(a?.aspect || 0) - Number(b?.aspect || 0);
+          if (aspectDiff !== 0) return aspectDiff;
+          return Number(a?.orderIndex || 0) - Number(b?.orderIndex || 0);
+        });
+        return list;
+      }
+      list.sort((a, b) => Number(a?.orderIndex || 0) - Number(b?.orderIndex || 0));
+      return list;
+    }
+
+    async function buildGifExportBucketsForRecordSet(records, options = {}) {
+      const mode = normalizeGifExportMode(options?.mode);
+      const order = normalizeGifExportOrder(options?.order);
+      if (mode === GIF_EXPORT_MODE_ALL_IN_ONE && order === GIF_EXPORT_ORDER_SORT) {
+        return [buildAllInOneGifBucket(records, order)];
+      }
+
+      const aspectEntries = await resolveGifAspectEntriesForRecords(
+        records,
+        mode === GIF_EXPORT_MODE_ALL_IN_ONE
+          ? "Generating GIF... ordering by aspect ratio."
+          : "Generating GIFs... scanning aspect ratios."
+      );
+
+      if (mode === GIF_EXPORT_MODE_ALL_IN_ONE) {
+        const orderedEntries = sortGifAspectEntries(aspectEntries, order);
+        return [buildAllInOneGifBucket(orderedEntries.map((entry) => entry.rec), order)];
+      }
+
+      const bucketByKey = new Map();
+      for (let i = 0; i < aspectEntries.length; i++) {
+        const entry = aspectEntries[i];
+        const key = gifAspectBucketKey(entry.aspect);
+        let bucket = bucketByKey.get(key);
+        if (!bucket) {
+          bucket = { key, aspect: entry.aspect, records: [] };
+          bucketByKey.set(key, bucket);
+        }
+        bucket.records.push(entry.rec);
+      }
+      return consolidateGifAspectBuckets(Array.from(bucketByKey.values()));
+    }
+
+    async function buildGifPaletteForBucket(bucket, canvas, ctx, bucketIndex, bucketTotal) {
+      const records = Array.isArray(bucket?.records) ? bucket.records : [];
+      const histogram = new Map();
+      let sampledFrames = 0;
+      const bucketLabel = gifAspectBucketDisplayLabel(bucket);
+      for (let i = 0; i < records.length; i++) {
+        showBusyOverlay(`Preparing GIF ${bucketIndex + 1}/${bucketTotal} (${bucketLabel}) palette ${i + 1}/${records.length}`);
+        const rgba = await renderGifFrameRgbaBuffer(records[i], canvas, ctx);
+        if (!rgba || !rgba.length) continue;
+        addGifPaletteSamplesFromRgba(histogram, rgba);
+        sampledFrames++;
+        if ((i % 3) === 0) await waitForNextPaint();
+      }
+      if (!sampledFrames) return null;
+      return buildAdaptiveGifPalette(histogram);
     }
 
     async function generateGifBucketsForRecordSet(orderedRecords, options = {}) {
@@ -21603,31 +22139,18 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const sourceLabel = String(options?.sourceLabel || "folder tree");
       const outputLabel = String(options?.outputLabel || "folder");
       const emptyStatus = String(options?.emptyStatus || `No media files found in ${sourceLabel}.`);
+      const mode = normalizeGifExportMode(options?.mode);
+      const order = normalizeGifExportOrder(options?.order);
+      const frameDelayCs = normalizeGifExportFrameDelayCs(options?.frameDelayCs);
       if (!records.length) {
         showStatusMessage(emptyStatus);
         return true;
       }
 
-      const bucketByKey = new Map();
       try {
-        showBusyOverlay("Generating GIFs... Scanning aspect ratios.");
+        showBusyOverlay("Generating GIFs... Preparing export.");
         await waitForNextPaint();
-
-        for (let i = 0; i < records.length; i++) {
-          const rec = records[i];
-          showBusyOverlay(`Generating GIFs... scanning ${i + 1}/${records.length}`);
-          const aspect = await resolveAspectRatioForGifRecord(rec);
-          const key = gifAspectBucketKey(aspect);
-          let bucket = bucketByKey.get(key);
-          if (!bucket) {
-            bucket = { key, aspect: normalizePreviewAspect(aspect, 4 / 3), records: [] };
-            bucketByKey.set(key, bucket);
-          }
-          bucket.records.push(rec);
-          if ((i % 8) === 0) await waitForNextPaint();
-        }
-
-        const buckets = consolidateGifAspectBuckets(Array.from(bucketByKey.values()));
+        const buckets = await buildGifExportBucketsForRecordSet(records, { mode, order });
         if (!buckets.length) {
           showStatusMessage("No GIF buckets were created.");
           return true;
@@ -21644,15 +22167,19 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const ctx = canvas.getContext("2d", { willReadFrequently: true });
           if (!ctx) continue;
 
-          const writer = createGifWriter(canvas.width, canvas.height, GIF_EXPORT_GLOBAL_PALETTE_RGB332);
+          const paletteInfo = await buildGifPaletteForBucket(bucket, canvas, ctx, b, buckets.length);
+          if (!paletteInfo) continue;
+          const paletteIndexer = createGifPaletteIndexer(paletteInfo);
+          const writer = createGifWriter(canvas.width, canvas.height, paletteInfo.bytes);
           let addedFrames = 0;
           for (let i = 0; i < bucket.records.length; i++) {
             showBusyOverlay(
               `Generating GIF ${b + 1}/${buckets.length} (${bucketLabel}) frame ${i + 1}/${bucket.records.length}`
             );
-            const frameIndices = await renderGifFrameIndexBuffer(bucket.records[i], canvas, ctx);
+            const rgba = await renderGifFrameRgbaBuffer(bucket.records[i], canvas, ctx);
+            const frameIndices = quantizeGifFrameRgbaToPalette(rgba, canvas.width, canvas.height, paletteIndexer);
             if (!frameIndices || !frameIndices.length) continue;
-            writer.addFrame(frameIndices, GIF_EXPORT_FRAME_DELAY_CS);
+            writer.addFrame(frameIndices, frameDelayCs);
             addedFrames++;
             if ((i % 4) === 0) await waitForNextPaint();
           }
@@ -21677,11 +22204,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
         if (generated.length === 1) {
           const one = generated[0];
-          showStatusMessage(`Generated GIF (${one.aspectLabel}, ${one.frames} frames).`);
+          showStatusMessage(`Generated GIF (${one.aspectLabel}, ${one.frames} frames, ${frameDelayCs} cs).`);
           return true;
         }
 
-        showStatusMessage(`Generated ${generated.length} GIFs across aspect-ratio buckets.`);
+        showStatusMessage(
+          mode === GIF_EXPORT_MODE_ALL_IN_ONE
+            ? `Generated all-in-one GIF (${generated[0]?.frames || 0} frames, ${frameDelayCs} cs).`
+            : `Generated ${generated.length} GIFs across aspect-ratio buckets.`
+        );
         return true;
       } catch {
         showStatusMessage("GIF generation failed.");
@@ -21691,18 +22222,21 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
     }
 
-    async function generateGifBucketsForFolder(dirNode) {
+    async function generateGifBucketsForFolder(dirNode, options = {}) {
       if (!dirNode) return false;
       const orderedRecords = collectOrderedMediaRecordsForDirRecursive(dirNode, []);
       const outputLabel = dirDisplayName(dirNode) || String(dirNode?.name || "folder");
       return await generateGifBucketsForRecordSet(orderedRecords, {
         sourceLabel: "this folder tree",
         outputLabel,
-        emptyStatus: "No media files found in this folder tree."
+        emptyStatus: "No media files found in this folder tree.",
+        mode: options?.mode,
+        order: options?.order,
+        frameDelayCs: options?.frameDelayCs
       });
     }
 
-    async function generateGifBucketsForFolderSelection(paths) {
+    async function generateGifBucketsForFolderSelection(paths, options = {}) {
       const dirNodes = resolveOrderedUniqueDirNodesForPaths(paths);
       if (!dirNodes.length) {
         showStatusMessage("No folders selected.");
@@ -21715,11 +22249,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return await generateGifBucketsForRecordSet(orderedRecords, {
         sourceLabel: "selected folders",
         outputLabel,
-        emptyStatus: "No media files found in selected folders."
+        emptyStatus: "No media files found in selected folders.",
+        mode: options?.mode,
+        order: options?.order,
+        frameDelayCs: options?.frameDelayCs
       });
     }
 
-    async function runFolderActionFromMenu(action, dirNode) {
+    async function runFolderActionFromMenu(action, dirNode, options = {}) {
       const node = dirNode || null;
       const p = String(node?.path || "");
       const isRootNode = !!node && node === WS.root;
@@ -21769,7 +22306,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         return true;
       }
       if (action === "generate-gif") {
-        await generateGifBucketsForFolder(node);
+        await generateGifBucketsForFolder(node, options);
         return true;
       }
       if (action === "favorite") {
@@ -22003,10 +22540,22 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }));
       }
 
-      menu.appendChild(makeBtn("Generate GIF", async () => {
-        await generateGifBucketsForFolderSelection(selectedPaths);
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-      }));
+      menu.appendChild(makeBtn("Generate GIF", () => {
+        buildGifExportChoiceMenu(menu, {
+          onBack: () => {
+            openPreviewBulkFolderActionMenu(selectedPaths, anchorPath, opts);
+          },
+          onChooseConfig: async (gifOptions) => {
+            closePreviewContextMenu();
+            await generateGifBucketsForFolderSelection(selectedPaths, gifOptions);
+            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+          },
+          onRendered: () => {
+            if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
+            else positionDropdownMenuAtPoint(menu, Number(opts.x) || 0, Number(opts.y) || 0);
+          }
+        });
+      }, false, false));
 
       if (thumbTogglePaths.length && !allThumbNone) {
         menu.appendChild(makeBtn("No thumbnail", () => {
@@ -22098,6 +22647,21 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               else positionDropdownMenuAtPoint(menu, Number(opts.x) || 0, Number(opts.y) || 0);
             }
           });
+        },
+        "generate-gif": () => {
+          buildGifExportChoiceMenu(menu, {
+            onBack: () => {
+              openPreviewFolderActionMenu(dirNode, opts);
+            },
+            onChooseConfig: async (gifOptions) => {
+              closePreviewContextMenu();
+              await generateGifBucketsForFolder(dirNode, gifOptions);
+            },
+            onRendered: () => {
+              if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
+              else positionDropdownMenuAtPoint(menu, Number(opts.x) || 0, Number(opts.y) || 0);
+            }
+          });
         }
       });
 
@@ -22120,7 +22684,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return btn;
     }
 
-    function renameTagForPaths(tag, newName, paths) {
+    function renameTagForPaths(tag, newName, paths, scopePath = null) {
       const normalizedOld = String(tag || "");
       const normalizedNew = normalizeTag(newName || "");
       if (!normalizedOld || !normalizedNew || normalizedOld === normalizedNew) return false;
@@ -22165,19 +22729,19 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (!newKey) continue;
         if (rekeyTagAppearancePresetState(oldKey, newKey)) changed = true;
       }
-      const oldAlbum = metaGetTagAlbumForTag(normalizedOld);
+      const oldAlbum = metaGetTagAlbumForTag(normalizedOld, scopePath);
       if (oldAlbum) {
         let albumChanged = false;
-        if (!metaGetTagAlbumForTag(normalizedNew)) {
-          if (metaSetTagAlbumForTag(normalizedNew, oldAlbum)) albumChanged = true;
+        if (!metaGetTagAlbumForTag(normalizedNew, scopePath)) {
+          if (metaSetTagAlbumForTag(normalizedNew, oldAlbum, scopePath)) albumChanged = true;
         }
-        if (metaSetTagAlbumForTag(normalizedOld, "")) albumChanged = true;
+        if (metaSetTagAlbumForTag(normalizedOld, "", scopePath)) albumChanged = true;
         if (albumChanged) changed = true;
       }
       return changed;
     }
 
-    function deleteTagFromPaths(tag, paths) {
+    function deleteTagFromPaths(tag, paths, scopePath = null) {
       const normalized = String(tag || "");
       if (!normalized) return false;
       const uniquePaths = Array.from(new Set((paths || []).filter(p => p)));
@@ -22196,22 +22760,31 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const parsed = parseTagThumbnailStructuredKey(key);
         return !!parsed && parsed.kind === "tag" && String(parsed.value || "") === normalized;
       })) changed = true;
-      if (metaSetTagAlbumForTag(normalized, "")) changed = true;
+      if (metaSetTagAlbumForTag(normalized, "", scopePath)) changed = true;
       return changed;
     }
 
-    function deleteTagAlbumByName(albumName) {
+    function deleteTagAlbumByName(albumName, scopePath = null) {
       const album = normalizeTagAlbumName(albumName || "");
       if (!album) return { changed: false, clearedTags: 0, album: "" };
       let changed = false;
       let clearedTags = 0;
+      const normalizedScope = normalizeTagAlbumScopePath(scopePath);
+      const hasScopedAssignments = scopePath != null && tagAlbumHasScopedAssignmentsForScope(scopePath);
       if (WS.meta && WS.meta.tagAlbumByTag) {
         const entries = Array.from(WS.meta.tagAlbumByTag.entries());
         for (let i = 0; i < entries.length; i++) {
-          const tag = String(entries[i][0] || "");
+          const parsed = parseTagAlbumMembershipKey(entries[i][0]);
           const assignedAlbum = normalizeTagAlbumName(entries[i][1] || "");
-          if (!tag || assignedAlbum !== album) continue;
-          if (metaSetTagAlbumForTag(tag, "")) {
+          if (!parsed || assignedAlbum !== album) continue;
+          if (scopePath != null) {
+            if (parsed.scoped) {
+              if (parsed.scopePath !== normalizedScope) continue;
+            } else if (hasScopedAssignments) {
+              continue;
+            }
+          }
+          if (metaSetTagAlbumForTag(parsed.tag, "", parsed.scoped ? parsed.scopePath : null)) {
             changed = true;
             clearedTags++;
           }
@@ -22219,11 +22792,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
       if (clearTagThumbnailStateByMatch((key) => {
         const parsed = parseTagThumbnailStructuredKey(key);
-        return !!parsed && parsed.kind === "album" && String(parsed.value || "") === album;
+        if (!parsed || parsed.kind !== "album" || String(parsed.value || "") !== album) return false;
+        if (scopePath == null) return true;
+        return parsed.scoped ? parsed.scopePath === normalizedScope : !hasScopedAssignments;
       })) changed = true;
       if (clearTagAppearancePresetStateByMatch((key) => {
         const parsed = parseTagThumbnailStructuredKey(key);
-        return !!parsed && parsed.kind === "album" && String(parsed.value || "") === album;
+        if (!parsed || parsed.kind !== "album" || String(parsed.value || "") !== album) return false;
+        if (scopePath == null) return true;
+        return parsed.scoped ? parsed.scopePath === normalizedScope : !hasScopedAssignments;
       })) changed = true;
       return { changed, clearedTags, album };
     }
@@ -22244,7 +22821,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           showStatusMessage("No folders contain that tag.");
           return;
         }
-        TAG_ENTRY_RENAME_STATE = { tag, label, paths };
+        TAG_ENTRY_RENAME_STATE = { tag, label, paths, originPath: String(ctx.originPath || "") };
         renderDirectoriesPane(true);
         return;
       }
@@ -22253,7 +22830,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (isAlbumEntry) {
           const confirmed = confirm(`Delete tag album '${label}'? This keeps all tags and just ungroups them from the album.`);
           if (!confirmed) return;
-          const result = deleteTagAlbumByName(album);
+          const result = deleteTagAlbumByName(album, ctx.originPath);
           if (!result.changed) {
             showStatusMessage("No tags updated.");
             return;
@@ -22270,7 +22847,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
         const confirmed = confirm(`Remove tag '${label}' from these folders?`);
         if (!confirmed) return;
-        const changed = deleteTagFromPaths(tag, paths);
+        const changed = deleteTagFromPaths(tag, paths, ctx.originPath);
         if (!changed) {
           showStatusMessage("No folders updated.");
           return;
@@ -22478,12 +23055,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         directoriesActionMenuEl.appendChild(makeActionBtn("Tag album", () => {
           WS.view.bulkActionMenuOpen = false;
           const tags = normalizeTagList(albumAssignableTagEntries.map((entry) => String(entry.tag || "")));
+          const originPath = String(albumAssignableTagEntries[0]?.originPath || "");
           if (!tags.length) {
             showStatusMessage("No tags selected.");
             return;
           }
           finalizeBulkSelectionAction();
-          startBulkTagAlbuming(tags);
+          startBulkTagAlbuming(tags, originPath);
         }));
       }
 
@@ -22493,11 +23071,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const byTag = new Map();
           for (const entry of deletableTagEntries) {
             const tag = String(entry.tag || "").trim();
+            const originPath = String(entry.originPath || "");
             if (!tag) continue;
             const dirs = getDirsForTagEntry(entry);
             const paths = gatherTagPathsForDirs(dirs);
             if (!paths.length) continue;
-            byTag.set(tag, paths);
+            const mapKey = `${originPath}\n${tag}`;
+            byTag.set(mapKey, { tag, paths, originPath });
           }
           if (!byTag.size) {
             showStatusMessage("No tags available to delete.");
@@ -22507,8 +23087,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const confirmed = confirm(`Remove ${count} selected tag${count === 1 ? "" : "s"} from all included folders?`);
           if (!confirmed) return;
           let changed = false;
-          for (const [tag, paths] of byTag.entries()) {
-            if (deleteTagFromPaths(tag, paths)) changed = true;
+          for (const value of byTag.values()) {
+            if (deleteTagFromPaths(value.tag, value.paths, value.originPath)) changed = true;
           }
           if (!changed) {
             showStatusMessage("No folders updated.");
@@ -22528,9 +23108,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const seenAlbums = new Set();
           for (const entry of deletableTagAlbumEntries) {
             const album = normalizeTagAlbumName(entry.album || "");
-            if (!album || seenAlbums.has(album)) continue;
-            seenAlbums.add(album);
-            albums.push(album);
+            const originPath = String(entry.originPath || "");
+            const key = `${originPath}\n${album}`;
+            if (!album || seenAlbums.has(key)) continue;
+            seenAlbums.add(key);
+            albums.push({ album, originPath });
           }
           if (!albums.length) {
             showStatusMessage("No tag albums available to delete.");
@@ -22543,7 +23125,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           let deletedCount = 0;
           let ungroupedTotal = 0;
           for (let i = 0; i < albums.length; i++) {
-            const result = deleteTagAlbumByName(albums[i]);
+            const result = deleteTagAlbumByName(albums[i].album, albums[i].originPath);
             if (!result.changed) continue;
             changed = true;
             deletedCount++;
@@ -22793,11 +23375,26 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           }));
         }
 
-        directoriesActionMenuEl.appendChild(makeActionBtn("Generate GIF", async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await generateGifBucketsForFolderSelection(selectedDirs);
-          finalizeBulkSelectionAction();
-        }));
+        directoriesActionMenuEl.appendChild(makeActionBtn("Generate GIF", () => {
+          buildGifExportChoiceMenu(directoriesActionMenuEl, {
+            onBack: () => {
+              renderDirectoriesActionHeader();
+              if (directoriesActionMenuEl.classList.contains("open") && anchorBtn) {
+                requestAnimationFrame(() => positionDropdownMenu(anchorBtn, directoriesActionMenuEl));
+              }
+            },
+            onChooseConfig: async (gifOptions) => {
+              closeActionMenus();
+              renderDirectoriesPane(true);
+              WS.view.bulkActionMenuOpen = false;
+              await generateGifBucketsForFolderSelection(selectedDirs, gifOptions);
+              finalizeBulkSelectionAction();
+            },
+            onRendered: () => {
+              if (anchorBtn) positionDropdownMenu(anchorBtn, directoriesActionMenuEl);
+            }
+          });
+        }, false));
 
         if (isGridInteractionMode() && thumbDefaultPaths.length) {
           directoriesActionMenuEl.appendChild(makeActionBtn("Use default thumbnail", () => {
@@ -23793,7 +24390,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               special: entry.special || "",
               label: String(entry.label || entry.tag || ""),
               anchor: row,
-              paths
+              paths,
+              originPath: String(entry.originPath || "")
             });
           });
           const tagMenuBtn = row.querySelector(".dirTagMenu .dirMenuBtn");
@@ -23813,7 +24411,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                 special: entry.special || "",
                 label: String(entry.label || entry.tag || ""),
                 anchor: tagMenuBtn,
-                paths
+                paths,
+                originPath: String(entry.originPath || "")
               });
             });
           }
@@ -23982,6 +24581,24 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                       if (!metaSetFolderAppearancePresetId(p, presetId)) return;
                       refreshAfterProcessingMetadataChange();
                       showStatusMessage(`Folder media preset: ${appearancePresetDisplayName(presetId)}.`);
+                    },
+                    onRendered: () => {
+                      if (menuBtn) positionDropdownMenu(menuBtn, menuDropdown);
+                    }
+                  });
+                  return;
+                }
+                if (action === "generate-gif") {
+                  buildGifExportChoiceMenu(menuDropdown, {
+                    onBack: () => {
+                      renderDirectoriesPane(true);
+                      renderPreviewPane(false, true);
+                      syncButtons();
+                    },
+                    onChooseConfig: async (gifOptions) => {
+                      closeActionMenus();
+                      renderDirectoriesPane(true);
+                      await runFolderActionFromMenu(action, entry.node, gifOptions);
                     },
                     onRendered: () => {
                       if (menuBtn) positionDropdownMenu(menuBtn, menuDropdown);
