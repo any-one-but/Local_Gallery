@@ -561,6 +561,13 @@
     const HOT_NAV_CHILD_LIMIT = 8;
     const HOT_NAV_LARGE_DIR_LIMIT = 16;
     const PINNED_HOT_NAV_DECODE_LIMIT = 2400;
+    const NAVIGATION_PREP_ENTRY_WINDOW = 72;
+    const NAVIGATION_PREP_DIR_FILE_LIMIT = 18;
+    const NAVIGATION_PREP_CHILD_LEAD_LIMIT = 24;
+    const NAVIGATION_PREP_PREVIEW_FILE_LIMIT = 48;
+    const NAVIGATION_PREP_PREVIEW_CHILD_LIMIT = 16;
+    let WORKSPACE_NAV_WARM_TOKEN = 0;
+    let WORKSPACE_NAV_WARM_TIMER = 0;
     let DIRECTORIES_VIRTUAL_SCROLL_RAF = 0;
     let PREVIEW_VIRTUAL_SCROLL_RAF = 0;
     let ACTIVE_PREVIEW_FILE_VIRTUALIZERS = [];
@@ -4073,6 +4080,11 @@
         try { clearTimeout(HOT_NAV_CACHE_TIMER); } catch {}
       }
       HOT_NAV_CACHE_TIMER = 0;
+      WORKSPACE_NAV_WARM_TOKEN = 0;
+      if (WORKSPACE_NAV_WARM_TIMER) {
+        try { clearTimeout(WORKSPACE_NAV_WARM_TIMER); } catch {}
+      }
+      WORKSPACE_NAV_WARM_TIMER = 0;
       invalidateDirMetricsCaches();
       WS.root = null;
       WS.fileById.clear();
@@ -9497,8 +9509,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
       primeDirectoryNavManifests(WS.root);
+      syncPinnedHotNavigationDirectories(WS.root);
 
-      await ingestWorkspaceNavigationThumbsBeforeInitialRender();
       await prepareNavigationSnapshot(currentNavigationSnapshot(), "Preparing directory thumbnails...");
 
       renderDirectoriesPane();
@@ -9506,6 +9518,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
+      scheduleWorkspaceNavigationWarm(WS.root, 1000);
       syncMetaButtons();
       initDirHistory();
     }
@@ -9616,8 +9629,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
       syncPreviewToSelection();
       primeDirectoryNavManifests(WS.root);
+      syncPinnedHotNavigationDirectories(WS.root);
 
-      await ingestWorkspaceNavigationThumbsBeforeInitialRender();
       await prepareNavigationSnapshot(currentNavigationSnapshot(), "Preparing directory thumbnails...");
 
       renderDirectoriesPane();
@@ -9625,6 +9638,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
+      scheduleWorkspaceNavigationWarm(WS.root, 1000);
       syncMetaButtons();
       initDirHistory();
     }
@@ -15232,6 +15246,65 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return false;
     }
 
+    function collectNavigationManifestRecords(dirNode, maxFiles = 0, maxChildLeadIds = 0) {
+      if (!dirNode) return [];
+      const manifest = getDirectoryNavManifest(dirNode);
+      if (!manifest) return [];
+      const out = [];
+      const seen = new Set();
+      const pushId = (id) => {
+        const normalized = String(id || "");
+        if (!normalized || seen.has(normalized)) return;
+        const rec = WS.fileById.get(normalized);
+        if (!rec) return;
+        seen.add(normalized);
+        out.push(rec);
+      };
+      const fileIds = Array.isArray(manifest.fileIds) ? manifest.fileIds : [];
+      const childLeadIds = Array.isArray(manifest.childLeadRecordIds) ? manifest.childLeadRecordIds : [];
+      const fileLimit = Math.max(0, Number(maxFiles) || 0);
+      const childLimit = Math.max(0, Number(maxChildLeadIds) || 0);
+      for (let i = 0; i < fileIds.length && i < fileLimit; i++) pushId(fileIds[i]);
+      for (let i = 0; i < childLeadIds.length && i < childLimit; i++) pushId(childLeadIds[i]);
+      return out;
+    }
+
+    function collectNavigationEntryWindowRecords(dirNode, maxEntries = NAVIGATION_PREP_ENTRY_WINDOW) {
+      if (!dirNode || dirNode !== WS.nav.dirNode) return [];
+      const entries = Array.isArray(WS.nav.entries) ? WS.nav.entries : [];
+      if (!entries.length) return [];
+
+      const entryLimit = Math.max(1, Number(maxEntries) || NAVIGATION_PREP_ENTRY_WINDOW);
+      const selectedIndex = clampNumber(Number(WS.nav.selectedIndex) || 0, 0, Math.max(0, entries.length - 1), 0);
+      let start = Math.max(0, selectedIndex - Math.floor(entryLimit / 3));
+      if ((start + entryLimit) > entries.length) start = Math.max(0, entries.length - entryLimit);
+      const endExclusive = Math.min(entries.length, start + entryLimit);
+
+      const out = [];
+      const seen = new Set();
+      const addRecord = (rec) => {
+        const id = String(rec && rec.id || "");
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        out.push(rec);
+      };
+
+      for (let i = start; i < endExclusive; i++) {
+        const entry = entries[i];
+        if (!entry) continue;
+        if (entry.kind === "file") {
+          addRecord(WS.fileById.get(String(entry.id || "")));
+          continue;
+        }
+        if (entry.kind !== "dir" || !entry.node) continue;
+        const manifest = getDirectoryNavManifest(entry.node);
+        const leadId = String(manifest && manifest.leadRecordId || "");
+        if (!leadId) continue;
+        addRecord(WS.fileById.get(leadId));
+      }
+      return out;
+    }
+
     function collectNavigationSnapshotRecords(snapshot) {
       const out = [];
       const seen = new Set();
@@ -15241,19 +15314,31 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         seen.add(id);
         out.push(rec);
       };
-      const addDir = (dirNode) => {
-        if (!dirNode) return;
-        const manifest = getDirectoryNavManifest(dirNode);
-        const ids = Array.isArray(manifest && manifest.navRecordIds) ? manifest.navRecordIds : [];
-        for (let i = 0; i < ids.length; i++) {
-          const rec = WS.fileById.get(ids[i]);
-          if (!rec) continue;
-          addRecord(rec);
-        }
+      const addRecords = (records) => {
+        const list = Array.isArray(records) ? records : [];
+        for (let i = 0; i < list.length; i++) addRecord(list[i]);
       };
-      if (snapshot && snapshot.dirNode) addDir(snapshot.dirNode);
+
+      if (snapshot && snapshot.dirNode) {
+        const windowRecords = collectNavigationEntryWindowRecords(snapshot.dirNode, NAVIGATION_PREP_ENTRY_WINDOW);
+        if (windowRecords.length) addRecords(windowRecords);
+        else addRecords(collectNavigationManifestRecords(
+          snapshot.dirNode,
+          NAVIGATION_PREP_DIR_FILE_LIMIT,
+          NAVIGATION_PREP_CHILD_LEAD_LIMIT
+        ));
+      }
+
       if (snapshot && snapshot.preview && snapshot.preview.kind === "dir" && snapshot.preview.dirNode) {
-        addDir(snapshot.preview.dirNode);
+        if (snapshot.preview.dirNode !== snapshot.dirNode) {
+          addRecords(collectNavigationManifestRecords(
+            snapshot.preview.dirNode,
+            NAVIGATION_PREP_PREVIEW_FILE_LIMIT,
+            NAVIGATION_PREP_PREVIEW_CHILD_LIMIT
+          ));
+        }
+      } else if (snapshot && snapshot.preview && snapshot.preview.kind === "file" && snapshot.preview.fileId) {
+        addRecord(WS.fileById.get(String(snapshot.preview.fileId || "")));
       }
       return out;
     }
@@ -15486,29 +15571,29 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return token === NAVIGATION_PREP_TOKEN;
     }
 
-    async function ingestWorkspaceNavigationThumbsBeforeInitialRender() {
-      if (!WS.root) return;
-      syncPinnedHotNavigationDirectories(WS.root);
-      const records = collectWorkspaceNavigationRecords(WS.root);
-      const total = records.length;
-      if (!total) {
-        await warmNearbyDirectoriesInRam(currentNavigationSnapshot());
-        return;
+    async function warmWorkspaceNavigationThumbsInBackground(rootNode = null, token = 0) {
+      const startNode = rootNode || WS.root;
+      if (!startNode || (token && token !== WORKSPACE_NAV_WARM_TOKEN)) return;
+      const records = collectWorkspaceNavigationRecords(startNode);
+      if (!records.length) return;
+      await runWithConcurrency(records, navigationThumbWorkerLimit("background"), async (rec) => {
+        if (token && token !== WORKSPACE_NAV_WARM_TOKEN) return;
+        await ensureNavigationThumbReady(rec);
+      });
+    }
+
+    function scheduleWorkspaceNavigationWarm(rootNode = null, delayMs = 1200) {
+      const startNode = rootNode || WS.root;
+      if (!startNode) return;
+      const token = ++WORKSPACE_NAV_WARM_TOKEN;
+      if (WORKSPACE_NAV_WARM_TIMER) {
+        try { clearTimeout(WORKSPACE_NAV_WARM_TIMER); } catch {}
       }
-      let done = 0;
-      showBusyOverlay(`Preparing root thumbnails... 0/${total}`);
-      try {
-        await runWithConcurrency(records, navigationThumbWorkerLimit("startup"), async (rec) => {
-          await ensureNavigationThumbReady(rec);
-          done++;
-          if (done === total || done === 1 || (done % 25) === 0) {
-            showBusyOverlay(`Preparing root thumbnails... ${done}/${total}`);
-          }
-        });
-      } finally {
-        hideBusyOverlay();
-      }
-      await warmNearbyDirectoriesInRam(currentNavigationSnapshot());
+      WORKSPACE_NAV_WARM_TIMER = setTimeout(() => {
+        WORKSPACE_NAV_WARM_TIMER = 0;
+        if (token !== WORKSPACE_NAV_WARM_TOKEN) return;
+        warmWorkspaceNavigationThumbsInBackground(startNode, token).catch(() => {});
+      }, Math.max(0, Number(delayMs) || 0));
     }
 
     function notifyScrubMissingTools(missingTools) {
