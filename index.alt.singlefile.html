@@ -23027,15 +23027,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function shouldVirtualizeDirectoriesPane(gridModeActive) {
       if (!gridModeActive) return false;
-      if ((WS.nav.entries || []).length < 220) return false;
-      for (let i = 0; i < WS.nav.entries.length; i++) {
-        const entry = WS.nav.entries[i];
-        if (!entry) continue;
-        if (entry.kind === "tag" || entry.kind === "up") return false;
-      }
-      if (WS.view.dirActionMenuPath || WS.view.fileActionMenuId || WS.view.bulkActionMenuOpen) return false;
-      if (TAG_ENTRY_RENAME_STATE || RENAME_EDIT_PATH || RENAME_EDIT_FILE_ID) return false;
-      return true;
+      // Directory-grid virtualization is currently unstable in large folders and
+      // can leave persistent blank gaps while scrolling. The preview pane uses a
+      // separate virtualizer, so disable only this path for correctness.
+      return false;
     }
 
     function measureDirectoriesGridVirtualMetrics() {
