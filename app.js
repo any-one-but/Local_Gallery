@@ -2156,6 +2156,60 @@
       ctx.putImageData(imageData, 0, 0);
     }
 
+    function sampleImageDataChannelBilinear(data, width, height, x, y, channelIndex) {
+      const clampedX = clampNumber(x, 0, Math.max(0, width - 1), 0);
+      const clampedY = clampNumber(y, 0, Math.max(0, height - 1), 0);
+      const x0 = Math.floor(clampedX);
+      const y0 = Math.floor(clampedY);
+      const x1 = Math.min(width - 1, x0 + 1);
+      const y1 = Math.min(height - 1, y0 + 1);
+      const fx = clampedX - x0;
+      const fy = clampedY - y0;
+      const base00 = ((y0 * width) + x0) * 4;
+      const base10 = ((y0 * width) + x1) * 4;
+      const base01 = ((y1 * width) + x0) * 4;
+      const base11 = ((y1 * width) + x1) * 4;
+      const top = (data[base00 + channelIndex] * (1 - fx)) + (data[base10 + channelIndex] * fx);
+      const bottom = (data[base01 + channelIndex] * (1 - fx)) + (data[base11 + channelIndex] * fx);
+      return (top * (1 - fy)) + (bottom * fy);
+    }
+
+    function applyChromaticAberrationToCanvas(canvas, amount) {
+      if (!canvas) return;
+      const shift = Number(amount);
+      if (!Number.isFinite(shift) || shift <= 0.0001) return;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+      const width = canvas.width || 0;
+      const height = canvas.height || 0;
+      if (!width || !height) return;
+      let sourceImage = null;
+      try { sourceImage = ctx.getImageData(0, 0, width, height); } catch { sourceImage = null; }
+      if (!sourceImage) return;
+      const source = sourceImage.data;
+      const outImage = ctx.createImageData(width, height);
+      const out = outImage.data;
+      const xShift = shift;
+      const yShift = shift * 0.18;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = ((y * width) + x) * 4;
+          const redX = x - xShift;
+          const redY = y - yShift;
+          const blueX = x + xShift;
+          const blueY = y + yShift;
+          out[idx] = clampNumber(sampleImageDataChannelBilinear(source, width, height, redX, redY, 0), 0, 255, 0);
+          out[idx + 1] = clampNumber(sampleImageDataChannelBilinear(source, width, height, x, y, 1), 0, 255, 0);
+          out[idx + 2] = clampNumber(sampleImageDataChannelBilinear(source, width, height, blueX, blueY, 2), 0, 255, 0);
+          const alphaCenter = sampleImageDataChannelBilinear(source, width, height, x, y, 3);
+          const alphaRed = sampleImageDataChannelBilinear(source, width, height, redX, redY, 3);
+          const alphaBlue = sampleImageDataChannelBilinear(source, width, height, blueX, blueY, 3);
+          out[idx + 3] = clampNumber(Math.max(alphaCenter, alphaRed, alphaBlue), 0, 255, 0);
+        }
+      }
+      ctx.putImageData(outImage, 0, 0);
+    }
+
     function crtOverlayEnabled(target = undefined) {
       if (typeof target !== "undefined") return !!resolveMediaOverlayConfigForTarget(target);
       return anyMediaFilterEnabled();
@@ -2315,20 +2369,13 @@
         scratchCtx.filter = "none";
         swapBuffers();
       }
+      if (overlayCfg.chroma > 0) {
+        applyChromaticAberrationToCanvas(currentCanvas, overlayCfg.chroma);
+      }
 
       ctx.imageSmoothingEnabled = true;
       ctx.filter = "none";
       ctx.drawImage(currentCanvas, rect.x, rect.y, rect.w, rect.h);
-
-      if (overlayCfg.chroma) {
-        ctx.save();
-        ctx.globalCompositeOperation = "screen";
-        ctx.globalAlpha = 0.18;
-        ctx.filter = "none";
-        ctx.drawImage(currentCanvas, rect.x + overlayCfg.chroma, rect.y, rect.w, rect.h);
-        ctx.drawImage(currentCanvas, rect.x - overlayCfg.chroma, rect.y, rect.w, rect.h);
-        ctx.restore();
-      }
 
       if (overlayCfg.scanlines) {
         ctx.save();
@@ -2879,6 +2926,9 @@
             scratchCtx.filter = "none";
             swapBuffers();
           }
+          if (overlayCfg.chroma > 0) {
+            applyChromaticAberrationToCanvas(currentCanvas, overlayCfg.chroma);
+          }
         } catch {
           if (!surface.hasDrawn) {
             if (surface.canvas) {
@@ -2893,16 +2943,6 @@
         frameCtx.imageSmoothingEnabled = true;
         frameCtx.filter = "none";
         frameCtx.drawImage(currentCanvas, dx, dy, rect.w, rect.h);
-
-        if (overlayCfg.chroma) {
-          frameCtx.save();
-          frameCtx.globalCompositeOperation = "screen";
-          frameCtx.globalAlpha = 0.18;
-          frameCtx.filter = "none";
-          frameCtx.drawImage(currentCanvas, dx + overlayCfg.chroma, dy, rect.w, rect.h);
-          frameCtx.drawImage(currentCanvas, dx - overlayCfg.chroma, dy, rect.w, rect.h);
-          frameCtx.restore();
-        }
 
         if (overlayCfg.scanlines) {
           frameCtx.save();
@@ -2988,7 +3028,7 @@
           else surface.mediaEl.classList.add("mediaHidden");
         }
 
-        const needsAnim = animatedForSurface && !!(overlayCfg.grain || overlayCfg.scanlines || overlayCfg.jitter || overlayCfg.chroma);
+        const needsAnim = animatedForSurface && !!(overlayCfg.grain || overlayCfg.scanlines || overlayCfg.jitter);
         if (isVideo) {
           if (surface.videoFrameActive) {
             return needsAnim;
@@ -5933,7 +5973,7 @@
         { title: "Vignette", hint: "Edge darkening.", enabledId: "opt_vignetteOverlayEnabled", enabledKey: "vignetteOverlayEnabled", rangeId: "opt_vignetteOverlayIntensity", amountKey: "vignetteOverlayIntensity", value: opt.vignetteOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.vignette, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
         { title: "Pixelation", hint: "Pixelate the processed image. Pixelation always happens before blur.", enabledId: "opt_pixelateOverlayEnabled", enabledKey: "pixelateOverlayEnabled", rangeId: "opt_pixelateOverlayIntensity", amountKey: "pixelateOverlayIntensity", value: opt.pixelateOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.pixelate, formatter: formatPixelateResolution, showToggle: false, nullable: true, neutralValue: OVERLAY_SLIDER_LIMITS.pixelate.min },
         { title: "Scanlines", hint: "Fixed-order scanline pass after the image render.", enabledId: "opt_scanlinesOverlayEnabled", enabledKey: "scanlinesOverlayEnabled", rangeId: "opt_scanlinesOverlayIntensity", amountKey: "scanlinesOverlayIntensity", value: opt.scanlinesOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.scanlines, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
-        { title: "Chroma split", hint: "Color-channel split/fringe.", enabledId: "opt_chromaOverlayEnabled", enabledKey: "chromaOverlayEnabled", rangeId: "opt_chromaOverlayIntensity", amountKey: "chromaOverlayIntensity", value: opt.chromaOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.chroma, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Chromatic aberration", hint: "Whole-image RGB channel separation across the entire frame.", enabledId: "opt_chromaOverlayEnabled", enabledKey: "chromaOverlayEnabled", rangeId: "opt_chromaOverlayIntensity", amountKey: "chromaOverlayIntensity", value: opt.chromaOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.chroma, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
         { title: "Jitter", hint: "Horizontal wobble on animated media.", enabledId: "opt_jitterOverlayEnabled", enabledKey: "jitterOverlayEnabled", rangeId: "opt_jitterOverlayIntensity", amountKey: "jitterOverlayIntensity", value: opt.jitterOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.jitter, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
         { title: "Scanline blur", hint: "Softens the scanline pass separately.", enabledId: "opt_scanlineBlurOverlayEnabled", enabledKey: "scanlineBlurOverlayEnabled", rangeId: "opt_scanlineBlurOverlayIntensity", amountKey: "scanlineBlurOverlayIntensity", value: opt.scanlineBlurOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.scanlineBlur, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
         { title: "Film corners", hint: "Rounded, old-film style corners.", enabledId: "opt_filmCornerOverlayEnabled", enabledKey: "filmCornerOverlayEnabled", rangeId: "opt_filmCornerOverlayIntensity", amountKey: "filmCornerOverlayIntensity", value: opt.filmCornerOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.filmCorner, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 }
