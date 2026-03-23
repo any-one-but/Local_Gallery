@@ -2156,58 +2156,62 @@
       ctx.putImageData(imageData, 0, 0);
     }
 
-    function sampleImageDataChannelBilinear(data, width, height, x, y, channelIndex) {
-      const clampedX = clampNumber(x, 0, Math.max(0, width - 1), 0);
-      const clampedY = clampNumber(y, 0, Math.max(0, height - 1), 0);
-      const x0 = Math.floor(clampedX);
-      const y0 = Math.floor(clampedY);
-      const x1 = Math.min(width - 1, x0 + 1);
-      const y1 = Math.min(height - 1, y0 + 1);
-      const fx = clampedX - x0;
-      const fy = clampedY - y0;
-      const base00 = ((y0 * width) + x0) * 4;
-      const base10 = ((y0 * width) + x1) * 4;
-      const base01 = ((y1 * width) + x0) * 4;
-      const base11 = ((y1 * width) + x1) * 4;
-      const top = (data[base00 + channelIndex] * (1 - fx)) + (data[base10 + channelIndex] * fx);
-      const bottom = (data[base01 + channelIndex] * (1 - fx)) + (data[base11 + channelIndex] * fx);
-      return (top * (1 - fy)) + (bottom * fy);
+    function drawChannelIsolatedCanvas(targetCtx, sourceCanvas, tint) {
+      if (!targetCtx || !sourceCanvas) return;
+      const width = sourceCanvas.width || 0;
+      const height = sourceCanvas.height || 0;
+      if (!width || !height) return;
+      targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+      targetCtx.clearRect(0, 0, width, height);
+      targetCtx.globalCompositeOperation = "copy";
+      targetCtx.drawImage(sourceCanvas, 0, 0, width, height);
+      targetCtx.globalCompositeOperation = "multiply";
+      targetCtx.fillStyle = tint;
+      targetCtx.fillRect(0, 0, width, height);
+      targetCtx.globalCompositeOperation = "source-over";
     }
 
-    function applyChromaticAberrationToCanvas(canvas, amount) {
-      if (!canvas) return;
+    function drawChromaticAberrationToContext(targetCtx, sourceCanvas, dx, dy, dw, dh, amount, buffers = null) {
+      if (!targetCtx || !sourceCanvas) return false;
       const shift = Number(amount);
-      if (!Number.isFinite(shift) || shift <= 0.0001) return;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return;
-      const width = canvas.width || 0;
-      const height = canvas.height || 0;
-      if (!width || !height) return;
-      let sourceImage = null;
-      try { sourceImage = ctx.getImageData(0, 0, width, height); } catch { sourceImage = null; }
-      if (!sourceImage) return;
-      const source = sourceImage.data;
-      const outImage = ctx.createImageData(width, height);
-      const out = outImage.data;
+      if (!Number.isFinite(shift) || shift <= 0.0001) return false;
+      const width = sourceCanvas.width || 0;
+      const height = sourceCanvas.height || 0;
+      if (!width || !height) return false;
+      const compositeCanvas = buffers && buffers.compositeCanvas ? buffers.compositeCanvas : document.createElement("canvas");
+      const channelCanvas = buffers && buffers.channelCanvas ? buffers.channelCanvas : document.createElement("canvas");
+      resizeCanvasBuffer(compositeCanvas, width, height);
+      resizeCanvasBuffer(channelCanvas, width, height);
+      const compositeCtx = buffers && buffers.compositeCtx
+        ? buffers.compositeCtx
+        : compositeCanvas.getContext("2d");
+      const channelCtx = buffers && buffers.channelCtx
+        ? buffers.channelCtx
+        : channelCanvas.getContext("2d");
+      if (!compositeCtx || !channelCtx) return false;
       const xShift = shift;
       const yShift = shift * 0.18;
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const idx = ((y * width) + x) * 4;
-          const redX = x - xShift;
-          const redY = y - yShift;
-          const blueX = x + xShift;
-          const blueY = y + yShift;
-          out[idx] = clampNumber(sampleImageDataChannelBilinear(source, width, height, redX, redY, 0), 0, 255, 0);
-          out[idx + 1] = clampNumber(sampleImageDataChannelBilinear(source, width, height, x, y, 1), 0, 255, 0);
-          out[idx + 2] = clampNumber(sampleImageDataChannelBilinear(source, width, height, blueX, blueY, 2), 0, 255, 0);
-          const alphaCenter = sampleImageDataChannelBilinear(source, width, height, x, y, 3);
-          const alphaRed = sampleImageDataChannelBilinear(source, width, height, redX, redY, 3);
-          const alphaBlue = sampleImageDataChannelBilinear(source, width, height, blueX, blueY, 3);
-          out[idx + 3] = clampNumber(Math.max(alphaCenter, alphaRed, alphaBlue), 0, 255, 0);
-        }
-      }
-      ctx.putImageData(outImage, 0, 0);
+
+      compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
+      compositeCtx.clearRect(0, 0, width, height);
+
+      drawChannelIsolatedCanvas(channelCtx, sourceCanvas, "rgb(255, 0, 0)");
+      compositeCtx.globalCompositeOperation = "copy";
+      compositeCtx.drawImage(channelCanvas, -xShift, -yShift, width, height);
+
+      drawChannelIsolatedCanvas(channelCtx, sourceCanvas, "rgb(0, 255, 0)");
+      compositeCtx.globalCompositeOperation = "lighter";
+      compositeCtx.drawImage(channelCanvas, 0, 0, width, height);
+
+      drawChannelIsolatedCanvas(channelCtx, sourceCanvas, "rgb(0, 0, 255)");
+      compositeCtx.drawImage(channelCanvas, xShift, yShift, width, height);
+
+      compositeCtx.globalCompositeOperation = "destination-in";
+      compositeCtx.drawImage(sourceCanvas, 0, 0, width, height);
+      compositeCtx.globalCompositeOperation = "source-over";
+
+      targetCtx.drawImage(compositeCanvas, dx, dy, dw, dh);
+      return true;
     }
 
     function crtOverlayEnabled(target = undefined) {
@@ -2369,13 +2373,11 @@
         scratchCtx.filter = "none";
         swapBuffers();
       }
-      if (overlayCfg.chroma > 0) {
-        applyChromaticAberrationToCanvas(currentCanvas, overlayCfg.chroma);
-      }
-
       ctx.imageSmoothingEnabled = true;
       ctx.filter = "none";
-      ctx.drawImage(currentCanvas, rect.x, rect.y, rect.w, rect.h);
+      if (!drawChromaticAberrationToContext(ctx, currentCanvas, rect.x, rect.y, rect.w, rect.h, overlayCfg.chroma)) {
+        ctx.drawImage(currentCanvas, rect.x, rect.y, rect.w, rect.h);
+      }
 
       if (overlayCfg.scanlines) {
         ctx.save();
@@ -2637,6 +2639,10 @@
           workctx: null,
           scratchscreen: null,
           scratchctx: null,
+          aberrationscreen: null,
+          aberrationctx: null,
+          aberrationchannelscreen: null,
+          aberrationchannelctx: null,
           active: false,
           bound: false,
           hasDrawn: false,
@@ -2663,6 +2669,10 @@
         if (!surface.workctx) surface.workctx = surface.workscreen.getContext("2d");
         if (!surface.scratchscreen) surface.scratchscreen = document.createElement("canvas");
         if (!surface.scratchctx) surface.scratchctx = surface.scratchscreen.getContext("2d", { willReadFrequently: true });
+        if (!surface.aberrationscreen) surface.aberrationscreen = document.createElement("canvas");
+        if (!surface.aberrationctx) surface.aberrationctx = surface.aberrationscreen.getContext("2d");
+        if (!surface.aberrationchannelscreen) surface.aberrationchannelscreen = document.createElement("canvas");
+        if (!surface.aberrationchannelctx) surface.aberrationchannelctx = surface.aberrationchannelscreen.getContext("2d");
         if (!surface.framescreen) surface.framescreen = document.createElement("canvas");
         if (!surface.framectx) surface.framectx = surface.framescreen.getContext("2d");
         if (surface.container && !surface.container.contains(surface.canvas)) {
@@ -2767,6 +2777,10 @@
         surface.workctx = null;
         surface.scratchscreen = null;
         surface.scratchctx = null;
+        surface.aberrationscreen = null;
+        surface.aberrationctx = null;
+        surface.aberrationchannelscreen = null;
+        surface.aberrationchannelctx = null;
         surface.framescreen = null;
         surface.framectx = null;
         if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
@@ -2926,9 +2940,6 @@
             scratchCtx.filter = "none";
             swapBuffers();
           }
-          if (overlayCfg.chroma > 0) {
-            applyChromaticAberrationToCanvas(currentCanvas, overlayCfg.chroma);
-          }
         } catch {
           if (!surface.hasDrawn) {
             if (surface.canvas) {
@@ -2942,7 +2953,14 @@
 
         frameCtx.imageSmoothingEnabled = true;
         frameCtx.filter = "none";
-        frameCtx.drawImage(currentCanvas, dx, dy, rect.w, rect.h);
+        if (!drawChromaticAberrationToContext(frameCtx, currentCanvas, dx, dy, rect.w, rect.h, overlayCfg.chroma, {
+          compositeCanvas: surface.aberrationscreen,
+          compositeCtx: surface.aberrationctx,
+          channelCanvas: surface.aberrationchannelscreen,
+          channelCtx: surface.aberrationchannelctx
+        })) {
+          frameCtx.drawImage(currentCanvas, dx, dy, rect.w, rect.h);
+        }
 
         if (overlayCfg.scanlines) {
           frameCtx.save();
