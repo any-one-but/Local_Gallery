@@ -4487,6 +4487,12 @@
         blackCrushOverlayIntensity: null,
         whiteCrushOverlayEnabled: true,
         whiteCrushOverlayIntensity: null,
+        bloomOverlayEnabled: true,
+        bloomOverlayIntensity: null,
+        lightSmearOverlayEnabled: true,
+        lightSmearOverlayIntensity: null,
+        hotspotBloomOverlayEnabled: true,
+        hotspotBloomOverlayIntensity: null,
         betaTallImageScrollDetect: true,
         animatedMediaFilters: "on",
         gifsIgnoreProcessing: false,
@@ -4494,6 +4500,18 @@
         scanlinesOverlayIntensity: null,
         scanlineBlurOverlayEnabled: true,
         scanlineBlurOverlayIntensity: null,
+        fuzzOverlayEnabled: true,
+        fuzzOverlayIntensity: null,
+        tapeDropoutsOverlayEnabled: true,
+        tapeDropoutsOverlayIntensity: null,
+        scratchLinesOverlayEnabled: true,
+        scratchLinesOverlayIntensity: null,
+        ghostingOverlayEnabled: true,
+        ghostingOverlayIntensity: null,
+        headSwitchingOverlayEnabled: true,
+        headSwitchingOverlayIntensity: null,
+        lineDamageOverlayEnabled: true,
+        lineDamageOverlayIntensity: null,
         pixelateOverlayEnabled: true,
         pixelateOverlayIntensity: null,
         blurOverlayEnabled: true,
@@ -4569,10 +4587,28 @@
       const blackCrushOverlayIntensity = normalizeOptionalClampedNumber(src.blackCrushOverlayIntensity, 0, 0.8);
       const whiteCrushOverlayEnabled = true;
       const whiteCrushOverlayIntensity = normalizeOptionalClampedNumber(src.whiteCrushOverlayIntensity, 0, 0.8);
+      const bloomOverlayEnabled = true;
+      const bloomOverlayIntensity = null;
+      const lightSmearOverlayEnabled = true;
+      const lightSmearOverlayIntensity = null;
+      const hotspotBloomOverlayEnabled = true;
+      const hotspotBloomOverlayIntensity = null;
       const scanlinesOverlayEnabled = true;
       const scanlinesOverlayIntensity = normalizeOptionalClampedNumber(src.scanlinesOverlayIntensity, 0, 1.5);
       const scanlineBlurOverlayEnabled = true;
       const scanlineBlurOverlayIntensity = normalizeOptionalClampedNumber(src.scanlineBlurOverlayIntensity, 0, 6);
+      const fuzzOverlayEnabled = true;
+      const fuzzOverlayIntensity = null;
+      const tapeDropoutsOverlayEnabled = true;
+      const tapeDropoutsOverlayIntensity = null;
+      const scratchLinesOverlayEnabled = true;
+      const scratchLinesOverlayIntensity = null;
+      const ghostingOverlayEnabled = true;
+      const ghostingOverlayIntensity = null;
+      const headSwitchingOverlayEnabled = true;
+      const headSwitchingOverlayIntensity = null;
+      const lineDamageOverlayEnabled = true;
+      const lineDamageOverlayIntensity = null;
       const pixelateOverlayEnabled = true;
       const pixelateOverlayIntensity = normalizeOptionalClampedNumber(src.pixelateOverlayIntensity, 1, 16);
       const blurOverlayEnabled = true;
@@ -4677,6 +4713,12 @@
         blackCrushOverlayIntensity,
         whiteCrushOverlayEnabled,
         whiteCrushOverlayIntensity,
+        bloomOverlayEnabled,
+        bloomOverlayIntensity,
+        lightSmearOverlayEnabled,
+        lightSmearOverlayIntensity,
+        hotspotBloomOverlayEnabled,
+        hotspotBloomOverlayIntensity,
         betaTallImageScrollDetect: true,
         animatedMediaFilters: normalizeAnimatedMediaFiltersValue(src.animatedMediaFilters, d.animatedMediaFilters),
         gifsIgnoreProcessing: (typeof src.gifsIgnoreProcessing === "boolean") ? src.gifsIgnoreProcessing : d.gifsIgnoreProcessing,
@@ -4684,6 +4726,18 @@
         scanlinesOverlayIntensity,
         scanlineBlurOverlayEnabled,
         scanlineBlurOverlayIntensity,
+        fuzzOverlayEnabled,
+        fuzzOverlayIntensity,
+        tapeDropoutsOverlayEnabled,
+        tapeDropoutsOverlayIntensity,
+        scratchLinesOverlayEnabled,
+        scratchLinesOverlayIntensity,
+        ghostingOverlayEnabled,
+        ghostingOverlayIntensity,
+        headSwitchingOverlayEnabled,
+        headSwitchingOverlayIntensity,
+        lineDamageOverlayEnabled,
+        lineDamageOverlayIntensity,
         pixelateOverlayEnabled,
         pixelateOverlayIntensity,
         blurOverlayEnabled,
@@ -4748,8 +4802,17 @@
       colorCrush: { min: 0, max: 2, step: 0.02 },
       blackCrush: { min: 0, max: 0.8, step: 0.01 },
       whiteCrush: { min: 0, max: 0.8, step: 0.01 },
+      bloom: { min: 0, max: 1.2, step: 0.02 },
+      lightSmear: { min: 0, max: 1.2, step: 0.02 },
+      hotspotBloom: { min: 0, max: 1.2, step: 0.02 },
       scanlines: { min: 0, max: 1.5, step: 0.02 },
       scanlineBlur: { min: 0, max: 6, step: 0.1 },
+      fuzz: { min: 0, max: 1, step: 0.02 },
+      tapeDropouts: { min: 0, max: 1, step: 0.02 },
+      scratchLines: { min: 0, max: 1, step: 0.02 },
+      ghosting: { min: 0, max: 1, step: 0.02 },
+      headSwitching: { min: 0, max: 1, step: 0.02 },
+      lineDamage: { min: 0, max: 1, step: 0.02 },
       pixelate: { min: 1, max: 16, step: 0.5 },
       blur: { min: 0, max: 8, step: 0.1 },
       chroma: { min: 0, max: 8, step: 0.1 },
@@ -5583,12 +5646,21 @@
       const blackCrush = (blackCrushAmount != null && blackCrushAmount > 0.0001) ? blackCrushAmount : 0;
       const whiteCrushAmount = optionalOverlayAmount(opt.whiteCrushOverlayIntensity, OVERLAY_SLIDER_LIMITS.whiteCrush.min, OVERLAY_SLIDER_LIMITS.whiteCrush.max);
       const whiteCrush = (whiteCrushAmount != null && whiteCrushAmount > 0.0001) ? whiteCrushAmount : 0;
+      const bloom = 0;
+      const lightSmear = 0;
+      const hotspotBloom = 0;
       const solarizeAmount = optionalOverlayAmount(opt.solarizeOverlayIntensity, OVERLAY_SLIDER_LIMITS.solarize.min, OVERLAY_SLIDER_LIMITS.solarize.max);
       const solarize = (solarizeAmount != null && solarizeAmount > 0.0001) ? solarizeAmount : 0;
       const scanlinesAmount = optionalOverlayAmount(opt.scanlinesOverlayIntensity, OVERLAY_SLIDER_LIMITS.scanlines.min, OVERLAY_SLIDER_LIMITS.scanlines.max);
       const scanlines = (scanlinesAmount != null && scanlinesAmount > 0.0001) ? scanlinesAmount : 0;
       const scanlineBlurAmount = optionalOverlayAmount(opt.scanlineBlurOverlayIntensity, OVERLAY_SLIDER_LIMITS.scanlineBlur.min, OVERLAY_SLIDER_LIMITS.scanlineBlur.max);
       const scanlineBlur = scanlines > 0 && scanlineBlurAmount != null && scanlineBlurAmount > 0.0001 ? scanlineBlurAmount : 0;
+      const fuzz = 0;
+      const tapeDropouts = 0;
+      const scratchLines = 0;
+      const ghosting = 0;
+      const headSwitching = 0;
+      const lineDamage = 0;
       const pixelateAmount = optionalOverlayAmount(opt.pixelateOverlayIntensity, OVERLAY_SLIDER_LIMITS.pixelate.min, OVERLAY_SLIDER_LIMITS.pixelate.max);
       const pixelate = (pixelateAmount != null && pixelateAmount > (OVERLAY_SLIDER_LIMITS.pixelate.min + 0.0001)) ? pixelateAmount : 0;
       const blurAmount = optionalOverlayAmount(opt.blurOverlayIntensity, OVERLAY_SLIDER_LIMITS.blur.min, OVERLAY_SLIDER_LIMITS.blur.max);
@@ -5613,9 +5685,18 @@
         colorCrush,
         blackCrush,
         whiteCrush,
+        bloom,
+        lightSmear,
+        hotspotBloom,
         solarize,
         scanlines,
         scanlineBlur,
+        fuzz,
+        tapeDropouts,
+        scratchLines,
+        ghosting,
+        headSwitching,
+        lineDamage,
         pixelate,
         blur,
         chroma,
@@ -6248,6 +6329,532 @@
       if (canvas.height !== h) canvas.height = h;
     }
 
+    function hashNoise1(seed) {
+      const x = Math.sin(Number(seed || 0) * 12.9898) * 43758.5453123;
+      return x - Math.floor(x);
+    }
+
+    function ensureEffectWorkCanvas(host, canvasKey, ctxKey, width, height, ctxOptions = undefined) {
+      if (!host[canvasKey]) host[canvasKey] = document.createElement("canvas");
+      const canvas = host[canvasKey];
+      if (!host[ctxKey]) host[ctxKey] = canvas.getContext("2d", ctxOptions);
+      const ctx = host[ctxKey];
+      resizeCanvasBuffer(canvas, width, height);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.filter = "none";
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+      return { canvas, ctx };
+    }
+
+    function drawActualScanlinesToContext(ctx, rect, amount, options = null) {
+      if (!ctx || !rect || !(amount > 0.0001)) return;
+      const dpr = Math.max(1, Number(options && options.dpr) || 1);
+      const alpha = clampNumber(0.16 + (amount * 0.68), 0, 0.92);
+      const glowAlpha = clampNumber(alpha * 0.24, 0, 0.22);
+      const lineWidth = 1 / dpr;
+      const x0 = Number(rect.x || 0);
+      const x1 = x0 + Math.max(0, Number(rect.w || 0));
+      const yStartPx = Math.floor(Number(rect.y || 0) * dpr);
+      const yEndPx = Math.ceil((Number(rect.y || 0) + Math.max(0, Number(rect.h || 0))) * dpr);
+      if (x1 <= x0 || yEndPx <= yStartPx) return;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+      ctx.globalCompositeOperation = "multiply";
+      ctx.strokeStyle = `rgba(0,0,0,${alpha.toFixed(3)})`;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+      for (let yPx = yStartPx; yPx < yEndPx; yPx += 2) {
+        const y = (yPx + 0.5) / dpr;
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x1, y);
+      }
+      ctx.stroke();
+      if (glowAlpha > 0.0001) {
+        ctx.globalCompositeOperation = "screen";
+        ctx.strokeStyle = `rgba(255,255,255,${glowAlpha.toFixed(3)})`;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        for (let yPx = yStartPx + 1; yPx < yEndPx; yPx += 2) {
+          const y = (yPx + 0.5) / dpr;
+          ctx.moveTo(x0, y);
+          ctx.lineTo(x1, y);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawBloomHalationToContext(ctx, sourceCanvas, rect, amount, host) {
+      if (!ctx || !sourceCanvas || !rect || !(amount > 0.0001) || !host) return;
+      const srcW = Math.max(1, sourceCanvas.width || Math.round(rect.w) || 1);
+      const srcH = Math.max(1, sourceCanvas.height || Math.round(rect.h) || 1);
+      const sampleScale = clampNumber(0.12 + (amount * 0.12), 0.12, 0.26);
+      const sampleW = Math.max(12, Math.round(srcW * sampleScale));
+      const sampleH = Math.max(12, Math.round(srcH * sampleScale));
+      const extract = ensureEffectWorkCanvas(host, "bloomExtractCanvas", "bloomExtractCtx", sampleW, sampleH, { willReadFrequently: true });
+      extract.ctx.drawImage(sourceCanvas, 0, 0, sampleW, sampleH);
+      let imageData = null;
+      try {
+        imageData = extract.ctx.getImageData(0, 0, sampleW, sampleH);
+      } catch {
+        imageData = null;
+      }
+      if (!imageData) return;
+      const threshold = clampNumber(0.78 - (amount * 0.18), 0.52, 0.86);
+      const softness = 0.16 + (amount * 0.12);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const luma = ((data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114)) / 255;
+        const mask = clampNumber((luma - threshold) / Math.max(0.0001, softness), 0, 1);
+        if (mask <= 0.0001) {
+          data[i] = 255;
+          data[i + 1] = 255;
+          data[i + 2] = 255;
+          data[i + 3] = 0;
+          continue;
+        }
+        const alpha = Math.round(255 * Math.pow(mask, 0.82));
+        data[i] = 255;
+        data[i + 1] = 255;
+        data[i + 2] = 255;
+        data[i + 3] = alpha;
+      }
+      extract.ctx.putImageData(imageData, 0, 0);
+
+      const minSide = Math.max(1, Math.min(rect.w, rect.h));
+      const blurPx = 0.8 + (amount * 4.8);
+      const spreadPx = Math.max(2, Math.round((minSide * 0.01) + (amount * 14)));
+      const smearPx = Math.max(2, (minSide * 0.006) + (amount * 9));
+      const steps = Math.max(2, Math.round(3 + (amount * 4)));
+      const dirs = [
+        { x: 0, y: 1, weight: 1 },
+        { x: 0, y: -1, weight: 0.7 },
+        { x: 0.78, y: 0.78, weight: 0.42 },
+        { x: -0.78, y: 0.78, weight: 0.42 }
+      ];
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+
+      ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = clampNumber(0.2 + (amount * 0.38), 0, 0.75);
+      ctx.filter = `blur(${blurPx.toFixed(2)}px)`;
+      ctx.drawImage(extract.canvas, rect.x - spreadPx, rect.y - spreadPx, rect.w + (spreadPx * 2), rect.h + (spreadPx * 2));
+
+      ctx.filter = "none";
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = clampNumber(0.08 + (amount * 0.16), 0, 0.3);
+      ctx.drawImage(extract.canvas, rect.x, rect.y, rect.w, rect.h);
+
+      ctx.filter = `blur(${Math.max(0.35, blurPx * 0.42).toFixed(2)}px)`;
+      for (const dir of dirs) {
+        for (let step = 1; step <= steps; step++) {
+          const falloff = 1 - (step / (steps + 1));
+          const offset = smearPx * step;
+          ctx.globalAlpha = clampNumber((0.03 + (amount * 0.05)) * dir.weight * falloff, 0, 0.22);
+          ctx.drawImage(
+            extract.canvas,
+            rect.x + (dir.x * offset),
+            rect.y + (dir.y * offset),
+            rect.w,
+            rect.h
+          );
+        }
+      }
+
+      ctx.restore();
+    }
+
+
+    function buildHighlightExtractCanvas(sourceCanvas, amount, host, prefix, options = null) {
+      if (!sourceCanvas || !(amount > 0.0001) || !host) return null;
+      const srcW = Math.max(1, sourceCanvas.width || 1);
+      const srcH = Math.max(1, sourceCanvas.height || 1);
+      const sampleScale = clampNumber((options && options.sampleScaleBase != null ? options.sampleScaleBase : 0.12) + (amount * (options && options.sampleScaleMul != null ? options.sampleScaleMul : 0.12)), 0.1, 0.3);
+      const sampleW = Math.max(12, Math.round(srcW * sampleScale));
+      const sampleH = Math.max(12, Math.round(srcH * sampleScale));
+      const extract = ensureEffectWorkCanvas(host, `${prefix}ExtractCanvas`, `${prefix}ExtractCtx`, sampleW, sampleH, { willReadFrequently: true });
+      extract.ctx.drawImage(sourceCanvas, 0, 0, sampleW, sampleH);
+      let imageData = null;
+      try {
+        imageData = extract.ctx.getImageData(0, 0, sampleW, sampleH);
+      } catch {
+        imageData = null;
+      }
+      if (!imageData) return null;
+      const thresholdBase = options && options.thresholdBase != null ? options.thresholdBase : 0.78;
+      const thresholdMul = options && options.thresholdMul != null ? options.thresholdMul : 0.18;
+      const thresholdMin = options && options.thresholdMin != null ? options.thresholdMin : 0.52;
+      const thresholdMax = options && options.thresholdMax != null ? options.thresholdMax : 0.88;
+      const softnessBase = options && options.softnessBase != null ? options.softnessBase : 0.16;
+      const softnessMul = options && options.softnessMul != null ? options.softnessMul : 0.12;
+      const gamma = options && options.alphaGamma != null ? options.alphaGamma : 0.82;
+      const whiteMix = options && options.whiteMix != null ? options.whiteMix : 1;
+      const threshold = clampNumber(thresholdBase - (amount * thresholdMul), thresholdMin, thresholdMax);
+      const softness = Math.max(0.04, softnessBase + (amount * softnessMul));
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const luma = ((r * 0.299) + (g * 0.587) + (b * 0.114)) / 255;
+        const mask = clampNumber((luma - threshold) / softness, 0, 1);
+        if (mask <= 0.0001) {
+          data[i] = 255;
+          data[i + 1] = 255;
+          data[i + 2] = 255;
+          data[i + 3] = 0;
+          continue;
+        }
+        const alpha = Math.round(255 * Math.pow(mask, gamma));
+        data[i] = Math.round((255 * whiteMix) + (r * (1 - whiteMix)));
+        data[i + 1] = Math.round((255 * whiteMix) + (g * (1 - whiteMix)));
+        data[i + 2] = Math.round((255 * whiteMix) + (b * (1 - whiteMix)));
+        data[i + 3] = alpha;
+      }
+      extract.ctx.putImageData(imageData, 0, 0);
+      return extract;
+    }
+
+    function drawLightSmearToContext(ctx, sourceCanvas, rect, amount, host) {
+      if (!ctx || !sourceCanvas || !rect || !(amount > 0.0001) || !host) return;
+      const extract = buildHighlightExtractCanvas(sourceCanvas, amount, host, "lightSmear", {
+        sampleScaleBase: 0.14,
+        sampleScaleMul: 0.1,
+        thresholdBase: 0.8,
+        thresholdMul: 0.22,
+        thresholdMin: 0.5,
+        softnessBase: 0.14,
+        softnessMul: 0.12,
+        alphaGamma: 0.75,
+        whiteMix: 1
+      });
+      if (!extract) return;
+      const minSide = Math.max(1, Math.min(rect.w, rect.h));
+      const smearPx = Math.max(3, (minSide * 0.008) + (amount * 13));
+      const steps = Math.max(4, Math.round(5 + (amount * 7)));
+      const dirs = [
+        { x: 0, y: 1, weight: 1 },
+        { x: 0, y: -1, weight: 0.76 },
+        { x: 0.72, y: 0.72, weight: 0.44 },
+        { x: -0.72, y: 0.72, weight: 0.44 }
+      ];
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.filter = `blur(${Math.max(0.4, 0.55 + (amount * 1.4)).toFixed(2)}px)`;
+      for (const dir of dirs) {
+        for (let step = 1; step <= steps; step++) {
+          const falloff = 1 - (step / (steps + 1));
+          const offset = smearPx * step;
+          ctx.globalAlpha = clampNumber((0.04 + (amount * 0.08)) * dir.weight * falloff, 0, 0.26);
+          ctx.drawImage(
+            extract.canvas,
+            rect.x + (dir.x * offset),
+            rect.y + (dir.y * offset),
+            rect.w,
+            rect.h
+          );
+        }
+      }
+      ctx.filter = "none";
+      ctx.restore();
+    }
+
+    function drawHotspotBloomToContext(ctx, sourceCanvas, rect, amount, host) {
+      if (!ctx || !sourceCanvas || !rect || !(amount > 0.0001) || !host) return;
+      const extract = buildHighlightExtractCanvas(sourceCanvas, amount, host, "hotspotBloom", {
+        sampleScaleBase: 0.12,
+        sampleScaleMul: 0.14,
+        thresholdBase: 0.76,
+        thresholdMul: 0.2,
+        thresholdMin: 0.48,
+        softnessBase: 0.18,
+        softnessMul: 0.16,
+        alphaGamma: 0.86,
+        whiteMix: 1
+      });
+      if (!extract) return;
+      const minSide = Math.max(1, Math.min(rect.w, rect.h));
+      const blurPx = 1.25 + (amount * 7.2);
+      const spreadPx = Math.max(3, Math.round((minSide * 0.014) + (amount * 18)));
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+      ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = clampNumber(0.2 + (amount * 0.48), 0, 0.88);
+      ctx.filter = `blur(${blurPx.toFixed(2)}px)`;
+      ctx.drawImage(extract.canvas, rect.x - spreadPx, rect.y - spreadPx, rect.w + (spreadPx * 2), rect.h + (spreadPx * 2));
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = clampNumber(0.06 + (amount * 0.14), 0, 0.28);
+      ctx.filter = `blur(${Math.max(0.5, blurPx * 0.45).toFixed(2)}px)`;
+      ctx.drawImage(extract.canvas, rect.x, rect.y, rect.w, rect.h);
+      ctx.filter = "none";
+      ctx.restore();
+    }
+
+    function drawTapeDropoutsToContext(ctx, rect, amount, time, host, options = null) {
+      if (!ctx || !rect || !(amount > 0.0001) || !host) return;
+      const w = Math.max(1, Math.round(rect.w));
+      const h = Math.max(1, Math.round(rect.h));
+      const animated = !!(options && options.animated);
+      const baseSeed = animated ? (Number(time || 0) * 0.0023) : 19.7;
+      const layer = ensureEffectWorkCanvas(host, "dropoutCanvas", "dropoutCtx", w, h);
+      const dctx = layer.ctx;
+      const count = Math.max(3, Math.round(2 + (amount * 24)));
+      for (let i = 0; i < count; i++) {
+        const seed = baseSeed + (i * 13.17);
+        const y = Math.floor(hashNoise1(seed) * h);
+        const hh = Math.max(1, Math.round(1 + (hashNoise1(seed * 1.3) * (1 + (amount * 4)))));
+        const ww = Math.max(8, Math.round(w * (0.04 + (hashNoise1(seed * 2.1) * 0.52))));
+        const x = Math.floor(hashNoise1(seed * 2.9) * Math.max(1, w - ww));
+        const alpha = clampNumber((0.05 + (amount * 0.18)) * (0.6 + (hashNoise1(seed * 5.3) * 0.8)), 0, 0.32);
+        const bright = hashNoise1(seed * 3.7) > 0.42;
+        dctx.fillStyle = bright ? `rgba(255,255,255,${alpha.toFixed(3)})` : `rgba(0,0,0,${(alpha * 0.92).toFixed(3)})`;
+        dctx.fillRect(x, y, ww, hh);
+        if (ww > 16 && alpha > 0.03) {
+          dctx.fillStyle = bright ? `rgba(255,255,255,${(alpha * 0.3).toFixed(3)})` : `rgba(0,0,0,${(alpha * 0.28).toFixed(3)})`;
+          dctx.fillRect(Math.max(0, x - 4), y, Math.min(w - Math.max(0, x - 4), ww + 8), hh);
+        }
+      }
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = clampNumber(0.45 + (amount * 0.25), 0, 0.82);
+      ctx.drawImage(layer.canvas, rect.x, rect.y, rect.w, rect.h);
+      ctx.restore();
+    }
+
+    function drawScratchLinesToContext(ctx, rect, amount, time, host, options = null) {
+      if (!ctx || !rect || !(amount > 0.0001) || !host) return;
+      const w = Math.max(1, Math.round(rect.w));
+      const h = Math.max(1, Math.round(rect.h));
+      const animated = !!(options && options.animated);
+      const baseSeed = animated ? (Number(time || 0) * 0.0013) : 91.51;
+      const layer = ensureEffectWorkCanvas(host, "scratchLineCanvas", "scratchLineCtx", w, h);
+      const sctx = layer.ctx;
+      const count = Math.max(1, Math.round(1 + (amount * 10)));
+      for (let i = 0; i < count; i++) {
+        const seed = baseSeed + (i * 7.71);
+        const x = Math.round(hashNoise1(seed) * w);
+        const drift = (hashNoise1(seed * 1.7) - 0.5) * (0.4 + (amount * 1.6));
+        const alpha = clampNumber(0.04 + (amount * 0.16), 0, 0.24);
+        const bright = hashNoise1(seed * 3.3) > 0.54;
+        sctx.strokeStyle = bright ? `rgba(255,255,255,${alpha.toFixed(3)})` : `rgba(0,0,0,${(alpha * 0.9).toFixed(3)})`;
+        sctx.lineWidth = 1 + (hashNoise1(seed * 2.4) > 0.82 ? 1 : 0);
+        sctx.beginPath();
+        sctx.moveTo(x, 0);
+        sctx.lineTo(clampNumber(x + drift, 0, w), h);
+        sctx.stroke();
+      }
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+      ctx.filter = `blur(${Math.max(0.35, 0.3 + (amount * 0.8)).toFixed(2)}px)`;
+      ctx.drawImage(layer.canvas, rect.x, rect.y, rect.w, rect.h);
+      ctx.filter = "none";
+      ctx.restore();
+    }
+
+    function drawTemporalGhostingToContext(ctx, sourceCanvas, rect, amount, time, host, options = null) {
+      if (!ctx || !sourceCanvas || !rect || !(amount > 0.0001) || !host) return;
+      const w = Math.max(1, Math.round(rect.w));
+      const h = Math.max(1, Math.round(rect.h));
+      const animated = !!(options && options.animated);
+      if (!host.ghostPrevCanvas) host.ghostPrevCanvas = document.createElement("canvas");
+      if (!host.ghostPrevCtx) host.ghostPrevCtx = host.ghostPrevCanvas.getContext("2d");
+      if (!host.ghostWorkCanvas) host.ghostWorkCanvas = document.createElement("canvas");
+      if (!host.ghostWorkCtx) host.ghostWorkCtx = host.ghostWorkCanvas.getContext("2d");
+      resizeCanvasBuffer(host.ghostPrevCanvas, w, h);
+      resizeCanvasBuffer(host.ghostWorkCanvas, w, h);
+      const prevCtx = host.ghostPrevCtx;
+      const workCtx = host.ghostWorkCtx;
+      const hasPrev = animated && !!host.ghostHasFrame;
+      workCtx.setTransform(1, 0, 0, 1, 0, 0);
+      workCtx.clearRect(0, 0, w, h);
+      workCtx.imageSmoothingEnabled = true;
+      const shiftX = (animated ? Math.sin((time || 0) * 0.0031) : 0.75) * (0.9 + (amount * 5.4));
+      const shiftY = animated ? ((Math.cos((time || 0) * 0.0022) * 0.35) * amount) : 0;
+      workCtx.filter = `blur(${Math.max(0.5, 0.7 + (amount * 1.6)).toFixed(2)}px)`;
+      if (hasPrev) {
+        workCtx.drawImage(host.ghostPrevCanvas, shiftX, shiftY, w, h);
+      } else {
+        workCtx.drawImage(sourceCanvas, shiftX, shiftY, w, h);
+      }
+      workCtx.filter = "none";
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+      ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = clampNumber(0.08 + (amount * 0.26), 0, 0.38);
+      ctx.drawImage(host.ghostWorkCanvas, rect.x, rect.y, rect.w, rect.h);
+      ctx.restore();
+
+      if (animated) {
+        prevCtx.setTransform(1, 0, 0, 1, 0, 0);
+        prevCtx.clearRect(0, 0, w, h);
+        prevCtx.imageSmoothingEnabled = true;
+        prevCtx.filter = "none";
+        prevCtx.drawImage(sourceCanvas, 0, 0, w, h);
+        host.ghostHasFrame = true;
+      } else {
+        host.ghostHasFrame = false;
+      }
+    }
+
+    function drawHeadSwitchingNoiseToContext(ctx, sourceCanvas, rect, amount, time, host, options = null) {
+      if (!ctx || !sourceCanvas || !rect || !(amount > 0.0001) || !host) return;
+      const w = Math.max(1, Math.round(rect.w));
+      const h = Math.max(1, Math.round(rect.h));
+      const animated = !!(options && options.animated);
+      const baseSeed = animated ? (Number(time || 0) * 0.0037) : 63.4;
+      const layer = ensureEffectWorkCanvas(host, "headSwitchCanvas", "headSwitchCtx", w, h);
+      const hctx = layer.ctx;
+      const bandHeight = Math.max(4, Math.round(h * (0.045 + (amount * 0.07))));
+      const y = Math.max(0, h - bandHeight);
+      const lineH = Math.max(1, Math.round(1 + (amount * 2)));
+      for (let yy = y; yy < h; yy += lineH) {
+        const seed = baseSeed + (yy * 0.173);
+        const shift = (hashNoise1(seed) - 0.5) * (3 + (amount * 18));
+        hctx.globalAlpha = clampNumber(0.2 + (amount * 0.22), 0, 0.46);
+        hctx.drawImage(sourceCanvas, 0, yy, w, Math.min(lineH, h - yy), shift, yy, w, Math.min(lineH, h - yy));
+        const alpha = clampNumber(0.03 + (amount * 0.14), 0, 0.22);
+        hctx.fillStyle = hashNoise1(seed * 1.9) > 0.5 ? `rgba(255,255,255,${alpha.toFixed(3)})` : `rgba(0,0,0,${(alpha * 0.92).toFixed(3)})`;
+        hctx.fillRect(0, yy, w, 1);
+      }
+      hctx.globalAlpha = 1;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = clampNumber(0.45 + (amount * 0.22), 0, 0.82);
+      ctx.drawImage(layer.canvas, rect.x, rect.y, rect.w, rect.h);
+      ctx.restore();
+    }
+
+    function drawLineDamageToContext(ctx, sourceCanvas, rect, amount, time, host, options = null) {
+      if (!ctx || !sourceCanvas || !rect || !(amount > 0.0001) || !host) return;
+      const w = Math.max(1, Math.round(rect.w));
+      const h = Math.max(1, Math.round(rect.h));
+      const animated = !!(options && options.animated);
+      const baseSeed = animated ? (Number(time || 0) * 0.0027) : 13.25;
+      const layer = ensureEffectWorkCanvas(host, "lineDamageCanvas", "lineDamageCtx", w, h);
+      const lctx = layer.ctx;
+      const stripH = Math.max(1, Math.round(1 + (amount * 2.4)));
+      for (let y = 0; y < h; y += stripH) {
+        const seed = baseSeed + (y * 0.091);
+        let shift = (hashNoise1(seed) - 0.5) * amount * 7.5;
+        if (hashNoise1(seed * 1.8) > 0.958) {
+          shift += (hashNoise1(seed * 3.4) > 0.5 ? 1 : -1) * (1.5 + (amount * 10));
+        }
+        lctx.globalAlpha = clampNumber(0.18 + (amount * 0.26), 0, 0.42);
+        lctx.drawImage(sourceCanvas, 0, y, w, Math.min(stripH, h - y), shift, y, w, Math.min(stripH, h - y));
+        if (hashNoise1(seed * 2.7) > 0.88) {
+          const alpha = clampNumber(0.02 + (amount * 0.08), 0, 0.14);
+          lctx.fillStyle = hashNoise1(seed * 4.1) > 0.5 ? `rgba(255,255,255,${alpha.toFixed(3)})` : `rgba(0,0,0,${alpha.toFixed(3)})`;
+          lctx.fillRect(0, y, w, Math.max(1, Math.round(stripH * 0.5)));
+        }
+      }
+      lctx.globalAlpha = 1;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = clampNumber(0.34 + (amount * 0.22), 0, 0.62);
+      ctx.drawImage(layer.canvas, rect.x, rect.y, rect.w, rect.h);
+      ctx.restore();
+    }
+
+    function drawTapeFuzzToContext(ctx, sourceCanvas, rect, amount, time, host, options = null) {
+      if (!ctx || !sourceCanvas || !rect || !(amount > 0.0001) || !host) return;
+      const w = Math.max(1, Math.round(rect.w));
+      const h = Math.max(1, Math.round(rect.h));
+      if (!w || !h) return;
+      const animated = !!(options && options.animated);
+      const baseSeed = animated ? (Number(time || 0) * 0.0017) : 37.125;
+      const stripLayer = ensureEffectWorkCanvas(host, "fuzzStripCanvas", "fuzzStripCtx", w, h);
+      const fuzzLayer = ensureEffectWorkCanvas(host, "fuzzCanvas", "fuzzCtx", w, h);
+      const stripCtx = stripLayer.ctx;
+      const fuzzCtx = fuzzLayer.ctx;
+      const stripH = Math.max(1, Math.round(1 + (amount * 2.5)));
+      const smearAlpha = clampNumber(0.06 + (amount * 0.14), 0, 0.24);
+
+      for (let y = 0; y < h; y += stripH) {
+        const bandSeed = baseSeed + (y * 0.113);
+        let offset = (hashNoise1(bandSeed) - 0.5) * amount * 4.5;
+        if (hashNoise1(bandSeed * 1.91) > 0.968) {
+          offset += (hashNoise1(bandSeed * 3.7) > 0.5 ? 1 : -1) * amount * (4 + (hashNoise1(bandSeed * 2.7) * 6));
+        }
+        stripCtx.globalAlpha = smearAlpha;
+        stripCtx.drawImage(sourceCanvas, 0, y, w, Math.min(stripH, h - y), offset, y, w, Math.min(stripH, h - y));
+      }
+
+      const fuzzBlurPx = 0.9 + (amount * 0.9);
+      fuzzCtx.filter = `blur(${fuzzBlurPx.toFixed(2)}px)`;
+      fuzzCtx.globalAlpha = clampNumber(0.7 + (amount * 0.2), 0, 1);
+      fuzzCtx.drawImage(stripLayer.canvas, 0, 0, w, h);
+      fuzzCtx.filter = "none";
+      fuzzCtx.globalAlpha = 1;
+
+      const dropoutCount = Math.max(3, Math.round(4 + (amount * 18)));
+      for (let i = 0; i < dropoutCount; i++) {
+        const seed = baseSeed + (i * 11.37);
+        const yy = Math.floor(hashNoise1(seed) * h);
+        const hh = Math.max(1, Math.round(1 + (hashNoise1(seed * 1.7) * (1 + (amount * 3)))));
+        const segW = Math.max(8, Math.round(w * (0.18 + (hashNoise1(seed * 2.1) * 0.72))));
+        const xx = Math.floor(hashNoise1(seed * 2.9) * Math.max(1, w - segW));
+        const bright = hashNoise1(seed * 4.3) > 0.48;
+        const alpha = clampNumber((0.018 + (amount * 0.11)) * (0.65 + (hashNoise1(seed * 5.2) * 0.85)), 0, 0.2);
+        fuzzCtx.fillStyle = bright ? `rgba(255,255,255,${alpha.toFixed(3)})` : `rgba(0,0,0,${alpha.toFixed(3)})`;
+        fuzzCtx.fillRect(xx, yy, segW, hh);
+      }
+
+      const bandCount = Math.max(1, Math.round(1 + (amount * 4)));
+      for (let i = 0; i < bandCount; i++) {
+        const seed = baseSeed + 100 + (i * 17.13);
+        const bandY = Math.floor(hashNoise1(seed) * h);
+        const bandH = Math.max(2, Math.round(2 + (hashNoise1(seed * 1.3) * (8 + (amount * 14)))));
+        const bandShift = (hashNoise1(seed * 2.3) - 0.5) * amount * 10;
+        fuzzCtx.globalAlpha = clampNumber(0.06 + (amount * 0.08), 0, 0.18);
+        fuzzCtx.drawImage(sourceCanvas, 0, bandY, w, Math.min(bandH, h - bandY), bandShift, bandY, w, Math.min(bandH, h - bandY));
+      }
+      fuzzCtx.globalAlpha = 1;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.w, rect.h);
+      ctx.clip();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = clampNumber(0.42 + (amount * 0.26), 0, 0.78);
+      ctx.filter = `blur(${Math.max(0.35, 0.55 + (amount * 0.35)).toFixed(2)}px)`;
+      ctx.drawImage(fuzzLayer.canvas, rect.x, rect.y, rect.w, rect.h);
+      ctx.filter = "none";
+      ctx.restore();
+    }
+
     function applyPixelOpsToCanvas(canvas, config) {
       if (!canvas || !config) return;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -6388,6 +6995,12 @@
       noiseCtx: null,
       scanCanvas: null,
       scanPattern: null,
+      bloomExtractCanvas: null,
+      bloomExtractCtx: null,
+      fuzzCanvas: null,
+      fuzzCtx: null,
+      fuzzStripCanvas: null,
+      fuzzStripCtx: null,
       lastNoise: 0
     };
 
@@ -6421,13 +7034,12 @@
     function ensureThumbScanlinePattern(ctx) {
       if (!THUMB_FILTER_CACHE.scanCanvas) {
         const c = document.createElement("canvas");
-        c.width = 2;
-        c.height = 4;
+        c.width = 1;
+        c.height = 2;
         const sctx = c.getContext("2d");
-        sctx.fillStyle = "rgba(0,0,0,0.5)";
-        sctx.fillRect(0, 0, 2, 3);
-        sctx.fillStyle = "rgba(0,0,0,0)";
-        sctx.fillRect(0, 3, 2, 1);
+        sctx.clearRect(0, 0, 1, 2);
+        sctx.fillStyle = "rgba(0,0,0,0.82)";
+        sctx.fillRect(0, 0, 1, 1);
         THUMB_FILTER_CACHE.scanCanvas = c;
         THUMB_FILTER_CACHE.scanPattern = null;
       }
@@ -6541,6 +7153,42 @@
       ctx.filter = "none";
       if (!drawChromaticAberrationToContext(ctx, currentCanvas, rect.x, rect.y, rect.w, rect.h, overlayCfg.chroma)) {
         ctx.drawImage(currentCanvas, rect.x, rect.y, rect.w, rect.h);
+      }
+
+      if (overlayCfg.bloom) {
+        drawBloomHalationToContext(ctx, currentCanvas, rect, overlayCfg.bloom, THUMB_FILTER_CACHE);
+      }
+
+      if (overlayCfg.lightSmear) {
+        drawLightSmearToContext(ctx, currentCanvas, rect, overlayCfg.lightSmear, THUMB_FILTER_CACHE);
+      }
+
+      if (overlayCfg.hotspotBloom) {
+        drawHotspotBloomToContext(ctx, currentCanvas, rect, overlayCfg.hotspotBloom, THUMB_FILTER_CACHE);
+      }
+
+      if (overlayCfg.fuzz) {
+        drawTapeFuzzToContext(ctx, currentCanvas, rect, overlayCfg.fuzz, 0, THUMB_FILTER_CACHE, { animated: false });
+      }
+
+      if (overlayCfg.tapeDropouts) {
+        drawTapeDropoutsToContext(ctx, rect, overlayCfg.tapeDropouts, 0, THUMB_FILTER_CACHE, { animated: false });
+      }
+
+      if (overlayCfg.scratchLines) {
+        drawScratchLinesToContext(ctx, rect, overlayCfg.scratchLines, 0, THUMB_FILTER_CACHE, { animated: false });
+      }
+
+      if (overlayCfg.ghosting) {
+        drawTemporalGhostingToContext(ctx, currentCanvas, rect, overlayCfg.ghosting, 0, THUMB_FILTER_CACHE, { animated: false });
+      }
+
+      if (overlayCfg.headSwitching) {
+        drawHeadSwitchingNoiseToContext(ctx, currentCanvas, rect, overlayCfg.headSwitching, 0, THUMB_FILTER_CACHE, { animated: false });
+      }
+
+      if (overlayCfg.lineDamage) {
+        drawLineDamageToContext(ctx, currentCanvas, rect, overlayCfg.lineDamage, 0, THUMB_FILTER_CACHE, { animated: false });
       }
 
       if (overlayCfg.scanlines) {
@@ -6803,6 +7451,12 @@
           workctx: null,
           scratchscreen: null,
           scratchctx: null,
+          bloomExtractCanvas: null,
+          bloomExtractCtx: null,
+          fuzzCanvas: null,
+          fuzzCtx: null,
+          fuzzStripCanvas: null,
+          fuzzStripCtx: null,
           aberrationscreen: null,
           aberrationctx: null,
           aberrationchannelscreen: null,
@@ -6814,7 +7468,12 @@
           videoFrameActive: false,
           gifState: null,
           framescreen: null,
-          framectx: null
+          framectx: null,
+          ghostPrevCanvas: null,
+          ghostPrevCtx: null,
+          ghostWorkCanvas: null,
+          ghostWorkCtx: null,
+          ghostHasFrame: false
         };
         surfaces.set(name, surface);
         return surface;
@@ -6871,6 +7530,7 @@
         surface.filterMode = filterMode || "off";
         surface.active = true;
         surface.awaitingFreshFrame = true;
+        surface.ghostHasFrame = false;
         bindMediaEvents(surface, mediaEl);
         ensureCanvas(surface);
         if (surface.mediaEl && surface.hasDrawn) {
@@ -6910,6 +7570,7 @@
         surface.target = null;
         surface.awaitingFreshFrame = false;
         surface.videoFrameActive = false;
+        surface.ghostHasFrame = false;
         clearGifState(surface);
         if (!preserveFrame) {
           surface.hasDrawn = false;
@@ -6947,6 +7608,11 @@
         surface.aberrationchannelctx = null;
         surface.framescreen = null;
         surface.framectx = null;
+        surface.ghostPrevCanvas = null;
+        surface.ghostPrevCtx = null;
+        surface.ghostWorkCanvas = null;
+        surface.ghostWorkCtx = null;
+        surface.ghostHasFrame = false;
         if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
         updateEngineState();
       }
@@ -7124,6 +7790,42 @@
           channelCtx: surface.aberrationchannelctx
         })) {
           frameCtx.drawImage(currentCanvas, dx, dy, rect.w, rect.h);
+        }
+
+        if (overlayCfg.bloom) {
+          drawBloomHalationToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.bloom, surface);
+        }
+
+        if (overlayCfg.lightSmear) {
+          drawLightSmearToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.lightSmear, surface);
+        }
+
+        if (overlayCfg.hotspotBloom) {
+          drawHotspotBloomToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.hotspotBloom, surface);
+        }
+
+        if (overlayCfg.fuzz) {
+          drawTapeFuzzToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.fuzz, time, surface, { animated: animatedForSurface });
+        }
+
+        if (overlayCfg.tapeDropouts) {
+          drawTapeDropoutsToContext(frameCtx, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.tapeDropouts, time, surface, { animated: animatedForSurface });
+        }
+
+        if (overlayCfg.scratchLines) {
+          drawScratchLinesToContext(frameCtx, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.scratchLines, time, surface, { animated: animatedForSurface });
+        }
+
+        if (overlayCfg.ghosting) {
+          drawTemporalGhostingToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.ghosting, time, surface, { animated: animatedForSurface });
+        }
+
+        if (overlayCfg.headSwitching) {
+          drawHeadSwitchingNoiseToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.headSwitching, time, surface, { animated: animatedForSurface });
+        }
+
+        if (overlayCfg.lineDamage) {
+          drawLineDamageToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.lineDamage, time, surface, { animated: animatedForSurface });
         }
 
         if (overlayCfg.scanlines) {
@@ -10199,7 +10901,7 @@ ${appearancePresetPromptMode === "delete" ? makeActionRow("Delete preset", `Dele
 ${buildOverlayRowsHtml(colorOverlayRows)}
 <h2 style="margin-top:18px;">Effects</h2>
 ${buildOverlayRowsHtml(effectOverlayRows)}
-${makeSelectRow("Animated filters", "Control animation for scanlines/grain/jitter.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
+${makeSelectRow("Animated filters", "Control animation for grain/fuzz/jitter.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
 ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
           `
         },
