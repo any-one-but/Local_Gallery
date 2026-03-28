@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.8.1"
+SCRIPT_VERSION="1.8.3"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
 EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
@@ -14,7 +14,7 @@ WAIFU2X_NOISE=3
 STEP3_MEDIA_MODE="images"
 STEP3_CPU_FALLBACK=1
 STEP8_TRIM_SECONDS=10
-STEP_ORDER=(1 2 3 4 5 6 7 8 9)
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10)
 
 # Optional terminal colors when stdout is a TTY.
 if [[ -t 1 ]]; then
@@ -382,6 +382,7 @@ step_description() {
     7) printf "Move empty files" ;;
     8) printf "AI upscale and denoise media" ;;
     9) printf "Trim video starts" ;;
+    10) printf "Create mp3 files from videos" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -397,6 +398,7 @@ step_function_name() {
     7) printf "step9_move_empty_items" ;;
     8) printf "step3_process_media" ;;
     9) printf "step8_trim_video_lead" ;;
+    10) printf "step10_extract_video_audio_mp3" ;;
     *) printf "" ;;
   esac
 }
@@ -452,6 +454,13 @@ ensure_step_requirements() {
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
+      ;;
+    10)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
       ;;
     *)
       return 1
@@ -574,6 +583,70 @@ step2_convert_videos() {
   printf "  - Re-encoded:    %d\n" "$reencoded"
   printf "  - Skipped:       %d\n" "$skipped"
   printf "  - Failed:        %d\n" "$failed"
+}
+
+step10_extract_video_audio_mp3() {
+  local files=()
+  local file output tmp audio_stream
+  local i total progress=0
+  local created=0 skipped_existing=0 skipped_no_audio=0 failed=0
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(
+    find . -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.m4v" -o -iname "*.mkv" -o -iname "*.webm" \
+                      -o -iname "*.avi" -o -iname "*.wmv" -o -iname "*.flv" -o -iname "*.mpg" -o -iname "*.mpeg" \
+                      -o -iname "*.3gp" -o -iname "*.m2ts" -o -iname "*.vob" -o -iname "*.ogv" -o -iname "*.gifv" \) -print0
+  )
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No video files found for mp3 extraction."
+    return 0
+  fi
+
+  log_info "Creating mp3 files from $total video file(s)."
+
+  for (( i=0; i<total; i++ )); do
+    file="${files[$i]}"
+    output="${file%.*}.mp3"
+
+    if [[ -f "$output" ]]; then
+      skipped_existing=$((skipped_existing + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 10 MP3" "$progress" "$total"
+      continue
+    fi
+
+    audio_stream="$(ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "$file" 2>/dev/null | head -n 1)"
+    if [[ -z "$audio_stream" ]]; then
+      skipped_no_audio=$((skipped_no_audio + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 10 MP3" "$progress" "$total"
+      continue
+    fi
+
+    tmp="${output%.mp3}.tmp.$$.mp3"
+    rm -f "$tmp"
+
+    if ffmpeg -hide_banner -loglevel error -y -i "$file" -map 0:a:0 -map_metadata 0 -vn -c:a libmp3lame -q:a 2 "$tmp" && [[ -s "$tmp" ]]; then
+      mv -f "$tmp" "$output"
+      created=$((created + 1))
+    else
+      rm -f "$tmp" 2>/dev/null || true
+      failed=$((failed + 1))
+      log_err "MP3 extraction failed: $file"
+    fi
+
+    progress=$((progress + 1))
+    progress_draw "Step 10 MP3" "$progress" "$total"
+  done
+
+  log_info "Step 10 mp3 summary:"
+  printf "  - MP3 files created:    %d\n" "$created"
+  printf "  - Skipped (exists):     %d\n" "$skipped_existing"
+  printf "  - Skipped (no audio):   %d\n" "$skipped_no_audio"
+  printf "  - Failed:               %d\n" "$failed"
 }
 
 is_waifu2x_supported_image_ext() {
@@ -2171,7 +2244,7 @@ step8_trim_video_lead() {
   local files=()
   local file duration ext base tmp
   local i total progress=0
-  local trimmed=0 skipped_short=0 failed=0
+  local trimmed=0 approximate=0 skipped_short=0 failed=0
 
   while IFS= read -r -d '' file; do
     files+=("$file")
@@ -2203,7 +2276,9 @@ step8_trim_video_lead() {
     tmp="${base}.trimstart-tmp.$$.$ext"
     rm -f "$tmp"
 
-    if ffmpeg -hide_banner -loglevel error -y -ss "$STEP8_TRIM_SECONDS" -i "$file" -map 0 -c copy -avoid_negative_ts make_zero "$tmp" && [[ -s "$tmp" ]]; then
+    # Exact trim-start cuts require decoding. A stream-copy seek snaps to the
+    # previous keyframe, which keeps some lead-in and trims less than requested.
+    if ffmpeg -hide_banner -loglevel error -y -i "$file" -ss "$STEP8_TRIM_SECONDS" -map 0 -map_metadata 0 -c:v libx264 -crf 20 -preset medium -c:a aac -c:s copy -c:d copy -c:t copy "$tmp" && [[ -s "$tmp" ]]; then
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
@@ -2212,9 +2287,11 @@ step8_trim_video_lead() {
     fi
 
     rm -f "$tmp" 2>/dev/null || true
-    if ffmpeg -hide_banner -loglevel error -y -ss "$STEP8_TRIM_SECONDS" -i "$file" -map 0 -c:v libx264 -crf 20 -preset medium -c:a aac "$tmp" && [[ -s "$tmp" ]]; then
+    if ffmpeg -hide_banner -loglevel error -y -ss "$STEP8_TRIM_SECONDS" -i "$file" -map 0 -c copy -avoid_negative_ts make_zero "$tmp" && [[ -s "$tmp" ]]; then
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
+      approximate=$((approximate + 1))
+      log_warn "Trim used keyframe-aligned fallback and may start earlier than requested: $file"
     else
       rm -f "$tmp" 2>/dev/null || true
       failed=$((failed + 1))
@@ -2228,6 +2305,7 @@ step8_trim_video_lead() {
   log_info "Step 8 trim summary:"
   printf "  - Trim seconds:        %ss\n" "$STEP8_TRIM_SECONDS"
   printf "  - Files trimmed:       %d\n" "$trimmed"
+  printf "  - Approximate trims:   %d\n" "$approximate"
   printf "  - Skipped (too short): %d\n" "$skipped_short"
   printf "  - Failed:              %d\n" "$failed"
 }
@@ -2284,7 +2362,7 @@ main() {
   ensure_prerequisites
 
   echo "Select which steps to run:"
-  echo "0. Run all steps in order"
+  echo "0. Run steps 1-7 in order"
   for num in "${STEP_ORDER[@]}"; do
     echo "$num. $(step_description "$num")"
   done
@@ -2292,7 +2370,7 @@ main() {
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
-    selected=("${STEP_ORDER[@]}")
+    selected=(1 2 3 4 5 6 7)
   else
     IFS=',' read -r -a raw <<< "$input"
     for token in "${raw[@]+"${raw[@]}"}"; do
@@ -2333,7 +2411,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 9 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 10 ]]; then
       log_warn "Skipping out-of-range step: $num"
     fi
   done
