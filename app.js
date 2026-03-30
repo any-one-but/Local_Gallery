@@ -346,6 +346,7 @@
         chromaOverlayIntensity: null,
         jitterOverlayEnabled: true,
         jitterOverlayIntensity: null,
+        jitterZoomCropEnabled: false,
         grainOverlayEnabled: true,
         grainOverlayIntensity: null,
         vignetteOverlayEnabled: true,
@@ -432,7 +433,8 @@
       const chromaOverlayEnabled = true;
       const chromaOverlayIntensity = normalizeOptionalClampedNumber(src.chromaOverlayIntensity, 0, 8);
       const jitterOverlayEnabled = true;
-      const jitterOverlayIntensity = normalizeOptionalClampedNumber(src.jitterOverlayIntensity, 0, 3);
+      const jitterOverlayIntensity = normalizeOptionalClampedNumber(src.jitterOverlayIntensity, 0, 1);
+      const jitterZoomCropEnabled = (typeof src.jitterZoomCropEnabled === "boolean") ? src.jitterZoomCropEnabled : d.jitterZoomCropEnabled;
       const grainOverlayEnabled = true;
       const grainOverlayIntensity = normalizeOptionalClampedNumber(src.grainOverlayIntensity, 0, 0.5);
       const vignetteOverlayEnabled = true;
@@ -552,6 +554,7 @@
         chromaOverlayIntensity,
         jitterOverlayEnabled,
         jitterOverlayIntensity,
+        jitterZoomCropEnabled,
         grainOverlayEnabled,
         grainOverlayIntensity,
         vignetteOverlayEnabled,
@@ -617,7 +620,7 @@
       pixelate: { min: 1, max: 16, step: 0.5 },
       blur: { min: 0, max: 8, step: 0.1 },
       chroma: { min: 0, max: 8, step: 0.1 },
-      jitter: { min: 0, max: 3, step: 0.05 },
+      jitter: { min: 0, max: 1, step: 0.02 },
       grain: { min: 0, max: 0.5, step: 0.01 },
       vignette: { min: 0, max: 0.6, step: 0.01 },
       filmCorner: { min: 0, max: 0.25, step: 0.01 }
@@ -643,6 +646,7 @@
       "blurOverlayIntensity",
       "chromaOverlayIntensity",
       "jitterOverlayIntensity",
+      "jitterZoomCropEnabled",
       "grainOverlayIntensity",
       "vignetteOverlayIntensity",
       "filmCornerOverlayIntensity"
@@ -676,6 +680,7 @@
           blurOverlayIntensity: null,
           chromaOverlayIntensity: null,
           jitterOverlayIntensity: null,
+          jitterZoomCropEnabled: false,
           grainOverlayIntensity: null,
           vignetteOverlayIntensity: null,
           filmCornerOverlayIntensity: null
@@ -757,7 +762,8 @@
         [
           "activeAppearancePresetId",
           "animatedMediaFilters",
-          "gifsIgnoreProcessing"
+          "gifsIgnoreProcessing",
+          "jitterZoomCropEnabled"
         ]
       )),
       playback: Object.freeze([
@@ -1477,6 +1483,7 @@
       const chroma = (chromaAmount != null && chromaAmount > 0.0001) ? chromaAmount : 0;
       const jitterAmount = optionalOverlayAmount(opt.jitterOverlayIntensity, OVERLAY_SLIDER_LIMITS.jitter.min, OVERLAY_SLIDER_LIMITS.jitter.max);
       const jitter = (jitterAmount != null && jitterAmount > 0.0001) ? jitterAmount : 0;
+      const jitterZoomCrop = !!(opt && opt.jitterZoomCropEnabled && jitter > 0);
       const grainAmount = optionalOverlayAmount(opt.grainOverlayIntensity, OVERLAY_SLIDER_LIMITS.grain.min, OVERLAY_SLIDER_LIMITS.grain.max);
       const grain = (grainAmount != null && grainAmount > 0.0001) ? grainAmount : 0;
       const vignetteAmount = optionalOverlayAmount(opt.vignetteOverlayIntensity, OVERLAY_SLIDER_LIMITS.vignette.min, OVERLAY_SLIDER_LIMITS.vignette.max);
@@ -1504,6 +1511,7 @@
         blur,
         chroma,
         jitter,
+        jitterZoomCrop,
         grain,
         vignette,
         cornerRadius
@@ -1702,6 +1710,16 @@
       const x = (dstW - w) * 0.5;
       const y = (dstH - h) * 0.5;
       return { x, y, w, h };
+    }
+
+    function expandRectFromCenter(rect, pad) {
+      const p = Math.max(0, Number(pad) || 0);
+      return {
+        x: rect.x - p,
+        y: rect.y - p,
+        w: rect.w + (p * 2),
+        h: rect.h + (p * 2)
+      };
     }
 
     function computeCoverRect(srcW, srcH, dstW, dstH) {
@@ -2398,6 +2416,60 @@
       ctx.restore();
     }
 
+    function drawJitterWarpToCanvas(targetCtx, sourceCanvas, amount, time, options = null) {
+      if (!targetCtx || !sourceCanvas || !(amount > 0.0001)) return false;
+      const w = Math.max(1, sourceCanvas.width || 0);
+      const h = Math.max(1, sourceCanvas.height || 0);
+      if (!w || !h) return false;
+      const animated = !!(options && options.animated);
+      const speed = clampNumber(0.05 + (amount * 0.95), 0.05, 1, 0.05);
+      const t = animated ? (Number(time || 0) * 0.001 * speed) : 12.75;
+      const amplitude = Math.min(Math.max(0.9, 0.75 * 2.8), Math.max(3, w * 0.04));
+      const bandCount = Math.max(18, Math.round(18 + (0.75 * 11)));
+      const stripH = Math.max(1, Math.ceil(h / bandCount));
+      targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+      targetCtx.clearRect(0, 0, w, h);
+      targetCtx.imageSmoothingEnabled = true;
+      if ("imageSmoothingQuality" in targetCtx) targetCtx.imageSmoothingQuality = "high";
+      targetCtx.filter = "none";
+      targetCtx.globalCompositeOperation = "source-over";
+      targetCtx.globalAlpha = 1;
+      const drawStripWithExtrudedEdges = (stripY, stripH, drawOffset, alpha = 1) => {
+        targetCtx.globalAlpha = alpha;
+        targetCtx.drawImage(sourceCanvas, 0, stripY, w, stripH, drawOffset, stripY, w, stripH);
+        targetCtx.globalAlpha = 1;
+        if (drawOffset > 0.0001) {
+          targetCtx.drawImage(sourceCanvas, 0, stripY, 1, stripH, 0, stripY, drawOffset, stripH);
+        } else if (drawOffset < -0.0001) {
+          const gapW = -drawOffset;
+          targetCtx.drawImage(sourceCanvas, w - 1, stripY, 1, stripH, w - gapW, stripY, gapW, stripH);
+        }
+      };
+
+      for (let y = 0; y < h; y += stripH) {
+        const sh = Math.min(stripH, h - y);
+        const yNorm = y / Math.max(1, h);
+        const phaseA = (yNorm * 12.5) + (t * 6.3);
+        const phaseB = (yNorm * 31.5) - (t * 10.1) + (hashNoise1((y + 1) * 0.173) * Math.PI * 2);
+        const phaseC = (yNorm * 8.4) + (t * 3.4) + (hashNoise1((y + 7) * 0.067) * Math.PI * 2);
+        const offset = (
+          (Math.sin(phaseA) * 0.58)
+          + (Math.sin(phaseB) * 0.27)
+          + (Math.sin(phaseC) * 0.15)
+        ) * amplitude;
+        drawStripWithExtrudedEdges(y, sh, offset);
+        if (animated) {
+          const shimmerAlpha = clampNumber(0.018 + (0.75 * 0.018), 0, 0.08);
+          if (shimmerAlpha > 0.0001) {
+            drawStripWithExtrudedEdges(y, sh, offset + (Math.sin(phaseB * 1.7) * (0.35 + (0.75 * 0.3))), shimmerAlpha);
+          }
+        }
+      }
+      targetCtx.globalAlpha = 1;
+      targetCtx.filter = "none";
+      return true;
+    }
+
     function drawVhsFuzzToContext(ctx, sourceCanvas, rect, amount, time, host, options = null) {
       if (!ctx || !sourceCanvas || !rect || !(amount > 0.0001) || !host) return;
       const w = Math.max(1, Math.round(rect.w));
@@ -2758,6 +2830,12 @@
         scratchCtx.drawImage(off, 0, 0, scratchCanvas.width, scratchCanvas.height);
         swapBuffers();
       }
+      if (overlayCfg.jitter > 0) {
+        resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
+        if (drawJitterWarpToCanvas(scratchCtx, currentCanvas, overlayCfg.jitter, 0, { animated: false, host: THUMB_FILTER_CACHE })) {
+          swapBuffers();
+        }
+      }
       if (overlayCfg.blur > 0) {
         resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
         scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -2768,39 +2846,40 @@
         scratchCtx.filter = "none";
         swapBuffers();
       }
+      const outputRect = overlayCfg.jitterZoomCrop ? expandRectFromCenter(rect, 3) : rect;
       ctx.imageSmoothingEnabled = true;
       ctx.filter = "none";
-      if (!drawChromaticAberrationToContext(ctx, currentCanvas, rect.x, rect.y, rect.w, rect.h, overlayCfg.chroma)) {
-        ctx.drawImage(currentCanvas, rect.x, rect.y, rect.w, rect.h);
+      if (!drawChromaticAberrationToContext(ctx, currentCanvas, outputRect.x, outputRect.y, outputRect.w, outputRect.h, overlayCfg.chroma)) {
+        ctx.drawImage(currentCanvas, outputRect.x, outputRect.y, outputRect.w, outputRect.h);
       }
 
       if (overlayCfg.halation) {
-        drawHalationToContext(ctx, currentCanvas, rect, overlayCfg.halation, THUMB_FILTER_CACHE);
+        drawHalationToContext(ctx, currentCanvas, outputRect, overlayCfg.halation, THUMB_FILTER_CACHE);
       }
 
       if (overlayCfg.vhsFuzz) {
-        drawVhsFuzzToContext(ctx, currentCanvas, rect, overlayCfg.vhsFuzz, 0, THUMB_FILTER_CACHE, { animated: false });
+        drawVhsFuzzToContext(ctx, currentCanvas, outputRect, overlayCfg.vhsFuzz, 0, THUMB_FILTER_CACHE, { animated: false });
       }
 
       if (overlayCfg.ghosting) {
-        drawTemporalGhostingToContext(ctx, currentCanvas, rect, overlayCfg.ghosting, 0, THUMB_FILTER_CACHE, { animated: false });
+        drawTemporalGhostingToContext(ctx, currentCanvas, outputRect, overlayCfg.ghosting, 0, THUMB_FILTER_CACHE, { animated: false });
       }
 
       if (overlayCfg.lineDamage) {
-        drawLineDamageToContext(ctx, currentCanvas, rect, overlayCfg.lineDamage, 0, THUMB_FILTER_CACHE, { animated: false });
+        drawLineDamageToContext(ctx, currentCanvas, outputRect, overlayCfg.lineDamage, 0, THUMB_FILTER_CACHE, { animated: false });
       }
 
       if (overlayCfg.scanlines) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(rect.x, rect.y, rect.w, rect.h);
+        ctx.rect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
         ctx.clip();
         ctx.globalAlpha = overlayCfg.scanlines;
         const pattern = ensureThumbScanlinePattern(ctx);
         if (pattern) {
           ctx.fillStyle = pattern;
           if (overlayCfg.scanlineBlur) ctx.filter = `blur(${overlayCfg.scanlineBlur}px)`;
-          ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+          ctx.fillRect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
         }
         ctx.restore();
       }
@@ -2808,7 +2887,7 @@
       if (overlayCfg.grain) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(rect.x, rect.y, rect.w, rect.h);
+        ctx.rect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
         ctx.clip();
         if (!THUMB_FILTER_CACHE.lastNoise) updateThumbNoiseCanvas();
         const noiseCanvas = ensureThumbNoiseCanvas();
@@ -2817,7 +2896,7 @@
           ctx.globalAlpha = overlayCfg.grain;
           ctx.globalCompositeOperation = "overlay";
           ctx.fillStyle = pattern;
-          ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+          ctx.fillRect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
         }
         ctx.restore();
       }
@@ -2825,28 +2904,28 @@
       if (overlayCfg.vignette) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(rect.x, rect.y, rect.w, rect.h);
+        ctx.rect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
         ctx.clip();
-        const cx = rect.x + rect.w * 0.5;
-        const cy = rect.y + rect.h * 0.5;
+        const cx = outputRect.x + outputRect.w * 0.5;
+        const cy = outputRect.y + outputRect.h * 0.5;
         const g = ctx.createRadialGradient(
           cx,
           cy,
-          Math.min(rect.w, rect.h) * 0.2,
+          Math.min(outputRect.w, outputRect.h) * 0.2,
           cx,
           cy,
-          Math.max(rect.w, rect.h) * 0.7
+          Math.max(outputRect.w, outputRect.h) * 0.7
         );
         g.addColorStop(0, "rgba(0,0,0,0)");
         g.addColorStop(1, `rgba(0,0,0,${overlayCfg.vignette})`);
         ctx.fillStyle = g;
-        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.fillRect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
         ctx.restore();
       }
 
       if (overlayCfg.cornerRadius) {
-        const radius = Math.max(0, Math.min(rect.w, rect.h) * overlayCfg.cornerRadius);
-        applyRoundedCornerMask(ctx, rect, radius);
+        const radius = Math.max(0, Math.min(outputRect.w, outputRect.h) * overlayCfg.cornerRadius);
+        applyRoundedCornerMask(ctx, outputRect, radius);
       }
     }
 
@@ -3305,8 +3384,7 @@
         };
         const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
         const animatedForSurface = animatedMediaFiltersEnabledForType(surface.type);
-        const jitter = overlayCfg.jitter ? (animatedForSurface ? Math.sin(time * 0.005) * overlayCfg.jitter : 0) : 0;
-        const dx = rect.x + jitter;
+        const dx = rect.x;
         const dy = rect.y;
 
         let currentCanvas = surface.workscreen;
@@ -3361,6 +3439,12 @@
             scratchCtx.drawImage(surface.offscreen, 0, 0, scratchCanvas.width, scratchCanvas.height);
             swapBuffers();
           }
+          if (overlayCfg.jitter > 0) {
+            resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
+            if (drawJitterWarpToCanvas(scratchCtx, currentCanvas, overlayCfg.jitter, time, { animated: animatedForSurface, host: surface })) {
+              swapBuffers();
+            }
+          }
           if (overlayCfg.blur > 0) {
             resizeCanvasBuffer(scratchCanvas, currentCanvas.width, currentCanvas.height);
             scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -3382,37 +3466,40 @@
           return false;
         }
 
+        const outputRect = overlayCfg.jitterZoomCrop
+          ? expandRectFromCenter({ x: dx, y: dy, w: rect.w, h: rect.h }, 3)
+          : { x: dx, y: dy, w: rect.w, h: rect.h };
         frameCtx.imageSmoothingEnabled = true;
         frameCtx.filter = "none";
-        if (!drawChromaticAberrationToContext(frameCtx, currentCanvas, dx, dy, rect.w, rect.h, overlayCfg.chroma, {
+        if (!drawChromaticAberrationToContext(frameCtx, currentCanvas, outputRect.x, outputRect.y, outputRect.w, outputRect.h, overlayCfg.chroma, {
           compositeCanvas: surface.aberrationscreen,
           compositeCtx: surface.aberrationctx,
           channelCanvas: surface.aberrationchannelscreen,
           channelCtx: surface.aberrationchannelctx
         })) {
-          frameCtx.drawImage(currentCanvas, dx, dy, rect.w, rect.h);
+          frameCtx.drawImage(currentCanvas, outputRect.x, outputRect.y, outputRect.w, outputRect.h);
         }
 
         if (overlayCfg.halation) {
-          drawHalationToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.halation, surface);
+          drawHalationToContext(frameCtx, currentCanvas, outputRect, overlayCfg.halation, surface);
         }
 
         if (overlayCfg.vhsFuzz) {
-          drawVhsFuzzToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.vhsFuzz, time, surface, { animated: animatedForSurface });
+          drawVhsFuzzToContext(frameCtx, currentCanvas, outputRect, overlayCfg.vhsFuzz, time, surface, { animated: animatedForSurface });
         }
 
         if (overlayCfg.ghosting) {
-          drawTemporalGhostingToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.ghosting, time, surface, { animated: animatedForSurface });
+          drawTemporalGhostingToContext(frameCtx, currentCanvas, outputRect, overlayCfg.ghosting, time, surface, { animated: animatedForSurface });
         }
 
         if (overlayCfg.lineDamage) {
-          drawLineDamageToContext(frameCtx, currentCanvas, { x: dx, y: dy, w: rect.w, h: rect.h }, overlayCfg.lineDamage, time, surface, { animated: animatedForSurface });
+          drawLineDamageToContext(frameCtx, currentCanvas, outputRect, overlayCfg.lineDamage, time, surface, { animated: animatedForSurface });
         }
 
         if (overlayCfg.scanlines) {
           frameCtx.save();
           frameCtx.beginPath();
-          frameCtx.rect(dx, dy, rect.w, rect.h);
+          frameCtx.rect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
           frameCtx.clip();
           frameCtx.globalAlpha = overlayCfg.scanlines;
           const pattern = ensureScanlinePattern(frameCtx);
@@ -3422,7 +3509,7 @@
             if (animatedForSurface) {
               frameCtx.translate(0, (time * 0.015) % 4);
             }
-            frameCtx.fillRect(dx, dy, rect.w, rect.h);
+            frameCtx.fillRect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
           }
           frameCtx.restore();
         }
@@ -3430,7 +3517,7 @@
         if (overlayCfg.grain) {
           frameCtx.save();
           frameCtx.beginPath();
-          frameCtx.rect(dx, dy, rect.w, rect.h);
+          frameCtx.rect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
           frameCtx.clip();
           const noiseCanvas = ensureNoiseCanvas();
           if (animatedForSurface) {
@@ -3447,7 +3534,7 @@
             frameCtx.globalAlpha = overlayCfg.grain;
             frameCtx.globalCompositeOperation = "overlay";
             frameCtx.fillStyle = pattern;
-            frameCtx.fillRect(dx, dy, rect.w, rect.h);
+            frameCtx.fillRect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
           }
           frameCtx.restore();
         }
@@ -3455,28 +3542,28 @@
         if (overlayCfg.vignette) {
           frameCtx.save();
           frameCtx.beginPath();
-          frameCtx.rect(dx, dy, rect.w, rect.h);
+          frameCtx.rect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
           frameCtx.clip();
-          const cx = dx + rect.w * 0.5;
-          const cy = dy + rect.h * 0.5;
+          const cx = outputRect.x + outputRect.w * 0.5;
+          const cy = outputRect.y + outputRect.h * 0.5;
           const g = frameCtx.createRadialGradient(
             cx,
             cy,
-            Math.min(rect.w, rect.h) * 0.2,
+            Math.min(outputRect.w, outputRect.h) * 0.2,
             cx,
             cy,
-            Math.max(rect.w, rect.h) * 0.7
+            Math.max(outputRect.w, outputRect.h) * 0.7
           );
           g.addColorStop(0, "rgba(0,0,0,0)");
           g.addColorStop(1, `rgba(0,0,0,${overlayCfg.vignette})`);
           frameCtx.fillStyle = g;
-          frameCtx.fillRect(dx, dy, rect.w, rect.h);
+          frameCtx.fillRect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
           frameCtx.restore();
         }
 
         if (overlayCfg.cornerRadius) {
-          const radius = Math.max(0, Math.min(rect.w, rect.h) * overlayCfg.cornerRadius);
-          applyRoundedCornerMask(frameCtx, { x: dx, y: dy, w: rect.w, h: rect.h }, radius);
+          const radius = Math.max(0, Math.min(outputRect.w, outputRect.h) * overlayCfg.cornerRadius);
+          applyRoundedCornerMask(frameCtx, outputRect, radius);
         }
 
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -6416,6 +6503,12 @@
         return `${Number(n.toFixed(2)).toString()}px`;
       };
 
+      const formatSpeedMultiplier = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        return `${Number((0.05 + (n * 0.95)).toFixed(2)).toString()}x`;
+      };
+
       const formatGrainAmount = (value) => {
         const n = Number(value);
         if (!Number.isFinite(n)) return "";
@@ -6433,18 +6526,18 @@
         { title: "Solarize", hint: "Reverse the brighter values for a more wild analog-lab look.", enabledId: "opt_solarizeOverlayEnabled", enabledKey: "solarizeOverlayEnabled", rangeId: "opt_solarizeOverlayIntensity", amountKey: "solarizeOverlayIntensity", value: opt.solarizeOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.solarize, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 }
       ];
       const effectOverlayRows = [
-        { title: "Blur", hint: "Blur the image after pixelation, so block edges soften instead of sharpen.", enabledId: "opt_blurOverlayEnabled", enabledKey: "blurOverlayEnabled", rangeId: "opt_blurOverlayIntensity", amountKey: "blurOverlayIntensity", value: opt.blurOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.blur, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
-        { title: "VHS fuzz", hint: "Adds a soft low-resolution VHS haze and moving analog fuzz without the harder tracking tears.", enabledId: "opt_vhsFuzzOverlayEnabled", enabledKey: "vhsFuzzOverlayEnabled", rangeId: "opt_vhsFuzzOverlayIntensity", amountKey: "vhsFuzzOverlayIntensity", value: opt.vhsFuzzOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.vhsFuzz, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
-        { title: "Halation bloom", hint: "Attempts to bloom only locally intense highlights so bright light sources clip and glow instead of all whites blooming equally.", enabledId: "opt_halationOverlayEnabled", enabledKey: "halationOverlayEnabled", rangeId: "opt_halationOverlayIntensity", amountKey: "halationOverlayIntensity", value: opt.halationOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.halation, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
-        { title: "Grain", hint: "Noise/grain pass.", enabledId: "opt_grainOverlayEnabled", enabledKey: "grainOverlayEnabled", rangeId: "opt_grainOverlayIntensity", amountKey: "grainOverlayIntensity", value: opt.grainOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.grain, formatter: formatGrainAmount, showToggle: false, nullable: true, neutralValue: 0 },
-        { title: "Vignette", hint: "Edge darkening.", enabledId: "opt_vignetteOverlayEnabled", enabledKey: "vignetteOverlayEnabled", rangeId: "opt_vignetteOverlayIntensity", amountKey: "vignetteOverlayIntensity", value: opt.vignetteOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.vignette, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
         { title: "Pixelation", hint: "Pixelate the processed image. Pixelation always happens before blur.", enabledId: "opt_pixelateOverlayEnabled", enabledKey: "pixelateOverlayEnabled", rangeId: "opt_pixelateOverlayIntensity", amountKey: "pixelateOverlayIntensity", value: opt.pixelateOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.pixelate, formatter: formatPixelateResolution, showToggle: false, nullable: true, neutralValue: OVERLAY_SLIDER_LIMITS.pixelate.min },
-        { title: "Scanlines", hint: "Fixed-order scanline pass after the image render.", enabledId: "opt_scanlinesOverlayEnabled", enabledKey: "scanlinesOverlayEnabled", rangeId: "opt_scanlinesOverlayIntensity", amountKey: "scanlinesOverlayIntensity", value: opt.scanlinesOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.scanlines, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Jitter", hint: "Fixed-strength band wobble and shimmer. The slider controls speed only.", enabledId: "opt_jitterOverlayEnabled", enabledKey: "jitterOverlayEnabled", rangeId: "opt_jitterOverlayIntensity", amountKey: "jitterOverlayIntensity", value: opt.jitterOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.jitter, formatter: formatSpeedMultiplier, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Scanline blur", hint: "Softens the scanline pass separately.", enabledId: "opt_scanlineBlurOverlayEnabled", enabledKey: "scanlineBlurOverlayEnabled", rangeId: "opt_scanlineBlurOverlayIntensity", amountKey: "scanlineBlurOverlayIntensity", value: opt.scanlineBlurOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.scanlineBlur, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Blur", hint: "Blur the image after pixelation and jitter, so block edges and wobble soften instead of sharpen.", enabledId: "opt_blurOverlayEnabled", enabledKey: "blurOverlayEnabled", rangeId: "opt_blurOverlayIntensity", amountKey: "blurOverlayIntensity", value: opt.blurOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.blur, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
         { title: "Chromatic aberration", hint: "Whole-image RGB channel separation across the entire frame.", enabledId: "opt_chromaOverlayEnabled", enabledKey: "chromaOverlayEnabled", rangeId: "opt_chromaOverlayIntensity", amountKey: "chromaOverlayIntensity", value: opt.chromaOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.chroma, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
-        { title: "Jitter", hint: "Horizontal wobble on animated media.", enabledId: "opt_jitterOverlayEnabled", enabledKey: "jitterOverlayEnabled", rangeId: "opt_jitterOverlayIntensity", amountKey: "jitterOverlayIntensity", value: opt.jitterOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.jitter, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Halation bloom", hint: "Attempts to bloom only locally intense highlights so bright light sources clip and glow instead of all whites blooming equally.", enabledId: "opt_halationOverlayEnabled", enabledKey: "halationOverlayEnabled", rangeId: "opt_halationOverlayIntensity", amountKey: "halationOverlayIntensity", value: opt.halationOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.halation, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "VHS fuzz", hint: "Adds a soft low-resolution VHS haze and moving analog fuzz without the harder tracking tears.", enabledId: "opt_vhsFuzzOverlayEnabled", enabledKey: "vhsFuzzOverlayEnabled", rangeId: "opt_vhsFuzzOverlayIntensity", amountKey: "vhsFuzzOverlayIntensity", value: opt.vhsFuzzOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.vhsFuzz, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
         { title: "Temporal ghosting", hint: "Echoes previous frames into the current frame for smeared VHS-style motion trails.", enabledId: "opt_ghostingOverlayEnabled", enabledKey: "ghostingOverlayEnabled", rangeId: "opt_ghostingOverlayIntensity", amountKey: "ghostingOverlayIntensity", value: opt.ghostingOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.ghosting, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
         { title: "Line-by-line tape damage", hint: "Adds unstable horizontal tracking damage across individual scan bands.", enabledId: "opt_lineDamageOverlayEnabled", enabledKey: "lineDamageOverlayEnabled", rangeId: "opt_lineDamageOverlayIntensity", amountKey: "lineDamageOverlayIntensity", value: opt.lineDamageOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.lineDamage, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
-        { title: "Scanline blur", hint: "Softens the scanline pass separately.", enabledId: "opt_scanlineBlurOverlayEnabled", enabledKey: "scanlineBlurOverlayEnabled", rangeId: "opt_scanlineBlurOverlayIntensity", amountKey: "scanlineBlurOverlayIntensity", value: opt.scanlineBlurOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.scanlineBlur, formatter: formatPixelOffset, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Scanlines", hint: "Fixed-order scanline pass after the image render.", enabledId: "opt_scanlinesOverlayEnabled", enabledKey: "scanlinesOverlayEnabled", rangeId: "opt_scanlinesOverlayIntensity", amountKey: "scanlinesOverlayIntensity", value: opt.scanlinesOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.scanlines, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Grain", hint: "Noise/grain pass.", enabledId: "opt_grainOverlayEnabled", enabledKey: "grainOverlayEnabled", rangeId: "opt_grainOverlayIntensity", amountKey: "grainOverlayIntensity", value: opt.grainOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.grain, formatter: formatGrainAmount, showToggle: false, nullable: true, neutralValue: 0 },
+        { title: "Vignette", hint: "Edge darkening.", enabledId: "opt_vignetteOverlayEnabled", enabledKey: "vignetteOverlayEnabled", rangeId: "opt_vignetteOverlayIntensity", amountKey: "vignetteOverlayIntensity", value: opt.vignetteOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.vignette, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 },
         { title: "Film corners", hint: "Rounded, old-film style corners.", enabledId: "opt_filmCornerOverlayEnabled", enabledKey: "filmCornerOverlayEnabled", rangeId: "opt_filmCornerOverlayIntensity", amountKey: "filmCornerOverlayIntensity", value: opt.filmCornerOverlayIntensity, limits: OVERLAY_SLIDER_LIMITS.filmCorner, formatter: formatPercentAmount, showToggle: false, nullable: true, neutralValue: 0 }
       ];
       const buildOverlayRowsHtml = (rows) => rows.map((row) => makeOverlayControlRow(row)).join("");
@@ -6488,6 +6581,7 @@ ${buildOverlayRowsHtml(colorOverlayRows)}
 ${buildOverlayRowsHtml(effectOverlayRows)}
 ${makeSelectRow("Animated filters", "Control animation for grain/VHS fuzz/ghosting/line damage/jitter.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
 ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
+${makeCheckRow("Crop jitter edges", "When jitter is enabled, zoom into the media slightly to hide the inward-moving strip edges.", "opt_jitterZoomCropEnabled", !!opt.jitterZoomCropEnabled)}
           `
         },
         thumbnails: {
@@ -6766,6 +6860,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         applyMediaFilterFromOptions();
       }, (val) => normalizeAnimatedMediaFiltersValue(val, "on"));
       bindCheck("opt_gifsIgnoreProcessing", "gifsIgnoreProcessing", () => {
+        applyMediaFilterFromOptions();
+      });
+      bindCheck("opt_jitterZoomCropEnabled", "jitterZoomCropEnabled", () => {
         applyMediaFilterFromOptions();
       });
       bindSelect("opt_thumbnailStyle", "thumbnailStyle", false, () => {
