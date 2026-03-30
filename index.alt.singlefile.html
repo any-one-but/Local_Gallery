@@ -9845,14 +9845,9 @@
     }
 
     function getCalendarVisibleMetricsForDir(dirNode, memo = new Map()) {
-      if (!dirNode || dirNode.type !== "dir") return { score: 0, size: 0 };
+      if (!dirNode || dirNode.type !== "dir") return { score: 0, sizeBytes: 0 };
       const key = String(dirNode.path || "");
       if (memo.has(key)) return memo.get(key);
-      if (isPathOrAncestorHidden(key)) {
-        const hiddenMetrics = { score: 0, size: 0 };
-        memo.set(key, hiddenMetrics);
-        return hiddenMetrics;
-      }
 
       const children = Array.isArray(dirNode.childrenDirs)
         ? dirNode.childrenDirs.filter((child) => child && child.type === "dir")
@@ -9866,16 +9861,21 @@
         const childPath = String(child.path || "");
         childStoredScoreSum += Number(metaGetScore(childPath)) || 0;
         const childMetrics = getCalendarVisibleMetricsForDir(child, memo);
-        if (isPathOrAncestorHidden(childPath)) continue;
         visibleChildScoreSum += Number(childMetrics.score) || 0;
-        visibleChildSizeSum += 1 + (Number(childMetrics.size) || 0);
+        visibleChildSizeSum += Number(childMetrics.sizeBytes) || 0;
       }
 
-      const directFiles = getOrderedFileIdsForDir(dirNode, false).length;
+      let directFileSizeSum = 0;
+      const directFiles = Array.isArray(dirNode.childrenFiles) ? dirNode.childrenFiles : [];
+      for (let i = 0; i < directFiles.length; i++) {
+        const rec = WS.fileById.get(directFiles[i]);
+        const fileSize = Number(rec && rec.size);
+        if (Number.isFinite(fileSize) && fileSize > 0) directFileSizeSum += fileSize;
+      }
       const directScore = (Number(metaGetScore(key)) || 0) - childStoredScoreSum;
       const metrics = {
         score: directScore + visibleChildScoreSum,
-        size: directFiles + visibleChildSizeSum
+        sizeBytes: directFileSizeSum + visibleChildSizeSum
       };
       memo.set(key, metrics);
       return metrics;
@@ -9890,20 +9890,28 @@
         const node = root.childrenDirs[i];
         if (!node || node.type !== "dir") continue;
         const path = String(node.path || "");
-        if (isPathOrAncestorHidden(path)) continue;
         const metrics = getCalendarVisibleMetricsForDir(node, metricMemo);
-        const size = Math.max(0, Number(metrics.size) || 0);
+        const sizeBytes = Math.max(0, Number(metrics.sizeBytes) || 0);
+        const sizeMb = sizeBytes / (1024 * 1024);
         const score = Number(metrics.score) || 0;
         out.push({
           path,
           name: dirDisplayName(node),
           score,
-          size,
-          efficiency: score / Math.max(1, size)
+          sizeBytes,
+          sizeMb,
+          efficiency: score / Math.max(0.01, sizeMb)
         });
       }
       out.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
       return out;
+    }
+
+    function formatMegabytes(bytes) {
+      const n = Math.max(0, Number(bytes) || 0) / (1024 * 1024);
+      if (n >= 100) return `${Math.round(n)} MB`;
+      if (n >= 10) return `${n.toFixed(1)} MB`;
+      return `${n.toFixed(2)} MB`;
     }
 
     function scorePiePoint(cx, cy, radius, deg) {
@@ -9977,7 +9985,7 @@
     function buildRootScoreBarsHtml(rootRows) {
       const rows = rootRows.filter((row) => (Number(row.score) || 0) !== 0);
       if (!rows.length) {
-        return `<div class="scoreBarsEmpty">No non-zero visible root scores yet.</div>`;
+        return `<div class="scoreBarsEmpty">No non-zero root scores yet.</div>`;
       }
       const sortedRows = rows.slice().sort((a, b) => {
         const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
@@ -10018,7 +10026,7 @@
           <div class="calendarRankingPosition">${escapeHtml(String(idx + 1))}</div>
           <div class="calendarRankingMain">
             <div class="calendarRankingName" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</div>
-            <div class="calendarRankingMeta">Score ${escapeHtml(String(row.score))} / Size ${escapeHtml(String(row.size))} = ${escapeHtml((Number(row.efficiency) || 0).toFixed(2))}</div>
+            <div class="calendarRankingMeta">Score ${escapeHtml(String(row.score))} / Size ${escapeHtml(formatMegabytes(row.sizeBytes))} = ${escapeHtml((Number(row.efficiency) || 0).toFixed(2))}</div>
           </div>
         </div>
       `).join("");
@@ -10029,7 +10037,7 @@
         return `
           <section class="calendarRankingsCard">
             <h2>Root score efficiency</h2>
-            <div class="calendarRankingsEmpty">No visible root folders available.</div>
+            <div class="calendarRankingsEmpty">No root folders available.</div>
           </section>
         `;
       }
@@ -10039,7 +10047,7 @@
         if (efficiencyDiff) return efficiencyDiff;
         const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
         if (scoreDiff) return scoreDiff;
-        const sizeDiff = (Number(a.size) || 0) - (Number(b.size) || 0);
+        const sizeDiff = (Number(a.sizeBytes) || 0) - (Number(b.sizeBytes) || 0);
         if (sizeDiff) return sizeDiff;
         return String(a.name || "").localeCompare(String(b.name || ""));
       });
@@ -10052,15 +10060,15 @@
       return `
         <section class="calendarRankingsCard">
           <h2>Root score efficiency</h2>
-          <div class="label">Higher score and lower recursive size rank better. Hidden folders and hidden subtree contributions are excluded.</div>
+          <div class="label">Higher score and lower recursive size rank better. Recursive size includes hidden subfolders and files.</div>
           <div class="calendarRankingsGrid">
             <div class="calendarRankingSection">
               <h3>Top 3</h3>
-              ${buildCalendarEfficiencyListHtml(best, "No visible folders to rank.")}
+              ${buildCalendarEfficiencyListHtml(best, "No folders to rank.")}
             </div>
             <div class="calendarRankingSection">
               <h3>Bottom 3</h3>
-              ${buildCalendarEfficiencyListHtml(worst, "Not enough visible folders for a separate bottom list.")}
+              ${buildCalendarEfficiencyListHtml(worst, "Not enough folders for a separate bottom list.")}
             </div>
           </div>
         </section>
@@ -10205,7 +10213,7 @@
         <section class="calendarAnalytics">
           <div class="calendarAnalyticsCard">
             <h2>Positive score share (root folders)</h2>
-            <div class="label">Visible root folders with positive score: ${escapeHtml(String(positiveCount))}. Visible root score sum: ${escapeHtml(String(totalScore))}.</div>
+            <div class="label">Root folders with positive score: ${escapeHtml(String(positiveCount))}. Root score sum: ${escapeHtml(String(totalScore))}.</div>
             ${buildRootPositivePieHtml(rootRows)}
           </div>
           <div class="calendarAnalyticsCard">
