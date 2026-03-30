@@ -259,6 +259,37 @@
       return fallback;
     }
 
+    function normalizeColorSchemeValue(value, fallback = "superdark") {
+      const raw = String(value == null ? "" : value).trim().toLowerCase();
+      if (
+        raw === "classic" ||
+        raw === "superdark" ||
+        raw === "synthwave" ||
+        raw === "verdant" ||
+        raw === "azure" ||
+        raw === "ember" ||
+        raw === "amber" ||
+        raw === "ibn"
+      ) {
+        return raw;
+      }
+      if (raw === "light") return "classic";
+      if (raw === "retro90s" || raw === "retro90s-dark") return "ibn";
+      return fallback;
+    }
+
+    function normalizeThumbRenderModeValue(value, fallback = "medium") {
+      const raw = String(value == null ? "" : value).trim().toLowerCase();
+      if (raw === "small" || raw === "medium" || raw === "high") return raw;
+      return fallback;
+    }
+
+    function normalizeDisplaySizeValue(value, fallback = "medium") {
+      const raw = String(value == null ? "" : value).trim().toLowerCase();
+      if (raw === "small" || raw === "medium" || raw === "large") return raw;
+      return fallback;
+    }
+
     function normalizeThumbnailScaleValue(value, fallback = "medium") {
       const raw = String(value == null ? "" : value).trim().toLowerCase();
       if (
@@ -289,18 +320,13 @@
         videoGallery: "unmuted",
         imageThumbSize: "high",
         videoThumbSize: "medium",
-        mediaThumbUiSize: "medium",
-        folderPreviewSize: "small",
         betaDirFileThumbFullCard: true,
         betaDirFolderSquareCard: true,
-        defaultFolderBehavior: "slide",
-        folderScoreDisplay: "no-arrows",
         previewMode: "grid",
         videoSkipStep: "5",
         preloadNextMode: "off",
         videoEndBehavior: "loop",
         slideshowDefault: "cycle",
-        altGalleryMode: true,
         retroMode: false,
         mediaFilter: "off",
         mediaFilterIntensity: 1,
@@ -325,7 +351,6 @@
         whiteCrushOverlayIntensity: null,
         halationOverlayEnabled: true,
         halationOverlayIntensity: null,
-        betaTallImageScrollDetect: true,
         animatedMediaFilters: "on",
         gifsIgnoreProcessing: false,
         scanlinesOverlayEnabled: true,
@@ -354,8 +379,8 @@
         filmCornerOverlayEnabled: true,
         filmCornerOverlayIntensity: null,
         colorScheme: "superdark",
+        lightMode: false,
         leftPaneWidthPct: 0.28,
-        treatTagsAsFolders: true,
         showRootView: true,
         showHiddenFolder: false,
         showUntaggedFolder: false,
@@ -363,17 +388,14 @@
         tagFolderTitleColorPair: TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT,
         showFolderItemCount: true,
         showFolderSize: true,
-        showDirFileTypeLabel: true,
         showPreviewFileTypeLabel: false,
         showPreviewFolderItemCount: true,
-        showPreviewFileName: false,
         forceTitleCaps: false,
         hideFileExtensionsInFileNames: false,
         hideUnderscoresInFileNames: false,
         hideBeforeLastDashInFileNames: false,
         hideAfterFirstUnderscoreInFileNames: false,
         previewThumbFiltersEnabled: false,
-        previewThumbFit: "contain",
         hideOptionDescriptions: false,
         hideKeybindDescriptions: false,
         interactionMode: "grid",
@@ -447,48 +469,61 @@
           ? thumbnailStyleRaw
           : (((typeof src.betaAspectRatioThumbCards === "boolean") && src.betaAspectRatioThumbCards) ? "aspect" : d.thumbnailStyle))
         : "cropped";
+      const colorSchemeRaw = String(src.colorScheme || "").trim().toLowerCase();
+      const colorScheme = normalizeColorSchemeValue(colorSchemeRaw, d.colorScheme);
+      const lightMode = (typeof src.lightMode === "boolean")
+        ? src.lightMode
+        : (colorSchemeRaw === "light" || colorSchemeRaw === "retro90s");
+      const videoPreviewRaw = String(src.videoPreview || "").trim().toLowerCase();
+      const videoPreview = (videoPreviewRaw === "muted" || videoPreviewRaw === "unmuted") ? videoPreviewRaw : d.videoPreview;
+      const videoGalleryRaw = String(src.videoGallery || "").trim().toLowerCase();
+      const videoGallery = (videoGalleryRaw === "muted" || videoGalleryRaw === "unmuted") ? videoGalleryRaw : d.videoGallery;
+      const videoSkipStepParsed = parseInt(String(src.videoSkipStep || "").trim(), 10);
+      const videoSkipStep = Number.isFinite(videoSkipStepParsed) && videoSkipStepParsed > 0
+        ? String(videoSkipStepParsed)
+        : d.videoSkipStep;
+      const videoEndBehaviorRaw = String(src.videoEndBehavior || "").trim().toLowerCase();
+      const videoEndBehavior = (videoEndBehaviorRaw === "loop" || videoEndBehaviorRaw === "next" || videoEndBehaviorRaw === "stop")
+        ? videoEndBehaviorRaw
+        : d.videoEndBehavior;
+      const previewModeRaw = String(src.previewMode || "").trim().toLowerCase();
+      const previewMode = (previewModeRaw === "grid" || previewModeRaw === "expanded") ? previewModeRaw : d.previewMode;
+      const imageThumbSize = normalizeThumbRenderModeValue(src.imageThumbSize, d.imageThumbSize);
+      const videoThumbSize = normalizeThumbRenderModeValue(src.videoThumbSize, d.videoThumbSize);
       const thumbnailScaleCropped = normalizeThumbnailScaleValue(src.thumbnailScaleCropped, d.thumbnailScaleCropped);
       const thumbnailScaleAspect = normalizeThumbnailScaleValue(src.thumbnailScaleAspect, d.thumbnailScaleAspect);
       const out = {
-        videoPreview: "muted",
-        videoGallery: "unmuted",
-        imageThumbSize: "high",
-        videoThumbSize: "medium",
-        mediaThumbUiSize: "medium",
-        folderPreviewSize: "small",
+        videoPreview,
+        videoGallery,
+        imageThumbSize,
+        videoThumbSize,
         betaDirFileThumbFullCard: true,
         betaDirFolderSquareCard: true,
-        defaultFolderBehavior: normalizeFolderBehavior(src.defaultFolderBehavior, d.defaultFolderBehavior),
-        folderScoreDisplay: "no-arrows",
-        previewMode: "grid",
-        previewThumbFit: "contain",
-        videoSkipStep: "5",
+        previewMode,
+        videoSkipStep,
         preloadNextMode: (src.preloadNextMode === "off" || src.preloadNextMode === "on" || src.preloadNextMode === "ultra") ? src.preloadNextMode : d.preloadNextMode,
-        videoEndBehavior: "loop",
+        videoEndBehavior,
         slideshowDefault: (src.slideshowDefault === "cycle" || src.slideshowDefault === "1" || src.slideshowDefault === "3" || src.slideshowDefault === "5" || src.slideshowDefault === "10") ? src.slideshowDefault : d.slideshowDefault,
-        altGalleryMode: true,
-        retroMode: false,
-        colorScheme: "superdark",
-        treatTagsAsFolders: d.treatTagsAsFolders,
+        retroMode: (typeof src.retroMode === "boolean") ? src.retroMode : d.retroMode,
+        colorScheme,
+        lightMode,
         showRootView: (typeof src.showRootView === "boolean") ? src.showRootView : d.showRootView,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
         showTagFolderSpacerRow: (typeof src.showTagFolderSpacerRow === "boolean") ? src.showTagFolderSpacerRow : d.showTagFolderSpacerRow,
         tagFolderTitleColorPair: normalizeTagFolderTitleColorPairValue(src.tagFolderTitleColorPair, d.tagFolderTitleColorPair),
-        showFolderItemCount: true,
-        showFolderSize: true,
-        showDirFileTypeLabel: true,
-        showPreviewFileTypeLabel: false,
-        showPreviewFolderItemCount: true,
-        showPreviewFileName: false,
+        showFolderItemCount: (typeof src.showFolderItemCount === "boolean") ? src.showFolderItemCount : d.showFolderItemCount,
+        showFolderSize: (typeof src.showFolderSize === "boolean") ? src.showFolderSize : d.showFolderSize,
+        showPreviewFileTypeLabel: (typeof src.showPreviewFileTypeLabel === "boolean") ? src.showPreviewFileTypeLabel : d.showPreviewFileTypeLabel,
+        showPreviewFolderItemCount: (typeof src.showPreviewFolderItemCount === "boolean") ? src.showPreviewFolderItemCount : d.showPreviewFolderItemCount,
         forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
         hideFileExtensionsInFileNames: (typeof src.hideFileExtensionsInFileNames === "boolean") ? src.hideFileExtensionsInFileNames : d.hideFileExtensionsInFileNames,
         hideUnderscoresInFileNames: (typeof src.hideUnderscoresInFileNames === "boolean") ? src.hideUnderscoresInFileNames : d.hideUnderscoresInFileNames,
         hideBeforeLastDashInFileNames: (typeof src.hideBeforeLastDashInFileNames === "boolean") ? src.hideBeforeLastDashInFileNames : d.hideBeforeLastDashInFileNames,
         hideAfterFirstUnderscoreInFileNames: (typeof src.hideAfterFirstUnderscoreInFileNames === "boolean") ? src.hideAfterFirstUnderscoreInFileNames : d.hideAfterFirstUnderscoreInFileNames,
-        previewThumbFiltersEnabled: false,
-        hideOptionDescriptions: false,
-        hideKeybindDescriptions: false,
+        previewThumbFiltersEnabled: (typeof src.previewThumbFiltersEnabled === "boolean") ? src.previewThumbFiltersEnabled : d.previewThumbFiltersEnabled,
+        hideOptionDescriptions: (typeof src.hideOptionDescriptions === "boolean") ? src.hideOptionDescriptions : d.hideOptionDescriptions,
+        hideKeybindDescriptions: (typeof src.hideKeybindDescriptions === "boolean") ? src.hideKeybindDescriptions : d.hideKeybindDescriptions,
         interactionMode: (String(src.interactionMode || "").toLowerCase() === "pane") ? "pane" : "grid",
         randomActionMode: (
           src.randomActionMode === "firstFileJump"
@@ -533,7 +568,6 @@
         whiteCrushOverlayIntensity,
         halationOverlayEnabled,
         halationOverlayIntensity,
-        betaTallImageScrollDetect: true,
         animatedMediaFilters: normalizeAnimatedMediaFiltersValue(src.animatedMediaFilters, d.animatedMediaFilters),
         gifsIgnoreProcessing: (typeof src.gifsIgnoreProcessing === "boolean") ? src.gifsIgnoreProcessing : d.gifsIgnoreProcessing,
         scanlinesOverlayEnabled,
@@ -780,10 +814,7 @@
         "thumbnailScaleAspect",
         "imageThumbSize",
         "videoThumbSize",
-        "mediaThumbUiSize",
-        "folderPreviewSize",
         "previewThumbFiltersEnabled",
-        "previewThumbFit",
         "betaDirFileThumbFullCard",
         "betaDirFolderSquareCard"
       ]),
@@ -2112,10 +2143,6 @@
     function gifsIgnoreProcessingEnabled() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       return !!(opt && opt.gifsIgnoreProcessing);
-    }
-
-    function betaTallImageScrollDetectEnabled() {
-      return true;
     }
 
     function isGifRecord(rec) {
@@ -3621,12 +3648,6 @@
       return out.join("/") || "";
     }
 
-    function folderScoreDisplayMode() {
-      const mode = WS.view && typeof WS.view.folderScoreDisplay === "string" ? WS.view.folderScoreDisplay : "hidden";
-      if (mode === "show" || mode === "no-arrows" || mode === "hidden") return mode;
-      return "hidden";
-    }
-
     function getInteractionModeFromOptions(opt = null) {
       const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
       return (String(src && src.interactionMode || "grid").toLowerCase() === "pane") ? "pane" : "grid";
@@ -3637,6 +3658,9 @@
     }
 
     function sharedThumbWidthForMode(modeRaw) {
+      const mode = normalizeThumbRenderModeValue(modeRaw, "medium");
+      if (mode === "small") return 224;
+      if (mode === "high") return 640;
       return 384;
     }
 
@@ -3663,22 +3687,36 @@
       WS.view.randomFolderMode = false;
       WS.view.randomCache = new Map();
       WS.view.randomFolderCache = new Map();
-      WS.view.folderBehavior = normalizeFolderBehavior(opt.defaultFolderBehavior, "slide");
-      WS.view.folderScoreDisplay = (opt.folderScoreDisplay === "show" || opt.folderScoreDisplay === "no-arrows" || opt.folderScoreDisplay === "hidden") ? opt.folderScoreDisplay : "hidden";
+      WS.view.folderBehavior = "slide";
       applyColorSchemeFromOptions();
       applyTagFolderTitleColorsFromOptions();
     }
 
     function applyColorSchemeFromOptions() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const root = document.documentElement;
       if (!root) return;
-      root.setAttribute("data-theme", "superdark");
+      const scheme = normalizeColorSchemeValue(opt && opt.colorScheme, "superdark");
+      const lightMode = !!(opt && opt.lightMode);
+      let themeValue = "";
+      if (scheme === "superdark") {
+        themeValue = "superdark";
+      } else if (scheme === "classic") {
+        themeValue = lightMode ? "classic-light" : "";
+      } else if (scheme === "ibn") {
+        themeValue = lightMode ? "retro90s" : "retro90s-dark";
+      } else {
+        themeValue = lightMode ? `${scheme}-light` : scheme;
+      }
+      if (!themeValue) root.removeAttribute("data-theme");
+      else root.setAttribute("data-theme", themeValue);
     }
 
     function applyTagFolderTitleColorsFromOptions() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const root = document.documentElement;
       if (!root) return;
-      const pair = getTagFolderTitleColorPairByValue(TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT);
+      const pair = getTagFolderTitleColorPairByValue(opt && opt.tagFolderTitleColorPair);
       const tagColor = String(pair && pair.tag ? pair.tag : "#ff9300");
       const favoriteColor = String(pair && pair.favorite ? pair.favorite : "#ff43b5");
       const albumColor = "#ff6b63";
@@ -3800,22 +3838,11 @@
     }
 
     function applyThumbFitFromOptions() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const root = document.documentElement;
       if (!root) return;
-      const fit = previewThumbFitMode();
-      const useContain = fit === "contain";
-      root.style.setProperty("--thumb-fit", useContain ? "contain" : "cover");
+      root.style.setProperty("--thumb-fit", "contain");
       root.style.setProperty("--thumb-bg", "transparent");
-      if (useContain) root.setAttribute("data-thumb-fit", "contain");
-      else root.removeAttribute("data-thumb-fit");
-    }
-
-    function previewThumbFitMode() {
-      if (naturalAspectThumbnailCardsEnabled()) return "contain";
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const fit = opt ? String(opt.previewThumbFit || "cover") : "cover";
-      return fit === "contain" ? "contain" : "cover";
+      root.setAttribute("data-thumb-fit", "contain");
     }
 
     function getThumbnailStyleFromOptions(opt = null) {
@@ -3928,11 +3955,11 @@
     }
 
     function applyDisplaySizesFromOptions() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const root = document.documentElement;
       if (!root) return;
-      const mediaSize = opt ? String(opt.mediaThumbUiSize || "medium") : "medium";
-      const folderSize = opt ? String(opt.folderPreviewSize || "medium") : "medium";
+      const mediaSize = "medium";
+      const folderSize = "small";
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       const scaleMult = getActiveThumbnailScaleMultiplier(opt);
       if (mediaSize === "medium") root.removeAttribute("data-media-size");
       else root.setAttribute("data-media-size", mediaSize);
@@ -4677,7 +4704,6 @@
         randomFolderMode: false,
         loopWithinDir: false,
         folderBehavior: "slide",
-        folderScoreDisplay: "hidden",
         randomSeed: 0,
         randomCache: new Map(),
         randomFolderCache: new Map(),
@@ -5465,18 +5491,11 @@
 
     function updateModePill() {
       if (!modePill) return;
-      const defs = defaultOptions();
       const parts = [];
       const filterMode = WS.view.filterMode;
       const filterLabel = filterMode === "all" ? "All" : (filterMode === "images" ? "Images only" : (filterMode === "videos" ? "Videos only" : "GIFs only"));
       if (filterMode !== "all") {
         parts.push(`Content filter: ${filterLabel}`);
-      }
-
-      const behavior = normalizeFolderBehavior(WS.view.folderBehavior, "slide");
-      const behaviorLabel = behavior === "slide" ? "Slide" : "Stop";
-      if (behavior !== normalizeFolderBehavior(defs.defaultFolderBehavior, "slide")) {
-        parts.push(`Folder behavior: ${behaviorLabel}`);
       }
 
       const dirSortMode = normalizeDirSortMode(WS.meta.dirSortMode);
@@ -6431,6 +6450,46 @@
         { value: "grid", label: "Grid Mode" },
         { value: "pane", label: "Pane Mode" }
       ];
+      const colorSchemeModes = [
+        { value: "classic", label: "Classic" },
+        { value: "verdant", label: "Verdant" },
+        { value: "synthwave", label: "Synthwave" },
+        { value: "azure", label: "Azure" },
+        { value: "ember", label: "Ember" },
+        { value: "amber", label: "Amber" },
+        { value: "ibn", label: "IBN" },
+        { value: "superdark", label: "OLED Dark" }
+      ];
+      const tagFolderTitleColorModes = TAG_FOLDER_TITLE_COLOR_PAIRS.map((pair) => ({
+        value: String(pair.value || ""),
+        label: String(pair.label || "Colors")
+      }));
+      const previewModeModes = [
+        { value: "grid", label: "Grid" },
+        { value: "expanded", label: "Expanded" }
+      ];
+      const videoAudioModes = [
+        { value: "muted", label: "Muted" },
+        { value: "unmuted", label: "Unmuted" }
+      ];
+      const videoSkipModes = [
+        { value: "1", label: "1 second" },
+        { value: "3", label: "3 seconds" },
+        { value: "5", label: "5 seconds" },
+        { value: "10", label: "10 seconds" },
+        { value: "15", label: "15 seconds" },
+        { value: "30", label: "30 seconds" }
+      ];
+      const videoEndModes = [
+        { value: "loop", label: "Loop" },
+        { value: "next", label: "Advance to next" },
+        { value: "stop", label: "Stop" }
+      ];
+      const thumbRenderModes = [
+        { value: "small", label: "Small cache" },
+        { value: "medium", label: "Medium cache" },
+        { value: "high", label: "High" }
+      ];
 
       const animatedFilterModes = [
         { value: "off", label: "Off" },
@@ -6555,13 +6614,24 @@
           title: "General",
           rows: `
 ${makeSelectRow("Interaction mode", "Choose between full-screen Grid Mode and classic Pane Mode.", "opt_interactionMode", getInteractionModeFromOptions(opt), interactionModes)}
+${makeSelectRow("Color scheme", "Pick a UI color family. Light Mode switches the matching light variant when one exists.", "opt_colorScheme", normalizeColorSchemeValue(opt.colorScheme, "superdark"), colorSchemeModes)}
+${makeCheckRow("Light Mode", "Use the light variant of the selected color scheme. OLED Dark ignores this toggle.", "opt_lightMode", !!opt.lightMode)}
+${makeCheckRow("Retro Mode", "Enable the existing retro UI treatment toggle.", "opt_retroMode", !!opt.retroMode)}
 ${makeSelectRow("Folder sort", "Sort folders by name, score, recursive size, recursive count, or non-recursive count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes)}
+${makeSelectRow("Tag folder colors", "Choose the existing title-color pair for tag and favorite folder labels.", "opt_tagFolderTitleColorPair", normalizeTagFolderTitleColorPairValue(opt.tagFolderTitleColorPair, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT), tagFolderTitleColorModes)}
 ${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
 ${makeCheckRow("Show root view", "Allow navigating above the root to a single root-folder portal card.", "opt_showRootView", opt.showRootView !== false)}
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag in any folder view when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
+${makeCheckRow("Show folder item counts", "Show recursive item counts on folder rows and cards.", "opt_showFolderItemCount", opt.showFolderItemCount !== false)}
+${makeCheckRow("Show folder sizes", "Show recursive folder sizes on folder rows and cards.", "opt_showFolderSize", opt.showFolderSize !== false)}
+${makeCheckRow("Show preview folder item counts", "Show item counts on folder cards in the preview pane.", "opt_showPreviewFolderItemCount", opt.showPreviewFolderItemCount !== false)}
+${makeCheckRow("Show preview file type labels", "Show file type labels on preview pane media cards.", "opt_showPreviewFileTypeLabel", !!opt.showPreviewFileTypeLabel)}
+${makeCheckRow("File-only folders open in gallery", "Open file-only folders directly in Gallery Mode on the first file.", "opt_fileOnlyFoldersOpenInGallery", !!opt.fileOnlyFoldersOpenInGallery)}
+${makeCheckRow("Hide option descriptions", "Hide explanatory hint text in the options menu.", "opt_hideOptionDescriptions", !!opt.hideOptionDescriptions)}
+${makeCheckRow("Hide keybind descriptions", "Hide explanatory hint text in the keybinds menu.", "opt_hideKeybindDescriptions", !!opt.hideKeybindDescriptions)}
           `
         },
         appearance: {
@@ -6597,6 +6667,9 @@ ${makeCheckRow("Crop jitter edges", "When jitter is enabled, zoom into the media
           rows: `
 ${thumbnailStyleRow}
 ${makeSelectRow("Thumbnail Scale", thumbnailScaleHint, "opt_thumbnailScale", getActiveThumbnailScale(opt), thumbnailScaleModes)}
+${makeSelectRow("Image thumbnail quality", "Choose the cached image thumbnail mode. High uses full-resolution image sources when possible.", "opt_imageThumbSize", normalizeThumbRenderModeValue(opt.imageThumbSize, "high"), thumbRenderModes)}
+${makeSelectRow("Video thumbnail quality", "Choose the cached video thumbnail size.", "opt_videoThumbSize", normalizeThumbRenderModeValue(opt.videoThumbSize, "medium"), thumbRenderModes)}
+${makeCheckRow("Thumbnail filters in preview pane", "Apply appearance/media overlay processing to preview thumbnails.", "opt_previewThumbFiltersEnabled", !!opt.previewThumbFiltersEnabled)}
 ${makeActionRow("Reset Edited Crops", "Reset custom crop/zoom edits for thumbnails while keeping thumbnail assignments.", `
   <button type="button" id="opt_thumb_reset_crops">Reset Edited Crops</button>
 `)}
@@ -6615,6 +6688,11 @@ ${makeActionRow("Rebuild Thumbnail Cache", "Queue thumbnail regeneration for cur
           title: "Playback",
           rows: `
 ${makeSelectRow("Preload next item", "Preload the next item for smoother browsing.", "opt_preloadNextMode", String(opt.preloadNextMode || "off"), preloadModes)}
+${makeSelectRow("Preview video audio", "Default audio state for videos played in the preview pane.", "opt_videoPreview", String(opt.videoPreview || "muted"), videoAudioModes)}
+${makeSelectRow("Gallery video audio", "Default audio state for videos played in the viewer/gallery.", "opt_videoGallery", String(opt.videoGallery || "unmuted"), videoAudioModes)}
+${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
+${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
+${makeSelectRow("Preview pane mode", "Choose the preview pane layout for folders.", "opt_previewMode", String(opt.previewMode || "grid"), previewModeModes)}
 ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
           `
         },
@@ -6774,6 +6852,20 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           kickImageThumbsForPreview();
         }
       });
+      bindSelect("opt_colorScheme", "colorScheme", false, () => {
+        applyColorSchemeFromOptions();
+      }, (val) => {
+        return normalizeColorSchemeValue(val, "superdark");
+      });
+      bindCheck("opt_lightMode", "lightMode", () => {
+        applyColorSchemeFromOptions();
+      });
+      bindCheck("opt_retroMode", "retroMode", () => {
+        applyRetroModeFromOptions();
+      });
+      bindSelect("opt_tagFolderTitleColorPair", "tagFolderTitleColorPair", false, () => {
+        applyTagFolderTitleColorsFromOptions();
+      }, (val) => normalizeTagFolderTitleColorPairValue(val, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT));
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
       bindCheck("opt_showRootView", "showRootView", (enabled) => {
         if (enabled) return;
@@ -6797,6 +6889,17 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       });
       bindCheck("opt_showTagFolderSpacerRow", "showTagFolderSpacerRow");
       bindCheck("opt_clickSelectedRotatingThumbTeleports", "clickSelectedRotatingThumbTeleports");
+      bindCheck("opt_showFolderItemCount", "showFolderItemCount");
+      bindCheck("opt_showFolderSize", "showFolderSize");
+      bindCheck("opt_showPreviewFolderItemCount", "showPreviewFolderItemCount");
+      bindCheck("opt_showPreviewFileTypeLabel", "showPreviewFileTypeLabel");
+      bindCheck("opt_fileOnlyFoldersOpenInGallery", "fileOnlyFoldersOpenInGallery");
+      bindCheck("opt_hideOptionDescriptions", "hideOptionDescriptions", () => {
+        applyDescriptionVisibilityFromOptions();
+      });
+      bindCheck("opt_hideKeybindDescriptions", "hideKeybindDescriptions", () => {
+        applyDescriptionVisibilityFromOptions();
+      });
       colorOverlayRows.forEach((row) => {
         if (row.showToggle !== false) {
           bindCheck(row.enabledId, row.enabledKey, () => {
@@ -6872,6 +6975,31 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       });
       bindCheck("opt_jitterZoomCropEnabled", "jitterZoomCropEnabled", () => {
         applyMediaFilterFromOptions();
+      });
+      bindSelect("opt_imageThumbSize", "imageThumbSize", true, null, (val) => normalizeThumbRenderModeValue(val, "high"));
+      bindSelect("opt_videoThumbSize", "videoThumbSize", true, null, (val) => normalizeThumbRenderModeValue(val, "medium"));
+      bindCheck("opt_previewThumbFiltersEnabled", "previewThumbFiltersEnabled", () => {
+        applyMediaFilterFromOptions();
+      });
+      bindSelect("opt_videoPreview", "videoPreview", false, null, (val) => {
+        const raw = String(val || "").trim().toLowerCase();
+        return raw === "unmuted" ? "unmuted" : "muted";
+      });
+      bindSelect("opt_videoGallery", "videoGallery", false, null, (val) => {
+        const raw = String(val || "").trim().toLowerCase();
+        return raw === "muted" ? "muted" : "unmuted";
+      });
+      bindSelect("opt_videoSkipStep", "videoSkipStep", false, null, (val) => {
+        const parsed = parseInt(String(val || "").trim(), 10);
+        return Number.isFinite(parsed) && parsed > 0 ? String(parsed) : "5";
+      });
+      bindSelect("opt_videoEndBehavior", "videoEndBehavior", false, null, (val) => {
+        const raw = String(val || "").trim().toLowerCase();
+        return (raw === "loop" || raw === "next" || raw === "stop") ? raw : "loop";
+      });
+      bindSelect("opt_previewMode", "previewMode", false, null, (val) => {
+        const raw = String(val || "").trim().toLowerCase();
+        return raw === "expanded" ? "expanded" : "grid";
       });
       bindSelect("opt_thumbnailStyle", "thumbnailStyle", false, () => {
         if (MENU_ACTIVE_TAB === "thumbnails") {
@@ -8536,7 +8664,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function canUseBulkTagPlaceholderUi() {
-      if (!treatTagsAsFoldersEnabled()) return false;
       if (!WS.root) return false;
       return true;
     }
@@ -10483,8 +10610,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           randomMode: !!WS.view.randomMode,
           randomFolderMode: !!WS.view.randomFolderMode,
           loopWithinDir: WS.view.loopWithinDir,
-          folderBehavior: normalizeFolderBehavior(WS.view.folderBehavior, "slide"),
-          folderScoreDisplay: WS.view.folderScoreDisplay,
           aboveRootView: !!WS.view.aboveRootView,
           tagFolderActiveMode: WS.view.tagFolderActiveMode,
           tagFolderActiveTag: WS.view.tagFolderActiveTag,
@@ -10510,8 +10635,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.view.randomMode = !!viewState.randomMode;
       WS.view.randomFolderMode = !!viewState.randomFolderMode;
       WS.view.loopWithinDir = viewState.loopWithinDir;
-      WS.view.folderBehavior = normalizeFolderBehavior(viewState.folderBehavior, "slide");
-      WS.view.folderScoreDisplay = viewState.folderScoreDisplay;
+      WS.view.folderBehavior = "slide";
       WS.view.aboveRootView = !!viewState.aboveRootView && showRootViewEnabled();
       WS.view.tagFolderActiveMode = String(viewState.tagFolderActiveMode || "");
       WS.view.tagFolderActiveTag = String(viewState.tagFolderActiveTag || "");
@@ -11990,10 +12114,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return visibleBase;
     }
 
-    function treatTagsAsFoldersEnabled() {
-      return true;
-    }
-
     function showRootViewEnabled() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       return !(opt && opt.showRootView === false);
@@ -12080,7 +12200,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function getTagFolderEntries() {
-      if (!treatTagsAsFoldersEnabled()) return [];
       if (!WS.root || !WS.nav.dirNode) return [];
       if (WS.view.dirSearchPinned || WS.view.favoritesMode || WS.view.hiddenMode) return [];
 
@@ -14996,10 +15115,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       applyPreviewState(previewStateForEntry(entry));
     }
 
-    function altGalleryModeEnabled() {
-      return true;
-    }
-
     function entryUsesRotatingThumbnail(entry) {
       if (!entry) return false;
       if (entry.kind === "tag") {
@@ -15140,7 +15255,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
 
       if (entry.kind !== "dir" || !entry.node) {
-        if (altGalleryModeEnabled() && entry.kind === "file") {
+        if (entry.kind === "file") {
           openGalleryFromDirectoriesSelection(true);
         }
         return;
@@ -20176,7 +20291,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
       const showFolderItemCount = !(WS.meta && WS.meta.options && WS.meta.options.showFolderItemCount === false);
       const showFolderSize = !(WS.meta && WS.meta.options && WS.meta.options.showFolderSize === false);
-      const showDirFileTypeLabel = !(WS.meta && WS.meta.options && WS.meta.options.showDirFileTypeLabel === false);
       const dirSortMetrics = buildDirSortMetrics();
       const dirSizeByPath = dirSortMetrics.sizeByPath;
       const canBulk = WS.view.bulkSelectMode && canUseBulkSelection();
@@ -20502,7 +20616,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               }
             }
             const sc = metaGetScore(p);
-            const scoreMode = folderScoreDisplayMode();
+            const scoreMode = "no-arrows";
             if (scoreMode !== "hidden") {
               const arrows = scoreMode === "show";
               voteHtml = `
@@ -20762,7 +20876,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             const fileMediaHtml = inlinePreviewHtml
               ? inlinePreviewHtml
               : `<div class="dirSquareFallback">${escapeHtml(icon)}</div>`;
-            const fileTypeHtml = showDirFileTypeLabel ? `<span class="dirFileType">${escapeHtml(fileTypeLabel)}</span>` : "";
+            const fileTypeHtml = `<span class="dirFileType">${escapeHtml(fileTypeLabel)}</span>`;
             const fileMetaBits = [];
             if (fileTypeHtml) fileMetaBits.push(fileTypeHtml);
             fileMetaBits.push(`<span class="dirFileSize">${escapeHtml(fileSizeLabel)}</span>`);
@@ -22108,7 +22222,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function detectScrollImageMode(rec, imgEl) {
-      if (!betaTallImageScrollDetectEnabled()) return "none";
       if (!rec || rec.type !== "image") return "none";
       if (isGifRecord(rec)) return "none";
       const aspect = getImageAspectForScrollDetect(rec, imgEl);
@@ -22596,7 +22709,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (isSelected) card.classList.add("selected");
       if (isBulkSelected) card.classList.add("bulkSelected");
       const sc = metaGetScore(dirNode?.path || "");
-      const scoreMode = folderScoreDisplayMode();
+      const scoreMode = "no-arrows";
       const isFavorite = metaHasFavorite(p);
       const isHidden = metaHasHidden(p);
       const showPreviewFolderItemCount = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFolderItemCount === false);
@@ -22935,8 +23048,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function previewRowTargetHeight() {
+      const size = "medium";
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      const size = opt ? String(opt.mediaThumbUiSize || "medium") : "medium";
       const scaleMult = getActiveThumbnailScaleMultiplier(opt);
       const scaled = (base) => Math.max(96, Math.round(base * scaleMult));
       if (size === "small") return scaled(180);
@@ -23207,7 +23320,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       grid.className = "gridFiles";
       const useNaturalAspectCards = naturalAspectThumbnailCardsEnabled();
       const useSquareMediaCards = previewSquareMediaThumbsEnabled();
-      const useFitInsideJustified = !useSquareMediaCards && previewThumbFitMode() === "contain";
+      const useFitInsideJustified = !useSquareMediaCards;
       if (useFitInsideJustified) grid.classList.add("fitInsideJustified");
       if (useSquareMediaCards) grid.classList.add("previewSquareCards");
       if (useNaturalAspectCards) grid.classList.add("previewNaturalAspectCards");
@@ -23613,19 +23726,19 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
 
       const showPreviewFileTypeLabel = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFileTypeLabel === false);
-      const showPreviewFileName = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFileName === false);
+      const showNameMeta = false;
       const forceOverlayMeta = !!useSquareMediaCards || !!useNaturalAspectCards;
       const fileId = String(rec.id || "");
-      const showAnyMeta = forceOverlayMeta || showPreviewFileTypeLabel || showPreviewFileName || !!fileId;
+      const showAnyMeta = forceOverlayMeta || showPreviewFileTypeLabel || showNameMeta || !!fileId;
       let meta = null;
       if (showAnyMeta) {
         meta = document.createElement("div");
         meta.className = forceOverlayMeta
           ? "metaBlock compact previewThumbOverlayMeta"
-          : ((showPreviewFileTypeLabel && showPreviewFileName) ? "metaBlock" : "metaBlock compact");
+          : ((showPreviewFileTypeLabel && showNameMeta) ? "metaBlock" : "metaBlock compact");
 
         const showPreviewFileMenuBtn = !!fileId;
-        if (forceOverlayMeta || showPreviewFileName) {
+        if (forceOverlayMeta || showNameMeta) {
           const top = document.createElement("div");
           top.className = forceOverlayMeta ? "topLine previewThumbOverlayTopLine" : "topLine";
 
@@ -25451,8 +25564,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     const COLOR_SCHEME_CYCLE = [
-      { value: "classic", label: "Classic Dark" },
-      { value: "light", label: "Light" },
+      { value: "classic", label: "Classic" },
+      { value: "verdant", label: "Verdant" },
+      { value: "synthwave", label: "Synthwave" },
+      { value: "azure", label: "Azure" },
+      { value: "ember", label: "Ember" },
+      { value: "amber", label: "Amber" },
+      { value: "ibn", label: "IBN" },
       { value: "superdark", label: "OLED Dark" }
     ];
 
@@ -25473,18 +25591,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.view.filterMode = (m === "all") ? "images" : (m === "images") ? "videos" : (m === "videos") ? "gifs" : "all";
       applyViewModesEverywhere(true);
       showStatusMessage(`Filter: ${WS.view.filterMode}`);
-    }
-
-    function cycleFolderBehavior() {
-      const b = normalizeFolderBehavior(WS.view.folderBehavior, "slide");
-      const next = (b === "stop") ? "slide" : "stop";
-      WS.view.folderBehavior = next;
-      if (WS.meta && WS.meta.options) {
-        WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { defaultFolderBehavior: next }));
-        metaMarkDirty(META_DOC_IDS.prefGeneral);
-      }
-      applyViewModesEverywhere(true);
-      showStatusMessage(`Folder behavior: ${WS.view.folderBehavior}`);
     }
 
     function setOptionValues(nextValues) {
@@ -25558,10 +25664,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           showStatusMessage(`Folder sort: ${dirSortModeLabel(WS.meta.dirSortMode)}`);
           return true;
         }
-        case "cycleFolderBehavior": {
-          cycleFolderBehavior();
-          return true;
-        }
         case "cycleVideoEndBehavior": {
           const next = cycleOptionValue("videoEndBehavior", VIDEO_END_BEHAVIOR_CYCLE);
           showStatusMessage(`Video end: ${labelForCycleValue(VIDEO_END_BEHAVIOR_CYCLE, next)}`);
@@ -25625,12 +25727,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           return nudgeSelectedThumbnailViewport(0, -THUMB_VIEWPORT_NUDGE_STEP);
         case "moveThumbViewportDown":
           return nudgeSelectedThumbnailViewport(0, THUMB_VIEWPORT_NUDGE_STEP);
-        case "toggleShowPreviewFileName": {
-          const next = toggleOptionValue("showPreviewFileName");
-          renderPreviewPane(true, true);
-          showStatusMessage(`Preview file names: ${next ? "On" : "Off"}`);
-          return true;
-        }
         case "toggleShowPreviewFileType": {
           const next = toggleOptionValue("showPreviewFileTypeLabel");
           renderPreviewPane(true, true);
@@ -25647,12 +25743,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const next = toggleOptionValue("showFolderItemCount");
           renderDirectoriesPane(true);
           showStatusMessage(`Folder counts: ${next ? "On" : "Off"}`);
-          return true;
-        }
-        case "toggleShowDirFileTypeLabel": {
-          const next = toggleOptionValue("showDirFileTypeLabel");
-          renderDirectoriesPane(true);
-          showStatusMessage(`Directory file types: ${next ? "On" : "Off"}`);
           return true;
         }
         default:
