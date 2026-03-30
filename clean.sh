@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.8.3"
+SCRIPT_VERSION="1.8.5"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
 EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
@@ -14,7 +14,8 @@ WAIFU2X_NOISE=3
 STEP3_MEDIA_MODE="images"
 STEP3_CPU_FALLBACK=1
 STEP8_TRIM_SECONDS=10
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10)
+STEP9_TRIM_END_SECONDS=10
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11)
 
 # Optional terminal colors when stdout is a TTY.
 if [[ -t 1 ]]; then
@@ -378,11 +379,12 @@ step_description() {
     3) printf "Converts all videos to mp4" ;;
     4) printf "Resize media" ;;
     5) printf "Scrub metadata" ;;
-    6) printf "Remove trailing spaces in file names" ;;
+    6) printf "Sanitize file and folder names" ;;
     7) printf "Move empty files" ;;
     8) printf "AI upscale and denoise media" ;;
     9) printf "Trim video starts" ;;
-    10) printf "Create mp3 files from videos" ;;
+    10) printf "Trim video ends" ;;
+    11) printf "Create mp3 files from videos" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -394,11 +396,12 @@ step_function_name() {
     3) printf "step2_convert_videos" ;;
     4) printf "step4_resize_media" ;;
     5) printf "step5_remove_metadata" ;;
-    6) printf "step7_trim_trailing_spaces" ;;
+    6) printf "step7_sanitize_names" ;;
     7) printf "step9_move_empty_items" ;;
     8) printf "step3_process_media" ;;
     9) printf "step8_trim_video_lead" ;;
-    10) printf "step10_extract_video_audio_mp3" ;;
+    10) printf "step9_trim_video_tail" ;;
+    11) printf "step10_extract_video_audio_mp3" ;;
     *) printf "" ;;
   esac
 }
@@ -456,6 +459,11 @@ ensure_step_requirements() {
       require_cmd ffprobe
       ;;
     10)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      ;;
+    11)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
@@ -614,7 +622,7 @@ step10_extract_video_audio_mp3() {
     if [[ -f "$output" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 10 MP3" "$progress" "$total"
+      progress_draw "Step 11 MP3" "$progress" "$total"
       continue
     fi
 
@@ -622,7 +630,7 @@ step10_extract_video_audio_mp3() {
     if [[ -z "$audio_stream" ]]; then
       skipped_no_audio=$((skipped_no_audio + 1))
       progress=$((progress + 1))
-      progress_draw "Step 10 MP3" "$progress" "$total"
+      progress_draw "Step 11 MP3" "$progress" "$total"
       continue
     fi
 
@@ -639,10 +647,10 @@ step10_extract_video_audio_mp3() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 10 MP3" "$progress" "$total"
+    progress_draw "Step 11 MP3" "$progress" "$total"
   done
 
-  log_info "Step 10 mp3 summary:"
+  log_info "Step 11 mp3 summary:"
   printf "  - MP3 files created:    %d\n" "$created"
   printf "  - Skipped (exists):     %d\n" "$skipped_existing"
   printf "  - Skipped (no audio):   %d\n" "$skipped_no_audio"
@@ -1437,43 +1445,78 @@ step9_move_empty_items() {
   progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
 }
 
-trim_trailing_spaces() {
+sanitize_name_part() {
   local value="$1"
+  value="$(LC_ALL=C printf "%s" "$value" | tr -cd '[:alnum:] _-')"
   while [[ "$value" == *" " ]]; do
     value="${value% }"
   done
   printf "%s" "$value"
 }
 
-step7_trim_trailing_spaces() {
+sanitize_fs_entry_name() {
+  local name="$1"
+  local stem ext sanitized_stem sanitized_ext sanitized_name
+
+  if [[ "$name" == *.* && "$name" != .* && "$name" != *"." ]]; then
+    stem="${name%.*}"
+    ext="${name##*.}"
+    sanitized_stem="$(sanitize_name_part "$stem")"
+    sanitized_ext="$(sanitize_name_part "$ext")"
+
+    if [[ -n "$sanitized_stem" && -n "$sanitized_ext" ]]; then
+      printf "%s.%s" "$sanitized_stem" "$sanitized_ext"
+      return 0
+    fi
+    if [[ -n "$sanitized_stem" ]]; then
+      printf "%s" "$sanitized_stem"
+      return 0
+    fi
+    if [[ -n "$sanitized_ext" ]]; then
+      printf "%s" "$sanitized_ext"
+      return 0
+    fi
+    printf ""
+    return 0
+  fi
+
+  sanitized_name="$(sanitize_name_part "$name")"
+  printf "%s" "$sanitized_name"
+}
+
+step7_sanitize_names() {
   local paths=()
-  local path parent base trimmed target
+  local path parent base sanitized target
   local i total progress=0
   local renamed=0 failed=0
 
   while IFS= read -r -d '' path; do
-    paths+=("$path")
-  done < <(find . -depth -mindepth 1 -name "* " -print0)
+    base="${path##*/}"
+    sanitized="$(sanitize_fs_entry_name "$base")"
+    if [[ "$sanitized" != "$base" ]]; then
+      paths+=("$path")
+    fi
+  done < <(find . -depth -mindepth 1 \( -type f -o -type d \) -print0)
 
   total=${#paths[@]}
   if [[ "$total" -eq 0 ]]; then
-    log_warn "No files or folders end with a trailing space."
+    log_warn "No file or folder names need sanitizing."
     return 0
   fi
 
-  log_info "Found $total file/folder name(s) ending with a trailing space."
+  log_info "Found $total file/folder name(s) that need sanitizing."
   for ((i=0; i<total; i++)); do
     path="${paths[$i]}"
     parent="${path%/*}"
     base="${path##*/}"
-    trimmed="$(trim_trailing_spaces "$base")"
-    target="${parent}/${trimmed}"
+    sanitized="$(sanitize_fs_entry_name "$base")"
+    target="${parent}/${sanitized}"
 
-    if [[ -z "$trimmed" ]]; then
+    if [[ -z "$sanitized" ]]; then
       failed=$((failed + 1))
       log_err "Rename skipped (name would become empty): $path"
       progress=$((progress + 1))
-      progress_draw "Step 7 Rename" "$progress" "$total"
+      progress_draw "Step 7 Sanitize" "$progress" "$total"
       continue
     fi
 
@@ -1481,7 +1524,7 @@ step7_trim_trailing_spaces() {
       failed=$((failed + 1))
       log_err "Rename skipped (target exists): $path -> $target"
       progress=$((progress + 1))
-      progress_draw "Step 7 Rename" "$progress" "$total"
+      progress_draw "Step 7 Sanitize" "$progress" "$total"
       continue
     fi
 
@@ -1493,10 +1536,10 @@ step7_trim_trailing_spaces() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 7 Rename" "$progress" "$total"
+    progress_draw "Step 7 Sanitize" "$progress" "$total"
   done
 
-  log_info "Trailing-space trim summary:"
+  log_info "Name sanitization summary:"
   printf "  - Renamed: %d\n" "$renamed"
   printf "  - Failed:  %d\n" "$failed"
 }
@@ -2237,7 +2280,26 @@ choose_step8_trim_seconds() {
     STEP8_TRIM_SECONDS="10"
     log_warn "Value must be greater than 0. Using default 10 seconds."
   fi
-  log_info "Step 8 trim amount set to ${STEP8_TRIM_SECONDS}s."
+  log_info "Step 9 trim-start amount set to ${STEP8_TRIM_SECONDS}s."
+}
+
+choose_step9_trim_end_seconds() {
+  local seconds
+  print_divider
+  read -r -p "Trim how many seconds from end of each video? [10] " seconds
+  seconds="${seconds:-10}"
+  while ! is_number "$seconds"; do
+    log_warn "Please enter a valid number of seconds (example: 10 or 3.5)."
+    read -r -p "Trim how many seconds from end of each video? [10] " seconds
+    seconds="${seconds:-10}"
+  done
+  if awk -v s="$seconds" 'BEGIN { exit !(s > 0) }'; then
+    STEP9_TRIM_END_SECONDS="$seconds"
+  else
+    STEP9_TRIM_END_SECONDS="10"
+    log_warn "Value must be greater than 0. Using default 10 seconds."
+  fi
+  log_info "Step 10 trim-end amount set to ${STEP9_TRIM_END_SECONDS}s."
 }
 
 step8_trim_video_lead() {
@@ -2267,7 +2329,7 @@ step8_trim_video_lead() {
     if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP8_TRIM_SECONDS" 'BEGIN { exit !(d <= s) }'; then
       skipped_short=$((skipped_short + 1))
       progress=$((progress + 1))
-      progress_draw "Step 8 Trim" "$progress" "$total"
+      progress_draw "Step 9 Trim Start" "$progress" "$total"
       continue
     fi
 
@@ -2282,7 +2344,7 @@ step8_trim_video_lead() {
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
-      progress_draw "Step 8 Trim" "$progress" "$total"
+      progress_draw "Step 9 Trim Start" "$progress" "$total"
       continue
     fi
 
@@ -2299,11 +2361,80 @@ step8_trim_video_lead() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 8 Trim" "$progress" "$total"
+      progress_draw "Step 9 Trim Start" "$progress" "$total"
   done
 
-  log_info "Step 8 trim summary:"
+  log_info "Step 9 trim-start summary:"
   printf "  - Trim seconds:        %ss\n" "$STEP8_TRIM_SECONDS"
+  printf "  - Files trimmed:       %d\n" "$trimmed"
+  printf "  - Approximate trims:   %d\n" "$approximate"
+  printf "  - Skipped (too short): %d\n" "$skipped_short"
+  printf "  - Failed:              %d\n" "$failed"
+}
+
+step9_trim_video_tail() {
+  local files=()
+  local file duration keep_duration ext base tmp
+  local i total progress=0
+  local trimmed=0 approximate=0 skipped_short=0 failed=0
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(
+    find . -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.m4v" -o -iname "*.mkv" -o -iname "*.webm" \
+                      -o -iname "*.avi" -o -iname "*.wmv" -o -iname "*.flv" -o -iname "*.mpg" -o -iname "*.mpeg" \
+                      -o -iname "*.3gp" -o -iname "*.m2ts" -o -iname "*.vob" -o -iname "*.ogv" -o -iname "*.gifv" \) -print0
+  )
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No video files found to trim."
+    return 0
+  fi
+
+  log_info "Trimming last ${STEP9_TRIM_END_SECONDS}s from $total video file(s)."
+  for ((i=0; i<total; i++)); do
+    file="${files[$i]}"
+    duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$file" 2>/dev/null | head -n 1)"
+    if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP9_TRIM_END_SECONDS" 'BEGIN { exit !(d <= s) }'; then
+      skipped_short=$((skipped_short + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 10 Trim End" "$progress" "$total"
+      continue
+    fi
+    keep_duration="$(awk -v d="$duration" -v s="$STEP9_TRIM_END_SECONDS" 'BEGIN { printf "%.6f", (d - s) }')"
+
+    ext="$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')"
+    base="${file%.*}"
+    tmp="${base}.trimend-tmp.$$.$ext"
+    rm -f "$tmp"
+
+    if ffmpeg -hide_banner -loglevel error -y -i "$file" -t "$keep_duration" -map 0 -map_metadata 0 -c:v libx264 -crf 20 -preset medium -c:a aac -c:s copy -c:d copy -c:t copy "$tmp" && [[ -s "$tmp" ]]; then
+      mv -f "$tmp" "$file"
+      trimmed=$((trimmed + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 10 Trim End" "$progress" "$total"
+      continue
+    fi
+
+    rm -f "$tmp" 2>/dev/null || true
+    if ffmpeg -hide_banner -loglevel error -y -i "$file" -t "$keep_duration" -map 0 -c copy -avoid_negative_ts make_zero "$tmp" && [[ -s "$tmp" ]]; then
+      mv -f "$tmp" "$file"
+      trimmed=$((trimmed + 1))
+      approximate=$((approximate + 1))
+      log_warn "Trim used keyframe-aligned fallback and may end later than requested: $file"
+    else
+      rm -f "$tmp" 2>/dev/null || true
+      failed=$((failed + 1))
+      log_err "Trim failed: $file"
+    fi
+
+    progress=$((progress + 1))
+    progress_draw "Step 10 Trim End" "$progress" "$total"
+  done
+
+  log_info "Step 10 trim-end summary:"
+  printf "  - Trim seconds:        %ss\n" "$STEP9_TRIM_END_SECONDS"
   printf "  - Files trimmed:       %d\n" "$trimmed"
   printf "  - Approximate trims:   %d\n" "$approximate"
   printf "  - Skipped (too short): %d\n" "$skipped_short"
@@ -2411,7 +2542,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 10 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 11 ]]; then
       log_warn "Skipping out-of-range step: $num"
     fi
   done
@@ -2441,6 +2572,7 @@ main() {
       4) choose_resize_height ;;
       8) choose_step3_upscale_options ;;
       9) choose_step8_trim_seconds ;;
+      10) choose_step9_trim_end_seconds ;;
     esac
   done
 
