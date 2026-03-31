@@ -2725,6 +2725,15 @@
       filter: var(--thumb-filter, none);
     }
 
+    .thumbFallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      color: rgba(255, 255, 255, 0.82);
+      background: rgba(0, 0, 0, 0.45);
+    }
+
     .metaBlock {
       padding: var(--file-meta-padding);
       font-size: var(--file-meta-font);

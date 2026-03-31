@@ -383,6 +383,7 @@
         tagFolderTitleColorPair: TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT,
         showFolderItemCount: true,
         showFolderSize: true,
+        loadingScreens: false,
         forceTitleCaps: false,
         hideFileExtensionsInFileNames: false,
         hideUnderscoresInFileNames: false,
@@ -507,6 +508,7 @@
         tagFolderTitleColorPair: normalizeTagFolderTitleColorPairValue(src.tagFolderTitleColorPair, d.tagFolderTitleColorPair),
         showFolderItemCount: (typeof src.showFolderItemCount === "boolean") ? src.showFolderItemCount : d.showFolderItemCount,
         showFolderSize: (typeof src.showFolderSize === "boolean") ? src.showFolderSize : d.showFolderSize,
+        loadingScreens: (typeof src.loadingScreens === "boolean") ? src.loadingScreens : d.loadingScreens,
         forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
         hideFileExtensionsInFileNames: (typeof src.hideFileExtensionsInFileNames === "boolean") ? src.hideFileExtensionsInFileNames : d.hideFileExtensionsInFileNames,
         hideUnderscoresInFileNames: (typeof src.hideUnderscoresInFileNames === "boolean") ? src.hideUnderscoresInFileNames : d.hideUnderscoresInFileNames,
@@ -6456,12 +6458,6 @@
 
       const dirSortModes = dirSortModeOptions();
 
-      const preloadModes = [
-        { value: "off", label: "Off" },
-        { value: "on", label: "On" },
-        { value: "ultra", label: "Ultra" }
-      ];
-
       const slideshowModes = [
         { value: "cycle", label: "Cycle speeds" },
         { value: "1", label: "Toggle 1s" },
@@ -6642,6 +6638,7 @@ ${makeSelectRow("Interaction mode", "Choose between a full-width grid and a dire
 ${makeSelectRow("Color scheme", "Pick a UI color family. Light Mode switches the matching light variant when one exists.", "opt_colorScheme", normalizeColorSchemeValue(opt.colorScheme, "superdark"), colorSchemeModes)}
 ${makeCheckRow("Light Mode", "Use the light variant of the selected color scheme. OLED Dark ignores this toggle.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Retro Mode", "Enable the existing retro UI treatment toggle.", "opt_retroMode", !!opt.retroMode)}
+${makeCheckRow("Loading Screens", "When enabled, directory movement waits for thumbnail prep and shows loading screens. When disabled, movement renders immediately and uses placeholders until media is ready.", "opt_loadingScreens", !!opt.loadingScreens)}
 ${makeSelectRow("Folder sort", "Sort folders by name, score, recursive size, recursive count, or non-recursive count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes)}
 ${makeSelectRow("Tag folder colors", "Choose the existing title-color set for tag, favorite, and album folder labels.", "opt_tagFolderTitleColorPair", normalizeTagFolderTitleColorPairValue(opt.tagFolderTitleColorPair, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT), tagFolderTitleColorModes)}
 ${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
@@ -6710,7 +6707,6 @@ ${makeActionRow("Rebuild Thumbnail Cache", "Queue thumbnail regeneration for cur
         playback: {
           title: "Playback",
           rows: `
-${makeSelectRow("Preload next item", "Preload the next item for smoother browsing.", "opt_preloadNextMode", String(opt.preloadNextMode || "off"), preloadModes)}
 ${makeSelectRow("Gallery video audio", "Default audio state for videos played in the viewer/gallery.", "opt_videoGallery", String(opt.videoGallery || "unmuted"), videoAudioModes)}
 ${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
 ${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
@@ -6857,9 +6853,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         el.addEventListener("keydown", (e) => e.stopPropagation());
       };
 
-      bindSelect("opt_preloadNextMode", "preloadNextMode", false, (val) => {
-        if (val === "off") PRELOAD_CACHE = new Map();
-      });
       bindSelect("opt_interactionMode", "interactionMode", false, (val) => {
         if (String(val || "") === "grid" && WS.nav.dirNode === WS.root) {
           WS.view.aboveRootView = false;
@@ -6884,6 +6877,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       bindCheck("opt_retroMode", "retroMode", () => {
         applyRetroModeFromOptions();
       });
+      bindCheck("opt_loadingScreens", "loadingScreens");
       bindSelect("opt_tagFolderTitleColorPair", "tagFolderTitleColorPair", false, () => {
         applyTagFolderTitleColorsFromOptions();
       }, (val) => normalizeTagFolderTitleColorPairValue(val, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT));
@@ -10732,7 +10726,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const idx = restoreRefreshSelection(state?.entryKey);
       WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
       syncPreviewToSelection();
-      const ready = await prepareNavigationSnapshot(currentNavigationSnapshot(), "Preparing directory thumbnails...");
+      const ready = await prepareInteractiveNavigationSnapshot(currentNavigationSnapshot());
       if (!ready) return;
       renderDirectoriesPane(true);
       renderPreviewPane(true, true);
@@ -14086,10 +14080,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function applyPreviewRecordToImageElement(imgEl, rec) {
       if (!imgEl || !rec) return false;
       const previewId = String(rec.id || "");
-      const previewSrc = rec.type === "video"
-        ? getVideoPosterForRecord(rec)
-        : (ensureNavigationThumbUrl(rec) || "");
-      if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
+      const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
       if (!previewSrc) return false;
       if (imgEl.src !== previewSrc) imgEl.src = previewSrc;
       imgEl.setAttribute("data-dir-preview-id", previewId);
@@ -15119,7 +15110,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       const shouldBlockForPreview = !isGridInteractionMode();
       if (shouldBlockForPreview) {
-        const ready = await prepareNavigationSnapshot(snapshot, "Preparing selection thumbnails...");
+        const ready = await prepareInteractiveNavigationSnapshot(snapshot);
         if (!ready) return;
       } else {
         scheduleNearbyDirectoryRamWarm(snapshot);
@@ -15162,7 +15153,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const idx = target ? findDirEntryIndexByPath(target) : -1;
       WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
       syncPreviewToSelection();
-      const ready = await prepareNavigationSnapshot({
+      const ready = await prepareInteractiveNavigationSnapshot({
         dirNode: WS.nav.dirNode,
         preview: {
           kind: WS.preview.kind,
@@ -15300,7 +15291,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           rebuildDirectoriesEntries();
           WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
           syncPreviewToSelection();
-          const ready = await prepareNavigationSnapshot({
+          const ready = await prepareInteractiveNavigationSnapshot({
             dirNode: WS.nav.dirNode,
             preview: {
               kind: WS.preview.kind,
@@ -15363,7 +15354,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const fileIdx = findFileEntryIndexById(directGalleryFirstId);
         WS.nav.selectedIndex = findNearestSelectableIndex(fileIdx >= 0 ? fileIdx : selectionIndexForDirectoryEnter(), 1);
         syncPreviewToSelection();
-        const ready = await prepareNavigationSnapshot({
+        const ready = await prepareInteractiveNavigationSnapshot({
           dirNode: WS.nav.dirNode,
           preview: {
             kind: WS.preview.kind,
@@ -15396,7 +15387,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
-        const ready = await prepareNavigationSnapshot({
+        const ready = await prepareInteractiveNavigationSnapshot({
           dirNode: WS.nav.dirNode,
           preview: {
             kind: WS.preview.kind,
@@ -15424,7 +15415,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
-        const ready = await prepareNavigationSnapshot({
+        const ready = await prepareInteractiveNavigationSnapshot({
           dirNode: WS.nav.dirNode,
           preview: {
             kind: WS.preview.kind,
@@ -15452,7 +15443,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
-        const ready = await prepareNavigationSnapshot({
+        const ready = await prepareInteractiveNavigationSnapshot({
           dirNode: WS.nav.dirNode,
           preview: {
             kind: WS.preview.kind,
@@ -15479,7 +15470,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
       syncPreviewToSelection();
-      const ready = await prepareNavigationSnapshot({
+      const ready = await prepareInteractiveNavigationSnapshot({
         dirNode: WS.nav.dirNode,
         preview: {
           kind: WS.preview.kind,
@@ -15525,7 +15516,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           rebuildDirectoriesEntries();
           WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
           syncPreviewToSelection();
-          const ready = await prepareNavigationSnapshot({
+          const ready = await prepareInteractiveNavigationSnapshot({
             dirNode: WS.nav.dirNode,
             preview: {
               kind: WS.preview.kind,
@@ -15550,7 +15541,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           rebuildDirectoriesEntries();
           WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
           syncPreviewToSelection();
-          const ready = await prepareNavigationSnapshot({
+          const ready = await prepareInteractiveNavigationSnapshot({
             dirNode: WS.nav.dirNode,
             preview: {
               kind: WS.preview.kind,
@@ -15574,7 +15565,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
         syncPreviewToSelection();
-        const ready = await prepareNavigationSnapshot({
+        const ready = await prepareInteractiveNavigationSnapshot({
           dirNode: WS.nav.dirNode,
           preview: {
             kind: WS.preview.kind,
@@ -15610,7 +15601,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
       WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
       syncPreviewToSelection();
-      const ready = await prepareNavigationSnapshot({
+      const ready = await prepareInteractiveNavigationSnapshot({
         dirNode: WS.nav.dirNode,
         preview: {
           kind: WS.preview.kind,
@@ -16191,6 +16182,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return { kind: null, dirNode: null, fileId: null };
     }
 
+    function loadingScreensEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.loadingScreens);
+    }
+
+    function sessionThumbLoadingDisabled() {
+      return !loadingScreensEnabled();
+    }
+
     function applyPreviewState(state) {
       const next = state && typeof state === "object" ? state : {};
       WS.preview.kind = next.kind || null;
@@ -16526,6 +16526,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function scheduleNearbyDirectoryRamWarm(snapshot, delayMs = 0) {
+      if (sessionThumbLoadingDisabled()) return;
       const token = ++HOT_NAV_CACHE_TOKEN;
       if (HOT_NAV_CACHE_TIMER) {
         try { clearTimeout(HOT_NAV_CACHE_TIMER); } catch {}
@@ -16560,6 +16561,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       await runWithConcurrency(records, navigationThumbWorkerLimit("blocking"), ensureNavigationThumbReady);
     }
 
+    async function prepareInteractiveNavigationSnapshot(snapshot) {
+      if (!sessionThumbLoadingDisabled()) {
+        return prepareNavigationSnapshot(snapshot, "Preparing directory thumbnails...");
+      }
+      return true;
+    }
+
     async function prepareNavigationSnapshot(snapshot, label = "Preparing thumbnails...") {
       const pending = navigationSnapshotPendingRecords(snapshot);
       if (!pending.length) {
@@ -16589,6 +16597,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function scheduleWorkspaceNavigationWarm(rootNode = null, delayMs = 1200) {
+      if (sessionThumbLoadingDisabled()) return;
       const startNode = rootNode || WS.root;
       if (!startNode) return;
       const token = ++WORKSPACE_NAV_WARM_TOKEN;
@@ -17499,7 +17508,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const idx = findEntryIndexByKey(String(entry.selectedKey || ""));
       WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
       syncPreviewToSelection();
-      const ready = await prepareNavigationSnapshot({
+      const ready = await prepareInteractiveNavigationSnapshot({
         dirNode: WS.nav.dirNode,
         preview: {
           kind: WS.preview.kind,
@@ -20544,10 +20553,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           if (tagThumbMode !== "none") {
             if (presetRec) {
               const previewId = String(presetRec.id || "");
-              if (presetRec.type === "video" && !presetRec.videoThumbUrl) enqueueVideoThumb(presetRec);
-              const previewSrc = presetRec.type === "video"
-                ? getVideoPosterForRecord(presetRec)
-                : (ensureNavigationThumbUrl(presetRec) || "");
+              const previewSrc = getPassivePreviewSrcForRecord(presetRec, { allowImageMediaFallback: true });
               const previewAspect = getPreviewAspectForRecord(presetRec);
               if (previewSrc) {
                 const cropStyle = fileThumbCropLayoutStyle(presetRec, "");
@@ -20559,10 +20565,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               const rec = pickRotatingPreviewRecordForKey(singleKey, tagPool);
               if (rec) {
                 const previewId = String(rec.id || "");
-                if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
-                const previewSrc = rec.type === "video"
-                  ? getVideoPosterForRecord(rec)
-                  : (ensureNavigationThumbUrl(rec) || "");
+                const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
                 const previewAspect = getPreviewAspectForRecord(rec);
                 if (previewSrc) {
                   squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -20574,10 +20577,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                 const rec = pickRotatingPreviewRecordForKey(singleKey, tagPool);
                 if (rec) {
                   const previewId = String(rec.id || "");
-                  if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
-                  const previewSrc = rec.type === "video"
-                    ? getVideoPosterForRecord(rec)
-                    : (ensureNavigationThumbUrl(rec) || "");
+                  const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
                   const previewAspect = getPreviewAspectForRecord(rec);
                   if (previewSrc) {
                     squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -20595,10 +20595,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                       continue;
                     }
                     const previewId = String(rec.id || "");
-                    if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
-                    const previewSrc = rec.type === "video"
-                      ? getVideoPosterForRecord(rec)
-                      : (ensureNavigationThumbUrl(rec) || "");
+                    const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
                     const previewAspect = getPreviewAspectForRecord(rec);
                     if (!previewSrc) {
                       quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`);
@@ -20713,11 +20710,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             const rotateKey = leadInfo.rotateKey;
             if (firstRec) {
               const previewId = String(firstRec.id || "");
-              const previewSrc = (firstRec.type === "video")
-                ? getVideoPosterForRecord(firstRec)
-                : (ensureNavigationThumbUrl(firstRec) || "");
+              const previewSrc = getPassivePreviewSrcForRecord(firstRec, { allowImageMediaFallback: true });
               const previewAspect = getPreviewAspectForRecord(firstRec);
-              if (firstRec.type === "video" && !firstRec.videoThumbUrl) enqueueVideoThumb(firstRec);
               if (previewSrc) {
                 const rotateAttr = rotateKey ? ` data-rotate-key="${escapeHtml(rotateKey)}"` : "";
                 const cropStyle = fileThumbCropLayoutStyle(firstRec, rotateKey);
@@ -20822,10 +20816,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                   if (rootPresetRec) {
                     squareAspectRec = rootPresetRec;
                     const previewId = String(rootPresetRec.id || "");
-                    if (rootPresetRec.type === "video" && !rootPresetRec.videoThumbUrl) enqueueVideoThumb(rootPresetRec);
-                    const previewSrc = rootPresetRec.type === "video"
-                      ? getVideoPosterForRecord(rootPresetRec)
-                      : (ensureNavigationThumbUrl(rootPresetRec) || "");
+                    const previewSrc = getPassivePreviewSrcForRecord(rootPresetRec, { allowImageMediaFallback: true });
                     const previewAspect = getPreviewAspectForRecord(rootPresetRec);
                     if (previewSrc) {
                       const cropStyle = fileThumbCropLayoutStyle(rootPresetRec, "");
@@ -20838,10 +20829,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                     if (rec) {
                       squareAspectRec = rec;
                       const previewId = String(rec.id || "");
-                      if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
-                      const previewSrc = rec.type === "video"
-                        ? getVideoPosterForRecord(rec)
-                        : (ensureNavigationThumbUrl(rec) || "");
+                      const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
                       const previewAspect = getPreviewAspectForRecord(rec);
                       if (previewSrc) {
                         rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -20854,10 +20842,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                       if (rec) {
                         squareAspectRec = rec;
                         const previewId = String(rec.id || "");
-                        if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
-                        const previewSrc = rec.type === "video"
-                          ? getVideoPosterForRecord(rec)
-                          : (ensureNavigationThumbUrl(rec) || "");
+                        const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
                         const previewAspect = getPreviewAspectForRecord(rec);
                         if (previewSrc) {
                           rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -20876,10 +20861,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                             continue;
                           }
                           const previewId = String(slotRec.id || "");
-                          if (slotRec.type === "video" && !slotRec.videoThumbUrl) enqueueVideoThumb(slotRec);
-                          const previewSrc = slotRec.type === "video"
-                            ? getVideoPosterForRecord(slotRec)
-                            : (ensureNavigationThumbUrl(slotRec) || "");
+                          const previewSrc = getPassivePreviewSrcForRecord(slotRec, { allowImageMediaFallback: true });
                           const previewAspect = getPreviewAspectForRecord(slotRec);
                           if (!previewSrc) {
                             quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">📁</div></div>`);
@@ -20968,11 +20950,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               let inlinePreviewHtml = "";
               if (rec) {
                 const previewId = String(rec.id || "");
-                const previewSrc = isVid
-                  ? getVideoPosterForRecord(rec)
-                  : (ensureNavigationThumbUrl(rec) || "");
+                const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
                 const previewAspect = getPreviewAspectForRecord(rec);
-                if (isVid && !rec.videoThumbUrl) enqueueVideoThumb(rec);
                 if (previewSrc) {
                   const cropStyle = fileThumbCropLayoutStyle(rec, "");
                   const cropClass = cropStyle ? " thumbCropApplied thumbCropAbsolute" : "";
@@ -22081,7 +22060,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             rec.thumbUrl = null;
           }
           rec.thumbMode = null;
-          enqueueImageThumb(rec);
           return allowMediaFallback ? (ensureMediaUrl(rec) || null) : null;
         }
         if (rec.thumbUrl && rec.thumbMode === "high") return rec.thumbUrl;
@@ -22100,13 +22078,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rec.thumbUrl = null;
       }
       rec.thumbMode = null;
-
-      enqueueImageThumb(rec);
       return allowMediaFallback ? (ensureMediaUrl(rec) || null) : null;
     }
 
     function ensureNavigationThumbUrl(rec) {
-      return ensureThumbUrl(rec, { allowMediaFallback: false });
+      return ensureThumbUrl(rec, { allowMediaFallback: true });
     }
 
     function ensureMediaUrl(rec) {
@@ -22119,6 +22095,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function getVideoPosterForRecord(rec) {
       if (rec && rec.videoThumbUrl) return rec.videoThumbUrl;
       return BLACK_POSTER_URL;
+    }
+
+    function getPassivePreviewSrcForRecord(rec, opts = null) {
+      if (!rec) return "";
+      const options = (opts && typeof opts === "object") ? opts : null;
+      const allowImageMediaFallback = !(options && options.allowImageMediaFallback === false);
+      if (rec.type === "video") return String(rec.videoThumbUrl || "");
+      return String(ensureThumbUrl(rec, { allowMediaFallback: allowImageMediaFallback }) || "");
     }
 
     function applyDirectoryInlineAspect(imgEl, aspectValue) {
@@ -22147,9 +22131,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!rec || !directoriesEl) return;
       const recId = String(rec.id || "");
       if (!recId) return;
-      const src = rec.type === "video"
-        ? getVideoPosterForRecord(rec)
-        : (ensureNavigationThumbUrl(rec) || "");
+      const src = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
       if (!src) return;
       const aspect = normalizePreviewAspect(getPreviewAspectForRecord(rec), 4 / 3);
       const imgs = directoriesEl.querySelectorAll(".dirInlinePreview[data-dir-preview-id]");
@@ -22851,10 +22833,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (tagThumbMode !== "none") {
         if (presetRec) {
           const previewId = String(presetRec.id || "");
-          if (presetRec.type === "video" && !presetRec.videoThumbUrl) enqueueVideoThumb(presetRec);
-          const previewSrc = presetRec.type === "video"
-            ? getVideoPosterForRecord(presetRec)
-            : (ensureNavigationThumbUrl(presetRec) || "");
+          const previewSrc = getPassivePreviewSrcForRecord(presetRec, { allowImageMediaFallback: true });
           const previewAspect = getPreviewAspectForRecord(presetRec);
           if (previewSrc) {
             const cropStyle = fileThumbCropLayoutStyle(presetRec, "");
@@ -22866,10 +22845,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const rec = pickRotatingPreviewRecordForKey(singleKey, tagPool);
           if (rec) {
             const previewId = String(rec.id || "");
-            if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
-            const previewSrc = rec.type === "video"
-              ? getVideoPosterForRecord(rec)
-              : (ensureNavigationThumbUrl(rec) || "");
+            const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
             const previewAspect = getPreviewAspectForRecord(rec);
             if (previewSrc) {
               squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -22881,10 +22857,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             const rec = pickRotatingPreviewRecordForKey(singleKey, tagPool);
             if (rec) {
               const previewId = String(rec.id || "");
-              if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
-              const previewSrc = rec.type === "video"
-                ? getVideoPosterForRecord(rec)
-                : (ensureNavigationThumbUrl(rec) || "");
+              const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
               const previewAspect = getPreviewAspectForRecord(rec);
               if (previewSrc) {
                 squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
@@ -22897,18 +22870,15 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               for (let i = 0; i < quadSlots.length; i++) {
                 const slot = quadSlots[i];
                 const rec = slot && slot.rec ? slot.rec : null;
-                if (!rec) {
-                  quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`);
-                  continue;
-                }
-                const previewId = String(rec.id || "");
-                if (rec.type === "video" && !rec.videoThumbUrl) enqueueVideoThumb(rec);
-                const previewSrc = rec.type === "video"
-                  ? getVideoPosterForRecord(rec)
-                  : (ensureNavigationThumbUrl(rec) || "");
-                const previewAspect = getPreviewAspectForRecord(rec);
-                if (!previewSrc) {
-                  quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`);
+              if (!rec) {
+                quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`);
+                continue;
+              }
+              const previewId = String(rec.id || "");
+              const previewSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
+              const previewAspect = getPreviewAspectForRecord(rec);
+              if (!previewSrc) {
+                quadHtml.push(`<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`);
                   continue;
                 }
                 quadHtml.push(
@@ -23186,40 +23156,43 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
         if (thumbAspectMode) card.classList.add("previewNaturalCard");
         if (leadRec) {
-          const thumb = document.createElement("img");
-          thumb.className = "folderThumb";
-          thumb.loading = "lazy";
-          thumb.draggable = false;
-          thumb.alt = nm;
-          thumb.style.objectFit = thumbAspectMode ? "cover" : (thumbContainMode ? "contain" : "cover");
-          if (leadRec.type === "video") {
-            thumb.src = getVideoPosterForRecord(leadRec);
-            if (!leadRec.videoThumbUrl) enqueueVideoThumb(leadRec);
-          } else {
-            thumb.src = ensureNavigationThumbUrl(leadRec) || "";
-          }
-          if (thumbContainMode) {
-            thumb.addEventListener("load", () => {
-              const w = Number(thumb.naturalWidth) || 0;
-              const h = Number(thumb.naturalHeight) || 0;
-              if (w > 0 && h > 0) {
-                const aspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(leadRec));
-                leadRec.previewAspect = aspect;
-                card.dataset.aspect = String(aspect);
-                const grid = card.parentElement;
-                if (grid && grid.classList.contains("fitInsideJustified")) {
-                  requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
+          const previewSrc = getPassivePreviewSrcForRecord(leadRec, { allowImageMediaFallback: true });
+          if (previewSrc) {
+            const thumb = document.createElement("img");
+            thumb.className = "folderThumb";
+            thumb.loading = "lazy";
+            thumb.draggable = false;
+            thumb.alt = nm;
+            thumb.style.objectFit = thumbAspectMode ? "cover" : (thumbContainMode ? "contain" : "cover");
+            thumb.src = previewSrc;
+            if (thumbContainMode) {
+              thumb.addEventListener("load", () => {
+                const w = Number(thumb.naturalWidth) || 0;
+                const h = Number(thumb.naturalHeight) || 0;
+                if (w > 0 && h > 0) {
+                  const aspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(leadRec));
+                  leadRec.previewAspect = aspect;
+                  card.dataset.aspect = String(aspect);
+                  const grid = card.parentElement;
+                  if (grid && grid.classList.contains("fitInsideJustified")) {
+                    requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
+                  }
                 }
-              }
-            });
+              });
+            }
+            if (rotateKey) thumb.setAttribute("data-rotate-key", rotateKey);
+            const cropStyle = fileThumbCropLayoutStyle(leadRec, rotateKey);
+            if (cropStyle) {
+              thumb.classList.add("thumbCropApplied", "thumbCropAbsolute");
+              thumb.style.cssText += cropStyle;
+            }
+            card.appendChild(thumb);
+          } else {
+            const fallback = document.createElement("div");
+            fallback.className = "folderThumb folderThumbFallback";
+            fallback.textContent = leadRec.type === "video" ? "🎞" : icon;
+            card.appendChild(fallback);
           }
-          if (rotateKey) thumb.setAttribute("data-rotate-key", rotateKey);
-          const cropStyle = fileThumbCropLayoutStyle(leadRec, rotateKey);
-          if (cropStyle) {
-            thumb.classList.add("thumbCropApplied", "thumbCropAbsolute");
-            thumb.style.cssText += cropStyle;
-          }
-          card.appendChild(thumb);
         } else {
           const fallback = document.createElement("div");
           fallback.className = "folderThumb folderThumbFallback";
@@ -24135,39 +24108,42 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       card.style.cursor = "pointer";
       if (animate) card.classList.add("enter");
 
-      const img = document.createElement("img");
-      img.className = "thumb";
-      img.loading = "lazy";
-      img.draggable = false;
-      img.alt = fileDisplayNameForRecord(rec) || "";
-
-      if (rec.type === "image") {
-        img.src = ensureThumbUrl(rec) || "";
-      } else {
-        img.src = rec.videoThumbUrl || "";
-        if (!img.src) img.style.objectFit = "contain";
-      }
-      if (useFitInsideJustified) {
-        img.addEventListener("load", () => {
-          const w = Number(img.naturalWidth) || 0;
-          const h = Number(img.naturalHeight) || 0;
-          if (w > 0 && h > 0) {
-            const aspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(rec));
-            rec.previewAspect = aspect;
-            card.dataset.aspect = String(aspect);
-            const grid = card.parentElement;
-            if (grid && grid.classList.contains("fitInsideJustified")) {
-              requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
+      const mediaSrc = getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true });
+      let img = null;
+      if (mediaSrc) {
+        img = document.createElement("img");
+        img.className = "thumb";
+        img.loading = "lazy";
+        img.draggable = false;
+        img.alt = fileDisplayNameForRecord(rec) || "";
+        img.src = mediaSrc;
+        if (useFitInsideJustified) {
+          img.addEventListener("load", () => {
+            const w = Number(img.naturalWidth) || 0;
+            const h = Number(img.naturalHeight) || 0;
+            if (w > 0 && h > 0) {
+              const aspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(rec));
+              rec.previewAspect = aspect;
+              card.dataset.aspect = String(aspect);
+              const grid = card.parentElement;
+              if (grid && grid.classList.contains("fitInsideJustified")) {
+                requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
+              }
             }
-          }
-        });
-      }
-      if (!useFitInsideJustified && useSquareMediaCards) {
-        const cropStyle = fileThumbCropLayoutStyle(rec, "");
-        if (cropStyle) {
-          img.classList.add("thumbCropApplied", "thumbCropAbsolute");
-          img.style.cssText += cropStyle;
+          });
         }
+        if (!useFitInsideJustified && useSquareMediaCards) {
+          const cropStyle = fileThumbCropLayoutStyle(rec, "");
+          if (cropStyle) {
+            img.classList.add("thumbCropApplied", "thumbCropAbsolute");
+            img.style.cssText += cropStyle;
+          }
+        }
+      } else {
+        const fallback = document.createElement("div");
+        fallback.className = "thumb thumbFallback";
+        fallback.textContent = rec.type === "video" ? "🎞" : "🖼";
+        card.appendChild(fallback);
       }
 
       const showNameMeta = false;
@@ -24237,7 +24213,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       }
 
-      card.appendChild(img);
+      if (img) card.appendChild(img);
       if (meta) card.appendChild(meta);
 
       if (fileId) card.dataset.fileId = fileId;
@@ -24351,6 +24327,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function enqueueVideoThumb(rec, opts = null) {
       if (!rec || rec.type !== "video") return false;
+      if (sessionThumbLoadingDisabled() && !WS.videoThumbPrewarmBlocking && !(opts && opts.force)) return false;
       const id = String(rec.id || "");
       if (!id) return false;
       const mode = currentVideoThumbMode();
@@ -24400,6 +24377,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function kickVideoThumbsForPreview() {
+      if (sessionThumbLoadingDisabled()) return;
       const dirNode = getPreviewTargetDir();
       if (!dirNode) return;
 
@@ -24735,6 +24713,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function enqueueImageThumb(rec) {
       if (!rec) return;
       if (rec.type !== "image") return;
+      if (sessionThumbLoadingDisabled()) return;
       const id = String(rec.id || "");
       if (!id) return;
       const mode = currentImageThumbMode();
@@ -24813,6 +24792,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function kickImageThumbsForPreview() {
+      if (sessionThumbLoadingDisabled()) return;
       const dirNode = getPreviewTargetDir();
       if (!dirNode) return;
 
