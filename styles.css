@@ -2057,6 +2057,52 @@
       gap: var(--preview-gutter);
     }
 
+    .gridFolders .previewTagSpacerRow {
+      flex: 0 0 100%;
+      grid-column: 1 / -1;
+      width: 100%;
+      height: calc((var(--folder-grid-min) * var(--thumb-scale-folder)) + var(--preview-gutter));
+      margin: 0;
+      padding: 0;
+      border: 0;
+      visibility: hidden;
+    }
+
+    .previewTagFolderCard {
+      display: block;
+      padding: 0;
+      gap: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      overflow: visible;
+    }
+
+    .previewTagFolderCard .dirSquareCard {
+      box-shadow: 0 10px 30px var(--color1-primary-transparent);
+    }
+
+    .gridFolders .previewTagFolderCard.selected .dirSquareCard {
+      border-color: var(--ui-selection-outline);
+      box-shadow:
+        0 10px 30px var(--color1-primary-transparent),
+        0 0 0 1px var(--ui-selection-outline);
+    }
+
+    .gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard {
+      border-color: var(--anchor-internal-color2-primary);
+      box-shadow:
+        0 10px 30px var(--color1-primary-transparent),
+        0 0 0 2px var(--ui-selection-outline-soft);
+    }
+
+    .gridFolders .previewTagFolderCard.selected.bulkSelected .dirSquareCard {
+      box-shadow:
+        0 10px 30px var(--color1-primary-transparent),
+        0 0 0 1px var(--ui-selection-outline),
+        0 0 0 3px var(--ui-selection-outline-soft);
+    }
+
     .gridFiles {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(calc(var(--file-grid-min) * var(--thumb-scale-media)), 1fr));
