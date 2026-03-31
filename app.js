@@ -388,8 +388,6 @@
         tagFolderTitleColorPair: TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT,
         showFolderItemCount: true,
         showFolderSize: true,
-        showPreviewFileTypeLabel: false,
-        showPreviewFolderItemCount: true,
         forceTitleCaps: false,
         hideFileExtensionsInFileNames: false,
         hideUnderscoresInFileNames: false,
@@ -514,8 +512,6 @@
         tagFolderTitleColorPair: normalizeTagFolderTitleColorPairValue(src.tagFolderTitleColorPair, d.tagFolderTitleColorPair),
         showFolderItemCount: (typeof src.showFolderItemCount === "boolean") ? src.showFolderItemCount : d.showFolderItemCount,
         showFolderSize: (typeof src.showFolderSize === "boolean") ? src.showFolderSize : d.showFolderSize,
-        showPreviewFileTypeLabel: (typeof src.showPreviewFileTypeLabel === "boolean") ? src.showPreviewFileTypeLabel : d.showPreviewFileTypeLabel,
-        showPreviewFolderItemCount: (typeof src.showPreviewFolderItemCount === "boolean") ? src.showPreviewFolderItemCount : d.showPreviewFolderItemCount,
         forceTitleCaps: (typeof src.forceTitleCaps === "boolean") ? src.forceTitleCaps : d.forceTitleCaps,
         hideFileExtensionsInFileNames: (typeof src.hideFileExtensionsInFileNames === "boolean") ? src.hideFileExtensionsInFileNames : d.hideFileExtensionsInFileNames,
         hideUnderscoresInFileNames: (typeof src.hideUnderscoresInFileNames === "boolean") ? src.hideUnderscoresInFileNames : d.hideUnderscoresInFileNames,
@@ -5283,6 +5279,8 @@
     let MENU_LAST_TAB = "general";
     let MENU_HAS_OPENED = false;
     const MENU_TAB_SCROLL = { general: 0, appearance: 0, playback: 0, thumbnails: 0, filenames: 0, controls: 0, calendar: 0 };
+    const CALENDAR_SUBTAB_IDS = ["efficiency", "portions", "scores", "history"];
+    let CALENDAR_ACTIVE_SUBTAB = "efficiency";
     let KEYBIND_CAPTURE_ACTION_ID = "";
     let PROPERTIES_OPEN = false;
 
@@ -5872,7 +5870,7 @@
       `;
     }
 
-    function buildCalendarEfficiencyListHtml(rows, emptyLabel) {
+    function buildStatsRankingListHtml(rows, emptyLabel, metaTextForRow) {
       if (!rows.length) {
         return `<div class="calendarRankingsEmpty">${escapeHtml(emptyLabel)}</div>`;
       }
@@ -5881,23 +5879,31 @@
           <div class="calendarRankingPosition">${escapeHtml(String(idx + 1))}</div>
           <div class="calendarRankingMain">
             <div class="calendarRankingName" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</div>
-            <div class="calendarRankingMeta">Score ${escapeHtml(String(row.score))} / Size ${escapeHtml(formatMegabytes(row.sizeBytes))} = ${escapeHtml((Number(row.efficiency) || 0).toFixed(2))}</div>
+            <div class="calendarRankingMeta">${escapeHtml(typeof metaTextForRow === "function" ? metaTextForRow(row, idx) : "")}</div>
           </div>
         </div>
       `).join("");
     }
 
+    function buildCalendarEfficiencyListHtml(rows, emptyLabel) {
+      return buildStatsRankingListHtml(
+        rows,
+        emptyLabel,
+        (row) => `Efficiency ${(Number(row.efficiency) || 0).toFixed(2)} • Score ${String(row.score)} • Size ${formatMegabytes(row.sizeBytes)}`
+      );
+    }
+
     function buildRootEfficiencySummaryHtml(rootRows) {
       if (!rootRows.length) {
         return `
-          <section class="calendarRankingsCard">
-            <h2>Root score efficiency</h2>
+          <section class="calendarRankingsCard statsWidgetCard">
+            <h2>Efficiency ranking</h2>
             <div class="calendarRankingsEmpty">No root folders available.</div>
           </section>
         `;
       }
 
-      const desc = rootRows.slice().sort((a, b) => {
+      const ranked = rootRows.slice().sort((a, b) => {
         const efficiencyDiff = (Number(b.efficiency) || 0) - (Number(a.efficiency) || 0);
         if (efficiencyDiff) return efficiencyDiff;
         const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
@@ -5906,28 +5912,44 @@
         if (sizeDiff) return sizeDiff;
         return String(a.name || "").localeCompare(String(b.name || ""));
       });
-      const asc = desc.slice().reverse();
-      const best = desc.slice(0, 3);
-      const bestPaths = new Set(best.map((row) => String(row.path || "")));
-      const worstLimit = Math.min(3, Math.max(0, rootRows.length - best.length));
-      const worst = asc.filter((row) => !bestPaths.has(String(row.path || ""))).slice(0, worstLimit);
 
       return `
-        <section class="calendarRankingsCard">
-          <h2>Root score efficiency</h2>
-          <div class="label">Higher score and lower recursive size rank better. Recursive size includes hidden subfolders and files.</div>
-          <div class="calendarRankingsGrid">
-            <div class="calendarRankingSection">
-              <h3>Top 3</h3>
-              ${buildCalendarEfficiencyListHtml(best, "No folders to rank.")}
-            </div>
-            <div class="calendarRankingSection">
-              <h3>Bottom 3</h3>
-              ${buildCalendarEfficiencyListHtml(worst, "Not enough folders for a separate bottom list.")}
-            </div>
-          </div>
+        <section class="calendarRankingsCard statsWidgetCard">
+          <h2>Efficiency ranking</h2>
+          ${buildCalendarEfficiencyListHtml(ranked, "No folders to rank.")}
         </section>
       `;
+    }
+
+    function buildRootScoreRankingHtml(rootRows) {
+      return `
+        <section class="calendarAnalyticsCard statsWidgetCard">
+          <h2>Score rankings</h2>
+          ${buildRootScoreBarsHtml(rootRows)}
+        </section>
+      `;
+    }
+
+    function buildCalendarStatsSubTabsHtml(activeSubtab) {
+      const tabs = [
+        { id: "efficiency", label: "Efficiency ranking" },
+        { id: "portions", label: "Score portions" },
+        { id: "scores", label: "Score rankings" },
+        { id: "history", label: "Score history" }
+      ];
+      return tabs.map((tab) => {
+        const active = tab.id === activeSubtab;
+        return `
+          <button
+            type="button"
+            class="miniBtn menuTabBtn statsSubTabBtn${active ? " active" : ""}"
+            data-stats-subtab="${escapeHtml(tab.id)}"
+            role="tab"
+            aria-selected="${active ? "true" : "false"}"
+            tabindex="${active ? "0" : "-1"}"
+          >${escapeHtml(tab.label)}</button>
+        `;
+      }).join("");
     }
 
     function scoreHistoryRootPathFromChangedPath(path) {
@@ -6058,29 +6080,41 @@
           `;
         }).join("")
         : `<div class="scoreHistoryEmpty">No score changes logged yet.</div>`;
+      const activeSubtab = CALENDAR_SUBTAB_IDS.includes(CALENDAR_ACTIVE_SUBTAB) ? CALENDAR_ACTIVE_SUBTAB : "efficiency";
+      CALENDAR_ACTIVE_SUBTAB = activeSubtab;
+
+      let widgetHtml = "";
+      if (activeSubtab === "efficiency") {
+        widgetHtml = buildRootEfficiencySummaryHtml(rootRows);
+      } else if (activeSubtab === "portions") {
+        widgetHtml = `
+          <section class="calendarAnalyticsCard statsWidgetCard statsPortionsCard">
+            <h2>Score portions</h2>
+            <div class="label">Positive root folders: ${escapeHtml(String(positiveCount))}. Root score sum: ${escapeHtml(String(totalScore))}.</div>
+            ${buildRootPositivePieHtml(rootRows)}
+          </section>
+        `;
+      } else if (activeSubtab === "scores") {
+        widgetHtml = buildRootScoreRankingHtml(rootRows);
+      } else {
+        widgetHtml = `
+          <section class="statsWidgetCard statsHistoryCard">
+            <h2>Score history</h2>
+            ${historyHtml}
+          </section>
+        `;
+      }
 
       calendarBodyEl.innerHTML = `
         <div class="calendarPanelIntro">
-          <h1>Score Calendar</h1>
-          <div class="label">Track visible score changes by date, inspect root-folder score distribution, and compare score efficiency.</div>
+          <h1>Stats</h1>
         </div>
-        ${buildRootEfficiencySummaryHtml(rootRows)}
-        <section class="calendarAnalytics">
-          <div class="calendarAnalyticsCard">
-            <h2>Positive score share (root folders)</h2>
-            <div class="label">Root folders with positive score: ${escapeHtml(String(positiveCount))}. Root score sum: ${escapeHtml(String(totalScore))}.</div>
-            ${buildRootPositivePieHtml(rootRows)}
-          </div>
-          <div class="calendarAnalyticsCard">
-            <h2>Root folder scores</h2>
-            <div class="label">Bars are centered at zero. Positive extends right; negative extends left. Zero-score folders are omitted.</div>
-            ${buildRootScoreBarsHtml(rootRows)}
-          </div>
-        </section>
-        <section class="calendarHistory">
-          <h2>Score change history</h2>
-          ${historyHtml}
-        </section>
+        <div class="statsSubTabs" role="tablist" aria-label="Stats sections">
+          ${buildCalendarStatsSubTabsHtml(activeSubtab)}
+        </div>
+        <div class="statsSubPanel" data-stats-panel="${escapeHtml(activeSubtab)}">
+          ${widgetHtml}
+        </div>
       `;
       if (calendarDeleteAllBtn) calendarDeleteAllBtn.disabled = !history.length;
     }
@@ -6627,8 +6661,6 @@ ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag 
 ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeCheckRow("Show folder item counts", "Show recursive item counts on folder rows and cards.", "opt_showFolderItemCount", opt.showFolderItemCount !== false)}
 ${makeCheckRow("Show folder sizes", "Show recursive folder sizes on folder rows and cards.", "opt_showFolderSize", opt.showFolderSize !== false)}
-${makeCheckRow("Show preview folder item counts", "Show item counts on folder cards in the preview pane.", "opt_showPreviewFolderItemCount", opt.showPreviewFolderItemCount !== false)}
-${makeCheckRow("Show preview file type labels", "Show file type labels on preview pane media cards.", "opt_showPreviewFileTypeLabel", !!opt.showPreviewFileTypeLabel)}
 ${makeCheckRow("File-only folders open in gallery", "Open file-only folders directly in Gallery Mode on the first file.", "opt_fileOnlyFoldersOpenInGallery", !!opt.fileOnlyFoldersOpenInGallery)}
 ${makeCheckRow("Hide option descriptions", "Hide explanatory hint text in the options menu.", "opt_hideOptionDescriptions", !!opt.hideOptionDescriptions)}
 ${makeCheckRow("Hide keybind descriptions", "Hide explanatory hint text in the keybinds menu.", "opt_hideKeybindDescriptions", !!opt.hideKeybindDescriptions)}
@@ -6891,8 +6923,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       bindCheck("opt_clickSelectedRotatingThumbTeleports", "clickSelectedRotatingThumbTeleports");
       bindCheck("opt_showFolderItemCount", "showFolderItemCount");
       bindCheck("opt_showFolderSize", "showFolderSize");
-      bindCheck("opt_showPreviewFolderItemCount", "showPreviewFolderItemCount");
-      bindCheck("opt_showPreviewFileTypeLabel", "showPreviewFileTypeLabel");
       bindCheck("opt_fileOnlyFoldersOpenInGallery", "fileOnlyFoldersOpenInGallery");
       bindCheck("opt_hideOptionDescriptions", "hideOptionDescriptions", () => {
         applyDescriptionVisibilityFromOptions();
@@ -7213,6 +7243,18 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
     if (calendarBodyEl) {
       calendarBodyEl.addEventListener("click", (e) => {
+        const subtabBtn = e.target && e.target.closest ? e.target.closest("button[data-stats-subtab]") : null;
+        if (subtabBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const next = String(subtabBtn.getAttribute("data-stats-subtab") || "");
+          if (!CALENDAR_SUBTAB_IDS.includes(next) || next === CALENDAR_ACTIVE_SUBTAB) return;
+          CALENDAR_ACTIVE_SUBTAB = next;
+          MENU_TAB_SCROLL.calendar = 0;
+          renderCalendarUi();
+          if (calendarBodyEl) calendarBodyEl.scrollTop = 0;
+          return;
+        }
         const lineBtn = e.target && e.target.closest ? e.target.closest("button[data-score-history-delete-line-event][data-score-history-delete-line-root]") : null;
         if (lineBtn) {
           e.preventDefault();
@@ -11353,6 +11395,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return [
         { value: "name", label: "Name" },
         { value: "score", label: "Score" },
+        { value: "efficiency", label: "Efficiency" },
         { value: "size-desc", label: "Size" },
         { value: "count-recursive", label: "Item count recursive" },
         { value: "count-non-recursive", label: "Item count non-recursive" }
@@ -11384,9 +11427,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const sizeByPath = new Map();
       const recursiveCountByPath = new Map();
       const nonRecursiveCountByPath = new Map();
+      const recursiveScoreByPath = new Map();
+      const efficiencyByPath = new Map();
 
       if (!WS.root) {
-        return { sizeByPath, recursiveCountByPath, nonRecursiveCountByPath };
+        return { sizeByPath, recursiveCountByPath, nonRecursiveCountByPath, recursiveScoreByPath, efficiencyByPath };
       }
 
       (function walk(node) {
@@ -11412,12 +11457,16 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
 
         const path = String(node.path || "");
+        const recursiveScore = Number(metaGetScore(path)) || 0;
+        const sizeMb = size / (1024 * 1024);
         sizeByPath.set(path, size);
         recursiveCountByPath.set(path, recursiveCount);
         nonRecursiveCountByPath.set(path, ownCount);
+        recursiveScoreByPath.set(path, recursiveScore);
+        efficiencyByPath.set(path, recursiveScore / Math.max(0.01, sizeMb));
       })(WS.root);
 
-      DIR_SORT_METRICS_CACHE = { sizeByPath, recursiveCountByPath, nonRecursiveCountByPath };
+      DIR_SORT_METRICS_CACHE = { sizeByPath, recursiveCountByPath, nonRecursiveCountByPath, recursiveScoreByPath, efficiencyByPath };
       return DIR_SORT_METRICS_CACHE;
     }
 
@@ -11491,7 +11540,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         return out;
       }
 
-      if (sortMode === "size-desc" || sortMode === "count-recursive" || sortMode === "count-non-recursive") {
+      if (sortMode === "efficiency" || sortMode === "size-desc" || sortMode === "count-recursive" || sortMode === "count-non-recursive") {
         const metrics = buildDirSortMetrics();
         out.sort((a, b) => {
           const pathA = String(a?.path || "");
@@ -11499,7 +11548,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
           let va = 0;
           let vb = 0;
-          if (sortMode === "size-desc") {
+          if (sortMode === "efficiency") {
+            va = metrics.efficiencyByPath.get(pathA) || 0;
+            vb = metrics.efficiencyByPath.get(pathB) || 0;
+          } else if (sortMode === "size-desc") {
             va = metrics.sizeByPath.get(pathA) || 0;
             vb = metrics.sizeByPath.get(pathB) || 0;
           } else if (sortMode === "count-recursive") {
@@ -22712,7 +22764,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const scoreMode = "no-arrows";
       const isFavorite = metaHasFavorite(p);
       const isHidden = metaHasHidden(p);
-      const showPreviewFolderItemCount = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFolderItemCount === false);
       const totalItems = dirItemCount(dirNode);
       const totalSizeBytes = getDirRecursiveSizeBytesForNode(dirNode, sizeMemo);
       const thumbMode = folderPreviewThumbMode();
@@ -22742,7 +22793,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             ${scoreMode === "show" ? `<div class="voteBtn down">▼</div>` : ""}
           </div>
           ` : ``;
-      const countSeg = showPreviewFolderItemCount ? `<div class="meta">${totalItems} items</div>` : ``;
+      const countSeg = `<div class="meta">${totalItems} items</div>`;
       if (showThumbMeta) {
         card.classList.add("folderThumbCard");
         card.dataset.thumbMode = thumbMode;
@@ -22850,7 +22901,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const bottom = document.createElement("div");
         bottom.className = thumbOverlayMode ? "thumbOverlayBottomLine" : "metaBottomLine";
         const summaryParts = [];
-        if (showPreviewFolderItemCount) summaryParts.push(`${totalItems} items`);
+        summaryParts.push(`${totalItems} items`);
         summaryParts.push(formatBytes(totalSizeBytes));
         if (summaryParts.length) {
           const mini = document.createElement("div");
@@ -23725,17 +23776,16 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       }
 
-      const showPreviewFileTypeLabel = !(WS.meta && WS.meta.options && WS.meta.options.showPreviewFileTypeLabel === false);
       const showNameMeta = false;
       const forceOverlayMeta = !!useSquareMediaCards || !!useNaturalAspectCards;
       const fileId = String(rec.id || "");
-      const showAnyMeta = forceOverlayMeta || showPreviewFileTypeLabel || showNameMeta || !!fileId;
+      const showAnyMeta = forceOverlayMeta || showNameMeta || !!fileId;
       let meta = null;
       if (showAnyMeta) {
         meta = document.createElement("div");
         meta.className = forceOverlayMeta
           ? "metaBlock compact previewThumbOverlayMeta"
-          : ((showPreviewFileTypeLabel && showNameMeta) ? "metaBlock" : "metaBlock compact");
+          : (showNameMeta ? "metaBlock" : "metaBlock compact");
 
         const showPreviewFileMenuBtn = !!fileId;
         if (forceOverlayMeta || showNameMeta) {
@@ -23751,10 +23801,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           meta.appendChild(top);
         }
 
-        if (forceOverlayMeta || showPreviewFileTypeLabel || showPreviewFileMenuBtn) {
+        if (forceOverlayMeta || showPreviewFileMenuBtn) {
           const bottom = document.createElement("div");
           bottom.className = forceOverlayMeta ? "previewThumbOverlayBottomLine" : "previewThumbBottomLine";
-          if (forceOverlayMeta || showPreviewFileTypeLabel) {
+          if (forceOverlayMeta) {
             const mini = document.createElement("div");
             mini.className = forceOverlayMeta ? "mini previewThumbOverlayMini" : "mini";
             mini.textContent = rec.type === "video" ? "Video" : "Image";
@@ -25727,18 +25777,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           return nudgeSelectedThumbnailViewport(0, -THUMB_VIEWPORT_NUDGE_STEP);
         case "moveThumbViewportDown":
           return nudgeSelectedThumbnailViewport(0, THUMB_VIEWPORT_NUDGE_STEP);
-        case "toggleShowPreviewFileType": {
-          const next = toggleOptionValue("showPreviewFileTypeLabel");
-          renderPreviewPane(true, true);
-          showStatusMessage(`Preview file types: ${next ? "On" : "Off"}`);
-          return true;
-        }
-        case "toggleShowPreviewFolderCounts": {
-          const next = toggleOptionValue("showPreviewFolderItemCount");
-          renderPreviewPane(true, true);
-          showStatusMessage(`Preview folder counts: ${next ? "On" : "Off"}`);
-          return true;
-        }
         case "toggleShowFolderItemCounts": {
           const next = toggleOptionValue("showFolderItemCount");
           renderDirectoriesPane(true);

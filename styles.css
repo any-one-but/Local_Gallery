@@ -3426,29 +3426,57 @@
     }
 
     .calendarPanelIntro {
+      margin-bottom: 8px;
+    }
+
+    .calendarPanelIntro h1 {
+      margin-top: 0;
+    }
+
+    .statsSubTabs {
+      display: flex;
+      gap: 2px;
+      align-items: center;
+      flex-wrap: wrap;
       margin-bottom: 10px;
+      padding-bottom: 1px;
     }
 
-    .calendarAnalytics {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 10px;
-      margin-bottom: 14px;
+    .statsSubTabBtn {
+      white-space: nowrap;
+      border-radius: 4px 4px 0 0;
+      border-bottom-color: var(--color1-tertiary);
+      background: var(--color1-primary);
+      color: var(--color0-primary);
+      padding: 4px 10px;
     }
 
-    .calendarAnalyticsCard {
+    .statsSubTabBtn.active {
+      background: var(--color1-secondary);
+      border-bottom-color: var(--color1-secondary);
+      color: var(--color0-primary);
+      position: relative;
+      top: 1px;
+    }
+
+    .statsSubPanel {
+      min-width: 0;
+    }
+
+    .calendarAnalyticsCard,
+    .statsWidgetCard {
       border: 1px solid var(--color1-tertiary);
       background: var(--color1-secondary);
       border-radius: 6px;
-      padding: 10px;
+      padding: 12px;
+    }
+
+    .statsWidgetCard > h2:first-child {
+      margin-top: 0;
     }
 
     .calendarRankingsCard {
-      border: 1px solid var(--color1-tertiary);
-      background: var(--color1-secondary);
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 12px;
+      margin-bottom: 0;
     }
 
     .calendarRankingsGrid {
@@ -3521,8 +3549,8 @@
 
     .scorePieWrap {
       display: grid;
-      grid-template-columns: 140px 1fr;
-      gap: 12px;
+      grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+      gap: 16px;
       align-items: center;
       margin-top: 8px;
     }
@@ -3532,8 +3560,8 @@
     }
 
     .scorePieChart {
-      width: 140px;
-      height: 140px;
+      width: 180px;
+      height: 180px;
       border-radius: 50%;
       display: grid;
       place-items: center;
@@ -3541,8 +3569,8 @@
     }
 
     .scorePieSvg {
-      width: 140px;
-      height: 140px;
+      width: 180px;
+      height: 180px;
       display: block;
       filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.28));
     }
@@ -3690,6 +3718,16 @@
       padding-top: 10px;
     }
 
+    .statsHistoryCard {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .statsHistoryCard h2 {
+      margin: 0;
+    }
+
     .scoreHistoryEmpty {
       margin-top: 8px;
       padding: 10px;
@@ -3705,6 +3743,18 @@
       background: var(--color1-secondary);
       margin-top: 10px;
       overflow: hidden;
+    }
+
+    @media (max-width: 760px) {
+      .scorePieWrap {
+        grid-template-columns: 1fr;
+      }
+
+      .scorePieChart,
+      .scorePieSvg {
+        width: 160px;
+        height: 160px;
+      }
     }
 
     .scoreHistoryDayHeader {
