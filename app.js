@@ -27,14 +27,9 @@
     });
     const TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT = "sunset-electric";
     const TAG_FOLDER_TITLE_COLOR_PAIRS = Object.freeze([
-      Object.freeze({ value: "sunset-soft", label: "Soft Sunset (Orange + Pink)", tag: "#ffd6a0", favorite: "#ffb8dd" }),
-      Object.freeze({ value: "sunset-vivid", label: "Vivid Sunset (Orange + Pink)", tag: "#ffb35c", favorite: "#ff7cc7" }),
-      Object.freeze({ value: "sunset-electric", label: "Electric Sunset (Orange + Pink)", tag: "#ff9300", favorite: "#ff43b5" }),
-      Object.freeze({ value: "neon-arcade", label: "Neon Arcade", tag: "#ff9f1a", favorite: "#ff4dff" }),
-      Object.freeze({ value: "disco-fever", label: "Disco Fever", tag: "#ffe45e", favorite: "#ff2ea6" }),
-      Object.freeze({ value: "laser-party", label: "Laser Party", tag: "#63f5ff", favorite: "#ff6eff" }),
-      Object.freeze({ value: "candy-pop", label: "Candy Pop", tag: "#ffc27a", favorite: "#ff95d0" }),
-      Object.freeze({ value: "tropical-glow", label: "Tropical Glow", tag: "#9fffb2", favorite: "#ff9fba" })
+      Object.freeze({ value: "sunset-electric", label: "Electric Sunset", tag: "#ff9300", favorite: "#ff43b5", album: "#ff6b63" }),
+      Object.freeze({ value: "laser-party", label: "Laser Party", tag: "#63f5ff", favorite: "#ff6eff", album: "#a4ff00" }),
+      Object.freeze({ value: "rainbow", label: "Rainbow", tag: "#53c93f", favorite: "#ff6a3d", album: "#2f7cff" })
     ]);
     const TAG_FOLDER_TITLE_COLOR_PAIR_BY_VALUE = (() => {
       const byValue = new Map();
@@ -3715,7 +3710,7 @@
       const pair = getTagFolderTitleColorPairByValue(opt && opt.tagFolderTitleColorPair);
       const tagColor = String(pair && pair.tag ? pair.tag : "#ff9300");
       const favoriteColor = String(pair && pair.favorite ? pair.favorite : "#ff43b5");
-      const albumColor = "#ff6b63";
+      const albumColor = String(pair && pair.album ? pair.album : "#ff6b63");
       root.style.setProperty("--dir-tag-title-color", tagColor);
       root.style.setProperty("--dir-tag-favorite-title-color", favoriteColor);
       root.style.setProperty("--dir-tag-album-title-color", albumColor);
@@ -6648,7 +6643,7 @@ ${makeSelectRow("Color scheme", "Pick a UI color family. Light Mode switches the
 ${makeCheckRow("Light Mode", "Use the light variant of the selected color scheme. OLED Dark ignores this toggle.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Retro Mode", "Enable the existing retro UI treatment toggle.", "opt_retroMode", !!opt.retroMode)}
 ${makeSelectRow("Folder sort", "Sort folders by name, score, recursive size, recursive count, or non-recursive count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes)}
-${makeSelectRow("Tag folder colors", "Choose the existing title-color pair for tag and favorite folder labels.", "opt_tagFolderTitleColorPair", normalizeTagFolderTitleColorPairValue(opt.tagFolderTitleColorPair, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT), tagFolderTitleColorModes)}
+${makeSelectRow("Tag folder colors", "Choose the existing title-color set for tag, favorite, and album folder labels.", "opt_tagFolderTitleColorPair", normalizeTagFolderTitleColorPairValue(opt.tagFolderTitleColorPair, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT), tagFolderTitleColorModes)}
 ${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
 ${makeCheckRow("Show root view", "Allow navigating above the root to a single root-folder portal card.", "opt_showRootView", opt.showRootView !== false)}
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
@@ -20377,7 +20372,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       directoriesListEl.classList.toggle("gridModeList", gridModeActive);
       updateGridModeListTopInset();
       updateTitleLabel();
-      const folderSquareCardMode = true;
+      const folderSquareCardMode = !!gridModeActive;
       const naturalThumbCards = naturalAspectThumbnailCardsEnabled();
       directoriesListEl.classList.toggle("naturalThumbCards", !!naturalThumbCards);
       if (gridModeActive) {
@@ -20534,11 +20529,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const specialText = entry.special
             ? toTitleCaps(String(entry.special || ""))
             : ((entry.album && !entry.tag) ? "Album" : "");
-          const tagPool = getRecursivePreviewRecordsForTagEntry(entry, 0);
+          const tagPool = folderSquareCardMode ? getRecursivePreviewRecordsForTagEntry(entry, 0) : [];
           const tagThumbKey = tagThumbnailKeyForEntry(entry);
-          const tagThumbMode = metaGetTagThumbnailModeByKey(tagThumbKey);
-          const presetRec = getTagPresetPreviewRecordForEntry(entry, tagPool);
-          const tagAllowsRotation = !naturalThumbCards;
+          const tagThumbMode = folderSquareCardMode ? metaGetTagThumbnailModeByKey(tagThumbKey) : "none";
+          const presetRec = folderSquareCardMode ? getTagPresetPreviewRecordForEntry(entry, tagPool) : null;
+          const tagAllowsRotation = folderSquareCardMode && !naturalThumbCards;
           const tagRotateScope = String(WS.nav.dirNode?.path || "");
           const tagRotateKey = entry.special
             ? `tag:${tagRotateScope}:special:${entry.special}`
@@ -20638,25 +20633,41 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             ? ` style="--dir-card-ar:${Number(getPreviewAspectForRecord(presetRec)).toFixed(4)};"`
             : "";
 
-          row.classList.add("folderRow", "folderSquareCard");
-          row.innerHTML = `
-            <div class="dirSquareCard"${tagCardStyle}>
-              <div class="dirSquareMedia">${squareMediaHtml}</div>
-              <div class="dirSquareOverlay">
-                <div class="dirSquareTop">
-                  ${topNameHtml}
-                </div>
-                <div class="dirSquareBottom">
-                  <div class="dirSquareMeta">${escapeHtml(countText)}</div>
-                  <div class="dirSquareRightMeta">
-                    ${typeIconHtml}
-                    ${specialBadgeHtml}
-                    ${tagMenuHtml}
+          row.classList.add("folderRow");
+          if (folderSquareCardMode) {
+            row.classList.add("folderSquareCard");
+            row.innerHTML = `
+              <div class="dirSquareCard"${tagCardStyle}>
+                <div class="dirSquareMedia">${squareMediaHtml}</div>
+                <div class="dirSquareOverlay">
+                  <div class="dirSquareTop">
+                    ${topNameHtml}
+                  </div>
+                  <div class="dirSquareBottom">
+                    <div class="dirSquareMeta">${escapeHtml(countText)}</div>
+                    <div class="dirSquareRightMeta">
+                      ${typeIconHtml}
+                      ${specialBadgeHtml}
+                      ${tagMenuHtml}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          `;
+            `;
+          } else {
+            const tagNameHtml = renameActive
+              ? `<input class="tagEditInput tagEntryRenameInput renameEditInput" type="text" value="${escapeHtml(TAG_ENTRY_RENAME_STATE.label || label)}" placeholder="${escapeHtml(label)}" />`
+              : `<span class="dirNameText ${tagTitleClass}" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`;
+            row.classList.add("folderBarCard", "tagBarCard");
+            row.innerHTML = `
+              <div class="dirIcon">${escapeHtml(iconText)}</div>
+              <div class="dirName">${tagNameHtml}</div>
+              <div class="dirRight dirFolderActions">
+                <div class="dirBarMetaText">${escapeHtml(countText)}</div>
+                ${tagMenuHtml}
+              </div>
+            `;
+          }
         } else {
           row.dataset.bulkAnchor = `file:${String(entry.id || "")}`;
           const dirPath = entry.kind === "dir" ? String(entry?.node?.path || "") : "";
@@ -20785,22 +20796,16 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               </div>
             </div>
             `;
-            const metaInlineHtml = dirMetaLines.length
-              ? `<div class="dirMetaInline">${dirMetaLines.map(line => `<div class="dirMetaInlineLine">${escapeHtml(line)}</div>`).join("")}</div>`
-              : "";
-            nameHtml = `
-              <div class="dirNameStack">
-                <div class="dirNameTop">
-                  <span class="dirNameText">${escapeHtml(name)}</span>
-                  ${voteHtml}
-                  ${statusBadgeHtml}
-                </div>
-                ${metaInlineHtml}
+            const metaSummaryText = dirMetaLines.join(" • ");
+            nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>${statusBadgeHtml}`;
+            thumbHtml = "";
+            rightHtml = `
+              <div class="dirRight dirFolderActions">
+                ${metaSummaryText ? `<div class="dirBarMetaText">${escapeHtml(metaSummaryText)}</div>` : ""}
+                ${voteHtml}
+                ${menuHtml}
               </div>
             `;
-            const thumbSlotHtml = inlinePreviewHtml ? `<div class="dirThumbSlot">${inlinePreviewHtml}</div>` : "";
-            thumbHtml = "";
-            rightHtml = `<div class="dirRight dirFolderActions">${thumbSlotHtml}${menuHtml}</div>`;
             if (folderSquareCardMode) {
               const scoreInlineHtml = scoreMode !== "hidden"
                 ? `<span class="dirSquareScore" title="Score">${escapeHtml(String(sc))}</span>`
@@ -20958,52 +20963,63 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
                 </div>
               </div>
             `;
-            let inlinePreviewHtml = "";
-            if (rec) {
-              const previewId = String(rec.id || "");
-              const previewSrc = isVid
-                ? getVideoPosterForRecord(rec)
-                : (ensureNavigationThumbUrl(rec) || "");
-              const previewAspect = getPreviewAspectForRecord(rec);
-              if (isVid && !rec.videoThumbUrl) enqueueVideoThumb(rec);
-              if (previewSrc) {
-                const cropStyle = fileThumbCropLayoutStyle(rec, "");
-                const cropClass = cropStyle ? " thumbCropApplied thumbCropAbsolute" : "";
-                inlinePreviewHtml = `<img class="dirInlinePreview${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+            const fileMetaSummary = [fileTypeLabel, fileSizeLabel].filter(Boolean).join(" • ");
+            if (folderSquareCardMode) {
+              let inlinePreviewHtml = "";
+              if (rec) {
+                const previewId = String(rec.id || "");
+                const previewSrc = isVid
+                  ? getVideoPosterForRecord(rec)
+                  : (ensureNavigationThumbUrl(rec) || "");
+                const previewAspect = getPreviewAspectForRecord(rec);
+                if (isVid && !rec.videoThumbUrl) enqueueVideoThumb(rec);
+                if (previewSrc) {
+                  const cropStyle = fileThumbCropLayoutStyle(rec, "");
+                  const cropClass = cropStyle ? " thumbCropApplied thumbCropAbsolute" : "";
+                  inlinePreviewHtml = `<img class="dirInlinePreview${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+                }
               }
-            }
-            const fileMediaHtml = inlinePreviewHtml
-              ? inlinePreviewHtml
-              : `<div class="dirSquareFallback">${escapeHtml(icon)}</div>`;
-            const fileTypeHtml = `<span class="dirFileType">${escapeHtml(fileTypeLabel)}</span>`;
-            const fileMetaBits = [];
-            if (fileTypeHtml) fileMetaBits.push(fileTypeHtml);
-            fileMetaBits.push(`<span class="dirFileSize">${escapeHtml(fileSizeLabel)}</span>`);
-            const fileCardStyle = (naturalThumbCards && rec)
-              ? ` style="--dir-card-ar:${Number(getPreviewAspectForRecord(rec)).toFixed(4)};"`
-              : "";
-            const fileThumbHtml = `
-              <div class="dirThumbSlot dirFileThumbSlot">
-                <div class="dirFileThumbCard"${fileCardStyle}>
-                  ${fileMediaHtml}
-                  <div class="dirFileOverlay">
-                    <div class="dirFileOverlayTop">
-                      <span class="dirFileNameText" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-                    </div>
-                    <div class="dirFileOverlayBottom">
-                      <div class="dirFileMetaLine">${fileMetaBits.join('<span class="dirFileMetaDot">•</span>')}</div>
-                      ${fileMenuHtml}
+              const fileMediaHtml = inlinePreviewHtml
+                ? inlinePreviewHtml
+                : `<div class="dirSquareFallback">${escapeHtml(icon)}</div>`;
+              const fileTypeHtml = `<span class="dirFileType">${escapeHtml(fileTypeLabel)}</span>`;
+              const fileMetaBits = [];
+              if (fileTypeHtml) fileMetaBits.push(fileTypeHtml);
+              fileMetaBits.push(`<span class="dirFileSize">${escapeHtml(fileSizeLabel)}</span>`);
+              const fileCardStyle = (naturalThumbCards && rec)
+                ? ` style="--dir-card-ar:${Number(getPreviewAspectForRecord(rec)).toFixed(4)};"`
+                : "";
+              const fileThumbHtml = `
+                <div class="dirThumbSlot dirFileThumbSlot">
+                  <div class="dirFileThumbCard"${fileCardStyle}>
+                    ${fileMediaHtml}
+                    <div class="dirFileOverlay">
+                      <div class="dirFileOverlayTop">
+                        <span class="dirFileNameText" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+                      </div>
+                      <div class="dirFileOverlayBottom">
+                        <div class="dirFileMetaLine">${fileMetaBits.join('<span class="dirFileMetaDot">•</span>')}</div>
+                        ${fileMenuHtml}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            `;
-            nameHtml = `
-              <div class="dirFileStack">
-                ${fileThumbHtml}
-              </div>
-            `;
-            rightHtml = "";
+              `;
+              nameHtml = `
+                <div class="dirFileStack">
+                  ${fileThumbHtml}
+                </div>
+              `;
+              rightHtml = "";
+            } else {
+              nameHtml = `<span class="dirNameText">${escapeHtml(name)}</span>`;
+              rightHtml = `
+                <div class="dirRight dirFileBarActions">
+                  ${fileMetaSummary ? `<div class="dirBarMetaText">${escapeHtml(fileMetaSummary)}</div>` : ""}
+                  ${fileMenuHtml}
+                </div>
+              `;
+            }
           }
 
           if (entry.kind === "dir") {
@@ -21012,27 +21028,60 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
               row.classList.add("folderSquareCard");
               row.innerHTML = folderSquareCardHtml;
             } else {
-              row.innerHTML = `
-                <div class="dirIcon">${icon}</div>
-                <div class="dirName dirNameWithBadge" title="${escapeHtml(name)}">${nameHtml}</div>
-                ${thumbHtml}
-                ${rightHtml}
-              `;
+              row.classList.add("folderBarCard");
+              if (isRenameEditingDir) {
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(String(entry.node?.name || ""))}" placeholder="folder name" /></div>
+                  ${rightHtml}
+                `;
+              } else if (isTagEditingDir) {
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName"><input class="tagEditInput" type="text" value="${escapeHtml(metaGetUserTags(String(entry.node?.path || "")).join(", "))}" placeholder="tag1, tag2" /></div>
+                  ${rightHtml}
+                `;
+              } else {
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName dirNameWithBadge" title="${escapeHtml(name)}">${nameHtml}</div>
+                  ${thumbHtml}
+                  ${rightHtml}
+                `;
+              }
             }
           } else {
             if (String(entry.id || "") === String(RENAME_EDIT_FILE_ID || "")) {
               const rec = WS.fileById.get(entry.id);
               const curName = String(rec?.name || "");
-              row.innerHTML = `
-                <div class="dirIcon">${icon}</div>
-                <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
-                ${fileMenuHtml}
-              `;
+              if (folderSquareCardMode) {
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
+                  ${fileMenuHtml}
+                `;
+              } else {
+                row.classList.add("fileRow", "fileBarCard");
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
+                  ${rightHtml}
+                `;
+              }
             } else {
-              row.classList.add("fileRow");
-              row.innerHTML = `
-                <div class="dirName dirFileNameWrap" title="${escapeHtml(name)}">${nameHtml}</div>
-              `;
+              if (folderSquareCardMode) {
+                row.classList.add("fileRow", "fileThumbCardRow");
+                row.innerHTML = `
+                  <div class="dirName dirFileNameWrap" title="${escapeHtml(name)}">${nameHtml}</div>
+                `;
+              } else {
+                row.classList.add("fileRow", "fileBarCard");
+                row.innerHTML = `
+                  <div class="dirIcon">${icon}</div>
+                  <div class="dirName" title="${escapeHtml(name)}">${nameHtml}</div>
+                  ${rightHtml}
+                `;
+              }
             }
           }
         }

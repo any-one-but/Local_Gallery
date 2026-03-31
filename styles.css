@@ -1229,7 +1229,7 @@
       padding-bottom: 7px;
     }
 
-    .dirRow.fileRow {
+    .dirRow.fileRow.fileThumbCardRow {
       --dir-inline-h: var(--dir-mini-thumb-h, 120px);
       align-items: stretch;
       justify-content: stretch;
@@ -1238,19 +1238,19 @@
     }
 
     .dirRow.folderRow .dirIcon,
-    .dirRow.fileRow .dirIcon {
+    .dirRow.fileRow.fileThumbCardRow .dirIcon {
       margin-top: 2px;
     }
 
     .dirRow.folderRow .dirName,
-    .dirRow.fileRow .dirName {
+    .dirRow.fileRow.fileThumbCardRow .dirName {
       white-space: normal;
       overflow: visible;
       text-overflow: clip;
     }
 
     .dirRow.folderRow .dirNameWithBadge,
-    .dirRow.fileRow .dirNameWithBadge {
+    .dirRow.fileRow.fileThumbCardRow .dirNameWithBadge {
       align-items: stretch;
     }
 
@@ -1453,14 +1453,14 @@
     }
 
     .dirRow.folderRow .dirInlinePreview,
-    .dirRow.fileRow .dirInlinePreview {
+    .dirRow.fileRow.fileThumbCardRow .dirInlinePreview {
       height: var(--dir-inline-h);
       width: clamp(14px, calc(var(--dir-inline-h) * var(--dir-inline-ar)), calc(var(--dir-inline-h) * 1.55));
       border-radius: 4px;
       border-color: rgba(255, 255, 255, 0.28);
     }
 
-    .dirRow.fileRow .dirInlinePreview {
+    .dirRow.fileRow.fileThumbCardRow .dirInlinePreview {
       width: 100%;
       height: auto;
       aspect-ratio: 1 / 1;
@@ -1472,8 +1472,8 @@
       display: block;
     }
 
-    :root[data-natural-thumb-cards="on"] .dirRow.fileRow .dirInlinePreview,
-    #directoriesList.naturalThumbCards .dirRow.fileRow .dirInlinePreview {
+    :root[data-natural-thumb-cards="on"] .dirRow.fileRow.fileThumbCardRow .dirInlinePreview,
+    #directoriesList.naturalThumbCards .dirRow.fileRow.fileThumbCardRow .dirInlinePreview {
       height: 100%;
       aspect-ratio: auto;
     }
@@ -1484,7 +1484,51 @@
       border-color: transparent;
     }
 
-    .dirRow.fileRow {
+    .dirRow.folderRow.folderBarCard {
+      align-items: center;
+    }
+
+    .dirRow.folderRow.folderBarCard .dirIcon {
+      margin-top: 0;
+    }
+
+    .dirRow.folderRow.folderBarCard .dirNameWithBadge {
+      align-items: center;
+    }
+
+    .dirBarMetaText {
+      flex: 0 0 auto;
+      font-size: 11px;
+      line-height: 1.15;
+      color: var(--color0-secondary);
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    .dirRow.tagBarCard .dirBarMetaText {
+      line-height: 1;
+    }
+
+    .dirRow.tagBarCard .dirMenu {
+      align-self: center;
+    }
+
+    .dirRow.fileRow.fileBarCard {
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dirRow.fileRow.fileBarCard .dirIcon {
+      margin-top: 0;
+    }
+
+    .dirRow.fileRow.fileBarCard .dirName {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dirRow.fileRow.fileThumbCardRow {
       padding: 4px 0;
       background: transparent;
       border-color: transparent;
@@ -1493,11 +1537,11 @@
       gap: 0;
     }
 
-    .dirRow.fileRow.dragging .dirFileThumbCard {
+    .dirRow.fileRow.fileThumbCardRow.dragging .dirFileThumbCard {
       opacity: 0.6;
     }
 
-    .dirRow.fileRow.drag-hidden {
+    .dirRow.fileRow.fileThumbCardRow.drag-hidden {
       opacity: 0;
       pointer-events: none;
       position: absolute;
@@ -1510,7 +1554,7 @@
       border: 0;
     }
 
-    .dirRow.fileRow.drag-placeholder {
+    .dirRow.fileRow.fileThumbCardRow.drag-placeholder {
       background: transparent;
       border: 2px dashed var(--color0-tertirary);
       border-radius: 4px;
@@ -1518,9 +1562,9 @@
       pointer-events: none;
     }
 
-    .dirRow.fileRow:hover,
-    .dirRow.fileRow.selected,
-    .dirRow.fileRow.bulkSelected {
+    .dirRow.fileRow.fileThumbCardRow:hover,
+    .dirRow.fileRow.fileThumbCardRow.selected,
+    .dirRow.fileRow.fileThumbCardRow.bulkSelected {
       background: transparent;
       border-color: transparent;
       box-shadow: none;
@@ -1728,18 +1772,18 @@
         0 0 0 3px var(--ui-selection-outline-soft);
     }
 
-    .dirRow.fileRow.selected .dirFileThumbCard {
+    .dirRow.fileRow.fileThumbCardRow.selected .dirFileThumbCard {
       outline: 2px solid var(--ui-selection-outline);
       outline-offset: 0;
     }
 
-    .dirRow.fileRow.bulkSelected .dirFileThumbCard {
+    .dirRow.fileRow.fileThumbCardRow.bulkSelected .dirFileThumbCard {
       outline: 2px solid var(--anchor-internal-color2-primary);
       outline-offset: 0;
       box-shadow: 0 0 0 2px var(--ui-selection-outline-soft);
     }
 
-    .dirRow.fileRow.selected.bulkSelected .dirFileThumbCard {
+    .dirRow.fileRow.fileThumbCardRow.selected.bulkSelected .dirFileThumbCard {
       box-shadow:
         0 0 0 1px var(--ui-selection-outline),
         0 0 0 3px var(--ui-selection-outline-soft);
