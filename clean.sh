@@ -36,12 +36,36 @@ else
   C_RED=""
 fi
 
-log_info() { printf "%s[INFO]%s %s\n" "$C_BLUE" "$C_RESET" "$*"; }
-log_ok() { printf "%s[OK]%s   %s\n" "$C_GREEN" "$C_RESET" "$*"; }
-log_warn() { printf "%s[WARN]%s %s\n" "$C_YELLOW" "$C_RESET" "$*"; }
-log_err() { printf "%s[ERR]%s  %s\n" "$C_RED" "$C_RESET" "$*" >&2; }
+UI_STATUS_ACTIVE=0
 
-print_divider() { printf "%s\n" "------------------------------------------------------------"; }
+ui_clear_status_line() {
+  if [[ -t 1 && "${UI_STATUS_ACTIVE:-0}" -eq 1 ]]; then
+    printf "\r\033[2K"
+    UI_STATUS_ACTIVE=0
+  fi
+}
+
+log_info() { ui_clear_status_line; printf "%s[INFO]%s %s\n" "$C_BLUE" "$C_RESET" "$*"; }
+log_ok() { ui_clear_status_line; printf "%s[OK]%s   %s\n" "$C_GREEN" "$C_RESET" "$*"; }
+log_warn() { ui_clear_status_line; printf "%s[WARN]%s %s\n" "$C_YELLOW" "$C_RESET" "$*"; }
+log_err() { ui_clear_status_line; printf "%s[ERR]%s  %s\n" "$C_RED" "$C_RESET" "$*" >&2; }
+
+print_divider() { ui_clear_status_line; printf "%s\n" "------------------------------------------------------------"; }
+
+phase_note() {
+  local current="$1"
+  local total="$2"
+  local label="$3"
+  ui_clear_status_line
+  printf "%s[%d/%d]%s %s\n" "$C_DIM" "$current" "$total" "$C_RESET" "$label"
+}
+
+summary_item() {
+  local label="$1"
+  local value="$2"
+  ui_clear_status_line
+  printf "  %-24s %s\n" "${label}:" "$value"
+}
 
 progress_draw() {
   local label="$1"
@@ -63,11 +87,14 @@ progress_draw() {
   bar_empty=$(printf "%${empty}s" "" | tr ' ' '-')
 
   if [[ -t 1 && "$mode" != "line" ]]; then
-    printf "\r%s%s%s [%s%s] %3d%% (%d/%d)" "$C_DIM" "$label" "$C_RESET" "$bar_filled" "$bar_empty" "$pct" "$current" "$total"
+    printf "\r\033[2K%s%s%s [%s%s] %3d%% (%d/%d)" "$C_DIM" "$label" "$C_RESET" "$bar_filled" "$bar_empty" "$pct" "$current" "$total"
+    UI_STATUS_ACTIVE=1
     if [[ "$current" -ge "$total" ]]; then
       printf "\n"
+      UI_STATUS_ACTIVE=0
     fi
   else
+    ui_clear_status_line
     printf "%s [%s%s] %3d%% (%d/%d)\n" "$label" "$bar_filled" "$bar_empty" "$pct" "$current" "$total"
   fi
 }
@@ -88,17 +115,19 @@ run_with_spinner() {
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     mark="${spinner:$(( i % 4 )):1}"
-    printf "\r%s%s%s %s" "$C_DIM" "$label" "$C_RESET" "$mark"
+    printf "\r\033[2K%s%s%s %s" "$C_DIM" "$label" "$C_RESET" "$mark"
+    UI_STATUS_ACTIVE=1
     i=$((i + 1))
-    sleep 0.1
+    sleep 0.12
   done
   wait "$pid"
   rc=$?
   if [[ "$rc" -eq 0 ]]; then
-    printf "\r%s%s%s done\n" "$C_DIM" "$label" "$C_RESET"
+    printf "\r\033[2K%s%s%s done\n" "$C_DIM" "$label" "$C_RESET"
   else
-    printf "\r%s%s%s failed\n" "$C_DIM" "$label" "$C_RESET"
+    printf "\r\033[2K%s%s%s failed\n" "$C_DIM" "$label" "$C_RESET"
   fi
+  UI_STATUS_ACTIVE=0
   return "$rc"
 }
 
@@ -278,11 +307,11 @@ ensure_waifu2x_ready() {
   fi
 
   print_divider
-  echo "Step 3 requires waifu2x-ncnn-vulkan and its model files."
+  echo "Step 8 requires waifu2x-ncnn-vulkan and its model files."
   read -r -p "Install or refresh waifu2x now? [Y/n] " ans
   ans="${ans:-Y}"
   if [[ ! "$ans" =~ ^[Yy]$ ]]; then
-    log_err "Cannot run step 3 without waifu2x."
+    log_err "Cannot run step 8 without waifu2x."
     return 1
   fi
 
@@ -374,17 +403,17 @@ ensure_prerequisites() {
 
 step_description() {
   case "${1:-}" in
-    1) printf "Remove duplicate files" ;;
-    2) printf "Move similar files" ;;
-    3) printf "Converts all videos to mp4" ;;
-    4) printf "Resize media" ;;
-    5) printf "Scrub metadata" ;;
+    1) printf "Dedupe files" ;;
+    2) printf "Move lower-quality similar media" ;;
+    3) printf "Convert videos to MP4" ;;
+    4) printf "Resize oversized media" ;;
+    5) printf "Remove metadata" ;;
     6) printf "Sanitize file and folder names" ;;
-    7) printf "Move empty files" ;;
-    8) printf "AI upscale and denoise media" ;;
+    7) printf "Quarantine empty files and folders" ;;
+    8) printf "Upscale and denoise media" ;;
     9) printf "Trim video starts" ;;
     10) printf "Trim video ends" ;;
-    11) printf "Create mp3 files from videos" ;;
+    11) printf "Extract MP3 audio from videos" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -483,12 +512,12 @@ run_step() {
   local start_ts end_ts elapsed
 
   print_divider
-  printf "%sSTEP %s%s: %s\n" "$C_BOLD" "$step_num" "$C_RESET" "$desc"
+  printf "%sStep %s%s  %s\n" "$C_BOLD" "$step_num" "$C_RESET" "$desc"
   start_ts=$(date +%s)
   "$fn"
   end_ts=$(date +%s)
   elapsed=$(( end_ts - start_ts ))
-  log_ok "Step $step_num completed in ${elapsed}s"
+  log_ok "Step $step_num finished in ${elapsed}s"
 }
 
 step1_dedupe() {
@@ -496,8 +525,7 @@ step1_dedupe() {
   local count_tmp dedupe_log
   local file_count
 
-  log_info "Running recursive dedupe with fdupes (-r -A -d -N)."
-  log_info "Duplicates are auto-removed; first occurrence is kept."
+  log_info "Scanning for duplicate files with fdupes."
   count_tmp="$(mktemp)"
   if ! run_with_spinner "Step 1: counting files recursively" bash -c 'find . -type f | wc -l | tr -d " " > "$1"' _ "$count_tmp"; then
     rm -f "$count_tmp"
@@ -507,27 +535,26 @@ step1_dedupe() {
   file_count="$(cat "$count_tmp" 2>/dev/null || printf "0")"
   rm -f "$count_tmp"
   phase=$((phase + 1))
-  progress_draw "Step 1 Dedupe" "$phase" "$phase_total" "line"
-  log_info "Files discovered: ${file_count:-0}"
+  phase_note "$phase" "$phase_total" "Indexed ${file_count:-0} file(s)."
   dedupe_log="$(mktemp)"
   if ! run_with_spinner "Step 1: running fdupes dedupe pass" bash -c 'fdupes -r -A -d -N . > "$1" 2>&1' _ "$dedupe_log"; then
     phase=$((phase + 1))
-    progress_draw "Step 1 Dedupe" "$phase" "$phase_total" "line"
+    phase_note "$phase" "$phase_total" "Dedupe pass stopped with an error."
     log_err "fdupes failed. Last output:"
     tail -n 20 "$dedupe_log" >&2 || true
     rm -f "$dedupe_log"
     exit 1
   fi
   phase=$((phase + 1))
-  progress_draw "Step 1 Dedupe" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Dedupe pass complete."
   if [[ -s "$dedupe_log" ]]; then
-    log_info "fdupes produced output (ordered capture enabled)."
+    log_info "fdupes reported duplicate sets and removals."
   else
-    log_info "fdupes completed with no output."
+    log_info "No duplicate groups were reported."
   fi
   rm -f "$dedupe_log"
   phase=$((phase + 1))
-  progress_draw "Step 1 Dedupe" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Dedupe finished."
 }
 
 step2_convert_videos() {
@@ -559,7 +586,7 @@ step2_convert_videos() {
     if [[ -f "$output" ]]; then
       skipped=$((skipped + 1))
       progress=$((progress + 1))
-      progress_draw "Step 4 Convert" "$progress" "$total"
+      progress_draw "Step 3 Convert" "$progress" "$total"
       continue
     fi
 
@@ -567,7 +594,7 @@ step2_convert_videos() {
       rm -f "$file"
       copied=$((copied + 1))
       progress=$((progress + 1))
-      progress_draw "Step 4 Convert" "$progress" "$total"
+      progress_draw "Step 3 Convert" "$progress" "$total"
       continue
     fi
 
@@ -575,7 +602,7 @@ step2_convert_videos() {
       rm -f "$file"
       reencoded=$((reencoded + 1))
       progress=$((progress + 1))
-      progress_draw "Step 4 Convert" "$progress" "$total"
+      progress_draw "Step 3 Convert" "$progress" "$total"
       continue
     fi
 
@@ -583,14 +610,14 @@ step2_convert_videos() {
     failed=$((failed + 1))
     log_err "Conversion failed: $file"
     progress=$((progress + 1))
-    progress_draw "Step 4 Convert" "$progress" "$total"
+    progress_draw "Step 3 Convert" "$progress" "$total"
   done
 
-  log_info "Video conversion summary:"
-  printf "  - Stream copied: %d\n" "$copied"
-  printf "  - Re-encoded:    %d\n" "$reencoded"
-  printf "  - Skipped:       %d\n" "$skipped"
-  printf "  - Failed:        %d\n" "$failed"
+  log_info "Step 3 conversion summary:"
+  summary_item "Stream copied" "$copied"
+  summary_item "Re-encoded" "$reencoded"
+  summary_item "Skipped" "$skipped"
+  summary_item "Failed" "$failed"
 }
 
 step10_extract_video_audio_mp3() {
@@ -650,11 +677,11 @@ step10_extract_video_audio_mp3() {
     progress_draw "Step 11 MP3" "$progress" "$total"
   done
 
-  log_info "Step 11 mp3 summary:"
-  printf "  - MP3 files created:    %d\n" "$created"
-  printf "  - Skipped (exists):     %d\n" "$skipped_existing"
-  printf "  - Skipped (no audio):   %d\n" "$skipped_no_audio"
-  printf "  - Failed:               %d\n" "$failed"
+  log_info "Step 11 audio extraction summary:"
+  summary_item "MP3 files created" "$created"
+  summary_item "Skipped (exists)" "$skipped_existing"
+  summary_item "Skipped (no audio)" "$skipped_no_audio"
+  summary_item "Failed" "$failed"
 }
 
 is_waifu2x_supported_image_ext() {
@@ -868,7 +895,6 @@ step3_process_video_file() {
   upscaled_dir="${workdir}/upscaled"
   mkdir -p "$frames_dir" "$upscaled_dir"
 
-  progress_draw "Step 3 Video Phase" "$phase" "$phase_total" "line"
   if ! run_with_spinner "Extracting frames: ${name}" ffmpeg -hide_banner -loglevel error -y -i "$file" "${frames_dir}/frame_%06d.png"; then
     rm -rf "$workdir"
     return 1
@@ -878,7 +904,7 @@ step3_process_video_file() {
     return 1
   fi
   phase=$((phase + 1))
-  progress_draw "Step 3 Video Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Frames extracted for ${name}."
 
   if run_with_spinner "Upscaling frames: ${name}" step3_run_waifu2x_dir_attempt "$frames_dir" "$upscaled_dir" "$waifu2x_cmd" "$model_dir" 512 "auto" && [[ -n "$(find "$upscaled_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
     waifu2x_ok=1
@@ -892,7 +918,7 @@ step3_process_video_file() {
     return 1
   fi
   phase=$((phase + 1))
-  progress_draw "Step 3 Video Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Frames upscaled for ${name}."
 
   rm -f "$tmp_output"
   if ! run_with_spinner "Rebuilding video: ${name}" ffmpeg -hide_banner -loglevel error -y -framerate "$fps" -i "${upscaled_dir}/frame_%06d.png" -i "$file" -map 0:v:0 -map 1:a? -c:v libx264 -pix_fmt yuv420p -c:a copy -shortest "$tmp_output"; then
@@ -915,7 +941,7 @@ step3_process_video_file() {
   fi
   mv -f "$tmp_output" "$final_output"
   phase=$((phase + 1))
-  progress_draw "Step 3 Video Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Video rebuilt for ${name}."
   rm -rf "$workdir"
   return 0
 }
@@ -1011,19 +1037,19 @@ step3_upscale_images() {
     fi
     rm -f "$result_file"
     progress=$((progress + 1))
-    progress_draw "Step 3 Upscale" "$progress" "$total"
+    progress_draw "Step 8 Upscale" "$progress" "$total"
   done
 
-  log_info "Step 3 upscale+denoise summary:"
-  printf "  - Images found (all):      %d\n" "$all_images"
-  printf "  - Supported candidates:    %d\n" "$total"
-  printf "  - Processed:               %d\n" "$upscaled"
-  printf "  - Skipped (unsupported):   %d\n" "$skipped_unsupported"
-  printf "  - Skipped (probe failed):  %d\n" "$skipped_probe"
-  printf "  - Rejected bad outputs:    %d\n" "$rejected_outputs"
-  printf "  - Tile fallbacks used:     %d\n" "$tile_fallback_used"
-  printf "  - CPU fallbacks used:      %d\n" "$cpu_fallback_used"
-  printf "  - Failed:                  %d\n" "$failed"
+  log_info "Step 8 image upscale summary:"
+  summary_item "Images found" "$all_images"
+  summary_item "Supported candidates" "$total"
+  summary_item "Processed" "$upscaled"
+  summary_item "Skipped (unsupported)" "$skipped_unsupported"
+  summary_item "Skipped (probe failed)" "$skipped_probe"
+  summary_item "Rejected outputs" "$rejected_outputs"
+  summary_item "Tile fallbacks" "$tile_fallback_used"
+  summary_item "CPU fallbacks" "$cpu_fallback_used"
+  summary_item "Failed" "$failed"
 }
 
 step3_upscale_videos() {
@@ -1072,14 +1098,14 @@ step3_upscale_videos() {
       log_err "Video upscale failed: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 3 Video" "$progress" "$total"
+    progress_draw "Step 8 Video" "$progress" "$total"
   done
 
-  log_info "Step 3 video upscale+denoise summary:"
-  printf "  - Videos found: %d\n" "$total"
-  printf "  - Processed:    %d\n" "$processed"
-  printf "  - CPU fallback: %d\n" "$cpu_fallback_used"
-  printf "  - Failed:       %d\n" "$failed"
+  log_info "Step 8 video upscale summary:"
+  summary_item "Videos found" "$total"
+  summary_item "Processed" "$processed"
+  summary_item "CPU fallbacks" "$cpu_fallback_used"
+  summary_item "Failed" "$failed"
 }
 
 step3_process_media() {
@@ -1132,13 +1158,13 @@ step4_resize_media() {
       if ! is_int "$w" || ! is_int "$h"; then
         img_skipped=$((img_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 5 Resize" "$all_done" "$all_total"
+        progress_draw "Step 4 Resize" "$all_done" "$all_total"
         continue
       fi
       if [[ "$h" -le "$MAX_MEDIA_HEIGHT" ]]; then
         img_skipped=$((img_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 5 Resize" "$all_done" "$all_total"
+        progress_draw "Step 4 Resize" "$all_done" "$all_total"
         continue
       fi
 
@@ -1151,7 +1177,7 @@ step4_resize_media() {
         log_err "Resize failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 5 Resize" "$all_done" "$all_total"
+      progress_draw "Step 4 Resize" "$all_done" "$all_total"
     done
   else
     log_warn "No images found to evaluate for resizing."
@@ -1159,7 +1185,7 @@ step4_resize_media() {
 
   total=${#videos[@]}
   if [[ "$all_done" -gt 0 ]]; then
-    progress_draw "Step 5 Resize" "$all_done" "$all_total"
+    progress_draw "Step 4 Resize" "$all_done" "$all_total"
   fi
   if [[ "$total" -gt 0 ]]; then
     log_info "Checking $total video file(s) for height > ${MAX_MEDIA_HEIGHT}px."
@@ -1171,13 +1197,13 @@ step4_resize_media() {
       if ! is_int "$w" || ! is_int "$h"; then
         vid_skipped=$((vid_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 5 Resize" "$all_done" "$all_total"
+        progress_draw "Step 4 Resize" "$all_done" "$all_total"
         continue
       fi
       if [[ "$h" -le "$MAX_MEDIA_HEIGHT" ]]; then
         vid_skipped=$((vid_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 5 Resize" "$all_done" "$all_total"
+        progress_draw "Step 4 Resize" "$all_done" "$all_total"
         continue
       fi
 
@@ -1202,7 +1228,7 @@ step4_resize_media() {
         *)
           vid_skipped=$((vid_skipped + 1))
           all_done=$((all_done + 1))
-          progress_draw "Step 5 Resize" "$all_done" "$all_total"
+          progress_draw "Step 4 Resize" "$all_done" "$all_total"
           continue
           ;;
       esac
@@ -1217,20 +1243,20 @@ step4_resize_media() {
         log_err "Resize failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 5 Resize" "$all_done" "$all_total"
+      progress_draw "Step 4 Resize" "$all_done" "$all_total"
     done
   else
     log_warn "No videos found to evaluate for resizing."
   fi
 
-  log_info "Resize summary:"
-  printf "  - Max height:     %d\n" "$MAX_MEDIA_HEIGHT"
-  printf "  - Images resized: %d\n" "$img_resized"
-  printf "  - Images skipped: %d\n" "$img_skipped"
-  printf "  - Images failed:  %d\n" "$img_failed"
-  printf "  - Videos resized: %d\n" "$vid_resized"
-  printf "  - Videos skipped: %d\n" "$vid_skipped"
-  printf "  - Videos failed:  %d\n" "$vid_failed"
+  log_info "Step 4 resize summary:"
+  summary_item "Max height" "${MAX_MEDIA_HEIGHT}px"
+  summary_item "Images resized" "$img_resized"
+  summary_item "Images skipped" "$img_skipped"
+  summary_item "Images failed" "$img_failed"
+  summary_item "Videos resized" "$vid_resized"
+  summary_item "Videos skipped" "$vid_skipped"
+  summary_item "Videos failed" "$vid_failed"
 }
 
 step5_remove_metadata() {
@@ -1263,12 +1289,12 @@ step5_remove_metadata() {
       log_err "mat2 failed: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 6 Metadata" "$progress" "$total"
+    progress_draw "Step 5 Metadata" "$progress" "$total"
   done
 
-  log_info "Metadata scrub summary:"
-  printf "  - Cleaned: %d\n" "$cleaned"
-  printf "  - Failed:  %d\n" "$failed"
+  log_info "Step 5 metadata summary:"
+  summary_item "Cleaned" "$cleaned"
+  summary_item "Failed" "$failed"
 }
 
 unique_target_path() {
@@ -1317,29 +1343,27 @@ step9_move_empty_items() {
   local moved_files=0 moved_dirs=0 failed=0
   local keep
 
-  log_info "Scanning recursively for 0-byte files and empty folders..."
-  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
-
+  log_info "Scanning for 0-byte files and empty folders."
   # Fast early exit before building full file/dir lists.
   first_zero=""
   first_empty=""
   pre_zero_tmp="$(mktemp)"
   pre_empty_tmp="$(mktemp)"
-  if ! run_with_spinner "Step 9: quick-checking zero-byte files" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print -quit > "$2"' _ "$bucket_root" "$pre_zero_tmp"; then
+  if ! run_with_spinner "Step 7: quick-checking zero-byte files" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print -quit > "$2"' _ "$bucket_root" "$pre_zero_tmp"; then
     rm -f "$pre_zero_tmp" "$pre_empty_tmp"
-    log_err "Step 9 pre-check failed (zero-byte file scan)."
+    log_err "Step 7 pre-check failed (zero-byte file scan)."
     exit 1
   fi
-  if ! run_with_spinner "Step 9: quick-checking empty folders" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print -quit > "$2"' _ "$bucket_root" "$pre_empty_tmp"; then
+  if ! run_with_spinner "Step 7: quick-checking empty folders" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print -quit > "$2"' _ "$bucket_root" "$pre_empty_tmp"; then
     rm -f "$pre_zero_tmp" "$pre_empty_tmp"
-    log_err "Step 9 pre-check failed (empty folder scan)."
+    log_err "Step 7 pre-check failed (empty folder scan)."
     exit 1
   fi
   first_zero="$(cat "$pre_zero_tmp" 2>/dev/null || true)"
   first_empty="$(cat "$pre_empty_tmp" 2>/dev/null || true)"
   rm -f "$pre_zero_tmp" "$pre_empty_tmp"
   phase=$((phase + 1))
-  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Quick scan complete."
   if [[ -z "$first_zero" && -z "$first_empty" ]]; then
     log_info "No 0-byte files or empty folders found. Nothing to move."
     return 0
@@ -1347,14 +1371,14 @@ step9_move_empty_items() {
 
   list_zero_tmp="$(mktemp)"
   list_empty_tmp="$(mktemp)"
-  if ! run_with_spinner "Step 9: scanning zero-byte files recursively" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print0 > "$2"' _ "$bucket_root" "$list_zero_tmp"; then
+  if ! run_with_spinner "Step 7: scanning zero-byte files recursively" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print0 > "$2"' _ "$bucket_root" "$list_zero_tmp"; then
     rm -f "$list_zero_tmp" "$list_empty_tmp"
-    log_err "Step 9 scan failed (zero-byte file scan)."
+    log_err "Step 7 scan failed (zero-byte file scan)."
     exit 1
   fi
-  if ! run_with_spinner "Step 9: scanning empty folders recursively" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print0 > "$2"' _ "$bucket_root" "$list_empty_tmp"; then
+  if ! run_with_spinner "Step 7: scanning empty folders recursively" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print0 > "$2"' _ "$bucket_root" "$list_empty_tmp"; then
     rm -f "$list_zero_tmp" "$list_empty_tmp"
-    log_err "Step 9 scan failed (empty folder scan)."
+    log_err "Step 7 scan failed (empty folder scan)."
     exit 1
   fi
   while IFS= read -r -d '' file; do
@@ -1368,7 +1392,7 @@ step9_move_empty_items() {
   done < "$list_empty_tmp"
   rm -f "$list_zero_tmp" "$list_empty_tmp"
   phase=$((phase + 1))
-  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Full scan complete."
 
   # Keep only top-most empty directories so nested empties are moved with parents.
   if [[ "$empty_dir_count" -gt 0 ]]; then
@@ -1394,10 +1418,10 @@ step9_move_empty_items() {
       selected_dir_count=$((selected_dir_count + 1))
     fi
     progress=$((progress + 1))
-    progress_draw "Step 9: filtering empty dirs" "$progress" "$empty_dir_count"
+    progress_draw "Step 7 Filter" "$progress" "$empty_dir_count"
   done
   phase=$((phase + 1))
-  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Top-level empty folders selected."
 
   total=$(( zero_file_count + selected_dir_count ))
   log_info "Moving ${zero_file_count} zero-byte file(s) and ${selected_dir_count} empty folder(s)."
@@ -1414,7 +1438,7 @@ step9_move_empty_items() {
       log_err "Failed to move file: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 9 Empty Items" "$progress" "$total"
+    progress_draw "Step 7 Empty items" "$progress" "$total"
   done
 
   for ((i=0; i<selected_dir_count; i++)); do
@@ -1423,7 +1447,7 @@ step9_move_empty_items() {
       # Might have become non-existent after parent move; count as moved.
       moved_dirs=$((moved_dirs + 1))
       progress=$((progress + 1))
-      progress_draw "Step 9 Empty Items" "$progress" "$total"
+      progress_draw "Step 7 Empty items" "$progress" "$total"
       continue
     fi
     if move_item_into_bucket "$dir" "$bucket_root" "empty_folders"; then
@@ -1433,16 +1457,16 @@ step9_move_empty_items() {
       log_err "Failed to move folder: $dir"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 9 Empty Items" "$progress" "$total"
+    progress_draw "Step 7 Empty items" "$progress" "$total"
   done
 
-  log_info "Empty item move summary:"
-  printf "  - Zero-byte files moved: %d\n" "$moved_files"
-  printf "  - Empty folders moved:   %d\n" "$moved_dirs"
-  printf "  - Failed:                %d\n" "$failed"
-  printf "  - Bucket:                %s\n" "$bucket_root"
+  log_info "Step 7 empty-item summary:"
+  summary_item "Zero-byte files moved" "$moved_files"
+  summary_item "Empty folders moved" "$moved_dirs"
+  summary_item "Failed" "$failed"
+  summary_item "Bucket" "$bucket_root"
   phase=$((phase + 1))
-  progress_draw "Step 9 Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Empty-item move finished."
 }
 
 sanitize_name_part() {
@@ -1516,7 +1540,7 @@ step7_sanitize_names() {
       failed=$((failed + 1))
       log_err "Rename skipped (name would become empty): $path"
       progress=$((progress + 1))
-      progress_draw "Step 7 Sanitize" "$progress" "$total"
+      progress_draw "Step 6 Sanitize" "$progress" "$total"
       continue
     fi
 
@@ -1524,7 +1548,7 @@ step7_sanitize_names() {
       failed=$((failed + 1))
       log_err "Rename skipped (target exists): $path -> $target"
       progress=$((progress + 1))
-      progress_draw "Step 7 Sanitize" "$progress" "$total"
+      progress_draw "Step 6 Sanitize" "$progress" "$total"
       continue
     fi
 
@@ -1536,12 +1560,12 @@ step7_sanitize_names() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 7 Sanitize" "$progress" "$total"
+    progress_draw "Step 6 Sanitize" "$progress" "$total"
   done
 
-  log_info "Name sanitization summary:"
-  printf "  - Renamed: %d\n" "$renamed"
-  printf "  - Failed:  %d\n" "$failed"
+  log_info "Step 6 sanitization summary:"
+  summary_item "Renamed" "$renamed"
+  summary_item "Failed" "$failed"
 }
 
 append_unique_line() {
@@ -2092,7 +2116,7 @@ step6_move_similar_media() {
     log_err "czkawka is not installed. Install it (brew install czkawka) and retry."
     exit 1
   fi
-  log_info "Step 2 similar-media flow: keep best item in each group, move the rest."
+  log_info "Scanning for similar images and videos. Best-quality matches stay put."
 
   image_report="$(mktemp)"
   video_report="$(mktemp)"
@@ -2100,23 +2124,21 @@ step6_move_similar_media() {
   move_list="$(mktemp)"
   filtered_move_list="$(mktemp)"
 
-  log_info "Running czkawka similar-image scan..."
   if ! run_with_spinner "Step 2: scanning similar images with czkawka" "$czkawka_cmd" image -d "$PWD" -e "$bucket_root_abs" -x IMAGE -f "$image_report" -W -N; then
     rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
     log_err "Czkawka image scan failed."
     exit 1
   fi
   phase=$((phase + 1))
-  progress_draw "Step 2 Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Image similarity scan complete."
 
-  log_info "Running czkawka similar-video scan..."
   if ! run_with_spinner "Step 2: scanning similar videos with czkawka" "$czkawka_cmd" video -d "$PWD" -e "$bucket_root_abs" -x VIDEO -f "$video_report" -W -N; then
     rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
     log_err "Czkawka video scan failed."
     exit 1
   fi
   phase=$((phase + 1))
-  progress_draw "Step 2 Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Video similarity scan complete."
 
   image_stats="$(collect_similar_media_moves_from_report "image" "$image_report" "$keep_list" "$move_list")"
   IFS='|' read -r image_groups image_entries image_keep image_move <<< "$image_stats"
@@ -2146,13 +2168,13 @@ step6_move_similar_media() {
   if [[ "$skipped_keep_conflicts" -lt 0 ]]; then skipped_keep_conflicts=0; fi
 
   phase=$((phase + 1))
-  progress_draw "Step 2 Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Ranked similar groups and planned moves."
 
   if [[ "$total_planned_moves" -eq 0 ]]; then
     rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
     log_info "No similar media files selected for moving."
     phase=$((phase + 1))
-    progress_draw "Step 2 Phase" "$phase" "$phase_total" "line"
+    phase_note "$phase" "$phase_total" "No similar-media moves were needed."
     return 0
   fi
 
@@ -2165,7 +2187,7 @@ step6_move_similar_media() {
     if [[ ! -e "$rel" ]]; then
       missing=$((missing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 2 Move" "$progress" "$total_planned_moves"
+      progress_draw "Step 2 Similar" "$progress" "$total_planned_moves"
       continue
     fi
 
@@ -2176,7 +2198,7 @@ step6_move_similar_media() {
     else
       missing=$((missing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 2 Move" "$progress" "$total_planned_moves"
+      progress_draw "Step 2 Similar" "$progress" "$total_planned_moves"
       continue
     fi
 
@@ -2188,22 +2210,22 @@ step6_move_similar_media() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 2 Move" "$progress" "$total_planned_moves"
+    progress_draw "Step 2 Similar" "$progress" "$total_planned_moves"
   done < "$filtered_move_list"
 
   rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
-  log_info "Similar-media move summary:"
-  printf "  - Image groups found: %d\n" "$image_groups"
-  printf "  - Video groups found: %d\n" "$video_groups"
-  printf "  - Keepers selected: %d\n" "$(( image_keep + video_keep ))"
-  printf "  - Move candidates (all-but-one): %d\n" "$total_move_candidates"
-  printf "  - Skipped keep conflicts: %d\n" "$skipped_keep_conflicts"
-  printf "  - Files moved: %d\n" "$moved"
-  printf "  - Missing/skipped: %d\n" "$missing"
-  printf "  - Failed: %d\n" "$failed"
-  printf "  - Bucket: %s\n" "$bucket_root"
+  log_info "Step 2 similar-media summary:"
+  summary_item "Image groups found" "$image_groups"
+  summary_item "Video groups found" "$video_groups"
+  summary_item "Keepers selected" "$(( image_keep + video_keep ))"
+  summary_item "Move candidates" "$total_move_candidates"
+  summary_item "Skipped keep conflicts" "$skipped_keep_conflicts"
+  summary_item "Files moved" "$moved"
+  summary_item "Missing or skipped" "$missing"
+  summary_item "Failed" "$failed"
+  summary_item "Bucket" "$bucket_root"
   phase=$((phase + 1))
-  progress_draw "Step 2 Phase" "$phase" "$phase_total" "line"
+  phase_note "$phase" "$phase_total" "Similar-media move finished."
 }
 
 choose_step3_upscale_options() {
@@ -2258,9 +2280,9 @@ choose_step3_upscale_options() {
   fi
 
   if [[ "$STEP3_CPU_FALLBACK" -eq 1 ]]; then
-    log_info "Step 3 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback enabled."
+    log_info "Step 8 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback enabled."
   else
-    log_info "Step 3 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback disabled."
+    log_info "Step 8 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback disabled."
   fi
 }
 
@@ -2445,7 +2467,7 @@ choose_resize_height() {
   local choice custom
 
   print_divider
-  echo "Step 5 Resize: choose max media height"
+  echo "Step 4 Resize: choose max media height"
   echo "1. 3200 (Default)"
   echo "2. 2400"
   echo "3. 2800"
@@ -2492,12 +2514,12 @@ main() {
   print_divider
   ensure_prerequisites
 
-  echo "Select which steps to run:"
-  echo "0. Run steps 1-7 in order"
+  echo "Choose steps to run:"
+  echo "  0. Core cleanup (steps 1-7)"
   for num in "${STEP_ORDER[@]}"; do
-    echo "$num. $(step_description "$num")"
+    printf "  %2d. %s\n" "$num" "$(step_description "$num")"
   done
-  read -r -p "> " input
+  read -r -p "Steps (example: 1,2,4-6) > " input
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
@@ -2562,9 +2584,9 @@ main() {
   fi
 
   print_divider
-  echo "Selected steps:"
+  echo "Run plan:"
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
-    echo "  - $num. $(step_description "$num")"
+    printf "  %2d. %s\n" "$num" "$(step_description "$num")"
   done
 
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
@@ -2576,7 +2598,7 @@ main() {
     esac
   done
 
-  read -r -p "Run selected steps now? [y/N] " confirm
+  read -r -p "Proceed? [y/N] " confirm
   confirm="${confirm:-N}"
   if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     log_warn "Cancelled."
@@ -2595,7 +2617,7 @@ main() {
   done
 
   print_divider
-  printf "%sAll selected steps completed.%s\n" "$C_BOLD" "$C_RESET"
+  printf "%sAll selected steps finished.%s\n" "$C_BOLD" "$C_RESET"
 }
 
 main "$@"
