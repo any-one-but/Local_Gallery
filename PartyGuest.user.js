@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.08
+// @version      01.13.09
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -619,6 +619,17 @@ body.pg-menu-open {
   gap: 6px;
   flex-wrap: wrap;
   margin: 2px 0 10px;
+}
+
+#pgMenuBody .pg-group-splitter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#pgMenuBody .pg-group-splitter input[type="number"] {
+  width: 112px;
 }
 
 #pgMenuBody .pg-group-row .pg-opt-right {
@@ -2480,6 +2491,10 @@ function normalizeGroup(raw) {
     earliestPostFolder: earliestPostFolder || rawName || 'post',
     earliestIndex: typeof raw.earliestIndex === 'number' ? raw.earliestIndex : 0,
     earliestPage: typeof raw.earliestPage === 'number' && raw.earliestPage > 0 ? raw.earliestPage : 0,
+    extentKind: typeof raw.extentKind === 'string' ? raw.extentKind : '',
+    extentStartPage: typeof raw.extentStartPage === 'number' && raw.extentStartPage > 0 ? raw.extentStartPage : 0,
+    extentEndPage: typeof raw.extentEndPage === 'number' && raw.extentEndPage > 0 ? raw.extentEndPage : 0,
+    extentPageCount: typeof raw.extentPageCount === 'number' && raw.extentPageCount > 0 ? raw.extentPageCount : 0,
     userFolder: typeof raw.userFolder === 'string' ? raw.userFolder : '',
     files,
     postCount: typeof raw.postCount === 'number' ? raw.postCount : stats.postCount,
@@ -2551,6 +2566,58 @@ function getGroupPageInfo(group) {
   return {
     page: 0,
     sortIndex: fallbackIndex || 0
+  };
+}
+
+function formatPageExtentLabel(startPage, endPage) {
+  const start = Math.max(1, Number(startPage) || 0);
+  const end = Math.max(start, Number(endPage) || 0);
+  return start === end ? `Page ${start}` : `Pages ${start}-${end}`;
+}
+
+function getPageExtentKey(startPage, endPage) {
+  const start = Math.max(1, Number(startPage) || 0);
+  const end = Math.max(start, Number(endPage) || 0);
+  if (!start || !end) return '';
+  return `${start}:${end}`;
+}
+
+function getGroupPageExtentKey(group) {
+  if (!group || group.extentKind !== 'pages') return '';
+  return getPageExtentKey(group.extentStartPage, group.extentEndPage);
+}
+
+function buildPageExtentGroup(startPage, endPage, posts) {
+  const sourcePosts = [];
+  (Array.isArray(posts) ? posts : []).forEach(post => {
+    if (!post || post.id == null) return;
+    const allFiles = Array.isArray(post.pgFiles) ? post.pgFiles : [];
+    const allowedFiles = allFiles
+      .filter(file => file && file.url)
+      .map(file => ({ url: file.url, g: typeof file.g === 'number' ? file.g : 0 }));
+    if (!allowedFiles.length) return;
+    const globalIndex = typeof post.pgGlobalIndex === 'number'
+      ? post.pgGlobalIndex
+      : ((PG_ID_MAP && post.id != null) ? (PG_ID_MAP.get(String(post.id)) || 0) : 0);
+    sourcePosts.push({ post, allowedFiles, globalIndex });
+  });
+  const bundle = buildBundleFromKeptPosts(sourcePosts);
+  if (!bundle.files.length) return null;
+  return {
+    id: makeGroupId(),
+    createdAt: Date.now(),
+    name: formatPageExtentLabel(startPage, endPage),
+    earliestPostFolder: bundle.earliestPostFolder || 'post',
+    earliestIndex: bundle.earliestIndex,
+    earliestPage: startPage,
+    extentKind: 'pages',
+    extentStartPage: startPage,
+    extentEndPage: endPage,
+    extentPageCount: Math.max(1, endPage - startPage + 1),
+    userFolder: bundle.userFolder,
+    files: bundle.files,
+    postCount: bundle.postCount,
+    fileCount: bundle.fileCount
   };
 }
 
@@ -3894,6 +3961,10 @@ function renderGroupsUi() {
   const actions = `
     <div class="pg-group-actions">
       <button type="button" id="pgGroupsCreateBtn"${hasProfile ? '' : ' disabled'}>Create Group</button>
+      <div class="pg-group-splitter">
+        <input id="pgGroupsPagesPerGroupInput" type="number" min="1" step="1" inputmode="numeric" placeholder="Pages per group"${hasProfile ? '' : ' disabled'}>
+        <button type="button" id="pgGroupsSplitByPagesBtn"${hasProfile ? '' : ' disabled'}>Split by Pages</button>
+      </div>
       <button type="button" id="pgGroupsExportBtn"${groups.length ? '' : ' disabled'}>Export Groups</button>
       <button type="button" id="pgGroupsImportBtn"${hasProfile ? '' : ' disabled'}>Import Groups</button>
       <button type="button" id="pgGroupsDownloadSelectedBtn"${selectedCount ? '' : ' disabled'}>Download Selected</button>
@@ -3913,7 +3984,8 @@ function renderGroupsUi() {
       const created = formatGroupDate(group.createdAt);
       const posts = typeof group.postCount === 'number' ? group.postCount : 0;
       const files = typeof group.fileCount === 'number' ? group.fileCount : (group.files ? group.files.length : 0);
-      const meta = `${posts} posts • ${files} files${created ? ' • ' + created : ''}`;
+      const extentLabel = getGroupPageExtentKey(group) ? formatPageExtentLabel(group.extentStartPage, group.extentEndPage) : '';
+      const meta = `${extentLabel ? extentLabel + ' • ' : ''}${posts} posts • ${files} files${created ? ' • ' + created : ''}`;
       return `
         <div class="pg-opt-row pg-group-row">
           <div class="pg-opt-left">
@@ -3957,6 +4029,22 @@ function renderGroupsUi() {
   if (createBtn) {
     createBtn.addEventListener('click', () => {
       if (hasProfile) handleCreateGroup();
+    });
+  }
+
+  const splitInput = document.getElementById('pgGroupsPagesPerGroupInput');
+  const splitBtn = document.getElementById('pgGroupsSplitByPagesBtn');
+  const triggerSplit = () => {
+    if (hasProfile) handleCreatePageExtentGroups();
+  };
+  if (splitBtn) {
+    splitBtn.addEventListener('click', triggerSplit);
+  }
+  if (splitInput) {
+    splitInput.addEventListener('keydown', ev => {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      triggerSplit();
     });
   }
 
@@ -7393,6 +7481,87 @@ async function handleCreateGroup() {
   saveGroupsForProfile();
   renderGroupsUi();
   setStatus(`Group created: ${name} (${bundle.postCount} posts, ${bundle.fileCount} files)`, 'success');
+}
+
+async function handleCreatePageExtentGroups() {
+  const profileKey = getProfileKeyFromLocation();
+  if (!profileKey) {
+    setStatus('No profile detected', 'error');
+    return false;
+  }
+
+  const input = document.getElementById('pgGroupsPagesPerGroupInput');
+  const raw = (input && typeof input.value === 'string') ? input.value.trim() : '';
+  const pageSpan = parseInt(raw, 10);
+  if (!raw || !/^\d+$/.test(raw) || !isFinite(pageSpan) || pageSpan <= 0) {
+    setStatus('Enter a valid pages-per-group value', 'error');
+    return false;
+  }
+
+  if (PG_INDEX_LOADING) {
+    setStatus('Wait for indexing to finish', 'info');
+    return false;
+  }
+
+  await buildGlobalIndexMapIfNeeded();
+  buildFileIndexFromPostsIfNeeded();
+  if (!PG_POSTS || !PG_POSTS.length) {
+    setStatus('Unable to load profile pages', 'error');
+    return false;
+  }
+
+  const groups = loadGroupsForProfile(profileKey);
+  const existingExtentKeys = new Set(groups.map(getGroupPageExtentKey).filter(Boolean));
+  const postsByPage = new Map();
+  let totalPages = 0;
+
+  PG_POSTS.forEach(post => {
+    const page = post && typeof post.pgPage === 'number' && post.pgPage > 0 ? post.pgPage : 1;
+    if (page > totalPages) totalPages = page;
+    let arr = postsByPage.get(page);
+    if (!arr) {
+      arr = [];
+      postsByPage.set(page, arr);
+    }
+    arr.push(post);
+  });
+
+  if (!totalPages) {
+    setStatus('No profile pages available', 'info');
+    return false;
+  }
+
+  const createdGroups = [];
+  let skipped = 0;
+  for (let startPage = 1; startPage <= totalPages; startPage += pageSpan) {
+    const endPage = Math.min(totalPages, startPage + pageSpan - 1);
+    const extentKey = getPageExtentKey(startPage, endPage);
+    if (existingExtentKeys.has(extentKey)) {
+      skipped++;
+      continue;
+    }
+    const pagePosts = [];
+    for (let page = startPage; page <= endPage; page++) {
+      const posts = postsByPage.get(page);
+      if (posts && posts.length) pagePosts.push(...posts);
+    }
+    const group = buildPageExtentGroup(startPage, endPage, pagePosts);
+    if (!group) continue;
+    createdGroups.push(group);
+    existingExtentKeys.add(extentKey);
+  }
+
+  if (!createdGroups.length) {
+    setStatus(skipped ? 'All page extents already exist' : 'No page groups were created', 'info');
+    return false;
+  }
+
+  PG_GROUPS.push(...createdGroups);
+  saveGroupsForProfile();
+  renderGroupsUi();
+  const skippedMsg = skipped ? `, skipped ${skipped} existing` : '';
+  setStatus(`Created ${createdGroups.length} page group${createdGroups.length === 1 ? '' : 's'} (${pageSpan} pages each${skippedMsg})`, 'success');
+  return true;
 }
 
 function handleClearGroups() {
