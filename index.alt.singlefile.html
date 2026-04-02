@@ -3541,33 +3541,10 @@
       margin-top: 0;
     }
 
-    .statsSubTabs {
+    .statsSinglePage {
       display: flex;
-      gap: 2px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-      padding-bottom: 1px;
-    }
-
-    .statsSubTabBtn {
-      white-space: nowrap;
-      border-radius: 4px 4px 0 0;
-      border-bottom-color: var(--color1-tertiary);
-      background: var(--color1-primary);
-      color: var(--color0-primary);
-      padding: 4px 10px;
-    }
-
-    .statsSubTabBtn.active {
-      background: var(--color1-secondary);
-      border-bottom-color: var(--color1-secondary);
-      color: var(--color0-primary);
-      position: relative;
-      top: 1px;
-    }
-
-    .statsSubPanel {
+      flex-direction: column;
+      gap: 12px;
       min-width: 0;
     }
 
@@ -3583,23 +3560,6 @@
       margin-top: 0;
     }
 
-    .calendarRankingsCard {
-      margin-bottom: 0;
-    }
-
-    .calendarRankingsGrid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .calendarRankingSection h3 {
-      margin: 0 0 8px 0;
-      font-size: 12px;
-      color: var(--color0-primary);
-    }
-
     .calendarRankingsEmpty {
       margin-top: 8px;
       padding: 10px;
@@ -3609,174 +3569,162 @@
       background: var(--color1-primary);
     }
 
-    .calendarRankingRow {
-      display: grid;
-      grid-template-columns: 24px minmax(0, 1fr);
-      gap: 8px;
-      align-items: start;
-      padding: 8px 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .calendarRankingRow:first-of-type {
-      border-top: 0;
-      padding-top: 0;
-    }
-
-    .calendarRankingPosition {
-      width: 24px;
-      height: 24px;
-      border-radius: 999px;
-      display: grid;
-      place-items: center;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--color0-primary);
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-    }
-
-    .calendarRankingMain {
+    .statsLedgerCard {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
       min-width: 0;
     }
 
-    .calendarRankingName {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: var(--color0-primary);
-      font-weight: 600;
+    .statsLedgerHeader {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
-    .calendarRankingMeta {
-      margin-top: 2px;
+    .statsLedgerHeader h2 {
+      margin: 0;
+    }
+
+    .statsLedgerSummary {
       color: var(--color0-secondary);
       font-size: 11px;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: nowrap;
     }
 
-    .scorePieWrap {
-      display: grid;
-      grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-      gap: 16px;
-      align-items: center;
-      margin-top: 8px;
-    }
-
-    .scorePieWrapEmpty {
-      display: block;
-    }
-
-    .scorePieChart {
-      width: 180px;
-      height: 180px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 55%);
-    }
-
-    .scorePieSvg {
-      width: 180px;
-      height: 180px;
-      display: block;
-      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.28));
-    }
-
-    .scorePieBackdrop {
-      fill: rgba(0, 0, 0, 0.24);
-      stroke: rgba(255, 255, 255, 0.08);
-      stroke-width: 1;
-    }
-
-    .scorePieOutline {
-      fill: none;
-      stroke: rgba(255, 255, 255, 0.14);
-      stroke-width: 1;
-    }
-
-    .scorePieEmpty {
-      padding: 10px;
-      border: 1px dashed var(--color1-tertiary);
+    .statsLedgerTableWrap {
+      min-width: 0;
+      overflow-x: auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 6px;
-      color: var(--color0-secondary);
-      background: var(--color1-primary);
+      background: rgba(0, 0, 0, 0.14);
     }
 
-    .scorePieLegend {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 0;
+    .statsLedgerTable {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: collapse;
+      table-layout: fixed;
     }
 
-    .scorePieLegendRow {
-      display: grid;
-      grid-template-columns: 12px 1fr auto auto;
-      gap: 8px;
-      align-items: center;
+    .statsLedgerTable th,
+    .statsLedgerTable td {
+      padding: 10px 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      vertical-align: middle;
+    }
+
+    .statsLedgerTable thead th {
+      padding: 0;
+      border-top: 0;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .statsLedgerTable tbody th,
+    .statsLedgerTable tbody td {
+      background: transparent;
+    }
+
+    .statsLedgerTable tbody tr:first-child th,
+    .statsLedgerTable tbody tr:first-child td {
+      border-top: 0;
+    }
+
+    .statsLedgerNameHeader {
+      width: 28%;
       min-width: 0;
+      text-align: center;
+      color: var(--color0-primary);
       font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 12px;
     }
 
-    .scorePieSwatch {
-      width: 12px;
-      height: 12px;
-      border-radius: 2px;
-      border: 1px solid rgba(0, 0, 0, 0.35);
-    }
-
-    .scorePieName {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+    .statsLedgerSortHeader {
+      width: 18%;
       min-width: 0;
     }
 
-    .scorePieValue {
-      color: var(--color0-primary);
-      font-weight: 700;
-    }
-
-    .scorePiePct {
-      color: var(--color0-secondary);
-      min-width: 46px;
-      text-align: right;
-    }
-
-    .scoreBarsWrap {
+    .statsLedgerSortBtn {
+      width: 100%;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .scoreBarsEmpty {
-      margin-top: 8px;
-      padding: 10px;
-      border: 1px dashed var(--color1-tertiary);
-      border-radius: 6px;
-      color: var(--color0-secondary);
-      background: var(--color1-primary);
-    }
-
-    .scoreBarRow {
-      display: grid;
-      grid-template-columns: minmax(120px, 1fr) minmax(170px, 2fr) auto;
       align-items: center;
-      gap: 8px;
-      min-width: 0;
+      gap: 2px;
+      padding: 12px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--color0-primary);
+      cursor: pointer;
+      text-align: center;
+      box-shadow: none;
+      transform: none;
     }
 
-    .scoreBarLabel {
+    .statsLedgerSortBtn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      transform: none;
+    }
+
+    .statsLedgerSortBtn.active {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .statsLedgerSortBtnMain {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .statsLedgerSortBtnMeta {
+      color: var(--color0-secondary);
+      font-size: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .statsLedgerFolderCell {
+      color: var(--color0-primary);
+      font-weight: 600;
+      text-align: center;
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      min-width: 0;
-      color: var(--color0-primary);
     }
 
-    .scoreBarTrack {
+    .statsLedgerValueCell {
+      color: var(--color0-secondary);
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .statsLedgerScoreCell {
+      text-align: center;
+    }
+
+    .statsLedgerScoreMetric {
+      display: grid;
+      grid-template-columns: auto minmax(120px, 1fr);
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .statsLedgerNumber {
+      min-width: 42px;
+      color: var(--color0-primary);
+      text-align: center;
+    }
+
+    .statsLedgerScoreBar {
       position: relative;
       height: 14px;
       border-radius: 3px;
@@ -3785,7 +3733,7 @@
       overflow: hidden;
     }
 
-    .scoreBarAxis {
+    .statsLedgerScoreAxis {
       position: absolute;
       left: 50%;
       top: 0;
@@ -3796,7 +3744,7 @@
       z-index: 2;
     }
 
-    .scoreBarFill {
+    .statsLedgerScoreFill {
       position: absolute;
       top: 1px;
       bottom: 1px;
@@ -3805,20 +3753,12 @@
       min-width: 0;
     }
 
-    .scoreBarFill.positive {
+    .statsLedgerScoreFill.positive {
       background: linear-gradient(90deg, #2ea76d, #57d98f);
     }
 
-    .scoreBarFill.negative {
+    .statsLedgerScoreFill.negative {
       background: linear-gradient(90deg, #d45f68, #f28a93);
-    }
-
-    .scoreBarValue {
-      min-width: 54px;
-      text-align: right;
-      color: var(--color0-secondary);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 11px;
     }
 
     .calendarHistory {
@@ -3854,14 +3794,21 @@
     }
 
     @media (max-width: 760px) {
-      .scorePieWrap {
-        grid-template-columns: 1fr;
+      .statsLedgerSummary {
+        white-space: normal;
       }
 
-      .scorePieChart,
-      .scorePieSvg {
-        width: 160px;
-        height: 160px;
+      .statsLedgerTable {
+        min-width: 680px;
+      }
+
+      .statsLedgerScoreMetric {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+
+      .statsLedgerNumber {
+        text-align: center;
       }
     }
 
@@ -9738,8 +9685,8 @@
     let MENU_LAST_TAB = "general";
     let MENU_HAS_OPENED = false;
     const MENU_TAB_SCROLL = { general: 0, appearance: 0, playback: 0, thumbnails: 0, filenames: 0, controls: 0, calendar: 0 };
-    const CALENDAR_SUBTAB_IDS = ["efficiency", "portions", "scores", "history"];
-    let CALENDAR_ACTIVE_SUBTAB = "efficiency";
+    const CALENDAR_STATS_SORT_KEYS = ["score", "sizeBytes", "efficiency", "scorePortion"];
+    let CALENDAR_STATS_SORT_KEY = "score";
     let KEYBIND_CAPTURE_ACTION_ID = "";
     let PROPERTIES_OPEN = false;
 
@@ -10031,6 +9978,10 @@
       restoreMenuTabScroll("controls");
     }
 
+    function defaultMenuOverlayWidth() {
+      return Math.max(320, Math.min(window.innerWidth * 0.375, window.innerWidth - 32));
+    }
+
     function setMenuTab(tabId) {
       const nextCandidate = MENU_TAB_IDS.includes(tabId) ? tabId : "general";
       const next = nextCandidate;
@@ -10073,7 +10024,7 @@
       if (!MENU_HAS_OPENED) {
         overlayWindowStates.menu.x = 8;
         overlayWindowStates.menu.y = 8;
-        overlayWindowStates.menu.width = null;
+        overlayWindowStates.menu.width = defaultMenuOverlayWidth();
         overlayWindowStates.menu.height = Math.max(220, window.innerHeight - 16);
       }
       requestAnimationFrame(() => applyOverlayWindowState("menu"));
@@ -10219,196 +10170,137 @@
       return out;
     }
 
-    function formatMegabytes(bytes) {
-      const n = Math.max(0, Number(bytes) || 0) / (1024 * 1024);
-      if (n >= 100) return `${Math.round(n)} MB`;
-      if (n >= 10) return `${n.toFixed(1)} MB`;
-      return `${n.toFixed(2)} MB`;
-    }
-
-    function scorePiePoint(cx, cy, radius, deg) {
-      const rad = (deg - 90) * Math.PI / 180;
-      return {
-        x: cx + (radius * Math.cos(rad)),
-        y: cy + (radius * Math.sin(rad))
-      };
-    }
-
-    function buildScorePieSlicePath(cx, cy, radius, startDeg, endDeg) {
-      const start = scorePiePoint(cx, cy, radius, startDeg);
-      const end = scorePiePoint(cx, cy, radius, endDeg);
-      const largeArcFlag = (endDeg - startDeg) > 180 ? 1 : 0;
-      return `M ${cx.toFixed(3)} ${cy.toFixed(3)} L ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${radius.toFixed(3)} ${radius.toFixed(3)} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)} Z`;
-    }
-
-    function buildRootPositivePieHtml(rootRows) {
-      const positives = rootRows.filter((row) => Number(row.score) > 0);
-      const total = positives.reduce((sum, row) => sum + (Number(row.score) || 0), 0);
-      if (!(total > 0)) {
-        return `
-          <div class="scorePieWrap scorePieWrapEmpty">
-            <div class="scorePieEmpty">No positive root scores yet.</div>
-          </div>
-        `;
+    function formatSizeOnDisk(bytes) {
+      const mb = Math.max(0, Number(bytes) || 0) / (1024 * 1024);
+      if (mb >= 1024) {
+        const gb = mb / 1024;
+        if (gb >= 100) return `${Math.round(gb)} GB`;
+        if (gb >= 10) return `${gb.toFixed(1)} GB`;
+        return `${gb.toFixed(2)} GB`;
       }
-      let acc = 0;
-      const slices = [];
-      for (let i = 0; i < positives.length; i++) {
-        const row = positives[i];
-        const startDeg = acc * 360;
-        const part = (Number(row.score) || 0) / total;
-        acc += part;
-        const endDeg = acc * 360;
-        const color = scoreHistoryChartColor(i);
-        if (positives.length === 1) {
-          slices.push(`<circle cx="60" cy="60" r="54" fill="${escapeHtml(color)}"></circle>`);
-        } else {
-          slices.push(`<path d="${buildScorePieSlicePath(60, 60, 54, startDeg, endDeg)}" fill="${escapeHtml(color)}"></path>`);
-        }
+      if (mb >= 100) return `${Math.round(mb)} MB`;
+      if (mb >= 10) return `${mb.toFixed(1)} MB`;
+      return `${mb.toFixed(2)} MB`;
+    }
+
+    function formatScorePortion(value, hasTotalScore) {
+      if (!hasTotalScore) return "—";
+      return `${(Number(value) || 0).toFixed(1)}%`;
+    }
+
+    function compareCalendarStatsLedgerRows(a, b, sortKey) {
+      let diff = 0;
+      if (sortKey === "sizeBytes") {
+        diff = (Number(b.sizeBytes) || 0) - (Number(a.sizeBytes) || 0);
+      } else if (sortKey === "efficiency") {
+        diff = (Number(b.efficiency) || 0) - (Number(a.efficiency) || 0);
+      } else if (sortKey === "scorePortion") {
+        diff = (Number(b.scorePortion) || 0) - (Number(a.scorePortion) || 0);
+      } else {
+        diff = (Number(b.score) || 0) - (Number(a.score) || 0);
       }
-      const legend = positives.map((row, idx) => {
-        const score = Number(row.score) || 0;
-        const pct = total > 0 ? (score / total) * 100 : 0;
-        return `
-          <div class="scorePieLegendRow">
-            <span class="scorePieSwatch" style="background:${escapeHtml(scoreHistoryChartColor(idx))};"></span>
-            <span class="scorePieName" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</span>
-            <span class="scorePieValue">${escapeHtml(String(score))}</span>
-            <span class="scorePiePct">${escapeHtml(pct.toFixed(1))}%</span>
-          </div>
-        `;
-      }).join("");
+      if (diff) return diff;
+      const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
+      if (scoreDiff && sortKey !== "score") return scoreDiff;
+      const sizeDiff = (Number(b.sizeBytes) || 0) - (Number(a.sizeBytes) || 0);
+      if (sizeDiff && sortKey !== "sizeBytes") return sizeDiff;
+      const efficiencyDiff = (Number(b.efficiency) || 0) - (Number(a.efficiency) || 0);
+      if (efficiencyDiff && sortKey !== "efficiency") return efficiencyDiff;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    }
+
+    function buildCalendarStatsSortButtonHtml(sortKey, activeSortKey, label, detail) {
+      const active = sortKey === activeSortKey;
       return `
-        <div class="scorePieWrap">
-          <div class="scorePieChart">
-            <svg class="scorePieSvg" viewBox="0 0 120 120" aria-hidden="true" focusable="false">
-              <circle class="scorePieBackdrop" cx="60" cy="60" r="54"></circle>
-              ${slices.join("")}
-              <circle class="scorePieOutline" cx="60" cy="60" r="54"></circle>
-            </svg>
-          </div>
-          <div class="scorePieLegend">
-            ${legend}
-          </div>
-        </div>
+        <button
+          type="button"
+          class="statsLedgerSortBtn${active ? " active" : ""}"
+          data-stats-sort="${escapeHtml(sortKey)}"
+          aria-label="Sort by ${escapeHtml(label)}, highest to lowest"
+        >
+          <span class="statsLedgerSortBtnMain">${escapeHtml(label)}</span>
+          <span class="statsLedgerSortBtnMeta">${active ? "Highest first" : escapeHtml(detail)}</span>
+        </button>
       `;
     }
 
-    function buildRootScoreBarsHtml(rootRows) {
-      const rows = rootRows.filter((row) => (Number(row.score) || 0) !== 0);
-      if (!rows.length) {
-        return `<div class="scoreBarsEmpty">No non-zero root scores yet.</div>`;
-      }
-      const sortedRows = rows.slice().sort((a, b) => {
-        const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
-        if (scoreDiff) return scoreDiff;
-        return String(a.name || "").localeCompare(String(b.name || ""));
-      });
-      const maxAbs = Math.max(1, ...sortedRows.map((row) => Math.abs(Number(row.score) || 0)));
-      const rowsHtml = sortedRows.map((row) => {
-        const score = Number(row.score) || 0;
-        const widthPct = Math.max(0, Math.min(50, Math.abs(score) / maxAbs * 50));
-        const leftPct = score >= 0 ? 50 : Math.max(0, 50 - widthPct);
-        const signClass = score >= 0 ? "positive" : "negative";
-        const shown = score > 0 ? `+${score}` : String(score);
-        return `
-          <div class="scoreBarRow">
-            <div class="scoreBarLabel" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</div>
-            <div class="scoreBarTrack">
-              <div class="scoreBarAxis"></div>
-              <div class="scoreBarFill ${signClass}" style="left:${leftPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%;"></div>
-            </div>
-            <div class="scoreBarValue">${escapeHtml(shown)}</div>
-          </div>
-        `;
-      }).join("");
-      return `
-        <div class="scoreBarsWrap">
-          ${rowsHtml}
-        </div>
-      `;
-    }
-
-    function buildStatsRankingListHtml(rows, emptyLabel, metaTextForRow) {
-      if (!rows.length) {
-        return `<div class="calendarRankingsEmpty">${escapeHtml(emptyLabel)}</div>`;
-      }
-      return rows.map((row, idx) => `
-        <div class="calendarRankingRow">
-          <div class="calendarRankingPosition">${escapeHtml(String(idx + 1))}</div>
-          <div class="calendarRankingMain">
-            <div class="calendarRankingName" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</div>
-            <div class="calendarRankingMeta">${escapeHtml(typeof metaTextForRow === "function" ? metaTextForRow(row, idx) : "")}</div>
-          </div>
-        </div>
-      `).join("");
-    }
-
-    function buildCalendarEfficiencyListHtml(rows, emptyLabel) {
-      return buildStatsRankingListHtml(
-        rows,
-        emptyLabel,
-        (row) => `Efficiency ${(Number(row.efficiency) || 0).toFixed(2)} • Score ${String(row.score)} • Size ${formatMegabytes(row.sizeBytes)}`
-      );
-    }
-
-    function buildRootEfficiencySummaryHtml(rootRows) {
+    function buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey) {
       if (!rootRows.length) {
         return `
-          <section class="calendarRankingsCard statsWidgetCard">
-            <h2>Efficiency ranking</h2>
+          <section class="statsWidgetCard statsLedgerCard">
+            <div class="statsLedgerHeader">
+              <div>
+                <h2>Root folder ledger</h2>
+                <div class="label">Click a column title to sort descending.</div>
+              </div>
+            </div>
             <div class="calendarRankingsEmpty">No root folders available.</div>
           </section>
         `;
       }
 
-      const ranked = rootRows.slice().sort((a, b) => {
-        const efficiencyDiff = (Number(b.efficiency) || 0) - (Number(a.efficiency) || 0);
-        if (efficiencyDiff) return efficiencyDiff;
-        const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
-        if (scoreDiff) return scoreDiff;
-        const sizeDiff = (Number(a.sizeBytes) || 0) - (Number(b.sizeBytes) || 0);
-        if (sizeDiff) return sizeDiff;
-        return String(a.name || "").localeCompare(String(b.name || ""));
-      });
-
-      return `
-        <section class="calendarRankingsCard statsWidgetCard">
-          <h2>Efficiency ranking</h2>
-          ${buildCalendarEfficiencyListHtml(ranked, "No folders to rank.")}
-        </section>
-      `;
-    }
-
-    function buildRootScoreRankingHtml(rootRows) {
-      return `
-        <section class="calendarAnalyticsCard statsWidgetCard">
-          <h2>Score rankings</h2>
-          ${buildRootScoreBarsHtml(rootRows)}
-        </section>
-      `;
-    }
-
-    function buildCalendarStatsSubTabsHtml(activeSubtab) {
-      const tabs = [
-        { id: "efficiency", label: "Efficiency ranking" },
-        { id: "portions", label: "Score portions" },
-        { id: "scores", label: "Score rankings" },
-        { id: "history", label: "Score history" }
-      ];
-      return tabs.map((tab) => {
-        const active = tab.id === activeSubtab;
+      const hasTotalScore = Math.abs(Number(totalScore) || 0) > 0;
+      const sortKey = CALENDAR_STATS_SORT_KEYS.includes(activeSortKey) ? activeSortKey : "score";
+      const ledgerRows = rootRows.map((row) => {
+        const score = Number(row.score) || 0;
+        return {
+          ...row,
+          scorePortion: hasTotalScore ? ((score / totalScore) * 100) : 0
+        };
+      }).sort((a, b) => compareCalendarStatsLedgerRows(a, b, sortKey));
+      const maxAbsScore = Math.max(1, ...ledgerRows.map((row) => Math.abs(Number(row.score) || 0)));
+      const rowsHtml = ledgerRows.map((row) => {
+        const score = Number(row.score) || 0;
+        const scoreWidthPct = Math.max(0, Math.min(50, (Math.abs(score) / maxAbsScore) * 50));
+        const scoreLeftPct = score >= 0 ? 50 : Math.max(0, 50 - scoreWidthPct);
+        const scoreShown = score > 0 ? `+${score}` : String(score);
+        const scoreSignClass = score >= 0 ? "positive" : "negative";
         return `
-          <button
-            type="button"
-            class="miniBtn menuTabBtn statsSubTabBtn${active ? " active" : ""}"
-            data-stats-subtab="${escapeHtml(tab.id)}"
-            role="tab"
-            aria-selected="${active ? "true" : "false"}"
-            tabindex="${active ? "0" : "-1"}"
-          >${escapeHtml(tab.label)}</button>
+          <tr class="statsLedgerRow">
+            <th scope="row" class="statsLedgerFolderCell" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</th>
+            <td class="statsLedgerValueCell statsLedgerScoreCell">
+              <div class="statsLedgerScoreMetric">
+                <span class="statsLedgerNumber">${escapeHtml(scoreShown)}</span>
+                <div class="statsLedgerScoreBar" aria-hidden="true">
+                  <div class="statsLedgerScoreAxis"></div>
+                  <div class="statsLedgerScoreFill ${scoreSignClass}" style="left:${scoreLeftPct.toFixed(3)}%;width:${scoreWidthPct.toFixed(3)}%;"></div>
+                </div>
+              </div>
+            </td>
+            <td class="statsLedgerValueCell">${escapeHtml(formatSizeOnDisk(row.sizeBytes))}</td>
+            <td class="statsLedgerValueCell">${escapeHtml(`${(Number(row.efficiency) || 0).toFixed(2)} / MB`)}</td>
+            <td class="statsLedgerValueCell">${escapeHtml(formatScorePortion(row.scorePortion, hasTotalScore))}</td>
+          </tr>
         `;
       }).join("");
+
+      return `
+        <section class="statsWidgetCard statsLedgerCard">
+          <div class="statsLedgerHeader">
+            <div>
+              <h2>Root folder ledger</h2>
+              <div class="label">Click a column title to sort descending.</div>
+            </div>
+            <div class="statsLedgerSummary">Folders ${escapeHtml(String(rootRows.length))} • Root score sum ${escapeHtml(String(totalScore))}</div>
+          </div>
+          <div class="statsLedgerTableWrap">
+            <table class="statsLedgerTable">
+              <thead>
+                <tr>
+                  <th scope="col" class="statsLedgerNameHeader">Folder</th>
+                  <th scope="col" class="statsLedgerSortHeader" aria-sort="${sortKey === "score" ? "descending" : "none"}">${buildCalendarStatsSortButtonHtml("score", sortKey, "Score", "Number + bar")}</th>
+                  <th scope="col" class="statsLedgerSortHeader" aria-sort="${sortKey === "sizeBytes" ? "descending" : "none"}">${buildCalendarStatsSortButtonHtml("sizeBytes", sortKey, "Size on Disk", "MB or GB")}</th>
+                  <th scope="col" class="statsLedgerSortHeader" aria-sort="${sortKey === "efficiency" ? "descending" : "none"}">${buildCalendarStatsSortButtonHtml("efficiency", sortKey, "Efficiency", "Score per MB")}</th>
+                  <th scope="col" class="statsLedgerSortHeader" aria-sort="${sortKey === "scorePortion" ? "descending" : "none"}">${buildCalendarStatsSortButtonHtml("scorePortion", sortKey, "% of Total Score", "Root score share")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
     }
 
     function scoreHistoryRootPathFromChangedPath(path) {
@@ -10487,8 +10379,9 @@
       const history = normalizeScoreHistoryList(WS.meta && Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : []);
       WS.meta.scoreHistory = history;
       const rootRows = getVisibleRootFolderScoreRows();
-      const positiveCount = rootRows.filter((row) => Number(row.score) > 0).length;
       const totalScore = rootRows.reduce((sum, row) => sum + (Number(row.score) || 0), 0);
+      const activeSortKey = CALENDAR_STATS_SORT_KEYS.includes(CALENDAR_STATS_SORT_KEY) ? CALENDAR_STATS_SORT_KEY : "score";
+      CALENDAR_STATS_SORT_KEY = activeSortKey;
       const grouped = new Map();
       for (let i = 0; i < history.length; i++) {
         const entry = history[i];
@@ -10539,40 +10432,18 @@
           `;
         }).join("")
         : `<div class="scoreHistoryEmpty">No score changes logged yet.</div>`;
-      const activeSubtab = CALENDAR_SUBTAB_IDS.includes(CALENDAR_ACTIVE_SUBTAB) ? CALENDAR_ACTIVE_SUBTAB : "efficiency";
-      CALENDAR_ACTIVE_SUBTAB = activeSubtab;
-
-      let widgetHtml = "";
-      if (activeSubtab === "efficiency") {
-        widgetHtml = buildRootEfficiencySummaryHtml(rootRows);
-      } else if (activeSubtab === "portions") {
-        widgetHtml = `
-          <section class="calendarAnalyticsCard statsWidgetCard statsPortionsCard">
-            <h2>Score portions</h2>
-            <div class="label">Positive root folders: ${escapeHtml(String(positiveCount))}. Root score sum: ${escapeHtml(String(totalScore))}.</div>
-            ${buildRootPositivePieHtml(rootRows)}
-          </section>
-        `;
-      } else if (activeSubtab === "scores") {
-        widgetHtml = buildRootScoreRankingHtml(rootRows);
-      } else {
-        widgetHtml = `
-          <section class="statsWidgetCard statsHistoryCard">
-            <h2>Score history</h2>
-            ${historyHtml}
-          </section>
-        `;
-      }
 
       calendarBodyEl.innerHTML = `
         <div class="calendarPanelIntro">
           <h1>Stats</h1>
+          <div class="label">Root folder metrics in one view, with score history below.</div>
         </div>
-        <div class="statsSubTabs" role="tablist" aria-label="Stats sections">
-          ${buildCalendarStatsSubTabsHtml(activeSubtab)}
-        </div>
-        <div class="statsSubPanel" data-stats-panel="${escapeHtml(activeSubtab)}">
-          ${widgetHtml}
+        <div class="statsSinglePage">
+          ${buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey)}
+          <section class="statsWidgetCard statsHistoryCard">
+            <h2>Score history</h2>
+            ${historyHtml}
+          </section>
         </div>
       `;
       if (calendarDeleteAllBtn) calendarDeleteAllBtn.disabled = !history.length;
@@ -11688,16 +11559,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
     if (calendarBodyEl) {
       calendarBodyEl.addEventListener("click", (e) => {
-        const subtabBtn = e.target && e.target.closest ? e.target.closest("button[data-stats-subtab]") : null;
-        if (subtabBtn) {
+        const sortBtn = e.target && e.target.closest ? e.target.closest("button[data-stats-sort]") : null;
+        if (sortBtn) {
           e.preventDefault();
           e.stopPropagation();
-          const next = String(subtabBtn.getAttribute("data-stats-subtab") || "");
-          if (!CALENDAR_SUBTAB_IDS.includes(next) || next === CALENDAR_ACTIVE_SUBTAB) return;
-          CALENDAR_ACTIVE_SUBTAB = next;
-          MENU_TAB_SCROLL.calendar = 0;
+          const next = String(sortBtn.getAttribute("data-stats-sort") || "");
+          if (!CALENDAR_STATS_SORT_KEYS.includes(next) || next === CALENDAR_STATS_SORT_KEY) return;
+          CALENDAR_STATS_SORT_KEY = next;
           renderCalendarUi();
-          if (calendarBodyEl) calendarBodyEl.scrollTop = 0;
           return;
         }
         const lineBtn = e.target && e.target.closest ? e.target.closest("button[data-score-history-delete-line-event][data-score-history-delete-line-root]") : null;

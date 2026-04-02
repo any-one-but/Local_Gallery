@@ -3532,33 +3532,10 @@
       margin-top: 0;
     }
 
-    .statsSubTabs {
+    .statsSinglePage {
       display: flex;
-      gap: 2px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-      padding-bottom: 1px;
-    }
-
-    .statsSubTabBtn {
-      white-space: nowrap;
-      border-radius: 4px 4px 0 0;
-      border-bottom-color: var(--color1-tertiary);
-      background: var(--color1-primary);
-      color: var(--color0-primary);
-      padding: 4px 10px;
-    }
-
-    .statsSubTabBtn.active {
-      background: var(--color1-secondary);
-      border-bottom-color: var(--color1-secondary);
-      color: var(--color0-primary);
-      position: relative;
-      top: 1px;
-    }
-
-    .statsSubPanel {
+      flex-direction: column;
+      gap: 12px;
       min-width: 0;
     }
 
@@ -3574,23 +3551,6 @@
       margin-top: 0;
     }
 
-    .calendarRankingsCard {
-      margin-bottom: 0;
-    }
-
-    .calendarRankingsGrid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .calendarRankingSection h3 {
-      margin: 0 0 8px 0;
-      font-size: 12px;
-      color: var(--color0-primary);
-    }
-
     .calendarRankingsEmpty {
       margin-top: 8px;
       padding: 10px;
@@ -3600,174 +3560,162 @@
       background: var(--color1-primary);
     }
 
-    .calendarRankingRow {
-      display: grid;
-      grid-template-columns: 24px minmax(0, 1fr);
-      gap: 8px;
-      align-items: start;
-      padding: 8px 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .calendarRankingRow:first-of-type {
-      border-top: 0;
-      padding-top: 0;
-    }
-
-    .calendarRankingPosition {
-      width: 24px;
-      height: 24px;
-      border-radius: 999px;
-      display: grid;
-      place-items: center;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--color0-primary);
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-    }
-
-    .calendarRankingMain {
+    .statsLedgerCard {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
       min-width: 0;
     }
 
-    .calendarRankingName {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: var(--color0-primary);
-      font-weight: 600;
+    .statsLedgerHeader {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
-    .calendarRankingMeta {
-      margin-top: 2px;
+    .statsLedgerHeader h2 {
+      margin: 0;
+    }
+
+    .statsLedgerSummary {
       color: var(--color0-secondary);
       font-size: 11px;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: nowrap;
     }
 
-    .scorePieWrap {
-      display: grid;
-      grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-      gap: 16px;
-      align-items: center;
-      margin-top: 8px;
-    }
-
-    .scorePieWrapEmpty {
-      display: block;
-    }
-
-    .scorePieChart {
-      width: 180px;
-      height: 180px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 55%);
-    }
-
-    .scorePieSvg {
-      width: 180px;
-      height: 180px;
-      display: block;
-      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.28));
-    }
-
-    .scorePieBackdrop {
-      fill: rgba(0, 0, 0, 0.24);
-      stroke: rgba(255, 255, 255, 0.08);
-      stroke-width: 1;
-    }
-
-    .scorePieOutline {
-      fill: none;
-      stroke: rgba(255, 255, 255, 0.14);
-      stroke-width: 1;
-    }
-
-    .scorePieEmpty {
-      padding: 10px;
-      border: 1px dashed var(--color1-tertiary);
+    .statsLedgerTableWrap {
+      min-width: 0;
+      overflow-x: auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 6px;
-      color: var(--color0-secondary);
-      background: var(--color1-primary);
+      background: rgba(0, 0, 0, 0.14);
     }
 
-    .scorePieLegend {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 0;
+    .statsLedgerTable {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: collapse;
+      table-layout: fixed;
     }
 
-    .scorePieLegendRow {
-      display: grid;
-      grid-template-columns: 12px 1fr auto auto;
-      gap: 8px;
-      align-items: center;
+    .statsLedgerTable th,
+    .statsLedgerTable td {
+      padding: 10px 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      vertical-align: middle;
+    }
+
+    .statsLedgerTable thead th {
+      padding: 0;
+      border-top: 0;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .statsLedgerTable tbody th,
+    .statsLedgerTable tbody td {
+      background: transparent;
+    }
+
+    .statsLedgerTable tbody tr:first-child th,
+    .statsLedgerTable tbody tr:first-child td {
+      border-top: 0;
+    }
+
+    .statsLedgerNameHeader {
+      width: 28%;
       min-width: 0;
+      text-align: center;
+      color: var(--color0-primary);
       font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 12px;
     }
 
-    .scorePieSwatch {
-      width: 12px;
-      height: 12px;
-      border-radius: 2px;
-      border: 1px solid rgba(0, 0, 0, 0.35);
-    }
-
-    .scorePieName {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+    .statsLedgerSortHeader {
+      width: 18%;
       min-width: 0;
     }
 
-    .scorePieValue {
-      color: var(--color0-primary);
-      font-weight: 700;
-    }
-
-    .scorePiePct {
-      color: var(--color0-secondary);
-      min-width: 46px;
-      text-align: right;
-    }
-
-    .scoreBarsWrap {
+    .statsLedgerSortBtn {
+      width: 100%;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .scoreBarsEmpty {
-      margin-top: 8px;
-      padding: 10px;
-      border: 1px dashed var(--color1-tertiary);
-      border-radius: 6px;
-      color: var(--color0-secondary);
-      background: var(--color1-primary);
-    }
-
-    .scoreBarRow {
-      display: grid;
-      grid-template-columns: minmax(120px, 1fr) minmax(170px, 2fr) auto;
       align-items: center;
-      gap: 8px;
-      min-width: 0;
+      gap: 2px;
+      padding: 12px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--color0-primary);
+      cursor: pointer;
+      text-align: center;
+      box-shadow: none;
+      transform: none;
     }
 
-    .scoreBarLabel {
+    .statsLedgerSortBtn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      transform: none;
+    }
+
+    .statsLedgerSortBtn.active {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .statsLedgerSortBtnMain {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .statsLedgerSortBtnMeta {
+      color: var(--color0-secondary);
+      font-size: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .statsLedgerFolderCell {
+      color: var(--color0-primary);
+      font-weight: 600;
+      text-align: center;
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      min-width: 0;
-      color: var(--color0-primary);
     }
 
-    .scoreBarTrack {
+    .statsLedgerValueCell {
+      color: var(--color0-secondary);
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .statsLedgerScoreCell {
+      text-align: center;
+    }
+
+    .statsLedgerScoreMetric {
+      display: grid;
+      grid-template-columns: auto minmax(120px, 1fr);
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .statsLedgerNumber {
+      min-width: 42px;
+      color: var(--color0-primary);
+      text-align: center;
+    }
+
+    .statsLedgerScoreBar {
       position: relative;
       height: 14px;
       border-radius: 3px;
@@ -3776,7 +3724,7 @@
       overflow: hidden;
     }
 
-    .scoreBarAxis {
+    .statsLedgerScoreAxis {
       position: absolute;
       left: 50%;
       top: 0;
@@ -3787,7 +3735,7 @@
       z-index: 2;
     }
 
-    .scoreBarFill {
+    .statsLedgerScoreFill {
       position: absolute;
       top: 1px;
       bottom: 1px;
@@ -3796,20 +3744,12 @@
       min-width: 0;
     }
 
-    .scoreBarFill.positive {
+    .statsLedgerScoreFill.positive {
       background: linear-gradient(90deg, #2ea76d, #57d98f);
     }
 
-    .scoreBarFill.negative {
+    .statsLedgerScoreFill.negative {
       background: linear-gradient(90deg, #d45f68, #f28a93);
-    }
-
-    .scoreBarValue {
-      min-width: 54px;
-      text-align: right;
-      color: var(--color0-secondary);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 11px;
     }
 
     .calendarHistory {
@@ -3845,14 +3785,21 @@
     }
 
     @media (max-width: 760px) {
-      .scorePieWrap {
-        grid-template-columns: 1fr;
+      .statsLedgerSummary {
+        white-space: normal;
       }
 
-      .scorePieChart,
-      .scorePieSvg {
-        width: 160px;
-        height: 160px;
+      .statsLedgerTable {
+        min-width: 680px;
+      }
+
+      .statsLedgerScoreMetric {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+
+      .statsLedgerNumber {
+        text-align: center;
       }
     }
 
