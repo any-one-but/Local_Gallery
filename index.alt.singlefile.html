@@ -3480,6 +3480,25 @@
       max-width: 320px;
     }
 
+    #menuOverlay button,
+    #menuOverlay select,
+    #menuOverlay input[type="checkbox"],
+    #menuOverlay input[type="range"] {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #menuOverlay button:focus,
+    #menuOverlay button:focus-visible,
+    #menuOverlay select:focus,
+    #menuOverlay select:focus-visible,
+    #menuOverlay input[type="checkbox"]:focus,
+    #menuOverlay input[type="checkbox"]:focus-visible,
+    #menuOverlay input[type="range"]:focus,
+    #menuOverlay input[type="range"]:focus-visible {
+      outline: none !important;
+      box-shadow: none !important;
+    }
+
     #optionsBody input[type="range"] {
       width: 180px;
     }
@@ -5981,6 +6000,12 @@
           .sort()
           .join("||")
         : "";
+      const tagFilterSig = WS.meta && WS.meta.tagMediaFilterByKey
+        ? Array.from(WS.meta.tagMediaFilterByKey.entries())
+          .map(([tagKey, filterValue]) => `${String(tagKey || "")}=>${normalizeTagMediaFilterValue(filterValue).join(",")}`)
+          .sort()
+          .join("||")
+        : "";
       const activeContextSig = (() => {
         const direct = [
           String(WS.view && WS.view.tagFolderActiveMode || ""),
@@ -6007,7 +6032,7 @@
         return `${direct}###${stackSig}`;
       })();
       const gifsIgnore = gifsIgnoreProcessingEnabled() ? "gif:1" : "gif:0";
-      return `${serializeAppearanceValues(currentValues)}###${presetSig}###${folderSig}###${tagSig}###${activeContextSig}###${gifsIgnore}`;
+      return `${serializeAppearanceValues(currentValues)}###${presetSig}###${folderSig}###${tagSig}###${tagFilterSig}###${activeContextSig}###${gifsIgnore}`;
     }
 
     function resolveDirPathForAppearanceTarget(target) {
@@ -6037,6 +6062,105 @@
         return metaGetTagAppearancePresetIdByKey(tagThumbnailKeyForAlbum(contextAlbum, scopePath));
       }
       return "";
+    }
+
+    function contextualTagMediaFilterForTagContext(mode, tag, album, originPath) {
+      const contextMode = String(mode || "");
+      const contextTag = normalizeTag(tag || "");
+      const contextAlbum = normalizeTagAlbumName(album || "");
+      const scopePath = normalizeDirPathValue(originPath);
+      if (contextMode === "tag" && contextTag) {
+        const directFilter = metaGetTagMediaFilterByKey(tagThumbnailKeyForTag(contextTag, scopePath));
+        if (directFilter.length) return directFilter;
+        if (contextAlbum) {
+          const albumFilter = metaGetTagMediaFilterByKey(tagThumbnailKeyForAlbum(contextAlbum, scopePath));
+          if (albumFilter.length) return albumFilter;
+        }
+        return [];
+      }
+      if (contextMode === "album" && contextAlbum) {
+        return metaGetTagMediaFilterByKey(tagThumbnailKeyForAlbum(contextAlbum, scopePath));
+      }
+      return [];
+    }
+
+    function contextualTagMediaFilterForDirPath(dirPath) {
+      const normalized = normalizeDirPathValue(dirPath);
+      if (!normalized) return [];
+      const activeMode = String(WS.view && WS.view.tagFolderActiveMode || "");
+      if (activeMode === "tag" || activeMode === "album") {
+        const originPath = String(WS.view && WS.view.tagFolderOriginPath || "");
+        const rootPaths = getPortalRootPathsForTagContext(
+          activeMode,
+          WS.view && WS.view.tagFolderActiveTag,
+          WS.view && WS.view.tagFolderActiveAlbum,
+          originPath
+        );
+        if (rootPaths.some((rootPath) => isSameOrDescendantPath(normalized, rootPath))) {
+          const filterValue = contextualTagMediaFilterForTagContext(
+            activeMode,
+            WS.view && WS.view.tagFolderActiveTag,
+            WS.view && WS.view.tagFolderActiveAlbum,
+            originPath
+          );
+          if (filterValue.length) return filterValue;
+        }
+      }
+      const stack = Array.isArray(WS.view && WS.view.tagNavStack) ? WS.view.tagNavStack : [];
+      for (let i = stack.length - 1; i >= 0; i--) {
+        const frame = stack[i];
+        if (!frame || frame.type !== "tag-view") continue;
+        const rootPath = findMatchingVirtualPortalRootPath(frame, normalized);
+        if (!rootPath) continue;
+        const filterValue = contextualTagMediaFilterForTagContext(frame.mode, frame.tag, frame.album, frame.originPath);
+        if (filterValue.length) return filterValue;
+      }
+      return [];
+    }
+
+    function currentContextualTagMediaFilterValue() {
+      if (isViewingTagFolder()) {
+        const direct = contextualTagMediaFilterForTagContext(
+          WS.view && WS.view.tagFolderActiveMode,
+          WS.view && WS.view.tagFolderActiveTag,
+          WS.view && WS.view.tagFolderActiveAlbum,
+          WS.view && WS.view.tagFolderOriginPath
+        );
+        if (direct.length) return direct;
+      }
+      return contextualTagMediaFilterForDirPath(String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : ""));
+    }
+
+    function getPortalRootPathsForTagContext(mode, tag, album, originPath) {
+      const contextMode = String(mode || "");
+      const contextTag = normalizeTag(tag || "");
+      const contextAlbum = normalizeTagAlbumName(album || "");
+      const scopePath = normalizeDirPathValue(originPath);
+      const baseNode = WS.dirByPath.get(scopePath) || null;
+      if (!baseNode) return [];
+      const showHidden = WS.view.hiddenMode || (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden");
+      const children = sortDirsForDisplay(baseNode.childrenDirs)
+        .filter((child) => child && child.type === "dir")
+        .filter((child) => showHidden ? true : !isDirOrAncestorHidden(child));
+      if (contextMode === "tag" && contextTag) {
+        return children
+          .filter((child) => metaGetUserTags(child.path || "").includes(contextTag))
+          .map((child) => String(child.path || ""))
+          .filter(Boolean);
+      }
+      if (contextMode === "album" && contextAlbum) {
+        return children
+          .filter((child) => {
+            const tags = metaGetUserTags(child.path || "");
+            for (let i = 0; i < tags.length; i++) {
+              if (metaGetTagAlbumForTag(tags[i], scopePath) === contextAlbum) return true;
+            }
+            return false;
+          })
+          .map((child) => String(child.path || ""))
+          .filter(Boolean);
+      }
+      return [];
     }
 
     function contextualAppearancePresetIdForDirPath(dirPath) {
@@ -8765,7 +8889,33 @@
       { id: "gridGalleryBack", label: "Back from gallery", hint: "Exit gallery to the prior grid context.", section: "gridgallery" }
     ];
 
+    const FOLDER_SORT_KEYBIND_ACTION_PREFIX = "setFolderSort:";
     const APPEARANCE_PRESET_KEYBIND_ACTION_PREFIX = "toggleAppearancePreset:";
+
+    function folderSortKeybindActionId(sortMode) {
+      const mode = normalizeDirSortMode(sortMode);
+      return mode ? `${FOLDER_SORT_KEYBIND_ACTION_PREFIX}${mode}` : "";
+    }
+
+    function folderSortModeFromKeybindAction(actionId) {
+      const raw = String(actionId || "");
+      if (!raw.startsWith(FOLDER_SORT_KEYBIND_ACTION_PREFIX)) return "";
+      const mode = String(raw.slice(FOLDER_SORT_KEYBIND_ACTION_PREFIX.length) || "");
+      return dirSortModeOptions().some((opt) => opt.value === mode) ? mode : "";
+    }
+
+    function isFolderSortKeybindAction(actionId) {
+      return !!folderSortModeFromKeybindAction(actionId);
+    }
+
+    function getFolderSortKeybindActions() {
+      return dirSortModeOptions().map((opt) => ({
+        id: folderSortKeybindActionId(opt.value),
+        label: `Set folder sort: ${opt.label}`,
+        hint: `Set folder sort mode to ${opt.label}.`,
+        section: "general"
+      }));
+    }
 
     function appearancePresetKeybindActionId(presetId) {
       const id = normalizeAppearancePresetIdValue(presetId);
@@ -8801,7 +8951,9 @@
     }
 
     function paneKeybindActions(presets = null) {
-      return KEYBIND_ACTIONS.concat(getAppearancePresetKeybindActions(presets));
+      return KEYBIND_ACTIONS
+        .concat(getFolderSortKeybindActions())
+        .concat(getAppearancePresetKeybindActions(presets));
     }
 
     const KEYBIND_LOCKED_ACTIONS = Object.freeze({
@@ -9074,6 +9226,7 @@
         dirScores: new Map(),
         dirTags: new Map(),
         tagAlbumByTag: new Map(),
+        tagMediaFilterByKey: new Map(),
         dirThumbPresets: new Map(),
         dirAppearancePresetIds: new Map(),
         tagAppearancePresetIds: new Map(),
@@ -9246,6 +9399,7 @@
       WS.meta.dirScores.clear();
       WS.meta.dirTags.clear();
       WS.meta.tagAlbumByTag.clear();
+      WS.meta.tagMediaFilterByKey.clear();
       WS.meta.dirThumbPresets.clear();
       WS.meta.dirAppearancePresetIds.clear();
       WS.meta.tagAppearancePresetIds.clear();
@@ -9898,7 +10052,10 @@
       const parts = [];
       const filterMode = WS.view.filterMode;
       const filterLabel = filterMode === "all" ? "All" : (filterMode === "images" ? "Images only" : (filterMode === "videos" ? "Videos only" : "GIFs only"));
-      if (filterMode !== "all") {
+      const contextualTagFilter = currentContextualTagMediaFilterValue();
+      if (contextualTagFilter.length) {
+        parts.push(`Tag filter: ${describeTagMediaFilterValue(contextualTagFilter)}`);
+      } else if (filterMode !== "all") {
         parts.push(`Content filter: ${filterLabel}`);
       }
 
@@ -9982,6 +10139,68 @@
       return Math.max(320, Math.min(window.innerWidth * 0.375, window.innerWidth - 32));
     }
 
+    function blurElementSoon(el) {
+      if (!el || typeof el.blur !== "function") return;
+      requestAnimationFrame(() => {
+        try { el.blur(); } catch {}
+      });
+    }
+
+    function isMenuNonTextControlElement(el) {
+      if (!el || !menuOverlay || !menuOverlay.contains(el)) return false;
+      const tag = String(el.tagName || "").toUpperCase();
+      if (tag === "BUTTON" || tag === "SELECT") return true;
+      if (tag !== "INPUT") return false;
+      const type = String(el.type || "").toLowerCase();
+      return !(
+        type === "text"
+        || type === "search"
+        || type === "url"
+        || type === "email"
+        || type === "number"
+        || type === "tel"
+        || type === "password"
+      );
+    }
+
+    function applyMenuTransientFocusBehavior(root = null) {
+      const scope = root || menuOverlay;
+      if (!scope || !scope.querySelectorAll) return;
+      const controls = scope.querySelectorAll('button, select, input');
+      controls.forEach((el) => {
+        if (!isMenuNonTextControlElement(el)) return;
+        el.setAttribute("tabindex", "-1");
+        if (el.dataset.menuTransientFocusBound === "1") return;
+        el.dataset.menuTransientFocusBound = "1";
+        const tag = String(el.tagName || "").toUpperCase();
+        const type = String(el.type || "").toLowerCase();
+        if (tag === "BUTTON") {
+          el.addEventListener("click", () => {
+            blurElementSoon(el);
+          });
+        } else if (tag === "SELECT") {
+          el.addEventListener("change", () => {
+            blurElementSoon(el);
+          });
+        } else if (type === "checkbox" || type === "radio") {
+          el.addEventListener("change", () => {
+            blurElementSoon(el);
+          });
+        } else if (type === "range") {
+          el.addEventListener("change", () => {
+            blurElementSoon(el);
+          });
+          el.addEventListener("pointerup", () => {
+            blurElementSoon(el);
+          });
+        } else {
+          el.addEventListener("change", () => {
+            blurElementSoon(el);
+          });
+        }
+      });
+    }
+
     function setMenuTab(tabId) {
       const nextCandidate = MENU_TAB_IDS.includes(tabId) ? tabId : "general";
       const next = nextCandidate;
@@ -9994,7 +10213,7 @@
         const active = btn.dataset.tab === next;
         btn.classList.toggle("active", active);
         btn.setAttribute("aria-selected", active ? "true" : "false");
-        btn.setAttribute("tabindex", active ? "0" : "-1");
+        btn.setAttribute("tabindex", "-1");
       });
 
       const activePanelId = MENU_PANEL_BY_TAB[next] || "options";
@@ -10033,6 +10252,7 @@
         : (MENU_HAS_OPENED ? MENU_LAST_TAB : "general");
       MENU_HAS_OPENED = true;
       setMenuTab(next);
+      applyMenuTransientFocusBehavior(menuOverlay);
     }
 
     function closeMenu() {
@@ -10042,9 +10262,13 @@
       if (menuOverlay) menuOverlay.classList.remove("active");
     }
 
-    if (menuCloseBtn) menuCloseBtn.addEventListener("click", () => closeMenu());
+    if (menuCloseBtn) {
+      menuCloseBtn.setAttribute("tabindex", "-1");
+      menuCloseBtn.addEventListener("click", () => closeMenu());
+    }
     if (optionsBtn) optionsBtn.addEventListener("click", () => openMenu());
     menuTabButtons.forEach((btn) => {
+      btn.setAttribute("tabindex", "-1");
       btn.addEventListener("click", () => {
         const tab = btn.dataset.tab || "general";
         setMenuTab(tab);
@@ -10447,6 +10671,7 @@
         </div>
       `;
       if (calendarDeleteAllBtn) calendarDeleteAllBtn.disabled = !history.length;
+      applyMenuTransientFocusBehavior(calendarBodyEl);
     }
 
     function isGridKeybindAction(actionId) {
@@ -10633,6 +10858,7 @@
           e.stopPropagation();
         });
       });
+      applyMenuTransientFocusBehavior(keybindsBodyEl);
     }
 
     document.addEventListener("keydown", (e) => {
@@ -11510,6 +11736,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           applyViewModesEverywhere(true);
         });
       }
+      applyMenuTransientFocusBehavior(optionsBodyEl);
     }
 
     function resetOptionsToDefaults() {
@@ -12808,6 +13035,106 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return changed;
     }
 
+    const TAG_MEDIA_FILTER_MEDIA_TYPES = Object.freeze(["images", "videos", "gifs"]);
+
+    function normalizeTagMediaFilterValue(value) {
+      const enabled = new Set();
+      const addType = (type) => {
+        const normalized = String(type || "").trim().toLowerCase();
+        if (!TAG_MEDIA_FILTER_MEDIA_TYPES.includes(normalized)) return;
+        enabled.add(normalized);
+      };
+      if (Array.isArray(value)) {
+        for (let i = 0; i < value.length; i++) addType(value[i]);
+      } else if (value && typeof value === "object") {
+        for (let i = 0; i < TAG_MEDIA_FILTER_MEDIA_TYPES.length; i++) {
+          const type = TAG_MEDIA_FILTER_MEDIA_TYPES[i];
+          if (value[type]) enabled.add(type);
+        }
+      } else if (typeof value === "string") {
+        addType(value);
+      }
+      return TAG_MEDIA_FILTER_MEDIA_TYPES.filter((type) => enabled.has(type));
+    }
+
+    function tagMediaFilterValuesEqual(a, b) {
+      const left = normalizeTagMediaFilterValue(a);
+      const right = normalizeTagMediaFilterValue(b);
+      if (left.length !== right.length) return false;
+      for (let i = 0; i < left.length; i++) {
+        if (left[i] !== right[i]) return false;
+      }
+      return true;
+    }
+
+    function isTagMediaFilterValueEmpty(value) {
+      return normalizeTagMediaFilterValue(value).length === 0;
+    }
+
+    function toggleTagMediaFilterType(value, type) {
+      const normalizedType = String(type || "").trim().toLowerCase();
+      if (!TAG_MEDIA_FILTER_MEDIA_TYPES.includes(normalizedType)) return normalizeTagMediaFilterValue(value);
+      const current = new Set(normalizeTagMediaFilterValue(value));
+      if (current.has(normalizedType)) current.delete(normalizedType);
+      else current.add(normalizedType);
+      return TAG_MEDIA_FILTER_MEDIA_TYPES.filter((candidate) => current.has(candidate));
+    }
+
+    function tagMediaFilterTypeLabel(type) {
+      if (type === "images") return "images";
+      if (type === "videos") return "videos";
+      if (type === "gifs") return "GIFs";
+      return String(type || "");
+    }
+
+    function describeTagMediaFilterValue(value, emptyLabel = "All media visible") {
+      const normalized = normalizeTagMediaFilterValue(value);
+      if (!normalized.length) return emptyLabel;
+      return `Hide ${normalized.map((type) => tagMediaFilterTypeLabel(type)).join(", ")}`;
+    }
+
+    function getAllTagMediaFilterStateKeys() {
+      const out = new Set();
+      if (WS.meta && WS.meta.tagMediaFilterByKey) {
+        for (const key of WS.meta.tagMediaFilterByKey.keys()) {
+          const raw = String(key || "");
+          if (raw) out.add(raw);
+        }
+      }
+      return Array.from(out);
+    }
+
+    function rekeyTagMediaFilterState(oldKey, newKey) {
+      const source = String(oldKey || "");
+      const target = String(newKey || "");
+      if (!source || !target || source === target) return false;
+      if (!WS.meta || !WS.meta.tagMediaFilterByKey || !WS.meta.tagMediaFilterByKey.has(source)) return false;
+      const current = normalizeTagMediaFilterValue(WS.meta.tagMediaFilterByKey.get(source));
+      if (!WS.meta.tagMediaFilterByKey.has(target) && current.length) {
+        WS.meta.tagMediaFilterByKey.set(target, current.slice());
+      }
+      WS.meta.tagMediaFilterByKey.delete(source);
+      metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+      invalidateDirMetricsCaches();
+      return true;
+    }
+
+    function clearTagMediaFilterStateByMatch(matchFn) {
+      if (typeof matchFn !== "function" || !WS.meta || !WS.meta.tagMediaFilterByKey) return false;
+      const keys = getAllTagMediaFilterStateKeys();
+      let changed = false;
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        if (!key || !matchFn(key)) continue;
+        if (WS.meta.tagMediaFilterByKey.delete(key)) changed = true;
+      }
+      if (changed) {
+        metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+        invalidateDirMetricsCaches();
+      }
+      return changed;
+    }
+
     function tagThumbnailScopeKeyFromPath(path) {
       const normalized = normalizeDirPathValue(path);
       return normalized ? normalized : "__root__";
@@ -12925,6 +13252,33 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function metaClearTagAppearancePresetByKey(tagKey) {
       return metaSetTagAppearancePresetIdByKey(tagKey, "");
+    }
+
+    function metaGetTagMediaFilterByKey(tagKey) {
+      const key = String(tagKey || "");
+      if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return [];
+      return normalizeTagMediaFilterValue(WS.meta.tagMediaFilterByKey.get(key));
+    }
+
+    function metaHasTagMediaFilterByKey(tagKey) {
+      return !isTagMediaFilterValueEmpty(metaGetTagMediaFilterByKey(tagKey));
+    }
+
+    function metaSetTagMediaFilterByKey(tagKey, value) {
+      const key = String(tagKey || "");
+      if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return false;
+      const next = normalizeTagMediaFilterValue(value);
+      const prev = metaGetTagMediaFilterByKey(key);
+      if (tagMediaFilterValuesEqual(prev, next)) return false;
+      if (next.length) WS.meta.tagMediaFilterByKey.set(key, next.slice());
+      else WS.meta.tagMediaFilterByKey.delete(key);
+      metaMarkDirty(META_DOC_IDS.tags);
+      invalidateDirMetricsCaches();
+      return true;
+    }
+
+    function metaClearTagMediaFilterByKey(tagKey) {
+      return metaSetTagMediaFilterByKey(tagKey, []);
     }
 
     function collectDescendantDirPaths(path) {
@@ -13860,6 +14214,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function metaMakeTagsDocObject() {
       const folders = {};
       const tagByFp = {};
+      const tagMediaFilterByKey = {};
       for (const [path] of WS.dirByPath.entries()) {
         const fp = WS.meta.dirFingerprints.get(path) || 0;
         const tags = metaGetTags(path).filter((tag) => tag !== LEGACY_PROCESSING_DISABLED_TAG);
@@ -13879,11 +14234,20 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           folders[normalizedPath] = { fp: 0, tags: normalizedTags };
         }
       }
+      if (WS.meta && WS.meta.tagMediaFilterByKey) {
+        for (const [tagKeyRaw, filterValueRaw] of WS.meta.tagMediaFilterByKey.entries()) {
+          const tagKey = String(tagKeyRaw || "");
+          const filterValue = normalizeTagMediaFilterValue(filterValueRaw);
+          if (!tagKey || !filterValue.length) continue;
+          tagMediaFilterByKey[tagKey] = filterValue.slice();
+        }
+      }
       return {
         schema: 1,
         updatedAt: Date.now(),
         folders,
-        tagByFp
+        tagByFp,
+        tagMediaFilterByKey
       };
     }
 
@@ -14140,6 +14504,17 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const fp = WS.meta.dirFingerprints.get(path) || 0;
         const tg = oldTagByFp.get(fp >>> 0) || [];
         WS.meta.dirTags.set(path, tg.slice());
+      }
+
+      WS.meta.tagMediaFilterByKey.clear();
+      const tagMediaFilterByKey = (log.tagMediaFilterByKey && typeof log.tagMediaFilterByKey === "object")
+        ? log.tagMediaFilterByKey
+        : {};
+      for (const rawKey of Object.keys(tagMediaFilterByKey)) {
+        const key = String(rawKey || "");
+        const filterValue = normalizeTagMediaFilterValue(tagMediaFilterByKey[rawKey]);
+        if (!key || !filterValue.length) continue;
+        WS.meta.tagMediaFilterByKey.set(key, filterValue);
       }
     }
 
@@ -15811,6 +16186,31 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return !!WS.view.randomFolderMode;
     }
 
+    function recordMediaFilterType(rec) {
+      if (!rec) return "";
+      if (rec.type === "video") return "videos";
+      if (isGifRecord(rec)) return "gifs";
+      if (rec.type === "image") return "images";
+      return "";
+    }
+
+    function recordPassesTagMediaFilter(rec, filterValue) {
+      if (!rec) return false;
+      const hiddenTypes = normalizeTagMediaFilterValue(filterValue);
+      if (!hiddenTypes.length) return true;
+      const recordType = recordMediaFilterType(rec);
+      if (!recordType) return true;
+      return !hiddenTypes.includes(recordType);
+    }
+
+    function effectiveFilterCacheKey() {
+      const contextual = currentContextualTagMediaFilterValue();
+      if (contextual.length) {
+        return `tag:${String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : "")}:${contextual.join(",")}`;
+      }
+      return `global:${String(WS?.view?.filterMode || "all")}`;
+    }
+
     function reseedRandomSortMode() {
       const workspaceSeed = computeWorkspaceSeed();
       const timeSeed = (Date.now() >>> 0);
@@ -15900,6 +16300,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function passesFilter(rec) {
       if (!rec) return false;
+      const contextualFilter = contextualTagMediaFilterForDirPath(String(rec.dirPath || ""));
+      if (contextualFilter.length) return recordPassesTagMediaFilter(rec, contextualFilter);
       const m = WS.view.filterMode;
       if (m === "images") return rec.type === "image";
       if (m === "videos") return rec.type === "video";
@@ -15909,9 +16311,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function dirItemCount(node) {
       if (!node) return 0;
-      const filterMode = String(WS?.view?.filterMode || "all");
-      if (DIR_ITEM_COUNT_CACHE_FILTER_MODE !== filterMode) {
-        DIR_ITEM_COUNT_CACHE_FILTER_MODE = filterMode;
+      const filterKey = effectiveFilterCacheKey();
+      if (DIR_ITEM_COUNT_CACHE_FILTER_MODE !== filterKey) {
+        DIR_ITEM_COUNT_CACHE_FILTER_MODE = filterKey;
         DIR_ITEM_COUNT_CACHE.clear();
       }
       const pathKey = String(node.path || "");
@@ -16799,6 +17201,26 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         return folderCount ? `${folderCount} tags` : "Tag album";
       }
       return folderCount ? `${folderCount} folders` : "Tag folder";
+    }
+
+    function effectiveTagMediaFilterForEntry(entry) {
+      const key = tagThumbnailKeyForEntry(entry);
+      if (!key) return [];
+      const direct = metaGetTagMediaFilterByKey(key);
+      if (direct.length) return direct;
+      if (entry && entry.kind === "tag" && entry.tag && entry.album) {
+        return contextualTagMediaFilterForTagContext("tag", entry.tag, entry.album, entry.originPath);
+      }
+      if (entry && entry.kind === "tag" && entry.album && !entry.tag) {
+        return contextualTagMediaFilterForTagContext("album", "", entry.album, entry.originPath);
+      }
+      return [];
+    }
+
+    function recordPassesTagEntryFilter(rec, entry) {
+      const tagFilter = effectiveTagMediaFilterForEntry(entry);
+      if (tagFilter.length) return recordPassesTagMediaFilter(rec, tagFilter);
+      return passesFilter(rec);
     }
 
     const ROTATING_PREVIEW_POOLS = new Map();
@@ -18163,7 +18585,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const relPath = metaGetTagThumbnailPresetRelPathByKey(key);
       if (!relPath) return null;
       const rec = findFileRecordByRelPath(relPath);
-      if (!rec || !passesFilter(rec)) return null;
+      if (!rec || !recordPassesTagEntryFilter(rec, entry)) return null;
       const dirs = getDirsForTagEntry(entry);
       if (!dirs.length || !isRecordInAnyDirSubtree(rec, dirs)) return null;
       if (Array.isArray(tagPool) && tagPool.length) {
@@ -18176,7 +18598,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
       const dirs = getDirsForTagEntry(entry);
       if (!dirs.length) return [];
-      return sampleRecursivePreviewRecords(dirs, limit, true);
+      return sampleRecursivePreviewRecords(dirs, limit, true).filter((rec) => recordPassesTagEntryFilter(rec, entry));
     }
 
     function pickRotatingPreviewSlotsForKey(baseKey, records, count = 4) {
@@ -22006,7 +22428,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const canDelete = !context.special && (!!tag || isAlbumEntry);
       const thumbMode = metaGetTagThumbnailModeByKey(tagKey);
       const canAppearancePreset = !!tagKey && !context.special && (!!tag || isAlbumEntry);
+      const canMediaFilter = !!tagKey && !context.special && (!!tag || isAlbumEntry);
       const assignedAppearancePresetId = canAppearancePreset ? metaGetTagAppearancePresetIdByKey(tagKey) : "";
+      const assignedMediaFilterValue = canMediaFilter ? metaGetTagMediaFilterByKey(tagKey) : [];
       const allowRotatingThumbnails = !naturalAspectThumbnailCardsEnabled();
       const hasPreset = metaHasTagThumbnailPresetByKey(tagKey);
       closeTagContextMenu();
@@ -22033,8 +22457,37 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           });
         }));
       }
+      if (canMediaFilter) {
+        menu.appendChild(createTagMenuButton("Set content filter", () => {
+          const reopenFilterMenu = (shouldReposition = false) => {
+            buildTagMediaFilterChoiceMenu(menu, {
+              title: `${isAlbumEntry ? "Tag album" : "Tag"} content filter`,
+              currentValue: metaGetTagMediaFilterByKey(tagKey),
+              onBack: () => {
+                openTagContextMenu(context);
+              },
+              onChoose: (nextValue) => {
+                const changed = metaSetTagMediaFilterByKey(tagKey, nextValue);
+                if (changed) {
+                  metaScheduleSave();
+                  refreshAfterTagMetadataChange();
+                  showStatusMessage(`${isAlbumEntry ? "Tag album" : "Tag"} content filter: ${describeTagMediaFilterValue(nextValue)}.`);
+                }
+                reopenFilterMenu(false);
+              },
+              onRendered: shouldReposition ? () => {
+                positionDropdownMenu(anchor, menu);
+              } : null
+            });
+          };
+          reopenFilterMenu(true);
+        }));
+      }
       if (assignedAppearancePresetId) {
         menu.appendChild(createTagMenuButton("Clear media preset override", () => handleTagMenuAction("appearance-preset-clear")));
+      }
+      if (!isTagMediaFilterValueEmpty(assignedMediaFilterValue)) {
+        menu.appendChild(createTagMenuButton("Clear content filter", () => handleTagMenuAction("media-filter-clear")));
       }
       if (thumbMode !== "none") menu.appendChild(createTagMenuButton("No thumbnail", () => handleTagMenuAction("thumbnail-none")));
       if (allowRotatingThumbnails && (thumbMode !== "single" || hasPreset)) menu.appendChild(createTagMenuButton("Use rotating thumbnail", () => handleTagMenuAction("thumbnail-single")));
@@ -22051,7 +22504,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         originPath: String(context.originPath || ""),
         canRename,
         canDelete,
-        canAppearancePreset
+        canAppearancePreset,
+        canMediaFilter
       };
       requestAnimationFrame(() => {
         menu.classList.add("open");
@@ -23726,6 +24180,17 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (!newKey) continue;
         if (rekeyTagAppearancePresetState(oldKey, newKey)) changed = true;
       }
+      const mediaFilterKeys = getAllTagMediaFilterStateKeys();
+      for (let i = 0; i < mediaFilterKeys.length; i++) {
+        const oldKey = mediaFilterKeys[i];
+        const parsed = parseTagThumbnailStructuredKey(oldKey);
+        if (!parsed || parsed.kind !== "tag" || String(parsed.value || "") !== normalizedOld) continue;
+        const newKey = parsed.scoped
+          ? tagThumbnailKeyForTag(normalizedNew, parsed.scopePath)
+          : tagThumbnailKeyForTag(normalizedNew);
+        if (!newKey) continue;
+        if (rekeyTagMediaFilterState(oldKey, newKey)) changed = true;
+      }
       const oldAlbum = metaGetTagAlbumForTag(normalizedOld, scopePath);
       if (oldAlbum) {
         let albumChanged = false;
@@ -23754,6 +24219,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         return !!parsed && parsed.kind === "tag" && String(parsed.value || "") === normalized;
       })) changed = true;
       if (clearTagAppearancePresetStateByMatch((key) => {
+        const parsed = parseTagThumbnailStructuredKey(key);
+        return !!parsed && parsed.kind === "tag" && String(parsed.value || "") === normalized;
+      })) changed = true;
+      if (clearTagMediaFilterStateByMatch((key) => {
         const parsed = parseTagThumbnailStructuredKey(key);
         return !!parsed && parsed.kind === "tag" && String(parsed.value || "") === normalized;
       })) changed = true;
@@ -23799,7 +24268,50 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (scopePath == null) return true;
         return parsed.scoped ? parsed.scopePath === normalizedScope : !hasScopedAssignments;
       })) changed = true;
+      if (clearTagMediaFilterStateByMatch((key) => {
+        const parsed = parseTagThumbnailStructuredKey(key);
+        if (!parsed || parsed.kind !== "album" || String(parsed.value || "") !== album) return false;
+        if (scopePath == null) return true;
+        return parsed.scoped ? parsed.scopePath === normalizedScope : !hasScopedAssignments;
+      })) changed = true;
       return { changed, clearedTags, album };
+    }
+
+    function buildTagMediaFilterChoiceMenu(menu, opts = {}) {
+      if (!menu) return;
+      const title = String(opts.title || "Content filter");
+      const currentValue = normalizeTagMediaFilterValue(opts.currentValue);
+      const onChoose = typeof opts.onChoose === "function" ? opts.onChoose : null;
+      const onBack = typeof opts.onBack === "function" ? opts.onBack : null;
+      menu.innerHTML = "";
+      const titleEl = document.createElement("div");
+      titleEl.className = "label";
+      titleEl.style.padding = "8px 10px 4px";
+      titleEl.textContent = title;
+      menu.appendChild(titleEl);
+      const summaryEl = document.createElement("div");
+      summaryEl.className = "label";
+      summaryEl.style.padding = "0 10px 8px";
+      summaryEl.textContent = describeTagMediaFilterValue(currentValue);
+      menu.appendChild(summaryEl);
+      TAG_MEDIA_FILTER_MEDIA_TYPES.forEach((type) => {
+        const enabled = currentValue.includes(type);
+        const marker = enabled ? "[x]" : "[ ]";
+        menu.appendChild(createTagMenuButton(`${marker} Hide ${tagMediaFilterTypeLabel(type)}`, () => {
+          if (!onChoose) return;
+          onChoose(toggleTagMediaFilterType(currentValue, type));
+        }));
+      });
+      menu.appendChild(createTagMenuButton("Clear content filter", () => {
+        if (!onChoose) return;
+        onChoose([]);
+      }));
+      if (onBack) {
+        menu.appendChild(createTagMenuButton("Back", () => {
+          onBack();
+        }));
+      }
+      if (typeof opts.onRendered === "function") opts.onRendered();
     }
 
     function handleTagMenuAction(action) {
@@ -23861,6 +24373,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (!metaClearTagAppearancePresetByKey(tagKey)) return;
         refreshAfterProcessingMetadataChange();
         showStatusMessage(`${isAlbumEntry ? "Tag album" : "Tag"} media preset reset.`);
+        return;
+      }
+      if (action === "media-filter-clear") {
+        if (!ctx.canMediaFilter || !tagKey) return;
+        if (!metaClearTagMediaFilterByKey(tagKey)) return;
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        showStatusMessage(`${isAlbumEntry ? "Tag album" : "Tag"} content filter cleared.`);
         return;
       }
       if (!tagKey) {
@@ -24001,6 +24521,18 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         return out;
       })();
       const anyAssignedTagAppearancePreset = !!tagAppearancePresetKeys.length && tagAppearancePresetKeys.some((key) => metaHasTagAppearancePresetByKey(key));
+      const tagMediaFilterTargets = (() => {
+        const out = [];
+        const seen = new Set();
+        for (let i = 0; i < presetAssignableTagEntries.length; i++) {
+          const key = tagThumbnailKeyForEntry(presetAssignableTagEntries[i]);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          out.push(key);
+        }
+        return out;
+      })();
+      const anyAssignedTagMediaFilter = !!tagMediaFilterTargets.length && tagMediaFilterTargets.some((key) => metaHasTagMediaFilterByKey(key));
       const tagThumbTargets = (() => {
         const out = [];
         const seen = new Set();
@@ -24181,6 +24713,51 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           if (!changed) return;
           refreshAfterProcessingMetadataChange();
           showStatusMessage("Tag media preset reset.");
+          finalizeBulkSelectionAction();
+        }));
+      }
+
+      if (tagMediaFilterTargets.length) {
+        directoriesActionMenuEl.appendChild(makeActionBtn("Set content filter", () => {
+          const currentValue = tagMediaFilterTargets.length === 1 ? metaGetTagMediaFilterByKey(tagMediaFilterTargets[0]) : [];
+          buildTagMediaFilterChoiceMenu(directoriesActionMenuEl, {
+            title: "Tag content filter",
+            currentValue,
+            onBack: () => {
+              renderDirectoriesActionHeader();
+              if (directoriesActionMenuEl.classList.contains("open") && anchorBtn) {
+                requestAnimationFrame(() => positionDropdownMenu(anchorBtn, directoriesActionMenuEl));
+              }
+            },
+            onChoose: (nextValue) => {
+              let changed = false;
+              for (let i = 0; i < tagMediaFilterTargets.length; i++) {
+                if (metaSetTagMediaFilterByKey(tagMediaFilterTargets[i], nextValue)) changed = true;
+              }
+              if (!changed) return;
+              metaScheduleSave();
+              refreshAfterTagMetadataChange();
+              showStatusMessage(`Tag content filter: ${describeTagMediaFilterValue(nextValue)}.`);
+              finalizeBulkSelectionAction();
+            },
+            onRendered: () => {
+              if (anchorBtn) positionDropdownMenu(anchorBtn, directoriesActionMenuEl);
+            }
+          });
+        }, false));
+      }
+
+      if (anyAssignedTagMediaFilter) {
+        directoriesActionMenuEl.appendChild(makeActionBtn("Clear content filter", () => {
+          WS.view.bulkActionMenuOpen = false;
+          let changed = false;
+          for (let i = 0; i < tagMediaFilterTargets.length; i++) {
+            if (metaClearTagMediaFilterByKey(tagMediaFilterTargets[i])) changed = true;
+          }
+          if (!changed) return;
+          metaScheduleSave();
+          refreshAfterTagMetadataChange();
+          showStatusMessage("Tag content filter cleared.");
           finalizeBulkSelectionAction();
         }));
       }
@@ -30385,6 +30962,16 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function handleExtrasKeybindAction(action) {
       if (!action || !WS.meta) return false;
+      const folderSortMode = folderSortModeFromKeybindAction(action);
+      if (folderSortMode) {
+        if (normalizeDirSortMode(WS.meta.dirSortMode) !== folderSortMode) {
+          WS.meta.dirSortMode = folderSortMode;
+          metaMarkDirty(META_DOC_IDS.prefGeneral);
+          applyViewModesEverywhere(true);
+        }
+        showStatusMessage(`Folder sort: ${dirSortModeLabel(folderSortMode)}`);
+        return true;
+      }
       const presetId = appearancePresetIdFromKeybindAction(action);
       if (presetId) {
         const preset = getAppearancePresetById(presetId);

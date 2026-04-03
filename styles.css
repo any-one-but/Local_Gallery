@@ -3471,6 +3471,25 @@
       max-width: 320px;
     }
 
+    #menuOverlay button,
+    #menuOverlay select,
+    #menuOverlay input[type="checkbox"],
+    #menuOverlay input[type="range"] {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #menuOverlay button:focus,
+    #menuOverlay button:focus-visible,
+    #menuOverlay select:focus,
+    #menuOverlay select:focus-visible,
+    #menuOverlay input[type="checkbox"]:focus,
+    #menuOverlay input[type="checkbox"]:focus-visible,
+    #menuOverlay input[type="range"]:focus,
+    #menuOverlay input[type="range"]:focus-visible {
+      outline: none !important;
+      box-shadow: none !important;
+    }
+
     #optionsBody input[type="range"] {
       width: 180px;
     }
