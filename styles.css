@@ -416,16 +416,94 @@
       font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
+    :root[data-retro="on"] {
+      --retro-desktop: var(--tag-include-bg, #dbe4f1);
+      --retro-face: var(--color1-secondary);
+      --retro-face-soft: var(--color1-secondary);
+      --retro-field: var(--color1-primary);
+      --retro-text: var(--color0-primary);
+      --retro-muted: var(--color0-secondary);
+      --retro-highlight: #ffffff;
+      --retro-highlight-soft: #dfdfdf;
+      --retro-shadow: #808080;
+      --retro-shadow-dark: #404040;
+      --retro-shadow-black: #000000;
+      --retro-title-bg: linear-gradient(90deg, var(--anchor-internal-color2-primary) 0%, var(--color0-primary) 100%);
+      --retro-title-text: #ffffff;
+      --retro-select-bg: var(--anchor-internal-color2-primary);
+      --retro-select-text: #ffffff;
+      --ui-hover-shadow: none;
+      --ui-focus-ring: 0 0 0 1px #000000;
+      color-scheme: light;
+    }
+
+    :root[data-retro="on"]:not([data-theme]),
+    :root[data-retro="on"][data-theme="superdark"],
+    :root[data-retro="on"][data-theme="synthwave"],
+    :root[data-retro="on"][data-theme="verdant"],
+    :root[data-retro="on"][data-theme="azure"],
+    :root[data-retro="on"][data-theme="ember"],
+    :root[data-retro="on"][data-theme="amber"],
+    :root[data-retro="on"][data-theme="retro90s-dark"] {
+      --retro-desktop: var(--color1-tertiary);
+      --retro-face: var(--color1-secondary);
+      --retro-face-soft: var(--color1-secondary);
+      --retro-field: var(--color1-primary);
+      --retro-text: var(--color0-primary);
+      --retro-muted: var(--color0-secondary);
+      --retro-highlight: rgba(255, 255, 255, 0.35);
+      --retro-highlight-soft: rgba(255, 255, 255, 0.18);
+      --retro-shadow: rgba(0, 0, 0, 0.58);
+      --retro-shadow-dark: rgba(0, 0, 0, 0.82);
+      --retro-shadow-black: #000000;
+      --retro-title-bg: linear-gradient(90deg, var(--color1-tertiary) 0%, var(--anchor-internal-color2-primary) 100%);
+      --retro-title-text: var(--color0-primary);
+      --retro-select-bg: var(--anchor-internal-color2-primary);
+      --retro-select-text: #ffffff;
+      --ui-selection-outline: var(--anchor-internal-color2-primary);
+      --ui-selection-outline-soft: rgba(255, 255, 255, 0.22);
+      --ui-selection-fill: rgba(255, 255, 255, 0.08);
+      --ui-selection-fill-strong: rgba(255, 255, 255, 0.14);
+    }
+
+    :root[data-retro="on"][data-theme="classic-light"],
+    :root[data-retro="on"][data-theme="light"],
+    :root[data-retro="on"][data-theme="synthwave-light"],
+    :root[data-retro="on"][data-theme="verdant-light"],
+    :root[data-retro="on"][data-theme="azure-light"],
+    :root[data-retro="on"][data-theme="ember-light"],
+    :root[data-retro="on"][data-theme="amber-light"],
+    :root[data-retro="on"][data-theme="retro90s"] {
+      --retro-desktop: var(--tag-include-bg, #dbe4f1);
+      --retro-face: var(--color1-secondary);
+      --retro-face-soft: var(--color1-secondary);
+      --retro-field: var(--color1-primary);
+      --retro-text: var(--color0-primary);
+      --retro-muted: var(--color0-secondary);
+      --retro-highlight: #ffffff;
+      --retro-highlight-soft: #efefef;
+      --retro-shadow: rgba(0, 0, 0, 0.32);
+      --retro-shadow-dark: rgba(0, 0, 0, 0.58);
+      --retro-shadow-black: rgba(0, 0, 0, 0.9);
+      --retro-title-bg: linear-gradient(90deg, var(--anchor-internal-color2-primary) 0%, var(--color0-primary) 100%);
+      --retro-title-text: #ffffff;
+      --retro-select-bg: var(--anchor-internal-color2-primary);
+      --retro-select-text: #ffffff;
+      --ui-selection-outline: var(--anchor-internal-color2-primary);
+      --ui-selection-outline-soft: rgba(0, 0, 0, 0.18);
+      --ui-selection-fill: rgba(0, 0, 0, 0.08);
+      --ui-selection-fill-strong: rgba(0, 0, 0, 0.12);
+    }
+
     :root[data-retro="on"] body {
-      font-family: "Pixelated MS Sans Serif", "MS Gothic", "Chicago", "VT323", monospace;
-      font-size: 13px;
-      letter-spacing: 0.02em;
-      text-rendering: optimizeSpeed;
+      font-family: "Pixelated MS Sans Serif", "MS Sans Serif", "Microsoft Sans Serif", "Tahoma", sans-serif;
+      font-size: 12px;
+      letter-spacing: 0;
+      text-rendering: geometricPrecision;
       -webkit-font-smoothing: none;
-      background-image:
-        linear-gradient(0deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03)),
-        radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px);
-      background-size: 100% 100%, 3px 3px;
+      background: var(--retro-desktop);
+      background-image: none;
+      color: var(--retro-text);
     }
 
 
@@ -690,6 +768,410 @@
       background: var(--color0-secondary);
       color: var(--color1-primary);
       border-color: var(--color0-tertirary);
+    }
+
+    :root[data-retro="on"] a {
+      color: var(--anchor-internal-color2-primary);
+    }
+
+    :root[data-retro="on"] button,
+    :root[data-retro="on"] .miniBtn,
+    :root[data-retro="on"] .dirMenuBtn {
+      background: var(--retro-face);
+      color: var(--retro-text);
+      border: 2px solid;
+      border-color: var(--retro-highlight) var(--retro-shadow-black) var(--retro-shadow-black) var(--retro-highlight);
+      border-radius: 0;
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
+      transform: none;
+      text-transform: none;
+    }
+
+    :root[data-retro="on"] button:hover:not(:disabled),
+    :root[data-retro="on"] .miniBtn:hover:not(:disabled),
+    :root[data-retro="on"] .dirMenuBtn:hover:not(:disabled) {
+      background: #d9d9d9;
+      color: var(--retro-text);
+      transform: none;
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
+    }
+
+    :root[data-retro="on"] button:active:not(:disabled),
+    :root[data-retro="on"] .miniBtn:active:not(:disabled),
+    :root[data-retro="on"] .dirMenuBtn:active:not(:disabled) {
+      border-color: var(--retro-shadow-black) var(--retro-highlight) var(--retro-highlight) var(--retro-shadow-black);
+      box-shadow: inset 1px 1px 0 var(--retro-shadow-black), inset -1px -1px 0 var(--retro-highlight-soft);
+      transform: none;
+    }
+
+    :root[data-retro="on"] button:disabled,
+    :root[data-retro="on"] .miniBtn:disabled,
+    :root[data-retro="on"] .dirMenuBtn:disabled {
+      color: #6a6a6a;
+      background: var(--retro-face);
+      opacity: 1;
+    }
+
+    :root[data-retro="on"] .miniBtn.active,
+    :root[data-retro="on"] .tag.sel,
+    :root[data-retro="on"] .statsLedgerSortBtn.active {
+      background: var(--retro-select-bg);
+      color: var(--retro-select-text);
+      border-color: var(--retro-shadow-black) var(--retro-highlight) var(--retro-highlight) var(--retro-shadow-black);
+      box-shadow: inset 1px 1px 0 #001a66, inset -1px -1px 0 #7aa7ff;
+    }
+
+    :root[data-retro="on"] .statsLedgerSortBtn.active .statsLedgerSortBtnMeta {
+      color: rgba(255, 255, 255, 0.86);
+    }
+
+    :root[data-retro="on"] .pill,
+    :root[data-retro="on"] .voteScore,
+    :root[data-retro="on"] .tag,
+    :root[data-retro="on"] .crumb,
+    :root[data-retro="on"] .clusterBreak,
+    :root[data-retro="on"] .statusBar,
+    :root[data-retro="on"] .dirDetailsHeader,
+    :root[data-retro="on"] .statsWidgetCard,
+    :root[data-retro="on"] .calendarAnalyticsCard,
+    :root[data-retro="on"] .scoreHistoryDay,
+    :root[data-retro="on"] .calendarRankingsEmpty,
+    :root[data-retro="on"] .scoreHistoryEmpty,
+    :root[data-retro="on"] #titlePane,
+    :root[data-retro="on"] #directoriesPane,
+    :root[data-retro="on"] #previewPane,
+    :root[data-retro="on"] #menuCard,
+    :root[data-retro="on"] .dropdownMenu {
+      border-radius: 0;
+    }
+
+    :root[data-retro="on"] #titlePane,
+    :root[data-retro="on"] #directoriesPane,
+    :root[data-retro="on"] #previewPane,
+    :root[data-retro="on"] #menuCard,
+    :root[data-retro="on"] .dropdownMenu,
+    :root[data-retro="on"] .statsWidgetCard,
+    :root[data-retro="on"] .calendarAnalyticsCard,
+    :root[data-retro="on"] .scoreHistoryDay,
+    :root[data-retro="on"] .calendarRankingsEmpty,
+    :root[data-retro="on"] .scoreHistoryEmpty {
+      background: var(--retro-face);
+      border: 2px solid;
+      border-color: var(--retro-highlight) var(--retro-shadow-black) var(--retro-shadow-black) var(--retro-highlight);
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
+    }
+
+    :root[data-retro="on"] #titlePane {
+      padding: 4px;
+      gap: 4px;
+      background: var(--retro-face);
+    }
+
+    :root[data-retro="on"] #titlePaneTop {
+      gap: 6px;
+    }
+
+    :root[data-retro="on"] #titleMain {
+      min-height: 26px;
+      padding: 4px 6px;
+      background: var(--retro-title-bg);
+      color: var(--retro-title-text);
+      align-items: center;
+    }
+
+    :root[data-retro="on"] #titlePane h1 {
+      color: var(--retro-title-text);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    :root[data-retro="on"] #directoriesPane,
+    :root[data-retro="on"] #previewPane,
+    :root[data-retro="on"] #menuBody,
+    :root[data-retro="on"] #optionsBody,
+    :root[data-retro="on"] #keybindsBody,
+    :root[data-retro="on"] #calendarBody,
+    :root[data-retro="on"] #optionsFooter,
+    :root[data-retro="on"] #keybindsFooter,
+    :root[data-retro="on"] #calendarFooter {
+      background: var(--retro-face);
+    }
+
+    :root[data-retro="on"] #directoriesHeader.active {
+      padding: 6px 6px 4px;
+      border-bottom: 1px solid var(--retro-shadow);
+      gap: 6px;
+    }
+
+    :root[data-retro="on"] #directoriesList,
+    :root[data-retro="on"] #previewBody {
+      background: var(--retro-field);
+      box-shadow: inset 1px 1px 0 var(--retro-shadow-dark), inset -1px -1px 0 var(--retro-highlight), inset 2px 2px 0 var(--retro-shadow-black), inset -2px -2px 0 var(--retro-highlight-soft);
+    }
+
+    :root[data-retro="on"] #divider::before {
+      width: 2px;
+      background: var(--retro-shadow-dark);
+      box-shadow: 1px 0 0 var(--retro-highlight);
+    }
+
+    :root[data-retro="on"] .folderCard,
+    :root[data-retro="on"] .fileCard,
+    :root[data-retro="on"] .dirSquareCard,
+    :root[data-retro="on"] .dirFileThumbCard,
+    :root[data-retro="on"] .expandedBar {
+      border: 2px solid;
+      border-color: var(--retro-highlight) var(--retro-shadow-black) var(--retro-shadow-black) var(--retro-highlight);
+      border-radius: 0;
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
+      background: var(--retro-face);
+    }
+
+    :root[data-retro="on"] .folderCard.folderThumbCard .metaBlock,
+    :root[data-retro="on"] .fileCard .metaBlock,
+    :root[data-retro="on"] .gridFolders.fitInsideJustified .folderCard.folderThumbCard .metaBlock,
+    :root[data-retro="on"] .gridFiles.fitInsideJustified .fileCard .metaBlock {
+      background: var(--retro-face);
+    }
+
+    :root[data-retro="on"] .tag,
+    :root[data-retro="on"] .pill,
+    :root[data-retro="on"] .voteScore {
+      background: var(--retro-face);
+      color: var(--retro-text);
+      border: 1px solid var(--retro-shadow-dark);
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight);
+    }
+
+    :root[data-retro="on"] .crumb {
+      background: var(--retro-face);
+      color: var(--retro-text);
+      border: 2px solid;
+      border-color: var(--retro-highlight) var(--retro-shadow-black) var(--retro-shadow-black) var(--retro-highlight);
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
+    }
+
+    :root[data-retro="on"] .crumb:hover {
+      background: #d9d9d9;
+      color: var(--retro-text);
+    }
+
+    :root[data-retro="on"] .dirRow {
+      background: transparent;
+      border-radius: 0;
+      border-color: transparent;
+    }
+
+    :root[data-retro="on"] .dirRow:hover {
+      background: #d9d9d9;
+      color: var(--retro-text);
+      border-color: #a1a1a1;
+    }
+
+    :root[data-retro="on"] .dirRow.selected,
+    :root[data-retro="on"] .dirRow.bulkSelected,
+    :root[data-retro="on"] .dirRow.selected.bulkSelected {
+      background: var(--retro-select-bg);
+      color: var(--retro-select-text);
+      outline: none;
+      border-color: var(--retro-shadow-black);
+      box-shadow: none;
+    }
+
+    :root[data-retro="on"] .dirRow.selected .dirName,
+    :root[data-retro="on"] .dirRow.selected .dirNameText,
+    :root[data-retro="on"] .dirRow.selected .dirMeta,
+    :root[data-retro="on"] .dirRow.selected .dirMetaInline,
+    :root[data-retro="on"] .dirRow.selected .dirBarMetaText,
+    :root[data-retro="on"] .dirRow.selected .dirIcon,
+    :root[data-retro="on"] .dirRow.selected .dirHiddenBadge,
+    :root[data-retro="on"] .dirRow.selected .dirFavoriteHeart,
+    :root[data-retro="on"] .dirRow.selected .voteBtn,
+    :root[data-retro="on"] .dirRow.selected .mini,
+    :root[data-retro="on"] .dirRow.bulkSelected .dirName,
+    :root[data-retro="on"] .dirRow.bulkSelected .dirNameText,
+    :root[data-retro="on"] .dirRow.bulkSelected .dirMeta,
+    :root[data-retro="on"] .dirRow.bulkSelected .dirMetaInline,
+    :root[data-retro="on"] .dirRow.bulkSelected .dirBarMetaText,
+    :root[data-retro="on"] .dirRow.bulkSelected .dirIcon,
+    :root[data-retro="on"] .dirRow.bulkSelected .dirHiddenBadge,
+    :root[data-retro="on"] .dirRow.bulkSelected .dirFavoriteHeart,
+    :root[data-retro="on"] .dirRow.bulkSelected .voteBtn,
+    :root[data-retro="on"] .dirRow.bulkSelected .mini {
+      color: var(--retro-select-text);
+    }
+
+    :root[data-retro="on"] .dirRow.folderRow.folderSquareCard.selected .dirSquareCard,
+    :root[data-retro="on"] .dirRow.folderRow.folderSquareCard.bulkSelected .dirSquareCard,
+    :root[data-retro="on"] .dirRow.folderRow.folderSquareCard.selected.bulkSelected .dirSquareCard,
+    :root[data-retro="on"] .dirRow.fileRow.fileThumbCardRow.selected .dirFileThumbCard,
+    :root[data-retro="on"] .dirRow.fileRow.fileThumbCardRow.bulkSelected .dirFileThumbCard,
+    :root[data-retro="on"] .dirRow.fileRow.fileThumbCardRow.selected.bulkSelected .dirFileThumbCard {
+      border-color: var(--retro-select-bg);
+      outline-color: var(--retro-select-bg);
+      box-shadow: 0 0 0 1px var(--retro-highlight), 0 0 0 3px var(--retro-select-bg);
+    }
+
+    :root[data-retro="on"] .dropdownMenu {
+      padding: 4px;
+      gap: 4px;
+    }
+
+    :root[data-retro="on"] .dropdownMenu button {
+      background: transparent;
+      color: var(--retro-text);
+      border: 1px solid transparent;
+      box-shadow: none;
+      border-radius: 0;
+    }
+
+    :root[data-retro="on"] .dropdownMenu button:hover:not(:disabled) {
+      background: var(--retro-select-bg);
+      color: var(--retro-select-text);
+      border-color: var(--retro-select-bg);
+    }
+
+    :root[data-retro="on"] .dropdownMenu button.destructiveAction {
+      color: #7a0000;
+      background: #f2d6d6;
+      border-color: #b56b6b;
+    }
+
+    :root[data-retro="on"] .dropdownMenu button.destructiveAction:hover:not(:disabled) {
+      background: #7a0000;
+      color: #ffffff;
+      border-color: #7a0000;
+    }
+
+    :root[data-retro="on"] .dropdownMenu .scoreRow,
+    :root[data-retro="on"] .dropdownMenu .menuTwoColRow {
+      gap: 4px;
+    }
+
+    :root[data-retro="on"] #menuHeader {
+      padding: 4px 4px 0;
+      gap: 4px;
+      border-bottom: 0;
+      background: var(--retro-title-bg);
+    }
+
+    :root[data-retro="on"] #menuHeader .title {
+      color: var(--retro-title-text);
+    }
+
+    :root[data-retro="on"] #menuTabs {
+      width: calc(100% + 8px);
+      margin: 4px -4px 0;
+      padding: 4px 4px 0;
+      gap: 2px;
+      background: var(--retro-face);
+    }
+
+    :root[data-retro="on"] #menuTabs .menuTabBtn {
+      background: var(--retro-face);
+      color: var(--retro-text);
+      border: 2px solid;
+      border-color: var(--retro-highlight) var(--retro-shadow-dark) transparent var(--retro-highlight);
+      border-radius: 0;
+      box-shadow: none;
+      padding: 5px 12px 4px;
+      min-height: 28px;
+      top: 0;
+    }
+
+    :root[data-retro="on"] #menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
+      background: #d9d9d9;
+      color: var(--retro-text);
+    }
+
+    :root[data-retro="on"] #menuTabs .menuTabBtn.active {
+      background: var(--retro-field);
+      color: var(--retro-text);
+      border-color: var(--retro-highlight) var(--retro-shadow-dark) var(--retro-field) var(--retro-highlight);
+      box-shadow: none;
+      margin-bottom: -2px;
+      z-index: 2;
+      position: relative;
+      top: 0;
+    }
+
+    :root[data-retro="on"] #menuTabs .menuTabBtn.active:hover:not(:disabled) {
+      background: var(--retro-field);
+      color: var(--retro-text);
+    }
+
+    :root[data-retro="on"] #optionsFooter,
+    :root[data-retro="on"] #keybindsFooter,
+    :root[data-retro="on"] #calendarFooter {
+      border-top: 1px solid var(--retro-shadow);
+    }
+
+    :root[data-retro="on"] .tagEditInput,
+    :root[data-retro="on"] input[type="file"],
+    :root[data-retro="on"] #optionsBody select,
+    :root[data-retro="on"] #keybindsBody select,
+    :root[data-retro="on"] #optionsBody .optRight.optActions input[type="text"],
+    :root[data-retro="on"] .dirSquareRenameInput,
+    :root[data-retro="on"] .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .previewFolderRenameInput,
+    :root[data-retro="on"] .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .previewFolderTagInput {
+      background: var(--retro-field);
+      color: var(--retro-text);
+      border: 2px solid;
+      border-color: var(--retro-shadow-dark) var(--retro-highlight) var(--retro-highlight) var(--retro-shadow-dark);
+      border-radius: 0;
+      box-shadow: inset 1px 1px 0 var(--retro-shadow-black), inset -1px -1px 0 var(--retro-highlight-soft);
+    }
+
+    :root[data-retro="on"] input[type="checkbox"],
+    :root[data-retro="on"] input[type="range"] {
+      accent-color: var(--retro-select-bg);
+    }
+
+    :root[data-retro="on"] .statusBar {
+      color: var(--retro-text);
+      border-top: 1px solid var(--retro-shadow);
+      box-shadow: inset 1px 1px 0 var(--retro-highlight), inset -1px -1px 0 var(--retro-shadow);
+    }
+
+    :root[data-retro="on"] .statsLedgerTableWrap {
+      background: var(--retro-field);
+      border: 2px solid;
+      border-color: var(--retro-shadow-dark) var(--retro-highlight) var(--retro-highlight) var(--retro-shadow-dark);
+      border-radius: 0;
+    }
+
+    :root[data-retro="on"] .statsLedgerTable thead th,
+    :root[data-retro="on"] .scoreHistoryDayHeader {
+      background: #d9d9d9;
+    }
+
+    :root[data-retro="on"] .statsLedgerSortBtn {
+      background: transparent;
+      color: var(--retro-text);
+      box-shadow: none;
+      border: 0;
+    }
+
+    :root[data-retro="on"] .statsLedgerSortBtn:hover {
+      background: #d9d9d9;
+      color: var(--retro-text);
+    }
+
+    :root[data-retro="on"] .statsLedgerSortBtn.active:hover {
+      background: var(--retro-select-bg);
+      color: var(--retro-select-text);
+    }
+
+    :root[data-retro="on"] #filename,
+    :root[data-retro="on"] #statusMessage,
+    :root[data-retro="on"] #mainStatusMessage {
+      background: var(--retro-face);
+      color: var(--retro-text);
+      border: 2px solid;
+      border-color: var(--retro-highlight) var(--retro-shadow-black) var(--retro-shadow-black) var(--retro-highlight);
+      border-radius: 0;
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
     }
 
     .voteBox {
@@ -1035,13 +1517,6 @@
       border: 0;
       pointer-events: none;
       visibility: hidden;
-    }
-
-    #directoriesList.gridModeList .dirSquareCard,
-    #directoriesList.gridModeList .dirFileThumbCard {
-      width: 100%;
-      height: auto;
-      max-height: none;
     }
 
     .statusBar {
@@ -2764,6 +3239,131 @@
       white-space: nowrap;
       flex: 1;
       min-width: 0;
+    }
+
+    :root[data-retro="on"] .gridFiles .previewThumbOverlayMeta,
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMeta,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareOverlay,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlay,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlay {
+      padding: 6px 8px;
+      gap: 2px;
+      background: var(--retro-face);
+      color: var(--retro-text);
+      border-top: 1px solid var(--retro-shadow-dark);
+      box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
+    }
+
+    :root[data-retro="on"] .gridFiles .previewThumbOverlayTopLine,
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayTopLine,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareTop,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareTop,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlayTop {
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    :root[data-retro="on"] .gridFiles .previewThumbOverlayBottomLine,
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayBottomLine,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareBottom,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareBottom,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlayBottom {
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayRightMeta,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareRightMeta,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareRightMeta {
+      gap: 6px;
+      align-items: center;
+    }
+
+    :root[data-retro="on"] .gridFiles .previewThumbOverlayMeta .name,
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMeta .name,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareName,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareName,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileNameText {
+      font-size: 18px;
+      line-height: 1.1;
+      font-weight: 700;
+      color: var(--retro-text);
+    }
+
+    :root[data-retro="on"] .gridFiles .previewThumbOverlayMini,
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMini,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareMeta,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareTypeIcon,
+    :root[data-retro="on"] .previewTagFolderCard .dirTagKindBadge,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareMeta,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareTypeIcon,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirTagKindBadge,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileMetaLine,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileType,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileSize {
+      color: var(--retro-muted);
+      opacity: 1;
+      text-transform: none;
+    }
+
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayScore,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareScore,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareScore {
+      color: var(--retro-text);
+      opacity: 1;
+    }
+
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMeta .dirStatusBadge,
+    :root[data-retro="on"] .previewTagFolderCard .dirStatusBadges,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirStatusBadges,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirHiddenBadge {
+      color: var(--retro-text);
+      opacity: 1;
+    }
+
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMeta .dirFavoriteHeart,
+    :root[data-retro="on"] .previewTagFolderCard .dirFavoriteHeart,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFavoriteHeart {
+      color: #b00020;
+    }
+
+    :root[data-retro="on"] .gridFiles .previewThumbOverlayMenuBtn,
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMenuBtn,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareOverlay .dirMenuBtn,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlay .dirMenuBtn,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileMenu .dirMenuBtn {
+      min-width: 22px;
+      width: 22px;
+      height: 18px;
+      padding: 0 4px;
+      font-size: 14px;
+      background: var(--retro-face-soft);
+      color: var(--retro-text);
+      border: 1px solid;
+      border-color: var(--retro-highlight) var(--retro-shadow-dark) var(--retro-shadow-dark) var(--retro-highlight);
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
+    }
+
+    :root[data-retro="on"] .gridFiles .previewThumbOverlayMenuBtn:hover:not(:disabled),
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMenuBtn:hover:not(:disabled),
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareOverlay .dirMenuBtn:hover:not(:disabled),
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlay .dirMenuBtn:hover:not(:disabled),
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileMenu .dirMenuBtn:hover:not(:disabled) {
+      background: var(--retro-select-bg);
+      color: var(--retro-select-text);
+      border-color: var(--retro-shadow-black);
+      box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.28), inset -1px -1px 0 rgba(255, 255, 255, 0.18);
+    }
+
+    :root[data-retro="on"] .gridFiles .previewThumbOverlayMenuBtn:active:not(:disabled),
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMenuBtn:active:not(:disabled),
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareOverlay .dirMenuBtn:active:not(:disabled),
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlay .dirMenuBtn:active:not(:disabled),
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileMenu .dirMenuBtn:active:not(:disabled) {
+      border-color: var(--retro-shadow-dark) var(--retro-highlight) var(--retro-highlight) var(--retro-shadow-dark);
+      box-shadow: inset 1px 1px 0 var(--retro-shadow-black), inset -1px -1px 0 var(--retro-highlight-soft);
     }
 
     .tag {

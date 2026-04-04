@@ -377,6 +377,7 @@
         lightMode: false,
         leftPaneWidthPct: 0.28,
         showRootView: true,
+        includeHiddenItemsInStats: false,
         showHiddenFolder: false,
         showUntaggedFolder: false,
         showTagFolderSpacerRow: false,
@@ -502,6 +503,7 @@
         colorScheme,
         lightMode,
         showRootView: (typeof src.showRootView === "boolean") ? src.showRootView : d.showRootView,
+        includeHiddenItemsInStats: (typeof src.includeHiddenItemsInStats === "boolean") ? src.includeHiddenItemsInStats : d.includeHiddenItemsInStats,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
         showTagFolderSpacerRow: (typeof src.showTagFolderSpacerRow === "boolean") ? src.showTagFolderSpacerRow : d.showTagFolderSpacerRow,
@@ -5903,10 +5905,16 @@
       return false;
     }
 
-    function getCalendarVisibleMetricsForDir(dirNode, memo = new Map()) {
+    function getCalendarVisibleMetricsForDir(dirNode, memo = new Map(), includeHidden = includeHiddenItemsInStatsEnabled()) {
       if (!dirNode || dirNode.type !== "dir") return { score: 0, sizeBytes: 0 };
-      const key = String(dirNode.path || "");
+      const path = String(dirNode.path || "");
+      const key = `${path}::${includeHidden ? "all" : "visible"}`;
       if (memo.has(key)) return memo.get(key);
+      if (!includeHidden && isPathOrAncestorHidden(path)) {
+        const hiddenMetrics = { score: 0, sizeBytes: 0 };
+        memo.set(key, hiddenMetrics);
+        return hiddenMetrics;
+      }
 
       const children = Array.isArray(dirNode.childrenDirs)
         ? dirNode.childrenDirs.filter((child) => child && child.type === "dir")
@@ -5919,7 +5927,8 @@
         const child = children[i];
         const childPath = String(child.path || "");
         childStoredScoreSum += Number(metaGetScore(childPath)) || 0;
-        const childMetrics = getCalendarVisibleMetricsForDir(child, memo);
+        if (!includeHidden && isPathOrAncestorHidden(childPath)) continue;
+        const childMetrics = getCalendarVisibleMetricsForDir(child, memo, includeHidden);
         visibleChildScoreSum += Number(childMetrics.score) || 0;
         visibleChildSizeSum += Number(childMetrics.sizeBytes) || 0;
       }
@@ -5928,10 +5937,16 @@
       const directFiles = Array.isArray(dirNode.childrenFiles) ? dirNode.childrenFiles : [];
       for (let i = 0; i < directFiles.length; i++) {
         const rec = WS.fileById.get(directFiles[i]);
+        const filePath = normalizeDirPathValue(
+          (rec && rec.relPath)
+            ? rec.relPath
+            : `${String(rec && rec.dirPath || "")}${rec && rec.dirPath ? "/" : ""}${String(rec && rec.name || "")}`
+        );
+        if (!includeHidden && filePath && isPathOrAncestorHidden(filePath)) continue;
         const fileSize = Number(rec && rec.size);
         if (Number.isFinite(fileSize) && fileSize > 0) directFileSizeSum += fileSize;
       }
-      const directScore = (Number(metaGetScore(key)) || 0) - childStoredScoreSum;
+      const directScore = (Number(metaGetScore(path)) || 0) - childStoredScoreSum;
       const metrics = {
         score: directScore + visibleChildScoreSum,
         sizeBytes: directFileSizeSum + visibleChildSizeSum
@@ -5940,7 +5955,7 @@
       return metrics;
     }
 
-    function getVisibleRootFolderScoreRows() {
+    function getVisibleRootFolderScoreRows(includeHidden = includeHiddenItemsInStatsEnabled()) {
       const root = WS.root;
       if (!root || !Array.isArray(root.childrenDirs)) return [];
       const out = [];
@@ -5949,7 +5964,8 @@
         const node = root.childrenDirs[i];
         if (!node || node.type !== "dir") continue;
         const path = String(node.path || "");
-        const metrics = getCalendarVisibleMetricsForDir(node, metricMemo);
+        if (!includeHidden && isPathOrAncestorHidden(path)) continue;
+        const metrics = getCalendarVisibleMetricsForDir(node, metricMemo, includeHidden);
         const sizeBytes = Math.max(0, Number(metrics.sizeBytes) || 0);
         const sizeMb = sizeBytes / (1024 * 1024);
         const score = Number(metrics.score) || 0;
@@ -6113,7 +6129,7 @@
       return dirDisplayName(node) || rootPath;
     }
 
-    function getRootScoreHistoryLinesForEntry(entry) {
+    function getRootScoreHistoryLinesForEntry(entry, includeHidden = includeHiddenItemsInStatsEnabled()) {
       const out = [];
       if (!entry || !Array.isArray(entry.changed)) return out;
       const selectedPaths = Array.isArray(entry.selectedPaths) ? entry.selectedPaths : [];
@@ -6130,9 +6146,9 @@
         for (let i = 0; i < selectedPaths.length; i++) {
           const itemPath = normalizeDirPathValue(selectedPaths[i]);
           if (!itemPath) continue;
-          if (isPathOrAncestorHidden(itemPath)) continue;
+          if (!includeHidden && isPathOrAncestorHidden(itemPath)) continue;
           const rootPath = scoreHistoryRootPathFromChangedPath(itemPath);
-          if (!rootPath || isPathOrAncestorHidden(rootPath)) continue;
+          if (!rootPath || (!includeHidden && isPathOrAncestorHidden(rootPath))) continue;
           const change = changedByPath.get(itemPath);
           const delta = change ? (Number(change.delta) || 0) : 0;
           if (!delta) continue;
@@ -6155,7 +6171,7 @@
         if (!item || typeof item !== "object") continue;
         const itemPath = normalizeDirPathValue(item.path);
         if (!itemPath) continue;
-        if (isPathOrAncestorHidden(itemPath)) continue;
+        if (!includeHidden && isPathOrAncestorHidden(itemPath)) continue;
         const depth = itemPath.split("/").filter(Boolean).length;
         if (depth !== 1) continue;
         const delta = Number(item.delta) || 0;
@@ -6174,14 +6190,15 @@
       if (!calendarBodyEl) return;
       const history = normalizeScoreHistoryList(WS.meta && Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : []);
       WS.meta.scoreHistory = history;
-      const rootRows = getVisibleRootFolderScoreRows();
+      const includeHidden = includeHiddenItemsInStatsEnabled();
+      const rootRows = getVisibleRootFolderScoreRows(includeHidden);
       const totalScore = rootRows.reduce((sum, row) => sum + (Number(row.score) || 0), 0);
       const activeSortKey = CALENDAR_STATS_SORT_KEYS.includes(CALENDAR_STATS_SORT_KEY) ? CALENDAR_STATS_SORT_KEY : "score";
       CALENDAR_STATS_SORT_KEY = activeSortKey;
       const grouped = new Map();
       for (let i = 0; i < history.length; i++) {
         const entry = history[i];
-        const rows = getRootScoreHistoryLinesForEntry(entry);
+        const rows = getRootScoreHistoryLinesForEntry(entry, includeHidden);
         for (let j = 0; j < rows.length; j++) {
           const row = rows[j];
           const key = scoreHistoryDateKey(row.at);
@@ -6232,7 +6249,7 @@
       calendarBodyEl.innerHTML = `
         <div class="calendarPanelIntro">
           <h1>Stats</h1>
-          <div class="label">Root folder metrics in one view, with score history below.</div>
+          <div class="label">Root folder metrics in one view, with score history below. Hidden items are ${includeHidden ? "included" : "excluded"}.</div>
         </div>
         <div class="statsSinglePage">
           ${buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey)}
@@ -6775,6 +6792,7 @@ ${makeSelectRow("Tag folder colors", "Choose the existing title-color set for ta
 ${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
 ${makeCheckRow("Show root view", "Allow navigating above the root to a single root-folder portal card.", "opt_showRootView", opt.showRootView !== false)}
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
+${makeCheckRow("Include hidden items in Stats", "When enabled, the Stats tab includes hidden folders and files in its totals and score history.", "opt_includeHiddenItemsInStats", !!opt.includeHiddenItemsInStats)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag in any folder view when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
@@ -7020,6 +7038,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           if (!WS.nav.dirNode && WS.root) WS.nav.dirNode = WS.root;
         }
         initDirHistory();
+      });
+      bindCheck("opt_includeHiddenItemsInStats", "includeHiddenItemsInStats", () => {
+        renderCalendarUi();
       });
       bindCheck("opt_showHiddenFolder", "showHiddenFolder", (enabled) => {
         if (!enabled && WS.view.tagFolderActiveMode === "hidden") {
@@ -12469,6 +12490,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function showRootViewEnabled() {
       const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
       return !(opt && opt.showRootView === false);
+    }
+
+    function includeHiddenItemsInStatsEnabled() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      return !!(opt && opt.includeHiddenItemsInStats);
     }
 
     function showHiddenFolderEnabled() {
