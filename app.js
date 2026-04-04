@@ -11334,10 +11334,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function captureViewerCloseRestoreState(opts = null) {
       const options = opts && typeof opts === "object" ? opts : {};
       const snap = snapshotRefreshState();
+      const tagNavStack = Array.isArray(WS.view && WS.view.tagNavStack)
+        ? WS.view.tagNavStack.map((frame) => (frame && typeof frame === "object") ? Object.assign({}, frame) : frame)
+        : [];
       return {
         dirPath: String(snap.dirPath || ""),
         entryKey: entryKeyForSelection(WS.nav.entries[WS.nav.selectedIndex] || null),
         view: snap.view ? Object.assign({}, snap.view) : null,
+        tagNavStack,
         activePane: String(options.activePane || WS.view.activePane || "directories"),
         directoriesScrollTop: getDirectoriesScrollTop(),
         pendingPreviewSelectionKey: String(options.pendingPreviewSelectionKey || "")
@@ -11347,7 +11351,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function restoreViewerCloseState(state) {
       if (!state || !WS.root) return false;
       restoreRefreshViewState(state.view || null);
+      WS.view.tagNavStack = Array.isArray(state.tagNavStack)
+        ? state.tagNavStack.map((frame) => (frame && typeof frame === "object") ? Object.assign({}, frame) : frame).filter(Boolean)
+        : [];
       WS.nav.dirNode = WS.dirByPath.get(String(state.dirPath || "")) || WS.root;
+      pruneStaleVirtualPortalFramesForPath(WS.nav.dirNode?.path || "");
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
       syncBulkSelectionForCurrentDir();
