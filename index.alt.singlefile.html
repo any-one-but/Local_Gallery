@@ -112,6 +112,9 @@
     :root[data-theme="classic-light"] .dropdownMenu,
     :root[data-theme="classic-light"] #menuCard,
     :root[data-theme="classic-light"] #propertiesCard,
+    :root[data-theme="frutiger-light"] .dropdownMenu,
+    :root[data-theme="frutiger-light"] #menuCard,
+    :root[data-theme="frutiger-light"] #propertiesCard,
     :root[data-theme="synthwave-light"] .dropdownMenu,
     :root[data-theme="synthwave-light"] #menuCard,
     :root[data-theme="synthwave-light"] #propertiesCard,
@@ -135,6 +138,7 @@
 
     :root[data-theme="classic-light"],
     :root[data-theme="light"],
+    :root[data-theme="frutiger-light"],
     :root[data-theme="synthwave-light"],
     :root[data-theme="verdant-light"],
     :root[data-theme="azure-light"],
@@ -437,6 +441,62 @@
       --tag-exclude-color: #783100;
       --ui-hover-shadow: 0 8px 22px rgba(145, 109, 10, 0.14);
       --ui-focus-ring: 0 0 0 2px rgba(28, 149, 196, 0.24);
+    }
+
+    :root[data-theme="frutiger"] {
+      --color0-primary: hsl(190, 78%, 96%);
+      --color0-secondary: hsl(194, 36%, 78%);
+      --color0-tertirary: hsl(202, 24%, 58%);
+
+      --color1-primary: hsl(205, 42%, 12%);
+      --color1-primary-transparent: hsla(205, 42%, 12%, .9);
+      --color1-secondary: hsl(198, 38%, 22%);
+      --color1-secondary-transparent: hsla(198, 38%, 22%, .7);
+      --color1-tertiary: hsl(201, 34%, 14%);
+
+      --anchor-internal-color2-primary: hsl(180, 88%, 68%);
+      --palette-accent: hsl(190, 82%, 54%);
+      --palette-accent-text: hsl(203, 74%, 12%);
+      --palette-accent-outline: hsl(188, 84%, 62%);
+      --dir-tag-title-color: #c89200;
+      --dir-tag-favorite-title-color: #cf5c94;
+      --dir-tag-album-title-color: #2398c5;
+      --tag-include-bg: #1a6b8f;
+      --tag-include-border: #0d4a63;
+      --tag-include-color: #eefcff;
+      --tag-exclude-bg: #7b395f;
+      --tag-exclude-border: #55243f;
+      --tag-exclude-color: #fff0f7;
+      --ui-hover-shadow: 0 12px 28px rgba(8, 37, 54, 0.34);
+      --ui-focus-ring: 0 0 0 2px rgba(118, 232, 255, 0.28);
+    }
+
+    :root[data-theme="frutiger-light"] {
+      --color0-primary: hsl(201, 52%, 18%);
+      --color0-secondary: hsl(201, 28%, 37%);
+      --color0-tertirary: hsl(202, 18%, 54%);
+
+      --color1-primary: hsl(204, 100%, 98%);
+      --color1-primary-transparent: hsla(204, 100%, 98%, .95);
+      --color1-secondary: hsl(193, 78%, 91%);
+      --color1-secondary-transparent: hsla(193, 78%, 91%, .78);
+      --color1-tertiary: hsl(198, 42%, 80%);
+
+      --anchor-internal-color2-primary: hsl(197, 78%, 42%);
+      --palette-accent: hsl(197, 74%, 52%);
+      --palette-accent-text: #ffffff;
+      --palette-accent-outline: hsl(197, 74%, 52%);
+      --dir-tag-title-color: #a77700;
+      --dir-tag-favorite-title-color: #bb4d81;
+      --dir-tag-album-title-color: #177fa6;
+      --tag-include-bg: #ccf5ff;
+      --tag-include-border: #55b7d8;
+      --tag-include-color: #13516b;
+      --tag-exclude-bg: #ffd8ea;
+      --tag-exclude-border: #e68ab8;
+      --tag-exclude-color: #7b1d49;
+      --ui-hover-shadow: 0 12px 28px rgba(45, 118, 153, 0.18);
+      --ui-focus-ring: 0 0 0 2px rgba(30, 143, 188, 0.24);
     }
 
     :root[data-theme="retro90s"] {
@@ -983,6 +1043,457 @@
     :root[data-retro="on"] .gridFolders.fitInsideJustified .folderCard.folderThumbCard .metaBlock,
     :root[data-retro="on"] .gridFiles.fitInsideJustified .fileCard .metaBlock {
       background: var(--retro-face);
+    }
+
+    :root[data-frutiger="on"] {
+      --frutiger-shell-top: rgba(255, 255, 255, 0.92);
+      --frutiger-shell-mid: rgba(255, 255, 255, 0.22);
+      --frutiger-shell-bottom: rgba(0, 0, 0, 0.18);
+      --frutiger-panel-top: rgba(255, 255, 255, 0.22);
+      --frutiger-panel-bottom: rgba(0, 0, 0, 0.12);
+      --frutiger-panel-border: rgba(255, 255, 255, 0.28);
+      --frutiger-panel-shadow: rgba(0, 0, 0, 0.24);
+      --frutiger-inner-shadow: rgba(255, 255, 255, 0.18);
+      --frutiger-hover-fill: rgba(255, 255, 255, 0.18);
+      --frutiger-active-fill: rgba(255, 255, 255, 0.24);
+      --frutiger-select-bg: linear-gradient(180deg, color-mix(in srgb, var(--palette-accent) 72%, white 28%) 0%, var(--palette-accent) 60%, color-mix(in srgb, var(--palette-accent) 78%, black 22%) 100%);
+      --frutiger-select-text: var(--palette-accent-text);
+      --frutiger-title-bg: linear-gradient(180deg, color-mix(in srgb, var(--palette-accent) 58%, white 42%) 0%, var(--palette-accent) 52%, color-mix(in srgb, var(--palette-accent) 82%, black 18%) 100%);
+      --frutiger-title-text: var(--palette-accent-text);
+      color-scheme: dark;
+    }
+
+    :root[data-frutiger="on"][data-theme="frutiger-light"] {
+      --frutiger-shell-top: rgba(255, 255, 255, 0.98);
+      --frutiger-shell-mid: rgba(255, 255, 255, 0.56);
+      --frutiger-shell-bottom: rgba(36, 107, 138, 0.14);
+      --frutiger-panel-top: rgba(255, 255, 255, 0.74);
+      --frutiger-panel-bottom: rgba(93, 177, 212, 0.18);
+      --frutiger-panel-border: rgba(111, 191, 221, 0.56);
+      --frutiger-panel-shadow: rgba(33, 107, 141, 0.16);
+      --frutiger-inner-shadow: rgba(255, 255, 255, 0.58);
+      --frutiger-hover-fill: rgba(255, 255, 255, 0.78);
+      --frutiger-active-fill: rgba(166, 223, 246, 0.46);
+      color-scheme: light;
+    }
+
+    :root[data-frutiger="on"] body {
+      font-family: "Lucida Grande", "Trebuchet MS", "Verdana", sans-serif;
+      letter-spacing: 0.01em;
+      background:
+        radial-gradient(circle at top, rgba(151, 232, 255, 0.2), transparent 34%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 72%, white 28%) 0%, var(--color1-secondary) 22%, var(--color1-primary) 100%);
+      color: var(--color0-primary);
+    }
+
+    :root[data-frutiger="on"] #app {
+      padding: 0;
+      background:
+        radial-gradient(circle at top, rgba(255, 255, 255, 0.12), transparent 26%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 68%, white 32%) 0%, var(--color1-primary) 100%);
+    }
+
+    :root[data-frutiger="on"] #titlePane,
+    :root[data-frutiger="on"] #directoriesPane,
+    :root[data-frutiger="on"] #previewPane {
+      min-width: 0;
+    }
+
+    :root[data-frutiger="on"] #titlePane {
+      margin: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      overflow: visible;
+    }
+
+    :root[data-frutiger="on"] #directoriesPane {
+      margin: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      overflow: visible;
+    }
+
+    :root[data-frutiger="on"] #previewPane {
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] #app.title-layout-compact #titlePane {
+      margin: 0;
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--color1-tertiary);
+      background: var(--color1-secondary);
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] #app.sidebar-closed #previewPane {
+      margin-left: 0;
+    }
+
+    :root[data-frutiger="on"] button,
+    :root[data-frutiger="on"] .miniBtn,
+    :root[data-frutiger="on"] .dirMenuBtn {
+      border-radius: 999px;
+      border-color: color-mix(in srgb, var(--palette-accent) 24%, var(--color1-tertiary) 76%);
+      background:
+        linear-gradient(180deg, var(--frutiger-shell-top) 0%, var(--frutiger-shell-mid) 48%, var(--frutiger-shell-bottom) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-primary) 72%, white 28%) 0%, var(--color1-secondary) 100%);
+      color: var(--color0-primary);
+      box-shadow:
+        inset 0 1px 0 var(--frutiger-inner-shadow),
+        0 1px 0 rgba(255, 255, 255, 0.16),
+        0 8px 18px var(--frutiger-panel-shadow);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+
+    :root[data-frutiger="on"] button:hover:not(:disabled),
+    :root[data-frutiger="on"] .miniBtn:hover:not(:disabled),
+    :root[data-frutiger="on"] .dirMenuBtn:hover:not(:disabled) {
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--frutiger-shell-top) 78%, white 22%) 0%, color-mix(in srgb, var(--frutiger-hover-fill) 50%, transparent 50%) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-primary) 62%, white 38%) 0%, color-mix(in srgb, var(--color1-secondary) 88%, white 12%) 100%);
+      color: var(--color0-primary);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.78),
+        0 10px 22px var(--frutiger-panel-shadow);
+    }
+
+    :root[data-frutiger="on"] button:active:not(:disabled),
+    :root[data-frutiger="on"] .miniBtn:active:not(:disabled),
+    :root[data-frutiger="on"] .dirMenuBtn:active:not(:disabled) {
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--frutiger-active-fill) 48%, black 8%) 0%, color-mix(in srgb, var(--color1-secondary) 92%, black 8%) 100%);
+      color: var(--color0-primary);
+      box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.18),
+        0 4px 10px rgba(0, 0, 0, 0.16);
+    }
+
+    :root[data-frutiger="on"] .miniBtn.active,
+    :root[data-frutiger="on"] .tag.sel,
+    :root[data-frutiger="on"] .statsLedgerSortBtn.active {
+      background: var(--frutiger-select-bg);
+      color: var(--frutiger-select-text);
+      border-color: color-mix(in srgb, var(--palette-accent) 72%, black 28%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.36),
+        0 10px 20px rgba(0, 0, 0, 0.24);
+      text-shadow: none;
+    }
+
+    :root[data-frutiger="on"] .pill,
+    :root[data-frutiger="on"] .voteScore,
+    :root[data-frutiger="on"] .tag,
+    :root[data-frutiger="on"] .crumb,
+    :root[data-frutiger="on"] .clusterBreak,
+    :root[data-frutiger="on"] .statusBar,
+    :root[data-frutiger="on"] .dirDetailsHeader,
+    :root[data-frutiger="on"] .statsWidgetCard,
+    :root[data-frutiger="on"] .calendarAnalyticsCard,
+    :root[data-frutiger="on"] .scoreHistoryDay,
+    :root[data-frutiger="on"] .calendarRankingsEmpty,
+    :root[data-frutiger="on"] .scoreHistoryEmpty,
+    :root[data-frutiger="on"] #menuCard,
+    :root[data-frutiger="on"] .dropdownMenu {
+      border-radius: 18px;
+      border: 1px solid var(--frutiger-panel-border);
+      background:
+        linear-gradient(180deg, var(--frutiger-panel-top) 0%, var(--frutiger-panel-bottom) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 72%, white 28%) 0%, var(--color1-primary) 100%);
+      box-shadow:
+        inset 0 1px 0 var(--frutiger-inner-shadow),
+        0 16px 34px var(--frutiger-panel-shadow);
+    }
+
+    :root[data-frutiger="on"] #titleMain {
+      border-radius: 16px;
+      padding: 8px 14px;
+      background: var(--frutiger-title-bg);
+      color: var(--frutiger-title-text);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.48),
+        0 10px 22px rgba(0, 0, 0, 0.2);
+    }
+
+    :root[data-frutiger="on"] #menuHeader,
+    :root[data-frutiger="on"] #menuTabs {
+      background: transparent;
+    }
+
+    :root[data-frutiger="on"] #menuTabs .menuTabBtn {
+      border-radius: 999px;
+      border-color: color-mix(in srgb, var(--palette-accent) 18%, var(--frutiger-panel-border) 82%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.08) 48%, rgba(0, 0, 0, 0.08) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 78%, white 22%) 0%, var(--color1-primary) 100%);
+      color: var(--color0-primary);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      padding: 5px 14px;
+      top: 0;
+    }
+
+    :root[data-frutiger="on"] #menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.12) 48%, rgba(0, 0, 0, 0.08) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 84%, white 16%) 0%, color-mix(in srgb, var(--color1-primary) 90%, white 10%) 100%);
+      color: var(--color0-primary);
+    }
+
+    :root[data-frutiger="on"] #menuTabs .menuTabBtn.active {
+      background: var(--frutiger-select-bg);
+      color: var(--frutiger-select-text);
+      border-color: color-mix(in srgb, var(--palette-accent) 72%, black 28%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
+      top: 0;
+    }
+
+    :root[data-frutiger="on"] #titlePane h1,
+    :root[data-frutiger="on"] #titleMain .label,
+    :root[data-frutiger="on"] #titleMain .pill {
+      color: var(--frutiger-title-text);
+    }
+
+    :root[data-frutiger="on"] #titlePaneTop {
+      gap: 12px;
+      min-width: 0;
+    }
+
+    :root[data-frutiger="on"] #titleMain,
+    :root[data-frutiger="on"] #titleBtns {
+      gap: 12px;
+      min-width: 0;
+    }
+
+    :root[data-frutiger="on"] #app.title-layout-pane #titlePane {
+      padding-bottom: 10px;
+    }
+
+    :root[data-frutiger="on"] #app.title-layout-pane #titlePane::after,
+    :root[data-frutiger="on"] #app.title-layout-pane #directoriesPane::after {
+      content: none;
+    }
+
+    :root[data-frutiger="on"] #directoriesList,
+    :root[data-frutiger="on"] #previewBody,
+    :root[data-frutiger="on"] #menuBody,
+    :root[data-frutiger="on"] #optionsBody,
+    :root[data-frutiger="on"] #keybindsBody,
+    :root[data-frutiger="on"] #calendarBody,
+    :root[data-frutiger="on"] #optionsFooter,
+    :root[data-frutiger="on"] #keybindsFooter,
+    :root[data-frutiger="on"] #calendarFooter {
+      border-radius: 0;
+      background: var(--color1-secondary);
+    }
+
+    :root[data-frutiger="on"] #divider::before {
+      width: 1px;
+      border-radius: 0;
+      background: var(--color1-tertiary);
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] #titlePane,
+    :root[data-frutiger="on"] #directoriesPane,
+    :root[data-frutiger="on"] #previewPane,
+    :root[data-frutiger="on"] #directoriesList,
+    :root[data-frutiger="on"] #previewBody {
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] #menuHeader {
+      border-bottom: 1px solid var(--color1-tertiary);
+    }
+
+    :root[data-frutiger="on"] #optionsFooter,
+    :root[data-frutiger="on"] #keybindsFooter,
+    :root[data-frutiger="on"] #calendarFooter,
+    :root[data-frutiger="on"] .statusBar {
+      border-top: 1px solid var(--color1-tertiary);
+    }
+
+    :root[data-frutiger="on"] .folderCard,
+    :root[data-frutiger="on"] .fileCard,
+    :root[data-frutiger="on"] .dirSquareCard,
+    :root[data-frutiger="on"] .dirFileThumbCard,
+    :root[data-frutiger="on"] .expandedBar {
+      border-radius: 22px;
+      border: 1px solid color-mix(in srgb, var(--palette-accent) 18%, var(--frutiger-panel-border) 82%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 16px 28px rgba(0, 0, 0, 0.2);
+    }
+
+    :root[data-frutiger="on"] .dirRow.folderRow.folderSquareCard,
+    :root[data-frutiger="on"] .dirRow.fileRow.fileThumbCardRow {
+      border-radius: 30px;
+    }
+
+    :root[data-frutiger="on"] .dirRow {
+      border-radius: 999px;
+    }
+
+    :root[data-frutiger="on"] .dirRow.folderBarCard,
+    :root[data-frutiger="on"] .dirRow.fileBarCard,
+    :root[data-frutiger="on"] .dirRow.tagBarCard,
+    :root[data-frutiger="on"] .dirRow.upRow {
+      border-radius: 999px;
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+
+    :root[data-frutiger="on"] .dirRow.folderRow.folderSquareCard .dirSquareCard,
+    :root[data-frutiger="on"] .dirRow.fileRow.fileThumbCardRow .dirFileThumbCard {
+      border-radius: 30px;
+    }
+
+    :root[data-frutiger="on"] .gridFiles .previewThumbOverlayMeta,
+    :root[data-frutiger="on"] .folderCard.folderThumbCard .thumbOverlayMeta,
+    :root[data-frutiger="on"] .previewTagFolderCard .dirSquareOverlay,
+    :root[data-frutiger="on"] #directoriesList.gridModeList .dirSquareOverlay,
+    :root[data-frutiger="on"] #directoriesList.gridModeList .dirFileOverlay {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0.38) 24%, rgba(0, 0, 0, 0.58) 100%);
+      color: #ffffff;
+      border-top: 1px solid rgba(255, 255, 255, 0.42);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+      backdrop-filter: blur(8px) saturate(1.1);
+      border-bottom-left-radius: 22px;
+      border-bottom-right-radius: 22px;
+      overflow: hidden;
+    }
+
+    :root[data-frutiger="on"] .gridFiles .previewThumbOverlayMetaMenuOnly,
+    :root[data-frutiger="on"] .folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
+    :root[data-frutiger="on"] .previewTagFolderCard .dirSquareOverlayMenuOnly,
+    :root[data-frutiger="on"] #directoriesList.gridModeList .dirSquareOverlayMenuOnly,
+    :root[data-frutiger="on"] #directoriesList.gridModeList .dirFileOverlayMenuOnly {
+      padding: 0;
+      background: none;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      backdrop-filter: none;
+      overflow: visible;
+    }
+
+    :root[data-frutiger="on"] .gridFiles.previewSquareCards .fileCard,
+    :root[data-frutiger="on"] .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard,
+    :root[data-frutiger="on"] .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard,
+    :root[data-frutiger="on"] .folderCard.folderThumbCard.folderThumbCoverCard {
+      border-radius: 22px;
+      overflow: hidden;
+    }
+
+    :root[data-frutiger="on"] .dirRow:hover {
+      background: color-mix(in srgb, var(--frutiger-hover-fill) 80%, transparent 20%);
+      color: var(--color0-primary);
+      border-color: color-mix(in srgb, var(--palette-accent) 24%, var(--color1-tertiary) 76%);
+    }
+
+    :root[data-frutiger="on"] .dirRow.selected,
+    :root[data-frutiger="on"] .dirRow.selected.bulkSelected,
+    :root[data-frutiger="on"] .gridFolders .folderCard.folderThumbCard.previewSelected.previewSelectedActive,
+    :root[data-frutiger="on"] .gridFiles .fileCard.previewSelected.previewSelectedActive,
+    :root[data-frutiger="on"] .gridFolders .previewTagFolderCard.previewSelected.previewSelectedActive .dirSquareCard {
+      background: var(--ui-selection-fill-strong);
+      color: var(--color0-primary);
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu > button,
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow,
+    :root[data-frutiger="on"] .dropdownMenu .menuTwoColRow,
+    :root[data-frutiger="on"] .dropdownMenu .label {
+      border-radius: 12px;
+      border: 1px solid color-mix(in srgb, var(--palette-accent) 16%, var(--frutiger-panel-border) 84%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.05) 48%, rgba(0, 0, 0, 0.08) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 76%, white 24%) 0%, var(--color1-primary) 100%);
+      color: var(--color0-primary);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow,
+    :root[data-frutiger="on"] .dropdownMenu .menuTwoColRow {
+      padding: 0;
+      border: 0;
+      background: none;
+      box-shadow: none;
+      gap: 8px;
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow:hover,
+    :root[data-frutiger="on"] .dropdownMenu .menuTwoColRow:hover {
+      background: none;
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow .scoreBtn,
+    :root[data-frutiger="on"] .dropdownMenu .menuTwoColRow button {
+      border-radius: 999px;
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow .scoreBtn {
+      width: auto;
+      flex: 1 1 0;
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu button:hover:not(:disabled) {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.12) 44%, rgba(0, 0, 0, 0.06) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 82%, white 18%) 0%, color-mix(in srgb, var(--color1-primary) 88%, white 12%) 100%);
+      color: var(--color0-primary);
+    }
+
+    :root[data-frutiger="on"] #menuOverlay .appToggleTrack {
+      border-radius: 999px;
+      border-color: color-mix(in srgb, var(--palette-accent) 24%, var(--frutiger-panel-border) 76%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.1) 46%, rgba(0, 0, 0, 0.12) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 78%, white 22%) 0%, var(--color1-primary) 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+    }
+
+    :root[data-frutiger="on"] #menuOverlay .appToggleThumb {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.82) 54%, rgba(150, 196, 214, 0.8) 100%);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    }
+
+    :root[data-frutiger="on"] #menuOverlay .appToggleBtn.isOn .appToggleTrack {
+      background: var(--frutiger-select-bg);
+      border-color: color-mix(in srgb, var(--palette-accent) 72%, black 28%);
+    }
+
+    :root[data-frutiger="on"] .pill,
+    :root[data-frutiger="on"] .crumb,
+    :root[data-frutiger="on"] .tag {
+      padding: 4px 14px;
+      border-radius: 999px;
+      gap: 8px;
+    }
+
+    :root[data-frutiger="on"] .crumb {
+      max-width: min(220px, 100%);
+    }
+
+    :root[data-frutiger="on"] .dirMenuBtnFavorite .dirMenuFavoriteGlyph {
+      font-size: 13px;
+    }
+
+    :root[data-frutiger="on"] #menuHeader {
+      padding-bottom: 0;
+    }
+
+    :root[data-frutiger="on"] #menuTabs {
+      gap: 2px;
+      align-items: center;
     }
 
     :root[data-retro="on"] .tag,
@@ -2075,12 +2586,12 @@
     .dirFileMenu .dirMenuBtn {
       min-width: 22px;
       width: 22px;
-      height: 18px;
-      padding: 0 4px;
-      font-size: 14px;
-      background: rgba(255,255,255,0.14);
-      border-color: rgba(255,255,255,0.34);
-      color: #fff;
+      height: 22px;
+      padding: 0;
+      font-size: 16px;
+      background: var(--color1-primary);
+      border-color: var(--color1-tertiary);
+      color: var(--color0-primary);
     }
 
     .dirInlinePreview {
@@ -5936,6 +6447,7 @@
         raw === "azure" ||
         raw === "ember" ||
         raw === "amber" ||
+        raw === "frutiger" ||
         raw === "retro"
       ) {
         return raw;
@@ -6312,6 +6824,7 @@
     const NAVIGATION_PREP_CHILD_LEAD_LIMIT = 24;
     const NAVIGATION_PREP_PREVIEW_FILE_LIMIT = 48;
     const NAVIGATION_PREP_PREVIEW_CHILD_LIMIT = 16;
+    const THUMBNAIL_UI_FLUSH_INTERVAL_MS = 850;
     let WORKSPACE_NAV_WARM_TOKEN = 0;
     let WORKSPACE_NAV_WARM_TIMER = 0;
     let DIRECTORIES_VIRTUAL_SCROLL_RAF = 0;
@@ -9521,6 +10034,8 @@
         themeValue = "superdark";
       } else if (scheme === "classic") {
         themeValue = lightMode ? "classic-light" : "";
+      } else if (scheme === "frutiger") {
+        themeValue = lightMode ? "frutiger-light" : "frutiger";
       } else if (scheme === "retro") {
         themeValue = lightMode ? "retro90s" : "retro90s-dark";
       } else {
@@ -9545,6 +10060,15 @@
       const on = normalizeColorSchemeValue(opt && opt.colorScheme, "superdark") === "retro";
       if (on) root.setAttribute("data-retro", "on");
       else root.removeAttribute("data-retro");
+    }
+
+    function applyFrutigerModeFromOptions() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const root = document.documentElement;
+      if (!root) return;
+      const on = normalizeColorSchemeValue(opt && opt.colorScheme, "superdark") === "frutiger";
+      if (on) root.setAttribute("data-frutiger", "on");
+      else root.removeAttribute("data-frutiger");
     }
 
     function retroPaletteEnabled(opt = null) {
@@ -9852,6 +10376,7 @@
         applyColorSchemeFromOptions();
         applyTagFolderTitleColorsFromOptions();
         applyRetroModeFromOptions();
+        applyFrutigerModeFromOptions();
         applyMediaFilterFromOptions();
         applyThumbFitFromOptions();
         applyDisplaySizesFromOptions();
@@ -9873,6 +10398,7 @@
       applyColorSchemeFromOptions();
       applyTagFolderTitleColorsFromOptions();
       applyRetroModeFromOptions();
+      applyFrutigerModeFromOptions();
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
@@ -10221,6 +10747,7 @@
       { value: "azure", label: "Azure" },
       { value: "ember", label: "Ember" },
       { value: "amber", label: "Amber" },
+      { value: "frutiger", label: "Frutiger" },
       { value: "retro", label: "Retro" },
       { value: "superdark", label: "OLED Dark" }
     ];
@@ -10713,7 +11240,10 @@
       imageThumbQueue: [],
       imageThumbActive: 0,
       imageThumbQueuedIds: new Set(),
-      imageThumbInFlightIds: new Set()
+      imageThumbInFlightIds: new Set(),
+
+      thumbnailUiFlushTimer: 0,
+      thumbnailUiFlushPending: false
     };
 
     /* FileRecord:
@@ -10758,6 +11288,7 @@
         try { clearTimeout(WORKSPACE_NAV_WARM_TIMER); } catch {}
       }
       WORKSPACE_NAV_WARM_TIMER = 0;
+      clearThumbnailUiFlushTimer();
       invalidateDirMetricsCaches();
       WS.root = null;
       WS.fileById.clear();
@@ -10876,6 +11407,8 @@
       WS.imageThumbActive = 0;
       WS.imageThumbQueuedIds = new Set();
       WS.imageThumbInFlightIds = new Set();
+      WS.thumbnailUiFlushTimer = 0;
+      WS.thumbnailUiFlushPending = false;
       PRELOAD_CACHE = new Map();
       PREVIEW_BULK_TAG_EDIT = null;
       closeThumbnailCropEditor();
@@ -11110,6 +11643,7 @@
     let viewerIndex = 0;
     let VIEWER_LAYOUT_MODE = "single";
     let VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
+    let VIEWER_CLOSE_RESTORE_STATE = null;
     let uiHideTimer = null;
     let globalCursorHideTimer = null;
 
@@ -11438,8 +11972,33 @@
       modePill.textContent = parts.length ? parts.join(" | ") : "Mode: default";
     }
 
+    function getPreviewPathText() {
+      if (!WS.root) return "—";
+      const previewDir = getPreviewTargetDir();
+      if (!previewDir) return "—";
+      if (previewDir._skipTagFilters) {
+        const basePath = String(previewDir._tagPreviewOriginPath || previewDir.parent?.path || "");
+        const baseLabel = basePath ? displayPath(basePath) : (dirDisplayName(WS.root) || "root");
+        const mode = String(previewDir._tagPreviewMode || "");
+        if (mode === "favorites") return `${baseLabel} · Favorites`;
+        if (mode === "untagged") return `${baseLabel} · Untagged`;
+        if (mode === "hidden") return `${baseLabel} · Hidden`;
+        if (mode === "album") {
+          const albumLabel = displayTagFolderLabel(String(previewDir._tagPreviewAlbum || "").trim());
+          return albumLabel ? `${baseLabel} · ${albumLabel}` : `${baseLabel} · Album`;
+        }
+        const albumLabel = displayTagFolderLabel(String(previewDir._tagPreviewAlbum || "").trim());
+        const tagLabel = displayTagFolderLabel(String(previewDir._tagPreviewTag || previewDir.name || "").trim());
+        if (albumLabel && tagLabel) return `${baseLabel} · ${albumLabel} · ${tagLabel}`;
+        return tagLabel ? `${baseLabel} · ${tagLabel}` : baseLabel;
+      }
+      if (previewDir === WS.root) return dirDisplayName(WS.root) || "root";
+      const path = String(previewDir.path || "");
+      return path ? (displayPath(path) || "root") : "root";
+    }
+
     function getCurrentTitleText() {
-      const path = getDirectoriesPathText();
+      const path = isCompactTitleLayout() ? getPreviewPathText() : getDirectoriesPathText();
       return path || "—";
     }
 
@@ -12504,6 +13063,7 @@
         { value: "azure", label: "Azure" },
         { value: "ember", label: "Ember" },
         { value: "amber", label: "Amber" },
+        { value: "frutiger", label: "Frutiger" },
         { value: "retro", label: "Retro" },
         { value: "superdark", label: "OLED Dark" }
       ];
@@ -12990,6 +13550,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       bindSelect("opt_colorScheme", "colorScheme", false, () => {
         applyColorSchemeFromOptions();
         applyRetroModeFromOptions();
+        applyFrutigerModeFromOptions();
       }, (val) => {
         return normalizeColorSchemeValue(val, "superdark");
       });
@@ -15611,6 +16172,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       applyDefaultViewFromOptions();
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
+      applyFrutigerModeFromOptions();
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
@@ -15643,6 +16205,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.view.appearancePresetPromptMode = "";
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
+      applyFrutigerModeFromOptions();
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
@@ -16243,6 +16806,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       applyDefaultViewFromOptions();
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
+      applyFrutigerModeFromOptions();
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
@@ -16959,6 +17523,49 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       }
       return 0;
+    }
+
+    function captureViewerCloseRestoreState(opts = null) {
+      const options = opts && typeof opts === "object" ? opts : {};
+      const snap = snapshotRefreshState();
+      return {
+        dirPath: String(snap.dirPath || ""),
+        entryKey: entryKeyForSelection(WS.nav.entries[WS.nav.selectedIndex] || null),
+        view: snap.view ? Object.assign({}, snap.view) : null,
+        activePane: String(options.activePane || WS.view.activePane || "directories"),
+        directoriesScrollTop: getDirectoriesScrollTop(),
+        pendingPreviewSelectionKey: String(options.pendingPreviewSelectionKey || "")
+      };
+    }
+
+    function restoreViewerCloseState(state) {
+      if (!state || !WS.root) return false;
+      restoreRefreshViewState(state.view || null);
+      WS.nav.dirNode = WS.dirByPath.get(String(state.dirPath || "")) || WS.root;
+      TAG_EDIT_PATH = null;
+      clearBulkTagPlaceholder();
+      syncBulkSelectionForCurrentDir();
+      syncFavoritesUi();
+      syncHiddenUi();
+      syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+      const idx = findEntryIndexByKey(String(state.entryKey || ""));
+      WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
+      syncPreviewToSelection();
+      WS.view.pendingPreviewSelectionKey = String(state.pendingPreviewSelectionKey || "");
+      WS.view.activePane = (state.activePane === "preview" || state.activePane === "directories")
+        ? state.activePane
+        : "directories";
+      renderDirectoriesPane(true);
+      if (directoriesListEl && Number.isFinite(Number(state.directoriesScrollTop))) {
+        directoriesListEl.scrollTop = Math.max(0, Number(state.directoriesScrollTop) || 0);
+      }
+      renderPreviewPane(false, true);
+      updatePreviewSelectionClasses();
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      return true;
     }
 
     async function refreshWorkspaceFromRootHandle() {
@@ -18361,6 +18968,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
         WS.videoThumbWorkspaceKickTimer = 0;
       }
+      clearThumbnailUiFlushTimer();
     }
 
     /* =========================================================
@@ -21536,6 +22144,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       } else if (WS.view.activePane !== "directories" && WS.view.activePane !== "preview") {
         WS.view.activePane = "directories";
       }
+      updateTitleLabel();
     }
 
     function getPreviewSelectableCards() {
@@ -22870,6 +23479,32 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return !loadingScreensEnabled();
     }
 
+    function clearThumbnailUiFlushTimer() {
+      if (WS.thumbnailUiFlushTimer) {
+        try { clearTimeout(WS.thumbnailUiFlushTimer); } catch {}
+      }
+      WS.thumbnailUiFlushTimer = 0;
+      WS.thumbnailUiFlushPending = false;
+    }
+
+    function flushThumbnailUi() {
+      WS.thumbnailUiFlushTimer = 0;
+      const hadPending = !!WS.thumbnailUiFlushPending;
+      WS.thumbnailUiFlushPending = false;
+      if (!hadPending) return;
+      if (!WS.root) return;
+      if (WS.preview.kind === "dir" && previewBodyEl && previewBodyEl.classList.contains("preview-grid")) {
+        renderPreviewPane(false, true);
+      }
+    }
+
+    function scheduleThumbnailUiFlush(delayMs = THUMBNAIL_UI_FLUSH_INTERVAL_MS) {
+      WS.thumbnailUiFlushPending = true;
+      if (WS.thumbnailUiFlushTimer) return;
+      const waitMs = Math.max(0, Number(delayMs) || 0);
+      WS.thumbnailUiFlushTimer = setTimeout(flushThumbnailUi, waitMs);
+    }
+
     function applyPreviewState(state) {
       const next = state && typeof state === "object" ? state : {};
       const prevKind = WS.preview.kind || null;
@@ -22968,6 +23603,78 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return out;
     }
 
+    function collectVisibleThumbRecordsForTagEntry(entry) {
+      if (!entry || entry.placeholder) return [];
+      const thumbMode = tagThumbnailKeyForEntry(entry) ? metaGetTagThumbnailModeByKey(tagThumbnailKeyForEntry(entry)) : "single";
+      if (thumbMode === "none") return [];
+      const pool = getRecursivePreviewRecordsForTagEntry(entry, 0);
+      if (!pool.length) return [];
+      const presetRec = getTagPresetPreviewRecordForEntry(entry, pool);
+      if (presetRec) return [presetRec];
+      if (naturalAspectThumbnailCardsEnabled()) return [];
+      const scopePath = String(WS.nav.dirNode?.path || entry.originPath || "");
+      const baseKey = entry.special
+        ? `tag:${scopePath}:special:${entry.special}`
+        : (entry.album && !entry.tag)
+          ? `tag:${scopePath}:album:${String(entry.album || "")}`
+          : `tag:${scopePath}:name:${String(entry.tag || "")}`;
+      if (thumbMode === "single" || pool.length < 4) {
+        const rec = pickRotatingPreviewRecordForKey(`${baseKey}:single`, pool);
+        return rec ? [rec] : [];
+      }
+      const slots = pickRotatingPreviewSlotsForKey(baseKey, pool, 4);
+      const out = [];
+      const seen = new Set();
+      for (let i = 0; i < slots.length; i++) {
+        const rec = slots[i] && slots[i].rec ? slots[i].rec : null;
+        const id = String(rec?.id || "");
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push(rec);
+      }
+      return out;
+    }
+
+    function collectFullNavigationEntryRecords(dirNode, includeFiles = true, opts = null) {
+      if (!dirNode) return [];
+      const options = opts && typeof opts === "object" ? opts : {};
+      const useCurrentViewEntries = !!options.useCurrentViewEntries;
+      const previewEntries = getPreviewFolderAndFileEntries(dirNode, { includeFiles, useCurrentViewEntries });
+      const out = [];
+      const seen = new Set();
+      const addRecord = (rec) => {
+        const id = String(rec?.id || "");
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        out.push(rec);
+      };
+      const addEntryThumbRecords = (entry) => {
+        if (!entry) return;
+        if (entry.kind === "file") {
+          addRecord(WS.fileById.get(String(entry.id || "")));
+          return;
+        }
+        if (entry.kind === "dir" && entry.node) {
+          const manifest = getDirectoryNavManifest(entry.node);
+          const leadId = String(manifest?.leadRecordId || "");
+          if (leadId) addRecord(WS.fileById.get(leadId));
+          return;
+        }
+        if (entry.kind === "tag") {
+          const records = collectVisibleThumbRecordsForTagEntry(entry);
+          for (let i = 0; i < records.length; i++) addRecord(records[i]);
+        }
+      };
+
+      const folderEntries = Array.isArray(previewEntries.folderEntries) ? previewEntries.folderEntries : [];
+      for (let i = 0; i < folderEntries.length; i++) addEntryThumbRecords(folderEntries[i]);
+      if (includeFiles) {
+        const fileIds = Array.isArray(previewEntries.fileIds) ? previewEntries.fileIds : [];
+        for (let i = 0; i < fileIds.length; i++) addRecord(WS.fileById.get(String(fileIds[i] || "")));
+      }
+      return out;
+    }
+
     function collectNavigationEntryWindowRecords(dirNode, maxEntries = NAVIGATION_PREP_ENTRY_WINDOW) {
       if (!dirNode || dirNode !== WS.nav.dirNode) return [];
       const entries = Array.isArray(WS.nav.entries) ? WS.nav.entries : [];
@@ -23004,7 +23711,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return out;
     }
 
-    function collectNavigationSnapshotRecords(snapshot) {
+    function collectNavigationSnapshotRecords(snapshot, opts = null) {
+      const options = opts && typeof opts === "object" ? opts : {};
+      const full = !!options.full;
       const out = [];
       const seen = new Set();
       const addRecord = (rec) => {
@@ -23019,17 +23728,25 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       };
 
       if (snapshot && snapshot.dirNode) {
-        const windowRecords = collectNavigationEntryWindowRecords(snapshot.dirNode, NAVIGATION_PREP_ENTRY_WINDOW);
-        if (windowRecords.length) addRecords(windowRecords);
-        else addRecords(collectNavigationManifestRecords(
-          snapshot.dirNode,
-          NAVIGATION_PREP_DIR_FILE_LIMIT,
-          NAVIGATION_PREP_CHILD_LEAD_LIMIT
-        ));
+        if (full) {
+          addRecords(collectFullNavigationEntryRecords(snapshot.dirNode, true, { useCurrentViewEntries: true }));
+        } else {
+          const windowRecords = collectNavigationEntryWindowRecords(snapshot.dirNode, NAVIGATION_PREP_ENTRY_WINDOW);
+          if (windowRecords.length) addRecords(windowRecords);
+          else addRecords(collectNavigationManifestRecords(
+            snapshot.dirNode,
+            NAVIGATION_PREP_DIR_FILE_LIMIT,
+            NAVIGATION_PREP_CHILD_LEAD_LIMIT
+          ));
+        }
       }
 
       if (snapshot && snapshot.preview && snapshot.preview.kind === "dir" && snapshot.preview.dirNode) {
-        if (snapshot.preview.dirNode !== snapshot.dirNode) {
+        if (full) {
+          addRecords(collectFullNavigationEntryRecords(snapshot.preview.dirNode, true, {
+            useCurrentViewEntries: snapshot.preview.dirNode === snapshot.dirNode
+          }));
+        } else if (snapshot.preview.dirNode !== snapshot.dirNode) {
           addRecords(collectNavigationManifestRecords(
             snapshot.preview.dirNode,
             NAVIGATION_PREP_PREVIEW_FILE_LIMIT,
@@ -23232,8 +23949,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }, waitMs);
     }
 
-    function navigationSnapshotPendingRecords(snapshot) {
-      const records = collectNavigationSnapshotRecords(snapshot);
+    function navigationSnapshotPendingRecords(snapshot, opts = null) {
+      const options = opts && typeof opts === "object" ? opts : {};
+      const records = collectNavigationSnapshotRecords(snapshot, options);
       return records.filter((rec) => {
         if (!rec) return false;
         if (rec.type === "video") {
@@ -23249,8 +23967,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       });
     }
 
-    async function ensureNavigationSnapshotReady(snapshot) {
-      const records = navigationSnapshotPendingRecords(snapshot);
+    async function ensureNavigationSnapshotReady(snapshot, opts = null) {
+      const records = navigationSnapshotPendingRecords(snapshot, opts);
       if (!records.length) return;
       await runWithConcurrency(records, navigationThumbWorkerLimit("blocking"), ensureNavigationThumbReady);
     }
@@ -23263,7 +23981,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     async function prepareNavigationSnapshot(snapshot, label = "Preparing thumbnails...") {
-      const pending = navigationSnapshotPendingRecords(snapshot);
+      const full = loadingScreensEnabled();
+      const pending = navigationSnapshotPendingRecords(snapshot, full ? { full: true } : null);
       if (!pending.length) {
         scheduleNearbyDirectoryRamWarm(snapshot);
         return true;
@@ -28814,6 +29533,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (naturalThumbCards) syncDirectoryInlineAspectForRenderedImages();
       if (gridModeActive) scheduleGridModeCardSizing();
       updateGridModeListTopInset();
+      if (!WS.view.bulkActionMenuOpen && (WS.view.dirActionMenuPath || WS.view.fileActionMenuId)) {
+        const hasOpenRowMenu = !!directoriesListEl.querySelector(".dirMenu .dropdownMenu.open");
+        if (!hasOpenRowMenu) {
+          closeActionMenus();
+        }
+      }
       renderDirectoriesActionHeader();
 
       const shouldCenter = WS.view.pendingDirScroll === "center-selected";
@@ -29305,6 +30030,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
       if (!node) return;
+      const directGalleryFirstId = firstFileIdForDirectFolderGalleryEntry(node);
+      const directGalleryReturnState = directGalleryFirstId
+        ? captureViewerCloseRestoreState({
+            activePane: "preview",
+            pendingPreviewSelectionKey: `dir:${String(node.path || "")}`
+          })
+        : null;
       if (!adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir())) {
         WS.nav.dirNode = node.parent || WS.nav.dirNode || WS.root || node;
         WS.view.aboveRootView = false;
@@ -29342,13 +30074,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         targetIdx = findDirEntryIndexByPath(node.path || "");
       }
-      const directGalleryFirstId = firstFileIdForDirectFolderGalleryEntry(node);
       WS.nav.selectedIndex = findNearestSelectableIndex(targetIdx >= 0 ? targetIdx : 0, 1);
       const selectedEntry = targetIdx >= 0 ? (WS.nav.entries[WS.nav.selectedIndex] || null) : null;
       if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
       else applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
       resetPreviewPaneForEnteredTarget();
       if (directGalleryFirstId) {
+        VIEWER_CLOSE_RESTORE_STATE = directGalleryReturnState;
         openGalleryForDir(node, directGalleryFirstId, true, true);
         return;
       }
@@ -29911,15 +30643,20 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           previewVideoEl.style.display = "none";
           applyVideoCropToElement(previewVideoEl, null);
         }
+        clearPendingFilmCornerMask(previewVideoEl);
       }
       if (previewImgEl) {
         previewImgEl.classList.remove("ready");
         previewImgEl.style.display = "none";
+        clearPendingFilmCornerMask(previewImgEl);
       }
       if (previewFolderEl) previewFolderEl.style.display = "none";
-      MediaFilterEngine.detach("preview");
-      if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
-      if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+      const preservePreviewFrame = mediaFilterEnabled();
+      MediaFilterEngine.detach("preview", { preserveFrame: preservePreviewFrame });
+      if (!preservePreviewFrame) {
+        if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
+        if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+      }
 
       if (!item) return;
 
@@ -29997,9 +30734,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const same = previewVideoEl.src === src;
         if (!same) {
           previewVideoEl.src = src;
+          try { previewVideoEl.load(); } catch {}
         }
         previewVideoEl.style.display = "block";
         previewVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
+        applyPendingFilmCornerMask(previewVideoEl, rec.dirPath || "");
         syncMediaFilterSurface("preview", previewVideoEl, previewViewportBox, "video", rec);
 
         applyVideoCarryToElement(previewVideoEl, rec.id);
@@ -30047,10 +30786,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const previewMode = detectScrollImageMode(rec, previewImgEl);
       applyScrollImageMode(previewViewportBox, previewImgEl, previewMode, !same);
       if (previewMode !== "none") {
+        clearPendingFilmCornerMask(previewImgEl);
         clearMediaFilterSurface("preview", previewImgEl);
         applyScrollImageProcessingFallback(previewImgEl, rec, previewMode);
         previewImgEl.classList.remove("mediaHidden");
       } else {
+        applyPendingFilmCornerMask(previewImgEl, rec.dirPath || "");
         applyScrollImageProcessingFallback(previewImgEl, rec, "none");
         syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image", rec);
       }
@@ -30061,10 +30802,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const imageMode = detectScrollImageMode(rec, previewImgEl);
           applyScrollImageMode(previewViewportBox, previewImgEl, imageMode, false);
           if (imageMode !== "none") {
+            clearPendingFilmCornerMask(previewImgEl);
             clearMediaFilterSurface("preview", previewImgEl);
             applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
             previewImgEl.classList.remove("mediaHidden");
           } else {
+            applyPendingFilmCornerMask(previewImgEl, rec.dirPath || "");
             applyScrollImageProcessingFallback(previewImgEl, rec, "none");
             syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image", rec);
           }
@@ -31595,7 +32338,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       card.dataset.previewItemKind = "file";
       card.__previewOpenAction = () => {
         if (!WS.root) return;
-        openGalleryForFileRecord(rec, false);
+        openGalleryForFileRecord(rec, false, { origin: "preview" });
       };
       if (useSquareMediaCards) card.classList.add("previewSquareCard");
       if (useNaturalAspectCards) card.classList.add("previewNaturalCard");
@@ -31996,7 +32739,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           WS.videoThumbInFlightBackgroundIds.delete(id);
           WS.videoThumbActive = Math.max(0, (WS.videoThumbActive | 0) - 1);
           if (!WS.videoThumbPrewarmBlocking) {
-            renderPreviewPane(false);
+            scheduleThumbnailUiFlush();
             refreshDirectoryInlinePreviewThumbForRecord(rec);
           }
           drainVideoThumbQueue();
@@ -32284,7 +33027,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         generateImageThumb(rec).catch(() => {}).finally(() => {
           WS.imageThumbInFlightIds.delete(id);
           WS.imageThumbActive--;
-          renderPreviewPane(false);
+          scheduleThumbnailUiFlush();
           refreshDirectoryInlinePreviewThumbForRecord(rec);
           drainImageThumbQueue();
         });
@@ -32432,11 +33175,19 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function openGalleryForDir(dirNode, startId = null, requestFullscreen = false, skipDirSyncOnClose = false) {
       clearQuadPlaybackSession();
       VIEWER_LAYOUT_MODE = "single";
+      if (skipDirSyncOnClose) {
+        if (!VIEWER_CLOSE_RESTORE_STATE) {
+          VIEWER_CLOSE_RESTORE_STATE = captureViewerCloseRestoreState();
+        }
+      } else {
+        VIEWER_CLOSE_RESTORE_STATE = null;
+      }
       viewerDirNode = dirNode;
       viewerItems = buildViewerItemsForDir(viewerDirNode);
 
       if (!viewerItems.length) {
         VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
+        VIEWER_CLOSE_RESTORE_STATE = null;
         return;
       }
 
@@ -32452,10 +33203,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (requestFullscreen) enterFullscreenIfPossible();
     }
 
-    function openGalleryForFileRecord(rec, requestFullscreen = false) {
+    function openGalleryForFileRecord(rec, requestFullscreen = false, opts = null) {
       if (!rec) return;
+      const options = opts && typeof opts === "object" ? opts : {};
       clearQuadPlaybackSession();
       VIEWER_LAYOUT_MODE = "single";
+      VIEWER_CLOSE_RESTORE_STATE = options.origin === "preview"
+        ? captureViewerCloseRestoreState()
+        : null;
       const p = String(rec.dirPath || "");
       const dn = WS.dirByPath.get(p) || WS.nav.dirNode || WS.root || null;
       viewerDirNode = dn;
@@ -32678,10 +33433,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       stopSlideshow();
       statusMessageEl.classList.remove("visible");
       const skipDirSyncOnClose = !quadMode && !!VIEWER_SKIP_DIR_SYNC_ON_CLOSE;
+      const closeRestoreState = !quadMode ? VIEWER_CLOSE_RESTORE_STATE : null;
       VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
+      VIEWER_CLOSE_RESTORE_STATE = null;
       VIEWER_LAYOUT_MODE = "single";
       if (quadMode) {
         // Special quad playback preserves the existing file selection and directory state.
+      } else if (closeRestoreState) {
+        restoreViewerCloseState(closeRestoreState);
       } else if (skipDirSyncOnClose) {
         leaveDirectory();
       } else {
@@ -33643,6 +34402,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           setOptionValue("colorScheme", colorScheme);
           applyColorSchemeFromOptions();
           applyRetroModeFromOptions();
+          applyFrutigerModeFromOptions();
         }
         showStatusMessage(`Color palette: ${labelForCycleValue(COLOR_SCHEME_CYCLE, colorScheme)}`);
         return true;
@@ -33667,6 +34427,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const next = cycleOptionValue("colorScheme", COLOR_SCHEME_CYCLE);
           applyColorSchemeFromOptions();
           applyRetroModeFromOptions();
+          applyFrutigerModeFromOptions();
           showStatusMessage(`Color palette: ${labelForCycleValue(COLOR_SCHEME_CYCLE, next)}`);
           return true;
         }
@@ -33674,6 +34435,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const next = toggleOptionValue("lightMode");
           applyColorSchemeFromOptions();
           applyRetroModeFromOptions();
+          applyFrutigerModeFromOptions();
           showStatusMessage(`Light mode: ${next ? "On" : "Off"}`);
           return true;
         }
@@ -35054,6 +35816,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
     applyColorSchemeFromOptions();
     applyRetroModeFromOptions();
+    applyFrutigerModeFromOptions();
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
     applyDirectoryFolderCardLayoutFromOptions();

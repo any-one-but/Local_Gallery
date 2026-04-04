@@ -250,6 +250,7 @@
         raw === "azure" ||
         raw === "ember" ||
         raw === "amber" ||
+        raw === "frutiger" ||
         raw === "retro"
       ) {
         return raw;
@@ -626,6 +627,7 @@
     const NAVIGATION_PREP_CHILD_LEAD_LIMIT = 24;
     const NAVIGATION_PREP_PREVIEW_FILE_LIMIT = 48;
     const NAVIGATION_PREP_PREVIEW_CHILD_LIMIT = 16;
+    const THUMBNAIL_UI_FLUSH_INTERVAL_MS = 850;
     let WORKSPACE_NAV_WARM_TOKEN = 0;
     let WORKSPACE_NAV_WARM_TIMER = 0;
     let DIRECTORIES_VIRTUAL_SCROLL_RAF = 0;
@@ -3835,6 +3837,8 @@
         themeValue = "superdark";
       } else if (scheme === "classic") {
         themeValue = lightMode ? "classic-light" : "";
+      } else if (scheme === "frutiger") {
+        themeValue = lightMode ? "frutiger-light" : "frutiger";
       } else if (scheme === "retro") {
         themeValue = lightMode ? "retro90s" : "retro90s-dark";
       } else {
@@ -3859,6 +3863,15 @@
       const on = normalizeColorSchemeValue(opt && opt.colorScheme, "superdark") === "retro";
       if (on) root.setAttribute("data-retro", "on");
       else root.removeAttribute("data-retro");
+    }
+
+    function applyFrutigerModeFromOptions() {
+      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+      const root = document.documentElement;
+      if (!root) return;
+      const on = normalizeColorSchemeValue(opt && opt.colorScheme, "superdark") === "frutiger";
+      if (on) root.setAttribute("data-frutiger", "on");
+      else root.removeAttribute("data-frutiger");
     }
 
     function retroPaletteEnabled(opt = null) {
@@ -4166,6 +4179,7 @@
         applyColorSchemeFromOptions();
         applyTagFolderTitleColorsFromOptions();
         applyRetroModeFromOptions();
+        applyFrutigerModeFromOptions();
         applyMediaFilterFromOptions();
         applyThumbFitFromOptions();
         applyDisplaySizesFromOptions();
@@ -4187,6 +4201,7 @@
       applyColorSchemeFromOptions();
       applyTagFolderTitleColorsFromOptions();
       applyRetroModeFromOptions();
+      applyFrutigerModeFromOptions();
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
@@ -4535,6 +4550,7 @@
       { value: "azure", label: "Azure" },
       { value: "ember", label: "Ember" },
       { value: "amber", label: "Amber" },
+      { value: "frutiger", label: "Frutiger" },
       { value: "retro", label: "Retro" },
       { value: "superdark", label: "OLED Dark" }
     ];
@@ -5027,7 +5043,10 @@
       imageThumbQueue: [],
       imageThumbActive: 0,
       imageThumbQueuedIds: new Set(),
-      imageThumbInFlightIds: new Set()
+      imageThumbInFlightIds: new Set(),
+
+      thumbnailUiFlushTimer: 0,
+      thumbnailUiFlushPending: false
     };
 
     /* FileRecord:
@@ -5072,6 +5091,7 @@
         try { clearTimeout(WORKSPACE_NAV_WARM_TIMER); } catch {}
       }
       WORKSPACE_NAV_WARM_TIMER = 0;
+      clearThumbnailUiFlushTimer();
       invalidateDirMetricsCaches();
       WS.root = null;
       WS.fileById.clear();
@@ -5190,6 +5210,8 @@
       WS.imageThumbActive = 0;
       WS.imageThumbQueuedIds = new Set();
       WS.imageThumbInFlightIds = new Set();
+      WS.thumbnailUiFlushTimer = 0;
+      WS.thumbnailUiFlushPending = false;
       PRELOAD_CACHE = new Map();
       PREVIEW_BULK_TAG_EDIT = null;
       closeThumbnailCropEditor();
@@ -5424,6 +5446,7 @@
     let viewerIndex = 0;
     let VIEWER_LAYOUT_MODE = "single";
     let VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
+    let VIEWER_CLOSE_RESTORE_STATE = null;
     let uiHideTimer = null;
     let globalCursorHideTimer = null;
 
@@ -5752,8 +5775,33 @@
       modePill.textContent = parts.length ? parts.join(" | ") : "Mode: default";
     }
 
+    function getPreviewPathText() {
+      if (!WS.root) return "—";
+      const previewDir = getPreviewTargetDir();
+      if (!previewDir) return "—";
+      if (previewDir._skipTagFilters) {
+        const basePath = String(previewDir._tagPreviewOriginPath || previewDir.parent?.path || "");
+        const baseLabel = basePath ? displayPath(basePath) : (dirDisplayName(WS.root) || "root");
+        const mode = String(previewDir._tagPreviewMode || "");
+        if (mode === "favorites") return `${baseLabel} · Favorites`;
+        if (mode === "untagged") return `${baseLabel} · Untagged`;
+        if (mode === "hidden") return `${baseLabel} · Hidden`;
+        if (mode === "album") {
+          const albumLabel = displayTagFolderLabel(String(previewDir._tagPreviewAlbum || "").trim());
+          return albumLabel ? `${baseLabel} · ${albumLabel}` : `${baseLabel} · Album`;
+        }
+        const albumLabel = displayTagFolderLabel(String(previewDir._tagPreviewAlbum || "").trim());
+        const tagLabel = displayTagFolderLabel(String(previewDir._tagPreviewTag || previewDir.name || "").trim());
+        if (albumLabel && tagLabel) return `${baseLabel} · ${albumLabel} · ${tagLabel}`;
+        return tagLabel ? `${baseLabel} · ${tagLabel}` : baseLabel;
+      }
+      if (previewDir === WS.root) return dirDisplayName(WS.root) || "root";
+      const path = String(previewDir.path || "");
+      return path ? (displayPath(path) || "root") : "root";
+    }
+
     function getCurrentTitleText() {
-      const path = getDirectoriesPathText();
+      const path = isCompactTitleLayout() ? getPreviewPathText() : getDirectoriesPathText();
       return path || "—";
     }
 
@@ -6818,6 +6866,7 @@
         { value: "azure", label: "Azure" },
         { value: "ember", label: "Ember" },
         { value: "amber", label: "Amber" },
+        { value: "frutiger", label: "Frutiger" },
         { value: "retro", label: "Retro" },
         { value: "superdark", label: "OLED Dark" }
       ];
@@ -7304,6 +7353,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       bindSelect("opt_colorScheme", "colorScheme", false, () => {
         applyColorSchemeFromOptions();
         applyRetroModeFromOptions();
+        applyFrutigerModeFromOptions();
       }, (val) => {
         return normalizeColorSchemeValue(val, "superdark");
       });
@@ -9925,6 +9975,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       applyDefaultViewFromOptions();
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
+      applyFrutigerModeFromOptions();
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
@@ -9957,6 +10008,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.view.appearancePresetPromptMode = "";
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
+      applyFrutigerModeFromOptions();
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
@@ -10557,6 +10609,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       applyDefaultViewFromOptions();
       applyColorSchemeFromOptions();
       applyRetroModeFromOptions();
+      applyFrutigerModeFromOptions();
       applyMediaFilterFromOptions();
       applyThumbFitFromOptions();
       applyDisplaySizesFromOptions();
@@ -11273,6 +11326,49 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       }
       return 0;
+    }
+
+    function captureViewerCloseRestoreState(opts = null) {
+      const options = opts && typeof opts === "object" ? opts : {};
+      const snap = snapshotRefreshState();
+      return {
+        dirPath: String(snap.dirPath || ""),
+        entryKey: entryKeyForSelection(WS.nav.entries[WS.nav.selectedIndex] || null),
+        view: snap.view ? Object.assign({}, snap.view) : null,
+        activePane: String(options.activePane || WS.view.activePane || "directories"),
+        directoriesScrollTop: getDirectoriesScrollTop(),
+        pendingPreviewSelectionKey: String(options.pendingPreviewSelectionKey || "")
+      };
+    }
+
+    function restoreViewerCloseState(state) {
+      if (!state || !WS.root) return false;
+      restoreRefreshViewState(state.view || null);
+      WS.nav.dirNode = WS.dirByPath.get(String(state.dirPath || "")) || WS.root;
+      TAG_EDIT_PATH = null;
+      clearBulkTagPlaceholder();
+      syncBulkSelectionForCurrentDir();
+      syncFavoritesUi();
+      syncHiddenUi();
+      syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+      const idx = findEntryIndexByKey(String(state.entryKey || ""));
+      WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
+      syncPreviewToSelection();
+      WS.view.pendingPreviewSelectionKey = String(state.pendingPreviewSelectionKey || "");
+      WS.view.activePane = (state.activePane === "preview" || state.activePane === "directories")
+        ? state.activePane
+        : "directories";
+      renderDirectoriesPane(true);
+      if (directoriesListEl && Number.isFinite(Number(state.directoriesScrollTop))) {
+        directoriesListEl.scrollTop = Math.max(0, Number(state.directoriesScrollTop) || 0);
+      }
+      renderPreviewPane(false, true);
+      updatePreviewSelectionClasses();
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      return true;
     }
 
     async function refreshWorkspaceFromRootHandle() {
@@ -12675,6 +12771,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
         WS.videoThumbWorkspaceKickTimer = 0;
       }
+      clearThumbnailUiFlushTimer();
     }
 
     /* =========================================================
@@ -15850,6 +15947,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       } else if (WS.view.activePane !== "directories" && WS.view.activePane !== "preview") {
         WS.view.activePane = "directories";
       }
+      updateTitleLabel();
     }
 
     function getPreviewSelectableCards() {
@@ -17184,6 +17282,32 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return !loadingScreensEnabled();
     }
 
+    function clearThumbnailUiFlushTimer() {
+      if (WS.thumbnailUiFlushTimer) {
+        try { clearTimeout(WS.thumbnailUiFlushTimer); } catch {}
+      }
+      WS.thumbnailUiFlushTimer = 0;
+      WS.thumbnailUiFlushPending = false;
+    }
+
+    function flushThumbnailUi() {
+      WS.thumbnailUiFlushTimer = 0;
+      const hadPending = !!WS.thumbnailUiFlushPending;
+      WS.thumbnailUiFlushPending = false;
+      if (!hadPending) return;
+      if (!WS.root) return;
+      if (WS.preview.kind === "dir" && previewBodyEl && previewBodyEl.classList.contains("preview-grid")) {
+        renderPreviewPane(false, true);
+      }
+    }
+
+    function scheduleThumbnailUiFlush(delayMs = THUMBNAIL_UI_FLUSH_INTERVAL_MS) {
+      WS.thumbnailUiFlushPending = true;
+      if (WS.thumbnailUiFlushTimer) return;
+      const waitMs = Math.max(0, Number(delayMs) || 0);
+      WS.thumbnailUiFlushTimer = setTimeout(flushThumbnailUi, waitMs);
+    }
+
     function applyPreviewState(state) {
       const next = state && typeof state === "object" ? state : {};
       const prevKind = WS.preview.kind || null;
@@ -17282,6 +17406,78 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return out;
     }
 
+    function collectVisibleThumbRecordsForTagEntry(entry) {
+      if (!entry || entry.placeholder) return [];
+      const thumbMode = tagThumbnailKeyForEntry(entry) ? metaGetTagThumbnailModeByKey(tagThumbnailKeyForEntry(entry)) : "single";
+      if (thumbMode === "none") return [];
+      const pool = getRecursivePreviewRecordsForTagEntry(entry, 0);
+      if (!pool.length) return [];
+      const presetRec = getTagPresetPreviewRecordForEntry(entry, pool);
+      if (presetRec) return [presetRec];
+      if (naturalAspectThumbnailCardsEnabled()) return [];
+      const scopePath = String(WS.nav.dirNode?.path || entry.originPath || "");
+      const baseKey = entry.special
+        ? `tag:${scopePath}:special:${entry.special}`
+        : (entry.album && !entry.tag)
+          ? `tag:${scopePath}:album:${String(entry.album || "")}`
+          : `tag:${scopePath}:name:${String(entry.tag || "")}`;
+      if (thumbMode === "single" || pool.length < 4) {
+        const rec = pickRotatingPreviewRecordForKey(`${baseKey}:single`, pool);
+        return rec ? [rec] : [];
+      }
+      const slots = pickRotatingPreviewSlotsForKey(baseKey, pool, 4);
+      const out = [];
+      const seen = new Set();
+      for (let i = 0; i < slots.length; i++) {
+        const rec = slots[i] && slots[i].rec ? slots[i].rec : null;
+        const id = String(rec?.id || "");
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push(rec);
+      }
+      return out;
+    }
+
+    function collectFullNavigationEntryRecords(dirNode, includeFiles = true, opts = null) {
+      if (!dirNode) return [];
+      const options = opts && typeof opts === "object" ? opts : {};
+      const useCurrentViewEntries = !!options.useCurrentViewEntries;
+      const previewEntries = getPreviewFolderAndFileEntries(dirNode, { includeFiles, useCurrentViewEntries });
+      const out = [];
+      const seen = new Set();
+      const addRecord = (rec) => {
+        const id = String(rec?.id || "");
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        out.push(rec);
+      };
+      const addEntryThumbRecords = (entry) => {
+        if (!entry) return;
+        if (entry.kind === "file") {
+          addRecord(WS.fileById.get(String(entry.id || "")));
+          return;
+        }
+        if (entry.kind === "dir" && entry.node) {
+          const manifest = getDirectoryNavManifest(entry.node);
+          const leadId = String(manifest?.leadRecordId || "");
+          if (leadId) addRecord(WS.fileById.get(leadId));
+          return;
+        }
+        if (entry.kind === "tag") {
+          const records = collectVisibleThumbRecordsForTagEntry(entry);
+          for (let i = 0; i < records.length; i++) addRecord(records[i]);
+        }
+      };
+
+      const folderEntries = Array.isArray(previewEntries.folderEntries) ? previewEntries.folderEntries : [];
+      for (let i = 0; i < folderEntries.length; i++) addEntryThumbRecords(folderEntries[i]);
+      if (includeFiles) {
+        const fileIds = Array.isArray(previewEntries.fileIds) ? previewEntries.fileIds : [];
+        for (let i = 0; i < fileIds.length; i++) addRecord(WS.fileById.get(String(fileIds[i] || "")));
+      }
+      return out;
+    }
+
     function collectNavigationEntryWindowRecords(dirNode, maxEntries = NAVIGATION_PREP_ENTRY_WINDOW) {
       if (!dirNode || dirNode !== WS.nav.dirNode) return [];
       const entries = Array.isArray(WS.nav.entries) ? WS.nav.entries : [];
@@ -17318,7 +17514,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return out;
     }
 
-    function collectNavigationSnapshotRecords(snapshot) {
+    function collectNavigationSnapshotRecords(snapshot, opts = null) {
+      const options = opts && typeof opts === "object" ? opts : {};
+      const full = !!options.full;
       const out = [];
       const seen = new Set();
       const addRecord = (rec) => {
@@ -17333,17 +17531,25 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       };
 
       if (snapshot && snapshot.dirNode) {
-        const windowRecords = collectNavigationEntryWindowRecords(snapshot.dirNode, NAVIGATION_PREP_ENTRY_WINDOW);
-        if (windowRecords.length) addRecords(windowRecords);
-        else addRecords(collectNavigationManifestRecords(
-          snapshot.dirNode,
-          NAVIGATION_PREP_DIR_FILE_LIMIT,
-          NAVIGATION_PREP_CHILD_LEAD_LIMIT
-        ));
+        if (full) {
+          addRecords(collectFullNavigationEntryRecords(snapshot.dirNode, true, { useCurrentViewEntries: true }));
+        } else {
+          const windowRecords = collectNavigationEntryWindowRecords(snapshot.dirNode, NAVIGATION_PREP_ENTRY_WINDOW);
+          if (windowRecords.length) addRecords(windowRecords);
+          else addRecords(collectNavigationManifestRecords(
+            snapshot.dirNode,
+            NAVIGATION_PREP_DIR_FILE_LIMIT,
+            NAVIGATION_PREP_CHILD_LEAD_LIMIT
+          ));
+        }
       }
 
       if (snapshot && snapshot.preview && snapshot.preview.kind === "dir" && snapshot.preview.dirNode) {
-        if (snapshot.preview.dirNode !== snapshot.dirNode) {
+        if (full) {
+          addRecords(collectFullNavigationEntryRecords(snapshot.preview.dirNode, true, {
+            useCurrentViewEntries: snapshot.preview.dirNode === snapshot.dirNode
+          }));
+        } else if (snapshot.preview.dirNode !== snapshot.dirNode) {
           addRecords(collectNavigationManifestRecords(
             snapshot.preview.dirNode,
             NAVIGATION_PREP_PREVIEW_FILE_LIMIT,
@@ -17546,8 +17752,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }, waitMs);
     }
 
-    function navigationSnapshotPendingRecords(snapshot) {
-      const records = collectNavigationSnapshotRecords(snapshot);
+    function navigationSnapshotPendingRecords(snapshot, opts = null) {
+      const options = opts && typeof opts === "object" ? opts : {};
+      const records = collectNavigationSnapshotRecords(snapshot, options);
       return records.filter((rec) => {
         if (!rec) return false;
         if (rec.type === "video") {
@@ -17563,8 +17770,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       });
     }
 
-    async function ensureNavigationSnapshotReady(snapshot) {
-      const records = navigationSnapshotPendingRecords(snapshot);
+    async function ensureNavigationSnapshotReady(snapshot, opts = null) {
+      const records = navigationSnapshotPendingRecords(snapshot, opts);
       if (!records.length) return;
       await runWithConcurrency(records, navigationThumbWorkerLimit("blocking"), ensureNavigationThumbReady);
     }
@@ -17577,7 +17784,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     async function prepareNavigationSnapshot(snapshot, label = "Preparing thumbnails...") {
-      const pending = navigationSnapshotPendingRecords(snapshot);
+      const full = loadingScreensEnabled();
+      const pending = navigationSnapshotPendingRecords(snapshot, full ? { full: true } : null);
       if (!pending.length) {
         scheduleNearbyDirectoryRamWarm(snapshot);
         return true;
@@ -23128,6 +23336,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (naturalThumbCards) syncDirectoryInlineAspectForRenderedImages();
       if (gridModeActive) scheduleGridModeCardSizing();
       updateGridModeListTopInset();
+      if (!WS.view.bulkActionMenuOpen && (WS.view.dirActionMenuPath || WS.view.fileActionMenuId)) {
+        const hasOpenRowMenu = !!directoriesListEl.querySelector(".dirMenu .dropdownMenu.open");
+        if (!hasOpenRowMenu) {
+          closeActionMenus();
+        }
+      }
       renderDirectoriesActionHeader();
 
       const shouldCenter = WS.view.pendingDirScroll === "center-selected";
@@ -23619,6 +23833,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
       if (!node) return;
+      const directGalleryFirstId = firstFileIdForDirectFolderGalleryEntry(node);
+      const directGalleryReturnState = directGalleryFirstId
+        ? captureViewerCloseRestoreState({
+            activePane: "preview",
+            pendingPreviewSelectionKey: `dir:${String(node.path || "")}`
+          })
+        : null;
       if (!adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir())) {
         WS.nav.dirNode = node.parent || WS.nav.dirNode || WS.root || node;
         WS.view.aboveRootView = false;
@@ -23656,13 +23877,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         targetIdx = findDirEntryIndexByPath(node.path || "");
       }
-      const directGalleryFirstId = firstFileIdForDirectFolderGalleryEntry(node);
       WS.nav.selectedIndex = findNearestSelectableIndex(targetIdx >= 0 ? targetIdx : 0, 1);
       const selectedEntry = targetIdx >= 0 ? (WS.nav.entries[WS.nav.selectedIndex] || null) : null;
       if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
       else applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
       resetPreviewPaneForEnteredTarget();
       if (directGalleryFirstId) {
+        VIEWER_CLOSE_RESTORE_STATE = directGalleryReturnState;
         openGalleryForDir(node, directGalleryFirstId, true, true);
         return;
       }
@@ -24225,15 +24446,20 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           previewVideoEl.style.display = "none";
           applyVideoCropToElement(previewVideoEl, null);
         }
+        clearPendingFilmCornerMask(previewVideoEl);
       }
       if (previewImgEl) {
         previewImgEl.classList.remove("ready");
         previewImgEl.style.display = "none";
+        clearPendingFilmCornerMask(previewImgEl);
       }
       if (previewFolderEl) previewFolderEl.style.display = "none";
-      MediaFilterEngine.detach("preview");
-      if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
-      if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+      const preservePreviewFrame = mediaFilterEnabled();
+      MediaFilterEngine.detach("preview", { preserveFrame: preservePreviewFrame });
+      if (!preservePreviewFrame) {
+        if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
+        if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+      }
 
       if (!item) return;
 
@@ -24311,9 +24537,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const same = previewVideoEl.src === src;
         if (!same) {
           previewVideoEl.src = src;
+          try { previewVideoEl.load(); } catch {}
         }
         previewVideoEl.style.display = "block";
         previewVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
+        applyPendingFilmCornerMask(previewVideoEl, rec.dirPath || "");
         syncMediaFilterSurface("preview", previewVideoEl, previewViewportBox, "video", rec);
 
         applyVideoCarryToElement(previewVideoEl, rec.id);
@@ -24361,10 +24589,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const previewMode = detectScrollImageMode(rec, previewImgEl);
       applyScrollImageMode(previewViewportBox, previewImgEl, previewMode, !same);
       if (previewMode !== "none") {
+        clearPendingFilmCornerMask(previewImgEl);
         clearMediaFilterSurface("preview", previewImgEl);
         applyScrollImageProcessingFallback(previewImgEl, rec, previewMode);
         previewImgEl.classList.remove("mediaHidden");
       } else {
+        applyPendingFilmCornerMask(previewImgEl, rec.dirPath || "");
         applyScrollImageProcessingFallback(previewImgEl, rec, "none");
         syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image", rec);
       }
@@ -24375,10 +24605,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const imageMode = detectScrollImageMode(rec, previewImgEl);
           applyScrollImageMode(previewViewportBox, previewImgEl, imageMode, false);
           if (imageMode !== "none") {
+            clearPendingFilmCornerMask(previewImgEl);
             clearMediaFilterSurface("preview", previewImgEl);
             applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
             previewImgEl.classList.remove("mediaHidden");
           } else {
+            applyPendingFilmCornerMask(previewImgEl, rec.dirPath || "");
             applyScrollImageProcessingFallback(previewImgEl, rec, "none");
             syncMediaFilterSurface("preview", previewImgEl, previewViewportBox, "image", rec);
           }
@@ -25909,7 +26141,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       card.dataset.previewItemKind = "file";
       card.__previewOpenAction = () => {
         if (!WS.root) return;
-        openGalleryForFileRecord(rec, false);
+        openGalleryForFileRecord(rec, false, { origin: "preview" });
       };
       if (useSquareMediaCards) card.classList.add("previewSquareCard");
       if (useNaturalAspectCards) card.classList.add("previewNaturalCard");
@@ -26310,7 +26542,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           WS.videoThumbInFlightBackgroundIds.delete(id);
           WS.videoThumbActive = Math.max(0, (WS.videoThumbActive | 0) - 1);
           if (!WS.videoThumbPrewarmBlocking) {
-            renderPreviewPane(false);
+            scheduleThumbnailUiFlush();
             refreshDirectoryInlinePreviewThumbForRecord(rec);
           }
           drainVideoThumbQueue();
@@ -26598,7 +26830,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         generateImageThumb(rec).catch(() => {}).finally(() => {
           WS.imageThumbInFlightIds.delete(id);
           WS.imageThumbActive--;
-          renderPreviewPane(false);
+          scheduleThumbnailUiFlush();
           refreshDirectoryInlinePreviewThumbForRecord(rec);
           drainImageThumbQueue();
         });
@@ -26746,11 +26978,19 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function openGalleryForDir(dirNode, startId = null, requestFullscreen = false, skipDirSyncOnClose = false) {
       clearQuadPlaybackSession();
       VIEWER_LAYOUT_MODE = "single";
+      if (skipDirSyncOnClose) {
+        if (!VIEWER_CLOSE_RESTORE_STATE) {
+          VIEWER_CLOSE_RESTORE_STATE = captureViewerCloseRestoreState();
+        }
+      } else {
+        VIEWER_CLOSE_RESTORE_STATE = null;
+      }
       viewerDirNode = dirNode;
       viewerItems = buildViewerItemsForDir(viewerDirNode);
 
       if (!viewerItems.length) {
         VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
+        VIEWER_CLOSE_RESTORE_STATE = null;
         return;
       }
 
@@ -26766,10 +27006,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (requestFullscreen) enterFullscreenIfPossible();
     }
 
-    function openGalleryForFileRecord(rec, requestFullscreen = false) {
+    function openGalleryForFileRecord(rec, requestFullscreen = false, opts = null) {
       if (!rec) return;
+      const options = opts && typeof opts === "object" ? opts : {};
       clearQuadPlaybackSession();
       VIEWER_LAYOUT_MODE = "single";
+      VIEWER_CLOSE_RESTORE_STATE = options.origin === "preview"
+        ? captureViewerCloseRestoreState()
+        : null;
       const p = String(rec.dirPath || "");
       const dn = WS.dirByPath.get(p) || WS.nav.dirNode || WS.root || null;
       viewerDirNode = dn;
@@ -26992,10 +27236,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       stopSlideshow();
       statusMessageEl.classList.remove("visible");
       const skipDirSyncOnClose = !quadMode && !!VIEWER_SKIP_DIR_SYNC_ON_CLOSE;
+      const closeRestoreState = !quadMode ? VIEWER_CLOSE_RESTORE_STATE : null;
       VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
+      VIEWER_CLOSE_RESTORE_STATE = null;
       VIEWER_LAYOUT_MODE = "single";
       if (quadMode) {
         // Special quad playback preserves the existing file selection and directory state.
+      } else if (closeRestoreState) {
+        restoreViewerCloseState(closeRestoreState);
       } else if (skipDirSyncOnClose) {
         leaveDirectory();
       } else {
@@ -27957,6 +28205,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           setOptionValue("colorScheme", colorScheme);
           applyColorSchemeFromOptions();
           applyRetroModeFromOptions();
+          applyFrutigerModeFromOptions();
         }
         showStatusMessage(`Color palette: ${labelForCycleValue(COLOR_SCHEME_CYCLE, colorScheme)}`);
         return true;
@@ -27981,6 +28230,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const next = cycleOptionValue("colorScheme", COLOR_SCHEME_CYCLE);
           applyColorSchemeFromOptions();
           applyRetroModeFromOptions();
+          applyFrutigerModeFromOptions();
           showStatusMessage(`Color palette: ${labelForCycleValue(COLOR_SCHEME_CYCLE, next)}`);
           return true;
         }
@@ -27988,6 +28238,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           const next = toggleOptionValue("lightMode");
           applyColorSchemeFromOptions();
           applyRetroModeFromOptions();
+          applyFrutigerModeFromOptions();
           showStatusMessage(`Light mode: ${next ? "On" : "Off"}`);
           return true;
         }
@@ -29368,6 +29619,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
     applyColorSchemeFromOptions();
     applyRetroModeFromOptions();
+    applyFrutigerModeFromOptions();
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
     applyDirectoryFolderCardLayoutFromOptions();

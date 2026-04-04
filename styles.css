@@ -103,6 +103,9 @@
     :root[data-theme="classic-light"] .dropdownMenu,
     :root[data-theme="classic-light"] #menuCard,
     :root[data-theme="classic-light"] #propertiesCard,
+    :root[data-theme="frutiger-light"] .dropdownMenu,
+    :root[data-theme="frutiger-light"] #menuCard,
+    :root[data-theme="frutiger-light"] #propertiesCard,
     :root[data-theme="synthwave-light"] .dropdownMenu,
     :root[data-theme="synthwave-light"] #menuCard,
     :root[data-theme="synthwave-light"] #propertiesCard,
@@ -126,6 +129,7 @@
 
     :root[data-theme="classic-light"],
     :root[data-theme="light"],
+    :root[data-theme="frutiger-light"],
     :root[data-theme="synthwave-light"],
     :root[data-theme="verdant-light"],
     :root[data-theme="azure-light"],
@@ -428,6 +432,62 @@
       --tag-exclude-color: #783100;
       --ui-hover-shadow: 0 8px 22px rgba(145, 109, 10, 0.14);
       --ui-focus-ring: 0 0 0 2px rgba(28, 149, 196, 0.24);
+    }
+
+    :root[data-theme="frutiger"] {
+      --color0-primary: hsl(190, 78%, 96%);
+      --color0-secondary: hsl(194, 36%, 78%);
+      --color0-tertirary: hsl(202, 24%, 58%);
+
+      --color1-primary: hsl(205, 42%, 12%);
+      --color1-primary-transparent: hsla(205, 42%, 12%, .9);
+      --color1-secondary: hsl(198, 38%, 22%);
+      --color1-secondary-transparent: hsla(198, 38%, 22%, .7);
+      --color1-tertiary: hsl(201, 34%, 14%);
+
+      --anchor-internal-color2-primary: hsl(180, 88%, 68%);
+      --palette-accent: hsl(190, 82%, 54%);
+      --palette-accent-text: hsl(203, 74%, 12%);
+      --palette-accent-outline: hsl(188, 84%, 62%);
+      --dir-tag-title-color: #c89200;
+      --dir-tag-favorite-title-color: #cf5c94;
+      --dir-tag-album-title-color: #2398c5;
+      --tag-include-bg: #1a6b8f;
+      --tag-include-border: #0d4a63;
+      --tag-include-color: #eefcff;
+      --tag-exclude-bg: #7b395f;
+      --tag-exclude-border: #55243f;
+      --tag-exclude-color: #fff0f7;
+      --ui-hover-shadow: 0 12px 28px rgba(8, 37, 54, 0.34);
+      --ui-focus-ring: 0 0 0 2px rgba(118, 232, 255, 0.28);
+    }
+
+    :root[data-theme="frutiger-light"] {
+      --color0-primary: hsl(201, 52%, 18%);
+      --color0-secondary: hsl(201, 28%, 37%);
+      --color0-tertirary: hsl(202, 18%, 54%);
+
+      --color1-primary: hsl(204, 100%, 98%);
+      --color1-primary-transparent: hsla(204, 100%, 98%, .95);
+      --color1-secondary: hsl(193, 78%, 91%);
+      --color1-secondary-transparent: hsla(193, 78%, 91%, .78);
+      --color1-tertiary: hsl(198, 42%, 80%);
+
+      --anchor-internal-color2-primary: hsl(197, 78%, 42%);
+      --palette-accent: hsl(197, 74%, 52%);
+      --palette-accent-text: #ffffff;
+      --palette-accent-outline: hsl(197, 74%, 52%);
+      --dir-tag-title-color: #a77700;
+      --dir-tag-favorite-title-color: #bb4d81;
+      --dir-tag-album-title-color: #177fa6;
+      --tag-include-bg: #ccf5ff;
+      --tag-include-border: #55b7d8;
+      --tag-include-color: #13516b;
+      --tag-exclude-bg: #ffd8ea;
+      --tag-exclude-border: #e68ab8;
+      --tag-exclude-color: #7b1d49;
+      --ui-hover-shadow: 0 12px 28px rgba(45, 118, 153, 0.18);
+      --ui-focus-ring: 0 0 0 2px rgba(30, 143, 188, 0.24);
     }
 
     :root[data-theme="retro90s"] {
@@ -974,6 +1034,457 @@
     :root[data-retro="on"] .gridFolders.fitInsideJustified .folderCard.folderThumbCard .metaBlock,
     :root[data-retro="on"] .gridFiles.fitInsideJustified .fileCard .metaBlock {
       background: var(--retro-face);
+    }
+
+    :root[data-frutiger="on"] {
+      --frutiger-shell-top: rgba(255, 255, 255, 0.92);
+      --frutiger-shell-mid: rgba(255, 255, 255, 0.22);
+      --frutiger-shell-bottom: rgba(0, 0, 0, 0.18);
+      --frutiger-panel-top: rgba(255, 255, 255, 0.22);
+      --frutiger-panel-bottom: rgba(0, 0, 0, 0.12);
+      --frutiger-panel-border: rgba(255, 255, 255, 0.28);
+      --frutiger-panel-shadow: rgba(0, 0, 0, 0.24);
+      --frutiger-inner-shadow: rgba(255, 255, 255, 0.18);
+      --frutiger-hover-fill: rgba(255, 255, 255, 0.18);
+      --frutiger-active-fill: rgba(255, 255, 255, 0.24);
+      --frutiger-select-bg: linear-gradient(180deg, color-mix(in srgb, var(--palette-accent) 72%, white 28%) 0%, var(--palette-accent) 60%, color-mix(in srgb, var(--palette-accent) 78%, black 22%) 100%);
+      --frutiger-select-text: var(--palette-accent-text);
+      --frutiger-title-bg: linear-gradient(180deg, color-mix(in srgb, var(--palette-accent) 58%, white 42%) 0%, var(--palette-accent) 52%, color-mix(in srgb, var(--palette-accent) 82%, black 18%) 100%);
+      --frutiger-title-text: var(--palette-accent-text);
+      color-scheme: dark;
+    }
+
+    :root[data-frutiger="on"][data-theme="frutiger-light"] {
+      --frutiger-shell-top: rgba(255, 255, 255, 0.98);
+      --frutiger-shell-mid: rgba(255, 255, 255, 0.56);
+      --frutiger-shell-bottom: rgba(36, 107, 138, 0.14);
+      --frutiger-panel-top: rgba(255, 255, 255, 0.74);
+      --frutiger-panel-bottom: rgba(93, 177, 212, 0.18);
+      --frutiger-panel-border: rgba(111, 191, 221, 0.56);
+      --frutiger-panel-shadow: rgba(33, 107, 141, 0.16);
+      --frutiger-inner-shadow: rgba(255, 255, 255, 0.58);
+      --frutiger-hover-fill: rgba(255, 255, 255, 0.78);
+      --frutiger-active-fill: rgba(166, 223, 246, 0.46);
+      color-scheme: light;
+    }
+
+    :root[data-frutiger="on"] body {
+      font-family: "Lucida Grande", "Trebuchet MS", "Verdana", sans-serif;
+      letter-spacing: 0.01em;
+      background:
+        radial-gradient(circle at top, rgba(151, 232, 255, 0.2), transparent 34%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 72%, white 28%) 0%, var(--color1-secondary) 22%, var(--color1-primary) 100%);
+      color: var(--color0-primary);
+    }
+
+    :root[data-frutiger="on"] #app {
+      padding: 0;
+      background:
+        radial-gradient(circle at top, rgba(255, 255, 255, 0.12), transparent 26%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 68%, white 32%) 0%, var(--color1-primary) 100%);
+    }
+
+    :root[data-frutiger="on"] #titlePane,
+    :root[data-frutiger="on"] #directoriesPane,
+    :root[data-frutiger="on"] #previewPane {
+      min-width: 0;
+    }
+
+    :root[data-frutiger="on"] #titlePane {
+      margin: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      overflow: visible;
+    }
+
+    :root[data-frutiger="on"] #directoriesPane {
+      margin: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      overflow: visible;
+    }
+
+    :root[data-frutiger="on"] #previewPane {
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] #app.title-layout-compact #titlePane {
+      margin: 0;
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--color1-tertiary);
+      background: var(--color1-secondary);
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] #app.sidebar-closed #previewPane {
+      margin-left: 0;
+    }
+
+    :root[data-frutiger="on"] button,
+    :root[data-frutiger="on"] .miniBtn,
+    :root[data-frutiger="on"] .dirMenuBtn {
+      border-radius: 999px;
+      border-color: color-mix(in srgb, var(--palette-accent) 24%, var(--color1-tertiary) 76%);
+      background:
+        linear-gradient(180deg, var(--frutiger-shell-top) 0%, var(--frutiger-shell-mid) 48%, var(--frutiger-shell-bottom) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-primary) 72%, white 28%) 0%, var(--color1-secondary) 100%);
+      color: var(--color0-primary);
+      box-shadow:
+        inset 0 1px 0 var(--frutiger-inner-shadow),
+        0 1px 0 rgba(255, 255, 255, 0.16),
+        0 8px 18px var(--frutiger-panel-shadow);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+
+    :root[data-frutiger="on"] button:hover:not(:disabled),
+    :root[data-frutiger="on"] .miniBtn:hover:not(:disabled),
+    :root[data-frutiger="on"] .dirMenuBtn:hover:not(:disabled) {
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--frutiger-shell-top) 78%, white 22%) 0%, color-mix(in srgb, var(--frutiger-hover-fill) 50%, transparent 50%) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-primary) 62%, white 38%) 0%, color-mix(in srgb, var(--color1-secondary) 88%, white 12%) 100%);
+      color: var(--color0-primary);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.78),
+        0 10px 22px var(--frutiger-panel-shadow);
+    }
+
+    :root[data-frutiger="on"] button:active:not(:disabled),
+    :root[data-frutiger="on"] .miniBtn:active:not(:disabled),
+    :root[data-frutiger="on"] .dirMenuBtn:active:not(:disabled) {
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--frutiger-active-fill) 48%, black 8%) 0%, color-mix(in srgb, var(--color1-secondary) 92%, black 8%) 100%);
+      color: var(--color0-primary);
+      box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.18),
+        0 4px 10px rgba(0, 0, 0, 0.16);
+    }
+
+    :root[data-frutiger="on"] .miniBtn.active,
+    :root[data-frutiger="on"] .tag.sel,
+    :root[data-frutiger="on"] .statsLedgerSortBtn.active {
+      background: var(--frutiger-select-bg);
+      color: var(--frutiger-select-text);
+      border-color: color-mix(in srgb, var(--palette-accent) 72%, black 28%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.36),
+        0 10px 20px rgba(0, 0, 0, 0.24);
+      text-shadow: none;
+    }
+
+    :root[data-frutiger="on"] .pill,
+    :root[data-frutiger="on"] .voteScore,
+    :root[data-frutiger="on"] .tag,
+    :root[data-frutiger="on"] .crumb,
+    :root[data-frutiger="on"] .clusterBreak,
+    :root[data-frutiger="on"] .statusBar,
+    :root[data-frutiger="on"] .dirDetailsHeader,
+    :root[data-frutiger="on"] .statsWidgetCard,
+    :root[data-frutiger="on"] .calendarAnalyticsCard,
+    :root[data-frutiger="on"] .scoreHistoryDay,
+    :root[data-frutiger="on"] .calendarRankingsEmpty,
+    :root[data-frutiger="on"] .scoreHistoryEmpty,
+    :root[data-frutiger="on"] #menuCard,
+    :root[data-frutiger="on"] .dropdownMenu {
+      border-radius: 18px;
+      border: 1px solid var(--frutiger-panel-border);
+      background:
+        linear-gradient(180deg, var(--frutiger-panel-top) 0%, var(--frutiger-panel-bottom) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 72%, white 28%) 0%, var(--color1-primary) 100%);
+      box-shadow:
+        inset 0 1px 0 var(--frutiger-inner-shadow),
+        0 16px 34px var(--frutiger-panel-shadow);
+    }
+
+    :root[data-frutiger="on"] #titleMain {
+      border-radius: 16px;
+      padding: 8px 14px;
+      background: var(--frutiger-title-bg);
+      color: var(--frutiger-title-text);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.48),
+        0 10px 22px rgba(0, 0, 0, 0.2);
+    }
+
+    :root[data-frutiger="on"] #menuHeader,
+    :root[data-frutiger="on"] #menuTabs {
+      background: transparent;
+    }
+
+    :root[data-frutiger="on"] #menuTabs .menuTabBtn {
+      border-radius: 999px;
+      border-color: color-mix(in srgb, var(--palette-accent) 18%, var(--frutiger-panel-border) 82%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.08) 48%, rgba(0, 0, 0, 0.08) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 78%, white 22%) 0%, var(--color1-primary) 100%);
+      color: var(--color0-primary);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      padding: 5px 14px;
+      top: 0;
+    }
+
+    :root[data-frutiger="on"] #menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.12) 48%, rgba(0, 0, 0, 0.08) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 84%, white 16%) 0%, color-mix(in srgb, var(--color1-primary) 90%, white 10%) 100%);
+      color: var(--color0-primary);
+    }
+
+    :root[data-frutiger="on"] #menuTabs .menuTabBtn.active {
+      background: var(--frutiger-select-bg);
+      color: var(--frutiger-select-text);
+      border-color: color-mix(in srgb, var(--palette-accent) 72%, black 28%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
+      top: 0;
+    }
+
+    :root[data-frutiger="on"] #titlePane h1,
+    :root[data-frutiger="on"] #titleMain .label,
+    :root[data-frutiger="on"] #titleMain .pill {
+      color: var(--frutiger-title-text);
+    }
+
+    :root[data-frutiger="on"] #titlePaneTop {
+      gap: 12px;
+      min-width: 0;
+    }
+
+    :root[data-frutiger="on"] #titleMain,
+    :root[data-frutiger="on"] #titleBtns {
+      gap: 12px;
+      min-width: 0;
+    }
+
+    :root[data-frutiger="on"] #app.title-layout-pane #titlePane {
+      padding-bottom: 10px;
+    }
+
+    :root[data-frutiger="on"] #app.title-layout-pane #titlePane::after,
+    :root[data-frutiger="on"] #app.title-layout-pane #directoriesPane::after {
+      content: none;
+    }
+
+    :root[data-frutiger="on"] #directoriesList,
+    :root[data-frutiger="on"] #previewBody,
+    :root[data-frutiger="on"] #menuBody,
+    :root[data-frutiger="on"] #optionsBody,
+    :root[data-frutiger="on"] #keybindsBody,
+    :root[data-frutiger="on"] #calendarBody,
+    :root[data-frutiger="on"] #optionsFooter,
+    :root[data-frutiger="on"] #keybindsFooter,
+    :root[data-frutiger="on"] #calendarFooter {
+      border-radius: 0;
+      background: var(--color1-secondary);
+    }
+
+    :root[data-frutiger="on"] #divider::before {
+      width: 1px;
+      border-radius: 0;
+      background: var(--color1-tertiary);
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] #titlePane,
+    :root[data-frutiger="on"] #directoriesPane,
+    :root[data-frutiger="on"] #previewPane,
+    :root[data-frutiger="on"] #directoriesList,
+    :root[data-frutiger="on"] #previewBody {
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] #menuHeader {
+      border-bottom: 1px solid var(--color1-tertiary);
+    }
+
+    :root[data-frutiger="on"] #optionsFooter,
+    :root[data-frutiger="on"] #keybindsFooter,
+    :root[data-frutiger="on"] #calendarFooter,
+    :root[data-frutiger="on"] .statusBar {
+      border-top: 1px solid var(--color1-tertiary);
+    }
+
+    :root[data-frutiger="on"] .folderCard,
+    :root[data-frutiger="on"] .fileCard,
+    :root[data-frutiger="on"] .dirSquareCard,
+    :root[data-frutiger="on"] .dirFileThumbCard,
+    :root[data-frutiger="on"] .expandedBar {
+      border-radius: 22px;
+      border: 1px solid color-mix(in srgb, var(--palette-accent) 18%, var(--frutiger-panel-border) 82%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 16px 28px rgba(0, 0, 0, 0.2);
+    }
+
+    :root[data-frutiger="on"] .dirRow.folderRow.folderSquareCard,
+    :root[data-frutiger="on"] .dirRow.fileRow.fileThumbCardRow {
+      border-radius: 30px;
+    }
+
+    :root[data-frutiger="on"] .dirRow {
+      border-radius: 999px;
+    }
+
+    :root[data-frutiger="on"] .dirRow.folderBarCard,
+    :root[data-frutiger="on"] .dirRow.fileBarCard,
+    :root[data-frutiger="on"] .dirRow.tagBarCard,
+    :root[data-frutiger="on"] .dirRow.upRow {
+      border-radius: 999px;
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+
+    :root[data-frutiger="on"] .dirRow.folderRow.folderSquareCard .dirSquareCard,
+    :root[data-frutiger="on"] .dirRow.fileRow.fileThumbCardRow .dirFileThumbCard {
+      border-radius: 30px;
+    }
+
+    :root[data-frutiger="on"] .gridFiles .previewThumbOverlayMeta,
+    :root[data-frutiger="on"] .folderCard.folderThumbCard .thumbOverlayMeta,
+    :root[data-frutiger="on"] .previewTagFolderCard .dirSquareOverlay,
+    :root[data-frutiger="on"] #directoriesList.gridModeList .dirSquareOverlay,
+    :root[data-frutiger="on"] #directoriesList.gridModeList .dirFileOverlay {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0.38) 24%, rgba(0, 0, 0, 0.58) 100%);
+      color: #ffffff;
+      border-top: 1px solid rgba(255, 255, 255, 0.42);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+      backdrop-filter: blur(8px) saturate(1.1);
+      border-bottom-left-radius: 22px;
+      border-bottom-right-radius: 22px;
+      overflow: hidden;
+    }
+
+    :root[data-frutiger="on"] .gridFiles .previewThumbOverlayMetaMenuOnly,
+    :root[data-frutiger="on"] .folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
+    :root[data-frutiger="on"] .previewTagFolderCard .dirSquareOverlayMenuOnly,
+    :root[data-frutiger="on"] #directoriesList.gridModeList .dirSquareOverlayMenuOnly,
+    :root[data-frutiger="on"] #directoriesList.gridModeList .dirFileOverlayMenuOnly {
+      padding: 0;
+      background: none;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      backdrop-filter: none;
+      overflow: visible;
+    }
+
+    :root[data-frutiger="on"] .gridFiles.previewSquareCards .fileCard,
+    :root[data-frutiger="on"] .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard,
+    :root[data-frutiger="on"] .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard,
+    :root[data-frutiger="on"] .folderCard.folderThumbCard.folderThumbCoverCard {
+      border-radius: 22px;
+      overflow: hidden;
+    }
+
+    :root[data-frutiger="on"] .dirRow:hover {
+      background: color-mix(in srgb, var(--frutiger-hover-fill) 80%, transparent 20%);
+      color: var(--color0-primary);
+      border-color: color-mix(in srgb, var(--palette-accent) 24%, var(--color1-tertiary) 76%);
+    }
+
+    :root[data-frutiger="on"] .dirRow.selected,
+    :root[data-frutiger="on"] .dirRow.selected.bulkSelected,
+    :root[data-frutiger="on"] .gridFolders .folderCard.folderThumbCard.previewSelected.previewSelectedActive,
+    :root[data-frutiger="on"] .gridFiles .fileCard.previewSelected.previewSelectedActive,
+    :root[data-frutiger="on"] .gridFolders .previewTagFolderCard.previewSelected.previewSelectedActive .dirSquareCard {
+      background: var(--ui-selection-fill-strong);
+      color: var(--color0-primary);
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu > button,
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow,
+    :root[data-frutiger="on"] .dropdownMenu .menuTwoColRow,
+    :root[data-frutiger="on"] .dropdownMenu .label {
+      border-radius: 12px;
+      border: 1px solid color-mix(in srgb, var(--palette-accent) 16%, var(--frutiger-panel-border) 84%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.05) 48%, rgba(0, 0, 0, 0.08) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 76%, white 24%) 0%, var(--color1-primary) 100%);
+      color: var(--color0-primary);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow,
+    :root[data-frutiger="on"] .dropdownMenu .menuTwoColRow {
+      padding: 0;
+      border: 0;
+      background: none;
+      box-shadow: none;
+      gap: 8px;
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow:hover,
+    :root[data-frutiger="on"] .dropdownMenu .menuTwoColRow:hover {
+      background: none;
+      box-shadow: none;
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow .scoreBtn,
+    :root[data-frutiger="on"] .dropdownMenu .menuTwoColRow button {
+      border-radius: 999px;
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu .scoreRow .scoreBtn {
+      width: auto;
+      flex: 1 1 0;
+    }
+
+    :root[data-frutiger="on"] .dropdownMenu button:hover:not(:disabled) {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.12) 44%, rgba(0, 0, 0, 0.06) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 82%, white 18%) 0%, color-mix(in srgb, var(--color1-primary) 88%, white 12%) 100%);
+      color: var(--color0-primary);
+    }
+
+    :root[data-frutiger="on"] #menuOverlay .appToggleTrack {
+      border-radius: 999px;
+      border-color: color-mix(in srgb, var(--palette-accent) 24%, var(--frutiger-panel-border) 76%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.1) 46%, rgba(0, 0, 0, 0.12) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 78%, white 22%) 0%, var(--color1-primary) 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+    }
+
+    :root[data-frutiger="on"] #menuOverlay .appToggleThumb {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.82) 54%, rgba(150, 196, 214, 0.8) 100%);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    }
+
+    :root[data-frutiger="on"] #menuOverlay .appToggleBtn.isOn .appToggleTrack {
+      background: var(--frutiger-select-bg);
+      border-color: color-mix(in srgb, var(--palette-accent) 72%, black 28%);
+    }
+
+    :root[data-frutiger="on"] .pill,
+    :root[data-frutiger="on"] .crumb,
+    :root[data-frutiger="on"] .tag {
+      padding: 4px 14px;
+      border-radius: 999px;
+      gap: 8px;
+    }
+
+    :root[data-frutiger="on"] .crumb {
+      max-width: min(220px, 100%);
+    }
+
+    :root[data-frutiger="on"] .dirMenuBtnFavorite .dirMenuFavoriteGlyph {
+      font-size: 13px;
+    }
+
+    :root[data-frutiger="on"] #menuHeader {
+      padding-bottom: 0;
+    }
+
+    :root[data-frutiger="on"] #menuTabs {
+      gap: 2px;
+      align-items: center;
     }
 
     :root[data-retro="on"] .tag,
@@ -2066,12 +2577,12 @@
     .dirFileMenu .dirMenuBtn {
       min-width: 22px;
       width: 22px;
-      height: 18px;
-      padding: 0 4px;
-      font-size: 14px;
-      background: rgba(255,255,255,0.14);
-      border-color: rgba(255,255,255,0.34);
-      color: #fff;
+      height: 22px;
+      padding: 0;
+      font-size: 16px;
+      background: var(--color1-primary);
+      border-color: var(--color1-tertiary);
+      color: var(--color0-primary);
     }
 
     .dirInlinePreview {
