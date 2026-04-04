@@ -376,7 +376,8 @@
         colorScheme: "superdark",
         lightMode: false,
         leftPaneWidthPct: 0.28,
-        showRootView: true,
+        directoriesPaneOpen: true,
+        titleLayoutMode: "pane",
         includeHiddenItemsInStats: false,
         showHiddenFolder: false,
         showUntaggedFolder: false,
@@ -393,7 +394,6 @@
         previewThumbFiltersEnabled: false,
         hideOptionDescriptions: false,
         hideKeybindDescriptions: false,
-        interactionMode: "grid",
         randomActionMode: "firstFileJump",
         clickSelectedRotatingThumbTeleports: false,
         fileOnlyFoldersOpenInGallery: false,
@@ -481,6 +481,10 @@
       const videoEndBehavior = (videoEndBehaviorRaw === "loop" || videoEndBehaviorRaw === "next" || videoEndBehaviorRaw === "stop")
         ? videoEndBehaviorRaw
         : d.videoEndBehavior;
+      const legacyInteractionModeRaw = String(src.interactionMode || "").trim().toLowerCase();
+      const legacyInteractionMode = (legacyInteractionModeRaw === "pane" || legacyInteractionModeRaw === "grid")
+        ? legacyInteractionModeRaw
+        : "";
       const previewModeRaw = String(src.previewMode || "").trim().toLowerCase();
       const previewMode = (previewModeRaw === "grid" || previewModeRaw === "expanded") ? previewModeRaw : d.previewMode;
       const imageThumbSize = normalizeThumbRenderModeValue(src.imageThumbSize, d.imageThumbSize);
@@ -502,7 +506,10 @@
         retroMode: (typeof src.retroMode === "boolean") ? src.retroMode : d.retroMode,
         colorScheme,
         lightMode,
-        showRootView: (typeof src.showRootView === "boolean") ? src.showRootView : d.showRootView,
+        directoriesPaneOpen: (typeof src.directoriesPaneOpen === "boolean")
+          ? src.directoriesPaneOpen
+          : (legacyInteractionMode ? legacyInteractionMode === "pane" : d.directoriesPaneOpen),
+        titleLayoutMode: normalizeTitleLayoutModeValue(src.titleLayoutMode, d.titleLayoutMode),
         includeHiddenItemsInStats: (typeof src.includeHiddenItemsInStats === "boolean") ? src.includeHiddenItemsInStats : d.includeHiddenItemsInStats,
         showHiddenFolder: (typeof src.showHiddenFolder === "boolean") ? src.showHiddenFolder : ((typeof src.treatHiddenAsFolder === "boolean") ? src.treatHiddenAsFolder : d.showHiddenFolder),
         showUntaggedFolder: (typeof src.showUntaggedFolder === "boolean") ? src.showUntaggedFolder : d.showUntaggedFolder,
@@ -519,7 +526,6 @@
         previewThumbFiltersEnabled: (typeof src.previewThumbFiltersEnabled === "boolean") ? src.previewThumbFiltersEnabled : d.previewThumbFiltersEnabled,
         hideOptionDescriptions: (typeof src.hideOptionDescriptions === "boolean") ? src.hideOptionDescriptions : d.hideOptionDescriptions,
         hideKeybindDescriptions: (typeof src.hideKeybindDescriptions === "boolean") ? src.hideKeybindDescriptions : d.hideKeybindDescriptions,
-        interactionMode: (String(src.interactionMode || "").toLowerCase() === "pane") ? "pane" : "grid",
         randomActionMode: (
           src.randomActionMode === "firstFileJump"
           || src.randomActionMode === "randomFileSort"
@@ -3748,13 +3754,30 @@
       return out.join("/") || "";
     }
 
-    function getInteractionModeFromOptions(opt = null) {
-      const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-      return (String(src && src.interactionMode || "grid").toLowerCase() === "pane") ? "pane" : "grid";
+    function normalizeTitleLayoutModeValue(value, fallback = "pane") {
+      const mode = String(value || "").trim().toLowerCase();
+      if (mode === "compact" || mode === "pane") return mode;
+      return (fallback === "compact" || fallback === "pane") ? fallback : "pane";
     }
 
+    function directoriesPaneOpenEnabled(opt = null) {
+      const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+      return !(src && src.directoriesPaneOpen === false);
+    }
+
+    function titleLayoutModeFromOptions(opt = null) {
+      const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+      return normalizeTitleLayoutModeValue(src && src.titleLayoutMode, "pane");
+    }
+
+    function isCompactTitleLayout() {
+      return titleLayoutModeFromOptions() === "compact";
+    }
+
+    // Legacy helper kept in place while old grid-mode call sites are retired.
+    // Unified layout always uses pane-style navigation semantics.
     function isGridInteractionMode() {
-      return getInteractionModeFromOptions() === "grid";
+      return false;
     }
 
     function sharedThumbWidthForMode(modeRaw) {
@@ -3787,6 +3810,9 @@
       WS.view.randomFolderMode = false;
       WS.view.randomCache = new Map();
       WS.view.randomFolderCache = new Map();
+      WS.view.activePane = directoriesPaneOpenEnabled(opt) ? "directories" : "preview";
+      WS.view.previewSelectedKey = "";
+      WS.view.previewSelectionContextKey = "";
       WS.view.folderBehavior = "slide";
       applyColorSchemeFromOptions();
       applyTagFolderTitleColorsFromOptions();
@@ -4095,11 +4121,29 @@
       else root.removeAttribute("data-natural-thumb-cards");
     }
 
+    function syncActivePaneWithLayout() {
+      const appEl = document.getElementById("app");
+      if (!WS.view) return;
+      if (!directoriesPaneOpenEnabled()) {
+        WS.view.activePane = "preview";
+      } else if (WS.view.activePane !== "directories" && WS.view.activePane !== "preview") {
+        WS.view.activePane = "directories";
+      }
+      if (appEl) {
+        appEl.classList.toggle("directories-pane-active", WS.view.activePane === "directories");
+        appEl.classList.toggle("preview-pane-active", WS.view.activePane === "preview");
+      }
+    }
+
     function applyInteractionModeFromOptions() {
       const appEl = document.getElementById("app");
       if (!appEl) return;
-      const grid = isGridInteractionMode();
-      appEl.classList.toggle("grid-mode", grid);
+      const sidebarOpen = directoriesPaneOpenEnabled();
+      const titleMode = titleLayoutModeFromOptions();
+      appEl.classList.toggle("sidebar-closed", !sidebarOpen);
+      appEl.classList.toggle("title-layout-compact", titleMode === "compact");
+      appEl.classList.toggle("title-layout-pane", titleMode !== "compact");
+      syncActivePaneWithLayout();
       updateGridModeListTopInset();
     }
 
@@ -4171,7 +4215,7 @@
     function setDividerPositionFromPct(pct) {
       const appEl = document.getElementById("app");
       if (!appEl) return;
-      if (isGridInteractionMode()) {
+      if (!directoriesPaneOpenEnabled()) {
         appEl.style.removeProperty("grid-template-columns");
         const dividerEl = document.getElementById("divider");
         if (dividerEl) dividerEl.style.removeProperty("left");
@@ -4423,6 +4467,8 @@
       { id: "leaveDir", label: "Exit selection", hint: "Exit the current item or folder.", section: "navigation" },
       { id: "prevFolder", label: "Previous folder", hint: "Jump to the previous folder and focus its first file.", section: "navigation" },
       { id: "nextFolder", label: "Next folder", hint: "Jump to the next folder and focus its first file.", section: "navigation" },
+      { id: "toggleDirectoriesPane", label: "Toggle directories pane", hint: "Open or close the directories pane sidebar.", section: "general" },
+      { id: "toggleTitlePane", label: "Toggle title pane", hint: "Switch between the compact top bar and the stacked title pane.", section: "general" },
       { id: "randomJump", label: "Random action", hint: "Run the configured random action behavior.", section: "general" },
       { id: "cycleFilter", label: "Cycle filter", hint: "Cycle the content filter.", section: "general" },
       { id: "slideshow", label: "Slideshow mode", hint: "Toggle slideshow.", section: "general" },
@@ -4563,6 +4609,8 @@
       enterDir: "e",
       prevFolder: "Command+w",
       nextFolder: "Command+s",
+      toggleDirectoriesPane: "Tab",
+      toggleTitlePane: "Command+Alt+r",
       randomJump: "r",
       cycleFilter: "f",
       slideshow: "v",
@@ -4886,9 +4934,14 @@
         searchRootIsHidden: false,
         searchRootHidden: [],
         searchResults: [],
+        searchResultsDirectCount: 0,
+        pendingPreviewSelectionKey: "",
         previewScrollByDir: new Map(),
         previewScrollActiveKey: "",
-        gridSelectionByContext: new Map()
+        gridSelectionByContext: new Map(),
+        activePane: "directories",
+        previewSelectedKey: "",
+        previewSelectionContextKey: ""
       },
 
       // Directories Pane navigation state
@@ -5050,6 +5103,8 @@
       WS.view.searchRootIsHidden = false;
       WS.view.searchRootHidden = [];
       WS.view.searchResults = [];
+      WS.view.searchResultsDirectCount = 0;
+      WS.view.pendingPreviewSelectionKey = "";
       WS.view.previewScrollByDir = new Map();
       WS.view.previewScrollActiveKey = "";
       WS.view.gridSelectionByContext = new Map();
@@ -5060,9 +5115,8 @@
       WS.nav.entries = [];
       WS.nav.selectedIndex = 0;
 
-      WS.preview.kind = null;
-      WS.preview.dirNode = null;
-      WS.preview.fileId = null;
+      applyPreviewState(null);
+      clearPreviewSelectionState("none");
 
       if (WS.videoThumbWorkspaceKickTimer) {
         try { clearTimeout(WS.videoThumbWorkspaceKickTimer); } catch {}
@@ -5355,6 +5409,7 @@
       }
 
       divider.addEventListener('pointerdown', (ev) => {
+        if (!directoriesPaneOpenEnabled()) return;
         ev.preventDefault();
         dragging = true;
         activePointerId = ev.pointerId;
@@ -6314,10 +6369,8 @@
       const paneBindings = (WS.meta && Array.isArray(WS.meta.keybinds))
         ? syncPaneKeybindBindingsWithCurrentActions(false)
         : defaultKeybinds(WS.meta && WS.meta.appearancePresets);
-      const gridBindings = (WS.meta && Array.isArray(WS.meta.gridKeybinds)) ? WS.meta.gridKeybinds : defaultGridKeybinds();
       const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
-      const allBindings = paneBindings.concat(gridBindings);
-      if (KEYBIND_CAPTURE_ACTION_ID && !allBindings.some(binding => binding.id === KEYBIND_CAPTURE_ACTION_ID)) {
+      if (KEYBIND_CAPTURE_ACTION_ID && !paneBindings.some(binding => binding.id === KEYBIND_CAPTURE_ACTION_ID)) {
         KEYBIND_CAPTURE_ACTION_ID = "";
       }
 
@@ -6325,12 +6378,6 @@
       for (const binding of paneBindings) {
         if (!paneBySection.has(binding.section)) paneBySection.set(binding.section, []);
         paneBySection.get(binding.section).push(binding);
-      }
-
-      const gridBySection = new Map();
-      for (const binding of gridBindings) {
-        if (!gridBySection.has(binding.section)) gridBySection.set(binding.section, []);
-        gridBySection.get(binding.section).push(binding);
       }
 
       let html = `<div class="label" style="margin-bottom:8px;">Controls are stored in keyboard-configuration.log.json in the .local-gallery folder. Click Set keybind for an action, then hold modifiers and press a key to assign the combo.</div>`;
@@ -6380,20 +6427,11 @@
         return out;
       };
 
-      if (scope === "grid") {
-        for (const section of GRID_KEYBIND_SECTIONS) {
-          const list = gridBySection.get(section.id) || [];
-          if (!list.length) continue;
-          html += `<h1>${escapeHtml(section.label)}</h1>`;
-          html += renderBindingRows(list);
-        }
-      } else {
-        for (const section of KEYBIND_SECTIONS) {
-          const list = paneBySection.get(section.id) || [];
-          if (!list.length) continue;
-          html += `<h1>${escapeHtml(section.label)}</h1>`;
-          html += renderBindingRows(list);
-        }
+      for (const section of KEYBIND_SECTIONS) {
+        const list = paneBySection.get(section.id) || [];
+        if (!list.length) continue;
+        html += `<h1>${escapeHtml(section.label)}</h1>`;
+        html += renderBindingRows(list);
       }
 
       keybindsBodyEl.innerHTML = html;
@@ -6498,20 +6536,69 @@
       setKeybindsStatus("Reset");
     }
 
+    let OPTIONS_SELECT_GLOBAL_BOUND = false;
+
+    function setOptionsSelectOpenState(rootEl, open) {
+      if (!rootEl || !rootEl.querySelector) return;
+      const trigger = rootEl.querySelector(".optSelectBtn");
+      const menu = rootEl.querySelector(".optSelectMenu");
+      if (!trigger || !menu) return;
+      menu.classList.toggle("open", !!open);
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) positionDropdownMenu(trigger, menu);
+    }
+
+    function closeOpenOptionsSelectMenus(exceptId = "") {
+      if (!optionsBodyEl) return;
+      const keepId = String(exceptId || "");
+      const roots = optionsBodyEl.querySelectorAll(".optSelect[data-opt-select-id]");
+      roots.forEach((root) => {
+        const id = String(root?.dataset?.optSelectId || "");
+        if (keepId && id === keepId) return;
+        setOptionsSelectOpenState(root, false);
+      });
+    }
+
+    function ensureOptionsSelectGlobalBindings() {
+      if (OPTIONS_SELECT_GLOBAL_BOUND) return;
+      OPTIONS_SELECT_GLOBAL_BOUND = true;
+      document.addEventListener("pointerdown", (e) => {
+        const target = e.target;
+        if (target && target.closest && target.closest(".optSelect")) return;
+        closeOpenOptionsSelectMenus();
+      }, true);
+    }
+
     function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       if (!optionsBodyEl) return;
       const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
 
       const makeSelectRow = (title, hint, id, value, items) => {
-        const opts = items.map(it => `<option value="${escapeHtml(it.value)}"${it.value === value ? " selected" : ""}>${escapeHtml(it.label)}</option>`).join("");
+        const currentValue = String(value ?? "");
+        const currentItem = items.find((it) => String(it.value) === currentValue) || null;
+        const currentLabel = currentItem ? String(currentItem.label || "") : currentValue;
+        const opts = items.map((it) => {
+          const optionValue = String(it.value ?? "");
+          const selected = optionValue === currentValue;
+          return `<button type="button" data-opt-select-value="${escapeHtml(optionValue)}"${selected ? ` class="current"` : ""}>${escapeHtml(String(it.label || optionValue))}</button>`;
+        }).join("");
         return `
           <div class="optRow">
             <div class="optLeft">
               <div class="optTitle">${escapeHtml(title)}</div>
               <div class="optHint">${escapeHtml(hint)}</div>
             </div>
-            <div class="optRight">
-              <select id="${escapeHtml(id)}">${opts}</select>
+            <div class="optRight optSelectWrap">
+              <input id="${escapeHtml(id)}" type="hidden" value="${escapeHtml(currentValue)}" />
+              <div class="dirMenu optSelect" data-opt-select-id="${escapeHtml(id)}">
+                <button type="button" class="dirMenuBtn optSelectBtn" data-opt-select-trigger="${escapeHtml(id)}" aria-haspopup="menu" aria-expanded="false">
+                  <span class="optSelectBtnLabel">${escapeHtml(currentLabel || "Select")}</span>
+                  <span class="optSelectChevron" aria-hidden="true">▾</span>
+                </button>
+                <div class="dropdownMenu optSelectMenu" data-opt-select-menu="${escapeHtml(id)}">
+                  ${opts}
+                </div>
+              </div>
             </div>
           </div>
         `;
@@ -6619,9 +6706,9 @@
         { value: "randomFileSort", label: "Random file sort" },
         { value: "randomFolderSort", label: "Random folder sort" }
       ];
-      const interactionModes = [
-        { value: "grid", label: "Grid Mode" },
-        { value: "pane", label: "Sidebar Mode" }
+      const titleLayoutModes = [
+        { value: "compact", label: "Compact top bar" },
+        { value: "pane", label: "Stacked title pane" }
       ];
       const colorSchemeModes = [
         { value: "classic", label: "Classic" },
@@ -6782,7 +6869,8 @@
         general: {
           title: "General",
           rows: `
-${makeSelectRow("Interaction mode", "Choose between a full-width grid and a directory sidebar next to the grid.", "opt_interactionMode", getInteractionModeFromOptions(opt), interactionModes)}
+${makeCheckRow("Directories pane open", "Show the directories pane as a sidebar. When disabled, the preview pane uses the full width.", "opt_directoriesPaneOpen", directoriesPaneOpenEnabled(opt))}
+${makeSelectRow("Title layout", "Choose between the compact top bar and the stacked title pane layout.", "opt_titleLayoutMode", titleLayoutModeFromOptions(opt), titleLayoutModes)}
 ${makeSelectRow("Color scheme", "Pick a UI color family. Light Mode switches the matching light variant when one exists.", "opt_colorScheme", normalizeColorSchemeValue(opt.colorScheme, "superdark"), colorSchemeModes)}
 ${makeCheckRow("Light Mode", "Use the light variant of the selected color scheme. OLED Dark ignores this toggle.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Retro Mode", "Enable the existing retro UI treatment toggle.", "opt_retroMode", !!opt.retroMode)}
@@ -6790,7 +6878,6 @@ ${makeCheckRow("Loading Screens", "When enabled, directory movement waits for th
 ${makeSelectRow("Folder sort", "Sort folders by name, score, recursive size, recursive count, or non-recursive count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes)}
 ${makeSelectRow("Tag folder colors", "Choose the existing title-color set for tag, favorite, and album folder labels.", "opt_tagFolderTitleColorPair", normalizeTagFolderTitleColorPairValue(opt.tagFolderTitleColorPair, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT), tagFolderTitleColorModes)}
 ${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
-${makeCheckRow("Show root view", "Allow navigating above the root to a single root-folder portal card.", "opt_showRootView", opt.showRootView !== false)}
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${makeCheckRow("Include hidden items in Stats", "When enabled, the Stats tab includes hidden folders and files in its totals and score history.", "opt_includeHiddenItemsInStats", !!opt.includeHiddenItemsInStats)}
 ${makeCheckRow("Show Hidden Folder", "Display a dedicated hidden-folder tag near the top of the directories pane when tag folders are enabled.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
@@ -6882,12 +6969,62 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         ${section.rows}
       `;
       applyDescriptionVisibilityFromOptions();
+      ensureOptionsSelectGlobalBindings();
 
       const bindSelect = (id, key, invalidateThumbs, onChange, valueParser) => {
         const el = $(id);
         if (!el) return;
-        el.addEventListener("click", (e) => e.stopPropagation());
-        el.addEventListener("keydown", (e) => e.stopPropagation());
+        const selectRoot = optionsBodyEl.querySelector(`.optSelect[data-opt-select-id="${id}"]`);
+        const trigger = selectRoot ? selectRoot.querySelector(".optSelectBtn") : null;
+        const labelEl = trigger ? trigger.querySelector(".optSelectBtnLabel") : null;
+        const menu = selectRoot ? selectRoot.querySelector(".optSelectMenu") : null;
+        const optionButtons = menu ? Array.from(menu.querySelectorAll("button[data-opt-select-value]")) : [];
+        const syncSelectUi = () => {
+          const currentValue = String(el.value || "");
+          let currentLabel = "";
+          optionButtons.forEach((btn) => {
+            const selected = String(btn?.dataset?.optSelectValue || "") === currentValue;
+            btn.classList.toggle("current", selected);
+            if (selected) currentLabel = String(btn.textContent || "");
+          });
+          if (!currentLabel && optionButtons.length) currentLabel = String(optionButtons[0].textContent || "");
+          if (labelEl) labelEl.textContent = currentLabel || "Select";
+        };
+        if (selectRoot && trigger && menu) {
+          trigger.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const opening = !menu.classList.contains("open");
+            closeOpenOptionsSelectMenus(opening ? id : "");
+            setOptionsSelectOpenState(selectRoot, opening);
+          });
+          trigger.addEventListener("keydown", (e) => {
+            e.stopPropagation();
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setOptionsSelectOpenState(selectRoot, false);
+            }
+          });
+          menu.addEventListener("click", (e) => e.stopPropagation());
+          menu.addEventListener("keydown", (e) => e.stopPropagation());
+          optionButtons.forEach((btn) => {
+            btn.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const nextValue = String(btn?.dataset?.optSelectValue || "");
+              const prevValue = String(el.value || "");
+              setOptionsSelectOpenState(selectRoot, false);
+              if (nextValue === prevValue) {
+                syncSelectUi();
+                return;
+              }
+              el.value = nextValue;
+              syncSelectUi();
+              el.dispatchEvent(new Event("change"));
+            });
+          });
+          syncSelectUi();
+        }
         el.addEventListener("change", () => {
           const next = {};
           next[key] = valueParser ? valueParser(el.value) : el.value;
@@ -7002,18 +7139,21 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         el.addEventListener("keydown", (e) => e.stopPropagation());
       };
 
-      bindSelect("opt_interactionMode", "interactionMode", false, (val) => {
-        if (String(val || "") === "grid" && WS.nav.dirNode === WS.root) {
-          WS.view.aboveRootView = false;
-          rebuildDirectoriesEntries();
-          WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
-          syncPreviewToSelection();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-        }
+      bindCheck("opt_directoriesPaneOpen", "directoriesPaneOpen", (enabled) => {
+        syncActivePaneWithLayout();
+        applyPaneDividerFromOptions();
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+      });
+      bindSelect("opt_titleLayoutMode", "titleLayoutMode", false, () => {
+        applyInteractionModeFromOptions();
+        applyPaneDividerFromOptions();
+        refreshFitInsidePreviewGrids();
+      }, (val) => {
+        return normalizeTitleLayoutModeValue(val, "pane");
       });
       bindSelect("opt_colorScheme", "colorScheme", false, () => {
         applyColorSchemeFromOptions();
@@ -7031,14 +7171,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         applyTagFolderTitleColorsFromOptions();
       }, (val) => normalizeTagFolderTitleColorPairValue(val, TAG_FOLDER_TITLE_COLOR_PAIR_DEFAULT));
       bindSelect("opt_slideshowDefault", "slideshowDefault", false);
-      bindCheck("opt_showRootView", "showRootView", (enabled) => {
-        if (enabled) return;
-        if (WS.view.aboveRootView) {
-          WS.view.aboveRootView = false;
-          if (!WS.nav.dirNode && WS.root) WS.nav.dirNode = WS.root;
-        }
-        initDirHistory();
-      });
       bindCheck("opt_includeHiddenItemsInStats", "includeHiddenItemsInStats", () => {
         renderCalendarUi();
       });
@@ -10785,7 +10917,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       // Initialize Directories Pane at root listing
       WS.nav.dirNode = WS.root;
-      WS.view.aboveRootView = showRootViewEnabled() ? !isGridInteractionMode() : false;
+      WS.view.aboveRootView = !!showRootViewEnabled();
+      syncActivePaneWithLayout();
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncTagUiForCurrentDir();
@@ -10905,7 +11038,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       try { await hydrateEditedThumbnailAspects(); } catch {}
 
       WS.nav.dirNode = WS.root;
-      WS.view.aboveRootView = showRootViewEnabled() ? !isGridInteractionMode() : false;
+      WS.view.aboveRootView = !!showRootViewEnabled();
+      syncActivePaneWithLayout();
       syncBulkSelectionForCurrentDir();
       syncFavoritesUi();
       syncTagUiForCurrentDir();
@@ -11025,8 +11159,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const idx = restoreRefreshSelection(state?.entryKey);
       WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
       syncPreviewToSelection();
-      const ready = await prepareInteractiveNavigationSnapshot(currentNavigationSnapshot());
-      if (!ready) return;
+      scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
       renderDirectoriesPane(true);
       renderPreviewPane(true, true);
       syncButtons();
@@ -12488,8 +12621,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function showRootViewEnabled() {
-      const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-      return !(opt && opt.showRootView === false);
+      return true;
     }
 
     function includeHiddenItemsInStatsEnabled() {
@@ -14531,6 +14663,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!entry || !baseNode) return null;
       const dirs = getDirsForTagEntry(entry);
       const isAlbumEntry = !!entry.album && !entry.tag;
+      const mode = entry.special ? String(entry.special || "") : (isAlbumEntry ? "album" : "tag");
       const label = String(entry.label || entry.tag || entry.special || "Tag");
       const pathSuffix = entry.special
         ? entry.special
@@ -14547,16 +14680,19 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         childrenFiles: [],
         path: virtualPath,
         _skipTagFilters: true,
-        _tagPreviewMode: isAlbumEntry ? "album" : "",
-        _tagPreviewAlbum: isAlbumEntry ? String(entry.album || "") : "",
+        _tagPreviewMode: mode,
+        _tagPreviewTag: String(entry.tag || ""),
+        _tagPreviewSpecial: String(entry.special || ""),
+        _tagPreviewAlbum: String(entry.album || ""),
         _tagPreviewOriginPath: String(baseNode.path || "")
       };
     }
 
-    function findTagEntryIndex(mode, tag, album = "") {
+    function findTagEntryIndexInEntries(entries, mode, tag, album = "") {
       const albumKey = normalizeTagAlbumName(album);
-      for (let i = 0; i < WS.nav.entries.length; i++) {
-        const entry = WS.nav.entries[i];
+      const list = Array.isArray(entries) ? entries : [];
+      for (let i = 0; i < list.length; i++) {
+        const entry = list[i];
         if (!entry || entry.kind !== "tag") continue;
         if (mode && entry.special && entry.special === mode) return i;
         if (mode === "album" && entry.album && !entry.tag && normalizeTagAlbumName(entry.album) === albumKey) return i;
@@ -14567,6 +14703,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         }
       }
       return -1;
+    }
+
+    function findTagEntryIndex(mode, tag, album = "") {
+      return findTagEntryIndexInEntries(WS.nav.entries, mode, tag, album);
     }
 
     function restoreTagFolderEntrySelection(ctx) {
@@ -14709,19 +14849,20 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       ensureTagNavStack().push(frame);
     }
 
-    function pushTagEntryContext(mode, tag, album = "") {
+    function pushTagEntryContext(mode, tag, album = "", opts = null) {
+      const options = (opts && typeof opts === "object") ? opts : null;
       pushTagNavFrame({
         type: "tag-entry",
-        dirPath: String(WS.nav.dirNode?.path || ""),
+        dirPath: String(options && options.baseDirPath !== undefined ? options.baseDirPath : (WS.nav.dirNode?.path || "")),
         entryMode: mode || "",
         entryTag: tag || "",
         entryAlbum: String(album || ""),
-        prevMode: String(WS.view.tagFolderActiveMode || ""),
-        prevTag: String(WS.view.tagFolderActiveTag || ""),
-        prevAlbum: String(WS.view.tagFolderActiveAlbum || ""),
-        prevOriginPath: String(WS.view.tagFolderOriginPath || ""),
-        selectedIndex: WS.nav.selectedIndex,
-        scrollTop: getDirectoriesScrollTop()
+        prevMode: String(options && options.prevMode !== undefined ? options.prevMode : (WS.view.tagFolderActiveMode || "")),
+        prevTag: String(options && options.prevTag !== undefined ? options.prevTag : (WS.view.tagFolderActiveTag || "")),
+        prevAlbum: String(options && options.prevAlbum !== undefined ? options.prevAlbum : (WS.view.tagFolderActiveAlbum || "")),
+        prevOriginPath: String(options && options.prevOriginPath !== undefined ? options.prevOriginPath : (WS.view.tagFolderOriginPath || "")),
+        selectedIndex: Number.isFinite(options && options.selectedIndex) ? Number(options.selectedIndex) : WS.nav.selectedIndex,
+        scrollTop: Number.isFinite(options && options.scrollTop) ? Number(options.scrollTop) : getDirectoriesScrollTop()
       });
     }
 
@@ -14824,21 +14965,48 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
     }
 
+    function resolveTagEntryBaseNode(entry) {
+      if (!entry) return null;
+      const originPath = String(entry.originPath || "");
+      if (originPath) {
+        const originNode = WS.dirByPath.get(originPath);
+        if (originNode) return originNode;
+      }
+      const previewDir = getPreviewTargetDir();
+      if (previewDir && !previewDir._skipTagFilters) return previewDir;
+      return WS.nav.dirNode || WS.root || null;
+    }
+
     function openTagFolderEntry(entry) {
       if (!entry) return;
       if (entry.placeholder) return;
+      const baseNode = resolveTagEntryBaseNode(entry);
+      if (!baseNode) return;
+      const basePath = String(baseNode.path || "");
+      const currentDirPath = String(WS.nav.dirNode?.path || "");
+      const rebaseToDifferentDir = currentDirPath !== basePath;
       // Keep nested tag/favorites portal history. We only drop frames that are no longer relevant to
       // the current real directory path; this avoids the old bug where entering a child tag folder
       // replaced outer portal context and caused bad exits back to the real tree.
-      pruneStaleVirtualPortalFramesForPath(WS.nav.dirNode?.path || "");
-      pruneStaleTagEntryFramesForPath(WS.nav.dirNode?.path || "");
+      pruneStaleVirtualPortalFramesForPath(basePath);
+      pruneStaleTagEntryFramesForPath(basePath);
       const album = String(entry.album || "");
       const isAlbumEntry = !!album && !entry.tag && !entry.special;
       const mode = entry.special ? entry.special : (isAlbumEntry ? "album" : "tag");
       const tag = (mode === "tag") ? (entry.tag || "") : "";
-      pushTagEntryContext(mode, tag, album);
-      const originPath = String(WS.nav.dirNode?.path || "");
-      setTagFolderViewState(mode, tag, originPath, album);
+      const selectedIndex = findTagEntryIndexInEntries(getTagFolderEntriesForDir(baseNode, { includePlaceholder: true }), mode, tag, album);
+      WS.nav.dirNode = baseNode;
+      WS.view.aboveRootView = false;
+      syncBulkSelectionForCurrentDir();
+      syncFavoritesUi();
+      syncHiddenUi();
+      syncTagUiForCurrentDir();
+      pushTagEntryContext(mode, tag, album, {
+        baseDirPath: basePath,
+        selectedIndex: selectedIndex >= 0 ? selectedIndex : 0,
+        scrollTop: rebaseToDifferentDir ? 0 : getDirectoriesScrollTop()
+      });
+      setTagFolderViewState(mode, tag, basePath, album);
     }
 
     function getChildDirsForNode(dirNode) {
@@ -14960,11 +15128,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.view.searchRootIsHidden = false;
       WS.view.searchRootHidden = [];
       WS.view.searchResults = [];
+      WS.view.searchResultsDirectCount = 0;
     }
 
     function computeDirectorySearchResults() {
       const q = String(WS.view.dirSearchQuery || "").trim().toLowerCase();
       WS.view.searchResults = [];
+      WS.view.searchResultsDirectCount = 0;
       if (!WS.root || !q) return;
 
       const countMemo = new Map();
@@ -14978,46 +15148,59 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       };
 
       const addSet = new Set();
-      const results = [];
+      const directResults = [];
+      const recursiveResults = [];
       const skipHidden = !WS.view.hiddenMode;
-      const consider = (node, includeSelf) => {
-        if (!node) return;
-        if (skipHidden && isDirOrAncestorHidden(node)) return;
-        if (getCount(node) <= 0) return;
-
+      const canIncludeNode = (node) => {
+        if (!node) return false;
+        if (skipHidden && isDirOrAncestorHidden(node)) return false;
+        if (getCount(node) <= 0) return false;
+        return true;
+      };
+      const maybeAddMatch = (node, out) => {
+        if (!canIncludeNode(node)) return;
+        const p = String(node.path || "");
+        if (!p || addSet.has(p)) return;
         const name = dirDisplayName(node || null).toLowerCase();
-        if (includeSelf && name.includes(q)) {
-          const p = String(node.path || "");
-          if (p && !addSet.has(p)) {
-            addSet.add(p);
-            results.push(node);
-          }
+        if (!name.includes(q)) return;
+        addSet.add(p);
+        out.push(node);
+      };
+      const collectRecursiveMatches = (node) => {
+        const children = getChildDirsForNodeBase(node);
+        for (let i = 0; i < children.length; i++) {
+          const child = children[i];
+          maybeAddMatch(child, recursiveResults);
+          collectRecursiveMatches(child);
         }
-
-        for (const d of node.childrenDirs) consider(d, true);
       };
 
       if (WS.view.searchRootIsFavorites) {
         const roots = Array.isArray(WS.view.searchRootFavorites) ? WS.view.searchRootFavorites : [];
-        for (let i = 0; i < roots.length; i++) consider(roots[i], true);
+        for (let i = 0; i < roots.length; i++) {
+          const root = roots[i];
+          maybeAddMatch(root, directResults);
+          collectRecursiveMatches(root);
+        }
       } else if (WS.view.searchRootIsHidden) {
         const roots = Array.isArray(WS.view.searchRootHidden) ? WS.view.searchRootHidden : [];
-        for (let i = 0; i < roots.length; i++) consider(roots[i], true);
+        for (let i = 0; i < roots.length; i++) {
+          const root = roots[i];
+          maybeAddMatch(root, directResults);
+          collectRecursiveMatches(root);
+        }
       } else {
         const rp = String(WS.view.searchRootPath || "");
         const rootNode = WS.dirByPath.get(rp) || WS.root;
-        consider(rootNode, false);
+        const directChildren = getChildDirsForNodeBase(rootNode);
+        for (let i = 0; i < directChildren.length; i++) {
+          const child = directChildren[i];
+          maybeAddMatch(child, directResults);
+          collectRecursiveMatches(child);
+        }
       }
-
-      results.sort((a, b) => {
-        const ap = displayPath(a.path || "");
-        const bp = displayPath(b.path || "");
-        const c = ap.localeCompare(bp);
-        if (c) return c;
-        return compareIndexedNames(a?.name || "", b?.name || "");
-      });
-
-      WS.view.searchResults = results;
+      WS.view.searchResultsDirectCount = directResults.length;
+      WS.view.searchResults = directResults.concat(recursiveResults);
     }
 
     function syncFavoritesUi() {
@@ -15174,16 +15357,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     // Regressions here have repeatedly caused major frustration ("super pissed off"). If modified, manually
     // test keyboard selection in folder lists and file-only folders before shipping.
     function updateGridModeListTopInset() {
-      if (!directoriesListEl) return;
       const appEl = $("app");
       const titlePaneEl = $("titlePane");
-      if (appEl) {
-        if (isGridInteractionMode() && titlePaneEl && titlePaneEl.getBoundingClientRect) {
-          const titleH = Math.max(0, Math.ceil(titlePaneEl.getBoundingClientRect().height || 0));
-          appEl.style.setProperty("--grid-title-h", `${titleH}px`);
-        } else {
-          appEl.style.removeProperty("--grid-title-h");
-        }
+      if (!appEl) return;
+      if (isCompactTitleLayout() && titlePaneEl && titlePaneEl.getBoundingClientRect) {
+        const titleH = Math.max(0, Math.ceil(titlePaneEl.getBoundingClientRect().height || 0));
+        appEl.style.setProperty("--title-pane-h", `${titleH}px`);
+      } else {
+        appEl.style.removeProperty("--title-pane-h");
       }
     }
 
@@ -15430,13 +15611,12 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
     }
 
-    async function setDirectoriesSelection(idx, opts = null) {
+    function setDirectoriesSelection(idx, opts = null) {
       const keepScroll = !!(opts && opts.keepScroll);
       if (!WS.nav.entries.length) {
         WS.nav.selectedIndex = 0;
-        WS.preview.kind = null;
-        WS.preview.dirNode = null;
-        WS.preview.fileId = null;
+        WS.view.activePane = directoriesPaneOpenEnabled() ? "directories" : "preview";
+        applyPreviewState(null);
         renderDirectoriesPane();
         renderPreviewPane(true);
         syncButtons();
@@ -15455,17 +15635,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const prevIdx = WS.nav.selectedIndex;
       const i = findNearestSelectableIndex(idx, idx >= WS.nav.selectedIndex ? 1 : -1);
       WS.nav.selectedIndex = i;
+      if (directoriesPaneOpenEnabled()) WS.view.activePane = "directories";
       saveGridSelectionForCurrentContext();
       syncPreviewToSelection();
       const snapshot = currentNavigationSnapshot();
-
-      const shouldBlockForPreview = !isGridInteractionMode();
-      if (shouldBlockForPreview) {
-        const ready = await prepareInteractiveNavigationSnapshot(snapshot);
-        if (!ready) return;
-      } else {
-        scheduleNearbyDirectoryRamWarm(snapshot);
-      }
+      scheduleNearbyDirectoryRamWarm(snapshot);
 
       if (canUseFastGridSelectionUpdate() && fastUpdateGridSelectedRow(prevIdx, i)) {
         const shouldCenter = WS.view.pendingDirScroll === "center-selected";
@@ -15495,7 +15669,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       kickImageThumbsForPreview();
     }
 
-    async function returnToSearchResults() {
+    function returnToSearchResults() {
       const target = String(WS.view.searchEntryRootPath || WS.view.searchAnchorPath || "");
       WS.view.searchRootActive = true;
       WS.view.searchAnchorPath = "";
@@ -15504,15 +15678,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const idx = target ? findDirEntryIndexByPath(target) : -1;
       WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
       syncPreviewToSelection();
-      const ready = await prepareInteractiveNavigationSnapshot({
-        dirNode: WS.nav.dirNode,
-        preview: {
-          kind: WS.preview.kind,
-          dirNode: WS.preview.dirNode,
-          fileId: WS.preview.fileId
-        }
-      }, "Preparing directory thumbnails...");
-      if (!ready) return;
+      scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
       renderDirectoriesPane();
       renderPreviewPane(true);
       syncButtons();
@@ -15524,6 +15690,306 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function syncPreviewToSelection() {
       const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
       applyPreviewState(previewStateForEntry(entry));
+    }
+
+    function currentPreviewSelectionContextKeyFromState(state = null) {
+      const src = state && typeof state === "object" ? state : WS.preview;
+      if (!src || !src.kind) return "none";
+      if (src.kind === "dir" && src.dirNode) return `dir:${String(src.dirNode.path || "")}`;
+      if (src.kind === "file" && src.fileId) return `file:${String(src.fileId || "")}`;
+      return "none";
+    }
+
+    function clearPreviewSelectionState(contextKey = null) {
+      if (!WS.view) return;
+      WS.view.previewSelectedKey = "";
+      WS.view.previewSelectionContextKey = String(contextKey || currentPreviewSelectionContextKeyFromState() || "none");
+    }
+
+    function applyPendingPreviewSelectionForCurrentTarget() {
+      if (!WS.view) return false;
+      const nextKey = String(WS.view.pendingPreviewSelectionKey || "");
+      if (!nextKey) return false;
+      WS.view.pendingPreviewSelectionKey = "";
+      WS.view.previewSelectionContextKey = currentPreviewSelectionContextKeyFromState();
+      WS.view.previewSelectedKey = nextKey;
+      return true;
+    }
+
+    function notePreviewTargetChanged(nextState = null) {
+      clearPreviewSelectionState(currentPreviewSelectionContextKeyFromState(nextState));
+      if (!directoriesPaneOpenEnabled()) {
+        WS.view.activePane = "preview";
+      } else if (WS.view.activePane !== "directories" && WS.view.activePane !== "preview") {
+        WS.view.activePane = "directories";
+      }
+    }
+
+    function getPreviewSelectableCards() {
+      if (!previewBodyEl) return [];
+      return Array.from(previewBodyEl.querySelectorAll("[data-preview-item-key]"));
+    }
+
+    function getPreviewCardRelativeRect(card) {
+      if (!card || !previewBodyEl || !card.getBoundingClientRect) return null;
+      const containerRect = previewBodyEl.getBoundingClientRect();
+      const rect = card.getBoundingClientRect();
+      const width = Number(rect.width || 0);
+      const height = Number(rect.height || 0);
+      if (width <= 0 || height <= 0) return null;
+      const left = (rect.left - containerRect.left) + (previewBodyEl.scrollLeft || 0);
+      const top = (rect.top - containerRect.top) + (previewBodyEl.scrollTop || 0);
+      return {
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+        width,
+        height
+      };
+    }
+
+    function getPreviewSelectableCardMetrics() {
+      if (!previewBodyEl) return [];
+      const cards = getPreviewSelectableCards();
+      const out = [];
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const key = String(card?.dataset?.previewItemKey || "");
+        const rect = getPreviewCardRelativeRect(card);
+        if (!key || !rect) continue;
+        out.push({
+          key,
+          card,
+          cx: rect.left + (rect.width * 0.5),
+          cy: rect.top + (rect.height * 0.5)
+        });
+      }
+      return out;
+    }
+
+    function cssEscapeValue(value) {
+      const raw = String(value || "");
+      if (typeof CSS !== "undefined" && CSS && typeof CSS.escape === "function") {
+        return CSS.escape(raw);
+      }
+      return raw.replace(/["\\]/g, "\\$&");
+    }
+
+    function findPreviewSelectableCardByKey(key) {
+      const targetKey = String(key || "");
+      if (!targetKey || !previewBodyEl) return null;
+      return previewBodyEl.querySelector(`[data-preview-item-key="${cssEscapeValue(targetKey)}"]`);
+    }
+
+    function findSelectedPreviewCard() {
+      return findPreviewSelectableCardByKey(WS.view && WS.view.previewSelectedKey);
+    }
+
+    function findFirstVisiblePreviewCard() {
+      if (!previewBodyEl) return null;
+      const cards = getPreviewSelectableCards();
+      if (!cards.length) return null;
+      const viewTop = Math.max(0, Number(previewBodyEl.scrollTop) || 0);
+      const viewLeft = Math.max(0, Number(previewBodyEl.scrollLeft) || 0);
+      const viewBottom = viewTop + Math.max(1, Number(previewBodyEl.clientHeight) || 1);
+      const viewRight = viewLeft + Math.max(1, Number(previewBodyEl.clientWidth) || 1);
+      let bestFully = null;
+      let bestPartial = null;
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const rect = getPreviewCardRelativeRect(card);
+        if (!rect) continue;
+        const intersects = rect.bottom > (viewTop + 1)
+          && rect.top < (viewBottom - 1)
+          && rect.right > (viewLeft + 1)
+          && rect.left < (viewRight - 1);
+        if (!intersects) continue;
+        const fullyVisible = rect.top >= (viewTop + 1)
+          && rect.bottom <= (viewBottom - 1)
+          && rect.left >= (viewLeft + 1)
+          && rect.right <= (viewRight - 1);
+        const score = (rect.top * 100000) + rect.left;
+        if (fullyVisible) {
+          if (!bestFully || score < bestFully.score) bestFully = { card, score };
+        } else if (!bestPartial || score < bestPartial.score) {
+          bestPartial = { card, score };
+        }
+      }
+      return (bestFully && bestFully.card) || (bestPartial && bestPartial.card) || cards[0] || null;
+    }
+
+    function isPreviewTopRowCard(card) {
+      if (!card || !previewBodyEl) return false;
+      const cards = getPreviewSelectableCards();
+      if (!cards.length) return false;
+      let minTop = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < cards.length; i++) {
+        const rect = getPreviewCardRelativeRect(cards[i]);
+        if (!rect) continue;
+        if (rect.top < minTop) minTop = rect.top;
+      }
+      if (!Number.isFinite(minTop)) return false;
+      const rect = getPreviewCardRelativeRect(card);
+      if (!rect) return false;
+      return rect.top <= (minTop + 2);
+    }
+
+    function revealPreviewCard(card = null) {
+      const target = card || findSelectedPreviewCard();
+      const rect = getPreviewCardRelativeRect(target);
+      if (!target || !previewBodyEl || !rect) return;
+      const maxTop = Math.max(0, previewBodyEl.scrollHeight - previewBodyEl.clientHeight);
+      const maxLeft = Math.max(0, previewBodyEl.scrollWidth - previewBodyEl.clientWidth);
+      const viewTop = Math.max(0, Number(previewBodyEl.scrollTop) || 0);
+      const viewLeft = Math.max(0, Number(previewBodyEl.scrollLeft) || 0);
+      const viewBottom = viewTop + Math.max(1, Number(previewBodyEl.clientHeight) || 1);
+      const viewRight = viewLeft + Math.max(1, Number(previewBodyEl.clientWidth) || 1);
+      let nextTop = viewTop;
+      let nextLeft = viewLeft;
+      if (isPreviewTopRowCard(target)) nextTop = 0;
+      else if (rect.top < viewTop) nextTop = rect.top;
+      else if (rect.bottom > viewBottom) nextTop = rect.bottom - previewBodyEl.clientHeight;
+      if (rect.left < viewLeft) nextLeft = rect.left;
+      else if (rect.right > viewRight) nextLeft = rect.right - previewBodyEl.clientWidth;
+      previewBodyEl.scrollTop = Math.max(0, Math.min(maxTop, nextTop));
+      previewBodyEl.scrollLeft = Math.max(0, Math.min(maxLeft, nextLeft));
+    }
+
+    function updatePreviewSelectionClasses() {
+      const activeKey = String(WS.view && WS.view.previewSelectedKey || "");
+      const previewActive = !!(WS.view && WS.view.activePane === "preview");
+      syncActivePaneWithLayout();
+      const cards = getPreviewSelectableCards();
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const selected = String(card?.dataset?.previewItemKey || "") === activeKey;
+        card.classList.toggle("previewSelected", selected);
+        card.classList.toggle("previewSelectedActive", selected && previewActive);
+        card.classList.toggle("previewSelectedInactive", selected && !previewActive);
+      }
+    }
+
+    function ensurePreviewSelectionForCurrentTarget(reset = false) {
+      const contextKey = currentPreviewSelectionContextKeyFromState();
+      const cards = getPreviewSelectableCards();
+      if (!cards.length) {
+        clearPreviewSelectionState(contextKey);
+        updatePreviewSelectionClasses();
+        return false;
+      }
+      if (reset || String(WS.view && WS.view.previewSelectionContextKey || "") !== contextKey) {
+        clearPreviewSelectionState(contextKey);
+      }
+      let key = String(WS.view && WS.view.previewSelectedKey || "");
+      let selectedCard = key ? cards.find((card) => String(card?.dataset?.previewItemKey || "") === key) : null;
+      if (!selectedCard) {
+        const shouldRespectScroll = !!previewBodyEl
+          && (((previewBodyEl.scrollTop || 0) > 0) || ((previewBodyEl.scrollLeft || 0) > 0));
+        selectedCard = shouldRespectScroll ? (findFirstVisiblePreviewCard() || cards[0]) : cards[0];
+        key = String(selectedCard?.dataset?.previewItemKey || "");
+      }
+      WS.view.previewSelectionContextKey = contextKey;
+      WS.view.previewSelectedKey = key;
+      updatePreviewSelectionClasses();
+      return !!selectedCard;
+    }
+
+    function setPreviewSelectionKey(key, opts = null) {
+      const nextKey = String(key || "");
+      if (!nextKey) return false;
+      const card = findPreviewSelectableCardByKey(nextKey);
+      if (!card) return false;
+      if (WS.view) {
+        WS.view.previewSelectionContextKey = currentPreviewSelectionContextKeyFromState();
+        WS.view.previewSelectedKey = nextKey;
+        if (!(opts && opts.activate === false)) WS.view.activePane = "preview";
+      }
+      updatePreviewSelectionClasses();
+      if (!(opts && opts.skipReveal)) revealPreviewCard(card);
+      return true;
+    }
+
+    function activatePreviewPaneSelection() {
+      if (!ensurePreviewSelectionForCurrentTarget(false)) return false;
+      WS.view.activePane = "preview";
+      updatePreviewSelectionClasses();
+      revealPreviewCard();
+      return true;
+    }
+
+    function activateDirectoriesPaneSelection() {
+      if (!directoriesPaneOpenEnabled()) return false;
+      WS.view.activePane = "directories";
+      updatePreviewSelectionClasses();
+      return true;
+    }
+
+    function movePreviewSelectionByDirection(direction) {
+      if (!ensurePreviewSelectionForCurrentTarget(false)) return false;
+      const metrics = getPreviewSelectableCardMetrics();
+      if (!metrics.length) return false;
+      const activeKey = String(WS.view && WS.view.previewSelectedKey || "");
+      const selected = metrics.find((m) => m.key === activeKey) || metrics[0];
+      if (!selected) return false;
+
+      let best = null;
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < metrics.length; i++) {
+        const m = metrics[i];
+        if (!m || m.key === selected.key) continue;
+        const dx = m.cx - selected.cx;
+        const dy = m.cy - selected.cy;
+        const ax = Math.abs(dx);
+        const ay = Math.abs(dy);
+        let primary = 0;
+        let secondary = 0;
+        let valid = false;
+        if (direction === "up" && dy < -2) {
+          valid = true;
+          primary = -dy;
+          secondary = ax;
+        } else if (direction === "down" && dy > 2) {
+          valid = true;
+          primary = dy;
+          secondary = ax;
+        } else if (direction === "left" && dx < -2) {
+          valid = true;
+          primary = -dx;
+          secondary = ay;
+        } else if (direction === "right" && dx > 2) {
+          valid = true;
+          primary = dx;
+          secondary = ay;
+        }
+        if (!valid) continue;
+        const score = primary * 1000 + secondary;
+        if (score < bestScore) {
+          bestScore = score;
+          best = m;
+        }
+      }
+      if (!best) return false;
+      return setPreviewSelectionKey(best.key, { activate: true });
+    }
+
+    function openSelectedPreviewItem() {
+      const card = findSelectedPreviewCard();
+      const openAction = card && typeof card.__previewOpenAction === "function"
+        ? card.__previewOpenAction
+        : null;
+      if (!openAction) return false;
+      openAction();
+      return true;
+    }
+
+    function handlePreviewCardSelection(card, openAction) {
+      if (!card) return;
+      const key = String(card.dataset.previewItemKey || "");
+      const shouldOpen = !!key
+        && String(WS.view.previewSelectedKey || "") === key;
+      setPreviewSelectionKey(key, { activate: true });
+      if (shouldOpen && typeof openAction === "function") openAction();
     }
 
     function entryUsesRotatingThumbnail(entry) {
@@ -15625,7 +16091,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return String(fileIds[0] || "");
     }
 
-    async function enterSelectedDirectory() {
+    function enterSelectedDirectory() {
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
 
@@ -15642,15 +16108,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           rebuildDirectoriesEntries();
           WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
           syncPreviewToSelection();
-          const ready = await prepareInteractiveNavigationSnapshot({
-            dirNode: WS.nav.dirNode,
-            preview: {
-              kind: WS.preview.kind,
-              dirNode: WS.preview.dirNode,
-              fileId: WS.preview.fileId
-            }
-          }, "Preparing directory thumbnails...");
-          if (!ready) return;
+          scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
           renderDirectoriesPane();
           renderPreviewPane(true);
           syncButtons();
@@ -15705,16 +16163,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const fileIdx = findFileEntryIndexById(directGalleryFirstId);
         WS.nav.selectedIndex = findNearestSelectableIndex(fileIdx >= 0 ? fileIdx : selectionIndexForDirectoryEnter(), 1);
         syncPreviewToSelection();
-        const ready = await prepareInteractiveNavigationSnapshot({
-          dirNode: WS.nav.dirNode,
-          preview: {
-            kind: WS.preview.kind,
-            dirNode: WS.preview.dirNode,
-            fileId: WS.preview.fileId
-          }
-        }, "Preparing directory thumbnails...");
-        if (!ready) return;
-        recordDirHistory();
+        scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
         openGalleryForDir(entry.node, directGalleryFirstId, true, true);
         return;
       }
@@ -15738,15 +16187,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
-        const ready = await prepareInteractiveNavigationSnapshot({
-          dirNode: WS.nav.dirNode,
-          preview: {
-            kind: WS.preview.kind,
-            dirNode: WS.preview.dirNode,
-            fileId: WS.preview.fileId
-          }
-        }, "Preparing directory thumbnails...");
-        if (!ready) return;
+        scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
         renderDirectoriesPane();
         renderPreviewPane(true);
         syncButtons();
@@ -15766,15 +16207,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
-        const ready = await prepareInteractiveNavigationSnapshot({
-          dirNode: WS.nav.dirNode,
-          preview: {
-            kind: WS.preview.kind,
-            dirNode: WS.preview.dirNode,
-            fileId: WS.preview.fileId
-          }
-        }, "Preparing directory thumbnails...");
-        if (!ready) return;
+        scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
         renderDirectoriesPane();
         renderPreviewPane(true);
         syncButtons();
@@ -15794,15 +16227,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
         syncPreviewToSelection();
-        const ready = await prepareInteractiveNavigationSnapshot({
-          dirNode: WS.nav.dirNode,
-          preview: {
-            kind: WS.preview.kind,
-            dirNode: WS.preview.dirNode,
-            fileId: WS.preview.fileId
-          }
-        }, "Preparing directory thumbnails...");
-        if (!ready) return;
+        scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
         renderDirectoriesPane();
         renderPreviewPane(true);
         syncButtons();
@@ -15821,15 +16246,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
       syncPreviewToSelection();
-      const ready = await prepareInteractiveNavigationSnapshot({
-        dirNode: WS.nav.dirNode,
-        preview: {
-          kind: WS.preview.kind,
-          dirNode: WS.preview.dirNode,
-          fileId: WS.preview.fileId
-        }
-      }, "Preparing directory thumbnails...");
-      if (!ready) return;
+      scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
       renderDirectoriesPane();
       renderPreviewPane(true);
       syncButtons();
@@ -15838,7 +16255,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       recordDirHistory();
     }
 
-    async function leaveDirectory() {
+    function leaveDirectory() {
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
 
@@ -15865,17 +16282,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (cur && cur === String(WS.view.favoritesAnchorPath || "")) {
           WS.view.favoritesRootActive = true;
           rebuildDirectoriesEntries();
-          WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+          const idx = findDirEntryIndexByPath(cur);
+          WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
           syncPreviewToSelection();
-          const ready = await prepareInteractiveNavigationSnapshot({
-            dirNode: WS.nav.dirNode,
-            preview: {
-              kind: WS.preview.kind,
-              dirNode: WS.preview.dirNode,
-              fileId: WS.preview.fileId
-            }
-          }, "Preparing directory thumbnails...");
-          if (!ready) return;
+          scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
           renderDirectoriesPane();
           renderPreviewPane(false);
           syncButtons();
@@ -15890,17 +16300,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         if (cur && cur === String(WS.view.hiddenAnchorPath || "")) {
           WS.view.hiddenRootActive = true;
           rebuildDirectoriesEntries();
-          WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+          const idx = findDirEntryIndexByPath(cur);
+          WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
           syncPreviewToSelection();
-          const ready = await prepareInteractiveNavigationSnapshot({
-            dirNode: WS.nav.dirNode,
-            preview: {
-              kind: WS.preview.kind,
-              dirNode: WS.preview.dirNode,
-              fileId: WS.preview.fileId
-            }
-          }, "Preparing directory thumbnails...");
-          if (!ready) return;
+          scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
           renderDirectoriesPane();
           renderPreviewPane(false);
           syncButtons();
@@ -15916,15 +16319,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         rebuildDirectoriesEntries();
         WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
         syncPreviewToSelection();
-        const ready = await prepareInteractiveNavigationSnapshot({
-          dirNode: WS.nav.dirNode,
-          preview: {
-            kind: WS.preview.kind,
-            dirNode: WS.preview.dirNode,
-            fileId: WS.preview.fileId
-          }
-        }, "Preparing directory thumbnails...");
-        if (!ready) return;
+        scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
         renderDirectoriesPane();
         renderPreviewPane(false);
         syncButtons();
@@ -15952,15 +16347,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
       WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
       syncPreviewToSelection();
-      const ready = await prepareInteractiveNavigationSnapshot({
-        dirNode: WS.nav.dirNode,
-        preview: {
-          kind: WS.preview.kind,
-          dirNode: WS.preview.dirNode,
-          fileId: WS.preview.fileId
-        }
-      }, "Preparing directory thumbnails...");
-      if (!ready) return;
+      scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
 
       WS.view.pendingDirScroll = "center-selected";
       renderDirectoriesPane();
@@ -16544,9 +16931,22 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function applyPreviewState(state) {
       const next = state && typeof state === "object" ? state : {};
+      const prevKind = WS.preview.kind || null;
+      const prevDirPath = String(WS.preview.dirNode?.path || "");
+      const prevFileId = String(WS.preview.fileId || "");
       WS.preview.kind = next.kind || null;
       WS.preview.dirNode = next.dirNode || null;
       WS.preview.fileId = next.fileId || null;
+      const nextKind = WS.preview.kind || null;
+      const nextDirPath = String(WS.preview.dirNode?.path || "");
+      const nextFileId = String(WS.preview.fileId || "");
+      if (prevKind !== nextKind || prevDirPath !== nextDirPath || prevFileId !== nextFileId) {
+        notePreviewTargetChanged({
+          kind: nextKind,
+          dirNode: WS.preview.dirNode,
+          fileId: nextFileId
+        });
+      }
     }
 
     function currentNavigationSnapshot() {
@@ -17841,7 +18241,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       WS.view.dirHistoryIndex = 0;
     }
 
-    async function restoreDirHistoryEntry(entry) {
+    function restoreDirHistoryEntry(entry) {
       if (!entry || !WS.root) return;
       clearTagNavigationStack();
       WS.view.tagFolderActiveMode = "";
@@ -17859,15 +18259,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const idx = findEntryIndexByKey(String(entry.selectedKey || ""));
       WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
       syncPreviewToSelection();
-      const ready = await prepareInteractiveNavigationSnapshot({
-        dirNode: WS.nav.dirNode,
-        preview: {
-          kind: WS.preview.kind,
-          dirNode: WS.preview.dirNode,
-          fileId: WS.preview.fileId
-        }
-      }, "Preparing directory thumbnails...");
-      if (!ready) return;
+      scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
       renderDirectoriesPane(true);
       renderPreviewPane(true, true);
       syncButtons();
@@ -20982,10 +21374,23 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const showTagSpacer = showTagFolderSpacerRowEnabled()
         && WS.nav.entries.some((entry) => entry && entry.kind === "tag")
         && WS.nav.entries.some((entry) => entry && entry.kind === "dir");
+      const searchResultsDirectCount = (WS.view.dirSearchPinned && WS.view.searchRootActive)
+        ? Math.max(0, Number(WS.view.searchResultsDirectCount) || 0)
+        : 0;
+      const showSearchSpacer = searchResultsDirectCount > 0
+        && searchResultsDirectCount < (Array.isArray(WS.view.searchResults) ? WS.view.searchResults.length : 0);
+      let seenSearchResultDirCount = 0;
       let seenTagEntryBeforeCurrent = false;
       let insertedTagSpacer = false;
       for (let idx = entryStart; idx < entryEndExclusive; idx++) {
         const entry = WS.nav.entries[idx];
+        if (showSearchSpacer && entry && entry.kind === "dir" && seenSearchResultDirCount === searchResultsDirectCount) {
+          const spacerEl = document.createElement("div");
+          spacerEl.className = "tagSpacerVisualRow";
+          spacerEl.setAttribute("aria-hidden", "true");
+          spacerEl.innerHTML = `<div class="tagSpacerCell" aria-hidden="true"></div>`;
+          frag.appendChild(spacerEl);
+        }
         if (showTagSpacer && !insertedTagSpacer && seenTagEntryBeforeCurrent && entry && entry.kind === "dir") {
           const spacerEl = document.createElement("div");
           spacerEl.className = "tagSpacerVisualRow";
@@ -21000,6 +21405,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         row.tabIndex = -1;
         row.dataset.entryIndex = String(idx);
         if (entry.kind === "file") row.dataset.fileId = String(entry.id || "");
+        if (entry && entry.kind === "dir") seenSearchResultDirCount++;
 
         const isTagEntry = entry.kind === "tag";
         const isUpEntry = entry.kind === "up";
@@ -22433,53 +22839,166 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       TAG_EDIT_PATH = null;
       clearBulkTagPlaceholder();
       if (!node) return;
-      WS.view.aboveRootView = false;
-      if (isViewingTagFolder()) {
-        const selectedEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
-        const selectedPath = (selectedEntry && selectedEntry.kind === "dir")
-          ? (selectedEntry.node?.path || "")
-          : (node.path || "");
-        pushTagViewContext(selectedPath);
-        WS.view.tagFolderActiveMode = "";
-        WS.view.tagFolderActiveTag = "";
-        WS.view.tagFolderActiveAlbum = "";
-        WS.view.tagFolderOriginPath = "";
+      if (!adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir())) {
+        WS.nav.dirNode = node.parent || WS.nav.dirNode || WS.root || node;
+        WS.view.aboveRootView = false;
+        syncBulkSelectionForCurrentDir();
+        syncFavoritesUi();
+        syncHiddenUi();
+        syncTagUiForCurrentDir();
+        rebuildDirectoriesEntries();
       }
 
       if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
         WS.view.searchRootActive = false;
-        WS.view.searchAnchorPath = node.path || "";
-        WS.view.searchEntryRootPath = node.path || "";
+        WS.view.searchAnchorPath = WS.nav.dirNode?.path || node.path || "";
+        WS.view.searchEntryRootPath = WS.nav.dirNode?.path || node.path || "";
       }
 
       if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
         WS.view.favoritesRootActive = false;
-        WS.view.favoritesAnchorPath = node.path || "";
+        WS.view.favoritesAnchorPath = WS.nav.dirNode?.path || node.path || "";
       }
 
       if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
         WS.view.hiddenRootActive = false;
-        WS.view.hiddenAnchorPath = node.path || "";
+        WS.view.hiddenAnchorPath = WS.nav.dirNode?.path || node.path || "";
       }
 
-      WS.nav.dirNode = node;
-      syncBulkSelectionForCurrentDir();
-      syncFavoritesUi();
-      syncHiddenUi();
-      syncTagUiForCurrentDir();
-      rebuildDirectoriesEntries();
-      WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
-      syncPreviewToSelection();
+      let targetIdx = findDirEntryIndexByPath(node.path || "");
+      if (targetIdx < 0 && node.parent && node.parent !== WS.nav.dirNode) {
+        WS.nav.dirNode = node.parent;
+        WS.view.aboveRootView = false;
+        syncBulkSelectionForCurrentDir();
+        syncFavoritesUi();
+        syncHiddenUi();
+        syncTagUiForCurrentDir();
+        rebuildDirectoriesEntries();
+        targetIdx = findDirEntryIndexByPath(node.path || "");
+      }
+      const directGalleryFirstId = firstFileIdForDirectFolderGalleryEntry(node);
+      WS.nav.selectedIndex = findNearestSelectableIndex(targetIdx >= 0 ? targetIdx : 0, 1);
+      const selectedEntry = targetIdx >= 0 ? (WS.nav.entries[WS.nav.selectedIndex] || null) : null;
+      if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
+      else applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
+      if (directGalleryFirstId) {
+        openGalleryForDir(node, directGalleryFirstId, true, true);
+        return;
+      }
+      WS.view.activePane = "preview";
       renderDirectoriesPane();
       renderPreviewPane(true);
+      activatePreviewPaneSelection();
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
+      recordDirHistory();
     }
 
     function navigateFromPreviewFolderCard(node) {
       if (!node) return;
       navigateToDirectory(node);
+    }
+
+    function adoptPreviewParentIntoDirectoriesPane(targetDir) {
+      if (!WS.root) return false;
+      const parentTarget = targetDir || getPreviewTargetDir() || WS.nav.dirNode || WS.root;
+      if (!parentTarget) return false;
+      if (parentTarget._skipTagFilters) {
+        const originPath = String(parentTarget._tagPreviewOriginPath || parentTarget.parent?.path || "");
+        const baseNode = WS.dirByPath.get(originPath) || parentTarget.parent || WS.root;
+        if (!baseNode) return false;
+        const modeRaw = String(parentTarget._tagPreviewMode || "");
+        const mode = (modeRaw === "album" || modeRaw === "tag" || modeRaw === "favorites" || modeRaw === "hidden" || modeRaw === "untagged")
+          ? modeRaw
+          : "";
+        const tag = mode === "tag" ? String(parentTarget._tagPreviewTag || "") : "";
+        const album = (mode === "album" || mode === "tag") ? String(parentTarget._tagPreviewAlbum || "") : "";
+        const prevMode = String(WS.view.tagFolderActiveMode || "");
+        const prevTag = String(WS.view.tagFolderActiveTag || "");
+        const prevAlbum = String(WS.view.tagFolderActiveAlbum || "");
+        const prevOriginPath = String(WS.view.tagFolderOriginPath || "");
+        const basePath = String(baseNode.path || "");
+        const enteringDifferentTagPortal = mode && (
+          prevMode !== mode
+          || prevTag !== tag
+          || prevAlbum !== album
+          || prevOriginPath !== basePath
+        );
+        if (enteringDifferentTagPortal) {
+          pushTagEntryContext(mode, tag, album, {
+            baseDirPath: basePath,
+            prevMode,
+            prevTag,
+            prevAlbum,
+            prevOriginPath,
+            selectedIndex: WS.nav.selectedIndex,
+            scrollTop: getDirectoriesScrollTop()
+          });
+        }
+        WS.nav.dirNode = baseNode;
+        WS.view.aboveRootView = false;
+        WS.view.tagFolderActiveMode = mode;
+        WS.view.tagFolderActiveTag = tag;
+        WS.view.tagFolderActiveAlbum = album;
+        WS.view.tagFolderOriginPath = originPath;
+      } else {
+        if (isViewingTagFolder()) {
+          const selectedPath = String(parentTarget.path || "");
+          if (selectedPath) pushTagViewContext(selectedPath);
+        }
+        WS.nav.dirNode = parentTarget;
+        WS.view.aboveRootView = false;
+        WS.view.tagFolderActiveMode = "";
+        WS.view.tagFolderActiveTag = "";
+        WS.view.tagFolderActiveAlbum = "";
+        WS.view.tagFolderOriginPath = "";
+      }
+      syncBulkSelectionForCurrentDir();
+      syncFavoritesUi();
+      syncHiddenUi();
+      syncTagUiForCurrentDir();
+      rebuildDirectoriesEntries();
+      return true;
+    }
+
+    function openPreviewTagFolderEntry(entry) {
+      TAG_EDIT_PATH = null;
+      clearBulkTagPlaceholder();
+      if (!entry || entry.placeholder) return;
+      adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir());
+
+      if (WS.view.dirSearchPinned && WS.view.searchRootActive) {
+        WS.view.searchRootActive = false;
+        WS.view.searchAnchorPath = WS.nav.dirNode?.path || entry.originPath || "";
+        WS.view.searchEntryRootPath = WS.nav.dirNode?.path || entry.originPath || "";
+      }
+
+      if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
+        WS.view.favoritesRootActive = false;
+        WS.view.favoritesAnchorPath = WS.nav.dirNode?.path || entry.originPath || "";
+      }
+
+      if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+        WS.view.hiddenRootActive = false;
+        WS.view.hiddenAnchorPath = WS.nav.dirNode?.path || entry.originPath || "";
+      }
+
+      const mode = entry.special ? String(entry.special || "") : ((entry.album && !entry.tag) ? "album" : "tag");
+      const tag = mode === "tag" ? String(entry.tag || "") : "";
+      const album = String(entry.album || "");
+      const targetIdx = findTagEntryIndex(mode, tag, album);
+      WS.nav.selectedIndex = findNearestSelectableIndex(targetIdx >= 0 ? targetIdx : 0, 1);
+      const selectedEntry = targetIdx >= 0 ? (WS.nav.entries[WS.nav.selectedIndex] || null) : null;
+      if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
+      else applyPreviewState(previewStateForEntry(entry));
+      WS.view.activePane = "preview";
+      renderDirectoriesPane();
+      renderPreviewPane(true);
+      activatePreviewPaneSelection();
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
     }
 
     function getPreviewTargetDir() {
@@ -23154,6 +23673,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         updateModePill();
         if (itemsPill) itemsPill.textContent = "Items: —";
         previewBodyEl.innerHTML = "";
+        clearPreviewSelectionState("none");
+        updatePreviewSelectionClasses();
         return;
       }
 
@@ -23168,6 +23689,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         updateModePill();
         const currentDirCount = getDirectoryItemCount(WS.nav.dirNode || WS.root);
         if (itemsPill) itemsPill.textContent = `Items: ${currentDirCount}`;
+        clearPreviewSelectionState(currentPreviewSelectionContextKeyFromState());
+        updatePreviewSelectionClasses();
         return;
       }
 
@@ -23202,6 +23725,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         renderPreviewViewerItem(viewerIndex);
 
         if (keepScroll) previewBodyEl.scrollTop = prevScroll;
+        ensurePreviewSelectionForCurrentTarget(false);
         return;
       }
 
@@ -23217,6 +23741,8 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (!dirNode) {
         WS.view.previewScrollActiveKey = "";
         previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">No folder open.</div>`;
+        clearPreviewSelectionState("none");
+        updatePreviewSelectionClasses();
         return;
       }
       const previewDirKey = previewScrollKeyForDir(dirNode);
@@ -23236,6 +23762,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       if (shouldRestoreScroll) previewBodyEl.scrollTop = restoreScroll;
       WS.view.previewScrollActiveKey = previewDirKey;
+      const hadPendingPreviewSelection = applyPendingPreviewSelectionForCurrentTarget();
+      ensurePreviewSelectionForCurrentTarget(false);
+      if (hadPendingPreviewSelection && WS.view && WS.view.activePane === "preview") revealPreviewCard();
     }
 
     previewBodyEl.addEventListener("scroll", () => {
@@ -23445,10 +23974,19 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
     function makeTagPreviewCard(entry) {
       const card = document.createElement("div");
+      const previewItemKey = `tag:${String(tagEntrySelectionKey(entry) || entry.tag || entry.label || "tag")}`;
       card.className = "folderCard folderThumbCard previewTagFolderCard";
+      card.dataset.previewItemKey = previewItemKey;
+      card.dataset.previewItemKind = "tag";
       const naturalThumbCards = naturalAspectThumbnailCardsEnabled();
       card.style.cursor = entry && entry.placeholder ? "default" : "pointer";
       card.innerHTML = buildPreviewTagCardMarkup(entry);
+      card.__previewOpenAction = () => {
+        if (entry && !entry.placeholder) {
+          closeActionMenus();
+          openPreviewTagFolderEntry(entry);
+        }
+      };
       if (naturalThumbCards) {
         card.classList.add("fitInsideCard", "previewNaturalCard");
         let aspect = 1;
@@ -23513,48 +24051,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const target = e.target;
         if (target && target.closest && target.closest(".dirMenu")) return;
         if (target && target.closest && target.closest(".tagEditInput")) return;
-        const priorSelectedIndex = WS.nav.selectedIndex;
-        const isCmdOrCtrl = eventCmdOrCtrlHeld(e);
-        const isShift = eventShiftHeld(e);
-
-        if (entryIdx >= 0 && isShift && isCmdOrCtrl) {
-          closeActionMenus();
-          const anchor = WS.view.dirSelectAnchorIndex >= 0 ? WS.view.dirSelectAnchorIndex : priorSelectedIndex;
-          if (!WS.view.bulkSelectMode) includeCurrentSelectionInBulkSet(entryIdx);
-          addEntrySelectionRange(anchor, entryIdx, false);
-          WS.view.dirSelectAnchorIndex = entryIdx;
-          setDirectoriesSelection(entryIdx, { keepScroll: true });
-          return;
-        }
-        if (entryIdx >= 0 && isShift) {
-          closeActionMenus();
-          const anchor = WS.view.dirSelectAnchorIndex >= 0 ? WS.view.dirSelectAnchorIndex : priorSelectedIndex;
-          selectEntryRange(anchor, entryIdx);
-          WS.view.dirSelectAnchorIndex = entryIdx;
-          setDirectoriesSelection(entryIdx, { keepScroll: true });
-          return;
-        }
-        if (entryIdx >= 0 && isCmdOrCtrl && selectionKey) {
-          closeActionMenus();
-          if (!WS.view.bulkSelectMode) includeCurrentSelectionInBulkSet(entryIdx);
-          WS.view.bulkSelectMode = true;
-          toggleEntrySelection(entry);
-          WS.view.dirSelectAnchorIndex = entryIdx;
-          setDirectoriesSelection(entryIdx, { keepScroll: true });
-          return;
-        }
-        if (WS.view.bulkSelectMode && (
-          WS.view.bulkTagSelectedPaths.size ||
-          WS.view.bulkTagFolderSelectedKeys.size ||
-          WS.view.bulkFileSelectedIds.size
-        )) {
-          clearBulkTagSelection();
-          WS.view.bulkSelectMode = false;
-        }
-        if (entry && !entry.placeholder) {
-          closeActionMenus();
-          openTagFolderEntry(entry);
-        }
+        handlePreviewCardSelection(card, card.__previewOpenAction);
       });
 
       card.addEventListener("contextmenu", (e) => {
@@ -23608,6 +24105,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const nm = dirDisplayName(dirNode) || "folder";
       const p = String(dirNode?.path || "");
       if (p) card.dataset.dirPath = p;
+      if (p) card.dataset.previewItemKey = `dir:${p}`;
+      card.dataset.previewItemKind = "dir";
+      card.__previewOpenAction = () => {
+        navigateFromPreviewFolderCard(dirNode);
+      };
       const entryIdx = findDirEntryIndexByPath(p);
       const canBulkSelect = WS.view.bulkSelectMode && canUseBulkSelection();
       const isBulkSelected = !!p && canBulkSelect && WS.view.bulkTagSelectedPaths.has(p);
@@ -23902,46 +24404,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const target = e.target;
         if (target && target.closest && target.closest(".dirMenu")) return;
         if (target && target.closest && target.closest(".tagEditInput")) return;
-        const idx = findDirEntryIndexByPath(p);
-        const entry = idx >= 0 ? WS.nav.entries[idx] : null;
-        const priorSelectedIndex = WS.nav.selectedIndex;
-        const isCmdOrCtrl = eventCmdOrCtrlHeld(e);
-        const isShift = eventShiftHeld(e);
-        if (idx >= 0 && isShift && isCmdOrCtrl) {
-          closeActionMenus();
-          const anchor = WS.view.dirSelectAnchorIndex >= 0 ? WS.view.dirSelectAnchorIndex : priorSelectedIndex;
-          if (!WS.view.bulkSelectMode) includeCurrentSelectionInBulkSet(idx);
-          addEntrySelectionRange(anchor, idx, false);
-          WS.view.dirSelectAnchorIndex = idx;
-          setDirectoriesSelection(idx, { keepScroll: true });
-          return;
-        }
-        if (idx >= 0 && isShift) {
-          closeActionMenus();
-          const anchor = WS.view.dirSelectAnchorIndex >= 0 ? WS.view.dirSelectAnchorIndex : priorSelectedIndex;
-          selectEntryRange(anchor, idx);
-          WS.view.dirSelectAnchorIndex = idx;
-          setDirectoriesSelection(idx, { keepScroll: true });
-          return;
-        }
-        if (idx >= 0 && isCmdOrCtrl) {
-          closeActionMenus();
-          if (!WS.view.bulkSelectMode) includeCurrentSelectionInBulkSet(idx);
-          WS.view.bulkSelectMode = true;
-          if (entry && entry.kind === "dir") toggleEntrySelection(entry);
-          WS.view.dirSelectAnchorIndex = idx;
-          setDirectoriesSelection(idx, { keepScroll: true });
-          return;
-        }
-        if (WS.view.bulkSelectMode && (
-          WS.view.bulkTagSelectedPaths.size ||
-          WS.view.bulkTagFolderSelectedKeys.size ||
-          WS.view.bulkFileSelectedIds.size
-        )) {
-          clearBulkTagSelection();
-          WS.view.bulkSelectMode = false;
-        }
-        navigateFromPreviewFolderCard(dirNode);
+        handlePreviewCardSelection(card, card.__previewOpenAction);
       });
       card.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -24605,6 +25068,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       const card = document.createElement("div");
       card.className = "fileCard";
       const useNaturalAspectCards = naturalAspectThumbnailCardsEnabled();
+      const fileId = String(rec.id || "");
+      if (fileId) card.dataset.previewItemKey = `file:${fileId}`;
+      card.dataset.previewItemKind = "file";
+      card.__previewOpenAction = () => {
+        if (!WS.root) return;
+        openGalleryForFileRecord(rec, false);
+      };
       if (useSquareMediaCards) card.classList.add("previewSquareCard");
       if (useNaturalAspectCards) card.classList.add("previewNaturalCard");
       if (useFitInsideJustified) {
@@ -24654,7 +25124,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
       const showNameMeta = false;
       const forceOverlayMeta = !!useSquareMediaCards || !!useNaturalAspectCards;
-      const fileId = String(rec.id || "");
       const showAnyMeta = forceOverlayMeta || showNameMeta || !!fileId;
       let meta = null;
       if (showAnyMeta) {
@@ -24761,8 +25230,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
 
       card.addEventListener("click", () => {
-        if (!WS.root) return;
-        openGalleryForFileRecord(rec, false);
+        handlePreviewCardSelection(card, card.__previewOpenAction);
       });
 
       card.addEventListener("contextmenu", (e) => {
@@ -26207,6 +26675,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     }
 
     function viewerLeaveDir() { // Left
+      if (VIEWER_SKIP_DIR_SYNC_ON_CLOSE) {
+        if (VIEWER_MODE) hideOverlay();
+        return;
+      }
       if (tryRestoreTagDirectoryContext()) return;
       if (isViewingTagFolder()) {
         exitTagFolderView();
@@ -26557,6 +27029,35 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       return entry ? entry.label : String(value || "");
     }
 
+    function labelForTitleLayoutMode(mode) {
+      return normalizeTitleLayoutModeValue(mode, "pane") === "compact"
+        ? "Compact top bar"
+        : "Stacked title pane";
+    }
+
+    function toggleDirectoriesPaneKeybindAction() {
+      if (!WS.meta) return false;
+      if (VIEWER_MODE) return false;
+      const nextOpen = !directoriesPaneOpenEnabled();
+      if (!setDirectoriesPaneOpenValue(nextOpen)) return false;
+      syncActivePaneWithLayout();
+      refreshAfterDirectoriesPaneToggle(false, true);
+      showStatusMessage(`Directories pane: ${nextOpen ? "Open" : "Closed"}`);
+      return true;
+    }
+
+    function toggleTitlePaneKeybindAction() {
+      if (!WS.meta) return false;
+      const nextMode = titleLayoutModeFromOptions() === "compact" ? "pane" : "compact";
+      setOptionValue("titleLayoutMode", nextMode);
+      applyInteractionModeFromOptions();
+      applyPaneDividerFromOptions();
+      refreshFitInsidePreviewGrids();
+      syncButtons();
+      showStatusMessage(`Title layout: ${labelForTitleLayoutMode(nextMode)}`);
+      return true;
+    }
+
 
     function handleExtrasKeybindAction(action) {
       if (!action || !WS.meta) return false;
@@ -26582,6 +27083,10 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         return true;
       }
       switch (action) {
+        case "toggleDirectoriesPane":
+          return toggleDirectoriesPaneKeybindAction();
+        case "toggleTitlePane":
+          return toggleTitlePaneKeybindAction();
         case "cycleColorScheme": {
           const next = cycleOptionValue("colorScheme", COLOR_SCHEME_CYCLE);
           applyColorSchemeFromOptions();
@@ -27381,11 +27886,14 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     function closeFilePreviewToFolder() {
       if (!WS.root) return;
       if (WS.preview.kind !== "file") return;
-      WS.preview.kind = "dir";
-      WS.preview.fileId = null;
-      WS.preview.dirNode = getPreviewTargetDir();
+      applyPreviewState({
+        kind: "dir",
+        dirNode: getPreviewTargetDir(),
+        fileId: null
+      });
       ACTIVE_MEDIA_SURFACE = "none";
       renderPreviewPane(true, true);
+      if (WS.view.activePane === "preview") activatePreviewPaneSelection();
       syncButtons();
     }
 
@@ -27409,49 +27917,82 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       else openMenu(tabId);
     }
 
-    function refreshAfterInteractionModeToggle(animatePreview = false, keepPreviewScroll = true) {
-      syncPreviewToSelection();
+    function refreshAfterDirectoriesPaneToggle(animatePreview = false, keepPreviewScroll = true) {
       renderDirectoriesPane(true);
       renderPreviewPane(animatePreview, keepPreviewScroll);
+      updatePreviewSelectionClasses();
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
     }
 
-    function setInteractionModeValue(nextMode) {
+    function setDirectoriesPaneOpenValue(nextOpen) {
       if (!WS.meta) return false;
-      const normalizedMode = String(nextMode || "").toLowerCase() === "pane" ? "pane" : "grid";
-      if (getInteractionModeFromOptions() === normalizedMode) return false;
-      WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { interactionMode: normalizedMode }));
+      const normalizedOpen = !!nextOpen;
+      if (directoriesPaneOpenEnabled() === normalizedOpen) return false;
+      WS.meta.options = normalizeOptions(Object.assign({}, WS.meta.options || {}, { directoriesPaneOpen: normalizedOpen }));
       metaMarkDirty(META_DOC_IDS.prefGeneral);
       applyInteractionModeFromOptions();
+      applyPaneDividerFromOptions();
       return true;
     }
 
-    function toggleInteractionModeFromTabShortcut() {
-      if (!WS.meta) return false;
-      if (VIEWER_MODE) return false;
-      const currentMode = getInteractionModeFromOptions();
-      const nextMode = currentMode === "grid" ? "pane" : "grid";
-      const selectedEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
-      if (!setInteractionModeValue(nextMode)) return false;
-
-      if (nextMode === "pane") {
-        const priorDirNode = WS.nav.dirNode || null;
-        const priorAboveRoot = !!WS.view.aboveRootView;
-        leaveDirectory();
-        if (priorDirNode === (WS.nav.dirNode || null) && priorAboveRoot === !!WS.view.aboveRootView) {
-          refreshAfterInteractionModeToggle(false, true);
-        }
-      } else if (selectedEntry && selectedEntry.kind === "dir" && selectedEntry.node) {
-        navigateToDirectory(selectedEntry.node);
-      } else if (selectedEntry && selectedEntry.kind === "tag") {
-        openTagFolderEntry(selectedEntry);
-      } else {
-        refreshAfterInteractionModeToggle(false, true);
+    function handlePreviewPaneAction(action, inFilePreview) {
+      const sidebarVisible = directoriesPaneOpenEnabled();
+      if (inFilePreview) {
+        if (action === "selectLeft" && sidebarVisible) return activateDirectoriesPaneSelection();
+        return false;
       }
+      switch (action) {
+        case "selectUp":
+          return movePreviewSelectionByDirection("up");
+        case "selectDown":
+          return movePreviewSelectionByDirection("down");
+        case "selectLeft":
+          if (movePreviewSelectionByDirection("left")) return true;
+          if (sidebarVisible) return activateDirectoriesPaneSelection();
+          return false;
+        case "selectRight":
+          return movePreviewSelectionByDirection("right");
+        case "leaveDir": {
+          const beforeState = {
+            navPath: String(WS.nav.dirNode?.path || ""),
+            aboveRoot: !!WS.view.aboveRootView,
+            tagMode: String(WS.view.tagFolderActiveMode || ""),
+            tagTag: String(WS.view.tagFolderActiveTag || ""),
+            tagAlbum: String(WS.view.tagFolderActiveAlbum || ""),
+            tagOriginPath: String(WS.view.tagFolderOriginPath || ""),
+            searchRootActive: !!WS.view.searchRootActive,
+            favoritesRootActive: !!WS.view.favoritesRootActive,
+            hiddenRootActive: !!WS.view.hiddenRootActive
+          };
+          WS.view.pendingPreviewSelectionKey = entryKeyForSelection(WS.nav.entries[WS.nav.selectedIndex] || null);
+          leaveDirectory();
+          const unchanged = beforeState.navPath === String(WS.nav.dirNode?.path || "")
+            && beforeState.aboveRoot === !!WS.view.aboveRootView
+            && beforeState.tagMode === String(WS.view.tagFolderActiveMode || "")
+            && beforeState.tagTag === String(WS.view.tagFolderActiveTag || "")
+            && beforeState.tagAlbum === String(WS.view.tagFolderActiveAlbum || "")
+            && beforeState.tagOriginPath === String(WS.view.tagFolderOriginPath || "")
+            && beforeState.searchRootActive === !!WS.view.searchRootActive
+            && beforeState.favoritesRootActive === !!WS.view.favoritesRootActive
+            && beforeState.hiddenRootActive === !!WS.view.hiddenRootActive;
+          if (unchanged) WS.view.pendingPreviewSelectionKey = "";
+          return true;
+        }
+        case "enterDir":
+          return openSelectedPreviewItem();
+        default:
+          return false;
+      }
+    }
 
-      showStatusMessage(`Interaction mode: ${nextMode === "pane" ? "Sidebar" : "Grid"}`);
+    function handleDirectoriesPaneSwitchAction(action) {
+      if (!directoriesPaneOpenEnabled()) return false;
+      if (WS.view.activePane === "preview") return false;
+      if (action === "selectLeft") return true;
+      if (action !== "selectRight") return false;
+      activatePreviewPaneSelection();
       return true;
     }
 
@@ -27467,8 +28008,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       clearModifierKeyState();
     });
 
-    // Hard-coded menu toggles: ` / ~ opens the last-used menu tab.
-    // Tab toggles between pane and grid interaction modes.
+    // Hard-coded menu toggle: ` / ~ opens the last-used menu tab.
     document.addEventListener("keydown", (e) => {
       if (busyOverlayActive()) {
         e.preventDefault();
@@ -27482,21 +28022,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (isTextInputTarget(e.target)) return;
       e.preventDefault();
       toggleMenuForTab(MENU_LAST_TAB || "general");
-    }, true);
-
-    document.addEventListener("keydown", (e) => {
-      if (busyOverlayActive()) {
-        e.preventDefault();
-        return;
-      }
-      if (e.defaultPrevented) return;
-      if (e.repeat) return;
-      if (e.code !== "Tab") return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (VIEWER_MODE && isQuadPlaybackMode()) return;
-      if (isTextInputTarget(e.target)) return;
-      e.preventDefault();
-      toggleInteractionModeFromTabShortcut();
     }, true);
 
     document.addEventListener("keydown", (e) => {
@@ -27521,14 +28046,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
 
       const action = keybindActionFor(key);
-      const gridAction = isGridInteractionMode()
-        ? (function() {
-            let next = gridKeybindActionFor(key) || action;
-            if (key === "Space" && next === "gridOpenSelection") next = "playPause";
-            return next;
-          })()
-        : null;
-
       if (VIEWER_MODE && isQuadPlaybackMode()) {
         const allowedQuadAction = key === "Escape"
           || action === "back"
@@ -27568,17 +28085,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       if (handleSelectionKeybindAction(action)) {
         e.preventDefault();
         return;
-      }
-
-      if (isGridInteractionMode()) {
-        if (handleGridKeybindAction(gridAction)) {
-          e.preventDefault();
-          return;
-        }
-        if (isGridExclusiveAction(gridAction)) {
-          e.preventDefault();
-          return;
-        }
       }
 
       if (VIEWER_MODE) {
@@ -27711,7 +28217,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       // Directory mode arrow priority:
       // If arrow keys are unbound or still mapped to selection movement from older keybind sets,
       // prefer thumbnail viewport nudging first so arrows do not scroll the list instead.
-      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      if (
+        WS.view.activePane !== "preview"
+        && !e.metaKey
+        && !e.ctrlKey
+        && !e.altKey
+        && !e.shiftKey
+      ) {
         let nudgeDx = 0;
         let nudgeDy = 0;
         if (baseKey === "ArrowLeft") nudgeDx = -THUMB_VIEWPORT_NUDGE_STEP;
@@ -27741,6 +28253,32 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
       }
 
       const inFilePreview = (WS.preview.kind === "file" && !!WS.preview.fileId);
+      const previewPaneActive = !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
+
+      if (previewPaneActive && !inFilePreview) {
+        const previewGridAction = action === "selectUp"
+          || action === "selectDown"
+          || action === "selectLeft"
+          || action === "selectRight"
+          || action === "leaveDir"
+          || action === "enterDir";
+        if (previewGridAction) {
+          const handled = handlePreviewPaneAction(action, false);
+          e.preventDefault();
+          if (handled) return;
+          return;
+        }
+      }
+
+      if (previewPaneActive && handlePreviewPaneAction(action, inFilePreview)) {
+        e.preventDefault();
+        return;
+      }
+
+      if (handleDirectoriesPaneSwitchAction(action)) {
+        e.preventDefault();
+        return;
+      }
 
       if (inFilePreview) {
         switch (action) {
@@ -27753,13 +28291,19 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
             viewerStep(1);
             return;
           case "selectLeft":
-            e.preventDefault();
-            viewerStep(-1);
-            return;
+            if (!directoriesPaneOpenEnabled()) {
+              e.preventDefault();
+              viewerStep(-1);
+              return;
+            }
+            break;
           case "selectRight":
-            e.preventDefault();
-            viewerStep(1);
-            return;
+            if (!directoriesPaneOpenEnabled()) {
+              e.preventDefault();
+              viewerStep(1);
+              return;
+            }
+            break;
           case "leaveDir":
             e.preventDefault();
             viewerLeaveDir();
@@ -27844,13 +28388,9 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           return;
         case "selectLeft":
           e.preventDefault();
-          if (isGridInteractionMode()) moveGridSelectionByDirection("left");
-          else moveDirectoriesSelection(-1);
           return;
         case "selectRight":
           e.preventDefault();
-          if (isGridInteractionMode()) moveGridSelectionByDirection("right");
-          else moveDirectoriesSelection(1);
           return;
         case "leaveDir":
           e.preventDefault();
