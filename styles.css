@@ -10,7 +10,9 @@
       --color1-tertiary: hsl(210, 15%, 5%);
 
       --anchor-internal-color2-primary: hsl(240, 100%, 40%);
-
+      --palette-accent: hsl(224, 78%, 58%);
+      --palette-accent-text: #ffffff;
+      --palette-accent-outline: hsl(224, 78%, 58%);
       --file-grid-min: 180px;
       --file-meta-font: 12px;
       --file-meta-padding: 8px 10px;
@@ -28,9 +30,9 @@
       --thumb-filter: none;
       --thumb-fit: cover;
       --thumb-bg: transparent;
-      --dir-tag-title-color: #ff9300;
-      --dir-tag-favorite-title-color: #ff43b5;
-      --dir-tag-album-title-color: #ff6b63;
+      --dir-tag-title-color: #ffd166;
+      --dir-tag-favorite-title-color: #ff7acc;
+      --dir-tag-album-title-color: #71d7ff;
       --ui-hover-lift: -1px;
       --ui-active-press: 1px;
       --ui-hover-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
@@ -87,6 +89,12 @@
       --color1-tertiary: hsl(210, 18%, 85%);
 
       --anchor-internal-color2-primary: hsl(215, 85%, 35%);
+      --palette-accent: hsl(214, 76%, 60%);
+      --palette-accent-text: #ffffff;
+      --palette-accent-outline: hsl(214, 76%, 60%);
+      --dir-tag-title-color: #9a6700;
+      --dir-tag-favorite-title-color: #b12573;
+      --dir-tag-album-title-color: #00749d;
       --ui-hover-shadow: 0 8px 20px rgba(19, 34, 59, 0.12);
       --ui-focus-ring: 0 0 0 2px rgba(33, 98, 180, 0.22);
       --ui-preview-selection-shadow: 0 10px 30px rgba(19, 34, 59, 0.22);
@@ -143,6 +151,12 @@
       --color1-tertiary: #8a8a8a;
 
       --anchor-internal-color2-primary: #fff;
+      --palette-accent: #d6d6d6;
+      --palette-accent-text: #000000;
+      --palette-accent-outline: #ffffff;
+      --dir-tag-title-color: #ffe082;
+      --dir-tag-favorite-title-color: #ff8ed7;
+      --dir-tag-album-title-color: #8cdcff;
       --tag-include-bg: #0b1322;
       --tag-include-border: #2a3b5f;
       --tag-include-color: #d6e4ff;
@@ -188,6 +202,12 @@
       --color1-tertiary: hsl(260, 30%, 8%);
 
       --anchor-internal-color2-primary: hsl(190, 95%, 55%);
+      --palette-accent: hsl(190, 92%, 48%);
+      --palette-accent-text: hsl(258, 35%, 12%);
+      --palette-accent-outline: hsl(190, 92%, 48%);
+      --dir-tag-title-color: #47e7ff;
+      --dir-tag-favorite-title-color: #ff68d1;
+      --dir-tag-album-title-color: #ffe065;
     }
 
     :root[data-theme="synthwave-light"] {
@@ -202,6 +222,12 @@
       --color1-tertiary: hsl(292, 42%, 78%);
 
       --anchor-internal-color2-primary: hsl(192, 90%, 40%);
+      --palette-accent: hsl(191, 92%, 60%);
+      --palette-accent-text: hsl(260, 34%, 16%);
+      --palette-accent-outline: hsl(191, 92%, 60%);
+      --dir-tag-title-color: #0d7bb3;
+      --dir-tag-favorite-title-color: #c22787;
+      --dir-tag-album-title-color: #9c6a00;
       --tag-include-bg: #f1b7ff;
       --tag-include-border: #c75cf2;
       --tag-include-color: #4a0f67;
@@ -224,6 +250,12 @@
       --color1-tertiary: hsl(150, 25%, 7%);
 
       --anchor-internal-color2-primary: hsl(45, 90%, 55%);
+      --palette-accent: hsl(45, 92%, 50%);
+      --palette-accent-text: hsl(40, 100%, 12%);
+      --palette-accent-outline: hsl(45, 92%, 50%);
+      --dir-tag-title-color: #f4d44d;
+      --dir-tag-favorite-title-color: #ff88cf;
+      --dir-tag-album-title-color: #67d8ff;
     }
 
     :root[data-theme="verdant-light"] {
@@ -238,6 +270,12 @@
       --color1-tertiary: hsl(133, 28%, 76%);
 
       --anchor-internal-color2-primary: hsl(41, 90%, 38%);
+      --palette-accent: hsl(45, 90%, 63%);
+      --palette-accent-text: hsl(42, 100%, 12%);
+      --palette-accent-outline: hsl(45, 90%, 63%);
+      --dir-tag-title-color: #7a5f00;
+      --dir-tag-favorite-title-color: #a92a71;
+      --dir-tag-album-title-color: #0d7597;
       --tag-include-bg: #c8f0cf;
       --tag-include-border: #58bf74;
       --tag-include-color: #12472b;
@@ -260,6 +298,12 @@
       --color1-tertiary: hsl(210, 28%, 7%);
 
       --anchor-internal-color2-primary: hsl(35, 95%, 55%);
+      --palette-accent: hsl(35, 92%, 50%);
+      --palette-accent-text: hsl(26, 100%, 12%);
+      --palette-accent-outline: hsl(35, 92%, 50%);
+      --dir-tag-title-color: #ffbc4d;
+      --dir-tag-favorite-title-color: #ff79c0;
+      --dir-tag-album-title-color: #5fd4ff;
     }
 
     :root[data-theme="azure-light"] {
@@ -274,6 +318,12 @@
       --color1-tertiary: hsl(206, 38%, 78%);
 
       --anchor-internal-color2-primary: hsl(29, 90%, 42%);
+      --palette-accent: hsl(34, 94%, 63%);
+      --palette-accent-text: hsl(28, 100%, 12%);
+      --palette-accent-outline: hsl(34, 94%, 63%);
+      --dir-tag-title-color: #9e5c00;
+      --dir-tag-favorite-title-color: #b02c74;
+      --dir-tag-album-title-color: #00789a;
       --tag-include-bg: #cfe8ff;
       --tag-include-border: #5aa9f8;
       --tag-include-color: #0f3f73;
@@ -296,6 +346,12 @@
       --color1-tertiary: hsl(14, 28%, 7%);
 
       --anchor-internal-color2-primary: hsl(195, 90%, 55%);
+      --palette-accent: hsl(195, 88%, 49%);
+      --palette-accent-text: hsl(196, 100%, 10%);
+      --palette-accent-outline: hsl(195, 88%, 49%);
+      --dir-tag-title-color: #59d7ff;
+      --dir-tag-favorite-title-color: #ff78bf;
+      --dir-tag-album-title-color: #ffd56a;
     }
 
     :root[data-theme="ember-light"] {
@@ -310,6 +366,12 @@
       --color1-tertiary: hsl(18, 42%, 77%);
 
       --anchor-internal-color2-primary: hsl(194, 88%, 38%);
+      --palette-accent: hsl(194, 90%, 60%);
+      --palette-accent-text: hsl(196, 100%, 10%);
+      --palette-accent-outline: hsl(194, 90%, 60%);
+      --dir-tag-title-color: #007799;
+      --dir-tag-favorite-title-color: #ad276c;
+      --dir-tag-album-title-color: #9b6b00;
       --tag-include-bg: #ffc8ab;
       --tag-include-border: #ee8140;
       --tag-include-color: #6f2500;
@@ -332,6 +394,12 @@
       --color1-tertiary: hsl(32, 28%, 7%);
 
       --anchor-internal-color2-primary: hsl(200, 95%, 55%);
+      --palette-accent: hsl(200, 92%, 50%);
+      --palette-accent-text: hsl(205, 100%, 10%);
+      --palette-accent-outline: hsl(200, 92%, 50%);
+      --dir-tag-title-color: #67d8ff;
+      --dir-tag-favorite-title-color: #ff7dbe;
+      --dir-tag-album-title-color: #ffd45e;
     }
 
     :root[data-theme="amber-light"] {
@@ -346,6 +414,12 @@
       --color1-tertiary: hsl(43, 44%, 75%);
 
       --anchor-internal-color2-primary: hsl(201, 88%, 38%);
+      --palette-accent: hsl(201, 88%, 60%);
+      --palette-accent-text: hsl(205, 100%, 10%);
+      --palette-accent-outline: hsl(201, 88%, 60%);
+      --dir-tag-title-color: #007c9e;
+      --dir-tag-favorite-title-color: #ad296c;
+      --dir-tag-album-title-color: #986800;
       --tag-include-bg: #ffe37d;
       --tag-include-border: #e5b100;
       --tag-include-color: #594300;
@@ -368,6 +442,12 @@
       --color1-tertiary: #8a8a7a;
 
       --anchor-internal-color2-primary: #1a4b8c;
+      --palette-accent: #4f86d6;
+      --palette-accent-text: #ffffff;
+      --palette-accent-outline: #4f86d6;
+      --dir-tag-title-color: #7b5600;
+      --dir-tag-favorite-title-color: #8c2660;
+      --dir-tag-album-title-color: #1d5a9b;
       --tag-include-bg: #2b4d7a;
       --tag-include-border: #17345a;
       --tag-include-color: #e9f1ff;
@@ -390,6 +470,12 @@
       --color1-tertiary: #4b4740;
 
       --anchor-internal-color2-primary: #6fa0ff;
+      --palette-accent: #3b63a5;
+      --palette-accent-text: #ffffff;
+      --palette-accent-outline: #3b63a5;
+      --dir-tag-title-color: #e2bb65;
+      --dir-tag-favorite-title-color: #ef8ac5;
+      --dir-tag-album-title-color: #8cb6ff;
       --tag-include-bg: #203457;
       --tag-include-border: #101f38;
       --tag-include-color: #e6efff;
@@ -431,10 +517,14 @@
       --retro-shadow: #808080;
       --retro-shadow-dark: #404040;
       --retro-shadow-black: #000000;
-      --retro-title-bg: linear-gradient(90deg, var(--anchor-internal-color2-primary) 0%, var(--color0-primary) 100%);
-      --retro-title-text: #ffffff;
-      --retro-select-bg: var(--anchor-internal-color2-primary);
-      --retro-select-text: #ffffff;
+      --retro-face-hover: #dadada;
+      --retro-face-active: #cfcfcf;
+      --retro-title-bg: var(--palette-accent);
+      --retro-title-text: var(--palette-accent-text);
+      --retro-select-bg: var(--palette-accent);
+      --retro-select-text: var(--palette-accent-text);
+      --retro-select-shadow-dark: rgba(0, 0, 0, 0.45);
+      --retro-select-shadow-light: rgba(255, 255, 255, 0.3);
       --ui-hover-shadow: none;
       --ui-focus-ring: 0 0 0 1px #000000;
       color-scheme: light;
@@ -459,11 +549,15 @@
       --retro-shadow: rgba(0, 0, 0, 0.58);
       --retro-shadow-dark: rgba(0, 0, 0, 0.82);
       --retro-shadow-black: #000000;
-      --retro-title-bg: linear-gradient(90deg, var(--color1-tertiary) 0%, var(--anchor-internal-color2-primary) 100%);
-      --retro-title-text: var(--color0-primary);
-      --retro-select-bg: var(--anchor-internal-color2-primary);
-      --retro-select-text: #ffffff;
-      --ui-selection-outline: var(--anchor-internal-color2-primary);
+      --retro-face-hover: rgba(255, 255, 255, 0.12);
+      --retro-face-active: rgba(255, 255, 255, 0.18);
+      --retro-title-bg: var(--palette-accent);
+      --retro-title-text: var(--palette-accent-text);
+      --retro-select-bg: var(--palette-accent);
+      --retro-select-text: var(--palette-accent-text);
+      --retro-select-shadow-dark: rgba(0, 0, 0, 0.72);
+      --retro-select-shadow-light: rgba(255, 255, 255, 0.18);
+      --ui-selection-outline: var(--palette-accent-outline);
       --ui-selection-outline-soft: rgba(255, 255, 255, 0.22);
       --ui-selection-fill: rgba(255, 255, 255, 0.08);
       --ui-selection-fill-strong: rgba(255, 255, 255, 0.14);
@@ -488,14 +582,23 @@
       --retro-shadow: rgba(0, 0, 0, 0.32);
       --retro-shadow-dark: rgba(0, 0, 0, 0.58);
       --retro-shadow-black: rgba(0, 0, 0, 0.9);
-      --retro-title-bg: linear-gradient(90deg, var(--anchor-internal-color2-primary) 0%, var(--color0-primary) 100%);
-      --retro-title-text: #ffffff;
-      --retro-select-bg: var(--anchor-internal-color2-primary);
-      --retro-select-text: #ffffff;
-      --ui-selection-outline: var(--anchor-internal-color2-primary);
+      --retro-face-hover: rgba(255, 255, 255, 0.68);
+      --retro-face-active: rgba(255, 255, 255, 0.46);
+      --retro-title-bg: var(--palette-accent);
+      --retro-title-text: var(--palette-accent-text);
+      --retro-select-bg: var(--palette-accent);
+      --retro-select-text: var(--palette-accent-text);
+      --retro-select-shadow-dark: rgba(0, 0, 0, 0.5);
+      --retro-select-shadow-light: rgba(255, 255, 255, 0.38);
+      --ui-selection-outline: var(--palette-accent-outline);
       --ui-selection-outline-soft: rgba(0, 0, 0, 0.18);
       --ui-selection-fill: rgba(0, 0, 0, 0.08);
       --ui-selection-fill-strong: rgba(0, 0, 0, 0.12);
+    }
+
+    :root[data-retro="on"][data-theme="superdark"] {
+      --retro-title-bg: #000000;
+      --retro-title-text: #ffffff;
     }
 
     :root[data-retro="on"] body {
@@ -631,50 +734,10 @@
       box-shadow: var(--ui-focus-ring), var(--ui-hover-shadow);
     }
 
-    :root[data-theme="retro90s"] button,
-    :root[data-theme="retro90s"] .miniBtn {
-      color: #1a1a1a;
-      background: #d6d2c6;
-      border: 2px solid #7d7d70;
-      box-shadow: inset 1px 1px 0 #f3f2ea, inset -1px -1px 0 #6f6f63;
-      font-weight: 700;
-    }
-
-    :root[data-theme="retro90s"] button:hover,
-    :root[data-theme="retro90s"] .miniBtn:hover {
-      background: #e2ded4;
-    }
-
-    :root[data-theme="retro90s"] button:active,
-    :root[data-theme="retro90s"] .miniBtn:active {
-      box-shadow: inset -1px -1px 0 #f3f2ea, inset 1px 1px 0 #6f6f63;
-      transform: translateY(1px);
-    }
-
     :root[data-retro="on"] button,
     :root[data-retro="on"] .miniBtn {
       border-width: 2px;
       box-shadow: inset 1px 1px 0 rgba(255,255,255,0.35), inset -1px -1px 0 rgba(0,0,0,0.35);
-    }
-
-    :root[data-theme="retro90s-dark"] button,
-    :root[data-theme="retro90s-dark"] .miniBtn {
-      color: #f2efe7;
-      background: #2f2b26;
-      border: 2px solid #4b4740;
-      box-shadow: inset 1px 1px 0 #5c574f, inset -1px -1px 0 #161412;
-      font-weight: 700;
-    }
-
-    :root[data-theme="retro90s-dark"] button:hover,
-    :root[data-theme="retro90s-dark"] .miniBtn:hover {
-      background: #3a352f;
-    }
-
-    :root[data-theme="retro90s-dark"] button:active,
-    :root[data-theme="retro90s-dark"] .miniBtn:active {
-      box-shadow: inset -1px -1px 0 #5c574f, inset 1px 1px 0 #161412;
-      transform: translateY(1px);
     }
 
     input[type="file"] {
@@ -704,13 +767,6 @@
       color: var(--color0-primary);
       user-select: none;
       white-space: nowrap;
-    }
-
-    :root[data-theme="retro90s"] .pill,
-    :root[data-theme="retro90s-dark"] .pill {
-      border-width: 2px;
-      border-color: rgba(0,0,0,0.35);
-      box-shadow: inset 1px 1px 0 rgba(255,255,255,0.65), inset -1px -1px 0 rgba(0,0,0,0.25);
     }
 
     .miniBtn {
@@ -773,7 +829,7 @@
     :root[data-retro="on"] button:hover:not(:disabled),
     :root[data-retro="on"] .miniBtn:hover:not(:disabled),
     :root[data-retro="on"] .dirMenuBtn:hover:not(:disabled) {
-      background: #d9d9d9;
+      background: var(--retro-face-hover);
       color: var(--retro-text);
       transform: none;
       box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
@@ -782,6 +838,7 @@
     :root[data-retro="on"] button:active:not(:disabled),
     :root[data-retro="on"] .miniBtn:active:not(:disabled),
     :root[data-retro="on"] .dirMenuBtn:active:not(:disabled) {
+      background: var(--retro-face-active);
       border-color: var(--retro-shadow-black) var(--retro-highlight) var(--retro-highlight) var(--retro-shadow-black);
       box-shadow: inset 1px 1px 0 var(--retro-shadow-black), inset -1px -1px 0 var(--retro-highlight-soft);
       transform: none;
@@ -801,11 +858,12 @@
       background: var(--retro-select-bg);
       color: var(--retro-select-text);
       border-color: var(--retro-shadow-black) var(--retro-highlight) var(--retro-highlight) var(--retro-shadow-black);
-      box-shadow: inset 1px 1px 0 #001a66, inset -1px -1px 0 #7aa7ff;
+      box-shadow: inset 1px 1px 0 var(--retro-select-shadow-dark), inset -1px -1px 0 var(--retro-select-shadow-light);
     }
 
     :root[data-retro="on"] .statsLedgerSortBtn.active .statsLedgerSortBtnMeta {
-      color: rgba(255, 255, 255, 0.86);
+      color: var(--retro-select-text);
+      opacity: 0.82;
     }
 
     :root[data-retro="on"] .pill,
@@ -936,7 +994,7 @@
     }
 
     :root[data-retro="on"] .crumb:hover {
-      background: #d9d9d9;
+      background: var(--retro-face-hover);
       color: var(--retro-text);
     }
 
@@ -947,19 +1005,38 @@
     }
 
     :root[data-retro="on"] .dirRow:hover {
-      background: #d9d9d9;
+      background: var(--retro-face-hover);
       color: var(--retro-text);
-      border-color: #a1a1a1;
+      border-color: var(--retro-shadow-dark);
     }
 
-    :root[data-retro="on"] .dirRow.selected,
-    :root[data-retro="on"] .dirRow.bulkSelected,
-    :root[data-retro="on"] .dirRow.selected.bulkSelected {
+    :root[data-retro="on"] .dirRow.selected {
       background: var(--retro-select-bg);
       color: var(--retro-select-text);
       outline: none;
       border-color: var(--retro-shadow-black);
       box-shadow: none;
+    }
+
+    :root[data-retro="on"] .dirRow.bulkSelected {
+      background: var(--retro-face-hover);
+      color: var(--retro-text);
+      outline: 1px dashed var(--retro-select-bg);
+      outline-offset: -1px;
+      border-color: var(--retro-select-bg);
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
+    }
+
+    :root[data-retro="on"] .dirRow.selected.bulkSelected {
+      background: var(--retro-select-bg);
+      color: var(--retro-select-text);
+      outline: 1px dashed var(--retro-shadow-dark);
+      outline-offset: -1px;
+      border-color: var(--retro-shadow-black);
+      box-shadow:
+        inset 1px 1px 0 var(--retro-highlight),
+        inset -1px -1px 0 var(--retro-shadow-black),
+        0 0 0 1px var(--retro-highlight-soft);
     }
 
     :root[data-retro="on"] .dirRow.selected .dirName,
@@ -986,14 +1063,20 @@
     }
 
     :root[data-retro="on"] .dirRow.folderRow.folderSquareCard.selected .dirSquareCard,
-    :root[data-retro="on"] .dirRow.folderRow.folderSquareCard.bulkSelected .dirSquareCard,
     :root[data-retro="on"] .dirRow.folderRow.folderSquareCard.selected.bulkSelected .dirSquareCard,
     :root[data-retro="on"] .dirRow.fileRow.fileThumbCardRow.selected .dirFileThumbCard,
-    :root[data-retro="on"] .dirRow.fileRow.fileThumbCardRow.bulkSelected .dirFileThumbCard,
     :root[data-retro="on"] .dirRow.fileRow.fileThumbCardRow.selected.bulkSelected .dirFileThumbCard {
       border-color: var(--retro-select-bg);
       outline-color: var(--retro-select-bg);
       box-shadow: 0 0 0 1px var(--retro-highlight), 0 0 0 3px var(--retro-select-bg);
+    }
+
+    :root[data-retro="on"] .dirRow.folderRow.folderSquareCard.bulkSelected .dirSquareCard,
+    :root[data-retro="on"] .dirRow.fileRow.fileThumbCardRow.bulkSelected .dirFileThumbCard {
+      border-color: var(--retro-select-bg);
+      outline: 2px dashed var(--retro-select-bg);
+      outline-offset: 0;
+      box-shadow: 0 0 0 1px var(--retro-highlight), 0 0 0 3px var(--retro-shadow);
     }
 
     :root[data-retro="on"] #app.preview-pane-active .dirRow.selected:not(.bulkSelected) {
@@ -1023,22 +1106,41 @@
     }
 
     :root[data-retro="on"] .dropdownMenu {
-      padding: 4px;
+      padding: 3px;
       gap: 0;
+      background: var(--retro-face);
+    }
+
+    :root[data-retro="on"] .dropdownMenu > button,
+    :root[data-retro="on"] .dropdownMenu .scoreRow,
+    :root[data-retro="on"] .dropdownMenu .menuTwoColRow {
+      position: relative;
+      background: var(--retro-face-soft);
+      border: 1px solid;
+      border-color: var(--retro-shadow-dark) var(--retro-highlight) var(--retro-highlight) var(--retro-shadow-dark);
+      box-shadow: inset 1px 1px 0 var(--retro-shadow-black), inset -1px -1px 0 var(--retro-highlight-soft);
+    }
+
+    :root[data-retro="on"] .dropdownMenu > button {
+      width: 100%;
+      padding: 6px 8px;
+      text-align: left;
+      justify-content: flex-start;
     }
 
     :root[data-retro="on"] .dropdownMenu button {
-      background: transparent;
+      background: var(--retro-face-soft);
       color: var(--retro-text);
-      border: 1px solid transparent;
-      box-shadow: none;
+      border: 1px solid;
+      border-color: var(--retro-highlight) var(--retro-shadow-dark) var(--retro-shadow-dark) var(--retro-highlight);
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
       border-radius: 0;
     }
 
     :root[data-retro="on"] .dropdownMenu button:hover:not(:disabled) {
       background: var(--retro-select-bg);
       color: var(--retro-select-text);
-      border-color: var(--retro-select-bg);
+      border-color: var(--retro-shadow-black);
     }
 
     :root[data-retro="on"] .dropdownMenu button.destructiveAction {
@@ -1055,34 +1157,46 @@
 
     :root[data-retro="on"] .dropdownMenu .scoreRow,
     :root[data-retro="on"] .dropdownMenu .menuTwoColRow {
-      gap: 4px;
+      padding: 3px;
+      gap: 3px;
     }
 
     :root[data-retro="on"] .dropdownMenu > * + * {
       position: relative;
-      margin-top: 5px;
+      margin-top: 3px;
     }
 
     :root[data-retro="on"] .dropdownMenu > * + *::before {
       content: "";
       position: absolute;
-      left: 0;
-      right: 0;
+      left: -4px;
+      right: -4px;
       top: -3px;
-      border-top: 1px solid var(--retro-shadow);
-      box-shadow: 0 1px 0 var(--retro-highlight-soft);
+      height: 1px;
+      background: var(--retro-shadow-dark);
+      box-shadow: 0 1px 0 var(--retro-highlight);
       pointer-events: none;
+    }
+
+    :root[data-retro="on"] .dropdownMenu .label {
+      display: block;
+      padding: 5px 7px;
+      background: var(--retro-face-soft);
+      color: var(--retro-text);
+      border: 1px solid;
+      border-color: var(--retro-shadow-dark) var(--retro-highlight) var(--retro-highlight) var(--retro-shadow-dark);
+      box-shadow: inset 1px 1px 0 var(--retro-shadow-black), inset -1px -1px 0 var(--retro-highlight-soft);
     }
 
     :root[data-retro="on"] #menuHeader {
       padding: 4px 4px 0;
       gap: 4px;
       border-bottom: 0;
-      background: var(--retro-title-bg);
+      background: var(--retro-face);
     }
 
     :root[data-retro="on"] #menuHeader .title {
-      color: var(--retro-title-text);
+      color: var(--retro-text);
     }
 
     :root[data-retro="on"] #menuTabs {
@@ -1106,7 +1220,7 @@
     }
 
     :root[data-retro="on"] #menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
-      background: #d9d9d9;
+      background: var(--retro-face-hover);
       color: var(--retro-text);
     }
 
@@ -1168,7 +1282,7 @@
 
     :root[data-retro="on"] .statsLedgerTable thead th,
     :root[data-retro="on"] .scoreHistoryDayHeader {
-      background: #d9d9d9;
+      background: var(--retro-face-hover);
     }
 
     :root[data-retro="on"] .statsLedgerSortBtn {
@@ -1179,7 +1293,7 @@
     }
 
     :root[data-retro="on"] .statsLedgerSortBtn:hover {
-      background: #d9d9d9;
+      background: var(--retro-face-hover);
       color: var(--retro-text);
     }
 
@@ -1537,12 +1651,6 @@
       background: var(--color1-primary);
     }
 
-    :root[data-theme="retro90s"] .statusBar,
-    :root[data-theme="retro90s-dark"] .statusBar {
-      border-top: 2px solid rgba(0,0,0,0.35);
-      box-shadow: inset 1px 1px 0 rgba(255,255,255,0.4);
-    }
-
     .dirDetailsHeader,
     .dirDetailsRow {
       display: grid;
@@ -1641,9 +1749,21 @@
     }
 
     .dirRow.bulkSelected {
+      outline: 1px dashed var(--ui-selection-outline-soft);
+      outline-offset: -1px;
       border-color: var(--anchor-internal-color2-primary);
       box-shadow: inset 0 0 0 1px var(--ui-selection-outline-soft);
-      background: var(--ui-selection-fill-strong);
+      background: var(--ui-selection-fill);
+    }
+
+    .dirRow.selected.bulkSelected {
+      outline: 1px dashed var(--ui-selection-outline);
+      outline-offset: -1px;
+      border-color: var(--ui-selection-outline);
+      box-shadow:
+        inset 0 0 0 1px var(--ui-selection-outline),
+        inset 0 0 0 3px var(--ui-selection-outline-soft);
+      background: var(--ui-selection-fill);
     }
 
     .dirRow.dragging {
@@ -1846,6 +1966,23 @@
       background: linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0.52));
     }
 
+    .dirFileOverlayCompact {
+      padding-top: 5px;
+      padding-bottom: 6px;
+      gap: 1px;
+    }
+
+    .dirFileOverlayMenuOnly {
+      top: auto;
+      right: 6px;
+      left: auto;
+      bottom: 6px;
+      width: auto;
+      padding: 0;
+      background: none;
+      z-index: 2;
+    }
+
     .dirFileOverlayTop {
       display: flex;
       align-items: flex-start;
@@ -1853,11 +1990,27 @@
       min-width: 0;
     }
 
+    .dirFileOverlayTopCompact {
+      display: none;
+    }
+
     .dirFileOverlayBottom {
       display: flex;
       align-items: flex-end;
       gap: 6px;
       min-width: 0;
+    }
+
+    .dirFileOverlayBottomCompact {
+      align-items: center;
+    }
+
+    .dirFileOverlayMenuOnly .dirFileOverlayBottom {
+      justify-content: flex-end;
+    }
+
+    .dirFileOverlayMenuOnly .dirFileMetaLine {
+      display: none;
     }
 
     .dirFileNameText {
@@ -1894,6 +2047,10 @@
       flex: 1 1 auto;
       font-size: 10px;
       color: rgba(255,255,255,0.9);
+    }
+
+    .dirFileOverlayBottomCompact .dirFileMetaLine {
+      line-height: 1.2;
     }
 
     .dirFileOverlay .dirFileMenu {
@@ -2153,6 +2310,23 @@
       background: linear-gradient(to top, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.52));
     }
 
+    .dirSquareOverlayCompact {
+      padding-top: 5px;
+      padding-bottom: 6px;
+      gap: 1px;
+    }
+
+    .dirSquareOverlayMenuOnly {
+      top: auto;
+      right: 6px;
+      left: auto;
+      bottom: 6px;
+      width: auto;
+      padding: 0;
+      background: none;
+      z-index: 2;
+    }
+
     .dirSquareTop {
       display: flex;
       align-items: flex-start;
@@ -2160,11 +2334,60 @@
       min-width: 0;
     }
 
+    .dirSquareTopCompact {
+      align-items: center;
+    }
+
+    .dirSquareTopCompact .dirSquareName,
+    .dirSquareTopCompact .dirSquareRenameInput {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
     .dirSquareBottom {
       display: flex;
-      align-items: flex-end;
+      align-items: center;
       gap: 6px;
       min-width: 0;
+    }
+
+    .dirSquareBottomCompact {
+      min-height: 0;
+    }
+
+    .previewTagFolderCard .dirSquareOverlayCompact,
+    #directoriesList.gridModeList .tagEntry .dirSquareOverlayCompact {
+      padding-top: 4px;
+      padding-bottom: 5px;
+    }
+
+    .previewTagFolderCard .dirSquareBottomCompact,
+    #directoriesList.gridModeList .tagEntry .dirSquareBottomCompact {
+      align-items: center;
+    }
+
+    .previewTagFolderCard .dirSquareBottomCompact .dirSquareNameInlineCompact,
+    #directoriesList.gridModeList .tagEntry .dirSquareBottomCompact .dirSquareNameInlineCompact {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 22px;
+      line-height: 1.08;
+      align-self: center;
+    }
+
+    .dirSquareOverlayMenuOnly .dirSquareBottom {
+      justify-content: flex-end;
+    }
+
+    .dirSquareOverlayMenuOnly .dirSquareMeta {
+      display: none;
+    }
+
+    .dirSquareOverlayMenuOnly .dirSquareRightMeta {
+      gap: 0;
     }
 
     .dirSquareName {
@@ -2188,6 +2411,21 @@
 
     .dirSquareNameTagAlbum {
       color: var(--dir-tag-album-title-color, #ff6b63);
+    }
+
+    .dirRow.tagBarCard:hover .dirSquareNameTag,
+    .dirRow.tagBarCard:hover .dirSquareNameTagFavorite,
+    .dirRow.tagBarCard:hover .dirSquareNameTagAlbum,
+    .dirRow.tagBarCard.selected .dirSquareNameTag,
+    .dirRow.tagBarCard.selected .dirSquareNameTagFavorite,
+    .dirRow.tagBarCard.selected .dirSquareNameTagAlbum,
+    .dirRow.tagBarCard.bulkSelected .dirSquareNameTag,
+    .dirRow.tagBarCard.bulkSelected .dirSquareNameTagFavorite,
+    .dirRow.tagBarCard.bulkSelected .dirSquareNameTagAlbum,
+    #app.preview-pane-active .dirRow.tagBarCard.selected:not(.bulkSelected) .dirSquareNameTag,
+    #app.preview-pane-active .dirRow.tagBarCard.selected:not(.bulkSelected) .dirSquareNameTagFavorite,
+    #app.preview-pane-active .dirRow.tagBarCard.selected:not(.bulkSelected) .dirSquareNameTagAlbum {
+      color: var(--color0-primary);
     }
 
     .dirSquareScore {
@@ -2227,16 +2465,21 @@
       margin-left: 0;
     }
 
+    .dirSquareTopCompact .dirMenu {
+      margin-left: auto;
+      align-self: center;
+    }
+
     .dirSquareRightMeta .dirMenu {
       align-self: flex-end;
     }
 
     .dirSquareOverlay .dirMenuBtn {
       min-width: 22px;
-      padding: 2px 5px;
-      background: rgba(255, 255, 255, 0.12);
-      border-color: rgba(255, 255, 255, 0.28);
-      color: #fff;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      font-size: 16px;
     }
 
     .dirSquareOverlay .dirMenuBtn:disabled {
@@ -2256,10 +2499,14 @@
 
     .dirRow.folderRow.folderSquareCard.bulkSelected .dirSquareCard {
       border-color: var(--anchor-internal-color2-primary);
-      box-shadow: 0 0 0 2px var(--ui-selection-outline-soft);
+      outline: 2px dashed var(--ui-selection-outline-soft);
+      outline-offset: 0;
+      box-shadow: 0 0 0 1px var(--ui-selection-outline-soft);
     }
 
     .dirRow.folderRow.folderSquareCard.selected.bulkSelected .dirSquareCard {
+      outline: 2px dashed var(--ui-selection-outline-soft);
+      outline-offset: 0;
       box-shadow:
         0 0 0 1px var(--ui-selection-outline),
         0 0 0 3px var(--ui-selection-outline-soft);
@@ -2275,12 +2522,14 @@
     }
 
     .dirRow.fileRow.fileThumbCardRow.bulkSelected .dirFileThumbCard {
-      outline: 2px solid var(--anchor-internal-color2-primary);
+      outline: 2px dashed var(--ui-selection-outline-soft);
       outline-offset: 0;
-      box-shadow: 0 0 0 2px var(--ui-selection-outline-soft);
+      box-shadow: 0 0 0 1px var(--ui-selection-outline-soft);
     }
 
     .dirRow.fileRow.fileThumbCardRow.selected.bulkSelected .dirFileThumbCard {
+      outline: 2px dashed var(--ui-selection-outline-soft);
+      outline-offset: 0;
       box-shadow:
         0 0 0 1px var(--ui-selection-outline),
         0 0 0 3px var(--ui-selection-outline-soft);
@@ -2325,7 +2574,18 @@
     }
 
     .dirFavoriteHeart {
-      color: #ff6f91;
+      color: var(--dir-tag-favorite-title-color, #ff6f91);
+      line-height: 1;
+      font-size: 0.95em;
+    }
+
+    .dirMenuFavoriteGlyph {
+      display: inline-block;
+      font-size: 16px;
+      line-height: 1;
+      font-weight: 400;
+      font-family: inherit;
+      transform: none;
     }
 
     .dirHiddenBadge {
@@ -2393,6 +2653,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      font-family: inherit;
       border-radius: 2px;
       border: 1px solid var(--color1-tertiary);
       background: var(--color1-primary);
@@ -2401,6 +2662,18 @@
       cursor: pointer;
       transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
       box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    .dirMenuBtnFavorite {
+      font-size: 15px;
+    }
+
+    .dirMenuBtnFavorite .dirFavoriteHeart,
+    .thumbOverlayMenuBtnFavorite .dirFavoriteHeart,
+    .dirMenuBtnFavorite .dirMenuFavoriteGlyph,
+    .thumbOverlayMenuBtnFavorite .dirMenuFavoriteGlyph {
+      color: inherit;
+      line-height: 1;
     }
 
     .dirMenuBtn:hover:not(:disabled) {
@@ -2527,12 +2800,6 @@
       max-width: 280px;
     }
 
-    :root[data-theme="retro90s"] .crumb,
-    :root[data-theme="retro90s-dark"] .crumb {
-      border-width: 2px;
-      border-color: rgba(0,0,0,0.35);
-      box-shadow: inset 1px 1px 0 rgba(255,255,255,0.65), inset -1px -1px 0 rgba(0,0,0,0.25);
-    }
     .crumb:hover { background: rgba(0,0,0,0.35); }
     .crumb span {
       overflow: hidden;
@@ -2631,10 +2898,14 @@
     }
 
     .gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard {
+      position: relative;
+      z-index: 1;
       border-color: var(--anchor-internal-color2-primary);
+      outline: 3px solid var(--ui-selection-outline-soft);
+      outline-offset: 0;
       box-shadow:
-        0 10px 30px var(--color1-primary-transparent),
-        0 0 0 2px var(--ui-selection-outline-soft);
+        var(--ui-preview-selection-shadow),
+        0 0 0 3px var(--ui-selection-outline-soft);
     }
 
     .gridFolders .previewTagFolderCard.selected.bulkSelected .dirSquareCard {
@@ -2694,6 +2965,18 @@
       box-shadow: var(--ui-preview-selection-shadow);
     }
 
+    .gridFiles .fileCard.bulkSelected {
+      outline: 3px solid var(--ui-selection-outline-soft);
+      outline-offset: 0;
+      box-shadow: var(--ui-preview-selection-shadow), 0 0 0 2px var(--ui-selection-outline-soft);
+    }
+
+    .gridFiles .fileCard.previewSelected.bulkSelected {
+      outline: 3px solid var(--ui-selection-outline);
+      outline-offset: 0;
+      box-shadow: var(--ui-preview-selection-shadow), 0 0 0 2px var(--ui-selection-outline-soft);
+    }
+
     .gridFiles .fileCard.previewSelected.previewSelectedActive {
       outline: 3px solid var(--ui-selection-outline);
       outline-offset: 0;
@@ -2718,10 +3001,33 @@
       color: #fff;
     }
 
+    .gridFiles.previewSquareCards .previewThumbOverlayMetaMenuOnly,
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMetaMenuOnly {
+      top: auto;
+      right: 6px;
+      left: auto;
+      bottom: 6px;
+      width: auto;
+      padding: 0;
+      background: none;
+      z-index: 2;
+    }
+
     .gridFiles.previewSquareCards .previewThumbOverlayTopLine {
       display: flex;
       align-items: center;
       gap: 6px;
+      min-width: 0;
+    }
+
+    .gridFiles.previewSquareCards .previewThumbOverlayTopLineCompact,
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayTopLineCompact {
+      align-items: center;
+    }
+
+    .gridFiles.previewSquareCards .previewThumbOverlayTopLineCompact .name,
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayTopLineCompact .name {
+      flex: 1 1 auto;
       min-width: 0;
     }
 
@@ -2730,6 +3036,12 @@
       align-items: center;
       gap: 6px;
       min-width: 0;
+    }
+
+    .gridFiles.previewSquareCards .previewThumbOverlayMetaMenuOnly .previewThumbOverlayBottomLine,
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMetaMenuOnly .previewThumbOverlayBottomLine {
+      justify-content: flex-end;
+      gap: 0;
     }
 
     .gridFiles.previewSquareCards .previewThumbOverlayBottomLine .previewThumbOverlayMini {
@@ -2748,12 +3060,9 @@
     .gridFiles.previewSquareCards .previewThumbOverlayMenuBtn {
       min-width: 22px;
       width: 22px;
-      height: 18px;
-      padding: 0 4px;
-      font-size: 14px;
-      background: rgba(255,255,255,0.14);
-      border-color: rgba(255,255,255,0.34);
-      color: #fff;
+      height: 22px;
+      padding: 0;
+      font-size: 16px;
     }
 
     .gridFiles.previewSquareCards .previewThumbOverlayMeta .name {
@@ -2766,6 +3075,12 @@
     .gridFiles.previewSquareCards .previewThumbOverlayMini {
       color: rgba(255,255,255,0.9);
       text-transform: none;
+    }
+
+    .gridFiles .previewThumbOverlayMenuInline,
+    .gridFiles .previewThumbOverlayBottomLine .previewThumbOverlayMenuInline {
+      margin-left: auto;
+      align-self: center;
     }
 
     .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard {
@@ -2829,12 +3144,9 @@
     .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMenuBtn {
       min-width: 22px;
       width: 22px;
-      height: 18px;
-      padding: 0 4px;
-      font-size: 14px;
-      background: rgba(255,255,255,0.14);
-      border-color: rgba(255,255,255,0.34);
-      color: #fff;
+      height: 22px;
+      padding: 0;
+      font-size: 16px;
     }
 
     .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta .name {
@@ -3009,11 +3321,17 @@
     }
 
     .gridFolders .folderCard.folderThumbCard.bulkSelected {
-      box-shadow: 0 10px 30px var(--color1-primary-transparent), inset 0 0 0 2px var(--ui-selection-outline-soft);
+      position: relative;
+      z-index: 1;
+      outline: 3px solid var(--ui-selection-outline-soft);
+      outline-offset: 0;
+      box-shadow: var(--ui-preview-selection-shadow), 0 0 0 3px var(--ui-selection-outline-soft);
     }
 
     .gridFolders .folderCard.folderThumbCard.selected.bulkSelected {
-      box-shadow: 0 10px 30px var(--color1-primary-transparent), inset 0 0 0 2px var(--ui-selection-outline);
+      outline: 3px solid var(--ui-selection-outline);
+      outline-offset: 0;
+      box-shadow: var(--ui-preview-selection-shadow), 0 0 0 2px var(--ui-selection-outline-soft);
     }
 
     .folderCard.folderThumbCard.folderThumbCoverCard {
@@ -3049,6 +3367,17 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      min-width: 0;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayTopLineCompact {
+      align-items: center;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayTopLineCompact .name,
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayTopLineCompact .previewFolderRenameInput,
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayTopLineCompact .previewFolderTagInput {
+      flex: 1 1 auto;
       min-width: 0;
     }
 
@@ -3094,12 +3423,9 @@
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtn {
       min-width: 22px;
       width: 22px;
-      height: 18px;
-      padding: 0 4px;
-      font-size: 14px;
-      background: rgba(255,255,255,0.14);
-      border-color: rgba(255,255,255,0.34);
-      color: #fff;
+      height: 22px;
+      padding: 0;
+      font-size: 16px;
     }
 
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .dirStatusBadge {
@@ -3108,7 +3434,7 @@
     }
 
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .dirFavoriteHeart {
-      color: #ff89a9;
+      color: inherit;
     }
 
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .name,
@@ -3120,6 +3446,77 @@
       font-size: 18px;
       line-height: 1.1;
       font-weight: 700;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaCompact {
+      padding-top: 5px;
+      padding-bottom: 6px;
+      gap: 1px;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaMenuOnly {
+      top: auto;
+      right: 6px;
+      left: auto;
+      bottom: 6px;
+      width: auto;
+      padding: 0;
+      background: none;
+      z-index: 2;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuInline {
+      margin-left: auto;
+      align-self: center;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaMenuOnly .thumbOverlayBottomLine,
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaMenuOnly .thumbOverlayRightMeta {
+      justify-content: flex-end;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaMenuOnly .thumbOverlayRightMeta {
+      gap: 0;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
+    .dirMenuBtnFavorite {
+      color: var(--dir-tag-favorite-title-color, #ff6f91);
+      font-size: 15px;
+    }
+
+    :root[data-retro="on"] .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
+    :root[data-retro="on"] .dirMenuBtnFavorite {
+      color: #b00020;
+    }
+
+    .gridFiles.previewSquareCards .previewThumbOverlayMetaCompact,
+    .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMetaCompact {
+      padding-top: 5px;
+      padding-bottom: 6px;
+      gap: 1px;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayBottomLine .thumbOverlayNameInlineCompact,
+    .gridFiles .previewThumbOverlayBottomLine .previewThumbOverlayNameInlineCompact {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.12;
+      align-self: center;
+    }
+
+    .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayBottomLine .thumbOverlayNameInlineCompact {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .gridFiles .previewThumbOverlayBottomLine .previewThumbOverlayNameInlineCompact {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
     }
 
     .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .previewFolderRenameInput,
@@ -3323,6 +3720,17 @@
       box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
     }
 
+    :root[data-retro="on"] .gridFiles .previewThumbOverlayMetaMenuOnly,
+    :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
+    :root[data-retro="on"] .previewTagFolderCard .dirSquareOverlayMenuOnly,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlayMenuOnly,
+    :root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlayMenuOnly {
+      padding: 0;
+      background: none;
+      border-top: 0;
+      box-shadow: none;
+    }
+
     :root[data-retro="on"] .gridFiles .previewThumbOverlayTopLine,
     :root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayTopLine,
     :root[data-retro="on"] .previewTagFolderCard .dirSquareTop,
@@ -3405,9 +3813,9 @@
     :root[data-retro="on"] #directoriesList.gridModeList .dirFileMenu .dirMenuBtn {
       min-width: 22px;
       width: 22px;
-      height: 18px;
-      padding: 0 4px;
-      font-size: 14px;
+      height: 22px;
+      padding: 0;
+      font-size: 16px;
       background: var(--retro-face-soft);
       color: var(--retro-text);
       border: 1px solid;
@@ -3420,10 +3828,10 @@
     :root[data-retro="on"] .previewTagFolderCard .dirSquareOverlay .dirMenuBtn:hover:not(:disabled),
     :root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlay .dirMenuBtn:hover:not(:disabled),
     :root[data-retro="on"] #directoriesList.gridModeList .dirFileMenu .dirMenuBtn:hover:not(:disabled) {
-      background: var(--retro-select-bg);
-      color: var(--retro-select-text);
-      border-color: var(--retro-shadow-black);
-      box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.28), inset -1px -1px 0 rgba(255, 255, 255, 0.18);
+      background: var(--retro-face-hover);
+      color: var(--retro-text);
+      border-color: var(--retro-highlight) var(--retro-shadow-black) var(--retro-shadow-black) var(--retro-highlight);
+      box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
     }
 
     :root[data-retro="on"] .gridFiles .previewThumbOverlayMenuBtn:active:not(:disabled),
@@ -3441,6 +3849,15 @@
       border-color: var(--retro-shadow-dark);
       outline-color: var(--retro-shadow-dark);
       box-shadow: 0 0 0 1px var(--retro-highlight), 0 0 0 3px var(--retro-shadow);
+    }
+
+    :root[data-retro="on"] .gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard,
+    :root[data-retro="on"] .gridFiles .fileCard.bulkSelected,
+    :root[data-retro="on"] .gridFolders .folderCard.folderThumbCard.bulkSelected {
+      border-color: var(--retro-select-bg);
+      outline: 3px solid var(--retro-shadow-dark);
+      outline-offset: 0;
+      box-shadow: 0 0 0 1px var(--retro-highlight), 0 0 0 3px var(--retro-select-bg);
     }
 
     :root[data-retro="on"] .gridFolders .previewTagFolderCard.previewSelected.previewSelectedActive .dirSquareCard,
@@ -3912,15 +4329,6 @@
       z-index: 10001;
     }
 
-    :root[data-theme="retro90s"] #menuCard,
-    :root[data-theme="retro90s-dark"] #menuCard,
-    :root[data-theme="retro90s"] #propertiesCard,
-    :root[data-theme="retro90s-dark"] #propertiesCard {
-      border-width: 2px;
-      border-color: rgba(0,0,0,0.4);
-      box-shadow: inset 1px 1px 0 rgba(255,255,255,0.35), inset -1px -1px 0 rgba(0,0,0,0.25);
-    }
-
     #menuCard.overlayCardDragging {
       cursor: grabbing;
     }
@@ -4094,16 +4502,18 @@
       display: flex;
       align-items: center;
       justify-content: flex-end;
+      min-width: 0;
     }
 
     #optionsBody .optSelect {
-      min-width: 180px;
+      min-width: 0;
       justify-content: flex-end;
     }
 
     #optionsBody .optSelectBtn {
       width: auto;
-      min-width: 180px;
+      min-width: 0;
+      max-width: min(320px, calc(100vw - 96px));
       height: 26px;
       padding: 0 8px;
       gap: 10px;
@@ -4128,13 +4538,129 @@
     }
 
     #optionsBody .optSelectMenu {
-      min-width: max(180px, 100%);
+      width: max-content;
+      min-width: 0;
       max-width: min(320px, calc(100vw - 64px));
     }
 
     #optionsBody .optSelectMenu button.current {
       background: var(--color1-secondary);
       border-color: var(--color1-tertiary);
+    }
+
+    #menuOverlay .appToggleBtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: none;
+      color: var(--color0-primary);
+      cursor: pointer;
+      transition: transform .16s ease, box-shadow .16s ease;
+      box-shadow: none;
+    }
+
+    #menuOverlay .appToggleBtn:hover {
+      transform: translateY(var(--ui-hover-lift));
+      box-shadow: none;
+    }
+
+    #menuOverlay .appToggleBtn:active {
+      transform: translateY(var(--ui-active-press));
+      box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    #menuOverlay .appToggleBtn:focus-visible {
+      outline: none;
+      box-shadow: none;
+    }
+
+    #menuOverlay .appToggleBtn:focus-visible .appToggleTrack {
+      box-shadow: var(--ui-focus-ring);
+    }
+
+    #menuOverlay .appToggleTrack {
+      position: relative;
+      width: 30px;
+      height: 16px;
+      flex: 0 0 auto;
+      border: 1px solid var(--color1-tertiary);
+      border-radius: 999px;
+      background: var(--color1-secondary);
+      transition: background .16s ease, border-color .16s ease;
+    }
+
+    #menuOverlay .appToggleThumb {
+      position: absolute;
+      top: 1px;
+      left: 1px;
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--color0-secondary);
+      transition: transform .16s ease, background .16s ease;
+    }
+
+    #menuOverlay .appToggleBtn.isOn .appToggleTrack {
+      background: var(--palette-accent);
+      border-color: var(--palette-accent);
+    }
+
+    #menuOverlay .appToggleBtn.isOn .appToggleThumb {
+      transform: translateX(14px);
+      background: #ffffff;
+    }
+
+    :root[data-retro="on"] #menuOverlay .appToggleBtn {
+      min-width: 0;
+      padding: 0;
+      border-radius: 0;
+      border: 0;
+      background: none;
+      color: var(--retro-text);
+      box-shadow: none;
+    }
+
+    :root[data-retro="on"] #menuOverlay .appToggleBtn:hover {
+      color: var(--retro-text);
+      transform: none;
+      box-shadow: none;
+    }
+
+    :root[data-retro="on"] #menuOverlay .appToggleBtn:active {
+      transform: none;
+      box-shadow: none;
+    }
+
+    :root[data-retro="on"] #menuOverlay .appToggleTrack {
+      width: 28px;
+      height: 14px;
+      border-radius: 0;
+      border: 1px solid var(--retro-shadow-dark);
+      background: var(--retro-shadow);
+    }
+
+    :root[data-retro="on"] #menuOverlay .appToggleThumb {
+      top: 1px;
+      left: 1px;
+      width: 10px;
+      height: 10px;
+      border-radius: 0;
+      background: var(--retro-highlight);
+    }
+
+    :root[data-retro="on"] #menuOverlay .appToggleBtn.isOn .appToggleTrack {
+      background: var(--retro-title-bg);
+      border-color: var(--retro-shadow-black);
+    }
+
+    :root[data-retro="on"] #menuOverlay .appToggleBtn.isOn .appToggleThumb {
+      transform: translateX(14px);
+      background: #ffffff;
     }
 
     #optionsBody .optRow.optOverlayRow {
