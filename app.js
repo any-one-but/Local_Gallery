@@ -25977,18 +25977,18 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
         const showFileThumbnailTitle = showFileThumbnailTitles;
         const menuOnlyOverlayMeta = forceOverlayMeta && !showFileThumbnailTitle && fileMetaBits.length === 0;
         const compactOverlayMeta = forceOverlayMeta && !menuOnlyOverlayMeta && (!showFileThumbnailTitle || fileMetaBits.length === 0);
+        const inlineFileTitleCompact = forceOverlayMeta && showFileThumbnailTitle && fileMetaBits.length === 0;
         if (forceOverlayMeta || showNameMeta) {
           const top = document.createElement("div");
           top.className = forceOverlayMeta ? "topLine previewThumbOverlayTopLine" : "topLine";
 
-        const inlineFileTitleCompact = forceOverlayMeta && showFileThumbnailTitle && fileMetaBits.length === 0;
-        if (showFileThumbnailTitle && !inlineFileTitleCompact) {
-          const name = document.createElement("div");
-          name.className = "name";
-          name.textContent = fileDisplayNameForRecord(rec) || "—";
-          name.title = relPathDisplayName(rec.relPath || rec.name || "");
-          top.appendChild(name);
-        }
+          if (showFileThumbnailTitle && !inlineFileTitleCompact) {
+            const name = document.createElement("div");
+            name.className = "name";
+            name.textContent = fileDisplayNameForRecord(rec) || "—";
+            name.title = relPathDisplayName(rec.relPath || rec.name || "");
+            top.appendChild(name);
+          }
           if (inlineFileTitleCompact && showPreviewFileMenuBtn) {
             top.classList.add("previewThumbOverlayTopLineCompact");
           }
