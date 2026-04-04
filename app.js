@@ -5401,6 +5401,9 @@
     const directoriesSearchClearBtn = $("directoriesSearchClearBtn");
     const tagActionMenuEl = $("tagActionMenu");
     if (tagActionMenuEl) {
+      if (tagActionMenuEl.parentElement !== document.body) {
+        document.body.appendChild(tagActionMenuEl);
+      }
       tagActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
     }
     const dirBackBtn = $("dirBackBtn");

@@ -1243,6 +1243,29 @@
       top: 0;
     }
 
+    :root[data-frutiger="on"][data-theme="frutiger"] #menuTabs .menuTabBtn {
+      box-shadow: none;
+      border-top-color: color-mix(in srgb, var(--palette-accent) 30%, white 70%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.11) 56%, rgba(0, 0, 0, 0.06) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 80%, white 20%) 0%, var(--color1-primary) 100%);
+    }
+
+    :root[data-frutiger="on"][data-theme="frutiger"] #menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
+      border-top-color: color-mix(in srgb, var(--palette-accent) 34%, white 66%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.13) 56%, rgba(0, 0, 0, 0.05) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 84%, white 16%) 0%, color-mix(in srgb, var(--color1-primary) 92%, white 8%) 100%);
+    }
+
+    :root[data-frutiger="on"][data-theme="frutiger"] #menuTabs .menuTabBtn.active {
+      box-shadow: none;
+      border-top-color: color-mix(in srgb, var(--palette-accent) 64%, white 36%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.18) 44%, rgba(0, 0, 0, 0.05) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--palette-accent) 82%, white 18%) 0%, color-mix(in srgb, var(--palette-accent) 92%, white 8%) 54%, color-mix(in srgb, var(--palette-accent) 74%, black 26%) 100%);
+    }
+
     :root[data-frutiger="on"] #titlePane h1,
     :root[data-frutiger="on"] #titleMain .label,
     :root[data-frutiger="on"] #titleMain .pill {
