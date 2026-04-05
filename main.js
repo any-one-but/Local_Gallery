@@ -133,6 +133,13 @@ function createWindow() {
 
   win.setMenuBarVisibility(false);
   win.webContents.setIgnoreMenuShortcuts(true);
+  win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    const src = sourceId ? `${sourceId}:${line}` : `line:${line}`;
+    console.log(`[renderer:${level}] ${src} ${message}`);
+  });
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.error("[renderer] render-process-gone", details);
+  });
   win.loadFile(path.join(__dirname, "index.html"));
 }
 
