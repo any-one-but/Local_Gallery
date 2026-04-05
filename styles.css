@@ -103,6 +103,9 @@
     :root[data-theme="classic-light"] .dropdownMenu,
     :root[data-theme="classic-light"] #menuCard,
     :root[data-theme="classic-light"] #propertiesCard,
+    :root[data-theme="superlight"] .dropdownMenu,
+    :root[data-theme="superlight"] #menuCard,
+    :root[data-theme="superlight"] #propertiesCard,
     :root[data-theme="frutiger-light"] .dropdownMenu,
     :root[data-theme="frutiger-light"] #menuCard,
     :root[data-theme="frutiger-light"] #propertiesCard,
@@ -129,6 +132,7 @@
 
     :root[data-theme="classic-light"],
     :root[data-theme="light"],
+    :root[data-theme="superlight"],
     :root[data-theme="frutiger-light"],
     :root[data-theme="synthwave-light"],
     :root[data-theme="verdant-light"],
@@ -171,10 +175,46 @@
       --ui-focus-ring: 0 0 0 2px rgba(255, 255, 255, 0.16);
     }
 
+    :root[data-theme="superlight"] {
+      --color0-primary: #000;
+      --color0-secondary: #404040;
+      --color0-tertirary: #6a6a6a;
+
+      --color1-primary: #fff;
+      --color1-primary-transparent: hsla(0, 0%, 100%, .96);
+      --color1-secondary: #fff;
+      --color1-secondary-transparent: hsla(0, 0%, 100%, .78);
+      --color1-tertiary: #000;
+
+      --anchor-internal-color2-primary: #000;
+      --palette-accent: #000;
+      --palette-accent-text: #fff;
+      --palette-accent-outline: #000;
+      --dir-tag-title-color: #6f5200;
+      --dir-tag-favorite-title-color: #7a1f4e;
+      --dir-tag-album-title-color: #0b5f78;
+      --tag-include-bg: #fff;
+      --tag-include-border: #000;
+      --tag-include-color: #000;
+      --tag-exclude-bg: #fff;
+      --tag-exclude-border: #000;
+      --tag-exclude-color: #000;
+      --ui-hover-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+      --ui-focus-ring: 0 0 0 2px rgba(0, 0, 0, 0.18);
+      --ui-preview-selection-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+      color-scheme: light;
+    }
+
     :root[data-theme="superdark"] button,
     :root[data-theme="superdark"] .miniBtn {
       background: #000;
       color: #fff;
+    }
+
+    :root[data-theme="superlight"] button,
+    :root[data-theme="superlight"] .miniBtn {
+      background: #fff;
+      color: #000;
     }
 
     :root[data-theme="superdark"] button:hover,
@@ -182,7 +222,16 @@
       background: #000;
     }
 
+    :root[data-theme="superlight"] button:hover,
+    :root[data-theme="superlight"] .miniBtn:hover {
+      background: #fff;
+    }
+
     :root[data-theme="superdark"] #divider::before {
+      background: transparent;
+    }
+
+    :root[data-theme="superlight"] #divider::before {
       background: transparent;
     }
 
@@ -191,6 +240,14 @@
     }
 
     :root[data-theme="superdark"] #previewBody .folderCard {
+      border-color: transparent;
+    }
+
+    :root[data-theme="superlight"] #previewBody .fileCard {
+      border-color: transparent;
+    }
+
+    :root[data-theme="superlight"] #previewBody .folderCard {
       border-color: transparent;
     }
 
@@ -579,6 +636,7 @@
       --retro-shadow-black: #000000;
       --retro-face-hover: #dadada;
       --retro-face-active: #cfcfcf;
+      --retro-link: #0b51d8;
       --retro-title-bg: var(--palette-accent);
       --retro-title-text: var(--palette-accent-text);
       --retro-select-bg: var(--palette-accent);
@@ -611,6 +669,7 @@
       --retro-shadow-black: #000000;
       --retro-face-hover: rgba(255, 255, 255, 0.12);
       --retro-face-active: rgba(255, 255, 255, 0.18);
+      --retro-link: #7ab8ff;
       --retro-title-bg: var(--palette-accent);
       --retro-title-text: var(--palette-accent-text);
       --retro-select-bg: var(--palette-accent);
@@ -644,6 +703,7 @@
       --retro-shadow-black: rgba(0, 0, 0, 0.9);
       --retro-face-hover: rgba(255, 255, 255, 0.68);
       --retro-face-active: rgba(255, 255, 255, 0.46);
+      --retro-link: #0b51d8;
       --retro-title-bg: var(--palette-accent);
       --retro-title-text: var(--palette-accent-text);
       --retro-select-bg: var(--palette-accent);
@@ -670,6 +730,16 @@
       background: var(--retro-desktop);
       background-image: none;
       color: var(--retro-text);
+    }
+
+    :root[data-retro="on"] #app {
+      box-sizing: border-box;
+      background: var(--retro-face);
+      box-shadow:
+        inset 2px 2px 0 var(--retro-highlight),
+        inset -2px -2px 0 var(--retro-shadow-black),
+        inset 3px 3px 0 var(--retro-highlight-soft),
+        inset -3px -3px 0 var(--retro-shadow);
     }
 
 
@@ -743,21 +813,23 @@
       left: min(320px, 28vw);
       width: 8px;
       margin-left: -4px;
-      z-index: 40;
+      z-index: 16;
       cursor: col-resize;
       background: transparent;
+      box-shadow: none;
+      outline: none;
       touch-action: none;
     }
 
     #divider::before {
       content: "";
       position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
+      left: calc(50% - 0.5px);
       top: 0;
       bottom: 0;
       width: 1px;
       background: var(--color1-tertiary);
+      box-shadow: none;
       pointer-events: none;
     }
 
@@ -946,9 +1018,6 @@
       border-radius: 0;
     }
 
-    :root[data-retro="on"] #titlePane,
-    :root[data-retro="on"] #directoriesPane,
-    :root[data-retro="on"] #previewPane,
     :root[data-retro="on"] #menuCard,
     :root[data-retro="on"] .dropdownMenu,
     :root[data-retro="on"] .statsWidgetCard,
@@ -963,13 +1032,29 @@
     }
 
     :root[data-retro="on"] #titlePane {
-      padding: 4px;
+      padding: 6px 6px 4px;
       gap: 4px;
+      box-sizing: border-box;
       background: var(--retro-face);
+      border: 0 !important;
+      box-shadow: none !important;
+      outline: none !important;
+    }
+
+    :root[data-retro="on"] #app.title-layout-compact #titlePane {
+      background: var(--retro-face);
+      border: 0 !important;
+      border-bottom: 0 !important;
+      box-shadow: none !important;
+      outline: none !important;
     }
 
     :root[data-retro="on"] #titlePaneTop {
       gap: 6px;
+      background: var(--retro-face);
+      border: 0 !important;
+      box-shadow: none !important;
+      outline: none !important;
     }
 
     :root[data-retro="on"] #titleMain {
@@ -978,6 +1063,9 @@
       background: var(--retro-title-bg);
       color: var(--retro-title-text);
       align-items: center;
+      border: 0 !important;
+      box-shadow: none !important;
+      outline: none !important;
     }
 
     :root[data-retro="on"] #titlePane h1 {
@@ -985,6 +1073,15 @@
       font-size: 13px;
       font-weight: 700;
       letter-spacing: 0;
+    }
+
+    :root[data-retro="on"] #directoriesPane,
+    :root[data-retro="on"] #previewPane {
+      padding: 4px 6px 6px;
+      box-sizing: border-box;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
     }
 
     :root[data-retro="on"] #directoriesPane,
@@ -1000,8 +1097,8 @@
     }
 
     :root[data-retro="on"] #directoriesHeader.active {
-      padding: 6px 6px 4px;
-      border-bottom: 1px solid var(--retro-shadow);
+      padding: 4px 4px 3px;
+      border-bottom: 0;
       gap: 6px;
     }
 
@@ -1013,8 +1110,8 @@
 
     :root[data-retro="on"] #divider::before {
       width: 2px;
-      background: var(--retro-shadow-dark);
-      box-shadow: 1px 0 0 var(--retro-highlight);
+      background: transparent;
+      box-shadow: none;
     }
 
     :root[data-retro="on"] .folderCard,
@@ -1217,19 +1314,24 @@
     }
 
     :root[data-frutiger="on"] #menuTabs .menuTabBtn {
-      border-radius: 999px;
+      border-radius: 22px 22px 12px 12px / 26px 26px 10px 10px;
       border-color: color-mix(in srgb, var(--palette-accent) 18%, var(--frutiger-panel-border) 82%);
       background:
+        radial-gradient(120% 140% at 50% 0%, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.16) 34%, rgba(255, 255, 255, 0.02) 64%, transparent 78%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.08) 48%, rgba(0, 0, 0, 0.08) 100%),
         linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 78%, white 22%) 0%, var(--color1-primary) 100%);
       color: var(--color0-primary);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
-      padding: 5px 14px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.34),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+      padding: 8px 20px 7px;
+      min-height: 38px;
       top: 0;
     }
 
     :root[data-frutiger="on"] #menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
       background:
+        radial-gradient(120% 140% at 50% 0%, rgba(255, 255, 255, 0.44) 0%, rgba(255, 255, 255, 0.22) 34%, rgba(255, 255, 255, 0.04) 64%, transparent 80%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.12) 48%, rgba(0, 0, 0, 0.08) 100%),
         linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 84%, white 16%) 0%, color-mix(in srgb, var(--color1-primary) 90%, white 10%) 100%);
       color: var(--color0-primary);
@@ -1239,7 +1341,9 @@
       background: var(--frutiger-select-bg);
       color: var(--frutiger-select-text);
       border-color: color-mix(in srgb, var(--palette-accent) 72%, black 28%);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.42),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.1);
       top: 0;
     }
 
@@ -1247,6 +1351,7 @@
       box-shadow: none;
       border-top-color: color-mix(in srgb, var(--palette-accent) 30%, white 70%);
       background:
+        radial-gradient(120% 140% at 50% 0%, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.14) 36%, rgba(255, 255, 255, 0.03) 66%, transparent 80%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.11) 56%, rgba(0, 0, 0, 0.06) 100%),
         linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 80%, white 20%) 0%, var(--color1-primary) 100%);
     }
@@ -1254,6 +1359,7 @@
     :root[data-frutiger="on"][data-theme="frutiger"] #menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
       border-top-color: color-mix(in srgb, var(--palette-accent) 34%, white 66%);
       background:
+        radial-gradient(120% 140% at 50% 0%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.17) 36%, rgba(255, 255, 255, 0.04) 66%, transparent 82%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.13) 56%, rgba(0, 0, 0, 0.05) 100%),
         linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 84%, white 16%) 0%, color-mix(in srgb, var(--color1-primary) 92%, white 8%) 100%);
     }
@@ -1262,6 +1368,7 @@
       box-shadow: none;
       border-top-color: color-mix(in srgb, var(--palette-accent) 64%, white 36%);
       background:
+        radial-gradient(120% 140% at 50% 0%, rgba(255, 255, 255, 0.46) 0%, rgba(255, 255, 255, 0.2) 34%, rgba(255, 255, 255, 0.06) 66%, transparent 82%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.18) 44%, rgba(0, 0, 0, 0.05) 100%),
         linear-gradient(180deg, color-mix(in srgb, var(--palette-accent) 82%, white 18%) 0%, color-mix(in srgb, var(--palette-accent) 92%, white 8%) 54%, color-mix(in srgb, var(--palette-accent) 74%, black 26%) 100%);
     }
@@ -1451,11 +1558,13 @@
     :root[data-frutiger="on"] .dropdownMenu .scoreRow .scoreBtn,
     :root[data-frutiger="on"] .dropdownMenu .menuTwoColRow button {
       border-radius: 999px;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
     }
 
     :root[data-frutiger="on"] .dropdownMenu .scoreRow .scoreBtn {
-      width: auto;
-      flex: 1 1 0;
+      width: 100%;
     }
 
     :root[data-frutiger="on"] .dropdownMenu button:hover:not(:disabled) {
@@ -1506,8 +1615,29 @@
     }
 
     :root[data-frutiger="on"] #menuTabs {
-      gap: 2px;
+      gap: 8px;
       align-items: center;
+      padding: 6px 10px 2px;
+      box-sizing: border-box;
+    }
+
+    :root[data-frutiger="on"] #directoriesSearchInput {
+      border-radius: 999px;
+      padding: 7px 14px;
+      border-color: color-mix(in srgb, var(--palette-accent) 18%, var(--frutiger-panel-border) 82%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.1) 48%, rgba(0, 0, 0, 0.06) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--color1-secondary) 78%, white 22%) 0%, var(--color1-primary) 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.34),
+        0 6px 16px rgba(0, 0, 0, 0.14);
+    }
+
+    :root[data-frutiger="on"] #directoriesSearchInput:focus {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.42),
+        0 0 0 2px rgba(255, 255, 255, 0.22),
+        0 8px 20px rgba(0, 0, 0, 0.18);
     }
 
     :root[data-retro="on"] .tag,
@@ -1521,7 +1651,7 @@
 
     :root[data-retro="on"] .crumb {
       background: var(--retro-face);
-      color: var(--retro-text);
+      color: var(--retro-link);
       border: 2px solid;
       border-color: var(--retro-highlight) var(--retro-shadow-black) var(--retro-shadow-black) var(--retro-highlight);
       box-shadow: inset -1px -1px 0 var(--retro-shadow), inset 1px 1px 0 var(--retro-highlight-soft);
@@ -1529,7 +1659,7 @@
 
     :root[data-retro="on"] .crumb:hover {
       background: var(--retro-face-hover);
-      color: var(--retro-text);
+      color: var(--retro-link);
     }
 
     :root[data-retro="on"] .dirRow {
@@ -2024,10 +2154,6 @@
       display: none !important;
     }
 
-    #app.title-layout-compact #divider {
-      top: var(--title-pane-h, 0px);
-    }
-
     #directoriesHeader {
       height: 0;
       overflow: hidden;
@@ -2322,6 +2448,16 @@
       min-height: 0;
       height: 20px;
       padding: 0;
+    }
+
+    .searchResultsSpacerRow {
+      height: 52px;
+      min-height: 52px;
+    }
+
+    #directoriesList.gridModeList .searchResultsSpacerRow {
+      height: calc(var(--grid-card-size) + 10px);
+      min-height: calc(var(--grid-card-size) + 10px);
     }
 
     .tagSpacerCell {
@@ -3264,6 +3400,37 @@
       background: var(--color1-secondary);
     }
 
+    .dropdownMenu .dropdownMenuSubmenu {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dropdownMenu .dropdownMenuSubmenuTrigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .dropdownMenu .dropdownMenuSubmenuCaret {
+      flex: 0 0 auto;
+      font-weight: 700;
+    }
+
+    .dropdownMenu .dropdownMenuSubmenuPanel {
+      top: -5px;
+      right: auto;
+      left: calc(100% + 4px);
+      min-width: 160px;
+      z-index: 20001;
+    }
+
+    .dropdownMenu .dropdownMenuSubmenu:hover > .dropdownMenuSubmenuPanel,
+    .dropdownMenu .dropdownMenuSubmenu:focus-within > .dropdownMenuSubmenuPanel {
+      display: flex;
+    }
+
     .dropdownMenu button.destructiveAction {
       color: #ffb3b3;
       border-color: #8f2f2f;
@@ -3275,12 +3442,17 @@
     }
 
     .dropdownMenu .scoreRow {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 4px;
+      width: 100%;
     }
 
     .dropdownMenu .scoreBtn {
-      width: 50%;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
       text-align: center;
       padding: 6px 0;
       font-weight: 800;
@@ -3288,13 +3460,17 @@
     }
 
     .dropdownMenu .menuTwoColRow {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 4px;
+      width: 100%;
     }
 
     .dropdownMenu .menuTwoColRow button {
-      flex: 1 1 0;
-      width: auto;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
     }
 
     /* =========================================================
@@ -3399,7 +3575,8 @@
       gap: var(--preview-gutter);
     }
 
-    .gridFolders .previewTagSpacerRow {
+    .gridFolders .previewTagSpacerRow,
+    .gridFolders .previewSearchSpacerRow {
       flex: 0 0 100%;
       grid-column: 1 / -1;
       width: 100%;
@@ -3408,6 +3585,10 @@
       padding: 0;
       border: 0;
       visibility: hidden;
+    }
+
+    .gridFolders .previewSearchSpacerRow {
+      height: calc(((var(--folder-grid-min) * var(--thumb-scale-folder)) * 2) + (var(--preview-gutter) * 2));
     }
 
     .previewTagFolderCard {
@@ -5004,20 +5185,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-
-    #optionsBody .optHint,
-    #keybindsBody .optHint {
-      font-size: 11px;
-      color: var(--color0-secondary);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    #optionsBody.hideHints .optHint,
-    #keybindsBody.hideHints .optHint {
-      display: none;
     }
 
     #optionsBody select,
