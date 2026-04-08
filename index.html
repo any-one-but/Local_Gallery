@@ -1,261 +1,460 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Local Gallery</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Local Gallery</title>
 
     <link rel="stylesheet" href="./styles.css" />
+  </head>
 
-</head>
-
-<body>
-  <div id="app">
-    <!-- =========================================================
+  <body>
+    <div id="app">
+      <!-- =========================================================
          Title Pane
          ========================================================= -->
       <div id="titlePane">
-      <div id="titlePaneTop">
+        <div id="titlePaneTop">
           <div id="titleMain">
             <h1 id="titleLabel">—</h1>
           </div>
           <div id="directoriesSearchRow">
-            <input id="directoriesSearchInput" class="tagEditInput" type="text" placeholder="Search folder" />
+            <input
+              id="directoriesSearchInput"
+              class="tagEditInput"
+              type="text"
+              placeholder="Search folder"
+            />
           </div>
           <div id="titleBtns">
             <div id="previewNavControls">
-              <button id="refreshBtn" type="button" class="miniBtn" title="Reload current folder" aria-label="Reload current folder">↻</button>
+              <button
+                id="refreshBtn"
+                type="button"
+                class="miniBtn"
+                title="Reload current folder"
+                aria-label="Reload current folder"
+              >
+                ↻
+              </button>
             </div>
-            <button id="optionsBtn" type="button" class="miniBtn" title="Menu">⚙</button>
-            <button id="openWritableBtn" type="button" class="miniBtn">Choose Root</button>
-            <input id="openWritableInput" type="file" webkitdirectory multiple hidden />
+            <button id="optionsBtn" type="button" class="miniBtn" title="Menu">
+              ⚙
+            </button>
+            <button id="openWritableBtn" type="button" class="miniBtn">
+              Choose Root
+            </button>
+            <input
+              id="openWritableInput"
+              type="file"
+              webkitdirectory
+              multiple
+              hidden
+            />
           </div>
+        </div>
       </div>
-    </div>
 
-    <div id="layout">
-      <div id="shell">
-        <!-- =========================================================
+      <div id="layout">
+        <div id="shell">
+          <!-- =========================================================
              Directories Pane
              ========================================================= -->
-        <div id="directoriesPane">
-          <div id="directoriesHeader">
-            <div id="directoriesHeaderTop">
-              <div class="title">Directories</div>
+          <div id="directoriesPane">
+            <div id="directoriesHeader">
+              <div id="directoriesHeaderTop">
+                <div class="title">Directories</div>
+              </div>
+              <!-- Search bar moved above -->
+              <div id="directoriesTagsRow"></div>
+              <div id="directoriesActionRow">
+                <div id="directoriesActionMenu" class="dropdownMenu"></div>
+              </div>
+              <div id="tagActionMenu" class="dropdownMenu"></div>
+              <div id="directoriesBulkRow"></div>
             </div>
-            <!-- Search bar moved above -->
-            <div id="directoriesTagsRow"></div>
-            <div id="directoriesActionRow">
-              <div id="directoriesActionMenu" class="dropdownMenu"></div>
-            </div>
-            <div id="tagActionMenu" class="dropdownMenu"></div>
-            <div id="directoriesBulkRow"></div>
+            <div id="directoriesList"></div>
           </div>
-          <div id="directoriesList"></div>
-        </div>
 
-        <!-- =========================================================
+          <!-- =========================================================
              Preview Pane
              ========================================================= -->
-        <div id="previewPane">
-          <div id="previewBody"></div>
-          <div id="previewActionMenu" class="dropdownMenu"></div>
+          <div id="previewPane">
+            <div id="previewContent">
+              <div id="previewBody"></div>
+              <div id="menuDivider" title="Drag to resize menu"></div>
+              <div id="menuOverlay">
+                <div id="menuCard">
+                  <div id="menuHeader">
+                    <div id="menuTabs" role="tablist" aria-label="Menu tabs">
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
+                        data-tab="general"
+                        role="tab"
+                        aria-controls="menuTabOptions"
+                      >
+                        General
+                      </button>
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
+                        data-tab="appearance"
+                        role="tab"
+                        aria-controls="menuTabOptions"
+                      >
+                        Appearance
+                      </button>
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
+                        data-tab="playback"
+                        role="tab"
+                        aria-controls="menuTabOptions"
+                      >
+                        Playback
+                      </button>
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
+                        data-tab="thumbnails"
+                        role="tab"
+                        aria-controls="menuTabOptions"
+                      >
+                        Thumbnails
+                      </button>
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
+                        data-tab="filenames"
+                        role="tab"
+                        aria-controls="menuTabOptions"
+                      >
+                        Filenames
+                      </button>
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
+                        data-tab="controls"
+                        role="tab"
+                        aria-controls="menuTabKeybinds"
+                      >
+                        Controls
+                      </button>
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
+                        data-tab="calendar"
+                        role="tab"
+                        aria-controls="menuTabCalendar"
+                      >
+                        Stats
+                      </button>
+                    </div>
+                  </div>
+                  <div id="menuBody">
+                    <section
+                      id="menuTabOptions"
+                      class="menuTabPanel"
+                      data-tab="options"
+                      role="tabpanel"
+                    >
+                      <div id="optionsBody"></div>
+                      <div id="optionsFooter">
+                        <div class="left">
+                          <span class="label" id="optionsStatusLabel">—</span>
+                        </div>
+                        <div class="right">
+                          <button
+                            id="optionsResetBtn"
+                            type="button"
+                            class="miniBtn"
+                          >
+                            Reset defaults
+                          </button>
+                          <button
+                            id="optionsDoneBtn"
+                            type="button"
+                            class="miniBtn"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    </section>
+                    <section
+                      id="menuTabKeybinds"
+                      class="menuTabPanel"
+                      data-tab="keybinds"
+                      role="tabpanel"
+                    >
+                      <div id="keybindsBody"></div>
+                      <div id="keybindsFooter">
+                        <div class="left">
+                          <span class="label" id="keybindsStatusLabel">—</span>
+                        </div>
+                        <div class="right">
+                          <button
+                            id="keybindsResetBtn"
+                            type="button"
+                            class="miniBtn"
+                          >
+                            Reset defaults
+                          </button>
+                          <button
+                            id="keybindsDoneBtn"
+                            type="button"
+                            class="miniBtn"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    </section>
+                    <section
+                      id="menuTabCalendar"
+                      class="menuTabPanel"
+                      data-tab="calendar"
+                      role="tabpanel"
+                    >
+                      <div id="calendarBody"></div>
+                      <div id="calendarFooter">
+                        <div class="left">
+                          <span class="label" id="calendarStatusLabel">—</span>
+                        </div>
+                        <div class="right">
+                          <button
+                            id="calendarDeleteAllBtn"
+                            type="button"
+                            class="miniBtn"
+                          >
+                            Delete all logs
+                          </button>
+                          <button
+                            id="calendarDoneBtn"
+                            type="button"
+                            class="miniBtn"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="previewActionMenu" class="dropdownMenu"></div>
+          </div>
         </div>
       </div>
 
-    </div>
+      <!-- Divider (for resizing panes) -->
+      <div id="divider" title="Drag to resize"></div>
 
-        <!-- Divider (for resizing panes) -->
-        <div id="divider" title="Drag to resize"></div>
-
-        <!-- =========================================================
+      <!-- =========================================================
           Gallery Mode (Overlay)
           ========================================================= -->
-    <div id="overlay">
-      <div id="viewerInner">
-        <button id="closeBtn" type="button">X</button>
-        <div id="viewerViewport"></div>
-        <div id="filename"></div>
+      <div id="overlay">
+        <div id="viewerInner">
+          <button id="closeBtn" type="button">X</button>
+          <div id="viewerViewport"></div>
+          <div id="filename"></div>
+        </div>
       </div>
-    </div>
 
-    <!-- =========================================================
+      <!-- =========================================================
          Busy (Overlay)
          ========================================================= -->
-    <div id="busyOverlay">
-      <div class="busySpinner"></div>
-      <div id="busyLabel">Working...</div>
+      <div id="busyOverlay">
+        <div class="busySpinner"></div>
+        <div id="busyLabel">Working...</div>
+      </div>
     </div>
 
     <!-- =========================================================
-         Menu (Overlay)
-         ========================================================= -->
-    <div id="menuOverlay">
-      <div id="menuCard">
-        <div id="menuHeader">
-          <div class="title">Menu</div>
-          <div id="menuTabs" role="tablist" aria-label="Menu tabs">
-            <button type="button" class="miniBtn menuTabBtn" data-tab="general" role="tab" aria-controls="menuTabOptions">General</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="appearance" role="tab" aria-controls="menuTabOptions">Appearance</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="playback" role="tab" aria-controls="menuTabOptions">Playback</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="thumbnails" role="tab" aria-controls="menuTabOptions">Thumbnails</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="filenames" role="tab" aria-controls="menuTabOptions">Filenames</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="controls" role="tab" aria-controls="menuTabKeybinds">Controls</button>
-            <button type="button" class="miniBtn menuTabBtn" data-tab="calendar" role="tab" aria-controls="menuTabCalendar">Stats</button>
-          </div>
-          <button id="menuCloseBtn" type="button" class="miniBtn">X</button>
-        </div>
-        <div id="menuBody">
-          <section id="menuTabOptions" class="menuTabPanel" data-tab="options" role="tabpanel">
-            <div id="optionsBody"></div>
-            <div id="optionsFooter">
-              <div class="left">
-                <span class="label" id="optionsStatusLabel">—</span>
-              </div>
-              <div class="right">
-                <button id="optionsResetBtn" type="button" class="miniBtn">Reset defaults</button>
-                <button id="optionsDoneBtn" type="button" class="miniBtn">Done</button>
-              </div>
-            </div>
-          </section>
-          <section id="menuTabKeybinds" class="menuTabPanel" data-tab="keybinds" role="tabpanel">
-            <div id="keybindsBody"></div>
-            <div id="keybindsFooter">
-              <div class="left">
-                <span class="label" id="keybindsStatusLabel">—</span>
-              </div>
-              <div class="right">
-                <button id="keybindsResetBtn" type="button" class="miniBtn">Reset defaults</button>
-                <button id="keybindsDoneBtn" type="button" class="miniBtn">Done</button>
-              </div>
-            </div>
-          </section>
-          <section id="menuTabCalendar" class="menuTabPanel" data-tab="calendar" role="tabpanel">
-            <div id="calendarBody"></div>
-            <div id="calendarFooter">
-              <div class="left">
-                <span class="label" id="calendarStatusLabel">—</span>
-              </div>
-              <div class="right">
-                <button id="calendarDeleteAllBtn" type="button" class="miniBtn">Delete all logs</button>
-                <button id="calendarDoneBtn" type="button" class="miniBtn">Done</button>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- =========================================================
        Palm Tree Filter
        ========================================================= -->
-<svg
-  width="0"
-  height="0"
-  aria-hidden="true"
-  style="position:absolute; left:-9999px; top:-9999px"
->
-  <filter id="crt-chroma">
-<feOffset in="SourceGraphic" dx="-1.2" dy="0" result="r" />
-<feOffset in="SourceGraphic" dx="1.2" dy="0" result="b" />
-    <feBlend in="r" in2="b" mode="screen" />
-    <feGaussianBlur in="r" stdDeviation="0.6" result="rBlur" />
-<feGaussianBlur in="b" stdDeviation="0.6" result="bBlur" />
+    <svg
+      width="0"
+      height="0"
+      aria-hidden="true"
+      style="position: absolute; left: -9999px; top: -9999px"
+    >
+      <filter id="crt-chroma">
+        <feOffset in="SourceGraphic" dx="-1.2" dy="0" result="r" />
+        <feOffset in="SourceGraphic" dx="1.2" dy="0" result="b" />
+        <feBlend in="r" in2="b" mode="screen" />
+        <feGaussianBlur in="r" stdDeviation="0.6" result="rBlur" />
+        <feGaussianBlur in="b" stdDeviation="0.6" result="bBlur" />
 
-<feBlend in="rBlur" in2="bBlur" mode="screen" />
+        <feBlend in="rBlur" in2="bBlur" mode="screen" />
+      </filter>
+    </svg>
 
-  </filter>
-</svg>
-
-
-<!-- =========================================================
+    <!-- =========================================================
      Kodak Film Filter
      ========================================================= -->
-<svg width="0" height="0" style="position:absolute; left:-9999px; top:-9999px;">
-  <!-- Tone curve + slight warm grade + subtle halation -->
-  <filter id="kodak-film" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <!-- Lift blacks and add a gentle curve -->
-    <feComponentTransfer in="SourceGraphic" result="tone">
-      <feFuncR type="table" tableValues="0.03 0.10 0.26 0.50 0.78 0.95 1"/>
-      <feFuncG type="table" tableValues="0.03 0.10 0.26 0.50 0.78 0.95 1"/>
-      <feFuncB type="table" tableValues="0.04 0.11 0.27 0.50 0.76 0.93 0.98"/>
-    </feComponentTransfer>
+    <svg
+      width="0"
+      height="0"
+      style="position: absolute; left: -9999px; top: -9999px"
+    >
+      <!-- Tone curve + slight warm grade + subtle halation -->
+      <filter
+        id="kodak-film"
+        x="-10%"
+        y="-10%"
+        width="120%"
+        height="120%"
+        color-interpolation-filters="sRGB"
+      >
+        <!-- Lift blacks and add a gentle curve -->
+        <feComponentTransfer in="SourceGraphic" result="tone">
+          <feFuncR type="table" tableValues="0.03 0.10 0.26 0.50 0.78 0.95 1" />
+          <feFuncG type="table" tableValues="0.03 0.10 0.26 0.50 0.78 0.95 1" />
+          <feFuncB
+            type="table"
+            tableValues="0.04 0.11 0.27 0.50 0.76 0.93 0.98"
+          />
+        </feComponentTransfer>
 
-    <!-- Warm highlights a touch -->
-    <feColorMatrix in="tone" type="matrix" values="
+        <!-- Warm highlights a touch -->
+        <feColorMatrix
+          in="tone"
+          type="matrix"
+          values="
       1.02 0    0    0  0.01
       0    1.01 0    0  0.005
       0    0    0.99 0 -0.005
-      0    0    0    1  0" result="graded"/>
+      0    0    0    1  0"
+          result="graded"
+        />
 
-    <!-- Halation-ish bloom (soft, warm screen) -->
-    <feGaussianBlur in="graded" stdDeviation="1.2" result="blur"/>
-    <feColorMatrix in="blur" type="matrix" values="
+        <!-- Halation-ish bloom (soft, warm screen) -->
+        <feGaussianBlur in="graded" stdDeviation="1.2" result="blur" />
+        <feColorMatrix
+          in="blur"
+          type="matrix"
+          values="
       0.18 0    0    0  0
       0    0.14 0    0  0
       0    0    0.10 0  0
-      0    0    0    1  0" result="bloom"/>
+      0    0    0    1  0"
+          result="bloom"
+        />
 
-    <feBlend in="graded" in2="bloom" mode="screen"/>
-  </filter>
+        <feBlend in="graded" in2="bloom" mode="screen" />
+      </filter>
 
-  <!-- Grain generator (applied to the overlay pseudo-element) -->
-  <filter id="kodak-grain" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-    <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" seed="7" result="n"/>
-    <!-- Pull noise toward mid-gray and keep it subtle -->
-    <feComponentTransfer in="n">
-      <feFuncR type="linear" slope="0.45" intercept="0.28"/>
-      <feFuncG type="linear" slope="0.45" intercept="0.28"/>
-      <feFuncB type="linear" slope="0.45" intercept="0.28"/>
-    </feComponentTransfer>
-  </filter>
-</svg>
+      <!-- Grain generator (applied to the overlay pseudo-element) -->
+      <filter
+        id="kodak-grain"
+        x="-20%"
+        y="-20%"
+        width="140%"
+        height="140%"
+        color-interpolation-filters="sRGB"
+      >
+        <feTurbulence
+          type="fractalNoise"
+          baseFrequency="0.85"
+          numOctaves="3"
+          seed="7"
+          result="n"
+        />
+        <!-- Pull noise toward mid-gray and keep it subtle -->
+        <feComponentTransfer in="n">
+          <feFuncR type="linear" slope="0.45" intercept="0.28" />
+          <feFuncG type="linear" slope="0.45" intercept="0.28" />
+          <feFuncB type="linear" slope="0.45" intercept="0.28" />
+        </feComponentTransfer>
+      </filter>
+    </svg>
 
-<!-- =========================================================
+    <!-- =========================================================
      Polaroid Film Filter
      ========================================================= -->
 
-<svg width="0" height="0" style="position:absolute; left:-9999px; top:-9999px;">
-  <!-- Polaroid tone: lifted blacks, muted saturation, slight green shift, softer contrast -->
-  <filter id="polaroid-film" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <!-- Lift blacks + compress highlights a bit -->
-    <feComponentTransfer in="SourceGraphic" result="tone">
-      <feFuncR type="table" tableValues="0.08 0.20 0.40 0.62 0.82 0.94 0.99"/>
-      <feFuncG type="table" tableValues="0.09 0.22 0.42 0.64 0.83 0.95 1"/>
-      <feFuncB type="table" tableValues="0.10 0.23 0.43 0.63 0.81 0.93 0.98"/>
-    </feComponentTransfer>
+    <svg
+      width="0"
+      height="0"
+      style="position: absolute; left: -9999px; top: -9999px"
+    >
+      <!-- Polaroid tone: lifted blacks, muted saturation, slight green shift, softer contrast -->
+      <filter
+        id="polaroid-film"
+        x="-10%"
+        y="-10%"
+        width="120%"
+        height="120%"
+        color-interpolation-filters="sRGB"
+      >
+        <!-- Lift blacks + compress highlights a bit -->
+        <feComponentTransfer in="SourceGraphic" result="tone">
+          <feFuncR
+            type="table"
+            tableValues="0.08 0.20 0.40 0.62 0.82 0.94 0.99"
+          />
+          <feFuncG type="table" tableValues="0.09 0.22 0.42 0.64 0.83 0.95 1" />
+          <feFuncB
+            type="table"
+            tableValues="0.10 0.23 0.43 0.63 0.81 0.93 0.98"
+          />
+        </feComponentTransfer>
 
-    <!-- Slight vintage/cast: warm + a hint of green/cyan in mids -->
-    <feColorMatrix in="tone" type="matrix" values="
+        <!-- Slight vintage/cast: warm + a hint of green/cyan in mids -->
+        <feColorMatrix
+          in="tone"
+          type="matrix"
+          values="
       0.99 0.02 0    0  0.02
       0.01 0.98 0.02 0  0.01
       0.00 0.02 0.97 0  0.00
-      0    0    0    1  0" result="graded"/>
+      0    0    0    1  0"
+          result="graded"
+        />
 
-    <!-- Soft bloom (a bit “washed”) -->
-    <feGaussianBlur in="graded" stdDeviation="1.6" result="blur"/>
-    <feColorMatrix in="blur" type="matrix" values="
+        <!-- Soft bloom (a bit “washed”) -->
+        <feGaussianBlur in="graded" stdDeviation="1.6" result="blur" />
+        <feColorMatrix
+          in="blur"
+          type="matrix"
+          values="
       0.22 0    0    0  0
       0    0.18 0    0  0
       0    0    0.16 0  0
-      0    0    0    1  0" result="bloom"/>
+      0    0    0    1  0"
+          result="bloom"
+        />
 
-    <feBlend in="graded" in2="bloom" mode="screen"/>
-  </filter>
+        <feBlend in="graded" in2="bloom" mode="screen" />
+      </filter>
 
-  <!-- Grain generator: chunkier than Kodak -->
-  <filter id="polaroid-grain" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-    <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="11" result="n"/>
-    <feComponentTransfer in="n">
-      <feFuncR type="linear" slope="0.55" intercept="0.22"/>
-      <feFuncG type="linear" slope="0.55" intercept="0.22"/>
-      <feFuncB type="linear" slope="0.55" intercept="0.22"/>
-    </feComponentTransfer>
-  </filter>
-</svg>
+      <!-- Grain generator: chunkier than Kodak -->
+      <filter
+        id="polaroid-grain"
+        x="-20%"
+        y="-20%"
+        width="140%"
+        height="140%"
+        color-interpolation-filters="sRGB"
+      >
+        <feTurbulence
+          type="fractalNoise"
+          baseFrequency="0.65"
+          numOctaves="2"
+          seed="11"
+          result="n"
+        />
+        <feComponentTransfer in="n">
+          <feFuncR type="linear" slope="0.55" intercept="0.22" />
+          <feFuncG type="linear" slope="0.55" intercept="0.22" />
+          <feFuncB type="linear" slope="0.55" intercept="0.22" />
+        </feComponentTransfer>
+      </filter>
+    </svg>
 
-
-  <script src="./app.js"></script>
-</body>
+    <script src="./app.js"></script>
+  </body>
 </html>
