@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.8.5"
+SCRIPT_VERSION="1.8.6"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
 EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
@@ -1471,9 +1471,14 @@ step9_move_empty_items() {
 
 sanitize_name_part() {
   local value="$1"
+  # Remove disallowed characters (keep alnum, space, _, -)
   value="$(LC_ALL=C printf "%s" "$value" | tr -cd '[:alnum:] _-')"
-  while [[ "$value" == *" " ]]; do
-    value="${value% }"
+  # Trim leading and trailing whitespace
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  # Collapse multiple spaces into one
+  while [[ "$value" == *"  "* ]]; do
+    value="${value//  / }"
   done
   printf "%s" "$value"
 }
@@ -1482,7 +1487,30 @@ sanitize_fs_entry_name() {
   local name="$1"
   local stem ext sanitized_stem sanitized_ext sanitized_name
 
-  if [[ "$name" == *.* && "$name" != .* && "$name" != *"." ]]; then
+  if [[ -z "$name" || "$name" == "." || "$name" == ".." ]]; then
+    printf "%s" "$name"
+    return 0
+  fi
+
+  # Handle hidden files/directories (starting with .)
+  if [[ "$name" == .* ]]; then
+    local rest="${name#.}"
+
+    # If it's something like .hidden (no additional dot) or .DS_Store style
+    if [[ -z "$rest" || "$rest" != *.* ]]; then
+      sanitized_name="$(sanitize_name_part "$rest")"
+      if [[ -n "$sanitized_name" ]]; then
+        printf ".%s" "$sanitized_name"
+      else
+        printf ""
+      fi
+      return 0
+    fi
+    # Otherwise fall through to normal stem/ext handling for names like .hidden.pic.jpg
+  fi
+
+  # Normal files with extension
+  if [[ "$name" == *.* ]]; then
     stem="${name%.*}"
     ext="${name##*.}"
     sanitized_stem="$(sanitize_name_part "$stem")"
@@ -1504,6 +1532,7 @@ sanitize_fs_entry_name() {
     return 0
   fi
 
+  # No extension
   sanitized_name="$(sanitize_name_part "$name")"
   printf "%s" "$sanitized_name"
 }
@@ -1520,7 +1549,16 @@ step7_sanitize_names() {
     if [[ "$sanitized" != "$base" ]]; then
       paths+=("$path")
     fi
-  done < <(find . -depth -mindepth 1 \( -type f -o -type d \) -print0)
+  done < <(find . -depth -mindepth 1 \
+    \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+    \( -type f -o -type d \) -print0)
+
+  # Explicitly sort paths by depth descending (deepest first) to safely rename nested directories
+  if [[ ${#paths[@]} -gt 0 ]]; then
+    IFS=$'\n'
+    paths=( $(printf '%s\n' "${paths[@]}" | awk -F/ '{print (NF-1)"\t"$0}' | sort -k1,1nr -t$'\t' | cut -f2- ) )
+    unset IFS
+  fi
 
   total=${#paths[@]}
   if [[ "$total" -eq 0 ]]; then
