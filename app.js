@@ -4704,20 +4704,6 @@ const MediaFilterEngine = (() => {
     if (!cw || !ch) return false;
 
     const dpr = window.devicePixelRatio || 1;
-    const pixelW = Math.max(1, Math.round(cw * dpr));
-    const pixelH = Math.max(1, Math.round(ch * dpr));
-    if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
-      surface.canvas.width = pixelW;
-      surface.canvas.height = pixelH;
-    }
-
-    const ctx = surface.ctx;
-    const frameCtx = surface.framectx;
-    resizeCanvasBuffer(surface.framescreen, pixelW, pixelH);
-    frameCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    frameCtx.imageSmoothingEnabled = true;
-    frameCtx.clearRect(0, 0, cw, ch);
-
     let drawSource = el;
     let srcW = isVideo ? el.videoWidth : el.naturalWidth;
     let srcH = isVideo ? el.videoHeight : el.naturalHeight;
@@ -4763,9 +4749,28 @@ const MediaFilterEngine = (() => {
       targetCtx.drawImage(drawSource, dx2, dy2, dw2, dh2);
     };
     const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
+    const displayW = Math.max(1, Math.round(rect.w));
+    const displayH = Math.max(1, Math.round(rect.h));
+    const pixelW = Math.max(1, Math.round(displayW * dpr));
+    const pixelH = Math.max(1, Math.round(displayH * dpr));
+    if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
+      surface.canvas.width = pixelW;
+      surface.canvas.height = pixelH;
+    }
+    surface.canvas.style.inset = "auto";
+    surface.canvas.style.left = `${Math.round(rect.x)}px`;
+    surface.canvas.style.top = `${Math.round(rect.y)}px`;
+    surface.canvas.style.width = `${displayW}px`;
+    surface.canvas.style.height = `${displayH}px`;
+
+    const ctx = surface.ctx;
+    const frameCtx = surface.framectx;
+    resizeCanvasBuffer(surface.framescreen, pixelW, pixelH);
+    frameCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    frameCtx.imageSmoothingEnabled = true;
+    frameCtx.clearRect(0, 0, displayW, displayH);
+
     const animatedForSurface = animatedMediaFiltersEnabledForType(surface.type);
-    const dx = rect.x;
-    const dy = rect.y;
 
     let currentCanvas = surface.workscreen;
     let currentCtx = surface.workctx;
@@ -4891,7 +4896,7 @@ const MediaFilterEngine = (() => {
       return false;
     }
 
-    const outputRect = { x: dx, y: dy, w: rect.w, h: rect.h };
+    const outputRect = { x: 0, y: 0, w: displayW, h: displayH };
     frameCtx.imageSmoothingEnabled = true;
     frameCtx.filter = "none";
     if (
@@ -7030,6 +7035,7 @@ let previewFolderEl = null;
     if (typeof metaScheduleSave === "function") metaScheduleSave();
     setDividerPositionFromPct(pct);
     refreshFitInsidePreviewGrids();
+    refreshActivePreviewMediaLayout();
   }
 
   divider.addEventListener("pointerdown", (ev) => {
@@ -7060,6 +7066,7 @@ let previewFolderEl = null;
   window.addEventListener("resize", () => {
     applyPaneDividerFromOptions();
     refreshFitInsidePreviewGrids();
+    refreshActivePreviewMediaLayout();
   });
 
   // initial apply from saved options
@@ -7076,6 +7083,7 @@ let previewFolderEl = null;
     const rect = previewContentEl.getBoundingClientRect();
     const desiredWidth = rect.right - clientX;
     setMenuPaneWidthPx(desiredWidth, false);
+    refreshActivePreviewMediaLayout();
   }
 
   menuDivider.addEventListener("pointerdown", (ev) => {
@@ -7104,7 +7112,18 @@ let previewFolderEl = null;
     refreshFitInsidePreviewGrids();
     schedulePreviewVirtualGridRefresh();
     scheduleThumbnailDemandRefresh();
+    refreshActivePreviewMediaLayout();
   });
+})();
+
+(function setupPreviewMediaResizeObserver() {
+  if (typeof ResizeObserver !== "function") return;
+  const targets = [previewContentEl, previewBodyEl].filter(Boolean);
+  if (!targets.length) return;
+  const observer = new ResizeObserver(() => {
+    refreshActivePreviewMediaLayout();
+  });
+  targets.forEach((target) => observer.observe(target));
 })();
 
 let MAIN_STATUS_TIMEOUT = null;
@@ -7141,6 +7160,7 @@ let MENU_OPEN = false;
 let MENU_ACTIVE_TAB = "general";
 let MENU_LAST_TAB = "general";
 let MENU_HAS_OPENED = false;
+let PREVIEW_MEDIA_LAYOUT_RAF = 0;
 const MENU_TAB_SCROLL = {
   general: 0,
   appearance: 0,
@@ -7670,6 +7690,25 @@ function setMenuTab(tabId) {
   ensureOptionsUi(next);
 }
 
+function refreshActivePreviewMediaLayout() {
+  if (PREVIEW_MEDIA_LAYOUT_RAF) return;
+  PREVIEW_MEDIA_LAYOUT_RAF = requestAnimationFrame(() => {
+    PREVIEW_MEDIA_LAYOUT_RAF = 0;
+    if (ACTIVE_MEDIA_SURFACE !== "preview") return;
+    const rec =
+      WS.preview && WS.preview.kind === "file" && WS.preview.fileId
+        ? WS.fileById.get(String(WS.preview.fileId || "")) || null
+        : null;
+    if (!rec || !previewViewportBox) return;
+    if (previewImgEl && previewImgEl.style.display !== "none") {
+      const mode = detectScrollImageMode(rec, previewImgEl);
+      applyScrollImageMode(previewViewportBox, previewImgEl, mode, false);
+      applyScrollImageProcessingFallback(previewImgEl, rec, mode);
+    }
+    MediaFilterEngine.requestRender();
+  });
+}
+
 function openMenu(tabId) {
   MENU_OPEN = true;
   if (menuOverlay) menuOverlay.classList.add("active");
@@ -7689,6 +7728,7 @@ function openMenu(tabId) {
     refreshFitInsidePreviewGrids();
     schedulePreviewVirtualGridRefresh();
     scheduleThumbnailDemandRefresh();
+    refreshActivePreviewMediaLayout();
   });
 }
 
@@ -7702,6 +7742,7 @@ function closeMenu() {
     refreshFitInsidePreviewGrids();
     schedulePreviewVirtualGridRefresh();
     scheduleThumbnailDemandRefresh();
+    refreshActivePreviewMediaLayout();
   });
 }
 
