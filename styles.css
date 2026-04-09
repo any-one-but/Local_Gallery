@@ -648,6 +648,46 @@ input[type="file"] {
   box-shadow: none;
 }
 
+:root[data-retro="on"] #menuOverlay {
+  background: var(--retro-face);
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode
+  #previewPane {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.sidebar-closed.preview-media-mode
+  #previewPane {
+  padding-left: 0;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode:not(.menu-pane-open)
+  #previewPane {
+  padding-right: 0;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode.menu-pane-open
+  #menuDivider,
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode.menu-pane-open
+  #menuOverlay {
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode
+  #previewBody {
+  background: #000;
+  box-shadow: none;
+}
+
 :root[data-retro="on"] #directoriesPane,
 :root[data-retro="on"] #previewPane,
 :root[data-retro="on"] #optionsBody,
@@ -4757,15 +4797,26 @@ img[data-rotate-key].rotatingThumbFade {
 #optionsBody .optRow.optOverlayRow {
   align-items: center;
   gap: 12px;
+  justify-content: flex-start;
 }
 
 #optionsBody .optOverlayMiddle {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 5px;
   flex: 0 0 auto;
-  min-width: 240px;
+  min-width: 226px;
+  margin-left: 8px;
+}
+
+#optionsBody .optRow.optOverlayRowNoToggle .optRight.optOverlayToggle {
+  display: none;
+}
+
+#optionsBody .optRow.optOverlayRowNoToggle .optOverlayMiddle {
+  min-width: 254px;
+  margin-left: 12px;
 }
 
 #optionsBody .optRight.optOverlayToggle {
@@ -4844,11 +4895,15 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 #optionsBody .optOverlayMiddle input[type="range"] {
-  width: 180px;
+  width: 160px;
+}
+
+#optionsBody .optRow.optOverlayRowNoToggle .optOverlayMiddle input[type="range"] {
+  width: 194px;
 }
 
 #optionsBody .optRangeValue {
-  min-width: 40px;
+  min-width: 34px;
   text-align: right;
   font-size: 11px;
   color: var(--color0-secondary);
@@ -5327,36 +5382,37 @@ img[data-rotate-key].rotatingThumbFade {
 .thumbCropEditorOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.72);
+  background: rgba(4, 6, 9, 0.74);
   z-index: 16000;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
 }
 
 .thumbCropEditorPanel {
-  width: min(420px, calc(100vw - 24px));
-  background: rgba(16, 18, 22, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 10px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-  padding: 12px;
+  width: min(450px, calc(100vw - 20px));
+  background: var(--color1-secondary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  color: #fff;
+  gap: 8px;
+  color: var(--color0-primary);
 }
 
 .thumbCropEditorTitle {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .thumbCropEditorSubtitle {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.76);
+  font-size: 11px;
+  color: var(--color0-secondary);
   margin-top: -2px;
 }
 
@@ -5367,10 +5423,10 @@ img[data-rotate-key].rotatingThumbFade {
   aspect-ratio: var(--editor-ar);
   max-height: 56vh;
   position: relative;
-  border-radius: 8px;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid var(--color1-tertiary);
+  background: var(--color1-primary);
   touch-action: none;
   cursor: grab;
   user-select: none;
@@ -5399,15 +5455,15 @@ img[data-rotate-key].rotatingThumbFade {
 
 .thumbCropEditorShade {
   position: absolute;
-  background: rgba(0, 0, 0, 0.58);
+  background: rgba(0, 0, 0, 0.54);
   pointer-events: none;
 }
 
 .thumbCropEditorCropBox {
   position: absolute;
-  border: 2px solid rgba(255, 255, 255, 0.94);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
-  border-radius: 2px;
+  border: 2px solid var(--color0-primary);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+  border-radius: 0;
   pointer-events: none;
 }
 
@@ -5415,9 +5471,9 @@ img[data-rotate-key].rotatingThumbFade {
   position: absolute;
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.94);
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid var(--color0-primary);
+  border-radius: 0;
+  background: var(--color1-primary);
   transform: translate(-100%, -100%);
   z-index: 6;
   pointer-events: auto;
@@ -5427,7 +5483,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .thumbCropEditorResizeHandle:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--color1-secondary);
 }
 
 .thumbCropEditorPreviewWrap.resizing {
@@ -5436,7 +5492,7 @@ img[data-rotate-key].rotatingThumbFade {
 
 .thumbCropEditorHint {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--color0-secondary);
   margin-top: -2px;
 }
 
@@ -5450,7 +5506,7 @@ img[data-rotate-key].rotatingThumbFade {
 
 .thumbCropEditorControl > label {
   grid-column: 1 / 2;
-  color: rgba(255, 255, 255, 0.86);
+  color: var(--color0-primary);
 }
 
 .thumbCropEditorControl > input[type="range"] {
@@ -5462,7 +5518,7 @@ img[data-rotate-key].rotatingThumbFade {
   grid-column: 2 / 3;
   justify-self: end;
   font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--color0-secondary);
   min-width: 46px;
   text-align: right;
 }
@@ -5479,18 +5535,81 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .thumbCropEditorActions > button {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.26);
-  border-radius: 6px;
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 0;
   padding: 6px 10px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 700;
   line-height: 1;
 }
 
 .thumbCropEditorActions > button:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--color1-secondary);
+}
+
+:root[data-retro="on"] .thumbCropEditorPanel {
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] .thumbCropEditorTitle {
+  background: var(--retro-title-bg);
+  color: var(--retro-title-text);
+  padding: 4px 6px;
+}
+
+:root[data-retro="on"] .thumbCropEditorSubtitle,
+:root[data-retro="on"] .thumbCropEditorHint,
+:root[data-retro="on"] .thumbCropEditorControl > label,
+:root[data-retro="on"] .thumbCropEditorControl > span {
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] .thumbCropEditorPreviewWrap {
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .thumbCropEditorCropBox,
+:root[data-retro="on"] .thumbCropEditorResizeHandle {
+  border-color: #fff;
+}
+
+:root[data-retro="on"] .thumbCropEditorResizeHandle {
+  background: var(--retro-face);
+}
+
+:root[data-retro="on"] .thumbCropEditorActions > button {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .thumbCropEditorActions > button:active {
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-dark),
+    inset -1px -1px 0 var(--retro-highlight-soft);
 }
 
 @media (max-width: 900px) {

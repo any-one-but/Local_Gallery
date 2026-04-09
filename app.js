@@ -292,7 +292,13 @@ function normalizeThumbRenderModeValue(value, fallback = "medium") {
   const raw = String(value == null ? "" : value)
     .trim()
     .toLowerCase();
-  if (raw === "small" || raw === "medium" || raw === "high" || raw === "native")
+  if (
+    raw === "small" ||
+    raw === "medium" ||
+    raw === "high" ||
+    raw === "native" ||
+    raw === "placeholder"
+  )
     return raw;
   return fallback;
 }
@@ -461,6 +467,14 @@ function thumbnailVisibilityInputId(optionKey) {
 
 function buildDefaultThumbnailVisibilityOptions() {
   const out = {};
+  const setPreview = (kind, field, value) => {
+    const key = thumbnailVisibilityPreviewOptionKey(kind, field);
+    if (key) out[key] = !!value;
+  };
+  const setDirectories = (kind, field, value) => {
+    const key = thumbnailVisibilityDirectoriesOptionKey(kind, field);
+    if (key) out[key] = !!value;
+  };
   const specs = thumbnailVisibilityKindSpecs();
   const previewFields = [
     "itemCount",
@@ -483,6 +497,40 @@ function buildDefaultThumbnailVisibilityOptions() {
       ] = true;
     }
   }
+
+  // Baseline defaults aligned to workspace thumbnail preference defaults.
+  setPreview("file", "size", false);
+  setPreview("file", "score", false);
+  setPreview("file", "title", false);
+  setPreview("file", "menuButton", false);
+  setPreview("file", "itemType", true);
+  setDirectories("file", "size", false);
+  setDirectories("file", "score", true);
+  setDirectories("file", "itemType", false);
+
+  setPreview("rootFolder", "itemCount", false);
+  setPreview("rootFolder", "size", true);
+  setPreview("rootFolder", "score", false);
+  setPreview("rootFolder", "title", true);
+  setPreview("rootFolder", "menuButton", true);
+  setDirectories("rootFolder", "itemCount", false);
+  setDirectories("rootFolder", "size", false);
+  setDirectories("rootFolder", "score", true);
+
+  setPreview("subfolder", "itemCount", false);
+  setPreview("subfolder", "size", false);
+  setPreview("subfolder", "score", false);
+  setPreview("subfolder", "title", true);
+  setPreview("subfolder", "menuButton", false);
+  setDirectories("subfolder", "itemCount", false);
+  setDirectories("subfolder", "size", false);
+  setDirectories("subfolder", "score", true);
+
+  setPreview("tag", "itemCount", true);
+  setPreview("tag", "title", true);
+  setPreview("tag", "menuButton", false);
+  setDirectories("tag", "itemCount", true);
+
   return out;
 }
 
@@ -549,8 +597,8 @@ function defaultOptions() {
   const out = {
     videoPreview: "muted",
     videoGallery: "unmuted",
-    imageThumbSize: "high",
-    videoThumbSize: "medium",
+    imageThumbSize: "native",
+    videoThumbSize: "native",
     betaDirFileThumbFullCard: true,
     betaDirFolderSquareCard: true,
     previewMode: "grid",
@@ -631,7 +679,7 @@ function defaultOptions() {
     clickSelectedRotatingThumbTeleports: false,
     fileOnlyFoldersOpenInGallery: false,
     thumbnailStyle: "cropped",
-    thumbnailScaleCropped: "medium",
+    thumbnailScaleCropped: "small",
     thumbnailScaleAspect: "small",
   };
   Object.assign(out, buildDefaultThumbnailVisibilityOptions());
@@ -4704,6 +4752,20 @@ const MediaFilterEngine = (() => {
     if (!cw || !ch) return false;
 
     const dpr = window.devicePixelRatio || 1;
+    const pixelW = Math.max(1, Math.round(cw * dpr));
+    const pixelH = Math.max(1, Math.round(ch * dpr));
+    if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
+      surface.canvas.width = pixelW;
+      surface.canvas.height = pixelH;
+    }
+
+    const ctx = surface.ctx;
+    const frameCtx = surface.framectx;
+    resizeCanvasBuffer(surface.framescreen, pixelW, pixelH);
+    frameCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    frameCtx.imageSmoothingEnabled = true;
+    frameCtx.clearRect(0, 0, cw, ch);
+
     let drawSource = el;
     let srcW = isVideo ? el.videoWidth : el.naturalWidth;
     let srcH = isVideo ? el.videoHeight : el.naturalHeight;
@@ -4749,28 +4811,9 @@ const MediaFilterEngine = (() => {
       targetCtx.drawImage(drawSource, dx2, dy2, dw2, dh2);
     };
     const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
-    const displayW = Math.max(1, Math.round(rect.w));
-    const displayH = Math.max(1, Math.round(rect.h));
-    const pixelW = Math.max(1, Math.round(displayW * dpr));
-    const pixelH = Math.max(1, Math.round(displayH * dpr));
-    if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
-      surface.canvas.width = pixelW;
-      surface.canvas.height = pixelH;
-    }
-    surface.canvas.style.inset = "auto";
-    surface.canvas.style.left = `${Math.round(rect.x)}px`;
-    surface.canvas.style.top = `${Math.round(rect.y)}px`;
-    surface.canvas.style.width = `${displayW}px`;
-    surface.canvas.style.height = `${displayH}px`;
-
-    const ctx = surface.ctx;
-    const frameCtx = surface.framectx;
-    resizeCanvasBuffer(surface.framescreen, pixelW, pixelH);
-    frameCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    frameCtx.imageSmoothingEnabled = true;
-    frameCtx.clearRect(0, 0, displayW, displayH);
-
     const animatedForSurface = animatedMediaFiltersEnabledForType(surface.type);
+    const dx = rect.x;
+    const dy = rect.y;
 
     let currentCanvas = surface.workscreen;
     let currentCtx = surface.workctx;
@@ -4896,7 +4939,7 @@ const MediaFilterEngine = (() => {
       return false;
     }
 
-    const outputRect = { x: 0, y: 0, w: displayW, h: displayH };
+    const outputRect = { x: dx, y: dy, w: rect.w, h: rect.h };
     frameCtx.imageSmoothingEnabled = true;
     frameCtx.filter = "none";
     if (
@@ -5131,23 +5174,6 @@ function videoThumbWidthForOption() {
 function setOptionsStatus(text) {
   if (!optionsStatusLabel) return;
   optionsStatusLabel.textContent = text || "—";
-}
-
-function sessionFileThumbLoadingEnabled() {
-  return !!(WS.view && WS.view.sessionFileThumbsEnabled);
-}
-
-function setSessionFileThumbLoadingEnabled(enabled) {
-  if (!WS.view) return false;
-  const next = !!enabled;
-  if (!!WS.view.sessionFileThumbsEnabled === next) return false;
-  WS.view.sessionFileThumbsEnabled = next;
-  bumpThumbnailDemandToken();
-  renderDirectoriesPane(true);
-  renderPreviewPane(false, true);
-  syncButtons();
-  scheduleThumbnailDemandRefresh();
-  return true;
 }
 
 function applyDefaultViewFromOptions() {
@@ -5559,6 +5585,7 @@ function applyInteractionModeFromOptions() {
   appEl.classList.toggle("sidebar-closed", !sidebarOpen);
   appEl.classList.toggle("title-layout-compact", titleMode === "compact");
   appEl.classList.toggle("title-layout-pane", titleMode !== "compact");
+  appEl.classList.toggle("menu-pane-open", !!MENU_OPEN);
   syncActivePaneWithLayout();
   updateGridModeListTopInset();
 }
@@ -5962,6 +5989,18 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
+    id: "toggleSettingsAndDirectoriesPanes",
+    label: "Toggle settings + directories panes",
+    hint: "Toggle both panes; if only one is open, close the open one.",
+    section: "general",
+  },
+  {
+    id: "refreshWorkspace",
+    label: "Refresh workspace",
+    hint: "Refresh the loaded writable folder from disk.",
+    section: "general",
+  },
+  {
     id: "randomJump",
     label: "Random action",
     hint: "Run the configured random action behavior.",
@@ -6238,6 +6277,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   nextFolder: "Command+s",
   toggleDirectoriesPane: "Tab",
   toggleTitlePane: "Command+Alt+r",
+  toggleSettingsAndDirectoriesPanes: "",
+  refreshWorkspace: "",
   randomJump: "r",
   cycleFilter: "f",
   slideshow: "v",
@@ -6523,7 +6564,6 @@ const WS = {
     filterMode: "all",
     randomMode: false,
     randomFolderMode: false,
-    sessionFileThumbsEnabled: false,
     loopWithinDir: false,
     folderBehavior: "slide",
     randomSeed: 0,
@@ -6724,8 +6764,6 @@ function resetWorkspace() {
   applyDefaultViewFromOptions();
   rebuildKeybindIndex();
   WS.view.loopWithinDir = false;
-  WS.view.sessionFileThumbsEnabled = false;
-  setMenuToggleButtonState($("opt_sessionFileThumbs"), false);
   WS.view.randomSeed = 0;
   WS.view.randomCache = new Map();
   WS.view.randomFolderMode = false;
@@ -7127,6 +7165,7 @@ let previewFolderEl = null;
 })();
 
 let MAIN_STATUS_TIMEOUT = null;
+let WORKSPACE_REFRESH_IN_FLIGHT = false;
 
 let ACTIVE_MEDIA_SURFACE = "none";
 
@@ -7691,9 +7730,12 @@ function setMenuTab(tabId) {
 }
 
 function refreshActivePreviewMediaLayout() {
-  if (PREVIEW_MEDIA_LAYOUT_RAF) return;
-  PREVIEW_MEDIA_LAYOUT_RAF = requestAnimationFrame(() => {
-    PREVIEW_MEDIA_LAYOUT_RAF = 0;
+  let opts = null;
+  if (arguments.length > 0) {
+    const first = arguments[0];
+    if (first && typeof first === "object") opts = first;
+  }
+  const runRefresh = () => {
     if (ACTIVE_MEDIA_SURFACE !== "preview") return;
     const rec =
       WS.preview && WS.preview.kind === "file" && WS.preview.fileId
@@ -7706,11 +7748,34 @@ function refreshActivePreviewMediaLayout() {
       applyScrollImageProcessingFallback(previewImgEl, rec, mode);
     }
     MediaFilterEngine.requestRender();
+  };
+  if (opts && opts.immediate) {
+    if (PREVIEW_MEDIA_LAYOUT_RAF) {
+      cancelAnimationFrame(PREVIEW_MEDIA_LAYOUT_RAF);
+      PREVIEW_MEDIA_LAYOUT_RAF = 0;
+    }
+    runRefresh();
+    return;
+  }
+  if (PREVIEW_MEDIA_LAYOUT_RAF) return;
+  PREVIEW_MEDIA_LAYOUT_RAF = requestAnimationFrame(() => {
+    PREVIEW_MEDIA_LAYOUT_RAF = 0;
+    runRefresh();
   });
+}
+
+function syncPreviewContentLayoutAfterMenuToggle() {
+  if (previewContentEl) previewContentEl.offsetWidth;
+  refreshFitInsidePreviewGrids();
+  schedulePreviewVirtualGridRefresh();
+  scheduleThumbnailDemandRefresh();
+  refreshActivePreviewMediaLayout({ immediate: true });
 }
 
 function openMenu(tabId) {
   MENU_OPEN = true;
+  const appEl = document.getElementById("app");
+  if (appEl) appEl.classList.add("menu-pane-open");
   if (menuOverlay) menuOverlay.classList.add("active");
   if (previewContentEl) previewContentEl.classList.add("menu-open");
   refreshMenuTabAvailability();
@@ -7723,27 +7788,18 @@ function openMenu(tabId) {
   MENU_HAS_OPENED = true;
   setMenuTab(next);
   applyMenuTransientFocusBehavior(menuCard || menuOverlay);
-  requestAnimationFrame(() => {
-    if (previewContentEl) previewContentEl.offsetWidth;
-    refreshFitInsidePreviewGrids();
-    schedulePreviewVirtualGridRefresh();
-    scheduleThumbnailDemandRefresh();
-    refreshActivePreviewMediaLayout();
-  });
+  syncPreviewContentLayoutAfterMenuToggle();
 }
 
 function closeMenu() {
   if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
   MENU_OPEN = false;
+  const appEl = document.getElementById("app");
+  if (appEl) appEl.classList.remove("menu-pane-open");
   KEYBIND_CAPTURE_ACTION_ID = "";
   if (menuOverlay) menuOverlay.classList.remove("active");
   if (previewContentEl) previewContentEl.classList.remove("menu-open");
-  requestAnimationFrame(() => {
-    refreshFitInsidePreviewGrids();
-    schedulePreviewVirtualGridRefresh();
-    scheduleThumbnailDemandRefresh();
-    refreshActivePreviewMediaLayout();
-  });
+  syncPreviewContentLayoutAfterMenuToggle();
 }
 
 if (optionsBtn) optionsBtn.addEventListener("click", () => openMenu());
@@ -8689,8 +8745,12 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       row.showToggle === false
         ? `<div class="optOverlayToggleSpacer" aria-hidden="true"></div>`
         : `<input id="${escapeHtml(row.enabledId)}" type="checkbox"${opt[row.enabledKey] ? " checked" : ""} />`;
+    const rowClass =
+      row.showToggle === false
+        ? "optRow optOverlayRow optOverlayRowNoToggle"
+        : "optRow optOverlayRow";
     return `
-          <div class="optRow optOverlayRow">
+          <div class="${rowClass}">
             <div class="optLeft">
               <div class="optTitle">${escapeHtml(row.title)}</div>
             </div>
@@ -8739,15 +8799,18 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "stop", label: "Stop" },
   ];
   const imageThumbRenderModes = [
+    { value: "placeholder", label: "Placeholder" },
     { value: "small", label: "Small cache" },
     { value: "medium", label: "Medium cache" },
     { value: "high", label: "High" },
     { value: "native", label: "Native" },
   ];
   const videoThumbRenderModes = [
+    { value: "placeholder", label: "Placeholder" },
     { value: "small", label: "Small cache" },
     { value: "medium", label: "Medium cache" },
     { value: "high", label: "High" },
+    { value: "native", label: "Native" },
   ];
 
   const animatedFilterModes = [
@@ -9238,7 +9301,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       title: "General",
       rows: `
 ${makeCheckRow("Loading Screens", "When enabled, directory movement waits for thumbnail prep and shows loading screens. When disabled, movement renders immediately and uses placeholders until media is ready.", "opt_loadingScreens", !!opt.loadingScreens)}
-${makeCheckRow("Load file thumbnails", "Session only. When off, file cards stay on blank placeholders and only folder/tag thumbnails are loaded. This resets to off each time a root is opened.", "opt_sessionFileThumbs", sessionFileThumbLoadingEnabled())}
 ${makeCheckRow("Light Mode", "Switch between the light and dark Retro UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Hardware acceleration", "When disabled, score-related interface elements stay hidden without changing the underlying data.", "opt_hardwareAcceleration", scoreUiVisible)}
 ${scoreUiVisible ? makeSelectRow("Folder sort", "Sort folders by name, score, efficiency, size, or item count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes) : ``}
@@ -9301,8 +9363,8 @@ ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when medi
       rows: `
 ${thumbnailStyleRow}
 ${makeSelectRow("Thumbnail Scale", thumbnailScaleHint, "opt_thumbnailScale", getActiveThumbnailScale(opt), thumbnailScaleModes)}
-${makeSelectRow("Image thumbnail quality", "Choose the cached image thumbnail mode. Native uses the original image itself as the thumbnail source.", "opt_imageThumbSize", normalizeThumbRenderModeValue(opt.imageThumbSize, "high"), imageThumbRenderModes)}
-${makeSelectRow("Video thumbnail quality", "Choose the cached video thumbnail size.", "opt_videoThumbSize", normalizeThumbRenderModeValue(opt.videoThumbSize, "medium"), videoThumbRenderModes)}
+${makeSelectRow("Image thumbnail quality", "Choose how image thumbnails render. Placeholder never loads thumbs. Native uses the original image directly with no thumbnail processing.", "opt_imageThumbSize", normalizeThumbRenderModeValue(opt.imageThumbSize, "high"), imageThumbRenderModes)}
+${makeSelectRow("Video thumbnail quality", "Choose how video thumbnails render. Placeholder never loads thumbs. Native renders the selected frame at source resolution.", "opt_videoThumbSize", normalizeThumbRenderModeValue(opt.videoThumbSize, "medium"), videoThumbRenderModes)}
 <h2 style="margin-top:18px;">Preview Pane</h2>
 ${thumbnailPreviewSectionHtml}
 <h2 style="margin-top:18px;">Directories Pane Cards</h2>
@@ -9647,10 +9709,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
   });
   bindCheck("opt_hardwareAcceleration", "hardwareAcceleration");
   bindCheck("opt_loadingScreens", "loadingScreens");
-  bindMenuToggleButton("opt_sessionFileThumbs", (enabled) => {
-    if (!setSessionFileThumbLoadingEnabled(enabled)) return;
-    setOptionsStatus("Session only");
-  });
   bindSelect("opt_slideshowDefault", "slideshowDefault", false);
   bindCheck(
     "opt_includeHiddenItemsInStats",
@@ -10087,26 +10145,92 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
   applyMenuTransientFocusBehavior(optionsBodyEl);
 }
 
-function resetOptionsToDefaults() {
-  WS.meta.options = normalizeOptions(defaultOptions());
+const OPTION_TAB_IDS = Object.freeze([
+  "general",
+  "appearance",
+  "thumbnails",
+  "playback",
+  "filenames",
+]);
+
+const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
+  general: Object.freeze([
+    "loadingScreens",
+    "lightMode",
+    "hardwareAcceleration",
+    "randomActionMode",
+    "clickSelectedRotatingThumbTeleports",
+    "includeHiddenItemsInStats",
+    "showHiddenFolder",
+    "showUntaggedFolder",
+    "showTagFolderSpacerRow",
+    "fileOnlyFoldersOpenInGallery",
+  ]),
+  appearance: Object.freeze(
+    [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
+      "activeAppearancePresetId",
+      "animatedMediaFilters",
+      "gifsIgnoreProcessing",
+    ]),
+  ),
+  thumbnails: Object.freeze([].concat(META_PREFERENCE_SECTION_OPTION_KEYS.thumbnails)),
+  playback: Object.freeze([
+    "videoGallery",
+    "videoSkipStep",
+    "videoEndBehavior",
+    "slideshowDefault",
+  ]),
+  filenames: Object.freeze([
+    "forceTitleCaps",
+    "hideFileExtensionsInFileNames",
+    "hideUnderscoresInFileNames",
+    "hideBeforeLastDashInFileNames",
+    "hideAfterFirstUnderscoreInFileNames",
+  ]),
+});
+
+function normalizeOptionsResetTab(tabId) {
+  const normalized = String(tabId || "").trim().toLowerCase();
+  return OPTION_TAB_IDS.includes(normalized) ? normalized : "general";
+}
+
+function resetOptionsToDefaults(tabId = MENU_ACTIVE_TAB) {
+  if (!WS.meta) return;
+  const targetTab = normalizeOptionsResetTab(tabId);
+  const defaultOpts = normalizeOptions(defaultOptions());
+  const nextOptions = normalizeOptions(
+    Object.assign({}, WS.meta.options || {}, {}),
+  );
+  const keys = OPTIONS_RESET_KEYS_BY_TAB[targetTab] || [];
+  for (let i = 0; i < keys.length; i++) {
+    const key = String(keys[i] || "");
+    if (!key) continue;
+    nextOptions[key] = defaultOpts[key];
+  }
+  WS.meta.options = normalizeOptions(nextOptions);
+
+  if (targetTab === "general") {
+    WS.meta.dirSortMode = "name";
+  }
+
   syncActiveAppearancePresetSelection(WS.meta.options);
-  if (WS.view) {
+  if (targetTab === "appearance" && WS.view) {
     WS.view.appearancePresetEditingId =
       effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
     WS.view.appearancePresetDraftName = "";
     WS.view.appearancePresetPromptMode = "";
   }
-  metaMarkDirty(
-    META_DOC_IDS.prefGeneral,
-    META_DOC_IDS.prefAppearance,
-    META_DOC_IDS.prefPlayback,
-    META_DOC_IDS.prefThumbnails,
-    META_DOC_IDS.prefFilenames,
-    META_DOC_IDS.prefControls,
-  );
+
+  const dirtyIds = new Set(metaPreferenceDocIdsForOptionKeys(keys));
+  if (targetTab === "general") dirtyIds.add(META_DOC_IDS.prefGeneral);
+  metaMarkDirty(...Array.from(dirtyIds));
+
   setOptionsStatus("Reset");
-  renderOptionsUi();
+  renderOptionsUi(targetTab);
   applyOptionsEverywhere(true);
+  showStatusMessage(
+    `Reset ${targetTab.charAt(0).toUpperCase() + targetTab.slice(1)} settings to defaults.`,
+  );
 }
 
 if (keybindsDoneBtn)
@@ -20502,6 +20626,32 @@ function movePreviewSelectionByDirection(direction) {
   return setPreviewSelectionKey(best.key, { activate: true });
 }
 
+function movePreviewSelectionAcrossFolderEdge(step) {
+  if (!WS.root) return false;
+  const selectedKey = String((WS.view && WS.view.previewSelectedKey) || "");
+  if (!selectedKey.startsWith("file:")) return false;
+  const selectedFileId = String(selectedKey.slice(5) || "");
+  if (!selectedFileId) return false;
+  const targetDir = getPreviewTargetDir();
+  if (!targetDir || targetDir._skipTagFilters) return false;
+  const navPath = String(WS.nav.dirNode?.path || "");
+  const targetPath = String(targetDir.path || "");
+  if (navPath !== targetPath) return false;
+  const selectedIdx = findFileEntryIndexById(selectedFileId);
+  if (selectedIdx < 0) return false;
+  WS.nav.selectedIndex = findNearestSelectableIndex(selectedIdx, 1);
+  const slide = slideStepFileInternal(step < 0 ? -1 : 1);
+  if (!slide.moved) return false;
+  renderDirectoriesPane(true);
+  renderPreviewPane(!!slide.dirChanged, true);
+  if (WS.view.activePane === "preview") activatePreviewPaneSelection();
+  else updatePreviewSelectionClasses();
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  return true;
+}
+
 function openSelectedPreviewItem() {
   const card = findSelectedPreviewCard();
   const openAction =
@@ -20686,6 +20836,21 @@ function teleportFromRotatingThumbnail(entry, rowEl = null) {
   if (!id) return false;
   const rec = WS.fileById.get(id);
   if (!rec) return false;
+  return focusDirectoriesOnFileRecord(rec);
+}
+
+function openPreviewFileFromPreviewCard(rec) {
+  if (!rec || !WS.root) return false;
+  const fileId = String(rec.id || "");
+  if (!fileId) return false;
+  if (
+    WS.preview.kind === "file" &&
+    String(WS.preview.fileId || "") === fileId &&
+    String(WS.view.activePane || "") === "preview"
+  ) {
+    openGalleryFromViewerState(false);
+    return true;
+  }
   return focusDirectoriesOnFileRecord(rec);
 }
 
@@ -21644,9 +21809,27 @@ async function persistVideoThumbToDiskCache(rec, mode, blob) {
 }
 
 function currentImageThumbMode() {
-  return WS.meta && WS.meta.options
-    ? String(WS.meta.options.imageThumbSize || "medium")
-    : "medium";
+  const mode =
+    WS.meta && WS.meta.options
+      ? String(WS.meta.options.imageThumbSize || "medium")
+      : "medium";
+  return normalizeThumbRenderModeValue(mode, "medium");
+}
+
+function imageThumbModeSkipsLoading(modeRaw = null) {
+  const mode = normalizeThumbRenderModeValue(
+    modeRaw == null ? currentImageThumbMode() : modeRaw,
+    "medium",
+  );
+  return mode === "placeholder" || mode === "native";
+}
+
+function videoThumbModeSkipsLoading(modeRaw = null) {
+  const mode = normalizeThumbRenderModeValue(
+    modeRaw == null ? currentVideoThumbMode() : modeRaw,
+    "medium",
+  );
+  return mode === "placeholder";
 }
 
 function previewStateForEntry(entry) {
@@ -21657,7 +21840,11 @@ function previewStateForEntry(entry) {
     return { kind: "dir", dirNode: entry.node || null, fileId: null };
   }
   if (entry.kind === "file") {
-    return { kind: "file", dirNode: null, fileId: entry.id || null };
+    return {
+      kind: "file",
+      dirNode: currentFilePreviewContextDir(),
+      fileId: entry.id || null,
+    };
   }
   if (entry.kind === "tag") {
     const node = makeTagPreviewNode(entry);
@@ -21666,6 +21853,35 @@ function previewStateForEntry(entry) {
       : { kind: null, dirNode: null, fileId: null };
   }
   return { kind: null, dirNode: null, fileId: null };
+}
+
+function currentFilePreviewContextDir() {
+  const activePreviewDir =
+    WS.preview && WS.preview.kind === "dir" ? WS.preview.dirNode : null;
+  if (activePreviewDir) return activePreviewDir;
+  if (isViewingTagFolder()) {
+    const mode = String(WS.view.tagFolderActiveMode || "");
+    const entry = {
+      special:
+        mode === "favorites" || mode === "hidden" || mode === "untagged"
+          ? mode
+          : "",
+      album: mode === "album" ? String(WS.view.tagFolderActiveAlbum || "") : "",
+      tag: mode === "tag" ? String(WS.view.tagFolderActiveTag || "") : "",
+      label:
+        mode === "favorites"
+          ? "Favorites"
+          : mode === "hidden"
+            ? "Hidden"
+            : mode === "untagged"
+              ? "Untagged"
+              : mode === "album"
+                ? String(WS.view.tagFolderActiveAlbum || "Album")
+                : String(WS.view.tagFolderActiveTag || "Tag"),
+    };
+    return makeTagPreviewNode(entry) || WS.nav.dirNode || WS.root || null;
+  }
+  return WS.nav.dirNode || WS.root || null;
 }
 
 function loadingScreensEnabled() {
@@ -21861,12 +22077,8 @@ function tagItemTypeLabelForEntry(entry) {
   return "Tag";
 }
 
-function sessionThumbLoadingDisabled() {
-  return !loadingScreensEnabled();
-}
-
 function shouldAutoLoadFileThumbnails() {
-  return sessionFileThumbLoadingEnabled();
+  return true;
 }
 
 function thumbnailPushQueueEnabled() {
@@ -22206,11 +22418,14 @@ function refreshThumbnailDemand() {
     const rec = WS.fileById.get(id);
     if (!rec) return;
     if (rec.type === "video") {
-      if (!(rec.videoThumbUrl && rec.videoThumbMode === videoMode))
+      if (
+        !videoThumbModeSkipsLoading(videoMode) &&
+        !(rec.videoThumbUrl && rec.videoThumbMode === videoMode)
+      )
         enqueueVideoThumb(rec, { priority: true });
       return;
     }
-    if (rec.type === "image" && imageMode !== "native") {
+    if (rec.type === "image" && !imageThumbModeSkipsLoading(imageMode)) {
       if (!(rec.thumbUrl && rec.thumbMode === imageMode))
         enqueueImageThumb(rec, { priority: true });
     }
@@ -22279,6 +22494,7 @@ async function ensureNavigationThumbReady(rec) {
   if (!rec || !rec.id) return false;
   if (rec.type === "video") {
     const mode = currentVideoThumbMode();
+    if (videoThumbModeSkipsLoading(mode)) return true;
     if (rec.videoThumbUrl && rec.videoThumbMode === mode) return true;
     const key = `video###${String(rec.id || "")}###${videoThumbDiskCacheKey(rec, mode)}`;
     if (NAV_THUMB_READY_PROMISES.has(key))
@@ -22294,7 +22510,7 @@ async function ensureNavigationThumbReady(rec) {
   }
   if (rec.type === "image") {
     const mode = currentImageThumbMode();
-    if (mode === "native") return true;
+    if (imageThumbModeSkipsLoading(mode)) return true;
     if (rec.thumbUrl && rec.thumbMode === mode) return true;
     const key = `image###${String(rec.id || "")}###${imageThumbDiskCacheKey(rec, mode) || mode}`;
     if (NAV_THUMB_READY_PROMISES.has(key))
@@ -22742,30 +22958,13 @@ function releaseColdNavigationThumbs() {
 }
 
 async function warmNearbyDirectoriesInRam(snapshot) {
-  const paths = collectEffectiveHotDirectoryPaths(snapshot);
-  if (!paths.length) return;
-  touchHotNavigationDirectoryPaths(paths);
-  const records = collectManifestNavigationRecordsForPaths(
-    paths,
-    shouldAutoLoadFileThumbnails(),
+  const records = navigationSnapshotPendingRecords(snapshot, { full: true });
+  if (!records.length) return;
+  await runWithConcurrency(
+    records,
+    navigationThumbWorkerLimit("background"),
+    ensureNavigationThumbReady,
   );
-  if (records.length)
-    await runWithConcurrency(
-      records,
-      navigationThumbWorkerLimit("background"),
-      ensureNavigationThumbReady,
-    );
-  const pinnedRecords = records.filter((rec) => {
-    if (!rec) return false;
-    return PINNED_HOT_NAV_DIR_PATHS.has(String(rec.dirPath || ""));
-  });
-  if (pinnedRecords.length) {
-    await runWithConcurrency(
-      pinnedRecords,
-      navigationThumbWorkerLimit("background"),
-      warmPinnedNavigationThumbDecode,
-    );
-  }
   releaseColdNavigationThumbs();
 }
 
@@ -22792,11 +22991,12 @@ function navigationSnapshotPendingRecords(snapshot, opts = null) {
     if (!rec) return false;
     if (rec.type === "video") {
       const mode = currentVideoThumbMode();
+      if (videoThumbModeSkipsLoading(mode)) return false;
       return !(rec.videoThumbUrl && rec.videoThumbMode === mode);
     }
     if (rec.type === "image") {
       const mode = currentImageThumbMode();
-      if (mode === "native") return false;
+      if (imageThumbModeSkipsLoading(mode)) return false;
       return !(rec.thumbUrl && rec.thumbMode === mode);
     }
     return false;
@@ -22814,7 +23014,7 @@ async function ensureNavigationSnapshotReady(snapshot, opts = null) {
 }
 
 async function prepareInteractiveNavigationSnapshot(snapshot) {
-  if (!sessionThumbLoadingDisabled()) {
+  if (loadingScreensEnabled()) {
     return prepareNavigationSnapshot(
       snapshot,
       "Preparing directory thumbnails...",
@@ -22887,40 +23087,11 @@ async function warmWorkspaceNavigationThumbsInBackground(
   rootNode = null,
   token = 0,
 ) {
-  const startNode = rootNode || WS.root;
-  if (!startNode || (token && token !== WORKSPACE_NAV_WARM_TOKEN)) return;
-  const records = collectWorkspaceNavigationRecords(startNode);
-  if (!records.length) return;
-  await runWithConcurrency(
-    records,
-    navigationThumbWorkerLimit("background"),
-    async (rec) => {
-      if (token && token !== WORKSPACE_NAV_WARM_TOKEN) return;
-      await ensureNavigationThumbReady(rec);
-    },
-  );
+  return;
 }
 
 function scheduleWorkspaceNavigationWarm(rootNode = null, delayMs = 1200) {
-  if (!thumbnailPushQueueEnabled() || !loadingScreensEnabled()) return;
-  const startNode = rootNode || WS.root;
-  if (!startNode) return;
-  const token = ++WORKSPACE_NAV_WARM_TOKEN;
-  if (WORKSPACE_NAV_WARM_TIMER) {
-    try {
-      clearTimeout(WORKSPACE_NAV_WARM_TIMER);
-    } catch {}
-  }
-  WORKSPACE_NAV_WARM_TIMER = setTimeout(
-    () => {
-      WORKSPACE_NAV_WARM_TIMER = 0;
-      if (token !== WORKSPACE_NAV_WARM_TOKEN) return;
-      warmWorkspaceNavigationThumbsInBackground(startNode, token).catch(
-        () => {},
-      );
-    },
-    Math.max(0, Number(delayMs) || 0),
-  );
+  return;
 }
 
 function notifyScrubMissingTools(missingTools) {
@@ -29542,7 +29713,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           }
           const fileMediaHtml = inlinePreviewHtml
             ? inlinePreviewHtml
-            : `<div class="dirSquareFallback dirBlankThumbPlaceholder" aria-hidden="true"></div>`;
+            : `<div class="dirSquareFallback" aria-hidden="true">${escapeHtml(
+                isVid ? "🎞" : "🖼",
+              )}</div>`;
           const fileMetaBits = [];
           if (fileVisibility.showItemTypeLabel)
             fileMetaBits.push(
@@ -30706,6 +30879,13 @@ async function navigateToDirectory(node) {
     openGalleryForDir(node, directGalleryFirstId, true, true);
     return;
   }
+  if (isViewingTagFolder()) {
+    pushTagViewContext(node.path || "");
+    WS.view.tagFolderActiveMode = "";
+    WS.view.tagFolderActiveTag = "";
+    WS.view.tagFolderActiveAlbum = "";
+    WS.view.tagFolderOriginPath = "";
+  }
   const selectedEntry =
     targetIdx >= 0 ? WS.nav.entries[WS.nav.selectedIndex] || null : null;
   if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
@@ -30844,6 +31024,8 @@ async function openPreviewTagFolderEntry(entry) {
 }
 
 function getPreviewTargetDir() {
+  if (WS.preview.kind === "file" && WS.preview.dirNode)
+    return WS.preview.dirNode;
   if (WS.preview.kind === "dir" && WS.preview.dirNode)
     return WS.preview.dirNode;
   if (WS.preview.kind === "file" && WS.preview.fileId) {
@@ -30919,6 +31101,8 @@ function setPreviewBodyMode(mode) {
   if (!previewBodyEl) return;
   previewBodyEl.classList.toggle("preview-file", mode === "file");
   previewBodyEl.classList.toggle("preview-grid", mode !== "file");
+  const appEl = document.getElementById("app");
+  if (appEl) appEl.classList.toggle("preview-media-mode", mode === "file");
 }
 
 function ensureThumbUrl(rec, opts = null) {
@@ -30928,10 +31112,24 @@ function ensureThumbUrl(rec, opts = null) {
   const options = opts && typeof opts === "object" ? opts : null;
   const allowMediaFallback = !(options && options.allowMediaFallback === false);
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  const mode = opt ? String(opt.imageThumbSize || "medium") : "medium";
+  const mode = normalizeThumbRenderModeValue(
+    opt ? String(opt.imageThumbSize || "medium") : "medium",
+    "medium",
+  );
+
+  if (mode === "placeholder") {
+    if (rec.thumbUrl) {
+      try {
+        URL.revokeObjectURL(rec.thumbUrl);
+      } catch {}
+      rec.thumbUrl = null;
+    }
+    rec.thumbMode = "placeholder";
+    return null;
+  }
 
   if (mode === "native") {
-    if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
+    if (rec.thumbUrl) {
       try {
         URL.revokeObjectURL(rec.thumbUrl);
       } catch {}
@@ -30942,17 +31140,6 @@ function ensureThumbUrl(rec, opts = null) {
   }
 
   if (mode === "high") {
-    if (thumbFiltersActive(rec)) {
-      if (rec.thumbUrl && rec.thumbMode === "high") return rec.thumbUrl;
-      if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
-        try {
-          URL.revokeObjectURL(rec.thumbUrl);
-        } catch {}
-        rec.thumbUrl = null;
-      }
-      rec.thumbMode = null;
-      return allowMediaFallback ? ensureMediaUrl(rec) || null : null;
-    }
     if (rec.thumbUrl && rec.thumbMode === "high") return rec.thumbUrl;
     if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
       try {
@@ -30971,7 +31158,7 @@ function ensureThumbUrl(rec, opts = null) {
 
   if (rec.thumbUrl && rec.thumbMode === mode) return rec.thumbUrl;
 
-  if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
+  if (rec.thumbUrl) {
     try {
       URL.revokeObjectURL(rec.thumbUrl);
     } catch {}
@@ -30998,16 +31185,21 @@ function ensureMediaUrl(rec) {
 }
 
 function getVideoPosterForRecord(rec) {
+  if (videoThumbModeSkipsLoading()) return BLACK_POSTER_URL;
   if (rec && rec.videoThumbUrl) return rec.videoThumbUrl;
   return BLACK_POSTER_URL;
 }
 
 function getPassivePreviewSrcForRecord(rec, opts = null) {
   if (!rec) return "";
-  if (rec.type === "video") return String(rec.videoThumbUrl || "");
+  if (rec.type === "video") {
+    if (videoThumbModeSkipsLoading()) return "";
+    return String(rec.videoThumbUrl || "");
+  }
   const mode = currentImageThumbMode();
+  if (mode === "placeholder") return "";
+  if (mode === "native") return String(ensureMediaUrl(rec) || "");
   if (!rec.thumbUrl) return "";
-  if (mode === "native") return "";
   if (String(rec.thumbMode || "") !== mode) return "";
   return String(rec.thumbUrl || "");
 }
@@ -31187,7 +31379,11 @@ function ensureViewerFromPreviewFileId(fileId) {
   if (!rec) return;
 
   const p = rec ? rec.dirPath || "" : "";
-  const dn = WS.dirByPath.get(p) || WS.nav.dirNode || WS.root;
+  const contextDir =
+    WS.preview && WS.preview.kind === "file" && WS.preview.dirNode
+      ? WS.preview.dirNode
+      : null;
+  const dn = contextDir || WS.dirByPath.get(p) || WS.nav.dirNode || WS.root;
 
   viewerDirNode = dn;
   viewerItems = buildViewerItemsForDir(viewerDirNode);
@@ -33524,7 +33720,7 @@ function makePreviewFileCard(
   card.dataset.previewItemKind = "file";
   card.__previewOpenAction = () => {
     if (!WS.root) return;
-    openGalleryForFileRecord(rec, false, { origin: "preview" });
+    openPreviewFileFromPreviewCard(rec);
   };
   if (useSquareMediaCards) card.classList.add("previewSquareCard");
   if (useNaturalAspectCards) card.classList.add("previewNaturalCard");
@@ -33576,8 +33772,9 @@ function makePreviewFileCard(
     }
   } else {
     const fallback = document.createElement("div");
-    fallback.className = "thumb thumbFallback thumbBlankFallback";
+    fallback.className = "thumb thumbFallback";
     fallback.setAttribute("aria-hidden", "true");
+    fallback.textContent = rec.type === "video" ? "🎞" : "🖼";
     card.appendChild(fallback);
   }
 
@@ -33801,9 +33998,12 @@ function makePreviewFileCard(
        ========================================================= */
 
 function currentVideoThumbMode() {
-  return WS.meta && WS.meta.options
-    ? String(WS.meta.options.videoThumbSize || "medium")
-    : "medium";
+  return normalizeThumbRenderModeValue(
+    WS.meta && WS.meta.options
+      ? String(WS.meta.options.videoThumbSize || "medium")
+      : "medium",
+    "medium",
+  );
 }
 
 function removeVideoThumbIdFromQueue(queue, id) {
@@ -33821,6 +34021,16 @@ function enqueueVideoThumb(rec, opts = null) {
   if (!id) return false;
   if (!thumbnailRecordDesired(id) && !(opts && opts.force)) return false;
   const mode = currentVideoThumbMode();
+  if (videoThumbModeSkipsLoading(mode)) {
+    if (rec.videoThumbUrl) {
+      try {
+        URL.revokeObjectURL(rec.videoThumbUrl);
+      } catch {}
+      rec.videoThumbUrl = null;
+    }
+    rec.videoThumbMode = mode;
+    return false;
+  }
   const deferDrain = !!(opts && opts.deferDrain);
   const priority = !opts || opts.priority !== false;
   if (rec.videoThumbUrl && rec.videoThumbMode === mode) return false;
@@ -34201,6 +34411,16 @@ async function generateVideoThumb(rec, opts = null) {
       : currentThumbnailDemandToken();
   const recId = String(rec?.id || "");
   const mode = currentVideoThumbMode();
+  if (videoThumbModeSkipsLoading(mode)) {
+    if (rec.videoThumbUrl) {
+      try {
+        URL.revokeObjectURL(rec.videoThumbUrl);
+      } catch {}
+      rec.videoThumbUrl = null;
+    }
+    rec.videoThumbMode = mode;
+    return;
+  }
   if (!thumbnailJobContextStillValid(jobToken, recId, force)) return;
   if (await hydrateVideoThumbFromDiskCache(rec, mode)) {
     if (thumbnailJobContextStillValid(jobToken, recId, force))
@@ -34238,8 +34458,9 @@ async function generateVideoThumb(rec, opts = null) {
       v.duration || 0,
       metaGetVideoThumbnailTimeForRecord(rec),
     );
-    const w = videoThumbWidthForOption();
-    const jpgQuality = 0.86;
+    const targetWidth = videoThumbWidthForOption();
+    const nativeMode = mode === "native";
+    const jpgQuality = nativeMode ? 0.92 : 0.86;
 
     let blob = null;
     for (let i = 0; i < seekTimes.length; i++) {
@@ -34248,20 +34469,31 @@ async function generateVideoThumb(rec, opts = null) {
       const frameLooksBlank = isVideoFrameLikelyBlank(v);
       if (frameLooksBlank && i < seekTimes.length - 1) continue;
 
+      const srcW = Math.max(1, Number(v.videoWidth) || targetWidth || 640);
+      const srcH = Math.max(
+        1,
+        Number(v.videoHeight) ||
+          Math.round(srcW / normalizePreviewAspect(rec?.previewAspect, 4 / 3)),
+      );
       updateVideoCropFromElement(rec, v);
       const cropRect = computeCroppedSourceRect(
-        v.videoWidth || w,
-        v.videoHeight || Math.max(1, Math.round(w / (4 / 3))),
+        srcW,
+        srcH,
         getVideoCropForRecord(rec),
       );
       const ar =
         cropRect.sw && cropRect.sh
           ? cropRect.sw / cropRect.sh
-          : v.videoWidth && v.videoHeight
-            ? v.videoWidth / v.videoHeight
+          : srcW && srcH
+            ? srcW / srcH
             : 4 / 3;
       rec.previewAspect = normalizePreviewAspect(ar, 4 / 3);
-      const h = Math.max(120, Math.round(w / ar));
+      const w = nativeMode
+        ? Math.max(1, Math.round(Number(cropRect.sw) || srcW))
+        : Math.max(120, Math.round(targetWidth || 384));
+      const h = nativeMode
+        ? Math.max(1, Math.round(Number(cropRect.sh) || srcH))
+        : Math.max(120, Math.round(w / ar));
 
       const canvas = document.createElement("canvas");
       canvas.width = w;
@@ -34315,6 +34547,10 @@ function enqueueImageThumb(rec, opts = null) {
   if (!id) return;
   if (!thumbnailRecordDesired(id) && !(opts && opts.force)) return;
   const mode = currentImageThumbMode();
+  if (imageThumbModeSkipsLoading(mode)) {
+    ensureThumbUrl(rec, { allowMediaFallback: mode === "native" });
+    return false;
+  }
   const deferDrain = !!(opts && opts.deferDrain);
   const priority = !opts || opts.priority !== false;
   if (rec.thumbUrl && rec.thumbMode === mode) return;
@@ -34367,10 +34603,11 @@ async function drainImageThumbQueue() {
     const rec = WS.fileById.get(id);
     if (!rec || rec.type !== "image") continue;
 
-    const mode =
-      WS.meta && WS.meta.options
-        ? String(WS.meta.options.imageThumbSize || "medium")
-        : "medium";
+    const mode = currentImageThumbMode();
+    if (imageThumbModeSkipsLoading(mode)) {
+      ensureThumbUrl(rec, { allowMediaFallback: mode === "native" });
+      continue;
+    }
     if (rec.thumbUrl && rec.thumbMode === mode) continue;
 
     const jobToken = currentThumbnailDemandToken();
@@ -34393,18 +34630,9 @@ async function generateImageThumb(rec, opts = null) {
       ? Number(opts.jobToken)
       : currentThumbnailDemandToken();
   const recId = String(rec?.id || "");
-  const mode =
-    WS.meta && WS.meta.options
-      ? String(WS.meta.options.imageThumbSize || "medium")
-      : "medium";
-  if (mode === "native") {
-    if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
-      try {
-        URL.revokeObjectURL(rec.thumbUrl);
-      } catch {}
-      rec.thumbUrl = null;
-    }
-    rec.thumbMode = "native";
+  const mode = currentImageThumbMode();
+  if (imageThumbModeSkipsLoading(mode)) {
+    ensureThumbUrl(rec, { allowMediaFallback: mode === "native" });
     return;
   }
   if (!thumbnailJobContextStillValid(jobToken, recId, force)) return;
@@ -34491,6 +34719,38 @@ function kickImageThumbsForPreview() {
 function buildViewerItemsForDir(dirNode) {
   const items = [];
   if (!dirNode) return items;
+  const usePreviewContextItems =
+    !VIEWER_MODE &&
+    WS.preview &&
+    WS.preview.kind === "file" &&
+    WS.preview.dirNode === dirNode;
+  if (usePreviewContextItems) {
+    const previewEntries = getPreviewFolderAndFileEntries(dirNode, {
+      includeFiles: true,
+      useCurrentViewEntries: true,
+    });
+    const folderEntries = Array.isArray(previewEntries.folderEntries)
+      ? previewEntries.folderEntries
+      : [];
+    const fileIds = Array.isArray(previewEntries.fileIds)
+      ? previewEntries.fileIds
+      : [];
+    for (let i = 0; i < folderEntries.length; i++) {
+      const entry = folderEntries[i];
+      if (!entry) continue;
+      if (entry.kind === "dir" && entry.node) {
+        items.push({ isFolder: true, dirNode: entry.node });
+        continue;
+      }
+      if (entry.kind === "tag") {
+        const tagNode = makeTagPreviewNode(entry);
+        if (tagNode) items.push({ isFolder: true, dirNode: tagNode });
+      }
+    }
+    for (let i = 0; i < fileIds.length; i++)
+      items.push({ isFolder: false, id: fileIds[i] });
+    return items;
+  }
 
   const dirs = getChildDirsForNode(dirNode);
   for (const d of dirs) items.push({ isFolder: true, dirNode: d });
@@ -35919,10 +36179,15 @@ function toggleDirectoriesPaneKeybindAction() {
   if (!WS.meta) return false;
   if (VIEWER_MODE) return false;
   const nextOpen = !directoriesPaneOpenEnabled();
+  if (!setDirectoriesPaneOpenKeybindState(nextOpen)) return false;
+  showStatusMessage(`Directories pane: ${nextOpen ? "Open" : "Closed"}`);
+  return true;
+}
+
+function setDirectoriesPaneOpenKeybindState(nextOpen) {
   if (!setDirectoriesPaneOpenValue(nextOpen)) return false;
   syncActivePaneWithLayout();
   refreshAfterDirectoriesPaneToggle(false, true);
-  showStatusMessage(`Directories pane: ${nextOpen ? "Open" : "Closed"}`);
   return true;
 }
 
@@ -35936,6 +36201,63 @@ function toggleTitlePaneKeybindAction() {
   refreshFitInsidePreviewGrids();
   syncButtons();
   showStatusMessage(`Title layout: ${labelForTitleLayoutMode(nextMode)}`);
+  return true;
+}
+
+function toggleSettingsAndDirectoriesPanesKeybindAction() {
+  if (!WS.meta) return false;
+  if (VIEWER_MODE) return false;
+  const directoriesOpen = directoriesPaneOpenEnabled();
+  const settingsOpen = !!MENU_OPEN;
+  let changed = false;
+
+  if (directoriesOpen !== settingsOpen) {
+    if (directoriesOpen)
+      changed = setDirectoriesPaneOpenKeybindState(false) || changed;
+    if (settingsOpen) {
+      closeMenu();
+      changed = true;
+    }
+    if (changed)
+      showStatusMessage("Settings + directories panes: Closed open pane.");
+    return changed;
+  }
+
+  const nextOpen = !directoriesOpen;
+  changed = setDirectoriesPaneOpenKeybindState(nextOpen) || changed;
+  if (nextOpen) {
+    openMenu(MENU_LAST_TAB || "general");
+    changed = true;
+  } else if (settingsOpen) {
+    closeMenu();
+    changed = true;
+  }
+  if (changed)
+    showStatusMessage(`Settings + directories panes: ${nextOpen ? "Open" : "Closed"}`);
+  return changed;
+}
+
+function refreshWorkspaceKeybindAction() {
+  if (!WS.meta || !WS.meta.fsRootHandle) {
+    showStatusMessage("Refresh requires a writable folder.");
+    return false;
+  }
+  if (WORKSPACE_REFRESH_IN_FLIGHT) {
+    showStatusMessage("Refresh already running.");
+    return true;
+  }
+  WORKSPACE_REFRESH_IN_FLIGHT = true;
+  showStatusMessage("Refreshing workspace...");
+  (async () => {
+    try {
+      await refreshWorkspaceFromRootHandle();
+      showStatusMessage("Refresh complete.");
+    } catch {
+      showStatusMessage("Refresh failed.");
+    } finally {
+      WORKSPACE_REFRESH_IN_FLIGHT = false;
+    }
+  })();
   return true;
 }
 
@@ -35962,6 +36284,10 @@ function handleExtrasKeybindAction(action) {
       return toggleDirectoriesPaneKeybindAction();
     case "toggleTitlePane":
       return toggleTitlePaneKeybindAction();
+    case "toggleSettingsAndDirectoriesPanes":
+      return toggleSettingsAndDirectoriesPanesKeybindAction();
+    case "refreshWorkspace":
+      return refreshWorkspaceKeybindAction();
     case "toggleLightMode": {
       const next = toggleOptionValue("lightMode");
       applyColorSchemeFromOptions();
@@ -36966,9 +37292,13 @@ function handleGridKeybindAction(action) {
 function closeFilePreviewToFolder() {
   if (!WS.root) return;
   if (WS.preview.kind !== "file") return;
+  const currentItem = viewerItems[viewerIndex] || null;
+  if (currentItem && !currentItem.isFolder && currentItem.id) {
+    WS.view.pendingPreviewSelectionKey = `file:${String(currentItem.id || "")}`;
+  }
   applyPreviewState({
     kind: "dir",
-    dirNode: getPreviewTargetDir(),
+    dirNode: WS.preview.dirNode || getPreviewTargetDir(),
     fileId: null,
   });
   ACTIVE_MEDIA_SURFACE = "none";
@@ -37037,21 +37367,89 @@ function setDirectoriesPaneOpenValue(nextOpen) {
 function handlePreviewPaneAction(action, inFilePreview) {
   const sidebarVisible = directoriesPaneOpenEnabled();
   if (inFilePreview) {
-    if (action === "selectLeft" && sidebarVisible)
-      return activateDirectoriesPaneSelection();
-    return false;
+    switch (action) {
+      case "selectUp":
+        viewerStep(-1);
+        return true;
+      case "selectDown":
+        viewerStep(1);
+        return true;
+      case "selectLeft":
+        viewerStep(-1);
+        return true;
+      case "selectRight":
+        viewerStep(1);
+        return true;
+      case "leaveDir":
+        viewerLeaveDir();
+        return true;
+      case "enterDir":
+        openGalleryFromViewerState(true);
+        return true;
+      case "prevFolder":
+        viewerJumpToPrevFolderFirstFile();
+        return true;
+      case "nextFolder":
+        viewerJumpToNextFolderFirstFile();
+        return true;
+      case "randomJump":
+        runRandomActionForViewer();
+        return true;
+      case "cycleFilter":
+        cycleFilterMode();
+        return true;
+      case "slideshow":
+        handleSlideshowHotkey(false);
+        return true;
+      case "seekBack":
+        seekViewerVideo(-videoSkipStepSeconds());
+        return true;
+      case "seekForward":
+        seekViewerVideo(videoSkipStepSeconds());
+        return true;
+      case "playPause":
+        toggleViewerVideoPlayPause();
+        return true;
+      case "muteToggle":
+        toggleViewerVideoMute();
+        return true;
+      case "jumpMinus50":
+        viewerJumpRelative(-50);
+        return true;
+      case "jumpMinus10":
+        viewerJumpRelative(-10);
+        return true;
+      case "jumpPlus10":
+        viewerJumpRelative(10);
+        return true;
+      case "jumpPlus50":
+        viewerJumpRelative(50);
+        return true;
+      case "historyBack":
+        goDirHistory(-1);
+        return true;
+      case "historyForward":
+        goDirHistory(1);
+        return true;
+      default:
+        return false;
+    }
   }
   switch (action) {
     case "selectUp":
-      return movePreviewSelectionByDirection("up");
+      if (movePreviewSelectionByDirection("up")) return true;
+      return movePreviewSelectionAcrossFolderEdge(-1);
     case "selectDown":
-      return movePreviewSelectionByDirection("down");
+      if (movePreviewSelectionByDirection("down")) return true;
+      return movePreviewSelectionAcrossFolderEdge(1);
     case "selectLeft":
       if (movePreviewSelectionByDirection("left")) return true;
+      if (movePreviewSelectionAcrossFolderEdge(-1)) return true;
       if (sidebarVisible) return activateDirectoriesPaneSelection();
       return false;
     case "selectRight":
-      return movePreviewSelectionByDirection("right");
+      if (movePreviewSelectionByDirection("right")) return true;
+      return movePreviewSelectionAcrossFolderEdge(1);
     case "leaveDir": {
       const beforeState = {
         navPath: String(WS.nav.dirNode?.path || ""),
@@ -37433,7 +37831,7 @@ document.addEventListener("keydown", (e) => {
         return;
       case "nextFolder":
         e.preventDefault();
-        jumpToNextFolderFirstFile();
+        viewerJumpToNextFolderFirstFile();
         return;
       case "randomJump":
         e.preventDefault();
