@@ -648,14 +648,14 @@ function defaultOptions() {
     colorScheme: "retro",
     lightMode: false,
     hardwareAcceleration: true,
-    leftPaneWidthPct: 0.28,
-    menuPaneWidthPx: 360,
+    leftPaneWidthPct: 0.24421296296296297,
+    menuPaneWidthPx: 422,
     directoriesPaneOpen: true,
     titleLayoutMode: "pane",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
     showUntaggedFolder: false,
-    showTagFolderSpacerRow: false,
+    showTagFolderSpacerRow: true,
     showScores: true,
     showFolderItemCount: true,
     showFolderSize: true,
@@ -669,18 +669,18 @@ function defaultOptions() {
     hideSubfolderThumbnailMenuButton: false,
     hideTagAndRootFolderThumbnailMenuButton: false,
     hideFileThumbnailMenuButton: false,
-    loadingScreens: false,
+    loadingScreens: true,
     previewMediaUsePaneBackground: false,
-    forceTitleCaps: false,
-    hideFileExtensionsInFileNames: false,
-    hideUnderscoresInFileNames: false,
-    hideBeforeLastDashInFileNames: false,
-    hideAfterFirstUnderscoreInFileNames: false,
+    forceTitleCaps: true,
+    hideFileExtensionsInFileNames: true,
+    hideUnderscoresInFileNames: true,
+    hideBeforeLastDashInFileNames: true,
+    hideAfterFirstUnderscoreInFileNames: true,
     clickSelectedRotatingThumbTeleports: false,
     fileOnlyFoldersOpenInGallery: false,
     thumbnailStyle: "cropped",
-    thumbnailScaleCropped: "small",
-    thumbnailScaleAspect: "small",
+    thumbnailScaleCropped: "medium",
+    thumbnailScaleAspect: "medium",
   };
   Object.assign(out, buildDefaultThumbnailVisibilityOptions());
   return out;
@@ -1241,6 +1241,102 @@ const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
       chromaOverlayIntensity: null,
       grainOverlayIntensity: null,
       vignetteOverlayIntensity: null,
+      filmCornerOverlayIntensity: null,
+    }),
+  }),
+  Object.freeze({
+    id: "preset-mnr9i0we-72ts63",
+    name: "'95",
+    locked: false,
+    values: Object.freeze({
+      hueShiftOverlayIntensity: null,
+      saturationOverlayIntensity: null,
+      contrastOverlayIntensity: null,
+      brightnessOverlayIntensity: null,
+      warmthOverlayIntensity: null,
+      colorCrushOverlayIntensity: 0.04,
+      blackCrushOverlayIntensity: null,
+      whiteCrushOverlayIntensity: null,
+      halationOverlayIntensity: null,
+      ghostingOverlayIntensity: null,
+      lineDamageOverlayIntensity: null,
+      pixelateOverlayIntensity: 2.5,
+      blurOverlayIntensity: null,
+      chromaOverlayIntensity: null,
+      grainOverlayIntensity: null,
+      vignetteOverlayIntensity: null,
+      filmCornerOverlayIntensity: null,
+    }),
+  }),
+  Object.freeze({
+    id: "preset-mmwykfee-np83f7",
+    name: "Basic",
+    locked: false,
+    values: Object.freeze({
+      hueShiftOverlayIntensity: 10,
+      saturationOverlayIntensity: 0.35,
+      contrastOverlayIntensity: 0.1,
+      brightnessOverlayIntensity: null,
+      warmthOverlayIntensity: 0.1,
+      colorCrushOverlayIntensity: null,
+      blackCrushOverlayIntensity: null,
+      whiteCrushOverlayIntensity: null,
+      halationOverlayIntensity: null,
+      ghostingOverlayIntensity: null,
+      lineDamageOverlayIntensity: null,
+      pixelateOverlayIntensity: null,
+      blurOverlayIntensity: null,
+      chromaOverlayIntensity: null,
+      grainOverlayIntensity: null,
+      vignetteOverlayIntensity: null,
+      filmCornerOverlayIntensity: null,
+    }),
+  }),
+  Object.freeze({
+    id: "preset-mnd6tpmu-9woytf",
+    name: "Film",
+    locked: false,
+    values: Object.freeze({
+      hueShiftOverlayIntensity: 10,
+      saturationOverlayIntensity: 0.35,
+      contrastOverlayIntensity: null,
+      brightnessOverlayIntensity: null,
+      warmthOverlayIntensity: 0.1,
+      colorCrushOverlayIntensity: null,
+      blackCrushOverlayIntensity: null,
+      whiteCrushOverlayIntensity: null,
+      halationOverlayIntensity: null,
+      ghostingOverlayIntensity: null,
+      lineDamageOverlayIntensity: null,
+      pixelateOverlayIntensity: null,
+      blurOverlayIntensity: null,
+      chromaOverlayIntensity: 0.4,
+      grainOverlayIntensity: 0.08,
+      vignetteOverlayIntensity: null,
+      filmCornerOverlayIntensity: null,
+    }),
+  }),
+  Object.freeze({
+    id: "preset-mmwpvxah-zud4xr",
+    name: "VHS",
+    locked: false,
+    values: Object.freeze({
+      hueShiftOverlayIntensity: 10,
+      saturationOverlayIntensity: 0.35,
+      contrastOverlayIntensity: -0.05,
+      brightnessOverlayIntensity: null,
+      warmthOverlayIntensity: 0.1,
+      colorCrushOverlayIntensity: null,
+      blackCrushOverlayIntensity: null,
+      whiteCrushOverlayIntensity: null,
+      halationOverlayIntensity: 0.16,
+      ghostingOverlayIntensity: 0.14,
+      lineDamageOverlayIntensity: 0.54,
+      pixelateOverlayIntensity: null,
+      blurOverlayIntensity: 0.4,
+      chromaOverlayIntensity: 1.6,
+      grainOverlayIntensity: 0.08,
+      vignetteOverlayIntensity: 0.07,
       filmCornerOverlayIntensity: null,
     }),
   }),
@@ -6583,7 +6679,7 @@ const WS = {
     pendingTagsByPath: new Map(),
     scoreHistory: [],
     dirFingerprints: new Map(),
-    dirSortMode: "name",
+    dirSortMode: "score",
     storageMode: "local",
     storageKey: "",
     fsRootHandle: null,
@@ -6782,7 +6878,7 @@ function resetWorkspace() {
   WS.meta.pendingTagsByPath.clear();
   WS.meta.scoreHistory = [];
   WS.meta.dirFingerprints.clear();
-  WS.meta.dirSortMode = "name";
+  WS.meta.dirSortMode = "score";
   WS.meta.storageMode = "local";
   WS.meta.storageKey = "";
   WS.meta.fsRootHandle = null;
@@ -7070,7 +7166,16 @@ function applyDefaultRootLandingSidebars() {
   if (!WS.meta) return;
   if (setDirectoriesPaneOpenValue(true)) syncActivePaneWithLayout();
   if (!MENU_OPEN) openMenu(MENU_LAST_TAB || "general");
-  syncSidePaneWidthsToSmallerSide();
+  const appEl = document.getElementById("app");
+  const appWidth = Math.max(
+    1,
+    Number(appEl?.clientWidth || window.innerWidth) || 1,
+  );
+  const targetWidthPx = Math.round(appWidth * 0.27);
+  const appliedMenuWidth =
+    setMenuPaneWidthPx(targetWidthPx, true) || targetWidthPx;
+  setDirectoriesPaneWidthPx(appliedMenuWidth, true);
+  syncPreviewContentLayoutAfterMenuToggle();
 }
 
 window.addEventListener("resize", () => {
@@ -10318,7 +10423,7 @@ function resetOptionsToDefaults(tabId = MENU_ACTIVE_TAB) {
   WS.meta.options = normalizeOptions(nextOptions);
 
   if (targetTab === "general") {
-    WS.meta.dirSortMode = "name";
+    WS.meta.dirSortMode = "score";
   }
 
   syncActiveAppearancePresetSelection(WS.meta.options);
