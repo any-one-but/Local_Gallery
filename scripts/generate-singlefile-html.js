@@ -44,8 +44,8 @@ function inlineAppFiles() {
     "  <!-- END: inlined from ./app.js -->"
   ].join("\n");
 
-  let out = html.replace(STYLE_LINK_RE, inlinedStyle);
-  out = out.replace(APP_SCRIPT_RE, inlinedScript);
+  let out = html.replace(STYLE_LINK_RE, () => inlinedStyle);
+  out = out.replace(APP_SCRIPT_RE, () => inlinedScript);
   fs.writeFileSync(OUTPUT_HTML, out, "utf8");
 }
 

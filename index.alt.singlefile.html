@@ -26983,7 +26983,7 @@ function cssEscapeValue(value) {
   if (typeof CSS !== "undefined" && CSS && typeof CSS.escape === "function") {
     return CSS.escape(raw);
   }
-  return raw.replace(/["\\]/g, "\\<script src="./app.js"></script>");
+  return raw.replace(/["\\]/g, "\\$&");
 }
 
 function findPreviewSelectableCardByKey(key) {
