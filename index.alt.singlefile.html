@@ -2466,6 +2466,13 @@ img[data-rotate-key].rotatingThumbFade {
   box-shadow: none;
 }
 
+#app.preview-pane-active.preview-file-open
+  .dirRow.folderRow.folderSquareCard.selected:not(.bulkSelected)
+  .dirSquareCard {
+  border-color: var(--ui-selection-outline);
+  box-shadow: 0 0 0 1px var(--ui-selection-outline);
+}
+
 .dirRow.folderRow.folderSquareCard.bulkSelected .dirSquareCard {
   border-color: var(--anchor-internal-color2-primary);
   outline: 2px dashed var(--ui-selection-outline-soft);
@@ -2490,6 +2497,13 @@ img[data-rotate-key].rotatingThumbFade {
   .dirRow.fileRow.fileThumbCardRow.selected:not(.bulkSelected)
   .dirFileThumbCard {
   outline: none;
+  box-shadow: none;
+}
+
+#app.preview-pane-active.preview-file-open
+  .dirRow.fileRow.fileThumbCardRow.selected:not(.bulkSelected)
+  .dirFileThumbCard {
+  outline: 2px solid var(--ui-selection-outline);
   box-shadow: none;
 }
 
@@ -6764,8 +6778,7 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
 
 function defaultOptions() {
   const out = {
-    videoPreview: "muted",
-    videoGallery: "unmuted",
+    videoAudio: "unmuted",
     imageThumbSize: "native",
     videoThumbSize: "native",
     betaDirFileThumbFullCard: true,
@@ -6846,7 +6859,6 @@ function defaultOptions() {
     hideBeforeLastDashInFileNames: true,
     hideAfterFirstUnderscoreInFileNames: true,
     clickSelectedRotatingThumbTeleports: false,
-    fileOnlyFoldersOpenInGallery: false,
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "medium",
     thumbnailScaleAspect: "medium",
@@ -6981,20 +6993,15 @@ function normalizeOptions(o) {
     : "cropped";
   const colorScheme = "retro";
   const lightMode = typeof src.lightMode === "boolean" ? src.lightMode : false;
-  const videoPreviewRaw = String(src.videoPreview || "")
+  const videoAudioRaw = String(
+    src.videoAudio ?? src.videoGallery ?? src.videoPreview ?? "",
+  )
     .trim()
     .toLowerCase();
-  const videoPreview =
-    videoPreviewRaw === "muted" || videoPreviewRaw === "unmuted"
-      ? videoPreviewRaw
-      : d.videoPreview;
-  const videoGalleryRaw = String(src.videoGallery || "")
-    .trim()
-    .toLowerCase();
-  const videoGallery =
-    videoGalleryRaw === "muted" || videoGalleryRaw === "unmuted"
-      ? videoGalleryRaw
-      : d.videoGallery;
+  const videoAudio =
+    videoAudioRaw === "muted" || videoAudioRaw === "unmuted"
+      ? videoAudioRaw
+      : d.videoAudio;
   const videoSkipStepParsed = parseInt(
     String(src.videoSkipStep || "").trim(),
     10,
@@ -7134,8 +7141,7 @@ function normalizeOptions(o) {
     },
   );
   const out = {
-    videoPreview,
-    videoGallery,
+    videoAudio,
     imageThumbSize,
     videoThumbSize,
     betaDirFileThumbFullCard: true,
@@ -7241,10 +7247,6 @@ function normalizeOptions(o) {
       typeof src.clickSelectedRotatingThumbTeleports === "boolean"
         ? src.clickSelectedRotatingThumbTeleports
         : d.clickSelectedRotatingThumbTeleports,
-    fileOnlyFoldersOpenInGallery:
-      typeof src.fileOnlyFoldersOpenInGallery === "boolean"
-        ? src.fileOnlyFoldersOpenInGallery
-        : d.fileOnlyFoldersOpenInGallery,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,
@@ -7591,8 +7593,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   playback: Object.freeze([
     "preloadNextMode",
     "slideshowDefault",
-    "videoPreview",
-    "videoGallery",
+    "videoAudio",
     "videoSkipStep",
     "videoEndBehavior",
   ]),
@@ -7627,7 +7628,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "hideBeforeLastDashInFileNames",
     "hideAfterFirstUnderscoreInFileNames",
   ]),
-  controls: Object.freeze(["fileOnlyFoldersOpenInGallery"]),
+  controls: Object.freeze([]),
 });
 
 const META_PREFERENCE_DOC_BY_OPTION_KEY = (() => {
@@ -9031,9 +9032,12 @@ function hasVideoCrop(crop) {
   return !!c;
 }
 
+function videoAutoBlackBarTrimEnabled(opt = null) {
+  return false;
+}
+
 function getVideoCropForRecord(rec) {
-  if (!rec || rec.type !== "video") return null;
-  return normalizeVideoCrop(rec.videoCrop);
+  return null;
 }
 
 function getVideoCropForTarget(target) {
@@ -9233,60 +9237,15 @@ function detectStaticVideoBlackBars(videoEl) {
 }
 
 function updateVideoCropFromElement(rec, videoEl) {
-  if (!rec || rec.type !== "video" || !videoEl) return false;
-  if (hasVideoCrop(rec.videoCrop)) return false;
-  const crop = detectStaticVideoBlackBars(videoEl);
-  if (!crop) return false;
-  rec.videoCrop = crop;
-  const cropRect = computeCroppedSourceRect(
-    videoEl.videoWidth || 0,
-    videoEl.videoHeight || 0,
-    crop,
-  );
-  if (cropRect.sw > 0 && cropRect.sh > 0) {
-    rec.previewAspect = normalizePreviewAspect(
-      cropRect.sw / cropRect.sh,
-      rec.previewAspect || 4 / 3,
-    );
-  }
-  if (rec.videoThumbUrl) {
-    try {
-      URL.revokeObjectURL(rec.videoThumbUrl);
-    } catch {}
-    rec.videoThumbUrl = null;
-    rec.videoThumbMode = null;
-  }
-  return true;
+  return false;
 }
 
 function applyVideoCropToElement(videoEl, rec) {
   if (!videoEl) return;
-  const crop = getVideoCropForRecord(rec);
-  if (!crop) {
-    videoEl.style.removeProperty("clip-path");
-    videoEl.style.removeProperty("-webkit-clip-path");
-    videoEl.style.removeProperty("transform-origin");
-    videoEl.style.removeProperty("transform");
-    return;
-  }
-  const xVisible = Math.max(0.08, 1 - crop.left - crop.right);
-  const yVisible = Math.max(0.08, 1 - crop.top - crop.bottom);
-  const scaleX = 1 / xVisible;
-  const scaleY = 1 / yVisible;
-  const tx = (crop.right - crop.left) * 0.5 * scaleX * 100;
-  const ty = (crop.bottom - crop.top) * 0.5 * scaleY * 100;
-  const topPct = (crop.top * 100).toFixed(4);
-  const rightPct = (crop.right * 100).toFixed(4);
-  const bottomPct = (crop.bottom * 100).toFixed(4);
-  const leftPct = (crop.left * 100).toFixed(4);
-  const clip = `inset(${topPct}% ${rightPct}% ${bottomPct}% ${leftPct}%)`;
-  videoEl.style.setProperty("clip-path", clip);
-  videoEl.style.setProperty("-webkit-clip-path", clip);
-  videoEl.style.setProperty("transform-origin", "50% 50%");
-  videoEl.style.setProperty(
-    "transform",
-    `translate(${tx.toFixed(4)}%, ${ty.toFixed(4)}%) scale(${scaleX.toFixed(6)}, ${scaleY.toFixed(6)})`,
-  );
+  videoEl.style.removeProperty("clip-path");
+  videoEl.style.removeProperty("-webkit-clip-path");
+  videoEl.style.removeProperty("transform-origin");
+  videoEl.style.removeProperty("transform");
 }
 
 function getMediaFilterForType(target = undefined) {
@@ -11852,6 +11811,10 @@ function syncActivePaneWithLayout() {
       "preview-pane-active",
       WS.view.activePane === "preview",
     );
+    appEl.classList.toggle(
+      "preview-file-open",
+      !!(WS.preview && WS.preview.kind === "file" && WS.preview.fileId),
+    );
   }
 }
 
@@ -12341,12 +12304,6 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
-    id: "toggleFileOnlyFoldersOpenInGallery",
-    label: "Toggle file-only folders open directly in gallery mode",
-    hint: "Toggle opening file-only folders directly in gallery mode.",
-    section: "general",
-  },
-  {
     id: "togglePreviewMediaUsePaneBackground",
     label: "Toggle preview media pane background",
     hint: "Toggle whether preview media stays on the recessed pane surface instead of black.",
@@ -12442,7 +12399,6 @@ const KEYBIND_ACTIONS = [
 
 const GRID_KEYBIND_SECTIONS = [
   { id: "gridnav", label: "Grid Navigation" },
-  { id: "gridgallery", label: "Grid Gallery" },
 ];
 
 const GRID_KEYBIND_ACTIONS = [
@@ -12481,24 +12437,6 @@ const GRID_KEYBIND_ACTIONS = [
     label: "Up directory",
     hint: "Go to parent directory in grid mode.",
     section: "gridnav",
-  },
-  {
-    id: "gridGalleryPrev",
-    label: "Previous media",
-    hint: "In gallery, move to previous media.",
-    section: "gridgallery",
-  },
-  {
-    id: "gridGalleryNext",
-    label: "Next media",
-    hint: "In gallery, move to next media.",
-    section: "gridgallery",
-  },
-  {
-    id: "gridGalleryBack",
-    label: "Back from gallery",
-    hint: "Exit gallery to the prior grid context.",
-    section: "gridgallery",
   },
 ];
 
@@ -12592,7 +12530,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   cycleFolderSort: "t",
   toggleShowHiddenFolder: "h",
   toggleShowUntaggedFolder: "Command+h",
-  toggleFileOnlyFoldersOpenInGallery: "Command+t",
   togglePreviewMediaUsePaneBackground: "",
   favoriteSelection: "f",
   tagSelection: "",
@@ -12617,9 +12554,6 @@ const GRID_KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   gridMoveRight: "",
   gridOpenSelection: "",
   gridUpDirectory: "",
-  gridGalleryPrev: "",
-  gridGalleryNext: "",
-  gridGalleryBack: "",
 });
 
 function applyFixedKeybinds(bindings) {
@@ -12689,7 +12623,8 @@ function normalizeKeybinds(log, presets = null) {
   };
   if (log && Array.isArray(log.bindings)) {
     for (const entry of log.bindings) {
-      const id = entry && entry.id ? String(entry.id) : "";
+      const idRaw = entry && entry.id ? String(entry.id) : "";
+      const id = idRaw;
       const key = normalizeKeyValue(entry.key || "");
       if (!id) continue;
       if (key && !isSafeKeybindValue(key)) continue;
@@ -12723,21 +12658,6 @@ function normalizeKeybinds(log, presets = null) {
   migrateIfKeyMatches("toggleAnimatedFilters", "5", "Command+i");
   migrateIfKeyMatches("toggleAnimatedFilters", "6", "Command+i");
   migrateIfKeyMatches("favoriteSelection", "Ctrl+f", "f");
-  const fileOnlyFoldersBinding = byId.get("toggleFileOnlyFoldersOpenInGallery");
-  const tagSelectionBinding = byId.get("tagSelection");
-  if (fileOnlyFoldersBinding && tagSelectionBinding) {
-    const fileOnlyFoldersKey = normalizeKeyValue(
-      fileOnlyFoldersBinding.key || "",
-    );
-    const tagSelectionKey = normalizeKeyValue(tagSelectionBinding.key || "");
-    if (
-      !fileOnlyFoldersKey &&
-      tagSelectionKey === normalizeKeyValue("Command+t")
-    ) {
-      fileOnlyFoldersBinding.key = normalizeKeyValue("Command+t");
-      tagSelectionBinding.key = "";
-    }
-  }
   applyFixedKeybinds(bindings);
   enforceUniqueKeybinds(bindings, KEYBIND_LOCKED_IDS);
   return { bindings };
@@ -12941,6 +12861,7 @@ const WS = {
     searchResults: [],
     searchResultsDirectCount: 0,
     pendingPreviewSelectionKey: "",
+    returnToPreviewPaneAfterFileClose: false,
     previewScrollByDir: new Map(),
     previewScrollActiveKey: "",
     gridSelectionByContext: new Map(),
@@ -13134,6 +13055,7 @@ function resetWorkspace() {
   WS.view.searchResults = [];
   WS.view.searchResultsDirectCount = 0;
   WS.view.pendingPreviewSelectionKey = "";
+  WS.view.returnToPreviewPaneAfterFileClose = false;
   WS.view.previewScrollByDir = new Map();
   WS.view.previewScrollActiveKey = "";
   WS.view.gridSelectionByContext = new Map();
@@ -13325,22 +13247,37 @@ function setDirectoriesPaneWidthPx(widthPx, save = true) {
   return nextWidth;
 }
 
+function menuPaneDividerWidthPx() {
+  if (!MENU_OPEN) return 0;
+  const raw = Number(menuDivider?.offsetWidth || 8);
+  if (!Number.isFinite(raw) || raw < 0) return 8;
+  return Math.round(raw);
+}
+
 function syncSidePaneWidthsToSmallerSide() {
   if (!WS.meta) return;
-  const targetPx = Math.min(
-    getDirectoriesPaneWidthPxFromOptions(),
+  const dividerPx = menuPaneDividerWidthPx();
+  const currentMenuOccupied = Math.max(
+    0,
     Number(
       WS.meta.options && Number.isFinite(Number(WS.meta.options.menuPaneWidthPx))
         ? WS.meta.options.menuPaneWidthPx
         : defaultMenuPaneWidth(),
     ) || defaultMenuPaneWidth(),
+  ) + dividerPx;
+  const targetPx = Math.min(
+    getDirectoriesPaneWidthPxFromOptions(),
+    currentMenuOccupied,
   );
+  const targetMenuWidth = Math.max(280, Math.round(targetPx - dividerPx));
   const appliedMenuWidth =
-    setMenuPaneWidthPx(targetPx, true) ||
-    Math.round(Number(menuOverlay?.offsetWidth || targetPx));
+    setMenuPaneWidthPx(targetMenuWidth, true) ||
+    Math.round(Number(menuOverlay?.offsetWidth || targetMenuWidth));
   const finalWidth = Math.max(
     280,
-    Math.round(Number(menuOverlay?.offsetWidth || appliedMenuWidth || targetPx)),
+    Math.round(
+      Number(menuOverlay?.offsetWidth || appliedMenuWidth || targetMenuWidth),
+    ) + dividerPx,
   );
   setDirectoriesPaneWidthPx(finalWidth, true);
   syncPreviewContentLayoutAfterMenuToggle();
@@ -13355,10 +13292,12 @@ function applyDefaultRootLandingSidebars() {
     1,
     Number(appEl?.clientWidth || window.innerWidth) || 1,
   );
-  const targetWidthPx = Math.round(appWidth * 0.27);
+  const targetOccupiedWidthPx = Math.round(appWidth * 0.27);
+  const dividerPx = menuPaneDividerWidthPx();
+  const targetMenuWidthPx = Math.max(280, targetOccupiedWidthPx - dividerPx);
   const appliedMenuWidth =
-    setMenuPaneWidthPx(targetWidthPx, true) || targetWidthPx;
-  setDirectoriesPaneWidthPx(appliedMenuWidth, true);
+    setMenuPaneWidthPx(targetMenuWidthPx, true) || targetMenuWidthPx;
+  setDirectoriesPaneWidthPx(Math.round(appliedMenuWidth + dividerPx), true);
   syncPreviewContentLayoutAfterMenuToggle();
 }
 
@@ -14776,16 +14715,7 @@ function renderKeybindsUi(scope = "pane") {
     paneBySection.get(binding.section).push(binding);
   }
 
-  let html = `
-        <div class="optRow">
-          <div class="optLeft">
-            <div class="optTitle">File-only folders open in gallery</div>
-          </div>
-          <div class="optRight">
-            ${makeMenuToggleButtonHtml("ctl_fileOnlyFoldersOpenInGallery", !!opt.fileOnlyFoldersOpenInGallery)}
-          </div>
-        </div>
-      `;
+  let html = ``;
 
   const renderBindingRows = (list) => {
     let out = "";
@@ -14828,17 +14758,6 @@ function renderKeybindsUi(scope = "pane") {
 
   keybindsBodyEl.innerHTML = html;
   applyDescriptionVisibilityFromOptions();
-
-  bindMenuToggleButton("ctl_fileOnlyFoldersOpenInGallery", (enabled) => {
-    const next = {};
-    next.fileOnlyFoldersOpenInGallery = !!enabled;
-    WS.meta.options = normalizeOptions(
-      Object.assign({}, WS.meta.options || {}, next),
-    );
-    metaMarkDirty(META_DOC_IDS.prefControls);
-    setKeybindsStatus("Saved");
-    applyOptionsEverywhere(false);
-  });
 
   const captureButtons = keybindsBodyEl.querySelectorAll(
     "button[data-bind-capture-id]",
@@ -15703,12 +15622,10 @@ ${makeCheckRow("Loading Screens", "When enabled, directory movement waits for th
 ${makeCheckRow("Light Mode", "Switch between the light and dark Retro UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Hardware acceleration", "When disabled, score-related interface elements stay hidden without changing the underlying data.", "opt_hardwareAcceleration", scoreUiVisible)}
 ${scoreUiVisible ? makeSelectRow("Folder sort", "Sort folders by name, score, efficiency, size, or item count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes) : ``}
-${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${scoreUiVisible ? makeCheckRow("Include hidden items in Stats", "When enabled, the Stats tab includes hidden folders and files in its totals and score history.", "opt_includeHiddenItemsInStats", !!opt.includeHiddenItemsInStats) : ``}
 ${makeCheckRow("Reveal Hidden Items", "Show folders hidden by hidden tags in the current directory view. The Hidden control still opens the global hidden browser.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag in any folder view when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
-${makeCheckRow("File-only folders open in gallery", "Open file-only folders directly in Gallery Mode on the first file.", "opt_fileOnlyFoldersOpenInGallery", !!opt.fileOnlyFoldersOpenInGallery)}
 ${makeCheckRow("Preview media uses pane background", "When enabled, preview media always stays on the recessed preview pane surface instead of switching to a black full-bleed background.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
           `,
     },
@@ -15801,7 +15718,7 @@ ${makeActionRow(
     playback: {
       title: "Playback",
       rows: `
-${makeSelectRow("Gallery video audio", "Default audio state for videos played in the viewer/gallery.", "opt_videoGallery", String(opt.videoGallery || "unmuted"), videoAudioModes)}
+${makeSelectRow("Default video audio", "Default audio state for videos played in the preview pane.", "opt_videoAudio", String(opt.videoAudio || "unmuted"), videoAudioModes)}
 ${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
 ${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
 ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
@@ -16172,7 +16089,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
   thumbnailVisibilityOptionKeys().forEach((key) => {
     bindCheck(thumbnailVisibilityInputId(key), key);
   });
-  bindCheck("opt_fileOnlyFoldersOpenInGallery", "fileOnlyFoldersOpenInGallery");
   colorOverlayRows.forEach((row) => {
     if (row.showToggle !== false) {
       bindCheck(row.enabledId, row.enabledKey, () => {
@@ -16289,13 +16205,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
   bindSelect("opt_videoThumbSize", "videoThumbSize", true, null, (val) =>
     normalizeThumbRenderModeValue(val, "medium"),
   );
-  bindSelect("opt_videoPreview", "videoPreview", false, null, (val) => {
-    const raw = String(val || "")
-      .trim()
-      .toLowerCase();
-    return raw === "unmuted" ? "unmuted" : "muted";
-  });
-  bindSelect("opt_videoGallery", "videoGallery", false, null, (val) => {
+  bindSelect("opt_videoAudio", "videoAudio", false, null, (val) => {
     const raw = String(val || "")
       .trim()
       .toLowerCase();
@@ -16560,7 +16470,6 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showHiddenFolder",
     "showUntaggedFolder",
     "showTagFolderSpacerRow",
-    "fileOnlyFoldersOpenInGallery",
     "previewMediaUsePaneBackground",
   ]),
   appearance: Object.freeze(
@@ -16572,7 +16481,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
   ),
   thumbnails: Object.freeze([].concat(META_PREFERENCE_SECTION_OPTION_KEYS.thumbnails)),
   playback: Object.freeze([
-    "videoGallery",
+    "videoAudio",
     "videoSkipStep",
     "videoEndBehavior",
     "slideshowDefault",
@@ -17912,7 +17821,7 @@ function normalizeTagThumbnailMode(mode) {
     .trim()
     .toLowerCase();
   if (raw === "none" || raw === "single") return raw;
-  if (raw === "quad") return quadThumbnailsEnabled() ? "quad" : "single";
+  if (raw === "quad") return "single";
   return defaultRotatingThumbnailMode();
 }
 
@@ -23627,9 +23536,8 @@ function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
   if (!dirPath && dirNode !== WS.root) return { record: null, rotateKey: "" };
   const recursivePool = getRecursivePreviewRecordsForDir(dirNode, 0, false);
   if (!recursivePool.length) return { record: null, rotateKey: "" };
-  const rotateKey = `${String(rotateKeyPrefix || "dir")}:${dirPath}:recursive`;
-  const record = pickRotatingPreviewRecordForKey(rotateKey, recursivePool);
-  return { record: record || null, rotateKey };
+  const record = recursivePool[0] || null;
+  return { record, rotateKey: "" };
 }
 
 function findNearestPresettableParentForRecord(rec) {
@@ -24830,6 +24738,63 @@ function setTagThumbnailFromRecordByKey(rec, tagKey) {
   return true;
 }
 
+function refreshThumbnailUiAfterMetadataChange() {
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+}
+
+function pickRandomPreviewRecord(records) {
+  const pool = Array.isArray(records) ? records.filter(Boolean) : [];
+  if (!pool.length) return null;
+  const idx = Math.floor(Math.random() * pool.length);
+  return pool[idx] || null;
+}
+
+function randomThumbnailCandidateForDirNode(dirNode) {
+  if (!dirNode) return null;
+  const pool = getRecursivePreviewRecordsForDir(dirNode, 0, true).filter(
+    (rec) => rec && passesFilter(rec),
+  );
+  if (!pool.length) return null;
+  return pickRandomPreviewRecord(pool);
+}
+
+function randomThumbnailCandidateForTagEntry(entry) {
+  if (!entry || entry.kind !== "tag") return null;
+  const pool = getRecursivePreviewRecordsForTagEntry(entry, 0);
+  if (!pool.length) return null;
+  return pickRandomPreviewRecord(pool);
+}
+
+function setRandomFolderThumbnailForNode(dirNode) {
+  const node = dirNode || null;
+  if (!node) return false;
+  const rec = randomThumbnailCandidateForDirNode(node);
+  if (!rec) return false;
+  const relPath = normalizeWorkspaceRelPath(rec.relPath || "");
+  if (!relPath) return false;
+  if (node === WS.root) {
+    return metaSetTagThumbnailPresetByKey(rootThumbnailKey(), relPath);
+  }
+  const path = String(node.path || "");
+  if (!path) return false;
+  return metaSetFolderThumbnailPreset(path, relPath);
+}
+
+function setRandomTagThumbnailForEntry(entry) {
+  if (!entry || entry.kind !== "tag") return false;
+  const key = tagThumbnailKeyForEntry(entry);
+  if (!key) return false;
+  const rec = randomThumbnailCandidateForTagEntry(entry);
+  if (!rec) return false;
+  const relPath = normalizeWorkspaceRelPath(rec.relPath || "");
+  if (!relPath) return false;
+  return metaSetTagThumbnailPresetByKey(key, relPath);
+}
+
 function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
   const key = tagThumbnailKeyForEntry(entry);
   if (!key) return null;
@@ -24863,66 +24828,21 @@ function pickRotatingPreviewSlotsForKey(baseKey, records, count = 4) {
   const laneCount = Math.max(1, Number(count) || 1);
   if (!k || !pool.length) return out;
   for (let i = 0; i < laneCount; i++) {
-    const laneKey = `${k}:lane:${i + 1}`;
-    const rec = pickRotatingPreviewRecordForKey(laneKey, pool);
+    const laneKey = `${k}:slot:${i + 1}`;
+    const rec = pool[i % pool.length] || null;
     out.push({ key: laneKey, rec: rec || null });
   }
   return out;
 }
 
 function registerRotatingPreviewPool(key, records) {
-  const k = String(key || "");
-  if (!k) return;
-  const idSet = new Set();
-  const ids = [];
-  for (let i = 0; i < (records || []).length; i++) {
-    const id = String(records[i]?.id || "");
-    if (!id) continue;
-    if (idSet.has(id)) continue;
-    idSet.add(id);
-    ids.push(id);
-  }
-  if (!ids.length) {
-    ROTATING_PREVIEW_POOLS.delete(k);
-    ROTATING_PREVIEW_ORDER.delete(k);
-    ROTATING_PREVIEW_INDEX.delete(k);
-    ROTATING_PREVIEW_NEXT_AT.delete(k);
-    return;
-  }
-  ROTATING_PREVIEW_POOLS.set(k, ids);
-  const existingOrder = ROTATING_PREVIEW_ORDER.get(k) || [];
-  const orderValid =
-    existingOrder.length === ids.length &&
-    existingOrder.every((id) => idSet.has(id));
-  if (!orderValid) {
-    ROTATING_PREVIEW_ORDER.set(k, buildWeightedRotationOrder(ids));
-    ROTATING_PREVIEW_INDEX.set(k, 0);
-  }
-  if (!ROTATING_PREVIEW_INDEX.has(k)) {
-    ROTATING_PREVIEW_INDEX.set(k, 0);
-  }
-  if (!ROTATING_PREVIEW_NEXT_AT.has(k)) {
-    const initialDelay =
-      ROTATING_PREVIEW_INTERVAL_MS +
-      (Math.random() * 2 - 1) * ROTATING_PREVIEW_JITTER_MS;
-    ROTATING_PREVIEW_NEXT_AT.set(
-      k,
-      Date.now() + Math.max(ROTATING_PREVIEW_POLL_MS, initialDelay),
-    );
-  }
-  ensureRotatingPreviewTicker();
+  return;
 }
 
 function pickRotatingPreviewRecordForKey(key, records) {
-  const k = String(key || "");
-  if (!k || !records || !records.length) return null;
-  registerRotatingPreviewPool(k, records);
-  const order = ROTATING_PREVIEW_ORDER.get(k) || [];
-  if (!order.length) return records[0] || null;
-  let idx = Number(ROTATING_PREVIEW_INDEX.get(k));
-  if (!Number.isFinite(idx) || idx < 0 || idx >= order.length) idx = 0;
-  const rec = WS.fileById.get(order[idx]) || null;
-  return rec || records[0] || null;
+  const pool = Array.isArray(records) ? records : [];
+  if (!pool.length) return null;
+  return pool[0] || null;
 }
 
 function getRootThumbnailReferenceRecord(rootNode) {
@@ -24933,24 +24853,7 @@ function getRootThumbnailReferenceRecord(rootNode) {
   if (rootMode === "none") return null;
   const presetRec = getRootPresetPreviewRecord(rootNode, rootPool);
   if (presetRec) return presetRec;
-  if (naturalAspectThumbnailCardsEnabled()) return null;
-  const rootScope = String(
-    WS.meta && WS.meta.storageKey ? WS.meta.storageKey : "workspace",
-  );
-  if (rootMode === "single" || rootPool.length < 4) {
-    const singleKey = `root:${rootScope}:${rootMode === "single" ? "single" : "single-fallback"}`;
-    return pickRotatingPreviewRecordForKey(singleKey, rootPool) || null;
-  }
-  const slots = pickRotatingPreviewSlotsForKey(
-    `root:${rootScope}:quad`,
-    rootPool,
-    4,
-  );
-  for (let i = 0; i < slots.length; i++) {
-    const rec = slots[i] && slots[i].rec ? slots[i].rec : null;
-    if (rec) return rec;
-  }
-  return null;
+  return rootPool[0] || null;
 }
 
 function getTagThumbnailReferenceRecord(entry) {
@@ -24963,27 +24866,7 @@ function getTagThumbnailReferenceRecord(entry) {
   if (!tagPool.length) return null;
   const presetRec = getTagPresetPreviewRecordForEntry(entry, tagPool);
   if (presetRec) return presetRec;
-  if (naturalAspectThumbnailCardsEnabled()) return null;
-
-  const tagRotateScope = String(
-    WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : "",
-  );
-  const tagRotateKey = entry.special
-    ? `tag:${tagRotateScope}:special:${entry.special}`
-    : entry.album && !entry.tag
-      ? `tag:${tagRotateScope}:album:${String(entry.album || "")}`
-      : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
-
-  if (mode === "single" || tagPool.length < 4) {
-    const singleKey = `${tagRotateKey}:${mode === "single" ? "single" : "single-fallback"}`;
-    return pickRotatingPreviewRecordForKey(singleKey, tagPool) || null;
-  }
-  const slots = pickRotatingPreviewSlotsForKey(tagRotateKey, tagPool, 4);
-  for (let i = 0; i < slots.length; i++) {
-    const rec = slots[i] && slots[i].rec ? slots[i].rec : null;
-    if (rec) return rec;
-  }
-  return null;
+  return tagPool[0] || null;
 }
 
 function getSelectedThumbnailSourceRecordFromUi() {
@@ -25185,76 +25068,14 @@ function crossfadePreviewRecordOnImageElement(imgEl, rec) {
 }
 
 function rotatePreviewThumbnailsTick() {
-  const imgs = document
-    ? document.querySelectorAll("img[data-rotate-key]")
-    : [];
-  if (!imgs || !imgs.length) return;
-  const groups = new Map();
-  imgs.forEach((imgEl) => {
-    const key = String(imgEl.dataset.rotateKey || "");
-    if (!key) return;
-    const list = groups.get(key) || [];
-    list.push(imgEl);
-    groups.set(key, list);
-  });
-  if (!groups.size) return;
-  const now = Date.now();
-  for (const [key, list] of groups.entries()) {
-    const ids = ROTATING_PREVIEW_POOLS.get(key) || [];
-    if (!ids.length) continue;
-    let order = ROTATING_PREVIEW_ORDER.get(key) || [];
-    if (order.length !== ids.length) {
-      order = buildWeightedRotationOrder(ids);
-      ROTATING_PREVIEW_ORDER.set(key, order);
-      ROTATING_PREVIEW_INDEX.set(key, 0);
-    }
-    const nextAt = Number(ROTATING_PREVIEW_NEXT_AT.get(key) || 0);
-    if (nextAt > now) continue;
-    let nextIndex = Number(ROTATING_PREVIEW_INDEX.get(key));
-    if (
-      !Number.isFinite(nextIndex) ||
-      nextIndex < 0 ||
-      nextIndex >= order.length
-    )
-      nextIndex = 0;
-    nextIndex += 1;
-    if (nextIndex >= order.length) {
-      order = buildWeightedRotationOrder(ids);
-      ROTATING_PREVIEW_ORDER.set(key, order);
-      nextIndex = 0;
-    }
-    ROTATING_PREVIEW_INDEX.set(key, nextIndex);
-    const rec = WS.fileById.get(order[nextIndex]) || null;
-    if (!rec) continue;
-    list.forEach((imgEl) => crossfadePreviewRecordOnImageElement(imgEl, rec));
-    let nextDelay =
-      ROTATING_PREVIEW_INTERVAL_MS +
-      (Math.random() * 2 - 1) * ROTATING_PREVIEW_JITTER_MS;
-    const minDelay = Math.max(
-      3000,
-      Math.floor(ROTATING_PREVIEW_INTERVAL_MS * 0.2),
-    );
-    if (!Number.isFinite(nextDelay) || nextDelay < minDelay)
-      nextDelay = minDelay;
-    ROTATING_PREVIEW_NEXT_AT.set(key, now + nextDelay);
-    const grid = list[0] ? list[0].closest(".fitInsideJustified") : null;
-    if (grid) requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
-  }
-  for (const key of Array.from(ROTATING_PREVIEW_POOLS.keys())) {
-    if (!groups.has(key)) {
-      ROTATING_PREVIEW_ORDER.delete(key);
-      ROTATING_PREVIEW_INDEX.delete(key);
-      ROTATING_PREVIEW_NEXT_AT.delete(key);
-    }
-  }
+  return;
 }
 
 function ensureRotatingPreviewTicker() {
-  if (ROTATING_PREVIEW_TIMER) return;
-  ROTATING_PREVIEW_TIMER = setInterval(
-    rotatePreviewThumbnailsTick,
-    ROTATING_PREVIEW_POLL_MS,
-  );
+  if (ROTATING_PREVIEW_TIMER) {
+    clearInterval(ROTATING_PREVIEW_TIMER);
+    ROTATING_PREVIEW_TIMER = 0;
+  }
 }
 
 function makeTagPreviewNode(entry) {
@@ -27129,20 +26950,6 @@ function handlePreviewCardSelection(card, openAction, e = null) {
 }
 
 function entryUsesRotatingThumbnail(entry) {
-  if (!entry) return false;
-  if (entry.kind === "tag") {
-    const key = tagThumbnailKeyForEntry(entry);
-    const mode = metaGetTagThumbnailModeByKey(key);
-    if (mode === "none") return false;
-    if (mode === "single" && metaHasTagThumbnailPresetByKey(key)) return false;
-    return getRecursivePreviewRecordsForTagEntry(entry, 1).length > 0;
-  }
-  if (entry.kind === "dir" && entry.node) {
-    const p = String(entry.node.path || "");
-    if (metaGetFolderThumbnailMode(p) !== "rotate") return false;
-    if (getFirstDirectPreviewRecordForDir(entry.node)) return false;
-    return getRecursivePreviewRecordsForDir(entry.node, 1, false).length > 0;
-  }
   return false;
 }
 
@@ -27233,21 +27040,13 @@ function openPreviewFileFromPreviewCard(rec) {
     String(WS.preview.fileId || "") === fileId &&
     String(WS.view.activePane || "") === "preview"
   ) {
-    openGalleryFromViewerState(false);
     return true;
   }
-  return focusDirectoriesOnFileRecord(rec);
-}
-
-function firstFileIdForDirectFolderGalleryEntry(dirNode) {
-  if (!dirNode) return "";
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  if (!opt || !opt.fileOnlyFoldersOpenInGallery) return "";
-  const childDirs = getChildDirsForNode(dirNode);
-  if (childDirs.length > 0) return "";
-  const fileIds = getOrderedFileIdsForDir(dirNode);
-  if (!fileIds.length) return "";
-  return String(fileIds[0] || "");
+  setActivePane("preview");
+  const opened = focusDirectoriesOnFileRecord(rec);
+  if (!opened) return false;
+  WS.view.returnToPreviewPaneAfterFileClose = true;
+  return true;
 }
 
 function enterSelectedDirectory() {
@@ -27284,63 +27083,14 @@ function enterSelectedDirectory() {
 
   if (entry.kind !== "dir" || !entry.node) {
     if (entry.kind === "file") {
-      openGalleryFromDirectoriesSelection(true);
+      const rec = WS.fileById.get(entry.id);
+      if (rec) {
+        focusDirectoriesOnFileRecord(rec);
+        WS.view.returnToPreviewPaneAfterFileClose = false;
+      }
     }
     return;
   }
-  const directGalleryFirstId = firstFileIdForDirectFolderGalleryEntry(
-    entry.node,
-  );
-  if (directGalleryFirstId) {
-    const directGalleryReturnState =
-      searchBrowsingResultFolder() || searchResultsVisibleInDirectoriesPane()
-        ? captureSearchResultsRestoreState(entry.node, {
-            activePane: "directories",
-          })
-        : captureViewerCloseRestoreState({ activePane: "directories" });
-    if (isViewingTagFolder()) {
-      pushTagViewContext(entry.node?.path || "");
-      WS.view.tagFolderActiveMode = "";
-      WS.view.tagFolderActiveTag = "";
-      WS.view.tagFolderActiveAlbum = "";
-      WS.view.tagFolderOriginPath = "";
-    }
-    if (searchResultsVisibleInDirectoriesPane()) {
-      VIEWER_CLOSE_RESTORE_STATE = captureSearchResultsRestoreState(
-        entry.node,
-        { activePane: "directories" },
-      );
-      enterSearchResultContext(entry.node.path || "");
-    }
-    if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-      WS.view.favoritesRootActive = false;
-      WS.view.favoritesAnchorPath = entry.node.path || "";
-    }
-    if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
-      WS.view.hiddenRootActive = false;
-      WS.view.hiddenAnchorPath = entry.node.path || "";
-    }
-
-    // Enter the folder context first so gallery controls operate on this folder's files.
-    VIEWER_CLOSE_RESTORE_STATE = directGalleryReturnState;
-    WS.nav.dirNode = entry.node;
-    WS.view.aboveRootView = false;
-    syncBulkSelectionForCurrentDir();
-    syncFavoritesUi();
-    syncHiddenUi();
-    syncTagUiForCurrentDir();
-    rebuildDirectoriesEntries();
-    const fileIdx = findFileEntryIndexById(directGalleryFirstId);
-    WS.nav.selectedIndex = findNearestSelectableIndex(
-      fileIdx >= 0 ? fileIdx : selectionIndexForDirectoryEnter(),
-      1,
-    );
-    syncPreviewToSelection({ force: true });
-    scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
-    openGalleryForDir(entry.node, directGalleryFirstId, true, true);
-    return;
-  }
-
   if (isViewingTagFolder()) {
     pushTagViewContext(entry.node?.path || "");
     WS.view.tagFolderActiveMode = "";
@@ -30748,6 +30498,20 @@ function openTagContextMenu(context) {
   const canDelete = !context.special && (!!tag || isAlbumEntry);
   const canHide = !!tag && !context.special;
   const thumbMode = metaGetTagThumbnailModeByKey(tagKey);
+  const tagEntryForThumb =
+    context.entry && context.entry.kind === "tag"
+      ? context.entry
+      : {
+          kind: "tag",
+          tag: String(context.tag || ""),
+          album: normalizeTagAlbumName(context.album || ""),
+          special: String(context.special || ""),
+          label: String(context.label || context.tag || context.album || "Tag"),
+          originPath: String(
+            context.originPath || WS.nav?.dirNode?.path || "",
+          ),
+          placeholder: false,
+        };
   const canAppearancePreset =
     !!tagKey && !context.special && (!!tag || isAlbumEntry);
   const canMediaFilter =
@@ -30759,8 +30523,9 @@ function openTagContextMenu(context) {
   const assignedMediaFilterValue = canMediaFilter
     ? metaGetTagMediaFilterByKey(tagKey)
     : [];
-  const allowRotatingThumbnails = !naturalAspectThumbnailCardsEnabled();
-  const hasPreset = metaHasTagThumbnailPresetByKey(tagKey);
+  const canSetRandomThumbnail = !!randomThumbnailCandidateForTagEntry(
+    tagEntryForThumb,
+  );
   closeTagContextMenu();
   closeActionMenus();
   const menu = tagActionMenuEl;
@@ -30856,27 +30621,18 @@ function openTagContextMenu(context) {
         handleTagMenuAction("thumbnail-none"),
       ),
     );
-  if (allowRotatingThumbnails && (thumbMode !== "single" || hasPreset))
+  if (canSetRandomThumbnail)
     menu.appendChild(
-      createTagMenuButton("Use rotating thumbnail", () =>
-        handleTagMenuAction("thumbnail-single"),
+      createTagMenuButton("Random thumbnail", () =>
+        handleTagMenuAction("thumbnail-random"),
       ),
     );
-  if (
-    quadThumbnailsEnabled() &&
-    allowRotatingThumbnails &&
-    thumbMode !== "quad"
-  ) {
-    menu.appendChild(
-      createTagMenuButton("Use quad thumbnail", () =>
-        handleTagMenuAction("thumbnail-quad"),
-      ),
-    );
-  }
   TAG_CONTEXT_MENU_STATE = {
     tag,
     album,
     isAlbumEntry,
+    special: String(context.special || ""),
+    entry: tagEntryForThumb,
     tagKey,
     anchor,
     label: context.label || tag || album,
@@ -30920,6 +30676,7 @@ function openTagEntryContextMenu(entry, anchor) {
   const paths = gatherTagPathsForDirs(dirs);
   const tagKey = tagThumbnailKeyForEntry(entry);
   openTagContextMenu({
+    entry,
     tag: String(entry.tag || ""),
     album: String(entry.album || ""),
     tagKey,
@@ -31023,10 +30780,8 @@ function buildFolderThumbnailSubmenuHtml(options) {
     buttonsHtml += `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>`;
   if (cfg.showSetNoThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-none">No thumbnail</button>`;
-  if (cfg.showSetRotatingThumbnail)
-    buttonsHtml += `<button type="button" data-action="thumbnail-rotate">Use rotating thumbnail</button>`;
-  if (cfg.showSetQuadThumbnail)
-    buttonsHtml += `<button type="button" data-action="thumbnail-quad">Use quad thumbnail</button>`;
+  if (cfg.showSetRandomThumbnail)
+    buttonsHtml += `<button type="button" data-action="thumbnail-random">Random thumbnail</button>`;
   return buildDropdownMenuSubmenuHtml("Thumbnail", buttonsHtml);
 }
 
@@ -31127,13 +30882,11 @@ function buildFolderMenuState(dirNode) {
   const folderThumbMode = isRootNode
     ? getRootThumbnailMode()
     : metaGetFolderThumbnailMode(p);
-  const allowRotatingThumbnails = !naturalAspectThumbnailCardsEnabled();
-  const canToggleFolderThumbMode = isRootNode
-    ? true
-    : folderEligibleForParentThumbnailPreset(dirNode);
+  const canToggleFolderThumbMode = !!dirNode && (isRootNode || !!p);
   const hasPreset = isRootNode
     ? rootThumbnailHasPreset()
     : metaHasFolderThumbnailPreset(p);
+  const hasRandomCandidate = !!randomThumbnailCandidateForDirNode(dirNode);
   return {
     path: p,
     isRootNode,
@@ -31145,18 +30898,8 @@ function buildFolderMenuState(dirNode) {
     showUseDefaultThumbnail:
       hasPreset || (isRootNode && !isRootThumbnailModeDefault(folderThumbMode)),
     showSetNoThumbnail: canToggleFolderThumbMode && folderThumbMode !== "none",
-    showSetRotatingThumbnail:
-      allowRotatingThumbnails &&
-      canToggleFolderThumbMode &&
-      (isRootNode
-        ? folderThumbMode !== "single" || hasPreset
-        : folderThumbMode !== "rotate"),
-    showSetQuadThumbnail:
-      quadThumbnailsEnabled() &&
-      allowRotatingThumbnails &&
-      canToggleFolderThumbMode &&
-      isRootNode &&
-      folderThumbMode !== "quad",
+    showSetRandomThumbnail:
+      canToggleFolderThumbMode && hasRandomCandidate,
   };
 }
 
@@ -31201,13 +30944,9 @@ function buildFolderActionMenuDom(
     );
   if (state.showSetNoThumbnail)
     folderThumbnailButtons.push(makeBtn("No thumbnail", "thumbnail-none"));
-  if (state.showSetRotatingThumbnail)
+  if (state.showSetRandomThumbnail)
     folderThumbnailButtons.push(
-      makeBtn("Use rotating thumbnail", "thumbnail-rotate"),
-    );
-  if (state.showSetQuadThumbnail)
-    folderThumbnailButtons.push(
-      makeBtn("Use quad thumbnail", "thumbnail-quad"),
+      makeBtn("Random thumbnail", "thumbnail-random"),
     );
   if (state.isRootNode) {
     menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
@@ -32496,30 +32235,25 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     showStatusMessage("Folder media preset reset to inherited.");
     return true;
   }
-  if (action === "thumbnail-rotate") {
-    if (naturalAspectThumbnailCardsEnabled()) {
+  if (
+    action === "thumbnail-random" ||
+    action === "thumbnail-rotate" ||
+    action === "thumbnail-quad"
+  ) {
+    const changed = setRandomFolderThumbnailForNode(node);
+    if (!changed) {
       showStatusMessage(
-        "Rotating thumbnails are disabled in natural aspect thumbnail mode.",
+        isRootNode
+          ? "No media files available for a random root thumbnail."
+          : "No media files available for a random folder thumbnail.",
       );
       return true;
     }
-    let changed = false;
-    if (isRootNode) {
-      const presetCleared = clearRootThumbnailPreset();
-      changed = setRootThumbnailMode("single") || presetCleared;
-    } else {
-      changed = metaSetFolderThumbnailRotate(p);
-    }
-    if (!changed) return true;
-    renderDirectoriesPane(true);
-    renderPreviewPane(false, true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
+    refreshThumbnailUiAfterMetadataChange();
     showStatusMessage(
       isRootNode
-        ? "Root thumbnail set to rotating."
-        : "Folder thumbnail set to rotating.",
+        ? "Root thumbnail set to a random file."
+        : "Folder thumbnail set to a random file.",
     );
     return true;
   }
@@ -32545,36 +32279,10 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
       ? setRootThumbnailMode("none")
       : metaSetFolderThumbnailNone(p);
     if (!changed) return true;
-    renderDirectoriesPane(true);
-    renderPreviewPane(false, true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
+    refreshThumbnailUiAfterMetadataChange();
     showStatusMessage(
       isRootNode ? "Root thumbnail removed." : "Folder thumbnail removed.",
     );
-    return true;
-  }
-  if (action === "thumbnail-quad") {
-    if (!quadThumbnailsEnabled()) {
-      showStatusMessage("Quad thumbnails are disabled.");
-      return true;
-    }
-    if (naturalAspectThumbnailCardsEnabled()) {
-      showStatusMessage(
-        "Rotating thumbnails are disabled in natural aspect thumbnail mode.",
-      );
-      return true;
-    }
-    if (!isRootNode) return true;
-    const changed = setRootThumbnailMode("quad");
-    if (!changed) return true;
-    renderDirectoriesPane(true);
-    renderPreviewPane(false, true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-    showStatusMessage("Root thumbnail set to quad.");
     return true;
   }
   if (action === "score-up") {
@@ -32700,7 +32408,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     !!selectedPaths.length &&
     selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
   const thumbTogglePaths = selectedDirNodes
-    .filter((node) => folderEligibleForParentThumbnailPreset(node))
     .map((node) => String(node.path || ""))
     .filter(Boolean);
   const thumbDefaultPaths = thumbTogglePaths.filter((p) =>
@@ -32709,9 +32416,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   const allThumbNone =
     !!thumbTogglePaths.length &&
     thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "none");
-  const allThumbRotate =
-    !!thumbTogglePaths.length &&
-    thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "rotate");
+  const randomThumbNodes = selectedDirNodes.filter((node) => !!node);
 
   if (scoreInterfaceEnabled()) {
     const scoreRow = document.createElement("div");
@@ -32888,25 +32593,18 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     );
   }
 
-  if (
-    thumbTogglePaths.length &&
-    !allThumbRotate &&
-    !naturalAspectThumbnailCardsEnabled()
-  ) {
+  if (randomThumbNodes.length) {
     thumbnailBulkButtons.push(
-      makeBtn("Use rotating thumbnail", () => {
-        const changed = metaSetFolderThumbnailModeBulk(
-          thumbTogglePaths,
-          "rotate",
-        );
+      makeBtn("Random thumbnail", () => {
+        let changed = false;
+        for (let i = 0; i < randomThumbNodes.length; i++) {
+          if (setRandomFolderThumbnailForNode(randomThumbNodes[i]))
+            changed = true;
+        }
         if (!changed) return;
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        renderDirectoriesPane(true);
-        renderPreviewPane(false, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-        showStatusMessage("Folder thumbnails set to rotating.");
+        refreshThumbnailUiAfterMetadataChange();
+        showStatusMessage("Folder thumbnails set to random files.");
       }),
     );
   }
@@ -33115,30 +32813,21 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const anyAssignedTagMediaFilter = tagMediaFilterTargets.some((key) =>
     metaHasTagMediaFilterByKey(key),
   );
-  const tagThumbTargets = Array.from(
-    new Set(
-      selectedEntries
-        .map((entry) => tagThumbnailKeyForEntry(entry))
-        .filter(Boolean),
-    ),
-  );
+  const tagThumbEntryByKey = (() => {
+    const out = new Map();
+    for (let i = 0; i < selectedEntries.length; i++) {
+      const entry = selectedEntries[i];
+      const key = tagThumbnailKeyForEntry(entry);
+      if (!key || out.has(key)) continue;
+      out.set(key, entry);
+    }
+    return out;
+  })();
+  const tagThumbTargets = Array.from(tagThumbEntryByKey.keys());
   const allTagThumbNone =
     !!tagThumbTargets.length &&
     tagThumbTargets.every(
       (key) => metaGetTagThumbnailModeByKey(key) === "none",
-    );
-  const allTagThumbSingleNoPreset =
-    !!tagThumbTargets.length &&
-    tagThumbTargets.every(
-      (key) =>
-        metaGetTagThumbnailModeByKey(key) === "single" &&
-        !metaHasTagThumbnailPresetByKey(key),
-    );
-  const allTagThumbQuad =
-    quadThumbnailsEnabled() &&
-    !!tagThumbTargets.length &&
-    tagThumbTargets.every(
-      (key) => metaGetTagThumbnailModeByKey(key) === "quad",
     );
 
   if (albumAssignableTagEntries.length) {
@@ -33422,58 +33111,25 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
           }
           if (!changed) return;
           finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
+          refreshThumbnailUiAfterMetadataChange();
           showStatusMessage("Tag folder thumbnails removed.");
         }),
       );
     }
 
-    if (!naturalAspectThumbnailCardsEnabled() && !allTagThumbSingleNoPreset) {
+    if (tagThumbTargets.length) {
       menu.appendChild(
-        makeBtn("Use rotating tag thumbnail", async () => {
+        makeBtn("Random tag thumbnail", async () => {
           let changed = false;
           for (let i = 0; i < tagThumbTargets.length; i++) {
             const key = tagThumbTargets[i];
-            const presetCleared = metaClearTagThumbnailPresetByKey(key);
-            const modeChanged = metaSetTagThumbnailModeByKey(key, "single");
-            if (presetCleared || modeChanged) changed = true;
+            const entry = tagThumbEntryByKey.get(key) || null;
+            if (setRandomTagThumbnailForEntry(entry)) changed = true;
           }
           if (!changed) return;
           finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Tag folder thumbnails set to rotating.");
-        }),
-      );
-    }
-
-    if (
-      quadThumbnailsEnabled() &&
-      !naturalAspectThumbnailCardsEnabled() &&
-      !allTagThumbQuad
-    ) {
-      menu.appendChild(
-        makeBtn("Use quad tag thumbnail", async () => {
-          let changed = false;
-          for (let i = 0; i < tagThumbTargets.length; i++) {
-            if (metaSetTagThumbnailModeByKey(tagThumbTargets[i], "quad"))
-              changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Tag folder thumbnails set to quad.");
+          refreshThumbnailUiAfterMetadataChange();
+          showStatusMessage("Tag folder thumbnails set to random files.");
         }),
       );
     }
@@ -34058,52 +33714,34 @@ function handleTagMenuAction(action) {
   if (action === "thumbnail-none") {
     const changed = metaSetTagThumbnailModeByKey(tagKey, "none");
     if (!changed) return;
-    renderDirectoriesPane(true);
-    renderPreviewPane(false, true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
+    refreshThumbnailUiAfterMetadataChange();
     showStatusMessage(`Thumbnail for '${label}' removed.`);
     return;
   }
-  if (action === "thumbnail-single") {
-    if (naturalAspectThumbnailCardsEnabled()) {
-      showStatusMessage(
-        "Rotating thumbnails are disabled in natural aspect thumbnail mode.",
-      );
+  if (
+    action === "thumbnail-random" ||
+    action === "thumbnail-single" ||
+    action === "thumbnail-quad"
+  ) {
+    const tagEntry =
+      ctx.entry && ctx.entry.kind === "tag"
+        ? ctx.entry
+        : {
+            kind: "tag",
+            tag: String(ctx.tag || ""),
+            album: normalizeTagAlbumName(ctx.album || ""),
+            special: String(ctx.special || ""),
+            label: String(ctx.label || ctx.tag || ctx.album || "Tag"),
+            originPath: String(ctx.originPath || WS.nav?.dirNode?.path || ""),
+            placeholder: false,
+          };
+    const changed = setRandomTagThumbnailForEntry(tagEntry);
+    if (!changed) {
+      showStatusMessage(`No media files available for '${label}'.`);
       return;
     }
-    const presetCleared = metaClearTagThumbnailPresetByKey(tagKey);
-    const changed =
-      metaSetTagThumbnailModeByKey(tagKey, "single") || presetCleared;
-    if (!changed) return;
-    renderDirectoriesPane(true);
-    renderPreviewPane(false, true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-    showStatusMessage(`'${label}' uses a rotating thumbnail.`);
-    return;
-  }
-  if (action === "thumbnail-quad") {
-    if (!quadThumbnailsEnabled()) {
-      showStatusMessage("Quad thumbnails are disabled.");
-      return;
-    }
-    if (naturalAspectThumbnailCardsEnabled()) {
-      showStatusMessage(
-        "Rotating thumbnails are disabled in natural aspect thumbnail mode.",
-      );
-      return;
-    }
-    const changed = metaSetTagThumbnailModeByKey(tagKey, "quad");
-    if (!changed) return;
-    renderDirectoriesPane(true);
-    renderPreviewPane(false, true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-    showStatusMessage(`'${label}' uses quad thumbnails.`);
+    refreshThumbnailUiAfterMetadataChange();
+    showStatusMessage(`Set random thumbnail for '${label}'.`);
   }
 }
 
@@ -34253,35 +33891,21 @@ function renderDirectoriesActionHeader() {
   const anyAssignedTagMediaFilter =
     !!tagMediaFilterTargets.length &&
     tagMediaFilterTargets.some((key) => metaHasTagMediaFilterByKey(key));
-  const tagThumbTargets = (() => {
-    const out = [];
-    const seen = new Set();
+  const tagThumbEntryByKey = (() => {
+    const out = new Map();
     for (let i = 0; i < selectedTagEntries.length; i++) {
       const entry = selectedTagEntries[i];
       const key = tagThumbnailKeyForEntry(entry);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(key);
+      if (!key || out.has(key)) continue;
+      out.set(key, entry);
     }
     return out;
   })();
+  const tagThumbTargets = Array.from(tagThumbEntryByKey.keys());
   const allTagThumbNone =
     !!tagThumbTargets.length &&
     tagThumbTargets.every(
       (key) => metaGetTagThumbnailModeByKey(key) === "none",
-    );
-  const allTagThumbSingleNoPreset =
-    !!tagThumbTargets.length &&
-    tagThumbTargets.every(
-      (key) =>
-        metaGetTagThumbnailModeByKey(key) === "single" &&
-        !metaHasTagThumbnailPresetByKey(key),
-    );
-  const allTagThumbQuad =
-    quadThumbnailsEnabled() &&
-    !!tagThumbTargets.length &&
-    tagThumbTargets.every(
-      (key) => metaGetTagThumbnailModeByKey(key) === "quad",
     );
   const canUseGridTagThumbBulkActions =
     isGridInteractionMode() && !!tagThumbTargets.length;
@@ -34604,60 +34228,26 @@ function renderDirectoriesActionHeader() {
           }
           if (!changed) return;
           finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
+          refreshThumbnailUiAfterMetadataChange();
           showStatusMessage("Tag folder thumbnails removed.");
         }),
       );
     }
 
-    if (!naturalAspectThumbnailCardsEnabled() && !allTagThumbSingleNoPreset) {
+    if (tagThumbTargets.length) {
       directoriesActionMenuEl.appendChild(
-        makeActionBtn("Use rotating tag thumbnail", () => {
+        makeActionBtn("Random tag thumbnail", () => {
           WS.view.bulkActionMenuOpen = false;
           let changed = false;
           for (let i = 0; i < tagThumbTargets.length; i++) {
             const key = tagThumbTargets[i];
-            const presetCleared = metaClearTagThumbnailPresetByKey(key);
-            const modeChanged = metaSetTagThumbnailModeByKey(key, "single");
-            if (presetCleared || modeChanged) changed = true;
+            const entry = tagThumbEntryByKey.get(key) || null;
+            if (setRandomTagThumbnailForEntry(entry)) changed = true;
           }
           if (!changed) return;
           finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Tag folder thumbnails set to rotating.");
-        }),
-      );
-    }
-
-    if (
-      quadThumbnailsEnabled() &&
-      !naturalAspectThumbnailCardsEnabled() &&
-      !allTagThumbQuad
-    ) {
-      directoriesActionMenuEl.appendChild(
-        makeActionBtn("Use quad tag thumbnail", () => {
-          WS.view.bulkActionMenuOpen = false;
-          let changed = false;
-          for (let i = 0; i < tagThumbTargets.length; i++) {
-            if (metaSetTagThumbnailModeByKey(tagThumbTargets[i], "quad"))
-              changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Tag folder thumbnails set to quad.");
+          refreshThumbnailUiAfterMetadataChange();
+          showStatusMessage("Tag folder thumbnails set to random files.");
         }),
       );
     }
@@ -34673,7 +34263,6 @@ function renderDirectoriesActionHeader() {
     const canRenameBulk = !!singleSelectedDirPath && !!WS.meta.fsRootHandle;
     const canIndexBulk = !!singleSelectedDirNode && !!WS.meta.fsRootHandle;
     const thumbTogglePaths = selectedDirNodes
-      .filter((node) => folderEligibleForParentThumbnailPreset(node))
       .map((node) => String(node.path || ""))
       .filter(Boolean);
     const thumbDefaultPaths = thumbTogglePaths.filter((p) =>
@@ -34682,9 +34271,7 @@ function renderDirectoriesActionHeader() {
     const allThumbNone =
       !!thumbTogglePaths.length &&
       thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "none");
-    const allThumbRotate =
-      !!thumbTogglePaths.length &&
-      thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "rotate");
+    const randomThumbNodes = selectedDirNodes.filter((node) => !!node);
 
     if (scoreInterfaceEnabled()) {
       const scoreRow = document.createElement("div");
@@ -34885,26 +34472,19 @@ function renderDirectoriesActionHeader() {
       );
     }
 
-    if (
-      thumbTogglePaths.length &&
-      !allThumbRotate &&
-      !naturalAspectThumbnailCardsEnabled()
-    ) {
+    if (randomThumbNodes.length) {
       bulkThumbnailButtons.push(
-        makeActionBtn("Use rotating thumbnail", () => {
+        makeActionBtn("Random thumbnail", () => {
           WS.view.bulkActionMenuOpen = false;
-          const changed = metaSetFolderThumbnailModeBulk(
-            thumbTogglePaths,
-            "rotate",
-          );
+          let changed = false;
+          for (let i = 0; i < randomThumbNodes.length; i++) {
+            if (setRandomFolderThumbnailForNode(randomThumbNodes[i]))
+              changed = true;
+          }
           if (!changed) return;
           finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Folder thumbnails set to rotating.");
+          refreshThumbnailUiAfterMetadataChange();
+          showStatusMessage("Folder thumbnails set to random files.");
         }),
       );
     }
@@ -35777,10 +35357,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const folderThumbMode = isRootNode
           ? getRootThumbnailMode()
           : metaGetFolderThumbnailMode(p);
-        const allowRotatingThumbnails = !naturalThumbCards;
-        const canToggleFolderThumbMode = isRootNode
-          ? true
-          : folderEligibleForParentThumbnailPreset(entry.node);
+        const canToggleFolderThumbMode = !!entry.node && (isRootNode || !!p);
         const hasThumbPreset = isRootNode
           ? rootThumbnailHasPreset()
           : metaHasFolderThumbnailPreset(p);
@@ -35789,23 +35366,12 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           (isRootNode && !isRootThumbnailModeDefault(folderThumbMode));
         const showSetNoThumbnail =
           canToggleFolderThumbMode && folderThumbMode !== "none";
-        const showSetRotatingThumbnail =
-          allowRotatingThumbnails &&
-          canToggleFolderThumbMode &&
-          (isRootNode
-            ? folderThumbMode !== "single" || hasThumbPreset
-            : folderThumbMode !== "rotate");
-        const showSetQuadThumbnail =
-          quadThumbnailsEnabled() &&
-          allowRotatingThumbnails &&
-          canToggleFolderThumbMode &&
-          isRootNode &&
-          folderThumbMode !== "quad";
+        const showSetRandomThumbnail =
+          canToggleFolderThumbMode;
         const folderThumbnailMenuHtml = buildFolderThumbnailSubmenuHtml({
           showUseDefaultThumbnail,
           showSetNoThumbnail,
-          showSetRotatingThumbnail,
-          showSetQuadThumbnail,
+          showSetRandomThumbnail,
         });
         // Menu (three dot / ⋯) for single-folder actions.
         let menuButtons = "";
@@ -37208,15 +36774,6 @@ async function navigateToDirectory(node) {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
   if (!node) return;
-  const directGalleryFirstId = firstFileIdForDirectFolderGalleryEntry(node);
-  const directGalleryReturnState = directGalleryFirstId
-    ? captureViewerCloseRestoreState({
-        activePane: "preview",
-        pendingPreviewSelectionKey: String(
-          WS.view?.previewSelectedKey || `dir:${String(node.path || "")}`,
-        ),
-      })
-    : null;
   if (!adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir())) {
     WS.nav.dirNode = node.parent || WS.nav.dirNode || WS.root || node;
     WS.view.aboveRootView = false;
@@ -37256,46 +36813,6 @@ async function navigateToDirectory(node) {
     targetIdx >= 0 ? targetIdx : 0,
     1,
   );
-  if (directGalleryFirstId) {
-    if (isViewingTagFolder()) {
-      pushTagViewContext(node.path || "");
-      WS.view.tagFolderActiveMode = "";
-      WS.view.tagFolderActiveTag = "";
-      WS.view.tagFolderActiveAlbum = "";
-      WS.view.tagFolderOriginPath = "";
-    }
-    if (searchSessionActive() && WS.view.searchRootActive) {
-      enterSearchResultContext(node.path || "");
-    }
-    if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-      WS.view.favoritesRootActive = false;
-      WS.view.favoritesAnchorPath = node.path || "";
-    }
-    if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
-      WS.view.hiddenRootActive = false;
-      WS.view.hiddenAnchorPath = node.path || "";
-    }
-    WS.nav.dirNode = node;
-    WS.view.aboveRootView = false;
-    syncBulkSelectionForCurrentDir();
-    syncFavoritesUi();
-    syncHiddenUi();
-    syncTagUiForCurrentDir();
-    rebuildDirectoriesEntries();
-    const fileIdx = findFileEntryIndexById(directGalleryFirstId);
-    WS.nav.selectedIndex = findNearestSelectableIndex(
-      fileIdx >= 0 ? fileIdx : selectionIndexForDirectoryEnter(),
-      1,
-    );
-    syncPreviewToSelection({ force: true });
-    scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
-    VIEWER_CLOSE_RESTORE_STATE =
-      searchBrowsingResultFolder() || searchSessionActive()
-        ? captureSearchResultsRestoreState(node, { activePane: "preview" })
-        : directGalleryReturnState;
-    openGalleryForDir(node, directGalleryFirstId, true, true);
-    return;
-  }
   if (isViewingTagFolder()) {
     pushTagViewContext(node.path || "");
     WS.view.tagFolderActiveMode = "";
@@ -37813,12 +37330,11 @@ function ensureViewerFromPreviewFileId(fileId) {
 
 function previewVideoMode() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return opt ? String(opt.videoPreview || "muted") : "muted";
+  return opt ? String(opt.videoAudio || "unmuted") : "unmuted";
 }
 
 function galleryVideoMode() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return opt ? String(opt.videoGallery || "muted") : "muted";
+  return previewVideoMode();
 }
 
 function videoSkipStepSeconds() {
@@ -37831,6 +37347,10 @@ function videoSkipStepSeconds() {
 function videoEndBehavior() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return opt ? String(opt.videoEndBehavior || "loop") : "loop";
+}
+
+function galleryModeDisabled(opt = null) {
+  return true;
 }
 
 function slideshowBehavior() {
@@ -41205,32 +40725,13 @@ function resumePreviewVideoAfterOverlay() {
 }
 
 function openQuadPlaybackForRecords(records, requestFullscreen = false) {
-  const videoRecords = Array.isArray(records)
-    ? records.filter((rec) => !!rec && rec.type === "video")
-    : [];
-  if (videoRecords.length !== 4) return false;
-
-  stopSlideshow();
-  QUAD_PLAYBACK = {
-    active: true,
-    fileIds: videoRecords.map((rec) => String(rec.id || "")),
-    activeId: String(videoRecords[0]?.id || ""),
-    muted: false,
-  };
-  VIEWER_LAYOUT_MODE = "quad";
-  VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
-  showOverlay();
-  if (requestFullscreen) enterFullscreenIfPossible();
+  showStatusMessage("Gallery mode is no longer available.");
   return true;
 }
 
 function openQuadPlaybackFromSelection(requestFullscreen = false) {
-  const records = getSelectedFileRecordsInCurrentView();
-  if (records.length !== 4 || records.some((rec) => rec.type !== "video")) {
-    showStatusMessage("Select exactly four videos.");
-    return false;
-  }
-  return openQuadPlaybackForRecords(records, requestFullscreen);
+  showStatusMessage("Gallery mode is no longer available.");
+  return true;
 }
 
 function openGalleryForDir(
@@ -41239,91 +40740,86 @@ function openGalleryForDir(
   requestFullscreen = false,
   skipDirSyncOnClose = false,
 ) {
-  clearQuadPlaybackSession();
-  VIEWER_LAYOUT_MODE = "single";
-  if (skipDirSyncOnClose) {
-    if (!VIEWER_CLOSE_RESTORE_STATE) {
-      VIEWER_CLOSE_RESTORE_STATE = captureViewerCloseRestoreState();
-    }
-  } else {
-    VIEWER_CLOSE_RESTORE_STATE = null;
+  if (!WS.root || !dirNode) return false;
+  if (searchResultsVisibleInDirectoriesPane()) {
+    enterSearchResultContext(dirNode.path || "");
   }
-  viewerDirNode = dirNode;
-  viewerItems = buildViewerItemsForDir(viewerDirNode);
-
-  if (!viewerItems.length) {
-    VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
-    VIEWER_CLOSE_RESTORE_STATE = null;
-    return;
+  if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
+    WS.view.favoritesRootActive = false;
+    WS.view.favoritesAnchorPath = dirNode.path || "";
   }
-
-  let idx = 0;
-  if (startId) {
-    const found = viewerItems.findIndex(
-      (it) => !it.isFolder && it.id === startId,
-    );
-    if (found >= 0) idx = found;
+  if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+    WS.view.hiddenRootActive = false;
+    WS.view.hiddenAnchorPath = dirNode.path || "";
   }
-  viewerIndex = idx;
-  VIEWER_SKIP_DIR_SYNC_ON_CLOSE = !!skipDirSyncOnClose;
-
-  showOverlay();
-  if (requestFullscreen) enterFullscreenIfPossible();
+  WS.nav.dirNode = dirNode;
+  WS.view.aboveRootView = false;
+  syncBulkSelectionForCurrentDir();
+  syncFavoritesUi();
+  syncHiddenUi();
+  syncTagUiForCurrentDir();
+  rebuildDirectoriesEntries();
+  const targetIndex =
+    typeof startId === "string" && startId
+      ? findFileEntryIndexById(startId)
+      : selectionIndexForDirectoryEnter();
+  WS.nav.selectedIndex = findNearestSelectableIndex(
+    targetIndex >= 0 ? targetIndex : selectionIndexForDirectoryEnter(),
+    1,
+  );
+  syncPreviewToSelection({ force: true });
+  WS.view.returnToPreviewPaneAfterFileClose = false;
+  scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
+  renderDirectoriesPane(true);
+  renderPreviewPane(true, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  return true;
 }
 
 function openGalleryForFileRecord(rec, requestFullscreen = false, opts = null) {
-  if (!rec) return;
-  const options = opts && typeof opts === "object" ? opts : {};
-  clearQuadPlaybackSession();
-  VIEWER_LAYOUT_MODE = "single";
-  VIEWER_CLOSE_RESTORE_STATE =
-    options.origin === "preview" ? captureViewerCloseRestoreState() : null;
-  const p = String(rec.dirPath || "");
-  const dn = WS.dirByPath.get(p) || WS.nav.dirNode || WS.root || null;
-  viewerDirNode = dn;
-  viewerItems = buildViewerItemsForDir(viewerDirNode);
-  let idx = viewerItems.findIndex((it) => !it.isFolder && it.id === rec.id);
-  if (idx < 0) {
-    viewerItems = [{ isFolder: false, id: rec.id }];
-    idx = 0;
-  }
-  viewerIndex = idx;
-  VIEWER_SKIP_DIR_SYNC_ON_CLOSE = false;
-  showOverlay();
-  if (requestFullscreen) enterFullscreenIfPossible();
+  if (!rec) return false;
+  const opened = focusDirectoriesOnFileRecord(rec);
+  if (opened) WS.view.returnToPreviewPaneAfterFileClose = false;
+  return opened;
 }
 
 function openGalleryFromDirectoriesSelection(requestFullscreen) {
-  if (!WS.nav.entries.length) return;
+  if (!WS.nav.entries.length) return false;
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
-  if (!entry) return;
+  if (!entry) return false;
 
   if (entry.kind === "dir") {
-    if (searchResultsVisibleInDirectoriesPane()) {
-      enterSearchResultContext(entry.node?.path || "");
-    }
-    if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-      WS.view.favoritesRootActive = false;
-      WS.view.favoritesAnchorPath = entry.node?.path || "";
-    }
-    if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
-      WS.view.hiddenRootActive = false;
-      WS.view.hiddenAnchorPath = entry.node?.path || "";
-    }
-    openGalleryForDir(entry.node, null, requestFullscreen);
+    enterSelectedDirectory();
+    return true;
   } else if (entry.kind === "file") {
     const rec = WS.fileById.get(entry.id);
-    if (rec) openGalleryForFileRecord(rec, requestFullscreen);
+    if (!rec) return false;
+    const fileId = String(rec.id || "");
+    if (
+      String(WS.view?.activePane || "") === "preview" &&
+      WS.preview.kind === "file" &&
+      String(WS.preview.fileId || "") === fileId
+    ) {
+      return true;
+    }
+    const opened = focusDirectoriesOnFileRecord(rec);
+    if (opened) WS.view.returnToPreviewPaneAfterFileClose = false;
+    return opened;
   }
+  return false;
 }
 
 function openGalleryFromViewerState(requestFullscreen) {
-  if (!viewerDirNode || !viewerItems.length) {
-    openGalleryFromDirectoriesSelection(requestFullscreen);
-    return;
+  if (
+    String(WS.view?.activePane || "") === "preview" &&
+    WS.preview.kind === "file" &&
+    WS.preview.fileId
+  ) {
+    return true;
   }
-  showOverlay();
-  if (requestFullscreen) enterFullscreenIfPossible();
+  return openGalleryFromDirectoriesSelection(requestFullscreen);
 }
 
 function ensureViewerElements() {
@@ -42750,14 +42246,6 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Untagged folder: ${next ? "On" : "Off"}`);
       return true;
     }
-    case "toggleFileOnlyFoldersOpenInGallery": {
-      const next = toggleOptionValue("fileOnlyFoldersOpenInGallery");
-      applyOptionsEverywhere(false);
-      showStatusMessage(
-        `File-only folders open in gallery: ${next ? "On" : "Off"}`,
-      );
-      return true;
-    }
     case "togglePreviewMediaUsePaneBackground": {
       const next = toggleOptionValue("previewMediaUsePaneBackground");
       applyInteractionModeFromOptions();
@@ -43542,10 +43030,7 @@ function isGridExclusiveAction(action) {
     action === "gridMoveLeft" ||
     action === "gridMoveRight" ||
     action === "gridOpenSelection" ||
-    action === "gridUpDirectory" ||
-    action === "gridGalleryPrev" ||
-    action === "gridGalleryNext" ||
-    action === "gridGalleryBack"
+    action === "gridUpDirectory"
   );
 }
 
@@ -43554,7 +43039,6 @@ function handleGridKeybindAction(action) {
   if (VIEWER_MODE) {
     if (isQuadPlaybackMode()) {
       switch (action) {
-        case "gridGalleryBack":
         case "gridUpDirectory":
         case "leaveDir":
           hideOverlay();
@@ -43580,8 +43064,6 @@ function handleGridKeybindAction(action) {
         case "gridMoveDown":
         case "gridMoveLeft":
         case "gridMoveRight":
-        case "gridGalleryPrev":
-        case "gridGalleryNext":
         case "jumpMinus50":
         case "jumpMinus10":
         case "jumpPlus10":
@@ -43594,12 +43076,10 @@ function handleGridKeybindAction(action) {
     switch (action) {
       case "selectUp":
       case "gridMoveUp":
-      case "gridGalleryPrev":
         moveGridGallerySelectionByDirection("up");
         return true;
       case "selectDown":
       case "gridMoveDown":
-      case "gridGalleryNext":
         moveGridGallerySelectionByDirection("down");
         return true;
       case "selectLeft":
@@ -43610,7 +43090,6 @@ function handleGridKeybindAction(action) {
       case "gridMoveRight":
         moveGridGallerySelectionByDirection("right");
         return true;
-      case "gridGalleryBack":
       case "gridUpDirectory":
       case "leaveDir":
         hideOverlay();
@@ -43703,7 +43182,11 @@ function closeFilePreviewToFolder() {
   const currentItem = viewerItems[viewerIndex] || null;
   if (currentItem && !currentItem.isFolder && currentItem.id) {
     WS.view.pendingPreviewSelectionKey = `file:${String(currentItem.id || "")}`;
+  } else if (WS.preview.fileId) {
+    WS.view.pendingPreviewSelectionKey = `file:${String(WS.preview.fileId || "")}`;
   }
+  const returnToPreviewPane = !!WS.view.returnToPreviewPaneAfterFileClose;
+  WS.view.returnToPreviewPaneAfterFileClose = false;
   applyPreviewState({
     kind: "dir",
     dirNode: WS.preview.dirNode || getPreviewTargetDir(),
@@ -43711,7 +43194,14 @@ function closeFilePreviewToFolder() {
   });
   ACTIVE_MEDIA_SURFACE = "none";
   renderPreviewPane(true, true);
-  if (WS.view.activePane === "preview") activatePreviewPaneSelection();
+  if (returnToPreviewPane) {
+    setActivePane("preview");
+    activatePreviewPaneSelection();
+  } else {
+    setActivePane(directoriesPaneOpenEnabled() ? "directories" : "preview");
+    if (WS.view.activePane === "preview") activatePreviewPaneSelection();
+    else updatePreviewSelectionClasses();
+  }
   syncButtons();
 }
 
@@ -43792,7 +43282,6 @@ function handlePreviewPaneAction(action, inFilePreview) {
         viewerLeaveDir();
         return true;
       case "enterDir":
-        openGalleryFromViewerState(true);
         return true;
       case "prevFolder":
         viewerJumpToPrevFolderFirstFile();
@@ -44247,7 +43736,6 @@ document.addEventListener("keydown", (e) => {
         return;
       case "enterDir":
         e.preventDefault();
-        openGalleryFromViewerState(true);
         return;
       case "prevFolder":
         e.preventDefault();
