@@ -19307,19 +19307,47 @@ function restoreTagFolderEntrySelection(ctx) {
   return true;
 }
 
-function setTagFolderViewState(mode, tag, originPath, album = "") {
+function applyTagFolderViewState(mode, tag, originPath, album = "") {
   WS.view.tagFolderActiveMode = mode;
   WS.view.tagFolderActiveTag = tag;
   WS.view.tagFolderActiveAlbum = String(album || "");
   WS.view.tagFolderOriginPath = String(originPath || "");
   closeActionMenus();
   rebuildDirectoriesEntries();
+}
+
+function setTagFolderViewState(mode, tag, originPath, album = "") {
+  applyTagFolderViewState(mode, tag, originPath, album);
   WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
   syncPreviewToSelection({ force: true });
   finalizeDirectoryNavigationRender({
     animatePreview: true,
     keepDirectoriesScroll: true,
   }).catch(() => {});
+}
+
+function makeTagPreviewNodeForContext(mode, tag, originPath, album = "") {
+  const entry = {
+    kind: "tag",
+    originPath: String(originPath || ""),
+  };
+  if (mode === "favorites" || mode === "hidden" || mode === "untagged") {
+    entry.special = mode;
+    entry.label =
+      mode === "favorites"
+        ? "Favorites"
+        : mode === "hidden"
+          ? "Hidden"
+          : "Untagged";
+  } else if (mode === "album") {
+    entry.album = String(album || "");
+    entry.label = String(album || "") || "Album";
+  } else if (mode === "tag") {
+    entry.tag = String(tag || "");
+    entry.album = String(album || "");
+    entry.label = String(tag || "") || "Tag";
+  }
+  return makeTagPreviewNode(entry);
 }
 
 function getDirectoriesScrollTop() {
@@ -19482,12 +19510,14 @@ function pushTagViewContext(selectedDirPath) {
   });
 }
 
-function restoreTagViewFromFrame(frame) {
+function restoreTagViewFromFrame(frame, opts = null) {
   if (!frame) return false;
+  const options = opts && typeof opts === "object" ? opts : null;
+  const animatePreview = !(options && options.previewPortalRestore);
   const baseNode = WS.dirByPath.get(String(frame.originPath || "")) || WS.root;
   if (!baseNode) return false;
   WS.nav.dirNode = baseNode;
-  setTagFolderViewState(
+  applyTagFolderViewState(
     frame.mode || "",
     frame.tag || "",
     frame.originPath,
@@ -19497,9 +19527,27 @@ function restoreTagViewFromFrame(frame) {
     ? findDirEntryIndexByPath(frame.selectedDirPath)
     : -1;
   WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
-  syncPreviewToSelection({ force: true });
+  if (options && options.previewPortalRestore) {
+    const portalNode = makeTagPreviewNodeForContext(
+      frame.mode || "",
+      frame.tag || "",
+      frame.originPath || "",
+      frame.album || "",
+    );
+    const selectedDirPath = String(frame.selectedDirPath || "");
+    WS.view.pendingPreviewSelectionKey = selectedDirPath
+      ? `dir:${selectedDirPath}`
+      : "";
+    if (portalNode) {
+      applyPreviewState({ kind: "dir", dirNode: portalNode, fileId: null });
+    } else {
+      syncPreviewToSelection({ force: true });
+    }
+  } else {
+    syncPreviewToSelection({ force: true });
+  }
   renderDirectoriesPane(true);
-  renderPreviewPane(true);
+  renderPreviewPane(animatePreview);
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
@@ -19540,17 +19588,22 @@ function restoreDirectoriesFromTagEntryFrame(frame) {
   return true;
 }
 
-function tryRestoreTagDirectoryContext() {
+function tryRestoreTagDirectoryContext(pathOverride = null, opts = null) {
   // Critical behavior:
   // If a user enters from a tag/favorites virtual folder, then traverses inside matching folders,
   // "leave directory" must return to the same virtual folder view (portal) instead of dropping to
   // the real parent/root. This was a long-standing edge-case bug in favorites-root navigation.
-  pruneStaleVirtualPortalFramesForPath(WS.nav.dirNode?.path || "");
+  const options = opts && typeof opts === "object" ? opts : null;
+  const currentPath =
+    pathOverride !== null && pathOverride !== undefined
+      ? String(pathOverride || "")
+      : String(WS.nav.dirNode?.path || "");
+  pruneStaleVirtualPortalFramesForPath(currentPath);
   const stack = WS.view.tagNavStack;
   if (!Array.isArray(stack) || !stack.length) return false;
   const frame = stack[stack.length - 1];
   if (frame.type !== "tag-view") return false;
-  const curPath = String(WS.nav.dirNode?.path || "");
+  const curPath = currentPath;
   const portalRootPath = findMatchingVirtualPortalRootPath(frame, curPath);
   if (!portalRootPath) return false;
   if (curPath !== portalRootPath) return false;
@@ -19559,6 +19612,9 @@ function tryRestoreTagDirectoryContext() {
     Object.assign({}, frame, {
       selectedDirPath: portalRootPath,
     }),
+    {
+      previewPortalRestore: !!(options && options.previewPortalRestore),
+    },
   );
 }
 
@@ -35951,7 +36007,12 @@ function viewerLeaveDir() {
     if (VIEWER_MODE) hideOverlay();
     return;
   }
-  if (tryRestoreTagDirectoryContext()) return;
+  if (
+    viewerDirNode &&
+    !viewerDirNode._skipTagFilters &&
+    tryRestoreTagDirectoryContext(viewerDirNode.path || "")
+  )
+    return;
   if (isViewingTagFolder()) {
     exitTagFolderView();
     return;
@@ -37650,6 +37711,15 @@ function handlePreviewPaneAction(action, inFilePreview) {
         favoritesRootActive: !!WS.view.favoritesRootActive,
         hiddenRootActive: !!WS.view.hiddenRootActive,
       };
+      const previewTarget = getPreviewTargetDir();
+      if (
+        previewTarget &&
+        !previewTarget._skipTagFilters &&
+        tryRestoreTagDirectoryContext(String(previewTarget.path || ""), {
+          previewPortalRestore: true,
+        })
+      )
+        return true;
       WS.view.pendingPreviewSelectionKey = entryKeyForSelection(
         WS.nav.entries[WS.nav.selectedIndex] || null,
       );
