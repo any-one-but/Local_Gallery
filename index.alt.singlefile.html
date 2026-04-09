@@ -5815,6 +5815,15 @@ img[data-rotate-key].rotatingThumbFade {
                       <button
                         type="button"
                         class="miniBtn menuTabBtn"
+                        data-tab="notifications"
+                        role="tab"
+                        aria-controls="menuTabOptions"
+                      >
+                        Notifications
+                      </button>
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
                         data-tab="appearance"
                         role="tab"
                         aria-controls="menuTabOptions"
@@ -6768,6 +6777,68 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
   return out;
 }
 
+const NOTIFICATION_SOURCE_SPECS = Object.freeze([
+  Object.freeze({
+    id: "workspace",
+    label: "Workspace",
+    optionKey: "notifyWorkspace",
+  }),
+  Object.freeze({
+    id: "navigation",
+    label: "Navigation",
+    optionKey: "notifyNavigation",
+  }),
+  Object.freeze({
+    id: "playback",
+    label: "Playback",
+    optionKey: "notifyPlayback",
+  }),
+  Object.freeze({
+    id: "appearance",
+    label: "Appearance",
+    optionKey: "notifyAppearance",
+  }),
+  Object.freeze({
+    id: "thumbnails",
+    label: "Thumbnails",
+    optionKey: "notifyThumbnails",
+  }),
+  Object.freeze({
+    id: "tags",
+    label: "Tags & albums",
+    optionKey: "notifyTags",
+  }),
+  Object.freeze({
+    id: "rename",
+    label: "Renaming",
+    optionKey: "notifyRename",
+  }),
+  Object.freeze({
+    id: "fileOps",
+    label: "File operations",
+    optionKey: "notifyFileOps",
+  }),
+  Object.freeze({
+    id: "generation",
+    label: "Generation & scrub",
+    optionKey: "notifyGeneration",
+  }),
+  Object.freeze({
+    id: "stats",
+    label: "Stats",
+    optionKey: "notifyStats",
+  }),
+  Object.freeze({
+    id: "misc",
+    label: "Miscellaneous",
+    optionKey: "notifyMisc",
+  }),
+]);
+
+function notificationSourceOptionKeys() {
+  return NOTIFICATION_SOURCE_SPECS.map((spec) => String(spec.optionKey || ""));
+}
+
 function defaultOptions() {
   const out = {
     videoAudio: "unmuted",
@@ -6855,6 +6926,9 @@ function defaultOptions() {
     thumbnailScaleCropped: "medium",
     thumbnailScaleAspect: "medium",
   };
+  for (let i = 0; i < NOTIFICATION_SOURCE_SPECS.length; i++) {
+    out[NOTIFICATION_SOURCE_SPECS[i].optionKey] = true;
+  }
   Object.assign(out, buildDefaultThumbnailVisibilityOptions());
   return out;
 }
@@ -6972,6 +7046,12 @@ function normalizeOptions(o) {
     0,
     0.25,
   );
+  const notificationOptionValues = {};
+  for (let i = 0; i < NOTIFICATION_SOURCE_SPECS.length; i++) {
+    const spec = NOTIFICATION_SOURCE_SPECS[i];
+    notificationOptionValues[spec.optionKey] =
+      typeof src[spec.optionKey] === "boolean" ? src[spec.optionKey] : true;
+  }
   const thumbnailStyleRaw = String(src.thumbnailStyle || "")
     .trim()
     .toLowerCase();
@@ -7294,6 +7374,7 @@ function normalizeOptions(o) {
     filmCornerOverlayEnabled,
     filmCornerOverlayIntensity,
   };
+  Object.assign(out, notificationOptionValues);
   Object.assign(out, normalizedThumbnailVisibility);
   return out;
 }
@@ -7574,6 +7655,7 @@ const META_ALL_DOC_IDS = Object.freeze([
 ]);
 
 const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
+  notifications: Object.freeze(notificationSourceOptionKeys()),
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
       "lightMode",
@@ -7626,6 +7708,10 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
 const META_PREFERENCE_DOC_BY_OPTION_KEY = (() => {
   const out = new Map();
   const pairs = [
+    [
+      META_DOC_IDS.prefGeneral,
+      META_PREFERENCE_SECTION_OPTION_KEYS.notifications,
+    ],
     [
       META_DOC_IDS.prefAppearance,
       META_PREFERENCE_SECTION_OPTION_KEYS.appearance,
@@ -13577,7 +13663,126 @@ function showMainStatusMessage(text) {
   }, 1200);
 }
 
-function showStatusMessage(text) {
+function normalizeNotificationSourceId(sourceId) {
+  const raw = String(sourceId || "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return "misc";
+  for (let i = 0; i < NOTIFICATION_SOURCE_SPECS.length; i++) {
+    if (NOTIFICATION_SOURCE_SPECS[i].id === raw) return raw;
+  }
+  return "misc";
+}
+
+function notificationSourceSpec(sourceId) {
+  const normalized = normalizeNotificationSourceId(sourceId);
+  for (let i = 0; i < NOTIFICATION_SOURCE_SPECS.length; i++) {
+    const spec = NOTIFICATION_SOURCE_SPECS[i];
+    if (spec.id === normalized) return spec;
+  }
+  return NOTIFICATION_SOURCE_SPECS[NOTIFICATION_SOURCE_SPECS.length - 1];
+}
+
+function notificationsEnabledForSource(sourceId) {
+  const spec = notificationSourceSpec(sourceId);
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
+  return !!opt[String(spec.optionKey || "")];
+}
+
+function inferNotificationSourceId(text) {
+  const msg = String(text || "").trim().toLowerCase();
+  if (!msg) return "misc";
+  if (
+    msg.includes("thumbnail") ||
+    msg.includes("thumb") ||
+    msg.includes("root thumbnail") ||
+    msg.includes("thumbnail cache")
+  )
+    return "thumbnails";
+  if (
+    msg.includes("slideshow") ||
+    msg.includes("gallery mode is no longer available")
+  )
+    return "playback";
+  if (
+    msg.includes("score history") ||
+    msg.includes("score log")
+  )
+    return "stats";
+  if (
+    msg.includes("scrub") ||
+    msg.includes("gif ")
+  )
+    return "generation";
+  if (
+    msg.includes("tag ") ||
+    msg.startsWith("tag") ||
+    msg.includes("tag album") ||
+    msg.includes("untagged") ||
+    msg.includes("hid tag") ||
+    msg.includes("unhid tag")
+  )
+    return "tags";
+  if (
+    msg.includes("rename") ||
+    msg.includes("invalid folder name") ||
+    msg.includes("invalid file name") ||
+    msg.includes("a folder with that name already exists") ||
+    msg.includes("a file with that name already exists") ||
+    msg.includes("root folder cannot be renamed")
+  )
+    return "rename";
+  if (
+    msg.includes("preset") ||
+    msg.includes("media preset") ||
+    msg.includes("light mode") ||
+    msg.includes("force title case") ||
+    msg.includes("hide file extensions") ||
+    msg.includes("hide underscores") ||
+    msg.includes("trim before last dash") ||
+    msg.includes("trim after first underscore") ||
+    msg.includes("pane background")
+  )
+    return "appearance";
+  if (
+    msg.includes("delete") ||
+    msg.includes("set merge") ||
+    msg.includes("move failed") ||
+    msg.includes("folder handle unavailable") ||
+    msg.includes("no folders selected") ||
+    msg.includes("no files selected") ||
+    msg.includes("deleted ")
+  )
+    return "fileOps";
+  if (
+    msg.includes("loaded folder") ||
+    msg.includes("load folder") ||
+    msg.includes("folder picker unavailable") ||
+    msg.includes("refresh") ||
+    msg.includes("read-only mode") ||
+    msg.includes("index complete")
+  )
+    return "workspace";
+  if (
+    msg.includes("filter:") ||
+    msg.includes("directories pane:") ||
+    msg.includes("title layout:") ||
+    msg.includes("settings + directories panes:") ||
+    msg.includes("first file jump") ||
+    msg.includes("random file sort:") ||
+    msg.includes("random folder sort:") ||
+    msg.includes("reveal hidden items:") ||
+    msg.includes("untagged folder:")
+  )
+    return "navigation";
+  return "misc";
+}
+
+function showStatusMessage(text, sourceId = "") {
+  const source = normalizeNotificationSourceId(
+    sourceId || inferNotificationSourceId(text),
+  );
+  if (!notificationsEnabledForSource(source)) return;
   if (VIEWER_MODE) {
     statusMessageEl.textContent = text || "";
     statusMessageEl.classList.add("visible");
@@ -13595,9 +13800,10 @@ function showStatusMessage(text) {
 
 function showSlideshowMessage(text) {
   if (VIEWER_MODE) {
-    showStatusMessage(text);
+    showStatusMessage(text, "playback");
     return;
   }
+  if (!notificationsEnabledForSource("playback")) return;
   showMainStatusMessage(text);
 }
 
@@ -13876,6 +14082,7 @@ function syncMetaButtons() {
 
 const MENU_TAB_IDS = [
   "general",
+  "notifications",
   "appearance",
   "playback",
   "thumbnails",
@@ -13885,6 +14092,7 @@ const MENU_TAB_IDS = [
 ];
 const MENU_PANEL_BY_TAB = {
   general: "options",
+  notifications: "options",
   appearance: "options",
   playback: "options",
   thumbnails: "options",
@@ -13902,6 +14110,7 @@ const menuTabPanels = {
 };
 const menuScrollTargets = {
   general: optionsBodyEl,
+  notifications: optionsBodyEl,
   appearance: optionsBodyEl,
   playback: optionsBodyEl,
   thumbnails: optionsBodyEl,
@@ -15320,6 +15529,14 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       return `<h2 style="margin-top:18px;">${escapeHtml(spec.directoriesLabel)}</h2>${rows.join("")}`;
     })
     .join("");
+  const notificationsRowsHtml = NOTIFICATION_SOURCE_SPECS.map((spec) =>
+    makeCheckRow(
+      spec.label,
+      `${spec.label} notifications.`,
+      `opt_${spec.optionKey}`,
+      !!opt[spec.optionKey],
+    ),
+  ).join("");
 
   const formatPixelateResolution = (value) => {
     const n = Number(value);
@@ -15615,6 +15832,20 @@ ${makeCheckRow("Reveal Hidden Items", "Show folders hidden by hidden tags in the
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag in any folder view when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeCheckRow("Preview media uses pane background", "When enabled, preview media always stays on the recessed preview pane surface instead of switching to a black full-bleed background.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
+          `,
+    },
+    notifications: {
+      title: "Notifications",
+      rows: `
+${makeActionRow(
+  "All notifications",
+  "Turn every notification source on or off.",
+  `
+  <button type="button" id="opt_notifications_all_on">Turn All On</button>
+  <button type="button" id="opt_notifications_all_off">Turn All Off</button>
+`,
+)}
+${notificationsRowsHtml}
           `,
     },
     appearance: {
@@ -16010,6 +16241,33 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
   bindCheck("opt_lightMode", "lightMode", () => {
     applyColorSchemeFromOptions();
+  });
+  NOTIFICATION_SOURCE_SPECS.forEach((spec) => {
+    bindCheck(`opt_${spec.optionKey}`, spec.optionKey);
+  });
+  bindActionBtn("opt_notifications_all_on", () => {
+    const next = {};
+    NOTIFICATION_SOURCE_SPECS.forEach((spec) => {
+      next[spec.optionKey] = true;
+    });
+    WS.meta.options = normalizeOptions(
+      Object.assign({}, WS.meta.options || {}, next),
+    );
+    metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+    setOptionsStatus("Saved");
+    renderOptionsUi("notifications");
+  });
+  bindActionBtn("opt_notifications_all_off", () => {
+    const next = {};
+    NOTIFICATION_SOURCE_SPECS.forEach((spec) => {
+      next[spec.optionKey] = false;
+    });
+    WS.meta.options = normalizeOptions(
+      Object.assign({}, WS.meta.options || {}, next),
+    );
+    metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+    setOptionsStatus("Saved");
+    renderOptionsUi("notifications");
   });
   bindCheck("opt_hardwareAcceleration", "hardwareAcceleration");
   bindCheck("opt_loadingScreens", "loadingScreens");
@@ -16442,6 +16700,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
 
 const OPTION_TAB_IDS = Object.freeze([
   "general",
+  "notifications",
   "appearance",
   "thumbnails",
   "playback",
@@ -16460,6 +16719,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showTagFolderSpacerRow",
     "previewMediaUsePaneBackground",
   ]),
+  notifications: Object.freeze(notificationSourceOptionKeys()),
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
       "activeAppearancePresetId",
@@ -29342,6 +29602,7 @@ function notifyScrubMissingTools(missingTools) {
     ),
   );
   if (!list.length) return;
+  if (!notificationsEnabledForSource("generation")) return;
   const msg = `Scrub completed, but these tools are missing:\n\n${list.map((t) => `- ${t}`).join("\n")}`;
   showStatusMessage(`Scrub missing tools: ${list.join(", ")}`);
   try {
