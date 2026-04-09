@@ -653,36 +653,36 @@ input[type="file"] {
 }
 
 :root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode
+  #app.title-layout-pane.preview-media-mode:not(.preview-media-pane-background)
   #previewPane {
   padding-top: 0;
   padding-bottom: 0;
 }
 
 :root[data-retro="on"]
-  #app.title-layout-pane.sidebar-closed.preview-media-mode
+  #app.title-layout-pane.sidebar-closed.preview-media-mode:not(.preview-media-pane-background)
   #previewPane {
   padding-left: 0;
 }
 
 :root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode:not(.menu-pane-open)
+  #app.title-layout-pane.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background)
   #previewPane {
   padding-right: 0;
 }
 
 :root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode.menu-pane-open
+  #app.title-layout-pane.preview-media-mode.menu-pane-open:not(.preview-media-pane-background)
   #menuDivider,
 :root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode.menu-pane-open
+  #app.title-layout-pane.preview-media-mode.menu-pane-open:not(.preview-media-pane-background)
   #menuOverlay {
   margin-top: 4px;
   margin-bottom: 6px;
 }
 
 :root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode
+  #app.title-layout-pane.preview-media-mode:not(.preview-media-pane-background)
   #previewBody {
   background: #000;
   box-shadow: none;
@@ -2811,6 +2811,10 @@ img[data-rotate-key].rotatingThumbFade {
   padding: var(--preview-gutter);
 }
 
+#app.preview-media-pane-background #previewBody.preview-file {
+  padding: var(--preview-gutter);
+}
+
 .expandedSection {
   display: flex;
   flex-direction: column;
@@ -4074,6 +4078,10 @@ img[data-rotate-key].rotatingThumbFade {
   min-height: 0;
 }
 
+#app.preview-media-pane-background #filePreviewViewport {
+  background: transparent;
+}
+
 #filePreviewViewport img,
 #filePreviewViewport video {
   width: auto;
@@ -4084,6 +4092,11 @@ img[data-rotate-key].rotatingThumbFade {
   background: #000;
   opacity: 0;
   transition: opacity 0.12s ease;
+}
+
+#app.preview-media-pane-background #filePreviewViewport img,
+#app.preview-media-pane-background #filePreviewViewport video {
+  background: transparent;
 }
 
 #filePreviewViewport img.ready,
@@ -4133,6 +4146,10 @@ img[data-rotate-key].rotatingThumbFade {
   z-index: 2;
   opacity: 0;
   transition: opacity 0.12s ease;
+}
+
+#app.preview-media-pane-background #filePreviewViewport .mediaCanvas {
+  background: transparent;
 }
 #filePreviewViewport .mediaCanvas.ready {
   opacity: 1;
@@ -4299,6 +4316,13 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0;
   pointer-events: none;
   z-index: 1;
+}
+
+#filePreviewViewport img.mediaHidden,
+#filePreviewViewport video.mediaHidden,
+#viewerViewport img.mediaHidden,
+#viewerViewport video.mediaHidden {
+  opacity: 0 !important;
 }
 
 #closeBtn {

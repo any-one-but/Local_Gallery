@@ -670,12 +670,12 @@ function defaultOptions() {
     hideTagAndRootFolderThumbnailMenuButton: false,
     hideFileThumbnailMenuButton: false,
     loadingScreens: false,
+    previewMediaUsePaneBackground: false,
     forceTitleCaps: false,
     hideFileExtensionsInFileNames: false,
     hideUnderscoresInFileNames: false,
     hideBeforeLastDashInFileNames: false,
     hideAfterFirstUnderscoreInFileNames: false,
-    randomActionMode: "firstFileJump",
     clickSelectedRotatingThumbTeleports: false,
     fileOnlyFoldersOpenInGallery: false,
     thumbnailStyle: "cropped",
@@ -1044,6 +1044,10 @@ function normalizeOptions(o) {
       typeof src.loadingScreens === "boolean"
         ? src.loadingScreens
         : d.loadingScreens,
+    previewMediaUsePaneBackground:
+      typeof src.previewMediaUsePaneBackground === "boolean"
+        ? src.previewMediaUsePaneBackground
+        : d.previewMediaUsePaneBackground,
     forceTitleCaps:
       typeof src.forceTitleCaps === "boolean"
         ? src.forceTitleCaps
@@ -1064,12 +1068,6 @@ function normalizeOptions(o) {
       typeof src.hideAfterFirstUnderscoreInFileNames === "boolean"
         ? src.hideAfterFirstUnderscoreInFileNames
         : d.hideAfterFirstUnderscoreInFileNames,
-    randomActionMode:
-      src.randomActionMode === "firstFileJump" ||
-      src.randomActionMode === "randomFileSort" ||
-      src.randomActionMode === "randomFolderSort"
-        ? src.randomActionMode
-        : d.randomActionMode,
     clickSelectedRotatingThumbTeleports:
       typeof src.clickSelectedRotatingThumbTeleports === "boolean"
         ? src.clickSelectedRotatingThumbTeleports
@@ -5586,6 +5584,14 @@ function applyInteractionModeFromOptions() {
   appEl.classList.toggle("title-layout-compact", titleMode === "compact");
   appEl.classList.toggle("title-layout-pane", titleMode !== "compact");
   appEl.classList.toggle("menu-pane-open", !!MENU_OPEN);
+  appEl.classList.toggle(
+    "preview-media-pane-background",
+    !!(
+      WS.meta &&
+      WS.meta.options &&
+      WS.meta.options.previewMediaUsePaneBackground === true
+    ),
+  );
   syncActivePaneWithLayout();
   updateGridModeListTopInset();
 }
@@ -6001,9 +6007,21 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
-    id: "randomJump",
-    label: "Random action",
-    hint: "Run the configured random action behavior.",
+    id: "randomFirstFileJump",
+    label: "Random first file jump",
+    hint: "Jump to a random folder and focus its first matching file.",
+    section: "general",
+  },
+  {
+    id: "toggleRandomFileSort",
+    label: "Toggle random file sort",
+    hint: "Toggle random file ordering on or off.",
+    section: "general",
+  },
+  {
+    id: "toggleRandomFolderSort",
+    label: "Toggle random folder sort",
+    hint: "Toggle random folder ordering on or off.",
     section: "general",
   },
   {
@@ -6046,6 +6064,12 @@ const KEYBIND_ACTIONS = [
     id: "toggleFileOnlyFoldersOpenInGallery",
     label: "Toggle file-only folders open directly in gallery mode",
     hint: "Toggle opening file-only folders directly in gallery mode.",
+    section: "general",
+  },
+  {
+    id: "togglePreviewMediaUsePaneBackground",
+    label: "Toggle preview media pane background",
+    hint: "Toggle whether preview media stays on the recessed pane surface instead of black.",
     section: "general",
   },
   {
@@ -6279,7 +6303,9 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleTitlePane: "Command+Alt+r",
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
-  randomJump: "r",
+  randomFirstFileJump: "r",
+  toggleRandomFileSort: "",
+  toggleRandomFolderSort: "",
   cycleFilter: "f",
   slideshow: "v",
   panic: "g",
@@ -6287,6 +6313,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleShowHiddenFolder: "h",
   toggleShowUntaggedFolder: "Command+h",
   toggleFileOnlyFoldersOpenInGallery: "Command+t",
+  togglePreviewMediaUsePaneBackground: "",
   favoriteSelection: "f",
   tagSelection: "",
   renameSelection: "Command+r",
@@ -6372,6 +6399,7 @@ function enforceUniqueKeybinds(bindings, lockedIds = null) {
 function normalizeKeybinds(log, presets = null) {
   const bindings = defaultKeybinds(presets);
   const byId = new Map(bindings.map((b) => [b.id, b]));
+  let legacyRandomJumpKey = "";
   const migrateIfKeyMatches = (id, legacyKey, nextKey) => {
     const binding = byId.get(id);
     if (!binding) return;
@@ -6382,16 +6410,27 @@ function normalizeKeybinds(log, presets = null) {
   if (log && Array.isArray(log.bindings)) {
     for (const entry of log.bindings) {
       const id = entry && entry.id ? String(entry.id) : "";
-      if (!id || !byId.has(id)) continue;
-      if (KEYBIND_LOCKED_IDS.has(id)) continue;
       const key = normalizeKeyValue(entry.key || "");
+      if (!id) continue;
       if (key && !isSafeKeybindValue(key)) continue;
+      if (id === "randomJump") {
+        legacyRandomJumpKey = key;
+        continue;
+      }
+      if (!byId.has(id)) continue;
+      if (KEYBIND_LOCKED_IDS.has(id)) continue;
       byId.get(id).key = key;
+    }
+  }
+  if (legacyRandomJumpKey) {
+    const firstJumpBinding = byId.get("randomFirstFileJump");
+    if (firstJumpBinding && !normalizeKeyValue(firstJumpBinding.key || "")) {
+      firstJumpBinding.key = legacyRandomJumpKey;
     }
   }
   migrateIfKeyMatches("leaveDir", "a", "q");
   migrateIfKeyMatches("enterDir", "d", "e");
-  migrateIfKeyMatches("randomJump", "x", "r");
+  migrateIfKeyMatches("randomFirstFileJump", "x", "r");
   migrateIfKeyMatches("cycleFilter", "Command+f", "f");
   migrateIfKeyMatches("cycleFilter", "Command+x", "f");
   migrateIfKeyMatches("slideshow", "v", "v");
@@ -6933,7 +6972,7 @@ function applyMenuPaneWidthFromOptions() {
 }
 
 function setMenuPaneWidthPx(widthPx, save = true) {
-  if (!menuOverlay || !WS.meta) return;
+  if (!menuOverlay || !WS.meta) return 0;
   const contentWidth = Math.max(
     0,
     Number(
@@ -6948,14 +6987,90 @@ function setMenuPaneWidthPx(widthPx, save = true) {
     Math.min(maxWidth, Math.round(Number(widthPx) || defaultMenuPaneWidth())),
   );
   menuOverlay.style.width = `${nextWidth}px`;
-  if (!save) return;
-  if (Math.abs(nextWidth - Number(WS.meta.options?.menuPaneWidthPx || 0)) < 1)
-    return;
-  WS.meta.options = normalizeOptions(
-    Object.assign({}, WS.meta.options || {}, { menuPaneWidthPx: nextWidth }),
+  if (!save) return nextWidth;
+  if (Math.abs(nextWidth - Number(WS.meta.options?.menuPaneWidthPx || 0)) >= 1) {
+    WS.meta.options = normalizeOptions(
+      Object.assign({}, WS.meta.options || {}, { menuPaneWidthPx: nextWidth }),
+    );
+    metaMarkDirty(META_DOC_IDS.prefGeneral);
+    metaScheduleSave();
+  }
+  return nextWidth;
+}
+
+function getDirectoriesPaneWidthPxFromOptions() {
+  const appEl = document.getElementById("app");
+  const appWidth = Math.max(
+    1,
+    Number(appEl?.clientWidth || window.innerWidth) || 1,
   );
-  metaMarkDirty(META_DOC_IDS.prefGeneral);
-  metaScheduleSave();
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  const rawPct =
+    opt && typeof opt.leftPaneWidthPct === "number"
+      ? opt.leftPaneWidthPct
+      : parseFloat(opt?.leftPaneWidthPct);
+  const pct = Number.isFinite(rawPct) ? Math.max(0.05, Math.min(0.9, rawPct)) : 0.28;
+  const min = Math.max(180, Math.round(appWidth * 0.12));
+  const max = Math.max(min + 50, appWidth - 200);
+  return Math.max(min, Math.min(max, Math.round(appWidth * pct)));
+}
+
+function setDirectoriesPaneWidthPx(widthPx, save = true) {
+  if (!WS.meta) return 0;
+  const appEl = document.getElementById("app");
+  const appWidth = Math.max(
+    1,
+    Number(appEl?.clientWidth || window.innerWidth) || 1,
+  );
+  const min = Math.max(180, Math.round(appWidth * 0.12));
+  const max = Math.max(min + 50, appWidth - 200);
+  const nextWidth = Math.max(
+    min,
+    Math.min(max, Math.round(Number(widthPx) || appWidth * 0.28)),
+  );
+  const nextPct = nextWidth / appWidth;
+  if (save) {
+    const prevPct = Number(WS.meta.options?.leftPaneWidthPct || 0);
+    if (Math.abs(nextPct - prevPct) >= 0.0005) {
+      WS.meta.options = normalizeOptions(
+        Object.assign({}, WS.meta.options || {}, {
+          leftPaneWidthPct: nextPct,
+        }),
+      );
+      metaMarkDirty(META_DOC_IDS.prefGeneral);
+      metaScheduleSave();
+    }
+  }
+  setDividerPositionFromPct(nextPct);
+  return nextWidth;
+}
+
+function syncSidePaneWidthsToSmallerSide() {
+  if (!WS.meta) return;
+  const targetPx = Math.min(
+    getDirectoriesPaneWidthPxFromOptions(),
+    Number(
+      WS.meta.options && Number.isFinite(Number(WS.meta.options.menuPaneWidthPx))
+        ? WS.meta.options.menuPaneWidthPx
+        : defaultMenuPaneWidth(),
+    ) || defaultMenuPaneWidth(),
+  );
+  const appliedMenuWidth =
+    setMenuPaneWidthPx(targetPx, true) ||
+    Math.round(Number(menuOverlay?.offsetWidth || targetPx));
+  const finalWidth = Math.max(
+    280,
+    Math.round(Number(menuOverlay?.offsetWidth || appliedMenuWidth || targetPx)),
+  );
+  setDirectoriesPaneWidthPx(finalWidth, true);
+  syncPreviewContentLayoutAfterMenuToggle();
+}
+
+function applyDefaultRootLandingSidebars() {
+  if (!WS.meta) return;
+  if (setDirectoriesPaneOpenValue(true)) syncActivePaneWithLayout();
+  if (!MENU_OPEN) openMenu(MENU_LAST_TAB || "general");
+  syncSidePaneWidthsToSmallerSide();
 }
 
 window.addEventListener("resize", () => {
@@ -8776,11 +8891,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "10", label: "Toggle 10s" },
   ];
 
-  const randomActionModes = [
-    { value: "firstFileJump", label: "First file jump" },
-    { value: "randomFileSort", label: "Random file sort" },
-    { value: "randomFolderSort", label: "Random folder sort" },
-  ];
   const videoAudioModes = [
     { value: "muted", label: "Muted" },
     { value: "unmuted", label: "Unmuted" },
@@ -9304,13 +9414,13 @@ ${makeCheckRow("Loading Screens", "When enabled, directory movement waits for th
 ${makeCheckRow("Light Mode", "Switch between the light and dark Retro UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Hardware acceleration", "When disabled, score-related interface elements stay hidden without changing the underlying data.", "opt_hardwareAcceleration", scoreUiVisible)}
 ${scoreUiVisible ? makeSelectRow("Folder sort", "Sort folders by name, score, efficiency, size, or item count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes) : ``}
-${makeSelectRow("Random action behavior", "Choose what the Random action key does.", "opt_randomActionMode", String(opt.randomActionMode || "firstFileJump"), randomActionModes)}
 ${makeCheckRow("Click selected rotating thumbnail opens file", "When enabled, clicking an already-selected rotating folder/tag item jumps to the thumbnail currently shown.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${scoreUiVisible ? makeCheckRow("Include hidden items in Stats", "When enabled, the Stats tab includes hidden folders and files in its totals and score history.", "opt_includeHiddenItemsInStats", !!opt.includeHiddenItemsInStats) : ``}
 ${makeCheckRow("Reveal Hidden Items", "Show folders hidden by hidden tags in the current directory view. The Hidden control still opens the global hidden browser.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag in any folder view when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeCheckRow("File-only folders open in gallery", "Open file-only folders directly in Gallery Mode on the first file.", "opt_fileOnlyFoldersOpenInGallery", !!opt.fileOnlyFoldersOpenInGallery)}
+${makeCheckRow("Preview media uses pane background", "When enabled, preview media always stays on the recessed preview pane surface instead of switching to a black full-bleed background.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
           `,
     },
     appearance: {
@@ -9709,6 +9819,13 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
   });
   bindCheck("opt_hardwareAcceleration", "hardwareAcceleration");
   bindCheck("opt_loadingScreens", "loadingScreens");
+  bindCheck(
+    "opt_previewMediaUsePaneBackground",
+    "previewMediaUsePaneBackground",
+    () => {
+      refreshActivePreviewMediaLayout({ immediate: true });
+    },
+  );
   bindSelect("opt_slideshowDefault", "slideshowDefault", false);
   bindCheck(
     "opt_includeHiddenItemsInStats",
@@ -9963,15 +10080,6 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
           : "medium",
       ),
   );
-  bindSelect("opt_randomActionMode", "randomActionMode", false, (val) => {
-    if (val === "randomFileSort" || val === "randomFolderSort") return;
-    if (!WS.view.randomMode && !WS.view.randomFolderMode) return;
-    WS.view.randomMode = false;
-    WS.view.randomFolderMode = false;
-    WS.view.randomCache = new Map();
-    WS.view.randomFolderCache = new Map();
-    applyRandomSortModeEverywhere(true);
-  });
   bindCheck("opt_forceTitleCaps", "forceTitleCaps");
   bindCheck(
     "opt_hideFileExtensionsInFileNames",
@@ -10158,13 +10266,13 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "loadingScreens",
     "lightMode",
     "hardwareAcceleration",
-    "randomActionMode",
     "clickSelectedRotatingThumbTeleports",
     "includeHiddenItemsInStats",
     "showHiddenFolder",
     "showUntaggedFolder",
     "showTagFolderSpacerRow",
     "fileOnlyFoldersOpenInGallery",
+    "previewMediaUsePaneBackground",
   ]),
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
@@ -14255,6 +14363,7 @@ async function buildWorkspaceFromFiles(fileList) {
   syncPreviewToSelection({ force: true });
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
+  applyDefaultRootLandingSidebars();
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -14381,6 +14490,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
   syncPreviewToSelection({ force: true });
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
+  applyDefaultRootLandingSidebars();
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -14499,6 +14609,7 @@ async function buildWorkspaceFromFileList(fileList) {
   syncPreviewToSelection();
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
+  applyDefaultRootLandingSidebars();
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -15655,20 +15766,6 @@ function buildDirSortMetrics() {
     efficiencyByPath,
   };
   return DIR_SORT_METRICS_CACHE;
-}
-
-function randomActionMode() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  const mode = opt
-    ? String(opt.randomActionMode || "firstFileJump")
-    : "firstFileJump";
-  if (
-    mode === "firstFileJump" ||
-    mode === "randomFileSort" ||
-    mode === "randomFolderSort"
-  )
-    return mode;
-  return "firstFileJump";
 }
 
 function randomSortAffectsFiles() {
@@ -36053,12 +36150,10 @@ function toggleRandomSortMode() {
   if (!WS.root) return false;
   WS.view.randomMode = !WS.view.randomMode;
   if (WS.view.randomMode) {
-    WS.view.randomFolderMode = false;
     reseedRandomSortMode();
   } else {
     WS.view.randomCache = new Map();
   }
-  WS.view.randomFolderCache = new Map();
   applyRandomSortModeEverywhere(true);
   showStatusMessage(`Random file sort: ${WS.view.randomMode ? "On" : "Off"}`);
   return true;
@@ -36068,31 +36163,15 @@ function toggleRandomFolderSortMode() {
   if (!WS.root) return false;
   WS.view.randomFolderMode = !WS.view.randomFolderMode;
   if (WS.view.randomFolderMode) {
-    WS.view.randomMode = false;
     reseedRandomSortMode();
   } else {
     WS.view.randomFolderCache = new Map();
   }
-  WS.view.randomCache = new Map();
   applyRandomSortModeEverywhere(true);
   showStatusMessage(
     `Random folder sort: ${WS.view.randomFolderMode ? "On" : "Off"}`,
   );
   return true;
-}
-
-function runRandomActionForDirectories() {
-  const mode = randomActionMode();
-  if (mode === "randomFileSort") return toggleRandomSortMode();
-  if (mode === "randomFolderSort") return toggleRandomFolderSortMode();
-  return randomFirstFileJumpFromDirectories();
-}
-
-function runRandomActionForViewer() {
-  const mode = randomActionMode();
-  if (mode === "randomFileSort") return toggleRandomSortMode();
-  if (mode === "randomFolderSort") return toggleRandomFolderSortMode();
-  return randomFirstFileJumpFromViewer();
 }
 
 /* =========================================================
@@ -36227,6 +36306,7 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
   changed = setDirectoriesPaneOpenKeybindState(nextOpen) || changed;
   if (nextOpen) {
     openMenu(MENU_LAST_TAB || "general");
+    syncSidePaneWidthsToSmallerSide();
     changed = true;
   } else if (settingsOpen) {
     closeMenu();
@@ -36356,6 +36436,14 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(
         `File-only folders open in gallery: ${next ? "On" : "Off"}`,
       );
+      return true;
+    }
+    case "togglePreviewMediaUsePaneBackground": {
+      const next = toggleOptionValue("previewMediaUsePaneBackground");
+      applyInteractionModeFromOptions();
+      renderPreviewPane(false, true);
+      refreshActivePreviewMediaLayout({ immediate: true });
+      showStatusMessage(`Preview media uses pane background: ${next ? "On" : "Off"}`);
       return true;
     }
     case "toggleHideFileExtensions": {
@@ -37392,8 +37480,14 @@ function handlePreviewPaneAction(action, inFilePreview) {
       case "nextFolder":
         viewerJumpToNextFolderFirstFile();
         return true;
-      case "randomJump":
-        runRandomActionForViewer();
+      case "randomFirstFileJump":
+        randomFirstFileJumpFromViewer();
+        return true;
+      case "toggleRandomFileSort":
+        toggleRandomSortMode();
+        return true;
+      case "toggleRandomFolderSort":
+        toggleRandomFolderSortMode();
         return true;
       case "cycleFilter":
         cycleFilterMode();
@@ -37613,7 +37707,9 @@ document.addEventListener("keydown", (e) => {
         case "enterDir":
         case "prevFolder":
         case "nextFolder":
-        case "randomJump":
+        case "randomFirstFileJump":
+        case "toggleRandomFileSort":
+        case "toggleRandomFolderSort":
         case "cycleFilter":
         case "slideshow":
         case "jumpMinus50":
@@ -37679,9 +37775,17 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         viewerJumpToNextFolderFirstFile();
         return;
-      case "randomJump":
+      case "randomFirstFileJump":
         e.preventDefault();
-        runRandomActionForViewer();
+        randomFirstFileJumpFromViewer();
+        return;
+      case "toggleRandomFileSort":
+        e.preventDefault();
+        toggleRandomSortMode();
+        return;
+      case "toggleRandomFolderSort":
+        e.preventDefault();
+        toggleRandomFolderSortMode();
         return;
       case "cycleFilter":
         e.preventDefault();
@@ -37833,9 +37937,17 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         viewerJumpToNextFolderFirstFile();
         return;
-      case "randomJump":
+      case "randomFirstFileJump":
         e.preventDefault();
-        runRandomActionForViewer();
+        randomFirstFileJumpFromViewer();
+        return;
+      case "toggleRandomFileSort":
+        e.preventDefault();
+        toggleRandomSortMode();
+        return;
+      case "toggleRandomFolderSort":
+        e.preventDefault();
+        toggleRandomFolderSortMode();
         return;
       case "cycleFilter":
         e.preventDefault();
@@ -37921,9 +38033,17 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
       jumpToNextFolderFirstFile();
       return;
-    case "randomJump":
+    case "randomFirstFileJump":
       e.preventDefault();
-      runRandomActionForDirectories();
+      randomFirstFileJumpFromDirectories();
+      return;
+    case "toggleRandomFileSort":
+      e.preventDefault();
+      toggleRandomSortMode();
+      return;
+    case "toggleRandomFolderSort":
+      e.preventDefault();
+      toggleRandomFolderSortMode();
       return;
     case "cycleFilter":
       e.preventDefault();
