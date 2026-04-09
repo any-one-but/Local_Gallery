@@ -853,6 +853,45 @@ input[type="file"] {
   color: var(--retro-select-text);
 }
 
+:root[data-retro="on"][data-theme="retro90s"] .dirRow.bulkSelected:not(.selected) {
+  background: rgba(79, 134, 214, 0.24);
+  border-color: rgba(24, 56, 106, 0.72);
+  outline-color: rgba(24, 56, 106, 0.72);
+}
+
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirName,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirNameText,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirMeta,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirMetaInline,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirBarMetaText,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirIcon,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirHiddenBadge,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirFavoriteHeart,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .voteBtn,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .mini {
+  color: var(--retro-text);
+}
+
 :root[data-retro="on"]
   .dirRow.folderRow.folderSquareCard.selected
   .dirSquareCard,
@@ -2892,37 +2931,43 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .previewTagFolderCard .dirSquareCard {
+  border-radius: 0;
   box-shadow: 0 10px 30px var(--color1-primary-transparent);
 }
 
 .gridFolders .previewTagFolderCard.selected .dirSquareCard {
-  border-color: var(--ui-selection-outline);
-  box-shadow:
-    0 10px 30px var(--color1-primary-transparent),
-    0 0 0 1px var(--ui-selection-outline);
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid #000;
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard {
   position: relative;
   z-index: 1;
   border-color: var(--anchor-internal-color2-primary);
-  outline: 3px solid var(--ui-selection-outline-soft);
+  outline: 1px solid var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow:
-    var(--ui-preview-selection-shadow),
-    0 0 0 3px var(--ui-selection-outline-soft);
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFolders .previewTagFolderCard.selected.bulkSelected .dirSquareCard {
-  box-shadow:
-    0 10px 30px var(--color1-primary-transparent),
-    0 0 0 1px var(--ui-selection-outline),
-    0 0 0 3px var(--ui-selection-outline-soft);
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid #000;
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFolders .previewTagFolderCard.previewSelected .dirSquareCard {
-  border-color: var(--ui-selection-outline);
-  outline: 3px solid var(--ui-selection-outline);
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid #000;
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
+}
+
+.gridFolders .previewTagFolderCard.previewSelected.bulkSelected .dirSquareCard {
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -2954,32 +2999,31 @@ img[data-rotate-key].rotatingThumbFade {
 .gridFiles.previewSquareCards .fileCard {
   position: relative;
   aspect-ratio: 1 / 1;
-  border-radius: 4px;
+  border-radius: 0;
   overflow: hidden;
 }
 
 .gridFiles .fileCard.previewSelected {
   position: relative;
   z-index: 2;
-  outline: 3px solid var(--ui-selection-outline);
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFiles .fileCard.bulkSelected {
-  outline: 3px solid var(--ui-selection-outline-soft);
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow:
-    var(--ui-preview-selection-shadow),
-    0 0 0 2px var(--ui-selection-outline-soft);
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFiles .fileCard.previewSelected.bulkSelected {
-  outline: 3px solid var(--ui-selection-outline);
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid #000;
   outline-offset: 0;
-  box-shadow:
-    var(--ui-preview-selection-shadow),
-    0 0 0 2px var(--ui-selection-outline-soft);
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFiles.previewSquareCards .thumb {
@@ -3323,6 +3367,7 @@ img[data-rotate-key].rotatingThumbFade {
   justify-content: flex-start;
   flex-direction: column;
   overflow: hidden;
+  border-radius: 0;
   background: var(--color1-secondary);
   box-shadow: 0 10px 30px var(--color1-primary-transparent);
 }
@@ -3330,7 +3375,8 @@ img[data-rotate-key].rotatingThumbFade {
 .gridFolders .folderCard.folderThumbCard.previewSelected {
   position: relative;
   z-index: 2;
-  outline: 3px solid var(--ui-selection-outline);
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -3338,19 +3384,18 @@ img[data-rotate-key].rotatingThumbFade {
 .gridFolders .folderCard.folderThumbCard.bulkSelected {
   position: relative;
   z-index: 1;
-  outline: 3px solid var(--ui-selection-outline-soft);
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow:
-    var(--ui-preview-selection-shadow),
-    0 0 0 3px var(--ui-selection-outline-soft);
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
+.gridFolders .folderCard.folderThumbCard.previewSelected.bulkSelected,
 .gridFolders .folderCard.folderThumbCard.selected.bulkSelected {
-  outline: 3px solid var(--ui-selection-outline);
+  border-color: var(--anchor-internal-color2-primary);
+  outline: 1px solid #000;
   outline-offset: 0;
-  box-shadow:
-    var(--ui-preview-selection-shadow),
-    0 0 0 2px var(--ui-selection-outline-soft);
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard {
@@ -3961,11 +4006,10 @@ img[data-rotate-key].rotatingThumbFade {
 :root[data-retro="on"]
   .gridFolders
   .folderCard.folderThumbCard.previewSelected {
-  border-color: var(--retro-shadow-dark);
-  outline-color: var(--retro-shadow-dark);
-  box-shadow:
-    0 0 0 1px var(--retro-highlight),
-    0 0 0 3px var(--retro-shadow);
+  border-color: var(--retro-select-bg);
+  outline: 1px solid #000;
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 :root[data-retro="on"]
@@ -3975,26 +4019,23 @@ img[data-rotate-key].rotatingThumbFade {
 :root[data-retro="on"] .gridFiles .fileCard.bulkSelected,
 :root[data-retro="on"] .gridFolders .folderCard.folderThumbCard.bulkSelected {
   border-color: var(--retro-select-bg);
-  outline: 3px solid var(--retro-shadow-dark);
+  outline: 1px solid var(--retro-select-bg);
   outline-offset: 0;
-  box-shadow:
-    0 0 0 1px var(--retro-highlight),
-    0 0 0 3px var(--retro-select-bg);
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 :root[data-retro="on"]
   .gridFolders
-  .previewTagFolderCard.previewSelected
+  .previewTagFolderCard.previewSelected.bulkSelected
   .dirSquareCard,
-:root[data-retro="on"] .gridFiles .fileCard.previewSelected,
+:root[data-retro="on"] .gridFiles .fileCard.previewSelected.bulkSelected,
 :root[data-retro="on"]
   .gridFolders
-  .folderCard.folderThumbCard.previewSelected {
+  .folderCard.folderThumbCard.previewSelected.bulkSelected {
   border-color: var(--retro-select-bg);
-  outline-color: var(--retro-select-bg);
-  box-shadow:
-    0 0 0 1px var(--retro-highlight),
-    0 0 0 3px var(--retro-select-bg);
+  outline: 1px solid #000;
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .tag {

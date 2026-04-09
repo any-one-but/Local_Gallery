@@ -5648,16 +5648,31 @@ function applyNaturalAspectThumbnailModeFromOptions() {
   else root.removeAttribute("data-natural-thumb-cards");
 }
 
+function setActivePane(nextPane, opts = null) {
+  if (!WS.view) return false;
+  const pane = nextPane === "preview" ? "preview" : "directories";
+  const prev =
+    WS.view.activePane === "preview" || WS.view.activePane === "directories"
+      ? WS.view.activePane
+      : "";
+  if (prev === pane) return false;
+  if (!(opts && opts.keepBulkSelection)) {
+    finalizeBulkSelectionAction();
+  }
+  WS.view.activePane = pane;
+  return true;
+}
+
 function syncActivePaneWithLayout() {
   const appEl = document.getElementById("app");
   if (!WS.view) return;
   if (!directoriesPaneOpenEnabled()) {
-    WS.view.activePane = "preview";
+    setActivePane("preview");
   } else if (
     WS.view.activePane !== "directories" &&
     WS.view.activePane !== "preview"
   ) {
-    WS.view.activePane = "directories";
+    setActivePane("directories");
   }
   if (appEl) {
     appEl.classList.toggle(
@@ -14868,10 +14883,11 @@ function restoreViewerCloseState(state) {
   rebuildDirectoriesEntries();
   const idx = findEntryIndexByKey(String(state.entryKey || ""));
   WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
-  WS.view.activePane =
+  setActivePane(
     state.activePane === "preview" || state.activePane === "directories"
       ? state.activePane
-      : "directories";
+      : "directories",
+  );
   const previewContextKey = String(state.previewContextKey || "");
   let restoredPreview = false;
   if (WS.view.activePane === "preview") {
@@ -20315,9 +20331,7 @@ function setDirectoriesSelection(idx, opts = null) {
   const keepScroll = !!(opts && opts.keepScroll);
   if (!WS.nav.entries.length) {
     WS.nav.selectedIndex = 0;
-    WS.view.activePane = directoriesPaneOpenEnabled()
-      ? "directories"
-      : "preview";
+    setActivePane(directoriesPaneOpenEnabled() ? "directories" : "preview");
     applyPreviewState(null);
     renderDirectoriesPane();
     renderPreviewPane(true);
@@ -20340,7 +20354,7 @@ function setDirectoriesSelection(idx, opts = null) {
     idx >= WS.nav.selectedIndex ? 1 : -1,
   );
   WS.nav.selectedIndex = i;
-  if (directoriesPaneOpenEnabled()) WS.view.activePane = "directories";
+  if (directoriesPaneOpenEnabled()) setActivePane("directories");
   saveGridSelectionForCurrentContext();
   syncPreviewToSelection({ force: true });
   const snapshot = currentNavigationSnapshot();
@@ -20417,7 +20431,7 @@ async function returnToSearchResults() {
       syncPreviewToSelection({ force: true });
     }
     WS.view.pendingPreviewSelectionKey = target ? `dir:${target}` : "";
-    WS.view.activePane = "preview";
+    setActivePane("preview");
     await finalizeDirectoryNavigationRender({
       animatePreview: true,
       keepDirectoriesScroll: true,
@@ -20515,12 +20529,12 @@ function notePreviewTargetChanged(nextState = null) {
     currentPreviewSelectionContextKeyFromState(nextState),
   );
   if (!directoriesPaneOpenEnabled()) {
-    WS.view.activePane = "preview";
+    setActivePane("preview");
   } else if (
     WS.view.activePane !== "directories" &&
     WS.view.activePane !== "preview"
   ) {
-    WS.view.activePane = "directories";
+    setActivePane("directories");
   }
   updateTitleLabel();
 }
@@ -20743,7 +20757,7 @@ function setPreviewSelectionKey(key, opts = null) {
     WS.view.previewSelectionContextKey =
       currentPreviewSelectionContextKeyFromState();
     WS.view.previewSelectedKey = nextKey;
-    if (!(opts && opts.activate === false)) WS.view.activePane = "preview";
+    if (!(opts && opts.activate === false)) setActivePane("preview");
   }
   updatePreviewSelectionClasses();
   if (!(opts && opts.skipReveal)) revealPreviewCard(card);
@@ -20752,7 +20766,7 @@ function setPreviewSelectionKey(key, opts = null) {
 
 function activatePreviewPaneSelection() {
   if (!ensurePreviewSelectionForCurrentTarget(false)) return false;
-  WS.view.activePane = "preview";
+  setActivePane("preview");
   updatePreviewSelectionClasses();
   revealPreviewCard();
   return true;
@@ -20775,7 +20789,7 @@ function resetPreviewPaneForEnteredTarget() {
 
 function activateDirectoriesPaneSelection() {
   if (!directoriesPaneOpenEnabled()) return false;
-  WS.view.activePane = "directories";
+  setActivePane("directories");
   updatePreviewSelectionClasses();
   return true;
 }
@@ -30747,7 +30761,7 @@ if (directoriesSearchInput) {
         WS.view.searchRootHidden = [];
         WS.view.searchRootPath = String(previewDir?.path || "");
       }
-      WS.view.activePane = "preview";
+      setActivePane("preview");
     } else {
       if (!reuseExistingRoot) {
         if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
@@ -31074,6 +31088,38 @@ async function navigateToDirectory(node) {
     1,
   );
   if (directGalleryFirstId) {
+    if (isViewingTagFolder()) {
+      pushTagViewContext(node.path || "");
+      WS.view.tagFolderActiveMode = "";
+      WS.view.tagFolderActiveTag = "";
+      WS.view.tagFolderActiveAlbum = "";
+      WS.view.tagFolderOriginPath = "";
+    }
+    if (searchSessionActive() && WS.view.searchRootActive) {
+      enterSearchResultContext(node.path || "");
+    }
+    if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
+      WS.view.favoritesRootActive = false;
+      WS.view.favoritesAnchorPath = node.path || "";
+    }
+    if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+      WS.view.hiddenRootActive = false;
+      WS.view.hiddenAnchorPath = node.path || "";
+    }
+    WS.nav.dirNode = node;
+    WS.view.aboveRootView = false;
+    syncBulkSelectionForCurrentDir();
+    syncFavoritesUi();
+    syncHiddenUi();
+    syncTagUiForCurrentDir();
+    rebuildDirectoriesEntries();
+    const fileIdx = findFileEntryIndexById(directGalleryFirstId);
+    WS.nav.selectedIndex = findNearestSelectableIndex(
+      fileIdx >= 0 ? fileIdx : selectionIndexForDirectoryEnter(),
+      1,
+    );
+    syncPreviewToSelection({ force: true });
+    scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
     VIEWER_CLOSE_RESTORE_STATE =
       searchBrowsingResultFolder() || searchSessionActive()
         ? captureSearchResultsRestoreState(node, { activePane: "preview" })
@@ -31093,7 +31139,7 @@ async function navigateToDirectory(node) {
   if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
   else applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
   resetPreviewPaneForEnteredTarget();
-  WS.view.activePane = "preview";
+  setActivePane("preview");
   await finalizeDirectoryNavigationRender({
     animatePreview: true,
     activatePreviewSelection: true,
@@ -31218,7 +31264,7 @@ async function openPreviewTagFolderEntry(entry) {
   if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
   else applyPreviewState(previewStateForEntry(entry));
   resetPreviewPaneForEnteredTarget();
-  WS.view.activePane = "preview";
+  setActivePane("preview");
   await finalizeDirectoryNavigationRender({
     animatePreview: true,
     activatePreviewSelection: true,
