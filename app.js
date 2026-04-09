@@ -1411,6 +1411,7 @@ const META_DOC_IDS = Object.freeze({
   appearancePresets: "appearancePresets",
   appearanceAssignments: "appearanceAssignments",
   prefGeneral: "prefGeneral",
+  prefNotifications: "prefNotifications",
   prefAppearance: "prefAppearance",
   prefPlayback: "prefPlayback",
   prefThumbnails: "prefThumbnails",
@@ -1428,6 +1429,7 @@ const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.appearancePresets]: "appearance-presets.log.json",
   [META_DOC_IDS.appearanceAssignments]: "appearance-assignments.log.json",
   [META_DOC_IDS.prefGeneral]: "preferences.general.log.json",
+  [META_DOC_IDS.prefNotifications]: "preferences.notifications.log.json",
   [META_DOC_IDS.prefAppearance]: "preferences.appearance.log.json",
   [META_DOC_IDS.prefPlayback]: "preferences.playback.log.json",
   [META_DOC_IDS.prefThumbnails]: "preferences.thumbnails.log.json",
@@ -1445,6 +1447,7 @@ const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.appearancePresets]: "LocalGalleryAppearancePresetsV2",
   [META_DOC_IDS.appearanceAssignments]: "LocalGalleryAppearanceAssignmentsV2",
   [META_DOC_IDS.prefGeneral]: "LocalGalleryPreferencesGeneralV2",
+  [META_DOC_IDS.prefNotifications]: "LocalGalleryPreferencesNotificationsV2",
   [META_DOC_IDS.prefAppearance]: "LocalGalleryPreferencesAppearanceV2",
   [META_DOC_IDS.prefPlayback]: "LocalGalleryPreferencesPlaybackV2",
   [META_DOC_IDS.prefThumbnails]: "LocalGalleryPreferencesThumbnailsV2",
@@ -1462,6 +1465,7 @@ const META_ALL_DOC_IDS = Object.freeze([
   META_DOC_IDS.appearancePresets,
   META_DOC_IDS.appearanceAssignments,
   META_DOC_IDS.prefGeneral,
+  META_DOC_IDS.prefNotifications,
   META_DOC_IDS.prefAppearance,
   META_DOC_IDS.prefPlayback,
   META_DOC_IDS.prefThumbnails,
@@ -1525,7 +1529,7 @@ const META_PREFERENCE_DOC_BY_OPTION_KEY = (() => {
   const out = new Map();
   const pairs = [
     [
-      META_DOC_IDS.prefGeneral,
+      META_DOC_IDS.prefNotifications,
       META_PREFERENCE_SECTION_OPTION_KEYS.notifications,
     ],
     [
@@ -13661,6 +13665,8 @@ function metaMakePreferenceSectionLogObject(docId) {
   const optionKeys =
     docId === META_DOC_IDS.prefGeneral
       ? META_GENERAL_PREFERENCE_OPTION_KEYS
+      : docId === META_DOC_IDS.prefNotifications
+        ? META_PREFERENCE_SECTION_OPTION_KEYS.notifications
       : docId === META_DOC_IDS.prefAppearance
         ? META_PREFERENCE_SECTION_OPTION_KEYS.appearance
         : docId === META_DOC_IDS.prefPlayback
@@ -13712,6 +13718,7 @@ function metaDocObjectForId(docId) {
     case META_DOC_IDS.appearanceAssignments:
       return metaMakeAppearanceAssignmentsDocObject();
     case META_DOC_IDS.prefGeneral:
+    case META_DOC_IDS.prefNotifications:
     case META_DOC_IDS.prefAppearance:
     case META_DOC_IDS.prefPlayback:
     case META_DOC_IDS.prefThumbnails:
@@ -14039,6 +14046,7 @@ function metaApplyDocLogById(docId, log) {
       metaApplyAppearanceAssignmentsDocLog(log);
       return;
     case META_DOC_IDS.prefGeneral:
+    case META_DOC_IDS.prefNotifications:
     case META_DOC_IDS.prefAppearance:
     case META_DOC_IDS.prefPlayback:
     case META_DOC_IDS.prefThumbnails:
@@ -14345,6 +14353,7 @@ function metaInitForCurrentWorkspace() {
       const loadOrder = [
         META_DOC_IDS.appearancePresets,
         META_DOC_IDS.prefGeneral,
+        META_DOC_IDS.prefNotifications,
         META_DOC_IDS.prefAppearance,
         META_DOC_IDS.prefPlayback,
         META_DOC_IDS.prefThumbnails,
@@ -14441,6 +14450,7 @@ async function metaInitForCurrentWorkspaceFs() {
   const loadOrder = [
     META_DOC_IDS.appearancePresets,
     META_DOC_IDS.prefGeneral,
+    META_DOC_IDS.prefNotifications,
     META_DOC_IDS.prefAppearance,
     META_DOC_IDS.prefPlayback,
     META_DOC_IDS.prefThumbnails,
@@ -31501,9 +31511,26 @@ function ensureViewerFromPreviewFileId(fileId) {
   if (!rec) return;
 
   const p = rec ? rec.dirPath || "" : "";
-  const contextDir =
+  const previewContextDir =
     WS.preview && WS.preview.kind === "file" && WS.preview.dirNode
       ? WS.preview.dirNode
+      : null;
+  const contextDirContainsFile = (dirNode) => {
+    if (!dirNode) return false;
+    if (!dirNode._skipTagFilters) {
+      return String(dirNode.path || "") === String(p || "");
+    }
+    const items = buildViewerItemsForDir(dirNode);
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item || item.isFolder) continue;
+      if (String(item.id || "") === String(fileId || "")) return true;
+    }
+    return false;
+  };
+  const contextDir =
+    previewContextDir && contextDirContainsFile(previewContextDir)
+      ? previewContextDir
       : null;
   const dn = contextDir || WS.dirByPath.get(p) || WS.nav.dirNode || WS.root;
 
@@ -31912,7 +31939,7 @@ function syncDirectoriesToViewerState() {
     !!WS.view.returnToPreviewPaneAfterFileClose &&
     WS.preview.kind === "file";
   const previewOwnedDirNode = preservePreviewOwnedContext
-    ? WS.preview.dirNode || viewerDirNode || null
+    ? viewerDirNode || WS.preview.dirNode || null
     : null;
 
   WS.nav.dirNode = viewerDirNode;
