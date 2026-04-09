@@ -15667,6 +15667,19 @@ if (openWritableInput) {
 let DIR_SORT_METRICS_CACHE = null;
 let DIR_ITEM_COUNT_CACHE = new Map();
 let DIR_ITEM_COUNT_CACHE_FILTER_MODE = "";
+let TAG_ENTRY_DIRS_CACHE = new Map();
+let TAG_ENTRY_METRICS_CACHE = new Map();
+let TAG_ENTRY_PREVIEW_POOL_CACHE = new Map();
+let TAG_GROUPS_BY_DIR_CACHE = new Map();
+let TAG_ALBUM_STATS_BY_SCOPE_CACHE = new Map();
+
+function clearTagEntryDerivedCaches() {
+  TAG_ENTRY_DIRS_CACHE = new Map();
+  TAG_ENTRY_METRICS_CACHE = new Map();
+  TAG_ENTRY_PREVIEW_POOL_CACHE = new Map();
+  TAG_GROUPS_BY_DIR_CACHE = new Map();
+  TAG_ALBUM_STATS_BY_SCOPE_CACHE = new Map();
+}
 
 function invalidateDirSortMetricsCache() {
   DIR_SORT_METRICS_CACHE = null;
@@ -15680,6 +15693,7 @@ function invalidateDirItemCountCache() {
 function invalidateDirMetricsCaches() {
   invalidateDirSortMetricsCache();
   invalidateDirItemCountCache();
+  clearTagEntryDerivedCaches();
   DIR_NAV_MANIFESTS.clear();
   HOT_NAV_DIR_PATHS.clear();
   PINNED_HOT_NAV_DIR_PATHS.clear();
@@ -16657,6 +16671,10 @@ function isViewingTagFolder() {
 }
 
 function gatherTagGroupsForDir(dirNode) {
+  const cacheKey = String(dirNode?.path || "__root__");
+  if (TAG_GROUPS_BY_DIR_CACHE.has(cacheKey)) {
+    return TAG_GROUPS_BY_DIR_CACHE.get(cacheKey) || new Map();
+  }
   const groups = new Map();
   if (!dirNode) return groups;
   const children = getChildDirsForNodeBase(dirNode);
@@ -16672,10 +16690,15 @@ function gatherTagGroupsForDir(dirNode) {
       groups.set(key, list);
     }
   }
+  TAG_GROUPS_BY_DIR_CACHE.set(cacheKey, groups);
   return groups;
 }
 
 function collectTagAlbumStatsForGroups(tagGroups, scopePath = null) {
+  const cacheKey = String(scopePath || "__root__");
+  if (TAG_ALBUM_STATS_BY_SCOPE_CACHE.has(cacheKey)) {
+    return TAG_ALBUM_STATS_BY_SCOPE_CACHE.get(cacheKey) || new Map();
+  }
   const byAlbum = new Map();
   for (const [tag, nodes] of (tagGroups || []).entries()) {
     const album = metaGetTagAlbumForTag(tag, scopePath);
@@ -16694,6 +16717,7 @@ function collectTagAlbumStatsForGroups(tagGroups, scopePath = null) {
       if (path) bucket.folderPaths.add(path);
     }
   }
+  TAG_ALBUM_STATS_BY_SCOPE_CACHE.set(cacheKey, byAlbum);
   return byAlbum;
 }
 
@@ -16899,6 +16923,10 @@ function getDirsForTagViewFrame(frame) {
 
 function getDirsForTagEntry(entry) {
   if (!entry || entry.kind !== "tag") return [];
+  const cacheKey = `${String(tagEntrySelectionKey(entry) || "")}@@${String(entry.originPath || "")}`;
+  if (cacheKey && TAG_ENTRY_DIRS_CACHE.has(cacheKey)) {
+    return TAG_ENTRY_DIRS_CACHE.get(cacheKey) || [];
+  }
   const originPath = String(entry.originPath || "");
   const dirNode = WS.dirByPath.get(originPath) || WS.nav.dirNode;
   if (!dirNode) return [];
@@ -16921,26 +16949,37 @@ function getDirsForTagEntry(entry) {
         out.push(node);
       }
     }
+    if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
     return out;
   }
   if (entry.special) {
     if (entry.special === "favorites") {
-      return children.filter((d) => metaHasFavorite(d.path || ""));
+      const out = children.filter((d) => metaHasFavorite(d.path || ""));
+      if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
+      return out;
     }
     if (entry.special === "untagged") {
-      return children.filter((d) => metaGetUserTags(d.path || "").length === 0);
+      const out = children.filter(
+        (d) => metaGetUserTags(d.path || "").length === 0,
+      );
+      if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
+      return out;
     }
     if (entry.special === "hidden") {
-      return children.filter((d) => metaHasHidden(d.path || ""));
+      const out = children.filter((d) => metaHasHidden(d.path || ""));
+      if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
+      return out;
     }
     return [];
   }
   const tag = String(entry.tag || "");
   if (!tag) return [];
-  return children.filter((d) => {
+  const out = children.filter((d) => {
     const tags = metaGetUserTags(d.path || "");
     return tags.includes(tag);
   });
+  if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
+  return out;
 }
 
 function getTagEntryDisplayIcon(entry) {
@@ -16970,6 +17009,17 @@ function getTagEntryCountText(entry) {
 }
 
 function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
+  const cacheKey =
+    !sizeMemo && entry && entry.kind === "tag"
+      ? `${String(tagEntrySelectionKey(entry) || "")}@@${String(entry.originPath || "")}`
+      : "";
+  if (cacheKey && TAG_ENTRY_METRICS_CACHE.has(cacheKey)) {
+    return TAG_ENTRY_METRICS_CACHE.get(cacheKey) || {
+      dirs: [],
+      score: 0,
+      sizeBytes: 0,
+    };
+  }
   const dirs = getDirsForTagEntry(entry);
   let score = 0;
   let sizeBytes = 0;
@@ -16982,11 +17032,13 @@ function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
     score += Number(metaGetScore(path)) || 0;
     sizeBytes += getDirRecursiveSizeBytesForNode(dirNode, sizeMemo);
   }
-  return {
+  const result = {
     dirs,
     score,
     sizeBytes,
   };
+  if (cacheKey) TAG_ENTRY_METRICS_CACHE.set(cacheKey, result);
+  return result;
 }
 
 function effectiveTagMediaFilterForEntry(entry) {
@@ -18617,21 +18669,39 @@ function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
   if (!rec || !recordPassesTagEntryFilter(rec, entry)) return null;
   const dirs = getDirsForTagEntry(entry);
   if (!dirs.length || !isRecordInAnyDirSubtree(rec, dirs)) return null;
-  if (Array.isArray(tagPool) && tagPool.length) {
-    const idSet = new Set(
-      tagPool.map((r) => String((r && r.id) || "")).filter(Boolean),
-    );
-    if (!idSet.has(String(rec.id || ""))) return null;
-  }
   return rec;
 }
 
 function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
+  const normalizedLimit = Math.max(0, Math.floor(Number(limit) || 0));
+  const cacheKey =
+    entry && entry.kind === "tag"
+      ? `${String(tagEntrySelectionKey(entry) || "")}@@${String(
+          entry.originPath || "",
+        )}@@${effectiveFilterCacheKey()}@@${String(
+          effectiveTagMediaFilterForEntry(entry).join(","),
+        )}@@${String(normalizedLimit)}`
+      : "";
+  if (cacheKey && TAG_ENTRY_PREVIEW_POOL_CACHE.has(cacheKey)) {
+    return TAG_ENTRY_PREVIEW_POOL_CACHE.get(cacheKey) || [];
+  }
   const dirs = getDirsForTagEntry(entry);
   if (!dirs.length) return [];
-  return sampleRecursivePreviewRecords(dirs, limit, true).filter((rec) =>
+  const result = sampleRecursivePreviewRecords(
+    dirs,
+    normalizedLimit,
+    true,
+  ).filter((rec) =>
     recordPassesTagEntryFilter(rec, entry),
   );
+  if (cacheKey) TAG_ENTRY_PREVIEW_POOL_CACHE.set(cacheKey, result);
+  return result;
+}
+
+function tagThumbnailPreviewSampleLimit(modeRaw) {
+  const mode = String(modeRaw || "").trim().toLowerCase();
+  if (mode === "quad") return 4;
+  return 1;
 }
 
 function pickRotatingPreviewSlotsForKey(baseKey, records, count = 4) {
@@ -18675,10 +18745,13 @@ function getTagThumbnailReferenceRecord(entry) {
   if (!key) return null;
   const mode = metaGetTagThumbnailModeByKey(key);
   if (mode === "none") return null;
-  const tagPool = getRecursivePreviewRecordsForTagEntry(entry, 0);
-  if (!tagPool.length) return null;
-  const presetRec = getTagPresetPreviewRecordForEntry(entry, tagPool);
+  const presetRec = getTagPresetPreviewRecordForEntry(entry);
   if (presetRec) return presetRec;
+  const tagPool = getRecursivePreviewRecordsForTagEntry(
+    entry,
+    tagThumbnailPreviewSampleLimit(mode),
+  );
+  if (!tagPool.length) return null;
   return tagPool[0] || null;
 }
 
@@ -19667,6 +19740,7 @@ function selectionIndexForDirectoryEnter() {
 }
 
 function rebuildDirectoriesEntries() {
+  clearTagEntryDerivedCaches();
   WS.nav.entries = [];
 
   if (!WS.root) return;
@@ -19919,7 +19993,11 @@ function getSelectedDirectoryRowVisibility() {
 
 function snapSelectedDirectoryRowFullyIntoView() {
   const vis = getSelectedDirectoryRowVisibility();
-  if (vis.state !== "partial" || !vis.container) return;
+  if (
+    (vis.state !== "partial" && vis.state !== "offscreen") ||
+    !vis.container
+  )
+    return;
   const { container, row, rowTop, rowBottom, viewTop, viewBottom } = vis;
   const viewport = getDirectoryViewportRange(container);
   const rowHeight = Math.max(0, rowBottom - rowTop);
@@ -20089,11 +20167,7 @@ function reconcileSelectedDirectoryRowVisibility(
     return;
   }
   const vis = getSelectedDirectoryRowVisibility();
-  if (vis.state === "offscreen") {
-    centerSelectedDirectoryRow(0);
-    return;
-  }
-  if (vis.state === "partial") {
+  if (vis.state === "offscreen" || vis.state === "partial") {
     if (preferCenter) centerSelectedDirectoryRow(0);
     else snapSelectedDirectoryRowFullyIntoView();
   }
@@ -20128,6 +20202,80 @@ function scheduleSelectedDirectoryRowReconcile(
       reconcileSelectedDirectoryRowVisibility(preferCenter, forceCenter);
     }, delayedMs);
   }
+}
+
+function syncDirectoriesSelectionToFileRecord(rec, opts = null) {
+  if (!rec || !WS.root) return null;
+  const options = opts && typeof opts === "object" ? opts : {};
+  const p = String(rec.dirPath || "");
+  const dn = WS.dirByPath.get(p) || WS.nav.dirNode || WS.root;
+  if (!dn) return null;
+
+  TAG_EDIT_PATH = null;
+  clearBulkTagPlaceholder();
+
+  if (isViewingTagFolder()) {
+    pushTagViewContext(dn.path || "");
+    WS.view.tagFolderActiveMode = "";
+    WS.view.tagFolderActiveTag = "";
+    WS.view.tagFolderActiveAlbum = "";
+    WS.view.tagFolderOriginPath = "";
+  }
+
+  if (searchResultsVisibleInDirectoriesPane()) {
+    enterSearchResultContext(dn.path || "");
+  }
+  if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
+    WS.view.favoritesRootActive = false;
+    WS.view.favoritesAnchorPath = dn.path || "";
+  }
+  if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+    WS.view.hiddenRootActive = false;
+    WS.view.hiddenAnchorPath = dn.path || "";
+  }
+
+  WS.nav.dirNode = dn;
+  WS.view.aboveRootView = false;
+  syncBulkSelectionForCurrentDir();
+  syncFavoritesUi();
+  syncHiddenUi();
+  syncTagUiForCurrentDir();
+  rebuildDirectoriesEntries();
+
+  let idx = -1;
+  const targetId = String(rec.id || "");
+  for (let i = 0; i < WS.nav.entries.length; i++) {
+    const e = WS.nav.entries[i];
+    if (e && e.kind === "file" && String(e.id || "") === targetId) {
+      idx = i;
+      break;
+    }
+  }
+  WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
+  saveGridSelectionForCurrentContext();
+  if (options.syncPreview !== false) syncPreviewToSelection({ force: true });
+  if (options.pendingDirScroll !== false) {
+    WS.view.pendingDirScroll =
+      String(options.pendingDirScrollMode || "center-selected") ||
+      "center-selected";
+  }
+  renderDirectoriesPane(!!options.keepDirectoriesScroll);
+  if (options.renderPreview !== false) {
+    renderPreviewPane(
+      options.animatePreview !== false,
+      options.keepPreviewScroll !== false,
+    );
+  }
+  syncButtons();
+  if (options.renderPreview !== false) {
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+  }
+  if (options.recordHistory !== false) recordDirHistory();
+  return {
+    dirNode: dn,
+    selectedIndex: WS.nav.selectedIndex,
+  };
 }
 
 function setDirectoriesSelection(idx, opts = null) {
@@ -20767,61 +20915,13 @@ function entryUsesRotatingThumbnail(entry) {
 }
 
 function focusDirectoriesOnFileRecord(rec) {
-  if (!rec || !WS.root) return false;
-  const p = String(rec.dirPath || "");
-  const dn = WS.dirByPath.get(p) || WS.nav.dirNode || WS.root;
-  if (!dn) return false;
-
-  TAG_EDIT_PATH = null;
-  clearBulkTagPlaceholder();
-
-  if (isViewingTagFolder()) {
-    pushTagViewContext(dn.path || "");
-    WS.view.tagFolderActiveMode = "";
-    WS.view.tagFolderActiveTag = "";
-    WS.view.tagFolderActiveAlbum = "";
-    WS.view.tagFolderOriginPath = "";
-  }
-
-  if (searchResultsVisibleInDirectoriesPane()) {
-    enterSearchResultContext(dn.path || "");
-  }
-  if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-    WS.view.favoritesRootActive = false;
-    WS.view.favoritesAnchorPath = dn.path || "";
-  }
-  if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
-    WS.view.hiddenRootActive = false;
-    WS.view.hiddenAnchorPath = dn.path || "";
-  }
-
-  WS.nav.dirNode = dn;
-  WS.view.aboveRootView = false;
-  syncBulkSelectionForCurrentDir();
-  syncFavoritesUi();
-  syncHiddenUi();
-  syncTagUiForCurrentDir();
-  rebuildDirectoriesEntries();
-
-  let idx = -1;
-  const targetId = String(rec.id || "");
-  for (let i = 0; i < WS.nav.entries.length; i++) {
-    const e = WS.nav.entries[i];
-    if (e && e.kind === "file" && String(e.id || "") === targetId) {
-      idx = i;
-      break;
-    }
-  }
-  WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
-  syncPreviewToSelection({ force: true });
-  WS.view.pendingDirScroll = "center-selected";
-  renderDirectoriesPane(false);
-  renderPreviewPane(true, true);
-  syncButtons();
-  kickVideoThumbsForPreview();
-  kickImageThumbsForPreview();
-  recordDirHistory();
-  return true;
+  return !!syncDirectoriesSelectionToFileRecord(rec, {
+    syncPreview: true,
+    pendingDirScrollMode: "center-selected",
+    animatePreview: true,
+    keepPreviewScroll: true,
+    recordHistory: true,
+  });
 }
 
 function teleportFromRotatingThumbnail(entry, rowEl = null) {
@@ -20855,10 +20955,25 @@ function openPreviewFileFromPreviewCard(rec) {
   ) {
     return true;
   }
-  const opened = focusDirectoriesOnFileRecord(rec);
-  if (!opened) return false;
+  const previewContextDir = currentFilePreviewContextDir();
+  const synced = syncDirectoriesSelectionToFileRecord(rec, {
+    syncPreview: false,
+    renderPreview: false,
+    pendingDirScrollMode: "center-selected",
+    recordHistory: true,
+  });
+  if (!synced) return false;
   WS.view.returnToPreviewPaneAfterFileClose = true;
-  setActivePane(directoriesPaneOpenEnabled() ? "directories" : "preview");
+  applyPreviewState({
+    kind: "file",
+    dirNode: previewContextDir || synced.dirNode || null,
+    fileId,
+  });
+  renderPreviewPane(true, true);
+  setActivePane("preview");
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
   return true;
 }
 
@@ -22511,11 +22626,14 @@ function collectVisibleThumbRecordsForTagEntry(entry) {
     ? metaGetTagThumbnailModeByKey(tagThumbnailKeyForEntry(entry))
     : "single";
   if (thumbMode === "none") return [];
-  const pool = getRecursivePreviewRecordsForTagEntry(entry, 0);
-  if (!pool.length) return [];
-  const presetRec = getTagPresetPreviewRecordForEntry(entry, pool);
+  const presetRec = getTagPresetPreviewRecordForEntry(entry);
   if (presetRec) return [presetRec];
   if (naturalAspectThumbnailCardsEnabled()) return [];
+  const pool = getRecursivePreviewRecordsForTagEntry(
+    entry,
+    tagThumbnailPreviewSampleLimit(thumbMode),
+  );
+  if (!pool.length) return [];
   const scopePath = String(WS.nav.dirNode?.path || entry.originPath || "");
   const baseKey = entry.special
     ? `tag:${scopePath}:special:${entry.special}`
@@ -28871,16 +28989,23 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       if (tagVisibility.showItemCount) tagSummaryBits.push(countText);
       if (tagVisibility.showSize)
         tagSummaryBits.push(formatBytes(tagMetrics.sizeBytes));
-      const tagPool = folderSquareCardMode
-        ? getRecursivePreviewRecordsForTagEntry(entry, 0)
-        : [];
       const tagThumbKey = tagThumbnailKeyForEntry(entry);
       const tagThumbMode = folderSquareCardMode
         ? metaGetTagThumbnailModeByKey(tagThumbKey)
         : "none";
       const presetRec = folderSquareCardMode
-        ? getTagPresetPreviewRecordForEntry(entry, tagPool)
+        ? getTagPresetPreviewRecordForEntry(entry)
         : null;
+      const tagPool =
+        folderSquareCardMode &&
+        tagThumbMode !== "none" &&
+        !presetRec &&
+        !naturalThumbCards
+          ? getRecursivePreviewRecordsForTagEntry(
+              entry,
+              tagThumbnailPreviewSampleLimit(tagThumbMode),
+            )
+          : [];
       const tagAllowsRotation = folderSquareCardMode && !naturalThumbCards;
       const tagRotateScope = String(WS.nav.dirNode?.path || "");
       const tagRotateKey = entry.special
@@ -30065,11 +30190,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       revealSelectedDirectoryRowInGridMode(false);
     } else {
       const vis = getSelectedDirectoryRowVisibility();
-      if (vis.state === "offscreen") {
-        // If selection is fully off-screen, jump to centered "read head" position.
-        centerSelectedDirectoryRow(0);
-      } else if (vis.state === "partial") {
-        // If selection is clipped, jump immediately so it is fully visible.
+      if (vis.state === "offscreen" || vis.state === "partial") {
+        // Keep list selection moving naturally until it hits an edge,
+        // then scroll just enough to fully reveal it.
         snapSelectedDirectoryRowFullyIntoView();
       }
     }
@@ -31532,6 +31655,13 @@ function syncDirectoriesToViewerState() {
   if (!WS.root) return;
   if (!viewerDirNode) return;
   if (!viewerItems.length) return;
+  const preservePreviewOwnedContext =
+    !VIEWER_MODE &&
+    !!WS.view.returnToPreviewPaneAfterFileClose &&
+    WS.preview.kind === "file";
+  const previewOwnedDirNode = preservePreviewOwnedContext
+    ? WS.preview.dirNode || viewerDirNode || null
+    : null;
 
   WS.nav.dirNode = viewerDirNode;
   if (searchBrowsingResultFolder()) {
@@ -31569,7 +31699,15 @@ function syncDirectoriesToViewerState() {
 
   WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
   saveGridSelectionForCurrentContext();
-  syncPreviewToSelection({ force: true });
+  if (preservePreviewOwnedContext && item && !item.isFolder && item.id) {
+    applyPreviewState({
+      kind: "file",
+      dirNode: previewOwnedDirNode,
+      fileId: item.id,
+    });
+  } else {
+    syncPreviewToSelection({ force: true });
+  }
 
   // Critical for file-row autoscroll parity with folders.
   WS.view.pendingDirScroll = isGridInteractionMode()
@@ -31759,6 +31897,9 @@ function renderPreviewPane(animate = false, keepScroll = false) {
 
   if (shouldRestoreScroll) previewBodyEl.scrollTop = restoreScroll;
   WS.view.previewScrollActiveKey = previewDirKey;
+  revealPendingPreviewSelectionInVirtualGrid(
+    WS.view.pendingPreviewSelectionKey,
+  );
   const hadPendingPreviewSelection =
     applyPendingPreviewSelectionForCurrentTarget();
   ensurePreviewSelectionForCurrentTarget(false);
@@ -31918,10 +32059,16 @@ function buildPreviewTagCardMarkup(entry) {
   const tagSummaryBits = [];
   if (showItemCount) tagSummaryBits.push(countText);
   if (showSize) tagSummaryBits.push(formatBytes(tagMetrics.sizeBytes));
-  const tagPool = getRecursivePreviewRecordsForTagEntry(entry, 0);
   const tagThumbKey = tagThumbnailKeyForEntry(entry);
   const tagThumbMode = metaGetTagThumbnailModeByKey(tagThumbKey);
-  const presetRec = getTagPresetPreviewRecordForEntry(entry, tagPool);
+  const presetRec = getTagPresetPreviewRecordForEntry(entry);
+  const tagPool =
+    tagThumbMode !== "none" && !presetRec && !naturalThumbCards
+      ? getRecursivePreviewRecordsForTagEntry(
+          entry,
+          tagThumbnailPreviewSampleLimit(tagThumbMode),
+        )
+      : [];
   const tagAllowsRotation = !naturalThumbCards;
   const tagRotateScope = String(WS.nav.dirNode?.path || "");
   const tagRotateKey = entry.special
@@ -33010,6 +33157,50 @@ function schedulePreviewVirtualGridRefresh() {
   });
 }
 
+function revealPendingPreviewSelectionInVirtualGrid(selectionKey) {
+  const key = String(selectionKey || "");
+  if (!key.startsWith("file:") || !previewBodyEl) return false;
+  const fileId = key.slice(5);
+  if (!fileId) return false;
+  for (let i = 0; i < ACTIVE_PREVIEW_FILE_VIRTUALIZERS.length; i++) {
+    const state = ACTIVE_PREVIEW_FILE_VIRTUALIZERS[i];
+    if (!state || !Array.isArray(state.ids) || !state.grid) continue;
+    const itemIndex = state.ids.indexOf(fileId);
+    if (itemIndex < 0) continue;
+    const windowInfo = computePreviewFilesVirtualWindow(state);
+    if (!windowInfo || !windowInfo.metrics) return false;
+    const cols = Math.max(1, Number(windowInfo.metrics.cols) || 1);
+    const rowHeight = Math.max(1, Number(windowInfo.metrics.rowHeight) || 1);
+    const targetRow = Math.floor(itemIndex / cols);
+    const gridTop = offsetTopWithinAncestor(state.grid, previewBodyEl);
+    const desiredTop =
+      gridTop +
+      targetRow * rowHeight -
+      Math.max(0, Math.floor((previewBodyEl.clientHeight || 0) * 0.35));
+    const maxTop = Math.max(
+      0,
+      previewBodyEl.scrollHeight - previewBodyEl.clientHeight,
+    );
+    previewBodyEl.scrollTop = Math.max(0, Math.min(maxTop, desiredTop));
+    updateVirtualPreviewFilesGrid(state, true);
+    return true;
+  }
+  return false;
+}
+
+function preferredImmediatePreviewRenderCount(ids, fallbackCount) {
+  const baseCount = Math.max(1, Math.floor(Number(fallbackCount) || 1));
+  const list = Array.isArray(ids) ? ids : [];
+  if (!list.length) return baseCount;
+  const pendingKey = String(WS.view?.pendingPreviewSelectionKey || "");
+  if (!pendingKey.startsWith("file:")) return baseCount;
+  const pendingId = pendingKey.slice(5);
+  if (!pendingId) return baseCount;
+  const pendingIndex = list.indexOf(pendingId);
+  if (pendingIndex < 0) return baseCount;
+  return Math.max(baseCount, pendingIndex + 1);
+}
+
 function renderFilesGrid(
   ids,
   container,
@@ -33053,6 +33244,10 @@ function renderFilesGrid(
   const ANIMATE_CARD_LIMIT = 64;
   const FIRST_CHUNK = 36;
   const NEXT_CHUNK = 24;
+  const firstChunkSize = Math.min(
+    totalToRender,
+    preferredImmediatePreviewRenderCount(visibleIds, FIRST_CHUNK),
+  );
   let index = 0;
   let didFirstLayout = false;
 
@@ -33088,7 +33283,7 @@ function renderFilesGrid(
     }
   };
 
-  renderChunk(FIRST_CHUNK);
+  renderChunk(firstChunkSize);
   return totalToRender;
 }
 

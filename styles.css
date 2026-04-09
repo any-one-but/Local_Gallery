@@ -1660,6 +1660,12 @@ body.directories-files-only #directoriesHeader {
   box-shadow: none;
 }
 
+#app.preview-pane-active.preview-media-mode .dirRow.selected:not(.bulkSelected) {
+  outline: 1px solid var(--ui-selection-outline);
+  border-color: var(--ui-selection-outline);
+  background: var(--ui-selection-fill);
+}
+
 .dirRow.bulkSelected {
   outline: 1px dashed var(--ui-selection-outline-soft);
   outline-offset: -1px;
