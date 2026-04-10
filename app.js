@@ -748,6 +748,7 @@ function defaultOptions() {
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
     showTrashFolder: true,
+    quickNavigation: false,
     showUntaggedFolder: false,
     showTagFolderSpacerRow: true,
     showScores: true,
@@ -1119,6 +1120,10 @@ function normalizeOptions(o) {
       typeof src.showTrashFolder === "boolean"
         ? src.showTrashFolder
         : d.showTrashFolder,
+    quickNavigation:
+      typeof src.quickNavigation === "boolean"
+        ? src.quickNavigation
+        : d.quickNavigation,
     showUntaggedFolder:
       typeof src.showUntaggedFolder === "boolean"
         ? src.showUntaggedFolder
@@ -6240,6 +6245,12 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
+    id: "toggleQuickNavigation",
+    label: "Toggle quick navigation",
+    hint: "Automatically open the first file in preview-only files folders, then close back to the parent preview context.",
+    section: "general",
+  },
+  {
     id: "togglePreviewMediaUsePaneBackground",
     label: "Toggle preview media pane background",
     hint: "Toggle whether preview media stays on the recessed pane surface instead of black.",
@@ -6466,6 +6477,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   cycleFolderSort: "t",
   toggleShowHiddenFolder: "h",
   toggleShowUntaggedFolder: "Command+h",
+  toggleQuickNavigation: "",
   togglePreviewMediaUsePaneBackground: "",
   favoriteSelection: "f",
   tagSelection: "",
@@ -6800,6 +6812,7 @@ const WS = {
     pendingPreviewSelectionKey: "",
     returnToPreviewPaneAfterFileClose: false,
     previewFileSelectionBridgeActive: false,
+    previewQuickNavigationActive: false,
     previewFileBridgeReturnState: null,
     previewFolderBridgeReturnState: null,
     previewScrollByDir: new Map(),
@@ -7004,6 +7017,7 @@ function resetWorkspace() {
   WS.view.pendingPreviewSelectionKey = "";
   WS.view.returnToPreviewPaneAfterFileClose = false;
   WS.view.previewFileSelectionBridgeActive = false;
+  WS.view.previewQuickNavigationActive = false;
   WS.view.previewFileBridgeReturnState = null;
   WS.view.previewFolderBridgeReturnState = null;
   WS.view.previewScrollByDir = new Map();
@@ -9923,6 +9937,7 @@ ${scoreUiVisible ? makeSelectRow("Folder sort", "Sort folders by name, score, ef
 ${scoreUiVisible ? makeCheckRow("Include hidden items in Stats", "When enabled, the Stats tab includes hidden folders and files in its totals and score history.", "opt_includeHiddenItemsInStats", !!opt.includeHiddenItemsInStats) : ``}
 ${makeCheckRow("Reveal Hidden Items", "Show folders hidden by hidden tags in the current directory view. The Hidden control still opens the global hidden browser.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Trash Folder", "Show the dedicated Trash folder at the top of root. Turning this off hides the trash portal and exits it if you're currently inside it.", "opt_showTrashFolder", !!opt.showTrashFolder)}
+${makeCheckRow("Quick navigation", "When enabled, opening a preview-selected folder that contains only files immediately opens its first file, and closing that file returns straight to the parent preview context.", "opt_quickNavigation", !!opt.quickNavigation)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag in any folder view when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeCheckRow("Preview media uses pane background", "When enabled, preview media always stays on the recessed preview pane surface instead of switching to a black full-bleed background.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
@@ -10395,6 +10410,7 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
   });
+  bindCheck("opt_quickNavigation", "quickNavigation");
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
     if (!enabled && WS.view.tagFolderActiveMode === "untagged") {
       exitTagFolderView();
@@ -17647,6 +17663,11 @@ function showTrashFolderEnabled() {
   return !!(opt && opt.showTrashFolder);
 }
 
+function quickNavigationEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.quickNavigation);
+}
+
 function showUntaggedFolderEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.showUntaggedFolder);
@@ -21418,6 +21439,7 @@ function syncDirectoriesSelectionToFileRecord(rec, opts = null) {
 function setDirectoriesSelection(idx, opts = null) {
   const keepScroll = !!(opts && opts.keepScroll);
   WS.view.previewFolderBridgeReturnState = null;
+  clearPreviewQuickNavigationState();
   if (!WS.nav.entries.length) {
     WS.nav.selectedIndex = 0;
     setActivePane(directoriesPaneOpenEnabled() ? "directories" : "preview");
@@ -22129,6 +22151,7 @@ function enterSelectedDirectory() {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
   WS.view.previewFolderBridgeReturnState = null;
+  clearPreviewQuickNavigationState();
 
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
   if (!entry) return;
@@ -22245,6 +22268,7 @@ function leaveDirectory() {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
   WS.view.previewFolderBridgeReturnState = null;
+  clearPreviewQuickNavigationState();
 
   if (WS.view.aboveRootView) return;
 
@@ -32309,6 +32333,7 @@ function randomFirstFileJumpFromDirectories() {
 async function navigateToDirectory(node) {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
+  clearPreviewQuickNavigationState();
   if (!node) return;
   const previewFolderReturnState = captureViewerCloseRestoreState({
     activePane: "preview",
@@ -32367,9 +32392,68 @@ async function navigateToDirectory(node) {
   });
 }
 
+function previewDirContainsOnlyFiles(dirNode) {
+  if (!dirNode || dirNode._skipTagFilters) return false;
+  const previewEntries = getPreviewFolderAndFileEntries(dirNode, {
+    includeFiles: true,
+  });
+  const folderEntries = Array.isArray(previewEntries.folderEntries)
+    ? previewEntries.folderEntries
+    : [];
+  const fileIds = Array.isArray(previewEntries.fileIds)
+    ? previewEntries.fileIds
+    : [];
+  return folderEntries.length === 0 && fileIds.length > 0;
+}
+
+function firstPreviewFileRecordForDir(dirNode) {
+  if (!dirNode) return null;
+  const previewEntries = getPreviewFolderAndFileEntries(dirNode, {
+    includeFiles: true,
+  });
+  const fileIds = Array.isArray(previewEntries.fileIds)
+    ? previewEntries.fileIds
+    : [];
+  return fileIds.length ? WS.fileById.get(String(fileIds[0] || "")) || null : null;
+}
+
+function clearPreviewQuickNavigationState() {
+  if (!WS.view) return;
+  WS.view.previewQuickNavigationActive = false;
+}
+
+function resolveQuickNavigationReturnState() {
+  const state = cloneViewerCloseRestoreState(WS.view?.previewFolderBridgeReturnState);
+  if (!state) return null;
+  state.activePane = "preview";
+  const currentPreviewDir =
+    WS.preview && WS.preview.kind === "file" ? WS.preview.dirNode || null : null;
+  const currentDirPath = String(currentPreviewDir?.path || "");
+  if (currentDirPath) state.pendingPreviewSelectionKey = `dir:${currentDirPath}`;
+  return state;
+}
+
+function maybeAutoOpenQuickNavigationFileFromPreviewFolder(dirNode) {
+  if (!quickNavigationEnabled()) return false;
+  if (!previewDirContainsOnlyFiles(dirNode)) return false;
+  if (WS.preview.kind !== "dir") return false;
+  if (String(WS.preview.dirNode?.path || "") !== String(dirNode?.path || ""))
+    return false;
+  const firstRec = firstPreviewFileRecordForDir(dirNode);
+  if (!firstRec) return false;
+  clearPreviewQuickNavigationState();
+  const opened = openPreviewFileFromPreviewCard(firstRec);
+  if (opened) WS.view.previewQuickNavigationActive = true;
+  return opened;
+}
+
 function navigateFromPreviewFolderCard(node) {
   if (!node) return;
-  navigateToDirectory(node);
+  navigateToDirectory(node)
+    .then(() => {
+      maybeAutoOpenQuickNavigationFileFromPreviewFolder(node);
+    })
+    .catch(() => {});
 }
 
 function adoptPreviewParentIntoDirectoriesPane(targetDir) {
@@ -32449,6 +32533,7 @@ function adoptPreviewParentIntoDirectoriesPane(targetDir) {
 async function openPreviewTagFolderEntry(entry) {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
+  clearPreviewQuickNavigationState();
   if (!entry || entry.placeholder) return;
   const previewFolderReturnState = captureViewerCloseRestoreState({
     activePane: "preview",
@@ -36409,6 +36494,7 @@ function openGalleryForDir(
   syncPreviewToSelection({ force: true });
   WS.view.returnToPreviewPaneAfterFileClose = false;
   WS.view.previewFileSelectionBridgeActive = false;
+  clearPreviewQuickNavigationState();
   WS.view.previewFileBridgeReturnState = null;
   WS.view.previewFolderBridgeReturnState = null;
   scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
@@ -36426,6 +36512,7 @@ function openGalleryForFileRecord(rec, requestFullscreen = false, opts = null) {
   if (opened) {
     WS.view.returnToPreviewPaneAfterFileClose = false;
     WS.view.previewFileSelectionBridgeActive = false;
+    clearPreviewQuickNavigationState();
     WS.view.previewFileBridgeReturnState = null;
     WS.view.previewFolderBridgeReturnState = null;
   }
@@ -36455,6 +36542,7 @@ function openGalleryFromDirectoriesSelection(requestFullscreen) {
     if (opened) {
       WS.view.returnToPreviewPaneAfterFileClose = false;
       WS.view.previewFileSelectionBridgeActive = false;
+      clearPreviewQuickNavigationState();
       WS.view.previewFileBridgeReturnState = null;
       WS.view.previewFolderBridgeReturnState = null;
     }
@@ -37904,6 +37992,11 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Untagged folder: ${next ? "On" : "Off"}`);
       return true;
     }
+    case "toggleQuickNavigation": {
+      const next = toggleOptionValue("quickNavigation");
+      showStatusMessage(`Quick navigation: ${next ? "On" : "Off"}`);
+      return true;
+    }
     case "togglePreviewMediaUsePaneBackground": {
       const next = toggleOptionValue("previewMediaUsePaneBackground");
       applyInteractionModeFromOptions();
@@ -38838,6 +38931,7 @@ function closeFilePreviewToFolder() {
   if (!WS.root) return;
   if (WS.preview.kind !== "file") return;
   const currentItem = viewerItems[viewerIndex] || null;
+  const useQuickNavigation = !!WS.view.previewQuickNavigationActive;
   const useDirectorySelectionBridge = !!WS.view.previewFileSelectionBridgeActive;
   const bridgeReturnState = useDirectorySelectionBridge
     ? resolvePreviewFileBridgeReturnState(
@@ -38865,7 +38959,15 @@ function closeFilePreviewToFolder() {
   const returnToPreviewPane = !!WS.view.returnToPreviewPaneAfterFileClose;
   WS.view.returnToPreviewPaneAfterFileClose = false;
   WS.view.previewFileSelectionBridgeActive = false;
+  clearPreviewQuickNavigationState();
   WS.view.previewFileBridgeReturnState = null;
+  if (useQuickNavigation) {
+    const quickReturnState = resolveQuickNavigationReturnState();
+    if (quickReturnState) {
+      restoreViewerCloseState(quickReturnState);
+      return;
+    }
+  }
   if (bridgeReturnState) {
     restoreViewerCloseState(bridgeReturnState);
     return;
