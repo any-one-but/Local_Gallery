@@ -7080,6 +7080,7 @@ const refreshBtn = $("refreshBtn");
 const openWritableBtn = $("openWritableBtn");
 const openWritableInput = $("openWritableInput");
 const titleLabel = $("titleLabel");
+const titleInfo = $("titleInfo");
 
 // Menu Overlay
 const menuOverlay = $("menuOverlay");
@@ -8009,6 +8010,152 @@ function getPreviewPathText() {
   );
 }
 
+function collectUniqueTitleMetricNodes(nodes) {
+  const list = Array.isArray(nodes) ? nodes.filter(Boolean) : [];
+  const sorted = list
+    .slice()
+    .sort((a, b) => {
+      const pathA = String(a?.path || "");
+      const pathB = String(b?.path || "");
+      const depthA = pathA ? pathA.split("/").filter(Boolean).length : 0;
+      const depthB = pathB ? pathB.split("/").filter(Boolean).length : 0;
+      if (depthA !== depthB) return depthA - depthB;
+      return pathA.localeCompare(pathB, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+  const out = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const node = sorted[i];
+    const path = String(node?.path || "");
+    if (
+      out.some((parentNode) => isDirWithin(parentNode, node))
+    )
+      continue;
+    out.push(node);
+  }
+  return out;
+}
+
+function getActiveTagPreviewMetricNodes(previewDir) {
+  if (!previewDir || !previewDir._skipTagFilters) return [];
+  const mode = String(previewDir._tagPreviewMode || "");
+  if (mode === "album") {
+    const baseNode =
+      WS.dirByPath.get(String(previewDir._tagPreviewOriginPath || "")) ||
+      previewDir.parent ||
+      WS.root;
+    const entries = getTagEntriesForAlbumForBaseNode(
+      baseNode,
+      String(previewDir._tagPreviewAlbum || ""),
+    );
+    const out = [];
+    const seen = new Set();
+    for (let i = 0; i < entries.length; i++) {
+      const dirs = getDirsForTagEntry(entries[i]);
+      for (let j = 0; j < dirs.length; j++) {
+        const dirNode = dirs[j];
+        const path = String(dirNode?.path || "");
+        if (!path || seen.has(path)) continue;
+        seen.add(path);
+        out.push(dirNode);
+      }
+    }
+    return out;
+  }
+  return Array.isArray(previewDir.childrenDirs) ? previewDir.childrenDirs : [];
+}
+
+function countRecursiveFoldersForNode(dirNode, memo = null) {
+  if (!dirNode) return 0;
+  const path = String(dirNode.path || "");
+  if (memo && memo.has(path)) return memo.get(path) || 0;
+  let count = 1;
+  const dirs = Array.isArray(dirNode.childrenDirs) ? dirNode.childrenDirs : [];
+  for (let i = 0; i < dirs.length; i++) {
+    count += countRecursiveFoldersForNode(dirs[i], memo);
+  }
+  if (memo) memo.set(path, count);
+  return count;
+}
+
+function getDirectoriesTitleInfoLabel() {
+  if (!WS.root) return "—";
+  if (WS.view.aboveRootView) return dirDisplayName(WS.root) || "root";
+  if (isViewingTagFolder()) {
+    if (WS.view.tagFolderActiveMode === "favorites") return "Favorites";
+    if (WS.view.tagFolderActiveMode === "hidden") return "Hidden";
+    if (WS.view.tagFolderActiveMode === "untagged") return "Untagged";
+    if (WS.view.tagFolderActiveMode === "album") {
+      return displayTagFolderLabel(String(WS.view.tagFolderActiveAlbum || "")) || "Album";
+    }
+    return (
+      displayTagFolderLabel(String(WS.view.tagFolderActiveTag || "")) || "Tag"
+    );
+  }
+  if (searchResultsVisibleInDirectoriesPane()) return "Search";
+  if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "Favorites";
+  if (WS.view.hiddenMode && WS.view.hiddenRootActive) return "Hidden";
+  if (!WS.nav.dirNode) return "—";
+  return dirDisplayName(WS.nav.dirNode) || "root";
+}
+
+function getDirectoriesTitleInfoContext() {
+  const title = getDirectoriesTitleInfoLabel();
+  if (!WS.root) return { title, nodes: [] };
+  if (WS.view.aboveRootView) return { title, nodes: [WS.root] };
+  if (isViewingTagFolder()) {
+    return { title, nodes: getDirsForTagFolderView() };
+  }
+  if (searchResultsVisibleInDirectoriesPane()) {
+    return { title, nodes: Array.isArray(WS.view.searchResults) ? WS.view.searchResults : [] };
+  }
+  if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
+    return { title, nodes: getAllFavoriteDirs() };
+  }
+  if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+    return { title, nodes: getAllHiddenDirs() };
+  }
+  return { title, nodes: WS.nav.dirNode ? [WS.nav.dirNode] : [] };
+}
+
+function getPreviewTitleInfoContext() {
+  const previewDir = getPreviewTargetDir();
+  const title = previewDir
+    ? dirDisplayName(previewDir) || "root"
+    : "—";
+  if (!WS.root) return { title, nodes: [] };
+  if (!previewDir) return { title, nodes: [] };
+  if (previewDir._skipTagFilters) {
+    return { title, nodes: getActiveTagPreviewMetricNodes(previewDir) };
+  }
+  return { title, nodes: [previewDir] };
+}
+
+function getCurrentTitleInfoText() {
+  const context = isCompactTitleLayout()
+    ? getPreviewTitleInfoContext()
+    : getDirectoriesTitleInfoContext();
+  const title = String(context?.title || "—") || "—";
+  const nodes = collectUniqueTitleMetricNodes(context?.nodes || []);
+  if (!nodes.length) return title;
+  const folderMemo = new Map();
+  const sizeMemo = new Map();
+  let folderCount = 0;
+  let fileCount = 0;
+  let sizeBytes = 0;
+  let score = 0;
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    folderCount += countRecursiveFoldersForNode(node, folderMemo);
+    fileCount += dirItemCount(node);
+    sizeBytes += getDirRecursiveSizeBytesForNode(node, sizeMemo);
+    score += Number(metaGetScore(String(node?.path || ""))) || 0;
+  }
+  return `${title} • ${folderCount} Folders • ${fileCount} Files • ${formatBytes(sizeBytes)} • Score ${score}`;
+}
+
 function getCurrentTitleText() {
   const path = isCompactTitleLayout()
     ? getPreviewPathText()
@@ -8017,8 +8164,8 @@ function getCurrentTitleText() {
 }
 
 function updateTitleLabel() {
-  if (!titleLabel) return;
-  titleLabel.textContent = getCurrentTitleText();
+  if (titleLabel) titleLabel.textContent = getCurrentTitleText();
+  if (titleInfo) titleInfo.textContent = getCurrentTitleInfoText();
 }
 
 function syncMetaButtons() {
@@ -39450,6 +39597,7 @@ applyDirectoryFileThumbLayoutFromOptions();
 applyDirectoryFolderCardLayoutFromOptions();
 applyInteractionModeFromOptions();
 rebuildKeybindIndex();
+if (!MENU_OPEN) openMenu("general");
 renderDirectoriesPane();
 renderPreviewPane(true);
 syncButtons();
