@@ -12879,6 +12879,54 @@ function metaSetFavoriteBulk(paths, enable) {
   kickImageThumbsForPreview();
 }
 
+function metaToggleHidden(path) {
+  const p = String(path || "");
+  if (!p) return;
+  const tags = metaGetTags(p);
+  const has = tags.includes(HIDDEN_TAG);
+  const next = has
+    ? tags.filter((t) => t !== HIDDEN_TAG)
+    : [HIDDEN_TAG].concat(tags.filter((t) => t !== HIDDEN_TAG));
+  WS.meta.dirTags.set(p, normalizeTagList(next));
+  metaMarkDirty(META_DOC_IDS.tags);
+  syncHiddenUi();
+  rebuildDirectoriesEntries();
+  WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+  syncPreviewToSelection();
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+}
+
+function metaSetHiddenBulk(paths, enable) {
+  const list = Array.isArray(paths) ? paths : Array.from(paths || []);
+  if (!list.length) return;
+  const target = !!enable;
+  for (let i = 0; i < list.length; i++) {
+    const p = String(list[i] || "");
+    if (!p) continue;
+    const tags = metaGetTags(p);
+    const has = tags.includes(HIDDEN_TAG);
+    if (target === has) continue;
+    const next = target
+      ? [HIDDEN_TAG].concat(tags.filter((t) => t !== HIDDEN_TAG))
+      : tags.filter((t) => t !== HIDDEN_TAG);
+    WS.meta.dirTags.set(p, normalizeTagList(next));
+  }
+  metaMarkDirty(META_DOC_IDS.tags);
+  syncHiddenUi();
+  rebuildDirectoriesEntries();
+  WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+  syncPreviewToSelection();
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+}
+
 function metaComputeFingerprints() {
   WS.meta.dirFingerprints.clear();
   if (!WS.root) return;
@@ -25454,6 +25502,7 @@ function buildFolderMenuState(dirNode) {
   const p = String(dirNode?.path || "");
   const isRootNode = !!dirNode && dirNode === WS.root;
   const isFavorite = metaHasFavorite(p);
+  const isHidden = metaHasHidden(p);
   const assignedAppearancePresetId = isRootNode
     ? effectiveActiveAppearancePresetId()
     : metaGetFolderAppearancePresetId(p);
@@ -25472,6 +25521,7 @@ function buildFolderMenuState(dirNode) {
     path: p,
     isRootNode,
     isFavorite,
+    isHidden,
     assignedAppearancePresetId,
     canRename,
     canBatchIndex,
@@ -25555,6 +25605,7 @@ function buildFolderActionMenuDom(
     makeBtn("Index", "batch-index", !state.canBatchIndex),
     makeBtn(state.isFavorite ? "Unfavorite" : "Favorite", "favorite"),
   );
+  menuEl.appendChild(makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"));
   menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
   if (state.assignedAppearancePresetId) {
     menuEl.appendChild(
@@ -26809,6 +26860,10 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     metaToggleFavorite(p);
     return true;
   }
+  if (action === "hidden") {
+    metaToggleHidden(p);
+    return true;
+  }
   if (action === "appearance-preset-clear") {
     if (isRootNode) return true;
     if (!metaClearFolderAppearancePreset(p)) return true;
@@ -26985,6 +27040,8 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   const canIndexBulk = !!singleSelectedDirNode && !!WS.meta.fsRootHandle;
   const allFavorite =
     !!selectedPaths.length && selectedPaths.every((p) => metaHasFavorite(p));
+  const allHidden =
+    !!selectedPaths.length && selectedPaths.every((p) => metaHasHidden(p));
   const anyAssignedAppearancePreset =
     !!selectedPaths.length &&
     selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
@@ -27043,6 +27100,12 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     ),
     makeBtn(allFavorite ? "Unfavorite" : "Favorite", () => {
       metaSetFavoriteBulk(selectedPaths, !allFavorite);
+      if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+    }),
+  );
+  menu.appendChild(
+    makeBtn(allHidden ? "Unhide" : "Hide", () => {
+      metaSetHiddenBulk(selectedPaths, !allHidden);
       if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
     }),
   );
@@ -28381,6 +28444,8 @@ function renderDirectoriesActionHeader() {
 
   const allFavorite =
     !!selectedDirs.length && selectedDirs.every((p) => metaHasFavorite(p));
+  const allHidden =
+    !!selectedDirs.length && selectedDirs.every((p) => metaHasHidden(p));
   const anyAssignedAppearancePreset =
     !!selectedDirs.length &&
     selectedDirs.some((p) => metaHasFolderAppearancePreset(p));
@@ -28900,6 +28965,13 @@ function renderDirectoriesActionHeader() {
       },
     );
     directoriesActionMenuEl.appendChild(makeTwoColRow(indexBtn, favoriteBtn));
+    directoriesActionMenuEl.appendChild(
+      makeActionBtn(allHidden ? "Unhide" : "Hide", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaSetHiddenBulk(selectedDirs, !allHidden);
+        finalizeBulkSelectionAction();
+      }),
+    );
 
     directoriesActionMenuEl.appendChild(
       makeActionBtn(
@@ -29978,6 +30050,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   <button type="button" data-action="batch-index"${canBatchIndex ? "" : " disabled"}>Index</button>
                   <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 </div>
+                <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
                 <button type="button" data-action="appearance-preset-set">Set media preset</button>
                 ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
