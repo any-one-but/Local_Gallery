@@ -42,7 +42,7 @@
   --ui-selection-fill: rgba(255, 255, 255, 0.14);
   --ui-selection-fill-strong: rgba(255, 255, 255, 0.2);
   --ui-preview-selection-shadow: 0 10px 30px var(--color1-primary-transparent);
-  --ui-preview-selection-stroke: 2px;
+  --ui-preview-selection-stroke: 3px;
 }
 
 :root[data-media-size="small"] {
@@ -2944,7 +2944,8 @@ img[data-rotate-key].rotatingThumbFade {
 
 .gridFolders .previewTagFolderCard.selected .dirSquareCard {
   border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -2961,21 +2962,24 @@ img[data-rotate-key].rotatingThumbFade {
 
 .gridFolders .previewTagFolderCard.selected.bulkSelected .dirSquareCard {
   border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFolders .previewTagFolderCard.previewSelected .dirSquareCard {
   border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFolders .previewTagFolderCard.previewSelected.bulkSelected .dirSquareCard {
   border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -3015,7 +3019,8 @@ img[data-rotate-key].rotatingThumbFade {
   position: relative;
   z-index: 2;
   border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -3030,7 +3035,8 @@ img[data-rotate-key].rotatingThumbFade {
 
 .gridFiles .fileCard.previewSelected.bulkSelected {
   border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -3385,7 +3391,8 @@ img[data-rotate-key].rotatingThumbFade {
   position: relative;
   z-index: 2;
   border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -3403,7 +3410,8 @@ img[data-rotate-key].rotatingThumbFade {
 .gridFolders .folderCard.folderThumbCard.previewSelected.bulkSelected,
 .gridFolders .folderCard.folderThumbCard.selected.bulkSelected {
   border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -4017,7 +4025,7 @@ img[data-rotate-key].rotatingThumbFade {
   .gridFolders
   .folderCard.folderThumbCard.previewSelected {
   border-color: var(--retro-select-bg);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -4043,7 +4051,7 @@ img[data-rotate-key].rotatingThumbFade {
   .gridFolders
   .folderCard.folderThumbCard.previewSelected.bulkSelected {
   border-color: var(--retro-select-bg);
-  outline: var(--ui-preview-selection-stroke) solid #000;
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
