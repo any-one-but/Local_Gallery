@@ -15007,7 +15007,11 @@ function snapshotRefreshState() {
       tagFolderActiveAlbum: WS.view.tagFolderActiveAlbum,
       tagFolderOriginPath: WS.view.tagFolderOriginPath,
       favoritesMode: WS.view.favoritesMode,
+      favoritesRootActive: !!WS.view.favoritesRootActive,
+      favoritesAnchorPath: WS.view.favoritesAnchorPath,
       hiddenMode: WS.view.hiddenMode,
+      hiddenRootActive: !!WS.view.hiddenRootActive,
+      hiddenAnchorPath: WS.view.hiddenAnchorPath,
       dirSearchPinned: WS.view.dirSearchPinned,
       previewSearchActive: !!WS.view.previewSearchActive,
       dirSearchQuery: WS.view.dirSearchQuery,
@@ -15034,7 +15038,11 @@ function restoreRefreshViewState(viewState) {
   WS.view.tagFolderActiveAlbum = String(viewState.tagFolderActiveAlbum || "");
   WS.view.tagFolderOriginPath = String(viewState.tagFolderOriginPath || "");
   WS.view.favoritesMode = !!viewState.favoritesMode;
+  WS.view.favoritesRootActive = !!viewState.favoritesRootActive;
+  WS.view.favoritesAnchorPath = String(viewState.favoritesAnchorPath || "");
   WS.view.hiddenMode = !!viewState.hiddenMode;
+  WS.view.hiddenRootActive = !!viewState.hiddenRootActive;
+  WS.view.hiddenAnchorPath = String(viewState.hiddenAnchorPath || "");
   WS.view.dirSearchPinned = !!viewState.dirSearchPinned;
   WS.view.previewSearchActive = !!viewState.previewSearchActive;
   WS.view.dirSearchQuery = String(viewState.dirSearchQuery || "");
@@ -15221,7 +15229,6 @@ function retargetViewerCloseRestoreStateToDir(state, dirNode) {
 
   const nested = cloneViewerCloseRestoreState(state.previewFolderBridgeReturnState);
   if (nested) {
-    nested.entryKey = targetEntryKey;
     nested.pendingPreviewSelectionKey = targetEntryKey;
     state.previewFolderBridgeReturnState = nested;
   }
@@ -31396,13 +31403,6 @@ async function navigateToDirectory(node) {
     targetIdx >= 0 ? targetIdx : 0,
     1,
   );
-  if (isViewingTagFolder()) {
-    pushTagViewContext(node.path || "");
-    WS.view.tagFolderActiveMode = "";
-    WS.view.tagFolderActiveTag = "";
-    WS.view.tagFolderActiveAlbum = "";
-    WS.view.tagFolderOriginPath = "";
-  }
   const selectedEntry =
     targetIdx >= 0 ? WS.nav.entries[WS.nav.selectedIndex] || null : null;
   if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
@@ -31500,6 +31500,10 @@ async function openPreviewTagFolderEntry(entry) {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
   if (!entry || entry.placeholder) return;
+  const previewFolderReturnState = captureViewerCloseRestoreState({
+    activePane: "preview",
+    pendingPreviewSelectionKey: entryKeyForSelection(entry),
+  });
   adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir());
 
   if (searchSessionActive() && WS.view.searchRootActive) {
@@ -31534,6 +31538,7 @@ async function openPreviewTagFolderEntry(entry) {
   if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
   else applyPreviewState(previewStateForEntry(entry));
   resetPreviewPaneForEnteredTarget();
+  WS.view.previewFolderBridgeReturnState = previewFolderReturnState;
   setActivePane("preview");
   await finalizeDirectoryNavigationRender({
     animatePreview: true,

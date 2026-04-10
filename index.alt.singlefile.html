@@ -50,6 +50,7 @@
   --ui-selection-fill: rgba(255, 255, 255, 0.14);
   --ui-selection-fill-strong: rgba(255, 255, 255, 0.2);
   --ui-preview-selection-shadow: 0 10px 30px var(--color1-primary-transparent);
+  --ui-preview-selection-stroke: 2px;
 }
 
 :root[data-media-size="small"] {
@@ -2951,7 +2952,7 @@ img[data-rotate-key].rotatingThumbFade {
 
 .gridFolders .previewTagFolderCard.selected .dirSquareCard {
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -2960,28 +2961,29 @@ img[data-rotate-key].rotatingThumbFade {
   position: relative;
   z-index: 1;
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFolders .previewTagFolderCard.selected.bulkSelected .dirSquareCard {
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFolders .previewTagFolderCard.previewSelected .dirSquareCard {
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFolders .previewTagFolderCard.previewSelected.bulkSelected .dirSquareCard {
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -3021,21 +3023,22 @@ img[data-rotate-key].rotatingThumbFade {
   position: relative;
   z-index: 2;
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFiles .fileCard.bulkSelected {
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .gridFiles .fileCard.previewSelected.bulkSelected {
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -3390,7 +3393,7 @@ img[data-rotate-key].rotatingThumbFade {
   position: relative;
   z-index: 2;
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -3399,7 +3402,8 @@ img[data-rotate-key].rotatingThumbFade {
   position: relative;
   z-index: 1;
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -3407,7 +3411,7 @@ img[data-rotate-key].rotatingThumbFade {
 .gridFolders .folderCard.folderThumbCard.previewSelected.bulkSelected,
 .gridFolders .folderCard.folderThumbCard.selected.bulkSelected {
   border-color: var(--anchor-internal-color2-primary);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -4021,7 +4025,7 @@ img[data-rotate-key].rotatingThumbFade {
   .gridFolders
   .folderCard.folderThumbCard.previewSelected {
   border-color: var(--retro-select-bg);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -4033,7 +4037,7 @@ img[data-rotate-key].rotatingThumbFade {
 :root[data-retro="on"] .gridFiles .fileCard.bulkSelected,
 :root[data-retro="on"] .gridFolders .folderCard.folderThumbCard.bulkSelected {
   border-color: var(--retro-select-bg);
-  outline: 1px solid var(--retro-select-bg);
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -4047,7 +4051,7 @@ img[data-rotate-key].rotatingThumbFade {
   .gridFolders
   .folderCard.folderThumbCard.previewSelected.bulkSelected {
   border-color: var(--retro-select-bg);
-  outline: 1px solid #000;
+  outline: var(--ui-preview-selection-stroke) solid #000;
   outline-offset: 0;
   box-shadow: var(--ui-preview-selection-shadow);
 }
@@ -5718,6 +5722,7 @@ img[data-rotate-key].rotatingThumbFade {
     gap: max(8px, var(--preview-gutter));
   }
 }
+
   </style>
   <!-- END: inlined from ./styles.css -->
   </head>
@@ -21188,7 +21193,11 @@ function snapshotRefreshState() {
       tagFolderActiveAlbum: WS.view.tagFolderActiveAlbum,
       tagFolderOriginPath: WS.view.tagFolderOriginPath,
       favoritesMode: WS.view.favoritesMode,
+      favoritesRootActive: !!WS.view.favoritesRootActive,
+      favoritesAnchorPath: WS.view.favoritesAnchorPath,
       hiddenMode: WS.view.hiddenMode,
+      hiddenRootActive: !!WS.view.hiddenRootActive,
+      hiddenAnchorPath: WS.view.hiddenAnchorPath,
       dirSearchPinned: WS.view.dirSearchPinned,
       previewSearchActive: !!WS.view.previewSearchActive,
       dirSearchQuery: WS.view.dirSearchQuery,
@@ -21215,7 +21224,11 @@ function restoreRefreshViewState(viewState) {
   WS.view.tagFolderActiveAlbum = String(viewState.tagFolderActiveAlbum || "");
   WS.view.tagFolderOriginPath = String(viewState.tagFolderOriginPath || "");
   WS.view.favoritesMode = !!viewState.favoritesMode;
+  WS.view.favoritesRootActive = !!viewState.favoritesRootActive;
+  WS.view.favoritesAnchorPath = String(viewState.favoritesAnchorPath || "");
   WS.view.hiddenMode = !!viewState.hiddenMode;
+  WS.view.hiddenRootActive = !!viewState.hiddenRootActive;
+  WS.view.hiddenAnchorPath = String(viewState.hiddenAnchorPath || "");
   WS.view.dirSearchPinned = !!viewState.dirSearchPinned;
   WS.view.previewSearchActive = !!viewState.previewSearchActive;
   WS.view.dirSearchQuery = String(viewState.dirSearchQuery || "");
@@ -21402,7 +21415,6 @@ function retargetViewerCloseRestoreStateToDir(state, dirNode) {
 
   const nested = cloneViewerCloseRestoreState(state.previewFolderBridgeReturnState);
   if (nested) {
-    nested.entryKey = targetEntryKey;
     nested.pendingPreviewSelectionKey = targetEntryKey;
     state.previewFolderBridgeReturnState = nested;
   }
@@ -37577,13 +37589,6 @@ async function navigateToDirectory(node) {
     targetIdx >= 0 ? targetIdx : 0,
     1,
   );
-  if (isViewingTagFolder()) {
-    pushTagViewContext(node.path || "");
-    WS.view.tagFolderActiveMode = "";
-    WS.view.tagFolderActiveTag = "";
-    WS.view.tagFolderActiveAlbum = "";
-    WS.view.tagFolderOriginPath = "";
-  }
   const selectedEntry =
     targetIdx >= 0 ? WS.nav.entries[WS.nav.selectedIndex] || null : null;
   if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
@@ -37681,6 +37686,10 @@ async function openPreviewTagFolderEntry(entry) {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
   if (!entry || entry.placeholder) return;
+  const previewFolderReturnState = captureViewerCloseRestoreState({
+    activePane: "preview",
+    pendingPreviewSelectionKey: entryKeyForSelection(entry),
+  });
   adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir());
 
   if (searchSessionActive() && WS.view.searchRootActive) {
@@ -37715,6 +37724,7 @@ async function openPreviewTagFolderEntry(entry) {
   if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
   else applyPreviewState(previewStateForEntry(entry));
   resetPreviewPaneForEnteredTarget();
+  WS.view.previewFolderBridgeReturnState = previewFolderReturnState;
   setActivePane("preview");
   await finalizeDirectoryNavigationRender({
     animatePreview: true,
