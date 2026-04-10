@@ -28150,21 +28150,10 @@ function deleteTagAlbumByName(albumName, scopePath = null) {
 
 function buildTagMediaFilterChoiceMenu(menu, opts = {}) {
   if (!menu) return;
-  const title = String(opts.title || "Content filter");
   const currentValue = normalizeTagMediaFilterValue(opts.currentValue);
   const onChoose = typeof opts.onChoose === "function" ? opts.onChoose : null;
   const onBack = typeof opts.onBack === "function" ? opts.onBack : null;
   menu.innerHTML = "";
-  const titleEl = document.createElement("div");
-  titleEl.className = "label";
-  titleEl.style.padding = "8px 10px 4px";
-  titleEl.textContent = title;
-  menu.appendChild(titleEl);
-  const summaryEl = document.createElement("div");
-  summaryEl.className = "label";
-  summaryEl.style.padding = "0 10px 8px";
-  summaryEl.textContent = describeTagMediaFilterValue(currentValue);
-  menu.appendChild(summaryEl);
   TAG_MEDIA_FILTER_MEDIA_TYPES.forEach((type) => {
     const enabled = currentValue.includes(type);
     const marker = enabled ? "[x]" : "[ ]";
