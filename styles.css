@@ -1038,16 +1038,12 @@ input[type="file"] {
 
 :root[data-retro="on"] .dropdownMenu button.destructiveAction {
   color: #7a0000;
-  background: #f2d6d6;
-  border-color: #b56b6b;
 }
 
 :root[data-retro="on"]
   .dropdownMenu
   button.destructiveAction:hover:not(:disabled) {
-  background: #7a0000;
-  color: #ffffff;
-  border-color: #7a0000;
+  color: #7a0000;
 }
 
 :root[data-retro="on"] .dropdownMenu .scoreRow,
@@ -2737,12 +2733,10 @@ img[data-rotate-key].rotatingThumbFade {
 
 .dropdownMenu button.destructiveAction {
   color: #ffb3b3;
-  border-color: #8f2f2f;
-  background: rgba(120, 22, 22, 0.35);
 }
 
 .dropdownMenu button.destructiveAction:hover:not(:disabled) {
-  background: rgba(160, 28, 28, 0.5);
+  color: #ffb3b3;
 }
 
 .dropdownMenu .scoreRow {
