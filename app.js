@@ -6197,6 +6197,12 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
+    id: "randomFileJump",
+    label: "Random file jump",
+    hint: "Jump to a random folder and focus a random matching file.",
+    section: "general",
+  },
+  {
     id: "toggleRandomFileSort",
     label: "Toggle random file sort",
     hint: "Toggle random file ordering on or off.",
@@ -6469,6 +6475,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
   randomFirstFileJump: "r",
+  randomFileJump: "",
   toggleRandomFileSort: "",
   toggleRandomFolderSort: "",
   cycleFilter: "f",
@@ -32277,6 +32284,45 @@ function jumpToDirectoryFirstFile(dirNode) {
   return idx >= 0;
 }
 
+function jumpToDirectoryRandomFile(dirNode) {
+  if (!dirNode) return false;
+  WS.nav.dirNode = dirNode;
+  if (searchBrowsingResultFolder())
+    enterSearchResultContext(dirNode.path || "");
+  TAG_EDIT_PATH = null;
+  clearBulkTagPlaceholder();
+  syncBulkSelectionForCurrentDir();
+  syncFavoritesUi();
+  syncHiddenUi();
+  syncTagUiForCurrentDir();
+  rebuildDirectoriesEntries();
+
+  const fileIds = getOrderedFileIdsForDir(dirNode);
+  if (!fileIds.length) {
+    WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+    syncPreviewToSelection({ force: true });
+    renderDirectoriesPane();
+    renderPreviewPane(true);
+    syncButtons();
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+    return false;
+  }
+
+  const targetFileId =
+    fileIds[Math.floor(Math.random() * fileIds.length)] || "";
+  const idx = targetFileId ? findFileEntryIndexById(targetFileId) : -1;
+  WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
+
+  syncPreviewToSelection({ force: true });
+  renderDirectoriesPane();
+  renderPreviewPane(true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  return idx >= 0;
+}
+
 function pickRandomFirstFileJumpTarget(sourceDirNode) {
   if (!sourceDirNode) return null;
   const siblings = getVisibleSiblingDirsForSlide(sourceDirNode);
@@ -32320,6 +32366,23 @@ function randomFirstFileJumpFromDirectories() {
   const ok = jumpToDirectoryFirstFile(targetDir);
   if (ok) showStatusMessage("First File Jump");
   else showStatusMessage("First File Jump: no files.");
+  return ok;
+}
+
+function randomFileJumpFromDirectories() {
+  if (!canUseFolderJumpActions()) {
+    showStatusMessage("Random File Jump unavailable here.");
+    return false;
+  }
+  const sourceDir = WS.nav.dirNode;
+  const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
+  if (!targetDir) {
+    showStatusMessage("Random File Jump: no matching folder.");
+    return false;
+  }
+  const ok = jumpToDirectoryRandomFile(targetDir);
+  if (ok) showStatusMessage("Random File Jump");
+  else showStatusMessage("Random File Jump: no files.");
   return ok;
 }
 
@@ -37001,6 +37064,25 @@ function jumpViewerToDirectoryFirstFile(dirNode) {
   return true;
 }
 
+function jumpViewerToDirectoryRandomFile(dirNode) {
+  if (!dirNode) return false;
+  viewerDirNode = dirNode;
+  viewerItems = buildViewerItemsForDir(viewerDirNode);
+  if (!viewerItems.length) return false;
+  const fileIndexes = [];
+  for (let i = 0; i < viewerItems.length; i++) {
+    if (!viewerItems[i]?.isFolder) fileIndexes.push(i);
+  }
+  if (!fileIndexes.length) return false;
+  const targetIndex =
+    fileIndexes[Math.floor(Math.random() * fileIndexes.length)] ?? -1;
+  if (targetIndex < 0) return false;
+  viewerIndex = targetIndex;
+  if (VIEWER_MODE) renderViewerItem(viewerIndex);
+  syncDirectoriesToViewerState();
+  return true;
+}
+
 function randomFirstFileJumpFromViewer() {
   const sourceDir = viewerDirNode || WS.nav.dirNode;
   if (!sourceDir) {
@@ -37019,6 +37101,27 @@ function randomFirstFileJumpFromViewer() {
   const ok = jumpViewerToDirectoryFirstFile(targetDir);
   if (ok) showStatusMessage("First File Jump");
   else showStatusMessage("First File Jump: no files.");
+  return ok;
+}
+
+function randomFileJumpFromViewer() {
+  const sourceDir = viewerDirNode || WS.nav.dirNode;
+  if (!sourceDir) {
+    showStatusMessage("Random File Jump unavailable here.");
+    return false;
+  }
+  if (!canUseFolderJumpActions()) {
+    showStatusMessage("Random File Jump unavailable here.");
+    return false;
+  }
+  const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
+  if (!targetDir) {
+    showStatusMessage("Random File Jump: no matching folder.");
+    return false;
+  }
+  const ok = jumpViewerToDirectoryRandomFile(targetDir);
+  if (ok) showStatusMessage("Random File Jump");
+  else showStatusMessage("Random File Jump: no files.");
   return ok;
 }
 
@@ -39079,6 +39182,9 @@ function handlePreviewPaneAction(action, inFilePreview) {
       case "randomFirstFileJump":
         randomFirstFileJumpFromViewer();
         return true;
+      case "randomFileJump":
+        randomFileJumpFromViewer();
+        return true;
       case "toggleRandomFileSort":
         toggleRandomSortMode();
         return true;
@@ -39314,6 +39420,7 @@ document.addEventListener("keydown", (e) => {
         case "prevFolder":
         case "nextFolder":
         case "randomFirstFileJump":
+        case "randomFileJump":
         case "toggleRandomFileSort":
         case "toggleRandomFolderSort":
         case "cycleFilter":
@@ -39384,6 +39491,10 @@ document.addEventListener("keydown", (e) => {
       case "randomFirstFileJump":
         e.preventDefault();
         randomFirstFileJumpFromViewer();
+        return;
+      case "randomFileJump":
+        e.preventDefault();
+        randomFileJumpFromViewer();
         return;
       case "toggleRandomFileSort":
         e.preventDefault();
@@ -39550,6 +39661,10 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         randomFirstFileJumpFromViewer();
         return;
+      case "randomFileJump":
+        e.preventDefault();
+        randomFileJumpFromViewer();
+        return;
       case "toggleRandomFileSort":
         e.preventDefault();
         toggleRandomSortMode();
@@ -39645,6 +39760,10 @@ document.addEventListener("keydown", (e) => {
     case "randomFirstFileJump":
       e.preventDefault();
       randomFirstFileJumpFromDirectories();
+      return;
+    case "randomFileJump":
+      e.preventDefault();
+      randomFileJumpFromDirectories();
       return;
     case "toggleRandomFileSort":
       e.preventDefault();
