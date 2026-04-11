@@ -772,6 +772,7 @@ function defaultOptions() {
     hideBeforeLastDashInFileNames: true,
     hideAfterFirstUnderscoreInFileNames: true,
     clickSelectedRotatingThumbTeleports: false,
+    thumbnailTitleSize: "small",
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "medium",
     thumbnailScaleAspect: "medium",
@@ -970,6 +971,10 @@ function normalizeOptions(o) {
   const thumbnailScaleAspect = normalizeThumbnailScaleValue(
     src.thumbnailScaleAspect,
     d.thumbnailScaleAspect,
+  );
+  const thumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.thumbnailTitleSize,
+    d.thumbnailTitleSize,
   );
   const legacyShowFolderThumbnailTitles =
     typeof src.showFolderThumbnailTitles === "boolean"
@@ -1177,6 +1182,7 @@ function normalizeOptions(o) {
       typeof src.clickSelectedRotatingThumbTeleports === "boolean"
         ? src.clickSelectedRotatingThumbTeleports
         : d.clickSelectedRotatingThumbTeleports,
+    thumbnailTitleSize,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,
@@ -1540,6 +1546,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   ]),
   thumbnails: Object.freeze(
     [
+      "thumbnailTitleSize",
       "thumbnailStyle",
       "thumbnailScaleCropped",
       "thumbnailScaleAspect",
@@ -5563,6 +5570,22 @@ function getThumbnailStyleFromOptions(opt = null) {
   return raw === "aspect" ? "aspect" : "cropped";
 }
 
+function normalizeThumbnailTitleSizeValue(value, fallback = "small") {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (raw === "large") return "large";
+  return fallback === "large" ? "large" : "small";
+}
+
+function getThumbnailTitleSizeFromOptions(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return normalizeThumbnailTitleSizeValue(
+    src ? src.thumbnailTitleSize : null,
+    "small",
+  );
+}
+
 function getThumbnailScaleForStyle(style, opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   const s = style === "aspect" ? "aspect" : "cropped";
@@ -5595,6 +5618,15 @@ function getActiveThumbnailScaleMultiplier(opt = null) {
   if (scale === "xxl") return 1.52;
   if (scale === "xxxl") return 1.72;
   return 1;
+}
+
+function applyThumbnailTitleSizeFromOptions() {
+  const root = document.documentElement;
+  if (!root) return;
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  const size = getThumbnailTitleSizeFromOptions(opt);
+  if (size === "large") root.setAttribute("data-thumbnail-title-size", "large");
+  else root.removeAttribute("data-thumbnail-title-size");
 }
 
 function naturalAspectThumbnailCardsEnabled() {
@@ -5795,6 +5827,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
     applyRetroModeFromOptions();
     applyMediaFilterFromOptions();
     applyThumbFitFromOptions();
+    applyThumbnailTitleSizeFromOptions();
     applyDisplaySizesFromOptions();
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
@@ -5817,6 +5850,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyRetroModeFromOptions();
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
+  applyThumbnailTitleSizeFromOptions();
   applyDisplaySizesFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
@@ -9500,6 +9534,10 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "xxl", label: "XXL" },
     { value: "xxxl", label: "3XL" },
   ];
+  const thumbnailTitleSizeModes = [
+    { value: "small", label: "Small" },
+    { value: "large", label: "Large" },
+  ];
   const thumbnailStyleRow = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
     ? makeSelectRow(
         "Thumbnail Style",
@@ -10014,6 +10052,7 @@ ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when medi
       title: "Thumbnails",
       rows: `
 ${thumbnailStyleRow}
+${makeSelectRow("Thumbnail Title Size", "Switch thumbnail titles between the smaller settings-label size and the older large title size across files, folders, and tag-style items.", "opt_thumbnailTitleSize", getThumbnailTitleSizeFromOptions(opt), thumbnailTitleSizeModes)}
 ${makeSelectRow("Thumbnail Scale", thumbnailScaleHint, "opt_thumbnailScale", getActiveThumbnailScale(opt), thumbnailScaleModes)}
 ${makeSelectRow("Image thumbnail quality", "Choose how image thumbnails render. Placeholder never loads thumbs. Native uses the original image directly with no thumbnail processing.", "opt_imageThumbSize", normalizeThumbRenderModeValue(opt.imageThumbSize, "high"), imageThumbRenderModes)}
 ${makeSelectRow("Video thumbnail quality", "Choose how video thumbnails render. Placeholder never loads thumbs. Native renders the selected frame at source resolution.", "opt_videoThumbSize", normalizeThumbRenderModeValue(opt.videoThumbSize, "medium"), videoThumbRenderModes)}
@@ -10606,6 +10645,13 @@ ${makeActionRow(
       .toLowerCase();
     return raw === "expanded" ? "expanded" : "grid";
   });
+  bindSelect(
+    "opt_thumbnailTitleSize",
+    "thumbnailTitleSize",
+    false,
+    null,
+    (val) => normalizeThumbnailTitleSizeValue(val, "small"),
+  );
   bindSelect(
     "opt_thumbnailStyle",
     "thumbnailStyle",
@@ -11719,25 +11765,9 @@ function metaHasFavorite(path) {
   return tags.includes(FAVORITE_TAG);
 }
 
-function pathHasFavoriteInAncestry(path) {
+function pathIsFavoriteFolder(path) {
   const normalized = normalizeDirPathValue(path);
-  const node = WS.dirByPath ? WS.dirByPath.get(normalized) : null;
-  if (node) {
-    let cur = node;
-    while (cur) {
-      if (metaHasFavorite(cur.path || "")) return true;
-      cur = cur.parent || null;
-    }
-    return false;
-  }
-  let cur = normalized;
-  for (;;) {
-    if (metaHasFavorite(cur)) return true;
-    if (!cur) break;
-    const idx = cur.lastIndexOf("/");
-    cur = idx >= 0 ? cur.slice(0, idx) : "";
-  }
-  return false;
+  return metaHasFavorite(normalized);
 }
 
 function metaHasLegacyHidden(path) {
@@ -31770,7 +31800,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const rec = WS.fileById.get(entry.id);
         const fileVisibility = directoriesThumbnailVisibilityForKind("file");
         const isVid = rec?.type === "video";
-        const isFavorite = pathHasFavoriteInAncestry(rec?.dirPath || "");
+        const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
         const sel =
           canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
         if (sel) row.classList.add("bulkSelected");
@@ -36109,7 +36139,7 @@ function makePreviewFileCard(
   const showNameMeta = false;
   const forceOverlayMeta = !!useSquareMediaCards || !!useNaturalAspectCards;
   const showAnyMeta = forceOverlayMeta || showNameMeta || !!fileId;
-  const isFavorite = pathHasFavoriteInAncestry(rec?.dirPath || "");
+  const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
   let meta = null;
   if (showAnyMeta) {
     meta = document.createElement("div");
