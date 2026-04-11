@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.09
+// @version      01.13.10
 // @description  A tool for downloading images and videos from Coomer/Kemono
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -2764,7 +2764,7 @@ function handleRenameGroup(groupId) {
   if (!group) return false;
 
   const currentTitle = inferGroupTitle(group.name, group.earliestPostFolder) || 'post';
-  const input = prompt('Edit group title (prefix/suffix and index data are preserved):', currentTitle);
+  const input = prompt('Edit group title (original file names are preserved):', currentTitle);
   if (input == null) return false;
 
   const nextTitle = sanitizeGroupEditableTitle(input, currentTitle || 'post');
@@ -2775,10 +2775,6 @@ function handleRenameGroup(groupId) {
   if (nextTitle === currentTitle) return false;
 
   group.name = nextTitle;
-  group.files = mapGroupFilesToTitle(group.files, nextTitle);
-
-  const currentFolder = group.earliestPostFolder || (group.files[0] ? splitDownloadPath(group.files[0].name || '').postFolder : '');
-  group.earliestPostFolder = applyEditableTitleToCompositeName(currentFolder || '', nextTitle) || currentFolder || nextTitle;
 
   saveGroupsForProfile();
   renderGroupsUi();
@@ -5391,20 +5387,20 @@ function buildQueueArchiveItem(files, userFolder, queueFolder, retryKey, meta, m
 function buildGroupQueueItem(group, idx) {
   if (!group || !Array.isArray(group.files) || group.files.length === 0) return null;
   const groupTitle = inferGroupTitle(group.name, group.earliestPostFolder);
-  const renamedFiles = mapGroupFilesToTitle(group.files, groupTitle);
-  const userFolder = group.userFolder || (renamedFiles[0] ? splitDownloadPath(renamedFiles[0].name || '').userFolder : '') || '';
-  const folderSource = group.earliestPostFolder || (renamedFiles[0] ? splitDownloadPath(renamedFiles[0].name || '').postFolder : '') || 'post';
+  const files = group.files.slice();
+  const userFolder = group.userFolder || (files[0] ? splitDownloadPath(files[0].name || '').userFolder : '') || '';
+  const folderSource = group.earliestPostFolder || (files[0] ? splitDownloadPath(files[0].name || '').postFolder : '') || 'post';
   const queueFolder = applyEditableTitleToCompositeName(folderSource, groupTitle) || folderSource || groupTitle || 'post';
   const retryKey = group.id
     ? `group:${group.id}`
     : (userFolder ? `group:${userFolder}:${idx || 0}` : `group:${idx || 0}`);
   return buildQueueArchiveItem(
-    renamedFiles,
+    files,
     userFolder,
     queueFolder,
     retryKey,
     { groupId: group.id || '', name: groupTitle || queueFolder },
-    'queue_flat'
+    'queue'
   );
 }
 
@@ -6429,29 +6425,6 @@ function applyEditableTitleToCompositeName(name, title) {
   return s.slice(0, idx + 3) + sanitizeGroupEditableTitle(title, 'post');
 }
 
-function applyEditableTitleToFileLeaf(fileLeaf, title) {
-  const s = String(fileLeaf || '');
-  const m = s.match(/^(.* - ).*(_\d{6}\.[^.\/]+)$/);
-  if (!m) return s;
-  return m[1] + sanitizeGroupEditableTitle(title, 'post') + m[2];
-}
-
-function applyEditableTitleToDownloadPath(path, title) {
-  const parts = splitDownloadPath(path || '');
-  if (!parts.userFolder && !parts.postFolder && !parts.fileName) return String(path || '');
-  const nextPostFolder = applyEditableTitleToCompositeName(parts.postFolder, title) || parts.postFolder || 'post';
-  let nextFileName = parts.fileName || '';
-  if (nextFileName) {
-    const segs = nextFileName.split('/');
-    const leaf = segs.pop() || '';
-    segs.push(applyEditableTitleToFileLeaf(leaf, title) || leaf);
-    nextFileName = segs.join('/');
-  }
-  if (!nextFileName) nextFileName = parts.fileName || '';
-  if (parts.userFolder) return `${parts.userFolder}/${nextPostFolder}/${nextFileName}`;
-  return `${nextPostFolder}/${nextFileName}`;
-}
-
 function inferGroupTitle(rawName, earliestPostFolder) {
   const nameRaw = String(rawName || '').trim();
   const nameDerived = extractEditableTitleFromCompositeName(nameRaw);
@@ -6460,17 +6433,6 @@ function inferGroupTitle(rawName, earliestPostFolder) {
   if (fromFolder) return sanitizeGroupEditableTitle(fromFolder, 'post');
   if (nameDerived) return sanitizeGroupEditableTitle(nameDerived, 'post');
   return 'post';
-}
-
-function mapGroupFilesToTitle(files, title) {
-  const safeTitle = sanitizeGroupEditableTitle(title, 'post');
-  return (Array.isArray(files) ? files : []).map(file => {
-    if (!file || !file.url) return file;
-    const srcName = file.name || '';
-    const nextName = applyEditableTitleToDownloadPath(srcName, safeTitle) || srcName;
-    const parts = splitDownloadPath(nextName);
-    return Object.assign({}, file, { name: nextName, postFolder: parts.postFolder || file.postFolder || '' });
-  });
 }
 
 function buildArchiveName(userFolder, postFolder) {
