@@ -23271,6 +23271,7 @@ let DIR_ITEM_COUNT_CACHE_FILTER_MODE = "";
 let TAG_ENTRY_DIRS_CACHE = new Map();
 let TAG_ENTRY_METRICS_CACHE = new Map();
 let TAG_ENTRY_PREVIEW_POOL_CACHE = new Map();
+let TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE = new Map();
 let TAG_GROUPS_BY_DIR_CACHE = new Map();
 let TAG_ALBUM_STATS_BY_SCOPE_CACHE = new Map();
 
@@ -23278,6 +23279,7 @@ function clearTagEntryDerivedCaches() {
   TAG_ENTRY_DIRS_CACHE = new Map();
   TAG_ENTRY_METRICS_CACHE = new Map();
   TAG_ENTRY_PREVIEW_POOL_CACHE = new Map();
+  TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE = new Map();
   TAG_GROUPS_BY_DIR_CACHE = new Map();
   TAG_ALBUM_STATS_BY_SCOPE_CACHE = new Map();
 }
@@ -24363,6 +24365,74 @@ function isViewingTagFolder() {
   return !!WS.view.tagFolderActiveMode;
 }
 
+function getVisibleChildDirsForTagEvaluation(dirNode) {
+  if (!dirNode) return [];
+  const base = sortDirsForDisplay(
+    Array.isArray(dirNode.childrenDirs) ? dirNode.childrenDirs : [],
+  )
+    .filter((child) => child && child.type === "dir")
+    .filter((child) => !isInternalTrashDirNode(child));
+  if (isPathInsideInternalTrash(dirNode.path || "")) return base;
+  const showHidden =
+    WS.view.hiddenMode ||
+    showHiddenFolderEnabled() ||
+    (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden");
+  return showHidden
+    ? base
+    : base.filter((child) => !isDirOrAncestorHidden(child));
+}
+
+function dirHasVisibleRecordForTagEntry(dirNode, entry) {
+  if (!dirNode || !entry || entry.kind !== "tag") return false;
+  const dirPath = String(dirNode.path || "");
+  const entryKey = `${String(tagEntrySelectionKey(entry) || "")}@@${String(
+    entry.originPath || "",
+  )}`;
+  const cacheKey = `${entryKey}@@${dirPath}@@${effectiveFilterCacheKey()}@@${String(
+    effectiveTagMediaFilterForEntry(entry).join(","),
+  )}`;
+  if (cacheKey && TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.has(cacheKey)) {
+    return !!TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.get(cacheKey);
+  }
+  let visible = false;
+  const fileIds = Array.isArray(dirNode.childrenFiles)
+    ? dirNode.childrenFiles
+    : [];
+  for (let i = 0; i < fileIds.length; i++) {
+    const rec = WS.fileById.get(String(fileIds[i] || ""));
+    if (rec && recordPassesTagEntryFilter(rec, entry)) {
+      visible = true;
+      break;
+    }
+  }
+  if (!visible) {
+    const childDirs = getVisibleChildDirsForTagEvaluation(dirNode);
+    for (let i = 0; i < childDirs.length; i++) {
+      if (dirHasVisibleRecordForTagEntry(childDirs[i], entry)) {
+        visible = true;
+        break;
+      }
+    }
+  }
+  if (cacheKey) TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.set(cacheKey, visible);
+  return visible;
+}
+
+function filterTagEntryDirsByVisibleRecords(nodes, entry) {
+  const list = Array.isArray(nodes) ? nodes : [];
+  if (!entry || entry.kind !== "tag" || !list.length) return [];
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < list.length; i++) {
+    const node = list[i];
+    const path = String(node?.path || "");
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    if (dirHasVisibleRecordForTagEntry(node, entry)) out.push(node);
+  }
+  return out;
+}
+
 function gatherTagGroupsForDir(dirNode) {
   const cacheKey = String(dirNode?.path || "__root__");
   if (TAG_GROUPS_BY_DIR_CACHE.has(cacheKey)) {
@@ -24370,7 +24440,7 @@ function gatherTagGroupsForDir(dirNode) {
   }
   const groups = new Map();
   if (!dirNode) return groups;
-  const children = getChildDirsForNodeBase(dirNode);
+  const children = getVisibleChildDirsForTagEvaluation(dirNode);
   for (const child of children) {
     const tags = metaGetUserTags(child.path || "");
     const seen = new Set();
@@ -24446,7 +24516,16 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
   const originPath = String(dirNode.path || "");
   const visibleChildren = getChildDirsForNodeBase(dirNode);
 
-  const favs = visibleChildren.filter((d) => metaHasFavorite(d.path || ""));
+  const favoritesEntry = {
+    kind: "tag",
+    special: "favorites",
+    label: "Favorites",
+    originPath,
+  };
+  const favs = filterTagEntryDirsByVisibleRecords(
+    visibleChildren.filter((d) => metaHasFavorite(d.path || "")),
+    favoritesEntry,
+  );
   if (favs.length) {
     entries.push({
       kind: "tag",
@@ -24457,7 +24536,16 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     });
   }
   if (showUntaggedFolderEnabled()) {
-    const untagged = getUntaggedDirsForNode(dirNode);
+    const untaggedEntry = {
+      kind: "tag",
+      special: "untagged",
+      label: "Untagged",
+      originPath,
+    };
+    const untagged = filterTagEntryDirsByVisibleRecords(
+      getUntaggedDirsForNode(dirNode),
+      untaggedEntry,
+    );
     if (untagged.length) {
       entries.push({
         kind: "tag",
@@ -24479,12 +24567,39 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
         const album = sortedAlbums[i];
         const stats = albumStats.get(album);
         if (!stats || !stats.tags.size) continue;
+        const albumEntry = {
+          kind: "tag",
+          album,
+          label: album,
+          originPath,
+        };
+        const visibleAlbumDirs = filterTagEntryDirsByVisibleRecords(
+          Array.from(stats.folderPaths)
+            .map((path) => WS.dirByPath.get(String(path || "")) || null)
+            .filter(Boolean),
+          albumEntry,
+        );
+        if (!visibleAlbumDirs.length) continue;
+        let visibleTagCount = 0;
+        stats.tags.forEach((tag) => {
+          const tagEntry = {
+            kind: "tag",
+            tag: String(tag || ""),
+            album,
+            label: String(tag || ""),
+            originPath,
+          };
+          const nodes = tagGroups.get(String(tag || "")) || [];
+          if (filterTagEntryDirsByVisibleRecords(nodes, tagEntry).length)
+            visibleTagCount++;
+        });
+        if (!visibleTagCount) continue;
         entries.push({
           kind: "tag",
           album,
           label: album,
-          count: stats.folderPaths.size,
-          tagCount: stats.tags.size,
+          count: visibleAlbumDirs.length,
+          tagCount: visibleTagCount,
           originPath,
         });
       }
@@ -24495,12 +24610,19 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     for (const tag of sorted) {
       if (metaGetTagAlbumForTag(tag, originPath)) continue;
       const nodes = tagGroups.get(tag) || [];
-      if (!nodes.length) continue;
+      const tagEntry = {
+        kind: "tag",
+        tag,
+        label: tag,
+        originPath,
+      };
+      const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
+      if (!visibleNodes.length) continue;
       entries.push({
         kind: "tag",
         tag,
         label: tag,
-        count: nodes.length,
+        count: visibleNodes.length,
         originPath,
       });
     }
@@ -24556,13 +24678,21 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
     if (metaGetTagAlbumForTag(tag, String(baseNode.path || "")) !== album)
       continue;
     const nodes = tagGroups.get(tag) || [];
-    if (!nodes.length) continue;
+    const tagEntry = {
+      kind: "tag",
+      tag,
+      album,
+      label: tag,
+      originPath: String(baseNode.path || ""),
+    };
+    const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
+    if (!visibleNodes.length) continue;
     out.push({
       kind: "tag",
       tag,
       album,
       label: tag,
-      count: nodes.length,
+      count: visibleNodes.length,
       originPath: String(baseNode.path || ""),
       albumTag: true,
     });
@@ -24576,23 +24706,56 @@ function getDirsForTagFolderView() {
   if (!baseNode) return [];
   const children = getChildDirsForNodeBase(baseNode);
   if (WS.view.tagFolderActiveMode === "favorites") {
-    return children.filter((d) => metaHasFavorite(d.path || ""));
+    return filterTagEntryDirsByVisibleRecords(
+      children.filter((d) => metaHasFavorite(d.path || "")),
+      {
+        kind: "tag",
+        special: "favorites",
+        label: "Favorites",
+        originPath: String(baseNode.path || ""),
+      },
+    );
   }
   if (WS.view.tagFolderActiveMode === "untagged") {
-    return children.filter((d) => metaGetUserTags(d.path || "").length === 0);
+    return filterTagEntryDirsByVisibleRecords(
+      children.filter((d) => metaGetUserTags(d.path || "").length === 0),
+      {
+        kind: "tag",
+        special: "untagged",
+        label: "Untagged",
+        originPath: String(baseNode.path || ""),
+      },
+    );
   }
   if (WS.view.tagFolderActiveMode === "hidden") {
-    return children.filter((d) => metaHasHidden(d.path || ""));
+    return filterTagEntryDirsByVisibleRecords(
+      children.filter((d) => metaHasHidden(d.path || "")),
+      {
+        kind: "tag",
+        special: "hidden",
+        label: "Hidden",
+        originPath: String(baseNode.path || ""),
+      },
+    );
   }
   if (WS.view.tagFolderActiveMode === "album") {
     return [];
   }
   const tag = String(WS.view.tagFolderActiveTag || "");
   if (!tag) return [];
-  return children.filter((d) => {
-    const tags = metaGetUserTags(d.path || "");
-    return tags.includes(tag);
-  });
+  return filterTagEntryDirsByVisibleRecords(
+    children.filter((d) => {
+      const tags = metaGetUserTags(d.path || "");
+      return tags.includes(tag);
+    }),
+    {
+      kind: "tag",
+      tag,
+      album: String(WS.view.tagFolderActiveAlbum || ""),
+      label: tag,
+      originPath: String(baseNode.path || ""),
+    },
+  );
 }
 
 function getDirsForTagViewFrame(frame) {
@@ -24601,18 +24764,51 @@ function getDirsForTagViewFrame(frame) {
   if (!baseNode) return [];
   const children = getChildDirsForNodeBase(baseNode);
   if (frame.mode === "favorites")
-    return children.filter((d) => metaHasFavorite(d.path || ""));
+    return filterTagEntryDirsByVisibleRecords(
+      children.filter((d) => metaHasFavorite(d.path || "")),
+      {
+        kind: "tag",
+        special: "favorites",
+        label: "Favorites",
+        originPath: String(baseNode.path || ""),
+      },
+    );
   if (frame.mode === "untagged")
-    return children.filter((d) => metaGetUserTags(d.path || "").length === 0);
+    return filterTagEntryDirsByVisibleRecords(
+      children.filter((d) => metaGetUserTags(d.path || "").length === 0),
+      {
+        kind: "tag",
+        special: "untagged",
+        label: "Untagged",
+        originPath: String(baseNode.path || ""),
+      },
+    );
   if (frame.mode === "hidden")
-    return children.filter((d) => metaHasHidden(d.path || ""));
+    return filterTagEntryDirsByVisibleRecords(
+      children.filter((d) => metaHasHidden(d.path || "")),
+      {
+        kind: "tag",
+        special: "hidden",
+        label: "Hidden",
+        originPath: String(baseNode.path || ""),
+      },
+    );
   if (frame.mode === "album") return [];
   const tag = String(frame.tag || "");
   if (!tag) return [];
-  return children.filter((d) => {
-    const tags = metaGetUserTags(d.path || "");
-    return tags.includes(tag);
-  });
+  return filterTagEntryDirsByVisibleRecords(
+    children.filter((d) => {
+      const tags = metaGetUserTags(d.path || "");
+      return tags.includes(tag);
+    }),
+    {
+      kind: "tag",
+      tag,
+      album: String(frame.album || ""),
+      label: tag,
+      originPath: String(baseNode.path || ""),
+    },
+  );
 }
 
 function getDirsForTagEntry(entry) {
@@ -24643,24 +24839,32 @@ function getDirsForTagEntry(entry) {
         out.push(node);
       }
     }
-    if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
-    return out;
+    const filtered = filterTagEntryDirsByVisibleRecords(out, entry);
+    if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, filtered);
+    return filtered;
   }
   if (entry.special) {
     if (entry.special === "favorites") {
-      const out = children.filter((d) => metaHasFavorite(d.path || ""));
+      const out = filterTagEntryDirsByVisibleRecords(
+        children.filter((d) => metaHasFavorite(d.path || "")),
+        entry,
+      );
       if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
       return out;
     }
     if (entry.special === "untagged") {
-      const out = children.filter(
-        (d) => metaGetUserTags(d.path || "").length === 0,
+      const out = filterTagEntryDirsByVisibleRecords(
+        children.filter((d) => metaGetUserTags(d.path || "").length === 0),
+        entry,
       );
       if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
       return out;
     }
     if (entry.special === "hidden") {
-      const out = children.filter((d) => metaHasHidden(d.path || ""));
+      const out = filterTagEntryDirsByVisibleRecords(
+        children.filter((d) => metaHasHidden(d.path || "")),
+        entry,
+      );
       if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
       return out;
     }
@@ -24668,10 +24872,13 @@ function getDirsForTagEntry(entry) {
   }
   const tag = String(entry.tag || "");
   if (!tag) return [];
-  const out = children.filter((d) => {
-    const tags = metaGetUserTags(d.path || "");
-    return tags.includes(tag);
-  });
+  const out = filterTagEntryDirsByVisibleRecords(
+    children.filter((d) => {
+      const tags = metaGetUserTags(d.path || "");
+      return tags.includes(tag);
+    }),
+    entry,
+  );
   if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
   return out;
 }
@@ -45090,6 +45297,23 @@ function getFileSelectionForKeybindAction() {
   return { ids: out, usedBulk };
 }
 
+function getFolderTargetPathsForSelectionActions() {
+  const folderSelection = getDirectorySelectionForKeybindAction();
+  if (folderSelection.paths.length) return folderSelection;
+
+  const fileSelection = getFileSelectionForKeybindAction();
+  const paths = [];
+  const seen = new Set();
+  for (let i = 0; i < fileSelection.ids.length; i++) {
+    const rec = WS.fileById.get(String(fileSelection.ids[i] || ""));
+    const dirPath = String(rec?.dirPath || "");
+    if (!dirPath || seen.has(dirPath)) continue;
+    seen.add(dirPath);
+    paths.push(dirPath);
+  }
+  return { paths, usedBulk: fileSelection.usedBulk };
+}
+
 function selectDirectoryEntryByPath(path) {
   const p = String(path || "");
   if (!p) return false;
@@ -45282,7 +45506,7 @@ function startPreviewTagRenameEdit(entry) {
 }
 
 function applyFolderScoreSelectionAction(delta) {
-  const { paths, usedBulk } = getDirectorySelectionForKeybindAction();
+  const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
   if (!paths.length) {
     showStatusMessage("No folders selected.");
     return false;
@@ -45323,7 +45547,7 @@ function startTagSelectionEdit() {
 }
 
 function toggleFavoriteSelection() {
-  const { paths, usedBulk } = getDirectorySelectionForKeybindAction();
+  const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
   if (!paths.length) {
     showStatusMessage("No folders selected.");
     return false;
