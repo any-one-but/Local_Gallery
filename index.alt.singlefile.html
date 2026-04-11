@@ -17944,6 +17944,27 @@ function metaHasFavorite(path) {
   return tags.includes(FAVORITE_TAG);
 }
 
+function pathHasFavoriteInAncestry(path) {
+  const normalized = normalizeDirPathValue(path);
+  const node = WS.dirByPath ? WS.dirByPath.get(normalized) : null;
+  if (node) {
+    let cur = node;
+    while (cur) {
+      if (metaHasFavorite(cur.path || "")) return true;
+      cur = cur.parent || null;
+    }
+    return false;
+  }
+  let cur = normalized;
+  for (;;) {
+    if (metaHasFavorite(cur)) return true;
+    if (!cur) break;
+    const idx = cur.lastIndexOf("/");
+    cur = idx >= 0 ? cur.slice(0, idx) : "";
+  }
+  return false;
+}
+
 function metaHasLegacyHidden(path) {
   const tags = metaGetTags(path);
   return tags.includes(HIDDEN_TAG);
@@ -37974,6 +37995,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const rec = WS.fileById.get(entry.id);
         const fileVisibility = directoriesThumbnailVisibilityForKind("file");
         const isVid = rec?.type === "video";
+        const isFavorite = pathHasFavoriteInAncestry(rec?.dirPath || "");
         const sel =
           canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
         if (sel) row.classList.add("bulkSelected");
@@ -38001,9 +38023,15 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           rec || { type: isVid ? "video" : "image" },
         );
         const fileSizeLabel = formatBytes(Math.max(0, Number(rec?.size) || 0));
+        const fileMenuButtonLabelHtml = isFavorite
+          ? favoriteMenuButtonLabel()
+          : "⋯";
+        const fileMenuButtonFavoriteClass = isFavorite
+          ? " dirMenuBtnFavorite"
+          : "";
         fileMenuHtml = `
               <div class="dirMenu dirFileMenu">
-                <button class="dirMenuBtn" title="File menu">⋯</button>
+                <button class="dirMenuBtn${fileMenuButtonFavoriteClass}" title="File menu">${fileMenuButtonLabelHtml}</button>
                 <div class="dropdownMenu${fileMenuOpen ? " open" : ""}">
                   ${fileMenuButtons}
                 </div>
@@ -42306,6 +42334,7 @@ function makePreviewFileCard(
   const showNameMeta = false;
   const forceOverlayMeta = !!useSquareMediaCards || !!useNaturalAspectCards;
   const showAnyMeta = forceOverlayMeta || showNameMeta || !!fileId;
+  const isFavorite = pathHasFavoriteInAncestry(rec?.dirPath || "");
   let meta = null;
   if (showAnyMeta) {
     meta = document.createElement("div");
@@ -42388,8 +42417,9 @@ function makePreviewFileCard(
         menuBtn.className =
           "dirMenuBtn thumbOverlayMenuBtn previewThumbOverlayMenuBtn";
         menuBtn.type = "button";
-        menuBtn.textContent = "⋯";
+        menuBtn.innerHTML = isFavorite ? favoriteMenuButtonLabel() : "⋯";
         menuBtn.title = "File menu";
+        menuBtn.classList.toggle("thumbOverlayMenuBtnFavorite", !!isFavorite);
         const openPreviewFileMenu = (e, atPoint = false) => {
           if (e) {
             e.preventDefault();
