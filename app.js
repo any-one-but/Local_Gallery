@@ -364,7 +364,7 @@ function thumbnailVisibilityKindSpecs() {
     {
       kind: "file",
       label: "File thumbnails",
-      directoriesLabel: "File cards in directories pane",
+      directoriesLabel: "File cards in list pane",
       previewPrefix: "previewFileThumbnail",
       directoriesPrefix: "directoriesFileCard",
       legacyTitleKey: "showFileThumbnailTitles",
@@ -373,7 +373,7 @@ function thumbnailVisibilityKindSpecs() {
     {
       kind: "rootFolder",
       label: "Root folder thumbnails",
-      directoriesLabel: "Root folder cards in directories pane",
+      directoriesLabel: "Root folder cards in list pane",
       previewPrefix: "previewRootFolderThumbnail",
       directoriesPrefix: "directoriesRootFolderCard",
       legacyTitleKey: "showRootFolderThumbnailTitles",
@@ -382,7 +382,7 @@ function thumbnailVisibilityKindSpecs() {
     {
       kind: "subfolder",
       label: "Subfolder thumbnails",
-      directoriesLabel: "Subfolder cards in directories pane",
+      directoriesLabel: "Subfolder cards in list pane",
       previewPrefix: "previewSubfolderThumbnail",
       directoriesPrefix: "directoriesSubfolderCard",
       legacyTitleKey: "showSubfolderThumbnailTitles",
@@ -391,7 +391,7 @@ function thumbnailVisibilityKindSpecs() {
     {
       kind: "tag",
       label: "Tag thumbnails",
-      directoriesLabel: "Tag cards in directories pane",
+      directoriesLabel: "Tag cards in list pane",
       previewPrefix: "previewTagThumbnail",
       directoriesPrefix: "directoriesTagCard",
       legacyTitleKey: "showTagThumbnailTitles",
@@ -6168,8 +6168,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "toggleDirectoriesPane",
-    label: "Toggle directories pane",
-    hint: "Open or close the directories pane sidebar.",
+    label: "Toggle list pane",
+    hint: "Open or close the list pane sidebar.",
     section: "general",
   },
   {
@@ -6180,7 +6180,7 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "toggleSettingsAndDirectoriesPanes",
-    label: "Toggle settings + directories panes",
+    label: "Toggle settings + list panes",
     hint: "Toggle both panes; if only one is open, close the open one.",
     section: "general",
   },
@@ -6831,14 +6831,14 @@ const WS = {
     previewSelectionContextKey: "",
   },
 
-  // Directories Pane navigation state
+  // List Pane navigation state
   nav: {
-    dirNode: null, // current directory listed in Directories Pane
+    dirNode: null, // current directory listed in List Pane
     entries: [], // [{kind:"dir", node},{kind:"file", id}]
     selectedIndex: 0,
   },
 
-  // Preview target derived from Directories selection
+  // Preview target derived from List selection
   preview: {
     kind: null, // "dir"|"file"|null
     dirNode: null,
@@ -7289,7 +7289,7 @@ window.addEventListener("resize", () => {
   scheduleThumbnailDemandRefresh();
 });
 
-// Directories Pane
+// List Pane
 const directoriesListEl = $("directoriesList");
 const directoriesHeader = $("directoriesHeader");
 const favoritesBtn = $("favoritesBtn");
@@ -7670,9 +7670,9 @@ function inferNotificationSourceId(text) {
     return "workspace";
   if (
     msg.includes("filter:") ||
-    msg.includes("directories pane:") ||
+    msg.includes("list pane:") ||
     msg.includes("title layout:") ||
-    msg.includes("settings + directories panes:") ||
+    msg.includes("settings + list panes:") ||
     msg.includes("first file jump") ||
     msg.includes("random file sort:") ||
     msg.includes("random folder sort:") ||
@@ -9601,7 +9601,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         rows.push(
           makeCheckRow(
             "Show item count",
-            "Show item counts on directories-pane cards for this item type.",
+            "Show item counts on list-pane cards for this item type.",
             thumbnailVisibilityInputId(
               thumbnailVisibilityDirectoriesOptionKey(spec.kind, "itemCount"),
             ),
@@ -9612,7 +9612,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         rows.push(
           makeCheckRow(
             "Show size",
-            "Show sizes on directories-pane cards for this item type.",
+            "Show sizes on list-pane cards for this item type.",
             thumbnailVisibilityInputId(
               thumbnailVisibilityDirectoriesOptionKey(spec.kind, "size"),
             ),
@@ -9623,7 +9623,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         rows.push(
           makeCheckRow(
             "Show score",
-            "Show score badges on directories-pane cards for this item type when scores are available.",
+            "Show score badges on list-pane cards for this item type when scores are available.",
             thumbnailVisibilityInputId(
               thumbnailVisibilityDirectoriesOptionKey(spec.kind, "score"),
             ),
@@ -9634,7 +9634,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         rows.push(
           makeCheckRow(
             "Show item type",
-            "Show item type labels on directories-pane cards for this item type.",
+            "Show item type labels on list-pane cards for this item type.",
             thumbnailVisibilityInputId(
               thumbnailVisibilityDirectoriesOptionKey(spec.kind, "itemType"),
             ),
@@ -10019,7 +10019,7 @@ ${makeSelectRow("Image thumbnail quality", "Choose how image thumbnails render. 
 ${makeSelectRow("Video thumbnail quality", "Choose how video thumbnails render. Placeholder never loads thumbs. Native renders the selected frame at source resolution.", "opt_videoThumbSize", normalizeThumbRenderModeValue(opt.videoThumbSize, "medium"), videoThumbRenderModes)}
 <h2 style="margin-top:18px;">Preview Pane</h2>
 ${thumbnailPreviewSectionHtml}
-<h2 style="margin-top:18px;">Directories Pane Cards</h2>
+<h2 style="margin-top:18px;">List Pane Cards</h2>
 ${thumbnailDirectoriesSectionHtml}
 ${makeActionRow(
   "Reset Edited Crops",
@@ -15115,7 +15115,7 @@ async function buildWorkspaceFromFiles(fileList) {
     })
     .catch(() => {});
 
-  // Initialize Directories Pane at root listing
+  // Initialize List Pane at root listing
   WS.nav.dirNode = WS.root;
   WS.view.aboveRootView = false;
   syncActivePaneWithLayout();
@@ -17920,7 +17920,7 @@ function invalidateAllThumbs() {
 }
 
 /* =========================================================
-       Directories Pane
+       List Pane
        - lists folders + files for WS.nav.dirNode
        - selection drives Preview Pane
        ========================================================= */
@@ -38293,7 +38293,7 @@ function toggleDirectoriesPaneKeybindAction() {
   if (VIEWER_MODE) return false;
   const nextOpen = !directoriesPaneOpenEnabled();
   if (!setDirectoriesPaneOpenKeybindState(nextOpen)) return false;
-  showStatusMessage(`Directories pane: ${nextOpen ? "Open" : "Closed"}`);
+  showStatusMessage(`List pane: ${nextOpen ? "Open" : "Closed"}`);
   return true;
 }
 
@@ -38332,7 +38332,7 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
       changed = true;
     }
     if (changed)
-      showStatusMessage("Settings + directories panes: Closed open pane.");
+      showStatusMessage("Settings + list panes: Closed open pane.");
     return changed;
   }
 
@@ -38347,7 +38347,7 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
     changed = true;
   }
   if (changed)
-    showStatusMessage(`Settings + directories panes: ${nextOpen ? "Open" : "Closed"}`);
+    showStatusMessage(`Settings + list panes: ${nextOpen ? "Open" : "Closed"}`);
   return changed;
 }
 
