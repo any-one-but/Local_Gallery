@@ -4548,6 +4548,19 @@ img[data-rotate-key].rotatingThumbFade {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+}
+#busyDetail {
+  min-height: 1.35em;
+  max-width: min(70vw, 720px);
+  padding: 0 16px;
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.82);
+  text-align: center;
+  text-transform: none;
+  overflow-wrap: anywhere;
 }
 @keyframes spin {
   from {

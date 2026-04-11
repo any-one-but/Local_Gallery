@@ -4556,6 +4556,19 @@ img[data-rotate-key].rotatingThumbFade {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+}
+#busyDetail {
+  min-height: 1.35em;
+  max-width: min(70vw, 720px);
+  padding: 0 16px;
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.82);
+  text-align: center;
+  text-transform: none;
+  overflow-wrap: anywhere;
 }
 @keyframes spin {
   from {
@@ -6022,6 +6035,7 @@ img[data-rotate-key].rotatingThumbFade {
       <div id="busyOverlay">
         <div class="busySpinner"></div>
         <div id="busyLabel">Working...</div>
+        <div id="busyDetail"></div>
       </div>
     </div>
 
@@ -13524,6 +13538,7 @@ const dirForwardBtn = $("dirForwardBtn");
 const dirUpBtn = $("dirUpBtn");
 const busyOverlay = $("busyOverlay");
 const busyLabel = $("busyLabel");
+const busyDetail = $("busyDetail");
 
 // Preview Pane
 const modePill = $("modePill");
@@ -16278,6 +16293,13 @@ ${makeCheckRow("Hide file extensions", "Hide file extensions in displayed file n
 ${makeCheckRow("Hide underscores", "Hide underscores in displayed file names.", "opt_hideUnderscoresInFileNames", !!opt.hideUnderscoresInFileNames)}
 ${makeCheckRow("Trim before last dash", "Show only text after the last dash in names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
 ${makeCheckRow("Trim after first underscore", "Show only text before the first underscore in file names.", "opt_hideAfterFirstUnderscoreInFileNames", !!opt.hideAfterFirstUnderscoreInFileNames)}
+${makeActionRow(
+  "Sanitize all file and folder names",
+  "Scour the current writable root and rename files and folders using the same sanitization rules as step 6 in clean.sh. This updates internal metadata and reloads the workspace when it finishes.",
+  `
+  <button type="button" id="opt_sanitize_names"${!WS.meta.fsRootHandle ? " disabled" : ""}>Sanitize Names Across Root</button>
+`,
+)}
           `,
     },
   };
@@ -16875,6 +16897,11 @@ ${makeCheckRow("Trim after first underscore", "Show only text before the first u
     "opt_hideAfterFirstUnderscoreInFileNames",
     "hideAfterFirstUnderscoreInFileNames",
   );
+  bindActionBtn("opt_sanitize_names", () => {
+    sanitizeWorkspaceNames().catch(() => {
+      showStatusMessage("Sanitize names failed.");
+    });
+  });
   bindActionBtn("opt_appearancePreset_save", () => {
     if (WS.view) {
       WS.view.appearancePresetPromptMode = "save";
@@ -21010,12 +21037,14 @@ function metaScheduleSave(...docIds) {
   }, 500);
 }
 
-function showBusyOverlay(text) {
+function showBusyOverlay(text, detail = "") {
   if (busyLabel) busyLabel.textContent = text || "Working...";
+  if (busyDetail) busyDetail.textContent = detail || "";
   if (busyOverlay) busyOverlay.classList.add("active");
 }
 
 function hideBusyOverlay() {
+  if (busyDetail) busyDetail.textContent = "";
   if (busyOverlay) busyOverlay.classList.remove("active");
 }
 
@@ -22144,6 +22173,360 @@ async function renameFileOnDisk(dirHandle, fileHandle, oldName, newName) {
     return true;
   } catch {}
   return false;
+}
+
+async function renameDirectoryHandleInParent(
+  parentHandle,
+  dirHandle,
+  oldName,
+  newName,
+) {
+  if (!parentHandle || !dirHandle) return false;
+  if (typeof dirHandle.move === "function") {
+    try {
+      await dirHandle.move(parentHandle, newName);
+      return true;
+    } catch {}
+  }
+  try {
+    const dstHandle = await parentHandle.getDirectoryHandle(newName, {
+      create: true,
+    });
+    await copyDirectoryHandle(dirHandle, dstHandle);
+    await parentHandle.removeEntry(oldName, { recursive: true });
+    return true;
+  } catch {}
+  return false;
+}
+
+function sanitizeFsNamePart(value) {
+  return String(value || "")
+    .replace(/[^A-Za-z0-9 _-]+/g, "")
+    .trim()
+    .replace(/ {2,}/g, " ");
+}
+
+function sanitizeFsEntryName(name) {
+  const raw = String(name || "");
+  if (!raw || raw === "." || raw === "..") return raw;
+
+  if (raw.startsWith(".")) {
+    const rest = raw.slice(1);
+    if (!rest || !rest.includes(".")) {
+      const sanitizedHidden = sanitizeFsNamePart(rest);
+      return sanitizedHidden ? `.${sanitizedHidden}` : "";
+    }
+  }
+
+  if (raw.includes(".")) {
+    const dotIndex = raw.lastIndexOf(".");
+    const stem = raw.slice(0, dotIndex);
+    const ext = raw.slice(dotIndex + 1);
+    const sanitizedStem = sanitizeFsNamePart(stem);
+    const sanitizedExt = sanitizeFsNamePart(ext);
+    if (sanitizedStem && sanitizedExt) return `${sanitizedStem}.${sanitizedExt}`;
+    if (sanitizedStem) return sanitizedStem;
+    if (sanitizedExt) return sanitizedExt;
+    return "";
+  }
+
+  return sanitizeFsNamePart(raw);
+}
+
+function remapTagThumbnailPresetPathsForRename(oldPrefix, newPrefix) {
+  if (!WS.meta || !WS.meta.tagThumbPresets) return;
+  const next = new Map();
+  for (const [tagKey, relPath] of WS.meta.tagThumbPresets.entries()) {
+    const remapped = normalizeWorkspaceRelPath(
+      remapPathPrefix(oldPrefix, newPrefix, relPath),
+    );
+    if (!remapped) continue;
+    next.set(String(tagKey || ""), remapped);
+  }
+  WS.meta.tagThumbPresets = next;
+}
+
+function remapRestoreStateForPathRename(state, oldPrefix, newPrefix) {
+  if (!state || typeof state !== "object") return;
+  state.dirPath = remapPathPrefix(oldPrefix, newPrefix, state.dirPath);
+  if (state.entryKey && state.entryKey.kind === "dir") {
+    state.entryKey.path = remapPathPrefix(
+      oldPrefix,
+      newPrefix,
+      state.entryKey.path,
+    );
+  } else if (state.entryKey && state.entryKey.kind === "file") {
+    state.entryKey.relPath = remapPathPrefix(
+      oldPrefix,
+      newPrefix,
+      state.entryKey.relPath,
+    );
+  }
+  const view = state.view && typeof state.view === "object" ? state.view : null;
+  if (!view) return;
+  view.tagFolderOriginPath = remapPathPrefix(
+    oldPrefix,
+    newPrefix,
+    view.tagFolderOriginPath,
+  );
+  view.favoritesAnchorPath = remapPathPrefix(
+    oldPrefix,
+    newPrefix,
+    view.favoritesAnchorPath,
+  );
+  view.hiddenAnchorPath = remapPathPrefix(
+    oldPrefix,
+    newPrefix,
+    view.hiddenAnchorPath,
+  );
+  view.searchRootPath = remapPathPrefix(
+    oldPrefix,
+    newPrefix,
+    view.searchRootPath,
+  );
+  view.searchAnchorPath = remapPathPrefix(
+    oldPrefix,
+    newPrefix,
+    view.searchAnchorPath,
+  );
+  view.searchEntryRootPath = remapPathPrefix(
+    oldPrefix,
+    newPrefix,
+    view.searchEntryRootPath,
+  );
+}
+
+function remapRestoreStateForFileRename(state, oldRelPath, newRelPath) {
+  if (!state || typeof state !== "object") return;
+  if (
+    state.entryKey &&
+    state.entryKey.kind === "file" &&
+    String(state.entryKey.relPath || "") === String(oldRelPath || "")
+  ) {
+    state.entryKey.relPath = String(newRelPath || "");
+  }
+}
+
+async function collectSanitizeNameCandidatesRecursive(
+  dirHandle,
+  basePath = "",
+  progressCb = null,
+) {
+  const out = [];
+  let scanned = 0;
+
+  const walk = async (parentHandle, parentPath) => {
+    for await (const [name, handle] of parentHandle.entries()) {
+      if (name === ".local-gallery") continue;
+      if (!parentPath && name === INTERNAL_TRASH_DIR_NAME) continue;
+      if (handle.kind !== "file" && handle.kind !== "directory") continue;
+      const relPath = parentPath ? `${parentPath}/${name}` : name;
+      if (handle.kind === "directory") {
+        await walk(handle, relPath);
+      }
+      scanned += 1;
+      const sanitizedName = sanitizeFsEntryName(name);
+      if (sanitizedName !== name) {
+        out.push({
+          kind: handle.kind,
+          path: relPath,
+          parentPath,
+          oldName: name,
+          newName: sanitizedName,
+          parentHandle,
+          handle,
+        });
+      }
+      if (progressCb) {
+        await progressCb(scanned, out.length);
+      }
+    }
+  };
+
+  await walk(dirHandle, basePath);
+  return out;
+}
+
+async function sanitizeWorkspaceNames() {
+  if (RENAME_BUSY) return false;
+  if (!WS.meta.fsRootHandle) {
+    showStatusMessage("Sanitize names requires a writable folder.");
+    return false;
+  }
+
+  const rootHandle = WS.meta.fsRootHandle;
+  const restoreState = snapshotRefreshState();
+  const dirtyDocIds = new Set();
+  let renamed = 0;
+  let failed = 0;
+  let skipped = 0;
+  let scanned = 0;
+
+  RENAME_BUSY = true;
+  try {
+    showBusyOverlay("Scanning names... 0 checked");
+    const candidates = await collectSanitizeNameCandidatesRecursive(
+      rootHandle,
+      "",
+      async (nextScanned, foundCount) => {
+        scanned = nextScanned;
+        if (nextScanned <= 5 || nextScanned % 25 === 0) {
+          showBusyOverlay(
+            `Scanning names... ${nextScanned} checked • ${foundCount} pending`,
+            "",
+          );
+          await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+        }
+      },
+    );
+
+    if (!candidates.length) {
+      showStatusMessage(
+        scanned
+          ? "No file or folder names need sanitizing."
+          : "Nothing found to sanitize.",
+      );
+      return false;
+    }
+
+    for (let i = 0; i < candidates.length; i++) {
+      const item = candidates[i];
+      const label = displayPath(item.path || "") || item.oldName || "item";
+      showBusyOverlay(
+        `Sanitizing names... ${i + 1}/${candidates.length} • Renamed ${renamed} • Failed ${failed} • Skipped ${skipped}`,
+        label,
+      );
+
+      if (!item.newName) {
+        skipped += 1;
+        continue;
+      }
+      if (await entryExistsInDir(item.parentHandle, item.newName)) {
+        skipped += 1;
+        continue;
+      }
+
+      let ok = false;
+      if (item.kind === "directory") {
+        ok = await renameDirectoryHandleInParent(
+          item.parentHandle,
+          item.handle,
+          item.oldName,
+          item.newName,
+        );
+      } else if (item.kind === "file") {
+        ok = await renameFileOnDisk(
+          item.parentHandle,
+          item.handle,
+          item.oldName,
+          item.newName,
+        );
+      }
+
+      if (!ok) {
+        failed += 1;
+        continue;
+      }
+
+      renamed += 1;
+      const oldPath = String(item.path || "");
+      const newPath = item.parentPath ? `${item.parentPath}/${item.newName}` : item.newName;
+
+      if (item.kind === "directory") {
+        const dirNode = WS.dirByPath.get(oldPath) || null;
+        if (dirNode) {
+          const renamedPaths = applyRenameInMemory(dirNode, item.newName);
+          updateFileRecordsForRename(renamedPaths.oldPath, renamedPaths.newPath);
+          remapTagThumbnailPresetPathsForRename(
+            renamedPaths.oldPath,
+            renamedPaths.newPath,
+          );
+          remapRestoreStateForPathRename(
+            restoreState,
+            renamedPaths.oldPath,
+            renamedPaths.newPath,
+          );
+        } else {
+          remapRestoreStateForPathRename(restoreState, oldPath, newPath);
+        }
+        dirtyDocIds.add(META_DOC_IDS.scores);
+        dirtyDocIds.add(META_DOC_IDS.scoreHistory);
+        dirtyDocIds.add(META_DOC_IDS.tags);
+        dirtyDocIds.add(META_DOC_IDS.thumbnails);
+        dirtyDocIds.add(META_DOC_IDS.appearanceAssignments);
+        dirtyDocIds.add(META_DOC_IDS.trash);
+      } else {
+        const rec = findFileRecordByRelPath(oldPath);
+        if (rec) {
+          const dirNode =
+            WS.dirByPath.get(String(rec.dirPath || "")) ||
+            WS.dirByPath.get(String(item.parentPath || "")) ||
+            null;
+          if (dirNode) {
+            await updateFileRecordsForFileRenames(
+              dirNode,
+              new Map([[item.oldName, item.newName]]),
+              item.parentHandle,
+            );
+          } else {
+            remapFolderThumbnailPresetValues(new Map([[oldPath, newPath]]));
+          }
+        } else {
+          remapFolderThumbnailPresetValues(new Map([[oldPath, newPath]]));
+        }
+        remapRestoreStateForFileRename(restoreState, oldPath, newPath);
+        dirtyDocIds.add(META_DOC_IDS.thumbnails);
+      }
+    }
+
+    if (!renamed) {
+      showStatusMessage(
+        failed || skipped
+          ? `Sanitize finished: ${skipped} skipped, ${failed} failed.`
+          : "No names sanitized.",
+      );
+      return false;
+    }
+
+    metaComputeFingerprints();
+
+    if (dirtyDocIds.size) {
+      metaTrackDirtyDocIds(Array.from(dirtyDocIds));
+      if (WS.meta.storageMode === "fs") await metaSaveFsNow();
+      else metaSaveLocalNow();
+    }
+
+    showBusyOverlay("Reloading workspace...");
+    await buildWorkspaceFromDirectoryHandle(rootHandle);
+    restoreRefreshViewState(restoreState.view);
+    const targetDir = WS.dirByPath.get(restoreState.dirPath || "") || WS.root;
+    if (targetDir) WS.nav.dirNode = targetDir;
+    if (WS.view.dirSearchPinned || String(WS.view.dirSearchQuery || "").trim()) {
+      computeDirectorySearchResults();
+    }
+    rebuildDirectoriesEntries();
+    const idx = restoreRefreshSelection(restoreState.entryKey);
+    WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+    syncPreviewToSelection();
+    scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
+    renderDirectoriesPane(true);
+    renderPreviewPane(true, true);
+    syncButtons();
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+
+    showStatusMessage(
+      `Sanitize complete: ${renamed} renamed, ${skipped} skipped, ${failed} failed.`,
+    );
+    return true;
+  } catch (err) {
+    console.error("Sanitize names failed.", err);
+    showStatusMessage("Sanitize names failed.");
+    return false;
+  } finally {
+    RENAME_BUSY = false;
+    hideBusyOverlay();
+  }
 }
 
 function updateViewStatePathsForRename(oldPrefix, newPrefix) {
