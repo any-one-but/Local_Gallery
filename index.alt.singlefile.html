@@ -6739,15 +6739,15 @@ function thumbnailVisibilitySupportedFields(surface, kind) {
   const support = {
     preview: {
       file: ["size", "score", "title", "menuButton", "itemType"],
-      rootFolder: ["itemCount", "size", "score", "title", "menuButton"],
-      subfolder: ["itemCount", "size", "score", "title", "menuButton"],
-      tag: ["itemCount", "title", "menuButton"],
+      rootFolder: ["folderCount", "fileCount", "size", "score", "title", "menuButton"],
+      subfolder: ["folderCount", "fileCount", "size", "score", "title", "menuButton"],
+      tag: ["folderCount", "fileCount", "title", "menuButton"],
     },
     directories: {
       file: ["size", "score", "itemType"],
-      rootFolder: ["itemCount", "size", "score"],
-      subfolder: ["itemCount", "size", "score"],
-      tag: ["itemCount"],
+      rootFolder: ["folderCount", "fileCount", "size", "score"],
+      subfolder: ["folderCount", "fileCount", "size", "score"],
+      tag: ["folderCount", "fileCount"],
     },
   };
   return Array.isArray(support[targetSurface]?.[targetKind])
@@ -6763,6 +6763,8 @@ function thumbnailVisibilityFieldSupported(surface, kind, field) {
 
 function thumbnailVisibilityFieldSuffix(field) {
   if (field === "itemCount") return "ShowItemCount";
+  if (field === "folderCount") return "ShowFolderCount";
+  if (field === "fileCount") return "ShowFileCount";
   if (field === "size") return "ShowSize";
   if (field === "score") return "ShowScore";
   if (field === "title") return "ShowTitle";
@@ -6790,14 +6792,15 @@ function thumbnailVisibilityOptionKeys() {
   const out = [];
   const specs = thumbnailVisibilityKindSpecs();
   const previewFields = [
-    "itemCount",
+    "folderCount",
+    "fileCount",
     "size",
     "score",
     "title",
     "menuButton",
     "itemType",
   ];
-  const directoriesFields = ["itemCount", "size", "score", "itemType"];
+  const directoriesFields = ["folderCount", "fileCount", "size", "score", "itemType"];
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
     for (let j = 0; j < previewFields.length; j++) {
@@ -6833,14 +6836,15 @@ function buildDefaultThumbnailVisibilityOptions() {
   };
   const specs = thumbnailVisibilityKindSpecs();
   const previewFields = [
-    "itemCount",
+    "folderCount",
+    "fileCount",
     "size",
     "score",
     "title",
     "menuButton",
     "itemType",
   ];
-  const directoriesFields = ["itemCount", "size", "score", "itemType"];
+  const directoriesFields = ["folderCount", "fileCount", "size", "score", "itemType"];
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
     for (let j = 0; j < previewFields.length; j++) {
@@ -6864,28 +6868,34 @@ function buildDefaultThumbnailVisibilityOptions() {
   setDirectories("file", "score", true);
   setDirectories("file", "itemType", false);
 
-  setPreview("rootFolder", "itemCount", false);
+  setPreview("rootFolder", "folderCount", false);
+  setPreview("rootFolder", "fileCount", false);
   setPreview("rootFolder", "size", true);
   setPreview("rootFolder", "score", false);
   setPreview("rootFolder", "title", true);
   setPreview("rootFolder", "menuButton", true);
-  setDirectories("rootFolder", "itemCount", false);
+  setDirectories("rootFolder", "folderCount", false);
+  setDirectories("rootFolder", "fileCount", false);
   setDirectories("rootFolder", "size", false);
   setDirectories("rootFolder", "score", true);
 
-  setPreview("subfolder", "itemCount", false);
+  setPreview("subfolder", "folderCount", false);
+  setPreview("subfolder", "fileCount", false);
   setPreview("subfolder", "size", false);
   setPreview("subfolder", "score", false);
   setPreview("subfolder", "title", true);
   setPreview("subfolder", "menuButton", false);
-  setDirectories("subfolder", "itemCount", false);
+  setDirectories("subfolder", "folderCount", false);
+  setDirectories("subfolder", "fileCount", false);
   setDirectories("subfolder", "size", false);
   setDirectories("subfolder", "score", true);
 
-  setPreview("tag", "itemCount", true);
+  setPreview("tag", "folderCount", true);
+  setPreview("tag", "fileCount", true);
   setPreview("tag", "title", true);
   setPreview("tag", "menuButton", false);
-  setDirectories("tag", "itemCount", true);
+  setDirectories("tag", "folderCount", true);
+  setDirectories("tag", "fileCount", true);
 
   return out;
 }
@@ -6899,17 +6909,26 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
   const out = {};
   const specs = thumbnailVisibilityKindSpecs();
   const previewFields = [
-    "itemCount",
+    "folderCount",
+    "fileCount",
     "size",
     "score",
     "title",
     "menuButton",
     "itemType",
   ];
-  const directoriesFields = ["itemCount", "size", "score", "itemType"];
+  const directoriesFields = ["folderCount", "fileCount", "size", "score", "itemType"];
 
   const genericFallbackForField = (field) => {
     if (field === "itemCount") return !!fallbackState.itemCount;
+    if (field === "folderCount")
+      return fallbackState.folderCount !== undefined
+        ? !!fallbackState.folderCount
+        : !!fallbackState.itemCount;
+    if (field === "fileCount")
+      return fallbackState.fileCount !== undefined
+        ? !!fallbackState.fileCount
+        : !!fallbackState.itemCount;
     if (field === "size") return !!fallbackState.size;
     if (field === "score") return !!fallbackState.score;
     if (field === "itemType") return !!fallbackState.itemType;
@@ -7396,6 +7415,8 @@ function normalizeOptions(o) {
     src,
     {
       itemCount: showFolderItemCount,
+      folderCount: showFolderItemCount,
+      fileCount: showFolderItemCount,
       size: showFolderSize,
       score: showScores,
       itemType: showItemTypeLabel,
@@ -14890,6 +14911,29 @@ function countRecursiveFoldersForNode(dirNode, memo = null) {
   return count;
 }
 
+function formatFolderFileCountSegment(folderCount, fileCount) {
+  const folderNum = Math.max(0, Number(folderCount) || 0);
+  const fileNum = Math.max(0, Number(fileCount) || 0);
+  return `${folderNum} ${folderNum === 1 ? "Folder" : "Folders"} • ${fileNum} ${fileNum === 1 ? "File" : "Files"}`;
+}
+
+function getDirectFolderCountForNode(dirNode) {
+  if (!dirNode) return 0;
+  return getChildDirsForNode(dirNode).length;
+}
+
+function getRecursiveFileCountForNode(dirNode) {
+  if (!dirNode) return 0;
+  return dirItemCount(dirNode);
+}
+
+function buildDirFolderFileCountText(dirNode) {
+  return formatFolderFileCountSegment(
+    getDirectFolderCountForNode(dirNode),
+    getRecursiveFileCountForNode(dirNode),
+  );
+}
+
 function getDirectoriesTitleInfoLabel() {
   if (!WS.root) return "—";
   if (WS.view.aboveRootView) return dirDisplayName(WS.root) || "root";
@@ -14914,21 +14958,22 @@ function getDirectoriesTitleInfoLabel() {
 
 function getDirectoriesTitleInfoContext() {
   const title = getDirectoriesTitleInfoLabel();
-  if (!WS.root) return { title, nodes: [] };
-  if (WS.view.aboveRootView) return { title, nodes: [WS.root] };
+  if (!WS.root) return { title, nodes: [], folderCountMode: "collection" };
+  if (WS.view.aboveRootView)
+    return { title, nodes: [WS.root], folderCountMode: "directChildren" };
   if (isViewingTagFolder()) {
-    return { title, nodes: getDirsForTagFolderView() };
+    return { title, nodes: getDirsForTagFolderView(), folderCountMode: "collection" };
   }
   if (searchResultsVisibleInDirectoriesPane()) {
-    return { title, nodes: Array.isArray(WS.view.searchResults) ? WS.view.searchResults : [] };
+    return { title, nodes: Array.isArray(WS.view.searchResults) ? WS.view.searchResults : [], folderCountMode: "collection" };
   }
   if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-    return { title, nodes: getAllFavoriteDirs() };
+    return { title, nodes: getAllFavoriteDirs(), folderCountMode: "collection" };
   }
   if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
-    return { title, nodes: getAllHiddenDirs() };
+    return { title, nodes: getAllHiddenDirs(), folderCountMode: "collection" };
   }
-  return { title, nodes: WS.nav.dirNode ? [WS.nav.dirNode] : [] };
+  return { title, nodes: WS.nav.dirNode ? [WS.nav.dirNode] : [], folderCountMode: "directChildren" };
 }
 
 function getPreviewTitleInfoContext() {
@@ -14936,12 +14981,12 @@ function getPreviewTitleInfoContext() {
   const title = previewDir
     ? dirDisplayName(previewDir) || "root"
     : "—";
-  if (!WS.root) return { title, nodes: [] };
-  if (!previewDir) return { title, nodes: [] };
+  if (!WS.root) return { title, nodes: [], folderCountMode: "collection" };
+  if (!previewDir) return { title, nodes: [], folderCountMode: "collection" };
   if (previewDir._skipTagFilters) {
-    return { title, nodes: getActiveTagPreviewMetricNodes(previewDir) };
+    return { title, nodes: getActiveTagPreviewMetricNodes(previewDir), folderCountMode: "collection" };
   }
-  return { title, nodes: [previewDir] };
+  return { title, nodes: [previewDir], folderCountMode: "directChildren" };
 }
 
 function getCurrentTitleInfoText() {
@@ -14951,20 +14996,25 @@ function getCurrentTitleInfoText() {
   const title = String(context?.title || "—") || "—";
   const nodes = collectUniqueTitleMetricNodes(context?.nodes || []);
   if (!nodes.length) return title;
-  const folderMemo = new Map();
   const sizeMemo = new Map();
-  let folderCount = 0;
+  const folderCountMode =
+    String(context?.folderCountMode || "directChildren") === "collection"
+      ? "collection"
+      : "directChildren";
+  let folderCount = folderCountMode === "collection" ? nodes.length : 0;
   let fileCount = 0;
   let sizeBytes = 0;
   let score = 0;
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
-    folderCount += countRecursiveFoldersForNode(node, folderMemo);
-    fileCount += dirItemCount(node);
+    if (folderCountMode !== "collection") {
+      folderCount += getDirectFolderCountForNode(node);
+    }
+    fileCount += getRecursiveFileCountForNode(node);
     sizeBytes += getDirRecursiveSizeBytesForNode(node, sizeMemo);
     score += Number(metaGetScore(String(node?.path || ""))) || 0;
   }
-  return `${title} • ${folderCount} Folders • ${fileCount} Files • ${formatBytes(sizeBytes)} • Score ${score}`;
+  return `${title} • ${formatFolderFileCountSegment(folderCount, fileCount)} • ${formatBytes(sizeBytes)} • Score ${score}`;
 }
 
 function getCurrentTitleText() {
@@ -16323,15 +16373,26 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
             thumbnailTitleSizeModes,
           ),
         );
-      if (previewFields.includes("itemCount"))
+      if (previewFields.includes("folderCount"))
         rows.push(
           makeCheckRow(
-            "Show item count",
-            "Show item counts in preview-pane thumbnails for this item type.",
+            "Show folder count",
+            "Show non-recursive folder counts in preview-pane thumbnails for this item type.",
             thumbnailVisibilityInputId(
-              thumbnailVisibilityPreviewOptionKey(spec.kind, "itemCount"),
+              thumbnailVisibilityPreviewOptionKey(spec.kind, "folderCount"),
             ),
-            visibility.showItemCount,
+            visibility.showFolderCount,
+          ),
+        );
+      if (previewFields.includes("fileCount"))
+        rows.push(
+          makeCheckRow(
+            "Show file count",
+            "Show recursive file counts in preview-pane thumbnails for this item type.",
+            thumbnailVisibilityInputId(
+              thumbnailVisibilityPreviewOptionKey(spec.kind, "fileCount"),
+            ),
+            visibility.showFileCount,
           ),
         );
       if (previewFields.includes("size"))
@@ -16349,7 +16410,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         rows.push(
           makeCheckRow(
             "Show score",
-            "Show score badges in preview-pane thumbnails for this item type when scores are available.",
+            "Show score in preview-pane thumbnail metadata for this item type when scores are available.",
             thumbnailVisibilityInputId(
               thumbnailVisibilityPreviewOptionKey(spec.kind, "score"),
             ),
@@ -16400,15 +16461,26 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         spec.kind,
       );
       const rows = [];
-      if (directoriesFields.includes("itemCount"))
+      if (directoriesFields.includes("folderCount"))
         rows.push(
           makeCheckRow(
-            "Show item count",
-            "Show item counts on list-pane cards for this item type.",
+            "Show folder count",
+            "Show non-recursive folder counts on list-pane cards for this item type.",
             thumbnailVisibilityInputId(
-              thumbnailVisibilityDirectoriesOptionKey(spec.kind, "itemCount"),
+              thumbnailVisibilityDirectoriesOptionKey(spec.kind, "folderCount"),
             ),
-            visibility.showItemCount,
+            visibility.showFolderCount,
+          ),
+        );
+      if (directoriesFields.includes("fileCount"))
+        rows.push(
+          makeCheckRow(
+            "Show file count",
+            "Show recursive file counts on list-pane cards for this item type.",
+            thumbnailVisibilityInputId(
+              thumbnailVisibilityDirectoriesOptionKey(spec.kind, "fileCount"),
+            ),
+            visibility.showFileCount,
           ),
         );
       if (directoriesFields.includes("size"))
@@ -16426,7 +16498,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         rows.push(
           makeCheckRow(
             "Show score",
-            "Show score badges on list-pane cards for this item type when scores are available.",
+            "Show score in list-pane card metadata for this item type when scores are available.",
             thumbnailVisibilityInputId(
               thumbnailVisibilityDirectoriesOptionKey(spec.kind, "score"),
             ),
@@ -16862,7 +16934,6 @@ ${makeSelectRow("Default video audio", "Default audio state for videos played in
 ${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
 ${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
 ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges of images and videos and crop them out before overlays or filters are applied. Videos sample multiple moments and only crop bars that stay present the whole time.", "opt_autoCropBlackBars", !!opt.autoCropBlackBars)}
-${makeCheckRow("Click selected rotating thumbnail to jump to file", "When a selected folder, tag, or album thumbnail is rotating, clicking it again jumps to the currently shown media file.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
           `,
     },
@@ -19006,12 +19077,12 @@ function fileThumbCropLayoutStyle(rec, rotateKey = "") {
 
 function inferFolderThumbnailDefaultMode(path) {
   const p = normalizeDirPathValue(path);
-  if (!p) return "rotate";
+  if (!p) return "single";
   const node = WS.dirByPath ? WS.dirByPath.get(p) : null;
-  if (!node) return "rotate";
+  if (!node) return "single";
   const hasImmediateFiles =
     Array.isArray(node.childrenFiles) && node.childrenFiles.length > 0;
-  return hasImmediateFiles ? "rotate" : "none";
+  return hasImmediateFiles ? "single" : "none";
 }
 
 function metaGetFolderThumbnailMode(path) {
@@ -19021,7 +19092,7 @@ function metaGetFolderThumbnailMode(path) {
   }
   const raw = String(WS.meta.dirThumbPresets.get(p) || "");
   if (raw === FOLDER_THUMB_NONE_SENTINEL) return "none";
-  if (raw === FOLDER_THUMB_ROTATE_SENTINEL) return "rotate";
+  if (raw === FOLDER_THUMB_ROTATE_SENTINEL) return "single";
   const normalizedRelPath = normalizeWorkspaceRelPath(raw);
   return normalizedRelPath ? "manual" : inferFolderThumbnailDefaultMode(p);
 }
@@ -19158,7 +19229,7 @@ function quadThumbnailsEnabled() {
 }
 
 function defaultRotatingThumbnailMode() {
-  return quadThumbnailsEnabled() ? "quad" : "single";
+  return "single";
 }
 
 function normalizeTagThumbnailMode(mode) {
@@ -19166,8 +19237,16 @@ function normalizeTagThumbnailMode(mode) {
     .trim()
     .toLowerCase();
   if (raw === "none" || raw === "single") return raw;
-  if (raw === "quad") return "single";
-  return defaultRotatingThumbnailMode();
+  if (raw === "rotate" || raw === "quad") return "single";
+  return "single";
+}
+
+function getTagThumbnailDisplayModeByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key) return "single";
+  const rawMode = metaGetTagThumbnailModeByKey(key);
+  if (rawMode === "none") return "none";
+  return "single";
 }
 
 function tagThumbnailKeyForTag(tagName, scopePath = null) {
@@ -19582,27 +19661,10 @@ function metaSetTagThumbnailModeByKey(tagKey, mode) {
   if (!key || !WS.meta || !WS.meta.tagThumbModes) return false;
   const nextMode = normalizeTagThumbnailMode(mode);
   const prevMode = metaGetTagThumbnailModeByKey(key);
-  const hadPreset = !!(
-    WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.has(key)
-  );
-  let changed = false;
-  if (prevMode !== nextMode) {
-    WS.meta.tagThumbModes.set(key, nextMode);
-    changed = true;
-  }
-  if (
-    nextMode !== "single" &&
-    WS.meta.tagThumbPresets &&
-    WS.meta.tagThumbPresets.has(key)
-  ) {
-    WS.meta.tagThumbPresets.delete(key);
-    changed = true;
-  }
-  if (!changed && !hadPreset) return false;
-  if (changed) {
-    metaMarkDirty(META_DOC_IDS.thumbnails);
-  }
-  return changed;
+  if (prevMode === nextMode) return false;
+  WS.meta.tagThumbModes.set(key, nextMode);
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
 }
 
 function metaGetTagThumbnailPresetRelPathByKey(tagKey) {
@@ -19642,32 +19704,13 @@ function metaClearTagThumbnailPresetByKey(tagKey) {
 function tagThumbnailUsesRotationByKey(tagKey) {
   const key = String(tagKey || "");
   if (!key) return false;
-  return (
-    metaGetTagThumbnailModeByKey(key) !== "none" &&
-    !metaHasTagThumbnailPresetByKey(key)
-  );
+  return getTagThumbnailDisplayModeByKey(key) === "rotate";
 }
 
 function metaSetTagThumbnailRotateByKey(tagKey) {
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagThumbModes) return false;
-  const nextMode = defaultRotatingThumbnailMode();
-  const prevMode = metaGetTagThumbnailModeByKey(key);
-  const hadPreset = !!(
-    WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.has(key)
-  );
-  let changed = false;
-  if (prevMode !== nextMode) {
-    WS.meta.tagThumbModes.set(key, nextMode);
-    changed = true;
-  }
-  if (WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.has(key)) {
-    WS.meta.tagThumbPresets.delete(key);
-    changed = true;
-  }
-  if (!changed && !hadPreset) return false;
-  metaMarkDirty(META_DOC_IDS.thumbnails);
-  return changed;
+  return metaSetTagThumbnailModeByKey(key, "single");
 }
 
 function metaGetTagAppearancePresetIdByKey(tagKey) {
@@ -20658,8 +20701,7 @@ function metaApplyTagsLog(log) {
     WS.meta.tagThumbPresets.set(key, relPath);
   }
   for (const key of WS.meta.tagThumbPresets.keys()) {
-    const mode = metaGetTagThumbnailModeByKey(key);
-    if (mode !== "single") WS.meta.tagThumbModes.set(key, "single");
+    if (!WS.meta.tagThumbModes.has(key)) WS.meta.tagThumbModes.set(key, "single");
   }
 
   WS.meta.tagAlbumByTag.clear();
@@ -21427,8 +21469,7 @@ function metaApplyThumbnailsDocLog(log) {
     WS.meta.tagThumbPresets.set(key, relPath);
   }
   for (const key of WS.meta.tagThumbPresets.keys()) {
-    const mode = metaGetTagThumbnailModeByKey(key);
-    if (mode !== "single") WS.meta.tagThumbModes.set(key, "single");
+    if (!WS.meta.tagThumbModes.has(key)) WS.meta.tagThumbModes.set(key, "single");
   }
 
   WS.meta.fileThumbCrop.clear();
@@ -25914,20 +25955,8 @@ function getTagEntryDisplayIcon(entry) {
 }
 
 function getTagEntryCountText(entry) {
-  const folderCount = Math.max(0, Number(entry && entry.count) || 0);
-  const type = String((entry && entry.placeholderType) || "");
-  if (entry && entry.album && !entry.tag) {
-    const tagCount = Math.max(0, Number(entry.tagCount) || 0);
-    if (tagCount && folderCount)
-      return `${tagCount} tags • ${folderCount} folders`;
-    if (tagCount) return `${tagCount} tags`;
-    if (folderCount) return `${folderCount} folders`;
-    return "Tag album";
-  }
-  if (type === "album") {
-    return folderCount ? `${folderCount} tags` : "Tag album";
-  }
-  return folderCount ? `${folderCount} folders` : "Tag folder";
+  const metrics = getTagEntryAggregateMetrics(entry);
+  return formatFolderFileCountSegment(metrics.folderCount, metrics.fileCount);
 }
 
 function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
@@ -25938,6 +25967,8 @@ function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
   if (cacheKey && TAG_ENTRY_METRICS_CACHE.has(cacheKey)) {
     return TAG_ENTRY_METRICS_CACHE.get(cacheKey) || {
       dirs: [],
+      folderCount: 0,
+      fileCount: 0,
       score: 0,
       sizeBytes: 0,
     };
@@ -25945,9 +25976,13 @@ function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
   const dirs = getDirsForTagEntry(entry);
   let score = 0;
   let sizeBytes = 0;
+  let fileCount = 0;
+  const folderCount = dirs.length;
   if (entry && entry.kind === "tag" && entry.special === "storage") {
     const result = {
       dirs,
+      folderCount,
+      fileCount: 0,
       score: 0,
       sizeBytes: 0,
     };
@@ -25961,10 +25996,13 @@ function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
     if (!path || seen.has(path)) continue;
     seen.add(path);
     score += Number(metaGetScore(path)) || 0;
+    fileCount += getRecursiveFileCountForNode(dirNode);
     sizeBytes += getDirRecursiveSizeBytesForNode(dirNode, sizeMemo);
   }
   const result = {
     dirs,
+    folderCount,
+    fileCount,
     score,
     sizeBytes,
   };
@@ -26631,6 +26669,7 @@ async function hydrateEditedThumbnailAspects() {
 function getRootPresetPreviewRecord(rootNode, rootPool = null) {
   if (!rootNode) return null;
   const key = rootThumbnailKey();
+  if (getTagThumbnailDisplayModeByKey(key) !== "single") return null;
   const relPath = metaGetTagThumbnailPresetRelPathByKey(key);
   if (!relPath) return null;
   const rec = findFileRecordByRelPath(relPath);
@@ -27599,6 +27638,7 @@ function setRandomTagThumbnailForEntry(entry) {
 function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
   const key = tagThumbnailKeyForEntry(entry);
   if (!key) return null;
+  if (getTagThumbnailDisplayModeByKey(key) !== "single") return null;
   const relPath = metaGetTagThumbnailPresetRelPathByKey(key);
   if (!relPath) return null;
   const rec = findFileRecordByRelPath(relPath);
@@ -31233,17 +31273,26 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
   };
 
   if (surface === "directories") {
+    const showFolderCount =
+      supportsDirectories("folderCount") &&
+      resolveDirectoriesValue(
+        "folderCount",
+        !(src && src.showFolderItemCount === false),
+      );
+    const showFileCount =
+      supportsDirectories("fileCount") &&
+      resolveDirectoriesValue(
+        "fileCount",
+        !(src && src.showFolderItemCount === false),
+      );
     return {
       showScores:
         supportsDirectories("score") &&
         showScore &&
         resolveDirectoriesValue("score", !(src && src.showScores === false)),
-      showItemCount:
-        supportsDirectories("itemCount") &&
-        resolveDirectoriesValue(
-          "itemCount",
-          !(src && src.showFolderItemCount === false),
-        ),
+      showFolderCount,
+      showFileCount,
+      showItemCount: showFolderCount || showFileCount,
       showSize:
         supportsDirectories("size") &&
         resolveDirectoriesValue("size", !(src && src.showFolderSize === false)),
@@ -31274,17 +31323,26 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
     return !(src && src.hideRootFolderThumbnailMenuButton);
   })();
 
+  const showFolderCount =
+    supportsPreview("folderCount") &&
+    resolvePreviewValue(
+      "folderCount",
+      !(src && src.showFolderItemCount === false),
+    );
+  const showFileCount =
+    supportsPreview("fileCount") &&
+    resolvePreviewValue(
+      "fileCount",
+      !(src && src.showFolderItemCount === false),
+    );
   return {
     showScores:
       supportsPreview("score") &&
       showScore &&
       resolvePreviewValue("score", !(src && src.showScores === false)),
-    showItemCount:
-      supportsPreview("itemCount") &&
-      resolvePreviewValue(
-        "itemCount",
-        !(src && src.showFolderItemCount === false),
-      ),
+    showFolderCount,
+    showFileCount,
+    showItemCount: showFolderCount || showFileCount,
     showSize:
       supportsPreview("size") &&
       resolvePreviewValue("size", !(src && src.showFolderSize === false)),
@@ -31856,21 +31914,7 @@ function collectVisibleThumbRecordsForTagEntry(entry) {
     : entry.album && !entry.tag
       ? `tag:${scopePath}:album:${String(entry.album || "")}`
       : `tag:${scopePath}:name:${String(entry.tag || "")}`;
-  if (thumbMode === "single" || pool.length < 4) {
-    const rec = pickRotatingPreviewRecordForKey(`${baseKey}:single`, pool);
-    return rec ? [rec] : [];
-  }
-  const slots = pickRotatingPreviewSlotsForKey(baseKey, pool, 4);
-  const out = [];
-  const seen = new Set();
-  for (let i = 0; i < slots.length; i++) {
-    const rec = slots[i] && slots[i].rec ? slots[i].rec : null;
-    const id = String(rec?.id || "");
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    out.push(rec);
-  }
-  return out;
+  return pool[0] ? [pool[0]] : [];
 }
 
 function collectFullNavigationEntryRecords(
@@ -34041,12 +34085,6 @@ function openTagContextMenu(context) {
     );
   }
   const tagThumbnailButtons = [];
-  if (!tagThumbIsRotating)
-    tagThumbnailButtons.push(
-      createTagMenuButton("Rotating thumbnail", () =>
-        handleTagMenuAction("thumbnail-rotate"),
-      ),
-    );
   if (thumbMode !== "none")
     tagThumbnailButtons.push(
       createTagMenuButton("No thumbnail", () =>
@@ -34215,8 +34253,6 @@ function buildFolderThumbnailSubmenuHtml(options) {
   let buttonsHtml = "";
   if (cfg.showUseDefaultThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>`;
-  if (cfg.showSetRotateThumbnail)
-    buttonsHtml += `<button type="button" data-action="thumbnail-rotate">Rotating thumbnail</button>`;
   if (cfg.showSetNoThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-none">No thumbnail</button>`;
   if (cfg.showSetRandomThumbnail)
@@ -34356,10 +34392,7 @@ function buildFolderMenuState(dirNode) {
     showUseDefaultThumbnail:
       !isStorageGhost &&
       (hasPreset || (isRootNode && !isRootThumbnailModeDefault(folderThumbMode))),
-    showSetRotateThumbnail:
-      !isStorageGhost &&
-      canToggleFolderThumbMode &&
-      (folderThumbMode === "none" || hasPreset),
+    showSetRotateThumbnail: false,
     showSetNoThumbnail:
       !isStorageGhost && canToggleFolderThumbMode && folderThumbMode !== "none",
     showSetRandomThumbnail:
@@ -34444,10 +34477,6 @@ function buildFolderActionMenuDom(
   if (state.showUseDefaultThumbnail)
     folderThumbnailButtons.push(
       makeBtn("Use default thumbnail", "thumbnail-default"),
-    );
-  if (state.showSetRotateThumbnail)
-    folderThumbnailButtons.push(
-      makeBtn("Rotating thumbnail", "thumbnail-rotate"),
     );
   if (state.showSetNoThumbnail)
     folderThumbnailButtons.push(makeBtn("No thumbnail", "thumbnail-none"));
@@ -35787,16 +35816,7 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     return true;
   }
   if (action === "thumbnail-rotate" || action === "thumbnail-quad") {
-    const changed = isRootNode
-      ? resetRootThumbnailToDefault()
-      : metaSetFolderThumbnailRotate(p);
-    if (!changed) return true;
-    refreshThumbnailUiAfterMetadataChange();
-    showStatusMessage(
-      isRootNode
-        ? "Root thumbnail set to rotating mode."
-        : "Folder thumbnail set to rotating mode.",
-    );
+    showStatusMessage("Rotating thumbnails are no longer available.");
     return true;
   }
   if (action === "thumbnail-random") {
@@ -36226,24 +36246,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         kickVideoThumbsForPreview();
         kickImageThumbsForPreview();
         showStatusMessage("Folder thumbnails reset to default.");
-      }),
-    );
-  }
-  if (thumbTogglePaths.length && !allThumbRotate) {
-    thumbnailBulkButtons.push(
-      makeBtn("Rotating thumbnail", () => {
-        const changed = metaSetFolderThumbnailModeBulk(
-          thumbTogglePaths,
-          "rotate",
-        );
-        if (!changed) return;
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        renderDirectoriesPane(true);
-        renderPreviewPane(false, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-        showStatusMessage("Folder thumbnails set to rotating mode.");
       }),
     );
   }
@@ -36792,21 +36794,6 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
 
   if (tagThumbTargets.length) {
     const tagThumbnailButtons = [];
-    if (!allTagThumbRotating) {
-      tagThumbnailButtons.push(
-        makeBtn("Rotating thumbnail", async () => {
-          let changed = false;
-          for (let i = 0; i < tagThumbTargets.length; i++) {
-            if (metaSetTagThumbnailRotateByKey(tagThumbTargets[i]))
-              changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          refreshThumbnailUiAfterMetadataChange();
-          showStatusMessage("Tag folder thumbnails set to rotating mode.");
-        }),
-      );
-    }
     if (!allTagThumbNone) {
       tagThumbnailButtons.push(
         makeBtn("No thumbnail", async () => {
@@ -37421,10 +37408,7 @@ function handleTagMenuAction(action) {
     action === "thumbnail-single" ||
     action === "thumbnail-quad"
   ) {
-    const changed = metaSetTagThumbnailRotateByKey(tagKey);
-    if (!changed) return;
-    refreshThumbnailUiAfterMetadataChange();
-    showStatusMessage(`Rotating thumbnail enabled for '${label}'.`);
+    showStatusMessage("Rotating thumbnails are no longer available.");
     return;
   }
   if (action === "thumbnail-random") {
@@ -37929,22 +37913,6 @@ function renderDirectoriesActionHeader() {
 
   if (canUseGridTagThumbBulkActions) {
     const tagThumbnailButtons = [];
-    if (!allTagThumbRotating) {
-      tagThumbnailButtons.push(
-        makeActionBtn("Rotating thumbnail", () => {
-          WS.view.bulkActionMenuOpen = false;
-          let changed = false;
-          for (let i = 0; i < tagThumbTargets.length; i++) {
-            if (metaSetTagThumbnailRotateByKey(tagThumbTargets[i]))
-              changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          refreshThumbnailUiAfterMetadataChange();
-          showStatusMessage("Tag folder thumbnails set to rotating mode.");
-        }),
-      );
-    }
 
     if (!allTagThumbNone) {
       tagThumbnailButtons.push(
@@ -38252,25 +38220,6 @@ function renderDirectoriesActionHeader() {
       );
     }
 
-    if (thumbTogglePaths.length && !allThumbRotate) {
-      bulkThumbnailButtons.push(
-        makeActionBtn("Rotating thumbnail", () => {
-          WS.view.bulkActionMenuOpen = false;
-          const changed = metaSetFolderThumbnailModeBulk(
-            thumbTogglePaths,
-            "rotate",
-          );
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Folder thumbnails set to rotating mode.");
-        }),
-      );
-    }
 
     if (thumbTogglePaths.length && !allThumbNone) {
       bulkThumbnailButtons.push(
@@ -38759,8 +38708,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const dirVisibility = directoriesThumbnailVisibilityForDirNode(
         entry.node,
       );
-      if (dirVisibility.showItemCount) {
-        const countText = `${dirItemCount(entry.node)} items`;
+      if (dirVisibility.showFolderCount || dirVisibility.showFileCount) {
+        const countText = buildDirFolderFileCountText(entry.node);
         if (countText.length > maxMetaLen) maxMetaLen = countText.length;
       }
       if (dirVisibility.showSize) {
@@ -38892,7 +38841,11 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
       const tagMetrics = getTagEntryAggregateMetrics(entry);
       const tagSummaryBits = [];
-      if (tagVisibility.showItemCount) tagSummaryBits.push(countText);
+      if (tagVisibility.showFolderCount && tagVisibility.showFileCount) tagSummaryBits.push(countText);
+      else if (tagVisibility.showFolderCount)
+        tagSummaryBits.push(`${tagMetrics.folderCount} ${tagMetrics.folderCount === 1 ? "Folder" : "Folders"}`);
+      else if (tagVisibility.showFileCount)
+        tagSummaryBits.push(`${tagMetrics.fileCount} ${tagMetrics.fileCount === 1 ? "File" : "Files"}`);
       if (tagVisibility.showSize)
         tagSummaryBits.push(formatBytes(tagMetrics.sizeBytes));
       const tagThumbKey = tagThumbnailKeyForEntry(entry);
@@ -38934,13 +38887,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               : "";
             squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
           }
-        } else if (
-          tagAllowsRotation &&
-          tagThumbMode === "single" &&
-          tagPool.length
-        ) {
-          const singleKey = `${tagRotateKey}:single`;
-          const rec = pickRotatingPreviewRecordForKey(singleKey, tagPool);
+        } else if (tagThumbMode === "single" && tagPool.length) {
+          const rec = tagPool[0] || null;
           if (rec) {
             const previewId = String(rec.id || "");
             const previewSrc = getPassivePreviewSrcForRecord(rec, {
@@ -38948,7 +38896,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             });
             const previewAspect = getPreviewAspectForRecord(rec);
             if (previewSrc) {
-              squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+              squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
             }
           }
         } else if (
@@ -39038,10 +38986,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         !menuOnlyTagSquareCard && tagVisibility.showItemTypeLabel
           ? `<span class="dirTagKindBadge">${escapeHtml(tagTypeLabel)}</span>`
           : "";
-      const scoreBadgeHtml =
-        !menuOnlyTagSquareCard && tagVisibility.showScores
-          ? `<span class="dirSquareScore" title="Score">${escapeHtml(String(tagMetrics.score))}</span>`
-          : "";
+      const scoreBadgeHtml = ``;
       const hiddenBadgeHtml =
         !menuOnlyTagSquareCard && isHiddenTag
           ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">🙈</span>`
@@ -39093,11 +39038,16 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   if (isHiddenTag) tagMetaParts.push("Hidden");
                   if (tagVisibility.showItemTypeLabel)
                     tagMetaParts.push(tagTypeLabel);
-                  if (tagVisibility.showScores)
-                    tagMetaParts.push(`Score ${tagMetrics.score}`);
-                  if (tagVisibility.showItemCount) tagMetaParts.push(countText);
+                  if (tagVisibility.showFolderCount && tagVisibility.showFileCount)
+                    tagMetaParts.push(countText);
+                  else if (tagVisibility.showFolderCount)
+                    tagMetaParts.push(`${tagMetrics.folderCount} ${tagMetrics.folderCount === 1 ? "Folder" : "Folders"}`);
+                  else if (tagVisibility.showFileCount)
+                    tagMetaParts.push(`${tagMetrics.fileCount} ${tagMetrics.fileCount === 1 ? "File" : "Files"}`);
                   if (tagVisibility.showSize)
                     tagMetaParts.push(formatBytes(tagMetrics.sizeBytes));
+                  if (tagVisibility.showScores)
+                    tagMetaParts.push(`Score ${tagMetrics.score}`);
                   return tagMetaParts.length
                     ? `<div class="dirBarMetaText">${escapeHtml(tagMetaParts.join(" • "))}</div>`
                     : "";
@@ -39151,8 +39101,17 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const dirMetaLines = [];
         if (!isStorageGhost && dirVisibility.showItemTypeLabel)
           dirMetaLines.push(folderItemTypeLabelForNode(entry.node));
-        if (!isStorageGhost && dirVisibility.showItemCount)
-          dirMetaLines.push(`${dirItemCount(entry.node)} items`);
+        if (!isStorageGhost && (dirVisibility.showFolderCount || dirVisibility.showFileCount)) {
+          const folderCount = getDirectFolderCountForNode(entry.node);
+          const fileCount = getRecursiveFileCountForNode(entry.node);
+          if (dirVisibility.showFolderCount && dirVisibility.showFileCount) {
+            dirMetaLines.push(formatFolderFileCountSegment(folderCount, fileCount));
+          } else if (dirVisibility.showFolderCount) {
+            dirMetaLines.push(`${folderCount} ${folderCount === 1 ? "Folder" : "Folders"}`);
+          } else if (dirVisibility.showFileCount) {
+            dirMetaLines.push(`${fileCount} ${fileCount === 1 ? "File" : "Files"}`);
+          }
+        }
         if (!isStorageGhost && dirVisibility.showSize)
           dirMetaLines.push(
             formatBytes(dirSizeByPath.get(String(p || "")) || 0),
@@ -39193,15 +39152,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const sc = isStorageGhost ? 0 : metaGetScore(p);
         const scoreMode =
           dirVisibility.showScores && !isStorageGhost ? "no-arrows" : "hidden";
-        if (scoreMode !== "hidden") {
-          const arrows = scoreMode === "show";
-          voteHtml = `
-          <div class="voteBox" data-path="${escapeHtml(p)}">
-            ${arrows ? `<div class="voteBtn up">▲</div>` : ""}
-            <div class="voteScore">${sc}</div>
-            ${arrows ? `<div class="voteBtn down">▼</div>` : ""}
-          </div>
-          `;
+        if (!isStorageGhost && dirVisibility.showScores) {
+          dirMetaLines.push(`Score ${sc}`);
         }
         const isRootNode = entry.node === WS.root;
         const folderMenuState = buildFolderMenuState(entry.node);
@@ -39217,9 +39169,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const showUseDefaultThumbnail =
           hasThumbPreset ||
           (isRootNode && !isRootThumbnailModeDefault(folderThumbMode));
-        const showSetRotateThumbnail =
-          canToggleFolderThumbMode &&
-          (folderThumbMode === "none" || hasThumbPreset);
+        const showSetRotateThumbnail = false;
         const showSetNoThumbnail =
           canToggleFolderThumbMode && folderThumbMode !== "none";
         const showSetRandomThumbnail =
@@ -39300,15 +39250,11 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         rightHtml = `
               <div class="dirRight dirFolderActions">
                 ${metaSummaryText ? `<div class="dirBarMetaText">${escapeHtml(metaSummaryText)}</div>` : ""}
-                ${voteHtml}
                 ${menuHtml}
               </div>
             `;
         if (folderSquareCardMode) {
-          const scoreInlineHtml =
-            scoreMode !== "hidden"
-              ? `<span class="dirSquareScore" title="Score">${escapeHtml(String(sc))}</span>`
-              : "";
+          const scoreInlineHtml = "";
           const isRootPortalCard =
             WS.view.aboveRootView && entry.node === WS.root;
           let squareAspectRec = firstRec || null;
@@ -39341,16 +39287,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                     : "";
                   rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
                 }
-              } else if (
-                !naturalThumbCards &&
-                rootMode === "single" &&
-                rootPool.length
-              ) {
-                const singleKey = `root:${rootScope}:single`;
-                const rec = pickRotatingPreviewRecordForKey(
-                  singleKey,
-                  rootPool,
-                );
+              } else if (rootMode === "single" && rootPool.length) {
+                const rec = rootPool[0] || null;
                 if (rec) {
                   squareAspectRec = rec;
                   const previewId = String(rec.id || "");
@@ -39359,7 +39297,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   });
                   const previewAspect = getPreviewAspectForRecord(rec);
                   if (previewSrc) {
-                    rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                    rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
                   }
                 }
               } else if (
@@ -42138,7 +42076,8 @@ function renderPreviewSearchResults(container) {
 
 function buildPreviewTagCardMarkup(entry) {
   const visibility = previewThumbnailVisibilityForKind("tag");
-  const showItemCount = visibility.showItemCount;
+  const showFolderCount = visibility.showFolderCount;
+  const showFileCount = visibility.showFileCount;
   const showSize = visibility.showSize;
   const showScores = visibility.showScores;
   const showItemTypeLabel = visibility.showItemTypeLabel;
@@ -42152,8 +42091,11 @@ function buildPreviewTagCardMarkup(entry) {
   const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
   const tagMetrics = getTagEntryAggregateMetrics(entry);
   const tagSummaryBits = [];
-  if (showItemCount) tagSummaryBits.push(countText);
+  if (showFolderCount && showFileCount) tagSummaryBits.push(countText);
+  else if (showFolderCount) tagSummaryBits.push(`${tagMetrics.folderCount} ${tagMetrics.folderCount === 1 ? "Folder" : "Folders"}`);
+  else if (showFileCount) tagSummaryBits.push(`${tagMetrics.fileCount} ${tagMetrics.fileCount === 1 ? "File" : "Files"}`);
   if (showSize) tagSummaryBits.push(formatBytes(tagMetrics.sizeBytes));
+  if (showScores) tagSummaryBits.push(`Score ${tagMetrics.score}`);
   const tagThumbKey = tagThumbnailKeyForEntry(entry);
   const tagThumbMode = metaGetTagThumbnailModeByKey(tagThumbKey);
   const presetRec = getTagPresetPreviewRecordForEntry(entry);
@@ -42188,24 +42130,19 @@ function buildPreviewTagCardMarkup(entry) {
           : "";
         squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
       }
-    } else if (
-      tagAllowsRotation &&
-      tagThumbMode === "single" &&
-      tagPool.length
-    ) {
-      const singleKey = `${tagRotateKey}:single`;
-      const rec = pickRotatingPreviewRecordForKey(singleKey, tagPool);
-      if (rec) {
-        const previewId = String(rec.id || "");
-        const previewSrc = getPassivePreviewSrcForRecord(rec, {
-          allowImageMediaFallback: true,
-        });
-        const previewAspect = getPreviewAspectForRecord(rec);
-        if (previewSrc) {
-          squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
-        }
-      }
-    } else if (tagAllowsRotation && tagThumbMode === "quad" && tagPool.length) {
+    } else if (tagThumbMode === "single" && tagPool.length) {
+          const rec = tagPool[0] || null;
+          if (rec) {
+            const previewId = String(rec.id || "");
+            const previewSrc = getPassivePreviewSrcForRecord(rec, {
+              allowImageMediaFallback: true,
+            });
+            const previewAspect = getPreviewAspectForRecord(rec);
+            if (previewSrc) {
+              squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+            }
+          }
+        } else if (tagAllowsRotation && tagThumbMode === "quad" && tagPool.length) {
       if (tagPool.length < 4) {
         const singleKey = `${tagRotateKey}:single-fallback`;
         const rec = pickRotatingPreviewRecordForKey(singleKey, tagPool);
@@ -42292,10 +42229,7 @@ function buildPreviewTagCardMarkup(entry) {
     !menuOnlyTagCard && showItemTypeLabel
       ? `<span class="dirTagKindBadge">${escapeHtml(tagTypeLabel)}</span>`
       : "";
-  const scoreBadgeHtml =
-    !menuOnlyTagCard && showScores
-      ? `<span class="dirSquareScore" title="Score">${escapeHtml(String(tagMetrics.score))}</span>`
-      : "";
+  const scoreBadgeHtml = ``;
   const hiddenBadgeHtml =
     !menuOnlyTagCard && isHiddenTag
       ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">🙈</span>`
@@ -42550,7 +42484,8 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
   }
   const visibility = previewThumbnailVisibilityForDirNode(dirNode);
   const showScores = visibility.showScores;
-  const showItemCount = visibility.showItemCount;
+  const showFolderCount = visibility.showFolderCount;
+  const showFileCount = visibility.showFileCount;
   const showSize = visibility.showSize;
   const showItemTypeLabel = visibility.showItemTypeLabel;
   const card = document.createElement("div");
@@ -42577,13 +42512,22 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
   const scoreMode = showScores ? "no-arrows" : "hidden";
   const isFavorite = metaHasFavorite(p);
   const isHidden = metaHasHidden(p);
-  const totalItems = dirItemCount(dirNode);
+  const totalFolderCount = getDirectFolderCountForNode(dirNode);
+  const totalFileCount = getRecursiveFileCountForNode(dirNode);
   const totalSizeBytes = getDirRecursiveSizeBytesForNode(dirNode, sizeMemo);
   const folderSummaryParts = [];
   if (showItemTypeLabel)
     folderSummaryParts.push(folderItemTypeLabelForNode(dirNode));
-  if (showItemCount) folderSummaryParts.push(`${totalItems} items`);
+  if (showFolderCount && showFileCount)
+    folderSummaryParts.push(
+      formatFolderFileCountSegment(totalFolderCount, totalFileCount),
+    );
+  else if (showFolderCount)
+    folderSummaryParts.push(`${totalFolderCount} ${totalFolderCount === 1 ? "Folder" : "Folders"}`);
+  else if (showFileCount)
+    folderSummaryParts.push(`${totalFileCount} ${totalFileCount === 1 ? "File" : "Files"}`);
   if (showSize) folderSummaryParts.push(formatBytes(totalSizeBytes));
+  if (showScores) folderSummaryParts.push(`Score ${sc}`);
   const thumbMode = folderPreviewThumbMode();
   const thumbAspectMode = thumbMode === "aspect";
   const thumbContainMode =
@@ -42616,16 +42560,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
       : { record: null, rotateKey: "" };
   const leadRec = leadInfo.record;
   const rotateKey = leadInfo.rotateKey;
-  const voteSeg =
-    scoreMode !== "hidden"
-      ? `
-          <div class="voteBox">
-            ${scoreMode === "show" ? `<div class="voteBtn up">▲</div>` : ""}
-            <div class="voteScore">${sc}</div>
-            ${scoreMode === "show" ? `<div class="voteBtn down">▼</div>` : ""}
-          </div>
-          `
-      : ``;
+  const voteSeg = ``;
   const countSeg = folderSummaryParts.length
     ? `<div class="meta">${folderSummaryParts.join(" • ")}</div>`
     : "";
@@ -42830,13 +42765,6 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
     if (thumbOverlayMode) {
       const rightMeta = document.createElement("div");
       rightMeta.className = "thumbOverlayRightMeta";
-      if (!menuOnlyOverlayMeta && scoreMode !== "hidden") {
-        const score = document.createElement("span");
-        score.className = "thumbOverlayScore";
-        score.textContent = String(sc);
-        score.title = "Score";
-        rightMeta.appendChild(score);
-      }
       if (!menuOnlyOverlayMeta && isHidden) {
         const hidden = document.createElement("span");
         hidden.className = "dirHiddenBadge dirStatusBadge";
@@ -46559,27 +46487,38 @@ function handleExtrasKeybindAction(action) {
       return nudgeSelectedThumbnailViewport(0, THUMB_VIEWPORT_NUDGE_STEP);
     case "toggleShowFolderItemCounts": {
       const next =
-        !previewThumbnailVisibilityForKind("rootFolder").showItemCount;
+        !previewThumbnailVisibilityForKind("rootFolder").showFolderCount ||
+        !previewThumbnailVisibilityForKind("rootFolder").showFileCount;
       const nextValues = { showFolderItemCount: next };
       const specs = thumbnailVisibilityKindSpecs();
       for (let i = 0; i < specs.length; i++) {
         const kind = specs[i].kind;
-        const previewKey = thumbnailVisibilityPreviewOptionKey(
+        const previewFolderKey = thumbnailVisibilityPreviewOptionKey(
           kind,
-          "itemCount",
+          "folderCount",
         );
-        const directoriesKey = thumbnailVisibilityDirectoriesOptionKey(
+        const previewFileKey = thumbnailVisibilityPreviewOptionKey(
           kind,
-          "itemCount",
+          "fileCount",
         );
-        if (previewKey) nextValues[previewKey] = next;
-        if (directoriesKey) nextValues[directoriesKey] = next;
+        const directoriesFolderKey = thumbnailVisibilityDirectoriesOptionKey(
+          kind,
+          "folderCount",
+        );
+        const directoriesFileKey = thumbnailVisibilityDirectoriesOptionKey(
+          kind,
+          "fileCount",
+        );
+        if (previewFolderKey) nextValues[previewFolderKey] = next;
+        if (previewFileKey) nextValues[previewFileKey] = next;
+        if (directoriesFolderKey) nextValues[directoriesFolderKey] = next;
+        if (directoriesFileKey) nextValues[directoriesFileKey] = next;
       }
       setOptionValues(nextValues);
       refreshLiveSettingsPaneFromKeyboardAction();
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
-      showStatusMessage(`Folder counts: ${next ? "On" : "Off"}`);
+      showStatusMessage(`Folder and file counts: ${next ? "On" : "Off"}`);
       return true;
     }
     default:
