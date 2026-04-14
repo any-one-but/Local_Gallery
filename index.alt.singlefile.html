@@ -68,6 +68,68 @@
   --thumb-title-font-weight: 700;
 }
 
+:root[data-preview-file-title-size="large"] .gridFiles.previewSquareCards .previewThumbOverlayMeta .name,
+:root[data-preview-file-title-size="large"]
+  .gridFiles.previewNaturalAspectCards.fitInsideJustified
+  .previewThumbOverlayMeta
+  .name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:root[data-preview-file-title-size="large"]
+  .gridFiles
+  .previewThumbOverlayBottomLine
+  .previewThumbOverlayNameInlineCompact {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:root[data-preview-root-folder-title-size="large"]
+  .gridFolders
+  .folderCard.folderThumbCard[data-preview-thumb-kind="rootFolder"]
+  .thumbOverlayMeta
+  .name,
+:root[data-preview-subfolder-title-size="large"]
+  .gridFolders
+  .folderCard.folderThumbCard[data-preview-thumb-kind="subfolder"]
+  .thumbOverlayMeta
+  .name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:root[data-preview-root-folder-title-size="large"]
+  .gridFolders
+  .folderCard.folderThumbCard[data-preview-thumb-kind="rootFolder"]
+  .thumbOverlayBottomLine
+  .thumbOverlayNameInlineCompact,
+:root[data-preview-subfolder-title-size="large"]
+  .gridFolders
+  .folderCard.folderThumbCard[data-preview-thumb-kind="subfolder"]
+  .thumbOverlayBottomLine
+  .thumbOverlayNameInlineCompact {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:root[data-preview-tag-title-size="large"]
+  .gridFolders
+  .previewTagFolderCard
+  .dirSquareName {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+:root[data-preview-tag-title-size="large"]
+  .gridFolders
+  .previewTagFolderCard
+  .dirSquareBottomCompact
+  .dirSquareNameInlineCompact {
+  font-size: 22px;
+  font-weight: 700;
+}
+
 :root[data-media-size="small"] {
   --file-grid-min: 150px;
   --file-meta-font: 11px;
@@ -7037,6 +7099,10 @@ function defaultOptions() {
     hideAfterFirstUnderscoreInFileNames: true,
     clickSelectedRotatingThumbTeleports: false,
     thumbnailTitleSize: "small",
+    previewFileThumbnailTitleSize: "small",
+    previewRootFolderThumbnailTitleSize: "small",
+    previewSubfolderThumbnailTitleSize: "small",
+    previewTagThumbnailTitleSize: "small",
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "medium",
     thumbnailScaleAspect: "medium",
@@ -7239,6 +7305,22 @@ function normalizeOptions(o) {
   const thumbnailTitleSize = normalizeThumbnailTitleSizeValue(
     src.thumbnailTitleSize,
     d.thumbnailTitleSize,
+  );
+  const previewFileThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewFileThumbnailTitleSize,
+    thumbnailTitleSize,
+  );
+  const previewRootFolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewRootFolderThumbnailTitleSize,
+    thumbnailTitleSize,
+  );
+  const previewSubfolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewSubfolderThumbnailTitleSize,
+    thumbnailTitleSize,
+  );
+  const previewTagThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewTagThumbnailTitleSize,
+    thumbnailTitleSize,
   );
   const legacyShowFolderThumbnailTitles =
     typeof src.showFolderThumbnailTitles === "boolean"
@@ -7455,6 +7537,10 @@ function normalizeOptions(o) {
         ? src.clickSelectedRotatingThumbTeleports
         : d.clickSelectedRotatingThumbTeleports,
     thumbnailTitleSize,
+    previewFileThumbnailTitleSize,
+    previewRootFolderThumbnailTitleSize,
+    previewSubfolderThumbnailTitleSize,
+    previewTagThumbnailTitleSize,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,
@@ -7820,6 +7906,10 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   thumbnails: Object.freeze(
     [
       "thumbnailTitleSize",
+      "previewFileThumbnailTitleSize",
+      "previewRootFolderThumbnailTitleSize",
+      "previewSubfolderThumbnailTitleSize",
+      "previewTagThumbnailTitleSize",
       "thumbnailStyle",
       "thumbnailScaleCropped",
       "thumbnailScaleAspect",
@@ -12210,6 +12300,31 @@ function getThumbnailTitleSizeFromOptions(opt = null) {
   );
 }
 
+function previewThumbnailTitleSizeOptionKey(kind) {
+  const target = String(kind || "");
+  if (target === "file") return "previewFileThumbnailTitleSize";
+  if (target === "rootFolder") return "previewRootFolderThumbnailTitleSize";
+  if (target === "subfolder") return "previewSubfolderThumbnailTitleSize";
+  if (target === "tag") return "previewTagThumbnailTitleSize";
+  return "";
+}
+
+function previewThumbnailTitleSizeAttributeName(kind) {
+  const target = String(kind || "");
+  if (target === "file") return "data-preview-file-title-size";
+  if (target === "rootFolder") return "data-preview-root-folder-title-size";
+  if (target === "subfolder") return "data-preview-subfolder-title-size";
+  if (target === "tag") return "data-preview-tag-title-size";
+  return "";
+}
+
+function getPreviewThumbnailTitleSizeForKind(kind, opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  const key = previewThumbnailTitleSizeOptionKey(kind);
+  const fallback = getThumbnailTitleSizeFromOptions(src);
+  return normalizeThumbnailTitleSizeValue(key && src ? src[key] : null, fallback);
+}
+
 function getThumbnailScaleForStyle(style, opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   const s = style === "aspect" ? "aspect" : "cropped";
@@ -12251,6 +12366,15 @@ function applyThumbnailTitleSizeFromOptions() {
   const size = getThumbnailTitleSizeFromOptions(opt);
   if (size === "large") root.setAttribute("data-thumbnail-title-size", "large");
   else root.removeAttribute("data-thumbnail-title-size");
+  const specs = thumbnailVisibilityKindSpecs();
+  for (let i = 0; i < specs.length; i++) {
+    const kind = String(specs[i] && specs[i].kind ? specs[i].kind : "");
+    const attr = previewThumbnailTitleSizeAttributeName(kind);
+    if (!attr) continue;
+    const kindSize = getPreviewThumbnailTitleSizeForKind(kind, opt);
+    if (kindSize === "large") root.setAttribute(attr, "large");
+    else root.removeAttribute(attr);
+  }
 }
 
 function naturalAspectThumbnailCardsEnabled() {
@@ -16189,6 +16313,16 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         spec.kind,
       );
       const rows = [];
+      if (previewFields.includes("title"))
+        rows.push(
+          makeSelectRow(
+            "Title text size",
+            "Set the preview-pane thumbnail title size for this item type.",
+            `opt_${previewThumbnailTitleSizeOptionKey(spec.kind)}`,
+            getPreviewThumbnailTitleSizeForKind(spec.kind, opt),
+            thumbnailTitleSizeModes,
+          ),
+        );
       if (previewFields.includes("itemCount"))
         rows.push(
           makeCheckRow(
@@ -16684,7 +16818,6 @@ ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when medi
       title: "Thumbnails",
       rows: `
 ${thumbnailStyleRow}
-${makeSelectRow("Thumbnail Title Size", "Switch thumbnail titles between the smaller settings-label size and the older large title size across files, folders, and tag-style items.", "opt_thumbnailTitleSize", getThumbnailTitleSizeFromOptions(opt), thumbnailTitleSizeModes)}
 ${makeSelectRow("Thumbnail Scale", thumbnailScaleHint, "opt_thumbnailScale", getActiveThumbnailScale(opt), thumbnailScaleModes)}
 ${makeSelectRow("Image thumbnail quality", "Choose how image thumbnails render. Placeholder never loads thumbs. Native uses the original image directly with no thumbnail processing.", "opt_imageThumbSize", normalizeThumbRenderModeValue(opt.imageThumbSize, "high"), imageThumbRenderModes)}
 ${makeSelectRow("Video thumbnail quality", "Choose how video thumbnails render. Placeholder never loads thumbs. Native renders the selected frame at source resolution.", "opt_videoThumbSize", normalizeThumbRenderModeValue(opt.videoThumbSize, "medium"), videoThumbRenderModes)}
@@ -16729,6 +16862,7 @@ ${makeSelectRow("Default video audio", "Default audio state for videos played in
 ${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
 ${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
 ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges of images and videos and crop them out before overlays or filters are applied. Videos sample multiple moments and only crop bars that stay present the whole time.", "opt_autoCropBlackBars", !!opt.autoCropBlackBars)}
+${makeCheckRow("Click selected rotating thumbnail to jump to file", "When a selected folder, tag, or album thumbnail is rotating, clicking it again jumps to the currently shown media file.", "opt_clickSelectedRotatingThumbTeleports", !!opt.clickSelectedRotatingThumbTeleports)}
 ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
           `,
     },
@@ -17291,13 +17425,17 @@ ${makeActionRow(
       .toLowerCase();
     return raw === "expanded" ? "expanded" : "grid";
   });
-  bindSelect(
-    "opt_thumbnailTitleSize",
-    "thumbnailTitleSize",
-    false,
-    null,
-    (val) => normalizeThumbnailTitleSizeValue(val, "small"),
-  );
+  thumbnailVisibilityKindSpecs().forEach((spec) => {
+    const key = previewThumbnailTitleSizeOptionKey(spec.kind);
+    if (!key) return;
+    bindSelect(
+      `opt_${key}`,
+      key,
+      false,
+      null,
+      (val) => normalizeThumbnailTitleSizeValue(val, getThumbnailTitleSizeFromOptions()),
+    );
+  });
   bindSelect(
     "opt_thumbnailStyle",
     "thumbnailStyle",
@@ -19499,6 +19637,37 @@ function metaClearTagThumbnailPresetByKey(tagKey) {
   WS.meta.tagThumbPresets.delete(key);
   metaMarkDirty(META_DOC_IDS.thumbnails);
   return true;
+}
+
+function tagThumbnailUsesRotationByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key) return false;
+  return (
+    metaGetTagThumbnailModeByKey(key) !== "none" &&
+    !metaHasTagThumbnailPresetByKey(key)
+  );
+}
+
+function metaSetTagThumbnailRotateByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagThumbModes) return false;
+  const nextMode = defaultRotatingThumbnailMode();
+  const prevMode = metaGetTagThumbnailModeByKey(key);
+  const hadPreset = !!(
+    WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.has(key)
+  );
+  let changed = false;
+  if (prevMode !== nextMode) {
+    WS.meta.tagThumbModes.set(key, nextMode);
+    changed = true;
+  }
+  if (WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.has(key)) {
+    WS.meta.tagThumbPresets.delete(key);
+    changed = true;
+  }
+  if (!changed && !hadPreset) return false;
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return changed;
 }
 
 function metaGetTagAppearancePresetIdByKey(tagKey) {
@@ -25838,6 +26007,7 @@ const ROTATING_PREVIEW_ORDER = new Map();
 const ROTATING_PREVIEW_INDEX = new Map();
 const ROTATING_PREVIEW_NEXT_AT = new Map();
 let ROTATING_PREVIEW_TIMER = 0;
+let ROTATING_PREVIEW_ENSURE_PENDING = false;
 const ROTATING_PREVIEW_INTERVAL_MS = 24000;
 const ROTATING_PREVIEW_JITTER_RATIO = 0.5;
 const ROTATING_PREVIEW_JITTER_MS = Math.round(
@@ -26152,19 +26322,23 @@ function folderEligibleForParentThumbnailPreset(dirNode) {
 function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
   if (!dirNode) return { record: null, rotateKey: "" };
   const dirPath = String(dirNode.path || "");
-  if (metaGetFolderThumbnailMode(dirPath) === "none")
-    return { record: null, rotateKey: "" };
+  const thumbMode = metaGetFolderThumbnailMode(dirPath);
+  if (thumbMode === "none") return { record: null, rotateKey: "" };
   const presetRec = getPresetPreviewRecordForDir(dirNode);
   if (presetRec) return { record: presetRec, rotateKey: "" };
-  const directRec = getFirstDirectPreviewRecordForDir(dirNode);
-  if (directRec) return { record: directRec, rotateKey: "" };
-  if (naturalAspectThumbnailCardsEnabled())
-    return { record: null, rotateKey: "" };
   if (!dirPath && dirNode !== WS.root) return { record: null, rotateKey: "" };
-  const recursivePool = getRecursivePreviewRecordsForDir(dirNode, 0, false);
-  if (!recursivePool.length) return { record: null, rotateKey: "" };
-  const record = recursivePool[0] || null;
-  return { record, rotateKey: "" };
+  const recursivePool = getRecursivePreviewRecordsForDir(dirNode, 72, true);
+  const directRec = getFirstDirectPreviewRecordForDir(dirNode);
+  if (naturalAspectThumbnailCardsEnabled()) {
+    return { record: directRec || recursivePool[0] || null, rotateKey: "" };
+  }
+  if (thumbMode === "rotate" && recursivePool.length > 1) {
+    const scope = dirPath || "__root__";
+    const rotateKey = `${String(rotateKeyPrefix || "dir")}:${scope}`;
+    const record = pickRotatingPreviewRecordForKey(rotateKey, recursivePool);
+    return { record: record || recursivePool[0] || null, rotateKey };
+  }
+  return { record: directRec || recursivePool[0] || null, rotateKey: "" };
 }
 
 function findNearestPresettableParentForRecord(rec) {
@@ -27462,32 +27636,103 @@ function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
 
 function tagThumbnailPreviewSampleLimit(modeRaw) {
   const mode = String(modeRaw || "").trim().toLowerCase();
-  if (mode === "quad") return 4;
-  return 1;
+  if (mode === "none") return 0;
+  if (mode === "quad") return 32;
+  return 24;
 }
 
 function pickRotatingPreviewSlotsForKey(baseKey, records, count = 4) {
   const out = [];
   const k = String(baseKey || "");
-  const pool = Array.isArray(records) ? records : [];
+  const pool = Array.isArray(records) ? records.filter(Boolean) : [];
   const laneCount = Math.max(1, Number(count) || 1);
   if (!k || !pool.length) return out;
+  const ids = registerRotatingPreviewPool(k, pool);
+  if (!ids.length) return out;
+  const order = ROTATING_PREVIEW_ORDER.get(k) || ids;
   for (let i = 0; i < laneCount; i++) {
     const laneKey = `${k}:slot:${i + 1}`;
-    const rec = pool[i % pool.length] || null;
-    out.push({ key: laneKey, rec: rec || null });
+    registerRotatingPreviewPool(laneKey, pool);
+    const laneOrder = ROTATING_PREVIEW_ORDER.get(laneKey) || order;
+    if (!ROTATING_PREVIEW_INDEX.has(laneKey)) {
+      ROTATING_PREVIEW_INDEX.set(laneKey, laneOrder.length ? i % laneOrder.length : 0);
+    }
+    const idx = Number(ROTATING_PREVIEW_INDEX.get(laneKey) || 0);
+    const recId = String(laneOrder[idx % Math.max(1, laneOrder.length)] || "");
+    out.push({ key: laneKey, rec: WS.fileById.get(recId) || pool[i % pool.length] || null });
   }
   return out;
 }
 
 function registerRotatingPreviewPool(key, records) {
-  return;
+  const poolKey = String(key || "");
+  if (!poolKey) return [];
+  const pool = Array.isArray(records) ? records.filter(Boolean) : [];
+  const ids = [];
+  const seen = new Set();
+  for (let i = 0; i < pool.length; i++) {
+    const rec = pool[i];
+    const id = String(rec?.id || "");
+    if (!id || seen.has(id) || !WS.fileById.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  if (!ids.length) {
+    ROTATING_PREVIEW_POOLS.delete(poolKey);
+    ROTATING_PREVIEW_ORDER.delete(poolKey);
+    ROTATING_PREVIEW_INDEX.delete(poolKey);
+    ROTATING_PREVIEW_NEXT_AT.delete(poolKey);
+    return [];
+  }
+  const prev = ROTATING_PREVIEW_POOLS.get(poolKey) || [];
+  const samePool =
+    Array.isArray(prev) &&
+    prev.length === ids.length &&
+    prev.every((id, idx) => id === ids[idx]);
+  ROTATING_PREVIEW_POOLS.set(poolKey, ids);
+  if (!samePool || !ROTATING_PREVIEW_ORDER.has(poolKey)) {
+    const order = buildWeightedRotationOrder(ids);
+    ROTATING_PREVIEW_ORDER.set(poolKey, order.length ? order : ids.slice());
+    const currentId = String(
+      samePool
+        ? (ROTATING_PREVIEW_ORDER.get(poolKey) || [])[Number(ROTATING_PREVIEW_INDEX.get(poolKey) || 0)] || ""
+        : "",
+    );
+    const nextOrder = ROTATING_PREVIEW_ORDER.get(poolKey) || ids;
+    let nextIndex = 0;
+    if (currentId) {
+      const foundIndex = nextOrder.indexOf(currentId);
+      if (foundIndex >= 0) nextIndex = foundIndex;
+    }
+    ROTATING_PREVIEW_INDEX.set(poolKey, nextIndex);
+  } else if (!ROTATING_PREVIEW_INDEX.has(poolKey)) {
+    ROTATING_PREVIEW_INDEX.set(poolKey, 0);
+  }
+  if (!ROTATING_PREVIEW_NEXT_AT.has(poolKey)) {
+    ROTATING_PREVIEW_NEXT_AT.set(
+      poolKey,
+      Date.now() + ROTATING_PREVIEW_INTERVAL_MS + Math.round(Math.random() * ROTATING_PREVIEW_JITTER_MS),
+    );
+  }
+  if (!ROTATING_PREVIEW_ENSURE_PENDING) {
+    ROTATING_PREVIEW_ENSURE_PENDING = true;
+    requestAnimationFrame(() => {
+      ROTATING_PREVIEW_ENSURE_PENDING = false;
+      ensureRotatingPreviewTicker();
+    });
+  }
+  return ids;
 }
 
 function pickRotatingPreviewRecordForKey(key, records) {
-  const pool = Array.isArray(records) ? records : [];
+  const pool = Array.isArray(records) ? records.filter(Boolean) : [];
   if (!pool.length) return null;
-  return pool[0] || null;
+  const ids = registerRotatingPreviewPool(key, pool);
+  if (!ids.length) return pool[0] || null;
+  const order = ROTATING_PREVIEW_ORDER.get(String(key || "")) || ids;
+  const idx = Number(ROTATING_PREVIEW_INDEX.get(String(key || "")) || 0);
+  const recId = String(order[idx % Math.max(1, order.length)] || ids[0] || "");
+  return WS.fileById.get(recId) || pool[0] || null;
 }
 
 function getRootThumbnailReferenceRecord(rootNode) {
@@ -27716,14 +27961,65 @@ function crossfadePreviewRecordOnImageElement(imgEl, rec) {
 }
 
 function rotatePreviewThumbnailsTick() {
-  return;
+  const imgs = Array.from(document.querySelectorAll("img[data-rotate-key]"));
+  if (!imgs.length) {
+    if (ROTATING_PREVIEW_TIMER) {
+      clearInterval(ROTATING_PREVIEW_TIMER);
+      ROTATING_PREVIEW_TIMER = 0;
+    }
+    return;
+  }
+  const activeKeys = new Set();
+  const now = Date.now();
+  for (let i = 0; i < imgs.length; i++) {
+    const imgEl = imgs[i];
+    const key = String(imgEl?.dataset?.rotateKey || "");
+    if (!key) continue;
+    activeKeys.add(key);
+    const poolIds = ROTATING_PREVIEW_POOLS.get(key) || [];
+    if (poolIds.length < 2) continue;
+    const nextAt = Number(ROTATING_PREVIEW_NEXT_AT.get(key) || 0);
+    if (Number.isFinite(nextAt) && nextAt > now) continue;
+    const order = ROTATING_PREVIEW_ORDER.get(key) || poolIds;
+    if (!order.length) continue;
+    const currentIndex = Number(ROTATING_PREVIEW_INDEX.get(key) || 0);
+    const nextIndex = (currentIndex + 1) % order.length;
+    ROTATING_PREVIEW_INDEX.set(key, nextIndex);
+    ROTATING_PREVIEW_NEXT_AT.set(
+      key,
+      now + ROTATING_PREVIEW_INTERVAL_MS + Math.round(Math.random() * ROTATING_PREVIEW_JITTER_MS),
+    );
+    const recId = String(order[nextIndex] || "");
+    const rec = WS.fileById.get(recId);
+    if (!rec) continue;
+    if (String(imgEl.dataset.dirPreviewId || "") === recId) continue;
+    crossfadePreviewRecordOnImageElement(imgEl, rec);
+  }
+  for (const key of Array.from(ROTATING_PREVIEW_POOLS.keys())) {
+    if (activeKeys.has(key)) continue;
+    ROTATING_PREVIEW_POOLS.delete(key);
+    ROTATING_PREVIEW_ORDER.delete(key);
+    ROTATING_PREVIEW_INDEX.delete(key);
+    ROTATING_PREVIEW_NEXT_AT.delete(key);
+  }
 }
 
 function ensureRotatingPreviewTicker() {
-  if (ROTATING_PREVIEW_TIMER) {
-    clearInterval(ROTATING_PREVIEW_TIMER);
-    ROTATING_PREVIEW_TIMER = 0;
+  const hasRotatingThumbs = !!document.querySelector("img[data-rotate-key]");
+  if (!hasRotatingThumbs) {
+    if (ROTATING_PREVIEW_TIMER) {
+      clearInterval(ROTATING_PREVIEW_TIMER);
+      ROTATING_PREVIEW_TIMER = 0;
+    }
+    return;
   }
+  if (!ROTATING_PREVIEW_TIMER) {
+    ROTATING_PREVIEW_TIMER = setInterval(
+      rotatePreviewThumbnailsTick,
+      ROTATING_PREVIEW_POLL_MS,
+    );
+  }
+  rotatePreviewThumbnailsTick();
 }
 
 function makeTagPreviewNode(entry) {
@@ -29775,6 +30071,23 @@ function handlePreviewCardSelection(card, openAction, e = null) {
 }
 
 function entryUsesRotatingThumbnail(entry) {
+  if (!entry) return false;
+  if (entry.kind === "dir") {
+    const lead = getDisplayLeadPreviewForDir(entry.node || null, "dir");
+    return !!String(lead?.rotateKey || "");
+  }
+  if (entry.kind === "tag") {
+    if (naturalAspectThumbnailCardsEnabled()) return false;
+    const key = tagThumbnailKeyForEntry(entry);
+    if (!key) return false;
+    const mode = metaGetTagThumbnailModeByKey(key);
+    if (mode === "none") return false;
+    const pool = getRecursivePreviewRecordsForTagEntry(
+      entry,
+      tagThumbnailPreviewSampleLimit(mode),
+    );
+    return pool.length > 1;
+  }
   return false;
 }
 
@@ -33637,6 +33950,7 @@ function openTagContextMenu(context) {
   const canSetRandomThumbnail = !!randomThumbnailCandidateForTagEntry(
     tagEntryForThumb,
   );
+  const tagThumbIsRotating = tagThumbnailUsesRotationByKey(tagKey);
   closeTagContextMenu();
   closeActionMenus();
   const menu = tagActionMenuEl;
@@ -33726,18 +34040,30 @@ function openTagContextMenu(context) {
       ),
     );
   }
+  const tagThumbnailButtons = [];
+  if (!tagThumbIsRotating)
+    tagThumbnailButtons.push(
+      createTagMenuButton("Rotating thumbnail", () =>
+        handleTagMenuAction("thumbnail-rotate"),
+      ),
+    );
   if (thumbMode !== "none")
-    menu.appendChild(
+    tagThumbnailButtons.push(
       createTagMenuButton("No thumbnail", () =>
         handleTagMenuAction("thumbnail-none"),
       ),
     );
   if (canSetRandomThumbnail)
-    menu.appendChild(
+    tagThumbnailButtons.push(
       createTagMenuButton("Random thumbnail", () =>
         handleTagMenuAction("thumbnail-random"),
       ),
     );
+  const tagThumbnailSubmenu = createDropdownMenuSubmenu(
+    "Thumbnail",
+    tagThumbnailButtons,
+  );
+  if (tagThumbnailSubmenu) menu.appendChild(tagThumbnailSubmenu);
   TAG_CONTEXT_MENU_STATE = {
     tag,
     album,
@@ -33889,6 +34215,8 @@ function buildFolderThumbnailSubmenuHtml(options) {
   let buttonsHtml = "";
   if (cfg.showUseDefaultThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>`;
+  if (cfg.showSetRotateThumbnail)
+    buttonsHtml += `<button type="button" data-action="thumbnail-rotate">Rotating thumbnail</button>`;
   if (cfg.showSetNoThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-none">No thumbnail</button>`;
   if (cfg.showSetRandomThumbnail)
@@ -34028,6 +34356,10 @@ function buildFolderMenuState(dirNode) {
     showUseDefaultThumbnail:
       !isStorageGhost &&
       (hasPreset || (isRootNode && !isRootThumbnailModeDefault(folderThumbMode))),
+    showSetRotateThumbnail:
+      !isStorageGhost &&
+      canToggleFolderThumbMode &&
+      (folderThumbMode === "none" || hasPreset),
     showSetNoThumbnail:
       !isStorageGhost && canToggleFolderThumbMode && folderThumbMode !== "none",
     showSetRandomThumbnail:
@@ -34112,6 +34444,10 @@ function buildFolderActionMenuDom(
   if (state.showUseDefaultThumbnail)
     folderThumbnailButtons.push(
       makeBtn("Use default thumbnail", "thumbnail-default"),
+    );
+  if (state.showSetRotateThumbnail)
+    folderThumbnailButtons.push(
+      makeBtn("Rotating thumbnail", "thumbnail-rotate"),
     );
   if (state.showSetNoThumbnail)
     folderThumbnailButtons.push(makeBtn("No thumbnail", "thumbnail-none"));
@@ -35450,11 +35786,20 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     showStatusMessage("Folder media preset reset to inherited.");
     return true;
   }
-  if (
-    action === "thumbnail-random" ||
-    action === "thumbnail-rotate" ||
-    action === "thumbnail-quad"
-  ) {
+  if (action === "thumbnail-rotate" || action === "thumbnail-quad") {
+    const changed = isRootNode
+      ? resetRootThumbnailToDefault()
+      : metaSetFolderThumbnailRotate(p);
+    if (!changed) return true;
+    refreshThumbnailUiAfterMetadataChange();
+    showStatusMessage(
+      isRootNode
+        ? "Root thumbnail set to rotating mode."
+        : "Folder thumbnail set to rotating mode.",
+    );
+    return true;
+  }
+  if (action === "thumbnail-random") {
     const changed = setRandomFolderThumbnailForNode(node);
     if (!changed) {
       showStatusMessage(
@@ -35711,6 +36056,9 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   const allThumbNone =
     !!thumbTogglePaths.length &&
     thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "none");
+  const allThumbRotate =
+    !!thumbTogglePaths.length &&
+    thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "rotate");
   const randomThumbNodes = selectedDirNodes.filter((node) => !!node);
 
   if (scoreInterfaceEnabled()) {
@@ -35881,6 +36229,25 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       }),
     );
   }
+  if (thumbTogglePaths.length && !allThumbRotate) {
+    thumbnailBulkButtons.push(
+      makeBtn("Rotating thumbnail", () => {
+        const changed = metaSetFolderThumbnailModeBulk(
+          thumbTogglePaths,
+          "rotate",
+        );
+        if (!changed) return;
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+        showStatusMessage("Folder thumbnails set to rotating mode.");
+      }),
+    );
+  }
+
   if (thumbTogglePaths.length && !allThumbNone) {
     thumbnailBulkButtons.push(
       makeBtn("No thumbnail", () => {
@@ -36149,6 +36516,9 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     tagThumbTargets.every(
       (key) => metaGetTagThumbnailModeByKey(key) === "none",
     );
+  const allTagThumbRotating =
+    !!tagThumbTargets.length &&
+    tagThumbTargets.every((key) => tagThumbnailUsesRotationByKey(key));
 
   if (albumAssignableTagEntries.length) {
     menu.appendChild(
@@ -36421,9 +36791,25 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   }
 
   if (tagThumbTargets.length) {
+    const tagThumbnailButtons = [];
+    if (!allTagThumbRotating) {
+      tagThumbnailButtons.push(
+        makeBtn("Rotating thumbnail", async () => {
+          let changed = false;
+          for (let i = 0; i < tagThumbTargets.length; i++) {
+            if (metaSetTagThumbnailRotateByKey(tagThumbTargets[i]))
+              changed = true;
+          }
+          if (!changed) return;
+          finalizeBulkSelectionAction();
+          refreshThumbnailUiAfterMetadataChange();
+          showStatusMessage("Tag folder thumbnails set to rotating mode.");
+        }),
+      );
+    }
     if (!allTagThumbNone) {
-      menu.appendChild(
-        makeBtn("No tag thumbnail", async () => {
+      tagThumbnailButtons.push(
+        makeBtn("No thumbnail", async () => {
           let changed = false;
           for (let i = 0; i < tagThumbTargets.length; i++) {
             if (metaSetTagThumbnailModeByKey(tagThumbTargets[i], "none"))
@@ -36436,23 +36822,25 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         }),
       );
     }
-
-    if (tagThumbTargets.length) {
-      menu.appendChild(
-        makeBtn("Random tag thumbnail", async () => {
-          let changed = false;
-          for (let i = 0; i < tagThumbTargets.length; i++) {
-            const key = tagThumbTargets[i];
-            const entry = tagThumbEntryByKey.get(key) || null;
-            if (setRandomTagThumbnailForEntry(entry)) changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          refreshThumbnailUiAfterMetadataChange();
-          showStatusMessage("Tag folder thumbnails set to random files.");
-        }),
-      );
-    }
+    tagThumbnailButtons.push(
+      makeBtn("Random thumbnail", async () => {
+        let changed = false;
+        for (let i = 0; i < tagThumbTargets.length; i++) {
+          const key = tagThumbTargets[i];
+          const entry = tagThumbEntryByKey.get(key) || null;
+          if (setRandomTagThumbnailForEntry(entry)) changed = true;
+        }
+        if (!changed) return;
+        finalizeBulkSelectionAction();
+        refreshThumbnailUiAfterMetadataChange();
+        showStatusMessage("Tag folder thumbnails set to random files.");
+      }),
+    );
+    const tagThumbnailSubmenu = createDropdownMenuSubmenu(
+      "Thumbnail",
+      tagThumbnailButtons,
+    );
+    if (tagThumbnailSubmenu) menu.appendChild(tagThumbnailSubmenu);
   }
 
   PREVIEW_CONTEXT_MENU_STATE = {
@@ -37029,10 +37417,17 @@ function handleTagMenuAction(action) {
     return;
   }
   if (
-    action === "thumbnail-random" ||
+    action === "thumbnail-rotate" ||
     action === "thumbnail-single" ||
     action === "thumbnail-quad"
   ) {
+    const changed = metaSetTagThumbnailRotateByKey(tagKey);
+    if (!changed) return;
+    refreshThumbnailUiAfterMetadataChange();
+    showStatusMessage(`Rotating thumbnail enabled for '${label}'.`);
+    return;
+  }
+  if (action === "thumbnail-random") {
     const tagEntry =
       ctx.entry && ctx.entry.kind === "tag"
         ? ctx.entry
@@ -37219,6 +37614,9 @@ function renderDirectoriesActionHeader() {
     tagThumbTargets.every(
       (key) => metaGetTagThumbnailModeByKey(key) === "none",
     );
+  const allTagThumbRotating =
+    !!tagThumbTargets.length &&
+    tagThumbTargets.every((key) => tagThumbnailUsesRotationByKey(key));
   const canUseGridTagThumbBulkActions =
     isGridInteractionMode() && !!tagThumbTargets.length;
   if (
@@ -37530,9 +37928,27 @@ function renderDirectoriesActionHeader() {
   }
 
   if (canUseGridTagThumbBulkActions) {
+    const tagThumbnailButtons = [];
+    if (!allTagThumbRotating) {
+      tagThumbnailButtons.push(
+        makeActionBtn("Rotating thumbnail", () => {
+          WS.view.bulkActionMenuOpen = false;
+          let changed = false;
+          for (let i = 0; i < tagThumbTargets.length; i++) {
+            if (metaSetTagThumbnailRotateByKey(tagThumbTargets[i]))
+              changed = true;
+          }
+          if (!changed) return;
+          finalizeBulkSelectionAction();
+          refreshThumbnailUiAfterMetadataChange();
+          showStatusMessage("Tag folder thumbnails set to rotating mode.");
+        }),
+      );
+    }
+
     if (!allTagThumbNone) {
-      directoriesActionMenuEl.appendChild(
-        makeActionBtn("No tag thumbnail", () => {
+      tagThumbnailButtons.push(
+        makeActionBtn("No thumbnail", () => {
           WS.view.bulkActionMenuOpen = false;
           let changed = false;
           for (let i = 0; i < tagThumbTargets.length; i++) {
@@ -37547,23 +37963,28 @@ function renderDirectoriesActionHeader() {
       );
     }
 
-    if (tagThumbTargets.length) {
-      directoriesActionMenuEl.appendChild(
-        makeActionBtn("Random tag thumbnail", () => {
-          WS.view.bulkActionMenuOpen = false;
-          let changed = false;
-          for (let i = 0; i < tagThumbTargets.length; i++) {
-            const key = tagThumbTargets[i];
-            const entry = tagThumbEntryByKey.get(key) || null;
-            if (setRandomTagThumbnailForEntry(entry)) changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          refreshThumbnailUiAfterMetadataChange();
-          showStatusMessage("Tag folder thumbnails set to random files.");
-        }),
-      );
-    }
+    tagThumbnailButtons.push(
+      makeActionBtn("Random thumbnail", () => {
+        WS.view.bulkActionMenuOpen = false;
+        let changed = false;
+        for (let i = 0; i < tagThumbTargets.length; i++) {
+          const key = tagThumbTargets[i];
+          const entry = tagThumbEntryByKey.get(key) || null;
+          if (setRandomTagThumbnailForEntry(entry)) changed = true;
+        }
+        if (!changed) return;
+        finalizeBulkSelectionAction();
+        refreshThumbnailUiAfterMetadataChange();
+        showStatusMessage("Tag folder thumbnails set to random files.");
+      }),
+    );
+
+    const tagThumbnailSubmenu = createDropdownMenuSubmenu(
+      "Thumbnail",
+      tagThumbnailButtons,
+    );
+    if (tagThumbnailSubmenu)
+      directoriesActionMenuEl.appendChild(tagThumbnailSubmenu);
   }
 
   if (selectedDirs.length) {
@@ -37633,6 +38054,9 @@ function renderDirectoriesActionHeader() {
     const allThumbNone =
       !!thumbTogglePaths.length &&
       thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "none");
+    const allThumbRotate =
+      !!thumbTogglePaths.length &&
+      thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "rotate");
     const randomThumbNodes = selectedDirNodes.filter((node) => !!node);
 
     if (scoreInterfaceEnabled()) {
@@ -37824,6 +38248,26 @@ function renderDirectoriesActionHeader() {
           kickVideoThumbsForPreview();
           kickImageThumbsForPreview();
           showStatusMessage("Folder thumbnails reset to default.");
+        }),
+      );
+    }
+
+    if (thumbTogglePaths.length && !allThumbRotate) {
+      bulkThumbnailButtons.push(
+        makeActionBtn("Rotating thumbnail", () => {
+          WS.view.bulkActionMenuOpen = false;
+          const changed = metaSetFolderThumbnailModeBulk(
+            thumbTogglePaths,
+            "rotate",
+          );
+          if (!changed) return;
+          finalizeBulkSelectionAction();
+          renderDirectoriesPane(true);
+          renderPreviewPane(false, true);
+          syncButtons();
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+          showStatusMessage("Folder thumbnails set to rotating mode.");
         }),
       );
     }
@@ -38773,12 +39217,16 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const showUseDefaultThumbnail =
           hasThumbPreset ||
           (isRootNode && !isRootThumbnailModeDefault(folderThumbMode));
+        const showSetRotateThumbnail =
+          canToggleFolderThumbMode &&
+          (folderThumbMode === "none" || hasThumbPreset);
         const showSetNoThumbnail =
           canToggleFolderThumbMode && folderThumbMode !== "none";
         const showSetRandomThumbnail =
           canToggleFolderThumbMode;
         const folderThumbnailMenuHtml = buildFolderThumbnailSubmenuHtml({
           showUseDefaultThumbnail,
+          showSetRotateThumbnail,
           showSetNoThumbnail,
           showSetRandomThumbnail,
         });
@@ -42059,6 +42507,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
     if (p) card.dataset.dirPath = p;
     if (p) card.dataset.previewItemKey = `dir:${p}`;
     card.dataset.previewItemKind = "dir";
+    card.dataset.previewThumbKind = folderThumbnailKindForNode(dirNode);
     card.__previewOpenAction = () => {
       showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
     };
@@ -42114,6 +42563,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
   if (p) card.dataset.dirPath = p;
   if (p) card.dataset.previewItemKey = `dir:${p}`;
   card.dataset.previewItemKind = "dir";
+  card.dataset.previewThumbKind = folderThumbnailKindForNode(dirNode);
   card.__previewOpenAction = () => {
     navigateFromPreviewFolderCard(dirNode);
   };
