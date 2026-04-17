@@ -60,6 +60,68 @@
   --thumb-title-font-weight: 700;
 }
 
+:root[data-preview-file-title-size="large"] .gridFiles.previewSquareCards .previewThumbOverlayMeta .name,
+:root[data-preview-file-title-size="large"]
+  .gridFiles.previewNaturalAspectCards.fitInsideJustified
+  .previewThumbOverlayMeta
+  .name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:root[data-preview-file-title-size="large"]
+  .gridFiles
+  .previewThumbOverlayBottomLine
+  .previewThumbOverlayNameInlineCompact {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:root[data-preview-root-folder-title-size="large"]
+  .gridFolders
+  .folderCard.folderThumbCard[data-preview-thumb-kind="rootFolder"]
+  .thumbOverlayMeta
+  .name,
+:root[data-preview-subfolder-title-size="large"]
+  .gridFolders
+  .folderCard.folderThumbCard[data-preview-thumb-kind="subfolder"]
+  .thumbOverlayMeta
+  .name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:root[data-preview-root-folder-title-size="large"]
+  .gridFolders
+  .folderCard.folderThumbCard[data-preview-thumb-kind="rootFolder"]
+  .thumbOverlayBottomLine
+  .thumbOverlayNameInlineCompact,
+:root[data-preview-subfolder-title-size="large"]
+  .gridFolders
+  .folderCard.folderThumbCard[data-preview-thumb-kind="subfolder"]
+  .thumbOverlayBottomLine
+  .thumbOverlayNameInlineCompact {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+:root[data-preview-tag-title-size="large"]
+  .gridFolders
+  .previewTagFolderCard
+  .dirSquareName {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+:root[data-preview-tag-title-size="large"]
+  .gridFolders
+  .previewTagFolderCard
+  .dirSquareBottomCompact
+  .dirSquareNameInlineCompact {
+  font-size: 22px;
+  font-weight: 700;
+}
+
 :root[data-media-size="small"] {
   --file-grid-min: 150px;
   --file-meta-font: 11px;
