@@ -5989,6 +5989,7 @@ function normalizeThumbnailTitleSizeValue(value, fallback = "small") {
   const raw = String(value || "")
     .trim()
     .toLowerCase();
+  if (raw === "small") return "small";
   if (raw === "large") return "large";
   return fallback === "large" ? "large" : "small";
 }
@@ -6064,9 +6065,7 @@ function applyThumbnailTitleSizeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  const size = getThumbnailTitleSizeFromOptions(opt);
-  if (size === "large") root.setAttribute("data-thumbnail-title-size", "large");
-  else root.removeAttribute("data-thumbnail-title-size");
+  root.removeAttribute("data-thumbnail-title-size");
   const specs = thumbnailVisibilityKindSpecs();
   for (let i = 0; i < specs.length; i++) {
     const kind = String(specs[i] && specs[i].kind ? specs[i].kind : "");
@@ -13551,18 +13550,24 @@ function canUseBulkTagPlaceholderUi() {
   return true;
 }
 
-function startBulkTagging(paths) {
+function startBulkTagging(paths, preferPane = "") {
   if (
     canUseBulkTagPlaceholderUi() &&
-    setBulkTagPlaceholder(paths, "New tag folder", "tag")
+    setBulkTagPlaceholder(paths, "New tag folder", "tag", "", preferPane)
   )
     return;
 }
 
-function startBulkTagAlbuming(tags, originPath = "") {
+function startBulkTagAlbuming(tags, originPath = "", preferPane = "") {
   if (
     canUseBulkTagPlaceholderUi() &&
-    setBulkTagPlaceholder(tags, "New tag album", "album", originPath)
+    setBulkTagPlaceholder(
+      tags,
+      "New tag album",
+      "album",
+      originPath,
+      preferPane,
+    )
   )
     return;
 }
@@ -13572,6 +13577,7 @@ function setBulkTagPlaceholder(
   label = "New tag folder",
   placeholderType = "tag",
   originPath = "",
+  preferPane = "",
 ) {
   clearBulkTagPlaceholder();
   const type = String(placeholderType || "tag") === "album" ? "album" : "tag";
@@ -13604,7 +13610,7 @@ function setBulkTagPlaceholder(
   renderPreviewPane(false, true);
   syncButtons();
   setTimeout(() => {
-    focusTagEntryRenameInput();
+    focusTagEntryRenameInput(preferPane);
   }, 0);
   return true;
 }
@@ -19622,6 +19628,41 @@ function getDirsForTagEntry(entry) {
   );
   if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
   return out;
+}
+
+function createInverseTagForEntry(entry) {
+  if (!entry || entry.kind !== "tag" || entry.special) return false;
+  const tag = normalizeTag(entry.tag || "");
+  if (!tag) return false;
+  const originPath = String(entry.originPath || "");
+  const baseNode = WS.dirByPath.get(originPath) || WS.nav.dirNode || WS.root;
+  if (!baseNode) {
+    showStatusMessage("No folders contain that tag.");
+    return false;
+  }
+  const candidates = getChildDirsForNodeBase(baseNode);
+  if (!candidates.length) {
+    showStatusMessage("No folders are available in this tag folder.");
+    return false;
+  }
+  const inversePaths = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const path = String(candidates[i]?.path || "");
+    if (!path) continue;
+    const tags = metaGetUserTags(path);
+    if (tags.includes(tag)) continue;
+    inversePaths.push(path);
+  }
+  if (!inversePaths.length) {
+    showStatusMessage(
+      `Could not create inverse tag because '${tag}' already contains every folder in this scope.`,
+    );
+    return false;
+  }
+  const inverseName = `inverse of ${tag}`;
+  metaAddUserTagsBulk(inversePaths, [inverseName]);
+  showStatusMessage(`Created tag '${inverseName}'.`);
+  return true;
 }
 
 function getTagEntryDisplayIcon(entry) {
@@ -27645,6 +27686,7 @@ function openTagContextMenu(context) {
   const canRename = !context.special && (!!tag || isAlbumEntry);
   const canDelete = !context.special && (!!tag || isAlbumEntry);
   const canHide = !!tag && !context.special;
+  const canCreateInverse = !!tag && !context.special && !isAlbumEntry;
   const thumbMode = metaGetTagThumbnailModeByKey(tagKey);
   const tagEntryForThumb =
     context.entry && context.entry.kind === "tag"
@@ -27681,6 +27723,12 @@ function openTagContextMenu(context) {
   if (canRename)
     menu.appendChild(
       createTagMenuButton("Rename tag", () => handleTagMenuAction("rename")),
+    );
+  if (canCreateInverse)
+    menu.appendChild(
+      createTagMenuButton("Create inverse", () =>
+        handleTagMenuAction("create-inverse"),
+      ),
     );
   if (canDelete)
     menu.appendChild(
@@ -27796,6 +27844,7 @@ function openTagContextMenu(context) {
     canRename,
     canDelete,
     canHide,
+    canCreateInverse,
     isHidden,
     canAppearancePreset,
     canMediaFilter,
@@ -31045,6 +31094,23 @@ function handleTagMenuAction(action) {
     showStatusMessage(`Removed tag '${label}'.`);
     return;
   }
+  if (action === "create-inverse") {
+    if (!ctx.canCreateInverse) return;
+    createInverseTagForEntry(
+      ctx.entry && ctx.entry.kind === "tag"
+        ? ctx.entry
+        : {
+            kind: "tag",
+            tag: String(ctx.tag || ""),
+            album: normalizeTagAlbumName(ctx.album || ""),
+            special: String(ctx.special || ""),
+            label: String(ctx.label || ctx.tag || ctx.album || "Tag"),
+            originPath: String(ctx.originPath || WS.nav?.dirNode?.path || ""),
+            placeholder: false,
+          },
+    );
+    return;
+  }
   if (action === "hidden") {
     if (!ctx.canHide || !tagKey) return;
     if (!metaSetHiddenTagByKey(tagKey, !ctx.isHidden)) return;
@@ -31334,7 +31400,7 @@ function renderDirectoriesActionHeader() {
           return;
         }
         finalizeBulkSelectionAction();
-        startBulkTagAlbuming(tags, originPath);
+        startBulkTagAlbuming(tags, originPath, "preview");
       }),
     );
   }
@@ -40761,7 +40827,12 @@ function startTagSelectionEdit() {
 
   if (paths.length > 1) {
     TAG_EDIT_PATH = null;
-    startBulkTagging(paths);
+    startBulkTagging(
+      paths,
+      !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview"
+        ? "preview"
+        : "directories",
+    );
     return true;
   }
 
