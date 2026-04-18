@@ -399,7 +399,7 @@ body.cursor-hidden * {
   grid-template-rows: 0 1fr;
 }
 
-#app.title-layout-compact.sidebar-closed:not(.menu-pane-open):not(.preview-media-pane-background) {
+#app.title-layout-compact.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) {
   grid-template-rows: 0 1fr;
 }
 
@@ -1411,7 +1411,7 @@ input[type="file"] {
   grid-column: 1 / -1;
 }
 
-#app.title-layout-compact.sidebar-closed:not(.menu-pane-open):not(.preview-media-pane-background) #titlePane {
+#app.title-layout-compact.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #titlePane {
   display: none;
 }
 
