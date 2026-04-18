@@ -36,9 +36,9 @@
   --thumb-filter: none;
   --thumb-fit: cover;
   --thumb-bg: transparent;
-  --dir-tag-title-color: #ffd166;
-  --dir-tag-favorite-title-color: #ff7acc;
-  --dir-tag-album-title-color: #71d7ff;
+  --dir-tag-title-color: #9b8ac7;
+  --dir-tag-favorite-title-color: var(--palette-accent);
+  --dir-tag-album-title-color: #ff7a6e;
   --ui-hover-lift: -1px;
   --ui-active-press: 1px;
   --ui-hover-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
@@ -177,9 +177,9 @@
   --palette-accent: #4f86d6;
   --palette-accent-text: #ffffff;
   --palette-accent-outline: #4f86d6;
-  --dir-tag-title-color: #7b5600;
-  --dir-tag-favorite-title-color: #8c2660;
-  --dir-tag-album-title-color: #1d5a9b;
+  --dir-tag-title-color: #6d5b8b;
+  --dir-tag-favorite-title-color: var(--palette-accent);
+  --dir-tag-album-title-color: #8f362d;
   --tag-include-bg: #2b4d7a;
   --tag-include-border: #17345a;
   --tag-include-color: #e9f1ff;
@@ -205,9 +205,9 @@
   --palette-accent: #3b63a5;
   --palette-accent-text: #ffffff;
   --palette-accent-outline: #3b63a5;
-  --dir-tag-title-color: #e2bb65;
-  --dir-tag-favorite-title-color: #ef8ac5;
-  --dir-tag-album-title-color: #8cb6ff;
+  --dir-tag-title-color: #b7a5db;
+  --dir-tag-favorite-title-color: var(--palette-accent);
+  --dir-tag-album-title-color: #ff9485;
   --tag-include-bg: #203457;
   --tag-include-border: #101f38;
   --tag-include-color: #e6efff;
@@ -396,6 +396,10 @@ body.cursor-hidden * {
 }
 
 #app.title-layout-pane.sidebar-closed {
+  grid-template-rows: 0 1fr;
+}
+
+#app.title-layout-compact.sidebar-closed:not(.menu-pane-open):not(.preview-media-pane-background) {
   grid-template-rows: 0 1fr;
 }
 
@@ -772,6 +776,25 @@ input[type="file"] {
   box-shadow: none;
 }
 
+:root[data-retro="on"]
+  #app.title-layout-compact.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) {
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-compact.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background)
+  #previewPane {
+  padding: 0;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-compact.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background)
+  #previewBody {
+  background: #000;
+  box-shadow: none;
+}
+
 :root[data-retro="on"] #directoriesPane,
 :root[data-retro="on"] #previewPane,
 :root[data-retro="on"] #optionsBody,
@@ -1061,6 +1084,12 @@ input[type="file"] {
   .dirRow.selected:not(.bulkSelected)
   .mini {
   color: inherit;
+}
+
+:root[data-retro="on"] .dirRow.selected .dirFavoriteHeart,
+:root[data-retro="on"] .dirRow.bulkSelected .dirFavoriteHeart,
+:root[data-retro="on"] #app.preview-pane-active .dirRow.selected:not(.bulkSelected) .dirFavoriteHeart {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
 }
 
 :root[data-retro="on"]
@@ -1380,6 +1409,10 @@ input[type="file"] {
   border-bottom: 1px solid var(--color1-tertiary);
   display: block;
   grid-column: 1 / -1;
+}
+
+#app.title-layout-compact.sidebar-closed:not(.menu-pane-open):not(.preview-media-pane-background) #titlePane {
+  display: none;
 }
 
 body.directories-files-only #directoriesHeader {
@@ -2459,15 +2492,30 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirSquareNameTag {
-  color: var(--dir-tag-title-color, #ff9300);
+  color: var(--dir-tag-title-color, #9b8ac7);
 }
 
 .dirSquareNameTagFavorite {
-  color: var(--dir-tag-favorite-title-color, #ff43b5);
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
 }
 
 .dirSquareNameTagAlbum {
-  color: var(--dir-tag-album-title-color, #ff6b63);
+  color: var(--dir-tag-album-title-color, #ff7a6e);
+}
+
+.previewTagFolderCard .dirSquareName.dirSquareNameTag,
+#directoriesList.gridModeList .dirSquareName.dirSquareNameTag {
+  color: var(--dir-tag-title-color, #9b8ac7);
+}
+
+.previewTagFolderCard .dirSquareName.dirSquareNameTagFavorite,
+#directoriesList.gridModeList .dirSquareName.dirSquareNameTagFavorite {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+.previewTagFolderCard .dirSquareName.dirSquareNameTagAlbum,
+#directoriesList.gridModeList .dirSquareName.dirSquareNameTagAlbum {
+  color: var(--dir-tag-album-title-color, #ff7a6e);
 }
 
 .dirRow.tagBarCard:hover .dirSquareNameTag,
@@ -2555,6 +2603,13 @@ img[data-rotate-key].rotatingThumbFade {
   height: 22px;
   padding: 0;
   font-size: 16px;
+}
+
+.dirSquareOverlay .dirMenuBtnScoreVisible {
+  width: auto;
+  min-width: 24px;
+  padding: 0 4px;
+  font-size: 12px;
 }
 
 .dirSquareOverlay .dirMenuBtn:disabled {
@@ -2655,7 +2710,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirFavoriteHeart {
-  color: var(--dir-tag-favorite-title-color, #ff6f91);
+  color: var(--dir-tag-favorite-title-color, #ff0033);
   line-height: 1;
   font-size: 0.95em;
 }
@@ -2747,6 +2802,41 @@ img[data-rotate-key].rotatingThumbFade {
     transform 0.16s ease,
     box-shadow 0.16s ease;
   box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+}
+
+.dirMenuBtnScoreVisible {
+  width: auto;
+  min-width: 22px;
+  padding: 0 4px;
+  font-size: 12px;
+}
+
+.dirMenuBtnScoreLabel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15em;
+  line-height: 1;
+}
+
+.dirMenuBtnScoreText {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.dirMenuBtnScoreHeart {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -54%);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 1;
 }
 
 .dirMenuBtnFavorite {
@@ -2884,6 +2974,113 @@ img[data-rotate-key].rotatingThumbFade {
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
+}
+
+#tagActionMenu {
+  min-width: 128px;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
+.dirMenuBtnFavorite {
+  background: var(--color1-primary);
+  border-color: var(--color1-tertiary);
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+.dirMenuBtnScoreFavorite {
+  background: var(--color1-primary);
+  border-color: var(--color1-tertiary);
+  color: var(--color0-primary);
+}
+
+.dirMenuBtnFavoriteTint,
+.dirMenuBtnScoreFavoriteTint {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  border-color: var(--dir-tag-favorite-title-color, #ff0033);
+  color: #fff;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite:hover:not(:disabled),
+.dirMenuBtnFavorite:hover:not(:disabled) {
+  background: var(--color1-secondary);
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+.dirMenuBtnScoreFavorite:hover:not(:disabled) {
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+}
+
+.dirMenuBtnFavoriteTint:hover:not(:disabled),
+.dirMenuBtnScoreFavoriteTint:hover:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  border-color: var(--dir-tag-favorite-title-color, #ff0033);
+  color: #fff;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite:active:not(:disabled),
+.dirMenuBtnFavorite:active:not(:disabled) {
+  background: var(--color1-primary);
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+.dirMenuBtnScoreFavorite:active:not(:disabled) {
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+}
+
+.dirMenuBtnFavoriteTint:active:not(:disabled),
+.dirMenuBtnScoreFavoriteTint:active:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  border-color: var(--dir-tag-favorite-title-color, #ff0033);
+  color: #fff;
+}
+
+.dirMenuBtnScoreFavorite .dirMenuBtnScoreText {
+  color: inherit;
+}
+
+.dirMenuBtnScoreFavoriteTint .dirMenuBtnScoreText {
+  color: inherit;
+}
+
+.dirMenuBtnScoreFavorite .dirMenuBtnScoreHeart,
+.dirMenuBtnFavorite .dirFavoriteHeart,
+.thumbOverlayMenuBtnFavorite .dirFavoriteHeart,
+.dirMenuBtnFavorite .dirMenuFavoriteGlyph,
+.thumbOverlayMenuBtnFavorite .dirMenuFavoriteGlyph {
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+:root[data-retro="on"] .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
+:root[data-retro="on"] .dirMenuBtnFavorite {
+  background: var(--retro-face);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+:root[data-retro="on"] .dirMenuBtnScoreFavorite {
+  background: var(--retro-face);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] .dirMenuBtnFavoriteTint,
+:root[data-retro="on"] .dirMenuBtnScoreFavoriteTint {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  color: #fff;
+}
+
+:root[data-retro="on"] .dirMenuBtnScoreFavorite .dirMenuBtnScoreHeart,
+:root[data-retro="on"] .dirMenuBtnFavorite .dirFavoriteHeart,
+:root[data-retro="on"] .thumbOverlayMenuBtnFavorite .dirFavoriteHeart,
+:root[data-retro="on"] .dirMenuBtnFavorite .dirMenuFavoriteGlyph,
+:root[data-retro="on"] .thumbOverlayMenuBtnFavorite .dirMenuFavoriteGlyph {
+  color: var(--dir-tag-favorite-title-color, #ff0033);
 }
 
 /* =========================================================
@@ -3641,7 +3838,7 @@ img[data-rotate-key].rotatingThumbFade {
 .folderCard.folderThumbCard.folderThumbCoverCard
   .thumbOverlayMeta
   .dirFavoriteHeart {
-  color: inherit;
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .name,
@@ -3694,16 +3891,9 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
-.dirMenuBtnFavorite {
-  color: var(--dir-tag-favorite-title-color, #ff6f91);
+.dirMenuBtnFavorite,
+.dirMenuBtnScoreFavorite {
   font-size: 15px;
-}
-
-:root[data-retro="on"]
-  .folderCard.folderThumbCard.folderThumbCoverCard
-  .thumbOverlayMenuBtnFavorite,
-:root[data-retro="on"] .dirMenuBtnFavorite {
-  color: #b00020;
 }
 
 .gridFiles.previewSquareCards .previewThumbOverlayMetaCompact,
@@ -4017,6 +4207,31 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
 }
 
+:root[data-retro="on"] .previewTagFolderCard .dirSquareName.dirSquareNameTag,
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirSquareName.dirSquareNameTag {
+  color: var(--dir-tag-title-color, #9b8ac7);
+}
+
+:root[data-retro="on"]
+  .previewTagFolderCard
+  .dirSquareName.dirSquareNameTagFavorite,
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirSquareName.dirSquareNameTagFavorite {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+:root[data-retro="on"]
+  .previewTagFolderCard
+  .dirSquareName.dirSquareNameTagAlbum,
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirSquareName.dirSquareNameTagAlbum {
+  color: var(--dir-tag-album-title-color, #ff7a6e);
+}
+
 :root[data-retro="on"] #directoriesList.gridModeList .dirFileNameText {
   font-size: var(--thumb-title-dir-file-font);
   line-height: 1.15;
@@ -4064,7 +4279,7 @@ img[data-rotate-key].rotatingThumbFade {
   .dirFavoriteHeart,
 :root[data-retro="on"] .previewTagFolderCard .dirFavoriteHeart,
 :root[data-retro="on"] #directoriesList.gridModeList .dirFavoriteHeart {
-  color: #b00020;
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
 }
 
 :root[data-retro="on"] .gridFiles .previewThumbOverlayMenuBtn,
@@ -4140,6 +4355,60 @@ img[data-rotate-key].rotatingThumbFade {
   box-shadow:
     inset 1px 1px 0 var(--retro-shadow-black),
     inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint,
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint,
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint,
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: #fff;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+}
+
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint:hover:not(:disabled),
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:hover:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint:hover:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:hover:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: #fff;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+}
+
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint:active:not(:disabled),
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:active:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint:active:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:active:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: #fff;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
 }
 
 :root[data-retro="on"]
@@ -4269,8 +4538,10 @@ img[data-rotate-key].rotatingThumbFade {
 
 #filePreviewViewport img,
 #filePreviewViewport video {
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -4387,10 +4658,12 @@ img[data-rotate-key].rotatingThumbFade {
 
 #viewerViewport img,
 #viewerViewport video {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   max-width: 100%;
   max-height: 100%;
-  height: 100%;
-  width: auto;
   object-fit: contain;
   border-radius: 2px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);

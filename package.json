@@ -1,11 +1,12 @@
 {
   "name": "local_gallery",
-  "version": "01.05.58",
+  "version": "01.05.59",
   "description": "",
   "main": "main.js",
   "scripts": {
-    "start": "npm run build:singlefile && electron .",
+    "start": "npm run sync:split && electron .",
     "build:singlefile": "node scripts/generate-singlefile-html.js",
+    "sync:split": "node scripts/generate-singlefile-html.js --from-singlefile",
     "watch:singlefile": "node scripts/generate-singlefile-html.js --watch",
     "release:patch": "node scripts/release-patch.js",
     "dist": "electron-builder"

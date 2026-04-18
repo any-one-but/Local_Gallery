@@ -418,15 +418,15 @@ function thumbnailVisibilitySupportedFields(surface, kind) {
   const targetKind = thumbnailVisibilityKindSpec(kind).kind;
   const support = {
     preview: {
-      file: ["size", "score", "title", "menuButton", "itemType"],
-      rootFolder: ["folderCount", "fileCount", "size", "score", "title", "menuButton"],
-      subfolder: ["folderCount", "fileCount", "size", "score", "title", "menuButton"],
+      file: ["size", "title", "menuButton", "itemType"],
+      rootFolder: ["folderCount", "fileCount", "size", "title", "menuButton"],
+      subfolder: ["folderCount", "fileCount", "size", "title", "menuButton"],
       tag: ["folderCount", "fileCount", "title", "menuButton"],
     },
     directories: {
-      file: ["size", "score", "itemType"],
-      rootFolder: ["folderCount", "fileCount", "size", "score"],
-      subfolder: ["folderCount", "fileCount", "size", "score"],
+      file: ["size", "itemType"],
+      rootFolder: ["folderCount", "fileCount", "size"],
+      subfolder: ["folderCount", "fileCount", "size"],
       tag: ["folderCount", "fileCount"],
     },
   };
@@ -475,12 +475,11 @@ function thumbnailVisibilityOptionKeys() {
     "folderCount",
     "fileCount",
     "size",
-    "score",
     "title",
     "menuButton",
     "itemType",
   ];
-  const directoriesFields = ["folderCount", "fileCount", "size", "score", "itemType"];
+  const directoriesFields = ["folderCount", "fileCount", "size", "itemType"];
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
     for (let j = 0; j < previewFields.length; j++) {
@@ -519,12 +518,11 @@ function buildDefaultThumbnailVisibilityOptions() {
     "folderCount",
     "fileCount",
     "size",
-    "score",
     "title",
     "menuButton",
     "itemType",
   ];
-  const directoriesFields = ["folderCount", "fileCount", "size", "score", "itemType"];
+  const directoriesFields = ["folderCount", "fileCount", "size", "itemType"];
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
     for (let j = 0; j < previewFields.length; j++) {
@@ -540,35 +538,29 @@ function buildDefaultThumbnailVisibilityOptions() {
 
   // Baseline defaults aligned to workspace thumbnail preference defaults.
   setPreview("file", "size", false);
-  setPreview("file", "score", false);
   setPreview("file", "title", false);
   setPreview("file", "menuButton", false);
   setPreview("file", "itemType", true);
   setDirectories("file", "size", false);
-  setDirectories("file", "score", true);
   setDirectories("file", "itemType", false);
 
   setPreview("rootFolder", "folderCount", false);
   setPreview("rootFolder", "fileCount", false);
   setPreview("rootFolder", "size", true);
-  setPreview("rootFolder", "score", false);
   setPreview("rootFolder", "title", true);
   setPreview("rootFolder", "menuButton", true);
   setDirectories("rootFolder", "folderCount", false);
   setDirectories("rootFolder", "fileCount", false);
   setDirectories("rootFolder", "size", false);
-  setDirectories("rootFolder", "score", true);
 
   setPreview("subfolder", "folderCount", false);
   setPreview("subfolder", "fileCount", false);
   setPreview("subfolder", "size", false);
-  setPreview("subfolder", "score", false);
   setPreview("subfolder", "title", true);
   setPreview("subfolder", "menuButton", false);
   setDirectories("subfolder", "folderCount", false);
   setDirectories("subfolder", "fileCount", false);
   setDirectories("subfolder", "size", false);
-  setDirectories("subfolder", "score", true);
 
   setPreview("tag", "folderCount", true);
   setPreview("tag", "fileCount", true);
@@ -649,61 +641,27 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
 }
 
 const NOTIFICATION_SOURCE_SPECS = Object.freeze([
-  Object.freeze({
-    id: "workspace",
-    label: "Workspace",
-    optionKey: "notifyWorkspace",
-  }),
-  Object.freeze({
-    id: "navigation",
-    label: "Navigation",
-    optionKey: "notifyNavigation",
-  }),
-  Object.freeze({
-    id: "playback",
-    label: "Playback",
-    optionKey: "notifyPlayback",
-  }),
-  Object.freeze({
-    id: "appearance",
-    label: "Appearance",
-    optionKey: "notifyAppearance",
-  }),
-  Object.freeze({
-    id: "thumbnails",
-    label: "Thumbnails",
-    optionKey: "notifyThumbnails",
-  }),
-  Object.freeze({
-    id: "tags",
-    label: "Tags & albums",
-    optionKey: "notifyTags",
-  }),
-  Object.freeze({
-    id: "rename",
-    label: "Renaming",
-    optionKey: "notifyRename",
-  }),
-  Object.freeze({
-    id: "fileOps",
-    label: "File operations",
-    optionKey: "notifyFileOps",
-  }),
-  Object.freeze({
-    id: "generation",
-    label: "Generation & scrub",
-    optionKey: "notifyGeneration",
-  }),
-  Object.freeze({
-    id: "stats",
-    label: "Stats",
-    optionKey: "notifyStats",
-  }),
-  Object.freeze({
-    id: "misc",
-    label: "Miscellaneous",
-    optionKey: "notifyMisc",
-  }),
+  Object.freeze({ section: "Workspace", id: "workspace-load", label: "Folder load / picker / read-only", optionKey: "notifyWorkspaceLoad" }),
+  Object.freeze({ section: "Workspace", id: "workspace-refresh", label: "Workspace refresh", optionKey: "notifyWorkspaceRefresh" }),
+  Object.freeze({ section: "Workspace", id: "storage", label: "Storage portal / storage changes", optionKey: "notifyStorage" }),
+  Object.freeze({ section: "Navigation", id: "navigation-view", label: "List / title / filter controls", optionKey: "notifyNavigationView" }),
+  Object.freeze({ section: "Navigation", id: "navigation-jump", label: "First / Random File Jump", optionKey: "notifyNavigationJump" }),
+  Object.freeze({ section: "Navigation", id: "navigation-sort", label: "Random sort", optionKey: "notifyNavigationSort" }),
+  Object.freeze({ section: "Playback", id: "playback", label: "Slideshow / gallery mode", optionKey: "notifyPlayback" }),
+  Object.freeze({ section: "Appearance", id: "appearance-display", label: "Light mode / filename display / pane background", optionKey: "notifyAppearanceDisplay" }),
+  Object.freeze({ section: "Appearance", id: "appearance-presets", label: "Appearance presets", optionKey: "notifyAppearancePresets" }),
+  Object.freeze({ section: "Tags", id: "tags", label: "Tags / albums / hidden tags", optionKey: "notifyTags" }),
+  Object.freeze({ section: "Tags", id: "tag-thumbnails", label: "Tag thumbnails / tag media settings", optionKey: "notifyTagThumbnails" }),
+  Object.freeze({ section: "Thumbnails", id: "thumbnails", label: "Folder / root thumbnails", optionKey: "notifyThumbnails" }),
+  Object.freeze({ section: "Thumbnails", id: "thumbnail-tools", label: "Thumbnail framing / cache / resets", optionKey: "notifyThumbnailTools" }),
+  Object.freeze({ section: "Edits", id: "rename", label: "Rename + sanitize names", optionKey: "notifyRename" }),
+  Object.freeze({ section: "File operations", id: "trash", label: "Trash / Put Back", optionKey: "notifyTrash" }),
+  Object.freeze({ section: "File operations", id: "delete", label: "Delete", optionKey: "notifyDelete" }),
+  Object.freeze({ section: "File operations", id: "merge", label: "Set Merge / Loose Set Merge", optionKey: "notifyMerge" }),
+  Object.freeze({ section: "Generation", id: "scrub", label: "Scrub", optionKey: "notifyScrub" }),
+  Object.freeze({ section: "Generation", id: "gif", label: "GIF generation", optionKey: "notifyGif" }),
+  Object.freeze({ section: "Stats", id: "stats", label: "Stats / score history", optionKey: "notifyStats" }),
+  Object.freeze({ section: "Other", id: "misc", label: "Fallback / uncategorized", optionKey: "notifyMisc" }),
 ]);
 
 function notificationSourceOptionKeys() {
@@ -2801,6 +2759,44 @@ function currentContextualTagMediaFilterValue() {
   return contextualTagMediaFilterForDirPath(
     String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : ""),
   );
+}
+
+function currentActiveTagFolderContext() {
+  if (!isViewingTagFolder()) return null;
+  const mode = String((WS.view && WS.view.tagFolderActiveMode) || "");
+  const originPath = String((WS.view && WS.view.tagFolderOriginPath) || "");
+  if (mode === "tag") {
+    const tag = normalizeTag((WS.view && WS.view.tagFolderActiveTag) || "");
+    if (!tag) return null;
+    return {
+      mode,
+      tag,
+      album: normalizeTagAlbumName(
+        (WS.view && WS.view.tagFolderActiveAlbum) || "",
+      ),
+      originPath,
+    };
+  }
+  if (mode === "album") {
+    const album = normalizeTagAlbumName(
+      (WS.view && WS.view.tagFolderActiveAlbum) || "",
+    );
+    if (!album) return null;
+    return { mode, tag: "", album, originPath };
+  }
+  return null;
+}
+
+function currentFolderMenuTagRemovalContext() {
+  const context = currentActiveTagFolderContext();
+  if (!context || context.mode !== "tag" || !context.tag) return null;
+  return context;
+}
+
+function currentTagMenuAlbumRemovalContext() {
+  const context = currentActiveTagFolderContext();
+  if (!context || context.mode !== "album" || !context.album) return null;
+  return context;
 }
 
 function getPortalRootPathsForTagContext(mode, tag, album, originPath) {
@@ -5288,6 +5284,16 @@ const MediaFilterEngine = (() => {
 
   function drawSurface(surface, time) {
     let overlayCfg = resolveMediaOverlayConfigForTarget(surface.target);
+    if (shouldPreferNativeGifPlayback(surface.target, overlayCfg)) {
+      if (surface.canvas) {
+        surface.canvas.style.display = "none";
+        surface.canvas.classList.remove("ready");
+      }
+      if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+      surface.hasDrawn = false;
+      surface.awaitingFreshFrame = false;
+      return false;
+    }
     if (!overlayCfg && AutoBlackBarCrop.enabled()) overlayCfg = EMPTY_MEDIA_OVERLAY_CONFIG;
     if (!overlayCfg) {
       if (surface.canvas) surface.canvas.style.display = "none";
@@ -5820,6 +5826,135 @@ function favoriteMenuButtonLabel(opt = null) {
   return `<span class="dirMenuFavoriteGlyph" aria-hidden="true">${escapeHtml(favoriteHeartSymbol(opt))}</span>`;
 }
 
+const FAVORITE_MENU_BUTTON_DISPLAY_ICON = "icon";
+const FAVORITE_MENU_BUTTON_DISPLAY_TINT = "tint";
+
+function thumbnailMenuButtonScoreEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return scoreInterfaceEnabled(src) && !(src && src.showScores === false);
+}
+
+function formatThumbnailMenuButtonScoreValue(scoreValue) {
+  const n = Number(scoreValue);
+  if (!Number.isFinite(n)) return "";
+  return String(Math.round(n));
+}
+
+function thumbnailMenuButtonShowsScore(scoreValue, opt = null) {
+  return (
+    thumbnailMenuButtonScoreEnabled(opt) &&
+    !!formatThumbnailMenuButtonScoreValue(scoreValue)
+  );
+}
+
+function thumbnailMenuButtonLabelHtml(
+  scoreValue,
+  isFavorite = false,
+  opt = null,
+  favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+) {
+  const scoreText = thumbnailMenuButtonShowsScore(scoreValue, opt)
+    ? formatThumbnailMenuButtonScoreValue(scoreValue)
+    : "";
+  const useFavoriteIcon =
+    isFavorite && favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_ICON;
+  if (!scoreText) return useFavoriteIcon ? favoriteMenuButtonLabel(opt) : "⋯";
+  return `
+    <span class="dirMenuBtnScoreLabel${isFavorite ? " dirMenuBtnScoreLabelFavorite" : ""}">
+      ${
+        useFavoriteIcon
+          ? `<span class="dirMenuBtnScoreHeart" aria-hidden="true">${escapeHtml(favoriteHeartSymbol(opt))}</span>`
+          : ""
+      }
+      <span class="dirMenuBtnScoreText">${escapeHtml(scoreText)}</span>
+    </span>
+  `;
+}
+
+function thumbnailMenuButtonClassName(
+  extraClasses = "",
+  scoreValue = null,
+  isFavorite = false,
+  opt = null,
+  favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+) {
+  const classes = ["dirMenuBtn"].concat(
+    String(extraClasses || "")
+      .split(/\s+/)
+      .filter(Boolean),
+  );
+  const showScore = thumbnailMenuButtonShowsScore(scoreValue, opt);
+  if (showScore) classes.push("dirMenuBtnScoreVisible");
+  if (isFavorite && !showScore) {
+    classes.push(
+      favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_TINT
+        ? "dirMenuBtnFavoriteTint"
+        : "dirMenuBtnFavorite",
+    );
+  }
+  if (isFavorite && showScore) {
+    classes.push(
+      favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_TINT
+        ? "dirMenuBtnScoreFavoriteTint"
+        : "dirMenuBtnScoreFavorite",
+    );
+  }
+  return classes.join(" ");
+}
+
+function configureThumbnailMenuButton(
+  btn,
+  title,
+  scoreValue = null,
+  isFavorite = false,
+  extraClasses = "",
+  opt = null,
+  favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+) {
+  if (!btn) return;
+  btn.className = thumbnailMenuButtonClassName(
+    extraClasses,
+    scoreValue,
+    isFavorite,
+    opt,
+    favoriteDisplay,
+  );
+  btn.innerHTML = thumbnailMenuButtonLabelHtml(
+    scoreValue,
+    isFavorite,
+    opt,
+    favoriteDisplay,
+  );
+  btn.title = String(title || "");
+}
+
+function buildThumbnailMenuButtonHtml(
+  title,
+  scoreValue = null,
+  isFavorite = false,
+  extraClasses = "",
+  disabled = false,
+  opt = null,
+  favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+) {
+  return `<button class="${escapeHtml(
+    thumbnailMenuButtonClassName(
+      extraClasses,
+      scoreValue,
+      isFavorite,
+      opt,
+      favoriteDisplay,
+    ),
+  )}" title="${escapeHtml(String(title || ""))}"${
+    disabled ? " disabled" : ""
+  }>${thumbnailMenuButtonLabelHtml(
+    scoreValue,
+    isFavorite,
+    opt,
+    favoriteDisplay,
+  )}</button>`;
+}
+
 function syncThumbFilterKeyWithCurrentAppearanceContext() {
   const nextThumbKey = buildThumbFilterKey();
   if (nextThumbKey === THUMB_FILTER_KEY) return false;
@@ -6089,6 +6224,16 @@ function mediaFilterEnabled() {
   return anyMediaFilterEnabled();
 }
 
+function shouldPreferNativeGifPlayback(target = undefined, overlayCfg = undefined) {
+  if (!isGifRecord(target)) return false;
+  if (gifsIgnoreProcessingEnabled()) return true;
+  const cfg =
+    typeof overlayCfg === "undefined"
+      ? resolveMediaOverlayConfigForTarget(target)
+      : overlayCfg;
+  return !cfg && autoCropBlackBarsEnabled();
+}
+
 function formatBytes(bytes) {
   const n = Number(bytes);
   if (!Number.isFinite(n) || n <= 0) return "0 B";
@@ -6120,7 +6265,13 @@ function syncMediaFilterSurface(
       processingTarget = null;
     }
   }
-  if (!resolveMediaOverlayConfigForTarget(processingTarget) && !autoCropBlackBarsEnabled()) {
+  const overlayCfg = resolveMediaOverlayConfigForTarget(processingTarget);
+  if (shouldPreferNativeGifPlayback(processingTarget, overlayCfg)) {
+    mediaEl.classList.remove("mediaHidden");
+    MediaFilterEngine.detach(surfaceName);
+    return;
+  }
+  if (!overlayCfg && !autoCropBlackBarsEnabled()) {
     mediaEl.classList.remove("mediaHidden");
     MediaFilterEngine.detach(surfaceName);
     return;
@@ -6130,7 +6281,7 @@ function syncMediaFilterSurface(
     mediaEl,
     container,
     type,
-    getMediaFilterForType(processingTarget),
+    overlayCfg ? getMediaFilterForType(processingTarget) : "off",
     processingTarget,
   );
 }
@@ -6258,6 +6409,23 @@ function applyInteractionModeFromOptions() {
   );
   syncActivePaneWithLayout();
   updateGridModeListTopInset();
+}
+
+function applyLoadedOptionsToDocument() {
+  applyColorSchemeFromOptions();
+  applyTagFolderTitleColorsFromOptions();
+  applyRetroModeFromOptions();
+  applyMediaFilterFromOptions();
+  applyThumbFitFromOptions();
+  applyThumbnailTitleSizeFromOptions();
+  applyDisplaySizesFromOptions();
+  applyDirectoryMiniThumbSizeFromOptions();
+  applyDirectoryFileThumbLayoutFromOptions();
+  applyDirectoryFolderCardLayoutFromOptions();
+  applyNaturalAspectThumbnailModeFromOptions();
+  applyDescriptionVisibilityFromOptions();
+  applyInteractionModeFromOptions();
+  applyPaneDividerFromOptions();
 }
 
 function applyOptionsEverywhere(invalidateThumbs = false) {
@@ -8082,98 +8250,78 @@ function notificationsEnabledForSource(sourceId) {
   return !!opt[String(spec.optionKey || "")];
 }
 
-function inferNotificationSourceId(text) {
+function captureStatusSourceContext() {
+  try {
+    throw new Error("status_source");
+  } catch (err) {
+    return err && err.stack ? String(err.stack).toLowerCase() : "";
+  }
+}
+
+function inferNotificationSourceId(text, sourceContext = "") {
   const msg = String(text || "").trim().toLowerCase();
-  if (!msg) return "misc";
-  if (
-    msg.includes("thumbnail") ||
-    msg.includes("thumb") ||
-    msg.includes("root thumbnail") ||
-    msg.includes("thumbnail cache")
-  )
+  const ctx = String(sourceContext || "").trim().toLowerCase();
+  if (!msg && !ctx) return "misc";
+  const hasMsg = (...parts) => parts.some((part) => part && msg.includes(part));
+  const hasCtx = (...parts) => parts.some((part) => part && ctx.includes(part));
+
+  if (hasCtx("scrub")) return "scrub";
+  if (hasCtx("gif")) return "gif";
+  if (hasCtx("putback", "movefolderswithundotash", "movetotrash", "trash")) return "trash";
+  if (hasCtx("loosesetmerge", "setmerge", "merge")) return "merge";
+  if (hasCtx("sanitize", "rename")) return "rename";
+  if (hasCtx("refreshworkspace", "refreshworkspacefromroothandle")) return "workspace-refresh";
+  if (hasCtx("folderpicker", "loadfolder", "indexworkspace", "load workspace", "load folder")) return "workspace-load";
+  if (hasCtx("storage")) return "storage";
+  if (hasCtx("firstfilejump", "randomfilejump")) return "navigation-jump";
+  if (hasCtx("randomfilesort", "randomfoldersort")) return "navigation-sort";
+  if (hasCtx("slideshow", "gallerymode")) return "playback";
+  if (hasCtx("preset")) return "appearance-presets";
+  if (hasCtx("thumbnailviewport", "framing", "crop", "invalidateallthumbs", "customthumbnail", "thumbcache")) return "thumbnail-tools";
+  if (hasCtx("thumbnail", "thumb")) {
+    if (hasCtx("tag")) return "tag-thumbnails";
     return "thumbnails";
-  if (
-    msg.includes("slideshow") ||
-    msg.includes("gallery mode is no longer available")
-  )
-    return "playback";
-  if (
-    msg.includes("score history") ||
-    msg.includes("score log")
-  )
-    return "stats";
-  if (
-    msg.includes("scrub") ||
-    msg.includes("gif ")
-  )
-    return "generation";
-  if (
-    msg.includes("tag ") ||
-    msg.startsWith("tag") ||
-    msg.includes("tag album") ||
-    msg.includes("untagged") ||
-    msg.includes("hid tag") ||
-    msg.includes("unhid tag")
-  )
+  }
+  if (hasCtx("tag", "album")) return "tags";
+  if (hasCtx("scorehistory", "scorelog", "stats")) return "stats";
+
+  if (hasMsg("thumbnail viewport", "preparing thumbnail framing", "thumbnail cache rebuild queued", "custom thumbnail", "thumbnail preview is unavailable", "thumbnail settings", "thumbnail customization", "thumbnail edits and assignments"))
+    return "thumbnail-tools";
+  if (hasMsg("tag folder thumbnails", "tag media preset", "tag content filter", "thumbnail for '", "set random thumbnail for '", "thumbnail already set for '", "no media files available for '", "removed tag '"))
+    return "tag-thumbnails";
+  if (hasMsg("set thumbnail for root", "root thumbnail", "set thumbnail for ", "selected item has no editable thumbnail source"))
+    return "thumbnails";
+  if (hasMsg("scrub")) return "scrub";
+  if (hasMsg("gif ", "gifs ", "gifs were", "gif generation")) return "gif";
+  if (hasMsg("score history", "score log")) return "stats";
+  if (hasMsg("preset")) return "appearance-presets";
+  if (hasMsg("light mode", "force title case", "hide file extensions", "hide underscores", "trim before last dash", "trim after first underscore", "pane background"))
+    return "appearance-display";
+  if (hasMsg("slideshow", "gallery mode is no longer available")) return "playback";
+  if (hasMsg("storage folders cannot be opened", "storage changes")) return "storage";
+  if (hasMsg("loaded folder", "load folder", "folder picker unavailable", "read-only mode", "index complete"))
+    return "workspace-load";
+  if (hasMsg("refreshing workspace", "refresh complete", "refresh failed", "refresh already running", "refresh requires"))
+    return "workspace-refresh";
+  if (hasMsg("first file jump", "random file jump")) return "navigation-jump";
+  if (hasMsg("random file sort", "random folder sort")) return "navigation-sort";
+  if (hasMsg("filter:", "list pane:", "title layout:", "settings + list panes:", "reveal hidden items:", "untagged folder:", "quick navigation:", "preview media uses pane background:"))
+    return "navigation-view";
+  if (hasMsg("tag ", "tag album", "hid tag", "unhid tag", "created tag", "no folders contain that tag", "no tags updated", "no tags selected", "removed tag '", "untagged") )
     return "tags";
-  if (
-    msg.includes("rename") ||
-    msg.includes("invalid folder name") ||
-    msg.includes("invalid file name") ||
-    msg.includes("a folder with that name already exists") ||
-    msg.includes("a file with that name already exists") ||
-    msg.includes("root folder cannot be renamed")
-  )
+  if (hasMsg("sanitize names", "rename", "invalid folder name", "invalid file name", "a folder with that name already exists", "a file with that name already exists", "no files renamed", "renaming files requires", "root folder cannot be renamed"))
     return "rename";
-  if (
-    msg.includes("preset") ||
-    msg.includes("media preset") ||
-    msg.includes("light mode") ||
-    msg.includes("force title case") ||
-    msg.includes("hide file extensions") ||
-    msg.includes("hide underscores") ||
-    msg.includes("trim before last dash") ||
-    msg.includes("trim after first underscore") ||
-    msg.includes("pane background")
-  )
-    return "appearance";
-  if (
-    msg.includes("delete") ||
-    msg.includes("set merge") ||
-    msg.includes("move failed") ||
-    msg.includes("folder handle unavailable") ||
-    msg.includes("no folders selected") ||
-    msg.includes("no files selected") ||
-    msg.includes("deleted ")
-  )
-    return "fileOps";
-  if (
-    msg.includes("loaded folder") ||
-    msg.includes("load folder") ||
-    msg.includes("folder picker unavailable") ||
-    msg.includes("refresh") ||
-    msg.includes("read-only mode") ||
-    msg.includes("index complete")
-  )
-    return "workspace";
-  if (
-    msg.includes("filter:") ||
-    msg.includes("list pane:") ||
-    msg.includes("title layout:") ||
-    msg.includes("settings + list panes:") ||
-    msg.includes("first file jump") ||
-    msg.includes("random file sort:") ||
-    msg.includes("random folder sort:") ||
-    msg.includes("reveal hidden items:") ||
-    msg.includes("untagged folder:")
-  )
-    return "navigation";
+  if (hasMsg("put back", "trash folder is unavailable", "move to trash requires", "no trashed folders selected"))
+    return "trash";
+  if (hasMsg("delete requires", "delete failed", "deleted ")) return "delete";
+  if (hasMsg("set merge", "loose set merge", "selected folders must be in the same parent folder", "selected files must be in the same folder", "failed to create merge folder", "failed to finalize merged folder", "failed to create temporary folder", "move failed for "))
+    return "merge";
   return "misc";
 }
 
 function showStatusMessage(text, sourceId = "") {
   const source = normalizeNotificationSourceId(
-    sourceId || inferNotificationSourceId(text),
+    sourceId || inferNotificationSourceId(text, captureStatusSourceContext()),
   );
   if (!notificationsEnabledForSource(source)) return;
   if (VIEWER_MODE) {
@@ -8675,6 +8823,10 @@ function getCurrentTitleInfoText() {
   const title = String(context?.title || "—") || "—";
   const nodes = collectUniqueTitleMetricNodes(context?.nodes || []);
   if (!nodes.length) return title;
+  if (isViewingTagFolder() && WS.view.tagFolderActiveMode === "storage") {
+    const folderCount = nodes.length;
+    return `${title} • ${folderCount} ${folderCount === 1 ? "Folder" : "Folders"}`;
+  }
   const sizeMemo = new Map();
   const folderCountMode =
     String(context?.folderCountMode || "directChildren") === "collection"
@@ -10198,14 +10350,24 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       return `<h2 style="margin-top:18px;">${escapeHtml(spec.directoriesLabel)}</h2>${rows.join("")}`;
     })
     .join("");
-  const notificationsRowsHtml = NOTIFICATION_SOURCE_SPECS.map((spec) =>
-    makeCheckRow(
-      spec.label,
-      `${spec.label} notifications.`,
-      `opt_${spec.optionKey}`,
-      !!opt[spec.optionKey],
-    ),
-  ).join("");
+  const notificationsRowsHtml = (() => {
+    let currentSection = "";
+    return NOTIFICATION_SOURCE_SPECS.map((spec) => {
+      const sectionHtml =
+        spec.section && spec.section !== currentSection
+          ? ((currentSection = spec.section), `<h2 style="margin-top:18px;">${escapeHtml(spec.section)}</h2>`)
+          : "";
+      return (
+        sectionHtml +
+        makeCheckRow(
+          spec.label,
+          `${spec.label} notifications.`,
+          `opt_${spec.optionKey}`,
+          !!opt[spec.optionKey],
+        )
+      );
+    }).join("");
+  })();
 
   const formatPixelateResolution = (value) => {
     const n = Number(value);
@@ -12446,11 +12608,11 @@ function getAllStorageDirNodes() {
 }
 
 
+// Storage portal rows must remain metadata-only. Use the stored workspace-relative
+// path directly instead of reconstructing an absolute path from loaded media records.
 function storageDisplayPathForPath(path) {
   const normalizedPath = normalizeDirPathValue(path);
   if (!normalizedPath && normalizedPath !== "") return "";
-  const absPath = String(resolveAbsoluteDirectoryPath(normalizedPath) || "");
-  if (absPath) return absPath;
   return String(normalizedPath || "");
 }
 
@@ -14452,15 +14614,7 @@ function metaApplyOptionsLog(log) {
   WS.view.appearancePresetDraftName = "";
   WS.view.appearancePresetPromptMode = "";
   applyDefaultViewFromOptions();
-  applyColorSchemeFromOptions();
-  applyRetroModeFromOptions();
-  applyMediaFilterFromOptions();
-  applyThumbFitFromOptions();
-  applyDisplaySizesFromOptions();
-  applyDirectoryMiniThumbSizeFromOptions();
-  applyDescriptionVisibilityFromOptions();
-  applyInteractionModeFromOptions();
-  applyPaneDividerFromOptions();
+  applyLoadedOptionsToDocument();
 }
 
 function metaApplyKeybindsLog(log) {
@@ -15359,15 +15513,7 @@ function metaFinalizeLoadedState() {
   WS.view.appearancePresetDraftName = "";
   WS.view.appearancePresetPromptMode = "";
   applyDefaultViewFromOptions();
-  applyColorSchemeFromOptions();
-  applyRetroModeFromOptions();
-  applyMediaFilterFromOptions();
-  applyThumbFitFromOptions();
-  applyDisplaySizesFromOptions();
-  applyDirectoryMiniThumbSizeFromOptions();
-  applyDescriptionVisibilityFromOptions();
-  applyInteractionModeFromOptions();
-  applyPaneDividerFromOptions();
+  applyLoadedOptionsToDocument();
 }
 
 function metaNormalizeDocIdsToSave(docIds = null) {
@@ -15739,8 +15885,7 @@ function metaInitForCurrentWorkspace() {
   }
   syncMetaButtons();
   renderOptionsUi();
-  applyDescriptionVisibilityFromOptions();
-  applyPaneDividerFromOptions();
+  applyLoadedOptionsToDocument();
 }
 
 async function metaInitForCurrentWorkspaceFs() {
@@ -15836,8 +15981,7 @@ async function metaInitForCurrentWorkspaceFs() {
   if (dirtyDocs.size) metaMarkDirty(...Array.from(dirtyDocs));
   syncMetaButtons();
   renderOptionsUi();
-  applyDescriptionVisibilityFromOptions();
-  applyPaneDividerFromOptions();
+  applyLoadedOptionsToDocument();
 }
 
 async function metaReapplyFsScoresAndTags() {
@@ -23834,6 +23978,7 @@ function handlePreviewCardSelection(card, openAction, e = null) {
 function entryUsesRotatingThumbnail(entry) {
   if (!entry) return false;
   if (entry.kind === "dir") {
+    if (isStorageStubDirNode(entry.node)) return false;
     const lead = getDisplayLeadPreviewForDir(entry.node || null, "dir");
     return !!String(lead?.rotateKey || "");
   }
@@ -26154,7 +26299,7 @@ function notifyScrubMissingTools(missingTools) {
     ),
   );
   if (!list.length) return;
-  if (!notificationsEnabledForSource("generation")) return;
+  if (!notificationsEnabledForSource("scrub")) return;
   const msg = `Scrub completed, but these tools are missing:\n\n${list.map((t) => `- ${t}`).join("\n")}`;
   showStatusMessage(`Scrub missing tools: ${list.join(", ")}`);
   try {
@@ -27687,6 +27832,18 @@ function openTagContextMenu(context) {
   const canDelete = !context.special && (!!tag || isAlbumEntry);
   const canHide = !!tag && !context.special;
   const canCreateInverse = !!tag && !context.special && !isAlbumEntry;
+  const currentAlbumContext = currentTagMenuAlbumRemovalContext();
+  const canRemoveFromAlbum =
+    !!tag &&
+    !context.special &&
+    !isAlbumEntry &&
+    !!currentAlbumContext &&
+    String(currentAlbumContext.originPath || "") ===
+      String(context.originPath || "");
+  const preferPane =
+    anchor && anchor.closest && anchor.closest("#previewBody")
+      ? "preview"
+      : "directories";
   const thumbMode = metaGetTagThumbnailModeByKey(tagKey);
   const tagEntryForThumb =
     context.entry && context.entry.kind === "tag"
@@ -27720,29 +27877,36 @@ function openTagContextMenu(context) {
   closeTagContextMenu();
   closeActionMenus();
   const menu = tagActionMenuEl;
-  if (canRename)
-    menu.appendChild(
-      createTagMenuButton("Rename tag", () => handleTagMenuAction("rename")),
+  if (isAlbumEntry) {
+    appendTagMenuTwoColRow(
+      menu,
+      createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
+      createTagMenuButton("Delete", () => handleTagMenuAction("delete")),
     );
-  if (canCreateInverse)
-    menu.appendChild(
-      createTagMenuButton("Create inverse", () =>
-        handleTagMenuAction("create-inverse"),
-      ),
+  } else {
+    appendTagMenuTwoColRow(
+      menu,
+      createTagMenuButton("Album", () => {
+        closeTagContextMenu();
+        beginTagAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
+      }),
+      createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
     );
-  if (canDelete)
-    menu.appendChild(
-      createTagMenuButton(
-        isAlbumEntry ? "Delete tag album" : "Delete tag",
-        () => handleTagMenuAction("delete"),
-      ),
-    );
-  if (canHide)
-    menu.appendChild(
-      createTagMenuButton(isHidden ? "Unhide tag" : "Hide tag", () =>
+    appendTagMenuTwoColRow(
+      menu,
+      createTagMenuButton("Delete", () => handleTagMenuAction("delete")),
+      createTagMenuButton(isHidden ? "Unhide" : "Hide", () =>
         handleTagMenuAction("hidden"),
       ),
     );
+    if (canCreateInverse) {
+      menu.appendChild(
+        createTagMenuButton("Create inverse", () =>
+          handleTagMenuAction("create-inverse"),
+        ),
+      );
+    }
+  }
   if (canAppearancePreset) {
     menu.appendChild(
       createTagMenuButton("Set media preset", () => {
@@ -27845,6 +28009,7 @@ function openTagContextMenu(context) {
     canDelete,
     canHide,
     canCreateInverse,
+    canRemoveFromAlbum,
     isHidden,
     canAppearancePreset,
     canMediaFilter,
@@ -28095,6 +28260,8 @@ function buildFolderMenuState(dirNode) {
   const canRename = !!WS.meta.fsRootHandle && !isStorageGhost;
   const canBatchIndex = !!WS.meta.fsRootHandle && !isStorageGhost;
   const canResetOrder = !!dirNode?.preserveOrder && !isStorageGhost;
+  const currentTagRemovalContext =
+    !isStorageGhost && !isRootNode ? currentFolderMenuTagRemovalContext() : null;
   const folderThumbMode = isRootNode
     ? getRootThumbnailMode()
     : metaGetFolderThumbnailMode(p);
@@ -28118,6 +28285,7 @@ function buildFolderMenuState(dirNode) {
     canRename,
     canBatchIndex,
     canResetOrder,
+    currentTagRemovalContext,
     showUseDefaultThumbnail:
       !isStorageGhost &&
       (hasPreset || (isRootNode && !isRootThumbnailModeDefault(folderThumbMode))),
@@ -28239,9 +28407,9 @@ function buildFolderActionMenuDom(
     makeBtn("Index", "batch-index", !state.canBatchIndex),
     makeBtn(state.isFavorite ? "Unfavorite" : "Favorite", "favorite"),
   );
-  menuEl.appendChild(makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"));
-  menuEl.appendChild(
-    makeBtn("Send to storage", "send-to-storage", !state.canSendToStorage),
+  appendTwoCol(
+    makeBtn("Store", "send-to-storage", !state.canSendToStorage),
+    makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"),
   );
   menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
   if (state.assignedAppearancePresetId) {
@@ -29497,6 +29665,21 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     focusSelectedDirectoryInlineInput(".tagEditInput");
     return true;
   }
+  if (action === "remove-from-tag") {
+    const tagContext = currentFolderMenuTagRemovalContext();
+    if (!tagContext || !p) return true;
+    const result = removeUserTagFromPathsBulk([p], tagContext.tag);
+    if (!result.changed) {
+      showStatusMessage("No folders updated.");
+      return true;
+    }
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    showStatusMessage(
+      `Removed folder from tag '${displayTagFolderLabel(tagContext.tag)}'.`,
+    );
+    return true;
+  }
   if (action === "rename") {
     if (!WS.meta.fsRootHandle) {
       showStatusMessage("Rename requires a writable folder.");
@@ -29796,6 +29979,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   const anyAssignedAppearancePreset =
     !!selectedPaths.length &&
     selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
+  const activeTagRemovalContext = currentFolderMenuTagRemovalContext();
   const thumbTogglePaths = selectedDirNodes
     .map((node) => String(node.path || ""))
     .filter(Boolean);
@@ -29857,15 +30041,13 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
     }),
   );
-  menu.appendChild(
-    makeBtn(allHidden ? "Unhide" : "Hide", () => {
-      metaSetHiddenBulk(selectedPaths, !allHidden);
+  appendTwoCol(
+    makeBtn("Store", async () => {
+      await setStorageStateForFolderPaths(selectedPaths, true);
       if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
     }),
-  );
-  menu.appendChild(
-    makeBtn("Send to storage", async () => {
-      await setStorageStateForFolderPaths(selectedPaths, true);
+    makeBtn(allHidden ? "Unhide" : "Hide", () => {
+      metaSetHiddenBulk(selectedPaths, !allHidden);
       if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
     }),
   );
@@ -30164,16 +30346,25 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
 
   const menu = previewActionMenuEl;
   menu.innerHTML = "";
-  const makeBtn = (label, onClick, closeMenu = true) => {
+  const makeBtn = (label, onClick, closeMenu = true, disabled = false) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = String(label || "");
+    btn.disabled = !!disabled;
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
+      if (btn.disabled) return;
       if (closeMenu) closePreviewContextMenu();
       await onClick();
     });
     return btn;
+  };
+  const appendTwoCol = (leftBtn, rightBtn) => {
+    const row = document.createElement("div");
+    row.className = "menuTwoColRow";
+    row.appendChild(leftBtn);
+    row.appendChild(rightBtn);
+    menu.appendChild(row);
   };
 
   const albumAssignableTagEntries = selectedEntries.filter(
@@ -30250,29 +30441,131 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const allTagThumbRotating =
     !!tagThumbTargets.length &&
     tagThumbTargets.every((key) => tagThumbnailUsesRotationByKey(key));
-
-  if (albumAssignableTagEntries.length) {
-    menu.appendChild(
-      makeBtn("Tag album", async () => {
-        const tags = normalizeTagList(
-          albumAssignableTagEntries.map((entry) => String(entry.tag || "")),
-        );
-        const originPath = String(
-          albumAssignableTagEntries[0]?.originPath || "",
-        );
-        if (!tags.length) {
-          showStatusMessage("No tags selected.");
-          return;
-        }
-        finalizeBulkSelectionAction();
-        startBulkTagAlbuming(tags, originPath);
-      }),
+  const singleRenameEntry =
+    selectedEntries.length === 1 ? selectedEntries[0] || null : null;
+  const canSingleRename =
+    !!singleRenameEntry &&
+    !singleRenameEntry.special &&
+    !singleRenameEntry.placeholder &&
+    (!!String(singleRenameEntry.tag || "").trim() ||
+      !!normalizeTagAlbumName(singleRenameEntry.album || ""));
+  const singleRegularTagEntry =
+    singleRenameEntry &&
+    !singleRenameEntry.special &&
+    !singleRenameEntry.placeholder &&
+    !!String(singleRenameEntry.tag || "").trim() &&
+    !normalizeTagAlbumName(singleRenameEntry.album || "");
+  const activeAlbumContext = currentTagMenuAlbumRemovalContext();
+  const canRemoveFromAlbum =
+    !!activeAlbumContext &&
+    !!albumAssignableTagEntries.length &&
+    albumAssignableTagEntries.every(
+      (entry) =>
+        String(entry.originPath || "") ===
+        String(activeAlbumContext.originPath || ""),
     );
-  }
 
-  if (hiddenTagTargets.length) {
-    menu.appendChild(
-      makeBtn(allHiddenTags ? "Unhide tags" : "Hide tags", async () => {
+  appendTwoCol(
+    makeBtn(
+      "Album",
+      async () => {
+        finalizeBulkSelectionAction();
+        beginTagAlbumAssignmentForEntries(albumAssignableTagEntries, "preview");
+      },
+      true,
+      !albumAssignableTagEntries.length,
+    ),
+    makeBtn(
+      "Rename",
+      async () => {
+        if (!canSingleRename || !singleRenameEntry) return;
+        finalizeBulkSelectionAction();
+        beginTagRenameForEntry(singleRenameEntry, "preview");
+      },
+      true,
+      !canSingleRename,
+    ),
+  );
+  const previewBulkTagDeleteBtn = makeBtn(
+    "Delete",
+    async () => {
+      const targetTagEntries = deletableTagEntries;
+      const targetAlbumEntries = deletableTagAlbumEntries;
+      if (!targetTagEntries.length && !targetAlbumEntries.length) {
+        showStatusMessage("No tags selected.");
+        return;
+      }
+      const byTag = new Map();
+      for (const entry of targetTagEntries) {
+        const tag = String(entry.tag || "").trim();
+        const originPath = String(entry.originPath || "");
+        if (!tag) continue;
+        const dirs = getDirsForTagEntry(entry);
+        const paths = gatherTagPathsForDirs(dirs);
+        if (!paths.length) continue;
+        byTag.set(`${originPath}\n${tag}`, { tag, paths, originPath });
+      }
+      const albums = [];
+      const seenAlbums = new Set();
+      for (const entry of targetAlbumEntries) {
+        const album = normalizeTagAlbumName(entry.album || "");
+        const originPath = String(entry.originPath || "");
+        const key = `${originPath}\n${album}`;
+        if (!album || seenAlbums.has(key)) continue;
+        seenAlbums.add(key);
+        albums.push({ album, originPath });
+      }
+      if (!byTag.size && !albums.length) {
+        showStatusMessage("No tags selected.");
+        return;
+      }
+      const deleteLabel =
+        byTag.size && albums.length
+          ? `Delete ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and ${albums.length} album${albums.length === 1 ? "" : "s"}?`
+          : byTag.size
+            ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
+            : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Tags stay and will be ungrouped.`;
+      if (!confirm(deleteLabel)) return;
+      let changed = false;
+      if (byTag.size) {
+        for (const value of byTag.values()) {
+          if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
+            changed = true;
+        }
+      }
+      let deletedCount = 0;
+      let ungroupedTotal = 0;
+      for (let i = 0; i < albums.length; i++) {
+        const result = deleteTagAlbumByName(albums[i].album, albums[i].originPath);
+        if (!result.changed) continue;
+        changed = true;
+        deletedCount++;
+        ungroupedTotal += Number(result.clearedTags) || 0;
+      }
+      if (!changed) {
+        showStatusMessage(byTag.size ? "No folders updated." : "No tags updated.");
+        return;
+      }
+      metaScheduleSave();
+      refreshAfterTagMetadataChange();
+      if (byTag.size && deletedCount) {
+        showStatusMessage(
+          `Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"}.`,
+        );
+      } else if (byTag.size) {
+        showStatusMessage(`Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"}.`);
+      } else {
+        showStatusMessage(
+          `Deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
+        );
+      }
+      finalizeBulkSelectionAction();
+    },
+    true,
+    !deletableTagEntries.length && !deletableTagAlbumEntries.length,
+  );
+  const previewBulkTagHideBtn = hiddenTagTargets.length
+    ? makeBtn(allHiddenTags ? "Unhide" : "Hide", async () => {
         let changed = false;
         for (let i = 0; i < hiddenTagTargets.length; i++) {
           if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTags))
@@ -30285,97 +30578,14 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
           `${allHiddenTags ? "Unhid" : "Hid"} ${hiddenTagTargets.length} tag${hiddenTagTargets.length === 1 ? "" : "s"}.`,
         );
         finalizeBulkSelectionAction();
-      }),
-    );
-  }
+      })
+    : createTagMenuSpacerButton();
+  appendTwoCol(previewBulkTagDeleteBtn, previewBulkTagHideBtn);
 
-  if (deletableTagEntries.length) {
+  if (singleRegularTagEntry) {
     menu.appendChild(
-      makeBtn("Delete tags", async () => {
-        const byTag = new Map();
-        for (const entry of deletableTagEntries) {
-          const tag = String(entry.tag || "").trim();
-          const originPath = String(entry.originPath || "");
-          if (!tag) continue;
-          const dirs = getDirsForTagEntry(entry);
-          const paths = gatherTagPathsForDirs(dirs);
-          if (!paths.length) continue;
-          byTag.set(`${originPath}\n${tag}`, { tag, paths, originPath });
-        }
-        if (!byTag.size) {
-          showStatusMessage("No tags available to delete.");
-          return;
-        }
-        const count = byTag.size;
-        if (
-          !confirm(
-            `Remove ${count} selected tag${count === 1 ? "" : "s"} from all included folders?`,
-          )
-        )
-          return;
-        let changed = false;
-        for (const value of byTag.values()) {
-          if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
-            changed = true;
-        }
-        if (!changed) {
-          showStatusMessage("No folders updated.");
-          return;
-        }
-        metaScheduleSave();
-        refreshAfterTagMetadataChange();
-        showStatusMessage(`Removed ${count} tag${count === 1 ? "" : "s"}.`);
-        finalizeBulkSelectionAction();
-      }),
-    );
-  }
-
-  if (deletableTagAlbumEntries.length) {
-    menu.appendChild(
-      makeBtn("Delete tag albums", async () => {
-        const albums = [];
-        const seenAlbums = new Set();
-        for (const entry of deletableTagAlbumEntries) {
-          const album = normalizeTagAlbumName(entry.album || "");
-          const originPath = String(entry.originPath || "");
-          const key = `${originPath}\n${album}`;
-          if (!album || seenAlbums.has(key)) continue;
-          seenAlbums.add(key);
-          albums.push({ album, originPath });
-        }
-        if (!albums.length) {
-          showStatusMessage("No tag albums available to delete.");
-          return;
-        }
-        const selectedCount = albums.length;
-        if (
-          !confirm(
-            `Delete ${selectedCount} selected tag album${selectedCount === 1 ? "" : "s"}? Tags stay and will be ungrouped.`,
-          )
-        )
-          return;
-        let changed = false;
-        let deletedCount = 0;
-        let ungroupedTotal = 0;
-        for (let i = 0; i < albums.length; i++) {
-          const result = deleteTagAlbumByName(
-            albums[i].album,
-            albums[i].originPath,
-          );
-          if (!result.changed) continue;
-          changed = true;
-          deletedCount++;
-          ungroupedTotal += Number(result.clearedTags) || 0;
-        }
-        if (!changed) {
-          showStatusMessage("No tags updated.");
-          return;
-        }
-        metaScheduleSave();
-        refreshAfterTagMetadataChange();
-        showStatusMessage(
-          `Deleted ${deletedCount} tag album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
-        );
+      makeBtn("Create inverse", async () => {
+        createInverseTagForEntry(singleRegularTagEntry);
         finalizeBulkSelectionAction();
       }),
     );
@@ -30679,15 +30889,115 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
   });
 }
 
-function createTagMenuButton(label, onClick) {
+function createTagMenuButton(label, onClick, disabled = false, className = "") {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.textContent = label;
+  btn.disabled = !!disabled;
+  if (className) btn.className = String(className);
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (btn.disabled) return;
     onClick();
   });
   return btn;
+}
+
+function createTagMenuSpacerButton() {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.disabled = true;
+  btn.tabIndex = -1;
+  btn.setAttribute("aria-hidden", "true");
+  btn.style.visibility = "hidden";
+  btn.textContent = "";
+  return btn;
+}
+
+function appendTagMenuTwoColRow(menu, leftBtn, rightBtn) {
+  if (!menu || !leftBtn || !rightBtn) return;
+  const row = document.createElement("div");
+  row.className = "menuTwoColRow";
+  row.appendChild(leftBtn);
+  row.appendChild(rightBtn);
+  menu.appendChild(row);
+}
+
+function removeUserTagFromPathsBulk(paths, tagName) {
+  const tag = normalizeTag(tagName || "");
+  if (!tag) return { changed: false, changedCount: 0, tag: "" };
+  const uniquePaths = Array.from(
+    new Set((paths || []).map((p) => String(p || "")).filter(Boolean)),
+  );
+  let changed = false;
+  let changedCount = 0;
+  for (let i = 0; i < uniquePaths.length; i++) {
+    const path = uniquePaths[i];
+    const userTags = metaGetUserTags(path);
+    if (!userTags.includes(tag)) continue;
+    if (metaWriteUserTags(path, userTags.filter((item) => item !== tag))) {
+      changed = true;
+      changedCount++;
+    }
+  }
+  return { changed, changedCount, tag };
+}
+
+function removeTagsFromAlbumBulk(tags, albumName, scopePath = null) {
+  const album = normalizeTagAlbumName(albumName || "");
+  if (!album) return { changed: false, changedCount: 0, album: "" };
+  const uniqueTags = normalizeTagList(tags);
+  let changed = false;
+  let changedCount = 0;
+  for (let i = 0; i < uniqueTags.length; i++) {
+    const tag = uniqueTags[i];
+    if (!tag) continue;
+    if (metaSetTagAlbumForTag(tag, "", scopePath)) {
+      changed = true;
+      changedCount++;
+    }
+  }
+  return { changed, changedCount, album };
+}
+
+function beginTagAlbumAssignmentForEntries(entries, preferPane = "directories") {
+  const selectedEntries = Array.isArray(entries) ? entries : [];
+  const tags = normalizeTagList(
+    selectedEntries.map((entry) => String(entry?.tag || "")),
+  );
+  const originPath = String(selectedEntries[0]?.originPath || "");
+  if (!tags.length) {
+    showStatusMessage("No tags selected.");
+    return false;
+  }
+  startBulkTagAlbuming(tags, originPath, preferPane);
+  return true;
+}
+
+function beginTagRenameForEntry(entry, preferPane = "directories") {
+  if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
+    return false;
+  const tag = String(entry.tag || "").trim();
+  const album = normalizeTagAlbumName(entry.album || "");
+  const isAlbumEntry = !!album && !tag;
+  if (!tag && !isAlbumEntry) return false;
+  const label = String(entry.label || entry.tag || album || tag);
+  const paths = gatherTagPathsForDirs(getDirsForTagEntry(entry));
+  if (!paths.length && !isAlbumEntry) {
+    showStatusMessage("No folders contain that tag.");
+    return false;
+  }
+  return beginTagEntryRename(
+    {
+      tag,
+      album,
+      label,
+      paths,
+      originPath: String(entry.originPath || ""),
+      isAlbumEntry,
+    },
+    preferPane,
+  );
 }
 
 function renameTagForPaths(tag, newName, paths, scopePath = null) {
@@ -31058,6 +31368,26 @@ function handleTagMenuAction(action) {
     );
     return;
   }
+    if (action === "remove-from-album") {
+    if (!ctx.canRemoveFromAlbum) return;
+    const albumContext = currentTagMenuAlbumRemovalContext();
+    if (!albumContext) return;
+    const result = removeTagsFromAlbumBulk(
+      [tag],
+      albumContext.album,
+      albumContext.originPath,
+    );
+    if (!result.changed) {
+      showStatusMessage("No tags updated.");
+      return;
+    }
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    showStatusMessage(
+      `Removed tag '${displayTagFolderLabel(label)}' from album '${displayTagFolderLabel(albumContext.album)}'.`,
+    );
+    return;
+  }
   if (action === "delete") {
     if (!ctx.canDelete) return;
     if (isAlbumEntry) {
@@ -31248,6 +31578,7 @@ function renderDirectoriesActionHeader() {
     !!selectedDirs.length && selectedDirs.every((p) => metaHasFavorite(p));
   const allHidden =
     !!selectedDirs.length && selectedDirs.every((p) => metaHasHidden(p));
+  const activeFolderTagRemovalContext = currentFolderMenuTagRemovalContext();
   const anyAssignedAppearancePreset =
     !!selectedDirs.length &&
     selectedDirs.some((p) => metaHasFolderAppearancePreset(p));
@@ -31347,6 +31678,29 @@ function renderDirectoriesActionHeader() {
   const allTagThumbRotating =
     !!tagThumbTargets.length &&
     tagThumbTargets.every((key) => tagThumbnailUsesRotationByKey(key));
+  const singleSelectedTagEntry =
+    selectedTagEntries.length === 1 ? selectedTagEntries[0] || null : null;
+  const canSingleTagRename =
+    !!singleSelectedTagEntry &&
+    !singleSelectedTagEntry.special &&
+    !singleSelectedTagEntry.placeholder &&
+    (!!String(singleSelectedTagEntry.tag || "").trim() ||
+      !!normalizeTagAlbumName(singleSelectedTagEntry.album || ""));
+  const singleRegularSelectedTagEntry =
+    singleSelectedTagEntry &&
+    !singleSelectedTagEntry.special &&
+    !singleSelectedTagEntry.placeholder &&
+    !!String(singleSelectedTagEntry.tag || "").trim() &&
+    !normalizeTagAlbumName(singleSelectedTagEntry.album || "");
+  const activeAlbumTagContext = currentTagMenuAlbumRemovalContext();
+  const canRemoveSelectedTagsFromAlbum =
+    !!activeAlbumTagContext &&
+    !!albumAssignableTagEntries.length &&
+    albumAssignableTagEntries.every(
+      (entry) =>
+        String(entry.originPath || "") ===
+        String(activeAlbumTagContext.originPath || ""),
+    );
   const canUseGridTagThumbBulkActions =
     isGridInteractionMode() && !!tagThumbTargets.length;
   if (
@@ -31385,49 +31739,41 @@ function renderDirectoriesActionHeader() {
     return row;
   };
 
-  if (albumAssignableTagEntries.length) {
-    directoriesActionMenuEl.appendChild(
-      makeActionBtn("Tag album", () => {
+  if (selectedTagEntries.length) {
+    const albumBtn = makeActionBtn(
+      "Album",
+      () => {
         WS.view.bulkActionMenuOpen = false;
-        const tags = normalizeTagList(
-          albumAssignableTagEntries.map((entry) => String(entry.tag || "")),
-        );
-        const originPath = String(
-          albumAssignableTagEntries[0]?.originPath || "",
-        );
-        if (!tags.length) {
-          showStatusMessage("No tags selected.");
-          return;
-        }
         finalizeBulkSelectionAction();
-        startBulkTagAlbuming(tags, originPath, "preview");
-      }),
+        beginTagAlbumAssignmentForEntries(
+          albumAssignableTagEntries,
+          "directories",
+        );
+      },
+      true,
     );
-  }
-
-  if (hiddenTagTargets.length) {
-    directoriesActionMenuEl.appendChild(
-      makeActionBtn(allHiddenTags ? "Unhide tags" : "Hide tags", () => {
+    const renameTagBtn = makeActionBtn(
+      "Rename",
+      () => {
         WS.view.bulkActionMenuOpen = false;
-        let changed = false;
-        for (let i = 0; i < hiddenTagTargets.length; i++) {
-          if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTags))
-            changed = true;
-        }
-        if (!changed) return;
-        metaScheduleSave();
-        refreshAfterTagMetadataChange();
-        showStatusMessage(
-          `${allHiddenTags ? "Unhid" : "Hid"} ${hiddenTagTargets.length} tag${hiddenTagTargets.length === 1 ? "" : "s"}.`,
-        );
         finalizeBulkSelectionAction();
-      }),
+        if (!singleSelectedTagEntry) return;
+        beginTagRenameForEntry(singleSelectedTagEntry, "directories");
+      },
+      true,
     );
-  }
-
-  if (deletableTagEntries.length) {
+    if (!albumAssignableTagEntries.length) albumBtn.disabled = true;
+    if (!canSingleTagRename) renameTagBtn.disabled = true;
     directoriesActionMenuEl.appendChild(
-      makeActionBtn("Delete tags", () => {
+      makeTwoColRow(
+        albumBtn,
+        renameTagBtn,
+      ),
+    );
+
+    const deleteBtn = makeActionBtn(
+      "Delete",
+      () => {
         WS.view.bulkActionMenuOpen = false;
         const byTag = new Map();
         for (const entry of deletableTagEntries) {
@@ -31440,36 +31786,6 @@ function renderDirectoriesActionHeader() {
           const mapKey = `${originPath}\n${tag}`;
           byTag.set(mapKey, { tag, paths, originPath });
         }
-        if (!byTag.size) {
-          showStatusMessage("No tags available to delete.");
-          return;
-        }
-        const count = byTag.size;
-        const confirmed = confirm(
-          `Remove ${count} selected tag${count === 1 ? "" : "s"} from all included folders?`,
-        );
-        if (!confirmed) return;
-        let changed = false;
-        for (const value of byTag.values()) {
-          if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
-            changed = true;
-        }
-        if (!changed) {
-          showStatusMessage("No folders updated.");
-          return;
-        }
-        metaScheduleSave();
-        refreshAfterTagMetadataChange();
-        showStatusMessage(`Removed ${count} tag${count === 1 ? "" : "s"}.`);
-        finalizeBulkSelectionAction();
-      }),
-    );
-  }
-
-  if (deletableTagAlbumEntries.length) {
-    directoriesActionMenuEl.appendChild(
-      makeActionBtn("Delete tag albums", () => {
-        WS.view.bulkActionMenuOpen = false;
         const albums = [];
         const seenAlbums = new Set();
         for (const entry of deletableTagAlbumEntries) {
@@ -31480,16 +31796,24 @@ function renderDirectoriesActionHeader() {
           seenAlbums.add(key);
           albums.push({ album, originPath });
         }
-        if (!albums.length) {
-          showStatusMessage("No tag albums available to delete.");
+        if (!byTag.size && !albums.length) {
+          showStatusMessage("No tags selected.");
           return;
         }
-        const selectedCount = albums.length;
-        const confirmed = confirm(
-          `Delete ${selectedCount} selected tag album${selectedCount === 1 ? "" : "s"}? Tags stay and will be ungrouped.`,
-        );
-        if (!confirmed) return;
+        const deleteLabel =
+          byTag.size && albums.length
+            ? `Delete ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and ${albums.length} album${albums.length === 1 ? "" : "s"}?`
+            : byTag.size
+              ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
+              : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Tags stay and will be ungrouped.`;
+        if (!confirm(deleteLabel)) return;
         let changed = false;
+        if (byTag.size) {
+          for (const value of byTag.values()) {
+            if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
+              changed = true;
+          }
+        }
         let deletedCount = 0;
         let ungroupedTotal = 0;
         for (let i = 0; i < albums.length; i++) {
@@ -31503,18 +31827,59 @@ function renderDirectoriesActionHeader() {
           ungroupedTotal += Number(result.clearedTags) || 0;
         }
         if (!changed) {
-          showStatusMessage("No tags updated.");
+          showStatusMessage(byTag.size ? "No folders updated." : "No tags updated.");
           return;
         }
         metaScheduleSave();
         refreshAfterTagMetadataChange();
-        showStatusMessage(
-          `Deleted ${deletedCount} tag album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
-        );
+        if (byTag.size && deletedCount) {
+          showStatusMessage(
+            `Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"}.`,
+          );
+        } else if (byTag.size) {
+          showStatusMessage(`Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"}.`);
+        } else {
+          showStatusMessage(
+            `Deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
+          );
+        }
         finalizeBulkSelectionAction();
-      }),
+      },
+      true,
     );
+    if (!deletableTagEntries.length && !deletableTagAlbumEntries.length)
+      deleteBtn.disabled = true;
+    const hideBtn = hiddenTagTargets.length
+      ? makeActionBtn(allHiddenTags ? "Unhide" : "Hide", () => {
+          WS.view.bulkActionMenuOpen = false;
+          let changed = false;
+          for (let i = 0; i < hiddenTagTargets.length; i++) {
+            if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTags))
+              changed = true;
+          }
+          if (!changed) return;
+          metaScheduleSave();
+          refreshAfterTagMetadataChange();
+          showStatusMessage(
+            `${allHiddenTags ? "Unhid" : "Hid"} ${hiddenTagTargets.length} tag${hiddenTagTargets.length === 1 ? "" : "s"}.`,
+          );
+          finalizeBulkSelectionAction();
+        })
+      : createTagMenuSpacerButton();
+    directoriesActionMenuEl.appendChild(
+      makeTwoColRow(deleteBtn, hideBtn),
+    );
+    if (singleRegularSelectedTagEntry) {
+      directoriesActionMenuEl.appendChild(
+        makeActionBtn("Create inverse", () => {
+          WS.view.bulkActionMenuOpen = false;
+          createInverseTagForEntry(singleRegularSelectedTagEntry);
+          finalizeBulkSelectionAction();
+        }),
+      );
+    }
   }
+
 
   if (tagAppearancePresetKeys.length) {
     directoriesActionMenuEl.appendChild(
@@ -31831,18 +32196,18 @@ function renderDirectoriesActionHeader() {
     );
     directoriesActionMenuEl.appendChild(makeTwoColRow(indexBtn, favoriteBtn));
     directoriesActionMenuEl.appendChild(
-      makeActionBtn(allHidden ? "Unhide" : "Hide", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaSetHiddenBulk(selectedDirs, !allHidden);
-        finalizeBulkSelectionAction();
-      }),
-    );
-    directoriesActionMenuEl.appendChild(
-      makeActionBtn("Send to storage", async () => {
-        WS.view.bulkActionMenuOpen = false;
-        await setStorageStateForFolderPaths(selectedDirs, true);
-        finalizeBulkSelectionAction();
-      }),
+      makeTwoColRow(
+        makeActionBtn("Store", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await setStorageStateForFolderPaths(selectedDirs, true);
+          finalizeBulkSelectionAction();
+        }),
+        makeActionBtn(allHidden ? "Unhide" : "Hide", () => {
+          WS.view.bulkActionMenuOpen = false;
+          metaSetHiddenBulk(selectedDirs, !allHidden);
+          finalizeBulkSelectionAction();
+        }),
+      ),
     );
 
     directoriesActionMenuEl.appendChild(
@@ -32705,7 +33070,13 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const canOpenTagMenu = !entry.placeholder && !!tagThumbKey;
       const tagMenuHtml = `
             <div class="dirMenu dirTagMenu">
-              <button class="dirMenuBtn" title="Tag menu"${canOpenTagMenu ? "" : " disabled"}>⋯</button>
+              ${buildThumbnailMenuButtonHtml(
+                "Tag menu",
+                tagMetrics.score,
+                false,
+                "",
+                !canOpenTagMenu,
+              )}
             </div>
           `;
       const tagTitleClass =
@@ -32717,8 +33088,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const showTagThumbnailTitle = true;
       const showTagTextMeta =
         !!tagSummaryBits.length ||
-        tagVisibility.showItemTypeLabel ||
-        tagVisibility.showScores;
+        tagVisibility.showItemTypeLabel;
       const menuOnlyTagSquareCard =
         !renameActive && !showTagThumbnailTitle && !showTagTextMeta;
       const inlineTagTitleCompact =
@@ -32792,8 +33162,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                     tagMetaParts.push(`${tagMetrics.fileCount} ${tagMetrics.fileCount === 1 ? "File" : "Files"}`);
                   if (tagVisibility.showSize)
                     tagMetaParts.push(formatBytes(tagMetrics.sizeBytes));
-                  if (tagVisibility.showScores)
-                    tagMetaParts.push(`Score ${tagMetrics.score}`);
                   return tagMetaParts.length
                     ? `<div class="dirBarMetaText">${escapeHtml(tagMetaParts.join(" • "))}</div>`
                     : "";
@@ -32896,11 +33264,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           }
         }
         const sc = isStorageGhost ? 0 : metaGetScore(p);
-        const scoreMode =
-          dirVisibility.showScores && !isStorageGhost ? "no-arrows" : "hidden";
-        if (!isStorageGhost && dirVisibility.showScores) {
-          dirMetaLines.push(`Score ${sc}`);
-        }
         const isRootNode = entry.node === WS.root;
         const folderMenuState = buildFolderMenuState(entry.node);
         const menuPathKey = isRootNode ? "__root__" : p;
@@ -32963,8 +33326,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   <button type="button" data-action="batch-index"${canBatchIndex ? "" : " disabled"}>Index</button>
                   <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 </div>
-                <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
-                <button type="button" data-action="send-to-storage"${folderMenuState.canSendToStorage ? "" : " disabled"}>Send to storage</button>
+                <div class="menuTwoColRow">
+                  <button type="button" data-action="send-to-storage"${folderMenuState.canSendToStorage ? "" : " disabled"}>Store</button>
+                  <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
+                </div>
                 <button type="button" data-action="appearance-preset-set">Set media preset</button>
                 ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
@@ -32973,15 +33338,19 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
               `;
         }
-        const menuButtonLabelHtml = isFavorite
-          ? favoriteMenuButtonLabel()
-          : `⋯`;
-        const menuButtonFavoriteClass = isFavorite ? " dirMenuBtnFavorite" : "";
         const menuHtml = folderMenuState.isTrashRootPortal
           ? ""
           : `
               <div class="dirMenu">
-              <button class="dirMenuBtn${menuButtonFavoriteClass}" title="${escapeHtml(menuTitle)}">${menuButtonLabelHtml}</button>
+              ${buildThumbnailMenuButtonHtml(
+                menuTitle,
+                sc,
+                isFavorite,
+                "",
+                false,
+                null,
+                FAVORITE_MENU_BUTTON_DISPLAY_TINT,
+              )}
               <div class="dropdownMenu${menuOpen ? " open" : ""}">
                 ${menuButtons}
               </div>
@@ -33134,8 +33503,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             !isRenameEditingDir &&
             !isTagEditingDir &&
             !showFolderThumbnailTitle &&
-            dirMetaLines.length === 0 &&
-            scoreMode === "hidden";
+            dirMetaLines.length === 0;
           const squareRightMetaHtml = `
                 <div class="dirSquareRightMeta">
                   ${menuOnlyFolderSquareCard ? "" : scoreInlineHtml}
@@ -33192,15 +33560,14 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           rec || { type: isVid ? "video" : "image" },
         );
         const fileSizeLabel = formatBytes(Math.max(0, Number(rec?.size) || 0));
-        const fileMenuButtonLabelHtml = isFavorite
-          ? favoriteMenuButtonLabel()
-          : "⋯";
-        const fileMenuButtonFavoriteClass = isFavorite
-          ? " dirMenuBtnFavorite"
-          : "";
+        const fileMenuScore = metaGetScore(rec?.dirPath || "");
         fileMenuHtml = `
               <div class="dirMenu dirFileMenu">
-                <button class="dirMenuBtn${fileMenuButtonFavoriteClass}" title="File menu">${fileMenuButtonLabelHtml}</button>
+                ${buildThumbnailMenuButtonHtml(
+                  "File menu",
+                  fileMenuScore,
+                  isFavorite,
+                )}
                 <div class="dropdownMenu${fileMenuOpen ? " open" : ""}">
                   ${fileMenuButtons}
                 </div>
@@ -35825,7 +36192,6 @@ function buildPreviewTagCardMarkup(entry) {
   const showFolderCount = visibility.showFolderCount;
   const showFileCount = visibility.showFileCount;
   const showSize = visibility.showSize;
-  const showScores = visibility.showScores;
   const showItemTypeLabel = visibility.showItemTypeLabel;
   const showTagThumbnailTitles = visibility.showTitle;
   const naturalThumbCards = naturalAspectThumbnailCardsEnabled();
@@ -35841,7 +36207,6 @@ function buildPreviewTagCardMarkup(entry) {
   else if (showFolderCount) tagSummaryBits.push(`${tagMetrics.folderCount} ${tagMetrics.folderCount === 1 ? "Folder" : "Folders"}`);
   else if (showFileCount) tagSummaryBits.push(`${tagMetrics.fileCount} ${tagMetrics.fileCount === 1 ? "File" : "Files"}`);
   if (showSize) tagSummaryBits.push(formatBytes(tagMetrics.sizeBytes));
-  if (showScores) tagSummaryBits.push(`Score ${tagMetrics.score}`);
   const tagThumbKey = tagThumbnailKeyForEntry(entry);
   const tagThumbMode = metaGetTagThumbnailModeByKey(tagThumbKey);
   const presetRec = getTagPresetPreviewRecordForEntry(entry);
@@ -35944,8 +36309,7 @@ function buildPreviewTagCardMarkup(entry) {
   const canOpenTagMenu = !entry.placeholder && !!tagThumbKey;
   const showTagMenuButton = canOpenTagMenu && visibility.showMenuButton;
   const showTagThumbnailTitle = showTagThumbnailTitles || renameActive;
-  const showTagTextMeta =
-    !!tagSummaryBits.length || showItemTypeLabel || showScores;
+  const showTagTextMeta = !!tagSummaryBits.length || showItemTypeLabel;
   const menuOnlyTagCard =
     !renameActive &&
     !showTagThumbnailTitle &&
@@ -35954,7 +36318,7 @@ function buildPreviewTagCardMarkup(entry) {
   const tagMenuHtml = showTagMenuButton
     ? `
         <div class="dirMenu dirTagMenu">
-          <button class="dirMenuBtn" title="Tag menu">⋯</button>
+          ${buildThumbnailMenuButtonHtml("Tag menu", tagMetrics.score, false)}
         </div>
       `
     : ``;
@@ -36006,7 +36370,6 @@ function buildPreviewTagCardMarkup(entry) {
       inlineTagTitleCompact ||
       (!tagSummaryBits.length &&
         !showItemTypeLabel &&
-        !showScores &&
         !renameActive));
   const bottomMetaHtml =
     countMetaHtml || rightMetaHtml
@@ -36208,10 +36571,8 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
     const menuWrap = document.createElement("div");
     menuWrap.className = "dirMenu";
     const menuBtn = document.createElement("button");
-    menuBtn.className = "dirMenuBtn";
     menuBtn.type = "button";
-    menuBtn.innerHTML = "⋯";
-    menuBtn.title = "Folder menu";
+    configureThumbnailMenuButton(menuBtn, "Folder menu");
     const openPreviewFolderMenu = (e) => {
       if (e) {
         e.preventDefault();
@@ -36229,7 +36590,6 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
     return card;
   }
   const visibility = previewThumbnailVisibilityForDirNode(dirNode);
-  const showScores = visibility.showScores;
   const showFolderCount = visibility.showFolderCount;
   const showFileCount = visibility.showFileCount;
   const showSize = visibility.showSize;
@@ -36255,7 +36615,6 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
     if (isBulkSelected) card.classList.add("bulkSelected");
   }
   const sc = metaGetScore(dirNode?.path || "");
-  const scoreMode = showScores ? "no-arrows" : "hidden";
   const isFavorite = metaHasFavorite(p);
   const isHidden = metaHasHidden(p);
   const totalFolderCount = getDirectFolderCountForNode(dirNode);
@@ -36273,7 +36632,6 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
   else if (showFileCount)
     folderSummaryParts.push(`${totalFileCount} ${totalFileCount === 1 ? "File" : "Files"}`);
   if (showSize) folderSummaryParts.push(formatBytes(totalSizeBytes));
-  if (showScores) folderSummaryParts.push(`Score ${sc}`);
   const thumbMode = folderPreviewThumbMode();
   const thumbAspectMode = thumbMode === "aspect";
   const thumbContainMode =
@@ -36394,11 +36752,16 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
       menuWrap = document.createElement("div");
       menuWrap.className = "dirMenu thumbOverlayMenu";
       const menuBtn = document.createElement("button");
-      menuBtn.className = "dirMenuBtn thumbOverlayMenuBtn";
       menuBtn.type = "button";
-      menuBtn.innerHTML = isFavorite ? favoriteMenuButtonLabel() : "⋯";
-      menuBtn.title = "Folder menu";
-      menuBtn.classList.toggle("thumbOverlayMenuBtnFavorite", !!isFavorite);
+      configureThumbnailMenuButton(
+        menuBtn,
+        "Folder menu",
+        sc,
+        isFavorite,
+        "thumbOverlayMenuBtn previewThumbOverlayMenuBtn",
+        null,
+        FAVORITE_MENU_BUTTON_DISPLAY_TINT,
+      );
       const openPreviewFolderMenu = (e) => {
         if (e) {
           e.preventDefault();
@@ -36429,7 +36792,6 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
       !isRenameEditing &&
       !isTagEditing &&
       folderSummaryParts.length === 0 &&
-      scoreMode === "hidden" &&
       !showStatusIcons;
     if (
       !hideNameInMeta &&
@@ -37555,6 +37917,7 @@ function makePreviewFileCard(
   const forceOverlayMeta = !!useSquareMediaCards || !!useNaturalAspectCards;
   const showAnyMeta = forceOverlayMeta || showNameMeta || !!fileId;
   const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
+  const fileMenuScore = metaGetScore(rec?.dirPath || "");
   let meta = null;
   if (showAnyMeta) {
     meta = document.createElement("div");
@@ -37634,12 +37997,16 @@ function makePreviewFileCard(
         const menuWrap = document.createElement("div");
         menuWrap.className = "dirMenu thumbOverlayMenu previewThumbOverlayMenu";
         const menuBtn = document.createElement("button");
-        menuBtn.className =
-          "dirMenuBtn thumbOverlayMenuBtn previewThumbOverlayMenuBtn";
         menuBtn.type = "button";
-        menuBtn.innerHTML = isFavorite ? favoriteMenuButtonLabel() : "⋯";
-        menuBtn.title = "File menu";
-        menuBtn.classList.toggle("thumbOverlayMenuBtnFavorite", !!isFavorite);
+        configureThumbnailMenuButton(
+          menuBtn,
+          "File menu",
+          fileMenuScore,
+          isFavorite,
+          "thumbOverlayMenuBtn previewThumbOverlayMenuBtn",
+          null,
+          FAVORITE_MENU_BUTTON_DISPLAY_TINT,
+        );
         const openPreviewFileMenu = (e, atPoint = false) => {
           if (e) {
             e.preventDefault();
@@ -40814,6 +41181,8 @@ function applyFolderScoreSelectionAction(delta) {
 
 function startTagSelectionEdit() {
   const { paths, usedBulk } = getDirectorySelectionForKeybindAction();
+  const preferPreview =
+    !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview";
   if (!paths.length) {
     showStatusMessage("No folders selected.");
     return false;
@@ -40829,14 +41198,13 @@ function startTagSelectionEdit() {
     TAG_EDIT_PATH = null;
     startBulkTagging(
       paths,
-      !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview"
-        ? "preview"
-        : "directories",
+      preferPreview ? "preview" : "directories",
     );
     return true;
   }
 
   const path = paths[0];
+  if (preferPreview) return startPreviewFolderTagEdit([path], path);
   TAG_EDIT_PATH = path;
   clearBulkTagPlaceholder();
   selectDirectoryEntryByPath(path);
@@ -41930,12 +42298,7 @@ document.addEventListener("keydown", (e) => {
        ========================================================= */
 
 if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
-applyColorSchemeFromOptions();
-applyRetroModeFromOptions();
-applyDirectoryMiniThumbSizeFromOptions();
-applyDirectoryFileThumbLayoutFromOptions();
-applyDirectoryFolderCardLayoutFromOptions();
-applyInteractionModeFromOptions();
+applyOptionsEverywhere(false);
 rebuildKeybindIndex();
 if (!MENU_OPEN) openMenu("general");
 renderDirectoriesPane();
