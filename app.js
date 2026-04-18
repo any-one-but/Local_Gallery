@@ -25555,6 +25555,15 @@ function refreshThumbnailDemand() {
   const desiredIds = new Set();
   previewIds.forEach((id) => desiredIds.add(id));
   directoriesIds.forEach((id) => desiredIds.add(id));
+  // Loading screens are always on now, so keep the full current navigation
+  // snapshot hot instead of only the viewport. This prevents below-the-fold
+  // folder thumbs from staying blank until a later full rerender.
+  addRecordsToThumbnailDemand(
+    desiredIds,
+    collectNavigationSnapshotRecords(currentNavigationSnapshot(), {
+      full: true,
+    }),
+  );
   if (!desiredIds.size && WS.preview.kind === "dir" && WS.preview.dirNode) {
     addRecordsToThumbnailDemand(
       desiredIds,
@@ -25757,6 +25766,8 @@ function collectFullNavigationEntryRecords(
   if (!dirNode) return [];
   const options = opts && typeof opts === "object" ? opts : {};
   const useCurrentViewEntries = !!options.useCurrentViewEntries;
+  const dirRotateKeyPrefix =
+    String(options.dirRotateKeyPrefix || "preview-dir") || "preview-dir";
   const previewEntries = getPreviewFolderAndFileEntries(dirNode, {
     includeFiles,
     useCurrentViewEntries,
@@ -25776,9 +25787,11 @@ function collectFullNavigationEntryRecords(
       return;
     }
     if (entry.kind === "dir" && entry.node) {
-      const manifest = getDirectoryNavManifest(entry.node);
-      const leadId = String(manifest?.leadRecordId || "");
-      if (leadId) addRecord(WS.fileById.get(leadId));
+      const leadInfo = getDisplayLeadPreviewForDir(
+        entry.node,
+        dirRotateKeyPrefix,
+      );
+      if (leadInfo && leadInfo.record) addRecord(leadInfo.record);
       return;
     }
     if (entry.kind === "tag") {
@@ -25810,6 +25823,8 @@ function collectNavigationEntryWindowRecords(
   if (!dirNode || dirNode !== WS.nav.dirNode) return [];
   const options = opts && typeof opts === "object" ? opts : {};
   const includeFiles = options.includeFiles !== false;
+  const dirRotateKeyPrefix =
+    String(options.dirRotateKeyPrefix || "dir") || "dir";
   const entries = Array.isArray(WS.nav.entries) ? WS.nav.entries : [];
   if (!entries.length) return [];
 
@@ -25846,10 +25861,12 @@ function collectNavigationEntryWindowRecords(
       continue;
     }
     if (entry.kind !== "dir" || !entry.node) continue;
-    const manifest = getDirectoryNavManifest(entry.node);
-    const leadId = String((manifest && manifest.leadRecordId) || "");
-    if (!leadId) continue;
-    addRecord(WS.fileById.get(leadId));
+    const leadInfo = getDisplayLeadPreviewForDir(
+      entry.node,
+      dirRotateKeyPrefix,
+    );
+    if (!(leadInfo && leadInfo.record)) continue;
+    addRecord(leadInfo.record);
   }
   return out;
 }
@@ -25876,7 +25893,10 @@ function collectNavigationSnapshotRecords(snapshot, opts = null) {
         collectFullNavigationEntryRecords(
           snapshot.dirNode,
           shouldAutoLoadFileThumbnails(),
-          { useCurrentViewEntries: true },
+          {
+            useCurrentViewEntries: true,
+            dirRotateKeyPrefix: "dir",
+          },
         ),
       );
     } else {
@@ -25885,6 +25905,7 @@ function collectNavigationSnapshotRecords(snapshot, opts = null) {
         NAVIGATION_PREP_ENTRY_WINDOW,
         {
           includeFiles: shouldAutoLoadFileThumbnails(),
+          dirRotateKeyPrefix: "dir",
         },
       );
       if (windowRecords.length) addRecords(windowRecords);
@@ -25913,6 +25934,7 @@ function collectNavigationSnapshotRecords(snapshot, opts = null) {
           {
             useCurrentViewEntries:
               snapshot.preview.dirNode === snapshot.dirNode,
+            dirRotateKeyPrefix: "preview-dir",
           },
         ),
       );
@@ -26169,8 +26191,13 @@ async function ensureNavigationSnapshotReady(snapshot, opts = null) {
   await runWithConcurrency(
     records,
     navigationThumbWorkerLimit("blocking"),
-    ensureNavigationThumbReady,
+    ensureNavigationThumbDisplayReady,
   );
+}
+
+async function ensureNavigationThumbDisplayReady(rec) {
+  await ensureNavigationThumbReady(rec);
+  await warmPinnedNavigationThumbDecode(rec);
 }
 
 async function prepareInteractiveNavigationSnapshot(snapshot) {
@@ -26195,7 +26222,7 @@ async function prepareNavigationSnapshot(
     await runWithConcurrency(
       pending,
       navigationThumbWorkerLimit("blocking"),
-      ensureNavigationThumbReady,
+      ensureNavigationThumbDisplayReady,
     );
   } finally {
     if (token === NAVIGATION_PREP_TOKEN) hideBusyOverlay();
@@ -35141,12 +35168,16 @@ function getPassivePreviewSrcForRecord(rec, opts = null) {
     if (videoThumbModeSkipsLoading()) return "";
     return String(rec.videoThumbUrl || "");
   }
+  const options = opts && typeof opts === "object" ? opts : null;
+  const allowImageMediaFallback = !!(
+    options && options.allowImageMediaFallback
+  );
   const mode = currentImageThumbMode();
   if (mode === "placeholder") return "";
   if (mode === "native") return String(ensureMediaUrl(rec) || "");
-  if (!rec.thumbUrl) return "";
-  if (String(rec.thumbMode || "") !== mode) return "";
-  return String(rec.thumbUrl || "");
+  if (rec.thumbUrl && String(rec.thumbMode || "") === mode)
+    return String(rec.thumbUrl || "");
+  return allowImageMediaFallback ? String(ensureMediaUrl(rec) || "") : "";
 }
 
 function applyDirectoryInlineAspect(imgEl, aspectValue) {
