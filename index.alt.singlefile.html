@@ -7314,7 +7314,6 @@ function defaultOptions() {
     filmCornerOverlayIntensity: null,
     colorScheme: "retro",
     lightMode: false,
-    hardwareAcceleration: true,
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     directoriesPaneOpen: true,
@@ -7339,7 +7338,6 @@ function defaultOptions() {
     hideSubfolderThumbnailMenuButton: false,
     hideTagAndRootFolderThumbnailMenuButton: false,
     hideFileThumbnailMenuButton: false,
-    loadingScreens: true,
     previewMediaUsePaneBackground: false,
     forceTitleCaps: true,
     hideFileExtensionsInFileNames: true,
@@ -7689,10 +7687,6 @@ function normalizeOptions(o) {
         : d.slideshowDefault,
     colorScheme,
     lightMode,
-    hardwareAcceleration:
-      typeof src.hardwareAcceleration === "boolean"
-        ? src.hardwareAcceleration
-        : d.hardwareAcceleration,
     menuPaneWidthPx: (function () {
       const v = parseFloat(src.menuPaneWidthPx);
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
@@ -7751,10 +7745,6 @@ function normalizeOptions(o) {
     hideSubfolderThumbnailMenuButton,
     hideTagAndRootFolderThumbnailMenuButton,
     hideFileThumbnailMenuButton,
-    loadingScreens:
-      typeof src.loadingScreens === "boolean"
-        ? src.loadingScreens
-        : d.loadingScreens,
     previewMediaUsePaneBackground:
       typeof src.previewMediaUsePaneBackground === "boolean"
         ? src.previewMediaUsePaneBackground
@@ -13493,6 +13483,12 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
+    id: "toggleShowStorageFolder",
+    label: "Toggle storage folder",
+    hint: "Toggle the Storage folder entry.",
+    section: "general",
+  },
+  {
     id: "toggleQuickNavigation",
     label: "Toggle quick navigation",
     hint: "Automatically open the first file in preview-only files folders, then close back to the parent preview context.",
@@ -13726,6 +13722,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   cycleFolderSort: "t",
   toggleShowHiddenFolder: "h",
   toggleShowUntaggedFolder: "Command+h",
+  toggleShowStorageFolder: "",
   toggleQuickNavigation: "",
   togglePreviewMediaUsePaneBackground: "",
   favoriteSelection: "f",
@@ -17246,9 +17243,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     general: {
       title: "General",
       rows: `
-${makeCheckRow("Loading Screens", "When enabled, directory movement waits for thumbnail prep and shows loading screens. When disabled, movement renders immediately and uses placeholders until media is ready.", "opt_loadingScreens", !!opt.loadingScreens)}
 ${makeCheckRow("Light Mode", "Switch between the light and dark Retro UI variants.", "opt_lightMode", !!opt.lightMode)}
-${makeCheckRow("Hardware acceleration", "When disabled, score-related interface elements stay hidden without changing the underlying data.", "opt_hardwareAcceleration", scoreUiVisible)}
 ${scoreUiVisible ? makeSelectRow("Folder sort", "Sort folders by name, score, efficiency, size, or item count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes) : ``}
 ${scoreUiVisible ? makeCheckRow("Include hidden items in Stats", "When enabled, the Stats tab includes hidden folders and files in its totals and score history.", "opt_includeHiddenItemsInStats", !!opt.includeHiddenItemsInStats) : ``}
 ${makeCheckRow("Reveal Hidden Items", "Show folders hidden by hidden tags in the current directory view. The Hidden control still opens the global hidden browser.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
@@ -17703,8 +17698,6 @@ ${makeActionRow(
     setOptionsStatus("Saved");
     renderOptionsUi("notifications");
   });
-  bindCheck("opt_hardwareAcceleration", "hardwareAcceleration");
-  bindCheck("opt_loadingScreens", "loadingScreens");
   bindCheck(
     "opt_previewMediaUsePaneBackground",
     "previewMediaUsePaneBackground",
@@ -18181,9 +18174,7 @@ const OPTION_TAB_IDS = Object.freeze([
 
 const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
   general: Object.freeze([
-    "loadingScreens",
     "lightMode",
-    "hardwareAcceleration",
     "clickSelectedRotatingThumbTeleports",
     "includeHiddenItemsInStats",
     "showHiddenFolder",
@@ -31630,37 +31621,12 @@ function currentFilePreviewContextDir() {
   return WS.nav.dirNode || WS.root || null;
 }
 
-function loadingScreensEnabled() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return !!(opt && opt.loadingScreens);
-}
-
-function tagPortalNavigationContextActive() {
-  if (isViewingTagFolder()) return true;
-  const previewTarget = getPreviewTargetDir();
-  if (previewTarget && previewTarget._skipTagFilters) return true;
-  const selectedEntry = Array.isArray(WS.nav?.entries)
-    ? WS.nav.entries[WS.nav.selectedIndex] || null
-    : null;
-  if (selectedEntry && selectedEntry.kind === "tag") return true;
-  const stack = WS.view && Array.isArray(WS.view.tagNavStack)
-    ? WS.view.tagNavStack
-    : null;
-  if (stack && stack.length) {
-    const top = stack[stack.length - 1];
-    const frameType = String(top?.type || "");
-    if (frameType === "tag-view" || frameType === "tag-entry") return true;
-  }
+function shouldDeferNonEssentialNavigationWork() {
   return false;
 }
 
-function shouldDeferNonEssentialNavigationWork() {
-  return !loadingScreensEnabled() && tagPortalNavigationContextActive();
-}
-
 function scoreInterfaceEnabled(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !(src && src.hardwareAcceleration === false);
+  return true;
 }
 
 function folderDepthRelativeToWorkspaceRoot(dirNode) {
@@ -32800,23 +32766,16 @@ async function ensureNavigationSnapshotReady(snapshot, opts = null) {
 }
 
 async function prepareInteractiveNavigationSnapshot(snapshot) {
-  if (loadingScreensEnabled()) {
-    return prepareNavigationSnapshot(
-      snapshot,
-      "Preparing directory thumbnails...",
-    );
-  }
-  return true;
+  return prepareNavigationSnapshot(
+    snapshot,
+    "Preparing directory thumbnails...",
+  );
 }
 
 async function prepareNavigationSnapshot(
   snapshot,
   label = "Preparing thumbnails...",
 ) {
-  if (!loadingScreensEnabled()) {
-    scheduleNearbyDirectoryRamWarm(snapshot);
-    return true;
-  }
   const pending = navigationSnapshotPendingRecords(snapshot, { full: true });
   if (!pending.length) {
     scheduleNearbyDirectoryRamWarm(snapshot);
@@ -32852,14 +32811,10 @@ async function finalizeDirectoryNavigationRender(opts = null) {
   const shouldRecordHistory = !!options.recordHistory;
   const snapshot = currentNavigationSnapshot();
   const token = ++NAVIGATION_RENDER_TOKEN;
-  if (loadingScreensEnabled()) {
-    await prepareNavigationSnapshot(
-      snapshot,
-      "Preparing directory thumbnails...",
-    );
-  } else {
-    scheduleNearbyDirectoryRamWarm(snapshot);
-  }
+  await prepareNavigationSnapshot(
+    snapshot,
+    "Preparing directory thumbnails...",
+  );
   if (token !== NAVIGATION_RENDER_TOKEN) return false;
   renderDirectoriesPane(keepDirectoriesScroll);
   renderPreviewPane(animatePreview, keepPreviewScroll);
@@ -47130,6 +47085,17 @@ function handleExtrasKeybindAction(action) {
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
       showStatusMessage(`Untagged folder: ${next ? "On" : "Off"}`);
+      return true;
+    }
+    case "toggleShowStorageFolder": {
+      const next = toggleOptionValue("showStorageFolder");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      showStatusMessage(`Storage folder: ${next ? "On" : "Off"}`);
       return true;
     }
     case "toggleQuickNavigation": {
