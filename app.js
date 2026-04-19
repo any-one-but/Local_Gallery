@@ -748,6 +748,7 @@ function defaultOptions() {
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
     forceTitleCaps: true,
+    showPositionNumbersInNames: false,
     hideFileExtensionsInFileNames: true,
     hideUnderscoresInFileNames: true,
     hideBeforeLastDashInFileNames: true,
@@ -1165,6 +1166,10 @@ function normalizeOptions(o) {
       typeof src.forceTitleCaps === "boolean"
         ? src.forceTitleCaps
         : d.forceTitleCaps,
+    showPositionNumbersInNames:
+      typeof src.showPositionNumbersInNames === "boolean"
+        ? src.showPositionNumbersInNames
+        : d.showPositionNumbersInNames,
     hideFileExtensionsInFileNames:
       typeof src.hideFileExtensionsInFileNames === "boolean"
         ? src.hideFileExtensionsInFileNames
@@ -1583,6 +1588,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   ),
   filenames: Object.freeze([
     "forceTitleCaps",
+    "showPositionNumbersInNames",
     "hideFileExtensionsInFileNames",
     "hideUnderscoresInFileNames",
     "hideBeforeLastDashInFileNames",
@@ -5694,14 +5700,111 @@ function fileDisplayName(name) {
   return `${base}${opt && opt.hideFileExtensionsInFileNames ? "" : parts.ext || ""}`;
 }
 
-function relPathDisplayName(relPath) {
+function displayPositionNumbersInNamesEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.showPositionNumbersInNames);
+}
+
+function displayPositionPrefix(position) {
+  const n = Number(position);
+  if (
+    !displayPositionNumbersInNamesEnabled() ||
+    !Number.isFinite(n) ||
+    n < 1
+  )
+    return "";
+  return `${Math.floor(n)}. `;
+}
+
+function prefixDisplayLabelWithPosition(label, position) {
+  return `${displayPositionPrefix(position)}${String(label || "")}`;
+}
+
+function shouldNumberDisplayDirNode(node) {
+  return !!node && !node._skipTagFilters && !isStorageStubDirNode(node);
+}
+
+function buildDisplayPositionMapsForFolderAndFileEntries(
+  folderEntries,
+  fileIds,
+) {
+  const dirPositions = new Map();
+  const filePositions = new Map();
+  let position = 0;
+  const folders = Array.isArray(folderEntries) ? folderEntries : [];
+  for (let i = 0; i < folders.length; i++) {
+    const entry = folders[i];
+    if (!entry || entry.kind !== "dir" || !shouldNumberDisplayDirNode(entry.node))
+      continue;
+    position++;
+    dirPositions.set(String(entry.node?.path || ""), position);
+  }
+  const ids = Array.isArray(fileIds) ? fileIds : [];
+  for (let i = 0; i < ids.length; i++) {
+    const id = String(ids[i] || "");
+    if (!id || !WS.fileById.has(id)) continue;
+    position++;
+    filePositions.set(id, position);
+  }
+  return { dirPositions, filePositions };
+}
+
+function buildDisplayPositionMapsForNavEntries(entries) {
+  const dirPositions = new Map();
+  const filePositions = new Map();
+  let position = 0;
+  const list = Array.isArray(entries) ? entries : [];
+  for (let i = 0; i < list.length; i++) {
+    const entry = list[i];
+    if (!entry) continue;
+    if (entry.kind === "dir" && shouldNumberDisplayDirNode(entry.node)) {
+      position++;
+      dirPositions.set(String(entry.node?.path || ""), position);
+      continue;
+    }
+    if (entry.kind === "file") {
+      const id = String(entry.id || "");
+      if (!id || !WS.fileById.has(id)) continue;
+      position++;
+      filePositions.set(id, position);
+    }
+  }
+  return { dirPositions, filePositions };
+}
+
+function buildDisplayPositionMapsForViewerItems(items) {
+  const dirPositions = new Map();
+  const filePositions = new Map();
+  let position = 0;
+  const list = Array.isArray(items) ? items : [];
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i];
+    if (!item) continue;
+    if (item.isFolder) {
+      if (!shouldNumberDisplayDirNode(item.dirNode)) continue;
+      position++;
+      dirPositions.set(String(item.dirNode?.path || ""), position);
+      continue;
+    }
+    const id = String(item.id || "");
+    if (!id || !WS.fileById.has(id)) continue;
+    position++;
+    filePositions.set(id, position);
+  }
+  return { dirPositions, filePositions };
+}
+
+function relPathDisplayName(relPath, opts = null) {
   const parts = String(relPath || "")
     .split("/")
     .filter(Boolean);
   if (!parts.length) return "";
+  const finalPrefix =
+    opts && typeof opts.finalPrefix === "string" ? opts.finalPrefix : "";
   const out = parts.map((seg, idx) => {
     if (idx !== parts.length - 1) return displayName(seg || "") || "";
-    return fileDisplayName(seg || "") || "";
+    const finalName = fileDisplayName(seg || "") || "";
+    return `${finalPrefix}${finalName}`;
   });
   return out.join("/") || "";
 }
@@ -10777,6 +10880,7 @@ ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "o
       title: "Filenames",
       rows: `
 ${makeCheckRow("Force Title Case", "Apply Title Case to displayed file names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
+${makeCheckRow("Show position numbers", "Prefix displayed real file and folder names with their current sorted position, while skipping tag and album entries.", "opt_showPositionNumbersInNames", !!opt.showPositionNumbersInNames)}
 ${makeCheckRow("Hide file extensions", "Hide file extensions in displayed file names.", "opt_hideFileExtensionsInFileNames", !!opt.hideFileExtensionsInFileNames)}
 ${makeCheckRow("Hide underscores", "Hide underscores in displayed file names.", "opt_hideUnderscoresInFileNames", !!opt.hideUnderscoresInFileNames)}
 ${makeCheckRow("Trim before last dash", "Show only text after the last dash in names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
@@ -11394,6 +11498,7 @@ ${makeActionRow(
       ),
   );
   bindCheck("opt_forceTitleCaps", "forceTitleCaps");
+  bindCheck("opt_showPositionNumbersInNames", "showPositionNumbersInNames");
   bindCheck(
     "opt_hideFileExtensionsInFileNames",
     "hideFileExtensionsInFileNames",
@@ -11610,6 +11715,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
   ]),
   filenames: Object.freeze([
     "forceTitleCaps",
+    "showPositionNumbersInNames",
     "hideFileExtensionsInFileNames",
     "hideUnderscoresInFileNames",
     "hideBeforeLastDashInFileNames",
@@ -32849,6 +32955,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     searchResultsDirectCount > 0 &&
     searchResultsDirectCount <
       (Array.isArray(WS.view.searchResults) ? WS.view.searchResults.length : 0);
+  const navDisplayPositions = buildDisplayPositionMapsForNavEntries(
+    WS.nav.entries,
+  );
   let seenSearchResultDirCount = 0;
   let seenTagEntryBeforeCurrent = false;
   let insertedTagSpacer = false;
@@ -33193,7 +33302,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const canBatchIndex = !!WS.meta.fsRootHandle && !isStorageGhost;
         const canResetOrder = !!entry.node?.preserveOrder && !isStorageGhost;
         icon = "📁";
-        name = dirUiLabel(entry.node);
+        name = prefixDisplayLabelWithPosition(
+          dirUiLabel(entry.node),
+          navDisplayPositions.dirPositions.get(String(p || "")),
+        );
         const dirMetaLines = [];
         if (!isStorageGhost && dirVisibility.showItemTypeLabel)
           dirMetaLines.push(folderItemTypeLabelForNode(entry.node));
@@ -33519,7 +33631,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
         if (sel) row.classList.add("bulkSelected");
         icon = isVid ? "🎞" : "🖼";
-        name = fileDisplayNameForRecord(rec);
+        name = prefixDisplayLabelWithPosition(
+          fileDisplayNameForRecord(rec),
+          navDisplayPositions.filePositions.get(String(entry.id || "")),
+        );
         const fileMenuOpen =
           WS.view.fileActionMenuId === String(entry.id || "");
         const bulkFileMenuActive =
@@ -35574,6 +35689,10 @@ function renderPreviewViewerItem(idx) {
 
   if (!item) return;
 
+  const viewerDisplayPositions = buildDisplayPositionMapsForViewerItems(
+    viewerItems,
+  );
+
   if (item.isFolder) {
     previewFolderEl.style.display = "flex";
     previewFolderEl.style.flexDirection = "column";
@@ -35605,7 +35724,13 @@ function renderPreviewViewerItem(idx) {
     name.style.textOverflow = "clip";
     name.style.overflowWrap = "anywhere";
     name.style.wordBreak = "break-word";
-    name.textContent = dirUiLabel(item.dirNode) || "Folder";
+    name.textContent =
+      prefixDisplayLabelWithPosition(
+        dirUiLabel(item.dirNode),
+        viewerDisplayPositions.dirPositions.get(
+          String(item.dirNode?.path || ""),
+        ),
+      ) || "Folder";
 
     previewFolderEl.appendChild(icon);
     previewFolderEl.appendChild(name);
@@ -36145,6 +36270,10 @@ function renderPreviewSearchResults(container) {
   const directDirs = directCount > 0 ? dirs.slice(0, directCount) : [];
   const recursiveDirs =
     directCount > 0 ? dirs.slice(directCount) : dirs.slice();
+  const searchPreviewPositions = buildDisplayPositionMapsForFolderAndFileEntries(
+    dirs.map((dirNode) => ({ kind: "dir", node: dirNode })),
+    [],
+  );
   const folderSizeMemo = new Map();
   const gridF = document.createElement("div");
   gridF.className = "gridFolders";
@@ -36155,7 +36284,13 @@ function renderPreviewSearchResults(container) {
   for (let i = 0; i < directDirs.length; i++) {
     const dirNode = directDirs[i];
     if (!dirNode) continue;
-    frag.appendChild(makeFolderPreviewCard(dirNode, folderSizeMemo));
+    frag.appendChild(
+      makeFolderPreviewCard(
+        dirNode,
+        folderSizeMemo,
+        searchPreviewPositions.dirPositions.get(String(dirNode?.path || "")),
+      ),
+    );
   }
   if (directDirs.length && recursiveDirs.length) {
     frag.appendChild(makePreviewTagSpacer());
@@ -36163,7 +36298,13 @@ function renderPreviewSearchResults(container) {
   for (let i = 0; i < recursiveDirs.length; i++) {
     const dirNode = recursiveDirs[i];
     if (!dirNode) continue;
-    frag.appendChild(makeFolderPreviewCard(dirNode, folderSizeMemo));
+    frag.appendChild(
+      makeFolderPreviewCard(
+        dirNode,
+        folderSizeMemo,
+        searchPreviewPositions.dirPositions.get(String(dirNode?.path || "")),
+      ),
+    );
   }
 
   gridF.appendChild(frag);
@@ -36525,7 +36666,7 @@ function getDirRecursiveSizeBytesForNode(dirNode, memo = null) {
   return size;
 }
 
-function makeFolderPreviewCard(dirNode, sizeMemo = null) {
+function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null) {
   if (isStorageStubDirNode(dirNode)) {
     const card = document.createElement("div");
     const p = String(dirNode?.path || "");
@@ -36584,7 +36725,10 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null) {
   card.className = "folderCard";
   card.style.cursor = "pointer";
   const icon = "📁";
-  const nm = dirUiLabel(dirNode);
+  const nm = prefixDisplayLabelWithPosition(
+    dirUiLabel(dirNode),
+    displayPosition,
+  );
   const p = String(dirNode?.path || "");
   card.__previewDirNode = dirNode || null;
   if (p) card.dataset.dirPath = p;
@@ -37302,6 +37446,9 @@ function updateVirtualPreviewFilesGrid(state, force = false) {
         state.ids,
         state.useFitInsideJustified,
         state.useSquareMediaCards,
+        state.fileDisplayPositions instanceof Map
+          ? state.fileDisplayPositions.get(String(id || ""))
+          : null,
       ),
     );
   }
@@ -37379,6 +37526,7 @@ function renderFilesGrid(
   animate,
   dirNode,
   renderToken = PREVIEW_FILES_RENDER_TOKEN,
+  fileDisplayPositions = null,
 ) {
   const LIMIT = 800;
   if (!ids.length) return 0;
@@ -37404,6 +37552,8 @@ function renderFilesGrid(
       renderToken,
       useFitInsideJustified,
       useSquareMediaCards,
+      fileDisplayPositions:
+        fileDisplayPositions instanceof Map ? new Map(fileDisplayPositions) : null,
       currentStart: -1,
       currentEnd: -1,
     });
@@ -37441,6 +37591,9 @@ function renderFilesGrid(
         visibleIds,
         useFitInsideJustified,
         useSquareMediaCards,
+        fileDisplayPositions instanceof Map
+          ? fileDisplayPositions.get(String(id || ""))
+          : null,
       );
       frag.appendChild(card);
       chunkCount++;
@@ -37473,6 +37626,10 @@ function renderFolderContents(
   const { folderEntries, fileIds: ids } = getPreviewFolderAndFileEntries(
     dirNode,
     opts,
+  );
+  const previewDisplayPositions = buildDisplayPositionMapsForFolderAndFileEntries(
+    folderEntries,
+    ids,
   );
   let hasContent = false;
 
@@ -37508,7 +37665,15 @@ function renderFolderContents(
         seenTagEntry = true;
         continue;
       }
-      fragF.appendChild(makeFolderPreviewCard(entry.node, folderSizeMemo));
+      fragF.appendChild(
+        makeFolderPreviewCard(
+          entry.node,
+          folderSizeMemo,
+          previewDisplayPositions.dirPositions.get(
+            String(entry.node?.path || ""),
+          ),
+        ),
+      );
     }
 
     gridF.appendChild(fragF);
@@ -37519,7 +37684,14 @@ function renderFolderContents(
   }
 
   if (ids.length) {
-    renderFilesGrid(ids, container, animate, dirNode, renderToken);
+    renderFilesGrid(
+      ids,
+      container,
+      animate,
+      dirNode,
+      renderToken,
+      previewDisplayPositions.filePositions,
+    );
     hasContent = true;
   }
 
@@ -37549,6 +37721,10 @@ function renderExpandedPreviewPane(
 
   const baseDirs = getChildDirsForNode(dirNode);
   const baseFiles = getOrderedFileIdsForDir(dirNode);
+  const expandedPreviewPositions = buildDisplayPositionMapsForFolderAndFileEntries(
+    baseDirs.map((child) => ({ kind: "dir", node: child })),
+    baseFiles,
+  );
   const targetPath =
     WS.preview.kind === "dir" && WS.preview.dirNode
       ? String(WS.preview.dirNode.path || "")
@@ -37585,13 +37761,23 @@ function renderExpandedPreviewPane(
       `${baseFiles.length} files`,
       "",
     );
-    renderFilesGrid(baseFiles, section, animate, dirNode, renderToken);
+    renderFilesGrid(
+      baseFiles,
+      section,
+      animate,
+      dirNode,
+      renderToken,
+      expandedPreviewPositions.filePositions,
+    );
     previewBodyEl.appendChild(section);
     hasAny = true;
   }
 
   for (const child of baseDirs) {
-    const nm = dirDisplayName(child) || "folder";
+    const nm = prefixDisplayLabelWithPosition(
+      dirDisplayName(child) || "folder",
+      expandedPreviewPositions.dirPositions.get(String(child.path || "")),
+    );
     const childFolders = getChildDirsForNode(child).length;
     const childFiles = getOrderedFileIdsForDir(child).length;
     const total = childFolders + childFiles;
@@ -37827,6 +38013,7 @@ function makePreviewFileCard(
   visibleIds,
   useFitInsideJustified = false,
   useSquareMediaCards = false,
+  displayPosition = null,
 ) {
   const visibility = previewThumbnailVisibilityForKind("file");
   const showSize = visibility.showSize;
@@ -37863,7 +38050,11 @@ function makePreviewFileCard(
     img.loading = "lazy";
     img.decoding = "async";
     img.draggable = false;
-    img.alt = fileDisplayNameForRecord(rec) || "";
+    img.alt =
+      prefixDisplayLabelWithPosition(
+        fileDisplayNameForRecord(rec),
+        displayPosition,
+      ) || "";
     img.dataset.dirPreviewId = fileId;
     img.src = mediaSrc;
     if (useFitInsideJustified) {
@@ -37902,6 +38093,10 @@ function makePreviewFileCard(
   const showNameMeta = false;
   const forceOverlayMeta = !!useSquareMediaCards || !!useNaturalAspectCards;
   const showAnyMeta = forceOverlayMeta || showNameMeta || !!fileId;
+  const fileDisplayLabel = prefixDisplayLabelWithPosition(
+    fileDisplayNameForRecord(rec),
+    displayPosition,
+  );
   const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
   const fileMenuScore = metaGetScore(rec?.dirPath || "");
   let meta = null;
@@ -37945,8 +38140,10 @@ function makePreviewFileCard(
       } else if (showFileThumbnailTitle && !inlineFileTitleCompact) {
         const name = document.createElement("div");
         name.className = "name";
-        name.textContent = fileDisplayNameForRecord(rec) || "—";
-        name.title = relPathDisplayName(rec.relPath || rec.name || "");
+        name.textContent = fileDisplayLabel || "—";
+        name.title = relPathDisplayName(rec.relPath || rec.name || "", {
+          finalPrefix: displayPositionPrefix(displayPosition),
+        });
         top.appendChild(name);
       }
       if (inlineFileTitleCompact && showPreviewFileMenuBtn) {
@@ -37967,8 +38164,10 @@ function makePreviewFileCard(
       if (!menuOnlyOverlayMeta && inlineFileTitleCompact && !isRenameEditing) {
         const inlineName = document.createElement("div");
         inlineName.className = "name previewThumbOverlayNameInlineCompact";
-        inlineName.textContent = fileDisplayNameForRecord(rec) || "—";
-        inlineName.title = relPathDisplayName(rec.relPath || rec.name || "");
+        inlineName.textContent = fileDisplayLabel || "—";
+        inlineName.title = relPathDisplayName(rec.relPath || rec.name || "", {
+          finalPrefix: displayPositionPrefix(displayPosition),
+        });
         bottom.appendChild(inlineName);
       }
       if (!menuOnlyOverlayMeta && forceOverlayMeta && fileMetaBits.length) {
@@ -39705,6 +39904,9 @@ function renderViewerItem(idx) {
   }
 
   if (!item) return;
+  const viewerDisplayPositions = buildDisplayPositionMapsForViewerItems(
+    viewerItems,
+  );
 
   if (item.isFolder) {
     viewerFolderEl.style.display = "flex";
@@ -39737,21 +39939,34 @@ function renderViewerItem(idx) {
     name.style.textOverflow = "clip";
     name.style.overflowWrap = "anywhere";
     name.style.wordBreak = "break-word";
-    name.textContent = dirUiLabel(item.dirNode) || "Folder";
+    name.textContent =
+      prefixDisplayLabelWithPosition(
+        dirUiLabel(item.dirNode),
+        viewerDisplayPositions.dirPositions.get(
+          String(item.dirNode?.path || ""),
+        ),
+      ) || "Folder";
 
     viewerFolderEl.appendChild(icon);
     viewerFolderEl.appendChild(name);
 
-    filenameEl.textContent = item.dirNode?.path
-      ? storageDisplayPathForPath(item.dirNode.path)
-      : dirUiLabel(item.dirNode) || "";
+    filenameEl.textContent = prefixDisplayLabelWithPosition(
+      item.dirNode?.path
+        ? storageDisplayPathForPath(item.dirNode.path)
+        : dirUiLabel(item.dirNode) || "",
+      viewerDisplayPositions.dirPositions.get(String(item.dirNode?.path || "")),
+    );
     return;
   }
 
   const rec = WS.fileById.get(item.id);
   if (!rec) return;
 
-  filenameEl.textContent = relPathDisplayName(rec.relPath || rec.name || "");
+  filenameEl.textContent = relPathDisplayName(rec.relPath || rec.name || "", {
+    finalPrefix: displayPositionPrefix(
+      viewerDisplayPositions.filePositions.get(String(item.id || "")),
+    ),
+  });
 
   if (rec.type === "video") {
     const mode = galleryVideoMode();
