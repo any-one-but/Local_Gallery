@@ -8486,6 +8486,15 @@ const previewPane = $("previewPane");
 const previewContentEl = $("previewContent");
 const previewBodyEl = $("previewBody");
 const previewActionMenuEl = $("previewActionMenu");
+const controlPane = $("controlPane");
+const controlPrevItemBtn = $("controlPrevItemBtn");
+const controlSkipBackBtn = $("controlSkipBackBtn");
+const controlPlayPauseBtn = $("controlPlayPauseBtn");
+const controlSkipForwardBtn = $("controlSkipForwardBtn");
+const controlNextItemBtn = $("controlNextItemBtn");
+const controlMuteBtn = $("controlMuteBtn");
+const controlProgressRange = $("controlProgressRange");
+const controlTimecode = $("controlTimecode");
 if (previewActionMenuEl) {
   previewActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
 }
@@ -8654,6 +8663,8 @@ let MAIN_STATUS_TIMEOUT = null;
 let WORKSPACE_REFRESH_IN_FLIGHT = false;
 
 let ACTIVE_MEDIA_SURFACE = "none";
+let CONTROL_PROGRESS_DRAGGING = false;
+let PREVIEW_VIDEO_USER_PAUSE_FILE_ID = null;
 
 let PREVIEW_VIDEO_PAUSE = {
   active: false,
@@ -12543,19 +12554,20 @@ function syncBulkSelectionForCurrentDir() {
   WS.view.bulkFileSelectedIds = WS.view.bulkFileSelectionsByDir.get(p);
 }
 
-function applyVideoCarryToElement(vid, fileId) {
+function applyVideoCarryToElement(vid, fileId, opts = {}) {
   if (!vid) return;
   if (!VIDEO_CARRY.active) return;
   if ((VIDEO_CARRY.fileId || "") !== (fileId || "")) return;
 
   const t = VIDEO_CARRY.time || 0;
   const wp = !!VIDEO_CARRY.wasPlaying;
+  const allowPlay = opts.allowPlay !== false;
 
   const doApply = () => {
     try {
       if (isFinite(t)) vid.currentTime = t;
     } catch {}
-    if (wp) {
+    if (wp && allowPlay) {
       try {
         vid.play();
       } catch {}
@@ -18390,6 +18402,10 @@ function remapRuntimeFileStateIds(idMap) {
       .filter(Boolean);
   }
   PREVIEW_VIDEO_PAUSE.fileId = remapIdValue(idMap, PREVIEW_VIDEO_PAUSE.fileId);
+  PREVIEW_VIDEO_USER_PAUSE_FILE_ID = remapIdValue(
+    idMap,
+    PREVIEW_VIDEO_USER_PAUSE_FILE_ID,
+  );
   VIDEO_CARRY.fileId = remapIdValue(idMap, VIDEO_CARRY.fileId);
 }
 
@@ -36335,7 +36351,7 @@ function ensurePreviewFileElements() {
   }
   if (!previewVideoEl) {
     previewVideoEl = document.createElement("video");
-    previewVideoEl.controls = true;
+    previewVideoEl.controls = false;
     previewVideoEl.preload = "metadata";
     previewVideoEl.playsInline = true;
     previewVideoEl.autoplay = true;
@@ -36343,6 +36359,18 @@ function ensurePreviewFileElements() {
     normalizeVideoPlaybackRate(previewVideoEl);
     previewVideoEl.poster = BLACK_POSTER_URL;
     previewVideoEl.style.display = "none";
+    [
+      "loadedmetadata",
+      "durationchange",
+      "timeupdate",
+      "play",
+      "pause",
+      "volumechange",
+      "ended",
+      "emptied",
+    ].forEach((eventName) => {
+      previewVideoEl.addEventListener(eventName, syncControlPaneState);
+    });
     previewViewportBox.appendChild(previewVideoEl);
   }
   if (!previewFolderEl) {
@@ -36399,6 +36427,28 @@ function galleryVideoMode() {
   return previewVideoMode();
 }
 
+function normalizePreviewVideoPauseLockId(fileId) {
+  const id = String(fileId || "");
+  return id || null;
+}
+
+function setPreviewVideoUserPauseLock(fileId, locked) {
+  PREVIEW_VIDEO_USER_PAUSE_FILE_ID = locked
+    ? normalizePreviewVideoPauseLockId(fileId)
+    : null;
+}
+
+function previewVideoUserPausedFor(fileId) {
+  const id = normalizePreviewVideoPauseLockId(fileId);
+  return !!id && PREVIEW_VIDEO_USER_PAUSE_FILE_ID === id;
+}
+
+function syncPreviewVideoUserPauseLockToItem(fileId) {
+  const id = normalizePreviewVideoPauseLockId(fileId);
+  if (PREVIEW_VIDEO_USER_PAUSE_FILE_ID && PREVIEW_VIDEO_USER_PAUSE_FILE_ID !== id)
+    PREVIEW_VIDEO_USER_PAUSE_FILE_ID = null;
+}
+
 function videoSkipStepSeconds() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   const raw = opt ? String(opt.videoSkipStep || "10") : "10";
@@ -36410,6 +36460,207 @@ function videoEndBehavior() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return opt ? String(opt.videoEndBehavior || "loop") : "loop";
 }
+
+function formatControlPaneTime(seconds) {
+  const raw = Number(seconds);
+  if (!Number.isFinite(raw) || raw < 0) return "00:00";
+  const total = Math.floor(raw);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  if (h > 0) return `${String(h).padStart(2, "0")}:${mm}:${ss}`;
+  return `${mm}:${ss}`;
+}
+
+function getControlPaneVideo() {
+  if (!previewVideoEl) return null;
+  if (previewVideoEl.style.display === "none") return null;
+  if (!WS.preview || WS.preview.kind !== "file" || !WS.preview.fileId)
+    return null;
+  const rec = WS.fileById.get(String(WS.preview.fileId || ""));
+  if (!rec || rec.type !== "video") return null;
+  return previewVideoEl;
+}
+
+function controlPaneHasNavigablePreviewItem() {
+  return !!(
+    WS.preview &&
+    WS.preview.kind === "file" &&
+    WS.preview.fileId &&
+    Array.isArray(viewerItems) &&
+    viewerItems.length
+  );
+}
+
+function setControlButtonDisabled(button, disabled) {
+  if (button) button.disabled = !!disabled;
+}
+
+function syncControlPaneState() {
+  const video = getControlPaneVideo();
+  const hasVideo = !!video;
+  const hasDuration = !!(
+    video &&
+    Number.isFinite(Number(video.duration)) &&
+    Number(video.duration) > 0
+  );
+  const duration = hasDuration ? Math.max(0, Number(video.duration) || 0) : 0;
+  const current = video ? Math.max(0, Number(video.currentTime) || 0) : 0;
+  const canNavigate = controlPaneHasNavigablePreviewItem();
+
+  if (controlPane) controlPane.classList.toggle("control-disabled", !hasVideo);
+  setControlButtonDisabled(controlPrevItemBtn, !canNavigate);
+  setControlButtonDisabled(controlNextItemBtn, !canNavigate);
+  setControlButtonDisabled(controlSkipBackBtn, !hasDuration);
+  setControlButtonDisabled(controlSkipForwardBtn, !hasDuration);
+  setControlButtonDisabled(controlPlayPauseBtn, !hasVideo);
+  setControlButtonDisabled(controlMuteBtn, !hasVideo);
+
+  if (controlPlayPauseBtn) {
+    const paused = !video || video.paused;
+    controlPlayPauseBtn.textContent = "";
+    controlPlayPauseBtn.classList.remove("active");
+    controlPlayPauseBtn.classList.toggle("is-playing", hasVideo && !paused);
+    const label = paused ? "Play" : "Pause";
+    controlPlayPauseBtn.setAttribute("aria-label", label);
+    controlPlayPauseBtn.title = label;
+  }
+  if (controlMuteBtn) {
+    const muted = !!(video && video.muted);
+    controlMuteBtn.textContent = "";
+    controlMuteBtn.classList.remove("active");
+    controlMuteBtn.classList.toggle("is-muted", hasVideo && muted);
+    const label = muted ? "Unmute" : "Mute";
+    controlMuteBtn.setAttribute("aria-label", label);
+    controlMuteBtn.title = label;
+  }
+  if (controlSkipBackBtn) {
+    controlSkipBackBtn.textContent = `-${videoSkipStepSeconds()}`;
+  }
+  if (controlSkipForwardBtn) {
+    controlSkipForwardBtn.textContent = `+${videoSkipStepSeconds()}`;
+  }
+  if (controlProgressRange) {
+    controlProgressRange.disabled = !hasDuration;
+    controlProgressRange.max = String(duration || 0);
+    if (!CONTROL_PROGRESS_DRAGGING) {
+      controlProgressRange.value = String(Math.min(current, duration || current));
+    }
+  }
+  if (controlTimecode) {
+    controlTimecode.textContent = `${formatControlPaneTime(current)} / ${formatControlPaneTime(duration)}`;
+  }
+}
+
+function seekControlPaneVideo(deltaSeconds) {
+  const video = getControlPaneVideo();
+  if (!video) return false;
+  const duration = Number(video.duration);
+  if (!Number.isFinite(duration) || duration <= 0) return false;
+  const next = Math.max(
+    0,
+    Math.min(duration, (Number(video.currentTime) || 0) + deltaSeconds),
+  );
+  try {
+    video.currentTime = next;
+  } catch {
+    return false;
+  }
+  syncControlPaneState();
+  return true;
+}
+
+function toggleControlPanePlayPause() {
+  const video = getControlPaneVideo();
+  if (!video) return false;
+  const fileId = WS.preview && WS.preview.fileId ? WS.preview.fileId : "";
+  try {
+    if (video.paused) {
+      setPreviewVideoUserPauseLock(fileId, false);
+      video.play();
+    } else {
+      setPreviewVideoUserPauseLock(fileId, true);
+      video.pause();
+    }
+  } catch {
+    return false;
+  }
+  syncControlPaneState();
+  return true;
+}
+
+function toggleControlPaneMute() {
+  const video = getControlPaneVideo();
+  if (!video) return false;
+  try {
+    video.muted = !video.muted;
+  } catch {
+    return false;
+  }
+  syncControlPaneState();
+  return true;
+}
+
+function moveControlPaneItem(delta) {
+  if (!controlPaneHasNavigablePreviewItem()) return false;
+  const moved = viewerStep(delta < 0 ? -1 : 1);
+  syncControlPaneState();
+  return moved;
+}
+
+if (controlPrevItemBtn)
+  controlPrevItemBtn.addEventListener("click", () => {
+    moveControlPaneItem(-1);
+  });
+if (controlNextItemBtn)
+  controlNextItemBtn.addEventListener("click", () => {
+    moveControlPaneItem(1);
+  });
+if (controlSkipBackBtn)
+  controlSkipBackBtn.addEventListener("click", () => {
+    seekControlPaneVideo(-videoSkipStepSeconds());
+  });
+if (controlSkipForwardBtn)
+  controlSkipForwardBtn.addEventListener("click", () => {
+    seekControlPaneVideo(videoSkipStepSeconds());
+  });
+if (controlPlayPauseBtn)
+  controlPlayPauseBtn.addEventListener("click", () => {
+    toggleControlPanePlayPause();
+  });
+if (controlMuteBtn)
+  controlMuteBtn.addEventListener("click", () => {
+    toggleControlPaneMute();
+  });
+if (controlProgressRange) {
+  controlProgressRange.addEventListener("pointerdown", () => {
+    CONTROL_PROGRESS_DRAGGING = true;
+  });
+  controlProgressRange.addEventListener("pointerup", () => {
+    CONTROL_PROGRESS_DRAGGING = false;
+    syncControlPaneState();
+  });
+  controlProgressRange.addEventListener("input", () => {
+    const video = getControlPaneVideo();
+    if (!video) return;
+    const next = Number(controlProgressRange.value);
+    if (!Number.isFinite(next)) return;
+    try {
+      video.currentTime = Math.max(0, next);
+    } catch {}
+    syncControlPaneState();
+  });
+  controlProgressRange.addEventListener("change", () => {
+    CONTROL_PROGRESS_DRAGGING = false;
+    syncControlPaneState();
+  });
+}
+if (typeof window !== "undefined") {
+  window.setInterval(syncControlPaneState, 250);
+}
+syncControlPaneState();
 
 function galleryModeDisabled(opt = null) {
   return true;
@@ -36593,6 +36844,7 @@ function renderPreviewViewerItem(idx) {
   );
 
   if (item.isFolder) {
+    syncPreviewVideoUserPauseLockToItem(null);
     previewFolderEl.style.display = "flex";
     previewFolderEl.style.flexDirection = "column";
     previewFolderEl.style.alignItems = "center";
@@ -36637,17 +36889,20 @@ function renderPreviewViewerItem(idx) {
   }
 
   if (!rec) return;
+  syncPreviewVideoUserPauseLockToItem(rec.id);
 
   if (rec.type === "video") {
     const mode = previewVideoMode();
     const doAuto = mode !== "off" && !BANIC_ACTIVE && !VIEWER_MODE;
+    const pauseLocked = previewVideoUserPausedFor(rec.id);
+    const shouldAutoPlay = doAuto && !pauseLocked;
     if (!VIEWER_MODE && viewerVideoEl) {
       try {
         viewerVideoEl.pause();
       } catch {}
     }
     normalizeVideoPlaybackRate(previewVideoEl);
-    previewVideoEl.autoplay = doAuto;
+    previewVideoEl.autoplay = shouldAutoPlay;
     previewVideoEl.onloadeddata = null;
     previewVideoEl.onended = null;
     previewVideoEl.muted = mode === "muted" || BANIC_ACTIVE || VIEWER_MODE;
@@ -36700,7 +36955,9 @@ function renderPreviewViewerItem(idx) {
       rec,
     );
 
-    applyVideoCarryToElement(previewVideoEl, rec.id);
+    applyVideoCarryToElement(previewVideoEl, rec.id, {
+      allowPlay: !pauseLocked,
+    });
 
     if (previewVideoEl.readyState >= 2) {
       requestAnimationFrame(() => {
@@ -36715,7 +36972,7 @@ function renderPreviewViewerItem(idx) {
         }
       });
     }
-    if (doAuto) {
+    if (shouldAutoPlay) {
       try {
         previewVideoEl.play();
       } catch {}
@@ -41244,6 +41501,10 @@ function toggleViewerVideoPlayPause() {
   const shouldPlay = vids.some((vid) => !!vid.paused);
   for (let i = 0; i < vids.length; i++) {
     const vid = vids[i];
+    if (!VIEWER_MODE && vid === previewVideoEl) {
+      const fileId = WS.preview && WS.preview.fileId ? WS.preview.fileId : "";
+      setPreviewVideoUserPauseLock(fileId, !shouldPlay);
+    }
     try {
       if (shouldPlay) vid.play();
       else vid.pause();
@@ -41364,6 +41625,7 @@ function syncButtons() {
   syncMetaButtons();
   updateModePill();
   updateTitleLabel();
+  syncControlPaneState();
 }
 
 function applyViewModesEverywhere(animate = false) {

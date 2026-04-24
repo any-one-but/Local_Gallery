@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Local Gallery</title>
-                                                                  <!-- BEGIN: inlined from ./styles.css (auto-generated) -->
+                                                                                    <!-- BEGIN: inlined from ./styles.css (auto-generated) -->
   <style>
 :root {
   --color0-primary: hsl(0, 0%, 95%);
@@ -386,7 +386,7 @@ body.cursor-hidden * {
   width: 100%;
   display: grid;
   grid-template-columns: min(320px, 28vw) 1fr;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "title preview"
     "dirs preview";
@@ -404,11 +404,11 @@ body.cursor-hidden * {
 }
 
 #app.title-layout-pane.sidebar-closed {
-  grid-template-rows: 0 1fr;
+  grid-template-rows: 0 minmax(0, 1fr);
 }
 
 #app.title-layout-compact.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) {
-  grid-template-rows: 0 1fr;
+  grid-template-rows: 0 minmax(0, 1fr);
 }
 
 #app.sidebar-closed {
@@ -662,6 +662,7 @@ input[type="file"] {
 :root[data-retro="on"] #titlePane,
 :root[data-retro="on"] #directoriesPane,
 :root[data-retro="on"] #previewPane,
+:root[data-retro="on"] #controlPane,
 :root[data-retro="on"] #menuOverlay,
 :root[data-retro="on"] #menuCard,
 :root[data-retro="on"] .dropdownMenu {
@@ -699,6 +700,28 @@ input[type="file"] {
   border: 0 !important;
   border-bottom: 0 !important;
   box-shadow: none !important;
+  outline: none !important;
+}
+
+:root[data-retro="on"] #controlPane {
+  padding: 6px 6px 4px;
+  box-sizing: border-box;
+  background: var(--retro-field);
+  border: 0 !important;
+  border-top: 6px solid var(--retro-face) !important;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-dark),
+    inset -1px -1px 0 var(--retro-highlight),
+    inset 2px 2px 0 var(--retro-shadow-black),
+    inset -2px -2px 0 var(--retro-highlight-soft) !important;
+  outline: none !important;
+}
+
+:root[data-retro="on"] #app.title-layout-compact #controlPane {
+  padding: 4px 8px;
+  background: var(--retro-field);
+  border: 0 !important;
+  border-top: 6px solid var(--retro-face) !important;
   outline: none !important;
 }
 
@@ -832,6 +855,70 @@ input[type="file"] {
     inset -1px -1px 0 var(--retro-highlight),
     inset 2px 2px 0 var(--retro-shadow-black),
     inset -2px -2px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #controlTimecode {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+  font-family:
+    "Pixelated MS Sans Serif", "MS Sans Serif", "Microsoft Sans Serif",
+    "Tahoma", monospace;
+}
+
+:root[data-retro="on"] #controlProgressRange::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #controlProgressRange::-webkit-slider-thumb {
+  width: 14px;
+  height: 18px;
+  margin-top: -8px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+:root[data-retro="on"] #controlProgressRange::-moz-range-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #controlProgressRange::-moz-range-thumb {
+  width: 14px;
+  height: 18px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
 }
 
 :root[data-retro="on"] #menuCard {
@@ -1490,6 +1577,10 @@ input[type="file"] {
   display: none;
 }
 
+#app.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #controlPane {
+  display: none !important;
+}
+
 body.directories-files-only #directoriesHeader {
   display: none !important;
 }
@@ -1598,7 +1689,8 @@ body.directories-files-only #directoriesHeader {
 }
 
 #directoriesPane,
-#previewPane {
+#previewPane,
+#controlPane {
   background: var(--color1-secondary);
   border-radius: 0;
   border: 0;
@@ -3186,10 +3278,226 @@ img[data-rotate-key].rotatingThumbFade {
   display: block;
 }
 
+#previewMainStack {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+}
+
 #previewNavControls {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* =========================================================
+       Control Pane
+       ========================================================= */
+#controlPane {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 8px 8px;
+  background: var(--color1-primary);
+  border: 0;
+  border-top: 6px solid var(--color1-secondary);
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  box-shadow:
+    inset 0 1px 0 var(--color1-tertiary),
+    inset 0 2px 0 rgba(0, 0, 0, 0.22);
+  position: relative;
+  z-index: 18;
+  flex: 0 0 auto;
+}
+
+#app.title-layout-compact #controlPane {
+  padding: 4px 8px;
+}
+
+#controlPaneInner {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+#controlButtons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.controlBtn {
+  height: 24px;
+  min-width: 30px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.controlPlayBtn {
+  min-width: 30px;
+}
+
+.controlIconBtn {
+  width: 30px;
+  min-width: 30px;
+  color: var(--color0-primary);
+}
+
+.controlIconBtn.active,
+.controlIconBtn.active:hover:not(:disabled),
+.controlIconBtn.active:active:not(:disabled) {
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  border-color: var(--color1-tertiary);
+}
+
+#controlPlayPauseBtn::before {
+  content: "";
+  display: block;
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 10px solid currentColor;
+  margin-left: 2px;
+}
+
+#controlPlayPauseBtn.is-playing::before {
+  width: 12px;
+  height: 12px;
+  border-top: 0;
+  border-bottom: 0;
+  border-left: 4px solid currentColor;
+  border-right: 4px solid currentColor;
+  margin-left: 0;
+}
+
+#controlMuteBtn::before {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 12px;
+  background: currentColor;
+  clip-path: polygon(0 35%, 32% 35%, 70% 0, 70% 100%, 32% 65%, 0 65%);
+}
+
+#controlMuteBtn::after {
+  content: "";
+  display: block;
+  width: 5px;
+  height: 9px;
+  border: 2px solid currentColor;
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+  margin-left: -1px;
+}
+
+#controlMuteBtn.is-muted::after {
+  width: 15px;
+  height: 2px;
+  border: 0;
+  border-radius: 0;
+  background: currentColor;
+  transform: rotate(-45deg);
+  margin-left: -5px;
+}
+
+#controlProgressRange {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 18px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--palette-accent);
+}
+
+#controlProgressRange::-webkit-slider-runnable-track {
+  height: 6px;
+  border: 1px solid var(--color1-tertiary);
+  background: transparent;
+}
+
+#controlProgressRange::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 18px;
+  margin-top: -7px;
+  border: 1px solid var(--color0-tertirary);
+  border-radius: 2px;
+  background: var(--color0-secondary);
+}
+
+#controlProgressRange::-moz-range-track {
+  height: 6px;
+  border: 1px solid var(--color1-tertiary);
+  background: transparent;
+}
+
+#controlProgressRange::-moz-range-thumb {
+  width: 12px;
+  height: 18px;
+  border: 1px solid var(--color0-tertirary);
+  border-radius: 2px;
+  background: var(--color0-secondary);
+}
+
+#controlTimecode {
+  min-width: 108px;
+  padding: 3px 6px;
+  border: 1px solid var(--color1-tertiary);
+  background: transparent;
+  color: var(--color0-secondary);
+  font-family:
+    "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+}
+
+#controlPane.control-disabled {
+  opacity: 0.78;
+}
+
+@media (max-width: 760px) {
+  #controlPaneInner {
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+  }
+
+  #controlButtons {
+    grid-column: 1 / -1;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  #controlButtons::-webkit-scrollbar {
+    display: none;
+  }
+
+  #controlTimecode {
+    min-width: 98px;
+  }
 }
 
 .navSpacer {
@@ -6211,6 +6519,7 @@ img[data-rotate-key].rotatingThumbFade {
     gap: max(8px, var(--preview-gutter));
   }
 }
+
   </style>
   <!-- END: inlined from ./styles.css -->
   </head>
@@ -6272,7 +6581,81 @@ img[data-rotate-key].rotatingThumbFade {
              ========================================================= -->
           <div id="previewPane">
             <div id="previewContent">
-              <div id="previewBody"></div>
+              <div id="previewMainStack">
+                <div id="previewBody"></div>
+
+                <!-- =========================================================
+                   Control Pane
+                   ========================================================= -->
+                <div id="controlPane">
+                  <div id="controlPaneInner">
+                    <div id="controlButtons" aria-label="Media controls">
+                      <button
+                        id="controlPrevItemBtn"
+                        class="miniBtn controlBtn"
+                        type="button"
+                        title="Previous item"
+                        aria-label="Previous item"
+                      >
+                        |&lt;
+                      </button>
+                      <button
+                        id="controlSkipBackBtn"
+                        class="miniBtn controlBtn"
+                        type="button"
+                        title="Skip back"
+                        aria-label="Skip back"
+                      >
+                        -10
+                      </button>
+                      <button
+                        id="controlPlayPauseBtn"
+                        class="miniBtn controlBtn controlIconBtn controlPlayBtn"
+                        type="button"
+                        title="Play or pause"
+                        aria-label="Play or pause"
+                      ></button>
+                      <button
+                        id="controlSkipForwardBtn"
+                        class="miniBtn controlBtn"
+                        type="button"
+                        title="Skip forward"
+                        aria-label="Skip forward"
+                      >
+                        +10
+                      </button>
+                      <button
+                        id="controlNextItemBtn"
+                        class="miniBtn controlBtn"
+                        type="button"
+                        title="Next item"
+                        aria-label="Next item"
+                      >
+                        &gt;|
+                      </button>
+                      <button
+                        id="controlMuteBtn"
+                        class="miniBtn controlBtn controlIconBtn"
+                        type="button"
+                        title="Mute"
+                        aria-label="Mute"
+                      ></button>
+                    </div>
+                    <input
+                      id="controlProgressRange"
+                      type="range"
+                      min="0"
+                      max="0"
+                      step="0.01"
+                      value="0"
+                      aria-label="Video progress"
+                    />
+                    <div id="controlTimecode" aria-live="off">
+                      00:00 / 00:00
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div id="menuDivider" title="Drag to resize menu"></div>
               <div id="menuOverlay">
                 <div id="menuCard">
@@ -6655,7 +7038,7 @@ img[data-rotate-key].rotatingThumbFade {
         </feComponentTransfer>
       </filter>
     </svg>
-                                                                  <!-- BEGIN: inlined from ./app.js (auto-generated) -->
+                                                                                    <!-- BEGIN: inlined from ./app.js (auto-generated) -->
   <script>
 
 window.addEventListener("error", (event) => {
@@ -15145,6 +15528,15 @@ const previewPane = $("previewPane");
 const previewContentEl = $("previewContent");
 const previewBodyEl = $("previewBody");
 const previewActionMenuEl = $("previewActionMenu");
+const controlPane = $("controlPane");
+const controlPrevItemBtn = $("controlPrevItemBtn");
+const controlSkipBackBtn = $("controlSkipBackBtn");
+const controlPlayPauseBtn = $("controlPlayPauseBtn");
+const controlSkipForwardBtn = $("controlSkipForwardBtn");
+const controlNextItemBtn = $("controlNextItemBtn");
+const controlMuteBtn = $("controlMuteBtn");
+const controlProgressRange = $("controlProgressRange");
+const controlTimecode = $("controlTimecode");
 if (previewActionMenuEl) {
   previewActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
 }
@@ -15313,6 +15705,8 @@ let MAIN_STATUS_TIMEOUT = null;
 let WORKSPACE_REFRESH_IN_FLIGHT = false;
 
 let ACTIVE_MEDIA_SURFACE = "none";
+let CONTROL_PROGRESS_DRAGGING = false;
+let PREVIEW_VIDEO_USER_PAUSE_FILE_ID = null;
 
 let PREVIEW_VIDEO_PAUSE = {
   active: false,
@@ -19202,19 +19596,20 @@ function syncBulkSelectionForCurrentDir() {
   WS.view.bulkFileSelectedIds = WS.view.bulkFileSelectionsByDir.get(p);
 }
 
-function applyVideoCarryToElement(vid, fileId) {
+function applyVideoCarryToElement(vid, fileId, opts = {}) {
   if (!vid) return;
   if (!VIDEO_CARRY.active) return;
   if ((VIDEO_CARRY.fileId || "") !== (fileId || "")) return;
 
   const t = VIDEO_CARRY.time || 0;
   const wp = !!VIDEO_CARRY.wasPlaying;
+  const allowPlay = opts.allowPlay !== false;
 
   const doApply = () => {
     try {
       if (isFinite(t)) vid.currentTime = t;
     } catch {}
-    if (wp) {
+    if (wp && allowPlay) {
       try {
         vid.play();
       } catch {}
@@ -25049,6 +25444,10 @@ function remapRuntimeFileStateIds(idMap) {
       .filter(Boolean);
   }
   PREVIEW_VIDEO_PAUSE.fileId = remapIdValue(idMap, PREVIEW_VIDEO_PAUSE.fileId);
+  PREVIEW_VIDEO_USER_PAUSE_FILE_ID = remapIdValue(
+    idMap,
+    PREVIEW_VIDEO_USER_PAUSE_FILE_ID,
+  );
   VIDEO_CARRY.fileId = remapIdValue(idMap, VIDEO_CARRY.fileId);
 }
 
@@ -42994,7 +43393,7 @@ function ensurePreviewFileElements() {
   }
   if (!previewVideoEl) {
     previewVideoEl = document.createElement("video");
-    previewVideoEl.controls = true;
+    previewVideoEl.controls = false;
     previewVideoEl.preload = "metadata";
     previewVideoEl.playsInline = true;
     previewVideoEl.autoplay = true;
@@ -43002,6 +43401,18 @@ function ensurePreviewFileElements() {
     normalizeVideoPlaybackRate(previewVideoEl);
     previewVideoEl.poster = BLACK_POSTER_URL;
     previewVideoEl.style.display = "none";
+    [
+      "loadedmetadata",
+      "durationchange",
+      "timeupdate",
+      "play",
+      "pause",
+      "volumechange",
+      "ended",
+      "emptied",
+    ].forEach((eventName) => {
+      previewVideoEl.addEventListener(eventName, syncControlPaneState);
+    });
     previewViewportBox.appendChild(previewVideoEl);
   }
   if (!previewFolderEl) {
@@ -43058,6 +43469,28 @@ function galleryVideoMode() {
   return previewVideoMode();
 }
 
+function normalizePreviewVideoPauseLockId(fileId) {
+  const id = String(fileId || "");
+  return id || null;
+}
+
+function setPreviewVideoUserPauseLock(fileId, locked) {
+  PREVIEW_VIDEO_USER_PAUSE_FILE_ID = locked
+    ? normalizePreviewVideoPauseLockId(fileId)
+    : null;
+}
+
+function previewVideoUserPausedFor(fileId) {
+  const id = normalizePreviewVideoPauseLockId(fileId);
+  return !!id && PREVIEW_VIDEO_USER_PAUSE_FILE_ID === id;
+}
+
+function syncPreviewVideoUserPauseLockToItem(fileId) {
+  const id = normalizePreviewVideoPauseLockId(fileId);
+  if (PREVIEW_VIDEO_USER_PAUSE_FILE_ID && PREVIEW_VIDEO_USER_PAUSE_FILE_ID !== id)
+    PREVIEW_VIDEO_USER_PAUSE_FILE_ID = null;
+}
+
 function videoSkipStepSeconds() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   const raw = opt ? String(opt.videoSkipStep || "10") : "10";
@@ -43069,6 +43502,207 @@ function videoEndBehavior() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return opt ? String(opt.videoEndBehavior || "loop") : "loop";
 }
+
+function formatControlPaneTime(seconds) {
+  const raw = Number(seconds);
+  if (!Number.isFinite(raw) || raw < 0) return "00:00";
+  const total = Math.floor(raw);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  if (h > 0) return `${String(h).padStart(2, "0")}:${mm}:${ss}`;
+  return `${mm}:${ss}`;
+}
+
+function getControlPaneVideo() {
+  if (!previewVideoEl) return null;
+  if (previewVideoEl.style.display === "none") return null;
+  if (!WS.preview || WS.preview.kind !== "file" || !WS.preview.fileId)
+    return null;
+  const rec = WS.fileById.get(String(WS.preview.fileId || ""));
+  if (!rec || rec.type !== "video") return null;
+  return previewVideoEl;
+}
+
+function controlPaneHasNavigablePreviewItem() {
+  return !!(
+    WS.preview &&
+    WS.preview.kind === "file" &&
+    WS.preview.fileId &&
+    Array.isArray(viewerItems) &&
+    viewerItems.length
+  );
+}
+
+function setControlButtonDisabled(button, disabled) {
+  if (button) button.disabled = !!disabled;
+}
+
+function syncControlPaneState() {
+  const video = getControlPaneVideo();
+  const hasVideo = !!video;
+  const hasDuration = !!(
+    video &&
+    Number.isFinite(Number(video.duration)) &&
+    Number(video.duration) > 0
+  );
+  const duration = hasDuration ? Math.max(0, Number(video.duration) || 0) : 0;
+  const current = video ? Math.max(0, Number(video.currentTime) || 0) : 0;
+  const canNavigate = controlPaneHasNavigablePreviewItem();
+
+  if (controlPane) controlPane.classList.toggle("control-disabled", !hasVideo);
+  setControlButtonDisabled(controlPrevItemBtn, !canNavigate);
+  setControlButtonDisabled(controlNextItemBtn, !canNavigate);
+  setControlButtonDisabled(controlSkipBackBtn, !hasDuration);
+  setControlButtonDisabled(controlSkipForwardBtn, !hasDuration);
+  setControlButtonDisabled(controlPlayPauseBtn, !hasVideo);
+  setControlButtonDisabled(controlMuteBtn, !hasVideo);
+
+  if (controlPlayPauseBtn) {
+    const paused = !video || video.paused;
+    controlPlayPauseBtn.textContent = "";
+    controlPlayPauseBtn.classList.remove("active");
+    controlPlayPauseBtn.classList.toggle("is-playing", hasVideo && !paused);
+    const label = paused ? "Play" : "Pause";
+    controlPlayPauseBtn.setAttribute("aria-label", label);
+    controlPlayPauseBtn.title = label;
+  }
+  if (controlMuteBtn) {
+    const muted = !!(video && video.muted);
+    controlMuteBtn.textContent = "";
+    controlMuteBtn.classList.remove("active");
+    controlMuteBtn.classList.toggle("is-muted", hasVideo && muted);
+    const label = muted ? "Unmute" : "Mute";
+    controlMuteBtn.setAttribute("aria-label", label);
+    controlMuteBtn.title = label;
+  }
+  if (controlSkipBackBtn) {
+    controlSkipBackBtn.textContent = `-${videoSkipStepSeconds()}`;
+  }
+  if (controlSkipForwardBtn) {
+    controlSkipForwardBtn.textContent = `+${videoSkipStepSeconds()}`;
+  }
+  if (controlProgressRange) {
+    controlProgressRange.disabled = !hasDuration;
+    controlProgressRange.max = String(duration || 0);
+    if (!CONTROL_PROGRESS_DRAGGING) {
+      controlProgressRange.value = String(Math.min(current, duration || current));
+    }
+  }
+  if (controlTimecode) {
+    controlTimecode.textContent = `${formatControlPaneTime(current)} / ${formatControlPaneTime(duration)}`;
+  }
+}
+
+function seekControlPaneVideo(deltaSeconds) {
+  const video = getControlPaneVideo();
+  if (!video) return false;
+  const duration = Number(video.duration);
+  if (!Number.isFinite(duration) || duration <= 0) return false;
+  const next = Math.max(
+    0,
+    Math.min(duration, (Number(video.currentTime) || 0) + deltaSeconds),
+  );
+  try {
+    video.currentTime = next;
+  } catch {
+    return false;
+  }
+  syncControlPaneState();
+  return true;
+}
+
+function toggleControlPanePlayPause() {
+  const video = getControlPaneVideo();
+  if (!video) return false;
+  const fileId = WS.preview && WS.preview.fileId ? WS.preview.fileId : "";
+  try {
+    if (video.paused) {
+      setPreviewVideoUserPauseLock(fileId, false);
+      video.play();
+    } else {
+      setPreviewVideoUserPauseLock(fileId, true);
+      video.pause();
+    }
+  } catch {
+    return false;
+  }
+  syncControlPaneState();
+  return true;
+}
+
+function toggleControlPaneMute() {
+  const video = getControlPaneVideo();
+  if (!video) return false;
+  try {
+    video.muted = !video.muted;
+  } catch {
+    return false;
+  }
+  syncControlPaneState();
+  return true;
+}
+
+function moveControlPaneItem(delta) {
+  if (!controlPaneHasNavigablePreviewItem()) return false;
+  const moved = viewerStep(delta < 0 ? -1 : 1);
+  syncControlPaneState();
+  return moved;
+}
+
+if (controlPrevItemBtn)
+  controlPrevItemBtn.addEventListener("click", () => {
+    moveControlPaneItem(-1);
+  });
+if (controlNextItemBtn)
+  controlNextItemBtn.addEventListener("click", () => {
+    moveControlPaneItem(1);
+  });
+if (controlSkipBackBtn)
+  controlSkipBackBtn.addEventListener("click", () => {
+    seekControlPaneVideo(-videoSkipStepSeconds());
+  });
+if (controlSkipForwardBtn)
+  controlSkipForwardBtn.addEventListener("click", () => {
+    seekControlPaneVideo(videoSkipStepSeconds());
+  });
+if (controlPlayPauseBtn)
+  controlPlayPauseBtn.addEventListener("click", () => {
+    toggleControlPanePlayPause();
+  });
+if (controlMuteBtn)
+  controlMuteBtn.addEventListener("click", () => {
+    toggleControlPaneMute();
+  });
+if (controlProgressRange) {
+  controlProgressRange.addEventListener("pointerdown", () => {
+    CONTROL_PROGRESS_DRAGGING = true;
+  });
+  controlProgressRange.addEventListener("pointerup", () => {
+    CONTROL_PROGRESS_DRAGGING = false;
+    syncControlPaneState();
+  });
+  controlProgressRange.addEventListener("input", () => {
+    const video = getControlPaneVideo();
+    if (!video) return;
+    const next = Number(controlProgressRange.value);
+    if (!Number.isFinite(next)) return;
+    try {
+      video.currentTime = Math.max(0, next);
+    } catch {}
+    syncControlPaneState();
+  });
+  controlProgressRange.addEventListener("change", () => {
+    CONTROL_PROGRESS_DRAGGING = false;
+    syncControlPaneState();
+  });
+}
+if (typeof window !== "undefined") {
+  window.setInterval(syncControlPaneState, 250);
+}
+syncControlPaneState();
 
 function galleryModeDisabled(opt = null) {
   return true;
@@ -43252,6 +43886,7 @@ function renderPreviewViewerItem(idx) {
   );
 
   if (item.isFolder) {
+    syncPreviewVideoUserPauseLockToItem(null);
     previewFolderEl.style.display = "flex";
     previewFolderEl.style.flexDirection = "column";
     previewFolderEl.style.alignItems = "center";
@@ -43296,17 +43931,20 @@ function renderPreviewViewerItem(idx) {
   }
 
   if (!rec) return;
+  syncPreviewVideoUserPauseLockToItem(rec.id);
 
   if (rec.type === "video") {
     const mode = previewVideoMode();
     const doAuto = mode !== "off" && !BANIC_ACTIVE && !VIEWER_MODE;
+    const pauseLocked = previewVideoUserPausedFor(rec.id);
+    const shouldAutoPlay = doAuto && !pauseLocked;
     if (!VIEWER_MODE && viewerVideoEl) {
       try {
         viewerVideoEl.pause();
       } catch {}
     }
     normalizeVideoPlaybackRate(previewVideoEl);
-    previewVideoEl.autoplay = doAuto;
+    previewVideoEl.autoplay = shouldAutoPlay;
     previewVideoEl.onloadeddata = null;
     previewVideoEl.onended = null;
     previewVideoEl.muted = mode === "muted" || BANIC_ACTIVE || VIEWER_MODE;
@@ -43359,7 +43997,9 @@ function renderPreviewViewerItem(idx) {
       rec,
     );
 
-    applyVideoCarryToElement(previewVideoEl, rec.id);
+    applyVideoCarryToElement(previewVideoEl, rec.id, {
+      allowPlay: !pauseLocked,
+    });
 
     if (previewVideoEl.readyState >= 2) {
       requestAnimationFrame(() => {
@@ -43374,7 +44014,7 @@ function renderPreviewViewerItem(idx) {
         }
       });
     }
-    if (doAuto) {
+    if (shouldAutoPlay) {
       try {
         previewVideoEl.play();
       } catch {}
@@ -47903,6 +48543,10 @@ function toggleViewerVideoPlayPause() {
   const shouldPlay = vids.some((vid) => !!vid.paused);
   for (let i = 0; i < vids.length; i++) {
     const vid = vids[i];
+    if (!VIEWER_MODE && vid === previewVideoEl) {
+      const fileId = WS.preview && WS.preview.fileId ? WS.preview.fileId : "";
+      setPreviewVideoUserPauseLock(fileId, !shouldPlay);
+    }
     try {
       if (shouldPlay) vid.play();
       else vid.pause();
@@ -48023,6 +48667,7 @@ function syncButtons() {
   syncMetaButtons();
   updateModePill();
   updateTitleLabel();
+  syncControlPaneState();
 }
 
 function applyViewModesEverywhere(animate = false) {

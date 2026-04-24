@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Local Gallery</title>
-                                                                <link rel="stylesheet" href="./styles.css" />
+                                                                                  <link rel="stylesheet" href="./styles.css" />
   </head>
 
   <body>
@@ -64,7 +64,81 @@
              ========================================================= -->
           <div id="previewPane">
             <div id="previewContent">
-              <div id="previewBody"></div>
+              <div id="previewMainStack">
+                <div id="previewBody"></div>
+
+                <!-- =========================================================
+                   Control Pane
+                   ========================================================= -->
+                <div id="controlPane">
+                  <div id="controlPaneInner">
+                    <div id="controlButtons" aria-label="Media controls">
+                      <button
+                        id="controlPrevItemBtn"
+                        class="miniBtn controlBtn"
+                        type="button"
+                        title="Previous item"
+                        aria-label="Previous item"
+                      >
+                        |&lt;
+                      </button>
+                      <button
+                        id="controlSkipBackBtn"
+                        class="miniBtn controlBtn"
+                        type="button"
+                        title="Skip back"
+                        aria-label="Skip back"
+                      >
+                        -10
+                      </button>
+                      <button
+                        id="controlPlayPauseBtn"
+                        class="miniBtn controlBtn controlIconBtn controlPlayBtn"
+                        type="button"
+                        title="Play or pause"
+                        aria-label="Play or pause"
+                      ></button>
+                      <button
+                        id="controlSkipForwardBtn"
+                        class="miniBtn controlBtn"
+                        type="button"
+                        title="Skip forward"
+                        aria-label="Skip forward"
+                      >
+                        +10
+                      </button>
+                      <button
+                        id="controlNextItemBtn"
+                        class="miniBtn controlBtn"
+                        type="button"
+                        title="Next item"
+                        aria-label="Next item"
+                      >
+                        &gt;|
+                      </button>
+                      <button
+                        id="controlMuteBtn"
+                        class="miniBtn controlBtn controlIconBtn"
+                        type="button"
+                        title="Mute"
+                        aria-label="Mute"
+                      ></button>
+                    </div>
+                    <input
+                      id="controlProgressRange"
+                      type="range"
+                      min="0"
+                      max="0"
+                      step="0.01"
+                      value="0"
+                      aria-label="Video progress"
+                    />
+                    <div id="controlTimecode" aria-live="off">
+                      00:00 / 00:00
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div id="menuDivider" title="Drag to resize menu"></div>
               <div id="menuOverlay">
                 <div id="menuCard">
@@ -447,6 +521,6 @@
         </feComponentTransfer>
       </filter>
     </svg>
-                                                                <script src="./app.js"></script>
+                                                                                  <script src="./app.js"></script>
   </body>
 </html>
