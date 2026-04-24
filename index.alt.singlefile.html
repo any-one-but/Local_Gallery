@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Local Gallery</title>
-                                                            <!-- BEGIN: inlined from ./styles.css (auto-generated) -->
+                                                                  <!-- BEGIN: inlined from ./styles.css (auto-generated) -->
   <style>
 :root {
   --color0-primary: hsl(0, 0%, 95%);
@@ -6655,8 +6655,9 @@ img[data-rotate-key].rotatingThumbFade {
         </feComponentTransfer>
       </filter>
     </svg>
-                                                            <!-- BEGIN: inlined from ./app.js (auto-generated) -->
+                                                                  <!-- BEGIN: inlined from ./app.js (auto-generated) -->
   <script>
+
 window.addEventListener("error", (event) => {
   try {
     const err = event?.error;
@@ -6702,12 +6703,14 @@ const ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE = false;
 // Keep quad thumbnail logic in code, but force it off in the shipped UI/runtime path.
 const ENABLE_QUAD_THUMBNAILS = false;
 const GRID_CROPPED_COLS_BY_SCALE = Object.freeze({
-  small: 7,
-  medium: 6,
-  large: 5,
-  xl: 4,
-  xxl: 3,
-  xxxl: 2,
+  row10: 10,
+  row9: 9,
+  row8: 8,
+  row7: 7,
+  row6: 6,
+  row5: 5,
+  row4: 4,
+  row3: 3,
 });
 
 let LAST_LOADED_FILE_LIST = [];
@@ -7006,20 +7009,29 @@ function normalizeDisplaySizeValue(value, fallback = "medium") {
   return fallback;
 }
 
-function normalizeThumbnailScaleValue(value, fallback = "medium") {
+function normalizeThumbnailScaleValue(value, fallback = "row7") {
   const raw = String(value == null ? "" : value)
     .trim()
     .toLowerCase();
   if (
-    raw === "small" ||
-    raw === "medium" ||
-    raw === "large" ||
-    raw === "xl" ||
-    raw === "xxl" ||
-    raw === "xxxl"
+    raw === "row10" ||
+    raw === "row9" ||
+    raw === "row8" ||
+    raw === "row7" ||
+    raw === "row6" ||
+    raw === "row5" ||
+    raw === "row4" ||
+    raw === "row3"
   )
     return raw;
-  return fallback;
+  // Migrate legacy scale names to the closest matching row-count target.
+  if (raw === "small") return "row8";
+  if (raw === "medium") return "row7";
+  if (raw === "large") return "row6";
+  if (raw === "xl") return "row5";
+  if (raw === "xxl") return "row4";
+  if (raw === "xxxl") return "row3";
+  return normalizeThumbnailScaleValue(fallback, "row7");
 }
 
 function thumbnailVisibilityKindSpecs() {
@@ -7300,27 +7312,42 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
 }
 
 const NOTIFICATION_SOURCE_SPECS = Object.freeze([
-  Object.freeze({ section: "Workspace", id: "workspace-load", label: "Folder load / picker / read-only", optionKey: "notifyWorkspaceLoad" }),
-  Object.freeze({ section: "Workspace", id: "workspace-refresh", label: "Workspace refresh", optionKey: "notifyWorkspaceRefresh" }),
-  Object.freeze({ section: "Workspace", id: "storage", label: "Storage portal / storage changes", optionKey: "notifyStorage" }),
-  Object.freeze({ section: "Navigation", id: "navigation-view", label: "List / title / filter controls", optionKey: "notifyNavigationView" }),
-  Object.freeze({ section: "Navigation", id: "navigation-jump", label: "First / Random File Jump", optionKey: "notifyNavigationJump" }),
-  Object.freeze({ section: "Navigation", id: "navigation-sort", label: "Random sort", optionKey: "notifyNavigationSort" }),
-  Object.freeze({ section: "Playback", id: "playback", label: "Slideshow / gallery mode", optionKey: "notifyPlayback" }),
-  Object.freeze({ section: "Appearance", id: "appearance-display", label: "Light mode / filename display / pane background", optionKey: "notifyAppearanceDisplay" }),
-  Object.freeze({ section: "Appearance", id: "appearance-presets", label: "Appearance presets", optionKey: "notifyAppearancePresets" }),
-  Object.freeze({ section: "Tags", id: "tags", label: "Tags / albums / hidden tags", optionKey: "notifyTags" }),
-  Object.freeze({ section: "Tags", id: "tag-thumbnails", label: "Tag thumbnails / tag media settings", optionKey: "notifyTagThumbnails" }),
-  Object.freeze({ section: "Thumbnails", id: "thumbnails", label: "Folder / root thumbnails", optionKey: "notifyThumbnails" }),
-  Object.freeze({ section: "Thumbnails", id: "thumbnail-tools", label: "Thumbnail framing / cache / resets", optionKey: "notifyThumbnailTools" }),
-  Object.freeze({ section: "Edits", id: "rename", label: "Rename + sanitize names", optionKey: "notifyRename" }),
-  Object.freeze({ section: "File operations", id: "trash", label: "Trash / Put Back", optionKey: "notifyTrash" }),
-  Object.freeze({ section: "File operations", id: "delete", label: "Delete", optionKey: "notifyDelete" }),
-  Object.freeze({ section: "File operations", id: "merge", label: "Set Merge / Loose Set Merge", optionKey: "notifyMerge" }),
-  Object.freeze({ section: "Generation", id: "scrub", label: "Scrub", optionKey: "notifyScrub" }),
-  Object.freeze({ section: "Generation", id: "gif", label: "GIF generation", optionKey: "notifyGif" }),
-  Object.freeze({ section: "Stats", id: "stats", label: "Stats / score history", optionKey: "notifyStats" }),
-  Object.freeze({ section: "Other", id: "misc", label: "Fallback / uncategorized", optionKey: "notifyMisc" }),
+  Object.freeze({ section: "Library & workspace", id: "workspace-load", label: "Folder loading / read-only state", hint: "Folder picker, load-folder, indexing, and read-only status messages.", optionKey: "notifyWorkspaceLoad" }),
+  Object.freeze({ section: "Library & workspace", id: "workspace-refresh", label: "Workspace refresh", hint: "Refresh start, completion, failure, and unavailable messages.", optionKey: "notifyWorkspaceRefresh" }),
+  Object.freeze({ section: "Library & workspace", id: "storage", label: "Storage portal messages", hint: "Storage portal and storage-management messages that are not just the visibility toggle.", optionKey: "notifyStorage" }),
+
+  Object.freeze({ section: "Panes & surfaces", id: "pane-toggles", label: "Pane / surface toggles", hint: "List pane, title pane, settings pane, and preview background toggle messages.", optionKey: "notifyPaneToggles" }),
+  Object.freeze({ section: "Hidden & special views", id: "visibility-toggles", label: "Hidden / Trash / Storage / Untagged toggles", hint: "Notifications that announce special entries being shown, hidden, revealed, or blank-row adjusted.", optionKey: "notifyVisibilityToggles" }),
+  Object.freeze({ section: "Hidden & special views", id: "quick-navigation", label: "Quick navigation toggle", hint: "Quick navigation on/off messages.", optionKey: "notifyQuickNavigation" }),
+
+  Object.freeze({ section: "Cycling actions", id: "cycle-filter", label: "Content filter cycle", hint: "The action that cycles All / Images / Videos / GIFs.", optionKey: "notifyCycleFilter" }),
+  Object.freeze({ section: "Cycling actions", id: "cycle-animated-filters", label: "Animated filter cycle", hint: "The action that cycles animated filters off/on/videos-only.", optionKey: "notifyCycleAnimatedFilters" }),
+  Object.freeze({ section: "Cycling actions", id: "cycle-folder-sort", label: "Folder sort cycle", hint: "The action that cycles folder sort modes.", optionKey: "notifyCycleFolderSort" }),
+  Object.freeze({ section: "Cycling actions", id: "cycle-video-end", label: "Video-end behavior cycle", hint: "The action that cycles what videos do when they end.", optionKey: "notifyCycleVideoEnd" }),
+
+  Object.freeze({ section: "Random navigation & sorting", id: "navigation-jump", label: "First / Random File Jump", hint: "Random jump actions and their unavailable/no-result messages.", optionKey: "notifyNavigationJump" }),
+  Object.freeze({ section: "Random navigation & sorting", id: "random-file-sort", label: "Random file sort toggle", hint: "Random file ordering on/off messages.", optionKey: "notifyRandomFileSort" }),
+  Object.freeze({ section: "Random navigation & sorting", id: "random-folder-sort", label: "Random folder sort toggle", hint: "Random folder ordering on/off messages.", optionKey: "notifyRandomFolderSort" }),
+
+  Object.freeze({ section: "Playback", id: "playback", label: "Slideshow / gallery mode", hint: "Slideshow status and gallery-mode messages.", optionKey: "notifyPlayback" }),
+  Object.freeze({ section: "Appearance & filenames", id: "appearance-display", label: "Light mode / filename display", hint: "Light mode and filename-format toggle messages.", optionKey: "notifyAppearanceDisplay" }),
+  Object.freeze({ section: "Appearance & filenames", id: "appearance-presets", label: "Appearance presets", hint: "Preset apply, save, mix, delete, and preset-selection messages.", optionKey: "notifyAppearancePresets" }),
+
+  Object.freeze({ section: "Tags & albums", id: "tags", label: "Tags / albums / hidden tags", hint: "Tag editing, album, and hidden-tag messages.", optionKey: "notifyTags" }),
+  Object.freeze({ section: "Tags & albums", id: "tag-thumbnails", label: "Tag thumbnails / tag media settings", hint: "Tag thumbnail and tag media preset messages.", optionKey: "notifyTagThumbnails" }),
+
+  Object.freeze({ section: "Thumbnails", id: "thumbnails", label: "Folder / root thumbnails", hint: "Folder and root thumbnail assignment messages.", optionKey: "notifyThumbnails" }),
+  Object.freeze({ section: "Thumbnails", id: "thumbnail-tools", label: "Thumbnail framing / cache / resets", hint: "Thumbnail crop, framing, cache, and reset messages.", optionKey: "notifyThumbnailTools" }),
+
+  Object.freeze({ section: "Editing", id: "rename", label: "Rename + sanitize names", hint: "Rename and sanitize-name messages.", optionKey: "notifyRename" }),
+  Object.freeze({ section: "File operations", id: "trash", label: "Trash / Put Back", hint: "Move-to-trash and Put Back messages.", optionKey: "notifyTrash" }),
+  Object.freeze({ section: "File operations", id: "delete", label: "Delete", hint: "Delete messages.", optionKey: "notifyDelete" }),
+  Object.freeze({ section: "File operations", id: "merge", label: "Set Merge / Loose Set Merge", hint: "Merge and loose-merge messages.", optionKey: "notifyMerge" }),
+
+  Object.freeze({ section: "Generation", id: "scrub", label: "Scrub", hint: "Scrub tool messages.", optionKey: "notifyScrub" }),
+  Object.freeze({ section: "Generation", id: "gif", label: "GIF generation", hint: "GIF generation messages.", optionKey: "notifyGif" }),
+  Object.freeze({ section: "Stats", id: "stats", label: "Stats / score history", hint: "Stats and score-history messages.", optionKey: "notifyStats" }),
+  Object.freeze({ section: "Other", id: "misc", label: "Fallback / uncategorized", hint: "Any notification that does not fit a more specific bucket.", optionKey: "notifyMisc" }),
 ]);
 
 function notificationSourceOptionKeys() {
@@ -7371,6 +7398,10 @@ function defaultOptions() {
     pixelateOverlayIntensity: null,
     blurOverlayEnabled: true,
     blurOverlayIntensity: null,
+    upscaleSmoothingOverlayEnabled: true,
+    upscaleSmoothingOverlayIntensity: null,
+    upscalerOverlayEnabled: true,
+    upscalerOverlayIntensity: null,
     chromaOverlayEnabled: true,
     chromaOverlayIntensity: null,
     grainOverlayEnabled: true,
@@ -7420,8 +7451,8 @@ function defaultOptions() {
     previewSubfolderThumbnailTitleSize: "small",
     previewTagThumbnailTitleSize: "small",
     thumbnailStyle: "cropped",
-    thumbnailScaleCropped: "medium",
-    thumbnailScaleAspect: "medium",
+    thumbnailScaleCropped: "row7",
+    thumbnailScaleAspect: "row7",
   };
   for (let i = 0; i < NOTIFICATION_SOURCE_SPECS.length; i++) {
     out[NOTIFICATION_SOURCE_SPECS[i].optionKey] = true;
@@ -7518,6 +7549,18 @@ function normalizeOptions(o) {
     src.blurOverlayIntensity,
     0,
     8,
+  );
+  const upscaleSmoothingOverlayEnabled = true;
+  const upscaleSmoothingOverlayIntensity = normalizeOptionalClampedNumber(
+    src.upscaleSmoothingOverlayIntensity,
+    0,
+    1,
+  );
+  const upscalerOverlayEnabled = true;
+  const upscalerOverlayIntensity = normalizeOptionalClampedNumber(
+    src.upscalerOverlayIntensity,
+    0,
+    1,
   );
   const chromaOverlayEnabled = true;
   const chromaOverlayIntensity = normalizeOptionalClampedNumber(
@@ -7903,6 +7946,10 @@ function normalizeOptions(o) {
     pixelateOverlayIntensity,
     blurOverlayEnabled,
     blurOverlayIntensity,
+    upscaleSmoothingOverlayEnabled,
+    upscaleSmoothingOverlayIntensity,
+    upscalerOverlayEnabled,
+    upscalerOverlayIntensity,
     chromaOverlayEnabled,
     chromaOverlayIntensity,
     grainOverlayEnabled,
@@ -7973,6 +8020,7 @@ const OVERLAY_SLIDER_LIMITS = Object.freeze({
   lineDamage: { min: 0, max: 1, step: 0.02 },
   pixelate: { min: 1, max: 16, step: 0.5 },
   blur: { min: 0, max: 8, step: 0.1 },
+  upscaleSmoothing: { min: 0, max: 1, step: 0.02 },
   chroma: { min: 0, max: 8, step: 0.1 },
   grain: { min: 0, max: 0.5, step: 0.01 },
   vignette: { min: 0, max: 0.6, step: 0.01 },
@@ -7993,6 +8041,7 @@ const APPEARANCE_SLIDER_OPTION_KEYS = Object.freeze([
   "lineDamageOverlayIntensity",
   "pixelateOverlayIntensity",
   "blurOverlayIntensity",
+  "upscaleSmoothingOverlayIntensity",
   "chromaOverlayIntensity",
   "grainOverlayIntensity",
   "vignetteOverlayIntensity",
@@ -8021,6 +8070,8 @@ const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
       lineDamageOverlayIntensity: null,
       pixelateOverlayIntensity: null,
       blurOverlayIntensity: null,
+      upscaleSmoothingOverlayIntensity: null,
+      upscalerOverlayIntensity: null,
       chromaOverlayIntensity: null,
       grainOverlayIntensity: null,
       vignetteOverlayIntensity: null,
@@ -8028,8 +8079,8 @@ const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
     }),
   }),
   Object.freeze({
-    id: "preset-mnr9i0we-72ts63",
-    name: "'95",
+    id: "preset-mod8x13x-elw7of",
+    name: "Basic",
     locked: false,
     values: Object.freeze({
       hueShiftOverlayIntensity: null,
@@ -8037,30 +8088,6 @@ const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
       contrastOverlayIntensity: null,
       brightnessOverlayIntensity: null,
       warmthOverlayIntensity: null,
-      colorCrushOverlayIntensity: 0.04,
-      blackCrushOverlayIntensity: null,
-      whiteCrushOverlayIntensity: null,
-      halationOverlayIntensity: null,
-      ghostingOverlayIntensity: null,
-      lineDamageOverlayIntensity: null,
-      pixelateOverlayIntensity: 2.5,
-      blurOverlayIntensity: null,
-      chromaOverlayIntensity: null,
-      grainOverlayIntensity: null,
-      vignetteOverlayIntensity: null,
-      filmCornerOverlayIntensity: null,
-    }),
-  }),
-  Object.freeze({
-    id: "preset-mmwykfee-np83f7",
-    name: "Basic",
-    locked: false,
-    values: Object.freeze({
-      hueShiftOverlayIntensity: 10,
-      saturationOverlayIntensity: 0.35,
-      contrastOverlayIntensity: 0.1,
-      brightnessOverlayIntensity: null,
-      warmthOverlayIntensity: 0.1,
       colorCrushOverlayIntensity: null,
       blackCrushOverlayIntensity: null,
       whiteCrushOverlayIntensity: null,
@@ -8069,14 +8096,16 @@ const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
       lineDamageOverlayIntensity: null,
       pixelateOverlayIntensity: null,
       blurOverlayIntensity: null,
+      upscaleSmoothingOverlayIntensity: 1,
+      upscalerOverlayIntensity: null,
       chromaOverlayIntensity: null,
       grainOverlayIntensity: null,
       vignetteOverlayIntensity: null,
-      filmCornerOverlayIntensity: null,
+      filmCornerOverlayIntensity: 0.01,
     }),
   }),
   Object.freeze({
-    id: "preset-mnd6tpmu-9woytf",
+    id: "preset-mod8nt73-butsgx",
     name: "Film",
     locked: false,
     values: Object.freeze({
@@ -8093,6 +8122,8 @@ const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
       lineDamageOverlayIntensity: null,
       pixelateOverlayIntensity: null,
       blurOverlayIntensity: null,
+      upscaleSmoothingOverlayIntensity: 1,
+      upscalerOverlayIntensity: null,
       chromaOverlayIntensity: 0.4,
       grainOverlayIntensity: 0.08,
       vignetteOverlayIntensity: null,
@@ -8100,7 +8131,33 @@ const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
     }),
   }),
   Object.freeze({
-    id: "preset-mmwpvxah-zud4xr",
+    id: "preset-mod8auau-n45sw8",
+    name: "Tint",
+    locked: false,
+    values: Object.freeze({
+      hueShiftOverlayIntensity: 10,
+      saturationOverlayIntensity: 0.35,
+      contrastOverlayIntensity: 0.1,
+      brightnessOverlayIntensity: null,
+      warmthOverlayIntensity: 0.1,
+      colorCrushOverlayIntensity: null,
+      blackCrushOverlayIntensity: null,
+      whiteCrushOverlayIntensity: null,
+      halationOverlayIntensity: null,
+      ghostingOverlayIntensity: null,
+      lineDamageOverlayIntensity: null,
+      pixelateOverlayIntensity: null,
+      blurOverlayIntensity: null,
+      upscaleSmoothingOverlayIntensity: 1,
+      upscalerOverlayIntensity: null,
+      chromaOverlayIntensity: null,
+      grainOverlayIntensity: null,
+      vignetteOverlayIntensity: null,
+      filmCornerOverlayIntensity: null,
+    }),
+  }),
+  Object.freeze({
+    id: "preset-mnrf0djp-dfta2v",
     name: "VHS",
     locked: false,
     values: Object.freeze({
@@ -8113,13 +8170,41 @@ const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
       blackCrushOverlayIntensity: null,
       whiteCrushOverlayIntensity: null,
       halationOverlayIntensity: 0.16,
-      ghostingOverlayIntensity: 0.14,
-      lineDamageOverlayIntensity: 0.54,
+      ghostingOverlayIntensity: 0.16,
+      lineDamageOverlayIntensity: 0.52,
       pixelateOverlayIntensity: null,
       blurOverlayIntensity: 0.4,
+      upscaleSmoothingOverlayIntensity: null,
+      upscalerOverlayIntensity: null,
       chromaOverlayIntensity: 1.6,
       grainOverlayIntensity: 0.08,
       vignetteOverlayIntensity: 0.07,
+      filmCornerOverlayIntensity: null,
+    }),
+  }),
+  Object.freeze({
+    id: "preset-mod8ie4f-fsdlub",
+    name: "Win95",
+    locked: false,
+    values: Object.freeze({
+      hueShiftOverlayIntensity: null,
+      saturationOverlayIntensity: null,
+      contrastOverlayIntensity: null,
+      brightnessOverlayIntensity: null,
+      warmthOverlayIntensity: null,
+      colorCrushOverlayIntensity: 0.02,
+      blackCrushOverlayIntensity: null,
+      whiteCrushOverlayIntensity: null,
+      halationOverlayIntensity: null,
+      ghostingOverlayIntensity: null,
+      lineDamageOverlayIntensity: null,
+      pixelateOverlayIntensity: 3.5,
+      blurOverlayIntensity: null,
+      upscaleSmoothingOverlayIntensity: 1,
+      upscalerOverlayIntensity: null,
+      chromaOverlayIntensity: null,
+      grainOverlayIntensity: null,
+      vignetteOverlayIntensity: null,
       filmCornerOverlayIntensity: null,
     }),
   }),
@@ -8491,24 +8576,49 @@ function syncActiveAppearancePresetSelection(options = null) {
   if (!WS.meta) return "";
   const opt = options || WS.meta.options || normalizeOptions(null);
   const values = currentAppearanceValuesFromOptions(opt);
-  let nextId = "";
   const presets = Array.isArray(WS.meta.appearancePresets)
     ? WS.meta.appearancePresets
     : [];
-  for (let i = 0; i < presets.length; i++) {
-    const preset = presets[i];
-    if (!preset || !preset.values) continue;
-    if (appearanceValuesEqual(values, preset.values)) {
-      nextId = normalizeAppearancePresetIdValue(preset.id);
-      break;
-    }
-  }
   const currentId = normalizeAppearancePresetIdValue(
     opt.activeAppearancePresetId,
   );
-  if (currentId === nextId) return nextId;
-  opt.activeAppearancePresetId = nextId || null;
-  return nextId;
+  const currentPreset = currentId ? getAppearancePresetById(currentId) : null;
+
+  // Preserve the explicitly selected preset by ID when its values match.
+  // Multiple presets can intentionally share identical slider values, and
+  // selecting/deleting them must not collapse to whichever matching preset
+  // happens to appear first in the sorted list.
+  if (
+    currentPreset &&
+    currentPreset.values &&
+    appearanceValuesEqual(values, currentPreset.values)
+  ) {
+    return currentId;
+  }
+
+  // Once the selected preset no longer matches the sliders, treat the state as
+  // an edit of that preset rather than auto-selecting another same-valued preset.
+  if (currentPreset) {
+    opt.activeAppearancePresetId = null;
+    return "";
+  }
+
+  // With no explicit active preset, only infer a preset for the built-in Default
+  // state. This keeps normal slider edits from jumping between user presets
+  // that happen to share values, while still letting a plain default workspace
+  // show as Default.
+  let defaultId = "";
+  for (let i = 0; i < presets.length; i++) {
+    const preset = presets[i];
+    const presetId = normalizeAppearancePresetIdValue(preset && preset.id);
+    if (presetId !== BUILTIN_NULL_APPEARANCE_PRESET_ID) continue;
+    if (preset && preset.values && appearanceValuesEqual(values, preset.values)) {
+      defaultId = presetId;
+    }
+    break;
+  }
+  opt.activeAppearancePresetId = defaultId || null;
+  return defaultId;
 }
 
 function currentAppearanceBucket(options = null) {
@@ -8750,8 +8860,10 @@ function updateAppearancePresetUiState() {
   }
   const disablePresetDelete = uiTargetId === BUILTIN_NULL_APPEARANCE_PRESET_ID;
   const saveBtn = $("opt_appearancePreset_save");
+  const renameBtn = $("opt_appearancePreset_rename");
   const deleteBtn = $("opt_appearancePreset_delete");
   if (saveBtn) saveBtn.disabled = false;
+  if (renameBtn) renameBtn.disabled = disablePresetDelete;
   if (deleteBtn) deleteBtn.disabled = disablePresetDelete;
 }
 
@@ -8779,13 +8891,13 @@ function applyAppearancePresetById(presetId, options = {}) {
   return true;
 }
 
-function saveAppearancePresetFromCurrent(name) {
+function saveAppearancePresetValues(name, values) {
   if (!WS.meta) return { ok: false, reason: "missing-meta" };
   const presetName = normalizeAppearancePresetName(name, "");
   if (!presetName) return { ok: false, reason: "missing-name" };
   if (presetName.toLowerCase() === "default")
     return { ok: false, reason: "reserved-name" };
-  const values = currentAppearanceValuesFromOptions(WS.meta.options);
+  const normalizedValues = normalizeAppearancePresetValues(values || {});
   const existing = findAppearancePresetByName(presetName);
   let presetId = "";
   let replaced = false;
@@ -8801,7 +8913,7 @@ function saveAppearancePresetFromCurrent(name) {
           return preset;
         return Object.assign({}, preset, {
           name: presetName,
-          values,
+          values: normalizedValues,
         });
       },
     );
@@ -8813,7 +8925,7 @@ function saveAppearancePresetFromCurrent(name) {
         id: presetId,
         name: presetName,
         locked: false,
-        values,
+        values: normalizedValues,
       },
     ]);
   }
@@ -8846,6 +8958,70 @@ function saveAppearancePresetFromCurrent(name) {
     replaced,
     preset: getAppearancePresetById(nextId),
   };
+}
+
+function saveAppearancePresetFromCurrent(name) {
+  if (!WS.meta) return { ok: false, reason: "missing-meta" };
+  return saveAppearancePresetValues(
+    name,
+    currentAppearanceValuesFromOptions(WS.meta.options),
+  );
+}
+
+function splitAppearancePresetMixNames(text) {
+  const rawParts = String(text || "")
+    .split(",")
+    .map((part) => normalizeAppearancePresetName(part, ""))
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < rawParts.length; i++) {
+    const key = rawParts[i].toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(rawParts[i]);
+  }
+  return out;
+}
+
+function mixAppearancePresetsFromNames(text) {
+  if (!WS.meta) return { ok: false, reason: "missing-meta" };
+  const names = splitAppearancePresetMixNames(text);
+  if (!names.length) return { ok: false, reason: "missing-names" };
+  const presets = [];
+  const missing = [];
+  for (let i = 0; i < names.length; i++) {
+    const preset = findAppearancePresetByName(names[i]);
+    if (!preset) missing.push(names[i]);
+    else presets.push(preset);
+  }
+  if (missing.length) return { ok: false, reason: "missing-presets", missing };
+  if (presets.length < 2) return { ok: false, reason: "not-enough-presets" };
+  const mixedValues = {};
+  for (let i = 0; i < APPEARANCE_SLIDER_OPTION_KEYS.length; i++) {
+    const key = APPEARANCE_SLIDER_OPTION_KEYS[i];
+    const values = [];
+    for (let j = 0; j < presets.length; j++) {
+      const presetValues = presets[j] && presets[j].values ? presets[j].values : {};
+      const raw = Object.prototype.hasOwnProperty.call(presetValues, key)
+        ? presetValues[key]
+        : null;
+      if (raw == null) continue;
+      const n = Number(raw);
+      if (Number.isFinite(n)) values.push(n);
+    }
+    mixedValues[key] = values.length
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : null;
+  }
+  const mixedName = presets
+    .map((preset) => normalizeAppearancePresetName(preset && preset.name, "Preset"))
+    .join(" + ");
+  const result = saveAppearancePresetValues(mixedName, mixedValues);
+  if (!result.ok) return result;
+  return Object.assign({}, result, {
+    sourceNames: presets.map((preset) => normalizeAppearancePresetName(preset && preset.name, "Preset")),
+  });
 }
 
 function createAppearancePresetFromCurrent(name) {
@@ -8905,32 +9081,58 @@ function updateAppearancePresetFromCurrent(presetId) {
 
 function renameAppearancePresetById(presetId, nextName) {
   const id = normalizeAppearancePresetIdValue(presetId);
-  if (!id || id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return false;
-  const normalizedName = normalizeAppearancePresetName(nextName, "Preset");
-  const existing = Array.isArray(
-    WS.meta && WS.meta.appearancePresets ? WS.meta.appearancePresets : null,
-  )
+  if (!id || id === BUILTIN_NULL_APPEARANCE_PRESET_ID || !WS.meta)
+    return { ok: false, reason: "invalid-preset" };
+  const normalizedName = normalizeAppearancePresetName(nextName, "");
+  if (!normalizedName) return { ok: false, reason: "missing-name" };
+  if (normalizedName.toLowerCase() === "default")
+    return { ok: false, reason: "reserved-name" };
+  const existingPresets = Array.isArray(WS.meta.appearancePresets)
     ? WS.meta.appearancePresets
     : [];
+  const duplicate = existingPresets.find((preset) => {
+    const presetIdValue = normalizeAppearancePresetIdValue(preset && preset.id);
+    if (!presetIdValue || presetIdValue === id) return false;
+    return (
+      normalizeAppearancePresetName(preset && preset.name, "").toLowerCase() ===
+      normalizedName.toLowerCase()
+    );
+  });
+  if (duplicate) return { ok: false, reason: "duplicate-name", duplicate };
+
   let changed = false;
-  WS.meta.appearancePresets = existing.map((preset) => {
+  WS.meta.appearancePresets = existingPresets.map((preset) => {
     if (normalizeAppearancePresetIdValue(preset && preset.id) !== id)
       return preset;
     if (String(preset.name || "") === normalizedName) return preset;
     changed = true;
     return Object.assign({}, preset, { name: normalizedName });
   });
-  if (!changed) return false;
+  if (!changed) return { ok: false, reason: "unchanged" };
+
   WS.meta.appearancePresets = normalizeAppearancePresetList(
     WS.meta.appearancePresets,
     false,
   );
+  const renamedPreset = getAppearancePresetById(id);
+  if (WS.meta.options) WS.meta.options.activeAppearancePresetId = id;
+  if (WS.view) {
+    WS.view.appearancePresetEditingId = id;
+    WS.view.appearancePresetPromptMode = "";
+    WS.view.appearancePresetDraftName = renamedPreset
+      ? String(renamedPreset.name || normalizedName)
+      : normalizedName;
+  }
   syncPaneKeybindBindingsWithCurrentActions(false);
   rebuildKeybindIndex();
   if (MENU_OPEN && MENU_ACTIVE_TAB === "controls") renderKeybindsUi("pane");
-  metaMarkDirty(META_DOC_IDS.appearancePresets, META_DOC_IDS.keybinds);
+  metaMarkDirty(
+    META_DOC_IDS.appearancePresets,
+    META_DOC_IDS.keybinds,
+    META_DOC_IDS.prefAppearance,
+  );
   setOptionsStatus("Saved");
-  return true;
+  return { ok: true, preset: renamedPreset || getAppearancePresetById(id) };
 }
 
 function clearDeletedAppearancePresetReferences(presetId) {
@@ -9143,6 +9345,16 @@ function buildMediaOverlayConfigFromOptions(opt) {
     OVERLAY_SLIDER_LIMITS.blur.max,
   );
   const blur = blurAmount != null && blurAmount > 0.0001 ? blurAmount : 0;
+  const upscaleAmount = optionalOverlayAmount(
+    opt.upscaleSmoothingOverlayIntensity,
+    OVERLAY_SLIDER_LIMITS.upscaleSmoothing.min,
+    OVERLAY_SLIDER_LIMITS.upscaleSmoothing.max,
+  );
+  const upscale = upscaleAmount != null && upscaleAmount > 0.0001 ? upscaleAmount : 0;
+  // Detail is the single user-facing control for both preview supersampling
+  // and the lightweight reconstruction/detail pass. The old separate
+  // upscaler slider is intentionally ignored so these effects stay tied.
+  const upscaler = upscale;
   const chromaAmount = optionalOverlayAmount(
     opt.chromaOverlayIntensity,
     OVERLAY_SLIDER_LIMITS.chroma.min,
@@ -9182,6 +9394,8 @@ function buildMediaOverlayConfigFromOptions(opt) {
     !lineDamage &&
     !pixelate &&
     !blur &&
+    !upscale &&
+    !upscaler &&
     !chroma &&
     !grain &&
     !vignette &&
@@ -9200,6 +9414,8 @@ function buildMediaOverlayConfigFromOptions(opt) {
     lineDamage,
     pixelate,
     blur,
+    upscale,
+    upscaler,
     chroma,
     grain,
     vignette,
@@ -9597,6 +9813,8 @@ const EMPTY_MEDIA_OVERLAY_CONFIG = Object.freeze({
   lineDamage: 0,
   pixelate: 0,
   blur: 0,
+  upscale: 0,
+  upscaler: 0,
   chroma: 0,
   grain: 0,
   vignette: 0,
@@ -9961,6 +10179,27 @@ function computeContainRect(srcW, srcH, dstW, dstH) {
   const x = (dstW - w) * 0.5;
   const y = (dstH - h) * 0.5;
   return { x, y, w, h };
+}
+
+function previewPaneUpscaleAmountForSurface(surface, overlayCfg) {
+  if (!surface || String(surface.name || "") !== "preview") return 0;
+  if (!overlayCfg || !Object.prototype.hasOwnProperty.call(overlayCfg, "upscale")) return 0;
+  const parsed = Number(overlayCfg.upscale);
+  if (!Number.isFinite(parsed)) return 0;
+  return clampNumber(parsed, 0, 1, 0);
+}
+
+function previewPaneUpscaleRenderScaleForSurface(surface, overlayCfg, rect, isVideo = false) {
+  const amount = previewPaneUpscaleAmountForSurface(surface, overlayCfg);
+  if (!(amount > 0.0001)) return 1;
+  const baseW = Math.max(1, Number(rect && rect.w) || 1);
+  const baseH = Math.max(1, Number(rect && rect.h) || 1);
+  const desiredScale = 1 + amount;
+  const maxPixels = isVideo ? 6000000 : 12000000;
+  const desiredPixels = baseW * baseH * desiredScale * desiredScale;
+  if (desiredPixels <= maxPixels) return desiredScale;
+  const cappedScale = Math.sqrt(maxPixels / Math.max(1, baseW * baseH));
+  return clampNumber(cappedScale, 1, desiredScale, 1);
 }
 
 function expandRectFromCenter(rect, pad) {
@@ -10406,6 +10645,29 @@ function resizeCanvasBuffer(canvas, width, height) {
   const h = Math.max(1, Math.round(height || 1));
   if (canvas.width !== w) canvas.width = w;
   if (canvas.height !== h) canvas.height = h;
+}
+
+function overlayUpscaleSmoothingAmount(overlayCfg, fallback = 1) {
+  if (
+    overlayCfg &&
+    Object.prototype.hasOwnProperty.call(overlayCfg, "upscaleSmoothing") &&
+    overlayCfg.upscaleSmoothing != null
+  ) {
+    const parsed = Number(overlayCfg.upscaleSmoothing);
+    if (Number.isFinite(parsed)) return clampNumber(parsed, 0, 1, fallback);
+  }
+  const fallbackParsed = Number(fallback);
+  return Number.isFinite(fallbackParsed) ? clampNumber(fallbackParsed, 0, 1, 1) : 1;
+}
+
+function configureCanvasUpscaleSmoothing(ctx, overlayCfg, fallback = 1) {
+  if (!ctx) return overlayUpscaleSmoothingAmount(overlayCfg, fallback);
+  const amount = overlayUpscaleSmoothingAmount(overlayCfg, fallback);
+  ctx.imageSmoothingEnabled = amount > 0.0001;
+  if (ctx.imageSmoothingEnabled && "imageSmoothingQuality" in ctx) {
+    ctx.imageSmoothingQuality = amount >= 0.74 ? "high" : amount >= 0.34 ? "medium" : "low";
+  }
+  return amount;
 }
 
 function hashNoise1(seed) {
@@ -11102,6 +11364,86 @@ function applyPixelOpsToCanvas(canvas, config) {
     data[i + 2] = clampNumber(b, 0, 255, 0);
   }
   ctx.putImageData(imageData, 0, 0);
+
+}
+
+function applyHeuristicUpscalerToCanvas(canvas, amount) {
+  if (!canvas) return false;
+  const strength = clampNumber(Number(amount), 0, 1, 0);
+  if (!(strength > 0.0001)) return false;
+  const width = canvas.width || 0;
+  const height = canvas.height || 0;
+  if (width < 3 || height < 3) return false;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return false;
+  let imageData = null;
+  try {
+    imageData = ctx.getImageData(0, 0, width, height);
+  } catch {
+    return false;
+  }
+  if (!imageData || !imageData.data) return false;
+
+  const src = imageData.data;
+  const out = new Uint8ClampedArray(src);
+  const stride = width * 4;
+  const normalizedStrength = clampNumber(strength, 0, 1, 0);
+  const sharpen = 0.55 + normalizedStrength * 1.45;
+  const textureStrength = normalizedStrength * 5.5;
+  const contrastLift = normalizedStrength * 0.18;
+  const hashByte = (x, y, c) => {
+    let h = (x * 374761393 + y * 668265263 + c * 1442695041) | 0;
+    h = (h ^ (h >>> 13)) | 0;
+    h = Math.imul(h, 1274126177);
+    return ((h ^ (h >>> 16)) & 255) / 255 - 0.5;
+  };
+
+  for (let y = 1; y < height - 1; y++) {
+    const row = y * stride;
+    for (let x = 1; x < width - 1; x++) {
+      const i = row + x * 4;
+      const li = i - 4;
+      const ri = i + 4;
+      const ui = i - stride;
+      const di = i + stride;
+
+      const r = src[i];
+      const g = src[i + 1];
+      const b = src[i + 2];
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const lumaL = 0.2126 * src[li] + 0.7152 * src[li + 1] + 0.0722 * src[li + 2];
+      const lumaR = 0.2126 * src[ri] + 0.7152 * src[ri + 1] + 0.0722 * src[ri + 2];
+      const lumaU = 0.2126 * src[ui] + 0.7152 * src[ui + 1] + 0.0722 * src[ui + 2];
+      const lumaD = 0.2126 * src[di] + 0.7152 * src[di + 1] + 0.0722 * src[di + 2];
+      const localDelta =
+        Math.abs(luma - lumaL) +
+        Math.abs(luma - lumaR) +
+        Math.abs(luma - lumaU) +
+        Math.abs(luma - lumaD);
+      const edge = clampNumber(localDelta / 180, 0, 1, 0);
+      const flatGuard = clampNumber((localDelta - 4) / 72, 0, 1, 0);
+      const edgeWeight = 0.2 + edge * 0.8;
+
+      for (let c = 0; c < 3; c++) {
+        const center = src[i + c];
+        const blur =
+          (center * 4 + src[li + c] + src[ri + c] + src[ui + c] + src[di + c]) / 8;
+        const high = center - blur;
+        const localContrast = (center - 128) * contrastLift * flatGuard;
+        const micro = hashByte(x, y, c) * textureStrength * edgeWeight * flatGuard;
+        out[i + c] = clampNumber(
+          center + high * sharpen * edgeWeight + localContrast + micro,
+          0,
+          255,
+          center,
+        );
+      }
+    }
+  }
+
+  imageData.data.set(out);
+  ctx.putImageData(imageData, 0, 0);
+  return true;
 }
 
 function drawChannelIsolatedCanvas(targetCtx, sourceCanvas, tint) {
@@ -11330,7 +11672,7 @@ function renderFilteredToCanvas(
     : computeContainRect(croppedSrcW, croppedSrcH, work.width, work.height);
   workctx.setTransform(1, 0, 0, 1, 0, 0);
   workctx.clearRect(0, 0, work.width, work.height);
-  workctx.imageSmoothingEnabled = true;
+  configureCanvasUpscaleSmoothing(workctx, overlayCfg, 1);
   workctx.filter = "none";
   drawCropped(workctx, fitRect.x, fitRect.y, fitRect.w, fitRect.h);
 
@@ -11358,7 +11700,7 @@ function renderFilteredToCanvas(
     );
     scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
     scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
-    scratchCtx.imageSmoothingEnabled = true;
+    configureCanvasUpscaleSmoothing(scratchCtx, overlayCfg, 1);
     scratchCtx.filter = colorFilter;
     scratchCtx.drawImage(
       currentCanvas,
@@ -11391,7 +11733,7 @@ function renderFilteredToCanvas(
     );
     scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
     scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
-    scratchCtx.imageSmoothingEnabled = false;
+    configureCanvasUpscaleSmoothing(scratchCtx, overlayCfg, 0);
     scratchCtx.filter = "none";
     scratchCtx.drawImage(off, 0, 0, scratchCanvas.width, scratchCanvas.height);
     swapBuffers();
@@ -11404,7 +11746,7 @@ function renderFilteredToCanvas(
     );
     scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
     scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
-    scratchCtx.imageSmoothingEnabled = true;
+    configureCanvasUpscaleSmoothing(scratchCtx, overlayCfg, 1);
     scratchCtx.filter = `blur(${overlayCfg.blur}px)`;
     scratchCtx.drawImage(
       currentCanvas,
@@ -11416,8 +11758,11 @@ function renderFilteredToCanvas(
     scratchCtx.filter = "none";
     swapBuffers();
   }
+  if (overlayCfg.upscaler > 0) {
+    applyHeuristicUpscalerToCanvas(currentCanvas, overlayCfg.upscaler);
+  }
   const outputRect = rect;
-  ctx.imageSmoothingEnabled = true;
+  configureCanvasUpscaleSmoothing(ctx, overlayCfg, 1);
   ctx.filter = "none";
   if (
     !drawChromaticAberrationToContext(
@@ -12064,19 +12409,29 @@ const MediaFilterEngine = (() => {
       targetCtx.drawImage(drawSource, dx2, dy2, dw2, dh2);
     };
     const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
+    const previewUpscaleAmount = previewPaneUpscaleAmountForSurface(surface, overlayCfg);
+    const previewUpscaleRenderScale = previewPaneUpscaleRenderScaleForSurface(surface, overlayCfg, rect, isVideo);
+    const heuristicLoad = Math.max(0, Number(overlayCfg.upscaler || 0));
+    const realtimeVideoHeuristics = isVideo && !el.paused && heuristicLoad > 0.0001;
+    const videoHeuristicScale = realtimeVideoHeuristics
+      ? Math.max(0.62, 0.9 - Math.min(0.28, heuristicLoad * 0.18))
+      : 1;
+    const outputContainRect = rect;
     const animatedForSurface = animatedMediaFiltersEnabledForType(surface.type);
-    const dx = rect.x;
-    const dy = rect.y;
+    const dx = outputContainRect.x;
+    const dy = outputContainRect.y;
 
     let currentCanvas = surface.workscreen;
     let currentCtx = surface.workctx;
     let scratchCanvas = surface.scratchscreen;
     let scratchCtx = surface.scratchctx;
-    resizeCanvasBuffer(currentCanvas, rect.w, rect.h);
-    resizeCanvasBuffer(scratchCanvas, rect.w, rect.h);
+    const workW = Math.max(1, Math.round(rect.w * previewUpscaleRenderScale * videoHeuristicScale));
+    const workH = Math.max(1, Math.round(rect.h * previewUpscaleRenderScale * videoHeuristicScale));
+    resizeCanvasBuffer(currentCanvas, workW, workH);
+    resizeCanvasBuffer(scratchCanvas, workW, workH);
     currentCtx.setTransform(1, 0, 0, 1, 0, 0);
     currentCtx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
-    currentCtx.imageSmoothingEnabled = true;
+    configureCanvasUpscaleSmoothing(currentCtx, overlayCfg, 1);
     currentCtx.filter = "none";
     const fitRect = computeContainRect(
       croppedSrcW,
@@ -12107,7 +12462,7 @@ const MediaFilterEngine = (() => {
         );
         scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
         scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
-        scratchCtx.imageSmoothingEnabled = true;
+        configureCanvasUpscaleSmoothing(scratchCtx, overlayCfg, 1);
         scratchCtx.filter = colorFilter;
         scratchCtx.drawImage(
           currentCanvas,
@@ -12150,7 +12505,7 @@ const MediaFilterEngine = (() => {
         );
         scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
         scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
-        scratchCtx.imageSmoothingEnabled = false;
+        configureCanvasUpscaleSmoothing(scratchCtx, overlayCfg, 0);
         scratchCtx.filter = "none";
         scratchCtx.drawImage(
           surface.offscreen,
@@ -12169,7 +12524,7 @@ const MediaFilterEngine = (() => {
         );
         scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
         scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
-        scratchCtx.imageSmoothingEnabled = true;
+        configureCanvasUpscaleSmoothing(scratchCtx, overlayCfg, 1);
         scratchCtx.filter = `blur(${overlayCfg.blur}px)`;
         scratchCtx.drawImage(
           currentCanvas,
@@ -12180,6 +12535,14 @@ const MediaFilterEngine = (() => {
         );
         scratchCtx.filter = "none";
         swapBuffers();
+      }
+      const heuristicBudgetMs = realtimeVideoHeuristics ? 44 : 0;
+      const allowHeuristicsThisFrame = !realtimeVideoHeuristics || !surface.lastHeuristicTime || (time - surface.lastHeuristicTime >= heuristicBudgetMs);
+      if (allowHeuristicsThisFrame) {
+        if (realtimeVideoHeuristics) surface.lastHeuristicTime = time;
+        if (overlayCfg.upscaler > 0) {
+          applyHeuristicUpscalerToCanvas(currentCanvas, overlayCfg.upscaler);
+        }
       }
     } catch {
       if (!surface.hasDrawn) {
@@ -12192,8 +12555,8 @@ const MediaFilterEngine = (() => {
       return false;
     }
 
-    const outputRect = { x: dx, y: dy, w: rect.w, h: rect.h };
-    frameCtx.imageSmoothingEnabled = true;
+    const outputRect = { x: dx, y: dy, w: outputContainRect.w, h: outputContainRect.h };
+    configureCanvasUpscaleSmoothing(frameCtx, overlayCfg, 1);
     frameCtx.filter = "none";
     if (
       !drawChromaticAberrationToContext(
@@ -12920,7 +13283,7 @@ function getPreviewThumbnailTitleSizeForKind(kind, opt = null) {
 function getThumbnailScaleForStyle(style, opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   const s = style === "aspect" ? "aspect" : "cropped";
-  const fallback = s === "aspect" ? "small" : "medium";
+  const fallback = "row7";
   const key = s === "aspect" ? "thumbnailScaleAspect" : "thumbnailScaleCropped";
   return normalizeThumbnailScaleValue(src ? src[key] : null, fallback);
 }
@@ -12934,20 +13297,29 @@ function getActiveThumbnailScaleMultiplier(opt = null) {
   const style = getThumbnailStyleFromOptions(opt);
   const scale = getThumbnailScaleForStyle(style, opt);
   if (style === "aspect") {
-    // Shift aspect scales upward so previous XXL maps to Medium.
-    if (scale === "small") return 1.52;
-    if (scale === "medium") return 1.72;
-    if (scale === "large") return 1.94;
-    if (scale === "xl") return 2.18;
-    if (scale === "xxl") return 2.44;
-    if (scale === "xxxl") return 2.72;
+    // Aspect mode is currently dormant, but keep it roughly aligned with the
+    // cropped row-count tiers if it is re-enabled later.
+    if (scale === "row10") return 1.22;
+    if (scale === "row9") return 1.36;
+    if (scale === "row8") return 1.52;
+    if (scale === "row7") return 1.72;
+    if (scale === "row6") return 1.94;
+    if (scale === "row5") return 2.18;
+    if (scale === "row4") return 2.44;
+    if (scale === "row3") return 2.72;
     return 1.72;
   }
-  if (scale === "small") return 0.86;
-  if (scale === "large") return 1.18;
-  if (scale === "xl") return 1.34;
-  if (scale === "xxl") return 1.52;
-  if (scale === "xxxl") return 1.72;
+  // Row-count-oriented cropped thumbnail tiers. These are still px multipliers
+  // for the existing CSS grid; the labels describe the approximate number of
+  // items that fit across Jo's laptop app window with both panes closed.
+  if (scale === "row10") return 0.68;
+  if (scale === "row9") return 0.76;
+  if (scale === "row8") return 0.86;
+  if (scale === "row7") return 1;
+  if (scale === "row6") return 1.18;
+  if (scale === "row5") return 1.34;
+  if (scale === "row4") return 1.52;
+  if (scale === "row3") return 1.94;
   return 1;
 }
 
@@ -13656,6 +14028,12 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
+    id: "toggleShowTrashFolder",
+    label: "Toggle trash folder",
+    hint: "Toggle the Trash folder entry at root.",
+    section: "general",
+  },
+  {
     id: "toggleShowUntaggedFolder",
     label: "Toggle untagged folder",
     hint: "Toggle the Untagged folder tag entry.",
@@ -13668,9 +14046,21 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
+    id: "toggleTortoiseMode",
+    label: "Toggle tortoise/hare mode",
+    hint: "Toggle the internal navigation speed setting between tortoise and hare.",
+    section: "general",
+  },
+  {
     id: "toggleQuickNavigation",
     label: "Toggle quick navigation",
     hint: "Automatically open the first file in preview-only files folders, then close back to the parent preview context.",
+    section: "general",
+  },
+  {
+    id: "toggleTagFolderSpacerRow",
+    label: "Toggle tag-folder spacer row",
+    hint: "Toggle the blank row after tag, favorites, and album folders.",
     section: "general",
   },
   {
@@ -13885,39 +14275,48 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   selectRight: "d",
   leaveDir: "q",
   enterDir: "e",
-  prevFolder: "Command+w",
-  nextFolder: "Command+s",
+  prevFolder: "Cmd+w",
+  nextFolder: "Cmd+s",
   toggleDirectoriesPane: "Tab",
-  toggleTitlePane: "Command+Alt+r",
-  toggleSettingsAndDirectoriesPanes: "",
+  toggleTitlePane: "Cmd+Alt+r",
+  toggleSettingsAndDirectoriesPanes: "Space",
   refreshWorkspace: "",
+  prodPreviewPane: "Cmd+e",
   randomFirstFileJump: "r",
-  randomFileJump: "",
+  randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
-  toggleRandomFolderSort: "",
+  toggleRandomFolderSort: "Cmd+r",
   cycleFilter: "f",
   slideshow: "v",
   panic: "g",
   cycleFolderSort: "t",
   toggleShowHiddenFolder: "h",
-  toggleShowUntaggedFolder: "Command+h",
-  toggleShowStorageFolder: "",
-  toggleQuickNavigation: "",
-  togglePreviewMediaUsePaneBackground: "",
-  favoriteSelection: "f",
-  tagSelection: "",
-  renameSelection: "Command+r",
+  toggleShowTrashFolder: "Cmd+Alt+t",
+  toggleShowUntaggedFolder: "u",
+  toggleShowStorageFolder: "Cmd+Shift+s",
+  toggleTortoiseMode: "Cmd+h",
+  toggleQuickNavigation: "y",
+  toggleTagFolderSpacerRow: "Cmd+b",
+  togglePreviewMediaUsePaneBackground: "b",
+  favoriteSelection: "Cmd+f",
+  tagSelection: "Shift+t",
+  renameSelection: "",
   seekBack: "z",
   seekForward: "c",
   playPause: "x",
-  muteToggle: "m",
-  toggleLightMode: "",
-  toggleAnimatedFilters: "Command+i",
-  toggleHideFileExtensions: "n",
-  toggleHideBeforeLastDash: "Command+n",
-  toggleHideAfterFirstUnderscore: "Command+Shift+n",
+  muteToggle: "Cmd+x",
+  toggleLightMode: "i",
+  toggleAnimatedFilters: "Cmd+i",
+  toggleHideFileExtensions: "",
+  toggleHideBeforeLastDash: "n",
+  toggleHideAfterFirstUnderscore: "",
   scoreUpSelection: "=",
   scoreDownSelection: "-",
+  "toggleAppearancePreset:preset-mod8x13x-elw7of": "1",
+  "toggleAppearancePreset:preset-mod8nt73-butsgx": "2",
+  "toggleAppearancePreset:preset-mod8auau-n45sw8": "3",
+  "toggleAppearancePreset:preset-mnrf0djp-dfta2v": "4",
+  "toggleAppearancePreset:preset-mod8ie4f-fsdlub": "5",
 });
 
 const GRID_KEYBIND_DEFAULT_BINDINGS = Object.freeze({
@@ -15033,6 +15432,25 @@ function inferNotificationSourceId(text, sourceContext = "") {
   const hasMsg = (...parts) => parts.some((part) => part && msg.includes(part));
   const hasCtx = (...parts) => parts.some((part) => part && ctx.includes(part));
 
+  if (hasMsg("filter:")) return "cycle-filter";
+  if (hasMsg("animated filters:")) return "cycle-animated-filters";
+  if (hasMsg("folder sort:")) return "cycle-folder-sort";
+  if (hasMsg("video end:")) return "cycle-video-end";
+  if (hasMsg("random file sort:")) return "random-file-sort";
+  if (hasMsg("random folder sort:")) return "random-folder-sort";
+  if (hasMsg("reveal hidden items:", "trash folder:", "storage folder:", "untagged folder:", "blank row after tag folders:"))
+    return "visibility-toggles";
+  if (hasMsg("quick navigation:")) return "quick-navigation";
+  if (hasMsg("list pane:", "title layout:", "settings + list panes:", "preview media uses pane background:"))
+    return "pane-toggles";
+
+  if (hasCtx("cyclefiltermode")) return "cycle-filter";
+  if (hasCtx("cyclefoldersortmode", "cycledirsortmode")) return "cycle-folder-sort";
+  if (hasCtx("toggleanimatedfilters")) return "cycle-animated-filters";
+  if (hasCtx("cyclevideoendbehavior")) return "cycle-video-end";
+  if (hasCtx("randomfilesort")) return "random-file-sort";
+  if (hasCtx("randomfoldersort")) return "random-folder-sort";
+
   if (hasCtx("scrub")) return "scrub";
   if (hasCtx("gif")) return "gif";
   if (hasCtx("putback", "movefolderswithundotash", "movetotrash", "trash")) return "trash";
@@ -15042,7 +15460,6 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasCtx("folderpicker", "loadfolder", "indexworkspace", "load workspace", "load folder")) return "workspace-load";
   if (hasCtx("storage")) return "storage";
   if (hasCtx("firstfilejump", "randomfilejump")) return "navigation-jump";
-  if (hasCtx("randomfilesort", "randomfoldersort")) return "navigation-sort";
   if (hasCtx("slideshow", "gallerymode")) return "playback";
   if (hasCtx("preset")) return "appearance-presets";
   if (hasCtx("thumbnailviewport", "framing", "crop", "invalidateallthumbs", "customthumbnail", "thumbcache")) return "thumbnail-tools";
@@ -15072,9 +15489,8 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasMsg("refreshing workspace", "refresh complete", "refresh failed", "refresh already running", "refresh requires"))
     return "workspace-refresh";
   if (hasMsg("first file jump", "random file jump")) return "navigation-jump";
-  if (hasMsg("random file sort", "random folder sort")) return "navigation-sort";
-  if (hasMsg("filter:", "list pane:", "title layout:", "settings + list panes:", "reveal hidden items:", "untagged folder:", "quick navigation:", "preview media uses pane background:"))
-    return "navigation-view";
+  if (hasMsg("filter:", "list pane:", "title layout:", "settings + list panes:"))
+    return "pane-toggles";
   if (hasMsg("tag ", "tag album", "hid tag", "unhid tag", "created tag", "no folders contain that tag", "no tags updated", "no tags selected", "removed tag '", "untagged") )
     return "tags";
   if (hasMsg("sanitize names", "rename", "invalid folder name", "invalid file name", "a folder with that name already exists", "a file with that name already exists", "no files renamed", "renaming files requires", "root folder cannot be renamed"))
@@ -16900,7 +17316,9 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
   );
   const appearancePresetPromptMode =
     appearancePresetPromptModeRaw === "save" ||
-    appearancePresetPromptModeRaw === "delete"
+    appearancePresetPromptModeRaw === "rename" ||
+    appearancePresetPromptModeRaw === "delete" ||
+    appearancePresetPromptModeRaw === "mix"
       ? appearancePresetPromptModeRaw
       : "";
   const appearancePresetDraftName = (() => {
@@ -16910,6 +17328,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         : "",
     );
     if (raw) return raw;
+    if (appearancePresetPromptMode === "mix") return "";
     if (
       editingAppearancePreset &&
       editingAppearancePresetId !== BUILTIN_NULL_APPEARANCE_PRESET_ID
@@ -16932,12 +17351,14 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "aspect", label: "Aspect Ratio" },
   ];
   const thumbnailScaleModes = [
-    { value: "small", label: "Small" },
-    { value: "medium", label: "Medium" },
-    { value: "large", label: "Large" },
-    { value: "xl", label: "XL" },
-    { value: "xxl", label: "XXL" },
-    { value: "xxxl", label: "3XL" },
+    { value: "row10", label: "10. Properly small" },
+    { value: "row9", label: "9. Rather small" },
+    { value: "row8", label: "8. Neatly compact" },
+    { value: "row7", label: "7. Quite reasonable" },
+    { value: "row6", label: "6. Comfortably medium" },
+    { value: "row5", label: "5. A bit generous" },
+    { value: "row4", label: "4. Quite large" },
+    { value: "row3", label: "3. Really quite big" },
   ];
   const thumbnailTitleSizeModes = [
     { value: "small", label: "Small" },
@@ -16953,8 +17374,8 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       )
     : "";
   const thumbnailScaleHint = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
-    ? "Small through 3XL are saved separately for each thumbnail style."
-    : "Set cropped thumbnail size from Small through 3XL.";
+    ? "Row-count thumbnail tiers are saved separately for each thumbnail style."
+    : "Pick an approximate preview-row density from 10 across down to 3 across when both panes are closed.";
   const thumbnailPreviewSectionHtml = thumbnailVisibilityKindSpecs()
     .map((spec) => {
       const visibility = previewThumbnailVisibilityForKind(spec.kind, opt);
@@ -17130,7 +17551,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         sectionHtml +
         makeCheckRow(
           spec.label,
-          `${spec.label} notifications.`,
+          spec.hint || `${spec.label} notifications.`,
           `opt_${spec.optionKey}`,
           !!opt[spec.optionKey],
         )
@@ -17173,6 +17594,12 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     const n = Number(value);
     if (!Number.isFinite(n)) return "";
     return formatPercentAmount(n);
+  };
+
+  const formatUpscaleAmount = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    return `${Math.round(n * 100)}%`;
   };
   const colorOverlayRows = [
     {
@@ -17318,6 +17745,20 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       neutralValue: 0,
     },
     {
+      title: "Detail",
+      hint: "Adds internal preview supersampling plus a lightweight edge/detail reconstruction pass. 0% leaves the displayed size and normal fit unchanged.",
+      enabledId: "opt_upscaleSmoothingOverlayEnabled",
+      enabledKey: "upscaleSmoothingOverlayEnabled",
+      rangeId: "opt_upscaleSmoothingOverlayIntensity",
+      amountKey: "upscaleSmoothingOverlayIntensity",
+      value: opt.upscaleSmoothingOverlayIntensity,
+      limits: OVERLAY_SLIDER_LIMITS.upscaleSmoothing,
+      formatter: formatUpscaleAmount,
+      showToggle: false,
+      nullable: true,
+      neutralValue: 0,
+    },
+    {
       title: "Chromatic aberration",
       hint: "Whole-image RGB channel separation across the entire frame.",
       enabledId: "opt_chromaOverlayEnabled",
@@ -17426,14 +17867,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 ${makeCheckRow("Light Mode", "Switch between the light and dark Retro UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${scoreUiVisible ? makeSelectRow("Folder sort", "Sort folders by name, score, efficiency, size, or item count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes) : ``}
 ${scoreUiVisible ? makeCheckRow("Include hidden items in Stats", "When enabled, the Stats tab includes hidden folders and files in its totals and score history.", "opt_includeHiddenItemsInStats", !!opt.includeHiddenItemsInStats) : ``}
-${makeCheckRow("Reveal Hidden Items", "Show folders hidden by hidden tags in the current directory view. The Hidden control still opens the global hidden browser.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
-${makeCheckRow("Show Trash Folder", "Show the dedicated Trash folder at the top of root. Turning this off hides the trash portal and exits it if you're currently inside it.", "opt_showTrashFolder", !!opt.showTrashFolder)}
-${makeCheckRow("Show Storage Folder", "Show the dedicated Storage tag folder at the top of root. Turning this off hides the storage portal and exits it if you're currently inside it.", "opt_showStorageFolder", !!opt.showStorageFolder)}
-${makeCheckRow(navigationSpeedOptionTitle, "Tortoise keeps loading screens and prepares thumbnails before navigation. Hare removes loading screens and skips blocking prep for maximum movement speed.", "opt_tortoiseMode", !!opt.tortoiseMode)}
-${makeCheckRow("Quick navigation", "When enabled, opening a preview-selected folder that contains only files immediately opens its first file, and closing that file returns straight to the parent preview context.", "opt_quickNavigation", !!opt.quickNavigation)}
-${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag in any folder view when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
-${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
-${makeCheckRow("Preview media uses pane background", "When enabled, preview media always stays on the recessed preview pane surface instead of switching to a black full-bleed background.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
+
           `,
     },
     notifications: {
@@ -17456,9 +17890,11 @@ ${notificationsRowsHtml}
 ${makeSelectRow("Preset library", "Choose a saved preset to apply it immediately. Default is the no-processing preset. Edited sliders stay attached to the selected preset until you save or switch.", "opt_appearancePresetLibrary", editingAppearancePresetId, appearancePresetSelectOptions)}
 ${makeActionRow(
   "Preset actions",
-  "Save asks for a preset name in this menu. Saving with an existing name replaces that preset. Delete removes the selected preset unless it is Default.",
+  "Save asks for a preset name in this menu. Rename changes the selected preset name in place. Saving with an existing name replaces that preset. Delete removes the selected preset unless it is Default.",
   `
   <button type="button" id="opt_appearancePreset_save">Save</button>
+  <button type="button" id="opt_appearancePreset_rename"${editingAppearancePresetId === BUILTIN_NULL_APPEARANCE_PRESET_ID ? " disabled" : ""}>Rename</button>
+  <button type="button" id="opt_appearancePreset_mix">Mix</button>
   <button type="button" id="opt_appearancePreset_delete"${editingAppearancePresetId === BUILTIN_NULL_APPEARANCE_PRESET_ID ? " disabled" : ""}>Delete</button>
 `,
 )}
@@ -17470,6 +17906,32 @@ ${
         `
   <input id="opt_appearancePresetPromptName" type="text" value="${escapeHtml(appearancePresetDraftName)}" placeholder="Preset name" />
   <button type="button" id="opt_appearancePresetPromptConfirm">Save</button>
+  <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
+`,
+      )
+    : ``
+}
+${
+  appearancePresetPromptMode === "rename"
+    ? makeActionRow(
+        "Rename preset",
+        "Enter a new name for the selected preset. This keeps its settings, ID, folder/tag assignments, and keybind action identity intact.",
+        `
+  <input id="opt_appearancePresetPromptName" type="text" value="${escapeHtml(appearancePresetDraftName)}" placeholder="Preset name" />
+  <button type="button" id="opt_appearancePresetPromptConfirm">Rename</button>
+  <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
+`,
+      )
+    : ``
+}
+${
+  appearancePresetPromptMode === "mix"
+    ? makeActionRow(
+        "Mix presets",
+        "Enter two or more preset names separated by commas. Default values step aside; overlapping non-default values are averaged.",
+        `
+  <input id="opt_appearancePresetPromptName" type="text" value="${escapeHtml(appearancePresetDraftName)}" placeholder="Basic, VHS" />
+  <button type="button" id="opt_appearancePresetMixConfirm">Mix</button>
   <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
 `,
       )
@@ -18042,7 +18504,11 @@ ${makeActionRow(
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        const confirmBtn = $("opt_appearancePresetPromptConfirm");
+        const confirmBtn = $(
+          appearancePresetPromptMode === "mix"
+            ? "opt_appearancePresetMixConfirm"
+            : "opt_appearancePresetPromptConfirm",
+        );
         if (confirmBtn) confirmBtn.click();
       }
     });
@@ -18154,7 +18620,7 @@ ${makeActionRow(
       );
       const nextScale = normalizeThumbnailScaleValue(
         thumbnailScaleSelectEl.value,
-        style === "aspect" ? "small" : "medium",
+        "row7",
       );
       const key =
         style === "aspect" ? "thumbnailScaleAspect" : "thumbnailScaleCropped";
@@ -18174,11 +18640,7 @@ ${makeActionRow(
     (val) =>
       normalizeThumbnailScaleValue(
         val,
-        getThumbnailStyleFromOptions(
-          WS.meta && WS.meta.options ? WS.meta.options : null,
-        ) === "aspect"
-          ? "small"
-          : "medium",
+        "row7",
       ),
   );
   bindCheck("opt_forceTitleCaps", "forceTitleCaps");
@@ -18224,8 +18686,70 @@ ${makeActionRow(
       } catch {}
     }
   });
+  bindActionBtn("opt_appearancePreset_rename", () => {
+    const presetId = normalizeAppearancePresetIdValue(
+      WS.view && WS.view.appearancePresetEditingId,
+    );
+    const preset = getAppearancePresetById(presetId);
+    if (!preset || preset.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return;
+    if (WS.view) {
+      WS.view.appearancePresetPromptMode = "rename";
+      WS.view.appearancePresetDraftName = String(preset.name || "");
+    }
+    renderOptionsUi("appearance");
+    const promptInput = $("opt_appearancePresetPromptName");
+    if (promptInput) {
+      try {
+        promptInput.focus();
+        promptInput.select();
+      } catch {}
+    }
+  });
+  bindActionBtn("opt_appearancePreset_mix", () => {
+    if (WS.view) {
+      WS.view.appearancePresetPromptMode = "mix";
+      WS.view.appearancePresetDraftName = "";
+    }
+    renderOptionsUi("appearance");
+    const promptInput = $("opt_appearancePresetPromptName");
+    if (promptInput) {
+      try {
+        promptInput.focus();
+        promptInput.select();
+      } catch {}
+    }
+  });
   bindActionBtn("opt_appearancePresetPromptConfirm", () => {
     const presetName = readAppearancePresetPromptInput();
+    const promptMode = String(
+      (WS.view && WS.view.appearancePresetPromptMode) || "save",
+    );
+    if (promptMode === "rename") {
+      const presetId = normalizeAppearancePresetIdValue(
+        WS.view && WS.view.appearancePresetEditingId,
+      );
+      const result = renameAppearancePresetById(presetId, presetName);
+      if (!result.ok) {
+        if (result.reason === "missing-name")
+          showStatusMessage("Enter a preset name first.");
+        else if (result.reason === "reserved-name")
+          showStatusMessage("'Default' is reserved.");
+        else if (result.reason === "duplicate-name")
+          showStatusMessage("Another preset already uses that name.");
+        else if (result.reason === "unchanged")
+          showStatusMessage("Preset name is unchanged.");
+        else showStatusMessage("Preset was not renamed.");
+        return;
+      }
+      renderOptionsUi("appearance");
+      updateAppearancePresetUiState();
+      showStatusMessage(
+        `Renamed preset to '${appearancePresetDisplayName(result.preset && result.preset.id)}'.`,
+        "appearance-presets",
+      );
+      return;
+    }
+
     const result = saveAppearancePresetFromCurrent(presetName);
     if (!result.ok) {
       if (result.reason === "missing-name")
@@ -18239,6 +18763,26 @@ ${makeActionRow(
     updateAppearancePresetUiState();
     showStatusMessage(
       `${result.replaced ? "Updated" : "Saved"} preset '${appearancePresetDisplayName(result.preset && result.preset.id)}'.`,
+    );
+  });
+  bindActionBtn("opt_appearancePresetMixConfirm", () => {
+    const mixNames = readAppearancePresetPromptInput();
+    const result = mixAppearancePresetsFromNames(mixNames);
+    if (!result.ok) {
+      if (result.reason === "missing-names")
+        showStatusMessage("Enter preset names separated by commas.");
+      else if (result.reason === "not-enough-presets")
+        showStatusMessage("Mix needs at least two presets.");
+      else if (result.reason === "missing-presets")
+        showStatusMessage(`Preset not found: ${(result.missing || []).join(", ")}.`);
+      else showStatusMessage("Preset mix was not saved.");
+      return;
+    }
+    renderOptionsUi("appearance");
+    updateAppearancePresetUiState();
+    showStatusMessage(
+      `${result.replaced ? "Updated" : "Mixed"} preset '${appearancePresetDisplayName(result.preset && result.preset.id)}'.`,
+      "appearance-presets",
     );
   });
   bindActionBtn("opt_appearancePresetPromptCancel", () => {
@@ -18378,6 +18922,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showTrashFolder",
     "showStorageFolder",
     "tortoiseMode",
+    "quickNavigation",
     "showUntaggedFolder",
     "showTagFolderSpacerRow",
     "previewMediaUsePaneBackground",
@@ -39558,10 +40103,10 @@ function directoriesScrollContextKey() {
 
 let GRID_CARD_SIZE_RAF = 0;
 function gridModeColumnCountForScale(scaleValue) {
-  const scale = normalizeThumbnailScaleValue(scaleValue, "medium");
+  const scale = normalizeThumbnailScaleValue(scaleValue, "row7");
   const cols = GRID_CROPPED_COLS_BY_SCALE[scale];
   if (Number.isFinite(cols) && cols >= 1) return cols;
-  return GRID_CROPPED_COLS_BY_SCALE.medium;
+  return GRID_CROPPED_COLS_BY_SCALE.row7;
 }
 
 function applyGridModeCardSizing() {
@@ -40625,6 +41170,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   "File menu",
                   fileMenuScore,
                   isFavorite,
+                  "",
+                  false,
+                  null,
+                  FAVORITE_MENU_BUTTON_DISPLAY_TINT,
                 )}
                 <div class="dropdownMenu${fileMenuOpen ? " open" : ""}">
                   ${fileMenuButtons}
@@ -41837,6 +42386,9 @@ async function navigateToDirectory(node) {
     activePane: "preview",
     pendingPreviewSelectionKey: node.path ? `dir:${String(node.path || "")}` : "",
   });
+  if (previewFolderReturnState && node.path) {
+    previewFolderReturnState.entryKey = `dir:${String(node.path || "")}`;
+  }
   if (!adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir())) {
     WS.nav.dirNode = node.parent || WS.nav.dirNode || WS.root || node;
     WS.view.aboveRootView = false;
@@ -42053,6 +42605,9 @@ async function openPreviewTagFolderEntry(entry) {
     activePane: "preview",
     pendingPreviewSelectionKey: entryKeyForSelection(entry),
   });
+  if (previewFolderReturnState) {
+    previewFolderReturnState.entryKey = entryKeyForSelection(entry);
+  }
   adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir());
 
   if (searchSessionActive() && WS.view.searchRootActive) {
@@ -47585,7 +48140,7 @@ function toggleRandomSortMode() {
     WS.view.randomCache = new Map();
   }
   applyRandomSortModeEverywhere(true);
-  showStatusMessage(`Random file sort: ${WS.view.randomMode ? "On" : "Off"}`);
+  showStatusMessage(`Random file sort: ${WS.view.randomMode ? "On" : "Off"}`, "random-file-sort");
   return true;
 }
 
@@ -47600,6 +48155,7 @@ function toggleRandomFolderSortMode() {
   applyRandomSortModeEverywhere(true);
   showStatusMessage(
     `Random folder sort: ${WS.view.randomFolderMode ? "On" : "Off"}`,
+    "random-folder-sort",
   );
   return true;
 }
@@ -47639,7 +48195,7 @@ function cycleFilterMode() {
           ? "gifs"
           : "all";
   applyViewModesEverywhere(true);
-  showStatusMessage(`Filter: ${WS.view.filterMode}`);
+  showStatusMessage(`Filter: ${WS.view.filterMode}`, "cycle-filter");
 }
 
 function setOptionValues(nextValues) {
@@ -47689,7 +48245,7 @@ function toggleDirectoriesPaneKeybindAction() {
   if (VIEWER_MODE) return false;
   const nextOpen = !directoriesPaneOpenEnabled();
   if (!setDirectoriesPaneOpenKeybindState(nextOpen)) return false;
-  showStatusMessage(`List pane: ${nextOpen ? "Open" : "Closed"}`);
+  showStatusMessage(`List pane: ${nextOpen ? "Open" : "Closed"}`, "pane-toggles");
   return true;
 }
 
@@ -47723,7 +48279,7 @@ function toggleTitlePaneKeybindAction() {
   applyPaneDividerFromOptions();
   refreshFitInsidePreviewGrids();
   syncButtons();
-  showStatusMessage(`Title layout: ${labelForTitleLayoutMode(nextMode)}`);
+  showStatusMessage(`Title layout: ${labelForTitleLayoutMode(nextMode)}`, "pane-toggles");
   return true;
 }
 
@@ -47742,7 +48298,7 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
       changed = true;
     }
     if (changed)
-      showStatusMessage("Settings + list panes: Closed open pane.");
+      showStatusMessage("Settings + list panes: Closed open pane.", "pane-toggles");
     return changed;
   }
 
@@ -47757,7 +48313,7 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
     changed = true;
   }
   if (changed)
-    showStatusMessage(`Settings + list panes: ${nextOpen ? "Open" : "Closed"}`);
+    showStatusMessage(`Settings + list panes: ${nextOpen ? "Open" : "Closed"}`, "pane-toggles");
   return changed;
 }
 
@@ -47832,6 +48388,7 @@ function handleExtrasKeybindAction(action) {
       applyMediaFilterFromOptions();
       showStatusMessage(
         `Animated filters: ${labelForCycleValue(ANIMATED_FILTER_CYCLE, next)}`,
+        "cycle-animated-filters",
       );
       return true;
     }
@@ -47845,6 +48402,7 @@ function handleExtrasKeybindAction(action) {
       applyViewModesEverywhere(true);
       showStatusMessage(
         `Folder sort: ${dirSortModeLabel(WS.meta.dirSortMode)}`,
+        "cycle-folder-sort",
       );
       return true;
     }
@@ -47856,6 +48414,7 @@ function handleExtrasKeybindAction(action) {
       refreshLiveSettingsPaneFromKeyboardAction();
       showStatusMessage(
         `Video end: ${labelForCycleValue(VIDEO_END_BEHAVIOR_CYCLE, next)}`,
+        "cycle-video-end",
       );
       return true;
     }
@@ -47873,7 +48432,19 @@ function handleExtrasKeybindAction(action) {
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
-      showStatusMessage(`Reveal hidden items: ${next ? "On" : "Off"}`);
+      showStatusMessage(`Reveal hidden items: ${next ? "On" : "Off"}`, "visibility-toggles");
+      return true;
+    }
+    case "toggleShowTrashFolder": {
+      const next = toggleOptionValue("showTrashFolder");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      navigateOutOfTrashIfHidden();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      showStatusMessage(`Trash folder: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
     case "toggleShowUntaggedFolder": {
@@ -47888,7 +48459,7 @@ function handleExtrasKeybindAction(action) {
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
-      showStatusMessage(`Untagged folder: ${next ? "On" : "Off"}`);
+      showStatusMessage(`Untagged folder: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
     case "toggleShowStorageFolder": {
@@ -47902,13 +48473,27 @@ function handleExtrasKeybindAction(action) {
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
-      showStatusMessage(`Storage folder: ${next ? "On" : "Off"}`);
+      showStatusMessage(`Storage folder: ${next ? "On" : "Off"}`, "visibility-toggles");
+      return true;
+    }
+    case "toggleTortoiseMode": {
+      toggleOptionValue("tortoiseMode");
       return true;
     }
     case "toggleQuickNavigation": {
       const next = toggleOptionValue("quickNavigation");
       refreshLiveSettingsPaneFromKeyboardAction();
-      showStatusMessage(`Quick navigation: ${next ? "On" : "Off"}`);
+      showStatusMessage(`Quick navigation: ${next ? "On" : "Off"}`, "quick-navigation");
+      return true;
+    }
+    case "toggleTagFolderSpacerRow": {
+      const next = toggleOptionValue("showTagFolderSpacerRow");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      showStatusMessage(`Blank row after tag folders: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
     case "togglePreviewMediaUsePaneBackground": {
@@ -47917,7 +48502,7 @@ function handleExtrasKeybindAction(action) {
       applyInteractionModeFromOptions();
       renderPreviewPane(false, true);
       refreshActivePreviewMediaLayout({ immediate: true });
-      showStatusMessage(`Preview media uses pane background: ${next ? "On" : "Off"}`);
+      showStatusMessage(`Preview media uses pane background: ${next ? "On" : "Off"}`, "pane-toggles");
       return true;
     }
     case "toggleHideFileExtensions": {
