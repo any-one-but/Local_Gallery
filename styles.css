@@ -1278,9 +1278,76 @@ input[type="file"] {
     inset -1px -1px 0 var(--retro-highlight-soft);
 }
 
-:root[data-retro="on"] input[type="checkbox"],
-:root[data-retro="on"] input[type="range"] {
+:root[data-retro="on"] input[type="checkbox"] {
   accent-color: var(--retro-select-bg);
+}
+
+:root[data-retro="on"] input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--retro-select-bg);
+}
+
+:root[data-retro="on"] input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 18px;
+  margin-top: -8px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+:root[data-retro="on"] input[type="range"]:active::-webkit-slider-thumb {
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 18px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
 }
 
 :root[data-retro="on"] .statusBar {

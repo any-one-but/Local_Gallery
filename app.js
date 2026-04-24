@@ -730,6 +730,7 @@ function defaultOptions() {
     showHiddenFolder: false,
     showTrashFolder: true,
     showStorageFolder: true,
+    tortoiseMode: true,
     quickNavigation: false,
     showUntaggedFolder: false,
     showTagFolderSpacerRow: true,
@@ -1129,6 +1130,8 @@ function normalizeOptions(o) {
       typeof src.showStorageFolder === "boolean"
         ? src.showStorageFolder
         : d.showStorageFolder,
+    tortoiseMode:
+      typeof src.tortoiseMode === "boolean" ? src.tortoiseMode : d.tortoiseMode,
     quickNavigation:
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
@@ -6934,6 +6937,12 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
+    id: "prodPreviewPane",
+    label: "Prod",
+    hint: "Rebuild the preview pane without changing navigation state.",
+    section: "general",
+  },
+  {
     id: "randomFirstFileJump",
     label: "Random first file jump",
     hint: "Jump to a random folder and focus its first matching file.",
@@ -10172,6 +10181,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 
   const scoreUiVisible = scoreInterfaceEnabled(opt);
   const dirSortModes = dirSortModeOptions(scoreUiVisible);
+  const navigationSpeedOptionTitle = opt.tortoiseMode ? "Tortoise" : "Hare";
 
   const slideshowModes = [
     { value: "cycle", label: "Cycle speeds" },
@@ -10760,6 +10770,7 @@ ${scoreUiVisible ? makeCheckRow("Include hidden items in Stats", "When enabled, 
 ${makeCheckRow("Reveal Hidden Items", "Show folders hidden by hidden tags in the current directory view. The Hidden control still opens the global hidden browser.", "opt_showHiddenFolder", !!opt.showHiddenFolder)}
 ${makeCheckRow("Show Trash Folder", "Show the dedicated Trash folder at the top of root. Turning this off hides the trash portal and exits it if you're currently inside it.", "opt_showTrashFolder", !!opt.showTrashFolder)}
 ${makeCheckRow("Show Storage Folder", "Show the dedicated Storage tag folder at the top of root. Turning this off hides the storage portal and exits it if you're currently inside it.", "opt_showStorageFolder", !!opt.showStorageFolder)}
+${makeCheckRow(navigationSpeedOptionTitle, "Tortoise keeps loading screens and prepares thumbnails before navigation. Hare removes loading screens and skips blocking prep for maximum movement speed.", "opt_tortoiseMode", !!opt.tortoiseMode)}
 ${makeCheckRow("Quick navigation", "When enabled, opening a preview-selected folder that contains only files immediately opens its first file, and closing that file returns straight to the parent preview context.", "opt_quickNavigation", !!opt.quickNavigation)}
 ${makeCheckRow("Show Untagged Folder", "Display a dedicated untagged-folder tag in any folder view when tag folders are enabled.", "opt_showUntaggedFolder", !!opt.showUntaggedFolder)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank spacer row between tag/favorites/album entries and real folders.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
@@ -11229,6 +11240,10 @@ ${makeActionRow(
     },
   );
   bindCheck("opt_showHiddenFolder", "showHiddenFolder", () => {
+    invalidateDirMetricsCaches();
+    if (!showHiddenFolderEnabled() && WS.view.tagFolderActiveMode === "hidden") {
+      exitTagFolderView();
+    }
     rebuildDirectoriesEntries();
     preserveActivePreviewTargetDuringDirectoriesRefresh();
     renderDirectoriesPane(true);
@@ -11246,18 +11261,28 @@ ${makeActionRow(
     kickImageThumbsForPreview();
   });
   bindCheck("opt_showStorageFolder", "showStorageFolder", () => {
+    invalidateDirMetricsCaches();
     navigateOutOfStorageIfHidden();
+    rebuildDirectoriesEntries();
     renderDirectoriesPane(true);
     renderPreviewPane(false, true);
     syncButtons();
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
   });
+  bindCheck("opt_tortoiseMode", "tortoiseMode", (enabled) => {
+    if (!enabled) hideBusyOverlay();
+    const btn = $("opt_tortoiseMode");
+    const titleEl = btn?.closest(".optRow")?.querySelector(".optTitle");
+    if (titleEl) titleEl.textContent = enabled ? "Tortoise" : "Hare";
+  });
   bindCheck("opt_quickNavigation", "quickNavigation");
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
+    invalidateDirMetricsCaches();
     if (!enabled && WS.view.tagFolderActiveMode === "untagged") {
       exitTagFolderView();
     }
+    rebuildDirectoriesEntries();
     renderDirectoriesPane(true);
     renderPreviewPane(false, true);
     syncButtons();
@@ -11693,6 +11718,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showHiddenFolder",
     "showTrashFolder",
     "showStorageFolder",
+    "tortoiseMode",
     "showUntaggedFolder",
     "showTagFolderSpacerRow",
     "previewMediaUsePaneBackground",
@@ -11758,6 +11784,19 @@ function resetOptionsToDefaults(tabId = MENU_ACTIVE_TAB) {
   const dirtyIds = new Set(metaPreferenceDocIdsForOptionKeys(keys));
   if (targetTab === "general") dirtyIds.add(META_DOC_IDS.prefGeneral);
   metaMarkDirty(...Array.from(dirtyIds));
+  if (targetTab === "general") {
+    invalidateDirMetricsCaches();
+    if (!showHiddenFolderEnabled() && WS.view.tagFolderActiveMode === "hidden") {
+      exitTagFolderView();
+    }
+    if (
+      !showUntaggedFolderEnabled() &&
+      WS.view.tagFolderActiveMode === "untagged"
+    ) {
+      exitTagFolderView();
+    }
+    navigateOutOfStorageIfHidden();
+  }
 
   setOptionsStatus("Reset");
   renderOptionsUi(targetTab);
@@ -12484,6 +12523,7 @@ function metaSetTagsForPath(path, tags) {
     if (WS.meta.dirTags) WS.meta.dirTags.delete(p);
   }
   metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
   return true;
 }
 
@@ -12553,11 +12593,13 @@ function metaSetTagAlbumForTag(tagName, albumName, scopePath = null) {
     if (hasExactKey) {
       WS.meta.tagAlbumByTag.delete(mapKey);
       metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+      invalidateDirMetricsCaches();
       return true;
     }
     if (scopePath != null && WS.meta.tagAlbumByTag.has(tag)) {
       WS.meta.tagAlbumByTag.delete(tag);
       metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+      invalidateDirMetricsCaches();
       return true;
     }
     return false;
@@ -12571,6 +12613,7 @@ function metaSetTagAlbumForTag(tagName, albumName, scopePath = null) {
     }
   }
   metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+  invalidateDirMetricsCaches();
   return true;
 }
 
@@ -13355,6 +13398,7 @@ function metaSetHiddenTagByKey(tagKey, enable) {
   if (next) WS.meta.hiddenTagKeys.add(key);
   else WS.meta.hiddenTagKeys.delete(key);
   metaMarkDirty(META_DOC_IDS.tags);
+  invalidateDirMetricsCaches();
   return true;
 }
 
@@ -13367,6 +13411,7 @@ function rekeyHiddenTagState(oldKey, newKey) {
   if (!WS.meta.hiddenTagKeys.has(target)) WS.meta.hiddenTagKeys.add(target);
   WS.meta.hiddenTagKeys.delete(source);
   metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
   return true;
 }
 
@@ -13380,7 +13425,10 @@ function clearHiddenTagStateByMatch(matchFn) {
     if (!key || !matchFn(key)) continue;
     if (WS.meta.hiddenTagKeys.delete(key)) changed = true;
   }
-  if (changed) metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  if (changed) {
+    metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+    invalidateDirMetricsCaches();
+  }
   return changed;
 }
 
@@ -14019,6 +14067,7 @@ function metaToggleFavorite(path) {
     : [FAVORITE_TAG].concat(tags.filter((t) => t !== FAVORITE_TAG));
   WS.meta.dirTags.set(p, normalizeTagList(next));
   metaMarkDirty(META_DOC_IDS.tags);
+  invalidateDirMetricsCaches();
   syncFavoritesUi();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -14051,6 +14100,7 @@ function metaAddUserTagsBulk(paths, tagsToAdd) {
   }
 
   metaMarkDirty(META_DOC_IDS.tags);
+  invalidateDirMetricsCaches();
   TAG_EDIT_PATH = null;
   syncFavoritesUi();
   syncHiddenUi();
@@ -14081,6 +14131,7 @@ function metaSetFavoriteBulk(paths, enable) {
     WS.meta.dirTags.set(p, normalizeTagList(next));
   }
   metaMarkDirty(META_DOC_IDS.tags);
+  invalidateDirMetricsCaches();
   syncFavoritesUi();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -14102,6 +14153,7 @@ function metaToggleHidden(path) {
     : [HIDDEN_TAG].concat(tags.filter((t) => t !== HIDDEN_TAG));
   WS.meta.dirTags.set(p, normalizeTagList(next));
   metaMarkDirty(META_DOC_IDS.tags);
+  invalidateDirMetricsCaches();
   syncHiddenUi();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -14129,6 +14181,7 @@ function metaSetHiddenBulk(paths, enable) {
     WS.meta.dirTags.set(p, normalizeTagList(next));
   }
   metaMarkDirty(META_DOC_IDS.tags);
+  invalidateDirMetricsCaches();
   syncHiddenUi();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -14696,6 +14749,7 @@ function metaApplyTagsLog(log) {
   if (cleanupLegacyProcessingDisabledMetadata()) {
     metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   }
+  invalidateDirMetricsCaches();
 }
 
 function metaApplyOptionsLog(log) {
@@ -15305,6 +15359,7 @@ function metaApplyTagsDocLog(log) {
     if (!key || !filterValue.length) continue;
     WS.meta.tagMediaFilterByKey.set(key, filterValue);
   }
+  invalidateDirMetricsCaches();
 }
 
 function metaApplyTagAlbumsDocLog(log) {
@@ -15320,6 +15375,7 @@ function metaApplyTagAlbumsDocLog(log) {
     if (!parsed || !album) continue;
     WS.meta.tagAlbumByTag.set(parsed.key, album);
   }
+  invalidateDirMetricsCaches();
 }
 
 function metaApplyTrashDocLog(log) {
@@ -15870,6 +15926,7 @@ function metaScheduleSave(...docIds) {
 }
 
 function showBusyOverlay(text, detail = "") {
+  if (!tortoiseNavigationEnabled()) return;
   if (busyLabel) busyLabel.textContent = text || "Working...";
   if (busyDetail) busyDetail.textContent = detail || "";
   if (busyOverlay) busyOverlay.classList.add("active");
@@ -15881,6 +15938,7 @@ function hideBusyOverlay() {
 }
 
 function busyOverlayActive() {
+  if (!tortoiseNavigationEnabled()) return false;
   return !!(busyOverlay && busyOverlay.classList.contains("active"));
 }
 
@@ -16178,6 +16236,7 @@ async function buildWorkspaceFromFiles(fileList) {
   syncFavoritesUi();
   syncTagUiForCurrentDir();
   rebuildDirectoriesEntries();
+  primeTagDerivedCachesForDir(WS.root);
   WS.nav.selectedIndex = 0;
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
   syncPreviewToSelection({ force: true });
@@ -16412,6 +16471,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
   syncFavoritesUi();
   syncTagUiForCurrentDir();
   rebuildDirectoriesEntries();
+  primeTagDerivedCachesForDir(WS.root);
   WS.nav.selectedIndex = 0;
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
   syncPreviewToSelection({ force: true });
@@ -16535,6 +16595,7 @@ async function buildWorkspaceFromFileList(fileList) {
   syncFavoritesUi();
   syncTagUiForCurrentDir();
   rebuildDirectoriesEntries();
+  primeTagDerivedCachesForDir(WS.root);
   WS.nav.selectedIndex = 0;
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
   syncPreviewToSelection();
@@ -16673,6 +16734,8 @@ function captureViewerCloseRestoreState(opts = null) {
       options.activePane || WS.view.activePane || "directories",
     ),
     directoriesScrollTop: getDirectoriesScrollTop(),
+    navEntries: Array.isArray(WS.nav.entries) ? WS.nav.entries.slice() : [],
+    navEntriesRevision: NAV_ENTRY_RESTORE_REVISION,
     previewState: capturePreviewRestoreState(),
     pendingPreviewSelectionKey: String(
       options.pendingPreviewSelectionKey || "",
@@ -16683,6 +16746,10 @@ function captureViewerCloseRestoreState(opts = null) {
       WS.view?.previewFolderBridgeReturnState,
     ),
   };
+}
+
+function cloneNavEntryForRestore(entry) {
+  return entry && typeof entry === "object" ? Object.assign({}, entry) : entry;
 }
 
 function capturePreviewRestoreState(previewState = null) {
@@ -16763,6 +16830,12 @@ function cloneViewerCloseRestoreState(state) {
     activePane:
       state.activePane === "directories" ? "directories" : "preview",
     directoriesScrollTop: Number(state.directoriesScrollTop) || 0,
+    navEntries: Array.isArray(state.navEntries)
+      ? state.navEntries.map(cloneNavEntryForRestore).filter(Boolean)
+      : [],
+    navEntriesRevision: Number.isFinite(Number(state.navEntriesRevision))
+      ? Number(state.navEntriesRevision)
+      : -1,
     previewState: clonePreviewRestoreState(state.previewState),
     pendingPreviewSelectionKey: String(state.pendingPreviewSelectionKey || ""),
     previewContextKey: String(state.previewContextKey || ""),
@@ -16835,9 +16908,27 @@ function restorePreviewFolderBridgeState() {
   return restoreViewerCloseState(state);
 }
 
-function restoreViewerCloseState(state) {
+function restoreNavEntriesFromViewerCloseState(state) {
+  if (
+    !state ||
+    !Array.isArray(state.navEntries) ||
+    !state.navEntries.length ||
+    Number(state.navEntriesRevision) !== NAV_ENTRY_RESTORE_REVISION
+  ) {
+    return false;
+  }
+  WS.nav.entries = state.navEntries.map(cloneNavEntryForRestore).filter(Boolean);
+  return !!WS.nav.entries.length;
+}
+
+function restoreViewerCloseState(state, opts = null) {
   if (!state || !WS.root) return false;
+  const options = opts && typeof opts === "object" ? opts : {};
+  const preferCachedEntries = !!options.preferCachedEntries;
+  const deferDirectoriesRender = !!options.deferDirectoriesRender;
+  const hideBusyAfterDeferredRender = !!options.hideBusyAfterDeferredRender;
   cancelPendingNavigationRender();
+  const restoreRenderToken = NAVIGATION_RENDER_TOKEN;
   restoreRefreshViewState(state.view || null);
   WS.view.tagNavStack = Array.isArray(state.tagNavStack)
     ? state.tagNavStack
@@ -16857,7 +16948,13 @@ function restoreViewerCloseState(state) {
   syncFavoritesUi();
   syncHiddenUi();
   syncTagUiForCurrentDir();
-  rebuildDirectoriesEntries();
+  const restoredCachedEntries =
+    preferCachedEntries && restoreNavEntriesFromViewerCloseState(state);
+  if (!restoredCachedEntries) {
+    rebuildDirectoriesEntries({
+      preserveTagEntryCaches: !!options.preserveTagEntryCaches,
+    });
+  }
   const idx = findEntryIndexByKey(String(state.entryKey || ""));
   WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
   setActivePane(
@@ -16921,15 +17018,20 @@ function restoreViewerCloseState(state) {
     state.pendingPreviewSelectionKey ||
       (WS.view.activePane === "preview" ? state.previewSelectedKey || "" : ""),
   );
-  renderDirectoriesPane(true);
-  if (
-    directoriesListEl &&
-    Number.isFinite(Number(state.directoriesScrollTop))
-  ) {
-    directoriesListEl.scrollTop = Math.max(
-      0,
-      Number(state.directoriesScrollTop) || 0,
-    );
+  const restoreDirectoriesScroll = () => {
+    if (
+      directoriesListEl &&
+      Number.isFinite(Number(state.directoriesScrollTop))
+    ) {
+      directoriesListEl.scrollTop = Math.max(
+        0,
+        Number(state.directoriesScrollTop) || 0,
+      );
+    }
+  };
+  if (!deferDirectoriesRender) {
+    renderDirectoriesPane(true);
+    restoreDirectoriesScroll();
   }
   renderPreviewPane(false, true);
   if (WS.view.activePane === "preview") activatePreviewPaneSelection();
@@ -16937,6 +17039,26 @@ function restoreViewerCloseState(state) {
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
+  if (deferDirectoriesRender) {
+    requestAnimationFrame(() => {
+      try {
+        if (restoreRenderToken !== NAVIGATION_RENDER_TOKEN) return;
+        renderDirectoriesPane(true, { suppressSelectionReveal: true });
+        restoreDirectoriesScroll();
+        updatePreviewSelectionClasses();
+        syncButtons();
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+      } finally {
+        if (
+          hideBusyAfterDeferredRender &&
+          restoreRenderToken === NAVIGATION_RENDER_TOKEN
+        ) {
+          hideBusyOverlay();
+        }
+      }
+    });
+  }
   return true;
 }
 
@@ -18208,6 +18330,10 @@ let TAG_ENTRY_PREVIEW_POOL_CACHE = new Map();
 let TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE = new Map();
 let TAG_GROUPS_BY_DIR_CACHE = new Map();
 let TAG_ALBUM_STATS_BY_SCOPE_CACHE = new Map();
+let TAG_FOLDER_ENTRIES_CACHE = new Map();
+let TAG_ALBUM_TAG_ENTRIES_CACHE = new Map();
+let TAG_FOLDER_VIEW_DIRS_CACHE = new Map();
+let NAV_ENTRY_RESTORE_REVISION = 0;
 
 function clearTagEntryDerivedCaches() {
   TAG_ENTRY_DIRS_CACHE = new Map();
@@ -18216,6 +18342,9 @@ function clearTagEntryDerivedCaches() {
   TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE = new Map();
   TAG_GROUPS_BY_DIR_CACHE = new Map();
   TAG_ALBUM_STATS_BY_SCOPE_CACHE = new Map();
+  TAG_FOLDER_ENTRIES_CACHE = new Map();
+  TAG_ALBUM_TAG_ENTRIES_CACHE = new Map();
+  TAG_FOLDER_VIEW_DIRS_CACHE = new Map();
 }
 
 function invalidateDirSortMetricsCache() {
@@ -18228,6 +18357,7 @@ function invalidateDirItemCountCache() {
 }
 
 function invalidateDirMetricsCaches() {
+  NAV_ENTRY_RESTORE_REVISION++;
   invalidateDirSortMetricsCache();
   invalidateDirItemCountCache();
   clearTagEntryDerivedCaches();
@@ -19205,6 +19335,11 @@ function showStorageFolderEnabled() {
   return !!(opt && opt.showStorageFolder);
 }
 
+function tortoiseNavigationEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !opt || opt.tortoiseMode !== false;
+}
+
 function quickNavigationEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.quickNavigation);
@@ -19352,9 +19487,7 @@ function getVisibleChildDirsForTagEvaluation(dirNode) {
 function dirHasVisibleRecordForTagEntry(dirNode, entry) {
   if (!dirNode || !entry || entry.kind !== "tag") return false;
   const dirPath = String(dirNode.path || "");
-  const entryKey = `${String(tagEntrySelectionKey(entry) || "")}@@${String(
-    entry.originPath || "",
-  )}`;
+  const entryKey = tagEntryDerivedCacheKey(entry);
   const cacheKey = `${entryKey}@@${dirPath}@@${effectiveFilterCacheKey()}@@${String(
     effectiveTagMediaFilterForEntry(entry).join(","),
   )}`;
@@ -19401,7 +19534,7 @@ function filterTagEntryDirsByVisibleRecords(nodes, entry) {
 }
 
 function gatherTagGroupsForDir(dirNode) {
-  const cacheKey = String(dirNode?.path || "__root__");
+  const cacheKey = `${String(dirNode?.path || "__root__")}@@${tagVisibleChildContextKey()}`;
   if (TAG_GROUPS_BY_DIR_CACHE.has(cacheKey)) {
     return TAG_GROUPS_BY_DIR_CACHE.get(cacheKey) || new Map();
   }
@@ -19425,7 +19558,7 @@ function gatherTagGroupsForDir(dirNode) {
 }
 
 function collectTagAlbumStatsForGroups(tagGroups, scopePath = null) {
-  const cacheKey = String(scopePath || "__root__");
+  const cacheKey = `${String(scopePath || "__root__")}@@${tagVisibleChildContextKey()}`;
   if (TAG_ALBUM_STATS_BY_SCOPE_CACHE.has(cacheKey)) {
     return TAG_ALBUM_STATS_BY_SCOPE_CACHE.get(cacheKey) || new Map();
   }
@@ -19474,13 +19607,22 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
 
   const options = opts && typeof opts === "object" ? opts : null;
   const includePlaceholder = !(options && options.includePlaceholder === false);
-  const entries = [];
   const placeholderEntry = includePlaceholder
     ? buildBulkTagPlaceholderEntry()
     : null;
-  if (placeholderEntry) entries.push(placeholderEntry);
-
   const originPath = String(dirNode.path || "");
+  const cacheKey = [
+    originPath || "__root__",
+    effectiveFilterCacheKey(),
+    tagVisibleChildContextKey(),
+    tagFolderEntryOptionContextKey(),
+  ].join("@@");
+  if (cacheKey && TAG_FOLDER_ENTRIES_CACHE.has(cacheKey)) {
+    const cached = TAG_FOLDER_ENTRIES_CACHE.get(cacheKey) || [];
+    return placeholderEntry ? [placeholderEntry].concat(cached) : cached.slice();
+  }
+
+  const entries = [];
   const visibleChildren = getChildDirsForNodeBase(dirNode);
 
   const favoritesEntry = {
@@ -19607,7 +19749,8 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     }
   }
 
-  return entries;
+  if (cacheKey) TAG_FOLDER_ENTRIES_CACHE.set(cacheKey, entries);
+  return placeholderEntry ? [placeholderEntry].concat(entries) : entries;
 }
 
 function getTagFolderEntries() {
@@ -19621,6 +19764,30 @@ function getTagFolderEntries() {
   return getTagFolderEntriesForDir(WS.nav.dirNode, {
     includePlaceholder: true,
   });
+}
+
+function primeTagDerivedCachesForDir(dirNode) {
+  if (!dirNode || dirNode._skipTagFilters) return;
+  const entries = getTagFolderEntriesForDir(dirNode, {
+    includePlaceholder: false,
+  });
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    if (!entry || entry.kind !== "tag") continue;
+    if (entry.album && !entry.tag) {
+      const albumEntries = getTagEntriesForAlbumForBaseNode(dirNode, entry.album);
+      for (let j = 0; j < albumEntries.length; j++) {
+        const albumTagEntry = albumEntries[j];
+        if (!albumTagEntry || albumTagEntry.kind !== "tag") continue;
+        getDirsForTagEntry(albumTagEntry);
+        getTagEntryAggregateMetrics(albumTagEntry);
+        collectVisibleThumbRecordsForTagEntry(albumTagEntry);
+      }
+    }
+    getDirsForTagEntry(entry);
+    getTagEntryAggregateMetrics(entry);
+    collectVisibleThumbRecordsForTagEntry(entry);
+  }
 }
 
 function getTagFolderBaseNode() {
@@ -19645,6 +19812,16 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
   const album = normalizeTagAlbumName(albumName || "");
   if (!baseNode) return [];
   if (!album) return [];
+  const basePath = String(baseNode.path || "");
+  const cacheKey = [
+    basePath || "__root__",
+    album,
+    effectiveFilterCacheKey(),
+    tagVisibleChildContextKey(),
+  ].join("@@");
+  if (cacheKey && TAG_ALBUM_TAG_ENTRIES_CACHE.has(cacheKey)) {
+    return TAG_ALBUM_TAG_ENTRIES_CACHE.get(cacheKey) || [];
+  }
   const tagGroups = gatherTagGroupsForDir(baseNode);
   if (!tagGroups.size) return [];
   const sorted = Array.from(tagGroups.keys()).sort((a, b) =>
@@ -19654,7 +19831,7 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
   for (let i = 0; i < sorted.length; i++) {
     const tag = String(sorted[i] || "");
     if (!tag) continue;
-    if (metaGetTagAlbumForTag(tag, String(baseNode.path || "")) !== album)
+    if (metaGetTagAlbumForTag(tag, basePath) !== album)
       continue;
     const nodes = tagGroups.get(tag) || [];
     const tagEntry = {
@@ -19662,7 +19839,7 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
       tag,
       album,
       label: tag,
-      originPath: String(baseNode.path || ""),
+      originPath: basePath,
     };
     const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
     if (!visibleNodes.length) continue;
@@ -19672,10 +19849,11 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
       album,
       label: tag,
       count: visibleNodes.length,
-      originPath: String(baseNode.path || ""),
+      originPath: basePath,
       albumTag: true,
     });
   }
+  if (cacheKey) TAG_ALBUM_TAG_ENTRIES_CACHE.set(cacheKey, out);
   return out;
 }
 
@@ -19683,49 +19861,67 @@ function getDirsForTagFolderView() {
   if (!isViewingTagFolder()) return [];
   const baseNode = getTagFolderBaseNode();
   if (!baseNode) return [];
+  const mode = String(WS.view.tagFolderActiveMode || "");
+  const basePath = String(baseNode.path || "");
+  const cacheKey = [
+    basePath || "__root__",
+    mode,
+    String(WS.view.tagFolderActiveTag || ""),
+    String(WS.view.tagFolderActiveAlbum || ""),
+    effectiveFilterCacheKey(),
+    tagVisibleChildContextKey(),
+  ].join("@@");
+  if (cacheKey && TAG_FOLDER_VIEW_DIRS_CACHE.has(cacheKey)) {
+    return TAG_FOLDER_VIEW_DIRS_CACHE.get(cacheKey) || [];
+  }
+  const setCached = (dirs) => {
+    const out = Array.isArray(dirs) ? dirs : [];
+    if (cacheKey) TAG_FOLDER_VIEW_DIRS_CACHE.set(cacheKey, out);
+    return out;
+  };
   const children = getChildDirsForNodeBase(baseNode);
-  if (WS.view.tagFolderActiveMode === "favorites") {
-    return filterTagEntryDirsByVisibleRecords(
+  if (mode === "favorites") {
+    return setCached(filterTagEntryDirsByVisibleRecords(
       children.filter((d) => metaHasFavorite(d.path || "")),
       {
         kind: "tag",
         special: "favorites",
         label: "Favorites",
-        originPath: String(baseNode.path || ""),
+        originPath: basePath,
       },
-    );
+    ));
   }
-  if (WS.view.tagFolderActiveMode === "untagged") {
-    return filterTagEntryDirsByVisibleRecords(
+  if (mode === "untagged") {
+    return setCached(filterTagEntryDirsByVisibleRecords(
       children.filter((d) => metaGetUserTags(d.path || "").length === 0),
       {
         kind: "tag",
         special: "untagged",
         label: "Untagged",
-        originPath: String(baseNode.path || ""),
+        originPath: basePath,
       },
-    );
+    ));
   }
-  if (WS.view.tagFolderActiveMode === "hidden") {
-    return filterTagEntryDirsByVisibleRecords(
+  if (mode === "hidden") {
+    return setCached(filterTagEntryDirsByVisibleRecords(
       children.filter((d) => metaHasHidden(d.path || "")),
       {
         kind: "tag",
         special: "hidden",
         label: "Hidden",
-        originPath: String(baseNode.path || ""),
+        originPath: basePath,
       },
-    );
+    ));
   }
-  if (WS.view.tagFolderActiveMode === "storage") {
-    return getAllStorageDirNodes();
+  if (mode === "storage") {
+    return setCached(getAllStorageDirNodes());
   }
-  if (WS.view.tagFolderActiveMode === "album") {
-    return [];
+  if (mode === "album") {
+    return setCached([]);
   }
   const tag = String(WS.view.tagFolderActiveTag || "");
-  if (!tag) return [];
-  return filterTagEntryDirsByVisibleRecords(
+  if (!tag) return setCached([]);
+  return setCached(filterTagEntryDirsByVisibleRecords(
     children.filter((d) => {
       const tags = metaGetUserTags(d.path || "");
       return tags.includes(tag);
@@ -19735,9 +19931,9 @@ function getDirsForTagFolderView() {
       tag,
       album: String(WS.view.tagFolderActiveAlbum || ""),
       label: tag,
-      originPath: String(baseNode.path || ""),
+      originPath: basePath,
     },
-  );
+  ));
 }
 
 function getDirsForTagViewFrame(frame) {
@@ -19796,7 +19992,7 @@ function getDirsForTagViewFrame(frame) {
 
 function getDirsForTagEntry(entry) {
   if (!entry || entry.kind !== "tag") return [];
-  const cacheKey = `${String(tagEntrySelectionKey(entry) || "")}@@${String(entry.originPath || "")}`;
+  const cacheKey = tagEntryDerivedCacheKey(entry);
   if (cacheKey && TAG_ENTRY_DIRS_CACHE.has(cacheKey)) {
     return TAG_ENTRY_DIRS_CACHE.get(cacheKey) || [];
   }
@@ -19924,7 +20120,7 @@ function getTagEntryCountText(entry) {
 function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
   const cacheKey =
     !sizeMemo && entry && entry.kind === "tag"
-      ? `${String(tagEntrySelectionKey(entry) || "")}@@${String(entry.originPath || "")}`
+      ? tagEntryDerivedCacheKey(entry)
       : "";
   if (cacheKey && TAG_ENTRY_METRICS_CACHE.has(cacheKey)) {
     return TAG_ENTRY_METRICS_CACHE.get(cacheKey) || {
@@ -22833,6 +23029,37 @@ function syncTagUiForCurrentDir() {
   if (!WS.root || !WS.nav.dirNode) return;
 }
 
+function tagVisibleChildContextKey() {
+  return [
+    WS.view.hiddenMode ? "hidden-mode:1" : "hidden-mode:0",
+    showHiddenFolderEnabled() ? "show-hidden:1" : "show-hidden:0",
+    isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden"
+      ? "tag-hidden:1"
+      : "tag-hidden:0",
+  ].join("|");
+}
+
+function tagFolderEntryOptionContextKey() {
+  return [
+    showStorageFolderEnabled() ? "storage:1" : "storage:0",
+    showUntaggedFolderEnabled() ? "untagged:1" : "untagged:0",
+  ].join("|");
+}
+
+function tagEntryDerivedCacheKey(entry) {
+  if (!entry || entry.kind !== "tag") return "";
+  const entryKey = String(tagEntrySelectionKey(entry) || "");
+  const originPath = String(entry.originPath || "");
+  const mediaFilter = String(effectiveTagMediaFilterForEntry(entry).join(","));
+  return [
+    entryKey,
+    originPath,
+    effectiveFilterCacheKey(),
+    mediaFilter,
+    tagVisibleChildContextKey(),
+  ].join("@@");
+}
+
 function shouldIncludeGridUpDirectoryEntry() {
   return false;
 }
@@ -22859,8 +23086,9 @@ function selectionIndexForDirectoryEnter() {
   return restoreGridSelectionForCurrentContext(0);
 }
 
-function rebuildDirectoriesEntries() {
-  clearTagEntryDerivedCaches();
+function rebuildDirectoriesEntries(opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  if (options.invalidateTagEntryCaches) clearTagEntryDerivedCaches();
   const prevEntries = Array.isArray(WS.nav.entries) ? WS.nav.entries : [];
   const prevSelectedIndexRaw = Number(WS.nav.selectedIndex);
   const prevSelectedIndex = Number.isFinite(prevSelectedIndexRaw)
@@ -25656,6 +25884,7 @@ function notifyThumbnailRecordUpdated(rec) {
 function refreshThumbnailDemand() {
   THUMBNAIL_DEMAND_RAF = 0;
   if (!WS.root) return;
+  const snapshot = currentNavigationSnapshot();
   const previewIds = collectPreviewThumbnailDemandIds();
   const directoriesIds = collectDirectoriesThumbnailDemandIds();
   const desiredIds = new Set();
@@ -25666,8 +25895,8 @@ function refreshThumbnailDemand() {
   // folder thumbs from staying blank until a later full rerender.
   addRecordsToThumbnailDemand(
     desiredIds,
-    collectNavigationSnapshotRecords(currentNavigationSnapshot(), {
-      full: true,
+    collectNavigationSnapshotRecords(snapshot, {
+      full: !shouldUseWindowedPreviewBridgeSnapshot(snapshot),
     }),
   );
   if (!desiredIds.size && WS.preview.kind === "dir" && WS.preview.dirNode) {
@@ -26313,13 +26542,37 @@ async function prepareInteractiveNavigationSnapshot(snapshot) {
   );
 }
 
+function shouldUseWindowedPreviewBridgeSnapshot(snapshot = null) {
+  const src = snapshot || currentNavigationSnapshot();
+  return !!(
+    WS.view &&
+    WS.view.previewFolderBridgeReturnState &&
+    String(WS.view.activePane || "") === "preview" &&
+    isViewingTagFolder() &&
+    src &&
+    src.preview &&
+    src.preview.kind === "dir" &&
+    src.preview.dirNode &&
+    src.preview.dirNode !== src.dirNode
+  );
+}
+
 async function prepareNavigationSnapshot(
   snapshot,
   label = "Preparing thumbnails...",
+  opts = null,
 ) {
-  const pending = navigationSnapshotPendingRecords(snapshot, { full: true });
+  const options = opts && typeof opts === "object" ? opts : {};
+  const full = options.full !== false;
+  const scheduleWarm = options.scheduleWarm !== false;
+  const keepBusyOverlay = !!options.keepBusyOverlay;
+  if (!tortoiseNavigationEnabled()) {
+    if (scheduleWarm) scheduleNearbyDirectoryRamWarm(snapshot);
+    return true;
+  }
+  const pending = navigationSnapshotPendingRecords(snapshot, { full });
   if (!pending.length) {
-    scheduleNearbyDirectoryRamWarm(snapshot);
+    if (scheduleWarm) scheduleNearbyDirectoryRamWarm(snapshot);
     return true;
   }
   const token = ++NAVIGATION_PREP_TOKEN;
@@ -26331,9 +26584,11 @@ async function prepareNavigationSnapshot(
       ensureNavigationThumbDisplayReady,
     );
   } finally {
-    if (token === NAVIGATION_PREP_TOKEN) hideBusyOverlay();
+    if (token === NAVIGATION_PREP_TOKEN && !keepBusyOverlay)
+      hideBusyOverlay();
   }
-  if (token === NAVIGATION_PREP_TOKEN) scheduleNearbyDirectoryRamWarm(snapshot);
+  if (token === NAVIGATION_PREP_TOKEN && scheduleWarm)
+    scheduleNearbyDirectoryRamWarm(snapshot);
   return token === NAVIGATION_PREP_TOKEN;
 }
 
@@ -26350,23 +26605,70 @@ async function finalizeDirectoryNavigationRender(opts = null) {
   const activatePreviewSelectionAfterRender =
     !!options.activatePreviewSelection;
   const shouldRecordHistory = !!options.recordHistory;
+  const prepareFull = options.prepareFull !== false;
+  const schedulePreparedWarm = options.schedulePreparedWarm !== false;
+  const deferDirectoriesRender = !!options.deferDirectoriesRender;
+  const showBusyBeforeRender =
+    !!options.showBusyBeforeRender && tortoiseNavigationEnabled();
   const snapshot = currentNavigationSnapshot();
   const token = ++NAVIGATION_RENDER_TOKEN;
-  await prepareNavigationSnapshot(
-    snapshot,
-    "Preparing directory thumbnails...",
-  );
-  if (token !== NAVIGATION_RENDER_TOKEN) return false;
-  renderDirectoriesPane(keepDirectoriesScroll);
-  renderPreviewPane(animatePreview, keepPreviewScroll);
-  if (activatePreviewSelectionAfterRender && WS.view.activePane === "preview")
-    activatePreviewPaneSelection();
-  else updatePreviewSelectionClasses();
-  syncButtons();
-  kickVideoThumbsForPreview();
-  kickImageThumbsForPreview();
-  if (shouldRecordHistory) recordDirHistory();
-  return true;
+  if (showBusyBeforeRender) {
+    showBusyOverlay(options.busyLabel || "Updating preview...");
+    await waitForNextPaint();
+    if (token !== NAVIGATION_RENDER_TOKEN) {
+      hideBusyOverlay();
+      return false;
+    }
+  }
+  try {
+    await prepareNavigationSnapshot(
+      snapshot,
+      "Preparing directory thumbnails...",
+      {
+        full: prepareFull,
+        scheduleWarm: schedulePreparedWarm,
+        keepBusyOverlay: showBusyBeforeRender,
+      },
+    );
+    if (token !== NAVIGATION_RENDER_TOKEN) return false;
+    if (deferDirectoriesRender) {
+      renderPreviewPane(animatePreview, keepPreviewScroll);
+    } else {
+      renderDirectoriesPane(keepDirectoriesScroll);
+      renderPreviewPane(animatePreview, keepPreviewScroll);
+    }
+    if (activatePreviewSelectionAfterRender && WS.view.activePane === "preview")
+      activatePreviewPaneSelection();
+    else updatePreviewSelectionClasses();
+    syncButtons();
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+    if (shouldRecordHistory) recordDirHistory();
+    if (deferDirectoriesRender) {
+      requestAnimationFrame(() => {
+        try {
+          if (token !== NAVIGATION_RENDER_TOKEN) return;
+          renderDirectoriesPane(keepDirectoriesScroll, {
+            suppressSelectionReveal: true,
+          });
+          updatePreviewSelectionClasses();
+          syncButtons();
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+        } finally {
+          if (showBusyBeforeRender && token === NAVIGATION_RENDER_TOKEN)
+            hideBusyOverlay();
+        }
+      });
+    }
+    return true;
+  } finally {
+    if (
+      showBusyBeforeRender &&
+      (!deferDirectoriesRender || token !== NAVIGATION_RENDER_TOKEN)
+    )
+      hideBusyOverlay();
+  }
 }
 
 async function warmWorkspaceNavigationThumbsInBackground(
@@ -34864,6 +35166,14 @@ async function navigateToDirectory(node) {
     showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
     return;
   }
+  const previewBridgeOpen = !!(
+    String(WS.view?.activePane || "") === "preview" &&
+    getPreviewTargetDir()?._skipTagFilters
+  );
+  if (previewBridgeOpen && tortoiseNavigationEnabled()) {
+    showBusyOverlay("Opening preview...");
+    await waitForNextPaint();
+  }
   const previewFolderReturnState = captureViewerCloseRestoreState({
     activePane: "preview",
     pendingPreviewSelectionKey: node.path ? `dir:${String(node.path || "")}` : "",
@@ -34914,10 +35224,17 @@ async function navigateToDirectory(node) {
   resetPreviewPaneForEnteredTarget();
   WS.view.previewFolderBridgeReturnState = previewFolderReturnState;
   setActivePane("preview");
+  const useWindowedBridgePrepare =
+    tortoiseNavigationEnabled() && shouldUseWindowedPreviewBridgeSnapshot();
   await finalizeDirectoryNavigationRender({
     animatePreview: true,
     activatePreviewSelection: true,
     recordHistory: true,
+    prepareFull: !useWindowedBridgePrepare,
+    schedulePreparedWarm: !useWindowedBridgePrepare,
+    deferDirectoriesRender: useWindowedBridgePrepare,
+    showBusyBeforeRender: useWindowedBridgePrepare,
+    busyLabel: "Opening preview...",
   });
 }
 
@@ -34990,6 +35307,7 @@ function adoptPreviewParentIntoDirectoriesPane(targetDir) {
   const parentTarget =
     targetDir || getPreviewTargetDir() || WS.nav.dirNode || WS.root;
   if (!parentTarget) return false;
+  const preserveTagEntryCaches = !!parentTarget._skipTagFilters;
   if (parentTarget._skipTagFilters) {
     const originPath = String(
       parentTarget._tagPreviewOriginPath || parentTarget.parent?.path || "",
@@ -35055,7 +35373,7 @@ function adoptPreviewParentIntoDirectoriesPane(targetDir) {
   syncFavoritesUi();
   syncHiddenUi();
   syncTagUiForCurrentDir();
-  rebuildDirectoriesEntries();
+  rebuildDirectoriesEntries({ preserveTagEntryCaches });
   return true;
 }
 
@@ -35064,6 +35382,14 @@ async function openPreviewTagFolderEntry(entry) {
   clearBulkTagPlaceholder();
   clearPreviewQuickNavigationState();
   if (!entry || entry.placeholder) return;
+  const previewBridgeOpen = !!(
+    String(WS.view?.activePane || "") === "preview" &&
+    getPreviewTargetDir()?._skipTagFilters
+  );
+  if (previewBridgeOpen && tortoiseNavigationEnabled()) {
+    showBusyOverlay("Opening preview...");
+    await waitForNextPaint();
+  }
   const previewFolderReturnState = captureViewerCloseRestoreState({
     activePane: "preview",
     pendingPreviewSelectionKey: entryKeyForSelection(entry),
@@ -35104,9 +35430,16 @@ async function openPreviewTagFolderEntry(entry) {
   resetPreviewPaneForEnteredTarget();
   WS.view.previewFolderBridgeReturnState = previewFolderReturnState;
   setActivePane("preview");
+  const useWindowedBridgePrepare =
+    tortoiseNavigationEnabled() && shouldUseWindowedPreviewBridgeSnapshot();
   await finalizeDirectoryNavigationRender({
     animatePreview: true,
     activatePreviewSelection: true,
+    prepareFull: !useWindowedBridgePrepare,
+    schedulePreparedWarm: !useWindowedBridgePrepare,
+    deferDirectoriesRender: useWindowedBridgePrepare,
+    showBusyBeforeRender: useWindowedBridgePrepare,
+    busyLabel: "Opening preview...",
   });
 }
 
@@ -35657,11 +35990,20 @@ function renderPreviewViewerItem(idx) {
   const item = viewerItems[viewerIndex];
 
   let willShowVideo = false;
+  let willShowImage = false;
   let rec = null;
   if (item && !item.isFolder) {
     rec = WS.fileById.get(item.id);
     if (rec && rec.type === "video") willShowVideo = true;
+    else if (rec) willShowImage = true;
   }
+  const keepPreviewImageFrame = !!(
+    willShowImage &&
+    !mediaFilterEnabled() &&
+    previewImgEl &&
+    previewImgEl.style.display !== "none" &&
+    String(previewImgEl.src || "")
+  );
 
   if (previewVideoEl) {
     try {
@@ -35675,9 +36017,11 @@ function renderPreviewViewerItem(idx) {
     clearPendingFilmCornerMask(previewVideoEl);
   }
   if (previewImgEl) {
-    previewImgEl.classList.remove("ready");
-    previewImgEl.style.display = "none";
-    clearPendingFilmCornerMask(previewImgEl);
+    if (!keepPreviewImageFrame) {
+      previewImgEl.classList.remove("ready");
+      previewImgEl.style.display = "none";
+      clearPendingFilmCornerMask(previewImgEl);
+    }
   }
   if (previewFolderEl) previewFolderEl.style.display = "none";
   const preservePreviewFrame = mediaFilterEnabled();
@@ -35989,6 +36333,116 @@ function nextPreviewFilesRenderToken() {
   return PREVIEW_FILES_RENDER_TOKEN;
 }
 
+const HARE_TAG_PREVIEW_INITIAL_TAG_CARDS = 8;
+const HARE_TAG_PREVIEW_TAG_CHUNK_SIZE = 16;
+const HARE_TAG_PREVIEW_INITIAL_DIR_CARDS = 40;
+const HARE_TAG_PREVIEW_DIR_CHUNK_SIZE = 80;
+
+function shouldChunkTagPreviewForHare(dirNode, folderEntries, fileIds) {
+  if (tortoiseNavigationEnabled()) return false;
+  if (!dirNode || !dirNode._skipTagFilters) return false;
+  if (Array.isArray(fileIds) && fileIds.length) return false;
+  const entries = Array.isArray(folderEntries) ? folderEntries : [];
+  if (!entries.length) return false;
+  const hasTagEntry = entries.some((entry) => entry && entry.kind === "tag");
+  const threshold = hasTagEntry
+    ? HARE_TAG_PREVIEW_INITIAL_TAG_CARDS
+    : HARE_TAG_PREVIEW_INITIAL_DIR_CARDS;
+  return entries.length > threshold;
+}
+
+function renderTagPreviewFolderEntriesInHareChunks(
+  dirNode,
+  container,
+  folderEntries,
+  previewDisplayPositions,
+  renderToken,
+) {
+  const entries = Array.isArray(folderEntries) ? folderEntries : [];
+  const containsTagEntries = entries.some((entry) => entry && entry.kind === "tag");
+  const initialLimit = containsTagEntries
+    ? HARE_TAG_PREVIEW_INITIAL_TAG_CARDS
+    : HARE_TAG_PREVIEW_INITIAL_DIR_CARDS;
+  const chunkSize = containsTagEntries
+    ? HARE_TAG_PREVIEW_TAG_CHUNK_SIZE
+    : HARE_TAG_PREVIEW_DIR_CHUNK_SIZE;
+  const gridF = document.createElement("div");
+  gridF.className = "gridFolders";
+  const useFolderFitInsideJustified = folderPreviewThumbUsesContainMode();
+  if (useFolderFitInsideJustified) gridF.classList.add("fitInsideJustified");
+  const folderSizeMemo = new Map();
+  const showTagSpacer =
+    showTagFolderSpacerRowEnabled() &&
+    entries.some((entry) => entry && entry.kind === "tag") &&
+    entries.some((entry) => entry && entry.kind === "dir");
+  let seenTagEntry = false;
+  let insertedTagSpacer = false;
+  let index = 0;
+
+  const appendRange = (endExclusive) => {
+    if (renderToken !== PREVIEW_FILES_RENDER_TOKEN) return false;
+    const fragF = document.createDocumentFragment();
+    const end = Math.min(entries.length, Math.max(index, endExclusive));
+    for (; index < end; index++) {
+      const entry = entries[index];
+      if (
+        showTagSpacer &&
+        !insertedTagSpacer &&
+        seenTagEntry &&
+        entry &&
+        entry.kind === "dir"
+      ) {
+        fragF.appendChild(makePreviewTagSpacer());
+        insertedTagSpacer = true;
+      }
+      if (!entry) continue;
+      if (entry.kind === "tag") {
+        fragF.appendChild(makeTagPreviewCard(entry));
+        seenTagEntry = true;
+        continue;
+      }
+      fragF.appendChild(
+        makeFolderPreviewCard(
+          entry.node,
+          folderSizeMemo,
+          previewDisplayPositions.dirPositions.get(
+            String(entry.node?.path || ""),
+          ),
+        ),
+      );
+    }
+    gridF.appendChild(fragF);
+    return true;
+  };
+
+  appendRange(initialLimit);
+  container.appendChild(gridF);
+  container.appendChild(makeSpacer());
+
+  const appendNextChunk = () => {
+    if (renderToken !== PREVIEW_FILES_RENDER_TOKEN) return;
+    if (index >= entries.length) {
+      if (useFolderFitInsideJustified) applyFitInsideJustifiedLayout(gridF);
+      updatePreviewSelectionClasses();
+      scheduleThumbnailDemandRefresh();
+      return;
+    }
+    requestAnimationFrame(() => {
+      if (!appendRange(index + chunkSize)) return;
+      updatePreviewSelectionClasses();
+      scheduleThumbnailDemandRefresh();
+      appendNextChunk();
+    });
+  };
+  appendNextChunk();
+
+  return {
+    folderCount: entries.length,
+    fileCount: 0,
+    hasContent: true,
+  };
+}
+
 function renderPreviewPane(animate = false, keepScroll = false) {
   clearPreviewFileVirtualizers();
   syncThumbFilterKeyWithCurrentAppearanceContext();
@@ -36069,11 +36523,8 @@ function renderPreviewPane(animate = false, keepScroll = false) {
 
   const targetDir = getPreviewTargetDir();
   updateModePill();
-  const previewItemCount =
-    WS.preview.kind === "file" && WS.preview.fileId
-      ? 1
-      : getDirectoryItemCount(targetDir || WS.nav.dirNode || WS.root);
-  if (itemsPill) itemsPill.textContent = `Items: ${previewItemCount}`;
+  if (WS.preview.kind === "file" && WS.preview.fileId && itemsPill)
+    itemsPill.textContent = "Items: 1";
 
   if (WS.preview.kind === "file" && WS.preview.fileId) {
     setPreviewBodyMode("file");
@@ -36133,11 +36584,26 @@ function renderPreviewPane(animate = false, keepScroll = false) {
     : Math.max(0, Number(savedScroll) || 0);
 
   const showRootFoldersOnly = WS.view.aboveRootView && dirNode === WS.root;
+  const previewEntriesForRender = getPreviewFolderAndFileEntries(dirNode, {
+    includeFiles: !showRootFoldersOnly,
+  });
+  if (itemsPill) {
+    const folderCount = Array.isArray(previewEntriesForRender.folderEntries)
+      ? previewEntriesForRender.folderEntries.length
+      : 0;
+    const fileCount = Array.isArray(previewEntriesForRender.fileIds)
+      ? previewEntriesForRender.fileIds.length
+      : 0;
+    itemsPill.textContent = `Items: ${folderCount + fileCount}`;
+  }
   renderFolderContents(
     dirNode,
     previewBodyEl,
     animate,
-    { includeFiles: !showRootFoldersOnly },
+    {
+      includeFiles: !showRootFoldersOnly,
+      previewEntries: previewEntriesForRender,
+    },
     previewRenderToken,
   );
 
@@ -37623,14 +38089,30 @@ function renderFolderContents(
   opts = null,
   renderToken = PREVIEW_FILES_RENDER_TOKEN,
 ) {
-  const { folderEntries, fileIds: ids } = getPreviewFolderAndFileEntries(
-    dirNode,
-    opts,
-  );
+  const options = opts && typeof opts === "object" ? opts : {};
+  const previewEntries =
+    options.previewEntries && typeof options.previewEntries === "object"
+      ? options.previewEntries
+      : getPreviewFolderAndFileEntries(dirNode, opts);
+  const folderEntries = Array.isArray(previewEntries.folderEntries)
+    ? previewEntries.folderEntries
+    : [];
+  const ids = Array.isArray(previewEntries.fileIds)
+    ? previewEntries.fileIds
+    : [];
   const previewDisplayPositions = buildDisplayPositionMapsForFolderAndFileEntries(
     folderEntries,
     ids,
   );
+  if (shouldChunkTagPreviewForHare(dirNode, folderEntries, ids)) {
+    return renderTagPreviewFolderEntriesInHareChunks(
+      dirNode,
+      container,
+      folderEntries,
+      previewDisplayPositions,
+      renderToken,
+    );
+  }
   let hasContent = false;
 
   if (folderEntries.length) {
@@ -40671,6 +41153,9 @@ function handleExtrasKeybindAction(action) {
       return toggleSettingsAndDirectoriesPanesKeybindAction();
     case "refreshWorkspace":
       return refreshWorkspaceKeybindAction();
+    case "prodPreviewPane":
+      renderPreviewPane(false, true);
+      return true;
     case "toggleLightMode": {
       const next = toggleOptionValue("lightMode");
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -40717,7 +41202,11 @@ function handleExtrasKeybindAction(action) {
     }
     case "toggleShowHiddenFolder": {
       const next = toggleOptionValue("showHiddenFolder");
+      invalidateDirMetricsCaches();
       refreshLiveSettingsPaneFromKeyboardAction();
+      if (!next && WS.view.tagFolderActiveMode === "hidden") {
+        exitTagFolderView();
+      }
       rebuildDirectoriesEntries();
       preserveActivePreviewTargetDuringDirectoriesRefresh();
       renderDirectoriesPane(true);
@@ -40730,9 +41219,11 @@ function handleExtrasKeybindAction(action) {
     }
     case "toggleShowUntaggedFolder": {
       const next = toggleOptionValue("showUntaggedFolder");
+      invalidateDirMetricsCaches();
       refreshLiveSettingsPaneFromKeyboardAction();
       if (!next && WS.view.tagFolderActiveMode === "untagged")
         exitTagFolderView();
+      rebuildDirectoriesEntries();
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
       syncButtons();
@@ -40743,7 +41234,10 @@ function handleExtrasKeybindAction(action) {
     }
     case "toggleShowStorageFolder": {
       const next = toggleOptionValue("showStorageFolder");
+      invalidateDirMetricsCaches();
       refreshLiveSettingsPaneFromKeyboardAction();
+      navigateOutOfStorageIfHidden();
+      rebuildDirectoriesEntries();
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
       syncButtons();
@@ -41729,9 +42223,14 @@ function handleGridKeybindAction(action) {
   }
 }
 
-function closeFilePreviewToFolder() {
+async function closeFilePreviewToFolder() {
   if (!WS.root) return;
   if (WS.preview.kind !== "file") return;
+  const tortoiseMode = tortoiseNavigationEnabled();
+  if (tortoiseMode) {
+    showBusyOverlay("Closing preview...");
+    await waitForNextPaint();
+  }
   const currentItem = viewerItems[viewerIndex] || null;
   const useQuickNavigation = !!WS.view.previewQuickNavigationActive;
   const useDirectorySelectionBridge = !!WS.view.previewFileSelectionBridgeActive;
@@ -41766,28 +42265,50 @@ function closeFilePreviewToFolder() {
   if (useQuickNavigation) {
     const quickReturnState = resolveQuickNavigationReturnState();
     if (quickReturnState) {
-      restoreViewerCloseState(quickReturnState);
+      try {
+        restoreViewerCloseState(quickReturnState, {
+          preferCachedEntries: true,
+          deferDirectoriesRender: tortoiseMode,
+          preserveTagEntryCaches: true,
+          hideBusyAfterDeferredRender: tortoiseMode,
+        });
+      } catch {
+        hideBusyOverlay();
+      }
       return;
     }
   }
   if (bridgeReturnState) {
-    restoreViewerCloseState(bridgeReturnState);
+    try {
+      restoreViewerCloseState(bridgeReturnState, {
+        preferCachedEntries: true,
+        deferDirectoriesRender: tortoiseMode,
+        preserveTagEntryCaches: true,
+        hideBusyAfterDeferredRender: tortoiseMode,
+      });
+    } catch {
+      hideBusyOverlay();
+    }
     return;
   }
-  applyPreviewState({
-    kind: "dir",
-    dirNode: WS.preview.dirNode || getPreviewTargetDir(),
-    fileId: null,
-  });
-  ACTIVE_MEDIA_SURFACE = "none";
-  renderPreviewPane(true, true);
-  if (returnToPreviewPane || useDirectorySelectionBridge) {
-    setActivePane("preview");
-    activatePreviewPaneSelection();
-  } else if (WS.view.activePane === "preview") {
-    activatePreviewPaneSelection();
+  try {
+    applyPreviewState({
+      kind: "dir",
+      dirNode: WS.preview.dirNode || getPreviewTargetDir(),
+      fileId: null,
+    });
+    ACTIVE_MEDIA_SURFACE = "none";
+    renderPreviewPane(true, true);
+    if (returnToPreviewPane || useDirectorySelectionBridge) {
+      setActivePane("preview");
+      activatePreviewPaneSelection();
+    } else if (WS.view.activePane === "preview") {
+      activatePreviewPaneSelection();
+    }
+    syncButtons();
+  } finally {
+    hideBusyOverlay();
   }
-  syncButtons();
 }
 
 function handleBackAction() {
