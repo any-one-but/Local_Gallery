@@ -762,6 +762,7 @@ function defaultOptions() {
     showTrashFolder: true,
     showStorageFolder: true,
     tortoiseMode: true,
+    muteMessages: false,
     quickNavigation: false,
     showUntaggedFolder: false,
     showTagFolderSpacerRow: true,
@@ -1175,6 +1176,10 @@ function normalizeOptions(o) {
         : d.showStorageFolder,
     tortoiseMode:
       typeof src.tortoiseMode === "boolean" ? src.tortoiseMode : d.tortoiseMode,
+    muteMessages:
+      typeof src.muteMessages === "boolean"
+        ? src.muteMessages
+        : d.muteMessages,
     quickNavigation:
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
@@ -1682,7 +1687,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "hideBeforeLastDashInFileNames",
     "hideAfterFirstUnderscoreInFileNames",
   ]),
-  controls: Object.freeze([]),
+  controls: Object.freeze(["muteMessages"]),
 });
 
 const META_PREFERENCE_DOC_BY_OPTION_KEY = (() => {
@@ -7393,6 +7398,12 @@ const KEYBIND_ACTIONS = [
     section: "general",
   },
   {
+    id: "toggleMuteMessages",
+    label: "Mute Messages",
+    hint: "Toggle status and notification messages on or off.",
+    section: "general",
+  },
+  {
     id: "toggleQuickNavigation",
     label: "Toggle quick navigation",
     hint: "Automatically open the first file in preview-only files folders, then close back to the parent preview context.",
@@ -8731,7 +8742,30 @@ function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
 
-function showMainStatusMessage(text) {
+function muteMessagesEnabled() {
+  const opt =
+    WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
+  return !!opt.muteMessages;
+}
+
+function hideStatusMessages() {
+  if (MAIN_STATUS_TIMEOUT) {
+    clearTimeout(MAIN_STATUS_TIMEOUT);
+    MAIN_STATUS_TIMEOUT = null;
+  }
+  if (WS.view && WS.view.statusTimeout) {
+    clearTimeout(WS.view.statusTimeout);
+    WS.view.statusTimeout = null;
+  }
+  mainStatusMessageEl.classList.remove("visible");
+  mainStatusMessageEl.textContent = "";
+  statusMessageEl.classList.remove("visible");
+  statusMessageEl.textContent = "";
+}
+
+function showMainStatusMessage(text, options = null) {
+  const force = !!(options && options.force);
+  if (!force && muteMessagesEnabled()) return;
   mainStatusMessageEl.textContent = text || "";
   mainStatusMessageEl.classList.add("visible");
   if (MAIN_STATUS_TIMEOUT) {
@@ -8855,11 +8889,15 @@ function inferNotificationSourceId(text, sourceContext = "") {
   return "misc";
 }
 
-function showStatusMessage(text, sourceId = "") {
+function showStatusMessage(text, sourceId = "", options = null) {
+  const force = !!(options && options.force);
   const source = normalizeNotificationSourceId(
     sourceId || inferNotificationSourceId(text, captureStatusSourceContext()),
   );
-  if (!notificationsEnabledForSource(source)) return;
+  if (!force) {
+    if (muteMessagesEnabled()) return;
+    if (!notificationsEnabledForSource(source)) return;
+  }
   if (VIEWER_MODE) {
     statusMessageEl.textContent = text || "";
     statusMessageEl.classList.add("visible");
@@ -8872,7 +8910,7 @@ function showStatusMessage(text, sourceId = "") {
     }, 1200);
     return;
   }
-  showMainStatusMessage(text);
+  showMainStatusMessage(text, options);
 }
 
 function showSlideshowMessage(text) {
@@ -8880,6 +8918,7 @@ function showSlideshowMessage(text) {
     showStatusMessage(text, "playback");
     return;
   }
+  if (muteMessagesEnabled()) return;
   if (!notificationsEnabledForSource("playback")) return;
   showMainStatusMessage(text);
 }
@@ -9403,7 +9442,6 @@ function syncMetaButtons() {
 
 const MENU_TAB_IDS = [
   "general",
-  "notifications",
   "appearance",
   "playback",
   "thumbnails",
@@ -9413,7 +9451,6 @@ const MENU_TAB_IDS = [
 ];
 const MENU_PANEL_BY_TAB = {
   general: "options",
-  notifications: "options",
   appearance: "options",
   playback: "options",
   thumbnails: "options",
@@ -9431,7 +9468,6 @@ const menuTabPanels = {
 };
 const menuScrollTargets = {
   general: optionsBodyEl,
-  notifications: optionsBodyEl,
   appearance: optionsBodyEl,
   playback: optionsBodyEl,
   thumbnails: optionsBodyEl,
@@ -10215,8 +10251,6 @@ function renderKeybindsUi(scope = "pane") {
     if (!binding || binding.hiddenInUi) return false;
     return true;
   });
-  const opt =
-    WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
   if (
     KEYBIND_CAPTURE_ACTION_ID &&
     !visiblePaneBindings.some(
@@ -11744,10 +11778,7 @@ ${makeActionRow(
     kickImageThumbsForPreview();
   });
   bindCheck("opt_tortoiseMode", "tortoiseMode", (enabled) => {
-    if (!enabled) hideBusyOverlay();
-    const btn = $("opt_tortoiseMode");
-    const titleEl = btn?.closest(".optRow")?.querySelector(".optTitle");
-    if (titleEl) titleEl.textContent = enabled ? "Tortoise" : "Hare";
+    handleTortoiseModeChanged(enabled);
   });
   bindCheck("opt_quickNavigation", "quickNavigation");
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
@@ -12258,7 +12289,6 @@ ${makeActionRow(
 
 const OPTION_TAB_IDS = Object.freeze([
   "general",
-  "notifications",
   "appearance",
   "thumbnails",
   "playback",
@@ -12279,7 +12309,6 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showTagFolderSpacerRow",
     "previewMediaUsePaneBackground",
   ]),
-  notifications: Object.freeze(notificationSourceOptionKeys()),
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
       "activeAppearancePresetId",
@@ -41822,6 +41851,26 @@ function toggleOptionValue(key) {
   return setOptionValue(key, !current);
 }
 
+function setMuteMessagesEnabled(enabled) {
+  const next = !!enabled;
+  const prev = muteMessagesEnabled();
+  if (prev === next) return next;
+  setOptionValue("muteMessages", next);
+  if (next) hideStatusMessages();
+  showStatusMessage(`Mute Messages: ${next ? "On" : "Off"}`, "", {
+    force: true,
+  });
+  return next;
+}
+
+function handleTortoiseModeChanged(enabled) {
+  if (!enabled) hideBusyOverlay();
+  const btn = $("opt_tortoiseMode");
+  const titleEl = btn?.closest(".optRow")?.querySelector(".optTitle");
+  if (titleEl) titleEl.textContent = enabled ? "Tortoise" : "Hare";
+  showStatusMessage(`Navigation speed: ${enabled ? "Tortoise" : "Hare"}`);
+}
+
 function cycleOptionValue(key, list) {
   const values = list.map((entry) => entry.value);
   const current =
@@ -42080,9 +42129,14 @@ function handleExtrasKeybindAction(action) {
       return true;
     }
     case "toggleTortoiseMode": {
-      toggleOptionValue("tortoiseMode");
+      const next = toggleOptionValue("tortoiseMode");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      handleTortoiseModeChanged(next);
       return true;
     }
+    case "toggleMuteMessages":
+      setMuteMessagesEnabled(!muteMessagesEnabled());
+      return true;
     case "toggleQuickNavigation": {
       const next = toggleOptionValue("quickNavigation");
       refreshLiveSettingsPaneFromKeyboardAction();
