@@ -5463,6 +5463,55 @@ img[data-rotate-key].rotatingThumbFade {
   border-bottom: 1px solid rgba(255, 255, 255, 0.22);
 }
 
+#keybindsBody .keybindSubtabs {
+  position: sticky;
+  top: -10px;
+  z-index: 5;
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  flex-wrap: wrap;
+  width: calc(100% + 20px);
+  margin: -10px -10px 8px;
+  padding: 0;
+  background: var(--color1-primary);
+  border-top: 1px solid var(--color1-tertiary);
+}
+
+#keybindsBody .keybindSubtabBtn {
+  white-space: nowrap;
+  border-radius: 0;
+  border: 0;
+  border-right: 1px solid var(--color1-tertiary);
+  border-bottom: 1px solid var(--color1-tertiary);
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  padding: 8px 10px;
+  flex: 1 1 auto;
+}
+
+#keybindsBody .keybindSubtabBtn.active {
+  background: var(--color1-primary);
+  border-bottom-color: var(--color1-primary);
+  color: var(--color0-primary);
+}
+
+#keybindsBody .keybindSubtabHint {
+  margin: 8px 0 2px;
+  color: var(--color0-secondary);
+  font-size: 11px;
+}
+
+#keybindsBody .optRow.keybindModifierMismatch {
+  opacity: 0.42;
+  filter: grayscale(1);
+}
+
+#keybindsBody .optRow.keybindModifierMismatch:hover,
+#keybindsBody .optRow.keybindModifierMismatch:focus-within {
+  opacity: 0.82;
+}
+
 #optionsBody .optLeft,
 #keybindsBody .optLeft {
   display: flex;

@@ -2237,6 +2237,53 @@ function applyAppearancePresetById(presetId, options = {}) {
   return true;
 }
 
+function getAppearancePresetCycleList() {
+  const source = Array.isArray(WS.meta && WS.meta.appearancePresets)
+    ? WS.meta.appearancePresets
+    : defaultAppearancePresets();
+  return source
+    .filter((preset) => normalizeAppearancePresetIdValue(preset && preset.id))
+    .slice()
+    .sort((a, b) => {
+      const aId = normalizeAppearancePresetIdValue(a && a.id);
+      const bId = normalizeAppearancePresetIdValue(b && b.id);
+      const aIsDefault = aId === BUILTIN_NULL_APPEARANCE_PRESET_ID;
+      const bIsDefault = bId === BUILTIN_NULL_APPEARANCE_PRESET_ID;
+      if (aIsDefault || bIsDefault) {
+        if (aIsDefault === bIsDefault) return 0;
+        return aIsDefault ? -1 : 1;
+      }
+      return normalizeAppearancePresetName(a && a.name, "Preset").localeCompare(
+        normalizeAppearancePresetName(b && b.name, "Preset"),
+        undefined,
+        { numeric: true, sensitivity: "base" },
+      );
+    });
+}
+
+function cycleAppearancePresetKeybindAction() {
+  if (!WS.meta) return false;
+  const presets = getAppearancePresetCycleList();
+  if (!presets.length) return false;
+  const activeId = effectiveActiveAppearancePresetId();
+  const currentIndex = activeId
+    ? presets.findIndex(
+        (preset) =>
+          normalizeAppearancePresetIdValue(preset && preset.id) === activeId,
+      )
+    : -1;
+  const nextPreset =
+    presets[(currentIndex + 1 + presets.length) % presets.length];
+  const nextPresetId = normalizeAppearancePresetIdValue(
+    nextPreset && nextPreset.id,
+  );
+  if (!nextPresetId || !applyAppearancePresetById(nextPresetId)) return false;
+  showStatusMessage(
+    `Appearance preset: ${appearancePresetDisplayName(nextPresetId, "Default")}`,
+  );
+  return true;
+}
+
 function saveAppearancePresetValues(name, values) {
   if (!WS.meta) return { ok: false, reason: "missing-meta" };
   const presetName = normalizeAppearancePresetName(name, "");
@@ -7009,6 +7056,13 @@ const SAFE_KEY_VALUES = (() => {
 
 const SAFE_KEY_SET = new Set(SAFE_KEY_VALUES);
 const KEY_MODIFIER_ORDER = ["Cmd", "Ctrl", "Alt", "Shift"];
+const IS_APPLE_PLATFORM = (() => {
+  const platform = String(navigator?.platform || "").toLowerCase();
+  const userAgentDataPlatform = String(
+    navigator?.userAgentData?.platform || "",
+  ).toLowerCase();
+  return /mac|iphone|ipad|ipod/.test(platform || userAgentDataPlatform);
+})();
 const MODIFIER_KEY_STATE = {
   Cmd: false,
   Ctrl: false,
@@ -7018,9 +7072,23 @@ const MODIFIER_KEY_STATE = {
 const KEY_MODIFIER_LABELS = Object.freeze({
   Cmd: "Command",
   Ctrl: "Control",
-  Alt: "Option",
+  Alt: IS_APPLE_PLATFORM ? "Option" : "Alt",
   Shift: "Shift",
 });
+const KEYBIND_MODIFIER_TAB_SPECS = Object.freeze([
+  Object.freeze({ id: "all", label: "All", modifier: "" }),
+  Object.freeze({
+    id: "command",
+    label: IS_APPLE_PLATFORM ? "Command" : "Control",
+    modifier: IS_APPLE_PLATFORM ? "Cmd" : "Ctrl",
+  }),
+  Object.freeze({
+    id: "option",
+    label: IS_APPLE_PLATFORM ? "Option" : "Alt",
+    modifier: "Alt",
+  }),
+  Object.freeze({ id: "shift", label: "Shift", modifier: "Shift" }),
+]);
 const MODIFIER_ALIASES = Object.freeze({
   command: "Cmd",
   cmd: "Cmd",
@@ -7476,6 +7544,12 @@ const KEYBIND_ACTIONS = [
     section: "overlays",
   },
   {
+    id: "cycleAppearancePresets",
+    label: "Cycle Presets",
+    hint: "Cycle appearance presets alphabetically, with Default first.",
+    section: "overlays",
+  },
+  {
     id: "toggleHideFileExtensions",
     label: "Toggle hide file extensions",
     hint: "Toggle hiding file extensions.",
@@ -7659,6 +7733,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   muteToggle: "Cmd+x",
   toggleLightMode: "i",
   toggleAnimatedFilters: "Cmd+i",
+  cycleAppearancePresets: "",
   toggleHideFileExtensions: "",
   toggleHideBeforeLastDash: "n",
   toggleHideAfterFirstUnderscore: "",
@@ -8725,6 +8800,7 @@ const CALENDAR_STATS_SORT_KEYS = [
 ];
 let CALENDAR_STATS_SORT_KEY = "score";
 let KEYBIND_CAPTURE_ACTION_ID = "";
+let KEYBIND_MODIFIER_TAB_ID = "all";
 let PROPERTIES_OPEN = false;
 
 let BANIC_ACTIVE = false;
@@ -10193,6 +10269,49 @@ function isAnyLockedKeybindAction(actionId) {
   return isLockedKeybindAction(actionId) || isLockedGridKeybindAction(actionId);
 }
 
+function normalizeKeybindModifierTabId(tabId) {
+  const raw = String(tabId || "").trim().toLowerCase();
+  return KEYBIND_MODIFIER_TAB_SPECS.some((spec) => spec.id === raw)
+    ? raw
+    : "all";
+}
+
+function keybindModifierTabSpec(tabId = KEYBIND_MODIFIER_TAB_ID) {
+  const normalized = normalizeKeybindModifierTabId(tabId);
+  return (
+    KEYBIND_MODIFIER_TAB_SPECS.find((spec) => spec.id === normalized) ||
+    KEYBIND_MODIFIER_TAB_SPECS[0]
+  );
+}
+
+function modifierMapForSingleModifier(modifier) {
+  const out = { Cmd: false, Ctrl: false, Alt: false, Shift: false };
+  const mod = String(modifier || "");
+  if (Object.prototype.hasOwnProperty.call(out, mod)) out[mod] = true;
+  return out;
+}
+
+function keybindValueForModifierTab(rawKeybind) {
+  const spec = keybindModifierTabSpec();
+  const modifier = String(spec.modifier || "");
+  const normalized = normalizeKeyValue(rawKeybind || "");
+  if (!modifier) return normalized;
+  const parsed = parseKeybindValue(normalized);
+  if (!parsed.key) return "";
+  return buildKeybindValue(parsed.key, modifierMapForSingleModifier(modifier));
+}
+
+function keybindMatchesModifierTab(key, tabId = KEYBIND_MODIFIER_TAB_ID) {
+  const normalized = normalizeKeyValue(key || "");
+  if (!normalized) return true;
+  const spec = keybindModifierTabSpec(tabId);
+  const modifier = String(spec.modifier || "");
+  if (!modifier) return true;
+  const parsed = parseKeybindValue(normalized);
+  if (!parsed.key) return true;
+  return KEY_MODIFIER_ORDER.every((mod) => parsed.mods[mod] === (mod === modifier));
+}
+
 function assignKeybindForAction(actionId, rawKeybind) {
   if (!actionId || !WS.meta)
     return { ok: false, message: "Keybinds unavailable." };
@@ -10243,6 +10362,10 @@ function assignKeybindForAction(actionId, rawKeybind) {
 
 function renderKeybindsUi(scope = "pane") {
   if (!keybindsBodyEl) return;
+  KEYBIND_MODIFIER_TAB_ID = normalizeKeybindModifierTabId(
+    KEYBIND_MODIFIER_TAB_ID,
+  );
+  const activeModifierTab = keybindModifierTabSpec();
   const paneBindings =
     WS.meta && Array.isArray(WS.meta.keybinds)
       ? syncPaneKeybindBindingsWithCurrentActions(false)
@@ -10267,7 +10390,21 @@ function renderKeybindsUi(scope = "pane") {
     paneBySection.get(binding.section).push(binding);
   }
 
-  let html = ``;
+  let html = `
+        <div class="keybindSubtabs" role="tablist" aria-label="Control modifier layouts">
+          ${KEYBIND_MODIFIER_TAB_SPECS.map((spec) => {
+            const active = spec.id === activeModifierTab.id;
+            return `<button type="button" class="keybindSubtabBtn${active ? " active" : ""}" data-keybind-modifier-tab="${escapeHtml(spec.id)}" role="tab" aria-selected="${active ? "true" : "false"}">${escapeHtml(spec.label)}</button>`;
+          }).join("")}
+        </div>
+        <div class="keybindSubtabHint">
+          ${
+            activeModifierTab.modifier
+              ? `Setting a key from this tab saves it as ${escapeHtml(activeModifierTab.label)} + key. Assigned controls outside this layout are dimmed but still editable.`
+              : "All keybinds are shown exactly as assigned."
+          }
+        </div>
+      `;
 
   const renderBindingRows = (list) => {
     let out = "";
@@ -10278,17 +10415,23 @@ function renderKeybindsUi(scope = "pane") {
       const lockedLabel = isLocked
         ? keyLabel(lockedKeyForAction(binding.id))
         : "";
+      const modifierMismatch =
+        !!binding.key &&
+        !keybindMatchesModifierTab(binding.key, activeModifierTab.id);
+      const captureLabel = activeModifierTab.modifier
+        ? `Set ${activeModifierTab.label} bind`
+        : "Set keybind";
       const controlHtml = isLocked
         ? `<div class="label">${escapeHtml(lockedLabel)} (Locked)</div>`
         : `
                 <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">
                   <div class="label" style="min-width:120px;text-align:right;">${escapeHtml(currentLabel)}</div>
-                  <button type="button" data-bind-capture-id="${escapeHtml(binding.id)}">${isCapturing ? "Press keys..." : "Set keybind"}</button>
+                  <button type="button" data-bind-capture-id="${escapeHtml(binding.id)}">${isCapturing ? "Press keys..." : escapeHtml(captureLabel)}</button>
                   <button type="button" data-bind-clear-id="${escapeHtml(binding.id)}"${binding.key ? "" : " disabled"}>Clear</button>
                 </div>
               `;
       out += `
-            <div class="optRow">
+            <div class="optRow${modifierMismatch ? " keybindModifierMismatch" : ""}">
               <div class="optLeft">
                 <div class="optTitle">${escapeHtml(binding.label)}</div>
               </div>
@@ -10311,6 +10454,27 @@ function renderKeybindsUi(scope = "pane") {
   keybindsBodyEl.innerHTML = html;
   applyDescriptionVisibilityFromOptions();
 
+  const modifierTabButtons = keybindsBodyEl.querySelectorAll(
+    "button[data-keybind-modifier-tab]",
+  );
+  modifierTabButtons.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const nextTab = normalizeKeybindModifierTabId(
+        btn.getAttribute("data-keybind-modifier-tab") || "",
+      );
+      if (nextTab === KEYBIND_MODIFIER_TAB_ID) return;
+      KEYBIND_MODIFIER_TAB_ID = nextTab;
+      KEYBIND_CAPTURE_ACTION_ID = "";
+      renderKeybindsUi(scope);
+      const spec = keybindModifierTabSpec();
+      setKeybindsStatus(
+        spec.modifier ? `${spec.label} layout` : "All keybinds",
+      );
+    });
+  });
+
   const captureButtons = keybindsBodyEl.querySelectorAll(
     "button[data-bind-capture-id]",
   );
@@ -10321,9 +10485,12 @@ function renderKeybindsUi(scope = "pane") {
       const id = btn.getAttribute("data-bind-capture-id") || "";
       if (!id || isAnyLockedKeybindAction(id)) return;
       KEYBIND_CAPTURE_ACTION_ID = KEYBIND_CAPTURE_ACTION_ID === id ? "" : id;
+      const spec = keybindModifierTabSpec();
       setKeybindsStatus(
         KEYBIND_CAPTURE_ACTION_ID
-          ? "Press key combination to set bind."
+          ? spec.modifier
+            ? `Press a key to set ${spec.label} + key.`
+            : "Press key combination to set bind."
           : "Capture canceled.",
       );
       renderKeybindsUi(scope);
@@ -10387,7 +10554,7 @@ document.addEventListener(
       return;
     }
 
-    const key = keybindValueFromEvent(e);
+    const key = keybindValueForModifierTab(keybindValueFromEvent(e));
     if (!key) return;
 
     const actionId = KEYBIND_CAPTURE_ACTION_ID;
@@ -42044,6 +42211,8 @@ function handleExtrasKeybindAction(action) {
       );
       return true;
     }
+    case "cycleAppearancePresets":
+      return cycleAppearancePresetKeybindAction();
     case "cycleFolderSort": {
       WS.meta.dirSortMode = cycleDirSortMode(
         WS.meta.dirSortMode,
@@ -43497,6 +43666,7 @@ document.addEventListener("keydown", (e) => {
       action === "playPause" ||
       action === "muteToggle" ||
       action === "toggleAnimatedFilters" ||
+      action === "cycleAppearancePresets" ||
       isAppearancePresetKeybindAction(action);
     if (!allowedQuadAction) {
       e.preventDefault();
