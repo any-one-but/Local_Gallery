@@ -1299,7 +1299,26 @@ input[type="file"] {
   box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
 }
 
+:root[data-retro="on"] #keybindsBody .keybindSubtabs {
+  background: var(--retro-face);
+  border-top: 2px solid var(--retro-highlight);
+  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
+}
+
 :root[data-retro="on"] #menuTabs .menuTabBtn {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 5px 12px 4px;
+  min-height: 28px;
+  top: 0;
+}
+
+:root[data-retro="on"] #keybindsBody .keybindSubtabBtn {
   background: var(--retro-face);
   color: var(--retro-text);
   border: 2px solid;
@@ -1317,6 +1336,13 @@ input[type="file"] {
   color: var(--retro-text);
 }
 
+:root[data-retro="on"]
+  #keybindsBody
+  .keybindSubtabBtn:hover:not(:disabled):not(.active) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+}
+
 :root[data-retro="on"] #menuTabs .menuTabBtn.active {
   background: var(--retro-field);
   color: var(--retro-text);
@@ -1325,7 +1351,22 @@ input[type="file"] {
   box-shadow: none;
 }
 
+:root[data-retro="on"] #keybindsBody .keybindSubtabBtn.active {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow: none;
+}
+
 :root[data-retro="on"] #menuTabs .menuTabBtn.active:hover:not(:disabled) {
+  background: var(--retro-field);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"]
+  #keybindsBody
+  .keybindSubtabBtn.active:hover:not(:disabled) {
   background: var(--retro-field);
   color: var(--retro-text);
 }
@@ -5479,6 +5520,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 #keybindsBody .keybindSubtabBtn {
+  font-size: 12px;
   white-space: nowrap;
   border-radius: 0;
   border: 0;
@@ -5488,18 +5530,13 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
   padding: 8px 10px;
   flex: 1 1 auto;
+  min-height: 0;
 }
 
 #keybindsBody .keybindSubtabBtn.active {
   background: var(--color1-primary);
   border-bottom-color: var(--color1-primary);
   color: var(--color0-primary);
-}
-
-#keybindsBody .keybindSubtabHint {
-  margin: 8px 0 2px;
-  color: var(--color0-secondary);
-  font-size: 11px;
 }
 
 #keybindsBody .optRow.keybindModifierMismatch {

@@ -7302,9 +7302,13 @@ function keyLabel(key) {
 
 const KEYBIND_SECTIONS = [
   { id: "navigation", label: "Navigation" },
-  { id: "general", label: "General" },
+  { id: "panes", label: "Panels & Workspace" },
+  { id: "random", label: "Random" },
+  { id: "filters", label: "Filters & Sorting" },
+  { id: "visibility", label: "Folder Visibility" },
+  { id: "folderActions", label: "Folder Actions" },
   { id: "playback", label: "Playback" },
-  { id: "overlays", label: "Appearance" },
+  { id: "appearance", label: "Appearance & Presets" },
   { id: "filenames", label: "Filenames" },
 ];
 
@@ -7361,151 +7365,151 @@ const KEYBIND_ACTIONS = [
     id: "toggleDirectoriesPane",
     label: "Toggle list pane",
     hint: "Open or close the list pane sidebar.",
-    section: "general",
+    section: "panes",
   },
   {
     id: "toggleTitlePane",
     label: "Toggle title pane",
     hint: "Switch between the compact top bar and the stacked title pane.",
-    section: "general",
+    section: "panes",
   },
   {
     id: "toggleSettingsAndDirectoriesPanes",
     label: "Toggle settings + list panes",
     hint: "Toggle both panes; if only one is open, close the open one.",
-    section: "general",
+    section: "panes",
   },
   {
     id: "refreshWorkspace",
     label: "Refresh workspace",
     hint: "Refresh the loaded writable folder from disk.",
-    section: "general",
+    section: "panes",
   },
   {
     id: "prodPreviewPane",
     label: "Prod",
     hint: "Rebuild the preview pane without changing navigation state.",
-    section: "general",
+    section: "panes",
   },
   {
     id: "randomFirstFileJump",
     label: "Random first file jump",
     hint: "Jump to a random folder and focus its first matching file.",
-    section: "general",
+    section: "random",
   },
   {
     id: "randomFileJump",
     label: "Random file jump",
     hint: "Jump to a random folder and focus a random matching file.",
-    section: "general",
+    section: "random",
   },
   {
     id: "toggleRandomFileSort",
     label: "Toggle random file sort",
     hint: "Toggle random file ordering on or off.",
-    section: "general",
+    section: "random",
   },
   {
     id: "toggleRandomFolderSort",
     label: "Toggle random folder sort",
     hint: "Toggle random folder ordering on or off.",
-    section: "general",
+    section: "random",
   },
   {
     id: "cycleFilter",
     label: "Cycle filter",
     hint: "Cycle the content filter.",
-    section: "general",
+    section: "filters",
   },
   {
     id: "slideshow",
     label: "Slideshow mode",
     hint: "Toggle slideshow.",
-    section: "general",
+    section: "playback",
   },
   {
     id: "panic",
     label: "PANIC!",
     hint: "Toggle the decoy window mode.",
-    section: "general",
+    section: "panes",
   },
   {
     id: "cycleFolderSort",
     label: "Cycle folder sort",
     hint: "Cycle folder sort mode.",
-    section: "general",
+    section: "filters",
   },
   {
     id: "toggleShowHiddenFolder",
     label: "Toggle reveal hidden items",
     hint: "Toggle showing folders hidden by hidden tags in the current view.",
-    section: "general",
+    section: "visibility",
   },
   {
     id: "toggleShowTrashFolder",
     label: "Toggle trash folder",
     hint: "Toggle the Trash folder entry at root.",
-    section: "general",
+    section: "visibility",
   },
   {
     id: "toggleShowUntaggedFolder",
     label: "Toggle untagged folder",
     hint: "Toggle the Untagged folder tag entry.",
-    section: "general",
+    section: "visibility",
   },
   {
     id: "toggleShowStorageFolder",
     label: "Toggle storage folder",
     hint: "Toggle the Storage folder entry.",
-    section: "general",
+    section: "visibility",
   },
   {
     id: "toggleTortoiseMode",
     label: "Toggle tortoise/hare mode",
     hint: "Toggle the internal navigation speed setting between tortoise and hare.",
-    section: "general",
+    section: "panes",
   },
   {
     id: "toggleMuteMessages",
     label: "Mute Messages",
     hint: "Toggle status and notification messages on or off.",
-    section: "general",
+    section: "panes",
   },
   {
     id: "toggleQuickNavigation",
     label: "Toggle quick navigation",
     hint: "Automatically open the first file in preview-only files folders, then close back to the parent preview context.",
-    section: "general",
+    section: "navigation",
   },
   {
     id: "toggleTagFolderSpacerRow",
     label: "Toggle tag-folder spacer row",
     hint: "Toggle the blank row after tag, favorites, and album folders.",
-    section: "general",
+    section: "visibility",
   },
   {
     id: "togglePreviewMediaUsePaneBackground",
     label: "Toggle preview media pane background",
     hint: "Toggle whether preview media stays on the recessed pane surface instead of black.",
-    section: "general",
+    section: "panes",
   },
   {
     id: "favoriteSelection",
     label: "Favorite folder selection",
     hint: "Favorite or unfavorite selected/current folder(s).",
-    section: "general",
+    section: "folderActions",
   },
   {
     id: "tagSelection",
     label: "Tag folder selection",
     hint: "Start tag edit for selected/current folder(s).",
-    section: "general",
+    section: "folderActions",
   },
   {
     id: "renameSelection",
     label: "Rename selected item",
     hint: "Start renaming the selected item.",
-    section: "general",
+    section: "folderActions",
   },
   {
     id: "seekBack",
@@ -7535,19 +7539,19 @@ const KEYBIND_ACTIONS = [
     id: "toggleLightMode",
     label: "Toggle light mode",
     hint: "Toggle the Retro UI between dark and light variants.",
-    section: "overlays",
+    section: "appearance",
   },
   {
     id: "toggleAnimatedFilters",
     label: "Cycle animated filters",
     hint: "Cycle animated filters.",
-    section: "overlays",
+    section: "filters",
   },
   {
     id: "cycleAppearancePresets",
     label: "Cycle Presets",
     hint: "Cycle appearance presets alphabetically, with Default first.",
-    section: "overlays",
+    section: "appearance",
   },
   {
     id: "toggleHideFileExtensions",
@@ -7660,7 +7664,7 @@ function getAppearancePresetKeybindActions(presets = null) {
       id: appearancePresetKeybindActionId(presetId),
       label: `Toggle preset: ${presetName}`,
       hint: `Toggle appearance preset '${presetName}' on or off.`,
-      section: "overlays",
+      section: "appearance",
     });
   }
   return out;
@@ -10396,13 +10400,6 @@ function renderKeybindsUi(scope = "pane") {
             const active = spec.id === activeModifierTab.id;
             return `<button type="button" class="keybindSubtabBtn${active ? " active" : ""}" data-keybind-modifier-tab="${escapeHtml(spec.id)}" role="tab" aria-selected="${active ? "true" : "false"}">${escapeHtml(spec.label)}</button>`;
           }).join("")}
-        </div>
-        <div class="keybindSubtabHint">
-          ${
-            activeModifierTab.modifier
-              ? `Setting a key from this tab saves it as ${escapeHtml(activeModifierTab.label)} + key. Assigned controls outside this layout are dimmed but still editable.`
-              : "All keybinds are shown exactly as assigned."
-          }
         </div>
       `;
 
