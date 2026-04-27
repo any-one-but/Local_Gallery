@@ -17922,11 +17922,32 @@ function resolvePreviewFileBridgeReturnState(pendingPreviewSelectionKey = "") {
 
   const currentPreviewDir =
     WS.preview && WS.preview.kind === "file" ? WS.preview.dirNode || null : null;
-  if (currentPreviewDir && !currentPreviewDir._skipTagFilters) {
+  const pendingFileTarget = parsePreviewFileSelectionKey(pendingPreviewSelectionKey);
+  if (
+    currentPreviewDir &&
+    !currentPreviewDir._skipTagFilters &&
+    !expandedPreviewRestoreStateContainsFile(base, pendingFileTarget)
+  ) {
     retargetViewerCloseRestoreStateToDir(base, currentPreviewDir);
   }
 
   return base;
+}
+
+function expandedPreviewRestoreStateContainsFile(state, fileTarget) {
+  if (!expandedPreviewModeEnabled()) return false;
+  if (!state || !fileTarget || !fileTarget.fileId) return false;
+  const previewState = state.previewState || null;
+  if (!previewState || String(previewState.kind || "") !== "dir") return false;
+  const previewDir = WS.dirByPath.get(String(previewState.path || "")) || null;
+  if (!previewDir) return false;
+  const fileRec = WS.fileById.get(String(fileTarget.fileId || ""));
+  const fileDirPath = String(fileTarget.dirPath || fileRec?.dirPath || "");
+  if (!fileDirPath) return false;
+  if (fileDirPath === String(previewDir.path || "")) return true;
+  const fileDir = WS.dirByPath.get(fileDirPath) || null;
+  if (!fileDir || fileDir.parent !== previewDir) return false;
+  return shouldExpandPreviewFolderEntry({ kind: "dir", node: fileDir });
 }
 
 function restorePreviewFolderBridgeState() {
@@ -24884,7 +24905,7 @@ function applyPendingPreviewSelectionForCurrentTarget() {
   if (!WS.view) return false;
   const nextKey = String(WS.view.pendingPreviewSelectionKey || "");
   if (!nextKey) return false;
-  if (nextKey.startsWith("file:")) {
+  if (parsePreviewFileSelectionKey(nextKey)) {
     revealPendingPreviewSelectionInVirtualGrid(nextKey);
   }
   const card = findPreviewSelectableCardByKey(nextKey);
@@ -24963,6 +24984,32 @@ function cssEscapeValue(value) {
   return raw.replace(/["\\]/g, "\\$&");
 }
 
+function makeExpandedPreviewFileSelectionKey(fileId, dirPath) {
+  const id = String(fileId || "");
+  const path = String(dirPath || "");
+  if (!id) return "";
+  return `expanded-file:${encodeURIComponent(path)}:${encodeURIComponent(id)}`;
+}
+
+function parsePreviewFileSelectionKey(key) {
+  const raw = String(key || "");
+  if (raw.startsWith("file:")) {
+    const fileId = raw.slice(5);
+    return fileId ? { fileId, dirPath: "" } : null;
+  }
+  if (!raw.startsWith("expanded-file:")) return null;
+  const rest = raw.slice("expanded-file:".length);
+  const split = rest.indexOf(":");
+  if (split < 0) return null;
+  try {
+    const dirPath = decodeURIComponent(rest.slice(0, split));
+    const fileId = decodeURIComponent(rest.slice(split + 1));
+    return fileId ? { fileId, dirPath } : null;
+  } catch {
+    return null;
+  }
+}
+
 function findPreviewSelectableCardByKey(key) {
   const targetKey = String(key || "");
   if (!targetKey || !previewBodyEl) return null;
@@ -24978,13 +25025,21 @@ function findPreviewSelectableCardByKey(key) {
       );
     }
   }
-  if (targetKey.startsWith("file:")) {
-    const id = targetKey.slice(5);
-    if (id) {
-      return previewBodyEl.querySelector(
-        `[data-preview-item-kind="file"][data-file-id="${cssEscapeValue(id)}"]`,
-      );
+  const fileTarget = parsePreviewFileSelectionKey(targetKey);
+  if (fileTarget) {
+    const candidates = Array.from(
+      previewBodyEl.querySelectorAll(
+        `[data-preview-item-kind="file"][data-file-id="${cssEscapeValue(fileTarget.fileId)}"]`,
+      ),
+    );
+    if (fileTarget.dirPath) {
+      const match = candidates.find((card) => {
+        const section = expandedPreviewSectionForCard(card);
+        return String(section?.dataset?.path || "") === fileTarget.dirPath;
+      });
+      if (match) return match;
     }
+    return candidates[0] || null;
   }
   return null;
 }
@@ -25028,6 +25083,162 @@ function previewDirPathForSelectionKey(key) {
     previewDirPathForCard(card) ||
     (targetKey.startsWith("dir:") ? targetKey.slice(4) : "")
   );
+}
+
+function capturePreviewModeToggleSelection() {
+  const selectedKey = String((WS.view && WS.view.previewSelectedKey) || "");
+  const card = findPreviewSelectableCardByKey(selectedKey);
+  const previewWasActive = !!(WS.view && WS.view.activePane === "preview");
+  if (!card) {
+    const fileTarget = parsePreviewFileSelectionKey(selectedKey);
+    if (fileTarget) {
+      return {
+        kind: "file",
+        fileId: fileTarget.fileId,
+        dirPath: fileTarget.dirPath,
+        selectedKey,
+        previewWasActive,
+      };
+    }
+    if (selectedKey.startsWith("dir:")) {
+      return {
+        kind: "dir",
+        path: selectedKey.slice(4),
+        selectedKey,
+        previewWasActive,
+      };
+    }
+    return { kind: "key", selectedKey, previewWasActive };
+  }
+
+  const kind = String(card.dataset.previewItemKind || "");
+  const baseKey = String(
+    card.dataset.previewBaseItemKey || card.dataset.previewItemKey || "",
+  );
+  const section = expandedPreviewSectionForCard(card);
+  const sectionPath = String(section?.dataset?.path || "");
+  if (isExpandedPreviewHeaderCard(card)) {
+    return {
+      kind: "dir",
+      path: previewDirPathForCard(card),
+      selectedKey,
+      previewWasActive,
+      fromExpandedHeader: true,
+    };
+  }
+  if (expandedPreviewModeEnabled() && sectionPath) {
+    return {
+      kind: "expanded-content",
+      sectionPath,
+      selectedKey,
+      baseKey,
+      previewWasActive,
+    };
+  }
+  if (kind === "dir") {
+    return {
+      kind: "dir",
+      path: previewDirPathForCard(card),
+      selectedKey,
+      baseKey,
+      previewWasActive,
+    };
+  }
+  if (kind === "file") {
+    const fileId = previewFileIdForCard(card);
+    const rec = fileId ? WS.fileById.get(fileId) : null;
+    return {
+      kind: "file",
+      fileId,
+      dirPath: String(rec?.dirPath || ""),
+      selectedKey,
+      baseKey,
+      previewWasActive,
+    };
+  }
+  return {
+    kind: "key",
+    selectedKey,
+    baseKey,
+    previewWasActive,
+  };
+}
+
+function previewModeToggleTargetFromSelection(selection, nextMode) {
+  if (!selection || typeof selection !== "object") return null;
+  const mode = String(nextMode || "");
+  const previewWasActive = !!selection.previewWasActive;
+  if (mode === "expanded") {
+    if (selection.kind === "dir" && selection.path) {
+      const dirNode = WS.dirByPath.get(String(selection.path || "")) || null;
+      const useHeader =
+        dirNode && shouldExpandPreviewFolderEntry({ kind: "dir", node: dirNode });
+      return {
+        key: useHeader
+          ? `expanded-dir:${String(selection.path || "")}`
+          : `dir:${String(selection.path || "")}`,
+        scrollHeaderToTop: !!useHeader,
+        previewWasActive,
+      };
+    }
+    if (selection.kind === "file" && selection.fileId) {
+      return {
+        key: makeExpandedPreviewFileSelectionKey(
+          selection.fileId,
+          selection.dirPath,
+        ),
+        previewWasActive,
+      };
+    }
+    return {
+      key: String(selection.baseKey || selection.selectedKey || ""),
+      previewWasActive,
+    };
+  }
+
+  if (selection.kind === "expanded-content" && selection.sectionPath) {
+    return {
+      key: `dir:${String(selection.sectionPath || "")}`,
+      previewWasActive,
+    };
+  }
+  if (selection.kind === "dir" && selection.path) {
+    return {
+      key: `dir:${String(selection.path || "")}`,
+      previewWasActive,
+    };
+  }
+  if (selection.kind === "file" && selection.fileId) {
+    return {
+      key: `file:${String(selection.fileId || "")}`,
+      previewWasActive,
+    };
+  }
+  return {
+    key: String(selection.baseKey || selection.selectedKey || ""),
+    previewWasActive,
+  };
+}
+
+function restorePreviewSelectionAfterModeToggle(target) {
+  const key = String(target?.key || "");
+  if (!key || !WS.view) return false;
+  if (parsePreviewFileSelectionKey(key)) {
+    revealPendingPreviewSelectionInVirtualGrid(key);
+  }
+  const card = findPreviewSelectableCardByKey(key);
+  if (!card) {
+    WS.view.pendingPreviewSelectionKey = key;
+    return false;
+  }
+  WS.view.pendingPreviewSelectionKey = "";
+  setPreviewSelectionCard(card, {
+    activate: !!target.previewWasActive,
+    skipReveal: true,
+  });
+  if (target.scrollHeaderToTop) scrollPreviewCardToTop(card);
+  else revealPreviewCard(card);
+  return true;
 }
 
 function findFirstVisiblePreviewCard() {
@@ -25304,16 +25515,24 @@ function uniquifyExpandedSectionContentSelectionKeys(section, sectionPath) {
   const path = String(sectionPath || section.dataset?.path || "");
   if (!path) return;
   const cards = Array.from(section.querySelectorAll("[data-preview-item-key]"));
+  const activeKey = String((WS.view && WS.view.previewSelectedKey) || "");
+  const anchorKey = String((WS.view && WS.view.previewSelectAnchorKey) || "");
   let index = 0;
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
     if (!card || isExpandedPreviewHeaderCard(card)) continue;
+    const oldKey = String(card.dataset.previewItemKey || "");
     const baseKey = String(
-      card.dataset.previewBaseItemKey || card.dataset.previewItemKey || "",
+      card.dataset.previewBaseItemKey || oldKey || "",
     );
     if (!baseKey) continue;
     card.dataset.previewBaseItemKey = baseKey;
-    card.dataset.previewItemKey = `expanded-content:${path}:${index}:${baseKey}`;
+    const nextKey = `expanded-content:${path}:${index}:${baseKey}`;
+    card.dataset.previewItemKey = nextKey;
+    if (WS.view && activeKey && (activeKey === oldKey || activeKey === baseKey))
+      WS.view.previewSelectedKey = nextKey;
+    if (WS.view && anchorKey && (anchorKey === oldKey || anchorKey === baseKey))
+      WS.view.previewSelectAnchorKey = nextKey;
     index++;
   }
 }
@@ -25327,6 +25546,57 @@ function moveExpandedHeaderSelectionDown(headerCard) {
   const target = remembered || cards[0] || null;
   if (!target) return false;
   return setPreviewSelectionCard(target, { activate: true });
+}
+
+function previewThumbnailGridForCard(card) {
+  if (!card || !card.closest) return null;
+  const grid = card.closest(".gridFolders, .gridFiles");
+  return grid && previewBodyEl && previewBodyEl.contains(grid) ? grid : null;
+}
+
+function previewRectsShareNavigationRow(a, b) {
+  if (!a || !b) return false;
+  const overlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  const minHeight = Math.max(1, Math.min(a.height || 0, b.height || 0));
+  if (overlap >= minHeight * 0.45) return true;
+  const acy = a.top + (a.height || 0) * 0.5;
+  const bcy = b.top + (b.height || 0) * 0.5;
+  return Math.abs(acy - bcy) <= minHeight * 0.45;
+}
+
+function moveExpandedPreviewSelectionLaterally(direction, selectedCard) {
+  if (!expandedPreviewModeEnabled()) return false;
+  if (direction !== "left" && direction !== "right") return false;
+  if (isExpandedPreviewHeaderCard(selectedCard)) return true;
+  const grid = previewThumbnailGridForCard(selectedCard);
+  if (!grid) return true;
+  const selectedRect = getPreviewCardRelativeRect(selectedCard);
+  if (!selectedRect) return true;
+  const selectedCx = selectedRect.left + selectedRect.width * 0.5;
+  const selectedCy = selectedRect.top + selectedRect.height * 0.5;
+  const cards = getPreviewSelectableCards();
+  let best = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    if (!card || card === selectedCard) continue;
+    if (isExpandedPreviewHeaderCard(card)) continue;
+    if (previewThumbnailGridForCard(card) !== grid) continue;
+    const rect = getPreviewCardRelativeRect(card);
+    if (!rect || !previewRectsShareNavigationRow(selectedRect, rect)) continue;
+    const cx = rect.left + rect.width * 0.5;
+    const cy = rect.top + rect.height * 0.5;
+    const dx = cx - selectedCx;
+    if (direction === "left" && dx >= -2) continue;
+    if (direction === "right" && dx <= 2) continue;
+    const score = Math.abs(dx) * 1000 + Math.abs(cy - selectedCy);
+    if (score < bestScore) {
+      bestScore = score;
+      best = card;
+    }
+  }
+  if (!best) return true;
+  return setPreviewSelectionCard(best, { activate: true });
 }
 
 function previewBodyTopInset() {
@@ -25390,6 +25660,12 @@ function movePreviewSelectionByDirection(direction) {
   if (!metrics.length) return false;
   const activeKey = String((WS.view && WS.view.previewSelectedKey) || "");
   const selectedCard = findSelectedPreviewCard();
+  if (
+    (direction === "left" || direction === "right") &&
+    moveExpandedPreviewSelectionLaterally(direction, selectedCard)
+  ) {
+    return true;
+  }
   if (direction === "down" && isExpandedPreviewHeaderCard(selectedCard)) {
     if (moveExpandedHeaderSelectionDown(selectedCard)) return true;
   }
@@ -39491,6 +39767,8 @@ function updateVirtualPreviewFilesGrid(state, force = false) {
   }
   state.grid.appendChild(frag);
   appendVirtualGridSpacer(state.grid, windowInfo.bottomSpacerHeight);
+  const section = expandedPreviewSectionForCard(state.grid);
+  if (section) uniquifyExpandedSectionContentSelectionKeys(section);
   applyPendingPreviewSelectionForCurrentTarget();
   ensurePreviewSelectionForCurrentTarget(false);
   state.animate = false;
@@ -39515,12 +39793,18 @@ function schedulePreviewVirtualGridRefresh() {
 
 function revealPendingPreviewSelectionInVirtualGrid(selectionKey) {
   const key = String(selectionKey || "");
-  if (!key.startsWith("file:") || !previewBodyEl) return false;
-  const fileId = key.slice(5);
+  const fileTarget = parsePreviewFileSelectionKey(key);
+  if (!fileTarget || !previewBodyEl) return false;
+  const fileId = fileTarget.fileId;
   if (!fileId) return false;
   for (let i = 0; i < ACTIVE_PREVIEW_FILE_VIRTUALIZERS.length; i++) {
     const state = ACTIVE_PREVIEW_FILE_VIRTUALIZERS[i];
     if (!state || !Array.isArray(state.ids) || !state.grid) continue;
+    if (
+      fileTarget.dirPath &&
+      String(state.dirNode?.path || "") !== fileTarget.dirPath
+    )
+      continue;
     const itemIndex = state.ids.indexOf(fileId);
     if (itemIndex < 0) continue;
     const windowInfo = computePreviewFilesVirtualWindow(state);
@@ -39549,8 +39833,9 @@ function preferredImmediatePreviewRenderCount(ids, fallbackCount) {
   const list = Array.isArray(ids) ? ids : [];
   if (!list.length) return baseCount;
   const pendingKey = String(WS.view?.pendingPreviewSelectionKey || "");
-  if (!pendingKey.startsWith("file:")) return baseCount;
-  const pendingId = pendingKey.slice(5);
+  const pendingTarget = parsePreviewFileSelectionKey(pendingKey);
+  if (!pendingTarget) return baseCount;
+  const pendingId = pendingTarget.fileId;
   if (!pendingId) return baseCount;
   const pendingIndex = list.indexOf(pendingId);
   if (pendingIndex < 0) return baseCount;
@@ -39637,6 +39922,8 @@ function renderFilesGrid(
     }
     if (frag.childNodes.length) {
       grid.appendChild(frag);
+      const section = expandedPreviewSectionForCard(grid);
+      if (section) uniquifyExpandedSectionContentSelectionKeys(section);
       applyPendingPreviewSelectionForCurrentTarget();
       ensurePreviewSelectionForCurrentTarget(false);
     }
@@ -42975,9 +43262,20 @@ function handleExtrasKeybindAction(action) {
     }
     case "toggleExpandedMode": {
       const nextMode = expandedPreviewModeEnabled() ? "grid" : "expanded";
+      const priorSelection = capturePreviewModeToggleSelection();
+      const restoreTarget = previewModeToggleTargetFromSelection(
+        priorSelection,
+        nextMode,
+      );
+      if (restoreTarget?.key && parsePreviewFileSelectionKey(restoreTarget.key))
+        WS.view.pendingPreviewSelectionKey = restoreTarget.key;
       setOptionValue("previewMode", nextMode);
       refreshLiveSettingsPaneFromKeyboardAction();
       renderPreviewPane(false, true);
+      if (!restorePreviewSelectionAfterModeToggle(restoreTarget)) {
+        ensurePreviewSelectionForCurrentTarget(false);
+        revealPreviewCard();
+      }
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
       showStatusMessage(`Expanded mode: ${nextMode === "expanded" ? "On" : "Off"}`, "pane-toggles");
@@ -43970,30 +44268,26 @@ async function closeFilePreviewToFolder() {
     await waitForNextPaint();
   }
   const currentItem = viewerItems[viewerIndex] || null;
+  const closedFileId =
+    currentItem && !currentItem.isFolder && currentItem.id
+      ? String(currentItem.id || "")
+      : WS.preview.fileId
+        ? String(WS.preview.fileId || "")
+        : "";
+  const closedFileRec = closedFileId ? WS.fileById.get(closedFileId) : null;
+  const closedFileDirPath = String(
+    closedFileRec?.dirPath || viewerDirNode?.path || WS.preview.dirNode?.path || "",
+  );
+  const closedFilePreviewSelectionKey = closedFileId
+    ? makeExpandedPreviewFileSelectionKey(closedFileId, closedFileDirPath)
+    : "";
   const useQuickNavigation = !!WS.view.previewQuickNavigationActive;
   const useDirectorySelectionBridge = !!WS.view.previewFileSelectionBridgeActive;
   const bridgeReturnState = useDirectorySelectionBridge
-    ? resolvePreviewFileBridgeReturnState(
-        currentItem && !currentItem.isFolder && currentItem.id
-          ? `file:${String(currentItem.id || "")}`
-          : WS.preview.fileId
-            ? `file:${String(WS.preview.fileId || "")}`
-            : "",
-      )
+    ? resolvePreviewFileBridgeReturnState(closedFilePreviewSelectionKey)
     : null;
-  let bridgePreviewSelectionKey = "";
-  if (useDirectorySelectionBridge) {
-    const selectedEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
-    if (selectedEntry && selectedEntry.kind === "file" && selectedEntry.id) {
-      bridgePreviewSelectionKey = `file:${String(selectedEntry.id || "")}`;
-    }
-  }
-  if (bridgePreviewSelectionKey) {
-    WS.view.pendingPreviewSelectionKey = bridgePreviewSelectionKey;
-  } else if (currentItem && !currentItem.isFolder && currentItem.id) {
-    WS.view.pendingPreviewSelectionKey = `file:${String(currentItem.id || "")}`;
-  } else if (WS.preview.fileId) {
-    WS.view.pendingPreviewSelectionKey = `file:${String(WS.preview.fileId || "")}`;
+  if (closedFilePreviewSelectionKey) {
+    WS.view.pendingPreviewSelectionKey = closedFilePreviewSelectionKey;
   }
   const returnToPreviewPane = !!WS.view.returnToPreviewPaneAfterFileClose;
   WS.view.returnToPreviewPaneAfterFileClose = false;
