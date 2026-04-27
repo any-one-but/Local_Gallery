@@ -3587,36 +3587,66 @@ img[data-rotate-key].rotatingThumbFade {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: calc(var(--preview-gutter) * 2);
 }
 
 .expandedBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 10px;
+  justify-content: flex-start;
+  min-height: 42px;
+  padding: 8px 12px;
   border-radius: 3px;
   border: 1px solid var(--color1-tertiary);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--color1-secondary);
+  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.expandedBar.expandedStaticBar {
+  cursor: default;
 }
 
 .expandedBar .name {
-  font-size: 12px;
+  font-size: calc(var(--thumb-title-preview-font) + 2px);
+  line-height: 1.15;
   font-weight: 800;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.expandedBar .meta {
-  font-size: 11px;
-  color: var(--color0-secondary);
-  white-space: nowrap;
+.expandedBar.previewSelected {
+  position: relative;
+  z-index: 2;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
 }
 
 .previewSectionSpacer {
+  flex: 0 0 auto;
   height: 10px;
+  min-height: 10px;
+}
+
+.previewSectionSpacer.expandedHeaderSpacer {
+  height: var(--preview-gutter);
+  min-height: var(--preview-gutter);
+}
+
+.previewSectionSpacer.expandedTagHeaderSpacerWide {
+  height: calc(
+    (var(--folder-grid-min) * var(--thumb-scale-folder)) +
+      var(--preview-gutter)
+  );
+  min-height: calc(
+    (var(--folder-grid-min) * var(--thumb-scale-folder)) +
+      var(--preview-gutter)
+  );
 }
 
 .gridFolders {
@@ -4831,6 +4861,7 @@ img[data-rotate-key].rotatingThumbFade {
   .gridFolders
   .previewTagFolderCard.previewSelected
   .dirSquareCard,
+:root[data-retro="on"] .expandedBar.previewSelected,
 :root[data-retro="on"] .gridFiles .fileCard.previewSelected,
 :root[data-retro="on"]
   .gridFolders
@@ -4845,6 +4876,7 @@ img[data-rotate-key].rotatingThumbFade {
   .gridFolders
   .previewTagFolderCard.bulkSelected
   .dirSquareCard,
+:root[data-retro="on"] .expandedBar.bulkSelected,
 :root[data-retro="on"] .gridFiles .fileCard.bulkSelected,
 :root[data-retro="on"] .gridFolders .folderCard.folderThumbCard.bulkSelected {
   border-color: var(--retro-select-bg);
@@ -4857,6 +4889,7 @@ img[data-rotate-key].rotatingThumbFade {
   .gridFolders
   .previewTagFolderCard.previewSelected.bulkSelected
   .dirSquareCard,
+:root[data-retro="on"] .expandedBar.previewSelected.bulkSelected,
 :root[data-retro="on"] .gridFiles .fileCard.previewSelected.bulkSelected,
 :root[data-retro="on"]
   .gridFolders
@@ -5569,6 +5602,23 @@ img[data-rotate-key].rotatingThumbFade {
   white-space: nowrap;
 }
 
+#keybindsBody .optTitleLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+#keybindsBody .optTitleLine .optTitle {
+  flex: 0 1 auto;
+}
+
+#keybindsBody .keybindActionInline {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
 #optionsBody select,
 #optionsBody input[type="checkbox"],
 #keybindsBody select {
@@ -5581,19 +5631,22 @@ img[data-rotate-key].rotatingThumbFade {
   gap: 8px;
 }
 
-#optionsBody .optRight.optSelectWrap {
+#optionsBody .optRight.optSelectWrap,
+#keybindsBody .optRight.optSelectWrap {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   min-width: 0;
 }
 
-#optionsBody .optSelect {
+#optionsBody .optSelect,
+#keybindsBody .optSelect {
   min-width: 0;
   justify-content: flex-end;
 }
 
-#optionsBody .optSelectBtn {
+#optionsBody .optSelectBtn,
+#keybindsBody .optSelectBtn {
   width: auto;
   min-width: 0;
   max-width: min(320px, calc(100vw - 96px));
@@ -5605,7 +5658,12 @@ img[data-rotate-key].rotatingThumbFade {
   line-height: 1;
 }
 
-#optionsBody .optSelectBtnLabel {
+#keybindsBody .keybindActionSelectRoot .optSelectBtn {
+  max-width: 170px;
+}
+
+#optionsBody .optSelectBtnLabel,
+#keybindsBody .optSelectBtnLabel {
   min-width: 0;
   flex: 1 1 auto;
   text-align: left;
@@ -5614,19 +5672,22 @@ img[data-rotate-key].rotatingThumbFade {
   white-space: nowrap;
 }
 
-#optionsBody .optSelectChevron {
+#optionsBody .optSelectChevron,
+#keybindsBody .optSelectChevron {
   flex: 0 0 auto;
   font-size: 10px;
   opacity: 0.8;
 }
 
-#optionsBody .optSelectMenu {
+#optionsBody .optSelectMenu,
+#keybindsBody .optSelectMenu {
   width: max-content;
   min-width: 0;
   max-width: min(320px, calc(100vw - 64px));
 }
 
-#optionsBody .optSelectMenu button.current {
+#optionsBody .optSelectMenu button.current,
+#keybindsBody .optSelectMenu button.current {
   background: var(--color1-secondary);
   border-color: var(--color1-tertiary);
 }
