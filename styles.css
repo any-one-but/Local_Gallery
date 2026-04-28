@@ -5865,6 +5865,22 @@ img[data-rotate-key].rotatingThumbFade {
   padding: 5px 8px;
 }
 
+#optionsBody .optRight.optActions button.active {
+  background: var(--color0-secondary);
+  color: var(--color1-primary);
+  border-color: var(--color0-tertirary);
+}
+
+:root[data-retro="on"] #optionsBody .optRight.optActions button.active {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-select-shadow-dark),
+    inset -1px -1px 0 var(--retro-select-shadow-light);
+}
+
 #optionsBody .optRight.optActions input[type="text"] {
   background: var(--color1-primary);
   color: var(--color0-primary);

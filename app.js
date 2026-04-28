@@ -662,6 +662,7 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Hidden & special views", id: "quick-navigation", label: "Quick navigation toggle", hint: "Quick navigation on/off messages.", optionKey: "notifyQuickNavigation" }),
 
   Object.freeze({ section: "Cycling actions", id: "cycle-filter", label: "Content filter cycle", hint: "The action that cycles All / Images / Videos / GIFs.", optionKey: "notifyCycleFilter" }),
+  Object.freeze({ section: "Cycling actions", id: "cycle-aspect-ratio-filter", label: "Aspect ratio filter cycle", hint: "The action that cycles All / Portrait / Square / Landscape.", optionKey: "notifyCycleAspectRatioFilter" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-animated-filters", label: "Animated filter cycle", hint: "The action that cycles animated filters off/on/videos-only.", optionKey: "notifyCycleAnimatedFilters" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-folder-sort", label: "Folder sort cycle", hint: "The action that cycles folder sort modes.", optionKey: "notifyCycleFolderSort" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-video-end", label: "Video-end behavior cycle", hint: "The action that cycles what videos do when they end.", optionKey: "notifyCycleVideoEnd" }),
@@ -761,6 +762,9 @@ function defaultOptions() {
     showHiddenFolder: false,
     showTrashFolder: true,
     showStorageFolder: true,
+    storePortraitAspectRatioFiles: false,
+    storeSquareAspectRatioFiles: false,
+    storeLandscapeAspectRatioFiles: false,
     tortoiseMode: true,
     muteMessages: false,
     quickNavigation: false,
@@ -1174,6 +1178,18 @@ function normalizeOptions(o) {
       typeof src.showStorageFolder === "boolean"
         ? src.showStorageFolder
         : d.showStorageFolder,
+    storePortraitAspectRatioFiles:
+      typeof src.storePortraitAspectRatioFiles === "boolean"
+        ? src.storePortraitAspectRatioFiles
+        : d.storePortraitAspectRatioFiles,
+    storeSquareAspectRatioFiles:
+      typeof src.storeSquareAspectRatioFiles === "boolean"
+        ? src.storeSquareAspectRatioFiles
+        : d.storeSquareAspectRatioFiles,
+    storeLandscapeAspectRatioFiles:
+      typeof src.storeLandscapeAspectRatioFiles === "boolean"
+        ? src.storeLandscapeAspectRatioFiles
+        : d.storeLandscapeAspectRatioFiles,
     tortoiseMode:
       typeof src.tortoiseMode === "boolean" ? src.tortoiseMode : d.tortoiseMode,
     muteMessages:
@@ -1563,6 +1579,7 @@ const META_DOC_IDS = Object.freeze({
   tagAlbums: "tagAlbums",
   trash: "trash",
   thumbnails: "thumbnails",
+  aspectRatios: "aspectRatios",
   appearancePresets: "appearancePresets",
   appearanceAssignments: "appearanceAssignments",
   prefGeneral: "prefGeneral",
@@ -1582,6 +1599,7 @@ const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.tagAlbums]: "tag-albums.log.json",
   [META_DOC_IDS.trash]: "trash.log.json",
   [META_DOC_IDS.thumbnails]: "custom-thumbnails.log.json",
+  [META_DOC_IDS.aspectRatios]: "aspect-ratios.log.json",
   [META_DOC_IDS.appearancePresets]: "appearance-presets.log.json",
   [META_DOC_IDS.appearanceAssignments]: "appearance-assignments.log.json",
   [META_DOC_IDS.prefGeneral]: "preferences.general.log.json",
@@ -1601,6 +1619,7 @@ const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.tagAlbums]: "LocalGalleryTagAlbumsV2",
   [META_DOC_IDS.trash]: "LocalGalleryTrashV1",
   [META_DOC_IDS.thumbnails]: "LocalGalleryThumbnailsV2",
+  [META_DOC_IDS.aspectRatios]: "LocalGalleryAspectRatiosV1",
   [META_DOC_IDS.appearancePresets]: "LocalGalleryAppearancePresetsV2",
   [META_DOC_IDS.appearanceAssignments]: "LocalGalleryAppearanceAssignmentsV2",
   [META_DOC_IDS.prefGeneral]: "LocalGalleryPreferencesGeneralV2",
@@ -1620,6 +1639,7 @@ const META_ALL_DOC_IDS = Object.freeze([
   META_DOC_IDS.tagAlbums,
   META_DOC_IDS.trash,
   META_DOC_IDS.thumbnails,
+  META_DOC_IDS.aspectRatios,
   META_DOC_IDS.appearancePresets,
   META_DOC_IDS.appearanceAssignments,
   META_DOC_IDS.prefGeneral,
@@ -6286,6 +6306,7 @@ function applyDefaultViewFromOptions() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   if (!opt) return;
   WS.view.filterMode = "all";
+  WS.view.aspectRatioFilterMode = "all";
   WS.view.randomMode = false;
   WS.view.randomFolderMode = false;
   WS.view.randomCache = new Map();
@@ -7422,6 +7443,12 @@ const KEYBIND_ACTIONS = [
     section: "filters",
   },
   {
+    id: "cycleAspectRatioFilter",
+    label: "Cycle aspect ratio filter",
+    hint: "Cycle the aspect ratio filter.",
+    section: "filters",
+  },
+  {
     id: "slideshow",
     label: "Slideshow mode",
     hint: "Toggle slideshow.",
@@ -7723,6 +7750,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleRandomFileSort: "",
   toggleRandomFolderSort: "Cmd+r",
   cycleFilter: "f",
+  cycleAspectRatioFilter: "",
   slideshow: "v",
   panic: "g",
   cycleFolderSort: "t",
@@ -7992,6 +8020,7 @@ const WS = {
     tagAppearancePresetIds: new Map(),
     fileThumbCrop: new Map(),
     videoThumbTime: new Map(),
+    aspectRatios: new Map(),
     tagThumbModes: new Map(),
     tagThumbPresets: new Map(),
     pendingTagsByPath: new Map(),
@@ -8015,6 +8044,7 @@ const WS = {
 
   view: {
     filterMode: "all",
+    aspectRatioFilterMode: "all",
     randomMode: false,
     randomFolderMode: false,
     loopWithinDir: false,
@@ -8135,23 +8165,26 @@ const WS = {
        }
     */
 
+function revokeRecordObjectURLs(it) {
+  if (!it) return;
+  try {
+    if (it.url) URL.revokeObjectURL(it.url);
+  } catch {}
+  try {
+    if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl);
+  } catch {}
+  try {
+    if (it.videoThumbUrl) URL.revokeObjectURL(it.videoThumbUrl);
+  } catch {}
+  it.url = null;
+  it.thumbUrl = null;
+  it.videoThumbUrl = null;
+  it.thumbMode = null;
+  it.videoThumbMode = null;
+}
+
 function revokeAllObjectURLs() {
-  for (const it of WS.fileById.values()) {
-    try {
-      if (it.url) URL.revokeObjectURL(it.url);
-    } catch {}
-    try {
-      if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl);
-    } catch {}
-    try {
-      if (it.videoThumbUrl) URL.revokeObjectURL(it.videoThumbUrl);
-    } catch {}
-    it.url = null;
-    it.thumbUrl = null;
-    it.videoThumbUrl = null;
-    it.thumbMode = null;
-    it.videoThumbMode = null;
-  }
+  for (const it of WS.fileById.values()) revokeRecordObjectURLs(it);
 }
 
 function resetWorkspace() {
@@ -8206,6 +8239,7 @@ function resetWorkspace() {
   WS.meta.tagAppearancePresetIds.clear();
   WS.meta.fileThumbCrop.clear();
   WS.meta.videoThumbTime.clear();
+  WS.meta.aspectRatios.clear();
   WS.meta.tagThumbModes.clear();
   WS.meta.tagThumbPresets.clear();
   WS.meta.pendingTagsByPath.clear();
@@ -8905,6 +8939,7 @@ function inferNotificationSourceId(text, sourceContext = "") {
   const hasMsg = (...parts) => parts.some((part) => part && msg.includes(part));
   const hasCtx = (...parts) => parts.some((part) => part && ctx.includes(part));
 
+  if (hasMsg("aspect ratio:")) return "cycle-aspect-ratio-filter";
   if (hasMsg("filter:")) return "cycle-filter";
   if (hasMsg("animated filters:")) return "cycle-animated-filters";
   if (hasMsg("folder sort:")) return "cycle-folder-sort";
@@ -8917,6 +8952,7 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasMsg("list pane:", "title layout:", "settings + list panes:", "preview media uses pane background:"))
     return "pane-toggles";
 
+  if (hasCtx("cycleaspectratiofiltermode", "setaspectratiofiltermode")) return "cycle-aspect-ratio-filter";
   if (hasCtx("cyclefiltermode")) return "cycle-filter";
   if (hasCtx("cyclefoldersortmode", "cycledirsortmode")) return "cycle-folder-sort";
   if (hasCtx("toggleanimatedfilters")) return "cycle-animated-filters";
@@ -9214,6 +9250,13 @@ function updateModePill() {
     );
   } else if (filterMode !== "all") {
     parts.push(`Content filter: ${filterLabel}`);
+  }
+
+  const aspectRatioFilterMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  if (aspectRatioFilterMode !== "all") {
+    parts.push(`Aspect ratio: ${labelForAspectRatioFilterMode(aspectRatioFilterMode)}`);
   }
 
   const dirSortMode = normalizeDirSortMode(WS.meta.dirSortMode);
@@ -10470,6 +10513,17 @@ function keybindCycleActionSpec(actionId) {
       },
     };
   }
+  if (actionId === "cycleAspectRatioFilter") {
+    return {
+      value: normalizeAspectRatioFilterMode(
+        WS.view && WS.view.aspectRatioFilterMode,
+      ),
+      items: ASPECT_RATIO_FILTER_CYCLE,
+      set(value) {
+        return setAspectRatioFilterMode(value);
+      },
+    };
+  }
   if (actionId === "cycleFolderSort") {
     const items = dirSortModeOptions(scoreInterfaceEnabled());
     return {
@@ -11696,6 +11750,15 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 ${makeCheckRow("Light Mode", "Switch between the light and dark Retro UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${scoreUiVisible ? makeSelectRow("Folder sort", "Sort folders by name, score, efficiency, size, or item count.", "opt_dirSortMode", normalizeDirSortMode(WS.meta.dirSortMode), dirSortModes) : ``}
 ${scoreUiVisible ? makeCheckRow("Include hidden items in Stats", "When enabled, the Stats tab includes hidden folders and files in its totals and score history.", "opt_includeHiddenItemsInStats", !!opt.includeHiddenItemsInStats) : ``}
+${makeActionRow(
+  "Aspect ratio storage",
+  "Send every currently loaded and future matching file to storage by aspect ratio. These global toggles override folder-level storage until you turn the matching toggle off.",
+  `
+  <button type="button" id="opt_store_aspect_portrait" class="${aspectRatioStorageEnabledForBucket("portrait", opt) ? "active" : ""}">${escapeHtml(aspectRatioStorageLabel("portrait", aspectRatioStorageEnabledForBucket("portrait", opt)))}</button>
+  <button type="button" id="opt_store_aspect_square" class="${aspectRatioStorageEnabledForBucket("square", opt) ? "active" : ""}">${escapeHtml(aspectRatioStorageLabel("square", aspectRatioStorageEnabledForBucket("square", opt)))}</button>
+  <button type="button" id="opt_store_aspect_landscape" class="${aspectRatioStorageEnabledForBucket("landscape", opt) ? "active" : ""}">${escapeHtml(aspectRatioStorageLabel("landscape", aspectRatioStorageEnabledForBucket("landscape", opt)))}</button>
+`,
+)}
 
           `,
     },
@@ -12171,6 +12234,32 @@ ${makeActionRow(
     setOptionsStatus("Saved");
     renderOptionsUi("notifications");
   });
+
+  const bindAspectRatioStorageButton = (id, bucket) => {
+    bindActionBtn(id, async () => {
+      const key = aspectRatioStorageOptionKeyForBucket(bucket);
+      if (!key) return;
+      const current = aspectRatioStorageEnabledForBucket(bucket);
+      WS.meta.options = normalizeOptions(
+        Object.assign({}, WS.meta.options || {}, { [key]: !current }),
+      );
+      metaMarkDirty(META_DOC_IDS.prefGeneral);
+      setOptionsStatus("Saved");
+      await persistDirtyMetadataNow();
+      const rebuilt = await rebuildWorkspaceAfterStorageStateChange();
+      renderOptionsUi("general");
+      if (rebuilt) {
+        showStatusMessage(
+          `${labelForAspectRatioFilterMode(bucket)} files ${current ? "removed from" : "sent to"} storage.`,
+          "storage",
+        );
+      }
+    });
+  };
+  bindAspectRatioStorageButton("opt_store_aspect_portrait", "portrait");
+  bindAspectRatioStorageButton("opt_store_aspect_square", "square");
+  bindAspectRatioStorageButton("opt_store_aspect_landscape", "landscape");
+
   bindCheck(
     "opt_previewMediaUsePaneBackground",
     "previewMediaUsePaneBackground",
@@ -12746,6 +12835,9 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showHiddenFolder",
     "showTrashFolder",
     "showStorageFolder",
+    "storePortraitAspectRatioFiles",
+    "storeSquareAspectRatioFiles",
+    "storeLandscapeAspectRatioFiles",
     "tortoiseMode",
     "quickNavigation",
     "showUntaggedFolder",
@@ -16110,6 +16202,25 @@ function metaMakeThumbnailsDocObject() {
   };
 }
 
+
+function metaMakeAspectRatiosDocObject() {
+  const filesByPath = {};
+  const source = WS.meta && WS.meta.aspectRatios ? WS.meta.aspectRatios : null;
+  if (source) {
+    for (const [relPathRaw, entryRaw] of source.entries()) {
+      const relPath = normalizeWorkspaceRelPath(relPathRaw);
+      const entry = normalizeAspectRatioLogEntry(relPath, entryRaw);
+      if (!relPath || !entry) continue;
+      filesByPath[relPath] = entry;
+    }
+  }
+  return {
+    schema: 1,
+    updatedAt: Date.now(),
+    filesByPath,
+  };
+}
+
 function metaMakeAppearancePresetsDocObject() {
   return {
     schema: 1,
@@ -16245,6 +16356,8 @@ function metaDocObjectForId(docId) {
       return metaMakeTrashDocObject();
     case META_DOC_IDS.thumbnails:
       return metaMakeThumbnailsDocObject();
+    case META_DOC_IDS.aspectRatios:
+      return metaMakeAspectRatiosDocObject();
     case META_DOC_IDS.appearancePresets:
       return metaMakeAppearancePresetsDocObject();
     case META_DOC_IDS.appearanceAssignments:
@@ -16527,6 +16640,27 @@ function metaApplyThumbnailsDocLog(log) {
   }
 }
 
+
+function metaApplyAspectRatiosDocLog(log) {
+  if (!WS.meta.aspectRatios) WS.meta.aspectRatios = new Map();
+  WS.meta.aspectRatios.clear();
+  if (!log || typeof log !== "object") return;
+  const filesByPath =
+    log.filesByPath && typeof log.filesByPath === "object"
+      ? log.filesByPath
+      : log.aspectRatioByPath && typeof log.aspectRatioByPath === "object"
+        ? log.aspectRatioByPath
+        : log.aspectRatiosByPath && typeof log.aspectRatiosByPath === "object"
+          ? log.aspectRatiosByPath
+          : {};
+  for (const rawPath of Object.keys(filesByPath)) {
+    const relPath = normalizeWorkspaceRelPath(rawPath);
+    const entry = normalizeAspectRatioLogEntry(relPath, filesByPath[rawPath]);
+    if (!relPath || !entry) continue;
+    WS.meta.aspectRatios.set(relPath, entry);
+  }
+}
+
 function metaApplyAppearancePresetsDocLog(log) {
   if (!log || typeof log !== "object") return;
   WS.meta.appearancePresets = normalizeAppearancePresetList(
@@ -16611,6 +16745,9 @@ function metaApplyDocLogById(docId, log) {
       return;
     case META_DOC_IDS.thumbnails:
       metaApplyThumbnailsDocLog(log);
+      return;
+    case META_DOC_IDS.aspectRatios:
+      metaApplyAspectRatiosDocLog(log);
       return;
     case META_DOC_IDS.appearancePresets:
       metaApplyAppearancePresetsDocLog(log);
@@ -16993,6 +17130,7 @@ function metaInitForCurrentWorkspace() {
         META_DOC_IDS.tagAlbums,
         META_DOC_IDS.trash,
         META_DOC_IDS.thumbnails,
+        META_DOC_IDS.aspectRatios,
         META_DOC_IDS.appearanceAssignments,
         META_DOC_IDS.keybinds,
       ];
@@ -17093,6 +17231,7 @@ async function metaInitForCurrentWorkspaceFs() {
     META_DOC_IDS.tagAlbums,
     META_DOC_IDS.trash,
     META_DOC_IDS.thumbnails,
+    META_DOC_IDS.aspectRatios,
     META_DOC_IDS.appearanceAssignments,
     META_DOC_IDS.keybinds,
   ];
@@ -17228,6 +17367,8 @@ async function buildWorkspaceFromFiles(fileList) {
       thumbMode: null,
       videoThumbMode: null,
       nativePath: "",
+      aspectRatio: null,
+      aspectRatioBucket: "",
     };
 
     rec.nativePath = getNativePathForFile(f);
@@ -17246,16 +17387,7 @@ async function buildWorkspaceFromFiles(fileList) {
   WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
 
   metaInitForCurrentWorkspace();
-  hydrateEditedThumbnailAspects()
-    .then((changed) => {
-      if (!changed || !WS.root) return;
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
-    })
-    .catch(() => {});
+  await finalizeAspectRatiosAndStorageForLoadedWorkspace();
 
   // Initialize List Pane at root listing
   WS.nav.dirNode = WS.root;
@@ -17458,6 +17590,8 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
       thumbMode: null,
       videoThumbMode: null,
       nativePath: "",
+      aspectRatio: null,
+      aspectRatioBucket: "",
     };
 
     rec.nativePath = getNativePathForFile(f);
@@ -17489,9 +17623,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
     if (WS.meta.dirtyDocIds && WS.meta.dirtyDocIds.size) metaScheduleSave();
   }
 
-  try {
-    await hydrateEditedThumbnailAspects();
-  } catch {}
+  await finalizeAspectRatiosAndStorageForLoadedWorkspace();
 
   WS.nav.dirNode = WS.root;
   WS.view.aboveRootView = false;
@@ -17591,6 +17723,8 @@ async function buildWorkspaceFromFileList(fileList) {
       thumbMode: null,
       videoThumbMode: null,
       nativePath: "",
+      aspectRatio: null,
+      aspectRatioBucket: "",
     };
 
     rec.nativePath = getNativePathForFile(f);
@@ -17613,9 +17747,7 @@ async function buildWorkspaceFromFileList(fileList) {
   WS.meta.fsLegacyDocHandles = Object.create(null);
   metaInitForCurrentWorkspace();
 
-  try {
-    await hydrateEditedThumbnailAspects();
-  } catch {}
+  await finalizeAspectRatiosAndStorageForLoadedWorkspace();
 
   WS.nav.dirNode = WS.root;
   WS.view.aboveRootView = false;
@@ -17664,6 +17796,7 @@ function snapshotRefreshState() {
     entryKey,
     view: {
       filterMode: WS.view.filterMode,
+      aspectRatioFilterMode: WS.view.aspectRatioFilterMode,
       randomMode: !!WS.view.randomMode,
       randomFolderMode: !!WS.view.randomFolderMode,
       loopWithinDir: WS.view.loopWithinDir,
@@ -17694,6 +17827,9 @@ function snapshotRefreshState() {
 function restoreRefreshViewState(viewState) {
   if (!viewState) return;
   WS.view.filterMode = viewState.filterMode;
+  WS.view.aspectRatioFilterMode = normalizeAspectRatioFilterMode(
+    viewState.aspectRatioFilterMode,
+  );
   WS.view.randomMode = !!viewState.randomMode;
   WS.view.randomFolderMode = !!viewState.randomFolderMode;
   WS.view.loopWithinDir = viewState.loopWithinDir;
@@ -17979,7 +18115,18 @@ function restoreViewerCloseState(state, opts = null) {
   const hideBusyAfterDeferredRender = !!options.hideBusyAfterDeferredRender;
   cancelPendingNavigationRender();
   const restoreRenderToken = NAVIGATION_RENDER_TOKEN;
+  const currentFilterMode = String((WS.view && WS.view.filterMode) || "all");
+  const currentAspectRatioFilterMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
   restoreRefreshViewState(state.view || null);
+  // Viewer/preview return states can be older than the user's latest filter choice.
+  // Preserve global filter controls so changing them while media is open does not
+  // snap back when returning to the folder/list context.
+  WS.view.filterMode = ["all", "images", "videos", "gifs"].includes(currentFilterMode)
+    ? currentFilterMode
+    : "all";
+  WS.view.aspectRatioFilterMode = currentAspectRatioFilterMode;
   WS.view.tagNavStack = Array.isArray(state.tagNavStack)
     ? state.tagNavStack
         .map((frame) =>
@@ -19523,6 +19670,254 @@ function randomSortAffectsFolders() {
   return !!WS.view.randomFolderMode;
 }
 
+
+const ASPECT_RATIO_LOG_SCHEMA_VERSION = 1;
+const ASPECT_RATIO_LOG_MTIME_TOLERANCE_MS = 1;
+
+function normalizeAspectRatioLogEntry(relPath, value) {
+  const normalizedPath = normalizeWorkspaceRelPath(relPath);
+  if (!normalizedPath || !value || typeof value !== "object") return null;
+  const aspect = Number(value.aspectRatio ?? value.aspect ?? value.ratio);
+  if (!Number.isFinite(aspect) || aspect <= 0) return null;
+  const normalizedAspect = normalizePreviewAspect(aspect, 4 / 3);
+  const size = Number(value.size);
+  const lastModified = Number(value.lastModified ?? value.mtime ?? value.modified);
+  return {
+    relPath: normalizedPath,
+    size: Number.isFinite(size) && size >= 0 ? size : 0,
+    lastModified: Number.isFinite(lastModified) && lastModified >= 0 ? lastModified : 0,
+    type: value.type === "video" ? "video" : value.type === "image" ? "image" : "",
+    aspectRatio: normalizedAspect,
+    bucket: aspectRatioBucketForValue(normalizedAspect),
+    updatedAt:
+      typeof value.updatedAt === "string" && value.updatedAt.trim()
+        ? value.updatedAt
+        : new Date().toISOString(),
+    schema: ASPECT_RATIO_LOG_SCHEMA_VERSION,
+  };
+}
+
+function aspectRatioLogEntryForRecord(rec, aspect) {
+  if (!rec) return null;
+  const relPath = normalizeWorkspaceRelPath(rec.relPath);
+  const n = Number(aspect);
+  if (!relPath || !Number.isFinite(n) || n <= 0) return null;
+  const normalizedAspect = normalizePreviewAspect(n, 4 / 3);
+  return {
+    relPath,
+    size: Number.isFinite(Number(rec.size)) && Number(rec.size) >= 0 ? Number(rec.size) : 0,
+    lastModified:
+      Number.isFinite(Number(rec.lastModified)) && Number(rec.lastModified) >= 0
+        ? Number(rec.lastModified)
+        : 0,
+    type: rec.type === "video" ? "video" : rec.type === "image" ? "image" : "",
+    aspectRatio: normalizedAspect,
+    bucket: aspectRatioBucketForValue(normalizedAspect),
+    updatedAt: new Date().toISOString(),
+    schema: ASPECT_RATIO_LOG_SCHEMA_VERSION,
+  };
+}
+
+function aspectRatioLogEntryMatchesRecord(entry, rec) {
+  if (!entry || !rec) return false;
+  const relPath = normalizeWorkspaceRelPath(rec.relPath);
+  if (!relPath || normalizeWorkspaceRelPath(entry.relPath) !== relPath) return false;
+  const entrySize = Number(entry.size);
+  const recSize = Number(rec.size);
+  if (Number.isFinite(entrySize) && Number.isFinite(recSize) && entrySize !== recSize)
+    return false;
+  const entryModified = Number(entry.lastModified);
+  const recModified = Number(rec.lastModified);
+  if (
+    Number.isFinite(entryModified) &&
+    Number.isFinite(recModified) &&
+    Math.abs(entryModified - recModified) > ASPECT_RATIO_LOG_MTIME_TOLERANCE_MS
+  ) {
+    return false;
+  }
+  const entryType = String(entry.type || "");
+  if (entryType && rec.type && entryType !== rec.type) return false;
+  return Number(entry.aspectRatio) > 0;
+}
+
+function getCachedAspectRatioForRecord(rec) {
+  if (!WS.meta || !WS.meta.aspectRatios || !rec) return 0;
+  const relPath = normalizeWorkspaceRelPath(rec.relPath);
+  if (!relPath) return 0;
+  const entry = normalizeAspectRatioLogEntry(
+    relPath,
+    WS.meta.aspectRatios.get(relPath),
+  );
+  if (!aspectRatioLogEntryMatchesRecord(entry, rec)) return 0;
+  return Number(entry.aspectRatio) || 0;
+}
+
+function setCachedAspectRatioForRecord(rec, aspect) {
+  if (!WS.meta) return false;
+  if (!WS.meta.aspectRatios) WS.meta.aspectRatios = new Map();
+  const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
+  const next = aspectRatioLogEntryForRecord(rec, aspect);
+  if (!relPath || !next) return false;
+  const prev = normalizeAspectRatioLogEntry(relPath, WS.meta.aspectRatios.get(relPath));
+  if (
+    prev &&
+    prev.size === next.size &&
+    Math.abs(Number(prev.lastModified) - Number(next.lastModified)) <= ASPECT_RATIO_LOG_MTIME_TOLERANCE_MS &&
+    prev.type === next.type &&
+    Math.abs(Number(prev.aspectRatio) - Number(next.aspectRatio)) <= 0.0001 &&
+    prev.bucket === next.bucket
+  ) {
+    return false;
+  }
+  WS.meta.aspectRatios.set(relPath, next);
+  return true;
+}
+
+function pruneAspectRatioLogForCurrentWorkspace() {
+  if (!WS.meta || !WS.meta.aspectRatios || !WS.fileById) return false;
+  const livePaths = new Set();
+  for (const rec of WS.fileById.values()) {
+    const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
+    if (relPath) livePaths.add(relPath);
+  }
+  let changed = false;
+  for (const relPathRaw of Array.from(WS.meta.aspectRatios.keys())) {
+    const relPath = normalizeWorkspaceRelPath(relPathRaw);
+    if (relPath && livePaths.has(relPath)) continue;
+    WS.meta.aspectRatios.delete(relPathRaw);
+    changed = true;
+  }
+  return changed;
+}
+
+const ASPECT_RATIO_FILTER_CYCLE = Object.freeze([
+  Object.freeze({ value: "all", label: "All" }),
+  Object.freeze({ value: "portrait", label: "Portrait" }),
+  Object.freeze({ value: "square", label: "Square" }),
+  Object.freeze({ value: "landscape", label: "Landscape" }),
+]);
+const ASPECT_RATIO_SQUARE_TOLERANCE = 0.05;
+
+function normalizeAspectRatioFilterMode(value) {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (raw === "portrait" || raw === "square" || raw === "landscape")
+    return raw;
+  return "all";
+}
+
+function labelForAspectRatioFilterMode(value) {
+  const mode = normalizeAspectRatioFilterMode(value);
+  if (mode === "portrait") return "Portrait";
+  if (mode === "square") return "Square";
+  if (mode === "landscape") return "Landscape";
+  return "All";
+}
+
+function getKnownRecordAspectRatio(rec) {
+  if (!rec) return 0;
+  const candidates = [
+    rec.previewAspect,
+    rec.aspectRatio,
+    rec.thumbAspect,
+    rec.videoAspect,
+    rec.aspect,
+  ];
+  for (let i = 0; i < candidates.length; i++) {
+    const n = Number(candidates[i]);
+    if (Number.isFinite(n) && n > 0) return normalizePreviewAspect(n, 4 / 3);
+  }
+  return 0;
+}
+
+function aspectRatioBucketForValue(aspect) {
+  const n = Number(aspect);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (Math.abs(n - 1) <= ASPECT_RATIO_SQUARE_TOLERANCE) return "square";
+  return n < 1 ? "portrait" : "landscape";
+}
+
+function setRecordAspectRatio(rec, aspect) {
+  if (!rec) return false;
+  const n = Number(aspect);
+  if (!Number.isFinite(n) || n <= 0) return false;
+  const normalized = normalizePreviewAspect(n, 4 / 3);
+  const bucket = aspectRatioBucketForValue(normalized);
+  const prevAspect = Number(rec.aspectRatio);
+  const prevBucket = String(rec.aspectRatioBucket || "");
+  rec.aspectRatio = normalized;
+  rec.previewAspect = normalized;
+  rec.aspectRatioBucket = bucket;
+  return (
+    !Number.isFinite(prevAspect) ||
+    Math.abs(prevAspect - normalized) > 0.0001 ||
+    prevBucket !== bucket
+  );
+}
+
+function recordPassesAspectRatioFilter(rec) {
+  const mode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  if (mode === "all") return true;
+  const aspect = getKnownRecordAspectRatio(rec);
+  if (!(aspect > 0)) return true;
+  return aspectRatioBucketForValue(aspect) === mode;
+}
+
+function recordIsGloballyStoredByAspectRatio(rec, options = null) {
+  if (!rec || !anyAspectRatioStorageEnabled(options)) return false;
+  const bucket = String(
+    rec.aspectRatioBucket || aspectRatioBucketForValue(getKnownRecordAspectRatio(rec)) || "",
+  );
+  return !!bucket && aspectRatioStorageEnabledForBucket(bucket, options);
+}
+
+function removeFileRecordFromWorkspace(rec) {
+  if (!rec || !WS.fileById) return false;
+  const id = String(rec.id || "");
+  if (!id || !WS.fileById.has(id)) return false;
+  const dirPath = String(rec.dirPath || "");
+  const dirNode = WS.dirByPath && WS.dirByPath.get(dirPath);
+  if (dirNode && Array.isArray(dirNode.childrenFiles)) {
+    dirNode.childrenFiles = dirNode.childrenFiles.filter(
+      (fileId) => String(fileId || "") !== id,
+    );
+  }
+  revokeRecordObjectURLs(rec);
+  WS.fileById.delete(id);
+  return true;
+}
+
+function applyAspectRatioStorageToCurrentWorkspace() {
+  if (!WS.root || !WS.fileById || !WS.fileById.size) return 0;
+  const options = WS.meta && WS.meta.options ? WS.meta.options : null;
+  if (!anyAspectRatioStorageEnabled(options)) return 0;
+  let removed = 0;
+  const records = Array.from(WS.fileById.values()).filter(Boolean);
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i];
+    if (!recordIsGloballyStoredByAspectRatio(rec, options)) continue;
+    if (removeFileRecordFromWorkspace(rec)) removed++;
+  }
+  if (removed) {
+    invalidateDirMetricsCaches();
+    if (WS.view) {
+      WS.view.randomCache = new Map();
+      WS.view.randomFolderCache = new Map();
+    }
+  }
+  return removed;
+}
+
+async function finalizeAspectRatiosAndStorageForLoadedWorkspace() {
+  try {
+    await hydrateAllRecordAspectRatios();
+  } catch {}
+  return applyAspectRatioStorageToCurrentWorkspace();
+}
+
 function recordMediaFilterType(rec) {
   if (!rec) return "";
   if (rec.type === "video") return "videos";
@@ -19541,11 +19936,14 @@ function recordPassesTagMediaFilter(rec, filterValue) {
 }
 
 function effectiveFilterCacheKey() {
+  const aspectMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
   const contextual = currentContextualTagMediaFilterValue();
   if (contextual.length) {
-    return `tag:${String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : "")}:${contextual.join(",")}`;
+    return `tag:${String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : "")}:${contextual.join(",")}|aspect:${aspectMode}`;
   }
-  return `global:${String(WS?.view?.filterMode || "all")}`;
+  return `global:${String(WS?.view?.filterMode || "all")}|aspect:${aspectMode}`;
 }
 
 function reseedRandomSortMode() {
@@ -19646,13 +20044,17 @@ function passesFilter(rec) {
   const contextualFilter = contextualTagMediaFilterForDirPath(
     String(rec.dirPath || ""),
   );
-  if (contextualFilter.length)
-    return recordPassesTagMediaFilter(rec, contextualFilter);
-  const m = WS.view.filterMode;
-  if (m === "images") return rec.type === "image";
-  if (m === "videos") return rec.type === "video";
-  if (m === "gifs") return rec.ext === ".gif";
-  return true;
+  let mediaPass = true;
+  if (contextualFilter.length) {
+    mediaPass = recordPassesTagMediaFilter(rec, contextualFilter);
+  } else {
+    const m = WS.view.filterMode;
+    if (m === "images") mediaPass = rec.type === "image";
+    else if (m === "videos") mediaPass = rec.type === "video";
+    else if (m === "gifs") mediaPass = rec.ext === ".gif";
+  }
+  if (!mediaPass) return false;
+  return recordPassesAspectRatioFilter(rec);
 }
 
 function dirItemCount(node) {
@@ -20387,6 +20789,44 @@ function showTrashFolderEnabled() {
 function showStorageFolderEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.showStorageFolder);
+}
+
+const ASPECT_RATIO_STORAGE_OPTION_BY_BUCKET = Object.freeze({
+  portrait: "storePortraitAspectRatioFiles",
+  square: "storeSquareAspectRatioFiles",
+  landscape: "storeLandscapeAspectRatioFiles",
+});
+
+function aspectRatioStorageOptionKeyForBucket(bucket) {
+  const key = String(bucket || "").trim().toLowerCase();
+  return ASPECT_RATIO_STORAGE_OPTION_BY_BUCKET[key] || "";
+}
+
+function aspectRatioStorageEnabledForBucket(bucket, options = null) {
+  const key = aspectRatioStorageOptionKeyForBucket(bucket);
+  if (!key) return false;
+  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(opt && opt[key]);
+}
+
+function anyAspectRatioStorageEnabled(options = null) {
+  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(
+    opt &&
+    (opt.storePortraitAspectRatioFiles ||
+      opt.storeSquareAspectRatioFiles ||
+      opt.storeLandscapeAspectRatioFiles)
+  );
+}
+
+function aspectRatioStorageLabel(bucket, enabled = null) {
+  const normalized = aspectRatioBucketForValue(
+    bucket === "portrait" ? 0.75 : bucket === "square" ? 1 : 1.5,
+  );
+  const label = labelForAspectRatioFilterMode(normalized).toLowerCase();
+  const active =
+    enabled == null ? aspectRatioStorageEnabledForBucket(normalized) : !!enabled;
+  return `${active ? "Remove" : "Send"} all ${label} files ${active ? "from" : "to"} storage`;
 }
 
 function tortoiseNavigationEnabled() {
@@ -21869,13 +22309,43 @@ async function hydrateEditedThumbnailAspects() {
     const rec = records[i];
     const detected = await detectRecordPreviewAspect(rec);
     if (!detected) continue;
-    const prev = Number(rec.previewAspect);
-    if (!Number.isFinite(prev) || Math.abs(prev - detected) > 0.0001) {
-      rec.previewAspect = detected;
-      changed = true;
-    }
+    if (setRecordAspectRatio(rec, detected)) changed = true;
   }
   return changed;
+}
+
+async function hydrateAllRecordAspectRatios() {
+  if (!WS.root || !WS.fileById || !WS.fileById.size) return false;
+  const records = Array.from(WS.fileById.values()).filter(Boolean);
+  if (!records.length) return false;
+  let changed = false;
+  let logChanged = pruneAspectRatioLogForCurrentWorkspace();
+  let cursor = 0;
+  const hwConcurrency =
+    typeof navigator === "object" ? Number(navigator.hardwareConcurrency || 4) || 4 : 4;
+  const concurrency = Math.max(1, Math.min(8, records.length, hwConcurrency));
+  const worker = async () => {
+    while (cursor < records.length) {
+      const rec = records[cursor++];
+      const cached = getCachedAspectRatioForRecord(rec);
+      if (cached > 0) {
+        if (setRecordAspectRatio(rec, cached)) changed = true;
+        continue;
+      }
+      const known = getKnownRecordAspectRatio(rec);
+      if (known > 0) {
+        if (setRecordAspectRatio(rec, known)) changed = true;
+        if (setCachedAspectRatioForRecord(rec, known)) logChanged = true;
+        continue;
+      }
+      const detected = await detectRecordPreviewAspect(rec);
+      if (detected && setRecordAspectRatio(rec, detected)) changed = true;
+      if (detected && setCachedAspectRatioForRecord(rec, detected)) logChanged = true;
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  if (logChanged) metaMarkDirty(META_DOC_IDS.aspectRatios);
+  return changed || logChanged;
 }
 
 function getRootPresetPreviewRecord(rootNode, rootPool = null) {
@@ -37227,7 +37697,7 @@ function syncDirectoryInlineAspectFromNaturalSize(imgEl, rec) {
     w / h,
     getPreviewAspectForRecord(rec),
   );
-  rec.previewAspect = naturalAspect;
+  setRecordAspectRatio(rec, naturalAspect);
   applyDirectoryInlineAspect(imgEl, naturalAspect);
   return true;
 }
@@ -42926,6 +43396,29 @@ function cycleFilterMode() {
   showStatusMessage(`Filter: ${WS.view.filterMode}`, "cycle-filter");
 }
 
+function setAspectRatioFilterMode(value) {
+  const next = normalizeAspectRatioFilterMode(value);
+  WS.view.aspectRatioFilterMode = next;
+  applyViewModesEverywhere(true);
+  showStatusMessage(
+    `Aspect ratio: ${labelForAspectRatioFilterMode(next)}`,
+    "cycle-aspect-ratio-filter",
+  );
+  return true;
+}
+
+function cycleAspectRatioFilterMode() {
+  const current = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  const idx = ASPECT_RATIO_FILTER_CYCLE.findIndex(
+    (item) => String(item.value) === current,
+  );
+  const nextItem =
+    ASPECT_RATIO_FILTER_CYCLE[(idx + 1) % ASPECT_RATIO_FILTER_CYCLE.length];
+  return setAspectRatioFilterMode(nextItem && nextItem.value);
+}
+
 function setOptionValues(nextValues) {
   if (!WS.meta) return null;
   WS.meta.options = normalizeOptions(
@@ -43142,6 +43635,8 @@ function handleExtrasKeybindAction(action) {
     }
     case "cycleAppearancePresets":
       return cycleAppearancePresetKeybindAction();
+    case "cycleAspectRatioFilter":
+      return cycleAspectRatioFilterMode();
     case "cycleFolderSort": {
       WS.meta.dirSortMode = cycleDirSortMode(
         WS.meta.dirSortMode,
