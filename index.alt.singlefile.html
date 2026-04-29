@@ -1750,6 +1750,25 @@ body.directories-files-only #directoriesHeader {
   gap: 6px;
 }
 
+#directoriesList,
+#optionsBody,
+#keybindsBody,
+#calendarBody,
+.statsLedgerTableWrap {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+#directoriesList::-webkit-scrollbar,
+#optionsBody::-webkit-scrollbar,
+#keybindsBody::-webkit-scrollbar,
+#calendarBody::-webkit-scrollbar,
+.statsLedgerTableWrap::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 #directoriesList.gridModeList {
   --grid-card-min: calc(var(--folder-grid-min) * var(--thumb-scale-folder));
   --grid-card-size: var(--grid-card-min);
@@ -6972,6 +6991,7 @@ img[data-rotate-key].rotatingThumbFade {
 .previewItemPlaceholder.hasThumbnail .previewItemPlaceholderInfoBar * {
   color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary)) !important;
 }
+
   </style>
   <!-- END: inlined from ./styles.css -->
   </head>
