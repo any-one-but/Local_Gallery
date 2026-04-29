@@ -814,7 +814,6 @@ function defaultOptions() {
     menuPaneWidthPx: 422,
     directoriesPaneOpen: true,
     filePaneViewMode: "list",
-    titleLayoutMode: "pane",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
     showTrashFolder: true,
@@ -1222,10 +1221,6 @@ function normalizeOptions(o) {
           ? legacyInteractionMode === "pane"
           : d.directoriesPaneOpen,
     filePaneViewMode,
-    titleLayoutMode: normalizeTitleLayoutModeValue(
-      src.titleLayoutMode,
-      d.titleLayoutMode,
-    ),
     includeHiddenItemsInStats:
       typeof src.includeHiddenItemsInStats === "boolean"
         ? src.includeHiddenItemsInStats
@@ -6329,14 +6324,6 @@ function relPathDisplayName(relPath, opts = null) {
   return out.join("/") || "";
 }
 
-function normalizeTitleLayoutModeValue(value, fallback = "pane") {
-  const mode = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (mode === "compact" || mode === "pane") return mode;
-  return fallback === "compact" || fallback === "pane" ? fallback : "pane";
-}
-
 function directoriesPaneOpenEnabled(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return !(src && src.directoriesPaneOpen === false);
@@ -6365,13 +6352,8 @@ function labelForFilePaneViewMode(mode) {
     : "List View";
 }
 
-function titleLayoutModeFromOptions(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return normalizeTitleLayoutModeValue(src && src.titleLayoutMode, "pane");
-}
-
 function isCompactTitleLayout() {
-  return titleLayoutModeFromOptions() === "compact";
+  return false;
 }
 
 // Legacy helper kept in place while old grid-mode call sites are retired.
@@ -7040,12 +7022,10 @@ function applyInteractionModeFromOptions() {
   const appEl = document.getElementById("app");
   if (!appEl) return;
   const sidebarOpen = directoriesPaneOpenEnabled();
-  const titleMode = titleLayoutModeFromOptions();
   appEl.classList.toggle("sidebar-closed", !sidebarOpen);
   appEl.classList.toggle("file-pane-thumbnail-view", filePaneThumbnailViewEnabled());
   appEl.classList.toggle("file-pane-list-view", !filePaneThumbnailViewEnabled());
-  appEl.classList.toggle("title-layout-compact", titleMode === "compact");
-  appEl.classList.toggle("title-layout-pane", titleMode !== "compact");
+  appEl.classList.add("title-layout-pane");
   appEl.classList.toggle("menu-pane-open", !!MENU_OPEN);
   appEl.classList.toggle("no-side-panes", !sidebarOpen && !MENU_OPEN);
   appEl.classList.toggle(
@@ -7507,12 +7487,6 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
-    id: "toggleTitlePane",
-    label: "Title pane",
-    hint: "Switch between the compact top bar and the stacked title pane.",
-    section: "panes",
-  },
-  {
     id: "toggleSettingsAndDirectoriesPanes",
     label: "Settings + File panes",
     hint: "Toggle both panes; if only one is open, close the open one.",
@@ -7831,7 +7805,6 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleDirectoriesPane",
   "toggleFilePaneView",
   "toggleSettingsAndDirectoriesPanes",
-  "toggleTitlePane",
   "prodPreviewPane",
   "refreshWorkspace",
   "cycleFilter",
@@ -7908,7 +7881,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   nextFolder: "Cmd+s",
   toggleDirectoriesPane: "Tab",
   toggleFilePaneView: "y",
-  toggleTitlePane: "Cmd+Alt+r",
   toggleSettingsAndDirectoriesPanes: "Space",
   refreshWorkspace: "",
   prodPreviewPane: "Cmd+e",
@@ -8245,6 +8217,7 @@ const WS = {
     bulkFileSelectionsByDir: new Map(),
     bulkActionMenuOpen: false,
     bulkActionMenuAnchorPath: "",
+    bulkActionMenuPoint: null,
     dirActionMenuPath: "",
     aboveRootView: false,
     tagFolderActiveMode: "",
@@ -8458,6 +8431,7 @@ function resetWorkspace() {
   WS.view.bulkFileSelectionsByDir = new Map();
   WS.view.bulkActionMenuOpen = false;
   WS.view.bulkActionMenuAnchorPath = "";
+  WS.view.bulkActionMenuPoint = null;
   WS.view.dirActionMenuPath = "";
   WS.view.aboveRootView = false;
   WS.view.tagFolderActiveMode = "";
@@ -10652,8 +10626,6 @@ function keybindToggleActionState(actionId) {
   switch (actionId) {
     case "toggleDirectoriesPane":
       return directoriesPaneOpenEnabled();
-    case "toggleTitlePane":
-      return titleLayoutModeFromOptions() === "pane";
     case "toggleRandomFileSort":
       return !!(WS.view && WS.view.randomMode);
     case "toggleRandomFolderSort":
@@ -10703,16 +10675,6 @@ function setKeybindToggleActionState(actionId, enabled) {
       return true;
     case "toggleFilePaneView":
       return setFilePaneViewMode(next ? "thumbnail" : "list");
-    case "toggleTitlePane": {
-      const nextMode = next ? "pane" : "compact";
-      setOptionValue("titleLayoutMode", nextMode);
-      applyInteractionModeFromOptions();
-      applyPaneDividerFromOptions();
-      refreshFitInsidePreviewGrids();
-      syncButtons();
-      showStatusMessage(`Title layout: ${labelForTitleLayoutMode(nextMode)}`, "pane-toggles");
-      return true;
-    }
     case "toggleRandomFileSort":
       return toggleRandomSortMode();
     case "toggleRandomFolderSort":
@@ -13401,6 +13363,17 @@ function finalizeBulkSelectionAction() {
   }
   WS.view.bulkSelectMode = false;
   clearBulkTagSelection();
+}
+
+function hasBulkSelection() {
+  return !!(
+    WS.view &&
+    WS.view.bulkSelectMode &&
+    ((WS.view.bulkTagSelectedPaths && WS.view.bulkTagSelectedPaths.size) ||
+      (WS.view.bulkTagFolderSelectedKeys &&
+        WS.view.bulkTagFolderSelectedKeys.size) ||
+      (WS.view.bulkFileSelectedIds && WS.view.bulkFileSelectedIds.size))
+  );
 }
 
 function syncBulkSelectionForCurrentDir() {
@@ -29927,6 +29900,7 @@ async function looseSetMergeSelectedFiles() {
 function closeActionMenus() {
   WS.view.bulkActionMenuOpen = false;
   WS.view.bulkActionMenuAnchorPath = "";
+  WS.view.bulkActionMenuPoint = null;
   WS.view.dirActionMenuPath = "";
   WS.view.fileActionMenuId = "";
   closeTagContextMenu();
@@ -29944,7 +29918,7 @@ function findTagEntryIndexBySelectionKey(selectionKey) {
   return -1;
 }
 
-function openBulkActionMenuForSelection(anchorKey) {
+function openBulkActionMenuForSelection(anchorKey, opts = null) {
   const key = String(anchorKey || "");
   if (!key) return false;
   if (!WS.view.bulkSelectMode) return false;
@@ -29955,6 +29929,12 @@ function openBulkActionMenuForSelection(anchorKey) {
     selectedTags.length +
     getSelectedFileIdsInCurrentView().length;
   if (!selCount) return false;
+  const point =
+    opts &&
+    Number.isFinite(Number(opts.x)) &&
+    Number.isFinite(Number(opts.y))
+      ? { x: Number(opts.x), y: Number(opts.y) }
+      : null;
   const anchorCard = findPreviewSelectableCardByKey(key);
   const anchorKind = String(anchorCard?.dataset?.previewItemKind || "");
   if (
@@ -29986,6 +29966,7 @@ function openBulkActionMenuForSelection(anchorKey) {
   }
   WS.view.bulkActionMenuOpen = true;
   WS.view.bulkActionMenuAnchorPath = key;
+  WS.view.bulkActionMenuPoint = point;
   WS.view.dirActionMenuPath = "";
   WS.view.fileActionMenuId = "";
   TAG_EDIT_PATH = null;
@@ -30826,6 +30807,26 @@ function createDropdownMenuSubmenu(label, items) {
   wrap.appendChild(panel);
   return wrap;
 }
+
+document.addEventListener("pointerover", (e) => {
+  const target = e.target;
+  const submenu =
+    target && target.closest ? target.closest(".dropdownMenuSubmenu") : null;
+  if (!submenu) return;
+  const menu = submenu.closest && submenu.closest(".dropdownMenu.open");
+  if (!menu) return;
+  submenu.classList.add("submenuOpen");
+});
+
+document.addEventListener("pointerout", (e) => {
+  const target = e.target;
+  const submenu =
+    target && target.closest ? target.closest(".dropdownMenuSubmenu") : null;
+  if (!submenu) return;
+  const related = e.relatedTarget;
+  if (related && submenu.contains && submenu.contains(related)) return;
+  submenu.classList.remove("submenuOpen");
+});
 
 function buildDropdownMenuSubmenuHtml(label, buttonsHtml) {
   if (!buttonsHtml) return "";
@@ -34224,6 +34225,7 @@ function renderDirectoriesActionHeader() {
     if (WS.view.bulkActionMenuOpen) {
       WS.view.bulkActionMenuOpen = false;
       WS.view.bulkActionMenuAnchorPath = "";
+      WS.view.bulkActionMenuPoint = null;
     }
     directoriesActionMenuEl.classList.remove("open");
     directoriesActionMenuEl.innerHTML = "";
@@ -34251,6 +34253,7 @@ function renderDirectoriesActionHeader() {
   if (!selCount) {
     WS.view.bulkActionMenuOpen = false;
     WS.view.bulkActionMenuAnchorPath = "";
+    WS.view.bulkActionMenuPoint = null;
   }
 
   const rowVisible =
@@ -35148,13 +35151,25 @@ function renderDirectoriesActionHeader() {
     requestAnimationFrame(() =>
       positionDropdownMenu(anchorBtn, directoriesActionMenuEl),
     );
+  } else if (
+    WS.view.bulkActionMenuPoint &&
+    Number.isFinite(Number(WS.view.bulkActionMenuPoint.x)) &&
+    Number.isFinite(Number(WS.view.bulkActionMenuPoint.y))
+  ) {
+    const x = Number(WS.view.bulkActionMenuPoint.x);
+    const y = Number(WS.view.bulkActionMenuPoint.y);
+    requestAnimationFrame(() =>
+      positionDropdownMenuAtPoint(directoriesActionMenuEl, x, y),
+    );
   }
 }
 
 function findDirMenuButtonForAnchorKey(anchorKey) {
   const key = String(anchorKey || "");
   if (!directoriesListEl) return null;
-  const rows = directoriesListEl.querySelectorAll(".dirRow");
+  const rows = directoriesListEl.querySelectorAll(
+    ".dirRow, [data-file-pane-item]",
+  );
   let fallback = null;
   for (const row of rows) {
     const btn = row.querySelector(".dirMenuBtn");
@@ -35483,7 +35498,10 @@ function selectFilePaneThumbnailIndex(idx, opts = null) {
   WS.nav.selectedIndex = index;
   saveGridSelectionForCurrentContext();
   syncPreviewToSelection({ force: true });
-  if (!(opts && opts.skipActivePane)) setActivePane("directories");
+  if (!(opts && opts.skipActivePane))
+    setActivePane("directories", {
+      keepBulkSelection: !!(opts && opts.keepBulkSelection),
+    });
   syncFilePaneThumbnailSelectionClasses(prevIdx, index);
   renderPreviewPane(false, true);
   syncButtons();
@@ -35545,11 +35563,7 @@ function handleFilePaneThumbnailCardClick(card, entry, idx, e) {
     return;
   }
 
-  const hadBulkSelection =
-    WS.view.bulkSelectMode &&
-    (WS.view.bulkTagSelectedPaths.size ||
-      WS.view.bulkTagFolderSelectedKeys.size ||
-      WS.view.bulkFileSelectedIds.size);
+  const hadBulkSelection = hasBulkSelection();
   const shouldOpen = idx === priorSelectedIndex && !hadBulkSelection;
   if (hadBulkSelection) {
     clearBulkTagSelection();
@@ -35560,34 +35574,65 @@ function handleFilePaneThumbnailCardClick(card, entry, idx, e) {
   if (shouldOpen) openFilePaneEntry(entry);
 }
 
-function openFilePaneThumbnailContextMenu(entry, card, e) {
-  if (!entry || !e) return false;
-  e.preventDefault();
-  e.stopImmediatePropagation();
+function openFilePaneThumbnailEntryMenu(entry, card, e, opts = null) {
+  if (!entry) return false;
+  if (e) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
   const idx = parseInt(String(card?.dataset?.entryIndex || "-1"), 10);
   if (Number.isFinite(idx) && idx >= 0) {
-    selectFilePaneThumbnailIndex(idx, { skipActivePane: false });
+    selectFilePaneThumbnailIndex(idx, {
+      skipActivePane: false,
+      keepBulkSelection: true,
+    });
   }
+  const anchorKey = entryKeyForSelection(entry);
+  if (
+    anchorKey &&
+    openBulkActionMenuForSelection(anchorKey, {
+      x: Number(e?.clientX) || 0,
+      y: Number(e?.clientY) || 0,
+    })
+  )
+    return true;
+  const anchor = opts && opts.anchor ? opts.anchor : null;
   if (entry.kind === "dir") {
-    openPreviewFolderActionMenu(entry.node, { x: e.clientX, y: e.clientY });
+    openPreviewFolderActionMenu(
+      entry.node,
+      anchor
+        ? { anchor }
+        : { x: Number(e?.clientX) || 0, y: Number(e?.clientY) || 0 },
+    );
     return true;
   }
   if (entry.kind === "file") {
     const rec = WS.fileById.get(String(entry.id || ""));
-    if (rec) openPreviewFileActionMenu(rec, { x: e.clientX, y: e.clientY });
+    if (rec)
+      openPreviewFileActionMenu(
+        rec,
+        anchor
+          ? { anchor }
+          : { x: Number(e?.clientX) || 0, y: Number(e?.clientY) || 0 },
+      );
     return true;
   }
   if (entry.kind === "tag") {
-    openTagEntryContextMenu(entry, card);
+    openTagEntryContextMenu(entry, anchor || card);
     return true;
   }
   return false;
+}
+
+function openFilePaneThumbnailContextMenu(entry, card, e) {
+  return openFilePaneThumbnailEntryMenu(entry, card, e);
 }
 
 function adaptPreviewCardForFilePane(card, entry, idx) {
   if (!card || !entry) return card;
   card.dataset.filePaneItem = "1";
   card.dataset.entryIndex = String(idx);
+  card.dataset.bulkAnchor = entryKeyForSelection(entry);
   card.classList.add("filePaneThumbItem");
   if (idx === WS.nav.selectedIndex) card.classList.add("selected", "previewSelected");
   if (entryBulkSelected(entry)) card.classList.add("bulkSelected");
@@ -35601,6 +35646,21 @@ function adaptPreviewCardForFilePane(card, entry, idx) {
     (e) => openFilePaneThumbnailContextMenu(entry, card, e),
     true,
   );
+  const menuBtn = card.querySelector(".dirMenuBtn");
+  if (menuBtn) {
+    menuBtn.addEventListener(
+      "click",
+      (e) =>
+        openFilePaneThumbnailEntryMenu(entry, card, e, { anchor: menuBtn }),
+      true,
+    );
+    menuBtn.addEventListener(
+      "contextmenu",
+      (e) =>
+        openFilePaneThumbnailEntryMenu(entry, card, e, { anchor: menuBtn }),
+      true,
+    );
+  }
   return card;
 }
 
@@ -39558,10 +39618,21 @@ function previewPlaceholderInfoForCurrentSelection() {
     };
   }
   if (entry && entry.kind === "tag") {
+    const originPath = String(entry.originPath || WS.nav?.dirNode?.path || "");
+    const tagLocation = [
+      originPath ? displayPath(originPath) : "",
+      displayTagFolderLabel(String(entry.label || entry.tag || "Tag")),
+    ]
+      .filter(Boolean)
+      .join("/");
     return {
       icon: getTagEntryDisplayIcon(entry),
       label: displayTagFolderLabel(String(entry.label || entry.tag || "Tag")),
       meta: tagItemTypeLabelForEntry(entry),
+      itemKind: "tag",
+      tagEntry: entry,
+      thumbnailKind: "tag",
+      itemPath: tagLocation,
       thumbnailRecord: selectedThumbRecord || getTagThumbnailReferenceRecord(entry),
     };
   }
@@ -39570,6 +39641,10 @@ function previewPlaceholderInfoForCurrentSelection() {
       icon: isStorageStubDirNode(entry.node) ? ":" : "[]",
       label: dirUiLabel(entry.node) || "Folder",
       meta: folderItemTypeLabelForNode(entry.node),
+      itemKind: "dir",
+      dirNode: entry.node || null,
+      thumbnailKind: folderThumbnailKindForNode(entry.node),
+      itemPath: displayPath(String(entry.node?.path || "")),
       thumbnailRecord:
         selectedThumbRecord || previewPlaceholderThumbnailRecordForDirNode(entry.node),
     };
@@ -39583,6 +39658,12 @@ function previewPlaceholderInfoForCurrentSelection() {
           ? displayTagFolderLabel(String(dirNode.name || "Tag"))
           : dirUiLabel(dirNode) || "Folder",
       meta: dirNode._skipTagFilters ? "Tag" : folderItemTypeLabelForNode(dirNode),
+      itemKind: dirNode._skipTagFilters ? "tag" : "dir",
+      dirNode,
+      thumbnailKind: dirNode._skipTagFilters
+        ? "tag"
+        : folderThumbnailKindForNode(dirNode),
+      itemPath: displayPath(String(dirNode.path || "")),
       thumbnailRecord:
         selectedThumbRecord || previewPlaceholderThumbnailRecordForDirNode(dirNode),
     };
@@ -39593,6 +39674,79 @@ function previewPlaceholderInfoForCurrentSelection() {
     meta: "",
     thumbnailRecord: null,
   };
+}
+
+function previewPlaceholderVisibilityKind(src) {
+  const raw = String((src && src.thumbnailKind) || "");
+  if (!raw) return "";
+  return thumbnailVisibilityKindSpec(raw).kind || "";
+}
+
+function previewPlaceholderTitleVisible(src) {
+  const kind = previewPlaceholderVisibilityKind(src);
+  return kind ? previewThumbnailVisibilityForKind(kind).showTitle : true;
+}
+
+function previewPlaceholderSourcePathText(src, thumbRec) {
+  const itemPath = String((src && src.itemPath) || "");
+  if (itemPath) return itemPath;
+  const rec = thumbRec || (src && src.thumbnailRecord) || null;
+  if (!rec) return "";
+  const rel = relPathDisplayName(rec.relPath || rec.name || "");
+  return rel || String(rec.nativePath || rec.relPath || rec.name || "");
+}
+
+function previewPlaceholderRegularMetaText(src) {
+  const kind = previewPlaceholderVisibilityKind(src);
+  if (!kind) return String((src && src.meta) || "");
+  const visibility = previewThumbnailVisibilityForKind(kind);
+  const parts = [];
+
+  if (kind === "tag" && src && src.tagEntry) {
+    const entry = src.tagEntry;
+    const metrics = getTagEntryAggregateMetrics(entry);
+    if (visibility.showItemTypeLabel) parts.push(tagItemTypeLabelForEntry(entry));
+    if (visibility.showFolderCount && visibility.showFileCount)
+      parts.push(getTagEntryCountText(entry));
+    else if (visibility.showFolderCount)
+      parts.push(
+        `${metrics.folderCount} ${metrics.folderCount === 1 ? "Folder" : "Folders"}`,
+      );
+    else if (visibility.showFileCount)
+      parts.push(
+        `${metrics.fileCount} ${metrics.fileCount === 1 ? "File" : "Files"}`,
+      );
+    if (visibility.showSize) parts.push(formatBytes(metrics.sizeBytes));
+    return parts.join(" • ");
+  }
+
+  if ((kind === "rootFolder" || kind === "subfolder") && src && src.dirNode) {
+    const dirNode = src.dirNode;
+    if (visibility.showItemTypeLabel)
+      parts.push(folderItemTypeLabelForNode(dirNode));
+    const folderCount = getDirectFolderCountForNode(dirNode);
+    const fileCount = getRecursiveFileCountForNode(dirNode);
+    if (visibility.showFolderCount && visibility.showFileCount)
+      parts.push(formatFolderFileCountSegment(folderCount, fileCount));
+    else if (visibility.showFolderCount)
+      parts.push(`${folderCount} ${folderCount === 1 ? "Folder" : "Folders"}`);
+    else if (visibility.showFileCount)
+      parts.push(`${fileCount} ${fileCount === 1 ? "File" : "Files"}`);
+    if (visibility.showSize)
+      parts.push(formatBytes(getDirRecursiveSizeBytesForNode(dirNode, new Map())));
+    return parts.join(" • ");
+  }
+
+  if (kind === "file") {
+    const rec = (src && (src.fileRecord || src.thumbnailRecord)) || null;
+    if (visibility.showItemTypeLabel) parts.push(fileItemTypeLabelForRecord(rec));
+    if (visibility.showItemCount) parts.push("1 item");
+    if (visibility.showSize)
+      parts.push(formatBytes(Math.max(0, Number(rec?.size) || 0)));
+    return parts.join(" • ");
+  }
+
+  return "";
 }
 
 const PREVIEW_PLACEHOLDER_PRELOAD_CACHE = new Map();
@@ -39668,6 +39822,11 @@ function renderPreviewPlaceholder(info = null) {
   const thumbSrc = previewPlaceholderThumbSrcForRecord(thumbRec);
   const thumbId = String(thumbRec && thumbRec.id ? thumbRec.id : "");
   const labelText = String(src.label || "—");
+  const showTitle = previewPlaceholderTitleVisible(src);
+  const regularMetaText = previewPlaceholderRegularMetaText(src);
+  const sourcePathText = regularMetaText
+    ? previewPlaceholderSourcePathText(src, thumbRec)
+    : "";
 
   const makeIcon = () => {
     const icon = document.createElement("div");
@@ -39746,8 +39905,32 @@ function renderPreviewPlaceholder(info = null) {
     art.appendChild(infoBar);
   }
   infoBar.innerHTML = "";
-  infoBar.appendChild(makeLabel());
-  infoBar.title = labelText;
+  if (showTitle || sourcePathText) {
+    const textBlock = document.createElement("div");
+    textBlock.className = "previewItemPlaceholderTextBlock";
+    if (showTitle) textBlock.appendChild(makeLabel());
+    if (sourcePathText) {
+      const pathMeta = document.createElement("div");
+      pathMeta.className =
+        "previewItemPlaceholderMeta previewItemPlaceholderPathMeta";
+      pathMeta.textContent = sourcePathText;
+      pathMeta.title = sourcePathText;
+      textBlock.appendChild(pathMeta);
+    }
+    infoBar.appendChild(textBlock);
+  }
+  if (regularMetaText) {
+    const regularMeta = document.createElement("div");
+    regularMeta.className =
+      "previewItemPlaceholderMeta previewItemPlaceholderRegularMeta";
+    regularMeta.textContent = regularMetaText;
+    regularMeta.title = regularMetaText;
+    infoBar.appendChild(regularMeta);
+  }
+  infoBar.hidden = !infoBar.childNodes.length;
+  infoBar.title = [showTitle ? labelText : "", sourcePathText, regularMetaText]
+    .filter(Boolean)
+    .join(" • ");
   forcePreviewPaneThumbTitleBar(infoBar);
 
   const imgs = Array.from(art.querySelectorAll(".previewItemPlaceholderThumb"));
@@ -44260,12 +44443,6 @@ function labelForCycleValue(list, value) {
   return entry ? entry.label : String(value || "");
 }
 
-function labelForTitleLayoutMode(mode) {
-  return normalizeTitleLayoutModeValue(mode, "pane") === "compact"
-    ? "Compact top bar"
-    : "Stacked title pane";
-}
-
 function setFilePaneViewMode(mode) {
   if (!WS.meta) return false;
   const nextMode = normalizeFilePaneViewMode(mode, "list");
@@ -44456,20 +44633,6 @@ function refreshLiveSettingsPaneFromKeyboardAction() {
   });
 }
 
-function toggleTitlePaneKeybindAction() {
-  if (!WS.meta) return false;
-  const nextMode =
-    titleLayoutModeFromOptions() === "compact" ? "pane" : "compact";
-  setOptionValue("titleLayoutMode", nextMode);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyInteractionModeFromOptions();
-  applyPaneDividerFromOptions();
-  refreshFitInsidePreviewGrids();
-  syncButtons();
-  showStatusMessage(`Title layout: ${labelForTitleLayoutMode(nextMode)}`, "pane-toggles");
-  return true;
-}
-
 function toggleSettingsAndDirectoriesPanesKeybindAction() {
   if (!WS.meta) return false;
   if (VIEWER_MODE) return false;
@@ -44590,8 +44753,6 @@ function handleExtrasKeybindAction(action) {
       return toggleDirectoriesPaneKeybindAction();
     case "toggleFilePaneView":
       return toggleFilePaneViewMode();
-    case "toggleTitlePane":
-      return toggleTitlePaneKeybindAction();
     case "toggleSettingsAndDirectoriesPanes":
       return toggleSettingsAndDirectoriesPanesKeybindAction();
     case "refreshWorkspace":
