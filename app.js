@@ -1442,6 +1442,7 @@ let ACTIVE_PREVIEW_FILE_VIRTUALIZERS = [];
 const THUMBNAIL_VIEWPORT_OVERSCAN_MULTIPLIER = 0.85;
 const THUMBNAIL_DIRECTORY_WINDOW_LIMIT = 36;
 const THUMBNAIL_PREVIEW_WINDOW_LIMIT = 72;
+const TAG_ALBUM_DIRECTORY_VIRTUALIZE_THRESHOLD = 160;
 
 const MEDIA_FILTER_CONFIGS = {};
 
@@ -21294,6 +21295,38 @@ function isViewingTagFolder() {
   return !!WS.view.tagFolderActiveMode;
 }
 
+function tagAlbumPerformanceModeValue(mode) {
+  const value = String(mode || "").trim().toLowerCase();
+  return value === "tag" || value === "album";
+}
+
+function isViewingPerformanceSensitiveTagAlbumFolder() {
+  return !!(
+    isViewingTagFolder() &&
+    tagAlbumPerformanceModeValue(WS.view && WS.view.tagFolderActiveMode)
+  );
+}
+
+function isPerformanceSensitiveTagAlbumPreviewNode(dirNode) {
+  if (!dirNode || !dirNode._skipTagFilters) return false;
+  return tagAlbumPerformanceModeValue(dirNode._tagPreviewMode);
+}
+
+function shouldUseLightweightTagAlbumMetrics() {
+  return (
+    !tortoiseNavigationEnabled() &&
+    isViewingPerformanceSensitiveTagAlbumFolder()
+  );
+}
+
+function shouldSkipDeepTagAlbumThumbnailManifestForNode(dirNode = null) {
+  if (tortoiseNavigationEnabled()) return false;
+  return (
+    isViewingPerformanceSensitiveTagAlbumFolder() ||
+    isPerformanceSensitiveTagAlbumPreviewNode(dirNode)
+  );
+}
+
 function getVisibleChildDirsForTagEvaluation(dirNode) {
   if (!dirNode) return [];
   const base = sortDirsForDisplay(
@@ -27608,7 +27641,10 @@ function currentFilePreviewContextDir() {
 }
 
 function shouldDeferNonEssentialNavigationWork() {
-  return false;
+  return (
+    !tortoiseNavigationEnabled() &&
+    isViewingPerformanceSensitiveTagAlbumFolder()
+  );
 }
 
 function scoreInterfaceEnabled(opt = null) {
@@ -27907,6 +27943,8 @@ function getPreviewCardThumbnailDemandRecords(card) {
     return [WS.fileById.get(fileId)].filter(Boolean);
   }
   if (card.__previewDirNode) {
+    if (shouldUseLightweightTagAlbumThumbnailsForNode(card.__previewDirNode))
+      return [];
     const leadInfo = getDisplayLeadPreviewForDir(
       card.__previewDirNode,
       "preview-dir",
@@ -27916,13 +27954,20 @@ function getPreviewCardThumbnailDemandRecords(card) {
   const dirPath = String(card.dataset?.dirPath || "");
   if (dirPath) {
     const dirNode = WS.dirByPath.get(dirPath);
+    if (shouldUseLightweightTagAlbumThumbnailsForNode(dirNode)) return [];
     const leadInfo = dirNode
       ? getDisplayLeadPreviewForDir(dirNode, "preview-dir")
       : null;
     return leadInfo && leadInfo.record ? [leadInfo.record] : [];
   }
-  if (card.__previewTagEntry)
+  if (card.__previewTagEntry) {
+    if (
+      !tortoiseNavigationEnabled() &&
+      isViewingPerformanceSensitiveTagAlbumFolder()
+    )
+      return [];
     return collectVisibleThumbRecordsForTagEntry(card.__previewTagEntry);
+  }
   const inlinePreviewId = String(
     card.querySelector?.("[data-dir-preview-id]")?.dataset?.dirPreviewId || "",
   );
@@ -27946,6 +27991,7 @@ function getDirectoriesRowThumbnailDemandRecords(row) {
   if (dirPath || row.__dirNode === WS.root || row.__previewDirNode === WS.root) {
     const dirNode =
       row.__dirNode || row.__previewDirNode || WS.dirByPath.get(dirPath) || null;
+    if (shouldUseLightweightTagAlbumThumbnailsForNode(dirNode)) return [];
     const leadInfo = dirNode
       ? getDisplayLeadPreviewForDir(dirNode, "dir")
       : null;
@@ -28308,6 +28354,7 @@ function collectNavigationManifestRecords(
   maxChildLeadIds = 0,
 ) {
   if (!dirNode) return [];
+  if (shouldUseLightweightTagAlbumThumbnailsForNode(dirNode)) return [];
   const manifest = getDirectoryNavManifest(dirNode);
   if (!manifest) return [];
   const out = [];
@@ -28334,6 +28381,11 @@ function collectNavigationManifestRecords(
 
 function collectVisibleThumbRecordsForTagEntry(entry) {
   if (!entry || entry.placeholder) return [];
+  if (
+    !tortoiseNavigationEnabled() &&
+    isViewingPerformanceSensitiveTagAlbumFolder()
+  )
+    return [];
   const thumbMode = tagThumbnailKeyForEntry(entry)
     ? metaGetTagThumbnailModeByKey(tagThumbnailKeyForEntry(entry))
     : "single";
@@ -28384,6 +28436,7 @@ function collectFullNavigationEntryRecords(
       return;
     }
     if (entry.kind === "dir" && entry.node) {
+      if (shouldUseLightweightTagAlbumThumbnailsForNode(entry.node)) return;
       const leadInfo = getDisplayLeadPreviewForDir(
         entry.node,
         dirRotateKeyPrefix,
@@ -28458,6 +28511,7 @@ function collectNavigationEntryWindowRecords(
       continue;
     }
     if (entry.kind !== "dir" || !entry.node) continue;
+    if (shouldUseLightweightTagAlbumThumbnailsForNode(entry.node)) continue;
     const leadInfo = getDisplayLeadPreviewForDir(
       entry.node,
       dirRotateKeyPrefix,
@@ -35320,10 +35374,23 @@ function imageThumbPoolLimit() {
 
 function shouldVirtualizeDirectoriesPane(gridModeActive) {
   if (!gridModeActive) return false;
-  // Directory-grid virtualization is currently unstable in large folders and
-  // can leave persistent blank gaps while scrolling. The preview pane uses a
-  // separate virtualizer, so disable only this path for correctness.
-  return false;
+  if (!isViewingPerformanceSensitiveTagAlbumFolder()) return false;
+  if (!Array.isArray(WS.nav.entries)) return false;
+  if (WS.nav.entries.length < TAG_ALBUM_DIRECTORY_VIRTUALIZE_THRESHOLD)
+    return false;
+  if (
+    WS.view.bulkActionMenuOpen ||
+    WS.view.dirActionMenuPath ||
+    WS.view.fileActionMenuId ||
+    TAG_EDIT_PATH ||
+    RENAME_EDIT_PATH ||
+    RENAME_EDIT_FILE_ID ||
+    TAG_ENTRY_RENAME_STATE ||
+    PREVIEW_BULK_TAG_EDIT
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function measureDirectoriesGridVirtualMetrics() {
@@ -36114,21 +36181,26 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   }
 
   let maxMetaLen = 10;
-  for (let i = 0; i < WS.nav.entries.length; i++) {
-    const entry = WS.nav.entries[i];
-    if (entry && entry.kind === "dir") {
-      const dirVisibility = directoriesThumbnailVisibilityForDirNode(
-        entry.node,
-      );
-      if (dirVisibility.showFolderCount || dirVisibility.showFileCount) {
-        const countText = buildDirFolderFileCountText(entry.node);
-        if (countText.length > maxMetaLen) maxMetaLen = countText.length;
-      }
-      if (dirVisibility.showSize) {
-        const sizeText = formatBytes(
-          dirSizeByPath.get(String(entry.node?.path || "")) || 0,
+  const lightweightTagAlbumDirectoryMetrics =
+    !tortoiseNavigationEnabled() &&
+    isViewingPerformanceSensitiveTagAlbumFolder();
+  if (!lightweightTagAlbumDirectoryMetrics) {
+    for (let i = 0; i < WS.nav.entries.length; i++) {
+      const entry = WS.nav.entries[i];
+      if (entry && entry.kind === "dir") {
+        const dirVisibility = directoriesThumbnailVisibilityForDirNode(
+          entry.node,
         );
-        if (sizeText.length > maxMetaLen) maxMetaLen = sizeText.length;
+        if (dirVisibility.showFolderCount || dirVisibility.showFileCount) {
+          const countText = buildDirFolderFileCountText(entry.node);
+          if (countText.length > maxMetaLen) maxMetaLen = countText.length;
+        }
+        if (dirVisibility.showSize) {
+          const sizeText = formatBytes(
+            dirSizeByPath.get(String(entry.node?.path || "")) || 0,
+          );
+          if (sizeText.length > maxMetaLen) maxMetaLen = sizeText.length;
+        }
       }
     }
   }
@@ -36254,7 +36326,17 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const iconText = getTagEntryDisplayIcon(entry);
       const tagTypeLabel = tagItemTypeLabelForEntry(entry);
       const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
-      const tagMetrics = getTagEntryAggregateMetrics(entry);
+      const lightweightTagThumbs =
+        !tortoiseNavigationEnabled() &&
+        isViewingPerformanceSensitiveTagAlbumFolder();
+      const tagMetrics = lightweightTagThumbs
+        ? {
+            folderCount: Math.max(0, Number(entry.count) || 0),
+            fileCount: 0,
+            sizeBytes: 0,
+            score: 0,
+          }
+        : getTagEntryAggregateMetrics(entry);
       const tagSummaryBits = [];
       if (tagVisibility.showFolderCount && tagVisibility.showFileCount) tagSummaryBits.push(countText);
       else if (tagVisibility.showFolderCount)
@@ -36265,10 +36347,14 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         tagSummaryBits.push(formatBytes(tagMetrics.sizeBytes));
       const tagThumbKey = tagThumbnailKeyForEntry(entry);
       const tagThumbMode = folderSquareCardMode
-        ? metaGetTagThumbnailModeByKey(tagThumbKey)
+        ? lightweightTagThumbs
+          ? "none"
+          : metaGetTagThumbnailModeByKey(tagThumbKey)
         : "none";
       const presetRec = folderSquareCardMode
-        ? getTagPresetPreviewRecordForEntry(entry)
+        ? lightweightTagThumbs
+          ? null
+          : getTagPresetPreviewRecordForEntry(entry)
         : null;
       const tagPool =
         folderSquareCardMode &&
@@ -36280,7 +36366,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               tagThumbnailPreviewSampleLimit(tagThumbMode),
             )
           : [];
-      const tagAllowsRotation = folderSquareCardMode && !naturalThumbCards;
+      const tagAllowsRotation =
+        folderSquareCardMode && !lightweightTagThumbs && !naturalThumbCards;
       const tagRotateScope = String(WS.nav.dirNode?.path || "");
       const tagRotateKey = entry.special
         ? `tag:${tagRotateScope}:special:${entry.special}`
@@ -36505,6 +36592,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         row.dataset.dirPath = entry.node?.path || "";
         const p = entry.node?.path || "";
         const isStorageGhost = isStorageStubDirNode(entry.node);
+        const lightweightFolderThumb =
+          shouldUseLightweightTagAlbumThumbnailsForNode(entry.node);
         row.dataset.bulkAnchor = `dir:${p}`;
         const isFavorite = !isStorageGhost && metaHasFavorite(p);
         const isHidden = !isStorageGhost && metaHasHidden(p);
@@ -36524,7 +36613,11 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const dirMetaLines = [];
         if (!isStorageGhost && dirVisibility.showItemTypeLabel)
           dirMetaLines.push(folderItemTypeLabelForNode(entry.node));
-        if (!isStorageGhost && (dirVisibility.showFolderCount || dirVisibility.showFileCount)) {
+        if (
+          !isStorageGhost &&
+          !lightweightFolderThumb &&
+          (dirVisibility.showFolderCount || dirVisibility.showFileCount)
+        ) {
           const folderCount = getDirectFolderCountForNode(entry.node);
           const fileCount = getRecursiveFileCountForNode(entry.node);
           if (dirVisibility.showFolderCount && dirVisibility.showFileCount) {
@@ -36535,7 +36628,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             dirMetaLines.push(`${fileCount} ${fileCount === 1 ? "File" : "Files"}`);
           }
         }
-        if (!isStorageGhost && dirVisibility.showSize)
+        if (!isStorageGhost && !lightweightFolderThumb && dirVisibility.showSize)
           dirMetaLines.push(
             formatBytes(dirSizeByPath.get(String(p || "")) || 0),
           );
@@ -36550,7 +36643,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         let inlinePreviewHtml = "";
         let firstRec = null;
         let rotateKey = "";
-        if (!isStorageGhost) {
+        if (!isStorageGhost && !lightweightFolderThumb) {
           const leadInfo = getDisplayLeadPreviewForDir(entry.node, "dir");
           firstRec = leadInfo.record;
           rotateKey = leadInfo.rotateKey;
@@ -39589,6 +39682,7 @@ function tagEntryForPreviewPlaceholderNode(dirNode) {
 
 function previewPlaceholderThumbnailRecordForDirNode(dirNode) {
   if (!dirNode) return null;
+  if (shouldUseLightweightTagAlbumThumbnailsForNode(dirNode)) return null;
   if (dirNode._skipTagFilters) {
     const tagEntry = tagEntryForPreviewPlaceholderNode(dirNode);
     return tagEntry ? getTagThumbnailReferenceRecord(tagEntry) : null;
@@ -39702,6 +39796,14 @@ function previewPlaceholderRegularMetaText(src) {
   const visibility = previewThumbnailVisibilityForKind(kind);
   const parts = [];
 
+  if (
+    !tortoiseNavigationEnabled() &&
+    isViewingPerformanceSensitiveTagAlbumFolder() &&
+    (kind === "tag" || kind === "rootFolder" || kind === "subfolder")
+  ) {
+    return String((src && src.meta) || "");
+  }
+
   if (kind === "tag" && src && src.tagEntry) {
     const entry = src.tagEntry;
     const metrics = getTagEntryAggregateMetrics(entry);
@@ -39792,6 +39894,12 @@ function preloadPreviewPlaceholderThumbSrc(src) {
 
 function previewPlaceholderThumbnailRecordForEntry(entry) {
   if (!entry) return null;
+  if (
+    entry.kind === "tag" &&
+    !tortoiseNavigationEnabled() &&
+    isViewingPerformanceSensitiveTagAlbumFolder()
+  )
+    return null;
   if (entry.kind === "tag") return getTagThumbnailReferenceRecord(entry);
   if (entry.kind === "dir") return previewPlaceholderThumbnailRecordForDirNode(entry.node);
   if (entry.kind === "file") return WS.fileById.get(String(entry.id || "")) || null;
@@ -40210,15 +40318,29 @@ function buildPreviewTagCardMarkup(entry) {
   const iconText = getTagEntryDisplayIcon(entry);
   const tagTypeLabel = tagItemTypeLabelForEntry(entry);
   const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
-  const tagMetrics = getTagEntryAggregateMetrics(entry);
+  const lightweightTagThumbs =
+    !tortoiseNavigationEnabled() &&
+    isViewingPerformanceSensitiveTagAlbumFolder();
+  const tagMetrics = lightweightTagThumbs
+    ? {
+        folderCount: Math.max(0, Number(entry.count) || 0),
+        fileCount: 0,
+        sizeBytes: 0,
+        score: 0,
+      }
+    : getTagEntryAggregateMetrics(entry);
   const tagSummaryBits = [];
   if (showFolderCount && showFileCount) tagSummaryBits.push(countText);
   else if (showFolderCount) tagSummaryBits.push(`${tagMetrics.folderCount} ${tagMetrics.folderCount === 1 ? "Folder" : "Folders"}`);
   else if (showFileCount) tagSummaryBits.push(`${tagMetrics.fileCount} ${tagMetrics.fileCount === 1 ? "File" : "Files"}`);
   if (showSize) tagSummaryBits.push(formatBytes(tagMetrics.sizeBytes));
   const tagThumbKey = tagThumbnailKeyForEntry(entry);
-  const tagThumbMode = metaGetTagThumbnailModeByKey(tagThumbKey);
-  const presetRec = getTagPresetPreviewRecordForEntry(entry);
+  const tagThumbMode = lightweightTagThumbs
+    ? "none"
+    : metaGetTagThumbnailModeByKey(tagThumbKey);
+  const presetRec = lightweightTagThumbs
+    ? null
+    : getTagPresetPreviewRecordForEntry(entry);
   const tagPool =
     tagThumbMode !== "none" && !presetRec && !naturalThumbCards
       ? getRecursivePreviewRecordsForTagEntry(
@@ -40226,7 +40348,7 @@ function buildPreviewTagCardMarkup(entry) {
           tagThumbnailPreviewSampleLimit(tagThumbMode),
         )
       : [];
-  const tagAllowsRotation = !naturalThumbCards;
+  const tagAllowsRotation = !lightweightTagThumbs && !naturalThumbCards;
   const tagRotateScope = String(WS.nav.dirNode?.path || "");
   const tagRotateKey = entry.special
     ? `tag:${tagRotateScope}:special:${entry.special}`
@@ -40626,24 +40748,33 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
   if (isGridInteractionMode()) {
     if (isBulkSelected) card.classList.add("bulkSelected");
   }
+  const lightweightFolderThumb =
+    shouldUseLightweightTagAlbumThumbnailsForNode(dirNode);
   const sc = metaGetScore(dirNode?.path || "");
   const isFavorite = metaHasFavorite(p);
   const isHidden = metaHasHidden(p);
-  const totalFolderCount = getDirectFolderCountForNode(dirNode);
-  const totalFileCount = getRecursiveFileCountForNode(dirNode);
-  const totalSizeBytes = getDirRecursiveSizeBytesForNode(dirNode, sizeMemo);
+  const totalFolderCount = lightweightFolderThumb
+    ? 0
+    : getDirectFolderCountForNode(dirNode);
+  const totalFileCount = lightweightFolderThumb
+    ? 0
+    : getRecursiveFileCountForNode(dirNode);
+  const totalSizeBytes = lightweightFolderThumb
+    ? 0
+    : getDirRecursiveSizeBytesForNode(dirNode, sizeMemo);
   const folderSummaryParts = [];
   if (showItemTypeLabel)
     folderSummaryParts.push(folderItemTypeLabelForNode(dirNode));
-  if (showFolderCount && showFileCount)
+  if (!lightweightFolderThumb && showFolderCount && showFileCount)
     folderSummaryParts.push(
       formatFolderFileCountSegment(totalFolderCount, totalFileCount),
     );
-  else if (showFolderCount)
+  else if (!lightweightFolderThumb && showFolderCount)
     folderSummaryParts.push(`${totalFolderCount} ${totalFolderCount === 1 ? "Folder" : "Folders"}`);
-  else if (showFileCount)
+  else if (!lightweightFolderThumb && showFileCount)
     folderSummaryParts.push(`${totalFileCount} ${totalFileCount === 1 ? "File" : "Files"}`);
-  if (showSize) folderSummaryParts.push(formatBytes(totalSizeBytes));
+  if (!lightweightFolderThumb && showSize)
+    folderSummaryParts.push(formatBytes(totalSizeBytes));
   const thumbMode = folderPreviewThumbMode();
   const thumbAspectMode = thumbMode === "aspect";
   const thumbContainMode =
@@ -40671,7 +40802,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     TAG_EDIT_PATH !== null && String(TAG_EDIT_PATH) === p;
   const isTagEditing = isSingleTagEditing || isBulkTagAnchor;
   const leadInfo =
-    thumbMode !== "off"
+    thumbMode !== "off" && !lightweightFolderThumb
       ? getDisplayLeadPreviewForDir(dirNode, "preview-dir")
       : { record: null, rotateKey: "" };
   const leadRec = leadInfo.record;
