@@ -21312,14 +21312,7 @@ function isPerformanceSensitiveTagAlbumPreviewNode(dirNode) {
   return tagAlbumPerformanceModeValue(dirNode._tagPreviewMode);
 }
 
-function shouldUseLightweightTagAlbumMetrics() {
-  return (
-    !tortoiseNavigationEnabled() &&
-    isViewingPerformanceSensitiveTagAlbumFolder()
-  );
-}
-
-function shouldSkipDeepTagAlbumThumbnailManifestForNode(dirNode = null) {
+function shouldUseLightweightTagAlbumThumbnailsForNode(dirNode = null) {
   if (tortoiseNavigationEnabled()) return false;
   return (
     isViewingPerformanceSensitiveTagAlbumFolder() ||

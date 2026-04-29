@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Local Gallery</title>
-      <!-- BEGIN: inlined from ./styles.css (auto-generated) -->
+                                                                                                                                                <!-- BEGIN: inlined from ./styles.css (auto-generated) -->
   <style>
 :root {
   --color0-primary: hsl(0, 0%, 95%);
@@ -6972,7 +6972,6 @@ img[data-rotate-key].rotatingThumbFade {
 .previewItemPlaceholder.hasThumbnail .previewItemPlaceholderInfoBar * {
   color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary)) !important;
 }
-
   </style>
   <!-- END: inlined from ./styles.css -->
   </head>
@@ -7491,7 +7490,7 @@ img[data-rotate-key].rotatingThumbFade {
         </feComponentTransfer>
       </filter>
     </svg>
-      <!-- BEGIN: inlined from ./app.js (auto-generated) -->
+                                                                                                                                                <!-- BEGIN: inlined from ./app.js (auto-generated) -->
   <script>
 
 
@@ -28807,14 +28806,7 @@ function isPerformanceSensitiveTagAlbumPreviewNode(dirNode) {
   return tagAlbumPerformanceModeValue(dirNode._tagPreviewMode);
 }
 
-function shouldUseLightweightTagAlbumMetrics() {
-  return (
-    !tortoiseNavigationEnabled() &&
-    isViewingPerformanceSensitiveTagAlbumFolder()
-  );
-}
-
-function shouldSkipDeepTagAlbumThumbnailManifestForNode(dirNode = null) {
+function shouldUseLightweightTagAlbumThumbnailsForNode(dirNode = null) {
   if (tortoiseNavigationEnabled()) return false;
   return (
     isViewingPerformanceSensitiveTagAlbumFolder() ||
