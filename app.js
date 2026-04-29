@@ -715,6 +715,7 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
 
   Object.freeze({ section: "Panes & surfaces", id: "pane-toggles", label: "Pane / surface toggles", hint: "File pane, title pane, settings pane, and preview background toggle messages.", optionKey: "notifyPaneToggles" }),
   Object.freeze({ section: "Hidden & special views", id: "visibility-toggles", label: "Hidden / Trash / Storage / Untagged toggles", hint: "Notifications that announce special entries being shown, hidden, revealed, or blank-row adjusted.", optionKey: "notifyVisibilityToggles" }),
+  Object.freeze({ section: "Hidden & special views", id: "quick-navigation", label: "Quick navigation toggle", hint: "Quick navigation on/off messages.", optionKey: "notifyQuickNavigation" }),
 
   Object.freeze({ section: "Cycling actions", id: "cycle-filter", label: "Content filter cycle", hint: "The action that cycles All / Images / Videos / GIFs.", optionKey: "notifyCycleFilter" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-aspect-ratio-filter", label: "Aspect ratio filter cycle", hint: "The action that cycles All / Portrait / Square / Landscape.", optionKey: "notifyCycleAspectRatioFilter" }),
@@ -821,8 +822,12 @@ function defaultOptions() {
     storePortraitAspectRatioFiles: false,
     storeSquareAspectRatioFiles: false,
     storeLandscapeAspectRatioFiles: false,
+    storeImageFiles: false,
+    storeGifFiles: false,
+    storeVideoFiles: false,
     tortoiseMode: true,
     muteMessages: false,
+    quickNavigation: true,
     showUntaggedFolder: false,
     showTagFolderSpacerRow: true,
     showScores: true,
@@ -1251,12 +1256,28 @@ function normalizeOptions(o) {
       typeof src.storeLandscapeAspectRatioFiles === "boolean"
         ? src.storeLandscapeAspectRatioFiles
         : d.storeLandscapeAspectRatioFiles,
+    storeImageFiles:
+      typeof src.storeImageFiles === "boolean"
+        ? src.storeImageFiles
+        : d.storeImageFiles,
+    storeGifFiles:
+      typeof src.storeGifFiles === "boolean"
+        ? src.storeGifFiles
+        : d.storeGifFiles,
+    storeVideoFiles:
+      typeof src.storeVideoFiles === "boolean"
+        ? src.storeVideoFiles
+        : d.storeVideoFiles,
     tortoiseMode:
       typeof src.tortoiseMode === "boolean" ? src.tortoiseMode : d.tortoiseMode,
     muteMessages:
       typeof src.muteMessages === "boolean"
         ? src.muteMessages
         : d.muteMessages,
+    quickNavigation:
+      typeof src.quickNavigation === "boolean"
+        ? src.quickNavigation
+        : d.quickNavigation,
     showUntaggedFolder:
       typeof src.showUntaggedFolder === "boolean"
         ? src.showUntaggedFolder
@@ -2409,7 +2430,7 @@ function saveAppearancePresetValues(name, values) {
   );
   syncPaneKeybindBindingsWithCurrentActions(false);
   rebuildKeybindIndex();
-  if (MENU_OPEN && MENU_ACTIVE_TAB === "controls") renderKeybindsUi("pane");
+  if (MENU_OPEN && isKeybindMenuTab(MENU_ACTIVE_TAB)) renderKeybindsUi("pane");
   const savedPreset = findAppearancePresetByName(presetName);
   const nextId =
     normalizeAppearancePresetIdValue(savedPreset && savedPreset.id) || presetId;
@@ -2599,7 +2620,7 @@ function renameAppearancePresetById(presetId, nextName) {
   }
   syncPaneKeybindBindingsWithCurrentActions(false);
   rebuildKeybindIndex();
-  if (MENU_OPEN && MENU_ACTIVE_TAB === "controls") renderKeybindsUi("pane");
+  if (MENU_OPEN && isKeybindMenuTab(MENU_ACTIVE_TAB)) renderKeybindsUi("pane");
   metaMarkDirty(
     META_DOC_IDS.appearancePresets,
     META_DOC_IDS.keybinds,
@@ -2673,7 +2694,7 @@ function deleteAppearancePresetById(presetId) {
   }
   syncPaneKeybindBindingsWithCurrentActions(false);
   rebuildKeybindIndex();
-  if (MENU_OPEN && MENU_ACTIVE_TAB === "controls") renderKeybindsUi("pane");
+  if (MENU_OPEN && isKeybindMenuTab(MENU_ACTIVE_TAB)) renderKeybindsUi("pane");
   metaMarkDirty(
     META_DOC_IDS.appearancePresets,
     META_DOC_IDS.appearanceAssignments,
@@ -7506,7 +7527,7 @@ const KEYBIND_ACTIONS = [
   {
     id: "prodPreviewPane",
     label: "Prod",
-    hint: "Rebuild the preview pane without changing navigation state.",
+    hint: "Redraw the active thumbnail grid and force thumbnail loading demand to refresh.",
     section: "panes",
   },
   {
@@ -7598,6 +7619,12 @@ const KEYBIND_ACTIONS = [
     label: "Mute Messages",
     hint: "Toggle status and notification messages on or off.",
     section: "panes",
+  },
+  {
+    id: "toggleQuickNavigation",
+    label: "Quick navigation",
+    hint: "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.",
+    section: "navigation",
   },
   {
     id: "toggleTagFolderSpacerRow",
@@ -7798,6 +7825,54 @@ function paneKeybindActions(presets = null) {
   return KEYBIND_ACTIONS.concat(getAppearancePresetKeybindActions(presets));
 }
 
+const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
+  "toggleQuickNavigation",
+  "toggleTortoiseMode",
+  "toggleDirectoriesPane",
+  "toggleFilePaneView",
+  "toggleSettingsAndDirectoriesPanes",
+  "toggleTitlePane",
+  "prodPreviewPane",
+  "refreshWorkspace",
+  "cycleFilter",
+  "cycleAspectRatioFilter",
+  "cycleFolderSort",
+  "toggleAnimatedFilters",
+  "cycleAppearancePresets",
+  "toggleLightMode",
+  "togglePreviewMediaUsePaneBackground",
+  "toggleHideVideoControls",
+  "toggleRandomFileSort",
+  "toggleRandomFolderSort",
+  "randomFirstFileJump",
+  "randomFileJump",
+  "toggleShowHiddenFolder",
+  "toggleShowTrashFolder",
+  "toggleShowUntaggedFolder",
+  "toggleShowStorageFolder",
+  "toggleMuteMessages",
+]);
+const GENERAL_KEYBIND_ACTION_ID_SET = new Set(GENERAL_KEYBIND_ACTION_IDS);
+
+function isGeneralKeybindActionId(actionId) {
+  const id = String(actionId || "");
+  return (
+    GENERAL_KEYBIND_ACTION_ID_SET.has(id) ||
+    isAppearancePresetKeybindAction(id)
+  );
+}
+
+function generalKeybindActionSortIndex(actionId) {
+  const id = String(actionId || "");
+  const index = GENERAL_KEYBIND_ACTION_IDS.indexOf(id);
+  if (index >= 0) return index;
+  if (isAppearancePresetKeybindAction(id)) {
+    const base = GENERAL_KEYBIND_ACTION_IDS.indexOf("cycleAppearancePresets");
+    return (base >= 0 ? base : GENERAL_KEYBIND_ACTION_IDS.length) + 0.5;
+  }
+  return GENERAL_KEYBIND_ACTION_IDS.length + 1000;
+}
+
 const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   scoreUpSelection: "=",
   scoreDownSelection: "-",
@@ -7851,6 +7926,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleShowUntaggedFolder: "u",
   toggleShowStorageFolder: "Cmd+Shift+s",
   toggleTortoiseMode: "Cmd+h",
+  toggleQuickNavigation: "",
   toggleTagFolderSpacerRow: "Cmd+b",
   togglePreviewMediaUsePaneBackground: "b",
   toggleHideVideoControls: "",
@@ -7963,10 +8039,8 @@ function normalizeKeybinds(log, presets = null) {
         legacyRandomJumpKey = key;
         continue;
       }
-      if (id === "toggleQuickNavigation") {
-        legacyQuickNavigationKey = key;
-        continue;
-      }
+      // v8: Quick navigation is a real keybind action, not a legacy alias.
+      // Let it fall through so saved bindings persist by id.
       if (id === "toggleFilePaneView") sawFilePaneViewBinding = true;
       if (!byId.has(id)) continue;
       if (KEYBIND_LOCKED_IDS.has(id)) continue;
@@ -7979,10 +8053,7 @@ function normalizeKeybinds(log, presets = null) {
       firstJumpBinding.key = legacyRandomJumpKey;
     }
   }
-  if (legacyQuickNavigationKey && !sawFilePaneViewBinding) {
-    const filePaneViewBinding = byId.get("toggleFilePaneView");
-    if (filePaneViewBinding) filePaneViewBinding.key = legacyQuickNavigationKey;
-  }
+  // v8: Do not migrate saved Quick navigation bindings onto File Pane View.
   migrateIfKeyMatches("leaveDir", "a", "q");
   migrateIfKeyMatches("enterDir", "d", "e");
   migrateIfKeyMatches("randomFirstFileJump", "x", "r");
@@ -8215,6 +8286,7 @@ const WS = {
     previewScrollActiveKey: "",
     gridSelectionByContext: new Map(),
     closedFilePaneWidthPx: 0,
+    filePaneEnterAutoClosedPanes: null,
     activePane: "directories",
     previewSelectAnchorKey: "",
     previewSelectedKey: "",
@@ -8427,6 +8499,7 @@ function resetWorkspace() {
   WS.view.previewScrollActiveKey = "";
   WS.view.gridSelectionByContext = new Map();
   WS.view.closedFilePaneWidthPx = 0;
+  WS.view.filePaneEnterAutoClosedPanes = null;
   WS.view.previewSelectAnchorKey = "";
   if (WS.view.slideshowTimer) {
     clearInterval(WS.view.slideshowTimer);
@@ -8518,10 +8591,10 @@ const optionsStatusLabel = $("optionsStatusLabel");
 // Keybinds Panel
 const keybindsBodyEl = $("keybindsBody");
 const keybindsResetBtn = $("keybindsResetBtn");
-const keybindsDoneBtn = $("keybindsDoneBtn");
+const keybindsOpenWritableBtn = $("keybindsOpenWritableBtn");
 const keybindsStatusLabel = $("keybindsStatusLabel");
 const calendarBodyEl = $("calendarBody");
-const calendarDoneBtn = $("calendarDoneBtn");
+const calendarOpenWritableBtn = $("calendarOpenWritableBtn");
 const calendarDeleteAllBtn = $("calendarDeleteAllBtn");
 const calendarStatusLabel = $("calendarStatusLabel");
 
@@ -9069,6 +9142,7 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasMsg("video end:")) return "cycle-video-end";
   if (hasMsg("random file sort:")) return "random-file-sort";
   if (hasMsg("random folder sort:")) return "random-folder-sort";
+  if (hasMsg("quick navigation:")) return "quick-navigation";
   if (hasMsg("reveal hidden items:", "trash folder:", "storage folder:", "untagged folder:", "blank row after tag folders:"))
     return "visibility-toggles";
   if (hasMsg("file pane:", "title layout:", "settings + file panes:", "preview media uses pane background:"))
@@ -9694,15 +9768,17 @@ function syncMetaButtons() {
 
 const MENU_TAB_IDS = [
   "general",
+  "controls",
+  "storage",
   "appearance",
   "playback",
   "thumbnails",
   "filenames",
-  "controls",
   "calendar",
 ];
 const MENU_PANEL_BY_TAB = {
   general: "options",
+  storage: "options",
   appearance: "options",
   playback: "options",
   thumbnails: "options",
@@ -9720,6 +9796,7 @@ const menuTabPanels = {
 };
 const menuScrollTargets = {
   general: optionsBodyEl,
+  storage: optionsBodyEl,
   appearance: optionsBodyEl,
   playback: optionsBodyEl,
   thumbnails: optionsBodyEl,
@@ -9727,6 +9804,11 @@ const menuScrollTargets = {
   controls: keybindsBodyEl,
   calendar: calendarBodyEl,
 };
+
+function isKeybindMenuTab(tabId) {
+  const tab = String(tabId || "");
+  return tab === "controls";
+}
 
 function saveMenuTabScroll(tab) {
   const target = menuScrollTargets[tab];
@@ -9771,7 +9853,7 @@ function ensureOptionsUi(section) {
 }
 
 function ensureKeybindsUi(scope = "pane") {
-  renderKeybindsUi(scope);
+  renderKeybindsUi("pane");
   setKeybindsStatus("Saved automatically");
   restoreMenuTabScroll("controls");
 }
@@ -9845,7 +9927,7 @@ function setMenuTab(tabId) {
   const nextCandidate = isMenuTabAvailable(tabId) ? tabId : "general";
   const next = nextCandidate;
   if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
-  if (MENU_ACTIVE_TAB === "controls" && next !== "controls")
+  if (isKeybindMenuTab(MENU_ACTIVE_TAB) && !isKeybindMenuTab(next))
     KEYBIND_CAPTURE_ACTION_ID = "";
   MENU_ACTIVE_TAB = next;
   MENU_LAST_TAB = next;
@@ -10557,6 +10639,7 @@ function assignKeybindForAction(actionId, rawKeybind) {
   else WS.meta.keybinds = bindingList;
   rebuildKeybindIndex();
   metaMarkDirty(META_DOC_IDS.keybinds);
+  metaScheduleSave();
   return { ok: true, swapped: !!conflict };
 }
 
@@ -10587,6 +10670,8 @@ function keybindToggleActionState(actionId) {
       return tortoiseNavigationEnabled();
     case "toggleMuteMessages":
       return muteMessagesEnabled();
+    case "toggleQuickNavigation":
+      return quickNavigationEnabled();
     case "toggleTagFolderSpacerRow":
       return showTagFolderSpacerRowEnabled();
     case "togglePreviewMediaUsePaneBackground":
@@ -10800,10 +10885,21 @@ function renderKeybindsUi(scope = "pane") {
     WS.meta && Array.isArray(WS.meta.keybinds)
       ? syncPaneKeybindBindingsWithCurrentActions(false)
       : defaultKeybinds(WS.meta && WS.meta.appearancePresets);
-  const visiblePaneBindings = paneBindings.filter((binding) => {
+  const normalizedScope = String(scope || "pane") === "general" ? "general" : "pane";
+  let visiblePaneBindings = paneBindings.filter((binding) => {
     if (!binding || binding.hiddenInUi) return false;
+    if (normalizedScope === "general" && !isGeneralKeybindActionId(binding.id))
+      return false;
     return true;
   });
+  if (normalizedScope === "general") {
+    visiblePaneBindings = visiblePaneBindings.slice().sort((a, b) => {
+      const ai = generalKeybindActionSortIndex(a && a.id);
+      const bi = generalKeybindActionSortIndex(b && b.id);
+      if (ai !== bi) return ai - bi;
+      return String((a && a.label) || "").localeCompare(String((b && b.label) || ""));
+    });
+  }
   if (
     KEYBIND_CAPTURE_ACTION_ID &&
     !visiblePaneBindings.some(
@@ -10859,11 +10955,16 @@ function renderKeybindsUi(scope = "pane") {
     return out;
   };
 
-  for (const section of KEYBIND_SECTIONS) {
-    const list = paneBySection.get(section.id) || [];
-    if (!list.length) continue;
-    html += `<h1>${escapeHtml(section.label)}</h1>`;
-    html += renderBindingRows(list);
+  if (normalizedScope === "general") {
+    html += `<div class="calendarPanelIntro"><h1>General</h1></div>`;
+    html += renderBindingRows(visiblePaneBindings);
+  } else {
+    for (const section of KEYBIND_SECTIONS) {
+      const list = paneBySection.get(section.id) || [];
+      if (!list.length) continue;
+      html += `<h1>${escapeHtml(section.label)}</h1>`;
+      html += renderBindingRows(list);
+    }
   }
 
   keybindsBodyEl.innerHTML = html;
@@ -11021,7 +11122,7 @@ document.addEventListener(
       return;
     }
     if (!KEYBIND_CAPTURE_ACTION_ID) return;
-    if (!MENU_OPEN || MENU_ACTIVE_TAB !== "controls") {
+    if (!MENU_OPEN || !isKeybindMenuTab(MENU_ACTIVE_TAB)) {
       KEYBIND_CAPTURE_ACTION_ID = "";
       return;
     }
@@ -11327,6 +11428,12 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
   const filePaneViewModes = [
     { value: "list", label: "List View" },
     { value: "thumbnail", label: "Thumbnail View" },
+  ];
+  const mediaFilterModes = [
+    { value: "all", label: "All" },
+    { value: "images", label: "Images" },
+    { value: "videos", label: "Videos" },
+    { value: "gifs", label: "GIFs" },
   ];
   const imageThumbRenderModes = [
     { value: "placeholder", label: "Placeholder" },
@@ -11818,15 +11925,46 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     general: {
       title: "General",
       rows: `
+${makeSelectRow("File pane view", "Switch the file pane between List View and Thumbnail View.", "opt_filePaneViewMode", filePaneViewModeFromOptions(opt), filePaneViewModes)}
+${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
+${makeCheckRow(navigationSpeedOptionTitle, "Toggle internal navigation speed between tortoise and hare.", "opt_tortoiseMode", tortoiseNavigationEnabled())}
+${makeSelectRow("Media filter", "Choose which media types are visible in the current view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
+${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible in the current view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
+${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
+${makeSelectRow("Appearance preset", "Apply a saved appearance preset.", "opt_generalAppearancePreset", activeAppearancePresetId, appearancePresetSelectOptions)}
+${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
+${makeCheckRow("Light Mode", "Switch between the light and dark Retro UI variants.", "opt_lightMode", !!opt.lightMode)}
+${makeCheckRow("Reveal hidden items", "Show or hide items hidden by hidden tags.", "opt_showHiddenFolder", showHiddenFolderEnabled())}
+${makeCheckRow("Trash folder", "Show or hide the Trash folder entry at root.", "opt_showTrashFolder", showTrashFolderEnabled())}
+${makeCheckRow("Storage folder", "Show or hide the Storage folder entry.", "opt_showStorageFolder", showStorageFolderEnabled())}
+${makeCheckRow("Untagged folder", "Show or hide the Untagged tag folder entry.", "opt_showUntaggedFolder", showUntaggedFolderEnabled())}
+${makeCheckRow("Tag-folder spacer row", "Show a blank spacer row after tag, favorites, and album folders.", "opt_showTagFolderSpacerRow", showTagFolderSpacerRowEnabled())}
+${makeCheckRow("Preview media pane background", "Keep preview media on the recessed pane surface instead of black.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
 ${makeActionRow(
-  "Aspect ratio storage",
-  "Send every currently loaded and future matching file to storage by aspect ratio. These global toggles override folder-level storage until you turn the matching toggle off.",
+  "Thumbnail grid",
+  "Force the current thumbnail grid to redraw and request visible thumbnails again.",
   `
-  <button type="button" id="opt_store_aspect_portrait" class="${aspectRatioStorageEnabledForBucket("portrait", opt) ? "active" : ""}">${escapeHtml(aspectRatioStorageLabel("portrait", aspectRatioStorageEnabledForBucket("portrait", opt)))}</button>
-  <button type="button" id="opt_store_aspect_square" class="${aspectRatioStorageEnabledForBucket("square", opt) ? "active" : ""}">${escapeHtml(aspectRatioStorageLabel("square", aspectRatioStorageEnabledForBucket("square", opt)))}</button>
-  <button type="button" id="opt_store_aspect_landscape" class="${aspectRatioStorageEnabledForBucket("landscape", opt) ? "active" : ""}">${escapeHtml(aspectRatioStorageLabel("landscape", aspectRatioStorageEnabledForBucket("landscape", opt)))}</button>
+  <button type="button" id="opt_prod_thumbnails">Prod Thumbnails</button>
 `,
 )}
+${makeActionRow(
+  "Workspace",
+  "Refresh the current writable root from disk.",
+  `
+  <button type="button" id="opt_refresh_workspace"${!WS.meta.fsRootHandle ? " disabled" : ""}>Refresh Workspace</button>
+`,
+)}
+          `,
+    },
+    storage: {
+      title: "Storage",
+      rows: `
+${makeCheckRow("Portrait files", "Send every currently loaded and future portrait file to storage until this is turned off.", "opt_store_aspect_portrait", aspectRatioStorageEnabledForBucket("portrait", opt))}
+${makeCheckRow("Square files", "Send every currently loaded and future square file to storage until this is turned off.", "opt_store_aspect_square", aspectRatioStorageEnabledForBucket("square", opt))}
+${makeCheckRow("Landscape files", "Send every currently loaded and future landscape file to storage until this is turned off.", "opt_store_aspect_landscape", aspectRatioStorageEnabledForBucket("landscape", opt))}
+${makeCheckRow("Images", "Send every currently loaded and future still image file to storage until this is turned off.", "opt_store_media_images", mediaTypeStorageEnabledForType("images", opt))}
+${makeCheckRow("GIFs", "Send every currently loaded and future GIF file to storage until this is turned off.", "opt_store_media_gifs", mediaTypeStorageEnabledForType("gifs", opt))}
+${makeCheckRow("Videos", "Send every currently loaded and future video file to storage until this is turned off.", "opt_store_media_videos", mediaTypeStorageEnabledForType("videos", opt))}
 
           `,
     },
@@ -12303,30 +12441,45 @@ ${makeActionRow(
     renderOptionsUi("notifications");
   });
 
-  const bindAspectRatioStorageButton = (id, bucket) => {
-    bindActionBtn(id, async () => {
-      const key = aspectRatioStorageOptionKeyForBucket(bucket);
+  const bindStorageToggle = (id, key, label) => {
+    bindMenuToggleButton(id, async (enabled) => {
       if (!key) return;
-      const current = aspectRatioStorageEnabledForBucket(bucket);
       WS.meta.options = normalizeOptions(
-        Object.assign({}, WS.meta.options || {}, { [key]: !current }),
+        Object.assign({}, WS.meta.options || {}, { [key]: !!enabled }),
       );
       metaMarkDirty(META_DOC_IDS.prefGeneral);
       setOptionsStatus("Saved");
       await persistDirtyMetadataNow();
       const rebuilt = await rebuildWorkspaceAfterStorageStateChange();
-      renderOptionsUi("general");
+      renderOptionsUi("storage");
       if (rebuilt) {
         showStatusMessage(
-          `${labelForAspectRatioFilterMode(bucket)} files ${current ? "removed from" : "sent to"} storage.`,
+          `${label} files ${enabled ? "sent to" : "removed from"} storage.`,
           "storage",
         );
       }
     });
   };
-  bindAspectRatioStorageButton("opt_store_aspect_portrait", "portrait");
-  bindAspectRatioStorageButton("opt_store_aspect_square", "square");
-  bindAspectRatioStorageButton("opt_store_aspect_landscape", "landscape");
+  const bindAspectRatioStorageToggle = (id, bucket) => {
+    bindStorageToggle(
+      id,
+      aspectRatioStorageOptionKeyForBucket(bucket),
+      labelForAspectRatioFilterMode(bucket),
+    );
+  };
+  const bindMediaTypeStorageToggle = (id, type) => {
+    bindStorageToggle(
+      id,
+      mediaTypeStorageOptionKeyForType(type),
+      mediaTypeStorageLabel(type),
+    );
+  };
+  bindAspectRatioStorageToggle("opt_store_aspect_portrait", "portrait");
+  bindAspectRatioStorageToggle("opt_store_aspect_square", "square");
+  bindAspectRatioStorageToggle("opt_store_aspect_landscape", "landscape");
+  bindMediaTypeStorageToggle("opt_store_media_images", "images");
+  bindMediaTypeStorageToggle("opt_store_media_gifs", "gifs");
+  bindMediaTypeStorageToggle("opt_store_media_videos", "videos");
 
   bindCheck(
     "opt_previewMediaUsePaneBackground",
@@ -12379,6 +12532,9 @@ ${makeActionRow(
   });
   bindCheck("opt_tortoiseMode", "tortoiseMode", (enabled) => {
     handleTortoiseModeChanged(enabled);
+  });
+  bindCheck("opt_quickNavigation", "quickNavigation", (enabled) => {
+    showStatusMessage(`Quick navigation: ${enabled ? "On" : "Off"}`, "quick-navigation");
   });
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
     invalidateDirMetricsCaches();
@@ -12501,6 +12657,49 @@ ${makeActionRow(
     });
   }
   bindStandaloneSelect(
+    "opt_filterMode",
+    (value) => {
+      const next = ["all", "images", "videos", "gifs"].includes(String(value))
+        ? String(value)
+        : "all";
+      if (WS.view) WS.view.filterMode = next;
+      setOptionsStatus("Saved");
+      applyViewModesEverywhere(true);
+      showStatusMessage(`Filter: ${next}`, "cycle-filter");
+    },
+    (val) => (["all", "images", "videos", "gifs"].includes(String(val)) ? String(val) : "all"),
+  );
+  bindStandaloneSelect(
+    "opt_aspectRatioFilterMode",
+    (value) => {
+      setAspectRatioFilterMode(value);
+      setOptionsStatus("Saved");
+    },
+    (val) => normalizeAspectRatioFilterMode(val),
+  );
+  bindStandaloneSelect(
+    "opt_generalAppearancePreset",
+    (value) => {
+      const presetId = normalizeAppearancePresetIdValue(value);
+      if (!presetId || !applyAppearancePresetById(presetId)) return;
+      setOptionsStatus("Saved");
+      renderOptionsUi("general");
+      showStatusMessage(
+        `Applied preset '${appearancePresetDisplayName(presetId)}'.`,
+      );
+    },
+    (val) => normalizeAppearancePresetIdValue(val),
+  );
+  bindActionBtn("opt_prod_thumbnails", () => {
+    prodThumbnailGridKeybindAction();
+    setOptionsStatus("Saved");
+  });
+  bindActionBtn("opt_refresh_workspace", () => {
+    refreshWorkspaceKeybindAction();
+    setOptionsStatus("Saved");
+  });
+
+  bindStandaloneSelect(
     "opt_appearancePresetLibrary",
     () => {
       const appearancePresetSelectEl = $("opt_appearancePresetLibrary");
@@ -12560,12 +12759,11 @@ ${makeActionRow(
       .toLowerCase();
     return raw === "loop" || raw === "next" || raw === "stop" ? raw : "loop";
   });
-  bindSelect(
+  bindStandaloneSelect(
     "opt_filePaneViewMode",
-    "filePaneViewMode",
-    false,
     (val) => {
       setFilePaneViewMode(val);
+      setOptionsStatus("Saved");
     },
     (val) => normalizeFilePaneViewMode(val, "list"),
   );
@@ -12926,6 +13124,7 @@ ${makeActionRow(
 
 const OPTION_TAB_IDS = Object.freeze([
   "general",
+  "storage",
   "appearance",
   "thumbnails",
   "playback",
@@ -12938,14 +13137,23 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showHiddenFolder",
     "showTrashFolder",
     "showStorageFolder",
-    "storePortraitAspectRatioFiles",
-    "storeSquareAspectRatioFiles",
-    "storeLandscapeAspectRatioFiles",
     "tortoiseMode",
+    "quickNavigation",
     "showUntaggedFolder",
     "showTagFolderSpacerRow",
     "previewMediaUsePaneBackground",
     "hideVideoControls",
+    "lightMode",
+    "animatedMediaFilters",
+    "activeAppearancePresetId",
+  ]),
+  storage: Object.freeze([
+    "storePortraitAspectRatioFiles",
+    "storeSquareAspectRatioFiles",
+    "storeLandscapeAspectRatioFiles",
+    "storeImageFiles",
+    "storeGifFiles",
+    "storeVideoFiles",
   ]),
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
@@ -13021,21 +13229,18 @@ function resetOptionsToDefaults(tabId = MENU_ACTIVE_TAB) {
   setOptionsStatus("Reset");
   renderOptionsUi(targetTab);
   applyOptionsEverywhere(true);
+  const resetTabLabel = targetTab === "general" ? "Storage" : targetTab.charAt(0).toUpperCase() + targetTab.slice(1);
   showStatusMessage(
-    `Reset ${targetTab.charAt(0).toUpperCase() + targetTab.slice(1)} settings to defaults.`,
+    `Reset ${resetTabLabel} settings to defaults.`,
   );
 }
 
-if (keybindsDoneBtn)
-  keybindsDoneBtn.addEventListener("click", () => closeMenu());
 if (keybindsResetBtn)
   keybindsResetBtn.addEventListener("click", () => resetKeybindsToDefaults());
 
 if (optionsDoneBtn) optionsDoneBtn.addEventListener("click", () => closeMenu());
 if (optionsResetBtn)
   optionsResetBtn.addEventListener("click", () => resetOptionsToDefaults());
-if (calendarDoneBtn)
-  calendarDoneBtn.addEventListener("click", () => closeMenu());
 if (calendarDeleteAllBtn) {
   calendarDeleteAllBtn.addEventListener("click", (e) => {
     e.preventDefault();
@@ -19581,7 +19786,7 @@ if (refreshBtn)
     } catch {}
   });
 
-openWritableBtn.addEventListener("click", async () => {
+async function chooseRootDirectoryFromMenu() {
   try {
     if (window.showDirectoryPicker) {
       const rootHandle = await window.showDirectoryPicker({
@@ -19601,7 +19806,13 @@ openWritableBtn.addEventListener("click", async () => {
     console.error("Load folder failed.", err);
     showStatusMessage("Load folder failed.");
   }
-});
+}
+
+[openWritableBtn, keybindsOpenWritableBtn, calendarOpenWritableBtn]
+  .filter(Boolean)
+  .forEach((btn) => {
+    btn.addEventListener("click", chooseRootDirectoryFromMenu);
+  });
 
 if (openWritableInput) {
   openWritableInput.addEventListener("change", async () => {
@@ -19974,6 +20185,12 @@ function recordIsGloballyStoredByAspectRatio(rec, options = null) {
   return !!bucket && aspectRatioStorageEnabledForBucket(bucket, options);
 }
 
+function recordIsGloballyStoredByMediaType(rec, options = null) {
+  if (!rec || !anyMediaTypeStorageEnabled(options)) return false;
+  const type = normalizeMediaTypeStorageType(recordMediaFilterType(rec));
+  return !!type && mediaTypeStorageEnabledForType(type, options);
+}
+
 function removeFileRecordFromWorkspace(rec) {
   if (!rec || !WS.fileById) return false;
   const id = String(rec.id || "");
@@ -19993,12 +20210,16 @@ function removeFileRecordFromWorkspace(rec) {
 function applyAspectRatioStorageToCurrentWorkspace() {
   if (!WS.root || !WS.fileById || !WS.fileById.size) return 0;
   const options = WS.meta && WS.meta.options ? WS.meta.options : null;
-  if (!anyAspectRatioStorageEnabled(options)) return 0;
+  if (!anyAspectRatioStorageEnabled(options) && !anyMediaTypeStorageEnabled(options)) return 0;
   let removed = 0;
   const records = Array.from(WS.fileById.values()).filter(Boolean);
   for (let i = 0; i < records.length; i++) {
     const rec = records[i];
-    if (!recordIsGloballyStoredByAspectRatio(rec, options)) continue;
+    if (
+      !recordIsGloballyStoredByAspectRatio(rec, options) &&
+      !recordIsGloballyStoredByMediaType(rec, options)
+    )
+      continue;
     if (removeFileRecordFromWorkspace(rec)) removed++;
   }
   if (removed) {
@@ -20919,6 +21140,45 @@ function anyAspectRatioStorageEnabled(options = null) {
   );
 }
 
+const MEDIA_TYPE_STORAGE_OPTION_BY_TYPE = Object.freeze({
+  images: "storeImageFiles",
+  gifs: "storeGifFiles",
+  videos: "storeVideoFiles",
+});
+
+function normalizeMediaTypeStorageType(type) {
+  const raw = String(type || "").trim().toLowerCase();
+  if (raw === "image" || raw === "images") return "images";
+  if (raw === "gif" || raw === "gifs") return "gifs";
+  if (raw === "video" || raw === "videos") return "videos";
+  return "";
+}
+
+function mediaTypeStorageOptionKeyForType(type) {
+  const normalized = normalizeMediaTypeStorageType(type);
+  return MEDIA_TYPE_STORAGE_OPTION_BY_TYPE[normalized] || "";
+}
+
+function mediaTypeStorageEnabledForType(type, options = null) {
+  const key = mediaTypeStorageOptionKeyForType(type);
+  if (!key) return false;
+  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(opt && opt[key]);
+}
+
+function anyMediaTypeStorageEnabled(options = null) {
+  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(opt && (opt.storeImageFiles || opt.storeGifFiles || opt.storeVideoFiles));
+}
+
+function mediaTypeStorageLabel(type) {
+  const normalized = normalizeMediaTypeStorageType(type);
+  if (normalized === "images") return "Image";
+  if (normalized === "gifs") return "GIF";
+  if (normalized === "videos") return "Video";
+  return "Media";
+}
+
 function aspectRatioStorageLabel(bucket, enabled = null) {
   const normalized = aspectRatioBucketForValue(
     bucket === "portrait" ? 0.75 : bucket === "square" ? 1 : 1.5,
@@ -20932,6 +21192,11 @@ function aspectRatioStorageLabel(bucket, enabled = null) {
 function tortoiseNavigationEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !opt || opt.tortoiseMode !== false;
+}
+
+function quickNavigationEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.quickNavigation);
 }
 
 function showUntaggedFolderEnabled() {
@@ -25170,7 +25435,7 @@ function fastUpdatePaneSelectedRow(prevIdx, nextIdx) {
     });
   }
   nextRow.classList.add("selected");
-  syncFilePaneThumbnailSelectionClasses();
+  syncFilePaneThumbnailSelectionClasses(prevIdx, nextIdx);
   return true;
 }
 
@@ -25351,7 +25616,12 @@ function setDirectoriesSelection(idx, opts = null) {
   saveGridSelectionForCurrentContext();
   syncPreviewToSelection({ force: true });
   const snapshot = currentNavigationSnapshot();
-  scheduleNearbyDirectoryRamWarm(snapshot);
+  const warmDelayMs = filePaneThumbnailViewEnabled()
+    ? isViewingTagFolder() || (WS.nav.entries[WS.nav.selectedIndex] || null)?.kind === "tag"
+      ? 260
+      : 120
+    : 0;
+  scheduleNearbyDirectoryRamWarm(snapshot, warmDelayMs);
 
   if (
     canUseFastGridSelectionUpdate() &&
@@ -26380,6 +26650,8 @@ function enterSelectedDirectory() {
   WS.view.previewFolderBridgeReturnState = null;
 
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+  const quickNavigationRestoreState =
+    captureQuickNavigationDirectoryEnterRestoreState(entry);
   if (!entry) return;
   if (entry.kind === "dir" && isStorageStubDirNode(entry.node)) {
     showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
@@ -26396,6 +26668,7 @@ function enterSelectedDirectory() {
       rebuildDirectoriesEntries();
       WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
       syncPreviewToSelection({ force: true });
+      maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
       scheduleNearbyDirectoryRamWarm(currentNavigationSnapshot());
       renderDirectoriesPane();
       renderPreviewPane(true);
@@ -26415,8 +26688,15 @@ function enterSelectedDirectory() {
     if (entry.kind === "file") {
       const rec = WS.fileById.get(entry.id);
       if (rec) {
-        focusDirectoriesOnFileRecord(rec);
-        WS.view.returnToPreviewPaneAfterFileClose = false;
+        const restoreState = captureFilePaneEnterAutoRestoreState(entry);
+        const opened = focusDirectoriesOnFileRecord(rec);
+        if (opened) {
+          WS.view.returnToPreviewPaneAfterFileClose = false;
+          WS.view.previewFileSelectionBridgeActive = false;
+          WS.view.previewFileBridgeReturnState = null;
+          WS.view.previewFolderBridgeReturnState = null;
+          closePanesForFilePaneEnterAutoRestore(restoreState);
+        }
       }
     }
     return;
@@ -26438,6 +26718,7 @@ function enterSelectedDirectory() {
     rebuildDirectoriesEntries();
     WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
     syncPreviewToSelection({ force: true });
+    maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
     finalizeDirectoryNavigationRender({
       animatePreview: true,
       recordHistory: true,
@@ -26455,6 +26736,7 @@ function enterSelectedDirectory() {
     rebuildDirectoriesEntries();
     WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
     syncPreviewToSelection({ force: true });
+    maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
     finalizeDirectoryNavigationRender({
       animatePreview: true,
       recordHistory: true,
@@ -26472,6 +26754,7 @@ function enterSelectedDirectory() {
     rebuildDirectoriesEntries();
     WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
     syncPreviewToSelection({ force: true });
+    maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
     finalizeDirectoryNavigationRender({
       animatePreview: true,
       recordHistory: true,
@@ -26488,6 +26771,7 @@ function enterSelectedDirectory() {
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
   syncPreviewToSelection({ force: true });
+  maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
   finalizeDirectoryNavigationRender({
     animatePreview: true,
     recordHistory: true,
@@ -27888,13 +28172,20 @@ function refreshThumbnailDemand() {
   const desiredIds = new Set();
   previewIds.forEach((id) => desiredIds.add(id));
   directoriesIds.forEach((id) => desiredIds.add(id));
-  // Loading screens are always on now, so keep the full current navigation
-  // snapshot hot instead of only the viewport. This prevents below-the-fold
-  // folder thumbs from staying blank until a later full rerender.
+  const windowedNavigationDemand =
+    filePaneThumbnailViewEnabled() &&
+    (isViewingTagFolder() ||
+      (Array.isArray(WS.nav.entries) && WS.nav.entries.length >= 180));
+  // Keep thumbnail demand windowed in large tag/album thumbnail views. Pulling
+  // a full navigation snapshot here makes every selection/enter/exit try to
+  // queue a huge set of thumbnails, which is what made tag and album browsing
+  // feel locked up again.
   addRecordsToThumbnailDemand(
     desiredIds,
     collectNavigationSnapshotRecords(snapshot, {
-      full: !shouldUseWindowedPreviewBridgeSnapshot(snapshot),
+      full:
+        !windowedNavigationDemand &&
+        !shouldUseWindowedPreviewBridgeSnapshot(snapshot),
     }),
   );
   if (!desiredIds.size && WS.preview.kind === "dir" && WS.preview.dirNode) {
@@ -35126,18 +35417,42 @@ function entryBulkSelected(entry) {
   return false;
 }
 
-function syncFilePaneThumbnailSelectionClasses() {
+function syncFilePaneThumbnailCardSelectionClass(card) {
+  if (!card) return;
+  const idx = parseInt(String(card.dataset.entryIndex || "-1"), 10);
+  const entry =
+    Number.isFinite(idx) && idx >= 0 ? WS.nav.entries[idx] || null : null;
+  const selected = idx === WS.nav.selectedIndex;
+  card.classList.toggle("selected", selected);
+  card.classList.toggle("previewSelected", selected);
+  card.classList.toggle("bulkSelected", entryBulkSelected(entry));
+}
+
+function syncFilePaneThumbnailSelectionClasses(prevIdx = null, nextIdx = null) {
   if (!directoriesListEl) return;
+  const scoped = Number.isFinite(Number(prevIdx)) || Number.isFinite(Number(nextIdx));
+  if (scoped) {
+    const touched = new Set();
+    const addIndex = (idx) => {
+      const n = Number(idx);
+      if (!Number.isFinite(n) || n < 0) return;
+      const card = directoriesListEl.querySelector(
+        `[data-file-pane-item][data-entry-index="${String(n | 0)}"]`,
+      );
+      if (card) touched.add(card);
+    };
+    addIndex(prevIdx);
+    addIndex(nextIdx);
+    const selectedCards = directoriesListEl.querySelectorAll(
+      "[data-file-pane-item].selected, [data-file-pane-item].previewSelected",
+    );
+    for (let i = 0; i < selectedCards.length; i++) touched.add(selectedCards[i]);
+    touched.forEach((card) => syncFilePaneThumbnailCardSelectionClass(card));
+    return;
+  }
   const cards = directoriesListEl.querySelectorAll("[data-file-pane-item]");
   for (let i = 0; i < cards.length; i++) {
-    const card = cards[i];
-    const idx = parseInt(String(card.dataset.entryIndex || "-1"), 10);
-    const entry =
-      Number.isFinite(idx) && idx >= 0 ? WS.nav.entries[idx] || null : null;
-    const selected = idx === WS.nav.selectedIndex;
-    card.classList.toggle("selected", selected);
-    card.classList.toggle("previewSelected", selected);
-    card.classList.toggle("bulkSelected", entryBulkSelected(entry));
+    syncFilePaneThumbnailCardSelectionClass(cards[i]);
   }
 }
 
@@ -35160,6 +35475,7 @@ function openFilePaneEntry(entry) {
 }
 
 function selectFilePaneThumbnailIndex(idx, opts = null) {
+  const prevIdx = WS.nav.selectedIndex;
   const index = findNearestSelectableIndex(
     idx,
     idx >= WS.nav.selectedIndex ? 1 : -1,
@@ -35168,7 +35484,7 @@ function selectFilePaneThumbnailIndex(idx, opts = null) {
   saveGridSelectionForCurrentContext();
   syncPreviewToSelection({ force: true });
   if (!(opts && opts.skipActivePane)) setActivePane("directories");
-  syncFilePaneThumbnailSelectionClasses();
+  syncFilePaneThumbnailSelectionClasses(prevIdx, index);
   renderPreviewPane(false, true);
   syncButtons();
   kickVideoThumbsForPreview();
@@ -35335,6 +35651,58 @@ function makeFilePaneUpThumbnailCard(entry, idx) {
   return adaptPreviewCardForFilePane(card, entry, idx);
 }
 
+function shouldVirtualizeFilePaneThumbnailViewEntries() {
+  if (!filePaneThumbnailViewEnabled()) return false;
+  if (!WS.root || !Array.isArray(WS.nav.entries)) return false;
+  if (WS.nav.entries.length < 180) return false;
+  if (naturalAspectThumbnailCardsEnabled()) return false;
+  if (
+    WS.view.bulkActionMenuOpen ||
+    WS.view.dirActionMenuPath ||
+    WS.view.fileActionMenuId ||
+    TAG_EDIT_PATH ||
+    RENAME_EDIT_PATH ||
+    RENAME_EDIT_FILE_ID ||
+    TAG_ENTRY_RENAME_STATE ||
+    PREVIEW_BULK_TAG_EDIT
+  ) {
+    return false;
+  }
+  // The file-pane thumbnail renderer separates folder/tag cards from file cards.
+  // Virtualize only folder/tag-only views, which are the slow tag/album cases,
+  // so mixed file folders keep their exact existing layout.
+  return WS.nav.entries.every((entry) => entry && entry.kind !== "file");
+}
+
+function measureFilePaneThumbnailVirtualMetrics() {
+  if (!directoriesListEl) return null;
+  const rootStyle =
+    typeof getComputedStyle === "function"
+      ? getComputedStyle(document.documentElement)
+      : null;
+  const listStyle =
+    typeof getComputedStyle === "function" ? getComputedStyle(directoriesListEl) : null;
+  const gutter = parseCssPixelValue(rootStyle, "--preview-gutter", 10);
+  const folderMin =
+    parseCssPixelValue(rootStyle, "--folder-grid-min", 260) *
+    parseCssPixelValue(rootStyle, "--thumb-scale-folder", 1);
+  const contentWidth = Math.max(
+    80,
+    (Number(directoriesListEl.clientWidth) || filePaneThumbnailNavigationWidthPx()) -
+      gutter * 2,
+  );
+  const cssGap = Math.max(
+    0,
+    parseFloat(listStyle?.getPropertyValue("gap") || "") || gutter,
+  );
+  const cols = Math.max(
+    1,
+    Math.floor((contentWidth + cssGap) / Math.max(1, folderMin + cssGap)),
+  );
+  const rowHeight = Math.max(96, folderMin) + cssGap;
+  return { gap: cssGap, card: folderMin, cols, rowHeight };
+}
+
 function renderFilePaneThumbnailView(keepScroll = false, opts = null) {
   const suppressSelectionReveal = !!(opts && opts.suppressSelectionReveal);
   syncThumbFilterKeyWithCurrentAppearanceContext();
@@ -35431,14 +35799,31 @@ function renderFilePaneThumbnailView(keepScroll = false, opts = null) {
     return section;
   };
   const visibleFileIds = Array.from(getVisibleFileIdsInEntries());
+  const virtualizeThumbGrid = shouldVirtualizeFilePaneThumbnailViewEntries();
+  const virtualMetrics = virtualizeThumbGrid
+    ? measureFilePaneThumbnailVirtualMetrics()
+    : null;
+  const virtualWindow = virtualizeThumbGrid
+    ? computeDirectoriesVirtualWindow(
+        WS.nav.entries.length,
+        virtualMetrics,
+        suppressSelectionReveal,
+      )
+    : null;
+  const entryStart = virtualWindow ? Math.max(0, virtualWindow.startIndex) : 0;
+  const entryEndExclusive = virtualWindow
+    ? Math.max(entryStart, virtualWindow.endIndexExclusive)
+    : WS.nav.entries.length;
+  directoriesListEl.dataset.virtualized = virtualWindow ? "1" : "0";
   const showTagSpacer =
     showTagFolderSpacerRowEnabled() &&
     WS.nav.entries.some((entry) => entry && entry.kind === "tag") &&
     WS.nav.entries.some((entry) => entry && entry.kind === "dir");
   let seenTagEntry = false;
   let insertedTagSpacer = false;
+  if (virtualWindow) appendVirtualGridSpacer(folderGrid, virtualWindow.topSpacerHeight);
 
-  for (let idx = 0; idx < WS.nav.entries.length; idx++) {
+  for (let idx = entryStart; idx < entryEndExclusive; idx++) {
     const entry = WS.nav.entries[idx];
     if (!entry) continue;
     if (
@@ -35495,6 +35880,7 @@ function renderFilePaneThumbnailView(keepScroll = false, opts = null) {
       );
     }
   }
+  if (virtualWindow) appendVirtualGridSpacer(folderGrid, virtualWindow.bottomSpacerHeight);
 
   if (folderGrid.childNodes.length) {
     if (expandedSections) {
@@ -42456,12 +42842,14 @@ function openGalleryFromDirectoriesSelection(requestFullscreen) {
   } else if (entry.kind === "file") {
     const rec = WS.fileById.get(entry.id);
     if (!rec) return false;
+    const restoreState = captureFilePaneEnterAutoRestoreState(entry);
     const fileId = String(rec.id || "");
     if (
       String(WS.view?.activePane || "") === "preview" &&
       WS.preview.kind === "file" &&
       String(WS.preview.fileId || "") === fileId
     ) {
+      closePanesForFilePaneEnterAutoRestore(restoreState);
       return true;
     }
     const opened = focusDirectoriesOnFileRecord(rec);
@@ -42470,6 +42858,7 @@ function openGalleryFromDirectoriesSelection(requestFullscreen) {
       WS.view.previewFileSelectionBridgeActive = false;
       WS.view.previewFileBridgeReturnState = null;
       WS.view.previewFolderBridgeReturnState = null;
+      closePanesForFilePaneEnterAutoRestore(restoreState);
     }
     return opened;
   }
@@ -43920,6 +44309,140 @@ function setDirectoriesPaneOpenKeybindState(nextOpen) {
   return true;
 }
 
+function currentDirectoryEntriesContainOnlyFilesForQuickNavigation() {
+  if (!WS.root || !WS.nav || !Array.isArray(WS.nav.entries)) return false;
+  let fileCount = 0;
+  for (let i = 0; i < WS.nav.entries.length; i++) {
+    const entry = WS.nav.entries[i];
+    if (!entry) continue;
+    if (entry.kind === "file") {
+      fileCount += 1;
+      continue;
+    }
+    if (isSelectableEntry(entry)) return false;
+  }
+  return fileCount > 0;
+}
+
+function captureQuickNavigationDirectoryEnterRestoreState(entry = null) {
+  if (!quickNavigationEnabled()) return null;
+  if (!WS.root || !WS.meta || VIEWER_MODE) return null;
+  if (!directoriesPaneOpenEnabled()) return null;
+  if (!entry || entry.kind !== "dir" || !entry.node) return null;
+  if (isStorageStubDirNode(entry.node)) return null;
+  return {
+    restoreDirectoriesPane: true,
+    restoreSettingsPane: !!MENU_OPEN,
+    settingsTab: String(MENU_ACTIVE_TAB || MENU_LAST_TAB || "general"),
+    activePane:
+      WS.view && WS.view.activePane === "preview" ? "preview" : "directories",
+    goUpOnRestore: true,
+    quickNavigation: true,
+  };
+}
+
+function maybeClosePanesForQuickNavigationDirectoryEnter(restoreState) {
+  if (!restoreState || !quickNavigationEnabled()) return false;
+  if (!currentDirectoryEntriesContainOnlyFilesForQuickNavigation()) return false;
+  return closePanesForFilePaneEnterAutoRestore(
+    Object.assign({}, restoreState, {
+      goUpOnRestore: true,
+      quickNavigation: true,
+    }),
+  );
+}
+
+function selectedFilePaneEntryForEnterAutoClose(entry = null) {
+  if (entry && entry.kind === "file") {
+    const selectedEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
+    if (
+      selectedEntry === entry ||
+      (selectedEntry &&
+        selectedEntry.kind === "file" &&
+        String(selectedEntry.id || "") === String(entry.id || ""))
+    ) {
+      return entry;
+    }
+  }
+
+  const navEntry = WS.nav.entries[WS.nav.selectedIndex] || null;
+  if (navEntry && navEntry.kind === "file") return navEntry;
+
+  const selectedEl = directoriesListEl
+    ? directoriesListEl.querySelector(
+        ".dirRow.selected, [data-file-pane-item].selected",
+      )
+    : null;
+  const domIndex = Number(selectedEl?.dataset?.entryIndex);
+  const domEntry = Number.isFinite(domIndex)
+    ? WS.nav.entries[domIndex] || null
+    : null;
+  return domEntry && domEntry.kind === "file" ? domEntry : null;
+}
+
+function captureFilePaneEnterAutoRestoreState(entry = null) {
+  if (!WS.root || !WS.meta || VIEWER_MODE) return null;
+  if (!directoriesPaneOpenEnabled()) return null;
+  const selectedEntry = selectedFilePaneEntryForEnterAutoClose(entry);
+  if (!selectedEntry) return null;
+  return {
+    restoreDirectoriesPane: true,
+    restoreSettingsPane: !!MENU_OPEN,
+    settingsTab: String(MENU_ACTIVE_TAB || MENU_LAST_TAB || "general"),
+    activePane:
+      WS.view && WS.view.activePane === "preview" ? "preview" : "directories",
+  };
+}
+
+function closePanesForFilePaneEnterAutoRestore(restoreState) {
+  if (!restoreState || !WS.view || !WS.meta) return false;
+  WS.view.filePaneEnterAutoClosedPanes = {
+    restoreDirectoriesPane: !!restoreState.restoreDirectoriesPane,
+    restoreSettingsPane: !!restoreState.restoreSettingsPane,
+    settingsTab: String(restoreState.settingsTab || MENU_LAST_TAB || "general"),
+    activePane:
+      restoreState.activePane === "preview" ? "preview" : "directories",
+    goUpOnRestore: !!restoreState.goUpOnRestore,
+    quickNavigation: !!restoreState.quickNavigation,
+  };
+
+  let changed = false;
+  if (restoreState.restoreSettingsPane && MENU_OPEN) {
+    closeMenu();
+    changed = true;
+  }
+  if (restoreState.restoreDirectoriesPane && directoriesPaneOpenEnabled()) {
+    changed = setDirectoriesPaneOpenKeybindState(false) || changed;
+  }
+  return changed;
+}
+
+function restorePanesClosedByFilePaneEnter() {
+  if (!WS.view || !WS.meta) return false;
+  const restoreState = WS.view.filePaneEnterAutoClosedPanes;
+  if (!restoreState || typeof restoreState !== "object") return false;
+  WS.view.filePaneEnterAutoClosedPanes = null;
+
+  if (restoreState.restoreDirectoriesPane && !directoriesPaneOpenEnabled()) {
+    setDirectoriesPaneOpenKeybindState(true);
+  }
+  if (restoreState.restoreSettingsPane && !MENU_OPEN) {
+    openMenu(String(restoreState.settingsTab || MENU_LAST_TAB || "general"));
+  }
+  if (restoreState.restoreDirectoriesPane && restoreState.restoreSettingsPane && MENU_OPEN) {
+    syncSidePaneWidthsToSmallerSide();
+  }
+  if (restoreState.activePane === "preview") {
+    setActivePane("preview");
+    updatePreviewSelectionClasses();
+    syncButtons();
+  }
+  if (restoreState.goUpOnRestore) {
+    leaveDirectory();
+  }
+  return true;
+}
+
 function refreshLiveSettingsPaneFromKeyboardAction() {
   if (!MENU_OPEN) return;
   const activeTab = String(MENU_ACTIVE_TAB || "general");
@@ -44005,6 +44528,45 @@ function refreshWorkspaceKeybindAction() {
   return true;
 }
 
+function forceThumbnailDemandRefreshNow() {
+  if (THUMBNAIL_DEMAND_RAF) {
+    try {
+      cancelAnimationFrame(THUMBNAIL_DEMAND_RAF);
+    } catch {}
+  }
+  THUMBNAIL_DEMAND_RAF = 0;
+  if (THUMBNAIL_DEMAND_DEFER_TIMER) {
+    try {
+      clearTimeout(THUMBNAIL_DEMAND_DEFER_TIMER);
+    } catch {}
+  }
+  THUMBNAIL_DEMAND_DEFER_TIMER = 0;
+  refreshThumbnailDemand();
+}
+
+function prodThumbnailGridKeybindAction() {
+  if (!WS.root) {
+    showStatusMessage("Prod requires a loaded folder.");
+    return false;
+  }
+  const inFilePaneThumbnailView = filePaneThumbnailViewEnabled();
+  if (inFilePaneThumbnailView) {
+    renderDirectoriesPane(true, { suppressSelectionReveal: true });
+    refreshFitInsidePreviewGrids();
+    schedulePreviewVirtualGridRefresh();
+    forceThumbnailDemandRefreshNow();
+    showStatusMessage("Prodded Thumbnail View.");
+    return true;
+  }
+  renderDirectoriesPane(true, { suppressSelectionReveal: true });
+  renderPreviewPane(false, true);
+  refreshFitInsidePreviewGrids();
+  schedulePreviewVirtualGridRefresh();
+  forceThumbnailDemandRefreshNow();
+  showStatusMessage("Prodded thumbnails.");
+  return true;
+}
+
 function handleExtrasKeybindAction(action) {
   if (!action || !WS.meta) return false;
   const presetId = appearancePresetIdFromKeybindAction(action);
@@ -44035,8 +44597,7 @@ function handleExtrasKeybindAction(action) {
     case "refreshWorkspace":
       return refreshWorkspaceKeybindAction();
     case "prodPreviewPane":
-      renderPreviewPane(false, true);
-      return true;
+      return prodThumbnailGridKeybindAction();
     case "toggleLightMode": {
       const next = toggleOptionValue("lightMode");
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -44155,6 +44716,12 @@ function handleExtrasKeybindAction(action) {
     case "toggleMuteMessages":
       setMuteMessagesEnabled(!muteMessagesEnabled());
       return true;
+    case "toggleQuickNavigation": {
+      const next = toggleOptionValue("quickNavigation");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      showStatusMessage(`Quick navigation: ${next ? "On" : "Off"}`, "quick-navigation");
+      return true;
+    }
     case "toggleTagFolderSpacerRow": {
       const next = toggleOptionValue("showTagFolderSpacerRow");
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -44368,6 +44935,9 @@ function getFilePaneThumbnailNavigationMetrics() {
     !directoriesListEl.classList.contains("filePaneThumbnailView")
   ) {
     return [];
+  }
+  if (directoriesListEl.dataset.virtualized === "1") {
+    return filePaneThumbnailSyntheticNavigationMetrics();
   }
   const cards = Array.from(
     directoriesListEl.querySelectorAll("[data-file-pane-item]"),
@@ -46070,6 +46640,21 @@ document.addEventListener("keydown", (e) => {
   const inFilePreview = WS.preview.kind === "file" && !!WS.preview.fileId;
   const previewPaneActive =
     !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
+
+  if (
+    action === "enterDir" &&
+    directoriesPaneOpenEnabled() &&
+    selectedFilePaneEntryForEnterAutoClose()
+  ) {
+    e.preventDefault();
+    enterSelectedDirectory();
+    return;
+  }
+
+  if (action === "leaveDir" && restorePanesClosedByFilePaneEnter()) {
+    e.preventDefault();
+    return;
+  }
 
   // Closed file pane wins before any visible-pane navigation model. The user
   // cannot see whether the pane was last in List or Thumbnail View, so both

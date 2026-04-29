@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Local Gallery</title>
-                                                                                                                                  <link rel="stylesheet" href="./styles.css" />
+                                                                                                                                        <link rel="stylesheet" href="./styles.css" />
   </head>
 
   <body>
@@ -156,6 +156,24 @@
                       <button
                         type="button"
                         class="miniBtn menuTabBtn"
+                        data-tab="controls"
+                        role="tab"
+                        aria-controls="menuTabKeybinds"
+                      >
+                        Controls
+                      </button>
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
+                        data-tab="storage"
+                        role="tab"
+                        aria-controls="menuTabOptions"
+                      >
+                        Storage
+                      </button>
+                      <button
+                        type="button"
+                        class="miniBtn menuTabBtn"
                         data-tab="appearance"
                         role="tab"
                         aria-controls="menuTabOptions"
@@ -188,15 +206,6 @@
                         aria-controls="menuTabOptions"
                       >
                         Filenames
-                      </button>
-                      <button
-                        type="button"
-                        class="miniBtn menuTabBtn"
-                        data-tab="controls"
-                        role="tab"
-                        aria-controls="menuTabKeybinds"
-                      >
-                        Controls
                       </button>
                       <button
                         type="button"
@@ -259,11 +268,11 @@
                             Reset defaults
                           </button>
                           <button
-                            id="keybindsDoneBtn"
+                            id="keybindsOpenWritableBtn"
                             type="button"
                             class="miniBtn"
                           >
-                            Done
+                            Choose Root
                           </button>
                         </div>
                       </div>
@@ -288,11 +297,11 @@
                             Delete all logs
                           </button>
                           <button
-                            id="calendarDoneBtn"
+                            id="calendarOpenWritableBtn"
                             type="button"
                             class="miniBtn"
                           >
-                            Done
+                            Choose Root
                           </button>
                         </div>
                       </div>
@@ -512,6 +521,6 @@
         </feComponentTransfer>
       </filter>
     </svg>
-                                                                                                                                  <script src="./app.js"></script>
+                                                                                                                                        <script src="./app.js"></script>
   </body>
 </html>
