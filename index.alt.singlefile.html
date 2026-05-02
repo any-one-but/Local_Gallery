@@ -16244,7 +16244,7 @@ function syncSidePaneWidthsToSmallerSide() {
 function applyDefaultRootLandingSidebars() {
   if (!WS.meta) return;
   if (setDirectoriesPaneOpenValue(true)) syncActivePaneWithLayout();
-  if (!MENU_OPEN) openMenu(MENU_LAST_TAB || "general");
+  if (MENU_OPEN) closeMenu();
   const appEl = document.getElementById("app");
   const appWidth = Math.max(
     1,
@@ -54699,6 +54699,7 @@ if (!MENU_OPEN) openMenu("general");
 renderDirectoriesPane();
 renderPreviewPane(true);
 syncButtons();
+
   </script>
   <!-- END: inlined from ./app.js -->
   </body>

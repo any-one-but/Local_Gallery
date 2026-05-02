@@ -8730,7 +8730,7 @@ function syncSidePaneWidthsToSmallerSide() {
 function applyDefaultRootLandingSidebars() {
   if (!WS.meta) return;
   if (setDirectoriesPaneOpenValue(true)) syncActivePaneWithLayout();
-  if (!MENU_OPEN) openMenu(MENU_LAST_TAB || "general");
+  if (MENU_OPEN) closeMenu();
   const appEl = document.getElementById("app");
   const appWidth = Math.max(
     1,
