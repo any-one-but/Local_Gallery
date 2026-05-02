@@ -26643,6 +26643,11 @@ function openPreviewFileFromPreviewCard(rec) {
   return true;
 }
 
+function renderSelectedFilePreviewBeforeDirectoryPreparation() {
+  if (!WS.preview || WS.preview.kind !== "file" || !WS.preview.fileId) return;
+  renderPreviewPane(false, false);
+}
+
 function enterSelectedDirectory() {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
@@ -26717,6 +26722,7 @@ function enterSelectedDirectory() {
     rebuildDirectoriesEntries();
     WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
     syncPreviewToSelection({ force: true });
+    renderSelectedFilePreviewBeforeDirectoryPreparation();
     maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
     finalizeDirectoryNavigationRender({
       animatePreview: true,
@@ -26735,6 +26741,7 @@ function enterSelectedDirectory() {
     rebuildDirectoriesEntries();
     WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
     syncPreviewToSelection({ force: true });
+    renderSelectedFilePreviewBeforeDirectoryPreparation();
     maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
     finalizeDirectoryNavigationRender({
       animatePreview: true,
@@ -26753,6 +26760,7 @@ function enterSelectedDirectory() {
     rebuildDirectoriesEntries();
     WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
     syncPreviewToSelection({ force: true });
+    renderSelectedFilePreviewBeforeDirectoryPreparation();
     maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
     finalizeDirectoryNavigationRender({
       animatePreview: true,
@@ -26770,6 +26778,7 @@ function enterSelectedDirectory() {
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
   syncPreviewToSelection({ force: true });
+  renderSelectedFilePreviewBeforeDirectoryPreparation();
   maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
   finalizeDirectoryNavigationRender({
     animatePreview: true,
@@ -39207,7 +39216,16 @@ function renderPreviewViewerItem(idx) {
     !mediaFilterEnabled() &&
     previewImgEl &&
     previewImgEl.style.display !== "none" &&
-    String(previewImgEl.src || "")
+    String(previewImgEl.src || "") &&
+    rec &&
+    String(previewImgEl.dataset.previewFileId || "") === String(rec.id || "")
+  );
+  const keepPreviewFilterFrame = !!(
+    mediaFilterEnabled() &&
+    willShowImage &&
+    previewImgEl &&
+    rec &&
+    String(previewImgEl.dataset.previewFileId || "") === String(rec.id || "")
   );
 
   if (previewVideoEl) {
@@ -39225,11 +39243,13 @@ function renderPreviewViewerItem(idx) {
     if (!keepPreviewImageFrame) {
       previewImgEl.classList.remove("ready");
       previewImgEl.style.display = "none";
+      delete previewImgEl.dataset.previewFileId;
+      if (willShowImage) previewImgEl.removeAttribute("src");
       clearPendingFilmCornerMask(previewImgEl);
     }
   }
   if (previewFolderEl) previewFolderEl.style.display = "none";
-  const preservePreviewFrame = mediaFilterEnabled();
+  const preservePreviewFrame = keepPreviewFilterFrame;
   MediaFilterEngine.detach("preview", { preserveFrame: preservePreviewFrame });
   if (!preservePreviewFrame) {
     if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
@@ -39385,7 +39405,14 @@ function renderPreviewViewerItem(idx) {
   }
 
   previewImgEl.onload = () => {
+    if (
+      String(previewImgEl.dataset.previewFileId || "") !==
+        String(rec.id || "") ||
+      String(WS.preview.fileId || "") !== String(rec.id || "")
+    )
+      return;
     previewImgEl.classList.add("ready");
+    previewImgEl.style.display = "block";
     const imageMode = detectScrollImageMode(rec, previewImgEl);
     applyScrollImageMode(previewViewportBox, previewImgEl, imageMode, false);
     if (imageMode !== "none") {
@@ -39406,8 +39433,10 @@ function renderPreviewViewerItem(idx) {
   };
   const src = ensureMediaUrl(rec) || "";
   const same = previewImgEl.src === src;
+  previewImgEl.dataset.previewFileId = String(rec.id || "");
   if (!same) previewImgEl.src = src;
-  previewImgEl.style.display = "block";
+  if (same || (previewImgEl.complete && previewImgEl.naturalWidth > 0))
+    previewImgEl.style.display = "block";
   const previewIsGif = isGifRecord(rec);
   previewImgEl.setAttribute("data-is-gif", previewIsGif ? "1" : "0");
   previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
@@ -39432,6 +39461,13 @@ function renderPreviewViewerItem(idx) {
 
   if (previewImgEl.complete && previewImgEl.naturalWidth > 0) {
     requestAnimationFrame(() => {
+      if (
+        String(previewImgEl.dataset.previewFileId || "") !==
+          String(rec.id || "") ||
+        String(WS.preview.fileId || "") !== String(rec.id || "")
+      )
+        return;
+      previewImgEl.style.display = "block";
       previewImgEl.classList.add("ready");
       const imageMode = detectScrollImageMode(rec, previewImgEl);
       applyScrollImageMode(previewViewportBox, previewImgEl, imageMode, false);
