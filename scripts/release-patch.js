@@ -103,7 +103,6 @@ if (!DRY_RUN) {
   writeJson(PACKAGE_LOCK_PATH, packageLock);
 }
 
-runCommand(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build:singlefile"], { mutate: true });
 runCommand("git", ["add", "-A"], { mutate: true });
 runCommand("git", ["commit", "-m", `release: v${nextVersion}`], { mutate: true });
 
