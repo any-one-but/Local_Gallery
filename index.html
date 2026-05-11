@@ -8358,6 +8358,7 @@ function defaultOptions() {
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
     hideVideoControls: false,
+    thumbnailLoading: true,
     forceTitleCaps: true,
     showPositionNumbersInNames: false,
     hideFileExtensionsInFileNames: true,
@@ -8816,6 +8817,10 @@ function normalizeOptions(o) {
       typeof src.hideVideoControls === "boolean"
         ? src.hideVideoControls
         : d.hideVideoControls,
+    thumbnailLoading:
+      typeof src.thumbnailLoading === "boolean"
+        ? src.thumbnailLoading
+        : d.thumbnailLoading,
     autoCropBlackBars:
       typeof src.autoCropBlackBars === "boolean"
         ? src.autoCropBlackBars
@@ -13844,6 +13849,11 @@ function directoriesPaneOpenEnabled(opt = null) {
   return !(src && src.directoriesPaneOpen === false);
 }
 
+function thumbnailLoadingEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !(src && src.thumbnailLoading === false);
+}
+
 function normalizeFilePaneViewMode(value, fallback = "list") {
   const mode = String(value || "")
     .trim()
@@ -13854,11 +13864,12 @@ function normalizeFilePaneViewMode(value, fallback = "list") {
 
 function filePaneViewModeFromOptions(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  if (!thumbnailLoadingEnabled(src)) return "list";
   return normalizeFilePaneViewMode(src && src.filePaneViewMode, "list");
 }
 
 function filePaneThumbnailViewEnabled(opt = null) {
-  return filePaneViewModeFromOptions(opt) === "thumbnail";
+  return thumbnailLoadingEnabled(opt) && filePaneViewModeFromOptions(opt) === "thumbnail";
 }
 
 function labelForFilePaneViewMode(mode) {
@@ -14538,6 +14549,9 @@ function applyInteractionModeFromOptions() {
   if (!appEl) return;
   const sidebarOpen = directoriesPaneOpenEnabled();
   appEl.classList.toggle("sidebar-closed", !sidebarOpen);
+  const thumbsEnabled = thumbnailLoadingEnabled();
+  appEl.classList.toggle("thumbnail-loading-off", !thumbsEnabled);
+  appEl.setAttribute("data-thumbnail-loading", thumbsEnabled ? "on" : "off");
   appEl.classList.toggle("file-pane-thumbnail-view", filePaneThumbnailViewEnabled());
   appEl.classList.toggle("file-pane-list-view", !filePaneThumbnailViewEnabled());
   appEl.classList.add("title-layout-pane");
@@ -15002,6 +15016,12 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
+    id: "toggleThumbnailLoading",
+    label: "Thumbnail loading",
+    hint: "Turn thumbnail loading on or off. Changing this setting requires a workspace refresh.",
+    section: "panes",
+  },
+  {
     id: "toggleSettingsAndDirectoriesPanes",
     label: "Settings + File panes",
     hint: "Toggle both panes; if only one is open, close the open one.",
@@ -15319,6 +15339,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleTortoiseMode",
   "toggleDirectoriesPane",
   "toggleFilePaneView",
+  "toggleThumbnailLoading",
   "toggleSettingsAndDirectoriesPanes",
   "prodPreviewPane",
   "refreshWorkspace",
@@ -15396,6 +15417,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   nextFolder: "Cmd+s",
   toggleDirectoriesPane: "Tab",
   toggleFilePaneView: "y",
+  toggleThumbnailLoading: "",
   toggleSettingsAndDirectoriesPanes: "Space",
   refreshWorkspace: "",
   prodPreviewPane: "Cmd+e",
@@ -16362,6 +16384,8 @@ let DIR_HANDLE_CACHE = new Map();
 
 let previewViewportBox = null;
 let previewImgEl = null;
+let PREVIEW_IMAGE_SWAP_TOKEN = 0;
+let PREVIEW_SUPPRESS_STALE_FRAME_ONCE = false;
 let previewVideoEl = null;
 let previewFolderEl = null;
 
@@ -18168,6 +18192,8 @@ function keybindToggleActionState(actionId) {
       return !!opt.previewMediaUsePaneBackground;
     case "toggleHideVideoControls":
       return !!opt.hideVideoControls;
+    case "toggleThumbnailLoading":
+      return thumbnailLoadingEnabled(opt);
     case "toggleLightMode":
       return !!opt.lightMode;
     case "toggleHideFileExtensions":
@@ -18193,6 +18219,23 @@ function setKeybindToggleActionState(actionId, enabled) {
       return true;
     case "toggleFilePaneView":
       return setFilePaneViewMode(next ? "thumbnail" : "list");
+    case "toggleThumbnailLoading":
+      setOptionValue("thumbnailLoading", next);
+      if (!next) {
+        setOptionValue("filePaneViewMode", "list");
+        clearQueuedThumbnailWork();
+        revokeAllThumbnailUrls();
+      }
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyInteractionModeFromOptions();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      showStatusMessage(
+        `Thumbnail loading: ${next ? "On" : "Off"}. Refresh workspace to fully apply.`,
+        "pane-toggles",
+      );
+      return true;
     case "toggleRandomFileSort":
       return toggleRandomSortMode();
     case "toggleRandomFolderSort":
@@ -18254,6 +18297,8 @@ function keybindCycleActionSpec(actionId) {
       items,
       set(value) {
         WS.meta.dirSortMode = normalizeDirSortMode(value);
+        clearTagEntryDerivedCaches();
+        invalidateDirSortMetricsCache();
         metaMarkDirty(META_DOC_IDS.prefGeneral);
         applyViewModesEverywhere(true);
         showStatusMessage(
@@ -19405,7 +19450,8 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     general: {
       title: "General",
       rows: `
-${makeSelectRow("File pane view", "Switch the file pane between List View and Thumbnail View.", "opt_filePaneViewMode", filePaneViewModeFromOptions(opt), filePaneViewModes)}
+${makeSelectRow("File pane view", thumbnailLoadingEnabled(opt) ? "Switch the file pane between List View and Thumbnail View." : "Thumbnail loading is off, so the file pane stays in List View.", "opt_filePaneViewMode", filePaneViewModeFromOptions(opt), filePaneViewModes)}
+${makeCheckRow("Thumbnail loading", "Load thumbnails in the preview and file panes. Turning this off requires a workspace refresh and keeps the file pane in List View.", "opt_thumbnailLoading", thumbnailLoadingEnabled(opt))}
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow(navigationSpeedOptionTitle, "Toggle internal navigation speed between tortoise and hare.", "opt_tortoiseMode", tortoiseNavigationEnabled())}
 ${makeSelectRow("Media filter", "Choose which media types are visible in the current view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
@@ -20242,11 +20288,34 @@ ${makeActionRow(
   bindStandaloneSelect(
     "opt_filePaneViewMode",
     (val) => {
+      if (!thumbnailLoadingEnabled()) {
+        setOptionsStatus("Thumbnail loading is off; List View is locked.");
+        renderOptionsUi("general");
+        return;
+      }
       setFilePaneViewMode(val);
       setOptionsStatus("Saved");
     },
     (val) => normalizeFilePaneViewMode(val, "list"),
   );
+  bindMenuToggleButton("opt_thumbnailLoading", (enabled) => {
+    const next = !!enabled;
+    setOptionValue("thumbnailLoading", next);
+    if (!next) {
+      setOptionValue("filePaneViewMode", "list");
+      clearQueuedThumbnailWork();
+      revokeAllThumbnailUrls();
+    }
+    applyInteractionModeFromOptions();
+    renderDirectoriesPane(true);
+    renderPreviewPane(false, true);
+    setOptionsStatus("Saved. Refresh workspace required.");
+    showStatusMessage(
+      `Thumbnail loading: ${next ? "On" : "Off"}. Refresh workspace to fully apply.`,
+      "pane-toggles",
+    );
+    renderOptionsUi("general");
+  });
   thumbnailVisibilityKindSpecs().forEach((spec) => {
     const key = previewThumbnailTitleSizeOptionKey(spec.kind);
     if (!key) return;
@@ -20593,6 +20662,8 @@ ${makeActionRow(
       const dirSortSelectEl = $("opt_dirSortMode");
       if (!dirSortSelectEl) return;
       WS.meta.dirSortMode = normalizeDirSortMode(dirSortSelectEl.value);
+      clearTagEntryDerivedCaches();
+      invalidateDirSortMetricsCache();
       metaMarkDirty(META_DOC_IDS.prefGeneral);
       setOptionsStatus("Saved");
       applyViewModesEverywhere(true);
@@ -21228,6 +21299,8 @@ function applyScoreMutationRender(focusPath = "") {
     setCalendarStatus("Saved");
   }
   if (WS.meta.dirSortMode === "score") {
+    clearTagEntryDerivedCaches();
+    invalidateDirSortMetricsCache();
     rebuildDirectoriesEntries();
     const idx = findDirEntryIndexByPath(String(focusPath || ""));
     WS.nav.selectedIndex = findNearestSelectableIndex(
@@ -24139,6 +24212,7 @@ function metaMakeTrashDocObject() {
 }
 
 function metaDocObjectForId(docId) {
+  if (docId === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) return null;
   switch (docId) {
     case META_DOC_IDS.scores:
       return metaMakeScoresDocObject();
@@ -24540,7 +24614,7 @@ function metaApplyDocLogById(docId, log) {
       metaApplyTrashDocLog(log);
       return;
     case META_DOC_IDS.thumbnails:
-      metaApplyThumbnailsDocLog(log);
+      if (thumbnailLoadingEnabled()) metaApplyThumbnailsDocLog(log);
       return;
     case META_DOC_IDS.aspectRatios:
       metaApplyAspectRatiosDocLog(log);
@@ -24640,6 +24714,7 @@ function metaNormalizeDocIdsToSave(docIds = null) {
   const push = (docId) => {
     const id = String(docId || "");
     if (!id || seen.has(id) || !META_ALL_DOC_IDS.includes(id)) return;
+    if (id === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) return;
     seen.add(id);
     unique.push(id);
   };
@@ -24664,6 +24739,7 @@ function metaTrackDirtyDocIds(docIds = null) {
   for (let i = 0; i < targetIds.length; i++) {
     const docId = String(targetIds[i] || "");
     if (!META_ALL_DOC_IDS.includes(docId)) continue;
+    if (docId === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) continue;
     WS.meta.dirtyDocIds.add(docId);
   }
   WS.meta.dirty = !!WS.meta.dirtyDocIds.size;
@@ -24933,6 +25009,7 @@ function metaInitForCurrentWorkspace() {
       const splitDocs = [];
       for (let i = 0; i < loadOrder.length; i++) {
         const docId = loadOrder[i];
+        if (docId === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) continue;
         const log = metaLoadLocalDoc(keys.docs && keys.docs[docId]);
         if (!log) continue;
         splitDocs.push([docId, log]);
@@ -25034,6 +25111,7 @@ async function metaInitForCurrentWorkspaceFs() {
   const splitDocs = [];
   for (let i = 0; i < loadOrder.length; i++) {
     const docId = loadOrder[i];
+    if (docId === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) continue;
     const log = await metaLoadFsDoc(metaFsHandleForDocId(docId));
     if (!log) continue;
     splitDocs.push([docId, log]);
@@ -27370,6 +27448,13 @@ function invalidateDirMetricsCaches() {
   PINNED_HOT_NAV_DECODE_CACHE.clear();
 }
 
+function dirSortDisplayCacheKey() {
+  const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
+  const randomOn = randomSortAffectsFolders() ? "1" : "0";
+  const randomSeed = randomOn === "1" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
+  return ["dirsort", mode, randomOn, randomSeed, String(NAV_ENTRY_RESTORE_REVISION || 0)].join(":");
+}
+
 function invalidateHiddenVisibilityState() {
   invalidateDirMetricsCaches();
   ROTATING_PREVIEW_POOLS.clear();
@@ -27864,6 +27949,34 @@ function sortDirsForDisplay(dirs) {
 
   out.sort(byName);
   return out;
+}
+
+function sortDirCollectionForDisplay(dirs, key = "collection") {
+  const out = Array.isArray(dirs) ? dirs.slice() : [];
+  if (randomSortAffectsFolders() && out.length) {
+    const cacheKey = `collection:${String(key || "collection")}`;
+    if (WS.view.randomFolderCache && WS.view.randomFolderCache.has(cacheKey)) {
+      const cachedPaths = WS.view.randomFolderCache.get(cacheKey) || [];
+      const byPath = new Map(out.map((node) => [String(node?.path || ""), node]));
+      const ordered = [];
+      cachedPaths.forEach((p) => {
+        const node = byPath.get(String(p || ""));
+        if (node) ordered.push(node);
+      });
+      out.forEach((node) => {
+        const p = String(node?.path || "");
+        if (!cachedPaths.includes(p)) ordered.push(node);
+      });
+      if (ordered.length === out.length) return ordered;
+    }
+    const seed = ((WS.view && WS.view.randomSeed) || 0) ^ hash32(`dircollection:${String(key || "collection")}`);
+    const shuffled = shuffleWithSeed(out.slice(), seed >>> 0);
+    if (WS.view.randomFolderCache) {
+      WS.view.randomFolderCache.set(cacheKey, shuffled.map((node) => String(node?.path || "")));
+    }
+    return shuffled;
+  }
+  return sortDirsForDisplay(out);
 }
 
 function passesFilter(rec) {
@@ -29204,6 +29317,7 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
     album,
     effectiveFilterCacheKey(),
     tagVisibleChildContextKey(),
+    dirSortDisplayCacheKey(),
   ].join("@@");
   if (cacheKey && TAG_ALBUM_TAG_ENTRIES_CACHE.has(cacheKey)) {
     return TAG_ALBUM_TAG_ENTRIES_CACHE.get(cacheKey) || [];
@@ -29256,6 +29370,7 @@ function getDirsForTagFolderView() {
     String(WS.view.tagFolderActiveAlbum || ""),
     effectiveFilterCacheKey(),
     tagVisibleChildContextKey(),
+    dirSortDisplayCacheKey(),
   ].join("@@");
   if (cacheKey && TAG_FOLDER_VIEW_DIRS_CACHE.has(cacheKey)) {
     return TAG_FOLDER_VIEW_DIRS_CACHE.get(cacheKey) || [];
@@ -29300,7 +29415,7 @@ function getDirsForTagFolderView() {
     ));
   }
   if (mode === "storage") {
-    return setCached(getAllStorageDirNodes());
+    return setCached(sortDirCollectionForDisplay(getAllStorageDirNodes(), `tag-folder-storage:${basePath}`));
   }
   if (mode === "album") {
     return setCached([]);
@@ -29357,7 +29472,7 @@ function getDirsForTagViewFrame(frame) {
         originPath: String(baseNode.path || ""),
       },
     );
-  if (frame.mode === "storage") return getAllStorageDirNodes();
+  if (frame.mode === "storage") return sortDirCollectionForDisplay(getAllStorageDirNodes(), `tag-frame-storage:${String(baseNode.path || "")}`);
   if (frame.mode === "album") return [];
   const tag = String(frame.tag || "");
   if (!tag) return [];
@@ -29404,7 +29519,10 @@ function getDirsForTagEntry(entry) {
         out.push(node);
       }
     }
-    const filtered = filterTagEntryDirsByVisibleRecords(out, entry);
+    const filtered = sortDirCollectionForDisplay(
+      filterTagEntryDirsByVisibleRecords(out, entry),
+      `tag-entry-album:${originPath}:${album}`,
+    );
     if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, filtered);
     return filtered;
   }
@@ -29434,7 +29552,7 @@ function getDirsForTagEntry(entry) {
       return out;
     }
     if (entry.special === "storage") {
-      const out = getAllStorageDirNodes();
+      const out = sortDirCollectionForDisplay(getAllStorageDirNodes(), `tag-entry-storage:${originPath}`);
       if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
       return out;
     }
@@ -32285,14 +32403,7 @@ function getAllFavoriteDirs() {
     if (isPathInsideInternalTrash(p)) continue;
     if (metaHasFavorite(p) && !metaHasHidden(p)) out.push(node);
   }
-  out.sort((a, b) => {
-    const ap = displayPath(a.path || "");
-    const bp = displayPath(b.path || "");
-    const c = ap.localeCompare(bp);
-    if (c) return c;
-    return compareIndexedNames(a?.name || "", b?.name || "");
-  });
-  return out;
+  return sortDirCollectionForDisplay(out, "all-favorites");
 }
 
 function getAllHiddenDirs() {
@@ -32305,14 +32416,7 @@ function getAllHiddenDirs() {
     if (isPathInsideInternalTrash(p)) continue;
     if (metaHasHidden(p)) out.push(node);
   }
-  out.sort((a, b) => {
-    const ap = displayPath(a.path || "");
-    const bp = displayPath(b.path || "");
-    const c = ap.localeCompare(bp);
-    if (c) return c;
-    return compareIndexedNames(a?.name || "", b?.name || "");
-  });
-  return out;
+  return sortDirCollectionForDisplay(out, "all-hidden");
 }
 
 function cancelDirectorySearch() {
@@ -32485,6 +32589,7 @@ function tagEntryDerivedCacheKey(entry) {
     effectiveFilterCacheKey(),
     mediaFilter,
     tagVisibleChildContextKey(),
+    dirSortDisplayCacheKey(),
   ].join("@@");
 }
 
@@ -34183,6 +34288,11 @@ function openPreviewFileFromPreviewCard(rec) {
 
 function renderSelectedFilePreviewBeforeDirectoryPreparation() {
   if (!WS.preview || WS.preview.kind !== "file" || !WS.preview.fileId) return;
+  // Folder-entry navigation should never display the previous preview media while
+  // the newly selected file is being resolved. The normal selection anti-flicker
+  // path intentionally holds the old frame, but that looks like a stale flash
+  // when opening a media folder, especially with thumbnail loading disabled.
+  PREVIEW_SUPPRESS_STALE_FRAME_ONCE = true;
   renderPreviewPane(false, false);
 }
 
@@ -35105,6 +35215,7 @@ async function persistVideoThumbToDiskCache(rec, mode, blob) {
 }
 
 function currentImageThumbMode() {
+  if (!thumbnailLoadingEnabled()) return "placeholder";
   const mode =
     WS.meta && WS.meta.options
       ? String(WS.meta.options.imageThumbSize || "medium")
@@ -35661,6 +35772,22 @@ function evictThumbnailUrlsOutsideDemand(desiredIds) {
   }
 }
 
+function clearQueuedThumbnailWork() {
+  if (!WS) return;
+  WS.videoThumbPriorityQueue = [];
+  WS.videoThumbQueue = [];
+  WS.imageThumbPriorityQueue = [];
+  WS.imageThumbQueue = [];
+  if (WS.videoThumbQueuedIds instanceof Set) WS.videoThumbQueuedIds.clear();
+  if (WS.imageThumbQueuedIds instanceof Set) WS.imageThumbQueuedIds.clear();
+  clearVideoThumbRetryState();
+}
+
+function revokeAllThumbnailUrls() {
+  if (!WS || !WS.fileById) return;
+  for (const rec of WS.fileById.values()) revokeThumbnailUrlForRecord(rec);
+}
+
 function flushThumbnailUiInvalidation() {
   THUMBNAIL_INVALIDATION_RAF = 0;
   if (!WS.root) return;
@@ -35733,6 +35860,14 @@ function notifyThumbnailRecordUpdated(rec) {
 function refreshThumbnailDemand() {
   THUMBNAIL_DEMAND_RAF = 0;
   if (!WS.root) return;
+  if (!thumbnailLoadingEnabled()) {
+    WS.thumbnailDesiredIds = new Set();
+    WS.thumbnailPreviewDemandIds = new Set();
+    WS.thumbnailDirectoriesDemandIds = new Set();
+    clearQueuedThumbnailWork();
+    evictThumbnailUrlsOutsideDemand(new Set());
+    return;
+  }
   const snapshot = currentNavigationSnapshot();
   const previewIds = collectPreviewThumbnailDemandIds();
   const directoriesIds = collectDirectoriesThumbnailDemandIds();
@@ -35797,6 +35932,17 @@ function refreshThumbnailDemand() {
 }
 
 function scheduleThumbnailDemandRefresh() {
+  if (!thumbnailLoadingEnabled()) {
+    if (THUMBNAIL_DEMAND_RAF) {
+      cancelAnimationFrame(THUMBNAIL_DEMAND_RAF);
+      THUMBNAIL_DEMAND_RAF = 0;
+    }
+    if (THUMBNAIL_DEMAND_DEFER_TIMER) {
+      clearTimeout(THUMBNAIL_DEMAND_DEFER_TIMER);
+      THUMBNAIL_DEMAND_DEFER_TIMER = 0;
+    }
+    return;
+  }
   if (THUMBNAIL_DEMAND_RAF || THUMBNAIL_DEMAND_DEFER_TIMER) return;
   if (shouldDeferNonEssentialNavigationWork()) {
     THUMBNAIL_DEMAND_DEFER_TIMER = setTimeout(() => {
@@ -46148,6 +46294,7 @@ function setPreviewBodyMode(mode) {
 }
 
 function ensureThumbUrl(rec, opts = null) {
+  if (!thumbnailLoadingEnabled()) return null;
   if (!rec) return null;
   if (rec.type !== "image") return rec.thumbUrl || null;
 
@@ -46244,6 +46391,7 @@ function getVideoPosterForRecord(rec) {
 }
 
 function getPassivePreviewSrcForRecord(rec, opts = null) {
+  if (!thumbnailLoadingEnabled()) return "";
   if (!rec) return "";
   if (rec.type === "video") {
     if (videoThumbModeSkipsLoading()) return "";
@@ -46920,7 +47068,10 @@ function renderPreviewViewerItem(idx) {
     if (rec && rec.type === "video") willShowVideo = true;
     else if (rec) willShowImage = true;
   }
+  const suppressStalePreviewFrame = !!PREVIEW_SUPPRESS_STALE_FRAME_ONCE;
+  PREVIEW_SUPPRESS_STALE_FRAME_ONCE = false;
   const keepPreviewImageFrame = !!(
+    !suppressStalePreviewFrame &&
     willShowImage &&
     !mediaFilterEnabled() &&
     previewImgEl &&
@@ -46930,6 +47081,7 @@ function renderPreviewViewerItem(idx) {
     String(previewImgEl.dataset.previewFileId || "") === String(rec.id || "")
   );
   const keepPreviewFilterFrame = !!(
+    !suppressStalePreviewFrame &&
     mediaFilterEnabled() &&
     willShowImage &&
     previewImgEl &&
@@ -46943,6 +47095,7 @@ function renderPreviewViewerItem(idx) {
     String(previewImgEl.src || "")
   );
   const holdPreviewImageFrame = !!(
+    !suppressStalePreviewFrame &&
     hasVisiblePreviewImageFrame &&
     !keepPreviewImageFrame &&
     rec &&
@@ -47129,13 +47282,13 @@ function renderPreviewViewerItem(idx) {
     return;
   }
 
-  previewImgEl.onload = () => {
+  const finalizePreviewImageFrame = () => {
     if (
       String(previewImgEl.dataset.previewFileId || "") !==
         String(rec.id || "") ||
       String(WS.preview.fileId || "") !== String(rec.id || "")
     )
-      return;
+      return false;
     previewImgEl.classList.add("ready");
     previewImgEl.style.display = "block";
     const imageMode = detectScrollImageMode(rec, previewImgEl);
@@ -47145,6 +47298,7 @@ function renderPreviewViewerItem(idx) {
       applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
       previewImgEl.classList.remove("mediaHidden");
     } else {
+      applyPendingFilmCornerMask(previewImgEl, rec.dirPath || "");
       applyScrollImageProcessingFallback(previewImgEl, rec, "none");
       syncMediaFilterSurface(
         "preview",
@@ -47155,18 +47309,60 @@ function renderPreviewViewerItem(idx) {
       );
     }
     MediaFilterEngine.requestRender();
+    return true;
   };
+  previewImgEl.onload = finalizePreviewImageFrame;
   const src = ensureMediaUrl(rec) || "";
   const same = previewImgEl.src === src;
   previewImgEl.dataset.previewFileId = String(rec.id || "");
-  previewImgEl.classList.add("ready");
   previewImgEl.style.display = "block";
-  if (!same) previewImgEl.src = src;
   const previewIsGif = isGifRecord(rec);
   previewImgEl.setAttribute("data-is-gif", previewIsGif ? "1" : "0");
   previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
+  if (!same) {
+    const swapToken = (PREVIEW_IMAGE_SWAP_TOKEN = (PREVIEW_IMAGE_SWAP_TOKEN + 1) >>> 0);
+    const hadVisibleFrame = !!(
+      previewImgEl.style.display !== "none" &&
+      String(previewImgEl.getAttribute("src") || "") &&
+      previewImgEl.classList.contains("ready")
+    );
+    if (!hadVisibleFrame || suppressStalePreviewFrame) previewImgEl.classList.remove("ready");
+    clearPendingFilmCornerMask(previewImgEl);
+    if (suppressStalePreviewFrame) {
+      previewImgEl.dataset.previewFileId = String(rec.id || "");
+      previewImgEl.src = src;
+      if (previewImgEl.complete && previewImgEl.naturalWidth > 0) {
+        requestAnimationFrame(finalizePreviewImageFrame);
+      }
+    }
+    const commitDecodedImage = () => {
+      if (swapToken !== PREVIEW_IMAGE_SWAP_TOKEN) return;
+      if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
+      previewImgEl.dataset.previewFileId = String(rec.id || "");
+      previewImgEl.src = src;
+      requestAnimationFrame(finalizePreviewImageFrame);
+    };
+    try {
+      const preloadImg = new Image();
+      preloadImg.decoding = "sync";
+      preloadImg.loading = "eager";
+      try { preloadImg.fetchPriority = "high"; } catch {}
+      preloadImg.onload = commitDecodedImage;
+      preloadImg.onerror = commitDecodedImage;
+      preloadImg.src = src;
+      if (preloadImg.decode) {
+        preloadImg.decode().then(commitDecodedImage).catch(() => {});
+      }
+      if (preloadImg.complete && preloadImg.naturalWidth > 0) commitDecodedImage();
+    } catch {
+      commitDecodedImage();
+    }
+    preloadNextMedia(viewerItems, viewerIndex);
+    return;
+  }
+  previewImgEl.classList.add("ready");
   const previewMode = detectScrollImageMode(rec, previewImgEl);
-  applyScrollImageMode(previewViewportBox, previewImgEl, previewMode, !same);
+  applyScrollImageMode(previewViewportBox, previewImgEl, previewMode, false);
   if (previewMode !== "none") {
     clearPendingFilmCornerMask(previewImgEl);
     clearMediaFilterSurface("preview", previewImgEl);
@@ -50048,6 +50244,7 @@ function makePreviewFileCard(
        ========================================================= */
 
 function currentVideoThumbMode() {
+  if (!thumbnailLoadingEnabled()) return "placeholder";
   return normalizeThumbRenderModeValue(
     WS.meta && WS.meta.options
       ? String(WS.meta.options.videoThumbSize || "medium")
@@ -50702,6 +50899,7 @@ async function generateVideoThumb(rec, opts = null) {
        ========================================================= */
 
 function enqueueImageThumb(rec, opts = null) {
+  if (!thumbnailLoadingEnabled()) return false;
   if (!rec) return;
   if (rec.type !== "image") return;
   if (!thumbnailPushQueueEnabled()) return;
@@ -50740,6 +50938,10 @@ function enqueueImageThumb(rec, opts = null) {
 }
 
 async function drainImageThumbQueue() {
+  if (!thumbnailLoadingEnabled()) {
+    clearQueuedThumbnailWork();
+    return;
+  }
   const maxActive = imageThumbPoolLimit();
   if (!Array.isArray(WS.imageThumbPriorityQueue))
     WS.imageThumbPriorityQueue = [];
@@ -52322,6 +52524,7 @@ function toggleRandomFolderSortMode() {
   } else {
     WS.view.randomFolderCache = new Map();
   }
+  clearTagEntryDerivedCaches();
   applyRandomSortModeEverywhere(true);
   showStatusMessage(
     `Random folder sort: ${WS.view.randomFolderMode ? "On" : "Off"}`,
@@ -52449,6 +52652,17 @@ function labelForCycleValue(list, value) {
 
 function setFilePaneViewMode(mode) {
   if (!WS.meta) return false;
+  if (!thumbnailLoadingEnabled() && normalizeFilePaneViewMode(mode, "list") === "thumbnail") {
+    setOptionValue("filePaneViewMode", "list");
+    refreshLiveSettingsPaneFromKeyboardAction();
+    applyInteractionModeFromOptions();
+    renderDirectoriesPane(true);
+    showStatusMessage(
+      "File pane view: List View (thumbnail loading is off)",
+      "pane-toggles",
+    );
+    return true;
+  }
   const nextMode = normalizeFilePaneViewMode(mode, "list");
   const prevMode = filePaneViewModeFromOptions();
   if (prevMode === nextMode) return true;
@@ -52793,6 +53007,8 @@ function handleExtrasKeybindAction(action) {
         WS.meta.dirSortMode,
         scoreInterfaceEnabled(),
       );
+      clearTagEntryDerivedCaches();
+      invalidateDirSortMetricsCache();
       metaMarkDirty(META_DOC_IDS.prefGeneral);
       refreshLiveSettingsPaneFromKeyboardAction();
       applyViewModesEverywhere(true);
