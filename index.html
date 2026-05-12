@@ -20269,12 +20269,17 @@ ${makeActionRow(
   bindSelect("opt_videoThumbSize", "videoThumbSize", true, null, (val) =>
     normalizeThumbRenderModeValue(val, "medium"),
   );
-  bindSelect("opt_videoAudio", "videoAudio", false, null, (val) => {
-    const raw = String(val || "")
-      .trim()
-      .toLowerCase();
-    return raw === "muted" ? "muted" : "unmuted";
-  });
+  bindSelect(
+    "opt_videoAudio",
+    "videoAudio",
+    false,
+    (val) => {
+      applyDefaultVideoAudioModeToActiveVideos(
+        normalizeVideoAudioModeValue(val),
+      );
+    },
+    normalizeVideoAudioModeValue,
+  );
   bindSelect("opt_videoSkipStep", "videoSkipStep", false, null, (val) => {
     const parsed = parseInt(String(val || "").trim(), 10);
     return Number.isFinite(parsed) && parsed > 0 ? String(parsed) : "5";
@@ -46680,13 +46685,56 @@ function ensureViewerFromPreviewFileId(fileId) {
   viewerIndex = idx;
 }
 
+function normalizeVideoAudioModeValue(value) {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  return raw === "muted" ? "muted" : "unmuted";
+}
+
 function previewVideoMode() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return opt ? String(opt.videoAudio || "unmuted") : "unmuted";
+  return opt ? normalizeVideoAudioModeValue(opt.videoAudio) : "unmuted";
 }
 
 function galleryVideoMode() {
   return previewVideoMode();
+}
+
+function applyDefaultVideoAudioModeToActiveVideos(mode = previewVideoMode()) {
+  const muted = normalizeVideoAudioModeValue(mode) === "muted";
+  if (previewVideoEl && previewVideoEl.style.display !== "none") {
+    previewVideoEl.muted = muted || BANIC_ACTIVE || VIEWER_MODE;
+  }
+  if (viewerVideoEl && viewerVideoEl.style.display !== "none") {
+    viewerVideoEl.muted = muted || BANIC_ACTIVE;
+  }
+  if (QUAD_PLAYBACK && QUAD_PLAYBACK.active) {
+    QUAD_PLAYBACK.muted = muted;
+    applyQuadPlaybackAudioState();
+  }
+  syncControlPaneState();
+}
+
+function setDefaultVideoAudioMode(mode, options = {}) {
+  if (!WS.meta) return false;
+  const next = normalizeVideoAudioModeValue(mode);
+  if (previewVideoMode() !== next) setOptionValue("videoAudio", next);
+  applyDefaultVideoAudioModeToActiveVideos(next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  if (!options.quiet) {
+    showStatusMessage(
+      `Default video audio: ${next === "muted" ? "Muted" : "Unmuted"}`,
+      "playback",
+    );
+  }
+  return true;
+}
+
+function toggleDefaultVideoAudioMode() {
+  return setDefaultVideoAudioMode(
+    previewVideoMode() === "muted" ? "unmuted" : "muted",
+  );
 }
 
 function normalizePreviewVideoPauseLockId(fileId) {
@@ -46790,7 +46838,7 @@ function syncControlPaneState() {
     controlPlayPauseBtn.title = label;
   }
   if (controlMuteBtn) {
-    const muted = !!(video && video.muted);
+    const muted = previewVideoMode() === "muted";
     controlMuteBtn.textContent = "";
     controlMuteBtn.classList.remove("active");
     controlMuteBtn.classList.toggle("is-muted", hasVideo && muted);
@@ -46856,13 +46904,7 @@ function toggleControlPanePlayPause() {
 function toggleControlPaneMute() {
   const video = getControlPaneVideo();
   if (!video) return false;
-  try {
-    video.muted = !video.muted;
-  } catch {
-    return false;
-  }
-  syncControlPaneState();
-  return true;
+  return toggleDefaultVideoAudioMode();
 }
 
 function moveControlPaneItem(delta) {
@@ -52283,15 +52325,13 @@ function toggleViewerVideoPlayPause() {
 
 function toggleViewerVideoMute() {
   if (VIEWER_MODE && isQuadPlaybackMode()) {
-    QUAD_PLAYBACK.muted = !QUAD_PLAYBACK.muted;
-    applyQuadPlaybackAudioState();
+    if (!getQuadPlaybackVideos().length) return;
+    toggleDefaultVideoAudioMode();
     return;
   }
   const vid = getActiveMediaVideo();
   if (!vid) return;
-  try {
-    vid.muted = !vid.muted;
-  } catch {}
+  toggleDefaultVideoAudioMode();
 }
 
 /* =========================================================
