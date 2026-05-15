@@ -6994,7 +6994,24 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary)) !important;
 }
 
-  </style>
+  
+/* Thumbnail features removed in this build. File pane is list-only. */
+.menuTabBtn[data-tab="thumbnails"],
+#directoriesList.filePaneThumbnailView,
+#directoriesList.gridModeList .dirThumbSlot,
+.dirInlinePreview,
+.dirTagQuadGrid,
+.dirFileThumbSlot,
+.dirSquarePreview,
+.previewThumb,
+.previewThumbMedia,
+.previewThumbOverlay,
+.previewTagThumbMedia,
+.previewFolderThumbMedia {
+  display: none !important;
+}
+
+</style>
   <!-- END: inlined from ./styles.css -->
   </head>
 
@@ -7778,6 +7795,9 @@ function makeDirNode(name, parent) {
     recursiveFileCount: 0,
     recursiveFolderCount: 0,
     recursiveItemCount: 0,
+    recursiveImageCount: 0,
+    recursiveVideoCount: 0,
+    recursiveGifCount: 0,
     recursiveSizeBytes: 0,
     loadState: "loaded",
     summary: null,
@@ -7798,6 +7818,9 @@ function resetDirectoryDerivedStatsForNode(node) {
   node.recursiveFileCount = 0;
   node.recursiveFolderCount = 0;
   node.recursiveItemCount = 0;
+  node.recursiveImageCount = 0;
+  node.recursiveVideoCount = 0;
+  node.recursiveGifCount = 0;
   node.recursiveSizeBytes = 0;
 }
 
@@ -7820,10 +7843,16 @@ function rebuildDirectoryDerivedIndex(rootNode = null) {
     const childDirs = Array.isArray(node.childrenDirs) ? node.childrenDirs : [];
 
     let fileCount = fileIds.length;
+    let imageCount = 0;
+    let videoCount = 0;
+    let gifCount = 0;
     let sizeBytes = 0;
     for (let i = 0; i < fileIds.length; i++) {
       const rec = WS.fileById.get(String(fileIds[i] || ""));
       if (!rec) continue;
+      if (rec.type === "video") videoCount++;
+      else if (rec.type === "image") imageCount++;
+      if (String(rec.ext || "").toLowerCase() === ".gif") gifCount++;
       const fileSize = Number(rec.size);
       if (Number.isFinite(fileSize) && fileSize > 0) sizeBytes += fileSize;
     }
@@ -7834,6 +7863,9 @@ function rebuildDirectoryDerivedIndex(rootNode = null) {
       walk(child);
       fileCount += Number(child?.recursiveFileCount || 0);
       folderCount += Number(child?.recursiveFolderCount || 0);
+      imageCount += Number(child?.recursiveImageCount || 0);
+      videoCount += Number(child?.recursiveVideoCount || 0);
+      gifCount += Number(child?.recursiveGifCount || 0);
       sizeBytes += Number(child?.recursiveSizeBytes || 0);
     }
 
@@ -7842,6 +7874,9 @@ function rebuildDirectoryDerivedIndex(rootNode = null) {
     node.recursiveFileCount = fileCount;
     node.recursiveFolderCount = folderCount;
     node.recursiveItemCount = fileCount + folderCount;
+    node.recursiveImageCount = imageCount;
+    node.recursiveVideoCount = videoCount;
+    node.recursiveGifCount = gifCount;
     node.recursiveSizeBytes = sizeBytes;
   };
 
@@ -8306,6 +8341,8 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Hidden & special views", id: "visibility-toggles", label: "Hidden / Trash / Storage / Untagged toggles", hint: "Notifications that announce special entries being shown, hidden, revealed, or blank-row adjusted.", optionKey: "notifyVisibilityToggles" }),
   Object.freeze({ section: "Hidden & special views", id: "quick-navigation", label: "Quick navigation toggle", hint: "Quick navigation on/off messages.", optionKey: "notifyQuickNavigation" }),
 
+  Object.freeze({ section: "Cycling actions", id: "cycle-filter", label: "Content filter cycle", hint: "The action that cycles All / Images / Videos / GIFs.", optionKey: "notifyCycleFilter" }),
+  Object.freeze({ section: "Cycling actions", id: "cycle-aspect-ratio-filter", label: "Aspect ratio filter cycle", hint: "The action that cycles All / Portrait / Square / Landscape.", optionKey: "notifyCycleAspectRatioFilter" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-animated-filters", label: "Animated filter cycle", hint: "The action that cycles animated filters off/on/videos-only.", optionKey: "notifyCycleAnimatedFilters" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-folder-sort", label: "Folder sort cycle", hint: "The action that cycles folder sort modes.", optionKey: "notifyCycleFolderSort" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-video-end", label: "Video-end behavior cycle", hint: "The action that cycles what videos do when they end.", optionKey: "notifyCycleVideoEnd" }),
@@ -8319,6 +8356,11 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Appearance & filenames", id: "appearance-presets", label: "Appearance presets", hint: "Preset apply, save, mix, delete, and preset-selection messages.", optionKey: "notifyAppearancePresets" }),
 
   Object.freeze({ section: "Tags & albums", id: "tags", label: "Tags / albums / hidden tags", hint: "Tag editing, album, and hidden-tag messages.", optionKey: "notifyTags" }),
+  Object.freeze({ section: "Tags & albums", id: "tag-thumbnails", label: "Tag thumbnails / tag media settings", hint: "Tag thumbnail and tag media preset messages.", optionKey: "notifyTagThumbnails" }),
+
+  Object.freeze({ section: "Thumbnails", id: "thumbnails", label: "Folder / root thumbnails", hint: "Folder and root thumbnail assignment messages.", optionKey: "notifyThumbnails" }),
+  Object.freeze({ section: "Thumbnails", id: "thumbnail-tools", label: "Thumbnail framing / cache / resets", hint: "Thumbnail crop, framing, cache, and reset messages.", optionKey: "notifyThumbnailTools" }),
+
   Object.freeze({ section: "Editing", id: "rename", label: "Rename + sanitize names", hint: "Rename and sanitize-name messages.", optionKey: "notifyRename" }),
   Object.freeze({ section: "File operations", id: "trash", label: "Trash / Put Back", hint: "Move-to-trash and Put Back messages.", optionKey: "notifyTrash" }),
   Object.freeze({ section: "File operations", id: "delete", label: "Delete", hint: "Delete messages.", optionKey: "notifyDelete" }),
@@ -8337,6 +8379,10 @@ function notificationSourceOptionKeys() {
 function defaultOptions() {
   const out = {
     videoAudio: "unmuted",
+    imageThumbSize: "native",
+    videoThumbSize: "native",
+    betaDirFileThumbFullCard: true,
+    betaDirFolderSquareCard: true,
     previewMode: "grid",
     videoSkipStep: "5",
     preloadNextMode: "off",
@@ -8391,10 +8437,17 @@ function defaultOptions() {
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     directoriesPaneOpen: true,
+    filePaneViewMode: "list",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
     showTrashFolder: true,
     showStorageFolder: true,
+    storePortraitAspectRatioFiles: false,
+    storeSquareAspectRatioFiles: false,
+    storeLandscapeAspectRatioFiles: false,
+    storeImageFiles: false,
+    storeGifFiles: false,
+    storeVideoFiles: false,
     muteMessages: false,
     quickNavigation: true,
     showUntaggedFolder: false,
@@ -8404,8 +8457,17 @@ function defaultOptions() {
     showFolderSize: true,
     showItemTypeLabel: true,
     showFolderThumbnailTitles: true,
+    showRootFolderThumbnailTitles: true,
+    showSubfolderThumbnailTitles: true,
+    showFileThumbnailTitles: true,
+    showTagThumbnailTitles: true,
+    hideRootFolderThumbnailMenuButton: false,
+    hideSubfolderThumbnailMenuButton: false,
+    hideTagAndRootFolderThumbnailMenuButton: false,
+    hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
     hideVideoControls: false,
+    thumbnailLoading: false,
     forceTitleCaps: true,
     showPositionNumbersInNames: false,
     hideFileExtensionsInFileNames: true,
@@ -8413,10 +8475,19 @@ function defaultOptions() {
     hideBeforeLastDashInFileNames: true,
     hideAfterFirstUnderscoreInFileNames: true,
     clickSelectedRotatingThumbTeleports: false,
+    thumbnailTitleSize: "small",
+    previewFileThumbnailTitleSize: "small",
+    previewRootFolderThumbnailTitleSize: "small",
+    previewSubfolderThumbnailTitleSize: "small",
+    previewTagThumbnailTitleSize: "small",
+    thumbnailStyle: "cropped",
+    thumbnailScaleCropped: "row7",
+    thumbnailScaleAspect: "row7",
   };
   for (let i = 0; i < NOTIFICATION_SOURCE_SPECS.length; i++) {
     out[NOTIFICATION_SOURCE_SPECS[i].optionKey] = true;
   }
+  Object.assign(out, buildDefaultThumbnailVisibilityOptions());
   return out;
 }
 
@@ -8551,6 +8622,17 @@ function normalizeOptions(o) {
     notificationOptionValues[spec.optionKey] =
       typeof src[spec.optionKey] === "boolean" ? src[spec.optionKey] : true;
   }
+  const thumbnailStyleRaw = String(src.thumbnailStyle || "")
+    .trim()
+    .toLowerCase();
+  const thumbnailStyle = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
+    ? thumbnailStyleRaw === "cropped" || thumbnailStyleRaw === "aspect"
+      ? thumbnailStyleRaw
+      : typeof src.betaAspectRatioThumbCards === "boolean" &&
+          src.betaAspectRatioThumbCards
+        ? "aspect"
+        : d.thumbnailStyle
+    : "cropped";
   const colorScheme = "retro";
   const lightMode = typeof src.lightMode === "boolean" ? src.lightMode : false;
   const videoAudioRaw = String(
@@ -8586,10 +8668,63 @@ function normalizeOptions(o) {
     legacyInteractionModeRaw === "pane" || legacyInteractionModeRaw === "grid"
       ? legacyInteractionModeRaw
       : "";
+  const filePaneViewModeRaw = String(src.filePaneViewMode || "")
+    .trim()
+    .toLowerCase();
+  const filePaneViewMode =
+    filePaneViewModeRaw === "thumbnail" || filePaneViewModeRaw === "list"
+      ? filePaneViewModeRaw
+      : d.filePaneViewMode;
   const previewModeRaw = String(src.previewMode || "")
     .trim()
     .toLowerCase();
   const previewMode = "grid";
+  const imageThumbSize = normalizeThumbRenderModeValue(
+    src.imageThumbSize,
+    d.imageThumbSize,
+  );
+  const videoThumbSize = normalizeThumbRenderModeValue(
+    src.videoThumbSize,
+    d.videoThumbSize,
+  );
+  const thumbnailScaleCropped = normalizeThumbnailScaleValue(
+    src.thumbnailScaleCropped,
+    d.thumbnailScaleCropped,
+  );
+  const thumbnailScaleAspect = normalizeThumbnailScaleValue(
+    src.thumbnailScaleAspect,
+    d.thumbnailScaleAspect,
+  );
+  const thumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.thumbnailTitleSize,
+    d.thumbnailTitleSize,
+  );
+  const previewFileThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewFileThumbnailTitleSize,
+    thumbnailTitleSize,
+  );
+  const previewRootFolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewRootFolderThumbnailTitleSize,
+    thumbnailTitleSize,
+  );
+  const previewSubfolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewSubfolderThumbnailTitleSize,
+    thumbnailTitleSize,
+  );
+  const previewTagThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewTagThumbnailTitleSize,
+    thumbnailTitleSize,
+  );
+  const legacyShowFolderThumbnailTitles =
+    typeof src.showFolderThumbnailTitles === "boolean"
+      ? src.showFolderThumbnailTitles
+      : typeof src.showThumbnailTitle === "boolean"
+        ? src.showThumbnailTitle
+        : typeof src.showRealItemThumbnailTitles === "boolean"
+          ? src.showRealItemThumbnailTitles
+          : typeof src.hideThumbnailTitle === "boolean"
+            ? !src.hideThumbnailTitle
+            : d.showFolderThumbnailTitles;
   const showScores =
     typeof src.showScores === "boolean"
       ? src.showScores
@@ -8608,8 +8743,77 @@ function normalizeOptions(o) {
     typeof src.showItemTypeLabel === "boolean"
       ? src.showItemTypeLabel
       : d.showItemTypeLabel;
+  const showRootFolderThumbnailTitles =
+    typeof src.showRootFolderThumbnailTitles === "boolean"
+      ? src.showRootFolderThumbnailTitles
+      : legacyShowFolderThumbnailTitles;
+  const showSubfolderThumbnailTitles =
+    typeof src.showSubfolderThumbnailTitles === "boolean"
+      ? src.showSubfolderThumbnailTitles
+      : legacyShowFolderThumbnailTitles;
+  const showFileThumbnailTitles =
+    typeof src.showFileThumbnailTitles === "boolean"
+      ? src.showFileThumbnailTitles
+      : typeof src.showThumbnailTitle === "boolean"
+        ? src.showThumbnailTitle
+        : typeof src.showRealItemThumbnailTitles === "boolean"
+          ? src.showRealItemThumbnailTitles
+          : typeof src.hideThumbnailTitle === "boolean"
+            ? !src.hideThumbnailTitle
+            : d.showFileThumbnailTitles;
+  const showTagThumbnailTitles =
+    typeof src.showTagThumbnailTitles === "boolean"
+      ? src.showTagThumbnailTitles
+      : typeof src.showThumbnailTitle === "boolean"
+        ? src.showThumbnailTitle
+        : typeof src.hideThumbnailTitle === "boolean"
+          ? !src.hideThumbnailTitle
+          : d.showTagThumbnailTitles;
+  const hideRootFolderThumbnailMenuButton =
+    typeof src.hideRootFolderThumbnailMenuButton === "boolean"
+      ? src.hideRootFolderThumbnailMenuButton
+      : d.hideRootFolderThumbnailMenuButton;
+  const hideSubfolderThumbnailMenuButton =
+    typeof src.hideSubfolderThumbnailMenuButton === "boolean"
+      ? src.hideSubfolderThumbnailMenuButton
+      : d.hideSubfolderThumbnailMenuButton;
+  const hideTagAndRootFolderThumbnailMenuButton =
+    typeof src.hideTagAndRootFolderThumbnailMenuButton === "boolean"
+      ? src.hideTagAndRootFolderThumbnailMenuButton
+      : d.hideTagAndRootFolderThumbnailMenuButton;
+  const hideFileThumbnailMenuButton =
+    typeof src.hideFileThumbnailMenuButton === "boolean"
+      ? src.hideFileThumbnailMenuButton
+      : d.hideFileThumbnailMenuButton;
+  const normalizedThumbnailVisibility = normalizeThumbnailVisibilityOptions(
+    src,
+    {
+      itemCount: showFolderItemCount,
+      folderCount: showFolderItemCount,
+      fileCount: showFolderItemCount,
+      size: showFolderSize,
+      score: showScores,
+      itemType: showItemTypeLabel,
+      previewTitles: {
+        file: showFileThumbnailTitles,
+        rootFolder: showRootFolderThumbnailTitles,
+        subfolder: showSubfolderThumbnailTitles,
+        tag: showTagThumbnailTitles,
+      },
+      previewMenuButtons: {
+        file: !hideFileThumbnailMenuButton,
+        rootFolder: !hideRootFolderThumbnailMenuButton,
+        subfolder: !hideSubfolderThumbnailMenuButton,
+        tag: !hideTagAndRootFolderThumbnailMenuButton,
+      },
+    },
+  );
   const out = {
     videoAudio,
+    imageThumbSize,
+    videoThumbSize,
+    betaDirFileThumbFullCard: true,
+    betaDirFolderSquareCard: true,
     previewMode,
     videoSkipStep,
     preloadNextMode:
@@ -8640,6 +8844,7 @@ function normalizeOptions(o) {
         : legacyInteractionMode
           ? legacyInteractionMode === "pane"
           : d.directoriesPaneOpen,
+    filePaneViewMode: "list",
     includeHiddenItemsInStats:
       typeof src.includeHiddenItemsInStats === "boolean"
         ? src.includeHiddenItemsInStats
@@ -8658,6 +8863,30 @@ function normalizeOptions(o) {
       typeof src.showStorageFolder === "boolean"
         ? src.showStorageFolder
         : d.showStorageFolder,
+    storePortraitAspectRatioFiles:
+      typeof src.storePortraitAspectRatioFiles === "boolean"
+        ? src.storePortraitAspectRatioFiles
+        : d.storePortraitAspectRatioFiles,
+    storeSquareAspectRatioFiles:
+      typeof src.storeSquareAspectRatioFiles === "boolean"
+        ? src.storeSquareAspectRatioFiles
+        : d.storeSquareAspectRatioFiles,
+    storeLandscapeAspectRatioFiles:
+      typeof src.storeLandscapeAspectRatioFiles === "boolean"
+        ? src.storeLandscapeAspectRatioFiles
+        : d.storeLandscapeAspectRatioFiles,
+    storeImageFiles:
+      typeof src.storeImageFiles === "boolean"
+        ? src.storeImageFiles
+        : d.storeImageFiles,
+    storeGifFiles:
+      typeof src.storeGifFiles === "boolean"
+        ? src.storeGifFiles
+        : d.storeGifFiles,
+    storeVideoFiles:
+      typeof src.storeVideoFiles === "boolean"
+        ? src.storeVideoFiles
+        : d.storeVideoFiles,
     muteMessages:
       typeof src.muteMessages === "boolean"
         ? src.muteMessages
@@ -8678,6 +8907,15 @@ function normalizeOptions(o) {
     showFolderItemCount,
     showFolderSize,
     showItemTypeLabel,
+    showFolderThumbnailTitles: legacyShowFolderThumbnailTitles,
+    showRootFolderThumbnailTitles,
+    showSubfolderThumbnailTitles,
+    showFileThumbnailTitles,
+    showTagThumbnailTitles,
+    hideRootFolderThumbnailMenuButton,
+    hideSubfolderThumbnailMenuButton,
+    hideTagAndRootFolderThumbnailMenuButton,
+    hideFileThumbnailMenuButton,
     previewMediaUsePaneBackground:
       typeof src.previewMediaUsePaneBackground === "boolean"
         ? src.previewMediaUsePaneBackground
@@ -8686,6 +8924,10 @@ function normalizeOptions(o) {
       typeof src.hideVideoControls === "boolean"
         ? src.hideVideoControls
         : d.hideVideoControls,
+    thumbnailLoading: false,
+    imageThumbSize: "placeholder",
+    videoThumbSize: "placeholder",
+    filePaneViewMode: "list",
     autoCropBlackBars:
       typeof src.autoCropBlackBars === "boolean"
         ? src.autoCropBlackBars
@@ -8718,6 +8960,14 @@ function normalizeOptions(o) {
       typeof src.clickSelectedRotatingThumbTeleports === "boolean"
         ? src.clickSelectedRotatingThumbTeleports
         : d.clickSelectedRotatingThumbTeleports,
+    thumbnailTitleSize,
+    previewFileThumbnailTitleSize,
+    previewRootFolderThumbnailTitleSize,
+    previewSubfolderThumbnailTitleSize,
+    previewTagThumbnailTitleSize,
+    thumbnailStyle,
+    thumbnailScaleCropped,
+    thumbnailScaleAspect,
     leftPaneWidthPct: (function () {
       const v = parseFloat(src.leftPaneWidthPct);
       if (Number.isFinite(v)) return Math.max(0.05, Math.min(0.9, v));
@@ -8775,6 +9025,7 @@ function normalizeOptions(o) {
     filmCornerOverlayIntensity,
   };
   Object.assign(out, notificationOptionValues);
+  Object.assign(out, normalizedThumbnailVisibility);
   return out;
 }
 
@@ -9066,12 +9317,14 @@ const META_DOC_IDS = Object.freeze({
   tagAlbums: "tagAlbums",
   trash: "trash",
   thumbnails: "thumbnails",
+  aspectRatios: "aspectRatios",
   appearancePresets: "appearancePresets",
   appearanceAssignments: "appearanceAssignments",
   prefGeneral: "prefGeneral",
   prefNotifications: "prefNotifications",
   prefAppearance: "prefAppearance",
   prefPlayback: "prefPlayback",
+  prefThumbnails: "prefThumbnails",
   prefFilenames: "prefFilenames",
   prefControls: "prefControls",
   keybinds: "keybinds",
@@ -9083,12 +9336,15 @@ const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.tags]: "tags.log.json",
   [META_DOC_IDS.tagAlbums]: "tag-albums.log.json",
   [META_DOC_IDS.trash]: "trash.log.json",
+  [META_DOC_IDS.thumbnails]: "custom-thumbnails.log.json",
+  [META_DOC_IDS.aspectRatios]: "aspect-ratios.log.json",
   [META_DOC_IDS.appearancePresets]: "appearance-presets.log.json",
   [META_DOC_IDS.appearanceAssignments]: "appearance-assignments.log.json",
   [META_DOC_IDS.prefGeneral]: "preferences.general.log.json",
   [META_DOC_IDS.prefNotifications]: "preferences.notifications.log.json",
   [META_DOC_IDS.prefAppearance]: "preferences.appearance.log.json",
   [META_DOC_IDS.prefPlayback]: "preferences.playback.log.json",
+  [META_DOC_IDS.prefThumbnails]: "preferences.thumbnails.log.json",
   [META_DOC_IDS.prefFilenames]: "preferences.filenames.log.json",
   [META_DOC_IDS.prefControls]: "preferences.controls.log.json",
   [META_DOC_IDS.keybinds]: "keyboard-configuration.log.json",
@@ -9100,12 +9356,15 @@ const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.tags]: "LocalGalleryTagsV2",
   [META_DOC_IDS.tagAlbums]: "LocalGalleryTagAlbumsV2",
   [META_DOC_IDS.trash]: "LocalGalleryTrashV1",
+  [META_DOC_IDS.thumbnails]: "LocalGalleryThumbnailsV2",
+  [META_DOC_IDS.aspectRatios]: "LocalGalleryAspectRatiosV1",
   [META_DOC_IDS.appearancePresets]: "LocalGalleryAppearancePresetsV2",
   [META_DOC_IDS.appearanceAssignments]: "LocalGalleryAppearanceAssignmentsV2",
   [META_DOC_IDS.prefGeneral]: "LocalGalleryPreferencesGeneralV2",
   [META_DOC_IDS.prefNotifications]: "LocalGalleryPreferencesNotificationsV2",
   [META_DOC_IDS.prefAppearance]: "LocalGalleryPreferencesAppearanceV2",
   [META_DOC_IDS.prefPlayback]: "LocalGalleryPreferencesPlaybackV2",
+  [META_DOC_IDS.prefThumbnails]: "LocalGalleryPreferencesThumbnailsV2",
   [META_DOC_IDS.prefFilenames]: "LocalGalleryPreferencesFilenamesV2",
   [META_DOC_IDS.prefControls]: "LocalGalleryPreferencesControlsV2",
   [META_DOC_IDS.keybinds]: "LocalGalleryKeyboard",
@@ -9117,12 +9376,15 @@ const META_ALL_DOC_IDS = Object.freeze([
   META_DOC_IDS.tags,
   META_DOC_IDS.tagAlbums,
   META_DOC_IDS.trash,
+  META_DOC_IDS.thumbnails,
+  META_DOC_IDS.aspectRatios,
   META_DOC_IDS.appearancePresets,
   META_DOC_IDS.appearanceAssignments,
   META_DOC_IDS.prefGeneral,
   META_DOC_IDS.prefNotifications,
   META_DOC_IDS.prefAppearance,
   META_DOC_IDS.prefPlayback,
+  META_DOC_IDS.prefThumbnails,
   META_DOC_IDS.prefFilenames,
   META_DOC_IDS.prefControls,
   META_DOC_IDS.keybinds,
@@ -9146,6 +9408,35 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "videoEndBehavior",
     "autoCropBlackBars",
   ]),
+  thumbnails: Object.freeze(
+    [
+      "thumbnailTitleSize",
+      "previewFileThumbnailTitleSize",
+      "previewRootFolderThumbnailTitleSize",
+      "previewSubfolderThumbnailTitleSize",
+      "previewTagThumbnailTitleSize",
+      "thumbnailStyle",
+      "thumbnailScaleCropped",
+      "thumbnailScaleAspect",
+      "imageThumbSize",
+      "videoThumbSize",
+      "showFolderItemCount",
+      "showFolderSize",
+      "showScores",
+      "showItemTypeLabel",
+      "showFolderThumbnailTitles",
+      "showRootFolderThumbnailTitles",
+      "showSubfolderThumbnailTitles",
+      "showFileThumbnailTitles",
+      "showTagThumbnailTitles",
+      "hideRootFolderThumbnailMenuButton",
+      "hideSubfolderThumbnailMenuButton",
+      "hideTagAndRootFolderThumbnailMenuButton",
+      "hideFileThumbnailMenuButton",
+      "betaDirFileThumbFullCard",
+      "betaDirFolderSquareCard",
+    ].concat(thumbnailVisibilityOptionKeys()),
+  ),
   filenames: Object.freeze([
     "forceTitleCaps",
     "showPositionNumbersInNames",
@@ -9169,6 +9460,10 @@ const META_PREFERENCE_DOC_BY_OPTION_KEY = (() => {
       META_PREFERENCE_SECTION_OPTION_KEYS.appearance,
     ],
     [META_DOC_IDS.prefPlayback, META_PREFERENCE_SECTION_OPTION_KEYS.playback],
+    [
+      META_DOC_IDS.prefThumbnails,
+      META_PREFERENCE_SECTION_OPTION_KEYS.thumbnails,
+    ],
     [META_DOC_IDS.prefFilenames, META_PREFERENCE_SECTION_OPTION_KEYS.filenames],
     [META_DOC_IDS.prefControls, META_PREFERENCE_SECTION_OPTION_KEYS.controls],
   ];
@@ -10326,6 +10621,16 @@ function buildAppearancePresetCacheKey() {
           .sort()
           .join("||")
       : "";
+  const tagFilterSig =
+    WS.meta && WS.meta.tagMediaFilterByKey
+      ? Array.from(WS.meta.tagMediaFilterByKey.entries())
+          .map(
+            ([tagKey, filterValue]) =>
+              `${String(tagKey || "")}=>${normalizeTagMediaFilterValue(filterValue).join(",")}`,
+          )
+          .sort()
+          .join("||")
+      : "";
   const activeContextSig = (() => {
     const direct = [
       String((WS.view && WS.view.tagFolderActiveMode) || ""),
@@ -10352,7 +10657,7 @@ function buildAppearancePresetCacheKey() {
     return `${direct}###${stackSig}`;
   })();
   const gifsIgnore = gifsIgnoreProcessingEnabled() ? "gif:1" : "gif:0";
-  return `${serializeAppearanceValues(currentValues)}###${presetSig}###${folderSig}###${tagSig}###${activeContextSig}###${gifsIgnore}`;
+  return `${serializeAppearanceValues(currentValues)}###${presetSig}###${folderSig}###${tagSig}###${tagFilterSig}###${activeContextSig}###${gifsIgnore}`;
 }
 
 function resolveDirPathForAppearanceTarget(target) {
@@ -10395,6 +10700,90 @@ function contextualAppearancePresetIdForTagContext(
     );
   }
   return "";
+}
+
+function contextualTagMediaFilterForTagContext(mode, tag, album, originPath) {
+  const contextMode = String(mode || "");
+  const contextTag = normalizeTag(tag || "");
+  const contextAlbum = normalizeTagAlbumName(album || "");
+  const scopePath = normalizeDirPathValue(originPath);
+  if (contextMode === "tag" && contextTag) {
+    const directFilter = metaGetTagMediaFilterByKey(
+      tagThumbnailKeyForTag(contextTag, scopePath),
+    );
+    if (directFilter.length) return directFilter;
+    if (contextAlbum) {
+      const albumFilter = metaGetTagMediaFilterByKey(
+        tagThumbnailKeyForAlbum(contextAlbum, scopePath),
+      );
+      if (albumFilter.length) return albumFilter;
+    }
+    return [];
+  }
+  if (contextMode === "album" && contextAlbum) {
+    return metaGetTagMediaFilterByKey(
+      tagThumbnailKeyForAlbum(contextAlbum, scopePath),
+    );
+  }
+  return [];
+}
+
+function contextualTagMediaFilterForDirPath(dirPath) {
+  const normalized = normalizeDirPathValue(dirPath);
+  if (!normalized) return [];
+  const activeMode = String((WS.view && WS.view.tagFolderActiveMode) || "");
+  if (activeMode === "tag" || activeMode === "album") {
+    const originPath = String((WS.view && WS.view.tagFolderOriginPath) || "");
+    const rootPaths = getPortalRootPathsForTagContext(
+      activeMode,
+      WS.view && WS.view.tagFolderActiveTag,
+      WS.view && WS.view.tagFolderActiveAlbum,
+      originPath,
+    );
+    if (
+      rootPaths.some((rootPath) => isSameOrDescendantPath(normalized, rootPath))
+    ) {
+      const filterValue = contextualTagMediaFilterForTagContext(
+        activeMode,
+        WS.view && WS.view.tagFolderActiveTag,
+        WS.view && WS.view.tagFolderActiveAlbum,
+        originPath,
+      );
+      if (filterValue.length) return filterValue;
+    }
+  }
+  const stack = Array.isArray(WS.view && WS.view.tagNavStack)
+    ? WS.view.tagNavStack
+    : [];
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const frame = stack[i];
+    if (!frame || frame.type !== "tag-view") continue;
+    const rootPath = findMatchingVirtualPortalRootPath(frame, normalized);
+    if (!rootPath) continue;
+    const filterValue = contextualTagMediaFilterForTagContext(
+      frame.mode,
+      frame.tag,
+      frame.album,
+      frame.originPath,
+    );
+    if (filterValue.length) return filterValue;
+  }
+  return [];
+}
+
+function currentContextualTagMediaFilterValue() {
+  if (isViewingTagFolder()) {
+    const direct = contextualTagMediaFilterForTagContext(
+      WS.view && WS.view.tagFolderActiveMode,
+      WS.view && WS.view.tagFolderActiveTag,
+      WS.view && WS.view.tagFolderActiveAlbum,
+      WS.view && WS.view.tagFolderOriginPath,
+    );
+    if (direct.length) return direct;
+  }
+  return contextualTagMediaFilterForDirPath(
+    String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : ""),
+  );
 }
 
 function currentActiveTagFolderContext() {
@@ -13602,11 +13991,30 @@ function directoriesPaneOpenEnabled(opt = null) {
 }
 
 function thumbnailLoadingEnabled(opt = null) {
+  // Thumbnails, custom thumbnail metadata, thumbnail queues, and thumbnail-view
+  // navigation are disabled in this build. Media preview/player loading is
+  // handled separately through ensureMediaUrl().
   return false;
+}
+
+function normalizeFilePaneViewMode(value, fallback = "list") {
+  const mode = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (mode === "thumbnail" || mode === "list") return mode;
+  return fallback === "thumbnail" ? "thumbnail" : "list";
+}
+
+function filePaneViewModeFromOptions(opt = null) {
+  return "list";
 }
 
 function filePaneThumbnailViewEnabled(opt = null) {
   return false;
+}
+
+function labelForFilePaneViewMode(mode) {
+  return "List View";
 }
 
 function isCompactTitleLayout() {
@@ -13628,11 +14036,17 @@ function sharedThumbWidthForMode(modeRaw) {
 }
 
 function imageThumbWidthForOption() {
-  return sharedThumbWidthForMode("medium");
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return sharedThumbWidthForMode(
+    opt ? String(opt.imageThumbSize || "medium") : "medium",
+  );
 }
 
 function videoThumbWidthForOption() {
-  return sharedThumbWidthForMode("medium");
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return sharedThumbWidthForMode(
+    opt ? String(opt.videoThumbSize || "medium") : "medium",
+  );
 }
 
 function setOptionsStatus(text) {
@@ -13643,6 +14057,8 @@ function setOptionsStatus(text) {
 function applyDefaultViewFromOptions() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   if (!opt) return;
+  WS.view.filterMode = "all";
+  WS.view.aspectRatioFilterMode = "all";
   WS.view.randomMode = false;
   WS.view.randomFolderMode = false;
   WS.view.randomCache = new Map();
@@ -13982,7 +14398,10 @@ function applyThumbFitFromOptions() {
 }
 
 function getThumbnailStyleFromOptions(opt = null) {
-  return "cropped";
+  if (!ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE) return "cropped";
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  const raw = String((src && src.thumbnailStyle) || "cropped").toLowerCase();
+  return raw === "aspect" ? "aspect" : "cropped";
 }
 
 function normalizeThumbnailTitleSizeValue(value, fallback = "small") {
@@ -14028,7 +14447,11 @@ function getPreviewThumbnailTitleSizeForKind(kind, opt = null) {
 }
 
 function getThumbnailScaleForStyle(style, opt = null) {
-  return "row7";
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  const s = style === "aspect" ? "aspect" : "cropped";
+  const fallback = "row7";
+  const key = s === "aspect" ? "thumbnailScaleAspect" : "thumbnailScaleCropped";
+  return normalizeThumbnailScaleValue(src ? src[key] : null, fallback);
 }
 
 function getActiveThumbnailScale(opt = null) {
@@ -14762,6 +15185,18 @@ const KEYBIND_ACTIONS = [
     section: "random",
   },
   {
+    id: "cycleFilter",
+    label: "Cycle filter",
+    hint: "Cycle the content filter.",
+    section: "filters",
+  },
+  {
+    id: "cycleAspectRatioFilter",
+    label: "Cycle aspect ratio filter",
+    hint: "Cycle the aspect ratio filter.",
+    section: "filters",
+  },
+  {
     id: "slideshow",
     label: "Slideshow mode",
     hint: "Toggle slideshow.",
@@ -15019,6 +15454,8 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleDirectoriesPane",
   "toggleSettingsAndDirectoriesPanes",
   "refreshWorkspace",
+  "cycleFilter",
+  "cycleAspectRatioFilter",
   "cycleFolderSort",
   "toggleAnimatedFilters",
   "cycleAppearancePresets",
@@ -15096,6 +15533,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
   toggleRandomFolderSort: "Cmd+r",
+  cycleFilter: "f",
+  cycleAspectRatioFilter: "",
   slideshow: "v",
   panic: "g",
   cycleFolderSort: "t",
@@ -15197,6 +15636,7 @@ function normalizeKeybinds(log, presets = null) {
   const byId = new Map(bindings.map((b) => [b.id, b]));
   let legacyRandomJumpKey = "";
   let legacyQuickNavigationKey = "";
+  let sawFilePaneViewBinding = false;
   const migrateIfKeyMatches = (id, legacyKey, nextKey) => {
     const binding = byId.get(id);
     if (!binding) return;
@@ -15217,6 +15657,7 @@ function normalizeKeybinds(log, presets = null) {
       }
       // v8: Quick navigation is a real keybind action, not a legacy alias.
       // Let it fall through so saved bindings persist by id.
+      if (id === "toggleFilePaneView") sawFilePaneViewBinding = true;
       if (!byId.has(id)) continue;
       if (KEYBIND_LOCKED_IDS.has(id)) continue;
       byId.get(id).key = key;
@@ -15232,6 +15673,8 @@ function normalizeKeybinds(log, presets = null) {
   migrateIfKeyMatches("leaveDir", "a", "q");
   migrateIfKeyMatches("enterDir", "d", "e");
   migrateIfKeyMatches("randomFirstFileJump", "x", "r");
+  migrateIfKeyMatches("cycleFilter", "Command+f", "f");
+  migrateIfKeyMatches("cycleFilter", "Command+x", "f");
   migrateIfKeyMatches("slideshow", "v", "v");
   migrateIfKeyMatches("slideshow", "Command+Shift+x", "v");
   migrateIfKeyMatches("seekBack", "Command+q", "z");
@@ -15372,6 +15815,7 @@ const WS = {
     tagAlbumByTag: new Map(),
     trashItemsByPath: new Map(),
     hiddenTagKeys: new Set(),
+    tagMediaFilterByKey: new Map(),
     dirThumbPresets: new Map(),
     pendingDirThumbPresets: new Map(),
     dirAppearancePresetIds: new Map(),
@@ -15379,6 +15823,7 @@ const WS = {
     tagAppearancePresetIds: new Map(),
     fileThumbCrop: new Map(),
     videoThumbTime: new Map(),
+    aspectRatios: new Map(),
     tagThumbModes: new Map(),
     tagThumbPresets: new Map(),
     pendingTagsByPath: new Map(),
@@ -15401,6 +15846,8 @@ const WS = {
   },
 
   view: {
+    filterMode: "all",
+    aspectRatioFilterMode: "all",
     randomMode: false,
     randomFolderMode: false,
     loopWithinDir: false,
@@ -15561,6 +16008,7 @@ function resetWorkspace() {
   revokeAllObjectURLs();
   THUMBNAIL_URL_RECORD_IDS.clear();
   invalidateDirectoryDerivedIndex();
+  ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN++;
   THUMB_DISK_SCOPE_KEY = "";
   THUMB_DISK_READ_PROMISES.clear();
   THUMB_DISK_WRITE_PROMISES.clear();
@@ -15621,6 +16069,7 @@ function resetWorkspace() {
   WS.meta.tagAlbumByTag.clear();
   WS.meta.trashItemsByPath.clear();
   WS.meta.hiddenTagKeys.clear();
+  WS.meta.tagMediaFilterByKey.clear();
   WS.meta.dirThumbPresets.clear();
   WS.meta.pendingDirThumbPresets.clear();
   WS.meta.dirAppearancePresetIds.clear();
@@ -15628,6 +16077,7 @@ function resetWorkspace() {
   WS.meta.tagAppearancePresetIds.clear();
   WS.meta.fileThumbCrop.clear();
   WS.meta.videoThumbTime.clear();
+  WS.meta.aspectRatios.clear();
   WS.meta.tagThumbModes.clear();
   WS.meta.tagThumbPresets.clear();
   WS.meta.pendingTagsByPath.clear();
@@ -16361,6 +16811,8 @@ function inferNotificationSourceId(text, sourceContext = "") {
   const hasMsg = (...parts) => parts.some((part) => part && msg.includes(part));
   const hasCtx = (...parts) => parts.some((part) => part && ctx.includes(part));
 
+  if (hasMsg("aspect ratio:")) return "cycle-aspect-ratio-filter";
+  if (hasMsg("filter:")) return "cycle-filter";
   if (hasMsg("animated filters:")) return "cycle-animated-filters";
   if (hasMsg("folder sort:")) return "cycle-folder-sort";
   if (hasMsg("video end:")) return "cycle-video-end";
@@ -16372,6 +16824,8 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasMsg("file pane:", "title layout:", "settings + file panes:", "preview media uses pane background:"))
     return "pane-toggles";
 
+  if (hasCtx("cycleaspectratiofiltermode", "setaspectratiofiltermode")) return "cycle-aspect-ratio-filter";
+  if (hasCtx("cyclefiltermode")) return "cycle-filter";
   if (hasCtx("cyclefoldersortmode", "cycledirsortmode")) return "cycle-folder-sort";
   if (hasCtx("toggleanimatedfilters")) return "cycle-animated-filters";
   if (hasCtx("cyclevideoendbehavior")) return "cycle-video-end";
@@ -16389,9 +16843,20 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasCtx("firstfilejump", "randomfilejump")) return "navigation-jump";
   if (hasCtx("slideshow", "gallerymode")) return "playback";
   if (hasCtx("preset")) return "appearance-presets";
+  if (hasCtx("thumbnailviewport", "framing", "crop", "invalidateallthumbs", "customthumbnail", "thumbcache")) return "thumbnail-tools";
+  if (hasCtx("thumbnail", "thumb")) {
+    if (hasCtx("tag")) return "tag-thumbnails";
+    return "thumbnails";
+  }
   if (hasCtx("tag", "album")) return "tags";
   if (hasCtx("scorehistory", "scorelog", "stats")) return "stats";
 
+  if (hasMsg("thumbnail viewport", "preparing thumbnail framing", "thumbnail cache rebuild queued", "custom thumbnail", "thumbnail preview is unavailable", "thumbnail settings", "thumbnail customization", "thumbnail edits and assignments"))
+    return "thumbnail-tools";
+  if (hasMsg("tag folder thumbnails", "tag media preset", "tag content filter", "thumbnail for '", "set random thumbnail for '", "thumbnail already set for '", "no media files available for '", "removed tag '"))
+    return "tag-thumbnails";
+  if (hasMsg("set thumbnail for root", "root thumbnail", "set thumbnail for ", "selected item has no editable thumbnail source"))
+    return "thumbnails";
   if (hasMsg("scrub")) return "scrub";
   if (hasMsg("gif ", "gifs ", "gifs were", "gif generation")) return "gif";
   if (hasMsg("score history", "score log")) return "stats";
@@ -16641,6 +17106,31 @@ function applyBanicState(active) {
 function updateModePill() {
   if (!modePill) return;
   const parts = [];
+  const filterMode = WS.view.filterMode;
+  const filterLabel =
+    filterMode === "all"
+      ? "All"
+      : filterMode === "images"
+        ? "Images only"
+        : filterMode === "videos"
+          ? "Videos only"
+          : "GIFs only";
+  const contextualTagFilter = currentContextualTagMediaFilterValue();
+  if (contextualTagFilter.length) {
+    parts.push(
+      `Tag filter: ${describeTagMediaFilterValue(contextualTagFilter)}`,
+    );
+  } else if (filterMode !== "all") {
+    parts.push(`Content filter: ${filterLabel}`);
+  }
+
+  const aspectRatioFilterMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  if (aspectRatioFilterMode !== "all") {
+    parts.push(`Aspect ratio: ${labelForAspectRatioFilterMode(aspectRatioFilterMode)}`);
+  }
+
   const dirSortMode = normalizeDirSortMode(WS.meta.dirSortMode);
   if (
     dirSortMode !== "name" &&
@@ -17026,7 +17516,9 @@ function restoreMenuTabScroll(tab) {
 
 function availableMenuTabIds() {
   return MENU_TAB_IDS.filter(
-    (tabId) => scoreInterfaceEnabled() || tabId !== "calendar",
+    (tabId) =>
+      tabId !== "thumbnails" &&
+      (scoreInterfaceEnabled() || tabId !== "calendar"),
   );
 }
 
@@ -17898,6 +18390,14 @@ function setKeybindToggleActionState(actionId, enabled) {
       if (!setDirectoriesPaneOpenKeybindState(next)) return false;
       showStatusMessage(`File pane: ${next ? "Open" : "Closed"}`, "pane-toggles");
       return true;
+    case "toggleFilePaneView":
+      return setFilePaneViewMode("list");
+    case "toggleThumbnailLoading":
+      setOptionValue("thumbnailLoading", true);
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyInteractionModeFromOptions();
+      showStatusMessage("Thumbnail loading is always on.", "pane-toggles");
+      return true;
     case "toggleRandomFileSort":
       return toggleRandomSortMode();
     case "toggleRandomFolderSort":
@@ -17909,6 +18409,38 @@ function setKeybindToggleActionState(actionId, enabled) {
 
 function keybindCycleActionSpec(actionId) {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
+  if (actionId === "toggleFilePaneView") return null;
+  if (actionId === "cycleFilter") {
+    return {
+      value: String((WS.view && WS.view.filterMode) || "all"),
+      items: [
+        { value: "all", label: "All" },
+        { value: "images", label: "Images" },
+        { value: "videos", label: "Videos" },
+        { value: "gifs", label: "GIFs" },
+      ],
+      set(value) {
+        const next = ["all", "images", "videos", "gifs"].includes(value)
+          ? value
+          : "all";
+        WS.view.filterMode = next;
+        applyViewModesEverywhere(true);
+        showStatusMessage(`Filter: ${next}`, "cycle-filter");
+        return true;
+      },
+    };
+  }
+  if (actionId === "cycleAspectRatioFilter") {
+    return {
+      value: normalizeAspectRatioFilterMode(
+        WS.view && WS.view.aspectRatioFilterMode,
+      ),
+      items: ASPECT_RATIO_FILTER_CYCLE,
+      set(value) {
+        return setAspectRatioFilterMode(value);
+      },
+    };
+  }
   if (actionId === "cycleFolderSort") {
     const items = dirSortModeOptions(scoreInterfaceEnabled());
     return {
@@ -18405,6 +18937,7 @@ function ensureOptionsSelectGlobalBindings() {
 }
 
 function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
+  if (String(sectionTab || "") === "thumbnails") sectionTab = "general";
   if (!optionsBodyEl) return;
   const opt =
     WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
@@ -18568,6 +19101,31 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "next", label: "Advance to next" },
     { value: "stop", label: "Stop" },
   ];
+  const filePaneViewModes = [
+    { value: "list", label: "List View" },
+    { value: "thumbnail", label: "Thumbnail View" },
+  ];
+  const mediaFilterModes = [
+    { value: "all", label: "All" },
+    { value: "images", label: "Images" },
+    { value: "videos", label: "Videos" },
+    { value: "gifs", label: "GIFs" },
+  ];
+  const imageThumbRenderModes = [
+    { value: "placeholder", label: "Placeholder" },
+    { value: "small", label: "Small cache" },
+    { value: "medium", label: "Medium cache" },
+    { value: "high", label: "High" },
+    { value: "native", label: "Native" },
+  ];
+  const videoThumbRenderModes = [
+    { value: "placeholder", label: "Placeholder" },
+    { value: "small", label: "Small cache" },
+    { value: "medium", label: "Medium cache" },
+    { value: "high", label: "High" },
+    { value: "native", label: "Native" },
+  ];
+
   const animatedFilterModes = [
     { value: "off", label: "Off" },
     { value: "on", label: "On" },
@@ -18616,6 +19174,109 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     value: normalizeAppearancePresetIdValue(preset && preset.id),
     label: String(preset && preset.name ? preset.name : "Preset"),
   }));
+  const thumbnailStyleModes = [
+    { value: "cropped", label: "Cropped" },
+    { value: "aspect", label: "Aspect Ratio" },
+  ];
+  const thumbnailScaleModes = [
+    { value: "row10", label: "Small" },
+    { value: "row7", label: "Medium" },
+    { value: "row5", label: "Large" },
+  ];
+  const thumbnailTitleSizeModes = [
+    { value: "small", label: "Small" },
+    { value: "large", label: "Large" },
+  ];
+  const thumbnailStyleRow = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
+    ? makeSelectRow(
+        "Thumbnail Style",
+        "Choose between fixed cropped thumbnails or natural aspect ratio cards.",
+        "opt_thumbnailStyle",
+        String(opt.thumbnailStyle || "cropped"),
+        thumbnailStyleModes,
+      )
+    : "";
+  const thumbnailScaleHint = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
+    ? "Row-count thumbnail tiers are saved separately for each thumbnail style."
+    : "Choose Small, Medium, or Large thumbnail cards.";
+  const thumbnailItemTypeSectionSpecs = thumbnailVisibilityKindSpecs()
+    .filter((spec) => spec.kind !== "subfolder")
+    .map((spec) =>
+      spec.kind === "rootFolder"
+        ? Object.assign({}, spec, {
+            label: "Folder thumbnails",
+            settingKinds: ["rootFolder", "subfolder"],
+          })
+        : Object.assign({}, spec, { settingKinds: [spec.kind] }),
+    );
+  const thumbnailItemTypeSectionHtml = thumbnailItemTypeSectionSpecs
+    .map((spec) => {
+      const primaryKind = spec.settingKinds[0] || spec.kind;
+      const visibility = previewThumbnailVisibilityForKind(primaryKind, opt);
+      const rows = [];
+      const isFolderSection = spec.settingKinds.length > 1;
+      const titleSizeInputId = isFolderSection
+        ? "opt_previewFolderThumbnailTitleSize"
+        : `opt_${previewThumbnailTitleSizeOptionKey(primaryKind)}`;
+      const titleInputId = isFolderSection
+        ? "opt_previewFolderThumbnailShowTitle"
+        : thumbnailVisibilityInputId(
+            thumbnailVisibilityPreviewOptionKey(primaryKind, "title"),
+          );
+      const extraInfoInputId = isFolderSection
+        ? "opt_previewFolderThumbnailShowExtraInfo"
+        : thumbnailVisibilityInputId(
+            thumbnailVisibilityExtraInfoOptionKey(primaryKind),
+          );
+      const menuInputId = isFolderSection
+        ? "opt_previewFolderThumbnailShowMenuButton"
+        : thumbnailVisibilityInputId(
+            thumbnailVisibilityPreviewOptionKey(primaryKind, "menuButton"),
+          );
+      const extraInfoOn = !!(
+        visibility.showFolderCount ||
+        visibility.showFileCount ||
+        visibility.showItemCount ||
+        visibility.showSize ||
+        visibility.showScores ||
+        visibility.showItemTypeLabel
+      );
+      rows.push(
+        makeSelectRow(
+          "Title size",
+          "Set the Thumbnail View title size for this item type.",
+          titleSizeInputId,
+          getPreviewThumbnailTitleSizeForKind(primaryKind, opt),
+          thumbnailTitleSizeModes,
+        ),
+      );
+      rows.push(
+        makeCheckRow(
+          "Show title",
+          "Show titles in Thumbnail View for this item type.",
+          titleInputId,
+          visibility.showTitle,
+        ),
+      );
+      rows.push(
+        makeCheckRow(
+          "Show extra info",
+          "Show all available counts, sizes, scores, and item type details for this item type.",
+          extraInfoInputId,
+          extraInfoOn,
+        ),
+      );
+      rows.push(
+        makeCheckRow(
+          "Show menu button",
+          "Show the menu button for this item type.",
+          menuInputId,
+          visibility.showMenuButton,
+        ),
+      );
+      return `<h2 style="margin-top:18px;">${escapeHtml(spec.label)}</h2>${rows.join("")}`;
+    })
+    .join("");
   const notificationsRowsHtml = (() => {
     let currentSection = "";
     return NOTIFICATION_SOURCE_SPECS.map((spec) => {
@@ -18941,6 +19602,8 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       title: "General",
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
+${makeSelectRow("Media filter", "Choose which media types are visible in the current view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
+${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible in the current view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
 ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
 ${makeSelectRow("Appearance preset", "Apply a saved appearance preset.", "opt_generalAppearancePreset", activeAppearancePresetId, appearancePresetSelectOptions)}
 ${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
@@ -18958,6 +19621,18 @@ ${makeActionRow(
   <button type="button" id="opt_refresh_workspace"${!WS.meta.fsRootHandle ? " disabled" : ""}>Refresh Workspace</button>
 `,
 )}
+          `,
+    },
+    storage: {
+      title: "Storage",
+      rows: `
+${makeCheckRow("Portrait files", "Send every currently loaded and future portrait file to storage until this is turned off.", "opt_store_aspect_portrait", aspectRatioStorageEnabledForBucket("portrait", opt))}
+${makeCheckRow("Square files", "Send every currently loaded and future square file to storage until this is turned off.", "opt_store_aspect_square", aspectRatioStorageEnabledForBucket("square", opt))}
+${makeCheckRow("Landscape files", "Send every currently loaded and future landscape file to storage until this is turned off.", "opt_store_aspect_landscape", aspectRatioStorageEnabledForBucket("landscape", opt))}
+${makeCheckRow("Images", "Send every currently loaded and future still image file to storage until this is turned off.", "opt_store_media_images", mediaTypeStorageEnabledForType("images", opt))}
+${makeCheckRow("GIFs", "Send every currently loaded and future GIF file to storage until this is turned off.", "opt_store_media_gifs", mediaTypeStorageEnabledForType("gifs", opt))}
+${makeCheckRow("Videos", "Send every currently loaded and future video file to storage until this is turned off.", "opt_store_media_videos", mediaTypeStorageEnabledForType("videos", opt))}
+
           `,
     },
     notifications: {
@@ -19046,6 +19721,12 @@ ${buildOverlayRowsHtml(colorOverlayRows)}
 ${buildOverlayRowsHtml(effectOverlayRows)}
 ${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
 ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
+          `,
+    },
+    thumbnails: {
+      title: "Thumbnails",
+      rows: `
+${makeActionRow("Thumbnails removed", "Thumbnail loading, custom thumbnails, and File pane Thumbnail View are disabled in this build. The File pane is list-only.", "")}
           `,
     },
     playback: {
@@ -19393,6 +20074,46 @@ ${makeActionRow(
     renderOptionsUi("notifications");
   });
 
+  const bindStorageToggle = (id, key, label) => {
+    bindMenuToggleButton(id, async (enabled) => {
+      if (!key) return;
+      WS.meta.options = normalizeOptions(
+        Object.assign({}, WS.meta.options || {}, { [key]: !!enabled }),
+      );
+      metaMarkDirty(META_DOC_IDS.prefGeneral);
+      setOptionsStatus("Saved");
+      await persistDirtyMetadataNow();
+      const rebuilt = await rebuildWorkspaceAfterStorageStateChange();
+      renderOptionsUi("storage");
+      if (rebuilt) {
+        showStatusMessage(
+          `${label} files ${enabled ? "sent to" : "removed from"} storage.`,
+          "storage",
+        );
+      }
+    });
+  };
+  const bindAspectRatioStorageToggle = (id, bucket) => {
+    bindStorageToggle(
+      id,
+      aspectRatioStorageOptionKeyForBucket(bucket),
+      labelForAspectRatioFilterMode(bucket),
+    );
+  };
+  const bindMediaTypeStorageToggle = (id, type) => {
+    bindStorageToggle(
+      id,
+      mediaTypeStorageOptionKeyForType(type),
+      mediaTypeStorageLabel(type),
+    );
+  };
+  bindAspectRatioStorageToggle("opt_store_aspect_portrait", "portrait");
+  bindAspectRatioStorageToggle("opt_store_aspect_square", "square");
+  bindAspectRatioStorageToggle("opt_store_aspect_landscape", "landscape");
+  bindMediaTypeStorageToggle("opt_store_media_images", "images");
+  bindMediaTypeStorageToggle("opt_store_media_gifs", "gifs");
+  bindMediaTypeStorageToggle("opt_store_media_videos", "videos");
+
   bindCheck(
     "opt_previewMediaUsePaneBackground",
     "previewMediaUsePaneBackground",
@@ -19466,6 +20187,29 @@ ${makeActionRow(
   bindCheck("opt_showFolderItemCount", "showFolderItemCount");
   bindCheck("opt_showFolderSize", "showFolderSize");
   bindCheck("opt_showItemTypeLabel", "showItemTypeLabel");
+  bindCheck(
+    "opt_showRootFolderThumbnailTitles",
+    "showRootFolderThumbnailTitles",
+  );
+  bindCheck("opt_showSubfolderThumbnailTitles", "showSubfolderThumbnailTitles");
+  bindCheck("opt_showFileThumbnailTitles", "showFileThumbnailTitles");
+  bindCheck("opt_showTagThumbnailTitles", "showTagThumbnailTitles");
+  bindCheck(
+    "opt_hideRootFolderThumbnailMenuButton",
+    "hideRootFolderThumbnailMenuButton",
+  );
+  bindCheck(
+    "opt_hideSubfolderThumbnailMenuButton",
+    "hideSubfolderThumbnailMenuButton",
+  );
+  bindCheck(
+    "opt_hideTagAndRootFolderThumbnailMenuButton",
+    "hideTagAndRootFolderThumbnailMenuButton",
+  );
+  bindCheck("opt_hideFileThumbnailMenuButton", "hideFileThumbnailMenuButton");
+  thumbnailVisibilityOptionKeys().forEach((key) => {
+    bindCheck(thumbnailVisibilityInputId(key), key);
+  });
   colorOverlayRows.forEach((row) => {
     if (row.showToggle !== false) {
       bindCheck(row.enabledId, row.enabledKey, () => {
@@ -19543,6 +20287,27 @@ ${makeActionRow(
     });
   }
   bindStandaloneSelect(
+    "opt_filterMode",
+    (value) => {
+      const next = ["all", "images", "videos", "gifs"].includes(String(value))
+        ? String(value)
+        : "all";
+      if (WS.view) WS.view.filterMode = next;
+      setOptionsStatus("Saved");
+      applyViewModesEverywhere(true);
+      showStatusMessage(`Filter: ${next}`, "cycle-filter");
+    },
+    (val) => (["all", "images", "videos", "gifs"].includes(String(val)) ? String(val) : "all"),
+  );
+  bindStandaloneSelect(
+    "opt_aspectRatioFilterMode",
+    (value) => {
+      setAspectRatioFilterMode(value);
+      setOptionsStatus("Saved");
+    },
+    (val) => normalizeAspectRatioFilterMode(val),
+  );
+  bindStandaloneSelect(
     "opt_generalAppearancePreset",
     (value) => {
       const presetId = normalizeAppearancePresetIdValue(value);
@@ -19602,6 +20367,12 @@ ${makeActionRow(
   bindCheck("opt_gifsIgnoreProcessing", "gifsIgnoreProcessing", () => {
     applyMediaFilterFromOptions();
   });
+  bindSelect("opt_imageThumbSize", "imageThumbSize", true, null, (val) =>
+    normalizeThumbRenderModeValue(val, "high"),
+  );
+  bindSelect("opt_videoThumbSize", "videoThumbSize", true, null, (val) =>
+    normalizeThumbRenderModeValue(val, "medium"),
+  );
   bindSelect(
     "opt_videoAudio",
     "videoAudio",
@@ -19623,6 +20394,108 @@ ${makeActionRow(
       .toLowerCase();
     return raw === "loop" || raw === "next" || raw === "stop" ? raw : "loop";
   });
+  bindStandaloneSelect(
+    "opt_filePaneViewMode",
+    (val) => {
+      setFilePaneViewMode(val);
+      setOptionsStatus("Saved");
+    },
+    (val) => normalizeFilePaneViewMode(val, "list"),
+  );
+  thumbnailVisibilityKindSpecs().forEach((spec) => {
+    const key = previewThumbnailTitleSizeOptionKey(spec.kind);
+    if (!key) return;
+    bindSelect(
+      `opt_${key}`,
+      key,
+      false,
+      null,
+      (val) => normalizeThumbnailTitleSizeValue(val, getThumbnailTitleSizeFromOptions()),
+    );
+  });
+  bindStandaloneSelect(
+    "opt_previewFolderThumbnailTitleSize",
+    (value) => {
+      const nextSize = normalizeThumbnailTitleSizeValue(
+        value,
+        getThumbnailTitleSizeFromOptions(),
+      );
+      setOptionValues({
+        previewRootFolderThumbnailTitleSize: nextSize,
+        previewSubfolderThumbnailTitleSize: nextSize,
+      });
+      setOptionsStatus("Saved");
+      applyOptionsEverywhere(false);
+    },
+    (val) => normalizeThumbnailTitleSizeValue(val, getThumbnailTitleSizeFromOptions()),
+  );
+  const bindFolderThumbnailToggle = (id, nextValuesForEnabled) => {
+    bindMenuToggleButton(id, (enabled) => {
+      setOptionValues(nextValuesForEnabled(!!enabled));
+      setOptionsStatus("Saved");
+      applyOptionsEverywhere(false);
+    });
+  };
+  bindFolderThumbnailToggle("opt_previewFolderThumbnailShowTitle", (enabled) => ({
+    previewRootFolderThumbnailShowTitle: enabled,
+    previewSubfolderThumbnailShowTitle: enabled,
+  }));
+  bindFolderThumbnailToggle("opt_previewFolderThumbnailShowExtraInfo", (enabled) => ({
+    [thumbnailVisibilityExtraInfoOptionKey("rootFolder")]: enabled,
+    [thumbnailVisibilityExtraInfoOptionKey("subfolder")]: enabled,
+  }));
+  bindFolderThumbnailToggle("opt_previewFolderThumbnailShowMenuButton", (enabled) => ({
+    previewRootFolderThumbnailShowMenuButton: enabled,
+    previewSubfolderThumbnailShowMenuButton: enabled,
+  }));
+  bindSelect(
+    "opt_thumbnailStyle",
+    "thumbnailStyle",
+    false,
+    () => {
+      if (MENU_ACTIVE_TAB === "thumbnails") {
+        renderOptionsUi("thumbnails");
+        setOptionsStatus("Saved");
+      }
+    },
+    (val) => {
+      const raw = String(val || "").toLowerCase();
+      return raw === "aspect" ? "aspect" : "cropped";
+    },
+  );
+  bindStandaloneSelect(
+    "opt_thumbnailScale",
+    () => {
+      const thumbnailScaleSelectEl = $("opt_thumbnailScale");
+      if (!thumbnailScaleSelectEl) return;
+      const style = getThumbnailStyleFromOptions(
+        WS.meta && WS.meta.options ? WS.meta.options : null,
+      );
+      const nextScale = normalizeThumbnailScaleValue(
+        thumbnailScaleSelectEl.value,
+        "row7",
+      );
+      const key =
+        style === "aspect" ? "thumbnailScaleAspect" : "thumbnailScaleCropped";
+      const next = {};
+      next[key] = nextScale;
+      WS.meta.options = normalizeOptions(
+        Object.assign({}, WS.meta.options || {}, next),
+      );
+      metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+      setOptionsStatus("Saved");
+      applyOptionsEverywhere(false);
+      if (MENU_ACTIVE_TAB === "thumbnails") {
+        renderOptionsUi("thumbnails");
+        setOptionsStatus("Saved");
+      }
+    },
+    (val) =>
+      normalizeThumbnailScaleValue(
+        val,
+        "row7",
+      ),
+  );
   bindCheck("opt_forceTitleCaps", "forceTitleCaps");
   bindCheck("opt_showPositionNumbersInNames", "showPositionNumbersInNames");
   bindCheck(
@@ -19793,6 +20666,82 @@ ${makeActionRow(
     applyOptionsEverywhere(true);
     showStatusMessage(`Deleted preset '${preset.name}'.`);
   });
+  bindActionBtn("opt_thumb_reset_crops", () => {
+    const count =
+      WS.meta && WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
+    if (!count) {
+      setOptionsStatus("No changes");
+      showStatusMessage("No edited thumbnail crops to reset.");
+      return;
+    }
+    const ok = confirm(
+      `Reset ${count} edited thumbnail crop${count === 1 ? "" : "s"}?`,
+    );
+    if (!ok) return;
+    const removed = clearEditedThumbnailCrops();
+    applyOptionsEverywhere(false);
+    setOptionsStatus("Saved");
+    showStatusMessage(
+      `Reset ${removed} edited thumbnail crop${removed === 1 ? "" : "s"}.`,
+    );
+  });
+  bindActionBtn("opt_thumb_reset_assignments", () => {
+    const dirCount =
+      WS.meta && WS.meta.dirThumbPresets ? WS.meta.dirThumbPresets.size : 0;
+    const tagPresetCount =
+      WS.meta && WS.meta.tagThumbPresets ? WS.meta.tagThumbPresets.size : 0;
+    const tagModeCount =
+      WS.meta && WS.meta.tagThumbModes ? WS.meta.tagThumbModes.size : 0;
+    const total = dirCount + tagPresetCount + tagModeCount;
+    if (!total) {
+      setOptionsStatus("No changes");
+      showStatusMessage("No custom thumbnail assignments to reset.");
+      return;
+    }
+    const ok = confirm(
+      `Reset ${total} custom thumbnail assignment${total === 1 ? "" : "s"} to defaults?`,
+    );
+    if (!ok) return;
+    const removed = clearThumbnailAssignmentsToDefaults();
+    applyOptionsEverywhere(false);
+    setOptionsStatus("Saved");
+    showStatusMessage(
+      `Reset ${removed} thumbnail assignment${removed === 1 ? "" : "s"} to defaults.`,
+    );
+  });
+  bindActionBtn("opt_thumb_reset_all", () => {
+    const cropCount =
+      WS.meta && WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
+    const dirCount =
+      WS.meta && WS.meta.dirThumbPresets ? WS.meta.dirThumbPresets.size : 0;
+    const tagPresetCount =
+      WS.meta && WS.meta.tagThumbPresets ? WS.meta.tagThumbPresets.size : 0;
+    const tagModeCount =
+      WS.meta && WS.meta.tagThumbModes ? WS.meta.tagThumbModes.size : 0;
+    const total = cropCount + dirCount + tagPresetCount + tagModeCount;
+    if (!total) {
+      setOptionsStatus("No changes");
+      showStatusMessage("No custom thumbnail data to reset.");
+      return;
+    }
+    const ok = confirm(
+      "Reset all thumbnail edits and assignments to defaults?",
+    );
+    if (!ok) return;
+    const summary = clearAllThumbnailCustomizations();
+    applyOptionsEverywhere(false);
+    setOptionsStatus("Saved");
+    showStatusMessage(
+      `Reset ${summary.total} thumbnail customization${summary.total === 1 ? "" : "s"}.`,
+    );
+  });
+  bindActionBtn("opt_thumb_rebuild_cache", () => {
+    invalidateAllThumbs();
+    applyOptionsEverywhere(false);
+    setOptionsStatus("Saved");
+    showStatusMessage("Thumbnail cache rebuild queued.");
+  });
+
   bindStandaloneSelect(
     "opt_dirSortMode",
     () => {
@@ -19812,7 +20761,9 @@ ${makeActionRow(
 
 const OPTION_TAB_IDS = Object.freeze([
   "general",
+  "storage",
   "appearance",
+  "thumbnails",
   "playback",
   "filenames",
 ]);
@@ -19832,6 +20783,14 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "animatedMediaFilters",
     "activeAppearancePresetId",
   ]),
+  storage: Object.freeze([
+    "storePortraitAspectRatioFiles",
+    "storeSquareAspectRatioFiles",
+    "storeLandscapeAspectRatioFiles",
+    "storeImageFiles",
+    "storeGifFiles",
+    "storeVideoFiles",
+  ]),
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
       "lightMode",
@@ -19840,6 +20799,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
       "gifsIgnoreProcessing",
     ]),
   ),
+  thumbnails: Object.freeze([].concat(META_PREFERENCE_SECTION_OPTION_KEYS.thumbnails)),
   playback: Object.freeze([
     "videoAudio",
     "videoSkipStep",
@@ -21209,45 +22169,15 @@ function inferFolderThumbnailDefaultMode(path) {
 }
 
 function metaGetFolderThumbnailMode(path) {
-  const p = normalizeDirPathValue(path);
-  const hasDirect = !!(
-    WS.meta &&
-    WS.meta.dirThumbPresets &&
-    WS.meta.dirThumbPresets.has(p)
-  );
-  const hasPending = !!(
-    WS.meta &&
-    WS.meta.pendingDirThumbPresets &&
-    WS.meta.pendingDirThumbPresets.has(p)
-  );
-  if (!hasDirect && !hasPending) {
-    return inferFolderThumbnailDefaultMode(p);
-  }
-  const raw = String(
-    hasDirect
-      ? WS.meta.dirThumbPresets.get(p) || ""
-      : WS.meta.pendingDirThumbPresets.get(p) || "",
-  );
-  if (raw === FOLDER_THUMB_NONE_SENTINEL) return "none";
-  if (raw === FOLDER_THUMB_ROTATE_SENTINEL) return "single";
-  const normalizedRelPath = normalizeWorkspaceRelPath(raw);
-  return normalizedRelPath ? "manual" : inferFolderThumbnailDefaultMode(p);
+  return "none";
 }
 
-function metaGetFolderThumbnailPresetRelPath(path) {
-  const p = normalizeDirPathValue(path);
-  if (!WS.meta || !WS.meta.dirThumbPresets) return "";
-  const raw = WS.meta.dirThumbPresets.has(p)
-    ? WS.meta.dirThumbPresets.get(p)
-    : WS.meta.pendingDirThumbPresets
-      ? WS.meta.pendingDirThumbPresets.get(p)
-      : "";
-  if (String(raw || "") === FOLDER_THUMB_NONE_SENTINEL) return "";
-  return normalizeWorkspaceRelPath(raw);
+function metaGetFolderThumbnailPresetRelPath() {
+  return "";
 }
 
 function metaHasFolderThumbnailPreset(path) {
-  return metaGetFolderThumbnailMode(path) === "manual";
+  return false;
 }
 
 function metaSetFolderThumbnailPreset(path, relPath) {
@@ -21383,11 +22313,7 @@ function normalizeTagThumbnailMode(mode) {
 }
 
 function getTagThumbnailDisplayModeByKey(tagKey) {
-  const key = String(tagKey || "");
-  if (!key) return "single";
-  const rawMode = metaGetTagThumbnailModeByKey(key);
-  if (rawMode === "none") return "none";
-  return "single";
+  return "none";
 }
 
 function tagThumbnailKeyForTag(tagName, scopePath = null) {
@@ -21644,6 +22570,138 @@ function clearTagThumbnailStateByMatch(matchFn) {
   return changed;
 }
 
+const TAG_MEDIA_FILTER_MEDIA_TYPES = Object.freeze([
+  "images",
+  "videos",
+  "gifs",
+]);
+const TAG_MEDIA_FILTER_ASPECT_RATIOS = Object.freeze([
+  "portrait",
+  "square",
+  "landscape",
+]);
+const TAG_MEDIA_FILTER_TYPES = Object.freeze(
+  TAG_MEDIA_FILTER_MEDIA_TYPES.concat(TAG_MEDIA_FILTER_ASPECT_RATIOS),
+);
+
+function normalizeTagMediaFilterValue(value) {
+  const enabled = new Set();
+  const addType = (type) => {
+    const normalized = String(type || "")
+      .trim()
+      .toLowerCase();
+    if (!TAG_MEDIA_FILTER_TYPES.includes(normalized)) return;
+    enabled.add(normalized);
+  };
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) addType(value[i]);
+  } else if (value && typeof value === "object") {
+    for (let i = 0; i < TAG_MEDIA_FILTER_TYPES.length; i++) {
+      const type = TAG_MEDIA_FILTER_TYPES[i];
+      if (value[type]) enabled.add(type);
+    }
+  } else if (typeof value === "string") {
+    addType(value);
+  }
+  return TAG_MEDIA_FILTER_TYPES.filter((type) => enabled.has(type));
+}
+
+function tagMediaFilterValuesEqual(a, b) {
+  const left = normalizeTagMediaFilterValue(a);
+  const right = normalizeTagMediaFilterValue(b);
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
+function isTagMediaFilterValueEmpty(value) {
+  return normalizeTagMediaFilterValue(value).length === 0;
+}
+
+function toggleTagMediaFilterType(value, type) {
+  const normalizedType = String(type || "")
+    .trim()
+    .toLowerCase();
+  if (!TAG_MEDIA_FILTER_TYPES.includes(normalizedType))
+    return normalizeTagMediaFilterValue(value);
+  const current = new Set(normalizeTagMediaFilterValue(value));
+  if (current.has(normalizedType)) current.delete(normalizedType);
+  else current.add(normalizedType);
+  return TAG_MEDIA_FILTER_TYPES.filter((candidate) =>
+    current.has(candidate),
+  );
+}
+
+function tagMediaFilterTypeLabel(type) {
+  if (type === "images") return "images";
+  if (type === "videos") return "videos";
+  if (type === "gifs") return "GIFs";
+  if (type === "portrait") return "portrait";
+  if (type === "square") return "square";
+  if (type === "landscape") return "landscape";
+  return String(type || "");
+}
+
+function describeTagMediaFilterValue(value, emptyLabel = "All media visible") {
+  const normalized = normalizeTagMediaFilterValue(value);
+  if (!normalized.length) return emptyLabel;
+  return `Hide ${normalized
+    .map((type) => tagMediaFilterTypeLabel(type))
+    .join(", ")}`;
+}
+
+function getAllTagMediaFilterStateKeys() {
+  const out = new Set();
+  if (WS.meta && WS.meta.tagMediaFilterByKey) {
+    for (const key of WS.meta.tagMediaFilterByKey.keys()) {
+      const raw = String(key || "");
+      if (raw) out.add(raw);
+    }
+  }
+  return Array.from(out);
+}
+
+function rekeyTagMediaFilterState(oldKey, newKey) {
+  const source = String(oldKey || "");
+  const target = String(newKey || "");
+  if (!source || !target || source === target) return false;
+  if (
+    !WS.meta ||
+    !WS.meta.tagMediaFilterByKey ||
+    !WS.meta.tagMediaFilterByKey.has(source)
+  )
+    return false;
+  const current = normalizeTagMediaFilterValue(
+    WS.meta.tagMediaFilterByKey.get(source),
+  );
+  if (!WS.meta.tagMediaFilterByKey.has(target) && current.length) {
+    WS.meta.tagMediaFilterByKey.set(target, current.slice());
+  }
+  WS.meta.tagMediaFilterByKey.delete(source);
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function clearTagMediaFilterStateByMatch(matchFn) {
+  if (typeof matchFn !== "function" || !WS.meta || !WS.meta.tagMediaFilterByKey)
+    return false;
+  const keys = getAllTagMediaFilterStateKeys();
+  let changed = false;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (!key || !matchFn(key)) continue;
+    if (WS.meta.tagMediaFilterByKey.delete(key)) changed = true;
+  }
+  if (changed) {
+    metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+    invalidateDirMetricsCaches();
+  }
+  return changed;
+}
+
 function tagThumbnailScopeKeyFromPath(path) {
   const normalized = normalizeDirPathValue(path);
   return normalized ? normalized : "__root__";
@@ -21694,10 +22752,8 @@ function metaSetTagThumbnailModeByKey(tagKey, mode) {
   return true;
 }
 
-function metaGetTagThumbnailPresetRelPathByKey(tagKey) {
-  const key = String(tagKey || "");
-  if (!key || !WS.meta || !WS.meta.tagThumbPresets) return "";
-  return normalizeWorkspaceRelPath(WS.meta.tagThumbPresets.get(key));
+function metaGetTagThumbnailPresetRelPathByKey() {
+  return "";
 }
 
 function metaHasTagThumbnailPresetByKey(tagKey) {
@@ -21768,6 +22824,33 @@ function metaSetTagAppearancePresetIdByKey(tagKey, presetId) {
 
 function metaClearTagAppearancePresetByKey(tagKey) {
   return metaSetTagAppearancePresetIdByKey(tagKey, "");
+}
+
+function metaGetTagMediaFilterByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return [];
+  return normalizeTagMediaFilterValue(WS.meta.tagMediaFilterByKey.get(key));
+}
+
+function metaHasTagMediaFilterByKey(tagKey) {
+  return !isTagMediaFilterValueEmpty(metaGetTagMediaFilterByKey(tagKey));
+}
+
+function metaSetTagMediaFilterByKey(tagKey, value) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return false;
+  const next = normalizeTagMediaFilterValue(value);
+  const prev = metaGetTagMediaFilterByKey(key);
+  if (tagMediaFilterValuesEqual(prev, next)) return false;
+  if (next.length) WS.meta.tagMediaFilterByKey.set(key, next.slice());
+  else WS.meta.tagMediaFilterByKey.delete(key);
+  metaMarkDirty(META_DOC_IDS.tags);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaClearTagMediaFilterByKey(tagKey) {
+  return metaSetTagMediaFilterByKey(tagKey, []);
 }
 
 function collectDescendantDirPaths(path) {
@@ -22945,6 +24028,7 @@ function metaMakeTagsDocObject() {
   const folders = {};
   const tagByFp = {};
   const hiddenTagByKey = {};
+  const tagMediaFilterByKey = {};
   for (const [path] of WS.dirByPath.entries()) {
     const fp = WS.meta.dirFingerprints.get(path) || 0;
     const tags = metaGetTags(path).filter(
@@ -22974,12 +24058,24 @@ function metaMakeTagsDocObject() {
       hiddenTagByKey[tagKey] = true;
     }
   }
+  if (WS.meta && WS.meta.tagMediaFilterByKey) {
+    for (const [
+      tagKeyRaw,
+      filterValueRaw,
+    ] of WS.meta.tagMediaFilterByKey.entries()) {
+      const tagKey = String(tagKeyRaw || "");
+      const filterValue = normalizeTagMediaFilterValue(filterValueRaw);
+      if (!tagKey || !filterValue.length) continue;
+      tagMediaFilterByKey[tagKey] = filterValue.slice();
+    }
+  }
   return {
     schema: 1,
     updatedAt: Date.now(),
     folders,
     tagByFp,
     hiddenTagByKey,
+    tagMediaFilterByKey,
   };
 }
 
@@ -23083,6 +24179,24 @@ function metaMakeThumbnailsDocObject() {
 }
 
 
+function metaMakeAspectRatiosDocObject() {
+  const filesByPath = {};
+  const source = WS.meta && WS.meta.aspectRatios ? WS.meta.aspectRatios : null;
+  if (source) {
+    for (const [relPathRaw, entryRaw] of source.entries()) {
+      const relPath = normalizeWorkspaceRelPath(relPathRaw);
+      const entry = normalizeAspectRatioLogEntry(relPath, entryRaw);
+      if (!relPath || !entry) continue;
+      filesByPath[relPath] = entry;
+    }
+  }
+  return {
+    schema: 1,
+    updatedAt: Date.now(),
+    filesByPath,
+  };
+}
+
 function metaMakeAppearancePresetsDocObject() {
   return {
     schema: 1,
@@ -23148,7 +24262,9 @@ function metaMakePreferenceSectionLogObject(docId) {
         ? META_PREFERENCE_SECTION_OPTION_KEYS.appearance
         : docId === META_DOC_IDS.prefPlayback
           ? META_PREFERENCE_SECTION_OPTION_KEYS.playback
-          : docId === META_DOC_IDS.prefFilenames
+          : docId === META_DOC_IDS.prefThumbnails
+            ? META_PREFERENCE_SECTION_OPTION_KEYS.thumbnails
+            : docId === META_DOC_IDS.prefFilenames
               ? META_PREFERENCE_SECTION_OPTION_KEYS.filenames
               : docId === META_DOC_IDS.prefControls
                 ? META_PREFERENCE_SECTION_OPTION_KEYS.controls
@@ -23217,6 +24333,8 @@ function metaDocObjectForId(docId) {
       return metaMakeTrashDocObject();
     case META_DOC_IDS.thumbnails:
       return metaMakeThumbnailsDocObject();
+    case META_DOC_IDS.aspectRatios:
+      return metaMakeAspectRatiosDocObject();
     case META_DOC_IDS.appearancePresets:
       return metaMakeAppearancePresetsDocObject();
     case META_DOC_IDS.appearanceAssignments:
@@ -23225,6 +24343,7 @@ function metaDocObjectForId(docId) {
     case META_DOC_IDS.prefNotifications:
     case META_DOC_IDS.prefAppearance:
     case META_DOC_IDS.prefPlayback:
+    case META_DOC_IDS.prefThumbnails:
     case META_DOC_IDS.prefFilenames:
     case META_DOC_IDS.prefControls:
       return metaMakePreferenceSectionLogObject(docId);
@@ -23346,6 +24465,19 @@ function metaApplyTagsDocLog(log) {
     WS.meta.hiddenTagKeys.add(key);
   }
 
+  WS.meta.tagMediaFilterByKey.clear();
+  const tagMediaFilterByKey =
+    log.tagMediaFilterByKey && typeof log.tagMediaFilterByKey === "object"
+      ? log.tagMediaFilterByKey
+      : {};
+  for (const rawKey of Object.keys(tagMediaFilterByKey)) {
+    const key = String(rawKey || "");
+    const filterValue = normalizeTagMediaFilterValue(
+      tagMediaFilterByKey[rawKey],
+    );
+    if (!key || !filterValue.length) continue;
+    WS.meta.tagMediaFilterByKey.set(key, filterValue);
+  }
   invalidateDirMetricsCaches();
 }
 
@@ -23497,6 +24629,26 @@ function metaApplyThumbnailsDocLog(log) {
 }
 
 
+function metaApplyAspectRatiosDocLog(log) {
+  if (!WS.meta.aspectRatios) WS.meta.aspectRatios = new Map();
+  WS.meta.aspectRatios.clear();
+  if (!log || typeof log !== "object") return;
+  const filesByPath =
+    log.filesByPath && typeof log.filesByPath === "object"
+      ? log.filesByPath
+      : log.aspectRatioByPath && typeof log.aspectRatioByPath === "object"
+        ? log.aspectRatioByPath
+        : log.aspectRatiosByPath && typeof log.aspectRatiosByPath === "object"
+          ? log.aspectRatiosByPath
+          : {};
+  for (const rawPath of Object.keys(filesByPath)) {
+    const relPath = normalizeWorkspaceRelPath(rawPath);
+    const entry = normalizeAspectRatioLogEntry(relPath, filesByPath[rawPath]);
+    if (!relPath || !entry) continue;
+    WS.meta.aspectRatios.set(relPath, entry);
+  }
+}
+
 function metaApplyAppearancePresetsDocLog(log) {
   if (!log || typeof log !== "object") return;
   WS.meta.appearancePresets = normalizeAppearancePresetList(
@@ -23582,6 +24734,9 @@ function metaApplyDocLogById(docId, log) {
     case META_DOC_IDS.thumbnails:
       if (thumbnailLoadingEnabled()) metaApplyThumbnailsDocLog(log);
       return;
+    case META_DOC_IDS.aspectRatios:
+      metaApplyAspectRatiosDocLog(log);
+      return;
     case META_DOC_IDS.appearancePresets:
       metaApplyAppearancePresetsDocLog(log);
       return;
@@ -23592,6 +24747,7 @@ function metaApplyDocLogById(docId, log) {
     case META_DOC_IDS.prefNotifications:
     case META_DOC_IDS.prefAppearance:
     case META_DOC_IDS.prefPlayback:
+    case META_DOC_IDS.prefThumbnails:
     case META_DOC_IDS.prefFilenames:
     case META_DOC_IDS.prefControls:
       metaApplyPreferenceSectionDocLog(docId, log);
@@ -23978,6 +25134,7 @@ function metaInitForCurrentWorkspace() {
         META_DOC_IDS.prefNotifications,
         META_DOC_IDS.prefAppearance,
         META_DOC_IDS.prefPlayback,
+        META_DOC_IDS.prefThumbnails,
         META_DOC_IDS.prefFilenames,
         META_DOC_IDS.prefControls,
         META_DOC_IDS.scores,
@@ -23985,6 +25142,8 @@ function metaInitForCurrentWorkspace() {
         META_DOC_IDS.tags,
         META_DOC_IDS.tagAlbums,
         META_DOC_IDS.trash,
+        META_DOC_IDS.thumbnails,
+        META_DOC_IDS.aspectRatios,
         META_DOC_IDS.appearanceAssignments,
         META_DOC_IDS.keybinds,
       ];
@@ -24077,6 +25236,7 @@ async function metaInitForCurrentWorkspaceFs() {
     META_DOC_IDS.prefNotifications,
     META_DOC_IDS.prefAppearance,
     META_DOC_IDS.prefPlayback,
+    META_DOC_IDS.prefThumbnails,
     META_DOC_IDS.prefFilenames,
     META_DOC_IDS.prefControls,
     META_DOC_IDS.scores,
@@ -24084,6 +25244,8 @@ async function metaInitForCurrentWorkspaceFs() {
     META_DOC_IDS.tags,
     META_DOC_IDS.tagAlbums,
     META_DOC_IDS.trash,
+    META_DOC_IDS.thumbnails,
+    META_DOC_IDS.aspectRatios,
     META_DOC_IDS.appearanceAssignments,
     META_DOC_IDS.keybinds,
   ];
@@ -24220,6 +25382,8 @@ async function buildWorkspaceFromFiles(fileList) {
       thumbMode: null,
       videoThumbMode: null,
       nativePath: "",
+      aspectRatio: null,
+      aspectRatioBucket: "",
     };
 
     rec.nativePath = getNativePathForFile(f);
@@ -24238,6 +25402,7 @@ async function buildWorkspaceFromFiles(fileList) {
   WS.meta.storageKey = String(WS.view.randomSeed >>> 0);
 
   metaInitForCurrentWorkspace();
+  await finalizeAspectRatiosAndStorageForLoadedWorkspace();
   rebuildDirectoryDerivedIndex();
 
   // Initialize List Pane at root listing
@@ -24462,6 +25627,140 @@ function updateBusyProgress(label, countText = "", path = "", force = false, sta
   updateBlockingLoaderOverlay(label, formatBusyProgressDetail(countText, path));
 }
 
+function catalogEmptyAspectCounts() {
+  return { portrait: 0, square: 0, landscape: 0, unknown: 0 };
+}
+
+function catalogCloneAspectCounts(counts) {
+  const src = counts && typeof counts === "object" ? counts : {};
+  return {
+    portrait: Math.max(0, Number(src.portrait) || 0),
+    square: Math.max(0, Number(src.square) || 0),
+    landscape: Math.max(0, Number(src.landscape) || 0),
+    unknown: Math.max(0, Number(src.unknown) || 0),
+  };
+}
+
+function catalogEmptyMediaAspectCounts() {
+  return {
+    images: catalogEmptyAspectCounts(),
+    videos: catalogEmptyAspectCounts(),
+    gifs: catalogEmptyAspectCounts(),
+  };
+}
+
+function catalogCloneMediaAspectCounts(counts) {
+  const src = counts && typeof counts === "object" ? counts : {};
+  return {
+    images: catalogCloneAspectCounts(src.images),
+    videos: catalogCloneAspectCounts(src.videos),
+    gifs: catalogCloneAspectCounts(src.gifs),
+  };
+}
+
+function catalogAddAspectCounts(target, source) {
+  if (!target || !source) return target;
+  target.portrait += Math.max(0, Number(source.portrait) || 0);
+  target.square += Math.max(0, Number(source.square) || 0);
+  target.landscape += Math.max(0, Number(source.landscape) || 0);
+  target.unknown += Math.max(0, Number(source.unknown) || 0);
+  return target;
+}
+
+function catalogAddMediaAspectCounts(target, source) {
+  if (!target || !source) return target;
+  catalogAddAspectCounts(target.images, source.images);
+  catalogAddAspectCounts(target.videos, source.videos);
+  catalogAddAspectCounts(target.gifs, source.gifs);
+  return target;
+}
+
+function catalogRecordMediaBucketFromDescriptor(desc) {
+  if (!desc) return "";
+  if (String(desc.ext || "").toLowerCase() === ".gif") return "gifs";
+  if (desc.type === "video") return "videos";
+  if (desc.type === "image") return "images";
+  return "";
+}
+
+function catalogIncrementAspectStats(aspectCounts, mediaAspectCounts, desc) {
+  const bucket = String(desc && desc.aspectRatioBucket || "") || "unknown";
+  const key = bucket === "portrait" || bucket === "square" || bucket === "landscape"
+    ? bucket
+    : "unknown";
+  if (aspectCounts && Object.prototype.hasOwnProperty.call(aspectCounts, key)) {
+    aspectCounts[key]++;
+  }
+  const mediaBucket = catalogRecordMediaBucketFromDescriptor(desc);
+  const mediaCounts = mediaAspectCounts && mediaAspectCounts[mediaBucket];
+  if (mediaCounts && Object.prototype.hasOwnProperty.call(mediaCounts, key)) {
+    mediaCounts[key]++;
+  }
+}
+
+function catalogAspectEntryMatchesDescriptor(entry, desc) {
+  if (!entry || !desc) return false;
+  const entryPath = normalizeWorkspaceRelPath(entry.relPath);
+  const descPath = normalizeWorkspaceRelPath(desc.relPath);
+  if (!entryPath || entryPath !== descPath) return false;
+  const entrySize = Number(entry.size);
+  const descSize = Number(desc.size);
+  if (Number.isFinite(entrySize) && Number.isFinite(descSize) && entrySize !== descSize)
+    return false;
+  const entryModified = Number(entry.lastModified);
+  const descModified = Number(desc.lastModified);
+  if (
+    Number.isFinite(entryModified) &&
+    Number.isFinite(descModified) &&
+    Math.abs(entryModified - descModified) > ASPECT_RATIO_LOG_MTIME_TOLERANCE_MS
+  ) {
+    return false;
+  }
+  const entryType = String(entry.type || "");
+  if (entryType && desc.type && entryType !== desc.type) return false;
+  return Number(entry.aspectRatio) > 0;
+}
+
+function catalogApplyAspectEntryToDescriptor(desc, entry) {
+  if (!desc || !catalogAspectEntryMatchesDescriptor(entry, desc)) return desc;
+  const aspect = normalizePreviewAspect(Number(entry.aspectRatio), 4 / 3);
+  desc.aspectRatio = aspect;
+  desc.aspectRatioBucket = String(entry.bucket || aspectRatioBucketForValue(aspect) || "");
+  return desc;
+}
+
+function catalogAspectEntriesFromLog(log) {
+  const out = new Map();
+  if (!log || typeof log !== "object") return out;
+  const filesByPath =
+    log.filesByPath && typeof log.filesByPath === "object"
+      ? log.filesByPath
+      : log.aspectRatioByPath && typeof log.aspectRatioByPath === "object"
+        ? log.aspectRatioByPath
+        : log.aspectRatiosByPath && typeof log.aspectRatiosByPath === "object"
+          ? log.aspectRatiosByPath
+          : {};
+  for (const rawPath of Object.keys(filesByPath)) {
+    const relPath = normalizeWorkspaceRelPath(rawPath);
+    const entry = normalizeAspectRatioLogEntry(relPath, filesByPath[rawPath]);
+    if (!relPath || !entry) continue;
+    out.set(relPath, entry);
+  }
+  return out;
+}
+
+async function readCatalogAspectEntriesByPath(rootHandle) {
+  let log = await metaLoadFsDoc(metaFsHandleForDocId(META_DOC_IDS.aspectRatios));
+  if (!log && rootHandle) {
+    try {
+      const sys = await rootHandle.getDirectoryHandle(".local-gallery");
+      const fh = await sys.getFileHandle(META_DOC_FILE_NAMES[META_DOC_IDS.aspectRatios]);
+      log = await metaLoadFsDoc(fh);
+    } catch {}
+  }
+  return catalogAspectEntriesFromLog(log);
+}
+
 function catalogLightIndexEntryFromDescriptor(desc) {
   if (!desc) return null;
   return {
@@ -24470,8 +25769,11 @@ function catalogLightIndexEntryFromDescriptor(desc) {
     name: String(desc.name || ""),
     dirPath: normalizeDirPathValue(desc.dirPath || ""),
     ext: String(desc.ext || ""),
+    type: desc.type === "video" ? "video" : desc.type === "image" ? "image" : "",
     size: Math.max(0, Number(desc.size) || 0),
     lastModified: Math.max(0, Number(desc.lastModified) || 0),
+    aspectRatio: Number(desc.aspectRatio) > 0 ? Number(desc.aspectRatio) : null,
+    aspectRatioBucket: String(desc.aspectRatioBucket || ""),
   };
 }
 
@@ -24489,7 +25791,7 @@ function registerCatalogLightIndexEntry(entry) {
   return d;
 }
 
-function fileDescriptorFromFile(file, relPath) {
+function fileDescriptorFromFile(file, relPath, aspectEntriesByPath = null) {
   const normalizedRelPath = normalizeWorkspaceRelPath(relPath);
   if (!file || !normalizedRelPath) return null;
   const filename = normalizedRelPath.split("/").filter(Boolean).pop() || file.name;
@@ -24504,21 +25806,21 @@ function fileDescriptorFromFile(file, relPath) {
     name: filename,
     dirPath: normalizedRelPath.split("/").slice(0, -1).join("/"),
     ext,
+    type: isVid ? "video" : "image",
     size: Number(file.size) || 0,
     lastModified: Number(file.lastModified) || 0,
+    aspectRatio: null,
+    aspectRatioBucket: "",
   };
-  return desc;
+  const aspectEntry = aspectEntriesByPath && aspectEntriesByPath.get(normalizedRelPath);
+  return catalogApplyAspectEntryToDescriptor(desc, aspectEntry);
 }
 
 function normalizeCatalogFileDescriptor(raw) {
   if (!raw || typeof raw !== "object") return null;
   const relPath = normalizeWorkspaceRelPath(raw.relPath);
   const name = String(raw.name || relPath.split("/").pop() || "");
-  const inferredType = isVideoName(name) ? "video" : isImageName(name) ? "image" : "";
-  const type =
-    String(raw.type || "") === "video" || String(raw.type || "") === "image"
-      ? String(raw.type || "")
-      : inferredType;
+  const type = String(raw.type || "");
   if (!relPath || !name || (type !== "image" && type !== "video")) return null;
   const id = String(raw.id || `${name}::${Number(raw.lastModified) || 0}::${Number(raw.size) || 0}::${relPath}`);
   if (!id) return null;
@@ -24531,6 +25833,8 @@ function normalizeCatalogFileDescriptor(raw) {
     type,
     size: Math.max(0, Number(raw.size) || 0),
     lastModified: Math.max(0, Number(raw.lastModified) || 0),
+    aspectRatio: Number(raw.aspectRatio) > 0 ? Number(raw.aspectRatio) : null,
+    aspectRatioBucket: String(raw.aspectRatioBucket || ""),
   };
 }
 
@@ -24554,6 +25858,8 @@ function createFileRecordFromDescriptor(desc, file = null) {
     thumbMode: null,
     videoThumbMode: null,
     nativePath: "",
+    aspectRatio: d.aspectRatio,
+    aspectRatioBucket: d.aspectRatioBucket || "",
     catalogBacked: true,
   };
 }
@@ -24624,6 +25930,9 @@ function applyCatalogSummaryToDirNode(node, summary) {
   node.recursiveFileCount = Math.max(0, Number(summary.recursiveFileCount) || 0);
   node.recursiveFolderCount = Math.max(0, Number(summary.recursiveFolderCount) || 0);
   node.recursiveItemCount = Math.max(0, Number(summary.recursiveItemCount) || 0);
+  node.recursiveImageCount = Math.max(0, Number(summary.recursiveImageCount) || 0);
+  node.recursiveVideoCount = Math.max(0, Number(summary.recursiveVideoCount) || 0);
+  node.recursiveGifCount = Math.max(0, Number(summary.recursiveGifCount) || 0);
   node.recursiveSizeBytes = Math.max(0, Number(summary.recursiveSizeBytes) || 0);
   if (!node.loadState) node.loadState = "summary";
   if (summary.leadFile) registerCatalogFileDescriptor(summary.leadFile, {
@@ -24700,6 +26009,10 @@ function installCatalogIndex(index, rootHandle, folderShardDirHandle) {
   for (const rawPath of Object.keys(summaries)) {
     const path = normalizeDirPathValue(rawPath);
     const summary = Object.assign({}, summaries[rawPath] || {}, { path });
+    summary.directAspectCounts = catalogCloneAspectCounts(summary.directAspectCounts);
+    summary.recursiveAspectCounts = catalogCloneAspectCounts(summary.recursiveAspectCounts);
+    summary.directMediaAspectCounts = catalogCloneMediaAspectCounts(summary.directMediaAspectCounts);
+    summary.recursiveMediaAspectCounts = catalogCloneMediaAspectCounts(summary.recursiveMediaAspectCounts);
     WS.catalog.folderSummaries.set(path, summary);
     if (summary.leadFile) registerCatalogFileDescriptor(summary.leadFile, {
       shardName: summary.shardName,
@@ -24824,6 +26137,13 @@ async function ensureDirectoryLoaded(dirNode, opts = null) {
       const ids = [];
       for (let i = 0; i < files.length; i++) {
         const desc = Object.assign({}, files[i] || {});
+        if (WS.meta && WS.meta.aspectRatios) {
+          const relPath = normalizeWorkspaceRelPath(desc.relPath);
+          const entry = relPath
+            ? normalizeAspectRatioLogEntry(relPath, WS.meta.aspectRatios.get(relPath))
+            : null;
+          catalogApplyAspectEntryToDescriptor(desc, entry);
+        }
         const rec = ensureFileRecordFromDescriptor(desc);
         if (!rec) continue;
         if (!ids.includes(rec.id)) ids.push(rec.id);
@@ -24895,6 +26215,33 @@ async function ensureDirectorySubtreeLoaded(dirNode, opts = null) {
     };
     try {
       await walk(dirNode);
+      if (showOverlay) {
+        updateBlockingLoaderOverlay(
+          "Preparing media details...",
+          formatBusyProgressDetail("Applying cached aspect ratios", dirNode.path || ""),
+        );
+      }
+      hydrateCachedRecordAspectRatiosForLoadedWorkspace();
+      if (aspectRatioHydrationRequiresBlocking()) {
+        const aspectProgressState = { lastUpdate: 0 };
+        try {
+          await hydrateAllRecordAspectRatios({
+            maxConcurrency: 4,
+            onProgress: ({ completed, total, record }) => {
+              if (!showOverlay) return;
+              updateBusyProgress(
+                "Checking media aspect ratios...",
+                `Checked ${completed}/${total} media files`,
+                record ? record.relPath || record.name || "" : dirNode.path || "",
+                completed >= total,
+                aspectProgressState,
+              );
+            },
+          });
+        } catch {}
+      } else {
+        scheduleBackgroundAspectRatioHydration(250);
+      }
       if (showOverlay) updateProgress(dirNode.path || "", true);
       invalidateDirectoryDerivedIndex();
       rebuildDirectoryDerivedIndex();
@@ -25021,6 +26368,15 @@ async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
   const folders = {};
   const fileLocationsById = {};
   const fileLightIndexById = {};
+  showBlockingLoaderOverlay(
+    "Loading media metadata...",
+    "Reading cached aspect-ratio data...",
+  );
+  await waitForBusyOverlayPaint();
+  let aspectEntriesByPath = new Map();
+  try {
+    aspectEntriesByPath = await readCatalogAspectEntriesByPath(rootHandle);
+  } catch {}
   const stats = { dirs: 0, files: 0, bytes: 0, entries: 0, allFiles: 0 };
   let lastOverlayUpdate = 0;
   const progressText = () => {
@@ -25080,7 +26436,7 @@ async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
     await runWithConcurrency(fileEntries, 6, async (entry) => {
       try {
         const file = await entry.handle.getFile();
-        const desc = fileDescriptorFromFile(file, entry.path);
+        const desc = fileDescriptorFromFile(file, entry.path, aspectEntriesByPath);
         if (!desc) return;
         files.push(desc);
         stats.files++;
@@ -25090,17 +26446,34 @@ async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
     });
     files.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
+    const directAspectCounts = catalogEmptyAspectCounts();
+    const directMediaAspectCounts = catalogEmptyMediaAspectCounts();
     let recursiveFileCount = files.length;
     let recursiveFolderCount = childSummaries.length;
+    let recursiveImageCount = 0;
+    let recursiveVideoCount = 0;
+    let recursiveGifCount = 0;
     let recursiveSizeBytes = 0;
+    const recursiveAspectCounts = catalogEmptyAspectCounts();
+    const recursiveMediaAspectCounts = catalogEmptyMediaAspectCounts();
     for (let i = 0; i < files.length; i++) {
+      if (files[i].type === "video") recursiveVideoCount++;
+      else recursiveImageCount++;
+      if (String(files[i].ext || "").toLowerCase() === ".gif") recursiveGifCount++;
       recursiveSizeBytes += Math.max(0, Number(files[i].size) || 0);
+      catalogIncrementAspectStats(directAspectCounts, directMediaAspectCounts, files[i]);
+      catalogIncrementAspectStats(recursiveAspectCounts, recursiveMediaAspectCounts, files[i]);
     }
     for (let i = 0; i < childSummaries.length; i++) {
       const child = childSummaries[i];
       recursiveFileCount += Math.max(0, Number(child.recursiveFileCount) || 0);
       recursiveFolderCount += Math.max(0, Number(child.recursiveFolderCount) || 0);
+      recursiveImageCount += Math.max(0, Number(child.recursiveImageCount) || 0);
+      recursiveVideoCount += Math.max(0, Number(child.recursiveVideoCount) || 0);
+      recursiveGifCount += Math.max(0, Number(child.recursiveGifCount) || 0);
       recursiveSizeBytes += Math.max(0, Number(child.recursiveSizeBytes) || 0);
+      catalogAddAspectCounts(recursiveAspectCounts, child.recursiveAspectCounts);
+      catalogAddMediaAspectCounts(recursiveMediaAspectCounts, child.recursiveMediaAspectCounts);
     }
 
     const shardName = catalogShardNameForPath(dirPath);
@@ -25118,7 +26491,14 @@ async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
       recursiveFileCount,
       recursiveFolderCount,
       recursiveItemCount: recursiveFileCount + recursiveFolderCount,
+      recursiveImageCount,
+      recursiveVideoCount,
+      recursiveGifCount,
       recursiveSizeBytes,
+      directAspectCounts,
+      recursiveAspectCounts,
+      directMediaAspectCounts,
+      recursiveMediaAspectCounts,
       directLeadFile,
       leadFile,
     };
@@ -25237,9 +26617,13 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
     if (trashDirAvailable && getCatalogFolderSummary(INTERNAL_TRASH_DIR_NAME))
       ensureCatalogDirNode(INTERNAL_TRASH_DIR_NAME);
 
+    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Applying media-type filters...");
+    await waitForBusyOverlayPaint();
+    applyMediaFilterFromOptions();
+
     showBlockingLoaderOverlay(
       "Loading gallery metadata...",
-      "Reading saved tags, scores, and thumbnails...",
+      "Reading saved tags, scores, thumbnails, and aspect-ratio cache...",
     );
     await waitForBusyOverlayPaint();
     try {
@@ -25247,9 +26631,11 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
         WS.meta.storageMode = "local";
         WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
         metaInitForCurrentWorkspace();
+        hydrateCatalogLightIndexFromAspectLog();
       } else {
         WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
         await metaInitForCurrentWorkspaceFs();
+        hydrateCatalogLightIndexFromAspectLog();
         if (WS.meta.saveTimer) {
           clearTimeout(WS.meta.saveTimer);
           WS.meta.saveTimer = null;
@@ -25264,6 +26650,12 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
       showOverlay: true,
       label: "Preparing media index...",
     });
+    await finalizeAspectRatiosAndStorageForLoadedWorkspace({
+      showOverlay: true,
+      aspectLabel: "Checking media aspect ratios...",
+      storageLabel: "Applying media type and aspect filters...",
+    });
+
     showBlockingLoaderOverlay("Preparing folder view...", "Building navigation indexes...");
     await waitForBusyOverlayPaint();
     try {
@@ -25386,6 +26778,8 @@ async function buildWorkspaceFromFileList(fileList) {
       thumbMode: null,
       videoThumbMode: null,
       nativePath: "",
+      aspectRatio: null,
+      aspectRatioBucket: "",
     };
 
     rec.nativePath = getNativePathForFile(f);
@@ -25408,6 +26802,7 @@ async function buildWorkspaceFromFileList(fileList) {
   WS.meta.fsLegacyDocHandles = Object.create(null);
   metaInitForCurrentWorkspace();
 
+  await finalizeAspectRatiosAndStorageForLoadedWorkspace();
   rebuildDirectoryDerivedIndex();
 
   WS.nav.dirNode = WS.root;
@@ -25456,6 +26851,8 @@ function snapshotRefreshState() {
     dirPath: String(WS.nav.dirNode?.path || ""),
     entryKey,
     view: {
+      filterMode: WS.view.filterMode,
+      aspectRatioFilterMode: WS.view.aspectRatioFilterMode,
       randomMode: !!WS.view.randomMode,
       randomFolderMode: !!WS.view.randomFolderMode,
       loopWithinDir: WS.view.loopWithinDir,
@@ -25485,6 +26882,10 @@ function snapshotRefreshState() {
 
 function restoreRefreshViewState(viewState) {
   if (!viewState) return;
+  WS.view.filterMode = viewState.filterMode;
+  WS.view.aspectRatioFilterMode = normalizeAspectRatioFilterMode(
+    viewState.aspectRatioFilterMode,
+  );
   WS.view.randomMode = !!viewState.randomMode;
   WS.view.randomFolderMode = !!viewState.randomFolderMode;
   WS.view.loopWithinDir = viewState.loopWithinDir;
@@ -25770,7 +27171,18 @@ function restoreViewerCloseState(state, opts = null) {
   const hideBusyAfterDeferredRender = !!options.hideBusyAfterDeferredRender;
   cancelPendingNavigationRender();
   const restoreRenderToken = NAVIGATION_RENDER_TOKEN;
+  const currentFilterMode = String((WS.view && WS.view.filterMode) || "all");
+  const currentAspectRatioFilterMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
   restoreRefreshViewState(state.view || null);
+  // Viewer/preview return states can be older than the user's latest filter choice.
+  // Preserve global filter controls so changing them while media is open does not
+  // snap back when returning to the folder/list context.
+  WS.view.filterMode = ["all", "images", "videos", "gifs"].includes(currentFilterMode)
+    ? currentFilterMode
+    : "all";
+  WS.view.aspectRatioFilterMode = currentAspectRatioFilterMode;
   WS.view.tagNavStack = Array.isArray(state.tagNavStack)
     ? state.tagNavStack
         .map((frame) =>
@@ -27106,6 +28518,7 @@ async function renameFolderDirNode(dirNode, nextName) {
     metaTrackDirtyDocIds([
       META_DOC_IDS.scores,
       META_DOC_IDS.tags,
+      META_DOC_IDS.thumbnails,
       META_DOC_IDS.appearanceAssignments,
     ]);
 
@@ -27388,10 +28801,161 @@ function randomSortAffectsFolders() {
 }
 
 
+const ASPECT_RATIO_LOG_SCHEMA_VERSION = 1;
+const ASPECT_RATIO_LOG_MTIME_TOLERANCE_MS = 1;
+
+function normalizeAspectRatioLogEntry(relPath, value) {
+  const normalizedPath = normalizeWorkspaceRelPath(relPath);
+  if (!normalizedPath || !value || typeof value !== "object") return null;
+  const aspect = Number(value.aspectRatio ?? value.aspect ?? value.ratio);
+  if (!Number.isFinite(aspect) || aspect <= 0) return null;
+  const normalizedAspect = normalizePreviewAspect(aspect, 4 / 3);
+  const size = Number(value.size);
+  const lastModified = Number(value.lastModified ?? value.mtime ?? value.modified);
+  return {
+    relPath: normalizedPath,
+    size: Number.isFinite(size) && size >= 0 ? size : 0,
+    lastModified: Number.isFinite(lastModified) && lastModified >= 0 ? lastModified : 0,
+    type: value.type === "video" ? "video" : value.type === "image" ? "image" : "",
+    aspectRatio: normalizedAspect,
+    bucket: aspectRatioBucketForValue(normalizedAspect),
+    updatedAt:
+      typeof value.updatedAt === "string" && value.updatedAt.trim()
+        ? value.updatedAt
+        : new Date().toISOString(),
+    schema: ASPECT_RATIO_LOG_SCHEMA_VERSION,
+  };
+}
+
+function aspectRatioLogEntryForRecord(rec, aspect) {
+  if (!rec) return null;
+  const relPath = normalizeWorkspaceRelPath(rec.relPath);
+  const n = Number(aspect);
+  if (!relPath || !Number.isFinite(n) || n <= 0) return null;
+  const normalizedAspect = normalizePreviewAspect(n, 4 / 3);
+  return {
+    relPath,
+    size: Number.isFinite(Number(rec.size)) && Number(rec.size) >= 0 ? Number(rec.size) : 0,
+    lastModified:
+      Number.isFinite(Number(rec.lastModified)) && Number(rec.lastModified) >= 0
+        ? Number(rec.lastModified)
+        : 0,
+    type: rec.type === "video" ? "video" : rec.type === "image" ? "image" : "",
+    aspectRatio: normalizedAspect,
+    bucket: aspectRatioBucketForValue(normalizedAspect),
+    updatedAt: new Date().toISOString(),
+    schema: ASPECT_RATIO_LOG_SCHEMA_VERSION,
+  };
+}
+
+function aspectRatioLogEntryMatchesRecord(entry, rec) {
+  if (!entry || !rec) return false;
+  const relPath = normalizeWorkspaceRelPath(rec.relPath);
+  if (!relPath || normalizeWorkspaceRelPath(entry.relPath) !== relPath) return false;
+  const entrySize = Number(entry.size);
+  const recSize = Number(rec.size);
+  if (Number.isFinite(entrySize) && Number.isFinite(recSize) && entrySize !== recSize)
+    return false;
+  const entryModified = Number(entry.lastModified);
+  const recModified = Number(rec.lastModified);
+  if (
+    Number.isFinite(entryModified) &&
+    Number.isFinite(recModified) &&
+    Math.abs(entryModified - recModified) > ASPECT_RATIO_LOG_MTIME_TOLERANCE_MS
+  ) {
+    return false;
+  }
+  const entryType = String(entry.type || "");
+  if (entryType && rec.type && entryType !== rec.type) return false;
+  return Number(entry.aspectRatio) > 0;
+}
+
+function getCachedAspectRatioForRecord(rec) {
+  if (!WS.meta || !WS.meta.aspectRatios || !rec) return 0;
+  const relPath = normalizeWorkspaceRelPath(rec.relPath);
+  if (!relPath) return 0;
+  const entry = normalizeAspectRatioLogEntry(
+    relPath,
+    WS.meta.aspectRatios.get(relPath),
+  );
+  if (!aspectRatioLogEntryMatchesRecord(entry, rec)) return 0;
+  return Number(entry.aspectRatio) || 0;
+}
+
+function setCachedAspectRatioForRecord(rec, aspect) {
+  if (!WS.meta) return false;
+  if (!WS.meta.aspectRatios) WS.meta.aspectRatios = new Map();
+  const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
+  const next = aspectRatioLogEntryForRecord(rec, aspect);
+  if (!relPath || !next) return false;
+  const prev = normalizeAspectRatioLogEntry(relPath, WS.meta.aspectRatios.get(relPath));
+  if (
+    prev &&
+    prev.size === next.size &&
+    Math.abs(Number(prev.lastModified) - Number(next.lastModified)) <= ASPECT_RATIO_LOG_MTIME_TOLERANCE_MS &&
+    prev.type === next.type &&
+    Math.abs(Number(prev.aspectRatio) - Number(next.aspectRatio)) <= 0.0001 &&
+    prev.bucket === next.bucket
+  ) {
+    return false;
+  }
+  WS.meta.aspectRatios.set(relPath, next);
+  return true;
+}
+
+function pruneAspectRatioLogForCurrentWorkspace() {
+  if (!WS.meta || !WS.meta.aspectRatios || !WS.fileById) return false;
+  const livePaths = new Set();
+  for (const rec of WS.fileById.values()) {
+    const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
+    if (relPath) livePaths.add(relPath);
+  }
+  if (WS.catalog && WS.catalog.enabled && WS.catalog.fileLocationsByRelPath) {
+    for (const relPathRaw of WS.catalog.fileLocationsByRelPath.keys()) {
+      const relPath = normalizeWorkspaceRelPath(relPathRaw);
+      if (relPath) livePaths.add(relPath);
+    }
+  }
+  let changed = false;
+  for (const relPathRaw of Array.from(WS.meta.aspectRatios.keys())) {
+    const relPath = normalizeWorkspaceRelPath(relPathRaw);
+    if (relPath && livePaths.has(relPath)) continue;
+    WS.meta.aspectRatios.delete(relPathRaw);
+    changed = true;
+  }
+  return changed;
+}
+
+const ASPECT_RATIO_FILTER_CYCLE = Object.freeze([
+  Object.freeze({ value: "all", label: "All" }),
+  Object.freeze({ value: "portrait", label: "Portrait" }),
+  Object.freeze({ value: "square", label: "Square" }),
+  Object.freeze({ value: "landscape", label: "Landscape" }),
+]);
+const ASPECT_RATIO_SQUARE_TOLERANCE = 0.05;
+
+function normalizeAspectRatioFilterMode(value) {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (raw === "portrait" || raw === "square" || raw === "landscape")
+    return raw;
+  return "all";
+}
+
+function labelForAspectRatioFilterMode(value) {
+  const mode = normalizeAspectRatioFilterMode(value);
+  if (mode === "portrait") return "Portrait";
+  if (mode === "square") return "Square";
+  if (mode === "landscape") return "Landscape";
+  return "All";
+}
+
 function getKnownRecordAspectRatio(rec) {
   if (!rec) return 0;
   const candidates = [
     rec.previewAspect,
+    rec.aspectRatio,
     rec.thumbAspect,
     rec.videoAspect,
     rec.aspect,
@@ -27403,17 +28967,53 @@ function getKnownRecordAspectRatio(rec) {
   return 0;
 }
 
+function aspectRatioBucketForValue(aspect) {
+  const n = Number(aspect);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (Math.abs(n - 1) <= ASPECT_RATIO_SQUARE_TOLERANCE) return "square";
+  return n < 1 ? "portrait" : "landscape";
+}
+
 function setRecordAspectRatio(rec, aspect) {
   if (!rec) return false;
   const n = Number(aspect);
   if (!Number.isFinite(n) || n <= 0) return false;
   const normalized = normalizePreviewAspect(n, 4 / 3);
-  const prevAspect = Number(rec.previewAspect);
+  const bucket = aspectRatioBucketForValue(normalized);
+  const prevAspect = Number(rec.aspectRatio);
+  const prevBucket = String(rec.aspectRatioBucket || "");
+  rec.aspectRatio = normalized;
   rec.previewAspect = normalized;
+  rec.aspectRatioBucket = bucket;
   return (
     !Number.isFinite(prevAspect) ||
-    Math.abs(prevAspect - normalized) > 0.0001
+    Math.abs(prevAspect - normalized) > 0.0001 ||
+    prevBucket !== bucket
   );
+}
+
+function recordPassesAspectRatioFilter(rec) {
+  const mode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  if (mode === "all") return true;
+  const aspect = getKnownRecordAspectRatio(rec);
+  if (!(aspect > 0)) return true;
+  return aspectRatioBucketForValue(aspect) === mode;
+}
+
+function recordIsGloballyStoredByAspectRatio(rec, options = null) {
+  if (!rec || !anyAspectRatioStorageEnabled(options)) return false;
+  const bucket = String(
+    rec.aspectRatioBucket || aspectRatioBucketForValue(getKnownRecordAspectRatio(rec)) || "",
+  );
+  return !!bucket && aspectRatioStorageEnabledForBucket(bucket, options);
+}
+
+function recordIsGloballyStoredByMediaType(rec, options = null) {
+  if (!rec || !anyMediaTypeStorageEnabled(options)) return false;
+  const type = normalizeMediaTypeStorageType(recordMediaFilterType(rec));
+  return !!type && mediaTypeStorageEnabledForType(type, options);
 }
 
 function removeFileRecordFromWorkspace(rec) {
@@ -27433,9 +29033,130 @@ function removeFileRecordFromWorkspace(rec) {
   return true;
 }
 
+function applyAspectRatioStorageToCurrentWorkspace() {
+  if (!WS.root || !WS.fileById || !WS.fileById.size) return 0;
+  const options = WS.meta && WS.meta.options ? WS.meta.options : null;
+  if (!anyAspectRatioStorageEnabled(options) && !anyMediaTypeStorageEnabled(options)) return 0;
+  let removed = 0;
+  const records = Array.from(WS.fileById.values()).filter(Boolean);
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i];
+    if (
+      !recordIsGloballyStoredByAspectRatio(rec, options) &&
+      !recordIsGloballyStoredByMediaType(rec, options)
+    )
+      continue;
+    if (removeFileRecordFromWorkspace(rec)) removed++;
+  }
+  if (removed) {
+    rebuildDirectoryDerivedIndex();
+    invalidateDirMetricsCaches();
+    if (WS.view) {
+      WS.view.randomCache = new Map();
+      WS.view.randomFolderCache = new Map();
+    }
+  }
+  return removed;
+}
+
+async function finalizeAspectRatiosAndStorageForLoadedWorkspace(opts = null) {
+  const optionsArg = opts && typeof opts === "object" ? opts : {};
+  const options = WS.meta && WS.meta.options ? WS.meta.options : null;
+  const showOverlay = !!optionsArg.showOverlay;
+  const aspectLabel = optionsArg.aspectLabel
+    ? String(optionsArg.aspectLabel)
+    : "Checking media aspect ratios...";
+  const storageLabel = optionsArg.storageLabel
+    ? String(optionsArg.storageLabel)
+    : "Applying media filters...";
+  const progressState = { lastUpdate: 0 };
+  const recordsTotal = WS.fileById ? WS.fileById.size : 0;
+  let removed = 0;
+
+  try {
+    if (aspectRatioHydrationRequiresBlocking(options)) {
+      if (showOverlay)
+        showBlockingLoaderOverlay(
+          aspectLabel,
+          formatBusyProgressDetail(`Checked 0/${recordsTotal} media files`, ""),
+        );
+      try {
+        await hydrateAllRecordAspectRatios({
+          maxConcurrency: optionsArg.maxConcurrency,
+          onProgress: ({ completed, total, record }) => {
+            if (!showOverlay) return;
+            updateBusyProgress(
+              aspectLabel,
+              `Checked ${completed}/${total} media files`,
+              record ? record.relPath || record.name || "" : "",
+              completed >= total,
+              progressState,
+            );
+          },
+        });
+      } catch {}
+    } else {
+      if (showOverlay)
+        showBlockingLoaderOverlay(
+          aspectLabel,
+          formatBusyProgressDetail("Applying cached aspect ratios", ""),
+        );
+      try {
+        hydrateCachedRecordAspectRatiosForLoadedWorkspace();
+      } catch {}
+      scheduleBackgroundAspectRatioHydration();
+    }
+
+    if (showOverlay)
+      updateBlockingLoaderOverlay(
+        storageLabel,
+        formatBusyProgressDetail("Checking media type and aspect-ratio storage rules", ""),
+      );
+    removed = applyAspectRatioStorageToCurrentWorkspace();
+    if (showOverlay)
+      updateBlockingLoaderOverlay(
+        storageLabel,
+        formatBusyProgressDetail(
+          removed ? `Moved ${removed} stored media records out of view` : "No stored media records hidden",
+          "",
+        ),
+      );
+    return removed;
+  } finally {
+    if (showOverlay) hideBlockingLoaderOverlay();
+  }
+}
+
+function recordMediaFilterType(rec) {
+  if (!rec) return "";
+  if (rec.type === "video") return "videos";
+  if (isGifRecord(rec)) return "gifs";
+  if (rec.type === "image") return "images";
+  return "";
+}
+
+function recordPassesTagMediaFilter(rec, filterValue) {
+  if (!rec) return false;
+  const hiddenTypes = normalizeTagMediaFilterValue(filterValue);
+  if (!hiddenTypes.length) return true;
+  const recordType = recordMediaFilterType(rec);
+  if (recordType && hiddenTypes.includes(recordType)) return false;
+  const recordAspect =
+    rec.aspectRatioBucket ||
+    aspectRatioBucketForValue(getKnownRecordAspectRatio(rec));
+  if (recordAspect && hiddenTypes.includes(recordAspect)) return false;
+  return true;
+}
 
 function effectiveFilterCacheKey() {
-  return "all";
+  const aspectMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  const contextual = currentContextualTagMediaFilterValue();
+  if (contextual.length) {
+    return `tag:${String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : "")}:${contextual.join(",")}|aspect:${aspectMode}`;
+  }
+  return `global:${String(WS?.view?.filterMode || "all")}|aspect:${aspectMode}`;
 }
 
 function reseedRandomSortMode() {
@@ -27560,33 +29281,99 @@ function sortDirCollectionForDisplay(dirs, key = "collection") {
 }
 
 function passesFilter(rec) {
-  return !!rec;
+  if (!rec) return false;
+  const contextualFilter = contextualTagMediaFilterForDirPath(
+    String(rec.dirPath || ""),
+  );
+  let mediaPass = true;
+  if (contextualFilter.length) {
+    mediaPass = recordPassesTagMediaFilter(rec, contextualFilter);
+  } else {
+    const m = WS.view.filterMode;
+    if (m === "images") mediaPass = rec.type === "image";
+    else if (m === "videos") mediaPass = rec.type === "video";
+    else if (m === "gifs") mediaPass = rec.ext === ".gif";
+  }
+  if (!mediaPass) return false;
+  return recordPassesAspectRatioFilter(rec);
 }
 
-function catalogSummaryFileCountForFilter(summary) {
+function catalogSummaryFileCountForFilter(summary, filterMode = "all", aspectMode = "all") {
   if (!summary) return -1;
+  const mode = String(filterMode || "all");
+  const aspect = normalizeAspectRatioFilterMode(aspectMode);
+  if (aspect !== "all") {
+    if (mode === "images" || mode === "videos" || mode === "gifs") {
+      const mediaAspect =
+        summary.recursiveMediaAspectCounts &&
+        typeof summary.recursiveMediaAspectCounts === "object"
+          ? summary.recursiveMediaAspectCounts[mode]
+          : null;
+      return Math.max(0, Number(mediaAspect && mediaAspect[aspect]) || 0);
+    }
+    const aspectCounts =
+      summary.recursiveAspectCounts && typeof summary.recursiveAspectCounts === "object"
+        ? summary.recursiveAspectCounts
+        : null;
+    return Math.max(0, Number(aspectCounts && aspectCounts[aspect]) || 0);
+  }
+  if (mode === "images")
+    return Math.max(0, Number(summary.recursiveImageCount) || 0);
+  if (mode === "videos")
+    return Math.max(0, Number(summary.recursiveVideoCount) || 0);
+  if (mode === "gifs")
+    return Math.max(0, Number(summary.recursiveGifCount) || 0);
   return Math.max(0, Number(summary.recursiveFileCount) || 0);
 }
 
 function catalogSummaryFileCountForCurrentFilters(summary) {
   if (!summary) return -1;
-  return catalogSummaryFileCountForFilter(summary);
+  const aspectMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  const mode = String((WS.view && WS.view.filterMode) || "all");
+  return catalogSummaryFileCountForFilter(summary, mode, aspectMode);
 }
 
 function catalogSummaryHasVisibleRecordForTagEntry(summary, entry) {
   if (!summary) return false;
-  return Math.max(0, Number(summary.recursiveFileCount) || 0) > 0;
+  const aspectMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  const hidden = normalizeTagMediaFilterValue(
+    entry && entry.kind === "tag" ? effectiveTagMediaFilterForEntry(entry) : [],
+  );
+  const currentMode = String((WS.view && WS.view.filterMode) || "all");
+  const candidates = [];
+  if (currentMode === "images" || currentMode === "videos" || currentMode === "gifs") {
+    candidates.push(currentMode);
+  } else {
+    candidates.push("images", "videos", "gifs");
+  }
+  const visibleCandidates = candidates.filter((mode) => !hidden.includes(mode));
+  if (!visibleCandidates.length) return false;
+  for (let i = 0; i < visibleCandidates.length; i++) {
+    const mode = visibleCandidates[i];
+    let count = catalogSummaryFileCountForFilter(summary, mode, aspectMode);
+    if (hidden.includes("gifs") && mode === "gifs") count = 0;
+    if (count > 0) return true;
+  }
+  return false;
 }
 
 function dirItemCount(node) {
   if (!node) return 0;
   const filterKey = effectiveFilterCacheKey();
+  const aspectMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
   const summaryCount = catalogSummaryFileCountForCurrentFilters(
     getCatalogSummaryForNode(node),
   );
-  if (summaryCount >= 0) return summaryCount;
+  if (summaryCount >= 0 && !(node.loadState === "loaded" && aspectMode !== "all"))
+    return summaryCount;
   if (
-    filterKey === "all" &&
+    filterKey === "global:all|aspect:all" &&
     ensureDirectoryDerivedIndex() &&
     Number.isFinite(Number(node.recursiveFileCount))
   ) {
@@ -28274,6 +30061,7 @@ async function renameSingleFile(rec, nextName) {
   metaTrackDirtyDocIds([
     META_DOC_IDS.scores,
     META_DOC_IDS.tags,
+    META_DOC_IDS.thumbnails,
     META_DOC_IDS.appearanceAssignments,
   ]);
   try {
@@ -28326,6 +30114,83 @@ function showTrashFolderEnabled() {
 function showStorageFolderEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.showStorageFolder);
+}
+
+const ASPECT_RATIO_STORAGE_OPTION_BY_BUCKET = Object.freeze({
+  portrait: "storePortraitAspectRatioFiles",
+  square: "storeSquareAspectRatioFiles",
+  landscape: "storeLandscapeAspectRatioFiles",
+});
+
+function aspectRatioStorageOptionKeyForBucket(bucket) {
+  const key = String(bucket || "").trim().toLowerCase();
+  return ASPECT_RATIO_STORAGE_OPTION_BY_BUCKET[key] || "";
+}
+
+function aspectRatioStorageEnabledForBucket(bucket, options = null) {
+  const key = aspectRatioStorageOptionKeyForBucket(bucket);
+  if (!key) return false;
+  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(opt && opt[key]);
+}
+
+function anyAspectRatioStorageEnabled(options = null) {
+  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(
+    opt &&
+    (opt.storePortraitAspectRatioFiles ||
+      opt.storeSquareAspectRatioFiles ||
+      opt.storeLandscapeAspectRatioFiles)
+  );
+}
+
+const MEDIA_TYPE_STORAGE_OPTION_BY_TYPE = Object.freeze({
+  images: "storeImageFiles",
+  gifs: "storeGifFiles",
+  videos: "storeVideoFiles",
+});
+
+function normalizeMediaTypeStorageType(type) {
+  const raw = String(type || "").trim().toLowerCase();
+  if (raw === "image" || raw === "images") return "images";
+  if (raw === "gif" || raw === "gifs") return "gifs";
+  if (raw === "video" || raw === "videos") return "videos";
+  return "";
+}
+
+function mediaTypeStorageOptionKeyForType(type) {
+  const normalized = normalizeMediaTypeStorageType(type);
+  return MEDIA_TYPE_STORAGE_OPTION_BY_TYPE[normalized] || "";
+}
+
+function mediaTypeStorageEnabledForType(type, options = null) {
+  const key = mediaTypeStorageOptionKeyForType(type);
+  if (!key) return false;
+  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(opt && opt[key]);
+}
+
+function anyMediaTypeStorageEnabled(options = null) {
+  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(opt && (opt.storeImageFiles || opt.storeGifFiles || opt.storeVideoFiles));
+}
+
+function mediaTypeStorageLabel(type) {
+  const normalized = normalizeMediaTypeStorageType(type);
+  if (normalized === "images") return "Image";
+  if (normalized === "gifs") return "GIF";
+  if (normalized === "videos") return "Video";
+  return "Media";
+}
+
+function aspectRatioStorageLabel(bucket, enabled = null) {
+  const normalized = aspectRatioBucketForValue(
+    bucket === "portrait" ? 0.75 : bucket === "square" ? 1 : 1.5,
+  );
+  const label = labelForAspectRatioFilterMode(normalized).toLowerCase();
+  const active =
+    enabled == null ? aspectRatioStorageEnabledForBucket(normalized) : !!enabled;
+  return `${active ? "Remove" : "Send"} all ${label} files ${active ? "from" : "to"} storage`;
 }
 
 function tortoiseNavigationEnabled() {
@@ -28506,14 +30371,18 @@ function dirHasVisibleRecordForTagEntry(dirNode, entry) {
   if (!dirNode || !entry || entry.kind !== "tag") return false;
   const dirPath = String(dirNode.path || "");
   const entryKey = tagEntryDerivedCacheKey(entry);
-  const cacheKey = `${entryKey}@@${dirPath}@@${effectiveFilterCacheKey()}`;
+  const cacheKey = `${entryKey}@@${dirPath}@@${effectiveFilterCacheKey()}@@${String(
+    effectiveTagMediaFilterForEntry(entry).join(","),
+  )}`;
   if (cacheKey && TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.has(cacheKey)) {
     return !!TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.get(cacheKey);
   }
   let visible = false;
   const summary = getCatalogSummaryForNode(dirNode);
-  // Catalog summaries let tag and album views avoid recursively walking fully
-  // loaded root children when all we need is whether a folder has media.
+  // v10: tag/album content filters were recursively walking fully loaded root
+  // children, which made opening tags and moving through filtered albums scale
+  // with the whole folder tree. The catalog summary is the lightweight truth for
+  // media type/aspect availability, so use it even when the node is loaded.
   if (summary) {
     visible = catalogSummaryHasVisibleRecordForTagEntry(summary, entry);
     if (cacheKey) TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.set(cacheKey, visible);
@@ -29197,7 +31066,33 @@ function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
   return result;
 }
 
+function effectiveTagMediaFilterForEntry(entry) {
+  const key = tagThumbnailKeyForEntry(entry);
+  if (!key) return [];
+  const direct = metaGetTagMediaFilterByKey(key);
+  if (direct.length) return direct;
+  if (entry && entry.kind === "tag" && entry.tag && entry.album) {
+    return contextualTagMediaFilterForTagContext(
+      "tag",
+      entry.tag,
+      entry.album,
+      entry.originPath,
+    );
+  }
+  if (entry && entry.kind === "tag" && entry.album && !entry.tag) {
+    return contextualTagMediaFilterForTagContext(
+      "album",
+      "",
+      entry.album,
+      entry.originPath,
+    );
+  }
+  return [];
+}
+
 function recordPassesTagEntryFilter(rec, entry) {
+  const tagFilter = effectiveTagMediaFilterForEntry(entry);
+  if (tagFilter.length) return recordPassesTagMediaFilter(rec, tagFilter);
   return passesFilter(rec);
 }
 
@@ -29565,23 +31460,80 @@ function findNearestPresettableParentForRecord(rec) {
 }
 
 function setFolderThumbnailTargetFromRecord(rec, targetPath) {
-  return false;
+  const normalizedPath = normalizeDirPathValue(targetPath);
+  if (!normalizedPath) {
+    return setRootThumbnailFromRecord(rec);
+  }
+  const folderNode = WS.dirByPath.get(normalizedPath);
+  if (!folderNode) {
+    showStatusMessage("Target folder is unavailable.");
+    return false;
+  }
+  const relPath = normalizeWorkspaceRelPath(rec?.relPath);
+  if (!relPath) {
+    showStatusMessage("Selected file is unavailable.");
+    return false;
+  }
+  const changed = metaSetFolderThumbnailPreset(normalizedPath, relPath);
+  if (!changed) {
+    showStatusMessage(
+      `Thumbnail already set for ${dirDisplayName(folderNode)}.`,
+    );
+    return false;
+  }
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  showStatusMessage(`Set thumbnail for ${dirDisplayName(folderNode)}.`);
+  return true;
 }
 
 function setParentThumbnailFromRecord(rec) {
-  return false;
+  const targetNode = findNearestPresettableParentForRecord(rec);
+  if (!targetNode || !targetNode.path) {
+    showStatusMessage("No eligible parent folder found.");
+    return false;
+  }
+  return setFolderThumbnailTargetFromRecord(rec, String(targetNode.path || ""));
 }
 
 function setFolderThumbnailFromRecord(rec) {
-  return false;
+  const folderPath = String(rec?.dirPath || "");
+  if (!folderPath || !WS.dirByPath.has(folderPath)) {
+    showStatusMessage("Selected file has no target folder.");
+    return false;
+  }
+  return setFolderThumbnailTargetFromRecord(rec, folderPath);
 }
 
 function setRootThumbnailFromRecord(rec) {
-  return false;
+  if (!WS.root) {
+    showStatusMessage("No root folder is available.");
+    return false;
+  }
+  const relPath = normalizeWorkspaceRelPath(rec?.relPath || "");
+  if (!relPath) {
+    showStatusMessage("Selected file is unavailable.");
+    return false;
+  }
+  const changed = metaSetTagThumbnailPresetByKey(rootThumbnailKey(), relPath);
+  if (!changed) {
+    showStatusMessage("Root thumbnail is already set to this file.");
+    return false;
+  }
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  showStatusMessage("Set thumbnail for root.");
+  return true;
 }
 
 function getRootThumbnailMode() {
-  return metaGetTagThumbnailModeByKey(rootThumbnailKey());
+  return "none";
 }
 
 function isRootThumbnailModeDefault(mode) {
@@ -29589,7 +31541,7 @@ function isRootThumbnailModeDefault(mode) {
 }
 
 function rootThumbnailHasPreset() {
-  return metaHasTagThumbnailPresetByKey(rootThumbnailKey());
+  return false;
 }
 
 function setRootThumbnailMode(mode) {
@@ -29785,6 +31737,165 @@ async function hydrateEditedThumbnailAspects() {
   return changed;
 }
 
+async function hydrateAllRecordAspectRatios(opts = null) {
+  if (!WS.root || !WS.fileById || !WS.fileById.size) return false;
+  const options = opts && typeof opts === "object" ? opts : {};
+  const records = Array.from(WS.fileById.values()).filter(Boolean);
+  if (!records.length) return false;
+  const onProgress =
+    typeof options.onProgress === "function" ? options.onProgress : null;
+  const progressState = { completed: 0, total: records.length, lastUpdate: 0 };
+  const emitProgress = (rec = null, force = false) => {
+    if (!onProgress) return;
+    const now = Date.now();
+    const interval = Math.max(0, Number(options.progressIntervalMs) || 120);
+    if (!force && now - progressState.lastUpdate < interval) return;
+    progressState.lastUpdate = now;
+    try {
+      onProgress({
+        completed: progressState.completed,
+        total: progressState.total,
+        record: rec,
+      });
+    } catch {}
+  };
+  emitProgress(null, true);
+  let changed = false;
+  let logChanged = pruneAspectRatioLogForCurrentWorkspace();
+  let cursor = 0;
+  const hwConcurrency =
+    typeof navigator === "object" ? Number(navigator.hardwareConcurrency || 4) || 4 : 4;
+  const maxConcurrency = Math.max(
+    1,
+    Math.min(8, Number(options.maxConcurrency) || 8),
+  );
+  const concurrency = Math.max(
+    1,
+    Math.min(maxConcurrency, records.length, hwConcurrency),
+  );
+  const worker = async () => {
+    while (cursor < records.length) {
+      const rec = records[cursor++];
+      try {
+        const cached = getCachedAspectRatioForRecord(rec);
+        if (cached > 0) {
+          if (setRecordAspectRatio(rec, cached)) changed = true;
+          continue;
+        }
+        const known = getKnownRecordAspectRatio(rec);
+        if (known > 0) {
+          if (setRecordAspectRatio(rec, known)) changed = true;
+          if (setCachedAspectRatioForRecord(rec, known)) logChanged = true;
+          continue;
+        }
+        const detected = await detectRecordPreviewAspect(rec);
+        if (detected && setRecordAspectRatio(rec, detected)) changed = true;
+        if (detected && setCachedAspectRatioForRecord(rec, detected)) logChanged = true;
+      } finally {
+        progressState.completed++;
+        emitProgress(rec);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  emitProgress(records[records.length - 1] || null, true);
+  if (logChanged) metaMarkDirty(META_DOC_IDS.aspectRatios);
+  return changed || logChanged;
+}
+
+function hydrateCachedRecordAspectRatiosForLoadedWorkspace() {
+  if (!WS.root || !WS.fileById || !WS.fileById.size) return false;
+  let changed = false;
+  let logChanged = pruneAspectRatioLogForCurrentWorkspace();
+  for (const rec of WS.fileById.values()) {
+    if (!rec) continue;
+    const cached = getCachedAspectRatioForRecord(rec);
+    if (cached > 0) {
+      if (setRecordAspectRatio(rec, cached)) changed = true;
+      continue;
+    }
+    const known = getKnownRecordAspectRatio(rec);
+    if (known > 0) {
+      if (setRecordAspectRatio(rec, known)) changed = true;
+      if (setCachedAspectRatioForRecord(rec, known)) logChanged = true;
+    }
+  }
+  if (logChanged) metaMarkDirty(META_DOC_IDS.aspectRatios);
+  return changed || logChanged;
+}
+
+function hydrateCatalogLightIndexFromAspectLog() {
+  if (!WS.catalog || !WS.catalog.enabled || !WS.meta || !WS.meta.aspectRatios)
+    return false;
+  let changed = false;
+  const maps = [
+    WS.catalog.fileLightIndexByRelPath,
+    WS.catalog.fileDescriptorsByRelPath,
+  ];
+  for (const relPathRaw of WS.meta.aspectRatios.keys()) {
+    const relPath = normalizeWorkspaceRelPath(relPathRaw);
+    if (!relPath) continue;
+    const entry = normalizeAspectRatioLogEntry(relPath, WS.meta.aspectRatios.get(relPathRaw));
+    if (!entry) continue;
+    for (let m = 0; m < maps.length; m++) {
+      const map = maps[m];
+      if (!map || !map.has(relPath)) continue;
+      const desc = map.get(relPath);
+      const prevAspect = Number(desc && desc.aspectRatio);
+      const prevBucket = String(desc && desc.aspectRatioBucket || "");
+      catalogApplyAspectEntryToDescriptor(desc, entry);
+      if (
+        Number(desc && desc.aspectRatio) > 0 &&
+        (!Number.isFinite(prevAspect) ||
+          Math.abs(Number(desc.aspectRatio) - prevAspect) > 0.0001 ||
+          String(desc.aspectRatioBucket || "") !== prevBucket)
+      ) {
+        changed = true;
+      }
+    }
+    const rec = findFileRecordByRelPath(relPath);
+    if (rec && catalogAspectEntryMatchesDescriptor(entry, rec)) {
+      if (setRecordAspectRatio(rec, Number(entry.aspectRatio))) changed = true;
+    }
+  }
+  return changed;
+}
+
+let ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN = 0;
+
+function aspectRatioHydrationRequiresBlocking(options = null) {
+  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(
+    anyAspectRatioStorageEnabled(opt) ||
+    normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode) !==
+      "all"
+  );
+}
+
+function scheduleBackgroundAspectRatioHydration(delayMs = 900) {
+  const token = ++ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN;
+  setTimeout(async () => {
+    if (token !== ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN || !WS.root) return;
+    let changed = false;
+    try {
+      changed = await hydrateAllRecordAspectRatios({ maxConcurrency: 2 });
+    } catch {}
+    if (token !== ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN || !WS.root) return;
+    if (!changed) return;
+    invalidateDirItemCountCache();
+    if (
+      normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode) !==
+      "all"
+    ) {
+      rebuildDirectoriesEntries();
+      renderDirectoriesPane(true, { suppressSelectionReveal: true });
+      renderPreviewPane(false, true);
+      scheduleThumbnailDemandRefresh();
+    }
+    metaScheduleSave(META_DOC_IDS.aspectRatios);
+  }, Math.max(0, Number(delayMs) || 0));
+}
+
 function getRootPresetPreviewRecord(rootNode, rootPool = null) {
   if (!rootNode) return null;
   const key = rootThumbnailKey();
@@ -29850,7 +31961,65 @@ function thumbnailMenuFolderLabel(node) {
 }
 
 function getThumbnailMenuTargetsForRecord(rec) {
-  return [];
+  const out = [];
+  if (!rec) return out;
+  const seenFolders = new Set();
+  const seenTags = new Set();
+  let cur = WS.dirByPath.get(String(rec.dirPath || "")) || WS.root || null;
+  while (cur) {
+    const folderPath = String(cur.path || "");
+    if (!seenFolders.has(folderPath)) {
+      seenFolders.add(folderPath);
+      const folderLabel = thumbnailMenuFolderLabel(cur);
+      out.push({
+        action: folderThumbnailActionForPath(folderPath),
+        label: folderPath
+          ? `Set '${folderLabel}' thumbnail`
+          : "Set root thumbnail",
+      });
+    }
+
+    const scopeNode = cur.parent || WS.root || null;
+    const scopePath = String(scopeNode?.path || "");
+    const scopeLabel = thumbnailMenuScopeLabel(scopeNode);
+    const tags = metaGetUserTags(cur.path || "");
+    for (let i = 0; i < tags.length; i++) {
+      const tag = normalizeTag(tags[i] || "");
+      if (!tag) continue;
+      const key = tagThumbnailKeyForTag(tag, scopePath);
+      if (!key || seenTags.has(key)) continue;
+      seenTags.add(key);
+      out.push({
+        action: tagThumbnailActionForKey(key),
+        label: `Set '${tag}' thumbnail in ${scopeLabel}`,
+      });
+
+      const album = metaGetTagAlbumForTag(tag, scopePath);
+      const albumKey = tagThumbnailKeyForAlbum(album, scopePath);
+      if (album && albumKey && !seenTags.has(albumKey)) {
+        seenTags.add(albumKey);
+        out.push({
+          action: tagThumbnailActionForKey(albumKey),
+          label: `Set album '${album}' thumbnail in ${scopeLabel}`,
+        });
+      }
+    }
+
+    if (metaHasFavorite(cur.path || "")) {
+      const scopeKey = tagThumbnailScopeKeyFromPath(scopePath);
+      const key = `special:favorites:${scopeKey}`;
+      if (!seenTags.has(key)) {
+        seenTags.add(key);
+        out.push({
+          action: tagThumbnailActionForKey(key),
+          label: `Set favorites thumbnail in ${scopeLabel}`,
+        });
+      }
+    }
+
+    cur = cur.parent || null;
+  }
+  return out;
 }
 
 function isRecordInAnyDirSubtree(rec, dirs) {
@@ -30622,7 +32791,29 @@ function openThumbnailCropEditor(rec) {
 }
 
 function setTagThumbnailFromRecordByKey(rec, tagKey) {
-  return false;
+  const key = String(tagKey || "");
+  if (!rec || !key) {
+    showStatusMessage("Selected file is unavailable.");
+    return false;
+  }
+  const relPath = normalizeWorkspaceRelPath(rec.relPath || "");
+  if (!relPath) {
+    showStatusMessage("Selected file is unavailable.");
+    return false;
+  }
+  const changed = metaSetTagThumbnailPresetByKey(key, relPath);
+  const tagLabel = tagThumbnailLabelForKey(key);
+  if (!changed) {
+    showStatusMessage(`Thumbnail already set for '${tagLabel}'.`);
+    return false;
+  }
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  showStatusMessage(`Set thumbnail for '${tagLabel}'.`);
+  return true;
 }
 
 function refreshThumbnailUiAfterMetadataChange() {
@@ -30641,19 +32832,11 @@ function pickRandomPreviewRecord(records) {
 }
 
 function randomThumbnailCandidateForDirNode(dirNode) {
-  if (!dirNode) return null;
-  const pool = getRecursivePreviewRecordsForDir(dirNode, 0, true).filter(
-    (rec) => rec && passesFilter(rec),
-  );
-  if (!pool.length) return null;
-  return pickRandomPreviewRecord(pool);
+  return null;
 }
 
 function randomThumbnailCandidateForTagEntry(entry) {
-  if (!entry || entry.kind !== "tag") return null;
-  const pool = getRecursivePreviewRecordsForTagEntry(entry, 0);
-  if (!pool.length) return null;
-  return pickRandomPreviewRecord(pool);
+  return null;
 }
 
 function setRandomFolderThumbnailForNode(dirNode) {
@@ -30683,7 +32866,9 @@ function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
     entry && entry.kind === "tag"
       ? `${String(tagEntrySelectionKey(entry) || "")}@@${String(
           entry.originPath || "",
-        )}@@${effectiveFilterCacheKey()}@@${tagVisibleChildContextKey()}@@${String(normalizedLimit)}`
+        )}@@${effectiveFilterCacheKey()}@@${String(
+          effectiveTagMediaFilterForEntry(entry).join(","),
+        )}@@${tagVisibleChildContextKey()}@@${String(normalizedLimit)}`
       : "";
   if (cacheKey && TAG_ENTRY_PREVIEW_POOL_CACHE.has(cacheKey)) {
     return TAG_ENTRY_PREVIEW_POOL_CACHE.get(cacheKey) || [];
@@ -31908,10 +34093,12 @@ function tagEntryDerivedCacheKey(entry) {
   if (!entry || entry.kind !== "tag") return "";
   const entryKey = String(tagEntrySelectionKey(entry) || "");
   const originPath = String(entry.originPath || "");
+  const mediaFilter = String(effectiveTagMediaFilterForEntry(entry).join(","));
   return [
     entryKey,
     originPath,
     effectiveFilterCacheKey(),
+    mediaFilter,
     tagVisibleChildContextKey(),
     dirSortDisplayCacheKey(),
   ].join("@@");
@@ -34671,6 +36858,16 @@ function navigationEntriesContainOnlyMediaFiles() {
 }
 
 function tagAlbumContentFilterActiveForCurrentView() {
+  if (!isViewingTagFolder()) return false;
+  const contextual = currentContextualTagMediaFilterValue();
+  if (contextual && contextual.length) return true;
+  const mode = String((WS.view && WS.view.tagFolderActiveMode) || "");
+  if (mode === "tag" || mode === "album") {
+    const key = mode === "album"
+      ? tagThumbnailKeyForAlbum(WS.view.tagFolderActiveAlbum || "", WS.view.tagFolderOriginPath || "")
+      : tagThumbnailKeyForTag(WS.view.tagFolderActiveTag || "", WS.view.tagFolderOriginPath || "");
+    return !!(key && metaHasTagMediaFilterByKey(key));
+  }
   return false;
 }
 
@@ -35390,6 +37587,8 @@ function thumbnailBackgroundViewKey(snapshot = null) {
     String(WS.root?.path || ""),
     navPath,
     String(Array.isArray(WS.nav.entries) ? WS.nav.entries.length : 0),
+    String(WS.view.filterMode || ""),
+    String(WS.view.aspectRatioFilterMode || ""),
     String(WS.view.tagFolderActiveMode || ""),
     String(WS.view.tagFolderActiveTag || ""),
     String(WS.view.tagFolderActiveAlbum || ""),
@@ -35874,34 +38073,19 @@ function deferThumbnailDemandForSelection(delayMs = 120) {
 }
 
 function scheduleThumbnailDemandRefresh(opts = null) {
-  const options = opts && typeof opts === "object" ? opts : {};
-  const immediate = !!options.immediate;
-  if (!thumbnailLoadingEnabled()) {
-    if (THUMBNAIL_DEMAND_RAF) {
-      cancelAnimationFrame(THUMBNAIL_DEMAND_RAF);
-      THUMBNAIL_DEMAND_RAF = 0;
-    }
-    if (THUMBNAIL_DEMAND_DEFER_TIMER) {
-      clearTimeout(THUMBNAIL_DEMAND_DEFER_TIMER);
-      THUMBNAIL_DEMAND_DEFER_TIMER = 0;
-    }
-    if (THUMBNAIL_BACKGROUND_TIMER) {
-      clearTimeout(THUMBNAIL_BACKGROUND_TIMER);
-      THUMBNAIL_BACKGROUND_TIMER = 0;
-    }
-    return;
+  if (THUMBNAIL_DEMAND_RAF) {
+    try { cancelAnimationFrame(THUMBNAIL_DEMAND_RAF); } catch {}
+    THUMBNAIL_DEMAND_RAF = 0;
   }
-  if (THUMBNAIL_DEMAND_RAF || THUMBNAIL_DEMAND_DEFER_TIMER) return;
-  const deferredMs = immediate ? 0 : Math.max(0, THUMBNAIL_DEMAND_DEFER_UNTIL - Date.now());
-  if (!immediate && (deferredMs > 0 || shouldDeferNonEssentialNavigationWork())) {
-    THUMBNAIL_DEMAND_DEFER_TIMER = setTimeout(() => {
-      THUMBNAIL_DEMAND_DEFER_TIMER = 0;
-      if (THUMBNAIL_DEMAND_RAF) return;
-      THUMBNAIL_DEMAND_RAF = requestAnimationFrame(refreshThumbnailDemand);
-    }, Math.max(deferredMs, shouldDeferNonEssentialNavigationWork() ? 120 : 0));
-    return;
+  if (THUMBNAIL_DEMAND_DEFER_TIMER) {
+    try { clearTimeout(THUMBNAIL_DEMAND_DEFER_TIMER); } catch {}
+    THUMBNAIL_DEMAND_DEFER_TIMER = 0;
   }
-  THUMBNAIL_DEMAND_RAF = requestAnimationFrame(refreshThumbnailDemand);
+  if (THUMBNAIL_BACKGROUND_TIMER) {
+    try { clearTimeout(THUMBNAIL_BACKGROUND_TIMER); } catch {}
+    THUMBNAIL_BACKGROUND_TIMER = 0;
+  }
+  clearQueuedThumbnailWork();
 }
 
 function collectThumbnailServiceRepairRecords(limit = THUMBNAIL_SERVICE_REPAIR_BATCH_LIMIT) {
@@ -36078,21 +38262,8 @@ function thumbnailServiceHeartbeatTick() {
 
 function ensureThumbnailServiceHeartbeat() {
   if (THUMBNAIL_SERVICE_HEARTBEAT_TIMER) {
-    try {
-      clearInterval(THUMBNAIL_SERVICE_HEARTBEAT_TIMER);
-    } catch {}
+    try { clearInterval(THUMBNAIL_SERVICE_HEARTBEAT_TIMER); } catch {}
     THUMBNAIL_SERVICE_HEARTBEAT_TIMER = 0;
-  }
-  return;
-  if (THUMBNAIL_SERVICE_HEARTBEAT_TIMER) return;
-  THUMBNAIL_SERVICE_HEARTBEAT_TIMER = setInterval(
-    thumbnailServiceHeartbeatTick,
-    THUMBNAIL_SERVICE_HEARTBEAT_MS,
-  );
-  if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) thumbnailServiceHeartbeatTick();
-    });
   }
 }
 
@@ -37508,6 +39679,7 @@ async function moveFolderPathsToTrash(paths) {
           META_DOC_IDS.scores,
           META_DOC_IDS.scoreHistory,
           META_DOC_IDS.tags,
+          META_DOC_IDS.thumbnails,
           META_DOC_IDS.appearanceAssignments,
           META_DOC_IDS.trash,
         ]);
@@ -37599,6 +39771,7 @@ async function putBackTrashFolderPaths(paths) {
           META_DOC_IDS.scores,
           META_DOC_IDS.scoreHistory,
           META_DOC_IDS.tags,
+          META_DOC_IDS.thumbnails,
           META_DOC_IDS.appearanceAssignments,
           META_DOC_IDS.trash,
         ]);
@@ -38047,6 +40220,7 @@ async function looseSetMergeSelectedFiles() {
   metaTrackDirtyDocIds([
     META_DOC_IDS.scores,
     META_DOC_IDS.tags,
+    META_DOC_IDS.thumbnails,
     META_DOC_IDS.appearanceAssignments,
   ]);
   try {
@@ -38259,29 +40433,37 @@ async function runFileActionFromMenu(action, fileId, rowEl = null) {
     return true;
   }
 
+  if (action === "edit-thumbnail") {
+    openThumbnailCropEditor(rec);
+    return true;
+  }
+
   const setFolderThumbPath = parseFolderThumbnailAction(action);
   if (setFolderThumbPath !== null) {
+    setFolderThumbnailTargetFromRecord(rec, setFolderThumbPath);
     return true;
   }
 
   if (action === "set-parent-thumbnail") {
+    setParentThumbnailFromRecord(rec);
     return true;
   }
 
   if (action === "set-folder-thumbnail") {
+    setFolderThumbnailFromRecord(rec);
     return true;
   }
 
   if (action === "set-root-thumbnail") {
+    setRootThumbnailFromRecord(rec);
     return true;
   }
 
   const setTagThumbKey = parseTagThumbnailAction(action);
   if (setTagThumbKey) {
+    setTagThumbnailFromRecordByKey(rec, setTagThumbKey);
     return true;
   }
-
-  if (action === "edit-thumbnail") return true;
 
   if (action === "rename-file") {
     if (!WS.meta.fsRootHandle) {
@@ -38709,10 +40891,15 @@ function openTagContextMenu(context) {
         };
   const canAppearancePreset =
     !!tagKey && !context.special && (!!tag || isAlbumEntry);
+  const canMediaFilter =
+    !!tagKey && !context.special && (!!tag || isAlbumEntry);
   const isHidden = canHide && metaHasHiddenTagByKey(tagKey);
   const assignedAppearancePresetId = canAppearancePreset
     ? metaGetTagAppearancePresetIdByKey(tagKey)
     : "";
+  const assignedMediaFilterValue = canMediaFilter
+    ? metaGetTagMediaFilterByKey(tagKey)
+    : [];
   const canSetRandomThumbnail = !!randomThumbnailCandidateForTagEntry(
     tagEntryForThumb,
   );
@@ -38773,6 +40960,38 @@ function openTagContextMenu(context) {
       }),
     );
   }
+  if (canMediaFilter) {
+    menu.appendChild(
+      createTagMenuButton("Set content filter", () => {
+        const reopenFilterMenu = (shouldReposition = false) => {
+          buildTagMediaFilterChoiceMenu(menu, {
+            title: `${isAlbumEntry ? "Tag album" : "Tag"} content filter`,
+            currentValue: metaGetTagMediaFilterByKey(tagKey),
+            onBack: () => {
+              openTagContextMenu(context);
+            },
+            onChoose: (nextValue) => {
+              const changed = metaSetTagMediaFilterByKey(tagKey, nextValue);
+              if (changed) {
+                metaScheduleSave();
+                refreshAfterTagMetadataChange();
+                showStatusMessage(
+                  `${isAlbumEntry ? "Tag album" : "Tag"} content filter: ${describeTagMediaFilterValue(nextValue)}.`,
+                );
+              }
+              reopenFilterMenu(false);
+            },
+            onRendered: shouldReposition
+              ? () => {
+                  positionDropdownMenu(anchor, menu);
+                }
+              : null,
+          });
+        };
+        reopenFilterMenu(true);
+      }),
+    );
+  }
   if (assignedAppearancePresetId) {
     menu.appendChild(
       createTagMenuButton("Clear media preset override", () =>
@@ -38780,24 +40999,14 @@ function openTagContextMenu(context) {
       ),
     );
   }
-  const tagThumbnailButtons = [];
-  if (thumbMode !== "none")
-    tagThumbnailButtons.push(
-      createTagMenuButton("No thumbnail", () =>
-        handleTagMenuAction("thumbnail-none"),
+  if (!isTagMediaFilterValueEmpty(assignedMediaFilterValue)) {
+    menu.appendChild(
+      createTagMenuButton("Clear content filter", () =>
+        handleTagMenuAction("media-filter-clear"),
       ),
     );
-  if (canSetRandomThumbnail)
-    tagThumbnailButtons.push(
-      createTagMenuButton("Random thumbnail", () =>
-        handleTagMenuAction("thumbnail-random"),
-      ),
-    );
-  const tagThumbnailSubmenu = createDropdownMenuSubmenu(
-    "Thumbnail",
-    tagThumbnailButtons,
-  );
-  if (tagThumbnailSubmenu) menu.appendChild(tagThumbnailSubmenu);
+  }
+  // Thumbnail customization menu removed in this build.
   TAG_CONTEXT_MENU_STATE = {
     tag,
     album,
@@ -38816,6 +41025,7 @@ function openTagContextMenu(context) {
     canRemoveFromAlbum,
     isHidden,
     canAppearancePreset,
+    canMediaFilter,
   };
   requestAnimationFrame(() => {
     menu.classList.add("open");
@@ -39048,6 +41258,16 @@ function buildFolderMenuState(dirNode) {
   const canResetOrder = !!dirNode?.preserveOrder && !isStorageGhost;
   const currentTagRemovalContext =
     !isStorageGhost && !isRootNode ? currentFolderMenuTagRemovalContext() : null;
+  const folderThumbMode = isRootNode
+    ? getRootThumbnailMode()
+    : metaGetFolderThumbnailMode(p);
+  const canToggleFolderThumbMode =
+    !isStorageGhost && !!dirNode && (isRootNode || !!p);
+  const hasPreset = isRootNode
+    ? rootThumbnailHasPreset()
+    : metaHasFolderThumbnailPreset(p);
+  const hasRandomCandidate =
+    !isStorageGhost && !!randomThumbnailCandidateForDirNode(dirNode);
   return {
     path: p,
     isRootNode,
@@ -39143,24 +41363,9 @@ function buildFolderActionMenuDom(
     );
     return;
   }
-  if (state.showUseDefaultThumbnail)
-    folderThumbnailButtons.push(
-      makeBtn("Use default thumbnail", "thumbnail-default"),
-    );
-  if (state.showSetNoThumbnail)
-    folderThumbnailButtons.push(makeBtn("No thumbnail", "thumbnail-none"));
-  if (state.showSetRandomThumbnail)
-    folderThumbnailButtons.push(
-      makeBtn("Random thumbnail", "thumbnail-random"),
-    );
   if (state.isRootNode) {
     menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
     menuEl.appendChild(makeBtn("Generate GIF", "generate-gif"));
-    const rootThumbnailSubmenu = createDropdownMenuSubmenu(
-      "Thumbnail",
-      folderThumbnailButtons,
-    );
-    if (rootThumbnailSubmenu) menuEl.appendChild(rootThumbnailSubmenu);
     return;
   }
   if (scoreInterfaceEnabled()) {
@@ -39192,11 +41397,6 @@ function buildFolderActionMenuDom(
   if (state.canResetOrder)
     menuEl.appendChild(makeBtn("Reset order", "reset-order"));
   menuEl.appendChild(makeBtn("Generate GIF", "generate-gif"));
-  const thumbnailSubmenu = createDropdownMenuSubmenu(
-    "Thumbnail",
-    folderThumbnailButtons,
-  );
-  if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
   menuEl.appendChild(
     makeBtn(
       "Move to trash",
@@ -40500,15 +42700,53 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     return true;
   }
   if (action === "thumbnail-rotate" || action === "thumbnail-quad") {
+    showStatusMessage("Rotating thumbnails are no longer available.");
     return true;
   }
   if (action === "thumbnail-random") {
+    const changed = setRandomFolderThumbnailForNode(node);
+    if (!changed) {
+      showStatusMessage(
+        isRootNode
+          ? "No media files available for a random root thumbnail."
+          : "No media files available for a random folder thumbnail.",
+      );
+      return true;
+    }
+    refreshThumbnailUiAfterMetadataChange();
+    showStatusMessage(
+      isRootNode
+        ? "Root thumbnail set to a random file."
+        : "Folder thumbnail set to a random file.",
+    );
     return true;
   }
   if (action === "thumbnail-default") {
+    const changed = isRootNode
+      ? resetRootThumbnailToDefault()
+      : metaClearFolderThumbnailPreset(p);
+    if (!changed) return true;
+    renderDirectoriesPane(true);
+    renderPreviewPane(false, true);
+    syncButtons();
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+    showStatusMessage(
+      isRootNode
+        ? "Root thumbnail reset to default."
+        : "Folder thumbnail reset to default.",
+    );
     return true;
   }
   if (action === "thumbnail-none") {
+    const changed = isRootNode
+      ? setRootThumbnailMode("none")
+      : metaSetFolderThumbnailNone(p);
+    if (!changed) return true;
+    refreshThumbnailUiAfterMetadataChange();
+    showStatusMessage(
+      isRootNode ? "Root thumbnail removed." : "Folder thumbnail removed.",
+    );
     return true;
   }
   if (action === "score-up") {
@@ -41152,6 +43390,10 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const anyAssignedTagAppearancePreset = tagAppearancePresetKeys.some((key) =>
     metaHasTagAppearancePresetByKey(key),
   );
+  const tagMediaFilterTargets = tagAppearancePresetKeys.slice();
+  const anyAssignedTagMediaFilter = tagMediaFilterTargets.some((key) =>
+    metaHasTagMediaFilterByKey(key),
+  );
   const tagThumbEntryByKey = (() => {
     const out = new Map();
     for (let i = 0; i < selectedEntries.length; i++) {
@@ -41385,6 +43627,77 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         if (!changed) return;
         refreshAfterProcessingMetadataChange();
         showStatusMessage("Tag media preset reset.");
+        finalizeBulkSelectionAction();
+      }),
+    );
+  }
+
+  if (tagMediaFilterTargets.length) {
+    menu.appendChild(
+      makeBtn(
+        "Set content filter",
+        async () => {
+          const currentValue =
+            tagMediaFilterTargets.length === 1
+              ? metaGetTagMediaFilterByKey(tagMediaFilterTargets[0])
+              : [];
+          buildTagMediaFilterChoiceMenu(menu, {
+            title: "Tag content filter",
+            currentValue,
+            onBack: () => {
+              openPreviewBulkTagActionMenu(
+                selectedEntries,
+                anchorSelectionKey,
+                opts,
+              );
+            },
+            onChoose: (nextValue) => {
+              let changed = false;
+              for (let i = 0; i < tagMediaFilterTargets.length; i++) {
+                if (
+                  metaSetTagMediaFilterByKey(
+                    tagMediaFilterTargets[i],
+                    nextValue,
+                  )
+                )
+                  changed = true;
+              }
+              if (!changed) return;
+              metaScheduleSave();
+              refreshAfterTagMetadataChange();
+              showStatusMessage(
+                `Tag content filter: ${describeTagMediaFilterValue(nextValue)}.`,
+              );
+              finalizeBulkSelectionAction();
+            },
+            onRendered: () => {
+              if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
+              else
+                positionDropdownMenuAtPoint(
+                  menu,
+                  Number(opts.x) || 0,
+                  Number(opts.y) || 0,
+                );
+            },
+          });
+        },
+        false,
+      ),
+    );
+  }
+
+  if (anyAssignedTagMediaFilter) {
+    menu.appendChild(
+      makeBtn("Clear content filter", async () => {
+        let changed = false;
+        for (let i = 0; i < tagMediaFilterTargets.length; i++) {
+          if (metaClearTagMediaFilterByKey(tagMediaFilterTargets[i]))
+            changed = true;
+        }
+        if (!changed) return;
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        showStatusMessage("Tag content filter cleared.");
         finalizeBulkSelectionAction();
       }),
     );
@@ -41715,6 +44028,22 @@ function renameTagForPaths(tag, newName, paths, scopePath = null) {
     if (!newKey) continue;
     if (rekeyTagAppearancePresetState(oldKey, newKey)) changed = true;
   }
+  const mediaFilterKeys = getAllTagMediaFilterStateKeys();
+  for (let i = 0; i < mediaFilterKeys.length; i++) {
+    const oldKey = mediaFilterKeys[i];
+    const parsed = parseTagThumbnailStructuredKey(oldKey);
+    if (
+      !parsed ||
+      parsed.kind !== "tag" ||
+      String(parsed.value || "") !== normalizedOld
+    )
+      continue;
+    const newKey = parsed.scoped
+      ? tagThumbnailKeyForTag(normalizedNew, parsed.scopePath)
+      : tagThumbnailKeyForTag(normalizedNew);
+    if (!newKey) continue;
+    if (rekeyTagMediaFilterState(oldKey, newKey)) changed = true;
+  }
   const hiddenKeys = getAllHiddenTagStateKeys();
   for (let i = 0; i < hiddenKeys.length; i++) {
     const oldKey = hiddenKeys[i];
@@ -41794,6 +44123,11 @@ function renameTagAlbumByName(albumName, newName, scopePath = null) {
     tagThumbnailKeyForAlbum,
     rekeyTagAppearancePresetState,
   );
+  rekeyAlbumScopedState(
+    getAllTagMediaFilterStateKeys(),
+    tagThumbnailKeyForAlbum,
+    rekeyTagMediaFilterState,
+  );
   return changed;
 }
 
@@ -41821,6 +44155,17 @@ function deleteTagFromPaths(tag, paths, scopePath = null) {
     changed = true;
   if (
     clearTagAppearancePresetStateByMatch((key) => {
+      const parsed = parseTagThumbnailStructuredKey(key);
+      return (
+        !!parsed &&
+        parsed.kind === "tag" &&
+        String(parsed.value || "") === normalized
+      );
+    })
+  )
+    changed = true;
+  if (
+    clearTagMediaFilterStateByMatch((key) => {
       const parsed = parseTagThumbnailStructuredKey(key);
       return (
         !!parsed &&
@@ -41910,7 +44255,68 @@ function deleteTagAlbumByName(albumName, scopePath = null) {
     })
   )
     changed = true;
+  if (
+    clearTagMediaFilterStateByMatch((key) => {
+      const parsed = parseTagThumbnailStructuredKey(key);
+      if (
+        !parsed ||
+        parsed.kind !== "album" ||
+        String(parsed.value || "") !== album
+      )
+        return false;
+      if (scopePath == null) return true;
+      return parsed.scoped
+        ? parsed.scopePath === normalizedScope
+        : !hasScopedAssignments;
+    })
+  )
+    changed = true;
   return { changed, clearedTags, album };
+}
+
+function buildTagMediaFilterChoiceMenu(menu, opts = {}) {
+  if (!menu) return;
+  const currentValue = normalizeTagMediaFilterValue(opts.currentValue);
+  const onChoose = typeof opts.onChoose === "function" ? opts.onChoose : null;
+  const onBack = typeof opts.onBack === "function" ? opts.onBack : null;
+  const appendFilterSectionLabel = (text) => {
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = String(text || "");
+    menu.appendChild(label);
+  };
+  const appendFilterToggle = (type) => {
+    const enabled = currentValue.includes(type);
+    const marker = enabled ? "[x]" : "[ ]";
+    menu.appendChild(
+      createTagMenuButton(
+        `${marker} Hide ${tagMediaFilterTypeLabel(type)}`,
+        () => {
+          if (!onChoose) return;
+          onChoose(toggleTagMediaFilterType(currentValue, type));
+        },
+      ),
+    );
+  };
+  menu.innerHTML = "";
+  appendFilterSectionLabel("Media types");
+  TAG_MEDIA_FILTER_MEDIA_TYPES.forEach(appendFilterToggle);
+  appendFilterSectionLabel("Aspect ratios");
+  TAG_MEDIA_FILTER_ASPECT_RATIOS.forEach(appendFilterToggle);
+  menu.appendChild(
+    createTagMenuButton("Clear content filter", () => {
+      if (!onChoose) return;
+      onChoose([]);
+    }),
+  );
+  if (onBack) {
+    menu.appendChild(
+      createTagMenuButton("Back", () => {
+        onBack();
+      }),
+    );
+  }
+  if (typeof opts.onRendered === "function") opts.onRendered();
 }
 
 function handleTagMenuAction(action) {
@@ -42034,11 +44440,25 @@ function handleTagMenuAction(action) {
     );
     return;
   }
+  if (action === "media-filter-clear") {
+    if (!ctx.canMediaFilter || !tagKey) return;
+    if (!metaClearTagMediaFilterByKey(tagKey)) return;
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    showStatusMessage(
+      `${isAlbumEntry ? "Tag album" : "Tag"} content filter cleared.`,
+    );
+    return;
+  }
   if (!tagKey) {
     showStatusMessage("No folders contain that tag.");
     return;
   }
   if (action === "thumbnail-none") {
+    const changed = metaSetTagThumbnailModeByKey(tagKey, "none");
+    if (!changed) return;
+    refreshThumbnailUiAfterMetadataChange();
+    showStatusMessage(`Thumbnail for '${label}' removed.`);
     return;
   }
   if (
@@ -42046,10 +44466,29 @@ function handleTagMenuAction(action) {
     action === "thumbnail-single" ||
     action === "thumbnail-quad"
   ) {
+    showStatusMessage("Rotating thumbnails are no longer available.");
     return;
   }
   if (action === "thumbnail-random") {
-    return;
+    const tagEntry =
+      ctx.entry && ctx.entry.kind === "tag"
+        ? ctx.entry
+        : {
+            kind: "tag",
+            tag: String(ctx.tag || ""),
+            album: normalizeTagAlbumName(ctx.album || ""),
+            special: String(ctx.special || ""),
+            label: String(ctx.label || ctx.tag || ctx.album || "Tag"),
+            originPath: String(ctx.originPath || WS.nav?.dirNode?.path || ""),
+            placeholder: false,
+          };
+    const changed = setRandomTagThumbnailForEntry(tagEntry);
+    if (!changed) {
+      showStatusMessage(`No media files available for '${label}'.`);
+      return;
+    }
+    refreshThumbnailUiAfterMetadataChange();
+    showStatusMessage(`Set random thumbnail for '${label}'.`);
   }
 }
 
@@ -42190,6 +44629,20 @@ function renderDirectoriesActionHeader() {
   const anyAssignedTagAppearancePreset =
     !!tagAppearancePresetKeys.length &&
     tagAppearancePresetKeys.some((key) => metaHasTagAppearancePresetByKey(key));
+  const tagMediaFilterTargets = (() => {
+    const out = [];
+    const seen = new Set();
+    for (let i = 0; i < presetAssignableTagEntries.length; i++) {
+      const key = tagThumbnailKeyForEntry(presetAssignableTagEntries[i]);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(key);
+    }
+    return out;
+  })();
+  const anyAssignedTagMediaFilter =
+    !!tagMediaFilterTargets.length &&
+    tagMediaFilterTargets.some((key) => metaHasTagMediaFilterByKey(key));
   const tagThumbEntryByKey = (() => {
     const out = new Map();
     for (let i = 0; i < selectedTagEntries.length; i++) {
@@ -42482,6 +44935,76 @@ function renderDirectoriesActionHeader() {
     );
   }
 
+  if (tagMediaFilterTargets.length) {
+    directoriesActionMenuEl.appendChild(
+      makeActionBtn(
+        "Set content filter",
+        () => {
+          const currentValue =
+            tagMediaFilterTargets.length === 1
+              ? metaGetTagMediaFilterByKey(tagMediaFilterTargets[0])
+              : [];
+          buildTagMediaFilterChoiceMenu(directoriesActionMenuEl, {
+            title: "Tag content filter",
+            currentValue,
+            onBack: () => {
+              renderDirectoriesActionHeader();
+              if (
+                directoriesActionMenuEl.classList.contains("open") &&
+                anchorBtn
+              ) {
+                requestAnimationFrame(() =>
+                  positionDropdownMenu(anchorBtn, directoriesActionMenuEl),
+                );
+              }
+            },
+            onChoose: (nextValue) => {
+              let changed = false;
+              for (let i = 0; i < tagMediaFilterTargets.length; i++) {
+                if (
+                  metaSetTagMediaFilterByKey(
+                    tagMediaFilterTargets[i],
+                    nextValue,
+                  )
+                )
+                  changed = true;
+              }
+              if (!changed) return;
+              metaScheduleSave();
+              refreshAfterTagMetadataChange();
+              showStatusMessage(
+                `Tag content filter: ${describeTagMediaFilterValue(nextValue)}.`,
+              );
+              finalizeBulkSelectionAction();
+            },
+            onRendered: () => {
+              if (anchorBtn)
+                positionDropdownMenu(anchorBtn, directoriesActionMenuEl);
+            },
+          });
+        },
+        false,
+      ),
+    );
+  }
+
+  if (anyAssignedTagMediaFilter) {
+    directoriesActionMenuEl.appendChild(
+      makeActionBtn("Clear content filter", () => {
+        WS.view.bulkActionMenuOpen = false;
+        let changed = false;
+        for (let i = 0; i < tagMediaFilterTargets.length; i++) {
+          if (metaClearTagMediaFilterByKey(tagMediaFilterTargets[i]))
+            changed = true;
+        }
+        if (!changed) return;
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        showStatusMessage("Tag content filter cleared.");
+        finalizeBulkSelectionAction();
+      }),
+    );
+  }
 
   if (canUseGridTagThumbBulkActions) {
     const tagThumbnailButtons = [];
@@ -44488,12 +47011,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           canToggleFolderThumbMode && folderThumbMode !== "none";
         const showSetRandomThumbnail =
           canToggleFolderThumbMode;
-        const folderThumbnailMenuHtml = buildFolderThumbnailSubmenuHtml({
-          showUseDefaultThumbnail,
-          showSetRotateThumbnail,
-          showSetNoThumbnail,
-          showSetRandomThumbnail,
-        });
+        const folderThumbnailMenuHtml = "";
         // Menu (three dot / ⋯) for single-folder actions.
         let menuButtons = "";
         let menuTitle = "Folder menu";
@@ -44501,7 +47019,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           menuButtons = `
                 <button type="button" data-action="appearance-preset-set">Set media preset</button>
                 <button type="button" data-action="generate-gif">Generate GIF</button>
-                ${folderThumbnailMenuHtml}
               `;
         } else if (folderMenuState.isTrashPutBackOnly) {
           menuButtons = `
@@ -44539,7 +47056,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
                 <button type="button" data-action="generate-gif">Generate GIF</button>
-                ${folderThumbnailMenuHtml}
                 <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
               `;
         }
@@ -46295,103 +48811,13 @@ function setPreviewBodyMode(mode) {
 }
 
 function ensureThumbUrl(rec, opts = null) {
-  if (!thumbnailLoadingEnabled()) return null;
-  if (!rec) return null;
-  if (rec.type !== "image") return rec.thumbUrl || null;
-
-  const options = opts && typeof opts === "object" ? opts : null;
-  const allowMediaFallback = !(options && options.allowMediaFallback === false);
-  const mode = currentImageThumbMode();
-  if (!rec.file && WS.catalog && WS.catalog.enabled && WS.meta?.fsRootHandle) {
-    if (!rec.catalogFileLoadPromise) {
-      rec.catalogFileLoadPromise = ensureFileObjectForRecord(rec)
-        .then((file) => {
-          if (file) notifyThumbnailRecordUpdated(rec);
-          return file || null;
-        })
-        .catch(() => null)
-        .finally(() => {
-          rec.catalogFileLoadPromise = null;
-        });
-    }
-    return null;
-  }
-
-  if (mode === "placeholder") {
-    if (rec.thumbUrl) {
-      try {
-        URL.revokeObjectURL(rec.thumbUrl);
-      } catch {}
-      rec.thumbUrl = null;
-    }
+  if (rec && rec.thumbUrl) {
+    try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
+    rec.thumbUrl = null;
     rec.thumbMode = "placeholder";
     trackThumbnailUrlForRecord(rec);
-    return null;
   }
-
-  if (mode === "native") {
-    if (thumbFiltersActive(rec)) {
-      if (rec.thumbUrl && rec.thumbMode === "native") {
-        trackThumbnailUrlForRecord(rec);
-        return rec.thumbUrl;
-      }
-      if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "native") {
-        try {
-          URL.revokeObjectURL(rec.thumbUrl);
-        } catch {}
-        rec.thumbUrl = null;
-      }
-      rec.thumbMode = rec.thumbUrl ? "native" : null;
-      trackThumbnailUrlForRecord(rec);
-      return allowMediaFallback ? ensureMediaUrl(rec) || null : null;
-    }
-    if (rec.thumbUrl) {
-      try {
-        URL.revokeObjectURL(rec.thumbUrl);
-      } catch {}
-      rec.thumbUrl = null;
-    }
-    rec.thumbMode = "native";
-    trackThumbnailUrlForRecord(rec);
-    return allowMediaFallback ? ensureMediaUrl(rec) || null : null;
-  }
-
-  if (mode === "high") {
-    if (rec.thumbUrl && rec.thumbMode === "high") {
-      trackThumbnailUrlForRecord(rec);
-      return rec.thumbUrl;
-    }
-    if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
-      try {
-        URL.revokeObjectURL(rec.thumbUrl);
-      } catch {}
-      rec.thumbUrl = null;
-    }
-    rec.thumbMode = "high";
-    try {
-      rec.thumbUrl = URL.createObjectURL(rec.file);
-      trackThumbnailUrlForRecord(rec);
-      return rec.thumbUrl;
-    } catch {
-      trackThumbnailUrlForRecord(rec);
-      return null;
-    }
-  }
-
-  if (rec.thumbUrl && rec.thumbMode === mode) {
-    trackThumbnailUrlForRecord(rec);
-    return rec.thumbUrl;
-  }
-
-  if (rec.thumbUrl) {
-    try {
-      URL.revokeObjectURL(rec.thumbUrl);
-    } catch {}
-    rec.thumbUrl = null;
-  }
-  rec.thumbMode = null;
-  trackThumbnailUrlForRecord(rec);
-  return allowMediaFallback ? ensureMediaUrl(rec) || null : null;
+  return null;
 }
 
 function ensureNavigationThumbUrl(rec) {
@@ -46411,32 +48837,11 @@ function ensureMediaUrl(rec) {
 }
 
 function getVideoPosterForRecord(rec) {
-  if (videoThumbModeSkipsLoading()) return BLACK_POSTER_URL;
-  if (rec && rec.videoThumbUrl) return rec.videoThumbUrl;
   return BLACK_POSTER_URL;
 }
 
 function getPassivePreviewSrcForRecord(rec, opts = null) {
-  if (!thumbnailLoadingEnabled()) return "";
-  if (!rec) return "";
-  if (rec.type === "video") {
-    if (videoThumbModeSkipsLoading()) return "";
-    return String(rec.videoThumbUrl || "");
-  }
-  const options = opts && typeof opts === "object" ? opts : null;
-  const allowImageMediaFallback = !!(
-    options && options.allowImageMediaFallback
-  );
-  const mode = currentImageThumbMode();
-  if (mode === "placeholder") return "";
-  if (mode === "native") {
-    if (thumbFiltersActive(rec) && rec.thumbUrl && String(rec.thumbMode || "") === "native")
-      return String(rec.thumbUrl || "");
-    return String(ensureThumbUrl(rec, { allowMediaFallback: true }) || "");
-  }
-  if (rec.thumbUrl && String(rec.thumbMode || "") === mode)
-    return String(rec.thumbUrl || "");
-  return allowImageMediaFallback ? String(ensureMediaUrl(rec) || "") : "";
+  return "";
 }
 
 function applyDirectoryInlineAspect(imgEl, aspectValue) {
@@ -47077,6 +49482,7 @@ function getImageAspectForScrollDetect(rec, imgEl) {
     rec?.previewAspect ||
       rec?.thumbAspect ||
       rec?.videoAspect ||
+      rec?.aspectRatio ||
       rec?.aspect,
     4 / 3,
   );
@@ -49273,6 +51679,7 @@ function getPreviewAspectForRecord(rec) {
     rec.previewAspect ||
       rec.thumbAspect ||
       rec.videoAspect ||
+      rec.aspectRatio ||
       rec.aspect,
     4 / 3,
   );
@@ -50617,7 +53024,7 @@ function getPriorityPreviewThumbRecords(limit = 160) {
 }
 
 function kickVideoThumbsForPreview() {
-  scheduleThumbnailDemandRefresh();
+  return false;
 }
 
 async function drainVideoThumbQueue() {
@@ -51231,7 +53638,7 @@ async function generateImageThumb(rec, opts = null) {
 }
 
 function kickImageThumbsForPreview() {
-  scheduleThumbnailDemandRefresh();
+  return false;
 }
 
 /* =========================================================
@@ -52717,6 +55124,43 @@ const ANIMATED_FILTER_CYCLE = [
   { value: "videos", label: "Videos only" },
 ];
 
+function cycleFilterMode() {
+  const m = WS.view.filterMode;
+  WS.view.filterMode =
+    m === "all"
+      ? "images"
+      : m === "images"
+        ? "videos"
+        : m === "videos"
+          ? "gifs"
+          : "all";
+  applyViewModesEverywhere(true);
+  showStatusMessage(`Filter: ${WS.view.filterMode}`, "cycle-filter");
+}
+
+function setAspectRatioFilterMode(value) {
+  const next = normalizeAspectRatioFilterMode(value);
+  WS.view.aspectRatioFilterMode = next;
+  applyViewModesEverywhere(true);
+  showStatusMessage(
+    `Aspect ratio: ${labelForAspectRatioFilterMode(next)}`,
+    "cycle-aspect-ratio-filter",
+  );
+  return true;
+}
+
+function cycleAspectRatioFilterMode() {
+  const current = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  const idx = ASPECT_RATIO_FILTER_CYCLE.findIndex(
+    (item) => String(item.value) === current,
+  );
+  const nextItem =
+    ASPECT_RATIO_FILTER_CYCLE[(idx + 1) % ASPECT_RATIO_FILTER_CYCLE.length];
+  return setAspectRatioFilterMode(nextItem && nextItem.value);
+}
+
 function setOptionValues(nextValues) {
   if (!WS.meta) return null;
   WS.meta.options = normalizeOptions(
@@ -52763,6 +55207,24 @@ function cycleOptionValue(key, list) {
 function labelForCycleValue(list, value) {
   const entry = list.find((item) => item.value === value);
   return entry ? entry.label : String(value || "");
+}
+
+function setFilePaneViewMode(mode) {
+  if (!WS.meta) return false;
+  if (WS.meta.options && WS.meta.options.filePaneViewMode !== "list") {
+    setOptionValue("filePaneViewMode", "list");
+  }
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyInteractionModeFromOptions();
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  showStatusMessage("File pane view: List View", "pane-toggles");
+  return true;
+}
+
+function toggleFilePaneViewMode() {
+  return setFilePaneViewMode("list");
 }
 
 function toggleDirectoriesPaneKeybindAction() {
@@ -53029,6 +55491,8 @@ function handleExtrasKeybindAction(action) {
   switch (action) {
     case "toggleDirectoriesPane":
       return toggleDirectoriesPaneKeybindAction();
+    case "toggleFilePaneView":
+      return setFilePaneViewMode("list");
     case "toggleSettingsAndDirectoriesPanes":
       return toggleSettingsAndDirectoriesPanesKeybindAction();
     case "refreshWorkspace":
@@ -53056,6 +55520,8 @@ function handleExtrasKeybindAction(action) {
     }
     case "cycleAppearancePresets":
       return cycleAppearancePresetKeybindAction();
+    case "cycleAspectRatioFilter":
+      return cycleAspectRatioFilterMode();
     case "cycleFolderSort": {
       WS.meta.dirSortMode = cycleDirSortMode(
         WS.meta.dirSortMode,
@@ -53485,9 +55951,10 @@ function handleFilePaneThumbnailNavigationAction(action) {
     action === "selectRight";
   if (!isThumbNavAction) return false;
 
-  // Right after a root load or pane-open transition, the card layout can lack
-  // measurable DOM geometry. Consume the first keypress and let the next frame
-  // use the real grid if it appears.
+  // Right after a root load or pane-open transition, the list can be in
+  // Thumbnail View logically before the card layout has measurable DOM
+  // geometry. Do not fall back to list or synthetic coordinates for that
+  // first keypress; consume it and let the next frame use the real grid.
   const layoutReady = !!(
     directoriesListEl &&
     directoriesListEl.classList.contains("filePaneThumbnailView") &&
@@ -54570,6 +57037,9 @@ function handlePreviewPaneAction(action, inFilePreview) {
       case "toggleRandomFolderSort":
         toggleRandomFolderSortMode();
         return true;
+      case "cycleFilter":
+        cycleFilterMode();
+        return true;
       case "slideshow":
         handleSlideshowHotkey(false);
         return true;
@@ -54889,6 +57359,7 @@ document.addEventListener("keydown", (e) => {
         case "randomFileJump":
         case "toggleRandomFileSort":
         case "toggleRandomFolderSort":
+        case "cycleFilter":
         case "slideshow":
         case "jumpMinus50":
         case "jumpMinus10":
@@ -54969,6 +57440,10 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         toggleRandomFolderSortMode();
         return;
+      case "cycleFilter":
+        e.preventDefault();
+        cycleFilterMode();
+        return;
       case "slideshow":
         e.preventDefault();
         handleSlideshowHotkey(true);
@@ -55012,6 +57487,9 @@ document.addEventListener("keydown", (e) => {
 
   if (!WS.root) return;
 
+  // Thumbnail View arrow priority:
+  // In Thumbnail View, plain arrow keys can quickly nudge the selected thumbnail crop.
+  // Keep this disabled in List View so arrows keep their normal list navigation behavior.
   if (
     directoriesPaneOpenEnabled() &&
     filePaneThumbnailViewEnabled() &&
@@ -55068,7 +57546,9 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Closed file pane wins before any visible-pane navigation model.
+  // Closed file pane wins before any visible-pane navigation model. The user
+  // cannot see whether the pane was last in List or Thumbnail View, so both
+  // modes collapse to the same previous/next media behavior.
   if (handleClosedFilePaneNavigationAction(action)) {
     e.preventDefault();
     return;
@@ -55166,6 +57646,10 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         toggleRandomFolderSortMode();
         return;
+      case "cycleFilter":
+        e.preventDefault();
+        cycleFilterMode();
+        return;
       case "slideshow":
         e.preventDefault();
         handleSlideshowHotkey(false);
@@ -55262,6 +57746,10 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
       toggleRandomFolderSortMode();
       return;
+    case "cycleFilter":
+      e.preventDefault();
+      cycleFilterMode();
+      return;
     case "jumpMinus50":
       e.preventDefault();
       moveDirectoriesSelection(-50);
@@ -55304,6 +57792,7 @@ renderPreviewPane(true);
 syncButtons();
 ensureThumbnailServiceHeartbeat();
 
+  
 
 
 </script>
