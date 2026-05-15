@@ -22484,6 +22484,14 @@ const TAG_MEDIA_FILTER_MEDIA_TYPES = Object.freeze([
   "videos",
   "gifs",
 ]);
+const TAG_MEDIA_FILTER_ASPECT_RATIOS = Object.freeze([
+  "portrait",
+  "square",
+  "landscape",
+]);
+const TAG_MEDIA_FILTER_TYPES = Object.freeze(
+  TAG_MEDIA_FILTER_MEDIA_TYPES.concat(TAG_MEDIA_FILTER_ASPECT_RATIOS),
+);
 
 function normalizeTagMediaFilterValue(value) {
   const enabled = new Set();
@@ -22491,20 +22499,20 @@ function normalizeTagMediaFilterValue(value) {
     const normalized = String(type || "")
       .trim()
       .toLowerCase();
-    if (!TAG_MEDIA_FILTER_MEDIA_TYPES.includes(normalized)) return;
+    if (!TAG_MEDIA_FILTER_TYPES.includes(normalized)) return;
     enabled.add(normalized);
   };
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) addType(value[i]);
   } else if (value && typeof value === "object") {
-    for (let i = 0; i < TAG_MEDIA_FILTER_MEDIA_TYPES.length; i++) {
-      const type = TAG_MEDIA_FILTER_MEDIA_TYPES[i];
+    for (let i = 0; i < TAG_MEDIA_FILTER_TYPES.length; i++) {
+      const type = TAG_MEDIA_FILTER_TYPES[i];
       if (value[type]) enabled.add(type);
     }
   } else if (typeof value === "string") {
     addType(value);
   }
-  return TAG_MEDIA_FILTER_MEDIA_TYPES.filter((type) => enabled.has(type));
+  return TAG_MEDIA_FILTER_TYPES.filter((type) => enabled.has(type));
 }
 
 function tagMediaFilterValuesEqual(a, b) {
@@ -22525,12 +22533,12 @@ function toggleTagMediaFilterType(value, type) {
   const normalizedType = String(type || "")
     .trim()
     .toLowerCase();
-  if (!TAG_MEDIA_FILTER_MEDIA_TYPES.includes(normalizedType))
+  if (!TAG_MEDIA_FILTER_TYPES.includes(normalizedType))
     return normalizeTagMediaFilterValue(value);
   const current = new Set(normalizeTagMediaFilterValue(value));
   if (current.has(normalizedType)) current.delete(normalizedType);
   else current.add(normalizedType);
-  return TAG_MEDIA_FILTER_MEDIA_TYPES.filter((candidate) =>
+  return TAG_MEDIA_FILTER_TYPES.filter((candidate) =>
     current.has(candidate),
   );
 }
@@ -22539,13 +22547,18 @@ function tagMediaFilterTypeLabel(type) {
   if (type === "images") return "images";
   if (type === "videos") return "videos";
   if (type === "gifs") return "GIFs";
+  if (type === "portrait") return "portrait";
+  if (type === "square") return "square";
+  if (type === "landscape") return "landscape";
   return String(type || "");
 }
 
 function describeTagMediaFilterValue(value, emptyLabel = "All media visible") {
   const normalized = normalizeTagMediaFilterValue(value);
   if (!normalized.length) return emptyLabel;
-  return `Hide ${normalized.map((type) => tagMediaFilterTypeLabel(type)).join(", ")}`;
+  return `Hide ${normalized
+    .map((type) => tagMediaFilterTypeLabel(type))
+    .join(", ")}`;
 }
 
 function getAllTagMediaFilterStateKeys() {
@@ -27848,8 +27861,12 @@ function recordPassesTagMediaFilter(rec, filterValue) {
   const hiddenTypes = normalizeTagMediaFilterValue(filterValue);
   if (!hiddenTypes.length) return true;
   const recordType = recordMediaFilterType(rec);
-  if (!recordType) return true;
-  return !hiddenTypes.includes(recordType);
+  if (recordType && hiddenTypes.includes(recordType)) return false;
+  const recordAspect =
+    rec.aspectRatioBucket ||
+    aspectRatioBucketForValue(getKnownRecordAspectRatio(rec));
+  if (recordAspect && hiddenTypes.includes(recordAspect)) return false;
+  return true;
 }
 
 function effectiveFilterCacheKey() {
@@ -41784,8 +41801,13 @@ function buildTagMediaFilterChoiceMenu(menu, opts = {}) {
   const currentValue = normalizeTagMediaFilterValue(opts.currentValue);
   const onChoose = typeof opts.onChoose === "function" ? opts.onChoose : null;
   const onBack = typeof opts.onBack === "function" ? opts.onBack : null;
-  menu.innerHTML = "";
-  TAG_MEDIA_FILTER_MEDIA_TYPES.forEach((type) => {
+  const appendFilterSectionLabel = (text) => {
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = String(text || "");
+    menu.appendChild(label);
+  };
+  const appendFilterToggle = (type) => {
     const enabled = currentValue.includes(type);
     const marker = enabled ? "[x]" : "[ ]";
     menu.appendChild(
@@ -41797,7 +41819,12 @@ function buildTagMediaFilterChoiceMenu(menu, opts = {}) {
         },
       ),
     );
-  });
+  };
+  menu.innerHTML = "";
+  appendFilterSectionLabel("Media types");
+  TAG_MEDIA_FILTER_MEDIA_TYPES.forEach(appendFilterToggle);
+  appendFilterSectionLabel("Aspect ratios");
+  TAG_MEDIA_FILTER_ASPECT_RATIOS.forEach(appendFilterToggle);
   menu.appendChild(
     createTagMenuButton("Clear content filter", () => {
       if (!onChoose) return;
