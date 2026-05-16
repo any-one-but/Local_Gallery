@@ -13997,6 +13997,18 @@ function thumbnailLoadingEnabled(opt = null) {
   return false;
 }
 
+function aspectRatioMetadataEnabled() {
+  return false;
+}
+
+function metadataDocEnabled(docId) {
+  const id = String(docId || "");
+  if (id === META_DOC_IDS.thumbnails) return thumbnailLoadingEnabled();
+  if (id === META_DOC_IDS.prefThumbnails) return thumbnailLoadingEnabled();
+  if (id === META_DOC_IDS.aspectRatios) return aspectRatioMetadataEnabled();
+  return true;
+}
+
 function normalizeFilePaneViewMode(value, fallback = "list") {
   const mode = String(value || "")
     .trim()
@@ -15107,18 +15119,6 @@ const KEYBIND_ACTIONS = [
     section: "navigation",
   },
   {
-    id: "selectLeft",
-    label: "Left selection",
-    hint: "Move selection left.",
-    section: "navigation",
-  },
-  {
-    id: "selectRight",
-    label: "Right selection",
-    hint: "Move selection right.",
-    section: "navigation",
-  },
-  {
     id: "enterDir",
     label: "Open selection",
     hint: "Open the selected item.",
@@ -15126,8 +15126,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "leaveDir",
-    label: "Exit selection",
-    hint: "Exit the current item or folder.",
+    label: "Up directory",
+    hint: "Go to the parent folder or close the current item.",
     section: "navigation",
   },
   {
@@ -15380,18 +15380,6 @@ const GRID_KEYBIND_ACTIONS = [
     section: "gridnav",
   },
   {
-    id: "gridMoveLeft",
-    label: "Move selection left",
-    hint: "Move grid selection left.",
-    section: "gridnav",
-  },
-  {
-    id: "gridMoveRight",
-    label: "Move selection right",
-    hint: "Move grid selection right.",
-    section: "gridnav",
-  },
-  {
     id: "gridOpenSelection",
     label: "Open selection",
     hint: "Open selected item in grid mode.",
@@ -15520,10 +15508,8 @@ function isKeyReservedForLockedAction(key, excludeActionId = "") {
 const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   selectUp: "w",
   selectDown: "s",
-  selectLeft: "a",
-  selectRight: "d",
-  leaveDir: "q",
-  enterDir: "e",
+  leaveDir: "a",
+  enterDir: "d",
   prevFolder: "Cmd+w",
   nextFolder: "Cmd+s",
   toggleDirectoriesPane: "Tab",
@@ -15571,10 +15557,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
 const GRID_KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   gridMoveUp: "",
   gridMoveDown: "",
-  gridMoveLeft: "",
-  gridMoveRight: "",
-  gridOpenSelection: "",
-  gridUpDirectory: "",
+  gridOpenSelection: "d",
+  gridUpDirectory: "a",
 });
 
 function applyFixedKeybinds(bindings) {
@@ -15670,8 +15654,8 @@ function normalizeKeybinds(log, presets = null) {
     }
   }
   // v8: Do not migrate saved Quick navigation bindings onto File Pane View.
-  migrateIfKeyMatches("leaveDir", "a", "q");
-  migrateIfKeyMatches("enterDir", "d", "e");
+  migrateIfKeyMatches("leaveDir", "q", "a");
+  migrateIfKeyMatches("enterDir", "e", "d");
   migrateIfKeyMatches("randomFirstFileJump", "x", "r");
   migrateIfKeyMatches("cycleFilter", "Command+f", "f");
   migrateIfKeyMatches("cycleFilter", "Command+x", "f");
@@ -15738,10 +15722,6 @@ function normalizeGridKeybinds(log) {
   const legacyGridDefaults = {
     gridMoveUp: "w",
     gridMoveDown: "s",
-    gridMoveLeft: "a",
-    gridMoveRight: "d",
-    gridOpenSelection: "e",
-    gridUpDirectory: "q",
   };
   Object.entries(legacyGridDefaults).forEach(([id, legacyKey]) => {
     const binding = byId.get(id);
@@ -15750,6 +15730,15 @@ function normalizeGridKeybinds(log) {
       binding.key = "";
     }
   });
+  const migrateIfKeyMatches = (id, legacyKey, nextKey) => {
+    const binding = byId.get(id);
+    if (!binding) return;
+    if (normalizeKeyValue(binding.key || "") !== normalizeKeyValue(legacyKey))
+      return;
+    binding.key = normalizeKeyValue(nextKey || "");
+  };
+  migrateIfKeyMatches("gridOpenSelection", "e", "d");
+  migrateIfKeyMatches("gridUpDirectory", "q", "a");
   enforceUniqueKeybinds(bindings);
   return { bindings };
 }
@@ -15807,6 +15796,7 @@ const WS = {
     fileLightIndexByRelPath: new Map(),
     folderShardCache: new Map(),
   },
+  fsStoredPaths: new Set(),
 
   meta: {
     dirScores: new Map(),
@@ -16061,6 +16051,7 @@ function resetWorkspace() {
   WS.catalog.fileLightIndexById.clear();
   WS.catalog.fileLightIndexByRelPath.clear();
   WS.catalog.folderShardCache.clear();
+  WS.fsStoredPaths.clear();
   DIR_HANDLE_CACHE = new Map();
 
   WS.meta.dirScores.clear();
@@ -24319,7 +24310,7 @@ function metaMakeTrashDocObject() {
 }
 
 function metaDocObjectForId(docId) {
-  if (docId === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) return null;
+  if (!metadataDocEnabled(docId)) return null;
   switch (docId) {
     case META_DOC_IDS.scores:
       return metaMakeScoresDocObject();
@@ -24715,6 +24706,7 @@ function metaApplyAppearanceAssignmentsDocLog(log) {
 }
 
 function metaApplyDocLogById(docId, log) {
+  if (!metadataDocEnabled(docId)) return;
   switch (docId) {
     case META_DOC_IDS.scores:
       metaApplyScoresDocLog(log);
@@ -24732,7 +24724,7 @@ function metaApplyDocLogById(docId, log) {
       metaApplyTrashDocLog(log);
       return;
     case META_DOC_IDS.thumbnails:
-      if (thumbnailLoadingEnabled()) metaApplyThumbnailsDocLog(log);
+      metaApplyThumbnailsDocLog(log);
       return;
     case META_DOC_IDS.aspectRatios:
       metaApplyAspectRatiosDocLog(log);
@@ -24832,7 +24824,7 @@ function metaNormalizeDocIdsToSave(docIds = null) {
   const push = (docId) => {
     const id = String(docId || "");
     if (!id || seen.has(id) || !META_ALL_DOC_IDS.includes(id)) return;
-    if (id === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) return;
+    if (!metadataDocEnabled(id)) return;
     seen.add(id);
     unique.push(id);
   };
@@ -24857,7 +24849,7 @@ function metaTrackDirtyDocIds(docIds = null) {
   for (let i = 0; i < targetIds.length; i++) {
     const docId = String(targetIds[i] || "");
     if (!META_ALL_DOC_IDS.includes(docId)) continue;
-    if (docId === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) continue;
+    if (!metadataDocEnabled(docId)) continue;
     WS.meta.dirtyDocIds.add(docId);
   }
   WS.meta.dirty = !!WS.meta.dirtyDocIds.size;
@@ -25150,7 +25142,7 @@ function metaInitForCurrentWorkspace() {
       const splitDocs = [];
       for (let i = 0; i < loadOrder.length; i++) {
         const docId = loadOrder[i];
-        if (docId === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) continue;
+        if (!metadataDocEnabled(docId)) continue;
         const log = metaLoadLocalDoc(keys.docs && keys.docs[docId]);
         if (!log) continue;
         splitDocs.push([docId, log]);
@@ -25252,7 +25244,7 @@ async function metaInitForCurrentWorkspaceFs() {
   const splitDocs = [];
   for (let i = 0; i < loadOrder.length; i++) {
     const docId = loadOrder[i];
-    if (docId === META_DOC_IDS.thumbnails && !thumbnailLoadingEnabled()) continue;
+    if (!metadataDocEnabled(docId)) continue;
     const log = await metaLoadFsDoc(metaFsHandleForDocId(docId));
     if (!log) continue;
     splitDocs.push([docId, log]);
@@ -25585,6 +25577,23 @@ async function ensureCatalogHandles(rootHandle) {
   return { catalog, folders, indexFile };
 }
 
+async function readExistingCatalogForRootHandle(rootHandle) {
+  if (!rootHandle) return null;
+  try {
+    const sys = await rootHandle.getDirectoryHandle(".local-gallery");
+    const catalog = await sys.getDirectoryHandle(CATALOG_DIR_NAME);
+    const folders = await catalog.getDirectoryHandle(CATALOG_FOLDERS_DIR_NAME);
+    const indexFile = await catalog.getFileHandle(CATALOG_INDEX_FILE_NAME);
+    const index = await readJsonFileHandle(indexFile);
+    if (!index || index.schema !== CATALOG_SCHEMA_VERSION || !index.complete)
+      return null;
+    if (!index.folders || typeof index.folders !== "object") return null;
+    return { index, handles: { catalog, folders, indexFile } };
+  } catch {
+    return null;
+  }
+}
+
 function showBlockingLoaderOverlay(label, detail = "") {
   BUSY_OVERLAY_PENDING_HIDE = false;
   if (busyLabel) busyLabel.textContent = label || "Working...";
@@ -25750,6 +25759,7 @@ function catalogAspectEntriesFromLog(log) {
 }
 
 async function readCatalogAspectEntriesByPath(rootHandle) {
+  if (!aspectRatioMetadataEnabled()) return new Map();
   let log = await metaLoadFsDoc(metaFsHandleForDocId(META_DOC_IDS.aspectRatios));
   if (!log && rootHandle) {
     try {
@@ -25990,6 +26000,108 @@ function ensureDirectoryChildNodesFromCatalog(dirNode) {
   return dirNode.childrenDirs;
 }
 
+function ensureFsDirNode(path, name, parent, handle = null) {
+  const normalized = normalizeDirPathValue(path);
+  let node = WS.dirByPath.get(normalized) || null;
+  if (!node) {
+    node = makeDirNode(name || normalized.split("/").pop() || "Folder", parent || null);
+    node.path = normalized;
+    WS.dirByPath.set(normalized, node);
+  }
+  node.name = name || node.name || normalized.split("/").pop() || "Folder";
+  node.parent = parent || null;
+  node.fsHandle = handle || node.fsHandle || null;
+  if (node.loadState !== "loaded") node.loadState = "summary";
+  if (parent && Array.isArray(parent.childrenDirs) && !parent.childrenDirs.includes(node))
+    parent.childrenDirs.push(node);
+  return node;
+}
+
+async function loadDirectoryFromFsHandle(dirNode, opts = null) {
+  if (!dirNode || !dirNode.fsHandle) return false;
+  if (dirNode.loadState === "loaded") return true;
+  if (dirNode.loadState === "loading" && dirNode.loadPromise) {
+    await dirNode.loadPromise;
+    return dirNode.loadState === "loaded";
+  }
+  const showOverlay = !(opts && opts.showOverlay === false);
+  const label = opts && opts.label ? String(opts.label) : "Loading folder...";
+  dirNode.loadState = "loading";
+  dirNode.loadPromise = (async () => {
+    if (showOverlay) showBlockingLoaderOverlay(label, displayPath(dirNode.path || ""));
+    const storedPaths = WS.fsStoredPaths instanceof Set ? WS.fsStoredPaths : null;
+    const childDirEntries = [];
+    const fileEntries = [];
+    try {
+      for await (const [name, handle] of dirNode.fsHandle.entries()) {
+        if (name === ".local-gallery") continue;
+        const relPath = dirNode.path ? `${dirNode.path}/${name}` : name;
+        if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
+        if (handle.kind === "directory") {
+          childDirEntries.push({ name, handle, path: normalizeDirPathValue(relPath) });
+          continue;
+        }
+        if (handle.kind !== "file") continue;
+        if (String(name || "")[0] === ".") continue;
+        if (!isImageName(name) && !isVideoName(name)) continue;
+        fileEntries.push({ name, handle, path: normalizeWorkspaceRelPath(relPath) });
+      }
+
+      childDirEntries.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      fileEntries.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+      dirNode.childrenDirs = [];
+      for (let i = 0; i < childDirEntries.length; i++) {
+        const child = childDirEntries[i];
+        ensureFsDirNode(child.path, child.name, dirNode, child.handle);
+      }
+
+      const ids = [];
+      for (let i = 0; i < fileEntries.length; i++) {
+        const entry = fileEntries[i];
+        try {
+          const file = await entry.handle.getFile();
+          const desc = fileDescriptorFromFile(file, entry.path);
+          const rec = ensureFileRecordFromDescriptor(desc, file);
+          if (!rec) continue;
+          rec.catalogBacked = false;
+          if (!ids.includes(rec.id)) ids.push(rec.id);
+        } catch {}
+      }
+      dirNode.childrenFiles = ids;
+      dirNode.directFileCount = ids.length;
+      dirNode.directFolderCount = dirNode.childrenDirs.length;
+      dirNode.recursiveFileCount = ids.length;
+      dirNode.recursiveFolderCount = dirNode.childrenDirs.length;
+      dirNode.recursiveItemCount = ids.length + dirNode.childrenDirs.length;
+      dirNode.recursiveSizeBytes = ids.reduce((sum, id) => {
+        const rec = WS.fileById.get(String(id || ""));
+        return sum + Math.max(0, Number(rec?.size) || 0);
+      }, 0);
+      dirNode.loadState = "loaded";
+      invalidateDirectoryDerivedIndex();
+      invalidateDirMetricsCaches();
+      return true;
+    } finally {
+      dirNode.loadPromise = null;
+      if (showOverlay) hideBlockingLoaderOverlay();
+    }
+  })();
+  await dirNode.loadPromise;
+  return dirNode.loadState === "loaded";
+}
+
+async function initializeWorkspaceTreeFromShallowHandle(rootHandle, storedPaths = null) {
+  WS.root = makeDirNode(String(rootHandle?.name || "root"), null);
+  WS.root.path = "";
+  WS.root.fsHandle = rootHandle || null;
+  WS.root.loadState = "summary";
+  WS.dirByPath.clear();
+  WS.dirByPath.set("", WS.root);
+  WS.fsStoredPaths = storedPaths instanceof Set ? new Set(storedPaths) : new Set();
+  await loadDirectoryFromFsHandle(WS.root, { showOverlay: false });
+}
+
 function installCatalogIndex(index, rootHandle, folderShardDirHandle) {
   WS.catalog.enabled = true;
   WS.catalog.index = index || null;
@@ -26119,7 +26231,11 @@ async function ensureFileObjectForRecord(rec) {
 }
 
 async function ensureDirectoryLoaded(dirNode, opts = null) {
-  if (!dirNode || !WS.catalog || !WS.catalog.enabled) return true;
+  if (!dirNode) return true;
+  if (!WS.catalog || !WS.catalog.enabled) {
+    if (dirNode.fsHandle) return loadDirectoryFromFsHandle(dirNode, opts);
+    return true;
+  }
   if (dirNode.loadState === "loaded") return true;
   if (dirNode.loadState === "loading" && dirNode.loadPromise) {
     await dirNode.loadPromise;
@@ -26284,6 +26400,10 @@ async function ensureDirectoryHydratedForOpen(node, opts = null) {
         });
       return loaded;
     }
+    if (node.fsHandle) {
+      const loaded = await ensureDirectoryLoaded(node, opts);
+      return loaded;
+    }
     await ensureRootChildWorkspaceThumbnailsLoaded(node, {
       label: "Loading folder thumbnails...",
       showOverlay,
@@ -26305,78 +26425,12 @@ function initializeWorkspaceTreeFromCatalog(rootHandleName = "root") {
   ensureDirectoryChildNodesFromCatalog(WS.root);
 }
 
-async function materializeCatalogMetadataThumbnailRecords(opts = null) {
-  if (!WS.catalog || !WS.catalog.enabled) return;
-  const options = opts && typeof opts === "object" ? opts : {};
-  const showOverlay = !!options.showOverlay;
-  const label = options.label ? String(options.label) : "Preparing media index...";
-  const progressState = { lastUpdate: 0 };
-  const relPaths = new Set();
-  const collect = (mapLike) => {
-    if (!mapLike || typeof mapLike.values !== "function") return;
-    for (const raw of mapLike.values()) {
-      const relPath = normalizeWorkspaceRelPath(raw);
-      if (relPath) relPaths.add(relPath);
-    }
-  };
-  collect(WS.meta.dirThumbPresets);
-  collect(WS.meta.pendingDirThumbPresets);
-  collect(WS.meta.tagThumbPresets);
-
-  const summaries = Array.from(WS.catalog.folderSummaries.values()).filter(Boolean);
-  const total = summaries.length + relPaths.size;
-  let completed = 0;
-  const updateProgress = (path = "", force = false) => {
-    if (!showOverlay) return;
-    updateBusyProgress(
-      label,
-      `Prepared ${completed}/${total} media index entries`,
-      path,
-      force,
-      progressState,
-    );
-  };
-
-  if (showOverlay)
-    showBlockingLoaderOverlay(
-      label,
-      formatBusyProgressDetail(`Prepared 0/${total} media index entries`, ""),
-    );
-
-  try {
-    for (let i = 0; i < summaries.length; i++) {
-      const summary = summaries[i];
-      if (summary?.leadFile) ensureFileRecordFromDescriptor(summary.leadFile);
-      if (summary?.directLeadFile) ensureFileRecordFromDescriptor(summary.directLeadFile);
-      completed++;
-      updateProgress(summary?.path || "");
-    }
-    for (const relPath of relPaths) {
-      const desc = await getFileDescriptorByRelPathAsync(relPath);
-      if (desc) ensureFileRecordFromDescriptor(desc);
-      completed++;
-      updateProgress(relPath);
-    }
-    updateProgress("", true);
-  } finally {
-    if (showOverlay) hideBlockingLoaderOverlay();
-  }
-}
-
 async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
   const handles = await ensureCatalogHandles(rootHandle);
   const folders = {};
   const fileLocationsById = {};
   const fileLightIndexById = {};
-  showBlockingLoaderOverlay(
-    "Loading media metadata...",
-    "Reading cached aspect-ratio data...",
-  );
-  await waitForBusyOverlayPaint();
-  let aspectEntriesByPath = new Map();
-  try {
-    aspectEntriesByPath = await readCatalogAspectEntriesByPath(rootHandle);
-  } catch {}
+  const aspectEntriesByPath = new Map();
   const stats = { dirs: 0, files: 0, bytes: 0, entries: 0, allFiles: 0 };
   let lastOverlayUpdate = 0;
   const progressText = () => {
@@ -26600,61 +26654,47 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
       rootHandle,
     );
     const ok = await metaEnsureFsHandles(rootHandle);
-    const catalogResult = await buildCatalogForRootHandle(rootHandle, storedPaths);
-
-    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Installing root media index...");
+    updateBlockingLoaderOverlay("Preparing workspace...", "Checking cached media index...");
     await waitForBusyOverlayPaint();
-    installCatalogIndex(
-      catalogResult.index,
-      rootHandle,
-      catalogResult.handles && catalogResult.handles.folders,
-    );
+    const catalogResult = await readExistingCatalogForRootHandle(rootHandle);
+    if (catalogResult) {
+      updateBlockingLoaderOverlay("Preparing workspace catalog...", "Installing cached media index...");
+      await waitForBusyOverlayPaint();
+      installCatalogIndex(
+        catalogResult.index,
+        rootHandle,
+        catalogResult.handles && catalogResult.handles.folders,
+      );
 
-    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Building root folder tree...");
-    await waitForBusyOverlayPaint();
-    initializeWorkspaceTreeFromCatalog(String(rootHandle?.name || "root"));
-    await ensureDirectoryLoaded(WS.root, { showOverlay: false });
-    if (trashDirAvailable && getCatalogFolderSummary(INTERNAL_TRASH_DIR_NAME))
-      ensureCatalogDirNode(INTERNAL_TRASH_DIR_NAME);
+      updateBlockingLoaderOverlay("Preparing workspace catalog...", "Building root folder tree...");
+      await waitForBusyOverlayPaint();
+      initializeWorkspaceTreeFromCatalog(String(rootHandle?.name || "root"));
+      await ensureDirectoryLoaded(WS.root, { showOverlay: false });
+      if (trashDirAvailable && getCatalogFolderSummary(INTERNAL_TRASH_DIR_NAME))
+        ensureCatalogDirNode(INTERNAL_TRASH_DIR_NAME);
+    } else {
+      updateBlockingLoaderOverlay("Preparing workspace...", "Reading root folder...");
+      await waitForBusyOverlayPaint();
+      await initializeWorkspaceTreeFromShallowHandle(rootHandle, storedPaths);
+    }
 
     updateBlockingLoaderOverlay("Preparing workspace catalog...", "Applying media-type filters...");
     await waitForBusyOverlayPaint();
     applyMediaFilterFromOptions();
 
-    showBlockingLoaderOverlay(
-      "Loading gallery metadata...",
-      "Reading saved tags, scores, thumbnails, and aspect-ratio cache...",
-    );
-    await waitForBusyOverlayPaint();
-    try {
-      if (!ok) {
-        WS.meta.storageMode = "local";
-        WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
-        metaInitForCurrentWorkspace();
-        hydrateCatalogLightIndexFromAspectLog();
-      } else {
-        WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
-        await metaInitForCurrentWorkspaceFs();
-        hydrateCatalogLightIndexFromAspectLog();
-        if (WS.meta.saveTimer) {
-          clearTimeout(WS.meta.saveTimer);
-          WS.meta.saveTimer = null;
-        }
-        if (WS.meta.dirtyDocIds && WS.meta.dirtyDocIds.size) metaScheduleSave();
+    if (!ok) {
+      WS.meta.storageMode = "local";
+      WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
+      metaInitForCurrentWorkspace();
+    } else {
+      WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
+      await metaInitForCurrentWorkspaceFs();
+      if (WS.meta.saveTimer) {
+        clearTimeout(WS.meta.saveTimer);
+        WS.meta.saveTimer = null;
       }
-    } finally {
-      hideBlockingLoaderOverlay();
+      if (WS.meta.dirtyDocIds && WS.meta.dirtyDocIds.size) metaScheduleSave();
     }
-
-    await materializeCatalogMetadataThumbnailRecords({
-      showOverlay: true,
-      label: "Preparing media index...",
-    });
-    await finalizeAspectRatiosAndStorageForLoadedWorkspace({
-      showOverlay: true,
-      aspectLabel: "Checking media aspect ratios...",
-      storageLabel: "Applying media type and aspect filters...",
-    });
 
     showBlockingLoaderOverlay("Preparing folder view...", "Building navigation indexes...");
     await waitForBusyOverlayPaint();
@@ -28871,6 +28911,7 @@ function aspectRatioLogEntryMatchesRecord(entry, rec) {
 }
 
 function getCachedAspectRatioForRecord(rec) {
+  if (!aspectRatioMetadataEnabled()) return 0;
   if (!WS.meta || !WS.meta.aspectRatios || !rec) return 0;
   const relPath = normalizeWorkspaceRelPath(rec.relPath);
   if (!relPath) return 0;
@@ -28883,6 +28924,7 @@ function getCachedAspectRatioForRecord(rec) {
 }
 
 function setCachedAspectRatioForRecord(rec, aspect) {
+  if (!aspectRatioMetadataEnabled()) return false;
   if (!WS.meta) return false;
   if (!WS.meta.aspectRatios) WS.meta.aspectRatios = new Map();
   const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
@@ -28904,6 +28946,7 @@ function setCachedAspectRatioForRecord(rec, aspect) {
 }
 
 function pruneAspectRatioLogForCurrentWorkspace() {
+  if (!aspectRatioMetadataEnabled()) return false;
   if (!WS.meta || !WS.meta.aspectRatios || !WS.fileById) return false;
   const livePaths = new Set();
   for (const rec of WS.fileById.values()) {
@@ -29060,6 +29103,7 @@ function applyAspectRatioStorageToCurrentWorkspace() {
 }
 
 async function finalizeAspectRatiosAndStorageForLoadedWorkspace(opts = null) {
+  if (!aspectRatioMetadataEnabled()) return 0;
   const optionsArg = opts && typeof opts === "object" ? opts : {};
   const options = WS.meta && WS.meta.options ? WS.meta.options : null;
   const showOverlay = !!optionsArg.showOverlay;
@@ -30079,7 +30123,7 @@ function getChildDirsForNodeBase(dirNode) {
   const base = sortDirsForDisplay(dirNode.childrenDirs)
     .filter((d) => !isInternalTrashDirNode(d))
     .filter(
-    (d) => dirItemCount(d) > 0,
+    (d) => dirItemCount(d) > 0 || !!(d && d.fsHandle && d.loadState !== "loaded"),
   );
   if (isPathInsideInternalTrash(dirNode.path || "")) return base;
   const showHidden =
@@ -31804,6 +31848,7 @@ async function hydrateAllRecordAspectRatios(opts = null) {
 }
 
 function hydrateCachedRecordAspectRatiosForLoadedWorkspace() {
+  if (!aspectRatioMetadataEnabled()) return false;
   if (!WS.root || !WS.fileById || !WS.fileById.size) return false;
   let changed = false;
   let logChanged = pruneAspectRatioLogForCurrentWorkspace();
@@ -31864,6 +31909,7 @@ function hydrateCatalogLightIndexFromAspectLog() {
 let ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN = 0;
 
 function aspectRatioHydrationRequiresBlocking(options = null) {
+  if (!aspectRatioMetadataEnabled()) return false;
   const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return !!(
     anyAspectRatioStorageEnabled(opt) ||
@@ -31873,6 +31919,7 @@ function aspectRatioHydrationRequiresBlocking(options = null) {
 }
 
 function scheduleBackgroundAspectRatioHydration(delayMs = 900) {
+  if (!aspectRatioMetadataEnabled()) return;
   const token = ++ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN;
   setTimeout(async () => {
     if (token !== ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN || !WS.root) return;
@@ -35851,8 +35898,7 @@ function enterSelectedDirectory() {
   if (
     entry.kind === "dir" &&
     entry.node &&
-    WS.catalog &&
-    WS.catalog.enabled &&
+    ((WS.catalog && WS.catalog.enabled) || entry.node.fsHandle) &&
     entry.node.loadState !== "loaded"
   ) {
     ensureDirectoryHydratedForOpen(entry.node, { label: "Opening folder..." })
@@ -49129,8 +49175,9 @@ function seedPreviewViewportWithRecordHint(rec) {
 }
 
 function ensureViewerFromPreviewFileId(fileId) {
-  if (!WS.root || !fileId) return;
-  const rec = WS.fileById.get(fileId);
+  const targetId = String(fileId || "");
+  if (!WS.root || !targetId) return;
+  const rec = WS.fileById.get(targetId);
   if (!rec) return;
 
   const p = rec ? rec.dirPath || "" : "";
@@ -49161,8 +49208,15 @@ function ensureViewerFromPreviewFileId(fileId) {
   viewerItems = buildViewerItemsForDir(viewerDirNode);
 
   let idx = 0;
-  const found = viewerItems.findIndex((it) => !it.isFolder && it.id === fileId);
-  if (found >= 0) idx = found;
+  const found = viewerItems.findIndex(
+    (it) => !it.isFolder && String(it.id || "") === targetId,
+  );
+  if (found >= 0) {
+    idx = found;
+  } else {
+    viewerItems.push({ isFolder: false, id: targetId });
+    idx = viewerItems.length - 1;
+  }
   viewerIndex = idx;
 }
 
@@ -49713,7 +49767,7 @@ function renderPreviewViewerItem(idx) {
       .then((file) => {
         if (!file) return;
         if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
-        renderPreviewViewerItem(viewerIndex);
+        renderPreviewPane(false, true);
       })
       .catch(() => {});
     return;
@@ -49987,7 +50041,11 @@ function syncDirectoriesToViewerState() {
     } else {
       for (let i = 0; i < WS.nav.entries.length; i++) {
         const e = WS.nav.entries[i];
-        if (e && e.kind === "file" && e.id === item.id) {
+        if (
+          e &&
+          e.kind === "file" &&
+          String(e.id || "") === String(item.id || "")
+        ) {
           idx = i;
           break;
         }
@@ -55002,7 +55060,9 @@ function applyRandomSortModeEverywhere(animate = false) {
         if (found >= 0) nextIndex = found;
       } else {
         const found = viewerItems.findIndex(
-          (item) => !item.isFolder && item.id === currentItem.id,
+          (item) =>
+            !item.isFolder &&
+            String(item.id || "") === String(currentItem.id || ""),
         );
         if (found >= 0) nextIndex = found;
       }
@@ -56722,8 +56782,6 @@ function isGridExclusiveAction(action) {
     action === "historyForward" ||
     action === "gridMoveUp" ||
     action === "gridMoveDown" ||
-    action === "gridMoveLeft" ||
-    action === "gridMoveRight" ||
     action === "gridOpenSelection" ||
     action === "gridUpDirectory"
   );
@@ -56757,8 +56815,6 @@ function handleGridKeybindAction(action) {
         case "enterDir":
         case "gridMoveUp":
         case "gridMoveDown":
-        case "gridMoveLeft":
-        case "gridMoveRight":
         case "jumpMinus50":
         case "jumpMinus10":
         case "jumpPlus10":
@@ -56778,11 +56834,9 @@ function handleGridKeybindAction(action) {
         moveGridGallerySelectionByDirection("down");
         return true;
       case "selectLeft":
-      case "gridMoveLeft":
         moveGridGallerySelectionByDirection("left");
         return true;
       case "selectRight":
-      case "gridMoveRight":
         moveGridGallerySelectionByDirection("right");
         return true;
       case "gridUpDirectory":
@@ -56853,12 +56907,6 @@ function handleGridKeybindAction(action) {
       return true;
     case "gridMoveDown":
       moveGridSelectionByDirection("down");
-      return true;
-    case "gridMoveLeft":
-      moveGridSelectionByDirection("left");
-      return true;
-    case "gridMoveRight":
-      moveGridSelectionByDirection("right");
       return true;
     case "gridOpenSelection":
       openSelectedEntryInGridMode(true);
