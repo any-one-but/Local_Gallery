@@ -8452,6 +8452,7 @@ function defaultOptions() {
     quickNavigation: true,
     showUntaggedFolder: false,
     showTagFolderSpacerRow: true,
+    showListCardExtraInfo: true,
     showScores: true,
     showFolderItemCount: true,
     showFolderSize: true,
@@ -8903,6 +8904,10 @@ function normalizeOptions(o) {
       typeof src.showTagFolderSpacerRow === "boolean"
         ? src.showTagFolderSpacerRow
         : d.showTagFolderSpacerRow,
+    showListCardExtraInfo:
+      typeof src.showListCardExtraInfo === "boolean"
+        ? src.showListCardExtraInfo
+        : d.showListCardExtraInfo,
     showScores,
     showFolderItemCount,
     showFolderSize,
@@ -14919,6 +14924,8 @@ const SHIFT_DIGIT_SYMBOL_TO_KEY = Object.freeze({
   ")": "0",
 });
 
+const ROOT_FOLDER_EMPTY_PROMPT = "Press the space bar to choose a root folder";
+
 function syncModifierKeyStateFromEvent(e) {
   if (!e) return;
   MODIFIER_KEY_STATE.Cmd = !!e.metaKey;
@@ -19604,6 +19611,7 @@ ${makeCheckRow("Trash folder", "Show or hide the Trash folder entry at root.", "
 ${makeCheckRow("Storage folder", "Show or hide the Storage folder entry.", "opt_showStorageFolder", showStorageFolderEnabled())}
 ${makeCheckRow("Untagged folder", "Show or hide the Untagged tag folder entry.", "opt_showUntaggedFolder", showUntaggedFolderEnabled())}
 ${makeCheckRow("Tag-folder spacer row", "Show a blank spacer row after tag, favorites, and album folders.", "opt_showTagFolderSpacerRow", showTagFolderSpacerRowEnabled())}
+${makeCheckRow("List card extra info", "Show counts, sizes, scores, and item type details on File pane list cards.", "opt_showListCardExtraInfo", !!opt.showListCardExtraInfo)}
 ${makeCheckRow("Preview media pane background", "Keep preview media on the recessed pane surface instead of black.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
 ${makeActionRow(
   "Workspace",
@@ -20170,6 +20178,9 @@ ${makeActionRow(
     kickImageThumbsForPreview();
   });
   bindCheck("opt_showTagFolderSpacerRow", "showTagFolderSpacerRow");
+  bindCheck("opt_showListCardExtraInfo", "showListCardExtraInfo", () => {
+    renderDirectoriesPane(true);
+  });
   bindCheck("opt_showScores", "showScores");
   bindCheck(
     "opt_clickSelectedRotatingThumbTeleports",
@@ -20768,6 +20779,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "quickNavigation",
     "showUntaggedFolder",
     "showTagFolderSpacerRow",
+    "showListCardExtraInfo",
     "previewMediaUsePaneBackground",
     "hideVideoControls",
     "lightMode",
@@ -37056,6 +37068,11 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
     !(src && src.showItemTypeLabel === false) ||
     !(src && src.showScores === false);
   const showExtraInfo = resolveExtraInfoValue(fallbackExtraInfo);
+  const showDirectoryExtraInfo =
+    surface === "directories" &&
+    typeof src.showListCardExtraInfo === "boolean"
+      ? !!src.showListCardExtraInfo
+      : showExtraInfo;
   const fallbackTitle = (() => {
     if (kind === "file") return !(src && src.showFileThumbnailTitles === false);
     if (kind === "tag") return !(src && src.showTagThumbnailTitles === false);
@@ -37077,25 +37094,25 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
 
   if (surface === "directories") {
     const showFolderCount =
-      supportsDirectories("folderCount") && showExtraInfo;
+      supportsDirectories("folderCount") && showDirectoryExtraInfo;
     const showFileCount =
-      supportsDirectories("fileCount") && showExtraInfo;
+      supportsDirectories("fileCount") && showDirectoryExtraInfo;
     return {
       showScores:
         supportsDirectories("score") &&
         showScore &&
-        showExtraInfo,
+        showDirectoryExtraInfo,
       showFolderCount,
       showFileCount,
       showItemCount:
         (supportsDirectories("itemCount") || showFolderCount || showFileCount)
-          ? showExtraInfo
+          ? showDirectoryExtraInfo
           : false,
-      showSize: supportsDirectories("size") && showExtraInfo,
+      showSize: supportsDirectories("size") && showDirectoryExtraInfo,
       showTitle: true,
       showMenuButton,
       showItemTypeLabel:
-        supportsDirectories("itemType") && showExtraInfo,
+        supportsDirectories("itemType") && showDirectoryExtraInfo,
     };
   }
 
@@ -46255,7 +46272,7 @@ function renderFilePaneThumbnailView(keepScroll = false, opts = null) {
 
   if (!WS.root) {
     LAST_DIRECTORIES_SCROLL_CONTEXT = nextContextKey;
-    directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder to begin.</div>`;
+    directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">${escapeHtml(ROOT_FOLDER_EMPTY_PROMPT)}</div>`;
     scheduleThumbnailDemandRefresh();
     return;
   }
@@ -46520,7 +46537,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   if (!WS.root) {
     LAST_DIRECTORIES_SCROLL_CONTEXT = nextContextKey;
     applyDirectoriesFilesOnlyChromeMode(false);
-    directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">Load a folder to begin.</div>`;
+    directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">${escapeHtml(ROOT_FOLDER_EMPTY_PROMPT)}</div>`;
     scheduleThumbnailDemandRefresh();
     return;
   }
@@ -50305,7 +50322,7 @@ function previewPlaceholderInfoForCurrentSelection() {
   }
   return {
     icon: "—",
-    label: WS.root ? "No item selected" : "Load a folder to begin",
+    label: WS.root ? "No item selected" : ROOT_FOLDER_EMPTY_PROMPT,
     meta: "",
     thumbnailRecord: null,
   };
@@ -50630,7 +50647,7 @@ function renderPreviewPane(animate = false, keepScroll = false) {
     updateModePill();
     renderPreviewPlaceholder({
       icon: "—",
-      label: "Load a folder to begin",
+      label: ROOT_FOLDER_EMPTY_PROMPT,
       meta: "",
     });
     return;
@@ -57334,6 +57351,22 @@ document.addEventListener("keydown", (e) => {
 
   const key = keybindValueFromEvent(e);
   if (!key) return;
+
+  if (
+    !WS.root &&
+    key === "Space" &&
+    !e.repeat &&
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !e.shiftKey &&
+    !VIEWER_MODE &&
+    !isTextInputTarget(e.target)
+  ) {
+    e.preventDefault();
+    chooseRootDirectoryFromMenu();
+    return;
+  }
 
   const baseKey = normalizeBaseKeyValue(e.key);
   if (baseKey === ".") {
