@@ -29218,6 +29218,16 @@ function passesFilter(rec) {
   return recordPassesAspectRatioFilter(rec);
 }
 
+function catalogAspectFilteredCount(counts, aspect) {
+  if (!counts || typeof counts !== "object") return 0;
+  const wanted = Math.max(0, Number(counts[aspect]) || 0);
+  const unknown = Math.max(0, Number(counts.unknown) || 0);
+  // Record-level filtering deliberately keeps unknown aspect-ratio files visible
+  // until they are measured. Folder/catalog summaries must obey the same rule,
+  // otherwise folders can falsely collapse to "empty" under an aspect filter.
+  return wanted + unknown;
+}
+
 function catalogSummaryFileCountForFilter(summary, filterMode = "all", aspectMode = "all") {
   if (!summary) return -1;
   const mode = String(filterMode || "all");
@@ -29229,13 +29239,13 @@ function catalogSummaryFileCountForFilter(summary, filterMode = "all", aspectMod
         typeof summary.recursiveMediaAspectCounts === "object"
           ? summary.recursiveMediaAspectCounts[mode]
           : null;
-      return Math.max(0, Number(mediaAspect && mediaAspect[aspect]) || 0);
+      return catalogAspectFilteredCount(mediaAspect, aspect);
     }
     const aspectCounts =
       summary.recursiveAspectCounts && typeof summary.recursiveAspectCounts === "object"
         ? summary.recursiveAspectCounts
         : null;
-    return Math.max(0, Number(aspectCounts && aspectCounts[aspect]) || 0);
+    return catalogAspectFilteredCount(aspectCounts, aspect);
   }
   if (mode === "images")
     return Math.max(0, Number(summary.recursiveImageCount) || 0);
@@ -34075,6 +34085,13 @@ function rebuildDirectoriesEntries(opts = null) {
       idx = Math.max(0, Math.min(nextEntries.length - 1, prevSelectedIndex));
     }
     WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+    if (WS.view) {
+      const selectedEntry = nextEntries[WS.nav.selectedIndex] || null;
+      const selectedKey = entryKeyForSelection(selectedEntry);
+      if (String(WS.view.currentNavSelectedEntryKey || "") !== String(selectedKey || "")) {
+        WS.view.currentNavSelectedEntryKey = selectedKey || "";
+      }
+    }
   };
 
   if (!WS.root) {
@@ -34933,16 +34950,21 @@ function preserveActivePreviewTargetDuringDirectoriesRefresh() {
 
 function syncPreviewToSelection(opts = null) {
   const force = !!(opts && opts.force);
+  const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+  const selectedKey = entryKeyForSelection(entry);
+  const lastSyncedKey = String(WS.view && WS.view.lastPreviewSyncedEntryKey || "");
   if (
     !force &&
     WS.view &&
     WS.view.activePane === "preview" &&
-    previewTargetStillResolvable()
+    previewTargetStillResolvable() &&
+    selectedKey &&
+    selectedKey === lastSyncedKey
   ) {
     return false;
   }
-  const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
   applyPreviewState(previewStateForEntry(entry));
+  if (WS.view) WS.view.lastPreviewSyncedEntryKey = selectedKey || "";
   return true;
 }
 
@@ -38296,6 +38318,11 @@ function applyPreviewState(state) {
   const nextKind = WS.preview.kind || null;
   const nextDirPath = String(WS.preview.dirNode?.path || "");
   const nextFileId = String(WS.preview.fileId || "");
+  if (WS.view) {
+    if (nextKind === "file" && nextFileId) WS.view.lastPreviewStateKey = `file:${nextFileId}`;
+    else if (nextKind === "dir" && nextDirPath) WS.view.lastPreviewStateKey = `dir:${nextDirPath}`;
+    else WS.view.lastPreviewStateKey = "";
+  }
   if (
     prevKind !== nextKind ||
     prevDirPath !== nextDirPath ||
@@ -48289,6 +48316,31 @@ function applyScrollImageProcessingFallback(imgEl, rec, mode) {
   }
 }
 
+function showPreviewViewportMessage(label = "Loading file…", meta = "") {
+  ensurePreviewFileElements();
+  if (previewImgEl) {
+    previewImgEl.classList.remove("ready");
+    previewImgEl.style.display = "none";
+  }
+  if (previewVideoEl) {
+    try { previewVideoEl.pause(); } catch {}
+    previewVideoEl.classList.remove("ready");
+    previewVideoEl.style.display = "none";
+  }
+  if (!previewFolderEl) return;
+  previewFolderEl.style.display = "flex";
+  previewFolderEl.style.flexDirection = "column";
+  previewFolderEl.style.alignItems = "center";
+  previewFolderEl.style.justifyContent = "center";
+  previewFolderEl.style.minWidth = "220px";
+  previewFolderEl.style.maxWidth = "80%";
+  previewFolderEl.style.padding = "24px 32px";
+  previewFolderEl.style.borderRadius = "4px";
+  previewFolderEl.style.background = "var(--color1-secondary)";
+  previewFolderEl.style.boxShadow = "0 8px 24px rgba(0,0,0,.7)";
+  previewFolderEl.innerHTML = `<div style="font-size:14px;color:var(--color0-primary);text-align:center;">${escapeHtml(label)}</div>${meta ? `<div class="label" style="margin-top:8px;text-align:center;overflow-wrap:anywhere;">${escapeHtml(meta)}</div>` : ""}`;
+}
+
 function renderPreviewViewerItem(idx) {
   ensurePreviewFileElements();
   applyScrollImageMode(previewViewportBox, previewImgEl, "none");
@@ -48437,13 +48489,20 @@ function renderPreviewViewerItem(idx) {
 
   if (!rec) return;
   if (!rec.file && WS.meta && WS.meta.fsRootHandle) {
+    showPreviewViewportMessage("Loading file…", rec.relPath || rec.name || "");
     ensureFileObjectForRecord(rec)
       .then((file) => {
-        if (!file) return;
         if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
+        if (!file) {
+          showPreviewViewportMessage("Could not load file", rec.relPath || rec.name || "");
+          return;
+        }
         renderPreviewPane(false, true);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
+        showPreviewViewportMessage("Could not load file", rec.relPath || rec.name || "");
+      });
     return;
   }
   syncPreviewVideoUserPauseLockToItem(rec.id);
@@ -48495,6 +48554,10 @@ function renderPreviewViewerItem(idx) {
     previewVideoEl.classList.add("ready");
     applyVideoCropToElement(previewVideoEl, rec);
     const src = ensureMediaUrl(rec) || "";
+    if (!src) {
+      showPreviewViewportMessage("Could not load video", rec.relPath || rec.name || "");
+      return;
+    }
     const same = previewVideoEl.src === src;
     if (!same) {
       previewVideoEl.src = src;
@@ -48574,6 +48637,10 @@ function renderPreviewViewerItem(idx) {
   };
   previewImgEl.onload = finalizePreviewImageFrame;
   const src = ensureMediaUrl(rec) || "";
+  if (!src) {
+    showPreviewViewportMessage("Could not load image", rec.relPath || rec.name || "");
+    return;
+  }
   const same = previewImgEl.src === src;
   previewImgEl.dataset.previewFileId = String(rec.id || "");
   previewImgEl.style.display = "block";
@@ -53760,7 +53827,7 @@ function applyViewModesEverywhere(animate = false) {
 
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection();
+  syncPreviewToSelection({ force: true });
 
   renderDirectoriesPane(true);
   renderPreviewPane(animate, true);
