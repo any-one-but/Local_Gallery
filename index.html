@@ -13868,14 +13868,13 @@ function thumbnailLoadingEnabled(opt = null) {
 }
 
 function aspectRatioMetadataEnabled() {
-  return false;
+  return true;
 }
 
 function metadataDocEnabled(docId) {
   const id = String(docId || "");
   if (id === META_DOC_IDS.thumbnails) return thumbnailLoadingEnabled();
   if (id === META_DOC_IDS.prefThumbnails) return thumbnailLoadingEnabled();
-  if (id === META_DOC_IDS.aspectRatios) return aspectRatioMetadataEnabled();
   return true;
 }
 
@@ -25453,23 +25452,6 @@ async function ensureCatalogHandles(rootHandle) {
   return { catalog, folders, indexFile };
 }
 
-async function readExistingCatalogForRootHandle(rootHandle) {
-  if (!rootHandle) return null;
-  try {
-    const sys = await rootHandle.getDirectoryHandle(".local-gallery");
-    const catalog = await sys.getDirectoryHandle(CATALOG_DIR_NAME);
-    const folders = await catalog.getDirectoryHandle(CATALOG_FOLDERS_DIR_NAME);
-    const indexFile = await catalog.getFileHandle(CATALOG_INDEX_FILE_NAME);
-    const index = await readJsonFileHandle(indexFile);
-    if (!index || index.schema !== CATALOG_SCHEMA_VERSION || !index.complete)
-      return null;
-    if (!index.folders || typeof index.folders !== "object") return null;
-    return { index, handles: { catalog, folders, indexFile } };
-  } catch {
-    return null;
-  }
-}
-
 function showBlockingLoaderOverlay(label, detail = "") {
   BUSY_OVERLAY_PENDING_HIDE = false;
   if (busyLabel) busyLabel.textContent = label || "Working...";
@@ -25635,7 +25617,6 @@ function catalogAspectEntriesFromLog(log) {
 }
 
 async function readCatalogAspectEntriesByPath(rootHandle) {
-  if (!aspectRatioMetadataEnabled()) return new Map();
   let log = await metaLoadFsDoc(metaFsHandleForDocId(META_DOC_IDS.aspectRatios));
   if (!log && rootHandle) {
     try {
@@ -25876,108 +25857,6 @@ function ensureDirectoryChildNodesFromCatalog(dirNode) {
   return dirNode.childrenDirs;
 }
 
-function ensureFsDirNode(path, name, parent, handle = null) {
-  const normalized = normalizeDirPathValue(path);
-  let node = WS.dirByPath.get(normalized) || null;
-  if (!node) {
-    node = makeDirNode(name || normalized.split("/").pop() || "Folder", parent || null);
-    node.path = normalized;
-    WS.dirByPath.set(normalized, node);
-  }
-  node.name = name || node.name || normalized.split("/").pop() || "Folder";
-  node.parent = parent || null;
-  node.fsHandle = handle || node.fsHandle || null;
-  if (node.loadState !== "loaded") node.loadState = "summary";
-  if (parent && Array.isArray(parent.childrenDirs) && !parent.childrenDirs.includes(node))
-    parent.childrenDirs.push(node);
-  return node;
-}
-
-async function loadDirectoryFromFsHandle(dirNode, opts = null) {
-  if (!dirNode || !dirNode.fsHandle) return false;
-  if (dirNode.loadState === "loaded") return true;
-  if (dirNode.loadState === "loading" && dirNode.loadPromise) {
-    await dirNode.loadPromise;
-    return dirNode.loadState === "loaded";
-  }
-  const showOverlay = !(opts && opts.showOverlay === false);
-  const label = opts && opts.label ? String(opts.label) : "Loading folder...";
-  dirNode.loadState = "loading";
-  dirNode.loadPromise = (async () => {
-    if (showOverlay) showBlockingLoaderOverlay(label, displayPath(dirNode.path || ""));
-    const storedPaths = WS.fsStoredPaths instanceof Set ? WS.fsStoredPaths : null;
-    const childDirEntries = [];
-    const fileEntries = [];
-    try {
-      for await (const [name, handle] of dirNode.fsHandle.entries()) {
-        if (name === ".local-gallery") continue;
-        const relPath = dirNode.path ? `${dirNode.path}/${name}` : name;
-        if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
-        if (handle.kind === "directory") {
-          childDirEntries.push({ name, handle, path: normalizeDirPathValue(relPath) });
-          continue;
-        }
-        if (handle.kind !== "file") continue;
-        if (String(name || "")[0] === ".") continue;
-        if (!isImageName(name) && !isVideoName(name)) continue;
-        fileEntries.push({ name, handle, path: normalizeWorkspaceRelPath(relPath) });
-      }
-
-      childDirEntries.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-      fileEntries.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-
-      dirNode.childrenDirs = [];
-      for (let i = 0; i < childDirEntries.length; i++) {
-        const child = childDirEntries[i];
-        ensureFsDirNode(child.path, child.name, dirNode, child.handle);
-      }
-
-      const ids = [];
-      for (let i = 0; i < fileEntries.length; i++) {
-        const entry = fileEntries[i];
-        try {
-          const file = await entry.handle.getFile();
-          const desc = fileDescriptorFromFile(file, entry.path);
-          const rec = ensureFileRecordFromDescriptor(desc, file);
-          if (!rec) continue;
-          rec.catalogBacked = false;
-          if (!ids.includes(rec.id)) ids.push(rec.id);
-        } catch {}
-      }
-      dirNode.childrenFiles = ids;
-      dirNode.directFileCount = ids.length;
-      dirNode.directFolderCount = dirNode.childrenDirs.length;
-      dirNode.recursiveFileCount = ids.length;
-      dirNode.recursiveFolderCount = dirNode.childrenDirs.length;
-      dirNode.recursiveItemCount = ids.length + dirNode.childrenDirs.length;
-      dirNode.recursiveSizeBytes = ids.reduce((sum, id) => {
-        const rec = WS.fileById.get(String(id || ""));
-        return sum + Math.max(0, Number(rec?.size) || 0);
-      }, 0);
-      dirNode.loadState = "loaded";
-      invalidateDirectoryDerivedIndex();
-      invalidateDirMetricsCaches();
-      return true;
-    } finally {
-      dirNode.loadPromise = null;
-      if (showOverlay) hideBlockingLoaderOverlay();
-    }
-  })();
-  await dirNode.loadPromise;
-  return dirNode.loadState === "loaded";
-}
-
-async function initializeWorkspaceTreeFromShallowHandle(rootHandle, storedPaths = null) {
-  WS.root = makeDirNode(String(rootHandle?.name || "root"), null);
-  WS.root.path = "";
-  WS.root.fsHandle = rootHandle || null;
-  WS.root.loadState = "summary";
-  WS.dirByPath.clear();
-  WS.dirByPath.set("", WS.root);
-  WS.fsStoredPaths = storedPaths instanceof Set ? new Set(storedPaths) : new Set();
-  await loadDirectoryFromFsHandle(WS.root, { showOverlay: false });
-}
-
 function installCatalogIndex(index, rootHandle, folderShardDirHandle) {
   WS.catalog.enabled = true;
   WS.catalog.index = index || null;
@@ -26107,11 +25986,7 @@ async function ensureFileObjectForRecord(rec) {
 }
 
 async function ensureDirectoryLoaded(dirNode, opts = null) {
-  if (!dirNode) return true;
-  if (!WS.catalog || !WS.catalog.enabled) {
-    if (dirNode.fsHandle) return loadDirectoryFromFsHandle(dirNode, opts);
-    return true;
-  }
+  if (!dirNode || !WS.catalog || !WS.catalog.enabled) return true;
   if (dirNode.loadState === "loaded") return true;
   if (dirNode.loadState === "loading" && dirNode.loadPromise) {
     await dirNode.loadPromise;
@@ -26301,12 +26176,79 @@ function initializeWorkspaceTreeFromCatalog(rootHandleName = "root") {
   ensureDirectoryChildNodesFromCatalog(WS.root);
 }
 
+async function materializeCatalogMetadataThumbnailRecords(opts = null) {
+  if (!WS.catalog || !WS.catalog.enabled) return;
+  const options = opts && typeof opts === "object" ? opts : {};
+  const showOverlay = !!options.showOverlay;
+  const label = options.label ? String(options.label) : "Preparing media index...";
+  const progressState = { lastUpdate: 0 };
+  const relPaths = new Set();
+  const collect = (mapLike) => {
+    if (!mapLike || typeof mapLike.values !== "function") return;
+    for (const raw of mapLike.values()) {
+      const relPath = normalizeWorkspaceRelPath(raw);
+      if (relPath) relPaths.add(relPath);
+    }
+  };
+  collect(WS.meta.dirThumbPresets);
+  collect(WS.meta.pendingDirThumbPresets);
+  collect(WS.meta.tagThumbPresets);
+
+  const summaries = Array.from(WS.catalog.folderSummaries.values()).filter(Boolean);
+  const total = summaries.length + relPaths.size;
+  let completed = 0;
+  const updateProgress = (path = "", force = false) => {
+    if (!showOverlay) return;
+    updateBusyProgress(
+      label,
+      `Prepared ${completed}/${total} media index entries`,
+      path,
+      force,
+      progressState,
+    );
+  };
+
+  if (showOverlay)
+    showBlockingLoaderOverlay(
+      label,
+      formatBusyProgressDetail(`Prepared 0/${total} media index entries`, ""),
+    );
+
+  try {
+    for (let i = 0; i < summaries.length; i++) {
+      const summary = summaries[i];
+      if (summary?.leadFile) ensureFileRecordFromDescriptor(summary.leadFile);
+      if (summary?.directLeadFile)
+        ensureFileRecordFromDescriptor(summary.directLeadFile);
+      completed++;
+      updateProgress(summary?.path || "");
+    }
+    for (const relPath of relPaths) {
+      const desc = await getFileDescriptorByRelPathAsync(relPath);
+      if (desc) ensureFileRecordFromDescriptor(desc);
+      completed++;
+      updateProgress(relPath);
+    }
+    updateProgress("", true);
+  } finally {
+    if (showOverlay) hideBlockingLoaderOverlay();
+  }
+}
+
 async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
   const handles = await ensureCatalogHandles(rootHandle);
   const folders = {};
   const fileLocationsById = {};
   const fileLightIndexById = {};
-  const aspectEntriesByPath = new Map();
+  showBlockingLoaderOverlay(
+    "Loading media metadata...",
+    "Reading cached aspect-ratio data...",
+  );
+  await waitForBusyOverlayPaint();
+  let aspectEntriesByPath = new Map();
+  try {
+    aspectEntriesByPath = await readCatalogAspectEntriesByPath(rootHandle);
+  } catch {}
   const stats = { dirs: 0, files: 0, bytes: 0, entries: 0, allFiles: 0 };
   let lastOverlayUpdate = 0;
   const progressText = () => {
@@ -26530,47 +26472,61 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
       rootHandle,
     );
     const ok = await metaEnsureFsHandles(rootHandle);
-    updateBlockingLoaderOverlay("Preparing workspace...", "Checking cached media index...");
-    await waitForBusyOverlayPaint();
-    const catalogResult = await readExistingCatalogForRootHandle(rootHandle);
-    if (catalogResult) {
-      updateBlockingLoaderOverlay("Preparing workspace catalog...", "Installing cached media index...");
-      await waitForBusyOverlayPaint();
-      installCatalogIndex(
-        catalogResult.index,
-        rootHandle,
-        catalogResult.handles && catalogResult.handles.folders,
-      );
+    const catalogResult = await buildCatalogForRootHandle(rootHandle, storedPaths);
 
-      updateBlockingLoaderOverlay("Preparing workspace catalog...", "Building root folder tree...");
-      await waitForBusyOverlayPaint();
-      initializeWorkspaceTreeFromCatalog(String(rootHandle?.name || "root"));
-      await ensureDirectoryLoaded(WS.root, { showOverlay: false });
-      if (trashDirAvailable && getCatalogFolderSummary(INTERNAL_TRASH_DIR_NAME))
-        ensureCatalogDirNode(INTERNAL_TRASH_DIR_NAME);
-    } else {
-      updateBlockingLoaderOverlay("Preparing workspace...", "Reading root folder...");
-      await waitForBusyOverlayPaint();
-      await initializeWorkspaceTreeFromShallowHandle(rootHandle, storedPaths);
-    }
+    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Installing root media index...");
+    await waitForBusyOverlayPaint();
+    installCatalogIndex(
+      catalogResult.index,
+      rootHandle,
+      catalogResult.handles && catalogResult.handles.folders,
+    );
+
+    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Building root folder tree...");
+    await waitForBusyOverlayPaint();
+    initializeWorkspaceTreeFromCatalog(String(rootHandle?.name || "root"));
+    await ensureDirectoryLoaded(WS.root, { showOverlay: false });
+    if (trashDirAvailable && getCatalogFolderSummary(INTERNAL_TRASH_DIR_NAME))
+      ensureCatalogDirNode(INTERNAL_TRASH_DIR_NAME);
 
     updateBlockingLoaderOverlay("Preparing workspace catalog...", "Applying media-type filters...");
     await waitForBusyOverlayPaint();
     applyMediaFilterFromOptions();
 
-    if (!ok) {
-      WS.meta.storageMode = "local";
-      WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
-      metaInitForCurrentWorkspace();
-    } else {
-      WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
-      await metaInitForCurrentWorkspaceFs();
-      if (WS.meta.saveTimer) {
-        clearTimeout(WS.meta.saveTimer);
-        WS.meta.saveTimer = null;
+    showBlockingLoaderOverlay(
+      "Loading gallery metadata...",
+      "Reading saved tags, scores, thumbnails, and aspect-ratio cache...",
+    );
+    await waitForBusyOverlayPaint();
+    try {
+      if (!ok) {
+        WS.meta.storageMode = "local";
+        WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
+        metaInitForCurrentWorkspace();
+        hydrateCatalogLightIndexFromAspectLog();
+      } else {
+        WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
+        await metaInitForCurrentWorkspaceFs();
+        hydrateCatalogLightIndexFromAspectLog();
+        if (WS.meta.saveTimer) {
+          clearTimeout(WS.meta.saveTimer);
+          WS.meta.saveTimer = null;
+        }
+        if (WS.meta.dirtyDocIds && WS.meta.dirtyDocIds.size) metaScheduleSave();
       }
-      if (WS.meta.dirtyDocIds && WS.meta.dirtyDocIds.size) metaScheduleSave();
+    } finally {
+      hideBlockingLoaderOverlay();
     }
+
+    await materializeCatalogMetadataThumbnailRecords({
+      showOverlay: true,
+      label: "Preparing media index...",
+    });
+    await finalizeAspectRatiosAndStorageForLoadedWorkspace({
+      showOverlay: true,
+      aspectLabel: "Checking media aspect ratios...",
+      storageLabel: "Applying media type and aspect filters...",
+    });
 
     showBlockingLoaderOverlay("Preparing folder view...", "Building navigation indexes...");
     await waitForBusyOverlayPaint();
