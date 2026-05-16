@@ -34816,10 +34816,101 @@ async function returnToSearchResults() {
   });
 }
 
+function previewFileIdVisibleInContext(fileId, dirNode = null) {
+  const id = String(fileId || "");
+  if (!id || !WS.fileById) return false;
+  const rec = WS.fileById.get(id);
+  if (!rec || !passesFilter(rec)) return false;
+
+  const contextDir =
+    dirNode ||
+    (WS.preview && WS.preview.kind === "file" ? WS.preview.dirNode : null) ||
+    WS.nav.dirNode ||
+    null;
+  if (!contextDir) return true;
+
+  const contextPath = String(contextDir.path || "");
+  const recDirPath = String(rec.dirPath || "");
+  if (!contextDir._skipTagFilters && contextPath && contextPath === recDirPath) {
+    return true;
+  }
+
+  let items = [];
+  try {
+    items = buildViewerItemsForDir(contextDir);
+  } catch {
+    items = [];
+  }
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item && !item.isFolder && String(item.id || "") === id) return true;
+  }
+  return false;
+}
+
+function firstVisibleFilePreviewStateForContext(dirNode = null) {
+  const contextDir =
+    dirNode ||
+    (WS.preview && WS.preview.kind === "file" ? WS.preview.dirNode : null) ||
+    WS.nav.dirNode ||
+    null;
+  if (!contextDir) return null;
+
+  let items = [];
+  try {
+    items = buildViewerItemsForDir(contextDir);
+  } catch {
+    items = [];
+  }
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!item || item.isFolder || !item.id) continue;
+    if (previewFileIdVisibleInContext(item.id, contextDir)) {
+      return { kind: "file", dirNode: contextDir, fileId: item.id };
+    }
+  }
+  return null;
+}
+
+function normalizeViewerStateForCurrentFilters(preferredFileId = null) {
+  if (!viewerDirNode) return false;
+  const preferredId = String(
+    preferredFileId ||
+      ((viewerItems[viewerIndex] && !viewerItems[viewerIndex].isFolder)
+        ? viewerItems[viewerIndex].id
+        : "") ||
+      (WS.preview && WS.preview.kind === "file" ? WS.preview.fileId : "") ||
+      "",
+  );
+
+  let nextItems = [];
+  try {
+    nextItems = buildViewerItemsForDir(viewerDirNode);
+  } catch {
+    nextItems = [];
+  }
+  viewerItems = nextItems;
+  if (!viewerItems.length) {
+    viewerIndex = 0;
+    return false;
+  }
+
+  let idx = -1;
+  if (preferredId) {
+    idx = viewerItems.findIndex(
+      (item) => item && !item.isFolder && String(item.id || "") === preferredId,
+    );
+  }
+  if (idx < 0) idx = findFirstFileIndex(viewerItems);
+  if (idx < 0) idx = 0;
+  viewerIndex = Math.max(0, Math.min(viewerItems.length - 1, idx));
+  return true;
+}
+
 function previewTargetStillResolvable() {
   if (!WS.preview || !WS.preview.kind) return false;
   if (WS.preview.kind === "file" && WS.preview.fileId) {
-    return !!WS.fileById.get(String(WS.preview.fileId || ""));
+    return previewFileIdVisibleInContext(WS.preview.fileId, WS.preview.dirNode || null);
   }
   if (WS.preview.kind === "dir" && WS.preview.dirNode) {
     if (WS.preview.dirNode === WS.root) return true;
@@ -47758,9 +47849,9 @@ function seedPreviewViewportWithRecordHint(rec) {
 
 function ensureViewerFromPreviewFileId(fileId) {
   const targetId = String(fileId || "");
-  if (!WS.root || !targetId) return;
+  if (!WS.root || !targetId) return false;
   const rec = WS.fileById.get(targetId);
-  if (!rec) return;
+  if (!rec || !passesFilter(rec)) return false;
 
   const p = rec ? rec.dirPath || "" : "";
   const previewContextDir =
@@ -47796,10 +47887,11 @@ function ensureViewerFromPreviewFileId(fileId) {
   if (found >= 0) {
     idx = found;
   } else {
-    viewerItems.push({ isFolder: false, id: targetId });
-    idx = viewerItems.length - 1;
+    idx = findFirstFileIndex(viewerItems);
+    if (idx < 0) return false;
   }
   viewerIndex = idx;
+  return true;
 }
 
 function normalizeVideoAudioModeValue(value) {
@@ -48504,14 +48596,23 @@ function renderPreviewViewerItem(idx) {
         requestAnimationFrame(finalizePreviewImageFrame);
       }
     }
+    let committedDecodedImage = false;
+    let decodedImageFallbackTimer = 0;
     const commitDecodedImage = () => {
+      if (committedDecodedImage) return;
       if (swapToken !== PREVIEW_IMAGE_SWAP_TOKEN) return;
       if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
+      committedDecodedImage = true;
+      if (decodedImageFallbackTimer) {
+        try { clearTimeout(decodedImageFallbackTimer); } catch {}
+        decodedImageFallbackTimer = 0;
+      }
       previewImgEl.dataset.previewFileId = String(rec.id || "");
       previewImgEl.src = src;
       requestAnimationFrame(finalizePreviewImageFrame);
     };
     try {
+      decodedImageFallbackTimer = setTimeout(commitDecodedImage, 1200);
       const preloadImg = new Image();
       preloadImg.decoding = "sync";
       preloadImg.loading = "eager";
@@ -48520,7 +48621,7 @@ function renderPreviewViewerItem(idx) {
       preloadImg.onerror = commitDecodedImage;
       preloadImg.src = src;
       if (preloadImg.decode) {
-        preloadImg.decode().then(commitDecodedImage).catch(() => {});
+        preloadImg.decode().then(commitDecodedImage).catch(commitDecodedImage);
       }
       if (preloadImg.complete && preloadImg.naturalWidth > 0) commitDecodedImage();
     } catch {
@@ -48608,6 +48709,7 @@ function syncDirectoriesToViewerState() {
   syncTagUiForCurrentDir();
   rebuildDirectoriesEntries();
 
+  normalizeViewerStateForCurrentFilters();
   const item = viewerItems[viewerIndex] || null;
 
   let idx = 0;
@@ -49249,6 +49351,24 @@ function renderPreviewPane(animate = false, keepScroll = false) {
       return;
     }
 
+    if (!previewFileIdVisibleInContext(rec.id, WS.preview.dirNode || WS.nav.dirNode || null)) {
+      const fallbackState = firstVisibleFilePreviewStateForContext(
+        WS.preview.dirNode || WS.nav.dirNode || null,
+      );
+      if (fallbackState && fallbackState.fileId && String(fallbackState.fileId) !== String(rec.id || "")) {
+        applyPreviewState(fallbackState);
+        renderPreviewPane(animate, keepScroll);
+        return;
+      }
+      WS.view.previewScrollActiveKey = "";
+      renderPreviewPlaceholder({
+        icon: "—",
+        label: "No visible file",
+        meta: "The previous preview item is hidden by the current filters.",
+      });
+      return;
+    }
+
     ensurePreviewFileElements();
 
     const previewViewportWasAttached = !!(
@@ -49265,7 +49385,24 @@ function renderPreviewPane(animate = false, keepScroll = false) {
       previewBodyEl.appendChild(previewViewportBox);
     }
 
-    ensureViewerFromPreviewFileId(rec.id);
+    if (!ensureViewerFromPreviewFileId(rec.id)) {
+      const fallbackState = firstVisibleFilePreviewStateForContext(
+        WS.preview.dirNode || WS.nav.dirNode || null,
+      );
+      if (fallbackState && fallbackState.fileId) {
+        applyPreviewState(fallbackState);
+        renderPreviewPane(animate, keepScroll);
+        return;
+      }
+      WS.view.previewScrollActiveKey = "";
+      renderPreviewPlaceholder({
+        icon: "—",
+        label: "No visible file",
+        meta: "No file is available for the current filters.",
+      });
+      return;
+    }
+    normalizeViewerStateForCurrentFilters(rec.id);
     if (!VIEWER_MODE) ACTIVE_MEDIA_SURFACE = "preview";
     renderPreviewViewerItem(viewerIndex);
 
@@ -52567,6 +52704,10 @@ function startSlideshow(delayMs) {
   WS.view.slideshowActive = true;
   WS.view.slideshowTimer = setInterval(() => {
     if (!WS.view.slideshowActive) return;
+    if (!normalizeViewerStateForCurrentFilters()) {
+      renderPreviewPane(false, true);
+      return;
+    }
     const item = viewerItems[viewerIndex] || null;
     if (item && !item.isFolder) {
       const rec = WS.fileById.get(item.id);
@@ -52846,6 +52987,7 @@ function moveToPrevDirectoryFirstFile() {
 }
 
 function viewerStepMediaOnly(delta) {
+  normalizeViewerStateForCurrentFilters();
   if (!viewerItems.length) return false;
   const direction = delta < 0 ? -1 : 1;
   const prevDir = viewerDirNode;
@@ -52872,6 +53014,7 @@ function viewerStepMediaOnly(delta) {
 }
 
 function viewerStep(delta) {
+  normalizeViewerStateForCurrentFilters();
   if (!viewerItems.length) return false;
   const n = viewerItems.length;
   const prevDir = viewerDirNode;
