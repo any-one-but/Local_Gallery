@@ -6995,8 +6995,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
   
-/* Thumbnail features removed in this build. File pane is list-only. */
-.menuTabBtn[data-tab="thumbnails"],
+/* Removed visual surfaces. File pane is list-only. */
 #directoriesList.filePaneThumbnailView,
 #directoriesList.gridModeList .dirThumbSlot,
 .dirInlinePreview,
@@ -7997,7 +7996,7 @@ function thumbnailVisibilityKindSpecs() {
   return [
     {
       kind: "file",
-      label: "File thumbnails",
+      label: "File cards",
       directoriesLabel: "File cards in File pane",
       previewPrefix: "previewFileThumbnail",
       directoriesPrefix: "directoriesFileCard",
@@ -8006,7 +8005,7 @@ function thumbnailVisibilityKindSpecs() {
     },
     {
       kind: "rootFolder",
-      label: "Root folder thumbnails",
+      label: "Root folder cards",
       directoriesLabel: "Root folder cards in File pane",
       previewPrefix: "previewRootFolderThumbnail",
       directoriesPrefix: "directoriesRootFolderCard",
@@ -8015,7 +8014,7 @@ function thumbnailVisibilityKindSpecs() {
     },
     {
       kind: "subfolder",
-      label: "Subfolder thumbnails",
+      label: "Subfolder cards",
       directoriesLabel: "Subfolder cards in File pane",
       previewPrefix: "previewSubfolderThumbnail",
       directoriesPrefix: "directoriesSubfolderCard",
@@ -8024,7 +8023,7 @@ function thumbnailVisibilityKindSpecs() {
     },
     {
       kind: "tag",
-      label: "Tag thumbnails",
+      label: "Tag cards",
       directoriesLabel: "Tag cards in File pane",
       previewPrefix: "previewTagThumbnail",
       directoriesPrefix: "directoriesTagCard",
@@ -8356,11 +8355,6 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Appearance & filenames", id: "appearance-presets", label: "Appearance presets", hint: "Preset apply, save, mix, delete, and preset-selection messages.", optionKey: "notifyAppearancePresets" }),
 
   Object.freeze({ section: "Tags & albums", id: "tags", label: "Tags / albums / hidden tags", hint: "Tag editing, album, and hidden-tag messages.", optionKey: "notifyTags" }),
-  Object.freeze({ section: "Tags & albums", id: "tag-thumbnails", label: "Tag thumbnails / tag media settings", hint: "Tag thumbnail and tag media preset messages.", optionKey: "notifyTagThumbnails" }),
-
-  Object.freeze({ section: "Thumbnails", id: "thumbnails", label: "Folder / root thumbnails", hint: "Folder and root thumbnail assignment messages.", optionKey: "notifyThumbnails" }),
-  Object.freeze({ section: "Thumbnails", id: "thumbnail-tools", label: "Thumbnail framing / cache / resets", hint: "Thumbnail crop, framing, cache, and reset messages.", optionKey: "notifyThumbnailTools" }),
-
   Object.freeze({ section: "Editing", id: "rename", label: "Rename + sanitize names", hint: "Rename and sanitize-name messages.", optionKey: "notifyRename" }),
   Object.freeze({ section: "File operations", id: "trash", label: "Trash / Put Back", hint: "Move-to-trash and Put Back messages.", optionKey: "notifyTrash" }),
   Object.freeze({ section: "File operations", id: "delete", label: "Delete", hint: "Delete messages.", optionKey: "notifyDelete" }),
@@ -13861,9 +13855,9 @@ function directoriesPaneOpenEnabled(opt = null) {
 }
 
 function thumbnailLoadingEnabled(opt = null) {
-  // Thumbnails, custom thumbnail metadata, thumbnail queues, and thumbnail-view
-  // navigation are disabled in this build. Media preview/player loading is
-  // handled separately through ensureMediaUrl().
+  // Legacy preview-card media caches and alternate file-pane layouts are
+  // disabled in this build. Media preview/player loading is handled separately
+  // through ensureMediaUrl().
   return false;
 }
 
@@ -16705,20 +16699,11 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasCtx("firstfilejump", "randomfilejump")) return "navigation-jump";
   if (hasCtx("slideshow", "gallerymode")) return "playback";
   if (hasCtx("preset")) return "appearance-presets";
-  if (hasCtx("thumbnailviewport", "framing", "crop", "invalidateallthumbs", "customthumbnail", "thumbcache")) return "thumbnail-tools";
-  if (hasCtx("thumbnail", "thumb")) {
-    if (hasCtx("tag")) return "tag-thumbnails";
-    return "thumbnails";
-  }
   if (hasCtx("tag", "album")) return "tags";
   if (hasCtx("scorehistory", "scorelog", "stats")) return "stats";
 
-  if (hasMsg("thumbnail viewport", "preparing thumbnail framing", "thumbnail cache rebuild queued", "custom thumbnail", "thumbnail preview is unavailable", "thumbnail settings", "thumbnail customization", "thumbnail edits and assignments"))
-    return "thumbnail-tools";
-  if (hasMsg("tag folder thumbnails", "tag media preset", "tag content filter", "thumbnail for '", "set random thumbnail for '", "thumbnail already set for '", "no media files available for '", "removed tag '"))
-    return "tag-thumbnails";
-  if (hasMsg("set thumbnail for root", "root thumbnail", "set thumbnail for ", "selected item has no editable thumbnail source"))
-    return "thumbnails";
+  if (hasMsg("tag media preset", "tag content filter", "removed tag '"))
+    return "tags";
   if (hasMsg("scrub")) return "scrub";
   if (hasMsg("score history", "score log")) return "stats";
   if (hasMsg("preset")) return "appearance-presets";
@@ -18962,29 +18947,11 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "next", label: "Advance to next" },
     { value: "stop", label: "Stop" },
   ];
-  const filePaneViewModes = [
-    { value: "list", label: "List View" },
-    { value: "thumbnail", label: "Thumbnail View" },
-  ];
   const mediaFilterModes = [
     { value: "all", label: "All" },
     { value: "images", label: "Images" },
     { value: "videos", label: "Videos" },
     { value: "gifs", label: "GIFs" },
-  ];
-  const imageThumbRenderModes = [
-    { value: "placeholder", label: "Placeholder" },
-    { value: "small", label: "Small cache" },
-    { value: "medium", label: "Medium cache" },
-    { value: "high", label: "High" },
-    { value: "native", label: "Native" },
-  ];
-  const videoThumbRenderModes = [
-    { value: "placeholder", label: "Placeholder" },
-    { value: "small", label: "Small cache" },
-    { value: "medium", label: "Medium cache" },
-    { value: "high", label: "High" },
-    { value: "native", label: "Native" },
   ];
 
   const animatedFilterModes = [
@@ -19035,109 +19002,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     value: normalizeAppearancePresetIdValue(preset && preset.id),
     label: String(preset && preset.name ? preset.name : "Preset"),
   }));
-  const thumbnailStyleModes = [
-    { value: "cropped", label: "Cropped" },
-    { value: "aspect", label: "Aspect Ratio" },
-  ];
-  const thumbnailScaleModes = [
-    { value: "row10", label: "Small" },
-    { value: "row7", label: "Medium" },
-    { value: "row5", label: "Large" },
-  ];
-  const thumbnailTitleSizeModes = [
-    { value: "small", label: "Small" },
-    { value: "large", label: "Large" },
-  ];
-  const thumbnailStyleRow = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
-    ? makeSelectRow(
-        "Thumbnail Style",
-        "Choose between fixed cropped thumbnails or natural aspect ratio cards.",
-        "opt_thumbnailStyle",
-        String(opt.thumbnailStyle || "cropped"),
-        thumbnailStyleModes,
-      )
-    : "";
-  const thumbnailScaleHint = ENABLE_ASPECT_RATIO_THUMBNAIL_STYLE
-    ? "Row-count thumbnail tiers are saved separately for each thumbnail style."
-    : "Choose Small, Medium, or Large thumbnail cards.";
-  const thumbnailItemTypeSectionSpecs = thumbnailVisibilityKindSpecs()
-    .filter((spec) => spec.kind !== "subfolder")
-    .map((spec) =>
-      spec.kind === "rootFolder"
-        ? Object.assign({}, spec, {
-            label: "Folder thumbnails",
-            settingKinds: ["rootFolder", "subfolder"],
-          })
-        : Object.assign({}, spec, { settingKinds: [spec.kind] }),
-    );
-  const thumbnailItemTypeSectionHtml = thumbnailItemTypeSectionSpecs
-    .map((spec) => {
-      const primaryKind = spec.settingKinds[0] || spec.kind;
-      const visibility = previewThumbnailVisibilityForKind(primaryKind, opt);
-      const rows = [];
-      const isFolderSection = spec.settingKinds.length > 1;
-      const titleSizeInputId = isFolderSection
-        ? "opt_previewFolderThumbnailTitleSize"
-        : `opt_${previewThumbnailTitleSizeOptionKey(primaryKind)}`;
-      const titleInputId = isFolderSection
-        ? "opt_previewFolderThumbnailShowTitle"
-        : thumbnailVisibilityInputId(
-            thumbnailVisibilityPreviewOptionKey(primaryKind, "title"),
-          );
-      const extraInfoInputId = isFolderSection
-        ? "opt_previewFolderThumbnailShowExtraInfo"
-        : thumbnailVisibilityInputId(
-            thumbnailVisibilityExtraInfoOptionKey(primaryKind),
-          );
-      const menuInputId = isFolderSection
-        ? "opt_previewFolderThumbnailShowMenuButton"
-        : thumbnailVisibilityInputId(
-            thumbnailVisibilityPreviewOptionKey(primaryKind, "menuButton"),
-          );
-      const extraInfoOn = !!(
-        visibility.showFolderCount ||
-        visibility.showFileCount ||
-        visibility.showItemCount ||
-        visibility.showSize ||
-        visibility.showScores ||
-        visibility.showItemTypeLabel
-      );
-      rows.push(
-        makeSelectRow(
-          "Title size",
-          "Set the Thumbnail View title size for this item type.",
-          titleSizeInputId,
-          getPreviewThumbnailTitleSizeForKind(primaryKind, opt),
-          thumbnailTitleSizeModes,
-        ),
-      );
-      rows.push(
-        makeCheckRow(
-          "Show title",
-          "Show titles in Thumbnail View for this item type.",
-          titleInputId,
-          visibility.showTitle,
-        ),
-      );
-      rows.push(
-        makeCheckRow(
-          "Show extra info",
-          "Show all available counts, sizes, scores, and item type details for this item type.",
-          extraInfoInputId,
-          extraInfoOn,
-        ),
-      );
-      rows.push(
-        makeCheckRow(
-          "Show menu button",
-          "Show the menu button for this item type.",
-          menuInputId,
-          visibility.showMenuButton,
-        ),
-      );
-      return `<h2 style="margin-top:18px;">${escapeHtml(spec.label)}</h2>${rows.join("")}`;
-    })
-    .join("");
   const notificationsRowsHtml = (() => {
     let currentSection = "";
     return NOTIFICATION_SOURCE_SPECS.map((spec) => {
@@ -19583,12 +19447,6 @@ ${buildOverlayRowsHtml(colorOverlayRows)}
 ${buildOverlayRowsHtml(effectOverlayRows)}
 ${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
 ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
-          `,
-    },
-    thumbnails: {
-      title: "Thumbnails",
-      rows: `
-${makeActionRow("Thumbnails removed", "Thumbnail loading, custom thumbnails, and File pane Thumbnail View are disabled in this build. The File pane is list-only.", "")}
           `,
     },
     playback: {
@@ -20185,10 +20043,6 @@ ${makeActionRow(
     },
     (val) => normalizeAppearancePresetIdValue(val),
   );
-  bindActionBtn("opt_prod_thumbnails", () => {
-    prodThumbnailGridKeybindAction();
-    setOptionsStatus("Saved");
-  });
   bindActionBtn("opt_refresh_workspace", () => {
     refreshWorkspaceKeybindAction();
     setOptionsStatus("Saved");
@@ -20232,12 +20086,6 @@ ${makeActionRow(
   bindCheck("opt_gifsIgnoreProcessing", "gifsIgnoreProcessing", () => {
     applyMediaFilterFromOptions();
   });
-  bindSelect("opt_imageThumbSize", "imageThumbSize", true, null, (val) =>
-    normalizeThumbRenderModeValue(val, "high"),
-  );
-  bindSelect("opt_videoThumbSize", "videoThumbSize", true, null, (val) =>
-    normalizeThumbRenderModeValue(val, "medium"),
-  );
   bindSelect(
     "opt_videoAudio",
     "videoAudio",
@@ -20259,108 +20107,6 @@ ${makeActionRow(
       .toLowerCase();
     return raw === "loop" || raw === "next" || raw === "stop" ? raw : "loop";
   });
-  bindStandaloneSelect(
-    "opt_filePaneViewMode",
-    (val) => {
-      setFilePaneViewMode(val);
-      setOptionsStatus("Saved");
-    },
-    (val) => normalizeFilePaneViewMode(val, "list"),
-  );
-  thumbnailVisibilityKindSpecs().forEach((spec) => {
-    const key = previewThumbnailTitleSizeOptionKey(spec.kind);
-    if (!key) return;
-    bindSelect(
-      `opt_${key}`,
-      key,
-      false,
-      null,
-      (val) => normalizeThumbnailTitleSizeValue(val, getThumbnailTitleSizeFromOptions()),
-    );
-  });
-  bindStandaloneSelect(
-    "opt_previewFolderThumbnailTitleSize",
-    (value) => {
-      const nextSize = normalizeThumbnailTitleSizeValue(
-        value,
-        getThumbnailTitleSizeFromOptions(),
-      );
-      setOptionValues({
-        previewRootFolderThumbnailTitleSize: nextSize,
-        previewSubfolderThumbnailTitleSize: nextSize,
-      });
-      setOptionsStatus("Saved");
-      applyOptionsEverywhere(false);
-    },
-    (val) => normalizeThumbnailTitleSizeValue(val, getThumbnailTitleSizeFromOptions()),
-  );
-  const bindFolderThumbnailToggle = (id, nextValuesForEnabled) => {
-    bindMenuToggleButton(id, (enabled) => {
-      setOptionValues(nextValuesForEnabled(!!enabled));
-      setOptionsStatus("Saved");
-      applyOptionsEverywhere(false);
-    });
-  };
-  bindFolderThumbnailToggle("opt_previewFolderThumbnailShowTitle", (enabled) => ({
-    previewRootFolderThumbnailShowTitle: enabled,
-    previewSubfolderThumbnailShowTitle: enabled,
-  }));
-  bindFolderThumbnailToggle("opt_previewFolderThumbnailShowExtraInfo", (enabled) => ({
-    [thumbnailVisibilityExtraInfoOptionKey("rootFolder")]: enabled,
-    [thumbnailVisibilityExtraInfoOptionKey("subfolder")]: enabled,
-  }));
-  bindFolderThumbnailToggle("opt_previewFolderThumbnailShowMenuButton", (enabled) => ({
-    previewRootFolderThumbnailShowMenuButton: enabled,
-    previewSubfolderThumbnailShowMenuButton: enabled,
-  }));
-  bindSelect(
-    "opt_thumbnailStyle",
-    "thumbnailStyle",
-    false,
-    () => {
-      if (MENU_ACTIVE_TAB === "thumbnails") {
-        renderOptionsUi("thumbnails");
-        setOptionsStatus("Saved");
-      }
-    },
-    (val) => {
-      const raw = String(val || "").toLowerCase();
-      return raw === "aspect" ? "aspect" : "cropped";
-    },
-  );
-  bindStandaloneSelect(
-    "opt_thumbnailScale",
-    () => {
-      const thumbnailScaleSelectEl = $("opt_thumbnailScale");
-      if (!thumbnailScaleSelectEl) return;
-      const style = getThumbnailStyleFromOptions(
-        WS.meta && WS.meta.options ? WS.meta.options : null,
-      );
-      const nextScale = normalizeThumbnailScaleValue(
-        thumbnailScaleSelectEl.value,
-        "row7",
-      );
-      const key =
-        style === "aspect" ? "thumbnailScaleAspect" : "thumbnailScaleCropped";
-      const next = {};
-      next[key] = nextScale;
-      WS.meta.options = normalizeOptions(
-        Object.assign({}, WS.meta.options || {}, next),
-      );
-      metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
-      setOptionsStatus("Saved");
-      applyOptionsEverywhere(false);
-      if (MENU_ACTIVE_TAB === "thumbnails") {
-        renderOptionsUi("thumbnails");
-        setOptionsStatus("Saved");
-      }
-    },
-    (val) =>
-      normalizeThumbnailScaleValue(
-        val,
-        "row7",
-      ),
-  );
   bindCheck("opt_forceTitleCaps", "forceTitleCaps");
   bindCheck("opt_showPositionNumbersInNames", "showPositionNumbersInNames");
   bindCheck(
@@ -20531,82 +20277,6 @@ ${makeActionRow(
     applyOptionsEverywhere(true);
     showStatusMessage(`Deleted preset '${preset.name}'.`);
   });
-  bindActionBtn("opt_thumb_reset_crops", () => {
-    const count =
-      WS.meta && WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
-    if (!count) {
-      setOptionsStatus("No changes");
-      showStatusMessage("No edited thumbnail crops to reset.");
-      return;
-    }
-    const ok = confirm(
-      `Reset ${count} edited thumbnail crop${count === 1 ? "" : "s"}?`,
-    );
-    if (!ok) return;
-    const removed = clearEditedThumbnailCrops();
-    applyOptionsEverywhere(false);
-    setOptionsStatus("Saved");
-    showStatusMessage(
-      `Reset ${removed} edited thumbnail crop${removed === 1 ? "" : "s"}.`,
-    );
-  });
-  bindActionBtn("opt_thumb_reset_assignments", () => {
-    const dirCount =
-      WS.meta && WS.meta.dirThumbPresets ? WS.meta.dirThumbPresets.size : 0;
-    const tagPresetCount =
-      WS.meta && WS.meta.tagThumbPresets ? WS.meta.tagThumbPresets.size : 0;
-    const tagModeCount =
-      WS.meta && WS.meta.tagThumbModes ? WS.meta.tagThumbModes.size : 0;
-    const total = dirCount + tagPresetCount + tagModeCount;
-    if (!total) {
-      setOptionsStatus("No changes");
-      showStatusMessage("No custom thumbnail assignments to reset.");
-      return;
-    }
-    const ok = confirm(
-      `Reset ${total} custom thumbnail assignment${total === 1 ? "" : "s"} to defaults?`,
-    );
-    if (!ok) return;
-    const removed = clearThumbnailAssignmentsToDefaults();
-    applyOptionsEverywhere(false);
-    setOptionsStatus("Saved");
-    showStatusMessage(
-      `Reset ${removed} thumbnail assignment${removed === 1 ? "" : "s"} to defaults.`,
-    );
-  });
-  bindActionBtn("opt_thumb_reset_all", () => {
-    const cropCount =
-      WS.meta && WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
-    const dirCount =
-      WS.meta && WS.meta.dirThumbPresets ? WS.meta.dirThumbPresets.size : 0;
-    const tagPresetCount =
-      WS.meta && WS.meta.tagThumbPresets ? WS.meta.tagThumbPresets.size : 0;
-    const tagModeCount =
-      WS.meta && WS.meta.tagThumbModes ? WS.meta.tagThumbModes.size : 0;
-    const total = cropCount + dirCount + tagPresetCount + tagModeCount;
-    if (!total) {
-      setOptionsStatus("No changes");
-      showStatusMessage("No custom thumbnail data to reset.");
-      return;
-    }
-    const ok = confirm(
-      "Reset all thumbnail edits and assignments to defaults?",
-    );
-    if (!ok) return;
-    const summary = clearAllThumbnailCustomizations();
-    applyOptionsEverywhere(false);
-    setOptionsStatus("Saved");
-    showStatusMessage(
-      `Reset ${summary.total} thumbnail customization${summary.total === 1 ? "" : "s"}.`,
-    );
-  });
-  bindActionBtn("opt_thumb_rebuild_cache", () => {
-    invalidateAllThumbs();
-    applyOptionsEverywhere(false);
-    setOptionsStatus("Saved");
-    showStatusMessage("Thumbnail cache rebuild queued.");
-  });
-
   bindStandaloneSelect(
     "opt_dirSortMode",
     () => {
@@ -20628,7 +20298,6 @@ const OPTION_TAB_IDS = Object.freeze([
   "general",
   "storage",
   "appearance",
-  "thumbnails",
   "playback",
   "filenames",
 ]);
@@ -20665,7 +20334,6 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
       "gifsIgnoreProcessing",
     ]),
   ),
-  thumbnails: Object.freeze([].concat(META_PREFERENCE_SECTION_OPTION_KEYS.thumbnails)),
   playback: Object.freeze([
     "videoAudio",
     "videoSkipStep",
@@ -23158,7 +22826,8 @@ function metaSetHiddenBulk(paths, enable) {
 
 async function rebuildWorkspaceAfterStorageStateChange() {
   if (WS.meta.storageMode === "fs" && WS.meta.fsRootHandle) {
-    await refreshWorkspaceFromRootHandle();
+    applyAspectRatioStorageToCurrentWorkspace();
+    refreshCurrentViewAfterCatalogMutation();
     return true;
   }
   if (Array.isArray(LAST_LOADED_FILE_LIST) && LAST_LOADED_FILE_LIST.length) {
@@ -23195,8 +22864,20 @@ async function setStorageStateForFolderPaths(paths, enable) {
     return true;
   }
   await persistDirtyMetadataNow();
-  const rebuilt = await rebuildWorkspaceAfterStorageStateChange();
-  if (!rebuilt) return false;
+  if (WS.meta.storageMode === "fs" && WS.meta.fsRootHandle) {
+    const parents = new Set();
+    for (const path of list) {
+      parents.add(normalizeDirPathValue(path).split("/").slice(0, -1).join("/"));
+      if (!enable) await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
+    }
+    for (const parent of parents) {
+      await reconcileCatalogFolderWithDisk(parent, { showOverlay: false });
+    }
+    refreshCurrentViewAfterCatalogMutation();
+  } else {
+    const rebuilt = await rebuildWorkspaceAfterStorageStateChange();
+    if (!rebuilt) return false;
+  }
   showStatusMessage(
     `${enable ? "Sent" : "Removed"} ${changedCount} folder${changedCount === 1 ? "" : "s"} ${enable ? "to" : "from"} storage.`,
   );
@@ -24948,6 +24629,18 @@ function metaScheduleSave(...docIds) {
   }, 500);
 }
 
+async function flushPendingMetadataSaveNow(docIds = null) {
+  if (!WS.meta) return;
+  if (WS.meta.saveTimer) {
+    clearTimeout(WS.meta.saveTimer);
+    WS.meta.saveTimer = null;
+  }
+  const ids = metaNormalizeDocIdsToSave(docIds);
+  if (!ids.length) return;
+  if (WS.meta.storageMode === "fs") await metaSaveFsNow(ids);
+  else metaSaveLocalNow(ids);
+}
+
 let BUSY_OVERLAY_HOLD_COUNT = 0;
 let BUSY_OVERLAY_PENDING_HIDE = false;
 
@@ -24988,7 +24681,9 @@ function busyOverlayActive() {
   return !!(busyOverlay && busyOverlay.classList.contains("active"));
 }
 
-function metaInitForCurrentWorkspace() {
+function metaInitForCurrentWorkspace(opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  const loadHeavyLogs = options.loadHeavyLogs !== false;
   metaComputeFingerprints();
   const dirtyDocs = new Set();
 
@@ -25017,6 +24712,7 @@ function metaInitForCurrentWorkspace() {
       const splitDocs = [];
       for (let i = 0; i < loadOrder.length; i++) {
         const docId = loadOrder[i];
+        if (!loadHeavyLogs && docId === META_DOC_IDS.aspectRatios) continue;
         if (!metadataDocEnabled(docId)) continue;
         const log = metaLoadLocalDoc(keys.docs && keys.docs[docId]);
         if (!log) continue;
@@ -25091,7 +24787,9 @@ function metaInitForCurrentWorkspace() {
   applyLoadedOptionsToDocument();
 }
 
-async function metaInitForCurrentWorkspaceFs() {
+async function metaInitForCurrentWorkspaceFs(opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  const loadHeavyLogs = options.loadHeavyLogs !== false;
   metaComputeFingerprints();
   const dirtyDocs = new Set();
   const legacyHandles =
@@ -25119,6 +24817,7 @@ async function metaInitForCurrentWorkspaceFs() {
   const splitDocs = [];
   for (let i = 0; i < loadOrder.length; i++) {
     const docId = loadOrder[i];
+    if (!loadHeavyLogs && docId === META_DOC_IDS.aspectRatios) continue;
     if (!metadataDocEnabled(docId)) continue;
     const log = await metaLoadFsDoc(metaFsHandleForDocId(docId));
     if (!log) continue;
@@ -25290,7 +24989,7 @@ async function buildWorkspaceFromFiles(fileList) {
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
-    "Preparing directory thumbnails...",
+    "Preparing directory view...",
   );
 
   renderDirectoriesPane();
@@ -25450,6 +25149,23 @@ async function ensureCatalogHandles(rootHandle) {
     create: true,
   });
   return { catalog, folders, indexFile };
+}
+
+async function readExistingCatalogForRootHandle(rootHandle) {
+  if (!rootHandle) return null;
+  try {
+    const sys = await rootHandle.getDirectoryHandle(".local-gallery");
+    const catalog = await sys.getDirectoryHandle(CATALOG_DIR_NAME);
+    const folders = await catalog.getDirectoryHandle(CATALOG_FOLDERS_DIR_NAME);
+    const indexFile = await catalog.getFileHandle(CATALOG_INDEX_FILE_NAME);
+    const index = await readJsonFileHandle(indexFile);
+    if (!index || index.schema !== CATALOG_SCHEMA_VERSION || !index.complete)
+      return null;
+    if (!index.folders || typeof index.folders !== "object") return null;
+    return { index, handles: { catalog, folders, indexFile } };
+  } catch {
+    return null;
+  }
 }
 
 function showBlockingLoaderOverlay(label, detail = "") {
@@ -25906,6 +25622,493 @@ function installCatalogIndex(index, rootHandle, folderShardDirHandle) {
   }
 }
 
+function ensureCatalogIndexObjects() {
+  if (!WS.catalog) return null;
+  if (!WS.catalog.index || typeof WS.catalog.index !== "object") {
+    WS.catalog.index = {
+      schema: CATALOG_SCHEMA_VERSION,
+      complete: true,
+      updatedAt: Date.now(),
+      rootName: String(WS.root?.name || "root"),
+      rootSummary: null,
+      folders: {},
+      fileLocationsById: {},
+      fileLightIndexById: {},
+      stats: {},
+    };
+  }
+  const index = WS.catalog.index;
+  if (!index.folders || typeof index.folders !== "object") index.folders = {};
+  if (!index.fileLocationsById || typeof index.fileLocationsById !== "object")
+    index.fileLocationsById = {};
+  if (!index.fileLightIndexById || typeof index.fileLightIndexById !== "object")
+    index.fileLightIndexById = {};
+  index.schema = CATALOG_SCHEMA_VERSION;
+  index.complete = true;
+  return index;
+}
+
+function emptyCatalogFolderSummary(path, rootName = "") {
+  const p = normalizeDirPathValue(path);
+  return {
+    path: p,
+    name: p ? p.split("/").filter(Boolean).pop() || p : String(rootName || WS.catalog?.index?.rootName || WS.root?.name || "root"),
+    parentPath: p.split("/").slice(0, -1).join("/"),
+    shardName: catalogShardNameForPath(p),
+    childDirPaths: [],
+    directFileCount: 0,
+    directFolderCount: 0,
+    recursiveFileCount: 0,
+    recursiveFolderCount: 0,
+    recursiveItemCount: 0,
+    recursiveImageCount: 0,
+    recursiveVideoCount: 0,
+    recursiveGifCount: 0,
+    recursiveSizeBytes: 0,
+    directAspectCounts: catalogEmptyAspectCounts(),
+    recursiveAspectCounts: catalogEmptyAspectCounts(),
+    directMediaAspectCounts: catalogEmptyMediaAspectCounts(),
+    recursiveMediaAspectCounts: catalogEmptyMediaAspectCounts(),
+    directLeadFile: null,
+    leadFile: null,
+  };
+}
+
+async function createEmptyCatalogForRootHandle(rootHandle) {
+  const handles = await ensureCatalogHandles(rootHandle);
+  const rootName = String(rootHandle?.name || "root");
+  const rootSummary = emptyCatalogFolderSummary("", rootName);
+  const rootShard = {
+    schema: CATALOG_SCHEMA_VERSION,
+    path: "",
+    childDirPaths: [],
+    files: [],
+  };
+  const rootShardHandle = await handles.folders.getFileHandle(
+    rootSummary.shardName,
+    { create: true },
+  );
+  await writeJsonFileHandle(rootShardHandle, rootShard);
+  const index = {
+    schema: CATALOG_SCHEMA_VERSION,
+    complete: true,
+    updatedAt: Date.now(),
+    rootName,
+    rootSummary,
+    folders: { "": rootSummary },
+    fileLocationsById: {},
+    fileLightIndexById: {},
+    stats: { dirs: 1, files: 0, bytes: 0, entries: 0, allFiles: 0 },
+  };
+  await writeJsonFileHandle(handles.indexFile, index);
+  return { index, handles };
+}
+
+async function writeCatalogIndexNow() {
+  const index = ensureCatalogIndexObjects();
+  if (!index) return false;
+  index.updatedAt = Date.now();
+  if (index.folders && index.folders[""]) index.rootSummary = index.folders[""];
+  try {
+    const handles = await ensureCatalogHandles(
+      WS.catalog.rootHandle || WS.meta.fsRootHandle,
+    );
+    WS.catalog.folderShardDirHandle = handles.folders;
+    return await writeJsonFileHandle(handles.indexFile, index);
+  } catch {
+    return false;
+  }
+}
+
+function catalogDescriptorWithRelPath(desc, relPath) {
+  const source = normalizeCatalogFileDescriptor(desc);
+  const normalizedRelPath = normalizeWorkspaceRelPath(relPath);
+  if (!source || !normalizedRelPath) return null;
+  const name = normalizedRelPath.split("/").filter(Boolean).pop() || source.name;
+  const extDot = name.lastIndexOf(".");
+  const next = Object.assign({}, source, {
+    name,
+    relPath: normalizedRelPath,
+    dirPath: normalizedRelPath.split("/").slice(0, -1).join("/"),
+    ext: extDot >= 0 ? name.slice(extDot).toLowerCase() : "",
+  });
+  next.id = fileKeyForRecord(next, normalizedRelPath);
+  return normalizeCatalogFileDescriptor(next);
+}
+
+function catalogRemapDescriptorPath(desc, oldPrefix, newPrefix) {
+  const source = normalizeCatalogFileDescriptor(desc);
+  if (!source) return null;
+  const nextRelPath = remapPathPrefix(oldPrefix, newPrefix, source.relPath);
+  return catalogDescriptorWithRelPath(source, nextRelPath);
+}
+
+function catalogRegisterFileLocation(desc, shardName) {
+  const d = normalizeCatalogFileDescriptor(desc);
+  if (!d || !WS.catalog) return null;
+  const index = ensureCatalogIndexObjects();
+  const loc = {
+    id: d.id,
+    relPath: d.relPath,
+    dirPath: d.dirPath,
+    shardName: shardName || catalogShardNameForPath(d.dirPath),
+  };
+  index.fileLocationsById[d.id] = loc;
+  index.fileLightIndexById[d.id] = Object.assign(
+    { shardName: loc.shardName },
+    catalogLightIndexEntryFromDescriptor(d),
+  );
+  WS.catalog.fileLocationsById.set(d.id, loc);
+  WS.catalog.fileLocationsByRelPath.set(d.relPath, loc);
+  WS.catalog.fileLightIndexById.set(d.id, index.fileLightIndexById[d.id]);
+  WS.catalog.fileLightIndexByRelPath.set(d.relPath, index.fileLightIndexById[d.id]);
+  WS.catalog.fileDescriptorsById.set(d.id, d);
+  WS.catalog.fileDescriptorsByRelPath.set(d.relPath, d);
+  return d;
+}
+
+function catalogRemoveFileLocationsForDirPath(dirPath) {
+  if (!WS.catalog) return;
+  const p = normalizeDirPathValue(dirPath);
+  const index = ensureCatalogIndexObjects();
+  const ids = new Set();
+  for (const [id, loc] of WS.catalog.fileLocationsById.entries()) {
+    if (normalizeDirPathValue(loc?.dirPath || "") === p) ids.add(id);
+  }
+  for (const id of Object.keys(index.fileLocationsById || {})) {
+    const loc = index.fileLocationsById[id];
+    if (normalizeDirPathValue(loc?.dirPath || "") === p) ids.add(id);
+  }
+  for (const id of ids) {
+    const loc =
+      WS.catalog.fileLocationsById.get(id) ||
+      (index.fileLocationsById && index.fileLocationsById[id]) ||
+      null;
+    const relPath = normalizeWorkspaceRelPath(loc?.relPath || "");
+    delete index.fileLocationsById[id];
+    delete index.fileLightIndexById[id];
+    WS.catalog.fileLocationsById.delete(id);
+    WS.catalog.fileLightIndexById.delete(id);
+    WS.catalog.fileDescriptorsById.delete(id);
+    if (relPath) {
+      WS.catalog.fileLocationsByRelPath.delete(relPath);
+      WS.catalog.fileLightIndexByRelPath.delete(relPath);
+      WS.catalog.fileDescriptorsByRelPath.delete(relPath);
+    }
+  }
+}
+
+function catalogFilesFromShardOrIndex(path) {
+  const p = normalizeDirPathValue(path);
+  const shard = WS.catalog?.folderShardCache?.get(p) || null;
+  if (Array.isArray(shard?.files)) {
+    return shard.files.map(normalizeCatalogFileDescriptor).filter(Boolean);
+  }
+  const out = [];
+  const seen = new Set();
+  const maps = [
+    WS.catalog?.fileLightIndexByRelPath,
+    WS.catalog?.fileDescriptorsByRelPath,
+  ];
+  for (const map of maps) {
+    if (!map || typeof map.entries !== "function") continue;
+    for (const [relPath, raw] of map.entries()) {
+      const desc = normalizeCatalogFileDescriptor(raw);
+      if (!desc || normalizeDirPathValue(desc.dirPath) !== p) continue;
+      if (seen.has(desc.relPath)) continue;
+      seen.add(desc.relPath);
+      out.push(desc);
+    }
+  }
+  out.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  return out;
+}
+
+function buildCatalogSummaryFromDirectEntries(path, childDirPaths, files) {
+  const p = normalizeDirPathValue(path);
+  const rootName = String(WS.catalog?.index?.rootName || WS.root?.name || "root");
+  const childPaths = Array.from(
+    new Set((childDirPaths || []).map(normalizeDirPathValue).filter(Boolean)),
+  ).sort((a, b) => String(a).localeCompare(String(b)));
+  const directFiles = (files || [])
+    .map(normalizeCatalogFileDescriptor)
+    .filter(Boolean)
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  for (let i = 0; i < childPaths.length; i++) {
+    if (!WS.catalog.folderSummaries.has(childPaths[i])) {
+      WS.catalog.folderSummaries.set(
+        childPaths[i],
+        emptyCatalogFolderSummary(childPaths[i], rootName),
+      );
+    }
+  }
+  const directAspectCounts = catalogEmptyAspectCounts();
+  const directMediaAspectCounts = catalogEmptyMediaAspectCounts();
+  const recursiveAspectCounts = catalogEmptyAspectCounts();
+  const recursiveMediaAspectCounts = catalogEmptyMediaAspectCounts();
+  let recursiveImageCount = 0;
+  let recursiveVideoCount = 0;
+  let recursiveGifCount = 0;
+  let recursiveSizeBytes = 0;
+  for (let i = 0; i < directFiles.length; i++) {
+    const file = directFiles[i];
+    if (file.type === "video") recursiveVideoCount++;
+    else recursiveImageCount++;
+    if (String(file.ext || "").toLowerCase() === ".gif") recursiveGifCount++;
+    recursiveSizeBytes += Math.max(0, Number(file.size) || 0);
+    catalogIncrementAspectStats(directAspectCounts, directMediaAspectCounts, file);
+    catalogIncrementAspectStats(recursiveAspectCounts, recursiveMediaAspectCounts, file);
+  }
+  let recursiveFileCount = directFiles.length;
+  let recursiveFolderCount = childPaths.length;
+  for (let i = 0; i < childPaths.length; i++) {
+    const child = WS.catalog.folderSummaries.get(childPaths[i]);
+    if (!child) continue;
+    recursiveFileCount += Math.max(0, Number(child.recursiveFileCount) || 0);
+    recursiveFolderCount += Math.max(0, Number(child.recursiveFolderCount) || 0);
+    recursiveImageCount += Math.max(0, Number(child.recursiveImageCount) || 0);
+    recursiveVideoCount += Math.max(0, Number(child.recursiveVideoCount) || 0);
+    recursiveGifCount += Math.max(0, Number(child.recursiveGifCount) || 0);
+    recursiveSizeBytes += Math.max(0, Number(child.recursiveSizeBytes) || 0);
+    catalogAddAspectCounts(recursiveAspectCounts, child.recursiveAspectCounts);
+    catalogAddMediaAspectCounts(recursiveMediaAspectCounts, child.recursiveMediaAspectCounts);
+  }
+  const directLeadFile = directFiles[0] || null;
+  const childLead = childPaths
+    .map((childPath) => WS.catalog.folderSummaries.get(childPath))
+    .find((child) => child && child.leadFile);
+  return {
+    path: p,
+    name: p ? p.split("/").filter(Boolean).pop() || p : rootName,
+    parentPath: p.split("/").slice(0, -1).join("/"),
+    shardName: catalogShardNameForPath(p),
+    childDirPaths: childPaths,
+    directFileCount: directFiles.length,
+    directFolderCount: childPaths.length,
+    recursiveFileCount,
+    recursiveFolderCount,
+    recursiveItemCount: recursiveFileCount + recursiveFolderCount,
+    recursiveImageCount,
+    recursiveVideoCount,
+    recursiveGifCount,
+    recursiveSizeBytes,
+    directAspectCounts,
+    recursiveAspectCounts,
+    directMediaAspectCounts,
+    recursiveMediaAspectCounts,
+    directLeadFile,
+    leadFile: directLeadFile || childLead?.leadFile || null,
+  };
+}
+
+async function writeCatalogFolderShard(path, childDirPaths, files) {
+  if (!WS.catalog) return false;
+  const p = normalizeDirPathValue(path);
+  const shardName = catalogShardNameForPath(p);
+  const shard = {
+    schema: CATALOG_SCHEMA_VERSION,
+    path: p,
+    childDirPaths: (childDirPaths || []).map(normalizeDirPathValue).filter(Boolean),
+    files: (files || []).map(normalizeCatalogFileDescriptor).filter(Boolean),
+  };
+  WS.catalog.folderShardCache.set(p, shard);
+  try {
+    const handles = await ensureCatalogHandles(
+      WS.catalog.rootHandle || WS.meta.fsRootHandle,
+    );
+    WS.catalog.folderShardDirHandle = handles.folders;
+    const shardHandle = await handles.folders.getFileHandle(shardName, {
+      create: true,
+    });
+    return await writeJsonFileHandle(shardHandle, shard);
+  } catch {
+    return false;
+  }
+}
+
+async function commitCatalogFolderDirectEntries(path, childDirPaths, files, opts = null) {
+  if (!WS.catalog || !WS.catalog.enabled) return false;
+  const options = opts && typeof opts === "object" ? opts : {};
+  const p = normalizeDirPathValue(path);
+  const index = ensureCatalogIndexObjects();
+  const directFiles = (files || [])
+    .map(normalizeCatalogFileDescriptor)
+    .filter(Boolean);
+  const childPaths = Array.from(
+    new Set((childDirPaths || []).map(normalizeDirPathValue).filter(Boolean)),
+  );
+  const summary = buildCatalogSummaryFromDirectEntries(p, childPaths, directFiles);
+  catalogRemoveFileLocationsForDirPath(p);
+  WS.catalog.folderSummaries.set(p, summary);
+  index.folders[p] = summary;
+  if (!p) index.rootSummary = summary;
+  await writeCatalogFolderShard(p, summary.childDirPaths, directFiles);
+  for (let i = 0; i < directFiles.length; i++) {
+    catalogRegisterFileLocation(directFiles[i], summary.shardName);
+  }
+  const node = WS.dirByPath && WS.dirByPath.get(p);
+  if (node) {
+    applyCatalogSummaryToDirNode(node, summary);
+    node.childrenFiles = directFiles.map((file) => file.id);
+    ensureDirectoryChildNodesFromCatalog(node);
+  }
+  if (options.propagate !== false) {
+    await recomputeCatalogAncestorSummaries(p);
+  }
+  await writeCatalogIndexNow();
+  invalidateDirectoryDerivedIndex();
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+async function recomputeCatalogAncestorSummaries(path) {
+  if (!WS.catalog || !WS.catalog.enabled) return false;
+  let parentPath = normalizeDirPathValue(path).split("/").slice(0, -1).join("/");
+  let changed = false;
+  while (true) {
+    const summary = getCatalogFolderSummary(parentPath);
+    if (summary) {
+      const files = catalogFilesFromShardOrIndex(parentPath);
+      const next = buildCatalogSummaryFromDirectEntries(
+        parentPath,
+        summary.childDirPaths || [],
+        files,
+      );
+      WS.catalog.folderSummaries.set(parentPath, next);
+      ensureCatalogIndexObjects().folders[parentPath] = next;
+      if (!parentPath) WS.catalog.index.rootSummary = next;
+      const node = WS.dirByPath && WS.dirByPath.get(parentPath);
+      if (node) applyCatalogSummaryToDirNode(node, next);
+      changed = true;
+    }
+    if (!parentPath) break;
+    parentPath = parentPath.split("/").slice(0, -1).join("/");
+  }
+  return changed;
+}
+
+async function reconcileCatalogFolderWithDisk(path, opts = null) {
+  if (!WS.catalog || !WS.catalog.enabled || !WS.meta.fsRootHandle) return false;
+  const options = opts && typeof opts === "object" ? opts : {};
+  const p = normalizeDirPathValue(path);
+  const showOverlay = !!options.showOverlay;
+  if (showOverlay) showBusyOverlay("Updating media index...", displayPath(p));
+  try {
+    let dirHandle = null;
+    try {
+      dirHandle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, p);
+    } catch {
+      return false;
+    }
+    const storedPaths = await preloadStoragePathsForRootHandle(WS.meta.fsRootHandle);
+    let aspectEntries = new Map();
+    try {
+      aspectEntries = await readCatalogAspectEntriesByPath(WS.meta.fsRootHandle);
+    } catch {}
+    const childPaths = [];
+    const files = [];
+    for await (const [name, handle] of dirHandle.entries()) {
+      if (name === ".local-gallery") continue;
+      const relPath = p ? `${p}/${name}` : name;
+      if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
+      if (handle.kind === "directory") {
+        const childPath = normalizeDirPathValue(relPath);
+        if (childPath) childPaths.push(childPath);
+        continue;
+      }
+      if (handle.kind !== "file") continue;
+      if (String(name || "")[0] === ".") continue;
+      if (!isImageName(name) && !isVideoName(name)) continue;
+      try {
+        const file = await handle.getFile();
+        const desc = fileDescriptorFromFile(file, relPath, aspectEntries);
+        if (desc) files.push(desc);
+      } catch {}
+    }
+    childPaths.sort((a, b) => String(a).localeCompare(String(b)));
+    files.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    const ok = await commitCatalogFolderDirectEntries(p, childPaths, files);
+    const node = WS.dirByPath && WS.dirByPath.get(p);
+    if (node) {
+      node.loadState = "summary";
+      node.subtreeLoadState = "summary";
+      node.catalogReconciledThisSession = true;
+    }
+    return ok;
+  } finally {
+    if (showOverlay) hideBusyOverlay();
+  }
+}
+
+async function remapCatalogPathPrefix(oldPrefix, newPrefix) {
+  if (!WS.catalog || !WS.catalog.enabled) return false;
+  const oldPath = normalizeDirPathValue(oldPrefix);
+  const newPath = normalizeDirPathValue(newPrefix);
+  if (!oldPath || !newPath || oldPath === newPath) return false;
+  const index = ensureCatalogIndexObjects();
+  const oldPaths = Array.from(WS.catalog.folderSummaries.keys())
+    .map(normalizeDirPathValue)
+    .filter((path) => path === oldPath || path.startsWith(oldPath + "/"))
+    .sort((a, b) => a.split("/").length - b.split("/").length);
+  const remappedShards = [];
+  for (const path of oldPaths) {
+    const shard = (await readCatalogFolderShard(path)) || {
+      schema: CATALOG_SCHEMA_VERSION,
+      path,
+      childDirPaths: [],
+      files: catalogFilesFromShardOrIndex(path),
+    };
+    const nextPath = remapPathPrefix(oldPath, newPath, path);
+    const nextChildPaths = (shard.childDirPaths || [])
+      .map((childPath) => remapPathPrefix(oldPath, newPath, childPath))
+      .map(normalizeDirPathValue)
+      .filter(Boolean);
+    const nextFiles = (shard.files || [])
+      .map((file) => catalogRemapDescriptorPath(file, oldPath, newPath))
+      .filter(Boolean);
+    remappedShards.push({ oldPath: path, path: nextPath, childDirPaths: nextChildPaths, files: nextFiles });
+  }
+
+  for (const path of oldPaths) {
+    delete index.folders[path];
+    WS.catalog.folderSummaries.delete(path);
+    WS.catalog.folderShardCache.delete(path);
+    catalogRemoveFileLocationsForDirPath(path);
+  }
+  for (const item of remappedShards) {
+    await commitCatalogFolderDirectEntries(item.path, item.childDirPaths, item.files, {
+      propagate: false,
+    });
+  }
+  if (remappedShards.length) {
+    await recomputeCatalogAncestorSummaries(newPath);
+    await writeCatalogIndexNow();
+  }
+  return remappedShards.length > 0;
+}
+
+async function removeCatalogPathPrefix(pathPrefix) {
+  if (!WS.catalog || !WS.catalog.enabled) return false;
+  const prefix = normalizeDirPathValue(pathPrefix);
+  if (!prefix) return false;
+  const index = ensureCatalogIndexObjects();
+  const paths = Array.from(WS.catalog.folderSummaries.keys())
+    .map(normalizeDirPathValue)
+    .filter((path) => path === prefix || path.startsWith(prefix + "/"));
+  for (const path of paths) {
+    delete index.folders[path];
+    WS.catalog.folderSummaries.delete(path);
+    WS.catalog.folderShardCache.delete(path);
+    catalogRemoveFileLocationsForDirPath(path);
+    if (WS.dirByPath) WS.dirByPath.delete(path);
+  }
+  await recomputeCatalogAncestorSummaries(prefix);
+  await writeCatalogIndexNow();
+  invalidateDirectoryDerivedIndex();
+  invalidateDirMetricsCaches();
+  return paths.length > 0;
+}
+
 async function readCatalogFolderShard(path) {
   const normalized = normalizeDirPathValue(path);
   if (!WS.catalog || !WS.catalog.folderShardDirHandle) return null;
@@ -25987,17 +26190,24 @@ async function ensureFileObjectForRecord(rec) {
 
 async function ensureDirectoryLoaded(dirNode, opts = null) {
   if (!dirNode || !WS.catalog || !WS.catalog.enabled) return true;
-  if (dirNode.loadState === "loaded") return true;
+  const options = opts && typeof opts === "object" ? opts : {};
+  const shouldReconcile = !!options.reconcile;
+  if (dirNode.loadState === "loaded" && !shouldReconcile) return true;
   if (dirNode.loadState === "loading" && dirNode.loadPromise) {
     await dirNode.loadPromise;
     return dirNode.loadState === "loaded";
   }
-  const showOverlay = !(opts && opts.showOverlay === false);
-  const label = opts && opts.label ? String(opts.label) : "Loading folder...";
+  const showOverlay = !(options && options.showOverlay === false);
+  const label = options && options.label ? String(options.label) : "Loading folder...";
   dirNode.loadState = "loading";
   dirNode.loadPromise = (async () => {
     if (showOverlay) showBlockingLoaderOverlay(label, displayPath(dirNode.path || ""));
     try {
+      if (shouldReconcile) {
+        await reconcileCatalogFolderWithDisk(dirNode.path || "", {
+          showOverlay: false,
+        });
+      }
       const shard = await readCatalogFolderShard(dirNode.path || "");
       ensureDirectoryChildNodesFromCatalog(dirNode);
       const files = Array.isArray(shard?.files) ? shard.files : [];
@@ -26034,11 +26244,6 @@ function getRootCatalogBucketForNode(node) {
   return cur && cur.parent === WS.root ? cur : null;
 }
 
-function folderOpenShouldHydrateWholeRootBucket(node) {
-  const bucket = getRootCatalogBucketForNode(node);
-  return !!(bucket && WS.catalog && WS.catalog.enabled);
-}
-
 function formatSubtreeHydrationDetail(stats, path = "") {
   const folderCount = Math.max(0, Number(stats && stats.folders) || 0);
   const fileCount = Math.max(0, Number(stats && stats.files) || 0);
@@ -26047,13 +26252,15 @@ function formatSubtreeHydrationDetail(stats, path = "") {
 
 async function ensureDirectorySubtreeLoaded(dirNode, opts = null) {
   if (!dirNode || !WS.catalog || !WS.catalog.enabled) return true;
-  if (dirNode.subtreeLoadState === "loaded") return true;
+  const options = opts && typeof opts === "object" ? opts : {};
+  const shouldReconcile = !!options.reconcile;
+  if (dirNode.subtreeLoadState === "loaded" && !shouldReconcile) return true;
   if (dirNode.subtreeLoadState === "loading" && dirNode.subtreeLoadPromise) {
     await dirNode.subtreeLoadPromise;
     return dirNode.subtreeLoadState === "loaded";
   }
-  const showOverlay = !(opts && opts.showOverlay === false);
-  const label = opts && opts.label ? String(opts.label) : "Opening folder...";
+  const showOverlay = !(options && options.showOverlay === false);
+  const label = options && options.label ? String(options.label) : "Opening folder...";
   const stats = { folders: 0, files: 0, lastUpdate: 0 };
   const updateProgress = (path = "", force = false) => {
     if (!showOverlay) return;
@@ -26064,7 +26271,11 @@ async function ensureDirectorySubtreeLoaded(dirNode, opts = null) {
   };
   dirNode.subtreeLoadState = "loading";
   dirNode.subtreeLoadPromise = (async () => {
-    if (showOverlay) showBlockingLoaderOverlay(label, formatSubtreeHydrationDetail(stats, dirNode.path || ""));
+    if (showOverlay)
+      showBlockingLoaderOverlay(
+        label,
+        formatSubtreeHydrationDetail(stats, dirNode.path || ""),
+      );
     const visited = new Set();
     const walk = async (node) => {
       if (!node) return;
@@ -26072,11 +26283,18 @@ async function ensureDirectorySubtreeLoaded(dirNode, opts = null) {
       if (visited.has(path)) return;
       visited.add(path);
       updateProgress(path);
-      await ensureDirectoryLoaded(node, { showOverlay: false });
+      await ensureDirectoryLoaded(node, {
+        showOverlay: false,
+        reconcile: shouldReconcile,
+      });
       stats.folders++;
-      stats.files += Array.isArray(node.childrenFiles) ? node.childrenFiles.length : 0;
+      stats.files += Array.isArray(node.childrenFiles)
+        ? node.childrenFiles.length
+        : 0;
       updateProgress(path);
-      const children = Array.isArray(node.childrenDirs) ? node.childrenDirs.slice() : [];
+      const children = Array.isArray(node.childrenDirs)
+        ? node.childrenDirs.slice()
+        : [];
       for (let i = 0; i < children.length; i++) await walk(children[i]);
       node.subtreeLoadState = "loaded";
     };
@@ -26109,7 +26327,6 @@ async function ensureDirectorySubtreeLoaded(dirNode, opts = null) {
       } else {
         scheduleBackgroundAspectRatioHydration(250);
       }
-      if (showOverlay) updateProgress(dirNode.path || "", true);
       invalidateDirectoryDerivedIndex();
       rebuildDirectoryDerivedIndex();
       invalidateDirMetricsCaches();
@@ -26133,19 +26350,31 @@ async function ensureDirectoryHydratedForOpen(node, opts = null) {
       const bucket = getRootCatalogBucketForNode(node);
       if (bucket) {
         prepareExclusiveRootChildWorkspace(bucket, { showOverlay });
-        const loaded = await ensureDirectorySubtreeLoaded(bucket, opts);
+        const loaded = await ensureDirectorySubtreeLoaded(
+          bucket,
+          Object.assign({}, opts || {}, { reconcile: false }),
+        );
         if (!loaded || node.loadState !== "loaded") return false;
+        if (!node.catalogReconciledThisSession) {
+          await reconcileCatalogFolderWithDisk(node.path || "", {
+            showOverlay: false,
+          });
+          await ensureDirectoryLoaded(node, { showOverlay: false });
+        }
         await ensureRootChildWorkspaceThumbnailsLoaded(node, {
-          label: "Loading folder thumbnails...",
+          label: "Loading folder media...",
           showOverlay,
           hideOverlay: false,
         });
         return true;
       }
-      const loaded = await ensureDirectoryLoaded(node, opts);
+      const loaded = await ensureDirectoryLoaded(
+        node,
+        Object.assign({}, opts || {}, { reconcile: true }),
+      );
       if (loaded)
         await ensureRootChildWorkspaceThumbnailsLoaded(node, {
-          label: "Loading folder thumbnails...",
+          label: "Loading folder media...",
           showOverlay,
           hideOverlay: false,
         });
@@ -26156,7 +26385,7 @@ async function ensureDirectoryHydratedForOpen(node, opts = null) {
       return loaded;
     }
     await ensureRootChildWorkspaceThumbnailsLoaded(node, {
-      label: "Loading folder thumbnails...",
+      label: "Loading folder media...",
       showOverlay,
       hideOverlay: false,
     });
@@ -26235,16 +26464,20 @@ async function materializeCatalogMetadataThumbnailRecords(opts = null) {
   }
 }
 
-async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
+async function buildCatalogForRootHandle(rootHandle, storedPaths = null, opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  const showOverlay = options.showOverlay !== false;
   const handles = await ensureCatalogHandles(rootHandle);
   const folders = {};
   const fileLocationsById = {};
   const fileLightIndexById = {};
-  showBlockingLoaderOverlay(
-    "Loading media metadata...",
-    "Reading cached aspect-ratio data...",
-  );
-  await waitForBusyOverlayPaint();
+  if (showOverlay) {
+    showBlockingLoaderOverlay(
+      "Loading media metadata...",
+      "Reading cached aspect-ratio data...",
+    );
+    await waitForBusyOverlayPaint();
+  }
   let aspectEntriesByPath = new Map();
   try {
     aspectEntriesByPath = await readCatalogAspectEntriesByPath(rootHandle);
@@ -26262,6 +26495,7 @@ async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
     return `Indexed ${folders} folders, ${mediaFiles} media files`;
   };
   const updateProgress = (path = "", force = false) => {
+    if (!showOverlay) return;
     const now = Date.now();
     if (!force && now - lastOverlayUpdate < 80) return;
     lastOverlayUpdate = now;
@@ -26401,16 +26635,20 @@ async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
     return summary;
   };
 
-  showBlockingLoaderOverlay("Indexing gallery...", "Scanning folders...");
-  await waitForBusyOverlayPaint();
+  if (showOverlay) {
+    showBlockingLoaderOverlay("Indexing gallery...", "Scanning folders...");
+    await waitForBusyOverlayPaint();
+  }
   try {
     const rootSummary = await scanDir(rootHandle, "");
     updateProgress("", true);
-    updateBlockingLoaderOverlay(
-      "Writing media index...",
-      formatBusyProgressDetail(progressText(), "Saving .local-gallery catalog"),
-    );
-    await waitForBusyOverlayPaint();
+    if (showOverlay) {
+      updateBlockingLoaderOverlay(
+        "Writing media index...",
+        formatBusyProgressDetail(progressText(), "Saving .local-gallery catalog"),
+      );
+      await waitForBusyOverlayPaint();
+    }
     const index = {
       schema: CATALOG_SCHEMA_VERSION,
       complete: true,
@@ -26423,14 +26661,16 @@ async function buildCatalogForRootHandle(rootHandle, storedPaths = null) {
       stats,
     };
     await writeJsonFileHandle(handles.indexFile, index);
-    updateBlockingLoaderOverlay(
-      "Media index saved...",
-      formatBusyProgressDetail(progressText(), "Preparing workspace catalog"),
-    );
-    await waitForBusyOverlayPaint();
+    if (showOverlay) {
+      updateBlockingLoaderOverlay(
+        "Media index saved...",
+        formatBusyProgressDetail(progressText(), "Preparing workspace catalog"),
+      );
+      await waitForBusyOverlayPaint();
+    }
     return { index, handles };
   } finally {
-    hideBlockingLoaderOverlay();
+    if (showOverlay) hideBlockingLoaderOverlay();
   }
 }
 
@@ -26451,15 +26691,14 @@ async function ensureInternalTrashDirectoryForRootHandle(rootHandle) {
   }
 }
 
-async function buildWorkspaceFromDirectoryHandle(rootHandle) {
+async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  const forceIndex = !!options.forceIndex;
   holdBusyOverlay();
   showBlockingLoaderOverlay("Opening root folder...", "Preparing workspace...");
   await waitForBusyOverlayPaint();
   try {
-    updateBlockingLoaderOverlay("Opening root folder...", "Checking stored folders...");
-    await waitForBusyOverlayPaint();
-    const storedPaths = await preloadStoragePathsForRootHandle(rootHandle);
-
+    await flushPendingMetadataSaveNow();
     updateBlockingLoaderOverlay("Preparing workspace...", "Resetting previous gallery state...");
     await waitForBusyOverlayPaint();
     LAST_LOADED_FILE_LIST = [];
@@ -26472,15 +26711,46 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
       rootHandle,
     );
     const ok = await metaEnsureFsHandles(rootHandle);
-    const catalogResult = await buildCatalogForRootHandle(rootHandle, storedPaths);
+    let catalogResult = null;
+    if (!forceIndex) {
+      updateBlockingLoaderOverlay(
+        "Preparing workspace...",
+        "Loading saved media index...",
+      );
+      await waitForBusyOverlayPaint();
+      catalogResult = await readExistingCatalogForRootHandle(rootHandle);
+      if (!catalogResult) {
+        updateBlockingLoaderOverlay(
+          "Preparing workspace...",
+          "No saved media index found; creating root ledger...",
+        );
+        await waitForBusyOverlayPaint();
+        catalogResult = await createEmptyCatalogForRootHandle(rootHandle);
+      }
+    }
+    if (!catalogResult) {
+      updateBlockingLoaderOverlay("Opening root folder...", "Checking stored folders...");
+      await waitForBusyOverlayPaint();
+      const storedPaths = await preloadStoragePathsForRootHandle(rootHandle);
+      catalogResult = await buildCatalogForRootHandle(rootHandle, storedPaths);
+    }
 
-    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Installing root media index...");
+    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Installing media index...");
     await waitForBusyOverlayPaint();
     installCatalogIndex(
       catalogResult.index,
       rootHandle,
       catalogResult.handles && catalogResult.handles.folders,
     );
+
+    if (!forceIndex) {
+      updateBlockingLoaderOverlay(
+        "Preparing workspace catalog...",
+        "Updating root ledger...",
+      );
+      await waitForBusyOverlayPaint();
+      await reconcileCatalogFolderWithDisk("", { showOverlay: false });
+    }
 
     updateBlockingLoaderOverlay("Preparing workspace catalog...", "Building root folder tree...");
     await waitForBusyOverlayPaint();
@@ -26494,8 +26764,8 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
     applyMediaFilterFromOptions();
 
     showBlockingLoaderOverlay(
-      "Loading gallery metadata...",
-      "Reading saved tags, scores, thumbnails, and aspect-ratio cache...",
+      "Loading saved data...",
+      "Reading saved tags, scores, and aspect-ratio cache...",
     );
     await waitForBusyOverlayPaint();
     try {
@@ -26517,16 +26787,19 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
     } finally {
       hideBlockingLoaderOverlay();
     }
+    applyMediaFilterFromOptions();
 
-    await materializeCatalogMetadataThumbnailRecords({
-      showOverlay: true,
-      label: "Preparing media index...",
-    });
-    await finalizeAspectRatiosAndStorageForLoadedWorkspace({
-      showOverlay: true,
-      aspectLabel: "Checking media aspect ratios...",
-      storageLabel: "Applying media type and aspect filters...",
-    });
+    if (forceIndex) {
+      await materializeCatalogMetadataThumbnailRecords({
+        showOverlay: true,
+        label: "Preparing media index...",
+      });
+      await finalizeAspectRatiosAndStorageForLoadedWorkspace({
+        showOverlay: true,
+        aspectLabel: "Checking media aspect ratios...",
+        storageLabel: "Applying media type and aspect filters...",
+      });
+    }
 
     showBlockingLoaderOverlay("Preparing folder view...", "Building navigation indexes...");
     await waitForBusyOverlayPaint();
@@ -26560,11 +26833,13 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
     syncPinnedHotNavigationDirectories(WS.root);
     applyDefaultRootLandingSidebars();
 
-    await prepareNavigationSnapshot(
-      currentNavigationSnapshot(),
-      "Preparing directory thumbnails...",
-      { keepBusyOverlay: true },
-    );
+    if (forceIndex) {
+      await prepareNavigationSnapshot(
+        currentNavigationSnapshot(),
+        "Preparing directory view...",
+        { keepBusyOverlay: true },
+      );
+    }
 
     updateBlockingLoaderOverlay("Rendering folder view...", "Populating files and preview panes...");
     await waitForBusyOverlayPaint();
@@ -26573,7 +26848,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle) {
     syncButtons();
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
-    scheduleWorkspaceNavigationWarm(WS.root, 1000);
+    if (forceIndex) scheduleWorkspaceNavigationWarm(WS.root, 1000);
     syncMetaButtons();
     initDirHistory();
     await waitForBusyOverlayPaint();
@@ -26694,7 +26969,7 @@ async function buildWorkspaceFromFileList(fileList) {
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
-    "Preparing directory thumbnails...",
+    "Preparing directory view...",
   );
 
   renderDirectoriesPane();
@@ -27192,7 +27467,7 @@ async function refreshWorkspaceFromRootHandle() {
   if (!rootHandle) return;
   const state = snapshotRefreshState();
 
-  await buildWorkspaceFromDirectoryHandle(rootHandle);
+  await buildWorkspaceFromDirectoryHandle(rootHandle, { forceIndex: true });
 
   restoreRefreshViewState(state?.view);
   const targetDir =
@@ -27670,7 +27945,7 @@ async function sanitizeWorkspaceNames() {
     }
 
     showBusyOverlay("Reloading workspace...");
-    await buildWorkspaceFromDirectoryHandle(rootHandle);
+    await buildWorkspaceFromDirectoryHandle(rootHandle, { forceIndex: true });
     restoreRefreshViewState(restoreState.view);
     const targetDir = WS.dirByPath.get(restoreState.dirPath || "") || WS.root;
     if (targetDir) WS.nav.dirNode = targetDir;
@@ -28305,6 +28580,17 @@ function getBatchIndexDirNodesRecursive(dirNode) {
   return out;
 }
 
+function refreshCurrentViewAfterCatalogMutation() {
+  rebuildDirectoriesEntries();
+  WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+  syncPreviewToSelection({ force: true });
+  renderDirectoriesPane(true);
+  renderPreviewPane(true, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+}
+
 async function batchIndexFolderFiles(dirNode) {
   if (RENAME_BUSY) return false;
   if (!dirNode) return false;
@@ -28317,6 +28603,7 @@ async function batchIndexFolderFiles(dirNode) {
   RENAME_BUSY = true;
   showBusyOverlay("Indexing files...");
   let renamedAny = false;
+  const changedPaths = new Set();
   try {
     for (let i = 0; i < targets.length; i++) {
       const target = targets[i];
@@ -28328,20 +28615,14 @@ async function batchIndexFolderFiles(dirNode) {
       });
       if (!res.renamed) continue;
       resetDirFileOrder(target, { silent: true });
+      changedPaths.add(String(target.path || ""));
       renamedAny = true;
     }
     if (renamedAny) {
-      rebuildDirectoriesEntries();
-      WS.nav.selectedIndex = findNearestSelectableIndex(
-        WS.nav.selectedIndex,
-        1,
-      );
-      syncPreviewToSelection({ force: true });
-      renderDirectoriesPane(true);
-      renderPreviewPane(true, true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
+      for (const path of changedPaths) {
+        await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
+      }
+      refreshCurrentViewAfterCatalogMutation();
       showStatusMessage("Index complete.");
       return true;
     }
@@ -28398,6 +28679,12 @@ async function renameFolderDirNode(dirNode, nextName) {
       if (WS.meta.storageMode === "fs") await metaSaveFsNow();
       else metaSaveLocalNow();
     } catch {}
+    await remapCatalogPathPrefix(prevPath, newPath);
+    await reconcileCatalogFolderWithDisk(
+      String(dirNode.parent?.path || ""),
+      { showOverlay: false },
+    );
+    await reconcileCatalogFolderWithDisk(newPath, { showOverlay: false });
 
     const entryKey = state?.entryKey || null;
     if (entryKey && entryKey.kind === "dir") {
@@ -28405,7 +28692,6 @@ async function renameFolderDirNode(dirNode, nextName) {
     } else if (entryKey && entryKey.kind === "file") {
       entryKey.relPath = remapPathPrefix(prevPath, newPath, entryKey.relPath);
     }
-
     rebuildDirectoriesEntries();
     const idx = restoreRefreshSelection(entryKey);
     WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
@@ -29911,10 +30197,14 @@ async function renameSingleFile(rec, nextName) {
   if (clean === String(rec.name || "")) return true;
 
   const dirPath = String(rec.dirPath || "");
-  const dirHandle = await getDirectoryHandleForPath(
-    WS.meta.fsRootHandle,
-    dirPath,
-  );
+  let dirHandle = null;
+  try {
+    dirHandle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, dirPath);
+  } catch {}
+  if (!dirHandle) {
+    showStatusMessage("Rename failed.");
+    return false;
+  }
   let existing = false;
   try {
     await dirHandle.getFileHandle(clean);
@@ -29925,38 +30215,48 @@ async function renameSingleFile(rec, nextName) {
     return false;
   }
 
-  const fileHandle = await dirHandle.getFileHandle(String(rec.name || ""));
-  const ok = await renameFileOnDisk(
-    dirHandle,
-    fileHandle,
-    String(rec.name || ""),
-    clean,
-  );
-  if (!ok) {
+  showBusyOverlay("Renaming file...");
+  try {
+    const fileHandle = await dirHandle.getFileHandle(String(rec.name || ""));
+    const ok = await renameFileOnDisk(
+      dirHandle,
+      fileHandle,
+      String(rec.name || ""),
+      clean,
+    );
+    if (!ok) {
+      showStatusMessage("Rename failed.");
+      return false;
+    }
+
+    const dirNode = WS.dirByPath.get(dirPath) || null;
+    if (dirNode) {
+      const renameMap = new Map([[String(rec.name || ""), clean]]);
+      await updateFileRecordsForFileRenames(dirNode, renameMap, dirHandle);
+    }
+
+    metaComputeFingerprints();
+    metaTrackDirtyDocIds([
+      META_DOC_IDS.scores,
+      META_DOC_IDS.tags,
+      META_DOC_IDS.thumbnails,
+      META_DOC_IDS.appearanceAssignments,
+    ]);
+    try {
+      if (WS.meta.storageMode === "fs") await metaSaveFsNow();
+      else metaSaveLocalNow();
+    } catch {}
+    await reconcileCatalogFolderWithDisk(dirPath, { showOverlay: false });
+    refreshCurrentViewAfterCatalogMutation();
+
+    showStatusMessage("Rename complete.");
+    return true;
+  } catch {
     showStatusMessage("Rename failed.");
     return false;
+  } finally {
+    hideBusyOverlay();
   }
-
-  const dirNode = WS.dirByPath.get(dirPath) || null;
-  if (dirNode) {
-    const renameMap = new Map([[String(rec.name || ""), clean]]);
-    await updateFileRecordsForFileRenames(dirNode, renameMap, dirHandle);
-  }
-
-  metaComputeFingerprints();
-  metaTrackDirtyDocIds([
-    META_DOC_IDS.scores,
-    META_DOC_IDS.tags,
-    META_DOC_IDS.thumbnails,
-    META_DOC_IDS.appearanceAssignments,
-  ]);
-  try {
-    if (WS.meta.storageMode === "fs") await metaSaveFsNow();
-    else metaSaveLocalNow();
-  } catch {}
-
-  showStatusMessage("Rename complete.");
-  return true;
 }
 
 function getChildDirsForNodeBase(dirNode) {
@@ -32663,7 +32963,7 @@ function openThumbnailCropEditor(rec) {
         syncButtons();
         kickVideoThumbsForPreview();
         kickImageThumbsForPreview();
-        showStatusMessage("Saved thumbnail settings.");
+        showStatusMessage("Saved preview settings.");
       }
     });
   });
@@ -39105,7 +39405,7 @@ async function ensureRootChildWorkspaceThumbnailsLoaded(dirNode, opts = null) {
 
 async function finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(dirNode, opts = null) {
   await ensureRootChildWorkspaceThumbnailsLoaded(dirNode, {
-    label: "Loading folder thumbnails...",
+    label: "Loading folder media...",
     showOverlay: true,
     hideOverlay: false,
   });
@@ -39119,7 +39419,7 @@ async function finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(dirNode,
 async function prepareInteractiveNavigationSnapshot(snapshot) {
   return prepareNavigationSnapshot(
     snapshot,
-    "Preparing directory thumbnails...",
+    "Preparing directory view...",
   );
 }
 
@@ -39234,7 +39534,7 @@ async function finalizeDirectoryNavigationRender(opts = null) {
     const effectivePrepareFull = prepareFull && !isViewingPerformanceSensitiveTagAlbumFolder();
     await prepareNavigationSnapshot(
       snapshot,
-      "Preparing directory thumbnails...",
+      "Preparing directory view...",
       {
         full: effectivePrepareFull,
         scheduleWarm: schedulePreparedWarm,
@@ -39381,7 +39681,10 @@ async function scrubFoldersByPaths(paths, opts = {}) {
   }
 
   if (opts.refresh !== false && WS.meta.fsRootHandle) {
-    await refreshWorkspaceFromRootHandle();
+    for (const relPath of list) {
+      await reconcileCatalogFolderWithDisk(relPath, { showOverlay: false });
+    }
+    refreshCurrentViewAfterCatalogMutation();
   }
 
   const okCount = list.length - failed.length - skipped.length;
@@ -39634,6 +39937,8 @@ async function moveFolderPathsToTrash(paths) {
   }
   const failed = [];
   const moved = [];
+  const catalogMoves = [];
+  const touchedDirs = new Set([INTERNAL_TRASH_DIR_NAME]);
   showBusyOverlay("Moving folders to Trash...");
   try {
     for (let i = 0; i < list.length; i++) {
@@ -39686,6 +39991,8 @@ async function moveFolderPathsToTrash(paths) {
         ]);
         metaSetTrashRestoreInfo(trashPath, path);
         moved.push(path);
+        catalogMoves.push({ from: path, to: trashPath });
+        touchedDirs.add(parentPath);
       } catch {
         failed.push(path);
       }
@@ -39698,7 +40005,13 @@ async function moveFolderPathsToTrash(paths) {
     return false;
   }
   await persistDirtyMetadataNow();
-  await refreshWorkspaceFromRootHandle();
+  for (const move of catalogMoves) {
+    await remapCatalogPathPrefix(move.from, move.to);
+  }
+  for (const path of touchedDirs) {
+    await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
+  }
+  refreshCurrentViewAfterCatalogMutation();
   if (failed.length) {
     showStatusMessage(
       `Moved ${moved.length} folder${moved.length === 1 ? "" : "s"} to Trash. ${failed.length} failed.`,
@@ -39727,6 +40040,8 @@ async function putBackTrashFolderPaths(paths) {
   const failed = [];
   const skipped = [];
   const restored = [];
+  const catalogMoves = [];
+  const touchedDirs = new Set([INTERNAL_TRASH_DIR_NAME]);
   showBusyOverlay("Putting folders back...");
   try {
     for (let i = 0; i < list.length; i++) {
@@ -39778,6 +40093,8 @@ async function putBackTrashFolderPaths(paths) {
         ]);
         metaDeleteTrashRestoreInfo(trashPath);
         restored.push(trashPath);
+        catalogMoves.push({ from: trashPath, to: originalPath });
+        touchedDirs.add(parentPath);
       } catch {
         failed.push(trashPath);
       }
@@ -39794,7 +40111,13 @@ async function putBackTrashFolderPaths(paths) {
     return false;
   }
   await persistDirtyMetadataNow();
-  await refreshWorkspaceFromRootHandle();
+  for (const move of catalogMoves) {
+    await remapCatalogPathPrefix(move.from, move.to);
+  }
+  for (const path of touchedDirs) {
+    await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
+  }
+  refreshCurrentViewAfterCatalogMutation();
   const parts = [];
   parts.push(
     `Put back ${restored.length} folder${restored.length === 1 ? "" : "s"}.`,
@@ -39876,11 +40199,15 @@ async function deleteFolderPathsPermanently(paths) {
   showBusyOverlay(label);
   let deleted = 0;
   let failed = 0;
+  const deletedPaths = [];
+  const touchedParents = new Set();
   try {
     for (const t of targets) {
       try {
         await t.parentHandle.removeEntry(t.folderName, { recursive: true });
         deleted++;
+        deletedPaths.push(t.path);
+        touchedParents.add(t.parentPath);
         invalidateDirHandleCache(t.path);
         invalidateDirHandleCache(t.parentPath);
       } catch {
@@ -39896,9 +40223,13 @@ async function deleteFolderPathsPermanently(paths) {
     return false;
   }
 
-  try {
-    await refreshWorkspaceFromRootHandle();
-  } catch {}
+  for (const path of deletedPaths) {
+    await removeCatalogPathPrefix(path);
+  }
+  for (const path of touchedParents) {
+    await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
+  }
+  refreshCurrentViewAfterCatalogMutation();
 
   if (failed > 0) {
     showStatusMessage(
@@ -40011,9 +40342,13 @@ async function setMergeSelectedDirs() {
 
   finalizeBulkSelectionAction();
   closeActionMenus();
-  await refreshWorkspaceFromRootHandle();
+  for (const path of uniquePaths) {
+    await removeCatalogPathPrefix(path);
+  }
+  await reconcileCatalogFolderWithDisk(parentPath, { showOverlay: false });
 
   const finalPath = parentPath ? parentPath + "/" + finalName : finalName;
+  await reconcileCatalogFolderWithDisk(finalPath, { showOverlay: false });
   const idx = findDirEntryIndexByPath(finalPath);
   if (idx >= 0) {
     WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
@@ -40228,6 +40563,8 @@ async function looseSetMergeSelectedFiles() {
     if (WS.meta.storageMode === "fs") await metaSaveFsNow();
     else metaSaveLocalNow();
   } catch {}
+  await reconcileCatalogFolderWithDisk(parentPath, { showOverlay: false });
+  await reconcileCatalogFolderWithDisk(newDirPath, { showOverlay: false });
 
   finalizeBulkSelectionAction();
   closeActionMenus();
@@ -40431,38 +40768,6 @@ async function runFileActionFromMenu(action, fileId, rowEl = null) {
   const rec = WS.fileById.get(id);
   if (!rec) {
     showStatusMessage("Selected file is unavailable.");
-    return true;
-  }
-
-  if (action === "edit-thumbnail") {
-    openThumbnailCropEditor(rec);
-    return true;
-  }
-
-  const setFolderThumbPath = parseFolderThumbnailAction(action);
-  if (setFolderThumbPath !== null) {
-    setFolderThumbnailTargetFromRecord(rec, setFolderThumbPath);
-    return true;
-  }
-
-  if (action === "set-parent-thumbnail") {
-    setParentThumbnailFromRecord(rec);
-    return true;
-  }
-
-  if (action === "set-folder-thumbnail") {
-    setFolderThumbnailFromRecord(rec);
-    return true;
-  }
-
-  if (action === "set-root-thumbnail") {
-    setRootThumbnailFromRecord(rec);
-    return true;
-  }
-
-  const setTagThumbKey = parseTagThumbnailAction(action);
-  if (setTagThumbKey) {
-    setTagThumbnailFromRecordByKey(rec, setTagThumbKey);
     return true;
   }
 
@@ -40764,38 +41069,47 @@ function positionDropdownMenuAtPoint(menuEl, x, y) {
 }
 
 async function commitRenameEdit(path, inputEl) {
-  if (RENAME_BUSY) return;
+  if (RENAME_BUSY) return false;
   const dirNode = WS.dirByPath.get(String(path || ""));
   if (!dirNode) {
     RENAME_EDIT_PATH = null;
     renderDirectoriesPane(true);
-    return;
+    return false;
   }
   RENAME_BUSY = true;
-  const ok = await renameFolderDirNode(dirNode, inputEl.value || "");
-  RENAME_BUSY = false;
+  let ok = false;
+  try {
+    ok = await renameFolderDirNode(dirNode, inputEl.value || "");
+  } finally {
+    RENAME_BUSY = false;
+  }
   if (ok) {
     RENAME_EDIT_PATH = null;
     closeActionMenus();
     renderDirectoriesPane(true);
     renderPreviewPane(false, true);
     syncButtons();
-    return;
+    return true;
   }
   renderDirectoriesPane(true);
+  return false;
 }
 
 async function commitFileRenameEdit(fileId, inputEl) {
-  if (RENAME_BUSY) return;
+  if (RENAME_BUSY) return false;
   const rec = WS.fileById.get(String(fileId || ""));
   if (!rec) {
     RENAME_EDIT_FILE_ID = null;
     renderDirectoriesPane(true);
-    return;
+    return false;
   }
   RENAME_BUSY = true;
-  const ok = await renameSingleFile(rec, inputEl.value || "");
-  RENAME_BUSY = false;
+  let ok = false;
+  try {
+    ok = await renameSingleFile(rec, inputEl.value || "");
+  } finally {
+    RENAME_BUSY = false;
+  }
   if (ok) {
     RENAME_EDIT_FILE_ID = null;
     closeActionMenus();
@@ -40804,9 +41118,10 @@ async function commitFileRenameEdit(fileId, inputEl) {
     syncButtons();
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
-    return;
+    return true;
   }
   renderDirectoriesPane(true);
+  return false;
 }
 
 function getDirectoriesWithTag(tag) {
@@ -41340,7 +41655,6 @@ function buildFolderActionMenuDom(
     row.appendChild(rightBtn);
     menuEl.appendChild(row);
   };
-  const folderThumbnailButtons = [];
   if (state.isTrashRootPortal) return;
   if (state.isTrashPutBackOnly) {
     menuEl.appendChild(makeBtn("Put Back", "put-back", !state.canPutBack));
@@ -41507,56 +41821,6 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     if (!metaClearFolderAppearancePreset(p)) return true;
     refreshAfterProcessingMetadataChange();
     showStatusMessage("Folder media preset reset to inherited.");
-    return true;
-  }
-  if (action === "thumbnail-rotate" || action === "thumbnail-quad") {
-    showStatusMessage("Rotating thumbnails are no longer available.");
-    return true;
-  }
-  if (action === "thumbnail-random") {
-    const changed = setRandomFolderThumbnailForNode(node);
-    if (!changed) {
-      showStatusMessage(
-        isRootNode
-          ? "No media files available for a random root thumbnail."
-          : "No media files available for a random folder thumbnail.",
-      );
-      return true;
-    }
-    refreshThumbnailUiAfterMetadataChange();
-    showStatusMessage(
-      isRootNode
-        ? "Root thumbnail set to a random file."
-        : "Folder thumbnail set to a random file.",
-    );
-    return true;
-  }
-  if (action === "thumbnail-default") {
-    const changed = isRootNode
-      ? resetRootThumbnailToDefault()
-      : metaClearFolderThumbnailPreset(p);
-    if (!changed) return true;
-    renderDirectoriesPane(true);
-    renderPreviewPane(false, true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-    showStatusMessage(
-      isRootNode
-        ? "Root thumbnail reset to default."
-        : "Folder thumbnail reset to default.",
-    );
-    return true;
-  }
-  if (action === "thumbnail-none") {
-    const changed = isRootNode
-      ? setRootThumbnailMode("none")
-      : metaSetFolderThumbnailNone(p);
-    if (!changed) return true;
-    refreshThumbnailUiAfterMetadataChange();
-    showStatusMessage(
-      isRootNode ? "Root thumbnail removed." : "Folder thumbnail removed.",
-    );
     return true;
   }
   if (action === "score-up") {
@@ -41762,19 +42026,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     !!selectedPaths.length &&
     selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
   const activeTagRemovalContext = currentFolderMenuTagRemovalContext();
-  const thumbTogglePaths = selectedDirNodes
-    .map((node) => String(node.path || ""))
-    .filter(Boolean);
-  const thumbDefaultPaths = thumbTogglePaths.filter((p) =>
-    metaHasFolderThumbnailPreset(p),
-  );
-  const allThumbNone =
-    !!thumbTogglePaths.length &&
-    thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "none");
-  const allThumbRotate =
-    !!thumbTogglePaths.length &&
-    thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "rotate");
-  const randomThumbNodes = selectedDirNodes.filter((node) => !!node);
 
   if (scoreInterfaceEnabled()) {
     const scoreRow = document.createElement("div");
@@ -41889,68 +42140,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       }),
     );
   }
-
-  const thumbnailBulkButtons = [];
-  if (isGridInteractionMode() && thumbDefaultPaths.length) {
-    thumbnailBulkButtons.push(
-      makeBtn("Use default thumbnail", () => {
-        let changed = false;
-        for (let i = 0; i < thumbDefaultPaths.length; i++) {
-          if (metaClearFolderThumbnailPreset(thumbDefaultPaths[i]))
-            changed = true;
-        }
-        if (!changed) return;
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        renderDirectoriesPane(true);
-        renderPreviewPane(false, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-        showStatusMessage("Folder thumbnails reset to default.");
-      }),
-    );
-  }
-
-  if (thumbTogglePaths.length && !allThumbNone) {
-    thumbnailBulkButtons.push(
-      makeBtn("No thumbnail", () => {
-        const changed = metaSetFolderThumbnailModeBulk(
-          thumbTogglePaths,
-          "none",
-        );
-        if (!changed) return;
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        renderDirectoriesPane(true);
-        renderPreviewPane(false, true);
-        syncButtons();
-        kickVideoThumbsForPreview();
-        kickImageThumbsForPreview();
-        showStatusMessage("Folder thumbnails removed.");
-      }),
-    );
-  }
-
-  if (randomThumbNodes.length) {
-    thumbnailBulkButtons.push(
-      makeBtn("Random thumbnail", () => {
-        let changed = false;
-        for (let i = 0; i < randomThumbNodes.length; i++) {
-          if (setRandomFolderThumbnailForNode(randomThumbNodes[i]))
-            changed = true;
-        }
-        if (!changed) return;
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        refreshThumbnailUiAfterMetadataChange();
-        showStatusMessage("Folder thumbnails set to random files.");
-      }),
-    );
-  }
-
-  const bulkThumbnailSubmenu = createDropdownMenuSubmenu(
-    "Thumbnail",
-    thumbnailBulkButtons,
-  );
-  if (bulkThumbnailSubmenu) menu.appendChild(bulkThumbnailSubmenu);
 
   if (singleSelectedDirNode && singleSelectedDirNode.preserveOrder) {
     menu.appendChild(
@@ -42172,25 +42361,6 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const anyAssignedTagMediaFilter = tagMediaFilterTargets.some((key) =>
     metaHasTagMediaFilterByKey(key),
   );
-  const tagThumbEntryByKey = (() => {
-    const out = new Map();
-    for (let i = 0; i < selectedEntries.length; i++) {
-      const entry = selectedEntries[i];
-      const key = tagThumbnailKeyForEntry(entry);
-      if (!key || out.has(key)) continue;
-      out.set(key, entry);
-    }
-    return out;
-  })();
-  const tagThumbTargets = Array.from(tagThumbEntryByKey.keys());
-  const allTagThumbNone =
-    !!tagThumbTargets.length &&
-    tagThumbTargets.every(
-      (key) => metaGetTagThumbnailModeByKey(key) === "none",
-    );
-  const allTagThumbRotating =
-    !!tagThumbTargets.length &&
-    tagThumbTargets.every((key) => tagThumbnailUsesRotationByKey(key));
   const singleRenameEntry =
     selectedEntries.length === 1 ? selectedEntries[0] || null : null;
   const canSingleRename =
@@ -42479,44 +42649,6 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         finalizeBulkSelectionAction();
       }),
     );
-  }
-
-  if (tagThumbTargets.length) {
-    const tagThumbnailButtons = [];
-    if (!allTagThumbNone) {
-      tagThumbnailButtons.push(
-        makeBtn("No thumbnail", async () => {
-          let changed = false;
-          for (let i = 0; i < tagThumbTargets.length; i++) {
-            if (metaSetTagThumbnailModeByKey(tagThumbTargets[i], "none"))
-              changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          refreshThumbnailUiAfterMetadataChange();
-          showStatusMessage("Tag folder thumbnails removed.");
-        }),
-      );
-    }
-    tagThumbnailButtons.push(
-      makeBtn("Random thumbnail", async () => {
-        let changed = false;
-        for (let i = 0; i < tagThumbTargets.length; i++) {
-          const key = tagThumbTargets[i];
-          const entry = tagThumbEntryByKey.get(key) || null;
-          if (setRandomTagThumbnailForEntry(entry)) changed = true;
-        }
-        if (!changed) return;
-        finalizeBulkSelectionAction();
-        refreshThumbnailUiAfterMetadataChange();
-        showStatusMessage("Tag folder thumbnails set to random files.");
-      }),
-    );
-    const tagThumbnailSubmenu = createDropdownMenuSubmenu(
-      "Thumbnail",
-      tagThumbnailButtons,
-    );
-    if (tagThumbnailSubmenu) menu.appendChild(tagThumbnailSubmenu);
   }
 
   PREVIEW_CONTEXT_MENU_STATE = {
@@ -43208,46 +43340,6 @@ function handleTagMenuAction(action) {
     );
     return;
   }
-  if (!tagKey) {
-    showStatusMessage("No folders contain that tag.");
-    return;
-  }
-  if (action === "thumbnail-none") {
-    const changed = metaSetTagThumbnailModeByKey(tagKey, "none");
-    if (!changed) return;
-    refreshThumbnailUiAfterMetadataChange();
-    showStatusMessage(`Thumbnail for '${label}' removed.`);
-    return;
-  }
-  if (
-    action === "thumbnail-rotate" ||
-    action === "thumbnail-single" ||
-    action === "thumbnail-quad"
-  ) {
-    showStatusMessage("Rotating thumbnails are no longer available.");
-    return;
-  }
-  if (action === "thumbnail-random") {
-    const tagEntry =
-      ctx.entry && ctx.entry.kind === "tag"
-        ? ctx.entry
-        : {
-            kind: "tag",
-            tag: String(ctx.tag || ""),
-            album: normalizeTagAlbumName(ctx.album || ""),
-            special: String(ctx.special || ""),
-            label: String(ctx.label || ctx.tag || ctx.album || "Tag"),
-            originPath: String(ctx.originPath || WS.nav?.dirNode?.path || ""),
-            placeholder: false,
-          };
-    const changed = setRandomTagThumbnailForEntry(tagEntry);
-    if (!changed) {
-      showStatusMessage(`No media files available for '${label}'.`);
-      return;
-    }
-    refreshThumbnailUiAfterMetadataChange();
-    showStatusMessage(`Set random thumbnail for '${label}'.`);
-  }
 }
 
 function renderDirectoriesTagsHeader() {
@@ -43401,25 +43493,6 @@ function renderDirectoriesActionHeader() {
   const anyAssignedTagMediaFilter =
     !!tagMediaFilterTargets.length &&
     tagMediaFilterTargets.some((key) => metaHasTagMediaFilterByKey(key));
-  const tagThumbEntryByKey = (() => {
-    const out = new Map();
-    for (let i = 0; i < selectedTagEntries.length; i++) {
-      const entry = selectedTagEntries[i];
-      const key = tagThumbnailKeyForEntry(entry);
-      if (!key || out.has(key)) continue;
-      out.set(key, entry);
-    }
-    return out;
-  })();
-  const tagThumbTargets = Array.from(tagThumbEntryByKey.keys());
-  const allTagThumbNone =
-    !!tagThumbTargets.length &&
-    tagThumbTargets.every(
-      (key) => metaGetTagThumbnailModeByKey(key) === "none",
-    );
-  const allTagThumbRotating =
-    !!tagThumbTargets.length &&
-    tagThumbTargets.every((key) => tagThumbnailUsesRotationByKey(key));
   const singleSelectedTagEntry =
     selectedTagEntries.length === 1 ? selectedTagEntries[0] || null : null;
   const canSingleTagRename =
@@ -43443,13 +43516,10 @@ function renderDirectoriesActionHeader() {
         String(entry.originPath || "") ===
         String(activeAlbumTagContext.originPath || ""),
     );
-  const canUseGridTagThumbBulkActions =
-    isGridInteractionMode() && !!tagThumbTargets.length;
   if (
     !selectedDirs.length &&
     !albumAssignableTagEntries.length &&
     !deletableTagAlbumEntries.length &&
-    !canUseGridTagThumbBulkActions &&
     !selectedFiles.length
   ) {
     WS.view.bulkActionMenuOpen = false;
@@ -43764,50 +43834,6 @@ function renderDirectoriesActionHeader() {
     );
   }
 
-  if (canUseGridTagThumbBulkActions) {
-    const tagThumbnailButtons = [];
-
-    if (!allTagThumbNone) {
-      tagThumbnailButtons.push(
-        makeActionBtn("No thumbnail", () => {
-          WS.view.bulkActionMenuOpen = false;
-          let changed = false;
-          for (let i = 0; i < tagThumbTargets.length; i++) {
-            if (metaSetTagThumbnailModeByKey(tagThumbTargets[i], "none"))
-              changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          refreshThumbnailUiAfterMetadataChange();
-          showStatusMessage("Tag folder thumbnails removed.");
-        }),
-      );
-    }
-
-    tagThumbnailButtons.push(
-      makeActionBtn("Random thumbnail", () => {
-        WS.view.bulkActionMenuOpen = false;
-        let changed = false;
-        for (let i = 0; i < tagThumbTargets.length; i++) {
-          const key = tagThumbTargets[i];
-          const entry = tagThumbEntryByKey.get(key) || null;
-          if (setRandomTagThumbnailForEntry(entry)) changed = true;
-        }
-        if (!changed) return;
-        finalizeBulkSelectionAction();
-        refreshThumbnailUiAfterMetadataChange();
-        showStatusMessage("Tag folder thumbnails set to random files.");
-      }),
-    );
-
-    const tagThumbnailSubmenu = createDropdownMenuSubmenu(
-      "Thumbnail",
-      tagThumbnailButtons,
-    );
-    if (tagThumbnailSubmenu)
-      directoriesActionMenuEl.appendChild(tagThumbnailSubmenu);
-  }
-
   if (selectedDirs.length) {
     const selectedDirNodes = selectedDirs
       .map((p) => resolveDirNodeForPathOrStorageStub(String(p || "")))
@@ -43866,20 +43892,6 @@ function renderDirectoriesActionHeader() {
     const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
     const canRenameBulk = !!singleSelectedDirPath && !!WS.meta.fsRootHandle;
     const canIndexBulk = !!singleSelectedDirNode && !!WS.meta.fsRootHandle;
-    const thumbTogglePaths = selectedDirNodes
-      .map((node) => String(node.path || ""))
-      .filter(Boolean);
-    const thumbDefaultPaths = thumbTogglePaths.filter((p) =>
-      metaHasFolderThumbnailPreset(p),
-    );
-    const allThumbNone =
-      !!thumbTogglePaths.length &&
-      thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "none");
-    const allThumbRotate =
-      !!thumbTogglePaths.length &&
-      thumbTogglePaths.every((p) => metaGetFolderThumbnailMode(p) === "rotate");
-    const randomThumbNodes = selectedDirNodes.filter((node) => !!node);
-
     if (scoreInterfaceEnabled()) {
       const scoreRow = document.createElement("div");
       scoreRow.className = "scoreRow";
@@ -44014,73 +44026,6 @@ function renderDirectoriesActionHeader() {
         }),
       );
     }
-
-    const bulkThumbnailButtons = [];
-    if (isGridInteractionMode() && thumbDefaultPaths.length) {
-      bulkThumbnailButtons.push(
-        makeActionBtn("Use default thumbnail", () => {
-          WS.view.bulkActionMenuOpen = false;
-          let changed = false;
-          for (let i = 0; i < thumbDefaultPaths.length; i++) {
-            if (metaClearFolderThumbnailPreset(thumbDefaultPaths[i]))
-              changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Folder thumbnails reset to default.");
-        }),
-      );
-    }
-
-
-    if (thumbTogglePaths.length && !allThumbNone) {
-      bulkThumbnailButtons.push(
-        makeActionBtn("No thumbnail", () => {
-          WS.view.bulkActionMenuOpen = false;
-          const changed = metaSetFolderThumbnailModeBulk(
-            thumbTogglePaths,
-            "none",
-          );
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          renderDirectoriesPane(true);
-          renderPreviewPane(false, true);
-          syncButtons();
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-          showStatusMessage("Folder thumbnails removed.");
-        }),
-      );
-    }
-
-    if (randomThumbNodes.length) {
-      bulkThumbnailButtons.push(
-        makeActionBtn("Random thumbnail", () => {
-          WS.view.bulkActionMenuOpen = false;
-          let changed = false;
-          for (let i = 0; i < randomThumbNodes.length; i++) {
-            if (setRandomFolderThumbnailForNode(randomThumbNodes[i]))
-              changed = true;
-          }
-          if (!changed) return;
-          finalizeBulkSelectionAction();
-          refreshThumbnailUiAfterMetadataChange();
-          showStatusMessage("Folder thumbnails set to random files.");
-        }),
-      );
-    }
-
-    const bulkThumbnailSubmenu = createDropdownMenuSubmenu(
-      "Thumbnail",
-      bulkThumbnailButtons,
-    );
-    if (bulkThumbnailSubmenu)
-      directoriesActionMenuEl.appendChild(bulkThumbnailSubmenu);
 
     const setMergeBtn = makeActionBtn("Set Merge", async () => {
       WS.view.bulkActionMenuOpen = false;
@@ -45106,9 +45051,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     try {
       renderFilePaneThumbnailView(keepScroll, opts);
     } catch (error) {
-      console.error("File pane thumbnail view render failed.", error);
+      console.error("File pane card view render failed.", error);
       if (directoriesListEl) {
-        directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">Thumbnail view failed to render. Switch to List View or change hidden-item visibility, then try again.</div>`;
+        directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">File pane failed to render. Change hidden-item visibility, then try again.</div>`;
         directoriesListEl.dataset.virtualized = "0";
       }
       scheduleThumbnailDemandRefresh();
@@ -45987,17 +45932,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const bulkFileMenuActive =
           canBulk && sel && selectedFilesInViewCount > 0;
         const canLooseSetMerge = !!WS.meta.fsRootHandle;
-        const thumbnailTargets = rec
-          ? getThumbnailMenuTargetsForRecord(rec)
-          : [];
-        const fileThumbnailMenuHtml = buildFileThumbnailSubmenuHtml(
-          thumbnailTargets,
-          true,
-        );
         const fileMenuButtons = bulkFileMenuActive
           ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
           : `
-                  ${fileThumbnailMenuHtml}
                   <button type="button" data-action="rename-file">Rename</button>
                 `;
         const fileTypeLabel = fileItemTypeLabelForRecord(
@@ -46397,7 +46334,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         renameInput.addEventListener("click", (e) => {
           e.stopPropagation();
         });
-        renameInput.addEventListener("keydown", (e) => {
+        renameInput.addEventListener("keydown", async (e) => {
           e.stopPropagation();
           if (e.key === "Escape") {
             e.preventDefault();
@@ -46408,16 +46345,14 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           }
           if (e.key === "Enter") {
             e.preventDefault();
+            if (commitRequested) return;
             commitRequested = true;
-            commitRenameEdit(p, renameInput);
+            await commitRenameEdit(p, renameInput);
             return;
           }
         });
         renameInput.addEventListener("blur", () => {
-          if (commitRequested) {
-            commitRequested = false;
-            return;
-          }
+          if (commitRequested || RENAME_BUSY) return;
           RENAME_EDIT_PATH = null;
           closeActionMenus();
           renderDirectoriesPane(true);
@@ -46526,7 +46461,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         renameInput.addEventListener("click", (e) => {
           e.stopPropagation();
         });
-        renameInput.addEventListener("keydown", (e) => {
+        renameInput.addEventListener("keydown", async (e) => {
           e.stopPropagation();
           if (e.key === "Escape") {
             e.preventDefault();
@@ -46537,16 +46472,14 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           }
           if (e.key === "Enter") {
             e.preventDefault();
+            if (commitRequested) return;
             commitRequested = true;
-            commitFileRenameEdit(entry.id, renameInput);
+            await commitFileRenameEdit(entry.id, renameInput);
             return;
           }
         });
         renameInput.addEventListener("blur", () => {
-          if (commitRequested) {
-            commitRequested = false;
-            return;
-          }
+          if (commitRequested || RENAME_BUSY) return;
           RENAME_EDIT_FILE_ID = null;
           closeActionMenus();
           renderDirectoriesPane(true);
@@ -48272,7 +48205,7 @@ function applyScrollImageProcessingFallback(imgEl, rec, mode) {
   }
 }
 
-function showPreviewViewportMessage(label = "Loading file…", meta = "") {
+function showPreviewViewportMessage(label = "File unavailable", meta = "") {
   ensurePreviewFileElements();
   if (previewImgEl) {
     previewImgEl.classList.remove("ready");
@@ -48445,7 +48378,6 @@ function renderPreviewViewerItem(idx) {
 
   if (!rec) return;
   if (!rec.file && WS.meta && WS.meta.fsRootHandle) {
-    showPreviewViewportMessage("Loading file…", rec.relPath || rec.name || "");
     ensureFileObjectForRecord(rec)
       .then((file) => {
         if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
@@ -48605,50 +48537,12 @@ function renderPreviewViewerItem(idx) {
   previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
   if (!same) {
     const swapToken = (PREVIEW_IMAGE_SWAP_TOKEN = (PREVIEW_IMAGE_SWAP_TOKEN + 1) >>> 0);
-    const hadVisibleFrame = !!(
-      previewImgEl.style.display !== "none" &&
-      String(previewImgEl.getAttribute("src") || "") &&
-      previewImgEl.classList.contains("ready")
-    );
-    if (!hadVisibleFrame || suppressStalePreviewFrame) previewImgEl.classList.remove("ready");
     clearPendingFilmCornerMask(previewImgEl);
-    if (suppressStalePreviewFrame) {
-      previewImgEl.dataset.previewFileId = String(rec.id || "");
-      previewImgEl.src = src;
-      if (previewImgEl.complete && previewImgEl.naturalWidth > 0) {
-        requestAnimationFrame(finalizePreviewImageFrame);
-      }
-    }
-    let committedDecodedImage = false;
-    let decodedImageFallbackTimer = 0;
-    const commitDecodedImage = () => {
-      if (committedDecodedImage) return;
-      if (swapToken !== PREVIEW_IMAGE_SWAP_TOKEN) return;
-      if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
-      committedDecodedImage = true;
-      if (decodedImageFallbackTimer) {
-        try { clearTimeout(decodedImageFallbackTimer); } catch {}
-        decodedImageFallbackTimer = 0;
-      }
-      previewImgEl.dataset.previewFileId = String(rec.id || "");
-      previewImgEl.src = src;
+    previewImgEl.dataset.previewFileId = String(rec.id || "");
+    previewImgEl.classList.add("ready");
+    previewImgEl.src = src;
+    if (swapToken === PREVIEW_IMAGE_SWAP_TOKEN) {
       requestAnimationFrame(finalizePreviewImageFrame);
-    };
-    try {
-      decodedImageFallbackTimer = setTimeout(commitDecodedImage, 1200);
-      const preloadImg = new Image();
-      preloadImg.decoding = "sync";
-      preloadImg.loading = "eager";
-      try { preloadImg.fetchPriority = "high"; } catch {}
-      preloadImg.onload = commitDecodedImage;
-      preloadImg.onerror = commitDecodedImage;
-      preloadImg.src = src;
-      if (preloadImg.decode) {
-        preloadImg.decode().then(commitDecodedImage).catch(commitDecodedImage);
-      }
-      if (preloadImg.complete && preloadImg.naturalWidth > 0) commitDecodedImage();
-    } catch {
-      commitDecodedImage();
     }
     preloadNextMedia(viewerItems, viewerIndex);
     return;
@@ -48945,7 +48839,9 @@ function previewPlaceholderThumbSrcForRecord(rec) {
   const src = getPassivePreviewSrcForRecord(rec, {
     allowImageMediaFallback: true,
   });
-  return String(src || "");
+  if (src) return String(src || "");
+  if (rec.type === "image" && rec.file) return String(ensureMediaUrl(rec) || "");
+  return "";
 }
 
 function previewPlaceholderInfoForCurrentSelection() {
@@ -50362,7 +50258,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     renameInput.addEventListener("click", (e) => {
       e.stopPropagation();
     });
-    renameInput.addEventListener("keydown", (e) => {
+    renameInput.addEventListener("keydown", async (e) => {
       e.stopPropagation();
       if (e.key === "Escape") {
         e.preventDefault();
@@ -50376,15 +50272,13 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
       }
       if (e.key === "Enter") {
         e.preventDefault();
+        if (commitRequested) return;
         commitRequested = true;
-        commitRenameEdit(p, renameInput);
+        await commitRenameEdit(p, renameInput);
       }
     });
     renameInput.addEventListener("blur", () => {
-      if (commitRequested) {
-        commitRequested = false;
-        return;
-      }
+      if (commitRequested || RENAME_BUSY) return;
       RENAME_EDIT_PATH = null;
       PREVIEW_BULK_TAG_EDIT = null;
       closeActionMenus();
@@ -51548,7 +51442,7 @@ function makePreviewFileCard(
     renameInput.addEventListener("click", (e) => {
       e.stopPropagation();
     });
-    renameInput.addEventListener("keydown", (e) => {
+    renameInput.addEventListener("keydown", async (e) => {
       e.stopPropagation();
       if (e.key === "Escape") {
         e.preventDefault();
@@ -51561,15 +51455,13 @@ function makePreviewFileCard(
       }
       if (e.key === "Enter") {
         e.preventDefault();
+        if (commitRequested) return;
         commitRequested = true;
-        commitFileRenameEdit(fileId, renameInput);
+        await commitFileRenameEdit(fileId, renameInput);
       }
     });
     renameInput.addEventListener("blur", () => {
-      if (commitRequested) {
-        commitRequested = false;
-        return;
-      }
+      if (commitRequested || RENAME_BUSY) return;
       RENAME_EDIT_FILE_ID = null;
       closeActionMenus();
       renderDirectoriesPane(true);
@@ -54273,11 +54165,6 @@ function forceThumbnailDemandRefreshNow() {
   refreshThumbnailDemand();
 }
 
-function prodThumbnailGridKeybindAction() {
-  showStatusMessage("Thumbnail prodding was removed; folder thumbnails now load on folder entry.");
-  return false;
-}
-
 function handleExtrasKeybindAction(action) {
   if (!action || !WS.meta) return false;
   const presetId = appearancePresetIdFromKeybindAction(action);
@@ -54486,55 +54373,6 @@ function handleExtrasKeybindAction(action) {
       refreshLiveSettingsPaneFromKeyboardAction();
       applyOptionsEverywhere(false);
       showStatusMessage(`Trim after first underscore: ${next ? "On" : "Off"}`);
-      return true;
-    }
-    case "moveThumbViewportLeft":
-      if (!directoriesPaneOpenEnabled() || !filePaneThumbnailViewEnabled()) return false;
-      return nudgeSelectedThumbnailViewport(-THUMB_VIEWPORT_NUDGE_STEP, 0);
-    case "moveThumbViewportRight":
-      if (!directoriesPaneOpenEnabled() || !filePaneThumbnailViewEnabled()) return false;
-      return nudgeSelectedThumbnailViewport(THUMB_VIEWPORT_NUDGE_STEP, 0);
-    case "moveThumbViewportUp":
-      if (!directoriesPaneOpenEnabled() || !filePaneThumbnailViewEnabled()) return false;
-      return nudgeSelectedThumbnailViewport(0, -THUMB_VIEWPORT_NUDGE_STEP);
-    case "moveThumbViewportDown":
-      if (!directoriesPaneOpenEnabled() || !filePaneThumbnailViewEnabled()) return false;
-      return nudgeSelectedThumbnailViewport(0, THUMB_VIEWPORT_NUDGE_STEP);
-    case "toggleShowFolderItemCounts": {
-      const next =
-        !previewThumbnailVisibilityForKind("rootFolder").showItemCount;
-      const nextValues = { showFolderItemCount: next };
-      const specs = thumbnailVisibilityKindSpecs();
-      for (let i = 0; i < specs.length; i++) {
-        const kind = specs[i].kind;
-        const extraInfoKey = thumbnailVisibilityExtraInfoOptionKey(kind);
-        const previewFolderKey = thumbnailVisibilityPreviewOptionKey(
-          kind,
-          "folderCount",
-        );
-        const previewFileKey = thumbnailVisibilityPreviewOptionKey(
-          kind,
-          "fileCount",
-        );
-        const directoriesFolderKey = thumbnailVisibilityDirectoriesOptionKey(
-          kind,
-          "folderCount",
-        );
-        const directoriesFileKey = thumbnailVisibilityDirectoriesOptionKey(
-          kind,
-          "fileCount",
-        );
-        if (extraInfoKey) nextValues[extraInfoKey] = next;
-        if (previewFolderKey) nextValues[previewFolderKey] = next;
-        if (previewFileKey) nextValues[previewFileKey] = next;
-        if (directoriesFolderKey) nextValues[directoriesFolderKey] = next;
-        if (directoriesFileKey) nextValues[directoriesFileKey] = next;
-      }
-      setOptionValues(nextValues);
-      refreshLiveSettingsPaneFromKeyboardAction();
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      showStatusMessage(`Thumbnail extra info: ${next ? "On" : "Off"}`);
       return true;
     }
     default:
@@ -54759,10 +54597,9 @@ function handleFilePaneThumbnailNavigationAction(action) {
     action === "selectRight";
   if (!isThumbNavAction) return false;
 
-  // Right after a root load or pane-open transition, the list can be in
-  // Thumbnail View logically before the card layout has measurable DOM
-  // geometry. Do not fall back to list or synthetic coordinates for that
-  // first keypress; consume it and let the next frame use the real grid.
+  // Right after a root load or pane-open transition, the list can be in a card
+  // layout logically before measurable DOM geometry exists. Consume that first
+  // keypress and let the next frame use the real grid.
   const layoutReady = !!(
     directoriesListEl &&
     directoriesListEl.classList.contains("filePaneThumbnailView") &&
@@ -56299,9 +56136,8 @@ document.addEventListener("keydown", (e) => {
 
   if (!WS.root) return;
 
-  // Thumbnail View arrow priority:
-  // In Thumbnail View, plain arrow keys can quickly nudge the selected thumbnail crop.
-  // Keep this disabled in List View so arrows keep their normal list navigation behavior.
+  // Legacy card-view arrow priority. This is inactive while the file pane is
+  // list-only, but stays behind the disabled feature gate.
   if (
     directoriesPaneOpenEnabled() &&
     filePaneThumbnailViewEnabled() &&
@@ -56358,9 +56194,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Closed file pane wins before any visible-pane navigation model. The user
-  // cannot see whether the pane was last in List or Thumbnail View, so both
-  // modes collapse to the same previous/next media behavior.
+  // Closed file pane wins before any visible-pane navigation model.
   if (handleClosedFilePaneNavigationAction(action)) {
     e.preventDefault();
     return;
