@@ -255,122 +255,6 @@ body {
     sans-serif;
 }
 
-:root[data-retro="on"] {
-  --retro-desktop: var(--tag-include-bg, #dbe4f1);
-  --retro-face: var(--color1-secondary);
-  --retro-face-soft: var(--color1-secondary);
-  --retro-field: var(--color1-primary);
-  --retro-text: var(--color0-primary);
-  --retro-muted: var(--color0-secondary);
-  --retro-highlight: #ffffff;
-  --retro-highlight-soft: #dfdfdf;
-  --retro-shadow: #808080;
-  --retro-shadow-dark: #404040;
-  --retro-shadow-black: #000000;
-  --retro-face-hover: #dadada;
-  --retro-face-active: #cfcfcf;
-  --retro-link: #0b51d8;
-  --retro-title-bg: var(--palette-accent);
-  --retro-title-text: var(--palette-accent-text);
-  --retro-select-bg: var(--palette-accent);
-  --retro-select-text: var(--palette-accent-text);
-  --retro-select-shadow-dark: rgba(0, 0, 0, 0.45);
-  --retro-select-shadow-light: rgba(255, 255, 255, 0.3);
-  --ui-hover-shadow: none;
-  --ui-focus-ring: 0 0 0 1px #000000;
-  color-scheme: light;
-}
-
-:root[data-retro="on"][data-theme="retro90s-dark"] {
-  --retro-desktop: var(--color1-tertiary);
-  --retro-face: var(--color1-secondary);
-  --retro-face-soft: var(--color1-secondary);
-  --retro-field: var(--color1-primary);
-  --retro-text: var(--color0-primary);
-  --retro-muted: var(--color0-secondary);
-  --retro-highlight: rgba(255, 255, 255, 0.35);
-  --retro-highlight-soft: rgba(255, 255, 255, 0.18);
-  --retro-shadow: rgba(0, 0, 0, 0.58);
-  --retro-shadow-dark: rgba(0, 0, 0, 0.82);
-  --retro-shadow-black: #000000;
-  --retro-face-hover: rgba(255, 255, 255, 0.12);
-  --retro-face-active: rgba(255, 255, 255, 0.18);
-  --retro-link: #7ab8ff;
-  --retro-title-bg: var(--palette-accent);
-  --retro-title-text: var(--palette-accent-text);
-  --retro-select-bg: var(--palette-accent);
-  --retro-select-text: var(--palette-accent-text);
-  --retro-select-shadow-dark: rgba(0, 0, 0, 0.72);
-  --retro-select-shadow-light: rgba(255, 255, 255, 0.18);
-  --ui-selection-outline: var(--palette-accent-outline);
-  --ui-selection-outline-soft: rgba(255, 255, 255, 0.22);
-  --ui-selection-fill: rgba(255, 255, 255, 0.08);
-  --ui-selection-fill-strong: rgba(255, 255, 255, 0.14);
-}
-
-:root[data-retro="on"][data-theme="retro90s"] {
-  --retro-desktop: var(--tag-include-bg, #dbe4f1);
-  --retro-face: var(--color1-secondary);
-  --retro-face-soft: var(--color1-secondary);
-  --retro-field: var(--color1-primary);
-  --retro-text: var(--color0-primary);
-  --retro-muted: var(--color0-secondary);
-  --retro-highlight: #ffffff;
-  --retro-highlight-soft: #efefef;
-  --retro-shadow: rgba(0, 0, 0, 0.32);
-  --retro-shadow-dark: rgba(0, 0, 0, 0.58);
-  --retro-shadow-black: rgba(0, 0, 0, 0.9);
-  --retro-face-hover: rgba(255, 255, 255, 0.68);
-  --retro-face-active: rgba(255, 255, 255, 0.46);
-  --retro-link: #0b51d8;
-  --retro-title-bg: var(--palette-accent);
-  --retro-title-text: var(--palette-accent-text);
-  --retro-select-bg: var(--palette-accent);
-  --retro-select-text: var(--palette-accent-text);
-  --retro-select-shadow-dark: rgba(0, 0, 0, 0.5);
-  --retro-select-shadow-light: rgba(255, 255, 255, 0.38);
-  --ui-selection-outline: var(--palette-accent-outline);
-  --ui-selection-outline-soft: rgba(0, 0, 0, 0.18);
-  --ui-selection-fill: rgba(0, 0, 0, 0.08);
-  --ui-selection-fill-strong: rgba(0, 0, 0, 0.12);
-}
-
-:root[data-retro="on"] body {
-  font-family:
-    "Pixelated MS Sans Serif", "MS Sans Serif", "Microsoft Sans Serif",
-    "Tahoma", sans-serif;
-  font-size: 12px;
-  letter-spacing: 0;
-  text-rendering: geometricPrecision;
-  -webkit-font-smoothing: none;
-  background: var(--retro-desktop);
-  background-image: none;
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"] #app {
-  box-sizing: border-box;
-  background: var(--retro-face);
-  box-shadow:
-    inset 2px 2px 0 var(--retro-highlight),
-    inset -2px -2px 0 var(--retro-shadow-black),
-    inset 3px 3px 0 var(--retro-highlight-soft),
-    inset -3px -3px 0 var(--retro-shadow);
-}
-
-/* retro mode should no longer change media rendering; retro media is controlled separately */
-
-/* Media filter visuals now handled by canvas engine only */
-
-/* Retro 90s media filter removed */
-:root[data-retro="on"] .dirRow,
-:root[data-retro="on"] .folderCard,
-:root[data-retro="on"] .fileCard,
-:root[data-retro="on"] #menuCard,
-:root[data-retro="on"] #propertiesCard {
-  border-radius: 0;
-}
-
 body {
   overflow: hidden;
 }
@@ -424,11 +308,11 @@ body.cursor-hidden * {
   top: 0;
   bottom: 0;
   left: min(320px, 28vw);
-  width: 8px;
-  margin-left: -4px;
-  z-index: 16;
+  width: 1px;
+  margin-left: 0;
+  z-index: 40;
   cursor: col-resize;
-  background: transparent;
+  background: var(--color1-tertiary);
   box-shadow: none;
   outline: none;
   touch-action: none;
@@ -437,11 +321,11 @@ body.cursor-hidden * {
 #divider::before {
   content: "";
   position: absolute;
-  left: calc(50% - 0.5px);
+  left: -4px;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: var(--color1-tertiary);
+  width: 9px;
+  background: transparent;
   box-shadow: none;
   pointer-events: none;
 }
@@ -486,14 +370,6 @@ button:disabled {
 button:focus-visible {
   outline: none;
   box-shadow: var(--ui-focus-ring), var(--ui-hover-shadow);
-}
-
-:root[data-retro="on"] button,
-:root[data-retro="on"] .miniBtn {
-  border-width: 2px;
-  box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.35),
-    inset -1px -1px 0 rgba(0, 0, 0, 0.35);
 }
 
 input[type="file"] {
@@ -567,929 +443,6 @@ input[type="file"] {
   background: var(--color0-secondary);
   color: var(--color1-primary);
   border-color: var(--color0-tertirary);
-}
-
-:root[data-retro="on"] a {
-  color: var(--anchor-internal-color2-primary);
-}
-
-:root[data-retro="on"] button,
-:root[data-retro="on"] .miniBtn,
-:root[data-retro="on"] .dirMenuBtn {
-  background: var(--retro-face);
-  color: var(--retro-text);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  border-radius: 0;
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-  transform: none;
-  text-transform: none;
-}
-
-:root[data-retro="on"] button:hover:not(:disabled),
-:root[data-retro="on"] .miniBtn:hover:not(:disabled),
-:root[data-retro="on"] .dirMenuBtn:hover:not(:disabled) {
-  background: var(--retro-face-hover);
-  color: var(--retro-text);
-  transform: none;
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] button:active:not(:disabled),
-:root[data-retro="on"] .miniBtn:active:not(:disabled),
-:root[data-retro="on"] .dirMenuBtn:active:not(:disabled) {
-  background: var(--retro-face-active);
-  border-color: var(--retro-shadow-black) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-black);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-  transform: none;
-}
-
-:root[data-retro="on"] button:disabled,
-:root[data-retro="on"] .miniBtn:disabled,
-:root[data-retro="on"] .dirMenuBtn:disabled {
-  color: #6a6a6a;
-  background: var(--retro-face);
-  opacity: 1;
-}
-
-:root[data-retro="on"] .miniBtn.active,
-:root[data-retro="on"] .tag.sel,
-:root[data-retro="on"] .statsLedgerSortBtn.active {
-  background: var(--retro-select-bg);
-  color: var(--retro-select-text);
-  border-color: var(--retro-shadow-black) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-black);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-select-shadow-dark),
-    inset -1px -1px 0 var(--retro-select-shadow-light);
-}
-
-:root[data-retro="on"] .statsLedgerSortBtn.active .statsLedgerSortBtnMeta {
-  color: var(--retro-select-text);
-  opacity: 0.82;
-}
-
-:root[data-retro="on"] .pill,
-:root[data-retro="on"] .voteScore,
-:root[data-retro="on"] .tag,
-:root[data-retro="on"] .crumb,
-:root[data-retro="on"] .clusterBreak,
-:root[data-retro="on"] .statusBar,
-:root[data-retro="on"] .dirDetailsHeader,
-:root[data-retro="on"] .statsWidgetCard,
-:root[data-retro="on"] .calendarAnalyticsCard,
-:root[data-retro="on"] .scoreHistoryDay,
-:root[data-retro="on"] .calendarRankingsEmpty,
-:root[data-retro="on"] .scoreHistoryEmpty,
-:root[data-retro="on"] #titlePane,
-:root[data-retro="on"] #directoriesPane,
-:root[data-retro="on"] #previewPane,
-:root[data-retro="on"] #controlPane,
-:root[data-retro="on"] #menuOverlay,
-:root[data-retro="on"] #menuCard,
-:root[data-retro="on"] .dropdownMenu {
-  border-radius: 0;
-}
-
-:root[data-retro="on"] #menuOverlay,
-:root[data-retro="on"] .dropdownMenu,
-:root[data-retro="on"] .statsWidgetCard,
-:root[data-retro="on"] .calendarAnalyticsCard,
-:root[data-retro="on"] .scoreHistoryDay,
-:root[data-retro="on"] .calendarRankingsEmpty,
-:root[data-retro="on"] .scoreHistoryEmpty {
-  background: var(--retro-face);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] #titlePane {
-  padding: 6px 6px 4px;
-  gap: 4px;
-  box-sizing: border-box;
-  background: var(--retro-face);
-  border: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-:root[data-retro="on"] #controlPane {
-  padding: 6px 6px 4px;
-  box-sizing: border-box;
-  background: var(--retro-field);
-  border: 0 !important;
-  border-top: 6px solid var(--retro-face) !important;
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-dark),
-    inset -1px -1px 0 var(--retro-highlight),
-    inset 2px 2px 0 var(--retro-shadow-black),
-    inset -2px -2px 0 var(--retro-highlight-soft) !important;
-  outline: none !important;
-}
-
-:root[data-retro="on"] #titlePaneTop {
-  gap: 6px;
-  background: var(--retro-face);
-  border: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-:root[data-retro="on"] #titleMain {
-  min-height: 26px;
-  padding: 4px 6px;
-  background: var(--retro-title-bg);
-  color: var(--retro-title-text);
-  align-items: center;
-  border: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-:root[data-retro="on"] #titlePane h1 {
-  color: var(--retro-title-text);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-:root[data-retro="on"] #titleInfo {
-  color: var(--retro-text);
-  opacity: 0.8;
-}
-
-:root[data-retro="on"] #directoriesPane,
-:root[data-retro="on"] #previewPane,
-:root[data-retro="on"] #menuOverlay {
-  padding: 4px 6px 6px;
-  box-sizing: border-box;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-}
-
-:root[data-retro="on"] #menuOverlay {
-  padding-top: 0;
-  background: var(--retro-face);
-}
-
-:root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode:not(.preview-media-pane-background)
-  #previewPane {
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-:root[data-retro="on"]
-  #app.title-layout-pane.sidebar-closed.preview-media-mode:not(.preview-media-pane-background)
-  #previewPane {
-  padding-left: 0;
-}
-
-:root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background)
-  #previewPane {
-  padding-right: 0;
-}
-
-:root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode.menu-pane-open:not(.preview-media-pane-background)
-  #menuDivider,
-:root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode.menu-pane-open:not(.preview-media-pane-background)
-  #menuOverlay {
-  margin-top: 4px;
-  margin-bottom: 6px;
-}
-
-:root[data-retro="on"]
-  #app.title-layout-pane.preview-media-mode:not(.preview-media-pane-background)
-  #previewBody {
-  background: #000;
-  box-shadow: none;
-}
-
-:root[data-retro="on"] #directoriesPane,
-:root[data-retro="on"] #previewPane,
-:root[data-retro="on"] #optionsBody,
-:root[data-retro="on"] #keybindsBody,
-:root[data-retro="on"] #calendarBody,
-:root[data-retro="on"] #optionsFooter,
-:root[data-retro="on"] #keybindsFooter,
-:root[data-retro="on"] #calendarFooter {
-  background: var(--retro-face);
-}
-
-:root[data-retro="on"] #directoriesHeader.active {
-  padding: 4px 4px 3px;
-  border-bottom: 0;
-  gap: 6px;
-}
-
-:root[data-retro="on"] #directoriesList,
-:root[data-retro="on"] #previewBody,
-:root[data-retro="on"] #menuBody,
-:root[data-retro="on"] #optionsBody,
-:root[data-retro="on"] #keybindsBody,
-:root[data-retro="on"] #calendarBody {
-  background: var(--retro-field);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-dark),
-    inset -1px -1px 0 var(--retro-highlight),
-    inset 2px 2px 0 var(--retro-shadow-black),
-    inset -2px -2px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] #controlTimecode {
-  background: var(--retro-field);
-  color: var(--retro-text);
-  border: 2px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  border-radius: 0;
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-  font-family:
-    "Pixelated MS Sans Serif", "MS Sans Serif", "Microsoft Sans Serif",
-    "Tahoma", monospace;
-}
-
-:root[data-retro="on"] #controlProgressRange::-webkit-slider-runnable-track {
-  height: 6px;
-  background: var(--retro-field);
-  border: 2px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] #controlProgressRange::-webkit-slider-thumb {
-  width: 14px;
-  height: 18px;
-  margin-top: -8px;
-  background: var(--retro-face);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  border-radius: 0;
-  box-shadow:
-    inset 1px 1px 0 var(--retro-highlight-soft),
-    inset -1px -1px 0 var(--retro-shadow);
-}
-
-:root[data-retro="on"] #controlProgressRange::-moz-range-track {
-  height: 6px;
-  background: var(--retro-field);
-  border: 2px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] #controlProgressRange::-moz-range-thumb {
-  width: 14px;
-  height: 18px;
-  background: var(--retro-face);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  border-radius: 0;
-  box-shadow:
-    inset 1px 1px 0 var(--retro-highlight-soft),
-    inset -1px -1px 0 var(--retro-shadow);
-}
-
-:root[data-retro="on"] #menuCard {
-  background: var(--retro-face);
-  margin-top: -2px;
-}
-
-:root[data-retro="on"] #divider::before {
-  width: 2px;
-  background: transparent;
-  box-shadow: none;
-}
-
-:root[data-retro="on"] #menuDivider::before {
-  width: 2px;
-  background: transparent;
-  box-shadow: none;
-}
-
-:root[data-retro="on"] .folderCard,
-:root[data-retro="on"] .fileCard,
-:root[data-retro="on"] .dirSquareCard,
-:root[data-retro="on"] .dirFileThumbCard {
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  border-radius: 0;
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-  background: var(--retro-face);
-}
-
-:root[data-retro="on"] .folderCard.folderThumbCard .metaBlock,
-:root[data-retro="on"] .fileCard .metaBlock,
-:root[data-retro="on"]
-  .gridFolders.fitInsideJustified
-  .folderCard.folderThumbCard
-  .metaBlock,
-:root[data-retro="on"] .gridFiles.fitInsideJustified .fileCard .metaBlock {
-  background: var(--retro-face);
-}
-
-:root[data-retro="on"] .tag,
-:root[data-retro="on"] .pill,
-:root[data-retro="on"] .voteScore {
-  background: var(--retro-face);
-  color: var(--retro-text);
-  border: 1px solid var(--retro-shadow-dark);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight);
-}
-
-:root[data-retro="on"] .crumb {
-  background: var(--retro-face);
-  color: var(--retro-link);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] .crumb:hover {
-  background: var(--retro-face-hover);
-  color: var(--retro-link);
-}
-
-:root[data-retro="on"] .dirRow {
-  background: transparent;
-  border-radius: 0;
-  border-color: transparent;
-}
-
-:root[data-retro="on"] .dirRow:hover {
-  background: var(--retro-face-hover);
-  color: var(--retro-text);
-  border-color: var(--retro-shadow-dark);
-}
-
-:root[data-retro="on"] .dirRow.selected {
-  background: var(--retro-select-bg);
-  color: var(--retro-select-text);
-  outline: none;
-  border-color: var(--retro-shadow-black);
-  box-shadow: none;
-}
-
-:root[data-retro="on"] .dirRow.bulkSelected {
-  background: var(--retro-face-hover);
-  color: var(--retro-text);
-  outline: 1px dashed var(--retro-select-bg);
-  outline-offset: -1px;
-  border-color: var(--retro-select-bg);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] .dirRow.selected.bulkSelected {
-  background: var(--retro-select-bg);
-  color: var(--retro-select-text);
-  outline: 1px dashed var(--retro-shadow-dark);
-  outline-offset: -1px;
-  border-color: var(--retro-shadow-black);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-highlight),
-    inset -1px -1px 0 var(--retro-shadow-black),
-    0 0 0 1px var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] .dirRow.selected .dirName,
-:root[data-retro="on"] .dirRow.selected .dirNameText,
-:root[data-retro="on"] .dirRow.selected .dirMeta,
-:root[data-retro="on"] .dirRow.selected .dirMetaInline,
-:root[data-retro="on"] .dirRow.selected .dirBarMetaText,
-:root[data-retro="on"] .dirRow.selected .dirIcon,
-:root[data-retro="on"] .dirRow.selected .dirHiddenBadge,
-:root[data-retro="on"] .dirRow.selected .dirFavoriteHeart,
-:root[data-retro="on"] .dirRow.selected .voteBtn,
-:root[data-retro="on"] .dirRow.selected .mini,
-:root[data-retro="on"] .dirRow.bulkSelected .dirName,
-:root[data-retro="on"] .dirRow.bulkSelected .dirNameText,
-:root[data-retro="on"] .dirRow.bulkSelected .dirMeta,
-:root[data-retro="on"] .dirRow.bulkSelected .dirMetaInline,
-:root[data-retro="on"] .dirRow.bulkSelected .dirBarMetaText,
-:root[data-retro="on"] .dirRow.bulkSelected .dirIcon,
-:root[data-retro="on"] .dirRow.bulkSelected .dirHiddenBadge,
-:root[data-retro="on"] .dirRow.bulkSelected .dirFavoriteHeart,
-:root[data-retro="on"] .dirRow.bulkSelected .voteBtn,
-:root[data-retro="on"] .dirRow.bulkSelected .mini {
-  color: var(--retro-select-text);
-}
-
-:root[data-retro="on"][data-theme="retro90s"] .dirRow.bulkSelected:not(.selected) {
-  background: rgba(79, 134, 214, 0.24);
-  border-color: rgba(24, 56, 106, 0.72);
-  outline-color: rgba(24, 56, 106, 0.72);
-}
-
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .dirName,
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .dirNameText,
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .dirMeta,
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .dirMetaInline,
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .dirBarMetaText,
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .dirIcon,
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .dirHiddenBadge,
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .dirFavoriteHeart,
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .voteBtn,
-:root[data-retro="on"][data-theme="retro90s"]
-  .dirRow.bulkSelected:not(.selected)
-  .mini {
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"]
-  .dirRow.folderRow.folderSquareCard.selected
-  .dirSquareCard,
-:root[data-retro="on"]
-  .dirRow.folderRow.folderSquareCard.selected.bulkSelected
-  .dirSquareCard,
-:root[data-retro="on"]
-  .dirRow.fileRow.fileThumbCardRow.selected
-  .dirFileThumbCard,
-:root[data-retro="on"]
-  .dirRow.fileRow.fileThumbCardRow.selected.bulkSelected
-  .dirFileThumbCard {
-  border-color: var(--retro-select-bg);
-  outline-color: var(--retro-select-bg);
-  box-shadow:
-    0 0 0 1px var(--retro-highlight),
-    0 0 0 3px var(--retro-select-bg);
-}
-
-:root[data-retro="on"]
-  .dirRow.folderRow.folderSquareCard.bulkSelected
-  .dirSquareCard,
-:root[data-retro="on"]
-  .dirRow.fileRow.fileThumbCardRow.bulkSelected
-  .dirFileThumbCard {
-  border-color: var(--retro-select-bg);
-  outline: 2px dashed var(--retro-select-bg);
-  outline-offset: 0;
-  box-shadow:
-    0 0 0 1px var(--retro-highlight),
-    0 0 0 3px var(--retro-shadow);
-}
-
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected) {
-  background: transparent;
-  color: inherit;
-  border-color: transparent;
-  outline: none;
-  box-shadow: none;
-}
-
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .dirName,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .dirNameText,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .dirMeta,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .dirMetaInline,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .dirBarMetaText,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .dirIcon,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .dirHiddenBadge,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .dirFavoriteHeart,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .voteBtn,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.selected:not(.bulkSelected)
-  .mini {
-  color: inherit;
-}
-
-:root[data-retro="on"] .dirRow.selected .dirFavoriteHeart,
-:root[data-retro="on"] .dirRow.bulkSelected .dirFavoriteHeart,
-:root[data-retro="on"] #app.preview-pane-active .dirRow.selected:not(.bulkSelected) .dirFavoriteHeart {
-  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
-}
-
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.folderRow.folderSquareCard.selected:not(.bulkSelected)
-  .dirSquareCard,
-:root[data-retro="on"]
-  #app.preview-pane-active
-  .dirRow.fileRow.fileThumbCardRow.selected:not(.bulkSelected)
-  .dirFileThumbCard {
-  border-color: transparent;
-  outline: none;
-  box-shadow: none;
-}
-
-:root[data-retro="on"] .dropdownMenu {
-  padding: 3px;
-  gap: 0;
-  background: var(--retro-face);
-}
-
-:root[data-retro="on"] .dropdownMenu > button,
-:root[data-retro="on"] .dropdownMenu .scoreRow,
-:root[data-retro="on"] .dropdownMenu .menuTwoColRow {
-  position: relative;
-  background: var(--retro-face-soft);
-  border: 1px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] .dropdownMenu > button {
-  width: 100%;
-  padding: 6px 8px;
-  text-align: left;
-  justify-content: flex-start;
-}
-
-:root[data-retro="on"] .dropdownMenu button {
-  background: var(--retro-face-soft);
-  color: var(--retro-text);
-  border: 1px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-  border-radius: 0;
-}
-
-:root[data-retro="on"] .dropdownMenu button:hover:not(:disabled) {
-  background: var(--retro-select-bg);
-  color: var(--retro-select-text);
-  border-color: var(--retro-shadow-black);
-}
-
-:root[data-retro="on"] .dropdownMenu button.destructiveAction {
-  color: #7a0000;
-}
-
-:root[data-retro="on"]
-  .dropdownMenu
-  button.destructiveAction:hover:not(:disabled) {
-  color: #7a0000;
-}
-
-:root[data-retro="on"] .dropdownMenu .scoreRow,
-:root[data-retro="on"] .dropdownMenu .menuTwoColRow {
-  padding: 3px;
-  gap: 3px;
-}
-
-:root[data-retro="on"] .dropdownMenu > * + * {
-  position: relative;
-  margin-top: 3px;
-}
-
-:root[data-retro="on"] .dropdownMenu > * + *::before {
-  content: "";
-  position: absolute;
-  left: -4px;
-  right: -4px;
-  top: -3px;
-  height: 1px;
-  background: var(--retro-shadow-dark);
-  box-shadow: 0 1px 0 var(--retro-highlight);
-  pointer-events: none;
-}
-
-:root[data-retro="on"] .dropdownMenu .label {
-  display: block;
-  padding: 5px 7px;
-  background: var(--retro-face-soft);
-  color: var(--retro-text);
-  border: 1px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] #menuHeader {
-  padding: 0;
-  gap: 0;
-  border-bottom: 0;
-  background: var(--retro-face);
-}
-
-:root[data-retro="on"] #menuTabs {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  gap: 0;
-  background: var(--retro-face);
-  border-top: 2px solid var(--retro-highlight);
-  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] #keybindsBody .keybindSubtabs {
-  background: var(--retro-face);
-  border-top: 2px solid var(--retro-highlight);
-  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] #menuTabs .menuTabBtn {
-  background: var(--retro-face);
-  color: var(--retro-text);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  border-radius: 0;
-  box-shadow: none;
-  padding: 5px 12px 4px;
-  min-height: 28px;
-  top: 0;
-}
-
-:root[data-retro="on"] #keybindsBody .keybindSubtabBtn {
-  background: var(--retro-face);
-  color: var(--retro-text);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  border-radius: 0;
-  box-shadow: none;
-  padding: 5px 12px 4px;
-  min-height: 28px;
-  top: 0;
-}
-
-:root[data-retro="on"] #menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
-  background: var(--retro-face-hover);
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"]
-  #keybindsBody
-  .keybindSubtabBtn:hover:not(:disabled):not(.active) {
-  background: var(--retro-face-hover);
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"] #menuTabs .menuTabBtn.active {
-  background: var(--retro-field);
-  color: var(--retro-text);
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  box-shadow: none;
-}
-
-:root[data-retro="on"] #keybindsBody .keybindSubtabBtn.active {
-  background: var(--retro-field);
-  color: var(--retro-text);
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  box-shadow: none;
-}
-
-:root[data-retro="on"] #menuTabs .menuTabBtn.active:hover:not(:disabled) {
-  background: var(--retro-field);
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"]
-  #keybindsBody
-  .keybindSubtabBtn.active:hover:not(:disabled) {
-  background: var(--retro-field);
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"] #optionsFooter,
-:root[data-retro="on"] #keybindsFooter,
-:root[data-retro="on"] #calendarFooter {
-  border-top: 1px solid var(--retro-shadow);
-}
-
-:root[data-retro="on"] .tagEditInput,
-:root[data-retro="on"] input[type="file"],
-:root[data-retro="on"] #optionsBody select,
-:root[data-retro="on"] #keybindsBody select,
-:root[data-retro="on"] #optionsBody .optRight.optActions input[type="text"],
-:root[data-retro="on"] .dirSquareRenameInput,
-:root[data-retro="on"]
-  .folderCard.folderThumbCard.folderThumbCoverCard
-  .thumbOverlayMeta
-  .previewFolderRenameInput,
-:root[data-retro="on"]
-  .fileCard
-  .previewThumbOverlayMeta
-  .previewFileRenameInput,
-:root[data-retro="on"]
-  .folderCard.folderThumbCard.folderThumbCoverCard
-  .thumbOverlayMeta
-  .previewFolderTagInput {
-  background: var(--retro-field);
-  color: var(--retro-text);
-  border: 2px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  border-radius: 0;
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] input[type="checkbox"] {
-  accent-color: var(--retro-select-bg);
-}
-
-:root[data-retro="on"] input[type="range"] {
-  appearance: none;
-  -webkit-appearance: none;
-  height: 18px;
-  padding: 0;
-  background: transparent;
-  accent-color: var(--retro-select-bg);
-}
-
-:root[data-retro="on"] input[type="range"]::-webkit-slider-runnable-track {
-  height: 6px;
-  background: var(--retro-field);
-  border: 2px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] input[type="range"]::-webkit-slider-thumb {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 14px;
-  height: 18px;
-  margin-top: -8px;
-  background: var(--retro-face);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  border-radius: 0;
-  box-shadow:
-    inset 1px 1px 0 var(--retro-highlight-soft),
-    inset -1px -1px 0 var(--retro-shadow);
-}
-
-:root[data-retro="on"] input[type="range"]:active::-webkit-slider-thumb {
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] input[type="range"]::-moz-range-track {
-  height: 6px;
-  background: var(--retro-field);
-  border: 2px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 18px;
-  background: var(--retro-face);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  border-radius: 0;
-  box-shadow:
-    inset 1px 1px 0 var(--retro-highlight-soft),
-    inset -1px -1px 0 var(--retro-shadow);
-}
-
-:root[data-retro="on"] .statusBar {
-  color: var(--retro-text);
-  border-top: 1px solid var(--retro-shadow);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-highlight),
-    inset -1px -1px 0 var(--retro-shadow);
-}
-
-:root[data-retro="on"] .statsLedgerTableWrap {
-  background: var(--retro-field);
-  border: 2px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  border-radius: 0;
-}
-
-:root[data-retro="on"] .statsLedgerTable thead th,
-:root[data-retro="on"] .scoreHistoryDayHeader {
-  background: var(--retro-face-hover);
-}
-
-:root[data-retro="on"] .statsLedgerSortBtn {
-  background: transparent;
-  color: var(--retro-text);
-  box-shadow: none;
-  border: 0;
-}
-
-:root[data-retro="on"] .statsLedgerSortBtn:hover {
-  background: var(--retro-face-hover);
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"] .statsLedgerSortBtn.active:hover {
-  background: var(--retro-select-bg);
-  color: var(--retro-select-text);
-}
-
-:root[data-retro="on"] #filename,
-:root[data-retro="on"] #statusMessage,
-:root[data-retro="on"] #mainStatusMessage {
-  background: var(--retro-face);
-  color: var(--retro-text);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  border-radius: 0;
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
 }
 
 .voteBox {
@@ -3235,37 +2188,6 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--dir-tag-favorite-title-color, #ff0033);
 }
 
-:root[data-retro="on"] .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
-:root[data-retro="on"] .dirMenuBtnFavorite {
-  background: var(--retro-face);
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  color: var(--dir-tag-favorite-title-color, #ff0033);
-}
-
-:root[data-retro="on"] .dirMenuBtnScoreFavorite {
-  background: var(--retro-face);
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"] .dirMenuBtnFavoriteTint,
-:root[data-retro="on"] .dirMenuBtnScoreFavoriteTint {
-  background: var(--dir-tag-favorite-title-color, #ff0033);
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  color: #fff;
-}
-
-:root[data-retro="on"] .dirMenuBtnScoreFavorite .dirMenuBtnScoreHeart,
-:root[data-retro="on"] .dirMenuBtnFavorite .dirFavoriteHeart,
-:root[data-retro="on"] .thumbOverlayMenuBtnFavorite .dirFavoriteHeart,
-:root[data-retro="on"] .dirMenuBtnFavorite .dirMenuFavoriteGlyph,
-:root[data-retro="on"] .thumbOverlayMenuBtnFavorite .dirMenuFavoriteGlyph {
-  color: var(--dir-tag-favorite-title-color, #ff0033);
-}
-
 /* =========================================================
        Preview Pane
        ========================================================= */
@@ -3320,13 +2242,11 @@ img[data-rotate-key].rotatingThumbFade {
   padding: 6px 8px 8px;
   background: var(--color1-primary);
   border: 0;
-  border-top: 6px solid var(--color1-secondary);
+  border-top: 1px solid var(--color1-tertiary);
   border-left: 0;
   border-right: 0;
   border-bottom: 0;
-  box-shadow:
-    inset 0 1px 0 var(--color1-tertiary),
-    inset 0 2px 0 rgba(0, 0, 0, 0.22);
+  box-shadow: none;
   position: relative;
   z-index: 18;
   flex: 0 0 auto;
@@ -4706,317 +3626,6 @@ img[data-rotate-key].rotatingThumbFade {
   min-width: 0;
 }
 
-:root[data-retro="on"] .gridFiles .previewThumbOverlayMeta,
-:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMeta,
-:root[data-retro="on"] .previewTagFolderCard .dirSquareOverlay,
-:root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlay,
-:root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlay {
-  padding: 6px 8px;
-  gap: 2px;
-  background: var(--retro-face);
-  color: var(--retro-text);
-  border-top: 1px solid var(--retro-shadow-dark);
-  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] .gridFiles .previewThumbOverlayMetaMenuOnly,
-:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
-:root[data-retro="on"] .previewTagFolderCard .dirSquareOverlayMenuOnly,
-:root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlayMenuOnly,
-:root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlayMenuOnly {
-  padding: 0;
-  background: none;
-  border-top: 0;
-  box-shadow: none;
-}
-
-:root[data-retro="on"] .gridFiles .previewThumbOverlayTopLine,
-:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayTopLine,
-:root[data-retro="on"] .previewTagFolderCard .dirSquareTop,
-:root[data-retro="on"] #directoriesList.gridModeList .dirSquareTop,
-:root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlayTop {
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-:root[data-retro="on"] .gridFiles .previewThumbOverlayBottomLine,
-:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayBottomLine,
-:root[data-retro="on"] .previewTagFolderCard .dirSquareBottom,
-:root[data-retro="on"] #directoriesList.gridModeList .dirSquareBottom,
-:root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlayBottom {
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayRightMeta,
-:root[data-retro="on"] .previewTagFolderCard .dirSquareRightMeta,
-:root[data-retro="on"] #directoriesList.gridModeList .dirSquareRightMeta {
-  gap: 6px;
-  align-items: center;
-}
-
-:root[data-retro="on"] .gridFiles .previewThumbOverlayMeta .name,
-:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMeta .name {
-  font-size: var(--thumb-title-preview-font);
-  line-height: 1.1;
-  font-weight: var(--thumb-title-font-weight);
-  color: var(--color0-primary);
-}
-
-:root[data-retro="on"] .previewTagFolderCard .dirSquareName,
-:root[data-retro="on"] #directoriesList.gridModeList .dirSquareName {
-  font-size: var(--thumb-title-dir-square-font);
-  line-height: 1.1;
-  font-weight: var(--thumb-title-font-weight);
-  color: var(--color0-primary);
-}
-
-:root[data-retro="on"] .previewTagFolderCard .dirSquareName.dirSquareNameTag,
-:root[data-retro="on"]
-  #directoriesList.gridModeList
-  .dirSquareName.dirSquareNameTag {
-  color: var(--dir-tag-title-color, #9b8ac7);
-}
-
-:root[data-retro="on"]
-  .previewTagFolderCard
-  .dirSquareName.dirSquareNameTagFavorite,
-:root[data-retro="on"]
-  #directoriesList.gridModeList
-  .dirSquareName.dirSquareNameTagFavorite {
-  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
-}
-
-:root[data-retro="on"]
-  .previewTagFolderCard
-  .dirSquareName.dirSquareNameTagAlbum,
-:root[data-retro="on"]
-  #directoriesList.gridModeList
-  .dirSquareName.dirSquareNameTagAlbum {
-  color: var(--dir-tag-album-title-color, #ff7a6e);
-}
-
-:root[data-retro="on"] #directoriesList.gridModeList .dirFileNameText {
-  font-size: var(--thumb-title-dir-file-font);
-  line-height: 1.15;
-  font-weight: var(--thumb-title-font-weight);
-  color: var(--color0-primary);
-}
-
-:root[data-retro="on"] .gridFiles .previewThumbOverlayMini,
-:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMini,
-:root[data-retro="on"] .previewTagFolderCard .dirSquareMeta,
-:root[data-retro="on"] .previewTagFolderCard .dirSquareTypeIcon,
-:root[data-retro="on"] .previewTagFolderCard .dirTagKindBadge,
-:root[data-retro="on"] #directoriesList.gridModeList .dirSquareMeta,
-:root[data-retro="on"] #directoriesList.gridModeList .dirSquareTypeIcon,
-:root[data-retro="on"] #directoriesList.gridModeList .dirTagKindBadge,
-:root[data-retro="on"] #directoriesList.gridModeList .dirFileMetaLine,
-:root[data-retro="on"] #directoriesList.gridModeList .dirFileType,
-:root[data-retro="on"] #directoriesList.gridModeList .dirFileSize {
-  color: var(--retro-muted);
-  opacity: 1;
-  text-transform: none;
-}
-
-:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayScore,
-:root[data-retro="on"] .previewTagFolderCard .dirSquareScore,
-:root[data-retro="on"] #directoriesList.gridModeList .dirSquareScore {
-  color: var(--retro-text);
-  opacity: 1;
-}
-
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMeta
-  .dirStatusBadge,
-:root[data-retro="on"] .previewTagFolderCard .dirStatusBadges,
-:root[data-retro="on"] #directoriesList.gridModeList .dirStatusBadges,
-:root[data-retro="on"] #directoriesList.gridModeList .dirHiddenBadge {
-  color: var(--retro-text);
-  opacity: 1;
-}
-
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMeta
-  .dirFavoriteHeart,
-:root[data-retro="on"] .previewTagFolderCard .dirFavoriteHeart,
-:root[data-retro="on"] #directoriesList.gridModeList .dirFavoriteHeart {
-  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
-}
-
-:root[data-retro="on"] .gridFiles .previewThumbOverlayMenuBtn,
-:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMenuBtn,
-:root[data-retro="on"] .previewTagFolderCard .dirSquareOverlay .dirMenuBtn,
-:root[data-retro="on"]
-  #directoriesList.gridModeList
-  .dirSquareOverlay
-  .dirMenuBtn,
-:root[data-retro="on"] #directoriesList.gridModeList .dirFileMenu .dirMenuBtn {
-  min-width: 22px;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  font-size: 16px;
-  background: var(--retro-face-soft);
-  color: var(--retro-text);
-  border: 1px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"]
-  .gridFiles
-  .previewThumbOverlayMenuBtn:hover:not(:disabled),
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMenuBtn:hover:not(:disabled),
-:root[data-retro="on"]
-  .previewTagFolderCard
-  .dirSquareOverlay
-  .dirMenuBtn:hover:not(:disabled),
-:root[data-retro="on"]
-  #directoriesList.gridModeList
-  .dirSquareOverlay
-  .dirMenuBtn:hover:not(:disabled),
-:root[data-retro="on"]
-  #directoriesList.gridModeList
-  .dirFileMenu
-  .dirMenuBtn:hover:not(:disabled) {
-  background: var(--retro-face-hover);
-  color: var(--retro-text);
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"]
-  .gridFiles
-  .previewThumbOverlayMenuBtn:active:not(:disabled),
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMenuBtn:active:not(:disabled),
-:root[data-retro="on"]
-  .previewTagFolderCard
-  .dirSquareOverlay
-  .dirMenuBtn:active:not(:disabled),
-:root[data-retro="on"]
-  #directoriesList.gridModeList
-  .dirSquareOverlay
-  .dirMenuBtn:active:not(:disabled),
-:root[data-retro="on"]
-  #directoriesList.gridModeList
-  .dirFileMenu
-  .dirMenuBtn:active:not(:disabled) {
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"]
-  .gridFiles
-  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint,
-:root[data-retro="on"]
-  .gridFiles
-  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint,
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint,
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint {
-  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
-  color: #fff;
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-}
-
-:root[data-retro="on"]
-  .gridFiles
-  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint:hover:not(:disabled),
-:root[data-retro="on"]
-  .gridFiles
-  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:hover:not(:disabled),
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint:hover:not(:disabled),
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:hover:not(:disabled) {
-  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
-  color: #fff;
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-}
-
-:root[data-retro="on"]
-  .gridFiles
-  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint:active:not(:disabled),
-:root[data-retro="on"]
-  .gridFiles
-  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:active:not(:disabled),
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint:active:not(:disabled),
-:root[data-retro="on"]
-  .folderCard.folderThumbCard
-  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:active:not(:disabled) {
-  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
-  color: #fff;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-}
-
-:root[data-retro="on"]
-  .gridFolders
-  .previewTagFolderCard.previewSelected
-  .dirSquareCard,
-:root[data-retro="on"] .gridFiles .fileCard.previewSelected,
-:root[data-retro="on"]
-  .gridFolders
-  .folderCard.folderThumbCard.previewSelected {
-  border-color: var(--retro-select-bg);
-  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
-}
-
-:root[data-retro="on"]
-  .gridFolders
-  .previewTagFolderCard.bulkSelected
-  .dirSquareCard,
-:root[data-retro="on"] .gridFiles .fileCard.bulkSelected,
-:root[data-retro="on"] .gridFolders .folderCard.folderThumbCard.bulkSelected {
-  border-color: var(--retro-select-bg);
-  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
-}
-
-:root[data-retro="on"]
-  .gridFolders
-  .previewTagFolderCard.previewSelected.bulkSelected
-  .dirSquareCard,
-:root[data-retro="on"] .gridFiles .fileCard.previewSelected.bulkSelected,
-:root[data-retro="on"]
-  .gridFolders
-  .folderCard.folderThumbCard.previewSelected.bulkSelected {
-  border-color: var(--retro-select-bg);
-  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
-}
-
 .tag {
   display: inline-block;
   font-size: 11px;
@@ -5518,7 +4127,7 @@ img[data-rotate-key].rotatingThumbFade {
   max-width: min(720px, 60vw);
   min-height: 0;
   overflow: hidden;
-  background: transparent;
+  background: var(--color1-secondary);
 }
 #menuOverlay.active {
   display: flex;
@@ -5527,21 +4136,22 @@ img[data-rotate-key].rotatingThumbFade {
 #menuDivider {
   display: none;
   position: relative;
-  flex: 0 0 8px;
+  flex: 0 0 1px;
   min-height: 0;
   cursor: col-resize;
-  background: transparent;
+  background: var(--color1-tertiary);
   touch-action: none;
+  z-index: 20;
 }
 
 #menuDivider::before {
   content: "";
   position: absolute;
-  left: calc(50% - 0.5px);
+  left: -4px;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: var(--color1-tertiary);
+  width: 9px;
+  background: transparent;
   pointer-events: none;
 }
 
@@ -5550,7 +4160,7 @@ img[data-rotate-key].rotatingThumbFade {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: transparent;
+  background: var(--color1-secondary);
   border: 0;
   box-shadow: none;
   display: flex;
@@ -5559,20 +4169,20 @@ img[data-rotate-key].rotatingThumbFade {
 
 #menuHeader {
   padding: 0;
-  border-bottom: 1px solid var(--color1-tertiary);
+  border-bottom: 0;
   display: flex;
   align-items: stretch;
   justify-content: stretch;
-  margin-top: -1px;
+  margin-top: 0;
 }
 
 #menuTabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
   gap: 0;
-  align-items: stretch;
-  flex-wrap: wrap;
   width: 100%;
   border-top: 1px solid var(--color1-tertiary);
+  border-left: 1px solid var(--color1-tertiary);
 }
 
 #menuTabs .menuTabBtn {
@@ -5589,7 +4199,6 @@ img[data-rotate-key].rotatingThumbFade {
 
 #menuTabs .menuTabBtn.active {
   background: var(--color1-primary);
-  border-bottom-color: var(--color1-primary);
   color: var(--color0-primary);
 }
 
@@ -5660,15 +4269,15 @@ img[data-rotate-key].rotatingThumbFade {
   position: sticky;
   top: -10px;
   z-index: 5;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 0;
-  align-items: stretch;
-  flex-wrap: wrap;
   width: calc(100% + 20px);
   margin: -10px -10px 8px;
   padding: 0;
   background: var(--color1-primary);
   border-top: 1px solid var(--color1-tertiary);
+  border-left: 1px solid var(--color1-tertiary);
 }
 
 #keybindsBody .keybindSubtabBtn {
@@ -5687,7 +4296,6 @@ img[data-rotate-key].rotatingThumbFade {
 
 #keybindsBody .keybindSubtabBtn.active {
   background: var(--color1-primary);
-  border-bottom-color: var(--color1-primary);
   color: var(--color0-primary);
 }
 
@@ -5884,54 +4492,6 @@ img[data-rotate-key].rotatingThumbFade {
   background: #ffffff;
 }
 
-:root[data-retro="on"] #menuOverlay .appToggleBtn {
-  min-width: 0;
-  padding: 0;
-  border-radius: 0;
-  border: 0;
-  background: none;
-  color: var(--retro-text);
-  box-shadow: none;
-}
-
-:root[data-retro="on"] #menuOverlay .appToggleBtn:hover {
-  color: var(--retro-text);
-  transform: none;
-  box-shadow: none;
-}
-
-:root[data-retro="on"] #menuOverlay .appToggleBtn:active {
-  transform: none;
-  box-shadow: none;
-}
-
-:root[data-retro="on"] #menuOverlay .appToggleTrack {
-  width: 28px;
-  height: 14px;
-  border-radius: 0;
-  border: 1px solid var(--retro-shadow-dark);
-  background: var(--retro-shadow);
-}
-
-:root[data-retro="on"] #menuOverlay .appToggleThumb {
-  top: 1px;
-  left: 1px;
-  width: 10px;
-  height: 10px;
-  border-radius: 0;
-  background: var(--retro-highlight);
-}
-
-:root[data-retro="on"] #menuOverlay .appToggleBtn.isOn .appToggleTrack {
-  background: var(--retro-title-bg);
-  border-color: var(--retro-shadow-black);
-}
-
-:root[data-retro="on"] #menuOverlay .appToggleBtn.isOn .appToggleThumb {
-  transform: translateX(14px);
-  background: #ffffff;
-}
-
 #optionsBody .optRow.optOverlayRow {
   align-items: center;
   gap: 12px;
@@ -5988,16 +4548,6 @@ img[data-rotate-key].rotatingThumbFade {
   background: var(--color0-secondary);
   color: var(--color1-primary);
   border-color: var(--color0-tertirary);
-}
-
-:root[data-retro="on"] #optionsBody .optRight.optActions button.active {
-  background: var(--retro-select-bg);
-  color: var(--retro-select-text);
-  border-color: var(--retro-shadow-black) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-black);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-select-shadow-dark),
-    inset -1px -1px 0 var(--retro-select-shadow-light);
 }
 
 #optionsBody .optRight.optActions input[type="text"] {
@@ -6729,76 +5279,6 @@ img[data-rotate-key].rotatingThumbFade {
   background: var(--color1-secondary);
 }
 
-:root[data-retro="on"] .thumbCropEditorPanel {
-  background: var(--retro-face);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"] .thumbCropEditorTitle {
-  background: var(--retro-title-bg);
-  color: var(--retro-title-text);
-  padding: 4px 6px;
-}
-
-:root[data-retro="on"] .thumbCropEditorSubtitle,
-:root[data-retro="on"] .thumbCropEditorHint,
-:root[data-retro="on"] .thumbCropEditorFrameControl,
-:root[data-retro="on"] .thumbCropEditorFrameLabel,
-:root[data-retro="on"] .thumbCropEditorFrameControl > span[data-crop-value="frame"] {
-  color: var(--retro-text);
-}
-
-:root[data-retro="on"] .thumbCropEditorPreviewWrap {
-  background: var(--retro-field);
-  border: 2px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] .thumbCropEditorCropBox {
-  border-color: #fff;
-}
-
-:root[data-retro="on"] .thumbCropEditorResizeHandle {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  opacity: 0;
-}
-
-:root[data-retro="on"] .thumbCropEditorResizeHandle::after {
-  display: none;
-  content: none;
-}
-
-:root[data-retro="on"] .thumbCropEditorActions > button {
-  background: var(--retro-face);
-  color: var(--retro-text);
-  border: 2px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-black)
-    var(--retro-shadow-black) var(--retro-highlight);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-}
-
-:root[data-retro="on"] .thumbCropEditorActions > button:active {
-  border-color: var(--retro-shadow-black) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-black);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-dark),
-    inset -1px -1px 0 var(--retro-highlight-soft);
-}
-
 @media (max-width: 900px) {
   #app {
     grid-template-columns: min(300px, 42vw) 1fr;
@@ -6857,10 +5337,6 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0.9;
 }
 
-:root[data-retro="on"] #app.no-side-panes {
-  box-shadow: none;
-}
-
 
 /* v3: make every thumbnail title/meta strip solid, including preview-pane tag/folder/file thumbs. */
 .gridFiles.previewSquareCards .previewThumbOverlayMeta,
@@ -6903,22 +5379,14 @@ img[data-rotate-key].rotatingThumbFade {
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore,
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .dirStatusBadge {
   color: var(--color0-primary) !important;
-}
-
-/* v3: when the file pane and settings/menu pane are both closed, remove the outer app frame. */
+}/* v3: when the file pane and settings/menu pane are both closed,
+remove the outer app frame. */
 #app.no-side-panes,
-#app.sidebar-closed:not(.menu-pane-open),
-:root[data-retro="on"] #app.no-side-panes,
-:root[data-retro="on"] #app.sidebar-closed:not(.menu-pane-open) {
+#app.sidebar-closed:not(.menu-pane-open) {
   border: 0 !important;
   outline: 0 !important;
   box-shadow: none !important;
   background: transparent !important;
-}
-
-:root[data-retro="on"] #app.no-side-panes #previewPane,
-:root[data-retro="on"] #app.sidebar-closed:not(.menu-pane-open) #previewPane {
-  padding: 0 !important;
 }
 
 
@@ -6927,11 +5395,6 @@ img[data-rotate-key].rotatingThumbFade {
 :root {
   --preview-pane-thumb-title-bar-bg: var(--color1-secondary);
   --preview-pane-thumb-title-bar-fg: var(--color0-primary);
-}
-
-:root[data-retro="on"] {
-  --preview-pane-thumb-title-bar-bg: var(--retro-face);
-  --preview-pane-thumb-title-bar-fg: var(--retro-text);
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta,
@@ -13967,16 +12430,6 @@ function applyTagFolderTitleColorsFromOptions() {
   root.style.removeProperty("--dir-tag-album-title-color");
 }
 
-function applyRetroModeFromOptions() {
-  const root = document.documentElement;
-  if (!root) return;
-  root.setAttribute("data-retro", "on");
-}
-
-function retroPaletteEnabled(opt = null) {
-  return true;
-}
-
 function favoriteHeartSymbol(opt = null) {
   return "<3";
 }
@@ -14590,7 +13043,6 @@ function applyInteractionModeFromOptions() {
 function applyLoadedOptionsToDocument() {
   applyColorSchemeFromOptions();
   applyTagFolderTitleColorsFromOptions();
-  applyRetroModeFromOptions();
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
@@ -14616,7 +13068,6 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   if (!WS.root) {
     applyColorSchemeFromOptions();
     applyTagFolderTitleColorsFromOptions();
-    applyRetroModeFromOptions();
     applyMediaFilterFromOptions();
     applyThumbFitFromOptions();
     applyThumbnailTitleSizeFromOptions();
@@ -14639,7 +13090,6 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
 
   applyColorSchemeFromOptions();
   applyTagFolderTitleColorsFromOptions();
-  applyRetroModeFromOptions();
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
@@ -14690,10 +13140,10 @@ function setDividerPositionFromPct(pct) {
     return;
   }
   pct = Math.max(0.05, Math.min(0.9, Number(pct) || 0.28));
-  appEl.style.gridTemplateColumns = `${(pct * 100).toFixed(2)}% 1fr`;
+  const left = Math.round(appEl.clientWidth * pct);
+  appEl.style.gridTemplateColumns = `${left}px 1fr`;
   const dividerEl = document.getElementById("divider");
   if (dividerEl) {
-    const left = Math.round(appEl.clientWidth * pct);
     dividerEl.style.left = left + "px";
   }
   // Keep filtered preview/video canvases in sync with live pane geometry while dragging the divider.
@@ -15190,7 +13640,7 @@ const KEYBIND_ACTIONS = [
   {
     id: "toggleLightMode",
     label: "Light mode",
-    hint: "Toggle the Retro UI between dark and light variants.",
+    hint: "Toggle the UI between dark and light variants.",
     section: "appearance",
   },
   {
@@ -19368,7 +17818,7 @@ ${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible i
 ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
 ${makeSelectRow("Appearance preset", "Apply a saved appearance preset.", "opt_generalAppearancePreset", activeAppearancePresetId, appearancePresetSelectOptions)}
 ${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
-${makeCheckRow("Light Mode", "Switch between the light and dark Retro UI variants.", "opt_lightMode", !!opt.lightMode)}
+${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Reveal hidden items", "Show or hide items hidden by hidden tags.", "opt_showHiddenFolder", showHiddenFolderEnabled())}
 ${makeCheckRow("Trash folder", "Show or hide the Trash folder entry at root.", "opt_showTrashFolder", showTrashFolderEnabled())}
 ${makeCheckRow("Storage folder", "Show or hide the Storage folder entry.", "opt_showStorageFolder", showStorageFolderEnabled())}
@@ -19414,7 +17864,7 @@ ${notificationsRowsHtml}
     appearance: {
       title: "Appearance",
       rows: `
-${makeCheckRow("Light Mode", "Switch between the light and dark Retro UI variants.", "opt_lightMode", !!opt.lightMode)}
+${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${makeSelectRow("Preset library", "Choose a saved preset to apply it immediately. Default is the no-processing preset. Edited sliders stay attached to the selected preset until you save or switch.", "opt_appearancePresetLibrary", editingAppearancePresetId, appearancePresetSelectOptions)}
 ${makeActionRow(
   "Preset actions",
@@ -19488,7 +17938,7 @@ ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when medi
     playback: {
       title: "Playback",
       rows: `
-${makeSelectRow("Default video audio", "Default audio state for videos played in the preview pane.", "opt_videoAudio", String(opt.videoAudio || "unmuted"), videoAudioModes)}
+${makeSelectRow("Video audio", "Audio state for videos in the preview pane and gallery.", "opt_videoAudio", String(opt.videoAudio || "unmuted"), videoAudioModes)}
 ${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
 ${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
 ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges of images and videos and crop them out before overlays or filters are applied. Videos sample multiple moments and only crop bars that stay present the whole time.", "opt_autoCropBlackBars", !!opt.autoCropBlackBars)}
@@ -23474,7 +21924,6 @@ function metaApplyFromLog(log) {
   WS.view.appearancePresetDraftName = "";
   WS.view.appearancePresetPromptMode = "";
   applyColorSchemeFromOptions();
-  applyRetroModeFromOptions();
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyDisplaySizesFromOptions();
@@ -48300,7 +46749,7 @@ function setDefaultVideoAudioMode(mode, options = {}) {
   refreshLiveSettingsPaneFromKeyboardAction();
   if (!options.quiet) {
     showStatusMessage(
-      `Default video audio: ${next === "muted" ? "Muted" : "Unmuted"}`,
+      `Video audio: ${next === "muted" ? "Muted" : "Unmuted"}`,
       "playback",
     );
   }
@@ -48402,7 +46851,7 @@ function syncControlPaneState() {
   setControlButtonDisabled(controlSkipBackBtn, !hasDuration);
   setControlButtonDisabled(controlSkipForwardBtn, !hasDuration);
   setControlButtonDisabled(controlPlayPauseBtn, !hasVideo);
-  setControlButtonDisabled(controlMuteBtn, !hasVideo);
+  setControlButtonDisabled(controlMuteBtn, !WS.meta);
 
   if (controlPlayPauseBtn) {
     const paused = !video || video.paused;
@@ -48417,8 +46866,8 @@ function syncControlPaneState() {
     const muted = previewVideoMode() === "muted";
     controlMuteBtn.textContent = "";
     controlMuteBtn.classList.remove("active");
-    controlMuteBtn.classList.toggle("is-muted", hasVideo && muted);
-    const label = muted ? "Unmute" : "Mute";
+    controlMuteBtn.classList.toggle("is-muted", muted);
+    const label = muted ? "Video audio: muted" : "Video audio: unmuted";
     controlMuteBtn.setAttribute("aria-label", label);
     controlMuteBtn.title = label;
   }
@@ -48478,8 +46927,6 @@ function toggleControlPanePlayPause() {
 }
 
 function toggleControlPaneMute() {
-  const video = getControlPaneVideo();
-  if (!video) return false;
   return toggleDefaultVideoAudioMode();
 }
 
@@ -54011,13 +52458,6 @@ function toggleViewerVideoPlayPause() {
 }
 
 function toggleViewerVideoMute() {
-  if (VIEWER_MODE && isQuadPlaybackMode()) {
-    if (!getQuadPlaybackVideos().length) return;
-    toggleDefaultVideoAudioMode();
-    return;
-  }
-  const vid = getActiveMediaVideo();
-  if (!vid) return;
   toggleDefaultVideoAudioMode();
 }
 
@@ -54658,7 +53098,6 @@ function handleExtrasKeybindAction(action) {
       const next = toggleOptionValue("lightMode");
       refreshLiveSettingsPaneFromKeyboardAction();
       applyColorSchemeFromOptions();
-      applyRetroModeFromOptions();
       showStatusMessage(`Light mode: ${next ? "On" : "Off"}`);
       return true;
     }
