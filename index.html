@@ -29528,6 +29528,40 @@ function catalogSummaryFileCountForCurrentFilters(summary) {
   return catalogSummaryFileCountForFilter(summary, mode, aspectMode);
 }
 
+function catalogSummaryMediaBucketCountForTagFilter(summary, mediaBucket, allowedAspects = null) {
+  if (!summary) return 0;
+  const bucket = normalizeMediaTypeStorageType(mediaBucket);
+  if (!bucket) return 0;
+  const mediaAspectCounts =
+    summary.recursiveMediaAspectCounts &&
+    typeof summary.recursiveMediaAspectCounts === "object"
+      ? summary.recursiveMediaAspectCounts[bucket]
+      : null;
+  if (mediaAspectCounts && typeof mediaAspectCounts === "object") {
+    const allowed = Array.isArray(allowedAspects) && allowedAspects.length
+      ? allowedAspects
+      : ["portrait", "square", "landscape"];
+    let count = Math.max(0, Number(mediaAspectCounts.unknown) || 0);
+    for (let i = 0; i < allowed.length; i++) {
+      count += Math.max(0, Number(mediaAspectCounts[allowed[i]]) || 0);
+    }
+    return count;
+  }
+  if (bucket === "videos") return Math.max(0, Number(summary.recursiveVideoCount) || 0);
+  if (bucket === "gifs") return Math.max(0, Number(summary.recursiveGifCount) || 0);
+  const imageCount = Math.max(0, Number(summary.recursiveImageCount) || 0);
+  const gifCount = Math.max(0, Number(summary.recursiveGifCount) || 0);
+  return Math.max(0, imageCount - gifCount);
+}
+
+function catalogSummaryMediaBucketsForGlobalFilterMode(filterMode) {
+  const mode = String(filterMode || "all");
+  if (mode === "videos") return ["videos"];
+  if (mode === "gifs") return ["gifs"];
+  if (mode === "images") return ["images", "gifs"];
+  return ["images", "gifs", "videos"];
+}
+
 function catalogSummaryHasVisibleRecordForTagEntry(summary, entry) {
   if (!summary) return false;
   const aspectMode = normalizeAspectRatioFilterMode(
@@ -29536,20 +29570,75 @@ function catalogSummaryHasVisibleRecordForTagEntry(summary, entry) {
   const hidden = normalizeTagMediaFilterValue(
     entry && entry.kind === "tag" ? effectiveTagMediaFilterForEntry(entry) : [],
   );
-  const currentMode = String((WS.view && WS.view.filterMode) || "all");
-  const candidates = [];
-  if (currentMode === "images" || currentMode === "videos" || currentMode === "gifs") {
-    candidates.push(currentMode);
-  } else {
-    candidates.push("images", "videos", "gifs");
+  const hiddenAspectBuckets = hidden.filter(
+    (value) => value === "portrait" || value === "square" || value === "landscape",
+  );
+  const allowedAspects =
+    aspectMode === "all"
+      ? ["portrait", "square", "landscape"].filter(
+          (bucket) => !hiddenAspectBuckets.includes(bucket),
+        )
+      : hiddenAspectBuckets.includes(aspectMode)
+        ? []
+        : [aspectMode];
+  if (!allowedAspects.length) {
+    const mediaAspectCounts =
+      summary.recursiveMediaAspectCounts &&
+      typeof summary.recursiveMediaAspectCounts === "object"
+        ? summary.recursiveMediaAspectCounts
+        : null;
+    if (!mediaAspectCounts) return false;
+    const buckets = catalogSummaryMediaBucketsForGlobalFilterMode(
+      WS.view && WS.view.filterMode,
+    ).filter((mode) => !hidden.includes(mode));
+    return buckets.some((mode) => {
+      const counts = mediaAspectCounts[mode];
+      return Math.max(0, Number(counts && counts.unknown) || 0) > 0;
+    });
   }
+  const currentMode = String((WS.view && WS.view.filterMode) || "all");
+  const candidates = catalogSummaryMediaBucketsForGlobalFilterMode(currentMode);
   const visibleCandidates = candidates.filter((mode) => !hidden.includes(mode));
   if (!visibleCandidates.length) return false;
   for (let i = 0; i < visibleCandidates.length; i++) {
-    const mode = visibleCandidates[i];
-    let count = catalogSummaryFileCountForFilter(summary, mode, aspectMode);
-    if (hidden.includes("gifs") && mode === "gifs") count = 0;
+    const count = catalogSummaryMediaBucketCountForTagFilter(
+      summary,
+      visibleCandidates[i],
+      allowedAspects,
+    );
     if (count > 0) return true;
+  }
+  return false;
+}
+
+function tagEntryVisibilityNeedsExactAspectScan(entry) {
+  const aspectMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  if (aspectMode !== "all") return true;
+  const hidden = normalizeTagMediaFilterValue(
+    entry && entry.kind === "tag" ? effectiveTagMediaFilterForEntry(entry) : [],
+  );
+  return hidden.some(
+    (value) => value === "portrait" || value === "square" || value === "landscape",
+  );
+}
+
+function loadedDirHasVisibleRecordForTagEntry(dirNode, entry) {
+  if (!dirNode || !entry || entry.kind !== "tag") return null;
+  if (dirNode.loadState !== "loaded") return null;
+  const fileIds = Array.isArray(dirNode.childrenFiles)
+    ? dirNode.childrenFiles
+    : [];
+  for (let i = 0; i < fileIds.length; i++) {
+    const rec = WS.fileById.get(String(fileIds[i] || ""));
+    if (rec && recordPassesTagEntryFilter(rec, entry)) return true;
+  }
+  const children = getVisibleChildDirsForTagEvaluation(dirNode);
+  for (let i = 0; i < children.length; i++) {
+    const childResult = loadedDirHasVisibleRecordForTagEntry(children[i], entry);
+    if (childResult === true) return true;
+    if (childResult == null) return null;
   }
   return false;
 }
@@ -30585,6 +30674,14 @@ function dirHasVisibleRecordForTagEntry(dirNode, entry) {
     return !!TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.get(cacheKey);
   }
   let visible = false;
+  if (tagEntryVisibilityNeedsExactAspectScan(entry)) {
+    const exactVisible = loadedDirHasVisibleRecordForTagEntry(dirNode, entry);
+    if (exactVisible != null) {
+      visible = !!exactVisible;
+      if (cacheKey) TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.set(cacheKey, visible);
+      return visible;
+    }
+  }
   const summary = getCatalogSummaryForNode(dirNode);
   // v10: tag/album content filters were recursively walking fully loaded root
   // children, which made opening tags and moving through filtered albums scale
