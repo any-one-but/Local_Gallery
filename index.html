@@ -4247,13 +4247,21 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
 }
 
-/*#optionsBody h2 {
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: .02em;
-      margin: 12px 0 6px;
-      color: var(--color0-primary);
-    }*/
+#optionsBody h2 {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin: 28px 0 10px;
+  color: var(--color0-primary);
+}
+
+#optionsBody .settingsSection:first-of-type > h2 {
+  margin-top: 10px;
+}
+
+#optionsBody .settingsSection + .settingsSection {
+  margin-top: 24px;
+}
 
 #optionsBody .optRow,
 #keybindsBody .optRow {
@@ -5590,8 +5598,8 @@ remove the outer app frame. */
                         id="controlMuteBtn"
                         class="miniBtn controlBtn controlIconBtn"
                         type="button"
-                        title="Mute"
-                        aria-label="Mute"
+                        title="Video audio"
+                        aria-label="Video audio"
                       ></button>
                     </div>
                     <input
@@ -5621,7 +5629,7 @@ remove the outer app frame. */
                         role="tab"
                         aria-controls="menuTabOptions"
                       >
-                        General
+                        Settings
                       </button>
                       <button
                         type="button"
@@ -5631,42 +5639,6 @@ remove the outer app frame. */
                         aria-controls="menuTabKeybinds"
                       >
                         Controls
-                      </button>
-                      <button
-                        type="button"
-                        class="miniBtn menuTabBtn"
-                        data-tab="storage"
-                        role="tab"
-                        aria-controls="menuTabOptions"
-                      >
-                        Storage
-                      </button>
-                      <button
-                        type="button"
-                        class="miniBtn menuTabBtn"
-                        data-tab="appearance"
-                        role="tab"
-                        aria-controls="menuTabOptions"
-                      >
-                        Appearance
-                      </button>
-                      <button
-                        type="button"
-                        class="miniBtn menuTabBtn"
-                        data-tab="playback"
-                        role="tab"
-                        aria-controls="menuTabOptions"
-                      >
-                        Playback
-                      </button>
-                      <button
-                        type="button"
-                        class="miniBtn menuTabBtn"
-                        data-tab="filenames"
-                        role="tab"
-                        aria-controls="menuTabOptions"
-                      >
-                        Filenames
                       </button>
                       <button
                         type="button"
@@ -14766,18 +14738,53 @@ function syncSidePaneWidthsToSmallerSide() {
 function applyDefaultRootLandingSidebars() {
   if (!WS.meta) return;
   if (setDirectoriesPaneOpenValue(true)) syncActivePaneWithLayout();
-  if (MENU_OPEN) closeMenu();
+  if (!MENU_OPEN) openMenu("general");
+  else setMenuTab(MENU_ACTIVE_TAB || MENU_LAST_TAB || "general");
   const appEl = document.getElementById("app");
   const appWidth = Math.max(
     1,
     Number(appEl?.clientWidth || window.innerWidth) || 1,
   );
-  const targetOccupiedWidthPx = Math.round(appWidth * 0.27);
+  const previewHeight = Math.max(
+    1,
+    Number(
+      previewBodyEl?.clientHeight ||
+        previewPane?.clientHeight ||
+        appEl?.clientHeight ||
+        window.innerHeight,
+    ) || 1,
+  );
+  const targetPreviewWidthPx = Math.round(previewHeight * (2 / 3));
+  const minimumPreviewWidthPx = Math.max(240, Math.round(appWidth * 0.22));
+  const rawOccupiedWidthPx = Math.round(
+    (appWidth - targetPreviewWidthPx) / 2,
+  );
+  const minOccupiedWidthPx = Math.max(280, Math.round(appWidth * 0.12));
+  const maxOccupiedWidthPx = Math.max(
+    minOccupiedWidthPx,
+    Math.floor((appWidth - minimumPreviewWidthPx) / 2),
+  );
+  const targetOccupiedWidthPx = Math.max(
+    minOccupiedWidthPx,
+    Math.min(maxOccupiedWidthPx, rawOccupiedWidthPx),
+  );
   const dividerPx = menuPaneDividerWidthPx();
   const targetMenuWidthPx = Math.max(280, targetOccupiedWidthPx - dividerPx);
-  const appliedMenuWidth =
+  let appliedMenuWidth =
     setMenuPaneWidthPx(targetMenuWidthPx, true) || targetMenuWidthPx;
-  setDirectoriesPaneWidthPx(Math.round(appliedMenuWidth + dividerPx), true);
+  const targetDirectoriesWidthPx = Math.round(appliedMenuWidth + dividerPx);
+  const appliedDirectoriesWidth = setDirectoriesPaneWidthPx(
+    targetDirectoriesWidthPx,
+    true,
+  );
+  if (Math.abs(appliedDirectoriesWidth - targetDirectoriesWidthPx) >= 1) {
+    appliedMenuWidth =
+      setMenuPaneWidthPx(
+        Math.max(280, Math.round(appliedDirectoriesWidth - dividerPx)),
+        true,
+      ) || appliedMenuWidth;
+    setDirectoriesPaneWidthPx(Math.round(appliedMenuWidth + dividerPx), true);
+  }
   syncPreviewContentLayoutAfterMenuToggle();
 }
 
@@ -15044,10 +15051,6 @@ let MENU_HAS_OPENED = false;
 let PREVIEW_MEDIA_LAYOUT_RAF = 0;
 const MENU_TAB_SCROLL = {
   general: 0,
-  appearance: 0,
-  playback: 0,
-  thumbnails: 0,
-  filenames: 0,
   controls: 0,
   calendar: 0,
 };
@@ -15790,20 +15793,10 @@ function syncMetaButtons() {
 const MENU_TAB_IDS = [
   "general",
   "controls",
-  "storage",
-  "appearance",
-  "playback",
-  "thumbnails",
-  "filenames",
   "calendar",
 ];
 const MENU_PANEL_BY_TAB = {
   general: "options",
-  storage: "options",
-  appearance: "options",
-  playback: "options",
-  thumbnails: "options",
-  filenames: "options",
   controls: "controls",
   calendar: "calendar",
 };
@@ -15817,11 +15810,6 @@ const menuTabPanels = {
 };
 const menuScrollTargets = {
   general: optionsBodyEl,
-  storage: optionsBodyEl,
-  appearance: optionsBodyEl,
-  playback: optionsBodyEl,
-  thumbnails: optionsBodyEl,
-  filenames: optionsBodyEl,
   controls: keybindsBodyEl,
   calendar: calendarBodyEl,
 };
@@ -15849,7 +15837,6 @@ function restoreMenuTabScroll(tab) {
 function availableMenuTabIds() {
   return MENU_TAB_IDS.filter(
     (tabId) =>
-      tabId !== "thumbnails" &&
       (scoreInterfaceEnabled() || tabId !== "calendar"),
   );
 }
@@ -17488,25 +17475,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     value: normalizeAppearancePresetIdValue(preset && preset.id),
     label: String(preset && preset.name ? preset.name : "Preset"),
   }));
-  const notificationsRowsHtml = (() => {
-    let currentSection = "";
-    return NOTIFICATION_SOURCE_SPECS.map((spec) => {
-      const sectionHtml =
-        spec.section && spec.section !== currentSection
-          ? ((currentSection = spec.section), `<h2 style="margin-top:18px;">${escapeHtml(spec.section)}</h2>`)
-          : "";
-      return (
-        sectionHtml +
-        makeCheckRow(
-          spec.label,
-          spec.hint || `${spec.label} notifications.`,
-          `opt_${spec.optionKey}`,
-          !!opt[spec.optionKey],
-        )
-      );
-    }).join("");
-  })();
-
   const formatPixelateResolution = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return "";
@@ -17813,12 +17781,10 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       title: "General",
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
+${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeSelectRow("Media filter", "Choose which media types are visible in the current view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
 ${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible in the current view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
 ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
-${makeSelectRow("Appearance preset", "Apply a saved appearance preset.", "opt_generalAppearancePreset", activeAppearancePresetId, appearancePresetSelectOptions)}
-${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
-${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Reveal hidden items", "Show or hide items hidden by hidden tags.", "opt_showHiddenFolder", showHiddenFolderEnabled())}
 ${makeCheckRow("Trash folder", "Show or hide the Trash folder entry at root.", "opt_showTrashFolder", showTrashFolderEnabled())}
 ${makeCheckRow("Storage folder", "Show or hide the Storage folder entry.", "opt_showStorageFolder", showStorageFolderEnabled())}
@@ -17845,20 +17811,6 @@ ${makeCheckRow("Images", "Send every currently loaded and future still image fil
 ${makeCheckRow("GIFs", "Send every currently loaded and future GIF file to storage until this is turned off.", "opt_store_media_gifs", mediaTypeStorageEnabledForType("gifs", opt))}
 ${makeCheckRow("Videos", "Send every currently loaded and future video file to storage until this is turned off.", "opt_store_media_videos", mediaTypeStorageEnabledForType("videos", opt))}
 
-          `,
-    },
-    notifications: {
-      title: "Notifications",
-      rows: `
-${makeActionRow(
-  "All notifications",
-  "Turn every notification source on or off.",
-  `
-  <button type="button" id="opt_notifications_all_on">Turn All On</button>
-  <button type="button" id="opt_notifications_all_off">Turn All Off</button>
-`,
-)}
-${notificationsRowsHtml}
           `,
     },
     appearance: {
@@ -17964,13 +17916,41 @@ ${makeActionRow(
           `,
     },
   };
-  const activeSection = sections[sectionTab] ? sectionTab : "general";
-  const section = sections[activeSection];
+  const requestedSection = sections[sectionTab] ? String(sectionTab) : "";
+  const settingsSectionOrder = [
+    "general",
+    "storage",
+    "appearance",
+    "playback",
+    "filenames",
+  ];
+  const settingsSectionsHtml = settingsSectionOrder
+    .map((id) => {
+      const section = sections[id];
+      if (!section) return "";
+      return `
+        <section class="settingsSection" data-settings-section="${escapeHtml(id)}">
+          <h2>${escapeHtml(section.title)}</h2>
+          ${section.rows}
+        </section>
+      `;
+    })
+    .join("");
 
   optionsBodyEl.innerHTML = `
-        <h1>${escapeHtml(section.title)}</h1>
-        ${section.rows}
+        <h1>Settings</h1>
+        ${settingsSectionsHtml}
       `;
+  if (requestedSection && requestedSection !== "general") {
+    requestAnimationFrame(() => {
+      const target = optionsBodyEl.querySelector(
+        `[data-settings-section="${cssEscapeValue(requestedSection)}"]`,
+      );
+      if (target && typeof target.scrollIntoView === "function") {
+        target.scrollIntoView({ block: "start" });
+      }
+    });
+  }
   applyDescriptionVisibilityFromOptions();
   ensureOptionsSelectGlobalBindings();
 
@@ -18252,33 +18232,6 @@ ${makeActionRow(
   bindCheck("opt_lightMode", "lightMode", () => {
     applyColorSchemeFromOptions();
   });
-  NOTIFICATION_SOURCE_SPECS.forEach((spec) => {
-    bindCheck(`opt_${spec.optionKey}`, spec.optionKey);
-  });
-  bindActionBtn("opt_notifications_all_on", () => {
-    const next = {};
-    NOTIFICATION_SOURCE_SPECS.forEach((spec) => {
-      next[spec.optionKey] = true;
-    });
-    WS.meta.options = normalizeOptions(
-      Object.assign({}, WS.meta.options || {}, next),
-    );
-    metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
-    setOptionsStatus("Saved");
-    renderOptionsUi("notifications");
-  });
-  bindActionBtn("opt_notifications_all_off", () => {
-    const next = {};
-    NOTIFICATION_SOURCE_SPECS.forEach((spec) => {
-      next[spec.optionKey] = false;
-    });
-    WS.meta.options = normalizeOptions(
-      Object.assign({}, WS.meta.options || {}, next),
-    );
-    metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
-    setOptionsStatus("Saved");
-    renderOptionsUi("notifications");
-  });
 
   const bindStorageToggle = (id, key, label) => {
     bindMenuToggleButton(id, async (enabled) => {
@@ -18372,6 +18325,7 @@ ${makeActionRow(
   bindCheck("opt_quickNavigation", "quickNavigation", (enabled) => {
     showStatusMessage(`Quick navigation: ${enabled ? "On" : "Off"}`, "quick-navigation");
   });
+  bindCheck("opt_muteMessages", "muteMessages");
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
     invalidateDirMetricsCaches();
     if (!enabled && WS.view.tagFolderActiveMode === "untagged") {
@@ -18795,6 +18749,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showTrashFolder",
     "showStorageFolder",
     "quickNavigation",
+    "muteMessages",
     "showUntaggedFolder",
     "showTagFolderSpacerRow",
     "showListCardExtraInfo",
@@ -18837,19 +18792,20 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
   ]),
 });
 
-function normalizeOptionsResetTab(tabId) {
-  const normalized = String(tabId || "").trim().toLowerCase();
-  return OPTION_TAB_IDS.includes(normalized) ? normalized : "general";
-}
-
-function resetOptionsToDefaults(tabId = MENU_ACTIVE_TAB) {
+function resetOptionsToDefaults() {
   if (!WS.meta) return;
-  const targetTab = normalizeOptionsResetTab(tabId);
+  const targetTab = "general";
   const defaultOpts = normalizeOptions(defaultOptions());
   const nextOptions = normalizeOptions(
     Object.assign({}, WS.meta.options || {}, {}),
   );
-  const keys = OPTIONS_RESET_KEYS_BY_TAB[targetTab] || [];
+  const keys = Array.from(
+    new Set(
+      OPTION_TAB_IDS.flatMap((id) =>
+        Array.from(OPTIONS_RESET_KEYS_BY_TAB[id] || []),
+      ),
+    ),
+  );
   for (let i = 0; i < keys.length; i++) {
     const key = String(keys[i] || "");
     if (!key) continue;
@@ -18858,7 +18814,7 @@ function resetOptionsToDefaults(tabId = MENU_ACTIVE_TAB) {
   WS.meta.options = normalizeOptions(nextOptions);
 
   syncActiveAppearancePresetSelection(WS.meta.options);
-  if (targetTab === "appearance" && WS.view) {
+  if (WS.view) {
     WS.view.appearancePresetEditingId =
       effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
     WS.view.appearancePresetDraftName = "";
@@ -18866,29 +18822,24 @@ function resetOptionsToDefaults(tabId = MENU_ACTIVE_TAB) {
   }
 
   const dirtyIds = new Set(metaPreferenceDocIdsForOptionKeys(keys));
-  if (targetTab === "general") dirtyIds.add(META_DOC_IDS.prefGeneral);
+  dirtyIds.add(META_DOC_IDS.prefGeneral);
   metaMarkDirty(...Array.from(dirtyIds));
-  if (targetTab === "general") {
-    invalidateHiddenVisibilityState();
-    if (!showHiddenFolderEnabled() && WS.view.tagFolderActiveMode === "hidden") {
-      exitTagFolderView();
-    }
-    if (
-      !showUntaggedFolderEnabled() &&
-      WS.view.tagFolderActiveMode === "untagged"
-    ) {
-      exitTagFolderView();
-    }
-    navigateOutOfStorageIfHidden();
+  invalidateHiddenVisibilityState();
+  if (!showHiddenFolderEnabled() && WS.view.tagFolderActiveMode === "hidden") {
+    exitTagFolderView();
   }
+  if (
+    !showUntaggedFolderEnabled() &&
+    WS.view.tagFolderActiveMode === "untagged"
+  ) {
+    exitTagFolderView();
+  }
+  navigateOutOfStorageIfHidden();
 
   setOptionsStatus("Reset");
   renderOptionsUi(targetTab);
   applyOptionsEverywhere(true);
-  const resetTabLabel = targetTab === "general" ? "Storage" : targetTab.charAt(0).toUpperCase() + targetTab.slice(1);
-  showStatusMessage(
-    `Reset ${resetTabLabel} settings to defaults.`,
-  );
+  showStatusMessage("Reset settings to defaults.");
 }
 
 if (keybindsResetBtn)
@@ -45008,7 +44959,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   renderDirectoriesPane(true);
                   if (isRootNode) {
                     if (!applyAppearancePresetById(presetId)) return;
-                    if (MENU_ACTIVE_TAB === "appearance")
+                    if (MENU_ACTIVE_TAB === "general")
                       renderOptionsUi("appearance");
                     showStatusMessage(
                       `Root media preset: ${appearancePresetDisplayName(presetId)}.`,
@@ -46845,7 +46796,8 @@ function syncControlPaneState() {
   const current = video ? Math.max(0, Number(video.currentTime) || 0) : 0;
   const canNavigate = controlPaneHasNavigablePreviewItem();
 
-  if (controlPane) controlPane.classList.toggle("control-disabled", !hasVideo);
+  if (controlPane)
+    controlPane.classList.toggle("control-disabled", !hasVideo && !WS.meta);
   setControlButtonDisabled(controlPrevItemBtn, !canNavigate);
   setControlButtonDisabled(controlNextItemBtn, !canNavigate);
   setControlButtonDisabled(controlSkipBackBtn, !hasDuration);
@@ -54926,6 +54878,12 @@ document.addEventListener("keydown", (e) => {
 
   if (handleSelectionKeybindAction(action)) {
     e.preventDefault();
+    return;
+  }
+
+  if (action === "muteToggle") {
+    e.preventDefault();
+    toggleViewerVideoMute();
     return;
   }
 
