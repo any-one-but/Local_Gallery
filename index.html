@@ -15884,6 +15884,21 @@ function resetWorkspace() {
   THUMB_DISK_READ_PROMISES.clear();
   THUMB_DISK_WRITE_PROMISES.clear();
   NAV_THUMB_READY_PROMISES.clear();
+  PREVIEW_FILE_OBJECT_PROMISES.clear();
+  PREVIEW_FILE_OBJECT_WARM_TOKEN++;
+  if (PREVIEW_FILE_OBJECT_WARM_TIMER) {
+    try {
+      clearTimeout(PREVIEW_FILE_OBJECT_WARM_TIMER);
+    } catch {}
+  }
+  PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
+  if (PREVIEW_STATE_RENDER_RAF) {
+    try {
+      cancelAnimationFrame(PREVIEW_STATE_RENDER_RAF);
+    } catch {}
+  }
+  PREVIEW_STATE_RENDER_RAF = 0;
+  PREVIEW_STATE_RENDER_FILE_ID = "";
   NAVIGATION_PREP_TOKEN = 0;
   HOT_NAV_DIR_PATHS.clear();
   PINNED_HOT_NAV_DIR_PATHS.clear();
@@ -16418,6 +16433,11 @@ let previewViewportBox = null;
 let previewImgEl = null;
 let PREVIEW_IMAGE_SWAP_TOKEN = 0;
 let PREVIEW_SUPPRESS_STALE_FRAME_ONCE = false;
+let PREVIEW_STATE_RENDER_RAF = 0;
+let PREVIEW_STATE_RENDER_FILE_ID = "";
+let PREVIEW_FILE_OBJECT_PROMISES = new Map();
+let PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
+let PREVIEW_FILE_OBJECT_WARM_TOKEN = 0;
 let previewVideoEl = null;
 let previewFolderEl = null;
 
@@ -26187,20 +26207,86 @@ async function ensureFileObjectForRecord(rec) {
   if (!WS.meta || !WS.meta.fsRootHandle) return null;
   const relPath = normalizeWorkspaceRelPath(rec.relPath || "");
   if (!relPath) return null;
+  const cacheKey = String(rec.id || relPath);
+  if (cacheKey && PREVIEW_FILE_OBJECT_PROMISES.has(cacheKey)) {
+    return PREVIEW_FILE_OBJECT_PROMISES.get(cacheKey);
+  }
   const parts = relPath.split("/").filter(Boolean);
   const fileName = parts.pop();
   if (!fileName) return null;
   const dirPath = parts.join("/");
-  try {
-    const dirHandle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, dirPath);
-    const fileHandle = await dirHandle.getFileHandle(fileName);
-    const file = await fileHandle.getFile();
-    rec.file = file;
-    rec.size = Number(file.size) || rec.size;
-    rec.lastModified = Number(file.lastModified) || rec.lastModified;
-    return file;
-  } catch {
-    return null;
+  const loadPromise = (async () => {
+    try {
+      const dirHandle = await getDirectoryHandleForPath(WS.meta.fsRootHandle, dirPath);
+      const fileHandle = await dirHandle.getFileHandle(fileName);
+      const file = await fileHandle.getFile();
+      rec.file = file;
+      rec.size = Number(file.size) || rec.size;
+      rec.lastModified = Number(file.lastModified) || rec.lastModified;
+      rec.nativePath = getNativePathForFile(file) || rec.nativePath || "";
+      return file;
+    } catch {
+      return null;
+    } finally {
+      if (cacheKey) PREVIEW_FILE_OBJECT_PROMISES.delete(cacheKey);
+    }
+  })();
+  if (cacheKey) PREVIEW_FILE_OBJECT_PROMISES.set(cacheKey, loadPromise);
+  return loadPromise;
+}
+
+function shouldWarmPreviewFileObjects() {
+  return !!(getElectronApi() && WS.meta && WS.meta.fsRootHandle);
+}
+
+function schedulePreviewFileObjectsWarm(dirNode = null, delayMs = 40) {
+  if (!shouldWarmPreviewFileObjects()) return;
+  const node = dirNode || WS.nav.dirNode || null;
+  if (!node || !Array.isArray(node.childrenFiles) || !node.childrenFiles.length)
+    return;
+  PREVIEW_FILE_OBJECT_WARM_TOKEN++;
+  const token = PREVIEW_FILE_OBJECT_WARM_TOKEN;
+  if (PREVIEW_FILE_OBJECT_WARM_TIMER) {
+    try { clearTimeout(PREVIEW_FILE_OBJECT_WARM_TIMER); } catch {}
+    PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
+  }
+  PREVIEW_FILE_OBJECT_WARM_TIMER = setTimeout(() => {
+    PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
+    warmPreviewFileObjectsForDir(node, token).catch(() => {});
+  }, Math.max(0, Number(delayMs) || 0));
+}
+
+async function warmPreviewFileObjectsForDir(dirNode, token) {
+  if (!shouldWarmPreviewFileObjects()) return;
+  if (token !== PREVIEW_FILE_OBJECT_WARM_TOKEN) return;
+  let ids = [];
+  if (WS.nav.dirNode === dirNode && Array.isArray(WS.nav.entries)) {
+    const selected = Math.max(0, Number(WS.nav.selectedIndex) || 0);
+    const start = Math.max(0, selected - 24);
+    const end = Math.min(WS.nav.entries.length, selected + 49);
+    for (let i = start; i < end; i++) {
+      const entry = WS.nav.entries[i];
+      if (entry && entry.kind === "file" && entry.id) ids.push(String(entry.id));
+    }
+  }
+  if (!ids.length && Array.isArray(dirNode?.childrenFiles)) {
+    ids = dirNode.childrenFiles.slice(0, 96);
+  }
+  if (!ids.length) return;
+  await runWithConcurrency(ids, 6, async (id) => {
+    if (token !== PREVIEW_FILE_OBJECT_WARM_TOKEN) return;
+    const rec = WS.fileById.get(String(id || ""));
+    if (!rec || rec.file) return;
+    await ensureFileObjectForRecord(rec);
+  });
+  if (
+    token === PREVIEW_FILE_OBJECT_WARM_TOKEN &&
+    WS.preview &&
+    WS.preview.kind === "file" &&
+    WS.preview.fileId &&
+    (WS.preview.dirNode === dirNode || WS.nav.dirNode === dirNode)
+  ) {
+    renderPreviewPane(false, true);
   }
 }
 
@@ -34943,6 +35029,7 @@ function schedulePreviewRenderForSelection(opts = null) {
 function renderPreviewForSelectionChange() {
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
   if (entry && entry.kind === "file") {
+    schedulePreviewFileObjectsWarm(WS.nav.dirNode, 0);
     renderPreviewPane(false, true);
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
@@ -36959,6 +37046,27 @@ function getNativePathForFile(file) {
   return String(file?.path || "");
 }
 
+function nativePathToFileUrl(nativePath) {
+  const raw = String(nativePath || "").trim();
+  if (!raw) return "";
+  const normalized = raw.replace(/\\/g, "/");
+  const encoded = normalized
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  if (/^[A-Za-z]:\//.test(normalized)) return `file:///${encoded}`;
+  return normalized.startsWith("/") ? `file://${encoded}` : `file:///${encoded}`;
+}
+
+function nativePathForRecord(rec) {
+  if (!rec) return "";
+  const existing = String(rec.nativePath || "");
+  if (existing) return existing;
+  const resolved = getNativePathForFile(rec.file);
+  if (resolved) rec.nativePath = resolved;
+  return resolved;
+}
+
 function resolveAbsoluteDirectoryPath(dirPath) {
   const electronApi = getElectronApi();
   if (!electronApi) return "";
@@ -38719,7 +38827,31 @@ function applyPreviewState(state) {
       dirNode: WS.preview.dirNode,
       fileId: nextFileId,
     });
+    if (nextKind === "file" && nextFileId) {
+      schedulePreviewFileObjectsWarm(WS.preview.dirNode || WS.nav.dirNode, 0);
+    }
+    schedulePreviewRenderForStateChange(nextKind, nextFileId);
   }
+}
+
+function schedulePreviewRenderForStateChange(kind, fileId = "") {
+  if (kind !== "file" || !fileId) return;
+  PREVIEW_STATE_RENDER_FILE_ID = String(fileId || "");
+  if (PREVIEW_STATE_RENDER_RAF) return;
+  PREVIEW_STATE_RENDER_RAF = requestAnimationFrame(() => {
+    PREVIEW_STATE_RENDER_RAF = 0;
+    const targetFileId = String(PREVIEW_STATE_RENDER_FILE_ID || "");
+    PREVIEW_STATE_RENDER_FILE_ID = "";
+    if (
+      WS.preview &&
+      WS.preview.kind === "file" &&
+      String(WS.preview.fileId || "") === targetFileId
+    ) {
+      renderPreviewPane(false, true);
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+    }
+  });
 }
 
 function currentNavigationSnapshot() {
@@ -47759,14 +47891,35 @@ function ensureNavigationThumbUrl(rec) {
 
 function ensureMediaUrl(rec) {
   if (!rec) return null;
+  if (getElectronApi() && !rec.nativeUrlFailed) {
+    const nativePath = nativePathForRecord(rec);
+    const nativeUrl = nativePathToFileUrl(nativePath);
+    if (nativeUrl) {
+      if (rec.url && rec.url !== nativeUrl && rec.urlKind === "blob") {
+        try { URL.revokeObjectURL(rec.url); } catch {}
+      }
+      rec.url = nativeUrl;
+      rec.urlKind = "native";
+      return rec.url;
+    }
+  }
   if (rec.url) return rec.url;
   if (!rec.file) return null;
   try {
     rec.url = URL.createObjectURL(rec.file);
+    rec.urlKind = "blob";
     return rec.url;
   } catch {
     return null;
   }
+}
+
+function retryNativePreviewMediaAsBlob(rec) {
+  if (!rec || rec.urlKind !== "native") return false;
+  rec.nativeUrlFailed = true;
+  rec.url = null;
+  renderPreviewPane(false, true);
+  return true;
 }
 
 function getVideoPosterForRecord(rec) {
@@ -48707,6 +48860,7 @@ function renderPreviewViewerItem(idx) {
     previewVideoEl.autoplay = shouldAutoPlay;
     previewVideoEl.onloadeddata = null;
     previewVideoEl.onended = null;
+    previewVideoEl.onerror = null;
     previewVideoEl.muted = mode === "muted" || BANIC_ACTIVE || VIEWER_MODE;
     const endBehavior = videoEndBehavior();
     if (WS.view.slideshowActive) {
@@ -48734,6 +48888,11 @@ function renderPreviewViewerItem(idx) {
         applyVideoCropToElement(previewVideoEl, rec);
       }
       MediaFilterEngine.requestRender();
+    };
+    previewVideoEl.onerror = () => {
+      if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
+      if (retryNativePreviewMediaAsBlob(rec)) return;
+      showPreviewViewportMessage("Could not load video", rec.relPath || rec.name || "");
     };
 
     applyVideoPoster(previewVideoEl, rec);
@@ -48822,6 +48981,11 @@ function renderPreviewViewerItem(idx) {
     return true;
   };
   previewImgEl.onload = finalizePreviewImageFrame;
+  previewImgEl.onerror = () => {
+    if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
+    if (retryNativePreviewMediaAsBlob(rec)) return;
+    showPreviewViewportMessage("Could not load image", rec.relPath || rec.name || "");
+  };
   const src = ensureMediaUrl(rec) || "";
   if (!src) {
     showPreviewViewportMessage("Could not load image", rec.relPath || rec.name || "");
@@ -55903,6 +56067,13 @@ function refreshAfterDirectoriesPaneToggle(
 ) {
   renderDirectoriesPane(true);
   renderPreviewPane(animatePreview, keepPreviewScroll);
+  refreshActivePreviewMediaLayout({ immediate: true });
+  requestAnimationFrame(() => {
+    refreshActivePreviewMediaLayout({ immediate: true });
+    if (WS.preview && WS.preview.kind === "file" && WS.preview.fileId) {
+      renderPreviewPane(false, true);
+    }
+  });
   updatePreviewSelectionClasses();
   syncButtons();
   kickVideoThumbsForPreview();
