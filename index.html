@@ -15038,6 +15038,18 @@ const KEYBIND_ACTIONS = [
     section: "random",
   },
   {
+    id: "trueRandomFirstFileJump",
+    label: "True random first file jump",
+    hint: "Jump to any indexed folder in the root that contains media and focus its first matching file.",
+    section: "random",
+  },
+  {
+    id: "trueRandomFileJump",
+    label: "True random jump",
+    hint: "Jump to any indexed media file across the entire root.",
+    section: "random",
+  },
+  {
     id: "toggleRandomFileSort",
     label: "Random file sort",
     hint: "Toggle random file ordering on or off.",
@@ -15319,6 +15331,8 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleRandomFolderSort",
   "randomFirstFileJump",
   "randomFileJump",
+  "trueRandomFirstFileJump",
+  "trueRandomFileJump",
   "toggleShowHiddenFolder",
   "toggleShowTrashFolder",
   "toggleShowUntaggedFolder",
@@ -15382,6 +15396,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   refreshWorkspace: "",
   randomFirstFileJump: "r",
   randomFileJump: "Shift+r",
+  trueRandomFirstFileJump: "",
+  trueRandomFileJump: "",
   toggleRandomFileSort: "",
   toggleRandomFolderSort: "Cmd+r",
   cycleFilter: "f",
@@ -26763,21 +26779,26 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     await waitForBusyOverlayPaint();
     applyMediaFilterFromOptions();
 
-    showBlockingLoaderOverlay(
-      "Loading saved data...",
-      "Reading saved tags, scores, and aspect-ratio cache...",
+    const loadHeavyMetadata = !!forceIndex;
+    updateBlockingLoaderOverlay(
+      loadHeavyMetadata ? "Loading saved data..." : "Loading saved settings...",
+      loadHeavyMetadata
+        ? "Reading saved tags, scores, and aspect-ratio cache..."
+        : "Reading saved tags, scores, and preferences...",
     );
-    await waitForBusyOverlayPaint();
+    if (loadHeavyMetadata) await waitForBusyOverlayPaint();
     try {
       if (!ok) {
         WS.meta.storageMode = "local";
         WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
-        metaInitForCurrentWorkspace();
-        hydrateCatalogLightIndexFromAspectLog();
+        metaInitForCurrentWorkspace({ loadHeavyLogs: loadHeavyMetadata });
+        if (loadHeavyMetadata) hydrateCatalogLightIndexFromAspectLog();
       } else {
         WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
-        await metaInitForCurrentWorkspaceFs();
-        hydrateCatalogLightIndexFromAspectLog();
+        await metaInitForCurrentWorkspaceFs({
+          loadHeavyLogs: loadHeavyMetadata,
+        });
+        if (loadHeavyMetadata) hydrateCatalogLightIndexFromAspectLog();
         if (WS.meta.saveTimer) {
           clearTimeout(WS.meta.saveTimer);
           WS.meta.saveTimer = null;
@@ -47053,6 +47074,174 @@ function jumpToDirectoryRandomFile(dirNode) {
   return idx >= 0;
 }
 
+function trueRandomCatalogFileDescriptors() {
+  const out = [];
+  const seen = new Set();
+  const push = (raw) => {
+    const desc = normalizeCatalogFileDescriptor(raw);
+    if (!desc) return;
+    if (isPathInsideInternalTrash(desc.relPath || desc.dirPath || "")) return;
+    if (seen.has(desc.relPath)) return;
+    seen.add(desc.relPath);
+    if (!passesFilter(desc)) return;
+    out.push(desc);
+  };
+  if (WS.catalog && WS.catalog.enabled) {
+    if (WS.catalog.fileLightIndexById instanceof Map) {
+      for (const desc of WS.catalog.fileLightIndexById.values()) push(desc);
+    }
+    if (!out.length && WS.catalog.fileDescriptorsById instanceof Map) {
+      for (const desc of WS.catalog.fileDescriptorsById.values()) push(desc);
+    }
+  }
+  if (!out.length && WS.fileById instanceof Map) {
+    for (const rec of WS.fileById.values()) push(rec);
+  }
+  return out;
+}
+
+function trueRandomCatalogFolderPathsWithDirectMedia() {
+  const out = [];
+  if (WS.catalog && WS.catalog.enabled && WS.catalog.folderSummaries instanceof Map) {
+    for (const summary of WS.catalog.folderSummaries.values()) {
+      const path = normalizeDirPathValue(summary?.path || "");
+      if (!path || isPathInsideInternalTrash(path)) continue;
+      if (Math.max(0, Number(summary?.directFileCount) || 0) <= 0) continue;
+      out.push(path);
+    }
+  }
+  if (!out.length && WS.dirByPath instanceof Map) {
+    for (const node of WS.dirByPath.values()) {
+      const path = normalizeDirPathValue(node?.path || "");
+      if (!path || isPathInsideInternalTrash(path)) continue;
+      if (getOrderedFileIdsForDir(node).length > 0) out.push(path);
+    }
+  }
+  return out;
+}
+
+function pickRandomArrayItem(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return null;
+  return list[Math.floor(Math.random() * list.length)] || null;
+}
+
+function syncDirectoryJumpToFileRecord(dirNode, rec) {
+  if (!dirNode || !rec) return false;
+  WS.nav.dirNode = dirNode;
+  if (searchBrowsingResultFolder())
+    enterSearchResultContext(dirNode.path || "");
+  TAG_EDIT_PATH = null;
+  clearBulkTagPlaceholder();
+  syncBulkSelectionForCurrentDir();
+  syncFavoritesUi();
+  syncHiddenUi();
+  syncTagUiForCurrentDir();
+  rebuildDirectoriesEntries();
+  const idx = findFileEntryIndexById(rec.id || "");
+  if (idx < 0) return false;
+  WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+  syncPreviewToSelection({ force: true });
+  renderDirectoriesPane();
+  renderPreviewPane(true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  return true;
+}
+
+function syncViewerJumpToFileRecord(dirNode, rec) {
+  if (!dirNode || !rec) return false;
+  viewerDirNode = dirNode;
+  viewerItems = buildViewerItemsForDir(viewerDirNode);
+  if (!viewerItems.length) return false;
+  let idx = -1;
+  for (let i = 0; i < viewerItems.length; i++) {
+    const item = viewerItems[i];
+    if (item && !item.isFolder && String(item.id || "") === String(rec.id || "")) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx < 0) return false;
+  viewerIndex = idx;
+  if (VIEWER_MODE) renderViewerItem(viewerIndex);
+  syncDirectoriesToViewerState();
+  return true;
+}
+
+async function jumpToCatalogFileDescriptor(desc, useViewer = false) {
+  const d = normalizeCatalogFileDescriptor(desc);
+  if (!d) return false;
+  const dirNode = ensureCatalogDirNode(d.dirPath || "");
+  if (!dirNode) return false;
+  const loaded = await ensureDirectoryHydratedForOpen(dirNode, {
+    label: "Opening folder...",
+  });
+  if (!loaded) return false;
+  const rec = findFileRecordByRelPath(d.relPath) || ensureFileRecordFromDescriptor(d);
+  if (!rec || !passesFilter(rec)) return false;
+  return useViewer
+    ? syncViewerJumpToFileRecord(dirNode, rec)
+    : syncDirectoryJumpToFileRecord(dirNode, rec);
+}
+
+async function jumpToCatalogDirectoryFirstFile(path, useViewer = false) {
+  const dirNode = ensureCatalogDirNode(path || "");
+  if (!dirNode) return false;
+  const loaded = await ensureDirectoryHydratedForOpen(dirNode, {
+    label: "Opening folder...",
+  });
+  if (!loaded) return false;
+  const ids = getOrderedFileIdsForDir(dirNode);
+  if (!ids.length) return false;
+  const rec = WS.fileById.get(ids[0]) || null;
+  if (!rec) return false;
+  return useViewer
+    ? syncViewerJumpToFileRecord(dirNode, rec)
+    : syncDirectoryJumpToFileRecord(dirNode, rec);
+}
+
+async function trueRandomFileJump(useViewer = false) {
+  const candidates = trueRandomCatalogFileDescriptors();
+  if (!candidates.length) {
+    showStatusMessage("True Random Jump: no matching files.");
+    return false;
+  }
+  const attempts = shuffleWithSeed(
+    candidates.slice(),
+    (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0,
+  );
+  for (let i = 0; i < attempts.length; i++) {
+    if (await jumpToCatalogFileDescriptor(attempts[i], useViewer)) {
+      showStatusMessage("True Random Jump");
+      return true;
+    }
+  }
+  showStatusMessage("True Random Jump: no matching files.");
+  return false;
+}
+
+async function trueRandomFirstFileJump(useViewer = false) {
+  const candidates = trueRandomCatalogFolderPathsWithDirectMedia();
+  if (!candidates.length) {
+    showStatusMessage("True First File Jump: no matching folder.");
+    return false;
+  }
+  const attempts = shuffleWithSeed(
+    candidates.slice(),
+    (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0,
+  );
+  for (let i = 0; i < attempts.length; i++) {
+    if (await jumpToCatalogDirectoryFirstFile(attempts[i], useViewer)) {
+      showStatusMessage("True First File Jump");
+      return true;
+    }
+  }
+  showStatusMessage("True First File Jump: no files.");
+  return false;
+}
+
 function pickRandomFirstFileJumpTarget(sourceDirNode) {
   if (!sourceDirNode) return null;
   const siblings = getVisibleSiblingDirsForSlide(sourceDirNode);
@@ -55664,6 +55853,12 @@ function handlePreviewPaneAction(action, inFilePreview) {
       case "randomFileJump":
         randomFileJumpFromViewer();
         return true;
+      case "trueRandomFirstFileJump":
+        trueRandomFirstFileJump(true);
+        return true;
+      case "trueRandomFileJump":
+        trueRandomFileJump(true);
+        return true;
       case "toggleRandomFileSort":
         toggleRandomSortMode();
         return true;
@@ -56006,6 +56201,8 @@ document.addEventListener("keydown", (e) => {
         case "nextFolder":
         case "randomFirstFileJump":
         case "randomFileJump":
+        case "trueRandomFirstFileJump":
+        case "trueRandomFileJump":
         case "toggleRandomFileSort":
         case "toggleRandomFolderSort":
         case "cycleFilter":
@@ -56080,6 +56277,14 @@ document.addEventListener("keydown", (e) => {
       case "randomFileJump":
         e.preventDefault();
         randomFileJumpFromViewer();
+        return;
+      case "trueRandomFirstFileJump":
+        e.preventDefault();
+        trueRandomFirstFileJump(true);
+        return;
+      case "trueRandomFileJump":
+        e.preventDefault();
+        trueRandomFileJump(true);
         return;
       case "toggleRandomFileSort":
         e.preventDefault();
@@ -56383,6 +56588,14 @@ document.addEventListener("keydown", (e) => {
     case "randomFileJump":
       e.preventDefault();
       randomFileJumpFromDirectories();
+      return;
+    case "trueRandomFirstFileJump":
+      e.preventDefault();
+      trueRandomFirstFileJump(false);
+      return;
+    case "trueRandomFileJump":
+      e.preventDefault();
+      trueRandomFileJump(false);
       return;
     case "toggleRandomFileSort":
       e.preventDefault();
