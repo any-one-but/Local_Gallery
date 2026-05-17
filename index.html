@@ -56065,6 +56065,27 @@ function handleClosedFilePaneNavigationAction(action) {
   }
 }
 
+const RESERVED_APP_KEYBIND_EVENTS = new WeakSet();
+
+function shouldReserveAppKeybindBeforeBrowser(e) {
+  if (!e || e.defaultPrevented) return false;
+  if (busyOverlayActive()) return true;
+  if (isTextInputTarget(e.target)) return false;
+  const key = keybindValueFromEvent(e);
+  if (!key) return false;
+  return !!keybindActionFor(key);
+}
+
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (!shouldReserveAppKeybindBeforeBrowser(e)) return;
+    RESERVED_APP_KEYBIND_EVENTS.add(e);
+    e.preventDefault();
+  },
+  true,
+);
+
 document.addEventListener(
   "keydown",
   (e) => {
@@ -56110,7 +56131,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     return;
   }
-  if (e.defaultPrevented) return;
+  if (e.defaultPrevented && !RESERVED_APP_KEYBIND_EVENTS.has(e)) return;
 
   const key = keybindValueFromEvent(e);
   if (!key) return;
