@@ -34940,6 +34940,23 @@ function schedulePreviewRenderForSelection(opts = null) {
   }
 }
 
+function renderPreviewForSelectionChange() {
+  const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+  if (entry && entry.kind === "file") {
+    renderPreviewPane(false, true);
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+    return;
+  }
+  if (shouldDeferPreviewRenderForCurrentSelection()) {
+    schedulePreviewRenderForSelection();
+  } else {
+    renderPreviewPane(false);
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+  }
+}
+
 function reconcileSelectedDirectoryRowVisibility(
   preferCenter = false,
   forceCenter = false,
@@ -35124,6 +35141,7 @@ function setDirectoriesSelection(idx, opts = null) {
     if (shouldCenter) revealSelectedDirectoryRowInGridMode(true);
     else if (shouldGridReveal) revealSelectedDirectoryRowInGridMode(false);
     else scheduleSelectedDirectoryRowReconcile(0, false, false);
+    renderPreviewForSelectionChange();
     syncButtons();
     return;
   }
@@ -35136,19 +35154,13 @@ function setDirectoriesSelection(idx, opts = null) {
     if (shouldCenter) WS.view.pendingDirScroll = "";
     if (shouldCenter) centerSelectedDirectoryRow(0);
     else scheduleSelectedDirectoryRowReconcile(0, false, false);
-    schedulePreviewRenderForSelection();
+    renderPreviewForSelectionChange();
     syncButtons();
     return;
   }
 
   renderDirectoriesPane(keepScroll);
-  if (shouldDeferPreviewRenderForCurrentSelection()) {
-    schedulePreviewRenderForSelection();
-  } else {
-    renderPreviewPane(false);
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-  }
+  renderPreviewForSelectionChange();
   syncButtons();
 }
 
