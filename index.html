@@ -1999,13 +1999,13 @@ img[data-rotate-key].rotatingThumbFade {
   right: 0;
   min-width: 140px;
   background: var(--color1-secondary);
-  border: 1px solid var(--color1-tertiary);
-  border-radius: 3px;
+  border: 0;
+  border-radius: 8px;
   box-shadow: 0 10px 30px var(--color1-primary-transparent);
-  padding: 4px;
+  padding: 6px;
   display: none;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   z-index: 20000;
 }
 
@@ -2022,13 +2022,23 @@ img[data-rotate-key].rotatingThumbFade {
   padding: 6px 8px;
   font-size: 12px;
   text-align: left;
-  background: var(--color1-primary);
+  background: transparent;
   color: var(--color0-primary);
-  border: 1px solid var(--color1-tertiary);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  box-shadow: none;
+  transition:
+    background 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
-.dropdownMenu button:hover {
-  background: var(--color1-secondary);
+.dropdownMenu button:hover:not(:disabled),
+.dropdownMenu button:focus-visible {
+  background: var(--color1-primary);
+  border-color: transparent;
+  transform: translateY(var(--ui-hover-lift));
+  box-shadow: none;
 }
 
 .dropdownMenu .dropdownMenuSubmenu {
@@ -4179,27 +4189,35 @@ img[data-rotate-key].rotatingThumbFade {
 #menuTabs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
-  gap: 0;
+  gap: 6px;
   width: 100%;
-  border-top: 1px solid var(--color1-tertiary);
-  border-left: 1px solid var(--color1-tertiary);
+  padding: 8px;
+  border: 0;
+  box-sizing: border-box;
 }
 
 #menuTabs .menuTabBtn {
   white-space: nowrap;
-  border-radius: 0;
-  border: 0;
-  border-right: 1px solid var(--color1-tertiary);
-  border-bottom: 1px solid var(--color1-tertiary);
+  border-radius: 6px;
+  border: 1px solid transparent;
   background: var(--color1-secondary);
   color: var(--color0-primary);
   padding: 8px 10px;
   flex: 1 1 auto;
+  box-shadow: none;
 }
 
 #menuTabs .menuTabBtn.active {
-  background: var(--color1-primary);
+  outline: 1px solid var(--ui-selection-outline);
+  border-color: var(--ui-selection-outline);
+  background: var(--ui-selection-fill);
   color: var(--color0-primary);
+  box-shadow: var(--ui-hover-shadow);
+}
+
+#menuTabs .menuTabBtn:hover:not(:disabled) {
+  background: var(--color1-secondary-transparent);
+  border-color: var(--color1-tertiary);
 }
 
 #menuBody {
@@ -4247,20 +4265,37 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
 }
 
-#optionsBody h2 {
-  font-size: 12px;
+#optionsBody .settingsSection > h2,
+#keybindsBody .keybindSectionTitle {
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: 0.02em;
-  margin: 28px 0 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 30px 0 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--color1-tertiary);
   color: var(--color0-primary);
 }
 
 #optionsBody .settingsSection:first-of-type > h2 {
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 #optionsBody .settingsSection + .settingsSection {
   margin-top: 24px;
+}
+
+#optionsBody .settingsSubsectionTitle {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 20px 0 6px;
+  color: var(--color0-primary);
+}
+
+#keybindsBody .keybindSectionTitle:first-child {
+  margin-top: 0;
 }
 
 #optionsBody .optRow,
@@ -4270,7 +4305,9 @@ img[data-rotate-key].rotatingThumbFade {
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+  border-bottom: 1px solid var(--color1-tertiary);
+  background: transparent;
+  margin: 0;
 }
 
 #keybindsBody .keybindSubtabs {
@@ -4279,42 +4316,44 @@ img[data-rotate-key].rotatingThumbFade {
   z-index: 5;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
-  gap: 0;
+  gap: 6px;
   width: calc(100% + 20px);
   margin: -10px -10px 8px;
-  padding: 0;
+  padding: 8px;
   background: var(--color1-primary);
-  border-top: 1px solid var(--color1-tertiary);
-  border-left: 1px solid var(--color1-tertiary);
+  border: 0;
+  box-sizing: border-box;
 }
 
 #keybindsBody .keybindSubtabBtn {
   font-size: 12px;
   white-space: nowrap;
-  border-radius: 0;
-  border: 0;
-  border-right: 1px solid var(--color1-tertiary);
-  border-bottom: 1px solid var(--color1-tertiary);
+  border-radius: 6px;
+  border: 1px solid transparent;
   background: var(--color1-secondary);
   color: var(--color0-primary);
   padding: 8px 10px;
   flex: 1 1 auto;
   min-height: 0;
+  box-shadow: none;
 }
 
 #keybindsBody .keybindSubtabBtn.active {
-  background: var(--color1-primary);
+  outline: 1px solid var(--ui-selection-outline);
+  border-color: var(--ui-selection-outline);
+  background: var(--ui-selection-fill);
   color: var(--color0-primary);
+  box-shadow: var(--ui-hover-shadow);
+}
+
+#keybindsBody .keybindSubtabBtn:hover:not(:disabled) {
+  background: var(--color1-secondary-transparent);
+  border-color: var(--color1-tertiary);
 }
 
 #keybindsBody .optRow.keybindModifierMismatch {
   opacity: 0.42;
   filter: grayscale(1);
-}
-
-#keybindsBody .optRow.keybindModifierMismatch:hover,
-#keybindsBody .optRow.keybindModifierMismatch:focus-within {
-  opacity: 0.82;
 }
 
 #optionsBody .optLeft,
@@ -4391,6 +4430,20 @@ img[data-rotate-key].rotatingThumbFade {
   justify-content: space-between;
   font-size: 12px;
   line-height: 1;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  box-shadow: none;
+}
+
+#optionsBody .optSelectBtn:hover:not(:disabled),
+#keybindsBody .optSelectBtn:hover:not(:disabled) {
+  background: var(--color1-secondary);
+  border-color: transparent;
+  color: var(--color0-primary);
+  transform: none;
+  box-shadow: none;
 }
 
 #keybindsBody .keybindActionSelectRoot .optSelectBtn {
@@ -4423,8 +4476,10 @@ img[data-rotate-key].rotatingThumbFade {
 
 #optionsBody .optSelectMenu button.current,
 #keybindsBody .optSelectMenu button.current {
-  background: var(--color1-secondary);
-  border-color: var(--color1-tertiary);
+  outline: 1px solid var(--ui-selection-outline);
+  background: var(--ui-selection-fill);
+  color: var(--color0-primary);
+  border-color: var(--ui-selection-outline);
 }
 
 #menuOverlay .appToggleBtn {
@@ -4446,7 +4501,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 #menuOverlay .appToggleBtn:hover {
-  transform: translateY(var(--ui-hover-lift));
+  transform: none;
   box-shadow: none;
 }
 
@@ -4550,19 +4605,33 @@ img[data-rotate-key].rotatingThumbFade {
 #optionsBody .optRight.optActions button {
   font-size: 11px;
   padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  box-shadow: none;
+}
+
+#optionsBody .optRight.optActions button:hover:not(:disabled) {
+  background: var(--color1-secondary);
+  border-color: transparent;
+  color: var(--color0-primary);
+  transform: none;
+  box-shadow: none;
 }
 
 #optionsBody .optRight.optActions button.active {
-  background: var(--color0-secondary);
-  color: var(--color1-primary);
-  border-color: var(--color0-tertirary);
+  outline: 1px solid var(--ui-selection-outline);
+  background: var(--ui-selection-fill);
+  color: var(--color0-primary);
+  border-color: var(--ui-selection-outline);
 }
 
 #optionsBody .optRight.optActions input[type="text"] {
   background: var(--color1-primary);
   color: var(--color0-primary);
-  border: 1px solid var(--color1-tertiary);
-  border-radius: 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   padding: 6px 8px;
   font-size: 12px;
   outline: none;
@@ -4574,8 +4643,8 @@ img[data-rotate-key].rotatingThumbFade {
 #keybindsBody select {
   background: var(--color1-primary);
   color: var(--color0-primary);
-  border: 1px solid var(--color1-tertiary);
-  border-radius: 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   padding: 6px 8px;
   font-size: 12px;
   outline: none;
@@ -4659,14 +4728,6 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
 }
 
-.calendarPanelIntro {
-  margin-bottom: 8px;
-}
-
-.calendarPanelIntro h1 {
-  margin-top: 0;
-}
-
 .statsSinglePage {
   display: flex;
   flex-direction: column;
@@ -4676,9 +4737,9 @@ img[data-rotate-key].rotatingThumbFade {
 
 .calendarAnalyticsCard,
 .statsWidgetCard {
-  border: 1px solid var(--color1-tertiary);
+  border: 1px solid transparent;
   background: var(--color1-secondary);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 12px;
 }
 
@@ -16514,25 +16575,8 @@ function renderCalendarUi() {
         })
         .join("")
     : `<div class="scoreHistoryEmpty">No score changes logged yet.</div>`;
-  const includeHiddenStatsHtml = scoreInterfaceEnabled()
-    ? `
-          <div class="optRow statsOptionsRow">
-            <div class="optLeft">
-              <div class="optTitle">Include hidden items in Stats</div>
-            </div>
-            <div class="optRight">
-              ${makeMenuToggleButtonHtml("calendar_includeHiddenItemsInStats", includeHidden)}
-            </div>
-          </div>
-        `
-    : "";
-
   calendarBodyEl.innerHTML = `
-        <div class="calendarPanelIntro">
-          <h1>Stats</h1>
-        </div>
         <div class="statsSinglePage">
-          ${includeHiddenStatsHtml}
           ${buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey)}
           <section class="statsWidgetCard statsHistoryCard">
             <h2>Score history</h2>
@@ -16541,11 +16585,6 @@ function renderCalendarUi() {
         </div>
       `;
   if (calendarDeleteAllBtn) calendarDeleteAllBtn.disabled = !history.length;
-  bindMenuToggleButton("calendar_includeHiddenItemsInStats", (enabled) => {
-    setOptionValue("includeHiddenItemsInStats", !!enabled);
-    setCalendarStatus("Saved");
-    renderCalendarUi();
-  });
   applyMenuTransientFocusBehavior(calendarBodyEl);
 }
 
@@ -16951,13 +16990,12 @@ function renderKeybindsUi(scope = "pane") {
   };
 
   if (normalizedScope === "general") {
-    html += `<div class="calendarPanelIntro"><h1>General</h1></div>`;
     html += renderBindingRows(visiblePaneBindings);
   } else {
     for (const section of KEYBIND_SECTIONS) {
       const list = paneBySection.get(section.id) || [];
       if (!list.length) continue;
-      html += `<h1>${escapeHtml(section.label)}</h1>`;
+      html += `<h2 class="keybindSectionTitle">${escapeHtml(section.label)}</h2>`;
       html += renderBindingRows(list);
     }
   }
@@ -17879,9 +17917,9 @@ ${
       )
     : ``
 }
-<h2>Color</h2>
+<div class="settingsSubsectionTitle">Color</div>
 ${buildOverlayRowsHtml(colorOverlayRows)}
-<h2 style="margin-top:18px;">Effects</h2>
+<div class="settingsSubsectionTitle">Effects</div>
 ${buildOverlayRowsHtml(effectOverlayRows)}
 ${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
 ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
@@ -17937,10 +17975,7 @@ ${makeActionRow(
     })
     .join("");
 
-  optionsBodyEl.innerHTML = `
-        <h1>Settings</h1>
-        ${settingsSectionsHtml}
-      `;
+  optionsBodyEl.innerHTML = settingsSectionsHtml;
   if (requestedSection && requestedSection !== "general") {
     requestAnimationFrame(() => {
       const target = optionsBodyEl.querySelector(
@@ -18284,13 +18319,6 @@ ${makeActionRow(
   bindCheck("opt_autoCropBlackBars", "autoCropBlackBars", () => {
     MediaFilterEngine.requestRender();
   });
-  bindCheck(
-    "opt_includeHiddenItemsInStats",
-    "includeHiddenItemsInStats",
-    () => {
-      renderCalendarUi();
-    },
-  );
   bindCheck("opt_showHiddenFolder", "showHiddenFolder", () => {
     invalidateHiddenVisibilityState();
     if (!showHiddenFolderEnabled() && WS.view.tagFolderActiveMode === "hidden") {
@@ -18303,6 +18331,7 @@ ${makeActionRow(
     syncButtons();
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
+    renderCalendarUi();
   });
   bindCheck("opt_showTrashFolder", "showTrashFolder", () => {
     navigateOutOfTrashIfHidden();
@@ -28875,12 +28904,12 @@ function getChildDirsForNodeBase(dirNode) {
 }
 
 function showRootViewEnabled() {
-  return true;
+  return false;
 }
 
 function includeHiddenItemsInStatsEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return scoreInterfaceEnabled(opt) && !!(opt && opt.includeHiddenItemsInStats);
+  return scoreInterfaceEnabled(opt) && showHiddenFolderEnabled();
 }
 
 function showHiddenFolderEnabled() {
@@ -52633,6 +52662,7 @@ function toggleRandomSortMode() {
     WS.view.randomCache = new Map();
   }
   applyRandomSortModeEverywhere(true);
+  refreshLiveSettingsPaneFromKeyboardAction();
   showStatusMessage(`Random file sort: ${WS.view.randomMode ? "On" : "Off"}`, "random-file-sort");
   return true;
 }
@@ -52647,6 +52677,7 @@ function toggleRandomFolderSortMode() {
   }
   clearTagEntryDerivedCaches();
   applyRandomSortModeEverywhere(true);
+  refreshLiveSettingsPaneFromKeyboardAction();
   showStatusMessage(
     `Random folder sort: ${WS.view.randomFolderMode ? "On" : "Off"}`,
     "random-folder-sort",
@@ -52689,6 +52720,7 @@ function cycleFilterMode() {
           ? "gifs"
           : "all";
   applyViewModesEverywhere(true);
+  refreshLiveSettingsPaneFromKeyboardAction();
   showStatusMessage(`Filter: ${WS.view.filterMode}`, "cycle-filter");
 }
 
@@ -52696,6 +52728,7 @@ function setAspectRatioFilterMode(value) {
   const next = normalizeAspectRatioFilterMode(value);
   WS.view.aspectRatioFilterMode = next;
   applyViewModesEverywhere(true);
+  refreshLiveSettingsPaneFromKeyboardAction();
   showStatusMessage(
     `Aspect ratio: ${labelForAspectRatioFilterMode(next)}`,
     "cycle-aspect-ratio-filter",
@@ -52741,6 +52774,7 @@ function setMuteMessagesEnabled(enabled) {
   const prev = muteMessagesEnabled();
   if (prev === next) return next;
   setOptionValue("muteMessages", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
   if (next) hideStatusMessages();
   showStatusMessage(`Mute Messages: ${next ? "On" : "Off"}`, "", {
     force: true,
@@ -52795,6 +52829,7 @@ function setDirectoriesPaneOpenKeybindState(nextOpen) {
   if (nextOpen) setActivePane("directories");
   else syncActivePaneWithLayout();
   refreshAfterDirectoriesPaneToggle(false, true);
+  refreshLiveSettingsPaneFromKeyboardAction();
   return true;
 }
 
@@ -52936,7 +52971,24 @@ function refreshLiveSettingsPaneFromKeyboardAction() {
   if (!MENU_OPEN) return;
   const activeTab = String(MENU_ACTIVE_TAB || "general");
   if (!isMenuTabAvailable(activeTab)) return;
-  if (activeTab === "controls" || activeTab === "calendar") return;
+  if (activeTab === "controls") {
+    const savedTop = Number(keybindsBodyEl?.scrollTop || 0) || 0;
+    renderKeybindsUi("pane");
+    setKeybindsStatus("Saved automatically");
+    requestAnimationFrame(() => {
+      if (keybindsBodyEl) keybindsBodyEl.scrollTop = savedTop;
+    });
+    return;
+  }
+  if (activeTab === "calendar") {
+    const savedTop = Number(calendarBodyEl?.scrollTop || 0) || 0;
+    renderCalendarUi();
+    setCalendarStatus("Saved automatically");
+    requestAnimationFrame(() => {
+      if (calendarBodyEl) calendarBodyEl.scrollTop = savedTop;
+    });
+    return;
+  }
   const savedTop = Number(optionsBodyEl?.scrollTop || 0) || 0;
   renderOptionsUi(activeTab);
   setOptionsStatus("Saved automatically");
