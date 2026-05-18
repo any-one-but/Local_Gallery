@@ -9,12 +9,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       return "";
     }
   },
-  readThumbCache(payload) {
-    return ipcRenderer.invoke("thumb-cache-read", payload || {});
-  },
-  writeThumbCache(payload) {
-    return ipcRenderer.invoke("thumb-cache-write", payload || {});
-  },
   writeDownloadFile(payload) {
     return ipcRenderer.invoke("downloads-write-file", payload || {});
   },

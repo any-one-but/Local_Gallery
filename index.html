@@ -57,6 +57,10 @@
   --ui-selection-fill-strong: rgba(255, 255, 255, 0.2);
   --ui-preview-selection-shadow: 0 10px 30px var(--color1-primary-transparent);
   --ui-preview-selection-stroke: 3px;
+  --ui-control-bg: rgba(0, 0, 0, 0.08);
+  --ui-control-hover-bg: rgba(0, 0, 0, 0.16);
+  --ui-control-active-bg: var(--ui-selection-fill);
+  --ui-control-radius: 6px;
 }
 
 :root[data-thumbnail-title-size="large"] {
@@ -340,14 +344,13 @@ button {
   font-size: 13px;
   padding: 6px 10px;
   font-weight: 600;
-  color: var(--color1-primary);
-  background: var(--color0-secondary);
-  border: 1px solid var(--color0-tertirary);
-  border-radius: 2px;
+  color: var(--color0-primary);
+  background: var(--ui-control-bg);
+  border: 0;
+  border-radius: var(--ui-control-radius);
   cursor: pointer;
   transition:
     background 0.16s ease,
-    border-color 0.16s ease,
     transform 0.16s ease,
     box-shadow 0.16s ease;
   user-select: none;
@@ -355,7 +358,7 @@ button {
   box-shadow: 0 0 0 rgba(0, 0, 0, 0);
 }
 button:hover:not(:disabled) {
-  background: var(--color0-tertirary);
+  background: var(--ui-control-hover-bg);
   transform: translateY(var(--ui-hover-lift));
   box-shadow: var(--ui-hover-shadow);
 }
@@ -393,7 +396,7 @@ input[type="file"] {
   display: inline-block;
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 2px;
+  border-radius: var(--ui-control-radius);
   border: 1px solid var(--color1-tertiary);
   background: var(--color1-primary);
   color: var(--color0-primary);
@@ -404,12 +407,12 @@ input[type="file"] {
 .miniBtn {
   font-size: 12px;
   padding: 4px 8px;
-  background: var(--color1-secondary);
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
-  border: 1px solid var(--color1-tertiary);
+  border: 0;
+  border-radius: var(--ui-control-radius);
   transition:
     background 0.16s ease,
-    border-color 0.16s ease,
     transform 0.16s ease,
     box-shadow 0.16s ease;
   box-shadow: 0 0 0 rgba(0, 0, 0, 0);
@@ -427,7 +430,7 @@ input[type="file"] {
   line-height: 1;
 }
 .miniBtn:hover:not(:disabled) {
-  background: var(--color1-secondary-transparent);
+  background: var(--ui-control-hover-bg);
   transform: translateY(var(--ui-hover-lift));
   box-shadow: var(--ui-hover-shadow);
 }
@@ -440,9 +443,8 @@ input[type="file"] {
   box-shadow: var(--ui-focus-ring), var(--ui-hover-shadow);
 }
 .miniBtn.active {
-  background: var(--color0-secondary);
-  color: var(--color1-primary);
-  border-color: var(--color0-tertirary);
+  background: var(--ui-control-active-bg);
+  color: var(--color0-primary);
 }
 
 .voteBox {
@@ -682,14 +684,18 @@ body.directories-files-only #directoriesHeader {
 }
 
 .tagEditInput {
-  background: var(--color1-primary);
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
-  border: 1px solid var(--color1-tertiary);
-  border-radius: 2px;
-  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  padding: 5px 8px;
   font-size: 12px;
   outline: none;
   width: 100%;
+}
+
+.tagEditInput:focus-visible {
+  box-shadow: var(--ui-focus-ring);
 }
 
 #directoriesList {
@@ -759,56 +765,6 @@ body.directories-files-only #directoriesHeader {
   margin: 0;
 }
 
-#directoriesList.filePaneThumbnailView {
-  display: block;
-  padding: var(--preview-gutter);
-  overflow: auto;
-}
-
-#directoriesList.filePaneThumbnailView .gridFolders,
-#directoriesList.filePaneThumbnailView .gridFiles {
-  width: 100%;
-}
-
-#directoriesList.filePaneThumbnailView .previewSectionSpacer {
-  height: var(--preview-gutter);
-}
-
-#directoriesList.filePaneThumbnailView .filePaneThumbItem {
-  outline-offset: -1px;
-}
-
-#directoriesList.filePaneThumbnailView .filePaneThumbItem.selected {
-  outline: var(--ui-preview-selection-stroke) solid var(--ui-selection-outline);
-  box-shadow: var(--ui-preview-selection-shadow);
-}
-
-#directoriesList.filePaneThumbnailView .filePaneThumbItem.bulkSelected {
-  outline: 2px dashed var(--ui-selection-outline-soft);
-  box-shadow: inset 0 0 0 2px var(--ui-selection-outline-soft);
-}
-
-#directoriesList.filePaneThumbnailView .filePaneThumbItem.selected.bulkSelected {
-  outline: 2px dashed var(--ui-selection-outline);
-  box-shadow:
-    inset 0 0 0 2px var(--ui-selection-outline),
-    var(--ui-preview-selection-shadow);
-}
-
-#directoriesList.filePaneThumbnailView .filePaneThumbnailSection {
-  gap: var(--preview-gutter);
-  margin-bottom: calc(var(--preview-gutter) * 1.25);
-}
-
-#directoriesList.filePaneThumbnailView .filePaneThumbnailSectionBar {
-  min-height: 34px;
-  padding: 7px 10px;
-}
-
-#directoriesList.filePaneThumbnailView .filePaneThumbnailSectionBar .name {
-  font-size: var(--thumb-title-preview-font);
-}
-
 .virtualFlexSpacer {
   flex: 0 0 100%;
   width: 100%;
@@ -857,6 +813,7 @@ body.directories-files-only #directoriesHeader {
 .dirDetailsHeader button {
   background: transparent;
   border: 0;
+  border-radius: var(--ui-control-radius);
   padding: 0;
   font-size: 11px;
   font-weight: 800;
@@ -1267,8 +1224,8 @@ body.directories-files-only #directoriesHeader {
   height: 22px;
   padding: 0;
   font-size: 16px;
-  background: var(--color1-primary);
-  border-color: var(--color1-tertiary);
+  background: var(--ui-control-bg);
+  border: 0;
   color: var(--color0-primary);
 }
 
@@ -1502,6 +1459,41 @@ img[data-rotate-key].rotatingThumbFade {
   font-size: 28px;
   color: rgba(255, 255, 255, 0.8);
   background: rgba(0, 0, 0, 0.45);
+}
+
+.appIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  color: currentColor;
+  flex: 0 0 auto;
+}
+
+.appIcon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  stroke: currentColor;
+}
+
+.dirIcon .appIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.dirSquareFallback .appIcon,
+.folderThumbFallback .appIcon,
+.thumbFallback .appIcon {
+  width: clamp(34px, 32%, 72px);
+  height: clamp(34px, 32%, 72px);
+}
+
+.dirTagQuadCell .dirSquareFallback .appIcon {
+  width: 22px;
+  height: 22px;
 }
 
 .dirSquareFallback.dirBlankThumbPlaceholder {
@@ -1842,12 +1834,20 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirMenuFavoriteGlyph {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 16px;
   line-height: 1;
   font-weight: 400;
   font-family: inherit;
   transform: none;
+}
+
+.dirMenuFavoriteGlyph .appIcon,
+.dirMenuBtnScoreHeart .appIcon {
+  width: 1em;
+  height: 1em;
 }
 
 .dirHiddenBadge {
@@ -1916,9 +1916,9 @@ img[data-rotate-key].rotatingThumbFade {
   align-items: center;
   justify-content: center;
   font-family: inherit;
-  border-radius: 2px;
-  border: 1px solid var(--color1-tertiary);
-  background: var(--color1-primary);
+  border-radius: var(--ui-control-radius);
+  border: 0;
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
   font-size: 16px;
   cursor: pointer;
@@ -1978,7 +1978,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirMenuBtn:hover:not(:disabled) {
-  background: var(--color1-secondary);
+  background: var(--ui-control-hover-bg);
   transform: translateY(var(--ui-hover-lift));
   box-shadow: var(--ui-hover-shadow);
 }
@@ -2024,8 +2024,8 @@ img[data-rotate-key].rotatingThumbFade {
   text-align: left;
   background: transparent;
   color: var(--color0-primary);
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 0;
+  border-radius: var(--ui-control-radius);
   box-shadow: none;
   transition:
     background 0.16s ease,
@@ -2035,8 +2035,7 @@ img[data-rotate-key].rotatingThumbFade {
 
 .dropdownMenu button:hover:not(:disabled),
 .dropdownMenu button:focus-visible {
-  background: var(--color1-primary);
-  border-color: transparent;
+  background: var(--ui-control-bg);
   transform: translateY(var(--ui-hover-lift));
   box-shadow: none;
 }
@@ -2128,57 +2127,55 @@ img[data-rotate-key].rotatingThumbFade {
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
 .dirMenuBtnFavorite {
-  background: var(--color1-primary);
-  border-color: var(--color1-tertiary);
+  background: var(--ui-control-bg);
+  border: 0;
   color: var(--dir-tag-favorite-title-color, #ff0033);
 }
 
 .dirMenuBtnScoreFavorite {
-  background: var(--color1-primary);
-  border-color: var(--color1-tertiary);
+  background: var(--ui-control-bg);
+  border: 0;
   color: var(--color0-primary);
 }
 
 .dirMenuBtnFavoriteTint,
 .dirMenuBtnScoreFavoriteTint {
   background: var(--dir-tag-favorite-title-color, #ff0033);
-  border-color: var(--dir-tag-favorite-title-color, #ff0033);
+  border: 0;
   color: #fff;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite:hover:not(:disabled),
 .dirMenuBtnFavorite:hover:not(:disabled) {
-  background: var(--color1-secondary);
+  background: var(--ui-control-hover-bg);
   color: var(--dir-tag-favorite-title-color, #ff0033);
 }
 
 .dirMenuBtnScoreFavorite:hover:not(:disabled) {
-  background: var(--color1-secondary);
+  background: var(--ui-control-hover-bg);
   color: var(--color0-primary);
 }
 
 .dirMenuBtnFavoriteTint:hover:not(:disabled),
 .dirMenuBtnScoreFavoriteTint:hover:not(:disabled) {
   background: var(--dir-tag-favorite-title-color, #ff0033);
-  border-color: var(--dir-tag-favorite-title-color, #ff0033);
   color: #fff;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite:active:not(:disabled),
 .dirMenuBtnFavorite:active:not(:disabled) {
-  background: var(--color1-primary);
+  background: var(--ui-control-bg);
   color: var(--dir-tag-favorite-title-color, #ff0033);
 }
 
 .dirMenuBtnScoreFavorite:active:not(:disabled) {
-  background: var(--color1-primary);
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
 }
 
 .dirMenuBtnFavoriteTint:active:not(:disabled),
 .dirMenuBtnScoreFavoriteTint:active:not(:disabled) {
   background: var(--dir-tag-favorite-title-color, #ff0033);
-  border-color: var(--dir-tag-favorite-title-color, #ff0033);
   color: #fff;
 }
 
@@ -2303,9 +2300,8 @@ img[data-rotate-key].rotatingThumbFade {
 .controlIconBtn.active,
 .controlIconBtn.active:hover:not(:disabled),
 .controlIconBtn.active:active:not(:disabled) {
-  background: var(--color1-secondary);
+  background: var(--ui-control-active-bg);
   color: var(--color0-primary);
-  border-color: var(--color1-tertiary);
 }
 
 #controlPlayPauseBtn::before {
@@ -2615,6 +2611,11 @@ img[data-rotate-key].rotatingThumbFade {
   background: var(--color1-primary);
   font-size: 42px;
   line-height: 1;
+}
+
+.previewItemPlaceholderIcon .appIcon {
+  width: 46px;
+  height: 46px;
 }
 
 .previewItemPlaceholderInfoBar .previewItemPlaceholderIcon {
@@ -3972,9 +3973,9 @@ img[data-rotate-key].rotatingThumbFade {
   position: absolute;
   top: 16px;
   left: 16px;
-  background: var(--color1-secondary);
-  border: 1px solid var(--color1-tertiary);
-  border-radius: 2px;
+  background: var(--ui-control-bg);
+  border: 0;
+  border-radius: var(--ui-control-radius);
   padding: 4px 8px;
   color: var(--color0-primary);
   font-size: 12px;
@@ -3989,7 +3990,7 @@ img[data-rotate-key].rotatingThumbFade {
     transform 0.05s ease;
 }
 #closeBtn:hover {
-  background: var(--color1-secondary-transparent);
+  background: var(--ui-control-hover-bg);
 }
 #closeBtn:active {
   transform: translateY(1px);
@@ -4198,9 +4199,9 @@ img[data-rotate-key].rotatingThumbFade {
 
 #menuTabs .menuTabBtn {
   white-space: nowrap;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: var(--color1-secondary);
+  border-radius: var(--ui-control-radius);
+  border: 0;
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
   padding: 8px 10px;
   flex: 1 1 auto;
@@ -4209,15 +4210,13 @@ img[data-rotate-key].rotatingThumbFade {
 
 #menuTabs .menuTabBtn.active {
   outline: 1px solid var(--ui-selection-outline);
-  border-color: var(--ui-selection-outline);
   background: var(--ui-selection-fill);
   color: var(--color0-primary);
   box-shadow: var(--ui-hover-shadow);
 }
 
 #menuTabs .menuTabBtn:hover:not(:disabled) {
-  background: var(--color1-secondary-transparent);
-  border-color: var(--color1-tertiary);
+  background: var(--ui-control-hover-bg);
 }
 
 #menuBody {
@@ -4328,9 +4327,9 @@ img[data-rotate-key].rotatingThumbFade {
 #keybindsBody .keybindSubtabBtn {
   font-size: 12px;
   white-space: nowrap;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: var(--color1-secondary);
+  border-radius: var(--ui-control-radius);
+  border: 0;
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
   padding: 8px 10px;
   flex: 1 1 auto;
@@ -4340,15 +4339,13 @@ img[data-rotate-key].rotatingThumbFade {
 
 #keybindsBody .keybindSubtabBtn.active {
   outline: 1px solid var(--ui-selection-outline);
-  border-color: var(--ui-selection-outline);
   background: var(--ui-selection-fill);
   color: var(--color0-primary);
   box-shadow: var(--ui-hover-shadow);
 }
 
 #keybindsBody .keybindSubtabBtn:hover:not(:disabled) {
-  background: var(--color1-secondary-transparent);
-  border-color: var(--color1-tertiary);
+  background: var(--ui-control-hover-bg);
 }
 
 #keybindsBody .optRow.keybindModifierMismatch {
@@ -4430,17 +4427,16 @@ img[data-rotate-key].rotatingThumbFade {
   justify-content: space-between;
   font-size: 12px;
   line-height: 1;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: var(--color1-secondary);
+  border-radius: var(--ui-control-radius);
+  border: 0;
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
   box-shadow: none;
 }
 
 #optionsBody .optSelectBtn:hover:not(:disabled),
 #keybindsBody .optSelectBtn:hover:not(:disabled) {
-  background: var(--color1-secondary);
-  border-color: transparent;
+  background: var(--ui-control-hover-bg);
   color: var(--color0-primary);
   transform: none;
   box-shadow: none;
@@ -4479,7 +4475,6 @@ img[data-rotate-key].rotatingThumbFade {
   outline: 1px solid var(--ui-selection-outline);
   background: var(--ui-selection-fill);
   color: var(--color0-primary);
-  border-color: var(--ui-selection-outline);
 }
 
 #menuOverlay .appToggleBtn {
@@ -4605,16 +4600,15 @@ img[data-rotate-key].rotatingThumbFade {
 #optionsBody .optRight.optActions button {
   font-size: 11px;
   padding: 5px 8px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: var(--color1-secondary);
+  border-radius: var(--ui-control-radius);
+  border: 0;
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
   box-shadow: none;
 }
 
 #optionsBody .optRight.optActions button:hover:not(:disabled) {
-  background: var(--color1-secondary);
-  border-color: transparent;
+  background: var(--ui-control-hover-bg);
   color: var(--color0-primary);
   transform: none;
   box-shadow: none;
@@ -4624,14 +4618,13 @@ img[data-rotate-key].rotatingThumbFade {
   outline: 1px solid var(--ui-selection-outline);
   background: var(--ui-selection-fill);
   color: var(--color0-primary);
-  border-color: var(--ui-selection-outline);
 }
 
 #optionsBody .optRight.optActions input[type="text"] {
-  background: var(--color1-primary);
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 0;
+  border-radius: var(--ui-control-radius);
   padding: 6px 8px;
   font-size: 12px;
   outline: none;
@@ -4641,10 +4634,10 @@ img[data-rotate-key].rotatingThumbFade {
 
 #optionsBody select,
 #keybindsBody select {
-  background: var(--color1-primary);
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 0;
+  border-radius: var(--ui-control-radius);
   padding: 6px 8px;
   font-size: 12px;
   outline: none;
@@ -4728,6 +4721,11 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
 }
 
+#calendarBody,
+#calendarBody * {
+  font-family: inherit;
+}
+
 .statsSinglePage {
   display: flex;
   flex-direction: column;
@@ -4737,7 +4735,7 @@ img[data-rotate-key].rotatingThumbFade {
 
 .calendarAnalyticsCard,
 .statsWidgetCard {
-  border: 1px solid transparent;
+  border: 0;
   background: var(--color1-secondary);
   border-radius: 8px;
   padding: 12px;
@@ -4778,21 +4776,20 @@ img[data-rotate-key].rotatingThumbFade {
 .statsLedgerSummary {
   color: var(--color0-secondary);
   font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: nowrap;
 }
 
 .statsLedgerTableWrap {
   min-width: 0;
   overflow-x: auto;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 0;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.14);
+  background: var(--color1-primary);
 }
 
 .statsLedgerTable {
   width: 100%;
-  min-width: 760px;
+  min-width: 0;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -4805,9 +4802,13 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .statsLedgerTable thead th {
-  padding: 0;
+  padding: 9px 12px;
   border-top: 0;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--ui-control-bg);
+  color: var(--color0-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .statsLedgerTable tbody th,
@@ -4821,64 +4822,22 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .statsLedgerNameHeader {
-  width: 28%;
+  width: 60%;
   min-width: 0;
-  text-align: center;
+  text-align: left;
   color: var(--color0-primary);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 12px;
 }
 
-.statsLedgerSortHeader {
-  width: 18%;
+.statsLedgerMetricHeader {
+  width: 40%;
   min-width: 0;
-}
-
-.statsLedgerSortBtn {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 12px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--color0-primary);
-  cursor: pointer;
-  text-align: center;
-  box-shadow: none;
-  transform: none;
-}
-
-.statsLedgerSortBtn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  transform: none;
-}
-
-.statsLedgerSortBtn.active {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.statsLedgerSortBtnMain {
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.statsLedgerSortBtnMeta {
-  color: var(--color0-secondary);
-  font-size: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
 }
 
 .statsLedgerFolderCell {
   color: var(--color0-primary);
   font-weight: 600;
-  text-align: center;
+  text-align: left;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4887,9 +4846,8 @@ img[data-rotate-key].rotatingThumbFade {
 
 .statsLedgerValueCell {
   color: var(--color0-secondary);
-  font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  text-align: center;
+  font-size: 12px;
+  text-align: right;
   white-space: nowrap;
 }
 
@@ -4899,10 +4857,10 @@ img[data-rotate-key].rotatingThumbFade {
 
 .statsLedgerScoreMetric {
   display: grid;
-  grid-template-columns: auto minmax(120px, 1fr);
+  grid-template-columns: auto minmax(72px, 1fr);
   gap: 10px;
   align-items: center;
-  justify-content: center;
+  justify-content: end;
 }
 
 .statsLedgerNumber {
@@ -4941,11 +4899,11 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .statsLedgerScoreFill.positive {
-  background: linear-gradient(90deg, #2ea76d, #57d98f);
+  background: #d85a50;
 }
 
 .statsLedgerScoreFill.negative {
-  background: linear-gradient(90deg, #d45f68, #f28a93);
+  background: #4c2f88;
 }
 
 .calendarHistory {
@@ -4956,7 +4914,7 @@ img[data-rotate-key].rotatingThumbFade {
 .statsHistoryCard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .statsHistoryCard h2 {
@@ -4972,21 +4930,9 @@ img[data-rotate-key].rotatingThumbFade {
   background: var(--color1-primary);
 }
 
-.scoreHistoryDay {
-  border: 1px solid var(--color1-tertiary);
-  border-radius: 6px;
-  background: var(--color1-secondary);
-  margin-top: 10px;
-  overflow: hidden;
-}
-
 @media (max-width: 760px) {
   .statsLedgerSummary {
     white-space: normal;
-  }
-
-  .statsLedgerTable {
-    min-width: 680px;
   }
 
   .statsLedgerScoreMetric {
@@ -4999,145 +4945,203 @@ img[data-rotate-key].rotatingThumbFade {
   }
 }
 
-.scoreHistoryDayHeader {
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+.scoreHistoryMonth {
+  border-radius: 8px;
+  background: var(--color1-primary);
+  padding: 10px;
+}
+
+.scoreHistoryMonthHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  background: rgba(0, 0, 0, 0.18);
+  margin-bottom: 8px;
 }
 
-.scoreHistoryDayHeader h2 {
+.scoreHistoryMonthHeader h2 {
   margin: 0;
   font-size: 13px;
   font-weight: 800;
   color: var(--color0-primary);
 }
 
-.scoreHistoryDayMeta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.scoreHistoryMonthMeta {
   color: var(--color0-secondary);
   font-size: 11px;
 }
 
-.scoreHistoryDayEvents {
-  display: flex;
-  flex-direction: column;
-  padding: 4px 0;
-}
-
-.scoreHistorySimpleRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 7px 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.scoreHistorySimpleRow:first-child {
-  border-top: 0;
-}
-
-.scoreHistorySimpleText {
-  min-width: 0;
-  color: var(--color0-primary);
-  font-size: 11px;
-  line-height: 1.35;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scoreHistorySimpleRow .scoreHistoryDeleteBtn {
-  flex: 0 0 auto;
-}
-
-.scoreHistoryEvent {
-  padding: 8px 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.scoreHistoryEvent:first-child {
-  border-top: 0;
-}
-
-.scoreHistoryEventHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 6px;
-}
-
-.scoreHistoryEventMeta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.scoreHistoryTime {
-  color: var(--color0-primary);
-  font-weight: 800;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-}
-
-.scoreHistorySummary {
-  color: var(--color0-secondary);
-  font-size: 11px;
-}
-
-.scoreHistoryDeleteBtn,
-.scoreHistoryDeleteDayBtn {
-  padding: 3px 7px;
-  font-size: 11px;
-}
-
-.scoreHistoryChanges {
-  display: flex;
-  flex-direction: column;
+.scoreHistoryCalendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
 }
 
-.scoreHistoryChangeRow {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) auto auto;
-  gap: 8px;
-  align-items: center;
-  font-size: 11px;
-  min-width: 0;
+.scoreHistoryWeekday {
+  color: var(--color0-secondary);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 0 0 2px;
 }
 
-.scoreHistoryChangePath {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.scoreHistoryCalendarDay {
   min-width: 0;
+  aspect-ratio: 1;
+  border-radius: 5px;
+  background: var(--color1-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 5px;
+  color: var(--color0-secondary);
+  font-size: 11px;
+  line-height: 1;
+  user-select: none;
+}
+
+.scoreHistoryCalendarDay.isBlank {
+  background: transparent;
+}
+
+.scoreHistoryCalendarDay.hasScore {
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.scoreHistoryCalendarDayNumber {
+  flex: 0 0 auto;
+}
+
+.scoreHistoryCalendarDayDelta {
+  align-self: flex-end;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.scoreHistoryCalendarDay.heatPos1 { background: #4d2630; }
+.scoreHistoryCalendarDay.heatPos2 { background: #6a2a32; }
+.scoreHistoryCalendarDay.heatPos3 { background: #892f35; }
+.scoreHistoryCalendarDay.heatPos4 { background: #aa3738; }
+.scoreHistoryCalendarDay.heatPos5 { background: #cb443e; }
+.scoreHistoryCalendarDay.heatPos6 { background: #e95a4e; }
+.scoreHistoryCalendarDay.heatNeg1 { background: #243044; }
+.scoreHistoryCalendarDay.heatNeg2 { background: #263c63; }
+.scoreHistoryCalendarDay.heatNeg3 { background: #2b4a84; }
+.scoreHistoryCalendarDay.heatNeg4 { background: #314f9b; }
+.scoreHistoryCalendarDay.heatNeg5 { background: #3d4397; }
+.scoreHistoryCalendarDay.heatNeg6 { background: #4c2f88; }
+
+.scoreHistoryCalendarDay.heatZero {
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
 }
 
-.scoreHistoryChangeDelta {
-  color: var(--color0-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  min-width: 40px;
-  text-align: right;
+.scoreHistoryDayMenu {
+  min-width: min(340px, calc(100vw - 16px));
+  max-width: min(440px, calc(100vw - 16px));
+  gap: 6px;
+  overflow: visible;
 }
 
-.scoreHistoryChangeRange {
+.scoreHistoryDayMenu::before {
+  content: "";
+  position: absolute;
+  left: var(--score-history-menu-pointer-left, 50%);
+  top: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--color1-secondary);
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: -2px -2px 8px rgba(0, 0, 0, 0.08);
+  z-index: -1;
+}
+
+.scoreHistoryDayMenu.aboveAnchor::before {
+  top: auto;
+  bottom: -5px;
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.scoreHistoryDayMenuHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 4px 5px;
+}
+
+.scoreHistoryDayMenuTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--color0-primary);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.scoreHistoryTodayIcon {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--palette-accent);
+  box-shadow: 0 0 0 2px var(--ui-selection-outline-soft);
+}
+
+.scoreHistoryDayMenuDeleteDay {
+  flex: 0 0 auto;
+  width: auto;
+  justify-self: end;
+}
+
+.scoreHistoryDayMenuList {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.scoreHistoryDayMenuLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-control-bg);
+}
+
+.scoreHistoryDayMenuFolder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color0-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.scoreHistoryDayMenuDelta {
   color: var(--color0-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  min-width: 74px;
-  text-align: right;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scoreHistoryDayMenuLine button {
+  width: auto;
+  padding: 4px 7px;
+  text-align: center;
 }
 
 #banicOverlay {
@@ -5333,10 +5337,10 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .thumbCropEditorActions > button {
-  background: var(--color1-primary);
+  background: var(--ui-control-bg);
   color: var(--color0-primary);
-  border: 1px solid var(--color1-tertiary);
-  border-radius: 0;
+  border: 0;
+  border-radius: var(--ui-control-radius);
   padding: 6px 10px;
   cursor: pointer;
   font-size: 11px;
@@ -5345,7 +5349,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .thumbCropEditorActions > button:hover {
-  background: var(--color1-secondary);
+  background: var(--ui-control-hover-bg);
 }
 
 @media (max-width: 900px) {
@@ -5527,8 +5531,7 @@ remove the outer app frame. */
 }
 
   
-/* Removed visual surfaces. File pane is list-only. */
-#directoriesList.filePaneThumbnailView,
+/* Removed legacy thumbnail visual surfaces. File pane is list-only. */
 #directoriesList.gridModeList .dirThumbSlot,
 .dirInlinePreview,
 .dirTagQuadGrid,
@@ -7529,10 +7532,6 @@ const MEDIA_FILTER_STATE = {
 };
 let MEDIA_OVERLAY_STATE = null;
 let THUMB_FILTER_KEY = "";
-const THUMB_DISK_CACHE_SCHEMA_VERSION = "nav-v2";
-let THUMB_DISK_SCOPE_KEY = "";
-const THUMB_DISK_READ_PROMISES = new Map();
-const THUMB_DISK_WRITE_PROMISES = new Map();
 const DIR_NAV_MANIFESTS = new Map();
 const NAV_THUMB_READY_PROMISES = new Map();
 let NAVIGATION_PREP_TOKEN = 0;
@@ -12368,26 +12367,6 @@ function metadataDocEnabled(docId) {
   return true;
 }
 
-function normalizeFilePaneViewMode(value, fallback = "list") {
-  const mode = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (mode === "thumbnail" || mode === "list") return mode;
-  return fallback === "thumbnail" ? "thumbnail" : "list";
-}
-
-function filePaneViewModeFromOptions(opt = null) {
-  return "list";
-}
-
-function filePaneThumbnailViewEnabled(opt = null) {
-  return false;
-}
-
-function labelForFilePaneViewMode(mode) {
-  return "List View";
-}
-
 function isCompactTitleLayout() {
   return false;
 }
@@ -12463,12 +12442,58 @@ function applyTagFolderTitleColorsFromOptions() {
   root.style.removeProperty("--dir-tag-album-title-color");
 }
 
+const APP_ICON_SVGS = Object.freeze({
+  image: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image-icon lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
+  video: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-film-icon lucide-film"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>',
+  folder: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-icon lucide-folder"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
+  tag: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-tag-icon lucide-tag"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>',
+  album: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-album-icon lucide-album"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><polyline points="11 3 11 11 14 8 17 11 17 3"/></svg>',
+  favorite: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart-icon lucide-heart"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
+  hidden: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-off-icon lucide-eye-off"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>',
+  untagged: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-badge-icon lucide-badge"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/></svg>',
+  storage: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
+  noItem: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-dashed-icon lucide-circle-dashed"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg>',
+});
+
+function appIconHtml(iconKey, extraClass = "") {
+  const key = String(iconKey || "noItem");
+  const svg = APP_ICON_SVGS[key] || APP_ICON_SVGS.noItem;
+  const classes = ["appIcon", `appIcon-${key}`];
+  const extra = String(extraClass || "").trim();
+  if (extra) classes.push(extra);
+  return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${svg}</span>`;
+}
+
+function setAppIcon(el, iconKey) {
+  if (!el) return;
+  el.textContent = "";
+  el.innerHTML = appIconHtml(iconKey);
+}
+
+function iconKeyForRecordType(type) {
+  return String(type || "") === "video" ? "video" : "image";
+}
+
+function iconKeyForDirNode(node) {
+  if (isStorageStubDirNode(node)) return "storage";
+  if (node && node._skipTagFilters) {
+    const mode = String(node._tagPreviewMode || "");
+    if (mode === "album") return "album";
+    if (mode === "favorites") return "favorite";
+    if (mode === "hidden") return "hidden";
+    if (mode === "untagged") return "untagged";
+    if (mode === "storage") return "storage";
+    return "tag";
+  }
+  return "folder";
+}
+
 function favoriteHeartSymbol(opt = null) {
-  return "<3";
+  return appIconHtml("favorite");
 }
 
 function favoriteMenuButtonLabel(opt = null) {
-  return `<span class="dirMenuFavoriteGlyph" aria-hidden="true">${escapeHtml(favoriteHeartSymbol(opt))}</span>`;
+  return `<span class="dirMenuFavoriteGlyph" aria-hidden="true">${favoriteHeartSymbol(opt)}</span>`;
 }
 
 const FAVORITE_MENU_BUTTON_DISPLAY_ICON = "icon";
@@ -12508,7 +12533,7 @@ function thumbnailMenuButtonLabelHtml(
     <span class="dirMenuBtnScoreLabel${isFavorite ? " dirMenuBtnScoreLabelFavorite" : ""}">
       ${
         useFavoriteIcon
-          ? `<span class="dirMenuBtnScoreHeart" aria-hidden="true">${escapeHtml(favoriteHeartSymbol(opt))}</span>`
+          ? `<span class="dirMenuBtnScoreHeart" aria-hidden="true">${favoriteHeartSymbol(opt)}</span>`
           : ""
       }
       <span class="dirMenuBtnScoreText">${escapeHtml(scoreText)}</span>
@@ -13052,8 +13077,8 @@ function applyInteractionModeFromOptions() {
   const thumbsEnabled = thumbnailLoadingEnabled();
   appEl.classList.toggle("thumbnail-loading-off", !thumbsEnabled);
   appEl.setAttribute("data-thumbnail-loading", thumbsEnabled ? "on" : "off");
-  appEl.classList.toggle("file-pane-thumbnail-view", filePaneThumbnailViewEnabled());
-  appEl.classList.toggle("file-pane-list-view", !filePaneThumbnailViewEnabled());
+  appEl.classList.remove("file-pane-thumbnail-view");
+  appEl.classList.add("file-pane-list-view");
   appEl.classList.add("title-layout-pane");
   appEl.classList.toggle("menu-pane-open", !!MENU_OPEN);
   appEl.classList.toggle("no-side-panes", !sidebarOpen && !MENU_OPEN);
@@ -13745,12 +13770,6 @@ const GRID_KEYBIND_ACTIONS = [
     hint: "Open selected item in grid mode.",
     section: "gridnav",
   },
-  {
-    id: "gridUpDirectory",
-    label: "Up directory",
-    hint: "Go to parent directory in grid mode.",
-    section: "gridnav",
-  },
 ];
 
 const APPEARANCE_PRESET_KEYBIND_ACTION_PREFIX = "toggleAppearancePreset:";
@@ -13922,7 +13941,6 @@ const GRID_KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   gridMoveUp: "",
   gridMoveDown: "",
   gridOpenSelection: "d",
-  gridUpDirectory: "a",
 });
 
 function applyFixedKeybinds(bindings) {
@@ -14102,7 +14120,6 @@ function normalizeGridKeybinds(log) {
     binding.key = normalizeKeyValue(nextKey || "");
   };
   migrateIfKeyMatches("gridOpenSelection", "e", "d");
-  migrateIfKeyMatches("gridUpDirectory", "q", "a");
   enforceUniqueKeybinds(bindings);
   return { bindings };
 }
@@ -14363,9 +14380,6 @@ function resetWorkspace() {
   THUMBNAIL_URL_RECORD_IDS.clear();
   invalidateDirectoryDerivedIndex();
   ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN++;
-  THUMB_DISK_SCOPE_KEY = "";
-  THUMB_DISK_READ_PROMISES.clear();
-  THUMB_DISK_WRITE_PROMISES.clear();
   NAV_THUMB_READY_PROMISES.clear();
   PREVIEW_FILE_OBJECT_PROMISES.clear();
   PREVIEW_FILE_OBJECT_WARM_TOKEN++;
@@ -15096,6 +15110,7 @@ const BLACK_POSTER_URL =
 let TAG_EDIT_PATH = null;
 let TAG_CONTEXT_MENU_STATE = null;
 let PREVIEW_CONTEXT_MENU_STATE = null;
+let SCORE_HISTORY_DAY_MENU_STATE = null;
 let TAG_ENTRY_RENAME_STATE = null;
 let BULK_TAG_PLACEHOLDER = null;
 let PREVIEW_BULK_TAG_EDIT = null;
@@ -15116,12 +15131,13 @@ const MENU_TAB_SCROLL = {
   calendar: 0,
 };
 const CALENDAR_STATS_SORT_KEYS = [
+  "name",
   "score",
   "sizeBytes",
+  "itemCount",
   "efficiency",
   "scorePortion",
 ];
-let CALENDAR_STATS_SORT_KEY = "score";
 let KEYBIND_CAPTURE_ACTION_ID = "";
 let KEYBIND_MODIFIER_TAB_ID = "all";
 let PROPERTIES_OPEN = false;
@@ -16149,16 +16165,6 @@ function scoreHistoryDateLabel(dateKey) {
   });
 }
 
-function scoreHistoryTimeLabel(ts) {
-  const dt = new Date(Number(ts) || Date.now());
-  if (!Number.isFinite(dt.getTime())) return "";
-  return dt.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
 function scoreHistoryChartColor(index) {
   const hue = (((index * 53) % 360) + 360) % 360;
   return `hsl(${hue} 70% 54%)`;
@@ -16180,12 +16186,13 @@ function getCalendarVisibleMetricsForDir(
   memo = new Map(),
   includeHidden = includeHiddenItemsInStatsEnabled(),
 ) {
-  if (!dirNode || dirNode.type !== "dir") return { score: 0, sizeBytes: 0 };
+  if (!dirNode || dirNode.type !== "dir")
+    return { score: 0, sizeBytes: 0, itemCount: 0 };
   const path = String(dirNode.path || "");
   const key = `${path}::${includeHidden ? "all" : "visible"}`;
   if (memo.has(key)) return memo.get(key);
   if (!includeHidden && isPathOrAncestorHidden(path)) {
-    const hiddenMetrics = { score: 0, sizeBytes: 0 };
+    const hiddenMetrics = { score: 0, sizeBytes: 0, itemCount: 0 };
     memo.set(key, hiddenMetrics);
     return hiddenMetrics;
   }
@@ -16197,6 +16204,7 @@ function getCalendarVisibleMetricsForDir(
   let childStoredScoreSum = 0;
   let visibleChildScoreSum = 0;
   let visibleChildSizeSum = 0;
+  let visibleChildItemCount = 0;
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
     const childPath = String(child.path || "");
@@ -16209,9 +16217,11 @@ function getCalendarVisibleMetricsForDir(
     );
     visibleChildScoreSum += Number(childMetrics.score) || 0;
     visibleChildSizeSum += Number(childMetrics.sizeBytes) || 0;
+    visibleChildItemCount += Number(childMetrics.itemCount) || 0;
   }
 
   let directFileSizeSum = 0;
+  let directFileCount = 0;
   const directFiles = Array.isArray(dirNode.childrenFiles)
     ? dirNode.childrenFiles
     : [];
@@ -16224,6 +16234,7 @@ function getCalendarVisibleMetricsForDir(
     );
     if (!includeHidden && filePath && isPathOrAncestorHidden(filePath))
       continue;
+    directFileCount++;
     const fileSize = Number(rec && rec.size);
     if (Number.isFinite(fileSize) && fileSize > 0)
       directFileSizeSum += fileSize;
@@ -16232,6 +16243,7 @@ function getCalendarVisibleMetricsForDir(
   const metrics = {
     score: directScore + visibleChildScoreSum,
     sizeBytes: directFileSizeSum + visibleChildSizeSum,
+    itemCount: directFileCount + visibleChildItemCount,
   };
   memo.set(key, metrics);
   return metrics;
@@ -16257,12 +16269,14 @@ function getVisibleRootFolderScoreRows(
     const sizeBytes = Math.max(0, Number(metrics.sizeBytes) || 0);
     const sizeMb = sizeBytes / (1024 * 1024);
     const score = Number(metrics.score) || 0;
+    const itemCount = Math.max(0, Number(metrics.itemCount) || 0);
     out.push({
       path,
       name: dirDisplayName(node),
       score,
       sizeBytes,
       sizeMb,
+      itemCount,
       efficiency: score / Math.max(0.01, sizeMb),
     });
   }
@@ -16290,8 +16304,12 @@ function formatScorePortion(value, hasTotalScore) {
 
 function compareCalendarStatsLedgerRows(a, b, sortKey) {
   let diff = 0;
-  if (sortKey === "sizeBytes") {
+  if (sortKey === "name") {
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  } else if (sortKey === "sizeBytes") {
     diff = (Number(b.sizeBytes) || 0) - (Number(a.sizeBytes) || 0);
+  } else if (sortKey === "itemCount") {
+    diff = (Number(b.itemCount) || 0) - (Number(a.itemCount) || 0);
   } else if (sortKey === "efficiency") {
     diff = (Number(b.efficiency) || 0) - (Number(a.efficiency) || 0);
   } else if (sortKey === "scorePortion") {
@@ -16304,30 +16322,56 @@ function compareCalendarStatsLedgerRows(a, b, sortKey) {
   if (scoreDiff && sortKey !== "score") return scoreDiff;
   const sizeDiff = (Number(b.sizeBytes) || 0) - (Number(a.sizeBytes) || 0);
   if (sizeDiff && sortKey !== "sizeBytes") return sizeDiff;
+  const itemCountDiff =
+    (Number(b.itemCount) || 0) - (Number(a.itemCount) || 0);
+  if (itemCountDiff && sortKey !== "itemCount") return itemCountDiff;
   const efficiencyDiff =
     (Number(b.efficiency) || 0) - (Number(a.efficiency) || 0);
   if (efficiencyDiff && sortKey !== "efficiency") return efficiencyDiff;
   return String(a.name || "").localeCompare(String(b.name || ""));
 }
 
-function buildCalendarStatsSortButtonHtml(
-  sortKey,
-  activeSortKey,
-  label,
-  detail,
-) {
-  const active = sortKey === activeSortKey;
-  return `
-        <button
-          type="button"
-          class="statsLedgerSortBtn${active ? " active" : ""}"
-          data-stats-sort="${escapeHtml(sortKey)}"
-          aria-label="Sort by ${escapeHtml(label)}, highest to lowest"
-        >
-          <span class="statsLedgerSortBtnMain">${escapeHtml(label)}</span>
-          <span class="statsLedgerSortBtnMeta">${active ? "Highest first" : escapeHtml(detail)}</span>
-        </button>
-      `;
+function calendarStatsSortKeyFromDirSortMode(mode) {
+  const normalized = normalizeDirSortMode(mode);
+  if (normalized === "size-desc") return "sizeBytes";
+  if (normalized === "count-recursive") return "itemCount";
+  if (normalized === "efficiency") return "efficiency";
+  if (normalized === "score") return "score";
+  return "name";
+}
+
+function calendarStatsSortSpec(sortKey) {
+  const key = CALENDAR_STATS_SORT_KEYS.includes(sortKey) ? sortKey : "score";
+  if (key === "name")
+    return { key, label: "Score", detail: "Folder sort: Name" };
+  if (key === "sizeBytes")
+    return { key, label: "Size", detail: "On disk" };
+  if (key === "itemCount")
+    return { key, label: "Items", detail: "Recursive count" };
+  if (key === "efficiency")
+    return { key, label: "Efficiency", detail: "Score per MB" };
+  if (key === "scorePortion")
+    return { key, label: "Share", detail: "% of score" };
+  return { key: "score", label: "Score", detail: "Net score" };
+}
+
+function formatStatsLedgerMetric(row, sortKey, hasTotalScore) {
+  const key = CALENDAR_STATS_SORT_KEYS.includes(sortKey) ? sortKey : "score";
+  if (key === "name") {
+    const score = Number(row.score) || 0;
+    return score > 0 ? `+${score}` : String(score);
+  }
+  if (key === "sizeBytes") return formatSizeOnDisk(row.sizeBytes);
+  if (key === "itemCount") {
+    const count = Math.max(0, Number(row.itemCount) || 0);
+    return `${count} item${count === 1 ? "" : "s"}`;
+  }
+  if (key === "efficiency")
+    return `${(Number(row.efficiency) || 0).toFixed(2)} / MB`;
+  if (key === "scorePortion")
+    return formatScorePortion(row.scorePortion, hasTotalScore);
+  const score = Number(row.score) || 0;
+  return score > 0 ? `+${score}` : String(score);
 }
 
 function buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey) {
@@ -16361,6 +16405,7 @@ function buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey) {
     1,
     ...ledgerRows.map((row) => Math.abs(Number(row.score) || 0)),
   );
+  const activeSpec = calendarStatsSortSpec(sortKey);
   const rowsHtml = ledgerRows
     .map((row) => {
       const score = Number(row.score) || 0;
@@ -16369,23 +16414,24 @@ function buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey) {
         Math.min(50, (Math.abs(score) / maxAbsScore) * 50),
       );
       const scoreLeftPct = score >= 0 ? 50 : Math.max(0, 50 - scoreWidthPct);
-      const scoreShown = score > 0 ? `+${score}` : String(score);
       const scoreSignClass = score >= 0 ? "positive" : "negative";
-      return `
-          <tr class="statsLedgerRow">
-            <th scope="row" class="statsLedgerFolderCell" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</th>
-            <td class="statsLedgerValueCell statsLedgerScoreCell">
+      const metricText = formatStatsLedgerMetric(row, sortKey, hasTotalScore);
+      const metricHtml =
+        sortKey === "score" || sortKey === "name"
+          ? `
               <div class="statsLedgerScoreMetric">
-                <span class="statsLedgerNumber">${escapeHtml(scoreShown)}</span>
+                <span class="statsLedgerNumber">${escapeHtml(metricText)}</span>
                 <div class="statsLedgerScoreBar" aria-hidden="true">
                   <div class="statsLedgerScoreAxis"></div>
                   <div class="statsLedgerScoreFill ${scoreSignClass}" style="left:${scoreLeftPct.toFixed(3)}%;width:${scoreWidthPct.toFixed(3)}%;"></div>
                 </div>
               </div>
-            </td>
-            <td class="statsLedgerValueCell">${escapeHtml(formatSizeOnDisk(row.sizeBytes))}</td>
-            <td class="statsLedgerValueCell">${escapeHtml(`${(Number(row.efficiency) || 0).toFixed(2)} / MB`)}</td>
-            <td class="statsLedgerValueCell">${escapeHtml(formatScorePortion(row.scorePortion, hasTotalScore))}</td>
+            `
+          : escapeHtml(metricText);
+      return `
+          <tr class="statsLedgerRow">
+            <th scope="row" class="statsLedgerFolderCell" title="${escapeHtml(row.path || "(root)")}" >${escapeHtml(row.name || "(root)")}</th>
+            <td class="statsLedgerValueCell${sortKey === "score" ? " statsLedgerScoreCell" : ""}">${metricHtml}</td>
           </tr>
         `;
     })
@@ -16397,17 +16443,14 @@ function buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey) {
             <div>
               <h2>Root folder ledger</h2>
             </div>
-            <div class="statsLedgerSummary">Folders ${escapeHtml(String(rootRows.length))} • Root score sum ${escapeHtml(String(totalScore))}</div>
+            <div class="statsLedgerSummary">Folders ${escapeHtml(String(rootRows.length))} • Folder sort ${escapeHtml(dirSortModeLabel(WS.meta && WS.meta.dirSortMode))}</div>
           </div>
           <div class="statsLedgerTableWrap">
             <table class="statsLedgerTable">
               <thead>
                 <tr>
                   <th scope="col" class="statsLedgerNameHeader">Folder</th>
-                  <th scope="col" class="statsLedgerSortHeader" aria-sort="${sortKey === "score" ? "descending" : "none"}">${buildCalendarStatsSortButtonHtml("score", sortKey, "Score", "Number + bar")}</th>
-                  <th scope="col" class="statsLedgerSortHeader" aria-sort="${sortKey === "sizeBytes" ? "descending" : "none"}">${buildCalendarStatsSortButtonHtml("sizeBytes", sortKey, "Size on Disk", "MB or GB")}</th>
-                  <th scope="col" class="statsLedgerSortHeader" aria-sort="${sortKey === "efficiency" ? "descending" : "none"}">${buildCalendarStatsSortButtonHtml("efficiency", sortKey, "Efficiency", "Score per MB")}</th>
-                  <th scope="col" class="statsLedgerSortHeader" aria-sort="${sortKey === "scorePortion" ? "descending" : "none"}">${buildCalendarStatsSortButtonHtml("scorePortion", sortKey, "% of Total Score", "Root score share")}</th>
+                  <th scope="col" class="statsLedgerMetricHeader" aria-sort="descending">${escapeHtml(activeSpec.label)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -16498,6 +16541,141 @@ function getRootScoreHistoryLinesForEntry(
   return out;
 }
 
+function getRootScoreHistoryLinesForDateKey(
+  dateKey,
+  includeHidden = includeHiddenItemsInStatsEnabled(),
+) {
+  const key = String(dateKey || "");
+  if (!key) return [];
+  const history = normalizeScoreHistoryList(
+    WS.meta && Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [],
+  );
+  const grouped = new Map();
+  for (let i = 0; i < history.length; i++) {
+    const entry = history[i];
+    if (scoreHistoryDateKey(entry && entry.at) !== key) continue;
+    const rows = getRootScoreHistoryLinesForEntry(entry, includeHidden);
+    for (let j = 0; j < rows.length; j++) {
+      const row = rows[j];
+      const rootPath = normalizeDirPathValue(row.rootPath);
+      if (!rootPath) continue;
+      const current =
+        grouped.get(rootPath) || {
+          rootPath,
+          rootLabel: row.rootLabel || scoreHistoryRootLabelFromPath(rootPath),
+          delta: 0,
+          count: 0,
+        };
+      current.delta += Number(row.delta) || 0;
+      current.count += 1;
+      grouped.set(rootPath, current);
+    }
+  }
+  return Array.from(grouped.values()).sort((a, b) => {
+    const deltaDiff = Math.abs(Number(b.delta) || 0) - Math.abs(Number(a.delta) || 0);
+    if (deltaDiff) return deltaDiff;
+    return String(a.rootLabel || "").localeCompare(String(b.rootLabel || ""));
+  });
+}
+
+function scoreHistoryDayIsToday(dateKey) {
+  return String(dateKey || "") === scoreHistoryDateKey(Date.now());
+}
+
+function scoreHistoryMonthKeyFromDateKey(dateKey) {
+  const m = String(dateKey || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (!m) return "";
+  return `${m[1]}-${m[2]}`;
+}
+
+function scoreHistoryMonthLabel(monthKey) {
+  const m = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
+  if (!m) return String(monthKey || "");
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const dt = new Date(y, mo, 1);
+  if (!Number.isFinite(dt.getTime())) return String(monthKey || "");
+  return dt.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+  });
+}
+
+function scoreHistoryDaysInMonth(monthKey) {
+  const m = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
+  if (!m) return 0;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const dt = new Date(y, mo, 0);
+  return Number.isFinite(dt.getTime()) ? dt.getDate() : 0;
+}
+
+function scoreHistoryHeatClass(delta) {
+  const value = Number(delta) || 0;
+  if (!value) return "heatZero";
+  const level = Math.max(1, Math.min(6, Math.ceil(Math.abs(value))));
+  return `${value > 0 ? "heatPos" : "heatNeg"}${level}`;
+}
+
+function buildScoreHistoryMonthPageHtml(monthKey, dayMap) {
+  const days = scoreHistoryDaysInMonth(monthKey);
+  if (!days) return "";
+  let totalEvents = 0;
+  let totalDelta = 0;
+  const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const cells = weekdayLabels.map(
+    (label) => `<div class="scoreHistoryWeekday">${escapeHtml(label)}</div>`,
+  );
+  const m = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
+  const firstDate = m ? new Date(Number(m[1]), Number(m[2]) - 1, 1) : null;
+  const leading =
+    firstDate && Number.isFinite(firstDate.getTime()) ? firstDate.getDay() : 0;
+  for (let i = 0; i < leading; i++) {
+    cells.push(`<div class="scoreHistoryCalendarDay isBlank" aria-hidden="true"></div>`);
+  }
+  for (let day = 1; day <= days; day++) {
+    const dayKey = `${monthKey}-${String(day).padStart(2, "0")}`;
+    const info = dayMap.get(dayKey) || { delta: 0, count: 0 };
+    const delta = Number(info.delta) || 0;
+    const count = Math.max(0, Number(info.count) || 0);
+    totalEvents += count;
+    totalDelta += delta;
+    const hasScore = !!count;
+    const heatClass = hasScore ? scoreHistoryHeatClass(delta) : "";
+    const deltaShown = delta > 0 ? `+${delta}` : String(delta);
+    const title = hasScore
+      ? `${scoreHistoryDateLabel(dayKey)}: ${deltaShown} net score change across ${count} change${count === 1 ? "" : "s"}`
+      : `${scoreHistoryDateLabel(dayKey)}: no score changes`;
+    cells.push(`
+      <div
+        class="scoreHistoryCalendarDay${hasScore ? ` hasScore ${heatClass}` : ""}"
+        ${hasScore ? `data-score-history-day="${escapeHtml(dayKey)}"` : ""}
+        title="${escapeHtml(title)}"
+        aria-label="${escapeHtml(title)}"
+      >
+        <span class="scoreHistoryCalendarDayNumber">${escapeHtml(String(day))}</span>
+        ${hasScore ? `<span class="scoreHistoryCalendarDayDelta">${escapeHtml(deltaShown)}</span>` : ""}
+      </div>
+    `);
+  }
+  const trailing = (7 - ((leading + days) % 7)) % 7;
+  for (let i = 0; i < trailing; i++) {
+    cells.push(`<div class="scoreHistoryCalendarDay isBlank" aria-hidden="true"></div>`);
+  }
+  const totalDeltaShown = totalDelta > 0 ? `+${totalDelta}` : String(totalDelta);
+  return `
+    <section class="scoreHistoryMonth">
+      <div class="scoreHistoryMonthHeader">
+        <h2>${escapeHtml(scoreHistoryMonthLabel(monthKey))}</h2>
+        <div class="scoreHistoryMonthMeta">${escapeHtml(totalDeltaShown)} net • ${escapeHtml(String(totalEvents))} change${totalEvents === 1 ? "" : "s"}</div>
+      </div>
+      <div class="scoreHistoryCalendarGrid">
+        ${cells.join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderCalendarUi() {
   if (!calendarBodyEl) return;
   const history = normalizeScoreHistoryList(
@@ -16510,69 +16688,34 @@ function renderCalendarUi() {
     (sum, row) => sum + (Number(row.score) || 0),
     0,
   );
-  const activeSortKey = CALENDAR_STATS_SORT_KEYS.includes(
-    CALENDAR_STATS_SORT_KEY,
-  )
-    ? CALENDAR_STATS_SORT_KEY
-    : "score";
-  CALENDAR_STATS_SORT_KEY = activeSortKey;
+  const activeSortKey = calendarStatsSortKeyFromDirSortMode(
+    WS.meta && WS.meta.dirSortMode,
+  );
   const grouped = new Map();
   for (let i = 0; i < history.length; i++) {
     const entry = history[i];
     const rows = getRootScoreHistoryLinesForEntry(entry, includeHidden);
     for (let j = 0; j < rows.length; j++) {
       const row = rows[j];
-      const key = scoreHistoryDateKey(row.at);
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key).push(row);
+      const dayKey = scoreHistoryDateKey(row.at);
+      const monthKey = scoreHistoryMonthKeyFromDateKey(dayKey);
+      if (!monthKey) continue;
+      if (!grouped.has(monthKey)) grouped.set(monthKey, new Map());
+      const monthDays = grouped.get(monthKey);
+      const current = monthDays.get(dayKey) || { delta: 0, count: 0 };
+      current.delta += Number(row.delta) || 0;
+      current.count += 1;
+      monthDays.set(dayKey, current);
     }
   }
-  const dateKeys = Array.from(grouped.keys()).sort((a, b) =>
-    String(b).localeCompare(String(a)),
+  const monthKeys = Array.from(grouped.keys()).sort((a, b) =>
+    String(a).localeCompare(String(b)),
   );
-  const historyHtml = dateKeys.length
-    ? dateKeys
-        .map((key) => {
-          const rows = grouped.get(key) || [];
-          rows.sort((a, b) => {
-            const timeDiff = (Number(b.at) || 0) - (Number(a.at) || 0);
-            if (timeDiff) return timeDiff;
-            return String(a.rootPath || "").localeCompare(
-              String(b.rootPath || ""),
-            );
-          });
-          const lineRowsHtml = rows
-            .map((row) => {
-              const deltaShown =
-                row.delta > 0 ? `+${row.delta}` : String(row.delta || 0);
-              return `
-              <div class="scoreHistorySimpleRow">
-                <span class="scoreHistorySimpleText">${escapeHtml(scoreHistoryTimeLabel(row.at))} - ${escapeHtml(row.rootLabel)} - ${escapeHtml(deltaShown)}</span>
-                <button
-                  type="button"
-                  class="miniBtn scoreHistoryDeleteBtn"
-                  data-score-history-delete-line-event="${escapeHtml(row.eventId)}"
-                  data-score-history-delete-line-root="${escapeHtml(row.rootPath)}"
-                >Delete</button>
-              </div>
-            `;
-            })
-            .join("");
-          return `
-            <section class="scoreHistoryDay">
-              <div class="scoreHistoryDayHeader">
-                <h2>${escapeHtml(scoreHistoryDateLabel(key))}</h2>
-                <div class="scoreHistoryDayMeta">
-                  <span>${escapeHtml(String(rows.length))} change${rows.length === 1 ? "" : "s"}</span>
-                  <button type="button" class="miniBtn scoreHistoryDeleteDayBtn" data-score-history-delete-day="${escapeHtml(key)}">Delete day</button>
-                </div>
-              </div>
-              <div class="scoreHistoryDayEvents">
-                ${lineRowsHtml}
-              </div>
-            </section>
-          `;
-        })
+  const historyHtml = monthKeys.length
+    ? monthKeys
+        .map((monthKey) =>
+          buildScoreHistoryMonthPageHtml(monthKey, grouped.get(monthKey)),
+        )
         .join("")
     : `<div class="scoreHistoryEmpty">No score changes logged yet.</div>`;
   calendarBodyEl.innerHTML = `
@@ -18901,23 +19044,6 @@ if (calendarDeleteAllBtn) {
 }
 if (calendarBodyEl) {
   calendarBodyEl.addEventListener("click", (e) => {
-    const sortBtn =
-      e.target && e.target.closest
-        ? e.target.closest("button[data-stats-sort]")
-        : null;
-    if (sortBtn) {
-      e.preventDefault();
-      e.stopPropagation();
-      const next = String(sortBtn.getAttribute("data-stats-sort") || "");
-      if (
-        !CALENDAR_STATS_SORT_KEYS.includes(next) ||
-        next === CALENDAR_STATS_SORT_KEY
-      )
-        return;
-      CALENDAR_STATS_SORT_KEY = next;
-      renderCalendarUi();
-      return;
-    }
     const lineBtn =
       e.target && e.target.closest
         ? e.target.closest(
@@ -18942,6 +19068,46 @@ if (calendarBodyEl) {
       } else {
         setCalendarStatus("No changes");
       }
+      return;
+    }
+    const dayRootBtn =
+      e.target && e.target.closest
+        ? e.target.closest(
+            "button[data-score-history-delete-day-root][data-score-history-delete-day]",
+          )
+        : null;
+    if (dayRootBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const dayKey = String(
+        dayRootBtn.getAttribute("data-score-history-delete-day") || "",
+      );
+      const rootPath = String(
+        dayRootBtn.getAttribute("data-score-history-delete-day-root") || "",
+      );
+      const removed = removeScoreHistoryLinesByDateAndRoot(dayKey, rootPath);
+      if (removed > 0) {
+        metaMarkDirty(META_DOC_IDS.scoreHistory);
+        closeScoreHistoryDayMenu();
+        renderCalendarUi();
+        setCalendarStatus("Saved");
+        showStatusMessage("Score log line deleted.");
+      } else {
+        setCalendarStatus("No changes");
+      }
+      return;
+    }
+    const dayCell =
+      e.target && e.target.closest
+        ? e.target.closest("[data-score-history-day]")
+        : null;
+    if (dayCell) {
+      e.preventDefault();
+      e.stopPropagation();
+      openScoreHistoryDayMenu(
+        String(dayCell.getAttribute("data-score-history-day") || ""),
+        dayCell,
+      );
       return;
     }
     const eventBtn =
@@ -19369,6 +19535,47 @@ function removeScoreHistoryLineByEventAndRoot(eventId, rootPath) {
       (item) => scoreHistoryRootPathFromChangedPath(item.path) !== root,
     );
     const nextEntry = Object.assign({}, normalizedEntry, { changed });
+    if (getRootScoreHistoryLinesForEntry(nextEntry).length) {
+      next.push(nextEntry);
+    }
+    removed += removedFromEntry;
+  }
+  if (removed > 0) WS.meta.scoreHistory = normalizeScoreHistoryList(next);
+  return removed;
+}
+
+function removeScoreHistoryLinesByDateAndRoot(dateKey, rootPath) {
+  const key = String(dateKey || "").trim();
+  const root = normalizeDirPathValue(rootPath);
+  if (!key || !root) return 0;
+  const src = Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [];
+  if (!src.length) return 0;
+  const next = [];
+  let removed = 0;
+  for (let i = 0; i < src.length; i++) {
+    const normalizedEntry = normalizeScoreHistoryEntry(src[i]);
+    if (!normalizedEntry) continue;
+    if (scoreHistoryDateKey(normalizedEntry.at) !== key) {
+      next.push(normalizedEntry);
+      continue;
+    }
+    const removedFromEntry = getRootScoreHistoryLinesForEntry(
+      normalizedEntry,
+    ).filter((line) => String(line.rootPath || "") === root).length;
+    if (!removedFromEntry) {
+      next.push(normalizedEntry);
+      continue;
+    }
+    const changed = normalizedEntry.changed.filter(
+      (item) => scoreHistoryRootPathFromChangedPath(item.path) !== root,
+    );
+    const selectedPaths = normalizedEntry.selectedPaths.filter(
+      (path) => scoreHistoryRootPathFromChangedPath(path) !== root,
+    );
+    const nextEntry = Object.assign({}, normalizedEntry, {
+      changed,
+      selectedPaths,
+    });
     if (getRootScoreHistoryLinesForEntry(nextEntry).length) {
       next.push(nextEntry);
     }
@@ -29819,14 +30026,18 @@ function createInverseTagForEntry(entry) {
   return true;
 }
 
+function getTagEntryIconKey(entry) {
+  if (!entry || entry.kind !== "tag") return "tag";
+  if (entry.album && !entry.tag) return "album";
+  if (entry.special === "favorites") return "favorite";
+  if (entry.special === "hidden") return "hidden";
+  if (entry.special === "storage") return "storage";
+  if (entry.special === "untagged") return "untagged";
+  return "tag";
+}
+
 function getTagEntryDisplayIcon(entry) {
-  if (!entry || entry.kind !== "tag") return "#";
-  if (entry.album && !entry.tag) return "{}";
-  if (entry.special === "favorites") return favoriteHeartSymbol();
-  if (entry.special === "hidden") return "?";
-  if (entry.special === "storage") return ":";
-  if (entry.special === "untagged") return "#?";
-  return "#";
+  return appIconHtml(getTagEntryIconKey(entry));
 }
 
 function getTagEntryCountText(entry) {
@@ -32926,27 +33137,6 @@ function tagEntryDerivedCacheKey(entry) {
   ].join("@@");
 }
 
-function shouldIncludeGridUpDirectoryEntry() {
-  return false;
-}
-
-function buildGridUpDirectoryEntry() {
-  let parentLabel = "parent folder";
-  if (isViewingTagFolder()) {
-    const originPath = String(WS.view.tagFolderOriginPath || "");
-    const originNode = WS.dirByPath.get(originPath) || WS.root;
-    if (originNode) parentLabel = dirDisplayName(originNode);
-  } else if (WS.nav.dirNode && WS.nav.dirNode.parent) {
-    parentLabel = dirDisplayName(WS.nav.dirNode.parent);
-  }
-  return {
-    kind: "up",
-    label: "Up Directory",
-    icon: "../",
-    parentLabel,
-  };
-}
-
 function selectionIndexForDirectoryEnter() {
   if (isGridInteractionMode()) return findNearestSelectableIndex(0, 1);
   return restoreGridSelectionForCurrentContext(0);
@@ -32990,7 +33180,6 @@ function rebuildDirectoriesEntries(opts = null) {
   if (WS.view.aboveRootView && !showRootViewEnabled()) {
     WS.view.aboveRootView = false;
   }
-  const includeGridUpEntry = shouldIncludeGridUpDirectoryEntry();
   if (WS.view.aboveRootView && WS.nav.dirNode === WS.root) {
     nextEntries.push({ kind: "dir", node: WS.root });
     finish();
@@ -32998,7 +33187,6 @@ function rebuildDirectoriesEntries(opts = null) {
   }
 
   if (isViewingTagFolder()) {
-    if (includeGridUpEntry) nextEntries.push(buildGridUpDirectoryEntry());
     const placeholderEntry = buildBulkTagPlaceholderEntry();
     if (placeholderEntry) nextEntries.push(placeholderEntry);
     const virtualTagEntries = getTagEntriesForTagFolderView();
@@ -33015,7 +33203,6 @@ function rebuildDirectoriesEntries(opts = null) {
   }
 
   if (searchResultsVisibleInDirectoriesPane()) {
-    if (includeGridUpEntry) nextEntries.push(buildGridUpDirectoryEntry());
     const placeholderEntry = buildBulkTagPlaceholderEntry();
     if (placeholderEntry) nextEntries.push(placeholderEntry);
     const dirs = (WS.view.searchResults || []).slice();
@@ -33026,7 +33213,6 @@ function rebuildDirectoriesEntries(opts = null) {
   }
 
   if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-    if (includeGridUpEntry) nextEntries.push(buildGridUpDirectoryEntry());
     const placeholderEntry = buildBulkTagPlaceholderEntry();
     if (placeholderEntry) nextEntries.push(placeholderEntry);
     const dirs = getAllFavoriteDirs();
@@ -33036,7 +33222,6 @@ function rebuildDirectoriesEntries(opts = null) {
   }
 
   if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
-    if (includeGridUpEntry) nextEntries.push(buildGridUpDirectoryEntry());
     const placeholderEntry = buildBulkTagPlaceholderEntry();
     if (placeholderEntry) nextEntries.push(placeholderEntry);
     const dirs = getAllHiddenDirs();
@@ -33050,8 +33235,6 @@ function rebuildDirectoriesEntries(opts = null) {
     finish();
     return;
   }
-
-  if (includeGridUpEntry) nextEntries.push(buildGridUpDirectoryEntry());
 
   const rootTrashEntry = shouldShowRootTrashEntry(dirNode)
     ? buildRootTrashDirEntry()
@@ -33076,8 +33259,7 @@ function isSelectableEntry(entry) {
     entry &&
     (entry.kind === "dir" ||
       entry.kind === "file" ||
-      entry.kind === "tag" ||
-      entry.kind === "up")
+      entry.kind === "tag")
   );
 }
 
@@ -33166,14 +33348,9 @@ function directoryItemTopRelativeToScrollContainer(item, container) {
 function isGridTopRowSelection(container, selectedRow) {
   if (!container || !selectedRow || !container.classList) return false;
   const supportsTopSnap =
-    container.classList.contains("gridModeList") ||
-    container.classList.contains("filePaneThumbnailView");
+    container.classList.contains("gridModeList");
   if (!supportsTopSnap) return false;
-  const rows = container.querySelectorAll(
-    container.classList.contains("filePaneThumbnailView")
-      ? "[data-file-pane-item]"
-      : ".dirRow, [data-file-pane-item]",
-  );
+  const rows = container.querySelectorAll(".dirRow");
   if (!rows || !rows.length) return false;
   let minTop = Number.POSITIVE_INFINITY;
   for (let i = 0; i < rows.length; i++) {
@@ -33405,11 +33582,11 @@ function canUseFastPaneSelectionUpdate(hadTransientUi) {
 function fastUpdatePaneSelectedRow(prevIdx, nextIdx) {
   if (!directoriesListEl) return false;
   const nextRow = directoriesListEl.querySelector(
-    `.dirRow[data-entry-index="${String(nextIdx)}"], [data-file-pane-item][data-entry-index="${String(nextIdx)}"]`,
+    `.dirRow[data-entry-index="${String(nextIdx)}"]`,
   );
   if (!nextRow) return false;
   const selectedRows = directoriesListEl.querySelectorAll(
-    ".dirRow.selected, [data-file-pane-item].selected",
+    ".dirRow.selected",
   );
   if (selectedRows && selectedRows.length) {
     selectedRows.forEach((row) => {
@@ -33417,7 +33594,6 @@ function fastUpdatePaneSelectedRow(prevIdx, nextIdx) {
     });
   }
   nextRow.classList.add("selected");
-  syncFilePaneThumbnailSelectionClasses(prevIdx, nextIdx);
   return true;
 }
 
@@ -35544,191 +35720,6 @@ function resolveAbsoluteDirectoryPath(dirPath) {
   return "";
 }
 
-function thumbDiskCacheAvailable() {
-  const electronApi = getElectronApi();
-  return !!(
-    electronApi &&
-    typeof electronApi.readThumbCache === "function" &&
-    typeof electronApi.writeThumbCache === "function"
-  );
-}
-
-function currentThumbDiskScopeKey() {
-  if (!thumbDiskCacheAvailable()) return "";
-  if (THUMB_DISK_SCOPE_KEY) return THUMB_DISK_SCOPE_KEY;
-  const absRoot = resolveAbsoluteDirectoryPath("");
-  if (absRoot) {
-    THUMB_DISK_SCOPE_KEY = `root:${absRoot}`;
-    return THUMB_DISK_SCOPE_KEY;
-  }
-  const storageKey = String((WS.meta && WS.meta.storageKey) || "").trim();
-  if (storageKey) {
-    THUMB_DISK_SCOPE_KEY = `storage:${storageKey}`;
-    return THUMB_DISK_SCOPE_KEY;
-  }
-  return "";
-}
-
-function thumbDiskRecordIdentity(rec) {
-  if (!rec) return "";
-  const nativePath = String(
-    rec.nativePath || getNativePathForFile(rec.file) || "",
-  );
-  const relPath = String(rec.relPath || "");
-  const size = Number.isFinite(Number(rec.size))
-    ? Number(rec.size)
-    : Number((rec.file && rec.file.size) || 0);
-  const lastModified = Number.isFinite(Number(rec.lastModified))
-    ? Number(rec.lastModified)
-    : Number((rec.file && rec.file.lastModified) || 0);
-  return `${String(rec.type || "")}|${nativePath || relPath}|${size}|${lastModified}`;
-}
-
-function serializeThumbDiskCrop(crop) {
-  const normalized = normalizeVideoCrop(crop);
-  if (!normalized) return "none";
-  return [normalized.left, normalized.right, normalized.top, normalized.bottom]
-    .map((value) => Number(value || 0).toFixed(4))
-    .join(",");
-}
-
-function currentThumbProcessingCacheKey() {
-  return THUMB_FILTER_KEY || buildThumbFilterKey();
-}
-
-function imageThumbDiskCacheKey(rec, mode) {
-  if (!rec || rec.type !== "image") return "";
-  const normalizedMode = String(mode || "medium");
-  if (normalizedMode === "high" && !thumbFiltersActive(rec)) return "";
-  return [
-    THUMB_DISK_CACHE_SCHEMA_VERSION,
-    "image",
-    thumbDiskRecordIdentity(rec),
-    `mode:${normalizedMode}`,
-    `width:${imageThumbWidthForOption()}`,
-    `variant:${currentThumbProcessingCacheKey()}`,
-  ].join("###");
-}
-
-function videoThumbDiskCacheKey(rec, mode) {
-  if (!rec || rec.type !== "video") return "";
-  const normalizedMode = String(mode || "medium");
-  return [
-    THUMB_DISK_CACHE_SCHEMA_VERSION,
-    "video",
-    thumbDiskRecordIdentity(rec),
-    `mode:${normalizedMode}`,
-    `width:${videoThumbWidthForOption()}`,
-    `frame:${String(metaGetVideoThumbnailTimeForRecord(rec) ?? "auto")}`,
-    `crop:${serializeThumbDiskCrop(getVideoCropForRecord(rec))}`,
-    `variant:${currentThumbProcessingCacheKey()}`,
-  ].join("###");
-}
-
-async function readThumbDiskCacheUrl(scopeKey, cacheKey) {
-  if (!scopeKey || !cacheKey || !thumbDiskCacheAvailable()) return "";
-  const promiseKey = `${scopeKey}###${cacheKey}`;
-  if (THUMB_DISK_READ_PROMISES.has(promiseKey)) {
-    return THUMB_DISK_READ_PROMISES.get(promiseKey);
-  }
-  const electronApi = getElectronApi();
-  const loadPromise = (async () => {
-    try {
-      const url = await electronApi.readThumbCache({
-        scopeKey,
-        cacheKey,
-        ext: "jpg",
-      });
-      return String(url || "");
-    } catch {
-      return "";
-    } finally {
-      THUMB_DISK_READ_PROMISES.delete(promiseKey);
-    }
-  })();
-  THUMB_DISK_READ_PROMISES.set(promiseKey, loadPromise);
-  return loadPromise;
-}
-
-async function writeThumbDiskCacheUrl(scopeKey, cacheKey, blob) {
-  if (!scopeKey || !cacheKey || !blob || !thumbDiskCacheAvailable()) return "";
-  const promiseKey = `${scopeKey}###${cacheKey}`;
-  if (THUMB_DISK_WRITE_PROMISES.has(promiseKey)) {
-    return THUMB_DISK_WRITE_PROMISES.get(promiseKey);
-  }
-  const electronApi = getElectronApi();
-  const writePromise = (async () => {
-    try {
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      const url = await electronApi.writeThumbCache({
-        scopeKey,
-        cacheKey,
-        ext: "jpg",
-        bytes,
-      });
-      return String(url || "");
-    } catch {
-      return "";
-    } finally {
-      THUMB_DISK_WRITE_PROMISES.delete(promiseKey);
-    }
-  })();
-  THUMB_DISK_WRITE_PROMISES.set(promiseKey, writePromise);
-  return writePromise;
-}
-
-async function hydrateImageThumbFromDiskCache(rec, mode) {
-  if (!rec || rec.type !== "image") return false;
-  if (rec.thumbUrl && rec.thumbMode === mode) return true;
-  const scopeKey = currentThumbDiskScopeKey();
-  const cacheKey = imageThumbDiskCacheKey(rec, mode);
-  if (!scopeKey || !cacheKey) return false;
-  const cachedUrl = await readThumbDiskCacheUrl(scopeKey, cacheKey);
-  if (!cachedUrl) return false;
-  if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
-    try {
-      URL.revokeObjectURL(rec.thumbUrl);
-    } catch {}
-  }
-  rec.thumbUrl = cachedUrl;
-  rec.thumbMode = mode;
-  trackThumbnailUrlForRecord(rec);
-  return true;
-}
-
-async function hydrateVideoThumbFromDiskCache(rec, mode) {
-  if (!rec || rec.type !== "video") return false;
-  if (rec.videoThumbUrl && rec.videoThumbMode === mode) return true;
-  const scopeKey = currentThumbDiskScopeKey();
-  const cacheKey = videoThumbDiskCacheKey(rec, mode);
-  if (!scopeKey || !cacheKey) return false;
-  const cachedUrl = await readThumbDiskCacheUrl(scopeKey, cacheKey);
-  if (!cachedUrl) return false;
-  if (rec.videoThumbUrl) {
-    try {
-      URL.revokeObjectURL(rec.videoThumbUrl);
-    } catch {}
-  }
-  rec.videoThumbUrl = cachedUrl;
-  rec.videoThumbMode = mode;
-  trackThumbnailUrlForRecord(rec);
-  return true;
-}
-
-async function persistImageThumbToDiskCache(rec, mode, blob) {
-  const scopeKey = currentThumbDiskScopeKey();
-  const cacheKey = imageThumbDiskCacheKey(rec, mode);
-  if (!scopeKey || !cacheKey) return "";
-  return writeThumbDiskCacheUrl(scopeKey, cacheKey, blob);
-}
-
-async function persistVideoThumbToDiskCache(rec, mode, blob) {
-  const scopeKey = currentThumbDiskScopeKey();
-  const cacheKey = videoThumbDiskCacheKey(rec, mode);
-  if (!scopeKey || !cacheKey) return "";
-  return writeThumbDiskCacheUrl(scopeKey, cacheKey, blob);
-}
-
 function currentImageThumbMode() {
   return "placeholder";
 }
@@ -35806,7 +35797,7 @@ function navigationEntriesContainOnlyMediaFiles() {
   let mediaCount = 0;
   for (let i = 0; i < WS.nav.entries.length; i++) {
     const entry = WS.nav.entries[i];
-    if (!entry || entry.kind === "up") continue;
+    if (!entry) continue;
     if (entry.kind !== "file") return false;
     const rec = WS.fileById && WS.fileById.get(String(entry.id || ""));
     if (!rec || (rec.type !== "image" && rec.type !== "video")) return false;
@@ -36951,12 +36942,7 @@ function refreshThumbnailDemand() {
   directoriesIds.forEach((id) => priorityIds.add(id));
   const rootPinnedRecords = markRootPinnedThumbnailRecords();
   addRecordsToThumbnailDemand(priorityIds, rootPinnedRecords);
-  const navEntryCount = Array.isArray(WS.nav.entries) ? WS.nav.entries.length : 0;
-  const windowedNavigationDemand =
-    !filePaneThumbnailViewEnabled() ||
-    isViewingTagFolder() ||
-    navEntryCount >= 180 ||
-    shouldUseWindowedPreviewBridgeSnapshot(snapshot);
+  const windowedNavigationDemand = true;
   // Keep visible and nearby thumbnails hot first. A separate background stream
   // now walks the rest of the active container in batches, so large folders and
   // tag views do not depend on repeated manual prodding.
@@ -37316,7 +37302,13 @@ async function ensureNavigationThumbReady(rec) {
     const mode = currentVideoThumbMode();
     if (videoThumbModeSkipsLoading(mode)) return true;
     if (rec.videoThumbUrl && rec.videoThumbMode === mode) return true;
-    const key = `video###${String(rec.id || "")}###${videoThumbDiskCacheKey(rec, mode)}`;
+    const key = [
+      "video",
+      String(rec.id || ""),
+      String(mode || ""),
+      String(metaGetVideoThumbnailTimeForRecord(rec) ?? "auto"),
+      THUMB_FILTER_KEY || buildThumbFilterKey(),
+    ].join("###");
     if (NAV_THUMB_READY_PROMISES.has(key))
       return NAV_THUMB_READY_PROMISES.get(key);
     const promise = generateVideoThumb(rec, { force: true })
@@ -37332,7 +37324,12 @@ async function ensureNavigationThumbReady(rec) {
     const mode = currentImageThumbMode();
     if (imageThumbModeSkipsLoading(mode)) return true;
     if (rec.thumbUrl && rec.thumbMode === mode) return true;
-    const key = `image###${String(rec.id || "")}###${imageThumbDiskCacheKey(rec, mode) || mode}`;
+    const key = [
+      "image",
+      String(rec.id || ""),
+      String(mode || ""),
+      THUMB_FILTER_KEY || buildThumbFilterKey(),
+    ].join("###");
     if (NAV_THUMB_READY_PROMISES.has(key))
       return NAV_THUMB_READY_PROMISES.get(key);
     const promise = generateImageThumb(rec, { force: true })
@@ -37865,7 +37862,7 @@ function thumbnailWorkspacePreloadKeyForRootChild(rootChildNode) {
     String(rootChildNode.path || ""),
     String(currentImageThumbMode()),
     String(currentVideoThumbMode()),
-    String(currentThumbProcessingCacheKey()),
+    String(THUMB_FILTER_KEY || buildThumbFilterKey()),
   ].join("||");
 }
 
@@ -39283,6 +39280,7 @@ function closeActionMenus() {
   WS.view.fileActionMenuId = "";
   closeTagContextMenu();
   closePreviewContextMenu();
+  closeScoreHistoryDayMenu();
 }
 
 function findTagEntryIndexBySelectionKey(selectionKey) {
@@ -39492,7 +39490,6 @@ function entryKeyForSelection(entry) {
   if (entry.kind === "dir") return `dir:${String(entry.node?.path || "")}`;
   if (entry.kind === "file") return `file:${String(entry.id || "")}`;
   if (entry.kind === "tag") return `tag:${tagEntrySelectionKey(entry)}`;
-  if (entry.kind === "up") return `up:${directoriesScrollContextKey()}`;
   return "";
 }
 
@@ -39759,6 +39756,44 @@ function positionDropdownMenuAtPoint(menuEl, x, y) {
   menuEl.style.top = `${top}px`;
 }
 
+function positionScoreHistoryDayMenu(anchor, menuEl) {
+  if (!anchor || !menuEl) return;
+  menuEl.classList.add("fixed");
+  menuEl.style.left = "0px";
+  menuEl.style.top = "0px";
+  menuEl.style.right = "auto";
+  menuEl.style.setProperty("--score-history-menu-pointer-left", "50%");
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const menuRect = menuEl.getBoundingClientRect();
+  const anchorCenter = anchorRect.left + anchorRect.width / 2;
+  let left = anchorCenter - menuRect.width / 2;
+  if (left < 8) left = 8;
+  if (left + menuRect.width > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - menuRect.width - 8);
+  }
+
+  let top = anchorRect.bottom + 10;
+  if (top + menuRect.height > window.innerHeight - 8) {
+    top = anchorRect.top - 10 - menuRect.height;
+    menuEl.classList.add("aboveAnchor");
+  } else {
+    menuEl.classList.remove("aboveAnchor");
+  }
+  if (top < 8) top = 8;
+
+  const pointerLeft = Math.max(
+    14,
+    Math.min(menuRect.width - 14, anchorCenter - left),
+  );
+  menuEl.style.setProperty(
+    "--score-history-menu-pointer-left",
+    `${pointerLeft}px`,
+  );
+  menuEl.style.left = `${left}px`;
+  menuEl.style.top = `${top}px`;
+}
+
 async function commitRenameEdit(path, inputEl) {
   if (RENAME_BUSY) return false;
   const dirNode = WS.dirByPath.get(String(path || ""));
@@ -39854,6 +39889,82 @@ function closePreviewContextMenu() {
   previewActionMenuEl.style.left = "";
   previewActionMenuEl.style.top = "";
   PREVIEW_CONTEXT_MENU_STATE = null;
+}
+
+function ensureScoreHistoryDayMenuEl() {
+  let menu = document.getElementById("scoreHistoryDayMenu");
+  if (menu) return menu;
+  menu = document.createElement("div");
+  menu.id = "scoreHistoryDayMenu";
+  menu.className = "dropdownMenu scoreHistoryDayMenu";
+  document.body.appendChild(menu);
+  return menu;
+}
+
+function closeScoreHistoryDayMenu() {
+  const menu = document.getElementById("scoreHistoryDayMenu");
+  if (menu) {
+    menu.classList.remove("open", "fixed");
+    menu.innerHTML = "";
+    menu.style.left = "";
+    menu.style.top = "";
+  }
+  SCORE_HISTORY_DAY_MENU_STATE = null;
+}
+
+function renderScoreHistoryDayMenu(dayKey) {
+  const key = String(dayKey || "");
+  const menu = ensureScoreHistoryDayMenuEl();
+  const rows = getRootScoreHistoryLinesForDateKey(key);
+  const todayIcon = scoreHistoryDayIsToday(key)
+    ? `<span class="scoreHistoryTodayIcon" title="Today" aria-label="Today"></span>`
+    : "";
+  const linesHtml = rows.length
+    ? rows
+        .map((row) => {
+          const delta = Number(row.delta) || 0;
+          const deltaShown = delta > 0 ? `+${delta}` : String(delta);
+          return `
+            <div class="scoreHistoryDayMenuLine">
+              <span class="scoreHistoryDayMenuFolder" title="${escapeHtml(row.rootPath || "")}">${escapeHtml(row.rootLabel || row.rootPath || "root")}</span>
+              <span class="scoreHistoryDayMenuDelta">${escapeHtml(deltaShown)}</span>
+              <button
+                type="button"
+                data-score-history-delete-day-root="${escapeHtml(row.rootPath || "")}"
+                data-score-history-delete-day="${escapeHtml(key)}"
+              >Delete</button>
+            </div>
+          `;
+        })
+        .join("")
+    : `<div class="calendarRankingsEmpty">No score changes for this day.</div>`;
+  menu.innerHTML = `
+    <div class="scoreHistoryDayMenuHeader">
+      <div class="scoreHistoryDayMenuTitle">
+        ${todayIcon}
+        <span>${escapeHtml(scoreHistoryDateLabel(key))}</span>
+      </div>
+      <button
+        type="button"
+        class="scoreHistoryDayMenuDeleteDay"
+        data-score-history-delete-day="${escapeHtml(key)}"
+      >Delete day</button>
+    </div>
+    <div class="scoreHistoryDayMenuList">
+      ${linesHtml}
+    </div>
+  `;
+  return menu;
+}
+
+function openScoreHistoryDayMenu(dayKey, anchor) {
+  const key = String(dayKey || "");
+  if (!key || !anchor) return;
+  closeActionMenus();
+  const menu = renderScoreHistoryDayMenu(key);
+  SCORE_HISTORY_DAY_MENU_STATE = { dayKey: key, anchor };
+  menu.classList.add("open");
+  positionScoreHistoryDayMenu(anchor, menu);
 }
 
 function openTagContextMenu(context) {
@@ -43084,244 +43195,6 @@ function entryBulkSelected(entry) {
   return false;
 }
 
-function syncFilePaneThumbnailCardSelectionClass(card) {
-  if (!card) return;
-  const idx = parseInt(String(card.dataset.entryIndex || "-1"), 10);
-  const entry =
-    Number.isFinite(idx) && idx >= 0 ? WS.nav.entries[idx] || null : null;
-  const selected = idx === WS.nav.selectedIndex;
-  card.classList.toggle("selected", selected);
-  card.classList.toggle("previewSelected", selected);
-  card.classList.toggle("bulkSelected", entryBulkSelected(entry));
-}
-
-function syncFilePaneThumbnailSelectionClasses(prevIdx = null, nextIdx = null) {
-  if (!directoriesListEl) return;
-  const scoped = Number.isFinite(Number(prevIdx)) || Number.isFinite(Number(nextIdx));
-  if (scoped) {
-    const touched = new Set();
-    const addIndex = (idx) => {
-      const n = Number(idx);
-      if (!Number.isFinite(n) || n < 0) return;
-      const card = directoriesListEl.querySelector(
-        `[data-file-pane-item][data-entry-index="${String(n | 0)}"]`,
-      );
-      if (card) touched.add(card);
-    };
-    addIndex(prevIdx);
-    addIndex(nextIdx);
-    const selectedCards = directoriesListEl.querySelectorAll(
-      "[data-file-pane-item].selected, [data-file-pane-item].previewSelected",
-    );
-    for (let i = 0; i < selectedCards.length; i++) touched.add(selectedCards[i]);
-    touched.forEach((card) => syncFilePaneThumbnailCardSelectionClass(card));
-    return;
-  }
-  const cards = directoriesListEl.querySelectorAll("[data-file-pane-item]");
-  for (let i = 0; i < cards.length; i++) {
-    syncFilePaneThumbnailCardSelectionClass(cards[i]);
-  }
-}
-
-function openFilePaneEntry(entry) {
-  if (!entry) return false;
-  if (entry.kind === "up") {
-    leaveDirectory();
-    return true;
-  }
-  if (entry.kind === "dir" || entry.kind === "tag") {
-    enterSelectedDirectory();
-    return true;
-  }
-  if (entry.kind === "file") {
-    syncPreviewToSelection({ force: true });
-    renderPreviewPane(true, true);
-    return true;
-  }
-  return false;
-}
-
-function selectFilePaneThumbnailIndex(idx, opts = null) {
-  const prevIdx = WS.nav.selectedIndex;
-  const index = findNearestSelectableIndex(
-    idx,
-    idx >= WS.nav.selectedIndex ? 1 : -1,
-  );
-  WS.nav.selectedIndex = index;
-  if (currentViewNeedsResponsiveNavigationPriority())
-    noteResponsiveNavigationInteraction(isViewingTagFolder() ? "tag-album-thumbnail-selection" : "media-thumbnail-selection");
-  saveGridSelectionForCurrentContext();
-  syncPreviewToSelection({ force: true });
-  if (!(opts && opts.skipActivePane))
-    setActivePane("directories", {
-      keepBulkSelection: !!(opts && opts.keepBulkSelection),
-    });
-  syncFilePaneThumbnailSelectionClasses(prevIdx, index);
-  if (shouldDeferPreviewRenderForCurrentSelection()) {
-    schedulePreviewRenderForSelection({ delayMs: previewRenderDelayForCurrentSelection() });
-  } else {
-    renderPreviewPane(false, true);
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-  }
-  syncButtons();
-  return index;
-}
-
-function handleFilePaneThumbnailCardClick(card, entry, idx, e) {
-  if (!card || !entry) return;
-  const target = e && e.target;
-  if (target && target.closest && target.closest(".dirMenu")) return;
-  if (target && target.closest && target.closest(".tagEditInput")) return;
-  if (e) {
-    e.preventDefault();
-    e.stopImmediatePropagation();
-  }
-  closeActionMenus();
-  const priorSelectedIndex = WS.nav.selectedIndex;
-  const isCmdOrCtrl = eventCmdOrCtrlHeld(e);
-  const isShift = eventShiftHeld(e);
-  if (entry.kind === "up") {
-    WS.view.dirSelectAnchorIndex = idx;
-    selectFilePaneThumbnailIndex(idx);
-    if (priorSelectedIndex === idx && !isCmdOrCtrl && !isShift)
-      openFilePaneEntry(entry);
-    return;
-  }
-  if (!isShift && !isCmdOrCtrl && idx === priorSelectedIndex) {
-    if (teleportFromRotatingThumbnail(entry, card)) return;
-  }
-  if (isShift && isCmdOrCtrl) {
-    const anchor =
-      WS.view.dirSelectAnchorIndex >= 0
-        ? WS.view.dirSelectAnchorIndex
-        : priorSelectedIndex;
-    if (!WS.view.bulkSelectMode) includeCurrentSelectionInBulkSet(idx);
-    addEntrySelectionRange(anchor, idx, false);
-    WS.view.dirSelectAnchorIndex = idx;
-    selectFilePaneThumbnailIndex(idx);
-    return;
-  }
-  if (isShift) {
-    const anchor =
-      WS.view.dirSelectAnchorIndex >= 0
-        ? WS.view.dirSelectAnchorIndex
-        : priorSelectedIndex;
-    selectEntryRange(anchor, idx);
-    WS.view.dirSelectAnchorIndex = idx;
-    selectFilePaneThumbnailIndex(idx);
-    return;
-  }
-  if (isCmdOrCtrl) {
-    if (!WS.view.bulkSelectMode) includeCurrentSelectionInBulkSet(idx);
-    WS.view.bulkSelectMode = true;
-    toggleEntrySelection(entry);
-    WS.view.dirSelectAnchorIndex = idx;
-    selectFilePaneThumbnailIndex(idx);
-    return;
-  }
-
-  const hadBulkSelection = hasBulkSelection();
-  const shouldOpen = idx === priorSelectedIndex && !hadBulkSelection;
-  if (hadBulkSelection) {
-    clearBulkTagSelection();
-    WS.view.bulkSelectMode = false;
-  }
-  WS.view.dirSelectAnchorIndex = idx;
-  selectFilePaneThumbnailIndex(idx);
-  if (shouldOpen) openFilePaneEntry(entry);
-}
-
-function openFilePaneThumbnailEntryMenu(entry, card, e, opts = null) {
-  if (!entry) return false;
-  if (e) {
-    e.preventDefault();
-    e.stopImmediatePropagation();
-  }
-  const idx = parseInt(String(card?.dataset?.entryIndex || "-1"), 10);
-  if (Number.isFinite(idx) && idx >= 0) {
-    selectFilePaneThumbnailIndex(idx, {
-      skipActivePane: false,
-      keepBulkSelection: true,
-    });
-  }
-  const anchorKey = entryKeyForSelection(entry);
-  if (
-    anchorKey &&
-    openBulkActionMenuForSelection(anchorKey, {
-      x: Number(e?.clientX) || 0,
-      y: Number(e?.clientY) || 0,
-    })
-  )
-    return true;
-  const anchor = opts && opts.anchor ? opts.anchor : null;
-  if (entry.kind === "dir") {
-    openPreviewFolderActionMenu(
-      entry.node,
-      anchor
-        ? { anchor }
-        : { x: Number(e?.clientX) || 0, y: Number(e?.clientY) || 0 },
-    );
-    return true;
-  }
-  if (entry.kind === "file") {
-    const rec = WS.fileById.get(String(entry.id || ""));
-    if (rec)
-      openPreviewFileActionMenu(
-        rec,
-        anchor
-          ? { anchor }
-          : { x: Number(e?.clientX) || 0, y: Number(e?.clientY) || 0 },
-      );
-    return true;
-  }
-  if (entry.kind === "tag") {
-    openTagEntryContextMenu(entry, anchor || card);
-    return true;
-  }
-  return false;
-}
-
-function openFilePaneThumbnailContextMenu(entry, card, e) {
-  return openFilePaneThumbnailEntryMenu(entry, card, e);
-}
-
-function adaptPreviewCardForFilePane(card, entry, idx) {
-  if (!card || !entry) return card;
-  card.dataset.filePaneItem = "1";
-  card.dataset.entryIndex = String(idx);
-  card.dataset.bulkAnchor = entryKeyForSelection(entry);
-  card.classList.add("filePaneThumbItem");
-  if (idx === WS.nav.selectedIndex) card.classList.add("selected", "previewSelected");
-  if (entryBulkSelected(entry)) card.classList.add("bulkSelected");
-  card.addEventListener(
-    "click",
-    (e) => handleFilePaneThumbnailCardClick(card, entry, idx, e),
-    true,
-  );
-  card.addEventListener(
-    "contextmenu",
-    (e) => openFilePaneThumbnailContextMenu(entry, card, e),
-    true,
-  );
-  const menuBtn = card.querySelector(".dirMenuBtn");
-  if (menuBtn) {
-    menuBtn.addEventListener(
-      "click",
-      (e) =>
-        openFilePaneThumbnailEntryMenu(entry, card, e, { anchor: menuBtn }),
-      true,
-    );
-    menuBtn.addEventListener(
-      "contextmenu",
-      (e) =>
-        openFilePaneThumbnailEntryMenu(entry, card, e, { anchor: menuBtn }),
-      true,
-    );
-  }
-  return card;
-}
-
 function forcePreviewPaneThumbTitleBar(meta) {
   if (!meta || !meta.style || !meta.classList) return;
   if (
@@ -43347,410 +43220,7 @@ function forcePreviewPaneThumbTitleBar(meta) {
   meta.style.setProperty("color", "var(--preview-pane-thumb-title-bar-fg, var(--color0-primary))", "important");
 }
 
-function makeFilePaneUpThumbnailCard(entry, idx) {
-  const label = String(entry?.label || "Up Directory");
-  const icon = String(entry?.icon || "../");
-  const card = document.createElement("div");
-  card.className = "folderCard folderThumbCard filePaneUpThumbCard";
-  card.style.cursor = "pointer";
-  card.dataset.previewItemKey = entryKeyForSelection(entry);
-  card.dataset.previewItemKind = "up";
-  card.innerHTML = `
-    <div class="folderThumb folderThumbFallback">${escapeHtml(icon)}</div>
-    <div class="metaBlock compact thumbOverlayMeta">
-      <div class="topLine thumbOverlayTopLine">
-        <div class="name" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
-      </div>
-      <div class="thumbOverlayBottomLine">
-        <div class="mini thumbOverlayMini">${escapeHtml(String(entry?.parentLabel || "Parent folder"))}</div>
-      </div>
-    </div>
-  `;
-  return adaptPreviewCardForFilePane(card, entry, idx);
-}
-
-function makeFilePaneThumbnailErrorCard(entry, idx, error = null) {
-  const kind = String(entry?.kind || "item");
-  let label = "Unavailable item";
-  let detail = "Item";
-  if (kind === "dir") {
-    label = dirUiLabel(entry?.node || null) || "Folder";
-    detail = folderItemTypeLabelForNode(entry?.node || null);
-  } else if (kind === "tag") {
-    label = displayTagFolderLabel(
-      String(entry?.label || entry?.tag || entry?.album || "Tag"),
-    );
-    detail = tagItemTypeLabelForEntry(entry);
-  } else if (kind === "file") {
-    const rec = WS.fileById.get(String(entry?.id || "")) || null;
-    label = rec ? fileDisplayName(rec.name || "") : "File";
-    detail = fileItemTypeLabelForRecord(rec);
-  }
-  const card = document.createElement("div");
-  card.className =
-    kind === "file"
-      ? "fileCard filePaneThumbErrorCard"
-      : "folderCard folderThumbCard filePaneThumbErrorCard";
-  card.style.cursor = "pointer";
-  card.dataset.previewItemKey = entryKeyForSelection(entry);
-  card.dataset.previewItemKind = kind;
-  if (kind === "file") card.dataset.fileId = String(entry?.id || "");
-  if (kind === "dir") card.dataset.dirPath = String(entry?.node?.path || "");
-  const debugDetail =
-    error && error.message ? ` ${String(error.message || "")}` : "";
-  card.title = `${detail}${debugDetail}`;
-  card.innerHTML = `
-    <div class="folderThumb folderThumbFallback">!</div>
-    <div class="metaBlock compact thumbOverlayMeta">
-      <div class="topLine thumbOverlayTopLine">
-        <div class="name" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
-      </div>
-      <div class="thumbOverlayBottomLine">
-        <div class="mini thumbOverlayMini">${escapeHtml(detail)}</div>
-      </div>
-    </div>
-  `;
-  return adaptPreviewCardForFilePane(card, entry, idx);
-}
-
-function appendFilePaneThumbnailEntryCard(
-  entry,
-  idx,
-  folderGrid,
-  filesGrid,
-  context,
-) {
-  try {
-    if (!entry) return;
-    if (entry.kind === "up") {
-      folderGrid.appendChild(makeFilePaneUpThumbnailCard(entry, idx));
-      return;
-    }
-    if (entry.kind === "tag") {
-      folderGrid.appendChild(
-        adaptPreviewCardForFilePane(makeTagPreviewCard(entry), entry, idx),
-      );
-      return;
-    }
-    if (entry.kind === "dir") {
-      const dirPath = String(entry.node?.path || "");
-      folderGrid.appendChild(
-        adaptPreviewCardForFilePane(
-          makeFolderPreviewCard(
-            entry.node,
-            context.folderSizeMemo,
-            context.navDisplayPositions.dirPositions.get(dirPath),
-          ),
-          entry,
-          idx,
-        ),
-      );
-      return;
-    }
-    if (entry.kind === "file") {
-      const rec = WS.fileById.get(String(entry.id || ""));
-      if (!rec) return;
-      filesGrid.appendChild(
-        adaptPreviewCardForFilePane(
-          makePreviewFileCard(
-            rec,
-            false,
-            WS.nav.dirNode,
-            context.visibleFileIds,
-            context.useFitInsideJustified,
-            context.useSquareMediaCards,
-            context.navDisplayPositions.filePositions.get(
-              String(entry.id || ""),
-            ),
-          ),
-          entry,
-          idx,
-        ),
-      );
-    }
-  } catch (error) {
-    console.error("File pane thumbnail entry render failed.", {
-      entryKind: String(entry?.kind || ""),
-      entryKey: entryKeyForSelection(entry),
-      error,
-    });
-    const targetGrid = entry && entry.kind === "file" ? filesGrid : folderGrid;
-    if (targetGrid) {
-      targetGrid.appendChild(makeFilePaneThumbnailErrorCard(entry, idx, error));
-    }
-  }
-}
-
-function shouldVirtualizeFilePaneThumbnailViewEntries() {
-  if (!filePaneThumbnailViewEnabled()) return false;
-  if (!WS.root || !Array.isArray(WS.nav.entries)) return false;
-  if (WS.nav.entries.length < 180) return false;
-  if (naturalAspectThumbnailCardsEnabled()) return false;
-  if (
-    WS.view.bulkActionMenuOpen ||
-    WS.view.dirActionMenuPath ||
-    WS.view.fileActionMenuId ||
-    TAG_EDIT_PATH ||
-    RENAME_EDIT_PATH ||
-    RENAME_EDIT_FILE_ID ||
-    TAG_ENTRY_RENAME_STATE ||
-    PREVIEW_BULK_TAG_EDIT
-  ) {
-    return false;
-  }
-  // The file-pane thumbnail renderer separates folder/tag cards from file cards.
-  // Virtualize only folder/tag-only views, which are the slow tag/album cases,
-  // so mixed file folders keep their exact existing layout.
-  return WS.nav.entries.every((entry) => entry && entry.kind !== "file");
-}
-
-function measureFilePaneThumbnailVirtualMetrics() {
-  if (!directoriesListEl) return null;
-  const rootStyle =
-    typeof getComputedStyle === "function"
-      ? getComputedStyle(document.documentElement)
-      : null;
-  const listStyle =
-    typeof getComputedStyle === "function" ? getComputedStyle(directoriesListEl) : null;
-  const gutter = parseCssPixelValue(rootStyle, "--preview-gutter", 10);
-  const folderMin =
-    parseCssPixelValue(rootStyle, "--folder-grid-min", 260) *
-    parseCssPixelValue(rootStyle, "--thumb-scale-folder", 1);
-  const contentWidth = Math.max(
-    80,
-    (Number(directoriesListEl.clientWidth) || filePaneThumbnailNavigationWidthPx()) -
-      gutter * 2,
-  );
-  const cssGap = Math.max(
-    0,
-    parseFloat(listStyle?.getPropertyValue("gap") || "") || gutter,
-  );
-  const cols = Math.max(
-    1,
-    Math.floor((contentWidth + cssGap) / Math.max(1, folderMin + cssGap)),
-  );
-  const rowHeight = Math.max(96, folderMin) + cssGap;
-  return { gap: cssGap, card: folderMin, cols, rowHeight };
-}
-
-function renderFilePaneThumbnailView(keepScroll = false, opts = null) {
-  const suppressSelectionReveal = !!(opts && opts.suppressSelectionReveal);
-  syncThumbFilterKeyWithCurrentAppearanceContext();
-  const nextContextKey = directoriesScrollContextKey();
-  const contextChanged = nextContextKey !== LAST_DIRECTORIES_SCROLL_CONTEXT;
-  const preserveScroll = !!keepScroll && !contextChanged;
-  const prevScroll = preserveScroll ? directoriesListEl.scrollTop : 0;
-  invalidateGridRowMetricsCache();
-  finishDirectoriesGridFileDrag();
-  directoriesListEl.innerHTML = "";
-  directoriesListEl.dataset.virtualized = "0";
-  directoriesListEl.classList.remove("gridModeList");
-  directoriesListEl.classList.add("filePaneThumbnailView");
-  const expandedSections = false;
-  directoriesListEl.classList.remove("filePaneExpandedThumbnailView");
-  updateGridModeListTopInset();
-  updateTitleLabel();
-  const naturalThumbCards = naturalAspectThumbnailCardsEnabled();
-  directoriesListEl.classList.toggle("naturalThumbCards", !!naturalThumbCards);
-  directoriesListEl.style.removeProperty("--grid-card-size");
-  directoriesListEl.style.removeProperty("--grid-cols");
-  renderDirectoriesTagsHeader();
-  renderDirectoriesBulkHeader();
-  renderDirectoriesActionHeader();
-
-  const headerActive =
-    !!WS.root &&
-    ((directoriesTagsRowEl && directoriesTagsRowEl.style.display !== "none") ||
-      (directoriesBulkRowEl && directoriesBulkRowEl.style.display !== "none"));
-  applyDirectoriesFilesOnlyChromeMode(false);
-  setDirectoriesHeaderActive(headerActive);
-
-  if (!WS.root) {
-    LAST_DIRECTORIES_SCROLL_CONTEXT = nextContextKey;
-    directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">${escapeHtml(ROOT_FOLDER_EMPTY_PROMPT)}</div>`;
-    scheduleThumbnailDemandRefresh();
-    return;
-  }
-
-  if (!WS.nav.entries.length) {
-    LAST_DIRECTORIES_SCROLL_CONTEXT = nextContextKey;
-    let emptyMsg = "Empty directory.";
-    if (isViewingTagFolder()) {
-      if (WS.view.tagFolderActiveMode === "favorites")
-        emptyMsg = "No favorite folders.";
-      else if (WS.view.tagFolderActiveMode === "hidden")
-        emptyMsg = "No hidden folders.";
-      else if (WS.view.tagFolderActiveMode === "album") {
-        const albumLabel = String(WS.view.tagFolderActiveAlbum || "");
-        emptyMsg = albumLabel
-          ? `No tags in album '${albumLabel}'.`
-          : "No tags in this album.";
-      } else {
-        const tagLabel = String(WS.view.tagFolderActiveTag || "");
-        emptyMsg = tagLabel
-          ? `No folders tagged '${tagLabel}'.`
-          : "No tagged folders.";
-      }
-    }
-    directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">${escapeHtml(emptyMsg)}</div>`;
-    renderDirectoriesActionHeader();
-    scheduleThumbnailDemandRefresh();
-    return;
-  }
-
-  const navDisplayPositions = buildDisplayPositionMapsForNavEntries(
-    WS.nav.entries,
-  );
-  const folderSizeMemo = new Map();
-  const folderGrid = document.createElement("div");
-  folderGrid.className = "gridFolders filePaneThumbFolders";
-  const useFolderFitInsideJustified = folderPreviewThumbUsesContainMode();
-  if (useFolderFitInsideJustified) folderGrid.classList.add("fitInsideJustified");
-  const filesGrid = document.createElement("div");
-  filesGrid.className = "gridFiles filePaneThumbFiles";
-  const useNaturalAspectCards = naturalAspectThumbnailCardsEnabled();
-  const useSquareMediaCards = previewSquareMediaThumbsEnabled();
-  const useFitInsideJustified = !useSquareMediaCards;
-  if (useFitInsideJustified) filesGrid.classList.add("fitInsideJustified");
-  if (useSquareMediaCards) filesGrid.classList.add("previewSquareCards");
-  if (useNaturalAspectCards) filesGrid.classList.add("previewNaturalAspectCards");
-  if (canReorderFilesInDir(WS.nav.dirNode)) setupPreviewGridDrag(filesGrid);
-  const makeSection = (title, gridEl) => {
-    const section = document.createElement("div");
-    section.className = "expandedSection filePaneThumbnailSection";
-    const bar = document.createElement("div");
-    bar.className = "expandedBar expandedStaticBar filePaneThumbnailSectionBar";
-    const name = document.createElement("div");
-    name.className = "name";
-    name.textContent = String(title || "Items");
-    bar.appendChild(name);
-    section.appendChild(bar);
-    section.appendChild(gridEl);
-    return section;
-  };
-  const visibleFileIds = Array.from(getVisibleFileIdsInEntries());
-  const virtualizeThumbGrid = shouldVirtualizeFilePaneThumbnailViewEntries();
-  const virtualMetrics = virtualizeThumbGrid
-    ? measureFilePaneThumbnailVirtualMetrics()
-    : null;
-  const virtualWindow = virtualizeThumbGrid
-    ? computeDirectoriesVirtualWindow(
-        WS.nav.entries.length,
-        virtualMetrics,
-        suppressSelectionReveal,
-      )
-    : null;
-  const entryStart = virtualWindow ? Math.max(0, virtualWindow.startIndex) : 0;
-  const entryEndExclusive = virtualWindow
-    ? Math.max(entryStart, virtualWindow.endIndexExclusive)
-    : WS.nav.entries.length;
-  directoriesListEl.dataset.virtualized = virtualWindow ? "1" : "0";
-  const showTagSpacer =
-    showTagFolderSpacerRowEnabled() &&
-    WS.nav.entries.some((entry) => entry && entry.kind === "tag") &&
-    WS.nav.entries.some((entry) => entry && entry.kind === "dir");
-  let seenTagEntry = false;
-  let insertedTagSpacer = false;
-  if (virtualWindow) appendVirtualGridSpacer(folderGrid, virtualWindow.topSpacerHeight);
-
-  const renderContext = {
-    folderSizeMemo,
-    navDisplayPositions,
-    visibleFileIds,
-    useFitInsideJustified,
-    useSquareMediaCards,
-  };
-  for (let idx = entryStart; idx < entryEndExclusive; idx++) {
-    const entry = WS.nav.entries[idx];
-    if (!entry) continue;
-    if (
-      showTagSpacer &&
-      !insertedTagSpacer &&
-      seenTagEntry &&
-      entry.kind === "dir"
-    ) {
-      folderGrid.appendChild(makePreviewTagSpacer());
-      insertedTagSpacer = true;
-    }
-    appendFilePaneThumbnailEntryCard(
-      entry,
-      idx,
-      folderGrid,
-      filesGrid,
-      renderContext,
-    );
-    if (entry.kind === "tag") seenTagEntry = true;
-  }
-  if (virtualWindow) appendVirtualGridSpacer(folderGrid, virtualWindow.bottomSpacerHeight);
-
-  if (folderGrid.childNodes.length) {
-    if (expandedSections) {
-      const hasTagThumb = WS.nav.entries.some(
-        (entry) => entry && entry.kind === "tag",
-      );
-      const hasDirThumb = WS.nav.entries.some(
-        (entry) => entry && (entry.kind === "dir" || entry.kind === "up"),
-      );
-      const sectionTitle =
-        hasTagThumb && hasDirThumb
-          ? "Folders and tags"
-          : hasTagThumb
-            ? "Tags"
-            : "Folders";
-      directoriesListEl.appendChild(makeSection(sectionTitle, folderGrid));
-    } else {
-      directoriesListEl.appendChild(folderGrid);
-    }
-    if (useFolderFitInsideJustified) applyFitInsideJustifiedLayout(folderGrid);
-    if (filesGrid.childNodes.length && !expandedSections)
-      directoriesListEl.appendChild(makeSpacer());
-  }
-  if (filesGrid.childNodes.length) {
-    if (expandedSections) {
-      directoriesListEl.appendChild(
-        makeSection("Files in this folder", filesGrid),
-      );
-    } else {
-      directoriesListEl.appendChild(filesGrid);
-    }
-    if (useFitInsideJustified) applyFitInsideJustifiedLayout(filesGrid);
-  }
-  if (!folderGrid.childNodes.length && !filesGrid.childNodes.length) {
-    directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">Empty folder.</div>`;
-  }
-
-  if (preserveScroll) {
-    directoriesListEl.scrollTop = prevScroll;
-  } else if (contextChanged) {
-    directoriesListEl.scrollTop = 0;
-    directoriesListEl.scrollLeft = 0;
-  }
-  if (!suppressSelectionReveal) {
-    const vis = getSelectedDirectoryRowVisibility();
-    if (vis.state === "offscreen" || vis.state === "partial")
-      snapSelectedDirectoryRowFullyIntoView();
-  }
-  LAST_DIRECTORIES_SCROLL_CONTEXT = nextContextKey;
-  renderDirectoriesActionHeader();
-  syncFilePaneThumbnailSelectionClasses();
-  scheduleThumbnailDemandRefresh();
-  if (WS.nav && WS.nav.dirNode === WS.root) scheduleRootPinnedThumbnailPreload(30);
-}
-
 function renderDirectoriesPane(keepScroll = false, opts = null) {
-  if (filePaneThumbnailViewEnabled()) {
-    try {
-      renderFilePaneThumbnailView(keepScroll, opts);
-    } catch (error) {
-      console.error("File pane card view render failed.", error);
-      if (directoriesListEl) {
-        directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">File pane failed to render. Change hidden-item visibility, then try again.</div>`;
-        directoriesListEl.dataset.virtualized = "0";
-      }
-      scheduleThumbnailDemandRefresh();
-    }
-    return;
-  }
   const suppressSelectionReveal = !!(opts && opts.suppressSelectionReveal);
   syncThumbFilterKeyWithCurrentAppearanceContext();
   const nextContextKey = directoriesScrollContextKey();
@@ -43776,8 +43246,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   })();
   invalidateGridRowMetricsCache();
   directoriesListEl.innerHTML = "";
-  directoriesListEl.classList.remove("filePaneThumbnailView");
-  directoriesListEl.classList.remove("filePaneExpandedThumbnailView");
   directoriesListEl.classList.toggle("gridModeList", gridModeActive);
   updateGridModeListTopInset();
   updateTitleLabel();
@@ -43968,7 +43436,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     if (entry && entry.kind === "dir") seenSearchResultDirCount++;
 
     const isTagEntry = entry.kind === "tag";
-    const isUpEntry = entry.kind === "up";
     if (isTagEntry) {
       row.__dirTagEntry = entry;
       row.classList.add("tagEntry");
@@ -43982,32 +43449,12 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     }
 
     const renameActive = isTagEntry && isTagEntryRenameActive(entry);
-    if (isUpEntry) {
-      const upLabel = String(entry.label || "Up Directory");
-      const upIcon = String(entry.icon || "../");
-      const upMeta = `Back to ${String(entry.parentLabel || "parent folder")}`;
-      row.classList.add("folderRow", "folderSquareCard", "upNavRow");
-      row.innerHTML = `
-            <div class="dirSquareCard">
-              <div class="dirSquareMedia">
-                <div class="dirSquareFallback">${escapeHtml(upIcon)}</div>
-              </div>
-              <div class="dirSquareOverlay">
-                <div class="dirSquareTop">
-                  <span class="dirSquareName" title="${escapeHtml(upLabel)}">${escapeHtml(upLabel)}</span>
-                </div>
-                <div class="dirSquareBottom">
-                  <div class="dirSquareMeta">${escapeHtml(upMeta)}</div>
-                </div>
-              </div>
-            </div>
-          `;
-    } else if (isTagEntry) {
+    if (isTagEntry) {
       const tagVisibility = directoriesThumbnailVisibilityForKind("tag");
       const label = String(entry.label || entry.tag || "Tag");
       const labelDisplay = displayTagFolderLabel(label);
       const countText = getTagEntryCountText(entry);
-      const iconText = getTagEntryDisplayIcon(entry);
+      const iconHtml = getTagEntryDisplayIcon(entry);
       const tagTypeLabel = tagItemTypeLabelForEntry(entry);
       const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
       const lightweightTagThumbs =
@@ -44058,7 +43505,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         : entry.album && !entry.tag
           ? `tag:${tagRotateScope}:album:${String(entry.album || "")}`
           : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
-      let squareMediaHtml = `<div class="dirSquareFallback">${escapeHtml(iconText)}</div>`;
+      let squareMediaHtml = `<div class="dirSquareFallback">${iconHtml}</div>`;
       if (tagThumbMode !== "none") {
         if (presetRec) {
           const previewId = String(presetRec.id || "");
@@ -44116,7 +43563,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 const rec = slot && slot.rec ? slot.rec : null;
                 if (!rec) {
                   quadHtml.push(
-                    `<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`,
+                    `<div class="dirTagQuadCell"><div class="dirSquareFallback">${iconHtml}</div></div>`,
                   );
                   continue;
                 }
@@ -44127,7 +43574,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 const previewAspect = getPreviewAspectForRecord(rec);
                 if (!previewSrc) {
                   quadHtml.push(
-                    `<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`,
+                    `<div class="dirTagQuadCell"><div class="dirSquareFallback">${iconHtml}</div></div>`,
                   );
                   continue;
                 }
@@ -44182,7 +43629,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const scoreBadgeHtml = ``;
       const hiddenBadgeHtml =
         !menuOnlyTagSquareCard && isHiddenTag
-          ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">?</span>`
+          ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">${appIconHtml("hidden")}</span>`
           : "";
       const countMetaHtml = inlineTagTitleCompact
         ? `<span class="dirSquareName ${tagTitleClass} dirSquareNameInlineCompact" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`
@@ -44223,7 +43670,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           : `<span class="dirNameText ${tagTitleClass}" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`;
         row.classList.add("folderBarCard", "tagBarCard");
         row.innerHTML = `
-              <div class="dirIcon">${escapeHtml(iconText)}</div>
+              <div class="dirIcon">${iconHtml}</div>
               <div class="dirName">${tagNameHtml}</div>
               <div class="dirRight dirFolderActions">
                 ${(() => {
@@ -44259,7 +43706,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         entry.kind === "dir" &&
         TAG_EDIT_PATH !== null &&
         String(TAG_EDIT_PATH) === dirPath;
-      let icon = "[]";
+      let iconHtml = appIconHtml("folder");
       let name = "";
       let nameHtml = "";
       let voteHtml = "";
@@ -44289,7 +43736,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const canRename = !!WS.meta.fsRootHandle && !isStorageGhost;
         const canBatchIndex = !!WS.meta.fsRootHandle && !isStorageGhost;
         const canResetOrder = !!entry.node?.preserveOrder && !isStorageGhost;
-        icon = "[]";
+        iconHtml = appIconHtml(iconKeyForDirNode(entry.node));
         name = prefixDisplayLabelWithPosition(
           dirUiLabel(entry.node),
           navDisplayPositions.dirPositions.get(String(p || "")),
@@ -44319,7 +43766,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const statusBadges = [];
         if (isHidden)
           statusBadges.push(
-            `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">?</span>`,
+            `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">${appIconHtml("hidden")}</span>`,
           );
         const statusBadgeHtml = statusBadges.length
           ? `<span class="dirStatusBadges">${statusBadges.join("")}</span>`
@@ -44528,7 +43975,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                       const slotRec = slot && slot.rec ? slot.rec : null;
                       if (!slotRec) {
                         quadHtml.push(
-                          `<div class="dirTagQuadCell"><div class="dirSquareFallback">[]</div></div>`,
+                          `<div class="dirTagQuadCell"><div class="dirSquareFallback">${appIconHtml("folder")}</div></div>`,
                         );
                         continue;
                       }
@@ -44540,7 +43987,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                       const previewAspect = getPreviewAspectForRecord(slotRec);
                       if (!previewSrc) {
                         quadHtml.push(
-                          `<div class="dirTagQuadCell"><div class="dirSquareFallback">[]</div></div>`,
+                          `<div class="dirTagQuadCell"><div class="dirSquareFallback">${appIconHtml("folder")}</div></div>`,
                         );
                         continue;
                       }
@@ -44559,7 +44006,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           const squareMediaHtml =
             rootPortalMediaHtml ||
             inlinePreviewHtml ||
-            `<div class="dirSquareFallback">[]</div>`;
+            `<div class="dirSquareFallback">${iconHtml}</div>`;
           const squareCardStyle =
             naturalThumbCards && squareAspectRec
               ? ` style="--dir-card-ar:${Number(getPreviewAspectForRecord(squareAspectRec)).toFixed(4)};"`
@@ -44613,7 +44060,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const sel =
           canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
         if (sel) row.classList.add("bulkSelected");
-        icon = isVid ? "[>]" : "[*]";
+        iconHtml = appIconHtml(isVid ? "video" : "image");
         name = prefixDisplayLabelWithPosition(
           fileDisplayNameForRecord(rec),
           navDisplayPositions.filePositions.get(String(entry.id || "")),
@@ -44676,8 +44123,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           }
           const fileMediaHtml = inlinePreviewHtml
             ? inlinePreviewHtml
-            : `<div class="dirSquareFallback" aria-hidden="true">${escapeHtml(
-                isVid ? "[>]" : "[*]",
+            : `<div class="dirSquareFallback" aria-hidden="true">${appIconHtml(
+                isVid ? "video" : "image",
               )}</div>`;
           const fileMetaBits = [];
           if (fileVisibility.showItemTypeLabel)
@@ -44741,19 +44188,19 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           row.classList.add("folderBarCard");
           if (isRenameEditingDir) {
             row.innerHTML = `
-                  <div class="dirIcon">${icon}</div>
+                  <div class="dirIcon">${iconHtml}</div>
                   <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(String(entry.node?.name || ""))}" placeholder="folder name" /></div>
                   ${rightHtml}
                 `;
           } else if (isTagEditingDir) {
             row.innerHTML = `
-                  <div class="dirIcon">${icon}</div>
+                  <div class="dirIcon">${iconHtml}</div>
                   <div class="dirName"><input class="tagEditInput" type="text" value="${escapeHtml(metaGetUserTags(String(entry.node?.path || "")).join(", "))}" placeholder="tag1, tag2" /></div>
                   ${rightHtml}
                 `;
           } else {
             row.innerHTML = `
-                  <div class="dirIcon">${icon}</div>
+                  <div class="dirIcon">${iconHtml}</div>
                   <div class="dirName dirNameWithBadge" title="${escapeHtml(name)}">${nameHtml}</div>
                   ${thumbHtml}
                   ${rightHtml}
@@ -44766,14 +44213,14 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           const curName = String(rec?.name || "");
           if (folderSquareCardMode) {
             row.innerHTML = `
-                  <div class="dirIcon">${icon}</div>
+                  <div class="dirIcon">${iconHtml}</div>
                   <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
                   ${fileMenuHtml}
                 `;
           } else {
             row.classList.add("fileRow", "fileBarCard");
             row.innerHTML = `
-                  <div class="dirIcon">${icon}</div>
+                  <div class="dirIcon">${iconHtml}</div>
                   <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
                   ${rightHtml}
                 `;
@@ -44787,7 +44234,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           } else {
             row.classList.add("fileRow", "fileBarCard");
             row.innerHTML = `
-                  <div class="dirIcon">${icon}</div>
+                  <div class="dirIcon">${iconHtml}</div>
                   <div class="dirName" title="${escapeHtml(name)}">${nameHtml}</div>
                   ${rightHtml}
                 `;
@@ -44847,11 +44294,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const priorSelectedIndex = WS.nav.selectedIndex;
       const isCmdOrCtrl = eventCmdOrCtrlHeld(e);
       const isShift = eventShiftHeld(e);
-      if (entry.kind === "up") {
-        WS.view.dirSelectAnchorIndex = idx;
-        setDirectoriesSelection(idx, { keepScroll: true });
-        return;
-      }
       if (!isShift && !isCmdOrCtrl && idx === WS.nav.selectedIndex) {
         if (teleportFromRotatingThumbnail(entry, row)) return;
       }
@@ -45418,6 +44860,76 @@ document.addEventListener("click", (e) => {
       return;
     }
     closePreviewContextMenu();
+  }
+  if (SCORE_HISTORY_DAY_MENU_STATE) {
+    const menu = document.getElementById("scoreHistoryDayMenu");
+    const inMenu =
+      target && target.closest && target.closest("#scoreHistoryDayMenu");
+    if (inMenu) {
+      const dayRootBtn =
+        target && target.closest
+          ? target.closest(
+              "button[data-score-history-delete-day-root][data-score-history-delete-day]",
+            )
+          : null;
+      if (dayRootBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const dayKey = String(
+          dayRootBtn.getAttribute("data-score-history-delete-day") || "",
+        );
+        const rootPath = String(
+          dayRootBtn.getAttribute("data-score-history-delete-day-root") || "",
+        );
+        const removed = removeScoreHistoryLinesByDateAndRoot(dayKey, rootPath);
+        if (removed > 0) {
+          metaMarkDirty(META_DOC_IDS.scoreHistory);
+          closeScoreHistoryDayMenu();
+          renderCalendarUi();
+          setCalendarStatus("Saved");
+          showStatusMessage("Score log line deleted.");
+        } else {
+          setCalendarStatus("No changes");
+        }
+      }
+      const dayBtn =
+        target && target.closest
+          ? target.closest("button[data-score-history-delete-day]")
+          : null;
+      if (dayBtn && !dayRootBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const dayKey = String(
+          dayBtn.getAttribute("data-score-history-delete-day") || "",
+        );
+        if (!dayKey) return;
+        const ok = confirm(
+          `Delete all score log events on ${scoreHistoryDateLabel(dayKey)}?`,
+        );
+        if (!ok) return;
+        const removed = removeScoreHistoryEntriesByDateKey(dayKey);
+        if (removed > 0) {
+          metaMarkDirty(META_DOC_IDS.scoreHistory);
+          closeScoreHistoryDayMenu();
+          renderCalendarUi();
+          setCalendarStatus("Saved");
+          showStatusMessage(
+            `Deleted ${removed} score log event${removed === 1 ? "" : "s"}.`,
+          );
+        } else {
+          setCalendarStatus("No changes");
+        }
+      }
+      return;
+    }
+    const anchor = SCORE_HISTORY_DAY_MENU_STATE.anchor || null;
+    if (
+      anchor &&
+      (target === anchor || (anchor.contains && anchor.contains(target)))
+    ) {
+      return;
+    }
+    if (menu && menu.classList.contains("open")) closeScoreHistoryDayMenu();
   }
   if (exitBulkSelectModeIfNeeded(target)) return;
   const hasActionMenu =
@@ -46272,7 +45784,7 @@ function getDirectoryItemCount(dirNode) {
     let count = 0;
     for (let i = 0; i < WS.nav.entries.length; i++) {
       const entry = WS.nav.entries[i];
-      if (!entry || entry.kind === "up") continue;
+      if (!entry) continue;
       count++;
     }
     return count;
@@ -47228,7 +46740,7 @@ function renderPreviewViewerItem(idx) {
     const icon = document.createElement("div");
     icon.style.fontSize = "56px";
     icon.style.marginBottom = "12px";
-    icon.textContent = "[]";
+    setAppIcon(icon, "folder");
 
     const name = document.createElement("div");
     name.style.fontSize = "14px";
@@ -47737,14 +47249,6 @@ function previewPlaceholderThumbSrcForRecord(rec) {
 function previewPlaceholderInfoForCurrentSelection() {
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
   const selectedThumbRecord = getSelectedThumbnailSourceRecord();
-  if (entry && entry.kind === "up") {
-    return {
-      icon: String(entry.icon || "../"),
-      label: String(entry.label || "Up Directory"),
-      meta: String(entry.parentLabel || "Parent folder"),
-      thumbnailRecord: null,
-    };
-  }
   if (entry && entry.kind === "tag") {
     const originPath = String(entry.originPath || WS.nav?.dirNode?.path || "");
     const tagLocation = [
@@ -47754,7 +47258,7 @@ function previewPlaceholderInfoForCurrentSelection() {
       .filter(Boolean)
       .join("/");
     return {
-      icon: getTagEntryDisplayIcon(entry),
+      iconKey: getTagEntryIconKey(entry),
       label: displayTagFolderLabel(String(entry.label || entry.tag || "Tag")),
       meta: tagItemTypeLabelForEntry(entry),
       itemKind: "tag",
@@ -47766,7 +47270,7 @@ function previewPlaceholderInfoForCurrentSelection() {
   }
   if (entry && entry.kind === "dir") {
     return {
-      icon: isStorageStubDirNode(entry.node) ? ":" : "[]",
+      iconKey: iconKeyForDirNode(entry.node),
       label: dirUiLabel(entry.node) || "Folder",
       meta: folderItemTypeLabelForNode(entry.node),
       itemKind: "dir",
@@ -47780,7 +47284,7 @@ function previewPlaceholderInfoForCurrentSelection() {
   if (WS.preview.kind === "dir" && WS.preview.dirNode) {
     const dirNode = WS.preview.dirNode;
     return {
-      icon: dirNode._skipTagFilters ? "#" : "[]",
+      iconKey: iconKeyForDirNode(dirNode),
       label:
         dirNode._skipTagFilters && dirNode.name
           ? displayTagFolderLabel(String(dirNode.name || "Tag"))
@@ -47797,7 +47301,7 @@ function previewPlaceholderInfoForCurrentSelection() {
     };
   }
   return {
-    icon: "—",
+    iconKey: "noItem",
     label: WS.root ? "No item selected" : ROOT_FOLDER_EMPTY_PROMPT,
     meta: "",
     thumbnailRecord: null,
@@ -47974,7 +47478,7 @@ function renderPreviewPlaceholder(info = null) {
     const icon = document.createElement("div");
     icon.className = "previewItemPlaceholderIcon";
     icon.setAttribute("aria-hidden", "true");
-    icon.textContent = String(src.icon || "—");
+    setAppIcon(icon, src.iconKey || "noItem");
     return icon;
   };
 
@@ -48122,7 +47626,7 @@ function renderPreviewPane(animate = false, keepScroll = false) {
     WS.view.previewScrollActiveKey = "";
     updateModePill();
     renderPreviewPlaceholder({
-      icon: "—",
+      iconKey: "noItem",
       label: ROOT_FOLDER_EMPTY_PROMPT,
       meta: "",
     });
@@ -48171,7 +47675,7 @@ function renderPreviewPane(animate = false, keepScroll = false) {
       }
       WS.view.previewScrollActiveKey = "";
       renderPreviewPlaceholder({
-        icon: "—",
+        iconKey: "noItem",
         label: "No visible file",
         meta: "The previous preview item is hidden by the current filters.",
       });
@@ -48205,7 +47709,7 @@ function renderPreviewPane(animate = false, keepScroll = false) {
       }
       WS.view.previewScrollActiveKey = "";
       renderPreviewPlaceholder({
-        icon: "—",
+        iconKey: "noItem",
         label: "No visible file",
         meta: "No file is available for the current filters.",
       });
@@ -48275,7 +47779,7 @@ function getPreviewFolderAndFileEntries(dirNode, opts = null) {
     const fileIds = [];
     for (let i = 0; i < WS.nav.entries.length; i++) {
       const entry = WS.nav.entries[i];
-      if (!entry || entry.kind === "up") continue;
+      if (!entry) continue;
       if (entry.kind === "tag" || entry.kind === "dir") {
         folderEntries.push(entry);
         continue;
@@ -48390,7 +47894,7 @@ function buildPreviewTagCardMarkup(entry) {
   const label = String(entry.label || entry.tag || "Tag");
   const labelDisplay = displayTagFolderLabel(label);
   const countText = getTagEntryCountText(entry);
-  const iconText = getTagEntryDisplayIcon(entry);
+  const iconHtml = getTagEntryDisplayIcon(entry);
   const tagTypeLabel = tagItemTypeLabelForEntry(entry);
   const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
   const lightweightTagMetrics =
@@ -48433,7 +47937,7 @@ function buildPreviewTagCardMarkup(entry) {
       : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
   const renameActive = isTagEntryRenameActive(entry);
 
-  let squareMediaHtml = `<div class="dirSquareFallback">${escapeHtml(iconText)}</div>`;
+  let squareMediaHtml = `<div class="dirSquareFallback">${iconHtml}</div>`;
   if (tagThumbMode !== "none") {
     if (presetRec) {
       const previewId = String(presetRec.id || "");
@@ -48487,7 +47991,7 @@ function buildPreviewTagCardMarkup(entry) {
             const rec = slot && slot.rec ? slot.rec : null;
             if (!rec) {
               quadHtml.push(
-                `<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`,
+                `<div class="dirTagQuadCell"><div class="dirSquareFallback">${iconHtml}</div></div>`,
               );
               continue;
             }
@@ -48498,7 +48002,7 @@ function buildPreviewTagCardMarkup(entry) {
             const previewAspect = getPreviewAspectForRecord(rec);
             if (!previewSrc) {
               quadHtml.push(
-                `<div class="dirTagQuadCell"><div class="dirSquareFallback">${escapeHtml(iconText)}</div></div>`,
+                `<div class="dirTagQuadCell"><div class="dirSquareFallback">${iconHtml}</div></div>`,
               );
               continue;
             }
@@ -48549,7 +48053,7 @@ function buildPreviewTagCardMarkup(entry) {
   const scoreBadgeHtml = ``;
   const hiddenBadgeHtml =
     !menuOnlyTagCard && isHiddenTag
-      ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">?</span>`
+      ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">${appIconHtml("hidden")}</span>`
       : "";
   const countMetaHtml = inlineTagTitleCompact
     ? `<span class="dirSquareName ${tagTitleClass} dirSquareNameInlineCompact" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`
@@ -48812,7 +48316,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
   const card = document.createElement("div");
   card.className = "folderCard";
   card.style.cursor = "pointer";
-  const icon = "[]";
+  const iconKey = iconKeyForDirNode(dirNode);
   const nm = prefixDisplayLabelWithPosition(
     dirUiLabel(dirNode),
     displayPosition,
@@ -48959,13 +48463,13 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
       } else {
         const fallback = document.createElement("div");
         fallback.className = "folderThumb folderThumbFallback";
-        fallback.textContent = leadRec.type === "video" ? "[>]" : icon;
+        setAppIcon(fallback, iconKeyForRecordType(leadRec.type));
         card.appendChild(fallback);
       }
     } else {
       const fallback = document.createElement("div");
       fallback.className = "folderThumb folderThumbFallback";
-      fallback.textContent = icon;
+      setAppIcon(fallback, iconKey);
       card.appendChild(fallback);
     }
 
@@ -49845,13 +49349,6 @@ function shouldExpandPreviewFolderEntry(entry) {
 }
 
 function canReorderFilesInPreviewDir(dirNode) {
-  if (
-    filePaneThumbnailViewEnabled() &&
-    dirNode &&
-    String(dirNode.path || "") === String(WS.nav.dirNode?.path || "")
-  ) {
-    return canReorderFilesInDir(dirNode);
-  }
   const target = getPreviewTargetDir();
   if (!target || !dirNode) return false;
   if (String(target.path || "") !== String(dirNode.path || "")) return false;
@@ -50129,7 +49626,7 @@ function makePreviewFileCard(
     const fallback = document.createElement("div");
     fallback.className = "thumb thumbFallback";
     fallback.setAttribute("aria-hidden", "true");
-    fallback.textContent = rec.type === "video" ? "[>]" : "[*]";
+    setAppIcon(fallback, iconKeyForRecordType(rec.type));
     card.appendChild(fallback);
   }
 
@@ -50900,12 +50397,6 @@ async function generateVideoThumb(rec, opts = null) {
     return;
   }
   if (!thumbnailJobContextStillValid(jobToken, recId, force)) return;
-  if (await hydrateVideoThumbFromDiskCache(rec, mode)) {
-    clearVideoThumbRetryState(recId);
-    if (thumbnailJobContextStillValid(jobToken, recId, force))
-      notifyThumbnailRecordUpdated(rec);
-    return;
-  }
 
   if (!rec.file) await ensureFileObjectForRecord(rec);
   const url = ensureMediaUrl(rec);
@@ -50999,9 +50490,8 @@ async function generateVideoThumb(rec, opts = null) {
     }
 
     if (!blob) return;
-    const cachedUrl = await persistVideoThumbToDiskCache(rec, mode, blob);
     if (!thumbnailJobContextStillValid(jobToken, recId, force)) return;
-    rec.videoThumbUrl = cachedUrl || URL.createObjectURL(blob);
+    rec.videoThumbUrl = URL.createObjectURL(blob);
     trackThumbnailUrlForRecord(rec);
     clearVideoThumbRetryState(recId);
     notifyThumbnailRecordUpdated(rec);
@@ -51148,11 +50638,6 @@ async function generateImageThumb(rec, opts = null) {
     return;
   }
   if (!thumbnailJobContextStillValid(jobToken, recId, force)) return;
-  if (await hydrateImageThumbFromDiskCache(rec, mode)) {
-    if (thumbnailJobContextStillValid(jobToken, recId, force))
-      notifyThumbnailRecordUpdated(rec);
-    return;
-  }
 
   if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
     try {
@@ -51211,9 +50696,8 @@ async function generateImageThumb(rec, opts = null) {
   );
   if (!blob) return;
 
-  const cachedUrl = await persistImageThumbToDiskCache(rec, mode, blob);
   if (!thumbnailJobContextStillValid(jobToken, recId, force)) return;
-  rec.thumbUrl = cachedUrl || URL.createObjectURL(blob);
+  rec.thumbUrl = URL.createObjectURL(blob);
   rec.thumbMode = mode;
   trackThumbnailUrlForRecord(rec);
   notifyThumbnailRecordUpdated(rec);
@@ -51639,9 +51123,6 @@ function hideOverlay() {
       WS.preview.fileId
     ) {
       closeFilePreviewToFolder();
-    } else {
-      // In grid mode, closing gallery should always land on the Up Directory tile when available.
-      selectGridUpEntryIfAvailable();
     }
   }
   if (!VIEWER_MODE && WS.preview.kind === "file" && WS.preview.fileId)
@@ -52145,7 +51626,7 @@ function renderViewerItem(idx) {
     const icon = document.createElement("div");
     icon.style.fontSize = "56px";
     icon.style.marginBottom = "12px";
-    icon.textContent = "[]";
+    setAppIcon(icon, "folder");
 
     const name = document.createElement("div");
     name.style.fontSize = "14px";
@@ -53295,248 +52776,6 @@ function moveDirectoriesSelection(delta) {
   setDirectoriesSelection(WS.nav.selectedIndex + delta);
 }
 
-function filePaneThumbnailNavigationWidthPx() {
-  if (directoriesPaneOpenEnabled()) return currentFilePaneWidthSnapshotPx();
-  const closed = Math.round(Number(WS.view?.closedFilePaneWidthPx || 0) || 0);
-  return closed > 0 ? closed : getDirectoriesPaneWidthPxFromOptions();
-}
-
-function parseCssPixelValue(style, name, fallback) {
-  const raw = style ? String(style.getPropertyValue(name) || "") : "";
-  const parsed = parseFloat(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function filePaneThumbnailSyntheticNavigationMetrics() {
-  if (!WS.root || !Array.isArray(WS.nav.entries) || !WS.nav.entries.length)
-    return [];
-  const style =
-    typeof getComputedStyle === "function"
-      ? getComputedStyle(document.documentElement)
-      : null;
-  const gutter = parseCssPixelValue(style, "--preview-gutter", 10);
-  const folderMin =
-    parseCssPixelValue(style, "--folder-grid-min", 260) *
-    parseCssPixelValue(style, "--thumb-scale-folder", 1);
-  const fileMin =
-    parseCssPixelValue(style, "--file-grid-min", 180) *
-    parseCssPixelValue(style, "--thumb-scale-media", 1);
-  const width = Math.max(120, filePaneThumbnailNavigationWidthPx());
-  const contentWidth = Math.max(80, width - gutter * 2);
-  const expandedSections = false;
-  const sectionHeaderHeight = 0;
-  const sectionGap = gutter;
-  const folderEntries = [];
-  const fileEntries = [];
-  for (let idx = 0; idx < WS.nav.entries.length; idx++) {
-    const entry = WS.nav.entries[idx];
-    if (!entry || !isSelectableEntry(entry)) continue;
-    if (entry.kind === "file") fileEntries.push({ idx, entry });
-    else folderEntries.push({ idx, entry });
-  }
-  const out = [];
-  let y = 0;
-  const appendGroup = (items, cardMin, cardHeight) => {
-    if (!items.length) return false;
-    if (expandedSections) y += sectionHeaderHeight;
-    const cols = Math.max(
-      1,
-      Math.floor((contentWidth + gutter) / Math.max(1, cardMin + gutter)),
-    );
-    const cardWidth = Math.max(
-      80,
-      (contentWidth - gutter * Math.max(0, cols - 1)) / cols,
-    );
-    const height = Math.max(80, cardHeight || cardWidth);
-    for (let i = 0; i < items.length; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const left = col * (cardWidth + gutter);
-      const top = y + row * (height + gutter);
-      out.push({
-        idx: items[i].idx,
-        entry: items[i].entry,
-        left,
-        top,
-        width: cardWidth,
-        height,
-        cx: left + cardWidth * 0.5,
-        cy: top + height * 0.5,
-      });
-    }
-    y += Math.ceil(items.length / cols) * (height + gutter);
-    y += sectionGap;
-    return true;
-  };
-  appendGroup(folderEntries, folderMin, folderMin);
-  appendGroup(fileEntries, fileMin, fileMin);
-  return out.sort((a, b) => a.idx - b.idx);
-}
-
-function getFilePaneThumbnailNavigationMetrics() {
-  if (!WS.root || !filePaneThumbnailViewEnabled()) return [];
-  if (!directoriesPaneOpenEnabled()) return [];
-  if (
-    !directoriesListEl ||
-    !directoriesListEl.classList.contains("filePaneThumbnailView")
-  ) {
-    return [];
-  }
-  if (directoriesListEl.dataset.virtualized === "1") {
-    return filePaneThumbnailSyntheticNavigationMetrics();
-  }
-  const cards = Array.from(
-    directoriesListEl.querySelectorAll("[data-file-pane-item]"),
-  );
-  const out = [];
-  for (const card of cards) {
-    const idx = Number(card?.dataset?.entryIndex);
-    if (!Number.isFinite(idx)) continue;
-    const entry = WS.nav.entries[idx] || null;
-    if (!isSelectableEntry(entry)) continue;
-    const left = Number(card.offsetLeft) || 0;
-    const top = Number(card.offsetTop) || 0;
-    const width = Number(card.offsetWidth) || 0;
-    const height = Number(card.offsetHeight) || 0;
-    if (width <= 0 || height <= 0) continue;
-    out.push({
-      idx,
-      entry,
-      left,
-      top,
-      width,
-      height,
-      cx: left + width * 0.5,
-      cy: top + height * 0.5,
-    });
-  }
-  return out;
-}
-
-function slideFilePaneThumbnailFolderEdge(step) {
-  const direction = step < 0 ? -1 : 1;
-  const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
-  if (!entry || entry.kind !== "file") return false;
-  const boundaryIdx =
-    direction < 0
-      ? firstFileEntryIndexForDirEntries()
-      : lastFileEntryIndexForDirEntries();
-  if (boundaryIdx < 0 || WS.nav.selectedIndex !== boundaryIdx) return false;
-  const slide = slideStepFileInternal(direction);
-  if (!slide.moved) return false;
-  WS.view.pendingDirScroll = "grid-nearest";
-  renderDirectoriesPane(!slide.dirChanged);
-  renderPreviewPane(!!slide.dirChanged, true);
-  syncButtons();
-  kickVideoThumbsForPreview();
-  kickImageThumbsForPreview();
-  return true;
-}
-
-function moveFilePaneThumbnailSelectionHorizontal(step) {
-  const direction = step < 0 ? -1 : 1;
-  if (slideFilePaneThumbnailFolderEdge(direction)) return true;
-  const start = Number.isFinite(WS.nav.selectedIndex)
-    ? WS.nav.selectedIndex
-    : 0;
-  for (
-    let idx = start + direction;
-    idx >= 0 && idx < WS.nav.entries.length;
-    idx += direction
-  ) {
-    if (!isSelectableEntry(WS.nav.entries[idx])) continue;
-    WS.view.pendingDirScroll = "grid-nearest";
-    setDirectoriesSelection(idx, { keepScroll: true });
-    return true;
-  }
-  return false;
-}
-
-function moveFilePaneThumbnailSelectionByDirection(direction) {
-  if (!WS.root || !WS.nav.entries.length || !filePaneThumbnailViewEnabled())
-    return false;
-  if (direction === "left") return moveFilePaneThumbnailSelectionHorizontal(-1);
-  if (direction === "right") return moveFilePaneThumbnailSelectionHorizontal(1);
-  if (direction !== "up" && direction !== "down") return false;
-  if (direction === "up" && slideFilePaneThumbnailFolderEdge(-1)) return true;
-  if (direction === "down" && slideFilePaneThumbnailFolderEdge(1)) return true;
-  const metrics = getFilePaneThumbnailNavigationMetrics();
-  if (!metrics.length) return false;
-  const selected =
-    metrics.find((m) => m.idx === WS.nav.selectedIndex) || metrics[0];
-  if (!selected) return false;
-  let best = null;
-  let bestScore = Number.POSITIVE_INFINITY;
-  for (const m of metrics) {
-    if (!m || m.idx === selected.idx) continue;
-    const dx = m.cx - selected.cx;
-    const dy = m.cy - selected.cy;
-    const ax = Math.abs(dx);
-    const valid = direction === "up" ? dy < -2 : dy > 2;
-    if (!valid) continue;
-    const primary = Math.abs(dy);
-    const score = primary * 1000 + ax;
-    if (score < bestScore) {
-      bestScore = score;
-      best = m;
-    }
-  }
-  if (!best) return false;
-  WS.view.pendingDirScroll = "grid-nearest";
-  setDirectoriesSelection(best.idx, { keepScroll: true });
-  return true;
-}
-
-function handleFilePaneThumbnailNavigationAction(action) {
-  if (!filePaneThumbnailViewEnabled()) return false;
-  // Thumbnail navigation is spatial, so only use it while the thumbnail
-  // pane is actually visible. When the file pane is closed, navigation
-  // collapses to linear previous/next media browsing instead of following
-  // an invisible grid.
-  if (!directoriesPaneOpenEnabled()) return false;
-  if (WS.view.activePane !== "directories") return false;
-  const isThumbNavAction =
-    action === "selectUp" ||
-    action === "selectDown" ||
-    action === "selectLeft" ||
-    action === "selectRight";
-  if (!isThumbNavAction) return false;
-
-  // Right after a root load or pane-open transition, the list can be in a card
-  // layout logically before measurable DOM geometry exists. Consume that first
-  // keypress and let the next frame use the real grid.
-  const layoutReady = !!(
-    directoriesListEl &&
-    directoriesListEl.classList.contains("filePaneThumbnailView") &&
-    directoriesListEl.querySelector("[data-file-pane-item]")
-  );
-  if (!layoutReady) {
-    requestAnimationFrame(() => {
-      try {
-        renderDirectoriesPane(false, { suppressSelectionReveal: true });
-      } catch {}
-    });
-    return true;
-  }
-
-  switch (action) {
-    case "selectUp":
-      moveFilePaneThumbnailSelectionByDirection("up");
-      return true;
-    case "selectDown":
-      moveFilePaneThumbnailSelectionByDirection("down");
-      return true;
-    case "selectLeft":
-      moveFilePaneThumbnailSelectionByDirection("left");
-      return true;
-    case "selectRight":
-      moveFilePaneThumbnailSelectionByDirection("right");
-      return true;
-    default:
-      return false;
-  }
-}
-
 function saveGridSelectionForCurrentContext() {
   if (!isGridInteractionMode()) return;
   if (
@@ -53683,18 +52922,6 @@ function getGridViewerItemForEntry(entry) {
     const tagNode = makeTagPreviewNode(entry);
     if (tagNode) return { isFolder: true, dirNode: tagNode };
   }
-  if (entry.kind === "up") {
-    const parentLabel = String(entry.parentLabel || "Parent");
-    return {
-      isFolder: true,
-      dirNode: {
-        name: `Up Directory (${parentLabel})`,
-        path: `@up/${parentLabel}`,
-        childrenDirs: [],
-        childrenFiles: [],
-      },
-    };
-  }
   return null;
 }
 
@@ -53740,25 +52967,10 @@ function moveGridGallerySelectionByDirection(direction) {
   return renderCurrentGridSelectionInViewer();
 }
 
-function selectGridUpEntryIfAvailable() {
-  if (!WS.root || !isGridInteractionMode()) return false;
-  const upIdx = WS.nav.entries.findIndex(
-    (entry) => entry && entry.kind === "up",
-  );
-  if (upIdx < 0) return false;
-  WS.view.pendingDirScroll = "grid-nearest";
-  setDirectoriesSelection(upIdx, { keepScroll: true });
-  return true;
-}
-
 function openSelectedEntryInGridMode(requestFullscreen = true) {
   if (!WS.root || !WS.nav.entries.length) return false;
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
   if (!entry) return false;
-  if (entry.kind === "up") {
-    goDirUp();
-    return true;
-  }
   if (entry.kind === "file") {
     openGalleryFromDirectoriesSelection(!!requestFullscreen);
     return true;
@@ -54272,8 +53484,7 @@ function isGridExclusiveAction(action) {
     action === "historyForward" ||
     action === "gridMoveUp" ||
     action === "gridMoveDown" ||
-    action === "gridOpenSelection" ||
-    action === "gridUpDirectory"
+    action === "gridOpenSelection"
   );
 }
 
@@ -54282,7 +53493,6 @@ function handleGridKeybindAction(action) {
   if (VIEWER_MODE) {
     if (isQuadPlaybackMode()) {
       switch (action) {
-        case "gridUpDirectory":
         case "leaveDir":
           hideOverlay();
           return true;
@@ -54329,7 +53539,6 @@ function handleGridKeybindAction(action) {
       case "selectRight":
         moveGridGallerySelectionByDirection("right");
         return true;
-      case "gridUpDirectory":
       case "leaveDir":
         hideOverlay();
         return true;
@@ -54400,9 +53609,6 @@ function handleGridKeybindAction(action) {
       return true;
     case "gridOpenSelection":
       openSelectedEntryInGridMode(true);
-      return true;
-    case "gridUpDirectory":
-      goDirUp();
       return true;
     default:
       return false;
@@ -55091,45 +54297,6 @@ document.addEventListener("keydown", (e) => {
 
   if (!WS.root) return;
 
-  // Legacy card-view arrow priority. This is inactive while the file pane is
-  // list-only, but stays behind the disabled feature gate.
-  if (
-    directoriesPaneOpenEnabled() &&
-    filePaneThumbnailViewEnabled() &&
-    !e.metaKey &&
-    !e.ctrlKey &&
-    !e.altKey &&
-    !e.shiftKey
-  ) {
-    let nudgeDx = 0;
-    let nudgeDy = 0;
-    if (baseKey === "ArrowLeft") nudgeDx = -THUMB_VIEWPORT_NUDGE_STEP;
-    else if (baseKey === "ArrowRight") nudgeDx = THUMB_VIEWPORT_NUDGE_STEP;
-    else if (baseKey === "ArrowUp") nudgeDy = -THUMB_VIEWPORT_NUDGE_STEP;
-    else if (baseKey === "ArrowDown") nudgeDy = THUMB_VIEWPORT_NUDGE_STEP;
-    if (nudgeDx || nudgeDy) {
-      const actionAllowsArrowNudge =
-        !action ||
-        action === "selectUp" ||
-        action === "selectDown" ||
-        action === "selectLeft" ||
-        action === "selectRight" ||
-        action === "leaveDir" ||
-        action === "enterDir";
-      if (actionAllowsArrowNudge) {
-        const nudged = nudgeSelectedThumbnailViewport(nudgeDx, nudgeDy, {
-          quietNoTarget: true,
-          quietAtEdge: false,
-          quietSuccess: false,
-        });
-        if (nudged) {
-          e.preventDefault();
-          return;
-        }
-      }
-    }
-  }
-
   const inFilePreview = WS.preview.kind === "file" && !!WS.preview.fileId;
   const previewPaneActive =
     !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
@@ -55151,11 +54318,6 @@ document.addEventListener("keydown", (e) => {
 
   // Closed file pane wins before any visible-pane navigation model.
   if (handleClosedFilePaneNavigationAction(action)) {
-    e.preventDefault();
-    return;
-  }
-
-  if (handleFilePaneThumbnailNavigationAction(action)) {
     e.preventDefault();
     return;
   }
