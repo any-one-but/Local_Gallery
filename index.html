@@ -572,6 +572,9 @@ body.directories-files-only #directoriesHeader {
   color: var(--color0-secondary);
   font-size: 12px;
   line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* =========================================================
@@ -4378,16 +4381,52 @@ img[data-rotate-key].rotatingThumbFade {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  width: 100%;
 }
 
 #keybindsBody .optTitleLine .optTitle {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  min-width: 7rem;
 }
 
 #keybindsBody .keybindActionInline {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
+  max-width: 42%;
+  min-width: 0;
+}
+
+#keybindsBody .keybindActionInline .optSelect {
+  min-width: 0;
+}
+
+#keybindsBody .keybindActionInline .optSelectBtn {
+  max-width: min(150px, 100%);
+}
+
+#keybindsBody .optRight {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+}
+
+#keybindsBody .keybindControlCluster {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+#keybindsBody .keybindCurrentLabel {
+  min-width: 72px;
+  max-width: 120px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #optionsBody select,
@@ -4562,8 +4601,17 @@ img[data-rotate-key].rotatingThumbFade {
   justify-content: flex-end;
   gap: 5px;
   flex: 0 0 auto;
-  min-width: 226px;
-  margin-left: 8px;
+  min-width: 124px;
+  margin-left: auto;
+}
+
+#optionsBody .optOverlayRow .optLeft {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#optionsBody .optOverlayRow .optTitle {
+  max-width: none;
 }
 
 #optionsBody .optRow.optOverlayRowNoToggle .optRight.optOverlayToggle {
@@ -4571,8 +4619,8 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 #optionsBody .optRow.optOverlayRowNoToggle .optOverlayMiddle {
-  min-width: 254px;
-  margin-left: 12px;
+  min-width: 124px;
+  margin-left: auto;
 }
 
 #optionsBody .optRight.optOverlayToggle {
@@ -4681,6 +4729,71 @@ img[data-rotate-key].rotatingThumbFade {
   text-align: right;
   font-size: 11px;
   color: var(--color0-secondary);
+}
+
+#optionsBody .optStepper {
+  display: inline-grid;
+  grid-template-columns: 28px minmax(58px, auto) 28px;
+  align-items: center;
+  justify-content: end;
+  gap: 5px;
+}
+
+#optionsBody .optStepBtn {
+  width: 28px;
+  min-width: 28px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  box-shadow: none;
+}
+
+#optionsBody .optStepBtn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  pointer-events: none;
+}
+
+#optionsBody .optStepper .optRangeValue {
+  min-width: 58px;
+  padding: 5px 8px;
+  text-align: center;
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  box-shadow: none;
+}
+
+#optionsBody .optStepper .optRangeValue:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+@media (max-width: 520px) {
+  #optionsBody .optRow.optOverlayRow {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  #optionsBody .optOverlayRow .optLeft {
+    flex: 1 1 calc(100% - 150px);
+  }
+
+  #optionsBody .optOverlayMiddle {
+    min-width: 124px;
+  }
 }
 
 #optionsFooter,
@@ -7087,7 +7200,7 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Hidden & special views", id: "visibility-toggles", label: "Hidden / Trash / Storage / Untagged toggles", hint: "Notifications that announce special entries being shown, hidden, revealed, or blank-row adjusted.", optionKey: "notifyVisibilityToggles" }),
   Object.freeze({ section: "Hidden & special views", id: "quick-navigation", label: "Quick navigation toggle", hint: "Quick navigation on/off messages.", optionKey: "notifyQuickNavigation" }),
 
-  Object.freeze({ section: "Cycling actions", id: "cycle-filter", label: "Content filter cycle", hint: "The action that cycles All / Images / Videos / GIFs.", optionKey: "notifyCycleFilter" }),
+  Object.freeze({ section: "Cycling actions", id: "cycle-filter", label: "Media filter cycle", hint: "The action that cycles the root-wide media filter: All / Images / Videos / GIFs.", optionKey: "notifyCycleFilter" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-aspect-ratio-filter", label: "Aspect ratio filter cycle", hint: "The action that cycles All / Portrait / Square / Landscape.", optionKey: "notifyCycleAspectRatioFilter" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-animated-filters", label: "Animated filter cycle", hint: "The action that cycles animated filters off/on/videos-only.", optionKey: "notifyCycleAnimatedFilters" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-folder-sort", label: "Folder sort cycle", hint: "The action that cycles folder sort modes.", optionKey: "notifyCycleFolderSort" }),
@@ -7176,7 +7289,7 @@ function defaultOptions() {
     lightMode: false,
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
-    directoriesPaneOpen: true,
+    directoriesPaneOpen: false,
     filePaneViewMode: "list",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
@@ -9276,88 +9389,15 @@ function contextualAppearancePresetIdForTagContext(
 }
 
 function contextualTagMediaFilterForTagContext(mode, tag, album, originPath) {
-  const contextMode = String(mode || "");
-  const contextTag = normalizeTag(tag || "");
-  const contextAlbum = normalizeTagAlbumName(album || "");
-  const scopePath = normalizeDirPathValue(originPath);
-  if (contextMode === "tag" && contextTag) {
-    const directFilter = metaGetTagMediaFilterByKey(
-      tagThumbnailKeyForTag(contextTag, scopePath),
-    );
-    const albumFilter = contextAlbum
-      ? metaGetTagMediaFilterByKey(tagThumbnailKeyForAlbum(contextAlbum, scopePath))
-      : [];
-    return combineTagMediaFilterValues(directFilter, albumFilter);
-  }
-  if (contextMode === "album" && contextAlbum) {
-    return metaGetTagMediaFilterByKey(
-      tagThumbnailKeyForAlbum(contextAlbum, scopePath),
-    );
-  }
   return [];
 }
 
 function contextualTagMediaFilterForDirPath(dirPath) {
-  const normalized = normalizeDirPathValue(dirPath);
-  if (!normalized) return [];
-  let combined = [];
-  const activeMode = String((WS.view && WS.view.tagFolderActiveMode) || "");
-  if (activeMode === "tag" || activeMode === "album") {
-    const originPath = String((WS.view && WS.view.tagFolderOriginPath) || "");
-    const rootPaths = getPortalRootPathsForTagContext(
-      activeMode,
-      WS.view && WS.view.tagFolderActiveTag,
-      WS.view && WS.view.tagFolderActiveAlbum,
-      originPath,
-    );
-    if (
-      rootPaths.some((rootPath) => isSameOrDescendantPath(normalized, rootPath))
-    ) {
-      combined = combineTagMediaFilterValues(
-        combined,
-        contextualTagMediaFilterForTagContext(
-          activeMode,
-          WS.view && WS.view.tagFolderActiveTag,
-          WS.view && WS.view.tagFolderActiveAlbum,
-          originPath,
-        ),
-      );
-    }
-  }
-  const stack = Array.isArray(WS.view && WS.view.tagNavStack)
-    ? WS.view.tagNavStack
-    : [];
-  for (let i = 0; i < stack.length; i++) {
-    const frame = stack[i];
-    if (!frame || frame.type !== "tag-view") continue;
-    const rootPath = findMatchingVirtualPortalRootPath(frame, normalized);
-    if (!rootPath) continue;
-    combined = combineTagMediaFilterValues(
-      combined,
-      contextualTagMediaFilterForTagContext(
-        frame.mode,
-        frame.tag,
-        frame.album,
-        frame.originPath,
-      ),
-    );
-  }
-  return combined;
+  return [];
 }
 
 function currentContextualTagMediaFilterValue() {
-  const navPath = String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : "");
-  const pathFilter = contextualTagMediaFilterForDirPath(navPath);
-  if (isViewingTagFolder()) {
-    const direct = contextualTagMediaFilterForTagContext(
-      WS.view && WS.view.tagFolderActiveMode,
-      WS.view && WS.view.tagFolderActiveTag,
-      WS.view && WS.view.tagFolderActiveAlbum,
-      WS.view && WS.view.tagFolderOriginPath,
-    );
-    return combineTagMediaFilterValues(direct, pathFilter);
-  }
-  return pathFilter;
+  return [];
 }
 
 function currentActiveTagFolderContext() {
@@ -12553,6 +12593,7 @@ function relPathDisplayName(relPath, opts = null) {
 }
 
 function directoriesPaneOpenEnabled(opt = null) {
+  if (!WS.root) return false;
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return !(src && src.directoriesPaneOpen === false);
 }
@@ -13665,8 +13706,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "cycleFilter",
-    label: "Cycle filter",
-    hint: "Cycle the content filter.",
+    label: "Cycle media filter",
+    hint: "Cycle the root-wide media filter.",
     section: "filters",
   },
   {
@@ -14740,7 +14781,7 @@ const calendarDeleteAllBtn = $("calendarDeleteAllBtn");
 const calendarStatusLabel = $("calendarStatusLabel");
 
 function defaultMenuPaneWidth() {
-  return Math.max(300, Math.min(432, Math.round(window.innerWidth * 0.3)));
+  return Math.max(340, Math.min(496, Math.round(window.innerWidth * 0.32)));
 }
 
 function applyMenuPaneWidthFromOptions() {
@@ -14755,9 +14796,9 @@ function applyMenuPaneWidthFromOptions() {
         window.innerWidth,
     ) || 0,
   );
-  const maxWidth = Math.max(280, Math.min(720, contentWidth - 220));
+  const maxWidth = Math.max(320, Math.min(760, contentWidth - 220));
   const width = Number.isFinite(raw)
-    ? Math.max(280, Math.min(maxWidth, raw))
+    ? Math.max(320, Math.min(maxWidth, raw))
     : defaultMenuPaneWidth();
   menuOverlay.style.width = `${Math.round(width)}px`;
 }
@@ -14772,9 +14813,9 @@ function setMenuPaneWidthPx(widthPx, save = true) {
         window.innerWidth,
     ) || 0,
   );
-  const maxWidth = Math.max(280, Math.min(720, contentWidth - 220));
+  const maxWidth = Math.max(320, Math.min(760, contentWidth - 220));
   const nextWidth = Math.max(
-    280,
+    320,
     Math.min(maxWidth, Math.round(Number(widthPx) || defaultMenuPaneWidth())),
   );
   menuOverlay.style.width = `${nextWidth}px`;
@@ -14800,8 +14841,8 @@ function getDirectoriesPaneWidthPxFromOptions() {
     opt && typeof opt.leftPaneWidthPct === "number"
       ? opt.leftPaneWidthPct
       : parseFloat(opt?.leftPaneWidthPct);
-  const pct = Number.isFinite(rawPct) ? Math.max(0.05, Math.min(0.9, rawPct)) : 0.28;
-  const min = Math.max(180, Math.round(appWidth * 0.12));
+  const pct = Number.isFinite(rawPct) ? Math.max(0.05, Math.min(0.9, rawPct)) : 0.3;
+  const min = Math.max(220, Math.round(appWidth * 0.14));
   const max = Math.max(min + 50, appWidth - 200);
   return Math.max(min, Math.min(max, Math.round(appWidth * pct)));
 }
@@ -14834,7 +14875,7 @@ function setDirectoriesPaneWidthPx(widthPx, save = true) {
     1,
     Number(appEl?.clientWidth || window.innerWidth) || 1,
   );
-  const min = Math.max(180, Math.round(appWidth * 0.12));
+  const min = Math.max(220, Math.round(appWidth * 0.14));
   const max = Math.max(min + 50, appWidth - 200);
   const nextWidth = Math.max(
     min,
@@ -14893,57 +14934,176 @@ function syncSidePaneWidthsToSmallerSide() {
   syncPreviewContentLayoutAfterMenuToggle();
 }
 
+
+function rootLandingClampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  const base = Number.isFinite(n) ? n : fallback;
+  return Math.max(min, Math.min(max, base));
+}
+
+function measureNoWrapElementWidthPx(el) {
+  if (!el || !document || !document.body) return 0;
+  const clone = el.cloneNode(true);
+  if (!clone) return 0;
+  clone.removeAttribute("id");
+  clone.style.position = "fixed";
+  clone.style.left = "-10000px";
+  clone.style.top = "-10000px";
+  clone.style.width = "auto";
+  clone.style.maxWidth = "none";
+  clone.style.minWidth = "0";
+  clone.style.whiteSpace = "nowrap";
+  clone.style.overflow = "visible";
+  clone.style.textOverflow = "clip";
+  clone.style.visibility = "hidden";
+  clone.style.pointerEvents = "none";
+  clone.style.contain = "layout style";
+  document.body.appendChild(clone);
+  let width = 0;
+  try {
+    width = Math.ceil(clone.getBoundingClientRect().width || clone.scrollWidth || 0);
+  } catch (e) {
+    width = 0;
+  }
+  try { clone.remove(); } catch (e) {}
+  return Math.max(0, width);
+}
+
+function measuredElementOuterWidthPx(el) {
+  if (!el) return 0;
+  const rectWidth = Math.ceil(Number(el.getBoundingClientRect?.().width) || 0);
+  const scrollWidth = Math.ceil(Number(el.scrollWidth) || 0);
+  return Math.max(rectWidth, scrollWidth, 0);
+}
+
+function preferredMenuPaneWidthForCurrentTabPx() {
+  if (!menuOverlay || !MENU_OPEN) return defaultMenuPaneWidth();
+  const activePanelId = MENU_PANEL_BY_TAB[MENU_ACTIVE_TAB || "general"] || "options";
+  const panel = menuTabPanels[activePanelId] || menuTabOptions || menuOverlay;
+  if (!panel) return defaultMenuPaneWidth();
+  const body =
+    activePanelId === "options"
+      ? optionsBodyEl
+      : activePanelId === "controls"
+        ? keybindsBodyEl
+        : calendarBodyEl;
+  const bodyStyle = body ? getComputedStyle(body) : null;
+  const bodyPad = bodyStyle
+    ? (parseFloat(bodyStyle.paddingLeft) || 0) + (parseFloat(bodyStyle.paddingRight) || 0)
+    : 24;
+  let needed = 280;
+
+  const addTextNeed = (el, extra = 0) => {
+    if (!el) return;
+    const textNeed = Math.max(
+      measuredElementOuterWidthPx(el),
+      measureNoWrapElementWidthPx(el),
+    );
+    needed = Math.max(needed, textNeed + bodyPad + extra);
+  };
+
+  panel.querySelectorAll(".settingsSubsectionTitle, .keybindSubtabBtn, .optTitle, .optSelectBtnLabel, .miniBtn, button").forEach((el) => {
+    addTextNeed(el, 44);
+  });
+
+  panel.querySelectorAll(".optRow").forEach((row) => {
+    const style = getComputedStyle(row);
+    const rowPad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    const gap = parseFloat(style.columnGap || style.gap) || 10;
+    const left = row.querySelector(":scope > .optLeft") || row.querySelector(".optLeft");
+    const title = left ? left.querySelector(".optTitle") : null;
+    const leftNeed = title
+      ? Math.max(measuredElementOuterWidthPx(title), measureNoWrapElementWidthPx(title))
+      : measuredElementOuterWidthPx(left);
+    let rightNeed = 0;
+    Array.from(row.children || []).forEach((child) => {
+      if (child === left) return;
+      rightNeed += measuredElementOuterWidthPx(child);
+    });
+    const childCount = Math.max(1, (row.children ? row.children.length : 2) - 1);
+    needed = Math.max(needed, leftNeed + rightNeed + gap * childCount + rowPad + bodyPad + 30);
+  });
+
+  const footer =
+    activePanelId === "options"
+      ? document.getElementById("optionsFooter")
+      : activePanelId === "controls"
+        ? document.getElementById("keybindsFooter")
+        : document.getElementById("calendarFooter");
+  if (footer) {
+    needed = Math.max(needed, measuredElementOuterWidthPx(footer) + 10);
+  }
+  return Math.ceil(needed);
+}
+
+function preferredDirectoriesPaneWidthForRootInfoPx() {
+  const appEl = document.getElementById("app");
+  const appWidth = Math.max(1, Number(appEl?.clientWidth || window.innerWidth) || 1);
+  const min = Math.max(180, Math.round(appWidth * 0.12));
+  if (typeof updateTitleLabel === "function") updateTitleLabel();
+  let preferred = min;
+  if (titleInfo) {
+    preferred = Math.max(preferred, measureNoWrapElementWidthPx(titleInfo) + 28);
+  }
+  if (titleMain) preferred = Math.max(preferred, measuredElementOuterWidthPx(titleMain) + 20);
+  if (directoriesSearchRow) preferred = Math.max(preferred, measuredElementOuterWidthPx(directoriesSearchRow) + 20);
+  return Math.ceil(preferred);
+}
+
+function fitRootLandingSidePaneWidths() {
+  if (!WS.root || !WS.meta) return;
+  const appEl = document.getElementById("app");
+  const appWidth = Math.max(1, Number(appEl?.clientWidth || window.innerWidth) || 1);
+  const appHeight = Math.max(1, Number(appEl?.clientHeight || window.innerHeight) || 1);
+  const dividerPx = Math.max(0, menuPaneDividerWidthPx());
+
+  // v15: the previous v14 interpretation gave EACH side pane a 3:2 portrait
+  // footprint, so opening both panes could consume most of the app width. Treat
+  // the two side panes together as the 3:2 portrait block, then split that block
+  // into a compact file pane plus a slightly wider settings pane.
+  const minPreviewWidth = Math.max(360, Math.round(appWidth * 0.36));
+  const minLeft = Math.max(220, Math.min(320, Math.round(appWidth * 0.18)));
+  const minMenu = Math.max(300, Math.min(380, Math.round(appWidth * 0.22)));
+  const maxCombined = Math.max(
+    minLeft + minMenu,
+    appWidth - minPreviewWidth - dividerPx,
+  );
+  const targetCombined = Math.min(
+    maxCombined,
+    Math.max(minLeft + minMenu, Math.round(appHeight * (2 / 3))),
+  );
+
+  let leftWidth = Math.round(targetCombined * 0.47);
+  let menuWidth = Math.round(targetCombined - leftWidth);
+  leftWidth = Math.max(minLeft, leftWidth);
+  menuWidth = Math.max(minMenu, menuWidth);
+
+  if (leftWidth + menuWidth > maxCombined) {
+    const over = leftWidth + menuWidth - maxCombined;
+    const leftRoom = Math.max(0, leftWidth - minLeft);
+    const menuRoom = Math.max(0, menuWidth - minMenu);
+    const totalRoom = Math.max(1, leftRoom + menuRoom);
+    leftWidth = Math.max(minLeft, Math.round(leftWidth - over * (leftRoom / totalRoom)));
+    menuWidth = Math.max(minMenu, Math.round(menuWidth - over * (menuRoom / totalRoom)));
+    if (leftWidth + menuWidth > maxCombined) {
+      const remaining = Math.max(0, leftWidth + menuWidth - maxCombined);
+      if (menuWidth - minMenu >= remaining) menuWidth -= remaining;
+      else leftWidth = Math.max(minLeft, maxCombined - menuWidth);
+    }
+  }
+
+  setMenuPaneWidthPx(menuWidth, true);
+  setDirectoriesPaneWidthPx(leftWidth, true);
+  syncPreviewContentLayoutAfterMenuToggle();
+}
+
 function applyDefaultRootLandingSidebars() {
-  if (!WS.meta) return;
+  if (!WS.meta || !WS.root) return;
   if (setDirectoriesPaneOpenValue(true)) syncActivePaneWithLayout();
   if (!MENU_OPEN) openMenu("general");
   else setMenuTab(MENU_ACTIVE_TAB || MENU_LAST_TAB || "general");
-  const appEl = document.getElementById("app");
-  const appWidth = Math.max(
-    1,
-    Number(appEl?.clientWidth || window.innerWidth) || 1,
-  );
-  const previewHeight = Math.max(
-    1,
-    Number(
-      previewBodyEl?.clientHeight ||
-        previewPane?.clientHeight ||
-        appEl?.clientHeight ||
-        window.innerHeight,
-    ) || 1,
-  );
-  const targetPreviewWidthPx = Math.round(previewHeight * (2 / 3));
-  const minimumPreviewWidthPx = Math.max(240, Math.round(appWidth * 0.22));
-  const rawOccupiedWidthPx = Math.round(
-    (appWidth - targetPreviewWidthPx) / 2,
-  );
-  const minOccupiedWidthPx = Math.max(280, Math.round(appWidth * 0.12));
-  const maxOccupiedWidthPx = Math.max(
-    minOccupiedWidthPx,
-    Math.floor((appWidth - minimumPreviewWidthPx) / 2),
-  );
-  const targetOccupiedWidthPx = Math.max(
-    minOccupiedWidthPx,
-    Math.min(maxOccupiedWidthPx, rawOccupiedWidthPx),
-  );
-  const dividerPx = menuPaneDividerWidthPx();
-  const targetMenuWidthPx = Math.max(280, targetOccupiedWidthPx - dividerPx);
-  let appliedMenuWidth =
-    setMenuPaneWidthPx(targetMenuWidthPx, true) || targetMenuWidthPx;
-  const targetDirectoriesWidthPx = Math.round(appliedMenuWidth + dividerPx);
-  const appliedDirectoriesWidth = setDirectoriesPaneWidthPx(
-    targetDirectoriesWidthPx,
-    true,
-  );
-  if (Math.abs(appliedDirectoriesWidth - targetDirectoriesWidthPx) >= 1) {
-    appliedMenuWidth =
-      setMenuPaneWidthPx(
-        Math.max(280, Math.round(appliedDirectoriesWidth - dividerPx)),
-        true,
-      ) || appliedMenuWidth;
-    setDirectoriesPaneWidthPx(Math.round(appliedMenuWidth + dividerPx), true);
-  }
-  syncPreviewContentLayoutAfterMenuToggle();
+  fitRootLandingSidePaneWidths();
+  requestAnimationFrame(() => fitRootLandingSidePaneWidths());
 }
 
 window.addEventListener("resize", () => {
@@ -17190,8 +17350,8 @@ function renderKeybindsUi(scope = "pane") {
       const controlHtml = isLocked
         ? `<div class="label">${escapeHtml(lockedLabel)} (Locked)</div>`
         : `
-                <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">
-                  <div class="label" style="min-width:120px;text-align:right;">${escapeHtml(currentLabel)}</div>
+                <div class="keybindControlCluster">
+                  <div class="label keybindCurrentLabel">${escapeHtml(currentLabel)}</div>
                   <button type="button" data-bind-capture-id="${escapeHtml(binding.id)}">${isCapturing ? "Press keys..." : escapeHtml(captureLabel)}</button>
                   <button type="button" data-bind-clear-id="${escapeHtml(binding.id)}"${binding.key ? "" : " disabled"}>Clear</button>
                 </div>
@@ -17619,6 +17779,32 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         `;
   };
 
+  const optionStepperDownIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-big-down-icon lucide-arrow-big-down" aria-hidden="true"><path d="M9 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6a1 1 0 0 0 1 1h3.293a.707.707 0 0 1 .5 1.207l-7.086 7.086a1 1 0 0 1-1.414 0l-7.086-7.086a.707.707 0 0 1 .5-1.207H8a1 1 0 0 0 1-1z"/></svg>`;
+  const optionStepperUpIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-big-up-icon lucide-arrow-big-up" aria-hidden="true"><path d="M9 19a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-6a1 1 0 0 1 1-1h3.293a.707.707 0 0 0 .5-1.207l-7.086-7.086a1 1 0 0 0-1.414 0l-7.086 7.086a.707.707 0 0 0 .5 1.207H8a1 1 0 0 1 1 1z"/></svg>`;
+
+  const overlayScalePercentFromRaw = (value, limits, neutralValue) => {
+    const min = Number(limits && limits.min);
+    const max = Number(limits && limits.max);
+    const raw = Number(value);
+    const neutral = Number.isFinite(Number(neutralValue))
+      ? Number(neutralValue)
+      : min;
+    if (!Number.isFinite(raw) || !Number.isFinite(min) || !Number.isFinite(max))
+      return 0;
+    if (raw >= neutral) {
+      const span = Math.max(0.000001, max - neutral);
+      return ((raw - neutral) / span) * 100;
+    }
+    const span = Math.max(0.000001, neutral - min);
+    return -((neutral - raw) / span) * 100;
+  };
+
+  const formatOverlayScalePercent = (value, limits, neutralValue) => {
+    const pct = overlayScalePercentFromRaw(value, limits, neutralValue);
+    const rounded = Math.round(pct);
+    return `${rounded > 0 ? "+" : ""}${rounded}%`;
+  };
+
   const makeOverlayControlRow = (row) => {
     const neutralValue = Number.isFinite(Number(row.neutralValue))
       ? Number(row.neutralValue)
@@ -17629,6 +17815,21 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         : Number.isFinite(Number(row.value))
           ? Number(row.value)
           : neutralValue;
+    const displayValue = row.formatter
+      ? row.formatter(currentValue)
+      : formatOverlayScalePercent(currentValue, row.limits, neutralValue);
+    const minPct = Math.round(
+      Math.min(
+        overlayScalePercentFromRaw(row.limits.min, row.limits, neutralValue),
+        overlayScalePercentFromRaw(row.limits.max, row.limits, neutralValue),
+      ),
+    );
+    const maxPct = Math.round(
+      Math.max(
+        overlayScalePercentFromRaw(row.limits.min, row.limits, neutralValue),
+        overlayScalePercentFromRaw(row.limits.max, row.limits, neutralValue),
+      ),
+    );
     const toggleHtml =
       row.showToggle === false
         ? `<div class="optOverlayToggleSpacer" aria-hidden="true"></div>`
@@ -17643,8 +17844,12 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
               <div class="optTitle">${escapeHtml(row.title)}</div>
             </div>
             <div class="optOverlayMiddle optRange">
-              <input id="${escapeHtml(row.rangeId)}" type="range" min="${row.limits.min}" max="${row.limits.max}" step="${row.limits.step}" value="${escapeHtml(String(currentValue))}" />
-              <div class="optRangeValue" id="${escapeHtml(row.rangeId)}_value">${escapeHtml(row.formatter(currentValue))}</div>
+              <input id="${escapeHtml(row.rangeId)}" type="hidden" min="${row.limits.min}" max="${row.limits.max}" step="${row.limits.step}" data-stepper-min="${row.limits.min}" data-stepper-max="${row.limits.max}" data-stepper-neutral="${neutralValue}" data-stepper-percent-step="1" value="${escapeHtml(String(currentValue))}" />
+              <div class="optStepper" data-opt-stepper="${escapeHtml(row.rangeId)}">
+                <button type="button" class="optStepBtn optStepBtnDown" data-opt-stepper-for="${escapeHtml(row.rangeId)}" data-opt-stepper-delta="-1" aria-label="Decrease ${escapeHtml(row.title)} by 1 percent">${optionStepperDownIcon}</button>
+                <div class="optRangeValue" id="${escapeHtml(row.rangeId)}_value" role="spinbutton" tabindex="0" aria-label="${escapeHtml(row.title)} percent" aria-valuemin="${minPct}" aria-valuemax="${maxPct}" aria-valuenow="${escapeHtml(displayValue.replace(/%$/, ""))}">${escapeHtml(displayValue)}</div>
+                <button type="button" class="optStepBtn optStepBtnUp" data-opt-stepper-for="${escapeHtml(row.rangeId)}" data-opt-stepper-delta="1" aria-label="Increase ${escapeHtml(row.title)} by 1 percent">${optionStepperUpIcon}</button>
+              </div>
             </div>
             <div class="optRight optOverlayToggle">
               ${toggleHtml}
@@ -17788,7 +17993,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "brightnessOverlayIntensity",
       value: opt.brightnessOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.brightness,
-      formatter: formatSignedPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.brightness, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17802,7 +18007,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "contrastOverlayIntensity",
       value: opt.contrastOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.contrast,
-      formatter: formatSignedPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.contrast, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17816,7 +18021,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "saturationOverlayIntensity",
       value: opt.saturationOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.saturation,
-      formatter: formatSignedPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.saturation, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17830,7 +18035,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "warmthOverlayIntensity",
       value: opt.warmthOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.warmth,
-      formatter: formatSignedPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.warmth, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17844,7 +18049,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "hueShiftOverlayIntensity",
       value: opt.hueShiftOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.hueShift,
-      formatter: formatDegreesAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.hueShift, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17858,7 +18063,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "blackCrushOverlayIntensity",
       value: opt.blackCrushOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.blackCrush,
-      formatter: formatPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.blackCrush, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17872,7 +18077,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "whiteCrushOverlayIntensity",
       value: opt.whiteCrushOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.whiteCrush,
-      formatter: formatPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.whiteCrush, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17886,7 +18091,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "colorCrushOverlayIntensity",
       value: opt.colorCrushOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.colorCrush,
-      formatter: formatPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.colorCrush, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17902,7 +18107,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "pixelateOverlayIntensity",
       value: opt.pixelateOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.pixelate,
-      formatter: formatPixelateResolution,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.pixelate, OVERLAY_SLIDER_LIMITS.pixelate.min),
       showToggle: false,
       nullable: true,
       neutralValue: OVERLAY_SLIDER_LIMITS.pixelate.min,
@@ -17916,7 +18121,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "blurOverlayIntensity",
       value: opt.blurOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.blur,
-      formatter: formatPixelOffset,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.blur, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17930,7 +18135,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "upscaleSmoothingOverlayIntensity",
       value: opt.upscaleSmoothingOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.upscaleSmoothing,
-      formatter: formatUpscaleAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.upscaleSmoothing, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17944,7 +18149,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "chromaOverlayIntensity",
       value: opt.chromaOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.chroma,
-      formatter: formatPixelOffset,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.chroma, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17958,7 +18163,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "halationOverlayIntensity",
       value: opt.halationOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.halation,
-      formatter: formatPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.halation, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17972,7 +18177,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "ghostingOverlayIntensity",
       value: opt.ghostingOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.ghosting,
-      formatter: formatPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.ghosting, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -17986,7 +18191,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "lineDamageOverlayIntensity",
       value: opt.lineDamageOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.lineDamage,
-      formatter: formatPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.lineDamage, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -18000,7 +18205,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "grainOverlayIntensity",
       value: opt.grainOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.grain,
-      formatter: formatGrainAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.grain, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -18014,7 +18219,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "vignetteOverlayIntensity",
       value: opt.vignetteOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.vignette,
-      formatter: formatPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.vignette, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -18028,7 +18233,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       amountKey: "filmCornerOverlayIntensity",
       value: opt.filmCornerOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.filmCorner,
-      formatter: formatPercentAmount,
+      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.filmCorner, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -18044,6 +18249,8 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
+${makeSelectRow("Media filter", "Choose which media types are visible across the current root/view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
+${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible across the current root/view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
 ${makeCheckRow("Reveal hidden items", "Show or hide items hidden by hidden tags.", "opt_showHiddenFolder", showHiddenFolderEnabled())}
 ${makeCheckRow("Trash folder", "Show or hide the Trash folder entry at root.", "opt_showTrashFolder", showTrashFolderEnabled())}
 ${makeCheckRow("Storage folder", "Show or hide the Storage folder entry.", "opt_showStorageFolder", showStorageFolderEnabled())}
@@ -18378,29 +18585,147 @@ ${makeActionRow(
     const el = $(id);
     if (!el) return;
     const valueEl = $(`${id}_value`);
+    const attrNumber = (name, fallback = 0) => {
+      const raw = el.getAttribute(name);
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const rawMin = attrNumber("data-stepper-min", attrNumber("min", 0));
+    const rawMax = attrNumber("data-stepper-max", attrNumber("max", 100));
     const neutralValue =
       config && Number.isFinite(Number(config.neutralValue))
         ? Number(config.neutralValue)
-        : null;
+        : attrNumber("data-stepper-neutral", null);
     const nullable = !!(config && config.nullable);
-    const stepValue = Math.abs(Number(el.step) || 0);
+    const stepValue = Math.abs(attrNumber("step", 0));
+    const percentStep = Math.max(1, Math.abs(attrNumber("data-stepper-percent-step", 1)));
     const neutralEpsilon = Number.isFinite(Number(config && config.snapEpsilon))
       ? Math.abs(Number(config.snapEpsilon))
       : stepValue > 0
         ? stepValue * 0.5
         : 0.0001;
+    const clampRaw = (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return Number.isFinite(neutralValue) ? neutralValue : rawMin;
+      return Math.min(rawMax, Math.max(rawMin, n));
+    };
+    const rawToStepperPercent = (value) => {
+      const raw = clampRaw(value);
+      if (!Number.isFinite(neutralValue)) {
+        const span = Math.max(0.000001, rawMax - rawMin);
+        return ((raw - rawMin) / span) * 100;
+      }
+      if (raw >= neutralValue) {
+        const span = Math.max(0.000001, rawMax - neutralValue);
+        return ((raw - neutralValue) / span) * 100;
+      }
+      const span = Math.max(0.000001, neutralValue - rawMin);
+      return -((neutralValue - raw) / span) * 100;
+    };
+    const stepperPercentToRaw = (percent) => {
+      const pct = Number(percent);
+      if (!Number.isFinite(pct)) return clampRaw(neutralValue);
+      if (!Number.isFinite(neutralValue)) {
+        const span = rawMax - rawMin;
+        return clampRaw(rawMin + (span * pct) / 100);
+      }
+      if (pct >= 0) {
+        return clampRaw(neutralValue + ((rawMax - neutralValue) * pct) / 100);
+      }
+      return clampRaw(neutralValue + ((neutralValue - rawMin) * pct) / 100);
+    };
+    const rawStepForPercent = (percent) => {
+      const pct = Number(percent);
+      const span = !Number.isFinite(neutralValue)
+        ? rawMax - rawMin
+        : pct >= 0
+          ? rawMax - neutralValue
+          : neutralValue - rawMin;
+      return Math.abs(span * percentStep) / 100;
+    };
+    const roundRaw = (value, percent) => {
+      const n = clampRaw(value);
+      const rawStep = rawStepForPercent(percent);
+      if (!Number.isFinite(rawStep) || rawStep <= 0) return Number(n.toFixed(6));
+      const base = Number.isFinite(neutralValue) ? neutralValue : rawMin;
+      return Number((base + Math.round((n - base) / rawStep) * rawStep).toFixed(6));
+    };
     const updateValue = () => {
       if (!valueEl) return;
       const nextVal = parseFloat(el.value);
-      valueEl.textContent = formatter ? formatter(nextVal) : String(el.value);
+      const displayText = formatter ? formatter(nextVal) : String(el.value);
+      valueEl.textContent = displayText;
+      const ariaNow = Math.round(rawToStepperPercent(nextVal));
+      valueEl.setAttribute("aria-valuenow", String(ariaNow));
+      valueEl.setAttribute("aria-valuetext", displayText);
+    };
+    const rowEl = el.closest(".optOverlayRow");
+    const stepButtons = rowEl
+      ? Array.from(
+          rowEl.querySelectorAll(
+            `[data-opt-stepper-for="${cssEscapeValue(id)}"]`,
+          ),
+        )
+      : [];
+    const stepBy = (direction) => {
+      const currentRaw = clampRaw(parseFloat(el.value));
+      const currentPct = rawToStepperPercent(currentRaw);
+      const minPct = Math.min(
+        rawToStepperPercent(rawMin),
+        rawToStepperPercent(rawMax),
+      );
+      const maxPct = Math.max(
+        rawToStepperPercent(rawMin),
+        rawToStepperPercent(rawMax),
+      );
+      const nextPct = Math.min(
+        maxPct,
+        Math.max(minPct, currentPct + direction * percentStep),
+      );
+      const nextRaw = roundRaw(stepperPercentToRaw(nextPct), nextPct);
+      el.value = String(nextRaw);
+      updateValue();
+      el.dispatchEvent(new Event("change", { bubbles: true }));
     };
     el.addEventListener("click", (e) => e.stopPropagation());
     el.addEventListener("keydown", (e) => e.stopPropagation());
     el.addEventListener("input", updateValue);
+    stepButtons.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const delta = Number(btn.dataset.optStepperDelta) < 0 ? -1 : 1;
+        stepBy(delta);
+      });
+      btn.addEventListener("keydown", (e) => e.stopPropagation());
+    });
+    if (valueEl) {
+      valueEl.addEventListener("click", (e) => e.stopPropagation());
+      valueEl.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "ArrowUp" || e.key === "ArrowRight") {
+          e.preventDefault();
+          stepBy(1);
+        } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
+          e.preventDefault();
+          stepBy(-1);
+        } else if (e.key === "Home") {
+          e.preventDefault();
+          el.value = String(roundRaw(rawMin, rawToStepperPercent(rawMin)));
+          updateValue();
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        } else if (e.key === "End") {
+          e.preventDefault();
+          el.value = String(roundRaw(rawMax, rawToStepperPercent(rawMax)));
+          updateValue();
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+    }
     el.addEventListener("change", () => {
       const next = {};
       const val = parseFloat(el.value);
-      let nextValue = Number.isFinite(val) ? val : 0;
+      let nextValue = Number.isFinite(val) ? clampRaw(val) : 0;
       if (
         nullable &&
         neutralValue !== null &&
@@ -18416,7 +18741,6 @@ ${makeActionRow(
       if (typeof onChange === "function") onChange(next[key]);
       applyOptionsEverywhere(false);
     });
-    const rowEl = el.closest(".optOverlayRow");
     if (
       rowEl &&
       nullable &&
@@ -18697,10 +19021,27 @@ ${makeActionRow(
           appearancePresetPromptInput.value || "";
     });
   }
-  if (WS.view) {
-    WS.view.filterMode = "all";
-    WS.view.aspectRatioFilterMode = "all";
-  }
+  bindStandaloneSelect(
+    "opt_filterMode",
+    (value) => {
+      const next = ["all", "images", "videos", "gifs"].includes(String(value))
+        ? String(value)
+        : "all";
+      if (WS.view) WS.view.filterMode = next;
+      setOptionsStatus("Saved");
+      applyViewModesEverywhere(true);
+      showStatusMessage(`Media filter: ${next}`, "cycle-filter");
+    },
+    (val) => (["all", "images", "videos", "gifs"].includes(String(val)) ? String(val) : "all"),
+  );
+  bindStandaloneSelect(
+    "opt_aspectRatioFilterMode",
+    (value) => {
+      setAspectRatioFilterMode(value);
+      setOptionsStatus("Saved");
+    },
+    (val) => normalizeAspectRatioFilterMode(val),
+  );
   bindStandaloneSelect(
     "opt_generalAppearancePreset",
     (value) => {
@@ -20755,30 +21096,19 @@ function metaClearTagAppearancePresetByKey(tagKey) {
 }
 
 function metaGetTagMediaFilterByKey(tagKey) {
-  const key = String(tagKey || "");
-  if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return [];
-  return normalizeTagMediaFilterValue(WS.meta.tagMediaFilterByKey.get(key));
+  return [];
 }
 
 function metaHasTagMediaFilterByKey(tagKey) {
-  return !isTagMediaFilterValueEmpty(metaGetTagMediaFilterByKey(tagKey));
+  return false;
 }
 
 function metaSetTagMediaFilterByKey(tagKey, value) {
-  const key = String(tagKey || "");
-  if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return false;
-  const next = normalizeTagMediaFilterValue(value);
-  const prev = metaGetTagMediaFilterByKey(key);
-  if (tagMediaFilterValuesEqual(prev, next)) return false;
-  if (next.length) WS.meta.tagMediaFilterByKey.set(key, next.slice());
-  else WS.meta.tagMediaFilterByKey.delete(key);
-  metaMarkDirty(META_DOC_IDS.tags);
-  invalidateDirMetricsCaches();
-  return true;
+  return false;
 }
 
 function metaClearTagMediaFilterByKey(tagKey) {
-  return metaSetTagMediaFilterByKey(tagKey, []);
+  return false;
 }
 
 function collectDescendantDirPaths(path) {
@@ -25251,8 +25581,10 @@ function snapshotRefreshState() {
 
 function restoreRefreshViewState(viewState) {
   if (!viewState) return;
-  WS.view.filterMode = "all";
-  WS.view.aspectRatioFilterMode = "all";
+  WS.view.filterMode = ["all", "images", "videos", "gifs"].includes(String(viewState.filterMode))
+    ? String(viewState.filterMode)
+    : "all";
+  WS.view.aspectRatioFilterMode = normalizeAspectRatioFilterMode(viewState.aspectRatioFilterMode);
   WS.view.randomMode = !!viewState.randomMode;
   WS.view.randomFolderMode = !!viewState.randomFolderMode;
   WS.view.loopWithinDir = viewState.loopWithinDir;
@@ -25539,8 +25871,6 @@ function restoreViewerCloseState(state, opts = null) {
   cancelPendingNavigationRender();
   const restoreRenderToken = NAVIGATION_RENDER_TOKEN;
   restoreRefreshViewState(state.view || null);
-  WS.view.filterMode = "all";
-  WS.view.aspectRatioFilterMode = "all";
   WS.view.tagNavStack = Array.isArray(state.tagNavStack)
     ? state.tagNavStack
         .map((frame) =>
@@ -26978,6 +27308,7 @@ let TAG_ALBUM_STATS_BY_SCOPE_CACHE = new Map();
 let TAG_FOLDER_ENTRIES_CACHE = new Map();
 let TAG_ALBUM_TAG_ENTRIES_CACHE = new Map();
 let TAG_FOLDER_VIEW_DIRS_CACHE = new Map();
+let TAG_SCOPE_MODEL_CACHE = new Map();
 let NAV_ENTRY_RESTORE_REVISION = 0;
 
 function clearTagEntryDerivedCaches() {
@@ -26990,6 +27321,7 @@ function clearTagEntryDerivedCaches() {
   TAG_FOLDER_ENTRIES_CACHE = new Map();
   TAG_ALBUM_TAG_ENTRIES_CACHE = new Map();
   TAG_FOLDER_VIEW_DIRS_CACHE = new Map();
+  TAG_SCOPE_MODEL_CACHE = new Map();
 }
 
 function invalidateDirSortMetricsCache() {
@@ -27509,11 +27841,10 @@ function recordPassesTagMediaFilter(rec, filterValue) {
 }
 
 function effectiveFilterCacheKey() {
-  const contextual = currentContextualTagMediaFilterValue();
-  if (contextual.length) {
-    return `tag:${String(WS.nav && WS.nav.dirNode ? WS.nav.dirNode.path || "" : "")}:${contextual.join(",")}`;
-  }
-  return "global:all";
+  const aspectMode = normalizeAspectRatioFilterMode(
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
+  return `global:${String(WS?.view?.filterMode || "all")}|aspect:${aspectMode}`;
 }
 
 function reseedRandomSortMode() {
@@ -27639,12 +27970,13 @@ function sortDirCollectionForDisplay(dirs, key = "collection") {
 
 function passesFilter(rec) {
   if (!rec) return false;
-  const contextualFilter = contextualTagMediaFilterForDirPath(
-    String(rec.dirPath || ""),
-  );
-  return contextualFilter.length
-    ? recordPassesTagMediaFilter(rec, contextualFilter)
-    : true;
+  const m = WS.view && WS.view.filterMode;
+  let mediaPass = true;
+  if (m === "images") mediaPass = rec.type === "image";
+  else if (m === "videos") mediaPass = rec.type === "video";
+  else if (m === "gifs") mediaPass = rec.ext === ".gif";
+  if (!mediaPass) return false;
+  return recordPassesAspectRatioFilter(rec);
 }
 
 function catalogAspectFilteredCount(counts, aspect) {
@@ -27687,7 +28019,11 @@ function catalogSummaryFileCountForFilter(summary, filterMode = "all", aspectMod
 
 function catalogSummaryFileCountForCurrentFilters(summary) {
   if (!summary) return -1;
-  return catalogSummaryFileCountForFilter(summary, "all", "all");
+  return catalogSummaryFileCountForFilter(
+    summary,
+    WS.view && WS.view.filterMode,
+    WS.view && WS.view.aspectRatioFilterMode,
+  );
 }
 
 function catalogSummaryFileCountForTagMediaFilter(summary, filterValue) {
@@ -27792,23 +28128,11 @@ function catalogSummaryMediaBucketsForGlobalFilterMode(filterMode) {
 
 function catalogSummaryHasVisibleRecordForTagEntry(summary, entry) {
   if (!summary) return null;
-  const hidden = normalizeTagMediaFilterValue(
-    entry && entry.kind === "tag" ? effectiveTagMediaFilterForEntry(entry) : [],
-  );
-  if (!hidden.length) {
-    return catalogSummaryFileCountForFilter(summary, "all", "all") > 0;
-  }
-  const count = catalogSummaryFileCountForTagMediaFilter(summary, hidden);
-  return count >= 0 ? count > 0 : null;
+  return catalogSummaryFileCountForCurrentFilters(summary) > 0;
 }
 
 function tagEntryVisibilityNeedsExactAspectScan(entry) {
-  const hidden = normalizeTagMediaFilterValue(
-    entry && entry.kind === "tag" ? effectiveTagMediaFilterForEntry(entry) : [],
-  );
-  return hidden.some(
-    (value) => value === "portrait" || value === "square" || value === "landscape",
-  );
+  return false;
 }
 
 function loadedDirHasVisibleRecordForTagEntry(dirNode, entry) {
@@ -27840,14 +28164,7 @@ function dirItemCount(node) {
   const summaryCount = contextualFilter.length
     ? catalogSummaryFileCountForTagMediaFilter(summary, contextualFilter)
     : catalogSummaryFileCountForCurrentFilters(summary);
-  const contextualFilterNeedsExactAspectScan = contextualFilter.some(
-    (value) => value === "portrait" || value === "square" || value === "landscape",
-  );
-  if (
-    summaryCount >= 0 &&
-    !(node.loadState === "loaded" && contextualFilterNeedsExactAspectScan)
-  )
-    return summaryCount;
+  if (summaryCount >= 0) return summaryCount;
   if (
     filterKey === "global:all" &&
     ensureDirectoryDerivedIndex() &&
@@ -28744,9 +29061,7 @@ function navigateOutOfStorageIfHidden() {
 
 function getUntaggedDirsForNode(dirNode) {
   if (!dirNode) return [];
-  const children = getChildDirsForNodeBase(dirNode);
-  if (!children.length) return [];
-  return children.filter((d) => metaGetUserTags(d.path || "").length === 0);
+  return getFastTagScopeModel(dirNode).untagged.slice();
 }
 
 function isViewingTagFolder() {
@@ -28770,7 +29085,9 @@ function isPerformanceSensitiveTagAlbumPreviewNode(dirNode) {
   return tagAlbumPerformanceModeValue(dirNode._tagPreviewMode);
 }
 
-function shouldUseLightweightTagAlbumThumbnailsForNode(dirNode = null) { }
+function shouldUseLightweightTagAlbumThumbnailsForNode(dirNode = null) {
+  return true;
+}
 
 function getVisibleChildDirsForTagEvaluation(dirNode) {
   if (!dirNode) return [];
@@ -28847,7 +29164,7 @@ function dirHasVisibleRecordForTagEntry(dirNode, entry) {
 
 function filterTagEntryDirsByVisibleRecords(nodes, entry) {
   const list = Array.isArray(nodes) ? nodes : [];
-  if (!entry || entry.kind !== "tag" || !list.length) return [];
+  if (!list.length) return [];
   const out = [];
   const seen = new Set();
   for (let i = 0; i < list.length; i++) {
@@ -28855,59 +29172,209 @@ function filterTagEntryDirsByVisibleRecords(nodes, entry) {
     const path = String(node?.path || "");
     if (!path || seen.has(path)) continue;
     seen.add(path);
-    if (dirHasVisibleRecordForTagEntry(node, entry)) out.push(node);
+    out.push(node);
   }
   return out;
 }
 
-function gatherTagGroupsForDir(dirNode) {
-  const cacheKey = `${String(dirNode?.path || "__root__")}@@${tagVisibleChildContextKey()}`;
-  if (TAG_GROUPS_BY_DIR_CACHE.has(cacheKey)) {
-    return TAG_GROUPS_BY_DIR_CACHE.get(cacheKey) || new Map();
+function fastTagScopeSortKey() {
+  const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
+  const randomOn = randomSortAffectsFolders() ? "1" : "0";
+  const randomSeed = randomOn === "1" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
+  return ["fast-tag-scope", mode, randomOn, randomSeed].join(":");
+}
+
+function fastDirSummaryForTagScope(node) {
+  const summary = getCatalogSummaryForNode(node);
+  const path = String(node?.path || "");
+  const recursiveFileCount = summary
+    ? Math.max(0, Number(summary.recursiveFileCount) || 0)
+    : Math.max(0, Number(node?.recursiveFileCount) || Number(node?.recursiveItemCount) || 0);
+  const recursiveSizeBytes = summary
+    ? Math.max(0, Number(summary.recursiveSizeBytes) || 0)
+    : Math.max(0, Number(node?.recursiveSizeBytes) || 0);
+  const score = Number(metaGetScore(path)) || 0;
+  return {
+    recursiveFileCount,
+    recursiveSizeBytes,
+    score,
+    efficiency: score / Math.max(1, recursiveFileCount),
+  };
+}
+
+function fastSortDirsForTagScope(dirs, key = "tag-scope") {
+  const out = Array.isArray(dirs) ? dirs.slice() : [];
+  if (out.length <= 1) return out;
+  if (randomSortAffectsFolders()) {
+    const cacheKey = `fast-tag-scope:${String(key || "collection")}`;
+    if (WS.view.randomFolderCache && WS.view.randomFolderCache.has(cacheKey)) {
+      const cachedPaths = WS.view.randomFolderCache.get(cacheKey) || [];
+      const byPath = new Map(out.map((node) => [String(node?.path || ""), node]));
+      const ordered = [];
+      cachedPaths.forEach((path) => {
+        const node = byPath.get(String(path || ""));
+        if (node) ordered.push(node);
+      });
+      out.forEach((node) => {
+        const path = String(node?.path || "");
+        if (!cachedPaths.includes(path)) ordered.push(node);
+      });
+      if (ordered.length === out.length) return ordered;
+    }
+    const seed = (((WS.view && WS.view.randomSeed) || 0) ^ hash32(`fast-tag-scope:${String(key || "collection")}`)) >>> 0;
+    const shuffled = shuffleWithSeed(out.slice(), seed);
+    if (WS.view.randomFolderCache) {
+      WS.view.randomFolderCache.set(cacheKey, shuffled.map((node) => String(node?.path || "")));
+    }
+    return shuffled;
   }
+  const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
+  if (mode === "score" || mode === "efficiency" || mode === "size-desc" || mode === "count-recursive") {
+    const summaryMemo = new Map();
+    const getSummary = (node) => {
+      const path = String(node?.path || "");
+      if (!summaryMemo.has(path)) summaryMemo.set(path, fastDirSummaryForTagScope(node));
+      return summaryMemo.get(path) || { recursiveFileCount: 0, recursiveSizeBytes: 0, score: 0, efficiency: 0 };
+    };
+    out.sort((a, b) => {
+      const sa = getSummary(a);
+      const sb = getSummary(b);
+      let va = 0;
+      let vb = 0;
+      if (mode === "score") {
+        va = sa.score;
+        vb = sb.score;
+      } else if (mode === "efficiency") {
+        va = sa.efficiency;
+        vb = sb.efficiency;
+      } else if (mode === "size-desc") {
+        va = sa.recursiveSizeBytes;
+        vb = sb.recursiveSizeBytes;
+      } else {
+        va = sa.recursiveFileCount;
+        vb = sb.recursiveFileCount;
+      }
+      if (va !== vb) return vb - va;
+      return byName(a, b);
+    });
+    return out;
+  }
+  out.sort(byName);
+  return out;
+}
+
+function getFastTagScopeChildren(dirNode) {
+  if (!dirNode) return [];
+  ensureDirectoryChildNodesFromCatalog(dirNode);
+  const rawChildren = Array.isArray(dirNode.childrenDirs) ? dirNode.childrenDirs : [];
+  const showHidden =
+    WS.view.hiddenMode ||
+    showHiddenFolderEnabled() ||
+    (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden");
+  const children = [];
+  for (let i = 0; i < rawChildren.length; i++) {
+    const child = rawChildren[i];
+    if (!child || child.type !== "dir") continue;
+    if (isInternalTrashDirNode(child)) continue;
+    if (!showHidden && isDirOrAncestorHidden(child)) continue;
+    children.push(child);
+  }
+  return fastSortDirsForTagScope(children, String(dirNode.path || "__root__"));
+}
+
+function getFastTagScopeModel(dirNode) {
+  const path = String(dirNode?.path || "__root__");
+  const cacheKey = [
+    path,
+    tagVisibleChildContextKey(),
+    tagFolderEntryOptionContextKey(),
+    fastTagScopeSortKey(),
+  ].join("@@");
+  if (TAG_SCOPE_MODEL_CACHE.has(cacheKey)) {
+    return TAG_SCOPE_MODEL_CACHE.get(cacheKey) || {
+      children: [],
+      groups: new Map(),
+      favorites: [],
+      untagged: [],
+      hidden: [],
+      albumStats: new Map(),
+    };
+  }
+
+  const children = getFastTagScopeChildren(dirNode);
   const groups = new Map();
-  if (!dirNode) return groups;
-  const children = getVisibleChildDirsForTagEvaluation(dirNode);
-  for (const child of children) {
-    const tags = metaGetUserTags(child.path || "");
-    const seen = new Set();
-    for (const tag of tags) {
-      const key = String(tag || "");
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      const list = groups.get(key) || [];
+  const favorites = [];
+  const untagged = [];
+  const hidden = [];
+  const albumStats = new Map();
+  const scopePath = String(dirNode?.path || "");
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    const childPath = String(child?.path || "");
+    if (!childPath) continue;
+    if (metaHasFavorite(childPath)) favorites.push(child);
+    if (metaHasHidden(childPath)) hidden.push(child);
+    const tags = metaGetUserTags(childPath);
+    if (!tags.length) untagged.push(child);
+    const seenTags = new Set();
+    for (let t = 0; t < tags.length; t++) {
+      const tag = String(tags[t] || "");
+      if (!tag || seenTags.has(tag)) continue;
+      seenTags.add(tag);
+      let list = groups.get(tag);
+      if (!list) {
+        list = [];
+        groups.set(tag, list);
+      }
       list.push(child);
-      groups.set(key, list);
+      const album = metaGetTagAlbumForTag(tag, scopePath);
+      if (album) {
+        let bucket = albumStats.get(album);
+        if (!bucket) {
+          bucket = { tags: new Set(), folderPaths: new Set(), dirs: [] };
+          albumStats.set(album, bucket);
+        }
+        bucket.tags.add(tag);
+        if (!bucket.folderPaths.has(childPath)) {
+          bucket.folderPaths.add(childPath);
+          bucket.dirs.push(child);
+        }
+      }
     }
   }
-  TAG_GROUPS_BY_DIR_CACHE.set(cacheKey, groups);
-  return groups;
+
+  const model = { children, groups, favorites, untagged, hidden, albumStats };
+  TAG_SCOPE_MODEL_CACHE.set(cacheKey, model);
+  return model;
+}
+
+
+function gatherTagGroupsForDir(dirNode) {
+  return getFastTagScopeModel(dirNode).groups;
 }
 
 function collectTagAlbumStatsForGroups(tagGroups, scopePath = null) {
-  const cacheKey = `${String(scopePath || "__root__")}@@${tagVisibleChildContextKey()}`;
-  if (TAG_ALBUM_STATS_BY_SCOPE_CACHE.has(cacheKey)) {
-    return TAG_ALBUM_STATS_BY_SCOPE_CACHE.get(cacheKey) || new Map();
-  }
+  const baseNode = scopePath == null ? null : WS.dirByPath.get(String(scopePath || ""));
+  if (baseNode) return getFastTagScopeModel(baseNode).albumStats;
   const byAlbum = new Map();
   for (const [tag, nodes] of (tagGroups || []).entries()) {
     const album = metaGetTagAlbumForTag(tag, scopePath);
     if (!album) continue;
     let bucket = byAlbum.get(album);
     if (!bucket) {
-      bucket = {
-        tags: new Set(),
-        folderPaths: new Set(),
-      };
+      bucket = { tags: new Set(), folderPaths: new Set(), dirs: [] };
       byAlbum.set(album, bucket);
     }
     bucket.tags.add(String(tag || ""));
     for (let i = 0; i < (nodes || []).length; i++) {
-      const path = String(nodes[i]?.path || "");
-      if (path) bucket.folderPaths.add(path);
+      const node = nodes[i];
+      const path = String(node?.path || "");
+      if (!path || bucket.folderPaths.has(path)) continue;
+      bucket.folderPaths.add(path);
+      bucket.dirs.push(node);
     }
   }
-  TAG_ALBUM_STATS_BY_SCOPE_CACHE.set(cacheKey, byAlbum);
   return byAlbum;
 }
 
@@ -28950,7 +29417,8 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
   }
 
   const entries = [];
-  const visibleChildren = getChildDirsForNodeBase(dirNode);
+  const scopeModel = getFastTagScopeModel(dirNode);
+  const visibleChildren = scopeModel.children;
 
   const favoritesEntry = {
     kind: "tag",
@@ -29022,7 +29490,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
           originPath,
         };
         const visibleAlbumDirs = filterTagEntryDirsByVisibleRecords(
-          Array.from(stats.folderPaths)
+          Array.isArray(stats.dirs) ? stats.dirs : Array.from(stats.folderPaths)
             .map((path) => WS.dirByPath.get(String(path || "")) || null)
             .filter(Boolean),
           albumEntry,
@@ -29102,21 +29570,11 @@ function primeTagDerivedCachesForDir(dirNode) {
     const entry = entries[i];
     if (!entry || entry.kind !== "tag") continue;
     if (entry.album && !entry.tag) {
-      const albumEntries = getTagEntriesForAlbumForBaseNode(dirNode, entry.album);
-      for (let j = 0; j < albumEntries.length; j++) {
-        const albumTagEntry = albumEntries[j];
-        if (!albumTagEntry || albumTagEntry.kind !== "tag") continue;
-        getDirsForTagEntry(albumTagEntry);
-        getTagEntryAggregateMetrics(albumTagEntry);
-        collectVisibleThumbRecordsForTagEntry(albumTagEntry);
-      }
+      getTagEntriesForAlbumForBaseNode(dirNode, entry.album);
     }
     getDirsForTagEntry(entry);
-    getTagEntryAggregateMetrics(entry);
-    collectVisibleThumbRecordsForTagEntry(entry);
   }
 }
-
 function getTagFolderBaseNode() {
   const basePath = String(WS.view.tagFolderOriginPath || "");
   if (basePath) {
@@ -29208,10 +29666,11 @@ function getDirsForTagFolderView() {
     if (cacheKey) TAG_FOLDER_VIEW_DIRS_CACHE.set(cacheKey, out);
     return out;
   };
-  const children = getChildDirsForNodeBase(baseNode);
+  const scopeModel = getFastTagScopeModel(baseNode);
+  const children = scopeModel.children;
   if (mode === "favorites") {
     return setCached(filterTagEntryDirsByVisibleRecords(
-      children.filter((d) => metaHasFavorite(d.path || "")),
+      scopeModel.favorites,
       {
         kind: "tag",
         special: "favorites",
@@ -29222,7 +29681,7 @@ function getDirsForTagFolderView() {
   }
   if (mode === "untagged") {
     return setCached(filterTagEntryDirsByVisibleRecords(
-      children.filter((d) => metaGetUserTags(d.path || "").length === 0),
+      scopeModel.untagged,
       {
         kind: "tag",
         special: "untagged",
@@ -29233,7 +29692,7 @@ function getDirsForTagFolderView() {
   }
   if (mode === "hidden") {
     return setCached(filterTagEntryDirsByVisibleRecords(
-      children.filter((d) => metaHasHidden(d.path || "")),
+      scopeModel.hidden,
       {
         kind: "tag",
         special: "hidden",
@@ -29251,10 +29710,7 @@ function getDirsForTagFolderView() {
   const tag = String(WS.view.tagFolderActiveTag || "");
   if (!tag) return setCached([]);
   return setCached(filterTagEntryDirsByVisibleRecords(
-    children.filter((d) => {
-      const tags = metaGetUserTags(d.path || "");
-      return tags.includes(tag);
-    }),
+    (gatherTagGroupsForDir(baseNode).get(tag) || []),
     {
       kind: "tag",
       tag,
@@ -29269,10 +29725,11 @@ function getDirsForTagViewFrame(frame) {
   if (!frame) return [];
   const baseNode = WS.dirByPath.get(String(frame.originPath || "")) || WS.root;
   if (!baseNode) return [];
-  const children = getChildDirsForNodeBase(baseNode);
+  const scopeModel = getFastTagScopeModel(baseNode);
+  const children = scopeModel.children;
   if (frame.mode === "favorites")
     return filterTagEntryDirsByVisibleRecords(
-      children.filter((d) => metaHasFavorite(d.path || "")),
+      scopeModel.favorites,
       {
         kind: "tag",
         special: "favorites",
@@ -29282,7 +29739,7 @@ function getDirsForTagViewFrame(frame) {
     );
   if (frame.mode === "untagged")
     return filterTagEntryDirsByVisibleRecords(
-      children.filter((d) => metaGetUserTags(d.path || "").length === 0),
+      scopeModel.untagged,
       {
         kind: "tag",
         special: "untagged",
@@ -29292,7 +29749,7 @@ function getDirsForTagViewFrame(frame) {
     );
   if (frame.mode === "hidden")
     return filterTagEntryDirsByVisibleRecords(
-      children.filter((d) => metaHasHidden(d.path || "")),
+      scopeModel.hidden,
       {
         kind: "tag",
         special: "hidden",
@@ -29305,10 +29762,7 @@ function getDirsForTagViewFrame(frame) {
   const tag = String(frame.tag || "");
   if (!tag) return [];
   return filterTagEntryDirsByVisibleRecords(
-    children.filter((d) => {
-      const tags = metaGetUserTags(d.path || "");
-      return tags.includes(tag);
-    }),
+    (gatherTagGroupsForDir(baseNode).get(tag) || []),
     {
       kind: "tag",
       tag,
@@ -29328,36 +29782,22 @@ function getDirsForTagEntry(entry) {
   const originPath = String(entry.originPath || "");
   const dirNode = WS.dirByPath.get(originPath) || WS.nav.dirNode;
   if (!dirNode) return [];
-  const children = getChildDirsForNodeBase(dirNode);
+  const scopeModel = getFastTagScopeModel(dirNode);
+  const children = scopeModel.children;
   if (!children.length) return [];
   if (entry.album && !entry.tag) {
     const album = normalizeTagAlbumName(entry.album);
     if (!album) return [];
-    const tagGroups = gatherTagGroupsForDir(dirNode);
-    if (!tagGroups.size) return [];
-    const out = [];
-    const seen = new Set();
-    for (const [tag, nodes] of tagGroups.entries()) {
-      if (metaGetTagAlbumForTag(tag, originPath) !== album) continue;
-      for (let i = 0; i < (nodes || []).length; i++) {
-        const node = nodes[i];
-        const path = String(node?.path || "");
-        if (!path || seen.has(path)) continue;
-        seen.add(path);
-        out.push(node);
-      }
-    }
-    const filtered = sortDirCollectionForDisplay(
-      filterTagEntryDirsByVisibleRecords(out, entry),
-      `tag-entry-album:${originPath}:${album}`,
-    );
+    const albumStats = scopeModel.albumStats.get(album);
+    const out = albumStats && Array.isArray(albumStats.dirs) ? albumStats.dirs : [];
+    const filtered = filterTagEntryDirsByVisibleRecords(out, entry);
     if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, filtered);
     return filtered;
   }
   if (entry.special) {
     if (entry.special === "favorites") {
       const out = filterTagEntryDirsByVisibleRecords(
-        children.filter((d) => metaHasFavorite(d.path || "")),
+        scopeModel.favorites,
         entry,
       );
       if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
@@ -29365,7 +29805,7 @@ function getDirsForTagEntry(entry) {
     }
     if (entry.special === "untagged") {
       const out = filterTagEntryDirsByVisibleRecords(
-        children.filter((d) => metaGetUserTags(d.path || "").length === 0),
+        scopeModel.untagged,
         entry,
       );
       if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
@@ -29373,7 +29813,7 @@ function getDirsForTagEntry(entry) {
     }
     if (entry.special === "hidden") {
       const out = filterTagEntryDirsByVisibleRecords(
-        children.filter((d) => metaHasHidden(d.path || "")),
+        scopeModel.hidden,
         entry,
       );
       if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
@@ -29389,10 +29829,7 @@ function getDirsForTagEntry(entry) {
   const tag = String(entry.tag || "");
   if (!tag) return [];
   const out = filterTagEntryDirsByVisibleRecords(
-    children.filter((d) => {
-      const tags = metaGetUserTags(d.path || "");
-      return tags.includes(tag);
-    }),
+    (gatherTagGroupsForDir(dirNode).get(tag) || []),
     entry,
   );
   if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
@@ -29448,12 +29885,48 @@ function getTagEntryDisplayIcon(entry) {
   return appIconHtml(getTagEntryIconKey(entry));
 }
 
+function fastTagEntryFolderCount(entry) {
+  if (!entry || entry.kind !== "tag") return 0;
+  const direct = Number(entry.count);
+  if (Number.isFinite(direct) && direct >= 0) return Math.max(0, Math.round(direct));
+  return 0;
+}
+
+function lightweightTagEntryMetrics(entry) {
+  const folderCount = fastTagEntryFolderCount(entry);
+  return {
+    dirs: [],
+    folderCount,
+    fileCount: 0,
+    score: 0,
+    sizeBytes: 0,
+  };
+}
+
+function shouldUseLightweightTagEntryMetrics(entry, sizeMemo = null) {
+  if (!entry || entry.kind !== "tag") return false;
+  if (sizeMemo) return false;
+  // Tag/album rows should be path/navigation objects, not recursive summary
+  // reports. Computing full file/size/score metrics for every tag row can turn
+  // opening/exiting a tag into thousands of synchronous lookups. Use the count
+  // already attached to the tag entry unless a caller explicitly supplies a memo
+  // for aggregate work.
+  return true;
+}
+
 function getTagEntryCountText(entry) {
+  if (shouldUseLightweightTagEntryMetrics(entry)) {
+    const folderCount = fastTagEntryFolderCount(entry);
+    return `${folderCount} ${folderCount === 1 ? "Folder" : "Folders"}`;
+  }
   const metrics = getTagEntryAggregateMetrics(entry);
   return formatFolderFileCountSegment(metrics.folderCount, metrics.fileCount);
 }
 
 function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
+  if (shouldUseLightweightTagEntryMetrics(entry, sizeMemo)) {
+    return lightweightTagEntryMetrics(entry);
+  }
   const cacheKey =
     !sizeMemo && entry && entry.kind === "tag"
       ? tagEntryDerivedCacheKey(entry)
@@ -29473,13 +29946,7 @@ function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
   let fileCount = 0;
   const folderCount = dirs.length;
   if (entry && entry.kind === "tag" && entry.special === "storage") {
-    const result = {
-      dirs,
-      folderCount,
-      fileCount: 0,
-      score: 0,
-      sizeBytes: 0,
-    };
+    const result = { dirs, folderCount, fileCount: 0, score: 0, sizeBytes: 0 };
     if (cacheKey) TAG_ENTRY_METRICS_CACHE.set(cacheKey, result);
     return result;
   }
@@ -29490,49 +29957,25 @@ function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
     if (!path || seen.has(path)) continue;
     seen.add(path);
     score += Number(metaGetScore(path)) || 0;
-    fileCount += getRecursiveFileCountForNode(dirNode);
-    sizeBytes += getDirRecursiveSizeBytesForNode(dirNode, sizeMemo);
+    const summary = getCatalogSummaryForNode(dirNode);
+    if (summary) {
+      fileCount += Math.max(0, Number(summary.recursiveFileCount) || 0);
+      sizeBytes += Math.max(0, Number(summary.recursiveSizeBytes) || 0);
+    } else {
+      fileCount += Math.max(0, Number(dirNode.recursiveFileCount) || 0);
+      sizeBytes += Math.max(0, Number(dirNode.recursiveSizeBytes) || 0);
+    }
   }
-  const result = {
-    dirs,
-    folderCount,
-    fileCount,
-    score,
-    sizeBytes,
-  };
+  const result = { dirs, folderCount, fileCount, score, sizeBytes };
   if (cacheKey) TAG_ENTRY_METRICS_CACHE.set(cacheKey, result);
   return result;
 }
-
 function effectiveTagMediaFilterForEntry(entry) {
-  const key = tagThumbnailKeyForEntry(entry);
-  if (!key) return [];
-  const direct = metaGetTagMediaFilterByKey(key);
-  const inherited = currentContextualTagMediaFilterValue();
-  let entryContext = [];
-  if (entry && entry.kind === "tag" && entry.tag && entry.album) {
-    entryContext = contextualTagMediaFilterForTagContext(
-      "tag",
-      entry.tag,
-      entry.album,
-      entry.originPath,
-    );
-  } else if (entry && entry.kind === "tag" && entry.album && !entry.tag) {
-    entryContext = contextualTagMediaFilterForTagContext(
-      "album",
-      "",
-      entry.album,
-      entry.originPath,
-    );
-  }
-  return combineTagMediaFilterValues(inherited, direct, entryContext);
+  return [];
 }
 
 function recordPassesTagEntryFilter(rec, entry) {
-  if (!rec) return false;
-  const tagFilter = effectiveTagMediaFilterForEntry(entry);
-  if (tagFilter.length) return recordPassesTagMediaFilter(rec, tagFilter);
-  return true;
+  return !!rec;
 }
 
 const ROTATING_PREVIEW_POOLS = new Map();
@@ -30294,44 +30737,11 @@ function setRandomFolderThumbnailForNode(dirNode) { }
 function setRandomTagThumbnailForEntry(entry) { }
 
 function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
-  const key = tagThumbnailKeyForEntry(entry);
-  if (!key) return null;
-  if (getTagThumbnailDisplayModeByKey(key) !== "single") return null;
-  const relPath = metaGetTagThumbnailPresetRelPathByKey(key);
-  if (!relPath) return null;
-  const rec = findFileRecordByRelPath(relPath);
-  if (!rec || !recordPassesTagEntryFilter(rec, entry)) return null;
-  const dirs = getDirsForTagEntry(entry);
-  if (!dirs.length || !isRecordInAnyDirSubtree(rec, dirs)) return null;
-  return rec;
+  return null;
 }
-
 function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
-  const normalizedLimit = Math.max(0, Math.floor(Number(limit) || 0));
-  const cacheKey =
-    entry && entry.kind === "tag"
-      ? `${String(tagEntrySelectionKey(entry) || "")}@@${String(
-          entry.originPath || "",
-        )}@@${effectiveFilterCacheKey()}@@${String(
-          effectiveTagMediaFilterForEntry(entry).join(","),
-        )}@@${tagVisibleChildContextKey()}@@${String(normalizedLimit)}`
-      : "";
-  if (cacheKey && TAG_ENTRY_PREVIEW_POOL_CACHE.has(cacheKey)) {
-    return TAG_ENTRY_PREVIEW_POOL_CACHE.get(cacheKey) || [];
-  }
-  const dirs = getDirsForTagEntry(entry);
-  if (!dirs.length) return [];
-  const result = sampleRecursivePreviewRecords(
-    dirs,
-    normalizedLimit,
-    true,
-  ).filter((rec) =>
-    recordPassesTagEntryFilter(rec, entry),
-  );
-  if (cacheKey) TAG_ENTRY_PREVIEW_POOL_CACHE.set(cacheKey, result);
-  return result;
+  return [];
 }
-
 function tagThumbnailPreviewSampleLimit(modeRaw) { }
 
 function pickRotatingPreviewSlotsForKey(baseKey, records, count = 4) {
@@ -30516,7 +30926,6 @@ function ensureRotatingPreviewTicker() {
 function makeTagPreviewNode(entry) {
   const baseNode = WS.nav.dirNode;
   if (!entry || !baseNode) return null;
-  const dirs = getDirsForTagEntry(entry);
   const isAlbumEntry = !!entry.album && !entry.tag;
   const mode = entry.special
     ? String(entry.special || "")
@@ -30531,11 +30940,17 @@ function makeTagPreviewNode(entry) {
       : entry.tag || "tag";
   const safeSuffix = String(pathSuffix || "tag").replace(/[\/\\]/g, "_");
   const virtualPath = `${String(baseNode.path || "")}/@tag-${safeSuffix}`;
+
+  // v15: Do not resolve every folder inside the tag just to build a simulated
+  // preview location. The preview pane currently renders tag locations as a
+  // placeholder, and the real tag folder contents are resolved by the file-pane
+  // navigation path. Keeping this lazy removes a full tag membership pass from
+  // ordinary tag/album selection, entry, and exit.
   return {
     type: "dir",
     name: label,
     parent: baseNode,
-    childrenDirs: isAlbumEntry ? [] : dirs,
+    childrenDirs: [],
     childrenFiles: [],
     path: virtualPath,
     _skipTagFilters: true,
@@ -30784,9 +31199,17 @@ function pushTagEntryContext(mode, tag, album = "", opts = null) {
 }
 
 function pushTagViewContext(selectedDirPath) {
-  const orderedPaths = getDirsForTagFolderView()
-    .map((d) => String(d?.path || ""))
-    .filter(Boolean);
+  const currentEntryPaths = Array.isArray(WS.nav && WS.nav.entries)
+    ? WS.nav.entries
+        .filter((entry) => entry && entry.kind === "dir" && entry.node)
+        .map((entry) => String(entry.node.path || ""))
+        .filter(Boolean)
+    : [];
+  const orderedPaths = currentEntryPaths.length
+    ? currentEntryPaths
+    : getDirsForTagFolderView()
+        .map((d) => String(d?.path || ""))
+        .filter(Boolean);
   pushTagNavFrame({
     type: "tag-view",
     mode: WS.view.tagFolderActiveMode,
@@ -30963,8 +31386,12 @@ function openTagFolderEntry(entry) {
   const isAlbumEntry = !!album && !entry.tag && !entry.special;
   const mode = entry.special ? entry.special : isAlbumEntry ? "album" : "tag";
   const tag = mode === "tag" ? entry.tag || "" : "";
+  const selectedIndexSourceEntries =
+    !rebaseToDifferentDir && Array.isArray(WS.nav.entries) && WS.nav.entries.length
+      ? WS.nav.entries
+      : getTagFolderEntriesForDir(baseNode, { includePlaceholder: true });
   const selectedIndex = findTagEntryIndexInEntries(
-    getTagFolderEntriesForDir(baseNode, { includePlaceholder: true }),
+    selectedIndexSourceEntries,
     mode,
     tag,
     album,
@@ -31332,12 +31759,10 @@ function tagEntryDerivedCacheKey(entry) {
   if (!entry || entry.kind !== "tag") return "";
   const entryKey = String(tagEntrySelectionKey(entry) || "");
   const originPath = String(entry.originPath || "");
-  const mediaFilter = String(effectiveTagMediaFilterForEntry(entry).join(","));
   return [
     entryKey,
     originPath,
     effectiveFilterCacheKey(),
-    mediaFilter,
     tagVisibleChildContextKey(),
     dirSortDisplayCacheKey(),
   ].join("@@");
@@ -34760,27 +35185,8 @@ function collectNavigationManifestRecords(
 }
 
 function collectVisibleThumbRecordsForTagEntry(entry) {
-  if (!entry || entry.placeholder) return [];
-  const thumbMode = tagThumbnailKeyForEntry(entry)
-    ? metaGetTagThumbnailModeByKey(tagThumbnailKeyForEntry(entry))
-    : "single";
-  if (thumbMode === "none") return [];
-  const presetRec = getTagPresetPreviewRecordForEntry(entry);
-  if (presetRec) return [presetRec];
-  const pool = getRecursivePreviewRecordsForTagEntry(
-    entry,
-    tagThumbnailPreviewSampleLimit(thumbMode),
-  );
-  if (!pool.length) return [];
-  const scopePath = String(WS.nav.dirNode?.path || entry.originPath || "");
-  const baseKey = entry.special
-    ? `tag:${scopePath}:special:${entry.special}`
-    : entry.album && !entry.tag
-      ? `tag:${scopePath}:album:${String(entry.album || "")}`
-      : `tag:${scopePath}:name:${String(entry.tag || "")}`;
-  return pool[0] ? [pool[0]] : [];
+  return [];
 }
-
 function collectFullNavigationEntryRecords(
   dirNode,
   includeFiles = true,
@@ -37228,8 +37634,7 @@ function openTagContextMenu(context) {
         };
   const canAppearancePreset =
     !!tagKey && !context.special && (!!tag || isAlbumEntry);
-  const canMediaFilter =
-    !!tagKey && !context.special && (!!tag || isAlbumEntry);
+  const canMediaFilter = false;
   const isHidden = canHide && metaHasHiddenTagByKey(tagKey);
   const assignedAppearancePresetId = canAppearancePreset
     ? metaGetTagAppearancePresetIdByKey(tagKey)
@@ -38378,10 +38783,8 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const anyAssignedTagAppearancePreset = tagAppearancePresetKeys.some((key) =>
     metaHasTagAppearancePresetByKey(key),
   );
-  const tagMediaFilterTargets = tagAppearancePresetKeys.slice();
-  const anyAssignedTagMediaFilter = tagMediaFilterTargets.some((key) =>
-    metaHasTagMediaFilterByKey(key),
-  );
+  const tagMediaFilterTargets = [];
+  const anyAssignedTagMediaFilter = false;
   const singleRenameEntry =
     selectedEntries.length === 1 ? selectedEntries[0] || null : null;
   const canSingleRename =
@@ -39500,20 +39903,8 @@ function renderDirectoriesActionHeader() {
   const anyAssignedTagAppearancePreset =
     !!tagAppearancePresetKeys.length &&
     tagAppearancePresetKeys.some((key) => metaHasTagAppearancePresetByKey(key));
-  const tagMediaFilterTargets = (() => {
-    const out = [];
-    const seen = new Set();
-    for (let i = 0; i < presetAssignableTagEntries.length; i++) {
-      const key = tagThumbnailKeyForEntry(presetAssignableTagEntries[i]);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(key);
-    }
-    return out;
-  })();
-  const anyAssignedTagMediaFilter =
-    !!tagMediaFilterTargets.length &&
-    tagMediaFilterTargets.some((key) => metaHasTagMediaFilterByKey(key));
+  const tagMediaFilterTargets = [];
+  const anyAssignedTagMediaFilter = false;
   const singleSelectedTagEntry =
     selectedTagEntries.length === 1 ? selectedTagEntries[0] || null : null;
   const canSingleTagRename =
@@ -40288,24 +40679,11 @@ function imageThumbPoolLimit() {
 }
 
 function shouldVirtualizeDirectoriesPane(gridModeActive) {
-  if (!gridModeActive) return false;
-  if (!isViewingPerformanceSensitiveTagAlbumFolder()) return false;
-  if (!Array.isArray(WS.nav.entries)) return false;
-  if (WS.nav.entries.length < TAG_ALBUM_DIRECTORY_VIRTUALIZE_THRESHOLD)
-    return false;
-  if (
-    WS.view.bulkActionMenuOpen ||
-    WS.view.dirActionMenuPath ||
-    WS.view.fileActionMenuId ||
-    TAG_EDIT_PATH ||
-    RENAME_EDIT_PATH ||
-    RENAME_EDIT_FILE_ID ||
-    TAG_ENTRY_RENAME_STATE ||
-    PREVIEW_BULK_TAG_EDIT
-  ) {
-    return false;
-  }
-  return true;
+  // The tag/album file-pane virtualizer can strand the list after the first
+  // mounted window when users scroll quickly through many folders. Keep tag
+  // folders fully mounted until this path is replaced with a measured virtual
+  // list that cannot produce a blank spacer-only wall.
+  return false;
 }
 
 function measureDirectoriesGridVirtualMetrics() {
@@ -40320,6 +40698,21 @@ function measureDirectoriesGridVirtualMetrics() {
   const cols = Math.max(1, Number.isFinite(colsRaw) ? colsRaw : 1);
   const rowHeight = Math.max(96, card) + gap;
   return { gap, card, cols, rowHeight };
+}
+
+function measureDirectoriesListVirtualMetrics() {
+  if (!directoriesListEl) return null;
+  const cs = getComputedStyle(directoriesListEl);
+  const gap = Math.max(0, parseFloat(cs.rowGap || cs.gap || "0") || 0);
+  const fontSize = Math.max(10, parseFloat(cs.fontSize || "12") || 12);
+  const rowHeight = Math.max(34, Math.round(fontSize * 1.5 + 16 + gap));
+  return { gap, card: rowHeight, cols: 1, rowHeight };
+}
+
+function measureDirectoriesVirtualMetrics(gridModeActive) {
+  return gridModeActive
+    ? measureDirectoriesGridVirtualMetrics()
+    : measureDirectoriesListVirtualMetrics();
 }
 
 function computeDirectoriesVirtualWindow(
@@ -40375,13 +40768,20 @@ function computeDirectoriesVirtualWindow(
   };
 }
 
-function appendVirtualFlexSpacer(frag, heightPx) {
+function appendVirtualFlexSpacer(frag, heightPx, gridModeActive = false) {
   const height = Math.max(0, Math.round(Number(heightPx) || 0));
   if (!frag || height <= 0) return;
   const spacer = document.createElement("div");
   spacer.className = "virtualFlexSpacer";
   spacer.setAttribute("aria-hidden", "true");
   spacer.style.height = `${height}px`;
+  if (gridModeActive) {
+    spacer.style.flex = "0 0 100%";
+    spacer.style.width = "100%";
+  } else {
+    spacer.style.flex = "0 0 auto";
+    spacer.style.width = "100%";
+  }
   frag.appendChild(spacer);
 }
 
@@ -40478,8 +40878,13 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     directoriesListEl.style.removeProperty("--grid-card-size");
     directoriesListEl.style.removeProperty("--grid-cols");
   }
-  const dirSortMetrics = buildDirSortMetrics();
-  const dirSizeByPath = dirSortMetrics.sizeByPath;
+  let dirSortMetrics = null;
+  let dirSizeByPath = null;
+  const getDirSizeByPathForRender = () => {
+    if (!dirSortMetrics) dirSortMetrics = buildDirSortMetrics();
+    if (!dirSizeByPath) dirSizeByPath = dirSortMetrics.sizeByPath || new Map();
+    return dirSizeByPath;
+  };
   const canBulk = WS.view.bulkSelectMode && canUseBulkSelection();
   const canReorderGridFileEntries =
     gridModeActive && canReorderFilesInCurrentDir();
@@ -40568,7 +40973,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         }
         if (dirVisibility.showSize) {
           const sizeText = formatBytes(
-            dirSizeByPath.get(String(entry.node?.path || "")) || 0,
+            getDirSizeByPathForRender().get(String(entry.node?.path || "")) || 0,
           );
           if (sizeText.length > maxMetaLen) maxMetaLen = sizeText.length;
         }
@@ -40580,25 +40985,34 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   } catch {}
 
   const frag = document.createDocumentFragment();
-  const virtualizeGrid = shouldVirtualizeDirectoriesPane(gridModeActive);
-  const virtualMetrics = virtualizeGrid
-    ? measureDirectoriesGridVirtualMetrics()
+  const virtualizeDirectories = shouldVirtualizeDirectoriesPane(gridModeActive);
+  const virtualMetrics = virtualizeDirectories
+    ? measureDirectoriesVirtualMetrics(gridModeActive)
     : null;
-  const virtualWindow = virtualizeGrid
+  const virtualWindow = virtualizeDirectories
     ? computeDirectoriesVirtualWindow(
         WS.nav.entries.length,
         virtualMetrics,
         suppressSelectionReveal,
       )
     : null;
-  const entryStart = virtualWindow ? Math.max(0, virtualWindow.startIndex) : 0;
+  const entryStart = virtualWindow
+    ? Math.max(
+        0,
+        Math.min(WS.nav.entries.length, virtualWindow.startIndex),
+      )
+    : 0;
   const entryEndExclusive = virtualWindow
-    ? Math.max(entryStart, virtualWindow.endIndexExclusive)
+    ? Math.max(
+        entryStart,
+        Math.min(WS.nav.entries.length, virtualWindow.endIndexExclusive),
+      )
     : WS.nav.entries.length;
   directoriesListEl.dataset.virtualized = virtualWindow ? "1" : "0";
   appendVirtualFlexSpacer(
     frag,
     virtualWindow ? virtualWindow.topSpacerHeight : 0,
+    gridModeActive,
   );
   const searchResultsDirectCount = searchResultsVisibleInDirectoriesPane()
     ? Math.max(0, Number(WS.view.searchResultsDirectCount) || 0)
@@ -40607,9 +41021,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     searchResultsDirectCount > 0 &&
     searchResultsDirectCount <
       (Array.isArray(WS.view.searchResults) ? WS.view.searchResults.length : 0);
-  const navDisplayPositions = buildDisplayPositionMapsForNavEntries(
-    WS.nav.entries,
-  );
+  const navDisplayPositions = displayPositionNumbersInNamesEnabled()
+    ? buildDisplayPositionMapsForNavEntries(WS.nav.entries)
+    : { dirPositions: new Map(), filePositions: new Map() };
   let seenSearchResultDirCount = 0;
   for (let idx = entryStart; idx < entryEndExclusive; idx++) {
     const entry = WS.nav.entries[idx];
@@ -40960,7 +41374,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         }
         if (!isStorageGhost && !lightweightFolderThumb && dirVisibility.showSize)
           dirMetaLines.push(
-            formatBytes(dirSizeByPath.get(String(p || "")) || 0),
+            formatBytes(getDirSizeByPathForRender().get(String(p || "")) || 0),
           );
         const statusBadges = [];
         if (isHidden)
@@ -41837,6 +42251,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   appendVirtualFlexSpacer(
     frag,
     virtualWindow ? virtualWindow.bottomSpacerHeight : 0,
+    gridModeActive,
   );
 
   directoriesListEl.appendChild(frag);
@@ -48429,25 +48844,31 @@ const ANIMATED_FILTER_CYCLE = [
 ];
 
 function cycleFilterMode() {
-  if (WS.view) WS.view.filterMode = "all";
+  const m = WS.view && WS.view.filterMode;
+  WS.view.filterMode =
+    m === "all"
+      ? "images"
+      : m === "images"
+        ? "videos"
+        : m === "videos"
+          ? "gifs"
+          : "all";
   applyViewModesEverywhere(true);
   refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(
-    "Root media filtering has been removed. Use tag content filters for filtered spaces.",
-    "cycle-filter",
-  );
-  return false;
+  showStatusMessage(`Media filter: ${WS.view.filterMode}`, "cycle-filter");
+  return true;
 }
 
 function setAspectRatioFilterMode(value) {
-  if (WS.view) WS.view.aspectRatioFilterMode = "all";
+  const next = normalizeAspectRatioFilterMode(value);
+  WS.view.aspectRatioFilterMode = next;
   applyViewModesEverywhere(true);
   refreshLiveSettingsPaneFromKeyboardAction();
   showStatusMessage(
-    "Root aspect-ratio filtering has been removed. Use tag content filters for filtered spaces.",
+    `Aspect ratio: ${labelForAspectRatioFilterMode(next)}`,
     "cycle-aspect-ratio-filter",
   );
-  return false;
+  return true;
 }
 
 function cycleAspectRatioFilterMode() {
@@ -51057,7 +51478,6 @@ resetThumbnailRuntimeStateV3();
 if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
 applyOptionsEverywhere(false);
 rebuildKeybindIndex();
-if (!MENU_OPEN) openMenu("general");
 renderDirectoriesPane();
 renderPreviewPane(true);
 syncButtons();
