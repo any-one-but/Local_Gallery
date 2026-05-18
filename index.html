@@ -4382,18 +4382,20 @@ img[data-rotate-key].rotatingThumbFade {
   gap: 10px;
   min-width: 0;
   width: 100%;
+  justify-content: flex-start;
 }
 
 #keybindsBody .optTitleLine .optTitle {
-  flex: 1 1 auto;
-  min-width: 7rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 #keybindsBody .keybindActionInline {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  max-width: 42%;
+  max-width: min(42%, 150px);
   min-width: 0;
 }
 
