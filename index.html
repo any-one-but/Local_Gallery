@@ -4391,22 +4391,6 @@ img[data-rotate-key].rotatingThumbFade {
   max-width: 100%;
 }
 
-#keybindsBody .keybindActionInline {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  max-width: min(42%, 150px);
-  min-width: 0;
-}
-
-#keybindsBody .keybindActionInline .optSelect {
-  min-width: 0;
-}
-
-#keybindsBody .keybindActionInline .optSelectBtn {
-  max-width: min(150px, 100%);
-}
-
 #keybindsBody .optRight {
   flex: 0 1 auto;
   min-width: 0;
@@ -4418,17 +4402,22 @@ img[data-rotate-key].rotatingThumbFade {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
 }
 
-#keybindsBody .keybindCurrentLabel {
-  min-width: 72px;
-  max-width: 120px;
-  text-align: right;
+#keybindsBody .keybindCaptureBtn {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+#keybindsBody .keybindClearBtn {
+  flex: 0 0 auto;
 }
 
 #optionsBody select,
@@ -4481,10 +4470,6 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
   transform: none;
   box-shadow: none;
-}
-
-#keybindsBody .keybindActionSelectRoot .optSelectBtn {
-  max-width: 170px;
 }
 
 #optionsBody .optSelectBtnLabel,
@@ -17108,196 +17093,6 @@ function assignKeybindForAction(actionId, rawKeybind) {
   return { ok: true, swapped: !!conflict };
 }
 
-function keybindInlineControlDomId(actionId) {
-  return `keybind_action_${String(actionId || "").replace(/[^A-Za-z0-9_-]/g, "_")}`;
-}
-
-function keybindToggleActionState(actionId) {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
-  switch (actionId) {
-    case "toggleDirectoriesPane":
-      return directoriesPaneOpenEnabled();
-    case "toggleRandomFileSort":
-      return !!(WS.view && WS.view.randomMode);
-    case "toggleRandomFolderSort":
-      return !!(WS.view && WS.view.randomFolderMode);
-    case "toggleShowHiddenFolder":
-      return showHiddenFolderEnabled();
-    case "toggleShowTrashFolder":
-      return showTrashFolderEnabled();
-    case "toggleShowUntaggedFolder":
-      return showUntaggedFolderEnabled();
-    case "toggleShowStorageFolder":
-      return showStorageFolderEnabled();
-    case "toggleMuteMessages":
-      return muteMessagesEnabled();
-    case "toggleQuickNavigation":
-      return quickNavigationEnabled();
-    case "togglePreviewMediaUsePaneBackground":
-      return !!opt.previewMediaUsePaneBackground;
-    case "toggleHideVideoControls":
-      return !!opt.hideVideoControls;
-    case "toggleThumbnailLoading":
-      return true;
-    case "toggleLightMode":
-      return !!opt.lightMode;
-    case "toggleHideFileExtensions":
-      return !!opt.hideFileExtensionsInFileNames;
-    case "toggleHideBeforeLastDash":
-      return !!opt.hideBeforeLastDashInFileNames;
-    case "toggleHideAfterFirstUnderscore":
-      return !!opt.hideAfterFirstUnderscoreInFileNames;
-    default:
-      return null;
-  }
-}
-
-function setKeybindToggleActionState(actionId, enabled) {
-  const next = !!enabled;
-  const current = keybindToggleActionState(actionId);
-  if (current === null) return false;
-  if (current === next) return true;
-  switch (actionId) {
-    case "toggleDirectoriesPane":
-      if (!setDirectoriesPaneOpenKeybindState(next)) return false;
-      showStatusMessage(`File pane: ${next ? "Open" : "Closed"}`, "pane-toggles");
-      return true;
-    case "toggleFilePaneView":
-      return setFilePaneViewMode("list");
-    case "toggleThumbnailLoading":
-      setOptionValue("thumbnailLoading", true);
-      refreshLiveSettingsPaneFromKeyboardAction();
-      applyInteractionModeFromOptions();
-      showStatusMessage("Thumbnail loading is always on.", "pane-toggles");
-      return true;
-    case "toggleRandomFileSort":
-      return toggleRandomSortMode();
-    case "toggleRandomFolderSort":
-      return toggleRandomFolderSortMode();
-    default:
-      return handleExtrasKeybindAction(actionId);
-  }
-}
-
-function keybindCycleActionSpec(actionId) {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
-  if (actionId === "toggleFilePaneView") return null;
-  if (actionId === "cycleFilter" || actionId === "cycleAspectRatioFilter") {
-    return null;
-  }
-  if (actionId === "cycleFolderSort") {
-    const items = dirSortModeOptions(scoreInterfaceEnabled());
-    return {
-      value: normalizeDirSortMode(WS.meta && WS.meta.dirSortMode),
-      items,
-      set(value) {
-        WS.meta.dirSortMode = normalizeDirSortMode(value);
-        clearTagEntryDerivedCaches();
-        invalidateDirSortMetricsCache();
-        metaMarkDirty(META_DOC_IDS.prefGeneral);
-        applyViewModesEverywhere(true);
-        showStatusMessage(
-          `Folder sort: ${dirSortModeLabel(WS.meta.dirSortMode)}`,
-          "cycle-folder-sort",
-        );
-        return true;
-      },
-    };
-  }
-  if (actionId === "toggleAnimatedFilters") {
-    return {
-      value: normalizeAnimatedMediaFiltersValue(opt.animatedMediaFilters, "on"),
-      items: ANIMATED_FILTER_CYCLE,
-      set(value) {
-        const next = normalizeAnimatedMediaFiltersValue(value, "on");
-        setOptionValue("animatedMediaFilters", next);
-        applyMediaFilterFromOptions();
-        showStatusMessage(
-          `Animated filters: ${labelForCycleValue(ANIMATED_FILTER_CYCLE, next)}`,
-          "cycle-animated-filters",
-        );
-        return true;
-      },
-    };
-  }
-  if (actionId === "cycleAppearancePresets") {
-    const items = (
-      Array.isArray(WS.meta && WS.meta.appearancePresets)
-        ? WS.meta.appearancePresets
-        : defaultAppearancePresets()
-    ).map((preset) => ({
-      value: normalizeAppearancePresetIdValue(preset && preset.id),
-      label: String(preset && preset.name ? preset.name : "Preset"),
-    }));
-    return {
-      value: effectiveActiveAppearancePresetId(),
-      items,
-      set(value) {
-        const next = normalizeAppearancePresetIdValue(value);
-        if (!applyAppearancePresetById(next)) return false;
-        showStatusMessage(
-          `Appearance preset: ${appearancePresetDisplayName(next, "Default")}`,
-        );
-        return true;
-      },
-    };
-  }
-  return null;
-}
-
-function keybindActionInlineControlHtml(actionId) {
-  const toggleState = keybindToggleActionState(actionId);
-  if (toggleState !== null) {
-    const id = keybindInlineControlDomId(actionId);
-    return `<span class="keybindActionInline">${makeMenuToggleButtonHtml(id, toggleState)}</span>`;
-  }
-  const cycle = keybindCycleActionSpec(actionId);
-  if (!cycle || !Array.isArray(cycle.items) || !cycle.items.length) return "";
-  const value = String(cycle.value || "");
-  const id = keybindInlineControlDomId(actionId);
-  const currentItem =
-    cycle.items.find((item) => String(item.value ?? "") === value) ||
-    cycle.items[0] ||
-    null;
-  const currentLabel = currentItem
-    ? String(currentItem.label || currentItem.value || "")
-    : value;
-  const options = cycle.items
-    .map((item) => {
-      const optionValue = String(item.value ?? "");
-      const selected = optionValue === value;
-      return `<button type="button" data-opt-select-value="${escapeHtml(optionValue)}"${selected ? ` class="current"` : ""}>${escapeHtml(String(item.label || optionValue))}</button>`;
-    })
-    .join("");
-  return `
-    <span class="keybindActionInline">
-      <input id="${escapeHtml(id)}" type="hidden" value="${escapeHtml(value)}" />
-      <div class="dirMenu optSelect keybindActionSelectRoot" data-opt-select-id="${escapeHtml(id)}" data-keybind-action-select-id="${escapeHtml(actionId)}">
-        <button type="button" class="dirMenuBtn optSelectBtn" data-opt-select-trigger="${escapeHtml(id)}" aria-haspopup="menu" aria-expanded="false">
-          <span class="optSelectBtnLabel">${escapeHtml(currentLabel || "Select")}</span>
-          <span class="optSelectChevron" aria-hidden="true">▾</span>
-        </button>
-        <div class="dropdownMenu optSelectMenu" data-opt-select-menu="${escapeHtml(id)}">
-          ${options}
-        </div>
-      </div>
-    </span>
-  `;
-}
-
-function closeOpenKeybindActionSelectMenus(exceptId = "") {
-  if (!keybindsBodyEl) return;
-  const keepId = String(exceptId || "");
-  const roots = keybindsBodyEl.querySelectorAll(
-    ".optSelect[data-keybind-action-select-id]",
-  );
-  roots.forEach((root) => {
-    const id = String(root?.dataset?.optSelectId || "");
-    if (keepId && id === keepId) return;
-    setOptionsSelectOpenState(root, false);
-  });
-}
-
 function renderKeybindsUi(scope = "pane") {
   if (!keybindsBodyEl) return;
   KEYBIND_MODIFIER_TAB_ID = "all";
@@ -17348,14 +17143,15 @@ function renderKeybindsUi(scope = "pane") {
         ? keyLabel(lockedKeyForAction(binding.id))
         : "";
       const captureLabel = "Set keybind";
-      const actionControlHtml = keybindActionInlineControlHtml(binding.id);
+      const captureButtonLabel = isCapturing
+        ? "Press keys..."
+        : currentLabel || captureLabel;
       const controlHtml = isLocked
         ? `<div class="label">${escapeHtml(lockedLabel)} (Locked)</div>`
         : `
                 <div class="keybindControlCluster">
-                  <div class="label keybindCurrentLabel">${escapeHtml(currentLabel)}</div>
-                  <button type="button" data-bind-capture-id="${escapeHtml(binding.id)}">${isCapturing ? "Press keys..." : escapeHtml(captureLabel)}</button>
-                  <button type="button" data-bind-clear-id="${escapeHtml(binding.id)}"${binding.key ? "" : " disabled"}>Clear</button>
+                  <button type="button" class="keybindCaptureBtn" data-bind-capture-id="${escapeHtml(binding.id)}" title="${escapeHtml(captureButtonLabel)}">${escapeHtml(captureButtonLabel)}</button>
+                  ${binding.key ? `<button type="button" class="keybindClearBtn" data-bind-clear-id="${escapeHtml(binding.id)}">Clear</button>` : ""}
                 </div>
               `;
       out += `
@@ -17363,7 +17159,6 @@ function renderKeybindsUi(scope = "pane") {
               <div class="optLeft">
                 <div class="optTitleLine">
                   <div class="optTitle">${escapeHtml(binding.label)}</div>
-                  ${actionControlHtml}
                 </div>
               </div>
               <div class="optRight">
@@ -17434,100 +17229,6 @@ function renderKeybindsUi(scope = "pane") {
     });
   });
 
-  visiblePaneBindings.forEach((binding) => {
-    const id = keybindInlineControlDomId(binding.id);
-    const btn = $(id);
-    if (!btn) return;
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const next = btn.getAttribute("aria-pressed") !== "true";
-      const ok = setKeybindToggleActionState(binding.id, next);
-      setMenuToggleButtonState(btn, keybindToggleActionState(binding.id));
-      setKeybindsStatus(ok ? "Saved" : "Unable to update action.");
-    });
-    btn.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        e.stopPropagation();
-        btn.click();
-        return;
-      }
-      e.stopPropagation();
-    });
-  });
-
-  const actionSelects = Array.from(
-    keybindsBodyEl.querySelectorAll(
-      ".optSelect[data-keybind-action-select-id]",
-    ),
-  );
-  actionSelects.forEach((root) => {
-    const actionId = root.getAttribute("data-keybind-action-select-id") || "";
-    const id = root.getAttribute("data-opt-select-id") || "";
-    const hidden = id ? $(id) : null;
-    const trigger = root.querySelector(".optSelectBtn");
-    const labelEl = trigger ? trigger.querySelector(".optSelectBtnLabel") : null;
-    const menu = root.querySelector(".optSelectMenu");
-    const optionButtons = Array.from(
-      root.querySelectorAll("button[data-opt-select-value]"),
-    );
-    const sync = () => {
-      const currentValue = String(hidden?.value || "");
-      let currentLabel = "";
-      optionButtons.forEach((btn) => {
-        const selected =
-          String(btn?.dataset?.optSelectValue || "") === currentValue;
-        btn.classList.toggle("current", selected);
-        if (selected) currentLabel = String(btn.textContent || "");
-      });
-      if (!currentLabel && optionButtons.length)
-        currentLabel = String(optionButtons[0].textContent || "");
-      if (labelEl) labelEl.textContent = currentLabel || "Select";
-    };
-    if (!hidden || !trigger || !menu) return;
-    trigger.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const opening = !menu.classList.contains("open");
-      closeOpenOptionsSelectMenus();
-      closeOpenKeybindActionSelectMenus(opening ? id : "");
-      setOptionsSelectOpenState(root, opening);
-    });
-    trigger.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setOptionsSelectOpenState(root, false);
-      }
-    });
-    menu.addEventListener("click", (e) => e.stopPropagation());
-    menu.addEventListener("keydown", (e) => e.stopPropagation());
-    optionButtons.forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const nextValue = String(btn?.dataset?.optSelectValue || "");
-        setOptionsSelectOpenState(root, false);
-        if (nextValue === String(hidden.value || "")) {
-          sync();
-          return;
-        }
-        hidden.value = nextValue;
-        const spec = keybindCycleActionSpec(actionId);
-        const ok = !!(
-          spec &&
-          typeof spec.set === "function" &&
-          spec.set(nextValue)
-        );
-        const refreshed = keybindCycleActionSpec(actionId);
-        if (refreshed) hidden.value = String(refreshed.value || "");
-        sync();
-        setKeybindsStatus(ok ? "Saved" : "Unable to update action.");
-      });
-    });
-    sync();
-  });
   applyMenuTransientFocusBehavior(keybindsBodyEl);
 }
 
@@ -17672,7 +17373,6 @@ function ensureOptionsSelectGlobalBindings() {
       const target = e.target;
       if (target && target.closest && target.closest(".optSelect")) return;
       closeOpenOptionsSelectMenus();
-      closeOpenKeybindActionSelectMenus();
     },
     true,
   );
@@ -18250,7 +17950,10 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
+${makeCheckRow("File pane", "Open or close the File pane sidebar.", "opt_directoriesPaneOpen", directoriesPaneOpenEnabled())}
 ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
+${makeCheckRow("Random file sort", "Toggle random file ordering in the current view.", "opt_randomFileSort", !!(WS.view && WS.view.randomMode))}
+${makeCheckRow("Random folder sort", "Toggle random folder ordering in the current view.", "opt_randomFolderSort", !!(WS.view && WS.view.randomFolderMode))}
 ${makeSelectRow("Media filter", "Choose which media types are visible across the current root/view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
 ${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible across the current root/view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
 ${makeCheckRow("Reveal hidden items", "Show or hide items hidden by hidden tags.", "opt_showHiddenFolder", showHiddenFolderEnabled())}
@@ -18361,6 +18064,7 @@ ${makeSelectRow("Video audio", "Audio state for videos in the preview pane and g
 ${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
 ${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
 ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges of images and videos and crop them out before overlays or filters are applied. Videos sample multiple moments and only crop bars that stay present the whole time.", "opt_autoCropBlackBars", !!opt.autoCropBlackBars)}
+${makeCheckRow("Hide video controls", "Hide or show the control pane below the preview.", "opt_hideVideoControls", !!opt.hideVideoControls)}
 ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
           `,
     },
@@ -18699,10 +18403,15 @@ ${makeActionRow(
         const delta = Number(btn.dataset.optStepperDelta) < 0 ? -1 : 1;
         stepBy(delta);
       });
+      btn.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
       btn.addEventListener("keydown", (e) => e.stopPropagation());
     });
     if (valueEl) {
       valueEl.addEventListener("click", (e) => e.stopPropagation());
+      valueEl.addEventListener("dblclick", (e) => e.stopPropagation());
       valueEl.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "ArrowUp" || e.key === "ArrowRight") {
@@ -18751,6 +18460,13 @@ ${makeActionRow(
     ) {
       rowEl.dataset.overlayResetBound = "1";
       rowEl.addEventListener("dblclick", (e) => {
+        const target = e.target;
+        if (
+          target &&
+          target.closest &&
+          target.closest("button, input, .optStepper")
+        )
+          return;
         e.preventDefault();
         e.stopPropagation();
         const next = {};
@@ -18901,6 +18617,34 @@ ${makeActionRow(
     showStatusMessage(`Quick navigation: ${enabled ? "On" : "Off"}`, "quick-navigation");
   });
   bindCheck("opt_muteMessages", "muteMessages");
+  bindMenuToggleButton("opt_directoriesPaneOpen", (enabled) => {
+    if (!setDirectoriesPaneOpenKeybindState(enabled)) {
+      setMenuToggleButtonState(
+        $("opt_directoriesPaneOpen"),
+        directoriesPaneOpenEnabled(),
+      );
+      return;
+    }
+    setOptionsStatus("Saved");
+    showStatusMessage(`File pane: ${enabled ? "Open" : "Closed"}`, "pane-toggles");
+  });
+  bindMenuToggleButton("opt_randomFileSort", (enabled) => {
+    if (!!(WS.view && WS.view.randomMode) !== !!enabled) toggleRandomSortMode();
+    setMenuToggleButtonState(
+      $("opt_randomFileSort"),
+      !!(WS.view && WS.view.randomMode),
+    );
+    setOptionsStatus("Saved");
+  });
+  bindMenuToggleButton("opt_randomFolderSort", (enabled) => {
+    if (!!(WS.view && WS.view.randomFolderMode) !== !!enabled)
+      toggleRandomFolderSortMode();
+    setMenuToggleButtonState(
+      $("opt_randomFolderSort"),
+      !!(WS.view && WS.view.randomFolderMode),
+    );
+    setOptionsStatus("Saved");
+  });
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
     invalidateDirMetricsCaches();
     if (!enabled && WS.view.tagFolderActiveMode === "untagged") {
@@ -19120,6 +18864,9 @@ ${makeActionRow(
       .trim()
       .toLowerCase();
     return raw === "loop" || raw === "next" || raw === "stop" ? raw : "loop";
+  });
+  bindCheck("opt_hideVideoControls", "hideVideoControls", () => {
+    refreshActivePreviewMediaLayout({ immediate: true });
   });
   bindCheck("opt_forceTitleCaps", "forceTitleCaps");
   bindCheck("opt_showPositionNumbersInNames", "showPositionNumbersInNames");
