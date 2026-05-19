@@ -1232,6 +1232,26 @@ body.directories-files-only #directoriesHeader {
   color: var(--color0-primary);
 }
 
+.dirFileMenu .dirMenuBtnFavoriteTint,
+.dirFileMenu .dirMenuBtnScoreFavoriteTint,
+.previewThumbOverlayMenu .dirMenuBtnFavoriteTint,
+.previewThumbOverlayMenu .dirMenuBtnScoreFavoriteTint {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  color: #fff;
+}
+
+.dirFileMenu .dirMenuBtnFavoriteTint:hover:not(:disabled),
+.dirFileMenu .dirMenuBtnScoreFavoriteTint:hover:not(:disabled),
+.previewThumbOverlayMenu .dirMenuBtnFavoriteTint:hover:not(:disabled),
+.previewThumbOverlayMenu .dirMenuBtnScoreFavoriteTint:hover:not(:disabled),
+.dirFileMenu .dirMenuBtnFavoriteTint:active:not(:disabled),
+.dirFileMenu .dirMenuBtnScoreFavoriteTint:active:not(:disabled),
+.previewThumbOverlayMenu .dirMenuBtnFavoriteTint:active:not(:disabled),
+.previewThumbOverlayMenu .dirMenuBtnScoreFavoriteTint:active:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  color: #fff;
+}
+
 .dirInlinePreview {
   --dir-inline-ar: 1.3333;
   flex: 0 0 auto;
