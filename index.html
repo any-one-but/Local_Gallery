@@ -9573,6 +9573,66 @@ const EMPTY_MEDIA_OVERLAY_CONFIG = Object.freeze({
   cornerRadius: 0,
 });
 
+function mediaOverlayLiveVideoProfile(overlayCfg) {
+  if (!overlayCfg) {
+    return {
+      maxFps: 30,
+      maxOutputPixels: 1600000,
+      maxWorkPixels: 1000000,
+    };
+  }
+  let cost = 0;
+  if (Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length)
+    cost += 0.7;
+  if (
+    Math.abs(Number(overlayCfg.temperature) || 0) > 0.0001 ||
+    Number(overlayCfg.colorCrush || 0) > 0.0001 ||
+    Number(overlayCfg.blackCrush || 0) > 0.0001 ||
+    Number(overlayCfg.whiteCrush || 0) > 0.0001
+  )
+    cost += 2.4;
+  if (Number(overlayCfg.upscaler || 0) > 0.0001) cost += 4.2;
+  if (Number(overlayCfg.halation || 0) > 0.0001) cost += 3.2;
+  if (Number(overlayCfg.chroma || 0) > 0.0001) cost += 2.2;
+  if (Number(overlayCfg.ghosting || 0) > 0.0001) cost += 1.8;
+  if (Number(overlayCfg.lineDamage || 0) > 0.0001) cost += 2.4;
+  if (Number(overlayCfg.blur || 0) > 0.0001)
+    cost += Number(overlayCfg.blur || 0) > 2 ? 2.1 : 1.1;
+  if (Number(overlayCfg.pixelate || 0) > 0.0001) cost += 0.4;
+  if (Number(overlayCfg.grain || 0) > 0.0001) cost += 0.4;
+  if (Number(overlayCfg.vignette || 0) > 0.0001) cost += 0.25;
+  if (Number(overlayCfg.cornerRadius || 0) > 0.0001) cost += 0.25;
+
+  if (cost >= 7) {
+    return {
+      maxFps: 18,
+      maxOutputPixels: 900000,
+      maxWorkPixels: 480000,
+    };
+  }
+  if (cost >= 4) {
+    return {
+      maxFps: 24,
+      maxOutputPixels: 1200000,
+      maxWorkPixels: 700000,
+    };
+  }
+  return {
+    maxFps: 30,
+    maxOutputPixels: 1600000,
+    maxWorkPixels: 1000000,
+  };
+}
+
+function capScaleForPixelBudget(width, height, maxPixels) {
+  const w = Math.max(1, Number(width) || 1);
+  const h = Math.max(1, Number(height) || 1);
+  const max = Math.max(1, Number(maxPixels) || 1);
+  const pixels = w * h;
+  if (!(pixels > max)) return 1;
+  return clampNumber(Math.sqrt(max / pixels), 0.1, 1, 1);
+}
+
 function autoCropBlackBarsEnabled(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return !!(src && src.autoCropBlackBars);
@@ -11852,6 +11912,8 @@ const MediaFilterEngine = (() => {
       ghostWorkCanvas: null,
       ghostWorkCtx: null,
       ghostHasFrame: false,
+      nextVideoRenderAt: 0,
+      videoFrameToken: 0,
     };
     surfaces.set(name, surface);
     return surface;
@@ -11922,6 +11984,7 @@ const MediaFilterEngine = (() => {
     surface.active = true;
     surface.awaitingFreshFrame = true;
     surface.ghostHasFrame = false;
+    surface.nextVideoRenderAt = 0;
     bindMediaEvents(surface, mediaEl);
     ensureCanvas(surface);
     if (surface.mediaEl && surface.hasDrawn) {
@@ -11936,13 +11999,32 @@ const MediaFilterEngine = (() => {
       typeof mediaEl.requestVideoFrameCallback === "function"
     ) {
       surface.videoFrameActive = true;
-      const onFrame = () => {
-        if (!surface.active || !surface.videoFrameActive) return;
-        requestRender();
+      surface.videoFrameToken++;
+      const frameToken = surface.videoFrameToken;
+      const onFrame = (now) => {
+        if (
+          !surface.active ||
+          !surface.videoFrameActive ||
+          frameToken !== surface.videoFrameToken
+        )
+          return;
+        const overlayCfg = resolveMediaOverlayConfigForTarget(surface.target);
+        const profile = mediaOverlayLiveVideoProfile(overlayCfg);
+        const intervalMs = 1000 / Math.max(1, Number(profile.maxFps) || 30);
+        const t = Number.isFinite(Number(now)) ? Number(now) : performance.now();
+        if (
+          surface.awaitingFreshFrame ||
+          !surface.nextVideoRenderAt ||
+          t >= surface.nextVideoRenderAt
+        ) {
+          surface.nextVideoRenderAt = t + intervalMs;
+          requestRender();
+        }
         mediaEl.requestVideoFrameCallback(onFrame);
       };
       mediaEl.requestVideoFrameCallback(onFrame);
     } else {
+      surface.videoFrameToken++;
       surface.videoFrameActive = false;
     }
     if (type !== "image") clearGifState(surface);
@@ -11967,7 +12049,9 @@ const MediaFilterEngine = (() => {
     surface.target = null;
     surface.awaitingFreshFrame = false;
     surface.videoFrameActive = false;
+    surface.videoFrameToken++;
     surface.ghostHasFrame = false;
+    surface.nextVideoRenderAt = 0;
     clearGifState(surface);
     if (!preserveFrame) {
       surface.hasDrawn = false;
@@ -11987,6 +12071,8 @@ const MediaFilterEngine = (() => {
     surface.hasDrawn = false;
     surface.awaitingFreshFrame = false;
     surface.videoFrameActive = false;
+    surface.videoFrameToken++;
+    surface.nextVideoRenderAt = 0;
     clearGifState(surface);
     if (surface.canvas && surface.canvas.parentElement) {
       surface.canvas.parentElement.removeChild(surface.canvas);
@@ -12081,8 +12167,23 @@ const MediaFilterEngine = (() => {
     if (!cw || !ch) return false;
 
     const dpr = window.devicePixelRatio || 1;
-    const pixelW = Math.max(1, Math.round(cw * dpr));
-    const pixelH = Math.max(1, Math.round(ch * dpr));
+    const liveVideoProfile =
+      isVideo && !el.paused && !el.ended
+        ? mediaOverlayLiveVideoProfile(overlayCfg)
+        : null;
+    const outputPixelScale = liveVideoProfile
+      ? capScaleForPixelBudget(
+          cw * dpr,
+          ch * dpr,
+          liveVideoProfile.maxOutputPixels,
+        )
+      : 1;
+    const renderDpr = Math.max(
+      0.5,
+      dpr * outputPixelScale,
+    );
+    const pixelW = Math.max(1, Math.round(cw * renderDpr));
+    const pixelH = Math.max(1, Math.round(ch * renderDpr));
     if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
       surface.canvas.width = pixelW;
       surface.canvas.height = pixelH;
@@ -12091,7 +12192,7 @@ const MediaFilterEngine = (() => {
     const ctx = surface.ctx;
     const frameCtx = surface.framectx;
     resizeCanvasBuffer(surface.framescreen, pixelW, pixelH);
-    frameCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    frameCtx.setTransform(renderDpr, 0, 0, renderDpr, 0, 0);
     frameCtx.imageSmoothingEnabled = true;
     frameCtx.clearRect(0, 0, cw, ch);
 
@@ -12161,6 +12262,14 @@ const MediaFilterEngine = (() => {
     const videoHeuristicScale = realtimeVideoHeuristics
       ? Math.max(0.62, 0.9 - Math.min(0.28, heuristicLoad * 0.18))
       : 1;
+    const baseWorkScale = previewUpscaleRenderScale * videoHeuristicScale;
+    const liveWorkScale = liveVideoProfile
+      ? capScaleForPixelBudget(
+          rect.w * baseWorkScale,
+          rect.h * baseWorkScale,
+          liveVideoProfile.maxWorkPixels,
+        )
+      : 1;
     const outputContainRect = rect;
     const animatedForSurface = animatedMediaFiltersEnabledForType(surface.type);
     const dx = outputContainRect.x;
@@ -12170,8 +12279,9 @@ const MediaFilterEngine = (() => {
     let currentCtx = surface.workctx;
     let scratchCanvas = surface.scratchscreen;
     let scratchCtx = surface.scratchctx;
-    const workW = Math.max(1, Math.round(rect.w * previewUpscaleRenderScale * videoHeuristicScale));
-    const workH = Math.max(1, Math.round(rect.h * previewUpscaleRenderScale * videoHeuristicScale));
+    const workScale = baseWorkScale * liveWorkScale;
+    const workW = Math.max(1, Math.round(rect.w * workScale));
+    const workH = Math.max(1, Math.round(rect.h * workScale));
     resizeCanvasBuffer(currentCanvas, workW, workH);
     resizeCanvasBuffer(scratchCanvas, workW, workH);
     currentCtx.setTransform(1, 0, 0, 1, 0, 0);
