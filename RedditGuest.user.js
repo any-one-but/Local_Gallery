@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RedditGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.00
+// @version      00.02.00
 // @description  Lightweight Reddit profile media downloader.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/RedditGuest.user.js
@@ -48,10 +48,13 @@
 
   const state = {
     busy: false,
+    scanType: '',
     username: '',
     userFolder: '',
     posts: [],
+    pages: [],
     files: [],
+    countTextOverride: '',
     lastScanAt: 0
   };
 
@@ -64,9 +67,10 @@
       bottom: 18px;
       z-index: 2147483647;
       box-sizing: border-box;
-      width: 280px;
+      width: 320px;
       max-width: calc(100vw - 36px);
       max-height: min(520px, calc(100vh - 36px));
+      overflow: visible;
       display: flex;
       flex-direction: column;
       gap: 9px;
@@ -103,16 +107,27 @@
       cursor: default;
       opacity: 0.48;
     }
-    #redditGuestPanel .rg-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+    #redditGuestPanel .rg-downloadStack {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: calc(100% + 8px);
+      display: flex;
+      flex-direction: column;
       gap: 8px;
+      padding: 0;
+      pointer-events: auto;
     }
-    #redditGuestPanel .rg-row button {
-      background: rgba(255, 255, 255, 0.09);
+    #redditGuestPanel .rg-downloadStack[hidden] {
+      display: none;
     }
-    #redditGuestPanel .rg-row button:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.15);
+    #redditGuestPanel .rg-downloadStack button {
+      min-height: 36px;
+      background: rgba(255, 255, 255, 0.11);
+      white-space: nowrap;
+    }
+    #redditGuestPanel .rg-downloadStack button:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.17);
     }
     #redditGuestPanel .rg-meta {
       display: flex;
@@ -163,7 +178,7 @@
     #redditGuestPanel.rg-collapsed {
       right: 18px;
       bottom: 0;
-      width: 280px;
+      width: 320px;
       height: 10px;
       min-height: 10px;
       max-height: 10px;
@@ -192,11 +207,12 @@
     const panel = document.createElement('div');
     panel.id = 'redditGuestPanel';
     panel.innerHTML = `
-      <button id="rgScanBtn" type="button">Scan</button>
-      <div class="rg-row">
+      <div id="rgDownloadStack" class="rg-downloadStack" hidden>
         <button id="rgPostsBtn" type="button" disabled>Download Posts</button>
+        <button id="rgPagesBtn" type="button" disabled>Download Pages</button>
         <button id="rgUserBtn" type="button" disabled>Download User</button>
       </div>
+      <button id="rgScanBtn" type="button">Scan</button>
       <div class="rg-progress" aria-hidden="true"><div id="rgProgressFill"></div></div>
       <div class="rg-meta">
         <span id="rgProfileLabel">No profile scanned</span>
@@ -207,8 +223,10 @@
     document.body.appendChild(panel);
 
     ui.panel = panel;
+    ui.downloadStack = panel.querySelector('#rgDownloadStack');
     ui.scanBtn = panel.querySelector('#rgScanBtn');
     ui.postsBtn = panel.querySelector('#rgPostsBtn');
+    ui.pagesBtn = panel.querySelector('#rgPagesBtn');
     ui.userBtn = panel.querySelector('#rgUserBtn');
     ui.fill = panel.querySelector('#rgProgressFill');
     ui.profileLabel = panel.querySelector('#rgProfileLabel');
@@ -217,6 +235,7 @@
 
     ui.scanBtn.addEventListener('click', () => scanCurrentProfile());
     ui.postsBtn.addEventListener('click', () => downloadPostArchives());
+    ui.pagesBtn.addEventListener('click', () => downloadPageArchives());
     ui.userBtn.addEventListener('click', () => downloadUserArchive());
     panel.addEventListener('click', () => {
       if (panel.classList.contains('rg-collapsed')) setCollapsed(false);
@@ -229,11 +248,20 @@
 
   function syncUi() {
     const hasFiles = state.files.length > 0;
+    const hasPages = state.pages.length > 0;
+    const isPostScan = state.scanType === 'post';
+    const isProfileScan = state.scanType === 'profile';
     ui.scanBtn.disabled = state.busy;
+    ui.downloadStack.hidden = !hasFiles || (!isPostScan && !isProfileScan);
+    ui.postsBtn.hidden = !hasFiles || (!isPostScan && !isProfileScan);
+    ui.pagesBtn.hidden = !isProfileScan;
+    ui.userBtn.hidden = !isProfileScan;
+    ui.postsBtn.textContent = isPostScan ? 'Download Post' : 'Download Posts';
     ui.postsBtn.disabled = state.busy || !hasFiles;
+    ui.pagesBtn.disabled = state.busy || !hasPages;
     ui.userBtn.disabled = state.busy || !hasFiles;
     ui.profileLabel.textContent = state.username ? `u/${state.username}` : 'No profile scanned';
-    ui.countLabel.textContent = `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
+    ui.countLabel.textContent = state.countTextOverride || `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
   }
 
   function setBusy(busy, scanLabel) {
@@ -245,6 +273,15 @@
   function setProgress(value) {
     const pct = Math.max(0, Math.min(100, Number(value) || 0));
     ui.fill.style.width = `${pct}%`;
+  }
+
+  function setCountTextOverride(text) {
+    state.countTextOverride = text || '';
+    syncUi();
+  }
+
+  function formatUnitTicker(done, total, unit) {
+    return `${done}/${total} ${unit}${total === 1 ? '' : 's'}`;
   }
 
   function logLine(text) {
@@ -320,10 +357,13 @@
 
     setBusy(true, 'Scanning...');
     setProgress(0);
+    state.scanType = context.type;
     state.username = context.username || '';
     state.userFolder = state.username ? sanitizeUserFolder(state.username) : '';
     state.posts = [];
+    state.pages = [];
     state.files = [];
+    state.countTextOverride = '';
     state.lastScanAt = Date.now();
     syncUi();
 
@@ -348,9 +388,10 @@
 
       const deduped = buildDedupedDownloads(mediaPosts);
       state.posts = deduped.posts;
+      state.pages = deduped.pages;
       state.files = deduped.files;
       setProgress(100);
-      logLine(`Scan complete: ${state.posts.length} post folder${state.posts.length === 1 ? '' : 's'}, ${state.files.length} unique file${state.files.length === 1 ? '' : 's'}.`);
+      logLine(`Scan complete: ${state.posts.length} post folder${state.posts.length === 1 ? '' : 's'}, ${state.pages.length} page archive${state.pages.length === 1 ? '' : 's'}, ${state.files.length} unique file${state.files.length === 1 ? '' : 's'}.`);
       if (deduped.duplicates > 0) {
         logLine(`Removed ${deduped.duplicates} duplicate file${deduped.duplicates === 1 ? '' : 's'}; oldest posts kept.`);
       }
@@ -379,7 +420,9 @@
       const json = await requestJson(url.href);
       const children = json && json.data && Array.isArray(json.data.children) ? json.data.children : [];
       for (const child of children) {
-        if (child && child.kind === 't3' && child.data) posts.push(child.data);
+        if (child && child.kind === 't3' && child.data) {
+          posts.push({ ...child.data, __rgPage: page });
+        }
       }
 
       after = json && json.data ? json.data.after : '';
@@ -402,7 +445,7 @@
     const listing = Array.isArray(json) ? json[0] : json;
     const children = listing && listing.data && Array.isArray(listing.data.children) ? listing.data.children : [];
     const post = children.find(child => child && child.kind === 't3' && child.data);
-    return post && post.data ? [post.data] : [];
+    return post && post.data ? [{ ...post.data, __rgPage: 1 }] : [];
   }
 
   function normalizePost(raw) {
@@ -416,6 +459,7 @@
       permalink: raw.permalink || '',
       published: createdUtc,
       createdUtc,
+      page: Math.max(1, Number(raw.__rgPage || 1) || 1),
       raw
     };
   }
@@ -529,6 +573,7 @@
         permalink: post.permalink,
         published: post.published,
         createdUtc: post.createdUtc,
+        page: Math.max(1, Number(post.page || 1) || 1),
         files: []
       };
 
@@ -550,13 +595,38 @@
       keptPosts.push(decorated);
     }
 
-    return { posts: keptPosts, files: keptFiles, duplicates };
+    const pages = buildPageDownloads(keptPosts);
+    return { posts: keptPosts, pages, files: keptFiles, duplicates };
+  }
+
+  function buildPageDownloads(posts) {
+    const grouped = new Map();
+
+    for (const post of posts) {
+      const page = Math.max(1, Number(post.page || 1) || 1);
+      if (!grouped.has(page)) {
+        grouped.set(page, {
+          page,
+          posts: [],
+          files: []
+        });
+      }
+
+      const bucket = grouped.get(page);
+      bucket.posts.push(post);
+      bucket.files.push(...post.files);
+    }
+
+    return [...grouped.values()]
+      .filter(page => page.files.length > 0)
+      .sort((a, b) => a.page - b.page);
   }
 
   async function downloadPostArchives() {
     if (state.busy || !state.posts.length) return;
     setBusy(true, 'Downloading...');
     setProgress(0);
+    setCountTextOverride(formatUnitTicker(0, state.posts.length, 'post'));
     try {
       let done = 0;
       for (const post of state.posts) {
@@ -571,6 +641,7 @@
           if (label) logLine(label);
         });
         done++;
+        setCountTextOverride(formatUnitTicker(done, state.posts.length, 'post'));
         setProgress((done / state.posts.length) * 100);
         await delay(FILE_DELAY_MS);
       }
@@ -578,6 +649,38 @@
     } catch (err) {
       logLine(`Post download failed: ${errorMessage(err)}`);
     } finally {
+      setCountTextOverride('');
+      setBusy(false);
+    }
+  }
+
+  async function downloadPageArchives() {
+    if (state.busy || !state.pages.length) return;
+    setBusy(true, 'Downloading...');
+    setProgress(0);
+    setCountTextOverride(formatUnitTicker(0, state.pages.length, 'page'));
+    try {
+      let done = 0;
+      for (const page of state.pages) {
+        if (!page.files.length) continue;
+        const archiveName = buildPageArchiveName(state.userFolder, page.page);
+        logLine(`Building page zip ${done + 1}/${state.pages.length}: API page ${page.page}, ${page.posts.length} post${page.posts.length === 1 ? '' : 's'}, ${page.files.length} file${page.files.length === 1 ? '' : 's'}.`);
+        await buildAndSaveArchive(page.files, archiveName, (pct, label) => {
+          const base = (done / state.pages.length) * 100;
+          const span = 100 / state.pages.length;
+          setProgress(base + (pct / 100) * span);
+          if (label) logLine(label);
+        });
+        done++;
+        setCountTextOverride(formatUnitTicker(done, state.pages.length, 'page'));
+        setProgress((done / state.pages.length) * 100);
+        await delay(FILE_DELAY_MS);
+      }
+      logLine(`Downloaded ${done} page archive${done === 1 ? '' : 's'}.`);
+    } catch (err) {
+      logLine(`Page download failed: ${errorMessage(err)}`);
+    } finally {
+      setCountTextOverride('');
       setBusy(false);
     }
   }
@@ -586,24 +689,33 @@
     if (state.busy || !state.files.length) return;
     setBusy(true, 'Downloading...');
     setProgress(0);
+    setCountTextOverride(formatUnitTicker(0, state.files.length, 'file'));
     try {
       const archiveName = buildArchiveName(state.userFolder, state.userFolder || 'reddit_user');
       logLine(`Building user zip for u/${state.username}.`);
-      await buildAndSaveArchive(state.files, archiveName, (pct) => setProgress(pct));
+      await buildAndSaveArchive(
+        state.files,
+        archiveName,
+        (pct) => setProgress(pct),
+        (done, total) => setCountTextOverride(formatUnitTicker(done, total, 'file'))
+      );
       setProgress(100);
       logLine(`Downloaded user archive with ${state.files.length} file${state.files.length === 1 ? '' : 's'}.`);
     } catch (err) {
       logLine(`User download failed: ${errorMessage(err)}`);
     } finally {
+      setCountTextOverride('');
       setBusy(false);
     }
   }
 
-  async function buildAndSaveArchive(files, archiveName, onProgress) {
+  async function buildAndSaveArchive(files, archiveName, onProgress, onUnitProgress) {
     if (!JSZip || typeof JSZip !== 'function') throw new Error('JSZip is missing');
     const zip = new JSZip();
     let added = 0;
     let failed = 0;
+
+    if (onUnitProgress) onUnitProgress(0, files.length);
 
     for (const file of files) {
       const fetchPct = files.length ? Math.round((added / files.length) * 68) : 0;
@@ -618,6 +730,7 @@
         failed++;
         logLine(`Skipped failed file: ${file.fileName || file.url} (${errorMessage(err)})`);
       }
+      if (onUnitProgress) onUnitProgress(added + failed, files.length);
       await delay(FILE_DELAY_MS);
     }
 
@@ -994,6 +1107,11 @@
   function buildArchiveName(userFolder, postFolder) {
     const base = postFolder || 'post';
     return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
+  }
+
+  function buildPageArchiveName(userFolder, pageNumber) {
+    const pageSec = `page_${String(pageNumber || 1).padStart(4, '0')}`;
+    return userFolder ? `${userFolder}/${pageSec}.zip` : `${pageSec}.zip`;
   }
 
   function fallbackFileName(url, index) {
