@@ -5244,6 +5244,105 @@ img[data-rotate-key].rotatingThumbFade {
   text-align: center;
 }
 
+.scoreHistoryDayMenuJournalBtn {
+  width: 100%;
+  min-height: 30px;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.scoreHistoryCalendarDay:not(.isBlank) {
+  cursor: pointer;
+}
+
+.scoreHistoryCalendarDay.hasJournal::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--palette-accent);
+  box-shadow: 0 0 0 2px var(--ui-selection-outline-soft);
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.scoreHistoryCalendarDay.hasScore.hasJournal::after {
+  margin-top: 0;
+}
+
+.dailyJournalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 13000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.dailyJournalDialog {
+  width: min(920px, calc(100vw - 56px));
+  height: min(720px, calc(100vh - 56px));
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--color1-primary);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.42);
+  color: var(--color0-primary);
+}
+
+.dailyJournalHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.dailyJournalTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.dailyJournalCloseBtn {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dailyJournalCloseBtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dailyJournalEditor {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  border: 0;
+  outline: none;
+  padding: 16px;
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border-radius: 0 0 8px 8px;
+}
+
 #banicOverlay {
   position: fixed;
   inset: 0;
@@ -8158,6 +8257,7 @@ const DEFAULT_APPEARANCE_PRESETS = Object.freeze([
 const META_DOC_IDS = Object.freeze({
   scores: "scores",
   scoreHistory: "scoreHistory",
+  dailyJournals: "dailyJournals",
   tags: "tags",
   tagAlbums: "tagAlbums",
   trash: "trash",
@@ -8178,6 +8278,7 @@ const META_DOC_IDS = Object.freeze({
 const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.scores]: "scores.log.json",
   [META_DOC_IDS.scoreHistory]: "score-history.log.json",
+  [META_DOC_IDS.dailyJournals]: "daily-journals.log.json",
   [META_DOC_IDS.tags]: "tags.log.json",
   [META_DOC_IDS.tagAlbums]: "tag-albums.log.json",
   [META_DOC_IDS.trash]: "trash.log.json",
@@ -8196,6 +8297,7 @@ const META_DOC_FILE_NAMES = Object.freeze({
 const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.scores]: "LocalGalleryScoresV2",
   [META_DOC_IDS.scoreHistory]: "LocalGalleryScoreHistoryV2",
+  [META_DOC_IDS.dailyJournals]: "LocalGalleryDailyJournalsV1",
   [META_DOC_IDS.tags]: "LocalGalleryTagsV2",
   [META_DOC_IDS.tagAlbums]: "LocalGalleryTagAlbumsV2",
   [META_DOC_IDS.trash]: "LocalGalleryTrashV1",
@@ -8214,6 +8316,7 @@ const META_LOCAL_KEY_PREFIXES = Object.freeze({
 const META_ALL_DOC_IDS = Object.freeze([
   META_DOC_IDS.scores,
   META_DOC_IDS.scoreHistory,
+  META_DOC_IDS.dailyJournals,
   META_DOC_IDS.tags,
   META_DOC_IDS.tagAlbums,
   META_DOC_IDS.trash,
@@ -14420,6 +14523,7 @@ const WS = {
     tagThumbPresets: new Map(),
     pendingTagsByPath: new Map(),
     scoreHistory: [],
+    dailyJournals: new Map(),
     dirFingerprints: new Map(),
     dirSortMode: "score",
     storageMode: "local",
@@ -14687,6 +14791,7 @@ function resetWorkspace() {
   WS.meta.tagThumbPresets.clear();
   WS.meta.pendingTagsByPath.clear();
   WS.meta.scoreHistory = [];
+  WS.meta.dailyJournals.clear();
   WS.meta.dirFingerprints.clear();
   WS.meta.dirSortMode = "score";
   WS.meta.storageMode = "local";
@@ -15451,6 +15556,7 @@ let TAG_EDIT_PATH = null;
 let TAG_CONTEXT_MENU_STATE = null;
 let PREVIEW_CONTEXT_MENU_STATE = null;
 let SCORE_HISTORY_DAY_MENU_STATE = null;
+let DAILY_JOURNAL_STATE = null;
 let TAG_ENTRY_RENAME_STATE = null;
 let BULK_TAG_PLACEHOLDER = null;
 let PREVIEW_BULK_TAG_EDIT = null;
@@ -17010,15 +17116,20 @@ function buildScoreHistoryMonthPageHtml(monthKey, dayMap) {
     totalEvents += count;
     totalDelta += delta;
     const hasScore = !!count;
+    const hasJournal = metaHasDailyJournal(dayKey);
     const heatClass = hasScore ? scoreHistoryHeatClass(delta) : "";
     const deltaShown = delta > 0 ? `+${delta}` : String(delta);
-    const title = hasScore
-      ? `${scoreHistoryDateLabel(dayKey)}: ${deltaShown} net score change across ${count} change${count === 1 ? "" : "s"}`
-      : `${scoreHistoryDateLabel(dayKey)}: no score changes`;
+    const titleParts = [
+      hasScore
+        ? `${deltaShown} net score change across ${count} change${count === 1 ? "" : "s"}`
+        : "no score changes",
+    ];
+    if (hasJournal) titleParts.push("journal");
+    const title = `${scoreHistoryDateLabel(dayKey)}: ${titleParts.join("; ")}`;
     cells.push(`
       <div
-        class="scoreHistoryCalendarDay${hasScore ? ` hasScore ${heatClass}` : ""}"
-        ${hasScore ? `data-score-history-day="${escapeHtml(dayKey)}"` : ""}
+        class="scoreHistoryCalendarDay${hasScore ? ` hasScore ${heatClass}` : ""}${hasJournal ? " hasJournal" : ""}"
+        data-score-history-day="${escapeHtml(dayKey)}"
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(title)}"
       >
@@ -17077,6 +17188,15 @@ function renderCalendarUi() {
       monthDays.set(dayKey, current);
     }
   }
+  const journalDateKeys = metaGetDailyJournalDateKeys();
+  for (let i = 0; i < journalDateKeys.length; i++) {
+    const dayKey = journalDateKeys[i];
+    const monthKey = scoreHistoryMonthKeyFromDateKey(dayKey);
+    if (!monthKey) continue;
+    if (!grouped.has(monthKey)) grouped.set(monthKey, new Map());
+    const monthDays = grouped.get(monthKey);
+    if (!monthDays.has(dayKey)) monthDays.set(dayKey, { delta: 0, count: 0 });
+  }
   const monthKeys = Array.from(grouped.keys()).sort((a, b) =>
     String(a).localeCompare(String(b)),
   );
@@ -17131,6 +17251,43 @@ function modifierMapForSingleModifier(modifier) {
   const mod = String(modifier || "");
   if (Object.prototype.hasOwnProperty.call(out, mod)) out[mod] = true;
   return out;
+}
+
+function markdownHeadingForRootScoreLine(line) {
+  const label = String(
+    (line && (line.rootLabel || line.rootPath)) || "root",
+  ).trim();
+  return `## ${label || "root"}`;
+}
+
+function journalContainsHeading(markdown, heading) {
+  const target = String(heading || "").trim().toLowerCase();
+  if (!target) return true;
+  const lines = String(markdown || "").split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (String(lines[i] || "").trim().toLowerCase() === target) return true;
+  }
+  return false;
+}
+
+function appendDailyJournalRootHeadersForScoreEntry(entry) {
+  const normalized = normalizeScoreHistoryEntry(entry);
+  if (!normalized) return false;
+  const dateKey = scoreHistoryDateKey(normalized.at);
+  const rows = getRootScoreHistoryLinesForEntry(normalized, true);
+  if (!dateKey || !rows.length) return false;
+  let markdown = metaGetDailyJournal(dateKey);
+  const additions = [];
+  for (let i = 0; i < rows.length; i++) {
+    const heading = markdownHeadingForRootScoreLine(rows[i]);
+    if (journalContainsHeading(markdown, heading)) continue;
+    markdown = markdown.trim()
+      ? `${markdown.replace(/\s*$/g, "")}\n\n${heading}\n`
+      : `${heading}\n`;
+    additions.push(heading);
+  }
+  if (!additions.length) return false;
+  return metaSetDailyJournal(dateKey, markdown);
 }
 
 function keybindValueForModifierTab(rawKeybind) {
@@ -19742,6 +19899,7 @@ function addScoreHistoryEntry(entry) {
   src.unshift(normalized);
   const out = normalizeScoreHistoryList(src);
   WS.meta.scoreHistory = out;
+  appendDailyJournalRootHeadersForScoreEntry(normalized);
   return true;
 }
 
@@ -22166,6 +22324,64 @@ function metaMakeScoreHistoryDocObject() {
   };
 }
 
+function normalizeDailyJournalDateKey(dateKey) {
+  const key = String(dateKey || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : "";
+}
+
+function metaGetDailyJournal(dateKey) {
+  const key = normalizeDailyJournalDateKey(dateKey);
+  if (!key || !WS.meta || !WS.meta.dailyJournals) return "";
+  return String(WS.meta.dailyJournals.get(key) || "");
+}
+
+function metaSetDailyJournal(dateKey, markdown) {
+  const key = normalizeDailyJournalDateKey(dateKey);
+  if (!key || !WS.meta || !WS.meta.dailyJournals) return false;
+  const next = String(markdown || "");
+  const current = metaGetDailyJournal(key);
+  if (current === next) return false;
+  if (next.trim()) WS.meta.dailyJournals.set(key, next);
+  else WS.meta.dailyJournals.delete(key);
+  metaMarkDirty(META_DOC_IDS.dailyJournals);
+  return true;
+}
+
+function metaHasDailyJournal(dateKey) {
+  return !!metaGetDailyJournal(dateKey).trim();
+}
+
+function metaGetDailyJournalDateKeys() {
+  const source = WS.meta && WS.meta.dailyJournals;
+  if (!source || typeof source.entries !== "function") return [];
+  const out = [];
+  for (const [dateKeyRaw, markdownRaw] of source.entries()) {
+    const dateKey = normalizeDailyJournalDateKey(dateKeyRaw);
+    if (!dateKey || !String(markdownRaw || "").trim()) continue;
+    out.push(dateKey);
+  }
+  out.sort((a, b) => String(a).localeCompare(String(b)));
+  return out;
+}
+
+function metaMakeDailyJournalsDocObject() {
+  const days = {};
+  const source = WS.meta && WS.meta.dailyJournals;
+  if (source && typeof source.entries === "function") {
+    for (const [dateKeyRaw, markdownRaw] of source.entries()) {
+      const dateKey = normalizeDailyJournalDateKey(dateKeyRaw);
+      const markdown = String(markdownRaw || "");
+      if (!dateKey || !markdown.trim()) continue;
+      days[dateKey] = markdown;
+    }
+  }
+  return {
+    schema: 1,
+    updatedAt: Date.now(),
+    days,
+  };
+}
+
 function metaMakeTagsDocObject() {
   const folders = {};
   const tagByFp = {};
@@ -22387,6 +22603,8 @@ function metaDocObjectForId(docId) {
       return metaMakeScoresDocObject();
     case META_DOC_IDS.scoreHistory:
       return metaMakeScoreHistoryDocObject();
+    case META_DOC_IDS.dailyJournals:
+      return metaMakeDailyJournalsDocObject();
     case META_DOC_IDS.tags:
       return metaMakeTagsDocObject();
     case META_DOC_IDS.tagAlbums:
@@ -22471,6 +22689,20 @@ function metaApplyScoreHistoryDocLog(log) {
   WS.meta.scoreHistory = normalizeScoreHistoryList(
     log.history || log.scoreHistory || [],
   );
+}
+
+function metaApplyDailyJournalsDocLog(log) {
+  if (!WS.meta) return;
+  if (!(WS.meta.dailyJournals instanceof Map)) WS.meta.dailyJournals = new Map();
+  WS.meta.dailyJournals.clear();
+  if (!log || typeof log !== "object") return;
+  const days = log.days && typeof log.days === "object" ? log.days : {};
+  for (const rawKey of Object.keys(days)) {
+    const dateKey = normalizeDailyJournalDateKey(rawKey);
+    const markdown = String(days[rawKey] || "");
+    if (!dateKey || !markdown.trim()) continue;
+    WS.meta.dailyJournals.set(dateKey, markdown);
+  }
 }
 
 function metaApplyTagsDocLog(log) {
@@ -22673,6 +22905,9 @@ function metaApplyDocLogById(docId, log) {
       return;
     case META_DOC_IDS.scoreHistory:
       metaApplyScoreHistoryDocLog(log);
+      return;
+    case META_DOC_IDS.dailyJournals:
+      metaApplyDailyJournalsDocLog(log);
       return;
     case META_DOC_IDS.tags:
       metaApplyTagsDocLog(log);
@@ -23104,6 +23339,7 @@ function metaInitForCurrentWorkspace(opts = null) {
         META_DOC_IDS.prefControls,
         META_DOC_IDS.scores,
         META_DOC_IDS.scoreHistory,
+        META_DOC_IDS.dailyJournals,
         META_DOC_IDS.tags,
         META_DOC_IDS.tagAlbums,
         META_DOC_IDS.trash,
@@ -23207,6 +23443,7 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     META_DOC_IDS.prefControls,
     META_DOC_IDS.scores,
     META_DOC_IDS.scoreHistory,
+    META_DOC_IDS.dailyJournals,
     META_DOC_IDS.tags,
     META_DOC_IDS.tagAlbums,
     META_DOC_IDS.trash,
@@ -37399,6 +37636,84 @@ function closeScoreHistoryDayMenu() {
   SCORE_HISTORY_DAY_MENU_STATE = null;
 }
 
+function dailyJournalCloseIconHtml() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x-icon lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+}
+
+function closeDailyJournalEditor() {
+  const state = DAILY_JOURNAL_STATE;
+  const overlay = document.getElementById("dailyJournalOverlay");
+  if (overlay) overlay.remove();
+  DAILY_JOURNAL_STATE = null;
+  if (state && state.dateKey) {
+    flushPendingMetadataSaveNow([META_DOC_IDS.dailyJournals]).catch(() => {});
+    renderCalendarUi();
+    setCalendarStatus("Saved");
+  }
+}
+
+function openDailyJournalEditor(dateKey) {
+  const key = normalizeDailyJournalDateKey(dateKey);
+  if (!key) return;
+  closeScoreHistoryDayMenu();
+  closeActionMenus();
+  const existing = document.getElementById("dailyJournalOverlay");
+  if (existing) existing.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "dailyJournalOverlay";
+  overlay.className = "dailyJournalOverlay";
+  overlay.innerHTML = `
+    <section class="dailyJournalDialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(scoreHistoryDateLabel(key))} journal">
+      <div class="dailyJournalHeader">
+        <div class="dailyJournalTitle">${escapeHtml(scoreHistoryDateLabel(key))} Journal</div>
+        <button type="button" class="dailyJournalCloseBtn" aria-label="Close journal">${dailyJournalCloseIconHtml()}</button>
+      </div>
+      <textarea class="dailyJournalEditor" spellcheck="true" autocomplete="off" autocapitalize="sentences"></textarea>
+    </section>
+  `;
+  document.body.appendChild(overlay);
+  const textarea = overlay.querySelector(".dailyJournalEditor");
+  const closeBtn = overlay.querySelector(".dailyJournalCloseBtn");
+  DAILY_JOURNAL_STATE = { dateKey: key, textarea };
+  if (textarea) {
+    textarea.value = metaGetDailyJournal(key);
+    textarea.addEventListener("input", () => {
+      metaSetDailyJournal(key, textarea.value || "");
+      setCalendarStatus("Saving...");
+    });
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+  }
+  if (closeBtn) {
+    closeBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeDailyJournalEditor();
+    });
+  }
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+}
+
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (!DAILY_JOURNAL_STATE) return;
+    e.stopPropagation();
+    if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      closeDailyJournalEditor();
+    }
+  },
+  true,
+);
+
 function renderScoreHistoryDayMenu(dayKey) {
   const key = String(dayKey || "");
   const menu = ensureScoreHistoryDayMenuEl();
@@ -37440,6 +37755,11 @@ function renderScoreHistoryDayMenu(dayKey) {
     <div class="scoreHistoryDayMenuList">
       ${linesHtml}
     </div>
+    <button
+      type="button"
+      class="scoreHistoryDayMenuJournalBtn"
+      data-score-history-journal-day="${escapeHtml(key)}"
+    >Journal</button>
   `;
   return menu;
 }
@@ -42341,6 +42661,19 @@ document.addEventListener("click", (e) => {
     const inMenu =
       target && target.closest && target.closest("#scoreHistoryDayMenu");
     if (inMenu) {
+      const journalBtn =
+        target && target.closest
+          ? target.closest("button[data-score-history-journal-day]")
+          : null;
+      if (journalBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const dayKey = String(
+          journalBtn.getAttribute("data-score-history-journal-day") || "",
+        );
+        openDailyJournalEditor(dayKey);
+        return;
+      }
       const dayRootBtn =
         target && target.closest
           ? target.closest(
