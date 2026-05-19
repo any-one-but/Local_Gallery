@@ -21556,7 +21556,7 @@ function metaMakeTagsLogObject() {
       );
       if (presetId) mediaPresetByFolder[path] = presetId;
     }
-    if (tags && tags.length) {
+    if (tags && tags.length && canRestoreTagsByFingerprintForPath(path, fp)) {
       const k = String(fp >>> 0);
       if (!tagByFp[k]) tagByFp[k] = tags.slice();
     }
@@ -21685,7 +21685,7 @@ function metaMakeLogObject() {
     const fp = WS.meta.dirFingerprints.get(path) || 0;
     const tags = metaGetTags(path);
     folders[path] = { score: metaGetScore(path), fp: fp >>> 0, tags: tags };
-    if (tags && tags.length) {
+    if (tags && tags.length && canRestoreTagsByFingerprintForPath(path, fp)) {
       const k = String(fp >>> 0);
       if (!tagByFp[k]) tagByFp[k] = tags.slice();
     }
@@ -21773,6 +21773,39 @@ function applyPendingTagsToWorkspace() {
   return applied;
 }
 
+function canRestoreTagsByFingerprintForPath(path, fp) {
+  const normalizedPath = normalizeDirPathValue(path);
+  if (!normalizedPath) return false;
+  if (!Number.isFinite(fp) || (fp >>> 0) === 0) return false;
+  return normalizedPath.includes("/");
+}
+
+function addTagFingerprintFallback(oldTagByFp, fp, tags) {
+  if (!oldTagByFp || !Number.isFinite(fp) || (fp >>> 0) === 0) return;
+  const normalizedTags = normalizeTagList(tags);
+  if (!normalizedTags.length) return;
+  const key = fp >>> 0;
+  if (!oldTagByFp.has(key)) oldTagByFp.set(key, normalizedTags);
+}
+
+function seedTagFingerprintFallbackFromPaths(oldTagByFp, oldTagsByPath, folders) {
+  if (!oldTagByFp || !oldTagsByPath || !folders) return;
+  for (const [path, tags] of oldTagsByPath.entries()) {
+    const entry = folders[path];
+    const fp = entry && Number.isFinite(entry.fp) ? entry.fp >>> 0 : 0;
+    if (!canRestoreTagsByFingerprintForPath(path, fp)) continue;
+    addTagFingerprintFallback(oldTagByFp, fp, tags);
+  }
+}
+
+function seedLegacyTagFingerprintFallback(oldTagByFp, tagByFp) {
+  if (!oldTagByFp || !tagByFp || typeof tagByFp !== "object") return;
+  for (const key of Object.keys(tagByFp)) {
+    const fp = Number(key) >>> 0 || 0;
+    addTagFingerprintFallback(oldTagByFp, fp, tagByFp[key]);
+  }
+}
+
 function metaApplyTagsLog(log) {
   if (!log || typeof log !== "object") return;
 
@@ -21794,21 +21827,9 @@ function metaApplyTagsLog(log) {
   }
 
   const oldTagByFp = new Map();
-  if (log.tagByFp && typeof log.tagByFp === "object") {
-    for (const k of Object.keys(log.tagByFp)) {
-      const fp = Number(k) >>> 0 || 0;
-      const tg = normalizeTagList(log.tagByFp[k]);
-      if (tg.length) oldTagByFp.set(fp >>> 0, tg);
-    }
-  }
-  if (!oldTagByFp.size) {
-    for (const [p, tg] of oldTagsByPath.entries()) {
-      const it = folders[p];
-      const fp = it && Number.isFinite(it.fp) ? it.fp >>> 0 : 0;
-      if (!fp) continue;
-      if (!oldTagByFp.has(fp)) oldTagByFp.set(fp, tg.slice());
-    }
-  }
+  seedTagFingerprintFallbackFromPaths(oldTagByFp, oldTagsByPath, folders);
+  if (!oldTagByFp.size)
+    seedLegacyTagFingerprintFallback(oldTagByFp, log.tagByFp);
 
   stashPendingTagsFromLog(oldTagsByPath);
 
@@ -21820,7 +21841,9 @@ function metaApplyTagsLog(log) {
       continue;
     }
     const fp = WS.meta.dirFingerprints.get(path) || 0;
-    const tg = oldTagByFp.get(fp >>> 0) || [];
+    const tg = canRestoreTagsByFingerprintForPath(path, fp)
+      ? oldTagByFp.get(fp >>> 0) || []
+      : [];
     WS.meta.dirTags.set(path, tg.slice());
   }
 
@@ -22049,21 +22072,9 @@ function metaApplyFromLog(log) {
   }
 
   const oldTagByFp = new Map();
-  if (log.tagByFp && typeof log.tagByFp === "object") {
-    for (const k of Object.keys(log.tagByFp)) {
-      const fp = Number(k) >>> 0 || 0;
-      const tg = normalizeTagList(log.tagByFp[k]);
-      if (tg.length) oldTagByFp.set(fp >>> 0, tg);
-    }
-  }
-  if (!oldTagByFp.size) {
-    for (const [p, tg] of oldTagsByPath.entries()) {
-      const it = folders[p];
-      const fp = it && Number.isFinite(it.fp) ? it.fp >>> 0 : 0;
-      if (!fp) continue;
-      if (!oldTagByFp.has(fp)) oldTagByFp.set(fp, tg.slice());
-    }
-  }
+  seedTagFingerprintFallbackFromPaths(oldTagByFp, oldTagsByPath, folders);
+  if (!oldTagByFp.size)
+    seedLegacyTagFingerprintFallback(oldTagByFp, log.tagByFp);
 
   stashPendingTagsFromLog(oldTagsByPath);
 
@@ -22104,7 +22115,9 @@ function metaApplyFromLog(log) {
       continue;
     }
     const fp = WS.meta.dirFingerprints.get(path) || 0;
-    const tg = oldTagByFp.get(fp >>> 0) || [];
+    const tg = canRestoreTagsByFingerprintForPath(path, fp)
+      ? oldTagByFp.get(fp >>> 0) || []
+      : [];
     WS.meta.dirTags.set(path, tg.slice());
   }
 
@@ -22164,7 +22177,7 @@ function metaMakeTagsDocObject() {
       (tag) => tag !== LEGACY_PROCESSING_DISABLED_TAG,
     );
     folders[path] = { fp: fp >>> 0, tags };
-    if (tags && tags.length) {
+    if (tags && tags.length && canRestoreTagsByFingerprintForPath(path, fp)) {
       const key = String(fp >>> 0);
       if (!tagByFp[key]) tagByFp[key] = tags.slice();
     }
@@ -22473,21 +22486,9 @@ function metaApplyTagsDocLog(log) {
   }
 
   const oldTagByFp = new Map();
-  if (log.tagByFp && typeof log.tagByFp === "object") {
-    for (const k of Object.keys(log.tagByFp)) {
-      const fp = Number(k) >>> 0 || 0;
-      const tg = normalizeTagList(log.tagByFp[k]);
-      if (tg.length) oldTagByFp.set(fp >>> 0, tg);
-    }
-  }
-  if (!oldTagByFp.size) {
-    for (const [p, tg] of oldTagsByPath.entries()) {
-      const it = folders[p];
-      const fp = it && Number.isFinite(it.fp) ? it.fp >>> 0 : 0;
-      if (!fp) continue;
-      if (!oldTagByFp.has(fp)) oldTagByFp.set(fp, tg.slice());
-    }
-  }
+  seedTagFingerprintFallbackFromPaths(oldTagByFp, oldTagsByPath, folders);
+  if (!oldTagByFp.size)
+    seedLegacyTagFingerprintFallback(oldTagByFp, log.tagByFp);
 
   stashPendingTagsFromLog(oldTagsByPath);
 
@@ -22499,7 +22500,9 @@ function metaApplyTagsDocLog(log) {
       continue;
     }
     const fp = WS.meta.dirFingerprints.get(path) || 0;
-    const tg = oldTagByFp.get(fp >>> 0) || [];
+    const tg = canRestoreTagsByFingerprintForPath(path, fp)
+      ? oldTagByFp.get(fp >>> 0) || []
+      : [];
     WS.meta.dirTags.set(path, tg.slice());
   }
 
