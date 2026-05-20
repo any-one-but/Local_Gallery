@@ -7307,7 +7307,7 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
 }
 
 const NOTIFICATION_SOURCE_SPECS = Object.freeze([
-  Object.freeze({ section: "Library & workspace", id: "workspace-load", label: "Folder loading / read-only state", hint: "Folder picker, load-folder, indexing, and read-only status messages.", optionKey: "notifyWorkspaceLoad" }),
+  Object.freeze({ section: "Library & workspace", id: "workspace-load", label: "Folder loading / read-only state", hint: "Folder picker, load-folder, and read-only status messages.", optionKey: "notifyWorkspaceLoad" }),
   Object.freeze({ section: "Library & workspace", id: "workspace-refresh", label: "Workspace refresh", hint: "Refresh start, completion, failure, and unavailable messages.", optionKey: "notifyWorkspaceRefresh" }),
   Object.freeze({ section: "Library & workspace", id: "storage", label: "Storage portal messages", hint: "Storage portal and storage-management messages that are not just the visibility toggle.", optionKey: "notifyStorage" }),
 
@@ -15752,7 +15752,7 @@ function inferNotificationSourceId(text, sourceContext = "") {
     return "appearance-display";
   if (hasMsg("slideshow", "gallery mode is no longer available")) return "playback";
   if (hasMsg("storage folders cannot be opened", "storage changes")) return "storage";
-  if (hasMsg("loaded folder", "load folder", "folder picker unavailable", "read-only mode", "index complete"))
+  if (hasMsg("loaded folder", "load folder", "folder picker unavailable", "read-only mode"))
     return "workspace-load";
   if (hasMsg("refreshing workspace", "refresh complete", "refresh failed", "refresh already running", "refresh requires"))
     return "workspace-refresh";
@@ -21594,8 +21594,7 @@ function metaSetHiddenBulk(paths, enable) {
 
 async function rebuildWorkspaceAfterStorageStateChange() {
   if (WS.meta.storageMode === "fs" && WS.meta.fsRootHandle) {
-    applyAspectRatioStorageToCurrentWorkspace();
-    refreshCurrentViewAfterCatalogMutation();
+    await buildWorkspaceFromDirectoryHandle(WS.meta.fsRootHandle);
     return true;
   }
   if (Array.isArray(LAST_LOADED_FILE_LIST) && LAST_LOADED_FILE_LIST.length) {
@@ -21632,20 +21631,8 @@ async function setStorageStateForFolderPaths(paths, enable) {
     return true;
   }
   await persistDirtyMetadataNow();
-  if (WS.meta.storageMode === "fs" && WS.meta.fsRootHandle) {
-    const parents = new Set();
-    for (const path of list) {
-      parents.add(normalizeDirPathValue(path).split("/").slice(0, -1).join("/"));
-      if (!enable) await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
-    }
-    for (const parent of parents) {
-      await reconcileCatalogFolderWithDisk(parent, { showOverlay: false });
-    }
-    refreshCurrentViewAfterCatalogMutation();
-  } else {
-    const rebuilt = await rebuildWorkspaceAfterStorageStateChange();
-    if (!rebuilt) return false;
-  }
+  const rebuilt = await rebuildWorkspaceAfterStorageStateChange();
+  if (!rebuilt) return false;
   showStatusMessage(
     `${enable ? "Sent" : "Removed"} ${changedCount} folder${changedCount === 1 ? "" : "s"} ${enable ? "to" : "from"} storage.`,
   );
@@ -24238,10 +24225,10 @@ function ensureDirectoryChildNodesFromCatalog(dirNode) {
 }
 
 function installCatalogIndex(index, rootHandle, folderShardDirHandle) {
-  WS.catalog.enabled = true;
-  WS.catalog.index = index || null;
-  WS.catalog.rootHandle = rootHandle || null;
-  WS.catalog.folderShardDirHandle = folderShardDirHandle || null;
+  WS.catalog.enabled = false;
+  WS.catalog.index = null;
+  WS.catalog.rootHandle = null;
+  WS.catalog.folderShardDirHandle = null;
   WS.catalog.folderSummaries.clear();
   WS.catalog.fileLocationsById.clear();
   WS.catalog.fileLocationsByRelPath.clear();
@@ -24919,52 +24906,11 @@ async function warmPreviewFileObjectsForDir(dirNode, token) {
 }
 
 async function ensureDirectoryLoaded(dirNode, opts = null) {
-  if (!dirNode || !WS.catalog || !WS.catalog.enabled) return true;
-  const options = opts && typeof opts === "object" ? opts : {};
-  const shouldReconcile = !!options.reconcile;
-  if (dirNode.loadState === "loaded" && !shouldReconcile) return true;
-  if (dirNode.loadState === "loading" && dirNode.loadPromise) {
-    await dirNode.loadPromise;
-    return dirNode.loadState === "loaded";
+  if (dirNode) {
+    dirNode.loadState = "loaded";
+    dirNode.loadPromise = null;
   }
-  const showOverlay = !(options && options.showOverlay === false);
-  const label = options && options.label ? String(options.label) : "Loading folder...";
-  dirNode.loadState = "loading";
-  dirNode.loadPromise = (async () => {
-    if (showOverlay) showBlockingLoaderOverlay(label, displayPath(dirNode.path || ""));
-    try {
-      if (shouldReconcile) {
-        await reconcileCatalogFolderWithDisk(dirNode.path || "", {
-          showOverlay: false,
-        });
-      }
-      const shard = await readCatalogFolderShard(dirNode.path || "");
-      ensureDirectoryChildNodesFromCatalog(dirNode);
-      const files = Array.isArray(shard?.files) ? shard.files : [];
-      const ids = [];
-      for (let i = 0; i < files.length; i++) {
-        const desc = Object.assign({}, files[i] || {});
-        if (WS.meta && WS.meta.aspectRatios) {
-          const relPath = normalizeWorkspaceRelPath(desc.relPath);
-          const entry = relPath
-            ? normalizeAspectRatioLogEntry(relPath, WS.meta.aspectRatios.get(relPath))
-            : null;
-          catalogApplyAspectEntryToDescriptor(desc, entry);
-        }
-        const rec = ensureFileRecordFromDescriptor(desc);
-        if (!rec) continue;
-        if (!ids.includes(rec.id)) ids.push(rec.id);
-      }
-      dirNode.childrenFiles = ids;
-      dirNode.loadState = "loaded";
-      return true;
-    } finally {
-      dirNode.loadPromise = null;
-      if (showOverlay) hideBlockingLoaderOverlay();
-    }
-  })();
-  await dirNode.loadPromise;
-  return dirNode.loadState === "loaded";
+  return true;
 }
 
 function getRootCatalogBucketForNode(node) {
@@ -24981,94 +24927,11 @@ function formatSubtreeHydrationDetail(stats, path = "") {
 }
 
 async function ensureDirectorySubtreeLoaded(dirNode, opts = null) {
-  if (!dirNode || !WS.catalog || !WS.catalog.enabled) return true;
-  const options = opts && typeof opts === "object" ? opts : {};
-  const shouldReconcile = !!options.reconcile;
-  if (dirNode.subtreeLoadState === "loaded" && !shouldReconcile) return true;
-  if (dirNode.subtreeLoadState === "loading" && dirNode.subtreeLoadPromise) {
-    await dirNode.subtreeLoadPromise;
-    return dirNode.subtreeLoadState === "loaded";
+  if (dirNode) {
+    dirNode.subtreeLoadState = "loaded";
+    dirNode.subtreeLoadPromise = null;
   }
-  const showOverlay = !(options && options.showOverlay === false);
-  const label = options && options.label ? String(options.label) : "Opening folder...";
-  const stats = { folders: 0, files: 0, lastUpdate: 0 };
-  const updateProgress = (path = "", force = false) => {
-    if (!showOverlay) return;
-    const now = Date.now();
-    if (!force && now - stats.lastUpdate < 80) return;
-    stats.lastUpdate = now;
-    updateBlockingLoaderOverlay(label, formatSubtreeHydrationDetail(stats, path));
-  };
-  dirNode.subtreeLoadState = "loading";
-  dirNode.subtreeLoadPromise = (async () => {
-    if (showOverlay)
-      showBlockingLoaderOverlay(
-        label,
-        formatSubtreeHydrationDetail(stats, dirNode.path || ""),
-      );
-    const visited = new Set();
-    const walk = async (node) => {
-      if (!node) return;
-      const path = String(node.path || "");
-      if (visited.has(path)) return;
-      visited.add(path);
-      updateProgress(path);
-      await ensureDirectoryLoaded(node, {
-        showOverlay: false,
-        reconcile: shouldReconcile,
-      });
-      stats.folders++;
-      stats.files += Array.isArray(node.childrenFiles)
-        ? node.childrenFiles.length
-        : 0;
-      updateProgress(path);
-      const children = Array.isArray(node.childrenDirs)
-        ? node.childrenDirs.slice()
-        : [];
-      for (let i = 0; i < children.length; i++) await walk(children[i]);
-      node.subtreeLoadState = "loaded";
-    };
-    try {
-      await walk(dirNode);
-      if (showOverlay) {
-        updateBlockingLoaderOverlay(
-          "Preparing media details...",
-          formatBusyProgressDetail("Applying cached aspect ratios", dirNode.path || ""),
-        );
-      }
-      hydrateCachedRecordAspectRatiosForLoadedWorkspace();
-      if (aspectRatioHydrationRequiresBlocking()) {
-        const aspectProgressState = { lastUpdate: 0 };
-        try {
-          await hydrateAllRecordAspectRatios({
-            maxConcurrency: 4,
-            onProgress: ({ completed, total, record }) => {
-              if (!showOverlay) return;
-              updateBusyProgress(
-                "Checking media aspect ratios...",
-                `Checked ${completed}/${total} media files`,
-                record ? record.relPath || record.name || "" : dirNode.path || "",
-                completed >= total,
-                aspectProgressState,
-              );
-            },
-          });
-        } catch {}
-      } else {
-        scheduleBackgroundAspectRatioHydration(250);
-      }
-      invalidateDirectoryDerivedIndex();
-      rebuildDirectoryDerivedIndex();
-      invalidateDirMetricsCaches();
-      updateProgress(dirNode.path || "", true);
-      return true;
-    } finally {
-      dirNode.subtreeLoadPromise = null;
-      if (showOverlay) hideBlockingLoaderOverlay();
-    }
-  })();
-  await dirNode.subtreeLoadPromise;
-  return dirNode.subtreeLoadState === "loaded";
+  return true;
 }
 
 async function ensureDirectoryHydratedForOpen(node, opts = null) {
@@ -25076,44 +24939,7 @@ async function ensureDirectoryHydratedForOpen(node, opts = null) {
   const showOverlay = !(opts && opts.showOverlay === false);
   if (showOverlay) holdBusyOverlay();
   try {
-    if (WS.catalog && WS.catalog.enabled) {
-      const bucket = getRootCatalogBucketForNode(node);
-      if (bucket) {
-        prepareExclusiveRootChildWorkspace(bucket, { showOverlay });
-        const loaded = await ensureDirectorySubtreeLoaded(
-          bucket,
-          Object.assign({}, opts || {}, { reconcile: false }),
-        );
-        if (!loaded || node.loadState !== "loaded") return false;
-        if (!node.catalogReconciledThisSession) {
-          await reconcileCatalogFolderWithDisk(node.path || "", {
-            showOverlay: false,
-          });
-          await ensureDirectoryLoaded(node, { showOverlay: false });
-        }
-        await ensureRootChildWorkspaceThumbnailsLoaded(node, {
-          label: "Loading folder media...",
-          showOverlay,
-          hideOverlay: false,
-        });
-        return true;
-      }
-      const loaded = await ensureDirectoryLoaded(
-        node,
-        Object.assign({}, opts || {}, { reconcile: true }),
-      );
-      if (loaded)
-        await ensureRootChildWorkspaceThumbnailsLoaded(node, {
-          label: "Loading folder media...",
-          showOverlay,
-          hideOverlay: false,
-        });
-      return loaded;
-    }
-    if (node.fsHandle) {
-      const loaded = await ensureDirectoryLoaded(node, opts);
-      return loaded;
-    }
+    await ensureDirectoryLoaded(node, opts);
     await ensureRootChildWorkspaceThumbnailsLoaded(node, {
       label: "Loading folder media...",
       showOverlay,
@@ -25122,228 +24948,6 @@ async function ensureDirectoryHydratedForOpen(node, opts = null) {
     return true;
   } finally {
     if (showOverlay) releaseBusyOverlayHold({ hide: true });
-  }
-}
-
-function initializeWorkspaceTreeFromCatalog(rootHandleName = "root") {
-  WS.root = makeDirNode(String(rootHandleName || "root"), null);
-  WS.root.path = "";
-  WS.root.loadState = "summary";
-  WS.dirByPath.clear();
-  WS.dirByPath.set("", WS.root);
-  applyCatalogSummaryToDirNode(WS.root, getCatalogFolderSummary(""));
-  ensureDirectoryChildNodesFromCatalog(WS.root);
-}
-
-async function materializeCatalogMetadataThumbnailRecords(opts = null) { }
-
-async function buildCatalogForRootHandle(rootHandle, storedPaths = null, opts = null) {
-  const options = opts && typeof opts === "object" ? opts : {};
-  const showOverlay = options.showOverlay !== false;
-  const handles = await ensureCatalogHandles(rootHandle);
-  const folders = {};
-  const fileLocationsById = {};
-  const fileLightIndexById = {};
-  if (showOverlay) {
-    showBlockingLoaderOverlay(
-      "Loading media metadata...",
-      "Reading cached aspect-ratio data...",
-    );
-    await waitForBusyOverlayPaint();
-  }
-  let aspectEntriesByPath = new Map();
-  try {
-    aspectEntriesByPath = await readCatalogAspectEntriesByPath(rootHandle);
-  } catch {}
-  const stats = { dirs: 0, files: 0, bytes: 0, entries: 0, allFiles: 0 };
-  let lastOverlayUpdate = 0;
-  const progressText = () => {
-    const scanned = Math.max(0, Number(stats.entries) || 0);
-    const allFiles = Math.max(0, Number(stats.allFiles) || 0);
-    const mediaFiles = Math.max(0, Number(stats.files) || 0);
-    const folders = Math.max(0, Number(stats.dirs) || 0);
-    if (scanned) {
-      return `Scanned ${scanned} items (${allFiles} files); indexed ${folders} folders, ${mediaFiles} media files`;
-    }
-    return `Indexed ${folders} folders, ${mediaFiles} media files`;
-  };
-  const updateProgress = (path = "", force = false) => {
-    if (!showOverlay) return;
-    const now = Date.now();
-    if (!force && now - lastOverlayUpdate < 80) return;
-    lastOverlayUpdate = now;
-    updateBusyProgress(
-      "Indexing gallery...",
-      progressText(),
-      path,
-      force,
-    );
-  };
-
-  const scanDir = async (dirHandle, dirPath) => {
-    stats.dirs++;
-    updateProgress(dirPath);
-    const childDirEntries = [];
-    const fileEntries = [];
-    for await (const [name, handle] of dirHandle.entries()) {
-      if (name === ".local-gallery") continue;
-      const relPath = dirPath ? `${dirPath}/${name}` : name;
-      if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
-      stats.entries++;
-      if (handle.kind === "directory") {
-        childDirEntries.push({ name, handle, path: relPath });
-        continue;
-      }
-      if (handle.kind !== "file") continue;
-      stats.allFiles++;
-      if (String(name || "")[0] === ".") continue;
-      if (!isImageName(name) && !isVideoName(name)) continue;
-      fileEntries.push({ name, handle, path: relPath });
-    }
-
-    childDirEntries.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    const childSummaries = [];
-    for (let i = 0; i < childDirEntries.length; i++) {
-      const childSummary = await scanDir(
-        childDirEntries[i].handle,
-        childDirEntries[i].path,
-      );
-      if (childSummary) childSummaries.push(childSummary);
-    }
-
-    const files = [];
-    await runWithConcurrency(fileEntries, 6, async (entry) => {
-      try {
-        const file = await entry.handle.getFile();
-        const desc = fileDescriptorFromFile(file, entry.path, aspectEntriesByPath);
-        if (!desc) return;
-        files.push(desc);
-        stats.files++;
-        stats.bytes += Math.max(0, Number(desc.size) || 0);
-      } catch {}
-      updateProgress(entry.path || dirPath);
-    });
-    files.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
-
-    const directAspectCounts = catalogEmptyAspectCounts();
-    const directMediaAspectCounts = catalogEmptyMediaAspectCounts();
-    let recursiveFileCount = files.length;
-    let recursiveFolderCount = childSummaries.length;
-    let recursiveImageCount = 0;
-    let recursiveVideoCount = 0;
-    let recursiveGifCount = 0;
-    let recursiveSizeBytes = 0;
-    const recursiveAspectCounts = catalogEmptyAspectCounts();
-    const recursiveMediaAspectCounts = catalogEmptyMediaAspectCounts();
-    for (let i = 0; i < files.length; i++) {
-      if (files[i].type === "video") recursiveVideoCount++;
-      else recursiveImageCount++;
-      if (String(files[i].ext || "").toLowerCase() === ".gif") recursiveGifCount++;
-      recursiveSizeBytes += Math.max(0, Number(files[i].size) || 0);
-      catalogIncrementAspectStats(directAspectCounts, directMediaAspectCounts, files[i]);
-      catalogIncrementAspectStats(recursiveAspectCounts, recursiveMediaAspectCounts, files[i]);
-    }
-    for (let i = 0; i < childSummaries.length; i++) {
-      const child = childSummaries[i];
-      recursiveFileCount += Math.max(0, Number(child.recursiveFileCount) || 0);
-      recursiveFolderCount += Math.max(0, Number(child.recursiveFolderCount) || 0);
-      recursiveImageCount += Math.max(0, Number(child.recursiveImageCount) || 0);
-      recursiveVideoCount += Math.max(0, Number(child.recursiveVideoCount) || 0);
-      recursiveGifCount += Math.max(0, Number(child.recursiveGifCount) || 0);
-      recursiveSizeBytes += Math.max(0, Number(child.recursiveSizeBytes) || 0);
-      catalogAddAspectCounts(recursiveAspectCounts, child.recursiveAspectCounts);
-      catalogAddMediaAspectCounts(recursiveMediaAspectCounts, child.recursiveMediaAspectCounts);
-    }
-
-    const shardName = catalogShardNameForPath(dirPath);
-    const directLeadFile = files[0] || null;
-    const childLead = childSummaries.find((child) => child && child.leadFile);
-    const leadFile = directLeadFile || childLead?.leadFile || null;
-    const summary = {
-      path: dirPath,
-      name: dirPath ? dirPath.split("/").filter(Boolean).pop() || dirPath : String(rootHandle?.name || "root"),
-      parentPath: dirPath.split("/").slice(0, -1).join("/"),
-      shardName,
-      childDirPaths: childSummaries.map((child) => child.path),
-      directFileCount: files.length,
-      directFolderCount: childSummaries.length,
-      recursiveFileCount,
-      recursiveFolderCount,
-      recursiveItemCount: recursiveFileCount + recursiveFolderCount,
-      recursiveImageCount,
-      recursiveVideoCount,
-      recursiveGifCount,
-      recursiveSizeBytes,
-      directAspectCounts,
-      recursiveAspectCounts,
-      directMediaAspectCounts,
-      recursiveMediaAspectCounts,
-      directLeadFile,
-      leadFile,
-    };
-
-    const shard = {
-      schema: CATALOG_SCHEMA_VERSION,
-      path: dirPath,
-      childDirPaths: summary.childDirPaths,
-      files,
-    };
-    const shardHandle = await handles.folders.getFileHandle(shardName, {
-      create: true,
-    });
-    await writeJsonFileHandle(shardHandle, shard);
-    folders[dirPath] = summary;
-    for (let i = 0; i < files.length; i++) {
-      fileLocationsById[files[i].id] = {
-        id: files[i].id,
-        relPath: files[i].relPath,
-        dirPath: files[i].dirPath,
-        shardName,
-      };
-      fileLightIndexById[files[i].id] = Object.assign(
-        { shardName },
-        catalogLightIndexEntryFromDescriptor(files[i]),
-      );
-    }
-    return summary;
-  };
-
-  if (showOverlay) {
-    showBlockingLoaderOverlay("Indexing gallery...", "Scanning folders...");
-    await waitForBusyOverlayPaint();
-  }
-  try {
-    const rootSummary = await scanDir(rootHandle, "");
-    updateProgress("", true);
-    if (showOverlay) {
-      updateBlockingLoaderOverlay(
-        "Writing media index...",
-        formatBusyProgressDetail(progressText(), "Saving .local-gallery catalog"),
-      );
-      await waitForBusyOverlayPaint();
-    }
-    const index = {
-      schema: CATALOG_SCHEMA_VERSION,
-      complete: true,
-      updatedAt: Date.now(),
-      rootName: String(rootHandle?.name || "root"),
-      rootSummary,
-      folders,
-      fileLocationsById,
-      fileLightIndexById,
-      stats,
-    };
-    await writeJsonFileHandle(handles.indexFile, index);
-    if (showOverlay) {
-      updateBlockingLoaderOverlay(
-        "Media index saved...",
-        formatBusyProgressDetail(progressText(), "Preparing workspace catalog"),
-      );
-      await waitForBusyOverlayPaint();
-    }
-    return { index, handles };
-  } finally {
-    if (showOverlay) hideBlockingLoaderOverlay();
   }
 }
 
@@ -25365,8 +24969,6 @@ async function ensureInternalTrashDirectoryForRootHandle(rootHandle) {
 }
 
 async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
-  const options = opts && typeof opts === "object" ? opts : {};
-  const forceIndex = !!options.forceIndex;
   holdBusyOverlay();
   showBlockingLoaderOverlay("Opening root folder...", "Preparing workspace...");
   await waitForBusyOverlayPaint();
@@ -25384,78 +24986,149 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
       rootHandle,
     );
     const ok = await metaEnsureFsHandles(rootHandle);
-    let catalogResult = null;
-    if (!forceIndex) {
+    const storedPaths = await preloadStoragePathsForRootHandle(rootHandle);
+
+    updateBlockingLoaderOverlay("Opening root folder...", "Scanning folders and media files...");
+    await waitForBusyOverlayPaint();
+    const stats = { folders: 0, mediaFiles: 0, allFiles: 0, entries: 0, lastUpdate: 0 };
+    const updateScanProgress = (path = "", force = false) => {
+      const now = Date.now();
+      if (!force && now - stats.lastUpdate < 80) return;
+      stats.lastUpdate = now;
       updateBlockingLoaderOverlay(
-        "Preparing workspace...",
-        "Loading saved media index...",
+        "Opening root folder...",
+        formatBusyProgressDetail(
+          `Loaded ${stats.folders} folders, ${stats.mediaFiles} media files`,
+          path,
+        ),
       );
-      await waitForBusyOverlayPaint();
-      catalogResult = await readExistingCatalogForRootHandle(rootHandle);
-      if (!catalogResult) {
-        updateBlockingLoaderOverlay(
-          "Preparing workspace...",
-          "No saved media index found; creating root ledger...",
-        );
-        await waitForBusyOverlayPaint();
-        catalogResult = await createEmptyCatalogForRootHandle(rootHandle);
+    };
+    WS.root = makeDirNode(String(rootHandle?.name || "root"), null);
+    WS.root.path = "";
+    WS.root.fsHandle = rootHandle;
+    WS.root.loadState = "loaded";
+    WS.root.subtreeLoadState = "loaded";
+    WS.dirByPath.set("", WS.root);
+    DIR_HANDLE_CACHE.set("", rootHandle);
+    const scanDir = async (dirHandle, dirPath, dirNode) => {
+      if (!dirHandle || !dirNode) return;
+      stats.folders++;
+      updateScanProgress(dirPath);
+      const childDirEntries = [];
+      const fileEntries = [];
+      for await (const [name, handle] of dirHandle.entries()) {
+        if (name === ".local-gallery") continue;
+        const relPath = dirPath ? `${dirPath}/${name}` : name;
+        if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
+        stats.entries++;
+        if (handle.kind === "directory") {
+          childDirEntries.push({ name, handle, path: relPath });
+          continue;
+        }
+        if (handle.kind !== "file") continue;
+        stats.allFiles++;
+        if (String(name || "")[0] === ".") continue;
+        if (!isImageName(name) && !isVideoName(name)) continue;
+        fileEntries.push({ name, handle, path: relPath });
       }
-    }
-    if (!catalogResult) {
-      updateBlockingLoaderOverlay("Opening root folder...", "Checking stored folders...");
-      await waitForBusyOverlayPaint();
-      const storedPaths = await preloadStoragePathsForRootHandle(rootHandle);
-      catalogResult = await buildCatalogForRootHandle(rootHandle, storedPaths);
-    }
-
-    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Installing media index...");
-    await waitForBusyOverlayPaint();
-    installCatalogIndex(
-      catalogResult.index,
-      rootHandle,
-      catalogResult.handles && catalogResult.handles.folders,
-    );
-
-    if (!forceIndex) {
-      updateBlockingLoaderOverlay(
-        "Preparing workspace catalog...",
-        "Updating root ledger...",
+      childDirEntries.sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
       );
-      await waitForBusyOverlayPaint();
-      await reconcileCatalogFolderWithDisk("", { showOverlay: false });
+      for (let i = 0; i < childDirEntries.length; i++) {
+        const entry = childDirEntries[i];
+        const child = makeDirNode(entry.name, dirNode);
+        child.path = normalizeDirPathValue(entry.path);
+        child.fsHandle = entry.handle;
+        child.loadState = "loaded";
+        child.subtreeLoadState = "loaded";
+        dirNode.childrenDirs.push(child);
+        WS.dirByPath.set(child.path, child);
+        DIR_HANDLE_CACHE.set(child.path, entry.handle);
+        await scanDir(entry.handle, child.path, child);
+      }
+      fileEntries.sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
+      const fileRecords = new Array(fileEntries.length);
+      await runWithConcurrency(fileEntries, 6, async (entry, index) => {
+        try {
+          const file = await entry.handle.getFile();
+          const relPath = normalizeWorkspaceRelPath(entry.path);
+          const desc = fileDescriptorFromFile(file, relPath);
+          if (!desc || WS.fileById.has(desc.id)) return;
+          const rec = {
+            id: desc.id,
+            file,
+            name: desc.name,
+            relPath: desc.relPath,
+            dirPath: desc.dirPath,
+            ext: desc.ext,
+            type: desc.type,
+            size: desc.size,
+            lastModified: desc.lastModified,
+            url: null,
+            thumbUrl: null,
+            videoThumbUrl: null,
+            indices: null,
+            thumbMode: null,
+            videoThumbMode: null,
+            nativePath: getNativePathForFile(file),
+            aspectRatio: desc.aspectRatio,
+            aspectRatioBucket: desc.aspectRatioBucket || "",
+          };
+          fileRecords[index] = rec;
+          stats.mediaFiles++;
+          updateScanProgress(desc.relPath);
+        } catch {}
+      });
+      for (let i = 0; i < fileRecords.length; i++) {
+        const rec = fileRecords[i];
+        if (!rec || WS.fileById.has(rec.id)) continue;
+        WS.fileById.set(rec.id, rec);
+        dirNode.childrenFiles.push(rec.id);
+      }
+      dirNode.loadState = "loaded";
+      dirNode.subtreeLoadState = "loaded";
+    };
+    await scanDir(rootHandle, "", WS.root);
+    if (trashDirAvailable && !WS.dirByPath.has(INTERNAL_TRASH_DIR_NAME)) {
+      try {
+        const trashHandle = await rootHandle.getDirectoryHandle(INTERNAL_TRASH_DIR_NAME);
+        const trashNode = makeDirNode(INTERNAL_TRASH_DIR_NAME, WS.root);
+        trashNode.path = INTERNAL_TRASH_DIR_NAME;
+        trashNode.fsHandle = trashHandle;
+        trashNode.loadState = "loaded";
+        trashNode.subtreeLoadState = "loaded";
+        WS.root.childrenDirs.push(trashNode);
+        WS.dirByPath.set(INTERNAL_TRASH_DIR_NAME, trashNode);
+        DIR_HANDLE_CACHE.set(INTERNAL_TRASH_DIR_NAME, trashHandle);
+      } catch {}
     }
+    updateScanProgress("", true);
 
-    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Building root folder tree...");
-    await waitForBusyOverlayPaint();
-    initializeWorkspaceTreeFromCatalog(String(rootHandle?.name || "root"));
-    await ensureDirectoryLoaded(WS.root, { showOverlay: false });
-    if (trashDirAvailable && getCatalogFolderSummary(INTERNAL_TRASH_DIR_NAME))
-      ensureCatalogDirNode(INTERNAL_TRASH_DIR_NAME);
-
-    updateBlockingLoaderOverlay("Preparing workspace catalog...", "Applying media-type filters...");
-    await waitForBusyOverlayPaint();
     applyMediaFilterFromOptions();
 
-    const loadHeavyMetadata = !!forceIndex;
     updateBlockingLoaderOverlay(
-      loadHeavyMetadata ? "Loading saved data..." : "Loading saved settings...",
-      loadHeavyMetadata
-        ? "Reading saved tags, scores, and aspect-ratio cache..."
-        : "Reading saved tags, scores, and preferences...",
+      "Loading saved data...",
+      "Reading saved tags, scores, preferences, and aspect-ratio cache...",
     );
-    if (loadHeavyMetadata) await waitForBusyOverlayPaint();
+    await waitForBusyOverlayPaint();
     try {
       if (!ok) {
         WS.meta.storageMode = "local";
         WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
-        metaInitForCurrentWorkspace({ loadHeavyLogs: loadHeavyMetadata });
-        if (loadHeavyMetadata) hydrateCatalogLightIndexFromAspectLog();
+        metaInitForCurrentWorkspace({ loadHeavyLogs: true });
       } else {
         WS.meta.storageKey = String(computeWorkspaceSeed() >>> 0);
         await metaInitForCurrentWorkspaceFs({
-          loadHeavyLogs: loadHeavyMetadata,
+          loadHeavyLogs: true,
         });
-        if (loadHeavyMetadata) hydrateCatalogLightIndexFromAspectLog();
         if (WS.meta.saveTimer) {
           clearTimeout(WS.meta.saveTimer);
           WS.meta.saveTimer = null;
@@ -25467,19 +25140,13 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     }
     applyMediaFilterFromOptions();
 
-    if (forceIndex) {
-      await materializeCatalogMetadataThumbnailRecords({
-        showOverlay: true,
-        label: "Preparing media index...",
-      });
-      await finalizeAspectRatiosAndStorageForLoadedWorkspace({
-        showOverlay: true,
-        aspectLabel: "Checking media aspect ratios...",
-        storageLabel: "Applying media type and aspect filters...",
-      });
-    }
+    await finalizeAspectRatiosAndStorageForLoadedWorkspace({
+      showOverlay: true,
+      aspectLabel: "Checking media aspect ratios...",
+      storageLabel: "Applying media type and aspect filters...",
+    });
 
-    showBlockingLoaderOverlay("Preparing folder view...", "Building navigation indexes...");
+    showBlockingLoaderOverlay("Preparing folder view...", "Building folder statistics...");
     await waitForBusyOverlayPaint();
     try {
       rebuildDirectoryDerivedIndex();
@@ -25511,13 +25178,11 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     syncPinnedHotNavigationDirectories(WS.root);
     applyDefaultRootLandingSidebars();
 
-    if (forceIndex) {
-      await prepareNavigationSnapshot(
-        currentNavigationSnapshot(),
-        "Preparing directory view...",
-        { keepBusyOverlay: true },
-      );
-    }
+    await prepareNavigationSnapshot(
+      currentNavigationSnapshot(),
+      "Preparing directory view...",
+      { keepBusyOverlay: true },
+    );
 
     updateBlockingLoaderOverlay("Rendering folder view...", "Populating files and preview panes...");
     await waitForBusyOverlayPaint();
@@ -25526,7 +25191,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     syncButtons();
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
-    if (forceIndex) scheduleWorkspaceNavigationWarm(WS.root, 1000);
+    scheduleWorkspaceNavigationWarm(WS.root, 1000);
     syncMetaButtons();
     initDirHistory();
     await waitForBusyOverlayPaint();
@@ -26134,18 +25799,13 @@ async function refreshWorkspaceFromRootHandle() {
   if (!rootHandle) return;
   const state = snapshotRefreshState();
 
-  await buildWorkspaceFromDirectoryHandle(rootHandle, { forceIndex: true });
+  await buildWorkspaceFromDirectoryHandle(rootHandle);
 
   restoreRefreshViewState(state?.view);
   const targetDir =
     WS.dirByPath.get(state?.dirPath || "") ||
-    (WS.catalog && WS.catalog.enabled
-      ? ensureCatalogDirNode(state?.dirPath || "")
-      : null) ||
     WS.root;
   if (targetDir) WS.nav.dirNode = targetDir;
-  if (targetDir && WS.catalog && WS.catalog.enabled)
-    await ensureDirectoryLoaded(targetDir, { showOverlay: false });
 
   if (WS.view.dirSearchPinned || String(WS.view.dirSearchQuery || "").trim()) {
     computeDirectorySearchResults();
@@ -26612,7 +26272,7 @@ async function sanitizeWorkspaceNames() {
     }
 
     showBusyOverlay("Reloading workspace...");
-    await buildWorkspaceFromDirectoryHandle(rootHandle, { forceIndex: true });
+    await buildWorkspaceFromDirectoryHandle(rootHandle);
     restoreRefreshViewState(restoreState.view);
     const targetDir = WS.dirByPath.get(restoreState.dirPath || "") || WS.root;
     if (targetDir) WS.nav.dirNode = targetDir;
@@ -27078,165 +26738,6 @@ async function updateFileRecordsForFileRenames(
   invalidateDirMetricsCaches();
 }
 
-async function performBatchIndexForDir(dirNode, opts = {}) {
-  if (!dirNode || !WS.meta.fsRootHandle) return { renamed: false, files: 0 };
-
-  const dirPath = String(dirNode.path || "");
-  const base = String(dirNode.name || "folder");
-  const dirHandle = await getDirectoryHandleForPath(
-    WS.meta.fsRootHandle,
-    dirPath,
-  );
-
-  const files = [];
-  const handleByName = new Map();
-  for await (const [name, handle] of dirHandle.entries()) {
-    if (handle.kind !== "file") continue;
-    files.push({ name, handle });
-    handleByName.set(name, handle);
-  }
-
-  const orderedNames = [];
-  if (dirNode.preserveOrder) {
-    const seen = new Set();
-    for (const id of dirNode.childrenFiles || []) {
-      const rec = WS.fileById.get(id);
-      const name = rec?.name;
-      if (!name || !handleByName.has(name) || seen.has(name)) continue;
-      orderedNames.push(name);
-      seen.add(name);
-    }
-    const remaining = files
-      .map((f) => f.name)
-      .sort((a, b) => compareIndexedNames(a, b));
-    for (const name of remaining) {
-      if (!seen.has(name)) orderedNames.push(name);
-    }
-  } else {
-    orderedNames.push(
-      ...files.map((f) => f.name).sort((a, b) => compareIndexedNames(a, b)),
-    );
-  }
-
-  const count = orderedNames.length;
-  if (!count) return { renamed: false, files: 0 };
-  const width = String(count).length + 1;
-
-  const renamePlan = [];
-  const existingNames = new Set(files.map((f) => f.name));
-  for (let i = 0; i < count; i++) {
-    const idx = String(i + 1).padStart(width, "0");
-    const oldName = orderedNames[i];
-    const handle = handleByName.get(oldName);
-    if (!handle) continue;
-    const dot = oldName.lastIndexOf(".");
-    const ext = dot >= 0 ? oldName.slice(dot + 1) : "";
-    const newName = `${base}_${idx}${ext ? "." + ext : ""}`;
-    if (newName === oldName) continue;
-    renamePlan.push({ oldName, newName, handle, ext: ext ? "." + ext : "" });
-  }
-
-  if (!renamePlan.length) return { renamed: false, files: 0 };
-
-  const renameMap = new Map();
-  const labelBase = opts.label || "Batch Index";
-  const hasConflicts = renamePlan.some((entry) =>
-    existingNames.has(entry.newName),
-  );
-
-  if (!hasConflicts) {
-    for (let i = 0; i < renamePlan.length; i++) {
-      const entry = renamePlan[i];
-      if (opts.progress)
-        showBusyOverlay(
-          `${labelBase}... ${opts.progress} (${i + 1}/${renamePlan.length})`,
-        );
-      else showBusyOverlay(`${labelBase}... ${i + 1}/${renamePlan.length}`);
-      const ok = await renameFileOnDisk(
-        dirHandle,
-        entry.handle,
-        entry.oldName,
-        entry.newName,
-      );
-      if (ok) renameMap.set(entry.oldName, entry.newName);
-    }
-  } else {
-    const usedNames = new Set(existingNames);
-    const tempPrefix = "__pg_tmp";
-    const tempWidth = String(renamePlan.length).length + 1;
-    const tempPlan = renamePlan.map((entry, idx) => {
-      let tempName = "";
-      do {
-        const tempIdx = String(idx + 1).padStart(tempWidth, "0");
-        const rand = Math.random().toString(36).slice(2, 10);
-        tempName = `${tempPrefix}_${tempIdx}_${rand}${entry.ext}`;
-      } while (usedNames.has(tempName));
-      usedNames.add(tempName);
-      return { ...entry, tempName };
-    });
-
-    const tempRenamed = [];
-    for (let i = 0; i < tempPlan.length; i++) {
-      const entry = tempPlan[i];
-      if (opts.progress)
-        showBusyOverlay(
-          `${labelBase}... ${opts.progress} (1/2 ${i + 1}/${tempPlan.length})`,
-        );
-      else showBusyOverlay(`${labelBase}... (1/2 ${i + 1}/${tempPlan.length})`);
-      const ok = await renameFileOnDisk(
-        dirHandle,
-        entry.handle,
-        entry.oldName,
-        entry.tempName,
-      );
-      if (ok) tempRenamed.push(entry);
-    }
-
-    for (let i = 0; i < tempRenamed.length; i++) {
-      const entry = tempRenamed[i];
-      if (opts.progress)
-        showBusyOverlay(
-          `${labelBase}... ${opts.progress} (2/2 ${i + 1}/${tempRenamed.length})`,
-        );
-      else
-        showBusyOverlay(`${labelBase}... (2/2 ${i + 1}/${tempRenamed.length})`);
-      let tempHandle = null;
-      try {
-        tempHandle = await dirHandle.getFileHandle(entry.tempName);
-      } catch {}
-      if (!tempHandle) continue;
-      const ok = await renameFileOnDisk(
-        dirHandle,
-        tempHandle,
-        entry.tempName,
-        entry.newName,
-      );
-      if (ok) renameMap.set(entry.oldName, entry.newName);
-    }
-  }
-
-  if (renameMap.size) {
-    await updateFileRecordsForFileRenames(dirNode, renameMap, dirHandle);
-    return { renamed: true, files: renameMap.size };
-  }
-  return { renamed: false, files: 0 };
-}
-
-function getBatchIndexDirNodesRecursive(dirNode) {
-  const out = [];
-  const walk = (node) => {
-    if (!node) return;
-    out.push(node);
-    const children = (node.childrenDirs || []).slice();
-    children.sort((a, b) =>
-      String(a?.name || "").localeCompare(String(b?.name || "")),
-    );
-    for (let i = 0; i < children.length; i++) walk(children[i]);
-  };
-  walk(dirNode);
-  return out;
-}
-
 function refreshCurrentViewAfterCatalogMutation() {
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -27246,49 +26747,6 @@ function refreshCurrentViewAfterCatalogMutation() {
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
-}
-
-async function batchIndexFolderFiles(dirNode) {
-  if (RENAME_BUSY) return false;
-  if (!dirNode) return false;
-  if (!WS.meta.fsRootHandle) {
-    showStatusMessage("Renaming files requires a writable folder.");
-    return false;
-  }
-
-  const targets = getBatchIndexDirNodesRecursive(dirNode);
-  RENAME_BUSY = true;
-  showBusyOverlay("Indexing files...");
-  let renamedAny = false;
-  const changedPaths = new Set();
-  try {
-    for (let i = 0; i < targets.length; i++) {
-      const target = targets[i];
-      if (!target) continue;
-      const progress = targets.length > 1 ? `${i + 1}/${targets.length}` : "";
-      const res = await performBatchIndexForDir(target, {
-        label: "Index",
-        progress,
-      });
-      if (!res.renamed) continue;
-      resetDirFileOrder(target, { silent: true });
-      changedPaths.add(String(target.path || ""));
-      renamedAny = true;
-    }
-    if (renamedAny) {
-      for (const path of changedPaths) {
-        await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
-      }
-      refreshCurrentViewAfterCatalogMutation();
-      showStatusMessage("Index complete.");
-      return true;
-    }
-    showStatusMessage("No files renamed.");
-    return false;
-  } finally {
-    RENAME_BUSY = false;
-    hideBusyOverlay();
-  }
 }
 
 async function renameFolderDirNode(dirNode, nextName) {
@@ -27335,13 +26793,6 @@ async function renameFolderDirNode(dirNode, nextName) {
       if (WS.meta.storageMode === "fs") await metaSaveFsNow();
       else metaSaveLocalNow();
     } catch {}
-    await remapCatalogPathPrefix(prevPath, newPath);
-    await reconcileCatalogFolderWithDisk(
-      String(dirNode.parent?.path || ""),
-      { showOverlay: false },
-    );
-    await reconcileCatalogFolderWithDisk(newPath, { showOverlay: false });
-
     const entryKey = state?.entryKey || null;
     if (entryKey && entryKey.kind === "dir") {
       entryKey.path = remapPathPrefix(prevPath, newPath, entryKey.path);
@@ -28944,7 +28395,6 @@ async function renameSingleFile(rec, nextName) {
       if (WS.meta.storageMode === "fs") await metaSaveFsNow();
       else metaSaveLocalNow();
     } catch {}
-    await reconcileCatalogFolderWithDisk(dirPath, { showOverlay: false });
     refreshCurrentViewAfterCatalogMutation();
 
     showStatusMessage("Rename complete.");
@@ -36173,9 +35623,6 @@ async function scrubFoldersByPaths(paths, opts = {}) {
   }
 
   if (opts.refresh !== false && WS.meta.fsRootHandle) {
-    for (const relPath of list) {
-      await reconcileCatalogFolderWithDisk(relPath, { showOverlay: false });
-    }
     refreshCurrentViewAfterCatalogMutation();
   }
 
@@ -36429,8 +35876,6 @@ async function moveFolderPathsToTrash(paths) {
   }
   const failed = [];
   const moved = [];
-  const catalogMoves = [];
-  const touchedDirs = new Set([INTERNAL_TRASH_DIR_NAME]);
   showBusyOverlay("Moving folders to Trash...");
   try {
     for (let i = 0; i < list.length; i++) {
@@ -36482,8 +35927,6 @@ async function moveFolderPathsToTrash(paths) {
         ]);
         metaSetTrashRestoreInfo(trashPath, path);
         moved.push(path);
-        catalogMoves.push({ from: path, to: trashPath });
-        touchedDirs.add(parentPath);
       } catch {
         failed.push(path);
       }
@@ -36496,12 +35939,6 @@ async function moveFolderPathsToTrash(paths) {
     return false;
   }
   await persistDirtyMetadataNow();
-  for (const move of catalogMoves) {
-    await remapCatalogPathPrefix(move.from, move.to);
-  }
-  for (const path of touchedDirs) {
-    await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
-  }
   refreshCurrentViewAfterCatalogMutation();
   if (failed.length) {
     showStatusMessage(
@@ -36538,8 +35975,6 @@ async function putBackTrashFolderPaths(paths) {
   const failed = [];
   const skipped = [];
   const restored = [];
-  const catalogMoves = [];
-  const touchedDirs = new Set([INTERNAL_TRASH_DIR_NAME]);
   showBusyOverlay("Putting folders back...");
   try {
     for (let i = 0; i < list.length; i++) {
@@ -36625,8 +36060,6 @@ async function putBackTrashFolderPaths(paths) {
         ]);
         metaDeleteTrashRestoreInfo(trashPath);
         restored.push(trashPath);
-        catalogMoves.push({ from: trashPath, to: originalPath });
-        touchedDirs.add(parentPath);
       } catch {
         failed.push(trashPath);
       }
@@ -36643,12 +36076,6 @@ async function putBackTrashFolderPaths(paths) {
     return false;
   }
   await persistDirtyMetadataNow();
-  for (const move of catalogMoves) {
-    await remapCatalogPathPrefix(move.from, move.to);
-  }
-  for (const path of touchedDirs) {
-    await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
-  }
   refreshCurrentViewAfterCatalogMutation();
   const parts = [];
   parts.push(
@@ -36731,15 +36158,11 @@ async function deleteFolderPathsPermanently(paths) {
   showBusyOverlay(label);
   let deleted = 0;
   let failed = 0;
-  const deletedPaths = [];
-  const touchedParents = new Set();
   try {
     for (const t of targets) {
       try {
         await t.parentHandle.removeEntry(t.folderName, { recursive: true });
         deleted++;
-        deletedPaths.push(t.path);
-        touchedParents.add(t.parentPath);
         invalidateDirHandleCache(t.path);
         invalidateDirHandleCache(t.parentPath);
       } catch {
@@ -36755,12 +36178,6 @@ async function deleteFolderPathsPermanently(paths) {
     return false;
   }
 
-  for (const path of deletedPaths) {
-    await removeCatalogPathPrefix(path);
-  }
-  for (const path of touchedParents) {
-    await reconcileCatalogFolderWithDisk(path, { showOverlay: false });
-  }
   refreshCurrentViewAfterCatalogMutation();
 
   if (failed > 0) {
@@ -36874,13 +36291,8 @@ async function setMergeSelectedDirs() {
 
   finalizeBulkSelectionAction();
   closeActionMenus();
-  for (const path of uniquePaths) {
-    await removeCatalogPathPrefix(path);
-  }
-  await reconcileCatalogFolderWithDisk(parentPath, { showOverlay: false });
 
   const finalPath = parentPath ? parentPath + "/" + finalName : finalName;
-  await reconcileCatalogFolderWithDisk(finalPath, { showOverlay: false });
   const idx = findDirEntryIndexByPath(finalPath);
   if (idx >= 0) {
     WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
@@ -37094,8 +36506,6 @@ async function looseSetMergeSelectedFiles() {
     if (WS.meta.storageMode === "fs") await metaSaveFsNow();
     else metaSaveLocalNow();
   } catch {}
-  await reconcileCatalogFolderWithDisk(parentPath, { showOverlay: false });
-  await reconcileCatalogFolderWithDisk(newDirPath, { showOverlay: false });
 
   finalizeBulkSelectionAction();
   closeActionMenus();
@@ -38305,7 +37715,6 @@ function buildFolderMenuState(dirNode) {
       ? effectiveActiveAppearancePresetId()
       : metaGetFolderAppearancePresetId(p);
   const canRename = !!WS.meta.fsRootHandle && !isStorageGhost;
-  const canBatchIndex = !!WS.meta.fsRootHandle && !isStorageGhost;
   const canResetOrder = !!dirNode?.preserveOrder && !isStorageGhost;
   const currentTagRemovalContext =
     !isStorageGhost && !isRootNode ? currentFolderMenuTagRemovalContext() : null;
@@ -38331,7 +37740,6 @@ function buildFolderMenuState(dirNode) {
     isHidden,
     assignedAppearancePresetId,
     canRename,
-    canBatchIndex,
     canResetOrder,
     currentTagRemovalContext,
     showUseDefaultThumbnail: false,
@@ -38427,8 +37835,7 @@ function buildFolderActionMenuDom(
     makeBtn("Tag", "tag"),
     makeBtn("Rename", "rename", !state.canRename),
   );
-  appendTwoCol(
-    makeBtn("Index", "batch-index", !state.canBatchIndex),
+  menuEl.appendChild(
     makeBtn(state.isFavorite ? "Unfavorite" : "Favorite", "favorite"),
   );
   appendTwoCol(
@@ -38525,14 +37932,6 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     selectDirectoryEntryByPath(p);
     renderDirectoriesPane(true);
     focusSelectedDirectoryInlineInput(".renameEditInput");
-    return true;
-  }
-  if (action === "batch-index") {
-    if (!WS.meta.fsRootHandle) {
-      showStatusMessage("Renaming files requires a writable folder.");
-      return true;
-    }
-    batchIndexFolderFiles(node);
     return true;
   }
   if (action === "reset-order") {
@@ -38751,7 +38150,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   }
   const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
   const canRenameBulk = !!singleSelectedDirPath && !!WS.meta.fsRootHandle;
-  const canIndexBulk = !!singleSelectedDirNode && !!WS.meta.fsRootHandle;
   const allFavorite =
     !!selectedPaths.length && selectedPaths.every((p) => metaHasFavorite(p));
   const allHidden =
@@ -38793,16 +38191,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     ),
   );
 
-  appendTwoCol(
-    makeBtn(
-      "Index",
-      async () => {
-        if (!canIndexBulk || !singleSelectedDirNode) return;
-        await batchIndexFolderFiles(singleSelectedDirNode);
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-      },
-      !canIndexBulk || !singleSelectedDirNode,
-    ),
+  menu.appendChild(
     makeBtn(allFavorite ? "Unfavorite" : "Favorite", () => {
       metaSetFavoriteBulk(selectedPaths, !allFavorite);
       if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
@@ -40669,7 +40058,6 @@ function renderDirectoriesActionHeader() {
       selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
     const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
     const canRenameBulk = !!singleSelectedDirPath && !!WS.meta.fsRootHandle;
-    const canIndexBulk = !!singleSelectedDirNode && !!WS.meta.fsRootHandle;
     if (scoreInterfaceEnabled()) {
       const scoreRow = document.createElement("div");
       scoreRow.className = "scoreRow";
@@ -40711,13 +40099,6 @@ function renderDirectoriesActionHeader() {
     if (!canRenameBulk) renameBtn.disabled = true;
     directoriesActionMenuEl.appendChild(makeTwoColRow(tagBtn, renameBtn));
 
-    const indexBtn = makeActionBtn("Index", async () => {
-      WS.view.bulkActionMenuOpen = false;
-      if (!canIndexBulk || !singleSelectedDirNode) return;
-      await batchIndexFolderFiles(singleSelectedDirNode);
-      finalizeBulkSelectionAction();
-    });
-    if (!canIndexBulk) indexBtn.disabled = true;
     const favoriteBtn = makeActionBtn(
       allFavorite ? "Unfavorite" : "Favorite",
       () => {
@@ -40726,7 +40107,7 @@ function renderDirectoriesActionHeader() {
         finalizeBulkSelectionAction();
       },
     );
-    directoriesActionMenuEl.appendChild(makeTwoColRow(indexBtn, favoriteBtn));
+    directoriesActionMenuEl.appendChild(favoriteBtn);
     directoriesActionMenuEl.appendChild(
       makeTwoColRow(
         makeActionBtn("Store", async () => {
@@ -41743,7 +41124,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
         if (sel) row.classList.add("bulkSelected");
         const canRename = !!WS.meta.fsRootHandle && !isStorageGhost;
-        const canBatchIndex = !!WS.meta.fsRootHandle && !isStorageGhost;
         const canResetOrder = !!entry.node?.preserveOrder && !isStorageGhost;
         iconHtml = appIconHtml(iconKeyForDirNode(entry.node));
         name = prefixDisplayLabelWithPosition(
@@ -41854,10 +41234,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   <button type="button" data-action="tag">Tag</button>
                   <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
                 </div>
-                <div class="menuTwoColRow">
-                  <button type="button" data-action="batch-index"${canBatchIndex ? "" : " disabled"}>Index</button>
-                  <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
-                </div>
+                <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <div class="menuTwoColRow">
                   <button type="button" data-action="send-to-storage"${folderMenuState.canSendToStorage ? "" : " disabled"}>Store</button>
                   <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
