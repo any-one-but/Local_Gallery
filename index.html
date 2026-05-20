@@ -7024,13 +7024,20 @@ function thumbnailVisibilitySupportedFields(surface, kind) {
         "menuButton",
         "itemType",
       ],
-      tag: ["folderCount", "fileCount", "title", "menuButton", "itemType"],
+      tag: [
+        "folderCount",
+        "fileCount",
+        "size",
+        "title",
+        "menuButton",
+        "itemType",
+      ],
     },
     directories: {
       file: ["itemCount", "size", "itemType"],
       rootFolder: ["folderCount", "fileCount", "size", "itemType"],
       subfolder: ["folderCount", "fileCount", "size", "itemType"],
-      tag: ["folderCount", "fileCount", "itemType"],
+      tag: ["folderCount", "fileCount", "size", "itemType"],
     },
   };
   return Array.isArray(support[targetSurface]?.[targetKind])
@@ -29237,7 +29244,8 @@ function isPerformanceSensitiveTagAlbumPreviewNode(dirNode) {
 }
 
 function shouldUseLightweightTagAlbumThumbnailsForNode(dirNode = null) {
-  return true;
+  if (!dirNode) return false;
+  return isViewingPerformanceSensitiveTagAlbumFolder();
 }
 
 function getVisibleChildDirsForTagEvaluation(dirNode) {
@@ -34706,9 +34714,8 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
     !(src && src.showScores === false);
   const showExtraInfo = resolveExtraInfoValue(fallbackExtraInfo);
   const showDirectoryExtraInfo =
-    surface === "directories" &&
-    typeof src.showListCardExtraInfo === "boolean"
-      ? !!src.showListCardExtraInfo
+    surface === "directories"
+      ? src.showListCardExtraInfo !== false
       : showExtraInfo;
   const fallbackTitle = (() => {
     if (kind === "file") return !(src && src.showFileThumbnailTitles === false);
@@ -41744,11 +41751,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           navDisplayPositions.dirPositions.get(String(p || "")),
         );
         const dirMetaLines = [];
-        if (!isStorageGhost && dirVisibility.showItemTypeLabel)
-          dirMetaLines.push(folderItemTypeLabelForNode(entry.node));
         if (
           !isStorageGhost &&
-          !lightweightFolderThumb &&
           (dirVisibility.showFolderCount || dirVisibility.showFileCount)
         ) {
           const folderCount = getDirectFolderCountForNode(entry.node);
@@ -41761,7 +41765,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             dirMetaLines.push(`${fileCount} ${fileCount === 1 ? "File" : "Files"}`);
           }
         }
-        if (!isStorageGhost && !lightweightFolderThumb && dirVisibility.showSize)
+        if (!isStorageGhost && dirVisibility.showSize)
           dirMetaLines.push(
             formatBytes(getDirSizeByPathForRender().get(String(p || "")) || 0),
           );
@@ -51825,7 +51829,10 @@ function entryUsesRotatingThumbnail() { return false; }
 function teleportFromRotatingThumbnail() { return false; }
 function rotatePreviewThumbnailsTick() {}
 function folderThumbnailTitlesVisibleForNode() { return false; }
-function shouldUseLightweightTagAlbumThumbnailsForNode() { return true; }
+function shouldUseLightweightTagAlbumThumbnailsForNode(dirNode = null) {
+  if (!dirNode) return false;
+  return isViewingPerformanceSensitiveTagAlbumFolder();
+}
 function folderEligibleForParentThumbnailPreset() { return false; }
 function setFolderThumbnailTargetFromRecord() { return false; }
 function setParentThumbnailFromRecord() { return false; }
