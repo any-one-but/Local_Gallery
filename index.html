@@ -2264,10 +2264,10 @@ img[data-rotate-key].rotatingThumbFade {
   display: block;
   min-width: 0;
   min-height: 0;
-  padding: 6px 8px 8px;
-  background: var(--color1-primary);
+  padding: 7px 8px 9px;
+  background: var(--color1-secondary);
   border: 0;
-  border-top: 1px solid var(--color1-tertiary);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   border-left: 0;
   border-right: 0;
   border-bottom: 0;
@@ -2283,36 +2283,68 @@ img[data-rotate-key].rotatingThumbFade {
   display: grid;
   grid-template-columns: auto minmax(120px, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 #controlButtons {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 }
 
 .controlBtn {
-  height: 24px;
-  min-width: 30px;
-  padding: 0 7px;
+  height: 28px;
+  min-width: 32px;
+  padding: 0 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   line-height: 1;
-  font-size: 11px;
+  font-family: inherit;
+  font-size: 10px;
   font-weight: 800;
+  letter-spacing: 0;
+  border-radius: 8px;
 }
 
 .controlPlayBtn {
-  min-width: 30px;
+  min-width: 36px;
+  color: var(--color0-primary);
+  background: var(--ui-selection-fill);
+}
+
+.controlPlayBtn:hover:not(:disabled),
+.controlPlayBtn:focus-visible {
+  color: var(--color0-primary);
+  background: var(--ui-control-hover-bg);
+}
+
+.controlPlayBtn:active:not(:disabled) {
+  background: var(--ui-control-active-bg);
 }
 
 .controlIconBtn {
-  width: 30px;
-  min-width: 30px;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
   color: var(--color0-primary);
+}
+
+.controlIconBtn.controlPlayBtn {
+  width: 36px;
+  min-width: 36px;
+}
+
+.controlTransportBtn {
+  width: 34px;
+  min-width: 34px;
+}
+
+.controlSkipBtn {
+  width: 32px;
+  min-width: 32px;
 }
 
 .controlIconBtn.active,
@@ -2322,109 +2354,101 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
 }
 
-#controlPlayPauseBtn::before {
-  content: "";
+.controlIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.controlIcon svg {
+  width: 100%;
+  height: 100%;
   display: block;
-  width: 0;
-  height: 0;
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-  border-left: 10px solid currentColor;
-  margin-left: 2px;
+  stroke: currentColor;
 }
 
-#controlPlayPauseBtn.is-playing::before {
-  width: 12px;
-  height: 12px;
-  border-top: 0;
-  border-bottom: 0;
-  border-left: 4px solid currentColor;
-  border-right: 4px solid currentColor;
-  margin-left: 0;
+.controlIconFlip svg {
+  transform: scaleX(-1);
 }
 
-#controlMuteBtn::before {
-  content: "";
-  display: block;
-  width: 14px;
-  height: 12px;
-  background: currentColor;
-  clip-path: polygon(0 35%, 32% 35%, 70% 0, 70% 100%, 32% 65%, 0 65%);
-}
-
-#controlMuteBtn::after {
-  content: "";
-  display: block;
-  width: 5px;
-  height: 9px;
-  border: 2px solid currentColor;
-  border-left: 0;
-  border-radius: 0 9px 9px 0;
-  margin-left: -1px;
-}
-
-#controlMuteBtn.is-muted::after {
-  width: 15px;
-  height: 2px;
-  border: 0;
-  border-radius: 0;
-  background: currentColor;
-  transform: rotate(-45deg);
-  margin-left: -5px;
+.controlPlayBtn .controlIcon {
+  width: 17px;
+  height: 17px;
 }
 
 #controlProgressRange {
   appearance: none;
   -webkit-appearance: none;
-  height: 18px;
+  height: 22px;
   width: 100%;
   min-width: 0;
   padding: 0;
   background: transparent;
-  accent-color: var(--palette-accent);
+  accent-color: var(--color0-secondary);
+  --control-progress-pct: 0%;
 }
 
 #controlProgressRange::-webkit-slider-runnable-track {
   height: 6px;
-  border: 1px solid var(--color1-tertiary);
-  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      to right,
+      var(--color0-secondary) var(--control-progress-pct),
+      var(--ui-control-bg) var(--control-progress-pct)
+    );
 }
 
 #controlProgressRange::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
   width: 12px;
-  height: 18px;
-  margin-top: -7px;
-  border: 1px solid var(--color0-tertirary);
-  border-radius: 2px;
-  background: var(--color0-secondary);
+  height: 12px;
+  margin-top: -3px;
+  border: 2px solid var(--color1-primary);
+  border-radius: 999px;
+  background: var(--color0-primary);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
 }
 
 #controlProgressRange::-moz-range-track {
   height: 6px;
-  border: 1px solid var(--color1-tertiary);
-  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ui-control-bg);
+}
+
+#controlProgressRange::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color0-secondary);
 }
 
 #controlProgressRange::-moz-range-thumb {
   width: 12px;
-  height: 18px;
-  border: 1px solid var(--color0-tertirary);
-  border-radius: 2px;
-  background: var(--color0-secondary);
+  height: 12px;
+  border: 2px solid var(--color1-primary);
+  border-radius: 999px;
+  background: var(--color0-primary);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
 }
 
 #controlTimecode {
   min-width: 108px;
-  padding: 3px 6px;
-  border: 1px solid var(--color1-tertiary);
-  background: transparent;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ui-control-bg);
   color: var(--color0-secondary);
-  font-family:
-    "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
-  font-size: 11px;
-  line-height: 1.25;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -2511,7 +2535,7 @@ img[data-rotate-key].rotatingThumbFade {
   display: block;
   position: relative;
   overflow: hidden;
-  background: #000;
+  background: var(--color1-secondary);
 }
 
 .previewItemPlaceholder {
@@ -2525,11 +2549,11 @@ img[data-rotate-key].rotatingThumbFade {
   overflow: hidden;
   text-align: center;
   color: var(--color0-primary);
-  background: var(--color1-primary);
+  background: var(--color1-secondary);
 }
 
 .previewItemPlaceholder.hasThumbnail {
-  background: #000;
+  background: var(--color1-secondary);
 }
 
 .previewItemPlaceholderArtwork {
@@ -2711,7 +2735,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 #app.preview-media-pane-background #previewBody.preview-file {
-  padding: var(--preview-gutter);
+  padding: 0;
 }
 
 .gridFolders {
@@ -4026,48 +4050,52 @@ img[data-rotate-key].rotatingThumbFade {
   position: absolute;
   top: 16px;
   left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 2px;
-  font-size: 11px;
-  max-width: 80%;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  pointer-events: none;
   z-index: 10050;
-}
-
-#statusMessage.visible {
-  opacity: 1;
 }
 
 #mainStatusMessage {
   position: fixed;
   top: 16px;
   left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 2px;
-  font-size: 11px;
-  max-width: 80%;
+  z-index: 9500;
+}
+
+#statusMessage,
+#mainStatusMessage {
+  transform: translate(-50%, -4px);
+  min-height: 32px;
+  max-width: min(86vw, 720px);
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: var(--color1-secondary);
+  background: color-mix(in srgb, var(--color1-secondary) 86%, var(--color0-primary) 14%);
+  color: var(--color0-primary);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
   pointer-events: none;
-  z-index: 9500;
+  user-select: none;
 }
 
+:root[data-theme="retro90s"] #statusMessage,
+:root[data-theme="retro90s"] #mainStatusMessage {
+  border-color: rgba(18, 24, 32, 0.1);
+  box-shadow: 0 8px 18px rgba(18, 24, 32, 0.12);
+}
+
+#statusMessage.visible,
 #mainStatusMessage.visible {
   opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 #overlay.ui-hidden {
@@ -4844,13 +4872,9 @@ img[data-rotate-key].rotatingThumbFade {
 .calendarAnalyticsCard,
 .statsWidgetCard {
   border: 0;
-  background: var(--color1-secondary);
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.statsWidgetCard > h2:first-child {
-  margin-top: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
 }
 
 .calendarRankingsEmpty {
@@ -4865,7 +4889,7 @@ img[data-rotate-key].rotatingThumbFade {
 .statsLedgerCard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -4891,8 +4915,8 @@ img[data-rotate-key].rotatingThumbFade {
   min-width: 0;
   overflow-x: auto;
   border: 0;
-  border-radius: 6px;
-  background: var(--color1-primary);
+  border-radius: 0;
+  background: transparent;
 }
 
 .statsLedgerTable {
@@ -5015,14 +5039,15 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .calendarHistory {
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  padding-top: 10px;
+  border-top: 0;
+  padding-top: 0;
 }
 
 .statsHistoryCard {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
 }
 
 .statsHistoryCard h2 {
@@ -5030,12 +5055,12 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .scoreHistoryEmpty {
-  margin-top: 8px;
+  margin-top: 0;
   padding: 10px;
-  border: 1px dashed var(--color1-tertiary);
-  border-radius: 6px;
+  border: 0;
+  border-radius: 9px;
   color: var(--color0-secondary);
-  background: var(--color1-primary);
+  background: var(--ui-control-bg);
 }
 
 @media (max-width: 760px) {
@@ -5054,9 +5079,13 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .scoreHistoryMonth {
-  border-radius: 8px;
-  background: var(--color1-primary);
-  padding: 10px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.1);
+  padding: 8px;
+}
+
+:root[data-theme="retro90s-dark"] .scoreHistoryMonth {
+  background: rgba(0, 0, 0, 0.16);
 }
 
 .scoreHistoryMonthHeader {
@@ -5098,6 +5127,7 @@ img[data-rotate-key].rotatingThumbFade {
 .scoreHistoryCalendarDay {
   min-width: 0;
   aspect-ratio: 1;
+  position: relative;
   border-radius: 5px;
   background: var(--color1-secondary);
   display: flex;
@@ -5265,17 +5295,15 @@ img[data-rotate-key].rotatingThumbFade {
 
 .scoreHistoryCalendarDay.hasJournal::after {
   content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
   width: 5px;
   height: 5px;
   border-radius: 999px;
   background: var(--palette-accent);
   box-shadow: 0 0 0 2px var(--ui-selection-outline-soft);
-  align-self: flex-start;
-  margin-top: auto;
-}
-
-.scoreHistoryCalendarDay.hasScore.hasJournal::after {
-  margin-top: 0;
+  pointer-events: none;
 }
 
 .dailyJournalOverlay {
@@ -5884,7 +5912,6 @@ remove the outer app frame. */
    v5: rounded plate styling for Controls and Stats tabs
    ========================================================= */
 #keybindsBody .keybindSectionGroup,
-#calendarBody .statsWidgetCard,
 #calendarBody .scoreHistoryMonth {
   margin: 0 0 12px !important;
   padding: 8px;
@@ -5895,7 +5922,6 @@ remove the outer app frame. */
 }
 
 :root[data-theme="retro90s-dark"] #keybindsBody .keybindSectionGroup,
-:root[data-theme="retro90s-dark"] #calendarBody .statsWidgetCard,
 :root[data-theme="retro90s-dark"] #calendarBody .scoreHistoryMonth {
   background: rgba(0, 0, 0, 0.16);
 }
@@ -5946,6 +5972,14 @@ remove the outer app frame. */
 #calendarBody .statsLedgerTable {
   border-collapse: separate;
   border-spacing: 0 4px;
+}
+
+#calendarBody .statsLedgerCard,
+#calendarBody .statsHistoryCard {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
 }
 
 #calendarBody .statsLedgerTable th,
@@ -6064,21 +6098,21 @@ remove the outer app frame. */
                     <div id="controlButtons" aria-label="Media controls">
                       <button
                         id="controlPrevItemBtn"
-                        class="miniBtn controlBtn"
+                        class="miniBtn controlBtn controlIconBtn controlTransportBtn"
                         type="button"
                         title="Previous item"
                         aria-label="Previous item"
                       >
-                        |&lt;
+                        <span class="controlIcon controlIconFlip" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-forward-icon lucide-skip-forward"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></span>
                       </button>
                       <button
                         id="controlSkipBackBtn"
-                        class="miniBtn controlBtn"
+                        class="miniBtn controlBtn controlIconBtn controlSkipBtn"
                         type="button"
                         title="Skip back"
                         aria-label="Skip back"
                       >
-                        -10
+                        <span class="controlIcon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rewind-icon lucide-rewind"><path d="M12 6a2 2 0 0 0-3.414-1.414l-6 6a2 2 0 0 0 0 2.828l6 6A2 2 0 0 0 12 18z"/><path d="M22 6a2 2 0 0 0-3.414-1.414l-6 6a2 2 0 0 0 0 2.828l6 6A2 2 0 0 0 22 18z"/></svg></span>
                       </button>
                       <button
                         id="controlPlayPauseBtn"
@@ -6086,24 +6120,26 @@ remove the outer app frame. */
                         type="button"
                         title="Play or pause"
                         aria-label="Play or pause"
-                      ></button>
+                      >
+                        <span class="controlIcon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play-icon lucide-play"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg></span>
+                      </button>
                       <button
                         id="controlSkipForwardBtn"
-                        class="miniBtn controlBtn"
+                        class="miniBtn controlBtn controlIconBtn controlSkipBtn"
                         type="button"
                         title="Skip forward"
                         aria-label="Skip forward"
                       >
-                        +10
+                        <span class="controlIcon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-fast-forward-icon lucide-fast-forward"><path d="M12 6a2 2 0 0 1 3.414-1.414l6 6a2 2 0 0 1 0 2.828l-6 6A2 2 0 0 1 12 18z"/><path d="M2 6a2 2 0 0 1 3.414-1.414l6 6a2 2 0 0 1 0 2.828l-6 6A2 2 0 0 1 2 18z"/></svg></span>
                       </button>
                       <button
                         id="controlNextItemBtn"
-                        class="miniBtn controlBtn"
+                        class="miniBtn controlBtn controlIconBtn controlTransportBtn"
                         type="button"
                         title="Next item"
                         aria-label="Next item"
                       >
-                        &gt;|
+                        <span class="controlIcon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-forward-icon lucide-skip-forward"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></span>
                       </button>
                       <button
                         id="controlMuteBtn"
@@ -6111,7 +6147,9 @@ remove the outer app frame. */
                         type="button"
                         title="Video audio"
                         aria-label="Video audio"
-                      ></button>
+                      >
+                        <span class="controlIcon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-volume2-icon lucide-volume-2"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg></span>
+                      </button>
                     </div>
                     <input
                       id="controlProgressRange"
@@ -12927,6 +12965,45 @@ function appIconHtml(iconKey, extraClass = "") {
   return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${svg}</span>`;
 }
 
+const MEDIA_CONTROL_ICON_SVGS = Object.freeze({
+  play: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play-icon lucide-play"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>',
+  pause: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause-icon lucide-pause"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>',
+  fastForward: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-fast-forward-icon lucide-fast-forward"><path d="M12 6a2 2 0 0 1 3.414-1.414l6 6a2 2 0 0 1 0 2.828l-6 6A2 2 0 0 1 12 18z"/><path d="M2 6a2 2 0 0 1 3.414-1.414l6 6a2 2 0 0 1 0 2.828l-6 6A2 2 0 0 1 2 18z"/></svg>',
+  rewind: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rewind-icon lucide-rewind"><path d="M12 6a2 2 0 0 0-3.414-1.414l-6 6a2 2 0 0 0 0 2.828l6 6A2 2 0 0 0 12 18z"/><path d="M22 6a2 2 0 0 0-3.414-1.414l-6 6a2 2 0 0 0 0 2.828l6 6A2 2 0 0 0 22 18z"/></svg>',
+  skipForward: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-forward-icon lucide-skip-forward"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>',
+  volumeOn: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-volume2-icon lucide-volume-2"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>',
+  volumeOff: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-volume-x-icon lucide-volume-x"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6"/><path d="m16 9 6 6"/></svg>',
+});
+
+function mediaControlIconHtml(iconKey, extraClass = "") {
+  const key = String(iconKey || "play");
+  const svg = MEDIA_CONTROL_ICON_SVGS[key] || MEDIA_CONTROL_ICON_SVGS.play;
+  const classes = ["controlIcon"];
+  const extra = String(extraClass || "").trim();
+  if (extra) classes.push(extra);
+  return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${svg}</span>`;
+}
+
+function setMediaControlButtonHtml(button, html) {
+  if (!button || button.innerHTML === html) return;
+  button.innerHTML = html;
+}
+
+function setMediaControlIconButton(button, iconKey, extraClass = "") {
+  if (!button) return;
+  const key = String(iconKey || "play");
+  const extra = String(extraClass || "").trim();
+  if (
+    button.dataset.controlIconKey === key &&
+    button.dataset.controlIconExtra === extra
+  ) {
+    return;
+  }
+  setMediaControlButtonHtml(button, mediaControlIconHtml(key, extra));
+  button.dataset.controlIconKey = key;
+  button.dataset.controlIconExtra = extra;
+}
+
 function setAppIcon(el, iconKey) {
   if (!el) return;
   el.textContent = "";
@@ -16890,9 +16967,7 @@ function formatStatsLedgerMetric(row, sortKey, hasTotalScore) {
 function buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey) {
   if (!rootRows.length) {
     return `
-          <section class="statsWidgetCard statsLedgerCard">
-            <div class="calendarRankingsEmpty">No root folders available.</div>
-          </section>
+          <div class="calendarRankingsEmpty">No root folders available.</div>
         `;
   }
 
@@ -16946,7 +17021,7 @@ function buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey) {
     .join("");
 
   return `
-        <section class="statsWidgetCard statsLedgerCard">
+        <section class="statsLedgerCard">
           <div class="statsLedgerTableWrap">
             <table class="statsLedgerTable">
               <thead>
@@ -17236,10 +17311,10 @@ function renderCalendarUi() {
     : `<div class="scoreHistoryEmpty">No score changes logged yet.</div>`;
   calendarBodyEl.innerHTML = `
         <div class="statsSinglePage">
-          ${buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey)}
-          <section class="statsWidgetCard statsHistoryCard">
+          <section class="statsHistoryCard">
             ${historyHtml}
           </section>
+          ${buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey)}
         </div>
       `;
   if (calendarDeleteAllBtn) calendarDeleteAllBtn.disabled = !history.length;
@@ -43480,27 +43555,33 @@ function syncControlPaneState() {
 
   if (controlPlayPauseBtn) {
     const paused = !video || video.paused;
-    controlPlayPauseBtn.textContent = "";
     controlPlayPauseBtn.classList.remove("active");
     controlPlayPauseBtn.classList.toggle("is-playing", hasVideo && !paused);
+    setMediaControlIconButton(controlPlayPauseBtn, paused ? "play" : "pause");
     const label = paused ? "Play" : "Pause";
     controlPlayPauseBtn.setAttribute("aria-label", label);
     controlPlayPauseBtn.title = label;
   }
   if (controlMuteBtn) {
     const muted = previewVideoMode() === "muted";
-    controlMuteBtn.textContent = "";
     controlMuteBtn.classList.remove("active");
     controlMuteBtn.classList.toggle("is-muted", muted);
+    setMediaControlIconButton(controlMuteBtn, muted ? "volumeOff" : "volumeOn");
     const label = muted ? "Video audio: muted" : "Video audio: unmuted";
     controlMuteBtn.setAttribute("aria-label", label);
     controlMuteBtn.title = label;
   }
   if (controlSkipBackBtn) {
-    controlSkipBackBtn.textContent = `-${videoSkipStepSeconds()}`;
+    const seconds = videoSkipStepSeconds();
+    setMediaControlIconButton(controlSkipBackBtn, "rewind");
+    controlSkipBackBtn.setAttribute("aria-label", `Skip back ${seconds} seconds`);
+    controlSkipBackBtn.title = `Skip back ${seconds} seconds`;
   }
   if (controlSkipForwardBtn) {
-    controlSkipForwardBtn.textContent = `+${videoSkipStepSeconds()}`;
+    const seconds = videoSkipStepSeconds();
+    setMediaControlIconButton(controlSkipForwardBtn, "fastForward");
+    controlSkipForwardBtn.setAttribute("aria-label", `Skip forward ${seconds} seconds`);
+    controlSkipForwardBtn.title = `Skip forward ${seconds} seconds`;
   }
   if (controlProgressRange) {
     controlProgressRange.disabled = !hasDuration;
@@ -43508,6 +43589,9 @@ function syncControlPaneState() {
     if (!CONTROL_PROGRESS_DRAGGING) {
       controlProgressRange.value = String(Math.min(current, duration || current));
     }
+    const value = Number(controlProgressRange.value) || 0;
+    const pct = hasDuration ? Math.max(0, Math.min(100, (value / duration) * 100)) : 0;
+    controlProgressRange.style.setProperty("--control-progress-pct", `${pct.toFixed(3)}%`);
   }
   if (controlTimecode) {
     controlTimecode.textContent = `${formatControlPaneTime(current)} / ${formatControlPaneTime(duration)}`;
