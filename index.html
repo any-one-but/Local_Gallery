@@ -878,8 +878,8 @@ body.directories-files-only #directoriesHeader {
 }
 
 .dirRow.selected {
-  outline: 1px solid var(--ui-selection-outline);
-  border-color: var(--ui-selection-outline);
+  outline: none;
+  border-color: transparent;
   background: var(--ui-selection-fill);
 }
 
@@ -891,26 +891,22 @@ body.directories-files-only #directoriesHeader {
 }
 
 #app.preview-pane-active.preview-media-mode .dirRow.selected:not(.bulkSelected) {
-  outline: 1px solid var(--ui-selection-outline);
-  border-color: var(--ui-selection-outline);
+  outline: none;
+  border-color: transparent;
   background: var(--ui-selection-fill);
 }
 
 .dirRow.bulkSelected {
-  outline: 1px dashed var(--ui-selection-outline-soft);
-  outline-offset: -1px;
-  border-color: var(--anchor-internal-color2-primary);
-  box-shadow: inset 0 0 0 1px var(--ui-selection-outline-soft);
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
   background: var(--ui-selection-fill);
 }
 
 .dirRow.selected.bulkSelected {
-  outline: 1px dashed var(--ui-selection-outline);
-  outline-offset: -1px;
-  border-color: var(--ui-selection-outline);
-  box-shadow:
-    inset 0 0 0 1px var(--ui-selection-outline),
-    inset 0 0 0 3px var(--ui-selection-outline-soft);
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
   background: var(--ui-selection-fill);
 }
 
@@ -1759,8 +1755,9 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirRow.folderRow.folderSquareCard.selected .dirSquareCard {
-  border-color: var(--ui-selection-outline);
-  box-shadow: 0 0 0 1px var(--ui-selection-outline);
+  border-color: transparent;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 #app.preview-pane-active
@@ -1772,23 +1769,23 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirRow.folderRow.folderSquareCard.bulkSelected .dirSquareCard {
-  border-color: var(--anchor-internal-color2-primary);
-  outline: 2px dashed var(--ui-selection-outline-soft);
-  outline-offset: 0;
-  box-shadow: 0 0 0 1px var(--ui-selection-outline-soft);
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .dirRow.folderRow.folderSquareCard.selected.bulkSelected .dirSquareCard {
-  outline: 2px dashed var(--ui-selection-outline-soft);
-  outline-offset: 0;
-  box-shadow:
-    0 0 0 1px var(--ui-selection-outline),
-    0 0 0 3px var(--ui-selection-outline-soft);
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .dirRow.fileRow.fileThumbCardRow.selected .dirFileThumbCard {
-  outline: 2px solid var(--ui-selection-outline);
+  outline: none;
   outline-offset: 0;
+  background: var(--ui-selection-fill);
 }
 
 #app.preview-pane-active
@@ -1799,17 +1796,15 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirRow.fileRow.fileThumbCardRow.bulkSelected .dirFileThumbCard {
-  outline: 2px dashed var(--ui-selection-outline-soft);
-  outline-offset: 0;
-  box-shadow: 0 0 0 1px var(--ui-selection-outline-soft);
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .dirRow.fileRow.fileThumbCardRow.selected.bulkSelected .dirFileThumbCard {
-  outline: 2px dashed var(--ui-selection-outline-soft);
-  outline-offset: 0;
-  box-shadow:
-    0 0 0 1px var(--ui-selection-outline),
-    0 0 0 3px var(--ui-selection-outline-soft);
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .dirTagKindBadge {
@@ -2775,19 +2770,17 @@ img[data-rotate-key].rotatingThumbFade {
 .gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard {
   position: relative;
   z-index: 1;
-  border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid
-    var(--anchor-internal-color2-primary);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .gridFolders .previewTagFolderCard.selected.bulkSelected .dirSquareCard {
-  border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid
-    var(--anchor-internal-color2-primary);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .gridFolders .previewTagFolderCard.previewSelected .dirSquareCard {
@@ -2799,11 +2792,10 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .gridFolders .previewTagFolderCard.previewSelected.bulkSelected .dirSquareCard {
-  border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid
-    var(--anchor-internal-color2-primary);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .gridFolders .previewTagFolderCard.previewSelected {
@@ -2848,19 +2840,17 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .gridFiles .fileCard.bulkSelected {
-  border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid
-    var(--anchor-internal-color2-primary);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .gridFiles .fileCard.previewSelected.bulkSelected {
-  border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid
-    var(--anchor-internal-color2-primary);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .gridFiles.previewSquareCards .thumb {
@@ -3228,20 +3218,18 @@ img[data-rotate-key].rotatingThumbFade {
 .gridFolders .folderCard.folderThumbCard.bulkSelected {
   position: relative;
   z-index: 1;
-  border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid
-    var(--anchor-internal-color2-primary);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .gridFolders .folderCard.folderThumbCard.previewSelected.bulkSelected,
 .gridFolders .folderCard.folderThumbCard.selected.bulkSelected {
-  border-color: var(--anchor-internal-color2-primary);
-  outline: var(--ui-preview-selection-stroke) solid
-    var(--anchor-internal-color2-primary);
-  outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard {
@@ -4232,10 +4220,10 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 #menuTabs .menuTabBtn.active {
-  outline: 1px solid var(--ui-selection-outline);
+  outline: none;
   background: var(--ui-selection-fill);
   color: var(--color0-primary);
-  box-shadow: var(--ui-hover-shadow);
+  box-shadow: none;
 }
 
 #menuTabs .menuTabBtn:hover:not(:disabled) {
@@ -6565,6 +6553,20 @@ function isDirectChildOfInternalTrash(path) {
   const normalized = String(path || "");
   if (!normalized.startsWith(INTERNAL_TRASH_DIR_NAME + "/")) return false;
   return normalized.slice(INTERNAL_TRASH_DIR_NAME.length + 1).split("/").length === 1;
+}
+
+function isRootLevelUserFolderPath(path) {
+  const normalized = normalizeWorkspaceRelPath(path);
+  return !!(
+    normalized &&
+    !normalized.includes("/") &&
+    !isInternalTrashDirName(normalized) &&
+    !isPathInsideInternalTrash(normalized)
+  );
+}
+
+function isFolderPathMovableToTrash(path) {
+  return !!(WS.meta && WS.meta.fsRootHandle && isRootLevelUserFolderPath(path));
 }
 
 function displayFolderSegmentName(name) {
@@ -16285,7 +16287,6 @@ function getCurrentTitleInfoText() {
   let folderCount = folderCountMode === "collection" ? nodes.length : 0;
   let fileCount = 0;
   let sizeBytes = 0;
-  let score = 0;
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
     if (folderCountMode !== "collection") {
@@ -16293,9 +16294,8 @@ function getCurrentTitleInfoText() {
     }
     fileCount += getRecursiveFileCountForNode(node);
     sizeBytes += getDirRecursiveSizeBytesForNode(node, sizeMemo);
-    score += Number(metaGetScore(String(node?.path || ""))) || 0;
   }
-  return `${title} • ${formatFolderFileCountSegment(folderCount, fileCount)} • ${formatBytes(sizeBytes)} • Score ${score}`;
+  return `${title} • ${formatFolderFileCountSegment(folderCount, fileCount)} • ${formatBytes(sizeBytes)}`;
 }
 
 function getCurrentTitleText() {
@@ -20480,7 +20480,7 @@ function resolveDirNodeForPathOrStorageStub(path) {
 function getAllStorageDirNodes() {
   return getStoredFolderPaths()
     .map((path) => makeStorageStubDirNode(path))
-    .filter(Boolean);
+    .filter((node) => node && dirCanAppearUnderCurrentContentFilters(node));
 }
 
 
@@ -28308,6 +28308,13 @@ function dirItemCount(node) {
   return c;
 }
 
+function dirCanAppearUnderCurrentContentFilters(dirNode) {
+  if (!dirNode || dirNode.type !== "dir") return false;
+  if (dirItemCount(dirNode) > 0) return true;
+  if (dirNode.fsHandle && dirNode.loadState !== "loaded") return true;
+  return !!(isStorageStubDirNode(dirNode) && !getCatalogSummaryForNode(dirNode));
+}
+
 function escapeHtml(s) {
   return String(s).replace(
     /[&<>"']/g,
@@ -28948,9 +28955,7 @@ function getChildDirsForNodeBase(dirNode) {
   ensureDirectoryChildNodesFromCatalog(dirNode);
   const base = sortDirsForDisplay(dirNode.childrenDirs)
     .filter((d) => !isInternalTrashDirNode(d))
-    .filter(
-    (d) => dirItemCount(d) > 0 || !!(d && d.fsHandle && d.loadState !== "loaded"),
-  );
+    .filter((d) => dirCanAppearUnderCurrentContentFilters(d));
   if (isPathInsideInternalTrash(dirNode.path || "")) return base;
   const showHidden =
     WS.view.hiddenMode ||
@@ -29115,11 +29120,38 @@ function isTrashRootPortalNode(node) {
 
 function isPutBackEligibleTrashPath(path) {
   const normalized = normalizeWorkspaceRelPath(path);
-  return !!(
-    normalized &&
-    isDirectChildOfInternalTrash(normalized) &&
-    metaGetTrashRestoreInfo(normalized)
-  );
+  return !!(normalized && isDirectChildOfInternalTrash(normalized));
+}
+
+function trashTopLevelItemPathForPath(path) {
+  const normalized = normalizeWorkspaceRelPath(path);
+  if (!normalized || normalized === INTERNAL_TRASH_DIR_NAME) return "";
+  if (!isPathInsideInternalTrash(normalized)) return "";
+  const rest = normalized.slice(INTERNAL_TRASH_DIR_NAME.length + 1);
+  const name = rest.split("/").filter(Boolean)[0] || "";
+  if (!name || isInternalTrashDirName(name)) return "";
+  return `${INTERNAL_TRASH_DIR_NAME}/${name}`;
+}
+
+function trashTopLevelItemPathForFileRecord(rec) {
+  return trashTopLevelItemPathForPath(String(rec?.dirPath || ""));
+}
+
+function fallbackRootRestorePathForTrashPath(path) {
+  const normalized = normalizeWorkspaceRelPath(path);
+  if (!isPutBackEligibleTrashPath(normalized)) return "";
+  const name = normalized.slice(INTERNAL_TRASH_DIR_NAME.length + 1);
+  if (!name || name.includes("/") || isInternalTrashDirName(name)) return "";
+  return name;
+}
+
+function restoreTargetPathForTrashPath(path) {
+  const normalized = normalizeWorkspaceRelPath(path);
+  if (!isPutBackEligibleTrashPath(normalized)) return "";
+  const restoreInfo = metaGetTrashRestoreInfo(normalized);
+  const originalPath = normalizeWorkspaceRelPath(restoreInfo?.originalPath);
+  if (originalPath && !isPathInsideInternalTrash(originalPath)) return originalPath;
+  return fallbackRootRestorePathForTrashPath(normalized);
 }
 
 function navigateOutOfTrashIfHidden() {
@@ -29290,6 +29322,14 @@ function filterTagEntryDirsByVisibleRecords(nodes, entry) {
     const node = list[i];
     const path = String(node?.path || "");
     if (!path || seen.has(path)) continue;
+    if (!dirCanAppearUnderCurrentContentFilters(node)) continue;
+    if (
+      entry &&
+      entry.kind === "tag" &&
+      !entry.special &&
+      !dirHasVisibleRecordForTagEntry(node, entry)
+    )
+      continue;
     seen.add(path);
     out.push(node);
   }
@@ -30094,7 +30134,11 @@ function effectiveTagMediaFilterForEntry(entry) {
 }
 
 function recordPassesTagEntryFilter(rec, entry) {
-  return !!rec;
+  return (
+    !!rec &&
+    passesFilter(rec) &&
+    recordPassesTagMediaFilter(rec, effectiveTagMediaFilterForEntry(entry))
+  );
 }
 
 const ROTATING_PREVIEW_POOLS = new Map();
@@ -31697,7 +31741,12 @@ function getAllFavoriteDirs() {
     if (!p) continue;
     if (!node || node.type !== "dir") continue;
     if (isPathInsideInternalTrash(p)) continue;
-    if (metaHasFavorite(p) && !metaHasHidden(p)) out.push(node);
+    if (
+      metaHasFavorite(p) &&
+      !metaHasHidden(p) &&
+      dirCanAppearUnderCurrentContentFilters(node)
+    )
+      out.push(node);
   }
   return sortDirCollectionForDisplay(out, "all-favorites");
 }
@@ -31710,7 +31759,8 @@ function getAllHiddenDirs() {
     if (!p) continue;
     if (!node || node.type !== "dir") continue;
     if (isPathInsideInternalTrash(p)) continue;
-    if (metaHasHidden(p)) out.push(node);
+    if (metaHasHidden(p) && dirCanAppearUnderCurrentContentFilters(node))
+      out.push(node);
   }
   return sortDirCollectionForDisplay(out, "all-hidden");
 }
@@ -36353,10 +36403,10 @@ async function moveFolderPathsToTrash(paths) {
     return false;
   }
   const list = collapseNestedFolderPaths(paths).filter(
-    (path) => path && !isPathInsideInternalTrash(path),
+    (path) => isFolderPathMovableToTrash(path),
   );
   if (!list.length) {
-    showStatusMessage("No folders selected.");
+    showStatusMessage("Only root folders can be moved to Trash.");
     return false;
   }
   const rootHandle = WS.meta.fsRootHandle;
@@ -36463,7 +36513,14 @@ async function putBackTrashFolderPaths(paths) {
     showStatusMessage("Put Back requires a writable folder.");
     return false;
   }
-  const list = collapseNestedFolderPaths(paths).filter((path) =>
+  const trashTargets = Array.from(
+    new Set(
+      (paths || [])
+        .map((path) => trashTopLevelItemPathForPath(path))
+        .filter(Boolean),
+    ),
+  );
+  const list = collapseNestedFolderPaths(trashTargets).filter((path) =>
     isPutBackEligibleTrashPath(path),
   );
   if (!list.length) {
@@ -36480,15 +36537,14 @@ async function putBackTrashFolderPaths(paths) {
   try {
     for (let i = 0; i < list.length; i++) {
       const trashPath = list[i];
-      const restoreInfo = metaGetTrashRestoreInfo(trashPath);
-      const originalPath = normalizeWorkspaceRelPath(restoreInfo?.originalPath);
+      let originalPath = restoreTargetPathForTrashPath(trashPath);
       if (!originalPath) {
         skipped.push(trashPath);
         continue;
       }
-      const parts = originalPath.split("/").filter(Boolean);
-      const folderName = parts.pop() || "";
-      const parentPath = parts.join("/");
+      let parts = originalPath.split("/").filter(Boolean);
+      let folderName = parts.pop() || "";
+      let parentPath = parts.join("/");
       if (!folderName) {
         skipped.push(trashPath);
         continue;
@@ -36497,14 +36553,50 @@ async function putBackTrashFolderPaths(paths) {
       try {
         parentHandle = await getDirectoryHandleForPath(rootHandle, parentPath);
       } catch {}
+      const fallbackPath = fallbackRootRestorePathForTrashPath(trashPath);
+      if (!parentHandle && fallbackPath && fallbackPath !== originalPath) {
+        originalPath = fallbackPath;
+        parts = originalPath.split("/").filter(Boolean);
+        folderName = parts.pop() || "";
+        parentPath = parts.join("/");
+        try {
+          parentHandle = await getDirectoryHandleForPath(rootHandle, parentPath);
+        } catch {}
+      }
       if (!parentHandle) {
         skipped.push(trashPath);
         continue;
       }
       try {
         if (await entryExistsInDir(parentHandle, folderName)) {
-          skipped.push(trashPath);
-          continue;
+          if (fallbackPath && fallbackPath !== originalPath) {
+            const fallbackParts = fallbackPath.split("/").filter(Boolean);
+            const fallbackFolderName = fallbackParts.pop() || "";
+            const fallbackParentPath = fallbackParts.join("/");
+            let fallbackParentHandle = null;
+            try {
+              fallbackParentHandle = await getDirectoryHandleForPath(
+                rootHandle,
+                fallbackParentPath,
+              );
+            } catch {}
+            if (
+              fallbackFolderName &&
+              fallbackParentHandle &&
+              !(await entryExistsInDir(fallbackParentHandle, fallbackFolderName))
+            ) {
+              originalPath = fallbackPath;
+              parentPath = fallbackParentPath;
+              folderName = fallbackFolderName;
+              parentHandle = fallbackParentHandle;
+            } else {
+              skipped.push(trashPath);
+              continue;
+            }
+          } else {
+            skipped.push(trashPath);
+            continue;
+          }
         }
         await moveDirectoryOnDiskToParent(trashPath, parentPath, folderName);
         const dirNode = WS.dirByPath.get(trashPath) || null;
@@ -37201,6 +37293,13 @@ async function runFileActionFromMenu(action, fileId, rowEl = null) {
   const rec = WS.fileById.get(id);
   if (!rec) {
     showStatusMessage("Selected file is unavailable.");
+    return true;
+  }
+
+  if (action === "put-back") {
+    const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
+    if (!trashTargetPath) return true;
+    await putBackTrashFolderPaths([trashTargetPath]);
     return true;
   }
 
@@ -38163,7 +38262,14 @@ function openPreviewFileActionMenu(rec, opts = {}) {
     return btn;
   };
 
-  menu.appendChild(makeBtn("Rename", "rename-file"));
+  const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
+  if (trashTargetPath) {
+    menu.appendChild(
+      makeBtn("Remove from trash", "put-back", !WS.meta.fsRootHandle),
+    );
+  } else {
+    menu.appendChild(makeBtn("Rename", "rename-file"));
+  }
   PREVIEW_CONTEXT_MENU_STATE = { fileId };
 
   requestAnimationFrame(() => {
@@ -38182,15 +38288,9 @@ function buildFolderMenuState(dirNode) {
   const p = String(dirNode?.path || "");
   const isRootNode = !!dirNode && dirNode === WS.root;
   const isTrashRootPortal = isTrashRootPortalNode(dirNode);
+  const isTrashItem = !isTrashRootPortal && isPathInsideInternalTrash(p);
   const isStorageGhost = isStorageStubDirNode(dirNode) || (!!p && metaHasStorage(p));
-  const menuContextDirNode = (() => {
-    const previewTargetDir = getPreviewTargetDir();
-    if (isInternalTrashDirNode(previewTargetDir)) return previewTargetDir;
-    return WS.nav.dirNode;
-  })();
-  const isTrashRootContext = isInternalTrashDirNode(menuContextDirNode);
-  const isTrashPutBackOnly =
-    !isTrashRootPortal && isTrashRootContext && isPutBackEligibleTrashPath(p);
+  const isTrashPutBackOnly = isTrashItem && !!trashTopLevelItemPathForPath(p);
   const isFavorite = !isStorageGhost && metaHasFavorite(p);
   const isHidden = !isStorageGhost && metaHasHidden(p);
   const assignedAppearancePresetId =
@@ -38216,6 +38316,7 @@ function buildFolderMenuState(dirNode) {
     path: p,
     isRootNode,
     isTrashRootPortal,
+    isTrashItem,
     isTrashPutBackOnly,
     isStorageGhost,
     isStorageRestricted: isStorageGhost && !isRootNode,
@@ -38231,10 +38332,7 @@ function buildFolderMenuState(dirNode) {
     showSetNoThumbnail: false,
     showSetRandomThumbnail: false,
     canMoveToTrash:
-      !!p &&
-      !!WS.meta.fsRootHandle &&
-      !isTrashRootPortal &&
-      !isPathInsideInternalTrash(p),
+      !isTrashRootPortal && isFolderPathMovableToTrash(p),
     canPutBack: isTrashPutBackOnly && !!WS.meta.fsRootHandle,
     canSendToStorage:
       !!p &&
@@ -38285,7 +38383,7 @@ function buildFolderActionMenuDom(
   };
   if (state.isTrashRootPortal) return;
   if (state.isTrashPutBackOnly) {
-    menuEl.appendChild(makeBtn("Put Back", "put-back", !state.canPutBack));
+    menuEl.appendChild(makeBtn("Remove from trash", "put-back", !state.canPutBack));
     return;
   }
   if (state.isStorageRestricted) {
@@ -38361,7 +38459,8 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   if (
     isStorageRestricted &&
     action !== "remove-from-storage" &&
-    action !== "move-to-trash"
+    action !== "move-to-trash" &&
+    action !== "put-back"
   ) {
     return true;
   }
@@ -38376,13 +38475,14 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     return true;
   }
   if (action === "move-to-trash") {
-    if (isRootNode || !p || isPathInsideInternalTrash(p)) return true;
+    if (isRootNode || !isFolderPathMovableToTrash(p)) return true;
     await moveFolderPathsToTrash([p]);
     return true;
   }
   if (action === "put-back") {
-    if (!isPutBackEligibleTrashPath(p)) return true;
-    await putBackTrashFolderPaths([p]);
+    const trashTargetPath = trashTopLevelItemPathForPath(p);
+    if (!trashTargetPath) return true;
+    await putBackTrashFolderPaths([trashTargetPath]);
     return true;
   }
   if (action === "tag") {
@@ -38573,12 +38673,11 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   const singleSelectedDirNode =
     selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
   const trashRootBulkContext =
-    isInternalTrashDirNode(getPreviewTargetDir() || WS.nav.dirNode) &&
-    selectedPaths.every((path) => isPutBackEligibleTrashPath(path));
+    selectedPaths.every((path) => !!trashTopLevelItemPathForPath(path));
   if (trashRootBulkContext) {
     menu.appendChild(
       makeBtn(
-        "Put Back",
+        "Remove from trash",
         async () => {
           await putBackTrashFolderPaths(selectedPaths);
           if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
@@ -38622,7 +38721,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
           await moveFolderPathsToTrash(selectedPaths);
           if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
         },
-        !WS.meta.fsRootHandle,
+        selectedPaths.some((path) => !isFolderPathMovableToTrash(path)),
         true,
         "destructiveAction",
       ),
@@ -38795,8 +38894,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         await moveFolderPathsToTrash(selectedPaths);
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
       },
-      !WS.meta.fsRootHandle ||
-        selectedPaths.some((path) => isPathInsideInternalTrash(path)),
+      selectedPaths.some((path) => !isFolderPathMovableToTrash(path)),
       true,
       "destructiveAction",
     ),
@@ -38845,6 +38943,41 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
     });
     return btn;
   };
+
+  const trashTargets = Array.from(
+    new Set(
+      selectedRecords
+        .map((rec) => trashTopLevelItemPathForFileRecord(rec))
+        .filter(Boolean),
+    ),
+  );
+  if (
+    trashTargets.length &&
+    selectedRecords.length === selectedIds.length &&
+    selectedRecords.every((rec) => !!trashTopLevelItemPathForFileRecord(rec))
+  ) {
+    menu.appendChild(
+      makeBtn("Remove from trash", async () => {
+        await putBackTrashFolderPaths(trashTargets);
+        finalizeBulkSelectionAction();
+      }, !WS.meta.fsRootHandle),
+    );
+    PREVIEW_CONTEXT_MENU_STATE = {
+      fileId: String(anchorFileId || ""),
+      bulkFileIds: selectedIds.slice(),
+    };
+    requestAnimationFrame(() => {
+      menu.classList.add("open");
+      if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
+      else
+        positionDropdownMenuAtPoint(
+          menu,
+          Number(opts.x) || 0,
+          Number(opts.y) || 0,
+        );
+    });
+    return;
+  }
 
   const singleFile = selectedRecords.length === 1 ? selectedRecords[0] : null;
   const allSameDir =
@@ -40452,14 +40585,32 @@ function renderDirectoriesActionHeader() {
     const selectedDirNodes = selectedDirs
       .map((p) => resolveDirNodeForPathOrStorageStub(String(p || "")))
       .filter(Boolean);
+    const selectedFileRecordsForTrashMenu = selectedFiles.length
+      ? getSelectedFileRecordsInCurrentView()
+      : [];
+    const selectedFileTrashTargetsForTrashMenu = Array.from(
+      new Set(
+        selectedFileRecordsForTrashMenu
+          .map((rec) => trashTopLevelItemPathForFileRecord(rec))
+          .filter(Boolean),
+      ),
+    );
+    const selectedFilesAreTrashItems =
+      !selectedFiles.length ||
+      (selectedFileRecordsForTrashMenu.length === selectedFiles.length &&
+        selectedFileRecordsForTrashMenu.every(
+          (rec) => !!trashTopLevelItemPathForFileRecord(rec),
+        ));
     const trashRootBulkContext =
-      isInternalTrashDirNode(WS.nav.dirNode) &&
-      selectedDirs.every((path) => isPutBackEligibleTrashPath(path));
+      selectedFilesAreTrashItems &&
+      selectedDirs.every((path) => !!trashTopLevelItemPathForPath(path));
     if (trashRootBulkContext) {
       directoriesActionMenuEl.appendChild(
-        makeActionBtn("Put Back", async () => {
+        makeActionBtn("Remove from trash", async () => {
           WS.view.bulkActionMenuOpen = false;
-          await putBackTrashFolderPaths(selectedDirs);
+          await putBackTrashFolderPaths(
+            selectedDirs.concat(selectedFileTrashTargetsForTrashMenu),
+          );
           finalizeBulkSelectionAction();
         }),
       );
@@ -40484,13 +40635,19 @@ function renderDirectoriesActionHeader() {
           finalizeBulkSelectionAction();
         }),
       );
-      directoriesActionMenuEl.appendChild(
-        makeActionBtn("Move to trash", async () => {
+      const storageMoveToTrashBtn = makeActionBtn(
+        "Move to trash",
+        async () => {
           WS.view.bulkActionMenuOpen = false;
           await moveFolderPathsToTrash(selectedDirs);
           finalizeBulkSelectionAction();
-        }, false, "destructiveAction"),
+        },
+        false,
+        "destructiveAction",
       );
+      if (selectedDirs.some((path) => !isFolderPathMovableToTrash(path)))
+        storageMoveToTrashBtn.disabled = true;
+      directoriesActionMenuEl.appendChild(storageMoveToTrashBtn);
       const anchorBtn = findDirMenuButtonForAnchorKey(
         WS.view.bulkActionMenuAnchorPath,
       );
@@ -40658,8 +40815,7 @@ function renderDirectoriesActionHeader() {
       "destructiveAction",
     );
     if (
-      !WS.meta.fsRootHandle ||
-      selectedDirs.some((path) => isPathInsideInternalTrash(path))
+      selectedDirs.some((path) => !isFolderPathMovableToTrash(path))
     ) {
       moveToTrashBtn.disabled = true;
     }
@@ -40668,6 +40824,37 @@ function renderDirectoriesActionHeader() {
 
   if (selectedFiles.length) {
     const selectedFileRecords = getSelectedFileRecordsInCurrentView();
+    const selectedFileTrashTargets = Array.from(
+      new Set(
+        selectedFileRecords
+          .map((rec) => trashTopLevelItemPathForFileRecord(rec))
+          .filter(Boolean),
+      ),
+    );
+    if (
+      selectedFileTrashTargets.length &&
+      selectedFileRecords.length === selectedFiles.length &&
+      selectedFileRecords.every(
+        (rec) => !!trashTopLevelItemPathForFileRecord(rec),
+      )
+    ) {
+      directoriesActionMenuEl.appendChild(
+        makeActionBtn("Remove from trash", async () => {
+          WS.view.bulkActionMenuOpen = false;
+          await putBackTrashFolderPaths(selectedFileTrashTargets);
+          finalizeBulkSelectionAction();
+        }),
+      );
+      const anchorBtn = findDirMenuButtonForAnchorKey(
+        WS.view.bulkActionMenuAnchorPath,
+      );
+      if (anchorBtn) {
+        requestAnimationFrame(() =>
+          positionDropdownMenu(anchorBtn, directoriesActionMenuEl),
+        );
+      }
+      return;
+    }
     const singleFile =
       selectedFileRecords.length === 1 ? selectedFileRecords[0] : null;
     const allSameDir =
@@ -41641,7 +41828,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               `;
         } else if (folderMenuState.isTrashPutBackOnly) {
           menuButtons = `
-                <button type="button" data-action="put-back"${folderMenuState.canPutBack ? "" : " disabled"}>Put Back</button>
+                <button type="button" data-action="put-back"${folderMenuState.canPutBack ? "" : " disabled"}>Remove from trash</button>
               `;
         } else if (folderMenuState.isStorageRestricted) {
           menuButtons = `
@@ -41885,7 +42072,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const bulkFileMenuActive =
           canBulk && sel && selectedFilesInViewCount > 0;
         const canLooseSetMerge = !!WS.meta.fsRootHandle;
-        const fileMenuButtons = bulkFileMenuActive
+        const fileTrashTargetPath = trashTopLevelItemPathForFileRecord(rec);
+        const fileMenuButtons = fileTrashTargetPath
+          ? `<button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from trash</button>`
+          : bulkFileMenuActive
           ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
           : `
                   <button type="button" data-action="rename-file">Rename</button>
@@ -44797,13 +44987,24 @@ function previewPlaceholderInfoForCurrentSelection() {
     };
   }
   if (entry && entry.kind === "dir") {
+    const tagEntry = tagEntryForPreviewPlaceholderNode(entry.node);
+    const tagLabel = tagEntry
+      ? displayTagFolderLabel(
+          String(tagEntry.label || tagEntry.tag || tagEntry.album || "Tag"),
+        )
+      : "";
     return {
-      iconKey: iconKeyForDirNode(entry.node),
-      label: dirUiLabel(entry.node) || "Folder",
-      meta: folderItemTypeLabelForNode(entry.node),
-      itemKind: "dir",
+      iconKey: tagEntry
+        ? getTagEntryIconKey(tagEntry)
+        : iconKeyForDirNode(entry.node),
+      label: tagEntry ? tagLabel : dirUiLabel(entry.node) || "Folder",
+      meta: tagEntry
+        ? tagItemTypeLabelForEntry(tagEntry)
+        : folderItemTypeLabelForNode(entry.node),
+      itemKind: tagEntry ? "tag" : "dir",
+      tagEntry,
       dirNode: entry.node || null,
-      thumbnailKind: folderThumbnailKindForNode(entry.node),
+      thumbnailKind: tagEntry ? "tag" : folderThumbnailKindForNode(entry.node),
       itemPath: displayPath(String(entry.node?.path || "")),
       thumbnailRecord:
         selectedThumbRecord || previewPlaceholderThumbnailRecordForDirNode(entry.node),
@@ -44811,18 +45012,22 @@ function previewPlaceholderInfoForCurrentSelection() {
   }
   if (WS.preview.kind === "dir" && WS.preview.dirNode) {
     const dirNode = WS.preview.dirNode;
+    const tagEntry = tagEntryForPreviewPlaceholderNode(dirNode);
+    const tagLabel = tagEntry
+      ? displayTagFolderLabel(
+          String(tagEntry.label || tagEntry.tag || tagEntry.album || "Tag"),
+        )
+      : "";
     return {
-      iconKey: iconKeyForDirNode(dirNode),
-      label:
-        dirNode._skipTagFilters && dirNode.name
-          ? displayTagFolderLabel(String(dirNode.name || "Tag"))
-          : dirUiLabel(dirNode) || "Folder",
-      meta: dirNode._skipTagFilters ? "Tag" : folderItemTypeLabelForNode(dirNode),
-      itemKind: dirNode._skipTagFilters ? "tag" : "dir",
+      iconKey: tagEntry ? getTagEntryIconKey(tagEntry) : iconKeyForDirNode(dirNode),
+      label: tagEntry ? tagLabel : dirUiLabel(dirNode) || "Folder",
+      meta: tagEntry
+        ? tagItemTypeLabelForEntry(tagEntry)
+        : folderItemTypeLabelForNode(dirNode),
+      itemKind: tagEntry ? "tag" : "dir",
+      tagEntry,
       dirNode,
-      thumbnailKind: dirNode._skipTagFilters
-        ? "tag"
-        : folderThumbnailKindForNode(dirNode),
+      thumbnailKind: tagEntry ? "tag" : folderThumbnailKindForNode(dirNode),
       itemPath: displayPath(String(dirNode.path || "")),
       thumbnailRecord:
         selectedThumbRecord || previewPlaceholderThumbnailRecordForDirNode(dirNode),
@@ -44862,46 +45067,24 @@ function previewPlaceholderRegularMetaText(src) {
   const visibility = previewThumbnailVisibilityForKind(kind);
   const parts = [];
 
-  if (
-    !tortoiseNavigationEnabled() &&
-    isViewingPerformanceSensitiveTagAlbumFolder() &&
-    (kind === "tag" || kind === "rootFolder" || kind === "subfolder")
-  ) {
-    return String((src && src.meta) || "");
-  }
-
   if (kind === "tag" && src && src.tagEntry) {
     const entry = src.tagEntry;
-    const metrics = getTagEntryAggregateMetrics(entry);
-    if (visibility.showItemTypeLabel) parts.push(tagItemTypeLabelForEntry(entry));
-    if (visibility.showFolderCount && visibility.showFileCount)
-      parts.push(getTagEntryCountText(entry));
-    else if (visibility.showFolderCount)
-      parts.push(
-        `${metrics.folderCount} ${metrics.folderCount === 1 ? "Folder" : "Folders"}`,
-      );
-    else if (visibility.showFileCount)
-      parts.push(
-        `${metrics.fileCount} ${metrics.fileCount === 1 ? "File" : "Files"}`,
-      );
-    if (visibility.showSize) parts.push(formatBytes(metrics.sizeBytes));
+    const metrics = getTagEntryAggregateMetrics(entry, new Map());
+    parts.push(tagItemTypeLabelForEntry(entry));
+    parts.push(
+      formatFolderFileCountSegment(metrics.folderCount, metrics.fileCount),
+    );
+    parts.push(formatBytes(metrics.sizeBytes));
     return parts.join(" • ");
   }
 
   if ((kind === "rootFolder" || kind === "subfolder") && src && src.dirNode) {
     const dirNode = src.dirNode;
-    if (visibility.showItemTypeLabel)
-      parts.push(folderItemTypeLabelForNode(dirNode));
+    parts.push(folderItemTypeLabelForNode(dirNode));
     const folderCount = getDirectFolderCountForNode(dirNode);
     const fileCount = getRecursiveFileCountForNode(dirNode);
-    if (visibility.showFolderCount && visibility.showFileCount)
-      parts.push(formatFolderFileCountSegment(folderCount, fileCount));
-    else if (visibility.showFolderCount)
-      parts.push(`${folderCount} ${folderCount === 1 ? "Folder" : "Folders"}`);
-    else if (visibility.showFileCount)
-      parts.push(`${fileCount} ${fileCount === 1 ? "File" : "Files"}`);
-    if (visibility.showSize)
-      parts.push(formatBytes(getDirRecursiveSizeBytesForNode(dirNode, new Map())));
+    parts.push(formatFolderFileCountSegment(folderCount, fileCount));
+    parts.push(formatBytes(getDirRecursiveSizeBytesForNode(dirNode, new Map())));
     return parts.join(" • ");
   }
 
