@@ -16707,25 +16707,90 @@ function scoreHistoryChartColor(index) {
   return `hsl(${hue} 70% 54%)`;
 }
 
-function isPathOrAncestorHidden(path) {
+function createCalendarHiddenStatsContext() {
+  const hiddenPaths = [];
+  const hiddenSet = new Set();
+  const hiddenAncestorSet = new Set();
+  const selfOrAncestorMemo = new Map();
+  const descendantMemo = new Map();
+  const pushFrom = (mapLike) => {
+    if (!mapLike || typeof mapLike.keys !== "function") return;
+    for (const rawPath of mapLike.keys()) {
+      const path = normalizeDirPathValue(rawPath);
+      if (!path || hiddenSet.has(path)) continue;
+      if (!metaHasHidden(path)) continue;
+      hiddenSet.add(path);
+      hiddenPaths.push(path);
+    }
+  };
+  pushFrom(WS.meta && WS.meta.dirTags);
+  pushFrom(WS.meta && WS.meta.pendingTagsByPath);
+  hiddenPaths.sort((a, b) => String(a).localeCompare(String(b)));
+  for (let i = 0; i < hiddenPaths.length; i++) {
+    const parts = String(hiddenPaths[i] || "").split("/").filter(Boolean);
+    for (let j = 1; j < parts.length; j++) {
+      hiddenAncestorSet.add(parts.slice(0, j).join("/"));
+    }
+  }
+  return {
+    hiddenPaths,
+    hiddenSet,
+    hiddenAncestorSet,
+    selfOrAncestorMemo,
+    descendantMemo,
+  };
+}
+
+function isPathOrAncestorHidden(path, hiddenContext = null) {
   const normalized = normalizeDirPathValue(path);
   if (!normalized) return false;
+  if (
+    hiddenContext &&
+    hiddenContext.selfOrAncestorMemo &&
+    hiddenContext.selfOrAncestorMemo.has(normalized)
+  )
+    return hiddenContext.selfOrAncestorMemo.get(normalized);
   const parts = normalized.split("/").filter(Boolean);
   for (let i = parts.length; i > 0; i--) {
     const current = parts.slice(0, i).join("/");
-    if (metaHasHidden(current)) return true;
+    const hidden = hiddenContext && hiddenContext.hiddenSet
+      ? hiddenContext.hiddenSet.has(current)
+      : metaHasHidden(current);
+    if (hidden) {
+      if (hiddenContext && hiddenContext.selfOrAncestorMemo)
+        hiddenContext.selfOrAncestorMemo.set(normalized, true);
+      return true;
+    }
   }
+  if (hiddenContext && hiddenContext.selfOrAncestorMemo)
+    hiddenContext.selfOrAncestorMemo.set(normalized, false);
   return false;
 }
 
-function calendarPathHasKnownHiddenDescendant(path) {
+function calendarPathHasKnownHiddenDescendant(path, hiddenContext = null) {
   const base = normalizeDirPathValue(path);
+  if (
+    hiddenContext &&
+    hiddenContext.descendantMemo &&
+    hiddenContext.descendantMemo.has(base)
+  )
+    return hiddenContext.descendantMemo.get(base);
   const isDescendant = (candidate) => {
     const p = normalizeDirPathValue(candidate);
     if (!p) return false;
     if (!base) return !!p;
     return p !== base && p.startsWith(`${base}/`);
   };
+  if (hiddenContext && hiddenContext.hiddenAncestorSet) {
+    const hasDescendant = base
+      ? hiddenContext.hiddenAncestorSet.has(base)
+      : !!(
+          Array.isArray(hiddenContext.hiddenPaths) &&
+          hiddenContext.hiddenPaths.length
+        );
+    hiddenContext.descendantMemo.set(base, hasDescendant);
+    return hasDescendant;
+  }
   const scanMap = (mapLike) => {
     if (!mapLike || typeof mapLike.keys !== "function") return false;
     for (const rawPath of mapLike.keys()) {
@@ -16758,20 +16823,21 @@ function getCalendarVisibleMetricsForDir(
   dirNode,
   memo = new Map(),
   includeHidden = includeHiddenItemsInStatsEnabled(),
+  hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext(),
 ) {
   if (!dirNode || dirNode.type !== "dir")
     return { score: 0, sizeBytes: 0, itemCount: 0 };
   const path = String(dirNode.path || "");
   const key = `${path}::${includeHidden ? "all" : "visible"}`;
   if (memo.has(key)) return memo.get(key);
-  if (!includeHidden && isPathOrAncestorHidden(path)) {
+  if (!includeHidden && isPathOrAncestorHidden(path, hiddenContext)) {
     const hiddenMetrics = { score: 0, sizeBytes: 0, itemCount: 0 };
     memo.set(key, hiddenMetrics);
     return hiddenMetrics;
   }
 
   const summary = getCatalogSummaryForNode(dirNode);
-  const hasKnownHiddenDescendant = !includeHidden && calendarPathHasKnownHiddenDescendant(path);
+  const hasKnownHiddenDescendant = !includeHidden && calendarPathHasKnownHiddenDescendant(path, hiddenContext);
   if (summary && !hasKnownHiddenDescendant) {
     const score = Number(metaGetScore(path)) || 0;
     const itemCount = Math.max(0, Number(summary.recursiveItemCount) || 0);
@@ -16799,11 +16865,12 @@ function getCalendarVisibleMetricsForDir(
     const child = children[i];
     const childPath = String(child.path || "");
     childStoredScoreSum += Number(metaGetScore(childPath)) || 0;
-    if (!includeHidden && isPathOrAncestorHidden(childPath)) continue;
+    if (!includeHidden && isPathOrAncestorHidden(childPath, hiddenContext)) continue;
     const childMetrics = getCalendarVisibleMetricsForDir(
       child,
       memo,
       includeHidden,
+      hiddenContext,
     );
     visibleChildScoreSum += Number(childMetrics.score) || 0;
     visibleChildSizeSum += Number(childMetrics.sizeBytes) || 0;
@@ -16826,7 +16893,7 @@ function getCalendarVisibleMetricsForDir(
           ? rec.relPath
           : `${String((rec && rec.dirPath) || "")}${rec && rec.dirPath ? "/" : ""}${String((rec && rec.name) || "")}`,
       );
-      if (!includeHidden && filePath && isPathOrAncestorHidden(filePath))
+      if (!includeHidden && filePath && isPathOrAncestorHidden(filePath, hiddenContext))
         continue;
       directItemCount++;
       const fileSize = Number(rec && rec.size);
@@ -16846,6 +16913,7 @@ function getCalendarVisibleMetricsForDir(
 
 function getVisibleRootFolderScoreRows(
   includeHidden = includeHiddenItemsInStatsEnabled(),
+  hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext(),
 ) {
   const root = WS.root;
   if (!root) return [];
@@ -16857,11 +16925,12 @@ function getVisibleRootFolderScoreRows(
     const node = rootChildren[i];
     if (!node || node.type !== "dir") continue;
     const path = String(node.path || "");
-    if (!includeHidden && isPathOrAncestorHidden(path)) continue;
+    if (!includeHidden && isPathOrAncestorHidden(path, hiddenContext)) continue;
     const metrics = getCalendarVisibleMetricsForDir(
       node,
       metricMemo,
       includeHidden,
+      hiddenContext,
     );
     const sizeBytes = Math.max(0, Number(metrics.sizeBytes) || 0);
     const score = Number(metrics.score) || 0;
@@ -17061,6 +17130,7 @@ function scoreHistoryRootLabelFromPath(path) {
 function getRootScoreHistoryLinesForEntry(
   entry,
   includeHidden = includeHiddenItemsInStatsEnabled(),
+  hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext(),
 ) {
   const out = [];
   if (!entry || !Array.isArray(entry.changed)) return out;
@@ -17080,9 +17150,9 @@ function getRootScoreHistoryLinesForEntry(
     for (let i = 0; i < selectedPaths.length; i++) {
       const itemPath = normalizeDirPathValue(selectedPaths[i]);
       if (!itemPath) continue;
-      if (!includeHidden && isPathOrAncestorHidden(itemPath)) continue;
+      if (!includeHidden && isPathOrAncestorHidden(itemPath, hiddenContext)) continue;
       const rootPath = scoreHistoryRootPathFromChangedPath(itemPath);
-      if (!rootPath || (!includeHidden && isPathOrAncestorHidden(rootPath)))
+      if (!rootPath || (!includeHidden && isPathOrAncestorHidden(rootPath, hiddenContext)))
         continue;
       const change = changedByPath.get(itemPath);
       const delta = change ? Number(change.delta) || 0 : 0;
@@ -17108,7 +17178,7 @@ function getRootScoreHistoryLinesForEntry(
     if (!item || typeof item !== "object") continue;
     const itemPath = normalizeDirPathValue(item.path);
     if (!itemPath) continue;
-    if (!includeHidden && isPathOrAncestorHidden(itemPath)) continue;
+    if (!includeHidden && isPathOrAncestorHidden(itemPath, hiddenContext)) continue;
     const depth = itemPath.split("/").filter(Boolean).length;
     if (depth !== 1) continue;
     const delta = Number(item.delta) || 0;
@@ -17126,6 +17196,7 @@ function getRootScoreHistoryLinesForEntry(
 function getRootScoreHistoryLinesForDateKey(
   dateKey,
   includeHidden = includeHiddenItemsInStatsEnabled(),
+  hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext(),
 ) {
   const key = String(dateKey || "");
   if (!key) return [];
@@ -17136,7 +17207,7 @@ function getRootScoreHistoryLinesForDateKey(
   for (let i = 0; i < history.length; i++) {
     const entry = history[i];
     if (scoreHistoryDateKey(entry && entry.at) !== key) continue;
-    const rows = getRootScoreHistoryLinesForEntry(entry, includeHidden);
+    const rows = getRootScoreHistoryLinesForEntry(entry, includeHidden, hiddenContext);
     for (let j = 0; j < rows.length; j++) {
       const row = rows[j];
       const rootPath = normalizeDirPathValue(row.rootPath);
@@ -17270,7 +17341,8 @@ function renderCalendarUi() {
   );
   WS.meta.scoreHistory = history;
   const includeHidden = includeHiddenItemsInStatsEnabled();
-  const rootRows = getVisibleRootFolderScoreRows(includeHidden);
+  const hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext();
+  const rootRows = getVisibleRootFolderScoreRows(includeHidden, hiddenContext);
   const totalScore = rootRows.reduce(
     (sum, row) => sum + (Number(row.score) || 0),
     0,
@@ -17281,7 +17353,7 @@ function renderCalendarUi() {
   const grouped = new Map();
   for (let i = 0; i < history.length; i++) {
     const entry = history[i];
-    const rows = getRootScoreHistoryLinesForEntry(entry, includeHidden);
+    const rows = getRootScoreHistoryLinesForEntry(entry, includeHidden, hiddenContext);
     for (let j = 0; j < rows.length; j++) {
       const row = rows[j];
       const dayKey = scoreHistoryDateKey(row.at);
