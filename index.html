@@ -47,6 +47,7 @@
   --dir-tag-title-color: #9b8ac7;
   --dir-tag-favorite-title-color: var(--palette-accent);
   --dir-tag-album-title-color: #ff7a6e;
+  --dir-bookmark-title-color: #e0b44c;
   --ui-hover-lift: -1px;
   --ui-active-press: 1px;
   --ui-hover-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
@@ -61,6 +62,9 @@
   --ui-control-hover-bg: rgba(0, 0, 0, 0.16);
   --ui-control-active-bg: var(--ui-selection-fill);
   --ui-control-radius: 6px;
+  --stats-score-positive-color: #d85a50;
+  --stats-score-negative-color: #4c2f88;
+  --item-menu-trash-color: var(--stats-score-positive-color);
 }
 
 :root[data-thumbnail-title-size="large"] {
@@ -192,12 +196,16 @@
   --dir-tag-title-color: #6d5b8b;
   --dir-tag-favorite-title-color: var(--palette-accent);
   --dir-tag-album-title-color: #8f362d;
+  --dir-bookmark-title-color: #7b5a1d;
   --tag-include-bg: #2b4d7a;
   --tag-include-border: #17345a;
   --tag-include-color: #e9f1ff;
   --tag-exclude-bg: #7a2b33;
   --tag-exclude-border: #541820;
   --tag-exclude-color: #ffe9ec;
+  --stats-score-positive-color: #d85a50;
+  --stats-score-negative-color: #4c2f88;
+  --item-menu-trash-color: var(--stats-score-positive-color);
   --ui-hover-shadow: 0 3px 0 rgba(0, 0, 0, 0.18);
   --ui-focus-ring: 0 0 0 2px rgba(26, 75, 140, 0.24);
 }
@@ -220,12 +228,16 @@
   --dir-tag-title-color: #b7a5db;
   --dir-tag-favorite-title-color: var(--palette-accent);
   --dir-tag-album-title-color: #ff9485;
+  --dir-bookmark-title-color: #e0b44c;
   --tag-include-bg: #203457;
   --tag-include-border: #101f38;
   --tag-include-color: #e6efff;
   --tag-exclude-bg: #4a1e24;
   --tag-exclude-border: #2f0f14;
   --tag-exclude-color: #ffe6ea;
+  --stats-score-positive-color: #e95a4e;
+  --stats-score-negative-color: #4c2f88;
+  --item-menu-trash-color: var(--stats-score-positive-color);
   --ui-hover-shadow: 0 3px 0 rgba(0, 0, 0, 0.28);
   --ui-focus-ring: 0 0 0 2px rgba(111, 160, 255, 0.24);
 }
@@ -1644,6 +1656,10 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--dir-tag-album-title-color, #ff7a6e);
 }
 
+.dirSquareNameTagBookmark {
+  color: var(--dir-bookmark-title-color, var(--dir-tag-title-color, #9b8ac7));
+}
+
 .previewTagFolderCard .dirSquareName.dirSquareNameTag,
 #directoriesList.gridModeList .dirSquareName.dirSquareNameTag {
   color: var(--dir-tag-title-color, #9b8ac7);
@@ -1659,15 +1675,23 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--dir-tag-album-title-color, #ff7a6e);
 }
 
+.previewTagFolderCard .dirSquareName.dirSquareNameTagBookmark,
+#directoriesList.gridModeList .dirSquareName.dirSquareNameTagBookmark {
+  color: var(--dir-bookmark-title-color, var(--dir-tag-title-color, #9b8ac7));
+}
+
 .dirRow.tagBarCard:hover .dirSquareNameTag,
 .dirRow.tagBarCard:hover .dirSquareNameTagFavorite,
 .dirRow.tagBarCard:hover .dirSquareNameTagAlbum,
+.dirRow.tagBarCard:hover .dirSquareNameTagBookmark,
 .dirRow.tagBarCard.selected .dirSquareNameTag,
 .dirRow.tagBarCard.selected .dirSquareNameTagFavorite,
 .dirRow.tagBarCard.selected .dirSquareNameTagAlbum,
+.dirRow.tagBarCard.selected .dirSquareNameTagBookmark,
 .dirRow.tagBarCard.bulkSelected .dirSquareNameTag,
 .dirRow.tagBarCard.bulkSelected .dirSquareNameTagFavorite,
 .dirRow.tagBarCard.bulkSelected .dirSquareNameTagAlbum,
+.dirRow.tagBarCard.bulkSelected .dirSquareNameTagBookmark,
 #app.preview-pane-active
   .dirRow.tagBarCard.selected:not(.bulkSelected)
   .dirSquareNameTag,
@@ -1676,7 +1700,10 @@ img[data-rotate-key].rotatingThumbFade {
   .dirSquareNameTagFavorite,
 #app.preview-pane-active
   .dirRow.tagBarCard.selected:not(.bulkSelected)
-  .dirSquareNameTagAlbum {
+  .dirSquareNameTagAlbum,
+#app.preview-pane-active
+  .dirRow.tagBarCard.selected:not(.bulkSelected)
+  .dirSquareNameTagBookmark {
   color: var(--color0-primary);
 }
 
@@ -1688,7 +1715,10 @@ img[data-rotate-key].rotatingThumbFade {
   .dirSquareNameTagFavorite,
 #app.preview-pane-active
   .dirRow.tagBarCard.selected:not(.bulkSelected)
-  .dirSquareNameTagAlbum {
+  .dirSquareNameTagAlbum,
+#app.preview-pane-active
+  .dirRow.tagBarCard.selected:not(.bulkSelected)
+  .dirSquareNameTagBookmark {
   color: inherit;
 }
 
@@ -2019,7 +2049,9 @@ img[data-rotate-key].rotatingThumbFade {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  min-width: 140px;
+  width: max-content;
+  min-width: 0;
+  max-width: calc(100vw - 16px);
   background: var(--color1-secondary);
   border: 0;
   border-radius: 8px;
@@ -2041,6 +2073,7 @@ img[data-rotate-key].rotatingThumbFade {
 
 .dropdownMenu button {
   width: 100%;
+  min-width: max-content;
   padding: 6px 8px;
   font-size: 12px;
   text-align: left;
@@ -2093,7 +2126,9 @@ img[data-rotate-key].rotatingThumbFade {
   top: -5px;
   right: auto;
   left: calc(100% + 4px);
-  min-width: 160px;
+  width: max-content;
+  min-width: 0;
+  max-width: calc(100vw - 16px);
   z-index: 20001;
 }
 
@@ -2104,17 +2139,18 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dropdownMenu button.destructiveAction {
-  color: #ffb3b3;
+  color: var(--item-menu-trash-color);
 }
 
-.dropdownMenu button.destructiveAction:hover:not(:disabled) {
-  color: #ffb3b3;
+.dropdownMenu button.destructiveAction:hover:not(:disabled),
+.dropdownMenu button.destructiveAction:focus-visible {
+  color: var(--item-menu-trash-color);
 }
 
 .dropdownMenu .scoreRow {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   width: 100%;
 }
 
@@ -2130,9 +2166,9 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dropdownMenu .menuTwoColRow {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   width: 100%;
 }
 
@@ -5035,11 +5071,11 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .statsLedgerScoreFill.positive {
-  background: #d85a50;
+  background: var(--stats-score-positive-color);
 }
 
 .statsLedgerScoreFill.negative {
-  background: #4c2f88;
+  background: var(--stats-score-negative-color);
 }
 
 .calendarHistory {
@@ -6514,6 +6550,7 @@ remove the outer app frame. */
 
 
 
+
 window.addEventListener("error", (event) => {
   try {
     const err = event?.error;
@@ -7371,7 +7408,7 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Appearance & filenames", id: "appearance-display", label: "Light mode / filename display", hint: "Light mode and filename-format toggle messages.", optionKey: "notifyAppearanceDisplay" }),
   Object.freeze({ section: "Appearance & filenames", id: "appearance-presets", label: "Appearance presets", hint: "Preset apply, save, mix, delete, and preset-selection messages.", optionKey: "notifyAppearancePresets" }),
 
-  Object.freeze({ section: "Tags & albums", id: "tags", label: "Tags / albums / hidden tags", hint: "Tag editing, album, and hidden-tag messages.", optionKey: "notifyTags" }),
+  Object.freeze({ section: "Tags", id: "tags", label: "Tags / hidden tags", hint: "Tag editing and hidden-tag messages.", optionKey: "notifyTags" }),
   Object.freeze({ section: "Editing", id: "rename", label: "Rename + sanitize names", hint: "Rename and sanitize-name messages.", optionKey: "notifyRename" }),
   Object.freeze({ section: "File operations", id: "trash", label: "Trash / Put Back", hint: "Move-to-trash and Put Back messages.", optionKey: "notifyTrash" }),
   Object.freeze({ section: "File operations", id: "delete", label: "Delete", hint: "Delete messages.", optionKey: "notifyDelete" }),
@@ -8331,6 +8368,7 @@ const META_DOC_IDS = Object.freeze({
   dailyJournals: "dailyJournals",
   tags: "tags",
   tagAlbums: "tagAlbums",
+  bookmarks: "bookmarks",
   trash: "trash",
   thumbnails: "thumbnails",
   aspectRatios: "aspectRatios",
@@ -8352,6 +8390,7 @@ const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.dailyJournals]: "daily-journals.log.json",
   [META_DOC_IDS.tags]: "tags.log.json",
   [META_DOC_IDS.tagAlbums]: "tag-albums.log.json",
+  [META_DOC_IDS.bookmarks]: "bookmarks.log.json",
   [META_DOC_IDS.trash]: "trash.log.json",
   [META_DOC_IDS.aspectRatios]: "aspect-ratios.log.json",
   [META_DOC_IDS.appearancePresets]: "appearance-presets.log.json",
@@ -8371,6 +8410,7 @@ const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.dailyJournals]: "LocalGalleryDailyJournalsV1",
   [META_DOC_IDS.tags]: "LocalGalleryTagsV2",
   [META_DOC_IDS.tagAlbums]: "LocalGalleryTagAlbumsV2",
+  [META_DOC_IDS.bookmarks]: "LocalGalleryBookmarksV1",
   [META_DOC_IDS.trash]: "LocalGalleryTrashV1",
   [META_DOC_IDS.aspectRatios]: "LocalGalleryAspectRatiosV1",
   [META_DOC_IDS.appearancePresets]: "LocalGalleryAppearancePresetsV2",
@@ -8390,6 +8430,7 @@ const META_ALL_DOC_IDS = Object.freeze([
   META_DOC_IDS.dailyJournals,
   META_DOC_IDS.tags,
   META_DOC_IDS.tagAlbums,
+  META_DOC_IDS.bookmarks,
   META_DOC_IDS.trash,
   META_DOC_IDS.aspectRatios,
   META_DOC_IDS.appearancePresets,
@@ -9595,8 +9636,11 @@ function currentFolderMenuTagRemovalContext() {
 
 function currentTagMenuAlbumRemovalContext() {
   const context = currentActiveTagFolderContext();
-  if (!context || context.mode !== "album" || !context.album) return null;
-  return context;
+  if (!context) return null;
+  if (context.mode === "tag" && context.tag)
+    return { mode: "tag", tag: context.tag, album: context.tag, originPath: context.originPath };
+  if (context.mode === "album" && context.album) return context;
+  return null;
 }
 
 function getPortalRootPathsForTagContext(mode, tag, album, originPath) {
@@ -9614,20 +9658,21 @@ function getPortalRootPathsForTagContext(mode, tag, album, originPath) {
     .filter((child) => child && child.type === "dir")
     .filter((child) => (showHidden ? true : !isDirOrAncestorHidden(child)));
   if (contextMode === "tag" && contextTag) {
-    return children
-      .filter((child) => metaGetUserTags(child.path || "").includes(contextTag))
+    return visibleDirectDirNodesForUnifiedTag(contextTag, {
+        kind: "tag",
+        tag: contextTag,
+        label: contextTag,
+        originPath: scopePath,
+      })
       .map((child) => String(child.path || ""))
       .filter(Boolean);
   }
   if (contextMode === "album" && contextAlbum) {
-    return children
-      .filter((child) => {
-        const tags = metaGetUserTags(child.path || "");
-        for (let i = 0; i < tags.length; i++) {
-          if (metaGetTagAlbumForTag(tags[i], scopePath) === contextAlbum)
-            return true;
-        }
-        return false;
+    return visibleDirectDirNodesForUnifiedTag(contextAlbum, {
+        kind: "tag",
+        tag: contextAlbum,
+        label: contextAlbum,
+        originPath: scopePath,
       })
       .map((child) => String(child.path || ""))
       .filter(Boolean);
@@ -9642,7 +9687,7 @@ function contextualAppearancePresetIdForDirPath(dirPath) {
   if (activeMode === "tag") {
     const originPath = String((WS.view && WS.view.tagFolderOriginPath) || "");
     const node = WS.dirByPath.get(normalized) || null;
-    if (node && String(node.parent?.path || "") === originPath) {
+    if (node) {
       const activeTag = normalizeTag(
         (WS.view && WS.view.tagFolderActiveTag) || "",
       );
@@ -12952,6 +12997,7 @@ const APP_ICON_SVGS = Object.freeze({
   video: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-film-icon lucide-film"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>',
   folder: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-icon lucide-folder"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
   tag: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-tag-icon lucide-tag"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>',
+  bookmark: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bookmark-icon lucide-bookmark"><path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z"/></svg>',
   album: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-album-icon lucide-album"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><polyline points="11 3 11 11 14 8 17 11 17 3"/></svg>',
   favorite: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart-icon lucide-heart"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
   hidden: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-off-icon lucide-eye-off"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>',
@@ -13022,11 +13068,13 @@ function iconKeyForDirNode(node) {
   if (isStorageStubDirNode(node)) return "storage";
   if (node && node._skipTagFilters) {
     const mode = String(node._tagPreviewMode || "");
-    if (mode === "album") return "album";
+    if (mode === "album") return "tag";
+    if (mode === "bookmark") return "tag";
     if (mode === "favorites") return "favorite";
     if (mode === "hidden") return "hidden";
     if (mode === "untagged") return "untagged";
     if (mode === "storage") return "storage";
+    if (mode === "bookmark") return "tag";
     return "tag";
   }
   return "folder";
@@ -14619,6 +14667,10 @@ const WS = {
     pendingDirScores: new Map(),
     dirTags: new Map(),
     tagAlbumByTag: new Map(),
+    tagParentsByTag: new Map(),
+    bookmarksByName: new Map(),
+    bookmarkAlbumByBookmark: new Map(),
+    hiddenBookmarkNames: new Set(),
     trashItemsByPath: new Map(),
     hiddenTagKeys: new Set(),
     tagMediaFilterByKey: new Map(),
@@ -14887,6 +14939,10 @@ function resetWorkspace() {
   WS.meta.pendingDirScores.clear();
   WS.meta.dirTags.clear();
   WS.meta.tagAlbumByTag.clear();
+  if (WS.meta.tagParentsByTag) WS.meta.tagParentsByTag.clear();
+  WS.meta.bookmarksByName.clear();
+  WS.meta.bookmarkAlbumByBookmark.clear();
+  if (WS.meta.hiddenBookmarkNames) WS.meta.hiddenBookmarkNames.clear();
   WS.meta.trashItemsByPath.clear();
   WS.meta.hiddenTagKeys.clear();
   WS.meta.tagMediaFilterByKey.clear();
@@ -16100,7 +16156,7 @@ function tagContextLabel(mode, tag, album = "") {
   if (normalizedMode === "untagged") return "Untagged";
   if (normalizedMode === "hidden") return "Hidden";
   const albumLabel = displayTagFolderLabel(String(album || "").trim());
-  if (normalizedMode === "album") return albumLabel || "Album";
+  if (normalizedMode === "album") return albumLabel || "Tag";
   const tagLabel = displayTagFolderLabel(String(tag || "").trim());
   if (albumLabel && tagLabel) return `${albumLabel} · ${tagLabel}`;
   return tagLabel || albumLabel || "Tag";
@@ -16227,28 +16283,17 @@ function collectUniqueTitleMetricNodes(nodes) {
 function getActiveTagPreviewMetricNodes(previewDir) {
   if (!previewDir || !previewDir._skipTagFilters) return [];
   const mode = String(previewDir._tagPreviewMode || "");
+  if (mode === "tag" || mode === "bookmark") {
+    const tag =
+      mode === "bookmark"
+        ? normalizeBookmarkName(previewDir._tagPreviewBookmark || previewDir.name || "")
+        : normalizeTag(previewDir._tagPreviewTag || previewDir.name || "");
+    return visibleDirectDirNodesForUnifiedTag(tag);
+  }
   if (mode === "album") {
-    const baseNode =
-      WS.dirByPath.get(String(previewDir._tagPreviewOriginPath || "")) ||
-      previewDir.parent ||
-      WS.root;
-    const entries = getTagEntriesForAlbumForBaseNode(
-      baseNode,
-      String(previewDir._tagPreviewAlbum || ""),
+    return visibleDirectDirNodesForUnifiedTag(
+      normalizeTagAlbumName(previewDir._tagPreviewAlbum || previewDir.name || ""),
     );
-    const out = [];
-    const seen = new Set();
-    for (let i = 0; i < entries.length; i++) {
-      const dirs = getDirsForTagEntry(entries[i]);
-      for (let j = 0; j < dirs.length; j++) {
-        const dirNode = dirs[j];
-        const path = String(dirNode?.path || "");
-        if (!path || seen.has(path)) continue;
-        seen.add(path);
-        out.push(dirNode);
-      }
-    }
-    return out;
   }
   return Array.isArray(previewDir.childrenDirs) ? previewDir.childrenDirs : [];
 }
@@ -16326,7 +16371,7 @@ function getDirectoriesTitleInfoLabel() {
     if (WS.view.tagFolderActiveMode === "storage") return STORAGE_UI_LABEL;
     if (WS.view.tagFolderActiveMode === "untagged") return "Untagged";
     if (WS.view.tagFolderActiveMode === "album") {
-      return displayTagFolderLabel(String(WS.view.tagFolderActiveAlbum || "")) || "Album";
+      return displayTagFolderLabel(String(WS.view.tagFolderActiveAlbum || "")) || "Tag";
     }
     return (
       displayTagFolderLabel(String(WS.view.tagFolderActiveTag || "")) || "Tag"
@@ -18536,7 +18581,7 @@ ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "o
       title: "Filenames",
       rows: `
 ${makeCheckRow("Force Title Case", "Apply Title Case to displayed file names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
-${makeCheckRow("Show position numbers", "Prefix displayed real file and folder names with their current sorted position, while skipping tag and album entries.", "opt_showPositionNumbersInNames", !!opt.showPositionNumbersInNames)}
+${makeCheckRow("Show position numbers", "Prefix displayed real file and folder names with their current sorted position, while skipping tag entries.", "opt_showPositionNumbersInNames", !!opt.showPositionNumbersInNames)}
 ${makeCheckRow("Hide file extensions", "Hide file extensions in displayed file names.", "opt_hideFileExtensionsInFileNames", !!opt.hideFileExtensionsInFileNames)}
 ${makeCheckRow("Hide underscores", "Hide underscores in displayed file names.", "opt_hideUnderscoresInFileNames", !!opt.hideUnderscoresInFileNames)}
 ${makeCheckRow("Trim before last dash", "Show only text after the last dash in names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
@@ -20382,6 +20427,68 @@ function parseTagAlbumMembershipKey(rawKey) {
   };
 }
 
+function ensureTagGraphMaps() {
+  if (!WS.meta.tagParentsByTag) WS.meta.tagParentsByTag = new Map();
+  if (!WS.meta.hiddenTagKeys) WS.meta.hiddenTagKeys = new Set();
+}
+
+function normalizeTagParentList(list, childTag = "") {
+  const child = normalizeTag(childTag);
+  const out = [];
+  const seen = new Set();
+  const arr = Array.isArray(list) ? list : [];
+  for (let i = 0; i < arr.length; i++) {
+    const parent = normalizeTag(arr[i]);
+    if (!parent || parent === child || seen.has(parent)) continue;
+    seen.add(parent);
+    out.push(parent);
+  }
+  return out;
+}
+
+function metaGetParentTagsForTag(tagName) {
+  ensureTagGraphMaps();
+  const tag = normalizeTag(tagName);
+  if (!tag) return [];
+  return normalizeTagParentList(WS.meta.tagParentsByTag.get(tag), tag);
+}
+
+function metaSetParentTagsForTag(tagName, parentTags) {
+  ensureTagGraphMaps();
+  const tag = normalizeTag(tagName);
+  if (!tag) return false;
+  const next = normalizeTagParentList(parentTags, tag);
+  const current = metaGetParentTagsForTag(tag);
+  if (arraysEqual(current, next)) return false;
+  if (next.length) WS.meta.tagParentsByTag.set(tag, next);
+  else WS.meta.tagParentsByTag.delete(tag);
+  metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaAddParentTagForTag(tagName, parentTag) {
+  const tag = normalizeTag(tagName);
+  const parent = normalizeTag(parentTag);
+  if (!tag || !parent || tag === parent) return false;
+  const parents = metaGetParentTagsForTag(tag);
+  if (parents.includes(parent)) return false;
+  parents.push(parent);
+  return metaSetParentTagsForTag(tag, parents);
+}
+
+function metaRemoveParentTagForTag(tagName, parentTag) {
+  const tag = normalizeTag(tagName);
+  const parent = normalizeTag(parentTag);
+  if (!tag || !parent) return false;
+  const parents = metaGetParentTagsForTag(tag);
+  if (!parents.includes(parent)) return false;
+  return metaSetParentTagsForTag(
+    tag,
+    parents.filter((item) => item !== parent),
+  );
+}
+
 function normalizeTagList(list) {
   const out = [];
   const seen = new Set();
@@ -20456,6 +20563,22 @@ function metaWriteUserTags(path, userTags) {
   return metaSetTagsForPath(p, merged);
 }
 
+function metaAddUserTagToPathForImport(path, tagName) {
+  const p = normalizeDirPathValue(path);
+  const tag = normalizeTag(tagName);
+  if (!p || !tag || isReservedFolderTag(tag)) return false;
+  const existing = metaGetTags(p);
+  if (existing.includes(tag)) return false;
+  const next = normalizeTagList(existing.concat([tag]));
+  if (WS.dirByPath && WS.dirByPath.has(p)) {
+    WS.meta.dirTags.set(p, next);
+    if (WS.meta.pendingTagsByPath) WS.meta.pendingTagsByPath.delete(p);
+  } else if (WS.meta.pendingTagsByPath) {
+    WS.meta.pendingTagsByPath.set(p, next);
+  }
+  return true;
+}
+
 function metaGetTags(path) {
   const p = String(path || "");
   const direct = WS.meta.dirTags.get(p);
@@ -20484,22 +20607,22 @@ function pathIsStorageFolder(path) {
 
 function metaGetTagAlbumForTag(tagName, scopePath = null) {
   const tag = normalizeTag(tagName);
-  if (!tag || !WS.meta || !WS.meta.tagAlbumByTag) return "";
-  if (scopePath != null) {
-    const scopedKey = tagAlbumMembershipKey(tag, scopePath);
-    if (scopedKey && WS.meta.tagAlbumByTag.has(scopedKey)) {
-      return normalizeTagAlbumName(WS.meta.tagAlbumByTag.get(scopedKey));
-    }
-  }
-  return normalizeTagAlbumName(WS.meta.tagAlbumByTag.get(tag));
+  if (!tag) return "";
+  const parents = metaGetParentTagsForTag(tag);
+  if (parents.length) return parents[0] || "";
+  return "";
 }
 
 function metaSetTagAlbumForTag(tagName, albumName, scopePath = null) {
   const tag = normalizeTag(tagName);
-  if (!tag || !WS.meta || !WS.meta.tagAlbumByTag) return false;
+  if (!tag) return false;
   const mapKey = tagAlbumMembershipKey(tag, scopePath);
   if (!mapKey) return false;
   const album = normalizeTagAlbumName(albumName);
+  const parentChanged = album
+    ? metaAddParentTagForTag(tag, album)
+    : metaSetParentTagsForTag(tag, []);
+  if (!WS.meta || !WS.meta.tagAlbumByTag) return parentChanged;
   const hasExactKey = WS.meta.tagAlbumByTag.has(mapKey);
   const prevExact = normalizeTagAlbumName(WS.meta.tagAlbumByTag.get(mapKey));
   if (!album) {
@@ -20515,9 +20638,9 @@ function metaSetTagAlbumForTag(tagName, albumName, scopePath = null) {
       invalidateDirMetricsCaches();
       return true;
     }
-    return false;
+    return parentChanged;
   }
-  if (hasExactKey && prevExact === album) return false;
+  if (hasExactKey && prevExact === album) return parentChanged;
   WS.meta.tagAlbumByTag.set(mapKey, album);
   if (scopePath != null && hasExactKey === false) {
     const legacyAlbum = normalizeTagAlbumName(WS.meta.tagAlbumByTag.get(tag));
@@ -20527,6 +20650,367 @@ function metaSetTagAlbumForTag(tagName, albumName, scopePath = null) {
   }
   metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
   invalidateDirMetricsCaches();
+  return true;
+}
+
+
+function normalizeBookmarkName(name) {
+  return normalizeTag(name);
+}
+
+function normalizeBookmarkPathList(paths) {
+  const out = [];
+  const seen = new Set();
+  const arr = Array.isArray(paths) ? paths : [];
+  for (let i = 0; i < arr.length; i++) {
+    const p = normalizeDirPathValue(arr[i]);
+    if (!p || seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
+  }
+  return out;
+}
+
+function ensureBookmarkMaps() {
+  if (!WS.meta.bookmarksByName) WS.meta.bookmarksByName = new Map();
+  if (!WS.meta.bookmarkAlbumByBookmark) WS.meta.bookmarkAlbumByBookmark = new Map();
+  if (!WS.meta.hiddenBookmarkNames) WS.meta.hiddenBookmarkNames = new Set();
+}
+
+function metaTrackBookmarkDirty() {
+  metaTrackDirtyDocIds([META_DOC_IDS.bookmarks, META_DOC_IDS.tags]);
+}
+
+function metaMarkBookmarkDirty() {
+  metaMarkDirty(META_DOC_IDS.bookmarks, META_DOC_IDS.tags);
+}
+
+function metaScheduleBookmarkSave() {
+  metaScheduleSave(META_DOC_IDS.bookmarks, META_DOC_IDS.tags);
+}
+
+function metaHasHiddenBookmarkName(bookmarkName) {
+  ensureBookmarkMaps();
+  const name = normalizeBookmarkName(bookmarkName);
+  return !!(name && WS.meta.hiddenBookmarkNames.has(name));
+}
+
+function bookmarkEntriesShouldShowHidden() {
+  return !!(
+    WS.view.hiddenMode ||
+    showHiddenFolderEnabled() ||
+    (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden")
+  );
+}
+
+function shouldIncludeBookmarkNameInList(bookmarkName) {
+  const name = normalizeBookmarkName(bookmarkName);
+  if (!name) return false;
+  return bookmarkEntriesShouldShowHidden() || !metaHasHiddenBookmarkName(name);
+}
+
+function metaSetHiddenBookmarkName(bookmarkName, enable) {
+  ensureBookmarkMaps();
+  const name = normalizeBookmarkName(bookmarkName);
+  if (!name) return false;
+  const next = !!enable;
+  const has = WS.meta.hiddenBookmarkNames.has(name);
+  const tagChanged = metaSetHiddenTagByKey(hiddenTagKeyForTag(name), next);
+  if (has === next) return tagChanged;
+  if (next) WS.meta.hiddenBookmarkNames.add(name);
+  else WS.meta.hiddenBookmarkNames.delete(name);
+  metaMarkBookmarkDirty();
+  invalidateHiddenVisibilityState();
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function tagEntryHasHiddenMarker(entry) {
+  if (!entry || entry.kind !== "tag" || entry.placeholder) return false;
+  if (entry.special === "bookmark") {
+    return metaIsTagOrAncestorHidden(entry.bookmark || entry.label || "");
+  }
+  if (entry.special) return metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
+  return metaIsTagOrAncestorHidden(entry.tag || entry.album || entry.label || "");
+}
+
+function metaGetBookmarkPaths(bookmarkName) {
+  ensureBookmarkMaps();
+  const name = normalizeBookmarkName(bookmarkName);
+  if (!name) return [];
+  const paths = WS.meta.bookmarksByName.get(name);
+  return normalizeBookmarkPathList(paths);
+}
+
+function metaSetBookmarkPaths(bookmarkName, paths) {
+  ensureBookmarkMaps();
+  const name = normalizeBookmarkName(bookmarkName);
+  if (!name) return false;
+  const next = normalizeBookmarkPathList(paths);
+  const current = metaGetBookmarkPaths(name);
+  if (arraysEqual(current, next)) return false;
+  if (next.length) WS.meta.bookmarksByName.set(name, next);
+  else WS.meta.bookmarksByName.delete(name);
+  if (!next.length) {
+    WS.meta.bookmarkAlbumByBookmark.delete(name);
+    WS.meta.hiddenBookmarkNames.delete(name);
+  }
+  metaTrackBookmarkDirty();
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaAddBookmarkPathsBulk(paths, bookmarkNames) {
+  const names = normalizeTagList(bookmarkNames).map(normalizeBookmarkName).filter(Boolean);
+  const addPaths = normalizeBookmarkPathList(paths);
+  if (!names.length || !addPaths.length) return false;
+  let changed = false;
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i];
+    const merged = metaGetBookmarkPaths(name).concat(addPaths);
+    if (metaSetBookmarkPaths(name, merged)) changed = true;
+    for (let j = 0; j < addPaths.length; j++) {
+      if (metaAddUserTagToPathForImport(addPaths[j], name)) changed = true;
+    }
+  }
+  if (!changed) return false;
+  metaScheduleBookmarkSave();
+  refreshAfterTagMetadataChange();
+  showStatusMessage(`Updated ${names.length === 1 ? "tag" : "tags"}.`);
+  return true;
+}
+
+function metaGetBookmarkAlbumForBookmark(bookmarkName) {
+  ensureBookmarkMaps();
+  const name = normalizeBookmarkName(bookmarkName);
+  if (!name) return "";
+  return normalizeTagAlbumName(WS.meta.bookmarkAlbumByBookmark.get(name));
+}
+
+function metaSetBookmarkAlbumForBookmark(bookmarkName, albumName) {
+  ensureBookmarkMaps();
+  const name = normalizeBookmarkName(bookmarkName);
+  if (!name) return false;
+  const album = normalizeTagAlbumName(albumName);
+  const prev = normalizeTagAlbumName(WS.meta.bookmarkAlbumByBookmark.get(name));
+  const parentChanged = album
+    ? metaAddParentTagForTag(name, album)
+    : metaSetParentTagsForTag(name, []);
+  if (prev === album) return parentChanged;
+  if (album) WS.meta.bookmarkAlbumByBookmark.set(name, album);
+  else WS.meta.bookmarkAlbumByBookmark.delete(name);
+  metaTrackBookmarkDirty();
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function assignBookmarkAlbumForBookmarksBulk(bookmarks, albumName) {
+  const album = normalizeTagAlbumName(albumName);
+  if (!album) return false;
+  const names = normalizeTagList(bookmarks).map(normalizeBookmarkName).filter(Boolean);
+  if (!names.length) return false;
+  let changed = false;
+  let changedCount = 0;
+  for (let i = 0; i < names.length; i++) {
+    if (metaSetBookmarkAlbumForBookmark(names[i], album)) {
+      changed = true;
+      changedCount++;
+    }
+  }
+  if (!changed) return false;
+  metaScheduleBookmarkSave();
+  refreshAfterTagMetadataChange();
+  showStatusMessage(`Moved ${changedCount} tag${changedCount === 1 ? "" : "s"} into tag '${album}'.`);
+  return true;
+}
+
+function removeBookmarksFromAlbumBulk(bookmarks, albumName) {
+  const names = normalizeTagList(bookmarks).map(normalizeBookmarkName).filter(Boolean);
+  let changed = false;
+  let changedCount = 0;
+  for (let i = 0; i < names.length; i++) {
+    if (metaRemoveParentTagForTag(names[i], normalizeTagAlbumName(albumName))) {
+      changed = true;
+      changedCount++;
+    }
+  }
+  return { changed, changedCount, album: normalizeTagAlbumName(albumName) };
+}
+
+function metaRenameBookmarkName(oldName, newName) {
+  ensureBookmarkMaps();
+  const oldBookmark = normalizeBookmarkName(oldName);
+  const nextBookmark = normalizeBookmarkName(newName);
+  if (!oldBookmark || !nextBookmark || oldBookmark === nextBookmark) return false;
+  const oldPaths = metaGetBookmarkPaths(oldBookmark);
+  if (!oldPaths.length && !WS.meta.bookmarksByName.has(oldBookmark)) return false;
+  const merged = normalizeBookmarkPathList(metaGetBookmarkPaths(nextBookmark).concat(oldPaths));
+  WS.meta.bookmarksByName.delete(oldBookmark);
+  WS.meta.bookmarksByName.set(nextBookmark, merged);
+  const oldAlbum = metaGetBookmarkAlbumForBookmark(oldBookmark);
+  if (oldAlbum && !metaGetBookmarkAlbumForBookmark(nextBookmark)) {
+    WS.meta.bookmarkAlbumByBookmark.set(nextBookmark, oldAlbum);
+  }
+  if (WS.meta.hiddenBookmarkNames.has(oldBookmark)) {
+    WS.meta.hiddenBookmarkNames.add(nextBookmark);
+  }
+  WS.meta.hiddenBookmarkNames.delete(oldBookmark);
+  WS.meta.bookmarkAlbumByBookmark.delete(oldBookmark);
+  metaTrackBookmarkDirty();
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaDeleteBookmark(bookmarkName) {
+  ensureBookmarkMaps();
+  const name = normalizeBookmarkName(bookmarkName);
+  if (!name) return false;
+  const existed = WS.meta.bookmarksByName.delete(name);
+  const albumExisted = WS.meta.bookmarkAlbumByBookmark.delete(name);
+  const hiddenExisted = WS.meta.hiddenBookmarkNames.delete(name);
+  if (!existed && !albumExisted && !hiddenExisted) return false;
+  metaTrackBookmarkDirty();
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function getBookmarkNamesSorted() {
+  ensureBookmarkMaps();
+  return Array.from(WS.meta.bookmarksByName.keys())
+    .map(normalizeBookmarkName)
+    .filter(Boolean)
+    .sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+function makeBookmarkEntry(bookmarkName, extra = null) {
+  const name = normalizeBookmarkName(bookmarkName);
+  if (!name) return null;
+  const paths = metaGetBookmarkPaths(name);
+  if (!paths.length) return null;
+  return Object.assign(
+    {
+      kind: "tag",
+      special: "bookmark",
+      bookmark: name,
+      label: name,
+      count: paths.length,
+      originPath: "",
+    },
+    extra && typeof extra === "object" ? extra : {},
+  );
+}
+
+function getDirsForBookmarkName(bookmarkName) {
+  const paths = metaGetBookmarkPaths(bookmarkName);
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < paths.length; i++) {
+    const p = paths[i];
+    if (!p || seen.has(p)) continue;
+    const node = WS.dirByPath.get(p);
+    if (!node) continue;
+    seen.add(p);
+    out.push(node);
+  }
+  return sortDirCollectionForDisplay(out, `bookmark:${normalizeBookmarkName(bookmarkName)}`);
+}
+
+function getVisibleDirsForBookmarkEntry(entry) {
+  const name = normalizeBookmarkName(entry && entry.bookmark);
+  if (!name) return [];
+  return filterTagEntryDirsByVisibleRecords(getDirsForBookmarkName(name), entry);
+}
+
+function getBookmarkAlbumEntryStatsForRoot() {
+  const out = new Map();
+  const names = getBookmarkNamesSorted();
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i];
+    if (!shouldIncludeBookmarkNameInList(name)) continue;
+    const album = metaGetBookmarkAlbumForBookmark(name);
+    if (!album) continue;
+    const entry = makeBookmarkEntry(name, { album });
+    if (!entry) continue;
+    const visible = getVisibleDirsForBookmarkEntry(entry);
+    if (!visible.length) continue;
+    let bucket = out.get(album);
+    if (!bucket) {
+      bucket = { bookmarks: [], dirs: [], dirPaths: new Set() };
+      out.set(album, bucket);
+    }
+    bucket.bookmarks.push(name);
+    for (let d = 0; d < visible.length; d++) {
+      const path = String(visible[d]?.path || "");
+      if (!path || bucket.dirPaths.has(path)) continue;
+      bucket.dirPaths.add(path);
+      bucket.dirs.push(visible[d]);
+    }
+  }
+  return out;
+}
+
+function getBookmarkEntriesForRoot() {
+  const out = [];
+  const names = getBookmarkNamesSorted();
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i];
+    if (!shouldIncludeBookmarkNameInList(name)) continue;
+    if (metaGetBookmarkAlbumForBookmark(name)) continue;
+    const entry = makeBookmarkEntry(name);
+    if (!entry) continue;
+    const visible = getVisibleDirsForBookmarkEntry(entry);
+    if (!visible.length) continue;
+    entry.count = visible.length;
+    out.push(entry);
+  }
+  return out;
+}
+
+function remapBookmarkPathsForRename(oldPrefix, newPrefix) {
+  ensureBookmarkMaps();
+  let changed = false;
+  const next = new Map();
+  for (const [name, paths] of WS.meta.bookmarksByName.entries()) {
+    const remapped = normalizeBookmarkPathList(
+      normalizeBookmarkPathList(paths).map((path) => remapPathPrefix(oldPrefix, newPrefix, path)),
+    );
+    next.set(name, remapped);
+    if (!arraysEqual(normalizeBookmarkPathList(paths), remapped)) changed = true;
+  }
+  if (!changed) return false;
+  WS.meta.bookmarksByName = next;
+  metaMarkBookmarkDirty();
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function startBulkBookmarking(paths, preferPane = "") {
+  if (
+    canUseBulkTagPlaceholderUi() &&
+    setBulkTagPlaceholder(paths, "New tag", "bookmark", "", preferPane)
+  )
+    return true;
+  return false;
+}
+
+function startBulkBookmarkAlbuming(bookmarks, preferPane = "") {
+  if (
+    canUseBulkTagPlaceholderUi() &&
+    setBulkTagPlaceholder(bookmarks, "New parent tag", "bookmarkAlbum", "", preferPane)
+  )
+    return true;
+  return false;
+}
+
+function beginBookmarkAlbumAssignmentForEntries(entries, preferPane = "directories") {
+  const bookmarks = normalizeTagList(
+    (Array.isArray(entries) ? entries : []).map((entry) => String(entry?.bookmark || "")),
+  );
+  if (!bookmarks.length) {
+    showStatusMessage("No tags selected.");
+    return false;
+  }
+  startBulkBookmarkAlbuming(bookmarks, preferPane);
   return true;
 }
 
@@ -20574,17 +21058,30 @@ function hiddenTagKeyForEntry(entry) {
     return "";
   const tag = normalizeTag(entry.tag || "");
   if (!tag) return "";
-  return hiddenTagKeyForTag(tag, String(entry.originPath || ""));
+  return hiddenTagKeyForTag(tag);
+}
+
+function metaIsTagOrAncestorHidden(tagName, seen = null) {
+  const tag = normalizeTag(tagName);
+  if (!tag) return false;
+  const visited = seen instanceof Set ? seen : new Set();
+  if (visited.has(tag)) return false;
+  visited.add(tag);
+  if (metaHasHiddenTagByKey(hiddenTagKeyForTag(tag))) return true;
+  const parents = metaGetParentTagsForTag(tag);
+  for (let i = 0; i < parents.length; i++) {
+    if (metaIsTagOrAncestorHidden(parents[i], visited)) return true;
+  }
+  return false;
 }
 
 function metaHasHidden(path) {
   const normalizedPath = normalizeDirPathValue(path);
   if (!normalizedPath) return metaHasLegacyHidden(normalizedPath);
   if (metaHasLegacyHidden(normalizedPath)) return true;
-  const scopePath = hiddenTagScopePathForDirPath(normalizedPath);
   const userTags = metaGetUserTags(normalizedPath);
   for (let i = 0; i < userTags.length; i++) {
-    if (metaHasHiddenTagByKey(hiddenTagKeyForTag(userTags[i], scopePath)))
+    if (metaIsTagOrAncestorHidden(userTags[i]))
       return true;
   }
   return false;
@@ -21255,12 +21752,16 @@ function tagThumbnailKeyForEntry(entry) {
     if (entry.special === "favorites") {
       return `special:favorites:${tagThumbnailScopeKeyFromPath(scopePath)}`;
     }
+    if (entry.special === "bookmark") {
+      const bookmark = normalizeBookmarkName(entry.bookmark || entry.label || "");
+      return bookmark ? tagThumbnailKeyForTag(bookmark) : "";
+    }
     return `special:${String(entry.special || "")}`;
   }
   if (entry.album && !entry.tag) {
-    return tagThumbnailKeyForAlbum(entry.album, scopePath);
+    return tagThumbnailKeyForTag(entry.album);
   }
-  return tagThumbnailKeyForTag(entry.tag || "", scopePath);
+  return tagThumbnailKeyForTag(entry.tag || "");
 }
 
 function metaGetTagThumbnailModeByKey(tagKey) { }
@@ -21437,13 +21938,7 @@ function startBulkTagging(paths, preferPane = "") {
 function startBulkTagAlbuming(tags, originPath = "", preferPane = "") {
   if (
     canUseBulkTagPlaceholderUi() &&
-    setBulkTagPlaceholder(
-      tags,
-      "New tag album",
-      "album",
-      originPath,
-      preferPane,
-    )
+    setBulkTagPlaceholder(tags, "New parent tag", "album", originPath, preferPane)
   )
     return;
 }
@@ -21456,9 +21951,10 @@ function setBulkTagPlaceholder(
   preferPane = "",
 ) {
   clearBulkTagPlaceholder();
-  const type = String(placeholderType || "tag") === "album" ? "album" : "tag";
+  const rawType = String(placeholderType || "tag");
+  const type = rawType === "album" || rawType === "bookmark" || rawType === "bookmarkAlbum" ? rawType : "tag";
   let unique = [];
-  if (type === "album") {
+  if (type === "album" || type === "bookmarkAlbum") {
     unique = normalizeTagList(items).filter((tag) => !isReservedFolderTag(tag));
   } else {
     unique = Array.from(
@@ -21474,8 +21970,9 @@ function setBulkTagPlaceholder(
   TAG_ENTRY_RENAME_STATE = {
     tag: "",
     label,
-    paths: type === "tag" ? unique.slice() : [],
+    paths: type === "tag" || type === "bookmark" ? unique.slice() : [],
     tags: type === "album" ? unique.slice() : [],
+    bookmarks: type === "bookmarkAlbum" ? unique.slice() : [],
     originPath: type === "album" ? String(originPath || "") : "",
     placeholder: true,
     placeholderType: type,
@@ -21583,18 +22080,36 @@ function commitTagEntryRename(inputEl) {
         syncButtons();
         return;
       }
+    } else if (state.placeholderType === "bookmarkAlbum") {
+      const changed = assignBookmarkAlbumForBookmarksBulk(
+        state.bookmarks,
+        desired,
+      );
+      if (!changed) {
+        showStatusMessage("No tags updated.");
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        return;
+      }
+    } else if (state.placeholderType === "bookmark") {
+      metaAddBookmarkPathsBulk(state.paths, [desired]);
     } else {
       metaAddUserTagsBulk(state.paths, [desired]);
     }
     finalizeBulkSelectionAction();
     return;
   }
-  const changed = state.isAlbumEntry
-    ? renameTagAlbumByName(state.album, desired, state.originPath)
-    : renameTagForPaths(state.tag, desired, state.paths, state.originPath);
+  const changed = state.isBookmarkEntry
+    ? metaRenameBookmarkName(state.bookmark, desired)
+    : state.isAlbumEntry
+      ? renameTagAlbumByName(state.album, desired, state.originPath)
+      : renameTagForPaths(state.tag, desired, state.paths, state.originPath);
   if (!changed) {
     showStatusMessage(
-      state.isAlbumEntry ? "No tag albums updated." : "No folders updated.",
+      state.isBookmarkEntry
+        ? "No tags updated."
+        : state.isAlbumEntry ? "No tags updated." : "No tags updated.",
     );
     renderDirectoriesPane(true);
     return;
@@ -21622,7 +22137,7 @@ function assignTagAlbumForTagsBulk(tags, albumName, scopePath = null) {
   metaScheduleSave();
   refreshAfterTagMetadataChange();
   showStatusMessage(
-    `Assigned ${changedCount} tag${changedCount === 1 ? "" : "s"} to album '${album}'.`,
+    `Moved ${changedCount} tag${changedCount === 1 ? "" : "s"} into tag '${album}'.`,
   );
   return true;
 }
@@ -22023,6 +22538,7 @@ function metaMakeKeybindsLogObject() {
 function metaMakeLogObject() {
   const folders = {};
   const tagByFp = {};
+  const bookmarkBackup = metaMakeBookmarksPayloadObject();
   for (const [path, node] of WS.dirByPath.entries()) {
     const fp = WS.meta.dirFingerprints.get(path) || 0;
     const tags = metaGetTags(path);
@@ -22039,6 +22555,9 @@ function metaMakeLogObject() {
     folders,
     tagByFp,
     options: normalizeOptions(WS.meta.options || null),
+    bookmarksByName: bookmarkBackup.bookmarksByName,
+    bookmarkAlbumByBookmark: bookmarkBackup.bookmarkAlbumByBookmark,
+    hiddenBookmarkByName: bookmarkBackup.hiddenBookmarkByName,
   };
 }
 
@@ -22341,6 +22860,7 @@ function metaApplyTagsLog(log) {
   if (cleanupLegacyProcessingDisabledMetadata()) {
     metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   }
+  metaApplyBookmarksPayloadFromLog(log, { preserveExisting: true });
   invalidateDirMetricsCaches();
 }
 
@@ -22467,6 +22987,7 @@ function metaApplyFromLog(log) {
   if (cleanupLegacyProcessingDisabledMetadata()) {
     metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   }
+  metaApplyBookmarksPayloadFromLog(log, { preserveExisting: true });
 
   applyDefaultViewFromOptions();
   syncMetaButtons();
@@ -22566,11 +23087,103 @@ function metaMakeDailyJournalsDocObject() {
   };
 }
 
+function metaMakeBookmarksPayloadObject() {
+  ensureBookmarkMaps();
+  const bookmarksByName = {};
+  const bookmarkAlbumByBookmark = {};
+  const hiddenBookmarkByName = {};
+  for (const [nameRaw, pathsRaw] of WS.meta.bookmarksByName.entries()) {
+    const name = normalizeBookmarkName(nameRaw);
+    const paths = normalizeBookmarkPathList(pathsRaw);
+    if (!name || !paths.length) continue;
+    bookmarksByName[name] = paths;
+  }
+  for (const [nameRaw, albumRaw] of WS.meta.bookmarkAlbumByBookmark.entries()) {
+    const name = normalizeBookmarkName(nameRaw);
+    const album = normalizeTagAlbumName(albumRaw);
+    if (!name || !album || !bookmarksByName[name]) continue;
+    bookmarkAlbumByBookmark[name] = album;
+  }
+  for (const nameRaw of WS.meta.hiddenBookmarkNames.values()) {
+    const name = normalizeBookmarkName(nameRaw);
+    if (!name || !bookmarksByName[name]) continue;
+    hiddenBookmarkByName[name] = true;
+  }
+  return { bookmarksByName, bookmarkAlbumByBookmark, hiddenBookmarkByName };
+}
+
+function metaApplyBookmarksPayloadFromLog(log, opts = null) {
+  ensureBookmarkMaps();
+  const options = opts && typeof opts === "object" ? opts : {};
+  const preserveExisting = !!options.preserveExisting;
+  const hasBookmarksProp = !!(log && typeof log === "object" && Object.prototype.hasOwnProperty.call(log, "bookmarksByName"));
+  const hasAlbumProp = !!(log && typeof log === "object" && Object.prototype.hasOwnProperty.call(log, "bookmarkAlbumByBookmark"));
+  const hasHiddenProp = !!(log && typeof log === "object" && Object.prototype.hasOwnProperty.call(log, "hiddenBookmarkByName"));
+  if (!hasBookmarksProp && !hasAlbumProp && !hasHiddenProp) return false;
+  if (preserveExisting && WS.meta.bookmarksByName && WS.meta.bookmarksByName.size) return false;
+
+  const rawBookmarks =
+    log.bookmarksByName && typeof log.bookmarksByName === "object"
+      ? log.bookmarksByName
+      : {};
+  const nextBookmarksByName = new Map();
+  for (const rawName of Object.keys(rawBookmarks)) {
+    const name = normalizeBookmarkName(rawName);
+    const paths = normalizeBookmarkPathList(rawBookmarks[rawName]);
+    if (!name || !paths.length) continue;
+    nextBookmarksByName.set(name, paths);
+  }
+
+  const rawAlbums =
+    log.bookmarkAlbumByBookmark && typeof log.bookmarkAlbumByBookmark === "object"
+      ? log.bookmarkAlbumByBookmark
+      : {};
+  const nextBookmarkAlbumByBookmark = new Map();
+  for (const rawName of Object.keys(rawAlbums)) {
+    const name = normalizeBookmarkName(rawName);
+    const album = normalizeTagAlbumName(rawAlbums[rawName]);
+    if (!name || !album || !nextBookmarksByName.has(name)) continue;
+    nextBookmarkAlbumByBookmark.set(name, album);
+  }
+
+  const rawHidden =
+    log.hiddenBookmarkByName && typeof log.hiddenBookmarkByName === "object"
+      ? log.hiddenBookmarkByName
+      : {};
+  const nextHiddenBookmarkNames = new Set();
+  for (const rawName of Object.keys(rawHidden)) {
+    const name = normalizeBookmarkName(rawName);
+    if (!name || !rawHidden[rawName] || !nextBookmarksByName.has(name)) continue;
+    nextHiddenBookmarkNames.add(name);
+  }
+
+  WS.meta.bookmarksByName = nextBookmarksByName;
+  WS.meta.bookmarkAlbumByBookmark = nextBookmarkAlbumByBookmark;
+  WS.meta.hiddenBookmarkNames = nextHiddenBookmarkNames;
+  let migratedToTags = false;
+  for (const [name, paths] of nextBookmarksByName.entries()) {
+    for (let i = 0; i < paths.length; i++) {
+      if (metaAddUserTagToPathForImport(paths[i], name))
+        migratedToTags = true;
+    }
+  }
+  for (const [name, album] of nextBookmarkAlbumByBookmark.entries()) {
+    metaAddParentTagForTag(name, album);
+  }
+  for (const name of nextHiddenBookmarkNames.values()) {
+    if (name) WS.meta.hiddenTagKeys.add(hiddenTagKeyForTag(name));
+  }
+  if (migratedToTags) metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
 function metaMakeTagsDocObject() {
   const folders = {};
   const tagByFp = {};
   const hiddenTagByKey = {};
   const tagMediaFilterByKey = {};
+  const bookmarkBackup = metaMakeBookmarksPayloadObject();
   for (const [path] of WS.dirByPath.entries()) {
     const fp = WS.meta.dirFingerprints.get(path) || 0;
     const tags = metaGetTags(path).filter(
@@ -22618,22 +23231,37 @@ function metaMakeTagsDocObject() {
     tagByFp,
     hiddenTagByKey,
     tagMediaFilterByKey,
+    bookmarksByName: bookmarkBackup.bookmarksByName,
+    bookmarkAlbumByBookmark: bookmarkBackup.bookmarkAlbumByBookmark,
+    hiddenBookmarkByName: bookmarkBackup.hiddenBookmarkByName,
+  };
+}
+
+function metaMakeBookmarksDocObject() {
+  const bookmarkPayload = metaMakeBookmarksPayloadObject();
+  return {
+    schema: 1,
+    updatedAt: Date.now(),
+    ...bookmarkPayload,
   };
 }
 
 function metaMakeTagAlbumsDocObject() {
   const tagAlbumByTag = {};
-  if (WS.meta && WS.meta.tagAlbumByTag) {
-    for (const [tagKeyRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
-      const parsed = parseTagAlbumMembershipKey(tagKeyRaw);
-      const album = normalizeTagAlbumName(albumRaw);
-      if (!parsed || !album) continue;
-      tagAlbumByTag[parsed.key] = album;
+  const tagParentsByTag = {};
+  ensureTagGraphMaps();
+  if (WS.meta && WS.meta.tagParentsByTag) {
+    for (const [tagRaw, parentsRaw] of WS.meta.tagParentsByTag.entries()) {
+      const tag = normalizeTag(tagRaw);
+      const parents = normalizeTagParentList(parentsRaw, tag);
+      if (!tag || !parents.length) continue;
+      tagParentsByTag[tag] = parents.slice();
     }
   }
   return {
     schema: 1,
     updatedAt: Date.now(),
+    tagParentsByTag,
     tagAlbumByTag,
   };
 }
@@ -22793,6 +23421,8 @@ function metaDocObjectForId(docId) {
       return metaMakeTagsDocObject();
     case META_DOC_IDS.tagAlbums:
       return metaMakeTagAlbumsDocObject();
+    case META_DOC_IDS.bookmarks:
+      return metaMakeBookmarksDocObject();
     case META_DOC_IDS.trash:
       return metaMakeTrashDocObject();
     case META_DOC_IDS.thumbnails:
@@ -22930,7 +23560,11 @@ function metaApplyTagsDocLog(log) {
   for (const rawKey of Object.keys(hiddenTagByKey)) {
     const key = String(rawKey || "");
     if (!key || !hiddenTagByKey[rawKey]) continue;
-    WS.meta.hiddenTagKeys.add(key);
+    const parsed = parseTagThumbnailStructuredKey(key);
+    if (parsed && parsed.kind === "tag" && parsed.value)
+      WS.meta.hiddenTagKeys.add(hiddenTagKeyForTag(parsed.value));
+    else
+      WS.meta.hiddenTagKeys.add(key);
   }
 
   WS.meta.tagMediaFilterByKey.clear();
@@ -22946,12 +23580,35 @@ function metaApplyTagsDocLog(log) {
     if (!key || !filterValue.length) continue;
     WS.meta.tagMediaFilterByKey.set(key, filterValue);
   }
+  metaApplyBookmarksPayloadFromLog(log, { preserveExisting: true });
   invalidateDirMetricsCaches();
+}
+
+function metaApplyBookmarksDocLog(log) {
+  ensureBookmarkMaps();
+  if (!log || typeof log !== "object") return;
+  const hasBookmarkPayload =
+    Object.prototype.hasOwnProperty.call(log, "bookmarksByName") ||
+    Object.prototype.hasOwnProperty.call(log, "bookmarkAlbumByBookmark") ||
+    Object.prototype.hasOwnProperty.call(log, "hiddenBookmarkByName");
+  if (!hasBookmarkPayload) return;
+  metaApplyBookmarksPayloadFromLog(log, { preserveExisting: false });
 }
 
 function metaApplyTagAlbumsDocLog(log) {
   if (!log || typeof log !== "object") return;
+  ensureTagGraphMaps();
   WS.meta.tagAlbumByTag.clear();
+  const tagParentsByTag =
+    log.tagParentsByTag && typeof log.tagParentsByTag === "object"
+      ? log.tagParentsByTag
+      : {};
+  for (const rawTag of Object.keys(tagParentsByTag)) {
+    const tag = normalizeTag(rawTag);
+    const parents = normalizeTagParentList(tagParentsByTag[rawTag], tag);
+    if (!tag || !parents.length) continue;
+    WS.meta.tagParentsByTag.set(tag, parents);
+  }
   const tagAlbumByTag =
     log.tagAlbumByTag && typeof log.tagAlbumByTag === "object"
       ? log.tagAlbumByTag
@@ -22961,6 +23618,7 @@ function metaApplyTagAlbumsDocLog(log) {
     const album = normalizeTagAlbumName(tagAlbumByTag[rawKey]);
     if (!parsed || !album) continue;
     WS.meta.tagAlbumByTag.set(parsed.key, album);
+    metaAddParentTagForTag(parsed.tag, album);
   }
   invalidateDirMetricsCaches();
 }
@@ -23098,6 +23756,9 @@ function metaApplyDocLogById(docId, log) {
       return;
     case META_DOC_IDS.tagAlbums:
       metaApplyTagAlbumsDocLog(log);
+      return;
+    case META_DOC_IDS.bookmarks:
+      metaApplyBookmarksDocLog(log);
       return;
     case META_DOC_IDS.trash:
       metaApplyTrashDocLog(log);
@@ -23526,6 +24187,7 @@ function metaInitForCurrentWorkspace(opts = null) {
         META_DOC_IDS.dailyJournals,
         META_DOC_IDS.tags,
         META_DOC_IDS.tagAlbums,
+        META_DOC_IDS.bookmarks,
         META_DOC_IDS.trash,
               META_DOC_IDS.aspectRatios,
         META_DOC_IDS.appearanceAssignments,
@@ -23630,6 +24292,7 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     META_DOC_IDS.dailyJournals,
     META_DOC_IDS.tags,
     META_DOC_IDS.tagAlbums,
+    META_DOC_IDS.bookmarks,
     META_DOC_IDS.trash,
       META_DOC_IDS.aspectRatios,
     META_DOC_IDS.appearanceAssignments,
@@ -23715,8 +24378,10 @@ async function metaReapplyFsScoresAndTags() {
     metaFsHandleForDocId(META_DOC_IDS.scores),
   );
   const tagsLog = await metaLoadFsDoc(metaFsHandleForDocId(META_DOC_IDS.tags));
+  const bookmarksLog = await metaLoadFsDoc(metaFsHandleForDocId(META_DOC_IDS.bookmarks));
   if (scoresLog) metaApplyScoresDocLog(scoresLog);
   if (tagsLog) metaApplyTagsDocLog(tagsLog);
+  if (bookmarksLog) metaApplyBookmarksDocLog(bookmarksLog);
 }
 
 async function buildWorkspaceFromFiles(fileList) {
@@ -25639,10 +26304,13 @@ function capturePreviewRestoreState(previewState = null) {
   if (!src || !src.kind) return null;
   if (src.kind === "dir" && src.dirNode) {
     if (src.dirNode._skipTagFilters) {
+      const mode = String(src.dirNode._tagPreviewMode || "");
       return {
         kind: "tag-dir",
-        mode: String(src.dirNode._tagPreviewMode || ""),
-        tag: String(src.dirNode._tagPreviewTag || ""),
+        mode,
+        tag: mode === "bookmark"
+          ? String(src.dirNode._tagPreviewBookmark || src.dirNode.name || "")
+          : String(src.dirNode._tagPreviewTag || ""),
         album: String(src.dirNode._tagPreviewAlbum || ""),
         originPath: String(
           src.dirNode._tagPreviewOriginPath || src.dirNode.parent?.path || "",
@@ -26572,6 +27240,7 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
     newPrefix,
   );
   WS.meta.dirTags = remapPathMapKeys(WS.meta.dirTags, oldPrefix, newPrefix);
+  remapBookmarkPathsForRename(oldPrefix, newPrefix);
   WS.meta.pendingTagsByPath = remapPathMapKeys(
     WS.meta.pendingTagsByPath,
     oldPrefix,
@@ -26910,6 +27579,7 @@ async function updateFileRecordsForFileRenames(
 
 function refreshCurrentViewAfterCatalogMutation() {
   rebuildDirectoriesEntries();
+  refreshLiveVirtualPortalFrameOrders();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
   syncPreviewToSelection({ force: true });
   renderDirectoriesPane(true);
@@ -29167,18 +29837,233 @@ function collectTagAlbumStatsForGroups(tagGroups, scopePath = null) {
 
 function buildBulkTagPlaceholderEntry() {
   if (!BULK_TAG_PLACEHOLDER) return null;
-  const type =
-    String(BULK_TAG_PLACEHOLDER.type || "tag") === "album" ? "album" : "tag";
+  const rawType = String(BULK_TAG_PLACEHOLDER.type || "tag");
+  const type = rawType === "album" || rawType === "bookmark" || rawType === "bookmarkAlbum" ? rawType : "tag";
   return {
     kind: "tag",
     label:
       BULK_TAG_PLACEHOLDER.label ||
-      (type === "album" ? "New tag album" : "New tag folder"),
+      (type === "album" || type === "bookmarkAlbum"
+        ? "New parent tag"
+        : type === "bookmark"
+          ? "New tag"
+          : "New tag folder"),
     tag: "",
     count: BULK_TAG_PLACEHOLDER.count || 0,
     placeholder: true,
     placeholderType: type,
   };
+}
+
+function tagGraphParentPathForFolderPath(path) {
+  const normalized = normalizeDirPathValue(path);
+  if (!normalized) return "";
+  const idx = normalized.lastIndexOf("/");
+  return idx >= 0 ? normalized.slice(0, idx) : "";
+}
+
+function tagGraphCommonAncestorPath(paths) {
+  const list = (Array.isArray(paths) ? paths : [])
+    .map((path) => normalizeDirPathValue(path))
+    .filter((path, idx, arr) => idx === arr.indexOf(path));
+  if (!list.length) return "";
+  const split = (path) => String(path || "").split("/").filter(Boolean);
+  const first = split(list[0]);
+  let keep = first.length;
+  for (let i = 1; i < list.length; i++) {
+    const parts = split(list[i]);
+    keep = Math.min(keep, parts.length);
+    for (let j = 0; j < keep; j++) {
+      if (first[j] !== parts[j]) {
+        keep = j;
+        break;
+      }
+    }
+  }
+  return first.slice(0, keep).join("/");
+}
+
+function includeHiddenTagEntriesInCurrentView() {
+  return !!(
+    WS.view.hiddenMode ||
+    showHiddenFolderEnabled() ||
+    (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden")
+  );
+}
+
+function ensureUnifiedTagGraphInfo(model, tagName) {
+  const tag = normalizeTag(tagName);
+  if (!tag) return null;
+  let info = model.tags.get(tag);
+  if (!info) {
+    info = {
+      tag,
+      directPaths: new Set(),
+      parents: new Set(),
+      children: new Set(),
+      naturalPath: "",
+      hasComponents: false,
+    };
+    model.tags.set(tag, info);
+  }
+  return info;
+}
+
+function getUnifiedTagGraphModel() {
+  const cacheKey = "unified-tag-graph";
+  if (TAG_SCOPE_MODEL_CACHE.has(cacheKey)) return TAG_SCOPE_MODEL_CACHE.get(cacheKey);
+
+  ensureTagGraphMaps();
+  const model = { tags: new Map(), placedTagsByPath: new Map() };
+  const addDirectPath = (tagName, path) => {
+    const tag = normalizeTag(tagName);
+    const normalizedPath = normalizeDirPathValue(path);
+    if (!tag || !normalizedPath || isReservedFolderTag(tag)) return;
+    const info = ensureUnifiedTagGraphInfo(model, tag);
+    if (info) info.directPaths.add(normalizedPath);
+  };
+  const addParent = (childName, parentName) => {
+    const child = normalizeTag(childName);
+    const parent = normalizeTag(parentName);
+    if (!child || !parent || child === parent) return;
+    const childInfo = ensureUnifiedTagGraphInfo(model, child);
+    const parentInfo = ensureUnifiedTagGraphInfo(model, parent);
+    if (!childInfo || !parentInfo) return;
+    childInfo.parents.add(parent);
+    parentInfo.children.add(child);
+  };
+
+  if (WS.dirByPath) {
+    for (const [pathRaw] of WS.dirByPath.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      if (!path || isPathInsideInternalTrash(path)) continue;
+      const tags = metaGetUserTags(path);
+      for (let i = 0; i < tags.length; i++) addDirectPath(tags[i], path);
+    }
+  }
+  if (WS.meta && WS.meta.pendingTagsByPath) {
+    for (const [pathRaw, tagsRaw] of WS.meta.pendingTagsByPath.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      const tags = normalizeTagList(tagsRaw);
+      for (let i = 0; i < tags.length; i++) addDirectPath(tags[i], path);
+    }
+  }
+  if (WS.meta && WS.meta.tagParentsByTag) {
+    for (const [childRaw, parentsRaw] of WS.meta.tagParentsByTag.entries()) {
+      const parents = normalizeTagParentList(parentsRaw, childRaw);
+      for (let i = 0; i < parents.length; i++) addParent(childRaw, parents[i]);
+    }
+  }
+  const resolving = new Set();
+  const resolvePlacement = (tagName) => {
+    const tag = normalizeTag(tagName);
+    const info = ensureUnifiedTagGraphInfo(model, tag);
+    if (!info) return "";
+    if (info._resolved) return info.naturalPath;
+    if (resolving.has(tag)) {
+      const directOnly = Array.from(info.directPaths).map(tagGraphParentPathForFolderPath);
+      info.naturalPath = tagGraphCommonAncestorPath(directOnly);
+      info.hasComponents = info.directPaths.size > 0;
+      return info.naturalPath;
+    }
+    resolving.add(tag);
+    const componentPaths = Array.from(info.directPaths).map(tagGraphParentPathForFolderPath);
+    for (const child of info.children) {
+      const childInfo = ensureUnifiedTagGraphInfo(model, child);
+      if (!childInfo) continue;
+      const childPath = resolvePlacement(child);
+      if (childInfo.hasComponents) componentPaths.push(childPath);
+    }
+    info.naturalPath = tagGraphCommonAncestorPath(componentPaths);
+    info.hasComponents = componentPaths.length > 0;
+    info._resolved = true;
+    resolving.delete(tag);
+    return info.naturalPath;
+  };
+
+  for (const tag of model.tags.keys()) resolvePlacement(tag);
+  for (const info of model.tags.values()) {
+    if (!info.hasComponents || info.parents.size) continue;
+    const placement = normalizeDirPathValue(info.naturalPath);
+    let list = model.placedTagsByPath.get(placement);
+    if (!list) {
+      list = [];
+      model.placedTagsByPath.set(placement, list);
+    }
+    list.push(info.tag);
+  }
+  for (const list of model.placedTagsByPath.values()) {
+    list.sort((a, b) => String(a).localeCompare(String(b)));
+  }
+  TAG_SCOPE_MODEL_CACHE.set(cacheKey, model);
+  return model;
+}
+
+function visibleDirectDirNodesForUnifiedTag(tagName, entry = null) {
+  const tag = normalizeTag(tagName);
+  if (!tag) return [];
+  const info = getUnifiedTagGraphModel().tags.get(tag);
+  if (!info || !info.directPaths.size) return [];
+  const showHidden = includeHiddenTagEntriesInCurrentView();
+  const nodes = Array.from(info.directPaths)
+    .map((path) => resolveDirNodeForPathOrStorageStub(path))
+    .filter((node) => node && node.type === "dir")
+    .filter((node) => showHidden || !isDirOrAncestorHidden(node));
+  return filterTagEntryDirsByVisibleRecords(
+    nodes,
+    entry || { kind: "tag", tag, label: tag, originPath: String(info.naturalPath || "") },
+  );
+}
+
+function visibleChildTagEntriesForUnifiedTag(parentTagName) {
+  const parent = normalizeTag(parentTagName);
+  const model = getUnifiedTagGraphModel();
+  const info = model.tags.get(parent);
+  if (!info || !info.children.size) return [];
+  const showHidden = includeHiddenTagEntriesInCurrentView();
+  const out = [];
+  const children = Array.from(info.children).sort((a, b) => String(a).localeCompare(String(b)));
+  for (let i = 0; i < children.length; i++) {
+    const tag = children[i];
+    const childInfo = model.tags.get(tag);
+    if (!childInfo || !childInfo.hasComponents) continue;
+    if (!showHidden && metaIsTagOrAncestorHidden(tag)) continue;
+    const entry = makeUnifiedTagEntry(tag, childInfo.naturalPath);
+    if (entry) out.push(entry);
+  }
+  return out;
+}
+
+function makeUnifiedTagEntry(tagName, originPath = "") {
+  const tag = normalizeTag(tagName);
+  if (!tag) return null;
+  const info = getUnifiedTagGraphModel().tags.get(tag);
+  if (!info || !info.hasComponents) return null;
+  const entry = {
+    kind: "tag",
+    tag,
+    label: tag,
+    count: 0,
+    childTagCount: info.children ? info.children.size : 0,
+    originPath: normalizeDirPathValue(originPath || info.naturalPath),
+  };
+  entry.count = visibleDirectDirNodesForUnifiedTag(tag, entry).length;
+  return entry;
+}
+
+function getPlacedUnifiedTagEntriesForDir(dirNode) {
+  const path = normalizeDirPathValue(dirNode && dirNode.path);
+  const model = getUnifiedTagGraphModel();
+  const tags = model.placedTagsByPath.get(path) || [];
+  const showHidden = includeHiddenTagEntriesInCurrentView();
+  const out = [];
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i];
+    if (!showHidden && metaIsTagOrAncestorHidden(tag)) continue;
+    const entry = makeUnifiedTagEntry(tag, path);
+    if (entry) out.push(entry);
+  }
+  return out;
 }
 
 function getTagFolderEntriesForDir(dirNode, opts = null) {
@@ -29259,77 +30144,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       });
     }
   }
-  const tagGroups = gatherTagGroupsForDir(dirNode);
-  if (tagGroups.size) {
-    const albumStats = collectTagAlbumStatsForGroups(tagGroups, originPath);
-    if (albumStats.size) {
-      const sortedAlbums = Array.from(albumStats.keys()).sort((a, b) =>
-        String(a).localeCompare(String(b)),
-      );
-      for (let i = 0; i < sortedAlbums.length; i++) {
-        const album = sortedAlbums[i];
-        const stats = albumStats.get(album);
-        if (!stats || !stats.tags.size) continue;
-        const albumEntry = {
-          kind: "tag",
-          album,
-          label: album,
-          originPath,
-        };
-        const visibleAlbumDirs = filterTagEntryDirsByVisibleRecords(
-          Array.isArray(stats.dirs) ? stats.dirs : Array.from(stats.folderPaths)
-            .map((path) => WS.dirByPath.get(String(path || "")) || null)
-            .filter(Boolean),
-          albumEntry,
-        );
-        if (!visibleAlbumDirs.length) continue;
-        let visibleTagCount = 0;
-        stats.tags.forEach((tag) => {
-          const tagEntry = {
-            kind: "tag",
-            tag: String(tag || ""),
-            album,
-            label: String(tag || ""),
-            originPath,
-          };
-          const nodes = tagGroups.get(String(tag || "")) || [];
-          if (filterTagEntryDirsByVisibleRecords(nodes, tagEntry).length)
-            visibleTagCount++;
-        });
-        if (!visibleTagCount) continue;
-        entries.push({
-          kind: "tag",
-          album,
-          label: album,
-          count: visibleAlbumDirs.length,
-          tagCount: visibleTagCount,
-          originPath,
-        });
-      }
-    }
-    const sorted = Array.from(tagGroups.keys()).sort((a, b) =>
-      String(a).localeCompare(String(b)),
-    );
-    for (const tag of sorted) {
-      if (metaGetTagAlbumForTag(tag, originPath)) continue;
-      const nodes = tagGroups.get(tag) || [];
-      const tagEntry = {
-        kind: "tag",
-        tag,
-        label: tag,
-        originPath,
-      };
-      const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
-      if (!visibleNodes.length) continue;
-      entries.push({
-        kind: "tag",
-        tag,
-        label: tag,
-        count: visibleNodes.length,
-        originPath,
-      });
-    }
-  }
+  entries.push(...getPlacedUnifiedTagEntriesForDir(dirNode));
 
   if (cacheKey) TAG_FOLDER_ENTRIES_CACHE.set(cacheKey, entries);
   return placeholderEntry ? [placeholderEntry].concat(entries) : entries;
@@ -29373,18 +30188,21 @@ function getTagFolderBaseNode() {
 
 function getTagEntriesForTagFolderView() {
   if (!isViewingTagFolder()) return [];
-  if (WS.view.tagFolderActiveMode !== "album") return [];
-  const album = normalizeTagAlbumName(WS.view.tagFolderActiveAlbum || "");
-  if (!album) return [];
-  const baseNode = getTagFolderBaseNode();
-  return getTagEntriesForAlbumForBaseNode(baseNode, album);
+  const mode = String(WS.view.tagFolderActiveMode || "");
+  const tag =
+    mode === "tag"
+      ? normalizeTag(WS.view.tagFolderActiveTag || "")
+      : mode === "album"
+        ? normalizeTagAlbumName(WS.view.tagFolderActiveAlbum || "")
+        : "";
+  if (!tag) return [];
+  return visibleChildTagEntriesForUnifiedTag(tag);
 }
 
 function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
   const album = normalizeTagAlbumName(albumName || "");
-  if (!baseNode) return [];
   if (!album) return [];
-  const basePath = String(baseNode.path || "");
+  const basePath = String(baseNode?.path || "");
   const cacheKey = [
     basePath || "__root__",
     album,
@@ -29395,37 +30213,7 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
   if (cacheKey && TAG_ALBUM_TAG_ENTRIES_CACHE.has(cacheKey)) {
     return TAG_ALBUM_TAG_ENTRIES_CACHE.get(cacheKey) || [];
   }
-  const tagGroups = gatherTagGroupsForDir(baseNode);
-  if (!tagGroups.size) return [];
-  const sorted = Array.from(tagGroups.keys()).sort((a, b) =>
-    String(a).localeCompare(String(b)),
-  );
-  const out = [];
-  for (let i = 0; i < sorted.length; i++) {
-    const tag = String(sorted[i] || "");
-    if (!tag) continue;
-    if (metaGetTagAlbumForTag(tag, basePath) !== album)
-      continue;
-    const nodes = tagGroups.get(tag) || [];
-    const tagEntry = {
-      kind: "tag",
-      tag,
-      album,
-      label: tag,
-      originPath: basePath,
-    };
-    const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
-    if (!visibleNodes.length) continue;
-    out.push({
-      kind: "tag",
-      tag,
-      album,
-      label: tag,
-      count: visibleNodes.length,
-      originPath: basePath,
-      albumTag: true,
-    });
-  }
+  const out = visibleChildTagEntriesForUnifiedTag(album);
   if (cacheKey) TAG_ALBUM_TAG_ENTRIES_CACHE.set(cacheKey, out);
   return out;
 }
@@ -29492,20 +30280,33 @@ function getDirsForTagFolderView() {
     return setCached(sortDirCollectionForDisplay(getAllStorageDirNodes(), `tag-folder-storage:${basePath}`));
   }
   if (mode === "album") {
-    return setCached([]);
-  }
-  const tag = String(WS.view.tagFolderActiveTag || "");
-  if (!tag) return setCached([]);
-  return setCached(filterTagEntryDirsByVisibleRecords(
-    (gatherTagGroupsForDir(baseNode).get(tag) || []),
-    {
+    const tag = normalizeTagAlbumName(WS.view.tagFolderActiveAlbum || "");
+    if (!tag) return setCached([]);
+    return setCached(visibleDirectDirNodesForUnifiedTag(tag, {
       kind: "tag",
       tag,
-      album: String(WS.view.tagFolderActiveAlbum || ""),
       label: tag,
       originPath: basePath,
-    },
-  ));
+    }));
+  }
+  if (mode === "bookmark") {
+    const bookmark = normalizeBookmarkName(WS.view.tagFolderActiveTag || "");
+    if (!bookmark) return setCached([]);
+    return setCached(visibleDirectDirNodesForUnifiedTag(bookmark, {
+      kind: "tag",
+      tag: bookmark,
+      label: bookmark,
+      originPath: basePath,
+    }));
+  }
+  const tag = normalizeTag(WS.view.tagFolderActiveTag || "");
+  if (!tag) return setCached([]);
+  return setCached(visibleDirectDirNodesForUnifiedTag(tag, {
+    kind: "tag",
+    tag,
+    label: tag,
+    originPath: basePath,
+  }));
 }
 
 function getDirsForTagViewFrame(frame) {
@@ -29545,19 +30346,34 @@ function getDirsForTagViewFrame(frame) {
       },
     );
   if (frame.mode === "storage") return sortDirCollectionForDisplay(getAllStorageDirNodes(), `tag-frame-storage:${String(baseNode.path || "")}`);
-  if (frame.mode === "album") return [];
-  const tag = String(frame.tag || "");
-  if (!tag) return [];
-  return filterTagEntryDirsByVisibleRecords(
-    (gatherTagGroupsForDir(baseNode).get(tag) || []),
-    {
+  if (frame.mode === "album") {
+    const tag = normalizeTagAlbumName(frame.album || "");
+    if (!tag) return [];
+    return visibleDirectDirNodesForUnifiedTag(tag, {
       kind: "tag",
       tag,
-      album: String(frame.album || ""),
       label: tag,
       originPath: String(baseNode.path || ""),
-    },
-  );
+    });
+  }
+  if (frame.mode === "bookmark") {
+    const bookmark = normalizeBookmarkName(frame.tag || "");
+    if (!bookmark) return [];
+    return visibleDirectDirNodesForUnifiedTag(bookmark, {
+      kind: "tag",
+      tag: bookmark,
+      label: bookmark,
+      originPath: String(baseNode.path || ""),
+    });
+  }
+  const tag = normalizeTag(frame.tag || "");
+  if (!tag) return [];
+  return visibleDirectDirNodesForUnifiedTag(tag, {
+    kind: "tag",
+    tag,
+    label: tag,
+    originPath: String(baseNode.path || ""),
+  });
 }
 
 function getDirsForTagEntry(entry) {
@@ -29570,16 +30386,17 @@ function getDirsForTagEntry(entry) {
   const dirNode = WS.dirByPath.get(originPath) || WS.nav.dirNode;
   if (!dirNode) return [];
   const scopeModel = getFastTagScopeModel(dirNode);
-  const children = scopeModel.children;
-  if (!children.length) return [];
   if (entry.album && !entry.tag) {
     const album = normalizeTagAlbumName(entry.album);
     if (!album) return [];
-    const albumStats = scopeModel.albumStats.get(album);
-    const out = albumStats && Array.isArray(albumStats.dirs) ? albumStats.dirs : [];
-    const filtered = filterTagEntryDirsByVisibleRecords(out, entry);
-    if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, filtered);
-    return filtered;
+    const out = visibleDirectDirNodesForUnifiedTag(album, {
+      kind: "tag",
+      tag: album,
+      label: album,
+      originPath,
+    });
+    if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
+    return out;
   }
   if (entry.special) {
     if (entry.special === "favorites") {
@@ -29611,14 +30428,22 @@ function getDirsForTagEntry(entry) {
       if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
       return out;
     }
+    if (entry.special === "bookmark") {
+      const bookmark = normalizeBookmarkName(entry.bookmark || entry.label || "");
+      const out = visibleDirectDirNodesForUnifiedTag(bookmark, {
+        kind: "tag",
+        tag: bookmark,
+        label: bookmark,
+        originPath,
+      });
+      if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
+      return out;
+    }
     return [];
   }
-  const tag = String(entry.tag || "");
+  const tag = normalizeTag(entry.tag || "");
   if (!tag) return [];
-  const out = filterTagEntryDirsByVisibleRecords(
-    (gatherTagGroupsForDir(dirNode).get(tag) || []),
-    entry,
-  );
+  const out = visibleDirectDirNodesForUnifiedTag(tag, entry);
   if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
   return out;
 }
@@ -29660,10 +30485,11 @@ function createInverseTagForEntry(entry) {
 
 function getTagEntryIconKey(entry) {
   if (!entry || entry.kind !== "tag") return "tag";
-  if (entry.album && !entry.tag) return "album";
+  if (entry.album && !entry.tag) return "tag";
   if (entry.special === "favorites") return "favorite";
   if (entry.special === "hidden") return "hidden";
   if (entry.special === "storage") return "storage";
+  if (entry.special === "bookmark") return "tag";
   if (entry.special === "untagged") return "untagged";
   return "tag";
 }
@@ -29732,6 +30558,9 @@ function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
   let sizeBytes = 0;
   let fileCount = 0;
   const folderCount = dirs.length;
+  if (entry && entry.kind === "tag" && entry.special === "bookmark") {
+    return getVisibleDirsForBookmarkEntry(entry);
+  }
   if (entry && entry.kind === "tag" && entry.special === "storage") {
     const result = { dirs, folderCount, fileCount: 0, score: 0, sizeBytes: 0 };
     if (cacheKey) TAG_ENTRY_METRICS_CACHE.set(cacheKey, result);
@@ -30445,10 +31274,10 @@ function tagThumbnailLabelForKey(tagKey) {
       return parsed.scoped ? `${value} in ${scopeLabel}` : value;
     }
     if (parsed.kind === "album") {
-      if (!value) return "Album";
+      if (!value) return "Tag";
       return parsed.scoped
-        ? `Album ${value} in ${scopeLabel}`
-        : `Album ${value}`;
+        ? `Tag ${value} in ${scopeLabel}`
+        : `Tag ${value}`;
     }
   }
   if (key === rootThumbnailKey()) return "Root";
@@ -30723,10 +31552,12 @@ function makeTagPreviewNode(entry) {
     : isAlbumEntry
       ? "album"
       : "tag";
-  const label = String(entry.label || entry.tag || entry.special || "Tag");
-  const pathSuffix = entry.special
-    ? entry.special
-    : isAlbumEntry
+  const label = String(entry.label || entry.bookmark || entry.tag || entry.special || "Tag");
+  const pathSuffix = entry.special === "bookmark"
+    ? `bookmark-${String(entry.bookmark || "")}`
+    : entry.special
+      ? entry.special
+      : isAlbumEntry
       ? `album-${String(entry.album || "")}`
       : entry.tag || "tag";
   const safeSuffix = String(pathSuffix || "tag").replace(/[\/\\]/g, "_");
@@ -30747,6 +31578,7 @@ function makeTagPreviewNode(entry) {
     _skipTagFilters: true,
     _tagPreviewMode: mode,
     _tagPreviewTag: String(entry.tag || ""),
+    _tagPreviewBookmark: String(entry.bookmark || ""),
     _tagPreviewSpecial: String(entry.special || ""),
     _tagPreviewAlbum: String(entry.album || ""),
     _tagPreviewOriginPath: String(baseNode.path || ""),
@@ -30759,7 +31591,12 @@ function findTagEntryIndexInEntries(entries, mode, tag, album = "") {
   for (let i = 0; i < list.length; i++) {
     const entry = list[i];
     if (!entry || entry.kind !== "tag") continue;
-    if (mode && entry.special && entry.special === mode) return i;
+    if (mode && entry.special && entry.special === mode) {
+      if (mode === "bookmark") {
+        if (normalizeBookmarkName(entry.bookmark || "") !== normalizeBookmarkName(tag || "")) continue;
+      }
+      return i;
+    }
     if (
       mode === "album" &&
       entry.album &&
@@ -30834,9 +31671,12 @@ function makeTagPreviewNodeForContext(mode, tag, originPath, album = "") {
         : mode === "hidden"
           ? "Hidden"
           : "Untagged";
+  } else if (mode === "bookmark") {
+    entry.tag = normalizeBookmarkName(tag || "");
+    entry.label = entry.tag || "Tag";
   } else if (mode === "album") {
-    entry.album = String(album || "");
-    entry.label = String(album || "") || "Album";
+    entry.tag = normalizeTagAlbumName(album || "");
+    entry.label = entry.tag || "Tag";
   } else if (mode === "tag") {
     entry.tag = String(tag || "");
     entry.album = String(album || "");
@@ -31013,6 +31853,33 @@ function pushTagViewContext(selectedDirPath) {
   });
 }
 
+function getLiveOrderedPathsForTagViewFrame(frame) {
+  if (!frame || frame.type !== "tag-view") return [];
+  return getDirsForTagViewFrame(frame)
+    .map((dirNode) => String(dirNode?.path || ""))
+    .filter(Boolean);
+}
+
+function refreshLiveVirtualPortalFrameOrders() {
+  const stack = ensureTagNavStack();
+  if (!stack.length) return false;
+  let changed = false;
+  for (let i = 0; i < stack.length; i++) {
+    const frame = stack[i];
+    if (!frame || frame.type !== "tag-view") continue;
+    const livePaths = getLiveOrderedPathsForTagViewFrame(frame);
+    if (!livePaths.length) continue;
+    const previousPaths = Array.isArray(frame.orderedPaths)
+      ? frame.orderedPaths.map((p) => String(p || "")).filter(Boolean)
+      : [];
+    if (!arraysEqual(previousPaths, livePaths)) {
+      frame.orderedPaths = livePaths;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 function restoreTagViewFromFrame(frame, opts = null) {
   if (!frame) return false;
   const options = opts && typeof opts === "object" ? opts : null;
@@ -31176,7 +32043,7 @@ function openTagFolderEntry(entry) {
   const album = String(entry.album || "");
   const isAlbumEntry = !!album && !entry.tag && !entry.special;
   const mode = entry.special ? entry.special : isAlbumEntry ? "album" : "tag";
-  const tag = mode === "tag" ? entry.tag || "" : "";
+  const tag = mode === "tag" ? entry.tag || "" : mode === "bookmark" ? normalizeBookmarkName(entry.bookmark || entry.label || "") : "";
   const selectedIndexSourceEntries =
     !rebaseToDifferentDir && Array.isArray(WS.nav.entries) && WS.nav.entries.length
       ? WS.nav.entries
@@ -31212,6 +32079,16 @@ function getVisibleSiblingDirsForSlide(dirNode) {
   if (Array.isArray(stack) && stack.length) {
     const frame = stack[stack.length - 1];
     if (frame && frame.type === "tag-view") {
+      const tagDirs = getDirsForTagViewFrame(frame);
+      if (tagDirs.length) {
+        const match = tagDirs.some((d) => String(d?.path || "") === dp);
+        if (match) {
+          frame.orderedPaths = tagDirs
+            .map((d) => String(d?.path || ""))
+            .filter(Boolean);
+          return tagDirs;
+        }
+      }
       if (Array.isArray(frame.orderedPaths) && frame.orderedPaths.length) {
         const nodes = frame.orderedPaths
           .map((p) => WS.dirByPath.get(String(p || "")))
@@ -31220,11 +32097,6 @@ function getVisibleSiblingDirsForSlide(dirNode) {
           const match = nodes.some((d) => String(d?.path || "") === dp);
           if (match) return nodes;
         }
-      }
-      const tagDirs = getDirsForTagViewFrame(frame);
-      if (tagDirs.length) {
-        const match = tagDirs.some((d) => String(d?.path || "") === dp);
-        if (match) return tagDirs;
       }
     }
   }
@@ -31620,10 +32492,6 @@ function rebuildDirectoriesEntries(opts = null) {
     const virtualTagEntries = getTagEntriesForTagFolderView();
     for (let i = 0; i < virtualTagEntries.length; i++)
       nextEntries.push(virtualTagEntries[i]);
-    if (virtualTagEntries.length) {
-      finish();
-      return;
-    }
     const nodes = getDirsForTagFolderView();
     for (const d of nodes) nextEntries.push({ kind: "dir", node: d });
     finish();
@@ -33887,11 +34755,15 @@ function tagEntrySelectionKey(entry) {
   if (entry.placeholder) return "";
   if (entry.album && !entry.tag) {
     const album = normalizeTagAlbumName(entry.album);
-    return album ? `tag-album:${album}` : "";
+    return album ? `tag:${album}` : "";
   }
   if (entry.special) {
     if (entry.special === "favorites") {
       return tagThumbnailKeyForEntry(entry);
+    }
+    if (entry.special === "bookmark") {
+      const bookmark = normalizeBookmarkName(entry.bookmark || entry.label || "");
+      return bookmark ? `tag:${bookmark}` : "";
     }
     return `special:${String(entry.special || "")}`;
   }
@@ -33901,8 +34773,16 @@ function tagEntrySelectionKey(entry) {
 }
 
 function isTagEntryRenameActive(entry, state = TAG_ENTRY_RENAME_STATE) {
-  if (!entry || entry.kind !== "tag" || entry.special || !state) return false;
+  if (!entry || entry.kind !== "tag" || !state) return false;
+  if (entry.special && entry.special !== "bookmark") return false;
   if (entry.placeholder) return !!state.placeholder;
+  if (state.isBookmarkEntry) {
+    return (
+      entry.special === "bookmark" &&
+      normalizeBookmarkName(entry.bookmark || entry.label || "") ===
+        normalizeBookmarkName(state.bookmark || state.label || "")
+    );
+  }
   if (state.isAlbumEntry) {
     return (
       !!entry.album &&
@@ -34160,7 +35040,7 @@ function currentFilePreviewContextDir() {
             : mode === "untagged"
               ? "Untagged"
               : mode === "album"
-                ? String(WS.view.tagFolderActiveAlbum || "Album")
+                ? String(WS.view.tagFolderActiveAlbum || "Tag")
                 : String(WS.view.tagFolderActiveTag || "Tag"),
     };
     return makeTagPreviewNode(entry) || WS.nav.dirNode || WS.root || null;
@@ -34446,9 +35326,10 @@ function tagItemTypeLabelForEntry(entry) {
     if (special === "favorites") return "Favorites";
     if (special === "hidden") return "Hidden";
     if (special === "untagged") return "Untagged";
+    if (special === "bookmark") return "Tag";
     return toTitleCaps(special || "Tag");
   }
-  if (entry.album && !entry.tag) return "Album";
+  if (entry.album && !entry.tag) return "Tag";
   return "Tag";
 }
 
@@ -37483,24 +38364,24 @@ function openScoreHistoryDayMenu(dayKey, anchor) {
 function openTagContextMenu(context) {
   if (!context || !tagActionMenuEl) return;
   const tag = String(context.tag || "").trim();
+  const bookmark = normalizeBookmarkName(context.bookmark || "");
   const album = normalizeTagAlbumName(context.album || "");
   const tagKey = String(context.tagKey || "").trim();
   const paths = Array.isArray(context.paths) ? context.paths : [];
   const anchor = context.anchor;
   if (!tagKey || !anchor) return;
+  const isBookmarkEntry = String(context.special || "") === "bookmark" && !!bookmark;
   const isAlbumEntry = !!album && !tag && !context.special;
-  const canRename = !context.special && (!!tag || isAlbumEntry);
-  const canDelete = !context.special && (!!tag || isAlbumEntry);
-  const canHide = !!tag && !context.special;
+  const canRename = isBookmarkEntry || (!context.special && (!!tag || isAlbumEntry));
+  const canDelete = isBookmarkEntry || (!context.special && (!!tag || isAlbumEntry));
+  const canHide = isBookmarkEntry || (!!tag && !context.special);
   const canCreateInverse = !!tag && !context.special && !isAlbumEntry;
   const currentAlbumContext = currentTagMenuAlbumRemovalContext();
   const canRemoveFromAlbum =
-    !!tag &&
-    !context.special &&
+    (!!tag || isBookmarkEntry) &&
+    (!context.special || isBookmarkEntry) &&
     !isAlbumEntry &&
-    !!currentAlbumContext &&
-    String(currentAlbumContext.originPath || "") ===
-      String(context.originPath || "");
+    !!currentAlbumContext;
   const preferPane =
     anchor && anchor.closest && anchor.closest("#previewBody")
       ? "preview"
@@ -37512,18 +38393,22 @@ function openTagContextMenu(context) {
       : {
           kind: "tag",
           tag: String(context.tag || ""),
+          bookmark,
           album: normalizeTagAlbumName(context.album || ""),
           special: String(context.special || ""),
-          label: String(context.label || context.tag || context.album || "Tag"),
+          label: String(context.label || bookmark || context.tag || context.album || "Tag"),
           originPath: String(
             context.originPath || WS.nav?.dirNode?.path || "",
           ),
           placeholder: false,
         };
+  const hiddenKey = hiddenTagKeyForEntry(tagEntryForThumb);
   const canAppearancePreset =
-    !!tagKey && !context.special && (!!tag || isAlbumEntry);
+    !!tagKey && (!context.special || isBookmarkEntry) && (!!tag || isAlbumEntry || isBookmarkEntry);
   const canMediaFilter = false;
-  const isHidden = canHide && metaHasHiddenTagByKey(tagKey);
+  const isHidden = isBookmarkEntry
+    ? metaHasHiddenBookmarkName(bookmark)
+    : canHide && metaHasHiddenTagByKey(hiddenKey);
   const assignedAppearancePresetId = canAppearancePreset
     ? metaGetTagAppearancePresetIdByKey(tagKey)
     : "";
@@ -37546,18 +38431,21 @@ function openTagContextMenu(context) {
   } else {
     appendTagMenuTwoColRow(
       menu,
-      createTagMenuButton("Album", () => {
+      createTagMenuButton("Move into tag", () => {
         closeTagContextMenu();
-        beginTagAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
+        if (isBookmarkEntry) beginBookmarkAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
+        else beginTagAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
       }),
       createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
     );
     appendTagMenuTwoColRow(
       menu,
       createTagMenuButton("Delete", () => handleTagMenuAction("delete")),
-      createTagMenuButton(isHidden ? "Unhide" : "Hide", () =>
-        handleTagMenuAction("hidden"),
-      ),
+      canHide
+        ? createTagMenuButton(isHidden ? "Unhide" : "Hide", () =>
+            handleTagMenuAction("hidden"),
+          )
+        : null,
     );
     if (canCreateInverse) {
       menu.appendChild(
@@ -37566,10 +38454,17 @@ function openTagContextMenu(context) {
         ),
       );
     }
+    if (canRemoveFromAlbum) {
+      menu.appendChild(
+        createTagMenuButton("Remove from tag", () =>
+          handleTagMenuAction("remove-from-album"),
+        ),
+      );
+    }
   }
   if (canAppearancePreset) {
     menu.appendChild(
-      createTagMenuButton("Set media preset", () => {
+      createTagMenuButton("Filters", () => {
         buildAppearancePresetChoiceMenu(menu, {
           currentPresetId: assignedAppearancePresetId,
           onBack: () => {
@@ -37580,7 +38475,7 @@ function openTagContextMenu(context) {
             if (!metaSetTagAppearancePresetIdByKey(tagKey, presetId)) return;
             refreshAfterProcessingMetadataChange();
             showStatusMessage(
-              `${isAlbumEntry ? "Tag album" : "Tag"} media preset: ${appearancePresetDisplayName(presetId)}.`,
+              `Tag media preset: ${appearancePresetDisplayName(presetId)}.`,
             );
           },
           onRendered: () => {
@@ -37595,7 +38490,7 @@ function openTagContextMenu(context) {
       createTagMenuButton("Set content filter", () => {
         const reopenFilterMenu = (shouldReposition = false) => {
           buildTagMediaFilterChoiceMenu(menu, {
-            title: `${isAlbumEntry ? "Tag album" : "Tag"} content filter`,
+            title: `Tag content filter`,
             currentValue: metaGetTagMediaFilterByKey(tagKey),
             onBack: () => {
               openTagContextMenu(context);
@@ -37606,7 +38501,7 @@ function openTagContextMenu(context) {
                 metaScheduleSave();
                 refreshAfterTagMetadataChange();
                 showStatusMessage(
-                  `${isAlbumEntry ? "Tag album" : "Tag"} content filter: ${describeTagMediaFilterValue(nextValue)}.`,
+                  `Tag content filter: ${describeTagMediaFilterValue(nextValue)}.`,
                 );
               }
               reopenFilterMenu(false);
@@ -37641,11 +38536,14 @@ function openTagContextMenu(context) {
     tag,
     album,
     isAlbumEntry,
+    isBookmarkEntry,
+    bookmark,
     special: String(context.special || ""),
     entry: tagEntryForThumb,
     tagKey,
+    hiddenKey,
     anchor,
-    label: context.label || tag || album,
+    label: context.label || bookmark || tag || album,
     paths: paths.slice(),
     originPath: String(context.originPath || ""),
     canRename,
@@ -37690,10 +38588,11 @@ function openTagEntryContextMenu(entry, anchor) {
   openTagContextMenu({
     entry,
     tag: String(entry.tag || ""),
+    bookmark: String(entry.bookmark || ""),
     album: String(entry.album || ""),
     tagKey,
     special: entry.special || "",
-    label: String(entry.label || entry.tag || ""),
+    label: String(entry.label || entry.bookmark || entry.tag || ""),
     anchor,
     paths,
     originPath: String(entry.originPath || ""),
@@ -37960,11 +38859,8 @@ function buildFolderActionMenuDom(
     return btn;
   };
   const appendTwoCol = (leftBtn, rightBtn) => {
-    const row = document.createElement("div");
-    row.className = "menuTwoColRow";
-    row.appendChild(leftBtn);
-    row.appendChild(rightBtn);
-    menuEl.appendChild(row);
+    if (leftBtn) menuEl.appendChild(leftBtn);
+    if (rightBtn) menuEl.appendChild(rightBtn);
   };
   if (state.isTrashRootPortal) return;
   if (state.isTrashPutBackOnly) {
@@ -37990,21 +38886,11 @@ function buildFolderActionMenuDom(
     return;
   }
   if (state.isRootNode) {
-    menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
+    menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
     return;
   }
-  if (scoreInterfaceEnabled()) {
-    const scoreRow = document.createElement("div");
-    scoreRow.className = "scoreRow";
-    scoreRow.appendChild(makeBtn("+", "score-up"));
-    scoreRow.appendChild(makeBtn("-", "score-down"));
-    menuEl.appendChild(scoreRow);
-  }
-
-  appendTwoCol(
-    makeBtn("Tag", "tag"),
-    makeBtn("Rename", "rename", !state.canRename),
-  );
+  menuEl.appendChild(makeBtn("Tag", "tag"));
+  menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
   menuEl.appendChild(
     makeBtn(state.isFavorite ? "Unfavorite" : "Favorite", "favorite"),
   );
@@ -38012,7 +38898,7 @@ function buildFolderActionMenuDom(
     makeBtn("Store", "send-to-storage", !state.canSendToStorage),
     makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"),
   );
-  menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
+  menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
   if (state.assignedAppearancePresetId) {
     menuEl.appendChild(
       makeBtn("Clear media preset override", "appearance-preset-clear"),
@@ -38075,6 +38961,11 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     selectDirectoryEntryByPath(p);
     renderDirectoriesPane(true);
     focusSelectedDirectoryInlineInput(".tagEditInput");
+    return true;
+  }
+  if (action === "bookmark") {
+    if (isRootNode || !p || isStorageRestricted) return true;
+    startBulkBookmarking([p], String(options.preferPane || ""));
     return true;
   }
   if (action === "remove-from-tag") {
@@ -38239,11 +39130,8 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     return btn;
   };
   const appendTwoCol = (leftBtn, rightBtn) => {
-    const row = document.createElement("div");
-    row.className = "menuTwoColRow";
-    row.appendChild(leftBtn);
-    row.appendChild(rightBtn);
-    menu.appendChild(row);
+    if (leftBtn) menu.appendChild(leftBtn);
+    if (rightBtn) menu.appendChild(rightBtn);
   };
 
   const singleSelectedDirNode =
@@ -38329,28 +39217,12 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
   const activeTagRemovalContext = currentFolderMenuTagRemovalContext();
 
-  if (scoreInterfaceEnabled()) {
-    const scoreRow = document.createElement("div");
-    scoreRow.className = "scoreRow";
-    const scoreUpBtn = makeBtn("+", () => {
-      metaBumpScoreBulk(selectedPaths, 1);
-      if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-    });
-    scoreUpBtn.classList.add("scoreBtn");
-    const scoreDownBtn = makeBtn("-", () => {
-      metaBumpScoreBulk(selectedPaths, -1);
-      if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-    });
-    scoreDownBtn.classList.add("scoreBtn");
-    scoreRow.appendChild(scoreUpBtn);
-    scoreRow.appendChild(scoreDownBtn);
-    menu.appendChild(scoreRow);
-  }
-
-  appendTwoCol(
+  menu.appendChild(
     makeBtn("Tag", () => {
       startPreviewFolderTagEdit(selectedPaths, anchorPath);
     }),
+  );
+  menu.appendChild(
     makeBtn(
       "Rename",
       () => {
@@ -38379,7 +39251,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   );
   menu.appendChild(
     makeBtn(
-      "Set media preset",
+      "Filters",
       () => {
         const currentPresetId =
           selectedPaths.length === 1
@@ -38445,14 +39317,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     );
   }
 
-  const setMergeBtn = makeBtn(
-    "Set Merge",
-    async () => {
-      await setMergeSelectedDirs();
-    },
-    !WS.meta.fsRootHandle,
-  );
-  menu.appendChild(setMergeBtn);
   menu.appendChild(
     makeBtn(
       "Move to trash",
@@ -38576,15 +39440,6 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
     ),
   );
 
-  menu.appendChild(
-    makeBtn(
-      "Loose Set Merge",
-      async () => {
-        await looseSetMergeSelectedFiles();
-      },
-      !WS.meta.fsRootHandle || !allSameDir,
-    ),
-  );
 
   PREVIEW_CONTEXT_MENU_STATE = {
     fileId: String(anchorFileId || ""),
@@ -38640,7 +39495,15 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       !entry.placeholder &&
       String(entry.tag || "").trim(),
   );
+  const albumAssignableBookmarkEntries = selectedEntries.filter(
+    (entry) =>
+      entry &&
+      entry.special === "bookmark" &&
+      !entry.placeholder &&
+      normalizeBookmarkName(entry.bookmark || ""),
+  );
   const deletableTagEntries = albumAssignableTagEntries;
+  const deletableBookmarkEntries = albumAssignableBookmarkEntries;
   const deletableTagAlbumEntries = selectedEntries.filter(
     (entry) =>
       entry &&
@@ -38652,9 +39515,10 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const presetAssignableTagEntries = selectedEntries.filter(
     (entry) =>
       entry &&
-      !entry.special &&
+      (!entry.special || entry.special === "bookmark") &&
       !entry.placeholder &&
       (!!String(entry.tag || "").trim() ||
+        !!normalizeBookmarkName(entry.bookmark || "") ||
         !!normalizeTagAlbumName(entry.album || "")),
   );
   const hideableTagEntries = selectedEntries.filter(
@@ -38664,6 +39528,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       !entry.placeholder &&
       !!String(entry.tag || "").trim(),
   );
+  const hideableBookmarkEntries = albumAssignableBookmarkEntries;
   const hiddenTagTargets = Array.from(
     new Set(
       hideableTagEntries
@@ -38671,9 +39536,24 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         .filter(Boolean),
     ),
   );
+  const hiddenBookmarkTargets = Array.from(
+    new Set(
+      hideableBookmarkEntries
+        .map((entry) => normalizeBookmarkName(entry.bookmark || entry.label || ""))
+        .filter(Boolean),
+    ),
+  );
+  const hiddenTargetCount = hiddenTagTargets.length + hiddenBookmarkTargets.length;
   const allHiddenTags =
     !!hiddenTagTargets.length &&
     hiddenTagTargets.every((key) => metaHasHiddenTagByKey(key));
+  const allHiddenBookmarks =
+    !!hiddenBookmarkTargets.length &&
+    hiddenBookmarkTargets.every((name) => metaHasHiddenBookmarkName(name));
+  const allHiddenTargets =
+    !!hiddenTargetCount &&
+    (!hiddenTagTargets.length || allHiddenTags) &&
+    (!hiddenBookmarkTargets.length || allHiddenBookmarks);
   const tagAppearancePresetKeys = Array.from(
     new Set(
       presetAssignableTagEntries
@@ -38690,9 +39570,10 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     selectedEntries.length === 1 ? selectedEntries[0] || null : null;
   const canSingleRename =
     !!singleRenameEntry &&
-    !singleRenameEntry.special &&
+    (!singleRenameEntry.special || singleRenameEntry.special === "bookmark") &&
     !singleRenameEntry.placeholder &&
     (!!String(singleRenameEntry.tag || "").trim() ||
+      !!normalizeBookmarkName(singleRenameEntry.bookmark || "") ||
       !!normalizeTagAlbumName(singleRenameEntry.album || ""));
   const singleRegularTagEntry =
     singleRenameEntry &&
@@ -38703,22 +39584,21 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const activeAlbumContext = currentTagMenuAlbumRemovalContext();
   const canRemoveFromAlbum =
     !!activeAlbumContext &&
-    !!albumAssignableTagEntries.length &&
-    albumAssignableTagEntries.every(
-      (entry) =>
-        String(entry.originPath || "") ===
-        String(activeAlbumContext.originPath || ""),
-    );
+    !!(albumAssignableTagEntries.length || albumAssignableBookmarkEntries.length);
 
   appendTwoCol(
     makeBtn(
-      "Album",
+      "Move into tag",
       async () => {
         finalizeBulkSelectionAction();
-        beginTagAlbumAssignmentForEntries(albumAssignableTagEntries, "preview");
+        if (albumAssignableBookmarkEntries.length && !albumAssignableTagEntries.length) {
+          beginBookmarkAlbumAssignmentForEntries(albumAssignableBookmarkEntries, "preview");
+        } else {
+          beginTagAlbumAssignmentForEntries(albumAssignableTagEntries, "preview");
+        }
       },
       true,
-      !albumAssignableTagEntries.length,
+      !albumAssignableTagEntries.length && !albumAssignableBookmarkEntries.length,
     ),
     makeBtn(
       "Rename",
@@ -38735,8 +39615,9 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     "Delete",
     async () => {
       const targetTagEntries = deletableTagEntries;
+      const targetBookmarkEntries = deletableBookmarkEntries;
       const targetAlbumEntries = deletableTagAlbumEntries;
-      if (!targetTagEntries.length && !targetAlbumEntries.length) {
+      if (!targetTagEntries.length && !targetBookmarkEntries.length && !targetAlbumEntries.length) {
         showStatusMessage("No tags selected.");
         return;
       }
@@ -38747,8 +39628,15 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         if (!tag) continue;
         const dirs = getDirsForTagEntry(entry);
         const paths = gatherTagPathsForDirs(dirs);
-        if (!paths.length) continue;
         byTag.set(`${originPath}\n${tag}`, { tag, paths, originPath });
+      }
+      const bookmarks = [];
+      const seenBookmarks = new Set();
+      for (const entry of targetBookmarkEntries) {
+        const bookmark = normalizeBookmarkName(entry.bookmark || "");
+        if (!bookmark || seenBookmarks.has(bookmark)) continue;
+        seenBookmarks.add(bookmark);
+        bookmarks.push(bookmark);
       }
       const albums = [];
       const seenAlbums = new Set();
@@ -38760,16 +39648,18 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         seenAlbums.add(key);
         albums.push({ album, originPath });
       }
-      if (!byTag.size && !albums.length) {
+      if (!byTag.size && !bookmarks.length && !albums.length) {
         showStatusMessage("No tags selected.");
         return;
       }
       const deleteLabel =
-        byTag.size && albums.length
-          ? `Delete ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and ${albums.length} album${albums.length === 1 ? "" : "s"}?`
-          : byTag.size
-            ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
-            : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Tags stay and will be ungrouped.`;
+        byTag.size && (bookmarks.length || albums.length)
+          ? `Delete selected tags?`
+          : bookmarks.length
+            ? `Delete ${bookmarks.length} selected tag${bookmarks.length === 1 ? "" : "s"}? Folders stay in place.`
+            : byTag.size
+              ? `Delete ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"}? Folders stay in place.`
+              : `Delete ${albums.length} selected tag${albums.length === 1 ? "" : "s"}? Child tags stay and will be ungrouped.`;
       if (!confirm(deleteLabel)) return;
       let changed = false;
       if (byTag.size) {
@@ -38777,6 +39667,14 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
           if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
             changed = true;
         }
+      }
+      let deletedBookmarkCount = 0;
+      for (let i = 0; i < bookmarks.length; i++) {
+        const deletedBookmark = metaDeleteBookmark(bookmarks[i]);
+        const deletedTag = deleteTagFromPaths(bookmarks[i], [], "");
+        if (!deletedBookmark && !deletedTag) continue;
+        changed = true;
+        deletedBookmarkCount++;
       }
       let deletedCount = 0;
       let ungroupedTotal = 0;
@@ -38788,39 +39686,48 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         ungroupedTotal += Number(result.clearedTags) || 0;
       }
       if (!changed) {
-        showStatusMessage(byTag.size ? "No folders updated." : "No tags updated.");
+        showStatusMessage("No tags updated.");
         return;
       }
       metaScheduleSave();
       refreshAfterTagMetadataChange();
       if (byTag.size && deletedCount) {
         showStatusMessage(
-          `Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"}.`,
+          `Deleted ${byTag.size + deletedCount} tag${byTag.size + deletedCount === 1 ? "" : "s"}.`,
         );
       } else if (byTag.size) {
-        showStatusMessage(`Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"}.`);
+        showStatusMessage(`Deleted ${byTag.size} tag${byTag.size === 1 ? "" : "s"}.`);
       } else {
         showStatusMessage(
-          `Deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
+          `Deleted ${deletedCount} tag${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
         );
       }
       finalizeBulkSelectionAction();
     },
     true,
-    !deletableTagEntries.length && !deletableTagAlbumEntries.length,
+    !deletableTagEntries.length && !deletableBookmarkEntries.length && !deletableTagAlbumEntries.length,
   );
-  const previewBulkTagHideBtn = hiddenTagTargets.length
-    ? makeBtn(allHiddenTags ? "Unhide" : "Hide", async () => {
+  const previewBulkTagHideBtn = hiddenTargetCount
+    ? makeBtn(allHiddenTargets ? "Unhide" : "Hide", async () => {
         let changed = false;
         for (let i = 0; i < hiddenTagTargets.length; i++) {
-          if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTags))
+          if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTargets))
+            changed = true;
+        }
+        for (let i = 0; i < hiddenBookmarkTargets.length; i++) {
+          if (metaSetHiddenBookmarkName(hiddenBookmarkTargets[i], !allHiddenTargets))
             changed = true;
         }
         if (!changed) return;
         metaScheduleSave();
         refreshAfterTagMetadataChange();
+        const targetLabel = hiddenTagTargets.length && hiddenBookmarkTargets.length
+          ? "item"
+          : hiddenBookmarkTargets.length
+            ? "tag"
+            : "tag";
         showStatusMessage(
-          `${allHiddenTags ? "Unhid" : "Hid"} ${hiddenTagTargets.length} tag${hiddenTagTargets.length === 1 ? "" : "s"}.`,
+          `${allHiddenTargets ? "Unhid" : "Hid"} ${hiddenTargetCount} ${targetLabel}${hiddenTargetCount === 1 ? "" : "s"}.`,
         );
         finalizeBulkSelectionAction();
       })
@@ -38839,7 +39746,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   if (tagAppearancePresetKeys.length) {
     menu.appendChild(
       makeBtn(
-        "Set media preset",
+        "Filters",
         async () => {
           const currentPresetId =
             tagAppearancePresetKeys.length === 1
@@ -39031,7 +39938,7 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
         startPreviewFolderRenameEdit(p);
         return;
       }
-      runFolderActionFromMenu(action, dirNode).catch(() => {});
+      runFolderActionFromMenu(action, dirNode, { preferPane: "preview" }).catch(() => {});
     },
     {
       "appearance-preset-set": () => {
@@ -39102,12 +40009,9 @@ function createTagMenuSpacerButton() {
 }
 
 function appendTagMenuTwoColRow(menu, leftBtn, rightBtn) {
-  if (!menu || !leftBtn || !rightBtn) return;
-  const row = document.createElement("div");
-  row.className = "menuTwoColRow";
-  row.appendChild(leftBtn);
-  row.appendChild(rightBtn);
-  menu.appendChild(row);
+  if (!menu) return;
+  if (leftBtn) menu.appendChild(leftBtn);
+  if (rightBtn) menu.appendChild(rightBtn);
 }
 
 function removeUserTagFromPathsBulk(paths, tagName) {
@@ -39139,7 +40043,7 @@ function removeTagsFromAlbumBulk(tags, albumName, scopePath = null) {
   for (let i = 0; i < uniqueTags.length; i++) {
     const tag = uniqueTags[i];
     if (!tag) continue;
-    if (metaSetTagAlbumForTag(tag, "", scopePath)) {
+    if (metaRemoveParentTagForTag(tag, album)) {
       changed = true;
       changedCount++;
     }
@@ -39162,26 +40066,31 @@ function beginTagAlbumAssignmentForEntries(entries, preferPane = "directories") 
 }
 
 function beginTagRenameForEntry(entry, preferPane = "directories") {
-  if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
-    return false;
+  if (!entry || entry.kind !== "tag" || entry.placeholder) return false;
+  if (entry.special && entry.special !== "bookmark") return false;
   const tag = String(entry.tag || "").trim();
+  const bookmark = normalizeBookmarkName(entry.bookmark || "");
   const album = normalizeTagAlbumName(entry.album || "");
-  const isAlbumEntry = !!album && !tag;
-  if (!tag && !isAlbumEntry) return false;
-  const label = String(entry.label || entry.tag || album || tag);
+  const isBookmarkEntry = entry.special === "bookmark" && !!bookmark;
+  const isAlbumEntry = !!album && !tag && !isBookmarkEntry;
+  if (!tag && !isAlbumEntry && !isBookmarkEntry) return false;
+  const label = String(entry.label || bookmark || entry.tag || album || tag);
   const paths = gatherTagPathsForDirs(getDirsForTagEntry(entry));
-  if (!paths.length && !isAlbumEntry) {
+  const graphInfo = tag ? getUnifiedTagGraphModel().tags.get(tag) : null;
+  if (!isBookmarkEntry && !paths.length && !isAlbumEntry && !graphInfo) {
     showStatusMessage("No folders contain that tag.");
     return false;
   }
   return beginTagEntryRename(
     {
       tag,
+      bookmark,
       album,
       label,
       paths,
       originPath: String(entry.originPath || ""),
       isAlbumEntry,
+      isBookmarkEntry,
     },
     preferPane,
   );
@@ -39192,7 +40101,11 @@ function renameTagForPaths(tag, newName, paths, scopePath = null) {
   const normalizedNew = normalizeTag(newName || "");
   if (!normalizedOld || !normalizedNew || normalizedOld === normalizedNew)
     return false;
-  const uniquePaths = Array.from(new Set((paths || []).filter((p) => p)));
+  const graphInfo = getUnifiedTagGraphModel().tags.get(normalizedOld) || null;
+  const graphPaths = graphInfo ? Array.from(graphInfo.directPaths || []) : [];
+  const uniquePaths = Array.from(
+    new Set(((paths && paths.length ? paths : graphPaths) || []).filter((p) => p)),
+  );
   let changed = false;
   for (const p of uniquePaths) {
     const tags = metaGetUserTags(p);
@@ -39275,6 +40188,7 @@ function renameTagForPaths(tag, newName, paths, scopePath = null) {
     if (!newKey) continue;
     if (rekeyHiddenTagState(oldKey, newKey)) changed = true;
   }
+  const oldGraphParents = metaGetParentTagsForTag(normalizedOld);
   const oldAlbum = metaGetTagAlbumForTag(normalizedOld, scopePath);
   if (oldAlbum) {
     let albumChanged = false;
@@ -39285,6 +40199,29 @@ function renameTagForPaths(tag, newName, paths, scopePath = null) {
     if (metaSetTagAlbumForTag(normalizedOld, "", scopePath))
       albumChanged = true;
     if (albumChanged) changed = true;
+  }
+  if (WS.meta && WS.meta.tagParentsByTag) {
+    const oldParents = oldGraphParents;
+    const newParents = normalizeTagParentList(
+      metaGetParentTagsForTag(normalizedNew).concat(oldParents),
+      normalizedNew,
+    );
+    if (newParents.length && metaSetParentTagsForTag(normalizedNew, newParents))
+      changed = true;
+    if (WS.meta.tagParentsByTag.delete(normalizedOld)) changed = true;
+    const entries = Array.from(WS.meta.tagParentsByTag.entries());
+    for (let i = 0; i < entries.length; i++) {
+      const child = normalizeTag(entries[i][0]);
+      const parents = normalizeTagParentList(entries[i][1], child);
+      if (!parents.includes(normalizedOld)) continue;
+      const nextParents = normalizeTagParentList(
+        parents.map((parent) =>
+          parent === normalizedOld ? normalizedNew : parent,
+        ),
+        child,
+      );
+      if (metaSetParentTagsForTag(child, nextParents)) changed = true;
+    }
   }
   return changed;
 }
@@ -39349,7 +40286,11 @@ function renameTagAlbumByName(albumName, newName, scopePath = null) {
 function deleteTagFromPaths(tag, paths, scopePath = null) {
   const normalized = String(tag || "");
   if (!normalized) return false;
-  const uniquePaths = Array.from(new Set((paths || []).filter((p) => p)));
+  const graphInfo = getUnifiedTagGraphModel().tags.get(normalized) || null;
+  const graphPaths = graphInfo ? Array.from(graphInfo.directPaths || []) : [];
+  const uniquePaths = Array.from(
+    new Set(((paths && paths.length ? paths : graphPaths) || []).filter((p) => p)),
+  );
   let changed = false;
   for (const p of uniquePaths) {
     const tags = metaGetUserTags(p);
@@ -39402,6 +40343,20 @@ function deleteTagFromPaths(tag, paths, scopePath = null) {
   )
     changed = true;
   if (metaSetTagAlbumForTag(normalized, "", scopePath)) changed = true;
+  if (WS.meta && WS.meta.tagParentsByTag) {
+    if (WS.meta.tagParentsByTag.delete(normalized)) changed = true;
+    const entries = Array.from(WS.meta.tagParentsByTag.entries());
+    for (let i = 0; i < entries.length; i++) {
+      const child = normalizeTag(entries[i][0]);
+      const parents = normalizeTagParentList(entries[i][1], child);
+      if (!parents.includes(normalized)) continue;
+      if (metaSetParentTagsForTag(
+        child,
+        parents.filter((parent) => parent !== normalized),
+      ))
+        changed = true;
+    }
+  }
   return changed;
 }
 
@@ -39539,25 +40494,30 @@ function handleTagMenuAction(action) {
   if (!ctx) return;
   closeTagContextMenu();
   const tag = ctx.tag || "";
+  const bookmark = normalizeBookmarkName(ctx.bookmark || "");
   const album = normalizeTagAlbumName(ctx.album || "");
+  const isBookmarkEntry = !!ctx.isBookmarkEntry && !!bookmark;
   const isAlbumEntry = !!ctx.isAlbumEntry && !!album;
   const tagKey = String(ctx.tagKey || "");
-  const label = ctx.label || tag || album;
+  const label = ctx.label || bookmark || tag || album;
   const paths = ctx.paths || [];
   if (action === "rename") {
     if (!ctx.canRename) return;
-    if (!paths.length && !isAlbumEntry) {
+    const graphInfo = tag ? getUnifiedTagGraphModel().tags.get(tag) : null;
+    if (!isBookmarkEntry && !paths.length && !isAlbumEntry && !graphInfo) {
       showStatusMessage("No folders contain that tag.");
       return;
     }
     beginTagEntryRename(
       {
         tag,
+        bookmark,
         album,
         label,
         paths,
         originPath: String(ctx.originPath || ""),
         isAlbumEntry,
+        isBookmarkEntry,
       },
       ctx.anchor && ctx.anchor.closest && ctx.anchor.closest("#previewBody")
         ? "preview"
@@ -39565,14 +40525,16 @@ function handleTagMenuAction(action) {
     );
     return;
   }
-    if (action === "remove-from-album") {
+  if (action === "remove-from-album") {
     if (!ctx.canRemoveFromAlbum) return;
     const albumContext = currentTagMenuAlbumRemovalContext();
     if (!albumContext) return;
-    const result = removeTagsFromAlbumBulk(
-      [tag],
-      albumContext.album,
-      albumContext.originPath,
+    const result = isBookmarkEntry
+      ? removeBookmarksFromAlbumBulk([bookmark], albumContext.album)
+      : removeTagsFromAlbumBulk(
+          [tag],
+          albumContext.album,
+          albumContext.originPath,
     );
     if (!result.changed) {
       showStatusMessage("No tags updated.");
@@ -39581,7 +40543,7 @@ function handleTagMenuAction(action) {
     metaScheduleSave();
     refreshAfterTagMetadataChange();
     showStatusMessage(
-      `Removed tag '${displayTagFolderLabel(label)}' from album '${displayTagFolderLabel(albumContext.album)}'.`,
+      `Removed tag '${displayTagFolderLabel(label)}' from tag '${displayTagFolderLabel(albumContext.album)}'.`,
     );
     return;
   }
@@ -39589,7 +40551,7 @@ function handleTagMenuAction(action) {
     if (!ctx.canDelete) return;
     if (isAlbumEntry) {
       const confirmed = confirm(
-        `Delete tag album '${label}'? This keeps all tags and just ungroups them from the album.`,
+        `Delete tag '${label}'? This keeps child tags and just removes them from this tag.`,
       );
       if (!confirmed) return;
       const result = deleteTagAlbumByName(album, ctx.originPath);
@@ -39601,19 +40563,35 @@ function handleTagMenuAction(action) {
       refreshAfterTagMetadataChange();
       const ungroupedCount = Number(result.clearedTags) || 0;
       showStatusMessage(
-        `Deleted tag album '${label}' and ungrouped ${ungroupedCount} tag${ungroupedCount === 1 ? "" : "s"}.`,
+        `Deleted tag '${label}' and ungrouped ${ungroupedCount} tag${ungroupedCount === 1 ? "" : "s"}.`,
       );
       return;
     }
-    if (!paths.length) {
+    if (isBookmarkEntry) {
+      const confirmed = confirm(`Delete tag '${label}'? This removes the simulated container but keeps the folders.`);
+      if (!confirmed) return;
+      const deletedBookmark = metaDeleteBookmark(bookmark);
+      const deletedTag = deleteTagFromPaths(bookmark, paths, ctx.originPath);
+      const changed = deletedBookmark || deletedTag;
+      if (!changed) {
+        showStatusMessage("No tags updated.");
+        return;
+      }
+      metaScheduleSave();
+      refreshAfterTagMetadataChange();
+      showStatusMessage(`Deleted tag '${label}'.`);
+      return;
+    }
+    const graphInfo = tag ? getUnifiedTagGraphModel().tags.get(tag) : null;
+    if (!paths.length && !graphInfo) {
       showStatusMessage("No folders contain that tag.");
       return;
     }
-    const confirmed = confirm(`Remove tag '${label}' from these folders?`);
+    const confirmed = confirm(`Delete tag '${label}'? Folders stay in place.`);
     if (!confirmed) return;
     const changed = deleteTagFromPaths(tag, paths, ctx.originPath);
     if (!changed) {
-      showStatusMessage("No folders updated.");
+      showStatusMessage("No tags updated.");
       return;
     }
     metaScheduleSave();
@@ -39639,8 +40617,14 @@ function handleTagMenuAction(action) {
     return;
   }
   if (action === "hidden") {
-    if (!ctx.canHide || !tagKey) return;
-    if (!metaSetHiddenTagByKey(tagKey, !ctx.isHidden)) return;
+    if (!ctx.canHide) return;
+    let changed = false;
+    if (isBookmarkEntry) {
+      changed = metaSetHiddenBookmarkName(bookmark, !ctx.isHidden);
+    } else if (ctx.hiddenKey) {
+      changed = metaSetHiddenTagByKey(ctx.hiddenKey, !ctx.isHidden);
+    }
+    if (!changed) return;
     metaScheduleSave();
     refreshAfterTagMetadataChange();
     showStatusMessage(`${ctx.isHidden ? "Unhid" : "Hid"} tag '${label}'.`);
@@ -39651,7 +40635,7 @@ function handleTagMenuAction(action) {
     if (!metaClearTagAppearancePresetByKey(tagKey)) return;
     refreshAfterProcessingMetadataChange();
     showStatusMessage(
-      `${isAlbumEntry ? "Tag album" : "Tag"} media preset reset.`,
+      `Tag media preset reset.`,
     );
     return;
   }
@@ -39661,7 +40645,7 @@ function handleTagMenuAction(action) {
     metaScheduleSave();
     refreshAfterTagMetadataChange();
     showStatusMessage(
-      `${isAlbumEntry ? "Tag album" : "Tag"} content filter cleared.`,
+      `Tag content filter cleared.`,
     );
     return;
   }
@@ -39749,6 +40733,14 @@ function renderDirectoriesActionHeader() {
       !entry.placeholder &&
       String(entry.tag || "").trim(),
   );
+  const albumAssignableBookmarkEntries = selectedTagEntries.filter(
+    (entry) =>
+      entry &&
+      entry.kind === "tag" &&
+      entry.special === "bookmark" &&
+      !entry.placeholder &&
+      normalizeBookmarkName(entry.bookmark || ""),
+  );
   const deletableTagEntries = albumAssignableTagEntries;
   const deletableTagAlbumEntries = selectedTagEntries.filter(
     (entry) =>
@@ -39776,6 +40768,7 @@ function renderDirectoriesActionHeader() {
       !entry.placeholder &&
       !!String(entry.tag || "").trim(),
   );
+  const hideableBookmarkEntries = albumAssignableBookmarkEntries;
   const hiddenTagTargets = (() => {
     const out = [];
     const seen = new Set();
@@ -39787,9 +40780,28 @@ function renderDirectoriesActionHeader() {
     }
     return out;
   })();
+  const hiddenBookmarkTargets = (() => {
+    const out = [];
+    const seen = new Set();
+    for (let i = 0; i < hideableBookmarkEntries.length; i++) {
+      const name = normalizeBookmarkName(hideableBookmarkEntries[i].bookmark || hideableBookmarkEntries[i].label || "");
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      out.push(name);
+    }
+    return out;
+  })();
+  const hiddenTargetCount = hiddenTagTargets.length + hiddenBookmarkTargets.length;
   const allHiddenTags =
     !!hiddenTagTargets.length &&
     hiddenTagTargets.every((key) => metaHasHiddenTagByKey(key));
+  const allHiddenBookmarks =
+    !!hiddenBookmarkTargets.length &&
+    hiddenBookmarkTargets.every((name) => metaHasHiddenBookmarkName(name));
+  const allHiddenTargets =
+    !!hiddenTargetCount &&
+    (!hiddenTagTargets.length || allHiddenTags) &&
+    (!hiddenBookmarkTargets.length || allHiddenBookmarks);
   const tagAppearancePresetKeys = (() => {
     const out = [];
     const seen = new Set();
@@ -39810,9 +40822,10 @@ function renderDirectoriesActionHeader() {
     selectedTagEntries.length === 1 ? selectedTagEntries[0] || null : null;
   const canSingleTagRename =
     !!singleSelectedTagEntry &&
-    !singleSelectedTagEntry.special &&
+    (!singleSelectedTagEntry.special || singleSelectedTagEntry.special === "bookmark") &&
     !singleSelectedTagEntry.placeholder &&
     (!!String(singleSelectedTagEntry.tag || "").trim() ||
+      !!normalizeBookmarkName(singleSelectedTagEntry.bookmark || "") ||
       !!normalizeTagAlbumName(singleSelectedTagEntry.album || ""));
   const singleRegularSelectedTagEntry =
     singleSelectedTagEntry &&
@@ -39823,15 +40836,11 @@ function renderDirectoriesActionHeader() {
   const activeAlbumTagContext = currentTagMenuAlbumRemovalContext();
   const canRemoveSelectedTagsFromAlbum =
     !!activeAlbumTagContext &&
-    !!albumAssignableTagEntries.length &&
-    albumAssignableTagEntries.every(
-      (entry) =>
-        String(entry.originPath || "") ===
-        String(activeAlbumTagContext.originPath || ""),
-    );
+    !!albumAssignableTagEntries.length;
   if (
     !selectedDirs.length &&
     !albumAssignableTagEntries.length &&
+    !albumAssignableBookmarkEntries.length &&
     !deletableTagAlbumEntries.length &&
     !selectedFiles.length
   ) {
@@ -39857,23 +40866,29 @@ function renderDirectoriesActionHeader() {
   };
 
   const makeTwoColRow = (leftBtn, rightBtn) => {
-    const row = document.createElement("div");
-    row.className = "menuTwoColRow";
-    row.appendChild(leftBtn);
-    row.appendChild(rightBtn);
-    return row;
+    const frag = document.createDocumentFragment();
+    if (leftBtn) frag.appendChild(leftBtn);
+    if (rightBtn) frag.appendChild(rightBtn);
+    return frag;
   };
 
   if (selectedTagEntries.length) {
     const albumBtn = makeActionBtn(
-      "Album",
+      "Move into tag",
       () => {
         WS.view.bulkActionMenuOpen = false;
         finalizeBulkSelectionAction();
-        beginTagAlbumAssignmentForEntries(
-          albumAssignableTagEntries,
-          "directories",
-        );
+        if (albumAssignableBookmarkEntries.length && !albumAssignableTagEntries.length) {
+          beginBookmarkAlbumAssignmentForEntries(
+            albumAssignableBookmarkEntries,
+            "directories",
+          );
+        } else {
+          beginTagAlbumAssignmentForEntries(
+            albumAssignableTagEntries,
+            "directories",
+          );
+        }
       },
       true,
     );
@@ -39887,7 +40902,7 @@ function renderDirectoriesActionHeader() {
       },
       true,
     );
-    if (!albumAssignableTagEntries.length) albumBtn.disabled = true;
+    if (!albumAssignableTagEntries.length && !albumAssignableBookmarkEntries.length) albumBtn.disabled = true;
     if (!canSingleTagRename) renameTagBtn.disabled = true;
     directoriesActionMenuEl.appendChild(
       makeTwoColRow(
@@ -39907,9 +40922,16 @@ function renderDirectoriesActionHeader() {
           if (!tag) continue;
           const dirs = getDirsForTagEntry(entry);
           const paths = gatherTagPathsForDirs(dirs);
-          if (!paths.length) continue;
           const mapKey = `${originPath}\n${tag}`;
           byTag.set(mapKey, { tag, paths, originPath });
+        }
+        const bookmarks = [];
+        const seenBookmarks = new Set();
+        for (const entry of deletableBookmarkEntries) {
+          const bookmark = normalizeBookmarkName(entry.bookmark || "");
+          if (!bookmark || seenBookmarks.has(bookmark)) continue;
+          seenBookmarks.add(bookmark);
+          bookmarks.push(bookmark);
         }
         const albums = [];
         const seenAlbums = new Set();
@@ -39921,16 +40943,18 @@ function renderDirectoriesActionHeader() {
           seenAlbums.add(key);
           albums.push({ album, originPath });
         }
-        if (!byTag.size && !albums.length) {
+        if (!byTag.size && !bookmarks.length && !albums.length) {
           showStatusMessage("No tags selected.");
           return;
         }
         const deleteLabel =
-          byTag.size && albums.length
-            ? `Delete ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and ${albums.length} album${albums.length === 1 ? "" : "s"}?`
-            : byTag.size
-              ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
-              : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Tags stay and will be ungrouped.`;
+          byTag.size && (albums.length || bookmarks.length)
+            ? `Delete selected tags?`
+            : bookmarks.length
+              ? `Delete ${bookmarks.length} selected tag${bookmarks.length === 1 ? "" : "s"}? Folders stay in place.`
+              : byTag.size
+              ? `Delete ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"}? Folders stay in place.`
+              : `Delete ${albums.length} selected tag${albums.length === 1 ? "" : "s"}? Child tags stay and will be ungrouped.`;
         if (!confirm(deleteLabel)) return;
         let changed = false;
         if (byTag.size) {
@@ -39938,6 +40962,14 @@ function renderDirectoriesActionHeader() {
             if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
               changed = true;
           }
+        }
+        let deletedBookmarkCount = 0;
+        for (let i = 0; i < bookmarks.length; i++) {
+          const deletedBookmark = metaDeleteBookmark(bookmarks[i]);
+          const deletedTag = deleteTagFromPaths(bookmarks[i], [], "");
+          if (!deletedBookmark && !deletedTag) continue;
+          changed = true;
+          deletedBookmarkCount++;
         }
         let deletedCount = 0;
         let ungroupedTotal = 0;
@@ -39952,41 +40984,50 @@ function renderDirectoriesActionHeader() {
           ungroupedTotal += Number(result.clearedTags) || 0;
         }
         if (!changed) {
-          showStatusMessage(byTag.size ? "No folders updated." : "No tags updated.");
+          showStatusMessage("No tags updated.");
           return;
         }
         metaScheduleSave();
         refreshAfterTagMetadataChange();
         if (byTag.size && deletedCount) {
           showStatusMessage(
-            `Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"}.`,
+            `Deleted ${byTag.size + deletedCount} tag${byTag.size + deletedCount === 1 ? "" : "s"}.`,
           );
         } else if (byTag.size) {
-          showStatusMessage(`Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"}.`);
+          showStatusMessage(`Deleted ${byTag.size} tag${byTag.size === 1 ? "" : "s"}.`);
         } else {
           showStatusMessage(
-            `Deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
+            `Deleted ${deletedCount} tag${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
           );
         }
         finalizeBulkSelectionAction();
       },
       true,
     );
-    if (!deletableTagEntries.length && !deletableTagAlbumEntries.length)
+    if (!deletableTagEntries.length && !deletableBookmarkEntries.length && !deletableTagAlbumEntries.length)
       deleteBtn.disabled = true;
-    const hideBtn = hiddenTagTargets.length
-      ? makeActionBtn(allHiddenTags ? "Unhide" : "Hide", () => {
+    const hideBtn = hiddenTargetCount
+      ? makeActionBtn(allHiddenTargets ? "Unhide" : "Hide", () => {
           WS.view.bulkActionMenuOpen = false;
           let changed = false;
           for (let i = 0; i < hiddenTagTargets.length; i++) {
-            if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTags))
+            if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTargets))
+              changed = true;
+          }
+          for (let i = 0; i < hiddenBookmarkTargets.length; i++) {
+            if (metaSetHiddenBookmarkName(hiddenBookmarkTargets[i], !allHiddenTargets))
               changed = true;
           }
           if (!changed) return;
           metaScheduleSave();
           refreshAfterTagMetadataChange();
+          const targetLabel = hiddenTagTargets.length && hiddenBookmarkTargets.length
+            ? "item"
+            : hiddenBookmarkTargets.length
+              ? "tag"
+              : "tag";
           showStatusMessage(
-            `${allHiddenTags ? "Unhid" : "Hid"} ${hiddenTagTargets.length} tag${hiddenTagTargets.length === 1 ? "" : "s"}.`,
+            `${allHiddenTargets ? "Unhid" : "Hid"} ${hiddenTargetCount} ${targetLabel}${hiddenTargetCount === 1 ? "" : "s"}.`,
           );
           finalizeBulkSelectionAction();
         })
@@ -40009,7 +41050,7 @@ function renderDirectoriesActionHeader() {
   if (tagAppearancePresetKeys.length) {
     directoriesActionMenuEl.appendChild(
       makeActionBtn(
-        "Set media preset",
+        "Filters",
         () => {
           const currentPresetId =
             tagAppearancePresetKeys.length === 1
@@ -40228,26 +41269,6 @@ function renderDirectoriesActionHeader() {
       selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
     const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
     const canRenameBulk = !!singleSelectedDirPath && !!WS.meta.fsRootHandle;
-    if (scoreInterfaceEnabled()) {
-      const scoreRow = document.createElement("div");
-      scoreRow.className = "scoreRow";
-      const scoreUpBtn = makeActionBtn("+", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaBumpScoreBulk(selectedDirs, 1);
-        finalizeBulkSelectionAction();
-      });
-      scoreUpBtn.classList.add("scoreBtn");
-      const scoreDownBtn = makeActionBtn("-", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaBumpScoreBulk(selectedDirs, -1);
-        finalizeBulkSelectionAction();
-      });
-      scoreDownBtn.classList.add("scoreBtn");
-      scoreRow.appendChild(scoreUpBtn);
-      scoreRow.appendChild(scoreDownBtn);
-      directoriesActionMenuEl.appendChild(scoreRow);
-    }
-
     const tagBtn = makeActionBtn("Tag", () => {
       WS.view.bulkActionMenuOpen = false;
       finalizeBulkSelectionAction();
@@ -40295,7 +41316,7 @@ function renderDirectoriesActionHeader() {
 
     directoriesActionMenuEl.appendChild(
       makeActionBtn(
-        "Set media preset",
+        "Filters",
         () => {
           const currentPresetId =
             selectedDirs.length === 1
@@ -40356,12 +41377,6 @@ function renderDirectoriesActionHeader() {
       );
     }
 
-    const setMergeBtn = makeActionBtn("Set Merge", async () => {
-      WS.view.bulkActionMenuOpen = false;
-      await setMergeSelectedDirs();
-    });
-    if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
-    directoriesActionMenuEl.appendChild(setMergeBtn);
     const moveToTrashBtn = makeActionBtn(
       "Move to trash",
       async () => {
@@ -40443,12 +41458,6 @@ function renderDirectoriesActionHeader() {
     if (!singleFile || !WS.meta.fsRootHandle) renameBtn.disabled = true;
     directoriesActionMenuEl.appendChild(renameBtn);
 
-    const mergeBtn = makeActionBtn("Loose Set Merge", async () => {
-      WS.view.bulkActionMenuOpen = false;
-      await looseSetMergeSelectedFiles();
-    });
-    if (!WS.meta.fsRootHandle || !allSameDir) mergeBtn.disabled = true;
-    directoriesActionMenuEl.appendChild(mergeBtn);
   }
 
   const anchorBtn = findDirMenuButtonForAnchorKey(
@@ -40888,8 +41897,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       else if (WS.view.tagFolderActiveMode === "album") {
         const albumLabel = String(WS.view.tagFolderActiveAlbum || "");
         emptyMsg = albumLabel
-          ? `No tags in album '${albumLabel}'.`
-          : "No tags in this album.";
+          ? `No tags in tag '${albumLabel}'.`
+          : "No tags in this tag.";
       } else {
         const tagLabel = String(WS.view.tagFolderActiveTag || "");
         emptyMsg = tagLabel
@@ -41016,7 +42025,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const countText = getTagEntryCountText(entry);
       const iconHtml = getTagEntryDisplayIcon(entry);
       const tagTypeLabel = tagItemTypeLabelForEntry(entry);
-      const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
+      const isHiddenTag = tagEntryHasHiddenMarker(entry);
       const lightweightTagThumbs =
         !tortoiseNavigationEnabled() &&
         isViewingPerformanceSensitiveTagAlbumFolder();
@@ -41166,9 +42175,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const tagTitleClass =
         entry.special === "favorites"
           ? "dirSquareNameTagFavorite"
-          : entry.album && !entry.tag
-            ? "dirSquareNameTagAlbum"
-            : "dirSquareNameTag";
+          : "dirSquareNameTag";
       const showTagThumbnailTitle = true;
       const showTagTextMeta =
         !!tagSummaryBits.length ||
@@ -41378,7 +42385,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         let menuTitle = "Folder menu";
         if (isRootNode) {
           menuButtons = `
-                <button type="button" data-action="appearance-preset-set">Set media preset</button>
+                <button type="button" data-action="appearance-preset-set">Filters</button>
               `;
         } else if (folderMenuState.isTrashPutBackOnly) {
           menuButtons = `
@@ -41391,25 +42398,12 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               `;
         } else {
           menuButtons = `
-                ${
-                  scoreInterfaceEnabled()
-                    ? `
-                <div class="scoreRow">
-                  <button type="button" class="scoreBtn" data-action="score-up">+</button>
-                  <button type="button" class="scoreBtn" data-action="score-down">-</button>
-                </div>`
-                    : ``
-                }
-                <div class="menuTwoColRow">
-                  <button type="button" data-action="tag">Tag</button>
-                  <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
-                </div>
+                <button type="button" data-action="tag">Tag</button>
+                <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
-                <div class="menuTwoColRow">
-                  <button type="button" data-action="send-to-storage"${folderMenuState.canSendToStorage ? "" : " disabled"}>Store</button>
-                  <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
-                </div>
-                <button type="button" data-action="appearance-preset-set">Set media preset</button>
+                <button type="button" data-action="send-to-storage"${folderMenuState.canSendToStorage ? "" : " disabled"}>Store</button>
+                <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
+                <button type="button" data-action="appearance-preset-set">Filters</button>
                 ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
                 <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
@@ -41626,8 +42620,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const fileTrashTargetPath = trashTopLevelItemPathForFileRecord(rec);
         const fileMenuButtons = fileTrashTargetPath
           ? `<button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from trash</button>`
-          : bulkFileMenuActive
-          ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
           : `
                   <button type="button" data-action="rename-file">Rename</button>
                 `;
@@ -42007,7 +42999,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             }
             closeActionMenus();
             renderDirectoriesPane(true);
-            await runFolderActionFromMenu(action, entry.node);
+            await runFolderActionFromMenu(action, entry.node, {
+              preferPane: "directories",
+            });
           });
         });
         if (menuDropdown.classList.contains("open")) {
@@ -43007,12 +44001,17 @@ function adoptPreviewParentIntoDirectoriesPane(targetDir) {
     const mode =
       modeRaw === "album" ||
       modeRaw === "tag" ||
+      modeRaw === "bookmark" ||
       modeRaw === "favorites" ||
       modeRaw === "hidden" ||
       modeRaw === "untagged"
         ? modeRaw
         : "";
-    const tag = mode === "tag" ? String(parentTarget._tagPreviewTag || "") : "";
+    const tag = mode === "tag"
+      ? String(parentTarget._tagPreviewTag || "")
+      : mode === "bookmark"
+        ? normalizeBookmarkName(parentTarget._tagPreviewBookmark || parentTarget.name || "")
+        : "";
     const album =
       mode === "album" || mode === "tag"
         ? String(parentTarget._tagPreviewAlbum || "")
@@ -43106,7 +44105,11 @@ async function openPreviewTagFolderEntry(entry) {
     : entry.album && !entry.tag
       ? "album"
       : "tag";
-  const tag = mode === "tag" ? String(entry.tag || "") : "";
+  const tag = mode === "tag"
+    ? String(entry.tag || "")
+    : mode === "bookmark"
+      ? normalizeBookmarkName(entry.bookmark || entry.label || "")
+      : "";
   const album = String(entry.album || "");
   const targetIdx = findTagEntryIndex(mode, tag, album);
   WS.nav.selectedIndex = findNearestSelectableIndex(
@@ -44511,8 +45514,10 @@ function tagEntryForPreviewPlaceholderNode(dirNode) {
   };
   if (mode === "favorites" || mode === "hidden" || mode === "untagged") {
     entry.special = mode;
+  } else if (mode === "bookmark") {
+    entry.tag = normalizeBookmarkName(dirNode._tagPreviewBookmark || dirNode.name || "");
   } else if (mode === "album") {
-    entry.album = String(dirNode._tagPreviewAlbum || dirNode.name || "");
+    entry.tag = normalizeTagAlbumName(dirNode._tagPreviewAlbum || dirNode.name || "");
   } else {
     entry.tag = String(dirNode._tagPreviewTag || dirNode.name || "");
     entry.album = String(dirNode._tagPreviewAlbum || "");
@@ -45026,16 +46031,28 @@ function getPreviewFolderAndFileEntries(dirNode, opts = null) {
     }
     return { folderEntries, fileIds };
   }
-  if (dirNode && String(dirNode._tagPreviewMode || "") === "album") {
-    const baseNode =
-      WS.dirByPath.get(String(dirNode._tagPreviewOriginPath || "")) ||
-      dirNode.parent ||
-      WS.root;
+  if (dirNode && dirNode._skipTagFilters) {
+    const mode = String(dirNode._tagPreviewMode || "");
+    const tagEntry = tagEntryForPreviewPlaceholderNode(dirNode);
+    if (mode === "tag" || mode === "album" || mode === "bookmark") {
+      const tag =
+        mode === "album"
+          ? normalizeTagAlbumName(dirNode._tagPreviewAlbum || dirNode.name || "")
+          : mode === "bookmark"
+            ? normalizeBookmarkName(dirNode._tagPreviewBookmark || dirNode.name || "")
+            : normalizeTag(dirNode._tagPreviewTag || dirNode.name || "");
+      const folderEntries = visibleChildTagEntriesForUnifiedTag(tag).concat(
+        visibleDirectDirNodesForUnifiedTag(tag, tagEntry).map((node) => ({
+          kind: "dir",
+          node,
+        })),
+      );
+      return { folderEntries, fileIds: [] };
+    }
     return {
-      folderEntries: getTagEntriesForAlbumForBaseNode(
-        baseNode,
-        String(dirNode._tagPreviewAlbum || ""),
-      ),
+      folderEntries: tagEntry
+        ? getDirsForTagEntry(tagEntry).map((node) => ({ kind: "dir", node }))
+        : [],
       fileIds: [],
     };
   }
@@ -45131,7 +46148,7 @@ function buildPreviewTagCardMarkup(entry) {
   const countText = getTagEntryCountText(entry);
   const iconHtml = getTagEntryDisplayIcon(entry);
   const tagTypeLabel = tagItemTypeLabelForEntry(entry);
-  const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
+  const isHiddenTag = tagEntryHasHiddenMarker(entry);
   const lightweightTagMetrics =
     !tortoiseNavigationEnabled() &&
     isViewingPerformanceSensitiveTagAlbumFolder();
@@ -45271,9 +46288,7 @@ function buildPreviewTagCardMarkup(entry) {
   const tagTitleClass =
     entry.special === "favorites"
       ? "dirSquareNameTagFavorite"
-      : entry.album && !entry.tag
-        ? "dirSquareNameTagAlbum"
-        : "dirSquareNameTag";
+      : "dirSquareNameTag";
   const inlineTagTitleCompact =
     showTagThumbnailTitle && !renameActive && !showTagTextMeta;
   const topNameHtml = renameActive
@@ -48649,6 +49664,7 @@ function applyViewModesEverywhere(animate = false) {
   }
 
   rebuildDirectoriesEntries();
+  refreshLiveVirtualPortalFrameOrders();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
   syncPreviewToSelection({ force: true });
 
@@ -48708,6 +49724,7 @@ function applyRandomSortModeEverywhere(animate = false) {
           }
     : null;
   rebuildDirectoriesEntries();
+  refreshLiveVirtualPortalFrameOrders();
   let nextIndex = -1;
   if (currentKey) {
     for (let i = 0; i < WS.nav.entries.length; i++) {
@@ -49837,26 +50854,30 @@ function startPreviewFileRenameEdit(fileId) {
 }
 
 function startPreviewTagRenameEdit(entry) {
-  if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
-    return false;
+  if (!entry || entry.kind !== "tag" || entry.placeholder) return false;
+  if (entry.special && entry.special !== "bookmark") return false;
   const tag = String(entry.tag || "").trim();
+  const bookmark = normalizeBookmarkName(entry.bookmark || "");
   const album = normalizeTagAlbumName(entry.album || "");
-  const isAlbumEntry = !!album && !tag;
-  if (!tag && !isAlbumEntry) return false;
-  const label = String(entry.label || entry.tag || album || tag);
+  const isBookmarkEntry = entry.special === "bookmark" && !!bookmark;
+  const isAlbumEntry = !!album && !tag && !isBookmarkEntry;
+  if (!tag && !isAlbumEntry && !isBookmarkEntry) return false;
+  const label = String(entry.label || bookmark || entry.tag || album || tag);
   const paths = gatherTagPathsForDirs(getDirsForTagEntry(entry));
-  if (!paths.length && !isAlbumEntry) {
+  if (!isBookmarkEntry && !paths.length && !isAlbumEntry) {
     showStatusMessage("No folders contain that tag.");
     return false;
   }
   return beginTagEntryRename(
     {
       tag,
+      bookmark,
       album,
       label,
       paths,
       originPath: String(entry.originPath || ""),
       isAlbumEntry,
+      isBookmarkEntry,
     },
     "preview",
   );
@@ -51445,6 +52466,7 @@ syncButtons();
 ensureThumbnailServiceHeartbeat();
 
   
+
 
 
 </script>
