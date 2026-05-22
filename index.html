@@ -2732,9 +2732,109 @@ img[data-rotate-key].rotatingThumbFade {
   text-shadow: none;
 }
 
+.previewItemPlaceholder.folderPreviewPlaceholder {
+  --preview-folder-media-w: min(52vw, calc(52vh * var(--preview-folder-media-aspect, 1.3333)));
+  --preview-folder-media-h: min(52vh, calc(52vw / var(--preview-folder-media-aspect, 1.3333)));
+  display: block;
+  padding: 0;
+}
+
+.previewFolderFirstMediaSlot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--preview-folder-media-w);
+  height: var(--preview-folder-media-h);
+  max-width: 720px;
+  max-height: 520px;
+  aspect-ratio: var(--preview-folder-media-aspect, 1.3333);
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.previewFolderFirstMediaSlot.empty {
+  background: var(--color1-primary);
+  border: 0;
+}
+
+.previewFolderFirstMediaSlot .previewItemPlaceholderIcon {
+  border: 0;
+  background: transparent;
+}
+
+.previewFolderFirstMedia {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  background: transparent;
+  border-radius: 14px;
+  opacity: 0;
+  transition: opacity 90ms linear;
+}
+
+.previewFolderFirstMedia.ready {
+  opacity: 1;
+}
+
+.previewFolderFirstMedia.leaving {
+  opacity: 0;
+}
+
+.previewFolderInfoPanel {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + min(26vh, calc(26vw / var(--preview-folder-media-aspect, 1.3333))) + clamp(14px, 2.4vh, 28px));
+  width: min(72vw, 720px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 0 var(--preview-gutter);
+  text-align: center;
+}
+
+.previewFolderInfoPanel .previewItemPlaceholderLabel,
+.previewFolderInfoPanel .previewItemPlaceholderMeta {
+  text-align: center;
+  text-shadow: none;
+}
+
+.previewFolderInfoPanel .previewItemPlaceholderLabel {
+  font-size: clamp(18px, 3.2vmin, 32px);
+  max-width: 100%;
+}
+
+.previewFolderInfoPanel .previewItemPlaceholderMeta {
+  color: var(--color0-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 100%;
+}
+
 @media (max-width: 760px) {
   .previewItemPlaceholderLabel {
     font-size: clamp(14px, 4vmin, 28px);
+  }
+
+  .previewFolderFirstMediaSlot {
+    width: min(76vw, calc(40vh * var(--preview-folder-media-aspect, 1.3333)));
+    height: min(40vh, calc(76vw / var(--preview-folder-media-aspect, 1.3333)));
+  }
+
+  .previewFolderInfoPanel {
+    top: calc(50% + min(20vh, calc(38vw / var(--preview-folder-media-aspect, 1.3333))) + 16px);
+    width: min(88vw, 520px);
   }
 }
 
@@ -42786,8 +42886,8 @@ function jumpToDirectoryFirstFile(dirNode) {
   return idx >= 0;
 }
 
-function jumpToDirectoryRandomFile(dirNode) {
-  if (!dirNode) return false;
+function jumpToDirectoryFile(dirNode, fileId) {
+  if (!dirNode || !fileId) return false;
   WS.nav.dirNode = dirNode;
   if (searchBrowsingResultFolder())
     enterSearchResultContext(dirNode.path || "");
@@ -42799,21 +42899,7 @@ function jumpToDirectoryRandomFile(dirNode) {
   syncTagUiForCurrentDir();
   rebuildDirectoriesEntries();
 
-  const fileIds = getOrderedFileIdsForDir(dirNode);
-  if (!fileIds.length) {
-    WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
-    syncPreviewToSelection({ force: true });
-    renderDirectoriesPane();
-    renderPreviewPane(true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-    return false;
-  }
-
-  const targetFileId =
-    fileIds[Math.floor(Math.random() * fileIds.length)] || "";
-  const idx = targetFileId ? findFileEntryIndexById(targetFileId) : -1;
+  const idx = findFileEntryIndexById(fileId);
   WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
 
   syncPreviewToSelection({ force: true });
@@ -42838,6 +42924,35 @@ function pickRandomFirstFileJumpTarget(sourceDirNode) {
 
   const idx = Math.floor(Math.random() * eligible.length);
   return eligible[idx] || null;
+}
+
+function currentDirectorySelectedFileId() {
+  const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+  return entry && entry.kind === "file" ? String(entry.id || "") : "";
+}
+
+function collectRandomFileJumpTargets(sourceDirNode, currentFileId = "") {
+  if (!sourceDirNode) return [];
+  const siblings = getVisibleSiblingDirsForSlide(sourceDirNode);
+  const currentId = String(currentFileId || "");
+  const targets = [];
+  for (let i = 0; i < siblings.length; i++) {
+    const dir = siblings[i];
+    if (!dir) continue;
+    const fileIds = getOrderedFileIdsForDir(dir);
+    for (let j = 0; j < fileIds.length; j++) {
+      const fileId = String(fileIds[j] || "");
+      if (!fileId || (currentId && fileId === currentId)) continue;
+      targets.push({ dirNode: dir, fileId });
+    }
+  }
+  return targets;
+}
+
+function pickRandomFileJumpTarget(sourceDirNode, currentFileId = "") {
+  const targets = collectRandomFileJumpTargets(sourceDirNode, currentFileId);
+  if (!targets.length) return null;
+  return targets[Math.floor(Math.random() * targets.length)] || null;
 }
 
 function jumpToNextFolderFirstFile() {
@@ -42877,12 +42992,15 @@ function randomFileJumpFromDirectories() {
     return false;
   }
   const sourceDir = WS.nav.dirNode;
-  const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
-  if (!targetDir) {
-    showStatusMessage("Random File Jump: no matching folder.");
+  const target = pickRandomFileJumpTarget(
+    sourceDir,
+    currentDirectorySelectedFileId(),
+  );
+  if (!target) {
+    showStatusMessage("Random File Jump: no matching file.");
     return false;
   }
-  const ok = jumpToDirectoryRandomFile(targetDir);
+  const ok = jumpToDirectoryFile(target.dirNode, target.fileId);
   if (ok) showStatusMessage("Random File Jump");
   else showStatusMessage("Random File Jump: no files.");
   return ok;
@@ -44691,6 +44809,198 @@ function previewPlaceholderThumbnailRecordForEntry(entry) { }
 
 function warmPreviewPlaceholderNeighborThumbs() { }
 
+function firstVisiblePreviewRecordInDir(dirNode, predicate, seenDirs = null) {
+  if (!dirNode) return null;
+  const dirPath = String(dirNode.path || "");
+  const seen = seenDirs || new Set();
+  const seenKey = dirPath || `node:${String(dirNode.name || "")}`;
+  if (seen.has(seenKey)) return null;
+  seen.add(seenKey);
+  const test = typeof predicate === "function" ? predicate : passesFilter;
+  const ids = getPreviewFileIdsForDir(dirNode, false);
+  for (let i = 0; i < ids.length; i++) {
+    const rec = WS.fileById.get(String(ids[i] || ""));
+    if (rec && test(rec)) return rec;
+  }
+  const childDirs = getChildDirsForNode(dirNode);
+  for (let i = 0; i < childDirs.length; i++) {
+    const rec = firstVisiblePreviewRecordInDir(childDirs[i], test, seen);
+    if (rec) return rec;
+  }
+  return null;
+}
+
+function firstVisibleDirPreviewRecord(dirNode) {
+  return firstVisiblePreviewRecordInDir(dirNode, passesFilter);
+}
+
+function firstVisibleTagEntryPreviewRecord(entry) {
+  if (!entry || entry.kind !== "tag") return null;
+  const dirs = getDirsForTagEntry(entry);
+  const seenDirs = new Set();
+  for (let i = 0; i < dirs.length; i++) {
+    const rec = firstVisiblePreviewRecordInDir(
+      dirs[i],
+      (record) => recordPassesTagEntryFilter(record, entry),
+      seenDirs,
+    );
+    if (rec) return rec;
+  }
+  return null;
+}
+
+function firstVisibleContainerPreviewRecord(src) {
+  if (!src || typeof src !== "object") return null;
+  if (src.tagEntry) return firstVisibleTagEntryPreviewRecord(src.tagEntry);
+  if (src.dirNode) return firstVisibleDirPreviewRecord(src.dirNode);
+  return null;
+}
+
+function removeLeavingContainerPreviewMedia(media) {
+  if (!media) return;
+  window.setTimeout(() => {
+    try {
+      if (media.parentElement) media.parentElement.removeChild(media);
+    } catch {}
+  }, 140);
+}
+
+function renderContainerPreviewPlaceholder(src, makeIcon, makeLabel, regularMetaText) {
+  let wrap = previewBodyEl.firstElementChild;
+  const canReuse = !!(
+    wrap &&
+    wrap.classList &&
+    wrap.classList.contains("folderPreviewPlaceholder")
+  );
+  if (!canReuse) {
+    previewBodyEl.innerHTML = "";
+    wrap = document.createElement("div");
+    wrap.className = "previewItemPlaceholder noThumbnail folderPreviewPlaceholder";
+    previewBodyEl.appendChild(wrap);
+  }
+  wrap.className = "previewItemPlaceholder noThumbnail folderPreviewPlaceholder";
+
+  const rec = firstVisibleContainerPreviewRecord(src);
+  let mediaSlot = wrap.querySelector(".previewFolderFirstMediaSlot");
+  if (!mediaSlot) {
+    mediaSlot = document.createElement("div");
+    wrap.appendChild(mediaSlot);
+  }
+  mediaSlot.className = "previewFolderFirstMediaSlot";
+  const previousMedia = mediaSlot.querySelector(".previewFolderFirstMedia.ready");
+  let nextMediaKey = "";
+
+  if (rec) {
+    const mediaSrc = ensureMediaUrl(rec);
+    if (mediaSrc) {
+      nextMediaKey = `${String(rec.id || "")}::${String(mediaSrc || "")}`;
+      const aspect = normalizePreviewAspect(
+        getPreviewAspectForRecord(rec),
+        4 / 3,
+      );
+      wrap.style.setProperty(
+        "--preview-folder-media-aspect",
+        Number(aspect).toFixed(4),
+      );
+      mediaSlot.style.setProperty(
+        "--preview-folder-media-aspect",
+        Number(aspect).toFixed(4),
+      );
+      const currentMedia = Array.from(
+        mediaSlot.querySelectorAll(".previewFolderFirstMedia"),
+      ).find(
+        (media) =>
+          String(media?.dataset?.previewFolderMediaKey || "") === nextMediaKey,
+      );
+      if (currentMedia) {
+        currentMedia.classList.remove("leaving");
+        currentMedia.classList.add("ready");
+        for (const media of Array.from(
+          mediaSlot.querySelectorAll(".previewFolderFirstMedia"),
+        )) {
+          if (media !== currentMedia) {
+            media.classList.add("leaving");
+            media.classList.remove("ready");
+            removeLeavingContainerPreviewMedia(media);
+          }
+        }
+      } else {
+        const media =
+          rec.type === "video"
+            ? document.createElement("video")
+            : document.createElement("img");
+        media.className = "previewFolderFirstMedia";
+        media.dataset.previewFolderFirstFileId = String(rec.id || "");
+        media.dataset.previewFolderMediaKey = nextMediaKey;
+        media.setAttribute("aria-hidden", "true");
+        const markReady = () => {
+          media.classList.add("ready");
+          for (const oldMedia of Array.from(
+            mediaSlot.querySelectorAll(".previewFolderFirstMedia"),
+          )) {
+            if (oldMedia === media) continue;
+            oldMedia.classList.add("leaving");
+            oldMedia.classList.remove("ready");
+            removeLeavingContainerPreviewMedia(oldMedia);
+          }
+        };
+        if (rec.type === "video") {
+          media.muted = true;
+          media.defaultMuted = true;
+          media.playsInline = true;
+          media.controls = false;
+          media.preload = "auto";
+          applyVideoPoster(media, rec);
+          media.addEventListener("loadeddata", markReady, { once: true });
+          media.addEventListener("canplay", markReady, { once: true });
+        } else {
+          media.alt = "";
+          media.decoding = "async";
+          media.loading = "eager";
+          media.addEventListener("load", markReady, { once: true });
+        }
+        media.src = mediaSrc;
+        mediaSlot.appendChild(media);
+        if (rec.type !== "video" && media.complete && media.naturalWidth > 0) {
+          markReady();
+        }
+      }
+    }
+  }
+
+  if (!nextMediaKey) {
+    mediaSlot.innerHTML = "";
+    mediaSlot.classList.add("empty");
+    mediaSlot.appendChild(makeIcon());
+  } else {
+    mediaSlot.classList.remove("empty");
+    const icon = mediaSlot.querySelector(".previewItemPlaceholderIcon");
+    if (icon && icon.parentElement === mediaSlot) icon.remove();
+  }
+
+  let infoPanel = wrap.querySelector(".previewFolderInfoPanel");
+  if (!infoPanel) {
+    infoPanel = document.createElement("div");
+    wrap.appendChild(infoPanel);
+  }
+  infoPanel.className = "previewFolderInfoPanel";
+  infoPanel.innerHTML = "";
+  infoPanel.appendChild(makeLabel());
+  if (regularMetaText) {
+    const meta = document.createElement("div");
+    meta.className = "previewItemPlaceholderMeta";
+    meta.textContent = String(regularMetaText || "");
+    infoPanel.appendChild(meta);
+  }
+
+  if (mediaSlot.parentElement !== wrap) wrap.insertBefore(mediaSlot, wrap.firstChild);
+  if (infoPanel.parentElement !== wrap) wrap.appendChild(infoPanel);
+  if (itemsPill) itemsPill.textContent = src && src.label ? "Items: 1" : "Items: —";
+  clearPreviewSelectionState(currentPreviewSelectionContextKeyFromState());
+  updatePreviewSelectionClasses();
+  scheduleThumbnailDemandRefresh();
+}
+
 function renderPreviewPlaceholder(info = null) {
   const src = info && typeof info === "object" ? info : previewPlaceholderInfoForCurrentSelection();
   setPreviewBodyMode("placeholder");
@@ -44738,6 +45048,20 @@ function renderPreviewPlaceholder(info = null) {
       img.style.cssText += cropStyle;
     }
   };
+
+  if (
+    src &&
+    (src.dirNode || src.tagEntry) &&
+    (src.itemKind === "dir" || src.itemKind === "tag")
+  ) {
+    renderContainerPreviewPlaceholder(
+      src,
+      makeIcon,
+      makeLabel,
+      regularMetaText,
+    );
+    return;
+  }
 
   if (!thumbSrc) {
     previewBodyEl.innerHTML = "";
@@ -47979,23 +48303,30 @@ function jumpViewerToDirectoryFirstFile(dirNode) {
   return true;
 }
 
-function jumpViewerToDirectoryRandomFile(dirNode) {
-  if (!dirNode) return false;
+function jumpViewerToDirectoryFile(dirNode, fileId) {
+  if (!dirNode || !fileId) return false;
   viewerDirNode = dirNode;
   viewerItems = buildViewerItemsForDir(viewerDirNode);
   if (!viewerItems.length) return false;
-  const fileIndexes = [];
+  const targetId = String(fileId || "");
+  let targetIndex = -1;
   for (let i = 0; i < viewerItems.length; i++) {
-    if (!viewerItems[i]?.isFolder) fileIndexes.push(i);
+    const item = viewerItems[i];
+    if (!item || item.isFolder) continue;
+    if (String(item.id || "") !== targetId) continue;
+    targetIndex = i;
+    break;
   }
-  if (!fileIndexes.length) return false;
-  const targetIndex =
-    fileIndexes[Math.floor(Math.random() * fileIndexes.length)] ?? -1;
   if (targetIndex < 0) return false;
   viewerIndex = targetIndex;
   if (VIEWER_MODE) renderViewerItem(viewerIndex);
   syncDirectoriesToViewerState();
   return true;
+}
+
+function currentViewerFileId() {
+  const item = viewerItems[viewerIndex] || null;
+  return item && !item.isFolder ? String(item.id || "") : "";
 }
 
 function randomFirstFileJumpFromViewer() {
@@ -48029,12 +48360,12 @@ function randomFileJumpFromViewer() {
     showStatusMessage("Random File Jump unavailable here.");
     return false;
   }
-  const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
-  if (!targetDir) {
-    showStatusMessage("Random File Jump: no matching folder.");
+  const target = pickRandomFileJumpTarget(sourceDir, currentViewerFileId());
+  if (!target) {
+    showStatusMessage("Random File Jump: no matching file.");
     return false;
   }
-  const ok = jumpViewerToDirectoryRandomFile(targetDir);
+  const ok = jumpViewerToDirectoryFile(target.dirNode, target.fileId);
   if (ok) showStatusMessage("Random File Jump");
   else showStatusMessage("Random File Jump: no files.");
   return ok;
