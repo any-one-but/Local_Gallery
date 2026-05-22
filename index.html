@@ -47,6 +47,7 @@
   --dir-tag-title-color: #9b8ac7;
   --dir-tag-favorite-title-color: var(--palette-accent);
   --dir-tag-album-title-color: #ff7a6e;
+  --stats-score-positive-color: #d85a50;
   --ui-hover-lift: -1px;
   --ui-active-press: 1px;
   --ui-hover-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
@@ -192,6 +193,7 @@
   --dir-tag-title-color: #6d5b8b;
   --dir-tag-favorite-title-color: var(--palette-accent);
   --dir-tag-album-title-color: #8f362d;
+  --stats-score-positive-color: #8f362d;
   --tag-include-bg: #2b4d7a;
   --tag-include-border: #17345a;
   --tag-include-color: #e9f1ff;
@@ -220,6 +222,7 @@
   --dir-tag-title-color: #b7a5db;
   --dir-tag-favorite-title-color: var(--palette-accent);
   --dir-tag-album-title-color: #ff9485;
+  --stats-score-positive-color: #ff9485;
   --tag-include-bg: #203457;
   --tag-include-border: #101f38;
   --tag-include-color: #e6efff;
@@ -2019,7 +2022,9 @@ img[data-rotate-key].rotatingThumbFade {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  min-width: 140px;
+  width: max-content;
+  min-width: 0;
+  max-width: calc(100vw - 16px);
   background: var(--color1-secondary);
   border: 0;
   border-radius: 8px;
@@ -2044,6 +2049,7 @@ img[data-rotate-key].rotatingThumbFade {
   padding: 6px 8px;
   font-size: 12px;
   text-align: left;
+  white-space: nowrap;
   background: transparent;
   color: var(--color0-primary);
   border: 0;
@@ -2104,47 +2110,15 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dropdownMenu button.destructiveAction {
-  color: #ffb3b3;
+  color: var(--stats-score-positive-color, #d85a50);
 }
 
 .dropdownMenu button.destructiveAction:hover:not(:disabled) {
-  color: #ffb3b3;
-}
-
-.dropdownMenu .scoreRow {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  width: 100%;
-}
-
-.dropdownMenu .scoreBtn {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-  text-align: center;
-  padding: 6px 0;
-  font-weight: 800;
-  font-size: 14px;
-}
-
-.dropdownMenu .menuTwoColRow {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  width: 100%;
-}
-
-.dropdownMenu .menuTwoColRow button {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
+  color: var(--stats-score-positive-color, #d85a50);
 }
 
 #tagActionMenu {
-  min-width: 128px;
+  min-width: 0;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
@@ -5135,7 +5109,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .statsLedgerScoreFill.positive {
-  background: #d85a50;
+  background: var(--stats-score-positive-color, #d85a50);
 }
 
 .statsLedgerScoreFill.negative {
@@ -6636,6 +6610,7 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 /* Local note: version 01.02.08 was the last version to include online features. */
+/* v1: Fix appearance percent steppers so 1% changes are not snapped back to neutral, and keep bipolar/negative overlay settings editable. */
 /* =========================================================
        Core model
        ========================================================= */
@@ -7615,116 +7590,116 @@ function normalizeOptions(o) {
   const hueShiftOverlayEnabled = true;
   const hueShiftOverlayIntensity = normalizeOptionalClampedNumber(
     src.hueShiftOverlayIntensity,
-    -180,
-    180,
+    OVERLAY_SLIDER_LIMITS.hueShift.min,
+    OVERLAY_SLIDER_LIMITS.hueShift.max,
   );
   const saturationOverlayEnabled = true;
   const saturationOverlayIntensity = normalizeOptionalClampedNumber(
     src.saturationOverlayIntensity,
-    -1,
-    3,
+    OVERLAY_SLIDER_LIMITS.saturation.min,
+    OVERLAY_SLIDER_LIMITS.saturation.max,
   );
   const contrastOverlayEnabled = true;
   const contrastOverlayIntensity = normalizeOptionalClampedNumber(
     src.contrastOverlayIntensity,
-    -0.75,
-    2,
+    OVERLAY_SLIDER_LIMITS.contrast.min,
+    OVERLAY_SLIDER_LIMITS.contrast.max,
   );
   const brightnessOverlayEnabled = true;
   const brightnessOverlayIntensity = normalizeOptionalClampedNumber(
     src.brightnessOverlayIntensity,
-    -0.6,
-    1.5,
+    OVERLAY_SLIDER_LIMITS.brightness.min,
+    OVERLAY_SLIDER_LIMITS.brightness.max,
   );
   const warmthOverlayEnabled = true;
   const warmthOverlayIntensity = normalizeOptionalClampedNumber(
     src.warmthOverlayIntensity,
-    -1,
-    1,
+    OVERLAY_SLIDER_LIMITS.warmth.min,
+    OVERLAY_SLIDER_LIMITS.warmth.max,
   );
   const colorCrushOverlayEnabled = true;
   const colorCrushOverlayIntensity = normalizeOptionalClampedNumber(
     src.colorCrushOverlayIntensity,
-    0,
-    2,
+    OVERLAY_SLIDER_LIMITS.colorCrush.min,
+    OVERLAY_SLIDER_LIMITS.colorCrush.max,
   );
   const blackCrushOverlayEnabled = true;
   const blackCrushOverlayIntensity = normalizeOptionalClampedNumber(
     src.blackCrushOverlayIntensity,
-    0,
-    0.8,
+    OVERLAY_SLIDER_LIMITS.blackCrush.min,
+    OVERLAY_SLIDER_LIMITS.blackCrush.max,
   );
   const whiteCrushOverlayEnabled = true;
   const whiteCrushOverlayIntensity = normalizeOptionalClampedNumber(
     src.whiteCrushOverlayIntensity,
-    0,
-    0.8,
+    OVERLAY_SLIDER_LIMITS.whiteCrush.min,
+    OVERLAY_SLIDER_LIMITS.whiteCrush.max,
   );
   const halationOverlayEnabled = true;
   const halationOverlayIntensity = normalizeOptionalClampedNumber(
     src.halationOverlayIntensity,
-    0,
-    1,
+    OVERLAY_SLIDER_LIMITS.halation.min,
+    OVERLAY_SLIDER_LIMITS.halation.max,
   );
   const ghostingOverlayEnabled = true;
   const ghostingOverlayIntensity = normalizeOptionalClampedNumber(
     src.ghostingOverlayIntensity,
-    0,
-    1,
+    OVERLAY_SLIDER_LIMITS.ghosting.min,
+    OVERLAY_SLIDER_LIMITS.ghosting.max,
   );
   const lineDamageOverlayEnabled = true;
   const lineDamageOverlayIntensity = normalizeOptionalClampedNumber(
     src.lineDamageOverlayIntensity,
-    0,
-    1,
+    OVERLAY_SLIDER_LIMITS.lineDamage.min,
+    OVERLAY_SLIDER_LIMITS.lineDamage.max,
   );
   const pixelateOverlayEnabled = true;
   const pixelateOverlayIntensity = normalizeOptionalClampedNumber(
     src.pixelateOverlayIntensity,
-    1,
-    16,
+    OVERLAY_SLIDER_LIMITS.pixelate.min,
+    OVERLAY_SLIDER_LIMITS.pixelate.max,
   );
   const blurOverlayEnabled = true;
   const blurOverlayIntensity = normalizeOptionalClampedNumber(
     src.blurOverlayIntensity,
-    0,
-    8,
+    OVERLAY_SLIDER_LIMITS.blur.min,
+    OVERLAY_SLIDER_LIMITS.blur.max,
   );
   const upscaleSmoothingOverlayEnabled = true;
   const upscaleSmoothingOverlayIntensity = normalizeOptionalClampedNumber(
     src.upscaleSmoothingOverlayIntensity,
-    0,
-    1,
+    OVERLAY_SLIDER_LIMITS.upscaleSmoothing.min,
+    OVERLAY_SLIDER_LIMITS.upscaleSmoothing.max,
   );
   const upscalerOverlayEnabled = true;
   const upscalerOverlayIntensity = normalizeOptionalClampedNumber(
     src.upscalerOverlayIntensity,
-    0,
-    1,
+    OVERLAY_SLIDER_LIMITS.upscaleSmoothing.min,
+    OVERLAY_SLIDER_LIMITS.upscaleSmoothing.max,
   );
   const chromaOverlayEnabled = true;
   const chromaOverlayIntensity = normalizeOptionalClampedNumber(
     src.chromaOverlayIntensity,
-    0,
-    8,
+    OVERLAY_SLIDER_LIMITS.chroma.min,
+    OVERLAY_SLIDER_LIMITS.chroma.max,
   );
   const grainOverlayEnabled = true;
   const grainOverlayIntensity = normalizeOptionalClampedNumber(
     src.grainOverlayIntensity,
-    0,
-    0.5,
+    OVERLAY_SLIDER_LIMITS.grain.min,
+    OVERLAY_SLIDER_LIMITS.grain.max,
   );
   const vignetteOverlayEnabled = true;
   const vignetteOverlayIntensity = normalizeOptionalClampedNumber(
     src.vignetteOverlayIntensity,
-    0,
-    0.6,
+    OVERLAY_SLIDER_LIMITS.vignette.min,
+    OVERLAY_SLIDER_LIMITS.vignette.max,
   );
   const filmCornerOverlayEnabled = true;
   const filmCornerOverlayIntensity = normalizeOptionalClampedNumber(
     src.filmCornerOverlayIntensity,
-    0,
-    0.25,
+    OVERLAY_SLIDER_LIMITS.filmCorner.min,
+    OVERLAY_SLIDER_LIMITS.filmCorner.max,
   );
   const notificationOptionValues = {};
   for (let i = 0; i < NOTIFICATION_SOURCE_SPECS.length; i++) {
@@ -18867,13 +18842,14 @@ ${makeActionRow(
         ? Number(config.neutralValue)
         : attrNumber("data-stepper-neutral", null);
     const nullable = !!(config && config.nullable);
-    const stepValue = Math.abs(attrNumber("step", 0));
     const percentStep = Math.max(1, Math.abs(attrNumber("data-stepper-percent-step", 1)));
+    // These controls step in display-percent space, not raw value space.  Using
+    // half of the raw <input step> as the neutral snap radius swallowed valid
+    // 1% nudges on many small-range effects (for example 0% -> +1% -> null).
+    // Keep snapping available, but only for values that are actually neutral.
     const neutralEpsilon = Number.isFinite(Number(config && config.snapEpsilon))
       ? Math.abs(Number(config.snapEpsilon))
-      : stepValue > 0
-        ? stepValue * 0.5
-        : 0.0001;
+      : 1e-9;
     const clampRaw = (value) => {
       const n = Number(value);
       if (!Number.isFinite(n)) return Number.isFinite(neutralValue) ? neutralValue : rawMin;
@@ -36144,6 +36120,7 @@ async function moveFolderPathsToTrash(paths) {
     showStatusMessage("Trash folder is unavailable.");
     return false;
   }
+  ensureDirPath(INTERNAL_TRASH_DIR_NAME);
   const failed = [];
   const moved = [];
   showBusyOverlay("Moving folders to Trash...");
@@ -36577,10 +36554,11 @@ async function setMergeSelectedDirs() {
   return true;
 }
 
-async function moveFileToDirectoryHandle(srcDirHandle, dstDirHandle, name) {
+async function moveFileToDirectoryHandle(srcDirHandle, dstDirHandle, name, dstName = name) {
   if (!srcDirHandle || !dstDirHandle) return false;
   const fname = String(name || "");
-  if (!fname) return false;
+  const targetName = String(dstName || fname);
+  if (!fname || !targetName) return false;
   let fileHandle = null;
   try {
     fileHandle = await srcDirHandle.getFileHandle(fname);
@@ -36588,13 +36566,13 @@ async function moveFileToDirectoryHandle(srcDirHandle, dstDirHandle, name) {
   if (!fileHandle) return false;
   if (typeof fileHandle.move === "function") {
     try {
-      await fileHandle.move(dstDirHandle, fname);
+      await fileHandle.move(dstDirHandle, targetName);
       return true;
     } catch {}
   }
   try {
     const file = await fileHandle.getFile();
-    const dstFile = await dstDirHandle.getFileHandle(fname, { create: true });
+    const dstFile = await dstDirHandle.getFileHandle(targetName, { create: true });
     const writable = await dstFile.createWritable();
     await writable.write(file);
     await writable.close();
@@ -36651,6 +36629,241 @@ function updateFileRecordsForFileMoves(oldDirPath, newDirPath, fileIds) {
   invalidateDirMetricsCaches();
   remapFileIdsAcrossViewState(idMap);
   remapFolderThumbnailPresetValues(relPathMap);
+}
+
+function trashFilePathForRecord(rec) {
+  const relPath = normalizeWorkspaceRelPath(rec?.relPath || "");
+  const dirPath = normalizeWorkspaceRelPath(rec?.dirPath || "");
+  if (!relPath || !isPathInsideInternalTrash(relPath)) return "";
+  if (dirPath !== INTERNAL_TRASH_DIR_NAME) return "";
+  return relPath;
+}
+
+function trashTargetForFileRecord(rec) {
+  return trashFilePathForRecord(rec) || trashTopLevelItemPathForFileRecord(rec);
+}
+
+async function putBackFileRecordsFromMenu(records) {
+  const list = (records || []).filter(Boolean);
+  const fileTrashPaths = Array.from(
+    new Set(list.map((rec) => trashFilePathForRecord(rec)).filter(Boolean)),
+  );
+  const folderTrashPaths = Array.from(
+    new Set(
+      list
+        .map((rec) => trashTopLevelItemPathForFileRecord(rec))
+        .filter(Boolean),
+    ),
+  );
+  let changed = false;
+  if (fileTrashPaths.length)
+    changed = (await putBackTrashFilePaths(fileTrashPaths)) || changed;
+  if (folderTrashPaths.length)
+    changed = (await putBackTrashFolderPaths(folderTrashPaths)) || changed;
+  return changed;
+}
+
+function applyFileMoveRecordUpdates(moveGroups) {
+  for (const group of moveGroups.values()) {
+    updateFileRecordsForFileMoves(group.fromDir, group.toDir, group.ids);
+  }
+}
+
+async function moveFileRecordsToTrash(records) {
+  if (!WS.meta.fsRootHandle) {
+    showStatusMessage("Trash requires a writable folder.");
+    return false;
+  }
+  const list = (records || []).filter(
+    (rec) => rec && !isPathInsideInternalTrash(rec.relPath || ""),
+  );
+  if (!list.length) {
+    showStatusMessage("No files selected.");
+    return false;
+  }
+  const rootHandle = WS.meta.fsRootHandle;
+  let trashHandle = null;
+  try {
+    trashHandle = await rootHandle.getDirectoryHandle(INTERNAL_TRASH_DIR_NAME, {
+      create: true,
+    });
+  } catch {}
+  if (!trashHandle) {
+    showStatusMessage("Trash folder is unavailable.");
+    return false;
+  }
+
+  const failed = [];
+  const movedGroups = new Map();
+  showBusyOverlay("Moving files to Trash...");
+  try {
+    for (const rec of list) {
+      const oldId = String(rec.id || "");
+      const oldDirPath = String(rec.dirPath || "");
+      const oldRelPath = normalizeWorkspaceRelPath(rec.relPath || "");
+      const fileName = String(rec.name || "");
+      if (!oldId || !fileName || !oldRelPath) {
+        failed.push(fileName || "file");
+        continue;
+      }
+      let parentHandle = null;
+      try {
+        parentHandle = await getDirectoryHandleForPath(rootHandle, oldDirPath);
+      } catch {}
+      if (!parentHandle) {
+        failed.push(fileName);
+        continue;
+      }
+      const trashName = await uniqueDestNameInDir(trashHandle, fileName);
+      const ok = await moveFileToDirectoryHandle(
+        parentHandle,
+        trashHandle,
+        fileName,
+        trashName,
+      );
+      if (!ok) {
+        failed.push(fileName);
+        continue;
+      }
+      metaSetTrashRestoreInfo(`${INTERNAL_TRASH_DIR_NAME}/${trashName}`, oldRelPath);
+      rec.name = trashName;
+      const key = oldDirPath;
+      if (!movedGroups.has(key)) {
+        movedGroups.set(key, {
+          fromDir: oldDirPath,
+          toDir: INTERNAL_TRASH_DIR_NAME,
+          ids: [],
+        });
+      }
+      movedGroups.get(key).ids.push(oldId);
+    }
+  } finally {
+    hideBusyOverlay();
+  }
+
+  if (!movedGroups.size) {
+    showStatusMessage(failed.length ? "Move to Trash failed." : "No files selected.");
+    return false;
+  }
+  applyFileMoveRecordUpdates(movedGroups);
+  metaTrackDirtyDocIds([META_DOC_IDS.trash]);
+  await persistDirtyMetadataNow();
+  refreshCurrentViewAfterCatalogMutation();
+  const movedCount = Array.from(movedGroups.values()).reduce(
+    (sum, group) => sum + group.ids.length,
+    0,
+  );
+  showStatusMessage(
+    failed.length
+      ? `Moved ${movedCount} file${movedCount === 1 ? "" : "s"} to Trash. ${failed.length} failed.`
+      : `Moved ${movedCount} file${movedCount === 1 ? "" : "s"} to Trash.`,
+  );
+  return true;
+}
+
+async function putBackTrashFilePaths(paths) {
+  if (!WS.meta.fsRootHandle) {
+    showStatusMessage("Put Back requires a writable folder.");
+    return false;
+  }
+  const list = Array.from(
+    new Set((paths || []).map((path) => normalizeWorkspaceRelPath(path)).filter(Boolean)),
+  ).filter((path) => {
+    if (!isPathInsideInternalTrash(path)) return false;
+    const parts = path.split("/");
+    return parts.length === 2 && parts[0] === INTERNAL_TRASH_DIR_NAME;
+  });
+  if (!list.length) {
+    showStatusMessage("No trashed files selected.");
+    return false;
+  }
+
+  const rootHandle = WS.meta.fsRootHandle;
+  let trashHandle = null;
+  try {
+    trashHandle = await getDirectoryHandleForPath(rootHandle, INTERNAL_TRASH_DIR_NAME);
+  } catch {}
+  if (!trashHandle) {
+    showStatusMessage("Trash folder is unavailable.");
+    return false;
+  }
+
+  const failed = [];
+  const movedGroups = new Map();
+  showBusyOverlay("Putting files back...");
+  try {
+    for (const trashPath of list) {
+      const rec = findFileRecordByRelPath(trashPath);
+      const trashName = trashPath.split("/").pop() || "";
+      const restoreInfo = metaGetTrashRestoreInfo(trashPath);
+      const originalPath = normalizeWorkspaceRelPath(restoreInfo?.originalPath);
+      const fallbackName = trashName;
+      const targetPath =
+        originalPath && !isPathInsideInternalTrash(originalPath)
+          ? originalPath
+          : fallbackName;
+      const targetParts = targetPath.split("/").filter(Boolean);
+      const targetName = targetParts.pop() || fallbackName;
+      const targetDirPath = targetParts.join("/");
+      if (!rec || !trashName || !targetName) {
+        failed.push(trashName || "file");
+        continue;
+      }
+      let targetDirHandle = null;
+      try {
+        targetDirHandle = await getDirectoryHandleForPath(rootHandle, targetDirPath);
+      } catch {}
+      if (!targetDirHandle) {
+        failed.push(trashName);
+        continue;
+      }
+      ensureDirPath(targetDirPath);
+      const restoredName = await uniqueDestNameInDir(targetDirHandle, targetName);
+      const ok = await moveFileToDirectoryHandle(
+        trashHandle,
+        targetDirHandle,
+        trashName,
+        restoredName,
+      );
+      if (!ok) {
+        failed.push(trashName);
+        continue;
+      }
+      const oldId = String(rec.id || "");
+      rec.name = restoredName;
+      const key = targetDirPath;
+      if (!movedGroups.has(key)) {
+        movedGroups.set(key, {
+          fromDir: INTERNAL_TRASH_DIR_NAME,
+          toDir: targetDirPath,
+          ids: [],
+        });
+      }
+      movedGroups.get(key).ids.push(oldId);
+      metaDeleteTrashRestoreInfo(trashPath);
+    }
+  } finally {
+    hideBusyOverlay();
+  }
+
+  if (!movedGroups.size) {
+    showStatusMessage(failed.length ? "Put Back failed." : "No trashed files selected.");
+    return false;
+  }
+  applyFileMoveRecordUpdates(movedGroups);
+  metaTrackDirtyDocIds([META_DOC_IDS.trash]);
+  await persistDirtyMetadataNow();
+  refreshCurrentViewAfterCatalogMutation();
+  const movedCount = Array.from(movedGroups.values()).reduce(
+    (sum, group) => sum + group.ids.length,
+    0,
+  );
+  showStatusMessage(
+    failed.length
+      ? `Put Back complete for ${movedCount} file${movedCount === 1 ? "" : "s"}. ${failed.length} failed.`
+      : `Put Back complete for ${movedCount} file${movedCount === 1 ? "" : "s"}.`,
+  );
+  return true;
 }
 
 async function looseSetMergeSelectedFiles() {
@@ -36968,15 +37181,6 @@ async function runFileActionFromMenu(action, fileId, rowEl = null) {
   const id = String(fileId || "");
   if (!id || !action) return false;
 
-  if (action === "loose-set-merge") {
-    if (!WS.meta.fsRootHandle) {
-      showStatusMessage("Loose Set Merge requires a writable folder.");
-      return true;
-    }
-    await looseSetMergeSelectedFiles();
-    return true;
-  }
-
   const rec = WS.fileById.get(id);
   if (!rec) {
     showStatusMessage("Selected file is unavailable.");
@@ -36984,9 +37188,13 @@ async function runFileActionFromMenu(action, fileId, rowEl = null) {
   }
 
   if (action === "put-back") {
-    const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
-    if (!trashTargetPath) return true;
-    await putBackTrashFolderPaths([trashTargetPath]);
+    if (!trashTargetForFileRecord(rec)) return true;
+    await putBackFileRecordsFromMenu([rec]);
+    return true;
+  }
+
+  if (action === "move-to-trash") {
+    await moveFileRecordsToTrash([rec]);
     return true;
   }
 
@@ -37638,23 +37846,26 @@ function openTagContextMenu(context) {
   closeActionMenus();
   const menu = tagActionMenuEl;
   if (isAlbumEntry) {
-    appendTagMenuTwoColRow(
-      menu,
+    menu.appendChild(
       createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
+    );
+    menu.appendChild(
       createTagMenuButton("Delete", () => handleTagMenuAction("delete")),
     );
   } else {
-    appendTagMenuTwoColRow(
-      menu,
+    menu.appendChild(
+      createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
+    );
+    menu.appendChild(
       createTagMenuButton("Album", () => {
         closeTagContextMenu();
         beginTagAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
       }),
-      createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
     );
-    appendTagMenuTwoColRow(
-      menu,
+    menu.appendChild(
       createTagMenuButton("Delete", () => handleTagMenuAction("delete")),
+    );
+    menu.appendChild(
       createTagMenuButton(isHidden ? "Unhide" : "Hide", () =>
         handleTagMenuAction("hidden"),
       ),
@@ -37669,7 +37880,7 @@ function openTagContextMenu(context) {
   }
   if (canAppearancePreset) {
     menu.appendChild(
-      createTagMenuButton("Set media preset", () => {
+      createTagMenuButton("Filters", () => {
         buildAppearancePresetChoiceMenu(menu, {
           currentPresetId: assignedAppearancePresetId,
           onBack: () => {
@@ -37724,7 +37935,7 @@ function openTagContextMenu(context) {
   }
   if (assignedAppearancePresetId) {
     menu.appendChild(
-      createTagMenuButton("Clear media preset override", () =>
+      createTagMenuButton("Clear filters", () =>
         handleTagMenuAction("appearance-preset-clear"),
       ),
     );
@@ -37949,13 +38160,16 @@ function openPreviewFileActionMenu(rec, opts = {}) {
     return btn;
   };
 
-  const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
+  const trashTargetPath = trashTargetForFileRecord(rec);
   if (trashTargetPath) {
     menu.appendChild(
-      makeBtn("Remove from trash", "put-back", !WS.meta.fsRootHandle),
+      makeBtn("Put Back", "put-back", !WS.meta.fsRootHandle),
     );
   } else {
     menu.appendChild(makeBtn("Rename", "rename-file"));
+    menu.appendChild(
+      makeBtn("Trash", "move-to-trash", !WS.meta.fsRootHandle),
+    );
   }
   PREVIEW_CONTEXT_MENU_STATE = { fileId };
 
@@ -38059,29 +38273,22 @@ function buildFolderActionMenuDom(
     });
     return btn;
   };
-  const appendTwoCol = (leftBtn, rightBtn) => {
-    const row = document.createElement("div");
-    row.className = "menuTwoColRow";
-    row.appendChild(leftBtn);
-    row.appendChild(rightBtn);
-    menuEl.appendChild(row);
-  };
   if (state.isTrashRootPortal) return;
   if (state.isTrashPutBackOnly) {
-    menuEl.appendChild(makeBtn("Remove from trash", "put-back", !state.canPutBack));
+    menuEl.appendChild(makeBtn("Put Back", "put-back", !state.canPutBack));
     return;
   }
   if (state.isStorageRestricted) {
     menuEl.appendChild(
       makeBtn(
-        "Remove from storage",
+        "Unstore",
         "remove-from-storage",
         !state.canRemoveFromStorage,
       ),
     );
     menuEl.appendChild(
       makeBtn(
-        "Move to trash",
+        "Trash",
         "move-to-trash",
         !state.canMoveToTrash,
         "destructiveAction",
@@ -38090,39 +38297,32 @@ function buildFolderActionMenuDom(
     return;
   }
   if (state.isRootNode) {
-    menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
+    menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
     return;
   }
-  if (scoreInterfaceEnabled()) {
-    const scoreRow = document.createElement("div");
-    scoreRow.className = "scoreRow";
-    scoreRow.appendChild(makeBtn("+", "score-up"));
-    scoreRow.appendChild(makeBtn("-", "score-down"));
-    menuEl.appendChild(scoreRow);
-  }
 
-  appendTwoCol(
-    makeBtn("Tag", "tag"),
-    makeBtn("Rename", "rename", !state.canRename),
-  );
+  menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
+  menuEl.appendChild(makeBtn("Tag", "tag"));
   menuEl.appendChild(
     makeBtn(state.isFavorite ? "Unfavorite" : "Favorite", "favorite"),
   );
-  appendTwoCol(
+  menuEl.appendChild(
     makeBtn("Store", "send-to-storage", !state.canSendToStorage),
+  );
+  menuEl.appendChild(
     makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"),
   );
-  menuEl.appendChild(makeBtn("Set media preset", "appearance-preset-set"));
+  menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
   if (state.assignedAppearancePresetId) {
     menuEl.appendChild(
-      makeBtn("Clear media preset override", "appearance-preset-clear"),
+      makeBtn("Clear filters", "appearance-preset-clear"),
     );
   }
   if (state.canResetOrder)
     menuEl.appendChild(makeBtn("Reset order", "reset-order"));
   menuEl.appendChild(
     makeBtn(
-      "Move to trash",
+      "Trash",
       "move-to-trash",
       !state.canMoveToTrash,
       "destructiveAction",
@@ -38225,14 +38425,6 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     if (!metaClearFolderAppearancePreset(p)) return true;
     refreshAfterProcessingMetadataChange();
     showStatusMessage("Folder media preset reset to inherited.");
-    return true;
-  }
-  if (action === "score-up") {
-    metaBumpScore(p, 1);
-    return true;
-  }
-  if (action === "score-down") {
-    metaBumpScore(p, -1);
     return true;
   }
   return false;
@@ -38338,13 +38530,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     });
     return btn;
   };
-  const appendTwoCol = (leftBtn, rightBtn) => {
-    const row = document.createElement("div");
-    row.className = "menuTwoColRow";
-    row.appendChild(leftBtn);
-    row.appendChild(rightBtn);
-    menu.appendChild(row);
-  };
 
   const singleSelectedDirNode =
     selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
@@ -38353,7 +38538,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   if (trashRootBulkContext) {
     menu.appendChild(
       makeBtn(
-        "Remove from trash",
+        "Put Back",
         async () => {
           await putBackTrashFolderPaths(selectedPaths);
           if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
@@ -38383,7 +38568,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   if (storageBulkContext) {
     menu.appendChild(
       makeBtn(
-        "Remove from storage",
+        "Unstore",
         async () => {
           await setStorageStateForFolderPaths(selectedPaths, false);
           if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
@@ -38392,7 +38577,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     );
     menu.appendChild(
       makeBtn(
-        "Move to trash",
+        "Trash",
         async () => {
           await moveFolderPathsToTrash(selectedPaths);
           if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
@@ -38424,33 +38609,14 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     !!selectedPaths.length && selectedPaths.every((p) => metaHasFavorite(p));
   const allHidden =
     !!selectedPaths.length && selectedPaths.every((p) => metaHasHidden(p));
+  const allStored =
+    !!selectedPaths.length && selectedPaths.every((p) => metaHasStorage(p));
   const anyAssignedAppearancePreset =
     !!selectedPaths.length &&
     selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
   const activeTagRemovalContext = currentFolderMenuTagRemovalContext();
 
-  if (scoreInterfaceEnabled()) {
-    const scoreRow = document.createElement("div");
-    scoreRow.className = "scoreRow";
-    const scoreUpBtn = makeBtn("+", () => {
-      metaBumpScoreBulk(selectedPaths, 1);
-      if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-    });
-    scoreUpBtn.classList.add("scoreBtn");
-    const scoreDownBtn = makeBtn("-", () => {
-      metaBumpScoreBulk(selectedPaths, -1);
-      if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-    });
-    scoreDownBtn.classList.add("scoreBtn");
-    scoreRow.appendChild(scoreUpBtn);
-    scoreRow.appendChild(scoreDownBtn);
-    menu.appendChild(scoreRow);
-  }
-
-  appendTwoCol(
-    makeBtn("Tag", () => {
-      startPreviewFolderTagEdit(selectedPaths, anchorPath);
-    }),
+  menu.appendChild(
     makeBtn(
       "Rename",
       () => {
@@ -38460,18 +38626,24 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       !canRenameBulk || !singleSelectedDirPath,
     ),
   );
-
+  menu.appendChild(
+    makeBtn("Tag", () => {
+      startPreviewFolderTagEdit(selectedPaths, anchorPath);
+    }),
+  );
   menu.appendChild(
     makeBtn(allFavorite ? "Unfavorite" : "Favorite", () => {
       metaSetFavoriteBulk(selectedPaths, !allFavorite);
       if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
     }),
   );
-  appendTwoCol(
-    makeBtn("Store", async () => {
-      await setStorageStateForFolderPaths(selectedPaths, true);
+  menu.appendChild(
+    makeBtn(allStored ? "Unstore" : "Store", async () => {
+      await setStorageStateForFolderPaths(selectedPaths, !allStored);
       if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
     }),
+  );
+  menu.appendChild(
     makeBtn(allHidden ? "Unhide" : "Hide", () => {
       metaSetHiddenBulk(selectedPaths, !allHidden);
       if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
@@ -38479,7 +38651,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   );
   menu.appendChild(
     makeBtn(
-      "Set media preset",
+      "Filters",
       () => {
         const currentPresetId =
           selectedPaths.length === 1
@@ -38521,7 +38693,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   );
   if (anyAssignedAppearancePreset) {
     menu.appendChild(
-      makeBtn("Clear media preset override", () => {
+      makeBtn("Clear filters", () => {
         let changed = false;
         for (let i = 0; i < selectedPaths.length; i++) {
           if (metaClearFolderAppearancePreset(selectedPaths[i])) changed = true;
@@ -38545,17 +38717,9 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     );
   }
 
-  const setMergeBtn = makeBtn(
-    "Set Merge",
-    async () => {
-      await setMergeSelectedDirs();
-    },
-    !WS.meta.fsRootHandle,
-  );
-  menu.appendChild(setMergeBtn);
   menu.appendChild(
     makeBtn(
-      "Move to trash",
+      "Trash",
       async () => {
         await moveFolderPathsToTrash(selectedPaths);
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
@@ -38613,18 +38777,18 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
   const trashTargets = Array.from(
     new Set(
       selectedRecords
-        .map((rec) => trashTopLevelItemPathForFileRecord(rec))
+        .map((rec) => trashTargetForFileRecord(rec))
         .filter(Boolean),
     ),
   );
   if (
     trashTargets.length &&
     selectedRecords.length === selectedIds.length &&
-    selectedRecords.every((rec) => !!trashTopLevelItemPathForFileRecord(rec))
+    selectedRecords.every((rec) => !!trashTargetForFileRecord(rec))
   ) {
     menu.appendChild(
-      makeBtn("Remove from trash", async () => {
-        await putBackTrashFolderPaths(trashTargets);
+      makeBtn("Put Back", async () => {
+        await putBackFileRecordsFromMenu(selectedRecords);
         finalizeBulkSelectionAction();
       }, !WS.meta.fsRootHandle),
     );
@@ -38646,12 +38810,6 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
   }
 
   const singleFile = selectedRecords.length === 1 ? selectedRecords[0] : null;
-  const allSameDir =
-    selectedRecords.length > 0 &&
-    selectedRecords.every(
-      (rec) =>
-        String(rec.dirPath || "") === String(selectedRecords[0].dirPath || ""),
-    );
   const canQuadPlay =
     selectedRecords.length === 4 &&
     selectedRecords.every((rec) => rec.type === "video");
@@ -38667,7 +38825,7 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
 
   menu.appendChild(
     makeBtn(
-      "Rename file",
+      "Rename",
       async () => {
         if (singleFile && startPreviewFileRenameEdit(singleFile.id)) return;
         startFileRenameSelection();
@@ -38675,14 +38833,14 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
       !singleFile || !WS.meta.fsRootHandle,
     ),
   );
-
   menu.appendChild(
     makeBtn(
-      "Loose Set Merge",
+      "Trash",
       async () => {
-        await looseSetMergeSelectedFiles();
+        await moveFileRecordsToTrash(selectedRecords);
+        finalizeBulkSelectionAction();
       },
-      !WS.meta.fsRootHandle || !allSameDir,
+      !WS.meta.fsRootHandle,
     ),
   );
 
@@ -38724,13 +38882,6 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       await onClick();
     });
     return btn;
-  };
-  const appendTwoCol = (leftBtn, rightBtn) => {
-    const row = document.createElement("div");
-    row.className = "menuTwoColRow";
-    row.appendChild(leftBtn);
-    row.appendChild(rightBtn);
-    menu.appendChild(row);
   };
 
   const albumAssignableTagEntries = selectedEntries.filter(
@@ -38810,16 +38961,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         String(activeAlbumContext.originPath || ""),
     );
 
-  appendTwoCol(
-    makeBtn(
-      "Album",
-      async () => {
-        finalizeBulkSelectionAction();
-        beginTagAlbumAssignmentForEntries(albumAssignableTagEntries, "preview");
-      },
-      true,
-      !albumAssignableTagEntries.length,
-    ),
+  menu.appendChild(
     makeBtn(
       "Rename",
       async () => {
@@ -38829,6 +38971,17 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       },
       true,
       !canSingleRename,
+    ),
+  );
+  menu.appendChild(
+    makeBtn(
+      "Album",
+      async () => {
+        finalizeBulkSelectionAction();
+        beginTagAlbumAssignmentForEntries(albumAssignableTagEntries, "preview");
+      },
+      true,
+      !albumAssignableTagEntries.length,
     ),
   );
   const previewBulkTagDeleteBtn = makeBtn(
@@ -38909,8 +39062,10 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     true,
     !deletableTagEntries.length && !deletableTagAlbumEntries.length,
   );
-  const previewBulkTagHideBtn = hiddenTagTargets.length
-    ? makeBtn(allHiddenTags ? "Unhide" : "Hide", async () => {
+  menu.appendChild(previewBulkTagDeleteBtn);
+  if (hiddenTagTargets.length) {
+    menu.appendChild(
+      makeBtn(allHiddenTags ? "Unhide" : "Hide", async () => {
         let changed = false;
         for (let i = 0; i < hiddenTagTargets.length; i++) {
           if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTags))
@@ -38923,9 +39078,9 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
           `${allHiddenTags ? "Unhid" : "Hid"} ${hiddenTagTargets.length} tag${hiddenTagTargets.length === 1 ? "" : "s"}.`,
         );
         finalizeBulkSelectionAction();
-      })
-    : createTagMenuSpacerButton();
-  appendTwoCol(previewBulkTagDeleteBtn, previewBulkTagHideBtn);
+      }),
+    );
+  }
 
   if (singleRegularTagEntry) {
     menu.appendChild(
@@ -38939,7 +39094,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   if (tagAppearancePresetKeys.length) {
     menu.appendChild(
       makeBtn(
-        "Set media preset",
+        "Filters",
         async () => {
           const currentPresetId =
             tagAppearancePresetKeys.length === 1
@@ -38991,7 +39146,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
 
   if (anyAssignedTagAppearancePreset) {
     menu.appendChild(
-      makeBtn("Clear media preset override", async () => {
+      makeBtn("Clear filters", async () => {
         let changed = false;
         for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
           if (metaClearTagAppearancePresetByKey(tagAppearancePresetKeys[i]))
@@ -39203,11 +39358,8 @@ function createTagMenuSpacerButton() {
 
 function appendTagMenuTwoColRow(menu, leftBtn, rightBtn) {
   if (!menu || !leftBtn || !rightBtn) return;
-  const row = document.createElement("div");
-  row.className = "menuTwoColRow";
-  row.appendChild(leftBtn);
-  row.appendChild(rightBtn);
-  menu.appendChild(row);
+  menu.appendChild(leftBtn);
+  menu.appendChild(rightBtn);
 }
 
 function removeUserTagFromPathsBulk(paths, tagName) {
@@ -39837,6 +39989,8 @@ function renderDirectoriesActionHeader() {
     !!selectedDirs.length && selectedDirs.every((p) => metaHasFavorite(p));
   const allHidden =
     !!selectedDirs.length && selectedDirs.every((p) => metaHasHidden(p));
+  const allStored =
+    !!selectedDirs.length && selectedDirs.every((p) => metaHasStorage(p));
   const activeFolderTagRemovalContext = currentFolderMenuTagRemovalContext();
   const anyAssignedAppearancePreset =
     !!selectedDirs.length &&
@@ -39956,14 +40110,6 @@ function renderDirectoriesActionHeader() {
     return btn;
   };
 
-  const makeTwoColRow = (leftBtn, rightBtn) => {
-    const row = document.createElement("div");
-    row.className = "menuTwoColRow";
-    row.appendChild(leftBtn);
-    row.appendChild(rightBtn);
-    return row;
-  };
-
   if (selectedTagEntries.length) {
     const albumBtn = makeActionBtn(
       "Album",
@@ -39989,12 +40135,8 @@ function renderDirectoriesActionHeader() {
     );
     if (!albumAssignableTagEntries.length) albumBtn.disabled = true;
     if (!canSingleTagRename) renameTagBtn.disabled = true;
-    directoriesActionMenuEl.appendChild(
-      makeTwoColRow(
-        albumBtn,
-        renameTagBtn,
-      ),
-    );
+    directoriesActionMenuEl.appendChild(renameTagBtn);
+    directoriesActionMenuEl.appendChild(albumBtn);
 
     const deleteBtn = makeActionBtn(
       "Delete",
@@ -40074,8 +40216,10 @@ function renderDirectoriesActionHeader() {
     );
     if (!deletableTagEntries.length && !deletableTagAlbumEntries.length)
       deleteBtn.disabled = true;
-    const hideBtn = hiddenTagTargets.length
-      ? makeActionBtn(allHiddenTags ? "Unhide" : "Hide", () => {
+    directoriesActionMenuEl.appendChild(deleteBtn);
+    if (hiddenTagTargets.length) {
+      directoriesActionMenuEl.appendChild(
+        makeActionBtn(allHiddenTags ? "Unhide" : "Hide", () => {
           WS.view.bulkActionMenuOpen = false;
           let changed = false;
           for (let i = 0; i < hiddenTagTargets.length; i++) {
@@ -40089,11 +40233,9 @@ function renderDirectoriesActionHeader() {
             `${allHiddenTags ? "Unhid" : "Hid"} ${hiddenTagTargets.length} tag${hiddenTagTargets.length === 1 ? "" : "s"}.`,
           );
           finalizeBulkSelectionAction();
-        })
-      : createTagMenuSpacerButton();
-    directoriesActionMenuEl.appendChild(
-      makeTwoColRow(deleteBtn, hideBtn),
-    );
+        }),
+      );
+    }
     if (singleRegularSelectedTagEntry) {
       directoriesActionMenuEl.appendChild(
         makeActionBtn("Create inverse", () => {
@@ -40109,7 +40251,7 @@ function renderDirectoriesActionHeader() {
   if (tagAppearancePresetKeys.length) {
     directoriesActionMenuEl.appendChild(
       makeActionBtn(
-        "Set media preset",
+        "Filters",
         () => {
           const currentPresetId =
             tagAppearancePresetKeys.length === 1
@@ -40161,7 +40303,7 @@ function renderDirectoriesActionHeader() {
 
   if (anyAssignedTagAppearancePreset) {
     directoriesActionMenuEl.appendChild(
-      makeActionBtn("Clear media preset override", () => {
+      makeActionBtn("Clear filters", () => {
         WS.view.bulkActionMenuOpen = false;
         let changed = false;
         for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
@@ -40257,7 +40399,7 @@ function renderDirectoriesActionHeader() {
     const selectedFileTrashTargetsForTrashMenu = Array.from(
       new Set(
         selectedFileRecordsForTrashMenu
-          .map((rec) => trashTopLevelItemPathForFileRecord(rec))
+          .map((rec) => trashTargetForFileRecord(rec))
           .filter(Boolean),
       ),
     );
@@ -40265,18 +40407,17 @@ function renderDirectoriesActionHeader() {
       !selectedFiles.length ||
       (selectedFileRecordsForTrashMenu.length === selectedFiles.length &&
         selectedFileRecordsForTrashMenu.every(
-          (rec) => !!trashTopLevelItemPathForFileRecord(rec),
+          (rec) => !!trashTargetForFileRecord(rec),
         ));
     const trashRootBulkContext =
       selectedFilesAreTrashItems &&
       selectedDirs.every((path) => !!trashTopLevelItemPathForPath(path));
     if (trashRootBulkContext) {
       directoriesActionMenuEl.appendChild(
-        makeActionBtn("Remove from trash", async () => {
+        makeActionBtn("Put Back", async () => {
           WS.view.bulkActionMenuOpen = false;
-          await putBackTrashFolderPaths(
-            selectedDirs.concat(selectedFileTrashTargetsForTrashMenu),
-          );
+          await putBackTrashFolderPaths(selectedDirs);
+          await putBackFileRecordsFromMenu(selectedFileRecordsForTrashMenu);
           finalizeBulkSelectionAction();
         }),
       );
@@ -40295,20 +40436,20 @@ function renderDirectoriesActionHeader() {
       selectedDirNodes.every((node) => isStorageStubDirNode(node));
     if (storageBulkContext) {
       directoriesActionMenuEl.appendChild(
-        makeActionBtn("Remove from storage", async () => {
+        makeActionBtn("Unstore", async () => {
           WS.view.bulkActionMenuOpen = false;
           await setStorageStateForFolderPaths(selectedDirs, false);
           finalizeBulkSelectionAction();
         }),
       );
       const storageMoveToTrashBtn = makeActionBtn(
-        "Move to trash",
+        "Trash",
         async () => {
           WS.view.bulkActionMenuOpen = false;
           await moveFolderPathsToTrash(selectedDirs);
           finalizeBulkSelectionAction();
         },
-        false,
+        true,
         "destructiveAction",
       );
       if (selectedDirs.some((path) => !isFolderPathMovableToTrash(path)))
@@ -40328,31 +40469,6 @@ function renderDirectoriesActionHeader() {
       selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
     const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
     const canRenameBulk = !!singleSelectedDirPath && !!WS.meta.fsRootHandle;
-    if (scoreInterfaceEnabled()) {
-      const scoreRow = document.createElement("div");
-      scoreRow.className = "scoreRow";
-      const scoreUpBtn = makeActionBtn("+", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaBumpScoreBulk(selectedDirs, 1);
-        finalizeBulkSelectionAction();
-      });
-      scoreUpBtn.classList.add("scoreBtn");
-      const scoreDownBtn = makeActionBtn("-", () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaBumpScoreBulk(selectedDirs, -1);
-        finalizeBulkSelectionAction();
-      });
-      scoreDownBtn.classList.add("scoreBtn");
-      scoreRow.appendChild(scoreUpBtn);
-      scoreRow.appendChild(scoreDownBtn);
-      directoriesActionMenuEl.appendChild(scoreRow);
-    }
-
-    const tagBtn = makeActionBtn("Tag", () => {
-      WS.view.bulkActionMenuOpen = false;
-      finalizeBulkSelectionAction();
-      startBulkTagging(selectedDirs);
-    });
     const renameBtn = makeActionBtn("Rename", () => {
       WS.view.bulkActionMenuOpen = false;
       if (!canRenameBulk || !singleSelectedDirPath) return;
@@ -40367,7 +40483,14 @@ function renderDirectoriesActionHeader() {
       focusSelectedDirectoryInlineInput(".renameEditInput");
     });
     if (!canRenameBulk) renameBtn.disabled = true;
-    directoriesActionMenuEl.appendChild(makeTwoColRow(tagBtn, renameBtn));
+    directoriesActionMenuEl.appendChild(renameBtn);
+
+    const tagBtn = makeActionBtn("Tag", () => {
+      WS.view.bulkActionMenuOpen = false;
+      finalizeBulkSelectionAction();
+      startBulkTagging(selectedDirs);
+    });
+    directoriesActionMenuEl.appendChild(tagBtn);
 
     const favoriteBtn = makeActionBtn(
       allFavorite ? "Unfavorite" : "Favorite",
@@ -40379,23 +40502,23 @@ function renderDirectoriesActionHeader() {
     );
     directoriesActionMenuEl.appendChild(favoriteBtn);
     directoriesActionMenuEl.appendChild(
-      makeTwoColRow(
-        makeActionBtn("Store", async () => {
+      makeActionBtn(allStored ? "Unstore" : "Store", async () => {
           WS.view.bulkActionMenuOpen = false;
-          await setStorageStateForFolderPaths(selectedDirs, true);
+          await setStorageStateForFolderPaths(selectedDirs, !allStored);
           finalizeBulkSelectionAction();
-        }),
-        makeActionBtn(allHidden ? "Unhide" : "Hide", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaSetHiddenBulk(selectedDirs, !allHidden);
-          finalizeBulkSelectionAction();
-        }),
-      ),
+      }),
+    );
+    directoriesActionMenuEl.appendChild(
+      makeActionBtn(allHidden ? "Unhide" : "Hide", () => {
+        WS.view.bulkActionMenuOpen = false;
+        metaSetHiddenBulk(selectedDirs, !allHidden);
+        finalizeBulkSelectionAction();
+      }),
     );
 
     directoriesActionMenuEl.appendChild(
       makeActionBtn(
-        "Set media preset",
+        "Filters",
         () => {
           const currentPresetId =
             selectedDirs.length === 1
@@ -40441,7 +40564,7 @@ function renderDirectoriesActionHeader() {
 
     if (anyAssignedAppearancePreset) {
       directoriesActionMenuEl.appendChild(
-        makeActionBtn("Clear media preset override", () => {
+        makeActionBtn("Clear filters", () => {
           WS.view.bulkActionMenuOpen = false;
           let changed = false;
           for (let i = 0; i < selectedDirs.length; i++) {
@@ -40456,14 +40579,8 @@ function renderDirectoriesActionHeader() {
       );
     }
 
-    const setMergeBtn = makeActionBtn("Set Merge", async () => {
-      WS.view.bulkActionMenuOpen = false;
-      await setMergeSelectedDirs();
-    });
-    if (!WS.meta.fsRootHandle) setMergeBtn.disabled = true;
-    directoriesActionMenuEl.appendChild(setMergeBtn);
     const moveToTrashBtn = makeActionBtn(
-      "Move to trash",
+      "Trash",
       async () => {
         WS.view.bulkActionMenuOpen = false;
         await moveFolderPathsToTrash(selectedDirs);
@@ -40485,7 +40602,7 @@ function renderDirectoriesActionHeader() {
     const selectedFileTrashTargets = Array.from(
       new Set(
         selectedFileRecords
-          .map((rec) => trashTopLevelItemPathForFileRecord(rec))
+          .map((rec) => trashTargetForFileRecord(rec))
           .filter(Boolean),
       ),
     );
@@ -40493,13 +40610,13 @@ function renderDirectoriesActionHeader() {
       selectedFileTrashTargets.length &&
       selectedFileRecords.length === selectedFiles.length &&
       selectedFileRecords.every(
-        (rec) => !!trashTopLevelItemPathForFileRecord(rec),
+        (rec) => !!trashTargetForFileRecord(rec),
       )
     ) {
       directoriesActionMenuEl.appendChild(
-        makeActionBtn("Remove from trash", async () => {
+        makeActionBtn("Put Back", async () => {
           WS.view.bulkActionMenuOpen = false;
-          await putBackTrashFolderPaths(selectedFileTrashTargets);
+          await putBackFileRecordsFromMenu(selectedFileRecords);
           finalizeBulkSelectionAction();
         }),
       );
@@ -40515,13 +40632,6 @@ function renderDirectoriesActionHeader() {
     }
     const singleFile =
       selectedFileRecords.length === 1 ? selectedFileRecords[0] : null;
-    const allSameDir =
-      selectedFileRecords.length > 0 &&
-      selectedFileRecords.every(
-        (rec) =>
-          String(rec.dirPath || "") ===
-          String(selectedFileRecords[0].dirPath || ""),
-      );
     const canQuadPlay =
       selCount === 4 &&
       selectedFileRecords.length === 4 &&
@@ -40536,19 +40646,19 @@ function renderDirectoriesActionHeader() {
       );
     }
 
-    const renameBtn = makeActionBtn("Rename file", () => {
+    const renameBtn = makeActionBtn("Rename", () => {
       WS.view.bulkActionMenuOpen = false;
       startFileRenameSelection();
     });
     if (!singleFile || !WS.meta.fsRootHandle) renameBtn.disabled = true;
     directoriesActionMenuEl.appendChild(renameBtn);
-
-    const mergeBtn = makeActionBtn("Loose Set Merge", async () => {
+    const trashBtn = makeActionBtn("Trash", async () => {
       WS.view.bulkActionMenuOpen = false;
-      await looseSetMergeSelectedFiles();
-    });
-    if (!WS.meta.fsRootHandle || !allSameDir) mergeBtn.disabled = true;
-    directoriesActionMenuEl.appendChild(mergeBtn);
+      await moveFileRecordsToTrash(selectedFileRecords);
+      finalizeBulkSelectionAction();
+    }, true, "destructiveAction");
+    if (!WS.meta.fsRootHandle) trashBtn.disabled = true;
+    directoriesActionMenuEl.appendChild(trashBtn);
   }
 
   const anchorBtn = findDirMenuButtonForAnchorKey(
@@ -41478,41 +41588,28 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         let menuTitle = "Folder menu";
         if (isRootNode) {
           menuButtons = `
-                <button type="button" data-action="appearance-preset-set">Set media preset</button>
+                <button type="button" data-action="appearance-preset-set">Filters</button>
               `;
         } else if (folderMenuState.isTrashPutBackOnly) {
           menuButtons = `
-                <button type="button" data-action="put-back"${folderMenuState.canPutBack ? "" : " disabled"}>Remove from trash</button>
+                <button type="button" data-action="put-back"${folderMenuState.canPutBack ? "" : " disabled"}>Put Back</button>
               `;
         } else if (folderMenuState.isStorageRestricted) {
           menuButtons = `
-                <button type="button" data-action="remove-from-storage"${folderMenuState.canRemoveFromStorage ? "" : " disabled"}>Remove from storage</button>
-                <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
+                <button type="button" data-action="remove-from-storage"${folderMenuState.canRemoveFromStorage ? "" : " disabled"}>Unstore</button>
+                <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Trash</button>
               `;
         } else {
           menuButtons = `
-                ${
-                  scoreInterfaceEnabled()
-                    ? `
-                <div class="scoreRow">
-                  <button type="button" class="scoreBtn" data-action="score-up">+</button>
-                  <button type="button" class="scoreBtn" data-action="score-down">-</button>
-                </div>`
-                    : ``
-                }
-                <div class="menuTwoColRow">
-                  <button type="button" data-action="tag">Tag</button>
-                  <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
-                </div>
+                <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
+                <button type="button" data-action="tag">Tag</button>
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
-                <div class="menuTwoColRow">
-                  <button type="button" data-action="send-to-storage"${folderMenuState.canSendToStorage ? "" : " disabled"}>Store</button>
-                  <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
-                </div>
-                <button type="button" data-action="appearance-preset-set">Set media preset</button>
-                ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
+                <button type="button" data-action="send-to-storage"${folderMenuState.canSendToStorage ? "" : " disabled"}>Store</button>
+                <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
+                <button type="button" data-action="appearance-preset-set">Filters</button>
+                ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear filters</button>` : ``}
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
-                <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
+                <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Trash</button>
               `;
         }
         const menuHtml = folderMenuState.isTrashRootPortal || !dirVisibility.showMenuButton
@@ -41720,16 +41817,12 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         );
         const fileMenuOpen =
           WS.view.fileActionMenuId === String(entry.id || "");
-        const bulkFileMenuActive =
-          canBulk && sel && selectedFilesInViewCount > 0;
-        const canLooseSetMerge = !!WS.meta.fsRootHandle;
-        const fileTrashTargetPath = trashTopLevelItemPathForFileRecord(rec);
+        const fileTrashTargetPath = trashTargetForFileRecord(rec);
         const fileMenuButtons = fileTrashTargetPath
-          ? `<button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from trash</button>`
-          : bulkFileMenuActive
-          ? `<button type="button" data-action="loose-set-merge"${canLooseSetMerge ? "" : " disabled"}>Loose Set Merge</button>`
+          ? `<button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Put Back</button>`
           : `
-                  <button type="button" data-action="rename-file">Rename</button>
+                  <button type="button" data-action="rename-file"${WS.meta.fsRootHandle ? "" : " disabled"}>Rename</button>
+                  <button type="button" class="destructiveAction" data-action="move-to-trash"${WS.meta.fsRootHandle ? "" : " disabled"}>Trash</button>
                 `;
         const fileTypeLabel = fileItemTypeLabelForRecord(
           rec || { type: isVid ? "video" : "image" },
