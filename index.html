@@ -16302,6 +16302,21 @@ function buildDirFolderFileCountText(dirNode) {
   );
 }
 
+function formatTitlePaneScoreSegment(score) {
+  const value = Number(score) || 0;
+  const rounded = Math.round(value);
+  return `Score ${rounded > 0 ? `+${rounded}` : String(rounded)}`;
+}
+
+function getTitlePaneScoreForNodes(nodes) {
+  const list = Array.isArray(nodes) ? nodes : [];
+  let total = 0;
+  for (let i = 0; i < list.length; i++) {
+    total += Number(metaGetScore(list[i]?.path || "")) || 0;
+  }
+  return total;
+}
+
 function getDirectoriesTitleInfoLabel() {
   if (!WS.root) return "—";
   if (WS.view.aboveRootView) return dirDisplayName(WS.root) || "root";
@@ -16364,9 +16379,12 @@ function getCurrentTitleInfoText() {
   const title = String(context?.title || "—") || "—";
   const nodes = collectUniqueTitleMetricNodes(context?.nodes || []);
   if (!nodes.length) return title;
+  const scoreSegment = formatTitlePaneScoreSegment(
+    getTitlePaneScoreForNodes(nodes),
+  );
   if (isViewingTagFolder() && WS.view.tagFolderActiveMode === "storage") {
     const folderCount = nodes.length;
-    return `${title} • ${folderCount} ${folderCount === 1 ? "Folder" : "Folders"}`;
+    return `${folderCount} ${folderCount === 1 ? "Folder" : "Folders"} • ${scoreSegment}`;
   }
   const sizeMemo = new Map();
   const folderCountMode =
@@ -16384,7 +16402,7 @@ function getCurrentTitleInfoText() {
     fileCount += getRecursiveFileCountForNode(node);
     sizeBytes += getDirRecursiveSizeBytesForNode(node, sizeMemo);
   }
-  return `${title} • ${formatFolderFileCountSegment(folderCount, fileCount)} • ${formatBytes(sizeBytes)}`;
+  return `${formatFolderFileCountSegment(folderCount, fileCount)} • ${formatBytes(sizeBytes)} • ${scoreSegment}`;
 }
 
 function getCurrentTitleText() {
