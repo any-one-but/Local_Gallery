@@ -4722,6 +4722,124 @@ img[data-rotate-key].rotatingThumbFade {
   max-width: 320px;
 }
 
+#optionsBody .filterPresetPanel {
+  margin: 0 0 10px;
+  padding: 6px 4px 8px;
+}
+
+#optionsBody .filterPresetHeader,
+#optionsBody .filterPresetRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#optionsBody .filterPresetHeader {
+  justify-content: space-between;
+  margin: 0 2px 6px;
+}
+
+#optionsBody .filterPresetHeading {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color0-primary);
+}
+
+#optionsBody .filterPresetList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#optionsBody .filterPresetRow {
+  min-height: 34px;
+  padding: 5px 2px;
+  border-radius: 9px;
+}
+
+#optionsBody .filterPresetRow:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+#optionsBody .filterPresetName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+#optionsBody button.filterPresetName {
+  padding: 5px 6px;
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  background: transparent;
+  color: var(--color0-primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+#optionsBody button.filterPresetName:hover:not(:disabled) {
+  background: var(--ui-control-hover-bg);
+  transform: none;
+  box-shadow: none;
+}
+
+#optionsBody .filterPresetName.isActive {
+  color: var(--palette-accent);
+}
+
+#optionsBody .filterPresetActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+#optionsBody .filterPresetAddBtn,
+#optionsBody .filterPresetActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  box-shadow: none;
+  font-size: 11px;
+}
+
+#optionsBody .filterPresetAddBtn svg {
+  width: 15px;
+  height: 15px;
+}
+
+#optionsBody .filterPresetAddBtn:hover:not(:disabled),
+#optionsBody .filterPresetActions button:hover:not(:disabled) {
+  background: var(--ui-control-hover-bg);
+  transform: none;
+  box-shadow: none;
+}
+
+#optionsBody .filterPresetRenameInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  padding: 6px 8px;
+  font-size: 12px;
+  outline: none;
+}
+
 #optionsBody select,
 #keybindsBody select {
   background: var(--ui-control-bg);
@@ -5888,10 +6006,17 @@ remove the outer app frame. */
 }
 
 #optionsBody .settingsSection > h2 {
-  display: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
+  display: block !important;
+  margin: 2px 4px 12px !important;
+  padding: 0 0 8px !important;
   border: 0 !important;
+  border-bottom: 2px solid var(--color1-tertiary) !important;
+  color: var(--color0-primary);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+  text-transform: uppercase;
 }
 
 #optionsBody .settingsSection + .settingsSection {
@@ -7384,7 +7509,7 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
 
   Object.freeze({ section: "Playback", id: "playback", label: "Slideshow / gallery mode", hint: "Slideshow status and gallery-mode messages.", optionKey: "notifyPlayback" }),
   Object.freeze({ section: "Appearance & filenames", id: "appearance-display", label: "Light mode / filename display", hint: "Light mode and filename-format toggle messages.", optionKey: "notifyAppearanceDisplay" }),
-  Object.freeze({ section: "Appearance & filenames", id: "appearance-presets", label: "Appearance presets", hint: "Preset apply, save, mix, delete, and preset-selection messages.", optionKey: "notifyAppearancePresets" }),
+  Object.freeze({ section: "Appearance & filenames", id: "appearance-presets", label: "Appearance presets", hint: "Preset apply, save, delete, and preset-selection messages.", optionKey: "notifyAppearancePresets" }),
 
   Object.freeze({ section: "Tags & albums", id: "tags", label: "Tags / albums / hidden tags", hint: "Tag editing, album, and hidden-tag messages.", optionKey: "notifyTags" }),
   Object.freeze({ section: "Editing", id: "rename", label: "Rename + sanitize names", hint: "Rename and sanitize-name messages.", optionKey: "notifyRename" }),
@@ -8445,7 +8570,11 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "hideBeforeLastDashInFileNames",
     "hideAfterFirstUnderscoreInFileNames",
   ]),
-  controls: Object.freeze(["muteMessages", "hideVideoControls"]),
+  controls: Object.freeze([
+    "muteMessages",
+    "hideVideoControls",
+    "showListCardExtraInfo",
+  ]),
 });
 
 const META_PREFERENCE_DOC_BY_OPTION_KEY = (() => {
@@ -8820,17 +8949,10 @@ function updateAppearancePresetUiState() {
   if (bucket !== "editing" && WS.view) {
     WS.view.appearancePresetEditingId = uiTargetId;
   }
-  const presetSelectEl = $("opt_appearancePresetLibrary");
+  const presetSelectEl = $("opt_generalAppearancePreset");
   if (presetSelectEl && presetSelectEl.value !== uiTargetId) {
     presetSelectEl.value = uiTargetId;
   }
-  const disablePresetDelete = uiTargetId === BUILTIN_NULL_APPEARANCE_PRESET_ID;
-  const saveBtn = $("opt_appearancePreset_save");
-  const renameBtn = $("opt_appearancePreset_rename");
-  const deleteBtn = $("opt_appearancePreset_delete");
-  if (saveBtn) saveBtn.disabled = false;
-  if (renameBtn) renameBtn.disabled = disablePresetDelete;
-  if (deleteBtn) deleteBtn.disabled = disablePresetDelete;
 }
 
 function markAppearanceStateChanged(invalidateThumbs = true) {
@@ -8981,60 +9103,14 @@ function saveAppearancePresetFromCurrent(name) {
   );
 }
 
-function splitAppearancePresetMixNames(text) {
-  const rawParts = String(text || "")
-    .split(",")
-    .map((part) => normalizeAppearancePresetName(part, ""))
-    .filter(Boolean);
-  const out = [];
-  const seen = new Set();
-  for (let i = 0; i < rawParts.length; i++) {
-    const key = rawParts[i].toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(rawParts[i]);
+function nextNewAppearancePresetName() {
+  const base = "New Filter";
+  if (!findAppearancePresetByName(base)) return base;
+  for (let i = 2; i < 1000; i++) {
+    const name = `${base} ${i}`;
+    if (!findAppearancePresetByName(name)) return name;
   }
-  return out;
-}
-
-function mixAppearancePresetsFromNames(text) {
-  if (!WS.meta) return { ok: false, reason: "missing-meta" };
-  const names = splitAppearancePresetMixNames(text);
-  if (!names.length) return { ok: false, reason: "missing-names" };
-  const presets = [];
-  const missing = [];
-  for (let i = 0; i < names.length; i++) {
-    const preset = findAppearancePresetByName(names[i]);
-    if (!preset) missing.push(names[i]);
-    else presets.push(preset);
-  }
-  if (missing.length) return { ok: false, reason: "missing-presets", missing };
-  if (presets.length < 2) return { ok: false, reason: "not-enough-presets" };
-  const mixedValues = {};
-  for (let i = 0; i < APPEARANCE_SLIDER_OPTION_KEYS.length; i++) {
-    const key = APPEARANCE_SLIDER_OPTION_KEYS[i];
-    const values = [];
-    for (let j = 0; j < presets.length; j++) {
-      const presetValues = presets[j] && presets[j].values ? presets[j].values : {};
-      const raw = Object.prototype.hasOwnProperty.call(presetValues, key)
-        ? presetValues[key]
-        : null;
-      if (raw == null) continue;
-      const n = Number(raw);
-      if (Number.isFinite(n)) values.push(n);
-    }
-    mixedValues[key] = values.length
-      ? values.reduce((sum, value) => sum + value, 0) / values.length
-      : null;
-  }
-  const mixedName = presets
-    .map((preset) => normalizeAppearancePresetName(preset && preset.name, "Preset"))
-    .join(" + ");
-  const result = saveAppearancePresetValues(mixedName, mixedValues);
-  if (!result.ok) return result;
-  return Object.assign({}, result, {
-    sourceNames: presets.map((preset) => normalizeAppearancePresetName(preset && preset.name, "Preset")),
-  });
+  return `${base} ${Date.now()}`;
 }
 
 function createAppearancePresetFromCurrent(name) {
@@ -17962,6 +18038,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 
   const optionStepperDownIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-big-down-icon lucide-arrow-big-down" aria-hidden="true"><path d="M9 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6a1 1 0 0 0 1 1h3.293a.707.707 0 0 1 .5 1.207l-7.086 7.086a1 1 0 0 1-1.414 0l-7.086-7.086a.707.707 0 0 1 .5-1.207H8a1 1 0 0 0 1-1z"/></svg>`;
   const optionStepperUpIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-big-up-icon lucide-arrow-big-up" aria-hidden="true"><path d="M9 19a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-6a1 1 0 0 1 1-1h3.293a.707.707 0 0 0 .5-1.207l-7.086-7.086a1 1 0 0 0-1.414 0l-7.086 7.086a.707.707 0 0 0 .5 1.207H8a1 1 0 0 1 1 1z"/></svg>`;
+  const optionPlusIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus-icon lucide-plus" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`;
 
   const overlayScalePercentFromRaw = (value, limits, neutralValue) => {
     const min = Number(limits && limits.min);
@@ -18091,10 +18168,8 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     (WS.view && WS.view.appearancePresetPromptMode) || "",
   );
   const appearancePresetPromptMode =
-    appearancePresetPromptModeRaw === "save" ||
     appearancePresetPromptModeRaw === "rename" ||
-    appearancePresetPromptModeRaw === "delete" ||
-    appearancePresetPromptModeRaw === "mix"
+    appearancePresetPromptModeRaw === "delete"
       ? appearancePresetPromptModeRaw
       : "";
   const appearancePresetDraftName = (() => {
@@ -18104,7 +18179,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
         : "",
     );
     if (raw) return raw;
-    if (appearancePresetPromptMode === "mix") return "";
     if (
       editingAppearancePreset &&
       editingAppearancePresetId !== BUILTIN_NULL_APPEARANCE_PRESET_ID
@@ -18122,6 +18196,75 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     value: normalizeAppearancePresetIdValue(preset && preset.id),
     label: String(preset && preset.name ? preset.name : "Preset"),
   }));
+  const appearancePresetList = Array.isArray(
+    WS.meta && WS.meta.appearancePresets ? WS.meta.appearancePresets : null,
+  )
+    ? WS.meta.appearancePresets
+    : defaultAppearancePresets();
+  const buildFilterPresetManagerHtml = () => {
+    const activePresetId =
+      effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
+    const rowsHtml = appearancePresetList
+      .map((preset) => {
+        const presetId = normalizeAppearancePresetIdValue(preset && preset.id);
+        if (!presetId) return "";
+        const presetName = normalizeAppearancePresetName(
+          preset && preset.name,
+          "Filter",
+        );
+        const isDefault = presetId === BUILTIN_NULL_APPEARANCE_PRESET_ID;
+        const isActive = presetId === activePresetId;
+        const isRename =
+          appearancePresetPromptMode === "rename" &&
+          editingAppearancePresetId === presetId;
+        const isDelete =
+          appearancePresetPromptMode === "delete" &&
+          editingAppearancePresetId === presetId;
+        if (isRename) {
+          return `
+            <div class="filterPresetRow" data-filter-preset-id="${escapeHtml(presetId)}">
+              <input id="opt_appearancePresetPromptName" class="filterPresetName filterPresetRenameInput" type="text" value="${escapeHtml(appearancePresetDraftName || presetName)}" placeholder="Filter name" />
+              <div class="filterPresetActions">
+                <button type="button" id="opt_appearancePresetPromptConfirm">Save</button>
+                <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
+              </div>
+            </div>
+          `;
+        }
+        if (isDelete) {
+          return `
+            <div class="filterPresetRow" data-filter-preset-id="${escapeHtml(presetId)}">
+              <div class="filterPresetName${isActive ? " isActive" : ""}">Delete ${escapeHtml(presetName)}?</div>
+              <div class="filterPresetActions">
+                <button type="button" id="opt_appearancePresetDeleteConfirm">Delete</button>
+                <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
+              </div>
+            </div>
+          `;
+        }
+        return `
+          <div class="filterPresetRow" data-filter-preset-id="${escapeHtml(presetId)}">
+            <button type="button" class="filterPresetName${isActive ? " isActive" : ""}" data-appearance-preset-apply="${escapeHtml(presetId)}">${escapeHtml(presetName)}</button>
+            <div class="filterPresetActions">
+              <button type="button" data-appearance-preset-rename="${escapeHtml(presetId)}"${isDefault ? " disabled" : ""}>Rename</button>
+              <button type="button" data-appearance-preset-delete="${escapeHtml(presetId)}"${isDefault ? " disabled" : ""}>Delete</button>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+    return `
+      <div class="filterPresetPanel">
+        <div class="filterPresetHeader">
+          <div class="filterPresetHeading">Filter presets</div>
+          <button type="button" id="opt_appearancePreset_add" class="filterPresetAddBtn" aria-label="Create filter preset" title="Create filter preset">${optionPlusIcon}</button>
+        </div>
+        <div class="filterPresetList">
+          ${rowsHtml}
+        </div>
+      </div>
+    `;
+  };
   const formatPixelateResolution = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return "";
@@ -18429,17 +18572,13 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
-${makeCheckRow("File pane", "Open or close the File pane sidebar.", "opt_directoriesPaneOpen", directoriesPaneOpenEnabled())}
+${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
+${makeCheckRow("Video controls", "Show or hide the control pane below the preview.", "opt_videoControlsVisible", !opt.hideVideoControls)}
+${makeSelectRow("Filter preset", "Choose a saved filter preset to apply it immediately. Edited sliders stay attached to the selected preset until you save or switch.", "opt_generalAppearancePreset", activeAppearancePresetId || BUILTIN_NULL_APPEARANCE_PRESET_ID, appearancePresetSelectOptions)}
 ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
-${makeCheckRow("Random file sort", "Toggle random file ordering in the current view.", "opt_randomFileSort", !!(WS.view && WS.view.randomMode))}
-${makeCheckRow("Random folder sort", "Toggle random folder ordering in the current view.", "opt_randomFolderSort", !!(WS.view && WS.view.randomFolderMode))}
 ${makeSelectRow("Media filter", "Choose which media types are visible across the current root/view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
 ${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible across the current root/view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
-${makeCheckRow("Reveal hidden items", "Show or hide items hidden by hidden tags.", "opt_showHiddenFolder", showHiddenFolderEnabled())}
-${makeCheckRow("Trash folder", "Show or hide the Trash folder entry at root.", "opt_showTrashFolder", showTrashFolderEnabled())}
-${makeCheckRow("Storage folder", "Show or hide the Storage folder entry.", "opt_showStorageFolder", showStorageFolderEnabled())}
-${makeCheckRow("Untagged folder", "Show or hide the Untagged tag folder entry.", "opt_showUntaggedFolder", showUntaggedFolderEnabled())}
-${makeCheckRow("List card extra info", "Show counts, sizes, scores, and item type details on File pane list cards.", "opt_showListCardExtraInfo", !!opt.showListCardExtraInfo)}
+${makeCheckRow("Extra file info", "Show counts, sizes, scores, and item type details on File pane entries.", "opt_showListCardExtraInfo", !!opt.showListCardExtraInfo)}
 ${makeCheckRow("Preview media pane background", "Keep preview media on the recessed pane surface instead of black.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
 ${makeActionRow(
   "Workspace",
@@ -18448,6 +18587,15 @@ ${makeActionRow(
   <button type="button" id="opt_refresh_workspace"${!WS.meta.fsRootHandle ? " disabled" : ""}>Refresh Workspace</button>
 `,
 )}
+          `,
+    },
+    reveal: {
+      title: "Reveal",
+      rows: `
+${makeCheckRow("Hidden items", "Show or hide items hidden by hidden tags.", "opt_showHiddenFolder", showHiddenFolderEnabled())}
+${makeCheckRow("Trash folder", "Show or hide the Trash folder entry at root.", "opt_showTrashFolder", showTrashFolderEnabled())}
+${makeCheckRow("Storage folder", "Show or hide the Storage folder entry.", "opt_showStorageFolder", showStorageFolderEnabled())}
+${makeCheckRow("Untagged folder", "Show or hide the Untagged tag folder entry.", "opt_showUntaggedFolder", showUntaggedFolderEnabled())}
           `,
     },
     storage: {
@@ -18463,75 +18611,10 @@ ${makeCheckRow("Videos", "Send every currently loaded and future video file to s
           `,
     },
     appearance: {
-      title: "Appearance",
+      title: "Filters",
       rows: `
-${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
-${makeSelectRow("Preset library", "Choose a saved preset to apply it immediately. Default is the no-processing preset. Edited sliders stay attached to the selected preset until you save or switch.", "opt_appearancePresetLibrary", editingAppearancePresetId, appearancePresetSelectOptions)}
-${makeActionRow(
-  "Preset actions",
-  "Save asks for a preset name in this menu. Rename changes the selected preset name in place. Saving with an existing name replaces that preset. Delete removes the selected preset unless it is Default.",
-  `
-  <button type="button" id="opt_appearancePreset_save">Save</button>
-  <button type="button" id="opt_appearancePreset_rename"${editingAppearancePresetId === BUILTIN_NULL_APPEARANCE_PRESET_ID ? " disabled" : ""}>Rename</button>
-  <button type="button" id="opt_appearancePreset_mix">Mix</button>
-  <button type="button" id="opt_appearancePreset_delete"${editingAppearancePresetId === BUILTIN_NULL_APPEARANCE_PRESET_ID ? " disabled" : ""}>Delete</button>
-`,
-)}
-${
-  appearancePresetPromptMode === "save"
-    ? makeActionRow(
-        "Save preset",
-        "Enter a preset name. Using an existing preset name replaces that preset with the current slider values.",
-        `
-  <input id="opt_appearancePresetPromptName" type="text" value="${escapeHtml(appearancePresetDraftName)}" placeholder="Preset name" />
-  <button type="button" id="opt_appearancePresetPromptConfirm">Save</button>
-  <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
-`,
-      )
-    : ``
-}
-${
-  appearancePresetPromptMode === "rename"
-    ? makeActionRow(
-        "Rename preset",
-        "Enter a new name for the selected preset. This keeps its settings, ID, folder/tag assignments, and keybind action identity intact.",
-        `
-  <input id="opt_appearancePresetPromptName" type="text" value="${escapeHtml(appearancePresetDraftName)}" placeholder="Preset name" />
-  <button type="button" id="opt_appearancePresetPromptConfirm">Rename</button>
-  <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
-`,
-      )
-    : ``
-}
-${
-  appearancePresetPromptMode === "mix"
-    ? makeActionRow(
-        "Mix presets",
-        "Enter two or more preset names separated by commas. Default values step aside; overlapping non-default values are averaged.",
-        `
-  <input id="opt_appearancePresetPromptName" type="text" value="${escapeHtml(appearancePresetDraftName)}" placeholder="Basic, VHS" />
-  <button type="button" id="opt_appearancePresetMixConfirm">Mix</button>
-  <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
-`,
-      )
-    : ``
-}
-${
-  appearancePresetPromptMode === "delete"
-    ? makeActionRow(
-        "Delete preset",
-        `Delete '${appearancePresetDisplayName(editingAppearancePresetId, "Preset")}'? Folder and tag overrides using it will fall back to their next available appearance.`,
-        `
-  <button type="button" id="opt_appearancePresetDeleteConfirm">Delete</button>
-  <button type="button" id="opt_appearancePresetPromptCancel">Cancel</button>
-`,
-      )
-    : ``
-}
-<div class="settingsSubsectionTitle">Color</div>
-${buildOverlayRowsHtml(colorOverlayRows)}
-<div class="settingsSubsectionTitle">Effects</div>
-${buildOverlayRowsHtml(effectOverlayRows)}
+${buildFilterPresetManagerHtml()}
+${buildOverlayRowsHtml(colorOverlayRows.concat(effectOverlayRows))}
 ${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
 ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
           `,
@@ -18543,7 +18626,6 @@ ${makeSelectRow("Video audio", "Audio state for videos in the preview pane and g
 ${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
 ${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
 ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges of images and videos and crop them out before overlays or filters are applied. Videos sample multiple moments and only crop bars that stay present the whole time.", "opt_autoCropBlackBars", !!opt.autoCropBlackBars)}
-${makeCheckRow("Hide video controls", "Hide or show the control pane below the preview.", "opt_hideVideoControls", !!opt.hideVideoControls)}
 ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
           `,
     },
@@ -18569,10 +18651,11 @@ ${makeActionRow(
   const requestedSection = sections[sectionTab] ? String(sectionTab) : "";
   const settingsSectionOrder = [
     "general",
-    "storage",
+    "reveal",
     "appearance",
     "playback",
     "filenames",
+    "storage",
   ];
   const settingsSectionsHtml = settingsSectionOrder
     .map((id) => {
@@ -18868,19 +18951,90 @@ ${makeActionRow(
         Math.max(minPct, currentPct + direction * percentStep),
       );
       const nextRaw = roundRaw(stepperPercentToRaw(nextPct), nextPct);
+      if (nextRaw === currentRaw) return false;
       el.value = String(nextRaw);
       updateValue();
       el.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
     };
     el.addEventListener("click", (e) => e.stopPropagation());
     el.addEventListener("keydown", (e) => e.stopPropagation());
     el.addEventListener("input", updateValue);
     stepButtons.forEach((btn) => {
+      let repeatDelayTimer = null;
+      let repeatIntervalTimer = null;
+      let suppressNextClick = false;
+      let activePointerId = null;
+      const deltaForButton = () =>
+        Number(btn.dataset.optStepperDelta) < 0 ? -1 : 1;
+      const stopRepeat = (e = null) => {
+        if (
+          e &&
+          activePointerId !== null &&
+          e.pointerId != null &&
+          e.pointerId !== activePointerId
+        )
+          return;
+        if (repeatDelayTimer) clearTimeout(repeatDelayTimer);
+        if (repeatIntervalTimer) clearInterval(repeatIntervalTimer);
+        repeatDelayTimer = null;
+        repeatIntervalTimer = null;
+        try {
+          if (
+            activePointerId !== null &&
+            typeof btn.releasePointerCapture === "function" &&
+            btn.hasPointerCapture(activePointerId)
+          ) {
+            btn.releasePointerCapture(activePointerId);
+          }
+        } catch {}
+        activePointerId = null;
+        window.removeEventListener("pointerup", stopRepeat, true);
+        window.removeEventListener("pointercancel", stopRepeat, true);
+        window.removeEventListener("mouseup", stopRepeat, true);
+        window.removeEventListener("blur", stopRepeat, true);
+      };
+      btn.addEventListener("pointerdown", (e) => {
+        if (e.button != null && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        suppressNextClick = true;
+        const delta = deltaForButton();
+        stepBy(delta);
+        stopRepeat();
+        activePointerId = e.pointerId;
+        window.addEventListener("pointerup", stopRepeat, true);
+        window.addEventListener("pointercancel", stopRepeat, true);
+        window.addEventListener("mouseup", stopRepeat, true);
+        window.addEventListener("blur", stopRepeat, true);
+        try {
+          if (typeof btn.setPointerCapture === "function")
+            btn.setPointerCapture(e.pointerId);
+        } catch {}
+        repeatDelayTimer = setTimeout(() => {
+          repeatDelayTimer = null;
+          repeatIntervalTimer = setInterval(() => {
+            stepBy(delta);
+          }, 130);
+        }, 360);
+      });
+      btn.addEventListener("pointerup", stopRepeat);
+      btn.addEventListener("pointercancel", stopRepeat);
+      btn.addEventListener("lostpointercapture", stopRepeat);
+      btn.addEventListener("blur", stopRepeat);
+      btn.addEventListener("contextmenu", (e) => {
+        stopRepeat();
+        e.preventDefault();
+        e.stopPropagation();
+      });
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const delta = Number(btn.dataset.optStepperDelta) < 0 ? -1 : 1;
-        stepBy(delta);
+        if (suppressNextClick) {
+          suppressNextClick = false;
+          return;
+        }
+        stepBy(deltaForButton());
       });
       btn.addEventListener("dblclick", (e) => {
         e.preventDefault();
@@ -19008,6 +19162,22 @@ ${makeActionRow(
   bindCheck("opt_lightMode", "lightMode", () => {
     applyColorSchemeFromOptions();
   });
+  bindMenuToggleButton("opt_videoControlsVisible", (enabled) => {
+    const nextHidden = !enabled;
+    WS.meta.options = normalizeOptions(
+      Object.assign({}, WS.meta.options || {}, {
+        hideVideoControls: nextHidden,
+      }),
+    );
+    metaMarkDirty(META_DOC_IDS.prefControls);
+    setOptionsStatus("Saved");
+    refreshActivePreviewMediaLayout({ immediate: true });
+    applyOptionsEverywhere(false);
+    showStatusMessage(
+      `Video controls: ${enabled ? "On" : "Off"}`,
+      "pane-toggles",
+    );
+  });
 
   const bindStorageToggle = (id, key, label) => {
     bindMenuToggleButton(id, async (enabled) => {
@@ -19096,34 +19266,6 @@ ${makeActionRow(
     showStatusMessage(`Quick navigation: ${enabled ? "On" : "Off"}`, "quick-navigation");
   });
   bindCheck("opt_muteMessages", "muteMessages");
-  bindMenuToggleButton("opt_directoriesPaneOpen", (enabled) => {
-    if (!setDirectoriesPaneOpenKeybindState(enabled)) {
-      setMenuToggleButtonState(
-        $("opt_directoriesPaneOpen"),
-        directoriesPaneOpenEnabled(),
-      );
-      return;
-    }
-    setOptionsStatus("Saved");
-    showStatusMessage(`File pane: ${enabled ? "Open" : "Closed"}`, "pane-toggles");
-  });
-  bindMenuToggleButton("opt_randomFileSort", (enabled) => {
-    if (!!(WS.view && WS.view.randomMode) !== !!enabled) toggleRandomSortMode();
-    setMenuToggleButtonState(
-      $("opt_randomFileSort"),
-      !!(WS.view && WS.view.randomMode),
-    );
-    setOptionsStatus("Saved");
-  });
-  bindMenuToggleButton("opt_randomFolderSort", (enabled) => {
-    if (!!(WS.view && WS.view.randomFolderMode) !== !!enabled)
-      toggleRandomFolderSortMode();
-    setMenuToggleButtonState(
-      $("opt_randomFolderSort"),
-      !!(WS.view && WS.view.randomFolderMode),
-    );
-    setOptionsStatus("Saved");
-  });
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
     invalidateDirMetricsCaches();
     if (!enabled && WS.view.tagFolderActiveMode === "untagged") {
@@ -19138,6 +19280,7 @@ ${makeActionRow(
   });
   bindCheck("opt_showListCardExtraInfo", "showListCardExtraInfo", () => {
     renderDirectoriesPane(true);
+    persistDirtyMetadataNow().catch(() => {});
   });
   bindCheck("opt_showScores", "showScores");
   bindCheck(
@@ -19206,8 +19349,16 @@ ${makeActionRow(
       { nullable: !!row.nullable, neutralValue: row.neutralValue },
     );
   });
-  const appearancePresetSelect = $("opt_appearancePresetLibrary");
   const appearancePresetPromptInput = $("opt_appearancePresetPromptName");
+  const focusAppearancePresetPromptInput = () => {
+    const promptInput = $("opt_appearancePresetPromptName");
+    if (promptInput) {
+      try {
+        promptInput.focus();
+        promptInput.select();
+      } catch {}
+    }
+  };
   const readAppearancePresetPromptInput = () => {
     const raw = appearancePresetPromptInput
       ? appearancePresetPromptInput.value
@@ -19232,11 +19383,7 @@ ${makeActionRow(
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        const confirmBtn = $(
-          appearancePresetPromptMode === "mix"
-            ? "opt_appearancePresetMixConfirm"
-            : "opt_appearancePresetPromptConfirm",
-        );
+        const confirmBtn = $("opt_appearancePresetPromptConfirm");
         if (confirmBtn) confirmBtn.click();
       }
     });
@@ -19275,7 +19422,8 @@ ${makeActionRow(
       setOptionsStatus("Saved");
       renderOptionsUi("general");
       showStatusMessage(
-        `Applied preset '${appearancePresetDisplayName(presetId)}'.`,
+        `Applied filter preset '${appearancePresetDisplayName(presetId)}'.`,
+        "appearance-presets",
       );
     },
     (val) => normalizeAppearancePresetIdValue(val),
@@ -19284,33 +19432,82 @@ ${makeActionRow(
     refreshWorkspaceKeybindAction();
     setOptionsStatus("Saved");
   });
-
-  bindStandaloneSelect(
-    "opt_appearancePresetLibrary",
-    () => {
-      const appearancePresetSelectEl = $("opt_appearancePresetLibrary");
-      if (!appearancePresetSelectEl) return;
-      const presetId = normalizeAppearancePresetIdValue(
-        appearancePresetSelectEl.value,
-      );
-      if (!presetId) return;
-      if (WS.view) {
-        WS.view.appearancePresetEditingId = presetId;
-        WS.view.appearancePresetPromptMode = "";
+  optionsBodyEl
+    .querySelectorAll("[data-appearance-preset-apply]")
+    .forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const presetId = normalizeAppearancePresetIdValue(
+          btn.dataset.appearancePresetApply,
+        );
+        if (!presetId || !applyAppearancePresetById(presetId)) return;
+        renderOptionsUi("appearance");
+        showStatusMessage(
+          `Applied filter preset '${appearancePresetDisplayName(presetId)}'.`,
+          "appearance-presets",
+        );
+      });
+      btn.addEventListener("keydown", (e) => e.stopPropagation());
+    });
+  optionsBodyEl
+    .querySelectorAll("[data-appearance-preset-rename]")
+    .forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const presetId = normalizeAppearancePresetIdValue(
+          btn.dataset.appearancePresetRename,
+        );
         const preset = getAppearancePresetById(presetId);
-        WS.view.appearancePresetDraftName =
-          presetId === BUILTIN_NULL_APPEARANCE_PRESET_ID || !preset
-            ? ""
-            : String(preset.name || "");
-      }
-      if (!applyAppearancePresetById(presetId)) return;
-      renderOptionsUi("appearance");
-      showStatusMessage(
-        `Applied preset '${appearancePresetDisplayName(presetId)}'.`,
-      );
-    },
-    (val) => normalizeAppearancePresetIdValue(val),
-  );
+        if (!preset || preset.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return;
+        if (WS.view) {
+          WS.view.appearancePresetEditingId = presetId;
+          WS.view.appearancePresetPromptMode = "rename";
+          WS.view.appearancePresetDraftName = String(preset.name || "");
+        }
+        renderOptionsUi("appearance");
+        focusAppearancePresetPromptInput();
+      });
+      btn.addEventListener("keydown", (e) => e.stopPropagation());
+    });
+  optionsBodyEl
+    .querySelectorAll("[data-appearance-preset-delete]")
+    .forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const presetId = normalizeAppearancePresetIdValue(
+          btn.dataset.appearancePresetDelete,
+        );
+        const preset = getAppearancePresetById(presetId);
+        if (!preset || preset.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return;
+        if (WS.view) {
+          WS.view.appearancePresetEditingId = presetId;
+          WS.view.appearancePresetPromptMode = "delete";
+          WS.view.appearancePresetDraftName = String(preset.name || "");
+        }
+        renderOptionsUi("appearance");
+      });
+      btn.addEventListener("keydown", (e) => e.stopPropagation());
+    });
+  bindActionBtn("opt_appearancePreset_add", () => {
+    const preset = createAppearancePresetFromCurrent(
+      nextNewAppearancePresetName(),
+    );
+    if (!preset) {
+      showStatusMessage("Filter preset was not created.");
+      return;
+    }
+    if (WS.view) {
+      WS.view.appearancePresetEditingId = preset.id;
+      WS.view.appearancePresetPromptMode = "rename";
+      WS.view.appearancePresetDraftName = String(preset.name || "");
+    }
+    renderOptionsUi("appearance");
+    focusAppearancePresetPromptInput();
+    showStatusMessage("Created filter preset.", "appearance-presets");
+  });
   bindSelect(
     "opt_animatedMediaFilters",
     "animatedMediaFilters",
@@ -19344,9 +19541,6 @@ ${makeActionRow(
       .toLowerCase();
     return raw === "loop" || raw === "next" || raw === "stop" ? raw : "loop";
   });
-  bindCheck("opt_hideVideoControls", "hideVideoControls", () => {
-    refreshActivePreviewMediaLayout({ immediate: true });
-  });
   bindCheck("opt_forceTitleCaps", "forceTitleCaps");
   bindCheck("opt_showPositionNumbersInNames", "showPositionNumbersInNames");
   bindCheck(
@@ -19366,62 +19560,6 @@ ${makeActionRow(
     sanitizeWorkspaceNames().catch(() => {
       showStatusMessage("Sanitize names failed.");
     });
-  });
-  bindActionBtn("opt_appearancePreset_save", () => {
-    if (WS.view) {
-      WS.view.appearancePresetPromptMode = "save";
-      if (!WS.view.appearancePresetDraftName) {
-        const editingPreset = getAppearancePresetById(
-          currentAppearanceEditingTargetId(),
-        );
-        WS.view.appearancePresetDraftName =
-          editingPreset &&
-          editingPreset.id !== BUILTIN_NULL_APPEARANCE_PRESET_ID
-            ? String(editingPreset.name || "")
-            : "";
-      }
-    }
-    renderOptionsUi("appearance");
-    const promptInput = $("opt_appearancePresetPromptName");
-    if (promptInput) {
-      try {
-        promptInput.focus();
-        promptInput.select();
-      } catch {}
-    }
-  });
-  bindActionBtn("opt_appearancePreset_rename", () => {
-    const presetId = normalizeAppearancePresetIdValue(
-      WS.view && WS.view.appearancePresetEditingId,
-    );
-    const preset = getAppearancePresetById(presetId);
-    if (!preset || preset.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return;
-    if (WS.view) {
-      WS.view.appearancePresetPromptMode = "rename";
-      WS.view.appearancePresetDraftName = String(preset.name || "");
-    }
-    renderOptionsUi("appearance");
-    const promptInput = $("opt_appearancePresetPromptName");
-    if (promptInput) {
-      try {
-        promptInput.focus();
-        promptInput.select();
-      } catch {}
-    }
-  });
-  bindActionBtn("opt_appearancePreset_mix", () => {
-    if (WS.view) {
-      WS.view.appearancePresetPromptMode = "mix";
-      WS.view.appearancePresetDraftName = "";
-    }
-    renderOptionsUi("appearance");
-    const promptInput = $("opt_appearancePresetPromptName");
-    if (promptInput) {
-      try {
-        promptInput.focus();
-        promptInput.select();
-      } catch {}
-    }
   });
   bindActionBtn("opt_appearancePresetPromptConfirm", () => {
     const presetName = readAppearancePresetPromptInput();
@@ -19448,7 +19586,7 @@ ${makeActionRow(
       renderOptionsUi("appearance");
       updateAppearancePresetUiState();
       showStatusMessage(
-        `Renamed preset to '${appearancePresetDisplayName(result.preset && result.preset.id)}'.`,
+        `Renamed filter preset to '${appearancePresetDisplayName(result.preset && result.preset.id)}'.`,
         "appearance-presets",
       );
       return;
@@ -19466,40 +19604,12 @@ ${makeActionRow(
     renderOptionsUi("appearance");
     updateAppearancePresetUiState();
     showStatusMessage(
-      `${result.replaced ? "Updated" : "Saved"} preset '${appearancePresetDisplayName(result.preset && result.preset.id)}'.`,
-    );
-  });
-  bindActionBtn("opt_appearancePresetMixConfirm", () => {
-    const mixNames = readAppearancePresetPromptInput();
-    const result = mixAppearancePresetsFromNames(mixNames);
-    if (!result.ok) {
-      if (result.reason === "missing-names")
-        showStatusMessage("Enter preset names separated by commas.");
-      else if (result.reason === "not-enough-presets")
-        showStatusMessage("Mix needs at least two presets.");
-      else if (result.reason === "missing-presets")
-        showStatusMessage(`Preset not found: ${(result.missing || []).join(", ")}.`);
-      else showStatusMessage("Preset mix was not saved.");
-      return;
-    }
-    renderOptionsUi("appearance");
-    updateAppearancePresetUiState();
-    showStatusMessage(
-      `${result.replaced ? "Updated" : "Mixed"} preset '${appearancePresetDisplayName(result.preset && result.preset.id)}'.`,
+      `${result.replaced ? "Updated" : "Saved"} filter preset '${appearancePresetDisplayName(result.preset && result.preset.id)}'.`,
       "appearance-presets",
     );
   });
   bindActionBtn("opt_appearancePresetPromptCancel", () => {
     if (WS.view) WS.view.appearancePresetPromptMode = "";
-    renderOptionsUi("appearance");
-  });
-  bindActionBtn("opt_appearancePreset_delete", () => {
-    const presetId = normalizeAppearancePresetIdValue(
-      WS.view && WS.view.appearancePresetEditingId,
-    );
-    const preset = getAppearancePresetById(presetId);
-    if (!preset || preset.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return;
-    if (WS.view) WS.view.appearancePresetPromptMode = "delete";
     renderOptionsUi("appearance");
   });
   bindActionBtn("opt_appearancePresetDeleteConfirm", () => {
@@ -19515,7 +19625,7 @@ ${makeActionRow(
     renderOptionsUi("appearance");
     updateAppearancePresetUiState();
     applyOptionsEverywhere(true);
-    showStatusMessage(`Deleted preset '${preset.name}'.`);
+    showStatusMessage(`Deleted filter preset '${preset.name}'.`, "appearance-presets");
   });
   bindStandaloneSelect(
     "opt_dirSortMode",
@@ -19536,27 +19646,30 @@ ${makeActionRow(
 
 const OPTION_TAB_IDS = Object.freeze([
   "general",
-  "storage",
+  "reveal",
   "appearance",
   "playback",
   "filenames",
+  "storage",
 ]);
 
 const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
   general: Object.freeze([
     "clickSelectedRotatingThumbTeleports",
-    "showHiddenFolder",
-    "showTrashFolder",
-    "showStorageFolder",
     "quickNavigation",
     "muteMessages",
-    "showUntaggedFolder",
     "showListCardExtraInfo",
     "previewMediaUsePaneBackground",
     "hideVideoControls",
     "lightMode",
     "animatedMediaFilters",
     "activeAppearancePresetId",
+  ]),
+  reveal: Object.freeze([
+    "showHiddenFolder",
+    "showTrashFolder",
+    "showStorageFolder",
+    "showUntaggedFolder",
   ]),
   storage: Object.freeze([
     "storePortraitAspectRatioFiles",

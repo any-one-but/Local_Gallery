@@ -8264,6 +8264,12 @@ button:active:not(:disabled),
 :root {
   --thumb-title-selected-bg: rgba(0, 0, 0, 0.40);
   --preview-pane-thumb-title-bar-bg: rgba(0, 0, 0, 0.40);
+  --thumb-card-radius: 8px;
+  --lg-soft-radius: 8px;
+  --lg-control-radius: 6px;
+  --ui-control-radius: 6px;
+  --ui-hover-lift: -1px;
+  --ui-active-press: 1px;
 }
 :root[data-theme="retro90s"] {
   --thumb-title-selected-bg: rgba(255, 255, 255, 0.48);
@@ -8388,6 +8394,32 @@ button:active:not(:disabled),
 #directoriesPane {
   border-left: 0 !important;
   border-right: 0 !important;
+}
+
+/* v15: keep the thumbnail build closer to the regular app chrome. */
+#directoriesList.gridModeList .dirSquareCard,
+#directoriesList.gridModeList .dirFileThumbCard,
+.gridFiles.previewSquareCards .fileCard,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard,
+.folderCard.folderThumbCard,
+.previewTagFolderCard .dirSquareCard,
+.previewItemPlaceholderArtwork,
+.previewItemPlaceholder.hasThumbnail {
+  border-radius: var(--thumb-card-radius, 8px) !important;
+}
+
+#directoriesList.gridModeList .dirSquareOverlay,
+#directoriesList.gridModeList .dirFileOverlay,
+.previewItemPlaceholderInfoBar {
+  border-bottom-left-radius: var(--thumb-card-radius, 8px) !important;
+  border-bottom-right-radius: var(--thumb-card-radius, 8px) !important;
+}
+
+#directoriesList.gridModeList .dirMenuBtn,
+#gridUnifiedActionMenu,
+.thumbCropEditorActions > button,
+.thumbCropEditorClose {
+  border-radius: var(--ui-control-radius, 6px) !important;
 }
 </style>
   <!-- END: inlined from ./styles.css -->
@@ -10483,19 +10515,23 @@ let ACTIVE_PREVIEW_FILE_VIRTUALIZERS = [];
 const THUMBNAIL_URL_RECORD_IDS = new Set();
 // v2 performance pass: thumbnail work must yield to navigation.  These
 // defaults deliberately favor instant input over eager visual completeness.
-const THUMBNAIL_VIEWPORT_OVERSCAN_MULTIPLIER = 0.45;
-const THUMBNAIL_DIRECTORY_WINDOW_LIMIT = 24;
-const THUMBNAIL_PREVIEW_WINDOW_LIMIT = 48;
-const THUMBNAIL_BACKGROUND_BATCH_LIMIT = 72;
-const THUMBNAIL_BACKGROUND_TAG_BATCH_LIMIT = 24;
-const THUMBNAIL_BACKGROUND_IDLE_DELAY_MS = 420;
-const THUMBNAIL_INTERACTION_IDLE_MS = 900;
-const THUMBNAIL_SCROLL_IDLE_MS = 240;
-const THUMBNAIL_LARGE_LIBRARY_FILE_THRESHOLD = 20000;
-const THUMBNAIL_LARGE_LIBRARY_ENTRY_THRESHOLD = 900;
+const THUMBNAIL_VIEWPORT_OVERSCAN_MULTIPLIER = 0.32;
+const THUMBNAIL_DIRECTORY_WINDOW_LIMIT = 18;
+const THUMBNAIL_PREVIEW_WINDOW_LIMIT = 36;
+const THUMBNAIL_BACKGROUND_BATCH_LIMIT = 32;
+const THUMBNAIL_BACKGROUND_TAG_BATCH_LIMIT = 10;
+const THUMBNAIL_BACKGROUND_IDLE_DELAY_MS = 850;
+const THUMBNAIL_INTERACTION_IDLE_MS = 1100;
+const THUMBNAIL_SCROLL_IDLE_MS = 360;
+const THUMBNAIL_LARGE_LIBRARY_FILE_THRESHOLD = 8000;
+const THUMBNAIL_LARGE_LIBRARY_ENTRY_THRESHOLD = 360;
+const THUMBNAIL_LARGE_ROOT_ENTRY_THRESHOLD = 320;
+const THUMBNAIL_LARGE_LIBRARY_CHECK_MS = 2500;
 const THUMBNAIL_LARGE_LIBRARY_SIZE_BYTES = 40 * 1024 * 1024 * 1024;
-const THUMBNAIL_LARGE_LIBRARY_BACKGROUND_BATCH_LIMIT = 24;
-const THUMBNAIL_LARGE_LIBRARY_BACKGROUND_TAG_BATCH_LIMIT = 8;
+const THUMBNAIL_LARGE_LIBRARY_BACKGROUND_BATCH_LIMIT = 8;
+const THUMBNAIL_LARGE_LIBRARY_BACKGROUND_TAG_BATCH_LIMIT = 3;
+const THUMBNAIL_ROOT_PIN_SCAN_LIMIT = 96;
+const THUMBNAIL_ROOT_FILE_PIN_LIMIT = 24;
 let THUMBNAIL_BACKGROUND_TIMER = 0;
 
 // v9: A small service heartbeat keeps thumbnail work moving even when a
@@ -10503,9 +10539,9 @@ let THUMBNAIL_BACKGROUND_TIMER = 0;
 // intentionally conservative: it repairs mounted cards and root pins in
 // bounded batches, then lets the existing image/video workers do the heavy
 // lifting.
-const THUMBNAIL_SERVICE_HEARTBEAT_MS = 650;
-const THUMBNAIL_SERVICE_REPAIR_BATCH_LIMIT = 28;
-const THUMBNAIL_SERVICE_ROOT_PIN_BATCH_LIMIT = 12;
+const THUMBNAIL_SERVICE_HEARTBEAT_MS = 1250;
+const THUMBNAIL_SERVICE_REPAIR_BATCH_LIMIT = 12;
+const THUMBNAIL_SERVICE_ROOT_PIN_BATCH_LIMIT = 4;
 let THUMBNAIL_SERVICE_HEARTBEAT_TIMER = 0;
 let THUMBNAIL_SERVICE_REPAIR_ACTIVE = false;
 let THUMBNAIL_SERVICE_LAST_ROOT_PIN_MS = 0;
@@ -17283,6 +17319,7 @@ const WS = {
     scrollBusyUntil: 0,
     largeLibraryMode: false,
     largeLibraryModeReason: "",
+    largeLibraryLastCheckMs: 0,
     pendingDirScroll: "",
     bulkSelectMode: false,
     bulkTagSelectedPaths: new Set(),
@@ -17558,6 +17595,9 @@ function resetWorkspace() {
   WS.view.randomCache = new Map();
   WS.view.randomFolderMode = false;
   WS.view.randomFolderCache = new Map();
+  WS.view.largeLibraryMode = false;
+  WS.view.largeLibraryModeReason = "";
+  WS.view.largeLibraryLastCheckMs = 0;
   WS.view.slideshowModeIndex = 0;
   WS.view.slideshowActive = false;
   WS.view.appearancePresetDraftName = "";
@@ -39690,15 +39730,42 @@ function estimateWorkspaceMediaBytes(limit = 25000) {
   return total;
 }
 
+function rootImmediateEntryCount() {
+  if (!WS || !WS.root) return 0;
+  const rootFileCount = Array.isArray(WS.root.childrenFiles)
+    ? WS.root.childrenFiles.length
+    : 0;
+  const rootDirCount = Array.isArray(WS.root.childrenDirs)
+    ? WS.root.childrenDirs.length
+    : 0;
+  return rootFileCount + rootDirCount;
+}
+
 function refreshLargeLibraryPerformanceMode() {
   if (!WS || !WS.view) return false;
+  const now = Date.now();
+  const lastCheck = Number(WS.view.largeLibraryLastCheckMs || 0) || 0;
+  if (
+    lastCheck &&
+    now - lastCheck < THUMBNAIL_LARGE_LIBRARY_CHECK_MS &&
+    typeof WS.view.largeLibraryMode === "boolean"
+  ) {
+    return !!WS.view.largeLibraryMode;
+  }
+  WS.view.largeLibraryLastCheckMs = now;
   const fileCount = WS.fileById && WS.fileById.size ? WS.fileById.size : 0;
   const entryCount = Array.isArray(WS.nav && WS.nav.entries) ? WS.nav.entries.length : 0;
-  const estimatedBytes = estimateWorkspaceMediaBytes();
+  const rootEntryCount = rootImmediateEntryCount();
   let reason = "";
-  if (fileCount >= THUMBNAIL_LARGE_LIBRARY_FILE_THRESHOLD) reason = `${fileCount.toLocaleString()} files`;
+  if (rootEntryCount >= THUMBNAIL_LARGE_ROOT_ENTRY_THRESHOLD)
+    reason = `${rootEntryCount.toLocaleString()} root items`;
+  else if (fileCount >= THUMBNAIL_LARGE_LIBRARY_FILE_THRESHOLD) reason = `${fileCount.toLocaleString()} files`;
   else if (entryCount >= THUMBNAIL_LARGE_LIBRARY_ENTRY_THRESHOLD) reason = `${entryCount.toLocaleString()} visible entries`;
-  else if (estimatedBytes >= THUMBNAIL_LARGE_LIBRARY_SIZE_BYTES) reason = `${formatBytes(estimatedBytes)} estimated media`;
+  else {
+    const estimatedBytes = estimateWorkspaceMediaBytes(2500);
+    if (estimatedBytes >= THUMBNAIL_LARGE_LIBRARY_SIZE_BYTES)
+      reason = `${formatBytes(estimatedBytes)} estimated media`;
+  }
   WS.view.largeLibraryMode = !!reason;
   WS.view.largeLibraryModeReason = reason;
   return !!reason;
@@ -39709,7 +39776,9 @@ function largeLibraryPerformanceModeActive() {
   if (WS.view.largeLibraryMode) return true;
   const fileCount = WS.fileById && WS.fileById.size ? WS.fileById.size : 0;
   const entryCount = Array.isArray(WS.nav && WS.nav.entries) ? WS.nav.entries.length : 0;
+  const rootEntryCount = rootImmediateEntryCount();
   return (
+    rootEntryCount >= THUMBNAIL_LARGE_ROOT_ENTRY_THRESHOLD ||
     fileCount >= THUMBNAIL_LARGE_LIBRARY_FILE_THRESHOLD ||
     entryCount >= THUMBNAIL_LARGE_LIBRARY_ENTRY_THRESHOLD
   );
@@ -40806,44 +40875,34 @@ function recordVisibleInPreviewSurface(recordId) {
   if (!id || !previewBodyEl) return false;
   if (WS.preview.kind === "file" && String(WS.preview.fileId || "") === id)
     return true;
-  const nodes = previewBodyEl.querySelectorAll(
-    "[data-dir-preview-id], .fileCard[data-file-id]",
+  return !!previewBodyEl.querySelector(
+    `[data-dir-preview-id="${cssEscapeValue(id)}"], .fileCard[data-file-id="${cssEscapeValue(id)}"]`,
   );
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    if (String(node.dataset?.dirPreviewId || node.dataset?.fileId || "") === id)
-      return true;
-  }
-  return false;
 }
 
 function recordVisibleInDirectoriesSurface(recordId) {
   const id = String(recordId || "");
   if (!id || !directoriesEl) return false;
-  const nodes = directoriesEl.querySelectorAll(
-    "[data-dir-preview-id], .dirRow.fileRow[data-file-id]",
+  return !!directoriesEl.querySelector(
+    `[data-dir-preview-id="${cssEscapeValue(id)}"], .dirRow.fileRow[data-file-id="${cssEscapeValue(id)}"]`,
   );
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    if (String(node.dataset?.dirPreviewId || node.dataset?.fileId || "") === id)
-      return true;
-  }
-  return false;
 }
 
 function notifyThumbnailRecordUpdated(rec) {
   if (!rec) return;
   const recId = String(rec.id || "");
   if (!recId) return;
-  refreshDirectoryInlinePreviewThumbForRecord(rec);
+  const directoriesChanged = refreshDirectoryInlinePreviewThumbForRecord(rec);
   const previewChanged = refreshPreviewInlineThumbForRecord(rec);
   const directoriesVisible = recordVisibleInDirectoriesSurface(recId);
   const previewVisible = recordVisibleInPreviewSurface(recId) || previewChanged;
+  const largeThumbMode = largeLibraryPerformanceModeActive();
   scheduleThumbnailUiInvalidation({
     directories:
-      (WS.thumbnailDirectoriesDemandIds instanceof Set &&
-        WS.thumbnailDirectoriesDemandIds.has(recId)) ||
-      directoriesVisible,
+      (!largeThumbMode || !directoriesChanged) &&
+      ((WS.thumbnailDirectoriesDemandIds instanceof Set &&
+          WS.thumbnailDirectoriesDemandIds.has(recId)) ||
+        directoriesVisible),
     preview:
       (WS.thumbnailPreviewDemandIds instanceof Set &&
         WS.thumbnailPreviewDemandIds.has(recId)) ||
@@ -41843,10 +41902,29 @@ function collectRootPinnedThumbnailRecords() {
   const rootFiles = Array.isArray(WS.root.childrenFiles)
     ? WS.root.childrenFiles
     : [];
-  for (let i = 0; i < rootFiles.length; i++)
-    addRecord(WS.fileById.get(String(rootFiles[i] || "")));
   const rootDirs = getChildDirsForNode(WS.root);
-  for (let i = 0; i < rootDirs.length; i++) {
+  const rootLooksLarge =
+    largeLibraryPerformanceModeActive() ||
+    rootFiles.length + rootDirs.length >= THUMBNAIL_LARGE_ROOT_ENTRY_THRESHOLD;
+  const rootFileLimit = rootLooksLarge
+    ? THUMBNAIL_ROOT_FILE_PIN_LIMIT
+    : rootFiles.length;
+  for (let i = 0; i < rootFiles.length && i < rootFileLimit; i++)
+    addRecord(WS.fileById.get(String(rootFiles[i] || "")));
+
+  if (rootLooksLarge && WS.nav && WS.nav.dirNode === WS.root) {
+    const windowRecords = collectNavigationEntryWindowRecords(
+      WS.root,
+      THUMBNAIL_ROOT_PIN_SCAN_LIMIT,
+      { includeFiles: true, dirRotateKeyPrefix: "root-pinned" },
+    );
+    for (let i = 0; i < windowRecords.length; i++) addRecord(windowRecords[i]);
+  }
+
+  const rootDirLimit = rootLooksLarge
+    ? Math.min(rootDirs.length, THUMBNAIL_ROOT_PIN_SCAN_LIMIT)
+    : rootDirs.length;
+  for (let i = 0; i < rootDirs.length && i < rootDirLimit; i++) {
     const child = rootDirs[i];
     if (!child) continue;
     const leadInfo = getDisplayLeadPreviewForDir(child, "root-pinned");
@@ -50106,9 +50184,10 @@ function ensureThumbUrl(rec, opts = null) {
   const mode = currentImageThumbMode();
 
   if (mode === "native") {
-    if (!force && thumbnailScrollGuardActive() && largeLibraryPerformanceModeActive()) return;
+    if (thumbnailScrollGuardActive() && largeLibraryPerformanceModeActive())
+      return rec.thumbUrl || null;
 
-  if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
+    if (rec.thumbUrl && rec.thumbMode && rec.thumbMode !== "high") {
       try {
         URL.revokeObjectURL(rec.thumbUrl);
       } catch {}
@@ -50212,20 +50291,23 @@ function syncDirectoryInlineAspectFromNaturalSize(imgEl, rec) {
 }
 
 function refreshDirectoryInlinePreviewThumbForRecord(rec) {
-  if (!rec || !directoriesEl) return;
+  if (!rec || !directoriesEl) return false;
   const recId = String(rec.id || "");
-  if (!recId) return;
+  if (!recId) return false;
   const src = getPassivePreviewSrcForRecord(rec, {
     allowImageMediaFallback: true,
   });
-  if (!src) return;
+  if (!src) return false;
   const aspect = normalizePreviewAspect(getPreviewAspectForRecord(rec), 4 / 3);
+  let changed = false;
   const imgs = directoriesEl.querySelectorAll(
-    ".dirInlinePreview[data-dir-preview-id]",
+    `.dirInlinePreview[data-dir-preview-id="${cssEscapeValue(recId)}"]`,
   );
   for (const img of imgs) {
-    if (String(img.dataset.dirPreviewId || "") !== recId) continue;
-    if (img.src !== src) img.src = src;
+    if (img.src !== src) {
+      img.src = src;
+      changed = true;
+    }
     applyDirectoryInlineAspect(img, aspect);
     if (
       rec.type === "image" &&
@@ -50265,7 +50347,9 @@ function refreshDirectoryInlinePreviewThumbForRecord(rec) {
     img.style.setProperty("--dir-inline-ar", Number(aspect).toFixed(4));
     fallback.replaceWith(img);
     applyDirectoryInlineAspect(img, aspect);
+    changed = true;
   }
+  return changed;
 }
 
 function refreshPreviewInlineThumbForRecord(rec) {
