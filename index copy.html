@@ -5953,60 +5953,6 @@ remove the outer app frame. */
   background: var(--color1-primary) !important;
 }
 
-/* Selected folder media previews stay soft and shade-based; no divider rules. */
-#previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .fileCard {
-  border: 0 !important;
-  border-radius: 14px;
-  background: var(--ui-control-bg);
-  box-shadow:
-    0 14px 30px rgba(0, 0, 0, 0.18),
-    0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-#previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .thumb {
-  border-radius: inherit;
-}
-
-#previewPane
-  .gridFiles.folderMediaPreviewGrid.previewSquareCards
-  .previewThumbOverlayMeta {
-  border-top: 0 !important;
-  border-radius: 0 0 14px 14px;
-  background: rgba(0, 0, 0, 0.34) !important;
-  background-image: none !important;
-  box-shadow: none !important;
-  color: rgba(255, 255, 255, 0.92) !important;
-}
-
-#previewPane
-  .gridFiles.folderMediaPreviewGrid.previewSquareCards
-  .previewThumbOverlayMeta * {
-  color: rgba(255, 255, 255, 0.92) !important;
-}
-
-#previewPane
-  .gridFiles.folderMediaPreviewGrid.previewSquareCards
-  .previewThumbOverlayMetaMenuOnly {
-  background: none !important;
-  box-shadow: none !important;
-}
-
-#previewPane .gridFiles.folderMediaPreviewGrid .thumbFallback {
-  background: var(--ui-control-bg) !important;
-  box-shadow: none !important;
-}
-
-:root[data-folder-preview-media-thumbs="on"]
-  #previewPane
-  .gridFiles.folderMediaPreviewGrid
-  img.thumb,
-:root[data-folder-preview-media-thumbs="on"]
-  #previewPane
-  .gridFiles.folderMediaPreviewGrid
-  video.thumb {
-  display: block !important;
-}
-
 
 /* v4: darker interactive surfaces in dark mode and softer pane/settings design language. */
 :root {
@@ -7674,7 +7620,6 @@ function defaultOptions() {
     hideTagAndRootFolderThumbnailMenuButton: false,
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
-    folderPreviewMediaThumbnails: false,
     hideVideoControls: false,
     thumbnailLoading: false,
     forceTitleCaps: true,
@@ -8138,10 +8083,6 @@ function normalizeOptions(o) {
       typeof src.previewMediaUsePaneBackground === "boolean"
         ? src.previewMediaUsePaneBackground
         : d.previewMediaUsePaneBackground,
-    folderPreviewMediaThumbnails:
-      typeof src.folderPreviewMediaThumbnails === "boolean"
-        ? src.folderPreviewMediaThumbnails
-        : d.folderPreviewMediaThumbnails,
     hideVideoControls:
       typeof src.hideVideoControls === "boolean"
         ? src.hideVideoControls
@@ -13525,11 +13466,6 @@ function naturalAspectThumbnailCardsEnabled() { }
 
 function previewSquareMediaThumbsEnabled() { }
 
-function folderPreviewMediaThumbnailsEnabled(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !!(src && src.folderPreviewMediaThumbnails === true);
-}
-
 function mediaFilterEnabled() {
   return anyMediaFilterEnabled();
 }
@@ -13688,24 +13624,12 @@ function syncActivePaneWithLayout() {
 function applyInteractionModeFromOptions() {
   const appEl = document.getElementById("app");
   if (!appEl) return;
-  const root = document.documentElement;
   const sidebarOpen = directoriesPaneOpenEnabled();
-  const folderPreviewMediaThumbs = folderPreviewMediaThumbnailsEnabled();
   appEl.classList.toggle("no-root-selected", !WS.root);
   appEl.classList.toggle("sidebar-closed", !sidebarOpen);
   const thumbsEnabled = thumbnailLoadingEnabled();
   appEl.classList.toggle("thumbnail-loading-off", !thumbsEnabled);
   appEl.setAttribute("data-thumbnail-loading", thumbsEnabled ? "on" : "off");
-  appEl.setAttribute(
-    "data-folder-preview-media-thumbs",
-    folderPreviewMediaThumbs ? "on" : "off",
-  );
-  if (root) {
-    root.setAttribute(
-      "data-folder-preview-media-thumbs",
-      folderPreviewMediaThumbs ? "on" : "off",
-    );
-  }
   appEl.classList.remove("file-pane-thumbnail-view");
   appEl.classList.add("file-pane-list-view");
   appEl.classList.add("title-layout-pane");
@@ -18660,7 +18584,6 @@ ${makeSelectRow("Media filter", "Choose which media types are visible across the
 ${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible across the current root/view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
 ${makeCheckRow("Extra file info", "Show counts, sizes, scores, and item type details on File pane entries.", "opt_showListCardExtraInfo", !!opt.showListCardExtraInfo)}
 ${makeCheckRow("Preview media pane background", "Keep preview media on the recessed pane surface instead of black.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
-${makeCheckRow("Folder preview thumbnails", "Load real media thumbnails in the selected-folder preview grid instead of lightweight placeholders.", "opt_folderPreviewMediaThumbnails", folderPreviewMediaThumbnailsEnabled(opt))}
 ${makeActionRow(
   "Workspace",
   "Refresh the current writable root from disk.",
@@ -19307,30 +19230,6 @@ ${makeActionRow(
       refreshActivePreviewMediaLayout({ immediate: true });
     },
   );
-  bindMenuToggleButton("opt_folderPreviewMediaThumbnails", (enabled) => {
-    (async () => {
-      WS.meta.options = normalizeOptions(
-        Object.assign({}, WS.meta.options || {}, {
-          folderPreviewMediaThumbnails: !!enabled,
-        }),
-      );
-      metaMarkDirty(META_DOC_IDS.prefGeneral);
-      setOptionsStatus("Saved");
-      applyOptionsEverywhere(false);
-      try {
-        await persistDirtyMetadataNow();
-      } catch {}
-      if (WS.meta && WS.meta.fsRootHandle) {
-        refreshWorkspaceKeybindAction();
-      } else {
-        renderPreviewPane(false, true);
-        showStatusMessage(
-          `Folder preview thumbnails: ${enabled ? "Media" : "Placeholders"}.`,
-          "pane-toggles",
-        );
-      }
-    })();
-  });
   bindSelect("opt_slideshowDefault", "slideshowDefault", false);
   bindCheck("opt_autoCropBlackBars", "autoCropBlackBars", () => {
     MediaFilterEngine.requestRender();
@@ -19765,7 +19664,6 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "muteMessages",
     "showListCardExtraInfo",
     "previewMediaUsePaneBackground",
-    "folderPreviewMediaThumbnails",
     "hideVideoControls",
     "lightMode",
     "animatedMediaFilters",
@@ -40938,18 +40836,6 @@ function forcePreviewPaneThumbTitleBar(meta) {
     meta.style.setProperty("border-top", "0", "important");
     return;
   }
-  if (meta.closest && meta.closest(".folderMediaPreviewGrid")) {
-    meta.style.setProperty("background", "rgba(0, 0, 0, 0.34)", "important");
-    meta.style.setProperty("background-color", "rgba(0, 0, 0, 0.34)", "important");
-    meta.style.setProperty("background-image", "none", "important");
-    meta.style.setProperty("opacity", "1", "important");
-    meta.style.setProperty("backdrop-filter", "none", "important");
-    meta.style.setProperty("-webkit-backdrop-filter", "none", "important");
-    meta.style.setProperty("box-shadow", "none", "important");
-    meta.style.setProperty("border-top", "0", "important");
-    meta.style.setProperty("color", "rgba(255, 255, 255, 0.92)", "important");
-    return;
-  }
   meta.style.setProperty("background", "var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary))", "important");
   meta.style.setProperty("background-color", "var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary))", "important");
   meta.style.setProperty("background-image", "none", "important");
@@ -45277,7 +45163,6 @@ function renderSelectedFolderMediaPreview(
     dirNode,
     renderToken,
     previewDisplayPositions.filePositions,
-    { folderMediaPreviewGrid: true },
   );
 
   const grid = previewBodyEl.lastElementChild;
@@ -46488,29 +46373,6 @@ function appendVirtualGridSpacer(grid, heightPx) {
   grid.appendChild(spacer);
 }
 
-function softenFolderMediaPreviewCardChrome(card) {
-  if (!card || !card.querySelectorAll) return;
-  card.classList.add("folderMediaPreviewCard");
-  const metas = card.querySelectorAll(".previewThumbOverlayMeta");
-  metas.forEach((meta) => {
-    if (!meta || !meta.style || !meta.classList) return;
-    if (meta.classList.contains("previewThumbOverlayMetaMenuOnly")) {
-      meta.style.setProperty("background", "none", "important");
-      meta.style.setProperty("background-color", "transparent", "important");
-      meta.style.setProperty("background-image", "none", "important");
-      meta.style.setProperty("border-top", "0", "important");
-      meta.style.setProperty("box-shadow", "none", "important");
-      return;
-    }
-    meta.style.setProperty("background", "rgba(0, 0, 0, 0.34)", "important");
-    meta.style.setProperty("background-color", "rgba(0, 0, 0, 0.34)", "important");
-    meta.style.setProperty("background-image", "none", "important");
-    meta.style.setProperty("border-top", "0", "important");
-    meta.style.setProperty("box-shadow", "none", "important");
-    meta.style.setProperty("color", "rgba(255, 255, 255, 0.92)", "important");
-  });
-}
-
 function updateVirtualPreviewFilesGrid(state, force = false) {
   if (!state || !state.grid || !state.grid.isConnected) return;
   if (state.renderToken !== PREVIEW_FILES_RENDER_TOKEN) return;
@@ -46533,19 +46395,19 @@ function updateVirtualPreviewFilesGrid(state, force = false) {
     const rec = WS.fileById.get(id);
     if (!rec) continue;
     const shouldAnimateCard = !!state.animate && i - windowInfo.startIndex < 96;
-    const card = makePreviewFileCard(
-      rec,
-      shouldAnimateCard,
-      state.dirNode,
-      state.ids,
-      state.useFitInsideJustified,
-      state.useSquareMediaCards,
-      state.fileDisplayPositions instanceof Map
-        ? state.fileDisplayPositions.get(String(id || ""))
-        : null,
+    frag.appendChild(
+      makePreviewFileCard(
+        rec,
+        shouldAnimateCard,
+        state.dirNode,
+        state.ids,
+        state.useFitInsideJustified,
+        state.useSquareMediaCards,
+        state.fileDisplayPositions instanceof Map
+          ? state.fileDisplayPositions.get(String(id || ""))
+          : null,
+      ),
     );
-    if (state.folderMediaPreviewGrid) softenFolderMediaPreviewCardChrome(card);
-    frag.appendChild(card);
   }
   state.grid.appendChild(frag);
   appendVirtualGridSpacer(state.grid, windowInfo.bottomSpacerHeight);
@@ -46631,19 +46493,15 @@ function renderFilesGrid(
   dirNode,
   renderToken = PREVIEW_FILES_RENDER_TOKEN,
   fileDisplayPositions = null,
-  opts = null,
 ) {
   const LIMIT = 800;
   if (!ids.length) return 0;
 
   const grid = document.createElement("div");
   grid.className = "gridFiles";
-  const options = opts && typeof opts === "object" ? opts : {};
-  const folderMediaPreviewGrid = !!options.folderMediaPreviewGrid;
   const useNaturalAspectCards = naturalAspectThumbnailCardsEnabled();
   const useSquareMediaCards = previewSquareMediaThumbsEnabled();
   const useFitInsideJustified = !useSquareMediaCards;
-  if (folderMediaPreviewGrid) grid.classList.add("folderMediaPreviewGrid");
   if (useFitInsideJustified) grid.classList.add("fitInsideJustified");
   if (useSquareMediaCards) grid.classList.add("previewSquareCards");
   if (useNaturalAspectCards) grid.classList.add("previewNaturalAspectCards");
@@ -46662,7 +46520,6 @@ function renderFilesGrid(
       useSquareMediaCards,
       fileDisplayPositions:
         fileDisplayPositions instanceof Map ? new Map(fileDisplayPositions) : null,
-      folderMediaPreviewGrid,
       currentStart: -1,
       currentEnd: -1,
     });
@@ -46704,7 +46561,6 @@ function renderFilesGrid(
           ? fileDisplayPositions.get(String(id || ""))
           : null,
       );
-      if (folderMediaPreviewGrid) softenFolderMediaPreviewCardChrome(card);
       frag.appendChild(card);
       chunkCount++;
     }
@@ -47067,27 +46923,24 @@ function makePreviewFileCard(
   const mediaSrc = getPassivePreviewSrcForRecord(rec, {
     allowImageMediaFallback: true,
   });
-  let mediaEl = null;
+  let img = null;
   if (mediaSrc) {
-    if (rec.type === "video") {
-      const video = document.createElement("video");
-      video.className = "thumb";
-      video.preload = "metadata";
-      video.muted = true;
-      video.playsInline = true;
-      video.controls = false;
-      video.draggable = false;
-      video.dataset.dirPreviewId = fileId;
-      video.src = mediaSrc;
-      video.addEventListener("loadedmetadata", () => {
-        const duration = Number(video.duration) || 0;
-        if (duration > 0) {
-          try {
-            video.currentTime = Math.min(0.1, Math.max(0, duration * 0.02));
-          } catch {}
-        }
-        const w = Number(video.videoWidth) || 0;
-        const h = Number(video.videoHeight) || 0;
+    img = document.createElement("img");
+    img.className = "thumb";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.draggable = false;
+    img.alt =
+      prefixDisplayLabelWithPosition(
+        fileDisplayNameForRecord(rec),
+        displayPosition,
+      ) || "";
+    img.dataset.dirPreviewId = fileId;
+    img.src = mediaSrc;
+    if (useFitInsideJustified) {
+      img.addEventListener("load", () => {
+        const w = Number(img.naturalWidth) || 0;
+        const h = Number(img.naturalHeight) || 0;
         if (w > 0 && h > 0) {
           const aspect = normalizePreviewAspect(
             w / h,
@@ -47101,45 +46954,12 @@ function makePreviewFileCard(
           }
         }
       });
-      mediaEl = video;
-    } else {
-      const img = document.createElement("img");
-      img.className = "thumb";
-      img.loading = "lazy";
-      img.decoding = "async";
-      img.draggable = false;
-      img.alt =
-        prefixDisplayLabelWithPosition(
-          fileDisplayNameForRecord(rec),
-          displayPosition,
-        ) || "";
-      img.dataset.dirPreviewId = fileId;
-      img.src = mediaSrc;
-      if (useFitInsideJustified) {
-        img.addEventListener("load", () => {
-          const w = Number(img.naturalWidth) || 0;
-          const h = Number(img.naturalHeight) || 0;
-          if (w > 0 && h > 0) {
-            const aspect = normalizePreviewAspect(
-              w / h,
-              getPreviewAspectForRecord(rec),
-            );
-            rec.previewAspect = aspect;
-            card.dataset.aspect = String(aspect);
-            const grid = card.parentElement;
-            if (grid && grid.classList.contains("fitInsideJustified")) {
-              requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
-            }
-          }
-        });
-      }
-      mediaEl = img;
     }
     if (!useFitInsideJustified && useSquareMediaCards) {
       const cropStyle = fileThumbCropLayoutStyle(rec, "");
       if (cropStyle) {
-        mediaEl.classList.add("thumbCropApplied", "thumbCropAbsolute");
-        mediaEl.style.cssText += cropStyle;
+        img.classList.add("thumbCropApplied", "thumbCropAbsolute");
+        img.style.cssText += cropStyle;
       }
     }
   } else {
@@ -47285,7 +47105,7 @@ function makePreviewFileCard(
     }
   }
 
-  if (mediaEl) card.appendChild(mediaEl);
+  if (img) card.appendChild(img);
   if (meta && meta.childNodes.length) card.appendChild(meta);
 
   if (fileId) card.dataset.fileId = fileId;
@@ -47324,7 +47144,7 @@ function makePreviewFileCard(
       el.addEventListener("dragend", handleDragEnd);
     };
     setupDragSource(card);
-    setupDragSource(mediaEl);
+    setupDragSource(img);
     setupDragSource(meta);
   }
 
@@ -51559,11 +51379,7 @@ function ensureThumbUrl(rec) {
   return "";
 }
 function ensureNavigationThumbUrl(rec) { return ensureThumbUrl(rec); }
-function getPassivePreviewSrcForRecord(rec) {
-  if (!folderPreviewMediaThumbnailsEnabled()) return "";
-  if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
-  return ensureMediaUrl(rec) || "";
-}
+function getPassivePreviewSrcForRecord() { return ""; }
 function getVideoPosterForRecord() { return BLACK_POSTER_URL; }
 function refreshDirectoryInlinePreviewThumbForRecord() {}
 function refreshPreviewInlineThumbForRecord() {}
