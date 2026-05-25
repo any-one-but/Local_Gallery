@@ -27912,6 +27912,11 @@ function sortDirsForDisplay(dirs) {
       }
 
       if (va !== vb) return vb - va;
+      if (sortMode === "efficiency") {
+        const sizeA = metrics.sizeByPath.get(pathA) || 0;
+        const sizeB = metrics.sizeByPath.get(pathB) || 0;
+        if (sizeA !== sizeB) return sizeA - sizeB;
+      }
       return byName(a, b);
     });
     return out;
@@ -29276,6 +29281,10 @@ function fastSortDirsForTagScope(dirs, key = "tag-scope") {
         vb = sb.recursiveFileCount;
       }
       if (va !== vb) return vb - va;
+      if (mode === "efficiency") {
+        const sizeDiff = (sa.recursiveSizeBytes || 0) - (sb.recursiveSizeBytes || 0);
+        if (sizeDiff) return sizeDiff;
+      }
       return byName(a, b);
     });
     return out;
