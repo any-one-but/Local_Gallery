@@ -220,6 +220,29 @@
     return { numbers: out, error: '' };
   }
 
+  function formatStripperNumberRanges(values) {
+    const numbers = [...new Set((values || [])
+      .map(value => Number(value) || 0)
+      .filter(value => value > 0))]
+      .sort((a, b) => a - b);
+    if (!numbers.length) return 'none';
+    const ranges = [];
+    let start = numbers[0];
+    let prev = numbers[0];
+    for (let i = 1; i < numbers.length; i++) {
+      const current = numbers[i];
+      if (current === prev + 1) {
+        prev = current;
+        continue;
+      }
+      ranges.push(start === prev ? String(start) : `${start}-${prev}`);
+      start = current;
+      prev = current;
+    }
+    ranges.push(start === prev ? String(start) : `${start}-${prev}`);
+    return ranges.join(', ');
+  }
+
   function runRedditStripper() {
     const JSZip = window.JSZip;
       const API_DELAY_MIN = 850;
@@ -532,7 +555,7 @@
         ui.postRangeInput.disabled = state.busy || !state.posts.length;
         ui.postRangeBtn.disabled = state.busy || !state.posts.length;
         ui.pageRangeRow.hidden = !hasPages;
-        ui.pageRangeHint.textContent = hasPages ? state.pages.map(page => page.page).join(', ') : 'none';
+        ui.pageRangeHint.textContent = hasPages ? formatStripperNumberRanges(state.pages.map(page => page.page)) : 'none';
         ui.pageRangeInput.disabled = state.busy || !hasPages;
         ui.pageRangeBtn.disabled = state.busy || !hasPages;
         ui.profileLabel.textContent = state.username ? `u/${state.username}` : 'No profile scanned';
@@ -1805,7 +1828,7 @@
         ui.postRangeInput.disabled = state.busy || !state.posts.length;
         ui.postRangeBtn.disabled = state.busy || !state.posts.length;
         ui.pageRangeRow.hidden = !state.pages.length;
-        ui.pageRangeHint.textContent = state.pages.length ? state.pages.map(page => page.page).join(', ') : 'none';
+        ui.pageRangeHint.textContent = state.pages.length ? formatStripperNumberRanges(state.pages.map(page => page.page)) : 'none';
         ui.pageRangeInput.disabled = state.busy || !state.pages.length;
         ui.pageRangeBtn.disabled = state.busy || !state.pages.length;
         ui.threadLabel.textContent = state.threadTitle || 'No thread scanned';

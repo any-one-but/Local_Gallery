@@ -4940,6 +4940,11 @@ img[data-rotate-key].rotatingThumbFade {
   box-shadow: none;
 }
 
+#optionsBody .optStepper input.optRangeValue {
+  width: 58px;
+  outline: none;
+}
+
 #optionsBody .optStepper .optRangeValue:focus-visible {
   outline: none;
   box-shadow: var(--ui-focus-ring);
@@ -9018,22 +9023,8 @@ function syncActiveAppearancePresetSelection(options = null) {
     return "";
   }
 
-  // With no explicit active preset, only infer a preset for the built-in Default
-  // state. This keeps normal slider edits from jumping between user presets
-  // that happen to share values, while still letting a plain default workspace
-  // show as Default.
-  let defaultId = "";
-  for (let i = 0; i < presets.length; i++) {
-    const preset = presets[i];
-    const presetId = normalizeAppearancePresetIdValue(preset && preset.id);
-    if (presetId !== BUILTIN_NULL_APPEARANCE_PRESET_ID) continue;
-    if (preset && preset.values && appearanceValuesEqual(values, preset.values)) {
-      defaultId = presetId;
-    }
-    break;
-  }
-  opt.activeAppearancePresetId = defaultId || null;
-  return defaultId;
+  opt.activeAppearancePresetId = null;
+  return "";
 }
 
 function currentAppearanceBucket(options = null) {
@@ -18322,7 +18313,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
               <input id="${escapeHtml(row.rangeId)}" type="hidden" min="${row.limits.min}" max="${row.limits.max}" step="${row.limits.step}" data-stepper-min="${row.limits.min}" data-stepper-max="${row.limits.max}" data-stepper-neutral="${neutralValue}" data-stepper-percent-step="1" value="${escapeHtml(String(currentValue))}" />
               <div class="optStepper" data-opt-stepper="${escapeHtml(row.rangeId)}">
                 <button type="button" class="optStepBtn optStepBtnDown" data-opt-stepper-for="${escapeHtml(row.rangeId)}" data-opt-stepper-delta="-1" aria-label="Decrease ${escapeHtml(row.title)} by 1 percent">${optionStepperDownIcon}</button>
-                <div class="optRangeValue" id="${escapeHtml(row.rangeId)}_value" role="spinbutton" tabindex="0" aria-label="${escapeHtml(row.title)} percent" aria-valuemin="${minPct}" aria-valuemax="${maxPct}" aria-valuenow="${escapeHtml(displayValue.replace(/%$/, ""))}">${escapeHtml(displayValue)}</div>
+                <input class="optRangeValue" id="${escapeHtml(row.rangeId)}_value" type="text" inputmode="decimal" value="${escapeHtml(displayValue)}" role="spinbutton" aria-label="${escapeHtml(row.title)} percent" aria-valuemin="${minPct}" aria-valuemax="${maxPct}" aria-valuenow="${escapeHtml(displayValue.replace(/%$/, ""))}" />
                 <button type="button" class="optStepBtn optStepBtnUp" data-opt-stepper-for="${escapeHtml(row.rangeId)}" data-opt-stepper-delta="1" aria-label="Increase ${escapeHtml(row.title)} by 1 percent">${optionStepperUpIcon}</button>
               </div>
             </div>
@@ -18459,12 +18450,20 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
             </div>
           `;
         }
+        if (isDefault) {
+          return `
+          <div class="filterPresetRow" data-filter-preset-id="${escapeHtml(presetId)}">
+            <div class="filterPresetName${isActive ? " isActive" : ""}">${escapeHtml(presetName)}</div>
+          </div>
+        `;
+        }
         return `
           <div class="filterPresetRow" data-filter-preset-id="${escapeHtml(presetId)}">
             <button type="button" class="filterPresetName${isActive ? " isActive" : ""}" data-appearance-preset-apply="${escapeHtml(presetId)}">${escapeHtml(presetName)}</button>
             <div class="filterPresetActions">
-              <button type="button" data-appearance-preset-rename="${escapeHtml(presetId)}"${isDefault ? " disabled" : ""}>Rename</button>
-              <button type="button" data-appearance-preset-delete="${escapeHtml(presetId)}"${isDefault ? " disabled" : ""}>Delete</button>
+              <button type="button" data-appearance-preset-update="${escapeHtml(presetId)}">Update</button>
+              <button type="button" data-appearance-preset-rename="${escapeHtml(presetId)}">Rename</button>
+              <button type="button" data-appearance-preset-delete="${escapeHtml(presetId)}">Delete</button>
             </div>
           </div>
         `;
@@ -18791,7 +18790,7 @@ ${makeCheckRow("Quick navigation", "When opening a folder that only contains fil
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Video controls", "Show or hide the control pane below the preview.", "opt_videoControlsVisible", !opt.hideVideoControls)}
-${makeSelectRow("Filter preset", "Choose a saved filter preset to apply it immediately. Edited sliders stay attached to the selected preset until you save or switch.", "opt_generalAppearancePreset", activeAppearancePresetId || BUILTIN_NULL_APPEARANCE_PRESET_ID, appearancePresetSelectOptions)}
+${makeSelectRow("Filter preset", "Choose a saved filter preset to apply it immediately. Edited sliders stay attached to the selected preset until you save or switch.", "opt_generalAppearancePreset", activeAppearancePresetId || "", appearancePresetSelectOptions)}
 ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
 ${makeSelectRow("Media filter", "Choose which media types are visible across the current root/view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
 ${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible across the current root/view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
@@ -19140,10 +19139,40 @@ ${makeActionRow(
       if (!valueEl) return;
       const nextVal = parseFloat(el.value);
       const displayText = formatter ? formatter(nextVal) : String(el.value);
-      valueEl.textContent = displayText;
+      if ("value" in valueEl) valueEl.value = displayText;
+      else valueEl.textContent = displayText;
       const ariaNow = Math.round(rawToStepperPercent(nextVal));
       valueEl.setAttribute("aria-valuenow", String(ariaNow));
       valueEl.setAttribute("aria-valuetext", displayText);
+    };
+    const commitValueInput = () => {
+      if (!valueEl || !("value" in valueEl)) return false;
+      const rawText = String(valueEl.value || "").trim().replace(/%/g, "");
+      if (!rawText) {
+        updateValue();
+        return false;
+      }
+      const pct = Number(rawText);
+      if (!Number.isFinite(pct)) {
+        updateValue();
+        return false;
+      }
+      const minPct = Math.min(
+        rawToStepperPercent(rawMin),
+        rawToStepperPercent(rawMax),
+      );
+      const maxPct = Math.max(
+        rawToStepperPercent(rawMin),
+        rawToStepperPercent(rawMax),
+      );
+      const nextPct = Math.min(maxPct, Math.max(minPct, pct));
+      const currentRaw = clampRaw(parseFloat(el.value));
+      const nextRaw = roundRaw(stepperPercentToRaw(nextPct), nextPct);
+      el.value = String(nextRaw);
+      updateValue();
+      if (nextRaw !== currentRaw)
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      return nextRaw !== currentRaw;
     };
     const rowEl = el.closest(".optOverlayRow");
     const stepButtons = rowEl
@@ -19263,9 +19292,32 @@ ${makeActionRow(
     if (valueEl) {
       valueEl.addEventListener("click", (e) => e.stopPropagation());
       valueEl.addEventListener("dblclick", (e) => e.stopPropagation());
+      valueEl.addEventListener("focus", (e) => {
+        e.stopPropagation();
+        if ("select" in valueEl) {
+          try {
+            valueEl.select();
+          } catch {}
+        }
+      });
+      valueEl.addEventListener("blur", () => {
+        commitValueInput();
+      });
       valueEl.addEventListener("keydown", (e) => {
         e.stopPropagation();
-        if (e.key === "ArrowUp" || e.key === "ArrowRight") {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commitValueInput();
+          try {
+            valueEl.blur();
+          } catch {}
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          updateValue();
+          try {
+            valueEl.blur();
+          } catch {}
+        } else if (e.key === "ArrowUp" || e.key === "ArrowRight") {
           e.preventDefault();
           stepBy(1);
         } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
@@ -19687,6 +19739,31 @@ ${makeActionRow(
         renderOptionsUi("appearance");
         showStatusMessage(
           `Applied filter preset '${appearancePresetDisplayName(presetId)}'.`,
+          "appearance-presets",
+        );
+      });
+      btn.addEventListener("keydown", (e) => e.stopPropagation());
+    });
+  optionsBodyEl
+    .querySelectorAll("[data-appearance-preset-update]")
+    .forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const presetId = normalizeAppearancePresetIdValue(
+          btn.dataset.appearancePresetUpdate,
+        );
+        const preset = getAppearancePresetById(presetId);
+        if (!preset || preset.id === BUILTIN_NULL_APPEARANCE_PRESET_ID) return;
+        if (!updateAppearancePresetFromCurrent(presetId)) {
+          showStatusMessage("Filter preset was not updated.");
+          return;
+        }
+        if (WS.view) WS.view.appearancePresetPromptMode = "";
+        renderOptionsUi("appearance");
+        updateAppearancePresetUiState();
+        showStatusMessage(
+          `Updated filter preset '${appearancePresetDisplayName(presetId)}'.`,
           "appearance-presets",
         );
       });
