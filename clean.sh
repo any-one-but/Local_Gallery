@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_VERSION="1.8.6"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
+PROGRESS_BAR_MIN_WIDTH=4
 EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
 SIMILAR_ITEMS_BUCKET_NAME="_clean_similar_media"
 WAIFU2X_INSTALL_DIR="${HOME}/.local/share/local_gallery/waifu2x-ncnn-vulkan"
@@ -72,7 +73,8 @@ progress_draw() {
   local current="${2:-0}"
   local total="${3:-1}"
   local mode="${4:-inline}"
-  local pct filled empty
+  local pct filled empty term_cols suffix label_plain line_budget
+  local bar_width="$PROGRESS_BAR_WIDTH"
   local bar_filled bar_empty
 
   if ! is_int "$current"; then current=0; fi
@@ -81,13 +83,25 @@ progress_draw() {
   [[ "$current" -gt "$total" ]] && current="$total"
 
   pct=$(( current * 100 / total ))
-  filled=$(( pct * PROGRESS_BAR_WIDTH / 100 ))
-  empty=$(( PROGRESS_BAR_WIDTH - filled ))
+  suffix=$(printf " %3d%% (%d/%d)" "$pct" "$current" "$total")
+  label_plain="${label} "
+  term_cols="${COLUMNS:-}"
+  if [[ -t 1 && "$mode" != "line" ]]; then
+    if ! is_int "$term_cols" || [[ "$term_cols" -le 0 ]]; then
+      term_cols="$(tput cols 2>/dev/null || printf "80")"
+    fi
+    if ! is_int "$term_cols" || [[ "$term_cols" -le 0 ]]; then term_cols=80; fi
+    line_budget=$(( term_cols - ${#label_plain} - 2 - ${#suffix} ))
+    if [[ "$line_budget" -lt "$bar_width" ]]; then bar_width="$line_budget"; fi
+    if [[ "$bar_width" -lt "$PROGRESS_BAR_MIN_WIDTH" ]]; then bar_width="$PROGRESS_BAR_MIN_WIDTH"; fi
+  fi
+  filled=$(( pct * bar_width / 100 ))
+  empty=$(( bar_width - filled ))
   bar_filled=$(printf "%${filled}s" "" | tr ' ' '#')
   bar_empty=$(printf "%${empty}s" "" | tr ' ' '-')
 
   if [[ -t 1 && "$mode" != "line" ]]; then
-    printf "\r\033[2K%s%s%s [%s%s] %3d%% (%d/%d)" "$C_DIM" "$label" "$C_RESET" "$bar_filled" "$bar_empty" "$pct" "$current" "$total"
+    printf "\r\033[2K%s%s%s [%s%s]%s" "$C_DIM" "$label" "$C_RESET" "$bar_filled" "$bar_empty" "$suffix"
     UI_STATUS_ACTIVE=1
     if [[ "$current" -ge "$total" ]]; then
       printf "\n"
