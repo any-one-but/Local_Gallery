@@ -9007,6 +9007,13 @@ function currentAppearanceBucket(options = null) {
 }
 
 function currentAppearanceEditingTargetId() {
+  const promptMode = String((WS.view && WS.view.appearancePresetPromptMode) || "");
+  if (promptMode === "rename" || promptMode === "delete") {
+    const promptedId = normalizeAppearancePresetIdValue(
+      WS.view && WS.view.appearancePresetEditingId,
+    );
+    if (promptedId && getAppearancePresetById(promptedId)) return promptedId;
+  }
   const activeId = effectiveActiveAppearancePresetId();
   if (activeId) return activeId;
   const raw = normalizeAppearancePresetIdValue(
@@ -33022,8 +33029,17 @@ function clearPreviewSelectionState(contextKey = null) {
   );
 }
 
+function previewThumbnailSelectionEnabled() {
+  return false;
+}
+
 function applyPendingPreviewSelectionForCurrentTarget() {
   if (!WS.view) return false;
+  if (!previewThumbnailSelectionEnabled()) {
+    WS.view.pendingPreviewSelectionKey = "";
+    clearPreviewSelectionState(currentPreviewSelectionContextKeyFromState());
+    return false;
+  }
   const nextKey = String(WS.view.pendingPreviewSelectionKey || "");
   if (!nextKey) return false;
   if (parsePreviewFileSelectionKey(nextKey)) {
@@ -33055,6 +33071,12 @@ function notePreviewTargetChanged(nextState = null) {
 }
 
 function getPreviewSelectableCards() {
+  if (!previewBodyEl) return [];
+  if (!previewThumbnailSelectionEnabled()) return [];
+  return Array.from(previewBodyEl.querySelectorAll("[data-preview-item-key]"));
+}
+
+function getPreviewItemCards() {
   if (!previewBodyEl) return [];
   return Array.from(previewBodyEl.querySelectorAll("[data-preview-item-key]"));
 }
@@ -33298,7 +33320,14 @@ function updatePreviewSelectionClasses() {
   const activeKey = String((WS.view && WS.view.previewSelectedKey) || "");
   const previewActive = !!(WS.view && WS.view.activePane === "preview");
   syncActivePaneWithLayout();
-  const cards = getPreviewSelectableCards();
+  const cards = getPreviewItemCards();
+  if (!previewThumbnailSelectionEnabled()) {
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      card.classList.remove("bulkSelected", "previewSelected");
+    }
+    return;
+  }
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
     const kind = String(card?.dataset?.previewItemKind || "");
@@ -33322,6 +33351,11 @@ function updatePreviewSelectionClasses() {
 
 function ensurePreviewSelectionForCurrentTarget(reset = false) {
   const contextKey = currentPreviewSelectionContextKeyFromState();
+  if (!previewThumbnailSelectionEnabled()) {
+    clearPreviewSelectionState(contextKey);
+    updatePreviewSelectionClasses();
+    return false;
+  }
   const cards = getPreviewSelectableCards();
   if (!cards.length) {
     clearPreviewSelectionState(contextKey);
@@ -33355,6 +33389,7 @@ function ensurePreviewSelectionForCurrentTarget(reset = false) {
 }
 
 function setPreviewSelectionKey(key, opts = null) {
+  if (!previewThumbnailSelectionEnabled()) return false;
   const nextKey = String(key || "");
   if (!nextKey) return false;
   const card = findPreviewSelectableCardByKey(nextKey);
@@ -33363,6 +33398,7 @@ function setPreviewSelectionKey(key, opts = null) {
 }
 
 function setPreviewSelectionCard(card, opts = null) {
+  if (!previewThumbnailSelectionEnabled()) return false;
   const key = String(card?.dataset?.previewItemKey || "");
   if (!card || !key) return false;
   if (WS.view) {
@@ -33377,6 +33413,11 @@ function setPreviewSelectionCard(card, opts = null) {
 }
 
 function activatePreviewPaneSelection() {
+  if (!previewThumbnailSelectionEnabled()) {
+    clearPreviewSelectionState(currentPreviewSelectionContextKeyFromState());
+    updatePreviewSelectionClasses();
+    return false;
+  }
   setActivePane("preview");
   syncActivePaneWithLayout();
   const hasSelection = ensurePreviewSelectionForCurrentTarget(false);
@@ -33731,6 +33772,13 @@ function handlePreviewCardSelection(card, openAction, e = null) {
   if (!card) return;
   const key = String(card.dataset.previewItemKey || "");
   if (!key) return;
+  if (!previewThumbnailSelectionEnabled()) {
+    if (e) e.preventDefault();
+    clearPreviewSelectionState(currentPreviewSelectionContextKeyFromState());
+    updatePreviewSelectionClasses();
+    if (typeof openAction === "function") openAction();
+    return;
+  }
   const priorSelectedKey = String(WS.view.previewSelectedKey || "");
   const isCmdOrCtrl = eventCmdOrCtrlHeld(e);
   const isShift = eventShiftHeld(e);
@@ -34905,7 +34953,7 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
       showItemCount: showDirectoryField("itemCount"),
       showSize: showDirectoryField("size"),
       showTitle: true,
-      showMenuButton,
+      showMenuButton: true,
       showItemTypeLabel: showDirectoryField("itemType"),
     };
   }
@@ -43353,8 +43401,9 @@ async function navigateToDirectory(node) {
     showBusyOverlay("Opening preview...");
     await waitForNextPaint();
   }
+  const keepPreviewPaneActive = !directoriesPaneOpenEnabled();
   const previewFolderReturnState = captureViewerCloseRestoreState({
-    activePane: "preview",
+    activePane: keepPreviewPaneActive ? "preview" : "directories",
     pendingPreviewSelectionKey: node.path ? `dir:${String(node.path || "")}` : "",
   });
   if (previewFolderReturnState && node.path) {
@@ -43405,12 +43454,13 @@ async function navigateToDirectory(node) {
   else applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
   resetPreviewPaneForEnteredTarget();
   WS.view.previewFolderBridgeReturnState = previewFolderReturnState;
-  setActivePane("preview");
+  setActivePane(keepPreviewPaneActive ? "preview" : "directories");
   const useWindowedBridgePrepare =
     tortoiseNavigationEnabled() && shouldUseWindowedPreviewBridgeSnapshot();
   await finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(node, {
     animatePreview: true,
-    activatePreviewSelection: true,
+    activatePreviewSelection:
+      keepPreviewPaneActive && previewThumbnailSelectionEnabled(),
     recordHistory: true,
     prepareFull: !useWindowedBridgePrepare,
     schedulePreparedWarm: !useWindowedBridgePrepare,
@@ -43512,8 +43562,9 @@ async function openPreviewTagFolderEntry(entry) {
     showBusyOverlay("Opening preview...");
     await waitForNextPaint();
   }
+  const keepPreviewPaneActive = !directoriesPaneOpenEnabled();
   const previewFolderReturnState = captureViewerCloseRestoreState({
-    activePane: "preview",
+    activePane: keepPreviewPaneActive ? "preview" : "directories",
     pendingPreviewSelectionKey: entryKeyForSelection(entry),
   });
   if (previewFolderReturnState) {
@@ -43554,12 +43605,13 @@ async function openPreviewTagFolderEntry(entry) {
   else applyPreviewState(previewStateForEntry(entry));
   resetPreviewPaneForEnteredTarget();
   WS.view.previewFolderBridgeReturnState = previewFolderReturnState;
-  setActivePane("preview");
+  setActivePane(keepPreviewPaneActive ? "preview" : "directories");
   const useWindowedBridgePrepare =
     tortoiseNavigationEnabled() && shouldUseWindowedPreviewBridgeSnapshot();
   const rendered = await finalizeDirectoryNavigationRender({
     animatePreview: true,
-    activatePreviewSelection: true,
+    activatePreviewSelection:
+      keepPreviewPaneActive && previewThumbnailSelectionEnabled(),
     prepareFull: !useWindowedBridgePrepare,
     schedulePreparedWarm: !useWindowedBridgePrepare,
     deferDirectoriesRender: useWindowedBridgePrepare,
@@ -51158,8 +51210,7 @@ function handleDirectoriesPaneSwitchAction(action) {
   if (WS.view.activePane === "preview") return false;
   if (action === "selectLeft") return true;
   if (action !== "selectRight") return false;
-  activatePreviewPaneSelection();
-  return true;
+  return activatePreviewPaneSelection();
 }
 
 function moveClosedFilePaneMediaSelection(step) {
