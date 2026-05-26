@@ -46027,7 +46027,8 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     if (isBulkSelected) card.classList.add("bulkSelected");
   }
   const lightweightFolderThumb =
-    shouldUseLightweightTagAlbumThumbnailsForNode(dirNode);
+    shouldUseLightweightTagAlbumThumbnailsForNode(dirNode) &&
+    !folderPreviewMediaThumbnailsEnabled();
   const sc = metaGetScore(dirNode?.path || "");
   const scoreMode = "hidden";
   const isFavorite = metaHasFavorite(p);
