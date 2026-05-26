@@ -5844,11 +5844,11 @@ remove the outer app frame. */
 }
 
 
-/* v4: force preview-pane thumbnail title strips to use the same opaque bar color as regular thumbnail cards.
+/* v4: force preview-pane thumbnail title strips to use one translucent overlay treatment.
    This targets the right-side preview pane directly, including cropped square cards, natural-aspect cards, folders, tags, and compact inline-title variants. */
 :root {
-  --preview-pane-thumb-title-bar-bg: var(--color1-secondary);
-  --preview-pane-thumb-title-bar-fg: var(--color0-primary);
+  --preview-pane-thumb-title-bar-bg: rgba(0, 0, 0, 0.34);
+  --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.92);
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta,
@@ -5866,7 +5866,7 @@ remove the outer app frame. */
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
-  border-top: 1px solid var(--color1-tertiary) !important;
+  border-top: 0 !important;
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta *,
@@ -5898,7 +5898,7 @@ remove the outer app frame. */
   background-color: var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary)) !important;
   background-image: none !important;
   color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary)) !important;
-  border-top: 1px solid var(--color1-tertiary) !important;
+  border-top: 0 !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -6052,16 +6052,16 @@ remove the outer app frame. */
   bottom: 0;
   border-top: 0 !important;
   border-radius: 0 0 14px 14px;
-  background: rgba(0, 0, 0, 0.34) !important;
-  background-color: rgba(0, 0, 0, 0.34) !important;
+  background: var(--preview-pane-thumb-title-bar-bg) !important;
+  background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
   box-shadow: none !important;
-  color: rgba(255, 255, 255, 0.92) !important;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
 }
 
 #previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta *,
 #previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay * {
-  color: rgba(255, 255, 255, 0.92) !important;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
 }
 
 #previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
@@ -7616,11 +7616,6 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
       const field = previewFields[j];
       const key = thumbnailVisibilityPreviewOptionKey(spec.kind, field);
       if (!key) continue;
-      if (field === "menuButton") {
-        // v7: Do not carry forward old settings that hid card menu buttons.
-        out[key] = true;
-        continue;
-      }
       if (typeof source[key] === "boolean") {
         out[key] = source[key];
         continue;
@@ -18102,7 +18097,6 @@ function ensureOptionsSelectGlobalBindings() {
 }
 
 function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
-  if (String(sectionTab || "") === "thumbnails") sectionTab = "general";
   if (!optionsBodyEl) return;
   const opt =
     WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
@@ -18153,6 +18147,44 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
             </div>
           </div>
         `;
+  };
+
+  const linkedPreviewOptionChecked = (kinds, field) => {
+    const list = Array.isArray(kinds) ? kinds : [kinds];
+    const keys = list
+      .map((kind) => thumbnailVisibilityPreviewOptionKey(kind, field))
+      .filter(Boolean);
+    return keys.length ? keys.every((key) => !!opt[key]) : false;
+  };
+  const thumbnailPreviewOptionKeysFor = (kinds, field) => {
+    const list = Array.isArray(kinds) ? kinds : [kinds];
+    return list
+      .map((kind) => thumbnailVisibilityPreviewOptionKey(kind, field))
+      .filter(Boolean);
+  };
+  const thumbnailInfoRows = (heading, kindOrKinds, fields) => {
+    const fieldLabels = {
+      title: "Title",
+      size: "Size",
+      itemCount: "File count",
+      fileCount: "File count",
+      folderCount: "Folder count",
+      menuButton: "Menu button",
+    };
+    const rows = fields
+      .map((field) =>
+        makeCheckRow(
+          fieldLabels[field] || field,
+          "",
+          `opt_thumbInfo_${String(heading).toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${field}`,
+          linkedPreviewOptionChecked(kindOrKinds, field),
+        ),
+      )
+      .join("");
+    return `
+      <div class="settingsSubsectionTitle">${escapeHtml(heading)}</div>
+      ${rows}
+    `;
   };
 
   const makeRangeRow = (
@@ -18756,7 +18788,6 @@ ${makeSelectRow("Media filter", "Choose which media types are visible across the
 ${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible across the current root/view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
 ${makeCheckRow("Extra file info", "Show counts, sizes, scores, and item type details on File pane entries.", "opt_showListCardExtraInfo", !!opt.showListCardExtraInfo)}
 ${makeCheckRow("Preview media pane background", "Keep preview media on the recessed pane surface instead of black.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
-${makeCheckRow("Folder preview thumbnails", "Load real media thumbnails in the selected-folder preview grid instead of lightweight placeholders.", "opt_folderPreviewMediaThumbnails", folderPreviewMediaThumbnailsEnabled(opt))}
 ${makeActionRow(
   "Workspace",
   "Refresh the current writable root from disk.",
@@ -18764,6 +18795,15 @@ ${makeActionRow(
   <button type="button" id="opt_refresh_workspace"${!WS.meta.fsRootHandle ? " disabled" : ""}>Refresh Workspace</button>
 `,
 )}
+          `,
+    },
+    thumbnails: {
+      title: "Thumbnails",
+      rows: `
+${makeCheckRow("Folder preview thumbnails", "Load real media thumbnails in the selected-folder preview grid instead of lightweight placeholders.", "opt_folderPreviewMediaThumbnails", folderPreviewMediaThumbnailsEnabled(opt))}
+${thumbnailInfoRows("Files", "file", ["title", "size", "itemCount", "menuButton"])}
+${thumbnailInfoRows("Folders", ["rootFolder", "subfolder"], ["title", "size", "folderCount", "fileCount", "menuButton"])}
+${thumbnailInfoRows("Tags", "tag", ["title", "size", "folderCount", "fileCount", "menuButton"])}
           `,
     },
     reveal: {
@@ -18828,6 +18868,7 @@ ${makeActionRow(
   const requestedSection = sections[sectionTab] ? String(sectionTab) : "";
   const settingsSectionOrder = [
     "general",
+    "thumbnails",
     "reveal",
     "appearance",
     "playback",
@@ -19023,6 +19064,27 @@ ${makeActionRow(
       setOptionsStatus("Saved");
       if (typeof onChange === "function") onChange(!!enabled);
       applyOptionsEverywhere(false);
+    });
+  };
+
+  const bindLinkedCheck = (id, keys, onChange) => {
+    const list = Array.isArray(keys) ? keys.filter(Boolean) : [];
+    if (!list.length) return;
+    bindMenuToggleButton(id, (enabled) => {
+      const next = {};
+      list.forEach((key) => {
+        next[key] = !!enabled;
+      });
+      WS.meta.options = normalizeOptions(
+        Object.assign({}, WS.meta.options || {}, next),
+      );
+      metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+      setOptionsStatus("Saved");
+      if (typeof onChange === "function") onChange(!!enabled);
+      applyOptionsEverywhere(false);
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
     });
   };
 
@@ -19564,6 +19626,20 @@ ${makeActionRow(
     "hideTagAndRootFolderThumbnailMenuButton",
   );
   bindCheck("opt_hideFileThumbnailMenuButton", "hideFileThumbnailMenuButton");
+  [
+    ["Files", "file", ["title", "size", "itemCount", "menuButton"]],
+    [
+      "Folders",
+      ["rootFolder", "subfolder"],
+      ["title", "size", "folderCount", "fileCount", "menuButton"],
+    ],
+    ["Tags", "tag", ["title", "size", "folderCount", "fileCount", "menuButton"]],
+  ].forEach(([heading, kinds, fields]) => {
+    fields.forEach((field) => {
+      const id = `opt_thumbInfo_${String(heading).toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${field}`;
+      bindLinkedCheck(id, thumbnailPreviewOptionKeysFor(kinds, field));
+    });
+  });
   thumbnailVisibilityOptionKeys().forEach((key) => {
     bindCheck(thumbnailVisibilityInputId(key), key);
   });
@@ -31235,7 +31311,28 @@ function setTagFolderViewState(mode, tag, originPath, album = "") {
   finalizeDirectoryNavigationRender({
     animatePreview: true,
     keepDirectoriesScroll: true,
-  }).catch(() => {});
+  })
+    .then((rendered) => {
+      if (rendered) scheduleTagFolderInitialSelectionPreviewRender();
+    })
+    .catch(() => {});
+}
+
+function renderTagFolderInitialSelectionPreview() {
+  if (!isViewingTagFolder()) return false;
+  const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+  if (!entry || entry.kind !== "dir" || !entry.node) return false;
+  syncPreviewToSelection({ force: true });
+  renderPreviewPane(false, false);
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  return true;
+}
+
+function scheduleTagFolderInitialSelectionPreviewRender() {
+  requestAnimationFrame(() => {
+    renderTagFolderInitialSelectionPreview();
+  });
 }
 
 function makeTagPreviewNodeForContext(mode, tag, originPath, album = "") {
@@ -31474,6 +31571,7 @@ function restoreTagViewFromFrame(frame, opts = null) {
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
   restoreDirectoriesScrollWithSelectionReveal(frame.scrollTop);
+  scheduleTagFolderInitialSelectionPreviewRender();
   return true;
 }
 
@@ -34768,6 +34866,14 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
     surface === "directories"
       ? src.showListCardExtraInfo !== false
       : showExtraInfo;
+  const showPreviewField = (field, fallback = true) =>
+    showExtraInfo &&
+    supportsPreview(field) &&
+    resolvePreviewValue(field, fallback);
+  const showDirectoryField = (field, fallback = true) =>
+    showDirectoryExtraInfo &&
+    supportsDirectories(field) &&
+    resolveDirectoriesValue(field, fallback);
   const fallbackTitle = (() => {
     if (kind === "file") return !(src && src.showFileThumbnailTitles === false);
     if (kind === "tag") return !(src && src.showTagThumbnailTitles === false);
@@ -34783,51 +34889,37 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
       return !(src && src.hideSubfolderThumbnailMenuButton);
     return !(src && src.hideRootFolderThumbnailMenuButton);
   })();
-  // v7: Card action menus are core UI, not thumbnail plumbing. Always expose
-  // the menu button anywhere this card kind supports one, and ignore older
-  // saved visibility flags that may have hidden it.
-  const showMenuButton = supportsPreview("menuButton");
+  const showMenuButton =
+    supportsPreview("menuButton") &&
+    resolvePreviewValue("menuButton", fallbackMenu);
 
   if (surface === "directories") {
-    const showFolderCount =
-      supportsDirectories("folderCount") && showDirectoryExtraInfo;
-    const showFileCount =
-      supportsDirectories("fileCount") && showDirectoryExtraInfo;
+    const showFolderCount = showDirectoryField("folderCount");
+    const showFileCount = showDirectoryField("fileCount");
     return {
       showScores:
-        supportsDirectories("score") &&
         showScore &&
-        showDirectoryExtraInfo,
+        showDirectoryField("score"),
       showFolderCount,
       showFileCount,
-      showItemCount:
-        (supportsDirectories("itemCount") || showFolderCount || showFileCount)
-          ? showDirectoryExtraInfo
-          : false,
-      showSize: supportsDirectories("size") && showDirectoryExtraInfo,
+      showItemCount: showDirectoryField("itemCount"),
+      showSize: showDirectoryField("size"),
       showTitle: true,
       showMenuButton,
-      showItemTypeLabel:
-        supportsDirectories("itemType") && showDirectoryExtraInfo,
+      showItemTypeLabel: showDirectoryField("itemType"),
     };
   }
 
-  const showFolderCount =
-    supportsPreview("folderCount") && showExtraInfo;
-  const showFileCount =
-    supportsPreview("fileCount") && showExtraInfo;
+  const showFolderCount = showPreviewField("folderCount");
+  const showFileCount = showPreviewField("fileCount");
   return {
     showScores:
-      supportsPreview("score") &&
       showScore &&
-      showExtraInfo,
+      showPreviewField("score"),
     showFolderCount,
     showFileCount,
-    showItemCount:
-      (supportsPreview("itemCount") || showFolderCount || showFileCount)
-        ? showExtraInfo
-        : false,
-    showSize: supportsPreview("size") && showExtraInfo,
+    showItemCount: showPreviewField("itemCount"),
+    showSize: showPreviewField("size"),
     showTitle:
       supportsPreview("title") && resolvePreviewValue("title", fallbackTitle),
     showMenuButton,
@@ -41122,15 +41214,15 @@ function forcePreviewPaneThumbTitleBar(meta) {
     return;
   }
   if (meta.closest && meta.closest(".folderMediaPreviewGrid")) {
-    meta.style.setProperty("background", "rgba(0, 0, 0, 0.34)", "important");
-    meta.style.setProperty("background-color", "rgba(0, 0, 0, 0.34)", "important");
+    meta.style.setProperty("background", "var(--preview-pane-thumb-title-bar-bg)", "important");
+    meta.style.setProperty("background-color", "var(--preview-pane-thumb-title-bar-bg)", "important");
     meta.style.setProperty("background-image", "none", "important");
     meta.style.setProperty("opacity", "1", "important");
     meta.style.setProperty("backdrop-filter", "none", "important");
     meta.style.setProperty("-webkit-backdrop-filter", "none", "important");
     meta.style.setProperty("box-shadow", "none", "important");
     meta.style.setProperty("border-top", "0", "important");
-    meta.style.setProperty("color", "rgba(255, 255, 255, 0.92)", "important");
+    meta.style.setProperty("color", "var(--preview-pane-thumb-title-bar-fg)", "important");
     return;
   }
   meta.style.setProperty("background", "var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary))", "important");
@@ -41140,7 +41232,7 @@ function forcePreviewPaneThumbTitleBar(meta) {
   meta.style.setProperty("backdrop-filter", "none", "important");
   meta.style.setProperty("-webkit-backdrop-filter", "none", "important");
   meta.style.setProperty("box-shadow", "none", "important");
-  meta.style.setProperty("border-top", "1px solid var(--color1-tertiary)", "important");
+  meta.style.setProperty("border-top", "0", "important");
   meta.style.setProperty("color", "var(--preview-pane-thumb-title-bar-fg, var(--color0-primary))", "important");
 }
 
@@ -43465,7 +43557,7 @@ async function openPreviewTagFolderEntry(entry) {
   setActivePane("preview");
   const useWindowedBridgePrepare =
     tortoiseNavigationEnabled() && shouldUseWindowedPreviewBridgeSnapshot();
-  await finalizeDirectoryNavigationRender({
+  const rendered = await finalizeDirectoryNavigationRender({
     animatePreview: true,
     activatePreviewSelection: true,
     prepareFull: !useWindowedBridgePrepare,
@@ -43474,6 +43566,7 @@ async function openPreviewTagFolderEntry(entry) {
     showBusyBeforeRender: useWindowedBridgePrepare,
     busyLabel: "Opening preview...",
   });
+  if (rendered) scheduleTagFolderInitialSelectionPreviewRender();
 }
 
 function getPreviewTargetDir() {
@@ -45786,14 +45879,20 @@ function buildPreviewTagCardMarkup(entry) {
             </div>
           `
       : ``;
-
-  return `
-        <div class="dirSquareCard"${tagCardStyle}>
-          <div class="dirSquareMedia">${squareMediaHtml}</div>
+  const overlayHtml =
+    topNameHtml || bottomMetaHtml
+      ? `
           <div class="dirSquareOverlay${compactOverlayMeta ? " dirSquareOverlayCompact" : ""}${menuOnlyTagCard ? " dirSquareOverlayMenuOnly" : ""}">
             ${topNameHtml ? `<div class="dirSquareTop${compactOverlayMeta ? " dirSquareTopCompact" : ""}">${topNameHtml}</div>` : ""}
             ${bottomMetaHtml}
           </div>
+        `
+      : "";
+
+  return `
+        <div class="dirSquareCard"${tagCardStyle}>
+          <div class="dirSquareMedia">${squareMediaHtml}</div>
+          ${overlayHtml}
         </div>
       `;
 }
@@ -47382,13 +47481,24 @@ function makePreviewFileCard(
 
   const showNameMeta = false;
   const forceOverlayMeta = !!useSquareMediaCards || !!useNaturalAspectCards;
-  const showAnyMeta = forceOverlayMeta || showNameMeta || !!fileId;
   const fileDisplayLabel = prefixDisplayLabelWithPosition(
     fileDisplayNameForRecord(rec),
     displayPosition,
   );
   const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
   const fileMenuScore = metaGetScore(rec?.dirPath || "");
+  const showPreviewFileMenuBtn = !!fileId && visibility.showMenuButton;
+  const fileMetaBits = [];
+  if (showItemTypeLabel) fileMetaBits.push(fileItemTypeLabelForRecord(rec));
+  if (showItemCount) fileMetaBits.push("1 item");
+  if (showSize)
+    fileMetaBits.push(formatBytes(Math.max(0, Number(rec?.size) || 0)));
+  const showFileThumbnailTitle = showFileThumbnailTitles || isRenameEditing;
+  const showAnyMeta =
+    showNameMeta ||
+    showFileThumbnailTitle ||
+    fileMetaBits.length > 0 ||
+    showPreviewFileMenuBtn;
   let meta = null;
   if (showAnyMeta) {
     meta = document.createElement("div");
@@ -47399,13 +47509,6 @@ function makePreviewFileCard(
         : "metaBlock compact";
     if (forceOverlayMeta) forcePreviewPaneThumbTitleBar(meta);
 
-    const showPreviewFileMenuBtn = !!fileId && visibility.showMenuButton;
-    const fileMetaBits = [];
-    if (showItemTypeLabel) fileMetaBits.push(fileItemTypeLabelForRecord(rec));
-    if (showItemCount) fileMetaBits.push("1 item");
-    if (showSize)
-      fileMetaBits.push(formatBytes(Math.max(0, Number(rec?.size) || 0)));
-    const showFileThumbnailTitle = showFileThumbnailTitles || isRenameEditing;
     const menuOnlyOverlayMeta =
       forceOverlayMeta && !showFileThumbnailTitle && fileMetaBits.length === 0;
     const compactOverlayMeta =
