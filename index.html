@@ -8413,6 +8413,8 @@ const RESPONSIVE_NAV_TAG_ALBUM_MS = 1800;
 const RESPONSIVE_NAV_MEDIA_MS = 1400;
 const RESPONSIVE_PREVIEW_TAG_ALBUM_DELAY_MS = 90;
 const RESPONSIVE_PREVIEW_FILTERED_TAG_ALBUM_DELAY_MS = 150;
+const PREVIEW_VIDEO_THUMB_HEAVY_COUNT = 16;
+const PREVIEW_VIDEO_FOLDER_UPGRADE_LIMIT = 6;
 let PREVIEW_SELECTION_RENDER_TIMER = 0;
 let ROOT_PINNED_THUMBNAIL_PRELOAD_TIMER = 0;
 let ROOT_PINNED_THUMBNAIL_PRELOAD_ACTIVE = false;
@@ -15086,6 +15088,12 @@ function resetWorkspace() {
     } catch {}
   }
   PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
+  if (LOADED_THUMB_RELEASE_TIMER) {
+    try {
+      clearTimeout(LOADED_THUMB_RELEASE_TIMER);
+    } catch {}
+  }
+  LOADED_THUMB_RELEASE_TIMER = 0;
   if (PREVIEW_STATE_RENDER_RAF) {
     try {
       cancelAnimationFrame(PREVIEW_STATE_RENDER_RAF);
@@ -15787,6 +15795,7 @@ let PREVIEW_STATE_RENDER_FILE_ID = "";
 let PREVIEW_FILE_OBJECT_PROMISES = new Map();
 let PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
 let PREVIEW_FILE_OBJECT_WARM_TOKEN = 0;
+let LOADED_THUMB_RELEASE_TIMER = 0;
 let previewVideoEl = null;
 let previewFolderEl = null;
 
@@ -18808,6 +18817,11 @@ ${makeActionRow(
       title: "Thumbnails",
       rows: `
 ${makeCheckRow("Folder preview thumbnails", "Load real media thumbnails in the selected-folder preview grid instead of lightweight placeholders.", "opt_folderPreviewMediaThumbnails", folderPreviewMediaThumbnailsEnabled(opt))}
+${makeActionRow(
+  "Loaded thumbnails",
+  "Release cached thumbnail media that is no longer visible.",
+  `<button type="button" id="opt_dump_loaded_thumbs">Dump Loaded Thumbs</button>`,
+)}
 ${thumbnailInfoRows("Files", "file", ["title", "size", "itemCount", "menuButton"])}
 ${thumbnailInfoRows("Folders", ["rootFolder", "subfolder"], ["title", "size", "folderCount", "fileCount", "menuButton"])}
 ${thumbnailInfoRows("Tags", "tag", ["title", "size", "folderCount", "fileCount", "menuButton"])}
@@ -19548,6 +19562,19 @@ ${makeActionRow(
         );
       }
     })();
+  });
+  bindActionBtn("opt_dump_loaded_thumbs", () => {
+    const result = releaseLoadedThumbnailMedia({ includeRendered: false });
+    const released =
+      (Number(result.revokedMediaUrls) || 0) +
+      (Number(result.revokedThumbnailUrls) || 0) +
+      (Number(result.clearedPreloadItems) || 0) +
+      (Number(result.droppedFileObjects) || 0);
+    showStatusMessage(
+      released
+        ? `Dumped ${released} loaded thumbnail item${released === 1 ? "" : "s"}.`
+        : "No loaded thumbnail media to dump.",
+    );
   });
   bindSelect("opt_slideshowDefault", "slideshowDefault", false);
   bindCheck("opt_autoCropBlackBars", "autoCropBlackBars", () => {
@@ -34798,6 +34825,26 @@ function responsiveNavigationGuardActive() {
   return !!(WS && WS.view && Date.now() < (Number(WS.view.responsiveNavigationUntil || 0) || 0));
 }
 
+function actionNeedsImmediateNavigationPriority(action) {
+  return (
+    action === "selectUp" ||
+    action === "selectDown" ||
+    action === "selectLeft" ||
+    action === "selectRight" ||
+    action === "enterDir" ||
+    action === "leaveDir" ||
+    action === "back" ||
+    action === "prevFolder" ||
+    action === "nextFolder" ||
+    action === "jumpMinus50" ||
+    action === "jumpMinus10" ||
+    action === "jumpPlus10" ||
+    action === "jumpPlus50" ||
+    action === "randomFirstFileJump" ||
+    action === "randomFileJump"
+  );
+}
+
 function shouldDeferNonEssentialNavigationWork() {
   return responsiveNavigationGuardActive();
 }
@@ -44939,6 +44986,10 @@ function renderTagPreviewFolderEntriesInHareChunks(
   const folderSizeMemo = new Map();
   let seenTagEntry = false;
   let index = 0;
+  const guardedChunkSize = () =>
+    responsiveNavigationGuardActive()
+      ? Math.max(4, Math.floor(chunkSize / 3))
+      : chunkSize;
 
   const appendRange = (endExclusive) => {
     if (renderToken !== PREVIEW_FILES_RENDER_TOKEN) return false;
@@ -44963,7 +45014,12 @@ function renderTagPreviewFolderEntriesInHareChunks(
       );
     }
     gridF.appendChild(fragF);
-    if (folderMediaPreviewGrid) upgradeContainerPreviewVideoThumbs(gridF);
+    if (folderMediaPreviewGrid) {
+      upgradeContainerPreviewVideoThumbs(gridF, {
+        renderToken,
+        passiveWhenHeavy: true,
+      });
+    }
     return true;
   };
 
@@ -44980,7 +45036,9 @@ function renderTagPreviewFolderEntriesInHareChunks(
       return;
     }
     requestAnimationFrame(() => {
-      if (!appendRange(index + chunkSize)) return;
+      if (renderToken !== PREVIEW_FILES_RENDER_TOKEN) return;
+      if (!gridF.isConnected) return;
+      if (!appendRange(index + guardedChunkSize())) return;
       updatePreviewSelectionClasses();
       scheduleThumbnailDemandRefresh();
       appendNextChunk();
@@ -45644,7 +45702,10 @@ function renderSelectedFolderMediaPreview(
     },
     renderToken,
   ) || { folderCount: folderEntries.length, fileCount: ids.length };
-  upgradeContainerPreviewVideoThumbs(previewBodyEl);
+  upgradeContainerPreviewVideoThumbs(previewBodyEl, {
+    renderToken,
+    passiveWhenHeavy: true,
+  });
   applyPendingPreviewSelectionForCurrentTarget();
 
   const totalItems =
@@ -46775,8 +46836,45 @@ function clearPreviewFileVirtualizers() {
   ACTIVE_PREVIEW_FILE_VIRTUALIZERS = [];
 }
 
-function shouldVirtualizePreviewFilesGrid(ids, useFitInsideJustified, dirNode) {
-  if (!Array.isArray(ids) || ids.length < 220) return false;
+function previewFileIdsContainVideos(ids) {
+  const list = Array.isArray(ids) ? ids : [];
+  for (let i = 0; i < list.length; i++) {
+    const rec = WS.fileById.get(String(list[i] || ""));
+    if (rec && rec.type === "video") return true;
+  }
+  return false;
+}
+
+function previewFileIdsVideoCount(ids, stopAfter = Number.POSITIVE_INFINITY) {
+  const list = Array.isArray(ids) ? ids : [];
+  const limit = Math.max(1, Number(stopAfter) || Number.POSITIVE_INFINITY);
+  let count = 0;
+  for (let i = 0; i < list.length; i++) {
+    const rec = WS.fileById.get(String(list[i] || ""));
+    if (!(rec && rec.type === "video")) continue;
+    count++;
+    if (count >= limit) return count;
+  }
+  return count;
+}
+
+function shouldVirtualizePreviewFilesGrid(
+  ids,
+  useFitInsideJustified,
+  dirNode,
+  opts = null,
+) {
+  const list = Array.isArray(ids) ? ids : [];
+  const options = opts && typeof opts === "object" ? opts : {};
+  const hasVideos = previewFileIdsContainVideos(list);
+  const threshold = hasVideos
+    ? options.folderMediaPreviewGrid
+      ? 48
+      : 72
+    : options.folderMediaPreviewGrid
+      ? 120
+      : 220;
+  if (list.length < threshold) return false;
   if (useFitInsideJustified) return false;
   if (dirNode && canReorderFilesInPreviewDir(dirNode)) return false;
   return true;
@@ -46915,6 +47013,10 @@ function updateVirtualPreviewFilesGrid(state, force = false) {
       state.fileDisplayPositions instanceof Map
         ? state.fileDisplayPositions.get(String(id || ""))
         : null,
+      {
+        passiveVideoThumbs: !!state.passiveVideoThumbs,
+        renderToken: state.renderToken,
+      },
     );
     if (state.folderMediaPreviewGrid) softenFolderMediaPreviewCardChrome(card);
     frag.appendChild(card);
@@ -47015,6 +47117,13 @@ function renderFilesGrid(
   const useNaturalAspectCards = naturalAspectThumbnailCardsEnabled();
   const useSquareMediaCards = previewSquareMediaThumbsEnabled();
   const useFitInsideJustified = !useSquareMediaCards;
+  const videoCount = previewFileIdsVideoCount(
+    ids,
+    PREVIEW_VIDEO_THUMB_HEAVY_COUNT,
+  );
+  const passiveVideoThumbs =
+    folderMediaPreviewGrid &&
+    videoCount >= PREVIEW_VIDEO_THUMB_HEAVY_COUNT;
   if (folderMediaPreviewGrid) grid.classList.add("folderMediaPreviewGrid");
   if (useFitInsideJustified) grid.classList.add("fitInsideJustified");
   if (useSquareMediaCards) grid.classList.add("previewSquareCards");
@@ -47023,7 +47132,11 @@ function renderFilesGrid(
     setupPreviewGridDrag(grid);
   container.appendChild(grid);
 
-  if (shouldVirtualizePreviewFilesGrid(ids, useFitInsideJustified, dirNode)) {
+  if (
+    shouldVirtualizePreviewFilesGrid(ids, useFitInsideJustified, dirNode, {
+      folderMediaPreviewGrid,
+    })
+  ) {
     registerPreviewFileVirtualizer({
       grid,
       ids: ids.slice(),
@@ -47035,6 +47148,7 @@ function renderFilesGrid(
       fileDisplayPositions:
         fileDisplayPositions instanceof Map ? new Map(fileDisplayPositions) : null,
       folderMediaPreviewGrid,
+      passiveVideoThumbs,
       currentStart: -1,
       currentEnd: -1,
     });
@@ -47045,8 +47159,8 @@ function renderFilesGrid(
   const totalToRender = visibleIds.length;
   if (!totalToRender) return 0;
   const ANIMATE_CARD_LIMIT = 64;
-  const FIRST_CHUNK = 36;
-  const NEXT_CHUNK = 24;
+  const FIRST_CHUNK = passiveVideoThumbs ? 12 : 36;
+  const NEXT_CHUNK = passiveVideoThumbs ? 8 : 24;
   const firstChunkSize = Math.min(
     totalToRender,
     preferredImmediatePreviewRenderCount(visibleIds, FIRST_CHUNK),
@@ -47075,6 +47189,10 @@ function renderFilesGrid(
         fileDisplayPositions instanceof Map
           ? fileDisplayPositions.get(String(id || ""))
           : null,
+        {
+          passiveVideoThumbs,
+          renderToken,
+        },
       );
       if (folderMediaPreviewGrid) softenFolderMediaPreviewCardChrome(card);
       frag.appendChild(card);
@@ -47092,7 +47210,15 @@ function renderFilesGrid(
       didFirstLayout = true;
     }
     if (index < totalToRender) {
-      requestAnimationFrame(() => renderChunk(NEXT_CHUNK));
+      requestAnimationFrame(() => {
+        if (renderToken !== PREVIEW_FILES_RENDER_TOKEN) return;
+        if (!grid.isConnected) return;
+        renderChunk(
+          responsiveNavigationGuardActive()
+            ? Math.max(4, Math.floor(NEXT_CHUNK / 2))
+            : NEXT_CHUNK,
+        );
+      });
     }
   };
 
@@ -47419,7 +47545,9 @@ function makePreviewFileCard(
   useFitInsideJustified = false,
   useSquareMediaCards = false,
   displayPosition = null,
+  opts = null,
 ) {
+  const options = opts && typeof opts === "object" ? opts : {};
   const visibility = previewThumbnailVisibilityForKind("file");
   const showSize = visibility.showSize;
   const showItemCount = visibility.showItemCount;
@@ -47448,8 +47576,10 @@ function makePreviewFileCard(
   const mediaSrc = getPassivePreviewSrcForRecord(rec, {
     allowImageMediaFallback: true,
   });
+  const usePassiveVideoThumb =
+    rec && rec.type === "video" && !!options.passiveVideoThumbs;
   let mediaEl = null;
-  if (mediaSrc) {
+  if (mediaSrc && !usePassiveVideoThumb) {
     if (rec.type === "video") {
       const video = document.createElement("video");
       video.className = "thumb";
@@ -47461,6 +47591,13 @@ function makePreviewFileCard(
       video.dataset.dirPreviewId = fileId;
       video.src = mediaSrc;
       video.addEventListener("loadedmetadata", () => {
+        if (
+          options.renderToken != null &&
+          Number(options.renderToken) !== Number(PREVIEW_FILES_RENDER_TOKEN)
+        ) {
+          stopCachedMediaElement(video);
+          return;
+        }
         const duration = Number(video.duration) || 0;
         if (duration > 0) {
           try {
@@ -51401,6 +51538,9 @@ document.addEventListener("keydown", (e) => {
   }
 
   const action = keybindActionFor(key);
+  if (!isTextInputTarget(e.target) && actionNeedsImmediateNavigationPriority(action)) {
+    noteResponsiveNavigationInteraction("user-navigation", RESPONSIVE_NAV_MEDIA_MS);
+  }
   if (VIEWER_MODE && isQuadPlaybackMode()) {
     const allowedQuadAction =
       key === "Escape" ||
@@ -51847,6 +51987,11 @@ function resetThumbnailRuntimeStateV3() {
   try { clearQueuedThumbnailWork(); } catch {}
   try { closeThumbnailCropEditor(); } catch {}
   try {
+    if (LOADED_THUMB_RELEASE_TIMER) clearTimeout(LOADED_THUMB_RELEASE_TIMER);
+    LOADED_THUMB_RELEASE_TIMER = 0;
+    clearPreloadMediaCache();
+  } catch {}
+  try {
     if (WS && WS.meta) {
       const mapKeys = [
         "dirThumbPresets",
@@ -52038,7 +52183,10 @@ function scheduleThumbnailUiInvalidation() {}
 function notifyThumbnailRecordUpdated() {}
 function refreshThumbnailDemand() { clearQueuedThumbnailWork(); }
 function deferThumbnailDemandForSelection() {}
-function scheduleThumbnailDemandRefresh() { clearQueuedThumbnailWork(); }
+function scheduleThumbnailDemandRefresh() {
+  clearQueuedThumbnailWork();
+  scheduleLoadedThumbnailMediaRelease();
+}
 function scheduleThumbnailBackgroundContinuation() {}
 function collectThumbnailServiceRepairRecords() { return []; }
 async function runThumbnailServiceRepair() { return true; }
@@ -52050,7 +52198,198 @@ function ensureThumbnailServiceHeartbeat() { resetThumbnailRuntimeStateV3(); }
 async function ensureNavigationThumbReady() { return true; }
 async function ensureNavigationThumbDisplayReady() { return true; }
 async function warmPinnedNavigationThumbDecode() { return true; }
-function releaseColdNavigationThumbs() {}
+function stopCachedMediaElement(el) {
+  if (!el) return false;
+  const tag = String(el.tagName || "").toLowerCase();
+  try {
+    if (tag === "video") el.pause();
+  } catch {}
+  try {
+    if (tag === "video" || tag === "img") {
+      el.removeAttribute("src");
+      if (tag === "video") el.load();
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+function collectMainMediaRecordIds() {
+  const out = new Set();
+  const add = (id) => {
+    const value = String(id || "");
+    if (value) out.add(value);
+  };
+  add(WS.preview && WS.preview.kind === "file" ? WS.preview.fileId : "");
+  try {
+    const item = Array.isArray(viewerItems) ? viewerItems[viewerIndex] : null;
+    if (item && !item.isFolder) add(item.id);
+  } catch {}
+  try {
+    if (QUAD_PLAYBACK && Array.isArray(QUAD_PLAYBACK.slots)) {
+      for (let i = 0; i < QUAD_PLAYBACK.slots.length; i++)
+        add(QUAD_PLAYBACK.slots[i]?.fileId || "");
+    }
+  } catch {}
+  return out;
+}
+
+function collectRenderedThumbnailRecordIds() {
+  const out = new Set();
+  const add = (id) => {
+    const value = String(id || "");
+    if (value) out.add(value);
+  };
+  const roots = [directoriesListEl, previewBodyEl].filter(Boolean);
+  for (let i = 0; i < roots.length; i++) {
+    const nodes = roots[i].querySelectorAll(
+      "[data-dir-preview-id], [data-file-id]",
+    );
+    for (let j = 0; j < nodes.length; j++) {
+      add(nodes[j]?.dataset?.dirPreviewId || nodes[j]?.dataset?.fileId || "");
+    }
+  }
+  return out;
+}
+
+function clearPreloadMediaCache() {
+  let count = 0;
+  try {
+    if (PRELOAD_CACHE instanceof Map) {
+      for (const value of PRELOAD_CACHE.values()) {
+        if (stopCachedMediaElement(value)) count++;
+      }
+      count += PRELOAD_CACHE.size;
+      PRELOAD_CACHE.clear();
+    }
+  } catch {}
+  try {
+    if (PINNED_HOT_NAV_DECODE_CACHE instanceof Map) {
+      count += PINNED_HOT_NAV_DECODE_CACHE.size;
+      PINNED_HOT_NAV_DECODE_CACHE.clear();
+    }
+  } catch {}
+  try {
+    if (PREVIEW_PLACEHOLDER_PRELOAD_CACHE instanceof Map) {
+      count += PREVIEW_PLACEHOLDER_PRELOAD_CACHE.size;
+      PREVIEW_PLACEHOLDER_PRELOAD_CACHE.clear();
+    }
+  } catch {}
+  return count;
+}
+
+function detachRenderedThumbnailMedia(protectedIds) {
+  const protectedSet = protectedIds instanceof Set ? protectedIds : new Set();
+  let count = 0;
+  const roots = [directoriesListEl, previewBodyEl].filter(Boolean);
+  for (let i = 0; i < roots.length; i++) {
+    const nodes = roots[i].querySelectorAll(
+      "img[data-dir-preview-id], video[data-dir-preview-id], .fileCard[data-file-id] img.thumb, .fileCard[data-file-id] video.thumb",
+    );
+    for (let j = 0; j < nodes.length; j++) {
+      const node = nodes[j];
+      const card = node.closest ? node.closest("[data-file-id]") : null;
+      const id = String(
+        node?.dataset?.dirPreviewId ||
+          node?.dataset?.fileId ||
+          card?.dataset?.fileId ||
+          "",
+      );
+      if (id && protectedSet.has(id)) continue;
+      if (stopCachedMediaElement(node)) count++;
+    }
+  }
+  return count;
+}
+
+function releaseLoadedThumbnailMedia(opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  const includeRendered = !!options.includeRendered;
+  const protectedIds = collectMainMediaRecordIds();
+  if (!includeRendered) {
+    collectRenderedThumbnailRecordIds().forEach((id) => protectedIds.add(id));
+  }
+  const result = {
+    revokedThumbnailUrls: 0,
+    revokedMediaUrls: 0,
+    droppedFileObjects: 0,
+    clearedPreloadItems: 0,
+    detachedRenderedMedia: 0,
+  };
+
+  clearQueuedThumbnailWork();
+  bumpThumbnailDemandToken();
+  result.clearedPreloadItems = clearPreloadMediaCache();
+  if (includeRendered) {
+    result.detachedRenderedMedia = detachRenderedThumbnailMedia(protectedIds);
+  }
+
+  try {
+    PREVIEW_FILE_OBJECT_PROMISES.clear();
+    PREVIEW_FILE_OBJECT_WARM_TOKEN++;
+    if (PREVIEW_FILE_OBJECT_WARM_TIMER) {
+      clearTimeout(PREVIEW_FILE_OBJECT_WARM_TIMER);
+      PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
+    }
+  } catch {}
+  try {
+    if (HOT_NAV_CACHE_TIMER) {
+      clearTimeout(HOT_NAV_CACHE_TIMER);
+      HOT_NAV_CACHE_TIMER = 0;
+    }
+    HOT_NAV_CACHE_TOKEN++;
+    HOT_NAV_DIR_PATHS.clear();
+    PINNED_HOT_NAV_DIR_PATHS.clear();
+  } catch {}
+
+  try {
+    const records = Array.isArray(WS.files) ? WS.files : [];
+    for (let i = 0; i < records.length; i++) {
+      const rec = records[i];
+      if (!rec) continue;
+      const id = String(rec.id || "");
+      if (rec.thumbUrl) {
+        try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
+        rec.thumbUrl = null;
+        result.revokedThumbnailUrls++;
+      }
+      if (rec.videoThumbUrl) {
+        try { URL.revokeObjectURL(rec.videoThumbUrl); } catch {}
+        rec.videoThumbUrl = null;
+        result.revokedThumbnailUrls++;
+      }
+      rec.thumbMode = "placeholder";
+      rec.videoThumbMode = "placeholder";
+      const url = String(rec.url || "");
+      const isBlobUrl = rec.urlKind === "blob" || url.startsWith("blob:");
+      if (url && isBlobUrl && !protectedIds.has(id)) {
+        try { URL.revokeObjectURL(url); } catch {}
+        rec.url = null;
+        rec.urlKind = "";
+        result.revokedMediaUrls++;
+        if (WS.meta && WS.meta.fsRootHandle && rec.file) {
+          rec.file = null;
+          result.droppedFileObjects++;
+        }
+      }
+    }
+  } catch {}
+  return result;
+}
+
+function scheduleLoadedThumbnailMediaRelease(delayMs = 900) {
+  if (LOADED_THUMB_RELEASE_TIMER) {
+    try { clearTimeout(LOADED_THUMB_RELEASE_TIMER); } catch {}
+  }
+  LOADED_THUMB_RELEASE_TIMER = setTimeout(() => {
+    LOADED_THUMB_RELEASE_TIMER = 0;
+    releaseLoadedThumbnailMedia({ includeRendered: false });
+  }, Math.max(100, Number(delayMs) || 900));
+}
+
+function releaseColdNavigationThumbs() {
+  return releaseLoadedThumbnailMedia({ includeRendered: false });
+}
 async function loadThumbnailRecordForWorkspace() { return true; }
 function queueRootPinnedThumbnailWork() { clearQueuedThumbnailWork(); }
 async function ensureRootChildWorkspaceThumbnailsLoaded() { return true; }
@@ -52260,19 +52599,87 @@ function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
   return pool && pool.length ? pool[0] : null;
 }
 
-function upgradeContainerPreviewVideoThumbs(container) {
+function replacePreviewVideoThumbImageWithFallback(img, rec) {
+  if (!img) return false;
+  stopCachedMediaElement(img);
+  const fallback = document.createElement("div");
+  const isFolderThumb = img.classList && img.classList.contains("folderThumb");
+  fallback.className = isFolderThumb
+    ? "folderThumb folderThumbFallback"
+    : "dirInlinePreview thumbFallback";
+  fallback.setAttribute("aria-hidden", "true");
+  if (img.getAttribute("style")) {
+    fallback.setAttribute("style", img.getAttribute("style") || "");
+  }
+  setAppIcon(fallback, iconKeyForRecordType(rec && rec.type ? rec.type : "video"));
+  try {
+    img.replaceWith(fallback);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function upgradeContainerPreviewVideoThumbs(container, opts = null) {
   if (!container || !container.querySelectorAll) return;
+  const options = opts && typeof opts === "object" ? opts : {};
+  if (
+    options.renderToken != null &&
+    Number(options.renderToken) !== Number(PREVIEW_FILES_RENDER_TOKEN)
+  ) {
+    return;
+  }
   const thumbs = container.querySelectorAll(
     "img.folderThumb[data-dir-preview-id], img.dirInlinePreview[data-dir-preview-id]",
   );
+  const existingVideoCount = container.querySelectorAll(
+    "video.folderThumb[data-dir-preview-id], video.dirInlinePreview[data-dir-preview-id]",
+  ).length;
+  const videoThumbs = [];
   thumbs.forEach((img) => {
     const recId = String(img?.dataset?.dirPreviewId || "");
     const rec = recId ? WS.fileById.get(recId) || null : null;
-    if (!rec || rec.type !== "video") return;
+    if (rec && rec.type === "video") videoThumbs.push({ img, rec, recId });
+  });
+  const heavyVideoThumbs =
+    !!options.passiveWhenHeavy &&
+    (existingVideoCount + videoThumbs.length > PREVIEW_VIDEO_FOLDER_UPGRADE_LIMIT ||
+      responsiveNavigationGuardActive());
+  if (heavyVideoThumbs) {
+    for (let i = 0; i < videoThumbs.length; i++) {
+      replacePreviewVideoThumbImageWithFallback(
+        videoThumbs[i].img,
+        videoThumbs[i].rec,
+      );
+    }
+    return;
+  }
+  const remainingUpgradeSlots = Math.max(
+    0,
+    PREVIEW_VIDEO_FOLDER_UPGRADE_LIMIT - existingVideoCount,
+  );
+  for (let i = 0; i < videoThumbs.length; i++) {
+    if (i >= remainingUpgradeSlots) {
+      replacePreviewVideoThumbImageWithFallback(
+        videoThumbs[i].img,
+        videoThumbs[i].rec,
+      );
+      continue;
+    }
+    if (
+      options.renderToken != null &&
+      Number(options.renderToken) !== Number(PREVIEW_FILES_RENDER_TOKEN)
+    ) {
+      return;
+    }
+    const { img, rec, recId } = videoThumbs[i];
     const src = getPassivePreviewSrcForRecord(rec, {
       allowImageMediaFallback: true,
     });
-    if (!src) return;
+    if (!src) {
+      replacePreviewVideoThumbImageWithFallback(img, rec);
+      continue;
+    }
     const video = document.createElement("video");
     video.className = img.className;
     video.preload = "metadata";
@@ -52292,6 +52699,13 @@ function upgradeContainerPreviewVideoThumbs(container) {
     }
     video.src = src;
     video.addEventListener("loadedmetadata", () => {
+      if (
+        options.renderToken != null &&
+        Number(options.renderToken) !== Number(PREVIEW_FILES_RENDER_TOKEN)
+      ) {
+        stopCachedMediaElement(video);
+        return;
+      }
       const w = Number(video.videoWidth) || 0;
       const h = Number(video.videoHeight) || 0;
       if (!(w > 0 && h > 0)) return;
@@ -52306,7 +52720,7 @@ function upgradeContainerPreviewVideoThumbs(container) {
       if (grid) requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
     });
     img.replaceWith(video);
-  });
+  }
 }
 
 resetThumbnailRuntimeStateV3();
