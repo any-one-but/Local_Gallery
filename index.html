@@ -7692,6 +7692,7 @@ function defaultOptions() {
     videoSkipStep: "5",
     preloadNextMode: "off",
     videoEndBehavior: "loop",
+    shufflePlay: false,
     slideshowDefault: "cycle",
     autoCropBlackBars: false,
     mediaFilter: "off",
@@ -8138,6 +8139,8 @@ function normalizeOptions(o) {
         ? src.preloadNextMode
         : d.preloadNextMode,
     videoEndBehavior,
+    shufflePlay:
+      typeof src.shufflePlay === "boolean" ? src.shufflePlay : d.shufflePlay,
     slideshowDefault:
       src.slideshowDefault === "cycle" ||
       src.slideshowDefault === "1" ||
@@ -8721,6 +8724,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "videoAudio",
     "videoSkipStep",
     "videoEndBehavior",
+    "shufflePlay",
     "autoCropBlackBars",
   ]),
   thumbnails: Object.freeze([]),
@@ -14399,6 +14403,12 @@ const KEYBIND_ACTIONS = [
     section: "playback",
   },
   {
+    id: "toggleShufflePlay",
+    label: "Shuffle Play",
+    hint: "Toggle shuffled, non-repeating video segment playback.",
+    section: "playback",
+  },
+  {
     id: "toggleLightMode",
     label: "Light mode",
     hint: "Toggle the UI between dark and light variants.",
@@ -14532,6 +14542,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleLightMode",
   "togglePreviewMediaUsePaneBackground",
   "toggleHideVideoControls",
+  "toggleShufflePlay",
   "toggleRandomFileSort",
   "toggleRandomFolderSort",
   "randomFirstFileJump",
@@ -14620,6 +14631,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   seekForward: "c",
   playPause: "x",
   muteToggle: "Cmd+x",
+  toggleShufflePlay: "",
   toggleLightMode: "i",
   toggleAnimatedFilters: "Cmd+i",
   cycleAppearancePresets: "",
@@ -16065,6 +16077,7 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasMsg("animated filters:")) return "cycle-animated-filters";
   if (hasMsg("folder sort:")) return "cycle-folder-sort";
   if (hasMsg("video end:")) return "cycle-video-end";
+  if (hasMsg("shuffle play:")) return "playback";
   if (hasMsg("random file sort:")) return "random-file-sort";
   if (hasMsg("random folder sort:")) return "random-folder-sort";
   if (hasMsg("quick navigation:")) return "quick-navigation";
@@ -16240,6 +16253,7 @@ function clearQuadPlaybackSlot(slot) {
   slot.videoEl.dataset.playbackSrc = "";
   slot.videoEl.onloadeddata = null;
   slot.videoEl.onended = null;
+  clearShufflePlayVideoPlan(slot.videoEl, true);
   try {
     slot.videoEl.pause();
   } catch {}
@@ -18863,6 +18877,7 @@ ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when medi
 ${makeSelectRow("Video audio", "Audio state for videos in the preview pane and gallery.", "opt_videoAudio", String(opt.videoAudio || "unmuted"), videoAudioModes)}
 ${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
 ${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
+${makeCheckRow("Shuffle Play", "Play each video through a one-pass randomized segment order without repeating segments.", "opt_shufflePlay", !!opt.shufflePlay)}
 ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges of images and videos and crop them out before overlays or filters are applied. Videos sample multiple moments and only crop bars that stay present the whole time.", "opt_autoCropBlackBars", !!opt.autoCropBlackBars)}
 ${makeSelectRow("Slideshow speed", "Controls slideshow timing when toggled.", "opt_slideshowDefault", String(opt.slideshowDefault || "cycle"), slideshowModes)}
           `,
@@ -19930,6 +19945,12 @@ ${makeActionRow(
       .toLowerCase();
     return raw === "loop" || raw === "next" || raw === "stop" ? raw : "loop";
   });
+  bindMenuToggleButton("opt_shufflePlay", (enabled) => {
+    setOptionValue("shufflePlay", !!enabled);
+    setOptionsStatus("Saved");
+    applyShufflePlayEnabledStateToPlaybackVideos();
+    showStatusMessage(`Shuffle Play: ${enabled ? "On" : "Off"}`, "playback");
+  });
   bindCheck("opt_forceTitleCaps", "forceTitleCaps");
   bindCheck("opt_showPositionNumbersInNames", "showPositionNumbersInNames");
   bindCheck(
@@ -20416,6 +20437,363 @@ function normalizeVideoPlaybackRate(vid) {
     vid.defaultPlaybackRate = 1;
     vid.playbackRate = 1;
   } catch {}
+}
+
+const SHUFFLE_PLAY_STATES = new WeakMap();
+const SHUFFLE_PLAY_MIN_DURATION_SECONDS = 12;
+const SHUFFLE_PLAY_MAX_SEGMENTS = 30;
+const SHUFFLE_PLAY_BOUNDARY_EPSILON = 0.12;
+const SHUFFLE_PLAY_SEEK_EPSILON = 0.45;
+
+function shufflePlayEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.shufflePlay);
+}
+
+function shufflePlayRecordKey(rec) {
+  if (!rec) return "";
+  return [
+    rec.id || "",
+    rec.relPath || rec.name || "",
+    rec.size || "",
+    rec.mtimeMs || "",
+  ].join("|");
+}
+
+function getShufflePlayState(videoEl) {
+  if (!videoEl) return null;
+  let state = SHUFFLE_PLAY_STATES.get(videoEl);
+  if (!state) {
+    state = {
+      bound: false,
+      key: "",
+      plan: null,
+      position: 0,
+      pendingStart: false,
+      finished: false,
+      nativeLoop: null,
+      internalSeekUntil: 0,
+    };
+    SHUFFLE_PLAY_STATES.set(videoEl, state);
+  }
+  return state;
+}
+
+function clearShufflePlayVideoPlan(videoEl, restoreLoop = true) {
+  const state = videoEl ? SHUFFLE_PLAY_STATES.get(videoEl) : null;
+  if (!state) return;
+  if (restoreLoop && state.nativeLoop !== null) {
+    try {
+      videoEl.loop = !!state.nativeLoop;
+    } catch {}
+  }
+  state.plan = null;
+  state.position = 0;
+  state.pendingStart = false;
+  state.finished = false;
+  state.nativeLoop = null;
+  state.internalSeekUntil = 0;
+}
+
+function clearShufflePlayForPlaybackVideos() {
+  const videos = playbackVideoElementsForShufflePlay();
+  for (let i = 0; i < videos.length; i++) {
+    clearShufflePlayVideoPlan(videos[i], true);
+  }
+}
+
+function shufflePlaySegmentCountForDuration(duration) {
+  const seconds = Number(duration);
+  if (!Number.isFinite(seconds) || seconds < SHUFFLE_PLAY_MIN_DURATION_SECONDS)
+    return 0;
+  const count = Math.round(Math.sqrt(seconds / 10) * 1.1);
+  return Math.max(2, Math.min(SHUFFLE_PLAY_MAX_SEGMENTS, count));
+}
+
+function shufflePlayMinSegmentLength(duration, count) {
+  const avg = duration / Math.max(1, count);
+  const ceiling =
+    duration < 60 ? 3 : duration < 300 ? 6 : duration < 1800 ? 12 : 30;
+  return Math.max(0.75, Math.min(avg * 0.55, ceiling));
+}
+
+function buildShufflePlaySegments(duration, count) {
+  const minLen = shufflePlayMinSegmentLength(duration, count);
+  const free = Math.max(0, duration - minLen * count);
+  const weights = [];
+  let weightTotal = 0;
+  for (let i = 0; i < count; i++) {
+    const weight = 0.35 + Math.pow(Math.random(), 1.4) * 1.65;
+    weights.push(weight);
+    weightTotal += weight;
+  }
+
+  const segments = [];
+  let cursor = 0;
+  for (let i = 0; i < count; i++) {
+    const remaining = count - i - 1;
+    const randomShare = weightTotal > 0 ? free * (weights[i] / weightTotal) : 0;
+    let end =
+      i === count - 1
+        ? duration
+        : cursor + minLen + randomShare;
+    const maxEnd = duration - remaining * minLen;
+    end = Math.max(cursor + minLen, Math.min(maxEnd, end));
+    segments.push({ start: cursor, end });
+    cursor = end;
+  }
+  if (segments.length) segments[segments.length - 1].end = duration;
+  return segments;
+}
+
+function shuffleArrayCopy(values) {
+  const out = values.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = out[i];
+    out[i] = out[j];
+    out[j] = tmp;
+  }
+  return out;
+}
+
+function shufflePlayOrderScore(order) {
+  let score = 0;
+  for (let i = 1; i < order.length; i++) {
+    if (Math.abs(order[i] - order[i - 1]) === 1) score++;
+  }
+  for (let i = 0; i < order.length; i++) {
+    if (order[i] === i) score += 0.25;
+  }
+  return score;
+}
+
+function buildShufflePlayOrder(count) {
+  const base = Array.from({ length: count }, (_, i) => i);
+  if (count <= 1) return base;
+  if (count === 2) return [1, 0];
+  let best = null;
+  let bestScore = Infinity;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const order = shuffleArrayCopy(base);
+    const score = shufflePlayOrderScore(order);
+    if (score < bestScore) {
+      best = order;
+      bestScore = score;
+    }
+    if (score === 0) break;
+  }
+  if (!best) best = shuffleArrayCopy(base);
+  if (best.every((value, index) => value === index)) best.reverse();
+  return best;
+}
+
+function segmentIndexForTime(segments, time) {
+  const t = Number(time) || 0;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (!seg) continue;
+    if (t >= seg.start - SHUFFLE_PLAY_SEEK_EPSILON && t < seg.end + SHUFFLE_PLAY_SEEK_EPSILON)
+      return i;
+  }
+  return -1;
+}
+
+function rotateShuffleOrderToSegment(order, segmentIndex) {
+  const pos = order.indexOf(segmentIndex);
+  if (pos <= 0) return order;
+  return order.slice(pos).concat(order.slice(0, pos));
+}
+
+function createShufflePlayPlan(duration, startTime = 0) {
+  const seconds = Number(duration);
+  const count = shufflePlaySegmentCountForDuration(seconds);
+  if (count < 2) return null;
+  const segments = buildShufflePlaySegments(seconds, count);
+  let order = buildShufflePlayOrder(count);
+  if (Number(startTime) > SHUFFLE_PLAY_SEEK_EPSILON) {
+    const currentSegment = segmentIndexForTime(segments, startTime);
+    if (currentSegment >= 0)
+      order = rotateShuffleOrderToSegment(order, currentSegment);
+  }
+  return { duration: seconds, segments, order };
+}
+
+function setShufflePlayCurrentTime(videoEl, state, time) {
+  if (!videoEl || !state) return;
+  state.internalSeekUntil = Date.now() + 180;
+  try {
+    videoEl.currentTime = Math.max(0, Number(time) || 0);
+  } catch {}
+}
+
+function beginShufflePlayForVideo(videoEl, force = false) {
+  if (!videoEl || !shufflePlayEnabled()) return false;
+  const state = getShufflePlayState(videoEl);
+  if (!state) return false;
+  const duration = Number(videoEl.duration);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    state.pendingStart = true;
+    return false;
+  }
+  if (state.plan && !state.finished && !force) return true;
+
+  const plan = createShufflePlayPlan(duration, videoEl.currentTime || 0);
+  if (!plan) {
+    clearShufflePlayVideoPlan(videoEl, true);
+    return false;
+  }
+
+  state.plan = plan;
+  state.position = 0;
+  state.pendingStart = false;
+  state.finished = false;
+  if (state.nativeLoop === null) state.nativeLoop = !!videoEl.loop;
+  try {
+    videoEl.loop = false;
+  } catch {}
+
+  const firstSegment = plan.segments[plan.order[0]];
+  if (firstSegment) setShufflePlayCurrentTime(videoEl, state, firstSegment.start);
+  return true;
+}
+
+function finishShufflePlayCycle(videoEl, state) {
+  if (!videoEl || !state || !state.plan) return;
+  const shouldLoop = !!state.nativeLoop || !!videoEl.loop;
+  state.finished = true;
+  state.plan = null;
+  state.position = 0;
+  if (shouldLoop && shufflePlayEnabled()) {
+    state.nativeLoop = shouldLoop;
+    beginShufflePlayForVideo(videoEl, true);
+    try {
+      if (videoEl.paused && !BANIC_ACTIVE) videoEl.play();
+    } catch {}
+    return;
+  }
+
+  if (state.nativeLoop !== null) {
+    try {
+      videoEl.loop = !!state.nativeLoop;
+    } catch {}
+  }
+  state.nativeLoop = null;
+  try {
+    videoEl.pause();
+  } catch {}
+  try {
+    videoEl.dispatchEvent(new Event("ended"));
+  } catch {}
+}
+
+function syncShufflePlayPositionAfterExternalSeek(videoEl, state) {
+  if (!videoEl || !state || !state.plan) return;
+  const sourceIndex = segmentIndexForTime(state.plan.segments, videoEl.currentTime || 0);
+  if (sourceIndex < 0) return;
+  const orderPos = state.plan.order.indexOf(sourceIndex);
+  if (orderPos >= 0) state.position = orderPos;
+}
+
+function handleShufflePlayTimeUpdate(videoEl) {
+  const state = videoEl ? SHUFFLE_PLAY_STATES.get(videoEl) : null;
+  if (!state || !state.plan || state.finished) return;
+  if (!shufflePlayEnabled()) {
+    clearShufflePlayVideoPlan(videoEl, true);
+    return;
+  }
+  const seg = state.plan.segments[state.plan.order[state.position]];
+  if (!seg) return;
+  const now = Number(videoEl.currentTime) || 0;
+  if (
+    Date.now() > state.internalSeekUntil &&
+    (now < seg.start - SHUFFLE_PLAY_SEEK_EPSILON ||
+      now > seg.end + SHUFFLE_PLAY_SEEK_EPSILON)
+  ) {
+    syncShufflePlayPositionAfterExternalSeek(videoEl, state);
+    return;
+  }
+  if (now < seg.end - SHUFFLE_PLAY_BOUNDARY_EPSILON) return;
+  state.position++;
+  if (state.position >= state.plan.order.length) {
+    finishShufflePlayCycle(videoEl, state);
+    return;
+  }
+  const nextSegment = state.plan.segments[state.plan.order[state.position]];
+  if (nextSegment) setShufflePlayCurrentTime(videoEl, state, nextSegment.start);
+}
+
+function ensureShufflePlayBindings(videoEl) {
+  const state = getShufflePlayState(videoEl);
+  if (!videoEl || !state || state.bound) return;
+  state.bound = true;
+  videoEl.addEventListener("play", () => {
+    beginShufflePlayForVideo(videoEl, false);
+  });
+  videoEl.addEventListener("loadedmetadata", () => {
+    const nextState = SHUFFLE_PLAY_STATES.get(videoEl);
+    if (!nextState || !nextState.pendingStart) return;
+    beginShufflePlayForVideo(videoEl, true);
+  });
+  videoEl.addEventListener("timeupdate", () => {
+    handleShufflePlayTimeUpdate(videoEl);
+  });
+  videoEl.addEventListener("seeking", () => {
+    const nextState = SHUFFLE_PLAY_STATES.get(videoEl);
+    if (!nextState || Date.now() <= nextState.internalSeekUntil) return;
+    syncShufflePlayPositionAfterExternalSeek(videoEl, nextState);
+  });
+  videoEl.addEventListener("emptied", () => {
+    clearShufflePlayVideoPlan(videoEl, true);
+  });
+}
+
+function prepareShufflePlayForVideo(videoEl, rec) {
+  if (!videoEl) return;
+  ensureShufflePlayBindings(videoEl);
+  const state = getShufflePlayState(videoEl);
+  const key = shufflePlayRecordKey(rec);
+  if (state.key !== key) {
+    clearShufflePlayVideoPlan(videoEl, true);
+    state.key = key;
+  }
+}
+
+function playbackVideoElementsForShufflePlay() {
+  const seen = new Set();
+  const out = [];
+  const add = (videoEl) => {
+    if (!videoEl || seen.has(videoEl)) return;
+    seen.add(videoEl);
+    out.push(videoEl);
+  };
+  add(previewVideoEl);
+  add(viewerVideoEl);
+  const slots = getQuadPlaybackSlots();
+  for (let i = 0; i < slots.length; i++) add(slots[i]?.videoEl || null);
+  return out;
+}
+
+function applyShufflePlayEnabledStateToPlaybackVideos() {
+  const videos = playbackVideoElementsForShufflePlay();
+  if (!shufflePlayEnabled()) {
+    clearShufflePlayForPlaybackVideos();
+    return;
+  }
+  for (let i = 0; i < videos.length; i++) {
+    const videoEl = videos[i];
+    ensureShufflePlayBindings(videoEl);
+    if (!videoEl.paused) beginShufflePlayForVideo(videoEl, true);
+  }
+}
+
+function toggleShufflePlayMode() {
+  if (!WS.meta) return false;
+  const next = setOptionValue("shufflePlay", !shufflePlayEnabled());
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyShufflePlayEnabledStateToPlaybackVideos();
+  showStatusMessage(`Shuffle Play: ${next ? "On" : "Off"}`, "playback");
+  return true;
 }
 
 function ensureDirPath(path) {
@@ -44450,6 +44828,7 @@ function showPreviewViewportMessage(label = "File unavailable", meta = "") {
   }
   if (previewVideoEl) {
     try { previewVideoEl.pause(); } catch {}
+    clearShufflePlayVideoPlan(previewVideoEl, true);
     previewVideoEl.classList.remove("ready");
     previewVideoEl.style.display = "none";
   }
@@ -44537,6 +44916,7 @@ function renderPreviewViewerItem(idx) {
     } catch {}
     previewVideoEl.classList.remove("ready");
     if (!willShowVideo) {
+      clearShufflePlayVideoPlan(previewVideoEl, true);
       previewVideoEl.style.display = "none";
       applyVideoCropToElement(previewVideoEl, null);
     }
@@ -44643,6 +45023,7 @@ function renderPreviewViewerItem(idx) {
       } catch {}
     }
     normalizeVideoPlaybackRate(previewVideoEl);
+    prepareShufflePlayForVideo(previewVideoEl, rec);
     previewVideoEl.autoplay = shouldAutoPlay;
     previewVideoEl.onloadeddata = null;
     previewVideoEl.onended = null;
@@ -48914,6 +49295,7 @@ function renderQuadPlaybackView() {
     slot.rec = rec;
     slot.cellEl.style.display = "block";
     slot.videoEl.dataset.quadFileId = slot.fileId;
+    prepareShufflePlayForVideo(slot.videoEl, rec);
     slot.videoEl.autoplay = !BANIC_ACTIVE;
     slot.videoEl.loop = shouldLoop;
     slot.videoEl.onended = null;
@@ -49048,6 +49430,7 @@ function renderViewerItem(idx) {
   );
 
   if (item.isFolder) {
+    if (viewerVideoEl) clearShufflePlayVideoPlan(viewerVideoEl, true);
     viewerFolderEl.style.display = "flex";
     viewerFolderEl.style.flexDirection = "column";
     viewerFolderEl.style.alignItems = "center";
@@ -49100,6 +49483,8 @@ function renderViewerItem(idx) {
 
   const rec = WS.fileById.get(item.id);
   if (!rec) return;
+  if (rec.type !== "video" && viewerVideoEl)
+    clearShufflePlayVideoPlan(viewerVideoEl, true);
 
   filenameEl.textContent = relPathDisplayName(rec.relPath || rec.name || "", {
     finalPrefix: displayPositionPrefix(
@@ -49116,6 +49501,7 @@ function renderViewerItem(idx) {
       } catch {}
     }
     normalizeVideoPlaybackRate(viewerVideoEl);
+    prepareShufflePlayForVideo(viewerVideoEl, rec);
     viewerVideoEl.autoplay = doAuto;
     viewerVideoEl.onloadeddata = null;
     viewerVideoEl.onended = null;
@@ -50175,6 +50561,8 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Hide video controls: ${next ? "On" : "Off"}`, "pane-toggles");
       return true;
     }
+    case "toggleShufflePlay":
+      return toggleShufflePlayMode();
     case "toggleHideFileExtensions": {
       const next = toggleOptionValue("hideFileExtensionsInFileNames");
       refreshLiveSettingsPaneFromKeyboardAction();
