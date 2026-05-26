@@ -6001,6 +6001,77 @@ remove the outer app frame. */
   box-shadow: none !important;
 }
 
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 14px;
+  background: var(--ui-control-bg) !important;
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.18),
+    0 4px 12px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard {
+  display: block;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareCard,
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .folderThumb,
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .folderThumbFallback,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareMedia,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirInlinePreview,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareFallback,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirTagQuadGrid {
+  width: 100% !important;
+  height: 100% !important;
+  border: 0 !important;
+  border-radius: inherit;
+  box-shadow: none !important;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareCard {
+  aspect-ratio: auto;
+  background: var(--ui-control-bg) !important;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .folderThumb,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirInlinePreview,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard video.dirInlinePreview {
+  object-fit: cover !important;
+  object-position: center;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-top: 0 !important;
+  border-radius: 0 0 14px 14px;
+  background: rgba(0, 0, 0, 0.34) !important;
+  background-color: rgba(0, 0, 0, 0.34) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta *,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay * {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlayMenuOnly {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
 :root[data-folder-preview-media-thumbs="on"]
   #previewPane
   .gridFiles.folderMediaPreviewGrid
@@ -6010,6 +6081,32 @@ remove the outer app frame. */
   .gridFiles.folderMediaPreviewGrid
   video.thumb {
   display: block !important;
+}
+
+:root[data-folder-preview-media-thumbs="on"]
+  #previewPane
+  .folderMediaPreviewGrid
+  img.folderThumb,
+:root[data-folder-preview-media-thumbs="on"]
+  #previewPane
+  .folderMediaPreviewGrid
+  video.folderThumb,
+:root[data-folder-preview-media-thumbs="on"]
+  #previewPane
+  .folderMediaPreviewGrid
+  img.dirInlinePreview,
+:root[data-folder-preview-media-thumbs="on"]
+  #previewPane
+  .folderMediaPreviewGrid
+  video.dirInlinePreview {
+  display: block !important;
+}
+
+:root[data-folder-preview-media-thumbs="on"]
+  #previewPane
+  .folderMediaPreviewGrid
+  .dirTagQuadGrid {
+  display: grid !important;
 }
 
 
@@ -44676,6 +44773,7 @@ function renderTagPreviewFolderEntriesInHareChunks(
   folderEntries,
   previewDisplayPositions,
   renderToken,
+  folderMediaPreviewGrid = false,
 ) {
   const entries = Array.isArray(folderEntries) ? folderEntries : [];
   const containsTagEntries = entries.some((entry) => entry && entry.kind === "tag");
@@ -44687,6 +44785,10 @@ function renderTagPreviewFolderEntriesInHareChunks(
     : HARE_TAG_PREVIEW_DIR_CHUNK_SIZE;
   const gridF = document.createElement("div");
   gridF.className = "gridFolders";
+  if (folderMediaPreviewGrid) {
+    gridF.classList.add("folderMediaPreviewGrid", "folderContentsPreviewGrid");
+    gridF.setAttribute("aria-label", "Folder contents preview folders");
+  }
   const useFolderFitInsideJustified = folderPreviewThumbUsesContainMode();
   if (useFolderFitInsideJustified) gridF.classList.add("fitInsideJustified");
   const folderSizeMemo = new Map();
@@ -44716,6 +44818,7 @@ function renderTagPreviewFolderEntriesInHareChunks(
       );
     }
     gridF.appendChild(fragF);
+    if (folderMediaPreviewGrid) upgradeContainerPreviewVideoThumbs(gridF);
     return true;
   };
 
@@ -45286,11 +45389,35 @@ function getPreviewFolderAndFileEntries(dirNode, opts = null) {
     }
     return { folderEntries, fileIds };
   }
-  if (dirNode && String(dirNode._tagPreviewMode || "") === "album") {
+  if (dirNode && String(dirNode._tagPreviewMode || "")) {
     const baseNode =
       WS.dirByPath.get(String(dirNode._tagPreviewOriginPath || "")) ||
       dirNode.parent ||
       WS.root;
+    const mode = String(dirNode._tagPreviewMode || "");
+    if (mode !== "album") {
+      const entry = {
+        kind: "tag",
+        originPath: String(baseNode?.path || ""),
+        label: String(dirNode.name || mode || "Tag"),
+      };
+      if (
+        mode === "favorites" ||
+        mode === "hidden" ||
+        mode === "untagged" ||
+        mode === "storage"
+      ) {
+        entry.special = mode;
+      } else {
+        entry.tag = String(dirNode._tagPreviewTag || "");
+        entry.album = String(dirNode._tagPreviewAlbum || "");
+      }
+      const dirs = getDirsForTagEntry(entry);
+      return {
+        folderEntries: dirs.map((node) => ({ kind: "dir", node })),
+        fileIds: [],
+      };
+    }
     return {
       folderEntries: getTagEntriesForAlbumForBaseNode(
         baseNode,
@@ -45339,8 +45466,17 @@ function renderSelectedFolderMediaPreview(
   prevScroll,
   renderToken,
 ) {
-  const ids = getPreviewMediaFileIdsForDir(dirNode);
-  if (!ids.length) return false;
+  if (!dirNode) return false;
+  const previewEntries = getPreviewFolderAndFileEntries(dirNode, {
+    includeFiles: true,
+    useCurrentViewEntries: true,
+  });
+  const folderEntries = Array.isArray(previewEntries.folderEntries)
+    ? previewEntries.folderEntries
+    : [];
+  const ids = Array.isArray(previewEntries.fileIds)
+    ? previewEntries.fileIds
+    : [];
 
   setPreviewBodyMode("grid");
   if (!VIEWER_MODE) ACTIVE_MEDIA_SURFACE = "none";
@@ -45352,32 +45488,30 @@ function renderSelectedFolderMediaPreview(
   previewBodyEl.innerHTML = "";
   clearPreviewSelectionState(currentPreviewSelectionContextKeyFromState());
 
-  const previewDisplayPositions = buildDisplayPositionMapsForFolderAndFileEntries(
-    [],
-    ids,
-  );
-  renderFilesGrid(
-    ids,
+  const result = renderFolderContents(
+    dirNode,
     previewBodyEl,
     animate,
-    dirNode,
+    {
+      previewEntries: { folderEntries, fileIds: ids },
+      folderMediaPreviewGrid: true,
+      useCurrentViewEntries: true,
+    },
     renderToken,
-    previewDisplayPositions.filePositions,
-    { folderMediaPreviewGrid: true },
-  );
+  ) || { folderCount: folderEntries.length, fileCount: ids.length };
+  upgradeContainerPreviewVideoThumbs(previewBodyEl);
+  applyPendingPreviewSelectionForCurrentTarget();
 
-  const grid = previewBodyEl.lastElementChild;
-  if (grid && grid.classList && grid.classList.contains("gridFiles")) {
-    grid.classList.add("folderMediaPreviewGrid");
-    grid.setAttribute("aria-label", "Folder media preview");
-  }
-
-  if (itemsPill) itemsPill.textContent = `Items: ${ids.length}`;
+  const totalItems =
+    Math.max(0, Number(result.folderCount) || folderEntries.length || 0) +
+    Math.max(0, Number(result.fileCount) || ids.length || 0);
+  if (itemsPill) itemsPill.textContent = `Items: ${totalItems}`;
   const savedScroll = getSavedPreviewScrollForDir(dirNode);
   const targetScroll = keepScroll ? prevScroll : savedScroll;
   if (Number.isFinite(targetScroll)) {
     previewBodyEl.scrollTop = Math.max(0, Number(targetScroll) || 0);
   }
+  ensurePreviewSelectionForCurrentTarget(false);
   updatePreviewSelectionClasses();
   scheduleThumbnailDemandRefresh();
   return true;
@@ -46832,6 +46966,7 @@ function renderFolderContents(
   const ids = Array.isArray(previewEntries.fileIds)
     ? previewEntries.fileIds
     : [];
+  const folderMediaPreviewGrid = !!options.folderMediaPreviewGrid;
   const previewDisplayPositions = buildDisplayPositionMapsForFolderAndFileEntries(
     folderEntries,
     ids,
@@ -46843,6 +46978,7 @@ function renderFolderContents(
       folderEntries,
       previewDisplayPositions,
       renderToken,
+      folderMediaPreviewGrid,
     );
   }
   let hasContent = false;
@@ -46850,6 +46986,10 @@ function renderFolderContents(
   if (folderEntries.length) {
     const gridF = document.createElement("div");
     gridF.className = "gridFolders";
+    if (folderMediaPreviewGrid) {
+      gridF.classList.add("folderMediaPreviewGrid", "folderContentsPreviewGrid");
+      gridF.setAttribute("aria-label", "Folder contents preview folders");
+    }
     const useFolderFitInsideJustified = folderPreviewThumbUsesContainMode();
     if (useFolderFitInsideJustified) gridF.classList.add("fitInsideJustified");
     const fragF = document.createDocumentFragment();
@@ -46890,6 +47030,9 @@ function renderFolderContents(
       dirNode,
       renderToken,
       previewDisplayPositions.filePositions,
+      folderMediaPreviewGrid
+        ? { folderMediaPreviewGrid: true }
+        : null,
     );
     hasContent = true;
   }
@@ -51858,6 +52001,158 @@ function previewPlaceholderThumbnailRecordForEntry() { return null; }
 function warmPreviewPlaceholderNeighborThumbs() {}
 function folderPreviewThumbMode() { return "off"; }
 function folderPreviewThumbUsesContainMode() { return false; }
+
+function previewContainerThumbnailRecordAllowed(rec) {
+  return !!(
+    rec &&
+    (rec.type === "image" || rec.type === "video") &&
+    passesFilter(rec)
+  );
+}
+
+function collectRecursiveMediaPreviewRecordsForContainers(dirNodes, limit = 96) {
+  const roots = Array.isArray(dirNodes) ? dirNodes.filter(Boolean) : [];
+  const capRaw = Number(limit);
+  const cap = Number.isFinite(capRaw) && capRaw > 0 ? Math.floor(capRaw) : 96;
+  const out = [];
+  const seenDirs = new Set();
+  const seenIds = new Set();
+
+  for (let r = 0; r < roots.length; r++) {
+    const root = roots[r];
+    if (!root) continue;
+    const queue = [root];
+    for (let q = 0; q < queue.length; q++) {
+      const cur = queue[q];
+      if (!cur) continue;
+      const dirKey = String(cur.path || `__anon_${r}_${q}`);
+      if (seenDirs.has(dirKey)) continue;
+      seenDirs.add(dirKey);
+
+      const ids = getOrderedFileIdsForDir(cur, false);
+      for (let i = 0; i < ids.length; i++) {
+        const id = String(ids[i] || "");
+        if (!id || seenIds.has(id)) continue;
+        const rec = WS.fileById.get(id);
+        if (!previewContainerThumbnailRecordAllowed(rec)) continue;
+        seenIds.add(id);
+        out.push(rec);
+        if (out.length >= cap) return out;
+      }
+
+      const kids = getChildDirsForNode(cur);
+      for (let i = 0; i < kids.length; i++) queue.push(kids[i]);
+    }
+  }
+
+  return out;
+}
+
+function getFirstRecursiveMediaPreviewRecordForContainer(dirNode) {
+  if (!dirNode) return null;
+  const records = collectRecursiveMediaPreviewRecordsForContainers([dirNode], 1);
+  return records[0] || null;
+}
+
+function folderPreviewThumbMode() {
+  return folderPreviewMediaThumbnailsEnabled() ? "cover" : "off";
+}
+
+function folderPreviewThumbUsesContainMode() {
+  return false;
+}
+
+function getFirstPreviewRecordForDir(dirNode) {
+  return getFirstRecursiveMediaPreviewRecordForContainer(dirNode);
+}
+
+function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
+  if (!folderPreviewMediaThumbnailsEnabled()) {
+    return { record: null, rotateKey: "" };
+  }
+  if (String(rotateKeyPrefix || "") !== "preview-dir") {
+    return { record: null, rotateKey: "" };
+  }
+  const record = getFirstRecursiveMediaPreviewRecordForContainer(dirNode);
+  return { record: record || null, rotateKey: "" };
+}
+
+function metaGetFolderThumbnailMode() {
+  return folderPreviewMediaThumbnailsEnabled() ? "single" : "none";
+}
+
+function metaGetTagThumbnailModeByKey() {
+  return folderPreviewMediaThumbnailsEnabled() ? "single" : "none";
+}
+
+function tagThumbnailPreviewSampleLimit() {
+  return 96;
+}
+
+function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
+  if (!folderPreviewMediaThumbnailsEnabled()) return [];
+  return collectRecursiveMediaPreviewRecordsForContainers(
+    getDirsForTagEntry(entry),
+    limit,
+  );
+}
+
+function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
+  if (!folderPreviewMediaThumbnailsEnabled()) return null;
+  const pool = Array.isArray(tagPool)
+    ? tagPool
+    : getRecursivePreviewRecordsForTagEntry(entry, 1);
+  return pool && pool.length ? pool[0] : null;
+}
+
+function upgradeContainerPreviewVideoThumbs(container) {
+  if (!container || !container.querySelectorAll) return;
+  const thumbs = container.querySelectorAll(
+    "img.folderThumb[data-dir-preview-id], img.dirInlinePreview[data-dir-preview-id]",
+  );
+  thumbs.forEach((img) => {
+    const recId = String(img?.dataset?.dirPreviewId || "");
+    const rec = recId ? WS.fileById.get(recId) || null : null;
+    if (!rec || rec.type !== "video") return;
+    const src = getPassivePreviewSrcForRecord(rec, {
+      allowImageMediaFallback: true,
+    });
+    if (!src) return;
+    const video = document.createElement("video");
+    video.className = img.className;
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.controls = false;
+    video.draggable = false;
+    video.dataset.dirPreviewId = recId;
+    if (img.hasAttribute("data-rotate-key")) {
+      video.setAttribute(
+        "data-rotate-key",
+        img.getAttribute("data-rotate-key") || "",
+      );
+    }
+    if (img.getAttribute("style")) {
+      video.setAttribute("style", img.getAttribute("style") || "");
+    }
+    video.src = src;
+    video.addEventListener("loadedmetadata", () => {
+      const w = Number(video.videoWidth) || 0;
+      const h = Number(video.videoHeight) || 0;
+      if (!(w > 0 && h > 0)) return;
+      const card = video.closest(".fitInsideCard");
+      const aspect = normalizePreviewAspect(
+        w / h,
+        getPreviewAspectForRecord(rec),
+      );
+      rec.previewAspect = aspect;
+      if (card) card.dataset.aspect = String(aspect);
+      const grid = video.closest(".fitInsideJustified");
+      if (grid) requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
+    });
+    img.replaceWith(video);
+  });
+}
 
 resetThumbnailRuntimeStateV3();
 
