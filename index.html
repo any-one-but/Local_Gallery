@@ -13883,8 +13883,10 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyNaturalAspectThumbnailModeFromOptions();
   applyInteractionModeFromOptions();
   applyDescriptionVisibilityFromOptions();
+  canonicalizeActiveDirectoryReferences();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+  canonicalizeActiveDirectoryReferences();
   syncPreviewToSelection();
   renderDirectoriesPane(true);
   renderPreviewPane(true, true);
@@ -25668,6 +25670,7 @@ async function commitCatalogFolderDirectEntries(path, childDirPaths, files, opts
   if (node) {
     applyCatalogSummaryToDirNode(node, summary);
     node.childrenFiles = directFiles.map((file) => file.id);
+    applySessionFileOrderForDir(node);
     ensureDirectoryChildNodesFromCatalog(node);
   }
   if (options.propagate !== false) {
@@ -27806,19 +27809,165 @@ async function updateFileRecordsForFileRenames(
   invalidateDirMetricsCaches();
 }
 
+function canonicalDirNodeForActiveState(dirNode) {
+  if (!dirNode) return null;
+  if (dirNode._skipTagFilters || String(dirNode._tagPreviewMode || "")) {
+    return dirNode;
+  }
+  const path = String(dirNode.path || "");
+  if (!path) return WS.root || dirNode;
+  return (WS.dirByPath && WS.dirByPath.get(path)) || dirNode;
+}
+
+function canonicalizeActiveDirectoryReferences() {
+  if (!WS || !WS.nav || !WS.preview) return false;
+  let changed = false;
+  const nextNavDir = canonicalDirNodeForActiveState(WS.nav.dirNode);
+  if (nextNavDir && nextNavDir !== WS.nav.dirNode) {
+    WS.nav.dirNode = nextNavDir;
+    changed = true;
+  }
+  if (WS.preview.dirNode) {
+    const nextPreviewDir = canonicalDirNodeForActiveState(WS.preview.dirNode);
+    if (nextPreviewDir && nextPreviewDir !== WS.preview.dirNode) {
+      WS.preview.dirNode = nextPreviewDir;
+      changed = true;
+    }
+  }
+  if (viewerDirNode) {
+    const nextViewerDir = canonicalDirNodeForActiveState(viewerDirNode);
+    if (nextViewerDir && nextViewerDir !== viewerDirNode) {
+      viewerDirNode = nextViewerDir;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 function refreshCurrentViewAfterCatalogMutation(opts = null) {
   const options = opts && typeof opts === "object" ? opts : {};
   const preservePreviewTarget = !!options.preservePreviewTarget;
+  canonicalizeActiveDirectoryReferences();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+  canonicalizeActiveDirectoryReferences();
   if (!(preservePreviewTarget && previewTargetStillResolvable())) {
     syncPreviewToSelection({ force: true });
+  } else {
+    canonicalizeActiveDirectoryReferences();
   }
   renderDirectoriesPane(true);
   renderPreviewPane(true, true);
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
+}
+
+function previewFolderGridRenderableStats(dirNode) {
+  const canonical = canonicalDirNodeForActiveState(dirNode);
+  if (!previewBodyEl || !canonical || WS.preview.kind !== "dir") {
+    return { expected: 0, rendered: 0, hasLabel: false };
+  }
+  const entries = getPreviewFolderAndFileEntries(canonical, {
+    includeFiles: true,
+    useCurrentViewEntries: true,
+  });
+  const folderCount = Array.isArray(entries.folderEntries)
+    ? entries.folderEntries.length
+    : 0;
+  const validFileIds = (Array.isArray(entries.fileIds) ? entries.fileIds : [])
+    .map((id) => String(id || ""))
+    .filter((id) => !!id && WS.fileById.has(id));
+  return {
+    expected: folderCount + validFileIds.length,
+    rendered: previewBodyEl.querySelectorAll(
+      ".gridFiles .fileCard, .gridFolders .folderCard, .previewTagFolderCard",
+    ).length,
+    hasLabel: !!previewBodyEl.querySelector(".label"),
+  };
+}
+
+function previewFolderGridNeedsRepair(dirNode) {
+  if (!previewBodyEl || WS.preview.kind !== "dir") return false;
+  const stats = previewFolderGridRenderableStats(dirNode);
+  if (stats.expected > 0) return stats.rendered <= 0;
+  return stats.rendered <= 0 && !stats.hasLabel;
+}
+
+function schedulePreviewFolderGridRepairAfterMutation(dirNode, attempts = 2) {
+  if (!dirNode || attempts <= 0) return;
+  const targetPath = String(dirNode.path || "");
+  requestAnimationFrame(() => {
+    canonicalizeActiveDirectoryReferences();
+    if (WS.preview.kind !== "dir") return;
+    const currentPath = String(WS.preview.dirNode?.path || "");
+    if (currentPath !== targetPath) return;
+    if (!previewFolderGridNeedsRepair(WS.preview.dirNode)) return;
+    renderPreviewPane(false, true);
+    if (attempts > 1) {
+      setTimeout(() => {
+        canonicalizeActiveDirectoryReferences();
+        if (
+          WS.preview.kind === "dir" &&
+          String(WS.preview.dirNode?.path || "") === targetPath &&
+          previewFolderGridNeedsRepair(WS.preview.dirNode)
+        ) {
+          renderPreviewPane(false, true);
+          kickVideoThumbsForPreview();
+          kickImageThumbsForPreview();
+        }
+      }, 80);
+    }
+  });
+}
+
+function forceRefreshPreviewFolderGridAfterFileRenames(dirNode) {
+  const targetPath = String(dirNode?.path || "");
+  if (!targetPath && dirNode !== WS.root) return;
+  const refresh = (keepScroll) => {
+    canonicalizeActiveDirectoryReferences();
+    const target =
+      (WS.dirByPath && WS.dirByPath.get(targetPath)) ||
+      (targetPath ? null : WS.root) ||
+      dirNode;
+    if (!target) return false;
+    applySessionFileOrderForDir(target);
+    if (
+      WS.preview.kind === "dir" &&
+      String(WS.preview.dirNode?.path || "") === targetPath
+    ) {
+      WS.preview.dirNode = target;
+    }
+    if (WS.nav.dirNode && String(WS.nav.dirNode.path || "") === targetPath) {
+      WS.nav.dirNode = target;
+    }
+    rebuildDirectoriesEntries();
+    WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+    if (
+      WS.preview.kind !== "dir" ||
+      String(WS.preview.dirNode?.path || "") !== targetPath
+    ) {
+      applyPreviewState({ kind: "dir", dirNode: target, fileId: null });
+    }
+    resetPreviewGridRenderRecovery();
+    if (previewBodyEl) previewBodyEl.innerHTML = "";
+    renderDirectoriesPane(true);
+    renderPreviewPane(false, !!keepScroll);
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+    scheduleThumbnailDemandRefresh();
+    return true;
+  };
+  requestAnimationFrame(() => {
+    if (!refresh(false)) return;
+    setTimeout(() => {
+      refresh(true);
+      schedulePreviewFolderGridRepairAfterMutation(
+        (WS.dirByPath && WS.dirByPath.get(targetPath)) || dirNode,
+        2,
+      );
+    }, 80);
+  });
 }
 
 async function renameFolderDirNode(dirNode, nextName) {
@@ -28891,6 +29040,21 @@ function fileOrderSessionKeyForDir(dirNode) {
   return `${workspaceKey}::${p || "__root__"}`;
 }
 
+function fileOrderSessionPathKeyForDir(dirNode) {
+  if (!dirNode) return "";
+  const p = String(dirNode.path || "");
+  return `session-path::${p || "__root__"}`;
+}
+
+function fileOrderSessionKeysForDir(dirNode) {
+  const keys = [];
+  const workspaceKey = fileOrderSessionKeyForDir(dirNode);
+  const pathKey = fileOrderSessionPathKeyForDir(dirNode);
+  if (workspaceKey) keys.push(workspaceKey);
+  if (pathKey && pathKey !== workspaceKey) keys.push(pathKey);
+  return keys;
+}
+
 function ensureSessionFileOrderMap() {
   if (!WS.view.fileOrderByDirPath || !(WS.view.fileOrderByDirPath instanceof Map)) {
     WS.view.fileOrderByDirPath = new Map();
@@ -28898,28 +29062,81 @@ function ensureSessionFileOrderMap() {
   return WS.view.fileOrderByDirPath;
 }
 
+function getSessionFileOrderForDir(dirNode) {
+  const map = ensureSessionFileOrderMap();
+  const keys = fileOrderSessionKeysForDir(dirNode);
+  for (let i = 0; i < keys.length; i++) {
+    const stored = map.get(keys[i]);
+    if (Array.isArray(stored) && stored.length) return stored;
+  }
+  return null;
+}
+
+function sessionFileOrderExistsForDir(dirNode) {
+  return !!getSessionFileOrderForDir(dirNode);
+}
+
 function saveSessionFileOrderForDir(dirNode, ids = null) {
-  const key = fileOrderSessionKeyForDir(dirNode);
-  if (!key || !dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
-  const source = Array.isArray(ids) ? ids : dirNode.childrenFiles;
-  const cleaned = source.map((id) => String(id || "")).filter(Boolean);
-  ensureSessionFileOrderMap().set(key, cleaned);
+  const canonical = canonicalDirNodeForActiveState(dirNode) || dirNode;
+  if (!canonical || !Array.isArray(canonical.childrenFiles)) return false;
+  const source = Array.isArray(ids)
+    ? ids
+    : Array.isArray(dirNode?.childrenFiles)
+      ? dirNode.childrenFiles
+      : canonical.childrenFiles;
+  const cleaned = source
+    .map((id) => String(id || ""))
+    .filter((id) => !!id && (!WS.fileById || WS.fileById.has(id)));
+  if (!cleaned.length) return false;
+  const current = canonical.childrenFiles
+    .map((id) => String(id || ""))
+    .filter((id) => !!id && (!WS.fileById || WS.fileById.has(id)));
+  const seen = new Set();
+  const next = [];
+  for (let i = 0; i < cleaned.length; i++) {
+    const id = cleaned[i];
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    next.push(id);
+  }
+  for (let i = 0; i < current.length; i++) {
+    const id = current[i];
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    next.push(id);
+  }
+  canonical.childrenFiles = next;
+  canonical.preserveOrder = true;
+  if (dirNode && dirNode !== canonical && Array.isArray(dirNode.childrenFiles)) {
+    dirNode.childrenFiles = next.slice();
+    dirNode.preserveOrder = true;
+  }
+  const map = ensureSessionFileOrderMap();
+  const keys = fileOrderSessionKeysForDir(canonical);
+  for (let i = 0; i < keys.length; i++) map.set(keys[i], next.slice());
   return true;
 }
 
 function clearSessionFileOrderForDir(dirNode) {
-  const key = fileOrderSessionKeyForDir(dirNode);
-  if (!key) return false;
-  return ensureSessionFileOrderMap().delete(key);
+  const canonical = canonicalDirNodeForActiveState(dirNode) || dirNode;
+  const keys = fileOrderSessionKeysForDir(canonical);
+  if (!keys.length) return false;
+  const map = ensureSessionFileOrderMap();
+  let changed = false;
+  for (let i = 0; i < keys.length; i++) {
+    changed = map.delete(keys[i]) || changed;
+  }
+  return changed;
 }
 
 function applySessionFileOrderForDir(dirNode) {
-  if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
-  const key = fileOrderSessionKeyForDir(dirNode);
-  if (!key) return false;
-  const stored = ensureSessionFileOrderMap().get(key);
+  const canonical = canonicalDirNodeForActiveState(dirNode) || dirNode;
+  if (!canonical || !Array.isArray(canonical.childrenFiles)) return false;
+  const stored = getSessionFileOrderForDir(canonical);
   if (!Array.isArray(stored) || !stored.length) return false;
-  const current = dirNode.childrenFiles.map((id) => String(id || "")).filter(Boolean);
+  const current = canonical.childrenFiles
+    .map((id) => String(id || ""))
+    .filter((id) => !!id && (!WS.fileById || WS.fileById.has(id)));
   const currentSet = new Set(current);
   const next = [];
   const seen = new Set();
@@ -28936,9 +29153,13 @@ function applySessionFileOrderForDir(dirNode) {
     next.push(id);
   }
   if (!next.length) return false;
-  dirNode.childrenFiles = next;
-  dirNode.preserveOrder = true;
-  saveSessionFileOrderForDir(dirNode, next);
+  canonical.childrenFiles = next;
+  canonical.preserveOrder = true;
+  if (dirNode && dirNode !== canonical && Array.isArray(dirNode.childrenFiles)) {
+    dirNode.childrenFiles = next.slice();
+    dirNode.preserveOrder = true;
+  }
+  saveSessionFileOrderForDir(canonical, next);
   return true;
 }
 
@@ -28955,15 +29176,16 @@ function remapSessionFileOrders(idMap) {
 }
 
 function getOrderedFileIdsForDir(dirNode, includeChildren = false) {
+  dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode) return [];
   let ids = [];
 
-  if (randomSortAffectsFiles()) {
-    ids = getRandomOrderForDir(dirNode);
-  } else if (applySessionFileOrderForDir(dirNode)) {
+  if (applySessionFileOrderForDir(dirNode)) {
     ids = dirNode.childrenFiles.slice();
   } else if (dirNode.preserveOrder) {
     ids = dirNode.childrenFiles.slice();
+  } else if (randomSortAffectsFiles()) {
+    ids = getRandomOrderForDir(dirNode);
   } else {
     ids = dirNode.childrenFiles.slice();
     ids.sort((a, b) =>
@@ -29280,10 +29502,12 @@ function syncAfterDirOrderChange(selectId, opts = {}) {
   const preserveSelection = !!opts.preserveSelection;
   const preservePreviewTarget = !!opts.preservePreviewTarget;
   const renderPreview = opts.renderPreview !== false;
+  canonicalizeActiveDirectoryReferences();
   const prevEntry = preserveSelection
     ? WS.nav.entries[WS.nav.selectedIndex] || null
     : null;
   rebuildDirectoriesEntries();
+  canonicalizeActiveDirectoryReferences();
   if (selectId) {
     const idx = findFileEntryIndexById(selectId);
     if (idx >= 0) WS.nav.selectedIndex = idx;
@@ -29325,6 +29549,8 @@ function syncAfterDirOrderChange(selectId, opts = {}) {
   }
   if (!(preservePreviewTarget && previewTargetStillResolvable())) {
     syncPreviewToSelection({ force: true });
+  } else {
+    canonicalizeActiveDirectoryReferences();
   }
   renderDirectoriesPane(true);
   if (renderPreview) renderPreviewPane(true, true);
@@ -29348,6 +29574,7 @@ function isDirWithin(rootNode, childNode) {
 }
 
 function resetDirFileOrder(dirNode, opts = {}) {
+  dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
   dirNode.preserveOrder = false;
   dirNode.childrenFiles.sort((a, b) =>
@@ -29386,6 +29613,7 @@ function reorderFilesInDir(
   placeAfter,
   opts = {},
 ) {
+  dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode || !draggedId || !targetId) return false;
   const list = dirNode.childrenFiles;
   if (!Array.isArray(list) || list.length < 2) return false;
@@ -29442,6 +29670,7 @@ function reorderFilesInDir(
 }
 
 function reverseFilesInDir(dirNode, opts = {}) {
+  dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
   const list = dirNode.childrenFiles;
   if (list.length < 2) return false;
@@ -29573,6 +29802,7 @@ async function renameSingleFile(rec, nextName) {
 }
 
 function getIndexOrderedFileIdsForDir(dirNode) {
+  dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return [];
   applySessionFileOrderForDir(dirNode);
   const ids = dirNode.childrenFiles
@@ -29588,6 +29818,7 @@ function getIndexOrderedFileIdsForDir(dirNode) {
 }
 
 function getLivePreviewGridFileOrderForDir(dirNode) {
+  dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode || !previewBodyEl) return [];
   const target = getPreviewTargetDir();
   if (!target || String(target.path || "") !== String(dirNode.path || ""))
@@ -29635,6 +29866,7 @@ function getLivePreviewGridFileOrderForDir(dirNode) {
 }
 
 function captureLivePreviewFileOrderForIndex(dirNode) {
+  dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
   const liveIds = getLivePreviewGridFileOrderForDir(dirNode);
   if (!liveIds.length) return false;
@@ -29943,7 +30175,12 @@ async function indexFolderFilesRecursively(dirNode) {
       if (WS.meta.storageMode === "fs") await metaSaveFsNow();
       else metaSaveLocalNow();
     } catch {}
+    const previewWasFolderGrid = WS.preview.kind === "dir";
+    const previewTargetAfterIndex = getPreviewTargetDir();
     refreshCurrentViewAfterCatalogMutation({ preservePreviewTarget: true });
+    if (previewWasFolderGrid) {
+      forceRefreshPreviewFolderGridAfterFileRenames(previewTargetAfterIndex);
+    }
     showStatusMessage(
       `Index complete: ${renamed} renamed, ${skipped} skipped, ${failed} failed.`,
     );
@@ -46627,6 +46864,11 @@ function renderSelectedFolderMediaPreview(
   renderToken,
 ) {
   if (!dirNode) return false;
+  const canonicalDirNode = canonicalDirNodeForActiveState(dirNode);
+  if (canonicalDirNode && canonicalDirNode !== dirNode) {
+    dirNode = canonicalDirNode;
+    if (WS.preview.kind === "dir") WS.preview.dirNode = canonicalDirNode;
+  }
   const previewEntries = getPreviewFolderAndFileEntries(dirNode, {
     includeFiles: true,
     useCurrentViewEntries: true,
@@ -46634,9 +46876,11 @@ function renderSelectedFolderMediaPreview(
   const folderEntries = Array.isArray(previewEntries.folderEntries)
     ? previewEntries.folderEntries
     : [];
-  const ids = Array.isArray(previewEntries.fileIds)
+  const ids = (Array.isArray(previewEntries.fileIds)
     ? previewEntries.fileIds
-    : [];
+    : [])
+    .map((id) => String(id || ""))
+    .filter((id) => !!id && WS.fileById.has(id));
 
   setPreviewBodyMode("grid");
   if (!VIEWER_MODE) ACTIVE_MEDIA_SURFACE = "none";
@@ -48926,6 +49170,7 @@ function scheduleVideoThumbRetry(rec, reason = "") { }
 function enqueueVideoThumb(rec, opts = null) { }
 
 function getPreviewFileIdsForDir(dirNode, includeChildren = false) {
+  dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode) return [];
   if (
     !includeChildren &&
@@ -52178,6 +52423,10 @@ function refreshAfterDirectoriesPaneToggle(
   animatePreview = false,
   keepPreviewScroll = true,
 ) {
+  canonicalizeActiveDirectoryReferences();
+  rebuildDirectoriesEntries();
+  WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+  canonicalizeActiveDirectoryReferences();
   renderDirectoriesPane(true);
   renderPreviewPane(animatePreview, keepPreviewScroll);
   refreshActivePreviewMediaLayout({ immediate: true });
