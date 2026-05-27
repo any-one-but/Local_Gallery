@@ -46375,6 +46375,93 @@ function getPreviewMediaFileIdsForDir(dirNode) {
   });
 }
 
+function makePreviewGridRenderStage() {
+  const stage = document.createElement("div");
+  stage.className = "previewGridRenderStage";
+  stage.style.visibility = "hidden";
+  stage.style.pointerEvents = "none";
+  stage.style.width = "100%";
+  stage.style.minHeight = "1px";
+  return stage;
+}
+
+const PREVIEW_GRID_RENDER_RECOVERY = {
+  key: "",
+  attempts: 0,
+  raf: 0,
+};
+
+function previewGridStageHasRenderableContent(stage, expectedCount) {
+  if (!stage) return false;
+  if (
+    stage.querySelector(
+      ".gridFiles .fileCard, .gridFolders .folderCard, .previewTagFolderCard, .label",
+    )
+  ) {
+    return true;
+  }
+  return Math.max(0, Number(expectedCount) || 0) <= 0 && stage.childElementCount > 0;
+}
+
+function swapPreviewGridRenderStage(stage) {
+  if (!previewBodyEl || !stage || !stage.parentElement) return false;
+  previewBodyEl.innerHTML = "";
+  while (stage.firstChild) previewBodyEl.appendChild(stage.firstChild);
+  refreshFitInsidePreviewGrids();
+  return true;
+}
+
+function previewGridRecoveryKeyForDir(dirNode) {
+  return [
+    String(dirNode?.path || "__root__"),
+    String(WS.view?.filterMode || "all"),
+    normalizeAspectRatioFilterMode(WS.view?.aspectRatioFilterMode),
+    normalizeDirSortMode(WS.meta?.dirSortMode),
+    randomSortAffectsFiles() ? "random-files" : "ordered-files",
+    WS.view?.randomFolderMode ? "random-folders" : "ordered-folders",
+  ].join("|");
+}
+
+function resetPreviewGridRenderRecovery() {
+  PREVIEW_GRID_RENDER_RECOVERY.key = "";
+  PREVIEW_GRID_RENDER_RECOVERY.attempts = 0;
+  if (PREVIEW_GRID_RENDER_RECOVERY.raf) {
+    cancelAnimationFrame(PREVIEW_GRID_RENDER_RECOVERY.raf);
+    PREVIEW_GRID_RENDER_RECOVERY.raf = 0;
+  }
+}
+
+function ensurePreviewGridFallbackLabel(text) {
+  if (!previewBodyEl || previewBodyEl.childElementCount) return;
+  const label = document.createElement("div");
+  label.className = "label";
+  label.style.padding = "10px";
+  label.textContent = text || "Preview is updating.";
+  previewBodyEl.appendChild(label);
+}
+
+function schedulePreviewGridRenderRecovery(dirNode, renderToken) {
+  if (!dirNode || !previewBodyEl) return;
+  const key = previewGridRecoveryKeyForDir(dirNode);
+  if (PREVIEW_GRID_RENDER_RECOVERY.key !== key) {
+    PREVIEW_GRID_RENDER_RECOVERY.key = key;
+    PREVIEW_GRID_RENDER_RECOVERY.attempts = 0;
+  }
+  if (PREVIEW_GRID_RENDER_RECOVERY.attempts >= 1) {
+    ensurePreviewGridFallbackLabel("Preview could not be rendered.");
+    return;
+  }
+  PREVIEW_GRID_RENDER_RECOVERY.attempts += 1;
+  ensurePreviewGridFallbackLabel("Preview is updating.");
+  if (PREVIEW_GRID_RENDER_RECOVERY.raf) return;
+  PREVIEW_GRID_RENDER_RECOVERY.raf = requestAnimationFrame(() => {
+    PREVIEW_GRID_RENDER_RECOVERY.raf = 0;
+    if (renderToken !== PREVIEW_FILES_RENDER_TOKEN) return;
+    if (WS.preview.kind !== "dir" || WS.preview.dirNode !== dirNode) return;
+    renderPreviewPane(false, true);
+  });
+}
+
 function renderSelectedFolderMediaPreview(
   dirNode,
   animate,
@@ -46401,20 +46488,44 @@ function renderSelectedFolderMediaPreview(
   if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
 
   WS.view.previewScrollActiveKey = previewScrollKeyForDir(dirNode);
-  previewBodyEl.innerHTML = "";
   clearPreviewSelectionState(currentPreviewSelectionContextKeyFromState());
+  const expectedItems = folderEntries.length + ids.length;
+  const stage = makePreviewGridRenderStage();
+  previewBodyEl.appendChild(stage);
 
-  const result = renderFolderContents(
-    dirNode,
-    previewBodyEl,
-    animate,
-    {
-      previewEntries: { folderEntries, fileIds: ids },
-      folderMediaPreviewGrid: true,
-      useCurrentViewEntries: true,
-    },
-    renderToken,
-  ) || { folderCount: folderEntries.length, fileCount: ids.length };
+  let result = null;
+  try {
+    result =
+      renderFolderContents(
+        dirNode,
+        stage,
+        animate,
+        {
+          previewEntries: { folderEntries, fileIds: ids },
+          folderMediaPreviewGrid: true,
+          useCurrentViewEntries: true,
+        },
+        renderToken,
+      ) || { folderCount: folderEntries.length, fileCount: ids.length };
+  } catch (err) {
+    try {
+      console.error("Preview grid render failed", err);
+    } catch {}
+    if (stage.parentElement) stage.parentElement.removeChild(stage);
+    schedulePreviewGridRenderRecovery(dirNode, renderToken);
+    scheduleThumbnailDemandRefresh();
+    return true;
+  }
+
+  if (!previewGridStageHasRenderableContent(stage, expectedItems)) {
+    if (stage.parentElement) stage.parentElement.removeChild(stage);
+    schedulePreviewGridRenderRecovery(dirNode, renderToken);
+    scheduleThumbnailDemandRefresh();
+    return true;
+  }
+
+  resetPreviewGridRenderRecovery();
+  swapPreviewGridRenderStage(stage);
   upgradeContainerPreviewVideoThumbs(previewBodyEl, {
     renderToken,
     passiveWhenHeavy: true,
@@ -46430,6 +46541,7 @@ function renderSelectedFolderMediaPreview(
   if (Number.isFinite(targetScroll)) {
     previewBodyEl.scrollTop = Math.max(0, Number(targetScroll) || 0);
   }
+  schedulePreviewVirtualGridRefresh();
   ensurePreviewSelectionForCurrentTarget(false);
   updatePreviewSelectionClasses();
   scheduleThumbnailDemandRefresh();
