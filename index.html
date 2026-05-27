@@ -27806,10 +27806,14 @@ async function updateFileRecordsForFileRenames(
   invalidateDirMetricsCaches();
 }
 
-function refreshCurrentViewAfterCatalogMutation() {
+function refreshCurrentViewAfterCatalogMutation(opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  const preservePreviewTarget = !!options.preservePreviewTarget;
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection({ force: true });
+  if (!(preservePreviewTarget && previewTargetStillResolvable())) {
+    syncPreviewToSelection({ force: true });
+  }
   renderDirectoriesPane(true);
   renderPreviewPane(true, true);
   syncButtons();
@@ -29355,7 +29359,10 @@ function resetDirFileOrder(dirNode, opts = {}) {
   clearSessionFileOrderForDir(dirNode);
   WS.view.randomCache.delete(dirNode.path || "");
   if (!opts.silent) {
-    syncAfterDirOrderChange(opts.selectId || null);
+    syncAfterDirOrderChange(opts.selectId || null, {
+      preservePreviewTarget: true,
+      preserveSelection: true,
+    });
   } else {
     const previewTarget = getPreviewTargetDir();
     const refreshPreview = !!(
@@ -29580,6 +29587,72 @@ function getIndexOrderedFileIdsForDir(dirNode) {
   );
 }
 
+function getLivePreviewGridFileOrderForDir(dirNode) {
+  if (!dirNode || !previewBodyEl) return [];
+  const target = getPreviewTargetDir();
+  if (!target || String(target.path || "") !== String(dirNode.path || ""))
+    return [];
+  const candidates = Array.from(
+    previewBodyEl.querySelectorAll(".gridFiles .fileCard[data-file-id]"),
+  ).filter(
+    (card) =>
+      card &&
+      !card.classList.contains("drag-placeholder") &&
+      !card.classList.contains("drag-hidden"),
+  );
+  const measured = candidates.map((card, index) => {
+    const rect =
+      card && typeof card.getBoundingClientRect === "function"
+        ? card.getBoundingClientRect()
+        : null;
+    return {
+      card,
+      index,
+      top: rect ? Number(rect.top) || 0 : 0,
+      left: rect ? Number(rect.left) || 0 : 0,
+      height: rect ? Math.max(1, Number(rect.height) || 1) : 1,
+    };
+  });
+  measured.sort((a, b) => {
+    const rowTolerance = Math.max(4, Math.min(a.height, b.height) * 0.5);
+    const topDelta = a.top - b.top;
+    if (Math.abs(topDelta) > rowTolerance) return topDelta;
+    const leftDelta = a.left - b.left;
+    if (Math.abs(leftDelta) > 1) return leftDelta;
+    return a.index - b.index;
+  });
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < measured.length; i++) {
+    const id = previewFileIdForCard(measured[i].card);
+    if (!id || seen.has(id) || !WS.fileById.has(id)) continue;
+    const rec = WS.fileById.get(id);
+    if (String(rec?.dirPath || "") !== String(dirNode.path || "")) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function captureLivePreviewFileOrderForIndex(dirNode) {
+  if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
+  const liveIds = getLivePreviewGridFileOrderForDir(dirNode);
+  if (!liveIds.length) return false;
+  const liveSet = new Set(liveIds);
+  const current = dirNode.childrenFiles
+    .map((id) => String(id || ""))
+    .filter((id) => !!id && WS.fileById.has(id));
+  const next = liveIds.slice();
+  for (let i = 0; i < current.length; i++) {
+    const id = current[i];
+    if (!liveSet.has(id)) next.push(id);
+  }
+  dirNode.childrenFiles = next;
+  dirNode.preserveOrder = true;
+  saveSessionFileOrderForDir(dirNode, next);
+  return true;
+}
+
 function collectIndexableDirs(rootNode) {
   const out = [];
   const walk = (node) => {
@@ -29597,7 +29670,7 @@ function indexedFileNameForRecord(dirNode, rec, index, width) {
   const parentName = String(dirNode?.name || "Folder").trim() || "Folder";
   const oldName = String(rec?.name || "");
   const ext = splitNameExtension(oldName).ext || "";
-  return `${parentName}_${String(Math.max(0, index)).padStart(width, "0")}${ext}`;
+  return `${parentName}_${String(Math.max(1, index)).padStart(width, "0")}${ext}`;
 }
 
 async function uniqueIndexTempName(dirHandle, reservedNames, serial) {
@@ -29618,7 +29691,7 @@ async function uniqueIndexTempName(dirHandle, reservedNames, serial) {
 async function buildIndexRenamePlanForDir(dirNode, dirHandle, serialBase = 0) {
   const ids = getIndexOrderedFileIdsForDir(dirNode);
   if (!ids.length) return { ops: [], skipped: 0 };
-  const width = String(Math.max(0, ids.length - 1)).length + 1;
+  const width = String(Math.max(1, ids.length)).length + 1;
   const oldNameKeys = new Set();
   const desiredNameKeys = new Set();
   const records = [];
@@ -29629,27 +29702,27 @@ async function buildIndexRenamePlanForDir(dirNode, dirHandle, serialBase = 0) {
     oldNameKeys.add(String(rec.name || "").toLowerCase());
   }
 
-  let skipped = 0;
   const planned = [];
+  let needsRename = false;
   for (let i = 0; i < records.length; i++) {
     const rec = records[i];
     const oldName = String(rec.name || "");
-    const newName = indexedFileNameForRecord(dirNode, rec, i, width);
+    const newName = indexedFileNameForRecord(dirNode, rec, i + 1, width);
     const newKey = newName.toLowerCase();
     if (!isValidFileName(newName) || desiredNameKeys.has(newKey)) {
-      skipped++;
-      continue;
+      return { ops: [], skipped: records.length };
     }
     desiredNameKeys.add(newKey);
-    if (newName === oldName) continue;
     if (!oldNameKeys.has(newKey) && (await entryExistsInDir(dirHandle, newName))) {
-      skipped++;
-      continue;
+      return { ops: [], skipped: records.length };
     }
+    if (newName !== oldName) needsRename = true;
     planned.push({ rec, oldName, newName, tempName: "" });
   }
+  if (!needsRename) return { ops: [], skipped: 0 };
 
   const reserved = new Set([...oldNameKeys, ...desiredNameKeys]);
+  let skipped = 0;
   for (let i = 0; i < planned.length; i++) {
     planned[i].tempName = await uniqueIndexTempName(
       dirHandle,
@@ -29658,11 +29731,48 @@ async function buildIndexRenamePlanForDir(dirNode, dirHandle, serialBase = 0) {
     );
     if (!planned[i].tempName) skipped++;
   }
+  if (skipped) return { ops: [], skipped: records.length };
 
   return {
     ops: planned.filter((op) => op.tempName),
     skipped,
   };
+}
+
+function catalogDescriptorFromFileRecord(rec) {
+  if (!rec) return null;
+  return normalizeCatalogFileDescriptor({
+    id: rec.id,
+    relPath: rec.relPath,
+    name: rec.name,
+    dirPath: rec.dirPath,
+    ext: rec.ext,
+    type: rec.type,
+    size: rec.size,
+    lastModified: rec.lastModified,
+    aspectRatio: rec.aspectRatio,
+    aspectRatioBucket: rec.aspectRatioBucket,
+  });
+}
+
+async function syncCatalogFolderAfterIndex(dirNode) {
+  if (!WS.catalog || !WS.catalog.enabled || !dirNode) return false;
+  const childPaths = (Array.isArray(dirNode.childrenDirs) ? dirNode.childrenDirs : [])
+    .map((child) => normalizeDirPathValue(child?.path || ""))
+    .filter(Boolean);
+  const files = (Array.isArray(dirNode.childrenFiles) ? dirNode.childrenFiles : [])
+    .map((id) => catalogDescriptorFromFileRecord(WS.fileById.get(String(id || ""))))
+    .filter(Boolean);
+  const ok = await commitCatalogFolderDirectEntries(
+    String(dirNode.path || ""),
+    childPaths,
+    files,
+  );
+  if (ok) {
+    dirNode.preserveOrder = true;
+    saveSessionFileOrderForDir(dirNode);
+  }
+  return ok;
 }
 
 async function applyIndexRenamePlanForDir(dirNode, dirHandle, ops) {
@@ -29687,9 +29797,24 @@ async function applyIndexRenamePlanForDir(dirNode, dirHandle, ops) {
     if (ok) staged.push(op);
     else failed++;
   }
+  if (staged.length !== list.length) {
+    for (let i = 0; i < staged.length; i++) {
+      const op = staged[i];
+      try {
+        const fileHandle = await dirHandle.getFileHandle(op.tempName);
+        await renameFileOnDisk(dirHandle, fileHandle, op.tempName, op.oldName);
+      } catch {}
+    }
+    return {
+      renamed: 0,
+      failed: failed + Math.max(0, list.length - staged.length),
+      renameMap: new Map(),
+    };
+  }
 
   const renameMap = new Map();
   let renamed = 0;
+  const finalized = [];
   for (let i = 0; i < staged.length; i++) {
     const op = staged[i];
     let ok = false;
@@ -29704,14 +29829,44 @@ async function applyIndexRenamePlanForDir(dirNode, dirHandle, ops) {
     } catch {}
     if (!ok) {
       failed++;
-      continue;
+      break;
     }
-    renamed++;
+    finalized.push(op);
+    if (op.newName !== op.oldName) renamed++;
     renameMap.set(op.oldName, op.newName);
+  }
+
+  if (failed) {
+    const finalizedSet = new Set(finalized);
+    for (let i = finalized.length - 1; i >= 0; i--) {
+      const op = finalized[i];
+      if (op.newName === op.oldName) continue;
+      try {
+        const fileHandle = await dirHandle.getFileHandle(op.newName);
+        await renameFileOnDisk(dirHandle, fileHandle, op.newName, op.oldName);
+      } catch {}
+    }
+    for (let i = 0; i < staged.length; i++) {
+      const op = staged[i];
+      if (finalizedSet.has(op)) continue;
+      try {
+        const fileHandle = await dirHandle.getFileHandle(op.tempName);
+        await renameFileOnDisk(dirHandle, fileHandle, op.tempName, op.oldName);
+      } catch {}
+    }
+    return { renamed: 0, failed, renameMap: new Map() };
   }
 
   if (renameMap.size) {
     await updateFileRecordsForFileRenames(dirNode, renameMap, dirHandle);
+    if (!failed) {
+      dirNode.childrenFiles = list
+        .map((op) => String(op.rec?.id || ""))
+        .filter((id) => !!id && WS.fileById.has(id));
+      dirNode.preserveOrder = true;
+      saveSessionFileOrderForDir(dirNode);
+      await syncCatalogFolderAfterIndex(dirNode);
+    }
   }
   return { renamed, failed, renameMap };
 }
@@ -29743,6 +29898,7 @@ async function indexFolderFilesRecursively(dirNode) {
     showBusyOverlay("Indexing files...");
     for (let i = 0; i < dirs.length; i++) {
       const node = dirs[i];
+      captureLivePreviewFileOrderForIndex(node);
       const label = displayPath(node.path || "") || node.name || "folder";
       showBusyOverlay(
         `Indexing files... ${i + 1}/${dirs.length} • Renamed ${renamed}`,
@@ -29787,7 +29943,7 @@ async function indexFolderFilesRecursively(dirNode) {
       if (WS.meta.storageMode === "fs") await metaSaveFsNow();
       else metaSaveLocalNow();
     } catch {}
-    refreshCurrentViewAfterCatalogMutation();
+    refreshCurrentViewAfterCatalogMutation({ preservePreviewTarget: true });
     showStatusMessage(
       `Index complete: ${renamed} renamed, ${skipped} skipped, ${failed} failed.`,
     );
