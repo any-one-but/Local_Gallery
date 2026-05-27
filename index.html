@@ -14937,6 +14937,7 @@ const WS = {
     randomSeed: 0,
     randomCache: new Map(),
     randomFolderCache: new Map(),
+    fileOrderByDirPath: new Map(),
     slideshowDurations: [0, 1000, 3000, 5000, 10000],
     slideshowModeIndex: 0,
     slideshowActive: false,
@@ -27660,6 +27661,7 @@ function remapFileIdsAcrossViewState(idMap) {
   remapFileIdsInDirTree(idMap);
   remapFileSelectionIds(idMap);
   remapRuntimeFileStateIds(idMap);
+  remapSessionFileOrders(idMap);
   remapThumbnailUrlRecordIds(idMap);
   if (WS.preview.kind === "file" && WS.preview.fileId) {
     WS.preview.fileId = remapIdValue(idMap, WS.preview.fileId);
@@ -28388,6 +28390,9 @@ function applyAspectRatioStorageToCurrentWorkspace() {
     if (WS.view) {
       WS.view.randomCache = new Map();
       WS.view.randomFolderCache = new Map();
+      for (const node of WS.dirByPath.values()) {
+        applySessionFileOrderForDir(node);
+      }
     }
   }
   return removed;
@@ -28875,12 +28880,84 @@ function getRandomOrderForDir(dirNode) {
   return out.slice();
 }
 
+function fileOrderSessionKeyForDir(dirNode) {
+  if (!dirNode) return "";
+  const p = String(dirNode.path || "");
+  const workspaceKey = String(WS.meta?.storageKey || "__workspace__");
+  return `${workspaceKey}::${p || "__root__"}`;
+}
+
+function ensureSessionFileOrderMap() {
+  if (!WS.view.fileOrderByDirPath || !(WS.view.fileOrderByDirPath instanceof Map)) {
+    WS.view.fileOrderByDirPath = new Map();
+  }
+  return WS.view.fileOrderByDirPath;
+}
+
+function saveSessionFileOrderForDir(dirNode, ids = null) {
+  const key = fileOrderSessionKeyForDir(dirNode);
+  if (!key || !dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
+  const source = Array.isArray(ids) ? ids : dirNode.childrenFiles;
+  const cleaned = source.map((id) => String(id || "")).filter(Boolean);
+  ensureSessionFileOrderMap().set(key, cleaned);
+  return true;
+}
+
+function clearSessionFileOrderForDir(dirNode) {
+  const key = fileOrderSessionKeyForDir(dirNode);
+  if (!key) return false;
+  return ensureSessionFileOrderMap().delete(key);
+}
+
+function applySessionFileOrderForDir(dirNode) {
+  if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return false;
+  const key = fileOrderSessionKeyForDir(dirNode);
+  if (!key) return false;
+  const stored = ensureSessionFileOrderMap().get(key);
+  if (!Array.isArray(stored) || !stored.length) return false;
+  const current = dirNode.childrenFiles.map((id) => String(id || "")).filter(Boolean);
+  const currentSet = new Set(current);
+  const next = [];
+  const seen = new Set();
+  for (let i = 0; i < stored.length; i++) {
+    const id = String(stored[i] || "");
+    if (!id || seen.has(id) || !currentSet.has(id)) continue;
+    seen.add(id);
+    next.push(id);
+  }
+  for (let i = 0; i < current.length; i++) {
+    const id = current[i];
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    next.push(id);
+  }
+  if (!next.length) return false;
+  dirNode.childrenFiles = next;
+  dirNode.preserveOrder = true;
+  saveSessionFileOrderForDir(dirNode, next);
+  return true;
+}
+
+function remapSessionFileOrders(idMap) {
+  if (!idMap || !idMap.size) return;
+  const map = ensureSessionFileOrderMap();
+  for (const [key, ids] of Array.from(map.entries())) {
+    if (!Array.isArray(ids)) continue;
+    map.set(
+      key,
+      ids.map((id) => remapIdValue(idMap, id)).filter(Boolean),
+    );
+  }
+}
+
 function getOrderedFileIdsForDir(dirNode, includeChildren = false) {
   if (!dirNode) return [];
   let ids = [];
 
   if (randomSortAffectsFiles()) {
     ids = getRandomOrderForDir(dirNode);
+  } else if (applySessionFileOrderForDir(dirNode)) {
+    ids = dirNode.childrenFiles.slice();
   } else if (dirNode.preserveOrder) {
     ids = dirNode.childrenFiles.slice();
   } else {
@@ -29197,6 +29274,8 @@ function findFileEntryIndexById(fileId) {
 
 function syncAfterDirOrderChange(selectId, opts = {}) {
   const preserveSelection = !!opts.preserveSelection;
+  const preservePreviewTarget = !!opts.preservePreviewTarget;
+  const renderPreview = opts.renderPreview !== false;
   const prevEntry = preserveSelection
     ? WS.nav.entries[WS.nav.selectedIndex] || null
     : null;
@@ -29240,12 +29319,16 @@ function syncAfterDirOrderChange(selectId, opts = {}) {
   } else {
     WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
   }
-  syncPreviewToSelection({ force: true });
+  if (!(preservePreviewTarget && previewTargetStillResolvable())) {
+    syncPreviewToSelection({ force: true });
+  }
   renderDirectoriesPane(true);
-  renderPreviewPane(true, true);
+  if (renderPreview) renderPreviewPane(true, true);
   syncButtons();
-  kickVideoThumbsForPreview();
-  kickImageThumbsForPreview();
+  if (renderPreview) {
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+  }
 }
 
 function isDirWithin(rootNode, childNode) {
@@ -29269,6 +29352,7 @@ function resetDirFileOrder(dirNode, opts = {}) {
       WS.fileById.get(b)?.name || "",
     ),
   );
+  clearSessionFileOrderForDir(dirNode);
   WS.view.randomCache.delete(dirNode.path || "");
   if (!opts.silent) {
     syncAfterDirOrderChange(opts.selectId || null);
@@ -29331,6 +29415,7 @@ function reorderFilesInDir(
     list.length = 0;
     list.push(...result);
     dirNode.preserveOrder = true;
+    saveSessionFileOrderForDir(dirNode);
     WS.view.randomCache.delete(dirNode.path || "");
     return true;
   }
@@ -29344,6 +29429,7 @@ function reorderFilesInDir(
   toIdx = Math.max(0, Math.min(list.length, toIdx));
   list.splice(toIdx, 0, dragId);
   dirNode.preserveOrder = true;
+  saveSessionFileOrderForDir(dirNode);
   WS.view.randomCache.delete(dirNode.path || "");
   return true;
 }
@@ -29377,6 +29463,7 @@ function reverseFilesInDir(dirNode, opts = {}) {
   }
 
   dirNode.preserveOrder = true;
+  saveSessionFileOrderForDir(dirNode);
   WS.view.randomCache.delete(dirNode.path || "");
   return true;
 }
@@ -29474,6 +29561,243 @@ async function renameSingleFile(rec, nextName) {
     showStatusMessage("Rename failed.");
     return false;
   } finally {
+    hideBusyOverlay();
+  }
+}
+
+function getIndexOrderedFileIdsForDir(dirNode) {
+  if (!dirNode || !Array.isArray(dirNode.childrenFiles)) return [];
+  applySessionFileOrderForDir(dirNode);
+  const ids = dirNode.childrenFiles
+    .map((id) => String(id || ""))
+    .filter((id) => !!id && WS.fileById.has(id));
+  if (dirNode.preserveOrder) return ids;
+  return ids.sort((a, b) =>
+    compareIndexedNames(
+      WS.fileById.get(a)?.name || "",
+      WS.fileById.get(b)?.name || "",
+    ),
+  );
+}
+
+function collectIndexableDirs(rootNode) {
+  const out = [];
+  const walk = (node) => {
+    if (!node || isStorageStubDirNode(node) || isInternalTrashDirNode(node))
+      return;
+    out.push(node);
+    const children = Array.isArray(node.childrenDirs) ? node.childrenDirs : [];
+    for (let i = 0; i < children.length; i++) walk(children[i]);
+  };
+  walk(rootNode);
+  return out;
+}
+
+function indexedFileNameForRecord(dirNode, rec, index, width) {
+  const parentName = String(dirNode?.name || "Folder").trim() || "Folder";
+  const oldName = String(rec?.name || "");
+  const ext = splitNameExtension(oldName).ext || "";
+  return `${parentName}_${String(Math.max(0, index)).padStart(width, "0")}${ext}`;
+}
+
+async function uniqueIndexTempName(dirHandle, reservedNames, serial) {
+  const reserved = reservedNames instanceof Set ? reservedNames : new Set();
+  let attempt = 0;
+  while (attempt < 10000) {
+    const candidate = `__local_gallery_index_tmp_${Date.now()}_${serial}_${attempt}.tmp`;
+    const key = candidate.toLowerCase();
+    if (!reserved.has(key) && !(await entryExistsInDir(dirHandle, candidate))) {
+      reserved.add(key);
+      return candidate;
+    }
+    attempt++;
+  }
+  return "";
+}
+
+async function buildIndexRenamePlanForDir(dirNode, dirHandle, serialBase = 0) {
+  const ids = getIndexOrderedFileIdsForDir(dirNode);
+  if (!ids.length) return { ops: [], skipped: 0 };
+  const width = String(Math.max(0, ids.length - 1)).length + 1;
+  const oldNameKeys = new Set();
+  const desiredNameKeys = new Set();
+  const records = [];
+  for (let i = 0; i < ids.length; i++) {
+    const rec = WS.fileById.get(ids[i]);
+    if (!rec) continue;
+    records.push(rec);
+    oldNameKeys.add(String(rec.name || "").toLowerCase());
+  }
+
+  let skipped = 0;
+  const planned = [];
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i];
+    const oldName = String(rec.name || "");
+    const newName = indexedFileNameForRecord(dirNode, rec, i, width);
+    const newKey = newName.toLowerCase();
+    if (!isValidFileName(newName) || desiredNameKeys.has(newKey)) {
+      skipped++;
+      continue;
+    }
+    desiredNameKeys.add(newKey);
+    if (newName === oldName) continue;
+    if (!oldNameKeys.has(newKey) && (await entryExistsInDir(dirHandle, newName))) {
+      skipped++;
+      continue;
+    }
+    planned.push({ rec, oldName, newName, tempName: "" });
+  }
+
+  const reserved = new Set([...oldNameKeys, ...desiredNameKeys]);
+  for (let i = 0; i < planned.length; i++) {
+    planned[i].tempName = await uniqueIndexTempName(
+      dirHandle,
+      reserved,
+      serialBase + i,
+    );
+    if (!planned[i].tempName) skipped++;
+  }
+
+  return {
+    ops: planned.filter((op) => op.tempName),
+    skipped,
+  };
+}
+
+async function applyIndexRenamePlanForDir(dirNode, dirHandle, ops) {
+  const list = Array.isArray(ops) ? ops : [];
+  if (!dirNode || !dirHandle || !list.length)
+    return { renamed: 0, failed: 0, renameMap: new Map() };
+
+  const staged = [];
+  let failed = 0;
+  for (let i = 0; i < list.length; i++) {
+    const op = list[i];
+    let ok = false;
+    try {
+      const fileHandle = await dirHandle.getFileHandle(op.oldName);
+      ok = await renameFileOnDisk(
+        dirHandle,
+        fileHandle,
+        op.oldName,
+        op.tempName,
+      );
+    } catch {}
+    if (ok) staged.push(op);
+    else failed++;
+  }
+
+  const renameMap = new Map();
+  let renamed = 0;
+  for (let i = 0; i < staged.length; i++) {
+    const op = staged[i];
+    let ok = false;
+    try {
+      const fileHandle = await dirHandle.getFileHandle(op.tempName);
+      ok = await renameFileOnDisk(
+        dirHandle,
+        fileHandle,
+        op.tempName,
+        op.newName,
+      );
+    } catch {}
+    if (!ok) {
+      failed++;
+      continue;
+    }
+    renamed++;
+    renameMap.set(op.oldName, op.newName);
+  }
+
+  if (renameMap.size) {
+    await updateFileRecordsForFileRenames(dirNode, renameMap, dirHandle);
+  }
+  return { renamed, failed, renameMap };
+}
+
+async function indexFolderFilesRecursively(dirNode) {
+  if (RENAME_BUSY) return false;
+  if (!dirNode) return false;
+  if (!WS.meta.fsRootHandle) {
+    showStatusMessage("Index requires a writable folder.");
+    return false;
+  }
+  if (isStorageStubDirNode(dirNode)) {
+    showStatusMessage("Storage folders cannot be indexed.");
+    return false;
+  }
+
+  const dirs = collectIndexableDirs(dirNode);
+  if (!dirs.length) {
+    showStatusMessage("No folders to index.");
+    return false;
+  }
+
+  RENAME_BUSY = true;
+  let renamed = 0;
+  let failed = 0;
+  let skipped = 0;
+  let planned = 0;
+  try {
+    showBusyOverlay("Indexing files...");
+    for (let i = 0; i < dirs.length; i++) {
+      const node = dirs[i];
+      const label = displayPath(node.path || "") || node.name || "folder";
+      showBusyOverlay(
+        `Indexing files... ${i + 1}/${dirs.length} • Renamed ${renamed}`,
+        label,
+      );
+      let dirHandle = null;
+      try {
+        dirHandle = await getDirectoryHandleForPath(
+          WS.meta.fsRootHandle,
+          String(node.path || ""),
+        );
+      } catch {}
+      if (!dirHandle) {
+        failed++;
+        continue;
+      }
+      const plan = await buildIndexRenamePlanForDir(node, dirHandle, i * 10000);
+      skipped += Number(plan.skipped) || 0;
+      planned += plan.ops.length;
+      if (!plan.ops.length) continue;
+      const result = await applyIndexRenamePlanForDir(node, dirHandle, plan.ops);
+      renamed += Number(result.renamed) || 0;
+      failed += Number(result.failed) || 0;
+      await waitForNextPaint();
+    }
+
+    if (!planned && !renamed) {
+      showStatusMessage(
+        skipped
+          ? `Index skipped ${skipped} file${skipped === 1 ? "" : "s"}.`
+          : "Files are already indexed.",
+      );
+      return false;
+    }
+
+    metaComputeFingerprints();
+    metaTrackDirtyDocIds([
+      META_DOC_IDS.thumbnails,
+      META_DOC_IDS.appearanceAssignments,
+    ]);
+    try {
+      if (WS.meta.storageMode === "fs") await metaSaveFsNow();
+      else metaSaveLocalNow();
+    } catch {}
+    refreshCurrentViewAfterCatalogMutation();
+    showStatusMessage(
+      `Index complete: ${renamed} renamed, ${skipped} skipped, ${failed} failed.`,
+    );
+    return renamed > 0;
+  } catch (err) {
+    console.error("Index failed.", err);
+    showStatusMessage("Index failed.");
+    return false;
+  } finally {
+    RENAME_BUSY = false;
     hideBusyOverlay();
   }
 }
@@ -37825,13 +38149,7 @@ function openDirMenuForPath(path) {
   RENAME_EDIT_FILE_ID = null;
   clearBulkTagPlaceholder();
 
-  const idx = findDirEntryIndexByPath(p);
-  if (idx >= 0) {
-    WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
-    syncPreviewToSelection({ force: true });
-  }
   renderDirectoriesPane(true);
-  renderPreviewPane(false, true);
   syncButtons();
 }
 
@@ -37847,16 +38165,7 @@ function openFileMenuForId(fileId) {
   RENAME_EDIT_FILE_ID = null;
   clearBulkTagPlaceholder();
 
-  for (let i = 0; i < WS.nav.entries.length; i++) {
-    const entry = WS.nav.entries[i];
-    if (entry && entry.kind === "file" && String(entry.id || "") === id) {
-      WS.nav.selectedIndex = findNearestSelectableIndex(i, 1);
-      syncPreviewToSelection({ force: true });
-      break;
-    }
-  }
   renderDirectoriesPane(true);
-  renderPreviewPane(false, true);
   syncButtons();
 }
 
@@ -38720,7 +39029,10 @@ function openPreviewContextMenu(x, y) {
     e.stopPropagation();
     if (!canReverse) return;
     if (reverseFilesInDir(dirNode, { visibleIds: ids })) {
-      syncAfterDirOrderChange(null, { preserveSelection: true });
+      syncAfterDirOrderChange(null, {
+        preserveSelection: true,
+        preservePreviewTarget: true,
+      });
     }
     closePreviewContextMenu();
   });
@@ -38881,6 +39193,7 @@ function buildFolderMenuState(dirNode) {
       ? effectiveActiveAppearancePresetId()
       : metaGetFolderAppearancePresetId(p);
   const canRename = !!WS.meta.fsRootHandle && !isStorageGhost;
+  const canIndex = !!WS.meta.fsRootHandle && !isStorageGhost && !isTrashRootPortal;
   const canResetOrder = !!dirNode?.preserveOrder && !isStorageGhost;
   const currentTagRemovalContext =
     !isStorageGhost && !isRootNode ? currentFolderMenuTagRemovalContext() : null;
@@ -38906,6 +39219,7 @@ function buildFolderMenuState(dirNode) {
     isHidden,
     assignedAppearancePresetId,
     canRename,
+    canIndex,
     canResetOrder,
     currentTagRemovalContext,
     showUseDefaultThumbnail: false,
@@ -38984,6 +39298,7 @@ function buildFolderActionMenuDom(
   }
   if (state.isRootNode) {
     menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
+    menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
     return;
   }
   appendTwoCol(
@@ -39003,6 +39318,7 @@ function buildFolderActionMenuDom(
       makeBtn("Clear media preset override", "appearance-preset-clear"),
     );
   }
+  menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
   if (state.canResetOrder)
     menuEl.appendChild(makeBtn("Reset order", "reset-order"));
   menuEl.appendChild(
@@ -39095,6 +39411,10 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
       selectId: null,
     });
     if (node !== WS.nav.dirNode) showStatusMessage("Order reset.");
+    return true;
+  }
+  if (action === "index") {
+    await indexFolderFilesRecursively(node);
     return true;
   }
   if (action === "favorite") {
@@ -42278,6 +42598,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const sc = isStorageGhost ? 0 : metaGetScore(p);
         const isRootNode = entry.node === WS.root;
         const folderMenuState = buildFolderMenuState(entry.node);
+        const canIndex = !!folderMenuState.canIndex;
         const menuPathKey = isRootNode ? "__root__" : p;
         const menuOpen = WS.view.dirActionMenuPath === menuPathKey;
         const folderThumbMode = isRootNode
@@ -42302,6 +42623,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         if (isRootNode) {
           menuButtons = `
                 <button type="button" data-action="appearance-preset-set">Filters</button>
+                <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
               `;
         } else if (folderMenuState.isTrashPutBackOnly) {
           menuButtons = `
@@ -42321,6 +42643,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
                 <button type="button" data-action="appearance-preset-set">Filters</button>
                 ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
+                <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
                 <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
               `;
@@ -45959,6 +46282,12 @@ function getPreviewFolderAndFileEntries(dirNode, opts = null) {
   if (previewUsesCurrentViewEntries(dirNode, opts)) {
     const folderEntries = [];
     const fileIds = [];
+    const useSessionFileOrder =
+      includeFiles &&
+      !isViewingTagFolder() &&
+      !searchResultsVisibleInDirectoriesPane() &&
+      !(WS.view.favoritesMode && WS.view.favoritesRootActive) &&
+      !(WS.view.hiddenMode && WS.view.hiddenRootActive);
     for (let i = 0; i < WS.nav.entries.length; i++) {
       const entry = WS.nav.entries[i];
       if (!entry) continue;
@@ -45971,7 +46300,10 @@ function getPreviewFolderAndFileEntries(dirNode, opts = null) {
         if (id) fileIds.push(id);
       }
     }
-    return { folderEntries, fileIds };
+    return {
+      folderEntries,
+      fileIds: useSessionFileOrder ? getOrderedFileIdsForDir(dirNode) : fileIds,
+    };
   }
   if (dirNode && String(dirNode._tagPreviewMode || "")) {
     const baseNode =
@@ -47838,13 +48170,24 @@ function finishPreviewDrag() {
     PREVIEW_DRAG_STATE.raf = 0;
   }
   const card = PREVIEW_DRAG_STATE.draggedCard;
-  if (card) card.classList.remove("drag-hidden");
+  if (card) card.classList.remove("drag-hidden", "dragging");
   PREVIEW_DRAG_STATE.draggedCard = null;
   PREVIEW_DRAG_STATE.draggedId = null;
   PREVIEW_DRAG_STATE.dirNode = null;
   PREVIEW_DRAG_STATE.visibleIds = null;
   PREVIEW_DRAG_STATE.pendingHide = false;
   clearPreviewDragPlaceholder();
+}
+
+function commitPreviewDraggedCardToPlaceholder() {
+  const card = PREVIEW_DRAG_STATE.draggedCard;
+  const ph = PREVIEW_DRAG_STATE.placeholder;
+  const grid =
+    PREVIEW_DRAG_STATE.grid || ph?.parentElement || card?.parentElement || null;
+  if (!card || !ph || !grid || ph.parentElement !== grid) return false;
+  card.classList.remove("drag-hidden");
+  grid.insertBefore(card, ph);
+  return true;
 }
 
 function ensurePreviewDragHidden() {
@@ -47906,15 +48249,23 @@ function setupPreviewGridDrag(grid) {
         placeAfter = false;
       }
     }
+    let moved = false;
     if (dirNode && targetId) {
-      const moved = reorderFilesInDir(dirNode, dragId, targetId, placeAfter, {
+      moved = reorderFilesInDir(dirNode, dragId, targetId, placeAfter, {
         visibleIds: ids,
       });
-      if (moved) syncAfterDirOrderChange(null, { preserveSelection: true });
     }
     DIR_FILE_DRAG.id = null;
     DIR_FILE_DRAG.dirPath = null;
+    if (moved) commitPreviewDraggedCardToPlaceholder();
     finishPreviewDrag();
+    if (moved) {
+      syncAfterDirOrderChange(null, {
+        preserveSelection: true,
+        preservePreviewTarget: true,
+        renderPreview: false,
+      });
+    }
   });
 }
 
@@ -48310,6 +48661,7 @@ function getPreviewFileIdsForDir(dirNode, includeChildren = false) {
       useCurrentViewEntries: true,
     }).fileIds;
   }
+  applySessionFileOrderForDir(dirNode);
   const ids = dirNode.childrenFiles.slice();
   if (!dirNode.preserveOrder)
     ids.sort((a, b) =>
