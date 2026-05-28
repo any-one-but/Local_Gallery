@@ -67,11 +67,11 @@
 }
 
 :root[data-thumbnail-title-size="large"] {
-  --thumb-title-preview-font: 18px;
-  --thumb-title-preview-inline-font: 18px;
-  --thumb-title-dir-file-font: 18px;
-  --thumb-title-dir-square-font: 28px;
-  --thumb-title-dir-square-inline-font: 22px;
+  --thumb-title-preview-font: 24px;
+  --thumb-title-preview-inline-font: 24px;
+  --thumb-title-dir-file-font: 24px;
+  --thumb-title-dir-square-font: 36px;
+  --thumb-title-dir-square-inline-font: 28px;
   --thumb-title-font-weight: 700;
 }
 
@@ -80,7 +80,7 @@
   .gridFiles.previewNaturalAspectCards.fitInsideJustified
   .previewThumbOverlayMeta
   .name {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
 }
 
@@ -88,7 +88,7 @@
   .gridFiles
   .previewThumbOverlayBottomLine
   .previewThumbOverlayNameInlineCompact {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
 }
 
@@ -102,7 +102,7 @@
   .folderCard.folderThumbCard[data-preview-thumb-kind="subfolder"]
   .thumbOverlayMeta
   .name {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
 }
 
@@ -116,7 +116,7 @@
   .folderCard.folderThumbCard[data-preview-thumb-kind="subfolder"]
   .thumbOverlayBottomLine
   .thumbOverlayNameInlineCompact {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
 }
 
@@ -124,7 +124,7 @@
   .gridFolders
   .previewTagFolderCard
   .dirSquareName {
-  font-size: 28px;
+  font-size: 36px;
   font-weight: 700;
 }
 
@@ -133,7 +133,7 @@
   .previewTagFolderCard
   .dirSquareBottomCompact
   .dirSquareNameInlineCompact {
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 700;
 }
 
@@ -5877,6 +5877,21 @@ remove the outer app frame. */
 #previewPane .dirSquareOverlay *,
 #previewPane .dirFileOverlay * {
   color: var(--preview-pane-thumb-title-bar-fg) !important;
+}
+
+#previewPane .previewTagFolderCard .dirSquareOverlay .dirSquareName.dirSquareNameTag,
+#previewPane .dirSquareOverlay .dirSquareName.dirSquareNameTag {
+  color: var(--dir-tag-title-color, #9b8ac7) !important;
+}
+
+#previewPane .previewTagFolderCard .dirSquareOverlay .dirSquareName.dirSquareNameTagFavorite,
+#previewPane .dirSquareOverlay .dirSquareName.dirSquareNameTagFavorite {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent)) !important;
+}
+
+#previewPane .previewTagFolderCard .dirSquareOverlay .dirSquareName.dirSquareNameTagAlbum,
+#previewPane .dirSquareOverlay .dirSquareName.dirSquareNameTagAlbum {
+  color: var(--dir-tag-album-title-color, #ff7a6e) !important;
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMetaMenuOnly,
