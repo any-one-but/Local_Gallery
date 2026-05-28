@@ -209,15 +209,15 @@
 }
 
 :root[data-theme="retro90s-dark"] {
-  --color0-primary: #e6e2d8;
-  --color0-secondary: #bcb7aa;
+  --color0-primary: #ede9e0;
+  --color0-secondary: #c4bfb2;
   --color0-tertirary: #8a877d;
 
-  --color1-primary: #1c1a17;
-  --color1-primary-transparent: rgba(28, 26, 23, 0.92);
-  --color1-secondary: #26231f;
-  --color1-secondary-transparent: rgba(38, 35, 31, 0.85);
-  --color1-tertiary: #4b4740;
+  --color1-primary: #0d0b09;
+  --color1-primary-transparent: rgba(13, 11, 9, 0.92);
+  --color1-secondary: #151210;
+  --color1-secondary-transparent: rgba(21, 18, 16, 0.85);
+  --color1-tertiary: #2c2820;
 
   --anchor-internal-color2-primary: #6fa0ff;
   --palette-accent: #3b63a5;
@@ -6119,10 +6119,10 @@ remove the outer app frame. */
 }
 
 :root[data-theme="retro90s-dark"] {
-  --color1-secondary: #211e1a;
-  --color1-secondary-transparent: rgba(33, 30, 26, 0.9);
-  --ui-control-bg: rgba(0, 0, 0, 0.22);
-  --ui-control-hover-bg: rgba(0, 0, 0, 0.34);
+  --color1-secondary: #131110;
+  --color1-secondary-transparent: rgba(19, 17, 16, 0.92);
+  --ui-control-bg: rgba(255, 255, 255, 0.07);
+  --ui-control-hover-bg: rgba(255, 255, 255, 0.13);
 }
 
 .dirRow {
@@ -6328,6 +6328,32 @@ remove the outer app frame. */
 #calendarBody .calendarRankingsEmpty {
   background: var(--ui-control-bg);
   border-radius: 9px;
+}
+
+/* App-wide flat/no-scrollbar finish. Scroll behavior remains available. */
+* {
+  scrollbar-width: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+*,
+*::before,
+*::after {
+  background-image: none !important;
+}
+
+[style*="drop-shadow"],
+[style*="box-shadow"],
+[style*="text-shadow"] {
+  box-shadow: none !important;
+  text-shadow: none !important;
 }
 
 </style>
@@ -18195,6 +18221,19 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       .map((kind) => thumbnailVisibilityPreviewOptionKey(kind, field))
       .filter(Boolean);
   };
+  const thumbnailTitleSizeOptionKeysFor = (kinds) => {
+    const list = Array.isArray(kinds) ? kinds : [kinds];
+    return list.map(previewThumbnailTitleSizeOptionKey).filter(Boolean);
+  };
+  const linkedTitleSizeChecked = (kinds) => {
+    const keys = thumbnailTitleSizeOptionKeysFor(kinds);
+    return keys.length
+      ? keys.every(
+          (key) =>
+            normalizeThumbnailTitleSizeValue(opt[key], "small") === "large",
+        )
+      : false;
+  };
   const thumbnailInfoRows = (heading, kindOrKinds, fields) => {
     const fieldLabels = {
       title: "Title",
@@ -18204,7 +18243,15 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       folderCount: "Folder count",
       menuButton: "Menu button",
     };
-    const rows = fields
+    const titleSizeId = `opt_thumbTitleSize_${String(heading).toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+    const rows =
+      makeCheckRow(
+        "Title size",
+        "",
+        titleSizeId,
+        linkedTitleSizeChecked(kindOrKinds),
+      ) +
+      fields
       .map((field) =>
         makeCheckRow(
           fieldLabels[field] || field,
@@ -18383,7 +18430,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "videos", label: "Videos" },
     { value: "gifs", label: "GIFs" },
   ];
-
   const animatedFilterModes = [
     { value: "off", label: "Off" },
     { value: "on", label: "On" },
@@ -19687,6 +19733,20 @@ ${makeActionRow(
     ],
     ["Tags", "tag", ["title", "size", "folderCount", "fileCount", "menuButton"]],
   ].forEach(([heading, kinds, fields]) => {
+    const titleSizeId = `opt_thumbTitleSize_${String(heading).toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+    const titleSizeKeys = thumbnailTitleSizeOptionKeysFor(kinds);
+    bindMenuToggleButton(titleSizeId, (enabled) => {
+      const next = {};
+      titleSizeKeys.forEach((key) => {
+        next[key] = enabled ? "large" : "small";
+      });
+      WS.meta.options = normalizeOptions(
+        Object.assign({}, WS.meta.options || {}, next),
+      );
+      metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+      setOptionsStatus("Saved");
+      applyOptionsEverywhere(false);
+    });
     fields.forEach((field) => {
       const id = `opt_thumbInfo_${String(heading).toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${field}`;
       bindLinkedCheck(id, thumbnailPreviewOptionKeysFor(kinds, field));
@@ -53323,11 +53383,30 @@ function applyThumbFitFromOptions() {
 function applyThumbnailTitleSizeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
-  root.removeAttribute("data-thumbnail-title-size");
-  root.removeAttribute("data-preview-file-title-size");
-  root.removeAttribute("data-preview-root-folder-title-size");
-  root.removeAttribute("data-preview-subfolder-title-size");
-  root.removeAttribute("data-preview-tag-title-size");
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  const setSizeAttr = (attr, size) => {
+    if (!attr) return;
+    const normalized = normalizeThumbnailTitleSizeValue(size, "small");
+    if (normalized === "large") root.setAttribute(attr, "large");
+    else root.removeAttribute(attr);
+  };
+  setSizeAttr("data-thumbnail-title-size", getThumbnailTitleSizeFromOptions(opt));
+  setSizeAttr(
+    "data-preview-file-title-size",
+    getPreviewThumbnailTitleSizeForKind("file", opt),
+  );
+  setSizeAttr(
+    "data-preview-root-folder-title-size",
+    getPreviewThumbnailTitleSizeForKind("rootFolder", opt),
+  );
+  setSizeAttr(
+    "data-preview-subfolder-title-size",
+    getPreviewThumbnailTitleSizeForKind("subfolder", opt),
+  );
+  setSizeAttr(
+    "data-preview-tag-title-size",
+    getPreviewThumbnailTitleSizeForKind("tag", opt),
+  );
 }
 function applyDirectoryMiniThumbSizeFromOptions() {}
 function applyDirectoryFileThumbLayoutFromOptions() {}
