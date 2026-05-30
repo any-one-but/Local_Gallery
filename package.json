@@ -41,5 +41,8 @@
         "zip"
       ]
     }
+  },
+  "dependencies": {
+    "@react95/icons": "^2.5.0"
   }
 }

@@ -6348,8 +6348,11 @@ remove the outer app frame. */
 /* App-wide flat/no-scrollbar finish. Scroll behavior remains available. */
 * {
   scrollbar-width: none !important;
-  box-shadow: none !important;
   text-shadow: none !important;
+}
+/* Retro mode restores beveled box-shadows; keep the flat finish everywhere else. */
+:root:not([data-retro="on"]) * {
+  box-shadow: none !important;
 }
 
 *::-webkit-scrollbar {
@@ -6367,8 +6370,1770 @@ remove the outer app frame. */
 [style*="drop-shadow"],
 [style*="box-shadow"],
 [style*="text-shadow"] {
-  box-shadow: none !important;
   text-shadow: none !important;
+}
+:root:not([data-retro="on"]) [style*="drop-shadow"],
+:root:not([data-retro="on"]) [style*="box-shadow"],
+:root:not([data-retro="on"]) [style*="text-shadow"] {
+  box-shadow: none !important;
+}
+
+
+/* ============================================================
+   Retro mode (restored from v01.06.26 / commit 867b4c7).
+   Active only when the document root has data-retro="on",
+   toggled by the "Retro mode" appearance setting.
+   ============================================================ */
+:root[data-retro="on"] {
+  --retro-desktop: var(--tag-include-bg, #dbe4f1);
+  --retro-face: var(--color1-secondary);
+  --retro-face-soft: var(--color1-secondary);
+  --retro-field: var(--color1-primary);
+  --retro-text: var(--color0-primary);
+  --retro-muted: var(--color0-secondary);
+  --retro-highlight: #ffffff;
+  --retro-highlight-soft: #dfdfdf;
+  --retro-shadow: #808080;
+  --retro-shadow-dark: #404040;
+  --retro-shadow-black: #000000;
+  --retro-face-hover: #dadada;
+  --retro-face-active: #cfcfcf;
+  --retro-link: #0b51d8;
+  --retro-title-bg: var(--palette-accent);
+  --retro-title-text: var(--palette-accent-text);
+  --retro-select-bg: var(--palette-accent);
+  --retro-select-text: var(--palette-accent-text);
+  --retro-select-shadow-dark: rgba(0, 0, 0, 0.45);
+  --retro-select-shadow-light: rgba(255, 255, 255, 0.3);
+  --ui-hover-shadow: none;
+  --ui-focus-ring: 0 0 0 1px #000000;
+  color-scheme: light;
+}
+
+:root[data-retro="on"][data-theme="retro90s-dark"] {
+  --retro-desktop: var(--color1-tertiary);
+  --retro-face: var(--color1-secondary);
+  --retro-face-soft: var(--color1-secondary);
+  --retro-field: var(--color1-primary);
+  --retro-text: var(--color0-primary);
+  --retro-muted: var(--color0-secondary);
+  --retro-highlight: rgba(255, 255, 255, 0.35);
+  --retro-highlight-soft: rgba(255, 255, 255, 0.18);
+  --retro-shadow: rgba(0, 0, 0, 0.58);
+  --retro-shadow-dark: rgba(0, 0, 0, 0.82);
+  --retro-shadow-black: #000000;
+  --retro-face-hover: rgba(255, 255, 255, 0.12);
+  --retro-face-active: rgba(255, 255, 255, 0.18);
+  --retro-link: #7ab8ff;
+  --retro-title-bg: var(--palette-accent);
+  --retro-title-text: var(--palette-accent-text);
+  --retro-select-bg: var(--palette-accent);
+  --retro-select-text: var(--palette-accent-text);
+  --retro-select-shadow-dark: rgba(0, 0, 0, 0.72);
+  --retro-select-shadow-light: rgba(255, 255, 255, 0.18);
+  --ui-selection-outline: var(--palette-accent-outline);
+  --ui-selection-outline-soft: rgba(255, 255, 255, 0.22);
+  --ui-selection-fill: rgba(255, 255, 255, 0.08);
+  --ui-selection-fill-strong: rgba(255, 255, 255, 0.14);
+}
+
+:root[data-retro="on"][data-theme="retro90s"] {
+  --retro-desktop: var(--tag-include-bg, #dbe4f1);
+  --retro-face: var(--color1-secondary);
+  --retro-face-soft: var(--color1-secondary);
+  --retro-field: var(--color1-primary);
+  --retro-text: var(--color0-primary);
+  --retro-muted: var(--color0-secondary);
+  --retro-highlight: #ffffff;
+  --retro-highlight-soft: #efefef;
+  --retro-shadow: rgba(0, 0, 0, 0.32);
+  --retro-shadow-dark: rgba(0, 0, 0, 0.58);
+  --retro-shadow-black: rgba(0, 0, 0, 0.9);
+  --retro-face-hover: rgba(255, 255, 255, 0.68);
+  --retro-face-active: rgba(255, 255, 255, 0.46);
+  --retro-link: #0b51d8;
+  --retro-title-bg: var(--palette-accent);
+  --retro-title-text: var(--palette-accent-text);
+  --retro-select-bg: var(--palette-accent);
+  --retro-select-text: var(--palette-accent-text);
+  --retro-select-shadow-dark: rgba(0, 0, 0, 0.5);
+  --retro-select-shadow-light: rgba(255, 255, 255, 0.38);
+  --ui-selection-outline: var(--palette-accent-outline);
+  --ui-selection-outline-soft: rgba(0, 0, 0, 0.18);
+  --ui-selection-fill: rgba(0, 0, 0, 0.08);
+  --ui-selection-fill-strong: rgba(0, 0, 0, 0.12);
+}
+
+:root[data-retro="on"] body {
+  font-family:
+    "Pixelated MS Sans Serif", "MS Sans Serif", "Microsoft Sans Serif",
+    "Tahoma", sans-serif;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: none;
+  background: var(--retro-desktop);
+  background-image: none;
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] #app {
+  box-sizing: border-box;
+  background: var(--retro-face);
+  box-shadow:
+    inset 2px 2px 0 var(--retro-highlight),
+    inset -2px -2px 0 var(--retro-shadow-black),
+    inset 3px 3px 0 var(--retro-highlight-soft),
+    inset -3px -3px 0 var(--retro-shadow);
+}
+
+/* retro mode should no longer change media rendering; retro media is controlled separately */
+
+/* Media filter visuals now handled by canvas engine only */
+
+/* Retro 90s media filter removed */
+:root[data-retro="on"] .dirRow,
+:root[data-retro="on"] .folderCard,
+:root[data-retro="on"] .fileCard,
+:root[data-retro="on"] #menuCard,
+:root[data-retro="on"] #propertiesCard {
+  border-radius: 0;
+}
+
+:root[data-retro="on"] button,
+:root[data-retro="on"] .miniBtn {
+  border-width: 2px;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.35),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.35);
+}
+
+:root[data-retro="on"] a {
+  color: var(--anchor-internal-color2-primary);
+}
+
+:root[data-retro="on"] button,
+:root[data-retro="on"] .miniBtn,
+:root[data-retro="on"] .dirMenuBtn {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+  transform: none;
+  text-transform: none;
+}
+
+:root[data-retro="on"] button:hover:not(:disabled),
+:root[data-retro="on"] .miniBtn:hover:not(:disabled),
+:root[data-retro="on"] .dirMenuBtn:hover:not(:disabled) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+  transform: none;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] button:active:not(:disabled),
+:root[data-retro="on"] .miniBtn:active:not(:disabled),
+:root[data-retro="on"] .dirMenuBtn:active:not(:disabled) {
+  background: var(--retro-face-active);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+  transform: none;
+}
+
+:root[data-retro="on"] button:disabled,
+:root[data-retro="on"] .miniBtn:disabled,
+:root[data-retro="on"] .dirMenuBtn:disabled {
+  color: #6a6a6a;
+  background: var(--retro-face);
+  opacity: 1;
+}
+
+:root[data-retro="on"] .miniBtn.active,
+:root[data-retro="on"] .tag.sel,
+:root[data-retro="on"] .statsLedgerSortBtn.active {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-select-shadow-dark),
+    inset -1px -1px 0 var(--retro-select-shadow-light);
+}
+
+:root[data-retro="on"] .statsLedgerSortBtn.active .statsLedgerSortBtnMeta {
+  color: var(--retro-select-text);
+  opacity: 0.82;
+}
+
+:root[data-retro="on"] .pill,
+:root[data-retro="on"] .voteScore,
+:root[data-retro="on"] .tag,
+:root[data-retro="on"] .crumb,
+:root[data-retro="on"] .clusterBreak,
+:root[data-retro="on"] .statusBar,
+:root[data-retro="on"] .dirDetailsHeader,
+:root[data-retro="on"] .statsWidgetCard,
+:root[data-retro="on"] .calendarAnalyticsCard,
+:root[data-retro="on"] .scoreHistoryDay,
+:root[data-retro="on"] .calendarRankingsEmpty,
+:root[data-retro="on"] .scoreHistoryEmpty,
+:root[data-retro="on"] #titlePane,
+:root[data-retro="on"] #directoriesPane,
+:root[data-retro="on"] #previewPane,
+:root[data-retro="on"] #controlPane,
+:root[data-retro="on"] #menuOverlay,
+:root[data-retro="on"] #menuCard,
+:root[data-retro="on"] .dropdownMenu {
+  border-radius: 0;
+}
+
+:root[data-retro="on"] #menuOverlay,
+:root[data-retro="on"] .dropdownMenu,
+:root[data-retro="on"] .statsWidgetCard,
+:root[data-retro="on"] .calendarAnalyticsCard,
+:root[data-retro="on"] .scoreHistoryDay,
+:root[data-retro="on"] .calendarRankingsEmpty,
+:root[data-retro="on"] .scoreHistoryEmpty {
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #titlePane {
+  padding: 6px 6px 4px;
+  gap: 4px;
+  box-sizing: border-box;
+  background: var(--retro-face);
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+:root[data-retro="on"] #controlPane {
+  padding: 6px 6px 4px;
+  box-sizing: border-box;
+  background: var(--retro-field);
+  border: 0 !important;
+  border-top: 6px solid var(--retro-face) !important;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-dark),
+    inset -1px -1px 0 var(--retro-highlight),
+    inset 2px 2px 0 var(--retro-shadow-black),
+    inset -2px -2px 0 var(--retro-highlight-soft) !important;
+  outline: none !important;
+}
+
+:root[data-retro="on"] #titlePaneTop {
+  gap: 6px;
+  background: var(--retro-face);
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+:root[data-retro="on"] #titleMain {
+  min-height: 26px;
+  padding: 4px 6px;
+  background: var(--retro-title-bg);
+  color: var(--retro-title-text);
+  align-items: center;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+:root[data-retro="on"] #titlePane h1 {
+  color: var(--retro-title-text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+:root[data-retro="on"] #titleInfo {
+  color: var(--retro-text);
+  opacity: 0.8;
+}
+
+:root[data-retro="on"] #directoriesPane,
+:root[data-retro="on"] #previewPane,
+:root[data-retro="on"] #menuOverlay {
+  padding: 4px 6px 6px;
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+:root[data-retro="on"] #menuOverlay {
+  padding-top: 0;
+  background: var(--retro-face);
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode:not(.preview-media-pane-background)
+  #previewPane {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.sidebar-closed.preview-media-mode:not(.preview-media-pane-background)
+  #previewPane {
+  padding-left: 0;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background)
+  #previewPane {
+  padding-right: 0;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode.menu-pane-open:not(.preview-media-pane-background)
+  #menuDivider,
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode.menu-pane-open:not(.preview-media-pane-background)
+  #menuOverlay {
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
+:root[data-retro="on"]
+  #app.title-layout-pane.preview-media-mode:not(.preview-media-pane-background)
+  #previewBody {
+  background: #000;
+  box-shadow: none;
+}
+
+:root[data-retro="on"] #directoriesPane,
+:root[data-retro="on"] #previewPane,
+:root[data-retro="on"] #optionsBody,
+:root[data-retro="on"] #keybindsBody,
+:root[data-retro="on"] #calendarBody,
+:root[data-retro="on"] #optionsFooter,
+:root[data-retro="on"] #keybindsFooter,
+:root[data-retro="on"] #calendarFooter {
+  background: var(--retro-face);
+}
+
+:root[data-retro="on"] #directoriesHeader.active {
+  padding: 4px 4px 3px;
+  border-bottom: 0;
+  gap: 6px;
+}
+
+:root[data-retro="on"] #directoriesList,
+:root[data-retro="on"] #previewBody,
+:root[data-retro="on"] #menuBody,
+:root[data-retro="on"] #optionsBody,
+:root[data-retro="on"] #keybindsBody,
+:root[data-retro="on"] #calendarBody {
+  background: var(--retro-field);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-dark),
+    inset -1px -1px 0 var(--retro-highlight),
+    inset 2px 2px 0 var(--retro-shadow-black),
+    inset -2px -2px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #controlTimecode {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+  font-family:
+    "Pixelated MS Sans Serif", "MS Sans Serif", "Microsoft Sans Serif",
+    "Tahoma", monospace;
+}
+
+:root[data-retro="on"] #controlProgressRange::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #controlProgressRange::-webkit-slider-thumb {
+  width: 14px;
+  height: 18px;
+  margin-top: -8px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+:root[data-retro="on"] #controlProgressRange::-moz-range-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #controlProgressRange::-moz-range-thumb {
+  width: 14px;
+  height: 18px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+:root[data-retro="on"] #menuCard {
+  background: var(--retro-face);
+  margin-top: -2px;
+}
+
+:root[data-retro="on"] #divider::before {
+  width: 2px;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-retro="on"] #menuDivider::before {
+  width: 2px;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-retro="on"] .folderCard,
+:root[data-retro="on"] .fileCard,
+:root[data-retro="on"] .dirSquareCard,
+:root[data-retro="on"] .dirFileThumbCard {
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+  background: var(--retro-face);
+}
+
+:root[data-retro="on"] .folderCard.folderThumbCard .metaBlock,
+:root[data-retro="on"] .fileCard .metaBlock,
+:root[data-retro="on"]
+  .gridFolders.fitInsideJustified
+  .folderCard.folderThumbCard
+  .metaBlock,
+:root[data-retro="on"] .gridFiles.fitInsideJustified .fileCard .metaBlock {
+  background: var(--retro-face);
+}
+
+:root[data-retro="on"] .tag,
+:root[data-retro="on"] .pill,
+:root[data-retro="on"] .voteScore {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 1px solid var(--retro-shadow-dark);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight);
+}
+
+:root[data-retro="on"] .crumb {
+  background: var(--retro-face);
+  color: var(--retro-link);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .crumb:hover {
+  background: var(--retro-face-hover);
+  color: var(--retro-link);
+}
+
+:root[data-retro="on"] .dirRow {
+  background: transparent;
+  border-radius: 0;
+  border-color: transparent;
+}
+
+:root[data-retro="on"] .dirRow:hover {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+  border-color: var(--retro-shadow-dark);
+}
+
+:root[data-retro="on"] .dirRow.selected {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  outline: none;
+  border-color: var(--retro-shadow-black);
+  box-shadow: none;
+}
+
+:root[data-retro="on"] .dirRow.bulkSelected {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+  outline: 1px dashed var(--retro-select-bg);
+  outline-offset: -1px;
+  border-color: var(--retro-select-bg);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .dirRow.selected.bulkSelected {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  outline: 1px dashed var(--retro-shadow-dark);
+  outline-offset: -1px;
+  border-color: var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight),
+    inset -1px -1px 0 var(--retro-shadow-black),
+    0 0 0 1px var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .dirRow.selected .dirName,
+:root[data-retro="on"] .dirRow.selected .dirNameText,
+:root[data-retro="on"] .dirRow.selected .dirMeta,
+:root[data-retro="on"] .dirRow.selected .dirMetaInline,
+:root[data-retro="on"] .dirRow.selected .dirBarMetaText,
+:root[data-retro="on"] .dirRow.selected .dirIcon,
+:root[data-retro="on"] .dirRow.selected .dirHiddenBadge,
+:root[data-retro="on"] .dirRow.selected .dirFavoriteHeart,
+:root[data-retro="on"] .dirRow.selected .voteBtn,
+:root[data-retro="on"] .dirRow.selected .mini,
+:root[data-retro="on"] .dirRow.bulkSelected .dirName,
+:root[data-retro="on"] .dirRow.bulkSelected .dirNameText,
+:root[data-retro="on"] .dirRow.bulkSelected .dirMeta,
+:root[data-retro="on"] .dirRow.bulkSelected .dirMetaInline,
+:root[data-retro="on"] .dirRow.bulkSelected .dirBarMetaText,
+:root[data-retro="on"] .dirRow.bulkSelected .dirIcon,
+:root[data-retro="on"] .dirRow.bulkSelected .dirHiddenBadge,
+:root[data-retro="on"] .dirRow.bulkSelected .dirFavoriteHeart,
+:root[data-retro="on"] .dirRow.bulkSelected .voteBtn,
+:root[data-retro="on"] .dirRow.bulkSelected .mini {
+  color: var(--retro-select-text);
+}
+
+:root[data-retro="on"][data-theme="retro90s"] .dirRow.bulkSelected:not(.selected) {
+  background: rgba(79, 134, 214, 0.24);
+  border-color: rgba(24, 56, 106, 0.72);
+  outline-color: rgba(24, 56, 106, 0.72);
+}
+
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirName,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirNameText,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirMeta,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirMetaInline,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirBarMetaText,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirIcon,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirHiddenBadge,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirFavoriteHeart,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .voteBtn,
+:root[data-retro="on"][data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .mini {
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"]
+  .dirRow.folderRow.folderSquareCard.selected
+  .dirSquareCard,
+:root[data-retro="on"]
+  .dirRow.folderRow.folderSquareCard.selected.bulkSelected
+  .dirSquareCard,
+:root[data-retro="on"]
+  .dirRow.fileRow.fileThumbCardRow.selected
+  .dirFileThumbCard,
+:root[data-retro="on"]
+  .dirRow.fileRow.fileThumbCardRow.selected.bulkSelected
+  .dirFileThumbCard {
+  border-color: var(--retro-select-bg);
+  outline-color: var(--retro-select-bg);
+  box-shadow:
+    0 0 0 1px var(--retro-highlight),
+    0 0 0 3px var(--retro-select-bg);
+}
+
+:root[data-retro="on"]
+  .dirRow.folderRow.folderSquareCard.bulkSelected
+  .dirSquareCard,
+:root[data-retro="on"]
+  .dirRow.fileRow.fileThumbCardRow.bulkSelected
+  .dirFileThumbCard {
+  border-color: var(--retro-select-bg);
+  outline: 2px dashed var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow:
+    0 0 0 1px var(--retro-highlight),
+    0 0 0 3px var(--retro-shadow);
+}
+
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected) {
+  background: transparent;
+  color: inherit;
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirName,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirNameText,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirMeta,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirMetaInline,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirBarMetaText,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirIcon,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirHiddenBadge,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirFavoriteHeart,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .voteBtn,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .mini {
+  color: inherit;
+}
+
+:root[data-retro="on"] .dirRow.selected .dirFavoriteHeart,
+:root[data-retro="on"] .dirRow.bulkSelected .dirFavoriteHeart,
+:root[data-retro="on"] #app.preview-pane-active .dirRow.selected:not(.bulkSelected) .dirFavoriteHeart {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.folderRow.folderSquareCard.selected:not(.bulkSelected)
+  .dirSquareCard,
+:root[data-retro="on"]
+  #app.preview-pane-active
+  .dirRow.fileRow.fileThumbCardRow.selected:not(.bulkSelected)
+  .dirFileThumbCard {
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+:root[data-retro="on"] .dropdownMenu {
+  padding: 3px;
+  gap: 0;
+  background: var(--retro-face);
+}
+
+:root[data-retro="on"] .dropdownMenu > button,
+:root[data-retro="on"] .dropdownMenu .scoreRow,
+:root[data-retro="on"] .dropdownMenu .menuTwoColRow {
+  position: relative;
+  background: var(--retro-face-soft);
+  border: 1px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .dropdownMenu > button {
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+:root[data-retro="on"] .dropdownMenu button {
+  background: var(--retro-face-soft);
+  color: var(--retro-text);
+  border: 1px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+  border-radius: 0;
+}
+
+:root[data-retro="on"] .dropdownMenu button:hover:not(:disabled) {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black);
+}
+
+:root[data-retro="on"] .dropdownMenu button.destructiveAction {
+  color: #7a0000;
+}
+
+:root[data-retro="on"]
+  .dropdownMenu
+  button.destructiveAction:hover:not(:disabled) {
+  color: #7a0000;
+}
+
+:root[data-retro="on"] .dropdownMenu .scoreRow,
+:root[data-retro="on"] .dropdownMenu .menuTwoColRow {
+  padding: 3px;
+  gap: 3px;
+}
+
+:root[data-retro="on"] .dropdownMenu > * + * {
+  position: relative;
+  margin-top: 3px;
+}
+
+:root[data-retro="on"] .dropdownMenu > * + *::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  top: -3px;
+  height: 1px;
+  background: var(--retro-shadow-dark);
+  box-shadow: 0 1px 0 var(--retro-highlight);
+  pointer-events: none;
+}
+
+:root[data-retro="on"] .dropdownMenu .label {
+  display: block;
+  padding: 5px 7px;
+  background: var(--retro-face-soft);
+  color: var(--retro-text);
+  border: 1px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #menuHeader {
+  padding: 0;
+  gap: 0;
+  border-bottom: 0;
+  background: var(--retro-face);
+}
+
+:root[data-retro="on"] #menuTabs {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  background: var(--retro-face);
+  border-top: 2px solid var(--retro-highlight);
+  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #keybindsBody .keybindSubtabs {
+  background: var(--retro-face);
+  border-top: 2px solid var(--retro-highlight);
+  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #menuTabs .menuTabBtn {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 5px 12px 4px;
+  min-height: 28px;
+  top: 0;
+}
+
+:root[data-retro="on"] #keybindsBody .keybindSubtabBtn {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 5px 12px 4px;
+  min-height: 28px;
+  top: 0;
+}
+
+:root[data-retro="on"] #menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"]
+  #keybindsBody
+  .keybindSubtabBtn:hover:not(:disabled):not(.active) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] #menuTabs .menuTabBtn.active {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow: none;
+}
+
+:root[data-retro="on"] #keybindsBody .keybindSubtabBtn.active {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow: none;
+}
+
+:root[data-retro="on"] #menuTabs .menuTabBtn.active:hover:not(:disabled) {
+  background: var(--retro-field);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"]
+  #keybindsBody
+  .keybindSubtabBtn.active:hover:not(:disabled) {
+  background: var(--retro-field);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] #optionsFooter,
+:root[data-retro="on"] #keybindsFooter,
+:root[data-retro="on"] #calendarFooter {
+  border-top: 1px solid var(--retro-shadow);
+}
+
+:root[data-retro="on"] .tagEditInput,
+:root[data-retro="on"] input[type="file"],
+:root[data-retro="on"] #optionsBody select,
+:root[data-retro="on"] #keybindsBody select,
+:root[data-retro="on"] #optionsBody .optRight.optActions input[type="text"],
+:root[data-retro="on"] .dirSquareRenameInput,
+:root[data-retro="on"]
+  .folderCard.folderThumbCard.folderThumbCoverCard
+  .thumbOverlayMeta
+  .previewFolderRenameInput,
+:root[data-retro="on"]
+  .fileCard
+  .previewThumbOverlayMeta
+  .previewFileRenameInput,
+:root[data-retro="on"]
+  .folderCard.folderThumbCard.folderThumbCoverCard
+  .thumbOverlayMeta
+  .previewFolderTagInput {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] input[type="checkbox"] {
+  accent-color: var(--retro-select-bg);
+}
+
+:root[data-retro="on"] input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--retro-select-bg);
+}
+
+:root[data-retro="on"] input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 18px;
+  margin-top: -8px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+:root[data-retro="on"] input[type="range"]:active::-webkit-slider-thumb {
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 18px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+:root[data-retro="on"] .statusBar {
+  color: var(--retro-text);
+  border-top: 1px solid var(--retro-shadow);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+:root[data-retro="on"] .statsLedgerTableWrap {
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  border-radius: 0;
+}
+
+:root[data-retro="on"] .statsLedgerTable thead th,
+:root[data-retro="on"] .scoreHistoryDayHeader {
+  background: var(--retro-face-hover);
+}
+
+:root[data-retro="on"] .statsLedgerSortBtn {
+  background: transparent;
+  color: var(--retro-text);
+  box-shadow: none;
+  border: 0;
+}
+
+:root[data-retro="on"] .statsLedgerSortBtn:hover {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] .statsLedgerSortBtn.active:hover {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+}
+
+:root[data-retro="on"] #filename,
+:root[data-retro="on"] #statusMessage,
+:root[data-retro="on"] #mainStatusMessage {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
+:root[data-retro="on"] .dirMenuBtnFavorite {
+  background: var(--retro-face);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+:root[data-retro="on"] .dirMenuBtnScoreFavorite {
+  background: var(--retro-face);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] .dirMenuBtnFavoriteTint,
+:root[data-retro="on"] .dirMenuBtnScoreFavoriteTint {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  color: #fff;
+}
+
+:root[data-retro="on"] .dirMenuBtnScoreFavorite .dirMenuBtnScoreHeart,
+:root[data-retro="on"] .dirMenuBtnFavorite .dirFavoriteHeart,
+:root[data-retro="on"] .thumbOverlayMenuBtnFavorite .dirFavoriteHeart,
+:root[data-retro="on"] .dirMenuBtnFavorite .dirMenuFavoriteGlyph,
+:root[data-retro="on"] .thumbOverlayMenuBtnFavorite .dirMenuFavoriteGlyph {
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+:root[data-retro="on"] .gridFiles .previewThumbOverlayMeta,
+:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMeta,
+:root[data-retro="on"] .previewTagFolderCard .dirSquareOverlay,
+:root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlay,
+:root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlay {
+  padding: 6px 8px;
+  gap: 2px;
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border-top: 1px solid var(--retro-shadow-dark);
+  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .gridFiles .previewThumbOverlayMetaMenuOnly,
+:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
+:root[data-retro="on"] .previewTagFolderCard .dirSquareOverlayMenuOnly,
+:root[data-retro="on"] #directoriesList.gridModeList .dirSquareOverlayMenuOnly,
+:root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlayMenuOnly {
+  padding: 0;
+  background: none;
+  border-top: 0;
+  box-shadow: none;
+}
+
+:root[data-retro="on"] .gridFiles .previewThumbOverlayTopLine,
+:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayTopLine,
+:root[data-retro="on"] .previewTagFolderCard .dirSquareTop,
+:root[data-retro="on"] #directoriesList.gridModeList .dirSquareTop,
+:root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlayTop {
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+:root[data-retro="on"] .gridFiles .previewThumbOverlayBottomLine,
+:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayBottomLine,
+:root[data-retro="on"] .previewTagFolderCard .dirSquareBottom,
+:root[data-retro="on"] #directoriesList.gridModeList .dirSquareBottom,
+:root[data-retro="on"] #directoriesList.gridModeList .dirFileOverlayBottom {
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayRightMeta,
+:root[data-retro="on"] .previewTagFolderCard .dirSquareRightMeta,
+:root[data-retro="on"] #directoriesList.gridModeList .dirSquareRightMeta {
+  gap: 6px;
+  align-items: center;
+}
+
+:root[data-retro="on"] .gridFiles .previewThumbOverlayMeta .name,
+:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMeta .name {
+  font-size: var(--thumb-title-preview-font);
+  line-height: 1.1;
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+:root[data-retro="on"] .previewTagFolderCard .dirSquareName,
+:root[data-retro="on"] #directoriesList.gridModeList .dirSquareName {
+  font-size: var(--thumb-title-dir-square-font);
+  line-height: 1.1;
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+:root[data-retro="on"] .previewTagFolderCard .dirSquareName.dirSquareNameTag,
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirSquareName.dirSquareNameTag {
+  color: var(--dir-tag-title-color, #9b8ac7);
+}
+
+:root[data-retro="on"]
+  .previewTagFolderCard
+  .dirSquareName.dirSquareNameTagFavorite,
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirSquareName.dirSquareNameTagFavorite {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+:root[data-retro="on"]
+  .previewTagFolderCard
+  .dirSquareName.dirSquareNameTagAlbum,
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirSquareName.dirSquareNameTagAlbum {
+  color: var(--dir-tag-album-title-color, #ff7a6e);
+}
+
+:root[data-retro="on"] #directoriesList.gridModeList .dirFileNameText {
+  font-size: var(--thumb-title-dir-file-font);
+  line-height: 1.15;
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+:root[data-retro="on"] .gridFiles .previewThumbOverlayMini,
+:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMini,
+:root[data-retro="on"] .previewTagFolderCard .dirSquareMeta,
+:root[data-retro="on"] .previewTagFolderCard .dirSquareTypeIcon,
+:root[data-retro="on"] .previewTagFolderCard .dirTagKindBadge,
+:root[data-retro="on"] #directoriesList.gridModeList .dirSquareMeta,
+:root[data-retro="on"] #directoriesList.gridModeList .dirSquareTypeIcon,
+:root[data-retro="on"] #directoriesList.gridModeList .dirTagKindBadge,
+:root[data-retro="on"] #directoriesList.gridModeList .dirFileMetaLine,
+:root[data-retro="on"] #directoriesList.gridModeList .dirFileType,
+:root[data-retro="on"] #directoriesList.gridModeList .dirFileSize {
+  color: var(--retro-muted);
+  opacity: 1;
+  text-transform: none;
+}
+
+:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayScore,
+:root[data-retro="on"] .previewTagFolderCard .dirSquareScore,
+:root[data-retro="on"] #directoriesList.gridModeList .dirSquareScore {
+  color: var(--retro-text);
+  opacity: 1;
+}
+
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMeta
+  .dirStatusBadge,
+:root[data-retro="on"] .previewTagFolderCard .dirStatusBadges,
+:root[data-retro="on"] #directoriesList.gridModeList .dirStatusBadges,
+:root[data-retro="on"] #directoriesList.gridModeList .dirHiddenBadge {
+  color: var(--retro-text);
+  opacity: 1;
+}
+
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMeta
+  .dirFavoriteHeart,
+:root[data-retro="on"] .previewTagFolderCard .dirFavoriteHeart,
+:root[data-retro="on"] #directoriesList.gridModeList .dirFavoriteHeart {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+:root[data-retro="on"] .gridFiles .previewThumbOverlayMenuBtn,
+:root[data-retro="on"] .folderCard.folderThumbCard .thumbOverlayMenuBtn,
+:root[data-retro="on"] .previewTagFolderCard .dirSquareOverlay .dirMenuBtn,
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirSquareOverlay
+  .dirMenuBtn,
+:root[data-retro="on"] #directoriesList.gridModeList .dirFileMenu .dirMenuBtn {
+  min-width: 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 16px;
+  background: var(--retro-face-soft);
+  color: var(--retro-text);
+  border: 1px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn:hover:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn:hover:not(:disabled),
+:root[data-retro="on"]
+  .previewTagFolderCard
+  .dirSquareOverlay
+  .dirMenuBtn:hover:not(:disabled),
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirSquareOverlay
+  .dirMenuBtn:hover:not(:disabled),
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirFileMenu
+  .dirMenuBtn:hover:not(:disabled) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn:active:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn:active:not(:disabled),
+:root[data-retro="on"]
+  .previewTagFolderCard
+  .dirSquareOverlay
+  .dirMenuBtn:active:not(:disabled),
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirSquareOverlay
+  .dirMenuBtn:active:not(:disabled),
+:root[data-retro="on"]
+  #directoriesList.gridModeList
+  .dirFileMenu
+  .dirMenuBtn:active:not(:disabled) {
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint,
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint,
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint,
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: #fff;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+}
+
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint:hover:not(:disabled),
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:hover:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint:hover:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:hover:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: #fff;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+}
+
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint:active:not(:disabled),
+:root[data-retro="on"]
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:active:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint:active:not(:disabled),
+:root[data-retro="on"]
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:active:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: #fff;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+}
+
+:root[data-retro="on"]
+  .gridFolders
+  .previewTagFolderCard.previewSelected
+  .dirSquareCard,
+:root[data-retro="on"] .gridFiles .fileCard.previewSelected,
+:root[data-retro="on"]
+  .gridFolders
+  .folderCard.folderThumbCard.previewSelected {
+  border-color: var(--retro-select-bg);
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
+}
+
+:root[data-retro="on"]
+  .gridFolders
+  .previewTagFolderCard.bulkSelected
+  .dirSquareCard,
+:root[data-retro="on"] .gridFiles .fileCard.bulkSelected,
+:root[data-retro="on"] .gridFolders .folderCard.folderThumbCard.bulkSelected {
+  border-color: var(--retro-select-bg);
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
+}
+
+:root[data-retro="on"]
+  .gridFolders
+  .previewTagFolderCard.previewSelected.bulkSelected
+  .dirSquareCard,
+:root[data-retro="on"] .gridFiles .fileCard.previewSelected.bulkSelected,
+:root[data-retro="on"]
+  .gridFolders
+  .folderCard.folderThumbCard.previewSelected.bulkSelected {
+  border-color: var(--retro-select-bg);
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
+}
+
+:root[data-retro="on"] #menuOverlay .appToggleBtn {
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: none;
+  color: var(--retro-text);
+  box-shadow: none;
+}
+
+:root[data-retro="on"] #menuOverlay .appToggleBtn:hover {
+  color: var(--retro-text);
+  transform: none;
+  box-shadow: none;
+}
+
+:root[data-retro="on"] #menuOverlay .appToggleBtn:active {
+  transform: none;
+  box-shadow: none;
+}
+
+:root[data-retro="on"] #menuOverlay .appToggleTrack {
+  width: 28px;
+  height: 14px;
+  border-radius: 0;
+  border: 1px solid var(--retro-shadow-dark);
+  background: var(--retro-shadow);
+}
+
+:root[data-retro="on"] #menuOverlay .appToggleThumb {
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  background: var(--retro-highlight);
+}
+
+:root[data-retro="on"] #menuOverlay .appToggleBtn.isOn .appToggleTrack {
+  background: var(--retro-title-bg);
+  border-color: var(--retro-shadow-black);
+}
+
+:root[data-retro="on"] #menuOverlay .appToggleBtn.isOn .appToggleThumb {
+  transform: translateX(14px);
+  background: #ffffff;
+}
+
+:root[data-retro="on"] #optionsBody .optRight.optActions button.active {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-select-shadow-dark),
+    inset -1px -1px 0 var(--retro-select-shadow-light);
+}
+
+:root[data-retro="on"] .thumbCropEditorPanel {
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] .thumbCropEditorTitle {
+  background: var(--retro-title-bg);
+  color: var(--retro-title-text);
+  padding: 4px 6px;
+}
+
+:root[data-retro="on"] .thumbCropEditorSubtitle,
+:root[data-retro="on"] .thumbCropEditorHint,
+:root[data-retro="on"] .thumbCropEditorFrameControl,
+:root[data-retro="on"] .thumbCropEditorFrameLabel,
+:root[data-retro="on"] .thumbCropEditorFrameControl > span[data-crop-value="frame"] {
+  color: var(--retro-text);
+}
+
+:root[data-retro="on"] .thumbCropEditorPreviewWrap {
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .thumbCropEditorCropBox {
+  border-color: #fff;
+}
+
+:root[data-retro="on"] .thumbCropEditorResizeHandle {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  opacity: 0;
+}
+
+:root[data-retro="on"] .thumbCropEditorResizeHandle::after {
+  display: none;
+  content: none;
+}
+
+:root[data-retro="on"] .thumbCropEditorActions > button {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] .thumbCropEditorActions > button:active {
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-dark),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #app.no-side-panes {
+  box-shadow: none;
+}
+
+:root[data-retro="on"] #app.no-side-panes,
+:root[data-retro="on"] #app.sidebar-closed:not(.menu-pane-open) {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+:root[data-retro="on"] #app.no-side-panes #previewPane,
+:root[data-retro="on"] #app.sidebar-closed:not(.menu-pane-open) #previewPane {
+  padding: 0 !important;
+}
+
+:root[data-retro="on"] {
+  --preview-pane-thumb-title-bar-bg: var(--retro-face);
+  --preview-pane-thumb-title-bar-fg: var(--retro-text);
+}
+
+/* Retro mode: square, hard-edged thumbnails to match the rest of the retro chrome.
+   Defaults round these with soft radii and drop shadows; retro mode squares the
+   corners and swaps in the inset bevel border used everywhere else in this theme. */
+
+/* Small inline preview thumbnails in the list rows. */
+:root[data-retro="on"] .dirInlinePreview,
+:root[data-retro="on"] .dirRow.folderRow .dirInlinePreview,
+:root[data-retro="on"] .dirRow.fileRow.fileThumbCardRow .dirInlinePreview {
+  border-radius: 0;
+  border: 1px solid;
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+}
+
+/* Natural-aspect and justified card variants out-specify the base retro card rule,
+   so they keep their rounded corners unless squared here. */
+:root[data-retro="on"]
+  .gridFiles.previewNaturalAspectCards.fitInsideJustified
+  .fileCard,
+:root[data-retro="on"]
+  .gridFolders.fitInsideJustified
+  .folderCard.folderThumbCard.previewNaturalCard,
+:root[data-retro="on"]
+  .gridFiles.folderMediaPreviewGrid.previewSquareCards
+  .fileCard {
+  border-radius: 0 !important;
+}
+
+/* Preview-pane media grid cards: drop the soft modern drop-shadow and give the
+   thumbnail a hard beveled retro frame. */
+:root[data-retro="on"]
+  #previewPane
+  .gridFiles.folderMediaPreviewGrid.previewSquareCards
+  .fileCard,
+:root[data-retro="on"]
+  #previewPane
+  .gridFolders.folderMediaPreviewGrid
+  .folderCard.folderThumbCard,
+:root[data-retro="on"]
+  #previewPane
+  .gridFolders.folderMediaPreviewGrid
+  .previewTagFolderCard {
+  border-radius: 0 !important;
+  border: 2px solid !important;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight) !important;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft) !important;
+  background: var(--retro-face) !important;
+}
+
+/* Square the caption/overlay strips that ride on the bottom of those cards. */
+:root[data-retro="on"]
+  #previewPane
+  .gridFiles.folderMediaPreviewGrid.previewSquareCards
+  .previewThumbOverlayMeta,
+:root[data-retro="on"]
+  #previewPane
+  .gridFolders.folderMediaPreviewGrid
+  .folderCard.folderThumbCard
+  .thumbOverlayMeta,
+:root[data-retro="on"]
+  #previewPane
+  .gridFolders.folderMediaPreviewGrid
+  .previewTagFolderCard
+  .dirSquareOverlay {
+  border-radius: 0 !important;
+}
+
+/* ------------------------------------------------------------------
+   Retro mode: settings / controls / stats panes.
+   The default styling rounds these panes into soft plates with flat,
+   borderless controls. Retro mode squares everything and gives the
+   buttons and panels the same raised/sunken bevels used elsewhere.
+   ------------------------------------------------------------------ */
+
+/* Settings + Controls buttons -> raised, square retro buttons. */
+:root[data-retro="on"] #optionsBody .optRight.optActions button,
+:root[data-retro="on"] #optionsBody .optStepBtn,
+:root[data-retro="on"] #optionsBody .optSelectBtn,
+:root[data-retro="on"] #keybindsBody .optSelectBtn,
+:root[data-retro="on"] #optionsBody button.filterPresetName,
+:root[data-retro="on"] #optionsBody .filterPresetAddBtn,
+:root[data-retro="on"] #optionsBody .filterPresetActions button {
+  border-radius: 0;
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  background: var(--retro-face);
+  color: var(--retro-text);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #optionsBody .optRight.optActions button:hover:not(:disabled),
+:root[data-retro="on"] #optionsBody .optStepBtn:hover:not(:disabled),
+:root[data-retro="on"] #optionsBody .optSelectBtn:hover:not(:disabled),
+:root[data-retro="on"] #keybindsBody .optSelectBtn:hover:not(:disabled),
+:root[data-retro="on"] #optionsBody button.filterPresetName:hover:not(:disabled),
+:root[data-retro="on"] #optionsBody .filterPresetAddBtn:hover:not(:disabled),
+:root[data-retro="on"] #optionsBody .filterPresetActions button:hover:not(:disabled) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+  transform: none;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+:root[data-retro="on"] #optionsBody .optRight.optActions button:active:not(:disabled),
+:root[data-retro="on"] #optionsBody .optStepBtn:active:not(:disabled),
+:root[data-retro="on"] #optionsBody .optSelectBtn:active:not(:disabled),
+:root[data-retro="on"] #keybindsBody .optSelectBtn:active:not(:disabled),
+:root[data-retro="on"] #optionsBody button.filterPresetName:active:not(:disabled),
+:root[data-retro="on"] #optionsBody .filterPresetAddBtn:active:not(:disabled),
+:root[data-retro="on"] #optionsBody .filterPresetActions button:active:not(:disabled) {
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+/* Active selected buttons + the stepper readout get the sunken pressed look. */
+:root[data-retro="on"] #optionsBody .optSelectBtn.active,
+:root[data-retro="on"] #keybindsBody .optSelectBtn.active {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-select-shadow-dark),
+    inset -1px -1px 0 var(--retro-select-shadow-light);
+}
+
+:root[data-retro="on"] #optionsBody .optStepper .optRangeValue {
+  border-radius: 0;
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  background: var(--retro-field);
+  color: var(--retro-text);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+/* Section containers the Settings, Controls and Stats tabs are split into
+   -> square, raised group-box panels. */
+:root[data-retro="on"] #optionsBody .settingsSection,
+:root[data-retro="on"] #keybindsBody .keybindSectionGroup,
+:root[data-retro="on"] #calendarBody .scoreHistoryMonth {
+  border-radius: 0;
+  border: 2px solid !important;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight) !important;
+  background: var(--retro-face);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+/* Rows inside those sections stay flat but square. */
+:root[data-retro="on"] #optionsBody .optRow,
+:root[data-retro="on"] #keybindsBody .optRow,
+:root[data-retro="on"] #optionsBody .filterPresetRow {
+  border-radius: 0;
+}
+
+/* ---- Stats page: square everything that the default rounds. ---- */
+:root[data-retro="on"] #calendarBody .scoreHistoryEmpty,
+:root[data-retro="on"] #calendarBody .calendarRankingsEmpty {
+  border-radius: 0;
+}
+
+/* Calendar day cells become small sunken wells. */
+:root[data-retro="on"] .scoreHistoryCalendarDay {
+  border-radius: 0;
+  border: 1px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+}
+:root[data-retro="on"] .scoreHistoryCalendarDay.isBlank {
+  border-color: transparent;
+}
+
+/* Score bars become square sunken troughs with a flat fill. */
+:root[data-retro="on"] .statsLedgerScoreBar,
+:root[data-retro="on"] #calendarBody .statsLedgerScoreBar {
+  border-radius: 0;
+  border: 1px solid var(--retro-shadow-dark) !important;
+  box-shadow: inset 1px 1px 0 var(--retro-shadow-black);
+}
+:root[data-retro="on"] .statsLedgerScoreFill {
+  border-radius: 0;
+}
+
+/* Ledger table cells lose their rounded end caps. */
+:root[data-retro="on"] #calendarBody .statsLedgerTable tbody th:first-child,
+:root[data-retro="on"] #calendarBody .statsLedgerTable tbody td:last-child {
+  border-radius: 0;
+}
+
+/* Round indicators (today marker, journal dot, day menu) become square. */
+:root[data-retro="on"] .scoreHistoryTodayIcon,
+:root[data-retro="on"] .scoreHistoryCalendarDay.hasJournal::after,
+:root[data-retro="on"] .scoreHistoryDayMenu::before,
+:root[data-retro="on"] .scoreHistoryDayMenuLine {
+  border-radius: 0;
 }
 
 </style>
@@ -7781,6 +9546,7 @@ function defaultOptions() {
     filmCornerOverlayIntensity: null,
     colorScheme: "retro",
     lightMode: false,
+    retroMode: false,
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     directoriesPaneOpen: false,
@@ -7983,6 +9749,7 @@ function normalizeOptions(o) {
     : "cropped";
   const colorScheme = "retro";
   const lightMode = typeof src.lightMode === "boolean" ? src.lightMode : false;
+  const retroMode = typeof src.retroMode === "boolean" ? src.retroMode : false;
   const videoAudioRaw = String(
     src.videoAudio ?? src.videoGallery ?? src.videoPreview ?? "",
   )
@@ -8192,6 +9959,7 @@ function normalizeOptions(o) {
         : d.slideshowDefault,
     colorScheme,
     lightMode,
+    retroMode,
     menuPaneWidthPx: (function () {
       const v = parseFloat(src.menuPaneWidthPx);
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
@@ -8754,6 +10522,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
       "lightMode",
+      "retroMode",
       "activeAppearancePresetId",
       "animatedMediaFilters",
       "gifsIgnoreProcessing",
@@ -13228,6 +14997,8 @@ function applyColorSchemeFromOptions() {
   if (!root) return;
   const lightMode = !!(opt && opt.lightMode);
   root.setAttribute("data-theme", lightMode ? "retro90s" : "retro90s-dark");
+  const retroMode = !!(opt && opt.retroMode);
+  root.setAttribute("data-retro", retroMode ? "on" : "off");
 }
 
 function applyTagFolderTitleColorsFromOptions() {
@@ -18875,6 +20646,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
+${makeCheckRow("Retro mode", "Give the interface a retro 90s desktop look with beveled buttons and panels.", "opt_retroMode", !!opt.retroMode)}
 ${makeCheckRow("Video controls", "Show or hide the control pane below the preview.", "opt_videoControlsVisible", !opt.hideVideoControls)}
 ${makeSelectRow("Filter preset", "Choose a saved filter preset to apply it immediately. Edited sliders stay attached to the selected preset until you save or switch.", "opt_generalAppearancePreset", activeAppearancePresetId || "", appearancePresetSelectOptions)}
 ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
@@ -19554,6 +21326,9 @@ ${makeActionRow(
   bindCheck("opt_lightMode", "lightMode", () => {
     applyColorSchemeFromOptions();
   });
+  bindCheck("opt_retroMode", "retroMode", () => {
+    applyColorSchemeFromOptions();
+  });
   bindMenuToggleButton("opt_videoControlsVisible", (enabled) => {
     const nextHidden = !enabled;
     WS.meta.options = normalizeOptions(
@@ -20151,6 +21926,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "folderPreviewMediaThumbnails",
     "hideVideoControls",
     "lightMode",
+    "retroMode",
     "animatedMediaFilters",
     "activeAppearancePresetId",
   ]),
@@ -20171,6 +21947,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
       "lightMode",
+      "retroMode",
       "activeAppearancePresetId",
       "animatedMediaFilters",
       "gifsIgnoreProcessing",
@@ -26039,15 +27816,185 @@ async function warmPreviewFileObjectsForDir(dirNode, token) {
     if (!rec || rec.file) return;
     await ensureFileObjectForRecord(rec);
   });
+  if (token !== PREVIEW_FILE_OBJECT_WARM_TOKEN || !WS.preview) return;
+  const previewDirPath = String(WS.preview.dirNode?.path || "");
+  const warmedDirPath = String(dirNode?.path || "");
+  const previewUsesWarmedDir =
+    WS.preview.dirNode === dirNode ||
+    (!!previewDirPath && previewDirPath === warmedDirPath) ||
+    (WS.preview.dirNode === WS.root && dirNode === WS.root);
   if (
-    token === PREVIEW_FILE_OBJECT_WARM_TOKEN &&
-    WS.preview &&
     WS.preview.kind === "file" &&
     WS.preview.fileId &&
-    (WS.preview.dirNode === dirNode || WS.nav.dirNode === dirNode)
+    previewUsesWarmedDir
   ) {
     renderPreviewPane(false, true);
+  } else if (WS.preview.kind === "dir" && previewUsesWarmedDir) {
+    renderPreviewPane(false, true);
   }
+}
+
+const SELECTED_DIR_PREVIEW_REFRESH = {
+  token: 0,
+  raf: 0,
+  timer: 0,
+  materializeTimer: 0,
+};
+
+function selectedDirectoryPreviewStillCurrent(dirNode) {
+  if (!dirNode || !WS || !WS.preview || WS.preview.kind !== "dir") return false;
+  const current = WS.preview.dirNode || null;
+  if (current === dirNode) return true;
+  const currentPath = String(current?.path || "");
+  const targetPath = String(dirNode.path || "");
+  if (current === WS.root && dirNode === WS.root) return true;
+  return !!currentPath && !!targetPath && currentPath === targetPath;
+}
+
+function collectSelectedDirectoryPreviewFileIds(dirNode, limit = 160) {
+  const node = canonicalDirNodeForActiveState(dirNode) || dirNode;
+  if (!node || !WS || !WS.fileById) return [];
+  let ids = [];
+  try {
+    const entries = getPreviewFolderAndFileEntries(node, {
+      includeFiles: true,
+      useCurrentViewEntries: false,
+    });
+    ids = Array.isArray(entries.fileIds) ? entries.fileIds.slice() : [];
+  } catch {
+    ids = [];
+  }
+  if (!ids.length && Array.isArray(node.childrenFiles)) {
+    ids = node.childrenFiles.slice();
+  }
+  const out = [];
+  const seen = new Set();
+  const max = Math.max(1, Number(limit) || 160);
+  for (let i = 0; i < ids.length && out.length < max; i++) {
+    const id = String(ids[i] || "");
+    if (!id || seen.has(id)) continue;
+    const rec = WS.fileById.get(id);
+    if (!rec || (rec.type !== "image" && rec.type !== "video")) continue;
+    if (!passesFilter(rec)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function selectedDirectoryPreviewHasMissingMedia(dirNode) {
+  const ids = collectSelectedDirectoryPreviewFileIds(dirNode, 96);
+  for (let i = 0; i < ids.length; i++) {
+    const rec = WS.fileById.get(String(ids[i] || ""));
+    if (!rec) continue;
+    if (!rec.url && !rec.file && WS.meta && WS.meta.fsRootHandle) return true;
+    if (rec.type === "image" && !ensureMediaUrl(rec) && WS.meta && WS.meta.fsRootHandle) return true;
+    if (rec.type === "video" && folderPreviewMediaThumbnailsEnabled() && !ensureMediaUrl(rec) && WS.meta && WS.meta.fsRootHandle) return true;
+  }
+  return false;
+}
+
+async function materializeSelectedDirectoryPreviewMedia(dirNode, token) {
+  const node = canonicalDirNodeForActiveState(dirNode) || dirNode;
+  if (!node || !WS || !WS.meta || !WS.meta.fsRootHandle) return false;
+  if (!selectedDirectoryPreviewStillCurrent(node)) return false;
+  const ids = collectSelectedDirectoryPreviewFileIds(node, 160);
+  if (!ids.length) return false;
+  let touched = 0;
+  await runWithConcurrency(ids, 6, async (id) => {
+    if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return;
+    const rec = WS.fileById.get(String(id || ""));
+    if (!rec || (rec.type !== "image" && rec.type !== "video")) return;
+    if (!rec.file && !rec.url) await ensureFileObjectForRecord(rec);
+    if (rec.file || rec.url) {
+      ensureMediaUrl(rec);
+      touched++;
+    }
+  });
+  return touched > 0;
+}
+
+function rerenderSelectedDirectoryPreviewIfCurrent(dirNode, keepScroll = true) {
+  const node = canonicalDirNodeForActiveState(dirNode) || dirNode;
+  if (!selectedDirectoryPreviewStillCurrent(node)) return false;
+  renderPreviewPane(false, !!keepScroll);
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  scheduleThumbnailDemandRefresh();
+  return true;
+}
+
+function scheduleSelectedDirectoryPreviewRefresh(dirNode, opts = null) {
+  const node = canonicalDirNodeForActiveState(dirNode) || dirNode;
+  if (!node) return;
+  const options = opts && typeof opts === "object" ? opts : {};
+  SELECTED_DIR_PREVIEW_REFRESH.token++;
+  const token = SELECTED_DIR_PREVIEW_REFRESH.token;
+  const keepScroll = options.keepScroll !== false;
+
+  if (SELECTED_DIR_PREVIEW_REFRESH.raf) {
+    try { cancelAnimationFrame(SELECTED_DIR_PREVIEW_REFRESH.raf); } catch {}
+    SELECTED_DIR_PREVIEW_REFRESH.raf = 0;
+  }
+  if (SELECTED_DIR_PREVIEW_REFRESH.timer) {
+    try { clearTimeout(SELECTED_DIR_PREVIEW_REFRESH.timer); } catch {}
+    SELECTED_DIR_PREVIEW_REFRESH.timer = 0;
+  }
+  if (SELECTED_DIR_PREVIEW_REFRESH.materializeTimer) {
+    try { clearTimeout(SELECTED_DIR_PREVIEW_REFRESH.materializeTimer); } catch {}
+    SELECTED_DIR_PREVIEW_REFRESH.materializeTimer = 0;
+  }
+
+  const guardedRender = () => {
+    if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return false;
+    return rerenderSelectedDirectoryPreviewIfCurrent(node, keepScroll);
+  };
+
+  SELECTED_DIR_PREVIEW_REFRESH.raf = requestAnimationFrame(() => {
+    SELECTED_DIR_PREVIEW_REFRESH.raf = 0;
+    guardedRender();
+  });
+
+  SELECTED_DIR_PREVIEW_REFRESH.timer = setTimeout(() => {
+    SELECTED_DIR_PREVIEW_REFRESH.timer = 0;
+    guardedRender();
+  }, Math.max(30, Number(options.delayMs) || 70));
+
+  SELECTED_DIR_PREVIEW_REFRESH.materializeTimer = setTimeout(() => {
+    SELECTED_DIR_PREVIEW_REFRESH.materializeTimer = 0;
+    Promise.resolve()
+      .then(async () => {
+        if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return false;
+        if (!selectedDirectoryPreviewStillCurrent(node)) return false;
+        if (
+          (WS.catalog && WS.catalog.enabled) ||
+          node.loadState !== "loaded"
+        ) {
+          try {
+            await ensureDirectoryHydratedForOpen(node, {
+              label: "Loading preview...",
+              showOverlay: false,
+            });
+          } catch {}
+        }
+        if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return false;
+        if (!selectedDirectoryPreviewStillCurrent(node)) return false;
+        if (selectedDirectoryPreviewHasMissingMedia(node)) {
+          return await materializeSelectedDirectoryPreviewMedia(node, token);
+        }
+        return false;
+      })
+      .then((changed) => {
+        if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return;
+        if (!selectedDirectoryPreviewStillCurrent(node)) return;
+        if (changed) guardedRender();
+        setTimeout(() => {
+          if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return;
+          guardedRender();
+        }, 120);
+      })
+      .catch(() => {});
+  }, 15);
 }
 
 async function ensureDirectoryLoaded(dirNode, opts = null) {
@@ -27994,6 +29941,12 @@ function schedulePreviewFolderGridRepairAfterMutation(dirNode, attempts = 2) {
       }, 80);
     }
   });
+}
+
+function schedulePreviewFolderGridRepairForCurrentTarget(attempts = 2) {
+  if (!WS || !WS.preview || WS.preview.kind !== "dir" || !WS.preview.dirNode)
+    return;
+  schedulePreviewFolderGridRepairAfterMutation(WS.preview.dirNode, attempts);
 }
 
 function forceRefreshPreviewFolderGridAfterFileRenames(dirNode) {
@@ -34202,7 +36155,13 @@ function syncPreviewToSelection(opts = null) {
   ) {
     return false;
   }
-  applyPreviewState(previewStateForEntry(entry));
+  const nextPreviewState = previewStateForEntry(entry);
+  applyPreviewState(nextPreviewState);
+  if (nextPreviewState && nextPreviewState.kind === "dir" && nextPreviewState.dirNode) {
+    scheduleSelectedDirectoryPreviewRefresh(nextPreviewState.dirNode, {
+      reason: "selection-sync",
+    });
+  }
   if (WS.view) WS.view.lastPreviewSyncedEntryKey = selectedKey || "";
   return true;
 }
@@ -35104,13 +37063,25 @@ function openPreviewFileFromPreviewCard(rec) {
 }
 
 function renderSelectedFilePreviewBeforeDirectoryPreparation() {
-  if (!WS.preview || WS.preview.kind !== "file" || !WS.preview.fileId) return;
+  if (!WS.preview || !WS.preview.kind) return;
   // Folder-entry navigation should never display the previous preview media while
-  // the newly selected file is being resolved. The normal selection anti-flicker
+  // the newly selected target is being resolved. The normal selection anti-flicker
   // path intentionally holds the old frame, but that looks like a stale flash
   // when opening a media folder, especially with thumbnail loading disabled.
-  PREVIEW_SUPPRESS_STALE_FRAME_ONCE = true;
-  renderPreviewPane(false, false);
+  if (WS.preview.kind === "file" && WS.preview.fileId) {
+    PREVIEW_SUPPRESS_STALE_FRAME_ONCE = true;
+    renderPreviewPane(false, false);
+    return;
+  }
+  // The same pre-render is needed when the selected first item is itself a
+  // media folder. Otherwise thumbnail preparation can leave the preview pane
+  // with no visible grid until another selection change forces a render.
+  if (WS.preview.kind === "dir" && WS.preview.dirNode) {
+    resetPreviewGridRenderRecovery();
+    if (previewBodyEl) previewBodyEl.innerHTML = "";
+    renderPreviewPane(false, false);
+    schedulePreviewFolderGridRepairForCurrentTarget(3);
+  }
 }
 
 function enterSelectedDirectory() {
@@ -35259,10 +37230,21 @@ function enterSelectedDirectory() {
   WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
   syncPreviewToSelection({ force: true });
   renderSelectedFilePreviewBeforeDirectoryPreparation();
+  if (WS.preview.kind === "dir" && WS.preview.dirNode) {
+    scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
+      reason: "enter-selected-folder",
+    });
+  }
   maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
   finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(entry.node, {
     animatePreview: true,
     recordHistory: true,
+  }).then(() => {
+    if (WS.preview.kind === "dir" && WS.preview.dirNode) {
+      scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
+        reason: "enter-selected-folder-finalize",
+      });
+    }
   }).catch(() => {});
 }
 
@@ -36677,6 +38659,10 @@ function applyPreviewState(state) {
     });
     if (nextKind === "file" && nextFileId) {
       schedulePreviewFileObjectsWarm(WS.preview.dirNode || WS.nav.dirNode, 0);
+    } else if (nextKind === "dir" && WS.preview.dirNode) {
+      scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
+        reason: "preview-state-change",
+      });
     }
     schedulePreviewRenderForStateChange(nextKind, nextFileId);
   }
@@ -37428,6 +39414,7 @@ async function finalizeDirectoryNavigationRender(opts = null) {
     syncButtons();
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
+    schedulePreviewFolderGridRepairForCurrentTarget(2);
     if (shouldRecordHistory) recordDirHistory();
     if (schedulePreparedWarm) scheduleNearbyDirectoryRamWarm(snapshot, 160);
     return true;
@@ -37456,6 +39443,7 @@ async function finalizeDirectoryNavigationRender(opts = null) {
     syncButtons();
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
+    schedulePreviewFolderGridRepairForCurrentTarget(2);
     if (shouldRecordHistory) recordDirHistory();
     if (deferDirectoriesRender) {
       requestAnimationFrame(() => {
@@ -37468,6 +39456,7 @@ async function finalizeDirectoryNavigationRender(opts = null) {
           syncButtons();
           kickVideoThumbsForPreview();
           kickImageThumbsForPreview();
+          schedulePreviewFolderGridRepairForCurrentTarget(2);
         } finally {
           if (showBusyBeforeRender && token === NAVIGATION_RENDER_TOKEN)
             hideBusyOverlay();
@@ -44669,6 +46658,7 @@ async function navigateToDirectory(node) {
   if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
   else applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
   resetPreviewPaneForEnteredTarget();
+  renderSelectedFilePreviewBeforeDirectoryPreparation();
   WS.view.previewFolderBridgeReturnState = previewFolderReturnState;
   setActivePane(keepPreviewPaneActive ? "preview" : "directories");
   const useWindowedBridgePrepare =
@@ -44684,6 +46674,11 @@ async function navigateToDirectory(node) {
     showBusyBeforeRender: useWindowedBridgePrepare,
     busyLabel: "Opening preview...",
   });
+  if (WS.preview.kind === "dir" && WS.preview.dirNode) {
+    scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
+      reason: "preview-folder-card-open-finalize",
+    });
+  }
 }
 
 function navigateFromPreviewFolderCard(node) {
@@ -44820,6 +46815,7 @@ async function openPreviewTagFolderEntry(entry) {
   if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
   else applyPreviewState(previewStateForEntry(entry));
   resetPreviewPaneForEnteredTarget();
+  renderSelectedFilePreviewBeforeDirectoryPreparation();
   WS.view.previewFolderBridgeReturnState = previewFolderReturnState;
   setActivePane(keepPreviewPaneActive ? "preview" : "directories");
   const useWindowedBridgePrepare =
@@ -44835,6 +46831,11 @@ async function openPreviewTagFolderEntry(entry) {
     busyLabel: "Opening preview...",
   });
   if (rendered) scheduleTagFolderInitialSelectionPreviewRender();
+  if (WS.preview.kind === "dir" && WS.preview.dirNode) {
+    scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
+      reason: "preview-tag-card-open-finalize",
+    });
+  }
 }
 
 function getPreviewTargetDir() {
@@ -48316,6 +50317,7 @@ function updateVirtualPreviewFilesGrid(state, force = false) {
         : null,
       {
         passiveVideoThumbs: !!state.passiveVideoThumbs,
+        folderMediaPreviewGrid: !!state.folderMediaPreviewGrid,
         renderToken: state.renderToken,
       },
     );
@@ -48493,6 +50495,7 @@ function renderFilesGrid(
           : null,
         {
           passiveVideoThumbs,
+          folderMediaPreviewGrid,
           renderToken,
         },
       );
@@ -48904,7 +50907,7 @@ function makePreviewFileCard(
     if (rec.type === "video") {
       const video = document.createElement("video");
       video.className = "thumb";
-      video.preload = "metadata";
+      video.preload = options.folderMediaPreviewGrid ? "auto" : "metadata";
       video.muted = true;
       video.playsInline = true;
       video.controls = false;
@@ -48944,8 +50947,11 @@ function makePreviewFileCard(
     } else {
       const img = document.createElement("img");
       img.className = "thumb";
-      img.loading = "lazy";
-      img.decoding = "async";
+      img.loading = options.folderMediaPreviewGrid ? "eager" : "lazy";
+      img.decoding = options.folderMediaPreviewGrid ? "sync" : "async";
+      if (options.folderMediaPreviewGrid) {
+        try { img.fetchPriority = "high"; } catch {}
+      }
       img.draggable = false;
       img.alt =
         prefixDisplayLabelWithPosition(
@@ -53446,9 +55452,12 @@ function ensureThumbUrl(rec) {
   return "";
 }
 function ensureNavigationThumbUrl(rec) { return ensureThumbUrl(rec); }
-function getPassivePreviewSrcForRecord(rec) {
-  if (!folderPreviewMediaThumbnailsEnabled()) return "";
+function getPassivePreviewSrcForRecord(rec, opts = null) {
+  const allowImageFallback = !!(opts && opts.allowImageMediaFallback);
+  const thumbsEnabled = folderPreviewMediaThumbnailsEnabled();
+  if (!thumbsEnabled && !allowImageFallback) return "";
   if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
+  if (!thumbsEnabled && rec.type === "video") return "";
   return ensureMediaUrl(rec) || "";
 }
 function getVideoPosterForRecord() { return BLACK_POSTER_URL; }
