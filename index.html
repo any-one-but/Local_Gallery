@@ -16365,6 +16365,18 @@ const KEYBIND_ACTIONS = [
     section: "navigation",
   },
   {
+    id: "selectLeft",
+    label: "Left selection",
+    hint: "Move selection left in the preview grid, or switch to the file pane.",
+    section: "navigation",
+  },
+  {
+    id: "selectRight",
+    label: "Right selection",
+    hint: "Move selection right in the preview grid.",
+    section: "navigation",
+  },
+  {
     id: "enterDir",
     label: "Open selection",
     hint: "Open the selected item.",
@@ -16749,8 +16761,10 @@ function isKeyReservedForLockedAction(key, excludeActionId = "") {
 const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   selectUp: "w",
   selectDown: "s",
-  leaveDir: "a",
-  enterDir: "d",
+  selectLeft: "a",
+  selectRight: "d",
+  leaveDir: "q",
+  enterDir: "e",
   prevFolder: "Cmd+w",
   nextFolder: "Cmd+s",
   toggleDirectoriesPane: "Tab",
@@ -16894,8 +16908,12 @@ function normalizeKeybinds(log, presets = null) {
     }
   }
   // v8: Do not migrate saved Quick navigation bindings onto File Pane View.
-  migrateIfKeyMatches("leaveDir", "q", "a");
-  migrateIfKeyMatches("enterDir", "e", "d");
+  // selectLeft/selectRight restored (v1.6.0 layout); leaveDir/enterDir
+  // moved back to q/e — undo the earlier migration that sent them to a/d.
+  migrateIfKeyMatches("leaveDir", "a", "q");
+  migrateIfKeyMatches("enterDir", "d", "e");
+  migrateIfKeyMatches("selectLeft", "", "a");
+  migrateIfKeyMatches("selectRight", "", "d");
   migrateIfKeyMatches("randomFirstFileJump", "x", "r");
   migrateIfKeyMatches("cycleFilter", "Command+f", "f");
   migrateIfKeyMatches("cycleFilter", "Command+x", "f");
@@ -32586,7 +32604,7 @@ function getChildDirsForNodeBase(dirNode) {
 }
 
 function showRootViewEnabled() {
-  return false;
+  return true;
 }
 
 function includeHiddenItemsInStatsEnabled() {
@@ -36531,7 +36549,7 @@ function clearPreviewSelectionState(contextKey = null) {
 }
 
 function previewThumbnailSelectionEnabled() {
-  return false;
+  return true;
 }
 
 function applyPendingPreviewSelectionForCurrentTarget() {
@@ -37434,6 +37452,10 @@ function enterSelectedDirectory() {
   clearBulkTagPlaceholder();
   WS.view.previewFolderBridgeReturnState = null;
 
+  // When called from the grid, keep selection active in the preview pane.
+  const enteringFromGrid =
+    !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
+
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
   const quickNavigationRestoreState =
     captureQuickNavigationDirectoryEnterRestoreState(entry);
@@ -37523,6 +37545,7 @@ function enterSelectedDirectory() {
     finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(entry.node, {
       animatePreview: true,
       recordHistory: true,
+      activatePreviewSelection: enteringFromGrid && previewThumbnailSelectionEnabled(),
     }).catch(() => {});
     return;
   }
@@ -37542,6 +37565,7 @@ function enterSelectedDirectory() {
     finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(entry.node, {
       animatePreview: true,
       recordHistory: true,
+      activatePreviewSelection: enteringFromGrid && previewThumbnailSelectionEnabled(),
     }).catch(() => {});
     return;
   }
@@ -37561,6 +37585,7 @@ function enterSelectedDirectory() {
     finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(entry.node, {
       animatePreview: true,
       recordHistory: true,
+      activatePreviewSelection: enteringFromGrid && previewThumbnailSelectionEnabled(),
     }).catch(() => {});
     return;
   }
@@ -37584,6 +37609,7 @@ function enterSelectedDirectory() {
   finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(entry.node, {
     animatePreview: true,
     recordHistory: true,
+    activatePreviewSelection: enteringFromGrid && previewThumbnailSelectionEnabled(),
   }).then(() => {
     if (WS.preview.kind === "dir" && WS.preview.dirNode) {
       scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
@@ -46928,6 +46954,44 @@ function randomFileJumpFromDirectories() {
        - file preview shows large in-pane preview (video autoplay)
        ========================================================= */
 
+function dirNodeIsMediaOnlyForQuickNavigation(node) {
+  if (!node || isStorageStubDirNode(node)) return false;
+  const childDirs = getChildDirsForNode(node);
+  if (Array.isArray(childDirs) && childDirs.length) return false;
+  const tagEntries = getTagFolderEntriesForDir(node, {
+    includePlaceholder: false,
+  });
+  if (Array.isArray(tagEntries) && tagEntries.length) return false;
+  const fileIds = getOrderedFileIdsForDir(node);
+  return Array.isArray(fileIds) && fileIds.length > 0;
+}
+
+function enterMediaFolderWithQuickNavigation(node) {
+  // Mirrors enterSelectedDirectory's media-folder path, but for a folder opened
+  // from the preview grid: descend into the folder, select the first file, and
+  // (if the file pane is open) auto-close the panes for instant fullscreen.
+  const restoreState = captureQuickNavigationDirectoryEnterRestoreState({
+    kind: "dir",
+    node,
+  });
+  WS.view.previewFolderBridgeReturnState = null;
+  WS.nav.dirNode = node;
+  WS.view.aboveRootView = false;
+  syncBulkSelectionForCurrentDir();
+  syncFavoritesUi();
+  syncHiddenUi();
+  syncTagUiForCurrentDir();
+  rebuildDirectoriesEntries();
+  WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
+  syncPreviewToSelection({ force: true });
+  renderSelectedFilePreviewBeforeDirectoryPreparation();
+  maybeClosePanesForQuickNavigationDirectoryEnter(restoreState);
+  finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(node, {
+    animatePreview: true,
+    recordHistory: true,
+  }).catch(() => {});
+}
+
 async function navigateToDirectory(node) {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
@@ -46943,6 +47007,18 @@ async function navigateToDirectory(node) {
       return;
     }
   }
+  // Quick navigation: opening a media-only folder from the grid dives straight
+  // in (first file selected, panes auto-closed = instant fullscreen), matching
+  // how opening a media folder from the file pane behaves.
+  if (
+    quickNavigationEnabled() &&
+    node !== WS.root &&
+    !node._skipTagFilters &&
+    dirNodeIsMediaOnlyForQuickNavigation(node)
+  ) {
+    enterMediaFolderWithQuickNavigation(node);
+    return;
+  }
   const previewBridgeOpen = !!(
     String(WS.view?.activePane || "") === "preview" &&
     getPreviewTargetDir()?._skipTagFilters
@@ -46951,7 +47027,12 @@ async function navigateToDirectory(node) {
     showBusyOverlay("Opening preview...");
     await waitForNextPaint();
   }
-  const keepPreviewPaneActive = !directoriesPaneOpenEnabled();
+  // Stay in the preview pane if it was already active (grid-driven navigation)
+  // or if the file pane is closed. This lets the grid selection persist and
+  // activates selection on the first item in the new folder's grid.
+  const previewWasActive =
+    !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
+  const keepPreviewPaneActive = previewWasActive;
   const previewFolderReturnState = captureViewerCloseRestoreState({
     activePane: keepPreviewPaneActive ? "preview" : "directories",
     pendingPreviewSelectionKey: node.path ? `dir:${String(node.path || "")}` : "",
@@ -49290,9 +49371,12 @@ function renderSelectedFolderMediaPreview(
     dirNode = canonicalDirNode;
     if (WS.preview.kind === "dir") WS.preview.dirNode = canonicalDirNode;
   }
+  // Above-root view shows the root folder's real subfolders (folders only),
+  // not the synthetic single [root] file-pane entry.
+  const showRootFoldersOnly = WS.view.aboveRootView && dirNode === WS.root;
   const previewEntries = getPreviewFolderAndFileEntries(dirNode, {
-    includeFiles: true,
-    useCurrentViewEntries: true,
+    includeFiles: !showRootFoldersOnly,
+    useCurrentViewEntries: !showRootFoldersOnly,
   });
   const folderEntries = Array.isArray(previewEntries.folderEntries)
     ? previewEntries.folderEntries
@@ -49310,7 +49394,10 @@ function renderSelectedFolderMediaPreview(
   if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
 
   WS.view.previewScrollActiveKey = previewScrollKeyForDir(dirNode);
-  clearPreviewSelectionState(currentPreviewSelectionContextKeyFromState());
+  // Note: selection is NOT cleared here. ensurePreviewSelectionForCurrentTarget
+  // (below) preserves the current selection when the preview target is
+  // unchanged and only resets it when the context (folder) actually changes —
+  // so closing a sidebar pane keeps the grid selection in place.
   const expectedItems = folderEntries.length + ids.length;
   const stage = makePreviewGridRenderStage();
   previewBodyEl.appendChild(stage);
@@ -53464,8 +53551,13 @@ function toggleDirectoriesPaneKeybindAction() {
 
 function setDirectoriesPaneOpenKeybindState(nextOpen) {
   if (!setDirectoriesPaneOpenValue(nextOpen)) return false;
-  if (nextOpen) setActivePane("directories");
-  else syncActivePaneWithLayout();
+  if (nextOpen) {
+    // Only move focus to the file pane if the preview grid isn't actively
+    // selected — so closing then re-opening the pane doesn't kick you out.
+    if (WS.view.activePane !== "preview") setActivePane("directories");
+  } else {
+    syncActivePaneWithLayout();
+  }
   refreshAfterDirectoriesPaneToggle(false, true);
   refreshLiveSettingsPaneFromKeyboardAction();
   return true;
@@ -55448,19 +55540,19 @@ document.addEventListener("keydown", (e) => {
   }
 
   if (previewPaneActive && !inFilePreview) {
-    if (directoriesPaneOpenEnabled() && action === "selectLeft") {
+    const isGridAction =
+      action === "selectUp" ||
+      action === "selectDown" ||
+      action === "selectLeft" ||
+      action === "selectRight" ||
+      action === "leaveDir" ||
+      action === "enterDir";
+    if (isGridAction) {
+      // Route all six grid-navigation actions through the full handler so
+      // the 2D grid traversal logic runs first (left/right move within the
+      // grid before falling back to pane-switching, matching v1.6.0).
+      handlePreviewPaneAction(action, false);
       e.preventDefault();
-      activateDirectoriesPaneSelection();
-      return;
-    }
-    if (action === "leaveDir") {
-      e.preventDefault();
-      leaveDirectory();
-      return;
-    }
-    if (action === "enterDir") {
-      e.preventDefault();
-      enterSelectedDirectory();
       return;
     }
   }
