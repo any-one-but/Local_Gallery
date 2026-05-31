@@ -10783,6 +10783,7 @@ const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.tags]: "tags.log.json",
   [META_DOC_IDS.tagAlbums]: "tag-albums.log.json",
   [META_DOC_IDS.trash]: "trash.log.json",
+  [META_DOC_IDS.thumbnails]: "custom-thumbnails.log.json",
   [META_DOC_IDS.aspectRatios]: "aspect-ratios.log.json",
   [META_DOC_IDS.appearancePresets]: "appearance-presets.log.json",
   [META_DOC_IDS.appearanceAssignments]: "appearance-assignments.log.json",
@@ -10790,6 +10791,7 @@ const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.prefNotifications]: "preferences.notifications.log.json",
   [META_DOC_IDS.prefAppearance]: "preferences.appearance.log.json",
   [META_DOC_IDS.prefPlayback]: "preferences.playback.log.json",
+  [META_DOC_IDS.prefThumbnails]: "preferences.thumbnails.log.json",
   [META_DOC_IDS.prefFilenames]: "preferences.filenames.log.json",
   [META_DOC_IDS.prefControls]: "preferences.controls.log.json",
   [META_DOC_IDS.keybinds]: "keyboard-configuration.log.json",
@@ -10802,6 +10804,7 @@ const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.tags]: "LocalGalleryTagsV2",
   [META_DOC_IDS.tagAlbums]: "LocalGalleryTagAlbumsV2",
   [META_DOC_IDS.trash]: "LocalGalleryTrashV1",
+  [META_DOC_IDS.thumbnails]: "LocalGalleryThumbnailsV2",
   [META_DOC_IDS.aspectRatios]: "LocalGalleryAspectRatiosV1",
   [META_DOC_IDS.appearancePresets]: "LocalGalleryAppearancePresetsV2",
   [META_DOC_IDS.appearanceAssignments]: "LocalGalleryAppearanceAssignmentsV2",
@@ -10809,6 +10812,7 @@ const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.prefNotifications]: "LocalGalleryPreferencesNotificationsV2",
   [META_DOC_IDS.prefAppearance]: "LocalGalleryPreferencesAppearanceV2",
   [META_DOC_IDS.prefPlayback]: "LocalGalleryPreferencesPlaybackV2",
+  [META_DOC_IDS.prefThumbnails]: "LocalGalleryPreferencesThumbnailsV2",
   [META_DOC_IDS.prefFilenames]: "LocalGalleryPreferencesFilenamesV2",
   [META_DOC_IDS.prefControls]: "LocalGalleryPreferencesControlsV2",
   [META_DOC_IDS.keybinds]: "LocalGalleryKeyboard",
@@ -10821,6 +10825,7 @@ const META_ALL_DOC_IDS = Object.freeze([
   META_DOC_IDS.tags,
   META_DOC_IDS.tagAlbums,
   META_DOC_IDS.trash,
+  META_DOC_IDS.thumbnails,
   META_DOC_IDS.aspectRatios,
   META_DOC_IDS.appearancePresets,
   META_DOC_IDS.appearanceAssignments,
@@ -10828,6 +10833,7 @@ const META_ALL_DOC_IDS = Object.freeze([
   META_DOC_IDS.prefNotifications,
   META_DOC_IDS.prefAppearance,
   META_DOC_IDS.prefPlayback,
+  META_DOC_IDS.prefThumbnails,
   META_DOC_IDS.prefFilenames,
   META_DOC_IDS.prefControls,
   META_DOC_IDS.keybinds,
@@ -10881,6 +10887,10 @@ const META_PREFERENCE_DOC_BY_OPTION_KEY = (() => {
       META_PREFERENCE_SECTION_OPTION_KEYS.appearance,
     ],
     [META_DOC_IDS.prefPlayback, META_PREFERENCE_SECTION_OPTION_KEYS.playback],
+    [
+      META_DOC_IDS.prefThumbnails,
+      META_PREFERENCE_SECTION_OPTION_KEYS.thumbnails,
+    ],
     [META_DOC_IDS.prefFilenames, META_PREFERENCE_SECTION_OPTION_KEYS.filenames],
     [META_DOC_IDS.prefControls, META_PREFERENCE_SECTION_OPTION_KEYS.controls],
   ];
@@ -25089,20 +25099,21 @@ function metaMakeTagsLogObject() {
       folders[p] = { fp: 0, tags: tg };
     }
   }
+  const thumbnailState = buildThumbnailMetadataDocObject();
   return {
     schema: 1,
     updatedAt: Date.now(),
     folders,
     tagByFp,
-    thumbnailByFolder,
+    thumbnailByFolder: thumbnailState.thumbnailByFolder,
     mediaPresetByFolder,
     mediaPresetByTagContext,
     hiddenTagByKey,
-    tagThumbnailModeByTag,
-    tagThumbnailByTag,
+    tagThumbnailModeByTag: thumbnailState.tagThumbnailModeByTag,
+    tagThumbnailByTag: thumbnailState.tagThumbnailByTag,
     tagAlbumByTag,
-    fileThumbnailCropByRelPath,
-    videoThumbnailTimeByRelPath,
+    fileThumbnailCropByRelPath: thumbnailState.fileThumbnailCropByRelPath,
+    videoThumbnailTimeByRelPath: thumbnailState.videoThumbnailTimeByRelPath,
   };
 }
 
@@ -25752,7 +25763,9 @@ function metaMakeTagAlbumsDocObject() {
   };
 }
 
-function metaMakeThumbnailsDocObject() { }
+function metaMakeThumbnailsDocObject() {
+  return buildThumbnailMetadataDocObject();
+}
 
 
 function metaMakeAspectRatiosDocObject() {
@@ -26107,7 +26120,9 @@ function metaApplyTrashDocLog(log) {
   }
 }
 
-function metaApplyThumbnailsDocLog(log) { }
+function metaApplyThumbnailsDocLog(log) {
+  return applyThumbnailMetadataDocLog(log);
+}
 
 
 function metaApplyAspectRatiosDocLog(log) {
@@ -26633,7 +26648,8 @@ function metaInitForCurrentWorkspace(opts = null) {
         META_DOC_IDS.prefNotifications,
         META_DOC_IDS.prefAppearance,
         META_DOC_IDS.prefPlayback,
-              META_DOC_IDS.prefFilenames,
+        META_DOC_IDS.prefThumbnails,
+        META_DOC_IDS.prefFilenames,
         META_DOC_IDS.prefControls,
         META_DOC_IDS.scores,
         META_DOC_IDS.scoreHistory,
@@ -26641,7 +26657,8 @@ function metaInitForCurrentWorkspace(opts = null) {
         META_DOC_IDS.tags,
         META_DOC_IDS.tagAlbums,
         META_DOC_IDS.trash,
-              META_DOC_IDS.aspectRatios,
+        META_DOC_IDS.thumbnails,
+        META_DOC_IDS.aspectRatios,
         META_DOC_IDS.appearanceAssignments,
         META_DOC_IDS.keybinds,
       ];
@@ -26737,7 +26754,8 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     META_DOC_IDS.prefNotifications,
     META_DOC_IDS.prefAppearance,
     META_DOC_IDS.prefPlayback,
-      META_DOC_IDS.prefFilenames,
+    META_DOC_IDS.prefThumbnails,
+    META_DOC_IDS.prefFilenames,
     META_DOC_IDS.prefControls,
     META_DOC_IDS.scores,
     META_DOC_IDS.scoreHistory,
@@ -26745,7 +26763,8 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     META_DOC_IDS.tags,
     META_DOC_IDS.tagAlbums,
     META_DOC_IDS.trash,
-      META_DOC_IDS.aspectRatios,
+    META_DOC_IDS.thumbnails,
+    META_DOC_IDS.aspectRatios,
     META_DOC_IDS.appearanceAssignments,
     META_DOC_IDS.keybinds,
   ];
@@ -41075,6 +41094,23 @@ async function runFileActionFromMenu(action, fileId, rowEl = null) {
     return true;
   }
 
+  if (action === "edit-thumbnail") {
+    openThumbnailCropEditor(rec);
+    return true;
+  }
+
+  const folderThumbnailTarget = parseFolderThumbnailAction(action);
+  if (folderThumbnailTarget !== null) {
+    setFolderThumbnailTargetFromRecord(rec, folderThumbnailTarget);
+    return true;
+  }
+
+  const tagThumbnailTarget = parseTagThumbnailAction(action);
+  if (tagThumbnailTarget) {
+    setTagThumbnailFromRecordByKey(rec, tagThumbnailTarget);
+    return true;
+  }
+
   return false;
 }
 
@@ -41799,7 +41835,37 @@ function openTagContextMenu(context) {
       ),
     );
   }
-  // Thumbnail customization menu removed in this build.
+  if (tagKey) {
+    const tagThumbnailButtons = [];
+    const hasTagThumbPreset = metaHasTagThumbnailPresetByKey(tagKey);
+    const tagThumbDefault = defaultRotatingThumbnailMode();
+    if (hasTagThumbPreset || thumbMode !== tagThumbDefault) {
+      tagThumbnailButtons.push(
+        createTagMenuButton("Use default thumbnail", () =>
+          handleTagMenuAction("thumbnail-default"),
+        ),
+      );
+    }
+    if (!tagThumbIsRotating) {
+      tagThumbnailButtons.push(
+        createTagMenuButton("Rotate thumbnail", () =>
+          handleTagMenuAction("thumbnail-rotate"),
+        ),
+      );
+    }
+    if (thumbMode !== "none") {
+      tagThumbnailButtons.push(
+        createTagMenuButton("Blank thumbnail", () =>
+          handleTagMenuAction("thumbnail-none"),
+        ),
+      );
+    }
+    const tagThumbnailSubmenu = createDropdownMenuSubmenu(
+      "Thumbnail",
+      tagThumbnailButtons,
+    );
+    if (tagThumbnailSubmenu) menu.appendChild(tagThumbnailSubmenu);
+  }
   TAG_CONTEXT_MENU_STATE = {
     tag,
     album,
@@ -41972,14 +42038,35 @@ function buildDropdownMenuSubmenuHtml(label, buttonsHtml) {
 }
 
 function buildFolderThumbnailSubmenuHtml(options) {
-  return "";
+  const cfg = options || {};
+  let buttonsHtml = "";
+  if (cfg.showUseDefaultThumbnail)
+    buttonsHtml += `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>`;
+  if (cfg.showSetRotateThumbnail)
+    buttonsHtml += `<button type="button" data-action="thumbnail-rotate">Rotate thumbnail</button>`;
+  if (cfg.showSetNoThumbnail)
+    buttonsHtml += `<button type="button" data-action="thumbnail-none">Blank thumbnail</button>`;
+  return buildDropdownMenuSubmenuHtml("Thumbnail", buttonsHtml);
 }
 
 function buildFileThumbnailSubmenuHtml(
   thumbnailTargets,
   includeEditThumbnail = true,
 ) {
-  return "";
+  const targets = Array.isArray(thumbnailTargets) ? thumbnailTargets : [];
+  const buttonsHtml =
+    targets
+      .map((t) => {
+        const label = String(t?.label || "");
+        const action = String(t?.action || "");
+        if (!label || !action) return "";
+        return `<button type="button" data-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`;
+      })
+      .join("") +
+    (includeEditThumbnail
+      ? `<button type="button" data-action="edit-thumbnail">Edit thumbnail</button>`
+      : "");
+  return buildDropdownMenuSubmenuHtml("Thumbnail", buttonsHtml);
 }
 
 function openPreviewFileActionMenu(rec, opts = {}) {
@@ -42016,6 +42103,23 @@ function openPreviewFileActionMenu(rec, opts = {}) {
   };
 
   const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
+  if (!trashTargetPath) {
+    const thumbnailTargets = getThumbnailMenuTargetsForRecord(rec);
+    const thumbnailButtons = [];
+    for (let i = 0; i < thumbnailTargets.length; i++) {
+      const target = thumbnailTargets[i];
+      const label = String(target && target.label || "");
+      const targetAction = String(target && target.action || "");
+      if (!label || !targetAction) continue;
+      thumbnailButtons.push(makeBtn(label, targetAction));
+    }
+    thumbnailButtons.push(makeBtn("Edit thumbnail", "edit-thumbnail"));
+    const thumbnailSubmenu = createDropdownMenuSubmenu(
+      "Thumbnail",
+      thumbnailButtons,
+    );
+    if (thumbnailSubmenu) menu.appendChild(thumbnailSubmenu);
+  }
   if (trashTargetPath) {
     menu.appendChild(
       makeBtn("Remove from trash", "put-back", !WS.meta.fsRootHandle),
@@ -42063,6 +42167,9 @@ function buildFolderMenuState(dirNode) {
   const hasPreset = isRootNode
     ? rootThumbnailHasPreset()
     : metaHasFolderThumbnailPreset(p);
+  const folderThumbIsRotating = isRootNode
+    ? tagThumbnailUsesRotationByKey(rootThumbnailKey())
+    : folderThumbMode === "rotate";
   const hasRandomCandidate =
     !isStorageGhost && !!randomThumbnailCandidateForDirNode(dirNode);
   return {
@@ -42080,9 +42187,17 @@ function buildFolderMenuState(dirNode) {
     canIndex,
     canResetOrder,
     currentTagRemovalContext,
-    showUseDefaultThumbnail: false,
-    showSetRotateThumbnail: false,
-    showSetNoThumbnail: false,
+    showUseDefaultThumbnail:
+      !isStorageGhost &&
+      (hasPreset ||
+        (isRootNode && !isRootThumbnailModeDefault(folderThumbMode)) ||
+        (!isRootNode &&
+          canToggleFolderThumbMode &&
+          folderThumbMode !== inferFolderThumbnailDefaultMode(p))),
+    showSetRotateThumbnail:
+      !isStorageGhost && canToggleFolderThumbMode && !folderThumbIsRotating,
+    showSetNoThumbnail:
+      !isStorageGhost && canToggleFolderThumbMode && folderThumbMode !== "none",
     showSetRandomThumbnail: false,
     canMoveToTrash:
       !isTrashRootPortal && isFolderPathMovableToTrash(p),
@@ -42176,6 +42291,18 @@ function buildFolderActionMenuDom(
       makeBtn("Clear media preset override", "appearance-preset-clear"),
     );
   }
+  const thumbnailButtons = [];
+  if (state.showUseDefaultThumbnail)
+    thumbnailButtons.push(makeBtn("Use default thumbnail", "thumbnail-default"));
+  if (state.showSetRotateThumbnail)
+    thumbnailButtons.push(makeBtn("Rotate thumbnail", "thumbnail-rotate"));
+  if (state.showSetNoThumbnail)
+    thumbnailButtons.push(makeBtn("Blank thumbnail", "thumbnail-none"));
+  const thumbnailSubmenu = createDropdownMenuSubmenu(
+    "Thumbnail",
+    thumbnailButtons,
+  );
+  if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
   menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
   if (state.canResetOrder)
     menuEl.appendChild(makeBtn("Reset order", "reset-order"));
@@ -42288,6 +42415,46 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     if (!metaClearFolderAppearancePreset(p)) return true;
     refreshAfterProcessingMetadataChange();
     showStatusMessage("Folder media preset reset to inherited.");
+    return true;
+  }
+  if (action === "thumbnail-default") {
+    const changed = isRootNode
+      ? resetRootThumbnailToDefault()
+      : metaClearFolderThumbnailPreset(p);
+    if (changed) {
+      refreshThumbnailUiAfterMetadataChange();
+      showStatusMessage(
+        isRootNode
+          ? "Root thumbnail reset to default."
+          : "Folder thumbnail reset to default.",
+      );
+    }
+    return true;
+  }
+  if (action === "thumbnail-none") {
+    const changed = isRootNode
+      ? setRootThumbnailMode("none")
+      : metaSetFolderThumbnailNone(p);
+    if (changed) {
+      refreshThumbnailUiAfterMetadataChange();
+      showStatusMessage(
+        isRootNode ? "Root thumbnail blanked." : "Folder thumbnail blanked.",
+      );
+    }
+    return true;
+  }
+  if (action === "thumbnail-rotate") {
+    const changed = isRootNode
+      ? metaSetTagThumbnailRotateByKey(rootThumbnailKey())
+      : metaSetFolderThumbnailRotate(p);
+    if (changed) {
+      refreshThumbnailUiAfterMetadataChange();
+      showStatusMessage(
+        isRootNode
+          ? "Root thumbnail set to rotate."
+          : "Folder thumbnail set to rotate.",
+      );
+    }
     return true;
   }
   if (action === "score-up") {
@@ -43787,6 +43954,36 @@ function handleTagMenuAction(action) {
     );
     return;
   }
+  if (action === "thumbnail-default") {
+    if (!tagKey) return;
+    if (resetTagThumbnailToDefaultByKey(tagKey)) {
+      refreshThumbnailUiAfterMetadataChange();
+      showStatusMessage(
+        `${isAlbumEntry ? "Tag album" : "Tag"} thumbnail reset to default.`,
+      );
+    }
+    return;
+  }
+  if (action === "thumbnail-none") {
+    if (!tagKey) return;
+    if (metaSetTagThumbnailModeByKey(tagKey, "none")) {
+      refreshThumbnailUiAfterMetadataChange();
+      showStatusMessage(
+        `${isAlbumEntry ? "Tag album" : "Tag"} thumbnail blanked.`,
+      );
+    }
+    return;
+  }
+  if (action === "thumbnail-rotate") {
+    if (!tagKey) return;
+    if (metaSetTagThumbnailRotateByKey(tagKey)) {
+      refreshThumbnailUiAfterMetadataChange();
+      showStatusMessage(
+        `${isAlbumEntry ? "Tag album" : "Tag"} thumbnail set to rotate.`,
+      );
+    }
+    return;
+  }
 }
 
 function renderDirectoriesTagsHeader() {
@@ -45143,6 +45340,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           ? "none"
           : metaGetTagThumbnailModeByKey(tagThumbKey)
         : "none";
+      const tagThumbIsRotating =
+        folderSquareCardMode &&
+        !lightweightTagThumbs &&
+        tagThumbnailUsesRotationByKey(tagThumbKey);
       const presetRec = folderSquareCardMode
         ? lightweightTagThumbs
           ? null
@@ -45155,7 +45356,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         !naturalThumbCards
           ? getRecursivePreviewRecordsForTagEntry(
               entry,
-              tagThumbnailPreviewSampleLimit(tagThumbMode),
+              tagThumbnailPreviewSampleLimit(
+                tagThumbIsRotating ? "rotate" : tagThumbMode,
+              ),
             )
           : [];
       const tagAllowsRotation =
@@ -45180,6 +45383,18 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               ? " thumbCropApplied thumbCropAbsolute"
               : "";
             squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+          }
+        } else if (tagThumbIsRotating && tagPool.length) {
+          const rec = pickRotatingPreviewRecordForKey(tagRotateKey, tagPool);
+          if (rec) {
+            const previewId = String(rec.id || "");
+            const previewSrc = getPassivePreviewSrcForRecord(rec, {
+              allowImageMediaFallback: true,
+            });
+            const previewAspect = getPreviewAspectForRecord(rec);
+            if (previewSrc) {
+              squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+            }
           }
         } else if (tagThumbMode === "single" && tagPool.length) {
           const rec = tagPool[0] || null;
@@ -45468,19 +45683,31 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           : metaHasFolderThumbnailPreset(p);
         const showUseDefaultThumbnail =
           hasThumbPreset ||
-          (isRootNode && !isRootThumbnailModeDefault(folderThumbMode));
-        const showSetRotateThumbnail = false;
+          (isRootNode && !isRootThumbnailModeDefault(folderThumbMode)) ||
+          (!isRootNode &&
+            canToggleFolderThumbMode &&
+            folderThumbMode !== inferFolderThumbnailDefaultMode(p));
+        const showSetRotateThumbnail =
+          canToggleFolderThumbMode &&
+          !(isRootNode
+            ? tagThumbnailUsesRotationByKey(rootThumbnailKey())
+            : folderThumbMode === "rotate");
         const showSetNoThumbnail =
           canToggleFolderThumbMode && folderThumbMode !== "none";
-        const showSetRandomThumbnail =
-          canToggleFolderThumbMode;
-        const folderThumbnailMenuHtml = "";
+        const showSetRandomThumbnail = false;
+        const folderThumbnailMenuHtml = buildFolderThumbnailSubmenuHtml({
+          showUseDefaultThumbnail,
+          showSetRotateThumbnail,
+          showSetNoThumbnail,
+          showSetRandomThumbnail,
+        });
         // Menu (three dot / ⋯) for single-folder actions.
         let menuButtons = "";
         let menuTitle = "Folder menu";
         if (isRootNode) {
           menuButtons = `
                 <button type="button" data-action="appearance-preset-set">Filters</button>
+                ${folderThumbnailMenuHtml}
                 <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
               `;
         } else if (folderMenuState.isTrashPutBackOnly) {
@@ -45501,6 +45728,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
                 <button type="button" data-action="appearance-preset-set">Filters</button>
                 ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
+                ${folderThumbnailMenuHtml}
                 <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
                 <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
@@ -45549,6 +45777,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               true,
             );
             const rootMode = getRootThumbnailMode();
+            const rootThumbIsRotating = tagThumbnailUsesRotationByKey(
+              rootThumbnailKey(),
+            );
             const rootPresetRec = getRootPresetPreviewRecord(
               entry.node,
               rootPool,
@@ -45569,6 +45800,23 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                     ? " thumbCropApplied thumbCropAbsolute"
                     : "";
                   rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+                }
+              } else if (rootThumbIsRotating && rootPool.length) {
+                const rootRotateKey = `root:${rootScope}:rotate`;
+                const rec = pickRotatingPreviewRecordForKey(
+                  rootRotateKey,
+                  rootPool,
+                );
+                if (rec) {
+                  squareAspectRec = rec;
+                  const previewId = String(rec.id || "");
+                  const previewSrc = getPassivePreviewSrcForRecord(rec, {
+                    allowImageMediaFallback: true,
+                  });
+                  const previewAspect = getPreviewAspectForRecord(rec);
+                  if (previewSrc) {
+                    rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(rootRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                  }
                 }
               } else if (rootMode === "single" && rootPool.length) {
                 const rec = rootPool[0] || null;
@@ -45718,6 +45966,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const fileMenuButtons = fileTrashTargetPath
           ? `<button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from trash</button>`
           : `
+                  ${buildFileThumbnailSubmenuHtml(
+                    getThumbnailMenuTargetsForRecord(rec),
+                    !!rec,
+                  )}
                   <button type="button" data-action="rename-file">Rename</button>
                 `;
         const fileTypeLabel = fileItemTypeLabelForRecord(
@@ -49638,6 +49890,8 @@ function buildPreviewTagCardMarkup(entry) {
   const tagThumbMode = lightweightTagThumbs
     ? "none"
     : metaGetTagThumbnailModeByKey(tagThumbKey);
+  const tagThumbIsRotating =
+    !lightweightTagThumbs && tagThumbnailUsesRotationByKey(tagThumbKey);
   const presetRec = lightweightTagThumbs
     ? null
     : getTagPresetPreviewRecordForEntry(entry);
@@ -49645,7 +49899,9 @@ function buildPreviewTagCardMarkup(entry) {
     tagThumbMode !== "none" && !presetRec && !naturalThumbCards
       ? getRecursivePreviewRecordsForTagEntry(
           entry,
-          tagThumbnailPreviewSampleLimit(tagThumbMode),
+          tagThumbnailPreviewSampleLimit(
+            tagThumbIsRotating ? "rotate" : tagThumbMode,
+          ),
         )
       : [];
   const tagAllowsRotation = !lightweightTagThumbs && !naturalThumbCards;
@@ -49672,19 +49928,31 @@ function buildPreviewTagCardMarkup(entry) {
           : "";
         squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
       }
+    } else if (tagThumbIsRotating && tagPool.length) {
+      const rec = pickRotatingPreviewRecordForKey(tagRotateKey, tagPool);
+      if (rec) {
+        const previewId = String(rec.id || "");
+        const previewSrc = getPassivePreviewSrcForRecord(rec, {
+          allowImageMediaFallback: true,
+        });
+        const previewAspect = getPreviewAspectForRecord(rec);
+        if (previewSrc) {
+          squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+        }
+      }
     } else if (tagThumbMode === "single" && tagPool.length) {
-          const rec = tagPool[0] || null;
-          if (rec) {
-            const previewId = String(rec.id || "");
-            const previewSrc = getPassivePreviewSrcForRecord(rec, {
-              allowImageMediaFallback: true,
-            });
-            const previewAspect = getPreviewAspectForRecord(rec);
-            if (previewSrc) {
-              squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
-            }
-          }
-        } else if (tagAllowsRotation && tagThumbMode === "quad" && tagPool.length) {
+      const rec = tagPool[0] || null;
+      if (rec) {
+        const previewId = String(rec.id || "");
+        const previewSrc = getPassivePreviewSrcForRecord(rec, {
+          allowImageMediaFallback: true,
+        });
+        const previewAspect = getPreviewAspectForRecord(rec);
+        if (previewSrc) {
+          squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+        }
+      }
+    } else if (tagAllowsRotation && tagThumbMode === "quad" && tagPool.length) {
       if (tagPool.length < 4) {
         const singleKey = `${tagRotateKey}:single-fallback`;
         const rec = pickRotatingPreviewRecordForKey(singleKey, tagPool);
@@ -51442,7 +51710,10 @@ function makePreviewFileCard(
         const duration = Number(video.duration) || 0;
         if (duration > 0) {
           try {
-            video.currentTime = Math.min(0.1, Math.max(0, duration * 0.02));
+            const customFrameTime = metaGetVideoThumbnailTimeForRecord(rec);
+            video.currentTime = Number.isFinite(customFrameTime)
+              ? Math.min(Math.max(0, customFrameTime), Math.max(0, duration - 0.05))
+              : Math.min(0.1, Math.max(0, duration * 0.02));
           } catch {}
         }
         const w = Number(video.videoWidth) || 0;
@@ -56029,17 +56300,11 @@ function metaGetFileThumbnailCropForRecord() { return null; }
 function metaSetFileThumbnailCropForRecord() { return false; }
 
 function metaMakeThumbnailsDocObject() {
-  return {
-    version: 3,
-    thumbnailsDisabled: true,
-    thumbnailByFolder: {},
-    tagThumbnailModeByTag: {},
-    tagThumbnailByTag: {},
-    fileThumbnailCropByRelPath: {},
-    videoThumbnailTimeByRelPath: {},
-  };
+  return buildThumbnailMetadataDocObject();
 }
-function metaApplyThumbnailsDocLog() { resetThumbnailRuntimeStateV3(); }
+function metaApplyThumbnailsDocLog(log) {
+  return applyThumbnailMetadataDocLog(log);
+}
 function materializeCatalogMetadataThumbnailRecords() { return Promise.resolve(0); }
 function remapThumbnailUrlRecordIds() {}
 function invalidateAllThumbs() { resetThumbnailRuntimeStateV3(); }
@@ -56402,7 +56667,7 @@ function closeThumbnailCropEditor() {
     THUMB_CROP_EDITOR = null;
   }
 }
-function openThumbnailCropEditor() { showStatusMessage("Thumbnails are disabled."); }
+function openThumbnailCropEditor() { return false; }
 function setTagThumbnailFromRecordByKey() { return false; }
 function refreshThumbnailUiAfterMetadataChange() {}
 function randomThumbnailCandidateForDirNode() { return null; }
@@ -56603,7 +56868,10 @@ function makePassivePreviewVideoElement(sourceEl, rec, recId, opts = null) {
     const duration = Number(video.duration) || 0;
     if (duration > 0) {
       try {
-        video.currentTime = Math.min(0.1, Math.max(0, duration * 0.02));
+        const customFrameTime = metaGetVideoThumbnailTimeForRecord(rec);
+        video.currentTime = Number.isFinite(customFrameTime)
+          ? Math.min(Math.max(0, customFrameTime), Math.max(0, duration - 0.05))
+          : Math.min(0.1, Math.max(0, duration * 0.02));
       } catch {}
     }
     const w = Number(video.videoWidth) || 0;
@@ -56764,6 +57032,1895 @@ function upgradeContainerPreviewVideoThumbs(container, opts = null) {
   if (deferredPreviewVideoThumbCandidates(previewBodyEl).length) {
     scheduleDeferredPreviewVideoThumbUpgrade(260);
   }
+}
+
+/* =========================================================
+       Custom thumbnail restore
+       ========================================================= */
+
+function resetThumbnailRuntimeStateV3() {
+  try { clearQueuedThumbnailWork(); } catch {}
+  try { closeThumbnailCropEditor(); } catch {}
+  try {
+    if (LOADED_THUMB_RELEASE_TIMER) clearTimeout(LOADED_THUMB_RELEASE_TIMER);
+    LOADED_THUMB_RELEASE_TIMER = 0;
+    clearPreloadMediaCache();
+  } catch {}
+  try {
+    WS.thumbnailDesiredIds = new Set();
+    WS.thumbnailPriorityIds = new Set();
+    WS.thumbnailRootPinnedIds = new Set();
+    WS.thumbnailActiveWorkspaceIds = new Set();
+    WS.thumbnailActiveWorkspaceRootChild = "";
+    WS.thumbnailWorkspacePreloadKey = "";
+    WS.thumbnailDemandToken = 0;
+    WS.videoThumbPriorityQueue = [];
+    WS.videoThumbQueue = [];
+    WS.imageThumbPriorityQueue = [];
+    WS.imageThumbQueue = [];
+    WS.videoThumbQueuedIds = new Set();
+    WS.imageThumbQueuedIds = new Set();
+    WS.videoThumbInFlightIds = new Set();
+    WS.imageThumbInFlightIds = new Set();
+    WS.videoThumbInFlightBackgroundIds = new Set();
+    WS.videoThumbActive = 0;
+    WS.imageThumbActive = 0;
+  } catch {}
+}
+
+function thumbnailLoadingEnabled(opt = null) {
+  return true;
+}
+
+function ensureThumbUrl(rec, opts = null) {
+  if (!rec || rec.type !== "image") return null;
+  return ensureMediaUrl(rec) || null;
+}
+
+function ensureNavigationThumbUrl(rec) {
+  return ensureThumbUrl(rec);
+}
+
+function getPassivePreviewSrcForRecord(rec, opts = null) {
+  if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
+  return String(ensureMediaUrl(rec) || "");
+}
+
+function normalizeThumbCropValue(crop) {
+  const src = crop && typeof crop === "object" ? crop : {};
+  const xRaw = Number(src.x);
+  const yRaw = Number(src.y);
+  const zoomRaw = Number(src.zoom);
+  const x = Number.isFinite(xRaw) ? Math.min(100, Math.max(0, xRaw)) : 50;
+  const y = Number.isFinite(yRaw) ? Math.min(100, Math.max(0, yRaw)) : 50;
+  const zoom = Number.isFinite(zoomRaw) ? Math.min(4, Math.max(1, zoomRaw)) : 1;
+  return {
+    x: Math.round(x * 1000) / 1000,
+    y: Math.round(y * 1000) / 1000,
+    zoom: Math.round(zoom * 1000) / 1000,
+  };
+}
+
+function isThumbCropDefault(crop) {
+  const normalized = normalizeThumbCropValue(crop);
+  return normalized.x === 50 && normalized.y === 50 && normalized.zoom === 1;
+}
+
+function normalizeVideoThumbTimeValue(timeValue, durationHint = null) {
+  const raw = Number(timeValue);
+  if (!Number.isFinite(raw)) return null;
+  let out = Math.max(0, raw);
+  const duration = Number(durationHint);
+  if (Number.isFinite(duration) && duration > 0) {
+    out = Math.min(out, Math.max(0, duration - 0.05));
+  }
+  return Math.round(out * 1000) / 1000;
+}
+
+function metaGetVideoThumbnailTimeByRelPath(relPath) {
+  const key = normalizeWorkspaceRelPath(relPath);
+  if (
+    !key ||
+    !WS.meta ||
+    !WS.meta.videoThumbTime ||
+    !WS.meta.videoThumbTime.has(key)
+  )
+    return null;
+  return normalizeVideoThumbTimeValue(WS.meta.videoThumbTime.get(key));
+}
+
+function metaGetVideoThumbnailTimeForRecord(rec) {
+  if (!rec || rec.type !== "video") return null;
+  return metaGetVideoThumbnailTimeByRelPath(rec.relPath);
+}
+
+function metaSetVideoThumbnailTimeForRecord(
+  rec,
+  timeValue,
+  durationHint = null,
+) {
+  if (!rec || rec.type !== "video") return false;
+  const key = normalizeWorkspaceRelPath(rec.relPath);
+  if (!key || !WS.meta || !WS.meta.videoThumbTime) return false;
+  const normalized = normalizeVideoThumbTimeValue(timeValue, durationHint);
+  if (!Number.isFinite(normalized)) {
+    const had = WS.meta.videoThumbTime.delete(key);
+    if (had) metaMarkDirty(META_DOC_IDS.thumbnails);
+    return had;
+  }
+  const prev = metaGetVideoThumbnailTimeByRelPath(key);
+  if (Number.isFinite(prev) && Math.abs(prev - normalized) < 0.001)
+    return false;
+  WS.meta.videoThumbTime.set(key, normalized);
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
+}
+
+function metaGetFileThumbnailCropByRelPath(relPath) {
+  const key = normalizeWorkspaceRelPath(relPath);
+  if (
+    !key ||
+    !WS.meta ||
+    !WS.meta.fileThumbCrop ||
+    !WS.meta.fileThumbCrop.has(key)
+  )
+    return null;
+  return normalizeThumbCropValue(WS.meta.fileThumbCrop.get(key));
+}
+
+function metaGetFileThumbnailCropForRecord(rec) {
+  return metaGetFileThumbnailCropByRelPath(rec && rec.relPath);
+}
+
+function metaSetFileThumbnailCropForRecord(rec, crop) {
+  const key = normalizeWorkspaceRelPath(rec && rec.relPath);
+  if (!key || !WS.meta || !WS.meta.fileThumbCrop) return false;
+  const normalized = normalizeThumbCropValue(crop);
+  if (isThumbCropDefault(normalized)) {
+    const had = WS.meta.fileThumbCrop.delete(key);
+    if (had) metaMarkDirty(META_DOC_IDS.thumbnails);
+    return had;
+  }
+  const prev = metaGetFileThumbnailCropByRelPath(key);
+  if (
+    prev &&
+    prev.x === normalized.x &&
+    prev.y === normalized.y &&
+    prev.zoom === normalized.zoom
+  )
+    return false;
+  WS.meta.fileThumbCrop.set(key, normalized);
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
+}
+
+function fileThumbCropLayoutStyle(rec, rotateKey = "") {
+  if (!rec || rotateKey) return "";
+  if (naturalAspectThumbnailCardsEnabled()) return "";
+  const crop = metaGetFileThumbnailCropForRecord(rec);
+  if (!crop) return "";
+  const aspect = getPreviewAspectForRecord(rec);
+  const layout = computeCoverCropLayout(aspect, crop);
+  return `width:${layout.widthPct}% !important;height:${layout.heightPct}% !important;left:${layout.leftPct}% !important;top:${layout.topPct}% !important;`;
+}
+
+function inferFolderThumbnailDefaultMode(path) {
+  const p = normalizeDirPathValue(path);
+  if (!p) return "single";
+  const node = WS.dirByPath ? WS.dirByPath.get(p) : null;
+  if (!node) return "single";
+  const hasImmediateFiles =
+    Array.isArray(node.childrenFiles) && node.childrenFiles.length > 0;
+  return hasImmediateFiles ? "single" : "none";
+}
+
+function metaGetFolderThumbnailMode(path) {
+  const p = normalizeDirPathValue(path);
+  if (!WS.meta || !WS.meta.dirThumbPresets || !WS.meta.dirThumbPresets.has(p)) {
+    return inferFolderThumbnailDefaultMode(p);
+  }
+  const raw = String(WS.meta.dirThumbPresets.get(p) || "");
+  if (raw === FOLDER_THUMB_NONE_SENTINEL) return "none";
+  if (raw === FOLDER_THUMB_ROTATE_SENTINEL) return "rotate";
+  const normalizedRelPath = normalizeWorkspaceRelPath(raw);
+  return normalizedRelPath ? "manual" : inferFolderThumbnailDefaultMode(p);
+}
+
+function metaGetFolderThumbnailPresetRelPath(path) {
+  const p = normalizeDirPathValue(path);
+  if (!WS.meta || !WS.meta.dirThumbPresets) return "";
+  const raw = String(WS.meta.dirThumbPresets.get(p) || "");
+  if (
+    raw === FOLDER_THUMB_NONE_SENTINEL ||
+    raw === FOLDER_THUMB_ROTATE_SENTINEL
+  )
+    return "";
+  return normalizeWorkspaceRelPath(raw);
+}
+
+function metaHasFolderThumbnailPreset(path) {
+  return metaGetFolderThumbnailMode(path) === "manual";
+}
+
+function metaSetFolderThumbnailPreset(path, relPath) {
+  if (!WS.meta || !WS.meta.dirThumbPresets) return false;
+  const p = normalizeDirPathValue(path);
+  if (!WS.dirByPath.has(p)) return false;
+  const normalizedRelPath = normalizeWorkspaceRelPath(relPath);
+  if (!normalizedRelPath) return false;
+  const prev = metaGetFolderThumbnailPresetRelPath(p);
+  if (prev === normalizedRelPath && metaGetFolderThumbnailMode(p) === "manual")
+    return false;
+  WS.meta.dirThumbPresets.set(p, normalizedRelPath);
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
+}
+
+function metaSetFolderThumbnailNone(path) {
+  if (!WS.meta || !WS.meta.dirThumbPresets) return false;
+  const p = normalizeDirPathValue(path);
+  if (!WS.dirByPath.has(p)) return false;
+  if (metaGetFolderThumbnailMode(p) === "none") return false;
+  WS.meta.dirThumbPresets.set(p, FOLDER_THUMB_NONE_SENTINEL);
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
+}
+
+function metaSetFolderThumbnailRotate(path) {
+  if (!WS.meta || !WS.meta.dirThumbPresets) return false;
+  const p = normalizeDirPathValue(path);
+  if (!WS.dirByPath.has(p)) return false;
+  if (metaGetFolderThumbnailMode(p) === "rotate") return false;
+  WS.meta.dirThumbPresets.set(p, FOLDER_THUMB_ROTATE_SENTINEL);
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
+}
+
+function metaClearFolderThumbnailPreset(path) {
+  if (!WS.meta || !WS.meta.dirThumbPresets) return false;
+  const p = normalizeDirPathValue(path);
+  if (!WS.meta.dirThumbPresets.has(p)) return false;
+  WS.meta.dirThumbPresets.delete(p);
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
+}
+
+function remapFolderThumbnailPresetValues(relPathMap) {
+  if (!WS.meta || !relPathMap || !relPathMap.size) return;
+  const remapRelPath = (relPath) =>
+    normalizeWorkspaceRelPath(
+      relPathMap.get(normalizeWorkspaceRelPath(relPath)) || relPath,
+    );
+  if (WS.meta.dirThumbPresets) {
+    const next = new Map();
+    for (const [dirPath, relPath] of WS.meta.dirThumbPresets.entries()) {
+      const raw = String(relPath || "");
+      if (
+        raw === FOLDER_THUMB_NONE_SENTINEL ||
+        raw === FOLDER_THUMB_ROTATE_SENTINEL
+      ) {
+        next.set(dirPath, raw);
+        continue;
+      }
+      const normalized = remapRelPath(raw);
+      if (normalized) next.set(dirPath, normalized);
+    }
+    WS.meta.dirThumbPresets = next;
+  }
+  if (WS.meta.tagThumbPresets) {
+    const nextTag = new Map();
+    for (const [tagKey, relPath] of WS.meta.tagThumbPresets.entries()) {
+      const normalized = remapRelPath(relPath);
+      if (normalized) nextTag.set(String(tagKey || ""), normalized);
+    }
+    WS.meta.tagThumbPresets = nextTag;
+  }
+  if (WS.meta.fileThumbCrop) {
+    const nextFile = new Map();
+    for (const [relPath, crop] of WS.meta.fileThumbCrop.entries()) {
+      const normalized = remapRelPath(relPath);
+      if (normalized) nextFile.set(normalized, normalizeThumbCropValue(crop));
+    }
+    WS.meta.fileThumbCrop = nextFile;
+  }
+  if (WS.meta.videoThumbTime) {
+    const nextVideo = new Map();
+    for (const [relPath, timeValue] of WS.meta.videoThumbTime.entries()) {
+      const normalized = remapRelPath(relPath);
+      const time = normalizeVideoThumbTimeValue(timeValue);
+      if (normalized && Number.isFinite(time)) nextVideo.set(normalized, time);
+    }
+    WS.meta.videoThumbTime = nextVideo;
+  }
+}
+
+function metaSetFolderThumbnailModeBulk(paths, mode) {
+  const nextMode = mode === "none" ? "none" : "rotate";
+  const list = Array.isArray(paths) ? paths : Array.from(paths || []);
+  if (!list.length) return false;
+  let changed = false;
+  for (let i = 0; i < list.length; i++) {
+    const p = normalizeDirPathValue(list[i]);
+    if (!p || !WS.dirByPath.has(p)) continue;
+    if (nextMode === "none") {
+      if (metaSetFolderThumbnailNone(p)) changed = true;
+    } else if (metaSetFolderThumbnailRotate(p)) {
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function quadThumbnailsEnabled() {
+  return false;
+}
+
+function defaultRotatingThumbnailMode() {
+  return "single";
+}
+
+function normalizeTagThumbnailMode(mode) {
+  const raw = String(mode || "")
+    .trim()
+    .toLowerCase();
+  if (raw === "none" || raw === "single") return raw;
+  if (raw === "rotate" || raw === "quad" || raw === "random") return "single";
+  return "single";
+}
+
+function getTagThumbnailDisplayModeByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key) return defaultRotatingThumbnailMode();
+  return metaGetTagThumbnailModeByKey(key);
+}
+
+function getAllTagThumbnailStateKeys() {
+  const out = new Set();
+  if (WS.meta && WS.meta.tagThumbModes) {
+    for (const key of WS.meta.tagThumbModes.keys()) {
+      const raw = String(key || "");
+      if (raw) out.add(raw);
+    }
+  }
+  if (WS.meta && WS.meta.tagThumbPresets) {
+    for (const key of WS.meta.tagThumbPresets.keys()) {
+      const raw = String(key || "");
+      if (raw) out.add(raw);
+    }
+  }
+  return Array.from(out);
+}
+
+function rekeyTagThumbnailState(oldKey, newKey) {
+  const source = String(oldKey || "");
+  const target = String(newKey || "");
+  if (!source || !target || source === target) return false;
+  let changed = false;
+  if (WS.meta && WS.meta.tagThumbModes && WS.meta.tagThumbModes.has(source)) {
+    const oldMode = metaGetTagThumbnailModeByKey(source);
+    if (!WS.meta.tagThumbModes.has(target)) {
+      WS.meta.tagThumbModes.set(target, oldMode);
+    }
+    WS.meta.tagThumbModes.delete(source);
+    changed = true;
+  }
+  if (
+    WS.meta &&
+    WS.meta.tagThumbPresets &&
+    WS.meta.tagThumbPresets.has(source)
+  ) {
+    const oldPreset = metaGetTagThumbnailPresetRelPathByKey(source);
+    if (!WS.meta.tagThumbPresets.has(target) && oldPreset) {
+      WS.meta.tagThumbPresets.set(target, oldPreset);
+    }
+    WS.meta.tagThumbPresets.delete(source);
+    changed = true;
+  }
+  if (changed) metaTrackDirtyDocIds([META_DOC_IDS.thumbnails]);
+  return changed;
+}
+
+function clearTagThumbnailStateByMatch(matchFn) {
+  if (typeof matchFn !== "function") return false;
+  const keys = getAllTagThumbnailStateKeys();
+  let changed = false;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (!key || !matchFn(key)) continue;
+    const modeChanged = !!(
+      WS.meta &&
+      WS.meta.tagThumbModes &&
+      WS.meta.tagThumbModes.delete(key)
+    );
+    const presetChanged = !!(
+      WS.meta &&
+      WS.meta.tagThumbPresets &&
+      WS.meta.tagThumbPresets.delete(key)
+    );
+    if (modeChanged || presetChanged) changed = true;
+  }
+  if (changed) metaTrackDirtyDocIds([META_DOC_IDS.thumbnails]);
+  return changed;
+}
+
+function rootThumbnailKey() {
+  return "special:root";
+}
+
+function metaGetTagThumbnailModeByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagThumbModes)
+    return defaultRotatingThumbnailMode();
+  return normalizeTagThumbnailMode(WS.meta.tagThumbModes.get(key));
+}
+
+function metaSetTagThumbnailModeByKey(tagKey, mode) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagThumbModes) return false;
+  const nextMode = normalizeTagThumbnailMode(mode);
+  const prevMode = metaGetTagThumbnailModeByKey(key);
+  if (prevMode === nextMode) return false;
+  WS.meta.tagThumbModes.set(key, nextMode);
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
+}
+
+function metaGetTagThumbnailPresetRelPathByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagThumbPresets) return "";
+  return normalizeWorkspaceRelPath(WS.meta.tagThumbPresets.get(key));
+}
+
+function metaHasTagThumbnailPresetByKey(tagKey) {
+  return !!metaGetTagThumbnailPresetRelPathByKey(tagKey);
+}
+
+function metaSetTagThumbnailPresetByKey(tagKey, relPath) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagThumbPresets || !WS.meta.tagThumbModes)
+    return false;
+  const normalizedRelPath = normalizeWorkspaceRelPath(relPath);
+  if (!normalizedRelPath) return false;
+  const prevRelPath = metaGetTagThumbnailPresetRelPathByKey(key);
+  const prevMode = metaGetTagThumbnailModeByKey(key);
+  if (prevRelPath === normalizedRelPath && prevMode === "single") return false;
+  WS.meta.tagThumbPresets.set(key, normalizedRelPath);
+  WS.meta.tagThumbModes.set(key, "single");
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
+}
+
+function metaClearTagThumbnailPresetByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagThumbPresets) return false;
+  if (!WS.meta.tagThumbPresets.has(key)) return false;
+  WS.meta.tagThumbPresets.delete(key);
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return true;
+}
+
+function tagThumbnailUsesRotationByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key || metaGetTagThumbnailModeByKey(key) === "none") return false;
+  return !metaHasTagThumbnailPresetByKey(key);
+}
+
+function metaSetTagThumbnailRotateByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagThumbModes) return false;
+  let changed = false;
+  if (WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(key))
+    changed = true;
+  if (metaGetTagThumbnailModeByKey(key) !== "single") {
+    WS.meta.tagThumbModes.set(key, "single");
+    changed = true;
+  } else if (!WS.meta.tagThumbModes.has(key)) {
+    WS.meta.tagThumbModes.set(key, "single");
+    changed = true;
+  }
+  if (changed) metaMarkDirty(META_DOC_IDS.thumbnails);
+  return changed;
+}
+
+function resetTagThumbnailToDefaultByKey(tagKey) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta) return false;
+  let changed = false;
+  if (WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(key))
+    changed = true;
+  if (WS.meta.tagThumbModes && WS.meta.tagThumbModes.delete(key))
+    changed = true;
+  if (changed) metaMarkDirty(META_DOC_IDS.thumbnails);
+  return changed;
+}
+
+function buildThumbnailMetadataDocObject() {
+  const thumbnailByFolder = {};
+  const tagThumbnailModeByTag = {};
+  const tagThumbnailByTag = {};
+  const fileThumbnailCropByRelPath = {};
+  const videoThumbnailTimeByRelPath = {};
+  if (WS.meta && WS.meta.dirThumbPresets) {
+    for (const [path, rawThumbValue] of WS.meta.dirThumbPresets.entries()) {
+      const rawThumb = String(rawThumbValue || "");
+      if (
+        rawThumb === FOLDER_THUMB_NONE_SENTINEL ||
+        rawThumb === FOLDER_THUMB_ROTATE_SENTINEL
+      ) {
+        thumbnailByFolder[path] = rawThumb;
+        continue;
+      }
+      const presetRelPath = normalizeWorkspaceRelPath(rawThumb);
+      if (presetRelPath) thumbnailByFolder[path] = presetRelPath;
+    }
+  }
+  if (WS.meta && WS.meta.pendingDirThumbPresets) {
+    for (const [path, rawThumbValue] of WS.meta.pendingDirThumbPresets.entries()) {
+      const normalizedPath = normalizeDirPathValue(path);
+      if (!normalizedPath || thumbnailByFolder[normalizedPath]) continue;
+      const rawThumb = String(rawThumbValue || "");
+      if (
+        rawThumb === FOLDER_THUMB_NONE_SENTINEL ||
+        rawThumb === FOLDER_THUMB_ROTATE_SENTINEL
+      ) {
+        thumbnailByFolder[normalizedPath] = rawThumb;
+        continue;
+      }
+      const presetRelPath = normalizeWorkspaceRelPath(rawThumb);
+      if (presetRelPath) thumbnailByFolder[normalizedPath] = presetRelPath;
+    }
+  }
+  if (WS.meta && WS.meta.tagThumbModes) {
+    for (const [tagKey, modeRaw] of WS.meta.tagThumbModes.entries()) {
+      const key = String(tagKey || "");
+      if (!key) continue;
+      const mode = normalizeTagThumbnailMode(modeRaw);
+      if (mode === "quad") continue;
+      tagThumbnailModeByTag[key] = mode;
+    }
+  }
+  if (WS.meta && WS.meta.tagThumbPresets) {
+    for (const [tagKey, relPathRaw] of WS.meta.tagThumbPresets.entries()) {
+      const key = String(tagKey || "");
+      if (!key) continue;
+      const relPath = normalizeWorkspaceRelPath(relPathRaw);
+      if (relPath) tagThumbnailByTag[key] = relPath;
+    }
+  }
+  if (WS.meta && WS.meta.fileThumbCrop) {
+    for (const [relPathRaw, cropRaw] of WS.meta.fileThumbCrop.entries()) {
+      const relPath = normalizeWorkspaceRelPath(relPathRaw);
+      if (!relPath) continue;
+      const normalizedCrop = normalizeThumbCropValue(cropRaw);
+      if (!isThumbCropDefault(normalizedCrop))
+        fileThumbnailCropByRelPath[relPath] = normalizedCrop;
+    }
+  }
+  if (WS.meta && WS.meta.videoThumbTime) {
+    for (const [relPathRaw, timeRaw] of WS.meta.videoThumbTime.entries()) {
+      const relPath = normalizeWorkspaceRelPath(relPathRaw);
+      const timeValue = normalizeVideoThumbTimeValue(timeRaw);
+      if (relPath && Number.isFinite(timeValue))
+        videoThumbnailTimeByRelPath[relPath] = timeValue;
+    }
+  }
+  return {
+    schema: 1,
+    updatedAt: Date.now(),
+    thumbnailByFolder,
+    tagThumbnailModeByTag,
+    tagThumbnailByTag,
+    fileThumbnailCropByRelPath,
+    videoThumbnailTimeByRelPath,
+  };
+}
+
+function metaMakeThumbnailsDocObject() {
+  return buildThumbnailMetadataDocObject();
+}
+
+function applyThumbnailMetadataDocLog(log) {
+  if (!log || typeof log !== "object") return;
+
+  WS.meta.dirThumbPresets.clear();
+  WS.meta.pendingDirThumbPresets = new Map();
+  const thumbnailByFolder =
+    log.thumbnailByFolder && typeof log.thumbnailByFolder === "object"
+      ? log.thumbnailByFolder
+      : {};
+  for (const dirPath of Object.keys(thumbnailByFolder)) {
+    const normalizedDirPath = normalizeDirPathValue(dirPath);
+    const rawValue = String(thumbnailByFolder[dirPath] || "");
+    const normalizedRelPath = normalizeWorkspaceRelPath(rawValue);
+    if (
+      !normalizedRelPath &&
+      rawValue !== FOLDER_THUMB_NONE_SENTINEL &&
+      rawValue !== FOLDER_THUMB_ROTATE_SENTINEL
+    )
+      continue;
+    const finalValue =
+      rawValue === FOLDER_THUMB_NONE_SENTINEL ||
+      rawValue === FOLDER_THUMB_ROTATE_SENTINEL
+        ? rawValue
+        : normalizedRelPath;
+    if (!normalizedDirPath && !WS.dirByPath.has("")) continue;
+    if (WS.dirByPath.has(normalizedDirPath)) {
+      WS.meta.dirThumbPresets.set(normalizedDirPath, finalValue);
+    } else if (normalizedDirPath) {
+      WS.meta.pendingDirThumbPresets.set(normalizedDirPath, finalValue);
+    }
+  }
+
+  WS.meta.tagThumbModes.clear();
+  const tagThumbnailModeByTag =
+    log.tagThumbnailModeByTag && typeof log.tagThumbnailModeByTag === "object"
+      ? log.tagThumbnailModeByTag
+      : {};
+  for (const rawKey of Object.keys(tagThumbnailModeByTag)) {
+    const key = String(rawKey || "");
+    if (!key) continue;
+    const mode = normalizeTagThumbnailMode(tagThumbnailModeByTag[rawKey]);
+    if (mode === "quad") continue;
+    WS.meta.tagThumbModes.set(key, mode);
+  }
+
+  WS.meta.tagThumbPresets.clear();
+  const tagThumbnailByTag =
+    log.tagThumbnailByTag && typeof log.tagThumbnailByTag === "object"
+      ? log.tagThumbnailByTag
+      : {};
+  for (const rawKey of Object.keys(tagThumbnailByTag)) {
+    const key = String(rawKey || "");
+    const relPath = normalizeWorkspaceRelPath(tagThumbnailByTag[rawKey]);
+    if (key && relPath) WS.meta.tagThumbPresets.set(key, relPath);
+  }
+  for (const key of WS.meta.tagThumbPresets.keys()) {
+    if (!WS.meta.tagThumbModes.has(key)) WS.meta.tagThumbModes.set(key, "single");
+  }
+
+  WS.meta.fileThumbCrop.clear();
+  const fileThumbnailCropByRelPath =
+    log.fileThumbnailCropByRelPath &&
+    typeof log.fileThumbnailCropByRelPath === "object"
+      ? log.fileThumbnailCropByRelPath
+      : {};
+  for (const rawRelPath of Object.keys(fileThumbnailCropByRelPath)) {
+    const relPath = normalizeWorkspaceRelPath(rawRelPath);
+    const crop = normalizeThumbCropValue(fileThumbnailCropByRelPath[rawRelPath]);
+    if (relPath && !isThumbCropDefault(crop)) WS.meta.fileThumbCrop.set(relPath, crop);
+  }
+
+  WS.meta.videoThumbTime.clear();
+  const videoThumbnailTimeByRelPath =
+    log.videoThumbnailTimeByRelPath &&
+    typeof log.videoThumbnailTimeByRelPath === "object"
+      ? log.videoThumbnailTimeByRelPath
+      : {};
+  for (const rawRelPath of Object.keys(videoThumbnailTimeByRelPath)) {
+    const relPath = normalizeWorkspaceRelPath(rawRelPath);
+    const timeValue = normalizeVideoThumbTimeValue(
+      videoThumbnailTimeByRelPath[rawRelPath],
+    );
+    if (relPath && Number.isFinite(timeValue))
+      WS.meta.videoThumbTime.set(relPath, timeValue);
+  }
+}
+
+function metaApplyThumbnailsDocLog(log) {
+  return applyThumbnailMetadataDocLog(log);
+}
+
+function folderEligibleForParentThumbnailPreset(dirNode) {
+  if (!dirNode || isStorageStubDirNode(dirNode)) return false;
+  const dirPath = String(dirNode.path || "");
+  return !!dirPath || dirNode === WS.root;
+}
+
+function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
+  if (!dirNode) return { record: null, rotateKey: "" };
+  const dirPath = String(dirNode.path || "");
+  const thumbMode = metaGetFolderThumbnailMode(dirPath);
+  if (thumbMode === "none") return { record: null, rotateKey: "" };
+  const presetRec = getPresetPreviewRecordForDir(dirNode);
+  if (presetRec) return { record: presetRec, rotateKey: "" };
+  if (!dirPath && dirNode !== WS.root) return { record: null, rotateKey: "" };
+  const recursivePool = getRecursivePreviewRecordsForDir(dirNode, 72, true);
+  const directRec = getFirstDirectPreviewRecordForDir(dirNode);
+  if (naturalAspectThumbnailCardsEnabled()) {
+    return { record: directRec || recursivePool[0] || null, rotateKey: "" };
+  }
+  if (thumbMode === "rotate" && recursivePool.length > 1) {
+    const scope = dirPath || "__root__";
+    const rotateKey = `${String(rotateKeyPrefix || "dir")}:${scope}`;
+    const record = pickRotatingPreviewRecordForKey(rotateKey, recursivePool);
+    return { record: record || recursivePool[0] || null, rotateKey };
+  }
+  return { record: directRec || recursivePool[0] || null, rotateKey: "" };
+}
+
+function findNearestPresettableParentForRecord(rec) {
+  if (!rec) return null;
+  const startNode = WS.dirByPath.get(String(rec.dirPath || ""));
+  let cur = startNode && startNode.parent ? startNode.parent : null;
+  while (cur) {
+    if (folderEligibleForParentThumbnailPreset(cur)) return cur;
+    cur = cur.parent || null;
+  }
+  return null;
+}
+
+function setFolderThumbnailTargetFromRecord(rec, targetPath) {
+  const normalizedPath = normalizeDirPathValue(targetPath);
+  if (!normalizedPath) return setRootThumbnailFromRecord(rec);
+  const folderNode = WS.dirByPath.get(normalizedPath);
+  if (!folderNode) {
+    showStatusMessage("Target folder is unavailable.");
+    return false;
+  }
+  const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
+  if (!relPath) {
+    showStatusMessage("Selected file is unavailable.");
+    return false;
+  }
+  const changed = metaSetFolderThumbnailPreset(normalizedPath, relPath);
+  if (!changed) {
+    showStatusMessage(`Thumbnail already set for ${dirDisplayName(folderNode)}.`);
+    return false;
+  }
+  refreshThumbnailUiAfterMetadataChange();
+  showStatusMessage(`Set thumbnail for ${dirDisplayName(folderNode)}.`);
+  return true;
+}
+
+function setParentThumbnailFromRecord(rec) {
+  const targetNode = findNearestPresettableParentForRecord(rec);
+  if (!targetNode) {
+    showStatusMessage("No eligible parent folder found.");
+    return false;
+  }
+  return setFolderThumbnailTargetFromRecord(rec, String(targetNode.path || ""));
+}
+
+function setFolderThumbnailFromRecord(rec) {
+  const folderPath = String(rec && rec.dirPath || "");
+  if (!folderPath || !WS.dirByPath.has(folderPath)) {
+    showStatusMessage("Selected file has no target folder.");
+    return false;
+  }
+  return setFolderThumbnailTargetFromRecord(rec, folderPath);
+}
+
+function setRootThumbnailFromRecord(rec) {
+  if (!WS.root) {
+    showStatusMessage("No root folder is available.");
+    return false;
+  }
+  const relPath = normalizeWorkspaceRelPath(rec && rec.relPath || "");
+  if (!relPath) {
+    showStatusMessage("Selected file is unavailable.");
+    return false;
+  }
+  const changed = metaSetTagThumbnailPresetByKey(rootThumbnailKey(), relPath);
+  if (!changed) {
+    showStatusMessage("Root thumbnail is already set to this file.");
+    return false;
+  }
+  refreshThumbnailUiAfterMetadataChange();
+  showStatusMessage("Set thumbnail for root.");
+  return true;
+}
+
+function getRootThumbnailMode() {
+  return metaGetTagThumbnailModeByKey(rootThumbnailKey());
+}
+
+function isRootThumbnailModeDefault(mode) {
+  return String(mode || "") === defaultRotatingThumbnailMode();
+}
+
+function rootThumbnailHasPreset() {
+  return metaHasTagThumbnailPresetByKey(rootThumbnailKey());
+}
+
+function setRootThumbnailMode(mode) {
+  return metaSetTagThumbnailModeByKey(rootThumbnailKey(), mode);
+}
+
+function clearRootThumbnailPreset() {
+  return metaClearTagThumbnailPresetByKey(rootThumbnailKey());
+}
+
+function resetRootThumbnailToDefault() {
+  return resetTagThumbnailToDefaultByKey(rootThumbnailKey());
+}
+
+function clearEditedThumbnailCrops() {
+  if (!WS.meta) return 0;
+  const cropCount = WS.meta.fileThumbCrop ? WS.meta.fileThumbCrop.size : 0;
+  const frameCount = WS.meta.videoThumbTime ? WS.meta.videoThumbTime.size : 0;
+  const count = cropCount + frameCount;
+  if (!count) return 0;
+  if (WS.meta.fileThumbCrop) WS.meta.fileThumbCrop.clear();
+  if (WS.meta.videoThumbTime) WS.meta.videoThumbTime.clear();
+  metaMarkDirty(META_DOC_IDS.thumbnails);
+  return count;
+}
+
+function clearThumbnailAssignmentsToDefaults() {
+  if (!WS.meta) return 0;
+  let count = 0;
+  if (WS.meta.dirThumbPresets && WS.meta.dirThumbPresets.size) {
+    count += WS.meta.dirThumbPresets.size;
+    WS.meta.dirThumbPresets.clear();
+  }
+  if (WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.size) {
+    count += WS.meta.tagThumbPresets.size;
+    WS.meta.tagThumbPresets.clear();
+  }
+  if (WS.meta.tagThumbModes && WS.meta.tagThumbModes.size) {
+    count += WS.meta.tagThumbModes.size;
+    WS.meta.tagThumbModes.clear();
+  }
+  if (count) metaMarkDirty(META_DOC_IDS.thumbnails);
+  return count;
+}
+
+function clearAllThumbnailCustomizations() {
+  const cropCount = clearEditedThumbnailCrops();
+  const assignmentCount = clearThumbnailAssignmentsToDefaults();
+  return {
+    cropCount,
+    assignmentCount,
+    total: cropCount + assignmentCount,
+  };
+}
+
+async function hydrateEditedThumbnailAspects() {
+  if (!WS.meta || !WS.meta.fileThumbCrop || !WS.meta.fileThumbCrop.size)
+    return false;
+  const records = [];
+  const seen = new Set();
+  for (const relPath of WS.meta.fileThumbCrop.keys()) {
+    const rec = findFileRecordByRelPath(relPath);
+    const id = String(rec && rec.id || "");
+    if (!rec || !id || seen.has(id)) continue;
+    seen.add(id);
+    records.push(rec);
+  }
+  let changed = false;
+  for (let i = 0; i < records.length; i++) {
+    const aspect = await detectRecordPreviewAspect(records[i]);
+    if (aspect && setRecordAspectRatio(records[i], aspect)) changed = true;
+  }
+  return changed;
+}
+
+function getThumbnailMenuTargetsForRecord(rec) {
+  const out = [];
+  if (!rec) return out;
+  const seenFolders = new Set();
+  const seenTags = new Set();
+  let cur = WS.dirByPath.get(String(rec.dirPath || "")) || WS.root || null;
+  while (cur) {
+    const folderPath = String(cur.path || "");
+    if (!seenFolders.has(folderPath)) {
+      seenFolders.add(folderPath);
+      const folderLabel = thumbnailMenuFolderLabel(cur);
+      out.push({
+        action: folderThumbnailActionForPath(folderPath),
+        label: folderPath
+          ? `Set '${folderLabel}' thumbnail`
+          : "Set root thumbnail",
+      });
+    }
+
+    const scopeNode = cur.parent || WS.root || null;
+    const scopePath = String(scopeNode && scopeNode.path || "");
+    const scopeLabel = thumbnailMenuScopeLabel(scopeNode);
+    const tags = metaGetUserTags(cur.path || "");
+    for (let i = 0; i < tags.length; i++) {
+      const tag = normalizeTag(tags[i] || "");
+      if (!tag) continue;
+      const key = tagThumbnailKeyForTag(tag, scopePath);
+      if (key && !seenTags.has(key)) {
+        seenTags.add(key);
+        out.push({
+          action: tagThumbnailActionForKey(key),
+          label: `Set '${tag}' thumbnail in ${scopeLabel}`,
+        });
+      }
+      const album = metaGetTagAlbumForTag(tag, scopePath);
+      const albumKey = tagThumbnailKeyForAlbum(album, scopePath);
+      if (album && albumKey && !seenTags.has(albumKey)) {
+        seenTags.add(albumKey);
+        out.push({
+          action: tagThumbnailActionForKey(albumKey),
+          label: `Set album '${album}' thumbnail in ${scopeLabel}`,
+        });
+      }
+    }
+
+    if (metaHasFavorite(cur.path || "")) {
+      const scopeKey = tagThumbnailScopeKeyFromPath(scopePath);
+      const key = `special:favorites:${scopeKey}`;
+      if (!seenTags.has(key)) {
+        seenTags.add(key);
+        out.push({
+          action: tagThumbnailActionForKey(key),
+          label: `Set favorites thumbnail in ${scopeLabel}`,
+        });
+      }
+    }
+
+    cur = cur.parent || null;
+  }
+  return out;
+}
+
+function tagThumbnailActionForKey(tagKey) {
+  return `set-tag-thumbnail:${encodeURIComponent(String(tagKey || ""))}`;
+}
+
+function folderThumbnailActionForPath(path) {
+  const normalized = normalizeDirPathValue(path);
+  const key = normalized ? normalized : "__root__";
+  return `set-folder-thumbnail-target:${encodeURIComponent(key)}`;
+}
+
+function parseFolderThumbnailAction(action) {
+  const raw = String(action || "");
+  const prefix = "set-folder-thumbnail-target:";
+  if (!raw.startsWith(prefix)) return null;
+  const encoded = raw.slice(prefix.length);
+  if (!encoded) return null;
+  try {
+    const decoded = decodeURIComponent(encoded);
+    if (decoded === "__root__") return "";
+    return normalizeDirPathValue(decoded);
+  } catch {
+    return null;
+  }
+}
+
+function parseTagThumbnailAction(action) {
+  const raw = String(action || "");
+  const prefix = "set-tag-thumbnail:";
+  if (!raw.startsWith(prefix)) return "";
+  const encoded = raw.slice(prefix.length);
+  if (!encoded) return "";
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return "";
+  }
+}
+
+function setTagThumbnailFromRecordByKey(rec, tagKey) {
+  const key = String(tagKey || "");
+  if (!rec || !key) {
+    showStatusMessage("Selected file is unavailable.");
+    return false;
+  }
+  const relPath = normalizeWorkspaceRelPath(rec.relPath || "");
+  if (!relPath) {
+    showStatusMessage("Selected file is unavailable.");
+    return false;
+  }
+  const changed = metaSetTagThumbnailPresetByKey(key, relPath);
+  const tagLabel = tagThumbnailLabelForKey(key);
+  if (!changed) {
+    showStatusMessage(`Thumbnail already set for '${tagLabel}'.`);
+    return false;
+  }
+  refreshThumbnailUiAfterMetadataChange();
+  showStatusMessage(`Set thumbnail for '${tagLabel}'.`);
+  return true;
+}
+
+function refreshThumbnailUiAfterMetadataChange() {
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+}
+
+function randomThumbnailCandidateForDirNode() {
+  return null;
+}
+
+function randomThumbnailCandidateForTagEntry() {
+  return null;
+}
+
+function setRandomFolderThumbnailForNode() {
+  return false;
+}
+
+function setRandomTagThumbnailForEntry() {
+  return false;
+}
+
+function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
+  const normalizedLimit = Math.max(0, Math.floor(Number(limit) || 0));
+  const cacheKey =
+    entry && entry.kind === "tag"
+      ? `${String(tagEntrySelectionKey(entry) || "")}@@${String(
+          entry.originPath || "",
+        )}@@${effectiveFilterCacheKey()}@@${String(
+          effectiveTagMediaFilterForEntry(entry).join(","),
+        )}@@${String(normalizedLimit)}`
+      : "";
+  if (cacheKey && TAG_ENTRY_PREVIEW_POOL_CACHE.has(cacheKey)) {
+    return TAG_ENTRY_PREVIEW_POOL_CACHE.get(cacheKey) || [];
+  }
+  const dirs = getDirsForTagEntry(entry);
+  if (!dirs.length) return [];
+  const result = sampleRecursivePreviewRecords(dirs, normalizedLimit, true).filter(
+    (rec) => recordPassesTagEntryFilter(rec, entry),
+  );
+  if (cacheKey) TAG_ENTRY_PREVIEW_POOL_CACHE.set(cacheKey, result);
+  return result;
+}
+
+function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
+  const key = tagThumbnailKeyForEntry(entry);
+  if (!key || getTagThumbnailDisplayModeByKey(key) !== "single") return null;
+  const relPath = metaGetTagThumbnailPresetRelPathByKey(key);
+  if (!relPath) return null;
+  const rec = findFileRecordByRelPath(relPath);
+  if (!rec || !recordPassesTagEntryFilter(rec, entry)) return null;
+  const dirs = getDirsForTagEntry(entry);
+  if (!dirs.length || !isRecordInAnyDirSubtree(rec, dirs)) return null;
+  return rec;
+}
+
+function tagThumbnailPreviewSampleLimit(modeRaw) {
+  const mode = String(modeRaw || "").trim().toLowerCase();
+  if (mode === "none") return 0;
+  return mode === "rotate" ? 48 : 24;
+}
+
+function getRootThumbnailReferenceRecord(rootNode) {
+  if (!rootNode) return null;
+  const rootPool = getRecursivePreviewRecordsForDir(rootNode, 96, true);
+  if (!rootPool.length || getRootThumbnailMode() === "none") return null;
+  const presetRec = getRootPresetPreviewRecord(rootNode, rootPool);
+  return presetRec || rootPool[0] || null;
+}
+
+function getTagThumbnailReferenceRecord(entry) {
+  if (!entry || entry.kind !== "tag" || entry.placeholder) return null;
+  const key = tagThumbnailKeyForEntry(entry);
+  if (!key || metaGetTagThumbnailModeByKey(key) === "none") return null;
+  const presetRec = getTagPresetPreviewRecordForEntry(entry);
+  if (presetRec) return presetRec;
+  const tagPool = getRecursivePreviewRecordsForTagEntry(
+    entry,
+    tagThumbnailPreviewSampleLimit(metaGetTagThumbnailModeByKey(key)),
+  );
+  return tagPool[0] || null;
+}
+
+function getSelectedThumbnailSourceRecordFromUi() {
+  const resolveFromContainer = (container) => {
+    if (!container || !container.querySelector) return null;
+    const selected = container.querySelector(".previewSelected, .dirRow.selected");
+    if (!selected || !selected.querySelector) return null;
+    const img = selected.querySelector("[data-dir-preview-id]");
+    const recId = String(img && img.dataset && img.dataset.dirPreviewId || "");
+    return recId ? WS.fileById.get(recId) || null : null;
+  };
+  return resolveFromContainer(previewBodyEl) || resolveFromContainer(directoriesListEl);
+}
+
+function getSelectedThumbnailSourceRecord() {
+  if (!WS.root || !WS.nav || !Array.isArray(WS.nav.entries)) return null;
+  const uiRec = getSelectedThumbnailSourceRecordFromUi();
+  if (uiRec) return uiRec;
+  const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
+  if (!entry) return null;
+  if (entry.kind === "file") return WS.fileById.get(String(entry.id || "")) || null;
+  if (entry.kind === "tag") return getTagThumbnailReferenceRecord(entry);
+  if (entry.kind === "dir") {
+    const node = entry.node || null;
+    if (!node) return null;
+    if (node === WS.root && WS.view && WS.view.aboveRootView)
+      return getRootThumbnailReferenceRecord(node);
+    const leadInfo = getDisplayLeadPreviewForDir(node, "dir");
+    return leadInfo && leadInfo.record ? leadInfo.record : null;
+  }
+  return null;
+}
+
+const THUMB_VIEWPORT_NUDGE_STEP_RESTORED = 8;
+
+function nudgeSelectedThumbnailViewport(dx, dy, opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  const rec = getSelectedThumbnailSourceRecord();
+  if (!rec) {
+    if (!options.quietNoTarget)
+      showStatusMessage("Selected item has no editable thumbnail source.");
+    return false;
+  }
+  const stepX = Number(dx) || 0;
+  const stepY = Number(dy) || 0;
+  if (!stepX && !stepY) return false;
+  const current = normalizeThumbCropValue(
+    metaGetFileThumbnailCropForRecord(rec) || { x: 50, y: 50, zoom: 1 },
+  );
+  const next = normalizeThumbCropValue({
+    x: current.x + stepX,
+    y: current.y + stepY,
+    zoom: current.zoom,
+  });
+  if (next.x === current.x && next.y === current.y) return false;
+  metaSetFileThumbnailCropForRecord(rec, next);
+  refreshThumbnailUiAfterMetadataChange();
+  if (!options.quietSuccess) showStatusMessage("Thumbnail viewport updated.");
+  return true;
+}
+
+function rotatePreviewThumbnailsTick() {
+  const nodes = Array.from(
+    document.querySelectorAll("[data-rotate-key][data-dir-preview-id]"),
+  );
+  if (!nodes.length) {
+    if (ROTATING_PREVIEW_TIMER) {
+      clearInterval(ROTATING_PREVIEW_TIMER);
+      ROTATING_PREVIEW_TIMER = 0;
+    }
+    return;
+  }
+  const activeKeys = new Set();
+  const now = Date.now();
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const key = String(node && node.dataset && node.dataset.rotateKey || "");
+    if (!key) continue;
+    activeKeys.add(key);
+    const poolIds = ROTATING_PREVIEW_POOLS.get(key) || [];
+    if (poolIds.length < 2) continue;
+    const nextAt = Number(ROTATING_PREVIEW_NEXT_AT.get(key) || 0);
+    if (Number.isFinite(nextAt) && nextAt > now) continue;
+    const order = ROTATING_PREVIEW_ORDER.get(key) || poolIds;
+    if (!order.length) continue;
+    const currentIndex = Number(ROTATING_PREVIEW_INDEX.get(key) || 0);
+    const nextIndex = (currentIndex + 1) % order.length;
+    ROTATING_PREVIEW_INDEX.set(key, nextIndex);
+    ROTATING_PREVIEW_NEXT_AT.set(
+      key,
+      now + ROTATING_PREVIEW_INTERVAL_MS + Math.round(Math.random() * ROTATING_PREVIEW_JITTER_MS),
+    );
+    const recId = String(order[nextIndex] || "");
+    const rec = WS.fileById.get(recId);
+    if (!rec || String(node.dataset.dirPreviewId || "") === recId) continue;
+    if (node.tagName && String(node.tagName).toLowerCase() === "video") {
+      const img = document.createElement("img");
+      img.className = node.className;
+      img.setAttribute("data-rotate-key", key);
+      if (node.getAttribute("style")) img.setAttribute("style", node.getAttribute("style") || "");
+      try { node.replaceWith(img); } catch {}
+      crossfadePreviewRecordOnImageElement(img, rec);
+    } else {
+      crossfadePreviewRecordOnImageElement(node, rec);
+    }
+  }
+  for (const key of Array.from(ROTATING_PREVIEW_POOLS.keys())) {
+    if (activeKeys.has(key)) continue;
+    ROTATING_PREVIEW_POOLS.delete(key);
+    ROTATING_PREVIEW_ORDER.delete(key);
+    ROTATING_PREVIEW_INDEX.delete(key);
+    ROTATING_PREVIEW_NEXT_AT.delete(key);
+  }
+}
+
+function entryUsesRotatingThumbnail(entry) {
+  if (!entry) return false;
+  if (entry.kind === "dir") {
+    if (isStorageStubDirNode(entry.node)) return false;
+    const lead = getDisplayLeadPreviewForDir(entry.node || null, "dir");
+    return !!String(lead && lead.rotateKey || "");
+  }
+  if (entry.kind === "tag") {
+    if (naturalAspectThumbnailCardsEnabled()) return false;
+    const key = tagThumbnailKeyForEntry(entry);
+    if (!key || !tagThumbnailUsesRotationByKey(key)) return false;
+    return (
+      getRecursivePreviewRecordsForTagEntry(
+        entry,
+        tagThumbnailPreviewSampleLimit("rotate"),
+      ).length > 1
+    );
+  }
+  return false;
+}
+
+function teleportFromRotatingThumbnail(entry, rowEl = null) {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  if (!opt || !opt.clickSelectedRotatingThumbTeleports) return false;
+  if (!entryUsesRotatingThumbnail(entry)) return false;
+  const row =
+    rowEl ||
+    (directoriesListEl
+      ? directoriesListEl.querySelector(".dirRow.selected")
+      : null);
+  const img =
+    row && row.querySelector
+      ? row.querySelector("[data-dir-preview-id]")
+      : null;
+  const id = String(img && img.getAttribute("data-dir-preview-id") || "");
+  const rec = id ? WS.fileById.get(id) : null;
+  return rec ? focusDirectoriesOnFileRecord(rec) : false;
+}
+
+function closeThumbnailCropEditor() {
+  if (!THUMB_CROP_EDITOR) return;
+  const editorVideo = THUMB_CROP_EDITOR.querySelector
+    ? THUMB_CROP_EDITOR.querySelector("video.thumbCropEditorPreviewFull")
+    : null;
+  if (editorVideo) {
+    try {
+      editorVideo.pause();
+    } catch {}
+    try {
+      editorVideo.removeAttribute("src");
+    } catch {}
+    try {
+      editorVideo.load();
+    } catch {}
+  }
+  try {
+    THUMB_CROP_EDITOR.remove();
+  } catch {}
+  THUMB_CROP_EDITOR = null;
+}
+
+function openThumbnailCropEditor(rec) {
+  const targetLabel = "this file";
+  if (!rec) return false;
+  const isVideoEditor = rec.type === "video";
+  const previewSrc = isVideoEditor
+    ? ensureMediaUrl(rec) || ""
+    : ensureThumbUrl(rec) || "";
+  if (!previewSrc) {
+    showStatusMessage("Thumbnail preview is unavailable.");
+    return false;
+  }
+
+  closeThumbnailCropEditor();
+
+  const crop = normalizeThumbCropValue(
+    metaGetFileThumbnailCropForRecord(rec) || { x: 50, y: 50, zoom: 1 },
+  );
+  const savedVideoFrameTime = isVideoEditor
+    ? metaGetVideoThumbnailTimeForRecord(rec)
+    : null;
+  const mediaHtml = isVideoEditor
+    ? `<video class="thumbCropEditorPreviewFull thumbCropEditorPreviewVideo" src="${escapeHtml(previewSrc)}" preload="metadata" playsinline muted></video>`
+    : `<img class="thumbCropEditorPreviewFull" src="${escapeHtml(previewSrc)}" alt="" />`;
+  const frameControlHtml = isVideoEditor
+    ? `
+          <div class="thumbCropEditorControl">
+            <label>Frame</label>
+            <input type="range" min="0" max="0" step="0.01" value="0" data-crop-field="frame" disabled />
+            <span data-crop-value="frame">0:00.00</span>
+          </div>
+        `
+    : "";
+  const overlay = document.createElement("div");
+  overlay.className = "thumbCropEditorOverlay";
+  overlay.tabIndex = -1;
+  overlay.innerHTML = `
+        <div class="thumbCropEditorPanel" role="dialog" aria-modal="true" aria-label="Edit thumbnail">
+          <div class="thumbCropEditorTitle">Edit thumbnail</div>
+          <div class="thumbCropEditorSubtitle">${escapeHtml(targetLabel)}</div>
+          <div class="thumbCropEditorPreviewWrap">
+            ${mediaHtml}
+            <div class="thumbCropEditorShade" data-crop-shade="top"></div>
+            <div class="thumbCropEditorShade" data-crop-shade="left"></div>
+            <div class="thumbCropEditorShade" data-crop-shade="right"></div>
+            <div class="thumbCropEditorShade" data-crop-shade="bottom"></div>
+            <div class="thumbCropEditorCropBox" data-crop-box="1"></div>
+            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" aria-label="Resize crop viewport" tabindex="-1"></button>
+          </div>
+          ${frameControlHtml}
+          <div class="thumbCropEditorHint">Drag to pan. Drag corner or pinch to zoom.</div>
+          <div class="thumbCropEditorControl">
+            <label>Horizontal focus</label>
+            <input type="range" min="0" max="100" step="1" value="${escapeHtml(String(crop.x))}" data-crop-field="x" />
+            <span data-crop-value="x">${escapeHtml(String(Math.round(crop.x)))}</span>
+          </div>
+          <div class="thumbCropEditorControl">
+            <label>Vertical focus</label>
+            <input type="range" min="0" max="100" step="1" value="${escapeHtml(String(crop.y))}" data-crop-field="y" />
+            <span data-crop-value="y">${escapeHtml(String(Math.round(crop.y)))}</span>
+          </div>
+          <div class="thumbCropEditorControl">
+            <label>Zoom</label>
+            <input type="range" min="1" max="4" step="0.01" value="${escapeHtml(String(crop.zoom))}" data-crop-field="zoom" />
+            <span data-crop-value="zoom">${escapeHtml(crop.zoom.toFixed(2))}</span>
+          </div>
+          <div class="thumbCropEditorActions">
+            <button type="button" data-crop-action="reset">Reset</button>
+            <button type="button" data-crop-action="cancel">Cancel</button>
+            <button type="button" data-crop-action="save">Save</button>
+          </div>
+        </div>
+      `;
+  document.body.appendChild(overlay);
+  THUMB_CROP_EDITOR = overlay;
+
+  const panel = overlay.querySelector(".thumbCropEditorPanel");
+  const previewWrap = overlay.querySelector(".thumbCropEditorPreviewWrap");
+  const previewMedia = overlay.querySelector(".thumbCropEditorPreviewFull");
+  const previewImage = isVideoEditor ? null : previewMedia;
+  const previewVideo = isVideoEditor ? previewMedia : null;
+  const cropBox = overlay.querySelector('[data-crop-box="1"]');
+  const shadeTop = overlay.querySelector('[data-crop-shade="top"]');
+  const shadeLeft = overlay.querySelector('[data-crop-shade="left"]');
+  const shadeRight = overlay.querySelector('[data-crop-shade="right"]');
+  const shadeBottom = overlay.querySelector('[data-crop-shade="bottom"]');
+  const resizeHandle = overlay.querySelector('[data-crop-handle="resize"]');
+  const rangeX = overlay.querySelector('input[data-crop-field="x"]');
+  const rangeY = overlay.querySelector('input[data-crop-field="y"]');
+  const rangeZoom = overlay.querySelector('input[data-crop-field="zoom"]');
+  const rangeFrame = overlay.querySelector('input[data-crop-field="frame"]');
+  const valX = overlay.querySelector('[data-crop-value="x"]');
+  const valY = overlay.querySelector('[data-crop-value="y"]');
+  const valZoom = overlay.querySelector('[data-crop-value="zoom"]');
+  const valFrame = overlay.querySelector('[data-crop-value="frame"]');
+  let editorAspect = normalizePreviewAspect(
+    getPreviewAspectForRecord(rec),
+    4 / 3,
+  );
+  let editorVideoDuration = 0;
+  const getEditorAspect = () => normalizePreviewAspect(editorAspect, 4 / 3);
+  const applyEditorAspect = (nextAspect) => {
+    editorAspect = normalizePreviewAspect(nextAspect, getEditorAspect());
+    if (previewWrap)
+      previewWrap.style.setProperty("--editor-ar", String(editorAspect));
+  };
+  const getCurrent = () =>
+    normalizeThumbCropValue({
+      x: Number(rangeX?.value || 50),
+      y: Number(rangeY?.value || 50),
+      zoom: Number(rangeZoom?.value || 1),
+    });
+  const applyPreview = () => {
+    const cur = getCurrent();
+    const overlayWin = computeEditorCropWindow(getEditorAspect(), cur);
+    const left = Number(overlayWin.leftPct) || 0;
+    const top = Number(overlayWin.topPct) || 0;
+    const width = Number(overlayWin.widthPct) || 0;
+    const height = Number(overlayWin.heightPct) || 0;
+    const right = Math.max(0, 100 - (left + width));
+    const bottom = Math.max(0, 100 - (top + height));
+    if (valX) valX.textContent = String(Math.round(cur.x));
+    if (valY) valY.textContent = String(Math.round(cur.y));
+    if (valZoom) valZoom.textContent = cur.zoom.toFixed(2);
+    if (cropBox) {
+      cropBox.style.left = `${left}%`;
+      cropBox.style.top = `${top}%`;
+      cropBox.style.width = `${width}%`;
+      cropBox.style.height = `${height}%`;
+    }
+    if (shadeTop) {
+      shadeTop.style.left = "0%";
+      shadeTop.style.top = "0%";
+      shadeTop.style.width = "100%";
+      shadeTop.style.height = `${top}%`;
+    }
+    if (shadeBottom) {
+      shadeBottom.style.left = "0%";
+      shadeBottom.style.top = `${top + height}%`;
+      shadeBottom.style.width = "100%";
+      shadeBottom.style.height = `${bottom}%`;
+    }
+    if (shadeLeft) {
+      shadeLeft.style.left = "0%";
+      shadeLeft.style.top = `${top}%`;
+      shadeLeft.style.width = `${left}%`;
+      shadeLeft.style.height = `${height}%`;
+    }
+    if (shadeRight) {
+      shadeRight.style.left = `${left + width}%`;
+      shadeRight.style.top = `${top}%`;
+      shadeRight.style.width = `${right}%`;
+      shadeRight.style.height = `${height}%`;
+    }
+    if (resizeHandle) {
+      resizeHandle.style.left = `${left + width}%`;
+      resizeHandle.style.top = `${top + height}%`;
+    }
+  };
+  const setCurrent = (nextCrop) => {
+    const next = normalizeThumbCropValue(nextCrop);
+    if (rangeX) rangeX.value = String(next.x);
+    if (rangeY) rangeY.value = String(next.y);
+    if (rangeZoom) rangeZoom.value = String(next.zoom);
+    applyPreview();
+  };
+  const clampEditorVideoTime = (timeValue) =>
+    normalizeVideoThumbTimeValue(timeValue, editorVideoDuration);
+  const getDefaultEditorVideoTime = () => {
+    if (!isVideoEditor) return 0;
+    return clampEditorVideoTime(Math.max(0, Math.min(0.1, editorVideoDuration * 0.02))) || 0;
+  };
+  const getCurrentEditorVideoTime = () => {
+    if (!isVideoEditor || !rangeFrame) return null;
+    return clampEditorVideoTime(rangeFrame.value);
+  };
+  const updateEditorVideoFrameLabel = (timeValue) => {
+    if (!valFrame) return;
+    valFrame.textContent = formatThumbnailEditorTimeLabel(timeValue);
+  };
+  const syncEditorVideoTimeToSlider = (timeValue) => {
+    if (!rangeFrame) return;
+    const clamped = clampEditorVideoTime(timeValue);
+    const safeValue = Number.isFinite(clamped) ? clamped : 0;
+    rangeFrame.value = String(safeValue);
+    updateEditorVideoFrameLabel(safeValue);
+  };
+  const seekEditorVideoToTime = (timeValue) => {
+    if (!previewVideo) return;
+    const clamped = clampEditorVideoTime(timeValue);
+    if (!Number.isFinite(clamped)) return;
+    syncEditorVideoTimeToSlider(clamped);
+    try {
+      previewVideo.currentTime = clamped;
+    } catch {}
+  };
+  const updateEditorVideoFrameRange = () => {
+    if (!rangeFrame) return;
+    if (!(editorVideoDuration > 0)) {
+      rangeFrame.min = "0";
+      rangeFrame.max = "0";
+      rangeFrame.step = "0.01";
+      rangeFrame.value = "0";
+      rangeFrame.disabled = true;
+      updateEditorVideoFrameLabel(0);
+      return;
+    }
+    const step = Math.max(0.01, Math.min(0.25, editorVideoDuration / 1000));
+    rangeFrame.min = "0";
+    rangeFrame.max = String(Math.max(0, editorVideoDuration - 0.05));
+    rangeFrame.step = String(Math.round(step * 1000) / 1000);
+    rangeFrame.disabled = false;
+  };
+  const getWrapSize = () => {
+    const rect =
+      previewWrap && previewWrap.getBoundingClientRect
+        ? previewWrap.getBoundingClientRect()
+        : null;
+    return {
+      width: Math.max(1, Number(rect && rect.width) || 1),
+      height: Math.max(1, Number(rect && rect.height) || 1),
+    };
+  };
+  const cropWithZoomAroundAnchor = (
+    startCrop,
+    nextZoom,
+    anchorU = null,
+    anchorV = null,
+  ) => {
+    const base = normalizeThumbCropValue(startCrop || getCurrent());
+    const zoom = Math.min(4, Math.max(1, Number(nextZoom) || base.zoom || 1));
+    const baseWin = computeEditorCropWindow(getEditorAspect(), base);
+    const baseLeft = (Number(baseWin.leftPct) || 0) / 100;
+    const baseTop = (Number(baseWin.topPct) || 0) / 100;
+    const baseW = (Number(baseWin.widthPct) || 0) / 100;
+    const baseH = (Number(baseWin.heightPct) || 0) / 100;
+    const focusU = Number.isFinite(Number(anchorU))
+      ? Math.max(0, Math.min(1, Number(anchorU)))
+      : Math.max(0, Math.min(1, baseLeft + baseW * 0.5));
+    const focusV = Number.isFinite(Number(anchorV))
+      ? Math.max(0, Math.min(1, Number(anchorV)))
+      : Math.max(0, Math.min(1, baseTop + baseH * 0.5));
+    const probe = computeEditorCropWindow(getEditorAspect(), {
+      x: 50,
+      y: 50,
+      zoom,
+    });
+    const nextW = (Number(probe.widthPct) || 0) / 100;
+    const nextH = (Number(probe.heightPct) || 0) / 100;
+    const nextRangeX = (Number(probe.rangeXPct) || 0) / 100;
+    const nextRangeY = (Number(probe.rangeYPct) || 0) / 100;
+    const nextLeft = Math.min(nextRangeX, Math.max(0, focusU - nextW * 0.5));
+    const nextTop = Math.min(nextRangeY, Math.max(0, focusV - nextH * 0.5));
+    const nextX = nextRangeX > 0.000001 ? (nextLeft / nextRangeX) * 100 : 50;
+    const nextY = nextRangeY > 0.000001 ? (nextTop / nextRangeY) * 100 : 50;
+    return normalizeThumbCropValue({ x: nextX, y: nextY, zoom });
+  };
+  const cropFromPanPixels = (startCrop, dx, dy, zoomOverride = null) => {
+    const overrideZoom =
+      zoomOverride !== null && zoomOverride !== undefined ? Number(zoomOverride) : NaN;
+    const liveZoom = Number(rangeZoom?.value);
+    const currentZoom = Number(getCurrent().zoom);
+    const startZoom = Number(startCrop && startCrop.zoom);
+    const zoom = Number.isFinite(overrideZoom)
+      ? overrideZoom
+      : Number.isFinite(liveZoom)
+        ? liveZoom
+        : Number.isFinite(currentZoom)
+          ? currentZoom
+          : Number.isFinite(startZoom)
+            ? startZoom
+            : 1;
+    const base = normalizeThumbCropValue({
+      x: Number(startCrop && startCrop.x),
+      y: Number(startCrop && startCrop.y),
+      zoom,
+    });
+    const wrapSize = getWrapSize();
+    const overlayWin = computeEditorCropWindow(getEditorAspect(), base);
+    const rangeX = Math.max(0, Number(overlayWin.rangeXPct) / 100);
+    const rangeY = Math.max(0, Number(overlayWin.rangeYPct) / 100);
+    const nextX =
+      rangeX > 0.000001
+        ? base.x + ((Number(dx) || 0) / wrapSize.width) * (100 / rangeX)
+        : base.x;
+    const nextY =
+      rangeY > 0.000001
+        ? base.y + ((Number(dy) || 0) / wrapSize.height) * (100 / rangeY)
+        : base.y;
+    return normalizeThumbCropValue({
+      x: nextX,
+      y: nextY,
+      zoom: base.zoom,
+    });
+  };
+
+  [rangeX, rangeY, rangeZoom, rangeFrame].forEach((el) => {
+    if (!el) return;
+    if (el === rangeFrame) {
+      el.addEventListener("input", () => {
+        const nextTime = getCurrentEditorVideoTime();
+        if (Number.isFinite(nextTime)) seekEditorVideoToTime(nextTime);
+      });
+      return;
+    }
+    el.addEventListener("input", applyPreview);
+  });
+  applyEditorAspect(getEditorAspect());
+  if (previewImage) {
+    previewImage.addEventListener("load", () => {
+      const w = Number(previewImage.naturalWidth) || 0;
+      const h = Number(previewImage.naturalHeight) || 0;
+      if (w > 0 && h > 0) {
+        const naturalAspect = normalizePreviewAspect(
+          w / h,
+          getPreviewAspectForRecord(rec),
+        );
+        applyEditorAspect(naturalAspect);
+        rec.previewAspect = naturalAspect;
+      }
+      applyPreview();
+    });
+  }
+  if (previewVideo) {
+    previewVideo.controls = false;
+    previewVideo.autoplay = false;
+    previewVideo.loop = false;
+    previewVideo.muted = true;
+    previewVideo.addEventListener("play", () => {
+      try {
+        previewVideo.pause();
+      } catch {}
+    });
+    previewVideo.addEventListener("loadedmetadata", () => {
+      editorVideoDuration = Math.max(0, Number(previewVideo.duration || 0));
+      updateEditorVideoFrameRange();
+      const w = Number(previewVideo.videoWidth) || 0;
+      const h = Number(previewVideo.videoHeight) || 0;
+      if (w > 0 && h > 0) {
+        const naturalAspect = normalizePreviewAspect(
+          w / h,
+          getPreviewAspectForRecord(rec),
+        );
+        applyEditorAspect(naturalAspect);
+        rec.previewAspect = naturalAspect;
+      }
+      const initial = Number.isFinite(savedVideoFrameTime)
+        ? clampEditorVideoTime(savedVideoFrameTime)
+        : getDefaultEditorVideoTime();
+      seekEditorVideoToTime(initial);
+      applyPreview();
+    });
+    previewVideo.addEventListener("seeked", () => {
+      syncEditorVideoTimeToSlider(previewVideo.currentTime || 0);
+    });
+    previewVideo.addEventListener("loadeddata", applyPreview);
+  }
+  applyPreview();
+
+  if (previewWrap) {
+    let resizeGesture = null;
+    const activePointers = new Map();
+    let gesture = null;
+    const pointerPosInWrap = (e) => {
+      const rect =
+        previewWrap && previewWrap.getBoundingClientRect
+          ? previewWrap.getBoundingClientRect()
+          : null;
+      const left = Number(rect && rect.left) || 0;
+      const top = Number(rect && rect.top) || 0;
+      return {
+        x: (Number(e && e.clientX) || 0) - left,
+        y: (Number(e && e.clientY) || 0) - top,
+      };
+    };
+    const getFirstTwoPointers = () => {
+      const vals = Array.from(activePointers.values());
+      if (vals.length < 2) return null;
+      return [vals[0], vals[1]];
+    };
+    const pointerDistance = (a, b) =>
+      Math.hypot(
+        Number(a && a.x) - Number(b && b.x),
+        Number(a && a.y) - Number(b && b.y),
+      );
+    const pointerCenter = (a, b) => ({
+      x: (Number(a && a.x) + Number(b && b.x)) * 0.5,
+      y: (Number(a && a.y) + Number(b && b.y)) * 0.5,
+    });
+    const refreshGesture = () => {
+      if (activePointers.size >= 2) {
+        const pair = getFirstTwoPointers();
+        if (!pair) return;
+        const center = pointerCenter(pair[0], pair[1]);
+        gesture = {
+          type: "pinch",
+          startCrop: getCurrent(),
+          startDist: Math.max(0.0001, pointerDistance(pair[0], pair[1])),
+          startCenterX: center.x,
+          startCenterY: center.y,
+        };
+        previewWrap.classList.add("dragging");
+        return;
+      }
+      if (activePointers.size === 1) {
+        const point = Array.from(activePointers.values())[0];
+        gesture = {
+          type: "pan",
+          startCrop: getCurrent(),
+          startX: Number(point && point.x) || 0,
+          startY: Number(point && point.y) || 0,
+        };
+        previewWrap.classList.add("dragging");
+        return;
+      }
+      gesture = null;
+      previewWrap.classList.remove("dragging");
+    };
+    const onPointerEnd = (e) => {
+      if (!activePointers.has(e.pointerId)) return;
+      activePointers.delete(e.pointerId);
+      try {
+        previewWrap.releasePointerCapture(e.pointerId);
+      } catch {}
+      refreshGesture();
+    };
+
+    previewWrap.addEventListener("pointerdown", (e) => {
+      if (resizeGesture) return;
+      if (
+        e.target &&
+        e.target.closest &&
+        e.target.closest('[data-crop-handle="resize"]')
+      )
+        return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      activePointers.set(e.pointerId, {
+        x: Number(e.clientX) || 0,
+        y: Number(e.clientY) || 0,
+      });
+      try {
+        previewWrap.setPointerCapture(e.pointerId);
+      } catch {}
+      refreshGesture();
+      e.preventDefault();
+    });
+    previewWrap.addEventListener("pointermove", (e) => {
+      if (!activePointers.has(e.pointerId)) return;
+      activePointers.set(e.pointerId, {
+        x: Number(e.clientX) || 0,
+        y: Number(e.clientY) || 0,
+      });
+      if (!gesture) {
+        refreshGesture();
+        return;
+      }
+      if (gesture.type === "pinch" && activePointers.size >= 2) {
+        const pair = getFirstTwoPointers();
+        if (!pair) return;
+        const dist = pointerDistance(pair[0], pair[1]);
+        const center = pointerCenter(pair[0], pair[1]);
+        const scale = Math.max(
+          0.25,
+          Math.min(4, dist / Math.max(0.0001, Number(gesture.startDist) || 1)),
+        );
+        const nextZoom = Math.min(
+          4,
+          Math.max(1, Number(gesture.startCrop.zoom || 1) * scale),
+        );
+        const dx = center.x - Number(gesture.startCenterX || 0);
+        const dy = center.y - Number(gesture.startCenterY || 0);
+        setCurrent(cropFromPanPixels(gesture.startCrop, dx, dy, nextZoom));
+        e.preventDefault();
+        return;
+      }
+      if (gesture.type === "pan" && activePointers.size === 1) {
+        const point = Array.from(activePointers.values())[0];
+        const dx =
+          (Number(point && point.x) || 0) - Number(gesture.startX || 0);
+        const dy =
+          (Number(point && point.y) || 0) - Number(gesture.startY || 0);
+        setCurrent(cropFromPanPixels(gesture.startCrop, dx, dy));
+        e.preventDefault();
+        return;
+      }
+      refreshGesture();
+    });
+    previewWrap.addEventListener("pointerup", onPointerEnd);
+    previewWrap.addEventListener("pointercancel", onPointerEnd);
+    previewWrap.addEventListener("lostpointercapture", onPointerEnd);
+    previewWrap.addEventListener(
+      "wheel",
+      (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        const cur = getCurrent();
+        const delta = Number(e.deltaY) || 0;
+        if (!delta) return;
+        const factor = Math.exp(-delta * 0.0025);
+        const nextZoom = Math.min(4, Math.max(1, cur.zoom * factor));
+        if (Math.abs(nextZoom - cur.zoom) < 0.0001) return;
+        setCurrent({ x: cur.x, y: cur.y, zoom: nextZoom });
+        e.preventDefault();
+      },
+      { passive: false },
+    );
+
+    if (resizeHandle) {
+      const onResizeEnd = (e) => {
+        if (!resizeGesture || e.pointerId !== resizeGesture.pointerId) return;
+        try {
+          resizeHandle.releasePointerCapture(e.pointerId);
+        } catch {}
+        resizeGesture = null;
+        previewWrap.classList.remove("resizing");
+      };
+      resizeHandle.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        const startCrop = getCurrent();
+        const startWin = computeEditorCropWindow(getEditorAspect(), startCrop);
+        const anchorU =
+          ((Number(startWin.leftPct) || 0) +
+            (Number(startWin.widthPct) || 0) * 0.5) /
+          100;
+        const anchorV =
+          ((Number(startWin.topPct) || 0) +
+            (Number(startWin.heightPct) || 0) * 0.5) /
+          100;
+        const wrapSize = getWrapSize();
+        const centerPx = {
+          x: anchorU * wrapSize.width,
+          y: anchorV * wrapSize.height,
+        };
+        const pos = pointerPosInWrap(e);
+        const startDist = Math.max(
+          8,
+          Math.hypot(pos.x - centerPx.x, pos.y - centerPx.y),
+        );
+        resizeGesture = {
+          pointerId: e.pointerId,
+          startCrop,
+          startDist,
+          centerPx,
+          anchorU,
+          anchorV,
+        };
+        try {
+          resizeHandle.setPointerCapture(e.pointerId);
+        } catch {}
+        previewWrap.classList.add("resizing");
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      resizeHandle.addEventListener("pointermove", (e) => {
+        if (!resizeGesture || e.pointerId !== resizeGesture.pointerId) return;
+        const pos = pointerPosInWrap(e);
+        const dist = Math.max(
+          1,
+          Math.hypot(
+            pos.x - resizeGesture.centerPx.x,
+            pos.y - resizeGesture.centerPx.y,
+          ),
+        );
+        const scale = dist / Math.max(1, resizeGesture.startDist);
+        const nextZoom = Math.min(
+          4,
+          Math.max(
+            1,
+            Number(resizeGesture.startCrop.zoom || 1) / Math.max(0.2, scale),
+          ),
+        );
+        setCurrent(
+          cropWithZoomAroundAnchor(
+            resizeGesture.startCrop,
+            nextZoom,
+            resizeGesture.anchorU,
+            resizeGesture.anchorV,
+          ),
+        );
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      resizeHandle.addEventListener("pointerup", onResizeEnd);
+      resizeHandle.addEventListener("pointercancel", onResizeEnd);
+      resizeHandle.addEventListener("lostpointercapture", onResizeEnd);
+    }
+  }
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeThumbnailCropEditor();
+  });
+  overlay.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeThumbnailCropEditor();
+    }
+  });
+  if (panel) panel.addEventListener("click", (e) => e.stopPropagation());
+
+  Array.from(overlay.querySelectorAll("[data-crop-action]")).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const action = String(btn.getAttribute("data-crop-action") || "");
+      if (action === "cancel") {
+        closeThumbnailCropEditor();
+        return;
+      }
+      if (action === "reset") {
+        if (rangeX) rangeX.value = "50";
+        if (rangeY) rangeY.value = "50";
+        if (rangeZoom) rangeZoom.value = "1";
+        if (isVideoEditor) seekEditorVideoToTime(getDefaultEditorVideoTime());
+        applyPreview();
+        return;
+      }
+      if (action === "save") {
+        metaSetFileThumbnailCropForRecord(rec, getCurrent());
+        if (isVideoEditor) {
+          metaSetVideoThumbnailTimeForRecord(
+            rec,
+            getCurrentEditorVideoTime(),
+            editorVideoDuration,
+          );
+          if (rec.videoThumbUrl) {
+            try {
+              URL.revokeObjectURL(rec.videoThumbUrl);
+            } catch {}
+            rec.videoThumbUrl = null;
+          }
+          rec.videoThumbMode = null;
+          enqueueVideoThumb(rec);
+        }
+        closeThumbnailCropEditor();
+        refreshThumbnailUiAfterMetadataChange();
+        showStatusMessage(`Saved thumbnail settings for ${targetLabel}.`);
+      }
+    });
+  });
+
+  requestAnimationFrame(() => {
+    try {
+      overlay.focus();
+    } catch {}
+    try {
+      (isVideoEditor ? rangeFrame : rangeZoom)?.focus();
+    } catch {}
+  });
+  return true;
 }
 
 resetThumbnailRuntimeStateV3();
