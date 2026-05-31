@@ -5540,7 +5540,7 @@ img[data-rotate-key].rotatingThumbFade {
 .thumbCropEditorOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(4, 6, 9, 0.74);
+  background: rgba(4, 6, 9, 0.68);
   z-index: 16000;
   display: flex;
   align-items: center;
@@ -5549,15 +5549,15 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .thumbCropEditorPanel {
-  width: min(450px, calc(100vw - 20px));
+  width: min(560px, calc(100vw - 24px));
   background: var(--color1-secondary);
-  border: 1px solid var(--color1-tertiary);
-  border-radius: 0;
+  border: 0;
+  border-radius: 18px;
   box-shadow: none;
-  padding: 10px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   color: var(--color0-primary);
 }
 
@@ -5576,14 +5576,14 @@ img[data-rotate-key].rotatingThumbFade {
 
 .thumbCropEditorPreviewWrap {
   --editor-ar: 1;
-  width: min(100%, calc(56vh * var(--editor-ar)));
+  width: min(100%, calc(68vh * var(--editor-ar)));
   max-width: 100%;
   aspect-ratio: var(--editor-ar);
-  max-height: 56vh;
+  max-height: 68vh;
   position: relative;
-  border-radius: 0;
+  border-radius: 14px;
   overflow: hidden;
-  border: 1px solid var(--color1-tertiary);
+  border: 0;
   background: var(--color1-primary);
   touch-action: none;
   cursor: grab;
@@ -5619,19 +5619,19 @@ img[data-rotate-key].rotatingThumbFade {
 
 .thumbCropEditorCropBox {
   position: absolute;
-  border: 2px solid var(--color0-primary);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
-  border-radius: 0;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: none;
+  border-radius: 10px;
   pointer-events: none;
 }
 
 .thumbCropEditorResizeHandle {
   position: absolute;
-  width: 34px;
-  height: 34px;
+  width: 52px;
+  height: 52px;
   padding: 0;
   border: 0;
-  border-radius: 0;
+  border-radius: 999px;
   background: transparent;
   transform: translate(-50%, -50%);
   z-index: 6;
@@ -5686,11 +5686,9 @@ img[data-rotate-key].rotatingThumbFade {
 
 .thumbCropEditorFrameControl {
   display: grid;
-  grid-template-columns: auto minmax(160px, 1fr) auto;
+  grid-template-columns: minmax(160px, 1fr);
   align-items: center;
-  gap: 6px 10px;
-  font-size: 12px;
-  color: var(--color0-secondary);
+  gap: 0;
 }
 
 .thumbCropEditorFrameLabel {
@@ -5704,10 +5702,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .thumbCropEditorFrameControl > span[data-crop-value="frame"] {
-  min-width: 72px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--color0-secondary);
+  display: none;
 }
 
 .thumbCropEditorActions {
@@ -5721,8 +5716,8 @@ img[data-rotate-key].rotatingThumbFade {
   background: var(--ui-control-bg);
   color: var(--color0-primary);
   border: 0;
-  border-radius: var(--ui-control-radius);
-  padding: 6px 10px;
+  border-radius: 9px;
+  padding: 8px 12px;
   cursor: pointer;
   font-size: 11px;
   font-weight: 700;
@@ -58301,10 +58296,9 @@ function openThumbnailCropEditor(rec) {
     : `<img class="thumbCropEditorPreviewFull" src="${escapeHtml(previewSrc)}" alt="" />`;
   const frameControlHtml = isVideoEditor
     ? `
-          <div class="thumbCropEditorControl">
-            <label>Frame</label>
-            <input type="range" min="0" max="0" step="0.01" value="0" data-crop-field="frame" disabled />
-            <span data-crop-value="frame">0:00.00</span>
+          <div class="thumbCropEditorFrameControl">
+            <input type="range" min="0" max="0" step="0.01" value="0" data-crop-field="frame" aria-label="Video thumbnail frame" disabled />
+            <span data-crop-value="frame" aria-hidden="true">0:00.00</span>
           </div>
         `
     : "";
@@ -58313,8 +58307,6 @@ function openThumbnailCropEditor(rec) {
   overlay.tabIndex = -1;
   overlay.innerHTML = `
         <div class="thumbCropEditorPanel" role="dialog" aria-modal="true" aria-label="Edit thumbnail">
-          <div class="thumbCropEditorTitle">Edit thumbnail</div>
-          <div class="thumbCropEditorSubtitle">${escapeHtml(targetLabel)}</div>
           <div class="thumbCropEditorPreviewWrap">
             ${mediaHtml}
             <div class="thumbCropEditorShade" data-crop-shade="top"></div>
@@ -58322,22 +58314,17 @@ function openThumbnailCropEditor(rec) {
             <div class="thumbCropEditorShade" data-crop-shade="right"></div>
             <div class="thumbCropEditorShade" data-crop-shade="bottom"></div>
             <div class="thumbCropEditorCropBox" data-crop-box="1"></div>
-            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" aria-label="Resize crop viewport" tabindex="-1"></button>
+            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="nw" aria-label="Resize crop viewport from top left" tabindex="-1"></button>
+            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="ne" aria-label="Resize crop viewport from top right" tabindex="-1"></button>
+            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="sw" aria-label="Resize crop viewport from bottom left" tabindex="-1"></button>
+            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="se" aria-label="Resize crop viewport from bottom right" tabindex="-1"></button>
           </div>
           ${frameControlHtml}
-          <div class="thumbCropEditorHint">Drag to pan. Drag corner or pinch to zoom.</div>
-          <div class="thumbCropEditorControl">
-            <label>Horizontal focus</label>
+          <div class="thumbCropEditorHiddenControls" aria-hidden="true">
             <input type="range" min="0" max="100" step="1" value="${escapeHtml(String(crop.x))}" data-crop-field="x" />
             <span data-crop-value="x">${escapeHtml(String(Math.round(crop.x)))}</span>
-          </div>
-          <div class="thumbCropEditorControl">
-            <label>Vertical focus</label>
             <input type="range" min="0" max="100" step="1" value="${escapeHtml(String(crop.y))}" data-crop-field="y" />
             <span data-crop-value="y">${escapeHtml(String(Math.round(crop.y)))}</span>
-          </div>
-          <div class="thumbCropEditorControl">
-            <label>Zoom</label>
             <input type="range" min="1" max="4" step="0.01" value="${escapeHtml(String(crop.zoom))}" data-crop-field="zoom" />
             <span data-crop-value="zoom">${escapeHtml(crop.zoom.toFixed(2))}</span>
           </div>
@@ -58361,7 +58348,9 @@ function openThumbnailCropEditor(rec) {
   const shadeLeft = overlay.querySelector('[data-crop-shade="left"]');
   const shadeRight = overlay.querySelector('[data-crop-shade="right"]');
   const shadeBottom = overlay.querySelector('[data-crop-shade="bottom"]');
-  const resizeHandle = overlay.querySelector('[data-crop-handle="resize"]');
+  const resizeHandles = Array.from(
+    overlay.querySelectorAll('[data-crop-handle="resize"]'),
+  );
   const rangeX = overlay.querySelector('input[data-crop-field="x"]');
   const rangeY = overlay.querySelector('input[data-crop-field="y"]');
   const rangeZoom = overlay.querySelector('input[data-crop-field="zoom"]');
@@ -58429,9 +58418,15 @@ function openThumbnailCropEditor(rec) {
       shadeRight.style.width = `${right}%`;
       shadeRight.style.height = `${height}%`;
     }
-    if (resizeHandle) {
-      resizeHandle.style.left = `${left + width}%`;
-      resizeHandle.style.top = `${top + height}%`;
+    if (resizeHandles.length) {
+      for (let i = 0; i < resizeHandles.length; i++) {
+        const handle = resizeHandles[i];
+        const corner = String(handle.dataset && handle.dataset.cropCorner || "se");
+        const isWest = corner.includes("w");
+        const isNorth = corner.includes("n");
+        handle.style.left = `${isWest ? left : left + width}%`;
+        handle.style.top = `${isNorth ? top : top + height}%`;
+      }
     }
   };
   const setCurrent = (nextCrop) => {
@@ -58781,60 +58776,77 @@ function openThumbnailCropEditor(rec) {
       { passive: false },
     );
 
-    if (resizeHandle) {
+    if (resizeHandles.length) {
       const onResizeEnd = (e) => {
         if (!resizeGesture || e.pointerId !== resizeGesture.pointerId) return;
+        const handle = resizeGesture.handle || e.currentTarget;
         try {
-          resizeHandle.releasePointerCapture(e.pointerId);
+          handle.releasePointerCapture(e.pointerId);
         } catch {}
         resizeGesture = null;
         previewWrap.classList.remove("resizing");
       };
-      resizeHandle.addEventListener("pointerdown", (e) => {
+      const onResizePointerDown = (e) => {
         if (e.pointerType === "mouse" && e.button !== 0) return;
+        const handle = e.currentTarget;
+        const corner = String(
+          handle && handle.dataset && handle.dataset.cropCorner || "se",
+        );
+        const isWest = corner.includes("w");
+        const isNorth = corner.includes("n");
         const startCrop = getCurrent();
         const startWin = computeEditorCropWindow(getEditorAspect(), startCrop);
-        const anchorU =
+        const leftPct = (Number(startWin.leftPct) || 0) / 100;
+        const topPct = (Number(startWin.topPct) || 0) / 100;
+        const rightPct =
           ((Number(startWin.leftPct) || 0) +
-            (Number(startWin.widthPct) || 0) * 0.5) /
+            (Number(startWin.widthPct) || 0)) /
           100;
-        const anchorV =
+        const bottomPct =
           ((Number(startWin.topPct) || 0) +
-            (Number(startWin.heightPct) || 0) * 0.5) /
+            (Number(startWin.heightPct) || 0)) /
           100;
+        const anchorU = isWest ? rightPct : leftPct;
+        const anchorV = isNorth ? bottomPct : topPct;
+        const startCornerU = isWest ? leftPct : rightPct;
+        const startCornerV = isNorth ? topPct : bottomPct;
         const wrapSize = getWrapSize();
-        const centerPx = {
+        const anchorPx = {
           x: anchorU * wrapSize.width,
           y: anchorV * wrapSize.height,
         };
-        const pos = pointerPosInWrap(e);
         const startDist = Math.max(
           8,
-          Math.hypot(pos.x - centerPx.x, pos.y - centerPx.y),
+          Math.hypot(
+            (startCornerU - anchorU) * wrapSize.width,
+            (startCornerV - anchorV) * wrapSize.height,
+          ),
         );
         resizeGesture = {
           pointerId: e.pointerId,
+          handle,
+          corner,
           startCrop,
           startDist,
-          centerPx,
+          anchorPx,
           anchorU,
           anchorV,
         };
         try {
-          resizeHandle.setPointerCapture(e.pointerId);
+          handle.setPointerCapture(e.pointerId);
         } catch {}
         previewWrap.classList.add("resizing");
         e.preventDefault();
         e.stopPropagation();
-      });
-      resizeHandle.addEventListener("pointermove", (e) => {
+      };
+      const onResizePointerMove = (e) => {
         if (!resizeGesture || e.pointerId !== resizeGesture.pointerId) return;
         const pos = pointerPosInWrap(e);
         const dist = Math.max(
           1,
           Math.hypot(
-            pos.x - resizeGesture.centerPx.x,
-            pos.y - resizeGesture.centerPx.y,
+            pos.x - resizeGesture.anchorPx.x,
+            pos.y - resizeGesture.anchorPx.y,
           ),
         );
         const scale = dist / Math.max(1, resizeGesture.startDist);
@@ -58855,10 +58867,15 @@ function openThumbnailCropEditor(rec) {
         );
         e.preventDefault();
         e.stopPropagation();
-      });
-      resizeHandle.addEventListener("pointerup", onResizeEnd);
-      resizeHandle.addEventListener("pointercancel", onResizeEnd);
-      resizeHandle.addEventListener("lostpointercapture", onResizeEnd);
+      };
+      for (let i = 0; i < resizeHandles.length; i++) {
+        const handle = resizeHandles[i];
+        handle.addEventListener("pointerdown", onResizePointerDown);
+        handle.addEventListener("pointermove", onResizePointerMove);
+        handle.addEventListener("pointerup", onResizeEnd);
+        handle.addEventListener("pointercancel", onResizeEnd);
+        handle.addEventListener("lostpointercapture", onResizeEnd);
+      }
     }
   }
 
