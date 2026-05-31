@@ -29095,6 +29095,36 @@ function restorePreviewFolderBridgeState() {
   return restoreViewerCloseState(state);
 }
 
+// While a quick-nav media folder is previewing fullscreen, the user can move to
+// a different folder (prev/next folder, random jump), which updates
+// WS.nav.dirNode. The bridge return state still points its grid selection at
+// the folder originally entered, so on exit re-point it to the folder actually
+// exited (WS.nav.dirNode) and, if that folder lives under a different parent,
+// re-anchor the restored grid to that parent so its card exists.
+function syncGridReturnStateToExitedFolder() {
+  const state = WS.view && WS.view.previewFolderBridgeReturnState;
+  if (!state) return;
+  const cur = WS.nav.dirNode;
+  if (!cur || cur === WS.root || !cur.path) return;
+  const curKey = `dir:${String(cur.path || "")}`;
+  state.pendingPreviewSelectionKey = curKey;
+  state.previewSelectedKey = curKey;
+  const parent = cur.parent;
+  if (!parent || parent._skipTagFilters) return;
+  const parentPath = String(parent.path || "");
+  const capturedPreviewPath =
+    state.previewState && state.previewState.kind === "dir"
+      ? String(state.previewState.path || "")
+      : "";
+  if (capturedPreviewPath === parentPath) return; // same grid (e.g. sibling move)
+  const grandparent = parent.parent;
+  if (!grandparent) return;
+  state.dirPath = String(grandparent.path || "");
+  state.entryKey = `dir:${parentPath}`;
+  state.previewState = { kind: "dir", path: parentPath };
+  state.previewContextKey = `dir:${parentPath}`;
+}
+
 function restoreNavEntriesFromViewerCloseState(state) {
   if (
     !state ||
@@ -46967,14 +46997,49 @@ function dirNodeIsMediaOnlyForQuickNavigation(node) {
 }
 
 function enterMediaFolderWithQuickNavigation(node) {
-  // Mirrors enterSelectedDirectory's media-folder path, but for a folder opened
-  // from the preview grid: descend into the folder, select the first file, and
-  // (if the file pane is open) auto-close the panes for instant fullscreen.
+  // Opening a media folder from the grid descends the file pane two (or more)
+  // directory levels below where it started: the file pane is at the grid's
+  // parent, the grid shows a subfolder, and the user picked a media folder
+  // inside that subfolder. To put the media fullscreen the authoritative
+  // directory must become the media folder itself.
+  //
+  // Capture the full pre-open browsing state (current directory, the selected
+  // child, the previewed subfolder, and the grid selection = this media
+  // folder) BEFORE descending, so that closing can jump both panes back to it
+  // in one step and keep this folder selected in the grid. This is the same
+  // bridge mechanism navigateToDirectory() uses for regular folders.
   const restoreState = captureQuickNavigationDirectoryEnterRestoreState({
     kind: "dir",
     node,
   });
-  WS.view.previewFolderBridgeReturnState = null;
+  const gridReturnState = captureViewerCloseRestoreState({
+    activePane: "preview",
+    pendingPreviewSelectionKey: node.path ? `dir:${String(node.path || "")}` : "",
+  });
+  // Descending into a real folder exits any tag/album/favorites/hidden/search
+  // view that the path ran through. Without this, rebuildDirectoriesEntries
+  // would still build the (now-irrelevant) tag/virtual list — leaving the file
+  // pane empty, the preview blank, and the sidebars unable to auto-close
+  // (since the entries don't look like a media-only folder). Mirrors the
+  // context handling in enterSelectedDirectory.
+  if (isViewingTagFolder()) {
+    pushTagViewContext(node?.path || "");
+    WS.view.tagFolderActiveMode = "";
+    WS.view.tagFolderActiveTag = "";
+    WS.view.tagFolderActiveAlbum = "";
+    WS.view.tagFolderOriginPath = "";
+  }
+  if (searchSessionActive() && WS.view.searchRootActive) {
+    enterSearchResultContext(node.path || "");
+  }
+  if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
+    WS.view.favoritesRootActive = false;
+    WS.view.favoritesAnchorPath = node.path || "";
+  }
+  if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
+    WS.view.hiddenRootActive = false;
+    WS.view.hiddenAnchorPath = node.path || "";
+  }
   WS.nav.dirNode = node;
   WS.view.aboveRootView = false;
   syncBulkSelectionForCurrentDir();
@@ -46982,9 +47047,15 @@ function enterMediaFolderWithQuickNavigation(node) {
   syncHiddenUi();
   syncTagUiForCurrentDir();
   rebuildDirectoriesEntries();
+  // Point the preview context at the entered folder before resolving the first
+  // file. Otherwise the file preview resolves against the previous (parent)
+  // grid folder, can't find the file in that context, and renders blank.
+  applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
   WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
   syncPreviewToSelection({ force: true });
   renderSelectedFilePreviewBeforeDirectoryPreparation();
+  // Stash the grid return state so leaving restores the exact pre-open view.
+  WS.view.previewFolderBridgeReturnState = gridReturnState;
   maybeClosePanesForQuickNavigationDirectoryEnter(restoreState);
   finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(node, {
     animatePreview: true,
@@ -47199,7 +47270,11 @@ async function openPreviewTagFolderEntry(entry) {
     showBusyOverlay("Opening preview...");
     await waitForNextPaint();
   }
-  const keepPreviewPaneActive = !directoriesPaneOpenEnabled();
+  // Stay in the preview pane if it was already active (grid-driven open) or if
+  // the file pane is closed — so opening a tag from the grid keeps the
+  // selection in the grid instead of jumping to the file pane.
+  const keepPreviewPaneActive =
+    !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
   const previewFolderReturnState = captureViewerCloseRestoreState({
     activePane: keepPreviewPaneActive ? "preview" : "directories",
     pendingPreviewSelectionKey: entryKeyForSelection(entry),
@@ -49439,7 +49514,7 @@ function renderSelectedFolderMediaPreview(
     renderToken,
     passiveWhenHeavy: true,
   });
-  applyPendingPreviewSelectionForCurrentTarget();
+  const hadPendingSelection = applyPendingPreviewSelectionForCurrentTarget();
 
   const totalItems =
     Math.max(0, Number(result.folderCount) || folderEntries.length || 0) +
@@ -49447,12 +49522,22 @@ function renderSelectedFolderMediaPreview(
   if (itemsPill) itemsPill.textContent = `Items: ${totalItems}`;
   const savedScroll = getSavedPreviewScrollForDir(dirNode);
   const targetScroll = keepScroll ? prevScroll : savedScroll;
-  if (Number.isFinite(targetScroll)) {
+  // When a pending selection was applied (e.g. the folder/file you just left
+  // on exit), scroll to reveal it instead of restoring the folder's saved
+  // scroll, so the item you left is always visible.
+  if (!hadPendingSelection && Number.isFinite(targetScroll)) {
     previewBodyEl.scrollTop = Math.max(0, Number(targetScroll) || 0);
   }
   schedulePreviewVirtualGridRefresh();
   ensurePreviewSelectionForCurrentTarget(false);
   updatePreviewSelectionClasses();
+  if (
+    hadPendingSelection &&
+    WS.view &&
+    WS.view.activePane === "preview"
+  ) {
+    revealPreviewCard();
+  }
   scheduleThumbnailDemandRefresh();
   return true;
 }
@@ -53692,7 +53777,20 @@ function restorePanesClosedByFilePaneEnter() {
     syncButtons();
   }
   if (restoreState.goUpOnRestore) {
-    leaveDirectory();
+    // Two cases for exiting a quick-nav media folder:
+    //  - Opened from the GRID: a full grid return state was captured. Restore
+    //    it so both panes jump back together to the pre-open browsing view
+    //    (file pane up two+ levels, preview back to the grid) with the media
+    //    folder kept selected in the grid.
+    //  - Opened from the FILE PANE: no grid return state; the media folder is a
+    //    direct child of the current directory, so a single step up restores
+    //    the pre-open view.
+    if (WS.view.previewFolderBridgeReturnState) {
+      syncGridReturnStateToExitedFolder();
+      restorePreviewFolderBridgeState();
+    } else {
+      leaveDirectory();
+    }
   }
   return true;
 }
@@ -55192,6 +55290,14 @@ function moveClosedFilePaneMediaJump(delta) {
 
 function handleClosedFilePaneNavigationAction(action) {
   if (directoriesPaneOpenEnabled()) return false;
+  // Only take over for sequential fullscreen media browsing, i.e. when a single
+  // file is shown. When a folder grid is shown with the file pane closed, defer
+  // to the normal grid handler (handlePreviewPaneAction) so the grid cursor
+  // (previewSelectedKey) drives both movement AND opening — otherwise opening
+  // would fall back to WS.nav.selectedIndex and always open the first item.
+  if (!(WS.preview && WS.preview.kind === "file" && WS.preview.fileId)) {
+    return false;
+  }
   switch (action) {
     case "selectUp":
     case "selectLeft":
@@ -55200,6 +55306,17 @@ function handleClosedFilePaneNavigationAction(action) {
     case "selectRight":
       return moveClosedFilePaneMediaSelection(1);
     case "leaveDir":
+      // If this folder was opened from the grid (sidebars already closed), a
+      // grid return state was captured: jump both panes back to the grid view
+      // with the folder kept selected. Otherwise step up one level, keeping the
+      // folder you just left selected.
+      if (WS.view.previewFolderBridgeReturnState) {
+        syncGridReturnStateToExitedFolder();
+        if (restorePreviewFolderBridgeState()) return true;
+      }
+      WS.view.pendingPreviewSelectionKey = entryKeyForSelection(
+        WS.nav.entries[WS.nav.selectedIndex] || null,
+      );
       leaveDirectory();
       return true;
     case "enterDir":
