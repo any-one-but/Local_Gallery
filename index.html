@@ -9979,7 +9979,6 @@ function defaultOptions() {
     hideTagAndRootFolderThumbnailMenuButton: false,
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
-    folderPreviewMediaThumbnails: false,
     hideVideoControls: false,
     thumbnailLoading: false,
     forceTitleCaps: true,
@@ -10451,10 +10450,6 @@ function normalizeOptions(o) {
       typeof src.previewMediaUsePaneBackground === "boolean"
         ? src.previewMediaUsePaneBackground
         : d.previewMediaUsePaneBackground,
-    folderPreviewMediaThumbnails:
-      typeof src.folderPreviewMediaThumbnails === "boolean"
-        ? src.folderPreviewMediaThumbnails
-        : d.folderPreviewMediaThumbnails,
     hideVideoControls:
       typeof src.hideVideoControls === "boolean"
         ? src.hideVideoControls
@@ -10953,7 +10948,6 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   ]),
   thumbnails: Object.freeze(
     [
-      "folderPreviewMediaThumbnails",
       "clickSelectedRotatingThumbTeleports",
       "thumbnailTitleSize",
       "previewFileThumbnailTitleSize",
@@ -15889,8 +15883,7 @@ function naturalAspectThumbnailCardsEnabled() { }
 function previewSquareMediaThumbsEnabled() { }
 
 function folderPreviewMediaThumbnailsEnabled(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !!(src && src.folderPreviewMediaThumbnails === true);
+  return true;
 }
 
 function mediaFilterEnabled() {
@@ -21151,12 +21144,6 @@ ${makeActionRow(
     thumbnails: {
       title: "Thumbnails",
       rows: `
-${makeCheckRow("Folder preview thumbnails", "Load real media thumbnails in the selected-folder preview grid instead of lightweight placeholders.", "opt_folderPreviewMediaThumbnails", folderPreviewMediaThumbnailsEnabled(opt))}
-${makeActionRow(
-  "Loaded thumbnails",
-  "Release cached thumbnail media that is no longer visible.",
-  `<button type="button" id="opt_dump_loaded_thumbs">Dump Loaded Thumbs</button>`,
-)}
 ${thumbnailInfoRows("Files", "file", ["title", "size", "itemCount", "menuButton"])}
 ${thumbnailInfoRows("Folders", ["rootFolder", "subfolder"], ["title", "size", "folderCount", "fileCount", "menuButton"])}
 ${thumbnailInfoRows("Tags", "tag", ["title", "size", "folderCount", "fileCount", "menuButton"])}
@@ -21878,43 +21865,6 @@ ${makeActionRow(
       refreshActivePreviewMediaLayout({ immediate: true });
     },
   );
-  bindMenuToggleButton("opt_folderPreviewMediaThumbnails", (enabled) => {
-    (async () => {
-      WS.meta.options = normalizeOptions(
-        Object.assign({}, WS.meta.options || {}, {
-          folderPreviewMediaThumbnails: !!enabled,
-        }),
-      );
-      metaMarkDirty(META_DOC_IDS.prefGeneral);
-      setOptionsStatus("Saved");
-      applyOptionsEverywhere(false);
-      try {
-        await persistDirtyMetadataNow();
-      } catch {}
-      if (WS.meta && WS.meta.fsRootHandle) {
-        refreshWorkspaceKeybindAction();
-      } else {
-        renderPreviewPane(false, true);
-        showStatusMessage(
-          `Folder preview thumbnails: ${enabled ? "Media" : "Placeholders"}.`,
-          "pane-toggles",
-        );
-      }
-    })();
-  });
-  bindActionBtn("opt_dump_loaded_thumbs", () => {
-    const result = releaseLoadedThumbnailMedia({ includeRendered: false });
-    const released =
-      (Number(result.revokedMediaUrls) || 0) +
-      (Number(result.revokedThumbnailUrls) || 0) +
-      (Number(result.clearedPreloadItems) || 0) +
-      (Number(result.droppedFileObjects) || 0);
-    showStatusMessage(
-      released
-        ? `Dumped ${released} loaded thumbnail item${released === 1 ? "" : "s"}.`
-        : "No loaded thumbnail media to dump.",
-    );
-  });
   bindSelect("opt_slideshowDefault", "slideshowDefault", false);
   bindCheck("opt_autoCropBlackBars", "autoCropBlackBars", () => {
     MediaFilterEngine.requestRender();
@@ -22408,7 +22358,6 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showListCardExtraInfo",
     "showTagFolderSpacerRow",
     "previewMediaUsePaneBackground",
-    "folderPreviewMediaThumbnails",
     "hideVideoControls",
     "lightMode",
     "appearance",
