@@ -279,6 +279,7 @@ body.cursor-hidden * {
 
 #app {
   --title-pane-h: 0px;
+  --compact-title-bar-h: 44px;
   height: 100%;
   width: 100%;
   display: grid;
@@ -524,12 +525,80 @@ input[type="file"] {
   padding-bottom: 10px;
 }
 
+/* File pane closed: the title pane (path, info, search) collapses into a
+   thin fixed bar pinned to the top of the viewport, above the settings
+   pane. The search box centered in it searches the preview grid. */
 #app.title-layout-pane.sidebar-closed #titlePane {
-  display: none;
+  display: flex;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  height: var(--compact-title-bar-h);
+  min-height: var(--compact-title-bar-h);
+  padding: 0 12px;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  background: var(--color1-secondary);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+#app.title-layout-pane.sidebar-closed #titlePaneTop {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 12px;
+  height: 100%;
+}
+#app.title-layout-pane.sidebar-closed #titleMain {
+  order: 1;
+  width: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+#app.title-layout-pane.sidebar-closed #titlePane h1 {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#app.title-layout-pane.sidebar-closed #directoriesSearchRow {
+  order: 2;
+  flex: 1 1 420px;
+  width: auto;
+  max-width: 560px;
+  margin: 0 auto;
+}
+#app.title-layout-pane.sidebar-closed #directoriesSearchRow input {
+  width: 100%;
+}
+#app.title-layout-pane.sidebar-closed #titleBtns {
+  order: 3;
+  width: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+#app.title-layout-pane.sidebar-closed #titleInfo {
+  width: auto;
+  max-width: 30vw;
+}
+/* Reserve room below the bar for the grid / settings pane. */
+#app.sidebar-closed #previewPane {
+  padding-top: var(--compact-title-bar-h);
 }
 
+/* Media filling the preview pane: hide both the title bar and the control
+   bar, and reclaim the reserved space for a true fullscreen view. */
+#app.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #titlePane,
 #app.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #controlPane {
   display: none !important;
+}
+#app.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #previewPane {
+  padding-top: 0;
 }
 
 body.directories-files-only #directoriesHeader {
@@ -9915,6 +9984,7 @@ function defaultOptions() {
     thumbnailLoading: false,
     forceTitleCaps: true,
     showPositionNumbersInNames: false,
+    showTagFolderSpacerRow: true,
     hideFileExtensionsInFileNames: true,
     hideUnderscoresInFileNames: true,
     hideBeforeLastDashInFileNames: true,
@@ -10405,6 +10475,10 @@ function normalizeOptions(o) {
       typeof src.showPositionNumbersInNames === "boolean"
         ? src.showPositionNumbersInNames
         : d.showPositionNumbersInNames,
+    showTagFolderSpacerRow:
+      typeof src.showTagFolderSpacerRow === "boolean"
+        ? src.showTagFolderSpacerRow
+        : d.showTagFolderSpacerRow,
     hideFileExtensionsInFileNames:
       typeof src.hideFileExtensionsInFileNames === "boolean"
         ? src.hideFileExtensionsInFileNames
@@ -10894,6 +10968,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   filenames: Object.freeze([
     "forceTitleCaps",
     "showPositionNumbersInNames",
+    "showTagFolderSpacerRow",
     "hideFileExtensionsInFileNames",
     "hideUnderscoresInFileNames",
     "hideBeforeLastDashInFileNames",
@@ -15176,6 +15251,11 @@ function displayPositionNumbersInNamesEnabled() {
   return !!(opt && opt.showPositionNumbersInNames);
 }
 
+function showTagFolderSpacerRowEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.showTagFolderSpacerRow);
+}
+
 function displayPositionPrefix(position) {
   const n = Number(position);
   if (
@@ -15300,7 +15380,7 @@ function metadataDocEnabled(docId) {
 }
 
 function isCompactTitleLayout() {
-  return false;
+  return !!WS.root && !directoriesPaneOpenEnabled();
 }
 
 // Legacy helper kept in place while old grid-mode call sites are retired.
@@ -21057,6 +21137,7 @@ ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMod
 ${makeSelectRow("Media filter", "Choose which media types are visible across the current root/view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
 ${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible across the current root/view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
 ${makeCheckRow("Extra file info", "Show counts, sizes, scores, and item type details on File pane entries.", "opt_showListCardExtraInfo", !!opt.showListCardExtraInfo)}
+${makeCheckRow("Blank row after tag folders", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeCheckRow("Preview media pane background", "Keep preview media on the recessed pane surface instead of black.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
 ${makeActionRow(
   "Workspace",
@@ -22208,6 +22289,7 @@ ${makeActionRow(
   });
   bindCheck("opt_forceTitleCaps", "forceTitleCaps");
   bindCheck("opt_showPositionNumbersInNames", "showPositionNumbersInNames");
+  bindCheck("opt_showTagFolderSpacerRow", "showTagFolderSpacerRow");
   bindCheck(
     "opt_hideFileExtensionsInFileNames",
     "hideFileExtensionsInFileNames",
@@ -22324,6 +22406,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "quickNavigation",
     "muteMessages",
     "showListCardExtraInfo",
+    "showTagFolderSpacerRow",
     "previewMediaUsePaneBackground",
     "folderPreviewMediaThumbnails",
     "hideVideoControls",
@@ -28358,7 +28441,21 @@ function scheduleSelectedDirectoryPreviewRefresh(dirNode, opts = null) {
 
   const guardedRender = () => {
     if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return false;
-    return rerenderSelectedDirectoryPreviewIfCurrent(node, keepScroll);
+    const rendered = rerenderSelectedDirectoryPreviewIfCurrent(node, keepScroll);
+    if (rendered) {
+      // The rAF and the fallback timer both target this same render; once one
+      // succeeds, cancel the other so a single selection move doesn't rebuild
+      // the preview grid twice.
+      if (SELECTED_DIR_PREVIEW_REFRESH.raf) {
+        try { cancelAnimationFrame(SELECTED_DIR_PREVIEW_REFRESH.raf); } catch {}
+        SELECTED_DIR_PREVIEW_REFRESH.raf = 0;
+      }
+      if (SELECTED_DIR_PREVIEW_REFRESH.timer) {
+        try { clearTimeout(SELECTED_DIR_PREVIEW_REFRESH.timer); } catch {}
+        SELECTED_DIR_PREVIEW_REFRESH.timer = 0;
+      }
+    }
+    return rendered;
   };
 
   SELECTED_DIR_PREVIEW_REFRESH.raf = requestAnimationFrame(() => {
@@ -45312,6 +45409,12 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   const navDisplayPositions = displayPositionNumbersInNamesEnabled()
     ? buildDisplayPositionMapsForNavEntries(WS.nav.entries)
     : { dirPositions: new Map(), filePositions: new Map() };
+  const showTagSpacer =
+    showTagFolderSpacerRowEnabled() &&
+    WS.nav.entries.some((e) => e && e.kind === "tag") &&
+    WS.nav.entries.some((e) => e && e.kind === "dir");
+  let seenTagEntryBeforeCurrent = false;
+  let insertedTagSpacer = false;
   let seenSearchResultDirCount = 0;
   for (let idx = entryStart; idx < entryEndExclusive; idx++) {
     const entry = WS.nav.entries[idx];
@@ -45327,6 +45430,21 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       spacerEl.innerHTML = `<div class="tagSpacerCell" aria-hidden="true"></div>`;
       frag.appendChild(spacerEl);
     }
+    if (
+      showTagSpacer &&
+      !insertedTagSpacer &&
+      seenTagEntryBeforeCurrent &&
+      entry &&
+      entry.kind === "dir"
+    ) {
+      const tagSpacerEl = document.createElement("div");
+      tagSpacerEl.className = "tagSpacerVisualRow";
+      tagSpacerEl.setAttribute("aria-hidden", "true");
+      tagSpacerEl.innerHTML = `<div class="tagSpacerCell" aria-hidden="true"></div>`;
+      frag.appendChild(tagSpacerEl);
+      insertedTagSpacer = true;
+    }
+    if (entry && entry.kind === "tag") seenTagEntryBeforeCurrent = true;
 
     const row = document.createElement("div");
     row.className =
@@ -48955,6 +49073,11 @@ function renderTagPreviewFolderEntriesInHareChunks(
   const folderSizeMemo = new Map();
   let seenTagEntry = false;
   let index = 0;
+  const showTagSpacer =
+    showTagFolderSpacerRowEnabled() &&
+    entries.some((entry) => entry && entry.kind === "tag") &&
+    entries.some((entry) => entry && entry.kind === "dir");
+  let insertedTagSpacer = false;
   const guardedChunkSize = () =>
     responsiveNavigationGuardActive()
       ? Math.max(4, Math.floor(chunkSize / 3))
@@ -48966,6 +49089,16 @@ function renderTagPreviewFolderEntriesInHareChunks(
     const end = Math.min(entries.length, Math.max(index, endExclusive));
     for (; index < end; index++) {
       const entry = entries[index];
+      if (
+        showTagSpacer &&
+        !insertedTagSpacer &&
+        seenTagEntry &&
+        entry &&
+        entry.kind === "dir"
+      ) {
+        fragF.appendChild(makePreviewTagSpacer());
+        insertedTagSpacer = true;
+      }
       if (!entry) continue;
       if (entry.kind === "tag") {
         fragF.appendChild(makeTagPreviewCard(entry));
@@ -49397,9 +49530,44 @@ function renderPreviewPane(animate = false, keepScroll = false) {
   }
 
   if (compactPreviewSearchActive()) {
-    WS.view.previewScrollActiveKey = "";
     updateModePill();
-    renderPreviewPlaceholder();
+    setPreviewBodyMode("grid");
+    if (!VIEWER_MODE) ACTIVE_MEDIA_SURFACE = "none";
+    MediaFilterEngine.detach("preview");
+    if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
+    if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
+
+    previewBodyEl.innerHTML = "";
+    const searchRender = renderPreviewSearchResults(previewBodyEl);
+    WS.view.previewScrollActiveKey = "";
+    if (itemsPill) itemsPill.textContent = `Items: ${searchRender.count}`;
+    const searchContextKey = `search:${String(WS.view.searchRootPath || "")}:${String(
+      WS.view.dirSearchQuery || "",
+    )
+      .trim()
+      .toLowerCase()}`;
+    const resultKeys = (WS.view.searchResults || [])
+      .map((node) => `dir:${String(node?.path || "")}`)
+      .filter((key) => key !== "dir:");
+    let selectedKey = "";
+    const pendingKey = String(WS.view.pendingPreviewSelectionKey || "");
+    if (pendingKey && resultKeys.includes(pendingKey)) {
+      selectedKey = pendingKey;
+    } else if (
+      String(WS.view.previewSelectionContextKey || "") === searchContextKey
+    ) {
+      const activeKey = String(WS.view.previewSelectedKey || "");
+      if (resultKeys.includes(activeKey)) selectedKey = activeKey;
+    }
+    if (!selectedKey) selectedKey = resultKeys[0] || "";
+    WS.view.pendingPreviewSelectionKey = "";
+    WS.view.previewSelectionContextKey = searchContextKey;
+    WS.view.previewSelectAnchorKey = selectedKey;
+    WS.view.previewSelectedKey = selectedKey;
+    updatePreviewSelectionClasses();
+    if (selectedKey)
+      revealPreviewCard(findPreviewSelectableCardByKey(selectedKey));
+    scheduleThumbnailDemandRefresh();
     return;
   }
 
@@ -49860,7 +50028,10 @@ function renderPreviewSearchResults(container) {
   );
   const folderSizeMemo = new Map();
   const gridF = document.createElement("div");
-  gridF.className = "gridFolders";
+  // Match the normal preview-pane folder grid so search results look identical
+  // to browsing (sizing, spacing, card chrome) instead of the file-pane list.
+  gridF.className = "gridFolders folderMediaPreviewGrid folderContentsPreviewGrid";
+  gridF.setAttribute("aria-label", "Search result folders");
   const useFolderFitInsideJustified = folderPreviewThumbUsesContainMode();
   if (useFolderFitInsideJustified) gridF.classList.add("fitInsideJustified");
   const frag = document.createDocumentFragment();
@@ -50465,7 +50636,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
           : thumbContainMode
             ? "contain"
             : "cover";
-        thumb.src = previewSrc;
+        registerThumbEl(thumb, previewSrc, { kind: "img" });
         if (thumbContainMode) {
           thumb.addEventListener("load", () => {
             const w = Number(thumb.naturalWidth) || 0;
@@ -51405,10 +51576,25 @@ function renderFolderContents(
     if (useFolderFitInsideJustified) gridF.classList.add("fitInsideJustified");
     const fragF = document.createDocumentFragment();
     const folderSizeMemo = new Map();
-      let seenTagEntry = false;
-  
+    let seenTagEntry = false;
+    const showTagSpacer =
+      showTagFolderSpacerRowEnabled() &&
+      folderEntries.some((entry) => entry && entry.kind === "tag") &&
+      folderEntries.some((entry) => entry && entry.kind === "dir");
+    let insertedTagSpacer = false;
+
     for (let i = 0; i < folderEntries.length; i++) {
       const entry = folderEntries[i];
+      if (
+        showTagSpacer &&
+        !insertedTagSpacer &&
+        seenTagEntry &&
+        entry &&
+        entry.kind === "dir"
+      ) {
+        fragF.appendChild(makePreviewTagSpacer());
+        insertedTagSpacer = true;
+      }
       if (!entry) continue;
       if (entry.kind === "tag") {
         fragF.appendChild(makeTagPreviewCard(entry));
@@ -51741,7 +51927,7 @@ function makePreviewFileCard(
       video.controls = false;
       video.draggable = false;
       video.dataset.dirPreviewId = fileId;
-      video.src = mediaSrc;
+      registerThumbEl(video, mediaSrc, { kind: "video" });
       video.addEventListener("loadedmetadata", () => {
         if (
           options.renderToken != null &&
@@ -51790,7 +51976,7 @@ function makePreviewFileCard(
           displayPosition,
         ) || "";
       img.dataset.dirPreviewId = fileId;
-      img.src = mediaSrc;
+      registerThumbEl(img, mediaSrc, { kind: "img" });
       if (useFitInsideJustified) {
         img.addEventListener("load", () => {
           const w = Number(img.naturalWidth) || 0;
@@ -56346,6 +56532,162 @@ function applyNaturalAspectThumbnailModeFromOptions() {
   if (root) root.removeAttribute("data-natural-thumb-cards");
 }
 
+/* === Passive-thumbnail loader =========================================
+   Grid/folder thumbnails are full-resolution media. Each one registers here
+   instead of assigning `src` at render time. An IntersectionObserver loads
+   thumbnails on/near the viewport, nearest-to-center first, a few at a time,
+   so visible rows fill in fast; thumbs scrolled far away are evicted and
+   reload when they return. Active preview-pane media is NOT routed here.
+
+   Slot accounting is derived from a live Set of in-flight elements (pruned of
+   anything disconnected), rather than a running counter — so a thumbnail that
+   gets removed mid-load (re-render / virtualization) can never permanently
+   occupy a slot and stall future loads. */
+const THUMB_MAX_IMG_CONCURRENT = 6;
+const THUMB_MAX_VIDEO_CONCURRENT = 2;
+const THUMB_WANTED = new Set();
+const THUMB_LOADING = new Set();
+let THUMB_REPRIORITIZE_RAF = 0;
+const THUMB_OBSERVER =
+  typeof IntersectionObserver === "function"
+    ? new IntersectionObserver(onThumbIntersect, {
+        root: null,
+        rootMargin: "150% 0% 150% 0%",
+      })
+    : null;
+
+function thumbElKind(el) {
+  return el && el.tagName === "VIDEO" ? "video" : "img";
+}
+
+function registerThumbEl(el, src, opts = null) {
+  if (!el || !src || !el.dataset) return false;
+  const kind = (opts && opts.kind) || thumbElKind(el);
+  el.dataset.thumbKind = kind;
+  el.dataset.thumbSrc = src;
+  el.dataset.thumbState = "idle";
+  if (!el.__thumbBound) {
+    el.__thumbBound = true;
+    const settled = () => onThumbLoadSettled(el);
+    el.addEventListener(kind === "video" ? "loadeddata" : "load", settled);
+    el.addEventListener("error", settled);
+  }
+  if (!THUMB_OBSERVER) {
+    assignThumbSrc(el);
+    return true;
+  }
+  try { THUMB_OBSERVER.observe(el); } catch {}
+  return true;
+}
+
+function assignThumbSrc(el) {
+  if (!el || !el.dataset) return;
+  const src = el.dataset.thumbSrc || "";
+  if (!src) return;
+  if (el.dataset.thumbState === "loading" || el.dataset.thumbState === "loaded")
+    return;
+  el.dataset.thumbState = "loading";
+  THUMB_LOADING.add(el);
+  try { el.src = src; } catch {}
+}
+
+// Derive live in-flight counts, pruning anything that was removed from the DOM
+// or already settled so leaked slots self-heal.
+function thumbActiveCounts() {
+  let img = 0;
+  let video = 0;
+  for (const el of THUMB_LOADING) {
+    if (!el.isConnected || !el.dataset || el.dataset.thumbState !== "loading") {
+      THUMB_LOADING.delete(el);
+      continue;
+    }
+    if (thumbElKind(el) === "video") video++;
+    else img++;
+  }
+  return { img, video };
+}
+
+function onThumbLoadSettled(el) {
+  if (!el || !el.dataset) return;
+  THUMB_LOADING.delete(el);
+  el.dataset.thumbState = "loaded";
+  pumpThumbQueue();
+}
+
+function evictThumbEl(el) {
+  if (!el || !el.dataset) return;
+  const state = el.dataset.thumbState;
+  if (state !== "loading" && state !== "loaded") return;
+  THUMB_LOADING.delete(el);
+  if (thumbElKind(el) === "video") stopCachedMediaElement(el);
+  else { try { el.removeAttribute("src"); } catch {} }
+  el.dataset.thumbState = "idle";
+}
+
+function onThumbIntersect(entries) {
+  for (let i = 0; i < entries.length; i++) {
+    const el = entries[i].target;
+    if (entries[i].isIntersecting) {
+      THUMB_WANTED.add(el);
+    } else {
+      THUMB_WANTED.delete(el);
+      evictThumbEl(el);
+    }
+  }
+  pumpThumbQueue();
+}
+
+function thumbDistanceToViewportCenter(el) {
+  const r = el.getBoundingClientRect();
+  const cy = (window.innerHeight || 0) / 2;
+  const cx = (window.innerWidth || 0) / 2;
+  return Math.abs(r.top + r.height / 2 - cy) +
+    Math.abs(r.left + r.width / 2 - cx) * 0.25;
+}
+
+function pumpThumbQueue() {
+  if (!THUMB_WANTED.size) return;
+  const idle = [];
+  for (const el of THUMB_WANTED) {
+    if (!el.isConnected) { THUMB_WANTED.delete(el); continue; }
+    if (el.dataset.thumbState === "idle") idle.push(el);
+  }
+  if (!idle.length) return;
+  idle.sort(
+    (a, b) =>
+      thumbDistanceToViewportCenter(a) - thumbDistanceToViewportCenter(b),
+  );
+  const counts = thumbActiveCounts();
+  for (let i = 0; i < idle.length; i++) {
+    const el = idle[i];
+    if (thumbElKind(el) === "video") {
+      if (counts.video >= THUMB_MAX_VIDEO_CONCURRENT) continue;
+      assignThumbSrc(el);
+      counts.video++;
+    } else {
+      if (counts.img >= THUMB_MAX_IMG_CONCURRENT) continue;
+      assignThumbSrc(el);
+      counts.img++;
+    }
+  }
+}
+
+function reprioritizeThumbs() {
+  if (THUMB_REPRIORITIZE_RAF) return;
+  THUMB_REPRIORITIZE_RAF = requestAnimationFrame(() => {
+    THUMB_REPRIORITIZE_RAF = 0;
+    pumpThumbQueue();
+  });
+}
+
+// No-op shim retained for legacy call sites.
+function primeThumbsNow() {}
+
+try {
+  window.addEventListener("scroll", reprioritizeThumbs, true);
+  window.addEventListener("resize", reprioritizeThumbs, true);
+} catch {}
+
 function ensureThumbUrl(rec) {
   if (rec && rec.thumbUrl) {
     try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
@@ -56456,6 +56798,9 @@ function refreshThumbnailDemand() { clearQueuedThumbnailWork(); }
 function deferThumbnailDemandForSelection() {}
 function scheduleThumbnailDemandRefresh() {
   clearQueuedThumbnailWork();
+  // Pump the thumbnail queue next frame so freshly-rendered rows start loading
+  // immediately instead of waiting on the IntersectionObserver callback.
+  reprioritizeThumbs();
   scheduleLoadedThumbnailMediaRelease();
 }
 function scheduleThumbnailBackgroundContinuation() {}
@@ -56669,8 +57014,8 @@ async function finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(dirNode,
 }
 async function warmWorkspaceNavigationThumbsInBackground() { return true; }
 function forceThumbnailDemandRefreshNow() { clearQueuedThumbnailWork(); }
-function kickVideoThumbsForPreview() { clearQueuedThumbnailWork(); }
-function kickImageThumbsForPreview() { clearQueuedThumbnailWork(); }
+function kickVideoThumbsForPreview() { reprioritizeThumbs(); }
+function kickImageThumbsForPreview() { reprioritizeThumbs(); }
 function enqueueVideoThumb() { return false; }
 function enqueueImageThumb() { return false; }
 async function drainVideoThumbQueue() { clearQueuedThumbnailWork(); }
