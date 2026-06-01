@@ -55807,6 +55807,10 @@ function handleClosedFilePaneNavigationAction(action) {
     case "selectRight":
       return moveClosedFilePaneMediaSelection(1);
     case "leaveDir":
+      if (WS.view.previewFileSelectionBridgeActive) {
+        closeFilePreviewToFolder();
+        return true;
+      }
       // If this folder was opened from the grid (sidebars already closed), a
       // grid return state was captured: jump both panes back to the grid view
       // with the folder kept selected. Otherwise step up one level, keeping the
