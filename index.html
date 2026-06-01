@@ -3740,6 +3740,22 @@ img[data-rotate-key].rotatingThumbFade {
   filter: var(--thumb-filter, none);
 }
 
+/* Staged thumbnail placeholder (see registerThumbEl). A thumbnail-capable card
+   starts as a calm, icon-less reserved slot and fades its decoded media in,
+   instead of flashing a placeholder icon for a fraction of a second. */
+.thumb.thumbPending,
+.folderThumb.thumbPending {
+  background: var(--thumb-skeleton-bg, rgba(127, 127, 127, 0.12));
+}
+.thumb.thumbLoaded,
+.folderThumb.thumbLoaded {
+  animation: thumbDecodedFadeIn 140ms ease-out;
+}
+@keyframes thumbDecodedFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .thumbFallback {
   display: flex;
   align-items: center;
@@ -35333,6 +35349,8 @@ function resolveTagEntryBaseNode(entry) {
 
 function openTagFolderEntry(entry) {
   if (!entry) return;
+  FAST_NAV.mark();
+  NAV_PERF.tick("tagAlbum:open");
   noteResponsiveNavigationInteraction("tag-album-open", RESPONSIVE_NAV_TAG_ALBUM_MS);
   if (entry.placeholder) return;
   const baseNode = resolveTagEntryBaseNode(entry);
@@ -37586,6 +37604,8 @@ function renderSelectedFilePreviewBeforeDirectoryPreparation() {
 function enterSelectedDirectory() {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
+  FAST_NAV.mark();
+  NAV_PERF.tick("folder:enter");
   WS.view.previewFolderBridgeReturnState = null;
 
   // When called from the grid, keep selection active in the preview pane.
@@ -37758,6 +37778,8 @@ function enterSelectedDirectory() {
 function leaveDirectory() {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
+  FAST_NAV.mark();
+  NAV_PERF.tick("folder:close");
   WS.view.previewFolderBridgeReturnState = null;
 
   if (WS.view.aboveRootView) return;
@@ -47429,6 +47451,8 @@ async function navigateToDirectory(node) {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
   if (!node) return;
+  FAST_NAV.mark();
+  NAV_PERF.tick("folder:open");
   if (isStorageStubDirNode(node)) {
     showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
     return;
@@ -49454,6 +49478,7 @@ function renderPreviewPlaceholder(info = null) {
 }
 
 function renderPreviewPane(animate = false, keepScroll = false) {
+  NAV_PERF.tick("preview:render");
   clearPreviewFileVirtualizers();
   syncThumbFilterKeyWithCurrentAppearanceContext();
   const previewRenderToken = nextPreviewFilesRenderToken();
@@ -56377,6 +56402,7 @@ document.addEventListener("keydown", (e) => {
        ========================================================= */
 
 function resetThumbnailRuntimeStateV3() {
+  try { clearPreviewThumbTargetCache(); } catch {}
   try { revokeAllThumbnailUrls(); } catch {}
   try { clearQueuedThumbnailWork(); } catch {}
   try { closeThumbnailCropEditor(); } catch {}
@@ -56485,6 +56511,129 @@ function applyNaturalAspectThumbnailModeFromOptions() {
   if (root) root.removeAttribute("data-natural-thumb-cards");
 }
 
+/* === Instant-navigation instrumentation & shared state ================
+   Infrastructure shared by the passive-thumbnail loader, navigation entry
+   points, and the lead-preview discovery. Three concerns live here:
+
+     1. NAV_PERF  — lightweight timing markers that separate the distinct
+        phases of a navigation (state update, grid DOM render, metadata/count
+        work, thumbnail-target discovery, thumbnail media load/decode, video
+        thumb setup). Disabled by default (≈ zero cost); toggle at runtime with
+        `navPerf(true)` from the console or localStorage "lg-nav-perf" = "1".
+     2. PREVIEW_THUMB_TARGET_CACHE — remembers which file a folder/tag/album
+        resolves to for its thumbnail, so repeated renders during navigation
+        don't re-walk the subtree. Stores ids only, never media data.
+     3. FAST_NAV — detects rapid repeated navigation so the loader can cancel
+        stale work, suppress placeholder churn, and defer non-visible video
+        thumbnails until the user settles. */
+const NAV_PERF = {
+  enabled: false,
+  _lastLabel: "",
+  _lastT: 0,
+  now() {
+    return typeof performance !== "undefined" && performance.now
+      ? performance.now()
+      : Date.now();
+  },
+  setEnabled(on) {
+    this.enabled = !!on;
+    try {
+      localStorage.setItem("lg-nav-perf", this.enabled ? "1" : "0");
+    } catch {}
+    try {
+      console.info(`[nav-perf] ${this.enabled ? "enabled" : "disabled"}`);
+    } catch {}
+  },
+  // Mark a phase boundary; logs elapsed time since the previous tick so
+  // consecutive phases (folder:open -> render:grid -> thumbTargetDiscovery)
+  // are separated rather than lumped together.
+  tick(label) {
+    if (!this.enabled) return;
+    const t = this.now();
+    const delta = this._lastT ? t - this._lastT : 0;
+    try {
+      console.debug(
+        `[nav-perf] ${this._lastLabel || "(start)"} -> ${label}: ${delta.toFixed(1)}ms`,
+      );
+    } catch {}
+    this._lastLabel = label;
+    this._lastT = t;
+  },
+  // Time a synchronous span (e.g. thumbnail-target discovery) in isolation.
+  measure(label, fn) {
+    if (!this.enabled) return fn();
+    const t0 = this.now();
+    try {
+      return fn();
+    } finally {
+      try {
+        console.debug(`[nav-perf] ${label}: ${(this.now() - t0).toFixed(1)}ms`);
+      } catch {}
+    }
+  },
+};
+try {
+  if (localStorage.getItem("lg-nav-perf") === "1") NAV_PERF.enabled = true;
+} catch {}
+try {
+  window.navPerf = (on = true) => NAV_PERF.setEnabled(on);
+  window.NAV_PERF = NAV_PERF;
+} catch {}
+
+// Resolved thumbnail-target decisions, keyed by "<thumbFilterKey>|<scope>"
+// where scope is a folder path, tag key, or album key. Values are file-id
+// strings (or "" meaning "resolved to nothing"). Cleared on workspace reset
+// and whenever thumbnail metadata changes.
+let PREVIEW_THUMB_TARGET_CACHE = new Map();
+function thumbTargetCacheKey(scope) {
+  const filterKey = String(THUMB_FILTER_KEY || buildThumbFilterKey() || "");
+  return `${filterKey}|${scope || "__root__"}`;
+}
+function getCachedThumbTargetId(scope) {
+  return PREVIEW_THUMB_TARGET_CACHE.get(thumbTargetCacheKey(scope));
+}
+function setCachedThumbTargetId(scope, id) {
+  PREVIEW_THUMB_TARGET_CACHE.set(thumbTargetCacheKey(scope), id ? String(id) : "");
+}
+function clearPreviewThumbTargetCache() {
+  PREVIEW_THUMB_TARGET_CACHE = new Map();
+}
+
+// Fast-nav detection: when navigation events arrive faster than the window
+// below, we are in a "burst" and the loader should keep work minimal until the
+// user pauses.
+const FAST_NAV = {
+  _last: 0,
+  _settleTimer: 0,
+  windowMs: 320,
+  active: false,
+  // Record a navigation event. Returns true if we are now in a burst.
+  mark() {
+    const t = NAV_PERF.now();
+    const delta = t - this._last;
+    this._last = t;
+    if (delta < this.windowMs) this.active = true;
+    if (this._settleTimer) {
+      try { clearTimeout(this._settleTimer); } catch {}
+    }
+    this._settleTimer = setTimeout(() => {
+      this._settleTimer = 0;
+      this.active = false;
+      onFastNavSettled();
+    }, this.windowMs);
+    return this.active;
+  },
+  isActive() {
+    return this.active;
+  },
+};
+// Called once a navigation burst ends; fill in the richer, deferred work.
+function onFastNavSettled() {
+  try { reprioritizeThumbs(); } catch {}
+  try { scheduleDeferredPreviewVideoThumbUpgrade(120); } catch {}
+  try { prewarmNavigationCorridor(); } catch {}
+}
+
 /* === Passive-thumbnail loader =========================================
    Grid/folder thumbnails are full-resolution media. Each one registers here
    instead of assigning `src` at render time. An IntersectionObserver loads
@@ -56519,11 +56668,17 @@ function registerThumbEl(el, src, opts = null) {
   el.dataset.thumbKind = kind;
   el.dataset.thumbSrc = src;
   el.dataset.thumbState = "idle";
+  // Staged placeholder: the element starts as a calm, icon-less reserved slot
+  // (`thumbPending`) and only gains `thumbLoaded` once its media has actually
+  // decoded, so we fade the real thumbnail in instead of flashing a placeholder
+  // icon and then replacing it. See onThumbLoadSettled.
+  el.classList.add("thumbPending");
+  el.classList.remove("thumbLoaded");
   if (!el.__thumbBound) {
     el.__thumbBound = true;
     const settled = () => onThumbLoadSettled(el);
     el.addEventListener(kind === "video" ? "loadeddata" : "load", settled);
-    el.addEventListener("error", settled);
+    el.addEventListener("error", () => onThumbLoadError(el));
   }
   if (!THUMB_OBSERVER) {
     assignThumbSrc(el);
@@ -56541,6 +56696,7 @@ function assignThumbSrc(el) {
     return;
   el.dataset.thumbState = "loading";
   THUMB_LOADING.add(el);
+  if (NAV_PERF.enabled) el.__thumbT0 = NAV_PERF.now();
   try { el.src = src; } catch {}
 }
 
@@ -56564,6 +56720,25 @@ function onThumbLoadSettled(el) {
   if (!el || !el.dataset) return;
   THUMB_LOADING.delete(el);
   el.dataset.thumbState = "loaded";
+  // Reveal the decoded thumbnail (fade-in) and drop the reserved-slot state.
+  el.classList.add("thumbLoaded");
+  el.classList.remove("thumbPending");
+  if (NAV_PERF.enabled && el.__thumbT0) {
+    const kind = thumbElKind(el);
+    NAV_PERF.tick(kind === "video" ? "videoThumbReady" : "thumbLoad");
+    el.__thumbT0 = 0;
+  }
+  pumpThumbQueue();
+}
+
+// A failed load keeps the calm reserved slot rather than flashing a broken
+// image, then frees the concurrency slot for the next thumbnail.
+function onThumbLoadError(el) {
+  if (!el || !el.dataset) return;
+  THUMB_LOADING.delete(el);
+  el.dataset.thumbState = "loaded";
+  el.classList.remove("thumbLoaded");
+  if (el.__thumbT0) el.__thumbT0 = 0;
   pumpThumbQueue();
 }
 
@@ -56575,6 +56750,9 @@ function evictThumbEl(el) {
   if (thumbElKind(el) === "video") stopCachedMediaElement(el);
   else { try { el.removeAttribute("src"); } catch {} }
   el.dataset.thumbState = "idle";
+  // Returning thumbnails should fade in again rather than pop.
+  el.classList.add("thumbPending");
+  el.classList.remove("thumbLoaded");
 }
 
 function onThumbIntersect(entries) {
@@ -56590,31 +56768,56 @@ function onThumbIntersect(entries) {
   pumpThumbQueue();
 }
 
-function thumbDistanceToViewportCenter(el) {
+// Priority score for the load queue (lower loads sooner). Tiered so that the
+// whole visible grid always outranks the IntersectionObserver's offscreen
+// prefetch margin — without this, a near-above offscreen card could outrank a
+// still-visible bottom row purely on center distance, which is exactly the
+// bottom-row lag the unified plan calls out:
+//   tier 0  visible grid, bottom row first (distance to viewport bottom)
+//   tier 1  just below the viewport (likely next scroll direction)
+//   tier 2  just above the viewport
+// `tierOnly` (fast-nav) collapses everything past the visible tier.
+function thumbPriorityScore(el) {
   const r = el.getBoundingClientRect();
-  const cy = (window.innerHeight || 0) / 2;
-  const cx = (window.innerWidth || 0) / 2;
-  return Math.abs(r.top + r.height / 2 - cy) +
-    Math.abs(r.left + r.width / 2 - cx) * 0.25;
+  const vh = window.innerHeight || 0;
+  const inView = r.bottom > 0 && r.top < vh;
+  if (inView) {
+    // Bottom row first, then upward; keeps the last-to-fill row from lagging.
+    return Math.abs(vh - (r.top + r.height / 2));
+  }
+  const TIER = 100000;
+  if (r.top >= vh) return TIER + (r.top - vh); // below viewport (tier 1)
+  return 2 * TIER + (0 - r.bottom); // above viewport (tier 2)
+}
+
+function thumbIsVisible(el) {
+  const r = el.getBoundingClientRect();
+  return r.bottom > 0 && r.top < (window.innerHeight || 0);
 }
 
 function pumpThumbQueue() {
   if (!THUMB_WANTED.size) return;
+  const fastNav = FAST_NAV.isActive();
   const idle = [];
   for (const el of THUMB_WANTED) {
     if (!el.isConnected) { THUMB_WANTED.delete(el); continue; }
-    if (el.dataset.thumbState === "idle") idle.push(el);
+    if (el.dataset.thumbState !== "idle") continue;
+    // During a fast-nav burst keep work minimal: only the visible grid loads;
+    // offscreen prefetch (and, below, all video work) is deferred until settle.
+    if (fastNav && !thumbIsVisible(el)) continue;
+    idle.push(el);
   }
   if (!idle.length) return;
-  idle.sort(
-    (a, b) =>
-      thumbDistanceToViewportCenter(a) - thumbDistanceToViewportCenter(b),
-  );
+  idle.sort((a, b) => thumbPriorityScore(a) - thumbPriorityScore(b));
   const counts = thumbActiveCounts();
   for (let i = 0; i < idle.length; i++) {
     const el = idle[i];
     if (thumbElKind(el) === "video") {
+      // Videos are the slow path: never eager-decode an offscreen video, and
+      // pause all video thumb work while navigating fast.
+      if (fastNav) continue;
       if (counts.video >= THUMB_MAX_VIDEO_CONCURRENT) continue;
+      if (!thumbIsVisible(el)) continue;
       assignThumbSrc(el);
       counts.video++;
     } else {
@@ -56635,6 +56838,44 @@ function reprioritizeThumbs() {
 
 // No-op shim retained for legacy call sites.
 function primeThumbsNow() {}
+
+// Prewarm the bounded navigation corridor once the user settles: resolve (and
+// cache) the thumbnail target for the current selected folder, its nearest
+// prev/next sibling folders, and the parent return target, then prewarm image
+// URLs for those leads so the likely next destination paints instantly. Video
+// decode is deliberately left to the visible-only slow path. Capped at a
+// handful of folders to keep CPU/memory/disk pressure bounded.
+function prewarmNavigationCorridor() {
+  try {
+    if (FAST_NAV.isActive()) return;
+    if (!WS || !WS.root || !Array.isArray(WS.nav.entries)) return;
+    if (!folderPreviewMediaThumbnailsEnabled()) return;
+    const entries = WS.nav.entries;
+    const sel = Number(WS.nav.selectedIndex) || 0;
+    const nodes = [];
+    const addNode = (n) => { if (n && nodes.indexOf(n) === -1) nodes.push(n); };
+    const selEntry = entries[sel];
+    if (selEntry && selEntry.kind === "dir") addNode(selEntry.node);
+    for (let i = sel - 1; i >= 0 && i >= sel - 8; i--) {
+      if (entries[i] && entries[i].kind === "dir") { addNode(entries[i].node); break; }
+    }
+    for (let i = sel + 1; i < entries.length && i <= sel + 8; i++) {
+      if (entries[i] && entries[i].kind === "dir") { addNode(entries[i].node); break; }
+    }
+    if (WS.nav.dirNode && WS.nav.dirNode.parent) addNode(WS.nav.dirNode.parent);
+    const MAX_FOLDERS = 4;
+    let warmedUrls = 0;
+    for (let i = 0; i < nodes.length && i < MAX_FOLDERS; i++) {
+      const lead = NAV_PERF.measure("prewarm:target", () =>
+        getDisplayLeadPreviewForDir(nodes[i]),
+      );
+      const rec = lead && lead.record;
+      if (rec && rec.type === "image" && warmedUrls < 3) {
+        try { ensureMediaUrl(rec); warmedUrls++; } catch {}
+      }
+    }
+  } catch {}
+}
 
 try {
   window.addEventListener("scroll", reprioritizeThumbs, true);
@@ -58107,18 +58348,37 @@ function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
   const presetRec = getPresetPreviewRecordForDir(dirNode);
   if (presetRec) return { record: presetRec, rotateKey: "" };
   if (!dirPath && dirNode !== WS.root) return { record: null, rotateKey: "" };
-  const recursivePool = getRecursivePreviewRecordsForDir(dirNode, 72, true);
+  const scope = dirPath || "__root__";
+  // Rotate mode intentionally varies its pick, so it is never cached; every
+  // other mode resolves to a stable file we can remember per folder + filter so
+  // repeated grid renders during navigation skip the recursive subtree walk.
+  const cacheable = thumbMode !== "rotate";
+  if (cacheable) {
+    const cachedId = getCachedThumbTargetId(scope);
+    if (cachedId !== undefined) {
+      const cachedRec = cachedId ? WS.fileById.get(cachedId) || null : null;
+      if (cachedRec || cachedId === "") {
+        return { record: cachedRec, rotateKey: "" };
+      }
+    }
+  }
+  const recursivePool = NAV_PERF.measure("thumbTargetDiscovery", () =>
+    getRecursivePreviewRecordsForDir(dirNode, 72, true),
+  );
   const directRec = getFirstDirectPreviewRecordForDir(dirNode);
   if (naturalAspectThumbnailCardsEnabled()) {
-    return { record: directRec || recursivePool[0] || null, rotateKey: "" };
+    const rec = directRec || recursivePool[0] || null;
+    if (cacheable) setCachedThumbTargetId(scope, rec ? rec.id : "");
+    return { record: rec, rotateKey: "" };
   }
   if (thumbMode === "rotate" && recursivePool.length > 1) {
-    const scope = dirPath || "__root__";
     const rotateKey = `${String(rotateKeyPrefix || "dir")}:${scope}`;
     const record = pickRotatingPreviewRecordForKey(rotateKey, recursivePool);
     return { record: record || recursivePool[0] || null, rotateKey };
   }
-  return { record: directRec || recursivePool[0] || null, rotateKey: "" };
+  const rec = directRec || recursivePool[0] || null;
+  if (cacheable) setCachedThumbTargetId(scope, rec ? rec.id : "");
+  return { record: rec, rotateKey: "" };
 }
 
 function findNearestPresettableParentForRecord(rec) {
@@ -58401,6 +58661,7 @@ function setTagThumbnailFromRecordByKey(rec, tagKey) {
 }
 
 function refreshThumbnailUiAfterMetadataChange() {
+  clearPreviewThumbTargetCache();
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
