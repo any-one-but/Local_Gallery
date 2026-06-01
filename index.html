@@ -10854,7 +10854,20 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "shufflePlay",
     "autoCropBlackBars",
   ]),
-  thumbnails: Object.freeze([]),
+  thumbnails: Object.freeze(
+    [
+      "folderPreviewMediaThumbnails",
+      "clickSelectedRotatingThumbTeleports",
+      "thumbnailTitleSize",
+      "previewFileThumbnailTitleSize",
+      "previewRootFolderThumbnailTitleSize",
+      "previewSubfolderThumbnailTitleSize",
+      "previewTagThumbnailTitleSize",
+      "thumbnailStyle",
+      "thumbnailScaleCropped",
+      "thumbnailScaleAspect",
+    ].concat(thumbnailVisibilityOptionKeys()),
+  ),
   filenames: Object.freeze([
     "forceTitleCaps",
     "showPositionNumbersInNames",
@@ -38472,7 +38485,9 @@ function currentItemMetadataVisibilityOptions() {
 }
 
 function folderThumbnailKindForNode(dirNode) {
-  return "rootFolder";
+  return folderDepthRelativeToWorkspaceRoot(dirNode) <= 1
+    ? "rootFolder"
+    : "subfolder";
 }
 
 function resolveThumbnailVisibility(surface, kind, opt = null) {
