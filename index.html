@@ -3241,6 +3241,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .folderCard.folderThumbCard {
+  position: relative;
   padding: 0;
   gap: 0;
   align-items: stretch;
@@ -3283,6 +3284,28 @@ img[data-rotate-key].rotatingThumbFade {
   position: relative;
   aspect-ratio: 1 / 1;
   min-height: 0;
+}
+
+.folderCard.folderThumbCard .thumbHiddenCornerBadge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(0, 0, 0, 0.58);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+}
+
+.folderCard.folderThumbCard .thumbHiddenCornerBadge .appIcon {
+  width: 16px;
+  height: 16px;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .folderThumb {
@@ -50482,6 +50505,13 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
       setAppIcon(fallback, iconKey);
       card.appendChild(fallback);
     }
+    if (isHidden) {
+      const hidden = document.createElement("span");
+      hidden.className = "dirHiddenBadge dirStatusBadge thumbHiddenCornerBadge";
+      hidden.title = "Hidden";
+      setAppIcon(hidden, "hidden");
+      card.appendChild(hidden);
+    }
 
     const meta = document.createElement("div");
     meta.className = thumbOverlayMode
@@ -50617,13 +50647,6 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     if (thumbOverlayMode) {
       const rightMeta = document.createElement("div");
       rightMeta.className = "thumbOverlayRightMeta";
-      if (!menuOnlyOverlayMeta && isHidden) {
-        const hidden = document.createElement("span");
-        hidden.className = "dirHiddenBadge dirStatusBadge";
-        hidden.textContent = "?";
-        hidden.title = "Hidden";
-        rightMeta.appendChild(hidden);
-      }
       if (menuWrap) rightMeta.appendChild(menuWrap);
       if (rightMeta.childNodes.length) bottom.appendChild(rightMeta);
     } else {
