@@ -22009,15 +22009,13 @@ ${makeActionRow(
   bindStandaloneSelect(
     "opt_filterMode",
     (value) => {
-      const next = ["all", "images", "videos", "gifs"].includes(String(value))
-        ? String(value)
-        : "all";
+      const next = normalizeMediaFilterMode(value);
       if (WS.view) WS.view.filterMode = next;
       setOptionsStatus("Saved");
       applyViewModesEverywhere(true);
       showStatusMessage(`Media filter: ${next}`, "cycle-filter");
     },
-    (val) => (["all", "images", "videos", "gifs"].includes(String(val)) ? String(val) : "all"),
+    (val) => normalizeMediaFilterMode(val),
   );
   bindStandaloneSelect(
     "opt_aspectRatioFilterMode",
@@ -28852,11 +28850,14 @@ function snapshotRefreshState() {
   };
 }
 
+function normalizeMediaFilterMode(value) {
+  const mode = String(value || "");
+  return ["all", "images", "videos", "gifs"].includes(mode) ? mode : "all";
+}
+
 function restoreRefreshViewState(viewState) {
   if (!viewState) return;
-  WS.view.filterMode = ["all", "images", "videos", "gifs"].includes(String(viewState.filterMode))
-    ? String(viewState.filterMode)
-    : "all";
+  WS.view.filterMode = normalizeMediaFilterMode(viewState.filterMode);
   WS.view.aspectRatioFilterMode = normalizeAspectRatioFilterMode(viewState.aspectRatioFilterMode);
   WS.view.randomMode = !!viewState.randomMode;
   WS.view.randomFolderMode = !!viewState.randomFolderMode;
@@ -29119,7 +29120,7 @@ function restorePreviewFolderBridgeState() {
   WS.view.previewFolderBridgeReturnState = null;
   if (!state) return false;
   state.activePane = "preview";
-  return restoreViewerCloseState(state);
+  return restoreViewerCloseState(state, { preserveViewFilters: true });
 }
 
 // While a quick-nav media folder is previewing fullscreen, the user can move to
@@ -29171,9 +29172,18 @@ function restoreViewerCloseState(state, opts = null) {
   const preferCachedEntries = !!options.preferCachedEntries;
   const deferDirectoriesRender = !!options.deferDirectoriesRender;
   const hideBusyAfterDeferredRender = !!options.hideBusyAfterDeferredRender;
+  const preserveViewFilters = !!options.preserveViewFilters;
+  const currentFilterMode = normalizeMediaFilterMode(WS.view?.filterMode);
+  const currentAspectRatioFilterMode = normalizeAspectRatioFilterMode(
+    WS.view?.aspectRatioFilterMode,
+  );
   cancelPendingNavigationRender();
   const restoreRenderToken = NAVIGATION_RENDER_TOKEN;
   restoreRefreshViewState(state.view || null);
+  if (preserveViewFilters) {
+    WS.view.filterMode = currentFilterMode;
+    WS.view.aspectRatioFilterMode = currentAspectRatioFilterMode;
+  }
   WS.view.tagNavStack = Array.isArray(state.tagNavStack)
     ? state.tagNavStack
         .map((frame) =>
@@ -55254,6 +55264,7 @@ async function closeFilePreviewToFolder() {
       restoreViewerCloseState(bridgeReturnState, {
         preferCachedEntries: true,
         deferDirectoriesRender: false,
+        preserveViewFilters: true,
         preserveTagEntryCaches: true,
         hideBusyAfterDeferredRender: false,
       });
@@ -55616,6 +55627,43 @@ function handleClosedFilePaneNavigationAction(action) {
   }
 }
 
+function handleThumbnailViewportArrowKey(e, action) {
+  if (!e || action || !WS.root || VIEWER_MODE || THUMB_CROP_EDITOR)
+    return false;
+  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
+  if (isTextInputTarget(e.target)) return false;
+  const step =
+    typeof THUMB_VIEWPORT_NUDGE_STEP_RESTORED === "number"
+      ? THUMB_VIEWPORT_NUDGE_STEP_RESTORED
+      : 8;
+  const key = normalizeBaseKeyValue(e.key);
+  if (key === "ArrowLeft") {
+    return nudgeSelectedThumbnailViewport(-step, 0, {
+      quietNoTarget: true,
+      quietSuccess: true,
+    });
+  }
+  if (key === "ArrowRight") {
+    return nudgeSelectedThumbnailViewport(step, 0, {
+      quietNoTarget: true,
+      quietSuccess: true,
+    });
+  }
+  if (key === "ArrowUp") {
+    return nudgeSelectedThumbnailViewport(0, -step, {
+      quietNoTarget: true,
+      quietSuccess: true,
+    });
+  }
+  if (key === "ArrowDown") {
+    return nudgeSelectedThumbnailViewport(0, step, {
+      quietNoTarget: true,
+      quietSuccess: true,
+    });
+  }
+  return false;
+}
+
 const RESERVED_APP_KEYBIND_EVENTS = new WeakSet();
 
 function shouldReserveAppKeybindBeforeBrowser(e) {
@@ -55720,6 +55768,10 @@ document.addEventListener("keydown", (e) => {
   const action = keybindActionFor(key);
   if (!isTextInputTarget(e.target) && actionNeedsImmediateNavigationPriority(action)) {
     noteResponsiveNavigationInteraction("user-navigation", RESPONSIVE_NAV_MEDIA_MS);
+  }
+  if (handleThumbnailViewportArrowKey(e, action)) {
+    e.preventDefault();
+    return;
   }
   if (VIEWER_MODE && isQuadPlaybackMode()) {
     const allowedQuadAction =
