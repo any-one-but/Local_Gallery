@@ -293,6 +293,19 @@ body.cursor-hidden * {
   align-items: stretch;
   justify-items: stretch;
   position: relative;
+  /* Hidden during boot so the half-built skeleton isn't shown while this large
+     inline document parses/executes (most visible in the packaged build). The
+     init code reveals it (adds .appBooted) once the UI is built; the keyframe is
+     a pure-CSS safety that reveals after a few seconds even if init never runs. */
+  visibility: hidden;
+  animation: appBootRevealSafety 0s linear 6s forwards;
+}
+#app.appBooted {
+  visibility: visible;
+  animation: none;
+}
+@keyframes appBootRevealSafety {
+  to { visibility: visible; }
 }
 
 #app.title-layout-pane.sidebar-closed {
@@ -59899,6 +59912,14 @@ renderDirectoriesPane();
 renderPreviewPane(true);
 syncButtons();
 ensureThumbnailServiceHeartbeat();
+
+// UI is fully built — reveal it (it was hidden during boot to avoid showing the
+// half-initialized skeleton). One rAF lets init's own layout callbacks settle
+// first, so the very first visible frame is the finished UI.
+requestAnimationFrame(() => {
+  const appEl = document.getElementById("app");
+  if (appEl) appEl.classList.add("appBooted");
+});
 
   
 
