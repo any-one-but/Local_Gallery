@@ -10694,7 +10694,14 @@ const RESPONSIVE_NAV_MEDIA_MS = 1400;
 const RESPONSIVE_PREVIEW_TAG_ALBUM_DELAY_MS = 90;
 const RESPONSIVE_PREVIEW_FILTERED_TAG_ALBUM_DELAY_MS = 150;
 const PREVIEW_VIDEO_THUMB_HEAVY_COUNT = 16;
-const PREVIEW_VIDEO_FOLDER_UPGRADE_LIMIT = 6;
+// How many folder/tag video thumbnails are upgraded to live <video> elements in
+// the first synchronous pass (the rest trickle in via the deferred upgrader).
+// Scaled to the machine: a flat 6 left capable boxes upgrading video-derived
+// folder/tag thumbnails far slower than they could.
+const PREVIEW_VIDEO_FOLDER_UPGRADE_LIMIT = Math.max(
+  6,
+  Math.min(14, currentThumbWorkerCpuBudget() + 2),
+);
 let PREVIEW_SELECTION_RENDER_TIMER = 0;
 let ROOT_PINNED_THUMBNAIL_PRELOAD_TIMER = 0;
 let ROOT_PINNED_THUMBNAIL_PRELOAD_ACTIVE = false;
@@ -56788,8 +56795,12 @@ function onFastNavSettled() {
    anything disconnected), rather than a running counter — so a thumbnail that
    gets removed mid-load (re-render / virtualization) can never permanently
    occupy a slot and stall future loads. */
-const THUMB_MAX_IMG_CONCURRENT = 6;
-const THUMB_MAX_VIDEO_CONCURRENT = 2;
+// Concurrency caps for the passive loader, scaled to the machine. Images decode
+// cheaply so we allow a wide pool; videos are the heavy path (each loads media +
+// seeks) so they stay tightly bounded, but a flat 2 throttled capable boxes more
+// than necessary.
+const THUMB_MAX_IMG_CONCURRENT = Math.max(6, Math.min(12, currentThumbWorkerCpuBudget() + 2));
+const THUMB_MAX_VIDEO_CONCURRENT = Math.max(2, Math.min(4, Math.round(currentThumbWorkerCpuBudget() / 3)));
 const THUMB_WANTED = new Set();
 const THUMB_LOADING = new Set();
 const THUMB_ALL = new Set(); // every mounted thumbnail el (for background warming)
@@ -57880,7 +57891,7 @@ function upgradeDeferredPreviewVideoThumbs(renderToken = PREVIEW_FILES_RENDER_TO
     ),
   );
   if (!near.length) return;
-  const limit = responsiveNavigationGuardActive() ? 1 : 2;
+  const limit = responsiveNavigationGuardActive() ? 2 : 4;
   let upgraded = 0;
   for (let i = 0; i < near.length && upgraded < limit; i++) {
     if (replacePassivePreviewVideoFallbackWithVideo(near[i], renderToken)) {
@@ -57897,7 +57908,7 @@ function upgradeDeferredPreviewVideoThumbs(renderToken = PREVIEW_FILES_RENDER_TO
     )
   ) {
     scheduleDeferredPreviewVideoThumbUpgrade(
-      responsiveNavigationGuardActive() ? 600 : 260,
+      responsiveNavigationGuardActive() ? 400 : 150,
     );
   }
 }
