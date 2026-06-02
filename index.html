@@ -35454,6 +35454,25 @@ function getChildDirsForNode(dirNode) {
 function getVisibleSiblingDirsForSlide(dirNode) {
   const dp = String(dirNode?.path || "");
   pruneStaleVirtualPortalFramesForPath(dp);
+
+  // While actively browsing a tag (or other simulated) folder, its items behave
+  // like real siblings: sliding past the end of one item or random-jumping must
+  // move between the *tag's* items, not the real parent folder's children.
+  // Previewing/quick-navigating an item before formally descending into it
+  // leaves only a "tag-entry" frame on the nav stack (never a "tag-view" frame),
+  // so the stack scan below misses the context and falls through to the real
+  // parent. Resolve the simulated-folder siblings directly from the active tag
+  // context so tag navigation stays inside the tag.
+  if (isViewingTagFolder() && dp) {
+    const activeTagDirs = getDirsForTagFolderView();
+    if (
+      activeTagDirs.length &&
+      activeTagDirs.some((d) => String(d?.path || "") === dp)
+    ) {
+      return activeTagDirs;
+    }
+  }
+
   const stack = WS.view.tagNavStack;
   if (Array.isArray(stack) && stack.length) {
     const frame = stack[stack.length - 1];
