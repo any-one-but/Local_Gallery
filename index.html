@@ -320,6 +320,10 @@ body.cursor-hidden * {
   display: none !important;
 }
 
+#app.no-root-selected #titlePane {
+  display: none !important;
+}
+
 #app.sidebar-closed #directoriesPane {
   width: 0;
   min-width: 0;
@@ -8576,7 +8580,7 @@ remove the outer app frame. */
   </head>
 
   <body>
-    <div id="app">
+    <div id="app" class="no-root-selected">
       <!-- =========================================================
          Title Pane
          ========================================================= -->
