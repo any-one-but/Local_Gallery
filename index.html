@@ -29278,6 +29278,22 @@ function syncGridReturnStateToExitedFolder() {
   const curKey = `dir:${String(cur.path || "")}`;
   state.pendingPreviewSelectionKey = curKey;
   state.previewSelectedKey = curKey;
+  const portalFrame = Array.isArray(state.tagNavStack)
+    ? state.tagNavStack
+        .slice()
+        .reverse()
+        .find(
+          (frame) =>
+            frame &&
+            frame.type === "tag-view" &&
+            findMatchingVirtualPortalRootPath(frame, cur.path || ""),
+        )
+    : null;
+  if (portalFrame) {
+    state.entryKey = curKey;
+    portalFrame.selectedDirPath = String(cur.path || "");
+    return;
+  }
   const parent = cur.parent;
   if (!parent || parent._skipTagFilters) return;
   const parentPath = String(parent.path || "");
@@ -34936,7 +34952,10 @@ function ensureRotatingPreviewTicker() {
 }
 
 function makeTagPreviewNode(entry) {
-  const baseNode = WS.nav.dirNode;
+  const originPath = String(entry?.originPath || "");
+  const baseNode =
+    (originPath && WS.dirByPath && WS.dirByPath.get(originPath)) ||
+    WS.nav.dirNode;
   if (!entry || !baseNode) return null;
   const isAlbumEntry = !!entry.album && !entry.tag;
   const mode = entry.special
@@ -34970,7 +34989,7 @@ function makeTagPreviewNode(entry) {
     _tagPreviewTag: String(entry.tag || ""),
     _tagPreviewSpecial: String(entry.special || ""),
     _tagPreviewAlbum: String(entry.album || ""),
-    _tagPreviewOriginPath: String(baseNode.path || ""),
+    _tagPreviewOriginPath: String(baseNode.path || originPath),
   };
 }
 
@@ -35254,6 +35273,80 @@ function pushTagViewContext(selectedDirPath) {
     orderedPaths,
     sortKey: dirSortDisplayCacheKey(),
   });
+}
+
+function tagViewFrameForVirtualTagNode(tagNode, selectedDirPath) {
+  if (!tagNode || !tagNode._skipTagFilters) return null;
+  const selectedPath = String(selectedDirPath || "");
+  if (!selectedPath) return null;
+  const originPath = String(
+    tagNode._tagPreviewOriginPath || tagNode.parent?.path || "",
+  );
+  const baseNode = WS.dirByPath.get(originPath) || tagNode.parent || WS.root;
+  if (!baseNode) return null;
+  const modeRaw = String(tagNode._tagPreviewMode || "");
+  const validModes = [
+    "tag",
+    "album",
+    "favorites",
+    "hidden",
+    "untagged",
+    "storage",
+  ];
+  const mode = validModes.includes(modeRaw) ? modeRaw : "";
+  if (!mode) return null;
+  const tag = mode === "tag" ? String(tagNode._tagPreviewTag || "") : "";
+  const album =
+    mode === "album" || mode === "tag"
+      ? String(tagNode._tagPreviewAlbum || "")
+      : "";
+  const entry = {
+    kind: "tag",
+    originPath: String(baseNode.path || ""),
+    label: String(tagNode.name || mode || "Tag"),
+  };
+  if (
+    mode === "favorites" ||
+    mode === "hidden" ||
+    mode === "untagged" ||
+    mode === "storage"
+  ) {
+    entry.special = mode;
+  } else if (mode === "album") {
+    entry.album = album;
+  } else {
+    entry.tag = tag;
+    entry.album = album;
+  }
+  const orderedPaths = getDirsForTagEntry(entry)
+    .map((node) => String(node?.path || ""))
+    .filter(Boolean);
+  if (!orderedPaths.includes(selectedPath)) orderedPaths.push(selectedPath);
+  return {
+    type: "tag-view",
+    mode,
+    tag,
+    album,
+    originPath: String(baseNode.path || ""),
+    selectedDirPath: selectedPath,
+    scrollTop: getDirectoriesScrollTop(),
+    orderedPaths,
+    sortKey: dirSortDisplayCacheKey(),
+  };
+}
+
+function pushSimulatedTagViewContextForPath(selectedDirPath, sourceDir = null) {
+  const selectedPath = String(selectedDirPath || "");
+  if (!selectedPath) return false;
+  if (isViewingTagFolder()) {
+    pushTagViewContext(selectedPath);
+    return true;
+  }
+  const tagNode = sourceDir || getPreviewTargetDir();
+  const frame = tagViewFrameForVirtualTagNode(tagNode, selectedPath);
+  if (!frame) return false;
+  pushTagNavFrame(frame);
+  return true;
 }
 
 function restoreTagViewFromFrame(frame, opts = null) {
@@ -36420,8 +36513,12 @@ function syncDirectoriesSelectionToFileRecord(rec, opts = null) {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
 
-  if (isViewingTagFolder()) {
-    pushTagViewContext(dn.path || "");
+  if (
+    pushSimulatedTagViewContextForPath(
+      dn.path || "",
+      options.simulatedTagSourceDir || null,
+    )
+  ) {
     WS.view.tagFolderActiveMode = "";
     WS.view.tagFolderActiveTag = "";
     WS.view.tagFolderActiveAlbum = "";
@@ -37487,9 +37584,39 @@ function movePreviewSelectionAcrossFolderEdge(step) {
   if (!selectedFileId) return false;
   const targetDir = getPreviewTargetDir();
   if (!targetDir || targetDir._skipTagFilters) return false;
+  const targetFileIds = getPreviewFileIdsForDir(targetDir, false);
+  const targetFileIdx = targetFileIds.indexOf(selectedFileId);
+  if (targetFileIdx < 0) return false;
+  const targetFileNextIdx = targetFileIdx + (step < 0 ? -1 : 1);
+  if (targetFileNextIdx >= 0 && targetFileNextIdx < targetFileIds.length) {
+    return setPreviewSelectionKey(`file:${targetFileIds[targetFileNextIdx]}`, {
+      activate: true,
+    });
+  }
   const navPath = String(WS.nav.dirNode?.path || "");
   const targetPath = String(targetDir.path || "");
-  if (navPath !== targetPath) return false;
+  if (navPath !== targetPath) {
+    const nextDir =
+      step < 0
+        ? getPrevSiblingDirWithFiles(targetDir)
+        : getNextSiblingDirWithFiles(targetDir);
+    if (!nextDir) return false;
+    const nextFileIds = getPreviewFileIdsForDir(nextDir, false);
+    if (!nextFileIds.length) return false;
+    const nextFileId =
+      step < 0
+        ? nextFileIds[nextFileIds.length - 1]
+        : nextFileIds[0];
+    if (!nextFileId) return false;
+    applyPreviewState({ kind: "dir", dirNode: nextDir, fileId: null });
+    WS.view.pendingPreviewSelectionKey = `file:${String(nextFileId || "")}`;
+    renderPreviewPane(true, true);
+    activatePreviewPaneSelection();
+    syncButtons();
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+    return true;
+  }
   const selectedIdx = findFileEntryIndexById(selectedFileId);
   if (selectedIdx < 0) return false;
   WS.nav.selectedIndex = findNearestSelectableIndex(selectedIdx, 1);
@@ -37503,6 +37630,51 @@ function movePreviewSelectionAcrossFolderEdge(step) {
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
   return true;
+}
+
+function jumpPreviewTargetToDirectoryFile(dirNode, mode = "first") {
+  if (!dirNode || dirNode._skipTagFilters) return false;
+  const fileIds = getPreviewFileIdsForDir(dirNode, false);
+  if (!fileIds.length) return false;
+  let fileId = "";
+  if (mode === "last") {
+    fileId = fileIds[fileIds.length - 1] || "";
+  } else if (mode === "random") {
+    fileId = fileIds[Math.floor(Math.random() * fileIds.length)] || "";
+  } else {
+    fileId = fileIds[0] || "";
+  }
+  if (!fileId) return false;
+  applyPreviewState({ kind: "dir", dirNode, fileId: null });
+  WS.view.pendingPreviewSelectionKey = `file:${String(fileId || "")}`;
+  renderPreviewPane(true, true);
+  activatePreviewPaneSelection();
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  return true;
+}
+
+function previewPaneFolderJump(action) {
+  const sourceDir = getPreviewTargetDir();
+  if (!sourceDir || sourceDir._skipTagFilters) return false;
+  if (action === "prevFolder") {
+    const dir = getPrevSiblingDirWithFiles(sourceDir);
+    return !!dir && jumpPreviewTargetToDirectoryFile(dir, "first");
+  }
+  if (action === "nextFolder") {
+    const dir = getNextSiblingDirWithFiles(sourceDir);
+    return !!dir && jumpPreviewTargetToDirectoryFile(dir, "first");
+  }
+  if (action === "randomFirstFileJump" || action === "randomFileJump") {
+    const dir = pickRandomFirstFileJumpTarget(sourceDir);
+    if (!dir) return false;
+    return jumpPreviewTargetToDirectoryFile(
+      dir,
+      action === "randomFileJump" ? "random" : "first",
+    );
+  }
+  return false;
 }
 
 function openSelectedPreviewItem() {
@@ -37634,6 +37806,7 @@ function openPreviewFileFromPreviewCard(rec) {
     renderPreview: false,
     pendingDirScrollMode: "center-selected",
     recordHistory: true,
+    simulatedTagSourceDir: previewContextDir,
   });
   if (!synced) return false;
   WS.view.returnToPreviewPaneAfterFileClose = true;
@@ -37754,8 +37927,7 @@ function enterSelectedDirectory() {
     }
     return;
   }
-  if (isViewingTagFolder()) {
-    pushTagViewContext(entry.node?.path || "");
+  if (pushSimulatedTagViewContextForPath(entry.node?.path || "")) {
     WS.view.tagFolderActiveMode = "";
     WS.view.tagFolderActiveTag = "";
     WS.view.tagFolderActiveAlbum = "";
@@ -47471,6 +47643,7 @@ function enterMediaFolderWithQuickNavigation(node) {
     kind: "dir",
     node,
   });
+  pushSimulatedTagViewContextForPath(node?.path || "");
   const gridReturnState = captureViewerCloseRestoreState({
     activePane: "preview",
     pendingPreviewSelectionKey: node.path ? `dir:${String(node.path || "")}` : "",
@@ -47482,7 +47655,6 @@ function enterMediaFolderWithQuickNavigation(node) {
   // (since the entries don't look like a media-only folder). Mirrors the
   // context handling in enterSelectedDirectory.
   if (isViewingTagFolder()) {
-    pushTagViewContext(node?.path || "");
     WS.view.tagFolderActiveMode = "";
     WS.view.tagFolderActiveTag = "";
     WS.view.tagFolderActiveAlbum = "";
@@ -47663,7 +47835,8 @@ function adoptPreviewParentIntoDirectoriesPane(targetDir) {
       modeRaw === "tag" ||
       modeRaw === "favorites" ||
       modeRaw === "hidden" ||
-      modeRaw === "untagged"
+      modeRaw === "untagged" ||
+      modeRaw === "storage"
         ? modeRaw
         : "";
     const tag = mode === "tag" ? String(parentTarget._tagPreviewTag || "") : "";
@@ -47700,10 +47873,8 @@ function adoptPreviewParentIntoDirectoriesPane(targetDir) {
     WS.view.tagFolderActiveAlbum = album;
     WS.view.tagFolderOriginPath = originPath;
   } else {
-    if (isViewingTagFolder()) {
-      const selectedPath = String(parentTarget.path || "");
-      if (selectedPath) pushTagViewContext(selectedPath);
-    }
+    const selectedPath = String(parentTarget.path || "");
+    if (selectedPath) pushSimulatedTagViewContextForPath(selectedPath);
     WS.nav.dirNode = parentTarget;
     WS.view.aboveRootView = false;
     WS.view.tagFolderActiveMode = "";
@@ -55804,7 +55975,9 @@ function handlePreviewPaneAction(action, inFilePreview) {
   switch (action) {
     case "prevFolder":
     case "nextFolder":
-      return false;
+    case "randomFirstFileJump":
+    case "randomFileJump":
+      return previewPaneFolderJump(action);
     case "selectUp":
       if (movePreviewSelectionByDirection("up")) return true;
       return movePreviewSelectionAcrossFolderEdge(-1);
