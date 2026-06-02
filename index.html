@@ -3743,13 +3743,45 @@ img[data-rotate-key].rotatingThumbFade {
 /* Staged thumbnail placeholder (see registerThumbEl). A thumbnail-capable card
    starts as a calm, icon-less reserved slot and fades its decoded media in,
    instead of flashing a placeholder icon for a fraction of a second. */
+/* Pending thumbnails are held fully transparent (not a skeleton). A lazy <img>
+   with no src yet renders the browser's broken-image icon + its alt (filename);
+   opacity:0 prevents that flash entirely, leaving a quiet empty slot that fades
+   to the decoded image once it loads. */
+/* Pending thumbnails are held fully transparent (a lazy <img> with no src yet
+   would otherwise render the browser's broken-image icon + alt filename). They
+   fade in once decoded. With background warming most thumbnails are already
+   decoded before they scroll into view, so this transition is rarely seen. */
 .thumb.thumbPending,
-.folderThumb.thumbPending {
-  background: var(--thumb-skeleton-bg, rgba(127, 127, 127, 0.12));
+.folderThumb.thumbPending,
+.dirInlinePreview.thumbPending {
+  opacity: 0;
+}
+.dirInlinePreview.thumbPending {
+  animation: thumbStagedSafetyReveal 0s linear 2s forwards;
 }
 .thumb.thumbLoaded,
-.folderThumb.thumbLoaded {
+.folderThumb.thumbLoaded,
+.dirInlinePreview.thumbLoaded {
   animation: thumbDecodedFadeIn 140ms ease-out;
+}
+@keyframes thumbStagedSafetyReveal {
+  to { opacity: 1; }
+}
+
+/* Calm "thumbnail pending" square. When a container (folder/tag/album) has
+   media and is in a thumbnail mode but its lead thumbnail isn't resolved yet
+   (record/URL still loading), we render this instead of the type-icon fallback.
+   It is a quiet reserved slot with no icon, so the card no longer flashes the
+   image-icon + filename placeholder before the real thumbnail swaps in. */
+.dirSquareFallback.thumbIconPending,
+.folderThumbFallback.thumbIconPending {
+  color: transparent;
+  font-size: 0;
+  background: var(--thumb-skeleton-bg, rgba(127, 127, 127, 0.12));
+}
+.dirSquareFallback.thumbIconPending .appIcon,
+.folderThumbFallback.thumbIconPending .appIcon {
+  display: none;
 }
 @keyframes thumbDecodedFadeIn {
   from { opacity: 0; }
@@ -45514,7 +45546,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             const cropClass = cropStyle
               ? " thumbCropApplied thumbCropAbsolute"
               : "";
-            squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+            squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
           }
         } else if (tagThumbIsRotating && tagPool.length) {
           const rec = pickRotatingPreviewRecordForKey(tagRotateKey, tagPool);
@@ -45525,7 +45557,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             });
             const previewAspect = getPreviewAspectForRecord(rec);
             if (previewSrc) {
-              squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+              squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
             }
           }
         } else if (tagThumbMode === "single" && tagPool.length) {
@@ -45537,7 +45569,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             });
             const previewAspect = getPreviewAspectForRecord(rec);
             if (previewSrc) {
-              squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+              squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
             }
           }
         } else if (
@@ -45555,7 +45587,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               });
               const previewAspect = getPreviewAspectForRecord(rec);
               if (previewSrc) {
-                squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
               }
             }
           } else {
@@ -45587,7 +45619,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   continue;
                 }
                 quadHtml.push(
-                  `<div class="dirTagQuadCell"><img class="dirInlinePreview dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
+                  `<div class="dirTagQuadCell"><img class="dirInlinePreview thumbPending dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
                 );
               }
               if (quadHtml.length) {
@@ -45797,7 +45829,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             const cropClass = cropStyle
               ? " thumbCropApplied thumbCropAbsolute"
               : "";
-            inlinePreviewHtml = `<img class="dirInlinePreview${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}"${rotateAttr} src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+            inlinePreviewHtml = `<img class="dirInlinePreview thumbPending${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}"${rotateAttr} src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
           }
         }
         const sc = isStorageGhost ? 0 : metaGetScore(p);
@@ -45931,7 +45963,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   const cropClass = cropStyle
                     ? " thumbCropApplied thumbCropAbsolute"
                     : "";
-                  rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+                  rootPortalMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
                 }
               } else if (rootThumbIsRotating && rootPool.length) {
                 const rootRotateKey = `root:${rootScope}:rotate`;
@@ -45947,7 +45979,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   });
                   const previewAspect = getPreviewAspectForRecord(rec);
                   if (previewSrc) {
-                    rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(rootRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                    rootPortalMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(rootRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
                   }
                 }
               } else if (rootMode === "single" && rootPool.length) {
@@ -45960,7 +45992,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   });
                   const previewAspect = getPreviewAspectForRecord(rec);
                   if (previewSrc) {
-                    rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                    rootPortalMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
                   }
                 }
               } else if (
@@ -45982,7 +46014,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                     });
                     const previewAspect = getPreviewAspectForRecord(rec);
                     if (previewSrc) {
-                      rootPortalMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                      rootPortalMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
                     }
                   }
                 } else {
@@ -46017,7 +46049,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                       }
                       if (!squareAspectRec) squareAspectRec = slotRec;
                       quadHtml.push(
-                        `<div class="dirTagQuadCell"><img class="dirInlinePreview dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
+                        `<div class="dirTagQuadCell"><img class="dirInlinePreview thumbPending dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
                       );
                     }
                     if (quadHtml.length)
@@ -46147,7 +46179,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               const cropClass = cropStyle
                 ? " thumbCropApplied thumbCropAbsolute"
                 : "";
-              inlinePreviewHtml = `<img class="dirInlinePreview${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+              inlinePreviewHtml = `<img class="dirInlinePreview thumbPending${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
             }
           }
           const fileMediaHtml = inlinePreviewHtml
@@ -50101,7 +50133,16 @@ function buildPreviewTagCardMarkup(entry) {
       : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
   const renameActive = isTagEntryRenameActive(entry);
 
-  let squareMediaHtml = `<div class="dirSquareFallback">${iconHtml}</div>`;
+  // A thumbnail is expected when the tag/album is in a thumb mode and actually
+  // contains media. Until its lead thumbnail resolves, show a calm pending slot
+  // rather than the image-icon fallback, so it doesn't flash before swapping in.
+  const tagExpectsThumb =
+    folderPreviewMediaThumbnailsEnabled() &&
+    tagThumbMode !== "none" &&
+    Number(tagMetrics?.fileCount || 0) > 0;
+  let squareMediaHtml = tagExpectsThumb
+    ? `<div class="dirSquareFallback thumbIconPending" aria-hidden="true"></div>`
+    : `<div class="dirSquareFallback">${iconHtml}</div>`;
   if (tagThumbMode !== "none") {
     if (presetRec) {
       const previewId = String(presetRec.id || "");
@@ -50114,7 +50155,7 @@ function buildPreviewTagCardMarkup(entry) {
         const cropClass = cropStyle
           ? " thumbCropApplied thumbCropAbsolute"
           : "";
-        squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+        squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
       }
     } else if (tagThumbIsRotating && tagPool.length) {
       const rec = pickRotatingPreviewRecordForKey(tagRotateKey, tagPool);
@@ -50125,7 +50166,7 @@ function buildPreviewTagCardMarkup(entry) {
         });
         const previewAspect = getPreviewAspectForRecord(rec);
         if (previewSrc) {
-          squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+          squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
         }
       }
     } else if (tagThumbMode === "single" && tagPool.length) {
@@ -50137,7 +50178,7 @@ function buildPreviewTagCardMarkup(entry) {
         });
         const previewAspect = getPreviewAspectForRecord(rec);
         if (previewSrc) {
-          squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+          squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
         }
       }
     } else if (tagAllowsRotation && tagThumbMode === "quad" && tagPool.length) {
@@ -50151,7 +50192,7 @@ function buildPreviewTagCardMarkup(entry) {
           });
           const previewAspect = getPreviewAspectForRecord(rec);
           if (previewSrc) {
-            squareMediaHtml = `<img class="dirInlinePreview dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+            squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
           }
         }
       } else {
@@ -50183,7 +50224,7 @@ function buildPreviewTagCardMarkup(entry) {
               continue;
             }
             quadHtml.push(
-              `<div class="dirTagQuadCell"><img class="dirInlinePreview dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
+              `<div class="dirTagQuadCell"><img class="dirInlinePreview thumbPending dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
             );
           }
           if (quadHtml.length)
@@ -50579,6 +50620,12 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     ? `<div class="meta">${folderSummaryParts.join(" • ")}</div>`
     : "";
   if (showThumbMeta) {
+    // A thumbnail is expected when the folder actually contains media; until the
+    // lead thumbnail resolves we render a calm pending slot rather than flashing
+    // the folder/type icon (see the fallback branches below).
+    const folderExpectsThumb =
+      folderPreviewMediaThumbnailsEnabled() &&
+      getRecursiveFileCountForNode(dirNode) > 0;
     card.classList.add("folderThumbCard");
     card.dataset.thumbMode = thumbMode;
     if (thumbOverlayMode) card.classList.add("folderThumbCoverCard");
@@ -50641,13 +50688,19 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
       } else {
         const fallback = document.createElement("div");
         fallback.className = "folderThumb folderThumbFallback";
-        setAppIcon(fallback, iconKeyForRecordType(leadRec.type));
+        // Lead record resolved but its media URL isn't ready yet: show a calm
+        // pending slot instead of the type icon so it doesn't flash.
+        if (folderExpectsThumb) fallback.classList.add("thumbIconPending");
+        else setAppIcon(fallback, iconKeyForRecordType(leadRec.type));
         card.appendChild(fallback);
       }
     } else {
       const fallback = document.createElement("div");
       fallback.className = "folderThumb folderThumbFallback";
-      setAppIcon(fallback, iconKey);
+      // No lead thumbnail resolved yet. If the folder has media a thumbnail is
+      // still coming, so show a calm pending slot rather than the folder icon.
+      if (folderExpectsThumb) fallback.classList.add("thumbIconPending");
+      else setAppIcon(fallback, iconKey);
       card.appendChild(fallback);
     }
     if (isHidden) {
@@ -51206,11 +51259,19 @@ function computePreviewFilesVirtualWindow(state) {
         Math.max(1, metrics.rowHeight),
     ),
   );
+  // Overscan a few rows above and below the viewport so rows are materialized
+  // (and their thumbnails start loading) before the keyboard selection jumps
+  // them into view — combined with card reuse in updateVirtualPreviewFilesGrid
+  // this prevents the grey-row strobe while scrolling.
+  const OVERSCAN_ROWS = 4;
   const startRow = Math.max(
     0,
-    Math.floor(viewTop / Math.max(1, metrics.rowHeight)) - 2,
+    Math.floor(viewTop / Math.max(1, metrics.rowHeight)) - OVERSCAN_ROWS,
   );
-  const endRow = Math.min(totalRows - 1, startRow + viewportRows + 4);
+  const endRow = Math.min(
+    totalRows - 1,
+    startRow + viewportRows + OVERSCAN_ROWS * 2,
+  );
   return {
     metrics,
     startIndex: startRow * metrics.cols,
@@ -51268,42 +51329,107 @@ function updateVirtualPreviewFilesGrid(state, force = false) {
   ) {
     return;
   }
-  state.currentStart = windowInfo.startIndex;
-  state.currentEnd = windowInfo.endIndexExclusive;
-  state.grid.innerHTML = "";
-  appendVirtualGridSpacer(state.grid, windowInfo.topSpacerHeight);
-  const frag = document.createDocumentFragment();
+  const grid = state.grid;
+
+  // Reuse card nodes across scroll updates. Previously the whole window was
+  // rebuilt (grid.innerHTML = "") on every shift, so a single keyboard row jump
+  // destroyed and recreated every visible card — their <img>s reloaded and
+  // re-faded, producing a grey-row strobe. Here, cards already in the window
+  // are kept (moved, never disconnected, so their loaded thumbnails persist);
+  // only rows entering the window are built and rows leaving are released.
+  const prevCards = state.cardById instanceof Map ? state.cardById : new Map();
+  const nextCards = new Map();
+  const orderedCards = [];
   for (let i = windowInfo.startIndex; i < windowInfo.endIndexExclusive; i++) {
     const id = state.ids[i];
     const rec = WS.fileById.get(id);
     if (!rec) continue;
-    const shouldAnimateCard = !!state.animate && i - windowInfo.startIndex < 96;
-    const card = makePreviewFileCard(
-      rec,
-      shouldAnimateCard,
-      state.dirNode,
-      state.ids,
-      state.useFitInsideJustified,
-      state.useSquareMediaCards,
-      state.fileDisplayPositions instanceof Map
-        ? state.fileDisplayPositions.get(String(id || ""))
-        : null,
-      {
-        passiveVideoThumbs: !!state.passiveVideoThumbs,
-        folderMediaPreviewGrid: !!state.folderMediaPreviewGrid,
-        renderToken: state.renderToken,
-      },
-    );
-    if (state.folderMediaPreviewGrid) softenFolderMediaPreviewCardChrome(card);
-    frag.appendChild(card);
+    let card = prevCards.get(id);
+    if (!card) {
+      const shouldAnimateCard =
+        !!state.animate && i - windowInfo.startIndex < 96;
+      card = makePreviewFileCard(
+        rec,
+        shouldAnimateCard,
+        state.dirNode,
+        state.ids,
+        state.useFitInsideJustified,
+        state.useSquareMediaCards,
+        state.fileDisplayPositions instanceof Map
+          ? state.fileDisplayPositions.get(String(id || ""))
+          : null,
+        {
+          passiveVideoThumbs: !!state.passiveVideoThumbs,
+          folderMediaPreviewGrid: !!state.folderMediaPreviewGrid,
+          renderToken: state.renderToken,
+        },
+      );
+      if (state.folderMediaPreviewGrid) softenFolderMediaPreviewCardChrome(card);
+    }
+    nextCards.set(id, card);
+    orderedCards.push(card);
   }
-  state.grid.appendChild(frag);
-  appendVirtualGridSpacer(state.grid, windowInfo.bottomSpacerHeight);
+
+  // Release cards that scrolled out of the window (free their thumbnail slots).
+  for (const [id, card] of prevCards) {
+    if (nextCards.has(id)) continue;
+    try {
+      const media = card.querySelectorAll(".thumb, .folderThumb");
+      for (let m = 0; m < media.length; m++) evictThumbEl(media[m]);
+    } catch {}
+    if (card.parentNode) card.parentNode.removeChild(card);
+  }
+
+  // Reuse two stable spacer nodes as the top/bottom anchors.
+  let topSpacer = state.topSpacer;
+  if (!topSpacer || topSpacer.parentNode !== grid) {
+    topSpacer = document.createElement("div");
+    topSpacer.className = "virtualGridSpacer";
+    topSpacer.setAttribute("aria-hidden", "true");
+    state.topSpacer = topSpacer;
+  }
+  let bottomSpacer = state.bottomSpacer;
+  if (!bottomSpacer || bottomSpacer.parentNode !== grid) {
+    bottomSpacer = document.createElement("div");
+    bottomSpacer.className = "virtualGridSpacer";
+    bottomSpacer.setAttribute("aria-hidden", "true");
+    state.bottomSpacer = bottomSpacer;
+  }
+  topSpacer.style.height = `${Math.max(0, Math.round(windowInfo.topSpacerHeight))}px`;
+  bottomSpacer.style.height = `${Math.max(0, Math.round(windowInfo.bottomSpacerHeight))}px`;
+
+  // Reconcile DOM order to: topSpacer, ...orderedCards, bottomSpacer.
+  // insertBefore on an already-connected node moves it without disconnecting,
+  // so reused cards never lose their loaded <img> state.
+  if (grid.firstChild !== topSpacer) {
+    grid.insertBefore(topSpacer, grid.firstChild);
+  }
+  let cursor = topSpacer.nextSibling;
+  for (let i = 0; i < orderedCards.length; i++) {
+    const card = orderedCards[i];
+    if (cursor === card) {
+      cursor = card.nextSibling;
+      continue;
+    }
+    grid.insertBefore(card, cursor);
+  }
+  if (cursor !== bottomSpacer) {
+    grid.insertBefore(bottomSpacer, cursor);
+  }
+  while (bottomSpacer.nextSibling) {
+    grid.removeChild(bottomSpacer.nextSibling);
+  }
+
+  state.cardById = nextCards;
+  state.currentStart = windowInfo.startIndex;
+  state.currentEnd = windowInfo.endIndexExclusive;
+
   const section = expandedPreviewSectionForCard(state.grid);
   if (section) uniquifyExpandedSectionContentSelectionKeys(section);
   applyPendingPreviewSelectionForCurrentTarget();
   ensurePreviewSelectionForCurrentTarget(false);
   scheduleDeferredPreviewVideoThumbUpgrade(140);
+  reprioritizeThumbs();
   state.animate = false;
 }
 
@@ -56649,12 +56775,92 @@ const THUMB_MAX_IMG_CONCURRENT = 6;
 const THUMB_MAX_VIDEO_CONCURRENT = 2;
 const THUMB_WANTED = new Set();
 const THUMB_LOADING = new Set();
+const THUMB_ALL = new Set(); // every mounted thumbnail el (for background warming)
 let THUMB_REPRIORITIZE_RAF = 0;
+
+// Lightweight loader diagnostics. Counters are ~free; call `thumbStats()` in the
+// console to dump them, `thumbStats(true)` to reset. They tell us whether the
+// strobe is cold first-load latency vs. eviction churn (re-loading thumbnails
+// that were already loaded once), and how long each decode actually takes.
+const THUMB_STATS = {
+  assigned: 0,    // times we set an <img>/<video> src
+  loaded: 0,      // successful loads
+  errors: 0,
+  evicted: 0,     // thumbnails dropped (src removed) while idle-scrolled-away
+  reloaded: 0,    // evictions of a thumbnail that had *already* loaded = churn
+  loadMsSum: 0,
+  loadMsMax: 0,
+  loadMsCount: 0,
+};
+function thumbStats(reset = false) {
+  const s = THUMB_STATS;
+  const avg = s.loadMsCount ? s.loadMsSum / s.loadMsCount : 0;
+  const out = {
+    assigned: s.assigned,
+    loaded: s.loaded,
+    errors: s.errors,
+    evicted: s.evicted,
+    reloadedAfterLoad: s.reloaded,
+    avgLoadMs: Math.round(avg),
+    maxLoadMs: Math.round(s.loadMsMax),
+    inFlight: THUMB_LOADING.size,
+    wanted: THUMB_WANTED.size,
+  };
+  try { console.table(out); } catch { console.log(out); }
+  if (reset) {
+    s.assigned = s.loaded = s.errors = s.evicted = s.reloaded = 0;
+    s.loadMsSum = s.loadMsMax = s.loadMsCount = 0;
+  }
+  return out;
+}
+try { window.thumbStats = thumbStats; } catch {}
+
+// Sticky resident cache. Previously every thumbnail that scrolled out of the
+// viewport band was evicted (its <img> src dropped) and had to reload when it
+// came back — so moving the selection up/down repeatedly reloaded the same
+// thumbnails over and over, each flashing empty->image (the strobe). Instead we
+// keep loaded image thumbnails resident and only drop the least-recently-seen
+// ones once we exceed a cap, so scrolling back over recent rows is instant.
+// (Videos are still evicted on scroll-out — they are the heavy/slow path.)
+let THUMB_RESIDENT_CAP = 400;
+const THUMB_RESIDENT = new Set(); // loaded <img> els, insertion order = LRU
+// Tune the cap live from the console, e.g. thumbResidentCap(250), to trade
+// memory for how far back you can scroll without a reload.
+try {
+  window.thumbResidentCap = (n) => {
+    if (Number.isFinite(Number(n))) {
+      THUMB_RESIDENT_CAP = Math.max(0, Math.floor(Number(n)));
+      enforceResidentThumbCap();
+    }
+    return THUMB_RESIDENT_CAP;
+  };
+} catch {}
+function touchResidentThumb(el) {
+  // Move to most-recently-used end.
+  if (THUMB_RESIDENT.has(el)) THUMB_RESIDENT.delete(el);
+  THUMB_RESIDENT.add(el);
+}
+function enforceResidentThumbCap() {
+  if (THUMB_RESIDENT.size <= THUMB_RESIDENT_CAP) return;
+  for (const el of THUMB_RESIDENT) {
+    if (THUMB_RESIDENT.size <= THUMB_RESIDENT_CAP) break;
+    // Drop disconnected elements for free; never evict something on screen.
+    if (!el.isConnected) {
+      THUMB_RESIDENT.delete(el);
+      continue;
+    }
+    if (THUMB_WANTED.has(el)) continue;
+    THUMB_RESIDENT.delete(el);
+    evictThumbEl(el);
+  }
+}
 const THUMB_OBSERVER =
   typeof IntersectionObserver === "function"
     ? new IntersectionObserver(onThumbIntersect, {
         root: null,
-        rootMargin: "150% 0% 150% 0%",
+        // Preload well beyond the viewport so rows are decoded before the
+        // keyboard selection reaches them; the resident cache keeps them loaded.
+        rootMargin: "300% 0% 300% 0%",
       })
     : null;
 
@@ -56674,6 +56880,9 @@ function registerThumbEl(el, src, opts = null) {
   // icon and then replacing it. See onThumbLoadSettled.
   el.classList.add("thumbPending");
   el.classList.remove("thumbLoaded");
+  // Master registry of every mounted thumbnail, so background warming can load
+  // the whole grid ahead of the viewport (not just rows near it).
+  THUMB_ALL.add(el);
   if (!el.__thumbBound) {
     el.__thumbBound = true;
     const settled = () => onThumbLoadSettled(el);
@@ -56685,6 +56894,7 @@ function registerThumbEl(el, src, opts = null) {
     return true;
   }
   try { THUMB_OBSERVER.observe(el); } catch {}
+  reprioritizeThumbs();
   return true;
 }
 
@@ -56696,7 +56906,8 @@ function assignThumbSrc(el) {
     return;
   el.dataset.thumbState = "loading";
   THUMB_LOADING.add(el);
-  if (NAV_PERF.enabled) el.__thumbT0 = NAV_PERF.now();
+  el.__thumbT0 = NAV_PERF.now();
+  THUMB_STATS.assigned++;
   try { el.src = src; } catch {}
 }
 
@@ -56723,10 +56934,21 @@ function onThumbLoadSettled(el) {
   // Reveal the decoded thumbnail (fade-in) and drop the reserved-slot state.
   el.classList.add("thumbLoaded");
   el.classList.remove("thumbPending");
-  if (NAV_PERF.enabled && el.__thumbT0) {
-    const kind = thumbElKind(el);
-    NAV_PERF.tick(kind === "video" ? "videoThumbReady" : "thumbLoad");
+  THUMB_STATS.loaded++;
+  if (el.__thumbT0) {
+    const dt = NAV_PERF.now() - el.__thumbT0;
+    THUMB_STATS.loadMsSum += dt;
+    THUMB_STATS.loadMsCount++;
+    if (dt > THUMB_STATS.loadMsMax) THUMB_STATS.loadMsMax = dt;
+    if (NAV_PERF.enabled) {
+      NAV_PERF.tick(thumbElKind(el) === "video" ? "videoThumbReady" : "thumbLoad");
+    }
     el.__thumbT0 = 0;
+  }
+  // Keep loaded image thumbnails resident (LRU) so scrolling back is instant.
+  if (thumbElKind(el) === "img") {
+    touchResidentThumb(el);
+    enforceResidentThumbCap();
   }
   pumpThumbQueue();
 }
@@ -56738,6 +56960,7 @@ function onThumbLoadError(el) {
   THUMB_LOADING.delete(el);
   el.dataset.thumbState = "loaded";
   el.classList.remove("thumbLoaded");
+  THUMB_STATS.errors++;
   if (el.__thumbT0) el.__thumbT0 = 0;
   pumpThumbQueue();
 }
@@ -56746,7 +56969,12 @@ function evictThumbEl(el) {
   if (!el || !el.dataset) return;
   const state = el.dataset.thumbState;
   if (state !== "loading" && state !== "loaded") return;
+  THUMB_STATS.evicted++;
+  // Evicting a thumbnail that had already finished loading means we will have to
+  // re-load it if it scrolls back — this counter surfaces eviction churn.
+  if (state === "loaded") THUMB_STATS.reloaded++;
   THUMB_LOADING.delete(el);
+  THUMB_RESIDENT.delete(el);
   if (thumbElKind(el) === "video") stopCachedMediaElement(el);
   else { try { el.removeAttribute("src"); } catch {} }
   el.dataset.thumbState = "idle";
@@ -56760,9 +56988,17 @@ function onThumbIntersect(entries) {
     const el = entries[i].target;
     if (entries[i].isIntersecting) {
       THUMB_WANTED.add(el);
+      // Mark loaded thumbs as most-recently-seen so the cap evicts truly cold
+      // rows first, not ones you are actively scrolling through.
+      if (el.dataset.thumbState === "loaded" && thumbElKind(el) === "img") {
+        touchResidentThumb(el);
+      }
     } else {
       THUMB_WANTED.delete(el);
-      evictThumbEl(el);
+      // Sticky cache: do NOT evict images on scroll-out — keep them resident so
+      // scrolling back does not reload them. Only videos (heavy) are released
+      // here; images are released by the resident cap when it overflows.
+      if (thumbElKind(el) === "video") evictThumbEl(el);
     }
   }
   pumpThumbQueue();
@@ -56796,35 +57032,68 @@ function thumbIsVisible(el) {
 }
 
 function pumpThumbQueue() {
-  if (!THUMB_WANTED.size) return;
   const fastNav = FAST_NAV.isActive();
+  const counts = thumbActiveCounts();
+
+  // Phase 1: load the wanted set (visible + within the observer's prefetch
+  // margin), highest priority first.
+  if (THUMB_WANTED.size) {
+    const idle = [];
+    for (const el of THUMB_WANTED) {
+      if (!el.isConnected) { THUMB_WANTED.delete(el); continue; }
+      if (el.dataset.thumbState !== "idle") continue;
+      // During a fast-nav burst keep work minimal: only the visible grid loads;
+      // offscreen prefetch (and all video work) is deferred until settle.
+      if (fastNav && !thumbIsVisible(el)) continue;
+      idle.push(el);
+    }
+    if (idle.length) {
+      idle.sort((a, b) => thumbPriorityScore(a) - thumbPriorityScore(b));
+      for (let i = 0; i < idle.length; i++) {
+        const el = idle[i];
+        if (thumbElKind(el) === "video") {
+          // Videos are the slow path: never eager-decode an offscreen video,
+          // and pause all video thumb work while navigating fast.
+          if (fastNav) continue;
+          if (counts.video >= THUMB_MAX_VIDEO_CONCURRENT) continue;
+          if (!thumbIsVisible(el)) continue;
+          assignThumbSrc(el);
+          counts.video++;
+        } else {
+          if (counts.img >= THUMB_MAX_IMG_CONCURRENT) continue;
+          assignThumbSrc(el);
+          counts.img++;
+        }
+      }
+    }
+  }
+
+  // Phase 2: background warm. With spare image-decode capacity, keep loading the
+  // rest of the mounted grid (nearest-to-viewport first) so thumbnails are
+  // decoded and resident before the keyboard selection scrolls to them, up to
+  // the resident cap. Images only; paused during fast-nav bursts. As each load
+  // settles, pumpThumbQueue runs again, so this cascades until the cap or the
+  // whole grid is warm.
+  if (!fastNav) backgroundWarmThumbs(counts);
+}
+
+function backgroundWarmThumbs(counts) {
+  if (counts.img >= THUMB_MAX_IMG_CONCURRENT) return;
+  if (THUMB_RESIDENT.size + counts.img >= THUMB_RESIDENT_CAP) return;
   const idle = [];
-  for (const el of THUMB_WANTED) {
-    if (!el.isConnected) { THUMB_WANTED.delete(el); continue; }
+  for (const el of THUMB_ALL) {
+    if (!el.isConnected) { THUMB_ALL.delete(el); continue; }
+    if (thumbElKind(el) !== "img") continue;
     if (el.dataset.thumbState !== "idle") continue;
-    // During a fast-nav burst keep work minimal: only the visible grid loads;
-    // offscreen prefetch (and, below, all video work) is deferred until settle.
-    if (fastNav && !thumbIsVisible(el)) continue;
     idle.push(el);
   }
   if (!idle.length) return;
   idle.sort((a, b) => thumbPriorityScore(a) - thumbPriorityScore(b));
-  const counts = thumbActiveCounts();
   for (let i = 0; i < idle.length; i++) {
-    const el = idle[i];
-    if (thumbElKind(el) === "video") {
-      // Videos are the slow path: never eager-decode an offscreen video, and
-      // pause all video thumb work while navigating fast.
-      if (fastNav) continue;
-      if (counts.video >= THUMB_MAX_VIDEO_CONCURRENT) continue;
-      if (!thumbIsVisible(el)) continue;
-      assignThumbSrc(el);
-      counts.video++;
-    } else {
-      if (counts.img >= THUMB_MAX_IMG_CONCURRENT) continue;
-      assignThumbSrc(el);
-      counts.img++;
-    }
+    if (counts.img >= THUMB_MAX_IMG_CONCURRENT) break;
+    if (THUMB_RESIDENT.size + counts.img >= THUMB_RESIDENT_CAP) break;
+    assignThumbSrc(idle[i]);
+    counts.img++;
   }
 }
 
@@ -56880,6 +57149,34 @@ function prewarmNavigationCorridor() {
 try {
   window.addEventListener("scroll", reprioritizeThumbs, true);
   window.addEventListener("resize", reprioritizeThumbs, true);
+} catch {}
+
+// Inline thumbnails (.dirInlinePreview — custom folder/tag/album thumbs) set
+// their src directly in markup and bypass the passive loader, so they have no
+// per-element load hook. They render with class "thumbPending" (held invisible)
+// and this single delegated, capture-phase listener fades them in once the
+// image actually decodes — removing the placeholder->image flicker. load/error
+// do not bubble, hence capture. A CSS safety keyframe reveals after 2s if an
+// event is ever missed.
+function revealInlineThumb(el) {
+  if (!el || !el.classList || !el.classList.contains("thumbPending")) return;
+  el.classList.add("thumbLoaded");
+  el.classList.remove("thumbPending");
+}
+function onInlineThumbSettled(e) {
+  const t = e && e.target;
+  if (
+    t &&
+    t.tagName === "IMG" &&
+    t.classList &&
+    t.classList.contains("dirInlinePreview")
+  ) {
+    revealInlineThumb(t);
+  }
+}
+try {
+  document.addEventListener("load", onInlineThumbSettled, true);
+  document.addEventListener("error", onInlineThumbSettled, true);
 } catch {}
 
 function ensureThumbUrl(rec) {
