@@ -54597,11 +54597,9 @@ function restorePanesClosedByFilePaneEnter() {
   if (restoreState.restoreDirectoriesPane && restoreState.restoreSettingsPane && MENU_OPEN) {
     syncSidePaneWidthsToSmallerSide();
   }
-  if (restoreState.activePane === "preview") {
-    setActivePane("preview");
-    updatePreviewSelectionClasses();
-    syncButtons();
-  }
+  setActivePane(restoreState.activePane === "preview" ? "preview" : "directories");
+  updatePreviewSelectionClasses();
+  syncButtons();
   if (restoreState.goUpOnRestore) {
     // Two cases for exiting a quick-nav media folder:
     //  - Opened from the GRID: a full grid return state was captured. Restore
