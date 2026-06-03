@@ -617,11 +617,6 @@ input[type="file"] {
   padding-top: 0;
 }
 
-/* With no side panes, also hide the control bar for a true fullscreen view. */
-#app.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #controlPane {
-  display: none !important;
-}
-
 body.directories-files-only #directoriesHeader {
   display: none !important;
 }
@@ -2358,6 +2353,7 @@ img[data-rotate-key].rotatingThumbFade {
   flex-direction: column;
   align-items: stretch;
   overflow: hidden;
+  position: relative;
 }
 
 #previewNavControls {
@@ -2370,20 +2366,41 @@ img[data-rotate-key].rotatingThumbFade {
        Control Pane
        ========================================================= */
 #controlPane {
-  display: block;
+  display: none;
   min-width: 0;
   min-height: 0;
-  padding: 7px 8px 9px;
-  background: var(--color1-secondary);
-  border: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  border-left: 0;
-  border-right: 0;
-  border-bottom: 0;
-  box-shadow: none;
-  position: relative;
-  z-index: 18;
+  width: min(640px, calc(100% - 32px));
+  padding: 8px;
+  background: rgba(12, 12, 14, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 38;
   flex: 0 0 auto;
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  cursor: grab;
+  transition: opacity 0.16s ease;
+  user-select: none;
+  touch-action: none;
+}
+
+#controlPane.control-floating-active {
+  display: block;
+}
+
+#controlPane.control-floating-visible,
+#controlPane.control-floating-dragging {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#controlPane.control-floating-dragging {
+  cursor: grabbing;
 }
 
 #controlPaneInner {
@@ -2400,6 +2417,16 @@ img[data-rotate-key].rotatingThumbFade {
   align-items: center;
   gap: 5px;
   min-width: 0;
+}
+
+#controlPane button,
+#controlPane input {
+  cursor: pointer;
+}
+
+#controlPane button:disabled,
+#controlPane input:disabled {
+  cursor: default;
 }
 
 .controlBtn {
@@ -2573,6 +2600,12 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 @media (max-width: 760px) {
+  #controlPane {
+    width: min(420px, calc(100% - 20px));
+    padding: 7px;
+    bottom: 10px;
+  }
+
   #controlPaneInner {
     grid-template-columns: 1fr auto;
     gap: 6px;
@@ -6318,7 +6351,6 @@ remove the outer app frame. */
   box-shadow: none !important;
 }
 
-#controlPane,
 #optionsFooter,
 #keybindsFooter,
 #calendarFooter {
@@ -18106,6 +18138,7 @@ const modePill = $("modePill");
 const itemsPill = $("itemsPill");
 const previewPane = $("previewPane");
 const previewContentEl = $("previewContent");
+const previewMainStackEl = $("previewMainStack");
 const previewBodyEl = $("previewBody");
 const previewActionMenuEl = $("previewActionMenu");
 const controlPane = $("controlPane");
@@ -18175,6 +18208,15 @@ let PREVIEW_FILE_OBJECT_WARM_TOKEN = 0;
 let LOADED_THUMB_RELEASE_TIMER = 0;
 let previewVideoEl = null;
 let previewFolderEl = null;
+const CONTROL_PANE_AUTO_HIDE_MS = 1800;
+let CONTROL_PANE_HIDE_TIMER = 0;
+let CONTROL_PANE_HOVER = false;
+let CONTROL_PANE_DRAGGING = false;
+let CONTROL_PANE_DRAG_POINTER_ID = null;
+let CONTROL_PANE_DRAG_OFFSET_X = 0;
+let CONTROL_PANE_DRAG_OFFSET_Y = 0;
+let CONTROL_PANE_SESSION_POSITION = null;
+let CONTROL_PANE_ACTIVE_KEY = "";
 
 // Divider setup: attach drag handlers and initialize position
 (function setupDivider() {
@@ -48473,6 +48515,139 @@ function controlPaneHasNavigablePreviewItem() {
   );
 }
 
+function videoControlsHardDisabled() {
+  return !!(
+    WS.meta &&
+    WS.meta.options &&
+    WS.meta.options.hideVideoControls === true
+  );
+}
+
+function getFloatingControlPaneBounds() {
+  const host = previewMainStackEl || controlPane?.parentElement || previewPane;
+  const bounds = previewViewportBox || previewBodyEl || host;
+  if (!host || !bounds || !host.getBoundingClientRect || !bounds.getBoundingClientRect)
+    return null;
+  const hostRect = host.getBoundingClientRect();
+  const boundsRect = bounds.getBoundingClientRect();
+  if (!hostRect.width || !hostRect.height || !boundsRect.width || !boundsRect.height)
+    return null;
+  return { hostRect, boundsRect };
+}
+
+function setFloatingControlPaneVisible(visible) {
+  if (!controlPane) return;
+  controlPane.classList.toggle("control-floating-visible", !!visible);
+}
+
+function clearFloatingControlPaneHideTimer() {
+  if (!CONTROL_PANE_HIDE_TIMER) return;
+  clearTimeout(CONTROL_PANE_HIDE_TIMER);
+  CONTROL_PANE_HIDE_TIMER = 0;
+}
+
+function scheduleFloatingControlPaneHide() {
+  if (!controlPane || !controlPane.classList.contains("control-floating-active"))
+    return;
+  clearFloatingControlPaneHideTimer();
+  CONTROL_PANE_HIDE_TIMER = setTimeout(() => {
+    CONTROL_PANE_HIDE_TIMER = 0;
+    if (CONTROL_PANE_DRAGGING || CONTROL_PANE_HOVER || CONTROL_PROGRESS_DRAGGING) {
+      scheduleFloatingControlPaneHide();
+      return;
+    }
+    setFloatingControlPaneVisible(false);
+  }, CONTROL_PANE_AUTO_HIDE_MS);
+}
+
+function showFloatingControlPane(temporary = true) {
+  if (!controlPane || !controlPane.classList.contains("control-floating-active"))
+    return;
+  setFloatingControlPaneVisible(true);
+  if (temporary) scheduleFloatingControlPaneHide();
+}
+
+function applyFloatingControlPanePosition() {
+  if (!controlPane || !controlPane.classList.contains("control-floating-active"))
+    return;
+  const geometry = getFloatingControlPaneBounds();
+  if (!geometry) return;
+  const { hostRect, boundsRect } = geometry;
+  const paneRect = controlPane.getBoundingClientRect();
+  const paneWidth = paneRect.width || 0;
+  const paneHeight = paneRect.height || 0;
+  const minLeft = Math.max(0, boundsRect.left - hostRect.left + 8);
+  const minTop = Math.max(0, boundsRect.top - hostRect.top + 8);
+  const maxLeft = Math.max(minLeft, boundsRect.right - hostRect.left - paneWidth - 8);
+  const maxTop = Math.max(minTop, boundsRect.bottom - hostRect.top - paneHeight - 8);
+
+  if (!CONTROL_PANE_SESSION_POSITION) {
+    controlPane.style.left = "50%";
+    controlPane.style.top = "";
+    controlPane.style.bottom = "18px";
+    controlPane.style.transform = "translateX(-50%)";
+    return;
+  }
+
+  const leftRange = Math.max(1, maxLeft - minLeft);
+  const topRange = Math.max(1, maxTop - minTop);
+  const left = Math.min(
+    maxLeft,
+    Math.max(minLeft, minLeft + leftRange * CONTROL_PANE_SESSION_POSITION.x),
+  );
+  const top = Math.min(
+    maxTop,
+    Math.max(minTop, minTop + topRange * CONTROL_PANE_SESSION_POSITION.y),
+  );
+  controlPane.style.left = `${left}px`;
+  controlPane.style.top = `${top}px`;
+  controlPane.style.bottom = "auto";
+  controlPane.style.transform = "none";
+}
+
+function storeFloatingControlPanePosition(left, top) {
+  const geometry = getFloatingControlPaneBounds();
+  if (!geometry || !controlPane) return;
+  const { hostRect, boundsRect } = geometry;
+  const paneRect = controlPane.getBoundingClientRect();
+  const paneWidth = paneRect.width || 0;
+  const paneHeight = paneRect.height || 0;
+  const minLeft = Math.max(0, boundsRect.left - hostRect.left + 8);
+  const minTop = Math.max(0, boundsRect.top - hostRect.top + 8);
+  const maxLeft = Math.max(minLeft, boundsRect.right - hostRect.left - paneWidth - 8);
+  const maxTop = Math.max(minTop, boundsRect.bottom - hostRect.top - paneHeight - 8);
+  const clampedLeft = Math.min(maxLeft, Math.max(minLeft, left));
+  const clampedTop = Math.min(maxTop, Math.max(minTop, top));
+  CONTROL_PANE_SESSION_POSITION = {
+    x: maxLeft === minLeft ? 0 : (clampedLeft - minLeft) / (maxLeft - minLeft),
+    y: maxTop === minTop ? 0 : (clampedTop - minTop) / (maxTop - minTop),
+  };
+  controlPane.style.left = `${clampedLeft}px`;
+  controlPane.style.top = `${clampedTop}px`;
+  controlPane.style.bottom = "auto";
+  controlPane.style.transform = "none";
+}
+
+function syncFloatingControlPaneAvailability(hasVideo) {
+  if (!controlPane) return;
+  const active = !!hasVideo && !videoControlsHardDisabled();
+  const activeKey =
+    active && WS.preview && WS.preview.fileId ? String(WS.preview.fileId || "") : "";
+  const wasActive = controlPane.classList.contains("control-floating-active");
+  controlPane.classList.toggle("control-floating-active", active);
+  if (!active) {
+    CONTROL_PANE_ACTIVE_KEY = "";
+    clearFloatingControlPaneHideTimer();
+    setFloatingControlPaneVisible(false);
+    return;
+  }
+  applyFloatingControlPanePosition();
+  if (!wasActive || CONTROL_PANE_ACTIVE_KEY !== activeKey) {
+    CONTROL_PANE_ACTIVE_KEY = activeKey;
+    showFloatingControlPane(true);
+  }
+}
+
 function setControlButtonDisabled(button, disabled) {
   if (button) button.disabled = !!disabled;
 }
@@ -48489,6 +48664,7 @@ function syncControlPaneState() {
   const current = video ? Math.max(0, Number(video.currentTime) || 0) : 0;
   const canNavigate = controlPaneHasNavigablePreviewItem();
 
+  syncFloatingControlPaneAvailability(hasVideo);
   if (controlPane)
     controlPane.classList.toggle("control-disabled", !hasVideo && !WS.meta);
   setControlButtonDisabled(controlPrevItemBtn, !canNavigate);
@@ -48618,10 +48794,12 @@ if (controlMuteBtn)
 if (controlProgressRange) {
   controlProgressRange.addEventListener("pointerdown", () => {
     CONTROL_PROGRESS_DRAGGING = true;
+    showFloatingControlPane(false);
   });
   controlProgressRange.addEventListener("pointerup", () => {
     CONTROL_PROGRESS_DRAGGING = false;
     syncControlPaneState();
+    scheduleFloatingControlPaneHide();
   });
   controlProgressRange.addEventListener("input", () => {
     const video = getControlPaneVideo();
@@ -48636,8 +48814,82 @@ if (controlProgressRange) {
   controlProgressRange.addEventListener("change", () => {
     CONTROL_PROGRESS_DRAGGING = false;
     syncControlPaneState();
+    scheduleFloatingControlPaneHide();
   });
 }
+if (controlPane) {
+  controlPane.addEventListener("pointerenter", () => {
+    CONTROL_PANE_HOVER = true;
+    showFloatingControlPane(false);
+  });
+  controlPane.addEventListener("pointerleave", () => {
+    CONTROL_PANE_HOVER = false;
+    if (!CONTROL_PANE_DRAGGING) scheduleFloatingControlPaneHide();
+  });
+  controlPane.addEventListener("pointermove", () => {
+    showFloatingControlPane(!CONTROL_PANE_HOVER);
+  });
+  controlPane.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    const target = ev.target;
+    if (
+      target &&
+      target.closest &&
+      target.closest("button, input, select, textarea, a")
+    )
+      return;
+    if (!controlPane.classList.contains("control-floating-active")) return;
+    const geometry = getFloatingControlPaneBounds();
+    if (!geometry) return;
+    ev.preventDefault();
+    CONTROL_PANE_DRAGGING = true;
+    CONTROL_PANE_DRAG_POINTER_ID = ev.pointerId;
+    const hostRect = geometry.hostRect;
+    const paneRect = controlPane.getBoundingClientRect();
+    CONTROL_PANE_DRAG_OFFSET_X = ev.clientX - paneRect.left;
+    CONTROL_PANE_DRAG_OFFSET_Y = ev.clientY - paneRect.top;
+    controlPane.classList.add("control-floating-dragging");
+    showFloatingControlPane(false);
+    storeFloatingControlPanePosition(
+      paneRect.left - hostRect.left,
+      paneRect.top - hostRect.top,
+    );
+    try {
+      controlPane.setPointerCapture(ev.pointerId);
+    } catch {}
+  });
+}
+if (previewBodyEl) {
+  previewBodyEl.addEventListener("pointermove", () => {
+    if (getControlPaneVideo() && !videoControlsHardDisabled()) {
+      showFloatingControlPane(true);
+    }
+  });
+}
+document.addEventListener("pointermove", (ev) => {
+  if (!CONTROL_PANE_DRAGGING || !controlPane) return;
+  const geometry = getFloatingControlPaneBounds();
+  if (!geometry) return;
+  storeFloatingControlPanePosition(
+    ev.clientX - geometry.hostRect.left - CONTROL_PANE_DRAG_OFFSET_X,
+    ev.clientY - geometry.hostRect.top - CONTROL_PANE_DRAG_OFFSET_Y,
+  );
+});
+document.addEventListener("pointerup", (ev) => {
+  if (!CONTROL_PANE_DRAGGING) return;
+  CONTROL_PANE_DRAGGING = false;
+  if (controlPane) {
+    controlPane.classList.remove("control-floating-dragging");
+    try {
+      controlPane.releasePointerCapture(CONTROL_PANE_DRAG_POINTER_ID);
+    } catch {}
+  }
+  CONTROL_PANE_DRAG_POINTER_ID = null;
+  if (!CONTROL_PANE_HOVER) scheduleFloatingControlPaneHide();
+});
+window.addEventListener("resize", () => {
+  applyFloatingControlPanePosition();
+});
 if (typeof window !== "undefined") {
   window.setInterval(syncControlPaneState, 250);
 }
