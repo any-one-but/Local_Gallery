@@ -3768,17 +3768,26 @@ img[data-rotate-key].rotatingThumbFade {
    would otherwise render the browser's broken-image icon + alt filename). They
    fade in once decoded. With background warming most thumbnails are already
    decoded before they scroll into view, so this transition is rarely seen. */
-/* v1.6.43 loader: no staged placeholder / fade. Thumbnails are shown the
-   instant they decode (flickery but fast), not held transparent and faded in. */
+/* v1.6.43-speed loading with a soft reveal: thumbnails load at full speed but
+   are held transparent until they actually decode, then fade in — so fast
+   scrolling shows a quiet empty slot that softly resolves, never a broken-image
+   icon. This is purely visual; it does not delay when a thumbnail loads. */
 .thumb.thumbPending,
 .folderThumb.thumbPending,
 .dirInlinePreview.thumbPending {
-  opacity: 1;
+  opacity: 0;
+}
+/* Inline thumbnails carry their src in the markup, so they will load; reveal
+   after 2s as a safety net in case a cached load/error event fired before the
+   delegated listener attached. (Passive-loader thumbs are src-less until
+   observed and must NOT get a timed reveal, or they'd flash broken.) */
+.dirInlinePreview.thumbPending {
+  animation: thumbStagedSafetyReveal 0s linear 2s forwards;
 }
 .thumb.thumbLoaded,
 .folderThumb.thumbLoaded,
 .dirInlinePreview.thumbLoaded {
-  opacity: 1;
+  animation: thumbDecodedFadeIn 150ms ease-out;
 }
 @keyframes thumbStagedSafetyReveal {
   to { opacity: 1; }
@@ -57009,6 +57018,12 @@ function registerThumbEl(el, src, opts = null) {
   el.dataset.thumbKind = kind;
   el.dataset.thumbSrc = src;
   el.dataset.thumbState = "idle";
+  // Hold the not-yet-decoded element transparent so a src-less <img> never
+  // flashes the browser's broken-image icon; it fades in once it actually
+  // decodes (see onThumbLoadSettled). This is purely visual and does not change
+  // when the thumbnail loads.
+  el.classList.add("thumbPending");
+  el.classList.remove("thumbLoaded");
   if (!el.__thumbBound) {
     el.__thumbBound = true;
     const settled = () => onThumbLoadSettled(el);
@@ -57054,6 +57069,14 @@ function onThumbLoadSettled(el) {
   if (!el || !el.dataset) return;
   THUMB_LOADING.delete(el);
   el.dataset.thumbState = "loaded";
+  // Fade in only if it actually decoded. On error (img with no natural size)
+  // leave it transparent — a quiet empty slot, never a broken-image icon.
+  const decoded =
+    thumbElKind(el) === "video" ? true : (Number(el.naturalWidth) || 0) > 0;
+  if (decoded) {
+    el.classList.add("thumbLoaded");
+    el.classList.remove("thumbPending");
+  }
   pumpThumbQueue();
 }
 
@@ -57065,6 +57088,10 @@ function evictThumbEl(el) {
   if (thumbElKind(el) === "video") stopCachedMediaElement(el);
   else { try { el.removeAttribute("src"); } catch {} }
   el.dataset.thumbState = "idle";
+  // Re-hide: a re-shown (scrolled-back) thumbnail fades in again instead of
+  // briefly showing the now-src-less broken image.
+  el.classList.add("thumbPending");
+  el.classList.remove("thumbLoaded");
 }
 
 function onThumbIntersect(entries) {
