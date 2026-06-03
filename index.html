@@ -608,14 +608,18 @@ input[type="file"] {
   padding-top: var(--compact-title-bar-h);
 }
 
-/* Media filling the preview pane: hide both the title bar and the control
-   bar, and reclaim the reserved space for a true fullscreen view. */
-#app.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #titlePane,
-#app.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #controlPane {
+/* Media filling the preview pane must never show the compact title bar,
+   regardless of whether the preview uses a black or pane-colored background. */
+#app.sidebar-closed.preview-media-mode #titlePane {
   display: none !important;
 }
-#app.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #previewPane {
+#app.sidebar-closed.preview-media-mode #previewPane {
   padding-top: 0;
+}
+
+/* With no side panes, also hide the control bar for a true fullscreen view. */
+#app.sidebar-closed.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background) #controlPane {
+  display: none !important;
 }
 
 body.directories-files-only #directoriesHeader {
