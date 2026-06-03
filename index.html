@@ -3768,18 +3768,17 @@ img[data-rotate-key].rotatingThumbFade {
    would otherwise render the browser's broken-image icon + alt filename). They
    fade in once decoded. With background warming most thumbnails are already
    decoded before they scroll into view, so this transition is rarely seen. */
+/* v1.6.43 loader: no staged placeholder / fade. Thumbnails are shown the
+   instant they decode (flickery but fast), not held transparent and faded in. */
 .thumb.thumbPending,
 .folderThumb.thumbPending,
 .dirInlinePreview.thumbPending {
-  opacity: 0;
-}
-.dirInlinePreview.thumbPending {
-  animation: thumbStagedSafetyReveal 0s linear 2s forwards;
+  opacity: 1;
 }
 .thumb.thumbLoaded,
 .folderThumb.thumbLoaded,
 .dirInlinePreview.thumbLoaded {
-  animation: thumbDecodedFadeIn 140ms ease-out;
+  opacity: 1;
 }
 @keyframes thumbStagedSafetyReveal {
   to { opacity: 1; }
@@ -56987,100 +56986,16 @@ function onFastNavSettled() {
    anything disconnected), rather than a running counter — so a thumbnail that
    gets removed mid-load (re-render / virtualization) can never permanently
    occupy a slot and stall future loads. */
-// Concurrency caps for the passive loader, scaled to the machine. Images decode
-// cheaply so we allow a wide pool; videos are the heavy path (each loads media +
-// seeks) so they stay tightly bounded, but a flat 2 throttled capable boxes more
-// than necessary.
-const THUMB_MAX_IMG_CONCURRENT = Math.max(6, Math.min(12, currentThumbWorkerCpuBudget() + 2));
-const THUMB_MAX_VIDEO_CONCURRENT = Math.max(2, Math.min(4, Math.round(currentThumbWorkerCpuBudget() / 3)));
+const THUMB_MAX_IMG_CONCURRENT = 6;
+const THUMB_MAX_VIDEO_CONCURRENT = 2;
 const THUMB_WANTED = new Set();
 const THUMB_LOADING = new Set();
-const THUMB_ALL = new Set(); // every mounted thumbnail el (for background warming)
 let THUMB_REPRIORITIZE_RAF = 0;
-
-// Lightweight loader diagnostics. Counters are ~free; call `thumbStats()` in the
-// console to dump them, `thumbStats(true)` to reset. They tell us whether the
-// strobe is cold first-load latency vs. eviction churn (re-loading thumbnails
-// that were already loaded once), and how long each decode actually takes.
-const THUMB_STATS = {
-  assigned: 0,    // times we set an <img>/<video> src
-  loaded: 0,      // successful loads
-  errors: 0,
-  evicted: 0,     // thumbnails dropped (src removed) while idle-scrolled-away
-  reloaded: 0,    // evictions of a thumbnail that had *already* loaded = churn
-  loadMsSum: 0,
-  loadMsMax: 0,
-  loadMsCount: 0,
-};
-function thumbStats(reset = false) {
-  const s = THUMB_STATS;
-  const avg = s.loadMsCount ? s.loadMsSum / s.loadMsCount : 0;
-  const out = {
-    assigned: s.assigned,
-    loaded: s.loaded,
-    errors: s.errors,
-    evicted: s.evicted,
-    reloadedAfterLoad: s.reloaded,
-    avgLoadMs: Math.round(avg),
-    maxLoadMs: Math.round(s.loadMsMax),
-    inFlight: THUMB_LOADING.size,
-    wanted: THUMB_WANTED.size,
-  };
-  try { console.table(out); } catch { console.log(out); }
-  if (reset) {
-    s.assigned = s.loaded = s.errors = s.evicted = s.reloaded = 0;
-    s.loadMsSum = s.loadMsMax = s.loadMsCount = 0;
-  }
-  return out;
-}
-try { window.thumbStats = thumbStats; } catch {}
-
-// Sticky resident cache. Previously every thumbnail that scrolled out of the
-// viewport band was evicted (its <img> src dropped) and had to reload when it
-// came back — so moving the selection up/down repeatedly reloaded the same
-// thumbnails over and over, each flashing empty->image (the strobe). Instead we
-// keep loaded image thumbnails resident and only drop the least-recently-seen
-// ones once we exceed a cap, so scrolling back over recent rows is instant.
-// (Videos are still evicted on scroll-out — they are the heavy/slow path.)
-let THUMB_RESIDENT_CAP = 400;
-const THUMB_RESIDENT = new Set(); // loaded <img> els, insertion order = LRU
-// Tune the cap live from the console, e.g. thumbResidentCap(250), to trade
-// memory for how far back you can scroll without a reload.
-try {
-  window.thumbResidentCap = (n) => {
-    if (Number.isFinite(Number(n))) {
-      THUMB_RESIDENT_CAP = Math.max(0, Math.floor(Number(n)));
-      enforceResidentThumbCap();
-    }
-    return THUMB_RESIDENT_CAP;
-  };
-} catch {}
-function touchResidentThumb(el) {
-  // Move to most-recently-used end.
-  if (THUMB_RESIDENT.has(el)) THUMB_RESIDENT.delete(el);
-  THUMB_RESIDENT.add(el);
-}
-function enforceResidentThumbCap() {
-  if (THUMB_RESIDENT.size <= THUMB_RESIDENT_CAP) return;
-  for (const el of THUMB_RESIDENT) {
-    if (THUMB_RESIDENT.size <= THUMB_RESIDENT_CAP) break;
-    // Drop disconnected elements for free; never evict something on screen.
-    if (!el.isConnected) {
-      THUMB_RESIDENT.delete(el);
-      continue;
-    }
-    if (THUMB_WANTED.has(el)) continue;
-    THUMB_RESIDENT.delete(el);
-    evictThumbEl(el);
-  }
-}
 const THUMB_OBSERVER =
   typeof IntersectionObserver === "function"
     ? new IntersectionObserver(onThumbIntersect, {
         root: null,
-        // Preload well beyond the viewport so rows are decoded before the
-        // keyboard selection reaches them; the resident cache keeps them loaded.
-        rootMargin: "300% 0% 300% 0%",
+        rootMargin: "150% 0% 150% 0%",
       })
     : null;
 
@@ -57094,27 +57009,17 @@ function registerThumbEl(el, src, opts = null) {
   el.dataset.thumbKind = kind;
   el.dataset.thumbSrc = src;
   el.dataset.thumbState = "idle";
-  // Staged placeholder: the element starts as a calm, icon-less reserved slot
-  // (`thumbPending`) and only gains `thumbLoaded` once its media has actually
-  // decoded, so we fade the real thumbnail in instead of flashing a placeholder
-  // icon and then replacing it. See onThumbLoadSettled.
-  el.classList.add("thumbPending");
-  el.classList.remove("thumbLoaded");
-  // Master registry of every mounted thumbnail, so background warming can load
-  // the whole grid ahead of the viewport (not just rows near it).
-  THUMB_ALL.add(el);
   if (!el.__thumbBound) {
     el.__thumbBound = true;
     const settled = () => onThumbLoadSettled(el);
     el.addEventListener(kind === "video" ? "loadeddata" : "load", settled);
-    el.addEventListener("error", () => onThumbLoadError(el));
+    el.addEventListener("error", settled);
   }
   if (!THUMB_OBSERVER) {
     assignThumbSrc(el);
     return true;
   }
   try { THUMB_OBSERVER.observe(el); } catch {}
-  reprioritizeThumbs();
   return true;
 }
 
@@ -57126,8 +57031,6 @@ function assignThumbSrc(el) {
     return;
   el.dataset.thumbState = "loading";
   THUMB_LOADING.add(el);
-  el.__thumbT0 = NAV_PERF.now();
-  THUMB_STATS.assigned++;
   try { el.src = src; } catch {}
 }
 
@@ -57151,37 +57054,6 @@ function onThumbLoadSettled(el) {
   if (!el || !el.dataset) return;
   THUMB_LOADING.delete(el);
   el.dataset.thumbState = "loaded";
-  // Reveal the decoded thumbnail (fade-in) and drop the reserved-slot state.
-  el.classList.add("thumbLoaded");
-  el.classList.remove("thumbPending");
-  THUMB_STATS.loaded++;
-  if (el.__thumbT0) {
-    const dt = NAV_PERF.now() - el.__thumbT0;
-    THUMB_STATS.loadMsSum += dt;
-    THUMB_STATS.loadMsCount++;
-    if (dt > THUMB_STATS.loadMsMax) THUMB_STATS.loadMsMax = dt;
-    if (NAV_PERF.enabled) {
-      NAV_PERF.tick(thumbElKind(el) === "video" ? "videoThumbReady" : "thumbLoad");
-    }
-    el.__thumbT0 = 0;
-  }
-  // Keep loaded image thumbnails resident (LRU) so scrolling back is instant.
-  if (thumbElKind(el) === "img") {
-    touchResidentThumb(el);
-    enforceResidentThumbCap();
-  }
-  pumpThumbQueue();
-}
-
-// A failed load keeps the calm reserved slot rather than flashing a broken
-// image, then frees the concurrency slot for the next thumbnail.
-function onThumbLoadError(el) {
-  if (!el || !el.dataset) return;
-  THUMB_LOADING.delete(el);
-  el.dataset.thumbState = "loaded";
-  el.classList.remove("thumbLoaded");
-  THUMB_STATS.errors++;
-  if (el.__thumbT0) el.__thumbT0 = 0;
   pumpThumbQueue();
 }
 
@@ -57189,18 +57061,10 @@ function evictThumbEl(el) {
   if (!el || !el.dataset) return;
   const state = el.dataset.thumbState;
   if (state !== "loading" && state !== "loaded") return;
-  THUMB_STATS.evicted++;
-  // Evicting a thumbnail that had already finished loading means we will have to
-  // re-load it if it scrolls back — this counter surfaces eviction churn.
-  if (state === "loaded") THUMB_STATS.reloaded++;
   THUMB_LOADING.delete(el);
-  THUMB_RESIDENT.delete(el);
   if (thumbElKind(el) === "video") stopCachedMediaElement(el);
   else { try { el.removeAttribute("src"); } catch {} }
   el.dataset.thumbState = "idle";
-  // Returning thumbnails should fade in again rather than pop.
-  el.classList.add("thumbPending");
-  el.classList.remove("thumbLoaded");
 }
 
 function onThumbIntersect(entries) {
@@ -57208,112 +57072,46 @@ function onThumbIntersect(entries) {
     const el = entries[i].target;
     if (entries[i].isIntersecting) {
       THUMB_WANTED.add(el);
-      // Mark loaded thumbs as most-recently-seen so the cap evicts truly cold
-      // rows first, not ones you are actively scrolling through.
-      if (el.dataset.thumbState === "loaded" && thumbElKind(el) === "img") {
-        touchResidentThumb(el);
-      }
     } else {
       THUMB_WANTED.delete(el);
-      // Sticky cache: do NOT evict images on scroll-out — keep them resident so
-      // scrolling back does not reload them. Only videos (heavy) are released
-      // here; images are released by the resident cap when it overflows.
-      if (thumbElKind(el) === "video") evictThumbEl(el);
+      evictThumbEl(el);
     }
   }
   pumpThumbQueue();
 }
 
-// Priority score for the load queue (lower loads sooner). Tiered so that the
-// whole visible grid always outranks the IntersectionObserver's offscreen
-// prefetch margin — without this, a near-above offscreen card could outrank a
-// still-visible bottom row purely on center distance, which is exactly the
-// bottom-row lag the unified plan calls out:
-//   tier 0  visible grid, bottom row first (distance to viewport bottom)
-//   tier 1  just below the viewport (likely next scroll direction)
-//   tier 2  just above the viewport
-// `tierOnly` (fast-nav) collapses everything past the visible tier.
-function thumbPriorityScore(el) {
+function thumbDistanceToViewportCenter(el) {
   const r = el.getBoundingClientRect();
-  const vh = window.innerHeight || 0;
-  const inView = r.bottom > 0 && r.top < vh;
-  if (inView) {
-    // Bottom row first, then upward; keeps the last-to-fill row from lagging.
-    return Math.abs(vh - (r.top + r.height / 2));
-  }
-  const TIER = 100000;
-  if (r.top >= vh) return TIER + (r.top - vh); // below viewport (tier 1)
-  return 2 * TIER + (0 - r.bottom); // above viewport (tier 2)
-}
-
-function thumbIsVisible(el) {
-  const r = el.getBoundingClientRect();
-  return r.bottom > 0 && r.top < (window.innerHeight || 0);
+  const cy = (window.innerHeight || 0) / 2;
+  const cx = (window.innerWidth || 0) / 2;
+  return Math.abs(r.top + r.height / 2 - cy) +
+    Math.abs(r.left + r.width / 2 - cx) * 0.25;
 }
 
 function pumpThumbQueue() {
-  const fastNav = FAST_NAV.isActive();
-  const counts = thumbActiveCounts();
-
-  // Phase 1: load the wanted set (visible + within the observer's prefetch
-  // margin), highest priority first.
-  if (THUMB_WANTED.size) {
-    const idle = [];
-    for (const el of THUMB_WANTED) {
-      if (!el.isConnected) { THUMB_WANTED.delete(el); continue; }
-      if (el.dataset.thumbState !== "idle") continue;
-      // During a fast-nav burst keep work minimal: only the visible grid loads;
-      // offscreen prefetch (and all video work) is deferred until settle.
-      if (fastNav && !thumbIsVisible(el)) continue;
-      idle.push(el);
-    }
-    if (idle.length) {
-      idle.sort((a, b) => thumbPriorityScore(a) - thumbPriorityScore(b));
-      for (let i = 0; i < idle.length; i++) {
-        const el = idle[i];
-        if (thumbElKind(el) === "video") {
-          // Videos are the slow path: never eager-decode an offscreen video,
-          // and pause all video thumb work while navigating fast.
-          if (fastNav) continue;
-          if (counts.video >= THUMB_MAX_VIDEO_CONCURRENT) continue;
-          if (!thumbIsVisible(el)) continue;
-          assignThumbSrc(el);
-          counts.video++;
-        } else {
-          if (counts.img >= THUMB_MAX_IMG_CONCURRENT) continue;
-          assignThumbSrc(el);
-          counts.img++;
-        }
-      }
-    }
-  }
-
-  // Phase 2: background warm. With spare image-decode capacity, keep loading the
-  // rest of the mounted grid (nearest-to-viewport first) so thumbnails are
-  // decoded and resident before the keyboard selection scrolls to them, up to
-  // the resident cap. Images only; paused during fast-nav bursts. As each load
-  // settles, pumpThumbQueue runs again, so this cascades until the cap or the
-  // whole grid is warm.
-  if (!fastNav) backgroundWarmThumbs(counts);
-}
-
-function backgroundWarmThumbs(counts) {
-  if (counts.img >= THUMB_MAX_IMG_CONCURRENT) return;
-  if (THUMB_RESIDENT.size + counts.img >= THUMB_RESIDENT_CAP) return;
+  if (!THUMB_WANTED.size) return;
   const idle = [];
-  for (const el of THUMB_ALL) {
-    if (!el.isConnected) { THUMB_ALL.delete(el); continue; }
-    if (thumbElKind(el) !== "img") continue;
-    if (el.dataset.thumbState !== "idle") continue;
-    idle.push(el);
+  for (const el of THUMB_WANTED) {
+    if (!el.isConnected) { THUMB_WANTED.delete(el); continue; }
+    if (el.dataset.thumbState === "idle") idle.push(el);
   }
   if (!idle.length) return;
-  idle.sort((a, b) => thumbPriorityScore(a) - thumbPriorityScore(b));
+  idle.sort(
+    (a, b) =>
+      thumbDistanceToViewportCenter(a) - thumbDistanceToViewportCenter(b),
+  );
+  const counts = thumbActiveCounts();
   for (let i = 0; i < idle.length; i++) {
-    if (counts.img >= THUMB_MAX_IMG_CONCURRENT) break;
-    if (THUMB_RESIDENT.size + counts.img >= THUMB_RESIDENT_CAP) break;
-    assignThumbSrc(idle[i]);
-    counts.img++;
+    const el = idle[i];
+    if (thumbElKind(el) === "video") {
+      if (counts.video >= THUMB_MAX_VIDEO_CONCURRENT) continue;
+      assignThumbSrc(el);
+      counts.video++;
+    } else {
+      if (counts.img >= THUMB_MAX_IMG_CONCURRENT) continue;
+      assignThumbSrc(el);
+      counts.img++;
+    }
   }
 }
 
@@ -57328,48 +57126,13 @@ function reprioritizeThumbs() {
 // No-op shim retained for legacy call sites.
 function primeThumbsNow() {}
 
-// Prewarm the bounded navigation corridor once the user settles: resolve (and
-// cache) the thumbnail target for the current selected folder, its nearest
-// prev/next sibling folders, and the parent return target, then prewarm image
-// URLs for those leads so the likely next destination paints instantly. Video
-// decode is deliberately left to the visible-only slow path. Capped at a
-// handful of folders to keep CPU/memory/disk pressure bounded.
-function prewarmNavigationCorridor() {
-  try {
-    if (FAST_NAV.isActive()) return;
-    if (!WS || !WS.root || !Array.isArray(WS.nav.entries)) return;
-    if (!folderPreviewMediaThumbnailsEnabled()) return;
-    const entries = WS.nav.entries;
-    const sel = Number(WS.nav.selectedIndex) || 0;
-    const nodes = [];
-    const addNode = (n) => { if (n && nodes.indexOf(n) === -1) nodes.push(n); };
-    const selEntry = entries[sel];
-    if (selEntry && selEntry.kind === "dir") addNode(selEntry.node);
-    for (let i = sel - 1; i >= 0 && i >= sel - 8; i--) {
-      if (entries[i] && entries[i].kind === "dir") { addNode(entries[i].node); break; }
-    }
-    for (let i = sel + 1; i < entries.length && i <= sel + 8; i++) {
-      if (entries[i] && entries[i].kind === "dir") { addNode(entries[i].node); break; }
-    }
-    if (WS.nav.dirNode && WS.nav.dirNode.parent) addNode(WS.nav.dirNode.parent);
-    const MAX_FOLDERS = 4;
-    let warmedUrls = 0;
-    for (let i = 0; i < nodes.length && i < MAX_FOLDERS; i++) {
-      const lead = NAV_PERF.measure("prewarm:target", () =>
-        getDisplayLeadPreviewForDir(nodes[i]),
-      );
-      const rec = lead && lead.record;
-      if (rec && rec.type === "image" && warmedUrls < 3) {
-        try { ensureMediaUrl(rec); warmedUrls++; } catch {}
-      }
-    }
-  } catch {}
-}
-
 try {
   window.addEventListener("scroll", reprioritizeThumbs, true);
   window.addEventListener("resize", reprioritizeThumbs, true);
 } catch {}
+// No-op shim: navigation-corridor prewarm removed with the v1.6.43 loader.
+function prewarmNavigationCorridor() {}
+
 
 // Inline thumbnails (.dirInlinePreview — custom folder/tag/album thumbs) set
 // their src directly in markup and bypass the passive loader, so they have no
