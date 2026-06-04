@@ -2533,10 +2533,6 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0.78;
 }
 
-#app.hide-video-controls #controlPane {
-  display: none !important;
-}
-
 @media (max-width: 760px) {
   #controlPane {
     width: min(420px, calc(100% - 20px));
@@ -10050,7 +10046,6 @@ function defaultOptions() {
     hideTagAndRootFolderThumbnailMenuButton: false,
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
-    hideVideoControls: false,
     thumbnailLoading: false,
     forceTitleCaps: true,
     showPositionNumbersInNames: false,
@@ -10521,10 +10516,6 @@ function normalizeOptions(o) {
       typeof src.previewMediaUsePaneBackground === "boolean"
         ? src.previewMediaUsePaneBackground
         : d.previewMediaUsePaneBackground,
-    hideVideoControls:
-      typeof src.hideVideoControls === "boolean"
-        ? src.hideVideoControls
-        : d.hideVideoControls,
     thumbnailLoading: false,
     imageThumbSize: "placeholder",
     videoThumbSize: "placeholder",
@@ -11048,7 +11039,6 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   ]),
   controls: Object.freeze([
     "muteMessages",
-    "hideVideoControls",
     "showListCardExtraInfo",
   ]),
 });
@@ -16153,10 +16143,6 @@ function applyInteractionModeFromOptions() {
       WS.meta.options.previewMediaUsePaneBackground === true
     ),
   );
-  appEl.classList.toggle(
-    "hide-video-controls",
-    !!(WS.meta && WS.meta.options && WS.meta.options.hideVideoControls === true),
-  );
   syncActivePaneWithLayout();
   updateGridModeListTopInset();
 }
@@ -16707,12 +16693,6 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
-    id: "toggleHideVideoControls",
-    label: "Hide video controls",
-    hint: "Hide or show the control pane below the preview.",
-    section: "panes",
-  },
-  {
     id: "favoriteSelection",
     label: "Favorite folder selection",
     hint: "Favorite or unfavorite selected/current folder(s).",
@@ -16893,7 +16873,6 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "cycleAppearancePresets",
   "toggleLightMode",
   "togglePreviewMediaUsePaneBackground",
-  "toggleHideVideoControls",
   "toggleShufflePlay",
   "toggleRandomFileSort",
   "toggleRandomFolderSort",
@@ -16977,7 +16956,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleShowStorageFolder: "Cmd+Shift+s",
   toggleQuickNavigation: "",
   togglePreviewMediaUsePaneBackground: "b",
-  toggleHideVideoControls: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
   renameSelection: "",
@@ -21212,7 +21190,6 @@ ${makeCheckRow("Quick navigation", "When opening a folder that only contains fil
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${makeSelectRow("Appearance", "Choose the app look: the default theme, the retro 90s look, or a color scheme. Light Mode switches the matching light variant where one exists.", "opt_appearance", normalizeAppearanceValue(opt.appearance), appearanceModes)}
-${makeCheckRow("Video controls", "Show or hide the control pane below the preview.", "opt_videoControlsVisible", !opt.hideVideoControls)}
 ${makeSelectRow("Filter preset", "Choose a saved filter preset to apply it immediately. Edited sliders stay attached to the selected preset until you save or switch.", "opt_generalAppearancePreset", activeAppearancePresetId || "", appearancePresetSelectOptions)}
 ${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
 ${makeSelectRow("Media filter", "Choose which media types are visible across the current root/view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
@@ -21889,23 +21866,6 @@ ${makeActionRow(
   bindSelect("opt_appearance", "appearance", false, () => {
     applyColorSchemeFromOptions();
   });
-  bindMenuToggleButton("opt_videoControlsVisible", (enabled) => {
-    const nextHidden = !enabled;
-    WS.meta.options = normalizeOptions(
-      Object.assign({}, WS.meta.options || {}, {
-        hideVideoControls: nextHidden,
-      }),
-    );
-    metaMarkDirty(META_DOC_IDS.prefControls);
-    setOptionsStatus("Saved");
-    refreshActivePreviewMediaLayout({ immediate: true });
-    applyOptionsEverywhere(false);
-    showStatusMessage(
-      `Video controls: ${enabled ? "On" : "Off"}`,
-      "pane-toggles",
-    );
-  });
-
   const bindStorageToggle = (id, key, label) => {
     bindMenuToggleButton(id, async (enabled) => {
       if (!key) return;
@@ -22446,7 +22406,6 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showListCardExtraInfo",
     "showTagFolderSpacerRow",
     "previewMediaUsePaneBackground",
-    "hideVideoControls",
     "lightMode",
     "appearance",
     "animatedMediaFilters",
@@ -48477,14 +48436,6 @@ function controlPaneHasNavigablePreviewItem() {
   );
 }
 
-function videoControlsHardDisabled() {
-  return !!(
-    WS.meta &&
-    WS.meta.options &&
-    WS.meta.options.hideVideoControls === true
-  );
-}
-
 function getFloatingControlPaneBounds() {
   const host = previewMainStackEl || controlPane?.parentElement || previewPane;
   const bounds = previewViewportBox || previewBodyEl || host;
@@ -48592,7 +48543,7 @@ function storeFloatingControlPanePosition(left, top) {
 
 function syncFloatingControlPaneAvailability(hasVideo) {
   if (!controlPane) return;
-  const active = !!hasVideo && !videoControlsHardDisabled();
+  const active = !!hasVideo;
   const activeKey =
     active && WS.preview && WS.preview.fileId ? String(WS.preview.fileId || "") : "";
   const wasActive = controlPane.classList.contains("control-floating-active");
@@ -48823,7 +48774,7 @@ if (controlPane) {
 }
 if (previewBodyEl) {
   previewBodyEl.addEventListener("pointermove", () => {
-    if (getControlPaneVideo() && !videoControlsHardDisabled()) {
+    if (getControlPaneVideo()) {
       showFloatingControlPane(true);
     }
   });
@@ -55076,15 +55027,6 @@ function handleExtrasKeybindAction(action) {
       renderPreviewPane(false, true);
       refreshActivePreviewMediaLayout({ immediate: true });
       showStatusMessage(`Preview media uses pane background: ${next ? "On" : "Off"}`, "pane-toggles");
-      return true;
-    }
-    case "toggleHideVideoControls": {
-      const next = toggleOptionValue("hideVideoControls");
-      refreshLiveSettingsPaneFromKeyboardAction();
-      applyInteractionModeFromOptions();
-      refreshActivePreviewMediaLayout({ immediate: true });
-      MediaFilterEngine.requestRender();
-      showStatusMessage(`Hide video controls: ${next ? "On" : "Off"}`, "pane-toggles");
       return true;
     }
     case "toggleShufflePlay":
