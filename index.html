@@ -286,7 +286,7 @@ body.cursor-hidden * {
   grid-template-columns: min(320px, 28vw) 1fr;
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
-    "title preview"
+    "title title"
     "dirs preview";
   gap: 0;
   padding: 0;
@@ -306,10 +306,6 @@ body.cursor-hidden * {
 }
 @keyframes appBootRevealSafety {
   to { visibility: visible; }
-}
-
-#app.title-layout-pane.sidebar-closed {
-  grid-template-rows: 0 minmax(0, 1fr);
 }
 
 #app.sidebar-closed {
@@ -340,7 +336,7 @@ body.cursor-hidden * {
 /* draggable divider between panes */
 #divider {
   position: absolute;
-  top: 0;
+  top: var(--compact-title-bar-h);
   bottom: 0;
   left: min(320px, 28vw);
   width: 1px;
@@ -524,155 +520,106 @@ input[type="file"] {
        ========================================================= */
 #titlePane {
   position: relative;
-  z-index: 20;
-  padding: 10px 10px 0;
-  background: var(--color1-secondary);
-  border-radius: 0;
-  border: 0;
-  box-shadow: none;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  grid-area: title;
-}
-
-#app.title-layout-pane #titlePane {
-  padding-bottom: 10px;
-}
-
-/* File pane closed: the title pane (path, info, search) collapses into a
-   thin fixed bar pinned to the top of the viewport, above the settings
-   pane. The search box centered in it searches the preview grid. */
-#app.title-layout-pane.sidebar-closed #titlePane {
-  display: flex;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
   z-index: 200;
   height: var(--compact-title-bar-h);
   min-height: var(--compact-title-bar-h);
   padding: 0 12px;
+  background: var(--color1-secondary);
+  border-radius: 0;
+  border: 0;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  width: 100%;
+  display: flex;
   flex-direction: row;
   align-items: center;
   gap: 12px;
-  background: var(--color1-secondary);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  grid-area: title;
 }
-#app.title-layout-pane.sidebar-closed #titlePaneTop {
+
+#titlePaneTop {
+  display: flex;
   flex-direction: row;
   align-items: center;
+  justify-content: flex-start;
   flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
   gap: 12px;
   height: 100%;
 }
-#app.title-layout-pane.sidebar-closed #titleMain {
+
+#titleMain {
   order: 1;
   width: auto;
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
-#app.title-layout-pane.sidebar-closed #titlePane h1 {
+
+#titlePane h1 {
   font-size: 13px;
+  letter-spacing: 0.01em;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-#app.title-layout-pane.sidebar-closed #directoriesSearchRow {
+
+#directoriesSearchRow {
   order: 2;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
   flex: 1 1 420px;
   width: auto;
   max-width: 560px;
   margin: 0 auto;
 }
-#app.title-layout-pane.sidebar-closed #directoriesSearchRow input {
+
+#directoriesSearchRow input {
   width: 100%;
 }
-#app.title-layout-pane.sidebar-closed #titleBtns {
+
+#titleBtns {
   order: 3;
   width: auto;
   flex: 0 1 auto;
   min-width: 0;
-  justify-content: flex-end;
-  overflow: hidden;
-}
-#app.title-layout-pane.sidebar-closed #titleInfo {
-  width: auto;
-  max-width: 30vw;
-}
-/* Reserve room below the bar for the grid / settings pane. */
-#app.sidebar-closed #previewPane {
-  padding-top: var(--compact-title-bar-h);
-}
-
-/* Media filling the preview pane must never show the compact title bar,
-   regardless of whether the preview uses a black or pane-colored background. */
-#app.sidebar-closed.preview-media-mode #titlePane {
-  display: none !important;
-}
-#app.sidebar-closed.preview-media-mode #previewPane {
-  padding-top: 0;
-}
-
-body.directories-files-only #directoriesHeader {
-  display: none !important;
-}
-
-#titlePaneTop {
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-start;
-  flex-direction: column;
-  width: 100%;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-#app.title-layout-pane #titleMain {
-  order: 1;
-}
-
-#app.title-layout-pane #titleBtns {
-  order: 2;
-}
-
-#app.title-layout-pane #directoriesSearchRow {
-  order: 3;
-}
-
-#titleMain {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-
-#titlePane h1 {
-  font-size: 16px;
-  letter-spacing: 0.01em;
-  font-weight: 700;
-}
-
-#titleBtns {
   display: flex;
   gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
-  width: 100%;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  overflow: hidden;
 }
 
 #titleInfo {
-  width: 100%;
+  width: auto;
+  max-width: 30vw;
   color: var(--color0-secondary);
   font-size: 12px;
   line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Media filling the preview pane must never show the title bar,
+   regardless of whether the preview uses a black or pane-colored background. */
+#app.sidebar-closed.preview-media-mode #titlePane {
+  display: none !important;
+}
+#app.sidebar-closed.preview-media-mode #divider {
+  top: 0;
+}
+
+body.directories-files-only #directoriesHeader {
+  display: none !important;
 }
 
 /* =========================================================
@@ -752,15 +699,6 @@ body.directories-files-only #directoriesHeader {
   font-weight: 800;
   color: var(--color0-primary);
   letter-spacing: 0.02em;
-}
-
-#directoriesSearchRow {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: flex-end;
-  width: 100%;
-  margin-bottom: 6px;
 }
 
 #directoriesTagsRow {
