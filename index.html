@@ -2304,15 +2304,28 @@ img[data-rotate-key].rotatingThumbFade {
        Control Pane
        ========================================================= */
 #controlPane {
+  --video-control-surface: rgba(12, 12, 14, 0.78);
+  --video-control-border: rgba(255, 255, 255, 0.13);
+  --video-control-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+  --video-control-fg: rgba(255, 255, 255, 0.94);
+  --video-control-muted-fg: rgba(255, 255, 255, 0.72);
+  --video-control-button-bg: rgba(255, 255, 255, 0.1);
+  --video-control-button-hover-bg: rgba(255, 255, 255, 0.18);
+  --video-control-button-active-bg: rgba(255, 255, 255, 0.26);
+  --video-control-track-bg: rgba(255, 255, 255, 0.18);
+  --video-control-track-fill: rgba(255, 255, 255, 0.76);
+  --video-control-thumb: #ffffff;
+  --video-control-thumb-border: rgba(0, 0, 0, 0.5);
   display: none;
   min-width: 0;
   min-height: 0;
   width: min(640px, calc(100% - 32px));
   padding: 8px;
-  background: rgba(12, 12, 14, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: var(--video-control-surface);
+  border: 1px solid var(--video-control-border);
+  color: var(--video-control-fg);
   border-radius: 8px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+  box-shadow: var(--video-control-shadow);
   position: absolute;
   left: 50%;
   bottom: 18px;
@@ -2383,27 +2396,33 @@ img[data-rotate-key].rotatingThumbFade {
   border-radius: 8px;
 }
 
+#controlPane .controlBtn {
+  background: var(--video-control-button-bg);
+  color: var(--video-control-fg);
+}
+
+#controlPane .controlBtn:hover:not(:disabled),
+#controlPane .controlBtn:focus-visible {
+  background: var(--video-control-button-hover-bg);
+  color: var(--video-control-fg);
+}
+
+#controlPane .controlBtn:active:not(:disabled),
+#controlPane .controlBtn.active,
+#controlPane .controlBtn.active:hover:not(:disabled),
+#controlPane .controlBtn.active:active:not(:disabled) {
+  background: var(--video-control-button-active-bg);
+  color: var(--video-control-fg);
+}
+
 .controlPlayBtn {
   min-width: 36px;
-  color: var(--color0-primary);
-  background: var(--ui-selection-fill);
-}
-
-.controlPlayBtn:hover:not(:disabled),
-.controlPlayBtn:focus-visible {
-  color: var(--color0-primary);
-  background: var(--ui-control-hover-bg);
-}
-
-.controlPlayBtn:active:not(:disabled) {
-  background: var(--ui-control-active-bg);
 }
 
 .controlIconBtn {
   width: 32px;
   min-width: 32px;
   padding: 0;
-  color: var(--color0-primary);
 }
 
 .controlIconBtn.controlPlayBtn {
@@ -2419,13 +2438,6 @@ img[data-rotate-key].rotatingThumbFade {
 .controlSkipBtn {
   width: 32px;
   min-width: 32px;
-}
-
-.controlIconBtn.active,
-.controlIconBtn.active:hover:not(:disabled),
-.controlIconBtn.active:active:not(:disabled) {
-  background: var(--ui-control-active-bg);
-  color: var(--color0-primary);
 }
 
 .controlIcon {
@@ -2462,7 +2474,7 @@ img[data-rotate-key].rotatingThumbFade {
   min-width: 0;
   padding: 0;
   background: transparent;
-  accent-color: var(--color0-secondary);
+  accent-color: var(--video-control-track-fill);
   --control-progress-pct: 0%;
 }
 
@@ -2473,8 +2485,8 @@ img[data-rotate-key].rotatingThumbFade {
   background:
     linear-gradient(
       to right,
-      var(--color0-secondary) var(--control-progress-pct),
-      var(--ui-control-bg) var(--control-progress-pct)
+      var(--video-control-track-fill) var(--control-progress-pct),
+      var(--video-control-track-bg) var(--control-progress-pct)
     );
 }
 
@@ -2484,9 +2496,9 @@ img[data-rotate-key].rotatingThumbFade {
   width: 12px;
   height: 12px;
   margin-top: -3px;
-  border: 2px solid var(--color1-primary);
+  border: 2px solid var(--video-control-thumb-border);
   border-radius: 999px;
-  background: var(--color0-primary);
+  background: var(--video-control-thumb);
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
 }
 
@@ -2494,21 +2506,21 @@ img[data-rotate-key].rotatingThumbFade {
   height: 6px;
   border: 0;
   border-radius: 999px;
-  background: var(--ui-control-bg);
+  background: var(--video-control-track-bg);
 }
 
 #controlProgressRange::-moz-range-progress {
   height: 6px;
   border-radius: 999px;
-  background: var(--color0-secondary);
+  background: var(--video-control-track-fill);
 }
 
 #controlProgressRange::-moz-range-thumb {
   width: 12px;
   height: 12px;
-  border: 2px solid var(--color1-primary);
+  border: 2px solid var(--video-control-thumb-border);
   border-radius: 999px;
-  background: var(--color0-primary);
+  background: var(--video-control-thumb);
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
 }
 
@@ -2517,8 +2529,8 @@ img[data-rotate-key].rotatingThumbFade {
   padding: 5px 8px;
   border: 0;
   border-radius: 8px;
-  background: var(--ui-control-bg);
-  color: var(--color0-secondary);
+  background: var(--video-control-button-bg);
+  color: var(--video-control-muted-fg);
   font-family: inherit;
   font-size: 10px;
   font-weight: 800;
@@ -8575,6 +8587,47 @@ remove the outer app frame. */
   --tag-exclude-color: #783100;
   --ui-hover-shadow: 0 8px 22px rgba(145, 109, 10, 0.14);
   --ui-focus-ring: 0 0 0 2px rgba(28, 149, 196, 0.24);
+}
+
+/* Floating video controls follow the active appearance while preserving
+   contrast between their surface, controls, and progress display. */
+:root[data-theme="classic-light"] #controlPane,
+:root[data-theme="light"] #controlPane,
+:root[data-theme="synthwave-light"] #controlPane,
+:root[data-theme="verdant-light"] #controlPane,
+:root[data-theme="azure-light"] #controlPane,
+:root[data-theme="ember-light"] #controlPane,
+:root[data-theme="amber-light"] #controlPane,
+:root[data-theme="retro90s"] #controlPane {
+  --video-control-surface: var(--color1-secondary-transparent);
+  --video-control-border: rgba(0, 0, 0, 0.14);
+  --video-control-shadow: 0 12px 34px rgba(0, 0, 0, 0.2);
+  --video-control-fg: var(--color0-primary);
+  --video-control-muted-fg: var(--color0-secondary);
+  --video-control-button-bg: rgba(0, 0, 0, 0.08);
+  --video-control-button-hover-bg: rgba(0, 0, 0, 0.15);
+  --video-control-button-active-bg: rgba(0, 0, 0, 0.22);
+  --video-control-track-bg: rgba(0, 0, 0, 0.14);
+  --video-control-track-fill: var(--color0-secondary);
+  --video-control-thumb: var(--color0-primary);
+  --video-control-thumb-border: rgba(255, 255, 255, 0.55);
+}
+
+:root[data-retro="on"] #controlPane {
+  padding: 8px;
+  background: var(--video-control-surface);
+  border: 1px solid var(--video-control-border) !important;
+  border-radius: 8px;
+  box-shadow: var(--video-control-shadow) !important;
+}
+
+#controlPane #controlTimecode {
+  background: var(--video-control-button-bg);
+  color: var(--video-control-muted-fg);
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  font-family: inherit;
 }
 
 </style>
