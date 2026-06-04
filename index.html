@@ -48599,7 +48599,7 @@ function syncFloatingControlPaneAvailability(hasVideo) {
   const active = !!hasVideo;
   const activeKey =
     active && WS.preview && WS.preview.fileId ? String(WS.preview.fileId || "") : "";
-  const wasActive = controlPane.classList.contains("control-floating-active");
+  const activeItemChanged = CONTROL_PANE_ACTIVE_KEY !== activeKey;
   controlPane.classList.toggle("control-floating-active", active);
   if (!active) {
     CONTROL_PANE_ACTIVE_KEY = "";
@@ -48608,9 +48608,10 @@ function syncFloatingControlPaneAvailability(hasVideo) {
     return;
   }
   applyFloatingControlPanePosition();
-  if (!wasActive || CONTROL_PANE_ACTIVE_KEY !== activeKey) {
+  if (activeItemChanged) {
     CONTROL_PANE_ACTIVE_KEY = activeKey;
-    showFloatingControlPane(true);
+    clearFloatingControlPaneHideTimer();
+    setFloatingControlPaneVisible(false);
   }
 }
 
