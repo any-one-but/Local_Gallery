@@ -11482,20 +11482,38 @@ function buildAppearancePresetSubmenu(options = {}) {
       ? options.onChoosePreset
       : null;
   if (!onChoosePreset) return null;
+  const onClear =
+    typeof options.onClear === "function" ? options.onClear : null;
+  // Whether the item carries its own preset override. When it does not, the
+  // null "None" entry is the active one and the item simply follows the global
+  // appearance.
+  const hasOverride = !!options.hasOverride;
   const presets = Array.isArray(
     WS.meta && WS.meta.appearancePresets ? WS.meta.appearancePresets : null,
   )
     ? WS.meta.appearancePresets
     : defaultAppearancePresets();
   const buttons = [];
+  const marker = (active) => (active ? "● " : "○ ");
+  // Null option, always present and selected by default: clears any per-item
+  // override so the item just uses the global appearance setting.
+  const noneBtn = document.createElement("button");
+  noneBtn.type = "button";
+  noneBtn.textContent = `${marker(!hasOverride)}None`;
+  noneBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (onClear) onClear();
+    else onChoosePreset("");
+  });
+  buttons.push(noneBtn);
   for (let i = 0; i < presets.length; i++) {
     const preset = presets[i];
     const presetId = normalizeAppearancePresetIdValue(preset && preset.id);
     if (!presetId) continue;
-    const active = presetId === currentPresetId;
+    const active = hasOverride && presetId === currentPresetId;
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = `${active ? "● " : "○ "}${String(preset.name || "Preset")}`;
+    btn.textContent = `${marker(active)}${String(preset.name || "Preset")}`;
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       onChoosePreset(presetId);
@@ -42356,12 +42374,21 @@ function openTagContextMenu(context) {
   if (canAppearancePreset) {
     const filtersSubmenu = buildAppearancePresetSubmenu({
       currentPresetId: assignedAppearancePresetId,
+      hasOverride: !!assignedAppearancePresetId,
       onChoosePreset: (presetId) => {
         closeTagContextMenu();
         if (!metaSetTagAppearancePresetIdByKey(tagKey, presetId)) return;
         refreshAfterProcessingMetadataChange();
         showStatusMessage(
           `${isAlbumEntry ? "Tag album" : "Tag"} media preset: ${appearancePresetDisplayName(presetId)}.`,
+        );
+      },
+      onClear: () => {
+        closeTagContextMenu();
+        if (!metaClearTagAppearancePresetByKey(tagKey)) return;
+        refreshAfterProcessingMetadataChange();
+        showStatusMessage(
+          `${isAlbumEntry ? "Tag album" : "Tag"} media preset reset.`,
         );
       },
     });
@@ -42399,13 +42426,6 @@ function openTagContextMenu(context) {
         applyTagMediaFilter("aspect ratio", nextValue, onlyType),
     });
     if (aspectSubmenu) menu.appendChild(aspectSubmenu);
-  }
-  if (assignedAppearancePresetId) {
-    menu.appendChild(
-      createTagMenuButton("Clear media preset override", () =>
-        handleTagMenuAction("appearance-preset-clear"),
-      ),
-    );
   }
   if (!isTagMediaFilterValueEmpty(assignedMediaFilterValue)) {
     menu.appendChild(
@@ -42881,11 +42901,6 @@ function buildFolderActionMenuDom(
     makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"),
   );
   appendFiltersEntry();
-  if (state.assignedAppearancePresetId) {
-    menuEl.appendChild(
-      makeBtn("Clear media preset override", "appearance-preset-clear"),
-    );
-  }
   const thumbnailButtons = [];
   if (state.showUseDefaultThumbnail)
     thumbnailButtons.push(makeBtn("Use default thumbnail", "thumbnail-default"));
@@ -43287,6 +43302,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         selectedPaths.length === 1
           ? effectiveAppearancePresetIdForMenuPath(selectedPaths[0])
           : "",
+      hasOverride: anyAssignedAppearancePreset,
       onChoosePreset: (presetId) => {
         closePreviewContextMenu();
         let changed = false;
@@ -43301,12 +43317,8 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         );
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
       },
-    });
-    if (bulkFolderFiltersSubmenu) menu.appendChild(bulkFolderFiltersSubmenu);
-  }
-  if (anyAssignedAppearancePreset) {
-    menu.appendChild(
-      makeBtn("Clear media preset override", () => {
+      onClear: () => {
+        closePreviewContextMenu();
         let changed = false;
         for (let i = 0; i < selectedPaths.length; i++) {
           if (metaClearFolderAppearancePreset(selectedPaths[i])) changed = true;
@@ -43315,8 +43327,9 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         refreshAfterProcessingMetadataChange();
         showStatusMessage("Folder media preset reset to inherited.");
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-      }),
-    );
+      },
+    });
+    if (bulkFolderFiltersSubmenu) menu.appendChild(bulkFolderFiltersSubmenu);
   }
 
   if (singleSelectedDirNode && singleSelectedDirNode.preserveOrder) {
@@ -43710,6 +43723,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         tagAppearancePresetKeys.length === 1
           ? metaGetTagAppearancePresetIdByKey(tagAppearancePresetKeys[0])
           : "",
+      hasOverride: anyAssignedTagAppearancePreset,
       onChoosePreset: (presetId) => {
         closePreviewContextMenu();
         let changed = false;
@@ -43729,13 +43743,8 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         );
         finalizeBulkSelectionAction();
       },
-    });
-    if (bulkTagFiltersSubmenu) menu.appendChild(bulkTagFiltersSubmenu);
-  }
-
-  if (anyAssignedTagAppearancePreset) {
-    menu.appendChild(
-      makeBtn("Clear media preset override", async () => {
+      onClear: () => {
+        closePreviewContextMenu();
         let changed = false;
         for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
           if (metaClearTagAppearancePresetByKey(tagAppearancePresetKeys[i]))
@@ -43745,8 +43754,9 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         refreshAfterProcessingMetadataChange();
         showStatusMessage("Tag media preset reset.");
         finalizeBulkSelectionAction();
-      }),
-    );
+      },
+    });
+    if (bulkTagFiltersSubmenu) menu.appendChild(bulkTagFiltersSubmenu);
   }
 
   if (tagMediaFilterTargets.length) {
@@ -43880,7 +43890,8 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
     {
       appearancePresetSubmenu: () =>
         buildAppearancePresetSubmenu({
-          currentPresetId: effectiveAppearancePresetIdForMenuPath(p),
+          currentPresetId: menuState.assignedAppearancePresetId,
+          hasOverride: !!menuState.assignedAppearancePresetId,
           onChoosePreset: (presetId) => {
             closePreviewContextMenu();
             if (!metaSetFolderAppearancePresetId(p, presetId)) return;
@@ -43888,6 +43899,12 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
             showStatusMessage(
               `Folder media preset: ${appearancePresetDisplayName(presetId)}.`,
             );
+          },
+          onClear: () => {
+            closePreviewContextMenu();
+            if (!metaClearFolderAppearancePreset(p)) return;
+            refreshAfterProcessingMetadataChange();
+            showStatusMessage("Folder media preset reset.");
           },
         }),
     },
@@ -44905,6 +44922,7 @@ function renderDirectoriesActionHeader() {
         tagAppearancePresetKeys.length === 1
           ? metaGetTagAppearancePresetIdByKey(tagAppearancePresetKeys[0])
           : "",
+      hasOverride: anyAssignedTagAppearancePreset,
       onChoosePreset: (presetId) => {
         closeActionMenus();
         renderDirectoriesPane(true);
@@ -44925,15 +44943,9 @@ function renderDirectoriesActionHeader() {
         );
         finalizeBulkSelectionAction();
       },
-    });
-    if (dirTagFiltersSubmenu)
-      directoriesActionMenuEl.appendChild(dirTagFiltersSubmenu);
-  }
-
-  if (anyAssignedTagAppearancePreset) {
-    directoriesActionMenuEl.appendChild(
-      makeActionBtn("Clear media preset override", () => {
-        WS.view.bulkActionMenuOpen = false;
+      onClear: () => {
+        closeActionMenus();
+        renderDirectoriesPane(true);
         let changed = false;
         for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
           if (metaClearTagAppearancePresetByKey(tagAppearancePresetKeys[i]))
@@ -44943,8 +44955,10 @@ function renderDirectoriesActionHeader() {
         refreshAfterProcessingMetadataChange();
         showStatusMessage("Tag media preset reset.");
         finalizeBulkSelectionAction();
-      }),
-    );
+      },
+    });
+    if (dirTagFiltersSubmenu)
+      directoriesActionMenuEl.appendChild(dirTagFiltersSubmenu);
   }
 
   if (tagMediaFilterTargets.length) {
@@ -45150,6 +45164,7 @@ function renderDirectoriesActionHeader() {
           selectedDirs.length === 1
             ? effectiveAppearancePresetIdForMenuPath(selectedDirs[0])
             : "",
+        hasOverride: anyAssignedAppearancePreset,
         onChoosePreset: (presetId) => {
           closeActionMenus();
           renderDirectoriesPane(true);
@@ -45165,15 +45180,9 @@ function renderDirectoriesActionHeader() {
           );
           finalizeBulkSelectionAction();
         },
-      });
-      if (dirFolderFiltersSubmenu)
-        directoriesActionMenuEl.appendChild(dirFolderFiltersSubmenu);
-    }
-
-    if (anyAssignedAppearancePreset) {
-      directoriesActionMenuEl.appendChild(
-        makeActionBtn("Clear media preset override", () => {
-          WS.view.bulkActionMenuOpen = false;
+        onClear: () => {
+          closeActionMenus();
+          renderDirectoriesPane(true);
           let changed = false;
           for (let i = 0; i < selectedDirs.length; i++) {
             if (metaClearFolderAppearancePreset(selectedDirs[i]))
@@ -45183,8 +45192,10 @@ function renderDirectoriesActionHeader() {
           refreshAfterProcessingMetadataChange();
           showStatusMessage("Folder media preset reset to inherited.");
           finalizeBulkSelectionAction();
-        }),
-      );
+        },
+      });
+      if (dirFolderFiltersSubmenu)
+        directoriesActionMenuEl.appendChild(dirFolderFiltersSubmenu);
     }
 
     const moveToTrashBtn = makeActionBtn(
