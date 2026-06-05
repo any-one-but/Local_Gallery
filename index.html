@@ -2097,6 +2097,25 @@ img[data-rotate-key].rotatingThumbFade {
   box-shadow: none;
 }
 
+/* Every appearance mode except Retro (data-retro="on") and OLED Dark
+   (data-theme="superdark") renders dropdown menus as a distinct floating card:
+   the menu surface (--color1-secondary) is set apart from the app background
+   (--color1-primary) with a defining edge of that app color, and hovered items
+   are painted with the app background so they clearly contrast against the menu
+   surface. */
+:root:not([data-retro="on"]):not([data-theme="superdark"]) .dropdownMenu {
+  border: 1px solid var(--color1-primary);
+}
+
+:root:not([data-retro="on"]):not([data-theme="superdark"])
+  .dropdownMenu
+  button:hover:not(:disabled),
+:root:not([data-retro="on"]):not([data-theme="superdark"])
+  .dropdownMenu
+  button:focus-visible {
+  background: var(--color1-primary);
+}
+
 .dropdownMenu .dropdownMenuSubmenu {
   position: relative;
   display: flex;
