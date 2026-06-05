@@ -11449,6 +11449,43 @@ function buildAppearancePresetChoiceMenu(menuEl, options = {}) {
   }
 }
 
+// Flyout submenu variant of the appearance-preset chooser, styled like the
+// Thumbnail / Media type / Aspect ratio submenus. Returns a submenu element
+// listing every preset with a ●/○ marker on the active one; picking one calls
+// onChoosePreset. Used by the item context menus (folders, tags, and their bulk
+// variants) so "Filters" behaves like the other dropdown filters.
+function buildAppearancePresetSubmenu(options = {}) {
+  const currentPresetId = normalizeAppearancePresetIdValue(
+    options.currentPresetId,
+  );
+  const onChoosePreset =
+    typeof options.onChoosePreset === "function"
+      ? options.onChoosePreset
+      : null;
+  if (!onChoosePreset) return null;
+  const presets = Array.isArray(
+    WS.meta && WS.meta.appearancePresets ? WS.meta.appearancePresets : null,
+  )
+    ? WS.meta.appearancePresets
+    : defaultAppearancePresets();
+  const buttons = [];
+  for (let i = 0; i < presets.length; i++) {
+    const preset = presets[i];
+    const presetId = normalizeAppearancePresetIdValue(preset && preset.id);
+    if (!presetId) continue;
+    const active = presetId === currentPresetId;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = `${active ? "● " : "○ "}${String(preset.name || "Preset")}`;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onChoosePreset(presetId);
+    });
+    buttons.push(btn);
+  }
+  return createDropdownMenuSubmenu(String(options.label || "Filters"), buttons);
+}
+
 function effectiveAppearancePresetIdForMenuPath(path) {
   const normalized = normalizeDirPathValue(path);
   if (normalized === "" && WS.root) return effectiveActiveAppearancePresetId();
@@ -12157,15 +12194,87 @@ function contextualAppearancePresetIdForTagContext(
 }
 
 function contextualTagMediaFilterForTagContext(mode, tag, album, originPath) {
+  const contextMode = String(mode || "");
+  const contextTag = normalizeTag(tag || "");
+  const contextAlbum = normalizeTagAlbumName(album || "");
+  const scopePath = normalizeDirPathValue(originPath);
+  if (contextMode === "tag" && contextTag) {
+    const values = [
+      metaGetTagMediaFilterByKey(tagThumbnailKeyForTag(contextTag, scopePath)),
+    ];
+    if (contextAlbum) {
+      values.push(
+        metaGetTagMediaFilterByKey(
+          tagThumbnailKeyForAlbum(contextAlbum, scopePath),
+        ),
+      );
+    }
+    return combineTagMediaFilterValues(...values);
+  }
+  if (contextMode === "album" && contextAlbum) {
+    return metaGetTagMediaFilterByKey(
+      tagThumbnailKeyForAlbum(contextAlbum, scopePath),
+    );
+  }
   return [];
 }
 
 function contextualTagMediaFilterForDirPath(dirPath) {
-  return [];
+  const normalized = normalizeDirPathValue(dirPath);
+  if (!normalized) return [];
+  const collected = [];
+  const activeMode = String((WS.view && WS.view.tagFolderActiveMode) || "");
+  if (activeMode === "tag") {
+    const originPath = String((WS.view && WS.view.tagFolderOriginPath) || "");
+    const node = WS.dirByPath.get(normalized) || null;
+    if (node && String(node.parent?.path || "") === originPath) {
+      const activeTag = normalizeTag(
+        (WS.view && WS.view.tagFolderActiveTag) || "",
+      );
+      if (activeTag) {
+        const userTags = metaGetUserTags(normalized);
+        if (userTags.includes(activeTag)) {
+          collected.push(
+            contextualTagMediaFilterForTagContext(
+              activeMode,
+              activeTag,
+              WS.view && WS.view.tagFolderActiveAlbum,
+              originPath,
+            ),
+          );
+        }
+      }
+    }
+  }
+  const stack = Array.isArray(WS.view && WS.view.tagNavStack)
+    ? WS.view.tagNavStack
+    : [];
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const frame = stack[i];
+    if (!frame || frame.type !== "tag-view") continue;
+    const rootPath = findMatchingVirtualPortalRootPath(frame, normalized);
+    if (!rootPath) continue;
+    collected.push(
+      contextualTagMediaFilterForTagContext(
+        frame.mode,
+        frame.tag,
+        frame.album,
+        frame.originPath,
+      ),
+    );
+  }
+  return combineTagMediaFilterValues(...collected);
 }
 
 function currentContextualTagMediaFilterValue() {
-  return [];
+  const context = currentActiveTagFolderContext();
+  if (!context) return [];
+  return contextualTagMediaFilterForTagContext(
+    context.mode,
+    context.tag,
+    context.album,
+    context.originPath,
+  );
 }
 
 function currentActiveTagFolderContext() {
@@ -24451,6 +24560,31 @@ function toggleTagMediaFilterType(value, type) {
   );
 }
 
+// Single-axis (media type or aspect ratio) "show only one" selection on top of
+// the underlying hide-list. Returns the value with the axis rewritten so that
+// only `onlyType` is shown (others hidden); pass a falsy `onlyType` to clear the
+// axis (show all). The other axis is left untouched.
+function setTagMediaFilterAxis(value, axis, onlyType) {
+  const hidden = new Set(normalizeTagMediaFilterValue(value));
+  for (let i = 0; i < axis.length; i++) hidden.delete(axis[i]);
+  const only = String(onlyType || "")
+    .trim()
+    .toLowerCase();
+  if (only && axis.includes(only)) {
+    for (let i = 0; i < axis.length; i++) {
+      if (axis[i] !== only) hidden.add(axis[i]);
+    }
+  }
+  return TAG_MEDIA_FILTER_TYPES.filter((type) => hidden.has(type));
+}
+
+// Which single type an axis is currently restricted to ("" means show all).
+function tagMediaFilterAxisSelection(value, axis) {
+  const hidden = new Set(normalizeTagMediaFilterValue(value));
+  const shown = axis.filter((type) => !hidden.has(type));
+  return shown.length === 1 ? shown[0] : "";
+}
+
 function tagMediaFilterTypeLabel(type) {
   if (type === "images") return "images";
   if (type === "videos") return "videos";
@@ -24595,19 +24729,30 @@ function metaClearTagAppearancePresetByKey(tagKey) {
 }
 
 function metaGetTagMediaFilterByKey(tagKey) {
-  return [];
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return [];
+  return normalizeTagMediaFilterValue(WS.meta.tagMediaFilterByKey.get(key));
 }
 
 function metaHasTagMediaFilterByKey(tagKey) {
-  return false;
+  return metaGetTagMediaFilterByKey(tagKey).length > 0;
 }
 
 function metaSetTagMediaFilterByKey(tagKey, value) {
-  return false;
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return false;
+  const next = normalizeTagMediaFilterValue(value);
+  const prev = normalizeTagMediaFilterValue(WS.meta.tagMediaFilterByKey.get(key));
+  if (tagMediaFilterValuesEqual(prev, next)) return false;
+  if (next.length) WS.meta.tagMediaFilterByKey.set(key, next);
+  else WS.meta.tagMediaFilterByKey.delete(key);
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return true;
 }
 
 function metaClearTagMediaFilterByKey(tagKey) {
-  return false;
+  return metaSetTagMediaFilterByKey(tagKey, []);
 }
 
 function collectDescendantDirPaths(path) {
@@ -31626,15 +31771,24 @@ function dirItemCount(node) {
     DIR_ITEM_COUNT_CACHE.clear();
   }
   const pathKey = String(node.path || "");
-  if (DIR_ITEM_COUNT_CACHE.has(pathKey))
+  // The item-count cache is keyed only by the global filter, so it cannot hold a
+  // contextual tag-filtered count without going stale when the tag filter
+  // changes. Skip the cache entirely while a contextual filter is active.
+  if (!contextualFilter.length && DIR_ITEM_COUNT_CACHE.has(pathKey))
     return DIR_ITEM_COUNT_CACHE.get(pathKey) || 0;
   let c = 0;
   for (const id of node.childrenFiles) {
     const rec = WS.fileById.get(id);
-    if (passesFilter(rec)) c++;
+    if (!passesFilter(rec)) continue;
+    if (
+      contextualFilter.length &&
+      !recordPassesTagMediaFilter(rec, contextualFilter)
+    )
+      continue;
+    c++;
   }
   for (const d of node.childrenDirs) c += dirItemCount(d);
-  DIR_ITEM_COUNT_CACHE.set(pathKey, c);
+  if (!contextualFilter.length) DIR_ITEM_COUNT_CACHE.set(pathKey, c);
   return c;
 }
 
@@ -31839,7 +31993,17 @@ function getOrderedFileIdsForDir(dirNode, includeChildren = false) {
     );
   }
 
-  ids = ids.filter((id) => passesFilter(WS.fileById.get(id)));
+  const contextualTagFilter = contextualTagMediaFilterForDirPath(
+    String(dirNode.path || ""),
+  );
+  ids = ids.filter((id) => {
+    const rec = WS.fileById.get(id);
+    if (!passesFilter(rec)) return false;
+    return (
+      !contextualTagFilter.length ||
+      recordPassesTagMediaFilter(rec, contextualTagFilter)
+    );
+  });
 
   if (!includeChildren) return ids;
 
@@ -34023,7 +34187,19 @@ function getTagEntryAggregateMetrics(entry, sizeMemo = null) {
   return result;
 }
 function effectiveTagMediaFilterForEntry(entry) {
-  return [];
+  if (!entry || entry.kind !== "tag" || entry.special) return [];
+  const key = tagThumbnailKeyForEntry(entry);
+  if (!key) return [];
+  const values = [metaGetTagMediaFilterByKey(key)];
+  if (entry.album && entry.tag) {
+    const scopePath = String(
+      entry.originPath != null ? entry.originPath : WS.nav?.dirNode?.path || "",
+    );
+    values.push(
+      metaGetTagMediaFilterByKey(tagThumbnailKeyForAlbum(entry.album, scopePath)),
+    );
+  }
+  return combineTagMediaFilterValues(...values);
 }
 
 function recordPassesTagEntryFilter(rec, entry) {
@@ -34336,6 +34512,11 @@ function getPresetPreviewRecordForDir(dirNode) {
   const rec = findFileRecordByRelPath(relPath);
   if (!rec) return null;
   if (!passesFilter(rec)) return null;
+  // A pinned folder thumbnail must still obey an active tag content filter so
+  // filtered-out media never surfaces as a folder thumbnail inside a tag view.
+  const contextualFilter = contextualTagMediaFilterForDirPath(dirPath);
+  if (contextualFilter.length && !recordPassesTagMediaFilter(rec, contextualFilter))
+    return null;
   if (!isRecordInDirSubtree(rec, dirNode)) return null;
   return rec;
 }
@@ -42107,7 +42288,8 @@ function openTagContextMenu(context) {
         };
   const canAppearancePreset =
     !!tagKey && !context.special && (!!tag || isAlbumEntry);
-  const canMediaFilter = false;
+  const canMediaFilter =
+    !!tagKey && !context.special && (!!tag || isAlbumEntry);
   const isHidden = canHide && metaHasHiddenTagByKey(tagKey);
   const assignedAppearancePresetId = canAppearancePreset
     ? metaGetTagAppearancePresetIdByKey(tagKey)
@@ -42153,59 +42335,51 @@ function openTagContextMenu(context) {
     }
   }
   if (canAppearancePreset) {
-    menu.appendChild(
-      createTagMenuButton("Filters", () => {
-        buildAppearancePresetChoiceMenu(menu, {
-          currentPresetId: assignedAppearancePresetId,
-          onBack: () => {
-            openTagContextMenu(context);
-          },
-          onChoosePreset: (presetId) => {
-            closeTagContextMenu();
-            if (!metaSetTagAppearancePresetIdByKey(tagKey, presetId)) return;
-            refreshAfterProcessingMetadataChange();
-            showStatusMessage(
-              `${isAlbumEntry ? "Tag album" : "Tag"} media preset: ${appearancePresetDisplayName(presetId)}.`,
-            );
-          },
-          onRendered: () => {
-            positionDropdownMenu(anchor, menu);
-          },
-        });
-      }),
-    );
+    const filtersSubmenu = buildAppearancePresetSubmenu({
+      currentPresetId: assignedAppearancePresetId,
+      onChoosePreset: (presetId) => {
+        closeTagContextMenu();
+        if (!metaSetTagAppearancePresetIdByKey(tagKey, presetId)) return;
+        refreshAfterProcessingMetadataChange();
+        showStatusMessage(
+          `${isAlbumEntry ? "Tag album" : "Tag"} media preset: ${appearancePresetDisplayName(presetId)}.`,
+        );
+      },
+    });
+    if (filtersSubmenu) menu.appendChild(filtersSubmenu);
   }
   if (canMediaFilter) {
-    menu.appendChild(
-      createTagMenuButton("Set content filter", () => {
-        const reopenFilterMenu = (shouldReposition = false) => {
-          buildTagMediaFilterChoiceMenu(menu, {
-            title: `${isAlbumEntry ? "Tag album" : "Tag"} content filter`,
-            currentValue: metaGetTagMediaFilterByKey(tagKey),
-            onBack: () => {
-              openTagContextMenu(context);
-            },
-            onChoose: (nextValue) => {
-              const changed = metaSetTagMediaFilterByKey(tagKey, nextValue);
-              if (changed) {
-                metaScheduleSave();
-                refreshAfterTagMetadataChange();
-                showStatusMessage(
-                  `${isAlbumEntry ? "Tag album" : "Tag"} content filter: ${describeTagMediaFilterValue(nextValue)}.`,
-                );
-              }
-              reopenFilterMenu(false);
-            },
-            onRendered: shouldReposition
-              ? () => {
-                  positionDropdownMenu(anchor, menu);
-                }
-              : null,
-          });
-        };
-        reopenFilterMenu(true);
-      }),
-    );
+    const scopeLabel = isAlbumEntry ? "Tag album" : "Tag";
+    const applyTagMediaFilter = (axisLabel, nextValue, onlyType) => {
+      const changed = metaSetTagMediaFilterByKey(tagKey, nextValue);
+      if (changed) {
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        const onlyText = onlyType
+          ? `${tagMediaFilterTypeLabel(onlyType)} only`
+          : "all";
+        showStatusMessage(`${scopeLabel} ${axisLabel} filter: ${onlyText}.`);
+      }
+      openTagContextMenu(context);
+    };
+    const mediaTypeSubmenu = buildTagMediaFilterAxisSubmenu({
+      label: "Media type",
+      axis: TAG_MEDIA_FILTER_MEDIA_TYPES,
+      allLabel: "All media types",
+      currentValue: assignedMediaFilterValue,
+      onApply: (nextValue, onlyType) =>
+        applyTagMediaFilter("media type", nextValue, onlyType),
+    });
+    if (mediaTypeSubmenu) menu.appendChild(mediaTypeSubmenu);
+    const aspectSubmenu = buildTagMediaFilterAxisSubmenu({
+      label: "Aspect ratio",
+      axis: TAG_MEDIA_FILTER_ASPECT_RATIOS,
+      allLabel: "All aspect ratios",
+      currentValue: assignedMediaFilterValue,
+      onApply: (nextValue, onlyType) =>
+        applyTagMediaFilter("aspect ratio", nextValue, onlyType),
+    });
+    if (aspectSubmenu) menu.appendChild(aspectSubmenu);
   }
   if (assignedAppearancePresetId) {
     menu.appendChild(
@@ -42632,6 +42806,22 @@ function buildFolderActionMenuDom(
     if (leftBtn) menuEl.appendChild(leftBtn);
     if (rightBtn) menuEl.appendChild(rightBtn);
   };
+  // "Filters" is a preset chooser. When the caller supplies a submenu factory it
+  // is rendered as a flyout submenu (matching the other item-menu filters);
+  // otherwise it falls back to the action button dispatched via onAction.
+  const appendFiltersEntry = () => {
+    if (
+      customHandlers &&
+      typeof customHandlers.appearancePresetSubmenu === "function"
+    ) {
+      const submenu = customHandlers.appearancePresetSubmenu();
+      if (submenu) {
+        menuEl.appendChild(submenu);
+        return;
+      }
+    }
+    menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
+  };
   if (state.isTrashRootPortal) return;
   if (state.isTrashPutBackOnly) {
     menuEl.appendChild(makeBtn("Remove from trash", "put-back", !state.canPutBack));
@@ -42656,7 +42846,7 @@ function buildFolderActionMenuDom(
     return;
   }
   if (state.isRootNode) {
-    menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
+    appendFiltersEntry();
     menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
     return;
   }
@@ -42671,7 +42861,7 @@ function buildFolderActionMenuDom(
     makeBtn("Store", "send-to-storage", !state.canSendToStorage),
     makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"),
   );
-  menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
+  appendFiltersEntry();
   if (state.assignedAppearancePresetId) {
     menuEl.appendChild(
       makeBtn("Clear media preset override", "appearance-preset-clear"),
@@ -43072,48 +43262,29 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
     }),
   );
-  menu.appendChild(
-    makeBtn(
-      "Filters",
-      () => {
-        const currentPresetId =
-          selectedPaths.length === 1
-            ? effectiveAppearancePresetIdForMenuPath(selectedPaths[0])
-            : "";
-        buildAppearancePresetChoiceMenu(menu, {
-          currentPresetId,
-          onBack: () => {
-            openPreviewBulkFolderActionMenu(selectedPaths, anchorPath, opts);
-          },
-          onChoosePreset: (presetId) => {
-            closePreviewContextMenu();
-            let changed = false;
-            for (let i = 0; i < selectedPaths.length; i++) {
-              if (metaSetFolderAppearancePresetId(selectedPaths[i], presetId))
-                changed = true;
-            }
-            if (!changed) return;
-            refreshAfterProcessingMetadataChange();
-            showStatusMessage(
-              `Folder media preset: ${appearancePresetDisplayName(presetId)}.`,
-            );
-            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-          },
-          onRendered: () => {
-            if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
-            else
-              positionDropdownMenuAtPoint(
-                menu,
-                Number(opts.x) || 0,
-                Number(opts.y) || 0,
-              );
-          },
-        });
+  {
+    const bulkFolderFiltersSubmenu = buildAppearancePresetSubmenu({
+      currentPresetId:
+        selectedPaths.length === 1
+          ? effectiveAppearancePresetIdForMenuPath(selectedPaths[0])
+          : "",
+      onChoosePreset: (presetId) => {
+        closePreviewContextMenu();
+        let changed = false;
+        for (let i = 0; i < selectedPaths.length; i++) {
+          if (metaSetFolderAppearancePresetId(selectedPaths[i], presetId))
+            changed = true;
+        }
+        if (!changed) return;
+        refreshAfterProcessingMetadataChange();
+        showStatusMessage(
+          `Folder media preset: ${appearancePresetDisplayName(presetId)}.`,
+        );
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
       },
-      false,
-      false,
-    ),
-  );
+    });
+    if (bulkFolderFiltersSubmenu) menu.appendChild(bulkFolderFiltersSubmenu);
+  }
   if (anyAssignedAppearancePreset) {
     menu.appendChild(
       makeBtn("Clear media preset override", () => {
@@ -43515,56 +43686,32 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   }
 
   if (tagAppearancePresetKeys.length) {
-    menu.appendChild(
-      makeBtn(
-        "Filters",
-        async () => {
-          const currentPresetId =
-            tagAppearancePresetKeys.length === 1
-              ? metaGetTagAppearancePresetIdByKey(tagAppearancePresetKeys[0])
-              : "";
-          buildAppearancePresetChoiceMenu(menu, {
-            currentPresetId,
-            onBack: () => {
-              openPreviewBulkTagActionMenu(
-                selectedEntries,
-                anchorSelectionKey,
-                opts,
-              );
-            },
-            onChoosePreset: (presetId) => {
-              closePreviewContextMenu();
-              let changed = false;
-              for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
-                if (
-                  metaSetTagAppearancePresetIdByKey(
-                    tagAppearancePresetKeys[i],
-                    presetId,
-                  )
-                )
-                  changed = true;
-              }
-              if (!changed) return;
-              refreshAfterProcessingMetadataChange();
-              showStatusMessage(
-                `Tag media preset: ${appearancePresetDisplayName(presetId)}.`,
-              );
-              finalizeBulkSelectionAction();
-            },
-            onRendered: () => {
-              if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
-              else
-                positionDropdownMenuAtPoint(
-                  menu,
-                  Number(opts.x) || 0,
-                  Number(opts.y) || 0,
-                );
-            },
-          });
-        },
-        false,
-      ),
-    );
+    const bulkTagFiltersSubmenu = buildAppearancePresetSubmenu({
+      currentPresetId:
+        tagAppearancePresetKeys.length === 1
+          ? metaGetTagAppearancePresetIdByKey(tagAppearancePresetKeys[0])
+          : "",
+      onChoosePreset: (presetId) => {
+        closePreviewContextMenu();
+        let changed = false;
+        for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
+          if (
+            metaSetTagAppearancePresetIdByKey(
+              tagAppearancePresetKeys[i],
+              presetId,
+            )
+          )
+            changed = true;
+        }
+        if (!changed) return;
+        refreshAfterProcessingMetadataChange();
+        showStatusMessage(
+          `Tag media preset: ${appearancePresetDisplayName(presetId)}.`,
+        );
+        finalizeBulkSelectionAction();
+      },
+    });
+    if (bulkTagFiltersSubmenu) menu.appendChild(bulkTagFiltersSubmenu);
   }
 
   if (anyAssignedTagAppearancePreset) {
@@ -43712,13 +43859,9 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
       runFolderActionFromMenu(action, dirNode).catch(() => {});
     },
     {
-      "appearance-preset-set": () => {
-        const currentPresetId = effectiveAppearancePresetIdForMenuPath(p);
-        buildAppearancePresetChoiceMenu(menu, {
-          currentPresetId,
-          onBack: () => {
-            openPreviewFolderActionMenu(dirNode, opts);
-          },
+      appearancePresetSubmenu: () =>
+        buildAppearancePresetSubmenu({
+          currentPresetId: effectiveAppearancePresetIdForMenuPath(p),
           onChoosePreset: (presetId) => {
             closePreviewContextMenu();
             if (!metaSetFolderAppearancePresetId(p, presetId)) return;
@@ -43727,17 +43870,7 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
               `Folder media preset: ${appearancePresetDisplayName(presetId)}.`,
             );
           },
-          onRendered: () => {
-            if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
-            else
-              positionDropdownMenuAtPoint(
-                menu,
-                Number(opts.x) || 0,
-                Number(opts.y) || 0,
-              );
-          },
-        });
-      },
+        }),
     },
   );
 
@@ -44162,6 +44295,43 @@ function deleteTagAlbumByName(albumName, scopePath = null) {
   )
     changed = true;
   return { changed, clearedTags, album };
+}
+
+// Single-select flyout submenu (one axis: media type or aspect ratio) for the
+// tag context menu, styled like the Thumbnail submenu. Picking an option
+// restricts the tag/album to show only that one type; "All" clears the axis.
+function buildTagMediaFilterAxisSubmenu(opts) {
+  const cfg = opts || {};
+  const label = String(cfg.label || "");
+  const axis = Array.isArray(cfg.axis) ? cfg.axis : [];
+  const allLabel = String(cfg.allLabel || "All");
+  const optionLabel =
+    typeof cfg.optionLabel === "function"
+      ? cfg.optionLabel
+      : (type) => tagMediaFilterTypeLabel(type);
+  const currentValue = normalizeTagMediaFilterValue(cfg.currentValue);
+  const onApply = typeof cfg.onApply === "function" ? cfg.onApply : null;
+  if (!axis.length || !onApply) return null;
+  const selected = tagMediaFilterAxisSelection(currentValue, axis);
+  const marker = (active) => (active ? "● " : "○ ");
+  const buttons = [];
+  buttons.push(
+    createTagMenuButton(`${marker(!selected)}${allLabel}`, () => {
+      onApply(setTagMediaFilterAxis(currentValue, axis, null), "");
+    }),
+  );
+  for (let i = 0; i < axis.length; i++) {
+    const type = axis[i];
+    buttons.push(
+      createTagMenuButton(
+        `${marker(selected === type)}${optionLabel(type)}`,
+        () => {
+          onApply(setTagMediaFilterAxis(currentValue, axis, type), type);
+        },
+      ),
+    );
+  }
+  return createDropdownMenuSubmenu(label, buttons);
 }
 
 function buildTagMediaFilterChoiceMenu(menu, opts = {}) {
@@ -44711,56 +44881,34 @@ function renderDirectoriesActionHeader() {
 
 
   if (tagAppearancePresetKeys.length) {
-    directoriesActionMenuEl.appendChild(
-      makeActionBtn(
-        "Filters",
-        () => {
-          const currentPresetId =
-            tagAppearancePresetKeys.length === 1
-              ? metaGetTagAppearancePresetIdByKey(tagAppearancePresetKeys[0])
-              : "";
-          buildAppearancePresetChoiceMenu(directoriesActionMenuEl, {
-            currentPresetId,
-            onBack: () => {
-              renderDirectoriesActionHeader();
-              if (
-                directoriesActionMenuEl.classList.contains("open") &&
-                anchorBtn
-              ) {
-                requestAnimationFrame(() =>
-                  positionDropdownMenu(anchorBtn, directoriesActionMenuEl),
-                );
-              }
-            },
-            onChoosePreset: (presetId) => {
-              closeActionMenus();
-              renderDirectoriesPane(true);
-              let changed = false;
-              for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
-                if (
-                  metaSetTagAppearancePresetIdByKey(
-                    tagAppearancePresetKeys[i],
-                    presetId,
-                  )
-                )
-                  changed = true;
-              }
-              if (!changed) return;
-              refreshAfterProcessingMetadataChange();
-              showStatusMessage(
-                `Tag media preset: ${appearancePresetDisplayName(presetId)}.`,
-              );
-              finalizeBulkSelectionAction();
-            },
-            onRendered: () => {
-              if (anchorBtn)
-                positionDropdownMenu(anchorBtn, directoriesActionMenuEl);
-            },
-          });
-        },
-        false,
-      ),
-    );
+    const dirTagFiltersSubmenu = buildAppearancePresetSubmenu({
+      currentPresetId:
+        tagAppearancePresetKeys.length === 1
+          ? metaGetTagAppearancePresetIdByKey(tagAppearancePresetKeys[0])
+          : "",
+      onChoosePreset: (presetId) => {
+        closeActionMenus();
+        renderDirectoriesPane(true);
+        let changed = false;
+        for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
+          if (
+            metaSetTagAppearancePresetIdByKey(
+              tagAppearancePresetKeys[i],
+              presetId,
+            )
+          )
+            changed = true;
+        }
+        if (!changed) return;
+        refreshAfterProcessingMetadataChange();
+        showStatusMessage(
+          `Tag media preset: ${appearancePresetDisplayName(presetId)}.`,
+        );
+        finalizeBulkSelectionAction();
+      },
+    });
+    if (dirTagFiltersSubmenu)
+      directoriesActionMenuEl.appendChild(dirTagFiltersSubmenu);
   }
 
   if (anyAssignedTagAppearancePreset) {
@@ -44977,51 +45125,31 @@ function renderDirectoriesActionHeader() {
       ),
     );
 
-    directoriesActionMenuEl.appendChild(
-      makeActionBtn(
-        "Filters",
-        () => {
-          const currentPresetId =
-            selectedDirs.length === 1
-              ? effectiveAppearancePresetIdForMenuPath(selectedDirs[0])
-              : "";
-          buildAppearancePresetChoiceMenu(directoriesActionMenuEl, {
-            currentPresetId,
-            onBack: () => {
-              renderDirectoriesActionHeader();
-              if (
-                directoriesActionMenuEl.classList.contains("open") &&
-                anchorBtn
-              ) {
-                requestAnimationFrame(() =>
-                  positionDropdownMenu(anchorBtn, directoriesActionMenuEl),
-                );
-              }
-            },
-            onChoosePreset: (presetId) => {
-              closeActionMenus();
-              renderDirectoriesPane(true);
-              let changed = false;
-              for (let i = 0; i < selectedDirs.length; i++) {
-                if (metaSetFolderAppearancePresetId(selectedDirs[i], presetId))
-                  changed = true;
-              }
-              if (!changed) return;
-              refreshAfterProcessingMetadataChange();
-              showStatusMessage(
-                `Folder media preset: ${appearancePresetDisplayName(presetId)}.`,
-              );
-              finalizeBulkSelectionAction();
-            },
-            onRendered: () => {
-              if (anchorBtn)
-                positionDropdownMenu(anchorBtn, directoriesActionMenuEl);
-            },
-          });
+    {
+      const dirFolderFiltersSubmenu = buildAppearancePresetSubmenu({
+        currentPresetId:
+          selectedDirs.length === 1
+            ? effectiveAppearancePresetIdForMenuPath(selectedDirs[0])
+            : "",
+        onChoosePreset: (presetId) => {
+          closeActionMenus();
+          renderDirectoriesPane(true);
+          let changed = false;
+          for (let i = 0; i < selectedDirs.length; i++) {
+            if (metaSetFolderAppearancePresetId(selectedDirs[i], presetId))
+              changed = true;
+          }
+          if (!changed) return;
+          refreshAfterProcessingMetadataChange();
+          showStatusMessage(
+            `Folder media preset: ${appearancePresetDisplayName(presetId)}.`,
+          );
+          finalizeBulkSelectionAction();
         },
-        false,
-      ),
-    );
+      });
+      if (dirFolderFiltersSubmenu)
+        directoriesActionMenuEl.appendChild(dirFolderFiltersSubmenu);
+    }
 
     if (anyAssignedAppearancePreset) {
       directoriesActionMenuEl.appendChild(
@@ -52833,7 +52961,17 @@ function getPreviewFileIdsForDir(dirNode, includeChildren = false) {
         WS.fileById.get(b)?.name || "",
       ),
     );
-  const out = ids.filter((id) => passesFilter(WS.fileById.get(id)));
+  const contextualTagFilter = contextualTagMediaFilterForDirPath(
+    String(dirNode.path || ""),
+  );
+  const out = ids.filter((id) => {
+    const rec = WS.fileById.get(id);
+    if (!passesFilter(rec)) return false;
+    return (
+      !contextualTagFilter.length ||
+      recordPassesTagMediaFilter(rec, contextualTagFilter)
+    );
+  });
 
   if (!includeChildren) return out;
 
@@ -58867,7 +59005,13 @@ function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
   const presetRec = getPresetPreviewRecordForDir(dirNode);
   if (presetRec) return { record: presetRec, rotateKey: "" };
   if (!dirPath && dirNode !== WS.root) return { record: null, rotateKey: "" };
-  const scope = dirPath || "__root__";
+  // Keep the resolved-thumbnail cache distinct per active tag content filter so a
+  // pick made under one filter (or with none) can't leak filtered-out media into
+  // a tag view (or vice versa).
+  const contextualFilter = contextualTagMediaFilterForDirPath(dirPath);
+  const scope =
+    (dirPath || "__root__") +
+    (contextualFilter.length ? `@@ctx:${contextualFilter.join(",")}` : "");
   // Rotate mode intentionally varies its pick, so it is never cached; every
   // other mode resolves to a stable file we can remember per folder + filter so
   // repeated grid renders during navigation skip the recursive subtree walk.
