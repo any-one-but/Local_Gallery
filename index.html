@@ -2098,21 +2098,16 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 /* Every appearance mode except Retro (data-retro="on") and OLED Dark
-   (data-theme="superdark") gives the item dropdown menus a high-contrast
-   surface: the menu background uses the app's contrast color (--color0-primary)
-   so it stands clearly apart from the app background, menu text uses the app
-   background color so it stays legible, and hovering an item paints it with the
-   app background (text flips back to the contrast color). Settings selects
+   (data-theme="superdark") separates the item dropdown menus from the app using
+   shades already present in the active scheme (staying in the chosen light/dark
+   and appearance mode): the menu sits on the elevated surface shade
+   (--color1-secondary) so it does not blend into the app background, and hovered
+   items use the app background shade (--color1-primary) so the hover does not
+   blend into the menu. Text keeps its normal color. Settings selects
    (.optSelectMenu) keep their default look. */
 :root:not([data-retro="on"]):not([data-theme="superdark"])
   .dropdownMenu:not(.optSelectMenu) {
-  background: var(--color0-primary);
-}
-
-:root:not([data-retro="on"]):not([data-theme="superdark"])
-  .dropdownMenu:not(.optSelectMenu)
-  button:not(.destructiveAction) {
-  color: var(--color1-primary);
+  background: var(--color1-secondary);
 }
 
 :root:not([data-retro="on"]):not([data-theme="superdark"])
@@ -2122,15 +2117,6 @@ img[data-rotate-key].rotatingThumbFade {
   .dropdownMenu:not(.optSelectMenu)
   button:focus-visible {
   background: var(--color1-primary);
-}
-
-:root:not([data-retro="on"]):not([data-theme="superdark"])
-  .dropdownMenu:not(.optSelectMenu)
-  button:not(.destructiveAction):hover:not(:disabled),
-:root:not([data-retro="on"]):not([data-theme="superdark"])
-  .dropdownMenu:not(.optSelectMenu)
-  button:not(.destructiveAction):focus-visible {
-  color: var(--color0-primary);
 }
 
 .dropdownMenu .dropdownMenuSubmenu {
