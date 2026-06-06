@@ -2098,22 +2098,39 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 /* Every appearance mode except Retro (data-retro="on") and OLED Dark
-   (data-theme="superdark") renders dropdown menus as a distinct floating card:
-   the menu surface (--color1-secondary) is set apart from the app background
-   (--color1-primary) with a defining edge of that app color, and hovered items
-   are painted with the app background so they clearly contrast against the menu
-   surface. */
-:root:not([data-retro="on"]):not([data-theme="superdark"]) .dropdownMenu {
-  border: 1px solid var(--color1-primary);
+   (data-theme="superdark") gives the item dropdown menus a high-contrast
+   surface: the menu background uses the app's contrast color (--color0-primary)
+   so it stands clearly apart from the app background, menu text uses the app
+   background color so it stays legible, and hovering an item paints it with the
+   app background (text flips back to the contrast color). Settings selects
+   (.optSelectMenu) keep their default look. */
+:root:not([data-retro="on"]):not([data-theme="superdark"])
+  .dropdownMenu:not(.optSelectMenu) {
+  background: var(--color0-primary);
 }
 
 :root:not([data-retro="on"]):not([data-theme="superdark"])
-  .dropdownMenu
+  .dropdownMenu:not(.optSelectMenu)
+  button:not(.destructiveAction) {
+  color: var(--color1-primary);
+}
+
+:root:not([data-retro="on"]):not([data-theme="superdark"])
+  .dropdownMenu:not(.optSelectMenu)
   button:hover:not(:disabled),
 :root:not([data-retro="on"]):not([data-theme="superdark"])
-  .dropdownMenu
+  .dropdownMenu:not(.optSelectMenu)
   button:focus-visible {
   background: var(--color1-primary);
+}
+
+:root:not([data-retro="on"]):not([data-theme="superdark"])
+  .dropdownMenu:not(.optSelectMenu)
+  button:not(.destructiveAction):hover:not(:disabled),
+:root:not([data-retro="on"]):not([data-theme="superdark"])
+  .dropdownMenu:not(.optSelectMenu)
+  button:not(.destructiveAction):focus-visible {
+  color: var(--color0-primary);
 }
 
 .dropdownMenu .dropdownMenuSubmenu {
