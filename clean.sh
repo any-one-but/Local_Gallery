@@ -18,54 +18,188 @@ STEP8_TRIM_SECONDS=10
 STEP9_TRIM_END_SECONDS=10
 STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11)
 
-# Optional terminal colors when stdout is a TTY.
+# ── Terminal capabilities, palette, and box-drawing glyphs ───────────
+# A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
+# falls back to plain 7-bit ASCII so logs stay readable.
 if [[ -t 1 ]]; then
+  UI_TTY=1
+else
+  UI_TTY=0
+fi
+
+if [[ "$UI_TTY" -eq 1 ]]; then
   C_RESET=$'\033[0m'
   C_BOLD=$'\033[1m'
   C_DIM=$'\033[2m'
   C_BLUE=$'\033[34m'
+  C_CYAN=$'\033[36m'
   C_GREEN=$'\033[32m'
   C_YELLOW=$'\033[33m'
   C_RED=$'\033[31m'
+  C_WHITE=$'\033[97m'
+
+  G_H='─';  G_V='│'
+  G_TL='┌'; G_TR='┐'; G_BL='└'; G_BR='┘'; G_ML='├'; G_MR='┤'
+  G_DH='═'; G_DV='║'; G_DTL='╔'; G_DTR='╗'; G_DBL='╚'; G_DBR='╝'
+  G_BARF='█'; G_BARE='░'
+  G_ARROW='»'; G_DOT='·'; G_BULL='•'
 else
-  C_RESET=""
-  C_BOLD=""
-  C_DIM=""
-  C_BLUE=""
-  C_GREEN=""
-  C_YELLOW=""
-  C_RED=""
+  C_RESET=""; C_BOLD=""; C_DIM=""
+  C_BLUE=""; C_CYAN=""; C_GREEN=""; C_YELLOW=""; C_RED=""; C_WHITE=""
+
+  G_H='-';  G_V='|'
+  G_TL='+'; G_TR='+'; G_BL='+'; G_BR='+'; G_ML='+'; G_MR='+'
+  G_DH='='; G_DV='|'; G_DTL='+'; G_DTR='+'; G_DBL='+'; G_DBR='+'
+  G_BARF='#'; G_BARE='-'
+  G_ARROW='>'; G_DOT='.'; G_BULL='*'
 fi
 
 UI_STATUS_ACTIVE=0
+UI_CURSOR_HIDDEN=0
+UI_PROGRESS_KEY=""
+UI_PROGRESS_PCT=-1
+UI_WIDTH_MAX=64
 
-ui_clear_status_line() {
-  if [[ -t 1 && "${UI_STATUS_ACTIVE:-0}" -eq 1 ]]; then
-    printf "\r\033[2K"
-    UI_STATUS_ACTIVE=0
+ui_cols() {
+  local w="${COLUMNS:-}"
+  if ! is_int "$w" || [[ "$w" -le 0 ]]; then
+    w="$(tput cols 2>/dev/null || printf "80")"
+  fi
+  if ! is_int "$w" || [[ "$w" -le 0 ]]; then w=80; fi
+  printf "%s" "$w"
+}
+
+# Tidy frame width: track the terminal but cap it so boxes stay compact.
+ui_width() {
+  local w
+  w="$(ui_cols)"
+  if [[ "$w" -gt "$UI_WIDTH_MAX" ]]; then w="$UI_WIDTH_MAX"; fi
+  if [[ "$w" -lt 24 ]]; then w=24; fi
+  printf "%s" "$w"
+}
+
+# Repeat a (possibly multibyte) glyph N times. tr can't do this safely for
+# UTF-8 box characters, so build the run a character at a time.
+ui_repeat() {
+  local ch="$1" n="${2:-0}" out="" i
+  [[ "$n" -lt 0 ]] && n=0
+  for ((i=0; i<n; i++)); do out+="$ch"; done
+  printf "%s" "$out"
+}
+
+ui_hide_cursor() {
+  if [[ "$UI_TTY" -eq 1 && "$UI_CURSOR_HIDDEN" -eq 0 ]]; then
+    printf "\033[?25l"
+    UI_CURSOR_HIDDEN=1
   fi
 }
 
-log_info() { ui_clear_status_line; printf "%s[INFO]%s %s\n" "$C_BLUE" "$C_RESET" "$*"; }
-log_ok() { ui_clear_status_line; printf "%s[OK]%s   %s\n" "$C_GREEN" "$C_RESET" "$*"; }
-log_warn() { ui_clear_status_line; printf "%s[WARN]%s %s\n" "$C_YELLOW" "$C_RESET" "$*"; }
-log_err() { ui_clear_status_line; printf "%s[ERR]%s  %s\n" "$C_RED" "$C_RESET" "$*" >&2; }
+ui_show_cursor() {
+  if [[ "$UI_TTY" -eq 1 && "$UI_CURSOR_HIDDEN" -eq 1 ]]; then
+    printf "\033[?25h"
+    UI_CURSOR_HIDDEN=0
+  fi
+}
 
-print_divider() { ui_clear_status_line; printf "%s\n" "------------------------------------------------------------"; }
+ui_on_signal() { ui_show_cursor; exit 130; }
+trap 'ui_show_cursor' EXIT
+trap 'ui_on_signal' INT TERM
 
+ui_clear_status_line() {
+  if [[ "$UI_TTY" -eq 1 && "${UI_STATUS_ACTIVE:-0}" -eq 1 ]]; then
+    printf "\r\033[K"
+    UI_STATUS_ACTIVE=0
+    ui_show_cursor
+  fi
+}
+
+ui_box_top()    { ui_clear_status_line; printf "%s%s%s%s%s\n" "$C_DIM" "$G_TL" "$(ui_repeat "$G_H" $(( $(ui_width) - 2 )))" "$G_TR" "$C_RESET"; }
+ui_box_sep()    { ui_clear_status_line; printf "%s%s%s%s%s\n" "$C_DIM" "$G_ML" "$(ui_repeat "$G_H" $(( $(ui_width) - 2 )))" "$G_MR" "$C_RESET"; }
+ui_box_bottom() { ui_clear_status_line; printf "%s%s%s%s%s\n" "$C_DIM" "$G_BL" "$(ui_repeat "$G_H" $(( $(ui_width) - 2 )))" "$G_BR" "$C_RESET"; }
+
+# A single boxed row. Text must be plain ASCII so byte length == column width.
+ui_box_line() {
+  local text="$1" color="${2:-$C_RESET}"
+  local w inner pad
+  w="$(ui_width)"
+  inner=$(( w - 2 ))
+  pad=$(( inner - ${#text} - 1 ))
+  [[ "$pad" -lt 0 ]] && pad=0
+  ui_clear_status_line
+  printf "%s%s%s %s%s%s%s%s%s%s\n" \
+    "$C_DIM" "$G_V" "$C_RESET" \
+    "$color" "$text" "$C_RESET" \
+    "$(ui_repeat ' ' "$pad")" \
+    "$C_DIM" "$G_V" "$C_RESET"
+}
+
+# Double-ruled title banner with an optional right-aligned tag (e.g. version).
+ui_banner() {
+  local left="$1" right="${2:-}"
+  local w inner pad
+  w="$(ui_width)"
+  inner=$(( w - 2 ))
+  pad=$(( inner - ${#left} - ${#right} - 4 ))
+  [[ "$pad" -lt 1 ]] && pad=1
+  ui_clear_status_line
+  printf "%s%s%s%s%s\n" "$C_BOLD$C_CYAN" "$G_DTL" "$(ui_repeat "$G_DH" "$inner")" "$G_DTR" "$C_RESET"
+  printf "%s%s%s  %s%s%s%s%s%s%s  %s%s%s\n" \
+    "$C_BOLD$C_CYAN" "$G_DV" "$C_RESET" \
+    "$C_BOLD$C_WHITE" "$left" "$C_RESET" \
+    "$(ui_repeat ' ' "$pad")" \
+    "$C_DIM" "$right" "$C_RESET" \
+    "$C_BOLD$C_CYAN" "$G_DV" "$C_RESET"
+  printf "%s%s%s%s%s\n" "$C_BOLD$C_CYAN" "$G_DBL" "$(ui_repeat "$G_DH" "$inner")" "$G_DBR" "$C_RESET"
+}
+
+# Lightweight section header for prompts/sub-menus.
+ui_section() {
+  ui_clear_status_line
+  printf "\n%s%s%s %s%s%s\n" "$C_BOLD$C_CYAN" "$G_ARROW" "$C_RESET" "$C_BOLD$C_WHITE" "$1" "$C_RESET"
+}
+
+# Per-step header: arrow + step label, underlined by a thin rule.
+ui_step_header() {
+  local num="$1" desc="$2"
+  ui_clear_status_line
+  UI_PROGRESS_KEY=""
+  UI_PROGRESS_PCT=-1
+  printf "\n%s%s%s %sSTEP %s%s  %s%s%s\n" \
+    "$C_BOLD$C_CYAN" "$G_ARROW" "$C_RESET" \
+    "$C_BOLD$C_WHITE" "$num" "$C_RESET" \
+    "$C_BOLD" "$desc" "$C_RESET"
+  printf "%s%s%s\n" "$C_DIM" "$(ui_repeat "$G_H" "$(ui_width)")" "$C_RESET"
+}
+
+# Styled prompt prefix; use as: read -r -p "$(ui_prompt 'Question')" var
+ui_prompt() {
+  printf "%s%s%s %s%s%s %s>%s " \
+    "$C_BOLD$C_CYAN" "$G_ARROW" "$C_RESET" \
+    "$C_BOLD" "$1" "$C_RESET" \
+    "$C_DIM" "$C_RESET"
+}
+
+log_info() { ui_clear_status_line; printf "%s%s[INFO]%s %s\n" "$C_BOLD" "$C_BLUE" "$C_RESET" "$*"; }
+log_ok()   { ui_clear_status_line; printf "%s%s[ OK ]%s %s\n" "$C_BOLD" "$C_GREEN" "$C_RESET" "$*"; }
+log_warn() { ui_clear_status_line; printf "%s%s[WARN]%s %s\n" "$C_BOLD" "$C_YELLOW" "$C_RESET" "$*"; }
+log_err()  { ui_clear_status_line; printf "%s%s[FAIL]%s %s\n" "$C_BOLD" "$C_RED" "$C_RESET" "$*" >&2; }
+
+print_divider() {
+  ui_clear_status_line
+  printf "%s%s%s\n" "$C_DIM" "$(ui_repeat "$G_H" "$(ui_width)")" "$C_RESET"
+}
+
+# Dim sub-step note. Signature kept (current,total,label); only the label shows.
 phase_note() {
-  local current="$1"
-  local total="$2"
   local label="$3"
   ui_clear_status_line
-  printf "%s[%d/%d]%s %s\n" "$C_DIM" "$current" "$total" "$C_RESET" "$label"
+  printf "%s   %s %s%s\n" "$C_DIM" "$G_DOT" "$label" "$C_RESET"
 }
 
 summary_item() {
-  local label="$1"
-  local value="$2"
+  local label="$1" value="$2"
   ui_clear_status_line
-  printf "  %-24s %s\n" "${label}:" "$value"
+  printf "   %s%-22s%s %s%s%s\n" "$C_DIM" "$label" "$C_RESET" "$C_BOLD" "$value" "$C_RESET"
 }
 
 progress_draw() {
@@ -73,43 +207,59 @@ progress_draw() {
   local current="${2:-0}"
   local total="${3:-1}"
   local mode="${4:-inline}"
-  local pct filled empty term_cols suffix label_plain line_budget
-  local bar_width="$PROGRESS_BAR_WIDTH"
-  local bar_filled bar_empty
+  local pct filled empty bar_width suffix term_cols line_budget bar
 
   if ! is_int "$current"; then current=0; fi
   if ! is_int "$total" || [[ "$total" -le 0 ]]; then total=1; fi
   [[ "$current" -lt 0 ]] && current=0
   [[ "$current" -gt "$total" ]] && current="$total"
-
   pct=$(( current * 100 / total ))
-  suffix=$(printf " %3d%% (%d/%d)" "$pct" "$current" "$total")
-  label_plain="${label} "
-  term_cols="${COLUMNS:-}"
-  if [[ -t 1 && "$mode" != "line" ]]; then
-    if ! is_int "$term_cols" || [[ "$term_cols" -le 0 ]]; then
-      term_cols="$(tput cols 2>/dev/null || printf "80")"
+
+  if [[ "$UI_TTY" -eq 1 && "$mode" != "line" ]]; then
+    # Anti-flicker: only repaint when the percentage actually changes (or on
+    # completion). Big libraries call this thousands of times per step.
+    if [[ "$label" == "$UI_PROGRESS_KEY" && "$pct" -eq "$UI_PROGRESS_PCT" && "$current" -lt "$total" ]]; then
+      return 0
     fi
-    if ! is_int "$term_cols" || [[ "$term_cols" -le 0 ]]; then term_cols=80; fi
-    line_budget=$(( term_cols - ${#label_plain} - 2 - ${#suffix} ))
+    UI_PROGRESS_KEY="$label"
+    UI_PROGRESS_PCT="$pct"
+  fi
+
+  bar_width="$PROGRESS_BAR_WIDTH"
+  suffix="$(printf "%3d%%  %d/%d" "$pct" "$current" "$total")"
+
+  if [[ "$UI_TTY" -eq 1 && "$mode" != "line" ]]; then
+    term_cols="$(ui_cols)"
+    line_budget=$(( term_cols - ${#label} - ${#suffix} - 6 ))
     if [[ "$line_budget" -lt "$bar_width" ]]; then bar_width="$line_budget"; fi
     if [[ "$bar_width" -lt "$PROGRESS_BAR_MIN_WIDTH" ]]; then bar_width="$PROGRESS_BAR_MIN_WIDTH"; fi
   fi
-  filled=$(( pct * bar_width / 100 ))
-  empty=$(( bar_width - filled ))
-  bar_filled=$(printf "%${filled}s" "" | tr ' ' '#')
-  bar_empty=$(printf "%${empty}s" "" | tr ' ' '-')
 
-  if [[ -t 1 && "$mode" != "line" ]]; then
-    printf "\r\033[2K%s%s%s [%s%s]%s" "$C_DIM" "$label" "$C_RESET" "$bar_filled" "$bar_empty" "$suffix"
+  filled=$(( pct * bar_width / 100 ))
+  [[ "$filled" -gt "$bar_width" ]] && filled="$bar_width"
+  [[ "$filled" -lt 0 ]] && filled=0
+  empty=$(( bar_width - filled ))
+
+  if [[ "$UI_TTY" -eq 1 && "$mode" != "line" ]]; then
+    ui_hide_cursor
+    bar="${C_GREEN}$(ui_repeat "$G_BARF" "$filled")${C_DIM}$(ui_repeat "$G_BARE" "$empty")${C_RESET}"
+    # Write content first, then clear-to-end-of-line — never blanks the row,
+    # so there is no flash between frames.
+    printf "\r%s%s%s %s[%s%s]%s %s%s%s\033[K" \
+      "$C_DIM" "$label" "$C_RESET" \
+      "$C_DIM" "$bar" "$C_DIM" "$C_RESET" \
+      "$C_BOLD" "$suffix" "$C_RESET"
     UI_STATUS_ACTIVE=1
     if [[ "$current" -ge "$total" ]]; then
       printf "\n"
       UI_STATUS_ACTIVE=0
+      UI_PROGRESS_KEY=""
+      UI_PROGRESS_PCT=-1
+      ui_show_cursor
     fi
   else
     ui_clear_status_line
-    printf "%s [%s%s] %3d%% (%d/%d)\n" "$label" "$bar_filled" "$bar_empty" "$pct" "$current" "$total"
+    printf "%s [%s%s] %s\n" "$label" "$(ui_repeat "$G_BARF" "$filled")" "$(ui_repeat "$G_BARE" "$empty")" "$suffix"
   fi
 }
 
@@ -120,16 +270,20 @@ run_with_spinner() {
   local spinner='|/-\'
   local mark
 
-  if [[ ! -t 1 ]]; then
+  if [[ "$UI_TTY" -ne 1 ]]; then
     "$@"
     return $?
   fi
 
-  "$@" &
+  # Discard the worker's own chatter (czkawka/ffmpeg progress) so it can't
+  # fight the spinner. Callers that need output redirect it to a file inside
+  # their own command, which is unaffected by this.
+  ui_hide_cursor
+  "$@" >/dev/null 2>&1 &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     mark="${spinner:$(( i % 4 )):1}"
-    printf "\r\033[2K%s%s%s %s" "$C_DIM" "$label" "$C_RESET" "$mark"
+    printf "\r%s%s%s %s%s%s\033[K" "$C_DIM" "$label" "$C_RESET" "$C_CYAN" "$mark" "$C_RESET"
     UI_STATUS_ACTIVE=1
     i=$((i + 1))
     sleep 0.12
@@ -137,11 +291,12 @@ run_with_spinner() {
   wait "$pid"
   rc=$?
   if [[ "$rc" -eq 0 ]]; then
-    printf "\r\033[2K%s%s%s done\n" "$C_DIM" "$label" "$C_RESET"
+    printf "\r%s%s%s  %s[ ok ]%s\033[K\n" "$C_DIM" "$label" "$C_RESET" "$C_GREEN" "$C_RESET"
   else
-    printf "\r\033[2K%s%s%s failed\n" "$C_DIM" "$label" "$C_RESET"
+    printf "\r%s%s%s  %s[fail]%s\033[K\n" "$C_DIM" "$label" "$C_RESET" "$C_RED" "$C_RESET"
   fi
   UI_STATUS_ACTIVE=0
+  ui_show_cursor
   return "$rc"
 }
 
@@ -320,9 +475,9 @@ ensure_waifu2x_ready() {
     return 0
   fi
 
-  print_divider
-  echo "Step 8 requires waifu2x-ncnn-vulkan and its model files."
-  read -r -p "Install or refresh waifu2x now? [Y/n] " ans
+  ui_section "WAIFU2X REQUIRED"
+  printf "   Step 8 needs waifu2x-ncnn-vulkan and its model files.\n"
+  read -r -p "$(ui_prompt 'Install or refresh waifu2x now? [Y/n]')" ans
   ans="${ans:-Y}"
   if [[ ! "$ans" =~ ^[Yy]$ ]]; then
     log_err "Cannot run step 8 without waifu2x."
@@ -371,12 +526,11 @@ ensure_prerequisites() {
     return 0
   fi
 
-  print_divider
-  echo "Missing prerequisites detected:"
+  ui_section "MISSING PREREQUISITES"
   for label in "${missing_labels[@]+"${missing_labels[@]}"}"; do
-    printf "  - %s\n" "$label"
+    printf "   %s%s%s %s\n" "$C_YELLOW" "$G_BULL" "$C_RESET" "$label"
   done
-  read -r -p "Install missing prerequisites now? [Y/n] " ans
+  read -r -p "$(ui_prompt 'Install missing prerequisites now? [Y/n]')" ans
   ans="${ans:-Y}"
   if [[ ! "$ans" =~ ^[Yy]$ ]]; then
     log_err "Cannot continue without installing prerequisites."
@@ -525,13 +679,12 @@ run_step() {
   local desc="$3"
   local start_ts end_ts elapsed
 
-  print_divider
-  printf "%sStep %s%s  %s\n" "$C_BOLD" "$step_num" "$C_RESET" "$desc"
+  ui_step_header "$step_num" "$desc"
   start_ts=$(date +%s)
   "$fn"
   end_ts=$(date +%s)
   elapsed=$(( end_ts - start_ts ))
-  log_ok "Step $step_num finished in ${elapsed}s"
+  log_ok "Step $step_num done in ${elapsed}s"
 }
 
 step1_dedupe() {
@@ -559,16 +712,12 @@ step1_dedupe() {
     rm -f "$dedupe_log"
     exit 1
   fi
-  phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Dedupe pass complete."
   if [[ -s "$dedupe_log" ]]; then
-    log_info "fdupes reported duplicate sets and removals."
+    log_info "Duplicate sets found and removed."
   else
-    log_info "No duplicate groups were reported."
+    log_info "No duplicate groups were found."
   fi
   rm -f "$dedupe_log"
-  phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Dedupe finished."
 }
 
 step2_convert_videos() {
@@ -894,7 +1043,7 @@ step3_process_video_file() {
   local waifu2x_cmd="$2"
   local model_dir="$3"
   local fps base final_output tmp_output workdir frames_dir upscaled_dir
-  local name phase=0 phase_total=3
+  local name
   local waifu2x_ok=0 cpu_fallback_used=0
 
   STEP3_LAST_VIDEO_CPU_FALLBACK=0
@@ -917,8 +1066,6 @@ step3_process_video_file() {
     rm -rf "$workdir"
     return 1
   fi
-  phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Frames extracted for ${name}."
 
   if run_with_spinner "Upscaling frames: ${name}" step3_run_waifu2x_dir_attempt "$frames_dir" "$upscaled_dir" "$waifu2x_cmd" "$model_dir" 512 "auto" && [[ -n "$(find "$upscaled_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
     waifu2x_ok=1
@@ -931,8 +1078,6 @@ step3_process_video_file() {
     rm -rf "$workdir"
     return 1
   fi
-  phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Frames upscaled for ${name}."
 
   rm -f "$tmp_output"
   if ! run_with_spinner "Rebuilding video: ${name}" ffmpeg -hide_banner -loglevel error -y -framerate "$fps" -i "${upscaled_dir}/frame_%06d.png" -i "$file" -map 0:v:0 -map 1:a? -c:v libx264 -pix_fmt yuv420p -c:a copy -shortest "$tmp_output"; then
@@ -954,8 +1099,6 @@ step3_process_video_file() {
     rm -f "$file"
   fi
   mv -f "$tmp_output" "$final_output"
-  phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Video rebuilt for ${name}."
   rm -rf "$workdir"
   return 0
 }
@@ -1097,11 +1240,9 @@ step3_upscale_videos() {
   fi
 
   log_info "Upscaling and denoising $total video file(s) with waifu2x (scale=${WAIFU2X_SCALE}x, noise=${WAIFU2X_NOISE})."
-  log_info "Video mode rebuilds processed files as .mp4."
 
   for ((i=0; i<total; i++)); do
     file="${files[$i]}"
-    log_info "Processing video $((i + 1))/$total: $(basename "$file")"
     if step3_process_video_file "$file" "$waifu2x_cmd" "$model_dir"; then
       processed=$((processed + 1))
       if [[ "${STEP3_LAST_VIDEO_CPU_FALLBACK:-0}" -eq 1 ]]; then
@@ -1250,7 +1391,6 @@ step4_resize_media() {
       if [[ -s "$tmp" ]]; then
         mv -f "$tmp" "$file"
         vid_resized=$((vid_resized + 1))
-        log_ok "Resized video to max height ${MAX_MEDIA_HEIGHT}px."
       else
         rm -f "$tmp"
         vid_failed=$((vid_failed + 1))
@@ -1479,8 +1619,6 @@ step9_move_empty_items() {
   summary_item "Empty folders moved" "$moved_dirs"
   summary_item "Failed" "$failed"
   summary_item "Bucket" "$bucket_root"
-  phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Empty-item move finished."
 }
 
 sanitize_name_part() {
@@ -2276,15 +2414,13 @@ step6_move_similar_media() {
   summary_item "Missing or skipped" "$missing"
   summary_item "Failed" "$failed"
   summary_item "Bucket" "$bucket_root"
-  phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Similar-media move finished."
 }
 
 choose_step3_upscale_options() {
   local mode scale noise cpu_fallback
 
-  print_divider
-  read -r -p "Process videos or images? [images] " mode
+  ui_section "STEP 8 OPTIONS  -  UPSCALE & DENOISE"
+  read -r -p "$(ui_prompt 'Process videos or images? [images]')" mode
   mode="${mode:-images}"
   while true; do
     case "$mode" in
@@ -2297,33 +2433,33 @@ choose_step3_upscale_options() {
         break
         ;;
       *)
-        read -r -p "Process videos or images? [images] " mode
+        read -r -p "$(ui_prompt 'Process videos or images? [images]')" mode
         mode="${mode:-images}"
         ;;
     esac
   done
 
-  read -r -p "Upscale level [2] (1, 2, or 4): " scale
+  read -r -p "$(ui_prompt 'Upscale level [2] (1, 2, or 4)')" scale
   scale="${scale:-2}"
   while true; do
     case "$scale" in
       1|2|4) break ;;
-      *) read -r -p "Choose upscale level (1, 2, or 4): " scale ;;
+      *) read -r -p "$(ui_prompt 'Choose upscale level (1, 2, or 4)')" scale ;;
     esac
   done
   WAIFU2X_SCALE="$scale"
 
-  read -r -p "Denoise level [3] (0, 1, 2, or 3): " noise
+  read -r -p "$(ui_prompt 'Denoise level [3] (0, 1, 2, or 3)')" noise
   noise="${noise:-3}"
   while true; do
     case "$noise" in
       0|1|2|3) break ;;
-      *) read -r -p "Choose denoise level (0, 1, 2, or 3): " noise ;;
+      *) read -r -p "$(ui_prompt 'Choose denoise level (0, 1, 2, or 3)')" noise ;;
     esac
   done
   WAIFU2X_NOISE="$noise"
 
-  read -r -p "Use CPU fallback if needed? [Y/n] " cpu_fallback
+  read -r -p "$(ui_prompt 'Use CPU fallback if needed? [Y/n]')" cpu_fallback
   cpu_fallback="${cpu_fallback:-Y}"
   if [[ "$cpu_fallback" =~ ^[Nn]$ ]]; then
     STEP3_CPU_FALLBACK=0
@@ -2340,12 +2476,12 @@ choose_step3_upscale_options() {
 
 choose_step8_trim_seconds() {
   local seconds
-  print_divider
-  read -r -p "Trim how many seconds from start of each video? [10] " seconds
+  ui_section "STEP 9 OPTIONS  -  TRIM VIDEO STARTS"
+  read -r -p "$(ui_prompt 'Trim how many seconds from start of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
     log_warn "Please enter a valid number of seconds (example: 10 or 3.5)."
-    read -r -p "Trim how many seconds from start of each video? [10] " seconds
+    read -r -p "$(ui_prompt 'Trim how many seconds from start of each video? [10]')" seconds
     seconds="${seconds:-10}"
   done
   if awk -v s="$seconds" 'BEGIN { exit !(s > 0) }'; then
@@ -2359,12 +2495,12 @@ choose_step8_trim_seconds() {
 
 choose_step9_trim_end_seconds() {
   local seconds
-  print_divider
-  read -r -p "Trim how many seconds from end of each video? [10] " seconds
+  ui_section "STEP 10 OPTIONS  -  TRIM VIDEO ENDS"
+  read -r -p "$(ui_prompt 'Trim how many seconds from end of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
     log_warn "Please enter a valid number of seconds (example: 10 or 3.5)."
-    read -r -p "Trim how many seconds from end of each video? [10] " seconds
+    read -r -p "$(ui_prompt 'Trim how many seconds from end of each video? [10]')" seconds
     seconds="${seconds:-10}"
   done
   if awk -v s="$seconds" 'BEGIN { exit !(s > 0) }'; then
@@ -2439,11 +2575,11 @@ step8_trim_video_lead() {
   done
 
   log_info "Step 9 trim-start summary:"
-  printf "  - Trim seconds:        %ss\n" "$STEP8_TRIM_SECONDS"
-  printf "  - Files trimmed:       %d\n" "$trimmed"
-  printf "  - Approximate trims:   %d\n" "$approximate"
-  printf "  - Skipped (too short): %d\n" "$skipped_short"
-  printf "  - Failed:              %d\n" "$failed"
+  summary_item "Trim seconds" "${STEP8_TRIM_SECONDS}s"
+  summary_item "Files trimmed" "$trimmed"
+  summary_item "Approximate trims" "$approximate"
+  summary_item "Skipped (too short)" "$skipped_short"
+  summary_item "Failed" "$failed"
 }
 
 step9_trim_video_tail() {
@@ -2508,25 +2644,27 @@ step9_trim_video_tail() {
   done
 
   log_info "Step 10 trim-end summary:"
-  printf "  - Trim seconds:        %ss\n" "$STEP9_TRIM_END_SECONDS"
-  printf "  - Files trimmed:       %d\n" "$trimmed"
-  printf "  - Approximate trims:   %d\n" "$approximate"
-  printf "  - Skipped (too short): %d\n" "$skipped_short"
-  printf "  - Failed:              %d\n" "$failed"
+  summary_item "Trim seconds" "${STEP9_TRIM_END_SECONDS}s"
+  summary_item "Files trimmed" "$trimmed"
+  summary_item "Approximate trims" "$approximate"
+  summary_item "Skipped (too short)" "$skipped_short"
+  summary_item "Failed" "$failed"
 }
 
 choose_resize_height() {
   local choice custom
 
-  print_divider
-  echo "Step 4 Resize: choose max media height"
-  echo "1. 3200 (Default)"
-  echo "2. 2400"
-  echo "3. 2800"
-  echo "4. 3600"
-  echo "5. 4320"
-  echo "6. Custom"
-  read -r -p "Select size [1]: " choice
+  ui_box_top
+  ui_box_line "STEP 4 RESIZE  -  MAX MEDIA HEIGHT" "$C_BOLD$C_WHITE"
+  ui_box_sep
+  ui_box_line "  1   3200  (default)"
+  ui_box_line "  2   2400"
+  ui_box_line "  3   2800"
+  ui_box_line "  4   3600"
+  ui_box_line "  5   4320"
+  ui_box_line "  6   Custom"
+  ui_box_bottom
+  read -r -p "$(ui_prompt 'Select size [1]')" choice
   choice="${choice:-1}"
 
   case "$choice" in
@@ -2537,7 +2675,7 @@ choose_resize_height() {
     5) MAX_MEDIA_HEIGHT=4320 ;;
     6)
       while true; do
-        read -r -p "Enter custom max height in pixels: " custom
+        read -r -p "$(ui_prompt 'Enter custom max height in pixels')" custom
         if is_int "$custom" && [[ "$custom" -gt 0 ]]; then
           MAX_MEDIA_HEIGHT="$custom"
           break
@@ -2560,18 +2698,20 @@ main() {
   local sorted=() valid_selected=()
   local num fn desc selected_num
 
-  print_divider
-  printf "%sLocal Gallery Cleaner v%s%s\n" "$C_BOLD" "$SCRIPT_VERSION" "$C_RESET"
-  printf "Working directory: %s\n" "$PWD"
-  print_divider
+  printf "\n"
+  ui_banner "LOCAL GALLERY CLEANER" "v${SCRIPT_VERSION}"
+  printf "  %sworking directory%s  %s%s%s\n" "$C_DIM" "$C_RESET" "$C_BOLD" "$PWD" "$C_RESET"
   ensure_prerequisites
 
-  echo "Choose steps to run:"
-  echo "  0. Core cleanup (steps 1-7)"
+  ui_box_top
+  ui_box_line "SELECT STEPS TO RUN" "$C_BOLD$C_WHITE"
+  ui_box_sep
+  ui_box_line "$(printf '  %2s   %s' "0" "Core cleanup (steps 1-7)")"
   for num in "${STEP_ORDER[@]}"; do
-    printf "  %2d. %s\n" "$num" "$(step_description "$num")"
+    ui_box_line "$(printf '  %2d   %s' "$num" "$(step_description "$num")")"
   done
-  read -r -p "Steps (example: 1,2,4-6) > " input
+  ui_box_bottom
+  read -r -p "$(ui_prompt 'Steps (example: 1,2,4-6)')" input
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
@@ -2635,10 +2775,9 @@ main() {
     exit 1
   fi
 
-  print_divider
-  echo "Run plan:"
+  ui_section "RUN PLAN"
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
-    printf "  %2d. %s\n" "$num" "$(step_description "$num")"
+    printf "   %s%2d%s  %s\n" "$C_BOLD$C_CYAN" "$num" "$C_RESET" "$(step_description "$num")"
   done
 
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
@@ -2650,7 +2789,8 @@ main() {
     esac
   done
 
-  read -r -p "Proceed? [y/N] " confirm
+  printf "\n"
+  read -r -p "$(ui_prompt 'Proceed? [y/N]')" confirm
   confirm="${confirm:-N}"
   if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     log_warn "Cancelled."
@@ -2668,8 +2808,8 @@ main() {
     run_step "$num" "$fn" "$desc"
   done
 
-  print_divider
-  printf "%sAll selected steps finished.%s\n" "$C_BOLD" "$C_RESET"
+  printf "\n"
+  ui_banner "DONE" "all selected steps finished"
 }
 
 main "$@"
