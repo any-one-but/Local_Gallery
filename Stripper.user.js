@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.13.00
+// @version      00.14.00
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole click-path map.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -174,6 +174,9 @@
         posts: [],
         pages: [],
         files: [],
+        subreddits: [],
+        summary: null,
+        summaryNodeId: '',
         countTextOverride: '',
         lastScanAt: 0,
         loadedScanCacheKey: ''
@@ -580,9 +583,14 @@
         state.posts = safeCachedArray(payload.posts);
         state.pages = safeCachedArray(payload.pages);
         state.files = safeCachedArray(payload.files);
+        state.subreddits = safeCachedArray(payload.subreddits);
+        state.summary = payload.summary || null;
+        state.summaryNodeId = payload.summaryNodeId || '';
         state.countTextOverride = '';
         state.lastScanAt = Number(payload.lastScanAt || cached.savedAt || 0) || Date.now();
         state.loadedScanCacheKey = cacheKey;
+        if (state.summaryNodeId && state.summary) rabbithole.recordScan(state.summaryNodeId, state.summary);
+        renderSubsPanel();
         setProgress(100);
         syncUi();
       }
@@ -595,10 +603,120 @@
           posts: state.posts,
           pages: state.pages,
           files: state.files,
+          subreddits: state.subreddits,
+          summary: state.summary,
+          summaryNodeId: state.summaryNodeId,
           lastScanAt: state.lastScanAt
         };
       }
     
+      // Classify a scanned file as image / video / other (text .md excluded).
+      function classifyFileKind(f) {
+        if (!f || f.kind === 'text') return 'text';
+        const ext = String(f.ext || '').toLowerCase();
+        const mime = String(f.mime || '').toLowerCase();
+        if (mime.indexOf('image/') === 0 || /^(?:avif|bmp|gif|jpe?g|png|webp)$/.test(ext)) return 'image';
+        if (mime.indexOf('video/') === 0 || /^(?:m4v|mov|mp4|webm)$/.test(ext)) return 'video';
+        return 'other';
+      }
+
+      // Roll up the current scan into a small summary the Rabbithole map can show.
+      function computeScanSummary() {
+        let files = 0, images = 0, videos = 0;
+        for (const f of state.files) {
+          const k = classifyFileKind(f);
+          if (k === 'text') continue;
+          files++;
+          if (k === 'image') images++;
+          else if (k === 'video') videos++;
+        }
+        return {
+          posts: state.posts.length,
+          files, images, videos,
+          pages: state.pages.length,
+          scannedAt: Date.now()
+        };
+      }
+
+      // The Rabbithole node id for whatever was just scanned (matches classify()).
+      function scannedNodeId(context) {
+        if (!context) return '';
+        if (context.type === 'post') return context.postId ? 'post:' + String(context.postId).toLowerCase() : '';
+        const name = context.username || state.username;
+        return name ? 'user:' + String(name).toLowerCase() : '';
+      }
+
+      // A separate fixed panel (top-right) listing every subreddit a scanned user
+      // has posted in, with post counts. Appears after a user scan; closable.
+      let subsStyleInjected = false;
+      function ensureSubsPanel() {
+        let p = document.getElementById('rgSubsPanel');
+        if (p) return p;
+        if (!subsStyleInjected) {
+          subsStyleInjected = true;
+          GM_addStyle(`
+            #rgSubsPanel{position:fixed;top:18px;right:18px;z-index:2147483646;box-sizing:border-box;width:260px;
+              max-height:50vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.16);
+              border-radius:12px;background:rgba(18,18,21,.92);backdrop-filter:blur(14px);box-shadow:0 16px 48px rgba(0,0,0,.42);
+              color:#f4f4f5;font:12px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+            #rgSubsPanel[hidden]{display:none;}
+            #rgSubsPanel *{box-sizing:border-box;}
+            #rgSubsPanel .rgsub-head{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 11px;
+              border-bottom:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);}
+            #rgSubsPanel .rgsub-title{font-weight:800;font-size:12px;letter-spacing:.3px;}
+            #rgSubsPanel .rgsub-count{color:#a9a9b2;font-size:11px;font-weight:700;min-width:0;overflow:hidden;
+              text-overflow:ellipsis;white-space:nowrap;}
+            #rgSubsPanel .rgsub-close{appearance:none;width:24px;height:24px;padding:0;border-radius:7px;cursor:pointer;
+              border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#f4f4f5;font-size:11px;font-weight:700;}
+            #rgSubsPanel .rgsub-close:hover{background:rgba(255,255,255,.16);}
+            #rgSubsPanel .rgsub-list{flex:1;min-height:0;overflow:auto;padding:6px;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;}
+            #rgSubsPanel .rgsub-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;
+              text-decoration:none;color:#e8e8ee;font-size:12px;font-weight:600;}
+            #rgSubsPanel .rgsub-row:hover{background:rgba(255,255,255,.08);color:#fff;}
+            #rgSubsPanel .rgsub-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+            #rgSubsPanel .rgsub-n{flex:0 0 auto;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.12);
+              color:#d8d8dd;font-size:10px;font-weight:800;}
+          `);
+        }
+        p = document.createElement('div');
+        p.id = 'rgSubsPanel';
+        p.hidden = true;
+        p.innerHTML = `
+          <div class="rgsub-head">
+            <span class="rgsub-title">Subreddits</span>
+            <span class="rgsub-count" id="rgSubCount"></span>
+            <span style="flex:1"></span>
+            <button class="rgsub-close" type="button" title="Hide">✕</button>
+          </div>
+          <div class="rgsub-list" id="rgSubList"></div>`;
+        document.body.appendChild(p);
+        p.querySelector('.rgsub-close').addEventListener('click', () => { p.hidden = true; });
+        return p;
+      }
+
+      function renderSubsPanel() {
+        const subs = state.subreddits || [];
+        if (!subs.length) {
+          const ex = document.getElementById('rgSubsPanel');
+          if (ex) ex.hidden = true;
+          return;
+        }
+        const p = ensureSubsPanel();
+        p.querySelector('#rgSubCount').textContent = `u/${state.username} · ${subs.length}`;
+        const list = p.querySelector('#rgSubList');
+        list.innerHTML = '';
+        subs.forEach(s => {
+          const row = document.createElement('a');
+          row.className = 'rgsub-row';
+          row.href = `https://www.reddit.com/r/${encodeURIComponent(s.name)}/`;
+          row.target = '_blank';
+          row.rel = 'noopener noreferrer';
+          row.innerHTML = `<span class="rgsub-name">r/${s.name}</span><span class="rgsub-n">${s.count}</span>`;
+          list.appendChild(row);
+        });
+        p.hidden = false;
+      }
+
       async function scanCurrentProfile() {
         if (state.busy) return;
         const context = scanContextFromLocation();
@@ -661,6 +779,24 @@
           state.posts = deduped.posts;
           state.pages = deduped.pages;
           state.files = deduped.files;
+
+          // All subreddits this user has posted in (full list, pre-filter), with counts.
+          if (context.type === 'post') {
+            state.subreddits = [];
+          } else {
+            const counts = {};
+            parsed.forEach(p => { if (p.subreddit) counts[p.subreddit] = (counts[p.subreddit] || 0) + 1; });
+            state.subreddits = Object.keys(counts)
+              .map(name => ({ name, count: counts[name] }))
+              .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+          }
+
+          // Hand a summary to the Rabbithole map so hovering this node shows it.
+          state.summary = computeScanSummary();
+          state.summaryNodeId = scannedNodeId(context);
+          if (state.summaryNodeId) rabbithole.recordScan(state.summaryNodeId, state.summary);
+          renderSubsPanel();
+
           state.loadedScanCacheKey = cacheKey;
           setProgress(100);
           logLine(`Scan complete: ${state.posts.length} post folder${state.posts.length === 1 ? '' : 's'}, ${state.pages.length} page archive${state.pages.length === 1 ? '' : 's'}, ${state.files.length} unique file${state.files.length === 1 ? '' : 's'}.`);
@@ -1497,6 +1633,7 @@
         let selectedId = null, query = '', lastNavByPop = false, resizeObs = null;
         let view = 'graph', typeFilter = 'all';   // view: 'graph' | 'columns'
         let didInitialFit = false;
+        let tipEl = null, hoverTimer = null;
 
         // -------------------------------------------------------------- classify
         function classify(href) {
@@ -1586,6 +1723,24 @@
           rec.scraped = !!scraped;
           GM_setValue(key, JSON.stringify(rec));
           bumpRev();
+        }
+
+        // ------------------------------------------------------------- scan link
+        // Scan summaries written by the Stripper scanner, keyed by node id, so
+        // hovering a node can show how much media/text was found (or "Unscanned").
+        function recordScan(id, summary) {
+          if (!id || !summary) return;
+          try { GM_setValue(NS + 'scan:' + id, JSON.stringify(summary)); } catch (e) {}
+          if (isWindowOpen()) scheduleRender();
+        }
+        function getScan(id) {
+          try { const raw = GM_getValue(NS + 'scan:' + id, null); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+        }
+        function scanSummaryText(id) {
+          const s = getScan(id);
+          if (!s) return 'Unscanned';
+          return `Scanned: ${s.posts || 0} posts, ${s.files || 0} files `
+            + `(${s.images || 0} img / ${s.videos || 0} vid), ${s.pages || 0} pages`;
         }
 
         // -------------------------------------------------------- import / merge
@@ -1790,6 +1945,14 @@
             #rrm-window .rrm-btn.danger:hover:not(:disabled){background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.7);}
             #rrm-window .rrm-btn.icon{padding:0;width:28px;}
             #rrm-graph{flex:1;min-height:0;position:relative;}
+            #rrm-tip{position:absolute;z-index:5;transform:translate(-50%,0);min-width:130px;max-width:240px;
+              padding:8px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.16);background:rgba(24,24,28,.97);
+              box-shadow:0 10px 30px rgba(0,0,0,.5);color:#f4f4f5;font-size:11px;pointer-events:none;}
+            #rrm-tip[hidden]{display:none;}
+            #rrm-tip .rrm-tip-h{font-weight:800;font-size:12px;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+            #rrm-tip .rrm-tip-row{display:flex;justify-content:space-between;gap:14px;color:#c9c9cf;padding:1px 0;}
+            #rrm-tip .rrm-tip-row b{color:#fff;font-weight:700;}
+            #rrm-tip .rrm-tip-un{color:#a9a9b2;font-style:italic;}
             #rrm-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 11px;
               border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:#a9a9b2;}
             #rrm-foot .rrm-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
@@ -1920,6 +2083,11 @@
 
           initNetwork(win.querySelector('#rrm-graph'));
 
+          tipEl = document.createElement('div');
+          tipEl.id = 'rrm-tip';
+          tipEl.hidden = true;
+          win.querySelector('#rrm-graph').appendChild(tipEl);
+
           if (typeof ResizeObserver !== 'undefined') {
             resizeObs = new ResizeObserver(() => {
               if (network) { network.setSize('100%', '100%'); network.redraw(); }
@@ -1982,7 +2150,51 @@
             const n = loadGraph().nodes.find(x => x.id === p.nodes[0]);
             if (n) openNodeCurrentTab(n.url);
           });
+          // Hover a node for a beat to see its scan summary (or "Unscanned").
+          network.on('hoverNode', p => {
+            if (hoverTimer) clearTimeout(hoverTimer);
+            const id = p.node;
+            hoverTimer = setTimeout(() => showTip(id), 900);
+          });
+          network.on('blurNode', hideTip);
+          network.on('dragStart', hideTip);
+          network.on('zoom', hideTip);
+          network.on('click', hideTip);
           renderGraph();
+        }
+
+        function escapeHtml(s) {
+          return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        }
+
+        function showTip(id) {
+          if (!network || !tipEl || view === 'columns') return;
+          const node = loadGraph().nodes.find(x => x.id === id);
+          if (!node) return;
+          const label = escapeHtml((node.label || '').replace(/\n/g, ' '));
+          const s = getScan(id);
+          let body;
+          if (!s) {
+            body = '<div class="rrm-tip-un">Unscanned</div>';
+          } else {
+            const row = (k, v) => `<div class="rrm-tip-row"><span>${k}</span><b>${v}</b></div>`;
+            body = row('Posts', s.posts || 0)
+              + row('Files', s.files || 0)
+              + row('Images / Videos', `${s.images || 0} / ${s.videos || 0}`)
+              + row('Pages', s.pages || 0);
+          }
+          tipEl.innerHTML = `<div class="rrm-tip-h">${label}</div>${body}`;
+          const pos = network.getPositions([id])[id];
+          if (!pos) return;
+          const dom = network.canvasToDOM(pos);
+          tipEl.style.left = dom.x + 'px';
+          tipEl.style.top = (dom.y + 16) + 'px';
+          tipEl.hidden = false;
+        }
+
+        function hideTip() {
+          if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+          if (tipEl) tipEl.hidden = true;
         }
 
         // Re-arm physics briefly; the 'stabilized' handler (or the fallback
@@ -2091,6 +2303,7 @@
         // re-render entry point: dispatches to whichever view is active
         function renderGraph() {
           refreshButton();
+          hideTip();
           if (!winEl) return;
           const graphEl = winEl.querySelector('#rrm-graph');
           const colsEl = winEl.querySelector('#rrm-columns');
@@ -2168,6 +2381,13 @@
         function renderColumns(visible) {
           const colsEl = winEl.querySelector('#rrm-columns');
           if (!colsEl) return;
+          // Remember each column's scroll position so rebuilding (e.g. after a
+          // delete) doesn't jump you back to the top while clearing items out.
+          const prevScroll = {};
+          colsEl.querySelectorAll('.rrm-col').forEach(c => {
+            const l = c.querySelector('.rrm-col-list');
+            if (l) prevScroll[c.dataset.type] = l.scrollTop;
+          });
           const titles = { sub: 'Subreddits', user: 'Users', post: 'Posts' };
           const groups = { sub: [], user: [], post: [] };
           visible.forEach(n => { if (groups[n.type]) groups[n.type].push(n); });
@@ -2177,6 +2397,7 @@
             const list = groups[type].slice().sort((a, b) => (a.label || '').localeCompare(b.label || ''));
             const col = document.createElement('div');
             col.className = 'rrm-col';
+            col.dataset.type = type;
             const head = document.createElement('div');
             head.className = 'rrm-col-head';
             head.style.color = COLORS[type];
@@ -2195,6 +2416,7 @@
             }
             col.appendChild(listEl);
             colsEl.appendChild(col);
+            if (prevScroll[type] != null) listEl.scrollTop = prevScroll[type];   // restore scroll
           });
         }
 
@@ -2215,7 +2437,7 @@
           link.target = '_blank';
           link.rel = 'noopener noreferrer';
           link.textContent = (n.label || '').replace(/\n/g, ' ');
-          link.title = n.url + (n.visited ? '' : '  (not visited)');
+          link.title = n.url + (n.visited ? '' : '  (not visited)') + '\n' + scanSummaryText(n.id);
           link.addEventListener('click', (e) => { e.preventDefault(); openNodeNewTab(n.url); });
 
           const openCur = document.createElement('button');
@@ -2279,7 +2501,7 @@
           onLocation(); // record the page you loaded on
         }
 
-        return { bootstrap, toggleWindow, refreshButton };
+        return { bootstrap, toggleWindow, refreshButton, recordScan };
       })();
 
       if (window.__stripperRrmLoaded) { /* avoid double tracking if injected twice */ }
