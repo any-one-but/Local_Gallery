@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.11.00
+// @version      00.12.00
 // @description  Reddit media downloader with a built-in Rabbithole click-path map.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -1461,6 +1461,7 @@
         let booted = false, winEl = null, network = null, nodesDS = null, edgesDS = null;
         let selectedId = null, query = '', lastNavByPop = false, resizeObs = null;
         let view = 'graph', typeFilter = 'all';   // view: 'graph' | 'columns'
+        let didInitialFit = false;
 
         // -------------------------------------------------------------- classify
         function classify(href) {
@@ -1938,7 +1939,7 @@
           // Freeze the layout once it settles so navigating around doesn't keep
           // nudging nodes. Physics is only re-armed (kickPhysics) when the graph
           // actually gains or loses nodes/edges.
-          network.on('stabilized', () => { freezePhysics(); });
+          network.on('stabilized', () => { freezePhysics(); separateComponents(); });
           network.on('selectNode',   p => { selectedId = p.nodes[0]; updateActionButtons(); });
           network.on('deselectNode', () => { selectedId = null; updateActionButtons(); });
           network.on('doubleClick',  p => {
@@ -1961,6 +1962,75 @@
         function freezePhysics() {
           if (physicsTimer) { clearTimeout(physicsTimer); physicsTimer = null; }
           if (network) network.setOptions({ physics: { enabled: false } });
+        }
+
+        // Once the layout has settled, pull apart graphs that aren't connected to
+        // each other: find the connected components, then rigidly shift each one
+        // onto its own cell in a spaced grid so separate clusters never overlap and
+        // are easy to tell apart. Each component keeps its own internal shape — we
+        // only move whole clusters, not the nodes within them. Runs with physics
+        // already frozen, so the new positions stick.
+        function separateComponents() {
+          if (!network || !nodesDS) return;
+          const ids = nodesDS.getIds();
+          if (ids.length < 2) { maybeInitialFit(); return; }
+
+          const adj = {};
+          ids.forEach(id => { adj[id] = []; });
+          edgesDS.get().forEach(e => {
+            if (adj[e.from] && adj[e.to]) { adj[e.from].push(e.to); adj[e.to].push(e.from); }
+          });
+
+          const seen = new Set(), comps = [];
+          ids.forEach(id => {
+            if (seen.has(id)) return;
+            const comp = [], stack = [id];
+            seen.add(id);
+            while (stack.length) {
+              const c = stack.pop();
+              comp.push(c);
+              (adj[c] || []).forEach(nb => { if (!seen.has(nb)) { seen.add(nb); stack.push(nb); } });
+            }
+            comps.push(comp);
+          });
+          if (comps.length < 2) { maybeInitialFit(); return; }
+
+          const pos = network.getPositions();
+          const info = comps.map(comp => {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, cx = 0, cy = 0;
+            comp.forEach(id => {
+              const p = pos[id] || { x: 0, y: 0 };
+              minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+              maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+              cx += p.x; cy += p.y;
+            });
+            return { comp, w: maxX - minX, h: maxY - minY, cx: cx / comp.length, cy: cy / comp.length };
+          });
+
+          const GAP = 260;   // clear empty space between clusters
+          const cellW = Math.max(...info.map(i => i.w)) + GAP;
+          const cellH = Math.max(...info.map(i => i.h)) + GAP;
+          const cols = Math.ceil(Math.sqrt(comps.length));
+          const rows = Math.ceil(comps.length / cols);
+          const originX = -((cols - 1) * cellW) / 2;   // center the whole grid on (0,0)
+          const originY = -((rows - 1) * cellH) / 2;
+
+          info.forEach((ci, idx) => {
+            const targetX = originX + (idx % cols) * cellW;
+            const targetY = originY + Math.floor(idx / cols) * cellH;
+            const dx = targetX - ci.cx, dy = targetY - ci.cy;
+            ci.comp.forEach(id => {
+              const p = pos[id] || { x: 0, y: 0 };
+              network.moveNode(id, p.x + dx, p.y + dy);
+            });
+          });
+          maybeInitialFit();
+        }
+
+        function maybeInitialFit() {
+          if (didInitialFit || !network) return;
+          didInitialFit = true;
+          try { network.fit({ animation: false }); } catch (e) {}
         }
 
         function updateActionButtons() {
