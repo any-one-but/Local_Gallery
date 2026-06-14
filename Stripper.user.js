@@ -655,8 +655,8 @@
         if (!subsStyleInjected) {
           subsStyleInjected = true;
           GM_addStyle(`
-            #rgSubsPanel{position:fixed;top:18px;right:18px;z-index:2147483646;box-sizing:border-box;width:260px;
-              max-height:50vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.16);
+            #rgSubsPanel{position:fixed;top:18px;right:18px;z-index:2147483646;box-sizing:border-box;width:320px;
+              max-width:calc(100vw - 36px);max-height:260px;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.16);
               border-radius:12px;background:rgba(18,18,21,.92);backdrop-filter:blur(14px);box-shadow:0 16px 48px rgba(0,0,0,.42);
               color:#f4f4f5;font:12px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
             #rgSubsPanel[hidden]{display:none;}
