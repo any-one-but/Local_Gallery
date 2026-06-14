@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.12.00
-// @description  Reddit media downloader with a built-in Rabbithole click-path map.
+// @version      00.13.00
+// @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole click-path map.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -649,7 +649,12 @@
     
           const parsed = rawPosts.map(normalizePost).filter(Boolean);
           const mediaPosts = parsed
-            .map(post => ({ ...post, files: extractMediaFiles(post.raw) }))
+            .map(post => {
+              const files = extractMediaFiles(post.raw);
+              const md = buildPostTextFile(post, files.length > 0);   // post title/body as .md
+              if (md) files.push(md);
+              return { ...post, files };
+            })
             .filter(post => post.files.length > 0);
     
           const deduped = buildDedupedDownloads(mediaPosts);
@@ -783,6 +788,32 @@
         return out;
       }
     
+      // Build a Markdown sidecar holding a post's text: title, a little metadata,
+      // and the self-text body. Returns null when there's nothing worth saving
+      // (a link/media post with no body and no media of its own).
+      function buildPostTextFile(post, hasMedia) {
+        const raw = post.raw || {};
+        const body = String(raw.selftext || '').trim();
+        if (!hasMedia && !body) return null;
+
+        const title = (post.title && post.title.trim()) ? post.title.trim() : `post_${post.id}`;
+        const lines = [`# ${title}`, ''];
+        const meta = [];
+        if (post.user) meta.push(`- **Author:** u/${post.user}`);
+        if (post.subreddit) meta.push(`- **Subreddit:** r/${post.subreddit}`);
+        if (post.createdUtc) {
+          try { meta.push(`- **Posted:** ${new Date(post.createdUtc * 1000).toISOString().slice(0, 10)}`); } catch (e) {}
+        }
+        const permalink = raw.permalink || post.permalink;
+        if (permalink) meta.push(`- **Link:** https://www.reddit.com${permalink}`);
+        const linkOut = raw.url_overridden_by_dest;
+        if (linkOut && !/(?:^|\.)(?:redd\.it|reddit\.com)/i.test(linkOut)) meta.push(`- **URL:** ${linkOut}`);
+        if (meta.length) lines.push(...meta, '');
+        if (body) lines.push(body, '');
+
+        return { kind: 'text', text: lines.join('\n'), ext: 'md', mime: 'text/markdown', url: '', name: 'post.md' };
+      }
+
       function getRedditVideo(post) {
         const media = post.secure_media || post.media || {};
         if (media.reddit_video && media.reddit_video.fallback_url) return media.reddit_video.fallback_url;
@@ -827,7 +858,9 @@
     
         for (const post of sorted) {
           const postFiles = [];
+          const textFiles = [];
           for (const file of post.files) {
+            if (file.kind === 'text') { textFiles.push(file); continue; }   // .md never dedupes away
             const key = canonicalMediaKey(file.url);
             if (!key) continue;
             if (seen.has(key)) {
@@ -837,7 +870,7 @@
             seen.add(key);
             postFiles.push(file);
           }
-          if (!postFiles.length) continue;
+          if (!postFiles.length && !textFiles.length) continue;
     
           globalIndex++;
           const decorated = {
@@ -852,7 +885,7 @@
             files: []
           };
     
-          postFiles.forEach((file, idx) => {
+          postFiles.concat(textFiles).forEach((file, idx) => {
             const name = formatFilename(decorated, file, idx + 1, globalIndex);
             const parts = splitDownloadPath(name);
             const item = {
@@ -1037,7 +1070,9 @@
           const fetchPct = files.length ? Math.round((added / files.length) * 68) : 0;
           if (onProgress) onProgress(fetchPct);
           try {
-            const blob = await fetchBlobWithRetry(file);
+            const blob = file.kind === 'text'
+              ? new Blob([file.text || ''], { type: 'text/markdown' })
+              : await fetchBlobWithRetry(file);
             const zipPath = `${file.postFolder ? `${file.postFolder}/` : ''}${file.fileName || fallbackFileName(file.url, added + 1)}`;
             zip.file(zipPath, blob);
             added++;
@@ -1359,7 +1394,7 @@
           }
         } catch {}
         const base = `${dateSec}-${threadSec}-${gPost} - ${titleSec}`;
-        const fileName = `${base}_${fIdx}.${ext}`;
+        const fileName = fileObj.kind === 'text' ? `${base}.${ext}` : `${base}_${fIdx}.${ext}`;
         const postFolder = base;
         return `${userSec}/${postFolder}/${fileName}`;
       }
