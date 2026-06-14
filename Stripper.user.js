@@ -1,25 +1,22 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.06.00
-// @description  Multi-site media downloader for Reddit and SimpCity.
+// @version      00.11.00
+// @description  Reddit media downloader with a built-in Rabbithole click-path map.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
 // @match        *://reddit.com/*
 // @match        *://*.reddit.com/*
 // @match        *://redd.it/*
-// @match        https://simpcity.cr/threads/*
-// @match        https://simpcity.is/threads/*
-// @match        https://simpcity.cz/threads/*
-// @match        https://simpcity.hk/threads/*
-// @match        https://simpcity.rs/threads/*
-// @match        https://simpcity.ax/threads/*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
+// @require      https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js
 // @grant        GM_addStyle
+// @grant        GM_addValueChangeListener
 // @grant        GM_deleteValue
 // @grant        GM_download
 // @grant        GM_getValue
+// @grant        GM_listValues
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @connect      self
@@ -34,90 +31,6 @@
 // @connect      *.redditmedia.com
 // @connect      imgur.com
 // @connect      i.imgur.com
-// @connect      simpcity.cr
-// @connect      simpcity.is
-// @connect      simpcity.cz
-// @connect      simpcity.hk
-// @connect      simpcity.rs
-// @connect      simpcity.ax
-// @connect      simpcity.su
-// @connect      api.redgifs.com
-// @connect      redgifs.com
-// @connect      www.redgifs.com
-// @connect      cyberdrop.me
-// @connect      cyberdrop.cc
-// @connect      cyberdrop.ch
-// @connect      cyberdrop.cloud
-// @connect      cyberdrop.nl
-// @connect      cyberdrop.to
-// @connect      cyberdrop.cr
-// @connect      api.cyberdrop.me
-// @connect      api.cyberdrop.cc
-// @connect      api.cyberdrop.ch
-// @connect      api.cyberdrop.cloud
-// @connect      api.cyberdrop.nl
-// @connect      api.cyberdrop.to
-// @connect      api.cyberdrop.cr
-// @connect      bunkr.ac
-// @connect      bunkr.ax
-// @connect      bunkr.black
-// @connect      bunkr.cat
-// @connect      bunkr.ci
-// @connect      bunkr.cr
-// @connect      bunkr.fi
-// @connect      bunkr.is
-// @connect      bunkr.media
-// @connect      bunkr.nu
-// @connect      bunkr.pk
-// @connect      bunkr.ph
-// @connect      bunkr.ps
-// @connect      bunkr.red
-// @connect      bunkr.ru
-// @connect      bunkr.se
-// @connect      bunkr.si
-// @connect      bunkr.site
-// @connect      bunkr.sk
-// @connect      bunkr.ws
-// @connect      bunkrr.ru
-// @connect      bunkrr.su
-// @connect      bunkrrr.org
-// @connect      bunkr-cache.se
-// @connect      scdn.st
-// @connect      cache8.st
-// @connect      gigachad-cdn.ru
-// @connect      *.gigachad-cdn.ru
-// @connect      imagebam.com
-// @connect      *.imagebam.com
-// @connect      imgbox.com
-// @connect      *.imgbox.com
-// @connect      ibb.co
-// @connect      *.ibb.co
-// @connect      pixhost.to
-// @connect      *.pixhost.to
-// @connect      postimg.cc
-// @connect      i.postimg.cc
-// @connect      pixxxels.cc
-// @connect      i.pixxxels.cc
-// @connect      jpg.fish
-// @connect      jpg.fishing
-// @connect      jpg.pet
-// @connect      jpeg.pet
-// @connect      jpg1.su
-// @connect      jpg2.su
-// @connect      jpg3.su
-// @connect      jpg4.su
-// @connect      jpg5.su
-// @connect      jpg6.su
-// @connect      jpg7.cr
-// @connect      cuckcapital.cr
-// @connect      pixeldrain.com
-// @connect      pixeldrain.net
-// @connect      pixeldra.in
-// @connect      gofile.io
-// @connect      turbo.cr
-// @connect      turbovid.cr
-// @connect      turbocdn.st
-// @connect      *.turbocdn.st
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
@@ -125,19 +38,13 @@
 (function () {
   'use strict';
 
-  const stripperSite = detectStripperSite();
-  if (stripperSite === 'reddit') {
+  if (isRedditHost()) {
     runRedditStripper();
-  } else if (stripperSite === 'simpcity') {
-    runSimpCityStripper();
   }
 
-  function detectStripperSite() {
+  function isRedditHost() {
     const host = String(location.hostname || '').toLowerCase();
-    const path = String(location.pathname || '');
-    if (/^(?:www\.)?redd\.it$/.test(host) || /(?:^|\.)reddit\.com$/.test(host)) return 'reddit';
-    if (/^simpcity\.(?:cr|is|cz|hk|rs|ax)$/.test(host) && /\/threads\//i.test(path)) return 'simpcity';
-    return '';
+    return /^(?:www\.)?redd\.it$/.test(host) || /(?:^|\.)reddit\.com$/.test(host);
   }
 
   const STRIPPER_SCAN_CACHE_PREFIX = 'Stripper.scanCache.v1:';
@@ -468,6 +375,12 @@
         const panel = document.createElement('div');
         panel.id = 'redditGuestPanel';
         panel.innerHTML = `
+          <div class="rg-titlebar">
+            <span class="rg-title">Stripper</span>
+            <button id="rgMapBtn" class="rg-mapBtn" type="button" title="Reddit Rabbithole Map">
+              <span class="rg-mapGlyph">🕸</span><span id="rgMapCount" class="rg-mapCount" hidden></span>
+            </button>
+          </div>
           <div id="rgDownloadStack" class="rg-downloadStack" hidden>
             <button id="rgPostsBtn" type="button" disabled>Download Posts</button>
             <button id="rgPagesBtn" type="button" disabled>Download Pages</button>
@@ -520,7 +433,14 @@
         ui.pageRangeInput = panel.querySelector('#rgPageRangeInput');
         ui.pageRangeBtn = panel.querySelector('#rgPageRangeBtn');
         ui.log = panel.querySelector('#rgLog');
-    
+        ui.mapBtn = panel.querySelector('#rgMapBtn');
+        ui.mapCount = panel.querySelector('#rgMapCount');
+
+        ui.mapBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (panel.classList.contains('rg-collapsed')) { setCollapsed(false); return; }
+          rabbithole.toggleWindow();
+        });
         ui.scanBtn.addEventListener('click', () => scanCurrentProfile());
         ui.postsBtn.addEventListener('click', () => downloadPostArchives());
         ui.pagesBtn.addEventListener('click', () => downloadPageArchives());
@@ -534,6 +454,7 @@
     
         logLine('Ready. Stripper detected Reddit; open a profile or post and scan.');
         syncUi();
+        rabbithole.refreshButton();
       }
     
       function syncUi() {
@@ -1525,1660 +1446,740 @@
         return String(err);
       }
     
-      if (document.body) init();
-      else window.addEventListener('DOMContentLoaded', init, { once: true });
-  }
+      // ----------------------------------------------------------------------
+      // Reddit Rabbithole Map — integrated. Records the click-path between
+      // posts/users/subreddits as a network graph. Shares storage with the
+      // standalone "Reddit Rabbithole Map" userscript (same rrm: keys), so it
+      // reads any map you already built with the old script.
+      // ----------------------------------------------------------------------
+      const rabbithole = (function () {
+        const NS = 'rrm:';        // storage prefix for nodes/edges (old-version compatible)
+        const REV = 'rrm_rev';    // revision counter -> cross-tab live refresh
+        const COLORS = { sub: '#4f9cf9', user: '#f97362', post: '#9b8cf9' };
+        const BRIDGE_KEY = 'rrm_bridge_v1';   // legacy shared-localStorage key; only cleared on reset now
 
-  function runSimpCityStripper() {
-    const JSZip = window.JSZip;
-      const PAGE_DELAY_MS = 650;
-      const FILE_DELAY_MS = 220;
-      const MAX_THREAD_PAGES = 300;
-      const MAX_RETRIES = 2;
-      const BACKOFF_BASE = 900;
-      const BLOB_TIMEOUT_MS = 120000;
-    
-      const imgRE = /\.(?:avif|bmp|gif|jpe?g|jif|png|svg|tiff?|webp)(?:$|[?#])/i;
-      const vidRE = /\.(?:avi|flv|m4p|m4v|mov|mp4|mpeg|mpg|ogg|qt|swf|webm|wmv)(?:$|[?#])/i;
-      const state = {
-        busy: false,
-        threadTitle: '',
-        threadFolder: '',
-        pages: [],
-        posts: [],
-        files: [],
-        countTextOverride: '',
-        lastScanAt: 0,
-        loadedScanCacheKey: ''
-      };
-    
-      const ui = {};
-    
-      GM_addStyle(`
-        #simpGuestPanel {
-          position: fixed;
-          right: 18px;
-          bottom: 18px;
-          z-index: 2147483647;
-          box-sizing: border-box;
-          width: 320px;
-          max-width: calc(100vw - 36px);
-          max-height: min(520px, calc(100vh - 36px));
-          overflow: visible;
-          display: flex;
-          flex-direction: column;
-          gap: 9px;
-          padding: 12px;
-          border: 1px solid rgba(255, 255, 255, 0.16);
-          border-radius: 12px;
-          background: rgba(18, 18, 21, 0.92);
-          box-shadow: 0 16px 48px rgba(0, 0, 0, 0.42);
-          color: #f4f4f5;
-          font: 12px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          backdrop-filter: blur(14px);
-          transition: width 140ms ease, height 140ms ease, padding 140ms ease, border-radius 140ms ease, opacity 140ms ease;
-        }
-        #simpGuestPanel, #simpGuestPanel * {
-          box-sizing: border-box;
-        }
-        #simpGuestPanel button {
-          appearance: none;
-          width: 100%;
-          min-height: 32px;
-          border: 1px solid rgba(255, 255, 255, 0.16);
-          border-radius: 8px;
-          background: #ff4500;
-          color: #fff;
-          font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          cursor: pointer;
-          transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
-        }
-        #simpGuestPanel button:hover:not(:disabled) {
-          background: #ff5c1c;
-          border-color: rgba(255, 255, 255, 0.28);
-        }
-        #simpGuestPanel button:disabled {
-          cursor: default;
-          opacity: 0.48;
-        }
-        #simpGuestPanel .sg-downloadStack {
-          position: absolute;
-          left: 0;
-          right: 0;
-          bottom: calc(100% + 8px);
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          padding: 0;
-          pointer-events: auto;
-        }
-        #simpGuestPanel .sg-downloadStack[hidden] {
-          display: none;
-        }
-        #simpGuestPanel .sg-downloadStack button {
-          min-height: 36px;
-          background: rgba(255, 255, 255, 0.11);
-          white-space: nowrap;
-        }
-        #simpGuestPanel .sg-downloadStack button:hover:not(:disabled) {
-          background: rgba(255, 255, 255, 0.17);
-        }
-        #simpGuestPanel .sg-meta {
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-          min-width: 0;
-          color: #c9c9cf;
-          font-size: 11px;
-        }
-        #simpGuestPanel .sg-meta span {
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        #simpGuestPanel .sg-selective {
-          display: grid;
-          gap: 7px;
-          padding: 8px;
-          border-radius: 10px;
-          background: rgba(255, 255, 255, 0.07);
-        }
-        #simpGuestPanel .sg-selective[hidden],
-        #simpGuestPanel .sg-rangeRow[hidden] {
-          display: none;
-        }
-        #simpGuestPanel .sg-rangeLabel {
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-          color: #d8d8dd;
-          font-size: 11px;
-          font-weight: 700;
-        }
-        #simpGuestPanel .sg-rangeHint {
-          color: #a9a9b2;
-          font-weight: 600;
-        }
-        #simpGuestPanel .sg-rangeRow {
-          display: grid;
-          grid-template-columns: 1fr 88px;
-          gap: 7px;
-        }
-        #simpGuestPanel .sg-rangeRow input {
-          width: 100%;
-          min-width: 0;
-          height: 32px;
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          border-radius: 8px;
-          background: rgba(0, 0, 0, 0.18);
-          color: #f4f4f5;
-          padding: 0 9px;
-          font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          outline: none;
-        }
-        #simpGuestPanel .sg-rangeRow input:focus {
-          border-color: rgba(255, 176, 0, 0.72);
-        }
-        #simpGuestPanel .sg-rangeRow button {
-          min-height: 32px;
-          background: rgba(255, 255, 255, 0.11);
-        }
-        #simpGuestPanel .sg-progress {
-          position: relative;
-          height: 7px;
-          overflow: hidden;
-          border-radius: 999px;
-          background: rgba(255, 255, 255, 0.12);
-        }
-        #simpGuestPanel .sg-progress > div {
-          width: 0;
-          height: 100%;
-          border-radius: inherit;
-          background: linear-gradient(90deg, #ff4500, #ffb000);
-          transition: width 130ms ease;
-        }
-        #simpGuestPanel .sg-log {
-          min-height: 86px;
-          max-height: 190px;
-          overflow: auto;
-          padding: 8px;
-          border-radius: 8px;
-          background: rgba(0, 0, 0, 0.23);
-          color: #dedee3;
-          font-size: 11px;
-          scrollbar-width: thin;
-        }
-        #simpGuestPanel .sg-log div {
-          padding: 0 0 5px;
-          overflow-wrap: anywhere;
-        }
-        #simpGuestPanel .sg-log div:last-child {
-          padding-bottom: 0;
-        }
-        #simpGuestPanel.sg-collapsed {
-          right: 18px;
-          bottom: 0;
-          width: 320px;
-          height: 10px;
-          min-height: 10px;
-          max-height: 10px;
-          overflow: hidden;
-          padding: 0;
-          border-bottom: 0;
-          border-radius: 8px 8px 0 0;
-          opacity: 0.82;
-          cursor: pointer;
-        }
-        #simpGuestPanel.sg-collapsed > * {
-          display: none;
-        }
-        #simpGuestPanel.sg-collapsed::before {
-          content: "";
-          display: block;
-          width: 100%;
-          height: 100%;
-          background: linear-gradient(90deg, #ff4500, #ffb000);
-        }
-      `);
-    
-      function init() {
-        if (document.getElementById('simpGuestPanel')) return;
-    
-        const panel = document.createElement('div');
-        panel.id = 'simpGuestPanel';
-        panel.innerHTML = `
-          <div id="sgDownloadStack" class="sg-downloadStack" hidden>
-            <button id="sgPostsBtn" type="button" disabled>Download Posts</button>
-            <button id="sgPagesBtn" type="button" disabled>Download Pages</button>
-            <button id="sgThreadBtn" type="button" disabled>Download Thread</button>
-          </div>
-          <button id="sgScanBtn" type="button">Scan</button>
-          <div class="sg-progress" aria-hidden="true"><div id="sgProgressFill"></div></div>
-          <div class="sg-meta">
-            <span id="sgThreadLabel">No thread scanned</span>
-            <span id="sgCountLabel">0 files</span>
-          </div>
-          <div id="sgSelectiveDownloads" class="sg-selective" hidden>
-            <div class="sg-rangeLabel">
-              <span>Posts</span>
-              <span id="sgPostRangeHint" class="sg-rangeHint">1-0</span>
-            </div>
-            <div id="sgPostRangeRow" class="sg-rangeRow">
-              <input id="sgPostRangeInput" type="text" inputmode="numeric" placeholder="1,3-5">
-              <button id="sgPostRangeBtn" type="button" disabled>Download</button>
-            </div>
-            <div class="sg-rangeLabel">
-              <span>Pages</span>
-              <span id="sgPageRangeHint" class="sg-rangeHint">1-0</span>
-            </div>
-            <div id="sgPageRangeRow" class="sg-rangeRow">
-              <input id="sgPageRangeInput" type="text" inputmode="numeric" placeholder="1,2-4">
-              <button id="sgPageRangeBtn" type="button" disabled>Download</button>
-            </div>
-          </div>
-          <div id="sgLog" class="sg-log" aria-live="polite"></div>
-        `;
-        document.body.appendChild(panel);
-    
-        ui.panel = panel;
-        ui.downloadStack = panel.querySelector('#sgDownloadStack');
-        ui.scanBtn = panel.querySelector('#sgScanBtn');
-        ui.postsBtn = panel.querySelector('#sgPostsBtn');
-        ui.pagesBtn = panel.querySelector('#sgPagesBtn');
-        ui.threadBtn = panel.querySelector('#sgThreadBtn');
-        ui.fill = panel.querySelector('#sgProgressFill');
-        ui.threadLabel = panel.querySelector('#sgThreadLabel');
-        ui.countLabel = panel.querySelector('#sgCountLabel');
-        ui.selectiveDownloads = panel.querySelector('#sgSelectiveDownloads');
-        ui.postRangeHint = panel.querySelector('#sgPostRangeHint');
-        ui.postRangeRow = panel.querySelector('#sgPostRangeRow');
-        ui.postRangeInput = panel.querySelector('#sgPostRangeInput');
-        ui.postRangeBtn = panel.querySelector('#sgPostRangeBtn');
-        ui.pageRangeHint = panel.querySelector('#sgPageRangeHint');
-        ui.pageRangeRow = panel.querySelector('#sgPageRangeRow');
-        ui.pageRangeInput = panel.querySelector('#sgPageRangeInput');
-        ui.pageRangeBtn = panel.querySelector('#sgPageRangeBtn');
-        ui.log = panel.querySelector('#sgLog');
-    
-        ui.scanBtn.addEventListener('click', () => scanCurrentThread());
-        ui.postsBtn.addEventListener('click', () => downloadPostArchives());
-        ui.pagesBtn.addEventListener('click', () => downloadPageArchives());
-        ui.threadBtn.addEventListener('click', () => downloadThreadArchive());
-        ui.postRangeBtn.addEventListener('click', () => downloadSelectedPostArchives());
-        ui.pageRangeBtn.addEventListener('click', () => downloadSelectedPageArchives());
-        panel.addEventListener('click', () => {
-          if (panel.classList.contains('sg-collapsed')) setCollapsed(false);
-        });
-        document.addEventListener('keydown', handleGlobalKeydown, true);
-    
-        logLine('Ready. Stripper detected SimpCity; open a thread and scan.');
-        syncUi();
-      }
-    
-      function syncUi() {
-        const hasFiles = state.files.length > 0;
-        ui.scanBtn.disabled = state.busy;
-        ui.downloadStack.hidden = !hasFiles;
-        ui.postsBtn.disabled = state.busy || !state.posts.length;
-        ui.pagesBtn.disabled = state.busy || !state.pages.length;
-        ui.threadBtn.disabled = state.busy || !hasFiles;
-        ui.selectiveDownloads.hidden = !hasFiles;
-        ui.postRangeHint.textContent = state.posts.length ? `1-${state.posts.length}` : 'none';
-        ui.postRangeInput.disabled = state.busy || !state.posts.length;
-        ui.postRangeBtn.disabled = state.busy || !state.posts.length;
-        ui.pageRangeRow.hidden = !state.pages.length;
-        ui.pageRangeHint.textContent = state.pages.length ? formatStripperNumberRanges(state.pages.map(page => page.page)) : 'none';
-        ui.pageRangeInput.disabled = state.busy || !state.pages.length;
-        ui.pageRangeBtn.disabled = state.busy || !state.pages.length;
-        ui.threadLabel.textContent = state.threadTitle || 'No thread scanned';
-        ui.countLabel.textContent = state.countTextOverride || `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
-      }
-    
-      function setBusy(busy, scanLabel) {
-        state.busy = !!busy;
-        ui.scanBtn.textContent = scanLabel || (state.busy ? 'Working...' : 'Scan');
-        syncUi();
-      }
-    
-      function setProgress(value) {
-        const pct = Math.max(0, Math.min(100, Number(value) || 0));
-        ui.fill.style.width = `${pct}%`;
-      }
-    
-      function setCountTextOverride(text) {
-        state.countTextOverride = text || '';
-        syncUi();
-      }
-    
-      function formatUnitTicker(done, total, unit) {
-        return `${done}/${total} ${unit}${total === 1 ? '' : 's'}`;
-      }
-    
-      function logLine(text) {
-        const el = document.createElement('div');
-        const t = new Date();
-        const hh = String(t.getHours()).padStart(2, '0');
-        const mm = String(t.getMinutes()).padStart(2, '0');
-        const ss = String(t.getSeconds()).padStart(2, '0');
-        el.textContent = `[${hh}:${mm}:${ss}] ${text}`;
-        ui.log.appendChild(el);
-        while (ui.log.childNodes.length > 90) ui.log.removeChild(ui.log.firstChild);
-        ui.log.scrollTop = ui.log.scrollHeight;
-      }
-    
-      function handleGlobalKeydown(evt) {
-        if (!evt || evt.key !== 'Tab' || evt.altKey || evt.ctrlKey || evt.metaKey || evt.shiftKey) return;
-        if (isEditableTarget(evt.target)) return;
-        evt.preventDefault();
-        setCollapsed(!ui.panel.classList.contains('sg-collapsed'));
-      }
-    
-      function isEditableTarget(target) {
-        const el = target && target.nodeType === 1 ? target : null;
-        if (!el) return false;
-        const tag = (el.tagName || '').toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
-        return !!el.closest('[contenteditable=""], [contenteditable="true"]');
-      }
-    
-      function setCollapsed(collapsed) {
-        ui.panel.classList.toggle('sg-collapsed', !!collapsed);
-      }
+        let booted = false, winEl = null, network = null, nodesDS = null, edgesDS = null;
+        let selectedId = null, query = '', lastNavByPop = false, resizeObs = null;
+        let view = 'graph', typeFilter = 'all';   // view: 'graph' | 'columns'
 
-      function simpCityScanCacheKey(rawUrl) {
-        try {
-          const u = new URL(rawUrl || location.href, location.href);
-          u.pathname = u.pathname.replace(/\/page-\d+\/?$/i, '/');
-          u.search = '';
-          u.hash = '';
-          return `simpcity:thread:${u.origin}${u.pathname.replace(/\/?$/, '/')}`;
-        } catch {
-          return '';
-        }
-      }
-
-      function applySimpCityCachedScan(cached, cacheKey) {
-        const payload = cached && cached.payload ? cached.payload : {};
-        state.threadTitle = payload.threadTitle || '';
-        state.threadFolder = payload.threadFolder || (state.threadTitle ? sanitizeFolder(state.threadTitle) : '');
-        state.posts = safeCachedArray(payload.posts);
-        state.pages = safeCachedArray(payload.pages);
-        state.files = safeCachedArray(payload.files);
-        state.countTextOverride = '';
-        state.lastScanAt = Number(payload.lastScanAt || cached.savedAt || 0) || Date.now();
-        state.loadedScanCacheKey = cacheKey;
-        setProgress(100);
-        syncUi();
-      }
-
-      function buildSimpCityCachePayload() {
-        return {
-          threadTitle: state.threadTitle,
-          threadFolder: state.threadFolder,
-          posts: state.posts,
-          pages: state.pages,
-          files: state.files,
-          lastScanAt: state.lastScanAt
-        };
-      }
-    
-      async function scanCurrentThread() {
-        if (state.busy) return;
-        if (!/\/threads\//i.test(location.pathname)) {
-          logLine('This page is not a SimpCity thread.');
-          setProgress(0);
-          return;
-        }
-
-        const cacheKey = simpCityScanCacheKey(location.href);
-        if (cacheKey && state.loadedScanCacheKey !== cacheKey) {
-          logLine(`Checking browser scan cache for ${cacheKey}.`);
-          const cached = loadStripperScanCache(cacheKey);
-          if (cached) {
-            applySimpCityCachedScan(cached, cacheKey);
-            logLine(`Loaded cached SimpCity scan from ${formatCacheAge(cached.savedAt)}. Press Scan again to refresh it.`);
-            return;
+        // -------------------------------------------------------------- classify
+        function classify(href) {
+          let u;
+          try { u = new URL(href, location.origin); } catch (e) { return null; }
+          if (!/(?:^|\.)reddit\.com$/.test(u.hostname)) return null;
+          const p = u.pathname.replace(/\/+$/, '');
+          let m;
+          if ((m = p.match(/^\/r\/([^/]+)\/comments\/([a-z0-9]+)/i))) {
+            return { type: 'post', id: 'post:' + m[2].toLowerCase(),
+                     label: 'r/' + m[1] + '\n' + m[2],
+                     url: u.origin + '/r/' + m[1] + '/comments/' + m[2] };
           }
-          logLine('No cached scan found; scanning now.');
+          if ((m = p.match(/^\/(?:user|u)\/([^/]+)/i))) {
+            return { type: 'user', id: 'user:' + m[1].toLowerCase(),
+                     label: 'u/' + m[1], url: u.origin + '/user/' + m[1] };
+          }
+          if ((m = p.match(/^\/r\/([^/]+)/i))) {
+            return { type: 'sub', id: 'sub:' + m[1].toLowerCase(),
+                     label: 'r/' + m[1], url: u.origin + '/r/' + m[1] };
+          }
+          return null;
         }
-    
-        setBusy(true, 'Scanning...');
-        setProgress(0);
-        state.threadTitle = parseThreadTitle(document) || titleFromUrl(location.href) || 'simpcity_thread';
-        state.threadFolder = sanitizeFolder(state.threadTitle);
-        state.pages = [];
-        state.posts = [];
-        state.files = [];
-        state.countTextOverride = '';
-        state.lastScanAt = Date.now();
-        state.loadedScanCacheKey = '';
-        syncUi();
-    
-        try {
-          const urls = buildThreadPageUrls(document, location.href);
-          logLine(`Scanning ${urls.length} thread page${urls.length === 1 ? '' : 's'} for embedded media.`);
-    
-          const rawPosts = [];
-          for (let i = 0; i < urls.length; i++) {
-            const pageNo = i + 1;
-            const doc = urls[i].current ? document : await requestDocument(urls[i].url);
-            const posts = parsePostsFromDocument(doc, urls[i].page, urls[i].url);
-            rawPosts.push(...posts);
-            logLine(`Page ${urls[i].page}: found ${posts.length} post${posts.length === 1 ? '' : 's'}.`);
-            setProgress(Math.min(45, ((i + 1) / urls.length) * 45));
-            if (!urls[i].current && pageNo < urls.length) await delay(PAGE_DELAY_MS);
+
+        // ---------------------------------------------------------------- storage
+        function bumpRev() { GM_setValue(REV, (GM_getValue(REV, 0) || 0) + 1); }
+
+        function upsertNode(n, visited) {
+          const key = NS + 'n:' + n.id;
+          const raw = GM_getValue(key, null);
+          const rec = raw ? JSON.parse(raw)
+                          : { id: n.id, type: n.type, label: n.label, url: n.url, visited: false, first: Date.now() };
+          rec.label = n.label; rec.url = n.url; rec.type = n.type; rec.last = Date.now();
+          if (visited) rec.visited = true;
+          GM_setValue(key, JSON.stringify(rec));
+          bumpRev();
+        }
+
+        function addEdge(from, to) {
+          if (!from || !to || from === to) return;
+          const key = NS + 'e:' + from + '__' + to;
+          if (GM_getValue(key, null)) return;
+          GM_setValue(key, JSON.stringify({ from, to, ts: Date.now() }));
+          bumpRev();
+        }
+
+        function loadGraph() {
+          const nodes = [], edges = [];
+          for (const k of GM_listValues()) {
+            if (k.startsWith(NS + 'n:')) nodes.push(JSON.parse(GM_getValue(k)));
+            else if (k.startsWith(NS + 'e:')) edges.push(JSON.parse(GM_getValue(k)));
           }
-    
-          const postsWithCandidates = rawPosts
-            .map(post => ({ ...post, candidates: extractMediaCandidates(post.content, post.pageUrl) }))
-            .filter(post => post.candidates.length > 0);
-    
-          logLine(`Resolving media from ${postsWithCandidates.length} post${postsWithCandidates.length === 1 ? '' : 's'}.`);
-          const resolvedPosts = [];
-          let resolvedDone = 0;
-          for (const post of postsWithCandidates) {
-            const files = await resolvePostFiles(post);
-            if (files.length) resolvedPosts.push({ ...post, files });
-            resolvedDone++;
-            setProgress(45 + Math.min(45, (resolvedDone / postsWithCandidates.length) * 45));
-          }
-    
-          const deduped = buildDedupedDownloads(resolvedPosts);
-          state.posts = deduped.posts;
-          state.pages = deduped.pages;
-          state.files = deduped.files;
-          state.loadedScanCacheKey = cacheKey;
-          setProgress(100);
-          logLine(`Scan complete: ${state.posts.length} post archive${state.posts.length === 1 ? '' : 's'}, ${state.pages.length} page archive${state.pages.length === 1 ? '' : 's'}, ${state.files.length} unique file${state.files.length === 1 ? '' : 's'}.`);
-          if (deduped.duplicates > 0) {
-            logLine(`Removed ${deduped.duplicates} duplicate file${deduped.duplicates === 1 ? '' : 's'}; earliest posts kept.`);
-          }
-          if (cacheKey) {
-            if (saveStripperScanCache(cacheKey, buildSimpCityCachePayload())) {
-              logLine('Saved this scan in the browser cache.');
-            } else {
-              logLine('Could not save scan cache in this browser.');
+          return { nodes, edges };
+        }
+
+        function countNodes() {
+          let n = 0;
+          for (const k of GM_listValues()) if (k.startsWith(NS + 'n:')) n++;
+          return n;
+        }
+
+        function removeNodes(ids) {
+          const set = new Set(ids);
+          for (const k of GM_listValues()) {
+            if (k.startsWith(NS + 'n:')) {
+              if (set.has(k.slice((NS + 'n:').length))) GM_deleteValue(k);
+            } else if (k.startsWith(NS + 'e:')) {
+              const e = JSON.parse(GM_getValue(k));
+              if (set.has(e.from) || set.has(e.to)) GM_deleteValue(k);
             }
           }
-        } catch (err) {
-          setProgress(0);
-          removeStripperScanCache(cacheKey);
-          logLine(`Scan failed: ${errorMessage(err)}`);
-        } finally {
-          setBusy(false);
+          bumpRev();
         }
-      }
-    
-      function parseThreadTitle(doc) {
-        const el = doc.querySelector('.p-title-value');
-        const raw = el ? el.textContent : doc.title;
-        return String(raw || '').replace(/\s+/g, ' ').replace(/\s*\|\s*SimpCity.*$/i, '').trim();
-      }
-    
-      function titleFromUrl(url) {
-        try {
-          const u = new URL(url, location.href);
-          const m = u.pathname.match(/\/threads\/([^/.]+)/i);
-          return m ? decodeURIComponent(m[1]).replace(/[-_]+/g, ' ') : '';
-        } catch {
-          return '';
-        }
-      }
-    
-      function buildThreadPageUrls(doc, currentUrl) {
-        const current = new URL(currentUrl, location.href);
-        const pageMatch = current.pathname.match(/\/page-(\d+)\/?$/i);
-        const currentPage = pageMatch ? Math.max(1, Number(pageMatch[1]) || 1) : 1;
-        const pageNumbers = new Set([currentPage]);
-    
-        doc.querySelectorAll('a[href*="/page-"], a.pageNav-page').forEach(a => {
-          const href = a.getAttribute('href') || '';
-          const textNum = Number((a.textContent || '').trim().replace(/[^\d]/g, ''));
-          const hrefNum = Number((href.match(/\/page-(\d+)/i) || [])[1] || 0);
-          const n = hrefNum || textNum;
-          if (n > 0) pageNumbers.add(n);
-        });
-    
-        const maxPage = Math.min(MAX_THREAD_PAGES, Math.max(...pageNumbers));
-        const base = new URL(current.href);
-        base.pathname = base.pathname.replace(/\/page-\d+\/?$/i, '/');
-        base.search = '';
-        base.hash = '';
-    
-        const out = [];
-        for (let page = 1; page <= maxPage; page++) {
-          const u = new URL(base.href);
-          if (page > 1) u.pathname = u.pathname.replace(/\/?$/i, '/') + `page-${page}`;
-          out.push({ page, url: u.href, current: page === currentPage });
-        }
-        return out;
-      }
-    
-      function parsePostsFromDocument(doc, pageNumber, pageUrl) {
-        const title = parseThreadTitle(doc) || state.threadTitle || 'simpcity_thread';
-        const posts = [];
-        doc.querySelectorAll('.message').forEach((message, idx) => {
-          const content = message.querySelector('.message-content .message-userContent, .message-userContent, .bbWrapper');
-          if (!content) return;
-          const postId = parsePostId(message) || `${pageNumber}-${idx + 1}`;
-          const postNumber = parsePostNumber(message) || String(idx + 1);
-          const postDate = parsePostDate(message);
-          const clone = content.cloneNode(true);
-          scrubContentClone(clone);
-          posts.push({
-            id: postId,
-            number: postNumber,
-            page: Math.max(1, Number(pageNumber) || 1),
-            pageUrl,
-            title,
-            published: postDate ? Math.floor(postDate.getTime() / 1000) : 0,
-            postDate,
-            content: clone
-          });
-        });
-        return posts;
-      }
-    
-      function parsePostId(message) {
-        const idAttr = message.getAttribute('id') || message.getAttribute('data-content') || '';
-        const direct = idAttr.match(/post-(\d+)/i);
-        if (direct) return direct[1];
-        const a = message.querySelector('a[href*="/post-"]');
-        const href = a ? a.getAttribute('href') || '' : '';
-        const m = href.match(/\/post-(\d+)/i);
-        return m ? m[1] : '';
-      }
-    
-      function parsePostNumber(message) {
-        const anchors = [...message.querySelectorAll('a[href*="/post-"]')];
-        const anchor = anchors.reverse().find(a => /#\s*[\d,]+/.test(a.textContent || ''));
-        return anchor ? (anchor.textContent || '').replace(/[^\d]/g, '') : '';
-      }
-    
-      function parsePostDate(message) {
-        const time = message.querySelector('time.u-dt, time');
-        if (!time) return null;
-        const unix = time.getAttribute('data-timestamp') || time.getAttribute('data-time');
-        if (unix && !Number.isNaN(Number(unix))) return new Date(Number(unix) * 1000);
-        const dt = time.getAttribute('datetime');
-        if (dt) {
-          const d = new Date(dt);
-          if (!Number.isNaN(d.getTime())) return d;
-        }
-        return null;
-      }
-    
-      function scrubContentClone(clone) {
-        clone.querySelectorAll('.contentRow-figure, .js-unfurl-favicon, .button-text > span').forEach(el => el.remove());
-        clone.querySelectorAll('blockquote').forEach(el => {
-          if (el.querySelector('.bbCodeBlock-title') || el.closest('.bbCodeBlock')) el.remove();
-        });
-        clone.querySelectorAll('a[href]').forEach(a => {
-          const decoded = decodeForumRedirect(a.getAttribute('href') || '');
-          if (decoded) a.setAttribute('href', decoded);
-        });
-      }
-    
-      function decodeForumRedirect(href) {
-        if (!href) return '';
-        try {
-          const u = new URL(href, location.origin);
-          const p = (u.pathname || '').toLowerCase();
-          if (!(p === '/redirect' || p === '/redirect/' || p.startsWith('/redirect/') || p.includes('link-proxy'))) return '';
-          let to = u.searchParams.get('to') || u.searchParams.get('url') || u.searchParams.get('u') || u.searchParams.get('link') || u.searchParams.get('target');
-          if (!to) return '';
-          const mode = (u.searchParams.get('m') || '').toLowerCase();
-          if (mode === 'b64' || mode === 'base64' || /^[A-Za-z0-9+/_-]+={0,2}$/.test(to)) {
-            const decoded = decodeBase64Url(to);
-            if (decoded) to = decoded;
-          }
-          try { to = decodeURIComponent(to); } catch {}
-          if (!/^https?:\/\//i.test(to) && /%3a%2f%2f/i.test(to)) {
-            try { to = decodeURIComponent(to); } catch {}
-          }
-          return /^https?:\/\//i.test(to) ? to : '';
-        } catch {
-          return '';
-        }
-      }
-    
-      function decodeBase64Url(raw) {
-        let s = String(raw || '').trim().replace(/-/g, '+').replace(/_/g, '/');
-        while (s.length % 4) s += '=';
-        try { return atob(s); } catch { return ''; }
-      }
-    
-      function extractMediaCandidates(content, baseUrl) {
-        const out = [];
-        const seen = new Set();
-        const add = (raw, source, nameHint) => {
-          const url = normalizeUrl(raw, baseUrl);
-          if (!url || url.startsWith('data:') || url.startsWith('blob:')) return;
-          if (isSameThreadUrl(url)) return;
-          if (!isMediaCandidateUrl(url)) return;
-          const key = canonicalMediaKey(url);
-          if (seen.has(key)) return;
-          seen.add(key);
-          out.push({ url, source: source || 'embed', nameHint: sanitizeNamePart(nameHint || '') });
-        };
-    
-        content.querySelectorAll('a[href]').forEach(a => {
-          const href = a.getAttribute('href') || '';
-          if (!isEmbeddedMediaAnchor(a, href, baseUrl)) return;
-          add(
-            href,
-            'embedded-link',
-            a.getAttribute('download') || a.getAttribute('title') || a.textContent || ''
-          );
-        });
-        content.querySelectorAll('img').forEach(img => {
-          const parentAnchor = img.closest('a[href]');
-          if (parentAnchor && isEmbeddedMediaAnchor(parentAnchor, parentAnchor.getAttribute('href') || '', baseUrl)) return;
-          add(
-            img.getAttribute('data-url') || img.getAttribute('data-src') || img.getAttribute('src'),
-            'image',
-            img.getAttribute('alt') || img.getAttribute('title') || ''
-          );
-        });
-        content.querySelectorAll('img[srcset], source[srcset]').forEach(el => {
-          const parentAnchor = el.closest('a[href]');
-          if (parentAnchor && isEmbeddedMediaAnchor(parentAnchor, parentAnchor.getAttribute('href') || '', baseUrl)) return;
-          add(
-            pickBestSrcsetUrl(el.getAttribute('srcset')),
-            'image',
-            el.getAttribute('alt') || el.getAttribute('title') || ''
-          );
-        });
-        content.querySelectorAll('video[src], video source[src], source[src]').forEach(el => {
-          add(el.getAttribute('src'), 'video', el.getAttribute('title') || '');
-        });
-        content.querySelectorAll('iframe[src], embed[src]').forEach(el => {
-          add(el.getAttribute('src'), 'iframe', el.getAttribute('title') || '');
-        });
-        content.querySelectorAll('[style*="background-image"]').forEach(el => {
-          const m = String(el.getAttribute('style') || '').match(/url\(["']?([^"')]+)["']?\)/i);
-          if (m) add(m[1], 'image');
-        });
-        return out;
-      }
-    
-      function pickBestSrcsetUrl(srcset) {
-        const entries = String(srcset || '')
-          .split(',')
-          .map(part => {
-            const pieces = part.trim().split(/\s+/);
-            const url = pieces[0] || '';
-            const descriptor = pieces[1] || '';
-            const width = Number((descriptor.match(/^(\d+)w$/i) || [])[1] || 0);
-            const density = Number((descriptor.match(/^([\d.]+)x$/i) || [])[1] || 0);
-            return { url, score: width || density || 1 };
-          })
-          .filter(item => item.url);
-        entries.sort((a, b) => b.score - a.score);
-        return entries[0] ? entries[0].url : '';
-      }
-    
-      function isSameThreadUrl(raw) {
-        try {
-          const u = new URL(raw, location.href);
-          return u.hostname === location.hostname && /\/threads\//i.test(u.pathname);
-        } catch {
-          return false;
-        }
-      }
-    
-      function isEmbeddedMediaAnchor(anchor, href, baseUrl) {
-        if (!anchor || !href) return false;
-        if (!anchor.querySelector('img, picture, video, source, iframe, embed')) return false;
-        const url = normalizeUrl(href, baseUrl);
-        if (!url || isSameThreadUrl(url)) return false;
-        if (isDirectDownloadUrl(url)) return true;
-        try {
-          const u = new URL(url);
-          const host = u.hostname.toLowerCase();
-          const path = u.pathname.toLowerCase();
-          if (/simpcity\./i.test(host) && (/\/attachments\//i.test(path) || /\/data\/video\//i.test(path))) return true;
-          if (/redgifs\.com$/i.test(host) && /\/(?:ifr|watch|gifs\/detail|gifs\/watch)\//i.test(path)) return true;
-          if (/cyberdrop\.[a-z]+$/i.test(host) && /\/(?:f|e)\//i.test(path)) return true;
-          if (/bunkrr?r?\./i.test(host) && !/\/a\//i.test(path)) return true;
-          if (/imagebam\.com$/i.test(host) && /\/view\//i.test(path)) return true;
-          if (/(?:postimg|pixxxels)\.cc$/i.test(host) && path.length > 1) return true;
-          if (/pixhost\.to$/i.test(host) && /\/show\//i.test(path)) return true;
-          if (/(?:^|\.)ibb\.co$/i.test(host) && !/\/album\//i.test(path)) return true;
-          if (/(?:pixeldrain\.com|pixeldrain\.net|pixeldra\.in)$/i.test(host) && /^\/u\//i.test(path)) return true;
-          if (/turbo\.cr$/i.test(host) && /\/(?:embed|v|d)\//i.test(path)) return true;
-        } catch {}
-        return false;
-      }
-    
-      function isMediaCandidateUrl(raw) {
-        const url = normalizeUrl(raw);
-        if (!url) return false;
-        if (imgRE.test(url) || vidRE.test(url)) return true;
-        try {
-          const u = new URL(url);
-          const host = u.hostname.toLowerCase();
-          const path = u.pathname.toLowerCase();
-          if (host === location.hostname && (/\/attachments\//i.test(path) || /\/data\/video\//i.test(path))) return true;
-          if (/simpcity\./i.test(host) && (/\/attachments\//i.test(path) || /\/data\/video\//i.test(path))) return true;
-          if (/redgifs\.com$/i.test(host) && /\/(?:ifr|watch|gifs\/detail|gifs\/watch)\//i.test(path)) return true;
-          if (/cyberdrop\.[a-z]+$/i.test(host) && /\/(?:a|f|e)\//i.test(path)) return true;
-          if (/bunkrr?r?\./i.test(host) || /bunkr-cache\./i.test(host) || /scdn\.st$/i.test(host)) return true;
-          if (/imagebam\.com$/i.test(host) && /\/(?:view|gallery)\//i.test(path)) return true;
-          if (/(?:^|\.)imgbox\.com$/i.test(host) && /\/g\//i.test(path)) return true;
-          if (/(?:^|\.)ibb\.co$/i.test(host) && /\/album\//i.test(path)) return true;
-          if (/pixhost\.to$/i.test(host) && /\/gallery\//i.test(path)) return true;
-          if (/(?:postimg|pixxxels)\.cc$/i.test(host) && path.length > 1) return true;
-          if (/(?:jpg\d?\.(?:church|fish|fishing|pet|su|cr)|jpeg\.pet|cuckcapital\.cr)$/i.test(host)) return true;
-          if (/(?:pixeldrain\.com|pixeldrain\.net|pixeldra\.in)$/i.test(host) && /^\/[lu]\//i.test(path)) return true;
-          if (/gofile\.io$/i.test(host) && /\/d\//i.test(path)) return true;
-          if (/turbo\.cr$/i.test(host) && /\/(?:a|embed|v|d)\//i.test(path)) return true;
-        } catch {}
-        return false;
-      }
-    
-      async function resolvePostFiles(post) {
-        const files = [];
-        let index = 0;
-        for (const candidate of post.candidates) {
-          let resolved = [];
-          try {
-            resolved = await resolveCandidate(candidate.url);
-          } catch (err) {
-            logLine(`Could not resolve ${shortUrl(candidate.url)} (${errorMessage(err)}).`);
-          }
-          for (const item of resolved) {
-            const url = typeof item === 'string' ? item : item.url;
-            if (!url) continue;
-            index++;
-            const nameHint = (typeof item === 'object' ? item.name : '') || candidate.nameHint || '';
-            files.push({
-              url,
-              nameHint,
-              sourceUrl: candidate.url,
-              referrer: candidate.url || post.pageUrl || location.href,
-              ext: inferExt(url, nameHint),
-              postId: post.id,
-              postNumber: post.number,
-              page: post.page,
-              published: post.published
-            });
-          }
-        }
-        return files;
-      }
-    
-      async function resolveCandidate(url) {
-        const normalized = normalizeUrl(url);
-        if (!normalized) return [];
-        if (isDirectDownloadUrl(normalized)) return [{ url: normalized }];
-        if (/redgifs\.com/i.test(normalized)) return resolveRedgifs(normalized);
-        if (/cyberdrop\.[a-z]+\/a\//i.test(normalized)) return resolveCyberdropAlbum(normalized);
-        if (/cyberdrop\.[a-z]+\/(?:f|e)\//i.test(normalized)) return resolveCyberdropFile(normalized);
-        if (/bunkrr?r?\./i.test(normalized) && /\/a\//i.test(normalized)) return resolveBunkrAlbum(normalized);
-        if (/bunkrr?r?\.|bunkr-cache\.|scdn\.st/i.test(normalized)) return resolveBunkrFile(normalized);
-        if (/imagebam\.com\/gallery\//i.test(normalized)) return resolveGenericGallery(normalized, 'a[href*="imagebam.com/view/"]');
-        if (/imagebam\.com\/view\//i.test(normalized)) return resolveMetaImage(normalized);
-        if (/imgbox\.com\/g\//i.test(normalized)) return resolveGenericGallery(normalized, 'a[href*="images"][href], a[href*="imgbox.com"][href]');
-        if (/ibb\.co\/album\//i.test(normalized)) return resolveGenericGallery(normalized, 'a[href*="ibb.co/"][href], img[src]');
-        if (/pixhost\.to\/gallery\//i.test(normalized)) return resolveGenericGallery(normalized, 'a[href*="pixhost.to/show/"][href], a[href*="img"][href]');
-        if (/(?:postimg|pixxxels)\.cc|pixhost\.to\/show|ibb\.co\//i.test(normalized)) return resolveMetaImage(normalized);
-        if (/(?:jpg\d?\.(?:church|fish|fishing|pet|su|cr)|jpeg\.pet|cuckcapital\.cr)/i.test(normalized)) return resolveJpgHost(normalized);
-        if (/pixeldrain\.(?:com|net)|pixeldra\.in/i.test(normalized)) return resolvePixeldrain(normalized);
-        if (/gofile\.io\/d\//i.test(normalized)) return resolveGofile(normalized);
-        if (/turbo\.cr\/a\//i.test(normalized)) return resolveTurboAlbum(normalized);
-        if (/turbo\.cr\/(?:embed|v|d)\//i.test(normalized)) return resolveTurboFile(normalized);
-        return [];
-      }
-    
-      function isDirectDownloadUrl(url) {
-        if (imgRE.test(url) || vidRE.test(url)) return true;
-        try {
-          const u = new URL(url);
-          return /\/attachments\/|\/data\/video\//i.test(u.pathname);
-        } catch {
-          return false;
-        }
-      }
-    
-      async function resolveRedgifs(url) {
-        const idMatch = String(url).match(/redgifs\.com\/(?:ifr\/|watch\/|gifs\/detail\/|gifs\/watch\/)?([a-z0-9_-]+)/i);
-        const id = idMatch && idMatch[1] ? idMatch[1] : '';
-        if (!id) return [];
-        const tokenResp = await requestJson('https://api.redgifs.com/v2/auth/temporary');
-        const token = tokenResp && tokenResp.token;
-        if (!token) return [];
-        const data = await requestJson(`https://api.redgifs.com/v2/gifs/${encodeURIComponent(id)}`, {
-          Authorization: `Bearer ${token}`
-        });
-        const gif = data && (data.gif || data.gfyItem || data);
-        const urls = gif && gif.urls ? gif.urls : {};
-        const best = urls.hd || urls.hd1080 || urls.hd720 || urls.sd || urls.mp4;
-        return best ? [{ url: best, name: `${id}.mp4` }] : [];
-      }
-    
-      async function resolveCyberdropAlbum(url) {
-        const doc = await requestDocument(url);
-        const folder = (doc.querySelector('h1') || doc.querySelector('title'));
-        const folderName = folder ? sanitizeNamePart(folder.textContent || '') : '';
-        const links = [...doc.querySelectorAll('a[href]')]
-          .map(a => normalizeUrl(a.getAttribute('href'), url))
-          .filter(u => /cyberdrop\.[a-z]+\/(?:f|e)\//i.test(u));
-        const out = [];
-        for (const link of unique(links)) {
-          const resolved = await resolveCyberdropFile(link);
-          resolved.forEach(item => out.push({ ...item, folderName }));
-          await delay(80);
-        }
-        return out;
-      }
-    
-      async function resolveCyberdropFile(url) {
-        const normalized = normalizeUrl(url);
-        const u = new URL(normalized);
-        const slug = (u.pathname.match(/\/(?:f|e)\/([^/?#]+)/i) || [])[1];
-        if (!slug) return [];
-        const root = (u.hostname.match(/cyberdrop\.[a-z]+$/i) || [])[0];
-        const bases = unique([
-          root ? `https://api.${root}` : '',
-          'https://api.cyberdrop.cr',
-          `${u.origin}`
-        ].filter(Boolean));
-    
-        for (const base of bases) {
-          const endpoints = [
-            `${base}/api/file/auth/${slug}`,
-            `${base}/api/file/info/${slug}`,
-            `${base}/api/file/url/${slug}`,
-            `${base}/api/file/${slug}`,
-            `${base}/api/f/${slug}`
-          ];
-          for (const endpoint of endpoints) {
-            try {
-              const text = await requestText(endpoint, { Accept: 'application/json, text/plain, */*', Referer: u.origin + '/', Origin: u.origin });
-              const found = parseDirectUrlFromText(text, slug, base);
-              if (found.url) return [found];
-            } catch {}
-          }
-        }
-        const doc = await requestDocument(normalized);
-        const meta = pickMetaImage(doc);
-        return meta ? [{ url: meta }] : [];
-      }
-    
-      function parseDirectUrlFromText(text, slug, base) {
-        const out = { url: '', name: '' };
-        const s = String(text || '');
-        const absolute = s.match(new RegExp(`https?:[^"'\\s]+/api/file/d/${escapeRegExp(slug)}\\?[^"'\\s]*token=[^"'\\s]+`, 'i'));
-        if (absolute) out.url = absolute[0].replace(/\\\//g, '/');
-        const rel = !out.url && s.match(new RegExp(`/api/file/d/${escapeRegExp(slug)}\\?[^"'\\s]*token=[^"'\\s]+`, 'i'));
-        if (rel) out.url = `${base.replace(/\/$/, '')}${rel[0]}`;
-        try {
-          const json = JSON.parse(s);
-          const values = [];
-          walkValues(json, (value, key) => {
-            if (typeof value !== 'string') return;
-            if (!out.url && /^https?:\/\//i.test(value) && (/\/api\/file\/d\//i.test(value) || isDirectDownloadUrl(value))) out.url = value;
-            if (!out.name && /(name|filename|original)/i.test(key) && /\.[a-z0-9]{2,8}$/i.test(value)) out.name = value.split(/[\\/]/).pop();
-            values.push(value);
-          });
-          if (!out.url) {
-            const direct = values.find(v => /^https?:\/\//i.test(v) && (/\/api\/file\/d\//i.test(v) || isDirectDownloadUrl(v)));
-            if (direct) out.url = direct;
-          }
-        } catch {}
-        if (out.url) out.url = normalizeUrl(out.url);
-        return out;
-      }
-    
-      async function resolveBunkrAlbum(url) {
-        const doc = await requestDocument(url);
-        const links = [...doc.querySelectorAll('a[href]')]
-          .map(a => normalizeUrl(a.getAttribute('href'), url))
-          .filter(u => /bunkrr?r?\./i.test(u) && !/\/a\//i.test(u));
-        const out = [];
-        for (const link of unique(links)) {
-          const resolved = await resolveBunkrFile(link);
-          out.push(...resolved);
-          await delay(80);
-        }
-        return out;
-      }
-    
-      async function resolveBunkrFile(url) {
-        if (isDirectDownloadUrl(url) || /scdn\.st|bunkr-cache\./i.test(url)) return [{ url }];
-        const doc = await requestDocument(url);
-        const direct = [
-          ...[...doc.querySelectorAll('source[src], video[src], a[href]')].map(el => normalizeUrl(el.getAttribute('src') || el.getAttribute('href'), url)),
-          ...String(doc.documentElement.innerHTML || '').match(/https?:\/\/[^"'<> ]+(?:scdn\.st|bunkr-cache\.[^"'<> ]+)[^"'<> ]+/gi) || []
-        ].find(u => u && (isDirectDownloadUrl(u) || /scdn\.st|bunkr-cache\./i.test(u)));
-        return direct ? [{ url: direct }] : [];
-      }
-    
-      async function resolveGenericGallery(url, selector) {
-        const doc = await requestDocument(url);
-        const out = [];
-        const links = [...doc.querySelectorAll(selector)]
-          .map(el => normalizeUrl(el.getAttribute('href') || el.getAttribute('src'), url))
-          .filter(Boolean);
-        for (const link of unique(links)) {
-          if (isDirectDownloadUrl(link)) out.push({ url: link });
-          else {
-            const meta = await resolveMetaImage(link);
-            out.push(...meta);
-          }
-          await delay(60);
-        }
-        return out;
-      }
-    
-      async function resolveMetaImage(url) {
-        if (isDirectDownloadUrl(url)) return [{ url }];
-        const doc = await requestDocument(url);
-        const picked = pickMetaImage(doc) ||
-          [...doc.querySelectorAll('img[src]')]
-            .map(img => normalizeUrl(img.getAttribute('src'), url))
-            .find(u => isDirectDownloadUrl(u));
-        return picked ? [{ url: picked }] : [];
-      }
-    
-      function pickMetaImage(doc) {
-        const meta = doc.querySelector('meta[property="og:image"], meta[name="twitter:image"]');
-        return meta ? normalizeUrl(meta.getAttribute('content'), doc.URL || location.href) : '';
-      }
-    
-      async function resolveJpgHost(url) {
-        if (isDirectDownloadUrl(url)) return [{ url }];
-        if (/\/(?:a|album)\//i.test(url)) return resolveGenericGallery(url, 'a[href], img[src]');
-        return resolveMetaImage(url);
-      }
-    
-      async function resolvePixeldrain(url) {
-        try {
-          const u = new URL(url);
-          const m = u.pathname.match(/\/(?:u|l)\/([^/?#]+)/i);
-          if (!m) return [];
-          if (/\/u\//i.test(u.pathname)) return [{ url: `${u.origin}/api/file/${m[1]}` }];
-        } catch {}
-        return [];
-      }
-    
-      async function resolveGofile(url) {
-        const m = String(url).match(/gofile\.io\/d\/([^/?#]+)/i);
-        const id = m && m[1] ? m[1] : '';
-        if (!id) return [];
-        const data = await requestJson(`https://api.gofile.io/contents/${encodeURIComponent(id)}?wt=4fd6sg89d7s6`);
-        const out = [];
-        walkValues(data, value => {
-          if (typeof value === 'string' && /^https?:\/\//i.test(value) && isDirectDownloadUrl(value)) out.push({ url: value });
-        });
-        return uniqueBy(out, item => canonicalMediaKey(item.url));
-      }
-    
-      async function resolveTurboAlbum(url) {
-        const doc = await requestDocument(url);
-        const ids = [...doc.querySelectorAll('a[href*="/v/"], a[href*="/d/"]')]
-          .map(a => {
-            const href = normalizeUrl(a.getAttribute('href'), url);
-            const m = href.match(/\/(?:v|d)\/([^/?#]+)/i);
-            return m ? { id: m[1], name: sanitizeNamePart(a.getAttribute('title') || a.textContent || '') } : null;
-          })
-          .filter(Boolean);
-        const out = [];
-        for (const item of uniqueBy(ids, x => x.id)) {
-          const signed = await signTurboUrl(item.id, `https://turbo.cr/embed/${item.id}`, item.name);
-          if (signed) out.push({ url: signed, name: item.name });
-          await delay(120);
-        }
-        return out;
-      }
-    
-      async function resolveTurboFile(url) {
-        const m = String(url).match(/\/(?:embed|v|d)\/([^/?#]+)/i);
-        const id = m && m[1] ? m[1] : '';
-        if (!id) return [];
-        const signed = await signTurboUrl(id, `https://turbo.cr/embed/${id}`, '');
-        if (signed) return [{ url: signed }];
-        const doc = await requestDocument(`https://turbo.cr/embed/${encodeURIComponent(id)}`);
-        const src = doc.querySelector('source[src], video[src]');
-        const direct = src ? normalizeUrl(src.getAttribute('src'), `https://turbo.cr/embed/${id}`) : '';
-        return direct ? [{ url: direct }] : [];
-      }
-    
-      async function signTurboUrl(id, refererUrl, nameHint) {
-        const headers = { Accept: 'application/json, text/plain, */*', Referer: refererUrl };
-        const endpoints = [
-          `https://turbo.cr/api/sign?v=${encodeURIComponent(id)}`,
-          `https://turbo.cr/sign?v=${encodeURIComponent(id)}`
-        ];
-        for (let attempt = 0; attempt < 3; attempt++) {
-          for (const endpoint of endpoints) {
-            try {
-              const data = await requestJson(endpoint, headers);
-              if (data && data.url && (data.success === undefined || data.success)) {
-                let signed = String(data.url);
-                const originalName = data.original_filename || nameHint;
-                if (originalName && !/[?&]fn=/.test(signed)) {
-                  signed += (signed.includes('?') ? '&' : '?') + `fn=${encodeURIComponent(String(originalName)).replace(/%20/g, '+')}`;
-                }
-                return signed;
-              }
-            } catch {}
-          }
-          await delay(700 + Math.floor(Math.random() * 700));
-        }
-        return '';
-      }
-    
-      function buildDedupedDownloads(posts) {
-        const sorted = posts
-          .slice()
-          .sort((a, b) => (a.page - b.page) || (Number(a.number) - Number(b.number)) || String(a.id).localeCompare(String(b.id)));
-        const seen = new Set();
-        const keptPosts = [];
-        const keptFiles = [];
-        let duplicates = 0;
-        let globalIndex = 0;
-    
-        for (const post of sorted) {
-          const postFiles = [];
-          for (const file of post.files) {
-            const key = canonicalMediaKey(file.url);
-            if (!key) continue;
-            if (seen.has(key)) {
-              duplicates++;
-              continue;
-            }
-            seen.add(key);
-            postFiles.push(file);
-          }
-          if (!postFiles.length) continue;
-    
-          globalIndex++;
-          const postFolder = buildPostFolderName(post, globalIndex);
-          const decorated = {
-            id: post.id,
-            number: post.number,
-            page: post.page,
-            postFolder,
-            files: []
-          };
-    
-          postFiles.forEach((file, idx) => {
-            const fileName = formatFileName(post, file, idx + 1, globalIndex);
-            const item = {
-              ...file,
-              threadFolder: state.threadFolder,
-              postFolder,
-              fileName,
-              path: `${postFolder}/${fileName}`
-            };
-            decorated.files.push(item);
-            keptFiles.push(item);
-          });
-          keptPosts.push(decorated);
-        }
-    
-        const pages = buildPageDownloads(keptPosts);
-        return { posts: keptPosts, pages, files: keptFiles, duplicates };
-      }
-    
-      function buildPageDownloads(posts) {
-        const grouped = new Map();
-        for (const post of posts) {
-          const page = Math.max(1, Number(post.page || 1) || 1);
-          if (!grouped.has(page)) grouped.set(page, { page, posts: [], files: [] });
-          const bucket = grouped.get(page);
-          bucket.posts.push(post);
-          bucket.files.push(...post.files);
-        }
-        return [...grouped.values()].filter(page => page.files.length > 0).sort((a, b) => a.page - b.page);
-      }
-    
-      function selectedSimpCityPostsFromRange() {
-        const maxPostNumber = state.posts.reduce((max, post, idx) => Math.max(max, idx + 1, Number(post.number) || 0), 0);
-        const parsed = parseStripperRangeList(ui.postRangeInput.value, maxPostNumber);
-        if (parsed.error) {
-          logLine(`Post range error: ${parsed.error}.`);
-          return [];
-        }
-        return state.posts.filter((post, idx) => parsed.numbers.has(idx + 1) || parsed.numbers.has(Number(post.number) || 0));
-      }
 
-      function selectedSimpCityPagesFromRange() {
-        const maxPage = state.pages.reduce((max, page) => Math.max(max, Number(page.page) || 0), 0);
-        const parsed = parseStripperRangeList(ui.pageRangeInput.value, maxPage);
-        if (parsed.error) {
-          logLine(`Page range error: ${parsed.error}.`);
-          return [];
+        function resetAll() {
+          for (const k of GM_listValues()) if (k.startsWith(NS)) GM_deleteValue(k);
+          try { localStorage.removeItem(BRIDGE_KEY); } catch (e) {}   // wipe any legacy shared snapshot too
+          bumpRev();
         }
-        return state.pages.filter((page, idx) => parsed.numbers.has(Number(page.page) || 0) || parsed.numbers.has(idx + 1));
-      }
 
-      async function downloadSelectedPostArchives() {
-        if (state.busy) return;
-        const selected = selectedSimpCityPostsFromRange();
-        if (!selected.length) {
-          logLine('No scanned posts matched that range.');
-          return;
+        // Cross a node off (mark "scraped") without deleting it or its links.
+        function setScraped(id, scraped) {
+          const key = NS + 'n:' + id;
+          const raw = GM_getValue(key, null);
+          if (!raw) return;
+          const rec = JSON.parse(raw);
+          rec.scraped = !!scraped;
+          GM_setValue(key, JSON.stringify(rec));
+          bumpRev();
         }
-        await downloadPostArchives(selected);
-      }
 
-      async function downloadSelectedPageArchives() {
-        if (state.busy) return;
-        const selected = selectedSimpCityPagesFromRange();
-        if (!selected.length) {
-          logLine('No scanned pages matched that range.');
-          return;
-        }
-        await downloadPageArchives(selected);
-      }
-
-      async function downloadPostArchives(selectedPosts) {
-        const posts = Array.isArray(selectedPosts) ? selectedPosts : state.posts;
-        if (state.busy || !posts.length) return;
-        setBusy(true, 'Downloading...');
-        setProgress(0);
-        setCountTextOverride(formatUnitTicker(0, posts.length, 'post'));
-        try {
-          let done = 0;
-          for (const post of posts) {
-            const archiveName = `${state.threadFolder}/${post.postFolder}.zip`;
-            logLine(`Building post zip ${done + 1}/${posts.length}: ${post.postFolder}`);
-            await buildAndSaveArchive(post.files, archiveName, (pct, label) => {
-              const base = (done / posts.length) * 100;
-              const span = 100 / posts.length;
-              setProgress(base + (pct / 100) * span);
-              if (label) logLine(label);
-            });
-            done++;
-            setCountTextOverride(formatUnitTicker(done, posts.length, 'post'));
-            await delay(FILE_DELAY_MS);
-          }
-          logLine(`Downloaded ${done} post archive${done === 1 ? '' : 's'}.`);
-        } catch (err) {
-          logLine(`Post download failed: ${errorMessage(err)}`);
-        } finally {
-          setCountTextOverride('');
-          setBusy(false);
-        }
-      }
-    
-      async function downloadPageArchives(selectedPages) {
-        const pages = Array.isArray(selectedPages) ? selectedPages : state.pages;
-        if (state.busy || !pages.length) return;
-        setBusy(true, 'Downloading...');
-        setProgress(0);
-        setCountTextOverride(formatUnitTicker(0, pages.length, 'page'));
-        try {
-          let done = 0;
-          for (const page of pages) {
-            const archiveName = `${state.threadFolder}/page_${String(page.page).padStart(4, '0')}.zip`;
-            logLine(`Building page zip ${done + 1}/${pages.length}: page ${page.page}, ${page.files.length} file${page.files.length === 1 ? '' : 's'}.`);
-            await buildAndSaveArchive(page.files, archiveName, (pct, label) => {
-              const base = (done / pages.length) * 100;
-              const span = 100 / pages.length;
-              setProgress(base + (pct / 100) * span);
-              if (label) logLine(label);
-            });
-            done++;
-            setCountTextOverride(formatUnitTicker(done, pages.length, 'page'));
-            await delay(FILE_DELAY_MS);
-          }
-          logLine(`Downloaded ${done} page archive${done === 1 ? '' : 's'}.`);
-        } catch (err) {
-          logLine(`Page download failed: ${errorMessage(err)}`);
-        } finally {
-          setCountTextOverride('');
-          setBusy(false);
-        }
-      }
-    
-      async function downloadThreadArchive() {
-        if (state.busy || !state.files.length) return;
-        setBusy(true, 'Downloading...');
-        setProgress(0);
-        setCountTextOverride(formatUnitTicker(0, state.files.length, 'file'));
-        try {
-          const archiveName = `${state.threadFolder}/${state.threadFolder}.zip`;
-          logLine(`Building thread zip for ${state.threadTitle}.`);
-          await buildAndSaveArchive(
-            state.files,
-            archiveName,
-            pct => setProgress(pct),
-            (done, total) => setCountTextOverride(formatUnitTicker(done, total, 'file'))
-          );
-          logLine(`Downloaded thread archive with ${state.files.length} file${state.files.length === 1 ? '' : 's'}.`);
-        } catch (err) {
-          logLine(`Thread download failed: ${errorMessage(err)}`);
-        } finally {
-          setCountTextOverride('');
-          setBusy(false);
-        }
-      }
-    
-      async function buildAndSaveArchive(files, archiveName, onProgress, onUnitProgress) {
-        if (!JSZip || typeof JSZip !== 'function') throw new Error('JSZip is missing');
-        const zip = new JSZip();
-        let added = 0;
-        let failed = 0;
-    
-        if (onUnitProgress) onUnitProgress(0, files.length);
-    
-        for (const file of files) {
-          const fetchPct = files.length ? Math.round((added / files.length) * 68) : 0;
-          if (onProgress) onProgress(fetchPct);
-          try {
-            const blob = await fetchBlobWithRetry(file);
-            zip.file(file.path || file.fileName || fallbackFileName(file.url, added + 1), blob);
-            added++;
-            if (onProgress) onProgress(Math.round((added / files.length) * 68));
-          } catch (err) {
-            failed++;
-            logLine(`Skipped failed file: ${file.fileName || shortUrl(file.url)} (${errorMessage(err)})`);
-          }
-          if (onUnitProgress) onUnitProgress(added + failed, files.length);
-          await delay(FILE_DELAY_MS);
-        }
-    
-        if (!added) throw new Error(`all ${files.length} file fetches failed`);
-        if (failed) logLine(`Archive is partial: ${failed} file${failed === 1 ? '' : 's'} failed.`);
-    
-        const blob = await zip.generateAsync(
-          { type: 'blob', compression: 'STORE' },
-          meta => {
-            const pct = Math.max(0, Math.min(100, Math.round(meta && meta.percent ? meta.percent : 0)));
-            if (onProgress) onProgress(68 + Math.round((pct / 100) * 27));
-          }
-        );
-    
-        await saveBlob(blob, sanitizeDownloadPathForSave(archiveName || 'simpguest_archive.zip'));
-        if (onProgress) onProgress(100);
-      }
-    
-      async function fetchBlobWithRetry(file) {
-        const url = typeof file === 'string' ? file : file && file.url;
-        if (!url) throw new Error('missing download URL');
-        const referrer = typeof file === 'object' && file ? (file.referrer || file.sourceUrl || location.href) : location.href;
-        let lastErr = null;
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-          try {
-            return await requestBlob(url, referrer);
-          } catch (err) {
-            lastErr = err;
-            if (attempt >= MAX_RETRIES) break;
-            const backoff = BACKOFF_BASE * Math.pow(2, attempt) + Math.floor(Math.random() * 500);
-            await delay(backoff);
-          }
-        }
-        throw lastErr || new Error('download failed');
-      }
-    
-      function requestDocument(url, headers) {
-        return new Promise((resolve, reject) => {
-          GM_xmlhttpRequest({
-            method: 'GET',
-            url,
-            anonymous: false,
-            headers: headers || { Accept: 'text/html,application/xhtml+xml' },
-            responseType: 'document',
-            timeout: 45000,
-            onload: res => {
-              if (res.status < 200 || res.status >= 300) {
-                reject(new Error(`HTTP ${res.status}`));
-                return;
-              }
-              const doc = res.response || new DOMParser().parseFromString(res.responseText || '', 'text/html');
-              try { Object.defineProperty(doc, 'URL', { value: url, configurable: true }); } catch {}
-              resolve(doc);
-            },
-            onerror: () => reject(new Error('network error')),
-            ontimeout: () => reject(new Error('request timeout'))
-          });
-        });
-      }
-    
-      function requestText(url, headers) {
-        return new Promise((resolve, reject) => {
-          GM_xmlhttpRequest({
-            method: 'GET',
-            url,
-            anonymous: false,
-            headers: headers || {},
-            responseType: 'text',
-            timeout: 45000,
-            onload: res => {
-              if (res.status < 200 || res.status >= 300) {
-                reject(new Error(`HTTP ${res.status}`));
-                return;
-              }
-              resolve(String(res.responseText || res.response || ''));
-            },
-            onerror: () => reject(new Error('network error')),
-            ontimeout: () => reject(new Error('request timeout'))
-          });
-        });
-      }
-    
-      function requestJson(url, headers) {
-        return requestText(url, { Accept: 'application/json', ...(headers || {}) }).then(text => JSON.parse(text || '{}'));
-      }
-    
-      function buildDownloadHeaders(url, referrer) {
-        const headers = {
-          Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,video/*,*/*;q=0.8'
-        };
-        const referer = normalizeReferrer(url, referrer);
-        if (referer) headers.Referer = referer;
-        return headers;
-      }
-    
-      function normalizeReferrer(url, referrer) {
-        const candidates = [referrer, location.href];
-        for (const candidate of candidates) {
-          try {
-            const r = new URL(candidate, location.href);
-            if (!/^https?:$/i.test(r.protocol)) continue;
-            const target = new URL(url, location.href);
-            if (/redgifs\.com$/i.test(target.hostname)) return 'https://www.redgifs.com/';
-            if (/cyberdrop\.[a-z]+$/i.test(target.hostname)) return `${target.origin}/`;
-            if (/bunkrr?r?\.|bunkr-cache\.|scdn\.st/i.test(target.hostname)) return `${target.origin}/`;
-            return r.href;
-          } catch {}
-        }
-        return '';
-      }
-    
-      function getHeaderValue(rawHeaders, name) {
-        const needle = String(name || '').toLowerCase();
-        const lines = String(rawHeaders || '').split(/\r?\n/);
-        for (const line of lines) {
-          const idx = line.indexOf(':');
-          if (idx < 0) continue;
-          if (line.slice(0, idx).trim().toLowerCase() === needle) {
-            return line.slice(idx + 1).trim();
-          }
-        }
-        return '';
-      }
-    
-      function requestBlob(url, referrer) {
-        return new Promise((resolve, reject) => {
-          const headers = buildDownloadHeaders(url, referrer);
-          try {
-            GM_xmlhttpRequest({
-              method: 'GET',
-              url,
-              anonymous: false,
-              headers,
-              responseType: 'blob',
-              timeout: BLOB_TIMEOUT_MS,
-              onload: res => {
-                if (res.status < 200 || res.status >= 300) {
-                  reject(new Error(`HTTP ${res.status}`));
-                  return;
-                }
-                const blob = res.response;
-                if (!blob || typeof blob.size !== 'number' || blob.size <= 0) {
-                  reject(new Error('empty response'));
-                  return;
-                }
-                const contentType = getHeaderValue(res.responseHeaders, 'content-type') || blob.type || '';
-                if (/text\/html|application\/xhtml\+xml/i.test(contentType)) {
-                  reject(new Error('received HTML instead of media'));
-                  return;
-                }
-                resolve(blob);
-              },
-              onerror: () => reject(new Error('network error')),
-              ontimeout: () => reject(new Error('request timeout'))
-            });
-          } catch (err) {
-            reject(err);
-          }
-        });
-      }
-    
-      function saveBlob(blob, name) {
-        return new Promise((resolve, reject) => {
-          const url = URL.createObjectURL(blob);
-          let settled = false;
-          const finish = (err) => {
-            if (settled) return;
-            settled = true;
-            setTimeout(() => {
-              try { URL.revokeObjectURL(url); } catch {}
-            }, 30000);
-            if (err) reject(err);
-            else resolve();
-          };
-    
-          try {
-            if (typeof GM_download === 'function') {
-              GM_download({
-                url,
-                name,
-                saveAs: false,
-                onload: () => finish(),
-                onerror: () => fallbackAnchorDownload(url, name, finish),
-                ontimeout: () => fallbackAnchorDownload(url, name, finish)
-              });
+        // -------------------------------------------------------- import / merge
+        // Merge a dataset from an exported JSON file (manual Import button).
+        // Union semantics: new nodes/edges are added; existing nodes keep the
+        // richer state (visited/scraped OR'd, earliest first / latest last). Never
+        // deletes or downgrades anything, and is safe to run repeatedly.
+        function mergeBridge(bridge) {
+          if (!bridge || bridge.v !== 1) return 0;
+          let changes = 0;
+          (bridge.nodes || []).forEach(n => {
+            if (!n || !n.id || !n.type) return;
+            const key = NS + 'n:' + n.id;
+            const raw = GM_getValue(key, null);
+            if (!raw) {
+              GM_setValue(key, JSON.stringify({
+                id: n.id, type: n.type, label: n.label, url: n.url,
+                visited: !!n.visited, scraped: !!n.scraped,
+                first: n.first || Date.now(), last: n.last || Date.now(),
+              }));
+              changes++;
               return;
             }
-          } catch (err) {
-            fallbackAnchorDownload(url, name, finish);
+            const cur = JSON.parse(raw);
+            const visited = !!(cur.visited || n.visited);
+            const scraped = !!(cur.scraped || n.scraped);
+            const label = cur.label || n.label;
+            const url = cur.url || n.url;
+            // Only a real state change counts — timestamp drift alone is ignored.
+            const changed = visited !== !!cur.visited || scraped !== !!cur.scraped
+                || label !== cur.label || url !== cur.url;
+            if (changed) {
+              const first = Math.min(cur.first || Date.now(), n.first || Date.now());
+              const last = Math.max(cur.last || 0, n.last || 0);
+              GM_setValue(key, JSON.stringify({ id: cur.id, type: cur.type || n.type, label, url, visited, scraped, first, last }));
+              changes++;
+            }
+          });
+          (bridge.edges || []).forEach(e => {
+            if (!e || !e.from || !e.to) return;
+            const key = NS + 'e:' + e.from + '__' + e.to;
+            if (!GM_getValue(key, null)) {
+              GM_setValue(key, JSON.stringify({ from: e.from, to: e.to, ts: e.ts || Date.now() }));
+              changes++;
+            }
+          });
+          return changes;
+        }
+
+        // ------------------------------------------------------------ export / import
+        // Manual only. No background publishing or importing — the map lives purely
+        // in this install's own GM storage so resetting/deleting actually sticks.
+        // Download the whole map as a JSON file — an install-independent backup.
+        function exportData() {
+          try {
+            const g = loadGraph();
+            const blob = new Blob([JSON.stringify({ v: 1, ts: Date.now(), nodes: g.nodes, edges: g.edges }, null, 2)],
+              { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'rabbithole-map-' + new Date().toISOString().slice(0, 10) + '.json';
+            document.body.appendChild(a); a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+            try { logLine(`Rabbithole: exported ${g.nodes.length} nodes / ${g.edges.length} links.`); } catch (e) {}
+          } catch (e) {}
+        }
+
+        // Load a previously exported JSON file and merge it in (same union rules).
+        function importDataFromFile(file) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            let data = null;
+            try { data = JSON.parse(reader.result); } catch (e) { try { logLine('Rabbithole: import failed (not valid JSON).'); } catch (e2) {} return; }
+            const changes = mergeBridge(data);
+            if (changes) { bumpRev(); }
+            try { logLine(`Rabbithole: imported ${changes} new item${changes === 1 ? '' : 's'} from file.`); } catch (e) {}
+            renderGraph();
+          };
+          reader.readAsText(file);
+        }
+
+        function descendants(rootId, edges) {
+          const out = new Set([rootId]), adj = {};
+          edges.forEach(e => (adj[e.from] = adj[e.from] || []).push(e.to));
+          const stack = [rootId];
+          while (stack.length) {
+            const cur = stack.pop();
+            for (const nxt of (adj[cur] || [])) if (!out.has(nxt)) { out.add(nxt); stack.push(nxt); }
+          }
+          return [...out];
+        }
+
+        // ---------------------------------------------------------- navigate away
+        // Jumping to a node from the map is an explicit teleport, not part of the
+        // browsing trail, so it must NOT create an edge. We flag the jump in
+        // sessionStorage; onLocation (same tab) sees the flag and skips edge
+        // creation. New tabs are opened with noopener so they start with a clean
+        // sessionStorage (no rrm_last) and therefore can't chain an edge either.
+        function openNodeCurrentTab(url) {
+          if (!url) return;
+          try { sessionStorage.setItem('rrm_jump', '1'); } catch (e) {}
+          location.href = url;
+        }
+        function openNodeNewTab(url) {
+          if (!url) return;
+          try { sessionStorage.setItem('rrm_jump', '1'); } catch (e) {}
+          window.open(url, '_blank', 'noopener');
+          try { sessionStorage.removeItem('rrm_jump'); } catch (e) {}
+        }
+
+        // -------------------------------------------------------------- capture
+        function anchorFrom(e) {
+          const path = e.composedPath ? e.composedPath() : [];
+          for (const el of path) if (el && el.tagName === 'A' && el.href) return el;
+          let el = e.target;
+          while (el) { if (el.tagName === 'A' && el.href) return el; el = el.parentNode; }
+          return null;
+        }
+
+        function onClick(e) {
+          const a = anchorFrom(e);
+          if (!a) return;
+          if (winEl && winEl.contains(a)) return;   // clicks inside the map aren't browsing
+          const dest = classify(a.href);
+          if (!dest) return;
+          const src = classify(location.href);
+          upsertNode(dest, false);
+          if (src) addEdge(src.id, dest.id);
+        }
+
+        function onLocation() {
+          let isJump = false;
+          try {
+            if (sessionStorage.getItem('rrm_jump')) { isJump = true; sessionStorage.removeItem('rrm_jump'); }
+          } catch (e) {}
+          const cur = classify(location.href);
+          if (cur) {
+            upsertNode(cur, true);
+            try {
+              const rawLast = sessionStorage.getItem('rrm_last');
+              if (rawLast && !lastNavByPop && !isJump) {
+                const last = JSON.parse(rawLast);
+                if (last.id && last.id !== cur.id && (Date.now() - last.ts) < 60000) addEdge(last.id, cur.id);
+              }
+            } catch (e) {}
+            try { sessionStorage.setItem('rrm_last', JSON.stringify({ id: cur.id, ts: Date.now() })); } catch (e) {}
+          }
+          lastNavByPop = false;
+          scheduleRender();
+        }
+
+        // Coalesce bursty re-renders (a single navigation writes a node + maybe
+        // an edge, each bumping REV) so the graph refreshes at most once per
+        // pause instead of several times in a row.
+        let renderTimer = null;
+        function scheduleRender() {
+          if (!isWindowOpen()) { refreshButton(); return; }
+          if (renderTimer) clearTimeout(renderTimer);
+          renderTimer = setTimeout(() => { renderTimer = null; renderGraph(); }, 400);
+        }
+
+        // ------------------------------------------------------------------- UI
+        function injectStyle() {
+          GM_addStyle(`
+            #redditGuestPanel .rg-titlebar{display:flex;align-items:center;gap:8px;}
+            #redditGuestPanel .rg-title{flex:1;font-weight:800;font-size:13px;letter-spacing:.3px;color:#f4f4f5;}
+            #redditGuestPanel button.rg-mapBtn{width:auto;min-height:28px;padding:0 10px;display:flex;align-items:center;gap:6px;
+              background:rgba(255,255,255,.11);}
+            #redditGuestPanel button.rg-mapBtn:hover:not(:disabled){background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.28);}
+            #redditGuestPanel .rg-mapGlyph{font-size:14px;line-height:1;}
+            #redditGuestPanel .rg-mapCount{padding:1px 6px;border-radius:999px;font-size:10px;font-weight:800;color:#fff;
+              background:linear-gradient(90deg,#ff4500,#ffb000);}
+            #redditGuestPanel .rg-mapCount[hidden]{display:none;}
+
+            #rrm-window{position:fixed;z-index:2147483646;box-sizing:border-box;width:560px;height:440px;
+              min-width:340px;min-height:260px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);
+              display:flex;flex-direction:column;overflow:hidden;resize:both;
+              border:1px solid rgba(255,255,255,.16);border-radius:14px;background:rgba(18,18,21,.94);
+              backdrop-filter:blur(14px);box-shadow:0 18px 56px rgba(0,0,0,.5);color:#f4f4f5;
+              font:12px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+            #rrm-window *{box-sizing:border-box;}
+            #rrm-window[hidden]{display:none;}
+            #rrm-titlebar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:move;
+              user-select:none;border-bottom:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);
+              border-radius:14px 14px 0 0;}
+            #rrm-titlebar .rrm-title{font-weight:800;font-size:12px;letter-spacing:.3px;}
+            #rrm-toolbar{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;
+              border-bottom:1px solid rgba(255,255,255,.10);}
+            #rrm-search{flex:1;min-width:120px;height:28px;padding:0 9px;border-radius:8px;
+              border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.22);color:#f4f4f5;
+              font-family:inherit;font-size:12px;font-weight:600;outline:none;}
+            #rrm-search:focus{border-color:rgba(255,176,0,.72);}
+            #rrm-window .rrm-btn{appearance:none;min-height:28px;padding:0 11px;border:1px solid rgba(255,255,255,.16);
+              border-radius:8px;background:rgba(255,255,255,.11);color:#f4f4f5;font-family:inherit;font-size:11px;
+              font-weight:700;cursor:pointer;white-space:nowrap;
+              transition:background 120ms ease,border-color 120ms ease,opacity 120ms ease;}
+            #rrm-window .rrm-btn:hover:not(:disabled){background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.28);}
+            #rrm-window .rrm-btn:disabled{opacity:.42;cursor:default;}
+            #rrm-window .rrm-btn.primary{background:#ff4500;}
+            #rrm-window .rrm-btn.primary:hover:not(:disabled){background:#ff5c1c;}
+            #rrm-window .rrm-btn.danger{background:rgba(255,69,0,.16);border-color:rgba(255,69,0,.5);}
+            #rrm-window .rrm-btn.danger:hover:not(:disabled){background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.7);}
+            #rrm-window .rrm-btn.icon{padding:0;width:28px;}
+            #rrm-graph{flex:1;min-height:0;position:relative;}
+            #rrm-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 11px;
+              border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:#a9a9b2;}
+            #rrm-foot .rrm-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
+            #rrm-count{color:#d8d8dd;font-weight:700;}
+            #rrm-window .rrm-select{height:28px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);
+              background:rgba(0,0,0,.22);color:#f4f4f5;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;outline:none;}
+            #rrm-window .rrm-select:focus{border-color:rgba(255,176,0,.72);}
+            #rrm-window .rrm-btn.active{background:#ff4500;}
+            #rrm-columns{flex:1;min-height:0;display:none;gap:10px;padding:10px;overflow:auto;}
+            #rrm-columns .rrm-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;overflow:hidden;
+              border:1px solid rgba(255,255,255,.10);border-radius:10px;background:rgba(255,255,255,.03);}
+            #rrm-columns .rrm-col-head{flex:0 0 auto;padding:8px 10px;font-weight:800;font-size:12px;
+              border-bottom:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);}
+            #rrm-columns .rrm-col-count{opacity:.7;}
+            #rrm-columns .rrm-col-list{flex:1;min-height:0;overflow:auto;padding:6px;display:flex;flex-direction:column;
+              gap:4px;scrollbar-width:thin;}
+            #rrm-columns .rrm-col-empty{padding:8px 6px;color:#7a7a82;font-size:11px;}
+            #rrm-columns .rrm-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px;}
+            #rrm-columns .rrm-row:hover{background:rgba(255,255,255,.06);}
+            #rrm-columns .rrm-row-chk{flex:0 0 auto;width:14px;height:14px;cursor:pointer;accent-color:#ff4500;}
+            #rrm-columns .rrm-row-link{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+              color:#e8e8ee;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer;}
+            #rrm-columns .rrm-row-link:hover{color:#fff;text-decoration:underline;}
+            #rrm-columns .rrm-row-link.unvisited{color:#9a9aa2;}
+            #rrm-columns .rrm-row.scraped .rrm-row-link{text-decoration:line-through;color:#6f6f76;}
+            #rrm-columns .rrm-row-btn{flex:0 0 auto;width:22px;height:22px;padding:0;border-radius:6px;line-height:1;
+              border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#d8d8dd;
+              font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;}
+            #rrm-columns .rrm-row-btn:hover{background:rgba(255,255,255,.16);}
+            #rrm-columns .rrm-row-btn.rm:hover{background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.6);}
+          `);
+        }
+
+        function buildWindow() {
+          const win = document.createElement('div');
+          win.id = 'rrm-window';
+          win.innerHTML = `
+            <div id="rrm-titlebar">
+              <span class="rrm-title">🕸 Rabbithole Map</span>
+              <span style="flex:1"></span>
+              <button class="rrm-btn icon" data-act="close" title="Close">✕</button>
+            </div>
+            <div id="rrm-toolbar">
+              <input id="rrm-search" type="text" placeholder="Filter nodes by name…" autocomplete="off" spellcheck="false">
+              <select id="rrm-type" class="rrm-select" title="Filter by node type">
+                <option value="all">All types</option>
+                <option value="sub">Subreddits</option>
+                <option value="user">Users</option>
+                <option value="post">Posts</option>
+              </select>
+              <button class="rrm-btn" data-act="view" title="Toggle graph / column view">Column view</button>
+              <button class="rrm-btn primary" data-act="open" disabled>Open ↗</button>
+              <button class="rrm-btn" data-act="open-tab" disabled>New tab</button>
+              <button class="rrm-btn" data-act="scrape" disabled>Cross off</button>
+              <button class="rrm-btn" data-act="rm" disabled>Remove</button>
+              <button class="rrm-btn" data-act="branch" disabled>Remove branch</button>
+              <span style="flex:1"></span>
+              <button class="rrm-btn" data-act="export" title="Download the whole map as a JSON backup">Export</button>
+              <button class="rrm-btn" data-act="import" title="Merge a previously exported JSON file">Import</button>
+              <button class="rrm-btn" data-act="visited">Clear visited</button>
+              <button class="rrm-btn danger" data-act="reset">Reset</button>
+              <input id="rrm-file" type="file" accept="application/json,.json" hidden>
+            </div>
+            <div id="rrm-graph"></div>
+            <div id="rrm-columns"></div>
+            <div id="rrm-foot">
+              <span><span class="rrm-dot" style="background:${COLORS.sub}"></span>subreddit</span>
+              <span><span class="rrm-dot" style="background:${COLORS.user}"></span>user</span>
+              <span><span class="rrm-dot" style="background:${COLORS.post}"></span>post</span>
+              <span style="opacity:.7">dashed = not visited · ✓ dim = crossed off · double-click opens</span>
+              <span style="flex:1"></span>
+              <span id="rrm-count"></span>
+            </div>`;
+          document.body.appendChild(win);
+          winEl = win;
+
+          // position near top-center on first open
+          const w = win.offsetWidth || 560;
+          win.style.left = Math.max(8, Math.round((window.innerWidth - w) / 2)) + 'px';
+          win.style.top = '64px';
+          win.style.right = 'auto';
+          win.style.bottom = 'auto';
+
+          const titlebar = win.querySelector('#rrm-titlebar');
+          makeDraggable(win, titlebar);
+
+          const search = win.querySelector('#rrm-search');
+          search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); renderGraph(); });
+
+          const typeSel = win.querySelector('#rrm-type');
+          typeSel.value = typeFilter;
+          typeSel.addEventListener('change', () => { typeFilter = typeSel.value; renderGraph(); });
+
+          win.querySelector('[data-act="view"]').onclick = () => {
+            view = (view === 'columns') ? 'graph' : 'columns';
+            renderGraph();
+            // graph container was display:none in column view; recover its size
+            if (view === 'graph' && network) {
+              requestAnimationFrame(() => { if (network) { network.setSize('100%', '100%'); network.redraw(); } });
+            }
+          };
+          win.querySelector('[data-act="scrape"]').onclick = () => {
+            const n = curNode(); if (!n) return; setScraped(n.id, !n.scraped); renderGraph();
+          };
+          win.querySelector('[data-act="close"]').onclick = closeWindow;
+          win.querySelector('[data-act="open"]').onclick = () => { const n = curNode(); if (n) openNodeCurrentTab(n.url); };
+          win.querySelector('[data-act="open-tab"]').onclick = () => { const n = curNode(); if (n) openNodeNewTab(n.url); };
+          win.querySelector('[data-act="rm"]').onclick = () => {
+            if (selectedId) { removeNodes([selectedId]); selectedId = null; renderGraph(); }
+          };
+          win.querySelector('[data-act="branch"]').onclick = () => {
+            if (selectedId) { const g = loadGraph(); removeNodes(descendants(selectedId, g.edges)); selectedId = null; renderGraph(); }
+          };
+          win.querySelector('[data-act="visited"]').onclick = () => {
+            const g = loadGraph(); removeNodes(g.nodes.filter(n => n.visited).map(n => n.id)); selectedId = null; renderGraph();
+          };
+          win.querySelector('[data-act="reset"]').onclick = () => {
+            if (confirm('Erase the entire rabbithole map?')) { resetAll(); selectedId = null; renderGraph(); }
+          };
+          const fileInput = win.querySelector('#rrm-file');
+          win.querySelector('[data-act="export"]').onclick = exportData;
+          win.querySelector('[data-act="import"]').onclick = () => fileInput.click();
+          fileInput.addEventListener('change', () => {
+            if (fileInput.files && fileInput.files[0]) importDataFromFile(fileInput.files[0]);
+            fileInput.value = '';
+          });
+          win.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeWindow(); } });
+
+          initNetwork(win.querySelector('#rrm-graph'));
+
+          if (typeof ResizeObserver !== 'undefined') {
+            resizeObs = new ResizeObserver(() => {
+              if (network) { network.setSize('100%', '100%'); network.redraw(); }
+            });
+            resizeObs.observe(win);
+          }
+        }
+
+        function makeDraggable(win, handle) {
+          let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+          handle.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('button, input')) return;
+            dragging = true;
+            const r = win.getBoundingClientRect();
+            ox = r.left; oy = r.top; sx = e.clientX; sy = e.clientY;
+            win.style.left = ox + 'px'; win.style.top = oy + 'px';
+            win.style.right = 'auto'; win.style.bottom = 'auto';
+            try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+            e.preventDefault();
+          });
+          handle.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            const maxX = window.innerWidth - 60, maxY = window.innerHeight - 30;
+            let nx = ox + (e.clientX - sx);
+            let ny = oy + (e.clientY - sy);
+            nx = Math.min(Math.max(nx, 60 - win.offsetWidth), maxX);
+            ny = Math.min(Math.max(ny, 0), maxY);
+            win.style.left = nx + 'px'; win.style.top = ny + 'px';
+          });
+          const end = (e) => { if (dragging) { dragging = false; try { handle.releasePointerCapture(e.pointerId); } catch (err) {} } };
+          handle.addEventListener('pointerup', end);
+          handle.addEventListener('pointercancel', end);
+        }
+
+        function curNode() { return loadGraph().nodes.find(n => n.id === selectedId) || null; }
+
+        function initNetwork(container) {
+          if (typeof vis === 'undefined' || !vis.Network) {
+            container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;'
+              + 'color:#a9a9b2;font-size:12px;text-align:center;padding:24px;">Graph library failed to load.<br>'
+              + 'Check the userscript’s network access and reload.</div>';
             return;
           }
-    
-          fallbackAnchorDownload(url, name, finish);
-        });
-      }
-    
-      function fallbackAnchorDownload(url, name, finish) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = name.split('/').pop() || 'simpguest_archive.zip';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          setTimeout(() => finish(), 250);
-      }
-    
-      function buildPostFolderName(post, globalIndex) {
-        return sanitizeGeneratedNamePart(buildPostBaseStem(post, globalIndex, 80));
-      }
-    
-      function formatFileName(post, file, index, globalIndex) {
-        const ext = file.ext || inferExt(file.url, file.nameHint) || 'bin';
-        const idx = String(index || 1).padStart(6, '0');
-        const hinted = file.nameHint ? sanitizeNamePart(stripExt(file.nameHint)).slice(0, 80) : '';
-        const stem = hinted || `${buildPostBaseStem(post, globalIndex, 40)}_${idx}`;
-        return sanitizeFileNameStrict(`${stem}.${ext}`, fallbackFileName(file.url, index));
-      }
-    
-      function buildPostBaseStem(post, globalIndex, titleLimit) {
-        const dateSec = formatDateSec(post.published);
-        const threadSec = sanitizeCompactNamePart(state.threadTitle || post.title || 'thread').slice(0, titleLimit) || 'thread';
-        const rawNumber = String(post.number || globalIndex || '').replace(/[^\d]/g, '');
-        const numberSec = rawNumber ? rawNumber.padStart(6, '0') : String(globalIndex).padStart(6, '0');
-        return `${dateSec}-${threadSec}-${numberSec} - postname`;
-      }
-    
-      function formatDateSec(raw) {
-        let d = null;
-        if (typeof raw === 'number' && isFinite(raw) && raw > 0) d = new Date(raw > 1e12 ? raw : raw * 1000);
-        if (!d || Number.isNaN(d.getTime())) d = new Date();
-        const yy = String(d.getFullYear() % 100).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        return `${yy}${mm}${dd}`;
-      }
-    
-      function inferExt(url, nameHint) {
-        const fromName = getUrlExt(nameHint || '');
-        if (fromName) return fromName === 'jpeg' ? 'jpg' : fromName;
-        const fromQueryName = getUrlExt(getQueryFileName(url || ''));
-        if (fromQueryName) return fromQueryName === 'jpeg' ? 'jpg' : fromQueryName;
-        const fromUrl = getUrlExt(url || '');
-        if (fromUrl) return fromUrl === 'jpeg' ? 'jpg' : fromUrl;
-        if (/redgifs/i.test(url || '')) return 'mp4';
-        return 'bin';
-      }
-    
-      function getUrlExt(raw) {
-        const s = String(raw || '').split('#')[0].split('?')[0];
-        const dot = s.lastIndexOf('.');
-        if (dot < 0 || dot >= s.length - 1) return '';
-        const ext = s.slice(dot + 1).toLowerCase().replace(/[^a-z0-9]+/g, '');
-        return ext.length <= 8 ? ext : '';
-      }
-    
-      function getQueryFileName(raw) {
-        try {
-          const u = new URL(String(raw || ''), location.href);
-          return u.searchParams.get('fn') ||
-            u.searchParams.get('filename') ||
-            u.searchParams.get('file') ||
-            u.searchParams.get('name') ||
-            '';
-        } catch {
-          return '';
+          nodesDS = new vis.DataSet([]); edgesDS = new vis.DataSet([]);
+          network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
+            nodes: { shape: 'dot', size: 14, font: { color: '#f4f4f5', size: 12, face: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' } },
+            edges: { arrows: 'to', color: { color: 'rgba(255,255,255,0.22)', highlight: '#ffb000', hover: 'rgba(255,255,255,0.4)' }, smooth: { type: 'dynamic' } },
+            interaction: { hover: true, multiselect: false },
+            physics: { enabled: true, solver: 'forceAtlas2Based', stabilization: { iterations: 150 },
+                       forceAtlas2Based: { gravitationalConstant: -45, springLength: 90 } },
+          });
+          // Freeze the layout once it settles so navigating around doesn't keep
+          // nudging nodes. Physics is only re-armed (kickPhysics) when the graph
+          // actually gains or loses nodes/edges.
+          network.on('stabilized', () => { freezePhysics(); });
+          network.on('selectNode',   p => { selectedId = p.nodes[0]; updateActionButtons(); });
+          network.on('deselectNode', () => { selectedId = null; updateActionButtons(); });
+          network.on('doubleClick',  p => {
+            if (!p.nodes[0]) return;
+            const n = loadGraph().nodes.find(x => x.id === p.nodes[0]);
+            if (n) openNodeCurrentTab(n.url);
+          });
+          renderGraph();
         }
-      }
-    
-      function stripExt(raw) {
-        const s = String(raw || '');
-        const dot = s.lastIndexOf('.');
-        return dot > 0 ? s.slice(0, dot) : s;
-      }
-    
-      function normalizeUrl(raw, base) {
-        if (!raw) return '';
-        let u = String(raw || '').trim().replace(/&amp;/g, '&');
-        if (!u) return '';
-        if (u.startsWith('//')) u = `${location.protocol}${u}`;
-        try { return new URL(u, base || location.href).href; } catch {}
-        try { return new URL(encodeURI(u), base || location.href).href; } catch {}
-        return '';
-      }
-    
-      function canonicalMediaKey(raw) {
-        const normalized = normalizeUrl(raw);
-        if (!normalized) return '';
-        try {
-          const u = new URL(normalized);
-          let path = decodeURIComponent(u.pathname || '').replace(/\/+$/, '');
-          path = path.replace(/\/(?:thumbs?|small|medium)\//gi, '/');
-          return `${u.hostname.toLowerCase()}${path.toLowerCase()}`;
-        } catch {
-          return normalized.split('?')[0].toLowerCase();
+
+        // Re-arm physics briefly; the 'stabilized' handler (or the fallback
+        // timer) turns it back off so the graph stops drifting once it settles.
+        let physicsTimer = null;
+        function kickPhysics() {
+          if (!network) return;
+          network.setOptions({ physics: { enabled: true } });
+          if (physicsTimer) clearTimeout(physicsTimer);
+          physicsTimer = setTimeout(freezePhysics, 2500);
         }
-      }
-    
-      function sanitizeFolder(s) {
-        let out = sanitizeNamePart(s);
-        out = out.replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
-        return out || 'simpcity_thread';
-      }
-    
-      function sanitizeCompactNamePart(s) {
-        let out = sanitizeNamePart(s);
-        out = out.replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
-        return out;
-      }
-    
-      function sanitizeGeneratedNamePart(s) {
-        let out = sanitizeNamePart(s);
-        const dashToken = 'SIMPGUESTDASHSEP';
-        out = out.replace(/\s+-\s+/g, dashToken);
-        out = out.replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
-        out = out.replace(new RegExp(dashToken, 'g'), ' - ');
-        return out || 'post';
-      }
-    
-      function sanitizeNamePart(s) {
-        s = String(s || '').normalize('NFC');
-        s = s.replace(/\uFFFD/g, '');
-        s = s.replace(/[\uD800-\uDFFF]/g, '');
-        s = s.replace(/[\x00-\x1F\x7F]/g, '');
-        s = s.replace(/[\\/:*?"<>|]+/g, '');
-        s = s.replace(/\s+/g, ' ').trim();
-        s = s.replace(/[. ]+$/g, '');
-        return s;
-      }
-    
-      function sanitizeFileNameStrict(raw, fallback) {
-        let s = sanitizeNamePart(raw);
-        s = s.replace(/[^A-Za-z0-9._ -]+/g, '');
-        s = s.trim();
-        return s || (fallback || 'download');
-      }
-    
-      function sanitizeDownloadPathForSave(rawPath) {
-        const parts = String(rawPath || '').replace(/\\/g, '/').split('/').filter(Boolean);
-        if (!parts.length) return 'download';
-        return parts.map((seg, idx) => sanitizeFileNameStrict(seg, idx === parts.length - 1 ? 'download' : 'folder')).join('/');
-      }
-    
-      function fallbackFileName(url, index) {
-        const ext = inferExt(url, '') || 'bin';
-        return `media_${String(index || 1).padStart(6, '0')}.${ext}`;
-      }
-    
-      function walkValues(value, cb, key, seen) {
-        seen = seen || new Set();
-        if (value === null || value === undefined) return;
-        if (typeof value !== 'object') {
-          cb(value, key || '');
-          return;
+        function freezePhysics() {
+          if (physicsTimer) { clearTimeout(physicsTimer); physicsTimer = null; }
+          if (network) network.setOptions({ physics: { enabled: false } });
         }
-        if (seen.has(value)) return;
-        seen.add(value);
-        if (Array.isArray(value)) {
-          value.forEach(item => walkValues(item, cb, key, seen));
-        } else {
-          Object.entries(value).forEach(([k, v]) => walkValues(v, cb, k, seen));
+
+        function updateActionButtons() {
+          if (!winEl) return;
+          const on = !!selectedId;
+          winEl.querySelectorAll('[data-act="open"],[data-act="open-tab"],[data-act="scrape"],[data-act="rm"],[data-act="branch"]')
+            .forEach(b => b.disabled = !on);
+          const sb = winEl.querySelector('[data-act="scrape"]');
+          if (sb) { const n = curNode(); sb.textContent = (n && n.scraped) ? 'Uncross' : 'Cross off'; }
+          const vb = winEl.querySelector('[data-act="view"]');
+          if (vb) { vb.textContent = view === 'columns' ? 'Graph view' : 'Column view'; vb.classList.toggle('active', view === 'columns'); }
         }
-      }
-    
-      function unique(items) {
-        return [...new Set(items.filter(Boolean))];
-      }
-    
-      function uniqueBy(items, keyFn) {
-        const seen = new Set();
-        const out = [];
-        for (const item of items) {
-          const key = keyFn(item);
-          if (!key || seen.has(key)) continue;
-          seen.add(key);
-          out.push(item);
+
+        // search-text + type-dropdown filter, shared by both views
+        function getVisible(nodes) {
+          return nodes.filter(n => {
+            if (typeFilter !== 'all' && n.type !== typeFilter) return false;
+            if (query && !((n.label || '').toLowerCase().includes(query) || (n.url || '').toLowerCase().includes(query))) return false;
+            return true;
+          });
         }
-        return out;
-      }
-    
-      function shortUrl(url) {
-        const s = String(url || '');
-        return s.length > 90 ? `${s.slice(0, 87)}...` : s;
-      }
-    
-      function escapeRegExp(s) {
-        return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      }
-    
-      function delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-      }
-    
-      function errorMessage(err) {
-        if (!err) return 'unknown error';
-        if (err.message) return String(err.message);
-        if (err.error) return String(err.error);
-        return String(err);
-      }
-    
+
+        // re-render entry point: dispatches to whichever view is active
+        function renderGraph() {
+          refreshButton();
+          if (!winEl) return;
+          const graphEl = winEl.querySelector('#rrm-graph');
+          const colsEl = winEl.querySelector('#rrm-columns');
+          if (graphEl) graphEl.style.display = view === 'columns' ? 'none' : '';
+          if (colsEl) colsEl.style.display = view === 'columns' ? 'flex' : 'none';
+
+          const g = loadGraph();
+          const visible = getVisible(g.nodes);
+          const ids = new Set(visible.map(n => n.id));
+          if (selectedId && !ids.has(selectedId)) selectedId = null;
+
+          if (view === 'columns') renderColumns(visible);
+          else renderCanvas(g, visible, ids);
+
+          const c = winEl.querySelector('#rrm-count');
+          if (c) {
+            const total = g.nodes.length;
+            const filtered = !!(query || typeFilter !== 'all');
+            c.textContent = filtered
+              ? `${visible.length} / ${total} nodes · ${g.edges.length} links`
+              : `${total} nodes · ${g.edges.length} links`;
+          }
+          updateActionButtons();
+        }
+
+        function renderCanvas(g, visible, ids) {
+          if (!network) return;
+          const curId = (classify(location.href) || {}).id;
+
+          // Build the desired node styling, then diff it against what's already
+          // drawn. Updating (instead of clear + re-add) preserves each node's
+          // position, so the layout stays put while you browse — only genuinely
+          // new/removed nodes move things.
+          const desired = new Map();
+          visible.forEach(n => {
+            const base = COLORS[n.type];
+            desired.set(n.id, {
+              id: n.id,
+              label: (n.scraped ? '✓ ' : '') + n.label,
+              color: { background: n.visited ? base : 'rgba(255,255,255,0.06)', border: base,
+                       highlight: { background: base, border: '#fff' } },
+              borderWidth: n.id === curId ? 4 : 2,
+              opacity: n.scraped ? 0.4 : 1,
+              font: { color: n.scraped ? '#8a8a90' : '#f4f4f5' },
+              shapeProperties: { borderDashes: n.visited ? false : [4, 3] },
+            });
+          });
+
+          const existing = new Set(nodesDS.getIds());
+          const nodeRemove = [];
+          existing.forEach(id => { if (!desired.has(id)) nodeRemove.push(id); });
+          const nodeAdd = [], nodeUpdate = [];
+          desired.forEach((node, id) => { (existing.has(id) ? nodeUpdate : nodeAdd).push(node); });
+          if (nodeRemove.length) nodesDS.remove(nodeRemove);
+          if (nodeUpdate.length) nodesDS.update(nodeUpdate);   // keeps positions
+          if (nodeAdd.length) nodesDS.add(nodeAdd);
+
+          const desiredEdges = new Map();
+          g.edges.filter(e => ids.has(e.from) && ids.has(e.to))
+                 .forEach(e => { const id = e.from + '__' + e.to; desiredEdges.set(id, { id, from: e.from, to: e.to }); });
+          const existingE = new Set(edgesDS.getIds());
+          const edgeRemove = [];
+          existingE.forEach(id => { if (!desiredEdges.has(id)) edgeRemove.push(id); });
+          const edgeAdd = [];
+          desiredEdges.forEach((edge, id) => { if (!existingE.has(id)) edgeAdd.push(edge); });
+          if (edgeRemove.length) edgesDS.remove(edgeRemove);
+          if (edgeAdd.length) edgesDS.add(edgeAdd);
+
+          // Only disturb the layout when the structure actually changed.
+          if (nodeAdd.length || nodeRemove.length || edgeAdd.length || edgeRemove.length) kickPhysics();
+        }
+
+        // Alternate view: three columns (subreddits / users / posts) listing
+        // collected nodes as links, with no connections drawn.
+        function renderColumns(visible) {
+          const colsEl = winEl.querySelector('#rrm-columns');
+          if (!colsEl) return;
+          const titles = { sub: 'Subreddits', user: 'Users', post: 'Posts' };
+          const groups = { sub: [], user: [], post: [] };
+          visible.forEach(n => { if (groups[n.type]) groups[n.type].push(n); });
+          colsEl.innerHTML = '';
+          ['sub', 'user', 'post'].forEach(type => {
+            if (typeFilter !== 'all' && typeFilter !== type) return;
+            const list = groups[type].slice().sort((a, b) => (a.label || '').localeCompare(b.label || ''));
+            const col = document.createElement('div');
+            col.className = 'rrm-col';
+            const head = document.createElement('div');
+            head.className = 'rrm-col-head';
+            head.style.color = COLORS[type];
+            head.innerHTML = `<span class="rrm-dot" style="background:${COLORS[type]}"></span>${titles[type]} `
+              + `<span class="rrm-col-count">${list.length}</span>`;
+            col.appendChild(head);
+            const listEl = document.createElement('div');
+            listEl.className = 'rrm-col-list';
+            if (!list.length) {
+              const empty = document.createElement('div');
+              empty.className = 'rrm-col-empty';
+              empty.textContent = 'none';
+              listEl.appendChild(empty);
+            } else {
+              list.forEach(n => listEl.appendChild(buildColumnRow(n)));
+            }
+            col.appendChild(listEl);
+            colsEl.appendChild(col);
+          });
+        }
+
+        function buildColumnRow(n) {
+          const row = document.createElement('div');
+          row.className = 'rrm-row' + (n.scraped ? ' scraped' : '');
+
+          const chk = document.createElement('input');
+          chk.type = 'checkbox';
+          chk.className = 'rrm-row-chk';
+          chk.checked = !!n.scraped;
+          chk.title = 'Cross off (mark scraped)';
+          chk.addEventListener('change', () => { setScraped(n.id, chk.checked); renderGraph(); });
+
+          const link = document.createElement('a');
+          link.className = 'rrm-row-link' + (n.visited ? '' : ' unvisited');
+          link.href = n.url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = (n.label || '').replace(/\n/g, ' ');
+          link.title = n.url + (n.visited ? '' : '  (not visited)');
+          link.addEventListener('click', (e) => { e.preventDefault(); openNodeNewTab(n.url); });
+
+          const openCur = document.createElement('button');
+          openCur.className = 'rrm-row-btn';
+          openCur.textContent = '↗';
+          openCur.title = 'Open in current tab';
+          openCur.addEventListener('click', () => openNodeCurrentTab(n.url));
+
+          const rm = document.createElement('button');
+          rm.className = 'rrm-row-btn rm';
+          rm.textContent = '×';
+          rm.title = 'Remove node';
+          rm.addEventListener('click', () => { removeNodes([n.id]); renderGraph(); });
+
+          row.appendChild(chk);
+          row.appendChild(link);
+          row.appendChild(openCur);
+          row.appendChild(rm);
+          return row;
+        }
+
+        // ------------------------------------------------------------- lifecycle
+        function isWindowOpen() { return !!(winEl && !winEl.hidden); }
+
+        function toggleWindow() {
+          if (isWindowOpen()) { closeWindow(); return; }
+          if (!winEl) buildWindow();
+          else { winEl.hidden = false; renderGraph(); }
+          const s = winEl && winEl.querySelector('#rrm-search');
+          if (s) setTimeout(() => s.focus(), 0);
+        }
+
+        function closeWindow() {
+          selectedId = null;
+          if (winEl) winEl.hidden = true;
+        }
+
+        function refreshButton() {
+          if (!ui.mapCount) return;
+          const n = countNodes();
+          ui.mapCount.textContent = n;
+          ui.mapCount.hidden = n === 0;
+        }
+
+        function bootstrap() {
+          if (booted) return;
+          booted = true;
+          injectStyle();
+          document.addEventListener('click', onClick, true);
+          document.addEventListener('auxclick', onClick, true);
+          ['pushState', 'replaceState'].forEach(fn => {
+            const orig = history[fn];
+            history[fn] = function () { const r = orig.apply(this, arguments); window.dispatchEvent(new Event('rrm:loc')); return r; };
+          });
+          window.addEventListener('popstate', () => { lastNavByPop = true; window.dispatchEvent(new Event('rrm:loc')); });
+          window.addEventListener('rrm:loc', onLocation);
+          if (typeof GM_addValueChangeListener === 'function') {
+            GM_addValueChangeListener(REV, () => { scheduleRender(); });
+          }
+
+          onLocation(); // record the page you loaded on
+        }
+
+        return { bootstrap, toggleWindow, refreshButton };
+      })();
+
+      if (window.__stripperRrmLoaded) { /* avoid double tracking if injected twice */ }
+      else { window.__stripperRrmLoaded = true; rabbithole.bootstrap(); }
+
       if (document.body) init();
       else window.addEventListener('DOMContentLoaded', init, { once: true });
   }
