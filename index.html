@@ -16537,6 +16537,10 @@ const BLACK_POSTER_URL =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2'><rect width='2' height='2' fill='black'/></svg>";
 
 let TAG_EDIT_PATH = null;
+// When true, the single-folder tag edit (TAG_EDIT_PATH) was initiated from the
+// preview pane and must render only there (never in the file pane), even when
+// the same folder also appears in the file pane's current directory.
+let TAG_EDIT_IN_PREVIEW = false;
 let TAG_CONTEXT_MENU_STATE = null;
 let PREVIEW_CONTEXT_MENU_STATE = null;
 let SCORE_HISTORY_DAY_MENU_STATE = null;
@@ -31844,7 +31848,10 @@ function getTagFolderEntries() {
   )
     return [];
   return getTagFolderEntriesForDir(WS.nav.dirNode, {
-    includePlaceholder: true,
+    // A preview-initiated bulk tag renders its placeholder only in the preview.
+    includePlaceholder: !(
+      BULK_TAG_PLACEHOLDER && BULK_TAG_PLACEHOLDER.preferPane === "preview"
+    ),
   });
 }
 
@@ -41001,6 +41008,7 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   }
   if (action === "tag") {
     TAG_EDIT_PATH = p;
+    TAG_EDIT_IN_PREVIEW = false;
     RENAME_EDIT_PATH = null;
     selectDirectoryEntryByPath(p);
     renderDirectoriesPane(true);
@@ -44179,6 +44187,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         String(RENAME_EDIT_PATH) === dirPath;
       const isTagEditingDir =
         entry.kind === "dir" &&
+        !TAG_EDIT_IN_PREVIEW &&
         TAG_EDIT_PATH !== null &&
         String(TAG_EDIT_PATH) === dirPath;
       let iconHtml = appIconHtml("folder");
@@ -48549,6 +48558,27 @@ function previewUsesCurrentViewEntries(dirNode, opts = null) {
 }
 
 function getPreviewFolderAndFileEntries(dirNode, opts = null) {
+  const result = getPreviewFolderAndFileEntriesCore(dirNode, opts);
+  // Guarantee: while a preview-initiated bulk tag is in progress, the
+  // "new tag folder" placeholder card always appears in the preview grid,
+  // regardless of how the entries were built (current view, tag preview, or
+  // general folder listing). The file pane never renders it in that case, so
+  // the naming interaction always resolves here, in the preview.
+  if (
+    result &&
+    Array.isArray(result.folderEntries) &&
+    BULK_TAG_PLACEHOLDER &&
+    BULK_TAG_PLACEHOLDER.preferPane === "preview" &&
+    !result.folderEntries.some((e) => e && e.placeholder)
+  ) {
+    const placeholder = buildBulkTagPlaceholderEntry();
+    if (placeholder)
+      result.folderEntries = [placeholder].concat(result.folderEntries);
+  }
+  return result;
+}
+
+function getPreviewFolderAndFileEntriesCore(dirNode, opts = null) {
   const includeFiles = !(opts && opts.includeFiles === false);
   if (previewUsesCurrentViewEntries(dirNode, opts)) {
     const folderEntries = [];
@@ -48619,10 +48649,7 @@ function getPreviewFolderAndFileEntries(dirNode, opts = null) {
     if (rootTrashEntry) folderEntries.push(rootTrashEntry);
   }
   const tagEntries = getTagFolderEntriesForDir(dirNode, {
-    // Show the "new tag folder" placeholder card in the preview grid while a
-    // preview-pane bulk tag is in progress (the file-pane flow renders its own).
-    includePlaceholder:
-      !!BULK_TAG_PLACEHOLDER && BULK_TAG_PLACEHOLDER.preferPane === "preview",
+    includePlaceholder: false,
   });
   for (let i = 0; i < tagEntries.length; i++) folderEntries.push(tagEntries[i]);
   const childDirs = getChildDirsForNode(dirNode);
@@ -49430,7 +49457,8 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
   const showThumbMeta = thumbMode !== "off";
   const isRenameEditing =
     RENAME_EDIT_PATH !== null && String(RENAME_EDIT_PATH) === p;
-  const isTagEditing = TAG_EDIT_PATH !== null && String(TAG_EDIT_PATH) === p;
+  const isTagEditing =
+    TAG_EDIT_IN_PREVIEW && TAG_EDIT_PATH !== null && String(TAG_EDIT_PATH) === p;
   const leadInfo =
     thumbMode !== "off" && !lightweightFolderThumb
       ? getDisplayLeadPreviewForDir(dirNode, "preview-dir")
@@ -53933,6 +53961,7 @@ function startPreviewFolderTagEdit(paths) {
   clearBulkTagPlaceholder();
   PREVIEW_BULK_TAG_EDIT = null;
   TAG_EDIT_PATH = unique[0];
+  TAG_EDIT_IN_PREVIEW = true;
   // Do NOT move the file-pane selection here. The folder is already visible in
   // the preview grid; re-rendering shows the inline tag input on its card and
   // we focus it directly. Selecting it would jump navigation so the folder
@@ -54058,6 +54087,7 @@ function startTagSelectionEdit() {
 
   const path = paths[0];
   TAG_EDIT_PATH = path;
+  TAG_EDIT_IN_PREVIEW = false;
   clearBulkTagPlaceholder();
   selectDirectoryEntryByPath(path);
   renderDirectoriesPane(true);
