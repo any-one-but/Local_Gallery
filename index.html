@@ -22961,10 +22961,12 @@ function setBulkTagPlaceholder(
     ).filter((p) => p);
   }
   if (!unique.length) return false;
+  const prefersPreview = String(preferPane || "").toLowerCase() === "preview";
   BULK_TAG_PLACEHOLDER = {
     type,
     label: label,
     count: unique.length,
+    preferPane: prefersPreview ? "preview" : "directories",
   };
   TAG_ENTRY_RENAME_STATE = {
     tag: "",
@@ -22976,7 +22978,11 @@ function setBulkTagPlaceholder(
     placeholderType: type,
   };
   rebuildDirectoriesEntries();
-  WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
+  // When tagging from the preview pane, keep the file pane's current selection
+  // (and therefore the folder shown in the preview) intact, so the placeholder
+  // appears in the preview grid alongside the folders being tagged. Only the
+  // file-pane flow jumps the selection onto its own placeholder card.
+  if (!prefersPreview) WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
@@ -48613,7 +48619,10 @@ function getPreviewFolderAndFileEntries(dirNode, opts = null) {
     if (rootTrashEntry) folderEntries.push(rootTrashEntry);
   }
   const tagEntries = getTagFolderEntriesForDir(dirNode, {
-    includePlaceholder: false,
+    // Show the "new tag folder" placeholder card in the preview grid while a
+    // preview-pane bulk tag is in progress (the file-pane flow renders its own).
+    includePlaceholder:
+      !!BULK_TAG_PLACEHOLDER && BULK_TAG_PLACEHOLDER.preferPane === "preview",
   });
   for (let i = 0; i < tagEntries.length; i++) folderEntries.push(tagEntries[i]);
   const childDirs = getChildDirsForNode(dirNode);
@@ -53906,6 +53915,9 @@ function startPreviewFolderTagEdit(paths) {
     new Set((paths || []).map((p) => String(p || "")).filter(Boolean)),
   );
   if (!unique.length) return false;
+  // Clear any active bulk selection (paths are already captured) so callers like
+  // the preview context menu behave the same as the tag keybind.
+  if (WS.view && WS.view.bulkSelectMode) finalizeBulkSelectionAction();
   closeActionMenus();
   RENAME_EDIT_PATH = null;
   RENAME_EDIT_FILE_ID = null;
@@ -53921,7 +53933,11 @@ function startPreviewFolderTagEdit(paths) {
   clearBulkTagPlaceholder();
   PREVIEW_BULK_TAG_EDIT = null;
   TAG_EDIT_PATH = unique[0];
-  if (unique[0]) selectDirectoryEntryByPath(unique[0]);
+  // Do NOT move the file-pane selection here. The folder is already visible in
+  // the preview grid; re-rendering shows the inline tag input on its card and
+  // we focus it directly. Selecting it would jump navigation so the folder
+  // "resolves" in the file pane when it is open, which is exactly what we want
+  // to avoid — the input should stay on the preview thumbnail.
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
