@@ -2901,18 +2901,14 @@ img[data-rotate-key].rotatingThumbFade {
   box-shadow: var(--ui-preview-selection-shadow);
 }
 
-.gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard {
+.gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard,
+.gridFolders .previewTagFolderCard.selected.bulkSelected .dirSquareCard {
   position: relative;
   z-index: 1;
-  border-color: transparent;
-  outline: none;
-  box-shadow: none;
-  background: var(--ui-selection-fill);
-}
-
-.gridFolders .previewTagFolderCard.selected.bulkSelected .dirSquareCard {
-  border-color: transparent;
-  outline: none;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
   box-shadow: none;
   background: var(--ui-selection-fill);
 }
@@ -2926,9 +2922,11 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .gridFolders .previewTagFolderCard.previewSelected.bulkSelected .dirSquareCard {
-  border-color: transparent;
-  outline: none;
-  box-shadow: none;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
   background: var(--ui-selection-fill);
 }
 
@@ -2978,16 +2976,22 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .gridFiles .fileCard.bulkSelected {
-  border-color: transparent;
-  outline: none;
+  position: relative;
+  z-index: 1;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
   box-shadow: none;
   background: var(--ui-selection-fill);
 }
 
 .gridFiles .fileCard.previewSelected.bulkSelected {
-  border-color: transparent;
-  outline: none;
-  box-shadow: none;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
   background: var(--ui-selection-fill);
 }
 
@@ -3357,17 +3361,23 @@ img[data-rotate-key].rotatingThumbFade {
 .gridFolders .folderCard.folderThumbCard.bulkSelected {
   position: relative;
   z-index: 1;
-  border-color: transparent;
-  outline: none;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
   box-shadow: none;
   background: var(--ui-selection-fill);
 }
 
 .gridFolders .folderCard.folderThumbCard.previewSelected.bulkSelected,
 .gridFolders .folderCard.folderThumbCard.selected.bulkSelected {
-  border-color: transparent;
-  outline: none;
-  box-shadow: none;
+  position: relative;
+  z-index: 2;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
   background: var(--ui-selection-fill);
 }
 
