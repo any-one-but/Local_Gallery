@@ -7281,18 +7281,16 @@ function isDirectChildOfInternalTrash(path) {
   return normalized.slice(INTERNAL_TRASH_DIR_NAME.length + 1).split("/").length === 1;
 }
 
-function isRootLevelUserFolderPath(path) {
+function isFolderPathMovableToTrash(path) {
+  if (!(WS.meta && WS.meta.fsRootHandle)) return false;
   const normalized = normalizeWorkspaceRelPath(path);
+  // Any real user folder may be trashed, at any nesting depth. Only the trash
+  // tree itself (and anything already inside it) is off-limits.
   return !!(
     normalized &&
-    !normalized.includes("/") &&
     !isInternalTrashDirName(normalized) &&
     !isPathInsideInternalTrash(normalized)
   );
-}
-
-function isFolderPathMovableToTrash(path) {
-  return !!(WS.meta && WS.meta.fsRootHandle && isRootLevelUserFolderPath(path));
 }
 
 function displayFolderSegmentName(name) {
@@ -22140,6 +22138,8 @@ function dirUiLabel(node) {
       "folder"
     );
   }
+  const trashLabel = trashItemDisplayPathForPath(String(node?.path || ""));
+  if (trashLabel) return trashLabel;
   return dirDisplayName(node) || "folder";
 }
 
@@ -31267,6 +31267,12 @@ function trashTopLevelItemPathForFileRecord(rec) {
 function fallbackRootRestorePathForTrashPath(path) {
   const normalized = normalizeWorkspaceRelPath(path);
   if (!isPutBackEligibleTrashPath(normalized)) return "";
+  // Subfolders must go back under their tracked parent and never silently
+  // resurface at root. If that parent is gone, put-back is simply disallowed
+  // and the user is expected to sort it out with their own file manager.
+  const restoreInfo = metaGetTrashRestoreInfo(normalized);
+  const originalPath = normalizeWorkspaceRelPath(restoreInfo?.originalPath);
+  if (originalPath && originalPath.includes("/")) return "";
   const name = normalized.slice(INTERNAL_TRASH_DIR_NAME.length + 1);
   if (!name || name.includes("/") || isInternalTrashDirName(name)) return "";
   return name;
@@ -31279,6 +31285,35 @@ function restoreTargetPathForTrashPath(path) {
   const originalPath = normalizeWorkspaceRelPath(restoreInfo?.originalPath);
   if (originalPath && !isPathInsideInternalTrash(originalPath)) return originalPath;
   return fallbackRootRestorePathForTrashPath(normalized);
+}
+
+// A trashed item can only be put back when the directory it would land in still
+// exists. Root-level items always restore to root; a subfolder needs its tracked
+// parent to still be present in the workspace tree.
+function canPutBackTrashPath(path) {
+  const trashItemPath = trashTopLevelItemPathForPath(path);
+  if (!trashItemPath) return false;
+  const target = restoreTargetPathForTrashPath(trashItemPath);
+  if (!target) return false;
+  const parts = target.split("/").filter(Boolean);
+  parts.pop();
+  const parentPath = parts.join("/");
+  if (!parentPath) return true;
+  return WS.dirByPath.has(parentPath);
+}
+
+// Trashed folders are listed by their original location so a subfolder buried
+// several levels deep is identifiable at a glance (root-level items just show
+// their own name).
+function trashItemDisplayPathForPath(path) {
+  const normalized = normalizeWorkspaceRelPath(path);
+  if (!isDirectChildOfInternalTrash(normalized)) return "";
+  const restoreInfo = metaGetTrashRestoreInfo(normalized);
+  const originalPath = normalizeWorkspaceRelPath(restoreInfo?.originalPath);
+  if (originalPath && !isPathInsideInternalTrash(originalPath)) {
+    return displayRelPath(originalPath);
+  }
+  return "";
 }
 
 function navigateOutOfTrashIfHidden() {
@@ -38872,7 +38907,7 @@ async function moveFolderPathsToTrash(paths) {
     (path) => isFolderPathMovableToTrash(path),
   );
   if (!list.length) {
-    showStatusMessage("Only root folders can be moved to Trash.");
+    showStatusMessage("No folders available to move to Trash.");
     return false;
   }
   const rootHandle = WS.meta.fsRootHandle;
@@ -40841,7 +40876,8 @@ function buildFolderMenuState(dirNode) {
     showSetRandomThumbnail: false,
     canMoveToTrash:
       !isTrashRootPortal && isFolderPathMovableToTrash(p),
-    canPutBack: isTrashPutBackOnly && !!WS.meta.fsRootHandle,
+    canPutBack:
+      isTrashPutBackOnly && !!WS.meta.fsRootHandle && canPutBackTrashPath(p),
     canSendToStorage:
       !!p &&
       !isRootNode &&
