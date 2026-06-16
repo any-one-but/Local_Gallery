@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.14.00
+// @version      00.16.00
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole click-path map.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -187,29 +187,100 @@
       GM_addStyle(`
         #redditGuestPanel {
           position: fixed;
-          right: 18px;
-          bottom: 18px;
-          z-index: 2147483647;
+          left: 24px;
+          top: 64px;
+          z-index: 2147483646;
           box-sizing: border-box;
-          width: 320px;
-          max-width: calc(100vw - 36px);
-          max-height: min(520px, calc(100vh - 36px));
-          overflow: visible;
+          width: 880px;
+          height: 520px;
+          min-width: 540px;
+          min-height: 320px;
+          max-width: calc(100vw - 24px);
+          max-height: calc(100vh - 24px);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          resize: both;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          border-radius: 14px;
+          background: rgba(18, 18, 21, 0.94);
+          box-shadow: 0 18px 56px rgba(0, 0, 0, 0.5);
+          color: #f4f4f5;
+          font: 12px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          backdrop-filter: blur(14px);
+        }
+        #redditGuestPanel, #redditGuestPanel * {
+          box-sizing: border-box;
+        }
+        #redditGuestPanel .rg-header {
+          flex: 0 0 auto;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 9px 12px;
+          cursor: move;
+          user-select: none;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+          background: rgba(255, 255, 255, 0.04);
+          border-radius: 14px 14px 0 0;
+        }
+        #redditGuestPanel .rg-title {
+          flex: 1;
+          font-weight: 800;
+          font-size: 13px;
+          letter-spacing: .3px;
+          color: #f4f4f5;
+        }
+        #redditGuestPanel .rg-collapseBtn {
+          width: 30px;
+          min-height: 26px;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 13px;
+          line-height: 1;
+          background: rgba(255, 255, 255, 0.11);
+        }
+        #redditGuestPanel .rg-collapseBtn:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.17);
+        }
+        #redditGuestPanel .rg-body {
+          flex: 1 1 auto;
+          min-height: 0;
+          display: flex;
+        }
+        #redditGuestPanel .rg-sidebar {
+          flex: 0 0 304px;
+          width: 304px;
+          min-width: 0;
           display: flex;
           flex-direction: column;
           gap: 9px;
           padding: 12px;
-          border: 1px solid rgba(255, 255, 255, 0.16);
-          border-radius: 12px;
-          background: rgba(18, 18, 21, 0.92);
-          box-shadow: 0 16px 48px rgba(0, 0, 0, 0.42);
-          color: #f4f4f5;
-          font: 12px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          backdrop-filter: blur(14px);
-          transition: width 140ms ease, height 140ms ease, padding 140ms ease, border-radius 140ms ease, opacity 140ms ease;
+          overflow-y: auto;
+          overflow-x: hidden;
+          border-right: 1px solid rgba(255, 255, 255, 0.10);
+          scrollbar-width: thin;
         }
-        #redditGuestPanel, #redditGuestPanel * {
-          box-sizing: border-box;
+        #redditGuestPanel .rg-main {
+          flex: 1 1 auto;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        #redditGuestPanel.rg-collapsed {
+          height: auto !important;
+          min-height: 0;
+          resize: horizontal;
+        }
+        #redditGuestPanel.rg-collapsed .rg-body {
+          display: none;
+        }
+        #redditGuestPanel.rg-collapsed .rg-header {
+          border-bottom: 0;
+          border-radius: 14px;
         }
         #redditGuestPanel button {
           appearance: none;
@@ -232,15 +303,9 @@
           opacity: 0.48;
         }
         #redditGuestPanel .rg-downloadStack {
-          position: absolute;
-          left: 0;
-          right: 0;
-          bottom: calc(100% + 8px);
           display: flex;
           flex-direction: column;
           gap: 8px;
-          padding: 0;
-          pointer-events: auto;
         }
         #redditGuestPanel .rg-downloadStack[hidden] {
           display: none;
@@ -277,6 +342,79 @@
         #redditGuestPanel .rg-selective[hidden],
         #redditGuestPanel .rg-rangeRow[hidden] {
           display: none;
+        }
+        #redditGuestPanel .rg-bulkStack {
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+        #redditGuestPanel .rg-bulkStack button {
+          min-height: 34px;
+          background: rgba(255, 255, 255, 0.11);
+          white-space: nowrap;
+        }
+        #redditGuestPanel .rg-bulkStack button:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.17);
+        }
+        #redditGuestPanel .rg-fileTypes {
+          display: flex;
+          gap: 7px;
+        }
+        #redditGuestPanel .rg-typeChip {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          flex: 1;
+          width: auto;
+          min-height: 34px;
+          padding: 0 8px;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          border-radius: 8px;
+          background: rgba(0, 0, 0, 0.18);
+          color: #b6b6bf;
+          font: 700 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          cursor: pointer;
+          transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+        }
+        #redditGuestPanel .rg-typeChip:hover {
+          border-color: rgba(255, 255, 255, 0.3);
+          color: #e8e8ee;
+        }
+        #redditGuestPanel .rg-typeChip.is-on {
+          color: #fff;
+          border-color: rgba(255, 176, 0, 0.55);
+          background: rgba(255, 69, 0, 0.13);
+        }
+        #redditGuestPanel .rg-typeBox {
+          position: relative;
+          flex: 0 0 auto;
+          width: 15px;
+          height: 15px;
+          border-radius: 5px;
+          border: 1px solid rgba(255, 255, 255, 0.32);
+          background: rgba(255, 255, 255, 0.05);
+          transition: background 120ms ease, border-color 120ms ease;
+        }
+        #redditGuestPanel .rg-typeChip.is-on .rg-typeBox {
+          border-color: transparent;
+          background: linear-gradient(135deg, #ff4500, #ffb000);
+        }
+        #redditGuestPanel .rg-typeChip.is-on .rg-typeBox::after {
+          content: "";
+          position: absolute;
+          left: 5px;
+          top: 2px;
+          width: 3px;
+          height: 7px;
+          border: solid #fff;
+          border-width: 0 2px 2px 0;
+          transform: rotate(45deg);
+        }
+        #redditGuestPanel .rg-typeName {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         #redditGuestPanel .rg-rangeLabel {
           display: flex;
@@ -329,8 +467,9 @@
           transition: width 130ms ease;
         }
         #redditGuestPanel .rg-log {
-          min-height: 86px;
-          max-height: 190px;
+          flex: 0 0 auto;
+          min-height: 120px;
+          max-height: 240px;
           overflow: auto;
           padding: 8px;
           border-radius: 8px;
@@ -346,30 +485,6 @@
         #redditGuestPanel .rg-log div:last-child {
           padding-bottom: 0;
         }
-        #redditGuestPanel.rg-collapsed {
-          right: 18px;
-          bottom: 0;
-          width: 320px;
-          height: 10px;
-          min-height: 10px;
-          max-height: 10px;
-          overflow: hidden;
-          padding: 0;
-          border-bottom: 0;
-          border-radius: 8px 8px 0 0;
-          opacity: 0.82;
-          cursor: pointer;
-        }
-        #redditGuestPanel.rg-collapsed > * {
-          display: none;
-        }
-        #redditGuestPanel.rg-collapsed::before {
-          content: "";
-          display: block;
-          width: 100%;
-          height: 100%;
-          background: linear-gradient(90deg, #ff4500, #ffb000);
-        }
       `);
     
       function init() {
@@ -378,48 +493,73 @@
         const panel = document.createElement('div');
         panel.id = 'redditGuestPanel';
         panel.innerHTML = `
-          <div class="rg-titlebar">
+          <div class="rg-header">
             <span class="rg-title">Stripper</span>
-            <button id="rgMapBtn" class="rg-mapBtn" type="button" title="Reddit Rabbithole Map">
-              <span class="rg-mapGlyph">🕸</span><span id="rgMapCount" class="rg-mapCount" hidden></span>
-            </button>
+            <span id="rgMapCount" class="rg-mapCount" title="Nodes on the Rabbithole map" hidden></span>
+            <button id="rgCollapseBtn" class="rg-collapseBtn" type="button" title="Collapse">▴</button>
           </div>
-          <div id="rgDownloadStack" class="rg-downloadStack" hidden>
-            <button id="rgPostsBtn" type="button" disabled>Download Posts</button>
-            <button id="rgPagesBtn" type="button" disabled>Download Pages</button>
-            <button id="rgUserBtn" type="button" disabled>Download User</button>
+          <div class="rg-body">
+            <div class="rg-sidebar">
+              <div id="rgDownloadStack" class="rg-downloadStack" hidden>
+                <button id="rgPostBtn" type="button" disabled>Download Post</button>
+              </div>
+              <button id="rgScanBtn" type="button">Scan</button>
+              <div class="rg-progress" aria-hidden="true"><div id="rgProgressFill"></div></div>
+              <div class="rg-meta">
+                <span id="rgProfileLabel">No profile scanned</span>
+                <span id="rgCountLabel">0 files</span>
+              </div>
+              <div id="rgSelectiveDownloads" class="rg-selective" hidden>
+                <div class="rg-rangeLabel">
+                  <span>Bulk</span>
+                </div>
+                <div class="rg-bulkStack">
+                  <button id="rgPostsBtn" type="button" disabled>Download All Posts</button>
+                  <button id="rgPagesBtn" type="button" disabled>Download All Pages</button>
+                  <button id="rgUserBtn" type="button" disabled>Download User Backlog</button>
+                </div>
+                <div class="rg-rangeLabel">
+                  <span>Posts</span>
+                  <span id="rgPostRangeHint" class="rg-rangeHint">1-0</span>
+                </div>
+                <div id="rgPostRangeRow" class="rg-rangeRow">
+                  <input id="rgPostRangeInput" type="text" inputmode="numeric" placeholder="1,3-5">
+                  <button id="rgPostRangeBtn" type="button" disabled>Download</button>
+                </div>
+                <div class="rg-rangeLabel">
+                  <span>Pages</span>
+                  <span id="rgPageRangeHint" class="rg-rangeHint">1-0</span>
+                </div>
+                <div id="rgPageRangeRow" class="rg-rangeRow">
+                  <input id="rgPageRangeInput" type="text" inputmode="numeric" placeholder="1,2-4">
+                  <button id="rgPageRangeBtn" type="button" disabled>Download</button>
+                </div>
+                <div class="rg-rangeLabel">
+                  <span>File Type</span>
+                </div>
+                <div id="rgFileTypes" class="rg-fileTypes">
+                  <button id="rgTypeImages" class="rg-typeChip is-on" type="button" role="checkbox" aria-checked="true" data-kind="image">
+                    <span class="rg-typeBox"></span><span class="rg-typeName">Images</span>
+                  </button>
+                  <button id="rgTypeVideos" class="rg-typeChip is-on" type="button" role="checkbox" aria-checked="true" data-kind="video">
+                    <span class="rg-typeBox"></span><span class="rg-typeName">Videos</span>
+                  </button>
+                  <button id="rgTypeText" class="rg-typeChip" type="button" role="checkbox" aria-checked="false" data-kind="text">
+                    <span class="rg-typeBox"></span><span class="rg-typeName">Text</span>
+                  </button>
+                </div>
+              </div>
+              <div id="rgLog" class="rg-log" aria-live="polite"></div>
+            </div>
+            <div id="rgMain" class="rg-main"></div>
           </div>
-          <button id="rgScanBtn" type="button">Scan</button>
-          <div class="rg-progress" aria-hidden="true"><div id="rgProgressFill"></div></div>
-          <div class="rg-meta">
-            <span id="rgProfileLabel">No profile scanned</span>
-            <span id="rgCountLabel">0 files</span>
-          </div>
-          <div id="rgSelectiveDownloads" class="rg-selective" hidden>
-            <div class="rg-rangeLabel">
-              <span>Posts</span>
-              <span id="rgPostRangeHint" class="rg-rangeHint">1-0</span>
-            </div>
-            <div id="rgPostRangeRow" class="rg-rangeRow">
-              <input id="rgPostRangeInput" type="text" inputmode="numeric" placeholder="1,3-5">
-              <button id="rgPostRangeBtn" type="button" disabled>Download</button>
-            </div>
-            <div class="rg-rangeLabel">
-              <span>Pages</span>
-              <span id="rgPageRangeHint" class="rg-rangeHint">1-0</span>
-            </div>
-            <div id="rgPageRangeRow" class="rg-rangeRow">
-              <input id="rgPageRangeInput" type="text" inputmode="numeric" placeholder="1,2-4">
-              <button id="rgPageRangeBtn" type="button" disabled>Download</button>
-            </div>
-          </div>
-          <div id="rgLog" class="rg-log" aria-live="polite"></div>
         `;
         document.body.appendChild(panel);
     
         ui.panel = panel;
         ui.downloadStack = panel.querySelector('#rgDownloadStack');
         ui.scanBtn = panel.querySelector('#rgScanBtn');
+        ui.postBtn = panel.querySelector('#rgPostBtn');
         ui.postsBtn = panel.querySelector('#rgPostsBtn');
         ui.pagesBtn = panel.querySelector('#rgPagesBtn');
         ui.userBtn = panel.querySelector('#rgUserBtn');
@@ -435,29 +575,71 @@
         ui.pageRangeRow = panel.querySelector('#rgPageRangeRow');
         ui.pageRangeInput = panel.querySelector('#rgPageRangeInput');
         ui.pageRangeBtn = panel.querySelector('#rgPageRangeBtn');
+        ui.typeChips = {
+          image: panel.querySelector('#rgTypeImages'),
+          video: panel.querySelector('#rgTypeVideos'),
+          text: panel.querySelector('#rgTypeText')
+        };
         ui.log = panel.querySelector('#rgLog');
-        ui.mapBtn = panel.querySelector('#rgMapBtn');
+        ui.header = panel.querySelector('.rg-header');
+        ui.collapseBtn = panel.querySelector('#rgCollapseBtn');
         ui.mapCount = panel.querySelector('#rgMapCount');
 
-        ui.mapBtn.addEventListener('click', (e) => {
+        ui.collapseBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          if (panel.classList.contains('rg-collapsed')) { setCollapsed(false); return; }
-          rabbithole.toggleWindow();
+          setCollapsed(!panel.classList.contains('rg-collapsed'));
         });
+        makePanelDraggable(panel, ui.header);
         ui.scanBtn.addEventListener('click', () => scanCurrentProfile());
+        ui.postBtn.addEventListener('click', () => downloadPostArchives());
         ui.postsBtn.addEventListener('click', () => downloadPostArchives());
         ui.pagesBtn.addEventListener('click', () => downloadPageArchives());
         ui.userBtn.addEventListener('click', () => downloadUserArchive());
+        panel.querySelectorAll('.rg-typeChip').forEach(chip => {
+          chip.addEventListener('click', () => {
+            const on = chip.getAttribute('aria-checked') === 'true';
+            chip.setAttribute('aria-checked', on ? 'false' : 'true');
+            chip.classList.toggle('is-on', !on);
+          });
+        });
         ui.postRangeBtn.addEventListener('click', () => downloadSelectedPostArchives());
         ui.pageRangeBtn.addEventListener('click', () => downloadSelectedPageArchives());
-        panel.addEventListener('click', () => {
-          if (panel.classList.contains('rg-collapsed')) setCollapsed(false);
-        });
         document.addEventListener('keydown', handleGlobalKeydown, true);
-    
+
+        // The map fills the main body of the window, beside the downloader sidebar.
+        rabbithole.mount(panel.querySelector('#rgMain'), panel);
+
         logLine('Ready. Stripper detected Reddit; open a profile or post and scan.');
         syncUi();
         rabbithole.refreshButton();
+      }
+
+      // Drag the whole window by its header. Mirrors the rabbithole window's old
+      // drag behavior; ignores drags that start on a button/input in the header.
+      function makePanelDraggable(win, handle) {
+        let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+        handle.addEventListener('pointerdown', (e) => {
+          if (e.target.closest('button, input')) return;
+          dragging = true;
+          const r = win.getBoundingClientRect();
+          ox = r.left; oy = r.top; sx = e.clientX; sy = e.clientY;
+          win.style.left = ox + 'px'; win.style.top = oy + 'px';
+          win.style.right = 'auto'; win.style.bottom = 'auto';
+          try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+          e.preventDefault();
+        });
+        handle.addEventListener('pointermove', (e) => {
+          if (!dragging) return;
+          const maxX = window.innerWidth - 60, maxY = window.innerHeight - 30;
+          let nx = ox + (e.clientX - sx);
+          let ny = oy + (e.clientY - sy);
+          nx = Math.min(Math.max(nx, 60 - win.offsetWidth), maxX);
+          ny = Math.min(Math.max(ny, 0), maxY);
+          win.style.left = nx + 'px'; win.style.top = ny + 'px';
+        });
+        const end = (e) => { if (dragging) { dragging = false; try { handle.releasePointerCapture(e.pointerId); } catch (err) {} } };
+        handle.addEventListener('pointerup', end);
+        handle.addEventListener('pointercancel', end);
       }
     
       function syncUi() {
@@ -466,15 +648,14 @@
         const isPostScan = state.scanType === 'post';
         const isProfileScan = state.scanType === 'profile';
         ui.scanBtn.disabled = state.busy;
-        ui.downloadStack.hidden = !hasFiles || (!isPostScan && !isProfileScan);
-        ui.postsBtn.hidden = !hasFiles || (!isPostScan && !isProfileScan);
-        ui.pagesBtn.hidden = !isProfileScan;
-        ui.userBtn.hidden = !isProfileScan;
-        ui.postsBtn.textContent = isPostScan ? 'Download Post' : 'Download Posts';
-        ui.postsBtn.disabled = state.busy || !hasFiles;
+        // A single post just floats one "Download Post" button; the Posts/Pages
+        // sections are unnecessary, so the grey square only appears for profiles.
+        ui.downloadStack.hidden = !(isPostScan && hasFiles);
+        ui.postBtn.disabled = state.busy || !hasFiles;
+        ui.postsBtn.disabled = state.busy || !state.posts.length;
         ui.pagesBtn.disabled = state.busy || !hasPages;
         ui.userBtn.disabled = state.busy || !hasFiles;
-        ui.selectiveDownloads.hidden = !hasFiles;
+        ui.selectiveDownloads.hidden = !(isProfileScan && hasFiles);
         ui.postRangeHint.textContent = state.posts.length ? `1-${state.posts.length}` : 'none';
         ui.postRangeInput.disabled = state.busy || !state.posts.length;
         ui.postRangeBtn.disabled = state.busy || !state.posts.length;
@@ -534,7 +715,15 @@
       }
     
       function setCollapsed(collapsed) {
-        ui.panel.classList.toggle('rg-collapsed', !!collapsed);
+        const isCollapsed = !!collapsed;
+        ui.panel.classList.toggle('rg-collapsed', isCollapsed);
+        if (ui.collapseBtn) {
+          ui.collapseBtn.textContent = isCollapsed ? '▾' : '▴';
+          ui.collapseBtn.title = isCollapsed ? 'Expand' : 'Collapse';
+        }
+        // The graph canvas can't size itself while the body is hidden, so nudge
+        // it to re-measure once the window is expanded again.
+        if (!isCollapsed) requestAnimationFrame(() => rabbithole.resize());
       }
     
       function profileFromLocation() {
@@ -620,6 +809,30 @@
         return 'other';
       }
 
+      // Whether files of a given kind ('image' | 'video' | 'text') are currently
+      // enabled by the File Type checkboxes. Defaults match the initial markup
+      // (images/videos on, text off) when the chips aren't built yet.
+      function typeAllowed(kind) {
+        const chip = ui.typeChips && ui.typeChips[kind];
+        if (!chip) return kind !== 'text';
+        return chip.getAttribute('aria-checked') === 'true';
+      }
+
+      // Drop files whose type is unchecked in the File Type filter. A post/page
+      // archive keeps its other files — only the individually excluded files are
+      // skipped. Single-post scans hide the filter UI, so they take everything.
+      function filterFilesByType(files) {
+        if (!Array.isArray(files)) return [];
+        if (state.scanType === 'post') return files.slice();
+        return files.filter(f => {
+          const kind = classifyFileKind(f);
+          if (kind === 'image') return typeAllowed('image');
+          if (kind === 'video') return typeAllowed('video');
+          if (kind === 'text') return typeAllowed('text');
+          return true;   // unknown/other kinds are always kept
+        });
+      }
+
       // Roll up the current scan into a small summary the Rabbithole map can show.
       function computeScanSummary() {
         let files = 0, images = 0, videos = 0;
@@ -666,6 +879,11 @@
             #rgSubsPanel .rgsub-title{font-weight:800;font-size:12px;letter-spacing:.3px;}
             #rgSubsPanel .rgsub-count{color:#a9a9b2;font-size:11px;font-weight:700;min-width:0;overflow:hidden;
               text-overflow:ellipsis;white-space:nowrap;}
+            #rgSubsPanel .rgsub-addgraph{appearance:none;width:24px;height:24px;padding:0;border-radius:7px;cursor:pointer;
+              display:flex;align-items:center;justify-content:center;line-height:1;
+              border:1px solid rgba(255,176,0,.5);background:rgba(255,69,0,.16);color:#ffd9b0;font-size:15px;font-weight:800;
+              transition:background 120ms ease,border-color 120ms ease;}
+            #rgSubsPanel .rgsub-addgraph:hover{background:rgba(255,69,0,.3);border-color:rgba(255,176,0,.75);color:#fff;}
             #rgSubsPanel .rgsub-close{appearance:none;width:24px;height:24px;padding:0;border-radius:7px;cursor:pointer;
               border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#f4f4f5;font-size:11px;font-weight:700;}
             #rgSubsPanel .rgsub-close:hover{background:rgba(255,255,255,.16);}
@@ -686,11 +904,18 @@
             <span class="rgsub-title">Subreddits</span>
             <span class="rgsub-count" id="rgSubCount"></span>
             <span style="flex:1"></span>
+            <button class="rgsub-addgraph" type="button" title="Add all these subreddits to the Rabbithole map">+</button>
             <button class="rgsub-close" type="button" title="Hide">✕</button>
           </div>
           <div class="rgsub-list" id="rgSubList"></div>`;
         document.body.appendChild(p);
         p.querySelector('.rgsub-close').addEventListener('click', () => { p.hidden = true; });
+        p.querySelector('.rgsub-addgraph').addEventListener('click', () => {
+          const added = rabbithole.addSubreddits(state.username, state.subreddits || []);
+          logLine(added
+            ? `Rabbithole: added ${added} subreddit${added === 1 ? '' : 's'} to the map.`
+            : 'Rabbithole: no subreddits to add.');
+        });
         return p;
       }
 
@@ -1114,11 +1339,12 @@
         try {
           let done = 0;
           for (const post of posts) {
-            const firstFile = post.files[0];
+            const files = filterFilesByType(post.files);
+            const firstFile = files[0];
             if (!firstFile) continue;
             const archiveName = buildArchiveName(firstFile.userFolder || state.userFolder, firstFile.postFolder);
             logLine(`Building post zip ${done + 1}/${posts.length}: ${firstFile.postFolder}`);
-            await buildAndSaveArchive(post.files, archiveName, (pct, label) => {
+            await buildAndSaveArchive(files, archiveName, (pct, label) => {
               const base = (done / posts.length) * 100;
               const span = 100 / posts.length;
               setProgress(base + (pct / 100) * span);
@@ -1147,10 +1373,11 @@
         try {
           let done = 0;
           for (const page of pages) {
-            if (!page.files.length) continue;
+            const files = filterFilesByType(page.files);
+            if (!files.length) continue;
             const archiveName = buildPageArchiveName(state.userFolder, page.page);
-            logLine(`Building page zip ${done + 1}/${pages.length}: API page ${page.page}, ${page.posts.length} post${page.posts.length === 1 ? '' : 's'}, ${page.files.length} file${page.files.length === 1 ? '' : 's'}.`);
-            await buildAndSaveArchive(page.files, archiveName, (pct, label) => {
+            logLine(`Building page zip ${done + 1}/${pages.length}: API page ${page.page}, ${page.posts.length} post${page.posts.length === 1 ? '' : 's'}, ${files.length} file${files.length === 1 ? '' : 's'}.`);
+            await buildAndSaveArchive(files, archiveName, (pct, label) => {
               const base = (done / pages.length) * 100;
               const span = 100 / pages.length;
               setProgress(base + (pct / 100) * span);
@@ -1172,20 +1399,25 @@
     
       async function downloadUserArchive() {
         if (state.busy || !state.files.length) return;
+        const files = filterFilesByType(state.files);
+        if (!files.length) {
+          logLine('No files match the selected file types.');
+          return;
+        }
         setBusy(true, 'Downloading...');
         setProgress(0);
-        setCountTextOverride(formatUnitTicker(0, state.files.length, 'file'));
+        setCountTextOverride(formatUnitTicker(0, files.length, 'file'));
         try {
           const archiveName = buildArchiveName(state.userFolder, state.userFolder || 'reddit_user');
           logLine(`Building user zip for u/${state.username}.`);
           await buildAndSaveArchive(
-            state.files,
+            files,
             archiveName,
             (pct) => setProgress(pct),
             (done, total) => setCountTextOverride(formatUnitTicker(done, total, 'file'))
           );
           setProgress(100);
-          logLine(`Downloaded user archive with ${state.files.length} file${state.files.length === 1 ? '' : 's'}.`);
+          logLine(`Downloaded user archive with ${files.length} file${files.length === 1 ? '' : 's'}.`);
         } catch (err) {
           logLine(`User download failed: ${errorMessage(err)}`);
         } finally {
@@ -1725,6 +1957,30 @@
           bumpRev();
         }
 
+        // Bulk-add the subreddits from a user scan as nodes, linked from the
+        // scanned user so the map shows where they post. Reuses the same id/label
+        // scheme as classify() so the nodes merge with any already on the map.
+        function addSubreddits(username, subs) {
+          if (!Array.isArray(subs) || !subs.length) return 0;
+          const userName = String(username || '').trim();
+          const userId = userName ? 'user:' + userName.toLowerCase() : '';
+          if (userId) {
+            upsertNode({ type: 'user', id: userId, label: 'u/' + userName,
+                         url: location.origin + '/user/' + userName }, false);
+          }
+          let added = 0;
+          subs.forEach(s => {
+            const name = s && s.name ? String(s.name).trim() : '';
+            if (!name) return;
+            upsertNode({ type: 'sub', id: 'sub:' + name.toLowerCase(), label: 'r/' + name,
+                         url: location.origin + '/r/' + name }, false);
+            if (userId) addEdge(userId, 'sub:' + name.toLowerCase());
+            added++;
+          });
+          if (isWindowOpen()) renderGraph(); else refreshButton();
+          return added;
+        }
+
         // ------------------------------------------------------------- scan link
         // Scan summaries written by the Stripper scanner, keyed by node id, so
         // hovering a node can show how much media/text was found (or "Unscanned").
@@ -1905,45 +2161,28 @@
         // ------------------------------------------------------------------- UI
         function injectStyle() {
           GM_addStyle(`
-            #redditGuestPanel .rg-titlebar{display:flex;align-items:center;gap:8px;}
-            #redditGuestPanel .rg-title{flex:1;font-weight:800;font-size:13px;letter-spacing:.3px;color:#f4f4f5;}
-            #redditGuestPanel button.rg-mapBtn{width:auto;min-height:28px;padding:0 10px;display:flex;align-items:center;gap:6px;
-              background:rgba(255,255,255,.11);}
-            #redditGuestPanel button.rg-mapBtn:hover:not(:disabled){background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.28);}
-            #redditGuestPanel .rg-mapGlyph{font-size:14px;line-height:1;}
             #redditGuestPanel .rg-mapCount{padding:1px 6px;border-radius:999px;font-size:10px;font-weight:800;color:#fff;
               background:linear-gradient(90deg,#ff4500,#ffb000);}
             #redditGuestPanel .rg-mapCount[hidden]{display:none;}
+            #redditGuestPanel .rg-main button, #redditGuestPanel .rg-main select{width:auto;}
 
-            #rrm-window{position:fixed;z-index:2147483646;box-sizing:border-box;width:560px;height:440px;
-              min-width:340px;min-height:260px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);
-              display:flex;flex-direction:column;overflow:hidden;resize:both;
-              border:1px solid rgba(255,255,255,.16);border-radius:14px;background:rgba(18,18,21,.94);
-              backdrop-filter:blur(14px);box-shadow:0 18px 56px rgba(0,0,0,.5);color:#f4f4f5;
-              font:12px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
-            #rrm-window *{box-sizing:border-box;}
-            #rrm-window[hidden]{display:none;}
-            #rrm-titlebar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:move;
-              user-select:none;border-bottom:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);
-              border-radius:14px 14px 0 0;}
-            #rrm-titlebar .rrm-title{font-weight:800;font-size:12px;letter-spacing:.3px;}
             #rrm-toolbar{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;
               border-bottom:1px solid rgba(255,255,255,.10);}
             #rrm-search{flex:1;min-width:120px;height:28px;padding:0 9px;border-radius:8px;
               border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.22);color:#f4f4f5;
               font-family:inherit;font-size:12px;font-weight:600;outline:none;}
             #rrm-search:focus{border-color:rgba(255,176,0,.72);}
-            #rrm-window .rrm-btn{appearance:none;min-height:28px;padding:0 11px;border:1px solid rgba(255,255,255,.16);
+            #redditGuestPanel .rrm-btn{appearance:none;min-height:28px;padding:0 11px;border:1px solid rgba(255,255,255,.16);
               border-radius:8px;background:rgba(255,255,255,.11);color:#f4f4f5;font-family:inherit;font-size:11px;
               font-weight:700;cursor:pointer;white-space:nowrap;
               transition:background 120ms ease,border-color 120ms ease,opacity 120ms ease;}
-            #rrm-window .rrm-btn:hover:not(:disabled){background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.28);}
-            #rrm-window .rrm-btn:disabled{opacity:.42;cursor:default;}
-            #rrm-window .rrm-btn.primary{background:#ff4500;}
-            #rrm-window .rrm-btn.primary:hover:not(:disabled){background:#ff5c1c;}
-            #rrm-window .rrm-btn.danger{background:rgba(255,69,0,.16);border-color:rgba(255,69,0,.5);}
-            #rrm-window .rrm-btn.danger:hover:not(:disabled){background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.7);}
-            #rrm-window .rrm-btn.icon{padding:0;width:28px;}
+            #redditGuestPanel .rrm-btn:hover:not(:disabled){background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.28);}
+            #redditGuestPanel .rrm-btn:disabled{opacity:.42;cursor:default;}
+            #redditGuestPanel .rrm-btn.primary{background:#ff4500;}
+            #redditGuestPanel .rrm-btn.primary:hover:not(:disabled){background:#ff5c1c;}
+            #redditGuestPanel .rrm-btn.danger{background:rgba(255,69,0,.16);border-color:rgba(255,69,0,.5);}
+            #redditGuestPanel .rrm-btn.danger:hover:not(:disabled){background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.7);}
+            #redditGuestPanel .rrm-btn.icon{padding:0;width:28px;}
             #rrm-graph{flex:1;min-height:0;position:relative;}
             #rrm-tip{position:absolute;z-index:5;transform:translate(-50%,0);min-width:130px;max-width:240px;
               padding:8px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.16);background:rgba(24,24,28,.97);
@@ -1957,10 +2196,10 @@
               border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:#a9a9b2;}
             #rrm-foot .rrm-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
             #rrm-count{color:#d8d8dd;font-weight:700;}
-            #rrm-window .rrm-select{height:28px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);
+            #redditGuestPanel .rrm-select{height:28px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);
               background:rgba(0,0,0,.22);color:#f4f4f5;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;outline:none;}
-            #rrm-window .rrm-select:focus{border-color:rgba(255,176,0,.72);}
-            #rrm-window .rrm-btn.active{background:#ff4500;}
+            #redditGuestPanel .rrm-select:focus{border-color:rgba(255,176,0,.72);}
+            #redditGuestPanel .rrm-btn.active{background:#ff4500;}
             #rrm-columns{flex:1;min-height:0;display:none;gap:10px;padding:10px;overflow:auto;}
             #rrm-columns .rrm-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;overflow:hidden;
               border:1px solid rgba(255,255,255,.10);border-radius:10px;background:rgba(255,255,255,.03);}
@@ -1986,15 +2225,13 @@
           `);
         }
 
-        function buildWindow() {
-          const win = document.createElement('div');
-          win.id = 'rrm-window';
-          win.innerHTML = `
-            <div id="rrm-titlebar">
-              <span class="rrm-title">🕸 Rabbithole Map</span>
-              <span style="flex:1"></span>
-              <button class="rrm-btn icon" data-act="close" title="Close">✕</button>
-            </div>
+        // Build the map UI (toolbar + graph + columns + footer) inside the main
+        // body of the unified Stripper window. `win` is the whole window element,
+        // used for in-window click detection and the "is it visible" check.
+        function mount(container, win) {
+          if (!container) return;
+          winEl = win;
+          container.innerHTML = `
             <div id="rrm-toolbar">
               <input id="rrm-search" type="text" placeholder="Filter nodes by name…" autocomplete="off" spellcheck="false">
               <select id="rrm-type" class="rrm-select" title="Filter by node type">
@@ -2026,27 +2263,15 @@
               <span style="flex:1"></span>
               <span id="rrm-count"></span>
             </div>`;
-          document.body.appendChild(win);
-          winEl = win;
 
-          // position near top-center on first open
-          const w = win.offsetWidth || 560;
-          win.style.left = Math.max(8, Math.round((window.innerWidth - w) / 2)) + 'px';
-          win.style.top = '64px';
-          win.style.right = 'auto';
-          win.style.bottom = 'auto';
-
-          const titlebar = win.querySelector('#rrm-titlebar');
-          makeDraggable(win, titlebar);
-
-          const search = win.querySelector('#rrm-search');
+          const search = container.querySelector('#rrm-search');
           search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); renderGraph(); });
 
-          const typeSel = win.querySelector('#rrm-type');
+          const typeSel = container.querySelector('#rrm-type');
           typeSel.value = typeFilter;
           typeSel.addEventListener('change', () => { typeFilter = typeSel.value; renderGraph(); });
 
-          win.querySelector('[data-act="view"]').onclick = () => {
+          container.querySelector('[data-act="view"]').onclick = () => {
             view = (view === 'columns') ? 'graph' : 'columns';
             renderGraph();
             // graph container was display:none in column view; recover its size
@@ -2054,72 +2279,44 @@
               requestAnimationFrame(() => { if (network) { network.setSize('100%', '100%'); network.redraw(); } });
             }
           };
-          win.querySelector('[data-act="scrape"]').onclick = () => {
+          container.querySelector('[data-act="scrape"]').onclick = () => {
             const n = curNode(); if (!n) return; setScraped(n.id, !n.scraped); renderGraph();
           };
-          win.querySelector('[data-act="close"]').onclick = closeWindow;
-          win.querySelector('[data-act="open"]').onclick = () => { const n = curNode(); if (n) openNodeCurrentTab(n.url); };
-          win.querySelector('[data-act="open-tab"]').onclick = () => { const n = curNode(); if (n) openNodeNewTab(n.url); };
-          win.querySelector('[data-act="rm"]').onclick = () => {
+          container.querySelector('[data-act="open"]').onclick = () => { const n = curNode(); if (n) openNodeCurrentTab(n.url); };
+          container.querySelector('[data-act="open-tab"]').onclick = () => { const n = curNode(); if (n) openNodeNewTab(n.url); };
+          container.querySelector('[data-act="rm"]').onclick = () => {
             if (selectedId) { removeNodes([selectedId]); selectedId = null; renderGraph(); }
           };
-          win.querySelector('[data-act="branch"]').onclick = () => {
+          container.querySelector('[data-act="branch"]').onclick = () => {
             if (selectedId) { const g = loadGraph(); removeNodes(descendants(selectedId, g.edges)); selectedId = null; renderGraph(); }
           };
-          win.querySelector('[data-act="visited"]').onclick = () => {
+          container.querySelector('[data-act="visited"]').onclick = () => {
             const g = loadGraph(); removeNodes(g.nodes.filter(n => n.visited).map(n => n.id)); selectedId = null; renderGraph();
           };
-          win.querySelector('[data-act="reset"]').onclick = () => {
+          container.querySelector('[data-act="reset"]').onclick = () => {
             if (confirm('Erase the entire rabbithole map?')) { resetAll(); selectedId = null; renderGraph(); }
           };
-          const fileInput = win.querySelector('#rrm-file');
-          win.querySelector('[data-act="export"]').onclick = exportData;
-          win.querySelector('[data-act="import"]').onclick = () => fileInput.click();
+          const fileInput = container.querySelector('#rrm-file');
+          container.querySelector('[data-act="export"]').onclick = exportData;
+          container.querySelector('[data-act="import"]').onclick = () => fileInput.click();
           fileInput.addEventListener('change', () => {
             if (fileInput.files && fileInput.files[0]) importDataFromFile(fileInput.files[0]);
             fileInput.value = '';
           });
-          win.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeWindow(); } });
 
-          initNetwork(win.querySelector('#rrm-graph'));
+          initNetwork(container.querySelector('#rrm-graph'));
 
           tipEl = document.createElement('div');
           tipEl.id = 'rrm-tip';
           tipEl.hidden = true;
-          win.querySelector('#rrm-graph').appendChild(tipEl);
+          container.querySelector('#rrm-graph').appendChild(tipEl);
 
           if (typeof ResizeObserver !== 'undefined') {
             resizeObs = new ResizeObserver(() => {
               if (network) { network.setSize('100%', '100%'); network.redraw(); }
             });
-            resizeObs.observe(win);
+            resizeObs.observe(container);
           }
-        }
-
-        function makeDraggable(win, handle) {
-          let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
-          handle.addEventListener('pointerdown', (e) => {
-            if (e.target.closest('button, input')) return;
-            dragging = true;
-            const r = win.getBoundingClientRect();
-            ox = r.left; oy = r.top; sx = e.clientX; sy = e.clientY;
-            win.style.left = ox + 'px'; win.style.top = oy + 'px';
-            win.style.right = 'auto'; win.style.bottom = 'auto';
-            try { handle.setPointerCapture(e.pointerId); } catch (err) {}
-            e.preventDefault();
-          });
-          handle.addEventListener('pointermove', (e) => {
-            if (!dragging) return;
-            const maxX = window.innerWidth - 60, maxY = window.innerHeight - 30;
-            let nx = ox + (e.clientX - sx);
-            let ny = oy + (e.clientY - sy);
-            nx = Math.min(Math.max(nx, 60 - win.offsetWidth), maxX);
-            ny = Math.min(Math.max(ny, 0), maxY);
-            win.style.left = nx + 'px'; win.style.top = ny + 'px';
-          });
-          const end = (e) => { if (dragging) { dragging = false; try { handle.releasePointerCapture(e.pointerId); } catch (err) {} } };
-          handle.addEventListener('pointerup', end);
-          handle.addEventListener('pointercancel', end);
         }
 
         function curNode() { return loadGraph().nodes.find(n => n.id === selectedId) || null; }
@@ -2133,16 +2330,40 @@
           }
           nodesDS = new vis.DataSet([]); edgesDS = new vis.DataSet([]);
           network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
-            nodes: { shape: 'dot', size: 14, font: { color: '#f4f4f5', size: 12, face: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' } },
-            edges: { arrows: 'to', color: { color: 'rgba(255,255,255,0.22)', highlight: '#ffb000', hover: 'rgba(255,255,255,0.4)' }, smooth: { type: 'dynamic' } },
-            interaction: { hover: true, multiselect: false },
-            physics: { enabled: true, solver: 'forceAtlas2Based', stabilization: { iterations: 150 },
-                       forceAtlas2Based: { gravitationalConstant: -45, springLength: 90 } },
+            nodes: {
+              shape: 'dot',
+              size: 16,
+              // Hubs (more links) draw bigger; renderCanvas sets each node's value
+              // to its degree so the busiest nodes read at a glance.
+              scaling: { min: 13, max: 42, label: { enabled: true, min: 12, max: 20 } },
+              borderWidth: 2,
+              borderWidthSelected: 4,
+              shadow: { enabled: true, color: 'rgba(0,0,0,0.45)', size: 12, x: 0, y: 3 },
+              font: { color: '#f4f4f5', size: 13, face: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                      strokeWidth: 3, strokeColor: 'rgba(12,12,15,0.85)', multi: false }
+            },
+            edges: {
+              arrows: { to: { enabled: true, scaleFactor: 0.62, type: 'arrow' } },
+              color: { color: 'rgba(190,200,220,0.45)', highlight: '#ffb000', hover: '#ffd166', inherit: false },
+              width: 1.6,
+              selectionWidth: 1.6,
+              hoverWidth: 1,
+              smooth: { enabled: true, type: 'continuous', roundness: 0.45 }
+            },
+            interaction: { hover: true, multiselect: false, tooltipDelay: 120, hideEdgesOnDrag: false, navigationButtons: false },
+            physics: {
+              enabled: true,
+              solver: 'forceAtlas2Based',
+              stabilization: { iterations: 220, fit: true },
+              forceAtlas2Based: { gravitationalConstant: -62, centralGravity: 0.012, springLength: 130,
+                                  springConstant: 0.08, damping: 0.5, avoidOverlap: 0.7 },
+              minVelocity: 0.6
+            },
           });
           // Freeze the layout once it settles so navigating around doesn't keep
           // nudging nodes. Physics is only re-armed (kickPhysics) when the graph
           // actually gains or loses nodes/edges.
-          network.on('stabilized', () => { freezePhysics(); separateComponents(); });
+          network.on('stabilized', () => { freezePhysics(); maybeInitialFit(); });
           network.on('selectNode',   p => { selectedId = p.nodes[0]; updateActionButtons(); });
           network.on('deselectNode', () => { selectedId = null; updateActionButtons(); });
           network.on('doubleClick',  p => {
@@ -2211,69 +2432,6 @@
           if (network) network.setOptions({ physics: { enabled: false } });
         }
 
-        // Once the layout has settled, pull apart graphs that aren't connected to
-        // each other: find the connected components, then rigidly shift each one
-        // onto its own cell in a spaced grid so separate clusters never overlap and
-        // are easy to tell apart. Each component keeps its own internal shape — we
-        // only move whole clusters, not the nodes within them. Runs with physics
-        // already frozen, so the new positions stick.
-        function separateComponents() {
-          if (!network || !nodesDS) return;
-          const ids = nodesDS.getIds();
-          if (ids.length < 2) { maybeInitialFit(); return; }
-
-          const adj = {};
-          ids.forEach(id => { adj[id] = []; });
-          edgesDS.get().forEach(e => {
-            if (adj[e.from] && adj[e.to]) { adj[e.from].push(e.to); adj[e.to].push(e.from); }
-          });
-
-          const seen = new Set(), comps = [];
-          ids.forEach(id => {
-            if (seen.has(id)) return;
-            const comp = [], stack = [id];
-            seen.add(id);
-            while (stack.length) {
-              const c = stack.pop();
-              comp.push(c);
-              (adj[c] || []).forEach(nb => { if (!seen.has(nb)) { seen.add(nb); stack.push(nb); } });
-            }
-            comps.push(comp);
-          });
-          if (comps.length < 2) { maybeInitialFit(); return; }
-
-          const pos = network.getPositions();
-          const info = comps.map(comp => {
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, cx = 0, cy = 0;
-            comp.forEach(id => {
-              const p = pos[id] || { x: 0, y: 0 };
-              minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-              maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
-              cx += p.x; cy += p.y;
-            });
-            return { comp, w: maxX - minX, h: maxY - minY, cx: cx / comp.length, cy: cy / comp.length };
-          });
-
-          const GAP = 260;   // clear empty space between clusters
-          const cellW = Math.max(...info.map(i => i.w)) + GAP;
-          const cellH = Math.max(...info.map(i => i.h)) + GAP;
-          const cols = Math.ceil(Math.sqrt(comps.length));
-          const rows = Math.ceil(comps.length / cols);
-          const originX = -((cols - 1) * cellW) / 2;   // center the whole grid on (0,0)
-          const originY = -((rows - 1) * cellH) / 2;
-
-          info.forEach((ci, idx) => {
-            const targetX = originX + (idx % cols) * cellW;
-            const targetY = originY + Math.floor(idx / cols) * cellH;
-            const dx = targetX - ci.cx, dy = targetY - ci.cy;
-            ci.comp.forEach(id => {
-              const p = pos[id] || { x: 0, y: 0 };
-              network.moveNode(id, p.x + dx, p.y + dy);
-            });
-          });
-          maybeInitialFit();
-        }
-
         function maybeInitialFit() {
           if (didInitialFit || !network) return;
           didInitialFit = true;
@@ -2337,14 +2495,25 @@
           // drawn. Updating (instead of clear + re-add) preserves each node's
           // position, so the layout stays put while you browse — only genuinely
           // new/removed nodes move things.
+          // Size each node by how many links touch it, so hubs stand out.
+          const degree = {};
+          g.edges.forEach(e => {
+            if (ids.has(e.from) && ids.has(e.to)) {
+              degree[e.from] = (degree[e.from] || 0) + 1;
+              degree[e.to] = (degree[e.to] || 0) + 1;
+            }
+          });
+
           const desired = new Map();
           visible.forEach(n => {
             const base = COLORS[n.type];
             desired.set(n.id, {
               id: n.id,
+              value: 1 + (degree[n.id] || 0),
               label: (n.scraped ? '✓ ' : '') + n.label,
               color: { background: n.visited ? base : 'rgba(255,255,255,0.06)', border: base,
-                       highlight: { background: base, border: '#fff' } },
+                       highlight: { background: base, border: '#fff' },
+                       hover: { background: n.visited ? base : 'rgba(255,255,255,0.12)', border: '#fff' } },
               borderWidth: n.id === curId ? 4 : 2,
               opacity: n.scraped ? 0.4 : 1,
               font: { color: n.scraped ? '#8a8a90' : '#f4f4f5' },
@@ -2460,19 +2629,13 @@
         }
 
         // ------------------------------------------------------------- lifecycle
-        function isWindowOpen() { return !!(winEl && !winEl.hidden); }
+        // The map shares the unified window; it's "open" whenever that window is
+        // mounted and not collapsed into just its header.
+        function isWindowOpen() { return !!(winEl && !winEl.classList.contains('rg-collapsed')); }
 
-        function toggleWindow() {
-          if (isWindowOpen()) { closeWindow(); return; }
-          if (!winEl) buildWindow();
-          else { winEl.hidden = false; renderGraph(); }
-          const s = winEl && winEl.querySelector('#rrm-search');
-          if (s) setTimeout(() => s.focus(), 0);
-        }
-
-        function closeWindow() {
-          selectedId = null;
-          if (winEl) winEl.hidden = true;
+        // Re-measure the graph canvas (e.g. after the window is expanded or resized).
+        function resize() {
+          if (network) { network.setSize('100%', '100%'); network.redraw(); }
         }
 
         function refreshButton() {
@@ -2501,7 +2664,7 @@
           onLocation(); // record the page you loaded on
         }
 
-        return { bootstrap, toggleWindow, refreshButton, recordScan };
+        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits };
       })();
 
       if (window.__stripperRrmLoaded) { /* avoid double tracking if injected twice */ }
