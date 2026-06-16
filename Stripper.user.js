@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.16.00
+// @version      00.17.00
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole click-path map.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -485,6 +485,94 @@
         #redditGuestPanel .rg-log div:last-child {
           padding-bottom: 0;
         }
+        #redditGuestPanel .rg-subs {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        #redditGuestPanel .rg-subs[hidden] {
+          display: none;
+        }
+        #redditGuestPanel .rg-subsHead {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #d8d8dd;
+          font-size: 11px;
+          font-weight: 700;
+        }
+        #redditGuestPanel .rg-subsCount {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: #a9a9b2;
+          font-weight: 600;
+        }
+        #redditGuestPanel .rg-subAdd {
+          width: 24px;
+          min-height: 22px;
+          flex: 0 0 auto;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+          font-size: 14px;
+          border: 1px solid rgba(255, 176, 0, 0.5);
+          background: rgba(255, 69, 0, 0.16);
+          color: #ffd9b0;
+        }
+        #redditGuestPanel .rg-subAdd:hover:not(:disabled) {
+          background: rgba(255, 69, 0, 0.3);
+          border-color: rgba(255, 176, 0, 0.75);
+          color: #fff;
+        }
+        #redditGuestPanel .rg-subsList {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          max-height: 200px;
+          overflow: auto;
+          padding: 4px;
+          border-radius: 8px;
+          background: rgba(0, 0, 0, 0.23);
+          scrollbar-width: thin;
+        }
+        #redditGuestPanel .rg-subRow {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          padding: 4px 6px;
+          border-radius: 6px;
+        }
+        #redditGuestPanel .rg-subRow:hover {
+          background: rgba(255, 255, 255, 0.07);
+        }
+        #redditGuestPanel .rg-subLink {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: #e8e8ee;
+          text-decoration: none;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        #redditGuestPanel .rg-subRow:hover .rg-subLink {
+          color: #fff;
+        }
+        #redditGuestPanel .rg-subN {
+          flex: 0 0 auto;
+          padding: 1px 7px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.12);
+          color: #d8d8dd;
+          font-size: 10px;
+          font-weight: 800;
+        }
       `);
     
       function init() {
@@ -550,6 +638,14 @@
                 </div>
               </div>
               <div id="rgLog" class="rg-log" aria-live="polite"></div>
+              <div id="rgSubs" class="rg-subs" hidden>
+                <div class="rg-subsHead">
+                  <span>Subreddits</span>
+                  <span class="rg-subsCount" id="rgSubCount"></span>
+                  <button id="rgSubAddAll" class="rg-subAdd" type="button" title="Add all these subreddits to the Rabbithole map">+</button>
+                </div>
+                <div class="rg-subsList" id="rgSubList"></div>
+              </div>
             </div>
             <div id="rgMain" class="rg-main"></div>
           </div>
@@ -581,9 +677,20 @@
           text: panel.querySelector('#rgTypeText')
         };
         ui.log = panel.querySelector('#rgLog');
+        ui.subs = panel.querySelector('#rgSubs');
+        ui.subCount = panel.querySelector('#rgSubCount');
+        ui.subList = panel.querySelector('#rgSubList');
+        ui.subAddAll = panel.querySelector('#rgSubAddAll');
         ui.header = panel.querySelector('.rg-header');
         ui.collapseBtn = panel.querySelector('#rgCollapseBtn');
         ui.mapCount = panel.querySelector('#rgMapCount');
+
+        ui.subAddAll.addEventListener('click', () => {
+          const added = rabbithole.addSubreddits(state.username, state.subreddits || []);
+          logLine(added
+            ? `Rabbithole: added ${added} subreddit${added === 1 ? '' : 's'} to the map.`
+            : 'Rabbithole: no subreddits to add.');
+        });
 
         ui.collapseBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -859,87 +966,53 @@
         return name ? 'user:' + String(name).toLowerCase() : '';
       }
 
-      // A separate fixed panel (top-right) listing every subreddit a scanned user
-      // has posted in, with post counts. Appears after a user scan; closable.
-      let subsStyleInjected = false;
-      function ensureSubsPanel() {
-        let p = document.getElementById('rgSubsPanel');
-        if (p) return p;
-        if (!subsStyleInjected) {
-          subsStyleInjected = true;
-          GM_addStyle(`
-            #rgSubsPanel{position:fixed;top:18px;right:18px;z-index:2147483646;box-sizing:border-box;width:320px;
-              max-width:calc(100vw - 36px);max-height:260px;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.16);
-              border-radius:12px;background:rgba(18,18,21,.92);backdrop-filter:blur(14px);box-shadow:0 16px 48px rgba(0,0,0,.42);
-              color:#f4f4f5;font:12px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
-            #rgSubsPanel[hidden]{display:none;}
-            #rgSubsPanel *{box-sizing:border-box;}
-            #rgSubsPanel .rgsub-head{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 11px;
-              border-bottom:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);}
-            #rgSubsPanel .rgsub-title{font-weight:800;font-size:12px;letter-spacing:.3px;}
-            #rgSubsPanel .rgsub-count{color:#a9a9b2;font-size:11px;font-weight:700;min-width:0;overflow:hidden;
-              text-overflow:ellipsis;white-space:nowrap;}
-            #rgSubsPanel .rgsub-addgraph{appearance:none;width:24px;height:24px;padding:0;border-radius:7px;cursor:pointer;
-              display:flex;align-items:center;justify-content:center;line-height:1;
-              border:1px solid rgba(255,176,0,.5);background:rgba(255,69,0,.16);color:#ffd9b0;font-size:15px;font-weight:800;
-              transition:background 120ms ease,border-color 120ms ease;}
-            #rgSubsPanel .rgsub-addgraph:hover{background:rgba(255,69,0,.3);border-color:rgba(255,176,0,.75);color:#fff;}
-            #rgSubsPanel .rgsub-close{appearance:none;width:24px;height:24px;padding:0;border-radius:7px;cursor:pointer;
-              border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#f4f4f5;font-size:11px;font-weight:700;}
-            #rgSubsPanel .rgsub-close:hover{background:rgba(255,255,255,.16);}
-            #rgSubsPanel .rgsub-list{flex:1;min-height:0;overflow:auto;padding:6px;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;}
-            #rgSubsPanel .rgsub-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;
-              text-decoration:none;color:#e8e8ee;font-size:12px;font-weight:600;}
-            #rgSubsPanel .rgsub-row:hover{background:rgba(255,255,255,.08);color:#fff;}
-            #rgSubsPanel .rgsub-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-            #rgSubsPanel .rgsub-n{flex:0 0 auto;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.12);
-              color:#d8d8dd;font-size:10px;font-weight:800;}
-          `);
-        }
-        p = document.createElement('div');
-        p.id = 'rgSubsPanel';
-        p.hidden = true;
-        p.innerHTML = `
-          <div class="rgsub-head">
-            <span class="rgsub-title">Subreddits</span>
-            <span class="rgsub-count" id="rgSubCount"></span>
-            <span style="flex:1"></span>
-            <button class="rgsub-addgraph" type="button" title="Add all these subreddits to the Rabbithole map">+</button>
-            <button class="rgsub-close" type="button" title="Hide">✕</button>
-          </div>
-          <div class="rgsub-list" id="rgSubList"></div>`;
-        document.body.appendChild(p);
-        p.querySelector('.rgsub-close').addEventListener('click', () => { p.hidden = true; });
-        p.querySelector('.rgsub-addgraph').addEventListener('click', () => {
-          const added = rabbithole.addSubreddits(state.username, state.subreddits || []);
-          logLine(added
-            ? `Rabbithole: added ${added} subreddit${added === 1 ? '' : 's'} to the map.`
-            : 'Rabbithole: no subreddits to add.');
-        });
-        return p;
-      }
-
+      // Lists every subreddit a scanned user has posted in (with post counts) in
+      // the window sidebar, under the status log. Each row links to the sub and
+      // has a "+" to add just that one to the Rabbithole map; the header "+" adds
+      // them all. Hidden when there are no subreddits (e.g. single-post scans).
       function renderSubsPanel() {
+        if (!ui.subs) return;
         const subs = state.subreddits || [];
         if (!subs.length) {
-          const ex = document.getElementById('rgSubsPanel');
-          if (ex) ex.hidden = true;
+          ui.subs.hidden = true;
+          ui.subList.innerHTML = '';
           return;
         }
-        const p = ensureSubsPanel();
-        p.querySelector('#rgSubCount').textContent = `u/${state.username} · ${subs.length}`;
-        const list = p.querySelector('#rgSubList');
-        list.innerHTML = '';
+        ui.subCount.textContent = `u/${state.username} · ${subs.length}`;
+        ui.subList.innerHTML = '';
         subs.forEach(s => {
-          const row = document.createElement('a');
-          row.className = 'rgsub-row';
-          row.href = `https://www.reddit.com/r/${encodeURIComponent(s.name)}/`;
-          row.target = '_blank';
-          row.rel = 'noopener noreferrer';
-          row.innerHTML = `<span class="rgsub-name">r/${s.name}</span><span class="rgsub-n">${s.count}</span>`;
-          list.appendChild(row);
+          const row = document.createElement('div');
+          row.className = 'rg-subRow';
+
+          const link = document.createElement('a');
+          link.className = 'rg-subLink';
+          link.href = `https://www.reddit.com/r/${encodeURIComponent(s.name)}/`;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = `r/${s.name}`;
+
+          const count = document.createElement('span');
+          count.className = 'rg-subN';
+          count.textContent = s.count;
+
+          const add = document.createElement('button');
+          add.className = 'rg-subAdd';
+          add.type = 'button';
+          add.textContent = '+';
+          add.title = `Add r/${s.name} to the Rabbithole map`;
+          add.addEventListener('click', () => {
+            const added = rabbithole.addSubreddits(state.username, [s]);
+            logLine(added
+              ? `Rabbithole: added r/${s.name} to the map.`
+              : `Rabbithole: could not add r/${s.name}.`);
+          });
+
+          row.appendChild(link);
+          row.appendChild(count);
+          row.appendChild(add);
+          ui.subList.appendChild(row);
         });
-        p.hidden = false;
+        ui.subs.hidden = false;
       }
 
       async function scanCurrentProfile() {
