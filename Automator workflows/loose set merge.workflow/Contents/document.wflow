@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AMApplicationBuild</key>
+	<string>533</string>
+	<key>AMApplicationVersion</key>
+	<string>2.10</string>
+	<key>AMDocumentVersion</key>
+	<string>2</string>
+	<key>actions</key>
+	<array>
+		<dict>
+			<key>action</key>
+			<dict>
+				<key>AMAccepts</key>
+				<dict>
+					<key>Container</key>
+					<string>List</string>
+					<key>Optional</key>
+					<true/>
+					<key>Types</key>
+					<array>
+						<string>com.apple.cocoa.string</string>
+					</array>
+				</dict>
+				<key>AMActionVersion</key>
+				<string>2.0.3</string>
+				<key>AMApplication</key>
+				<array>
+					<string>Automator</string>
+				</array>
+				<key>AMParameterProperties</key>
+				<dict>
+					<key>COMMAND_STRING</key>
+					<dict/>
+					<key>CheckedForUserDefaultShell</key>
+					<dict/>
+					<key>inputMethod</key>
+					<dict/>
+					<key>shell</key>
+					<dict/>
+					<key>source</key>
+					<dict/>
+				</dict>
+				<key>AMProvides</key>
+				<dict>
+					<key>Container</key>
+					<string>List</string>
+					<key>Types</key>
+					<array>
+						<string>com.apple.cocoa.string</string>
+					</array>
+				</dict>
+				<key>ActionBundlePath</key>
+				<string>/System/Library/Automator/Run Shell Script.action</string>
+				<key>ActionName</key>
+				<string>Run Shell Script</string>
+				<key>ActionParameters</key>
+				<dict>
+					<key>COMMAND_STRING</key>
+					<string>#!/bin/zsh
+setopt null_glob
+setopt extended_glob
+
+err() { print -u2 -- "$*"; }
+
+choose_folder_name_from_selection() {
+  local -a items=("$@")
+  local -a names=()
+  local t first base cleaned
+
+  for t in "${items[@]}"; do
+    names+=("${t:t}")
+  done
+
+  if (( ${#names[@]} == 0 )); then
+    print -r -- "New Folder"
+    return 0
+  fi
+
+  first="$(printf '%s\n' "${names[@]}" | LC_ALL=C /usr/bin/sort -fV | /usr/bin/head -n 1)"
+  [[ -n "$first" ]] || first="New Folder"
+
+  # Remove first underscore and everything after it
+  if [[ "$first" == *_* ]]; then
+    cleaned="${first%%_*}"           # everything before the FIRST underscore
+  else
+    cleaned="$first"
+  fi
+
+  # Strip extension (only if it looks like a normal file extension)
+  if [[ "$cleaned" == *.* &amp;&amp; "$cleaned" != .* ]]; then
+    base="${cleaned%.*}"
+  else
+    base="$cleaned"
+  fi
+
+  [[ -n "$base" ]] || base="New Folder"
+  print -r -- "$base"
+}
+
+targets=("$@")
+(( ${#targets[@]} == 0 )) &amp;&amp; exit 0
+
+# Resolve to absolute paths; keep only existing items
+typeset -a items=()
+for t in "${targets[@]}"; do
+  [[ -e "$t" ]] &amp;&amp; items+=("${t:A}")
+done
+(( ${#items[@]} == 0 )) &amp;&amp; exit 0
+
+# Require a single parent directory for all selected items
+out_parent="${items[1]:h}"
+for t in "${items[@]}"; do
+  if [[ "${t:h}" != "$out_parent" ]]; then
+    err "Selected items must be in the same folder."
+    exit 1
+  fi
+done
+
+folder_base="$(choose_folder_name_from_selection "${items[@]}")"
+final_path="$out_parent/$folder_base"
+
+# Create temporary folder
+tmp_dir="$(/usr/bin/mktemp -d "$out_parent/.grouping_tmp.XXXXXX")" || {
+  err "Failed to create temporary folder."
+  exit 1
+}
+
+# Move items without renaming or overwriting
+for src in "${items[@]}"; do
+  /bin/mv -n -- "$src" "$tmp_dir/" || {
+    err "Move failed (possible name collision or permissions issue): ${src:t}"
+    exit 1
+  }
+done
+
+# Final rename (now guaranteed to be free)
+if [[ -e "$final_path" ]]; then
+  err "Cannot rename folder to '$folder_base' because something already exists with that name."
+  exit 1
+fi
+
+/bin/mv -- "$tmp_dir" "$final_path" || {
+  err "Failed to rename folder to '$folder_base'."
+  exit 1
+}
+
+exit 0</string>
+					<key>CheckedForUserDefaultShell</key>
+					<true/>
+					<key>inputMethod</key>
+					<integer>1</integer>
+					<key>shell</key>
+					<string>/bin/zsh</string>
+					<key>source</key>
+					<string></string>
+				</dict>
+				<key>BundleIdentifier</key>
+				<string>com.apple.RunShellScript</string>
+				<key>CFBundleVersion</key>
+				<string>2.0.3</string>
+				<key>CanShowSelectedItemsWhenRun</key>
+				<false/>
+				<key>CanShowWhenRun</key>
+				<true/>
+				<key>Category</key>
+				<array>
+					<string>AMCategoryUtilities</string>
+				</array>
+				<key>Class Name</key>
+				<string>RunShellScriptAction</string>
+				<key>InputUUID</key>
+				<string>7CA94439-346E-494A-9F3C-34D69544F9F4</string>
+				<key>Keywords</key>
+				<array>
+					<string>Shell</string>
+					<string>Script</string>
+					<string>Command</string>
+					<string>Run</string>
+					<string>Unix</string>
+				</array>
+				<key>OutputUUID</key>
+				<string>881A4D01-6FD0-4F35-AA68-ADAD0AB52F39</string>
+				<key>UUID</key>
+				<string>F9F5A1DC-A8E0-4B2D-95A7-B1870EEEEC24</string>
+				<key>UnlocalizedApplications</key>
+				<array>
+					<string>Automator</string>
+				</array>
+				<key>arguments</key>
+				<dict>
+					<key>0</key>
+					<dict>
+						<key>default value</key>
+						<integer>0</integer>
+						<key>name</key>
+						<string>inputMethod</string>
+						<key>required</key>
+						<string>0</string>
+						<key>type</key>
+						<string>0</string>
+						<key>uuid</key>
+						<string>0</string>
+					</dict>
+					<key>1</key>
+					<dict>
+						<key>default value</key>
+						<false/>
+						<key>name</key>
+						<string>CheckedForUserDefaultShell</string>
+						<key>required</key>
+						<string>0</string>
+						<key>type</key>
+						<string>0</string>
+						<key>uuid</key>
+						<string>1</string>
+					</dict>
+					<key>2</key>
+					<dict>
+						<key>default value</key>
+						<string></string>
+						<key>name</key>
+						<string>source</string>
+						<key>required</key>
+						<string>0</string>
+						<key>type</key>
+						<string>0</string>
+						<key>uuid</key>
+						<string>2</string>
+					</dict>
+					<key>3</key>
+					<dict>
+						<key>default value</key>
+						<string></string>
+						<key>name</key>
+						<string>COMMAND_STRING</string>
+						<key>required</key>
+						<string>0</string>
+						<key>type</key>
+						<string>0</string>
+						<key>uuid</key>
+						<string>3</string>
+					</dict>
+					<key>4</key>
+					<dict>
+						<key>default value</key>
+						<string>/bin/sh</string>
+						<key>name</key>
+						<string>shell</string>
+						<key>required</key>
+						<string>0</string>
+						<key>type</key>
+						<string>0</string>
+						<key>uuid</key>
+						<string>4</string>
+					</dict>
+				</dict>
+				<key>isViewVisible</key>
+				<integer>1</integer>
+				<key>location</key>
+				<string>673.000000:305.000000</string>
+				<key>nibPath</key>
+				<string>/System/Library/Automator/Run Shell Script.action/Contents/Resources/Base.lproj/main.nib</string>
+			</dict>
+			<key>isViewVisible</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>connectors</key>
+	<dict/>
+	<key>workflowMetaData</key>
+	<dict>
+		<key>applicationBundleIDsByPath</key>
+		<dict/>
+		<key>applicationPaths</key>
+		<array/>
+		<key>inputTypeIdentifier</key>
+		<string>com.apple.Automator.fileSystemObject</string>
+		<key>outputTypeIdentifier</key>
+		<string>com.apple.Automator.nothing</string>
+		<key>presentationMode</key>
+		<integer>15</integer>
+		<key>processesInput</key>
+		<false/>
+		<key>serviceInputTypeIdentifier</key>
+		<string>com.apple.Automator.fileSystemObject</string>
+		<key>serviceOutputTypeIdentifier</key>
+		<string>com.apple.Automator.nothing</string>
+		<key>serviceProcessesInput</key>
+		<false/>
+		<key>systemImageName</key>
+		<string>NSActionTemplate</string>
+		<key>useAutomaticInputType</key>
+		<false/>
+		<key>workflowTypeIdentifier</key>
+		<string>com.apple.Automator.servicesMenu</string>
+	</dict>
+</dict>
+</plist>
