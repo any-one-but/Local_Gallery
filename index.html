@@ -15667,6 +15667,7 @@ function revokeAllObjectURLs() {
 
 function resetWorkspace() {
   revokeAllObjectURLs();
+  resetVideoThumbCacheState();
   THUMBNAIL_URL_RECORD_IDS.clear();
   invalidateDirectoryDerivedIndex();
   ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN++;
@@ -26856,6 +26857,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     );
     const ok = await metaEnsureFsHandles(rootHandle);
     const storedPaths = await preloadStoragePathsForRootHandle(rootHandle);
+    await initVideoThumbCacheForWorkspace(rootHandle);
 
     updateBlockingLoaderOverlay("Opening root folder...", "Scanning folders and media files...");
     await waitForBusyOverlayPaint();
@@ -27061,6 +27063,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
     scheduleWorkspaceNavigationWarm(WS.root, 1000);
+    startVideoThumbWarm();
     syncMetaButtons();
     initDirHistory();
     await waitForBusyOverlayPaint();
@@ -50900,11 +50903,44 @@ function makePreviewFileCard(
   const mediaSrc = getPassivePreviewSrcForRecord(rec, {
     allowImageMediaFallback: true,
   });
+  const cachedVideoThumbSrc =
+    rec && rec.type === "video" ? videoThumbCachedUrlForRecord(rec) : "";
   const usePassiveVideoThumb =
-    rec && rec.type === "video" && !!options.passiveVideoThumbs;
+    rec && rec.type === "video" && !!options.passiveVideoThumbs && !cachedVideoThumbSrc;
   let mediaEl = null;
   if (mediaSrc && !usePassiveVideoThumb) {
-    if (rec.type === "video") {
+    if (rec.type === "video" && cachedVideoThumbSrc) {
+      // Cached still frame: render a cheap <img>, no WebMediaPlayer.
+      const img = document.createElement("img");
+      img.className = "thumb";
+      img.loading = options.folderMediaPreviewGrid ? "eager" : "lazy";
+      img.decoding = options.folderMediaPreviewGrid ? "sync" : "async";
+      img.draggable = false;
+      img.dataset.dirPreviewId = fileId;
+      registerThumbEl(img, cachedVideoThumbSrc, { kind: "img" });
+      if (useFitInsideJustified) {
+        img.addEventListener("load", () => {
+          const w = Number(img.naturalWidth) || 0;
+          const h = Number(img.naturalHeight) || 0;
+          if (w > 0 && h > 0) {
+            const aspect = normalizePreviewAspect(
+              w / h,
+              getPreviewAspectForRecord(rec),
+            );
+            rec.previewAspect = aspect;
+            card.dataset.aspect = String(aspect);
+            const grid = card.parentElement;
+            if (grid && grid.classList.contains("fitInsideJustified")) {
+              requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
+            }
+          }
+        });
+      }
+      mediaEl = img;
+    } else if (rec.type === "video") {
+      // No cached frame yet: show the live <video> still and queue a background
+      // capture so future renders use a cached <img> instead.
+      videoThumbCacheEnqueue(rec);
       const video = document.createElement("video");
       video.className = "thumb";
       video.preload = options.folderMediaPreviewGrid ? "auto" : "metadata";
@@ -50998,6 +51034,9 @@ function makePreviewFileCard(
       fallback.classList.add("passiveVideoThumbPending");
       fallback.dataset.passiveVideoId = fileId;
       fallback.dataset.dirPreviewId = fileId;
+      // Queue a background frame capture so this heavy-folder video gets a
+      // cached <img> on the next render instead of upgrading to a live <video>.
+      videoThumbCacheEnqueue(rec);
     }
     setAppIcon(fallback, iconKeyForRecordType(rec.type));
     card.appendChild(fallback);
@@ -56031,6 +56070,351 @@ function releaseContainerThumbMedia(container) {
   }
 }
 
+// ===== Static video-thumbnail cache (renderer-canvas, Electron only) =====
+// Grid video tiles only ever display a single still frame (they never play),
+// yet each mounts a full <video>/WebMediaPlayer on the whole file. This module
+// caches one JPEG frame per video under .local-gallery/video-thumbs/ and lets
+// the grid render a plain <img>, so repeat views cost nothing and the live
+// <video> path (and its WebMediaPlayer budget) is avoided. Web (non-Electron)
+// mode keeps the live-<video> path. The cached frame honors the user's chosen
+// thumbnail frame time; the filename encodes size + frame so an edited frame or
+// a replaced file produces a new name (no stale browser caching).
+const VIDEO_THUMB_CACHE_DIR = "video-thumbs";
+const VIDEO_THUMB_EDGE = 512; // longest edge of the cached frame
+const VIDEO_THUMB_JPEG_QUALITY = 0.82;
+const VIDEO_THUMB_GEN_CONCURRENCY = 3;
+const VIDEO_THUMB_GEN_TIMEOUT_MS = 8000;
+const VIDEO_THUMB_WARM_DELAY_MS = 1500;
+
+const VideoThumbCache = {
+  ready: false,
+  dirHandle: null, // FileSystemDirectoryHandle for the cache dir
+  dirAbsPath: "", // absolute fs path of the cache dir (for file:// URLs)
+  files: new Set(), // filenames currently present in the cache dir
+  generating: new Set(), // record ids mid-generation
+  queued: new Set(), // record ids anywhere in a queue
+  queueHigh: [], // on-demand: videos in the folder being viewed
+  queueLow: [], // background warm: the rest of the library
+  active: 0,
+  swapTimer: 0,
+  warmToken: 0, // bumped on reset to cancel an in-flight warm sweep
+  warmTimer: 0,
+};
+
+// cyrb53 — stable, low-collision string hash rendered as base36.
+function videoThumbHash(str) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const n = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  return n.toString(36);
+}
+
+function videoThumbPrefixForRecord(rec) {
+  const relPath = String(rec?.relPath || rec?.name || "");
+  if (!relPath) return "";
+  return `vt_${videoThumbHash(relPath)}__`;
+}
+
+function videoThumbFileNameForRecord(rec) {
+  if (!rec || rec.type !== "video") return "";
+  const prefix = videoThumbPrefixForRecord(rec);
+  if (!prefix) return "";
+  const size = Math.max(0, Number(rec.size) || 0);
+  const frameMs = Math.max(
+    0,
+    Math.round((Number(metaGetVideoThumbnailTimeForRecord(rec)) || 0) * 1000),
+  );
+  return `${prefix}${size}__${frameMs}.jpg`;
+}
+
+// Absolute path of the cache dir, derived once from any record's native path
+// (root abs path = record's native path minus its relPath).
+function videoThumbCacheDirAbsPath() {
+  if (VideoThumbCache.dirAbsPath) return VideoThumbCache.dirAbsPath;
+  for (const rec of WS.fileById.values()) {
+    const np = String(nativePathForRecord(rec) || "").replace(/\\/g, "/");
+    const rel = String(rec.relPath || "");
+    if (np && rel && np.endsWith(rel)) {
+      const root = np.slice(0, np.length - rel.length).replace(/\/+$/, "");
+      if (root) {
+        VideoThumbCache.dirAbsPath = `${root}/.local-gallery/${VIDEO_THUMB_CACHE_DIR}`;
+        return VideoThumbCache.dirAbsPath;
+      }
+    }
+  }
+  return "";
+}
+
+function videoThumbCachedUrlForRecord(rec) {
+  if (!VideoThumbCache.ready || !rec || rec.type !== "video") return "";
+  const name = videoThumbFileNameForRecord(rec);
+  if (!name || !VideoThumbCache.files.has(name)) return "";
+  const dirAbs = videoThumbCacheDirAbsPath();
+  if (!dirAbs) return "";
+  return nativePathToFileUrl(`${dirAbs}/${name}`);
+}
+
+function resetVideoThumbCacheState() {
+  if (VideoThumbCache.swapTimer) {
+    try { clearTimeout(VideoThumbCache.swapTimer); } catch {}
+  }
+  if (VideoThumbCache.warmTimer) {
+    try { clearTimeout(VideoThumbCache.warmTimer); } catch {}
+  }
+  VideoThumbCache.ready = false;
+  VideoThumbCache.dirHandle = null;
+  VideoThumbCache.dirAbsPath = "";
+  VideoThumbCache.files = new Set();
+  VideoThumbCache.generating = new Set();
+  VideoThumbCache.queued = new Set();
+  VideoThumbCache.queueHigh = [];
+  VideoThumbCache.queueLow = [];
+  VideoThumbCache.active = 0;
+  VideoThumbCache.swapTimer = 0;
+  VideoThumbCache.warmTimer = 0;
+  VideoThumbCache.warmToken++;
+}
+
+// Scan the cache dir into the in-memory index on workspace open. Creates the
+// dir so generation can write to it. No-op (and stays inactive) off Electron.
+async function initVideoThumbCacheForWorkspace(rootHandle) {
+  resetVideoThumbCacheState();
+  if (!getElectronApi() || !rootHandle) return;
+  try {
+    const sys = await rootHandle.getDirectoryHandle(".local-gallery", {
+      create: true,
+    });
+    const dir = await sys.getDirectoryHandle(VIDEO_THUMB_CACHE_DIR, {
+      create: true,
+    });
+    VideoThumbCache.dirHandle = dir;
+    for await (const [name, handle] of dir.entries()) {
+      if (handle.kind === "file" && name.startsWith("vt_")) {
+        VideoThumbCache.files.add(name);
+      }
+    }
+    VideoThumbCache.ready = true;
+  } catch {
+    resetVideoThumbCacheState();
+  }
+}
+
+// Decode a single frame of `src` at `frameTime` (seconds) into a JPEG Blob.
+function captureVideoFrameBlob(src, frameTime) {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    v.muted = true;
+    v.defaultMuted = true;
+    v.preload = "auto";
+    v.playsInline = true;
+    let done = false;
+    const cleanup = () => {
+      try { v.removeAttribute("src"); v.load(); } catch {}
+    };
+    const finish = (blob) => {
+      if (done) return;
+      done = true;
+      try { clearTimeout(timer); } catch {}
+      cleanup();
+      resolve(blob || null);
+    };
+    const timer = setTimeout(() => finish(null), VIDEO_THUMB_GEN_TIMEOUT_MS);
+    v.addEventListener("error", () => finish(null));
+    v.addEventListener("loadedmetadata", () => {
+      const d = Number(v.duration) || 0;
+      let t = Number(frameTime);
+      t = Number.isFinite(t)
+        ? Math.min(Math.max(0, t), Math.max(0, d - 0.05))
+        : Math.min(0.1, Math.max(0, d * 0.02));
+      try { v.currentTime = t; } catch { finish(null); }
+    });
+    v.addEventListener("seeked", () => {
+      if (done) return;
+      const vw = Number(v.videoWidth) || 0;
+      const vh = Number(v.videoHeight) || 0;
+      if (!(vw > 0 && vh > 0)) return finish(null);
+      const scale = Math.min(1, VIDEO_THUMB_EDGE / Math.max(vw, vh));
+      const cw = Math.max(1, Math.round(vw * scale));
+      const ch = Math.max(1, Math.round(vh * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return finish(null);
+      try { ctx.drawImage(v, 0, 0, cw, ch); } catch { return finish(null); }
+      try {
+        canvas.toBlob((blob) => finish(blob), "image/jpeg", VIDEO_THUMB_JPEG_QUALITY);
+      } catch {
+        finish(null);
+      }
+    });
+    try { v.src = src; v.load(); } catch { finish(null); }
+  });
+}
+
+// Remove older cached variants for the same video (different size/frame).
+async function videoThumbDeleteStaleVariants(rec, keepName) {
+  const prefix = videoThumbPrefixForRecord(rec);
+  if (!prefix || !VideoThumbCache.dirHandle) return;
+  const stale = [];
+  for (const name of VideoThumbCache.files) {
+    if (name !== keepName && name.startsWith(prefix)) stale.push(name);
+  }
+  for (let i = 0; i < stale.length; i++) {
+    try { await VideoThumbCache.dirHandle.removeEntry(stale[i]); } catch {}
+    VideoThumbCache.files.delete(stale[i]);
+  }
+}
+
+async function videoThumbCacheGenerate(rec) {
+  if (!VideoThumbCache.ready || !VideoThumbCache.dirHandle || !rec) return;
+  const name = videoThumbFileNameForRecord(rec);
+  if (!name || VideoThumbCache.files.has(name)) return;
+  if (!rec.file && typeof ensureFileObjectForRecord === "function") {
+    try { await ensureFileObjectForRecord(rec); } catch {}
+  }
+  // Capture from a blob: URL of the File rather than the file:// media URL.
+  // A blob is same-origin, so the canvas is never tainted and toBlob() works
+  // regardless of Electron's webSecurity setting (file:// would taint it).
+  let blobUrl = "";
+  try {
+    if (rec.file) blobUrl = URL.createObjectURL(rec.file);
+  } catch {}
+  const src = blobUrl || ensureMediaUrl(rec);
+  if (!src) return;
+  let blob = null;
+  try {
+    blob = await captureVideoFrameBlob(
+      src,
+      metaGetVideoThumbnailTimeForRecord(rec),
+    );
+  } finally {
+    if (blobUrl) {
+      try { URL.revokeObjectURL(blobUrl); } catch {}
+    }
+  }
+  if (!blob) return;
+  try {
+    const fh = await VideoThumbCache.dirHandle.getFileHandle(name, {
+      create: true,
+    });
+    const writable = await fh.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  } catch {
+    return;
+  }
+  VideoThumbCache.files.add(name);
+  await videoThumbDeleteStaleVariants(rec, name);
+  // Only re-render if this video is in the folder currently on screen, so the
+  // background warm sweep doesn't thrash the UI with off-screen completions.
+  const previewDirPath = String(WS.preview?.dirNode?.path || "");
+  if (String(rec.dirPath || "") === previewDirPath) scheduleVideoThumbSwapRefresh();
+}
+
+function videoThumbCachePump() {
+  while (
+    VideoThumbCache.active < VIDEO_THUMB_GEN_CONCURRENCY &&
+    (VideoThumbCache.queueHigh.length || VideoThumbCache.queueLow.length)
+  ) {
+    const id = VideoThumbCache.queueHigh.length
+      ? VideoThumbCache.queueHigh.shift()
+      : VideoThumbCache.queueLow.shift();
+    VideoThumbCache.queued.delete(id);
+    const rec = WS.fileById.get(id);
+    if (!rec || rec.type !== "video") continue;
+    if (videoThumbCachedUrlForRecord(rec)) continue;
+    VideoThumbCache.active++;
+    VideoThumbCache.generating.add(id);
+    Promise.resolve()
+      .then(() => videoThumbCacheGenerate(rec))
+      .catch(() => {})
+      .then(() => {
+        VideoThumbCache.generating.delete(id);
+        VideoThumbCache.active = Math.max(0, VideoThumbCache.active - 1);
+        videoThumbCachePump();
+      });
+  }
+}
+
+// Queue a frame capture for a video whose thumbnail isn't cached yet. The grid
+// render path calls this (high priority) for videos actually on screen; the
+// background warm sweep calls it with { warm: true } (low priority).
+function videoThumbCacheEnqueue(rec, opts = null) {
+  if (!VideoThumbCache.ready || !VideoThumbCache.dirHandle) return;
+  if (!rec || rec.type !== "video") return;
+  const id = String(rec.id || "");
+  if (!id || VideoThumbCache.generating.has(id)) return;
+  if (videoThumbCachedUrlForRecord(rec)) return;
+  const warm = !!(opts && opts.warm);
+  if (VideoThumbCache.queued.has(id)) {
+    // Already queued: if an on-demand request arrives for something the warm
+    // sweep parked in the low queue, promote it to the front of the high queue.
+    if (!warm) {
+      const i = VideoThumbCache.queueLow.indexOf(id);
+      if (i !== -1) {
+        VideoThumbCache.queueLow.splice(i, 1);
+        VideoThumbCache.queueHigh.push(id);
+        videoThumbCachePump();
+      }
+    }
+    return;
+  }
+  VideoThumbCache.queued.add(id);
+  (warm ? VideoThumbCache.queueLow : VideoThumbCache.queueHigh).push(id);
+  videoThumbCachePump();
+}
+
+// Background sweep: queue every not-yet-cached video in the library at low
+// priority so the whole library warms over time without competing with the
+// folder you're actively viewing. Cancelled by resetVideoThumbCacheState.
+function startVideoThumbWarm() {
+  if (!VideoThumbCache.ready || !VideoThumbCache.dirHandle) return;
+  if (VideoThumbCache.warmTimer) {
+    try { clearTimeout(VideoThumbCache.warmTimer); } catch {}
+  }
+  const token = VideoThumbCache.warmToken;
+  VideoThumbCache.warmTimer = setTimeout(() => {
+    VideoThumbCache.warmTimer = 0;
+    if (token !== VideoThumbCache.warmToken || !VideoThumbCache.ready) return;
+    for (const rec of WS.fileById.values()) {
+      if (token !== VideoThumbCache.warmToken) return;
+      if (rec && rec.type === "video") videoThumbCacheEnqueue(rec, { warm: true });
+    }
+  }, VIDEO_THUMB_WARM_DELAY_MS);
+}
+
+// Console diagnostic: progress of the video-thumbnail cache.
+function videoThumbCacheStats() {
+  return {
+    ready: VideoThumbCache.ready,
+    dir: videoThumbCacheDirAbsPath(),
+    cached: VideoThumbCache.files.size,
+    generating: VideoThumbCache.generating.size,
+    queuedHigh: VideoThumbCache.queueHigh.length,
+    queuedLow: VideoThumbCache.queueLow.length,
+  };
+}
+
+// Coalesced re-render so freshly-cached tiles swap from live <video> to <img>.
+function scheduleVideoThumbSwapRefresh() {
+  if (VideoThumbCache.swapTimer) return;
+  VideoThumbCache.swapTimer = setTimeout(() => {
+    VideoThumbCache.swapTimer = 0;
+    try {
+      if (WS.root) renderPreviewPane(false, true);
+    } catch {}
+  }, 600);
+}
+
 function collectMainMediaRecordIds() {
   const out = new Set();
   const add = (id) => {
@@ -58583,6 +58967,7 @@ function openThumbnailCropEditor(rec) {
           }
           rec.videoThumbMode = null;
           enqueueVideoThumb(rec);
+          videoThumbCacheEnqueue(rec);
         }
         closeThumbnailCropEditor();
         refreshThumbnailUiAfterMetadataChange();
