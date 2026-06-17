@@ -27032,7 +27032,10 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     WS.view.randomFolderCache = new Map();
 
     WS.nav.dirNode = WS.root;
-    WS.view.aboveRootView = false;
+    // Open one level "above root" so the root's folders are shown in the preview
+    // grid (mirrors leaveDirectory()'s at-root behaviour) instead of descending
+    // into the first child.
+    WS.view.aboveRootView = showRootViewEnabled();
     syncActivePaneWithLayout();
     syncBulkSelectionForCurrentDir();
     syncFavoritesUi();
@@ -27069,6 +27072,9 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     await waitForBusyOverlayPaint();
   } finally {
     releaseBusyOverlayHold({ hide: true });
+    // Kick the passive thumbnail loader now the panes have their final size, so
+    // thumbnails start loading on startup without needing a navigation nudge.
+    scheduleInitialThumbnailPrime();
   }
 }
 
@@ -55859,6 +55865,42 @@ function reprioritizeThumbs() {
   THUMB_REPRIORITIZE_RAF = requestAnimationFrame(() => {
     THUMB_REPRIORITIZE_RAF = 0;
     pumpThumbQueue();
+  });
+}
+
+// Force the IntersectionObserver to re-evaluate every pending thumbnail against
+// the current layout. On initial root open, the observer's first callback can
+// run before the panes have their final size (the busy overlay is still tearing
+// down), so nothing gets marked visible and loading never starts until the user
+// navigates — re-observing kicks it off without that nudge.
+function primeThumbnailLoadingNow() {
+  if (!THUMB_OBSERVER) {
+    reprioritizeThumbs();
+    return;
+  }
+  let nodes;
+  try {
+    nodes = document.querySelectorAll('[data-thumb-state="idle"]');
+  } catch {
+    reprioritizeThumbs();
+    return;
+  }
+  for (let i = 0; i < nodes.length; i++) {
+    try {
+      THUMB_OBSERVER.unobserve(nodes[i]);
+      THUMB_OBSERVER.observe(nodes[i]);
+    } catch {}
+  }
+  reprioritizeThumbs();
+}
+
+// Run the prime a few times after a fresh root open: once layout settles and
+// again shortly after, so thumbnails start loading immediately on startup.
+function scheduleInitialThumbnailPrime() {
+  requestAnimationFrame(() => {
+    primeThumbnailLoadingNow();
+    setTimeout(primeThumbnailLoadingNow, 250);
+    setTimeout(primeThumbnailLoadingNow, 800);
   });
 }
 
