@@ -15911,7 +15911,7 @@ function resetWorkspace() {
 
 function clearWorkspaceEmptyState() {
   if (directoriesListEl) directoriesListEl.innerHTML = "";
-  if (previewBodyEl) previewBodyEl.innerHTML = "";
+  if (previewBodyEl) { releaseContainerThumbMedia(previewBodyEl); previewBodyEl.innerHTML = ""; }
 }
 
 /* =========================================================
@@ -28813,7 +28813,7 @@ function forceRefreshPreviewFolderGridAfterFileRenames(dirNode) {
       applyPreviewState({ kind: "dir", dirNode: target, fileId: null });
     }
     resetPreviewGridRenderRecovery();
-    if (previewBodyEl) previewBodyEl.innerHTML = "";
+    if (previewBodyEl) { releaseContainerThumbMedia(previewBodyEl); previewBodyEl.innerHTML = ""; }
     renderDirectoriesPane(true);
     renderPreviewPane(false, !!keepScroll);
     kickVideoThumbsForPreview();
@@ -36165,7 +36165,7 @@ function renderSelectedFilePreviewBeforeDirectoryPreparation() {
   // with no visible grid until another selection change forces a render.
   if (WS.preview.kind === "dir" && WS.preview.dirNode) {
     resetPreviewGridRenderRecovery();
-    if (previewBodyEl) previewBodyEl.innerHTML = "";
+    if (previewBodyEl) { releaseContainerThumbMedia(previewBodyEl); previewBodyEl.innerHTML = ""; }
     renderPreviewPane(false, false);
     schedulePreviewFolderGridRepairForCurrentTarget(3);
   }
@@ -43731,6 +43731,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     return rowTop - viewTop + prevSelected.offsetHeight * 0.5;
   })();
   invalidateGridRowMetricsCache();
+  releaseContainerThumbMedia(directoriesListEl);
   directoriesListEl.innerHTML = "";
   directoriesListEl.classList.toggle("gridModeList", gridModeActive);
   updateGridModeListTopInset();
@@ -48082,6 +48083,7 @@ function renderPreviewPlaceholder(info = null) {
   };
 
   if (!thumbSrc) {
+    releaseContainerThumbMedia(previewBodyEl);
     previewBodyEl.innerHTML = "";
     const wrap = document.createElement("div");
     wrap.className = "previewItemPlaceholder noThumbnail";
@@ -48104,6 +48106,7 @@ function renderPreviewPlaceholder(info = null) {
   let wrap = previewBodyEl.firstElementChild;
   const canReuse = !!(wrap && wrap.classList && wrap.classList.contains("previewItemPlaceholder"));
   if (!canReuse || !wrap.classList.contains("hasThumbnail")) {
+    releaseContainerThumbMedia(previewBodyEl);
     previewBodyEl.innerHTML = "";
     wrap = document.createElement("div");
     wrap.className = "previewItemPlaceholder hasThumbnail";
@@ -48197,6 +48200,7 @@ function renderPreviewPlaceholder(info = null) {
 // the preview target changes while the file is being read.
 async function renderMarkdownPreview(rec, keepScroll, prevScroll) {
   const targetId = String(rec && rec.id ? rec.id : "");
+  releaseContainerThumbMedia(previewBodyEl);
   previewBodyEl.innerHTML = "";
   const wrap = document.createElement("div");
   wrap.className = "mdPreview";
@@ -48405,6 +48409,7 @@ function renderPreviewPane(animate = false, keepScroll = false) {
     if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
     if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
 
+    releaseContainerThumbMedia(previewBodyEl);
     previewBodyEl.innerHTML = "";
     const searchRender = renderPreviewSearchResults(previewBodyEl);
     WS.view.previewScrollActiveKey = "";
@@ -48447,6 +48452,7 @@ function renderPreviewPane(animate = false, keepScroll = false) {
     setPreviewBodyMode("file");
     const rec = WS.fileById.get(WS.preview.fileId);
     if (!rec) {
+      releaseContainerThumbMedia(previewBodyEl);
       previewBodyEl.innerHTML = "";
       previewBodyEl.innerHTML = `<div class="label" style="padding:10px;">File not found.</div>`;
       MediaFilterEngine.detach("preview");
@@ -48500,6 +48506,7 @@ function renderPreviewPane(animate = false, keepScroll = false) {
       previewBodyEl.firstChild !== previewViewportBox ||
       previewBodyEl.childNodes.length !== 1
     ) {
+      releaseContainerThumbMedia(previewBodyEl);
       previewBodyEl.innerHTML = "";
       previewBodyEl.appendChild(previewViewportBox);
     }
@@ -48742,6 +48749,7 @@ function previewGridStageHasRenderableContent(stage, expectedCount) {
 
 function swapPreviewGridRenderStage(stage) {
   if (!previewBodyEl || !stage || !stage.parentElement) return false;
+  releaseContainerThumbMedia(previewBodyEl);
   previewBodyEl.innerHTML = "";
   while (stage.firstChild) previewBodyEl.appendChild(stage.firstChild);
   refreshFitInsidePreviewGrids();
@@ -55994,6 +56002,33 @@ function stopCachedMediaElement(el) {
     }
   } catch {}
   return false;
+}
+
+// Release any live thumbnail media (video WebMediaPlayers and img sources)
+// inside a container before it is wiped (e.g. innerHTML = ""). Detaching a
+// <video> from the DOM does not reliably fire the IntersectionObserver, so
+// without this its WebMediaPlayer lingers until GC; with many video thumbnails
+// that accumulation can exhaust Chromium's per-renderer WebMediaPlayer budget
+// and make later videos fail to load ("Could not load video") until the app is
+// restarted. Scoped to thumbnail classes so it never touches the main
+// preview/viewer players.
+function releaseContainerThumbMedia(container) {
+  if (!container || typeof container.querySelectorAll !== "function") return;
+  let nodes;
+  try {
+    nodes = container.querySelectorAll(
+      "video.thumb, img.thumb, video.folderThumb, img.folderThumb, video.dirInlinePreview, img.dirInlinePreview",
+    );
+  } catch {
+    return;
+  }
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    try { evictThumbEl(node); } catch {}
+    if (String(node.tagName || "").toLowerCase() === "video") {
+      try { stopCachedMediaElement(node); } catch {}
+    }
+  }
 }
 
 function collectMainMediaRecordIds() {
