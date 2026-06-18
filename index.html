@@ -4204,17 +4204,16 @@ img[data-rotate-key].rotatingThumbFade {
   position: absolute;
   top: 16px;
   left: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--ui-control-bg);
   border: 0;
   border-radius: var(--ui-control-radius);
-  padding: 4px 8px;
+  padding: 6px;
   color: var(--color0-primary);
-  font-size: 12px;
-  font-weight: 800;
   cursor: pointer;
   user-select: none;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   transition:
     background 0.15s ease,
     border-color 0.15s ease,
@@ -4360,6 +4359,79 @@ img[data-rotate-key].rotatingThumbFade {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* =========================================================
+       Confirm / Alert Dialog (themed, replaces native confirm/alert)
+       ========================================================= */
+#confirmOverlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+  z-index: 30000;
+}
+#confirmOverlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+#confirmCard {
+  width: min(420px, 92vw);
+  max-height: min(80vh, 560px);
+  overflow: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: calc(var(--ui-control-radius) + 4px);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  transform: translateY(6px);
+  transition: transform 0.16s ease;
+}
+#confirmOverlay.active #confirmCard {
+  transform: translateY(0);
+}
+#confirmMessage {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color0-primary);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+#confirmButtons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+#confirmButtons .miniBtn {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+#confirmButtons .confirmPrimary {
+  background: var(--palette-accent);
+  color: var(--palette-accent-text);
+}
+#confirmButtons .confirmPrimary:hover:not(:disabled) {
+  background: var(--palette-accent);
+  filter: brightness(1.08);
+}
+#confirmButtons .confirmPrimary.confirmDanger {
+  background: #c0392b;
+  color: #ffffff;
+}
+#confirmButtons .confirmPrimary.confirmDanger:hover:not(:disabled) {
+  background: #d0432f;
+  filter: none;
 }
 
 /* =========================================================
@@ -6887,11 +6959,16 @@ remove the outer app frame. */
                       </button>
                     </div>
                   </div>
+                  <!-- Tab ids (general / controls / calendar) come from the
+                       #menuTabs buttons above and drive setMenuTab(); each panel's
+                       data-tab below names the same tab so markup stays consistent.
+                       The element ids (menuTabOptions/menuTabKeybinds/menuTabCalendar)
+                       are what the JS panel map and aria-controls reference. -->
                   <div id="menuBody">
                     <section
                       id="menuTabOptions"
                       class="menuTabPanel"
-                      data-tab="options"
+                      data-tab="general"
                       role="tabpanel"
                     >
                       <div id="optionsBody"></div>
@@ -6920,7 +6997,7 @@ remove the outer app frame. */
                     <section
                       id="menuTabKeybinds"
                       class="menuTabPanel"
-                      data-tab="keybinds"
+                      data-tab="controls"
                       role="tabpanel"
                     >
                       <div id="keybindsBody"></div>
@@ -6992,7 +7069,9 @@ remove the outer app frame. */
           ========================================================= -->
       <div id="overlay">
         <div id="viewerInner">
-          <button id="closeBtn" type="button">X</button>
+          <button id="closeBtn" type="button" title="Close" aria-label="Close">
+            <span class="controlIcon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x-icon lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span>
+          </button>
           <div id="viewerViewport"></div>
           <div id="filename"></div>
         </div>
@@ -7005,6 +7084,33 @@ remove the outer app frame. */
         <div class="busySpinner"></div>
         <div id="busyLabel">Working...</div>
         <div id="busyDetail"></div>
+      </div>
+
+      <!-- =========================================================
+         Confirm / Alert Dialog (Overlay)
+         ========================================================= -->
+      <div
+        id="confirmOverlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmMessage"
+        aria-hidden="true"
+      >
+        <div id="confirmCard">
+          <div id="confirmMessage"></div>
+          <div id="confirmButtons">
+            <button id="confirmCancelBtn" type="button" class="miniBtn">
+              Cancel
+            </button>
+            <button
+              id="confirmOkBtn"
+              type="button"
+              class="miniBtn confirmPrimary"
+            >
+              OK
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -20738,7 +20844,7 @@ if (optionsDoneBtn) optionsDoneBtn.addEventListener("click", () => closeMenu());
 if (optionsResetBtn)
   optionsResetBtn.addEventListener("click", () => resetOptionsToDefaults());
 if (calendarDeleteAllBtn) {
-  calendarDeleteAllBtn.addEventListener("click", (e) => {
+  calendarDeleteAllBtn.addEventListener("click", async (e) => {
     e.preventDefault();
     e.stopPropagation();
     const count = Array.isArray(WS.meta.scoreHistory)
@@ -20748,8 +20854,9 @@ if (calendarDeleteAllBtn) {
       setCalendarStatus("No logs");
       return;
     }
-    const ok = confirm(
+    const ok = await showConfirmDialog(
       `Delete all ${count} score log event${count === 1 ? "" : "s"}?`,
+      { okLabel: "Delete", danger: true },
     );
     if (!ok) return;
     WS.meta.scoreHistory = [];
@@ -20760,7 +20867,7 @@ if (calendarDeleteAllBtn) {
   });
 }
 if (calendarBodyEl) {
-  calendarBodyEl.addEventListener("click", (e) => {
+  calendarBodyEl.addEventListener("click", async (e) => {
     const lineBtn =
       e.target && e.target.closest
         ? e.target.closest(
@@ -20859,8 +20966,9 @@ if (calendarBodyEl) {
         dayBtn.getAttribute("data-score-history-delete-day") || "",
       );
       if (!dayKey) return;
-      const ok = confirm(
+      const ok = await showConfirmDialog(
         `Delete all score log events on ${scoreHistoryDateLabel(dayKey)}?`,
+        { okLabel: "Delete", danger: true },
       );
       if (!ok) return;
       const removed = removeScoreHistoryEntriesByDateKey(dayKey);
@@ -25013,6 +25121,122 @@ function hideBusyOverlay(force = false) {
 function busyOverlayActive() {
   if (!tortoiseNavigationEnabled()) return false;
   return !!(busyOverlay && busyOverlay.classList.contains("active"));
+}
+
+/* Themed confirm/alert dialog — replaces blocking native confirm()/alert().
+   Returns a Promise that resolves to true (OK) or false (Cancel / dismissed).
+   For alert mode the Cancel button is hidden and dismissal resolves to true. */
+let confirmDialogState = null;
+function confirmDialogIsOpen() {
+  return !!confirmDialogState;
+}
+function showConfirmDialog(message, opts = {}) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  const isAlert = options.mode === "alert";
+  return new Promise((resolve) => {
+    const overlayEl = $("confirmOverlay");
+    const msgEl = $("confirmMessage");
+    const okBtn = $("confirmOkBtn");
+    const cancelBtn = $("confirmCancelBtn");
+    if (!overlayEl || !msgEl || !okBtn || !cancelBtn) {
+      // Fall back to the native dialog if the markup is unavailable.
+      let result = isAlert ? true : false;
+      try {
+        if (isAlert) {
+          if (typeof window.alert === "function") window.alert(message);
+          result = true;
+        } else if (typeof window.confirm === "function") {
+          result = window.confirm(message);
+        }
+      } catch {}
+      resolve(result);
+      return;
+    }
+
+    // Replace any dialog already on screen (resolve it as dismissed).
+    if (confirmDialogState) confirmDialogState.settle(confirmDialogState.dismissValue);
+
+    msgEl.textContent = String(message == null ? "" : message);
+    okBtn.textContent = options.okLabel || "OK";
+    cancelBtn.textContent = options.cancelLabel || "Cancel";
+    cancelBtn.style.display = isAlert ? "none" : "";
+    okBtn.classList.toggle("confirmDanger", !!options.danger);
+
+    const dismissValue = isAlert ? true : false;
+    const prevFocus =
+      document.activeElement && typeof document.activeElement.focus === "function"
+        ? document.activeElement
+        : null;
+
+    const state = { dismissValue, settle: null };
+
+    const settle = (result) => {
+      if (confirmDialogState !== state) return;
+      confirmDialogState = null;
+      document.removeEventListener("keydown", onKeyDown, true);
+      overlayEl.removeEventListener("mousedown", onBackdrop);
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      overlayEl.classList.remove("active");
+      overlayEl.setAttribute("aria-hidden", "true");
+      okBtn.classList.remove("confirmDanger");
+      try {
+        if (prevFocus) prevFocus.focus();
+      } catch {}
+      resolve(result);
+    };
+    state.settle = settle;
+
+    const onOk = () => settle(true);
+    const onCancel = () => settle(false);
+    const onBackdrop = (e) => {
+      if (e.target === overlayEl) settle(dismissValue);
+    };
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        settle(dismissValue);
+      } else if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        // Activate the focused button (so a focused Cancel cancels); default to OK.
+        e.preventDefault();
+        e.stopPropagation();
+        settle(document.activeElement === cancelBtn ? false : true);
+      } else if (e.key === "Tab") {
+        // Keep focus inside the dialog.
+        const focusables = isAlert ? [okBtn] : [cancelBtn, okBtn];
+        e.preventDefault();
+        const idx = focusables.indexOf(document.activeElement);
+        const next = e.shiftKey
+          ? focusables[(idx <= 0 ? focusables.length : idx) - 1]
+          : focusables[(idx + 1) % focusables.length];
+        try {
+          next.focus();
+        } catch {}
+      } else {
+        // Swallow other keys so global app shortcuts don't fire under the modal.
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    confirmDialogState = state;
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    overlayEl.addEventListener("mousedown", onBackdrop);
+    document.addEventListener("keydown", onKeyDown, true);
+
+    overlayEl.setAttribute("aria-hidden", "false");
+    overlayEl.classList.add("active");
+    try {
+      (options.danger && !isAlert ? cancelBtn : okBtn).focus();
+    } catch {}
+  });
+}
+
+function showAlertDialog(message, opts = {}) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  return showConfirmDialog(message, Object.assign({}, options, { mode: "alert" }));
 }
 
 function metaInitForCurrentWorkspace(opts = null) {
@@ -38602,9 +38826,7 @@ function notifyScrubMissingTools(missingTools) {
   const msg = `Scrub completed, but these tools are missing:\n\n${list.map((t) => `- ${t}`).join("\n")}`;
   showStatusMessage(`Scrub missing tools: ${list.join(", ")}`);
   try {
-    if (typeof window !== "undefined" && typeof window.alert === "function") {
-      window.alert(msg);
-    }
+    showAlertDialog(msg);
   } catch {}
 }
 
@@ -41738,7 +41960,8 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
           : byTag.size
             ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
             : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Tags stay and will be ungrouped.`;
-      if (!confirm(deleteLabel)) return;
+      if (!(await showConfirmDialog(deleteLabel, { okLabel: "Delete", danger: true })))
+        return;
       let changed = false;
       if (byTag.size) {
         for (const value of byTag.values()) {
@@ -42502,7 +42725,7 @@ function buildTagMediaFilterChoiceMenu(menu, opts = {}) {
   if (typeof opts.onRendered === "function") opts.onRendered();
 }
 
-function handleTagMenuAction(action) {
+async function handleTagMenuAction(action) {
   const ctx = TAG_CONTEXT_MENU_STATE;
   if (!ctx) return;
   closeTagContextMenu();
@@ -42556,8 +42779,9 @@ function handleTagMenuAction(action) {
   if (action === "delete") {
     if (!ctx.canDelete) return;
     if (isAlbumEntry) {
-      const confirmed = confirm(
+      const confirmed = await showConfirmDialog(
         `Delete tag album '${label}'? This keeps all tags and just ungroups them from the album.`,
+        { okLabel: "Delete", danger: true },
       );
       if (!confirmed) return;
       const result = deleteTagAlbumByName(album, ctx.originPath);
@@ -42577,7 +42801,10 @@ function handleTagMenuAction(action) {
       showStatusMessage("No folders contain that tag.");
       return;
     }
-    const confirmed = confirm(`Remove tag '${label}' from these folders?`);
+    const confirmed = await showConfirmDialog(
+      `Remove tag '${label}' from these folders?`,
+      { okLabel: "Remove", danger: true },
+    );
     if (!confirmed) return;
     const changed = deleteTagFromPaths(tag, paths, ctx.originPath);
     if (!changed) {
@@ -42895,7 +43122,7 @@ function renderDirectoriesActionHeader() {
 
     const deleteBtn = makeActionBtn(
       "Delete",
-      () => {
+      async () => {
         WS.view.bulkActionMenuOpen = false;
         const byTag = new Map();
         for (const entry of deletableTagEntries) {
@@ -42928,7 +43155,8 @@ function renderDirectoriesActionHeader() {
             : byTag.size
               ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
               : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Tags stay and will be ungrouped.`;
-        if (!confirm(deleteLabel)) return;
+        if (!(await showConfirmDialog(deleteLabel, { okLabel: "Delete", danger: true })))
+          return;
         let changed = false;
         if (byTag.size) {
           for (const value of byTag.values()) {
@@ -45392,7 +45620,7 @@ document.addEventListener(
   true,
 );
 
-document.addEventListener("click", (e) => {
+document.addEventListener("click", async (e) => {
   const target = e.target;
   if (TAG_CONTEXT_MENU_STATE) {
     const anchor = TAG_CONTEXT_MENU_STATE.anchor || null;
@@ -45468,8 +45696,9 @@ document.addEventListener("click", (e) => {
           dayBtn.getAttribute("data-score-history-delete-day") || "",
         );
         if (!dayKey) return;
-        const ok = confirm(
+        const ok = await showConfirmDialog(
           `Delete all score log events on ${scoreHistoryDateLabel(dayKey)}?`,
+          { okLabel: "Delete", danger: true },
         );
         if (!ok) return;
         const removed = removeScoreHistoryEntriesByDateKey(dayKey);
