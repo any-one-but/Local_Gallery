@@ -48,6 +48,43 @@
   }
 
   const STRIPPER_SCAN_CACHE_PREFIX = 'Stripper.scanCache.v1:';
+  // Bound the scan cache so it can never quietly fill GM storage and starve other
+  // writes (notably the rabbithole's boot-time writes). These limits are invisible
+  // to the user and survive map pruning, so they need their own ceiling.
+  const STRIPPER_SCAN_CACHE_MAX_ENTRIES = 24;                   // keep only the most recent N scans
+  const STRIPPER_SCAN_CACHE_MAX_BYTES = 4 * 1024 * 1024;        // total budget across all scans
+  const STRIPPER_SCAN_CACHE_MAX_ENTRY_BYTES = 1.5 * 1024 * 1024; // skip caching a single huge scan
+
+  // Evict the stalest scans (by savedAt) until the cache is back under its entry
+  // count and byte budget, leaving room for an incoming write of `reserveBytes`.
+  // Best-effort: needs GM_listValues, otherwise it's a no-op.
+  function evictStripperScanCaches(reserveBytes) {
+    if (typeof GM_listValues !== 'function') return;
+    let keys;
+    try { keys = GM_listValues(); } catch { return; }
+    const entries = [];
+    let total = 0;
+    for (const key of keys) {
+      if (typeof key !== 'string' || !key.startsWith(STRIPPER_SCAN_CACHE_PREFIX)) continue;
+      let raw = '';
+      try { raw = GM_getValue(key, '') || ''; } catch { raw = ''; }
+      let savedAt = 0;
+      try { savedAt = Number(JSON.parse(raw).savedAt) || 0; } catch { savedAt = 0; }
+      entries.push({ key, savedAt, bytes: raw.length });
+      total += raw.length;
+    }
+    entries.sort((a, b) => a.savedAt - b.savedAt);   // oldest first
+    const budget = STRIPPER_SCAN_CACHE_MAX_BYTES - Math.max(0, Number(reserveBytes) || 0);
+    let count = entries.length;
+    let i = 0;
+    while (i < entries.length && (count > STRIPPER_SCAN_CACHE_MAX_ENTRIES || total > budget)) {
+      const victim = entries[i++];
+      try { if (typeof GM_deleteValue === 'function') GM_deleteValue(victim.key); } catch {}
+      try { localStorage.removeItem(victim.key); } catch {}
+      total -= victim.bytes;
+      count--;
+    }
+  }
 
   function loadStripperScanCache(cacheKey) {
     if (!cacheKey) return null;
@@ -74,6 +111,11 @@
         savedAt: Date.now(),
         payload
       });
+      // A single oversized scan (a very prolific profile) can blow the per-value
+      // limit on its own — skip caching it rather than risk poisoning storage.
+      if (serialized.length > STRIPPER_SCAN_CACHE_MAX_ENTRY_BYTES) return false;
+      // Make room first so this write can't tip the store over its budget.
+      evictStripperScanCaches(serialized.length);
       if (typeof GM_setValue === 'function') GM_setValue(storageKey, serialized);
       else localStorage.setItem(storageKey, serialized);
       return true;
@@ -187,22 +229,23 @@
       GM_addStyle(`
         #redditGuestPanel {
           position: fixed;
-          left: 24px;
-          top: 64px;
+          right: 0;
+          top: 0;
           z-index: 2147483646;
           box-sizing: border-box;
-          width: 880px;
-          height: 520px;
-          min-width: 540px;
-          min-height: 320px;
-          max-width: calc(100vw - 24px);
-          max-height: calc(100vh - 24px);
+          width: 372px;
+          height: 100vh;
+          min-width: 300px;
+          min-height: 0;
+          max-width: 80vw;
+          max-height: 100vh;
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          resize: both;
+          resize: horizontal;
           border: 1px solid rgba(255, 255, 255, 0.16);
-          border-radius: 14px;
+          border-right: 0;
+          border-radius: 14px 0 0 14px;
           background: rgba(18, 18, 21, 0.94);
           box-shadow: 0 18px 56px rgba(0, 0, 0, 0.5);
           color: #f4f4f5;
@@ -222,7 +265,7 @@
           user-select: none;
           border-bottom: 1px solid rgba(255, 255, 255, 0.10);
           background: rgba(255, 255, 255, 0.04);
-          border-radius: 14px 14px 0 0;
+          border-radius: 14px 0 0 0;
         }
         #redditGuestPanel .rg-title {
           flex: 1;
@@ -270,6 +313,84 @@
           flex-direction: column;
           overflow: hidden;
         }
+        #redditGuestPanel .rg-modes {
+          flex: 0 0 auto;
+          display: flex;
+          gap: 4px;
+          padding: 8px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+          background: rgba(255, 255, 255, 0.02);
+        }
+        #redditGuestPanel .rg-modeBtn {
+          flex: 1 1 0;
+          width: auto;
+          min-height: 30px;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          color: #d8d8dd;
+          font-weight: 700;
+          font-size: 11px;
+        }
+        #redditGuestPanel .rg-modeBtn:hover:not(.is-active) {
+          background: rgba(255, 255, 255, 0.15);
+          border-color: rgba(255, 255, 255, 0.24);
+        }
+        #redditGuestPanel .rg-modeBtn.is-active {
+          background: #ff4500;
+          color: #fff;
+          border-color: rgba(255, 255, 255, 0.28);
+        }
+        #redditGuestPanel.rg-collapsed .rg-modes {
+          display: none;
+        }
+        #redditGuestPanel .rg-colModes {
+          flex: 0 0 auto;
+          display: flex;
+          gap: 4px;
+          padding: 0 8px 8px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+          background: rgba(255, 255, 255, 0.02);
+        }
+        #redditGuestPanel .rg-colBtn {
+          min-height: 26px;
+          font-size: 10.5px;
+          background: rgba(255, 255, 255, 0.05);
+        }
+        /* The column sub-switcher only applies to column view. */
+        #redditGuestPanel:not([data-mode="column"]) .rg-colModes,
+        #redditGuestPanel.rg-collapsed .rg-colModes {
+          display: none;
+        }
+        /* The strip shows exactly one view at a time, driven by the mode switcher. */
+        #redditGuestPanel .rg-sidebar {
+          flex: 1 1 auto;
+          width: auto;
+          border-right: 0;
+        }
+        #redditGuestPanel[data-mode="download"] #rgMain {
+          display: none;
+        }
+        #redditGuestPanel[data-mode="graph"] .rg-sidebar,
+        #redditGuestPanel[data-mode="column"] .rg-sidebar {
+          display: none;
+        }
+        /* Column view only needs the search box plus import/export/clear/reset;
+           the per-node action buttons and the type dropdown belong to graph view. */
+        #redditGuestPanel[data-mode="column"] #rrm-type,
+        #redditGuestPanel[data-mode="column"] #rrm-tbSpace,
+        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="open"],
+        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="open-tab"],
+        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="scrape"],
+        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="rm"],
+        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="branch"] {
+          display: none;
+        }
+        /* With the spacer gone, let the search box absorb the freed width so it
+           grows with the panel instead of leaving a gap before the buttons. */
+        #redditGuestPanel[data-mode="column"] #rrm-search {
+          flex: 1 1 auto;
+        }
         #redditGuestPanel.rg-collapsed {
           height: auto !important;
           min-height: 0;
@@ -280,7 +401,7 @@
         }
         #redditGuestPanel.rg-collapsed .rg-header {
           border-bottom: 0;
-          border-radius: 14px;
+          border-radius: 14px 0 0 14px;
         }
         #redditGuestPanel button {
           appearance: none;
@@ -586,6 +707,16 @@
             <span id="rgMapCount" class="rg-mapCount" title="Nodes on the Rabbithole map" hidden></span>
             <button id="rgCollapseBtn" class="rg-collapseBtn" type="button" title="Collapse">▴</button>
           </div>
+          <div class="rg-modes">
+            <button class="rg-modeBtn" type="button" data-mode="download">Download</button>
+            <button class="rg-modeBtn" type="button" data-mode="graph">Graph</button>
+            <button class="rg-modeBtn" type="button" data-mode="column">Column</button>
+          </div>
+          <div class="rg-colModes">
+            <button class="rg-modeBtn rg-colBtn" type="button" data-coltype="sub">Subreddits</button>
+            <button class="rg-modeBtn rg-colBtn" type="button" data-coltype="user">Users</button>
+            <button class="rg-modeBtn rg-colBtn" type="button" data-coltype="post">Posts</button>
+          </div>
           <div class="rg-body">
             <div class="rg-sidebar">
               <div id="rgDownloadStack" class="rg-downloadStack" hidden>
@@ -684,6 +815,15 @@
         ui.header = panel.querySelector('.rg-header');
         ui.collapseBtn = panel.querySelector('#rgCollapseBtn');
         ui.mapCount = panel.querySelector('#rgMapCount');
+        ui.modeBtns = Array.from(panel.querySelectorAll('.rg-modes .rg-modeBtn'));
+        ui.colModeBtns = Array.from(panel.querySelectorAll('.rg-colBtn'));
+
+        ui.modeBtns.forEach(btn => {
+          btn.addEventListener('click', () => setMode(btn.dataset.mode));
+        });
+        ui.colModeBtns.forEach(btn => {
+          btn.addEventListener('click', () => setColumnType(btn.dataset.coltype));
+        });
 
         ui.subAddAll.addEventListener('click', () => {
           const added = rabbithole.addSubreddits(state.username, state.subreddits || []);
@@ -713,8 +853,11 @@
         ui.pageRangeBtn.addEventListener('click', () => downloadSelectedPageArchives());
         document.addEventListener('keydown', handleGlobalKeydown, true);
 
-        // The map fills the main body of the window, beside the downloader sidebar.
+        // The map is mounted into the main body; the mode switcher decides whether
+        // the strip shows the downloader sidebar or the map (graph / column view).
         rabbithole.mount(panel.querySelector('#rgMain'), panel);
+        setColumnType('user');
+        setMode('download');
 
         logLine('Ready. Stripper detected Reddit; open a profile or post and scan.');
         syncUi();
@@ -831,6 +974,27 @@
         // The graph canvas can't size itself while the body is hidden, so nudge
         // it to re-measure once the window is expanded again.
         if (!isCollapsed) requestAnimationFrame(() => rabbithole.resize());
+      }
+
+      // The right-docked strip shows one view at a time: the downloader sidebar,
+      // or the rabbithole map in graph or column layout. Graph/Column just drive
+      // the map's existing view toggle (which also re-measures the canvas).
+      function setMode(mode) {
+        const m = (mode === 'graph' || mode === 'column') ? mode : 'download';
+        ui.mode = m;
+        ui.panel.setAttribute('data-mode', m);
+        if (ui.modeBtns) ui.modeBtns.forEach(b => b.classList.toggle('is-active', b.dataset.mode === m));
+        if (m === 'graph') rabbithole.setView('graph');
+        else if (m === 'column') rabbithole.setView('columns');
+      }
+
+      // Column view shows one node type full width; this sub-switcher (visible only
+      // in column mode) picks which. Defaults to Users.
+      function setColumnType(type) {
+        const t = (type === 'sub' || type === 'post') ? type : 'user';
+        ui.colType = t;
+        if (ui.colModeBtns) ui.colModeBtns.forEach(b => b.classList.toggle('is-active', b.dataset.coltype === t));
+        rabbithole.setColumnType(t);
       }
     
       function profileFromLocation() {
@@ -1937,6 +2101,7 @@
         let booted = false, winEl = null, network = null, nodesDS = null, edgesDS = null;
         let selectedId = null, query = '', lastNavByPop = false, resizeObs = null;
         let view = 'graph', typeFilter = 'all';   // view: 'graph' | 'columns'
+        let columnType = 'user';                  // column view shows one type full width: 'sub' | 'user' | 'post'
         let didInitialFit = false;
         let tipEl = null, hoverTimer = null;
 
@@ -1964,16 +2129,36 @@
         }
 
         // ---------------------------------------------------------------- storage
-        function bumpRev() { GM_setValue(REV, (GM_getValue(REV, 0) || 0) + 1); }
+        // All GM access here is defensive: this runs at boot, before the main
+        // Stripper UI mounts, so a rejected write (quota) or a single corrupt
+        // value must degrade gracefully instead of throwing — an uncaught error
+        // on this path would abort init() and hide the whole panel.
+        function safeSet(key, value) {
+          try { GM_setValue(key, value); return true; }
+          catch (e) { try { console.warn('[Stripper/rabbithole] write failed for', key, e); } catch (e2) {} return false; }
+        }
+        function safeParse(key) {
+          const raw = GM_getValue(key, null);
+          if (raw == null) return null;
+          try { return JSON.parse(raw); }
+          catch (e) {
+            // A truncated/corrupt value (e.g. a write cut short when storage was
+            // full) is a poison pill on every future boot — drop it and move on.
+            try { console.warn('[Stripper/rabbithole] dropping corrupt value', key, e); } catch (e2) {}
+            try { GM_deleteValue(key); } catch (e3) {}
+            return null;
+          }
+        }
+
+        function bumpRev() { safeSet(REV, (GM_getValue(REV, 0) || 0) + 1); }
 
         function upsertNode(n, visited) {
           const key = NS + 'n:' + n.id;
-          const raw = GM_getValue(key, null);
-          const rec = raw ? JSON.parse(raw)
-                          : { id: n.id, type: n.type, label: n.label, url: n.url, visited: false, first: Date.now() };
+          const rec = safeParse(key)
+                   || { id: n.id, type: n.type, label: n.label, url: n.url, visited: false, first: Date.now() };
           rec.label = n.label; rec.url = n.url; rec.type = n.type; rec.last = Date.now();
           if (visited) rec.visited = true;
-          GM_setValue(key, JSON.stringify(rec));
+          safeSet(key, JSON.stringify(rec));
           bumpRev();
         }
 
@@ -1981,15 +2166,15 @@
           if (!from || !to || from === to) return;
           const key = NS + 'e:' + from + '__' + to;
           if (GM_getValue(key, null)) return;
-          GM_setValue(key, JSON.stringify({ from, to, ts: Date.now() }));
+          safeSet(key, JSON.stringify({ from, to, ts: Date.now() }));
           bumpRev();
         }
 
         function loadGraph() {
           const nodes = [], edges = [];
           for (const k of GM_listValues()) {
-            if (k.startsWith(NS + 'n:')) nodes.push(JSON.parse(GM_getValue(k)));
-            else if (k.startsWith(NS + 'e:')) edges.push(JSON.parse(GM_getValue(k)));
+            if (k.startsWith(NS + 'n:')) { const v = safeParse(k); if (v) nodes.push(v); }
+            else if (k.startsWith(NS + 'e:')) { const v = safeParse(k); if (v) edges.push(v); }
           }
           return { nodes, edges };
         }
@@ -2005,9 +2190,13 @@
           for (const k of GM_listValues()) {
             if (k.startsWith(NS + 'n:')) {
               if (set.has(k.slice((NS + 'n:').length))) GM_deleteValue(k);
+            } else if (k.startsWith(NS + 'scan:')) {
+              // Scan summaries are keyed by node id; drop them with their node so
+              // they don't orphan-accumulate as the user prunes the map.
+              if (set.has(k.slice((NS + 'scan:').length))) GM_deleteValue(k);
             } else if (k.startsWith(NS + 'e:')) {
-              const e = JSON.parse(GM_getValue(k));
-              if (set.has(e.from) || set.has(e.to)) GM_deleteValue(k);
+              const e = safeParse(k);
+              if (!e || set.has(e.from) || set.has(e.to)) GM_deleteValue(k);
             }
           }
           bumpRev();
@@ -2290,9 +2479,11 @@
             #rrm-columns .rrm-row-link:hover{color:#fff;text-decoration:underline;}
             #rrm-columns .rrm-row-link.unvisited{color:#9a9aa2;}
             #rrm-columns .rrm-row.scraped .rrm-row-link{text-decoration:line-through;color:#6f6f76;}
-            #rrm-columns .rrm-row-btn{flex:0 0 auto;width:22px;height:22px;padding:0;border-radius:6px;line-height:1;
+            #redditGuestPanel #rrm-columns .rrm-row-btn{flex:0 0 auto;box-sizing:border-box;
+              width:28px;height:28px;min-width:28px;min-height:0;aspect-ratio:1/1;padding:0;border-radius:9px;
+              display:inline-flex;align-items:center;justify-content:center;line-height:1;
               border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#d8d8dd;
-              font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;}
+              font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;}
             #rrm-columns .rrm-row-btn:hover{background:rgba(255,255,255,.16);}
             #rrm-columns .rrm-row-btn.rm:hover{background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.6);}
           `);
@@ -2313,13 +2504,12 @@
                 <option value="user">Users</option>
                 <option value="post">Posts</option>
               </select>
-              <button class="rrm-btn" data-act="view" title="Toggle graph / column view">Column view</button>
               <button class="rrm-btn primary" data-act="open" disabled>Open ↗</button>
               <button class="rrm-btn" data-act="open-tab" disabled>New tab</button>
               <button class="rrm-btn" data-act="scrape" disabled>Cross off</button>
               <button class="rrm-btn" data-act="rm" disabled>Remove</button>
               <button class="rrm-btn" data-act="branch" disabled>Remove branch</button>
-              <span style="flex:1"></span>
+              <span id="rrm-tbSpace" style="flex:1"></span>
               <button class="rrm-btn" data-act="export" title="Download the whole map as a JSON backup">Export</button>
               <button class="rrm-btn" data-act="import" title="Merge a previously exported JSON file">Import</button>
               <button class="rrm-btn" data-act="visited">Clear visited</button>
@@ -2344,14 +2534,6 @@
           typeSel.value = typeFilter;
           typeSel.addEventListener('change', () => { typeFilter = typeSel.value; renderGraph(); });
 
-          container.querySelector('[data-act="view"]').onclick = () => {
-            view = (view === 'columns') ? 'graph' : 'columns';
-            renderGraph();
-            // graph container was display:none in column view; recover its size
-            if (view === 'graph' && network) {
-              requestAnimationFrame(() => { if (network) { network.setSize('100%', '100%'); network.redraw(); } });
-            }
-          };
           container.querySelector('[data-act="scrape"]').onclick = () => {
             const n = curNode(); if (!n) return; setScraped(n.id, !n.scraped); renderGraph();
           };
@@ -2518,8 +2700,17 @@
             .forEach(b => b.disabled = !on);
           const sb = winEl.querySelector('[data-act="scrape"]');
           if (sb) { const n = curNode(); sb.textContent = (n && n.scraped) ? 'Uncross' : 'Cross off'; }
-          const vb = winEl.querySelector('[data-act="view"]');
-          if (vb) { vb.textContent = view === 'columns' ? 'Graph view' : 'Column view'; vb.classList.toggle('active', view === 'columns'); }
+        }
+
+        // Switch the map between graph and column layout. Driven by the strip's
+        // mode switcher; re-renders and re-measures the canvas (it may have been
+        // display:none while another mode was showing).
+        function setView(next) {
+          view = (next === 'columns') ? 'columns' : 'graph';
+          renderGraph();
+          if (view === 'graph' && network) {
+            requestAnimationFrame(() => { if (network) { network.setSize('100%', '100%'); network.redraw(); } });
+          }
         }
 
         // search-text + type-dropdown filter, shared by both views
@@ -2546,7 +2737,7 @@
           const ids = new Set(visible.map(n => n.id));
           if (selectedId && !ids.has(selectedId)) selectedId = null;
 
-          if (view === 'columns') renderColumns(visible);
+          if (view === 'columns') renderColumns(g.nodes);
           else renderCanvas(g, visible, ids);
 
           const c = winEl.querySelector('#rrm-count');
@@ -2618,48 +2809,56 @@
           if (nodeAdd.length || nodeRemove.length || edgeAdd.length || edgeRemove.length) kickPhysics();
         }
 
-        // Alternate view: three columns (subreddits / users / posts) listing
-        // collected nodes as links, with no connections drawn.
-        function renderColumns(visible) {
+        // Alternate view: a single full-width column listing the collected nodes
+        // of one type (subreddits / users / posts) as links, with no connections
+        // drawn. Which type is shown is picked by the strip's column sub-switcher
+        // (`columnType`); only the search box narrows it further.
+        function renderColumns(allNodes) {
           const colsEl = winEl.querySelector('#rrm-columns');
           if (!colsEl) return;
-          // Remember each column's scroll position so rebuilding (e.g. after a
+          // Remember the column's scroll position so rebuilding (e.g. after a
           // delete) doesn't jump you back to the top while clearing items out.
-          const prevScroll = {};
-          colsEl.querySelectorAll('.rrm-col').forEach(c => {
-            const l = c.querySelector('.rrm-col-list');
-            if (l) prevScroll[c.dataset.type] = l.scrollTop;
-          });
+          const prevList = colsEl.querySelector('.rrm-col-list');
+          const prevScroll = prevList ? prevList.scrollTop : 0;
           const titles = { sub: 'Subreddits', user: 'Users', post: 'Posts' };
-          const groups = { sub: [], user: [], post: [] };
-          visible.forEach(n => { if (groups[n.type]) groups[n.type].push(n); });
+          const type = columnType;
+          const q = query;
+          const matchQuery = n => !q
+            || (n.label || '').toLowerCase().includes(q)
+            || (n.url || '').toLowerCase().includes(q);
+          const list = allNodes
+            .filter(n => n.type === type && matchQuery(n))
+            .sort((a, b) => (a.label || '').localeCompare(b.label || ''));
           colsEl.innerHTML = '';
-          ['sub', 'user', 'post'].forEach(type => {
-            if (typeFilter !== 'all' && typeFilter !== type) return;
-            const list = groups[type].slice().sort((a, b) => (a.label || '').localeCompare(b.label || ''));
-            const col = document.createElement('div');
-            col.className = 'rrm-col';
-            col.dataset.type = type;
-            const head = document.createElement('div');
-            head.className = 'rrm-col-head';
-            head.style.color = COLORS[type];
-            head.innerHTML = `<span class="rrm-dot" style="background:${COLORS[type]}"></span>${titles[type]} `
-              + `<span class="rrm-col-count">${list.length}</span>`;
-            col.appendChild(head);
-            const listEl = document.createElement('div');
-            listEl.className = 'rrm-col-list';
-            if (!list.length) {
-              const empty = document.createElement('div');
-              empty.className = 'rrm-col-empty';
-              empty.textContent = 'none';
-              listEl.appendChild(empty);
-            } else {
-              list.forEach(n => listEl.appendChild(buildColumnRow(n)));
-            }
-            col.appendChild(listEl);
-            colsEl.appendChild(col);
-            if (prevScroll[type] != null) listEl.scrollTop = prevScroll[type];   // restore scroll
-          });
+          const col = document.createElement('div');
+          col.className = 'rrm-col';
+          col.dataset.type = type;
+          const head = document.createElement('div');
+          head.className = 'rrm-col-head';
+          head.style.color = COLORS[type];
+          head.innerHTML = `<span class="rrm-dot" style="background:${COLORS[type]}"></span>${titles[type]} `
+            + `<span class="rrm-col-count">${list.length}</span>`;
+          col.appendChild(head);
+          const listEl = document.createElement('div');
+          listEl.className = 'rrm-col-list';
+          if (!list.length) {
+            const empty = document.createElement('div');
+            empty.className = 'rrm-col-empty';
+            empty.textContent = 'none';
+            listEl.appendChild(empty);
+          } else {
+            list.forEach(n => listEl.appendChild(buildColumnRow(n)));
+          }
+          col.appendChild(listEl);
+          colsEl.appendChild(col);
+          listEl.scrollTop = prevScroll;   // restore scroll
+        }
+
+        // Switch which node type the column view shows. Driven by the strip's
+        // column sub-switcher; re-renders when the column view is active.
+        function setColumnType(type) {
+          columnType = (type === 'sub' || type === 'post') ? type : 'user';
+          if (view === 'columns') renderGraph();
         }
 
         function buildColumnRow(n) {
@@ -2737,11 +2936,18 @@
           onLocation(); // record the page you loaded on
         }
 
-        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits };
+        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, setView, setColumnType };
       })();
 
       if (window.__stripperRrmLoaded) { /* avoid double tracking if injected twice */ }
-      else { window.__stripperRrmLoaded = true; rabbithole.bootstrap(); }
+      else {
+        window.__stripperRrmLoaded = true;
+        // Never let a rabbithole boot failure (a rejected GM write, a corrupt
+        // stored value) abort init() below — that would hide the whole UI. The
+        // logged error is the diagnostic: check the console next time it breaks.
+        try { rabbithole.bootstrap(); }
+        catch (e) { try { console.warn('[Stripper] rabbithole bootstrap failed; continuing without the map.', e); } catch (e2) {} }
+      }
 
       if (document.body) init();
       else window.addEventListener('DOMContentLoaded', init, { once: true });
