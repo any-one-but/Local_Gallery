@@ -44,9 +44,7 @@
   --thumb-filter: none;
   --thumb-fit: cover;
   --thumb-bg: transparent;
-  --dir-tag-title-color: #9b8ac7;
   --dir-tag-favorite-title-color: var(--palette-accent);
-  --dir-tag-album-title-color: #ff7a6e;
   --ui-hover-lift: -1px;
   --ui-active-press: 1px;
   --ui-hover-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
@@ -192,9 +190,7 @@
   --palette-accent: #4f86d6;
   --palette-accent-text: #ffffff;
   --palette-accent-outline: #4f86d6;
-  --dir-tag-title-color: #6d5b8b;
   --dir-tag-favorite-title-color: var(--palette-accent);
-  --dir-tag-album-title-color: #8f362d;
   --tag-include-bg: #2b4d7a;
   --tag-include-border: #17345a;
   --tag-include-color: #e9f1ff;
@@ -223,9 +219,7 @@
   --palette-accent: #3b63a5;
   --palette-accent-text: #ffffff;
   --palette-accent-outline: #3b63a5;
-  --dir-tag-title-color: #b7a5db;
   --dir-tag-favorite-title-color: var(--palette-accent);
-  --dir-tag-album-title-color: #ff9485;
   --tag-include-bg: #203457;
   --tag-include-border: #101f38;
   --tag-include-color: #e6efff;
@@ -1662,66 +1656,6 @@ img[data-rotate-key].rotatingThumbFade {
   font-size: var(--thumb-title-dir-square-font);
   font-weight: var(--thumb-title-font-weight);
   color: var(--color0-primary);
-}
-
-.dirSquareNameTag {
-  color: var(--dir-tag-title-color, #9b8ac7);
-}
-
-.dirSquareNameTagFavorite {
-  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
-}
-
-.dirSquareNameTagAlbum {
-  color: var(--dir-tag-album-title-color, #ff7a6e);
-}
-
-.previewTagFolderCard .dirSquareName.dirSquareNameTag,
-#directoriesList.gridModeList .dirSquareName.dirSquareNameTag {
-  color: var(--dir-tag-title-color, #9b8ac7);
-}
-
-.previewTagFolderCard .dirSquareName.dirSquareNameTagFavorite,
-#directoriesList.gridModeList .dirSquareName.dirSquareNameTagFavorite {
-  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
-}
-
-.previewTagFolderCard .dirSquareName.dirSquareNameTagAlbum,
-#directoriesList.gridModeList .dirSquareName.dirSquareNameTagAlbum {
-  color: var(--dir-tag-album-title-color, #ff7a6e);
-}
-
-.dirRow.tagBarCard:hover .dirSquareNameTag,
-.dirRow.tagBarCard:hover .dirSquareNameTagFavorite,
-.dirRow.tagBarCard:hover .dirSquareNameTagAlbum,
-.dirRow.tagBarCard.selected .dirSquareNameTag,
-.dirRow.tagBarCard.selected .dirSquareNameTagFavorite,
-.dirRow.tagBarCard.selected .dirSquareNameTagAlbum,
-.dirRow.tagBarCard.bulkSelected .dirSquareNameTag,
-.dirRow.tagBarCard.bulkSelected .dirSquareNameTagFavorite,
-.dirRow.tagBarCard.bulkSelected .dirSquareNameTagAlbum,
-#app.preview-pane-active
- .dirRow.tagBarCard.selected:not(.bulkSelected)
- .dirSquareNameTag,
-#app.preview-pane-active
- .dirRow.tagBarCard.selected:not(.bulkSelected)
- .dirSquareNameTagFavorite,
-#app.preview-pane-active
- .dirRow.tagBarCard.selected:not(.bulkSelected)
- .dirSquareNameTagAlbum {
-  color: var(--color0-primary);
-}
-
-#app.preview-pane-active
- .dirRow.tagBarCard.selected:not(.bulkSelected)
- .dirSquareNameTag,
-#app.preview-pane-active
- .dirRow.tagBarCard.selected:not(.bulkSelected)
- .dirSquareNameTagFavorite,
-#app.preview-pane-active
- .dirRow.tagBarCard.selected:not(.bulkSelected)
- .dirSquareNameTagAlbum {
-  color: inherit;
 }
 
 .dirSquareScore {
@@ -6119,21 +6053,6 @@ remove the outer app frame. */
   color: var(--preview-pane-thumb-title-bar-fg) !important;
 }
 
-#previewPane .previewTagFolderCard .dirSquareOverlay .dirSquareName.dirSquareNameTag,
-#previewPane .dirSquareOverlay .dirSquareName.dirSquareNameTag {
-  color: var(--dir-tag-title-color, #9b8ac7) !important;
-}
-
-#previewPane .previewTagFolderCard .dirSquareOverlay .dirSquareName.dirSquareNameTagFavorite,
-#previewPane .dirSquareOverlay .dirSquareName.dirSquareNameTagFavorite {
-  color: var(--dir-tag-favorite-title-color, var(--palette-accent)) !important;
-}
-
-#previewPane .previewTagFolderCard .dirSquareOverlay .dirSquareName.dirSquareNameTagAlbum,
-#previewPane .dirSquareOverlay .dirSquareName.dirSquareNameTagAlbum {
-  color: var(--dir-tag-album-title-color, #ff7a6e) !important;
-}
-
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMetaMenuOnly,
 #previewPane .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard > .previewThumbOverlayMetaMenuOnly,
 #previewPane .gridFolders .folderCard.folderThumbCard.folderThumbCoverCard > .thumbOverlayMetaMenuOnly {
@@ -6315,30 +6234,6 @@ remove the outer app frame. */
 #previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta *,
 #previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay * {
   color: var(--preview-pane-thumb-title-bar-fg) !important;
-}
-
-#previewPane
- .gridFolders.folderMediaPreviewGrid
- .previewTagFolderCard
- .dirSquareOverlay
- .dirSquareName.dirSquareNameTag {
-  color: var(--dir-tag-title-color, #9b8ac7) !important;
-}
-
-#previewPane
- .gridFolders.folderMediaPreviewGrid
- .previewTagFolderCard
- .dirSquareOverlay
- .dirSquareName.dirSquareNameTagFavorite {
-  color: var(--dir-tag-favorite-title-color, var(--palette-accent)) !important;
-}
-
-#previewPane
- .gridFolders.folderMediaPreviewGrid
- .previewTagFolderCard
- .dirSquareOverlay
- .dirSquareName.dirSquareNameTagAlbum {
-  color: var(--dir-tag-album-title-color, #ff7a6e) !important;
 }
 
 #previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
@@ -13858,9 +13753,7 @@ function applyColorSchemeFromOptions() {
 function applyTagFolderTitleColorsFromOptions() {
   const root = document.documentElement;
   if (!root) return;
-  root.style.removeProperty("--dir-tag-title-color");
   root.style.removeProperty("--dir-tag-favorite-title-color");
-  root.style.removeProperty("--dir-tag-album-title-color");
 }
 
 const APP_ICON_SVGS = Object.freeze({
@@ -19531,10 +19424,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
-${makeSelectRow("Filter preset", "Choose a saved filter preset to apply it immediately. Edited sliders stay attached to the selected preset until you save or switch.", "opt_generalAppearancePreset", activeAppearancePresetId || "", appearancePresetSelectOptions)}
-${makeSelectRow("Folder sort", "Choose how folders are sorted.", "opt_dirSortMode", normalizeDirSortMode(WS.meta && WS.meta.dirSortMode), dirSortModes)}
-${makeSelectRow("Media filter", "Choose which media types are visible across the current root/view.", "opt_filterMode", String((WS.view && WS.view.filterMode) || "all"), mediaFilterModes)}
-${makeSelectRow("Aspect ratio filter", "Choose which aspect ratios are visible across the current root/view.", "opt_aspectRatioFilterMode", normalizeAspectRatioFilterMode(WS.view && WS.view.aspectRatioFilterMode), ASPECT_RATIO_FILTER_CYCLE)}
 ${makeCheckRow("Extra file info", "Show counts, sizes, scores, and item type details on File pane entries.", "opt_showListCardExtraInfo", !!opt.showListCardExtraInfo)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeCheckRow("Preview media pane background", "Keep preview media on the recessed pane surface instead of black.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
