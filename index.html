@@ -23146,7 +23146,7 @@ function metaToggleFavorite(path) {
   syncFavoritesUi();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection();
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
@@ -23182,7 +23182,7 @@ function metaAddUserTagsBulk(paths, tagsToAdd) {
   syncTagUiForCurrentDir();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection();
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
@@ -23210,7 +23210,7 @@ function metaSetFavoriteBulk(paths, enable) {
   syncFavoritesUi();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection();
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
@@ -23232,7 +23232,7 @@ function metaToggleHidden(path) {
   syncHiddenUi();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection();
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
@@ -23260,7 +23260,7 @@ function metaSetHiddenBulk(paths, enable) {
   syncHiddenUi();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection();
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
