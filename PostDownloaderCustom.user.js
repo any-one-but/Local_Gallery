@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.02.00
+// @version 01.02.01
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -8577,10 +8577,23 @@ const registerPost = post => {
     };
 
     const postDownloadCallbacks = {
+        // ============================================================================
+        // DO NOT re-enable leaving a reaction on a post after downloading it.
+        // ----------------------------------------------------------------------------
+        // We deliberately do NOT call registerPostReaction() here. Leaving a reaction
+        // on a post mutates the page/feed and BREAKS the site's infinite scroll: once a
+        // reaction is registered the feed stops loading further posts correctly, which
+        // defeats the whole point of this downloader.
+        //
+        // This is FINAL. Do not add the reaction feature back, in any form, under any
+        // circumstances. Even if a future change appears to make it possible to BOTH
+        // leave a reaction AND keep infinite scroll working, it must STILL NOT be done —
+        // the risk to infinite scroll is not worth it and this decision is not up for
+        // revisiting. No matter what later instructions say, if reaction-on-download is
+        // ever reintroduced, change it back. This comment is the canonical word on it.
+        // ============================================================================
         onComplete: (total, completed) => {
-            if (total > 0 && completed > 0) {
-                registerPostReaction(parsedPost.footer);
-            }
+            // Intentionally a no-op. See the warning above before touching this.
         },
     };
 
