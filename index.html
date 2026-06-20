@@ -14,22 +14,22 @@
   --radius-md: 16px;
   --radius-sm: 10px;
 
-  /* Cream palette (the default / boot fallback). Surfaces demarcate with shade,
-     never lines. color0 = ink, color1 = surface. */
-  --color0-primary: #4a4458;   /* soft dark plum, never pure black */
-  --color0-secondary: #8f877a;
-  --color0-tertirary: #b3aa9d;
+  /* Unified warm-dim palette (boot fallback; the active theme matches it).
+     Surfaces demarcate with shade, never lines. color0 = ink, color1 = surface. */
+  --color0-primary: #efe7da;   /* warm off-white text */
+  --color0-secondary: #b8ad98;
+  --color0-tertirary: #8c8170;
 
-  --color1-primary: #f4eee6;   /* warm cream background */
-  --color1-primary-transparent: rgba(244, 238, 230, 0.85);
-  --color1-secondary: #ffffff; /* raised surfaces: cards, menus, dropdowns */
-  --color1-secondary-transparent: rgba(255, 255, 255, 0.7);
-  --color1-tertiary: #e7ded3;  /* soft shade for separation */
+  --color1-primary: #2d2823;   /* warm dim background */
+  --color1-primary-transparent: rgba(45, 40, 35, 0.85);
+  --color1-secondary: #38322b; /* raised surfaces: cards, menus, dropdowns */
+  --color1-secondary-transparent: rgba(56, 50, 43, 0.7);
+  --color1-tertiary: #473f36;  /* soft warm shade for separation */
 
-  --anchor-internal-color2-primary: #8a78c8;
-  --palette-accent: #8a78c8;          /* readable lavender for text/links */
-  --palette-accent-text: #ffffff;
-  --palette-accent-outline: #b8a6e8;  /* gentle lavender ring */
+  --anchor-internal-color2-primary: #c8bbef;
+  --palette-accent: #bcaaee;          /* cool lavender accent */
+  --palette-accent-text: #2d2823;
+  --palette-accent-outline: #bcaaee;  /* gentle lavender ring */
   --file-grid-min: 180px;
   --file-meta-font: 12px;
   --file-meta-padding: 8px 10px;
@@ -217,33 +217,36 @@
 }
 
 /* Dark theme = warm, low-contrast companion to the cream light theme. */
+/* The single, unified look: warm and inviting like the light theme, dim and
+   easy on the eyes at night like the dark theme. A warm "dim espresso" surface
+   with high-contrast warm-cream text and a cool lavender accent. */
 :root[data-theme="retro90s-dark"] {
-  --color0-primary: #ede7dc;
-  --color0-secondary: #b6ad9f;
-  --color0-tertirary: #807868;
+  --color0-primary: #efe7da;   /* warm off-white text, strong contrast */
+  --color0-secondary: #b8ad98;
+  --color0-tertirary: #8c8170;
 
-  --color1-primary: #1b1813;   /* warm near-black */
-  --color1-primary-transparent: rgba(27, 24, 19, 0.92);
-  --color1-secondary: #262219; /* raised surfaces */
-  --color1-secondary-transparent: rgba(38, 34, 25, 0.85);
-  --color1-tertiary: #3a3428;
+  --color1-primary: #2d2823;   /* warm dim background — not black, not bright */
+  --color1-primary-transparent: rgba(45, 40, 35, 0.92);
+  --color1-secondary: #38322b; /* raised surfaces: cards, menus, dropdowns */
+  --color1-secondary-transparent: rgba(56, 50, 43, 0.85);
+  --color1-tertiary: #473f36;  /* soft warm shade for separation */
 
-  --anchor-internal-color2-primary: #c4b6ee;
-  --palette-accent: #b8a6e8;
-  --palette-accent-text: #1b1813;
-  --palette-accent-outline: #b8a6e8;
+  --anchor-internal-color2-primary: #c8bbef;
+  --palette-accent: #bcaaee;          /* cool lavender accent */
+  --palette-accent-text: #2d2823;
+  --palette-accent-outline: #bcaaee;
   --dir-tag-favorite-title-color: var(--palette-accent);
-  --tag-include-bg: #3a3358;
+  --tag-include-bg: #403961;
   --tag-include-border: transparent;
-  --tag-include-color: #d9d0f4;
-  --tag-exclude-bg: #4a342b;
+  --tag-include-color: #ddd4f6;
+  --tag-exclude-bg: #523b30;
   --tag-exclude-border: transparent;
-  --tag-exclude-color: #f0cdbe;
-  --stats-score-positive-color: #d99b6a;
-  --stats-score-negative-color: #b8a6e8;
-  --item-menu-trash-color: #d98c78;
+  --tag-exclude-color: #f2d2c3;
+  --stats-score-positive-color: #e0a273;
+  --stats-score-negative-color: #bcaaee;
+  --item-menu-trash-color: #e0937e;
   --ui-hover-shadow: none;
-  --ui-focus-ring: 0 0 0 3px rgba(184, 166, 232, 0.45);
+  --ui-focus-ring: 0 0 0 3px rgba(188, 170, 238, 0.45);
 }
 
 :root {
@@ -6292,17 +6295,18 @@ remove the outer app frame. */
 }
 
 
-/* v4: darker interactive surfaces in dark mode and softer pane/settings design language. */
+/* Interactive surfaces for the unified warm-dim look. Raised surfaces sit a
+   touch lighter than the background; controls use soft light overlays. */
 :root {
-  --color1-secondary: hsl(208, 24%, 10%);
-  --color1-secondary-transparent: hsla(208, 24%, 10%, 0.62);
-  --ui-control-bg: rgba(0, 0, 0, 0.18);
-  --ui-control-hover-bg: rgba(0, 0, 0, 0.28);
+  --color1-secondary: #38322b;
+  --color1-secondary-transparent: rgba(56, 50, 43, 0.62);
+  --ui-control-bg: rgba(255, 255, 255, 0.06);
+  --ui-control-hover-bg: rgba(255, 255, 255, 0.12);
 }
 
 :root[data-theme="retro90s-dark"] {
-  --color1-secondary: #131110;
-  --color1-secondary-transparent: rgba(19, 17, 16, 0.92);
+  --color1-secondary: #38322b;
+  --color1-secondary-transparent: rgba(56, 50, 43, 0.92);
   --ui-control-bg: rgba(255, 255, 255, 0.07);
   --ui-control-hover-bg: rgba(255, 255, 255, 0.13);
 }
@@ -8463,7 +8467,6 @@ function defaultOptions() {
     filmCornerOverlayEnabled: true,
     filmCornerOverlayIntensity: null,
     colorScheme: "retro",
-    lightMode: true,
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     directoriesPaneOpen: false,
@@ -8662,7 +8665,6 @@ function normalizeOptions(o) {
         : d.thumbnailStyle
     : "cropped";
   const colorScheme = "retro";
-  const lightMode = typeof src.lightMode === "boolean" ? src.lightMode : true;
   const videoAudioRaw = String(
     src.videoAudio ?? src.videoGallery ?? src.videoPreview ?? "",
   )
@@ -8875,7 +8877,6 @@ function normalizeOptions(o) {
     // Slideshow always cycles through speeds; the dropdown was removed.
     slideshowDefault: "cycle",
     colorScheme,
-    lightMode,
     menuPaneWidthPx: (function () {
       const v = parseFloat(src.menuPaneWidthPx);
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
@@ -9432,7 +9433,6 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   notifications: Object.freeze(notificationSourceOptionKeys()),
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
-      "lightMode",
       "activeAppearancePresetId",
       "animatedMediaFilters",
       "gifsIgnoreProcessing",
@@ -14053,14 +14053,11 @@ function applyDefaultViewFromOptions() {
 }
 
 function applyColorSchemeFromOptions() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   const root = document.documentElement;
   if (!root) return;
-  // The app ships a single fixed look. Light Mode switches its light/dark
-  // variant; the selectable appearance modes were removed (see note above
-  // APPEARANCE removal — v01.06.51 was the last version to include them).
-  const lightMode = !!(opt && opt.lightMode);
-  root.setAttribute("data-theme", lightMode ? "retro90s" : "retro90s-dark");
+  // The app ships a single fixed look (warm, dim, legible). The light/dark
+  // toggle was removed; "retro90s-dark" is the one and only theme.
+  root.setAttribute("data-theme", "retro90s-dark");
   root.setAttribute("data-retro", "off");
 }
 
@@ -15271,12 +15268,6 @@ const KEYBIND_ACTIONS = [
     section: "playback",
   },
   {
-    id: "toggleLightMode",
-    label: "Light mode",
-    hint: "Toggle the UI between dark and light variants.",
-    section: "appearance",
-  },
-  {
     id: "toggleAnimatedFilters",
     label: "Cycle animated filters",
     hint: "Cycle animated filters.",
@@ -15388,7 +15379,6 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "cycleFolderSort",
   "toggleAnimatedFilters",
   "cycleAppearancePresets",
-  "toggleLightMode",
   "toggleRandomFileSort",
   "toggleRandomFolderSort",
   "randomFirstFileJump",
@@ -15476,7 +15466,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   seekForward: "c",
   playPause: "x",
   muteToggle: "Cmd+x",
-  toggleLightMode: "i",
   toggleAnimatedFilters: "Cmd+i",
   cycleAppearancePresets: "",
   toggleHideBeforeLastDash: "n",
@@ -19759,7 +19748,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
-${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeCheckRow("Force Title Case", "Apply Title Case to displayed file names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
 ${makeCheckRow("Show position numbers", "Prefix displayed real file and folder names with their current sorted position, while skipping tag and album entries.", "opt_showPositionNumbersInNames", !!opt.showPositionNumbersInNames)}
@@ -20422,10 +20410,6 @@ ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges
     el.addEventListener("keydown", (e) => e.stopPropagation());
   };
 
-  bindCheck("opt_lightMode", "lightMode", () => {
-    applyColorSchemeFromOptions();
-  });
-
   bindCheck("opt_autoCropBlackBars", "autoCropBlackBars", () => {
     MediaFilterEngine.requestRender();
   });
@@ -20842,7 +20826,6 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "showListCardExtraInfo",
     "showTagFolderSpacerRow",
     "previewMediaUsePaneBackground",
-    "lightMode",
     "animatedMediaFilters",
     "activeAppearancePresetId",
   ]),
@@ -20859,7 +20842,6 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
   ]),
   appearance: Object.freeze(
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
-      "lightMode",
       "activeAppearancePresetId",
       "animatedMediaFilters",
       "gifsIgnoreProcessing",
@@ -53023,13 +53005,6 @@ function handleExtrasKeybindAction(action) {
       return toggleSettingsAndDirectoriesPanesKeybindAction();
     case "refreshWorkspace":
       return refreshWorkspaceKeybindAction();
-    case "toggleLightMode": {
-      const next = toggleOptionValue("lightMode");
-      refreshLiveSettingsPaneFromKeyboardAction();
-      applyColorSchemeFromOptions();
-      showStatusMessage(`Light mode: ${next ? "On" : "Off"}`);
-      return true;
-    }
     case "toggleAnimatedFilters": {
       const next = cycleOptionValue(
         "animatedMediaFilters",
