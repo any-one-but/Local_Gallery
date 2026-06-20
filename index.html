@@ -22408,13 +22408,9 @@ const TAG_MEDIA_FILTER_MEDIA_TYPES = Object.freeze([
   "videos",
   "gifs",
 ]);
-const TAG_MEDIA_FILTER_ASPECT_RATIOS = Object.freeze([
-  "portrait",
-  "square",
-  "landscape",
-]);
+// Aspect-ratio filtering was removed; tag content filters only cover media type.
 const TAG_MEDIA_FILTER_TYPES = Object.freeze(
-  TAG_MEDIA_FILTER_MEDIA_TYPES.concat(TAG_MEDIA_FILTER_ASPECT_RATIOS),
+  TAG_MEDIA_FILTER_MEDIA_TYPES.slice(),
 );
 
 function normalizeTagMediaFilterValue(value) {
@@ -29127,10 +29123,6 @@ function recordPassesTagMediaFilter(rec, filterValue) {
   if (!hiddenTypes.length) return true;
   const recordType = recordMediaFilterType(rec);
   if (recordType && hiddenTypes.includes(recordType)) return false;
-  const recordAspect =
-    rec.aspectRatioBucket ||
-    aspectRatioBucketForValue(getKnownRecordAspectRatio(rec));
-  if (recordAspect && hiddenTypes.includes(recordAspect)) return false;
   return true;
 }
 
@@ -40117,15 +40109,6 @@ function openTagContextMenu(context) {
         applyTagMediaFilter("media type", nextValue, onlyType),
     });
     if (mediaTypeSubmenu) menu.appendChild(mediaTypeSubmenu);
-    const aspectSubmenu = buildTagMediaFilterAxisSubmenu({
-      label: "Aspect ratio",
-      axis: TAG_MEDIA_FILTER_ASPECT_RATIOS,
-      allLabel: "All aspect ratios",
-      currentValue: assignedMediaFilterValue,
-      onApply: (nextValue, onlyType) =>
-        applyTagMediaFilter("aspect ratio", nextValue, onlyType),
-    });
-    if (aspectSubmenu) menu.appendChild(aspectSubmenu);
   }
   if (!isTagMediaFilterValueEmpty(assignedMediaFilterValue)) {
     menu.appendChild(
@@ -42100,8 +42083,6 @@ function buildTagMediaFilterChoiceMenu(menu, opts = {}) {
   menu.innerHTML = "";
   appendFilterSectionLabel("Media types");
   TAG_MEDIA_FILTER_MEDIA_TYPES.forEach(appendFilterToggle);
-  appendFilterSectionLabel("Aspect ratios");
-  TAG_MEDIA_FILTER_ASPECT_RATIOS.forEach(appendFilterToggle);
   menu.appendChild(
     createTagMenuButton("Clear content filter", () => {
       if (!onChoose) return;
@@ -44817,6 +44798,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   directoriesListEl.appendChild(frag);
   invalidateGridRowMetricsCache();
   if (naturalThumbCards) syncDirectoryInlineAspectForRenderedImages();
+  reapplyInlineThumbCropsIn(directoriesListEl);
   if (gridModeActive) scheduleGridModeCardSizing();
   updateGridModeListTopInset();
   if (
@@ -47707,6 +47689,7 @@ function renderPreviewPlaceholder(info = null) {
     if (cropStyle) {
       img.classList.add("thumbCropApplied", "thumbCropAbsolute");
       img.style.cssText += cropStyle;
+      attachFileThumbCropAspectReapply(img, thumbRec);
     }
   };
 
@@ -48516,6 +48499,7 @@ function renderSelectedFolderMediaPreview(
     renderToken,
     passiveWhenHeavy: true,
   });
+  reapplyInlineThumbCropsIn(previewBodyEl);
   const hadPendingSelection = applyPendingPreviewSelectionForCurrentTarget();
 
   const totalItems =
@@ -49205,6 +49189,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
         if (cropStyle) {
           thumb.classList.add("thumbCropApplied", "thumbCropAbsolute");
           thumb.style.cssText += cropStyle;
+          if (!rotateKey) attachFileThumbCropAspectReapply(thumb, leadRec);
         }
         card.appendChild(thumb);
       } else {
@@ -50645,11 +50630,8 @@ function makePreviewFileCard(
       mediaEl = img;
     }
     if (!useFitInsideJustified && useSquareMediaCards) {
-      const cropStyle = fileThumbCropLayoutStyle(rec, "");
-      if (cropStyle) {
-        mediaEl.classList.add("thumbCropApplied", "thumbCropAbsolute");
-        mediaEl.style.cssText += cropStyle;
-      }
+      applyFileThumbCropStyle(mediaEl, rec);
+      attachFileThumbCropAspectReapply(mediaEl, rec);
     }
   } else {
     const fallback = document.createElement("div");
@@ -56815,6 +56797,64 @@ function fileThumbCropLayoutStyle(rec, rotateKey = "") {
   const aspect = getPreviewAspectForRecord(rec);
   const layout = computeCoverCropLayout(aspect, crop);
   return `width:${layout.widthPct}% !important;height:${layout.heightPct}% !important;left:${layout.leftPct}% !important;top:${layout.topPct}% !important;`;
+}
+
+// Apply a custom thumbnail crop to a media element. The crop layout depends on
+// the media's real aspect ratio, so we (re)apply it once the natural size is
+// known. Aspect is measured on demand here (no persisted aspect tracking).
+function applyFileThumbCropStyle(mediaEl, rec) {
+  if (!mediaEl || !rec) return false;
+  const cropStyle = fileThumbCropLayoutStyle(rec, "");
+  if (!cropStyle) return false;
+  mediaEl.classList.add("thumbCropApplied", "thumbCropAbsolute");
+  // Later cssText declarations win, so re-applying with a corrected aspect
+  // simply overrides the earlier (fallback-aspect) crop layout.
+  mediaEl.style.cssText += cropStyle;
+  return true;
+}
+
+function attachFileThumbCropAspectReapply(mediaEl, rec) {
+  if (!mediaEl || !rec) return;
+  if (!metaGetFileThumbnailCropForRecord(rec)) return;
+  const isVideo = mediaEl.tagName === "VIDEO";
+  const reapply = () => {
+    const w = isVideo
+      ? Number(mediaEl.videoWidth)
+      : Number(mediaEl.naturalWidth);
+    const h = isVideo
+      ? Number(mediaEl.videoHeight)
+      : Number(mediaEl.naturalHeight);
+    if (w > 0 && h > 0) {
+      rec.previewAspect = normalizePreviewAspect(
+        w / h,
+        getPreviewAspectForRecord(rec),
+      );
+      applyFileThumbCropStyle(mediaEl, rec);
+    }
+  };
+  mediaEl.addEventListener(isVideo ? "loadedmetadata" : "load", reapply);
+  const ready = isVideo
+    ? mediaEl.readyState >= 1 && Number(mediaEl.videoWidth) > 0
+    : mediaEl.complete && Number(mediaEl.naturalWidth) > 0;
+  if (ready) reapply();
+}
+
+// Re-apply custom crops to rendered inline (folder/tag preset) thumbnail images
+// once their natural size is known. The crop markup is generated as an HTML
+// string with the focal layout baked in against a fallback aspect, so this
+// corrects it after load. Safe to call repeatedly.
+function reapplyInlineThumbCropsIn(rootEl) {
+  if (!rootEl || typeof rootEl.querySelectorAll !== "function") return;
+  const imgs = rootEl.querySelectorAll(
+    "img.dirInlinePreview.thumbCropApplied[data-dir-preview-id]",
+  );
+  for (const img of imgs) {
+    if (img.dataset.thumbCropReapplyBound === "1") continue;
+    const rec = WS.fileById.get(String(img?.dataset?.dirPreviewId || ""));
+    if (!rec) continue;
+    img.dataset.thumbCropReapplyBound = "1";
+    attachFileThumbCropAspectReapply(img, rec);
+  }
 }
 
 function inferFolderThumbnailDefaultMode(path) {
