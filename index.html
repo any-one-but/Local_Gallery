@@ -6410,8 +6410,7 @@ remove the outer app frame. */
 }
 
 #keybindsBody h1,
-#calendarBody h1,
-#keybindsBody .keybindSectionTitle {
+#calendarBody h1 {
   display: none !important;
   margin: 0 !important;
   padding: 0 !important;
@@ -6833,6 +6832,70 @@ textarea:focus-visible {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* --- Collapsible menu sections (settings, controls, filters advanced) --- */
+.menuSectionToggle {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  user-select: none;
+}
+.menuSectionToggle:hover {
+  opacity: 0.82;
+}
+.menuSectionToggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+  border-radius: var(--radius-sm);
+}
+.menuSectionChevron {
+  font-size: 12px;
+  opacity: 0.5;
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+}
+.settingsSection.collapsed .menuSectionChevron,
+.keybindSectionGroup.collapsed .menuSectionChevron,
+.filtersAdvanced.collapsed .menuSectionChevron {
+  transform: rotate(-90deg);
+}
+.settingsSection.collapsed > :not(h2) {
+  display: none !important;
+}
+.keybindSectionGroup.collapsed > :not(.keybindSectionTitle) {
+  display: none !important;
+}
+
+/* Controls (keybinds) tab: show section titles (they were hidden) and make
+   them collapsible headers like the Settings tab. */
+#keybindsBody .keybindSectionTitle.menuSectionToggle {
+  display: flex !important;
+  margin: 2px 4px 10px !important;
+  padding: 0 0 8px !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.005em !important;
+  text-transform: none !important;
+  color: var(--color0-primary) !important;
+  border: 0 !important;
+}
+
+/* Filters tab: Advanced disclosure for additive/effect overlays. */
+.filtersAdvanced {
+  margin-top: 6px;
+}
+.filtersAdvanced > h3.menuSectionToggle {
+  margin: 6px 4px 8px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--color0-secondary);
+}
+.filtersAdvanced.collapsed > :not(h3) {
+  display: none !important;
 }
 
 </style>
@@ -8099,6 +8162,99 @@ function buildDefaultThumbnailVisibilityOptions() {
   return out;
 }
 
+// --- Thumbnail detail presets -------------------------------------------
+// The per-field thumbnail visibility matrix is collapsed to three presets,
+// chosen per card kind:
+//   Minimal  = bare thumbnail (no title, badges, or menu button)
+//   Clean    = title + menu button, no badges
+//   Detailed = title + menu button + all badges (size, counts, item type)
+const THUMBNAIL_PRESET_ITEMS = Object.freeze([
+  { value: "minimal", label: "Minimal" },
+  { value: "clean", label: "Clean" },
+  { value: "detailed", label: "Detailed" },
+]);
+const THUMBNAIL_PRESET_BADGE_FIELDS = Object.freeze([
+  "itemCount",
+  "folderCount",
+  "fileCount",
+  "size",
+  "itemType",
+]);
+
+function applyThumbnailPresetForKinds(kinds, preset) {
+  if (!WS.meta) return;
+  const list = Array.isArray(kinds) ? kinds : [kinds];
+  const p = String(preset || "clean").toLowerCase();
+  const wantTitle = p !== "minimal";
+  const wantMenu = p !== "minimal";
+  const wantBadges = p === "detailed";
+  const next = {};
+  list.forEach((kind) => {
+    const titleKey = thumbnailVisibilityPreviewOptionKey(kind, "title");
+    if (titleKey) next[titleKey] = wantTitle;
+    const menuKey = thumbnailVisibilityPreviewOptionKey(kind, "menuButton");
+    if (menuKey) next[menuKey] = wantMenu;
+    THUMBNAIL_PRESET_BADGE_FIELDS.forEach((field) => {
+      const key = thumbnailVisibilityPreviewOptionKey(kind, field);
+      if (key) next[key] = wantBadges;
+    });
+    const extraKey = thumbnailVisibilityExtraInfoOptionKey(kind);
+    if (extraKey) next[extraKey] = wantBadges;
+  });
+  WS.meta.options = normalizeOptions(
+    Object.assign({}, WS.meta.options || {}, next),
+  );
+  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+}
+
+function detectThumbnailPresetForKinds(kinds) {
+  const list = Array.isArray(kinds) ? kinds : [kinds];
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : {};
+  const kind = list[0];
+  const titleKey = thumbnailVisibilityPreviewOptionKey(kind, "title");
+  const menuKey = thumbnailVisibilityPreviewOptionKey(kind, "menuButton");
+  const anyBadge = THUMBNAIL_PRESET_BADGE_FIELDS.some((field) => {
+    const key = thumbnailVisibilityPreviewOptionKey(kind, field);
+    return key && !!opt[key];
+  });
+  if (anyBadge) return "detailed";
+  if ((titleKey && !!opt[titleKey]) || (menuKey && !!opt[menuKey]))
+    return "clean";
+  return "minimal";
+}
+
+function applyFilePaneThumbnailPreset(preset) {
+  if (!WS.meta) return;
+  const p = String(preset || "detailed").toLowerCase();
+  const showExtra = p !== "minimal";
+  const wantBadges = p === "detailed";
+  const next = { showListCardExtraInfo: showExtra };
+  const kinds = ["file", "rootFolder", "subfolder", "tag"];
+  kinds.forEach((kind) => {
+    THUMBNAIL_PRESET_BADGE_FIELDS.forEach((field) => {
+      const key = thumbnailVisibilityDirectoriesOptionKey(kind, field);
+      if (key) next[key] = wantBadges;
+    });
+  });
+  WS.meta.options = normalizeOptions(
+    Object.assign({}, WS.meta.options || {}, next),
+  );
+  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+}
+
+function detectFilePaneThumbnailPreset() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : {};
+  if (!opt.showListCardExtraInfo) return "minimal";
+  const kinds = ["file", "rootFolder", "subfolder", "tag"];
+  const anyBadge = kinds.some((kind) =>
+    THUMBNAIL_PRESET_BADGE_FIELDS.some((field) => {
+      const key = thumbnailVisibilityDirectoriesOptionKey(kind, field);
+      return key && !!opt[key];
+    }),
+  );
+  return anyBadge ? "detailed" : "clean";
+}
+
 function normalizeThumbnailVisibilityOptions(src, fallbacks) {
   const source = src && typeof src === "object" ? src : {};
   const fallbackState =
@@ -8345,6 +8501,7 @@ function defaultOptions() {
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "row7",
     thumbnailScaleAspect: "row7",
+    collapsedSections: {},
   };
   for (let i = 0; i < NOTIFICATION_SOURCE_SPECS.length; i++) {
     out[NOTIFICATION_SOURCE_SPECS[i].optionKey] = true;
@@ -8679,7 +8836,19 @@ function normalizeOptions(o) {
       },
     },
   );
+  const collapsedSections = (() => {
+    const raw =
+      src && typeof src.collapsedSections === "object" && src.collapsedSections
+        ? src.collapsedSections
+        : {};
+    const sanitized = {};
+    for (const k in raw) {
+      if (raw[k]) sanitized[String(k)] = true;
+    }
+    return sanitized;
+  })();
   const out = {
+    collapsedSections,
     videoAudio,
     imageThumbSize,
     videoThumbSize,
@@ -18672,11 +18841,21 @@ function renderKeybindsUi(scope = "pane") {
     for (const section of KEYBIND_SECTIONS) {
       const list = paneBySection.get(section.id) || [];
       if (!list.length) continue;
-      html += `<section class="keybindSectionGroup"><h2 class="keybindSectionTitle">${escapeHtml(section.label)}</h2>${renderBindingRows(list)}</section>`;
+      const collapsed = menuSectionCollapsed(`controls:${section.id}`);
+      html += `<section class="keybindSectionGroup${collapsed ? " collapsed" : ""}"><h2 class="keybindSectionTitle menuSectionToggle" data-collapse-key="controls:${escapeHtml(section.id)}"><span class="menuSectionToggleLabel">${escapeHtml(section.label)}</span><span class="menuSectionChevron" aria-hidden="true">▾</span></h2>${renderBindingRows(list)}</section>`;
     }
   }
 
   keybindsBodyEl.innerHTML = html;
+  keybindsBodyEl
+    .querySelectorAll(".keybindSectionGroup > h2.menuSectionToggle")
+    .forEach((headerEl) => {
+      bindCollapsibleSectionHeader(
+        headerEl,
+        headerEl.getAttribute("data-collapse-key") || "",
+        ".keybindSectionGroup",
+      );
+    });
   applyDescriptionVisibilityFromOptions();
   ensureOptionsSelectGlobalBindings();
 
@@ -18872,6 +19051,64 @@ function ensureOptionsSelectGlobalBindings() {
     },
     true,
   );
+}
+
+// Collapsible menu sections. Open/collapsed state is keyed (e.g.
+// "settings:thumbnails", "controls:navigation", "filters:advanced") and
+// persisted in preferences so infrequently used groups stay tucked away
+// across sessions.
+function menuSectionCollapsed(key) {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  const map = opt && opt.collapsedSections ? opt.collapsedSections : null;
+  return !!(map && map[String(key || "")]);
+}
+
+function setMenuSectionCollapsed(key, collapsed) {
+  if (!WS.meta || !key) return;
+  const current =
+    WS.meta.options && WS.meta.options.collapsedSections
+      ? WS.meta.options.collapsedSections
+      : {};
+  const next = Object.assign({}, current);
+  if (collapsed) next[String(key)] = true;
+  else delete next[String(key)];
+  WS.meta.options = normalizeOptions(
+    Object.assign({}, WS.meta.options || {}, { collapsedSections: next }),
+  );
+  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(["collapsedSections"]));
+}
+
+// Wire a clickable section heading to toggle (and persist) its collapsed state.
+// Toggles the `.collapsed` class on the closest matching section container so
+// the change is instant without a full menu re-render.
+function bindCollapsibleSectionHeader(headerEl, key, sectionSelector) {
+  if (!headerEl || !key) return;
+  const section = headerEl.closest(sectionSelector);
+  if (!section) return;
+  const apply = (collapsed) => {
+    section.classList.toggle("collapsed", !!collapsed);
+    headerEl.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  };
+  apply(menuSectionCollapsed(key));
+  headerEl.setAttribute("role", "button");
+  headerEl.setAttribute("tabindex", "0");
+  const toggle = () => {
+    const collapsed = !section.classList.contains("collapsed");
+    apply(collapsed);
+    setMenuSectionCollapsed(key, collapsed);
+  };
+  headerEl.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggle();
+  });
+  headerEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      toggle();
+    }
+  });
 }
 
 function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
@@ -19579,7 +19816,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Light Mode", "Switch between the light and dark UI variants.", "opt_lightMode", !!opt.lightMode)}
-${makeCheckRow("Extra file info", "Show counts, sizes, scores, and item type details on File pane entries.", "opt_showListCardExtraInfo", !!opt.showListCardExtraInfo)}
 ${makeCheckRow("Blank row after tag folders", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeCheckRow("Preview media pane background", "Keep preview media on the recessed pane surface instead of black.", "opt_previewMediaUsePaneBackground", !!opt.previewMediaUsePaneBackground)}
 ${makeActionRow(
@@ -19594,9 +19830,10 @@ ${makeActionRow(
     thumbnails: {
       title: "Thumbnails",
       rows: `
-${thumbnailInfoRows("Files", "file", ["title", "size", "itemCount", "menuButton"])}
-${thumbnailInfoRows("Folders", ["rootFolder", "subfolder"], ["title", "size", "folderCount", "fileCount", "menuButton"])}
-${thumbnailInfoRows("Tags", "tag", ["title", "size", "folderCount", "fileCount", "menuButton"])}
+${makeSelectRow("File pane cards", "How much detail rows in the File pane show.", "opt_thumbPreset_filepane", detectFilePaneThumbnailPreset(), THUMBNAIL_PRESET_ITEMS)}
+${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
+${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
+${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
           `,
     },
     reveal: {
@@ -19608,25 +19845,20 @@ ${makeCheckRow("Storage folder", "Show or hide the Storage folder entry.", "opt_
 ${makeCheckRow("Untagged folder", "Show or hide the Untagged tag folder entry.", "opt_showUntaggedFolder", showUntaggedFolderEnabled())}
           `,
     },
-    storage: {
-      title: "Storage",
-      rows: `
-${makeCheckRow("Portrait files", "Send every currently loaded and future portrait file to storage until this is turned off.", "opt_store_aspect_portrait", aspectRatioStorageEnabledForBucket("portrait", opt))}
-${makeCheckRow("Square files", "Send every currently loaded and future square file to storage until this is turned off.", "opt_store_aspect_square", aspectRatioStorageEnabledForBucket("square", opt))}
-${makeCheckRow("Landscape files", "Send every currently loaded and future landscape file to storage until this is turned off.", "opt_store_aspect_landscape", aspectRatioStorageEnabledForBucket("landscape", opt))}
-${makeCheckRow("Images", "Send every currently loaded and future still image file to storage until this is turned off.", "opt_store_media_images", mediaTypeStorageEnabledForType("images", opt))}
-${makeCheckRow("GIFs", "Send every currently loaded and future GIF file to storage until this is turned off.", "opt_store_media_gifs", mediaTypeStorageEnabledForType("gifs", opt))}
-${makeCheckRow("Videos", "Send every currently loaded and future video file to storage until this is turned off.", "opt_store_media_videos", mediaTypeStorageEnabledForType("videos", opt))}
-
-          `,
-    },
     appearance: {
       title: "Filters",
       rows: `
 ${buildFilterPresetManagerHtml()}
-${buildOverlayRowsHtml(colorOverlayRows.concat(effectOverlayRows))}
+${buildOverlayRowsHtml(colorOverlayRows)}
+<div class="filtersAdvanced${menuSectionCollapsed("filters:advanced") ? " collapsed" : ""}">
+  <h3 class="menuSectionToggle" data-collapse-key="filters:advanced">
+    <span class="menuSectionToggleLabel">Advanced</span>
+    <span class="menuSectionChevron" aria-hidden="true">▾</span>
+  </h3>
+${buildOverlayRowsHtml(effectOverlayRows)}
 ${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
 ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
+</div>
           `,
     },
     playback: {
@@ -19663,19 +19895,22 @@ ${makeActionRow(
   const settingsSectionOrder = [
     "general",
     "thumbnails",
-    "reveal",
     "appearance",
     "playback",
+    "reveal",
     "filenames",
-    "storage",
   ];
   const settingsSectionsHtml = settingsSectionOrder
     .map((id) => {
       const section = sections[id];
       if (!section) return "";
+      const collapsed = menuSectionCollapsed(`settings:${id}`);
       return `
-        <section class="settingsSection" data-settings-section="${escapeHtml(id)}">
-          <h2>${escapeHtml(section.title)}</h2>
+        <section class="settingsSection${collapsed ? " collapsed" : ""}" data-settings-section="${escapeHtml(id)}">
+          <h2 class="menuSectionToggle" data-collapse-key="settings:${escapeHtml(id)}">
+            <span class="menuSectionToggleLabel">${escapeHtml(section.title)}</span>
+            <span class="menuSectionChevron" aria-hidden="true">▾</span>
+          </h2>
           ${section.rows}
         </section>
       `;
@@ -19683,6 +19918,24 @@ ${makeActionRow(
     .join("");
 
   optionsBodyEl.innerHTML = settingsSectionsHtml;
+  optionsBodyEl
+    .querySelectorAll(".settingsSection > h2.menuSectionToggle")
+    .forEach((headerEl) => {
+      bindCollapsibleSectionHeader(
+        headerEl,
+        headerEl.getAttribute("data-collapse-key") || "",
+        ".settingsSection",
+      );
+    });
+  optionsBodyEl
+    .querySelectorAll(".filtersAdvanced > h3.menuSectionToggle")
+    .forEach((headerEl) => {
+      bindCollapsibleSectionHeader(
+        headerEl,
+        headerEl.getAttribute("data-collapse-key") || "",
+        ".filtersAdvanced",
+      );
+    });
   if (requestedSection && requestedSection !== "general") {
     requestAnimationFrame(() => {
       const target = optionsBodyEl.querySelector(
@@ -20248,45 +20501,6 @@ ${makeActionRow(
   bindCheck("opt_lightMode", "lightMode", () => {
     applyColorSchemeFromOptions();
   });
-  const bindStorageToggle = (id, key, label) => {
-    bindMenuToggleButton(id, async (enabled) => {
-      if (!key) return;
-      WS.meta.options = normalizeOptions(
-        Object.assign({}, WS.meta.options || {}, { [key]: !!enabled }),
-      );
-      metaMarkDirty(META_DOC_IDS.prefGeneral);
-      setOptionsStatus("Saved");
-      await persistDirtyMetadataNow();
-      const rebuilt = await rebuildWorkspaceAfterStorageStateChange();
-      renderOptionsUi("storage");
-      if (rebuilt) {
-        showStatusMessage(
-          `${label} files ${enabled ? "sent to" : "removed from"} storage.`,
-          "storage",
-        );
-      }
-    });
-  };
-  const bindAspectRatioStorageToggle = (id, bucket) => {
-    bindStorageToggle(
-      id,
-      aspectRatioStorageOptionKeyForBucket(bucket),
-      labelForAspectRatioFilterMode(bucket),
-    );
-  };
-  const bindMediaTypeStorageToggle = (id, type) => {
-    bindStorageToggle(
-      id,
-      mediaTypeStorageOptionKeyForType(type),
-      mediaTypeStorageLabel(type),
-    );
-  };
-  bindAspectRatioStorageToggle("opt_store_aspect_portrait", "portrait");
-  bindAspectRatioStorageToggle("opt_store_aspect_square", "square");
-  bindAspectRatioStorageToggle("opt_store_aspect_landscape", "landscape");
-  bindMediaTypeStorageToggle("opt_store_media_images", "images");
-  bindMediaTypeStorageToggle("opt_store_media_gifs", "gifs");
-  bindMediaTypeStorageToggle("opt_store_media_videos", "videos");
 
   bindCheck(
     "opt_previewMediaUsePaneBackground",
@@ -20347,69 +20561,32 @@ ${makeActionRow(
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
   });
-  bindCheck("opt_showListCardExtraInfo", "showListCardExtraInfo", () => {
-    renderDirectoriesPane(true);
-    persistDirtyMetadataNow().catch(() => {});
-  });
-  bindCheck("opt_showScores", "showScores");
   bindCheck(
     "opt_clickSelectedRotatingThumbTeleports",
     "clickSelectedRotatingThumbTeleports",
   );
-  bindCheck("opt_showFolderItemCount", "showFolderItemCount");
-  bindCheck("opt_showFolderSize", "showFolderSize");
-  bindCheck("opt_showItemTypeLabel", "showItemTypeLabel");
-  bindCheck(
-    "opt_showRootFolderThumbnailTitles",
-    "showRootFolderThumbnailTitles",
-  );
-  bindCheck("opt_showSubfolderThumbnailTitles", "showSubfolderThumbnailTitles");
-  bindCheck("opt_showFileThumbnailTitles", "showFileThumbnailTitles");
-  bindCheck("opt_showTagThumbnailTitles", "showTagThumbnailTitles");
-  bindCheck(
-    "opt_hideRootFolderThumbnailMenuButton",
-    "hideRootFolderThumbnailMenuButton",
-  );
-  bindCheck(
-    "opt_hideSubfolderThumbnailMenuButton",
-    "hideSubfolderThumbnailMenuButton",
-  );
-  bindCheck(
-    "opt_hideTagAndRootFolderThumbnailMenuButton",
-    "hideTagAndRootFolderThumbnailMenuButton",
-  );
-  bindCheck("opt_hideFileThumbnailMenuButton", "hideFileThumbnailMenuButton");
-  [
-    ["Files", "file", ["title", "size", "itemCount", "menuButton"]],
-    [
-      "Folders",
-      ["rootFolder", "subfolder"],
-      ["title", "size", "folderCount", "fileCount", "menuButton"],
-    ],
-    ["Tags", "tag", ["title", "size", "folderCount", "fileCount", "menuButton"]],
-  ].forEach(([heading, kinds, fields]) => {
-    const titleSizeId = `opt_thumbTitleSize_${String(heading).toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
-    const titleSizeKeys = thumbnailTitleSizeOptionKeysFor(kinds);
-    bindMenuToggleButton(titleSizeId, (enabled) => {
-      const next = {};
-      titleSizeKeys.forEach((key) => {
-        next[key] = enabled ? "large" : "small";
-      });
-      WS.meta.options = normalizeOptions(
-        Object.assign({}, WS.meta.options || {}, next),
-      );
-      metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+  // Thumbnail detail presets (one dropdown per card kind, plus File pane).
+  const bindThumbnailPresetSelect = (id, apply) => {
+    bindStandaloneSelect(id, (value) => {
+      apply(value);
       setOptionsStatus("Saved");
       applyOptionsEverywhere(false);
+      renderDirectoriesPane(true);
+      persistDirtyMetadataNow().catch(() => {});
     });
-    fields.forEach((field) => {
-      const id = `opt_thumbInfo_${String(heading).toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${field}`;
-      bindLinkedCheck(id, thumbnailPreviewOptionKeysFor(kinds, field));
-    });
-  });
-  thumbnailVisibilityOptionKeys().forEach((key) => {
-    bindCheck(thumbnailVisibilityInputId(key), key);
-  });
+  };
+  bindThumbnailPresetSelect("opt_thumbPreset_filepane", (value) =>
+    applyFilePaneThumbnailPreset(value),
+  );
+  bindThumbnailPresetSelect("opt_thumbPreset_file", (value) =>
+    applyThumbnailPresetForKinds("file", value),
+  );
+  bindThumbnailPresetSelect("opt_thumbPreset_folder", (value) =>
+    applyThumbnailPresetForKinds(["rootFolder", "subfolder"], value),
+  );
+  bindThumbnailPresetSelect("opt_thumbPreset_tag", (value) =>
+    applyThumbnailPresetForKinds("tag", value),
+  );
   colorOverlayRows.forEach((row) => {
     if (row.showToggle !== false) {
       bindCheck(row.enabledId, row.enabledKey, () => {
@@ -31414,13 +31591,9 @@ function aspectRatioStorageEnabledForBucket(bucket, options = null) {
 }
 
 function anyAspectRatioStorageEnabled(options = null) {
-  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !!(
-    opt &&
-    (opt.storePortraitAspectRatioFiles ||
-      opt.storeSquareAspectRatioFiles ||
-      opt.storeLandscapeAspectRatioFiles)
-  );
+  // Auto-routing by aspect ratio was removed from the UI; keep it permanently
+  // inert so any previously-saved store* flags can never re-trigger it.
+  return false;
 }
 
 const MEDIA_TYPE_STORAGE_OPTION_BY_TYPE = Object.freeze({
@@ -31450,8 +31623,8 @@ function mediaTypeStorageEnabledForType(type, options = null) {
 }
 
 function anyMediaTypeStorageEnabled(options = null) {
-  const opt = options || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !!(opt && (opt.storeImageFiles || opt.storeGifFiles || opt.storeVideoFiles));
+  // Auto-routing by media type was removed from the UI; keep it inert.
+  return false;
 }
 
 function mediaTypeStorageLabel(type) {
