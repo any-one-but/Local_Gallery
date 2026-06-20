@@ -7,20 +7,29 @@
                                                                                                                                                 <!-- BEGIN: inlined from ./styles.css (auto-generated) -->
   <style>
 :root {
-  --color0-primary: hsl(0, 0%, 95%);
-  --color0-secondary: hsl(0, 0%, 70%);
-  --color0-tertirary: hsl(0, 0%, 45%);
+  /* Rounded, friendly type — the core of the calm design language. */
+  --font-rounded: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN",
+    system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --radius-sm: 10px;
 
-  --color1-primary: hsl(200, 25%, 5%);
-  --color1-primary-transparent: hsla(200, 25%, 5%, 0.85);
-  --color1-secondary: hsl(208, 22%, 12%);
-  --color1-secondary-transparent: hsla(208, 22%, 12%, 0.5);
-  --color1-tertiary: hsl(210, 15%, 5%);
+  /* Cream palette (the default / boot fallback). Surfaces demarcate with shade,
+     never lines. color0 = ink, color1 = surface. */
+  --color0-primary: #4a4458;   /* soft dark plum, never pure black */
+  --color0-secondary: #8f877a;
+  --color0-tertirary: #b3aa9d;
 
-  --anchor-internal-color2-primary: hsl(240, 100%, 40%);
-  --palette-accent: hsl(224, 78%, 58%);
+  --color1-primary: #f4eee6;   /* warm cream background */
+  --color1-primary-transparent: rgba(244, 238, 230, 0.85);
+  --color1-secondary: #ffffff; /* raised surfaces: cards, menus, dropdowns */
+  --color1-secondary-transparent: rgba(255, 255, 255, 0.7);
+  --color1-tertiary: #e7ded3;  /* soft shade for separation */
+
+  --anchor-internal-color2-primary: #8a78c8;
+  --palette-accent: #8a78c8;          /* readable lavender for text/links */
   --palette-accent-text: #ffffff;
-  --palette-accent-outline: hsl(224, 78%, 58%);
+  --palette-accent-outline: #b8a6e8;  /* gentle lavender ring */
   --file-grid-min: 180px;
   --file-meta-font: 12px;
   --file-meta-padding: 8px 10px;
@@ -45,20 +54,20 @@
   --thumb-fit: cover;
   --thumb-bg: transparent;
   --dir-tag-favorite-title-color: var(--palette-accent);
-  --ui-hover-lift: -1px;
-  --ui-active-press: 1px;
-  --ui-hover-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
-  --ui-focus-ring: 0 0 0 2px rgba(255, 255, 255, 0.12);
-  --ui-selection-outline: rgba(255, 255, 255, 0.94);
-  --ui-selection-outline-soft: rgba(255, 255, 255, 0.2);
-  --ui-selection-fill: rgba(255, 255, 255, 0.14);
-  --ui-selection-fill-strong: rgba(255, 255, 255, 0.2);
-  --ui-preview-selection-shadow: 0 10px 30px var(--color1-primary-transparent);
+  --ui-hover-lift: -2px;
+  --ui-active-press: 0px;
+  --ui-hover-shadow: none;
+  --ui-focus-ring: 0 0 0 3px rgba(184, 166, 232, 0.55);
+  --ui-selection-outline: rgba(74, 68, 88, 0.9);
+  --ui-selection-outline-soft: rgba(74, 68, 88, 0.18);
+  --ui-selection-fill: rgba(74, 68, 88, 0.08);
+  --ui-selection-fill-strong: rgba(74, 68, 88, 0.14);
+  --ui-preview-selection-shadow: none;
   --ui-preview-selection-stroke: 3px;
-  --ui-control-bg: rgba(0, 0, 0, 0.08);
-  --ui-control-hover-bg: rgba(0, 0, 0, 0.16);
-  --ui-control-active-bg: var(--ui-selection-fill);
-  --ui-control-radius: 6px;
+  --ui-control-bg: rgba(74, 68, 88, 0.06);
+  --ui-control-hover-bg: rgba(74, 68, 88, 0.12);
+  --ui-control-active-bg: var(--ui-selection-fill-strong);
+  --ui-control-radius: 10px;
   --stats-score-positive-color: #d85a50;
   --stats-score-negative-color: #4c2f88;
   --item-menu-trash-color: var(--stats-score-positive-color);
@@ -168,69 +177,73 @@
 }
 
 :root[data-theme="retro90s"] {
-  --ui-selection-outline: rgba(18, 24, 32, 0.94);
-  --ui-selection-outline-soft: rgba(18, 24, 32, 0.2);
-  --ui-selection-fill: rgba(18, 24, 32, 0.1);
-  --ui-selection-fill-strong: rgba(18, 24, 32, 0.16);
-  --ui-preview-selection-shadow: 0 10px 30px rgba(18, 24, 32, 0.22);
+  --ui-selection-outline: rgba(74, 68, 88, 0.9);
+  --ui-selection-outline-soft: rgba(74, 68, 88, 0.18);
+  --ui-selection-fill: rgba(74, 68, 88, 0.08);
+  --ui-selection-fill-strong: rgba(74, 68, 88, 0.14);
+  --ui-preview-selection-shadow: none;
 }
 
+/* Light theme = warm cream (the Diet Tracker design language). */
 :root[data-theme="retro90s"] {
-  --color0-primary: #1a1a1a;
-  --color0-secondary: #2a2a2a;
-  --color0-tertirary: #4a4a4a;
+  --color0-primary: #4a4458;   /* ink plum */
+  --color0-secondary: #8f877a;
+  --color0-tertirary: #b3aa9d;
 
-  --color1-primary: #c7c7b7;
-  --color1-primary-transparent: rgba(199, 199, 183, 0.92);
-  --color1-secondary: #d6d2c6;
-  --color1-secondary-transparent: rgba(214, 210, 198, 0.85);
-  --color1-tertiary: #8a8a7a;
+  --color1-primary: #f4eee6;   /* cream background */
+  --color1-primary-transparent: rgba(244, 238, 230, 0.92);
+  --color1-secondary: #ffffff; /* raised surfaces */
+  --color1-secondary-transparent: rgba(255, 255, 255, 0.85);
+  --color1-tertiary: #e7ded3;  /* soft shade separators */
 
-  --anchor-internal-color2-primary: #1a4b8c;
-  --palette-accent: #4f86d6;
+  --anchor-internal-color2-primary: #8a78c8;
+  --palette-accent: #8a78c8;          /* readable lavender */
   --palette-accent-text: #ffffff;
-  --palette-accent-outline: #4f86d6;
+  --palette-accent-outline: #b8a6e8;
   --dir-tag-favorite-title-color: var(--palette-accent);
-  --tag-include-bg: #2b4d7a;
-  --tag-include-border: #17345a;
-  --tag-include-color: #e9f1ff;
-  --tag-exclude-bg: #7a2b33;
-  --tag-exclude-border: #541820;
-  --tag-exclude-color: #ffe9ec;
-  --stats-score-positive-color: #d85a50;
-  --stats-score-negative-color: #4c2f88;
-  --item-menu-trash-color: var(--stats-score-positive-color);
-  --ui-hover-shadow: 0 3px 0 rgba(0, 0, 0, 0.18);
-  --ui-focus-ring: 0 0 0 2px rgba(26, 75, 140, 0.24);
+  --tag-include-bg: #e3dcf3;
+  --tag-include-border: transparent;
+  --tag-include-color: #5b4f86;
+  --tag-exclude-bg: #f4ddd4;
+  --tag-exclude-border: transparent;
+  --tag-exclude-color: #9a5a47;
+  --stats-score-positive-color: #c98a5a;
+  --stats-score-negative-color: #8a78c8;
+  --item-menu-trash-color: #c87b6a;
+  --ui-control-bg: rgba(74, 68, 88, 0.06);
+  --ui-control-hover-bg: rgba(74, 68, 88, 0.12);
+  --ui-hover-shadow: none;
+  --ui-focus-ring: 0 0 0 3px rgba(184, 166, 232, 0.55);
 }
 
+/* Dark theme = warm, low-contrast companion to the cream light theme. */
 :root[data-theme="retro90s-dark"] {
-  --color0-primary: #ede9e0;
-  --color0-secondary: #c4bfb2;
-  --color0-tertirary: #8a877d;
+  --color0-primary: #ede7dc;
+  --color0-secondary: #b6ad9f;
+  --color0-tertirary: #807868;
 
-  --color1-primary: #0d0b09;
-  --color1-primary-transparent: rgba(13, 11, 9, 0.92);
-  --color1-secondary: #151210;
-  --color1-secondary-transparent: rgba(21, 18, 16, 0.85);
-  --color1-tertiary: #2c2820;
+  --color1-primary: #1b1813;   /* warm near-black */
+  --color1-primary-transparent: rgba(27, 24, 19, 0.92);
+  --color1-secondary: #262219; /* raised surfaces */
+  --color1-secondary-transparent: rgba(38, 34, 25, 0.85);
+  --color1-tertiary: #3a3428;
 
-  --anchor-internal-color2-primary: #6fa0ff;
-  --palette-accent: #3b63a5;
-  --palette-accent-text: #ffffff;
-  --palette-accent-outline: #3b63a5;
+  --anchor-internal-color2-primary: #c4b6ee;
+  --palette-accent: #b8a6e8;
+  --palette-accent-text: #1b1813;
+  --palette-accent-outline: #b8a6e8;
   --dir-tag-favorite-title-color: var(--palette-accent);
-  --tag-include-bg: #203457;
-  --tag-include-border: #101f38;
-  --tag-include-color: #e6efff;
-  --tag-exclude-bg: #4a1e24;
-  --tag-exclude-border: #2f0f14;
-  --tag-exclude-color: #ffe6ea;
-  --stats-score-positive-color: #e95a4e;
-  --stats-score-negative-color: #4c2f88;
-  --item-menu-trash-color: var(--stats-score-positive-color);
-  --ui-hover-shadow: 0 3px 0 rgba(0, 0, 0, 0.28);
-  --ui-focus-ring: 0 0 0 2px rgba(111, 160, 255, 0.24);
+  --tag-include-bg: #3a3358;
+  --tag-include-border: transparent;
+  --tag-include-color: #d9d0f4;
+  --tag-exclude-bg: #4a342b;
+  --tag-exclude-border: transparent;
+  --tag-exclude-color: #f0cdbe;
+  --stats-score-positive-color: #d99b6a;
+  --stats-score-negative-color: #b8a6e8;
+  --item-menu-trash-color: #d98c78;
+  --ui-hover-shadow: none;
+  --ui-focus-ring: 0 0 0 3px rgba(184, 166, 232, 0.45);
 }
 
 :root {
@@ -254,12 +267,9 @@ body {
   width: 100%;
   background: var(--color1-primary);
   color: var(--color0-primary);
-  font:
-    14px/1.4 system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font: 14px/1.45 var(--font-rounded);
+  font-weight: 600;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
@@ -6680,6 +6690,151 @@ remove the outer app frame. */
 }
 .mdPreviewError { opacity: 0.7; font-style: italic; }
 
+/* =========================================================
+   CALM CREAM OVERHAUL (vertical slice)
+   Poaches the Diet Tracker design language: rounded type, cream
+   surfaces, flat colors, and shade — never lines/rules — to separate.
+   This block is last so it wins over the legacy retro chrome.
+   ========================================================= */
+:root {
+  /* Soft, diffuse shadow used ONLY for floating surfaces (menus, dialogs)
+     as gentle shade — replaces the hard "0 3px 0" retro drop shadows. */
+  --ui-float-shadow: 0 10px 30px rgba(74, 68, 88, 0.14);
+}
+:root[data-theme="retro90s-dark"] {
+  --ui-float-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+}
+
+/* --- Rounded type everywhere, heavier weights for hierarchy --- */
+button,
+.miniBtn,
+input,
+textarea,
+select,
+.tagEditInput,
+.dropdownMenu,
+#titleLabel,
+.dirName,
+.optTitle {
+  font-family: var(--font-rounded);
+}
+button,
+.miniBtn {
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+}
+.miniBtn {
+  padding: 6px 12px;
+}
+#titleLabel {
+  font-weight: 800;
+  letter-spacing: 0.005em;
+}
+
+/* --- Inputs & inline fields: borderless soft fill, generous radius --- */
+.tagEditInput,
+input[type="text"],
+input[type="search"],
+input[type="number"],
+textarea,
+input[type="file"] {
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  border: 0 !important;
+  border-radius: var(--radius-sm) !important;
+  font-family: var(--font-rounded);
+}
+.tagEditInput:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+/* --- Pills, vote score, badges: shade + pill radius, no outline --- */
+.pill,
+.voteScore {
+  border: 0 !important;
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  border-radius: 999px;
+}
+
+/* --- File-pane rows: rounded shade blocks, no rules between them --- */
+.dirRow {
+  border: 0 !important;
+  border-radius: var(--radius-sm);
+}
+
+/* --- Floating surfaces: white card, big radius, soft diffuse shade --- */
+.dropdownMenu {
+  border: 0 !important;
+  border-radius: var(--radius-md);
+  background: var(--color1-secondary);
+  box-shadow: var(--ui-float-shadow);
+  padding: 6px;
+}
+.dropdownMenu button,
+.dropdownMenu .miniBtn {
+  border-radius: var(--radius-sm);
+}
+#menuCard,
+#confirmCard {
+  border: 0 !important;
+  border-radius: var(--radius-lg);
+  background: var(--color1-secondary);
+  box-shadow: var(--ui-float-shadow);
+}
+
+/* --- Tabs: selected tab is a shaded pill, not an underline --- */
+#menuTabs .menuTabBtn {
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* --- Settings/keybind section titles: sentence case, shade not a rule --- */
+#optionsBody .settingsSection > h2,
+#keybindsBody .keybindSectionTitle {
+  border-bottom: 0 !important;
+  text-transform: none !important;
+  letter-spacing: 0.005em !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+}
+
+/* --- Option rows: spacing + hover shade, no dividing lines --- */
+#optionsBody .optRow,
+#keybindsBody .optRow {
+  border-bottom: 0 !important;
+  border-radius: var(--radius-sm);
+}
+
+/* --- Dividers: keep them whisper-thin shade, never a hard line --- */
+#divider {
+  background: var(--color1-tertiary);
+}
+
+/* --- Confirm dialog overlay: soft warm scrim with blur (Diet Tracker) --- */
+#confirmOverlay {
+  background: rgba(74, 68, 88, 0.22);
+  backdrop-filter: blur(6px);
+}
+
+/* --- Thin, rounded, unobtrusive scrollbars --- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ui-control-hover-bg);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 </style>
   <!-- END: inlined from ./styles.css -->
   </head>
@@ -8140,7 +8295,7 @@ function defaultOptions() {
     filmCornerOverlayEnabled: true,
     filmCornerOverlayIntensity: null,
     colorScheme: "retro",
-    lightMode: false,
+    lightMode: true,
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     directoriesPaneOpen: false,
@@ -8341,7 +8496,7 @@ function normalizeOptions(o) {
         : d.thumbnailStyle
     : "cropped";
   const colorScheme = "retro";
-  const lightMode = typeof src.lightMode === "boolean" ? src.lightMode : false;
+  const lightMode = typeof src.lightMode === "boolean" ? src.lightMode : true;
   const videoAudioRaw = String(
     src.videoAudio ?? src.videoGallery ?? src.videoPreview ?? "",
   )
