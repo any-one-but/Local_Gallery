@@ -6869,10 +6869,13 @@ textarea:focus-visible {
   display: none !important;
 }
 
-/* Controls (keybinds) tab: show section titles (they were hidden) and make
-   them collapsible headers like the Settings tab. */
+/* Settings + Controls section headers: identical collapsible headers
+   (flex so the chevron sits flush-right; sentence case; no rule). */
+#optionsBody .settingsSection > h2.menuSectionToggle,
 #keybindsBody .keybindSectionTitle.menuSectionToggle {
   display: flex !important;
+  align-items: center;
+  justify-content: space-between;
   margin: 2px 4px 10px !important;
   padding: 0 0 8px !important;
   font-size: 15px !important;
@@ -6881,6 +6884,17 @@ textarea:focus-visible {
   text-transform: none !important;
   color: var(--color0-primary) !important;
   border: 0 !important;
+}
+
+/* When a section is collapsed only the header shows, so drop its bottom
+   spacing/padding; the card's own padding then centers the title.
+   (ID-prefixed so it beats the !important header rules above.) */
+#optionsBody .settingsSection.collapsed > h2.menuSectionToggle,
+#keybindsBody .keybindSectionGroup.collapsed > h2.menuSectionToggle,
+.filtersAdvanced.collapsed > h3.menuSectionToggle {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 /* Filters tab: Advanced disclosure for additive/effect overlays. */
