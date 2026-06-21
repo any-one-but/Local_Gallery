@@ -926,17 +926,14 @@ body.directories-files-only #directoriesHeader {
   background: var(--ui-selection-fill);
 }
 
+/* When the preview pane is the active selection surface, the file-pane row you
+   came from is conceptually NOT selected — render it exactly like any other
+   row (same background, no outline), with no selection UI of any kind. */
 #app.preview-pane-active .dirRow.selected:not(.bulkSelected) {
   outline: none;
   border-color: transparent;
-  background: transparent;
+  background: var(--ui-control-bg);
   box-shadow: none;
-}
-
-#app.preview-pane-active.preview-media-mode .dirRow.selected:not(.bulkSelected) {
-  outline: none;
-  border-color: transparent;
-  background: var(--ui-selection-fill);
 }
 
 .dirRow.bulkSelected {
@@ -1746,9 +1743,10 @@ img[data-rotate-key].rotatingThumbFade {
 #app.preview-pane-active
  .dirRow.folderRow.folderSquareCard.selected:not(.bulkSelected)
  .dirSquareCard {
-  border-color: transparent;
+  border-color: rgba(255, 255, 255, 0.18);
   outline: none;
   box-shadow: none;
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .dirRow.folderRow.folderSquareCard.bulkSelected .dirSquareCard {
@@ -1776,6 +1774,8 @@ img[data-rotate-key].rotatingThumbFade {
  .dirFileThumbCard {
   outline: none;
   box-shadow: none;
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .dirRow.fileRow.fileThumbCardRow.bulkSelected .dirFileThumbCard {
@@ -19765,10 +19765,10 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
-${makeCheckRow("Blank row after tag folders", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
-${makeCheckRow("Force Title Case", "Apply Title Case to displayed file names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
-${makeCheckRow("Show position numbers", "Prefix displayed real file and folder names with their current sorted position, while skipping tag and album entries.", "opt_showPositionNumbersInNames", !!opt.showPositionNumbersInNames)}
-${makeCheckRow("Trim before last dash", "Show only text after the last dash in names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
+${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
+${makeCheckRow("Force Title Case In Display Names", "Apply Title Case to displayed file names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
+${makeCheckRow("Display names include position number", "Prefix displayed real file and folder names with their current sorted position, while skipping tag and album entries.", "opt_showPositionNumbersInNames", !!opt.showPositionNumbersInNames)}
+${makeCheckRow("Display names trim before last dash", "Show only text after the last dash in names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
 ${makeActionRow(
   "Workspace",
   "Refresh the current writable root from disk.",
