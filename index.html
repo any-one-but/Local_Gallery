@@ -58,14 +58,14 @@
   --ui-active-press: 0px;
   --ui-hover-shadow: none;
   --ui-focus-ring: 0 0 0 3px rgba(184, 166, 232, 0.55);
-  --ui-selection-outline: rgba(74, 68, 88, 0.9);
-  --ui-selection-outline-soft: rgba(74, 68, 88, 0.18);
-  --ui-selection-fill: rgba(74, 68, 88, 0.08);
-  --ui-selection-fill-strong: rgba(74, 68, 88, 0.14);
+  --ui-selection-outline: rgba(255, 255, 255, 0.55);
+  --ui-selection-outline-soft: rgba(255, 255, 255, 0.22);
+  --ui-selection-fill: rgba(255, 255, 255, 0.14);
+  --ui-selection-fill-strong: rgba(255, 255, 255, 0.22);
   --ui-preview-selection-shadow: none;
   --ui-preview-selection-stroke: 3px;
-  --ui-control-bg: rgba(74, 68, 88, 0.06);
-  --ui-control-hover-bg: rgba(74, 68, 88, 0.12);
+  --ui-control-bg: rgba(255, 255, 255, 0.06);
+  --ui-control-hover-bg: rgba(255, 255, 255, 0.12);
   --ui-control-active-bg: var(--ui-selection-fill-strong);
   --ui-control-radius: 10px;
   --stats-score-positive-color: #d85a50;
@@ -6914,6 +6914,23 @@ textarea:focus-visible {
 }
 .filtersAdvanced.collapsed > :not(h3) {
   display: none !important;
+}
+
+/* --- Single active selection across panes ---
+   Only the active pane shows a selection highlight. The file pane is already
+   un-highlighted when the preview pane is active (see #app.preview-pane-active
+   .dirRow.selected). This is the mirror: when the file pane is the active pane,
+   hide the preview grid's selection cursor, so there is never a highlighted
+   card in both panes at once. Bulk selections are unaffected. */
+#app.directories-pane-active .gridFiles .previewSelected:not(.bulkSelected),
+#app.directories-pane-active .gridFolders .previewSelected:not(.bulkSelected),
+#app.directories-pane-active
+  .gridFolders
+  .previewSelected:not(.bulkSelected)
+  .dirSquareCard {
+  outline: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 </style>
