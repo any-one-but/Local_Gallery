@@ -8487,6 +8487,7 @@ function defaultOptions() {
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     directoriesPaneOpen: false,
+    initialOpenSidebars: "both",
     filePaneViewMode: "list",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
@@ -8905,6 +8906,13 @@ function normalizeOptions(o) {
         : legacyInteractionMode
           ? legacyInteractionMode === "pane"
           : d.directoriesPaneOpen,
+    initialOpenSidebars:
+      src.initialOpenSidebars === "file" ||
+      src.initialOpenSidebars === "settings" ||
+      src.initialOpenSidebars === "both" ||
+      src.initialOpenSidebars === "none"
+        ? src.initialOpenSidebars
+        : d.initialOpenSidebars,
     filePaneViewMode: "list",
     includeHiddenItemsInStats:
       typeof src.includeHiddenItemsInStats === "boolean"
@@ -16547,9 +16555,17 @@ function fitRootLandingSidePaneWidths() {
 
 function applyDefaultRootLandingSidebars() {
   if (!WS.meta || !WS.root) return;
-  if (setDirectoriesPaneOpenValue(true)) syncActivePaneWithLayout();
-  if (!MENU_OPEN) openMenu("general");
-  else setMenuTab(MENU_ACTIVE_TAB || MENU_LAST_TAB || "general");
+  const mode =
+    (WS.meta.options && WS.meta.options.initialOpenSidebars) || "both";
+  const wantFilePane = mode === "both" || mode === "file";
+  const wantSettingsPane = mode === "both" || mode === "settings";
+  if (setDirectoriesPaneOpenValue(wantFilePane)) syncActivePaneWithLayout();
+  if (wantSettingsPane) {
+    if (!MENU_OPEN) openMenu("general");
+    else setMenuTab(MENU_ACTIVE_TAB || MENU_LAST_TAB || "general");
+  } else if (MENU_OPEN) {
+    closeMenu();
+  }
   fitRootLandingSidePaneWidths();
   requestAnimationFrame(() => fitRootLandingSidePaneWidths());
 }
@@ -19317,6 +19333,12 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "muted", label: "Muted" },
     { value: "unmuted", label: "Unmuted" },
   ];
+  const initialSidebarsModes = [
+    { value: "file", label: "File pane" },
+    { value: "settings", label: "Settings pane" },
+    { value: "both", label: "Both panes" },
+    { value: "none", label: "None" },
+  ];
   const videoSkipModes = [
     { value: "1", label: "1 second" },
     { value: "3", label: "3 seconds" },
@@ -19764,6 +19786,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       title: "General",
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
+${makeSelectRow("Initial Open Sidebars", "Which side panes open automatically after loading a root.", "opt_initialOpenSidebars", String(opt.initialOpenSidebars || "both"), initialSidebarsModes)}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeCheckRow("Clean item names", "Tidy displayed names: Title Case, position-number prefixes, and trimming before the last dash, all together.", "opt_cleanItemNames", !!opt.forceTitleCaps && !!opt.showPositionNumbersInNames && !!opt.hideBeforeLastDashInFileNames)}
@@ -20463,6 +20486,10 @@ ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges
   bindCheck("opt_quickNavigation", "quickNavigation", (enabled) => {
     showStatusMessage(`Quick navigation: ${enabled ? "On" : "Off"}`, "quick-navigation");
   });
+  bindSelect("opt_initialOpenSidebars", "initialOpenSidebars", false, null, (val) => {
+    const raw = String(val || "").trim().toLowerCase();
+    return raw === "file" || raw === "settings" || raw === "none" ? raw : "both";
+  });
   bindCheck("opt_muteMessages", "muteMessages");
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
     invalidateDirMetricsCaches();
@@ -20845,6 +20872,7 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
   general: Object.freeze([
     "clickSelectedRotatingThumbTeleports",
     "quickNavigation",
+    "initialOpenSidebars",
     "muteMessages",
     "showListCardExtraInfo",
     "showTagFolderSpacerRow",
