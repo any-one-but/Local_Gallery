@@ -56364,8 +56364,16 @@ function replacePreviewVideoThumbImageWithFallback(img, rec) {
     ? "folderThumb folderThumbFallback"
     : "dirInlinePreview thumbFallback";
   fallback.setAttribute("aria-hidden", "true");
-  if (img.getAttribute("style")) {
-    fallback.setAttribute("style", img.getAttribute("style") || "");
+  // Carry over inline style EXCEPT the cover-crop layout (width/height/left/top):
+  // a crop only makes sense for media, and applying it to the centered type
+  // icon pushes the icon off-center.
+  const srcStyle = img.getAttribute("style") || "";
+  if (srcStyle) {
+    const cleaned = srcStyle
+      .replace(/(?:^|;)\s*(?:width|height|left|top)\s*:[^;]*/gi, "")
+      .replace(/^;+/, "")
+      .trim();
+    if (cleaned) fallback.setAttribute("style", cleaned);
   }
   const recId = String(img?.dataset?.dirPreviewId || rec?.id || "");
   if (rec && rec.type === "video" && recId) {
@@ -56450,6 +56458,10 @@ function makePassivePreviewVideoElement(sourceEl, rec, recId, opts = null) {
     const card = video.closest(".fitInsideCard");
     const aspect = normalizePreviewAspect(w / h, getPreviewAspectForRecord(rec));
     rec.previewAspect = aspect;
+    // The crop layout copied from the source <img> was computed before the
+    // video's real aspect was known; recompute it now so container video
+    // thumbnails stay centered on the chosen crop.
+    applyFileThumbCropStyle(video, rec);
     if (card) card.dataset.aspect = String(aspect);
     const grid = video.closest(".fitInsideJustified");
     if (grid) requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
