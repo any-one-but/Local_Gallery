@@ -8515,7 +8515,7 @@ function defaultOptions() {
     previewMediaUsePaneBackground: false,
     thumbnailLoading: false,
     forceTitleCaps: true,
-    showPositionNumbersInNames: false,
+    showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
     hideFileExtensionsInFileNames: true,
     hideUnderscoresInFileNames: true,
@@ -19766,9 +19766,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
-${makeCheckRow("Force Title Case In Display Names", "Apply Title Case to displayed file names.", "opt_forceTitleCaps", !!opt.forceTitleCaps)}
-${makeCheckRow("Display names include position number", "Prefix displayed real file and folder names with their current sorted position, while skipping tag and album entries.", "opt_showPositionNumbersInNames", !!opt.showPositionNumbersInNames)}
-${makeCheckRow("Display names trim before last dash", "Show only text after the last dash in names.", "opt_hideBeforeLastDashInFileNames", !!opt.hideBeforeLastDashInFileNames)}
+${makeCheckRow("Clean item names", "Tidy displayed names: Title Case, position-number prefixes, and trimming before the last dash, all together.", "opt_cleanItemNames", !!opt.forceTitleCaps && !!opt.showPositionNumbersInNames && !!opt.hideBeforeLastDashInFileNames)}
 ${makeActionRow(
   "Workspace",
   "Refresh the current writable root from disk.",
@@ -20736,13 +20734,21 @@ ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges
       .toLowerCase();
     return raw === "loop" || raw === "next" || raw === "stop" ? raw : "loop";
   });
-  bindCheck("opt_forceTitleCaps", "forceTitleCaps");
-  bindCheck("opt_showPositionNumbersInNames", "showPositionNumbersInNames");
   bindCheck("opt_showTagFolderSpacerRow", "showTagFolderSpacerRow");
-  bindCheck(
-    "opt_hideBeforeLastDashInFileNames",
-    "hideBeforeLastDashInFileNames",
-  );
+  // "Clean item names" toggles the three display-name transforms together.
+  bindMenuToggleButton("opt_cleanItemNames", (enabled) => {
+    const next = {
+      forceTitleCaps: !!enabled,
+      showPositionNumbersInNames: !!enabled,
+      hideBeforeLastDashInFileNames: !!enabled,
+    };
+    WS.meta.options = normalizeOptions(
+      Object.assign({}, WS.meta.options || {}, next),
+    );
+    metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+    setOptionsStatus("Saved");
+    applyOptionsEverywhere(false);
+  });
   bindActionBtn("opt_appearancePresetPromptConfirm", () => {
     const presetName = readAppearancePresetPromptInput();
     const promptMode = String(
