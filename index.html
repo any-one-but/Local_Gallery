@@ -55691,6 +55691,12 @@ const VIDEO_THUMB_JPEG_QUALITY = 0.82;
 const VIDEO_THUMB_GEN_CONCURRENCY = 3;
 const VIDEO_THUMB_GEN_TIMEOUT_MS = 8000;
 const VIDEO_THUMB_WARM_DELAY_MS = 1500;
+// Kill-switch for the renderer-canvas video-thumbnail cache. It was added after
+// v1.06.54 and is the source of the "opening a tag/album is laggy" reports
+// (it decodes a video frame per video folder on demand, plus warms the whole
+// library in the background). Turning it OFF falls back to v1.06.54 behavior
+// (live <video> thumbnails, no frame generation). Flip to true to re-enable.
+const VIDEO_THUMB_CACHE_ENABLED = false;
 
 const VideoThumbCache = {
   ready: false,
@@ -55760,6 +55766,7 @@ function videoThumbCacheDirAbsPath() {
 }
 
 function videoThumbCachedUrlForRecord(rec) {
+  if (!VIDEO_THUMB_CACHE_ENABLED) return "";
   if (!VideoThumbCache.ready || !rec || rec.type !== "video") return "";
   const name = videoThumbFileNameForRecord(rec);
   if (!name || !VideoThumbCache.files.has(name)) return "";
@@ -55793,6 +55800,7 @@ function resetVideoThumbCacheState() {
 // dir so generation can write to it. No-op (and stays inactive) off Electron.
 async function initVideoThumbCacheForWorkspace(rootHandle) {
   resetVideoThumbCacheState();
+  if (!VIDEO_THUMB_CACHE_ENABLED) return;
   if (!getElectronApi() || !rootHandle) return;
   try {
     const sys = await rootHandle.getDirectoryHandle(".local-gallery", {
@@ -55955,6 +55963,7 @@ function videoThumbCachePump() {
 // render path calls this (high priority) for videos actually on screen; the
 // background warm sweep calls it with { warm: true } (low priority).
 function videoThumbCacheEnqueue(rec, opts = null) {
+  if (!VIDEO_THUMB_CACHE_ENABLED) return;
   if (!VideoThumbCache.ready || !VideoThumbCache.dirHandle) return;
   if (!rec || rec.type !== "video") return;
   const id = String(rec.id || "");
@@ -55983,6 +55992,7 @@ function videoThumbCacheEnqueue(rec, opts = null) {
 // priority so the whole library warms over time without competing with the
 // folder you're actively viewing. Cancelled by resetVideoThumbCacheState.
 function startVideoThumbWarm() {
+  if (!VIDEO_THUMB_CACHE_ENABLED) return;
   if (!VideoThumbCache.ready || !VideoThumbCache.dirHandle) return;
   if (VideoThumbCache.warmTimer) {
     try { clearTimeout(VideoThumbCache.warmTimer); } catch {}
