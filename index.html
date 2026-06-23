@@ -33311,15 +33311,28 @@ function tagViewFrameForVirtualTagNode(tagNode, selectedDirPath) {
 function pushSimulatedTagViewContextForPath(selectedDirPath, sourceDir = null) {
   const selectedPath = String(selectedDirPath || "");
   if (!selectedPath) return false;
+  // Prefer the preview portal's own tag context when descending from a tag/album
+  // preview grid. A tag reached *through an album* leaves the file pane at the
+  // album level (tagFolderActiveMode === "album") while the preview grid shows
+  // one specific tag's folders. Capturing the simulated frame from the file-pane
+  // state would record mode "album", which resolves to zero sibling dirs, so
+  // sliding/jumping inside the entered folder falls through to the real parent's
+  // children (the long-standing "jumps into the parent folders, not the tag"
+  // bug). The portal node carries the actual tag + album the grid represents, so
+  // build the frame from it whenever one is the navigation source.
+  const tagNode = sourceDir || getPreviewTargetDir();
+  if (tagNode && tagNode._skipTagFilters) {
+    const frame = tagViewFrameForVirtualTagNode(tagNode, selectedPath);
+    if (frame) {
+      pushTagNavFrame(frame);
+      return true;
+    }
+  }
   if (isViewingTagFolder()) {
     pushTagViewContext(selectedPath);
     return true;
   }
-  const tagNode = sourceDir || getPreviewTargetDir();
-  const frame = tagViewFrameForVirtualTagNode(tagNode, selectedPath);
-  if (!frame) return false;
-  pushTagNavFrame(frame);
-  return true;
+  return false;
 }
 
 function restoreTagViewFromFrame(frame, opts = null) {
