@@ -481,7 +481,7 @@ ensure_waifu2x_ready() {
   fi
 
   ui_section "WAIFU2X REQUIRED"
-  printf "   Step 8 needs waifu2x-ncnn-vulkan and its model files.\n"
+  printf "   Step 11 needs waifu2x-ncnn-vulkan and its model files.\n"
   read -r -p "$(ui_prompt 'Install or refresh waifu2x now? [Y/n]')" ans
   ans="${ans:-Y}"
   if [[ ! "$ans" =~ ^[Yy]$ ]]; then
@@ -583,13 +583,13 @@ step_description() {
     5) printf "Remove metadata" ;;
     6) printf "Sanitize file and folder names" ;;
     7) printf "Quarantine empty files and folders" ;;
-    8) printf "Upscale and denoise media" ;;
-    9) printf "Trim video starts" ;;
-    10) printf "Trim video ends" ;;
-    11) printf "Extract MP3 audio from videos" ;;
-    12) printf "Recompress images (AVIF/WebP)" ;;
-    13) printf "Convert animated GIFs to MP4" ;;
-    14) printf "Re-encode videos to AV1" ;;
+    8) printf "Recompress images (AVIF/WebP)" ;;
+    9) printf "Convert animated GIFs to MP4" ;;
+    10) printf "Re-encode videos to AV1" ;;
+    11) printf "Upscale and denoise media" ;;
+    12) printf "Trim video starts" ;;
+    13) printf "Trim video ends" ;;
+    14) printf "Extract MP3 audio from videos" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -603,13 +603,13 @@ step_function_name() {
     5) printf "step5_remove_metadata" ;;
     6) printf "step7_sanitize_names" ;;
     7) printf "step9_move_empty_items" ;;
-    8) printf "step3_process_media" ;;
-    9) printf "step8_trim_video_lead" ;;
-    10) printf "step9_trim_video_tail" ;;
-    11) printf "step10_extract_video_audio_mp3" ;;
-    12) printf "step11_recompress_images" ;;
-    13) printf "step12_convert_gifs_to_video" ;;
-    14) printf "step13_reencode_videos_av1" ;;
+    8) printf "step11_recompress_images" ;;
+    9) printf "step12_convert_gifs_to_video" ;;
+    10) printf "step13_reencode_videos_av1" ;;
+    11) printf "step3_process_media" ;;
+    12) printf "step8_trim_video_lead" ;;
+    13) printf "step9_trim_video_tail" ;;
+    14) printf "step10_extract_video_audio_mp3" ;;
     *) printf "" ;;
   esac
 }
@@ -654,32 +654,6 @@ ensure_step_requirements() {
       ;;
     8)
       require_cmd find
-      require_cmd sips
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      require_cmd mv
-      require_cmd rm
-      ensure_waifu2x_ready || return 1
-      ;;
-    9)
-      require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      ;;
-    10)
-      require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      ;;
-    11)
-      require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      require_cmd mv
-      require_cmd rm
-      ;;
-    12)
-      require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
       require_cmd mv
@@ -688,12 +662,38 @@ ensure_step_requirements() {
         ensure_cwebp_ready || return 1
       fi
       ;;
-    13)
+    9)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
       require_cmd mv
       require_cmd rm
+      ;;
+    10)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      ;;
+    11)
+      require_cmd find
+      require_cmd sips
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      ensure_waifu2x_ready || return 1
+      ;;
+    12)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      ;;
+    13)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
       ;;
     14)
       require_cmd find
@@ -847,7 +847,7 @@ step10_extract_video_audio_mp3() {
     if [[ -f "$output" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 11 MP3" "$progress" "$total"
+      progress_draw "Step 14 MP3" "$progress" "$total"
       continue
     fi
 
@@ -855,7 +855,7 @@ step10_extract_video_audio_mp3() {
     if [[ -z "$audio_stream" ]]; then
       skipped_no_audio=$((skipped_no_audio + 1))
       progress=$((progress + 1))
-      progress_draw "Step 11 MP3" "$progress" "$total"
+      progress_draw "Step 14 MP3" "$progress" "$total"
       continue
     fi
 
@@ -872,10 +872,10 @@ step10_extract_video_audio_mp3() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 11 MP3" "$progress" "$total"
+    progress_draw "Step 14 MP3" "$progress" "$total"
   done
 
-  log_info "Step 11 audio extraction summary:"
+  log_info "Step 14 audio extraction summary:"
   summary_item "MP3 files created" "$created"
   summary_item "Skipped (exists)" "$skipped_existing"
   summary_item "Skipped (no audio)" "$skipped_no_audio"
@@ -1229,10 +1229,10 @@ step3_upscale_images() {
     fi
     rm -f "$result_file"
     progress=$((progress + 1))
-    progress_draw "Step 8 Upscale" "$progress" "$total"
+    progress_draw "Step 11 Upscale" "$progress" "$total"
   done
 
-  log_info "Step 8 image upscale summary:"
+  log_info "Step 11 image upscale summary:"
   summary_item "Images found" "$all_images"
   summary_item "Supported candidates" "$total"
   summary_item "Processed" "$upscaled"
@@ -1288,10 +1288,10 @@ step3_upscale_videos() {
       log_err "Video upscale failed: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 8 Video" "$progress" "$total"
+    progress_draw "Step 11 Video" "$progress" "$total"
   done
 
-  log_info "Step 8 video upscale summary:"
+  log_info "Step 11 video upscale summary:"
   summary_item "Videos found" "$total"
   summary_item "Processed" "$processed"
   summary_item "CPU fallbacks" "$cpu_fallback_used"
@@ -2454,7 +2454,7 @@ step6_move_similar_media() {
 choose_step3_upscale_options() {
   local mode scale noise cpu_fallback
 
-  ui_section "STEP 8 OPTIONS  -  UPSCALE & DENOISE"
+  ui_section "STEP 11 OPTIONS  -  UPSCALE & DENOISE"
   read -r -p "$(ui_prompt 'Process videos or images? [images]')" mode
   mode="${mode:-images}"
   while true; do
@@ -2503,15 +2503,15 @@ choose_step3_upscale_options() {
   fi
 
   if [[ "$STEP3_CPU_FALLBACK" -eq 1 ]]; then
-    log_info "Step 8 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback enabled."
+    log_info "Step 11 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback enabled."
   else
-    log_info "Step 8 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback disabled."
+    log_info "Step 11 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback disabled."
   fi
 }
 
 choose_step8_trim_seconds() {
   local seconds
-  ui_section "STEP 9 OPTIONS  -  TRIM VIDEO STARTS"
+  ui_section "STEP 12 OPTIONS  -  TRIM VIDEO STARTS"
   read -r -p "$(ui_prompt 'Trim how many seconds from start of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
@@ -2525,12 +2525,12 @@ choose_step8_trim_seconds() {
     STEP8_TRIM_SECONDS="10"
     log_warn "Value must be greater than 0. Using default 10 seconds."
   fi
-  log_info "Step 9 trim-start amount set to ${STEP8_TRIM_SECONDS}s."
+  log_info "Step 12 trim-start amount set to ${STEP8_TRIM_SECONDS}s."
 }
 
 choose_step9_trim_end_seconds() {
   local seconds
-  ui_section "STEP 10 OPTIONS  -  TRIM VIDEO ENDS"
+  ui_section "STEP 13 OPTIONS  -  TRIM VIDEO ENDS"
   read -r -p "$(ui_prompt 'Trim how many seconds from end of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
@@ -2544,7 +2544,7 @@ choose_step9_trim_end_seconds() {
     STEP9_TRIM_END_SECONDS="10"
     log_warn "Value must be greater than 0. Using default 10 seconds."
   fi
-  log_info "Step 10 trim-end amount set to ${STEP9_TRIM_END_SECONDS}s."
+  log_info "Step 13 trim-end amount set to ${STEP9_TRIM_END_SECONDS}s."
 }
 
 step8_trim_video_lead() {
@@ -2574,7 +2574,7 @@ step8_trim_video_lead() {
     if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP8_TRIM_SECONDS" 'BEGIN { exit !(d <= s) }'; then
       skipped_short=$((skipped_short + 1))
       progress=$((progress + 1))
-      progress_draw "Step 9 Trim Start" "$progress" "$total"
+      progress_draw "Step 12 Trim Start" "$progress" "$total"
       continue
     fi
 
@@ -2589,7 +2589,7 @@ step8_trim_video_lead() {
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
-      progress_draw "Step 9 Trim Start" "$progress" "$total"
+      progress_draw "Step 12 Trim Start" "$progress" "$total"
       continue
     fi
 
@@ -2606,10 +2606,10 @@ step8_trim_video_lead() {
     fi
 
     progress=$((progress + 1))
-      progress_draw "Step 9 Trim Start" "$progress" "$total"
+      progress_draw "Step 12 Trim Start" "$progress" "$total"
   done
 
-  log_info "Step 9 trim-start summary:"
+  log_info "Step 12 trim-start summary:"
   summary_item "Trim seconds" "${STEP8_TRIM_SECONDS}s"
   summary_item "Files trimmed" "$trimmed"
   summary_item "Approximate trims" "$approximate"
@@ -2644,7 +2644,7 @@ step9_trim_video_tail() {
     if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP9_TRIM_END_SECONDS" 'BEGIN { exit !(d <= s) }'; then
       skipped_short=$((skipped_short + 1))
       progress=$((progress + 1))
-      progress_draw "Step 10 Trim End" "$progress" "$total"
+      progress_draw "Step 13 Trim End" "$progress" "$total"
       continue
     fi
     keep_duration="$(awk -v d="$duration" -v s="$STEP9_TRIM_END_SECONDS" 'BEGIN { printf "%.6f", (d - s) }')"
@@ -2658,7 +2658,7 @@ step9_trim_video_tail() {
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
-      progress_draw "Step 10 Trim End" "$progress" "$total"
+      progress_draw "Step 13 Trim End" "$progress" "$total"
       continue
     fi
 
@@ -2675,10 +2675,10 @@ step9_trim_video_tail() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 10 Trim End" "$progress" "$total"
+    progress_draw "Step 13 Trim End" "$progress" "$total"
   done
 
-  log_info "Step 10 trim-end summary:"
+  log_info "Step 13 trim-end summary:"
   summary_item "Trim seconds" "${STEP9_TRIM_END_SECONDS}s"
   summary_item "Files trimmed" "$trimmed"
   summary_item "Approximate trims" "$approximate"
@@ -2728,7 +2728,7 @@ choose_resize_height() {
 }
 
 # ---------------------------------------------------------------------------
-# Steps 12-14: extra size-reduction passes (image recompression, GIF->MP4,
+# Steps 8-10: extra size-reduction passes (image recompression, GIF->MP4,
 # AV1 video re-encode). All formats chosen here (AVIF, WebP, AV1, Opus, H.264)
 # play natively in the Electron/Chromium viewer. Each pass is lossy and only
 # replaces an original when the new file is actually smaller, so re-running is
@@ -2779,7 +2779,7 @@ ensure_cwebp_ready() {
   command -v cwebp >/dev/null 2>&1
 }
 
-# Step 12: re-encode still images to AVIF (default) or WebP. Originals are
+# Step 8: re-encode still images to AVIF (default) or WebP. Originals are
 # replaced only when the recompressed file is smaller; same-format files and
 # files that don't shrink are left untouched.
 step11_recompress_images() {
@@ -2815,7 +2815,7 @@ step11_recompress_images() {
     if [[ "$ext" == "$target" ]]; then
       skipped_same=$((skipped_same + 1))
       progress=$((progress + 1))
-      progress_draw "Step 12 Recompress" "$progress" "$total"
+      progress_draw "Step 8 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -2824,7 +2824,7 @@ step11_recompress_images() {
       # A different file already owns the target name; don't clobber it.
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 12 Recompress" "$progress" "$total"
+      progress_draw "Step 8 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -2845,7 +2845,7 @@ step11_recompress_images() {
       failed=$((failed + 1))
       log_err "Recompress failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 12 Recompress" "$progress" "$total"
+      progress_draw "Step 8 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -2855,7 +2855,7 @@ step11_recompress_images() {
       rm -f "$tmp"
       nogain=$((nogain + 1))
       progress=$((progress + 1))
-      progress_draw "Step 12 Recompress" "$progress" "$total"
+      progress_draw "Step 8 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -2868,10 +2868,10 @@ step11_recompress_images() {
     fi
     converted=$((converted + 1))
     progress=$((progress + 1))
-    progress_draw "Step 12 Recompress" "$progress" "$total"
+    progress_draw "Step 8 Recompress" "$progress" "$total"
   done
 
-  log_info "Step 12 recompress summary:"
+  log_info "Step 8 recompress summary:"
   summary_item "Format" "$target"
   summary_item "Converted" "$converted"
   summary_item "No size gain (kept)" "$nogain"
@@ -2881,7 +2881,7 @@ step11_recompress_images() {
   summary_item "Approx. saved" "$(human_size "$saved_bytes")"
 }
 
-# Step 13: convert animated GIFs to muted H.264 MP4 (huge size win). Static
+# Step 9: convert animated GIFs to muted H.264 MP4 (huge size win). Static
 # single-frame GIFs are left as-is.
 step12_convert_gifs_to_video() {
   local files=()
@@ -2912,14 +2912,14 @@ step12_convert_gifs_to_video() {
     if ! is_int "$frames" || [[ "$frames" -le 1 ]]; then
       skipped_static=$((skipped_static + 1))
       progress=$((progress + 1))
-      progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+      progress_draw "Step 9 GIF-MP4" "$progress" "$total"
       continue
     fi
 
     if [[ -e "$out" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+      progress_draw "Step 9 GIF-MP4" "$progress" "$total"
       continue
     fi
 
@@ -2935,7 +2935,7 @@ step12_convert_gifs_to_video() {
       failed=$((failed + 1))
       log_err "GIF conversion failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+      progress_draw "Step 9 GIF-MP4" "$progress" "$total"
       continue
     fi
 
@@ -2945,7 +2945,7 @@ step12_convert_gifs_to_video() {
       rm -f "$tmp"
       nogain=$((nogain + 1))
       progress=$((progress + 1))
-      progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+      progress_draw "Step 9 GIF-MP4" "$progress" "$total"
       continue
     fi
 
@@ -2956,10 +2956,10 @@ step12_convert_gifs_to_video() {
     fi
     converted=$((converted + 1))
     progress=$((progress + 1))
-    progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+    progress_draw "Step 9 GIF-MP4" "$progress" "$total"
   done
 
-  log_info "Step 13 GIF conversion summary:"
+  log_info "Step 9 GIF conversion summary:"
   summary_item "Converted to MP4" "$converted"
   summary_item "Static (skipped)" "$skipped_static"
   summary_item "No size gain (kept)" "$nogain"
@@ -2968,7 +2968,7 @@ step12_convert_gifs_to_video() {
   summary_item "Approx. saved" "$(human_size "$saved_bytes")"
 }
 
-# Step 14: re-encode videos to AV1 (libsvtav1) with Opus audio in an MP4
+# Step 10: re-encode videos to AV1 (libsvtav1) with Opus audio in an MP4
 # container. Already-AV1 videos are skipped; originals are replaced only when
 # the AV1 version is smaller.
 step13_reencode_videos_av1() {
@@ -3004,14 +3004,14 @@ step13_reencode_videos_av1() {
     if [[ "$codec" == "av1" ]]; then
       skipped_av1=$((skipped_av1 + 1))
       progress=$((progress + 1))
-      progress_draw "Step 14 AV1" "$progress" "$total"
+      progress_draw "Step 10 AV1" "$progress" "$total"
       continue
     fi
 
     if [[ -e "$out" && "$out" != "$file" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 14 AV1" "$progress" "$total"
+      progress_draw "Step 10 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3027,7 +3027,7 @@ step13_reencode_videos_av1() {
       failed=$((failed + 1))
       log_err "AV1 re-encode failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 14 AV1" "$progress" "$total"
+      progress_draw "Step 10 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3037,7 +3037,7 @@ step13_reencode_videos_av1() {
       rm -f "$tmp"
       nogain=$((nogain + 1))
       progress=$((progress + 1))
-      progress_draw "Step 14 AV1" "$progress" "$total"
+      progress_draw "Step 10 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3050,10 +3050,10 @@ step13_reencode_videos_av1() {
     fi
     converted=$((converted + 1))
     progress=$((progress + 1))
-    progress_draw "Step 14 AV1" "$progress" "$total"
+    progress_draw "Step 10 AV1" "$progress" "$total"
   done
 
-  log_info "Step 14 AV1 re-encode summary:"
+  log_info "Step 10 AV1 re-encode summary:"
   summary_item "Re-encoded" "$converted"
   summary_item "Already AV1" "$skipped_av1"
   summary_item "No size gain (kept)" "$nogain"
@@ -3066,7 +3066,7 @@ choose_image_recompress_options() {
   local choice q
 
   ui_box_top
-  ui_box_line "STEP 12  -  RECOMPRESS IMAGES" "$C_BOLD$C_WHITE"
+  ui_box_line "STEP 8  -  RECOMPRESS IMAGES" "$C_BOLD$C_WHITE"
   ui_box_sep
   ui_box_line "  1   AVIF  (smallest, slower)  (default)"
   ui_box_line "  2   WebP  (faster, needs cwebp)"
@@ -3087,7 +3087,7 @@ choose_image_recompress_options() {
       log_warn "Invalid value. Using CRF 32."
       STEP12_AVIF_CRF=32
     fi
-    log_info "Step 12 settings: AVIF, CRF ${STEP12_AVIF_CRF}."
+    log_info "Step 8 settings: AVIF, CRF ${STEP12_AVIF_CRF}."
   else
     if ! ensure_cwebp_ready; then
       log_warn "cwebp unavailable; falling back to AVIF (CRF 32)."
@@ -3103,7 +3103,7 @@ choose_image_recompress_options() {
       log_warn "Invalid value. Using quality 80."
       STEP12_WEBP_QUALITY=80
     fi
-    log_info "Step 12 settings: WebP, quality ${STEP12_WEBP_QUALITY}."
+    log_info "Step 8 settings: WebP, quality ${STEP12_WEBP_QUALITY}."
   fi
 }
 
@@ -3111,7 +3111,7 @@ choose_av1_options() {
   local crf preset
 
   ui_box_top
-  ui_box_line "STEP 14  -  RE-ENCODE VIDEOS TO AV1" "$C_BOLD$C_WHITE"
+  ui_box_line "STEP 10  -  RE-ENCODE VIDEOS TO AV1" "$C_BOLD$C_WHITE"
   ui_box_sep
   ui_box_line "  CRF    lower = better quality, larger file"
   ui_box_line "  Preset lower = slower encode, smaller file"
@@ -3132,7 +3132,7 @@ choose_av1_options() {
     log_warn "Invalid value. Using preset 6."
     STEP14_AV1_PRESET=6
   fi
-  log_info "Step 14 settings: AV1 CRF ${STEP14_AV1_CRF}, preset ${STEP14_AV1_PRESET}, audio Opus 96k."
+  log_info "Step 10 settings: AV1 CRF ${STEP14_AV1_CRF}, preset ${STEP14_AV1_PRESET}, audio Opus 96k."
 }
 
 main() {
@@ -3149,7 +3149,7 @@ main() {
   ui_box_top
   ui_box_line "SELECT STEPS TO RUN" "$C_BOLD$C_WHITE"
   ui_box_sep
-  ui_box_line "$(printf '  %2s   %s' "0" "Core cleanup (steps 1-7)")"
+  ui_box_line "$(printf '  %2s   %s' "0" "Core cleanup (steps 1-10)")"
   for num in "${STEP_ORDER[@]}"; do
     ui_box_line "$(printf '  %2d   %s' "$num" "$(step_description "$num")")"
   done
@@ -3158,7 +3158,7 @@ main() {
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
-    selected=(1 2 3 4 5 6 7)
+    selected=(1 2 3 4 5 6 7 8 9 10)
   else
     IFS=',' read -r -a raw <<< "$input"
     for token in "${raw[@]+"${raw[@]}"}"; do
@@ -3226,11 +3226,11 @@ main() {
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
     case "$num" in
       4) choose_resize_height ;;
-      8) choose_step3_upscale_options ;;
-      9) choose_step8_trim_seconds ;;
-      10) choose_step9_trim_end_seconds ;;
-      12) choose_image_recompress_options ;;
-      14) choose_av1_options ;;
+      8) choose_image_recompress_options ;;
+      10) choose_av1_options ;;
+      11) choose_step3_upscale_options ;;
+      12) choose_step8_trim_seconds ;;
+      13) choose_step9_trim_end_seconds ;;
     esac
   done
 
