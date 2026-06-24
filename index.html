@@ -29073,7 +29073,112 @@ function applyAspectRatioStorageToCurrentWorkspace() {
   return removed;
 }
 
+// Extension-agnostic key for a file's relPath: directory + basename without
+// its extension, lowercased for case-insensitive filesystems. Used to keep
+// per-file metadata attached when a file is re-encoded to a different format
+// (e.g. clean.sh turning foo.webm into foo.mp4, or foo.png into foo.avif),
+// which changes the extension and therefore the relPath the metadata was
+// keyed under.
+function relPathExtensionAgnosticStem(relPath) {
+  const key = normalizeWorkspaceRelPath(relPath);
+  if (!key) return "";
+  const slash = key.lastIndexOf("/");
+  const dir = slash >= 0 ? key.slice(0, slash + 1) : "";
+  const base = slash >= 0 ? key.slice(slash + 1) : key;
+  const dot = base.lastIndexOf(".");
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  return (dir + stem).toLowerCase();
+}
+
+// Re-attach orphaned per-file metadata (custom thumbnail crop, custom video
+// thumbnail time, cached aspect ratio) to files whose extension changed since
+// the metadata was written. An entry is orphaned when no current file lives at
+// its exact relPath; we move it onto the current file sharing the same
+// extension-agnostic stem, but only when that match is unambiguous (exactly one
+// current file with the stem, exactly one orphan claiming it, and the target
+// has no metadata of its own to clobber). Runs once per workspace load and is
+// cheap when nothing was renamed (it bails before indexing files if there are
+// no orphans).
+function reconcileFileMetadataExtensions() {
+  if (!WS || !WS.meta) return;
+  const maps = [
+    { map: WS.meta.fileThumbCrop, doc: META_DOC_IDS.thumbnails },
+    { map: WS.meta.videoThumbTime, doc: META_DOC_IDS.thumbnails },
+    { map: WS.meta.aspectRatios, doc: META_DOC_IDS.aspectRatios },
+  ].filter((entry) => entry.map instanceof Map && entry.map.size);
+  if (!maps.length) return;
+
+  // Authoritative set of files that currently exist, from every index that may
+  // be populated (loaded records and the deferred catalog location index).
+  const currentRelPaths = new Set();
+  const addRel = (rp) => {
+    const key = normalizeWorkspaceRelPath(rp);
+    if (key) currentRelPaths.add(key);
+  };
+  if (WS.fileById instanceof Map) {
+    for (const rec of WS.fileById.values()) if (rec) addRel(rec.relPath);
+  }
+  if (WS.catalog && WS.catalog.fileLocationsByRelPath instanceof Map) {
+    for (const rp of WS.catalog.fileLocationsByRelPath.keys()) addRel(rp);
+  }
+  if (!currentRelPaths.size) return;
+
+  // Cheap exit when no metadata is orphaned (the common case after first run).
+  let hasOrphans = false;
+  for (const { map } of maps) {
+    for (const key of map.keys()) {
+      if (!currentRelPaths.has(normalizeWorkspaceRelPath(key))) {
+        hasOrphans = true;
+        break;
+      }
+    }
+    if (hasOrphans) break;
+  }
+  if (!hasOrphans) return;
+
+  // Index current files by extension-agnostic stem. Stems shared by more than
+  // one current file are ambiguous and excluded so metadata never lands on the
+  // wrong file.
+  const stemToRel = new Map();
+  const ambiguousStems = new Set();
+  for (const rp of currentRelPaths) {
+    const stem = relPathExtensionAgnosticStem(rp);
+    if (!stem) continue;
+    if (stemToRel.has(stem)) {
+      ambiguousStems.add(stem);
+      continue;
+    }
+    stemToRel.set(stem, rp);
+  }
+
+  const dirtyDocs = new Set();
+  for (const { map, doc } of maps) {
+    // Group candidate orphans by the target file they would move to, so a
+    // target claimed by multiple orphans can be rejected as ambiguous.
+    const byTarget = new Map();
+    for (const [key, value] of map.entries()) {
+      if (currentRelPaths.has(normalizeWorkspaceRelPath(key))) continue;
+      const stem = relPathExtensionAgnosticStem(key);
+      if (!stem || ambiguousStems.has(stem)) continue;
+      const target = stemToRel.get(stem);
+      if (!target || map.has(target)) continue;
+      if (!byTarget.has(target)) byTarget.set(target, []);
+      byTarget.get(target).push([key, value]);
+    }
+    for (const [target, claims] of byTarget.entries()) {
+      if (claims.length !== 1) continue;
+      const [oldKey, value] = claims[0];
+      map.delete(oldKey);
+      map.set(target, value);
+      dirtyDocs.add(doc);
+    }
+  }
+
+  for (const doc of dirtyDocs) metaMarkDirty(doc);
+}
+
 async function finalizeAspectRatiosAndStorageForLoadedWorkspace(opts = null) {
+  reconcileFileMetadataExtensions();
   if (!aspectRatioMetadataEnabled()) return 0;
   const optionsArg = opts && typeof opts === "object" ? opts : {};
   const options = WS.meta && WS.meta.options ? WS.meta.options : null;
