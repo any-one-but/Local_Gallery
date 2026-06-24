@@ -29090,23 +29090,38 @@ function relPathExtensionAgnosticStem(relPath) {
   return (dir + stem).toLowerCase();
 }
 
-// Re-attach orphaned per-file metadata (custom thumbnail crop, custom video
-// thumbnail time, cached aspect ratio) to files whose extension changed since
-// the metadata was written. An entry is orphaned when no current file lives at
-// its exact relPath; we move it onto the current file sharing the same
-// extension-agnostic stem, but only when that match is unambiguous (exactly one
-// current file with the stem, exactly one orphan claiming it, and the target
-// has no metadata of its own to clobber). Runs once per workspace load and is
-// cheap when nothing was renamed (it bails before indexing files if there are
-// no orphans).
+// Re-attach orphaned per-file metadata to files whose extension changed since
+// the metadata was written (e.g. clean.sh re-encoding foo.png -> foo.avif).
+// Two shapes of metadata reference a file relPath and break on a rename:
+//   * relPath-KEYED stores  - fileThumbCrop, videoThumbTime, aspectRatios
+//   * relPath-VALUED stores  - dirThumbPresets / pendingDirThumbPresets and
+//     tagThumbPresets, where a folder or tag pins a specific file as its
+//     thumbnail. (Folder presets may also hold none/rotate sentinels, which
+//     are not relPaths and are left untouched.)
+// A reference is orphaned when no current file lives at its exact relPath; we
+// retarget it onto the current file sharing the same extension-agnostic stem,
+// but only when that match is unambiguous: exactly one current file with the
+// stem, exactly one orphan claiming it, and (for keyed stores) no existing
+// metadata on the target to clobber. Runs once per workspace load and bails
+// before indexing files when nothing is orphaned.
 function reconcileFileMetadataExtensions() {
   if (!WS || !WS.meta) return;
-  const maps = [
-    { map: WS.meta.fileThumbCrop, doc: META_DOC_IDS.thumbnails },
-    { map: WS.meta.videoThumbTime, doc: META_DOC_IDS.thumbnails },
-    { map: WS.meta.aspectRatios, doc: META_DOC_IDS.aspectRatios },
+  const meta = WS.meta;
+
+  const keyMaps = [
+    { map: meta.fileThumbCrop, doc: META_DOC_IDS.thumbnails },
+    { map: meta.videoThumbTime, doc: META_DOC_IDS.thumbnails },
+    { map: meta.aspectRatios, doc: META_DOC_IDS.aspectRatios },
   ].filter((entry) => entry.map instanceof Map && entry.map.size);
-  if (!maps.length) return;
+  const valueMaps = [
+    { map: meta.dirThumbPresets, doc: META_DOC_IDS.thumbnails },
+    { map: meta.pendingDirThumbPresets, doc: META_DOC_IDS.thumbnails },
+    { map: meta.tagThumbPresets, doc: META_DOC_IDS.thumbnails },
+  ].filter((entry) => entry.map instanceof Map && entry.map.size);
+  if (!keyMaps.length && !valueMaps.length) return;
+
+  const isPresetSentinel = (raw) =>
+    raw === FOLDER_THUMB_NONE_SENTINEL || raw === FOLDER_THUMB_ROTATE_SENTINEL;
 
   // Authoritative set of files that currently exist, from every index that may
   // be populated (loaded records and the deferred catalog location index).
@@ -29123,18 +29138,24 @@ function reconcileFileMetadataExtensions() {
   }
   if (!currentRelPaths.size) return;
 
-  // Cheap exit when no metadata is orphaned (the common case after first run).
-  let hasOrphans = false;
-  for (const { map } of maps) {
+  // Collect every orphaned relPath referenced by any store: keys of the keyed
+  // stores, values of the valued stores (excluding sentinels).
+  const orphanRelPaths = new Set();
+  for (const { map } of keyMaps) {
     for (const key of map.keys()) {
-      if (!currentRelPaths.has(normalizeWorkspaceRelPath(key))) {
-        hasOrphans = true;
-        break;
-      }
+      const norm = normalizeWorkspaceRelPath(key);
+      if (norm && !currentRelPaths.has(norm)) orphanRelPaths.add(norm);
     }
-    if (hasOrphans) break;
   }
-  if (!hasOrphans) return;
+  for (const { map } of valueMaps) {
+    for (const value of map.values()) {
+      const raw = String(value || "");
+      if (isPresetSentinel(raw)) continue;
+      const norm = normalizeWorkspaceRelPath(raw);
+      if (norm && !currentRelPaths.has(norm)) orphanRelPaths.add(norm);
+    }
+  }
+  if (!orphanRelPaths.size) return;
 
   // Index current files by extension-agnostic stem. Stems shared by more than
   // one current file are ambiguous and excluded so metadata never lands on the
@@ -29151,25 +29172,48 @@ function reconcileFileMetadataExtensions() {
     stemToRel.set(stem, rp);
   }
 
+  // Resolve each orphan to a unique current file via its stem, rejecting any
+  // target claimed by more than one orphan.
+  const targetClaims = new Map();
+  for (const orphan of orphanRelPaths) {
+    const stem = relPathExtensionAgnosticStem(orphan);
+    if (!stem || ambiguousStems.has(stem)) continue;
+    const target = stemToRel.get(stem);
+    if (!target) continue;
+    if (!targetClaims.has(target)) targetClaims.set(target, []);
+    targetClaims.get(target).push(orphan);
+  }
+  const renameMap = new Map();
+  for (const [target, claims] of targetClaims.entries()) {
+    if (claims.length === 1) renameMap.set(claims[0], target);
+  }
+  if (!renameMap.size) return;
+
   const dirtyDocs = new Set();
-  for (const { map, doc } of maps) {
-    // Group candidate orphans by the target file they would move to, so a
-    // target claimed by multiple orphans can be rejected as ambiguous.
-    const byTarget = new Map();
-    for (const [key, value] of map.entries()) {
-      if (currentRelPaths.has(normalizeWorkspaceRelPath(key))) continue;
-      const stem = relPathExtensionAgnosticStem(key);
-      if (!stem || ambiguousStems.has(stem)) continue;
-      const target = stemToRel.get(stem);
+
+  // Re-key the relPath-keyed stores (never clobber existing target metadata).
+  for (const { map, doc } of keyMaps) {
+    const moves = [];
+    for (const key of map.keys()) {
+      const target = renameMap.get(normalizeWorkspaceRelPath(key));
       if (!target || map.has(target)) continue;
-      if (!byTarget.has(target)) byTarget.set(target, []);
-      byTarget.get(target).push([key, value]);
+      moves.push([key, target]);
     }
-    for (const [target, claims] of byTarget.entries()) {
-      if (claims.length !== 1) continue;
-      const [oldKey, value] = claims[0];
+    for (const [oldKey, target] of moves) {
+      map.set(target, map.get(oldKey));
       map.delete(oldKey);
-      map.set(target, value);
+      dirtyDocs.add(doc);
+    }
+  }
+
+  // Retarget the relPath-valued stores (folder and tag thumbnail pins).
+  for (const { map, doc } of valueMaps) {
+    for (const [storeKey, value] of map.entries()) {
+      const raw = String(value || "");
+      if (isPresetSentinel(raw)) continue;
+      const target = renameMap.get(normalizeWorkspaceRelPath(raw));
+      if (!target) continue;
+      map.set(storeKey, target);
       dirtyDocs.add(doc);
     }
   }
