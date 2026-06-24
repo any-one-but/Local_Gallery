@@ -3062,79 +3062,6 @@ step13_reencode_videos_av1() {
   summary_item "Approx. saved" "$(human_size "$saved_bytes")"
 }
 
-choose_image_recompress_options() {
-  local choice q
-
-  ui_box_top
-  ui_box_line "STEP 8  -  RECOMPRESS IMAGES" "$C_BOLD$C_WHITE"
-  ui_box_sep
-  ui_box_line "  1   AVIF  (smallest, slower)  (default)"
-  ui_box_line "  2   WebP  (faster, needs cwebp)"
-  ui_box_bottom
-  read -r -p "$(ui_prompt 'Select format [1]')" choice
-  choice="${choice:-1}"
-  case "$choice" in
-    2) STEP12_IMAGE_FORMAT="webp" ;;
-    *) STEP12_IMAGE_FORMAT="avif" ;;
-  esac
-
-  if [[ "$STEP12_IMAGE_FORMAT" == "avif" ]]; then
-    read -r -p "$(ui_prompt 'AVIF quality (CRF 0-63, lower = better) [32]')" q
-    q="${q:-32}"
-    if is_int "$q" && [[ "$q" -ge 0 && "$q" -le 63 ]]; then
-      STEP12_AVIF_CRF="$q"
-    else
-      log_warn "Invalid value. Using CRF 32."
-      STEP12_AVIF_CRF=32
-    fi
-    log_info "Step 8 settings: AVIF, CRF ${STEP12_AVIF_CRF}."
-  else
-    if ! ensure_cwebp_ready; then
-      log_warn "cwebp unavailable; falling back to AVIF (CRF 32)."
-      STEP12_IMAGE_FORMAT="avif"
-      STEP12_AVIF_CRF=32
-      return 0
-    fi
-    read -r -p "$(ui_prompt 'WebP quality (0-100, higher = better) [80]')" q
-    q="${q:-80}"
-    if is_int "$q" && [[ "$q" -ge 0 && "$q" -le 100 ]]; then
-      STEP12_WEBP_QUALITY="$q"
-    else
-      log_warn "Invalid value. Using quality 80."
-      STEP12_WEBP_QUALITY=80
-    fi
-    log_info "Step 8 settings: WebP, quality ${STEP12_WEBP_QUALITY}."
-  fi
-}
-
-choose_av1_options() {
-  local crf preset
-
-  ui_box_top
-  ui_box_line "STEP 10  -  RE-ENCODE VIDEOS TO AV1" "$C_BOLD$C_WHITE"
-  ui_box_sep
-  ui_box_line "  CRF    lower = better quality, larger file"
-  ui_box_line "  Preset lower = slower encode, smaller file"
-  ui_box_bottom
-  read -r -p "$(ui_prompt 'AV1 quality (CRF 0-63) [32]')" crf
-  crf="${crf:-32}"
-  if is_int "$crf" && [[ "$crf" -ge 0 && "$crf" -le 63 ]]; then
-    STEP14_AV1_CRF="$crf"
-  else
-    log_warn "Invalid value. Using CRF 32."
-    STEP14_AV1_CRF=32
-  fi
-  read -r -p "$(ui_prompt 'SVT-AV1 preset (0-13) [6]')" preset
-  preset="${preset:-6}"
-  if is_int "$preset" && [[ "$preset" -ge 0 && "$preset" -le 13 ]]; then
-    STEP14_AV1_PRESET="$preset"
-  else
-    log_warn "Invalid value. Using preset 6."
-    STEP14_AV1_PRESET=6
-  fi
-  log_info "Step 10 settings: AV1 CRF ${STEP14_AV1_CRF}, preset ${STEP14_AV1_PRESET}, audio Opus 96k."
-}
-
 main() {
   local input token confirm
   local selected=() raw=() invalid=()
@@ -3226,8 +3153,6 @@ main() {
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
     case "$num" in
       4) choose_resize_height ;;
-      8) choose_image_recompress_options ;;
-      10) choose_av1_options ;;
       11) choose_step3_upscale_options ;;
       12) choose_step8_trim_seconds ;;
       13) choose_step9_trim_end_seconds ;;
