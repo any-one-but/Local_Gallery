@@ -16,7 +16,12 @@ STEP3_MEDIA_MODE="images"
 STEP3_CPU_FALLBACK=1
 STEP8_TRIM_SECONDS=10
 STEP9_TRIM_END_SECONDS=10
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11)
+STEP12_IMAGE_FORMAT="avif"
+STEP12_AVIF_CRF=32
+STEP12_WEBP_QUALITY=80
+STEP14_AV1_CRF=32
+STEP14_AV1_PRESET=6
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13 14)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -582,6 +587,9 @@ step_description() {
     9) printf "Trim video starts" ;;
     10) printf "Trim video ends" ;;
     11) printf "Extract MP3 audio from videos" ;;
+    12) printf "Recompress images (AVIF/WebP)" ;;
+    13) printf "Convert animated GIFs to MP4" ;;
+    14) printf "Re-encode videos to AV1" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -599,6 +607,9 @@ step_function_name() {
     9) printf "step8_trim_video_lead" ;;
     10) printf "step9_trim_video_tail" ;;
     11) printf "step10_extract_video_audio_mp3" ;;
+    12) printf "step11_recompress_images" ;;
+    13) printf "step12_convert_gifs_to_video" ;;
+    14) printf "step13_reencode_videos_av1" ;;
     *) printf "" ;;
   esac
 }
@@ -661,6 +672,30 @@ ensure_step_requirements() {
       require_cmd ffprobe
       ;;
     11)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      ;;
+    12)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      if [[ "$STEP12_IMAGE_FORMAT" == "webp" ]]; then
+        ensure_cwebp_ready || return 1
+      fi
+      ;;
+    13)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      ;;
+    14)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
@@ -2692,6 +2727,414 @@ choose_resize_height() {
   log_info "Resize max height set to ${MAX_MEDIA_HEIGHT}px."
 }
 
+# ---------------------------------------------------------------------------
+# Steps 12-14: extra size-reduction passes (image recompression, GIF->MP4,
+# AV1 video re-encode). All formats chosen here (AVIF, WebP, AV1, Opus, H.264)
+# play natively in the Electron/Chromium viewer. Each pass is lossy and only
+# replaces an original when the new file is actually smaller, so re-running is
+# safe and never bloats already-optimized media.
+# ---------------------------------------------------------------------------
+
+# Byte size of a file (0 if it cannot be read).
+file_size() {
+  stat -f%z "$1" 2>/dev/null || printf "0"
+}
+
+# Human-readable byte count for summaries.
+human_size() {
+  local b="${1:-0}"
+  if ! is_int "$b"; then
+    printf "n/a"
+    return
+  fi
+  awk -v b="$b" 'BEGIN {
+    split("B KB MB GB TB", u, " ");
+    i = 1;
+    while (b >= 1024 && i < 5) { b /= 1024; i++ }
+    if (i == 1) printf "%d %s", b, u[i]; else printf "%.1f %s", b, u[i]
+  }'
+}
+
+# Offer to install cwebp (Homebrew formula: webp) for the WebP recompress path.
+ensure_cwebp_ready() {
+  local ans
+  if command -v cwebp >/dev/null 2>&1; then
+    return 0
+  fi
+  ui_section "CWEBP REQUIRED"
+  printf "   WebP recompression needs the 'cwebp' tool (Homebrew formula: webp).\n"
+  read -r -p "$(ui_prompt 'Install cwebp via Homebrew now? [Y/n]')" ans
+  ans="${ans:-Y}"
+  if [[ ! "$ans" =~ ^[Yy]$ ]]; then
+    log_err "Cannot run WebP recompression without cwebp."
+    return 1
+  fi
+  load_homebrew_env || true
+  if ! command -v brew >/dev/null 2>&1; then
+    log_err "Homebrew not available; cannot install cwebp."
+    return 1
+  fi
+  brew install webp || return 1
+  load_homebrew_env || true
+  command -v cwebp >/dev/null 2>&1
+}
+
+# Step 12: re-encode still images to AVIF (default) or WebP. Originals are
+# replaced only when the recompressed file is smaller; same-format files and
+# files that don't shrink are left untouched.
+step11_recompress_images() {
+  local files=()
+  local file ext base out tmp target oldsize newsize enc_ok
+  local i total progress=0
+  local converted=0 skipped_same=0 nogain=0 skipped_existing=0 failed=0
+  local saved_bytes=0
+
+  target="$STEP12_IMAGE_FORMAT"
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(
+    find . -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \
+                      -o -iname "*.bmp" -o -iname "*.tif" -o -iname "*.tiff" \
+                      -o -iname "*.webp" -o -iname "*.avif" \) -print0
+  )
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No images found to recompress."
+    return 0
+  fi
+
+  log_info "Recompressing $total image(s) to ${target}. Originals are replaced only when smaller."
+
+  for (( i=0; i<total; i++ )); do
+    file="${files[$i]}"
+    ext=$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')
+    base="${file%.*}"
+
+    if [[ "$ext" == "$target" ]]; then
+      skipped_same=$((skipped_same + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 12 Recompress" "$progress" "$total"
+      continue
+    fi
+
+    out="${base}.${target}"
+    if [[ -e "$out" && "$out" != "$file" ]]; then
+      # A different file already owns the target name; don't clobber it.
+      skipped_existing=$((skipped_existing + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 12 Recompress" "$progress" "$total"
+      continue
+    fi
+
+    tmp="${base}.recompress-tmp.$$.${target}"
+    rm -f "$tmp"
+
+    enc_ok=1
+    if [[ "$target" == "avif" ]]; then
+      ffmpeg -hide_banner -loglevel error -y -i "$file" -frames:v 1 \
+        -vf "crop=trunc(iw/2)*2:trunc(ih/2)*2" \
+        -c:v libsvtav1 -crf "$STEP12_AVIF_CRF" -f avif "$tmp" >/dev/null 2>&1 || enc_ok=0
+    else
+      cwebp -quiet -q "$STEP12_WEBP_QUALITY" "$file" -o "$tmp" >/dev/null 2>&1 || enc_ok=0
+    fi
+
+    if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
+      rm -f "$tmp"
+      failed=$((failed + 1))
+      log_err "Recompress failed: $file"
+      progress=$((progress + 1))
+      progress_draw "Step 12 Recompress" "$progress" "$total"
+      continue
+    fi
+
+    oldsize=$(file_size "$file")
+    newsize=$(file_size "$tmp")
+    if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
+      rm -f "$tmp"
+      nogain=$((nogain + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 12 Recompress" "$progress" "$total"
+      continue
+    fi
+
+    mv -f "$tmp" "$out"
+    if [[ "$out" != "$file" ]]; then
+      rm -f "$file"
+    fi
+    if is_int "$oldsize" && is_int "$newsize"; then
+      saved_bytes=$(( saved_bytes + oldsize - newsize ))
+    fi
+    converted=$((converted + 1))
+    progress=$((progress + 1))
+    progress_draw "Step 12 Recompress" "$progress" "$total"
+  done
+
+  log_info "Step 12 recompress summary:"
+  summary_item "Format" "$target"
+  summary_item "Converted" "$converted"
+  summary_item "No size gain (kept)" "$nogain"
+  summary_item "Already ${target}" "$skipped_same"
+  summary_item "Name conflict (kept)" "$skipped_existing"
+  summary_item "Failed" "$failed"
+  summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+}
+
+# Step 13: convert animated GIFs to muted H.264 MP4 (huge size win). Static
+# single-frame GIFs are left as-is.
+step12_convert_gifs_to_video() {
+  local files=()
+  local file base out tmp frames oldsize newsize enc_ok
+  local i total progress=0
+  local converted=0 skipped_static=0 nogain=0 skipped_existing=0 failed=0
+  local saved_bytes=0
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(find . -type f -iname "*.gif" -print0)
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No GIF files found."
+    return 0
+  fi
+
+  log_info "Evaluating $total GIF(s). Animated GIFs become muted MP4; static GIFs are skipped."
+
+  for (( i=0; i<total; i++ )); do
+    file="${files[$i]}"
+    base="${file%.*}"
+    out="${base}.mp4"
+
+    frames=$(ffprobe -v error -select_streams v:0 -count_frames \
+      -show_entries stream=nb_read_frames -of csv=p=0 "$file" 2>/dev/null | head -n 1)
+    if ! is_int "$frames" || [[ "$frames" -le 1 ]]; then
+      skipped_static=$((skipped_static + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+      continue
+    fi
+
+    if [[ -e "$out" ]]; then
+      skipped_existing=$((skipped_existing + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+      continue
+    fi
+
+    tmp="${base}.gifconv-tmp.$$.mp4"
+    rm -f "$tmp"
+    enc_ok=1
+    ffmpeg -hide_banner -loglevel error -y -i "$file" \
+      -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -pix_fmt yuv420p \
+      -c:v libx264 -crf 23 -preset medium -an -movflags +faststart "$tmp" >/dev/null 2>&1 || enc_ok=0
+
+    if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
+      rm -f "$tmp"
+      failed=$((failed + 1))
+      log_err "GIF conversion failed: $file"
+      progress=$((progress + 1))
+      progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+      continue
+    fi
+
+    oldsize=$(file_size "$file")
+    newsize=$(file_size "$tmp")
+    if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
+      rm -f "$tmp"
+      nogain=$((nogain + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+      continue
+    fi
+
+    mv -f "$tmp" "$out"
+    rm -f "$file"
+    if is_int "$oldsize" && is_int "$newsize"; then
+      saved_bytes=$(( saved_bytes + oldsize - newsize ))
+    fi
+    converted=$((converted + 1))
+    progress=$((progress + 1))
+    progress_draw "Step 13 GIF-MP4" "$progress" "$total"
+  done
+
+  log_info "Step 13 GIF conversion summary:"
+  summary_item "Converted to MP4" "$converted"
+  summary_item "Static (skipped)" "$skipped_static"
+  summary_item "No size gain (kept)" "$nogain"
+  summary_item "MP4 exists (skipped)" "$skipped_existing"
+  summary_item "Failed" "$failed"
+  summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+}
+
+# Step 14: re-encode videos to AV1 (libsvtav1) with Opus audio in an MP4
+# container. Already-AV1 videos are skipped; originals are replaced only when
+# the AV1 version is smaller.
+step13_reencode_videos_av1() {
+  local files=()
+  local file ext base out tmp codec oldsize newsize enc_ok
+  local i total progress=0
+  local converted=0 skipped_av1=0 nogain=0 skipped_existing=0 failed=0
+  local saved_bytes=0
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(
+    find . -type f \( -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" \
+                      -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.avi" \) -print0
+  )
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No videos found to re-encode."
+    return 0
+  fi
+
+  log_info "Re-encoding $total video(s) to AV1 (CRF ${STEP14_AV1_CRF}, preset ${STEP14_AV1_PRESET}). Originals replaced only when smaller."
+
+  for (( i=0; i<total; i++ )); do
+    file="${files[$i]}"
+    ext=$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')
+    base="${file%.*}"
+    out="${base}.mp4"
+
+    codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
+      -of csv=p=0 "$file" 2>/dev/null | head -n 1)
+    if [[ "$codec" == "av1" ]]; then
+      skipped_av1=$((skipped_av1 + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 14 AV1" "$progress" "$total"
+      continue
+    fi
+
+    if [[ -e "$out" && "$out" != "$file" ]]; then
+      skipped_existing=$((skipped_existing + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 14 AV1" "$progress" "$total"
+      continue
+    fi
+
+    tmp="${base}.av1-tmp.$$.mp4"
+    rm -f "$tmp"
+    enc_ok=1
+    ffmpeg -hide_banner -loglevel error -y -i "$file" -map 0:v:0 -map 0:a? \
+      -c:v libsvtav1 -crf "$STEP14_AV1_CRF" -preset "$STEP14_AV1_PRESET" \
+      -c:a libopus -b:a 96k -movflags +faststart "$tmp" >/dev/null 2>&1 || enc_ok=0
+
+    if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
+      rm -f "$tmp"
+      failed=$((failed + 1))
+      log_err "AV1 re-encode failed: $file"
+      progress=$((progress + 1))
+      progress_draw "Step 14 AV1" "$progress" "$total"
+      continue
+    fi
+
+    oldsize=$(file_size "$file")
+    newsize=$(file_size "$tmp")
+    if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
+      rm -f "$tmp"
+      nogain=$((nogain + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 14 AV1" "$progress" "$total"
+      continue
+    fi
+
+    mv -f "$tmp" "$out"
+    if [[ "$out" != "$file" ]]; then
+      rm -f "$file"
+    fi
+    if is_int "$oldsize" && is_int "$newsize"; then
+      saved_bytes=$(( saved_bytes + oldsize - newsize ))
+    fi
+    converted=$((converted + 1))
+    progress=$((progress + 1))
+    progress_draw "Step 14 AV1" "$progress" "$total"
+  done
+
+  log_info "Step 14 AV1 re-encode summary:"
+  summary_item "Re-encoded" "$converted"
+  summary_item "Already AV1" "$skipped_av1"
+  summary_item "No size gain (kept)" "$nogain"
+  summary_item "Name conflict (kept)" "$skipped_existing"
+  summary_item "Failed" "$failed"
+  summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+}
+
+choose_image_recompress_options() {
+  local choice q
+
+  ui_box_top
+  ui_box_line "STEP 12  -  RECOMPRESS IMAGES" "$C_BOLD$C_WHITE"
+  ui_box_sep
+  ui_box_line "  1   AVIF  (smallest, slower)  (default)"
+  ui_box_line "  2   WebP  (faster, needs cwebp)"
+  ui_box_bottom
+  read -r -p "$(ui_prompt 'Select format [1]')" choice
+  choice="${choice:-1}"
+  case "$choice" in
+    2) STEP12_IMAGE_FORMAT="webp" ;;
+    *) STEP12_IMAGE_FORMAT="avif" ;;
+  esac
+
+  if [[ "$STEP12_IMAGE_FORMAT" == "avif" ]]; then
+    read -r -p "$(ui_prompt 'AVIF quality (CRF 0-63, lower = better) [32]')" q
+    q="${q:-32}"
+    if is_int "$q" && [[ "$q" -ge 0 && "$q" -le 63 ]]; then
+      STEP12_AVIF_CRF="$q"
+    else
+      log_warn "Invalid value. Using CRF 32."
+      STEP12_AVIF_CRF=32
+    fi
+    log_info "Step 12 settings: AVIF, CRF ${STEP12_AVIF_CRF}."
+  else
+    if ! ensure_cwebp_ready; then
+      log_warn "cwebp unavailable; falling back to AVIF (CRF 32)."
+      STEP12_IMAGE_FORMAT="avif"
+      STEP12_AVIF_CRF=32
+      return 0
+    fi
+    read -r -p "$(ui_prompt 'WebP quality (0-100, higher = better) [80]')" q
+    q="${q:-80}"
+    if is_int "$q" && [[ "$q" -ge 0 && "$q" -le 100 ]]; then
+      STEP12_WEBP_QUALITY="$q"
+    else
+      log_warn "Invalid value. Using quality 80."
+      STEP12_WEBP_QUALITY=80
+    fi
+    log_info "Step 12 settings: WebP, quality ${STEP12_WEBP_QUALITY}."
+  fi
+}
+
+choose_av1_options() {
+  local crf preset
+
+  ui_box_top
+  ui_box_line "STEP 14  -  RE-ENCODE VIDEOS TO AV1" "$C_BOLD$C_WHITE"
+  ui_box_sep
+  ui_box_line "  CRF    lower = better quality, larger file"
+  ui_box_line "  Preset lower = slower encode, smaller file"
+  ui_box_bottom
+  read -r -p "$(ui_prompt 'AV1 quality (CRF 0-63) [32]')" crf
+  crf="${crf:-32}"
+  if is_int "$crf" && [[ "$crf" -ge 0 && "$crf" -le 63 ]]; then
+    STEP14_AV1_CRF="$crf"
+  else
+    log_warn "Invalid value. Using CRF 32."
+    STEP14_AV1_CRF=32
+  fi
+  read -r -p "$(ui_prompt 'SVT-AV1 preset (0-13) [6]')" preset
+  preset="${preset:-6}"
+  if is_int "$preset" && [[ "$preset" -ge 0 && "$preset" -le 13 ]]; then
+    STEP14_AV1_PRESET="$preset"
+  else
+    log_warn "Invalid value. Using preset 6."
+    STEP14_AV1_PRESET=6
+  fi
+  log_info "Step 14 settings: AV1 CRF ${STEP14_AV1_CRF}, preset ${STEP14_AV1_PRESET}, audio Opus 96k."
+}
+
 main() {
   local input token confirm
   local selected=() raw=() invalid=()
@@ -2756,7 +3199,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 11 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 14 ]]; then
       log_warn "Skipping out-of-range step: $num"
     fi
   done
@@ -2786,6 +3229,8 @@ main() {
       8) choose_step3_upscale_options ;;
       9) choose_step8_trim_seconds ;;
       10) choose_step9_trim_end_seconds ;;
+      12) choose_image_recompress_options ;;
+      14) choose_av1_options ;;
     esac
   done
 
