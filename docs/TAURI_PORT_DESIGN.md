@@ -134,13 +134,20 @@ Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
   broader runtime QA of navigation/rename/trash in the real UI (I can't drive the
   GUI headlessly — dev hooks cover open + auto-reopen only).
 
-### Phase 3 — Media display (images + video playback)
+### Phase 3 — Media display (images + video playback) ✅ (done)
 *Goal: images render and videos play in the preview/viewer.*
-- Replace `ensureMediaUrl(rec)` with `convertFileSrc(path)` (asset protocol;
-  already enabled in `tauri.conf.json`). Confirm the asset protocol serves
-  **HTTP range requests** so `<video>` seeking/scrubbing works.
-- Tighten `assetProtocol.scope` to the open root (from the current `**`).
-- **Done when:** images show at full res and videos play + seek in the viewer.
+- `ensureMediaUrl` serves media via the asset protocol (`convertFileSrc`) under
+  Tauri — wired in Phase 2; all `getPassivePreviewSrcForRecord`/`<video>.src`
+  paths flow through it.
+- **Asset scope hardened:** config scope is now `[]` (deny-all); the open flow
+  grants just the opened root at runtime (`allow_media_scope` →
+  `asset_protocol_scope().allow_directory`), so the WebView can't read arbitrary
+  files. Called from the shim's `rememberRoot` (awaited before render).
+- **Verified end-to-end:** with the test library, a media file fetches
+  `full=200/10777B` (loads through the restricted scope) and `range=206`
+  (Range request honored → video seeking works).
+- Remaining (minor): a negative scope test (out-of-root file blocked) and full
+  visual QA of the viewer are user-side.
 
 ### Phase 4 — Thumbnails wired into the UI  ⟵ the visible payoff
 *Goal: image and video thumbnails render as cheap `<img>`, fast.*

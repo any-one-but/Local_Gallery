@@ -144,6 +144,17 @@ pub fn touch_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Allow the asset protocol (convertFileSrc) to serve files under `path`. The
+/// config denies everything by default; the open flow calls this for the chosen
+/// library root so the WebView can only read the opened folder, not the whole
+/// disk.
+#[tauri::command]
+pub fn allow_media_scope(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    app.asset_protocol_scope()
+        .allow_directory(&path, true)
+        .map_err(|e| format!("allow_directory {path}: {e}"))
+}
+
 /// Move/rename a path. Backs the FS Access `handle.move(destDir, newName)` API,
 /// so rename and move-to-trash are instant native operations instead of a
 /// read-whole-file-through-IPC copy. Refuses to overwrite an existing target.

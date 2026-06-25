@@ -269,31 +269,63 @@
   TauriDirHandle.prototype.requestPermission = function () { return Promise.resolve("granted"); };
 
   function rememberRoot(absPath) {
-    try { invoke("save_last_root", { path: String(absPath || "") }); } catch (e) {}
+    var p = String(absPath || "");
+    try { invoke("save_last_root", { path: p }); } catch (e) {}
+    // Grant the asset protocol access to this library so media/thumbnails can
+    // load (the config denies everything by default). Must resolve before the
+    // workspace renders media; callers await openRoot which awaits this.
+    return Promise.resolve()
+      .then(function () { return invoke("allow_media_scope", { path: p }); })
+      .catch(function (e) { console.warn("[tauri-fs-shim] allow_media_scope failed", e); });
+  }
+
+  // Dev/test: confirm a media file loads through the asset protocol, including a
+  // Range request (which video seeking depends on). Returns a report string.
+  function assetSelfTest(filePath) {
+    var u = assetUrlOf(filePath);
+    var full = fetch(u).then(function (r) {
+      return r.arrayBuffer().then(function (b) {
+        return "full=" + r.status + "/" + b.byteLength + "B";
+      });
+    });
+    var ranged = fetch(u, { headers: { Range: "bytes=0-99" } }).then(function (r) {
+      return "range=" + r.status;
+    });
+    return Promise.all([full, ranged]).then(function (parts) {
+      return parts.join(" ");
+    });
+  }
+  function assetUrlOf(p) {
+    return window.__lg && window.__lg.assetUrl ? window.__lg.assetUrl(p) : p;
   }
 
   // --- Picker --------------------------------------------------------------
   window.showDirectoryPicker = function () {
     return invoke("pick_root").then(function (path) {
       if (!path) throw fsError("AbortError", "user cancelled");
-      rememberRoot(path);
-      return new TauriDirHandle(path, baseName(path));
+      // Grant asset-scope before the caller builds the workspace + renders media.
+      return rememberRoot(path).then(function () {
+        return new TauriDirHandle(path, baseName(path));
+      });
     });
   };
 
-  // Open a library by absolute path (used by the GUI-less dev hook and the
-  // auto-reopen-last-root boot routine).
+  // Open a library by absolute path (used by the GUI-less dev hook).
   window.__lg = window.__lg || {};
   window.__lg.openRoot = function (absPath) {
     if (typeof buildWorkspaceFromDirectoryHandle !== "function") {
       return Promise.reject(new Error("workspace builder not ready"));
     }
-    rememberRoot(absPath);
-    return buildWorkspaceFromDirectoryHandle(new TauriDirHandle(absPath, baseName(absPath)));
+    return rememberRoot(absPath).then(function () {
+      return buildWorkspaceFromDirectoryHandle(
+        new TauriDirHandle(absPath, baseName(absPath))
+      );
+    });
   };
   window.__lg.makeDirHandle = function (absPath) {
     return new TauriDirHandle(absPath, baseName(absPath));
   };
+  window.__lg.assetSelfTest = assetSelfTest;
 
   // (No auto-reopen on launch — the app starts with no library loaded, like the
   // Electron build. The last root is still remembered so a "reopen recent"

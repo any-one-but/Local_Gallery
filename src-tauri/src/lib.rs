@@ -235,6 +235,8 @@ clearInterval(t);window.__lg.openRoot(p).then(function(){{\
 var d=(typeof WS!=='undefined'&&WS.dirByPath)?WS.dirByPath.size:-1;\
 var f=(typeof WS!=='undefined'&&WS.fileById)?WS.fileById.size:-1;\
 window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot OK dirs='+d+' files='+f}});\
+return window.__lg.assetSelfTest(p+'/FolderA/img1.png').then(function(s){{\
+window.__TAURI__.core.invoke('dev_report',{{msg:'asset '+s}});}});\
 }}).catch(function(e){{window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot FAILED: '+(e&&e.message||e)}});}});\
 }}}},200);}})();"
                     );
@@ -260,7 +262,8 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot OK dirs='+d+' files='+
             fs::remove_path,
             fs::rename_path,
             fs::save_last_root,
-            fs::get_last_root
+            fs::get_last_root,
+            fs::allow_media_scope
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
