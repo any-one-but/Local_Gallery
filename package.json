@@ -8,8 +8,8 @@
     "release:patch": "node scripts/release-patch.js",
     "dist": "electron-builder",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:dev": "PATH=\"$HOME/.cargo/bin:$PATH\" tauri dev",
+    "tauri:build": "PATH=\"$HOME/.cargo/bin:$PATH\" tauri build"
   },
   "repository": {
     "type": "git",
