@@ -34,13 +34,23 @@ fn mtime_ms(md: &std::fs::Metadata) -> f64 {
 
 /// Native folder picker. Returns the chosen absolute path, or `None` if the
 /// user cancelled. Backs the `showDirectoryPicker` shim.
+///
+/// Must be `async` + `spawn_blocking`: a sync command runs on the main thread,
+/// and `blocking_pick_folder` would then block the very thread the native panel
+/// needs to pump events (macOS beachball / deadlock). Running the blocking pick
+/// on a blocking-pool thread lets the panel show on the free main thread.
 #[tauri::command]
-pub fn pick_root(app: tauri::AppHandle) -> Option<String> {
-    app.dialog()
-        .file()
-        .blocking_pick_folder()
-        .and_then(|p| p.into_path().ok())
-        .map(|p| p.to_string_lossy().into_owned())
+pub async fn pick_root(app: tauri::AppHandle) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .blocking_pick_folder()
+            .and_then(|p| p.into_path().ok())
+            .map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 /// List a directory's immediate children. JS does the media/hidden filtering;

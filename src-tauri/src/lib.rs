@@ -241,6 +241,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot OK dirs='+d+' files='+
                     builder = builder.initialization_script(script);
                 }
             }
+
             builder.build()?;
             Ok(())
         })

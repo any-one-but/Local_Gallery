@@ -295,35 +295,9 @@
     return new TauriDirHandle(absPath, baseName(absPath));
   };
 
-  // Auto-reopen the last library on launch, so the app is usable across
-  // restarts without re-picking. Skipped when the dev auto-open hook is driving.
-  (function autoReopenLastRoot() {
-    function ready() {
-      return (
-        typeof buildWorkspaceFromDirectoryHandle === "function" &&
-        document.readyState !== "loading"
-      );
-    }
-    function attempt() {
-      if (window.__lgDevOpen) return;
-      if (typeof WS !== "undefined" && WS && WS.root) return; // already open
-      invoke("get_last_root")
-        .then(function (p) {
-          if (!p || window.__lgDevOpen) return;
-          if (typeof WS !== "undefined" && WS && WS.root) return;
-          return window.__lg.openRoot(p).then(function () {
-            try { invoke("dev_report", { msg: "auto-reopened last root: " + p }); } catch (e) {}
-          });
-        })
-        .catch(function () {});
-    }
-    var t = setInterval(function () {
-      if (ready()) {
-        clearInterval(t);
-        attempt();
-      }
-    }, 200);
-  })();
+  // (No auto-reopen on launch — the app starts with no library loaded, like the
+  // Electron build. The last root is still remembered so a "reopen recent"
+  // action can be wired up later if wanted.)
 
   console.info("[tauri-fs-shim] File System Access shim installed");
 })();
