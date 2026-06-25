@@ -4,3 +4,10 @@ dist/
 .claude/
 DESIGN.md
 Diet Tracker App/
+
+# Tauri (Rust) build artifacts
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Generated Tauri frontend dir (synced from root index.html by sync-frontend.js)
+frontend/

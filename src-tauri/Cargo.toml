@@ -1,0 +1,33 @@
+[package]
+name = "local-gallery"
+version = "0.1.0"
+description = "Local Gallery"
+authors = ["any-one-but"]
+edition = "2021"
+rust-version = "1.77"
+
+# The library that `main.rs` calls into. Keeping the app logic in a lib makes it
+# unit-testable (see the thumbnail tests) without launching the GUI.
+[lib]
+name = "local_gallery_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# protocol-asset: lets the frontend render local files (thumbnails, media) via
+# the asset: protocol (convertFileSrc) — matches assetProtocol in tauri.conf.json.
+tauri = { version = "2", features = ["protocol-asset"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Pure-Rust image decode/resize for image thumbnails. Video/other formats fall
+# back to macOS QuickLook (qlmanage) for now; this is where ffmpeg / AVFoundation
+# bindings will slot in for production.
+image = "0.25"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

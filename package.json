@@ -6,7 +6,10 @@
   "scripts": {
     "start": "electron .",
     "release:patch": "node scripts/release-patch.js",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "repository": {
     "type": "git",
@@ -21,6 +24,8 @@
   },
   "homepage": "https://github.com/any-one-but/Local_Gallery#readme",
   "devDependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/cli": "^2.11.3",
     "electron": "^39.2.7",
     "electron-builder": "^26.4.0"
   },
