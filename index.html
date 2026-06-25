@@ -54437,13 +54437,15 @@ function handlePreviewPaneAction(action, inFilePreview) {
       if (movePreviewSelectionByDirection("down")) return true;
       return movePreviewSelectionAcrossFolderEdge(1);
     case "selectLeft":
+      // Left/Right are pure within-grid horizontal movement; the cross-folder
+      // edge slide is intentionally limited to Up/Down (see selectUp/selectDown)
+      // so that Left at the leftmost column always falls through to the file
+      // pane instead of sliding to the previous file/folder.
       if (movePreviewSelectionByDirection("left")) return true;
-      if (movePreviewSelectionAcrossFolderEdge(-1)) return true;
       if (sidebarVisible) return activateDirectoriesPaneSelection();
       return false;
     case "selectRight":
-      if (movePreviewSelectionByDirection("right")) return true;
-      return movePreviewSelectionAcrossFolderEdge(1);
+      return movePreviewSelectionByDirection("right");
     case "leaveDir": {
       if (restorePreviewFolderBridgeState()) return true;
       const beforeState = {
