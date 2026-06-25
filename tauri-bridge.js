@@ -71,16 +71,31 @@
     },
   };
 
+  // Convert an absolute filesystem path into a URL the WebView can load
+  // (Tauri asset protocol). WKWebView blocks file:// from the app origin, so
+  // media/thumbnails must use this instead. Falls back to the raw path.
+  function assetUrl(absPath) {
+    var p = String(absPath || "");
+    if (!p) return "";
+    try {
+      var core = window.__TAURI__ && window.__TAURI__.core;
+      if (core && typeof core.convertFileSrc === "function") {
+        return core.convertFileSrc(p);
+      }
+    } catch (e) {}
+    return p;
+  }
+
   // Handy during the port: window.__lg.ping() / generateThumbnail(path) from the
-  // devtools console.
-  window.__lg = {
-    ping: function () {
-      return invoke("ping");
-    },
-    generateThumbnail: function (path, maxEdge) {
-      return invoke("generate_thumbnail", { path: String(path), maxEdge: maxEdge || 512 });
-    },
+  // devtools console. assetUrl() is also used by ensureMediaUrl under Tauri.
+  window.__lg = window.__lg || {};
+  window.__lg.ping = function () {
+    return invoke("ping");
   };
+  window.__lg.generateThumbnail = function (path, maxEdge) {
+    return invoke("generate_thumbnail", { path: String(path), maxEdge: maxEdge || 512 });
+  };
+  window.__lg.assetUrl = assetUrl;
 
   // Boot-time connectivity check: confirm the Rust backend is reachable.
   invoke("ping")

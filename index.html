@@ -46134,7 +46134,16 @@ function ensureMediaUrl(rec) {
   if (!rec) return null;
   if (getElectronApi() && !rec.nativeUrlFailed) {
     const nativePath = nativePathForRecord(rec);
-    const nativeUrl = nativePathToFileUrl(nativePath);
+    // Under Tauri, WKWebView blocks file:// from the app origin, so serve media
+    // through the asset protocol (convertFileSrc). Electron keeps file://.
+    const useTauriAsset =
+      window.electronAPI &&
+      window.electronAPI.isTauri &&
+      window.__lg &&
+      typeof window.__lg.assetUrl === "function";
+    const nativeUrl = useTauriAsset
+      ? window.__lg.assetUrl(nativePath)
+      : nativePathToFileUrl(nativePath);
     if (nativeUrl) {
       if (rec.url && rec.url !== nativeUrl && rec.urlKind === "blob") {
         try { URL.revokeObjectURL(rec.url); } catch {}

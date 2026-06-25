@@ -8,6 +8,8 @@
 //! whole port hinges on — native thumbnailing for images (and video via
 //! macOS QuickLook), replacing the Electron `<video>`/canvas/ffmpeg approach.
 
+mod fs;
+
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -171,6 +173,13 @@ fn unique_download_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{stem}-{ts}{ext}"))
 }
 
+/// Dev-only: the frontend reports a status string we can see in the dev console
+/// (used to verify the open flow without driving the GUI).
+#[tauri::command]
+fn dev_report(msg: String) {
+    eprintln!("[lg-dev] {msg}");
+}
+
 /// Save bytes to the user's Downloads folder under a unique name; returns the
 /// written path. Replaces the Electron `downloads-write-file` IPC.
 #[tauri::command]
@@ -193,12 +202,16 @@ fn write_download_file(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            // Build the main window in Rust so we can inject the Electron->Tauri
-            // bridge as an initialization script — it runs before index.html's
-            // own scripts, so `window.electronAPI` exists when the app boots.
+            // Build the main window in Rust so we can inject our init scripts
+            // before index.html's own scripts run:
+            //  - tauri-bridge.js  -> window.electronAPI shim
+            //  - tauri-fs-shim.js -> File System Access API shim (showDirectoryPicker
+            //    + dir/file handles) backed by the native fs::* commands.
             let bridge = include_str!("../../tauri-bridge.js");
-            tauri::WebviewWindowBuilder::new(
+            let fs_shim = include_str!("../../tauri-fs-shim.js");
+            let mut builder = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
                 tauri::WebviewUrl::App("index.html".into()),
@@ -207,13 +220,43 @@ pub fn run() {
             .inner_size(1100.0, 750.0)
             .resizable(true)
             .initialization_script(bridge)
-            .build()?;
+            .initialization_script(fs_shim);
+
+            // Dev-only: auto-open a library by path (set LG_DEV_OPEN) once the
+            // app is ready, and report the resulting dir/file counts. Lets us
+            // verify the open flow end-to-end without the GUI folder picker.
+            if let Ok(path) = std::env::var("LG_DEV_OPEN") {
+                if !path.is_empty() {
+                    let p = serde_json::to_string(&path).unwrap_or_else(|_| "\"\"".into());
+                    let script = format!(
+                        "(function(){{var p={p};var t=setInterval(function(){{\
+if(typeof buildWorkspaceFromDirectoryHandle==='function'&&document.readyState!=='loading'){{\
+clearInterval(t);window.__lg.openRoot(p).then(function(){{\
+var d=(typeof WS!=='undefined'&&WS.dirByPath)?WS.dirByPath.size:-1;\
+var f=(typeof WS!=='undefined'&&WS.fileById)?WS.fileById.size:-1;\
+window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot OK dirs='+d+' files='+f}});\
+}}).catch(function(e){{window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot FAILED: '+(e&&e.message||e)}});}});\
+}}}},200);}})();"
+                    );
+                    builder = builder.initialization_script(script);
+                }
+            }
+            builder.build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             ping,
+            dev_report,
             generate_thumbnail,
-            write_download_file
+            write_download_file,
+            fs::pick_root,
+            fs::scan_dir,
+            fs::path_kind,
+            fs::read_file_bytes,
+            fs::write_file_bytes,
+            fs::make_dir,
+            fs::touch_file,
+            fs::remove_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

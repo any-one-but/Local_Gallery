@@ -106,24 +106,27 @@ Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
   shim installs before boot and IPC round-trips. `getElectronApi()` now returns
   the shim, so the UI takes its native path instead of the web fallback.
 
-### Phase 2 — Filesystem layer & opening a library  ⟵ the big one
+### Phase 2 — Filesystem layer & opening a library ✅ (core done)
 *Goal: pick a root folder and build the `DirNode`/`FileRecord` tree from Rust.*
-- Rust commands:
-  - `pick_root() -> Option<path>` — native folder picker (tauri-plugin-dialog).
-  - `scan_dir(path, opts) -> { dirs, files }` — one level (lazy) **and**
-    `scan_tree(path)` recursive for the catalog; return name, relPath, size,
-    mtime, ext, kind. Run on a worker thread; stream/paginate for huge dirs.
-  - `read_text_file` / `write_text_file` / `make_dir` / `remove` / `rename` /
-    `move_to_trash` — the mutations the UI already performs.
-  - Persist/restore the last root (so reopen works).
-- Frontend: replace handle-based construction (`getDirectoryHandle`/
-  `getFileHandle`/`getFile`) with calls that consume the Rust scan results.
-  `FileRecord` keys off **paths** instead of handles. Keep `WS.catalog`'s
-  sharded model but populate it from `scan_tree`.
-- Replace `getNativePathForFile` (already returns native paths) — now paths are
-  first-class, not derived from `File` objects.
-- **Done when:** you can open a real library and see the full folder tree and
-  file lists, navigate, and reopen the last root. (Media/thumbs come next.)
+- **Approach taken:** a **File System Access API shim** (`tauri-fs-shim.js`)
+  rather than rewriting the handle-based builder. It overrides
+  `showDirectoryPicker` and provides `TauriDirHandle`/`TauriFileHandle`/
+  writable objects whose methods call native Rust commands, so the existing open
+  flow (tree scan, `.local-gallery` metadata logs, catalog) runs unchanged.
+- **Rust commands** (`src-tauri/src/fs.rs`): `pick_root` (tauri-plugin-dialog),
+  `scan_dir`, `path_kind`, `read_file_bytes`, `write_file_bytes` (atomic),
+  `make_dir`, `touch_file`, `remove_path`. Unit-tested.
+- Media URLs: `ensureMediaUrl` now uses the **asset protocol** under Tauri
+  (`window.__lg.assetUrl` → `convertFileSrc`) instead of `file://`, which
+  WKWebView blocks. (This pulls part of Phase 3 forward so the open renders.)
+- **Verified end-to-end:** auto-opening a test library (`LG_DEV_OPEN`) reported
+  `openRoot OK dirs=5 files=4` and wrote the full `.local-gallery/*.log.json`
+  set to disk — proving recursive scan + file records + metadata read/write all
+  work through the shim.
+- **Remaining for 2b:** persist/restore last root; wire the recursive catalog
+  (`scan_tree`) for huge libraries; rename/`move_to_trash` native commands;
+  broader runtime QA of navigation in the real UI (I can't drive the GUI
+  headlessly — the dev hook covers the open path only).
 
 ### Phase 3 — Media display (images + video playback)
 *Goal: images render and videos play in the preview/viewer.*

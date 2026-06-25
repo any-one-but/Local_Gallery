@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 # protocol-asset: lets the frontend render local files (thumbnails, media) via
 # the asset: protocol (convertFileSrc) — matches assetProtocol in tauri.conf.json.
 tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Pure-Rust image decode/resize for image thumbnails. Video/other formats fall
