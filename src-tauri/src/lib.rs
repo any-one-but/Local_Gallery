@@ -47,38 +47,45 @@ fn thumbnail_image(src: &Path, out_path: &Path, edge: u32) -> Result<(), String>
 }
 
 /// macOS QuickLook fallback (`qlmanage -t`). Handles video, PDF, HEIC, and
-/// anything else QuickLook can render. Writes `<out_dir>/<filename>.png`.
-/// This is the temporary cross-format path; production will use AVFoundation /
+/// anything else QuickLook can render. Runs into a temp dir (qlmanage names its
+/// output after the input file) and moves the result to our deterministic cache
+/// path. Temporary cross-format path; production will use AVFoundation /
 /// QLThumbnailGenerator directly (and ffmpeg on Windows).
-fn thumbnail_quicklook(src: &Path, out_dir: &Path, edge: u32) -> Result<PathBuf, String> {
+fn thumbnail_quicklook(src: &Path, out_path: &Path, edge: u32) -> Result<(), String> {
+    let parent = out_path.parent().ok_or("bad out_path")?;
+    let tmp = parent.join(".ql-tmp");
+    std::fs::create_dir_all(&tmp).map_err(|e| format!("mkdir tmp: {e}"))?;
     let output = Command::new("qlmanage")
         .arg("-t")
         .arg("-s")
         .arg(edge.to_string())
         .arg("-o")
-        .arg(out_dir)
+        .arg(&tmp)
         .arg(src)
         .output()
         .map_err(|e| format!("qlmanage failed to launch: {e}"))?;
 
-    // qlmanage names the result after the input file: "video.mp4" -> "video.mp4.png".
     let file_name = src
         .file_name()
         .and_then(|s| s.to_str())
         .ok_or_else(|| "bad source file name".to_string())?;
-    let produced = out_dir.join(format!("{file_name}.png"));
-    if produced.exists() {
-        Ok(produced)
+    let produced = tmp.join(format!("{file_name}.png"));
+    let result = if produced.exists() {
+        std::fs::rename(&produced, out_path)
+            .or_else(|_| std::fs::copy(&produced, out_path).map(|_| ()))
+            .map_err(|e| format!("move ql thumb: {e}"))
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(format!("quicklook produced no thumbnail: {stderr}"))
-    }
+    };
+    let _ = std::fs::remove_dir_all(&tmp);
+    result
 }
 
-/// Generate a thumbnail for any media file and return the absolute path to the
-/// generated image. Images go through the `image` crate; everything else falls
-/// back to QuickLook. Idempotent-ish: the output name is keyed on the source
-/// path + edge so repeat calls reuse the same file.
+/// Generate (and disk-cache) a thumbnail for a media file; returns the absolute
+/// path to the cached image. The cache key is path+size+mtime+edge, so repeat
+/// calls short-circuit and edits invalidate. Images use the `image` crate (JPEG);
+/// everything else falls back to QuickLook (PNG).
 #[tauri::command]
 fn generate_thumbnail(
     path: String,
@@ -86,31 +93,44 @@ fn generate_thumbnail(
     out_dir: Option<String>,
 ) -> Result<String, String> {
     let src = PathBuf::from(&path);
-    if !src.exists() {
-        return Err(format!("file not found: {path}"));
+    let md = std::fs::metadata(&src).map_err(|e| format!("stat {path}: {e}"))?;
+    if !md.is_file() {
+        return Err(format!("not a file: {path}"));
     }
+    let size = md.len();
+    let mtime = md
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     let edge = max_edge.unwrap_or(512).clamp(16, 2048);
-    let out_dir = out_dir.map(PathBuf::from).unwrap_or_else(default_thumb_dir);
+    let out_dir = out_dir
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(default_thumb_dir);
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("mkdir failed: {e}"))?;
+
+    let base = format!("{:x}-{}-{}-{}", hash_str(&path), size, mtime, edge);
+    let jpg = out_dir.join(format!("{base}.jpg"));
+    let png = out_dir.join(format!("{base}.png"));
+    if jpg.exists() {
+        return Ok(jpg.to_string_lossy().into_owned());
+    }
+    if png.exists() {
+        return Ok(png.to_string_lossy().into_owned());
+    }
 
     let ext = src
         .extension()
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_lowercase();
-    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("thumb");
-    let out_path = out_dir.join(format!("{stem}-{:x}-{edge}.jpg", hash_str(&path)));
-
-    if IMAGE_EXTS.contains(&ext.as_str()) {
-        match thumbnail_image(&src, &out_path, edge) {
-            Ok(()) => return Ok(out_path.to_string_lossy().into_owned()),
-            // Fall through to QuickLook (e.g. an exotic/corrupt image).
-            Err(_) => {}
-        }
+    if IMAGE_EXTS.contains(&ext.as_str()) && thumbnail_image(&src, &jpg, edge).is_ok() {
+        return Ok(jpg.to_string_lossy().into_owned());
     }
-
-    let produced = thumbnail_quicklook(&src, &out_dir, edge)?;
-    Ok(produced.to_string_lossy().into_owned())
+    thumbnail_quicklook(&src, &png, edge)?;
+    Ok(png.to_string_lossy().into_owned())
 }
 
 /// Trivial connectivity check the frontend can call to confirm the Rust backend
@@ -236,7 +256,10 @@ var d=(typeof WS!=='undefined'&&WS.dirByPath)?WS.dirByPath.size:-1;\
 var f=(typeof WS!=='undefined'&&WS.fileById)?WS.fileById.size:-1;\
 window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot OK dirs='+d+' files='+f}});\
 return window.__lg.assetSelfTest(p+'/FolderA/img1.png').then(function(s){{\
-window.__TAURI__.core.invoke('dev_report',{{msg:'asset '+s}});}});\
+window.__TAURI__.core.invoke('dev_report',{{msg:'asset '+s}});\
+return window.__lg.requestThumb(p+'/FolderA/img1.png',32).then(function(u){{\
+return fetch(u).then(function(r){{return r.arrayBuffer().then(function(b){{\
+window.__TAURI__.core.invoke('dev_report',{{msg:'thumb status='+r.status+' bytes='+b.byteLength}});}});}});}});}});\
 }}).catch(function(e){{window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot FAILED: '+(e&&e.message||e)}});}});\
 }}}},200);}})();"
                     );

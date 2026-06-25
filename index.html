@@ -55489,12 +55489,64 @@ function registerThumbEl(el, src, opts = null) {
   return true;
 }
 
+// ---- Tauri: native downscaled thumbnails -------------------------------
+// Under Tauri, route lazy <img> thumbnails through the Rust thumbnail cache so
+// grids load small JPEGs instead of full-resolution media. Bulletproof: if a
+// cached thumb isn't ready we return "" and the caller uses the full-media src
+// (current behavior), then we swap in the lighter thumbnail once generated —
+// the element is never worse than today. The full-size viewer bypasses
+// assignThumbSrc, so it stays full-resolution.
+const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
+const TAURI_THUMB_EDGE = 512;
+function tauriThumbnailsActive() {
+  return !!(
+    typeof window !== "undefined" &&
+    window.electronAPI &&
+    window.electronAPI.isTauri &&
+    window.__lg &&
+    typeof window.__lg.requestThumb === "function"
+  );
+}
+function tauriThumbForImgEl(el) {
+  if (!tauriThumbnailsActive()) return "";
+  if (!el || el.tagName !== "IMG") return "";
+  const recId = String(el.dataset.dirPreviewId || el.dataset.fileId || "");
+  if (!recId) return "";
+  const rec = WS.fileById.get(recId);
+  if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
+  const path = nativePathForRecord(rec);
+  if (!path) return "";
+  const key = `${path}::${TAURI_THUMB_EDGE}`;
+  const cached = TAURI_THUMB_INDEX.get(key);
+  if (cached) return cached;
+  if (!el.__tauriThumbPending) {
+    el.__tauriThumbPending = true;
+    window.__lg
+      .requestThumb(path, TAURI_THUMB_EDGE)
+      .then((url) => {
+        el.__tauriThumbPending = false;
+        if (!url) return;
+        TAURI_THUMB_INDEX.set(key, url);
+        const stillSame =
+          el.isConnected &&
+          String(el.dataset.dirPreviewId || el.dataset.fileId || "") === recId;
+        if (stillSame) {
+          try { el.src = url; } catch {}
+        }
+      })
+      .catch(() => { el.__tauriThumbPending = false; });
+  }
+  return "";
+}
+
 function assignThumbSrc(el) {
   if (!el || !el.dataset) return;
-  const src = el.dataset.thumbSrc || "";
+  let src = el.dataset.thumbSrc || "";
   if (!src) return;
   if (el.dataset.thumbState === "loading" || el.dataset.thumbState === "loaded")
     return;
+  const thumbSrc = tauriThumbForImgEl(el);
+  if (thumbSrc) src = thumbSrc;
   el.dataset.thumbState = "loading";
   THUMB_LOADING.add(el);
   try { el.src = src; } catch {}

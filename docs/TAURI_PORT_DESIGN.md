@@ -151,15 +151,25 @@ Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
 
 ### Phase 4 — Thumbnails wired into the UI  ⟵ the visible payoff
 *Goal: image and video thumbnails render as cheap `<img>`, fast.*
-- Promote the `generate_thumbnail` PoC to a real service: disk cache under
-  `<root>/.local-gallery/thumbs/` keyed by path+mtime+size+edge; on-demand
-  queue (bounded concurrency) for the folder in view; return a cached path.
-- Frontend: every thumbnail (file cards + folder/tag leads) becomes
-  `<img src={convertFileSrc(thumbPath)}>`; request generation when missing.
-  This collapses the entire Electron thumbnail saga (no live `<video>`, no
-  WebMediaPlayer budget, no canvas/ffmpeg-in-renderer).
-- **Done when:** a folder of mixed images/videos shows thumbnails that load like
-  image thumbnails, with no blank tiles and no startup stall.
+
+**4a done:** the thumbnail *service* + the safe lazy-`<img>` path.
+- `generate_thumbnail` is now a real disk cache under `<root>/.local-gallery/
+  thumbs/`, keyed by path+size+mtime+edge (short-circuits; edits invalidate).
+- `window.__lg.requestThumb(path, edge)` → cached-thumb asset URL.
+- Interception at `assignThumbSrc` (the one lazy-`<img>` loader; the full-size
+  viewer bypasses it): prefer the cached downscaled thumb, fall back to the
+  full-media src until generated, then swap in — **never worse than today**.
+- Gotcha fixed: the root's `**` asset-scope glob doesn't match the hidden
+  `.local-gallery` dir, so the thumbs dir is allowed explicitly in `rememberRoot`.
+- **Verified:** `thumb status=200 bytes=1210` (vs 10777 original) — generate →
+  cache → asset-load works; 512px thumbs were produced during the real render.
+
+**4b remaining:**
+- Folder/tag **inline** `dirInlinePreview` leads (set `src` in markup, bypass
+  `assignThumbSrc`) — route them through `requestThumb` via a post-render pass.
+- **Video** thumbnails: replace the live-`<video>` file-card path and the
+  folder-lead video upgrade with cached `<img>` (kills the WebMediaPlayer cost).
+- Optional: bounded-concurrency on-demand queue; visual QA of a dense grid.
 
 ### Phase 5 — Metadata persistence
 *Goal: scores/tags/votes/victories/prefs/keybinds load and save.*

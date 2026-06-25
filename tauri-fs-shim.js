@@ -269,14 +269,22 @@
   TauriDirHandle.prototype.requestPermission = function () { return Promise.resolve("granted"); };
 
   function rememberRoot(absPath) {
-    var p = String(absPath || "");
+    var p = String(absPath || "").replace(/\/+$/, "");
+    // Expose the root so the thumbnail layer can cache under .local-gallery/thumbs.
+    window.__lg = window.__lg || {};
+    window.__lg.rootPath = p;
     try { invoke("save_last_root", { path: p }); } catch (e) {}
     // Grant the asset protocol access to this library so media/thumbnails can
-    // load (the config denies everything by default). Must resolve before the
+    // load (the config denies everything by default). The root's recursive glob
+    // (**) does NOT match the hidden .local-gallery dir, so allow the thumbs dir
+    // explicitly (a literal path component) too. Must resolve before the
     // workspace renders media; callers await openRoot which awaits this.
-    return Promise.resolve()
-      .then(function () { return invoke("allow_media_scope", { path: p }); })
-      .catch(function (e) { console.warn("[tauri-fs-shim] allow_media_scope failed", e); });
+    return Promise.all([
+      invoke("allow_media_scope", { path: p }),
+      invoke("allow_media_scope", { path: p + "/.local-gallery/thumbs" }),
+    ]).catch(function (e) {
+      console.warn("[tauri-fs-shim] allow_media_scope failed", e);
+    });
   }
 
   // Dev/test: confirm a media file loads through the asset protocol, including a
