@@ -164,12 +164,19 @@ Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
 - **Verified:** `thumb status=200 bytes=1210` (vs 10777 original) — generate →
   cache → asset-load works; 512px thumbs were produced during the real render.
 
-**4b remaining:**
-- Folder/tag **inline** `dirInlinePreview` leads (set `src` in markup, bypass
-  `assignThumbSrc`) — route them through `requestThumb` via a post-render pass.
-- **Video** thumbnails: replace the live-`<video>` file-card path and the
-  folder-lead video upgrade with cached `<img>` (kills the WebMediaPlayer cost).
-- Optional: bounded-concurrency on-demand queue; visual QA of a dense grid.
+**4b done:** inline leads + video thumbnails.
+- `tauriThumbnailizeContainer` post-render pass routes inline `dirInlinePreview`/
+  `folderThumb` leads (image + video) through `requestThumb`; called for the
+  preview grid, preview body, and the directory list. Gates out the live-`<video>`
+  folder-lead upgrade under Tauri.
+- File-card videos take the `<img>` path under Tauri (the live-`<video>` branch
+  is skipped) — a transparent pixel shows until the generated frame swaps in.
+- **Verified:** with a real test `.mp4`, `vidthumb status=200` (QuickLook frame,
+  cached `.png`, asset-served) alongside `imgthumb status=200` — no live
+  WebMediaPlayer for thumbnails.
+- Follow-ups (minor): "heavy folder" passive path still shows a fallback icon
+  (div, not img) so it isn't thumbnailized yet; bounded-concurrency queue;
+  visual QA of a dense grid (needs your eyes).
 
 ### Phase 5 — Metadata persistence
 *Goal: scores/tags/votes/victories/prefs/keybinds load and save.*

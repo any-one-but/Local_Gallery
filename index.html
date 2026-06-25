@@ -44989,6 +44989,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   directoriesListEl.appendChild(frag);
   invalidateGridRowMetricsCache();
   if (naturalThumbCards) syncDirectoryInlineAspectForRenderedImages();
+  if (tauriThumbnailsActive()) tauriThumbnailizeContainer(directoriesListEl);
   reapplyInlineThumbCropsIn(directoriesListEl);
   if (gridModeActive) scheduleGridModeCardSizing();
   updateGridModeListTopInset();
@@ -47616,10 +47617,14 @@ function renderTagPreviewFolderEntriesInHareChunks(
     }
     gridF.appendChild(fragF);
     if (folderMediaPreviewGrid) {
-      upgradeContainerPreviewVideoThumbs(gridF, {
-        renderToken,
-        passiveWhenHeavy: true,
-      });
+      if (tauriThumbnailsActive()) {
+        tauriThumbnailizeContainer(gridF);
+      } else {
+        upgradeContainerPreviewVideoThumbs(gridF, {
+          renderToken,
+          passiveWhenHeavy: true,
+        });
+      }
     }
     return true;
   };
@@ -48695,10 +48700,14 @@ function renderSelectedFolderMediaPreview(
 
   resetPreviewGridRenderRecovery();
   swapPreviewGridRenderStage(stage);
-  upgradeContainerPreviewVideoThumbs(previewBodyEl, {
-    renderToken,
-    passiveWhenHeavy: true,
-  });
+  if (tauriThumbnailsActive()) {
+    tauriThumbnailizeContainer(previewBodyEl);
+  } else {
+    upgradeContainerPreviewVideoThumbs(previewBodyEl, {
+      renderToken,
+      passiveWhenHeavy: true,
+    });
+  }
   reapplyInlineThumbCropsIn(previewBodyEl);
   const hadPendingSelection = applyPendingPreviewSelectionForCurrentTarget();
 
@@ -50747,9 +50756,11 @@ function makePreviewFileCard(
         });
       }
       mediaEl = img;
-    } else if (rec.type === "video") {
+    } else if (rec.type === "video" && !tauriThumbnailsActive()) {
       // No cached frame yet: show the live <video> still and queue a background
-      // capture so future renders use a cached <img> instead.
+      // capture so future renders use a cached <img> instead. (Under Tauri this
+      // branch is skipped — video falls through to the <img> path below, which
+      // renders a cached native thumbnail instead of a live WebMediaPlayer.)
       videoThumbCacheEnqueue(rec);
       const video = document.createElement("video");
       video.className = "thumb";
@@ -55498,6 +55509,10 @@ function registerThumbEl(el, src, opts = null) {
 // assignThumbSrc, so it stays full-resolution.
 const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
 const TAURI_THUMB_EDGE = 512;
+// 1x1 transparent gif — used for not-yet-generated video thumbnails so an <img>
+// never tries to load the video file itself (which it can't render).
+const TAURI_TRANSPARENT_PX =
+  "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
 function tauriThumbnailsActive() {
   return !!(
     typeof window !== "undefined" &&
@@ -55536,7 +55551,26 @@ function tauriThumbForImgEl(el) {
       })
       .catch(() => { el.__tauriThumbPending = false; });
   }
-  return "";
+  // Image: keep showing the full-res src (progressive) until the thumb swaps in.
+  // Video: an <img> can't render the video file, so show a transparent pixel
+  // until the generated frame arrives.
+  return rec.type === "video" ? TAURI_TRANSPARENT_PX : "";
+}
+
+// Post-render pass for inline folder/tag lead thumbnails (img.dirInlinePreview /
+// img.folderThumb), which set their src in markup and bypass assignThumbSrc.
+// Routes them through the same cached-thumbnail path (image + video).
+function tauriThumbnailizeContainer(container) {
+  if (!tauriThumbnailsActive() || !container || !container.querySelectorAll) return;
+  const imgs = container.querySelectorAll(
+    "img.dirInlinePreview[data-dir-preview-id], img.folderThumb[data-dir-preview-id]",
+  );
+  imgs.forEach((img) => {
+    const s = tauriThumbForImgEl(img);
+    if (s) {
+      try { img.src = s; } catch {}
+    }
+  });
 }
 
 function assignThumbSrc(el) {

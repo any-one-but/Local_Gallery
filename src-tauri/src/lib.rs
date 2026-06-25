@@ -259,7 +259,10 @@ return window.__lg.assetSelfTest(p+'/FolderA/img1.png').then(function(s){{\
 window.__TAURI__.core.invoke('dev_report',{{msg:'asset '+s}});\
 return window.__lg.requestThumb(p+'/FolderA/img1.png',32).then(function(u){{\
 return fetch(u).then(function(r){{return r.arrayBuffer().then(function(b){{\
-window.__TAURI__.core.invoke('dev_report',{{msg:'thumb status='+r.status+' bytes='+b.byteLength}});}});}});}});}});\
+window.__TAURI__.core.invoke('dev_report',{{msg:'imgthumb status='+r.status+' bytes='+b.byteLength}});\
+return window.__lg.requestThumb(p+'/FolderA/vid1.mp4',64).then(function(vu){{\
+return fetch(vu).then(function(vr){{return vr.arrayBuffer().then(function(vb){{\
+window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' bytes='+vb.byteLength}});}});}});}});}});}});}});}});\
 }}).catch(function(e){{window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot FAILED: '+(e&&e.message||e)}});}});\
 }}}},200);}})();"
                     );
