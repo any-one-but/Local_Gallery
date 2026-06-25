@@ -123,8 +123,10 @@ Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
   `openRoot OK dirs=5 files=4` and wrote the full `.local-gallery/*.log.json`
   set to disk — proving recursive scan + file records + metadata read/write all
   work through the shim.
-- **2b done:** last-root persistence + auto-reopen on launch (`save_last_root`/
-  `get_last_root`; verified across two launches); native `rename_path` command +
+- **2b done:** last root is remembered (`save_last_root`/`get_last_root`) but the
+  app starts with **no** library loaded (auto-reopen was removed — it was
+  unintended; reserved for a future explicit "reopen recent"); native
+  `rename_path` command +
   `handle.move()` shim so rename and move-to-trash are instant fs renames (not a
   read-whole-file-through-IPC copy); `toUint8` handles the FileLike so the
   copy-fallback path is correct too.
