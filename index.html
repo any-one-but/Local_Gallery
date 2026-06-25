@@ -26978,7 +26978,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
 
     updateBlockingLoaderOverlay(
       "Loading saved data...",
-      "Reading saved tags, scores, preferences, and aspect-ratio cache...",
+      "Reading saved tags, scores, and preferences...",
     );
     await waitForBusyOverlayPaint();
     try {
@@ -27002,11 +27002,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     }
     applyMediaFilterFromOptions();
 
-    await finalizeAspectRatiosAndStorageForLoadedWorkspace({
-      showOverlay: true,
-      aspectLabel: "Checking media aspect ratios...",
-      storageLabel: "Applying media type and aspect filters...",
-    });
+    await finalizeAspectRatiosAndStorageForLoadedWorkspace();
 
     showBlockingLoaderOverlay("Preparing folder view...", "Building folder statistics...");
     await waitForBusyOverlayPaint();
