@@ -12,6 +12,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tauri::Manager;
 
 fn hash_str(s: &str) -> u64 {
     let mut h = DefaultHasher::new();
@@ -114,13 +115,106 @@ fn generate_thumbnail(
 /// is wired up.
 #[tauri::command]
 fn ping() -> String {
+    // Dev-only signal that the frontend reached the Rust backend over IPC.
+    #[cfg(debug_assertions)]
+    eprintln!("[lg] ping() — frontend reached the Rust backend");
     format!("local-gallery rust backend v{}", env!("CARGO_PKG_VERSION"))
+}
+
+/// Strip characters that are illegal/awkward in filenames (mirrors the old
+/// Electron main-process logic).
+fn sanitize_download_name(name: &str) -> String {
+    let base = {
+        let t = name.trim();
+        if t.is_empty() {
+            "local-gallery-export.gif"
+        } else {
+            t
+        }
+    };
+    let cleaned: String = base
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            c if (c as u32) < 0x20 => '_',
+            c => c,
+        })
+        .collect();
+    let cleaned = cleaned.trim().trim_end_matches('.').trim().to_string();
+    if cleaned.is_empty() {
+        "local-gallery-export.gif".to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// Pick a non-colliding path in `dir` for `name` (appends " (n)" like Finder).
+fn unique_download_path(dir: &Path, name: &str) -> PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    };
+    for n in 1..10000 {
+        let candidate = dir.join(format!("{stem} ({n}){ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    dir.join(format!("{stem}-{ts}{ext}"))
+}
+
+/// Save bytes to the user's Downloads folder under a unique name; returns the
+/// written path. Replaces the Electron `downloads-write-file` IPC.
+#[tauri::command]
+fn write_download_file(
+    app: tauri::AppHandle,
+    file_name: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    let dir = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("no downloads dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir failed: {e}"))?;
+    let safe = sanitize_download_name(&file_name);
+    let target = unique_download_path(&dir, &safe);
+    std::fs::write(&target, &bytes).map_err(|e| format!("write failed: {e}"))?;
+    Ok(target.to_string_lossy().into_owned())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![ping, generate_thumbnail])
+        .setup(|app| {
+            // Build the main window in Rust so we can inject the Electron->Tauri
+            // bridge as an initialization script — it runs before index.html's
+            // own scripts, so `window.electronAPI` exists when the app boots.
+            let bridge = include_str!("../../tauri-bridge.js");
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Local Gallery")
+            .inner_size(1100.0, 750.0)
+            .resizable(true)
+            .initialization_script(bridge)
+            .build()?;
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            ping,
+            generate_thumbnail,
+            write_download_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

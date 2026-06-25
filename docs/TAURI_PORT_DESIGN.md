@@ -94,17 +94,17 @@ Each phase: **goal → steps → done-when.**
 Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
 `index.html` loads in WKWebView. (Commit `7fbdb64`.)
 
-### Phase 1 — Backend bridge & boot
+### Phase 1 — Backend bridge & boot ✅ (done)
 *Goal: the real UI boots in Tauri and can talk to Rust without per-call rewrites.*
-- Add a small JS bootstrap injected ahead of the app that defines
-  `window.electronAPI` backed by Tauri `invoke` (shim `getPathForFile`,
-  `writeDownloadFile`, and new methods as we add them). Inject via Tauri's
-  `app.withGlobalTauri` + a tiny `tauri-bridge.js` prepended to the frontend
-  (or a Rust `init_script`).
-- Implement `write_download_file` Rust command (replaces the one Electron IPC).
-- Detect "running under Tauri" so `getElectronApi()` returns the shim.
-- **Done when:** app launches, `ping` works, and the existing "not in Electron"
-  fallbacks no longer trigger (the shim satisfies them).
+- `tauri-bridge.js` injected as a Rust **`initialization_script`** (the main
+  window is now built in `src/lib.rs` so the script runs before page scripts).
+  It re-creates `window.electronAPI` (`isElectron`, `getPathForFile`,
+  `writeDownloadFile`) over Tauri `invoke`, plus `window.__lg` dev helpers.
+- `write_download_file` Rust command implemented (replaces the Electron
+  `downloads-write-file` IPC; writes to the OS Downloads dir with unique names).
+- **Verified end-to-end:** launching logs `[lg] ping()` from Rust — proving the
+  shim installs before boot and IPC round-trips. `getElectronApi()` now returns
+  the shim, so the UI takes its native path instead of the web fallback.
 
 ### Phase 2 — Filesystem layer & opening a library  ⟵ the big one
 *Goal: pick a root folder and build the `DirNode`/`FileRecord` tree from Rust.*

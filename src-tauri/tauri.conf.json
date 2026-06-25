@@ -10,15 +10,7 @@
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "Local Gallery",
-        "width": 1100,
-        "height": 750,
-        "resizable": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null,
       "assetProtocol": {
