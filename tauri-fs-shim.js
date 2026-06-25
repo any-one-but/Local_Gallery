@@ -52,17 +52,44 @@
     if (ArrayBuffer.isView(data)) {
       return Promise.resolve(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
     }
-    if (typeof Blob !== "undefined" && data instanceof Blob) {
-      return data.arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
-    }
     if (typeof data === "string") {
       return Promise.resolve(new TextEncoder().encode(data));
+    }
+    // Blob OR our FileLike — anything exposing arrayBuffer(). FileLike is not a
+    // real Blob, so check the method rather than instanceof.
+    if (data && typeof data.arrayBuffer === "function") {
+      return data.arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
     }
     // FS Access write() also accepts { type:'write', data } params.
     if (data && typeof data === "object" && "data" in data) {
       return toUint8(data.data);
     }
     return Promise.resolve(new Uint8Array(0));
+  }
+
+  function parentDir(absPath) {
+    var p = String(absPath || "").replace(/\/+$/, "");
+    var i = p.lastIndexOf("/");
+    return i > 0 ? p.slice(0, i) : "/";
+  }
+  // Implements FS Access `handle.move(dest, newName)` / `move(newName)` natively
+  // (instant fs rename) instead of copy-through-IPC.
+  function moveHandle(handle, a, b) {
+    var newName, destParentPath;
+    if (typeof a === "string") {
+      newName = a;
+      destParentPath = parentDir(handle._path);
+    } else if (a && a._path) {
+      destParentPath = a._path;
+      newName = typeof b === "string" && b ? b : handle.name;
+    } else {
+      return Promise.reject(fsError("TypeError", "invalid move() arguments"));
+    }
+    var to = joinPath(destParentPath, newName);
+    return invoke("rename_path", { from: handle._path, to: to }).then(function () {
+      handle._path = to;
+      handle.name = newName;
+    });
   }
 
   // --- File (lightweight, lazy) -------------------------------------------
@@ -132,6 +159,9 @@
   };
   TauriFileHandle.prototype.createWritable = function () {
     return Promise.resolve(new TauriWritable(this._path));
+  };
+  TauriFileHandle.prototype.move = function (a, b) {
+    return moveHandle(this, a, b);
   };
   TauriFileHandle.prototype.isSameEntry = function (other) {
     return Promise.resolve(!!other && other._path === this._path);
@@ -219,6 +249,9 @@
       recursive: !!(opts && opts.recursive),
     });
   };
+  TauriDirHandle.prototype.move = function (a, b) {
+    return moveHandle(this, a, b);
+  };
   TauriDirHandle.prototype.resolve = function (possibleDescendant) {
     if (!possibleDescendant || !possibleDescendant._path) return Promise.resolve(null);
     var base = this._path.replace(/\/+$/, "");
@@ -235,26 +268,62 @@
   TauriDirHandle.prototype.queryPermission = function () { return Promise.resolve("granted"); };
   TauriDirHandle.prototype.requestPermission = function () { return Promise.resolve("granted"); };
 
+  function rememberRoot(absPath) {
+    try { invoke("save_last_root", { path: String(absPath || "") }); } catch (e) {}
+  }
+
   // --- Picker --------------------------------------------------------------
   window.showDirectoryPicker = function () {
     return invoke("pick_root").then(function (path) {
       if (!path) throw fsError("AbortError", "user cancelled");
+      rememberRoot(path);
       return new TauriDirHandle(path, baseName(path));
     });
   };
 
-  // Dev/test helper: open a library by absolute path without the GUI picker.
-  // e.g. window.__lg.openRoot('/Users/jo/Pictures')
+  // Open a library by absolute path (used by the GUI-less dev hook and the
+  // auto-reopen-last-root boot routine).
   window.__lg = window.__lg || {};
   window.__lg.openRoot = function (absPath) {
     if (typeof buildWorkspaceFromDirectoryHandle !== "function") {
       return Promise.reject(new Error("workspace builder not ready"));
     }
+    rememberRoot(absPath);
     return buildWorkspaceFromDirectoryHandle(new TauriDirHandle(absPath, baseName(absPath)));
   };
   window.__lg.makeDirHandle = function (absPath) {
     return new TauriDirHandle(absPath, baseName(absPath));
   };
+
+  // Auto-reopen the last library on launch, so the app is usable across
+  // restarts without re-picking. Skipped when the dev auto-open hook is driving.
+  (function autoReopenLastRoot() {
+    function ready() {
+      return (
+        typeof buildWorkspaceFromDirectoryHandle === "function" &&
+        document.readyState !== "loading"
+      );
+    }
+    function attempt() {
+      if (window.__lgDevOpen) return;
+      if (typeof WS !== "undefined" && WS && WS.root) return; // already open
+      invoke("get_last_root")
+        .then(function (p) {
+          if (!p || window.__lgDevOpen) return;
+          if (typeof WS !== "undefined" && WS && WS.root) return;
+          return window.__lg.openRoot(p).then(function () {
+            try { invoke("dev_report", { msg: "auto-reopened last root: " + p }); } catch (e) {}
+          });
+        })
+        .catch(function () {});
+    }
+    var t = setInterval(function () {
+      if (ready()) {
+        clearInterval(t);
+        attempt();
+      }
+    }, 200);
+  })();
 
   console.info("[tauri-fs-shim] File System Access shim installed");
 })();

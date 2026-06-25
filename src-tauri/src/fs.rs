@@ -5,6 +5,7 @@
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 /// A file child of a directory, with the metadata the workspace builder needs
@@ -133,6 +134,50 @@ pub fn touch_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Move/rename a path. Backs the FS Access `handle.move(destDir, newName)` API,
+/// so rename and move-to-trash are instant native operations instead of a
+/// read-whole-file-through-IPC copy. Refuses to overwrite an existing target.
+#[tauri::command]
+pub fn rename_path(from: String, to: String) -> Result<(), String> {
+    let to_path = Path::new(&to);
+    if to_path.exists() {
+        return Err(format!("target already exists: {to}"));
+    }
+    if let Some(parent) = to_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir parent: {e}"))?;
+    }
+    std::fs::rename(&from, &to).map_err(|e| format!("rename {from} -> {to}: {e}"))
+}
+
+fn last_root_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("no config dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir config: {e}"))?;
+    Ok(dir.join("last-root.txt"))
+}
+
+/// Remember the most-recently-opened library so we can auto-reopen on launch.
+#[tauri::command]
+pub fn save_last_root(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let f = last_root_file(&app)?;
+    std::fs::write(&f, path.as_bytes()).map_err(|e| format!("save last root: {e}"))
+}
+
+/// The most-recently-opened library path, if any (and still exists).
+#[tauri::command]
+pub fn get_last_root(app: tauri::AppHandle) -> Option<String> {
+    let f = last_root_file(&app).ok()?;
+    let s = std::fs::read_to_string(&f).ok()?;
+    let s = s.trim().to_string();
+    if s.is_empty() || !Path::new(&s).is_dir() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
 /// Remove a file or directory. Backs removeEntry({recursive}).
 #[tauri::command]
 pub fn remove_path(path: String, recursive: bool) -> Result<(), String> {
@@ -186,5 +231,23 @@ mod tests {
         assert_eq!(path_kind(dir.join("a.txt").to_string_lossy().into()), "file");
         remove_path(sub.to_string_lossy().into(), true).unwrap();
         assert_eq!(path_kind(sub.to_string_lossy().into()), "none");
+    }
+
+    #[test]
+    fn rename_moves_and_refuses_overwrite() {
+        let dir = std::env::temp_dir().join("lg-fs-rename-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("a.txt");
+        let b = dir.join("b.txt");
+        std::fs::write(&a, b"x").unwrap();
+
+        rename_path(a.to_string_lossy().into(), b.to_string_lossy().into()).unwrap();
+        assert_eq!(path_kind(a.to_string_lossy().into()), "none");
+        assert_eq!(path_kind(b.to_string_lossy().into()), "file");
+
+        // Refuses to overwrite an existing target.
+        std::fs::write(&a, b"y").unwrap();
+        assert!(rename_path(a.to_string_lossy().into(), b.to_string_lossy().into()).is_err());
     }
 }

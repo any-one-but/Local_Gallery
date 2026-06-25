@@ -229,7 +229,7 @@ pub fn run() {
                 if !path.is_empty() {
                     let p = serde_json::to_string(&path).unwrap_or_else(|_| "\"\"".into());
                     let script = format!(
-                        "(function(){{var p={p};var t=setInterval(function(){{\
+                        "(function(){{window.__lgDevOpen=1;var p={p};var t=setInterval(function(){{\
 if(typeof buildWorkspaceFromDirectoryHandle==='function'&&document.readyState!=='loading'){{\
 clearInterval(t);window.__lg.openRoot(p).then(function(){{\
 var d=(typeof WS!=='undefined'&&WS.dirByPath)?WS.dirByPath.size:-1;\
@@ -256,7 +256,10 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'openRoot OK dirs='+d+' files='+
             fs::write_file_bytes,
             fs::make_dir,
             fs::touch_file,
-            fs::remove_path
+            fs::remove_path,
+            fs::rename_path,
+            fs::save_last_root,
+            fs::get_last_root
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

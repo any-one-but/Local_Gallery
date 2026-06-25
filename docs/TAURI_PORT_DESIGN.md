@@ -123,10 +123,14 @@ Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
   `openRoot OK dirs=5 files=4` and wrote the full `.local-gallery/*.log.json`
   set to disk — proving recursive scan + file records + metadata read/write all
   work through the shim.
-- **Remaining for 2b:** persist/restore last root; wire the recursive catalog
-  (`scan_tree`) for huge libraries; rename/`move_to_trash` native commands;
-  broader runtime QA of navigation in the real UI (I can't drive the GUI
-  headlessly — the dev hook covers the open path only).
+- **2b done:** last-root persistence + auto-reopen on launch (`save_last_root`/
+  `get_last_root`; verified across two launches); native `rename_path` command +
+  `handle.move()` shim so rename and move-to-trash are instant fs renames (not a
+  read-whole-file-through-IPC copy); `toUint8` handles the FileLike so the
+  copy-fallback path is correct too.
+- **Remaining for later:** recursive catalog (`scan_tree`) for huge libraries;
+  broader runtime QA of navigation/rename/trash in the real UI (I can't drive the
+  GUI headlessly — dev hooks cover open + auto-reopen only).
 
 ### Phase 3 — Media display (images + video playback)
 *Goal: images render and videos play in the preview/viewer.*
