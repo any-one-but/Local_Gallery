@@ -82,55 +82,128 @@ fn thumbnail_quicklook(src: &Path, out_path: &Path, edge: u32) -> Result<(), Str
     result
 }
 
+/// Locate an ffmpeg binary. A GUI app's PATH is minimal, so check common
+/// install locations explicitly. (Phase 8/9 will bundle ffmpeg-static.)
+fn find_ffmpeg() -> Option<PathBuf> {
+    for c in [
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+        "/opt/local/bin/ffmpeg",
+    ] {
+        let p = PathBuf::from(c);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Extract a single video frame at `seek` seconds into a JPEG, scaled to fit
+/// `edge` while preserving aspect (so the user's thumbnail crop lands the same
+/// as it did on the live frame). Retries at the first frame if the seek lands
+/// past a short clip's end. Returns true on success.
+fn ffmpeg_thumb(ff: &Path, src: &Path, out_path: &Path, seek: f64, edge: u32) -> bool {
+    let scale =
+        format!("scale='min({edge},iw)':'min({edge},ih)':force_original_aspect_ratio=decrease");
+    let run = |s: f64| -> bool {
+        let ok = Command::new(ff)
+            .args(["-ss", &format!("{s}"), "-i"])
+            .arg(src)
+            .args(["-frames:v", "1", "-vf", &scale, "-q:v", "4", "-y"])
+            .arg(out_path)
+            .output()
+            .is_ok();
+        ok && out_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+    };
+    if seek > 0.0 && run(seek) {
+        return true;
+    }
+    run(0.0)
+}
+
 /// Generate (and disk-cache) a thumbnail for a media file; returns the absolute
-/// path to the cached image. The cache key is path+size+mtime+edge, so repeat
-/// calls short-circuit and edits invalidate. Images use the `image` crate (JPEG);
-/// everything else falls back to QuickLook (PNG).
+/// path to the cached image. The cache key is path+size+mtime+edge+frame, so
+/// repeat calls short-circuit and edits/frame-changes invalidate. Images use the
+/// `image` crate (JPEG); videos use ffmpeg at the chosen `frame_time` (JPEG),
+/// falling back to QuickLook (PNG) when ffmpeg isn't available.
+///
+/// Async + `spawn_blocking`: image decode and the ffmpeg/QuickLook subprocess
+/// must run off the main thread, or generating thumbnails during navigation
+/// freezes the UI (beachball).
 #[tauri::command]
-fn generate_thumbnail(
+async fn generate_thumbnail(
     path: String,
     max_edge: Option<u32>,
     out_dir: Option<String>,
+    frame_time: Option<f64>,
 ) -> Result<String, String> {
-    let src = PathBuf::from(&path);
-    let md = std::fs::metadata(&src).map_err(|e| format!("stat {path}: {e}"))?;
-    if !md.is_file() {
-        return Err(format!("not a file: {path}"));
-    }
-    let size = md.len();
-    let mtime = md
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let edge = max_edge.unwrap_or(512).clamp(16, 2048);
-    let out_dir = out_dir
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(default_thumb_dir);
-    std::fs::create_dir_all(&out_dir).map_err(|e| format!("mkdir failed: {e}"))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        thumbnail_to_cache(path, max_edge, out_dir, frame_time)
+    })
+    .await
+    .map_err(|e| format!("thumbnail task failed: {e}"))?
+}
 
-    let base = format!("{:x}-{}-{}-{}", hash_str(&path), size, mtime, edge);
-    let jpg = out_dir.join(format!("{base}.jpg"));
-    let png = out_dir.join(format!("{base}.png"));
-    if jpg.exists() {
-        return Ok(jpg.to_string_lossy().into_owned());
-    }
-    if png.exists() {
-        return Ok(png.to_string_lossy().into_owned());
-    }
+/// Synchronous thumbnail-cache worker (runs on a blocking thread; also unit-tested).
+fn thumbnail_to_cache(
+    path: String,
+    max_edge: Option<u32>,
+    out_dir: Option<String>,
+    frame_time: Option<f64>,
+) -> Result<String, String> {
+    {
+        let src = PathBuf::from(&path);
+        let md = std::fs::metadata(&src).map_err(|e| format!("stat {path}: {e}"))?;
+        if !md.is_file() {
+            return Err(format!("not a file: {path}"));
+        }
+        let size = md.len();
+        let mtime = md
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let edge = max_edge.unwrap_or(512).clamp(16, 2048);
+        // Effective frame time: the chosen one, else an early frame (~matches the
+        // old default). Folded into the cache key so changing it regenerates.
+        let ft = frame_time.filter(|v| v.is_finite() && *v >= 0.0).unwrap_or(0.1);
+        let frame_ms = (ft * 1000.0) as u64;
+        let out_dir = out_dir
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(default_thumb_dir);
+        std::fs::create_dir_all(&out_dir).map_err(|e| format!("mkdir failed: {e}"))?;
 
-    let ext = src
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    if IMAGE_EXTS.contains(&ext.as_str()) && thumbnail_image(&src, &jpg, edge).is_ok() {
-        return Ok(jpg.to_string_lossy().into_owned());
+        let base = format!("{:x}-{}-{}-{}-{}", hash_str(&path), size, mtime, edge, frame_ms);
+        let jpg = out_dir.join(format!("{base}.jpg"));
+        let png = out_dir.join(format!("{base}.png"));
+        if jpg.exists() {
+            return Ok(jpg.to_string_lossy().into_owned());
+        }
+        if png.exists() {
+            return Ok(png.to_string_lossy().into_owned());
+        }
+
+        let ext = src
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if IMAGE_EXTS.contains(&ext.as_str()) {
+            if thumbnail_image(&src, &jpg, edge).is_ok() {
+                return Ok(jpg.to_string_lossy().into_owned());
+            }
+        } else if let Some(ff) = find_ffmpeg() {
+            if ffmpeg_thumb(&ff, &src, &jpg, ft, edge) {
+                return Ok(jpg.to_string_lossy().into_owned());
+            }
+        }
+        // Fallback for non-images without ffmpeg (or a corrupt image).
+        thumbnail_quicklook(&src, &png, edge)?;
+        Ok(png.to_string_lossy().into_owned())
     }
-    thumbnail_quicklook(&src, &png, edge)?;
-    Ok(png.to_string_lossy().into_owned())
 }
 
 /// Trivial connectivity check the frontend can call to confirm the Rust backend
@@ -310,10 +383,11 @@ mod tests {
         });
         img.save(&src).unwrap();
 
-        let out = generate_thumbnail(
+        let out = thumbnail_to_cache(
             src.to_string_lossy().into_owned(),
             Some(128),
             Some(dir.to_string_lossy().into_owned()),
+            None,
         )
         .expect("thumbnail generation should succeed");
 

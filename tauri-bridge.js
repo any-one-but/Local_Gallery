@@ -100,13 +100,14 @@
   // Request a disk-cached downscaled thumbnail for a media file; resolves to an
   // asset URL the WebView can load (or "" on failure). Thumbs are written under
   // the open library's .local-gallery/thumbs so they're inside the asset scope.
-  window.__lg.requestThumb = function (path, edge) {
+  window.__lg.requestThumb = function (path, edge, frameTime) {
     var root = String((window.__lg && window.__lg.rootPath) || "").replace(/\/+$/, "");
     var outDir = root ? root + "/.local-gallery/thumbs" : "";
     return invoke("generate_thumbnail", {
       path: String(path),
       maxEdge: edge || 512,
       outDir: outDir || null,
+      frameTime: typeof frameTime === "number" && isFinite(frameTime) ? frameTime : null,
     })
       .then(function (thumbPath) {
         return thumbPath ? assetUrl(thumbPath) : "";

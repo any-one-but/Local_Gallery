@@ -55531,13 +55531,18 @@ function tauriThumbForImgEl(el) {
   if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
   const path = nativePathForRecord(rec);
   if (!path) return "";
-  const key = `${path}::${TAURI_THUMB_EDGE}`;
+  // Honor the user's chosen video thumbnail frame (backwards-compatible with the
+  // Electron build); the key includes it so changing the frame regenerates.
+  const frameTime =
+    rec.type === "video" ? metaGetVideoThumbnailTimeForRecord(rec) : null;
+  const ftKey = Number.isFinite(frameTime) ? Math.round(frameTime * 1000) : "d";
+  const key = `${path}::${TAURI_THUMB_EDGE}::${ftKey}`;
   const cached = TAURI_THUMB_INDEX.get(key);
   if (cached) return cached;
   if (!el.__tauriThumbPending) {
     el.__tauriThumbPending = true;
     window.__lg
-      .requestThumb(path, TAURI_THUMB_EDGE)
+      .requestThumb(path, TAURI_THUMB_EDGE, frameTime)
       .then((url) => {
         el.__tauriThumbPending = false;
         if (!url) return;

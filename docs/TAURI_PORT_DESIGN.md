@@ -178,6 +178,19 @@ Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
   (div, not img) so it isn't thumbnailized yet; bounded-concurrency queue;
   visual QA of a dense grid (needs your eyes).
 
+**4c (fixes from first real GUI test):**
+- **Beachball during navigation** — the Rust commands were synchronous, so they
+  ran on the main thread; `generate_thumbnail` (image decode / subprocess) firing
+  during nav froze the UI. Made the heavy commands **async + spawn_blocking**
+  (generate_thumbnail, scan_dir, read/write_file_bytes, remove_path).
+- **Video frame "changed"/"re-cropped"** — QuickLook ignored the per-file
+  thumbnail frame time, picking a different frame at a different aspect (so the
+  crop looked wrong). Video thumbs now use **ffmpeg** seeking to
+  `metaGetVideoThumbnailTimeForRecord` (early-frame default ≈ Electron's),
+  aspect-preserving; cache key includes the frame so changes regenerate.
+  Caveat: uses a system ffmpeg (common paths) — **Phase 8 bundles ffmpeg-static**
+  so packaged builds work; falls back to QuickLook when ffmpeg is absent.
+
 ### Phase 5 — Metadata persistence
 *Goal: scores/tags/votes/victories/prefs/keybinds load and save.*
 - Rust reads/writes the existing `.local-gallery/*.log.json` files (scores,

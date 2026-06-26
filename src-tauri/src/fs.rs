@@ -56,28 +56,32 @@ pub async fn pick_root(app: tauri::AppHandle) -> Option<String> {
 /// List a directory's immediate children. JS does the media/hidden filtering;
 /// this just reports dirs and files (+ size/mtime). Symlinks are resolved.
 #[tauri::command]
-pub fn scan_dir(path: String) -> Result<DirListing, String> {
-    let mut dirs = Vec::new();
-    let mut files = Vec::new();
-    let read = std::fs::read_dir(&path).map_err(|e| format!("read_dir {path}: {e}"))?;
-    for entry in read.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        // metadata() follows symlinks so linked dirs/files classify correctly.
-        let md = match std::fs::metadata(entry.path()) {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        if md.is_dir() {
-            dirs.push(name);
-        } else if md.is_file() {
-            files.push(FileEntry {
-                name,
-                size: md.len(),
-                mtime_ms: mtime_ms(&md),
-            });
+pub async fn scan_dir(path: String) -> Result<DirListing, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<DirListing, String> {
+        let mut dirs = Vec::new();
+        let mut files = Vec::new();
+        let read = std::fs::read_dir(&path).map_err(|e| format!("read_dir {path}: {e}"))?;
+        for entry in read.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            // metadata() follows symlinks so linked dirs/files classify correctly.
+            let md = match std::fs::metadata(entry.path()) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if md.is_dir() {
+                dirs.push(name);
+            } else if md.is_file() {
+                files.push(FileEntry {
+                    name,
+                    size: md.len(),
+                    mtime_ms: mtime_ms(&md),
+                });
+            }
         }
-    }
-    Ok(DirListing { dirs, files })
+        Ok(DirListing { dirs, files })
+    })
+    .await
+    .map_err(|e| format!("scan task failed: {e}"))?
 }
 
 /// "file" | "dir" | "none" — lets the shim emulate getFileHandle/
@@ -95,28 +99,36 @@ pub fn path_kind(path: String) -> String {
 /// the small `.local-gallery/*.json` metadata logs — NOT media, which uses the
 /// asset protocol).
 #[tauri::command]
-pub fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
-    std::fs::read(&path).map_err(|e| format!("read {path}: {e}"))
+pub async fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::read(&path).map_err(|e| format!("read {path}: {e}"))
+    })
+    .await
+    .map_err(|e| format!("read task failed: {e}"))?
 }
 
 /// Write a file atomically (temp + rename), creating parent dirs. Backs the
 /// shim's `createWritable().write()/close()`.
 #[tauri::command]
-pub fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
-    let target = PathBuf::from(&path);
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {parent:?}: {e}"))?;
-    }
-    let tmp = target.with_extension(format!(
-        "{}lgtmp",
-        target
-            .extension()
-            .map(|e| format!("{}.", e.to_string_lossy()))
-            .unwrap_or_default()
-    ));
-    std::fs::write(&tmp, &bytes).map_err(|e| format!("write tmp: {e}"))?;
-    std::fs::rename(&tmp, &target).map_err(|e| format!("rename: {e}"))?;
-    Ok(())
+pub async fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let target = PathBuf::from(&path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {parent:?}: {e}"))?;
+        }
+        let tmp = target.with_extension(format!(
+            "{}lgtmp",
+            target
+                .extension()
+                .map(|e| format!("{}.", e.to_string_lossy()))
+                .unwrap_or_default()
+        ));
+        std::fs::write(&tmp, &bytes).map_err(|e| format!("write tmp: {e}"))?;
+        std::fs::rename(&tmp, &target).map_err(|e| format!("rename: {e}"))?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("write task failed: {e}"))?
 }
 
 /// Create a directory (and parents). Backs getDirectoryHandle({create:true}).
@@ -201,22 +213,26 @@ pub fn get_last_root(app: tauri::AppHandle) -> Option<String> {
 
 /// Remove a file or directory. Backs removeEntry({recursive}).
 #[tauri::command]
-pub fn remove_path(path: String, recursive: bool) -> Result<(), String> {
-    let p = Path::new(&path);
-    let md = match std::fs::symlink_metadata(p) {
-        Ok(m) => m,
-        Err(_) => return Ok(()), // already gone
-    };
-    let res = if md.is_dir() {
-        if recursive {
-            std::fs::remove_dir_all(p)
+pub async fn remove_path(path: String, recursive: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let p = Path::new(&path);
+        let md = match std::fs::symlink_metadata(p) {
+            Ok(m) => m,
+            Err(_) => return Ok(()), // already gone
+        };
+        let res = if md.is_dir() {
+            if recursive {
+                std::fs::remove_dir_all(p)
+            } else {
+                std::fs::remove_dir(p)
+            }
         } else {
-            std::fs::remove_dir(p)
-        }
-    } else {
-        std::fs::remove_file(p)
-    };
-    res.map_err(|e| format!("remove {path}: {e}"))
+            std::fs::remove_file(p)
+        };
+        res.map_err(|e| format!("remove {path}: {e}"))
+    })
+    .await
+    .map_err(|e| format!("remove task failed: {e}"))?
 }
 
 #[cfg(test)]
@@ -232,17 +248,21 @@ mod tests {
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::write(dir.join("a.txt"), b"hello").unwrap();
 
+        fn block<T>(f: impl std::future::Future<Output = T>) -> T {
+            tauri::async_runtime::block_on(f)
+        }
+
         // make_dir + touch + write + read
         let nested = dir.join(".local-gallery");
         make_dir(nested.to_string_lossy().into()).unwrap();
         let log = nested.join("x.log.json");
         touch_file(log.to_string_lossy().into()).unwrap();
-        write_file_bytes(log.to_string_lossy().into(), b"{\"ok\":1}".to_vec()).unwrap();
-        let back = read_file_bytes(log.to_string_lossy().into()).unwrap();
+        block(write_file_bytes(log.to_string_lossy().into(), b"{\"ok\":1}".to_vec())).unwrap();
+        let back = block(read_file_bytes(log.to_string_lossy().into())).unwrap();
         assert_eq!(back, b"{\"ok\":1}");
 
         // scan_dir sees sub (dir) and a.txt (file, size 5)
-        let listing = scan_dir(dir.to_string_lossy().into()).unwrap();
+        let listing = block(scan_dir(dir.to_string_lossy().into())).unwrap();
         assert!(listing.dirs.iter().any(|d| d == "sub"));
         let a = listing.files.iter().find(|f| f.name == "a.txt").unwrap();
         assert_eq!(a.size, 5);
@@ -250,7 +270,7 @@ mod tests {
         // path_kind + remove
         assert_eq!(path_kind(sub.to_string_lossy().into()), "dir");
         assert_eq!(path_kind(dir.join("a.txt").to_string_lossy().into()), "file");
-        remove_path(sub.to_string_lossy().into(), true).unwrap();
+        block(remove_path(sub.to_string_lossy().into(), true)).unwrap();
         assert_eq!(path_kind(sub.to_string_lossy().into()), "none");
     }
 
