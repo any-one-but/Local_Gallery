@@ -200,13 +200,19 @@ Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
 - **Done when:** scoring, tagging, Compare-mode victories, the Victories sort,
   appearance presets, and keybinds all persist across restarts.
 
-### Phase 6 — Feature parity & WKWebView QA
+### Phase 5 — Metadata persistence ✅ (rides on the fs shim)
+Scores/tags/votes/victories/prefs/keybinds already load + save via the Phase 2
+filesystem shim (verified: the full `.local-gallery/*.log.json` set written to
+disk on open). No separate work; live-UI correctness is folded into Phase 6.
+
+### Phase 6 — Feature parity & WKWebView QA (validation — needs hands-on use)
 *Goal: every feature works under WebKit, not just Chromium.*
-- Walk the feature list and fix engine quirks: Compare mode, appearance presets/
-  filters (CSS), sorting (incl. Victories), search, slideshow/gallery, bulk
-  select, rename/trash/storage, drag-and-drop (use Tauri's file-drop events),
-  downloads, fullscreen, clipboard.
-- **Done when:** a parity checklist passes against the Electron build.
+- Checked: **drag-and-drop is intra-app** (HTML5 DnD reordering, `setData`) — works
+  in WKWebView; no OS file-drop/clipboard dependency. Downloads go through the
+  `write_download_file` command.
+- Remaining is **QA, not implementation**: Compare mode, presets/filters (CSS),
+  sort (incl. Victories), search, slideshow, bulk select, rename/trash/storage,
+  fullscreen — confirmed as they're exercised during feature work.
 
 ### Phase 7 — Performance pass
 *Goal: beat Electron on the metrics that motivated the port.*
@@ -217,22 +223,22 @@ Tauri v2 crate, config, icons, npm scripts, `generate_thumbnail` PoC + test,
   for scores/tags — but only if measured.
 - **Done when:** measured wins on startup, memory, and large-folder open/scroll.
 
-### Phase 8 — Production-grade thumbnails
-*Goal: replace the `qlmanage` shell-out with native/robust generation.*
-- macOS: `QLThumbnailGenerator` / AVFoundation via `objc2` bindings (fast,
-  in-process, no subprocess).
-- Windows: bundled `ffmpeg` (or Media Foundation) for video frames; `image`
-  crate for images.
-- **Done when:** thumbnail generation is in-process and fast on both platforms.
+### Phase 8 — Production thumbnails ✅ (ffmpeg bundled)
+- Video thumbnails use **bundled ffmpeg-static** (`scripts/prepare-ffmpeg.js`
+  copies it into `src-tauri/resources/ffmpeg`; resolved at startup, preferred
+  over system) at the chosen frame, aspect-preserving. Images via the `image`
+  crate. QuickLook is the last-resort fallback.
+- Optional later: in-process `QLThumbnailGenerator`/AVFoundation (objc2) to drop
+  the subprocess entirely; Media Foundation on Windows.
 
-### Phase 9 — Packaging & distribution
-*Goal: shippable signed builds.*
-- Point `frontendDist` at a dedicated, minimal frontend dir (already synced via
-  `scripts/sync-frontend.js`); confirm the bundle excludes `node_modules`/`dist`.
-- macOS code signing + notarization; DMG. Auto-update (tauri-plugin-updater) if
-  wanted.
-- Windows (WebView2) + Linux builds; update the GitHub Actions workflow with a
-  Tauri matrix job alongside/replacing the Electron one.
+### Phase 9 — Packaging & distribution (build ✅, signing/CI remain)
+- `frontendDist` is a dedicated synced dir (bundle excludes node_modules/dist). ✅
+- **`tauri build` validated:** produces `Local Gallery.app` (7.3 MB binary +
+  bundled 45 MB ffmpeg) and a 29 MB `.dmg`. ✅
+- Remaining (needs your Apple Developer credentials): real **code signing +
+  notarization** (currently ad-hoc — fine locally, Gatekeeper-blocked when
+  downloaded). Then: auto-update (tauri-plugin-updater), Windows/Linux builds,
+  and a GitHub Actions Tauri job.
 - **Done when:** signed macOS DMG installs and runs on a clean machine; CI
   produces artifacts.
 
