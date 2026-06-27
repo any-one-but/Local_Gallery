@@ -13550,7 +13550,7 @@ const MediaFilterEngine = (() => {
       Number(overlayCfg.grain || 0) > 0 ||
       Number(overlayCfg.vignette || 0) > 0 ||
       Number(overlayCfg.cornerRadius || 0) > 0;
-    if (hasColor && !hasAdvanced) {
+    if (hasColor && !hasAdvanced && surface.type !== "video") {
       if (surface.canvas) {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
