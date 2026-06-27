@@ -6917,11 +6917,12 @@ textarea:focus-visible {
 }
 
 /* --- Single active selection across panes ---
-   Only the active pane shows a selection highlight. The file pane is already
-   un-highlighted when the preview pane is active (see #app.preview-pane-active
-   .dirRow.selected). This is the mirror: when the file pane is the active pane,
-   hide the preview grid's selection cursor, so there is never a highlighted
-   card in both panes at once. Bulk selections are unaffected. */
+   Only the active pane shows a selection highlight. When the preview pane is
+   active, renderDirectoriesPane and related updaters deliberately omit the
+   "selected" class on all .dirRow entries (and updateDirectorySelectionVisualsForActivePane
+   strips it). No file-pane item is ever differentiated while a grid selection
+   lives in the preview pane. The CSS rules below are defensive for transitions
+   and bulk. The mirror rule hides grid previews when directories pane is active. */
 #app.directories-pane-active .gridFiles .previewSelected:not(.bulkSelected),
 #app.directories-pane-active .gridFolders .previewSelected:not(.bulkSelected),
 #app.directories-pane-active
@@ -14926,7 +14927,24 @@ function setActivePane(nextPane, opts = null) {
     finalizeBulkSelectionAction();
   }
   WS.view.activePane = pane;
+  updateDirectorySelectionVisualsForActivePane();
   return true;
+}
+
+function updateDirectorySelectionVisualsForActivePane() {
+  if (!WS.view || !WS.nav) return;
+  const listEl =
+    (typeof directoriesListEl !== "undefined" && directoriesListEl) ||
+    document.getElementById("directoriesList");
+  if (!listEl) return;
+  const show = WS.view.activePane === "directories";
+  const rows = listEl.querySelectorAll(".dirRow");
+  const selIdx = Number(WS.nav.selectedIndex);
+  rows.forEach((row) => {
+    const rowIdx = Number(row.dataset.entryIndex);
+    const isMatch = Number.isFinite(rowIdx) && Number.isFinite(selIdx) && rowIdx === selIdx;
+    row.classList.toggle("selected", show && isMatch);
+  });
 }
 
 function syncActivePaneWithLayout() {
@@ -34855,13 +34873,16 @@ function fastUpdateGridSelectedRow(prevIdx, nextIdx) {
     `.dirRow[data-entry-index="${String(nextIdx)}"]`,
   );
   if (!nextRow) return false;
+  const showDirSel = !!(WS.view && WS.view.activePane === "directories");
   const selectedRows = directoriesListEl.querySelectorAll(".dirRow.selected");
   if (selectedRows && selectedRows.length) {
     selectedRows.forEach((row) => {
       if (row && row !== nextRow) row.classList.remove("selected");
     });
   }
-  nextRow.classList.add("selected");
+  if (showDirSel) {
+    nextRow.classList.add("selected");
+  }
   return true;
 }
 
@@ -34884,6 +34905,7 @@ function fastUpdatePaneSelectedRow(prevIdx, nextIdx) {
     `.dirRow[data-entry-index="${String(nextIdx)}"]`,
   );
   if (!nextRow) return false;
+  const showDirSel = !!(WS.view && WS.view.activePane === "directories");
   const selectedRows = directoriesListEl.querySelectorAll(
     ".dirRow.selected",
   );
@@ -34892,7 +34914,9 @@ function fastUpdatePaneSelectedRow(prevIdx, nextIdx) {
       if (row && row !== nextRow) row.classList.remove("selected");
     });
   }
-  nextRow.classList.add("selected");
+  if (showDirSel) {
+    nextRow.classList.add("selected");
+  }
   return true;
 }
 
@@ -44113,8 +44137,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     if (entry && entry.kind === "tag") seenTagEntryBeforeCurrent = true;
 
     const row = document.createElement("div");
-    row.className =
-      "dirRow" + (idx === WS.nav.selectedIndex ? " selected" : "");
+    const showDirSel = !!(WS.view && WS.view.activePane === "directories");
+    const isRowSelected = showDirSel && idx === WS.nav.selectedIndex;
+    row.className = "dirRow" + (isRowSelected ? " selected" : "");
     row.tabIndex = -1;
     row.dataset.entryIndex = String(idx);
     if (entry.kind === "file") row.dataset.fileId = String(entry.id || "");
@@ -53187,7 +53212,11 @@ function applyViewModesEverywhere(animate = false) {
 
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection({ force: true });
+  if (
+    !(WS.view && WS.view.activePane === "preview" && previewTargetStillResolvable())
+  ) {
+    syncPreviewToSelection({ force: true });
+  }
 
   renderDirectoriesPane(true);
   renderPreviewPane(animate, true);
@@ -53274,7 +53303,11 @@ function applyRandomSortModeEverywhere(animate = false) {
   }
   const fallbackIndex = nextIndex >= 0 ? nextIndex : WS.nav.selectedIndex;
   WS.nav.selectedIndex = findNearestSelectableIndex(fallbackIndex, 1);
-  syncPreviewToSelection();
+  if (
+    !(WS.view && WS.view.activePane === "preview" && previewTargetStillResolvable())
+  ) {
+    syncPreviewToSelection();
+  }
   renderDirectoriesPane(true);
   renderPreviewPane(animate, true);
   syncButtons();
