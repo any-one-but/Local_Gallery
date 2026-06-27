@@ -105,8 +105,9 @@
     var ft = typeof frameTime === "number" && isFinite(frameTime) ? frameTime : null;
     var key = String(path) + "::" + (edge || 512) + "::" + (ft == null ? "d" : Math.round(ft * 1000));
     if (thumbInflight[key]) return thumbInflight[key];
+    var meta = String((window.__lg && window.__lg.metaPath) || "").replace(/\/+$/, "");
     var root = String((window.__lg && window.__lg.rootPath) || "").replace(/\/+$/, "");
-    var outDir = root ? root + "/.local-gallery/thumbs" : "";
+    var outDir = meta ? meta + "/thumbs" : (root ? root + "/.local-gallery/thumbs" : "");
     var p = invoke("generate_thumbnail", {
       path: String(path),
       maxEdge: edge || 512,

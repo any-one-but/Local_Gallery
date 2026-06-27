@@ -287,6 +287,46 @@
     });
   }
 
+  // --- New single-app-folder support (metadata moved outside media root) ---
+  function ensureAppRoots() {
+    window.__lg = window.__lg || {};
+    return Promise.all([
+      invoke("get_media_root"),
+      invoke("get_metadata_root")
+    ]).then(function (results) {
+      var media = String(results[0] || "").replace(/\/+$/, "");
+      var meta = String(results[1] || "").replace(/\/+$/, "");
+      window.__lg.rootPath = media;
+      window.__lg.metaPath = meta;
+      // Scope the media folder for asset:// access (all user media)
+      // Also scope thumbs + catalog under the meta dir (new location)
+      var thumbs = meta + "/thumbs";
+      var catalog = meta + "/catalog";
+      return Promise.all([
+        invoke("allow_media_scope", { path: media }),
+        invoke("allow_media_scope", { path: thumbs }),
+        invoke("allow_media_scope", { path: catalog }),
+        invoke("allow_media_scope", { path: meta })
+      ]).then(function () {
+        return { media: media, meta: meta };
+      });
+    }).catch(function (e) {
+      console.warn("[tauri-fs-shim] ensureAppRoots failed", e);
+      return { media: "", meta: "" };
+    });
+  }
+
+  window.__lg.getMediaRoot = function () {
+    return invoke("get_media_root");
+  };
+  window.__lg.getMetadataRoot = function () {
+    return invoke("get_metadata_root");
+  };
+  window.__lg.ensureAppRoots = ensureAppRoots;
+  window.__lg.revealPath = function (p) {
+    return invoke("reveal_path", { path: String(p || "") });
+  };
+
   // Dev/test: confirm a media file loads through the asset protocol, including a
   // Range request (which video seeking depends on). Returns a report string.
   function assetSelfTest(filePath) {
@@ -307,7 +347,7 @@
     return window.__lg && window.__lg.assetUrl ? window.__lg.assetUrl(p) : p;
   }
 
-  // --- Picker --------------------------------------------------------------
+  // --- Picker (kept for advanced "relocate library" or other uses) -------------
   window.showDirectoryPicker = function () {
     return invoke("pick_root").then(function (path) {
       if (!path) throw fsError("AbortError", "user cancelled");
@@ -315,6 +355,24 @@
       return rememberRoot(path).then(function () {
         return new TauriDirHandle(path, baseName(path));
       });
+    });
+  };
+
+  // Returns a DirHandle for the app's single managed media folder (no picker).
+  window.__lg.getAppMediaDirectoryHandle = function () {
+    return ensureAppRoots().then(function (roots) {
+      var p = roots.media || "";
+      if (!p) throw fsError("NotFoundError", "could not resolve media folder");
+      return new TauriDirHandle(p, baseName(p));
+    });
+  };
+
+  // Returns a DirHandle pointing at the separate metadata / logs folder.
+  window.__lg.getAppMetaDirectoryHandle = function () {
+    return ensureAppRoots().then(function (roots) {
+      var p = roots.meta || "";
+      if (!p) throw fsError("NotFoundError", "could not resolve metadata folder");
+      return new TauriDirHandle(p, "Local Gallery");
     });
   };
 
@@ -335,9 +393,10 @@
   };
   window.__lg.assetSelfTest = assetSelfTest;
 
-  // (No auto-reopen on launch — the app starts with no library loaded.
-  // The last root is still remembered (via Rust) so a "reopen recent"
-  // action can be wired up later if wanted.)
+  // In the single-folder model the app automatically uses a fixed media folder
+  // (~/Pictures/Local Gallery or Documents equivalent) + separate app-support
+  // metadata. The old picker is still available for power users to point at
+  // a different location if they call it directly.
 
-  console.info("[tauri-fs-shim] File System Access shim installed");
+  console.info("[tauri-fs-shim] File System Access shim installed (single managed media folder mode)");
 })();

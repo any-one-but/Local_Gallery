@@ -7137,7 +7137,7 @@ textarea:focus-visible {
                             type="button"
                             class="miniBtn"
                           >
-                            Choose Root
+                            Reveal Media Folder
                           </button>
                         </div>
                       </div>
@@ -7166,7 +7166,7 @@ textarea:focus-visible {
                             type="button"
                             class="miniBtn"
                           >
-                            Choose Root
+                            Reveal Media Folder
                           </button>
                         </div>
                       </div>
@@ -7195,7 +7195,7 @@ textarea:focus-visible {
                             type="button"
                             class="miniBtn"
                           >
-                            Choose Root
+                            Reveal Media Folder
                           </button>
                         </div>
                       </div>
@@ -24986,16 +24986,24 @@ function normalizeWorkspaceRelPath(path) {
   if (!raw) return "";
   const parts = raw.split("/").filter(Boolean);
   if (!parts.length) return "";
-  if (parts.includes(".local-gallery")) return "";
+  // Old .local-gallery inside media is no longer used for metadata.
   return parts.join("/");
 }
 
 async function metaEnsureFsHandles(rootHandle) {
   if (!rootHandle) return false;
   try {
-    const sys = await rootHandle.getDirectoryHandle(".local-gallery", {
-      create: true,
-    });
+    // Use separate metadata dir handle when available (new single-folder model).
+    // Falls back to old .local-gallery subdir of media root.
+    let sys;
+    if (window.__lg && typeof window.__lg.getAppMetaDirectoryHandle === "function") {
+      try {
+        sys = await window.__lg.getAppMetaDirectoryHandle();
+      } catch (e) {}
+    }
+    if (!sys) {
+      sys = await rootHandle.getDirectoryHandle(".local-gallery", { create: true });
+    }
     const docHandles = Object.create(null);
     for (let i = 0; i < META_ALL_DOC_IDS.length; i++) {
       const docId = META_ALL_DOC_IDS[i];
@@ -25507,7 +25515,7 @@ async function buildWorkspaceFromFiles(fileList) {
     if (f.name[0] === ".") continue;
 
     const relPath = f.webkitRelativePath || f.name;
-    if (relPath.split("/").includes(".local-gallery")) continue;
+    // (metadata no longer lives inside the media tree)
 
     const parts = relPath.split("/").filter(Boolean);
     if (!parts.length) continue;
@@ -25633,7 +25641,11 @@ async function preloadStoragePathsForRootHandle(rootHandle) {
   if (!rootHandle) return new Set();
   let sysHandle = null;
   try {
-    sysHandle = await rootHandle.getDirectoryHandle(".local-gallery");
+    if (window.__lg && typeof window.__lg.getAppMetaDirectoryHandle === "function") {
+      sysHandle = await window.__lg.getAppMetaDirectoryHandle();
+    } else {
+      sysHandle = await rootHandle.getDirectoryHandle(".local-gallery");
+    }
   } catch {}
   if (!sysHandle) return new Set();
   let tagsHandle = null;
@@ -25655,7 +25667,7 @@ function computeWorkspaceSeedForFileList(fileList) {
     if (!relParts.length) continue;
     const relPath =
       relParts.length > 1 ? relParts.slice(1).join("/") : relParts[0];
-    if (!relPath || relPath.split("/").includes(".local-gallery")) continue;
+    if (!relPath) continue; // (old .local-gallery filter removed)
     const parts = relPath.split("/").filter(Boolean);
     if (!parts.length) continue;
     const filename = parts[parts.length - 1];
@@ -25678,7 +25690,6 @@ function preloadStoragePathsForFileList(fileList) {
 
 async function collectFilesFromDirHandle(dirHandle, basePath, out, storedPaths = null) {
   for await (const [name, handle] of dirHandle.entries()) {
-    if (name === ".local-gallery") continue;
     if (handle.kind === "file") {
       const f = await handle.getFile();
       if (!f || !f.name) continue;
@@ -25729,9 +25740,13 @@ async function readJsonFileHandle(fileHandle) {
 
 async function ensureCatalogHandles(rootHandle) {
   if (!rootHandle) return null;
-  const sys = await rootHandle.getDirectoryHandle(".local-gallery", {
-    create: true,
-  });
+  let sys;
+  if (window.__lg && typeof window.__lg.getAppMetaDirectoryHandle === "function") {
+    try { sys = await window.__lg.getAppMetaDirectoryHandle(); } catch {}
+  }
+  if (!sys) {
+    sys = await rootHandle.getDirectoryHandle(".local-gallery", { create: true });
+  }
   const catalog = await sys.getDirectoryHandle(CATALOG_DIR_NAME, {
     create: true,
   });
@@ -25747,7 +25762,13 @@ async function ensureCatalogHandles(rootHandle) {
 async function readExistingCatalogForRootHandle(rootHandle) {
   if (!rootHandle) return null;
   try {
-    const sys = await rootHandle.getDirectoryHandle(".local-gallery");
+    let sys;
+    if (window.__lg && typeof window.__lg.getAppMetaDirectoryHandle === "function") {
+      try { sys = await window.__lg.getAppMetaDirectoryHandle(); } catch {}
+    }
+    if (!sys) {
+      sys = await rootHandle.getDirectoryHandle(".local-gallery");
+    }
     const catalog = await sys.getDirectoryHandle(CATALOG_DIR_NAME);
     const folders = await catalog.getDirectoryHandle(CATALOG_FOLDERS_DIR_NAME);
     const indexFile = await catalog.getFileHandle(CATALOG_INDEX_FILE_NAME);
@@ -26602,7 +26623,6 @@ async function reconcileCatalogFolderWithDisk(path, opts = null) {
     const childPaths = [];
     const files = [];
     for await (const [name, handle] of dirHandle.entries()) {
-      if (name === ".local-gallery") continue;
       const relPath = p ? `${p}/${name}` : name;
       if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
       if (handle.kind === "directory") {
@@ -27145,7 +27165,6 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
       const childDirEntries = [];
       const fileEntries = [];
       for await (const [name, handle] of dirHandle.entries()) {
-        if (name === ".local-gallery") continue;
         const relPath = dirPath ? `${dirPath}/${name}` : name;
         if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
         stats.entries++;
@@ -27364,7 +27383,7 @@ async function buildWorkspaceFromFileList(fileList) {
     if (!relParts.length) continue;
     const relPath =
       relParts.length > 1 ? relParts.slice(1).join("/") : relParts[0];
-    if (!relPath || relPath.split("/").includes(".local-gallery")) continue;
+    if (!relPath) continue; // (old .local-gallery filter removed)
     if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
 
     const parts = relPath.split("/").filter(Boolean);
@@ -28069,7 +28088,6 @@ function invalidateDirHandleCache(prefix) {
 
 async function copyDirectoryHandle(srcHandle, dstHandle) {
   for await (const [name, handle] of srcHandle.entries()) {
-    if (name === ".local-gallery") continue;
     if (handle.kind === "file") {
       const file = await handle.getFile();
       const dstFile = await dstHandle.getFileHandle(name, { create: true });
@@ -28843,13 +28861,30 @@ if (refreshBtn)
   });
 
 async function chooseRootDirectoryFromMenu() {
+  // In the managed single-folder model, "Choose Root" now reveals the app's
+  // Local Gallery media folder in Finder/Explorer.
   try {
+    const api = window.__lg || {};
+    let mediaPath = "";
+    if (typeof api.getMediaRoot === "function") {
+      mediaPath = await api.getMediaRoot();
+    } else if (window.__lg && window.__lg.rootPath) {
+      mediaPath = window.__lg.rootPath;
+    }
+    if (mediaPath) {
+      // Use native reveal
+      const revealFn = (api && api.revealPath) || (window.__lg && window.__lg.revealPath);
+      if (typeof revealFn === "function") {
+        try { await revealFn(mediaPath); return; } catch (e) { console.warn(e); }
+      }
+      // Fallback: at least show the path
+      showStatusMessage("Media folder: " + mediaPath);
+      return;
+    }
+    // Last resort: still allow the old picker
     if (window.showDirectoryPicker) {
-      const rootHandle = await window.showDirectoryPicker({
-        mode: "readwrite",
-      });
-      if (!rootHandle) return;
-      await buildWorkspaceFromDirectoryHandle(rootHandle);
+      const rootHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      if (rootHandle) await buildWorkspaceFromDirectoryHandle(rootHandle);
       return;
     }
     if (openWritableInput) {
@@ -28857,10 +28892,10 @@ async function chooseRootDirectoryFromMenu() {
       openWritableInput.click();
       return;
     }
-    showStatusMessage("Folder picker unavailable.");
+    showStatusMessage("Media folder location unavailable.");
   } catch (err) {
-    console.error("Load folder failed.", err);
-    showStatusMessage("Load folder failed.");
+    console.error("Reveal media folder failed.", err);
+    showStatusMessage("Could not reveal media folder.");
   }
 }
 
@@ -28884,6 +28919,47 @@ if (openWritableInput) {
     }
   });
 }
+
+// --- Single managed media folder auto-open (Tauri app folder model) -----------
+
+
+async function openFixedAppMediaFolder() {
+  const api = window.__lg || window.electronAPI;
+  if (!api || typeof api.getAppMediaDirectoryHandle !== "function") {
+    // Not in the Tauri shim environment or old shim — fall back to classic picker flow.
+    return false;
+  }
+  try {
+    // Ensure asset scopes for media + metadata are granted early.
+    if (typeof api.ensureAppRoots === "function") {
+      await api.ensureAppRoots();
+    }
+    const handle = await api.getAppMediaDirectoryHandle();
+    if (handle) {
+      // Build workspace directly from the managed folder. This replaces the
+      // old "user must pick a root" flow.
+      await buildWorkspaceFromDirectoryHandle(handle);
+      showStatusMessage("Opened Local Gallery media folder.");
+      return true;
+    }
+  } catch (err) {
+    console.warn("Failed to auto-open managed media folder:", err);
+    showStatusMessage("Could not open Local Gallery folder. Check permissions.");
+  }
+  return false;
+}
+
+// On load (after shims and UI wiring), try the fixed media folder in Tauri mode.
+// If it fails the classic "Choose Root" buttons still allow manual action.
+(function tryAutoOpenManagedLibrary() {
+  // Give the rest of the page a tiny moment to settle (especially in Tauri webview).
+  setTimeout(() => {
+    if (typeof WS !== "undefined" && (!WS || !WS.root)) {
+      // Only auto if we don't already have a root (e.g. dev reload scenarios).
+      openFixedAppMediaFolder().catch(() => {});
+    }
+  }, 80);
+})();
 
 /* =========================================================
        Sorting helpers
@@ -38857,7 +38933,7 @@ async function chooseSetMergeOutputName(dirHandles) {
     if (!handle) continue;
     for await (const [name] of handle.entries()) {
       if (!name) continue;
-      if (name === ".local-gallery") continue;
+      // (no longer skip .local-gallery — metadata lives in separate app support folder)
       names.push(name);
     }
   }
@@ -39255,7 +39331,7 @@ async function deleteFolderPathsPermanently(paths) {
     const parentPath = parts.join("/");
     if (!folderName) continue;
     if (folderName === ".local-gallery" || parts.includes(".local-gallery"))
-      continue;
+      continue; // legacy skip; metadata is now external
 
     let parentHandle = null;
     try {

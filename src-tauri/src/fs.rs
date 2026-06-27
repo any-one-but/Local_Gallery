@@ -211,6 +211,64 @@ pub fn get_last_root(app: tauri::AppHandle) -> Option<String> {
     }
 }
 
+/// Returns (and creates if necessary) the single managed "Local Gallery" media folder.
+/// On macOS this defaults to ~/Pictures/Local Gallery (user-visible and convenient).
+/// Falls back to Documents/Local Gallery.
+#[tauri::command]
+pub fn get_media_root(app: tauri::AppHandle) -> Result<String, String> {
+    let base = app
+        .path()
+        .picture_dir()
+        .or_else(|_| app.path().document_dir())
+        .map_err(|e| format!("no user pictures or documents directory: {e}"))?;
+    let dir = base.join("Local Gallery");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create media dir: {e}"))?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// Returns (and creates) the application support folder used for metadata, logs,
+/// catalog shards, thumbs cache, etc. This lives OUTSIDE the user's media folder.
+#[tauri::command]
+pub fn get_metadata_root(app: tauri::AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("no app data dir: {e}"))?
+        .join("Local Gallery");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create app support dir: {e}"))?;
+    // Ensure common subdirectories
+    let _ = std::fs::create_dir_all(dir.join("catalog"));
+    let _ = std::fs::create_dir_all(dir.join("thumbs"));
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// Reveal the given path in the OS file manager (Finder on macOS).
+#[tauri::command]
+pub fn reveal_path(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("open failed: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Fallback: try the opener plugin if available at runtime, else just return ok.
+        // For now on other platforms we can just succeed silently or use opener later.
+        Ok(())
+    }
+}
+
+
+
+
+
+
+
+
+
 /// Remove a file or directory. Backs removeEntry({recursive}).
 #[tauri::command]
 pub async fn remove_path(path: String, recursive: bool) -> Result<(), String> {
@@ -234,6 +292,10 @@ pub async fn remove_path(path: String, recursive: bool) -> Result<(), String> {
     .await
     .map_err(|e| format!("remove task failed: {e}"))?
 }
+
+
+
+
 
 #[cfg(test)]
 mod tests {
