@@ -100,14 +100,18 @@
   // Request a disk-cached downscaled thumbnail for a media file; resolves to an
   // asset URL the WebView can load (or "" on failure). Thumbs are written under
   // the open library's .local-gallery/thumbs so they're inside the asset scope.
+  var thumbInflight = {}; // key -> in-flight promise (dedupe concurrent requests)
   window.__lg.requestThumb = function (path, edge, frameTime) {
+    var ft = typeof frameTime === "number" && isFinite(frameTime) ? frameTime : null;
+    var key = String(path) + "::" + (edge || 512) + "::" + (ft == null ? "d" : Math.round(ft * 1000));
+    if (thumbInflight[key]) return thumbInflight[key];
     var root = String((window.__lg && window.__lg.rootPath) || "").replace(/\/+$/, "");
     var outDir = root ? root + "/.local-gallery/thumbs" : "";
-    return invoke("generate_thumbnail", {
+    var p = invoke("generate_thumbnail", {
       path: String(path),
       maxEdge: edge || 512,
       outDir: outDir || null,
-      frameTime: typeof frameTime === "number" && isFinite(frameTime) ? frameTime : null,
+      frameTime: ft,
     })
       .then(function (thumbPath) {
         return thumbPath ? assetUrl(thumbPath) : "";
@@ -115,6 +119,10 @@
       .catch(function () {
         return "";
       });
+    thumbInflight[key] = p;
+    var clear = function () { delete thumbInflight[key]; };
+    p.then(clear, clear);
+    return p;
   };
 
   // Boot-time connectivity check: confirm the Rust backend is reachable.

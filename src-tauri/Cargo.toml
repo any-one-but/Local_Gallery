@@ -22,6 +22,10 @@ tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Semaphore to cap concurrent thumbnail generation (already in the dep tree via
+# tauri). Without a cap, opening a big folder spawns one ffmpeg/decode task per
+# tile and melts the CPU.
+tokio = { version = "1", features = ["sync"] }
 # Pure-Rust image decode/resize for image thumbnails. Video/other formats fall
 # back to macOS QuickLook (qlmanage) for now; this is where ffmpeg / AVFoundation
 # bindings will slot in for production.

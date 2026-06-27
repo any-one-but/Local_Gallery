@@ -131,6 +131,19 @@ fn ffmpeg_thumb(ff: &Path, src: &Path, out_path: &Path, seek: f64, edge: u32) ->
 /// Async + `spawn_blocking`: image decode and the ffmpeg/QuickLook subprocess
 /// must run off the main thread, or generating thumbnails during navigation
 /// freezes the UI (beachball).
+/// Caps concurrent thumbnail generation so a big folder doesn't launch one
+/// ffmpeg/decode task per tile at once. Sized to the machine, clamped to [2, 6].
+fn thumb_semaphore() -> &'static tokio::sync::Semaphore {
+    static SEM: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+    SEM.get_or_init(|| {
+        let n = std::thread::available_parallelism()
+            .map(|c| c.get())
+            .unwrap_or(4)
+            .clamp(2, 6);
+        tokio::sync::Semaphore::new(n)
+    })
+}
+
 #[tauri::command]
 async fn generate_thumbnail(
     path: String,
@@ -138,6 +151,11 @@ async fn generate_thumbnail(
     out_dir: Option<String>,
     frame_time: Option<f64>,
 ) -> Result<String, String> {
+    // Hold a permit for the duration of the (blocking) work to bound concurrency.
+    let _permit = thumb_semaphore()
+        .acquire()
+        .await
+        .map_err(|e| format!("semaphore: {e}"))?;
     tauri::async_runtime::spawn_blocking(move || {
         thumbnail_to_cache(path, max_edge, out_dir, frame_time)
     })
