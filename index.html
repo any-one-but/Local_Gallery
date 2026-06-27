@@ -6938,7 +6938,7 @@ textarea:focus-visible {
   </head>
 
   <body>
-    <div id="app" class="no-root-selected">
+    <div id="app">
       <!-- =========================================================
          Title Pane
          ========================================================= -->
@@ -27116,19 +27116,26 @@ async function ensureInternalTrashDirectoryForRootHandle(rootHandle) {
 }
 
 async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
-  holdBusyOverlay();
-  showBlockingLoaderOverlay("Opening root folder...", "Preparing workspace...");
-  await waitForBusyOverlayPaint();
+  const silent = !!(opts && (opts.silent || opts.noLoader || opts.skipLoader));
+  if (!silent) {
+    holdBusyOverlay();
+    showBlockingLoaderOverlay("Opening root folder...", "Preparing workspace...");
+    await waitForBusyOverlayPaint();
+  }
   try {
     await flushPendingMetadataSaveNow();
-    updateBlockingLoaderOverlay("Preparing workspace...", "Resetting previous gallery state...");
-    await waitForBusyOverlayPaint();
+    if (!silent) {
+      updateBlockingLoaderOverlay("Preparing workspace...", "Resetting previous gallery state...");
+      await waitForBusyOverlayPaint();
+    }
     LAST_LOADED_FILE_LIST = [];
     resetWorkspace();
     clearWorkspaceEmptyState();
 
-    updateBlockingLoaderOverlay("Preparing workspace...", "Checking gallery storage...");
-    await waitForBusyOverlayPaint();
+    if (!silent) {
+      updateBlockingLoaderOverlay("Preparing workspace...", "Checking gallery storage...");
+      await waitForBusyOverlayPaint();
+    }
     const trashDirAvailable = await ensureInternalTrashDirectoryForRootHandle(
       rootHandle,
     );
@@ -27136,10 +27143,13 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     const storedPaths = await preloadStoragePathsForRootHandle(rootHandle);
     await initVideoThumbCacheForWorkspace(rootHandle);
 
-    updateBlockingLoaderOverlay("Opening root folder...", "Scanning folders and media files...");
-    await waitForBusyOverlayPaint();
+    if (!silent) {
+      updateBlockingLoaderOverlay("Opening root folder...", "Scanning folders and media files...");
+      await waitForBusyOverlayPaint();
+    }
     const stats = { folders: 0, mediaFiles: 0, allFiles: 0, entries: 0, lastUpdate: 0 };
     const updateScanProgress = (path = "", force = false) => {
+      if (silent) return;
       const now = Date.now();
       if (!force && now - stats.lastUpdate < 80) return;
       stats.lastUpdate = now;
@@ -27261,11 +27271,13 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
 
     applyMediaFilterFromOptions();
 
-    updateBlockingLoaderOverlay(
-      "Loading saved data...",
-      "Reading saved tags, scores, and preferences...",
-    );
-    await waitForBusyOverlayPaint();
+    if (!silent) {
+      updateBlockingLoaderOverlay(
+        "Loading saved data...",
+        "Reading saved tags, scores, and preferences...",
+      );
+      await waitForBusyOverlayPaint();
+    }
     try {
       if (!ok) {
         WS.meta.storageMode = "local";
@@ -27283,22 +27295,26 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
         if (WS.meta.dirtyDocIds && WS.meta.dirtyDocIds.size) metaScheduleSave();
       }
     } finally {
-      hideBlockingLoaderOverlay();
+      if (!silent) hideBlockingLoaderOverlay();
     }
     applyMediaFilterFromOptions();
 
     await finalizeAspectRatiosAndStorageForLoadedWorkspace();
 
-    showBlockingLoaderOverlay("Preparing folder view...", "Building folder statistics...");
-    await waitForBusyOverlayPaint();
+    if (!silent) {
+      showBlockingLoaderOverlay("Preparing folder view...", "Building folder statistics...");
+      await waitForBusyOverlayPaint();
+    }
     try {
       rebuildDirectoryDerivedIndex();
     } finally {
-      hideBlockingLoaderOverlay();
+      if (!silent) hideBlockingLoaderOverlay();
     }
 
-    updateBlockingLoaderOverlay("Preparing folder view...", "Preparing root navigation...");
-    await waitForBusyOverlayPaint();
+    if (!silent) {
+      updateBlockingLoaderOverlay("Preparing folder view...", "Preparing root navigation...");
+      await waitForBusyOverlayPaint();
+    }
     WS.view.randomSeed = computeWorkspaceSeed();
     WS.view.randomCache = new Map();
     WS.view.randomFolderCache = new Map();
@@ -27313,8 +27329,10 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     syncFavoritesUi();
     syncTagUiForCurrentDir();
 
-    updateBlockingLoaderOverlay("Preparing folder view...", "Building folder and file rows...");
-    await waitForBusyOverlayPaint();
+    if (!silent) {
+      updateBlockingLoaderOverlay("Preparing folder view...", "Building folder and file rows...");
+      await waitForBusyOverlayPaint();
+    }
     rebuildDirectoriesEntries();
     primeTagDerivedCachesForDir(WS.root);
     WS.nav.selectedIndex = 0;
@@ -27324,14 +27342,20 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     syncPinnedHotNavigationDirectories(WS.root);
     applyDefaultRootLandingSidebars();
 
-    await prepareNavigationSnapshot(
-      currentNavigationSnapshot(),
-      "Preparing directory view...",
-      { keepBusyOverlay: true },
-    );
+    if (!silent) {
+      await prepareNavigationSnapshot(
+        currentNavigationSnapshot(),
+        "Preparing directory view...",
+        { keepBusyOverlay: true },
+      );
+    }
+    // silent startup skips the prepare snapshot (which shows busy) for instant open;
+    // thumbnails are primed at the end of build anyway.
 
-    updateBlockingLoaderOverlay("Rendering folder view...", "Populating files and preview panes...");
-    await waitForBusyOverlayPaint();
+    if (!silent) {
+      updateBlockingLoaderOverlay("Rendering folder view...", "Populating files and preview panes...");
+      await waitForBusyOverlayPaint();
+    }
     renderDirectoriesPane();
     renderPreviewPane(true);
     syncButtons();
@@ -27341,9 +27365,12 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     startVideoThumbWarm();
     syncMetaButtons();
     initDirHistory();
-    await waitForBusyOverlayPaint();
   } finally {
-    releaseBusyOverlayHold({ hide: true });
+    if (!silent) {
+      releaseBusyOverlayHold({ hide: true });
+    } else {
+      hideBusyOverlay(true);
+    }
     // Kick the passive thumbnail loader now the panes have their final size, so
     // thumbnails start loading on startup without needing a navigation nudge.
     scheduleInitialThumbnailPrime();
@@ -28938,8 +28965,8 @@ async function openFixedAppMediaFolder() {
     if (handle) {
       // Build workspace directly from the managed folder. This replaces the
       // old "user must pick a root" flow.
-      await buildWorkspaceFromDirectoryHandle(handle);
-      showStatusMessage("Opened Local Gallery media folder.");
+      await buildWorkspaceFromDirectoryHandle(handle, { silent: true });
+      // No status message on initial silent startup
       return true;
     }
   } catch (err) {
@@ -28952,13 +28979,13 @@ async function openFixedAppMediaFolder() {
 // On load (after shims and UI wiring), try the fixed media folder in Tauri mode.
 // If it fails the classic "Choose Root" buttons still allow manual action.
 (function tryAutoOpenManagedLibrary() {
-  // Give the rest of the page a tiny moment to settle (especially in Tauri webview).
+  // Run as soon as possible for instant startup (no delay, no loading UI).
+  // Use 0 timeout so DOM elements are ready but no visible flash/settle delay.
   setTimeout(() => {
     if (typeof WS !== "undefined" && (!WS || !WS.root)) {
-      // Only auto if we don't already have a root (e.g. dev reload scenarios).
       openFixedAppMediaFolder().catch(() => {});
     }
-  }, 80);
+  }, 0);
 })();
 
 /* =========================================================
