@@ -10486,6 +10486,8 @@ function buildMediaOverlayConfigFromOptions(opt) {
   };
 }
 
+
+
 function serializeAppearanceValues(values) {
   const parts = [];
   for (let i = 0; i < APPEARANCE_SLIDER_OPTION_KEYS.length; i++) {
@@ -13181,6 +13183,48 @@ const MediaFilterEngine = (() => {
     else appEl.removeAttribute("data-media-filter-engine");
   }
 
+  // Tauri-specific: load image bytes via native command into a clean (non-tainted)
+  // ImageBitmap so that canvas drawImage + ctx.filter (saturation etc) + getImageData
+  // (for temperature etc) produce the same visual results as direct file:// in the
+  // main/Electron branch. Direct draw from <img src=asset...> can taint the canvas
+  // in WKWebView, causing getImageData to fail and sometimes filter application to
+  // have no visible effect.
+  function kickLoadCleanImageForSurface(surface, target) {
+    if (!surface || surface.cleanImageLoading) return;
+    if (!window.electronAPI || !window.electronAPI.isTauri) return;
+    let p = (target && typeof target === "object")
+      ? (target.nativePath || (target.file && target.file.path) || nativePathForRecord(target) || "")
+      : "";
+    if (!p && target && target.dirPath && target.name) {
+      p = String(target.dirPath).replace(/\/$/, "") + "/" + target.name;
+    }
+    if (!p) return;
+    if (surface.cleanImagePath === p && surface.cleanImageBitmap) return;
+    surface.cleanImageLoading = true;
+    surface.cleanImagePath = p;
+    (async () => {
+      try {
+        const arr = await window.__TAURI__.core.invoke("read_file_bytes", { path: p });
+        const u8 = new Uint8Array(arr);
+        const blob = new Blob([u8]);
+        const bmp = await createImageBitmap(blob);
+        if (surface.cleanImagePath === p) {
+          if (surface.cleanImageBitmap) {
+            try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
+          }
+          surface.cleanImageBitmap = bmp;
+          requestRender();
+        } else {
+          try { bmp.close && bmp.close(); } catch {}
+        }
+      } catch (e) {
+        // fall back to direct el draw; filters may be limited
+      } finally {
+        if (surface) surface.cleanImageLoading = false;
+      }
+    })();
+  }
+
   function ensureSurface(name) {
     if (surfaces.has(name)) return surfaces.get(name);
     const surface = {
@@ -13198,6 +13242,9 @@ const MediaFilterEngine = (() => {
       workctx: null,
       scratchscreen: null,
       scratchctx: null,
+      cleanImageBitmap: null,
+      cleanImageLoading: false,
+      cleanImagePath: null,
       halationExtractCanvas: null,
       halationExtractCtx: null,
       vhsFuzzCanvas: null,
@@ -13277,6 +13324,14 @@ const MediaFilterEngine = (() => {
       surface.mediaEl.removeEventListener("pause", requestRender);
       surface.mediaEl.removeEventListener("seeked", requestRender);
     }
+    if (surface.mediaEl !== el) {
+      if (surface.cleanImageBitmap) {
+        try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
+        surface.cleanImageBitmap = null;
+      }
+      surface.cleanImageLoading = false;
+      surface.cleanImagePath = null;
+    }
     surface.mediaEl = el;
     surface.bound = true;
     el.addEventListener("load", requestRender);
@@ -13297,6 +13352,9 @@ const MediaFilterEngine = (() => {
     surface.ghostHasFrame = false;
     surface.nextVideoRenderAt = 0;
     bindMediaEvents(surface, mediaEl);
+    if (type === "image" && window.electronAPI && window.electronAPI.isTauri) {
+      kickLoadCleanImageForSurface(surface, target);
+    }
     ensureCanvas(surface);
     if (surface.mediaEl && surface.hasDrawn) {
       const keepRawVisible =
@@ -13364,6 +13422,12 @@ const MediaFilterEngine = (() => {
     surface.ghostHasFrame = false;
     surface.nextVideoRenderAt = 0;
     clearGifState(surface);
+    if (surface.cleanImageBitmap) {
+      try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
+      surface.cleanImageBitmap = null;
+    }
+    surface.cleanImageLoading = false;
+    surface.cleanImagePath = null;
     if (!preserveFrame) {
       surface.hasDrawn = false;
       if (surface.canvas) {
@@ -13385,6 +13449,12 @@ const MediaFilterEngine = (() => {
     surface.videoFrameToken++;
     surface.nextVideoRenderAt = 0;
     clearGifState(surface);
+    if (surface.cleanImageBitmap) {
+      try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
+      surface.cleanImageBitmap = null;
+    }
+    surface.cleanImageLoading = false;
+    surface.cleanImagePath = null;
     if (surface.canvas && surface.canvas.parentElement) {
       surface.canvas.parentElement.removeChild(surface.canvas);
     }
@@ -13433,20 +13503,69 @@ const MediaFilterEngine = (() => {
       if (surface.canvas) {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
+        surface.canvas.style.removeProperty("filter");
       }
-      if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+      if (surface.mediaEl) {
+        surface.mediaEl.classList.remove("mediaHidden");
+        try { surface.mediaEl.style.removeProperty("filter"); } catch {}
+      }
       surface.hasDrawn = false;
       surface.awaitingFreshFrame = false;
       return false;
     }
     if (!overlayCfg && AutoBlackBarCrop.enabled()) overlayCfg = EMPTY_MEDIA_OVERLAY_CONFIG;
     if (!overlayCfg) {
-      if (surface.canvas) surface.canvas.style.display = "none";
-      if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+      if (surface.canvas) {
+        surface.canvas.style.display = "none";
+        surface.canvas.style.removeProperty("filter");
+      }
+      if (surface.mediaEl) {
+        surface.mediaEl.classList.remove("mediaHidden");
+        try { surface.mediaEl.style.removeProperty("filter"); } catch {}
+      }
       surface.hasDrawn = false;
       surface.awaitingFreshFrame = false;
       return false;
     }
+
+    // Pure simple color filters (saturation, hue, contrast, brightness etc from sliders/presets)
+    // are applied directly via CSS filter on the media element itself in the preview pane.
+    // This is reliable (same mechanism that makes them work on thumbs via style.filter),
+    // avoids any canvas ctx.filter + asset protocol quirks in Tauri, and produces identical
+    // outcome to the main/Electron version for the basic color filters.
+    // Advanced non-color effects continue to use the full canvas engine.
+    const hasColor = Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length > 0;
+    const hasAdvanced =
+      Math.abs(Number(overlayCfg.temperature) || 0) > 0.0001 ||
+      Number(overlayCfg.colorCrush || 0) > 0 ||
+      Number(overlayCfg.blackCrush || 0) > 0 ||
+      Number(overlayCfg.whiteCrush || 0) > 0 ||
+      Number(overlayCfg.halation || 0) > 0 ||
+      Number(overlayCfg.ghosting || 0) > 0 ||
+      Number(overlayCfg.lineDamage || 0) > 0 ||
+      Number(overlayCfg.pixelate || 0) > 0 ||
+      Number(overlayCfg.blur || 0) > 0 ||
+      Number(overlayCfg.upscaler || 0) > 0 ||
+      Number(overlayCfg.chroma || 0) > 0 ||
+      Number(overlayCfg.grain || 0) > 0 ||
+      Number(overlayCfg.vignette || 0) > 0 ||
+      Number(overlayCfg.cornerRadius || 0) > 0;
+    if (hasColor && !hasAdvanced) {
+      if (surface.canvas) {
+        surface.canvas.style.display = "none";
+        surface.canvas.classList.remove("ready");
+        surface.canvas.style.removeProperty("filter");
+      }
+      if (surface.mediaEl) {
+        const colStr = overlayCfg.colorFilters.join(" ");
+        surface.mediaEl.style.filter = colStr;
+        surface.mediaEl.classList.remove("mediaHidden");
+      }
+      surface.hasDrawn = true;
+      surface.awaitingFreshFrame = false;
+      return false;
+    }
+
     if (
       !surface.mediaEl ||
       !surface.container ||
@@ -13467,8 +13586,14 @@ const MediaFilterEngine = (() => {
       : el.complete && el.naturalWidth > 0 && el.naturalHeight > 0;
     if (!ready) {
       if (!surface.hasDrawn) {
-        if (surface.canvas) surface.canvas.style.display = "none";
-        if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+        if (surface.canvas) {
+          surface.canvas.style.display = "none";
+          surface.canvas.style.removeProperty("filter");
+        }
+        if (surface.mediaEl) {
+          surface.mediaEl.classList.remove("mediaHidden");
+          try { surface.mediaEl.style.removeProperty("filter"); } catch {}
+        }
       }
       return false;
     }
@@ -13523,6 +13648,15 @@ const MediaFilterEngine = (() => {
           srcW = gifState.bitmap.width;
           srcH = gifState.bitmap.height;
         }
+      }
+    }
+    if (!isVideo && !isGifImage && window.electronAPI && window.electronAPI.isTauri) {
+      if (surface.cleanImageBitmap && surface.cleanImageBitmap.width > 0) {
+        drawSource = surface.cleanImageBitmap;
+        srcW = drawSource.width;
+        srcH = drawSource.height;
+      } else {
+        kickLoadCleanImageForSurface(surface, surface.target);
       }
     }
     let sourceCrop = isVideo
@@ -13856,6 +13990,19 @@ const MediaFilterEngine = (() => {
     if (surface.mediaEl) {
       if (isGifImage) surface.mediaEl.classList.remove("mediaHidden");
       else surface.mediaEl.classList.add("mediaHidden");
+    }
+
+    // Apply simple color filters (sat, hue, contrast, etc.) on the final displayed canvas
+    // using CSS filter. This is a novel approach to ensure they work reliably for
+    // asset-protocol served media in Tauri (where internal ctx.filter during
+    // compositing can fail to produce visible effect), while complex effects
+    // are handled inside the canvas. Parallels the working style.filter on thumb imgs.
+    const colorFilter = Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length
+      ? overlayCfg.colorFilters.join(" ") : "none";
+    if (colorFilter !== "none") {
+      surface.canvas.style.filter = colorFilter;
+    } else {
+      surface.canvas.style.removeProperty("filter");
     }
 
     const needsAnim =
@@ -14339,7 +14486,13 @@ function applyMediaFilterFromOptions() {
   else appEl.removeAttribute("data-media-filter");
   const root = document.documentElement;
   if (root) {
-    root.style.setProperty("--thumb-filter", "none");
+    let thumbF = "none";
+    const oc = MEDIA_OVERLAY_STATE;
+    if (oc) {
+      const cfs = Array.isArray(oc.colorFilters) && oc.colorFilters.length ? oc.colorFilters.join(" ") : "none";
+      if (cfs !== "none") thumbF = cfs;
+    }
+    root.style.setProperty("--thumb-filter", thumbF);
   }
   MEDIA_FILTER_STATE.mode = filter || "off";
   MEDIA_FILTER_STATE.animatedMode = normalizeAnimatedMediaFiltersValue(
@@ -14467,6 +14620,65 @@ function applyMediaFilterFromOptions() {
     }
   }
   MediaFilterEngine.requestRender();
+
+  // Additional direct force for preview pane output elements to have color filters.
+  // Novel multi-layer approach: set on both media (for direct display cases) and canvas (for engine cases).
+  // Visibility (display / mediaHidden opacity) ensures only the active one is seen with its filter.
+  try {
+    const pTarget = WS.preview && WS.preview.kind === "file" && WS.preview.fileId ? WS.fileById.get(WS.preview.fileId) : null;
+    const oc = resolveMediaOverlayConfigForTarget(pTarget);
+    const pColF = (oc && Array.isArray(oc.colorFilters) && oc.colorFilters.length) ? oc.colorFilters.join(" ") : "none";
+    const canvasSel = '#filePreviewViewport .mediaCanvas';
+    const previewCanvasEl = document.querySelector(canvasSel);
+    if (previewCanvasEl) {
+      if (pColF !== "none") previewCanvasEl.style.filter = pColF; else previewCanvasEl.style.removeProperty("filter");
+    }
+    if (previewImgEl) {
+      if (pColF !== "none") previewImgEl.style.filter = pColF; else previewImgEl.style.removeProperty("filter");
+    }
+    if (previewVideoEl) {
+      if (pColF !== "none") previewVideoEl.style.filter = pColF; else previewVideoEl.style.removeProperty("filter");
+    }
+  } catch {}
+
+  // Direct application of color filters to the preview pane's output canvas
+  // (if the engine is using canvas for it). This ensures color adjustments
+  // take effect even if internal compositing didn't apply them.
+  try {
+    const previewCanvas = document.querySelector('#filePreviewViewport .mediaCanvas, #viewerViewport .mediaCanvas');
+    if (previewCanvas) {
+      const previewTarget = previewRec || (WS.preview && WS.preview.fileId ? WS.fileById.get(WS.preview.fileId) : null);
+      const oc = resolveMediaOverlayConfigForTarget(previewTarget);
+      const colF = (oc && Array.isArray(oc.colorFilters) && oc.colorFilters.length) ? oc.colorFilters.join(" ") : "none";
+      if (colF !== "none") {
+        previewCanvas.style.filter = colF;
+      } else {
+        previewCanvas.style.removeProperty("filter");
+      }
+    }
+  } catch (e) {}
+
+  // Re-apply current color filters to already-mounted thumb <img>s (for live slider/preset changes).
+  // Brings back filter application to thumbs (liked).
+  try {
+    const thumbImgs = document.querySelectorAll(
+      'img.folderThumb, img.dirInlinePreview, img[data-dir-preview-id], img[data-file-id], img.thumb'
+    );
+    thumbImgs.forEach((img) => {
+      const recId = String(
+        img.dataset.dirPreviewId || img.dataset.fileId || ""
+      );
+      if (!recId) return;
+      const rec = WS.fileById.get(recId);
+      if (!rec) return;
+      const colF = getCurrentColorFilterCssForTarget(rec);
+      if (colF) {
+        try { img.style.filter = colF; } catch {}
+      } else {
+        try { img.style.removeProperty("filter"); } catch {}
+      }
+    });
+  } catch {}
 }
 
 function applyThumbFitFromOptions() { }
@@ -14516,6 +14728,13 @@ function getPreviewThumbnailTitleSizeForKind(kind, opt = null) {
 }
 
 function getThumbnailScaleForStyle(style, opt = null) { }
+
+function getCurrentColorFilterCssForTarget(target) {
+  const oc = resolveMediaOverlayConfigForTarget(target);
+  if (!oc) return "";
+  const cfs = Array.isArray(oc.colorFilters) && oc.colorFilters.length ? oc.colorFilters : [];
+  return cfs.length ? cfs.join(" ") : "";
+}
 
 function getActiveThumbnailScale(opt = null) { }
 
@@ -46173,7 +46392,42 @@ function retryNativePreviewMediaAsBlob(rec) {
   return true;
 }
 
-function getVideoPosterForRecord(rec) { }
+function getVideoPosterForRecord(rec) {
+  if (!rec || rec.type !== "video") return "";
+  if (rec.videoThumbUrl) return rec.videoThumbUrl;
+  // Under Tauri, kick an async request for the cached thumb (generated by Rust
+  // at the same frame time used in Electron era). Setting poster gives instant
+  // first-frame visual while the real <video> buffers, eliminating the
+  // perceived 1-2s black/lag on first selection.
+  try {
+    if (
+      window.electronAPI &&
+      window.electronAPI.isTauri &&
+      window.__lg &&
+      typeof window.__lg.requestThumb === "function"
+    ) {
+      const p = nativePathForRecord(rec);
+      if (p) {
+        window.__lg
+          .requestThumb(p, 640, null)
+          .then((u) => {
+            if (u && previewVideoEl) {
+              // Only apply if we're still showing this video
+              const currentRec =
+                WS.preview && WS.preview.fileId
+                  ? WS.fileById.get(String(WS.preview.fileId))
+                  : null;
+              if (currentRec && currentRec.id === rec.id) {
+                if (previewVideoEl.poster !== u) previewVideoEl.poster = u;
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  } catch {}
+  return "";
+}
 
 function getPassivePreviewSrcForRecord(rec, opts = null) { }
 
@@ -46300,7 +46554,7 @@ function ensurePreviewFileElements() {
   if (!previewVideoEl) {
     previewVideoEl = document.createElement("video");
     previewVideoEl.controls = false;
-    previewVideoEl.preload = "metadata";
+    previewVideoEl.preload = "auto";
     previewVideoEl.playsInline = true;
     previewVideoEl.autoplay = true;
     previewVideoEl.muted = false;
@@ -46352,6 +46606,12 @@ function seedPreviewViewportWithRecordHint(rec) {
     if (String(previewImgEl.getAttribute("src") || "") !== String(hintSrc)) {
       previewImgEl.src = hintSrc;
     }
+    // Ensure color filters are applied directly to preview media via CSS (reliable path, like thumbs)
+    try {
+      const oc = resolveMediaOverlayConfigForTarget(rec);
+      const imgColF = (oc && Array.isArray(oc.colorFilters) && oc.colorFilters.length) ? oc.colorFilters.join(" ") : "none";
+      if (imgColF !== "none") previewImgEl.style.filter = imgColF; else previewImgEl.style.removeProperty("filter");
+    } catch {}
     if (previewVideoEl) {
       try { previewVideoEl.pause(); } catch {}
       previewVideoEl.style.display = "none";
@@ -46366,6 +46626,23 @@ function seedPreviewViewportWithRecordHint(rec) {
     previewVideoEl.classList.add("ready");
     previewVideoEl.classList.remove("mediaHidden");
     previewVideoEl.style.display = "block";
+    // Start loading the video src as early as possible (selection hint time)
+    // so decode starts before full render. This reduces the first-select lag
+    // under Tauri asset protocol (was faster with direct file:// in Electron).
+    const vsrc = ensureMediaUrl(rec) || "";
+    if (vsrc) {
+      previewVideoEl.preload = "auto";
+      if (String(previewVideoEl.getAttribute("src") || "") !== vsrc) {
+        previewVideoEl.src = vsrc;
+        try { previewVideoEl.load(); } catch {}
+      }
+    }
+    // Ensure color filters via CSS on preview video
+    try {
+      const oc = resolveMediaOverlayConfigForTarget(rec);
+      const vColF = (oc && Array.isArray(oc.colorFilters) && oc.colorFilters.length) ? oc.colorFilters.join(" ") : "none";
+      if (vColF !== "none") previewVideoEl.style.filter = vColF; else previewVideoEl.style.removeProperty("filter");
+    } catch {}
     if (previewImgEl) {
       previewImgEl.style.display = "none";
       previewImgEl.classList.remove("ready");
@@ -47277,12 +47554,30 @@ function renderPreviewViewerItem(idx) {
       return;
     }
     const same = previewVideoEl.src === src;
+    previewVideoEl.preload = "auto";
     if (!same) {
       previewVideoEl.src = src;
       try {
         previewVideoEl.load();
       } catch {}
     }
+    // Direct CSS color filter on preview video for reliable application
+    try {
+      const oc = resolveMediaOverlayConfigForTarget(rec);
+      const vColF = (oc && Array.isArray(oc.colorFilters) && oc.colorFilters.length) ? oc.colorFilters.join(" ") : "none";
+      if (vColF !== "none") previewVideoEl.style.filter = vColF; else previewVideoEl.style.removeProperty("filter");
+    } catch {}
+    // Explicit play kick helps eliminate the initial 1-2s hesitation on first
+    // selection under Tauri/WKWebView (was instant with direct file: in Electron).
+    if (shouldAutoPlay) {
+      try {
+        const p = previewVideoEl.play();
+        if (p && typeof p.then === "function") p.catch(() => {});
+      } catch {}
+    }
+    // Kick filter engine immediately so the first decoded frame (with any
+    // preset optical filters/overlays) gets processed without extra delay.
+    try { MediaFilterEngine.requestRender(); } catch {}
     previewVideoEl.style.display = "block";
     previewVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
     applyPendingFilmCornerMask(previewVideoEl, rec.dirPath || "");
@@ -51555,7 +51850,7 @@ function ensureViewerElements() {
   if (!viewerVideoEl) {
     viewerVideoEl = document.createElement("video");
     viewerVideoEl.controls = true;
-    viewerVideoEl.preload = "metadata";
+    viewerVideoEl.preload = "auto";
     viewerVideoEl.playsInline = true;
     viewerVideoEl.autoplay = true;
     normalizeVideoPlaybackRate(viewerVideoEl);
@@ -51577,7 +51872,7 @@ function ensureViewerElements() {
       const cellEl = document.createElement("div");
       cellEl.className = "viewerQuadCell";
       const videoEl = document.createElement("video");
-      videoEl.preload = "metadata";
+      videoEl.preload = "auto";
       videoEl.playsInline = true;
       videoEl.autoplay = true;
       videoEl.controls = false;
@@ -55538,7 +55833,15 @@ function tauriThumbForImgEl(el) {
   const ftKey = Number.isFinite(frameTime) ? Math.round(frameTime * 1000) : "d";
   const key = `${path}::${TAURI_THUMB_EDGE}::${ftKey}`;
   const cached = TAURI_THUMB_INDEX.get(key);
-  if (cached) return cached;
+  if (cached) {
+    const colF = getCurrentColorFilterCssForTarget(rec);
+    if (colF) {
+      try { el.style.filter = colF; } catch {}
+    } else {
+      try { el.style.removeProperty("filter"); } catch {}
+    }
+    return cached;
+  }
   if (!el.__tauriThumbPending) {
     el.__tauriThumbPending = true;
     window.__lg
@@ -55552,6 +55855,12 @@ function tauriThumbForImgEl(el) {
           String(el.dataset.dirPreviewId || el.dataset.fileId || "") === recId;
         if (stillSame) {
           try { el.src = url; } catch {}
+          const colF = getCurrentColorFilterCssForTarget(rec);
+          if (colF) {
+            try { el.style.filter = colF; } catch {}
+          } else {
+            try { el.style.removeProperty("filter"); } catch {}
+          }
         }
       })
       .catch(() => { el.__tauriThumbPending = false; });
@@ -55559,6 +55868,12 @@ function tauriThumbForImgEl(el) {
   // Image: keep showing the full-res src (progressive) until the thumb swaps in.
   // Video: an <img> can't render the video file, so show a transparent pixel
   // until the generated frame arrives.
+  const colF = getCurrentColorFilterCssForTarget(rec);
+  if (colF) {
+    try { el.style.filter = colF; } catch {}
+  } else {
+    try { el.style.removeProperty("filter"); } catch {}
+  }
   return rec.type === "video" ? TAURI_TRANSPARENT_PX : "";
 }
 
