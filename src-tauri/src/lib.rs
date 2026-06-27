@@ -82,21 +82,35 @@ fn thumbnail_quicklook(src: &Path, out_path: &Path, edge: u32) -> Result<(), Str
     result
 }
 
-/// Locate an ffmpeg binary. A GUI app's PATH is minimal, so check common
-/// install locations explicitly. (Phase 8/9 will bundle ffmpeg-static.)
+static FFMPEG_PATH: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+/// Resolve ffmpeg once at startup: prefer the binary bundled with the app
+/// (ffmpeg-static copied into resources), else a system install. A GUI app's
+/// PATH is minimal, so system locations are checked explicitly.
+fn init_ffmpeg_path(app: &tauri::AppHandle) {
+    let bundled = app
+        .path()
+        .resolve("resources/ffmpeg", tauri::path::BaseDirectory::Resource)
+        .ok()
+        .filter(|p| p.exists());
+    let chosen = bundled.or_else(|| {
+        [
+            "/opt/homebrew/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
+            "/usr/bin/ffmpeg",
+            "/opt/local/bin/ffmpeg",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .find(|p| p.exists())
+    });
+    #[cfg(debug_assertions)]
+    eprintln!("[lg] ffmpeg: {:?}", chosen);
+    let _ = FFMPEG_PATH.set(chosen);
+}
+
 fn find_ffmpeg() -> Option<PathBuf> {
-    for c in [
-        "/opt/homebrew/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
-        "/usr/bin/ffmpeg",
-        "/opt/local/bin/ffmpeg",
-    ] {
-        let p = PathBuf::from(c);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    None
+    FFMPEG_PATH.get().cloned().flatten()
 }
 
 /// Extract a single video frame at `seek` seconds into a JPEG, scaled to fit
@@ -315,6 +329,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            init_ffmpeg_path(app.handle());
             // Build the main window in Rust so we can inject our init scripts
             // before index.html's own scripts run:
             //  - tauri-bridge.js  -> window.electronAPI shim

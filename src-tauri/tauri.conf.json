@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.anyonebut.localgallery",
   "build": {
-    "beforeDevCommand": "node scripts/sync-frontend.js",
-    "beforeBuildCommand": "node scripts/sync-frontend.js",
+    "beforeDevCommand": "node scripts/sync-frontend.js && node scripts/prepare-ffmpeg.js",
+    "beforeBuildCommand": "node scripts/sync-frontend.js && node scripts/prepare-ffmpeg.js",
     "frontendDist": "../frontend"
   },
   "app": {
@@ -22,6 +22,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": ["resources/ffmpeg"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
