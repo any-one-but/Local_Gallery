@@ -1,9 +1,9 @@
-// Tauri <-> Electron compatibility bridge.
+// Tauri compatibility bridge (provides the former electronAPI surface).
 //
 // Injected as a Tauri initialization script (see src-tauri/src/lib.rs) so it
-// runs BEFORE index.html's inlined app script. It re-creates the Electron-era
-// `window.electronAPI` on top of Tauri `invoke`, so the existing UI takes its
-// native (non-web) code paths under Tauri without per-call-site rewrites.
+// runs BEFORE index.html's inlined app script. It creates `window.electronAPI`
+// (with isElectron + isTauri) on top of Tauri `invoke` so the existing UI takes
+// its native code paths without per-call-site rewrites.
 //
 // As the port progresses, new native capabilities (filesystem, thumbnails,
 // metadata) are added here as thin wrappers over Rust commands.
@@ -61,7 +61,7 @@
     },
 
     // Save bytes to the user's Downloads folder; returns the written path.
-    // Mirrors the old `downloads-write-file` Electron IPC.
+    // Save to Downloads (replaces the former downloads-write-file path).
     writeDownloadFile: function (payload) {
       payload = payload || {};
       return invoke("write_download_file", {
@@ -128,7 +128,7 @@
   // Boot-time connectivity check: confirm the Rust backend is reachable.
   invoke("ping")
     .then(function (v) {
-      console.info("[tauri-bridge] electronAPI shim installed; backend:", v);
+      console.info("[tauri-bridge] electronAPI shim installed (Tauri); backend:", v);
     })
     .catch(function (e) {
       console.warn("[tauri-bridge] shim installed but backend ping failed:", e);

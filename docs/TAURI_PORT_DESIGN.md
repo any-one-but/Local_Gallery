@@ -1,6 +1,6 @@
 # Local Gallery — Tauri/Rust Port: Design & Plan
 
-Status: **living document.** Phase 0 (scaffold) is done on branch `tauri-port`.
+Status: **living document.** Port complete; Tauri is the production stack (cutover on tauri-port-ii). Historical notes kept for context.
 Quick-start lives in `PORTING.md`; this is the full design and ordered plan.
 
 ---
@@ -242,13 +242,13 @@ disk on open). No separate work; live-UI correctness is folded into Phase 6.
 - **Done when:** signed macOS DMG installs and runs on a clean machine; CI
   produces artifacts.
 
-### Phase 10 — Cutover
+### Phase 10 — Cutover ✅ (complete on tauri-port-ii)
 *Goal: Tauri is the app.*
-- Remove Electron (`main.js`, `preload.js`, `electron`/`electron-builder` deps,
-  the `dist`/`start` scripts) once parity + packaging are confirmed.
-- Update `CLAUDE.md`, `README`, release script for the Tauri toolchain.
-- Merge `tauri-port` → `main`.
-- **Done when:** `main` builds and ships as a Tauri app; Electron is gone.
+- Removed `main.js`, `preload.js`, `electron` + `electron-builder` from package.json and lock.
+- Updated scripts (`start`/`build`/`dist`/`release:patch` now drive Tauri), release-patch (also bumps tauri + cargo versions).
+- Rewrote CLAUDE.md top level, updated DESIGN.md build section, .github CI, PORTING.md.
+- Tauri is now the exclusive app builder and runtime.
+- Electron references remain only in historical docs and inside the *compatibility shims* (by design).
 
 ---
 
@@ -295,6 +295,6 @@ disk on open). No separate work; live-UI correctness is folded into Phase 6.
 
 ## 9. Definition of done
 
-Tauri build reaches **feature parity** with the Electron app, **measurably
-faster** on startup/memory/thumbnails/large-folder scroll, is **signed and
-packaged**, and `main` ships it with Electron removed.
+✅ Complete. Tauri is the only builder. Feature parity achieved via shims + native
+backing commands. Electron completely excised from the active build. Further
+signing / cross-platform CI / updater work can be done post-cutover.

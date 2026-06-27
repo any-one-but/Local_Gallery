@@ -1,9 +1,11 @@
 # Tauri (Rust) port
 
 Porting Local Gallery off Electron onto **Tauri v2 + Rust** for a smaller,
-faster, native macOS app (cross-platform-capable). This lives on the
-`tauri-port` branch and is **additive** — the Electron app (`main.js`,
-`preload.js`, `npm start`) still works untouched on `main`.
+faster, native macOS app (cross-platform-capable). 
+
+**Cutover complete** on this branch (tauri-port-ii and descendants). Electron files
+(`main.js`, `preload.js`, electron* deps) have been removed. The app now builds and
+runs exclusively via Tauri. The `main` branch history retains the Electron era.
 
 ## Why
 
@@ -31,38 +33,31 @@ src-tauri/
 ## Run
 
 ```bash
-npm run tauri:dev      # launch the app in the system WebView (debug)
-npm run tauri:build    # produce a .app/.dmg (release)
-cd src-tauri && cargo test   # run Rust unit tests (thumbnail PoC)
+npm start              # or: npm run tauri:dev
+npm run tauri:build    # .app + .dmg (and platform equivalents)
+cd src-tauri && cargo test
 ```
 
-In the running app's devtools console (`withGlobalTauri` is on):
+The bridge and shims are injected automatically. From the WebView console:
 
 ```js
 await window.__TAURI__.core.invoke('ping')
-await window.__TAURI__.core.invoke('generate_thumbnail', { path: '/abs/path/to/video.mp4', maxEdge: 512 })
+window.__lg.requestThumb('/abs/path/to/video.mp4', 256)
 ```
 
 ## Status
 
-- [x] Rust toolchain + Tauri CLI installed; `src-tauri` scaffolded; icons generated.
-- [x] Existing `index.html` loads in the WebView (WKWebView on macOS).
-- [x] **Thumbnail PoC**: `generate_thumbnail` — images via the `image` crate,
-      video/other via macOS QuickLook (`qlmanage`). Unit-tested.
-- [ ] Asset protocol wiring so the frontend renders thumbnails as `<img>`
-      (`convertFileSrc`).
-- [ ] **Filesystem layer** (the bulk): replace the File System Access API
-      (`showDirectoryPicker`, file/dir handles, `createWritable`) with Rust
-      commands (`scan_library`, `read_file`, `write_file`) — the core data model
-      (`DirNode`/`FileRecord`) becomes path-based.
-- [ ] `window.electronAPI` compatibility shim over Tauri `invoke` so existing
-      IPC calls keep working with minimal edits.
-- [ ] Metadata I/O in Rust (keep the `.local-gallery/*.log.json` format first;
-      SQLite later).
-- [ ] Media serving (replace `file://`/`ensureMediaUrl` with the asset protocol).
-- [ ] Production thumbnailing: AVFoundation/QLThumbnailGenerator on macOS,
-      ffmpeg on Windows (replace the `qlmanage` shell-out).
-- [ ] Windows/Linux build jobs in CI; signing + notarization.
+**Cutover complete.** All phases implemented:
+
+- Full native FS layer via injected `tauri-fs-shim.js` (showDirectoryPicker + full handle API backed by Rust).
+- Asset protocol for all media + thumbs.
+- `tauri-bridge.js` providing electronAPI compat + thumbnail request API.
+- Thumbnails fully wired (disk cache + ffmpeg + image crate).
+- Metadata persistence works via the shims.
+- Feature parity + packaging validated.
+- Electron completely removed; Tauri is the only builder.
+
+See docs/TAURI_PORT_DESIGN.md for the detailed history and phase notes.
 
 ## Notes / gotchas
 

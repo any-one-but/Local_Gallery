@@ -335,8 +335,8 @@
   };
   window.__lg.assetSelfTest = assetSelfTest;
 
-  // (No auto-reopen on launch — the app starts with no library loaded, like the
-  // Electron build. The last root is still remembered so a "reopen recent"
+  // (No auto-reopen on launch — the app starts with no library loaded.
+  // The last root is still remembered (via Rust) so a "reopen recent"
   // action can be wired up later if wanted.)
 
   console.info("[tauri-fs-shim] File System Access shim installed");

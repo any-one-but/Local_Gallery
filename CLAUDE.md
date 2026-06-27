@@ -5,26 +5,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm start          # Run the app in development (electron .)
-npm run dist       # Build distributable (electron-builder, outputs to dist/)
-npm run release:patch  # Bump patch version, commit, push, and build dist
+npm start          # Run in development: tauri dev (system WebView + Rust backend)
+npm run tauri:dev  # Same as above (explicit)
+npm run tauri:build # Production build (.app + .dmg etc via Tauri)
+npm run build      # Alias for tauri:build
+npm run dist       # Alias for tauri:build (kept for compatibility)
+npm run release:patch  # Bump patch version, commit, push, and tauri build
 ```
 
-No test suite exists in this project.
+Tauri requires Rust + Cargo. The npm tauri:* scripts ensure cargo is on PATH.
+
+No test suite in the JS; `cd src-tauri && cargo test` runs the Rust unit tests (fs + thumbnail generation).
 
 ## Architecture
 
-Local Gallery is an Electron desktop app for viewing and organizing a local media library. It has three layers:
+Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~58k line monolith) lives in the web layer; OS/filesystem/thumbnail work is in native Rust.
 
-**`main.js`** — Electron main process. Minimal: creates the window, exposes one IPC handler (`downloads-write-file`) for saving files to the system Downloads folder, and bridges the renderer to the native filesystem via `preload.js`.
+**Key layers:**
+- `src-tauri/` — the Rust backend crate:
+  - `tauri.conf.json` — product, build (before*Command runs sync-frontend + prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
+  - `src/main.rs` — thin binary entry.
+  - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
+  - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, etc. All heavy work uses spawn_blocking.
+  - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
+- `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile) + `__lg` dev helpers (ping, requestThumb, assetUrl) over Tauri invoke.
+- `tauri-fs-shim.js` — injected: overrides `window.showDirectoryPicker` and implements TauriDirHandle / TauriFileHandle / TauriWritable on top of Rust fs commands so the existing handle-based workspace builder runs unchanged. Also grants asset scopes and remembers rootPath for thumbs.
+- `index.html` (root) — the entire application. Two auto-generated inlined blocks (do not hand-edit the delimiters):
+  - `<!-- BEGIN: inlined from ./styles.css -->`
+  - `<!-- BEGIN: inlined from ./app.js (auto-generated) -->`
+  The root `index.html` is the source of truth. Before Tauri dev/build, `scripts/sync-frontend.js` copies it to `./frontend/index.html` (the clean `frontendDist` so the bundle contains only UI, not node_modules or .git).
+- Rust commands are invoked via `window.__TAURI__.core.invoke(...)` (or the shims).
 
-**`preload.js`** — Context bridge. Exposes `window.electronAPI` with two methods to the renderer: `getPathForFile()` (wraps `webUtils.getPathForFile`) and `writeDownloadFile()` (invokes the IPC handler). All other logic is renderer-side.
+**Media & thumbnails:**
+- All media served through Tauri's asset protocol (`convertFileSrc` / `window.__lg.assetUrl`).
+- Thumbnails: `generate_thumbnail` command (image crate for images; ffmpeg for video frames at chosen time; QuickLook fallback). Results cached under `<root>/.local-gallery/thumbs/` (explicitly scoped).
 
-**`index.html`** — The entire application UI and logic, ~54k lines. It contains two auto-generated inline sections (do not edit the delimiters):
-- `<!-- BEGIN: inlined from ./styles.css -->` … `<!-- END: inlined from ./styles.css -->` — all CSS
-- `<!-- BEGIN: inlined from ./app.js (auto-generated) -->` — all JavaScript
+**Persistence:**
+- `.local-gallery/*.log.json` files written via the fs shim (same format as before).
 
-The app uses the **File System Access API** (`showDirectoryPicker`, `getDirectoryHandle`, `getFileHandle`, `createWritable`) rather than Node.js filesystem access. Persistent metadata is stored in a `.local-gallery/` hidden directory inside the user's chosen root folder.
+The app still uses **File System Access API surface** (showDirectoryPicker etc.) but it is fully shimmed — no real browser FS API or Node fs in renderer.
+
+The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web layer.
 
 ### Core data model (`WS` global)
 
@@ -49,14 +70,16 @@ Three panes rendered via CSS grid in `#app`:
 
 ### Companion scripts
 
-- **`clean.sh`** — standalone Bash utility run separately against a media folder. 11 optional processing steps: dedupe (`fdupes`), similar-media culling (`czkawka`), video conversion (`ffmpeg`), resize, metadata removal (`mat2`), name sanitization, empty-item quarantine, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming. Not invoked by the Electron app.
-- **`*.user.js`** — Tampermonkey/Violentmonkey userscripts bundled alongside the app for downloading media from external sites into the gallery folder. They are independent of the Electron app.
+- **`clean.sh`** — standalone Bash utility run separately against a media folder. 11 optional processing steps: dedupe (`fdupes`), similar-media culling (`czkawka`), video conversion (`ffmpeg`), resize, metadata removal (`mat2`), name sanitization, empty-item quarantine, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming. Not invoked by the Tauri app.
+- **`*.user.js`** — Tampermonkey/Violentmonkey userscripts bundled alongside the app for downloading media from external sites into the gallery folder. They are independent of the app.
+- `scripts/sync-frontend.js` — copies root index.html -> frontend/ (run automatically by Tauri beforeDev/beforeBuild).
+- `scripts/prepare-ffmpeg.js` — copies ffmpeg-static binary into src-tauri/resources (for bundled video thumbnailing).
 
 ### Release workflow
 
-`npm run release:patch` (`scripts/release-patch.js`) bumps the last numeric segment of the zero-padded version (e.g. `01.06.38` → `01.06.39`), writes both `package.json` and `package-lock.json`, commits with message `release: v<version>`, pushes, then runs `npm run dist`. Use `--dry-run` to preview without side effects.
+`npm run release:patch` (`scripts/release-patch.js`) bumps the last numeric segment of the zero-padded version (e.g. `01.06.38` → `01.06.39`), writes package.json + lock + src-tauri/tauri.conf.json + src-tauri/Cargo.toml (semver form), commits `release: v<version>`, pushes, then runs `npm run tauri:build`. Use `--dry-run` to preview without side effects.
 
-A GitHub Actions workflow (`.github/workflows/build-windows.yml`) runs `electron-builder --win` on push to `main` and uploads `.exe`/`.msi`/`.zip` artifacts.
+Tauri produces platform bundles (macOS .app/.dmg, Windows, Linux) with the Rust binary + resources. CI for other platforms should use Tauri actions / rust + node setup (see .github/workflows).
 
 ## Navigation model (file pane vs. preview grid)
 
