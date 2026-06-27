@@ -15195,8 +15195,6 @@ const SHIFT_DIGIT_SYMBOL_TO_KEY = Object.freeze({
   ")": "0",
 });
 
-const ROOT_FOLDER_EMPTY_PROMPT = "Press the space bar to choose a root folder";
-
 function syncModifierKeyStateFromEvent(e) {
   if (!e) return;
   MODIFIER_KEY_STATE.Cmd = !!e.metaKey;
@@ -16469,8 +16467,7 @@ function resetWorkspace() {
   PREVIEW_BULK_TAG_EDIT = null;
   closeThumbnailCropEditor();
 
-  renderDirectoriesPane();
-  renderPreviewPane(true);
+  clearWorkspaceEmptyState();
   syncButtons();
   syncMetaButtons();
   renderOptionsUi();
@@ -43999,7 +43996,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   if (!WS.root) {
     LAST_DIRECTORIES_SCROLL_CONTEXT = nextContextKey;
     applyDirectoriesFilesOnlyChromeMode(false);
-    directoriesListEl.innerHTML = `<div class="label" style="padding:10px;">${escapeHtml(ROOT_FOLDER_EMPTY_PROMPT)}</div>`;
+    directoriesListEl.innerHTML = "";
     scheduleThumbnailDemandRefresh();
     return;
   }
@@ -48250,7 +48247,7 @@ function previewPlaceholderInfoForCurrentSelection() {
   }
   return {
     iconKey: "noItem",
-    label: WS.root ? "No item selected" : ROOT_FOLDER_EMPTY_PROMPT,
+    label: "No item selected",
     meta: "",
     thumbnailRecord: null,
   };
@@ -48699,11 +48696,10 @@ function renderPreviewPane(animate = false, keepScroll = false) {
   if (!WS.root || !WS.nav.dirNode) {
     WS.view.previewScrollActiveKey = "";
     updateModePill();
-    renderPreviewPlaceholder({
-      iconKey: "noItem",
-      label: ROOT_FOLDER_EMPTY_PROMPT,
-      meta: "",
-    });
+    if (previewBodyEl) {
+      releaseContainerThumbMedia(previewBodyEl);
+      previewBodyEl.innerHTML = "";
+    }
     return;
   }
 
