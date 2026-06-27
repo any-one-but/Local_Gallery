@@ -13272,6 +13272,7 @@ const MediaFilterEngine = (() => {
       ghostHasFrame: false,
       nextVideoRenderAt: 0,
       videoFrameToken: 0,
+      cachedVideoFrame: null,
     };
     surfaces.set(name, surface);
     return surface;
@@ -13328,6 +13329,10 @@ const MediaFilterEngine = (() => {
       if (surface.cleanImageBitmap) {
         try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
         surface.cleanImageBitmap = null;
+      }
+      if (surface.cachedVideoFrame) {
+        try { surface.cachedVideoFrame.close && surface.cachedVideoFrame.close(); } catch {}
+        surface.cachedVideoFrame = null;
       }
       surface.cleanImageLoading = false;
       surface.cleanImagePath = null;
@@ -13387,6 +13392,15 @@ const MediaFilterEngine = (() => {
           t >= surface.nextVideoRenderAt
         ) {
           surface.nextVideoRenderAt = t + intervalMs;
+          if (surface.type === "video" && mediaEl && typeof createImageBitmap === "function") {
+            createImageBitmap(mediaEl).then((bmp) => {
+              if (surface.cachedVideoFrame) {
+                try { surface.cachedVideoFrame.close && surface.cachedVideoFrame.close(); } catch {}
+              }
+              surface.cachedVideoFrame = bmp;
+              requestRender();
+            }).catch(() => {});
+          }
           requestRender();
         }
         mediaEl.requestVideoFrameCallback(onFrame);
@@ -13426,6 +13440,10 @@ const MediaFilterEngine = (() => {
       try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
       surface.cleanImageBitmap = null;
     }
+    if (surface.cachedVideoFrame) {
+      try { surface.cachedVideoFrame.close && surface.cachedVideoFrame.close(); } catch {}
+      surface.cachedVideoFrame = null;
+    }
     surface.cleanImageLoading = false;
     surface.cleanImagePath = null;
     if (!preserveFrame) {
@@ -13452,6 +13470,10 @@ const MediaFilterEngine = (() => {
     if (surface.cleanImageBitmap) {
       try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
       surface.cleanImageBitmap = null;
+    }
+    if (surface.cachedVideoFrame) {
+      try { surface.cachedVideoFrame.close && surface.cachedVideoFrame.close(); } catch {}
+      surface.cachedVideoFrame = null;
     }
     surface.cleanImageLoading = false;
     surface.cleanImagePath = null;
@@ -13550,7 +13572,7 @@ const MediaFilterEngine = (() => {
       Number(overlayCfg.grain || 0) > 0 ||
       Number(overlayCfg.vignette || 0) > 0 ||
       Number(overlayCfg.cornerRadius || 0) > 0;
-    if (hasColor && !hasAdvanced && surface.type !== "video") {
+    if (hasColor && !hasAdvanced) {
       if (surface.canvas) {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
@@ -13659,6 +13681,11 @@ const MediaFilterEngine = (() => {
         kickLoadCleanImageForSurface(surface, surface.target);
       }
     }
+    if (isVideo && surface.cachedVideoFrame && surface.cachedVideoFrame.width > 0) {
+      drawSource = surface.cachedVideoFrame;
+      srcW = drawSource.width;
+      srcH = drawSource.height;
+    }
     let sourceCrop = isVideo
       ? computeCroppedSourceRect(
           srcW,
@@ -13739,7 +13766,13 @@ const MediaFilterEngine = (() => {
       currentCanvas.width,
       currentCanvas.height,
     );
-    drawCropped(currentCtx, fitRect.x, fitRect.y, fitRect.w, fitRect.h);
+    if (!(isVideo && hasColor)) {
+      drawCropped(currentCtx, fitRect.x, fitRect.y, fitRect.w, fitRect.h);
+    } else {
+      // for video with color, skip base draw so video below provides the colored base
+      // canvas will only have advanced effects overlaid
+      currentCtx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
+    }
     const swapBuffers = () => {
       const oldCanvas = currentCanvas;
       const oldCtx = currentCtx;
@@ -13754,7 +13787,7 @@ const MediaFilterEngine = (() => {
         Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length
           ? overlayCfg.colorFilters.join(" ")
           : "none";
-      if (colorFilter !== "none") {
+      if (colorFilter !== "none" && !(isVideo && hasColor)) {
         resizeCanvasBuffer(
           scratchCanvas,
           currentCanvas.width,
@@ -13988,15 +14021,28 @@ const MediaFilterEngine = (() => {
     surface.hasDrawn = true;
     surface.awaitingFreshFrame = false;
     if (surface.mediaEl) {
-      if (isGifImage) surface.mediaEl.classList.remove("mediaHidden");
-      else surface.mediaEl.classList.add("mediaHidden");
+      if (isVideo && hasColor) {
+        // keep video visible with its color filter applied directly via CSS
+        surface.mediaEl.classList.remove("mediaHidden");
+        const colStr = Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length ? overlayCfg.colorFilters.join(" ") : "none";
+        if (colStr !== "none") {
+          surface.mediaEl.style.filter = colStr;
+        } else {
+          surface.mediaEl.style.removeProperty("filter");
+        }
+      } else if (isGifImage) {
+        surface.mediaEl.classList.remove("mediaHidden");
+      } else {
+        surface.mediaEl.classList.add("mediaHidden");
+      }
     }
 
-    // Apply simple color filters (sat, hue, contrast, etc.) on the final displayed canvas
-    // using CSS filter. This is a novel approach to ensure they work reliably for
-    // asset-protocol served media in Tauri (where internal ctx.filter during
-    // compositing can fail to produce visible effect), while complex effects
-    // are handled inside the canvas. Parallels the working style.filter on thumb imgs.
+    if (isVideo && hasColor && surface.canvas) {
+      surface.canvas.style.background = 'transparent';
+    }
+
+    // Apply color filters on the final canvas via style.filter for video to ensure they take effect
+    // (new approach to force CSS filter on the output canvas for video, similar to how it works on images/thumbs)
     const colorFilter = Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length
       ? overlayCfg.colorFilters.join(" ") : "none";
     if (colorFilter !== "none") {
