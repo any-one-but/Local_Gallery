@@ -9110,6 +9110,7 @@ const MEDIA_FILTER_STATE = {
   animatedMode: "on",
 };
 let MEDIA_OVERLAY_STATE = null;
+let MEDIA_FILTER_THUMB_SYNC_TIMER = null;
 let THUMB_FILTER_KEY = "";
 const DIR_NAV_MANIFESTS = new Map();
 const NAV_THUMB_READY_PROMISES = new Map();
@@ -9950,12 +9951,22 @@ function updateAppearancePresetUiState() {
   }
 }
 
-function markAppearanceStateChanged(invalidateThumbs = true) {
+function markAppearanceStateChanged(invalidateThumbs = true, options = null) {
   if (!WS.meta) return;
   syncActiveAppearancePresetSelection(WS.meta.options);
   metaMarkDirty(META_DOC_IDS.prefAppearance);
   setOptionsStatus("Saved");
-  applyOptionsEverywhere(!!invalidateThumbs);
+  if (options && options.liveOnly) {
+    applyMediaFilterFromOptions({ deferThumbSync: true });
+    if (invalidateThumbs) {
+      setTimeout(() => {
+        kickVideoThumbsForPreview();
+        kickImageThumbsForPreview();
+      }, 160);
+    }
+  } else {
+    applyOptionsEverywhere(!!invalidateThumbs);
+  }
   updateAppearancePresetUiState();
 }
 
@@ -9970,7 +9981,9 @@ function applyAppearancePresetById(presetId, options = {}) {
     WS.view.appearancePresetDraftName =
       id === BUILTIN_NULL_APPEARANCE_PRESET_ID ? "" : String(preset.name || "");
   }
-  markAppearanceStateChanged(options.invalidateThumbs !== false);
+  markAppearanceStateChanged(options.invalidateThumbs !== false, {
+    liveOnly: options.liveOnly !== false,
+  });
   return true;
 }
 
@@ -11003,14 +11016,14 @@ function mediaOverlayLiveVideoProfile(overlayCfg) {
   }
   let cost = 0;
   if (Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length)
-    cost += 0.7;
+    cost += 1.4;
   if (
     Math.abs(Number(overlayCfg.temperature) || 0) > 0.0001 ||
     Number(overlayCfg.colorCrush || 0) > 0.0001 ||
     Number(overlayCfg.blackCrush || 0) > 0.0001 ||
     Number(overlayCfg.whiteCrush || 0) > 0.0001
   )
-    cost += 2.4;
+    cost += 3.0;
   if (Number(overlayCfg.upscaler || 0) > 0.0001) cost += 4.2;
   if (Number(overlayCfg.halation || 0) > 0.0001) cost += 3.2;
   if (Number(overlayCfg.chroma || 0) > 0.0001) cost += 2.2;
@@ -11025,22 +11038,22 @@ function mediaOverlayLiveVideoProfile(overlayCfg) {
 
   if (cost >= 7) {
     return {
-      maxFps: 18,
-      maxOutputPixels: 900000,
-      maxWorkPixels: 480000,
+      maxFps: 16,
+      maxOutputPixels: 700000,
+      maxWorkPixels: 360000,
     };
   }
   if (cost >= 4) {
     return {
-      maxFps: 24,
-      maxOutputPixels: 1200000,
-      maxWorkPixels: 700000,
+      maxFps: 20,
+      maxOutputPixels: 900000,
+      maxWorkPixels: 520000,
     };
   }
   return {
-    maxFps: 30,
-    maxOutputPixels: 1600000,
-    maxWorkPixels: 1000000,
+    maxFps: 24,
+    maxOutputPixels: 1200000,
+    maxWorkPixels: 780000,
   };
 }
 
@@ -13557,9 +13570,20 @@ const MediaFilterEngine = (() => {
     }
     ensureCanvas(surface);
     if (type === "video") {
+      const hasReadyCanvas =
+        surface.canvas &&
+        surface.canvas.style.display !== "none" &&
+        surface.canvas.classList.contains("ready") &&
+        surface.hasDrawn;
       if (targetChanged) surface.hasDrawn = false;
-      surface.videoWarmUntil = performance.now() + 260;
-      markVideoCanvasStale(surface);
+      if (targetChanged || !hasReadyCanvas) {
+        surface.videoWarmUntil = performance.now() + 260;
+        markVideoCanvasStale(surface);
+      } else {
+        surface.videoWarmUntil = 0;
+        surface.canvas.classList.remove("videoCanvasStale");
+        if (surface.mediaEl) surface.mediaEl.classList.add("mediaHidden");
+      }
     } else {
       surface.canvas.classList.remove("videoCanvasStale");
       surface.videoWarmUntil = 0;
@@ -14699,7 +14723,38 @@ function buildThumbnailMenuButtonHtml(
 
 function syncThumbFilterKeyWithCurrentAppearanceContext() { }
 
-function applyMediaFilterFromOptions() {
+function syncMountedThumbColorFilters() {
+  try {
+    const thumbImgs = document.querySelectorAll(
+      'img.folderThumb, img.dirInlinePreview, img[data-dir-preview-id], img[data-file-id], img.thumb'
+    );
+    thumbImgs.forEach((img) => {
+      const recId = String(
+        img.dataset.dirPreviewId || img.dataset.fileId || ""
+      );
+      if (!recId) return;
+      const rec = WS.fileById.get(recId);
+      if (!rec) return;
+      const colF = getCurrentColorFilterCssForTarget(rec);
+      if (colF) {
+        try { img.style.filter = colF; } catch {}
+      } else {
+        try { img.style.removeProperty("filter"); } catch {}
+      }
+    });
+  } catch {}
+}
+
+function scheduleMountedThumbColorFilterSync() {
+  if (MEDIA_FILTER_THUMB_SYNC_TIMER) clearTimeout(MEDIA_FILTER_THUMB_SYNC_TIMER);
+  MEDIA_FILTER_THUMB_SYNC_TIMER = setTimeout(() => {
+    MEDIA_FILTER_THUMB_SYNC_TIMER = null;
+    syncMountedThumbColorFilters();
+  }, 120);
+}
+
+function applyMediaFilterFromOptions(options = null) {
+  const deferThumbSync = !!(options && options.deferThumbSync);
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   const prevFilterMode = MEDIA_FILTER_STATE.mode || "off";
   MEDIA_OVERLAY_STATE = buildMediaOverlayConfigFromOptions(opt);
@@ -14860,27 +14915,8 @@ function applyMediaFilterFromOptions() {
     }
   } catch {}
 
-  // Re-apply current color filters to already-mounted thumb <img>s (for live slider/preset changes).
-  // Brings back filter application to thumbs (liked).
-  try {
-    const thumbImgs = document.querySelectorAll(
-      'img.folderThumb, img.dirInlinePreview, img[data-dir-preview-id], img[data-file-id], img.thumb'
-    );
-    thumbImgs.forEach((img) => {
-      const recId = String(
-        img.dataset.dirPreviewId || img.dataset.fileId || ""
-      );
-      if (!recId) return;
-      const rec = WS.fileById.get(recId);
-      if (!rec) return;
-      const colF = getCurrentColorFilterCssForTarget(rec);
-      if (colF) {
-        try { img.style.filter = colF; } catch {}
-      } else {
-        try { img.style.removeProperty("filter"); } catch {}
-      }
-    });
-  } catch {}
+  if (deferThumbSync) scheduleMountedThumbColorFilterSync();
+  else syncMountedThumbColorFilters();
 }
 
 function applyThumbFitFromOptions() { }
@@ -20531,6 +20567,7 @@ ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges
     };
     const rawMin = attrNumber("data-stepper-min", attrNumber("min", 0));
     const rawMax = attrNumber("data-stepper-max", attrNumber("max", 100));
+    const applyEverywhere = !(config && config.applyEverywhere === false);
     const neutralValue =
       config && Number.isFinite(Number(config.neutralValue))
         ? Number(config.neutralValue)
@@ -20805,7 +20842,7 @@ ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges
       metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
       setOptionsStatus("Saved");
       if (typeof onChange === "function") onChange(next[key]);
-      applyOptionsEverywhere(false);
+      if (applyEverywhere) applyOptionsEverywhere(false);
     });
     if (
       rowEl &&
@@ -20834,7 +20871,7 @@ ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges
         updateValue();
         setOptionsStatus("Saved");
         if (typeof onChange === "function") onChange(next[key]);
-        applyOptionsEverywhere(false);
+        if (applyEverywhere) applyOptionsEverywhere(false);
       });
     }
     updateValue();
@@ -20965,37 +21002,45 @@ ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges
   colorOverlayRows.forEach((row) => {
     if (row.showToggle !== false) {
       bindCheck(row.enabledId, row.enabledKey, () => {
-        applyMediaFilterFromOptions();
+        applyMediaFilterFromOptions({ deferThumbSync: true });
       });
     }
     bindRange(
       row.rangeId,
       row.amountKey,
       () => {
-        applyMediaFilterFromOptions();
+        applyMediaFilterFromOptions({ deferThumbSync: true });
         syncActiveAppearancePresetSelection(WS.meta.options);
         updateAppearancePresetUiState();
       },
       row.formatter,
-      { nullable: !!row.nullable, neutralValue: row.neutralValue },
+      {
+        nullable: !!row.nullable,
+        neutralValue: row.neutralValue,
+        applyEverywhere: false,
+      },
     );
   });
   effectOverlayRows.forEach((row) => {
     if (row.showToggle !== false) {
       bindCheck(row.enabledId, row.enabledKey, () => {
-        applyMediaFilterFromOptions();
+        applyMediaFilterFromOptions({ deferThumbSync: true });
       });
     }
     bindRange(
       row.rangeId,
       row.amountKey,
       () => {
-        applyMediaFilterFromOptions();
+        applyMediaFilterFromOptions({ deferThumbSync: true });
         syncActiveAppearancePresetSelection(WS.meta.options);
         updateAppearancePresetUiState();
       },
       row.formatter,
-      { nullable: !!row.nullable, neutralValue: row.neutralValue },
+      {
+        nullable: !!row.nullable,
+        neutralValue: row.neutralValue,
+        applyEverywhere: false,
+      },
     );
   });
   const appearancePresetPromptInput = $("opt_appearancePresetPromptName");
