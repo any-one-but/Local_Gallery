@@ -20386,9 +20386,7 @@ ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges
     const percentStep = Math.max(1, Math.abs(attrNumber("data-stepper-percent-step", 1)));
     const neutralEpsilon = Number.isFinite(Number(config && config.snapEpsilon))
       ? Math.abs(Number(config.snapEpsilon))
-      : stepValue > 0
-        ? stepValue * 0.5
-        : 0.0001;
+      : 0.000001;
     const clampRaw = (value) => {
       const n = Number(value);
       if (!Number.isFinite(n)) return Number.isFinite(neutralValue) ? neutralValue : rawMin;
