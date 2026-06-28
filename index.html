@@ -3965,7 +3965,7 @@ img[data-rotate-key].rotatingThumbFade {
   background: #000;
   z-index: 2;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: none;
 }
 
 #app.preview-media-pane-background #filePreviewViewport .mediaCanvas {
@@ -4085,7 +4085,7 @@ img[data-rotate-key].rotatingThumbFade {
   background: #000;
   z-index: 2;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: none;
 }
 #viewerViewport .mediaCanvas.ready {
   opacity: 1;
@@ -8441,7 +8441,7 @@ function defaultOptions() {
     betaDirFolderSquareCard: true,
     previewMode: "grid",
     videoSkipStep: "5",
-    preloadNextMode: "off",
+    preloadNextMode: "on",
     videoEndBehavior: "loop",
     slideshowDefault: "cycle",
     autoCropBlackBars: false,
@@ -9218,12 +9218,8 @@ const APPEARANCE_SLIDER_OPTION_KEYS = Object.freeze([
   "colorCrushOverlayIntensity",
   "blackCrushOverlayIntensity",
   "whiteCrushOverlayIntensity",
-  "halationOverlayIntensity",
-  "ghostingOverlayIntensity",
-  "lineDamageOverlayIntensity",
   "pixelateOverlayIntensity",
   "blurOverlayIntensity",
-  "upscaleSmoothingOverlayIntensity",
   "chromaOverlayIntensity",
   "grainOverlayIntensity",
   "vignetteOverlayIntensity",
@@ -9984,6 +9980,13 @@ function applyAppearancePresetById(presetId, options = {}) {
   markAppearanceStateChanged(options.invalidateThumbs !== false, {
     liveOnly: options.liveOnly !== false,
   });
+  if (
+    options.refreshUi !== false &&
+    MENU_OPEN &&
+    (MENU_ACTIVE_TAB === "appearance" || MENU_ACTIVE_TAB === "general")
+  ) {
+    renderOptionsUi(MENU_ACTIVE_TAB);
+  }
   return true;
 }
 
@@ -10451,20 +10454,8 @@ function buildMediaOverlayConfigFromOptions(opt) {
     OVERLAY_SLIDER_LIMITS.blur.max,
   );
   const blur = blurAmount != null && blurAmount > 0.0001 ? blurAmount : 0;
-  const upscaleAmount = optionalOverlayAmount(
-    firstPresentOverlayValue(
-      opt,
-      "upscaleSmoothingOverlayIntensity",
-      "upscalerOverlayIntensity",
-    ),
-    OVERLAY_SLIDER_LIMITS.upscaleSmoothing.min,
-    OVERLAY_SLIDER_LIMITS.upscaleSmoothing.max,
-  );
-  const upscale = upscaleAmount != null && upscaleAmount > 0.0001 ? upscaleAmount : 0;
-  // Detail is the single user-facing control for both preview supersampling
-  // and the lightweight reconstruction/detail pass. The old separate
-  // upscaler slider is intentionally ignored so these effects stay tied.
-  const upscaler = upscale;
+  const upscale = 0;
+  const upscaler = 0;
   const chromaAmount = optionalOverlayAmount(
     opt.chromaOverlayIntensity,
     OVERLAY_SLIDER_LIMITS.chroma.min,
@@ -10472,29 +10463,9 @@ function buildMediaOverlayConfigFromOptions(opt) {
   );
   const chroma =
     chromaAmount != null && chromaAmount > 0.0001 ? chromaAmount : 0;
-  const halationAmount = optionalOverlayAmount(
-    opt.halationOverlayIntensity,
-    OVERLAY_SLIDER_LIMITS.halation.min,
-    OVERLAY_SLIDER_LIMITS.halation.max,
-  );
-  const halation =
-    halationAmount != null && halationAmount > 0.0001 ? halationAmount : 0;
-  const ghostingAmount = optionalOverlayAmount(
-    opt.ghostingOverlayIntensity,
-    OVERLAY_SLIDER_LIMITS.ghosting.min,
-    OVERLAY_SLIDER_LIMITS.ghosting.max,
-  );
-  const ghosting =
-    ghostingAmount != null && ghostingAmount > 0.0001 ? ghostingAmount : 0;
-  const lineDamageAmount = optionalOverlayAmount(
-    opt.lineDamageOverlayIntensity,
-    OVERLAY_SLIDER_LIMITS.lineDamage.min,
-    OVERLAY_SLIDER_LIMITS.lineDamage.max,
-  );
-  const lineDamage =
-    lineDamageAmount != null && lineDamageAmount > 0.0001
-      ? lineDamageAmount
-      : 0;
+  const halation = 0;
+  const ghosting = 0;
+  const lineDamage = 0;
   const grainAmount = optionalOverlayAmount(
     opt.grainOverlayIntensity,
     OVERLAY_SLIDER_LIMITS.grain.min,
@@ -11024,11 +10995,7 @@ function mediaOverlayLiveVideoProfile(overlayCfg) {
     Number(overlayCfg.whiteCrush || 0) > 0.0001
   )
     cost += 3.0;
-  if (Number(overlayCfg.upscaler || 0) > 0.0001) cost += 4.2;
-  if (Number(overlayCfg.halation || 0) > 0.0001) cost += 3.2;
   if (Number(overlayCfg.chroma || 0) > 0.0001) cost += 2.2;
-  if (Number(overlayCfg.ghosting || 0) > 0.0001) cost += 1.8;
-  if (Number(overlayCfg.lineDamage || 0) > 0.0001) cost += 2.4;
   if (Number(overlayCfg.blur || 0) > 0.0001)
     cost += Number(overlayCfg.blur || 0) > 2 ? 2.1 : 1.1;
   if (Number(overlayCfg.pixelate || 0) > 0.0001) cost += 0.4;
@@ -13694,7 +13661,9 @@ const MediaFilterEngine = (() => {
     clearGifState(surface);
     if (surface.mediaEl && surface.bound) {
       surface.mediaEl.removeEventListener("load", requestRender);
+      surface.mediaEl.removeEventListener("loadedmetadata", requestRender);
       surface.mediaEl.removeEventListener("loadeddata", requestRender);
+      surface.mediaEl.removeEventListener("canplay", requestRender);
       surface.mediaEl.removeEventListener("play", requestRender);
       surface.mediaEl.removeEventListener("playing", requestRender);
       surface.mediaEl.removeEventListener("pause", requestRender);
@@ -13712,7 +13681,9 @@ const MediaFilterEngine = (() => {
     surface.mediaEl = el;
     surface.bound = true;
     el.addEventListener("load", requestRender);
+    el.addEventListener("loadedmetadata", requestRender);
     el.addEventListener("loadeddata", requestRender);
+    el.addEventListener("canplay", requestRender);
     el.addEventListener("play", requestRender);
     el.addEventListener("playing", requestRender);
     el.addEventListener("pause", requestRender);
@@ -13742,12 +13713,20 @@ const MediaFilterEngine = (() => {
     }
     if (targetChanged) {
       surface.hasDrawn = false;
+      if (surface.canvas) {
+        surface.canvas.style.display = "none";
+        surface.canvas.classList.remove("ready");
+      }
       if (surface.glState) surface.glState.hasPrev = false;
     }
     if (type === "image" && window.electronAPI && window.electronAPI.isTauri) {
       kickLoadCleanImageForSurface(surface, target);
     }
-    if (mediaEl) mediaEl.classList.add("mediaHidden");
+    if (mediaEl) {
+      if (surface.hasDrawn && surface.canvas && surface.canvas.classList.contains("ready"))
+        mediaEl.classList.add("mediaHidden");
+      else mediaEl.classList.remove("mediaHidden");
+    }
     if (type === "video" && mediaEl && typeof mediaEl.requestVideoFrameCallback === "function") {
       surface.videoFrameActive = true;
       surface.videoFrameToken++;
@@ -13853,7 +13832,7 @@ const MediaFilterEngine = (() => {
     const gl = state.gl;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, state.sourceTexture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, drawSource);
     configureTexture(gl, state.sourceTexture);
@@ -13911,6 +13890,7 @@ const MediaFilterEngine = (() => {
       if (!surface.hasDrawn && surface.canvas) {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
+        if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
       }
       return false;
     }
@@ -14020,11 +14000,11 @@ const MediaFilterEngine = (() => {
     uniform1f(gl, state.uniforms.u_colorCrush, overlayCfg.colorCrush);
     uniform1f(gl, state.uniforms.u_pixelate, overlayCfg.pixelate);
     uniform1f(gl, state.uniforms.u_blur, overlayCfg.blur);
-    uniform1f(gl, state.uniforms.u_detail, overlayCfg.upscaler);
+    uniform1f(gl, state.uniforms.u_detail, 0);
     uniform1f(gl, state.uniforms.u_chroma, overlayCfg.chroma);
-    uniform1f(gl, state.uniforms.u_halation, overlayCfg.halation);
-    uniform1f(gl, state.uniforms.u_ghosting, overlayCfg.ghosting);
-    uniform1f(gl, state.uniforms.u_lineDamage, overlayCfg.lineDamage);
+    uniform1f(gl, state.uniforms.u_halation, 0);
+    uniform1f(gl, state.uniforms.u_ghosting, 0);
+    uniform1f(gl, state.uniforms.u_lineDamage, 0);
     uniform1f(gl, state.uniforms.u_grain, overlayCfg.grain);
     uniform1f(gl, state.uniforms.u_vignette, overlayCfg.vignette);
     uniform1f(gl, state.uniforms.u_cornerRadius, overlayCfg.cornerRadius);
@@ -14051,7 +14031,7 @@ const MediaFilterEngine = (() => {
 
     const needsAnim =
       animatedMediaFiltersEnabledForType(surface.type) &&
-      !!(overlayCfg.grain || overlayCfg.ghosting || overlayCfg.lineDamage);
+      !!overlayCfg.grain;
     if (isVideo) {
       if (surface.videoFrameActive) return false;
       if (!el.paused) return true;
@@ -19930,20 +19910,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       neutralValue: 0,
     },
     {
-      title: "Detail",
-      hint: "Adds internal preview supersampling plus a lightweight edge/detail reconstruction pass. 0% leaves the displayed size and normal fit unchanged.",
-      enabledId: "opt_upscaleSmoothingOverlayEnabled",
-      enabledKey: "upscaleSmoothingOverlayEnabled",
-      rangeId: "opt_upscaleSmoothingOverlayIntensity",
-      amountKey: "upscaleSmoothingOverlayIntensity",
-      value: opt.upscaleSmoothingOverlayIntensity,
-      limits: OVERLAY_SLIDER_LIMITS.upscaleSmoothing,
-      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.upscaleSmoothing, 0),
-      showToggle: false,
-      nullable: true,
-      neutralValue: 0,
-    },
-    {
       title: "Chromatic aberration",
       hint: "Whole-image RGB channel separation across the entire frame.",
       enabledId: "opt_chromaOverlayEnabled",
@@ -19953,48 +19919,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       value: opt.chromaOverlayIntensity,
       limits: OVERLAY_SLIDER_LIMITS.chroma,
       formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.chroma, 0),
-      showToggle: false,
-      nullable: true,
-      neutralValue: 0,
-    },
-    {
-      title: "Halation bloom",
-      hint: "Attempts to bloom only locally intense highlights so bright light sources clip and glow instead of all whites blooming equally.",
-      enabledId: "opt_halationOverlayEnabled",
-      enabledKey: "halationOverlayEnabled",
-      rangeId: "opt_halationOverlayIntensity",
-      amountKey: "halationOverlayIntensity",
-      value: opt.halationOverlayIntensity,
-      limits: OVERLAY_SLIDER_LIMITS.halation,
-      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.halation, 0),
-      showToggle: false,
-      nullable: true,
-      neutralValue: 0,
-    },
-    {
-      title: "Temporal ghosting",
-      hint: "Echoes previous frames into the current frame for smeared VHS-style motion trails.",
-      enabledId: "opt_ghostingOverlayEnabled",
-      enabledKey: "ghostingOverlayEnabled",
-      rangeId: "opt_ghostingOverlayIntensity",
-      amountKey: "ghostingOverlayIntensity",
-      value: opt.ghostingOverlayIntensity,
-      limits: OVERLAY_SLIDER_LIMITS.ghosting,
-      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.ghosting, 0),
-      showToggle: false,
-      nullable: true,
-      neutralValue: 0,
-    },
-    {
-      title: "Tape fuzz",
-      hint: "Adds unstable horizontal tape fuzz across individual scan bands.",
-      enabledId: "opt_lineDamageOverlayEnabled",
-      enabledKey: "lineDamageOverlayEnabled",
-      rangeId: "opt_lineDamageOverlayIntensity",
-      amountKey: "lineDamageOverlayIntensity",
-      value: opt.lineDamageOverlayIntensity,
-      limits: OVERLAY_SLIDER_LIMITS.lineDamage,
-      formatter: (value) => formatOverlayScalePercent(value, OVERLAY_SLIDER_LIMITS.lineDamage, 0),
       showToggle: false,
       nullable: true,
       neutralValue: 0,
@@ -20092,7 +20016,7 @@ ${buildOverlayRowsHtml(colorOverlayRows)}
     <span class="menuSectionChevron" aria-hidden="true">▾</span>
   </h3>
 ${buildOverlayRowsHtml(effectOverlayRows)}
-${makeSelectRow("Animated filters", "Control animation for grain, ghosting, and tape fuzz.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
+${makeSelectRow("Animated filters", "Control animation for grain.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
 ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
 </div>
           `,
@@ -46714,6 +46638,16 @@ async function preloadMediaRecord(rec, aggressive) {
   PRELOAD_CACHE.set(url, vid);
 }
 
+function preloadMode() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  const raw = String((opt && opt.preloadNextMode) || "on")
+    .trim()
+    .toLowerCase();
+  if (raw === "ultra") return "ultra";
+  if (raw === "off") return "off";
+  return "on";
+}
+
 function preloadNextMedia(items, startIdx) {
   const mode = preloadMode();
   if (mode === "off") return;
@@ -47711,6 +47645,8 @@ function renderPreviewViewerItem(idx) {
     normalizeVideoPlaybackRate(previewVideoEl);
     previewVideoEl.autoplay = shouldAutoPlay;
     previewVideoEl.onloadeddata = null;
+    previewVideoEl.oncanplay = null;
+    previewVideoEl.onplaying = null;
     previewVideoEl.onended = null;
     previewVideoEl.onerror = null;
     previewVideoEl.muted = mode === "muted" || BANIC_ACTIVE || VIEWER_MODE;
@@ -47730,7 +47666,7 @@ function renderPreviewViewerItem(idx) {
     } else {
       previewVideoEl.loop = false;
     }
-    previewVideoEl.onloadeddata = () => {
+    const handlePreviewVideoReady = () => {
       previewVideoEl.classList.add("ready");
       if (updateVideoCropFromElement(rec, previewVideoEl)) {
         applyVideoCropToElement(previewVideoEl, rec);
@@ -47741,6 +47677,9 @@ function renderPreviewViewerItem(idx) {
       }
       MediaFilterEngine.requestRender();
     };
+    previewVideoEl.onloadeddata = handlePreviewVideoReady;
+    previewVideoEl.oncanplay = handlePreviewVideoReady;
+    previewVideoEl.onplaying = handlePreviewVideoReady;
     previewVideoEl.onerror = () => {
       if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
       if (retryNativePreviewMediaAsBlob(rec)) return;
