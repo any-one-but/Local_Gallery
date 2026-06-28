@@ -16944,6 +16944,8 @@ let PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
 let PREVIEW_FILE_OBJECT_WARM_TOKEN = 0;
 let LOADED_THUMB_RELEASE_TIMER = 0;
 let previewVideoEl = null;
+let PREVIEW_VIDEO_POSTER_TIMER = 0;
+let PREVIEW_VIDEO_POSTER_TOKEN = 0;
 let previewFolderEl = null;
 const CONTROL_PANE_AUTO_HIDE_MS = 1800;
 let CONTROL_PANE_HIDE_TIMER = 0;
@@ -37893,18 +37895,6 @@ function applyPreviewState(state) {
     });
     if (nextKind === "file" && nextFileId) {
       schedulePreviewFileObjectsWarm(WS.preview.dirNode || WS.nav.dirNode, 0);
-      // Eagerly kick video thumb for poster in preview, so good first frame appears fast
-      // instead of black poster while waiting for async.
-      const rec = WS.fileById.get(nextFileId);
-      if (rec && rec.type === "video" && tauriThumbnailsActive && tauriThumbnailsActive()) {
-        const p = nativePathForRecord(rec);
-        if (p && window.__lg && typeof window.__lg.requestThumb === "function") {
-          const frameTime = metaGetVideoThumbnailTimeForRecord ? metaGetVideoThumbnailTimeForRecord(rec) : null;
-          window.__lg.requestThumb(p, 512, frameTime).then(u => {
-            if (u) rec.videoThumbUrl = u;
-          });
-        }
-      }
     } else if (nextKind === "dir" && WS.preview.dirNode) {
       scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
         reason: "preview-state-change",
@@ -46520,7 +46510,7 @@ function retryNativePreviewMediaAsBlob(rec) {
   return true;
 }
 
-function getVideoPosterForRecord(rec) {
+function getVideoPosterForRecord(rec, options = null) {
   if (!rec || rec.type !== "video") return "";
   if (rec.videoThumbUrl) return rec.videoThumbUrl;
   // Check the shared tauri thumb cache (populated by list/grid thumbs) for instant poster.
@@ -46539,8 +46529,10 @@ function getVideoPosterForRecord(rec) {
   // at the same frame time used in Electron era). Setting poster gives instant
   // first-frame visual while the real <video> buffers, eliminating the
   // perceived black screen before video appears.
+  const allowRequest = !!(options && options.allowRequest);
   try {
     if (
+      allowRequest &&
       window.electronAPI &&
       window.electronAPI.isTauri &&
       window.__lg &&
@@ -46627,10 +46619,49 @@ function syncDirectoryInlineAspectForRenderedImages() {
   }
 }
 
-function applyVideoPoster(videoEl, rec) {
+function applyVideoPoster(videoEl, rec, options = null) {
   if (!videoEl) return;
-  const poster = getVideoPosterForRecord(rec);
+  const poster = getVideoPosterForRecord(rec, options);
   if (videoEl.poster !== poster) videoEl.poster = poster;
+}
+
+function schedulePreviewVideoPosterRequest(rec, delayMs = 900) {
+  if (!rec || rec.type !== "video" || rec.videoThumbUrl) return;
+  if (
+    !window.electronAPI ||
+    !window.electronAPI.isTauri ||
+    !window.__lg ||
+    typeof window.__lg.requestThumb !== "function"
+  )
+    return;
+  const p = nativePathForRecord(rec);
+  if (!p) return;
+  if (PREVIEW_VIDEO_POSTER_TIMER) clearTimeout(PREVIEW_VIDEO_POSTER_TIMER);
+  const token = ++PREVIEW_VIDEO_POSTER_TOKEN;
+  PREVIEW_VIDEO_POSTER_TIMER = setTimeout(() => {
+    PREVIEW_VIDEO_POSTER_TIMER = 0;
+    if (token !== PREVIEW_VIDEO_POSTER_TOKEN) return;
+    const currentRec =
+      WS.preview && WS.preview.fileId
+        ? WS.fileById.get(String(WS.preview.fileId))
+        : null;
+    if (!currentRec || currentRec.id !== rec.id) return;
+    const frameTime = metaGetVideoThumbnailTimeForRecord
+      ? metaGetVideoThumbnailTimeForRecord(rec)
+      : null;
+    window.__lg
+      .requestThumb(p, 640, frameTime)
+      .then((u) => {
+        if (!u) return;
+        rec.videoThumbUrl = u;
+        const stillCurrent =
+          WS.preview && String(WS.preview.fileId || "") === String(rec.id || "");
+        if (stillCurrent && previewVideoEl && previewVideoEl.poster !== u) {
+          previewVideoEl.poster = u;
+        }
+      })
+      .catch(() => {});
+  }, Math.max(0, Number(delayMs) || 0));
 }
 
 async function preloadMediaRecord(rec, aggressive) {
@@ -46729,6 +46760,15 @@ function ensurePreviewFileElements() {
     ].forEach((eventName) => {
       previewVideoEl.addEventListener(eventName, syncControlPaneState);
     });
+    const markPreviewVideoStarted = () => {
+      const fileId = String(previewVideoEl.dataset.previewFileId || "");
+      if (!fileId || String(WS.preview?.fileId || "") !== fileId) return;
+      previewVideoEl.classList.add("ready");
+      const rec = WS.fileById.get(fileId) || null;
+      if (rec && rec.type === "video") schedulePreviewVideoPosterRequest(rec);
+    };
+    previewVideoEl.addEventListener("playing", markPreviewVideoStarted);
+    previewVideoEl.addEventListener("timeupdate", markPreviewVideoStarted);
     previewViewportBox.appendChild(previewVideoEl);
   }
   if (!previewFolderEl) {
@@ -46787,8 +46827,10 @@ function seedPreviewViewportWithRecordHint(rec) {
       !VIEWER_MODE &&
       !previewVideoUserPausedFor(rec.id);
     applyVideoPoster(previewVideoEl, rec);
+    previewVideoEl.dataset.previewFileId = String(rec.id || "");
     previewVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
-    previewVideoEl.classList.add("ready");
+    if (shouldAutoPlay) previewVideoEl.classList.remove("ready");
+    else previewVideoEl.classList.add("ready");
     previewVideoEl.autoplay = shouldAutoPlay;
     previewVideoEl.muted = mode === "muted" || BANIC_ACTIVE || VIEWER_MODE;
     if (holdFilteredFrame) previewVideoEl.classList.add("mediaHidden");
@@ -47378,7 +47420,12 @@ function slideshowBehavior() {
 
 function preloadMode() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return opt ? String(opt.preloadNextMode || "off") : "off";
+  const raw = String((opt && opt.preloadNextMode) || "on")
+    .trim()
+    .toLowerCase();
+  if (raw === "ultra") return "ultra";
+  if (raw === "off") return "off";
+  return "on";
 }
 
 function previewDisplayMode() {
@@ -47569,14 +47616,23 @@ function renderPreviewViewerItem(idx) {
     rec &&
     String(previewImgEl.dataset.previewFileId || "") !== String(rec.id || "")
   );
+  const keepPreviewVideoElement = !!(
+    willShowVideo &&
+    previewVideoEl &&
+    rec &&
+    String(previewVideoEl.dataset.previewFileId || "") === String(rec.id || "")
+  );
 
   if (previewVideoEl) {
-    try {
-      previewVideoEl.pause();
-    } catch {}
-    previewVideoEl.classList.remove("ready");
+    if (!keepPreviewVideoElement) {
+      try {
+        previewVideoEl.pause();
+      } catch {}
+      previewVideoEl.classList.remove("ready");
+    }
     if (!willShowVideo) {
       previewVideoEl.style.display = "none";
+      delete previewVideoEl.dataset.previewFileId;
       applyVideoCropToElement(previewVideoEl, null);
     }
     clearPendingFilmCornerMask(previewVideoEl);
@@ -47707,7 +47763,6 @@ function renderPreviewViewerItem(idx) {
       previewVideoEl.loop = false;
     }
     const handlePreviewVideoReady = () => {
-      previewVideoEl.classList.add("ready");
       if (updateVideoCropFromElement(rec, previewVideoEl)) {
         applyVideoCropToElement(previewVideoEl, rec);
         kickVideoThumbsForPreview();
@@ -47722,11 +47777,17 @@ function renderPreviewViewerItem(idx) {
             playPromise.catch(() => {});
         } catch {}
       }
+      if (!shouldAutoPlay) previewVideoEl.classList.add("ready");
       MediaFilterEngine.requestRender();
+    };
+    const handlePreviewVideoStarted = () => {
+      previewVideoEl.classList.add("ready");
+      schedulePreviewVideoPosterRequest(rec);
+      handlePreviewVideoReady();
     };
     previewVideoEl.onloadeddata = handlePreviewVideoReady;
     previewVideoEl.oncanplay = handlePreviewVideoReady;
-    previewVideoEl.onplaying = handlePreviewVideoReady;
+    previewVideoEl.onplaying = handlePreviewVideoStarted;
     previewVideoEl.onerror = () => {
       if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
       if (retryNativePreviewMediaAsBlob(rec)) return;
@@ -47734,7 +47795,9 @@ function renderPreviewViewerItem(idx) {
     };
 
     applyVideoPoster(previewVideoEl, rec);
-    previewVideoEl.classList.add("ready");
+    previewVideoEl.dataset.previewFileId = String(rec.id || "");
+    if (shouldAutoPlay && !keepPreviewVideoElement) previewVideoEl.classList.remove("ready");
+    else if (!shouldAutoPlay) previewVideoEl.classList.add("ready");
     applyVideoCropToElement(previewVideoEl, rec);
     const src = ensureMediaUrl(rec) || "";
     if (!src) {
@@ -47786,7 +47849,8 @@ function renderPreviewViewerItem(idx) {
     if (previewVideoEl.readyState >= 2) {
       requestAnimationFrame(() => {
         if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
-        previewVideoEl.classList.add("ready");
+        if (!shouldAutoPlay || !previewVideoEl.paused)
+          previewVideoEl.classList.add("ready");
         if (updateVideoCropFromElement(rec, previewVideoEl)) {
           applyVideoCropToElement(previewVideoEl, rec);
           kickVideoThumbsForPreview();
