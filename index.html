@@ -3923,6 +3923,13 @@ img[data-rotate-key].rotatingThumbFade {
 #filePreviewViewport video.ready {
   opacity: 1;
 }
+
+#filePreviewViewport img:not(.mediaHidden),
+#filePreviewViewport video:not(.mediaHidden) {
+  image-rendering: auto;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
 #filePreviewViewport.tallScrollMode {
   overflow-y: auto;
   overflow-x: hidden;
@@ -10939,6 +10946,34 @@ const EMPTY_MEDIA_OVERLAY_CONFIG = Object.freeze({
   cornerRadius: 0,
 });
 
+function mediaOverlayConfigHasVisualEffect(cfg) {
+  if (!cfg) return false;
+  if (Array.isArray(cfg.colorFilters) && cfg.colorFilters.length) return true;
+  const keys = [
+    "brightness",
+    "contrast",
+    "saturation",
+    "temperature",
+    "hueShift",
+    "colorCrush",
+    "blackCrush",
+    "whiteCrush",
+    "halation",
+    "ghosting",
+    "lineDamage",
+    "pixelate",
+    "blur",
+    "chroma",
+    "grain",
+    "vignette",
+    "cornerRadius",
+  ];
+  for (let i = 0; i < keys.length; i++) {
+    if (Math.abs(Number(cfg[keys[i]]) || 0) > 0.0001) return true;
+  }
+  return false;
+}
+
 function drawBlurredCanvasToScratch(
   sourceCanvas,
   scratchCanvas,
@@ -11393,9 +11428,13 @@ function computeContainRect(srcW, srcH, dstW, dstH) {
   return { x, y, w, h };
 }
 
+const PREVIEW_RENDER_MAX_PIXELS_IMAGE = 24000000;
+const PREVIEW_RENDER_MAX_PIXELS_VIDEO = 18000000;
+const PREVIEW_RENDER_MAX_PIXELS_VIDEO_LIVE = 14000000;
+
 function previewPaneUpscaleAmountForSurface(surface, overlayCfg) {
-  if (!surface || String(surface.name || "") !== "preview") return 0;
-  if (!overlayCfg) return 0;
+  if (!surface || String(surface.name || "") === "preview") return 0;
+  if (!overlayCfg || !mediaOverlayConfigHasVisualEffect(overlayCfg)) return 0;
   return 1;
 }
 
@@ -11410,6 +11449,50 @@ function previewPaneUpscaleRenderScaleForSurface(surface, overlayCfg, rect, isVi
   if (desiredPixels <= maxPixels) return desiredScale;
   const cappedScale = Math.sqrt(maxPixels / Math.max(1, baseW * baseH));
   return clampNumber(cappedScale, 1, desiredScale, 1);
+}
+
+function previewRenderMaxPixels(surface, isVideo, isVideoPlaying, overlayCfg) {
+  if (!surface || String(surface.name || "") !== "preview") {
+    return isVideo ? 12000000 : 16000000;
+  }
+  if (isVideo && isVideoPlaying) {
+    return mediaOverlayConfigHasVisualEffect(overlayCfg)
+      ? PREVIEW_RENDER_MAX_PIXELS_VIDEO_LIVE
+      : PREVIEW_RENDER_MAX_PIXELS_VIDEO;
+  }
+  return isVideo ? PREVIEW_RENDER_MAX_PIXELS_VIDEO : PREVIEW_RENDER_MAX_PIXELS_IMAGE;
+}
+
+function computePreviewRenderScale(
+  surface,
+  overlayCfg,
+  rect,
+  croppedSrcW,
+  croppedSrcH,
+  isVideo = false,
+  pixelScale = 1,
+) {
+  const isPreview = !!(surface && String(surface.name || "") === "preview");
+  const dpr = window.devicePixelRatio || 1;
+  const destW = Math.max(1, Number(rect && rect.w) || 1) * dpr * Math.max(1, pixelScale);
+  const destH = Math.max(1, Number(rect && rect.h) || 1) * dpr * Math.max(1, pixelScale);
+  const srcW = Math.max(1, Number(croppedSrcW) || 1);
+  const srcH = Math.max(1, Number(croppedSrcH) || 1);
+  const sourceScale = Math.min(srcW / destW, srcH / destH);
+  if (!isPreview) {
+    if (mediaOverlayConfigHasVisualEffect(overlayCfg)) {
+      return previewPaneUpscaleRenderScaleForSurface(surface, overlayCfg, rect, isVideo);
+    }
+    return 1;
+  }
+  const maxPixels = previewRenderMaxPixels(surface, isVideo, false, overlayCfg);
+  const basePixels =
+    Math.max(1, Number(rect && rect.w) || 1) *
+    Math.max(1, Number(rect && rect.h) || 1) *
+    dpr *
+    dpr;
+  const maxScale = Math.sqrt(maxPixels / basePixels);
+  return clampNumber(sourceScale, 1, maxScale, 1);
 }
 
 function expandRectFromCenter(rect, pad) {
@@ -13126,7 +13209,7 @@ const MediaFilterEngine = (() => {
   `;
 
   const FRAGMENT_SHADER_SOURCE = `
-    precision mediump float;
+    precision highp float;
     varying vec2 v_uv;
     uniform sampler2D u_tex;
     uniform sampler2D u_prev;
@@ -13743,8 +13826,11 @@ const MediaFilterEngine = (() => {
         )
           return;
         const overlayCfg = resolveMediaOverlayConfigForTarget(surface.target);
-        const profile = mediaOverlayLiveVideoProfile(overlayCfg);
-        const intervalMs = 1000 / Math.max(1, Number(profile.maxFps) || 24);
+        const isPreviewSurface = String(surface.name || "") === "preview";
+        const maxFps = isPreviewSurface
+          ? 60
+          : Math.max(1, Number(mediaOverlayLiveVideoProfile(overlayCfg).maxFps) || 24);
+        const intervalMs = 1000 / maxFps;
         const t = Number.isFinite(Number(now)) ? Number(now) : performance.now();
         if (surface.awaitingFreshFrame || !surface.nextVideoRenderAt || t >= surface.nextVideoRenderAt) {
           surface.nextVideoRenderAt = t + intervalMs;
@@ -13937,16 +14023,34 @@ const MediaFilterEngine = (() => {
     const croppedSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
     const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
     const dpr = window.devicePixelRatio || 1;
+    const isPreviewSurface = String(surface.name || "") === "preview";
+    const isVideoPlaying = isVideo && !el.paused && !el.ended;
     const liveVideoProfile =
-      isVideo && !el.paused && !el.ended ? mediaOverlayLiveVideoProfile(overlayCfg) : null;
-    const pixelScale = liveVideoProfile
-      ? capScaleForPixelBudget(cw * dpr, ch * dpr, liveVideoProfile.maxOutputPixels)
-      : 1;
-    const detailScale = previewPaneUpscaleRenderScaleForSurface(
+      isVideoPlaying && !isPreviewSurface
+        ? mediaOverlayLiveVideoProfile(overlayCfg)
+        : null;
+    let pixelScale = 1;
+    if (isPreviewSurface && isVideoPlaying) {
+      pixelScale = capScaleForPixelBudget(
+        cw * dpr,
+        ch * dpr,
+        previewRenderMaxPixels(surface, true, true, overlayCfg),
+      );
+    } else if (liveVideoProfile) {
+      pixelScale = capScaleForPixelBudget(
+        cw * dpr,
+        ch * dpr,
+        liveVideoProfile.maxOutputPixels,
+      );
+    }
+    const detailScale = computePreviewRenderScale(
       surface,
       overlayCfg,
       rect,
+      croppedSrcW,
+      croppedSrcH,
       isVideo,
+      pixelScale,
     );
     const renderDpr = Math.max(0.5, dpr * pixelScale * detailScale);
     const pixelW = Math.max(1, Math.round(cw * renderDpr));
@@ -14012,7 +14116,7 @@ const MediaFilterEngine = (() => {
     uniform1f(gl, state.uniforms.u_colorCrush, overlayCfg.colorCrush);
     uniform1f(gl, state.uniforms.u_pixelate, overlayCfg.pixelate);
     uniform1f(gl, state.uniforms.u_blur, overlayCfg.blur);
-    uniform1f(gl, state.uniforms.u_detail, String(surface.name || "") === "preview" ? 1 : 0);
+    uniform1f(gl, state.uniforms.u_detail, 0);
     uniform1f(gl, state.uniforms.u_chroma, overlayCfg.chroma);
     uniform1f(gl, state.uniforms.u_halation, 0);
     uniform1f(gl, state.uniforms.u_ghosting, 0);
@@ -14824,7 +14928,9 @@ function syncMediaFilterSurface(
     MediaFilterEngine.detach(surfaceName);
     return;
   }
-  if (!overlayCfg && !autoCropBlackBarsEnabled()) {
+  const needsProcessingPipeline =
+    mediaOverlayConfigHasVisualEffect(overlayCfg) || autoCropBlackBarsEnabled();
+  if (!needsProcessingPipeline) {
     mediaEl.classList.remove("mediaHidden");
     MediaFilterEngine.detach(surfaceName);
     return;
@@ -16200,9 +16306,14 @@ function revokeRecordObjectURLs(it) {
   try {
     if (it.videoThumbUrl) URL.revokeObjectURL(it.videoThumbUrl);
   } catch {}
+  try {
+    if (it.previewFullResUrl) URL.revokeObjectURL(it.previewFullResUrl);
+  } catch {}
   it.url = null;
   it.thumbUrl = null;
   it.videoThumbUrl = null;
+  it.previewFullResUrl = null;
+  it.previewFullResLoading = false;
   it.thumbMode = null;
   it.videoThumbMode = null;
   if (id) THUMBNAIL_URL_RECORD_IDS.delete(id);
@@ -46502,6 +46613,75 @@ function prepareMediaElementForCanvas(el) {
   return el;
 }
 
+function configurePreviewMediaElementForMaxQuality(el) {
+  if (!el) return el;
+  try {
+    el.loading = "eager";
+  } catch {}
+  try {
+    el.decoding = "async";
+  } catch {}
+  try {
+    el.fetchPriority = "high";
+  } catch {}
+  return el;
+}
+
+function previewImageNeedsFullResBlobUpgrade(rec) {
+  if (!rec || rec.type !== "image") return false;
+  return !!(
+    window.electronAPI &&
+    window.electronAPI.isTauri &&
+    window.__TAURI__ &&
+    window.__TAURI__.core &&
+    typeof window.__TAURI__.core.invoke === "function"
+  );
+}
+
+function ensurePreviewImageSrc(rec) {
+  if (!rec || rec.type !== "image") return ensureMediaUrl(rec) || "";
+  if (rec.previewFullResUrl) return rec.previewFullResUrl;
+  return ensureMediaUrl(rec) || "";
+}
+
+function kickUpgradePreviewImageToFullRes(rec) {
+  if (!previewImageNeedsFullResBlobUpgrade(rec)) return;
+  if (rec.previewFullResUrl || rec.previewFullResLoading) return;
+  const p = nativePathForRecord(rec);
+  if (!p) return;
+  const id = String(rec.id || "");
+  rec.previewFullResLoading = true;
+  (async () => {
+    try {
+      const arr = await window.__TAURI__.core.invoke("read_file_bytes", { path: p });
+      const blob = new Blob([new Uint8Array(arr)]);
+      const url = URL.createObjectURL(blob);
+      if (String(rec.id || "") !== id) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {}
+        return;
+      }
+      if (rec.previewFullResUrl && rec.previewFullResUrl !== url) {
+        try {
+          URL.revokeObjectURL(rec.previewFullResUrl);
+        } catch {}
+      }
+      rec.previewFullResUrl = url;
+      if (
+        previewImgEl &&
+        String(WS.preview?.fileId || "") === id &&
+        String(previewImgEl.dataset.previewFileId || "") === id
+      ) {
+        previewImgEl.src = url;
+      }
+    } catch {
+    } finally {
+      if (String(rec.id || "") === id) rec.previewFullResLoading = false;
+    }
+  })();
+}
+
 function retryNativePreviewMediaAsBlob(rec) {
   if (!rec || rec.urlKind !== "native") return false;
   rec.nativeUrlFailed = true;
@@ -46564,7 +46744,20 @@ function getVideoPosterForRecord(rec, options = null) {
   return "";
 }
 
-function getPassivePreviewSrcForRecord(rec, opts = null) { }
+function getPassivePreviewSrcForRecord(rec, opts = null) {
+  if (!rec) return "";
+  if (rec.type === "video") {
+    const poster = getVideoPosterForRecord(rec, opts);
+    if (poster) return poster;
+    return ensureMediaUrl(rec) || "";
+  }
+  if (rec.type === "image") {
+    if (rec.previewFullResUrl) return rec.previewFullResUrl;
+    if (opts && opts.allowImageMediaFallback) return ensureMediaUrl(rec) || "";
+    return ensureMediaUrl(rec) || "";
+  }
+  return "";
+}
 
 function applyDirectoryInlineAspect(imgEl, aspectValue) {
   if (!imgEl) return;
@@ -46730,6 +46923,7 @@ function ensurePreviewFileElements() {
   if (!previewImgEl) {
     previewImgEl = document.createElement("img");
     prepareMediaElementForCanvas(previewImgEl);
+    configurePreviewMediaElementForMaxQuality(previewImgEl);
     previewImgEl.style.display = "none";
     previewImgEl.onload = () => {
       previewImgEl.classList.add("ready");
@@ -46740,6 +46934,7 @@ function ensurePreviewFileElements() {
   if (!previewVideoEl) {
     previewVideoEl = document.createElement("video");
     prepareMediaElementForCanvas(previewVideoEl);
+    configurePreviewMediaElementForMaxQuality(previewVideoEl);
     previewVideoEl.controls = false;
     previewVideoEl.preload = "auto";
     previewVideoEl.playsInline = true;
@@ -46789,11 +46984,7 @@ function seedPreviewViewportWithRecordHint(rec) {
       ensureMediaUrl(rec) ||
       "";
     if (!hintSrc) return false;
-    try {
-      previewImgEl.decoding = "sync";
-      previewImgEl.loading = "eager";
-      previewImgEl.fetchPriority = "high";
-    } catch {}
+    configurePreviewMediaElementForMaxQuality(previewImgEl);
     previewImgEl.dataset.previewFileId = String(rec.id || "");
     previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
     previewImgEl.setAttribute("data-is-gif", isGifRecord(rec) ? "1" : "0");
@@ -47908,11 +48099,13 @@ function renderPreviewViewerItem(idx) {
     if (retryNativePreviewMediaAsBlob(rec)) return;
     showPreviewViewportMessage("Could not load image", rec.relPath || rec.name || "");
   };
-  const src = ensureMediaUrl(rec) || "";
+  configurePreviewMediaElementForMaxQuality(previewImgEl);
+  const src = ensurePreviewImageSrc(rec) || "";
   if (!src) {
     showPreviewViewportMessage("Could not load image", rec.relPath || rec.name || "");
     return;
   }
+  kickUpgradePreviewImageToFullRes(rec);
   const same = previewImgEl.src === src;
   const holdFilteredFrame = shouldHoldPreviewFilteredFrameForTarget(rec);
   previewImgEl.dataset.previewFileId = String(rec.id || "");
