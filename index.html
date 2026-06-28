@@ -13149,32 +13149,326 @@ function renderFilteredToCanvas(
 const MediaFilterEngine = (() => {
   const surfaces = new Map();
   let rafId = null;
-  const noise = { canvas: null, ctx: null, size: 128, lastTime: 0 };
   const GIF_FRAME_FALLBACK_MS = 100;
 
-  function ensureNoiseCanvas() {
-    if (!noise.canvas) {
-      noise.canvas = document.createElement("canvas");
-      noise.canvas.width = noise.size;
-      noise.canvas.height = noise.size;
-      noise.ctx = noise.canvas.getContext("2d");
+  const VERTEX_SHADER_SOURCE = `
+    attribute vec2 a_pos;
+    varying vec2 v_uv;
+    void main() {
+      v_uv = a_pos * 0.5 + 0.5;
+      gl_Position = vec4(a_pos, 0.0, 1.0);
     }
-    return noise.canvas;
+  `;
+
+  const FRAGMENT_SHADER_SOURCE = `
+    precision mediump float;
+    varying vec2 v_uv;
+    uniform sampler2D u_tex;
+    uniform sampler2D u_prev;
+    uniform vec2 u_canvas;
+    uniform vec2 u_source;
+    uniform vec2 u_cropOrigin;
+    uniform vec2 u_cropSize;
+    uniform vec2 u_destOrigin;
+    uniform vec2 u_destSize;
+    uniform float u_time;
+    uniform float u_hasPrev;
+    uniform float u_brightness;
+    uniform float u_contrast;
+    uniform float u_saturation;
+    uniform float u_temperature;
+    uniform float u_hue;
+    uniform float u_blackCrush;
+    uniform float u_whiteCrush;
+    uniform float u_colorCrush;
+    uniform float u_pixelate;
+    uniform float u_blur;
+    uniform float u_detail;
+    uniform float u_chroma;
+    uniform float u_halation;
+    uniform float u_ghosting;
+    uniform float u_lineDamage;
+    uniform float u_grain;
+    uniform float u_vignette;
+    uniform float u_cornerRadius;
+    uniform float u_animated;
+
+    float hash12(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.x + p3.y) * p3.z);
+    }
+
+    vec3 hueRotate(vec3 color, float degrees) {
+      float a = radians(degrees);
+      float c = cos(a);
+      float s = sin(a);
+      mat3 m = mat3(
+        0.213 + c * 0.787 - s * 0.213,
+        0.213 - c * 0.213 + s * 0.143,
+        0.213 - c * 0.213 - s * 0.787,
+        0.715 - c * 0.715 - s * 0.715,
+        0.715 + c * 0.285 + s * 0.140,
+        0.715 - c * 0.715 + s * 0.715,
+        0.072 - c * 0.072 + s * 0.928,
+        0.072 - c * 0.072 - s * 0.283,
+        0.072 + c * 0.928 + s * 0.072
+      );
+      return clamp(m * color, 0.0, 1.0);
+    }
+
+    vec3 applyColorPipeline(vec3 color) {
+      color *= max(0.0, 1.0 + u_brightness);
+      color = (color - 0.5) * max(0.0, 1.0 + u_contrast) + 0.5;
+      float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+      color = vec3(luma) + (color - vec3(luma)) * max(0.0, 1.0 + u_saturation);
+      if (abs(u_temperature) > 0.0001) {
+        float before = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        color *= vec3(1.0 + u_temperature * 0.22, 1.0 + u_temperature * 0.05, 1.0 - u_temperature * 0.24);
+        float after = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        color += vec3(before - after);
+      }
+      color = hueRotate(color, u_hue);
+      if (u_blackCrush > 0.0001) {
+        float floorValue = u_blackCrush;
+        color = max(vec3(0.0), (color - vec3(floorValue)) / max(0.001, 1.0 - floorValue));
+      }
+      if (u_whiteCrush > 0.0001) {
+        float ceilValue = 1.0 - u_whiteCrush;
+        color = min(vec3(1.0), color / max(0.001, ceilValue));
+      }
+      if (u_colorCrush > 0.0001) {
+        float levels = max(2.0, floor(24.0 - u_colorCrush * 10.0 + 0.5));
+        color = floor(color * (levels - 1.0) + 0.5) / (levels - 1.0);
+      }
+      return clamp(color, 0.0, 1.0);
+    }
+
+    vec2 sourceUvForLocal(vec2 local) {
+      vec2 workingLocal = clamp(local, 0.0, 1.0);
+      if (u_pixelate > 1.0001) {
+        vec2 px = workingLocal * u_destSize;
+        px = floor(px / u_pixelate) * u_pixelate + vec2(u_pixelate * 0.5);
+        workingLocal = clamp(px / max(vec2(1.0), u_destSize), 0.0, 1.0);
+      }
+      vec2 srcPx = u_cropOrigin + workingLocal * u_cropSize;
+      return clamp(srcPx / max(vec2(1.0), u_source), 0.0, 1.0);
+    }
+
+    vec4 samplePipeline(vec2 local) {
+      vec2 uv = sourceUvForLocal(local);
+      vec3 color = texture2D(u_tex, uv).rgb;
+      return vec4(applyColorPipeline(color), 1.0);
+    }
+
+    vec3 blurredPipeline(vec2 local) {
+      float radius = max(0.0, u_blur);
+      if (radius <= 0.0001) return samplePipeline(local).rgb;
+      vec2 stepUv = vec2(radius) / max(vec2(1.0), u_destSize);
+      vec3 c = samplePipeline(local).rgb * 0.22;
+      c += samplePipeline(local + vec2(stepUv.x, 0.0)).rgb * 0.12;
+      c += samplePipeline(local - vec2(stepUv.x, 0.0)).rgb * 0.12;
+      c += samplePipeline(local + vec2(0.0, stepUv.y)).rgb * 0.12;
+      c += samplePipeline(local - vec2(0.0, stepUv.y)).rgb * 0.12;
+      c += samplePipeline(local + stepUv).rgb * 0.075;
+      c += samplePipeline(local - stepUv).rgb * 0.075;
+      c += samplePipeline(local + vec2(stepUv.x, -stepUv.y)).rgb * 0.075;
+      c += samplePipeline(local + vec2(-stepUv.x, stepUv.y)).rgb * 0.075;
+      return c;
+    }
+
+    void main() {
+      vec2 pixel = vec2(v_uv.x * u_canvas.x, (1.0 - v_uv.y) * u_canvas.y);
+      vec2 local = (pixel - u_destOrigin) / max(vec2(1.0), u_destSize);
+      if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) {
+        discard;
+      }
+
+      vec3 color = blurredPipeline(local);
+
+      if (u_detail > 0.0001) {
+        vec2 stepUv = 1.0 / max(vec2(1.0), u_destSize);
+        vec3 neighbor =
+          blurredPipeline(local + vec2(stepUv.x, 0.0)) +
+          blurredPipeline(local - vec2(stepUv.x, 0.0)) +
+          blurredPipeline(local + vec2(0.0, stepUv.y)) +
+          blurredPipeline(local - vec2(0.0, stepUv.y));
+        neighbor *= 0.25;
+        color += (color - neighbor) * (0.45 + u_detail * 0.95) * u_detail;
+      }
+
+      if (u_chroma > 0.0001) {
+        vec2 shift = vec2(u_chroma / max(1.0, u_destSize.x), u_chroma * 0.18 / max(1.0, u_destSize.y));
+        float r = blurredPipeline(local - shift).r;
+        float b = blurredPipeline(local + shift).b;
+        color = vec3(r, color.g, b);
+      }
+
+      if (u_halation > 0.0001) {
+        vec2 haloStep = vec2((1.5 + u_halation * 7.5) / max(1.0, u_destSize.x), (1.5 + u_halation * 7.5) / max(1.0, u_destSize.y));
+        vec3 h =
+          blurredPipeline(local + haloStep).rgb +
+          blurredPipeline(local - haloStep).rgb +
+          blurredPipeline(local + vec2(haloStep.x, -haloStep.y)).rgb +
+          blurredPipeline(local + vec2(-haloStep.x, haloStep.y)).rgb;
+        h *= 0.25;
+        float hot = smoothstep(0.62, 1.0, dot(h, vec3(0.299, 0.587, 0.114)));
+        color += vec3(1.0, 0.38, 0.12) * hot * u_halation * 0.55;
+      }
+
+      if (u_ghosting > 0.0001 && u_hasPrev > 0.5) {
+        vec2 ghostUv = clamp(v_uv + vec2(-0.006 * u_ghosting, 0.003 * u_ghosting), 0.0, 1.0);
+        vec3 prev = texture2D(u_prev, ghostUv).rgb;
+        color = mix(color, prev, clamp(u_ghosting * 0.38, 0.0, 0.7));
+      }
+
+      if (u_lineDamage > 0.0001) {
+        float band = floor((local.y + u_time * 0.00008) * (38.0 + u_lineDamage * 120.0));
+        float n = hash12(vec2(band, floor(u_time * 0.025)));
+        float gate = step(1.0 - u_lineDamage * 0.22, n);
+        color += vec3((n - 0.5) * gate * u_lineDamage * 0.28);
+        color = mix(color, vec3(n), gate * u_lineDamage * 0.035);
+      }
+
+      if (u_grain > 0.0001) {
+        float n = hash12(pixel + vec2(u_time * (u_animated > 0.5 ? 0.08 : 0.0), u_time * 0.031));
+        color += (n - 0.5) * u_grain * 0.9;
+      }
+
+      if (u_vignette > 0.0001) {
+        vec2 centered = local - vec2(0.5);
+        float vig = smoothstep(0.2, 0.76, length(centered) * 1.35);
+        color *= 1.0 - vig * u_vignette;
+      }
+
+      float alpha = 1.0;
+      if (u_cornerRadius > 0.0001) {
+        float r = min(u_destSize.x, u_destSize.y) * u_cornerRadius;
+        vec2 q = abs(local * u_destSize - u_destSize * 0.5) - (u_destSize * 0.5 - vec2(r));
+        float dist = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+        alpha = 1.0 - smoothstep(-1.0, 1.0, dist);
+      }
+
+      gl_FragColor = vec4(clamp(color, 0.0, 1.0), alpha);
+    }
+  `;
+
+  function compileShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      const message = gl.getShaderInfoLog(shader) || "shader compile failed";
+      gl.deleteShader(shader);
+      throw new Error(message);
+    }
+    return shader;
   }
 
-  function updateNoiseCanvas() {
-    ensureNoiseCanvas();
-    const ctx = noise.ctx;
-    const imageData = ctx.createImageData(noise.size, noise.size);
-    const data = imageData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const v = Math.floor(Math.random() * 255);
-      data[i] = v;
-      data[i + 1] = v;
-      data[i + 2] = v;
-      data[i + 3] = 255;
+  function createProgram(gl) {
+    const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE);
+    const fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE);
+    const program = gl.createProgram();
+    gl.attachShader(program, vertex);
+    gl.attachShader(program, fragment);
+    gl.linkProgram(program);
+    gl.deleteShader(vertex);
+    gl.deleteShader(fragment);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const message = gl.getProgramInfoLog(program) || "program link failed";
+      gl.deleteProgram(program);
+      throw new Error(message);
     }
-    ctx.putImageData(imageData, 0, 0);
+    return program;
+  }
+
+  function configureTexture(gl, texture) {
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  }
+
+  function createGlState(canvas) {
+    const gl =
+      canvas.getContext("webgl", {
+        alpha: true,
+        premultipliedAlpha: true,
+        antialias: false,
+        preserveDrawingBuffer: false,
+      }) ||
+      canvas.getContext("experimental-webgl", {
+        alpha: true,
+        premultipliedAlpha: true,
+        antialias: false,
+        preserveDrawingBuffer: false,
+      });
+    if (!gl) throw new Error("webgl_unavailable");
+    const program = createProgram(gl);
+    const vertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+      gl.STATIC_DRAW,
+    );
+    const sourceTexture = gl.createTexture();
+    const prevTexture = gl.createTexture();
+    configureTexture(gl, sourceTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 0, 0]),
+    );
+    configureTexture(gl, prevTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 0, 0]),
+    );
+    const uniforms = {};
+    [
+      "u_tex", "u_prev", "u_canvas", "u_source", "u_cropOrigin", "u_cropSize",
+      "u_destOrigin", "u_destSize", "u_time", "u_hasPrev", "u_brightness",
+      "u_contrast", "u_saturation", "u_temperature", "u_hue", "u_blackCrush",
+      "u_whiteCrush", "u_colorCrush", "u_pixelate", "u_blur", "u_detail",
+      "u_chroma", "u_halation", "u_ghosting", "u_lineDamage", "u_grain",
+      "u_vignette", "u_cornerRadius", "u_animated",
+    ].forEach((name) => {
+      uniforms[name] = gl.getUniformLocation(program, name);
+    });
+    return {
+      gl,
+      program,
+      vertexBuffer,
+      sourceTexture,
+      prevTexture,
+      uniforms,
+      positionLocation: gl.getAttribLocation(program, "a_pos"),
+      prevW: 0,
+      prevH: 0,
+      hasPrev: false,
+    };
+  }
+
+  function closeGifBitmap(bitmap) {
+    if (!bitmap) return;
+    try {
+      if (typeof bitmap.close === "function") bitmap.close();
+    } catch {}
   }
 
   function gifDecodeSupported() {
@@ -13183,13 +13477,6 @@ const MediaFilterEngine = (() => {
       typeof fetch === "function" &&
       typeof createImageBitmap === "function"
     );
-  }
-
-  function closeGifBitmap(bitmap) {
-    if (!bitmap) return;
-    try {
-      if (typeof bitmap.close === "function") bitmap.close();
-    } catch {}
   }
 
   function clearGifState(surface) {
@@ -13239,19 +13526,12 @@ const MediaFilterEngine = (() => {
       if (surface.gifState !== state) return;
       try {
         state.decoder = new ImageDecoder({ data: blob, type: "image/gif" });
+        if (state.decoder.tracks && state.decoder.tracks.ready)
+          await state.decoder.tracks.ready;
       } catch {
         if (surface.gifState === state) state.unsupported = true;
         return;
       }
-      try {
-        if (
-          state.decoder &&
-          state.decoder.tracks &&
-          state.decoder.tracks.ready
-        ) {
-          await state.decoder.tracks.ready;
-        }
-      } catch {}
       if (surface.gifState !== state) return;
       const fc = Number(state.decoder?.tracks?.selectedTrack?.frameCount || 0);
       state.frameCount = Number.isFinite(fc) && fc > 0 ? fc : 0;
@@ -13275,11 +13555,7 @@ const MediaFilterEngine = (() => {
       !state.decoder
     )
       return;
-    if (
-      Number.isFinite(state.nextDue) &&
-      state.nextDue > 0 &&
-      time < state.nextDue
-    )
+    if (Number.isFinite(state.nextDue) && state.nextDue > 0 && time < state.nextDue)
       return;
     state.decoding = true;
     const frameIndex = Number.isFinite(state.nextFrameIndex)
@@ -13298,22 +13574,15 @@ const MediaFilterEngine = (() => {
         return;
       }
       if (surface.gifState !== state) {
-        try {
-          decoded?.image?.close?.();
-        } catch {}
+        try { decoded?.image?.close?.(); } catch {}
         return;
       }
-
       const frame = decoded && decoded.image ? decoded.image : null;
       const durationUs = Number(frame?.duration || 0);
       let bitmap = null;
       if (frame) {
-        try {
-          bitmap = await createImageBitmap(frame);
-        } catch {}
-        try {
-          frame.close();
-        } catch {}
+        try { bitmap = await createImageBitmap(frame); } catch {}
+        try { frame.close(); } catch {}
       }
       if (surface.gifState !== state) {
         closeGifBitmap(bitmap);
@@ -13345,12 +13614,6 @@ const MediaFilterEngine = (() => {
     else appEl.removeAttribute("data-media-filter-engine");
   }
 
-  // Tauri-specific: load image bytes via native command into a clean (non-tainted)
-  // ImageBitmap so that canvas drawImage + ctx.filter (saturation etc) + getImageData
-  // (for temperature etc) produce the same visual results as direct file:// in the
-  // main/Electron branch. Direct draw from <img src=asset...> can taint the canvas
-  // in WKWebView, causing getImageData to fail and sometimes filter application to
-  // have no visible effect.
   function kickLoadCleanImageForSurface(surface, target) {
     if (!surface || surface.cleanImageLoading) return;
     if (!window.electronAPI || !window.electronAPI.isTauri) return;
@@ -13379,8 +13642,7 @@ const MediaFilterEngine = (() => {
         } else {
           try { bmp.close && bmp.close(); } catch {}
         }
-      } catch (e) {
-        // fall back to direct el draw; filters may be limited
+      } catch {
       } finally {
         if (surface) surface.cleanImageLoading = false;
       }
@@ -13397,48 +13659,18 @@ const MediaFilterEngine = (() => {
       type: null,
       filterMode: "off",
       canvas: null,
-      ctx: null,
-      offscreen: null,
-      offctx: null,
-      workscreen: null,
-      workctx: null,
-      scratchscreen: null,
-      scratchctx: null,
-      cleanImageBitmap: null,
-      cleanImageLoading: false,
-      cleanImagePath: null,
-      halationExtractCanvas: null,
-      halationExtractCtx: null,
-      vhsFuzzCanvas: null,
-      vhsFuzzCtx: null,
-      vhsFuzzStripCanvas: null,
-      vhsFuzzStripCtx: null,
-      vhsFuzzLowCanvas: null,
-      vhsFuzzLowCtx: null,
-      aberrationscreen: null,
-      aberrationctx: null,
-      aberrationchannelscreen: null,
-      aberrationchannelctx: null,
+      glState: null,
       active: false,
       bound: false,
       hasDrawn: false,
       awaitingFreshFrame: false,
       videoFrameActive: false,
-      gifState: null,
-      framescreen: null,
-      framectx: null,
-      ghostPrevCanvas: null,
-      ghostPrevCtx: null,
-      ghostWorkCanvas: null,
-      ghostWorkCtx: null,
-      ghostHasFrame: false,
-      nextVideoRenderAt: 0,
       videoFrameToken: 0,
-      lastHeuristicTime: 0,
-      videoCanvasFreshToken: 0,
-      videoDecodedFrameCount: 0,
-      videoWarmUntil: 0,
-      videoWarmupHandler: null,
+      nextVideoRenderAt: 0,
+      cleanImageBitmap: null,
+      cleanImageLoading: false,
+      cleanImagePath: null,
+      gifState: null,
     };
     surfaces.set(name, surface);
     return surface;
@@ -13449,57 +13681,12 @@ const MediaFilterEngine = (() => {
       surface.canvas = document.createElement("canvas");
       surface.canvas.className = "mediaCanvas";
       surface.canvas.style.display = "none";
+      surface.canvas.style.background = "transparent";
     }
-    if (!surface.ctx) surface.ctx = surface.canvas.getContext("2d");
-    if (!surface.offscreen)
-      surface.offscreen = document.createElement("canvas");
-    if (!surface.offctx) surface.offctx = surface.offscreen.getContext("2d");
-    if (!surface.workscreen)
-      surface.workscreen = document.createElement("canvas");
-    if (!surface.workctx) surface.workctx = surface.workscreen.getContext("2d");
-    if (!surface.scratchscreen)
-      surface.scratchscreen = document.createElement("canvas");
-    if (!surface.scratchctx)
-      surface.scratchctx = surface.scratchscreen.getContext("2d", {
-        willReadFrequently: true,
-      });
-    if (!surface.aberrationscreen)
-      surface.aberrationscreen = document.createElement("canvas");
-    if (!surface.aberrationctx)
-      surface.aberrationctx = surface.aberrationscreen.getContext("2d");
-    if (!surface.aberrationchannelscreen)
-      surface.aberrationchannelscreen = document.createElement("canvas");
-    if (!surface.aberrationchannelctx)
-      surface.aberrationchannelctx =
-        surface.aberrationchannelscreen.getContext("2d");
-    if (!surface.framescreen)
-      surface.framescreen = document.createElement("canvas");
-    if (!surface.framectx)
-      surface.framectx = surface.framescreen.getContext("2d");
+    if (!surface.glState) surface.glState = createGlState(surface.canvas);
     if (surface.container && !surface.container.contains(surface.canvas)) {
       surface.container.appendChild(surface.canvas);
     }
-  }
-
-  function markVideoCanvasStale(surface) {
-    if (!surface || surface.type !== "video" || !surface.canvas) return;
-    surface.canvas.classList.add("videoCanvasStale");
-    if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
-  }
-
-  function markVideoCanvasFresh(surface) {
-    if (!surface || surface.type !== "video" || !surface.canvas) return;
-    surface.videoCanvasFreshToken = (surface.videoCanvasFreshToken || 0) + 1;
-    const token = surface.videoCanvasFreshToken;
-    surface.canvas.classList.remove("videoCanvasStale");
-    if (surface.mediaEl) surface.mediaEl.classList.add("mediaHidden");
-    window.setTimeout(() => {
-      if (!surface.active || surface.type !== "video") return;
-      if (surface.videoCanvasFreshToken !== token) return;
-      const el = surface.mediaEl;
-      if (!el || el.paused || el.ended) return;
-      markVideoCanvasStale(surface);
-    }, 260);
   }
 
   function bindMediaEvents(surface, el) {
@@ -13509,12 +13696,9 @@ const MediaFilterEngine = (() => {
       surface.mediaEl.removeEventListener("load", requestRender);
       surface.mediaEl.removeEventListener("loadeddata", requestRender);
       surface.mediaEl.removeEventListener("play", requestRender);
+      surface.mediaEl.removeEventListener("playing", requestRender);
       surface.mediaEl.removeEventListener("pause", requestRender);
       surface.mediaEl.removeEventListener("seeked", requestRender);
-      if (surface.videoWarmupHandler) {
-        surface.mediaEl.removeEventListener("play", surface.videoWarmupHandler);
-        surface.mediaEl.removeEventListener("playing", surface.videoWarmupHandler);
-      }
     }
     if (surface.mediaEl !== el) {
       if (surface.cleanImageBitmap) {
@@ -13523,24 +13707,14 @@ const MediaFilterEngine = (() => {
       }
       surface.cleanImageLoading = false;
       surface.cleanImagePath = null;
-      surface.lastHeuristicTime = 0;
-      surface.videoDecodedFrameCount = 0;
-      surface.videoWarmUntil = 0;
+      if (surface.glState) surface.glState.hasPrev = false;
     }
     surface.mediaEl = el;
     surface.bound = true;
-    surface.videoWarmupHandler = () => {
-      if (!surface.active || surface.type !== "video") return;
-      surface.videoDecodedFrameCount = 0;
-      surface.videoWarmUntil = performance.now() + 320;
-      markVideoCanvasStale(surface);
-      requestRender();
-    };
     el.addEventListener("load", requestRender);
     el.addEventListener("loadeddata", requestRender);
     el.addEventListener("play", requestRender);
-    el.addEventListener("play", surface.videoWarmupHandler);
-    el.addEventListener("playing", surface.videoWarmupHandler);
+    el.addEventListener("playing", requestRender);
     el.addEventListener("pause", requestRender);
     el.addEventListener("seeked", requestRender);
   }
@@ -13557,50 +13731,24 @@ const MediaFilterEngine = (() => {
     surface.filterMode = filterMode || "off";
     surface.active = true;
     surface.awaitingFreshFrame = true;
-    surface.ghostHasFrame = false;
     surface.nextVideoRenderAt = 0;
-    surface.lastHeuristicTime = 0;
-    if (targetChanged) {
-      surface.videoDecodedFrameCount = 0;
-      surface.videoWarmUntil = 0;
-    }
     bindMediaEvents(surface, mediaEl);
+    try {
+      ensureCanvas(surface);
+    } catch {
+      if (mediaEl) mediaEl.classList.remove("mediaHidden");
+      surface.active = false;
+      return;
+    }
+    if (targetChanged) {
+      surface.hasDrawn = false;
+      if (surface.glState) surface.glState.hasPrev = false;
+    }
     if (type === "image" && window.electronAPI && window.electronAPI.isTauri) {
       kickLoadCleanImageForSurface(surface, target);
     }
-    ensureCanvas(surface);
-    if (type === "video") {
-      const hasReadyCanvas =
-        surface.canvas &&
-        surface.canvas.style.display !== "none" &&
-        surface.canvas.classList.contains("ready") &&
-        surface.hasDrawn;
-      if (targetChanged) surface.hasDrawn = false;
-      if (targetChanged || !hasReadyCanvas) {
-        surface.videoWarmUntil = performance.now() + 260;
-        markVideoCanvasStale(surface);
-      } else {
-        surface.videoWarmUntil = 0;
-        surface.canvas.classList.remove("videoCanvasStale");
-        if (surface.mediaEl) surface.mediaEl.classList.add("mediaHidden");
-      }
-    } else {
-      surface.canvas.classList.remove("videoCanvasStale");
-      surface.videoWarmUntil = 0;
-      surface.videoDecodedFrameCount = 0;
-    }
-    if (surface.mediaEl && surface.hasDrawn) {
-      const keepRawVisible =
-        type === "video" ||
-        (type === "image" &&
-          String(surface.mediaEl.getAttribute("data-is-gif") || "") === "1");
-      if (!keepRawVisible) surface.mediaEl.classList.add("mediaHidden");
-    }
-    if (
-      type === "video" &&
-      mediaEl &&
-      typeof mediaEl.requestVideoFrameCallback === "function"
-    ) {
+    if (mediaEl) mediaEl.classList.add("mediaHidden");
+    if (type === "video" && mediaEl && typeof mediaEl.requestVideoFrameCallback === "function") {
       surface.videoFrameActive = true;
       surface.videoFrameToken++;
       const frameToken = surface.videoFrameToken;
@@ -13611,17 +13759,11 @@ const MediaFilterEngine = (() => {
           frameToken !== surface.videoFrameToken
         )
           return;
-        surface.videoDecodedFrameCount =
-          (Number(surface.videoDecodedFrameCount) || 0) + 1;
         const overlayCfg = resolveMediaOverlayConfigForTarget(surface.target);
         const profile = mediaOverlayLiveVideoProfile(overlayCfg);
-        const intervalMs = 1000 / Math.max(1, Number(profile.maxFps) || 30);
+        const intervalMs = 1000 / Math.max(1, Number(profile.maxFps) || 24);
         const t = Number.isFinite(Number(now)) ? Number(now) : performance.now();
-        if (
-          surface.awaitingFreshFrame ||
-          !surface.nextVideoRenderAt ||
-          t >= surface.nextVideoRenderAt
-        ) {
+        if (surface.awaitingFreshFrame || !surface.nextVideoRenderAt || t >= surface.nextVideoRenderAt) {
           surface.nextVideoRenderAt = t + intervalMs;
           requestRender();
         }
@@ -13635,15 +13777,6 @@ const MediaFilterEngine = (() => {
     if (type !== "image") clearGifState(surface);
     updateEngineState();
     requestRender();
-    let pulseCount = 0;
-    const pulse = () => {
-      if (!surface.active) return;
-      if (surface.hasDrawn) return;
-      pulseCount++;
-      requestRender();
-      if (pulseCount < 20) requestAnimationFrame(pulse);
-    };
-    requestAnimationFrame(pulse);
   }
 
   function detach(name, options = null) {
@@ -13655,12 +13788,7 @@ const MediaFilterEngine = (() => {
     surface.awaitingFreshFrame = false;
     surface.videoFrameActive = false;
     surface.videoFrameToken++;
-    surface.videoCanvasFreshToken++;
-    surface.videoDecodedFrameCount = 0;
-    surface.videoWarmUntil = 0;
-    surface.ghostHasFrame = false;
     surface.nextVideoRenderAt = 0;
-    surface.lastHeuristicTime = 0;
     clearGifState(surface);
     if (surface.cleanImageBitmap) {
       try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
@@ -13673,8 +13801,8 @@ const MediaFilterEngine = (() => {
       if (surface.canvas) {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
-        surface.canvas.classList.remove("videoCanvasStale");
       }
+      if (surface.glState) surface.glState.hasPrev = false;
     }
     updateEngineState();
   }
@@ -13688,11 +13816,6 @@ const MediaFilterEngine = (() => {
     surface.awaitingFreshFrame = false;
     surface.videoFrameActive = false;
     surface.videoFrameToken++;
-    surface.videoCanvasFreshToken++;
-    surface.videoDecodedFrameCount = 0;
-    surface.videoWarmUntil = 0;
-    surface.nextVideoRenderAt = 0;
-    surface.lastHeuristicTime = 0;
     clearGifState(surface);
     if (surface.cleanImageBitmap) {
       try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
@@ -13700,29 +13823,12 @@ const MediaFilterEngine = (() => {
     }
     surface.cleanImageLoading = false;
     surface.cleanImagePath = null;
+    if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
     if (surface.canvas && surface.canvas.parentElement) {
       surface.canvas.parentElement.removeChild(surface.canvas);
     }
     surface.canvas = null;
-    surface.ctx = null;
-    surface.offscreen = null;
-    surface.offctx = null;
-    surface.workscreen = null;
-    surface.workctx = null;
-    surface.scratchscreen = null;
-    surface.scratchctx = null;
-    surface.aberrationscreen = null;
-    surface.aberrationctx = null;
-    surface.aberrationchannelscreen = null;
-    surface.aberrationchannelctx = null;
-    surface.framescreen = null;
-    surface.framectx = null;
-    surface.ghostPrevCanvas = null;
-    surface.ghostPrevCtx = null;
-    surface.ghostWorkCanvas = null;
-    surface.ghostWorkCtx = null;
-    surface.ghostHasFrame = false;
-    if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+    surface.glState = null;
     updateEngineState();
   }
 
@@ -13742,14 +13848,27 @@ const MediaFilterEngine = (() => {
     if (needsMore) requestRender();
   }
 
+  function uploadSourceTexture(surface, drawSource) {
+    const state = surface.glState;
+    const gl = state.gl;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, state.sourceTexture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, drawSource);
+    configureTexture(gl, state.sourceTexture);
+  }
+
+  function uniform1f(gl, location, value) {
+    if (location) gl.uniform1f(location, Number(value) || 0);
+  }
+
   function drawSurface(surface, time) {
     let overlayCfg = resolveMediaOverlayConfigForTarget(surface.target);
     if (shouldPreferNativeGifPlayback(surface.target, overlayCfg)) {
       if (surface.canvas) {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
-        surface.canvas.style.removeProperty("filter");
-        surface.canvas.classList.remove("videoCanvasStale");
       }
       if (surface.mediaEl) {
         surface.mediaEl.classList.remove("mediaHidden");
@@ -13763,8 +13882,7 @@ const MediaFilterEngine = (() => {
     if (!overlayCfg) {
       if (surface.canvas) {
         surface.canvas.style.display = "none";
-        surface.canvas.style.removeProperty("filter");
-        surface.canvas.classList.remove("videoCanvasStale");
+        surface.canvas.classList.remove("ready");
       }
       if (surface.mediaEl) {
         surface.mediaEl.classList.remove("mediaHidden");
@@ -13774,54 +13892,7 @@ const MediaFilterEngine = (() => {
       surface.awaitingFreshFrame = false;
       return false;
     }
-
-    // Pure simple color filters (saturation, hue, contrast, brightness etc from sliders/presets)
-    // are applied directly via CSS filter on the media element itself in the preview pane.
-    // This is reliable (same mechanism that makes them work on thumbs via style.filter),
-    // avoids any canvas ctx.filter + asset protocol quirks in Tauri, and produces identical
-    // outcome to the main/Electron version for the basic color filters.
-    // Advanced non-color effects continue to use the full canvas engine.
-    const hasColor = Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length > 0;
-    const hasAdvanced =
-      Math.abs(Number(overlayCfg.temperature) || 0) > 0.0001 ||
-      Number(overlayCfg.colorCrush || 0) > 0 ||
-      Number(overlayCfg.blackCrush || 0) > 0 ||
-      Number(overlayCfg.whiteCrush || 0) > 0 ||
-      Number(overlayCfg.halation || 0) > 0 ||
-      Number(overlayCfg.ghosting || 0) > 0 ||
-      Number(overlayCfg.lineDamage || 0) > 0 ||
-      Number(overlayCfg.pixelate || 0) > 0 ||
-      Number(overlayCfg.blur || 0) > 0 ||
-      Number(overlayCfg.upscaler || 0) > 0 ||
-      Number(overlayCfg.chroma || 0) > 0 ||
-      Number(overlayCfg.grain || 0) > 0 ||
-      Number(overlayCfg.vignette || 0) > 0 ||
-      Number(overlayCfg.cornerRadius || 0) > 0;
-    if (hasColor && !hasAdvanced) {
-      if (surface.canvas) {
-        surface.canvas.style.display = "none";
-        surface.canvas.classList.remove("ready");
-        surface.canvas.style.removeProperty("filter");
-        surface.canvas.classList.remove("videoCanvasStale");
-      }
-      if (surface.mediaEl) {
-        const colStr = overlayCfg.colorFilters.join(" ");
-        surface.mediaEl.style.filter = colStr;
-        surface.mediaEl.classList.remove("mediaHidden");
-      }
-      surface.hasDrawn = true;
-      surface.awaitingFreshFrame = false;
-      return false;
-    }
-
-    if (
-      !surface.mediaEl ||
-      !surface.container ||
-      !surface.canvas ||
-      !surface.ctx ||
-      !surface.framescreen ||
-      !surface.framectx
-    )
+    if (!surface.mediaEl || !surface.container || !surface.canvas || !surface.glState)
       return false;
 
     const el = surface.mediaEl;
@@ -13829,95 +13900,29 @@ const MediaFilterEngine = (() => {
     const isGifImage =
       !isVideo && String(el.getAttribute("data-is-gif") || "") === "1";
     if (!isGifImage) clearGifState(surface);
-    const ready = isVideo
-      ? el.readyState >= 2 && el.videoWidth > 0 && el.videoHeight > 0
-      : el.complete && el.naturalWidth > 0 && el.naturalHeight > 0;
-    if (!ready) {
-      if (!surface.hasDrawn) {
-        if (surface.canvas) {
-          surface.canvas.style.display = "none";
-          surface.canvas.style.removeProperty("filter");
-        }
-        if (surface.mediaEl) {
-          surface.mediaEl.classList.remove("mediaHidden");
-          try { surface.mediaEl.style.removeProperty("filter"); } catch {}
-        }
-      }
-      return false;
-    }
-    if (isVideo && !el.paused && !surface.hasDrawn) {
-      const now = Number.isFinite(Number(time)) ? Number(time) : performance.now();
-      const warmUntil = Number(surface.videoWarmUntil) || 0;
-      const decodedFrameCount = Number(surface.videoDecodedFrameCount) || 0;
-      const waitingForStableFrameCadence =
-        surface.videoFrameActive && decodedFrameCount < 2 && now < warmUntil + 520;
-      if (now < warmUntil || waitingForStableFrameCadence) {
-        markVideoCanvasStale(surface);
-        if (surface.mediaEl) {
-          const colStr =
-            Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length
-              ? overlayCfg.colorFilters.join(" ")
-              : "none";
-          if (colStr !== "none") {
-            surface.mediaEl.style.filter = colStr;
-          } else {
-            surface.mediaEl.style.removeProperty("filter");
-          }
-          surface.mediaEl.classList.remove("mediaHidden");
-        }
-        return true;
-      }
-    }
-
-    const cw = surface.container.clientWidth || 0;
-    const ch = surface.container.clientHeight || 0;
-    if (!cw || !ch) return false;
-
-    const dpr = window.devicePixelRatio || 1;
-    const liveVideoProfile =
-      isVideo && !el.paused && !el.ended
-        ? mediaOverlayLiveVideoProfile(overlayCfg)
-        : null;
-    const outputPixelScale = liveVideoProfile
-      ? capScaleForPixelBudget(
-          cw * dpr,
-          ch * dpr,
-          liveVideoProfile.maxOutputPixels,
-        )
-      : 1;
-    const renderDpr = Math.max(
-      0.5,
-      dpr * outputPixelScale,
-    );
-    const pixelW = Math.max(1, Math.round(cw * renderDpr));
-    const pixelH = Math.max(1, Math.round(ch * renderDpr));
-    if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
-      surface.canvas.width = pixelW;
-      surface.canvas.height = pixelH;
-    }
-
-    const ctx = surface.ctx;
-    const frameCtx = surface.framectx;
-    resizeCanvasBuffer(surface.framescreen, pixelW, pixelH);
-    frameCtx.setTransform(renderDpr, 0, 0, renderDpr, 0, 0);
-    frameCtx.imageSmoothingEnabled = true;
-    frameCtx.clearRect(0, 0, cw, ch);
 
     let drawSource = el;
     let srcW = isVideo ? el.videoWidth : el.naturalWidth;
     let srcH = isVideo ? el.videoHeight : el.naturalHeight;
+    const ready = isVideo
+      ? el.readyState >= 2 && srcW > 0 && srcH > 0
+      : el.complete && srcW > 0 && srcH > 0;
+    if (!ready) {
+      if (!surface.hasDrawn && surface.canvas) {
+        surface.canvas.style.display = "none";
+        surface.canvas.classList.remove("ready");
+      }
+      return false;
+    }
+
     if (isGifImage) {
       const gifState = ensureGifState(surface, el);
       if (gifState && !gifState.unsupported) {
         scheduleGifFrameDecode(surface, time);
-        if (
-          gifState.bitmap &&
-          gifState.bitmap.width > 0 &&
-          gifState.bitmap.height > 0
-        ) {
+        if (gifState.bitmap && gifState.bitmap.width > 0 && gifState.bitmap.height > 0) {
           drawSource = gifState.bitmap;
-          srcW = gifState.bitmap.width;
-          srcH = gifState.bitmap.height;
+          srcW = drawSource.width;
+          srcH = drawSource.height;
         }
       }
     }
@@ -13930,337 +13935,125 @@ const MediaFilterEngine = (() => {
         kickLoadCleanImageForSurface(surface, surface.target);
       }
     }
+
+    const cw = surface.container.clientWidth || 0;
+    const ch = surface.container.clientHeight || 0;
+    if (!cw || !ch || !(srcW > 0) || !(srcH > 0)) return false;
+
     let sourceCrop = isVideo
-      ? computeCroppedSourceRect(
-          srcW,
-          srcH,
-          getVideoCropForTarget(surface.target),
-        )
+      ? computeCroppedSourceRect(srcW, srcH, getVideoCropForTarget(surface.target))
       : { sx: 0, sy: 0, sw: srcW, sh: srcH };
-    const autoBarCrop = AutoBlackBarCrop.getCropForSurface(
-      surface,
-      drawSource,
-      srcW,
-      srcH,
-    );
+    const autoBarCrop = AutoBlackBarCrop.getCropForSurface(surface, drawSource, srcW, srcH);
     if (autoBarCrop) {
-      sourceCrop = AutoBlackBarCrop.applyCropRatiosToRect(
-        srcW,
-        srcH,
-        sourceCrop,
-        autoBarCrop,
-      );
+      sourceCrop = AutoBlackBarCrop.applyCropRatiosToRect(srcW, srcH, sourceCrop, autoBarCrop);
     }
     const croppedSrcW = Math.max(1, Number(sourceCrop.sw || srcW || 1));
     const croppedSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
-    const drawCropped = (targetCtx, dx2, dy2, dw2, dh2) => {
-      if (sourceCrop.sw > 0 && sourceCrop.sh > 0) {
-        targetCtx.drawImage(
-          drawSource,
-          sourceCrop.sx,
-          sourceCrop.sy,
-          sourceCrop.sw,
-          sourceCrop.sh,
-          dx2,
-          dy2,
-          dw2,
-          dh2,
-        );
-        return;
-      }
-      targetCtx.drawImage(drawSource, dx2, dy2, dw2, dh2);
-    };
     const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
-    const previewUpscaleAmount = previewPaneUpscaleAmountForSurface(surface, overlayCfg);
-    const previewUpscaleRenderScale = previewPaneUpscaleRenderScaleForSurface(surface, overlayCfg, rect, isVideo);
-    const heuristicLoad = Math.max(0, Number(overlayCfg.upscaler || 0));
-    const realtimeVideoHeuristics = isVideo && !el.paused && heuristicLoad > 0.0001;
-    const videoHeuristicScale = realtimeVideoHeuristics
-      ? Math.max(0.62, 0.9 - Math.min(0.28, heuristicLoad * 0.18))
+    const dpr = window.devicePixelRatio || 1;
+    const liveVideoProfile =
+      isVideo && !el.paused && !el.ended ? mediaOverlayLiveVideoProfile(overlayCfg) : null;
+    const pixelScale = liveVideoProfile
+      ? capScaleForPixelBudget(cw * dpr, ch * dpr, liveVideoProfile.maxOutputPixels)
       : 1;
-    const baseWorkScale = previewUpscaleRenderScale * videoHeuristicScale;
-    const liveWorkScale = liveVideoProfile
-      ? capScaleForPixelBudget(
-          rect.w * baseWorkScale,
-          rect.h * baseWorkScale,
-          liveVideoProfile.maxWorkPixels,
-        )
-      : 1;
-    const outputContainRect = rect;
-    const animatedForSurface = animatedMediaFiltersEnabledForType(surface.type);
-    const dx = outputContainRect.x;
-    const dy = outputContainRect.y;
+    const renderDpr = Math.max(0.5, dpr * pixelScale);
+    const pixelW = Math.max(1, Math.round(cw * renderDpr));
+    const pixelH = Math.max(1, Math.round(ch * renderDpr));
+    if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
+      surface.canvas.width = pixelW;
+      surface.canvas.height = pixelH;
+      surface.glState.hasPrev = false;
+    }
 
-    let currentCanvas = surface.workscreen;
-    let currentCtx = surface.workctx;
-    let scratchCanvas = surface.scratchscreen;
-    let scratchCtx = surface.scratchctx;
-    const workScale = baseWorkScale * liveWorkScale;
-    const workW = Math.max(1, Math.round(rect.w * workScale));
-    const workH = Math.max(1, Math.round(rect.h * workScale));
-    resizeCanvasBuffer(currentCanvas, workW, workH);
-    resizeCanvasBuffer(scratchCanvas, workW, workH);
-    currentCtx.setTransform(1, 0, 0, 1, 0, 0);
-    currentCtx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
-    configureCanvasUpscaleSmoothing(currentCtx, overlayCfg, 1);
-    currentCtx.filter = "none";
-    const fitRect = computeContainRect(
-      croppedSrcW,
-      croppedSrcH,
-      currentCanvas.width,
-      currentCanvas.height,
-    );
-    drawCropped(currentCtx, fitRect.x, fitRect.y, fitRect.w, fitRect.h);
-    const swapBuffers = () => {
-      const oldCanvas = currentCanvas;
-      const oldCtx = currentCtx;
-      currentCanvas = scratchCanvas;
-      currentCtx = scratchCtx;
-      scratchCanvas = oldCanvas;
-      scratchCtx = oldCtx;
-    };
-
+    const state = surface.glState;
+    const gl = state.gl;
     try {
-      applyPixelOpsToCanvas(currentCanvas, overlayCfg);
-      if (overlayCfg.pixelate > 0) {
-        const scale = Math.max(1, overlayCfg.pixelate);
-        resizeCanvasBuffer(
-          surface.offscreen,
-          Math.max(1, Math.round(currentCanvas.width / scale)),
-          Math.max(1, Math.round(currentCanvas.height / scale)),
-        );
-        surface.offctx.setTransform(1, 0, 0, 1, 0, 0);
-        surface.offctx.clearRect(
-          0,
-          0,
-          surface.offscreen.width,
-          surface.offscreen.height,
-        );
-        surface.offctx.imageSmoothingEnabled = true;
-        surface.offctx.filter = "none";
-        surface.offctx.drawImage(
-          currentCanvas,
-          0,
-          0,
-          surface.offscreen.width,
-          surface.offscreen.height,
-        );
-        resizeCanvasBuffer(
-          scratchCanvas,
-          currentCanvas.width,
-          currentCanvas.height,
-        );
-        scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
-        scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
-        configureCanvasUpscaleSmoothing(scratchCtx, overlayCfg, 0);
-        scratchCtx.filter = "none";
-        scratchCtx.drawImage(
-          surface.offscreen,
-          0,
-          0,
-          scratchCanvas.width,
-          scratchCanvas.height,
-        );
-        swapBuffers();
-      }
-      if (overlayCfg.blur > 0) {
-        if (drawBlurredCanvasToScratch(
-          currentCanvas,
-          scratchCanvas,
-          scratchCtx,
-          surface.offscreen,
-          surface.offctx,
-          overlayCfg.blur,
-          overlayCfg,
-        )) {
-          swapBuffers();
-        }
-      }
-      const heuristicBudgetMs = realtimeVideoHeuristics ? 44 : 0;
-      const allowHeuristicsThisFrame = !realtimeVideoHeuristics || !surface.lastHeuristicTime || (time - surface.lastHeuristicTime >= heuristicBudgetMs);
-      if (allowHeuristicsThisFrame) {
-        if (realtimeVideoHeuristics) surface.lastHeuristicTime = time;
-        if (overlayCfg.upscaler > 0) {
-          applyHeuristicUpscalerToCanvas(currentCanvas, overlayCfg.upscaler);
-        }
-      }
+      uploadSourceTexture(surface, drawSource);
     } catch {
       if (!surface.hasDrawn) {
-        if (surface.canvas) {
-          surface.canvas.style.display = "none";
-          surface.canvas.classList.remove("ready");
-        }
+        surface.canvas.style.display = "none";
+        surface.canvas.classList.remove("ready");
         if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
-      } else if (isVideo) {
-        markVideoCanvasStale(surface);
       }
       return false;
     }
 
-    const outputRect = { x: dx, y: dy, w: outputContainRect.w, h: outputContainRect.h };
-    configureCanvasUpscaleSmoothing(frameCtx, overlayCfg, 1);
-    frameCtx.filter = "none";
-    if (
-      !drawChromaticAberrationToContext(
-        frameCtx,
-        currentCanvas,
-        outputRect.x,
-        outputRect.y,
-        outputRect.w,
-        outputRect.h,
-        overlayCfg.chroma,
-        {
-          compositeCanvas: surface.aberrationscreen,
-          compositeCtx: surface.aberrationctx,
-          channelCanvas: surface.aberrationchannelscreen,
-          channelCtx: surface.aberrationchannelctx,
-        },
-      )
-    ) {
-      frameCtx.drawImage(
-        currentCanvas,
-        outputRect.x,
-        outputRect.y,
-        outputRect.w,
-        outputRect.h,
-      );
-    }
+    gl.viewport(0, 0, pixelW, pixelH);
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(state.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, state.vertexBuffer);
+    gl.enableVertexAttribArray(state.positionLocation);
+    gl.vertexAttribPointer(state.positionLocation, 2, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, state.sourceTexture);
+    gl.uniform1i(state.uniforms.u_tex, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, state.prevTexture);
+    gl.uniform1i(state.uniforms.u_prev, 1);
+    gl.uniform2f(state.uniforms.u_canvas, pixelW, pixelH);
+    gl.uniform2f(state.uniforms.u_source, srcW, srcH);
+    gl.uniform2f(state.uniforms.u_cropOrigin, sourceCrop.sx || 0, sourceCrop.sy || 0);
+    gl.uniform2f(state.uniforms.u_cropSize, croppedSrcW, croppedSrcH);
+    gl.uniform2f(
+      state.uniforms.u_destOrigin,
+      rect.x * renderDpr,
+      rect.y * renderDpr,
+    );
+    gl.uniform2f(
+      state.uniforms.u_destSize,
+      Math.max(1, rect.w * renderDpr),
+      Math.max(1, rect.h * renderDpr),
+    );
+    uniform1f(gl, state.uniforms.u_time, time || performance.now());
+    uniform1f(gl, state.uniforms.u_hasPrev, state.hasPrev ? 1 : 0);
+    uniform1f(gl, state.uniforms.u_brightness, overlayCfg.brightness);
+    uniform1f(gl, state.uniforms.u_contrast, overlayCfg.contrast);
+    uniform1f(gl, state.uniforms.u_saturation, overlayCfg.saturation);
+    uniform1f(gl, state.uniforms.u_temperature, overlayCfg.temperature);
+    uniform1f(gl, state.uniforms.u_hue, overlayCfg.hueShift);
+    uniform1f(gl, state.uniforms.u_blackCrush, overlayCfg.blackCrush);
+    uniform1f(gl, state.uniforms.u_whiteCrush, overlayCfg.whiteCrush);
+    uniform1f(gl, state.uniforms.u_colorCrush, overlayCfg.colorCrush);
+    uniform1f(gl, state.uniforms.u_pixelate, overlayCfg.pixelate);
+    uniform1f(gl, state.uniforms.u_blur, overlayCfg.blur);
+    uniform1f(gl, state.uniforms.u_detail, overlayCfg.upscaler);
+    uniform1f(gl, state.uniforms.u_chroma, overlayCfg.chroma);
+    uniform1f(gl, state.uniforms.u_halation, overlayCfg.halation);
+    uniform1f(gl, state.uniforms.u_ghosting, overlayCfg.ghosting);
+    uniform1f(gl, state.uniforms.u_lineDamage, overlayCfg.lineDamage);
+    uniform1f(gl, state.uniforms.u_grain, overlayCfg.grain);
+    uniform1f(gl, state.uniforms.u_vignette, overlayCfg.vignette);
+    uniform1f(gl, state.uniforms.u_cornerRadius, overlayCfg.cornerRadius);
+    uniform1f(gl, state.uniforms.u_animated, animatedMediaFiltersEnabledForType(surface.type) ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-    if (overlayCfg.halation) {
-      drawHalationToContext(
-        frameCtx,
-        currentCanvas,
-        outputRect,
-        overlayCfg.halation,
-        surface,
-      );
-    }
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, state.prevTexture);
+    gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, pixelW, pixelH, 0);
+    configureTexture(gl, state.prevTexture);
+    state.hasPrev = true;
+    state.prevW = pixelW;
+    state.prevH = pixelH;
 
-    if (overlayCfg.ghosting) {
-      drawTemporalGhostingToContext(
-        frameCtx,
-        currentCanvas,
-        outputRect,
-        overlayCfg.ghosting,
-        time,
-        surface,
-        { animated: animatedForSurface },
-      );
-    }
-
-    if (overlayCfg.lineDamage) {
-      drawLineDamageToContext(
-        frameCtx,
-        currentCanvas,
-        outputRect,
-        overlayCfg.lineDamage,
-        time,
-        surface,
-        { animated: animatedForSurface },
-      );
-    }
-
-    if (overlayCfg.grain) {
-      frameCtx.save();
-      frameCtx.beginPath();
-      frameCtx.rect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
-      frameCtx.clip();
-      const noiseCanvas = ensureNoiseCanvas();
-      if (animatedForSurface) {
-        if (time - noise.lastTime > 80) {
-          updateNoiseCanvas();
-          noise.lastTime = time;
-        }
-      } else if (!noise.lastTime) {
-        updateNoiseCanvas();
-        noise.lastTime = time;
-      }
-      const pattern = frameCtx.createPattern(noiseCanvas, "repeat");
-      if (pattern) {
-        frameCtx.globalAlpha = overlayCfg.grain;
-        frameCtx.globalCompositeOperation = "overlay";
-        frameCtx.fillStyle = pattern;
-        frameCtx.fillRect(
-          outputRect.x,
-          outputRect.y,
-          outputRect.w,
-          outputRect.h,
-        );
-      }
-      frameCtx.restore();
-    }
-
-    if (overlayCfg.vignette) {
-      frameCtx.save();
-      frameCtx.beginPath();
-      frameCtx.rect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
-      frameCtx.clip();
-      const cx = outputRect.x + outputRect.w * 0.5;
-      const cy = outputRect.y + outputRect.h * 0.5;
-      const g = frameCtx.createRadialGradient(
-        cx,
-        cy,
-        Math.min(outputRect.w, outputRect.h) * 0.2,
-        cx,
-        cy,
-        Math.max(outputRect.w, outputRect.h) * 0.7,
-      );
-      g.addColorStop(0, "rgba(0,0,0,0)");
-      g.addColorStop(1, `rgba(0,0,0,${overlayCfg.vignette})`);
-      frameCtx.fillStyle = g;
-      frameCtx.fillRect(outputRect.x, outputRect.y, outputRect.w, outputRect.h);
-      frameCtx.restore();
-    }
-
-    if (overlayCfg.cornerRadius) {
-      const radius = Math.max(
-        0,
-        Math.min(outputRect.w, outputRect.h) * overlayCfg.cornerRadius,
-      );
-      applyRoundedCornerMask(frameCtx, outputRect, radius);
-    }
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.filter = "none";
-    ctx.clearRect(0, 0, pixelW, pixelH);
-    ctx.drawImage(surface.framescreen, 0, 0, pixelW, pixelH);
     surface.canvas.style.display = "block";
     surface.canvas.classList.add("ready");
-    if (isVideo) markVideoCanvasFresh(surface);
+    surface.canvas.classList.remove("videoCanvasStale");
     surface.hasDrawn = true;
     surface.awaitingFreshFrame = false;
     if (surface.mediaEl) {
-      if (isVideo) {
-        // The native video is the instant fallback while the canvas is stale;
-        // fresh canvas frames own the full advanced-filtered appearance.
-        const colStr = Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length ? overlayCfg.colorFilters.join(" ") : "none";
-        if (colStr !== "none") {
-          surface.mediaEl.style.filter = colStr;
-        } else {
-          surface.mediaEl.style.removeProperty("filter");
-        }
-        surface.mediaEl.classList.add("mediaHidden");
-      } else if (isGifImage) {
-        surface.mediaEl.classList.remove("mediaHidden");
-      } else {
-        surface.mediaEl.classList.add("mediaHidden");
-      }
+      surface.mediaEl.classList.add("mediaHidden");
+      try { surface.mediaEl.style.removeProperty("filter"); } catch {}
     }
-
-    if (isVideo && surface.canvas) {
-      surface.canvas.style.background = "transparent";
-    }
-
-    surface.canvas.style.removeProperty("filter");
 
     const needsAnim =
-      animatedForSurface &&
+      animatedMediaFiltersEnabledForType(surface.type) &&
       !!(overlayCfg.grain || overlayCfg.ghosting || overlayCfg.lineDamage);
     if (isVideo) {
-      if (surface.videoFrameActive) {
-        return false;
-      }
+      if (surface.videoFrameActive) return false;
       if (!el.paused) return true;
       return needsAnim;
     }
