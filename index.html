@@ -11395,10 +11395,8 @@ function computeContainRect(srcW, srcH, dstW, dstH) {
 
 function previewPaneUpscaleAmountForSurface(surface, overlayCfg) {
   if (!surface || String(surface.name || "") !== "preview") return 0;
-  if (!overlayCfg || !Object.prototype.hasOwnProperty.call(overlayCfg, "upscale")) return 0;
-  const parsed = Number(overlayCfg.upscale);
-  if (!Number.isFinite(parsed)) return 0;
-  return clampNumber(parsed, 0, 1, 0);
+  if (!overlayCfg) return 0;
+  return 1;
 }
 
 function previewPaneUpscaleRenderScaleForSurface(surface, overlayCfg, rect, isVideo = false) {
@@ -13712,8 +13710,14 @@ const MediaFilterEngine = (() => {
       return;
     }
     if (targetChanged) {
-      surface.hasDrawn = false;
-      if (surface.canvas) {
+      const preserveFilteredFrame =
+        !!(
+          surface.canvas &&
+          surface.hasDrawn &&
+          surface.canvas.classList.contains("ready")
+        );
+      surface.hasDrawn = preserveFilteredFrame;
+      if (surface.canvas && !preserveFilteredFrame) {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
       }
@@ -13891,6 +13895,8 @@ const MediaFilterEngine = (() => {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
         if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+      } else if (surface.hasDrawn && surface.mediaEl) {
+        surface.mediaEl.classList.add("mediaHidden");
       }
       return false;
     }
@@ -13936,7 +13942,13 @@ const MediaFilterEngine = (() => {
     const pixelScale = liveVideoProfile
       ? capScaleForPixelBudget(cw * dpr, ch * dpr, liveVideoProfile.maxOutputPixels)
       : 1;
-    const renderDpr = Math.max(0.5, dpr * pixelScale);
+    const detailScale = previewPaneUpscaleRenderScaleForSurface(
+      surface,
+      overlayCfg,
+      rect,
+      isVideo,
+    );
+    const renderDpr = Math.max(0.5, dpr * pixelScale * detailScale);
     const pixelW = Math.max(1, Math.round(cw * renderDpr));
     const pixelH = Math.max(1, Math.round(ch * renderDpr));
     if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
@@ -14000,7 +14012,7 @@ const MediaFilterEngine = (() => {
     uniform1f(gl, state.uniforms.u_colorCrush, overlayCfg.colorCrush);
     uniform1f(gl, state.uniforms.u_pixelate, overlayCfg.pixelate);
     uniform1f(gl, state.uniforms.u_blur, overlayCfg.blur);
-    uniform1f(gl, state.uniforms.u_detail, 0);
+    uniform1f(gl, state.uniforms.u_detail, String(surface.name || "") === "preview" ? 1 : 0);
     uniform1f(gl, state.uniforms.u_chroma, overlayCfg.chroma);
     uniform1f(gl, state.uniforms.u_halation, 0);
     uniform1f(gl, state.uniforms.u_ghosting, 0);
@@ -14849,6 +14861,14 @@ function clearMediaFilterSurface(surfaceName, mediaEl) {
   MediaFilterEngine.detach(surfaceName);
   clearPendingFilmCornerMask(mediaEl);
   if (mediaEl) mediaEl.classList.remove("mediaHidden");
+}
+
+function shouldHoldPreviewFilteredFrameForTarget(target) {
+  if (!target || !anyMediaFilterEnabled()) return false;
+  if (shouldPreferNativeGifPlayback(target)) return false;
+  if (!resolveMediaOverlayConfigForTarget(target) && !autoCropBlackBarsEnabled())
+    return false;
+  return MediaFilterEngine.hasSurfaceDrawn("preview");
 }
 
 function applyDisplaySizesFromOptions() {
@@ -46627,13 +46647,13 @@ async function preloadMediaRecord(rec, aggressive) {
   }
   const vid = document.createElement("video");
   prepareMediaElementForCanvas(vid);
-  vid.preload = aggressive ? "auto" : "metadata";
+  vid.preload = "auto";
   vid.muted = true;
   normalizeVideoPlaybackRate(vid);
   vid.playsInline = true;
   vid.src = url;
   try {
-    if (aggressive) vid.load();
+    vid.load();
   } catch {}
   PRELOAD_CACHE.set(url, vid);
 }
@@ -46723,6 +46743,7 @@ function seedPreviewViewportWithRecordHint(rec) {
   ensurePreviewFileElements();
   if (previewFolderEl) previewFolderEl.style.display = "none";
   if (rec.type === "image" && previewImgEl) {
+    const holdFilteredFrame = shouldHoldPreviewFilteredFrameForTarget(rec);
     const hintSrc =
       getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true }) ||
       ensureMediaUrl(rec) ||
@@ -46737,7 +46758,8 @@ function seedPreviewViewportWithRecordHint(rec) {
     previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
     previewImgEl.setAttribute("data-is-gif", isGifRecord(rec) ? "1" : "0");
     previewImgEl.classList.add("ready");
-    previewImgEl.classList.remove("mediaHidden");
+    if (holdFilteredFrame) previewImgEl.classList.add("mediaHidden");
+    else previewImgEl.classList.remove("mediaHidden");
     previewImgEl.style.display = "block";
     if (String(previewImgEl.getAttribute("src") || "") !== String(hintSrc)) {
       previewImgEl.src = hintSrc;
@@ -46757,10 +46779,20 @@ function seedPreviewViewportWithRecordHint(rec) {
     return true;
   }
   if (rec.type === "video" && previewVideoEl) {
+    const holdFilteredFrame = shouldHoldPreviewFilteredFrameForTarget(rec);
+    const mode = previewVideoMode();
+    const shouldAutoPlay =
+      mode !== "off" &&
+      !BANIC_ACTIVE &&
+      !VIEWER_MODE &&
+      !previewVideoUserPausedFor(rec.id);
     applyVideoPoster(previewVideoEl, rec);
     previewVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
     previewVideoEl.classList.add("ready");
-    previewVideoEl.classList.remove("mediaHidden");
+    previewVideoEl.autoplay = shouldAutoPlay;
+    previewVideoEl.muted = mode === "muted" || BANIC_ACTIVE || VIEWER_MODE;
+    if (holdFilteredFrame) previewVideoEl.classList.add("mediaHidden");
+    else previewVideoEl.classList.remove("mediaHidden");
     previewVideoEl.style.display = "block";
     // Start loading the video src as early as possible (selection hint time)
     // so decode starts before full render. This reduces the first-select lag
@@ -46772,6 +46804,13 @@ function seedPreviewViewportWithRecordHint(rec) {
         previewVideoEl.src = vsrc;
         try { previewVideoEl.load(); } catch {}
       }
+    }
+    if (shouldAutoPlay) {
+      try {
+        const playPromise = previewVideoEl.play();
+        if (playPromise && typeof playPromise.then === "function")
+          playPromise.catch(() => {});
+      } catch {}
     }
     // Ensure color filters via CSS on preview video
     try {
@@ -47633,6 +47672,7 @@ function renderPreviewViewerItem(idx) {
   syncPreviewVideoUserPauseLockToItem(rec.id);
 
   if (rec.type === "video") {
+    const holdFilteredFrame = shouldHoldPreviewFilteredFrameForTarget(rec);
     const mode = previewVideoMode();
     const doAuto = mode !== "off" && !BANIC_ACTIVE && !VIEWER_MODE;
     const pauseLocked = previewVideoUserPausedFor(rec.id);
@@ -47674,6 +47714,13 @@ function renderPreviewViewerItem(idx) {
         if (VIEWER_MODE) renderViewerItem(viewerIndex);
       } else {
         applyVideoCropToElement(previewVideoEl, rec);
+      }
+      if (shouldAutoPlay && previewVideoEl.paused) {
+        try {
+          const playPromise = previewVideoEl.play();
+          if (playPromise && typeof playPromise.then === "function")
+            playPromise.catch(() => {});
+        } catch {}
       }
       MediaFilterEngine.requestRender();
     };
@@ -47720,6 +47767,8 @@ function renderPreviewViewerItem(idx) {
     // preset optical filters/overlays) gets processed without extra delay.
     try { MediaFilterEngine.requestRender(); } catch {}
     previewVideoEl.style.display = "block";
+    if (holdFilteredFrame) previewVideoEl.classList.add("mediaHidden");
+    else previewVideoEl.classList.remove("mediaHidden");
     previewVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
     applyPendingFilmCornerMask(previewVideoEl, rec.dirPath || "");
     syncMediaFilterSurface(
@@ -47801,8 +47850,11 @@ function renderPreviewViewerItem(idx) {
     return;
   }
   const same = previewImgEl.src === src;
+  const holdFilteredFrame = shouldHoldPreviewFilteredFrameForTarget(rec);
   previewImgEl.dataset.previewFileId = String(rec.id || "");
   previewImgEl.style.display = "block";
+  if (holdFilteredFrame) previewImgEl.classList.add("mediaHidden");
+  else previewImgEl.classList.remove("mediaHidden");
   const previewIsGif = isGifRecord(rec);
   previewImgEl.setAttribute("data-is-gif", previewIsGif ? "1" : "0");
   previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
