@@ -666,6 +666,7 @@ body.directories-files-only #directoriesHeader {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   grid-area: dirs;
   overflow: hidden;
 }
@@ -748,6 +749,7 @@ body.directories-files-only #directoriesHeader {
   padding: 4px 8px 10px;
   overflow: auto;
   min-height: 0;
+  min-width: 0;
   flex: 1;
   font-size: 12px;
   display: flex;
@@ -837,9 +839,14 @@ body.directories-files-only #directoriesHeader {
 .dirDetailsHeader,
 .dirDetailsRow {
   display: grid;
-  grid-template-columns: 1fr 90px 90px 130px;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(42px, 90px)
+    minmax(42px, 90px)
+    minmax(56px, 130px);
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .dirDetailsHeader {
@@ -908,6 +915,9 @@ body.directories-files-only #directoriesHeader {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   border-radius: 3px;
   cursor: pointer;
   user-select: none;
@@ -1021,6 +1031,8 @@ body.directories-files-only #directoriesHeader {
   align-items: center;
   gap: 4px;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   justify-content: flex-start;
 }
 
@@ -1090,6 +1102,9 @@ body.directories-files-only #directoriesHeader {
   flex-direction: column;
   gap: 2px;
   align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   color: var(--color0-secondary);
   font-size: 11px;
   line-height: 1.1;
@@ -1097,6 +1112,9 @@ body.directories-files-only #directoriesHeader {
 
 .dirMetaInlineLine {
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dirThumbSlot {
@@ -1153,6 +1171,9 @@ body.directories-files-only #directoriesHeader {
   left: 0;
   right: 0;
   bottom: 0;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 5px 6px;
   display: flex;
   flex-direction: column;
@@ -1193,6 +1214,7 @@ body.directories-files-only #directoriesHeader {
   align-items: flex-end;
   gap: 6px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .dirFileOverlayBottomCompact {
@@ -1221,6 +1243,10 @@ body.directories-files-only #directoriesHeader {
 
 .dirFileType {
   flex: 0 0 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
   line-height: 1.1;
   color: #f4f1ec;
@@ -1228,6 +1254,12 @@ body.directories-files-only #directoriesHeader {
 }
 
 .dirFileSize {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
   line-height: 1.1;
   color: #f4f1ec;
@@ -1566,6 +1598,9 @@ img[data-rotate-key].rotatingThumbFade {
   left: 0;
   right: 0;
   bottom: 0;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1612,6 +1647,7 @@ img[data-rotate-key].rotatingThumbFade {
   align-items: center;
   gap: 6px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .dirSquareBottomCompact {
@@ -1694,7 +1730,9 @@ img[data-rotate-key].rotatingThumbFade {
   justify-content: flex-end;
   gap: 6px;
   min-width: 0;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 55%;
+  overflow: hidden;
 }
 
 .dirSquareOverlay .dirStatusBadges {
@@ -1856,7 +1894,9 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirMeta {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(45%, calc(var(--dirMetaCh, 10) * 1ch));
   font-size: 11px;
   color: var(--color0-secondary);
   display: flex;
@@ -1866,10 +1906,14 @@ img[data-rotate-key].rotatingThumbFade {
   white-space: nowrap;
   text-align: right;
   width: calc(var(--dirMetaCh, 10) * 1ch);
+  overflow: hidden;
 }
 
 .dirMetaLine {
   line-height: 1.15;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dirRight {
@@ -1878,6 +1922,8 @@ img[data-rotate-key].rotatingThumbFade {
   align-items: center;
   gap: 10px;
   flex: 0 0 auto;
+  min-width: max-content;
+  max-width: 62%;
   white-space: nowrap;
 }
 
@@ -1896,6 +1942,8 @@ img[data-rotate-key].rotatingThumbFade {
   position: relative;
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
+  min-width: 22px;
 }
 
 .dirMenuGhost {
@@ -1913,6 +1961,10 @@ img[data-rotate-key].rotatingThumbFade {
 .dirMenuBtn {
   width: 22px;
   height: 22px;
+  min-width: 22px;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1934,6 +1986,7 @@ img[data-rotate-key].rotatingThumbFade {
 .dirMenuBtnScoreVisible {
   width: auto;
   min-width: 22px;
+  max-width: 52px;
   padding: 0 4px;
   font-size: 12px;
 }
@@ -1950,6 +2003,9 @@ img[data-rotate-key].rotatingThumbFade {
 .dirMenuBtnScoreText {
   position: relative;
   z-index: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
@@ -5940,7 +5996,11 @@ img[data-rotate-key].rotatingThumbFade {
   }
   .dirDetailsHeader,
 .dirDetailsRow {
-    grid-template-columns: 1fr 70px 70px 110px;
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(38px, 70px)
+      minmax(38px, 70px)
+      minmax(48px, 110px);
   }
   .gridFolders {
     grid-template-columns: repeat(
