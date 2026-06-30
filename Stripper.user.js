@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.00
+// @version      00.17.01
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole click-path map.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -1804,6 +1804,13 @@
         });
       }
     
+      function parseHeader(headers, name) {
+        if (!headers) return '';
+        const re = new RegExp(`^${name}:\\s*([^\\r\\n]+)`, 'im');
+        const m = String(headers).match(re);
+        return m ? m[1].trim() : '';
+      }
+
       function requestBlob(url) {
         return new Promise((resolve, reject) => {
           GM_xmlhttpRequest({
@@ -1812,7 +1819,7 @@
             anonymous: false,
             responseType: 'blob',
             timeout: BLOB_TIMEOUT_MS,
-            onload: res => {
+            onload: async res => {
               if (res.status < 200 || res.status >= 300) {
                 reject(new Error(`HTTP ${res.status}`));
                 return;
@@ -1822,6 +1829,38 @@
                 reject(new Error('empty response'));
                 return;
               }
+              // Empty payloads get saved as 0-byte, contentless files otherwise.
+              if (blob.size === 0) {
+                reject(new Error('empty file (0 bytes)'));
+                return;
+              }
+              // Reddit/imgur serve removed, rate-limited, or 403'd media as a
+              // 200 HTML/JSON placeholder page. Without this check that page is
+              // written under an image/gif extension and is unviewable. Rejecting
+              // lets fetchBlobWithRetry fall back to alternate URLs / the DASH
+              // manifest, or skip+log the file instead of archiving junk.
+              const contentType = (parseHeader(res.responseHeaders, 'content-type') || blob.type || '').toLowerCase();
+              if (/^(?:text\/|application\/(?:json|xml|xhtml))/.test(contentType)) {
+                reject(new Error(`server returned ${contentType.split(';')[0] || 'non-media content'} (likely a removed/error page)`));
+                return;
+              }
+              // Catch a truncated transfer (dropped connection still fires onload
+              // with a partial blob). Servers don't gzip already-compressed media,
+              // so Content-Length should match; only a short blob is suspect.
+              const expectedLen = Number(parseHeader(res.responseHeaders, 'content-length'));
+              if (expectedLen > 0 && blob.size < expectedLen) {
+                reject(new Error(`truncated download (${blob.size}/${expectedLen} bytes)`));
+                return;
+              }
+              // Final guard for mislabeled content-types: every common image/video
+              // format has binary magic bytes, so a leading '<' means HTML/XML.
+              try {
+                const head = await blob.slice(0, 16).text();
+                if (/^\s*<(?:!doctype|html|head|body|\?xml|svg)/i.test(head)) {
+                  reject(new Error('server returned an HTML/XML page instead of media (likely a removed/error page)'));
+                  return;
+                }
+              } catch {}
               resolve(blob);
             },
             onerror: () => reject(new Error('network error')),
