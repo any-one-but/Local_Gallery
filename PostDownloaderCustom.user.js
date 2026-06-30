@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.02.01
+// @version 01.02.02
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -57,6 +57,10 @@
 // @connect bunkrr.su
 // @connect bunkrrr.org
 // @connect bunkr-cache.se
+// @connect apidl.bunkr.ru
+// @connect get.bunkrr.su
+// @connect cdn.cr
+// @connect glb-apisign.cdn.cr
 // @connect mlk-bk.cdn.gigachad-cdn.ru
 // @connect b-cdn.net
 // @connect gigachad-cdn.ru
@@ -120,6 +124,7 @@
 // @connect phncdn.com
 // @connect xvideos.com
 // @connect give.xxx
+// @connect goonbox.cr
 // @connect githubusercontent.com
 // @connect filester.me
 // @connect filester.sh
@@ -679,6 +684,25 @@ continue;
 
 
 
+// Sign a bunkr cdn.cr URL via glb-apisign.cdn.cr — required for download (unsigned URLs return 403).
+async function xfpdBunkrSignCdnUrl(http, rawUrl) {
+    try {
+        const urlObj = new URL(rawUrl);
+        const path = decodeURIComponent(urlObj.pathname);
+        const signRes = await http.get(
+            `https://glb-apisign.cdn.cr/sign?path=${encodeURIComponent(path)}`
+        );
+        const signText = String(signRes?.source || '');
+        const signData = JSON.parse(signText);
+        if (signData?.token && signData?.ex) {
+            urlObj.searchParams.set('token', String(signData.token));
+            urlObj.searchParams.set('ex', String(signData.ex));
+            return urlObj.toString();
+        }
+    } catch (e) {}
+    return rawUrl;
+}
+
 // Turbo mapping: signed turbocdn URL -> Turbo id (needed for re-sign when resolving from /a/ albums)
 const turboIdBySignedUrl = new Map();
 
@@ -1181,6 +1205,11 @@ const parsers = {
             // For parsing only, remove the preview <img> inside attachment links so we don't count/download it twice.
             try {
                 messageContentClone.querySelectorAll('a[href*="/attachments/"] img').forEach((img) => img.remove());
+            } catch (e) { /* ignore */ }
+
+            // Goonbox links wrap a medium-res CDN thumbnail — suppress it so we call the API for the original instead.
+            try {
+                messageContentClone.querySelectorAll('a[href*="goonbox.cr"] img').forEach((img) => img.remove());
             } catch (e) { /* ignore */ }
 
 
@@ -2106,6 +2135,7 @@ const hosts = [
     ['Coomer:Profiles', [/coomer.st\/[~an@._-]+\/user/]],
     ['Coomer:image', [/(\w+\.)?coomer.st\/(data|thumbnail)/]],
     ['JPGX:image', [/(simp\d+\.)?(cuckcapital\.cr|jpg\d?\.(church|fish|fishing|pet|su|cr))\/(?!(img\/|a\/|album\/))/, /jpe?g\d\.(church|fish|fishing|pet|su|cr)(\/a\/|\/album\/)[~an@-_.]+<no_qs>/]],
+    ['Goonbox:image', [/goonbox\.cr\/img\//]],
     ['kemono:direct link', [/.{2,6}\.kemono.cr\/data\//]],
     ['Postimg:image', [/!!https?:\/\/(www.)?i\.?(postimg|pixxxels).cc\/(.{8})/]], //[/!!https?:\/\/(www.)?postimg.cc\/(.{8})/]],
     ['Ibb:image',
@@ -2363,6 +2393,25 @@ const resolvers = [
         },
     ],
     [[/kemono.cr\/data/], url => url],
+    [
+        [/goonbox\.cr\/img\//],
+        async (url, http) => {
+            const id = url.split('/').pop().split('?')[0];
+            const { source } = await http.get(
+                `https://goonbox.cr/api/images/${id}`,
+                {},
+                { Referer: url, Accept: 'application/json' },
+                'text',
+            );
+            if (!source) return null;
+            try {
+                const data = JSON.parse(source);
+                return data?.image?.original_url || null;
+            } catch (e) {
+                return null;
+            }
+        },
+    ],
     [
         [/(jpg\d\.(church|fish|fishing|pet|su|cr))|cuckcapital\.cr\//i, /:!jpe?g\d\.(church|fish|fishing|pet|su|cr)(\/a\/|\/album\/)/i],
         url =>
@@ -2642,25 +2691,37 @@ try {
                     }
                 };
 
-                const tryVs = async base => {
-                    const base0 = String(base || '').replace(/\/$/, '');
-                    const vsEndpoint = `${base0}/api/vs`;
-
+                const tryNewApi = async () => {
+                    if (!bunkrDataId) return null;
                     try {
-                        const data = await xfpdBunkrPostVsWithCfRetry(http, vsEndpoint, id, cleanUrl, base0, base0 === 'https://bunkr.cr');
+                        const refererUrl = `https://get.bunkrr.su/file/${bunkrDataId}`;
+                        const response = await http.post(
+                            'https://apidl.bunkr.ru/api/_001_v2',
+                            JSON.stringify({ id: bunkrDataId }),
+                            {},
+                            {
+                                'Content-Type': 'application/json',
+                                Referer: refererUrl,
+                                Origin: 'https://get.bunkrr.su',
+                            }
+                        );
+                        const text = String(response?.source || '');
+                        if (!text) return null;
+                        const data = JSON.parse(text);
                         if (!data) return null;
 
                         let finalUrl = decodeFinalUrl(data);
-
                         if (!finalUrl || typeof finalUrl !== 'string') return null;
                         finalUrl = finalUrl.trim();
                         if (finalUrl.startsWith('//')) finalUrl = 'https:' + finalUrl;
+
+                        finalUrl = await xfpdBunkrSignCdnUrl(http, finalUrl);
 
                         // Attach filename hint to the final URL too (so later download naming can pick it up).
                         try {
                             const strip = (s) => String(s || '').split('#')[0].split('?')[0];
 
-                            // Prefer filename from /api/vs JSON when available (works even if /v/ is blocked by CF/403).
+                            // Prefer filename from the API JSON when available (works even if /v/ is blocked by CF/403).
                             const vsHint = xfpdBunkrExtractNameFromVsData(data);
 
                             const hint =
@@ -2677,20 +2738,14 @@ try {
                                 bunkrNameByUrl.set(strip(finalUrl), h0);
                             }
                         } catch (e) {}
-return finalUrl;
+
+                        return finalUrl;
                     } catch (e) {
                         return null;
                     }
                 };
 
-                const apiBases = xfpdBunkrFilterBases([origin, 'https://bunkr.pk', 'https://bunkr.cr']);
-                let finalURL = null;
-
-                for (const b of apiBases) {
-                    finalURL = await tryVs(b);
-                    if (finalURL) break;
-                }
-
+                const finalURL = await tryNewApi();
                 return finalURL || cleanUrl;
             } catch (error) {
                 console.error(error?.message || error);
@@ -2865,14 +2920,35 @@ if (page === 1) {
             if (!fresh.length) break;
 
             const urls = await asyncPool(CONCURRENCY, fresh, async (slug) => {
+                // Fetch /f/{slug} to get the numeric file ID required by the new API.
+                const fileBase = String(albumBaseChosen || origin || 'https://bunkr.cr').replace(/\/$/, '');
+                const filePageUrl = `${fileBase}/f/${slug}`;
+                let dataId = null;
+                try {
+                    const fileRes = await xfpdBunkrGetWithCfRetry(http, filePageUrl, fileBase, fileBase === 'https://bunkr.cr');
+                    const fileDom = fileRes?.dom;
+                    if (fileDom && !xfpdLooksLikeCfChallenge(fileRes?.source || '', fileDom)) {
+                        dataId = fileDom?.querySelector?.('[data-file-id]')?.getAttribute?.('data-file-id') || null;
+                    }
+                } catch (e) {}
+                if (!dataId) return null;
+
                 let data = null;
-                for (const base of xfpdBunkrFilterBases(vsBasesAll)) {
-                    const base0 = String(base || '').replace(/\/$/, '');
-                    const ep = `${base0}/api/vs`;
-                    data = await xfpdBunkrPostVsWithCfRetry(http, ep, slug, pageUrl, base0, base0 === 'https://bunkr.cr');
-                    if (data && typeof data === 'object' && ('url' in data)) break;
-                    data = null;
-                }
+                try {
+                    const refererUrl = `https://get.bunkrr.su/file/${dataId}`;
+                    const response = await http.post(
+                        'https://apidl.bunkr.ru/api/_001_v2',
+                        JSON.stringify({ id: dataId }),
+                        {},
+                        {
+                            'Content-Type': 'application/json',
+                            Referer: refererUrl,
+                            Origin: 'https://get.bunkrr.su',
+                        }
+                    );
+                    const text = String(response?.source || '');
+                    data = text ? JSON.parse(text) : null;
+                } catch (e) {}
                 if (!data) return null;
 
                 let finalUrl = decodeFinalUrl(data);
@@ -2880,6 +2956,8 @@ if (page === 1) {
 
                 finalUrl = finalUrl.trim();
                 if (finalUrl.startsWith('//')) finalUrl = 'https:' + finalUrl;
+
+                finalUrl = await xfpdBunkrSignCdnUrl(http, finalUrl);
 
                 // Attach the album filename hint to the final URL so download naming can use it.
                 try {
