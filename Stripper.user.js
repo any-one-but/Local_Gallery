@@ -192,6 +192,64 @@
     return ranges.join(', ');
   }
 
+  function stripperDateKeyFromDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    const yy = String(date.getUTCFullYear() % 100).padStart(2, '0');
+    const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(date.getUTCDate()).padStart(2, '0');
+    return `${yy}${mm}${dd}`;
+  }
+
+  function stripperDateKeyFromUnix(seconds) {
+    const ts = Number(seconds) || 0;
+    if (!ts) return '';
+    return stripperDateKeyFromDate(new Date(ts * 1000));
+  }
+
+  function stripperDateNumberFromKey(key) {
+    return Number(String(key || '').replace(/\D/g, '')) || 0;
+  }
+
+  function stripperTodayDateKey() {
+    return stripperDateKeyFromDate(new Date());
+  }
+
+  function parseStripperDateRangeList(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return { ranges: [], error: 'enter a date range first' };
+    const today = stripperTodayDateKey();
+    const parseDateToken = (token) => {
+      const value = String(token || '').trim();
+      if (value === '00') return today;
+      if (!/^\d{6}$/.test(value)) return '';
+      const yy = Number(value.slice(0, 2));
+      const mm = Number(value.slice(2, 4));
+      const dd = Number(value.slice(4, 6));
+      const date = new Date(Date.UTC(2000 + yy, mm - 1, dd));
+      if (
+        date.getUTCFullYear() !== 2000 + yy ||
+        date.getUTCMonth() !== mm - 1 ||
+        date.getUTCDate() !== dd
+      ) return '';
+      return value;
+    };
+    const ranges = [];
+    const parts = text.split(/[\s,]+/).filter(Boolean);
+    for (const part of parts) {
+      const pieces = part.split('-');
+      if (pieces.length > 2) return { ranges, error: `invalid date range item "${part}"` };
+      const startKey = parseDateToken(pieces[0]);
+      const endKey = parseDateToken(pieces[1] || pieces[0]);
+      if (!startKey || !endKey) return { ranges, error: `invalid date item "${part}"` };
+      let start = stripperDateNumberFromKey(startKey);
+      let end = stripperDateNumberFromKey(endKey);
+      if (end < start) [start, end] = [end, start];
+      ranges.push({ start, end });
+    }
+    if (!ranges.length) return { ranges, error: 'date range did not match any scanned posts' };
+    return { ranges, error: '' };
+  }
+
   function runRedditStripper() {
     const JSZip = window.JSZip;
       const API_DELAY_MIN = 850;
@@ -220,6 +278,7 @@
         summary: null,
         summaryNodeId: '',
         countTextOverride: '',
+        fileProgressOverride: '',
         lastScanAt: 0,
         loadedScanCacheKey: ''
       };
@@ -537,21 +596,9 @@
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        #redditGuestPanel .rg-rangeLabel {
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-          color: #d8d8dd;
-          font-size: 11px;
-          font-weight: 700;
-        }
-        #redditGuestPanel .rg-rangeHint {
-          color: #a9a9b2;
-          font-weight: 600;
-        }
         #redditGuestPanel .rg-rangeRow {
           display: grid;
-          grid-template-columns: 1fr 88px;
+          grid-template-columns: 1fr 116px;
           gap: 7px;
         }
         #redditGuestPanel .rg-rangeRow input {
@@ -729,32 +776,22 @@
                 <span id="rgCountLabel">0 files</span>
               </div>
               <div id="rgSelectiveDownloads" class="rg-selective" hidden>
-                <div class="rg-rangeLabel">
-                  <span>Bulk</span>
-                </div>
                 <div class="rg-bulkStack">
                   <button id="rgPostsBtn" type="button" disabled>Download All Posts</button>
                   <button id="rgPagesBtn" type="button" disabled>Download All Pages</button>
                   <button id="rgUserBtn" type="button" disabled>Download User Backlog</button>
                 </div>
-                <div class="rg-rangeLabel">
-                  <span>Posts</span>
-                  <span id="rgPostRangeHint" class="rg-rangeHint">1-0</span>
-                </div>
                 <div id="rgPostRangeRow" class="rg-rangeRow">
-                  <input id="rgPostRangeInput" type="text" inputmode="numeric" placeholder="1,3-5">
-                  <button id="rgPostRangeBtn" type="button" disabled>Download</button>
-                </div>
-                <div class="rg-rangeLabel">
-                  <span>Pages</span>
-                  <span id="rgPageRangeHint" class="rg-rangeHint">1-0</span>
+                  <input id="rgPostRangeInput" type="text" inputmode="numeric" placeholder="Posts 1-0">
+                  <button id="rgPostRangeBtn" type="button" disabled>Download Posts</button>
                 </div>
                 <div id="rgPageRangeRow" class="rg-rangeRow">
-                  <input id="rgPageRangeInput" type="text" inputmode="numeric" placeholder="1,2-4">
-                  <button id="rgPageRangeBtn" type="button" disabled>Download</button>
+                  <input id="rgPageRangeInput" type="text" inputmode="numeric" placeholder="Pages 1-0">
+                  <button id="rgPageRangeBtn" type="button" disabled>Download Pages</button>
                 </div>
-                <div class="rg-rangeLabel">
-                  <span>File Type</span>
+                <div id="rgDateRangeRow" class="rg-rangeRow">
+                  <input id="rgDateRangeInput" type="text" placeholder="Date 260506-00">
+                  <button id="rgDateRangeBtn" type="button" disabled>Download Dates</button>
                 </div>
                 <div id="rgFileTypes" class="rg-fileTypes">
                   <button id="rgTypeImages" class="rg-typeChip is-on" type="button" role="checkbox" aria-checked="true" data-kind="image">
@@ -794,14 +831,15 @@
         ui.profileLabel = panel.querySelector('#rgProfileLabel');
         ui.countLabel = panel.querySelector('#rgCountLabel');
         ui.selectiveDownloads = panel.querySelector('#rgSelectiveDownloads');
-        ui.postRangeHint = panel.querySelector('#rgPostRangeHint');
         ui.postRangeRow = panel.querySelector('#rgPostRangeRow');
         ui.postRangeInput = panel.querySelector('#rgPostRangeInput');
         ui.postRangeBtn = panel.querySelector('#rgPostRangeBtn');
-        ui.pageRangeHint = panel.querySelector('#rgPageRangeHint');
         ui.pageRangeRow = panel.querySelector('#rgPageRangeRow');
         ui.pageRangeInput = panel.querySelector('#rgPageRangeInput');
         ui.pageRangeBtn = panel.querySelector('#rgPageRangeBtn');
+        ui.dateRangeRow = panel.querySelector('#rgDateRangeRow');
+        ui.dateRangeInput = panel.querySelector('#rgDateRangeInput');
+        ui.dateRangeBtn = panel.querySelector('#rgDateRangeBtn');
         ui.typeChips = {
           image: panel.querySelector('#rgTypeImages'),
           video: panel.querySelector('#rgTypeVideos'),
@@ -851,6 +889,8 @@
         });
         ui.postRangeBtn.addEventListener('click', () => downloadSelectedPostArchives());
         ui.pageRangeBtn.addEventListener('click', () => downloadSelectedPageArchives());
+        ui.dateRangeBtn.addEventListener('click', () => downloadSelectedDateArchives());
+        installLocationUiRefresh();
         document.addEventListener('keydown', handleGlobalKeydown, true);
 
         // The map is mounted into the main body; the mode switcher decides whether
@@ -859,9 +899,25 @@
         setColumnType('user');
         setMode('download');
 
-        logLine('Ready. Stripper detected Reddit; open a profile or post and scan.');
+        logLine('Ready. Open a profile or post to scan, or a subreddit to add.');
         syncUi();
         rabbithole.refreshButton();
+      }
+
+      function installLocationUiRefresh() {
+        if (window.__stripperLocationUiRefresh) return;
+        window.__stripperLocationUiRefresh = true;
+        const refresh = () => setTimeout(() => { if (!state.busy) syncUi(); }, 0);
+        ['pushState', 'replaceState'].forEach(fn => {
+          const orig = history[fn];
+          if (typeof orig !== 'function') return;
+          history[fn] = function () {
+            const result = orig.apply(this, arguments);
+            refresh();
+            return result;
+          };
+        });
+        window.addEventListener('popstate', refresh);
       }
 
       // Drag the whole window by its header. Mirrors the rabbithole window's old
@@ -892,12 +948,32 @@
         handle.addEventListener('pointercancel', end);
       }
     
+      function scanButtonIdleLabel() {
+        const context = scanContextFromLocation();
+        return context && context.type === 'subreddit' ? 'Add' : 'Scan';
+      }
+
+      function postDatePlaceholder() {
+        const keys = state.posts
+          .map(post => stripperDateKeyFromUnix(post.createdUtc))
+          .filter(Boolean)
+          .sort();
+        if (!keys.length) return `Date ${stripperTodayDateKey()}-00`;
+        return `Date ${keys[0]}-${keys[keys.length - 1]}`;
+      }
+
+      function baseFileCountText() {
+        if (state.fileProgressOverride) return state.fileProgressOverride;
+        return `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
+      }
+
       function syncUi() {
         const hasFiles = state.files.length > 0;
         const hasPages = state.pages.length > 0;
         const isPostScan = state.scanType === 'post';
         const isProfileScan = state.scanType === 'profile';
         ui.scanBtn.disabled = state.busy;
+        if (!state.busy) ui.scanBtn.textContent = scanButtonIdleLabel();
         // A single post just floats one "Download Post" button; the Posts/Pages
         // sections are unnecessary, so the grey square only appears for profiles.
         ui.downloadStack.hidden = !(isPostScan && hasFiles);
@@ -906,20 +982,25 @@
         ui.pagesBtn.disabled = state.busy || !hasPages;
         ui.userBtn.disabled = state.busy || !hasFiles;
         ui.selectiveDownloads.hidden = !(isProfileScan && hasFiles);
-        ui.postRangeHint.textContent = state.posts.length ? `1-${state.posts.length}` : 'none';
+        ui.postRangeInput.placeholder = state.posts.length ? `Posts 1-${state.posts.length}` : 'Posts none';
         ui.postRangeInput.disabled = state.busy || !state.posts.length;
         ui.postRangeBtn.disabled = state.busy || !state.posts.length;
         ui.pageRangeRow.hidden = !hasPages;
-        ui.pageRangeHint.textContent = hasPages ? formatStripperNumberRanges(state.pages.map(page => page.page)) : 'none';
+        ui.pageRangeInput.placeholder = hasPages ? `Pages ${formatStripperNumberRanges(state.pages.map(page => page.page))}` : 'Pages none';
         ui.pageRangeInput.disabled = state.busy || !hasPages;
         ui.pageRangeBtn.disabled = state.busy || !hasPages;
+        ui.dateRangeRow.hidden = !state.posts.length;
+        ui.dateRangeInput.placeholder = postDatePlaceholder();
+        ui.dateRangeInput.disabled = state.busy || !state.posts.length;
+        ui.dateRangeBtn.disabled = state.busy || !state.posts.length;
         ui.profileLabel.textContent = state.username ? `u/${state.username}` : 'No profile scanned';
-        ui.countLabel.textContent = state.countTextOverride || `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
+        const base = baseFileCountText();
+        ui.countLabel.textContent = state.countTextOverride ? `${base} · ${state.countTextOverride}` : base;
       }
     
       function setBusy(busy, scanLabel) {
         state.busy = !!busy;
-        ui.scanBtn.textContent = scanLabel || (state.busy ? 'Working...' : 'Scan');
+        ui.scanBtn.textContent = scanLabel || (state.busy ? 'Working...' : scanButtonIdleLabel());
         syncUi();
       }
     
@@ -930,6 +1011,13 @@
     
       function setCountTextOverride(text) {
         state.countTextOverride = text || '';
+        syncUi();
+      }
+
+      function setFileProgressOverride(done, total) {
+        const d = Math.max(0, Number(done) || 0);
+        const t = Math.max(0, Number(total) || 0);
+        state.fileProgressOverride = t ? formatUnitTicker(d, t, 'file') : '';
         syncUi();
       }
     
@@ -1019,12 +1107,21 @@
         if (idx < 0 || !parts[idx + 1]) return '';
         return decodeURIComponent(parts[idx + 1]).trim();
       }
+
+      function subredditFromLocation() {
+        const parts = location.pathname.split('/').filter(Boolean);
+        if (parts.length < 2 || String(parts[0]).toLowerCase() !== 'r') return '';
+        const name = decodeURIComponent(parts[1] || '').trim();
+        return name.replace(/^r\//i, '');
+      }
     
       function scanContextFromLocation() {
         const postId = postIdFromLocation();
         if (postId) return { type: 'post', postId };
         const username = profileFromLocation();
         if (username) return { type: 'profile', username };
+        const subreddit = subredditFromLocation();
+        if (subreddit) return { type: 'subreddit', subreddit };
         return null;
       }
 
@@ -1047,9 +1144,15 @@
         state.summary = payload.summary || null;
         state.summaryNodeId = payload.summaryNodeId || '';
         state.countTextOverride = '';
+        state.fileProgressOverride = '';
         state.lastScanAt = Number(payload.lastScanAt || cached.savedAt || 0) || Date.now();
         state.loadedScanCacheKey = cacheKey;
-        if (state.summaryNodeId && state.summary) rabbithole.recordScan(state.summaryNodeId, state.summary);
+        if (state.summaryNodeId && state.summary) {
+          const cachedContext = state.scanType === 'post'
+            ? { type: 'post', postId: state.summaryNodeId.replace(/^post:/, '') }
+            : { type: 'profile', username: state.username };
+          rabbithole.recordScan(state.summaryNodeId, state.summary, scannedRabbitholeNode(cachedContext));
+        }
         renderSubsPanel();
         setProgress(100);
         syncUi();
@@ -1122,12 +1225,75 @@
         };
       }
 
+      function computeProfileStats() {
+        let images = 0, videos = 0;
+        for (const f of state.files) {
+          const kind = classifyFileKind(f);
+          if (kind === 'image') images++;
+          else if (kind === 'video') videos++;
+        }
+        const textOnlyPosts = state.posts.filter(post => {
+          const files = Array.isArray(post.files) ? post.files : [];
+          return files.length > 0 && files.every(file => classifyFileKind(file) === 'text');
+        }).length;
+        return {
+          files: state.files.length,
+          pages: state.pages.length,
+          posts: state.posts.length,
+          images,
+          videos,
+          textOnlyPosts
+        };
+      }
+
+      function logProfileStats() {
+        const stats = computeProfileStats();
+        logLine(`${stats.files} Files`);
+        logLine(`${stats.pages} Pages`);
+        logLine(`${stats.posts} Posts`);
+        logLine(`${stats.images} Images`);
+        logLine(`${stats.videos} Videos`);
+        logLine(`${stats.textOnlyPosts} Text only posts`);
+      }
+
       // The Rabbithole node id for whatever was just scanned (matches classify()).
       function scannedNodeId(context) {
         if (!context) return '';
         if (context.type === 'post') return context.postId ? 'post:' + String(context.postId).toLowerCase() : '';
+        if (context.type === 'subreddit') return context.subreddit ? 'sub:' + String(context.subreddit).toLowerCase() : '';
         const name = context.username || state.username;
         return name ? 'user:' + String(name).toLowerCase() : '';
+      }
+
+      function scannedRabbitholeNode(context) {
+        const id = scannedNodeId(context);
+        if (!id || !context) return null;
+        if (context.type === 'post') {
+          const first = state.posts[0] || {};
+          const sub = first.subreddit ? `r/${first.subreddit}\n` : '';
+          const permalink = first.permalink || `/comments/${context.postId}/`;
+          return {
+            type: 'post',
+            id,
+            label: `${sub}${context.postId}`,
+            url: new URL(permalink, location.origin).href
+          };
+        }
+        if (context.type === 'subreddit') {
+          return {
+            type: 'sub',
+            id,
+            label: `r/${context.subreddit}`,
+            url: `${location.origin}/r/${encodeURIComponent(context.subreddit)}/`
+          };
+        }
+        const name = context.username || state.username;
+        return {
+          type: 'user',
+          id,
+          label: `u/${name}`,
+          url: `${location.origin}/user/${encodeURIComponent(name)}/`
+        };
       }
 
       // Lists every subreddit a scanned user has posted in (with post counts) in
@@ -1183,8 +1349,16 @@
         if (state.busy) return;
         const context = scanContextFromLocation();
         if (!context) {
-          logLine('This page is not a Reddit user profile or post.');
+          logLine('This page is not a Reddit user profile, subreddit, or post.');
           setProgress(0);
+          return;
+        }
+        if (context.type === 'subreddit') {
+          const added = rabbithole.addSubreddits('', [{ name: context.subreddit, count: 0 }], true);
+          logLine(added
+            ? `Rabbithole: added r/${context.subreddit} to the map.`
+            : `Rabbithole: could not add r/${context.subreddit}.`);
+          syncUi();
           return;
         }
 
@@ -1195,6 +1369,7 @@
           if (cached) {
             applyRedditCachedScan(cached, cacheKey);
             logLine(`Loaded cached Reddit scan from ${formatCacheAge(cached.savedAt)}. Press Scan again to refresh it.`);
+            if (state.scanType === 'profile') logProfileStats();
             return;
           }
           logLine('No cached scan found; scanning now.');
@@ -1209,6 +1384,7 @@
         state.pages = [];
         state.files = [];
         state.countTextOverride = '';
+        state.fileProgressOverride = '';
         state.lastScanAt = Date.now();
         state.loadedScanCacheKey = '';
         syncUi();
@@ -1256,12 +1432,13 @@
           // Hand a summary to the Rabbithole map so hovering this node shows it.
           state.summary = computeScanSummary();
           state.summaryNodeId = scannedNodeId(context);
-          if (state.summaryNodeId) rabbithole.recordScan(state.summaryNodeId, state.summary);
+          if (state.summaryNodeId) rabbithole.recordScan(state.summaryNodeId, state.summary, scannedRabbitholeNode(context));
           renderSubsPanel();
 
           state.loadedScanCacheKey = cacheKey;
           setProgress(100);
           logLine(`Scan complete: ${state.posts.length} post folder${state.posts.length === 1 ? '' : 's'}, ${state.pages.length} page archive${state.pages.length === 1 ? '' : 's'}, ${state.files.length} unique file${state.files.length === 1 ? '' : 's'}.`);
+          if (context.type === 'profile') logProfileStats();
           if (deduped.duplicates > 0) {
             logLine(`Removed ${deduped.duplicates} duplicate file${deduped.duplicates === 1 ? '' : 's'}; oldest posts kept.`);
           }
@@ -1547,6 +1724,18 @@
         return state.pages.filter((page, idx) => parsed.numbers.has(Number(page.page) || 0) || parsed.numbers.has(idx + 1));
       }
 
+      function selectedRedditPostsFromDateRange() {
+        const parsed = parseStripperDateRangeList(ui.dateRangeInput.value);
+        if (parsed.error) {
+          logLine(`Date range error: ${parsed.error}.`);
+          return [];
+        }
+        return state.posts.filter(post => {
+          const key = stripperDateNumberFromKey(stripperDateKeyFromUnix(post.createdUtc));
+          return key && parsed.ranges.some(range => key >= range.start && key <= range.end);
+        });
+      }
+
       async function downloadSelectedPostArchives() {
         if (state.busy) return;
         const selected = selectedRedditPostsFromRange();
@@ -1567,29 +1756,52 @@
         await downloadPageArchives(selected);
       }
 
+      async function downloadSelectedDateArchives() {
+        if (state.busy) return;
+        const selected = selectedRedditPostsFromDateRange();
+        if (!selected.length) {
+          logLine('No scanned posts matched that date range.');
+          return;
+        }
+        await downloadPostArchives(selected);
+      }
+
       async function downloadPostArchives(selectedPosts) {
         const posts = Array.isArray(selectedPosts) ? selectedPosts : state.posts;
         if (state.busy || !posts.length) return;
+        const archiveItems = posts
+          .map(post => ({ post, files: filterFilesByType(post.files) }))
+          .filter(item => item.files.length > 0);
+        const totalFiles = archiveItems.reduce((sum, item) => sum + item.files.length, 0);
+        if (!archiveItems.length) {
+          logLine('No files match the selected post range and file types.');
+          return;
+        }
         setBusy(true, 'Downloading...');
         setProgress(0);
-        setCountTextOverride(formatUnitTicker(0, posts.length, 'post'));
+        setFileProgressOverride(0, totalFiles);
+        setCountTextOverride(formatUnitTicker(0, archiveItems.length, 'post'));
         try {
           let done = 0;
-          for (const post of posts) {
-            const files = filterFilesByType(post.files);
+          let completedFiles = 0;
+          for (const item of archiveItems) {
+            const files = item.files;
             const firstFile = files[0];
-            if (!firstFile) continue;
             const archiveName = buildArchiveName(firstFile.userFolder || state.userFolder, firstFile.postFolder);
-            logLine(`Building post zip ${done + 1}/${posts.length}: ${firstFile.postFolder}`);
+            logLine(`Building post zip ${done + 1}/${archiveItems.length}: ${firstFile.postFolder}`);
             await buildAndSaveArchive(files, archiveName, (pct, label) => {
-              const base = (done / posts.length) * 100;
-              const span = 100 / posts.length;
+              const base = (done / archiveItems.length) * 100;
+              const span = 100 / archiveItems.length;
               setProgress(base + (pct / 100) * span);
               if (label) logLine(label);
+            }, (fileDone) => {
+              setFileProgressOverride(completedFiles + fileDone, totalFiles);
             });
+            completedFiles += files.length;
             done++;
-            setCountTextOverride(formatUnitTicker(done, posts.length, 'post'));
-            setProgress((done / posts.length) * 100);
+            setFileProgressOverride(completedFiles, totalFiles);
+            setCountTextOverride(formatUnitTicker(done, archiveItems.length, 'post'));
+            setProgress((done / archiveItems.length) * 100);
             await delay(FILE_DELAY_MS);
           }
           logLine(`Downloaded ${done} post archive${done === 1 ? '' : 's'}.`);
@@ -1597,6 +1809,7 @@
           logLine(`Post download failed: ${errorMessage(err)}`);
         } finally {
           setCountTextOverride('');
+          state.fileProgressOverride = '';
           setBusy(false);
         }
       }
@@ -1604,25 +1817,39 @@
       async function downloadPageArchives(selectedPages) {
         const pages = Array.isArray(selectedPages) ? selectedPages : state.pages;
         if (state.busy || !pages.length) return;
+        const archiveItems = pages
+          .map(page => ({ page, files: filterFilesByType(page.files) }))
+          .filter(item => item.files.length > 0);
+        const totalFiles = archiveItems.reduce((sum, item) => sum + item.files.length, 0);
+        if (!archiveItems.length) {
+          logLine('No files match the selected page range and file types.');
+          return;
+        }
         setBusy(true, 'Downloading...');
         setProgress(0);
-        setCountTextOverride(formatUnitTicker(0, pages.length, 'page'));
+        setFileProgressOverride(0, totalFiles);
+        setCountTextOverride(formatUnitTicker(0, archiveItems.length, 'page'));
         try {
           let done = 0;
-          for (const page of pages) {
-            const files = filterFilesByType(page.files);
-            if (!files.length) continue;
+          let completedFiles = 0;
+          for (const item of archiveItems) {
+            const page = item.page;
+            const files = item.files;
             const archiveName = buildPageArchiveName(state.userFolder, page.page);
-            logLine(`Building page zip ${done + 1}/${pages.length}: API page ${page.page}, ${page.posts.length} post${page.posts.length === 1 ? '' : 's'}, ${files.length} file${files.length === 1 ? '' : 's'}.`);
+            logLine(`Building page zip ${done + 1}/${archiveItems.length}: API page ${page.page}, ${page.posts.length} post${page.posts.length === 1 ? '' : 's'}, ${files.length} file${files.length === 1 ? '' : 's'}.`);
             await buildAndSaveArchive(files, archiveName, (pct, label) => {
-              const base = (done / pages.length) * 100;
-              const span = 100 / pages.length;
+              const base = (done / archiveItems.length) * 100;
+              const span = 100 / archiveItems.length;
               setProgress(base + (pct / 100) * span);
               if (label) logLine(label);
+            }, (fileDone) => {
+              setFileProgressOverride(completedFiles + fileDone, totalFiles);
             });
+            completedFiles += files.length;
             done++;
-            setCountTextOverride(formatUnitTicker(done, pages.length, 'page'));
-            setProgress((done / pages.length) * 100);
+            setFileProgressOverride(completedFiles, totalFiles);
+            setCountTextOverride(formatUnitTicker(done, archiveItems.length, 'page'));
+            setProgress((done / archiveItems.length) * 100);
             await delay(FILE_DELAY_MS);
           }
           logLine(`Downloaded ${done} page archive${done === 1 ? '' : 's'}.`);
@@ -1630,6 +1857,7 @@
           logLine(`Page download failed: ${errorMessage(err)}`);
         } finally {
           setCountTextOverride('');
+          state.fileProgressOverride = '';
           setBusy(false);
         }
       }
@@ -1643,7 +1871,8 @@
         }
         setBusy(true, 'Downloading...');
         setProgress(0);
-        setCountTextOverride(formatUnitTicker(0, files.length, 'file'));
+        setFileProgressOverride(0, files.length);
+        setCountTextOverride('');
         try {
           const archiveName = buildArchiveName(state.userFolder, state.userFolder || 'reddit_user');
           logLine(`Building user zip for u/${state.username}.`);
@@ -1651,7 +1880,7 @@
             files,
             archiveName,
             (pct) => setProgress(pct),
-            (done, total) => setCountTextOverride(formatUnitTicker(done, total, 'file'))
+            (done, total) => setFileProgressOverride(done, total)
           );
           setProgress(100);
           logLine(`Downloaded user archive with ${files.length} file${files.length === 1 ? '' : 's'}.`);
@@ -1659,6 +1888,7 @@
           logLine(`User download failed: ${errorMessage(err)}`);
         } finally {
           setCountTextOverride('');
+          state.fileProgressOverride = '';
           setBusy(false);
         }
       }
@@ -2138,7 +2368,7 @@
         const BRIDGE_KEY = 'rrm_bridge_v1';   // legacy shared-localStorage key; only cleared on reset now
 
         let booted = false, winEl = null, network = null, nodesDS = null, edgesDS = null;
-        let selectedId = null, query = '', lastNavByPop = false, resizeObs = null;
+        let selectedId = null, query = '', resizeObs = null;
         let view = 'graph', typeFilter = 'all';   // view: 'graph' | 'columns'
         let columnType = 'user';                  // column view shows one type full width: 'sub' | 'user' | 'post'
         let didInitialFit = false;
@@ -2261,7 +2491,7 @@
         // Bulk-add the subreddits from a user scan as nodes, linked from the
         // scanned user so the map shows where they post. Reuses the same id/label
         // scheme as classify() so the nodes merge with any already on the map.
-        function addSubreddits(username, subs) {
+        function addSubreddits(username, subs, visited) {
           if (!Array.isArray(subs) || !subs.length) return 0;
           const userName = String(username || '').trim();
           const userId = userName ? 'user:' + userName.toLowerCase() : '';
@@ -2274,7 +2504,7 @@
             const name = s && s.name ? String(s.name).trim() : '';
             if (!name) return;
             upsertNode({ type: 'sub', id: 'sub:' + name.toLowerCase(), label: 'r/' + name,
-                         url: location.origin + '/r/' + name }, false);
+                         url: location.origin + '/r/' + name }, !!visited);
             if (userId) addEdge(userId, 'sub:' + name.toLowerCase());
             added++;
           });
@@ -2285,10 +2515,11 @@
         // ------------------------------------------------------------- scan link
         // Scan summaries written by the Stripper scanner, keyed by node id, so
         // hovering a node can show how much media/text was found (or "Unscanned").
-        function recordScan(id, summary) {
+        function recordScan(id, summary, node) {
           if (!id || !summary) return;
+          if (node) upsertNode(node, true);
           try { GM_setValue(NS + 'scan:' + id, JSON.stringify(summary)); } catch (e) {}
-          if (isWindowOpen()) scheduleRender();
+          if (isWindowOpen()) scheduleRender(); else refreshButton();
         }
         function getScan(id) {
           try { const raw = GM_getValue(NS + 'scan:' + id, null); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
@@ -2391,67 +2622,19 @@
         }
 
         // ---------------------------------------------------------- navigate away
-        // Jumping to a node from the map is an explicit teleport, not part of the
-        // browsing trail, so it must NOT create an edge. We flag the jump in
-        // sessionStorage; onLocation (same tab) sees the flag and skips edge
-        // creation. New tabs are opened with noopener so they start with a clean
-        // sessionStorage (no rrm_last) and therefore can't chain an edge either.
+        // Opening a node from the map is explicit navigation. The map no longer
+        // records browsing trails automatically, so these actions only navigate.
         function openNodeCurrentTab(url) {
           if (!url) return;
-          try { sessionStorage.setItem('rrm_jump', '1'); } catch (e) {}
           location.href = url;
         }
         function openNodeNewTab(url) {
           if (!url) return;
-          try { sessionStorage.setItem('rrm_jump', '1'); } catch (e) {}
           window.open(url, '_blank', 'noopener');
-          try { sessionStorage.removeItem('rrm_jump'); } catch (e) {}
         }
 
-        // -------------------------------------------------------------- capture
-        function anchorFrom(e) {
-          const path = e.composedPath ? e.composedPath() : [];
-          for (const el of path) if (el && el.tagName === 'A' && el.href) return el;
-          let el = e.target;
-          while (el) { if (el.tagName === 'A' && el.href) return el; el = el.parentNode; }
-          return null;
-        }
-
-        function onClick(e) {
-          const a = anchorFrom(e);
-          if (!a) return;
-          if (winEl && winEl.contains(a)) return;   // clicks inside the map aren't browsing
-          const dest = classify(a.href);
-          if (!dest) return;
-          const src = classify(location.href);
-          upsertNode(dest, false);
-          if (src) addEdge(src.id, dest.id);
-        }
-
-        function onLocation() {
-          let isJump = false;
-          try {
-            if (sessionStorage.getItem('rrm_jump')) { isJump = true; sessionStorage.removeItem('rrm_jump'); }
-          } catch (e) {}
-          const cur = classify(location.href);
-          if (cur) {
-            upsertNode(cur, true);
-            try {
-              const rawLast = sessionStorage.getItem('rrm_last');
-              if (rawLast && !lastNavByPop && !isJump) {
-                const last = JSON.parse(rawLast);
-                if (last.id && last.id !== cur.id && (Date.now() - last.ts) < 60000) addEdge(last.id, cur.id);
-              }
-            } catch (e) {}
-            try { sessionStorage.setItem('rrm_last', JSON.stringify({ id: cur.id, ts: Date.now() })); } catch (e) {}
-          }
-          lastNavByPop = false;
-          scheduleRender();
-        }
-
-        // Coalesce bursty re-renders (a single navigation writes a node + maybe
-        // an edge, each bumping REV) so the graph refreshes at most once per
-        // pause instead of several times in a row.
+        // Coalesce bursty re-renders from explicit map edits/imports so the graph
+        // refreshes at most once per pause instead of several times in a row.
         let renderTimer = null;
         function scheduleRender() {
           if (!isWindowOpen()) { refreshButton(); return; }
@@ -2960,25 +3143,15 @@
           if (booted) return;
           booted = true;
           injectStyle();
-          document.addEventListener('click', onClick, true);
-          document.addEventListener('auxclick', onClick, true);
-          ['pushState', 'replaceState'].forEach(fn => {
-            const orig = history[fn];
-            history[fn] = function () { const r = orig.apply(this, arguments); window.dispatchEvent(new Event('rrm:loc')); return r; };
-          });
-          window.addEventListener('popstate', () => { lastNavByPop = true; window.dispatchEvent(new Event('rrm:loc')); });
-          window.addEventListener('rrm:loc', onLocation);
           if (typeof GM_addValueChangeListener === 'function') {
             GM_addValueChangeListener(REV, () => { scheduleRender(); });
           }
-
-          onLocation(); // record the page you loaded on
         }
 
         return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, setView, setColumnType };
       })();
 
-      if (window.__stripperRrmLoaded) { /* avoid double tracking if injected twice */ }
+      if (window.__stripperRrmLoaded) { /* avoid double map bootstrap if injected twice */ }
       else {
         window.__stripperRrmLoaded = true;
         // Never let a rabbithole boot failure (a rejected GM write, a corrupt
