@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.02
+// @version      00.17.05
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -470,7 +470,8 @@
         #redditGuestPanel[data-mode="download"] #rgMain {
           display: none;
         }
-        #redditGuestPanel[data-mode="column"] .rg-sidebar {
+        #redditGuestPanel[data-mode="column"] .rg-sidebar,
+        #redditGuestPanel[data-mode="blocked"] .rg-sidebar {
           display: none;
         }
         /* Let the search box absorb the freed width so it grows with the panel
@@ -816,6 +817,7 @@
           <div class="rg-modes">
             <button class="rg-modeBtn" type="button" data-mode="download">Download</button>
             <button class="rg-modeBtn" type="button" data-mode="column">Saved</button>
+            <button class="rg-modeBtn" type="button" data-mode="blocked">Blocked</button>
           </div>
           <div class="rg-colModes">
             <button class="rg-modeBtn rg-colBtn" type="button" data-coltype="sub">Subreddits</button>
@@ -1031,6 +1033,12 @@
         return false;
       }
 
+      function feedPostCandidates() {
+        const nodes = Array.from(document.querySelectorAll('shreddit-post, article, [data-testid="post-container"], div[data-click-id="background"], .Post'))
+          .filter(post => post && !post.closest('#redditGuestPanel'));
+        return nodes.filter(post => !nodes.some(other => other !== post && other.contains(post)));
+      }
+
       function filterBlockedProfilePosts() {
         const blocked = loadStripperBlockedUsers();
         if (typeof rabbithole !== 'undefined' && rabbithole.hiddenProfileNames) {
@@ -1038,9 +1046,7 @@
         }
         const hasBlocks = blocked.size > 0;
         const shouldFilter = hasBlocks && isBlockedFeedLocation();
-        const candidates = document.querySelectorAll('shreddit-post, article, [data-testid="post-container"], div[data-click-id="background"], .Post');
-        candidates.forEach(post => {
-          if (!post || post.closest('#redditGuestPanel')) return;
+        feedPostCandidates().forEach(post => {
           const author = postAuthorName(post);
           const hide = shouldFilter && author && blocked.has(author);
           post.classList.toggle('stripperBlockedProfilePost', !!hide);
@@ -1230,13 +1236,14 @@
       }
 
       // The right-docked strip shows one view at a time: the downloader sidebar,
-      // or the saved Rabbithole list.
+      // saved list, or blocked list.
       function setMode(mode) {
-        const m = mode === 'column' ? 'column' : 'download';
+        const m = ['column', 'blocked'].includes(mode) ? mode : 'download';
         ui.mode = m;
         ui.panel.setAttribute('data-mode', m);
         if (ui.modeBtns) ui.modeBtns.forEach(b => b.classList.toggle('is-active', b.dataset.mode === m));
         if (m === 'column') rabbithole.setView('columns');
+        else if (m === 'blocked') rabbithole.setView('blocked');
       }
 
       // Saved view shows one node type full width; this sub-switcher picks which.
@@ -1624,17 +1631,9 @@
             logLine(`Fetched ${rawPosts.length} submitted post${rawPosts.length === 1 ? '' : 's'} from u/${context.username}.`);
           }
     
-          const parsed = rawPosts.map(normalizePost).filter(Boolean);
-          const mediaPosts = parsed
-            .map(post => {
-              const files = extractMediaFiles(post.raw);
-              const md = buildPostTextFile(post, files.length > 0);   // post title/body as .md
-              if (md) files.push(md);
-              return { ...post, files };
-            })
-            .filter(post => post.files.length > 0);
-    
-          const deduped = buildDedupedDownloads(mediaPosts);
+          const built = buildDownloadSetFromRawPosts(rawPosts);
+          const parsed = built.parsed;
+          const deduped = built.deduped;
           state.posts = deduped.posts;
           state.pages = deduped.pages;
           state.files = deduped.files;
@@ -1738,6 +1737,19 @@
           page: Math.max(1, Number(raw.__rgPage || 1) || 1),
           raw
         };
+      }
+
+      function buildDownloadSetFromRawPosts(rawPosts) {
+        const parsed = (Array.isArray(rawPosts) ? rawPosts : []).map(normalizePost).filter(Boolean);
+        const mediaPosts = parsed
+          .map(post => {
+            const files = extractMediaFiles(post.raw);
+            const md = buildPostTextFile(post, files.length > 0);   // post title/body as .md
+            if (md) files.push(md);
+            return { ...post, files };
+          })
+          .filter(post => post.files.length > 0);
+        return { parsed, deduped: buildDedupedDownloads(mediaPosts) };
       }
     
       function extractMediaFiles(post) {
@@ -1987,11 +1999,12 @@
         await downloadPostArchives(selected);
       }
 
-      async function downloadPostArchives(selectedPosts) {
+      async function downloadPostArchives(selectedPosts, options) {
         const posts = Array.isArray(selectedPosts) ? selectedPosts : state.posts;
         if (state.busy || !posts.length) return;
+        const includeAllFileTypes = !!(options && options.includeAllFileTypes);
         const archiveItems = posts
-          .map(post => ({ post, files: filterFilesByType(post.files) }))
+          .map(post => ({ post, files: includeAllFileTypes ? (Array.isArray(post.files) ? post.files.slice() : []) : filterFilesByType(post.files) }))
           .filter(item => item.files.length > 0);
         const totalFiles = archiveItems.reduce((sum, item) => sum + item.files.length, 0);
         if (!archiveItems.length) {
@@ -2907,6 +2920,8 @@
             #rrm-blocked-panel{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;padding:8px 10px;
               border-bottom:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.16);}
             #rrm-blocked-panel[hidden]{display:none;}
+            #redditGuestPanel #rgMain[data-rrm-view="blocked"] #rrm-blocked-panel{flex:1 1 auto;overflow:auto;
+              border-bottom:0;background:transparent;padding:10px;}
             #rrm-blocked-panel .rrm-blocked-empty{color:#8f8f98;font-size:11px;padding:2px 0;}
             #rrm-blocked-panel .rrm-blocked-row{display:flex;align-items:center;gap:6px;}
             #rrm-blocked-panel .rrm-blocked-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -2957,7 +2972,6 @@
           container.innerHTML = `
             <div id="rrm-toolbar">
               <input id="rrm-search" type="text" placeholder="Filter saved items…" autocomplete="off" spellcheck="false">
-              <button class="rrm-btn" data-act="blocked" title="Show blocked profiles">Blocked</button>
               <button class="rrm-btn" data-act="export" title="Download the saved list as a JSON backup">Export</button>
               <button class="rrm-btn" data-act="import" title="Merge a previously exported JSON file">Import</button>
               <button class="rrm-btn danger" data-act="reset">Reset</button>
@@ -2977,7 +2991,6 @@
           const search = container.querySelector('#rrm-search');
           search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); renderGraph(); });
 
-          container.querySelector('[data-act="blocked"]').onclick = () => toggleBlockedPanel();
           container.querySelector('[data-act="reset"]').onclick = () => {
             if (confirm('Erase the entire saved list?')) { resetAll(); renderGraph(); }
           };
@@ -2992,19 +3005,10 @@
           renderGraph();
         }
 
-        function toggleBlockedPanel(force) {
-          if (!winEl) return;
-          const panel = winEl.querySelector('#rrm-blocked-panel');
-          if (!panel) return;
-          const show = typeof force === 'boolean' ? force : panel.hidden;
-          panel.hidden = !show;
-          if (show) renderBlockedPanel();
-        }
-
         function renderBlockedPanel() {
           if (!winEl) return;
           const panel = winEl.querySelector('#rrm-blocked-panel');
-          if (!panel || panel.hidden) return;
+          if (!panel || (view !== 'blocked' && panel.hidden)) return;
           const blocked = [...loadStripperBlockedUsers()].sort((a, b) => a.localeCompare(b));
           panel.innerHTML = '';
           if (!blocked.length) {
@@ -3048,9 +3052,8 @@
           });
         }
 
-        // Saved view always uses the column layout.
         function setView(next) {
-          view = 'columns';
+          view = next === 'blocked' ? 'blocked' : 'columns';
           renderGraph();
         }
 
@@ -3067,22 +3070,33 @@
         function renderGraph() {
           refreshButton();
           if (!winEl) return;
+          const main = winEl.querySelector('#rgMain');
+          if (main) main.setAttribute('data-rrm-view', view);
+          const toolbar = winEl.querySelector('#rrm-toolbar');
+          if (toolbar) toolbar.hidden = view === 'blocked';
           const colsEl = winEl.querySelector('#rrm-columns');
-          if (colsEl) colsEl.style.display = 'flex';
-          renderBlockedPanel();
+          const blockedEl = winEl.querySelector('#rrm-blocked-panel');
+          if (colsEl) colsEl.style.display = view === 'columns' ? 'flex' : 'none';
+          if (blockedEl) blockedEl.hidden = view !== 'blocked';
 
           const g = loadGraph();
           const visible = getVisible(g.nodes);
 
-          renderColumns(g.nodes);
+          if (view === 'blocked') renderBlockedPanel();
+          else renderColumns(g.nodes);
 
           const c = winEl.querySelector('#rrm-count');
           if (c) {
-            const total = g.nodes.length;
-            const filtered = !!(query || typeFilter !== 'all');
-            c.textContent = filtered
-              ? `${visible.length} / ${total} saved`
-              : `${total} saved`;
+            if (view === 'blocked') {
+              const total = loadStripperBlockedUsers().size;
+              c.textContent = `${total} blocked`;
+            } else {
+              const total = g.nodes.length;
+              const filtered = !!(query || typeFilter !== 'all');
+              c.textContent = filtered
+                ? `${visible.length} / ${total} saved`
+                : `${total} saved`;
+            }
           }
         }
 
@@ -3158,13 +3172,13 @@
           link.rel = 'noopener noreferrer';
           link.textContent = (n.label || '').replace(/\n/g, ' ');
           link.title = n.url + (n.visited ? '' : '  (not visited)') + '\n' + scanSummaryText(n.id);
-          link.addEventListener('click', (e) => { e.preventDefault(); openNodeNewTab(n.url); });
+          link.addEventListener('click', (e) => { e.preventDefault(); openNodeCurrentTab(n.url); });
 
           const openCur = document.createElement('button');
           openCur.className = 'rrm-row-btn';
           openCur.textContent = '↗';
-          openCur.title = 'Open in current tab';
-          openCur.addEventListener('click', () => openNodeCurrentTab(n.url));
+          openCur.title = 'Open in new tab';
+          openCur.addEventListener('click', () => openNodeNewTab(n.url));
 
           const rm = document.createElement('button');
           rm.className = 'rrm-row-btn rm';
