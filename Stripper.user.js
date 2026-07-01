@@ -2,7 +2,7 @@
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
 // @version      00.17.01
-// @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole click-path map.
+// @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -10,7 +10,6 @@
 // @match        *://*.reddit.com/*
 // @match        *://redd.it/*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
-// @require      https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js
 // @grant        GM_addStyle
 // @grant        GM_addValueChangeListener
 // @grant        GM_deleteValue
@@ -416,7 +415,7 @@
           font-size: 10.5px;
           background: rgba(255, 255, 255, 0.05);
         }
-        /* The column sub-switcher only applies to column view. */
+        /* The saved-list sub-switcher only applies to Saved view. */
         #redditGuestPanel:not([data-mode="column"]) .rg-colModes,
         #redditGuestPanel.rg-collapsed .rg-colModes {
           display: none;
@@ -430,23 +429,11 @@
         #redditGuestPanel[data-mode="download"] #rgMain {
           display: none;
         }
-        #redditGuestPanel[data-mode="graph"] .rg-sidebar,
         #redditGuestPanel[data-mode="column"] .rg-sidebar {
           display: none;
         }
-        /* Column view only needs the search box plus import/export/clear/reset;
-           the per-node action buttons and the type dropdown belong to graph view. */
-        #redditGuestPanel[data-mode="column"] #rrm-type,
-        #redditGuestPanel[data-mode="column"] #rrm-tbSpace,
-        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="open"],
-        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="open-tab"],
-        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="scrape"],
-        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="rm"],
-        #redditGuestPanel[data-mode="column"] #rrm-toolbar [data-act="branch"] {
-          display: none;
-        }
-        /* With the spacer gone, let the search box absorb the freed width so it
-           grows with the panel instead of leaving a gap before the buttons. */
+        /* Let the search box absorb the freed width so it grows with the panel
+           instead of leaving a gap before the buttons. */
         #redditGuestPanel[data-mode="column"] #rrm-search {
           flex: 1 1 auto;
         }
@@ -741,6 +728,21 @@
           font-size: 10px;
           font-weight: 800;
         }
+        #redditGuestPanel .rg-removeSaved {
+          margin-top: auto;
+          min-height: 34px;
+          border-color: rgba(255, 69, 0, 0.55);
+          background: rgba(255, 69, 0, 0.16);
+          color: #ffd9b0;
+        }
+        #redditGuestPanel .rg-removeSaved:hover:not(:disabled) {
+          background: rgba(255, 69, 0, 0.3);
+          border-color: rgba(255, 176, 0, 0.75);
+          color: #fff;
+        }
+        #redditGuestPanel .rg-removeSaved[hidden] {
+          display: none;
+        }
       `);
     
       function init() {
@@ -751,13 +753,12 @@
         panel.innerHTML = `
           <div class="rg-header">
             <span class="rg-title">Stripper</span>
-            <span id="rgMapCount" class="rg-mapCount" title="Nodes on the Rabbithole map" hidden></span>
+            <span id="rgMapCount" class="rg-mapCount" title="Saved Rabbithole items" hidden></span>
             <button id="rgCollapseBtn" class="rg-collapseBtn" type="button" title="Collapse">▴</button>
           </div>
           <div class="rg-modes">
             <button class="rg-modeBtn" type="button" data-mode="download">Download</button>
-            <button class="rg-modeBtn" type="button" data-mode="graph">Graph</button>
-            <button class="rg-modeBtn" type="button" data-mode="column">Column</button>
+            <button class="rg-modeBtn" type="button" data-mode="column">Saved</button>
           </div>
           <div class="rg-colModes">
             <button class="rg-modeBtn rg-colBtn" type="button" data-coltype="sub">Subreddits</button>
@@ -810,10 +811,11 @@
                 <div class="rg-subsHead">
                   <span>Subreddits</span>
                   <span class="rg-subsCount" id="rgSubCount"></span>
-                  <button id="rgSubAddAll" class="rg-subAdd" type="button" title="Add all these subreddits to the Rabbithole map">+</button>
+                  <button id="rgSubAddAll" class="rg-subAdd" type="button" title="Add all these subreddits to the saved list">+</button>
                 </div>
                 <div class="rg-subsList" id="rgSubList"></div>
               </div>
+              <button id="rgRemoveSavedBtn" class="rg-removeSaved" type="button" hidden>Remove Saved</button>
             </div>
             <div id="rgMain" class="rg-main"></div>
           </div>
@@ -850,6 +852,7 @@
         ui.subCount = panel.querySelector('#rgSubCount');
         ui.subList = panel.querySelector('#rgSubList');
         ui.subAddAll = panel.querySelector('#rgSubAddAll');
+        ui.removeSavedBtn = panel.querySelector('#rgRemoveSavedBtn');
         ui.header = panel.querySelector('.rg-header');
         ui.collapseBtn = panel.querySelector('#rgCollapseBtn');
         ui.mapCount = panel.querySelector('#rgMapCount');
@@ -866,7 +869,7 @@
         ui.subAddAll.addEventListener('click', () => {
           const added = rabbithole.addSubreddits(state.username, state.subreddits || []);
           logLine(added
-            ? `Rabbithole: added ${added} subreddit${added === 1 ? '' : 's'} to the map.`
+            ? `Rabbithole: saved ${added} subreddit${added === 1 ? '' : 's'}.`
             : 'Rabbithole: no subreddits to add.');
         });
 
@@ -880,6 +883,7 @@
         ui.postsBtn.addEventListener('click', () => downloadPostArchives());
         ui.pagesBtn.addEventListener('click', () => downloadPageArchives());
         ui.userBtn.addEventListener('click', () => downloadUserArchive());
+        ui.removeSavedBtn.addEventListener('click', () => removeCurrentSavedItem());
         panel.querySelectorAll('.rg-typeChip').forEach(chip => {
           chip.addEventListener('click', () => {
             const on = chip.getAttribute('aria-checked') === 'true';
@@ -893,8 +897,8 @@
         installLocationUiRefresh();
         document.addEventListener('keydown', handleGlobalKeydown, true);
 
-        // The map is mounted into the main body; the mode switcher decides whether
-        // the strip shows the downloader sidebar or the map (graph / column view).
+        // The saved list is mounted into the main body; the mode switcher decides
+        // whether the strip shows downloads or saved items.
         rabbithole.mount(panel.querySelector('#rgMain'), panel);
         setColumnType('user');
         setMode('download');
@@ -950,7 +954,14 @@
     
       function scanButtonIdleLabel() {
         const context = scanContextFromLocation();
-        return context && context.type === 'subreddit' ? 'Add' : 'Scan';
+        if (!context) return 'Scan';
+        if (!isCurrentContextSaved(context)) return 'Add';
+        return context.type === 'subreddit' ? 'Added' : 'Scan';
+      }
+
+      function isCurrentContextSaved(context) {
+        const id = scannedNodeId(context || scanContextFromLocation());
+        return !!(id && rabbithole.hasNode(id));
       }
 
       function postDatePlaceholder() {
@@ -968,11 +979,13 @@
       }
 
       function syncUi() {
+        const context = scanContextFromLocation();
+        const currentSaved = isCurrentContextSaved(context);
         const hasFiles = state.files.length > 0;
         const hasPages = state.pages.length > 0;
         const isPostScan = state.scanType === 'post';
         const isProfileScan = state.scanType === 'profile';
-        ui.scanBtn.disabled = state.busy;
+        ui.scanBtn.disabled = state.busy || (context && context.type === 'subreddit' && currentSaved);
         if (!state.busy) ui.scanBtn.textContent = scanButtonIdleLabel();
         // A single post just floats one "Download Post" button; the Posts/Pages
         // sections are unnecessary, so the grey square only appears for profiles.
@@ -996,6 +1009,8 @@
         ui.profileLabel.textContent = state.username ? `u/${state.username}` : 'No profile scanned';
         const base = baseFileCountText();
         ui.countLabel.textContent = state.countTextOverride ? `${base} · ${state.countTextOverride}` : base;
+        ui.removeSavedBtn.hidden = !(context && currentSaved);
+        ui.removeSavedBtn.disabled = state.busy;
       }
     
       function setBusy(busy, scanLabel) {
@@ -1059,25 +1074,23 @@
           ui.collapseBtn.textContent = isCollapsed ? '▾' : '▴';
           ui.collapseBtn.title = isCollapsed ? 'Expand' : 'Collapse';
         }
-        // The graph canvas can't size itself while the body is hidden, so nudge
-        // it to re-measure once the window is expanded again.
+        // The saved list may have been hidden, so nudge it to re-measure once the
+        // window is expanded again.
         if (!isCollapsed) requestAnimationFrame(() => rabbithole.resize());
       }
 
       // The right-docked strip shows one view at a time: the downloader sidebar,
-      // or the rabbithole map in graph or column layout. Graph/Column just drive
-      // the map's existing view toggle (which also re-measures the canvas).
+      // or the saved Rabbithole list.
       function setMode(mode) {
-        const m = (mode === 'graph' || mode === 'column') ? mode : 'download';
+        const m = mode === 'column' ? 'column' : 'download';
         ui.mode = m;
         ui.panel.setAttribute('data-mode', m);
         if (ui.modeBtns) ui.modeBtns.forEach(b => b.classList.toggle('is-active', b.dataset.mode === m));
-        if (m === 'graph') rabbithole.setView('graph');
-        else if (m === 'column') rabbithole.setView('columns');
+        if (m === 'column') rabbithole.setView('columns');
       }
 
-      // Column view shows one node type full width; this sub-switcher (visible only
-      // in column mode) picks which. Defaults to Users.
+      // Saved view shows one node type full width; this sub-switcher picks which.
+      // Defaults to Users.
       function setColumnType(type) {
         const t = (type === 'sub' || type === 'post') ? type : 'user';
         ui.colType = t;
@@ -1207,7 +1220,7 @@
         });
       }
 
-      // Roll up the current scan into a small summary the Rabbithole map can show.
+      // Roll up the current scan into a small summary the saved list can show.
       function computeScanSummary() {
         let files = 0, images = 0, videos = 0;
         for (const f of state.files) {
@@ -1271,12 +1284,12 @@
         if (context.type === 'post') {
           const first = state.posts[0] || {};
           const sub = first.subreddit ? `r/${first.subreddit}\n` : '';
-          const permalink = first.permalink || `/comments/${context.postId}/`;
+          const permalink = first.permalink || '';
           return {
             type: 'post',
             id,
             label: `${sub}${context.postId}`,
-            url: new URL(permalink, location.origin).href
+            url: permalink ? new URL(permalink, 'https://www.reddit.com').href : location.href
           };
         }
         if (context.type === 'subreddit') {
@@ -1298,7 +1311,7 @@
 
       // Lists every subreddit a scanned user has posted in (with post counts) in
       // the window sidebar, under the status log. Each row links to the sub and
-      // has a "+" to add just that one to the Rabbithole map; the header "+" adds
+      // has a "+" to add just that one to the saved list; the header "+" adds
       // them all. Hidden when there are no subreddits (e.g. single-post scans).
       function renderSubsPanel() {
         if (!ui.subs) return;
@@ -1329,11 +1342,11 @@
           add.className = 'rg-subAdd';
           add.type = 'button';
           add.textContent = '+';
-          add.title = `Add r/${s.name} to the Rabbithole map`;
+          add.title = `Add r/${s.name} to the saved list`;
           add.addEventListener('click', () => {
             const added = rabbithole.addSubreddits(state.username, [s]);
             logLine(added
-              ? `Rabbithole: added r/${s.name} to the map.`
+              ? `Rabbithole: saved r/${s.name}.`
               : `Rabbithole: could not add r/${s.name}.`);
           });
 
@@ -1345,6 +1358,31 @@
         ui.subs.hidden = false;
       }
 
+      function addCurrentContextToSaved(context) {
+        const node = scannedRabbitholeNode(context);
+        if (!node) return false;
+        return rabbithole.addNode(node, true);
+      }
+
+      function removeCurrentSavedItem() {
+        if (state.busy) return;
+        const context = scanContextFromLocation();
+        const id = scannedNodeId(context);
+        if (!context || !id || !rabbithole.hasNode(id)) {
+          logLine('No saved item found for this page.');
+          syncUi();
+          return;
+        }
+        rabbithole.removeNode(id);
+        const label = context.type === 'subreddit'
+          ? `r/${context.subreddit}`
+          : context.type === 'profile'
+            ? `u/${context.username}`
+            : `post ${context.postId}`;
+        logLine(`Removed saved ${label}.`);
+        syncUi();
+      }
+
       async function scanCurrentProfile() {
         if (state.busy) return;
         const context = scanContextFromLocation();
@@ -1353,14 +1391,19 @@
           setProgress(0);
           return;
         }
-        if (context.type === 'subreddit') {
-          const added = rabbithole.addSubreddits('', [{ name: context.subreddit, count: 0 }], true);
-          logLine(added
-            ? `Rabbithole: added r/${context.subreddit} to the map.`
-            : `Rabbithole: could not add r/${context.subreddit}.`);
+        const saved = isCurrentContextSaved(context);
+        if (!saved) {
+          const added = addCurrentContextToSaved(context);
+          const label = context.type === 'subreddit'
+            ? `r/${context.subreddit}`
+            : context.type === 'profile'
+              ? `u/${context.username}`
+              : `post ${context.postId}`;
+          logLine(added ? `Saved ${label}.` : `Could not save ${label}.`);
           syncUi();
           return;
         }
+        if (context.type === 'subreddit') return;
 
         const cacheKey = redditScanCacheKey(context);
         if (cacheKey && state.loadedScanCacheKey !== cacheKey) {
@@ -1429,7 +1472,7 @@
               .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
           }
 
-          // Hand a summary to the Rabbithole map so hovering this node shows it.
+          // Hand a summary to the saved list for this item.
           state.summary = computeScanSummary();
           state.summaryNodeId = scannedNodeId(context);
           if (state.summaryNodeId) rabbithole.recordScan(state.summaryNodeId, state.summary, scannedRabbitholeNode(context));
@@ -2356,10 +2399,9 @@
       }
     
       // ----------------------------------------------------------------------
-      // Reddit Rabbithole Map — integrated. Records the click-path between
-      // posts/users/subreddits as a network graph. Shares storage with the
+      // Reddit Rabbithole Saved Items — integrated. Shares storage with the
       // standalone "Reddit Rabbithole Map" userscript (same rrm: keys), so it
-      // reads any map you already built with the old script.
+      // reads any saved items you already built with the old script.
       // ----------------------------------------------------------------------
       const rabbithole = (function () {
         const NS = 'rrm:';        // storage prefix for nodes/edges (old-version compatible)
@@ -2367,12 +2409,11 @@
         const COLORS = { sub: '#4f9cf9', user: '#f97362', post: '#9b8cf9' };
         const BRIDGE_KEY = 'rrm_bridge_v1';   // legacy shared-localStorage key; only cleared on reset now
 
-        let booted = false, winEl = null, network = null, nodesDS = null, edgesDS = null;
-        let selectedId = null, query = '', resizeObs = null;
-        let view = 'graph', typeFilter = 'all';   // view: 'graph' | 'columns'
-        let columnType = 'user';                  // column view shows one type full width: 'sub' | 'user' | 'post'
-        let didInitialFit = false;
-        let tipEl = null, hoverTimer = null;
+        let booted = false, winEl = null;
+        let query = '';
+        let view = 'columns';
+        let typeFilter = 'all';
+        let columnType = 'user';                  // Saved view shows one type full width: 'sub' | 'user' | 'post'
 
         // -------------------------------------------------------------- classify
         function classify(href) {
@@ -2454,6 +2495,17 @@
           return n;
         }
 
+        function hasNode(id) {
+          return !!(id && safeParse(NS + 'n:' + id));
+        }
+
+        function addNode(node, visited) {
+          if (!node || !node.id) return false;
+          upsertNode(node, !!visited);
+          if (isWindowOpen()) scheduleRender(); else refreshButton();
+          return true;
+        }
+
         function removeNodes(ids) {
           const set = new Set(ids);
           for (const k of GM_listValues()) {
@@ -2461,7 +2513,7 @@
               if (set.has(k.slice((NS + 'n:').length))) GM_deleteValue(k);
             } else if (k.startsWith(NS + 'scan:')) {
               // Scan summaries are keyed by node id; drop them with their node so
-              // they don't orphan-accumulate as the user prunes the map.
+              // they don't orphan-accumulate as the user prunes the saved list.
               if (set.has(k.slice((NS + 'scan:').length))) GM_deleteValue(k);
             } else if (k.startsWith(NS + 'e:')) {
               const e = safeParse(k);
@@ -2471,13 +2523,20 @@
           bumpRev();
         }
 
+        function removeNode(id) {
+          if (!id) return false;
+          removeNodes([id]);
+          if (isWindowOpen()) scheduleRender(); else refreshButton();
+          return true;
+        }
+
         function resetAll() {
           for (const k of GM_listValues()) if (k.startsWith(NS)) GM_deleteValue(k);
           try { localStorage.removeItem(BRIDGE_KEY); } catch (e) {}   // wipe any legacy shared snapshot too
           bumpRev();
         }
 
-        // Cross a node off (mark "scraped") without deleting it or its links.
+        // Cross a saved item off (mark "scraped") without deleting it or its links.
         function setScraped(id, scraped) {
           const key = NS + 'n:' + id;
           const raw = GM_getValue(key, null);
@@ -2488,9 +2547,8 @@
           bumpRev();
         }
 
-        // Bulk-add the subreddits from a user scan as nodes, linked from the
-        // scanned user so the map shows where they post. Reuses the same id/label
-        // scheme as classify() so the nodes merge with any already on the map.
+        // Bulk-add the subreddits from a user scan as saved items, linked from
+        // the scanned user so legacy imports can still preserve that relationship.
         function addSubreddits(username, subs, visited) {
           if (!Array.isArray(subs) || !subs.length) return 0;
           const userName = String(username || '').trim();
@@ -2579,9 +2637,10 @@
         }
 
         // ------------------------------------------------------------ export / import
-        // Manual only. No background publishing or importing — the map lives purely
-        // in this install's own GM storage so resetting/deleting actually sticks.
-        // Download the whole map as a JSON file — an install-independent backup.
+        // Manual only. No background publishing or importing — the saved list
+        // lives purely in this install's own GM storage so resetting/deleting
+        // actually sticks.
+        // Download the saved list as a JSON file — an install-independent backup.
         function exportData() {
           try {
             const g = loadGraph();
@@ -2589,10 +2648,10 @@
               { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = 'rabbithole-map-' + new Date().toISOString().slice(0, 10) + '.json';
+            a.download = 'rabbithole-saved-' + new Date().toISOString().slice(0, 10) + '.json';
             document.body.appendChild(a); a.click();
             setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
-            try { logLine(`Rabbithole: exported ${g.nodes.length} nodes / ${g.edges.length} links.`); } catch (e) {}
+            try { logLine(`Rabbithole: exported ${g.nodes.length} saved item${g.nodes.length === 1 ? '' : 's'}.`); } catch (e) {}
           } catch (e) {}
         }
 
@@ -2610,19 +2669,8 @@
           reader.readAsText(file);
         }
 
-        function descendants(rootId, edges) {
-          const out = new Set([rootId]), adj = {};
-          edges.forEach(e => (adj[e.from] = adj[e.from] || []).push(e.to));
-          const stack = [rootId];
-          while (stack.length) {
-            const cur = stack.pop();
-            for (const nxt of (adj[cur] || [])) if (!out.has(nxt)) { out.add(nxt); stack.push(nxt); }
-          }
-          return [...out];
-        }
-
         // ---------------------------------------------------------- navigate away
-        // Opening a node from the map is explicit navigation. The map no longer
+        // Opening a saved item is explicit navigation. The saved list no longer
         // records browsing trails automatically, so these actions only navigate.
         function openNodeCurrentTab(url) {
           if (!url) return;
@@ -2633,8 +2681,7 @@
           window.open(url, '_blank', 'noopener');
         }
 
-        // Coalesce bursty re-renders from explicit map edits/imports so the graph
-        // refreshes at most once per pause instead of several times in a row.
+        // Coalesce bursty re-renders from explicit saved-item edits/imports.
         let renderTimer = null;
         function scheduleRender() {
           if (!isWindowOpen()) { refreshButton(); return; }
@@ -2667,15 +2714,6 @@
             #redditGuestPanel .rrm-btn.danger{background:rgba(255,69,0,.16);border-color:rgba(255,69,0,.5);}
             #redditGuestPanel .rrm-btn.danger:hover:not(:disabled){background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.7);}
             #redditGuestPanel .rrm-btn.icon{padding:0;width:28px;}
-            #rrm-graph{flex:1;min-height:0;position:relative;}
-            #rrm-tip{position:absolute;z-index:5;transform:translate(-50%,0);min-width:130px;max-width:240px;
-              padding:8px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.16);background:rgba(24,24,28,.97);
-              box-shadow:0 10px 30px rgba(0,0,0,.5);color:#f4f4f5;font-size:11px;pointer-events:none;}
-            #rrm-tip[hidden]{display:none;}
-            #rrm-tip .rrm-tip-h{font-weight:800;font-size:12px;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-            #rrm-tip .rrm-tip-row{display:flex;justify-content:space-between;gap:14px;color:#c9c9cf;padding:1px 0;}
-            #rrm-tip .rrm-tip-row b{color:#fff;font-weight:700;}
-            #rrm-tip .rrm-tip-un{color:#a9a9b2;font-style:italic;}
             #rrm-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 11px;
               border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:#a9a9b2;}
             #rrm-foot .rrm-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
@@ -2711,40 +2749,25 @@
           `);
         }
 
-        // Build the map UI (toolbar + graph + columns + footer) inside the main
-        // body of the unified Stripper window. `win` is the whole window element,
-        // used for in-window click detection and the "is it visible" check.
+        // Build the saved-items UI inside the main body of the unified Stripper
+        // window. `win` is the whole window element used for visibility checks.
         function mount(container, win) {
           if (!container) return;
           winEl = win;
           container.innerHTML = `
             <div id="rrm-toolbar">
-              <input id="rrm-search" type="text" placeholder="Filter nodes by name…" autocomplete="off" spellcheck="false">
-              <select id="rrm-type" class="rrm-select" title="Filter by node type">
-                <option value="all">All types</option>
-                <option value="sub">Subreddits</option>
-                <option value="user">Users</option>
-                <option value="post">Posts</option>
-              </select>
-              <button class="rrm-btn primary" data-act="open" disabled>Open ↗</button>
-              <button class="rrm-btn" data-act="open-tab" disabled>New tab</button>
-              <button class="rrm-btn" data-act="scrape" disabled>Cross off</button>
-              <button class="rrm-btn" data-act="rm" disabled>Remove</button>
-              <button class="rrm-btn" data-act="branch" disabled>Remove branch</button>
-              <span id="rrm-tbSpace" style="flex:1"></span>
-              <button class="rrm-btn" data-act="export" title="Download the whole map as a JSON backup">Export</button>
+              <input id="rrm-search" type="text" placeholder="Filter saved items…" autocomplete="off" spellcheck="false">
+              <button class="rrm-btn" data-act="export" title="Download the saved list as a JSON backup">Export</button>
               <button class="rrm-btn" data-act="import" title="Merge a previously exported JSON file">Import</button>
-              <button class="rrm-btn" data-act="visited">Clear visited</button>
-              <button class="rrm-btn danger" data-act="reset">Reset</button>
-              <input id="rrm-file" type="file" accept="application/json,.json" hidden>
+            <button class="rrm-btn danger" data-act="reset">Reset</button>
+            <input id="rrm-file" type="file" accept="application/json,.json" hidden>
             </div>
-            <div id="rrm-graph"></div>
             <div id="rrm-columns"></div>
             <div id="rrm-foot">
               <span><span class="rrm-dot" style="background:${COLORS.sub}"></span>subreddit</span>
               <span><span class="rrm-dot" style="background:${COLORS.user}"></span>user</span>
               <span><span class="rrm-dot" style="background:${COLORS.post}"></span>post</span>
-              <span style="opacity:.7">dashed = not visited · ✓ dim = crossed off · double-click opens</span>
+              <span style="opacity:.7">✓ dim = crossed off · saved items can be opened or removed</span>
               <span style="flex:1"></span>
               <span id="rrm-count"></span>
             </div>`;
@@ -2752,26 +2775,8 @@
           const search = container.querySelector('#rrm-search');
           search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); renderGraph(); });
 
-          const typeSel = container.querySelector('#rrm-type');
-          typeSel.value = typeFilter;
-          typeSel.addEventListener('change', () => { typeFilter = typeSel.value; renderGraph(); });
-
-          container.querySelector('[data-act="scrape"]').onclick = () => {
-            const n = curNode(); if (!n) return; setScraped(n.id, !n.scraped); renderGraph();
-          };
-          container.querySelector('[data-act="open"]').onclick = () => { const n = curNode(); if (n) openNodeCurrentTab(n.url); };
-          container.querySelector('[data-act="open-tab"]').onclick = () => { const n = curNode(); if (n) openNodeNewTab(n.url); };
-          container.querySelector('[data-act="rm"]').onclick = () => {
-            if (selectedId) { removeNodes([selectedId]); selectedId = null; renderGraph(); }
-          };
-          container.querySelector('[data-act="branch"]').onclick = () => {
-            if (selectedId) { const g = loadGraph(); removeNodes(descendants(selectedId, g.edges)); selectedId = null; renderGraph(); }
-          };
-          container.querySelector('[data-act="visited"]').onclick = () => {
-            const g = loadGraph(); removeNodes(g.nodes.filter(n => n.visited).map(n => n.id)); selectedId = null; renderGraph();
-          };
           container.querySelector('[data-act="reset"]').onclick = () => {
-            if (confirm('Erase the entire rabbithole map?')) { resetAll(); selectedId = null; renderGraph(); }
+            if (confirm('Erase the entire saved list?')) { resetAll(); renderGraph(); }
           };
           const fileInput = container.querySelector('#rrm-file');
           container.querySelector('[data-act="export"]').onclick = exportData;
@@ -2781,161 +2786,16 @@
             fileInput.value = '';
           });
 
-          initNetwork(container.querySelector('#rrm-graph'));
-
-          tipEl = document.createElement('div');
-          tipEl.id = 'rrm-tip';
-          tipEl.hidden = true;
-          container.querySelector('#rrm-graph').appendChild(tipEl);
-
-          if (typeof ResizeObserver !== 'undefined') {
-            resizeObs = new ResizeObserver(() => {
-              if (network) { network.setSize('100%', '100%'); network.redraw(); }
-            });
-            resizeObs.observe(container);
-          }
-        }
-
-        function curNode() { return loadGraph().nodes.find(n => n.id === selectedId) || null; }
-
-        function initNetwork(container) {
-          if (typeof vis === 'undefined' || !vis.Network) {
-            container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;'
-              + 'color:#a9a9b2;font-size:12px;text-align:center;padding:24px;">Graph library failed to load.<br>'
-              + 'Check the userscript’s network access and reload.</div>';
-            return;
-          }
-          nodesDS = new vis.DataSet([]); edgesDS = new vis.DataSet([]);
-          network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
-            nodes: {
-              shape: 'dot',
-              size: 16,
-              // Hubs (more links) draw bigger; renderCanvas sets each node's value
-              // to its degree so the busiest nodes read at a glance.
-              scaling: { min: 13, max: 42, label: { enabled: true, min: 12, max: 20 } },
-              borderWidth: 2,
-              borderWidthSelected: 4,
-              shadow: { enabled: true, color: 'rgba(0,0,0,0.45)', size: 12, x: 0, y: 3 },
-              font: { color: '#f4f4f5', size: 13, face: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-                      strokeWidth: 3, strokeColor: 'rgba(12,12,15,0.85)', multi: false }
-            },
-            edges: {
-              arrows: { to: { enabled: true, scaleFactor: 0.62, type: 'arrow' } },
-              color: { color: 'rgba(190,200,220,0.45)', highlight: '#ffb000', hover: '#ffd166', inherit: false },
-              width: 1.6,
-              selectionWidth: 1.6,
-              hoverWidth: 1,
-              smooth: { enabled: true, type: 'continuous', roundness: 0.45 }
-            },
-            interaction: { hover: true, multiselect: false, tooltipDelay: 120, hideEdgesOnDrag: false, navigationButtons: false },
-            physics: {
-              enabled: true,
-              solver: 'forceAtlas2Based',
-              stabilization: { iterations: 220, fit: true },
-              forceAtlas2Based: { gravitationalConstant: -62, centralGravity: 0.012, springLength: 130,
-                                  springConstant: 0.08, damping: 0.5, avoidOverlap: 0.7 },
-              minVelocity: 0.6
-            },
-          });
-          // Freeze the layout once it settles so navigating around doesn't keep
-          // nudging nodes. Physics is only re-armed (kickPhysics) when the graph
-          // actually gains or loses nodes/edges.
-          network.on('stabilized', () => { freezePhysics(); maybeInitialFit(); });
-          network.on('selectNode',   p => { selectedId = p.nodes[0]; updateActionButtons(); });
-          network.on('deselectNode', () => { selectedId = null; updateActionButtons(); });
-          network.on('doubleClick',  p => {
-            if (!p.nodes[0]) return;
-            const n = loadGraph().nodes.find(x => x.id === p.nodes[0]);
-            if (n) openNodeCurrentTab(n.url);
-          });
-          // Hover a node for a beat to see its scan summary (or "Unscanned").
-          network.on('hoverNode', p => {
-            if (hoverTimer) clearTimeout(hoverTimer);
-            const id = p.node;
-            hoverTimer = setTimeout(() => showTip(id), 900);
-          });
-          network.on('blurNode', hideTip);
-          network.on('dragStart', hideTip);
-          network.on('zoom', hideTip);
-          network.on('click', hideTip);
           renderGraph();
         }
 
-        function escapeHtml(s) {
-          return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        }
-
-        function showTip(id) {
-          if (!network || !tipEl || view === 'columns') return;
-          const node = loadGraph().nodes.find(x => x.id === id);
-          if (!node) return;
-          const label = escapeHtml((node.label || '').replace(/\n/g, ' '));
-          const s = getScan(id);
-          let body;
-          if (!s) {
-            body = '<div class="rrm-tip-un">Unscanned</div>';
-          } else {
-            const row = (k, v) => `<div class="rrm-tip-row"><span>${k}</span><b>${v}</b></div>`;
-            body = row('Posts', s.posts || 0)
-              + row('Files', s.files || 0)
-              + row('Images / Videos', `${s.images || 0} / ${s.videos || 0}`)
-              + row('Pages', s.pages || 0);
-          }
-          tipEl.innerHTML = `<div class="rrm-tip-h">${label}</div>${body}`;
-          const pos = network.getPositions([id])[id];
-          if (!pos) return;
-          const dom = network.canvasToDOM(pos);
-          tipEl.style.left = dom.x + 'px';
-          tipEl.style.top = (dom.y + 16) + 'px';
-          tipEl.hidden = false;
-        }
-
-        function hideTip() {
-          if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-          if (tipEl) tipEl.hidden = true;
-        }
-
-        // Re-arm physics briefly; the 'stabilized' handler (or the fallback
-        // timer) turns it back off so the graph stops drifting once it settles.
-        let physicsTimer = null;
-        function kickPhysics() {
-          if (!network) return;
-          network.setOptions({ physics: { enabled: true } });
-          if (physicsTimer) clearTimeout(physicsTimer);
-          physicsTimer = setTimeout(freezePhysics, 2500);
-        }
-        function freezePhysics() {
-          if (physicsTimer) { clearTimeout(physicsTimer); physicsTimer = null; }
-          if (network) network.setOptions({ physics: { enabled: false } });
-        }
-
-        function maybeInitialFit() {
-          if (didInitialFit || !network) return;
-          didInitialFit = true;
-          try { network.fit({ animation: false }); } catch (e) {}
-        }
-
-        function updateActionButtons() {
-          if (!winEl) return;
-          const on = !!selectedId;
-          winEl.querySelectorAll('[data-act="open"],[data-act="open-tab"],[data-act="scrape"],[data-act="rm"],[data-act="branch"]')
-            .forEach(b => b.disabled = !on);
-          const sb = winEl.querySelector('[data-act="scrape"]');
-          if (sb) { const n = curNode(); sb.textContent = (n && n.scraped) ? 'Uncross' : 'Cross off'; }
-        }
-
-        // Switch the map between graph and column layout. Driven by the strip's
-        // mode switcher; re-renders and re-measures the canvas (it may have been
-        // display:none while another mode was showing).
+        // Saved view always uses the column layout.
         function setView(next) {
-          view = (next === 'columns') ? 'columns' : 'graph';
+          view = 'columns';
           renderGraph();
-          if (view === 'graph' && network) {
-            requestAnimationFrame(() => { if (network) { network.setSize('100%', '100%'); network.redraw(); } });
-          }
         }
 
-        // search-text + type-dropdown filter, shared by both views
+        // search-text + type-dropdown filter
         function getVisible(nodes) {
           return nodes.filter(n => {
             if (typeFilter !== 'all' && n.type !== typeFilter) return false;
@@ -2944,97 +2804,31 @@
           });
         }
 
-        // re-render entry point: dispatches to whichever view is active
+        // re-render entry point
         function renderGraph() {
           refreshButton();
-          hideTip();
           if (!winEl) return;
-          const graphEl = winEl.querySelector('#rrm-graph');
           const colsEl = winEl.querySelector('#rrm-columns');
-          if (graphEl) graphEl.style.display = view === 'columns' ? 'none' : '';
-          if (colsEl) colsEl.style.display = view === 'columns' ? 'flex' : 'none';
+          if (colsEl) colsEl.style.display = 'flex';
 
           const g = loadGraph();
           const visible = getVisible(g.nodes);
-          const ids = new Set(visible.map(n => n.id));
-          if (selectedId && !ids.has(selectedId)) selectedId = null;
 
-          if (view === 'columns') renderColumns(g.nodes);
-          else renderCanvas(g, visible, ids);
+          renderColumns(g.nodes);
 
           const c = winEl.querySelector('#rrm-count');
           if (c) {
             const total = g.nodes.length;
             const filtered = !!(query || typeFilter !== 'all');
             c.textContent = filtered
-              ? `${visible.length} / ${total} nodes · ${g.edges.length} links`
-              : `${total} nodes · ${g.edges.length} links`;
+              ? `${visible.length} / ${total} saved`
+              : `${total} saved`;
           }
-          updateActionButtons();
         }
 
-        function renderCanvas(g, visible, ids) {
-          if (!network) return;
-          const curId = (classify(location.href) || {}).id;
-
-          // Build the desired node styling, then diff it against what's already
-          // drawn. Updating (instead of clear + re-add) preserves each node's
-          // position, so the layout stays put while you browse — only genuinely
-          // new/removed nodes move things.
-          // Size each node by how many links touch it, so hubs stand out.
-          const degree = {};
-          g.edges.forEach(e => {
-            if (ids.has(e.from) && ids.has(e.to)) {
-              degree[e.from] = (degree[e.from] || 0) + 1;
-              degree[e.to] = (degree[e.to] || 0) + 1;
-            }
-          });
-
-          const desired = new Map();
-          visible.forEach(n => {
-            const base = COLORS[n.type];
-            desired.set(n.id, {
-              id: n.id,
-              value: 1 + (degree[n.id] || 0),
-              label: (n.scraped ? '✓ ' : '') + n.label,
-              color: { background: n.visited ? base : 'rgba(255,255,255,0.06)', border: base,
-                       highlight: { background: base, border: '#fff' },
-                       hover: { background: n.visited ? base : 'rgba(255,255,255,0.12)', border: '#fff' } },
-              borderWidth: n.id === curId ? 4 : 2,
-              opacity: n.scraped ? 0.4 : 1,
-              font: { color: n.scraped ? '#8a8a90' : '#f4f4f5' },
-              shapeProperties: { borderDashes: n.visited ? false : [4, 3] },
-            });
-          });
-
-          const existing = new Set(nodesDS.getIds());
-          const nodeRemove = [];
-          existing.forEach(id => { if (!desired.has(id)) nodeRemove.push(id); });
-          const nodeAdd = [], nodeUpdate = [];
-          desired.forEach((node, id) => { (existing.has(id) ? nodeUpdate : nodeAdd).push(node); });
-          if (nodeRemove.length) nodesDS.remove(nodeRemove);
-          if (nodeUpdate.length) nodesDS.update(nodeUpdate);   // keeps positions
-          if (nodeAdd.length) nodesDS.add(nodeAdd);
-
-          const desiredEdges = new Map();
-          g.edges.filter(e => ids.has(e.from) && ids.has(e.to))
-                 .forEach(e => { const id = e.from + '__' + e.to; desiredEdges.set(id, { id, from: e.from, to: e.to }); });
-          const existingE = new Set(edgesDS.getIds());
-          const edgeRemove = [];
-          existingE.forEach(id => { if (!desiredEdges.has(id)) edgeRemove.push(id); });
-          const edgeAdd = [];
-          desiredEdges.forEach((edge, id) => { if (!existingE.has(id)) edgeAdd.push(edge); });
-          if (edgeRemove.length) edgesDS.remove(edgeRemove);
-          if (edgeAdd.length) edgesDS.add(edgeAdd);
-
-          // Only disturb the layout when the structure actually changed.
-          if (nodeAdd.length || nodeRemove.length || edgeAdd.length || edgeRemove.length) kickPhysics();
-        }
-
-        // Alternate view: a single full-width column listing the collected nodes
-        // of one type (subreddits / users / posts) as links, with no connections
-        // drawn. Which type is shown is picked by the strip's column sub-switcher
-        // (`columnType`); only the search box narrows it further.
+        // A single full-width column listing the saved nodes of one type
+        // (subreddits / users / posts). The strip's saved sub-switcher picks
+        // `columnType`; the search box narrows it further.
         function renderColumns(allNodes) {
           const colsEl = winEl.querySelector('#rrm-columns');
           if (!colsEl) return;
@@ -3076,8 +2870,7 @@
           listEl.scrollTop = prevScroll;   // restore scroll
         }
 
-        // Switch which node type the column view shows. Driven by the strip's
-        // column sub-switcher; re-renders when the column view is active.
+        // Switch which node type the Saved view shows.
         function setColumnType(type) {
           columnType = (type === 'sub' || type === 'post') ? type : 'user';
           if (view === 'columns') renderGraph();
@@ -3123,13 +2916,13 @@
         }
 
         // ------------------------------------------------------------- lifecycle
-        // The map shares the unified window; it's "open" whenever that window is
+        // The saved list shares the unified window; it's "open" whenever that window is
         // mounted and not collapsed into just its header.
         function isWindowOpen() { return !!(winEl && !winEl.classList.contains('rg-collapsed')); }
 
-        // Re-measure the graph canvas (e.g. after the window is expanded or resized).
+        // Re-render the saved list after the window is expanded or resized.
         function resize() {
-          if (network) { network.setSize('100%', '100%'); network.redraw(); }
+          renderGraph();
         }
 
         function refreshButton() {
@@ -3148,17 +2941,17 @@
           }
         }
 
-        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, setView, setColumnType };
+        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType };
       })();
 
-      if (window.__stripperRrmLoaded) { /* avoid double map bootstrap if injected twice */ }
+      if (window.__stripperRrmLoaded) { /* avoid double saved-list bootstrap if injected twice */ }
       else {
         window.__stripperRrmLoaded = true;
         // Never let a rabbithole boot failure (a rejected GM write, a corrupt
         // stored value) abort init() below — that would hide the whole UI. The
         // logged error is the diagnostic: check the console next time it breaks.
         try { rabbithole.bootstrap(); }
-        catch (e) { try { console.warn('[Stripper] rabbithole bootstrap failed; continuing without the map.', e); } catch (e2) {} }
+        catch (e) { try { console.warn('[Stripper] rabbithole bootstrap failed; continuing without the saved list.', e); } catch (e2) {} }
       }
 
       if (document.body) init();
