@@ -9,6 +9,7 @@ const PACKAGE_JSON_PATH = path.join(ROOT, "package.json");
 const PACKAGE_LOCK_PATH = path.join(ROOT, "package-lock.json");
 const TAURI_CONF_PATH = path.join(ROOT, "src-tauri", "tauri.conf.json");
 const CARGO_TOML_PATH = path.join(ROOT, "src-tauri", "Cargo.toml");
+const CARGO_LOCK_PATH = path.join(ROOT, "src-tauri", "Cargo.lock");
 const DRY_RUN = process.argv.includes("--dry-run");
 
 function fail(message) {
@@ -66,6 +67,18 @@ function runCommand(cmd, args, options = {}) {
   return result;
 }
 
+function updateCargoLockPackageVersion(lockText, packageName, version) {
+  const packageBlockRe = new RegExp(
+    `(\\[\\[package\\]\\]\\nname = "${packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\nversion = )"[^"]*"`,
+    "m",
+  );
+  const next = lockText.replace(packageBlockRe, `$1"${version}"`);
+  if (next === lockText) {
+    fail(`Unable to update ${path.relative(ROOT, CARGO_LOCK_PATH)} for package ${packageName}.`);
+  }
+  return next;
+}
+
 function detectCurrentBranch() {
   const result = runCommand("git", ["branch", "--show-current"], { capture: true });
   const branch = String(result.stdout || "").trim();
@@ -116,6 +129,11 @@ cargoToml = cargoToml.replace(
   /(\[package\][\s\S]*?^\s*version\s*=\s*)"[^"]*"/m,
   `$1"${tauriVersion}"`
 );
+const cargoLock = updateCargoLockPackageVersion(
+  fs.readFileSync(CARGO_LOCK_PATH, "utf8"),
+  "local-gallery",
+  tauriVersion,
+);
 
 console.log(`Releasing ${currentVersion} -> ${nextVersion} (tauri ${tauriVersion})`);
 
@@ -124,6 +142,7 @@ if (!DRY_RUN) {
   writeJson(PACKAGE_LOCK_PATH, packageLock);
   writeJson(TAURI_CONF_PATH, tauriConf);
   fs.writeFileSync(CARGO_TOML_PATH, cargoToml);
+  fs.writeFileSync(CARGO_LOCK_PATH, cargoLock);
 }
 
 runCommand("git", ["add", "-A"], { mutate: true });

@@ -10,7 +10,8 @@
     "release:patch": "node scripts/release-patch.js",
     "tauri": "tauri",
     "tauri:dev": "npx tauri dev",
-    "tauri:build": "npx tauri build"
+    "tauri:build": "node scripts/tauri-build.js",
+    "tauri:build:raw": "npx tauri build"
   },
   "repository": {
     "type": "git",
