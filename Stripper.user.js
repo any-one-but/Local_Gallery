@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.01
+// @version      00.17.02
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -53,6 +53,7 @@
   const STRIPPER_SCAN_CACHE_MAX_ENTRIES = 24;                   // keep only the most recent N scans
   const STRIPPER_SCAN_CACHE_MAX_BYTES = 4 * 1024 * 1024;        // total budget across all scans
   const STRIPPER_SCAN_CACHE_MAX_ENTRY_BYTES = 1.5 * 1024 * 1024; // skip caching a single huge scan
+  const STRIPPER_BLOCKED_USERS_KEY = 'Stripper.blockedUsers.v1';
 
   // Evict the stalest scans (by savedAt) until the cache is back under its entry
   // count and byte budget, leaving room for an incoming write of `reserveBytes`.
@@ -247,6 +248,46 @@
     }
     if (!ranges.length) return { ranges, error: 'date range did not match any scanned posts' };
     return { ranges, error: '' };
+  }
+
+  function normalizeRedditUsername(name) {
+    return String(name || '')
+      .trim()
+      .replace(/^\/?(?:user|u)\//i, '')
+      .replace(/^u_/i, '')
+      .replace(/^@/, '')
+      .toLowerCase();
+  }
+
+  function profileNameFromHref(href) {
+    let url;
+    try { url = new URL(href, location.origin); } catch { return ''; }
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length < 2) return '';
+    const marker = parts[0].toLowerCase();
+    if (marker !== 'user' && marker !== 'u') return '';
+    return normalizeRedditUsername(decodeURIComponent(parts[1] || ''));
+  }
+
+  function loadStripperBlockedUsers() {
+    try {
+      const raw = typeof GM_getValue === 'function'
+        ? GM_getValue(STRIPPER_BLOCKED_USERS_KEY, '[]')
+        : localStorage.getItem(STRIPPER_BLOCKED_USERS_KEY);
+      const parsed = JSON.parse(raw || '[]');
+      return new Set((Array.isArray(parsed) ? parsed : []).map(normalizeRedditUsername).filter(Boolean));
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveStripperBlockedUsers(users) {
+    const list = [...(users || new Set())].map(normalizeRedditUsername).filter(Boolean).sort();
+    const raw = JSON.stringify([...new Set(list)]);
+    try {
+      if (typeof GM_setValue === 'function') GM_setValue(STRIPPER_BLOCKED_USERS_KEY, raw);
+      else localStorage.setItem(STRIPPER_BLOCKED_USERS_KEY, raw);
+    } catch {}
   }
 
   function runRedditStripper() {
@@ -740,8 +781,24 @@
           border-color: rgba(255, 176, 0, 0.75);
           color: #fff;
         }
-        #redditGuestPanel .rg-removeSaved[hidden] {
+        #redditGuestPanel .rg-blockProfile {
+          margin-top: auto;
+          min-height: 34px;
+          border-color: rgba(255, 176, 0, 0.5);
+          background: rgba(255, 176, 0, 0.14);
+          color: #ffe1a3;
+        }
+        #redditGuestPanel .rg-blockProfile:hover:not(:disabled) {
+          background: rgba(255, 176, 0, 0.26);
+          border-color: rgba(255, 176, 0, 0.78);
+          color: #fff;
+        }
+        #redditGuestPanel .rg-removeSaved[hidden],
+        #redditGuestPanel .rg-blockProfile[hidden] {
           display: none;
+        }
+        .stripperBlockedProfilePost {
+          display: none !important;
         }
       `);
     
@@ -816,6 +873,7 @@
                 <div class="rg-subsList" id="rgSubList"></div>
               </div>
               <button id="rgRemoveSavedBtn" class="rg-removeSaved" type="button" hidden>Remove Saved</button>
+              <button id="rgBlockProfileBtn" class="rg-blockProfile" type="button" hidden>Block Profile</button>
             </div>
             <div id="rgMain" class="rg-main"></div>
           </div>
@@ -853,6 +911,7 @@
         ui.subList = panel.querySelector('#rgSubList');
         ui.subAddAll = panel.querySelector('#rgSubAddAll');
         ui.removeSavedBtn = panel.querySelector('#rgRemoveSavedBtn');
+        ui.blockProfileBtn = panel.querySelector('#rgBlockProfileBtn');
         ui.header = panel.querySelector('.rg-header');
         ui.collapseBtn = panel.querySelector('#rgCollapseBtn');
         ui.mapCount = panel.querySelector('#rgMapCount');
@@ -884,6 +943,7 @@
         ui.pagesBtn.addEventListener('click', () => downloadPageArchives());
         ui.userBtn.addEventListener('click', () => downloadUserArchive());
         ui.removeSavedBtn.addEventListener('click', () => removeCurrentSavedItem());
+        ui.blockProfileBtn.addEventListener('click', () => toggleCurrentProfileBlock());
         panel.querySelectorAll('.rg-typeChip').forEach(chip => {
           chip.addEventListener('click', () => {
             const on = chip.getAttribute('aria-checked') === 'true';
@@ -894,7 +954,7 @@
         ui.postRangeBtn.addEventListener('click', () => downloadSelectedPostArchives());
         ui.pageRangeBtn.addEventListener('click', () => downloadSelectedPageArchives());
         ui.dateRangeBtn.addEventListener('click', () => downloadSelectedDateArchives());
-        installLocationUiRefresh();
+        installPageChangeObserver();
         document.addEventListener('keydown', handleGlobalKeydown, true);
 
         // The saved list is mounted into the main body; the mode switcher decides
@@ -908,20 +968,100 @@
         rabbithole.refreshButton();
       }
 
-      function installLocationUiRefresh() {
-        if (window.__stripperLocationUiRefresh) return;
-        window.__stripperLocationUiRefresh = true;
-        const refresh = () => setTimeout(() => { if (!state.busy) syncUi(); }, 0);
+      function installPageChangeObserver() {
+        if (window.__stripperPageChangeObserver) return;
+        window.__stripperPageChangeObserver = true;
+        state.observedLocationHref = location.href;
+
+        const schedule = (force) => {
+          if (window.__stripperPageChangeTimer) clearTimeout(window.__stripperPageChangeTimer);
+          window.__stripperPageChangeTimer = setTimeout(() => refreshForCurrentLocation(!!force), 80);
+        };
+        const scheduleFilter = () => {
+          if (window.__stripperFeedFilterTimer) clearTimeout(window.__stripperFeedFilterTimer);
+          window.__stripperFeedFilterTimer = setTimeout(() => filterBlockedProfilePosts(), 140);
+        };
+
         ['pushState', 'replaceState'].forEach(fn => {
           const orig = history[fn];
-          if (typeof orig !== 'function') return;
-          history[fn] = function () {
+          if (typeof orig !== 'function' || orig.__stripperRouteWrapped) return;
+          const wrapped = function () {
             const result = orig.apply(this, arguments);
-            refresh();
+            schedule(true);
             return result;
           };
+          wrapped.__stripperRouteWrapped = true;
+          history[fn] = wrapped;
         });
-        window.addEventListener('popstate', refresh);
+
+        window.addEventListener('popstate', () => schedule(true));
+        window.addEventListener('hashchange', () => schedule(true));
+        window.addEventListener('pageshow', () => schedule(true));
+        window.addEventListener('focus', () => schedule(false));
+        document.addEventListener('click', () => schedule(false), true);
+
+        if (document.body && typeof MutationObserver !== 'undefined') {
+          const observer = new MutationObserver(() => {
+            schedule(false);
+            scheduleFilter();
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+        }
+
+        window.__stripperPageChangePoll = setInterval(() => schedule(false), 500);
+        schedule(true);
+      }
+
+      function refreshForCurrentLocation(force) {
+        const href = location.href;
+        const changed = href !== state.observedLocationHref;
+        if (!force && !changed) return;
+        state.observedLocationHref = href;
+        if (!state.busy) syncUi();
+        filterBlockedProfilePosts();
+        if (ui.mode === 'column') rabbithole.resize();
+      }
+
+      function isBlockedFeedLocation() {
+        const parts = location.pathname.split('/').filter(Boolean);
+        if (!parts.length) return true;
+        const first = String(parts[0] || '').toLowerCase();
+        if (['best', 'hot', 'new', 'top', 'rising'].includes(first)) return true;
+        if (first === 'r') return parts.length >= 2 && !parts.some(part => String(part).toLowerCase() === 'comments');
+        return false;
+      }
+
+      function filterBlockedProfilePosts() {
+        const blocked = loadStripperBlockedUsers();
+        if (typeof rabbithole !== 'undefined' && rabbithole.hiddenProfileNames) {
+          rabbithole.hiddenProfileNames().forEach(name => blocked.add(name));
+        }
+        const hasBlocks = blocked.size > 0;
+        const shouldFilter = hasBlocks && isBlockedFeedLocation();
+        const candidates = document.querySelectorAll('shreddit-post, article, [data-testid="post-container"], div[data-click-id="background"], .Post');
+        candidates.forEach(post => {
+          if (!post || post.closest('#redditGuestPanel')) return;
+          const author = postAuthorName(post);
+          const hide = shouldFilter && author && blocked.has(author);
+          post.classList.toggle('stripperBlockedProfilePost', !!hide);
+          if (hide) post.setAttribute('data-stripper-blocked-author', author);
+          else post.removeAttribute('data-stripper-blocked-author');
+        });
+      }
+
+      function postAuthorName(post) {
+        if (!post) return '';
+        const attrAuthor = post.getAttribute && (post.getAttribute('author') || post.getAttribute('data-author'));
+        if (attrAuthor) return normalizeRedditUsername(attrAuthor);
+        const authorEl = post.querySelector && post.querySelector('[author], [data-author]');
+        const nestedAuthor = authorEl && (authorEl.getAttribute('author') || authorEl.getAttribute('data-author'));
+        if (nestedAuthor) return normalizeRedditUsername(nestedAuthor);
+        const links = post.querySelectorAll ? post.querySelectorAll('a[href*="/user/"], a[href*="/u/"]') : [];
+        for (const link of links) {
+          const name = profileNameFromHref(link.href || link.getAttribute('href') || '');
+          if (name) return name;
+        }
+        return '';
       }
 
       // Drag the whole window by its header. Mirrors the rabbithole window's old
@@ -964,6 +1104,11 @@
         return !!(id && rabbithole.hasNode(id));
       }
 
+      function isProfileBlocked(username) {
+        const name = normalizeRedditUsername(username);
+        return !!(name && loadStripperBlockedUsers().has(name));
+      }
+
       function postDatePlaceholder() {
         const keys = state.posts
           .map(post => stripperDateKeyFromUnix(post.createdUtc))
@@ -985,6 +1130,8 @@
         const hasPages = state.pages.length > 0;
         const isPostScan = state.scanType === 'post';
         const isProfileScan = state.scanType === 'profile';
+        const canBlockProfile = !!(context && context.type === 'profile' && !currentSaved);
+        const profileBlocked = canBlockProfile && isProfileBlocked(context.username);
         ui.scanBtn.disabled = state.busy || (context && context.type === 'subreddit' && currentSaved);
         if (!state.busy) ui.scanBtn.textContent = scanButtonIdleLabel();
         // A single post just floats one "Download Post" button; the Posts/Pages
@@ -1011,6 +1158,9 @@
         ui.countLabel.textContent = state.countTextOverride ? `${base} · ${state.countTextOverride}` : base;
         ui.removeSavedBtn.hidden = !(context && currentSaved);
         ui.removeSavedBtn.disabled = state.busy;
+        ui.blockProfileBtn.hidden = !canBlockProfile;
+        ui.blockProfileBtn.disabled = state.busy;
+        ui.blockProfileBtn.textContent = profileBlocked ? 'Unblock Profile' : 'Block Profile';
       }
     
       function setBusy(busy, scanLabel) {
@@ -1380,6 +1530,34 @@
             ? `u/${context.username}`
             : `post ${context.postId}`;
         logLine(`Removed saved ${label}.`);
+        syncUi();
+      }
+
+      function toggleCurrentProfileBlock() {
+        if (state.busy) return;
+        const context = scanContextFromLocation();
+        if (!context || context.type !== 'profile' || isCurrentContextSaved(context)) {
+          logLine('Open an unsaved profile to block it.');
+          syncUi();
+          return;
+        }
+        const name = normalizeRedditUsername(context.username);
+        if (!name) {
+          logLine('Could not identify this profile.');
+          return;
+        }
+        const blocked = loadStripperBlockedUsers();
+        if (blocked.has(name)) {
+          blocked.delete(name);
+          saveStripperBlockedUsers(blocked);
+          logLine(`Unblocked u/${context.username}.`);
+        } else {
+          blocked.add(name);
+          saveStripperBlockedUsers(blocked);
+          logLine(`Blocked u/${context.username}; their posts will be hidden from feeds and subreddits.`);
+        }
+        filterBlockedProfilePosts();
+        if (rabbithole.refreshBlockedPanel) rabbithole.refreshBlockedPanel();
         syncUi();
       }
 
@@ -2489,6 +2667,18 @@
           return { nodes, edges };
         }
 
+        function hiddenProfileNames() {
+          const out = new Set();
+          loadGraph().nodes.forEach(n => {
+            if (!n || n.type !== 'user' || !n.scraped) return;
+            const fromId = String(n.id || '').replace(/^user:/, '');
+            const fromLabel = String(n.label || '').replace(/^u\//i, '');
+            const name = normalizeRedditUsername(fromId || fromLabel);
+            if (name) out.add(name);
+          });
+          return out;
+        }
+
         function countNodes() {
           let n = 0;
           for (const k of GM_listValues()) if (k.startsWith(NS + 'n:')) n++;
@@ -2714,6 +2904,16 @@
             #redditGuestPanel .rrm-btn.danger{background:rgba(255,69,0,.16);border-color:rgba(255,69,0,.5);}
             #redditGuestPanel .rrm-btn.danger:hover:not(:disabled){background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.7);}
             #redditGuestPanel .rrm-btn.icon{padding:0;width:28px;}
+            #rrm-blocked-panel{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;padding:8px 10px;
+              border-bottom:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.16);}
+            #rrm-blocked-panel[hidden]{display:none;}
+            #rrm-blocked-panel .rrm-blocked-empty{color:#8f8f98;font-size:11px;padding:2px 0;}
+            #rrm-blocked-panel .rrm-blocked-row{display:flex;align-items:center;gap:6px;}
+            #rrm-blocked-panel .rrm-blocked-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+              color:#f4f4f5;font-size:12px;font-weight:700;}
+            #redditGuestPanel #rrm-blocked-panel .rrm-blocked-action{flex:0 0 auto;width:auto;min-height:26px;padding:0 9px;
+              font-size:11px;background:rgba(255,255,255,.09);}
+            #redditGuestPanel #rrm-blocked-panel .rrm-blocked-action.rm{background:rgba(255,69,0,.16);border-color:rgba(255,69,0,.5);}
             #rrm-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 11px;
               border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:#a9a9b2;}
             #rrm-foot .rrm-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
@@ -2757,11 +2957,13 @@
           container.innerHTML = `
             <div id="rrm-toolbar">
               <input id="rrm-search" type="text" placeholder="Filter saved items…" autocomplete="off" spellcheck="false">
+              <button class="rrm-btn" data-act="blocked" title="Show blocked profiles">Blocked</button>
               <button class="rrm-btn" data-act="export" title="Download the saved list as a JSON backup">Export</button>
               <button class="rrm-btn" data-act="import" title="Merge a previously exported JSON file">Import</button>
-            <button class="rrm-btn danger" data-act="reset">Reset</button>
-            <input id="rrm-file" type="file" accept="application/json,.json" hidden>
+              <button class="rrm-btn danger" data-act="reset">Reset</button>
+              <input id="rrm-file" type="file" accept="application/json,.json" hidden>
             </div>
+            <div id="rrm-blocked-panel" hidden></div>
             <div id="rrm-columns"></div>
             <div id="rrm-foot">
               <span><span class="rrm-dot" style="background:${COLORS.sub}"></span>subreddit</span>
@@ -2775,6 +2977,7 @@
           const search = container.querySelector('#rrm-search');
           search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); renderGraph(); });
 
+          container.querySelector('[data-act="blocked"]').onclick = () => toggleBlockedPanel();
           container.querySelector('[data-act="reset"]').onclick = () => {
             if (confirm('Erase the entire saved list?')) { resetAll(); renderGraph(); }
           };
@@ -2787,6 +2990,62 @@
           });
 
           renderGraph();
+        }
+
+        function toggleBlockedPanel(force) {
+          if (!winEl) return;
+          const panel = winEl.querySelector('#rrm-blocked-panel');
+          if (!panel) return;
+          const show = typeof force === 'boolean' ? force : panel.hidden;
+          panel.hidden = !show;
+          if (show) renderBlockedPanel();
+        }
+
+        function renderBlockedPanel() {
+          if (!winEl) return;
+          const panel = winEl.querySelector('#rrm-blocked-panel');
+          if (!panel || panel.hidden) return;
+          const blocked = [...loadStripperBlockedUsers()].sort((a, b) => a.localeCompare(b));
+          panel.innerHTML = '';
+          if (!blocked.length) {
+            const empty = document.createElement('div');
+            empty.className = 'rrm-blocked-empty';
+            empty.textContent = 'No blocked profiles';
+            panel.appendChild(empty);
+            return;
+          }
+          blocked.forEach(name => {
+            const row = document.createElement('div');
+            row.className = 'rrm-blocked-row';
+
+            const label = document.createElement('span');
+            label.className = 'rrm-blocked-name';
+            label.textContent = `u/${name}`;
+
+            const open = document.createElement('button');
+            open.className = 'rrm-blocked-action';
+            open.type = 'button';
+            open.textContent = 'Open';
+            open.addEventListener('click', () => openNodeNewTab(`https://www.reddit.com/user/${encodeURIComponent(name)}/`));
+
+            const unblock = document.createElement('button');
+            unblock.className = 'rrm-blocked-action rm';
+            unblock.type = 'button';
+            unblock.textContent = 'Unblock';
+            unblock.addEventListener('click', () => {
+              const users = loadStripperBlockedUsers();
+              users.delete(name);
+              saveStripperBlockedUsers(users);
+              filterBlockedProfilePosts();
+              syncUi();
+              renderBlockedPanel();
+            });
+
+            row.appendChild(label);
+            row.appendChild(open);
+            row.appendChild(unblock);
+            panel.appendChild(row);
+          });
         }
 
         // Saved view always uses the column layout.
@@ -2810,6 +3069,7 @@
           if (!winEl) return;
           const colsEl = winEl.querySelector('#rrm-columns');
           if (colsEl) colsEl.style.display = 'flex';
+          renderBlockedPanel();
 
           const g = loadGraph();
           const visible = getVisible(g.nodes);
@@ -2884,8 +3144,12 @@
           chk.type = 'checkbox';
           chk.className = 'rrm-row-chk';
           chk.checked = !!n.scraped;
-          chk.title = 'Cross off (mark scraped)';
-          chk.addEventListener('change', () => { setScraped(n.id, chk.checked); renderGraph(); });
+          chk.title = n.type === 'user' ? 'Hide this profile in feeds' : 'Cross off (mark scraped)';
+          chk.addEventListener('change', () => {
+            setScraped(n.id, chk.checked);
+            renderGraph();
+            if (n.type === 'user') filterBlockedProfilePosts();
+          });
 
           const link = document.createElement('a');
           link.className = 'rrm-row-link' + (n.visited ? '' : ' unvisited');
@@ -2941,7 +3205,7 @@
           }
         }
 
-        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType };
+        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, hiddenProfileNames, refreshBlockedPanel: renderBlockedPanel };
       })();
 
       if (window.__stripperRrmLoaded) { /* avoid double saved-list bootstrap if injected twice */ }
