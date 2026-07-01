@@ -8511,7 +8511,6 @@ function defaultOptions() {
     preloadNextMode: "on",
     videoEndBehavior: "loop",
     slideshowDefault: "cycle",
-    autoCropBlackBars: false,
     mediaFilter: "off",
     mediaFilterIntensity: 1,
     activeAppearancePresetId: "builtin-null",
@@ -9067,10 +9066,6 @@ function normalizeOptions(o) {
     imageThumbSize: "placeholder",
     videoThumbSize: "placeholder",
     filePaneViewMode: "list",
-    autoCropBlackBars:
-      typeof src.autoCropBlackBars === "boolean"
-        ? src.autoCropBlackBars
-        : d.autoCropBlackBars,
     forceTitleCaps:
       typeof src.forceTitleCaps === "boolean"
         ? src.forceTitleCaps
@@ -9554,7 +9549,6 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "videoAudio",
     "videoSkipStep",
     "videoEndBehavior",
-    "autoCropBlackBars",
   ]),
   thumbnails: Object.freeze(
     [
@@ -10969,6 +10963,37 @@ function resolveMediaOverlayConfigForTarget(target) {
   );
 }
 
+// resolveMediaOverlayConfigForTarget() allocates a fresh colorFilters array plus
+// several template strings on every call. drawSurface() calls it once per
+// rendered video frame (up to 60/sec for the preview pane), so during video
+// playback this runs continuously — steady per-frame allocation is exactly the
+// kind of pressure that leads to a GC pause showing up as a stuck frame (video
+// keeps decoding underneath; only the canvas redraw stalls for that pause).
+// A short TTL cache, keyed per WebGL surface, cuts the rebuild rate drastically
+// while staying well under the threshold where a live filter tweak would look
+// laggy (50ms is imperceptible against a ~16ms frame budget already gating on
+// requestRender).
+const OVERLAY_CONFIG_CACHE_TTL_MS = 50;
+function resolveMediaOverlayConfigForSurface(surface) {
+  if (!surface) return resolveMediaOverlayConfigForTarget(null);
+  const now =
+    typeof performance !== "undefined" && performance.now
+      ? performance.now()
+      : Date.now();
+  if (
+    surface._overlayCfgTarget === surface.target &&
+    surface._overlayCfgAt != null &&
+    now - surface._overlayCfgAt < OVERLAY_CONFIG_CACHE_TTL_MS
+  ) {
+    return surface._overlayCfgVal;
+  }
+  const cfg = resolveMediaOverlayConfigForTarget(surface.target);
+  surface._overlayCfgTarget = surface.target;
+  surface._overlayCfgAt = now;
+  surface._overlayCfgVal = cfg;
+  return cfg;
+}
+
 function resolveFolderOnlyMediaOverlayConfigForTarget(target) {
   if (!mediaProcessingEnabledForTarget(target)) return null;
   const dirPath = resolveDirPathForAppearanceTarget(target);
@@ -11128,324 +11153,6 @@ function capScaleForPixelBudget(width, height, maxPixels) {
   return clampNumber(Math.sqrt(max / pixels), 0.1, 1, 1);
 }
 
-function autoCropBlackBarsEnabled(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !!(src && src.autoCropBlackBars);
-}
-
-const AutoBlackBarCrop = (() => {
-  const imageCache = new Map();
-  const videoCache = new Map();
-  const videoPending = new Map();
-  const analysisCanvas = document.createElement("canvas");
-  const analysisCtx = analysisCanvas.getContext("2d", {
-    willReadFrequently: true,
-  });
-
-  function buildKey(type, mediaEl) {
-    const src = String((mediaEl && (mediaEl.currentSrc || mediaEl.src)) || "").trim();
-    if (!src) return "";
-    return `${type}:${src}`;
-  }
-
-  function isMeaningfulCrop(crop) {
-    if (!crop) return false;
-    return !!(crop.left > 0.0005 || crop.right > 0.0005 || crop.top > 0.0005 || crop.bottom > 0.0005);
-  }
-
-  function sanitizeCrop(crop) {
-    if (!crop) return null;
-    const left = clampNumber(Number(crop.left) || 0, 0, 0.45, 0);
-    const right = clampNumber(Number(crop.right) || 0, 0, 0.45, 0);
-    const top = clampNumber(Number(crop.top) || 0, 0, 0.45, 0);
-    const bottom = clampNumber(Number(crop.bottom) || 0, 0, 0.45, 0);
-    if (left + right >= 0.9 || top + bottom >= 0.9) return null;
-    const out = { left, right, top, bottom };
-    return isMeaningfulCrop(out) ? out : null;
-  }
-
-  function resizeAnalysisCanvas(srcW, srcH) {
-    const maxEdge = 256;
-    const longest = Math.max(1, srcW || 1, srcH || 1);
-    const scale = Math.min(1, maxEdge / longest);
-    const w = Math.max(1, Math.round((srcW || 1) * scale));
-    const h = Math.max(1, Math.round((srcH || 1) * scale));
-    if (analysisCanvas.width !== w) analysisCanvas.width = w;
-    if (analysisCanvas.height !== h) analysisCanvas.height = h;
-    analysisCtx.setTransform(1, 0, 0, 1, 0, 0);
-    analysisCtx.clearRect(0, 0, w, h);
-    analysisCtx.imageSmoothingEnabled = true;
-    analysisCtx.filter = "none";
-    return { w, h };
-  }
-
-  function pixelLooksBlack(r, g, b, a) {
-    if (a < 24) return false;
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const luma = r * 0.299 + g * 0.587 + b * 0.114;
-    return luma <= 24 && max - min <= 24;
-  }
-
-  function rowIsBlack(data, w, h, y, x0, x1) {
-    const startX = Math.max(0, Math.min(w - 1, x0 | 0));
-    const endX = Math.max(startX + 1, Math.min(w, x1 | 0));
-    let dark = 0;
-    let total = 0;
-    for (let x = startX; x < endX; x++) {
-      const idx = (y * w + x) * 4;
-      total++;
-      if (pixelLooksBlack(data[idx], data[idx + 1], data[idx + 2], data[idx + 3])) dark++;
-    }
-    return total > 0 && dark / total >= 0.985;
-  }
-
-  function colIsBlack(data, w, h, x, y0, y1) {
-    const startY = Math.max(0, Math.min(h - 1, y0 | 0));
-    const endY = Math.max(startY + 1, Math.min(h, y1 | 0));
-    let dark = 0;
-    let total = 0;
-    for (let y = startY; y < endY; y++) {
-      const idx = (y * w + x) * 4;
-      total++;
-      if (pixelLooksBlack(data[idx], data[idx + 1], data[idx + 2], data[idx + 3])) dark++;
-    }
-    return total > 0 && dark / total >= 0.985;
-  }
-
-  function detectCropFromCurrentAnalysisCanvas() {
-    const w = analysisCanvas.width | 0;
-    const h = analysisCanvas.height | 0;
-    if (!w || !h) return null;
-    let imageData = null;
-    try {
-      imageData = analysisCtx.getImageData(0, 0, w, h);
-    } catch {
-      return null;
-    }
-    const data = imageData && imageData.data ? imageData.data : null;
-    if (!data) return null;
-    const xMargin = Math.max(1, Math.floor(w * 0.08));
-    const yMargin = Math.max(1, Math.floor(h * 0.08));
-    const maxTop = Math.floor(h * 0.35);
-    const maxBottom = Math.floor(h * 0.35);
-    const maxLeft = Math.floor(w * 0.35);
-    const maxRight = Math.floor(w * 0.35);
-
-    let top = 0;
-    while (top < maxTop && rowIsBlack(data, w, h, top, xMargin, w - xMargin)) top++;
-    let bottom = 0;
-    while (bottom < maxBottom && rowIsBlack(data, w, h, h - 1 - bottom, xMargin, w - xMargin)) bottom++;
-
-    const y0 = Math.max(top, yMargin);
-    const y1 = Math.min(h - bottom, h - yMargin);
-    let left = 0;
-    while (left < maxLeft && colIsBlack(data, w, h, left, y0, y1)) left++;
-    let right = 0;
-    while (right < maxRight && colIsBlack(data, w, h, w - 1 - right, y0, y1)) right++;
-
-    const minTopBottom = Math.max(2, Math.round(h * 0.01));
-    const minLeftRight = Math.max(2, Math.round(w * 0.01));
-    if (top < minTopBottom) top = 0;
-    if (bottom < minTopBottom) bottom = 0;
-    if (left < minLeftRight) left = 0;
-    if (right < minLeftRight) right = 0;
-
-    return sanitizeCrop({
-      left: left / w,
-      right: right / w,
-      top: top / h,
-      bottom: bottom / h,
-    });
-  }
-
-  function analyzeDrawable(drawSource, srcW, srcH) {
-    if (!drawSource || !(srcW > 0) || !(srcH > 0)) return null;
-    const dims = resizeAnalysisCanvas(srcW, srcH);
-    try {
-      analysisCtx.drawImage(drawSource, 0, 0, dims.w, dims.h);
-    } catch {
-      return null;
-    }
-    return detectCropFromCurrentAnalysisCanvas();
-  }
-
-  function getImageCrop(mediaEl, drawSource, srcW, srcH) {
-    if (!autoCropBlackBarsEnabled()) return null;
-    const key = buildKey("image", mediaEl);
-    if (!key) return null;
-    if (imageCache.has(key)) return imageCache.get(key) || null;
-    const crop = analyzeDrawable(drawSource || mediaEl, srcW, srcH);
-    imageCache.set(key, crop || null);
-    return crop || null;
-  }
-
-  function combineVideoSampleCrop(base, next) {
-    const incoming = next || { left: 0, right: 0, top: 0, bottom: 0 };
-    if (!base) {
-      return { left: incoming.left || 0, right: incoming.right || 0, top: incoming.top || 0, bottom: incoming.bottom || 0 };
-    }
-    return {
-      left: Math.min(base.left || 0, incoming.left || 0),
-      right: Math.min(base.right || 0, incoming.right || 0),
-      top: Math.min(base.top || 0, incoming.top || 0),
-      bottom: Math.min(base.bottom || 0, incoming.bottom || 0),
-    };
-  }
-
-  function videoSampleTimes(duration) {
-    if (!(duration > 0) || !Number.isFinite(duration)) return [0];
-    const pad = Math.min(0.25, duration * 0.05);
-    const safeEnd = Math.max(0, duration - pad);
-    const raw = [0.1, 0.3, 0.5, 0.7, 0.9].map((pct) => clampNumber(duration * pct, 0, safeEnd, 0));
-    const out = [];
-    for (let i = 0; i < raw.length; i++) {
-      const t = Number(raw[i]) || 0;
-      if (!out.some((v) => Math.abs(v - t) < 0.08)) out.push(t);
-    }
-    return out.length ? out : [0];
-  }
-
-  function waitForEventOnce(target, eventName, timeoutMs = 12000) {
-    return new Promise((resolve, reject) => {
-      if (!target) {
-        reject(new Error("no_target"));
-        return;
-      }
-      let settled = false;
-      let timer = null;
-      const cleanup = () => {
-        if (timer) clearTimeout(timer);
-        target.removeEventListener(eventName, onDone);
-        target.removeEventListener("error", onError);
-      };
-      const onDone = () => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve();
-      };
-      const onError = () => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error("event_error"));
-      };
-      timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error("event_timeout"));
-      }, Math.max(1000, timeoutMs | 0));
-      target.addEventListener(eventName, onDone, { once: true });
-      target.addEventListener("error", onError, { once: true });
-    });
-  }
-
-  async function seekVideo(video, time) {
-    const nextTime = Math.max(0, Number(time) || 0);
-    if (Math.abs((Number(video.currentTime) || 0) - nextTime) < 0.05 && video.readyState >= 2) return;
-    const seekPromise = waitForEventOnce(video, "seeked", 12000);
-    try {
-      video.currentTime = nextTime;
-    } catch {
-      throw new Error("seek_failed");
-    }
-    await seekPromise;
-  }
-
-  async function analyzeVideoKey(key, src) {
-    const video = document.createElement("video");
-    prepareMediaElementForCanvas(video);
-    video.muted = true;
-    video.defaultMuted = true;
-    video.playsInline = true;
-    video.preload = "auto";
-    try {
-      video.src = src;
-      try { video.load(); } catch {}
-      if (video.readyState < 2) await waitForEventOnce(video, "loadeddata", 12000);
-      const srcW = Number(video.videoWidth) || 0;
-      const srcH = Number(video.videoHeight) || 0;
-      if (!(srcW > 0) || !(srcH > 0)) {
-        videoCache.set(key, null);
-        return null;
-      }
-      const times = videoSampleTimes(Number(video.duration) || 0);
-      let combined = null;
-      for (let i = 0; i < times.length; i++) {
-        await seekVideo(video, times[i]);
-        const crop = analyzeDrawable(video, srcW, srcH);
-        combined = combineVideoSampleCrop(combined, crop);
-      }
-      const resolved = sanitizeCrop(combined);
-      videoCache.set(key, resolved || null);
-      return resolved || null;
-    } catch {
-      videoCache.set(key, null);
-      return null;
-    } finally {
-      try { video.pause(); } catch {}
-      try { video.removeAttribute("src"); video.load(); } catch {}
-    }
-  }
-
-  function getVideoCrop(mediaEl) {
-    if (!autoCropBlackBarsEnabled()) return null;
-    const key = buildKey("video", mediaEl);
-    if (!key) return null;
-    if (videoCache.has(key)) return videoCache.get(key) || null;
-    if (!videoPending.has(key)) {
-      const src = String((mediaEl && (mediaEl.currentSrc || mediaEl.src)) || "").trim();
-      if (!src) return null;
-      const promise = analyzeVideoKey(key, src)
-        .catch(() => null)
-        .finally(() => {
-          videoPending.delete(key);
-          try { MediaFilterEngine.requestRender(); } catch {}
-        });
-      videoPending.set(key, promise);
-    }
-    return null;
-  }
-
-  function cropRectFromRatios(srcW, srcH, crop) {
-    const normalized = sanitizeCrop(crop);
-    if (!normalized) return null;
-    const left = Math.round(srcW * normalized.left);
-    const right = Math.round(srcW * normalized.right);
-    const top = Math.round(srcH * normalized.top);
-    const bottom = Math.round(srcH * normalized.bottom);
-    const sx = clampNumber(left, 0, Math.max(0, srcW - 1), 0);
-    const sy = clampNumber(top, 0, Math.max(0, srcH - 1), 0);
-    const ex = clampNumber(srcW - right, sx + 1, srcW, srcW);
-    const ey = clampNumber(srcH - bottom, sy + 1, srcH, srcH);
-    return { sx, sy, sw: Math.max(1, ex - sx), sh: Math.max(1, ey - sy) };
-  }
-
-  function applyCropRatiosToRect(srcW, srcH, rect, crop) {
-    const cropRect = cropRectFromRatios(srcW, srcH, crop);
-    if (!cropRect) return rect;
-    const base = rect || { sx: 0, sy: 0, sw: srcW, sh: srcH };
-    const x0 = Math.max(Number(base.sx) || 0, cropRect.sx);
-    const y0 = Math.max(Number(base.sy) || 0, cropRect.sy);
-    const x1 = Math.min((Number(base.sx) || 0) + (Number(base.sw) || srcW), cropRect.sx + cropRect.sw);
-    const y1 = Math.min((Number(base.sy) || 0) + (Number(base.sh) || srcH), cropRect.sy + cropRect.sh);
-    return { sx: x0, sy: y0, sw: Math.max(1, x1 - x0), sh: Math.max(1, y1 - y0) };
-  }
-
-  function getCropForSurface(surface, drawSource, srcW, srcH) {
-    if (!surface || !autoCropBlackBarsEnabled()) return null;
-    if (surface.type === "video") return getVideoCrop(surface.mediaEl);
-    return getImageCrop(surface.mediaEl, drawSource, srcW, srcH);
-  }
-
-  return {
-    enabled: autoCropBlackBarsEnabled,
-    getCropForSurface,
-    applyCropRatiosToRect,
-  };
-})();
 
 function anyMediaFilterEnabled() {
   if (
@@ -11600,250 +11307,6 @@ function applyRoundedCornerMask(ctx, rect, radius) {
   ctx.fillStyle = "#000";
   ctx.fill();
   ctx.restore();
-}
-
-const VIDEO_BLACK_BAR_DETECT = Object.freeze({
-  sampleMax: 320,
-  nearBlackMax: 24,
-  blackRatioMin: 0.985,
-  maxSideFrac: 0.42,
-  minSideFrac: 0.05,
-  symmetryTolFrac: 0.04,
-  centerMinLuma: 24,
-  contrastMinLuma: 10,
-});
-
-function normalizeVideoCrop(crop) {
-  if (!crop || typeof crop !== "object") return null;
-  const left = clampNumber(crop.left, 0, 0.49, 0);
-  const right = clampNumber(crop.right, 0, 0.49, 0);
-  const top = clampNumber(crop.top, 0, 0.49, 0);
-  const bottom = clampNumber(crop.bottom, 0, 0.49, 0);
-  if (left + right >= 0.92) return null;
-  if (top + bottom >= 0.92) return null;
-  if (!(left > 0 || right > 0 || top > 0 || bottom > 0)) return null;
-  return { left, right, top, bottom };
-}
-
-function hasVideoCrop(crop) {
-  const c = normalizeVideoCrop(crop);
-  return !!c;
-}
-
-function videoAutoBlackBarTrimEnabled(opt = null) {
-  return false;
-}
-
-function getVideoCropForRecord(rec) {
-  return null;
-}
-
-function getVideoCropForTarget(target) {
-  if (!target || typeof target !== "object") return null;
-  return getVideoCropForRecord(target);
-}
-
-function computeCroppedSourceRect(srcW, srcH, crop) {
-  const c = normalizeVideoCrop(crop);
-  if (!c || !(srcW > 0) || !(srcH > 0)) {
-    return { sx: 0, sy: 0, sw: srcW, sh: srcH };
-  }
-  const sx = Math.max(0, Math.min(srcW - 1, Math.round(srcW * c.left)));
-  const sy = Math.max(0, Math.min(srcH - 1, Math.round(srcH * c.top)));
-  const ex = Math.max(sx + 1, Math.min(srcW, Math.round(srcW * (1 - c.right))));
-  const ey = Math.max(
-    sy + 1,
-    Math.min(srcH, Math.round(srcH * (1 - c.bottom))),
-  );
-  return {
-    sx,
-    sy,
-    sw: Math.max(1, ex - sx),
-    sh: Math.max(1, ey - sy),
-  };
-}
-
-function detectStaticVideoBlackBars(videoEl) {
-  const w = Number(videoEl?.videoWidth || 0);
-  const h = Number(videoEl?.videoHeight || 0);
-  if (!(w > 32 && h > 32)) return null;
-
-  const maxDim = VIDEO_BLACK_BAR_DETECT.sampleMax;
-  const scale = Math.min(1, maxDim / Math.max(w, h));
-  const sw = Math.max(32, Math.round(w * scale));
-  const sh = Math.max(32, Math.round(h * scale));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = sw;
-  canvas.height = sh;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  try {
-    ctx.drawImage(videoEl, 0, 0, sw, sh);
-  } catch {
-    return null;
-  }
-
-  let imageData = null;
-  try {
-    imageData = ctx.getImageData(0, 0, sw, sh);
-  } catch {
-    return null;
-  }
-  const data = imageData.data;
-  const nearBlackMax = VIDEO_BLACK_BAR_DETECT.nearBlackMax;
-  const ratioMin = VIDEO_BLACK_BAR_DETECT.blackRatioMin;
-
-  const rowStats = (y) => {
-    let nearBlack = 0;
-    let lumaSum = 0;
-    const base = y * sw * 4;
-    for (let x = 0; x < sw; x++) {
-      const i = base + x * 4;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const maxC = Math.max(r, g, b);
-      if (maxC <= nearBlackMax) nearBlack++;
-      lumaSum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
-    return {
-      ratio: nearBlack / sw,
-      luma: lumaSum / sw,
-    };
-  };
-
-  const colStats = (x) => {
-    let nearBlack = 0;
-    let lumaSum = 0;
-    for (let y = 0; y < sh; y++) {
-      const i = (y * sw + x) * 4;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const maxC = Math.max(r, g, b);
-      if (maxC <= nearBlackMax) nearBlack++;
-      lumaSum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
-    return {
-      ratio: nearBlack / sh,
-      luma: lumaSum / sh,
-    };
-  };
-
-  const limitTopBottom = Math.max(
-    1,
-    Math.floor(sh * VIDEO_BLACK_BAR_DETECT.maxSideFrac),
-  );
-  const limitLeftRight = Math.max(
-    1,
-    Math.floor(sw * VIDEO_BLACK_BAR_DETECT.maxSideFrac),
-  );
-
-  let topPx = 0;
-  while (topPx < limitTopBottom) {
-    const s = rowStats(topPx);
-    if (s.ratio >= ratioMin && s.luma <= nearBlackMax) topPx++;
-    else break;
-  }
-  let bottomPx = 0;
-  while (bottomPx < limitTopBottom) {
-    const s = rowStats(sh - 1 - bottomPx);
-    if (s.ratio >= ratioMin && s.luma <= nearBlackMax) bottomPx++;
-    else break;
-  }
-  let leftPx = 0;
-  while (leftPx < limitLeftRight) {
-    const s = colStats(leftPx);
-    if (s.ratio >= ratioMin && s.luma <= nearBlackMax) leftPx++;
-    else break;
-  }
-  let rightPx = 0;
-  while (rightPx < limitLeftRight) {
-    const s = colStats(sw - 1 - rightPx);
-    if (s.ratio >= ratioMin && s.luma <= nearBlackMax) rightPx++;
-    else break;
-  }
-
-  const minTopBottom = Math.max(
-    4,
-    Math.round(sh * VIDEO_BLACK_BAR_DETECT.minSideFrac),
-  );
-  const minLeftRight = Math.max(
-    4,
-    Math.round(sw * VIDEO_BLACK_BAR_DETECT.minSideFrac),
-  );
-  const symY = Math.max(
-    4,
-    Math.round(sh * VIDEO_BLACK_BAR_DETECT.symmetryTolFrac),
-  );
-  const symX = Math.max(
-    4,
-    Math.round(sw * VIDEO_BLACK_BAR_DETECT.symmetryTolFrac),
-  );
-
-  if (
-    topPx < minTopBottom ||
-    bottomPx < minTopBottom ||
-    Math.abs(topPx - bottomPx) > symY
-  ) {
-    topPx = 0;
-    bottomPx = 0;
-  }
-  if (
-    leftPx < minLeftRight ||
-    rightPx < minLeftRight ||
-    Math.abs(leftPx - rightPx) > symX
-  ) {
-    leftPx = 0;
-    rightPx = 0;
-  }
-
-  if (!(topPx || bottomPx || leftPx || rightPx)) return null;
-
-  const contentX = leftPx;
-  const contentY = topPx;
-  const contentW = sw - leftPx - rightPx;
-  const contentH = sh - topPx - bottomPx;
-  if (contentW < 16 || contentH < 16) return null;
-
-  let contentLumaSum = 0;
-  let contentSamples = 0;
-  const xStep = Math.max(1, Math.floor(contentW / 64));
-  const yStep = Math.max(1, Math.floor(contentH / 64));
-  for (let y = contentY; y < contentY + contentH; y += yStep) {
-    for (let x = contentX; x < contentX + contentW; x += xStep) {
-      const i = (y * sw + x) * 4;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      contentLumaSum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      contentSamples++;
-    }
-  }
-  const contentLuma = contentSamples ? contentLumaSum / contentSamples : 0;
-  if (contentLuma < VIDEO_BLACK_BAR_DETECT.centerMinLuma) return null;
-  if (contentLuma - nearBlackMax < VIDEO_BLACK_BAR_DETECT.contrastMinLuma)
-    return null;
-
-  return normalizeVideoCrop({
-    left: leftPx / sw,
-    right: rightPx / sw,
-    top: topPx / sh,
-    bottom: bottomPx / sh,
-  });
-}
-
-function updateVideoCropFromElement(rec, videoEl) {
-  return false;
-}
-
-function applyVideoCropToElement(videoEl, rec) {
-  if (!videoEl) return;
-  videoEl.style.removeProperty("clip-path");
-  videoEl.style.removeProperty("-webkit-clip-path");
-  videoEl.style.removeProperty("transform-origin");
-  videoEl.style.removeProperty("transform");
 }
 
 function getMediaFilterForType(target = undefined) {
@@ -13037,11 +12500,7 @@ function renderFilteredToCanvas(
       : allowFilters
         ? resolveMediaOverlayConfigForTarget(target)
         : null;
-  const sourceCrop = computeCroppedSourceRect(
-    srcW,
-    srcH,
-    getVideoCropForTarget(target),
-  );
+  const sourceCrop = { sx: 0, sy: 0, sw: srcW, sh: srcH };
   const croppedSrcW = Math.max(1, Number(sourceCrop.sw || srcW || 1));
   const croppedSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
   const drawCropped = (targetCtx, dx, dy, dw, dh) => {
@@ -13885,11 +13344,25 @@ const MediaFilterEngine = (() => {
           frameToken !== surface.videoFrameToken
         )
           return;
-        const overlayCfg = resolveMediaOverlayConfigForTarget(surface.target);
         const isPreviewSurface = String(surface.name || "") === "preview";
+        // The preview pane's maxFps is fixed at 60 regardless of overlay cost, so
+        // resolving the overlay config here would be pure waste (an allocation-
+        // heavy call — colorFilters array + several template strings — on EVERY
+        // native video frame callback, i.e. up to the clip's actual fps, not the
+        // throttled render fps). Skipping it for preview measurably cuts JS
+        // garbage during video playback, which otherwise risks a GC pause showing
+        // up as a stuck frame (the video keeps decoding underneath; only the
+        // canvas redraw stalls) — worse the longer/higher-fps the clip.
         const maxFps = isPreviewSurface
           ? 60
-          : Math.max(1, Number(mediaOverlayLiveVideoProfile(overlayCfg).maxFps) || 24);
+          : Math.max(
+              1,
+              Number(
+                mediaOverlayLiveVideoProfile(
+                  resolveMediaOverlayConfigForTarget(surface.target),
+                ).maxFps,
+              ) || 24,
+            );
         const intervalMs = 1000 / maxFps;
         const t = Number.isFinite(Number(now)) ? Number(now) : performance.now();
         if (surface.awaitingFreshFrame || !surface.nextVideoRenderAt || t >= surface.nextVideoRenderAt) {
@@ -13993,7 +13466,7 @@ const MediaFilterEngine = (() => {
   }
 
   function drawSurface(surface, time) {
-    let overlayCfg = resolveMediaOverlayConfigForTarget(surface.target);
+    let overlayCfg = resolveMediaOverlayConfigForSurface(surface);
     if (shouldPreferNativeGifPlayback(surface.target, overlayCfg)) {
       if (surface.canvas) {
         surface.canvas.style.display = "none";
@@ -14007,7 +13480,6 @@ const MediaFilterEngine = (() => {
       surface.awaitingFreshFrame = false;
       return false;
     }
-    if (!overlayCfg && AutoBlackBarCrop.enabled()) overlayCfg = EMPTY_MEDIA_OVERLAY_CONFIG;
     if (!overlayCfg) {
       if (surface.canvas) {
         surface.canvas.style.display = "none";
@@ -14072,13 +13544,7 @@ const MediaFilterEngine = (() => {
     const ch = surface.container.clientHeight || 0;
     if (!cw || !ch || !(srcW > 0) || !(srcH > 0)) return false;
 
-    let sourceCrop = isVideo
-      ? computeCroppedSourceRect(srcW, srcH, getVideoCropForTarget(surface.target))
-      : { sx: 0, sy: 0, sw: srcW, sh: srcH };
-    const autoBarCrop = AutoBlackBarCrop.getCropForSurface(surface, drawSource, srcW, srcH);
-    if (autoBarCrop) {
-      sourceCrop = AutoBlackBarCrop.applyCropRatiosToRect(srcW, srcH, sourceCrop, autoBarCrop);
-    }
+    const sourceCrop = { sx: 0, sy: 0, sw: srcW, sh: srcH };
     const croppedSrcW = Math.max(1, Number(sourceCrop.sw || srcW || 1));
     const croppedSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
     const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
@@ -14941,14 +14407,9 @@ function mediaFilterEnabled() {
   return anyMediaFilterEnabled();
 }
 
-function shouldPreferNativeGifPlayback(target = undefined, overlayCfg = undefined) {
+function shouldPreferNativeGifPlayback(target = undefined) {
   if (!isGifRecord(target)) return false;
-  if (gifsIgnoreProcessingEnabled()) return true;
-  const cfg =
-    typeof overlayCfg === "undefined"
-      ? resolveMediaOverlayConfigForTarget(target)
-      : overlayCfg;
-  return !cfg && autoCropBlackBarsEnabled();
+  return gifsIgnoreProcessingEnabled();
 }
 
 function formatBytes(bytes) {
@@ -14989,7 +14450,7 @@ function syncMediaFilterSurface(
     return;
   }
   const needsProcessingPipeline =
-    mediaOverlayConfigHasVisualEffect(overlayCfg) || autoCropBlackBarsEnabled();
+    mediaOverlayConfigHasVisualEffect(overlayCfg);
   if (!needsProcessingPipeline) {
     mediaEl.classList.remove("mediaHidden");
     MediaFilterEngine.detach(surfaceName);
@@ -15032,8 +14493,7 @@ function clearMediaFilterSurface(surfaceName, mediaEl) {
 function shouldHoldPreviewFilteredFrameForTarget(target) {
   if (!target || !anyMediaFilterEnabled()) return false;
   if (shouldPreferNativeGifPlayback(target)) return false;
-  if (!resolveMediaOverlayConfigForTarget(target) && !autoCropBlackBarsEnabled())
-    return false;
+  if (!resolveMediaOverlayConfigForTarget(target)) return false;
   return MediaFilterEngine.hasSurfaceDrawn("preview");
 }
 
@@ -17586,7 +17046,6 @@ function clearQuadPlaybackSlot(slot) {
   slot.videoEl.classList.remove("ready");
   slot.videoEl.volume = 0;
   slot.videoEl.muted = true;
-  applyVideoCropToElement(slot.videoEl, null);
   clearPendingFilmCornerMask(slot.videoEl);
   clearMediaFilterSurface(slot.surfaceName, slot.videoEl);
 }
@@ -20219,7 +19678,6 @@ ${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when medi
       rows: `
 ${makeSelectRow("Video skip step", "How far left/right seek jumps move videos.", "opt_videoSkipStep", String(opt.videoSkipStep || "5"), videoSkipModes)}
 ${makeSelectRow("Video end behavior", "What to do when a video reaches the end.", "opt_videoEndBehavior", String(opt.videoEndBehavior || "loop"), videoEndModes)}
-${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges of images and videos and crop them out before overlays or filters are applied. Videos sample multiple moments and only crop bars that stay present the whole time.", "opt_autoCropBlackBars", !!opt.autoCropBlackBars)}
           `,
     },
   };
@@ -20828,9 +20286,6 @@ ${makeCheckRow("Crop persistent black bars", "Detect black bars around the edges
     el.addEventListener("keydown", (e) => e.stopPropagation());
   };
 
-  bindCheck("opt_autoCropBlackBars", "autoCropBlackBars", () => {
-    MediaFilterEngine.requestRender();
-  });
   bindCheck("opt_showHiddenFolder", "showHiddenFolder", () => {
     invalidateHiddenVisibilityState();
     if (!showHiddenFolderEnabled() && WS.view.tagFolderActiveMode === "hidden") {
@@ -21291,7 +20746,6 @@ const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
     "videoSkipStep",
     "videoEndBehavior",
     "slideshowDefault",
-    "autoCropBlackBars",
   ]),
   filenames: Object.freeze([
     "forceTitleCaps",
@@ -34122,7 +33576,6 @@ function resolveTagEntryBaseNode(entry) {
 function openTagFolderEntry(entry) {
   if (!entry) return;
   FAST_NAV.mark();
-  NAV_PERF.tick("tagAlbum:open");
   noteResponsiveNavigationInteraction("tag-album-open", RESPONSIVE_NAV_TAG_ALBUM_MS);
   if (entry.placeholder) return;
   const baseNode = resolveTagEntryBaseNode(entry);
@@ -36482,7 +35935,6 @@ function enterSelectedDirectory() {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
   FAST_NAV.mark();
-  NAV_PERF.tick("folder:enter");
   WS.view.previewFolderBridgeReturnState = null;
 
   // When called from the grid, keep selection active in the preview pane.
@@ -36655,7 +36107,6 @@ function leaveDirectory() {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
   FAST_NAV.mark();
-  NAV_PERF.tick("folder:close");
   WS.view.previewFolderBridgeReturnState = null;
 
   if (WS.view.aboveRootView) return;
@@ -46270,7 +45721,6 @@ async function navigateToDirectory(node) {
   clearBulkTagPlaceholder();
   if (!node) return;
   FAST_NAV.mark();
-  NAV_PERF.tick("folder:open");
   if (isStorageStubDirNode(node)) {
     showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
     return;
@@ -47884,7 +47334,6 @@ function renderPreviewViewerItem(idx) {
     if (!willShowVideo) {
       previewVideoEl.style.display = "none";
       delete previewVideoEl.dataset.previewFileId;
-      applyVideoCropToElement(previewVideoEl, null);
     }
     clearPendingFilmCornerMask(previewVideoEl);
   }
@@ -48014,13 +47463,6 @@ function renderPreviewViewerItem(idx) {
       previewVideoEl.loop = false;
     }
     const handlePreviewVideoReady = () => {
-      if (updateVideoCropFromElement(rec, previewVideoEl)) {
-        applyVideoCropToElement(previewVideoEl, rec);
-        kickVideoThumbsForPreview();
-        if (VIEWER_MODE) renderViewerItem(viewerIndex);
-      } else {
-        applyVideoCropToElement(previewVideoEl, rec);
-      }
       if (shouldAutoPlay && previewVideoEl.paused) {
         try {
           const playPromise = previewVideoEl.play();
@@ -48049,7 +47491,6 @@ function renderPreviewViewerItem(idx) {
     previewVideoEl.dataset.previewFileId = String(rec.id || "");
     if (shouldAutoPlay && !keepPreviewVideoElement) previewVideoEl.classList.remove("ready");
     else if (!shouldAutoPlay) previewVideoEl.classList.add("ready");
-    applyVideoCropToElement(previewVideoEl, rec);
     const src = ensureMediaUrl(rec) || "";
     if (!src) {
       showPreviewViewportMessage("Could not load video", rec.relPath || rec.name || "");
@@ -48102,13 +47543,6 @@ function renderPreviewViewerItem(idx) {
         if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
         if (!shouldAutoPlay || !previewVideoEl.paused)
           previewVideoEl.classList.add("ready");
-        if (updateVideoCropFromElement(rec, previewVideoEl)) {
-          applyVideoCropToElement(previewVideoEl, rec);
-          kickVideoThumbsForPreview();
-          if (VIEWER_MODE) renderViewerItem(viewerIndex);
-        } else {
-          applyVideoCropToElement(previewVideoEl, rec);
-        }
       });
     }
     if (shouldAutoPlay) {
@@ -48997,7 +48431,6 @@ function renderMarkdownToHtml(src) {
 }
 
 function renderPreviewPane(animate = false, keepScroll = false) {
-  NAV_PERF.tick("preview:render");
   clearPreviewFileVirtualizers();
   syncThumbFilterKeyWithCurrentAppearanceContext();
   const previewRenderToken = nextPreviewFilesRenderToken();
@@ -52527,7 +51960,6 @@ function hideOverlay() {
       viewerVideoEl.load();
     } catch {}
     viewerVideoEl.dataset.playbackSrc = "";
-    applyVideoCropToElement(viewerVideoEl, null);
     viewerVideoEl.classList.remove("ready");
     viewerVideoEl.classList.remove("mediaHidden");
     clearPendingFilmCornerMask(viewerVideoEl);
@@ -52890,7 +52322,6 @@ function renderQuadPlaybackView() {
     } catch {}
     viewerVideoEl.classList.remove("ready");
     viewerVideoEl.style.display = "none";
-    applyVideoCropToElement(viewerVideoEl, null);
     clearPendingFilmCornerMask(viewerVideoEl);
   }
   if (viewerImgEl) {
@@ -52931,17 +52362,10 @@ function renderQuadPlaybackView() {
     slot.videoEl.onended = null;
     slot.videoEl.onloadeddata = () => {
       slot.videoEl.classList.add("ready");
-      if (updateVideoCropFromElement(rec, slot.videoEl)) {
-        applyVideoCropToElement(slot.videoEl, rec);
-        kickVideoThumbsForPreview();
-        renderPreviewPane(false, true);
-      } else {
-        applyVideoCropToElement(slot.videoEl, rec);
-      }
+      MediaFilterEngine.requestRender();
     };
 
     applyVideoPoster(slot.videoEl, rec);
-    applyVideoCropToElement(slot.videoEl, rec);
     applyPendingFilmCornerMask(slot.videoEl, rec.dirPath || "");
     const src = ensureMediaUrl(rec) || "";
     const same = slot.videoEl.src === src;
@@ -52965,13 +52389,7 @@ function renderQuadPlaybackView() {
       requestAnimationFrame(() => {
         if (slot.videoEl.dataset.quadFileId !== slot.fileId) return;
         slot.videoEl.classList.add("ready");
-        if (updateVideoCropFromElement(rec, slot.videoEl)) {
-          applyVideoCropToElement(slot.videoEl, rec);
-          kickVideoThumbsForPreview();
-          renderPreviewPane(false, true);
-        } else {
-          applyVideoCropToElement(slot.videoEl, rec);
-        }
+        MediaFilterEngine.requestRender();
       });
     }
   }
@@ -53038,7 +52456,6 @@ function renderViewerItem(idx) {
     } catch {}
     viewerVideoEl.classList.remove("ready");
     viewerVideoEl.style.display = "none";
-    applyVideoCropToElement(viewerVideoEl, null);
     clearPendingFilmCornerMask(viewerVideoEl);
   }
   if (viewerImgEl) {
@@ -53150,18 +52567,10 @@ function renderViewerItem(idx) {
     }
     viewerVideoEl.onloadeddata = () => {
       viewerVideoEl.classList.add("ready");
-      if (updateVideoCropFromElement(rec, viewerVideoEl)) {
-        applyVideoCropToElement(viewerVideoEl, rec);
-        kickVideoThumbsForPreview();
-        renderPreviewPane(false, true);
-      } else {
-        applyVideoCropToElement(viewerVideoEl, rec);
-      }
       MediaFilterEngine.requestRender();
     };
 
     applyVideoPoster(viewerVideoEl, rec);
-    applyVideoCropToElement(viewerVideoEl, rec);
     const src = ensureMediaUrl(rec) || "";
     const same = viewerVideoEl.src === src;
     if (!same) {
@@ -53187,13 +52596,7 @@ function renderViewerItem(idx) {
         )
           return;
         viewerVideoEl.classList.add("ready");
-        if (updateVideoCropFromElement(rec, viewerVideoEl)) {
-          applyVideoCropToElement(viewerVideoEl, rec);
-          kickVideoThumbsForPreview();
-          renderPreviewPane(false, true);
-        } else {
-          applyVideoCropToElement(viewerVideoEl, rec);
-        }
+        MediaFilterEngine.requestRender();
       });
     }
     if (doAuto) {
@@ -56139,74 +55542,21 @@ function applyNaturalAspectThumbnailModeFromOptions() {
   if (root) root.removeAttribute("data-natural-thumb-cards");
 }
 
-/* === Instant-navigation instrumentation & shared state ================
+/* === Instant-navigation shared state ==================================
    Infrastructure shared by the passive-thumbnail loader, navigation entry
-   points, and the lead-preview discovery. Three concerns live here:
+   points, and the lead-preview discovery. Two concerns live here:
 
-     1. NAV_PERF  — lightweight timing markers that separate the distinct
-        phases of a navigation (state update, grid DOM render, metadata/count
-        work, thumbnail-target discovery, thumbnail media load/decode, video
-        thumb setup). Disabled by default (≈ zero cost); toggle at runtime with
-        `navPerf(true)` from the console or localStorage "lg-nav-perf" = "1".
-     2. PREVIEW_THUMB_TARGET_CACHE — remembers which file a folder/tag/album
+     1. PREVIEW_THUMB_TARGET_CACHE — remembers which file a folder/tag/album
         resolves to for its thumbnail, so repeated renders during navigation
         don't re-walk the subtree. Stores ids only, never media data.
-     3. FAST_NAV — detects rapid repeated navigation so the loader can cancel
+     2. FAST_NAV — detects rapid repeated navigation so the loader can cancel
         stale work, suppress placeholder churn, and defer non-visible video
         thumbnails until the user settles. */
-const NAV_PERF = {
-  enabled: false,
-  _lastLabel: "",
-  _lastT: 0,
-  now() {
-    return typeof performance !== "undefined" && performance.now
-      ? performance.now()
-      : Date.now();
-  },
-  setEnabled(on) {
-    this.enabled = !!on;
-    try {
-      localStorage.setItem("lg-nav-perf", this.enabled ? "1" : "0");
-    } catch {}
-    try {
-      console.info(`[nav-perf] ${this.enabled ? "enabled" : "disabled"}`);
-    } catch {}
-  },
-  // Mark a phase boundary; logs elapsed time since the previous tick so
-  // consecutive phases (folder:open -> render:grid -> thumbTargetDiscovery)
-  // are separated rather than lumped together.
-  tick(label) {
-    if (!this.enabled) return;
-    const t = this.now();
-    const delta = this._lastT ? t - this._lastT : 0;
-    try {
-      console.debug(
-        `[nav-perf] ${this._lastLabel || "(start)"} -> ${label}: ${delta.toFixed(1)}ms`,
-      );
-    } catch {}
-    this._lastLabel = label;
-    this._lastT = t;
-  },
-  // Time a synchronous span (e.g. thumbnail-target discovery) in isolation.
-  measure(label, fn) {
-    if (!this.enabled) return fn();
-    const t0 = this.now();
-    try {
-      return fn();
-    } finally {
-      try {
-        console.debug(`[nav-perf] ${label}: ${(this.now() - t0).toFixed(1)}ms`);
-      } catch {}
-    }
-  },
-};
-try {
-  if (localStorage.getItem("lg-nav-perf") === "1") NAV_PERF.enabled = true;
-} catch {}
-try {
-  window.navPerf = (on = true) => NAV_PERF.setEnabled(on);
-  window.NAV_PERF = NAV_PERF;
-} catch {}
+function navNow() {
+  return typeof performance !== "undefined" && performance.now
+    ? performance.now()
+    : Date.now();
+}
 
 // Resolved thumbnail-target decisions, keyed by "<thumbFilterKey>|<scope>"
 // where scope is a folder path, tag key, or album key. Values are file-id
@@ -56237,7 +55587,7 @@ const FAST_NAV = {
   active: false,
   // Record a navigation event. Returns true if we are now in a burst.
   mark() {
-    const t = NAV_PERF.now();
+    const t = navNow();
     const delta = t - this._last;
     this._last = t;
     if (delta < this.windowMs) this.active = true;
@@ -57103,18 +56453,6 @@ function startVideoThumbWarm() {
       if (rec && rec.type === "video") videoThumbCacheEnqueue(rec, { warm: true });
     }
   }, VIDEO_THUMB_WARM_DELAY_MS);
-}
-
-// Console diagnostic: progress of the video-thumbnail cache.
-function videoThumbCacheStats() {
-  return {
-    ready: VideoThumbCache.ready,
-    dir: videoThumbCacheDirAbsPath(),
-    cached: VideoThumbCache.files.size,
-    generating: VideoThumbCache.generating.size,
-    queuedHigh: VideoThumbCache.queueHigh.length,
-    queuedLow: VideoThumbCache.queueLow.length,
-  };
 }
 
 // Coalesced re-render so freshly-cached tiles swap from live <video> to <img>.
@@ -58543,9 +57881,7 @@ function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
       }
     }
   }
-  const recursivePool = NAV_PERF.measure("thumbTargetDiscovery", () =>
-    getRecursivePreviewRecordsForDir(dirNode, 72, true),
-  );
+  const recursivePool = getRecursivePreviewRecordsForDir(dirNode, 72, true);
   const directRec = getFirstDirectPreviewRecordForDir(dirNode);
   if (naturalAspectThumbnailCardsEnabled()) {
     const rec = directRec || recursivePool[0] || null;
