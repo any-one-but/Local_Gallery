@@ -2953,7 +2953,8 @@
               color:#e8e8ee;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer;}
             #rrm-columns .rrm-row-link:hover{color:#fff;text-decoration:underline;}
             #rrm-columns .rrm-row-link.unvisited{color:#9a9aa2;}
-            #rrm-columns .rrm-row.scraped .rrm-row-link{text-decoration:line-through;color:#6f6f76;}
+            #rrm-columns .rrm-row.scraped{opacity:.58;}
+            #rrm-columns .rrm-row.scraped .rrm-row-link{text-decoration:none;color:#7c7c84;}
             #redditGuestPanel #rrm-columns .rrm-row-btn{flex:0 0 auto;box-sizing:border-box;
               width:28px;height:28px;min-width:28px;min-height:0;aspect-ratio:1/1;padding:0;border-radius:9px;
               display:inline-flex;align-items:center;justify-content:center;line-height:1;
@@ -2983,7 +2984,7 @@
               <span><span class="rrm-dot" style="background:${COLORS.sub}"></span>subreddit</span>
               <span><span class="rrm-dot" style="background:${COLORS.user}"></span>user</span>
               <span><span class="rrm-dot" style="background:${COLORS.post}"></span>post</span>
-              <span style="opacity:.7">✓ dim = crossed off · saved items can be opened or removed</span>
+              <span style="opacity:.7">✓ dim = checked · saved items can be opened or removed</span>
               <span style="flex:1"></span>
               <span id="rrm-count"></span>
             </div>`;
