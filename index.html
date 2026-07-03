@@ -7212,13 +7212,6 @@ textarea:focus-visible {
                         </div>
                         <div class="right">
                           <button
-                            id="optionsResetBtn"
-                            type="button"
-                            class="miniBtn"
-                          >
-                            Reset defaults
-                          </button>
-                          <button
                             id="openWritableBtn"
                             type="button"
                             class="miniBtn"
@@ -16143,7 +16136,6 @@ const menuTabKeybinds = $("menuTabKeybinds");
 const menuTabCalendar = $("menuTabCalendar");
 
 const optionsBodyEl = $("optionsBody");
-const optionsResetBtn = $("optionsResetBtn");
 const optionsDoneBtn = $("optionsDoneBtn");
 const optionsStatusLabel = $("optionsStatusLabel");
 
@@ -20737,108 +20729,10 @@ const OPTION_TAB_IDS = Object.freeze([
   "storage",
 ]);
 
-const OPTIONS_RESET_KEYS_BY_TAB = Object.freeze({
-  general: Object.freeze([
-    "clickSelectedRotatingThumbTeleports",
-    "quickNavigation",
-    "initialOpenSidebars",
-    "muteMessages",
-    "showListCardExtraInfo",
-    "showTagFolderSpacerRow",
-    "previewMediaUsePaneBackground",
-    "animatedMediaFilters",
-    "activeAppearancePresetId",
-  ]),
-  reveal: Object.freeze([
-    "showHiddenFolder",
-    "showTrashFolder",
-    "showStorageFolder",
-    "showUntaggedFolder",
-  ]),
-  storage: Object.freeze([
-    "storeImageFiles",
-    "storeGifFiles",
-    "storeVideoFiles",
-  ]),
-  appearance: Object.freeze(
-    [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
-      "activeAppearancePresetId",
-      "animatedMediaFilters",
-      "gifsIgnoreProcessing",
-    ]),
-  ),
-  playback: Object.freeze([
-    "videoAudio",
-    "videoSkipStep",
-    "videoEndBehavior",
-    "slideshowDefault",
-  ]),
-  filenames: Object.freeze([
-    "forceTitleCaps",
-    "showPositionNumbersInNames",
-    "hideFileExtensionsInFileNames",
-    "hideUnderscoresInFileNames",
-    "hideBeforeLastDashInFileNames",
-    "hideAfterFirstUnderscoreInFileNames",
-  ]),
-});
-
-function resetOptionsToDefaults() {
-  if (!WS.meta) return;
-  const targetTab = "general";
-  const defaultOpts = normalizeOptions(defaultOptions());
-  const nextOptions = normalizeOptions(
-    Object.assign({}, WS.meta.options || {}, {}),
-  );
-  const keys = Array.from(
-    new Set(
-      OPTION_TAB_IDS.flatMap((id) =>
-        Array.from(OPTIONS_RESET_KEYS_BY_TAB[id] || []),
-      ),
-    ),
-  );
-  for (let i = 0; i < keys.length; i++) {
-    const key = String(keys[i] || "");
-    if (!key) continue;
-    nextOptions[key] = defaultOpts[key];
-  }
-  WS.meta.options = normalizeOptions(nextOptions);
-
-  syncActiveAppearancePresetSelection(WS.meta.options);
-  if (WS.view) {
-    WS.view.appearancePresetEditingId =
-      effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
-    WS.view.appearancePresetDraftName = "";
-    WS.view.appearancePresetPromptMode = "";
-  }
-
-  const dirtyIds = new Set(metaPreferenceDocIdsForOptionKeys(keys));
-  dirtyIds.add(META_DOC_IDS.prefGeneral);
-  metaMarkDirty(...Array.from(dirtyIds));
-  invalidateHiddenVisibilityState();
-  if (!showHiddenFolderEnabled() && WS.view.tagFolderActiveMode === "hidden") {
-    exitTagFolderView();
-  }
-  if (
-    !showUntaggedFolderEnabled() &&
-    WS.view.tagFolderActiveMode === "untagged"
-  ) {
-    exitTagFolderView();
-  }
-  navigateOutOfStorageIfHidden();
-
-  setOptionsStatus("Reset");
-  renderOptionsUi(targetTab);
-  applyOptionsEverywhere(true);
-  showStatusMessage("Reset settings to defaults.");
-}
-
 if (keybindsResetBtn)
   keybindsResetBtn.addEventListener("click", () => resetKeybindsToDefaults());
 
 if (optionsDoneBtn) optionsDoneBtn.addEventListener("click", () => closeMenu());
-if (optionsResetBtn)
-  optionsResetBtn.addEventListener("click", () => resetOptionsToDefaults());
 if (calendarDeleteAllBtn) {
   calendarDeleteAllBtn.addEventListener("click", async (e) => {
     e.preventDefault();
@@ -24890,7 +24784,6 @@ function normalizeWorkspaceRelPath(path) {
   if (!raw) return "";
   const parts = raw.split("/").filter(Boolean);
   if (!parts.length) return "";
-  // Old .local-gallery inside media is no longer used for metadata.
   return parts.join("/");
 }
 
@@ -25571,9 +25464,10 @@ function computeWorkspaceSeedForFileList(fileList) {
     if (!relParts.length) continue;
     const relPath =
       relParts.length > 1 ? relParts.slice(1).join("/") : relParts[0];
-    if (!relPath) continue; // (old .local-gallery filter removed)
+    if (!relPath) continue;
     const parts = relPath.split("/").filter(Boolean);
     if (!parts.length) continue;
+    if (parts[0] === ".local-gallery") continue; // in-library metadata/cache dir
     const filename = parts[parts.length - 1];
     if (!isImageName(filename) && !isVideoName(filename) && !isMarkdownName(filename)) continue;
     keys.push(fileKey(f, relPath));
@@ -25601,6 +25495,7 @@ async function collectFilesFromDirHandle(dirHandle, basePath, out, storedPaths =
       const relPath = basePath ? basePath + "/" + name : name;
       out.push({ file: f, relPath });
     } else if (handle.kind === "directory") {
+      if (name === ".local-gallery") continue; // in-library metadata/cache dir
       const nextBase = basePath ? basePath + "/" + name : name;
       if (pathIsWithinStoredFolder(nextBase, storedPaths)) continue;
       await collectFilesFromDirHandle(handle, nextBase, out, storedPaths);
@@ -26530,6 +26425,7 @@ async function reconcileCatalogFolderWithDisk(path, opts = null) {
       const relPath = p ? `${p}/${name}` : name;
       if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
       if (handle.kind === "directory") {
+        if (name === ".local-gallery") continue; // in-library metadata/cache dir
         const childPath = normalizeDirPathValue(relPath);
         if (childPath) childPaths.push(childPath);
         continue;
@@ -27083,6 +26979,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
         if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
         stats.entries++;
         if (handle.kind === "directory") {
+          if (name === ".local-gallery") continue; // in-library metadata/cache dir
           childDirEntries.push({ name, handle, path: relPath });
           continue;
         }
@@ -27314,11 +27211,12 @@ async function buildWorkspaceFromFileList(fileList) {
     if (!relParts.length) continue;
     const relPath =
       relParts.length > 1 ? relParts.slice(1).join("/") : relParts[0];
-    if (!relPath) continue; // (old .local-gallery filter removed)
+    if (!relPath) continue;
     if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
 
     const parts = relPath.split("/").filter(Boolean);
     if (!parts.length) continue;
+    if (parts[0] === ".local-gallery") continue; // in-library metadata/cache dir
 
     const filename = parts[parts.length - 1];
     const dirPath = parts.slice(0, -1).join("/");
@@ -28112,6 +28010,127 @@ async function renameDirectoryHandleInParent(
   return false;
 }
 
+// File ids embed the record's relPath as the last "::" segment
+// (fileKeyForRecord), so a folder move/trash re-keys every descendant id.
+function remapFileIdForPathPrefix(id, oldPrefix, newPrefix) {
+  const s = String(id || "");
+  const sep = s.lastIndexOf("::");
+  if (sep < 0) return s;
+  const rel = s.slice(sep + 2);
+  const next = remapPathPrefix(oldPrefix, newPrefix, rel);
+  return next === rel ? s : s.slice(0, sep + 2) + next;
+}
+
+function remapSelectionKeyForPathPrefix(key, oldPrefix, newPrefix) {
+  const s = String(key || "");
+  if (s.startsWith("dir:"))
+    return "dir:" + remapPathPrefix(oldPrefix, newPrefix, s.slice(4));
+  if (s.startsWith("expanded-dir:"))
+    return (
+      "expanded-dir:" + remapPathPrefix(oldPrefix, newPrefix, s.slice(13))
+    );
+  if (s.startsWith("file:"))
+    return "file:" + remapFileIdForPathPrefix(s.slice(5), oldPrefix, newPrefix);
+  return s;
+}
+
+// The pane-bridge snapshots (previewFolderBridgeReturnState /
+// previewFileBridgeReturnState, shape from captureViewerCloseRestoreState)
+// store raw path strings. If a folder captured in one is renamed or moved to
+// trash before the snapshot is restored, restoreViewerCloseState falls back
+// to root/first-item — the "file pane teleports" bug — so re-key them along
+// with the rest of the view state.
+function remapViewerCloseRestoreStatePaths(state, oldPrefix, newPrefix) {
+  if (!state || typeof state !== "object") return;
+  state.dirPath = remapPathPrefix(oldPrefix, newPrefix, state.dirPath);
+  state.entryKey = remapSelectionKeyForPathPrefix(
+    state.entryKey,
+    oldPrefix,
+    newPrefix,
+  );
+  if (state.view && typeof state.view === "object") {
+    const viewPathKeys = [
+      "tagFolderOriginPath",
+      "favoritesAnchorPath",
+      "hiddenAnchorPath",
+      "searchRootPath",
+      "searchAnchorPath",
+      "searchEntryRootPath",
+    ];
+    for (const key of viewPathKeys) {
+      if (typeof state.view[key] === "string") {
+        state.view[key] = remapPathPrefix(oldPrefix, newPrefix, state.view[key]);
+      }
+    }
+  }
+  if (Array.isArray(state.tagNavStack)) {
+    for (const frame of state.tagNavStack) {
+      if (!frame || typeof frame !== "object") continue;
+      for (const key of ["originPath", "selectedDirPath", "dirPath", "path"]) {
+        if (typeof frame[key] === "string" && frame[key]) {
+          frame[key] = remapPathPrefix(oldPrefix, newPrefix, frame[key]);
+        }
+      }
+    }
+  }
+  if (Array.isArray(state.navEntries)) {
+    for (const entry of state.navEntries) {
+      // Dir entries reference live nodes whose paths are remapped in place;
+      // only the id-keyed file entries need re-keying here.
+      if (entry && entry.kind === "file" && entry.id) {
+        entry.id = remapFileIdForPathPrefix(entry.id, oldPrefix, newPrefix);
+      }
+    }
+  }
+  const previewState = state.previewState;
+  if (previewState && typeof previewState === "object") {
+    if (previewState.kind === "dir") {
+      previewState.path = remapPathPrefix(
+        oldPrefix,
+        newPrefix,
+        previewState.path,
+      );
+    } else if (previewState.kind === "file") {
+      previewState.fileId = remapFileIdForPathPrefix(
+        previewState.fileId,
+        oldPrefix,
+        newPrefix,
+      );
+      previewState.dirPath = remapPathPrefix(
+        oldPrefix,
+        newPrefix,
+        previewState.dirPath,
+      );
+    } else if (previewState.kind === "tag-dir") {
+      previewState.originPath = remapPathPrefix(
+        oldPrefix,
+        newPrefix,
+        previewState.originPath,
+      );
+    }
+  }
+  state.pendingPreviewSelectionKey = remapSelectionKeyForPathPrefix(
+    state.pendingPreviewSelectionKey,
+    oldPrefix,
+    newPrefix,
+  );
+  state.previewContextKey = remapSelectionKeyForPathPrefix(
+    state.previewContextKey,
+    oldPrefix,
+    newPrefix,
+  );
+  state.previewSelectedKey = remapSelectionKeyForPathPrefix(
+    state.previewSelectedKey,
+    oldPrefix,
+    newPrefix,
+  );
+  remapViewerCloseRestoreStatePaths(
+    state.previewFolderBridgeReturnState,
+    oldPrefix,
+    newPrefix,
+  );
+}
+
 function updateViewStatePathsForRename(oldPrefix, newPrefix) {
   WS.view.dirActionMenuPath = remapPathPrefix(
     oldPrefix,
@@ -28199,6 +28218,65 @@ function updateViewStatePathsForRename(oldPrefix, newPrefix) {
     WS.view.bulkTagSelectedPaths,
     oldPrefix,
     newPrefix,
+  );
+
+  remapViewerCloseRestoreStatePaths(
+    WS.view.previewFolderBridgeReturnState,
+    oldPrefix,
+    newPrefix,
+  );
+  remapViewerCloseRestoreStatePaths(
+    WS.view.previewFileBridgeReturnState,
+    oldPrefix,
+    newPrefix,
+  );
+
+  WS.view.pendingPreviewSelectionKey = remapSelectionKeyForPathPrefix(
+    WS.view.pendingPreviewSelectionKey,
+    oldPrefix,
+    newPrefix,
+  );
+  WS.view.previewSelectedKey = remapSelectionKeyForPathPrefix(
+    WS.view.previewSelectedKey,
+    oldPrefix,
+    newPrefix,
+  );
+  WS.view.previewSelectAnchorKey = remapSelectionKeyForPathPrefix(
+    WS.view.previewSelectAnchorKey,
+    oldPrefix,
+    newPrefix,
+  );
+  WS.view.previewSelectionContextKey = remapSelectionKeyForPathPrefix(
+    WS.view.previewSelectionContextKey,
+    oldPrefix,
+    newPrefix,
+  );
+  WS.view.currentNavSelectedEntryKey = remapSelectionKeyForPathPrefix(
+    WS.view.currentNavSelectedEntryKey,
+    oldPrefix,
+    newPrefix,
+  );
+  WS.view.lastPreviewSyncedEntryKey = remapSelectionKeyForPathPrefix(
+    WS.view.lastPreviewSyncedEntryKey,
+    oldPrefix,
+    newPrefix,
+  );
+  WS.view.lastPreviewStateKey = remapSelectionKeyForPathPrefix(
+    WS.view.lastPreviewStateKey,
+    oldPrefix,
+    newPrefix,
+  );
+  if (WS.view.previewScrollByDir instanceof Map) {
+    WS.view.previewScrollByDir = remapPathMapKeys(
+      WS.view.previewScrollByDir,
+      oldPrefix,
+      newPrefix,
+    );
+  }
+  WS.view.previewScrollActiveKey = remapPathPrefix(
+    oldPrefix,
+    newPrefix,
+    WS.view.previewScrollActiveKey,
   );
 }
 
@@ -39009,8 +39087,7 @@ async function chooseSetMergeOutputName(dirHandles) {
   for (const handle of dirHandles || []) {
     if (!handle) continue;
     for await (const [name] of handle.entries()) {
-      if (!name) continue;
-      // (no longer skip .local-gallery — metadata lives in separate app support folder)
+      if (!name || name === ".local-gallery") continue;
       names.push(name);
     }
   }
@@ -40862,6 +40939,21 @@ function openPreviewContextMenu(x, y) {
     !!dirNode && canReorderFilesInDir(dirNode) && ids.length > 1;
 
   const menu = previewActionMenuEl;
+  const importTarget = importableDirectoryForNode(dirNode);
+  const makeImportBtn = (label, pickKind) => {
+    const importBtn = document.createElement("button");
+    importBtn.type = "button";
+    importBtn.textContent = label;
+    if (!importTarget) importBtn.disabled = true;
+    importBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closePreviewContextMenu();
+      if (importTarget) addContentToDirectoryViaPicker(importTarget, pickKind);
+    });
+    return importBtn;
+  };
+  menu.appendChild(makeImportBtn("Add folders...", "folders"));
+  menu.appendChild(makeImportBtn("Add files...", "files"));
   const btn = document.createElement("button");
   btn.type = "button";
   btn.textContent = "Reverse file order";
@@ -40884,6 +40976,86 @@ function openPreviewContextMenu(x, y) {
     menu.classList.add("open");
     positionDropdownMenuAtPoint(menu, x, y);
   });
+}
+
+// "Add content" imports external files into the folder the PREVIEW pane is
+// showing (the location the user is looking at), so only real on-disk folders
+// qualify — not tag/virtual portal views and not the internal trash.
+function importableDirectoryForNode(dirNode) {
+  if (!dirNode || !WS.meta || !WS.meta.fsRootHandle) return null;
+  if (dirNode._skipTagFilters || String(dirNode._tagPreviewMode || "")) {
+    return null;
+  }
+  if (dirNode === WS.root) return dirNode;
+  const path = String(dirNode.path || "");
+  if (!path) return null;
+  if (isPathInsideInternalTrash(path) || isInternalTrashPath(path)) return null;
+  return WS.dirByPath.get(path) || null;
+}
+
+function resolveAbsoluteImportDirectoryPath(dirNode) {
+  const rel = String(dirNode?.path || "");
+  const resolved = resolveAbsoluteDirectoryPath(rel);
+  if (resolved) return resolved;
+  const root = String(window.__lg?.rootPath || "").replace(/\/+$/, "");
+  if (!root) return "";
+  return rel ? `${root}/${rel}` : root;
+}
+
+async function addContentToDirectoryViaPicker(dirNode, pickKind = "files") {
+  const invoke =
+    window.__TAURI__ &&
+    window.__TAURI__.core &&
+    typeof window.__TAURI__.core.invoke === "function"
+      ? window.__TAURI__.core.invoke
+      : null;
+  if (!invoke) {
+    showStatusMessage("Adding content requires the desktop app.");
+    return false;
+  }
+  const destAbs = resolveAbsoluteImportDirectoryPath(dirNode);
+  if (!destAbs) {
+    showStatusMessage("Could not resolve the destination folder.");
+    return false;
+  }
+  // Native dialogs can't offer files and folders in a single panel, so the
+  // background menu exposes one entry per picker kind.
+  const pickCommand =
+    pickKind === "folders" ? "pick_import_folders" : "pick_import_files";
+  let picked = [];
+  try {
+    picked = (await invoke(pickCommand)) || [];
+  } catch {
+    picked = [];
+  }
+  if (!picked.length) return false;
+  const folderLabel =
+    dirNode === WS.root ? "the root folder" : `'${displayName(dirNode.name)}'`;
+  showBusyOverlay(
+    `Adding ${picked.length} item${picked.length === 1 ? "" : "s"}...`,
+  );
+  let imported = [];
+  try {
+    imported = await invoke("import_files", {
+      paths: picked,
+      destDir: destAbs,
+    });
+  } catch {
+    hideBusyOverlay();
+    showStatusMessage("Add content failed.");
+    return false;
+  }
+  try {
+    await refreshWorkspaceFromRootHandle();
+  } catch {
+  } finally {
+    hideBusyOverlay();
+  }
+  const count = Array.isArray(imported) ? imported.length : 0;
+  showStatusMessage(
+    `Added ${count} item${count === 1 ? "" : "s"} to ${folderLabel}.`,
+  );
+  return count > 0;
 }
 
 function createDropdownMenuSubmenu(label, items) {
@@ -49336,6 +49508,27 @@ previewBodyEl.addEventListener("contextmenu", (e) => {
   }
   e.preventDefault();
   e.stopPropagation();
+  openPreviewContextMenu(e.clientX, e.clientY);
+});
+
+// Right-clicking any pane background (title pane, control bar, file pane
+// empty space, app chrome) opens the same background menu as the preview
+// grid, so "Add content" is reachable anywhere. Targets with their own
+// context menus preventDefault before this bubble listener runs.
+document.addEventListener("contextmenu", (e) => {
+  if (e.defaultPrevented) return;
+  if (!WS.root) return;
+  const target = e.target instanceof Element ? e.target : null;
+  if (target && target.closest) {
+    if (target.closest("button, a, input, textarea, select, [contenteditable=\"true\"]"))
+      return;
+    if (target.closest(".fileCard, .folderCard, .previewTagFolderCard, .dirRow"))
+      return;
+    if (target.closest("#filePreviewViewport")) return;
+    if (target.closest(".dropdownMenu")) return;
+    if (target.closest("#menuOverlay")) return;
+  }
+  e.preventDefault();
   openPreviewContextMenu(e.clientX, e.clientY);
 });
 

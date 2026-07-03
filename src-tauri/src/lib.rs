@@ -398,7 +398,10 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             fs::allow_media_scope,
             fs::get_media_root,
             fs::get_metadata_root,
-            fs::reveal_path
+            fs::reveal_path,
+            fs::pick_import_files,
+            fs::pick_import_folders,
+            fs::import_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

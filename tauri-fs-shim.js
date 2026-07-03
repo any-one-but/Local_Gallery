@@ -273,21 +273,26 @@
     // Expose the root so the thumbnail layer can cache under .local-gallery/thumbs.
     window.__lg = window.__lg || {};
     window.__lg.rootPath = p;
+    // Metadata lives inside the library at <root>/.local-gallery, so it
+    // follows whatever root is opened.
+    window.__lg.metaPath = p + "/.local-gallery";
     try { invoke("save_last_root", { path: p }); } catch (e) {}
     // Grant the asset protocol access to this library so media/thumbnails can
     // load (the config denies everything by default). The root's recursive glob
-    // (**) does NOT match the hidden .local-gallery dir, so allow the thumbs dir
-    // explicitly (a literal path component) too. Must resolve before the
-    // workspace renders media; callers await openRoot which awaits this.
+    // (**) does NOT match the hidden .local-gallery dir, so allow it (and its
+    // cache subdirs) explicitly too. Must resolve before the workspace renders
+    // media; callers await openRoot which awaits this.
     return Promise.all([
       invoke("allow_media_scope", { path: p }),
+      invoke("allow_media_scope", { path: p + "/.local-gallery" }),
       invoke("allow_media_scope", { path: p + "/.local-gallery/thumbs" }),
+      invoke("allow_media_scope", { path: p + "/.local-gallery/catalog" }),
     ]).catch(function (e) {
       console.warn("[tauri-fs-shim] allow_media_scope failed", e);
     });
   }
 
-  // --- New single-app-folder support (metadata moved outside media root) ---
+  // --- Single-app-folder support (metadata lives at <media>/.local-gallery) ---
   function ensureAppRoots() {
     window.__lg = window.__lg || {};
     return Promise.all([
@@ -298,8 +303,9 @@
       var meta = String(results[1] || "").replace(/\/+$/, "");
       window.__lg.rootPath = media;
       window.__lg.metaPath = meta;
-      // Scope the media folder for asset:// access (all user media)
-      // Also scope thumbs + catalog under the meta dir (new location)
+      // Scope the media folder for asset:// access (all user media). The
+      // hidden .local-gallery metadata dir is not matched by the root's
+      // recursive glob, so scope it and its cache subdirs explicitly.
       var thumbs = meta + "/thumbs";
       var catalog = meta + "/catalog";
       return Promise.all([
@@ -367,12 +373,21 @@
     });
   };
 
-  // Returns a DirHandle pointing at the separate metadata / logs folder.
+  // Returns a DirHandle pointing at the metadata / logs folder. Prefers the
+  // currently open library (<root>/.local-gallery) so metadata always sits
+  // next to the content it describes; falls back to the managed media folder.
   window.__lg.getAppMetaDirectoryHandle = function () {
+    var root = String(window.__lg.rootPath || "").replace(/\/+$/, "");
+    if (root) {
+      var p = root + "/.local-gallery";
+      return invoke("make_dir", { path: p }).then(function () {
+        return new TauriDirHandle(p, ".local-gallery");
+      });
+    }
     return ensureAppRoots().then(function (roots) {
       var p = roots.meta || "";
       if (!p) throw fsError("NotFoundError", "could not resolve metadata folder");
-      return new TauriDirHandle(p, "Local Gallery");
+      return new TauriDirHandle(p, ".local-gallery");
     });
   };
 
