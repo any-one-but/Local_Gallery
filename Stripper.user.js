@@ -2606,6 +2606,16 @@
         let typeFilter = 'all';
         let columnType = 'user';                  // Saved view shows one type full width: 'sub' | 'user' | 'post'
 
+        // How the saved columns are ordered. Cycled from the column header and
+        // persisted in GM storage so the choice sticks across page loads/tabs.
+        const SORT_KEY = 'rrm_sort_mode';         // 'name' | 'added' | 'rating'
+        const SORT_MODES = ['name', 'added', 'rating'];
+        const SORT_LABELS = { name: 'Name', added: 'Date added', rating: 'Rating' };
+        let sortMode = (() => {
+          const v = GM_getValue(SORT_KEY, 'name');
+          return SORT_MODES.includes(v) ? v : 'name';
+        })();
+
         // -------------------------------------------------------------- classify
         function classify(href) {
           let u;
@@ -2750,6 +2760,31 @@
           bumpRev();
         }
 
+        // Store the user's numerical rating for a saved item (whatever number
+        // they typed), or clear it when the field is blanked / non-numeric.
+        function setRating(id, value) {
+          const key = NS + 'n:' + id;
+          const raw = GM_getValue(key, null);
+          if (!raw) return;
+          const rec = JSON.parse(raw);
+          const trimmed = String(value == null ? '' : value).trim();
+          if (trimmed === '' || !Number.isFinite(Number(trimmed))) {
+            delete rec.rating;
+          } else {
+            rec.rating = Number(trimmed);
+          }
+          GM_setValue(key, JSON.stringify(rec));
+          bumpRev();
+        }
+
+        // Cycle the column sort order (name -> date added -> rating -> …).
+        function cycleSort() {
+          const i = SORT_MODES.indexOf(sortMode);
+          sortMode = SORT_MODES[(i + 1) % SORT_MODES.length];
+          safeSet(SORT_KEY, sortMode);
+          renderGraph();
+        }
+
         // Bulk-add the subreddits from a user scan as saved items, linked from
         // the scanned user so legacy imports can still preserve that relationship.
         function addSubreddits(username, subs, visited) {
@@ -2809,6 +2844,7 @@
                 id: n.id, type: n.type, label: n.label, url: n.url,
                 visited: !!n.visited, scraped: !!n.scraped,
                 first: n.first || Date.now(), last: n.last || Date.now(),
+                ...(Number.isFinite(Number(n.rating)) ? { rating: Number(n.rating) } : {}),
               }));
               changes++;
               return;
@@ -2821,10 +2857,14 @@
             // Only a real state change counts — timestamp drift alone is ignored.
             const changed = visited !== !!cur.visited || scraped !== !!cur.scraped
                 || label !== cur.label || url !== cur.url;
-            if (changed) {
+            const rating = Number.isFinite(Number(cur.rating)) ? Number(cur.rating)
+              : (Number.isFinite(Number(n.rating)) ? Number(n.rating) : undefined);
+            const ratingChanged = rating !== (Number.isFinite(Number(cur.rating)) ? Number(cur.rating) : undefined);
+            if (changed || ratingChanged) {
               const first = Math.min(cur.first || Date.now(), n.first || Date.now());
               const last = Math.max(cur.last || 0, n.last || 0);
-              GM_setValue(key, JSON.stringify({ id: cur.id, type: cur.type || n.type, label, url, visited, scraped, first, last }));
+              GM_setValue(key, JSON.stringify({ id: cur.id, type: cur.type || n.type, label, url, visited, scraped, first, last,
+                ...(rating !== undefined ? { rating } : {}) }));
               changes++;
             }
           });
@@ -2940,9 +2980,21 @@
             #rrm-columns{flex:1;min-height:0;display:none;gap:10px;padding:10px;overflow:auto;}
             #rrm-columns .rrm-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;overflow:hidden;
               border:1px solid rgba(255,255,255,.10);border-radius:10px;background:rgba(255,255,255,.03);}
-            #rrm-columns .rrm-col-head{flex:0 0 auto;padding:8px 10px;font-weight:800;font-size:12px;
+            #rrm-columns .rrm-col-head{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+              padding:8px 10px;font-weight:800;font-size:12px;
               border-bottom:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);}
+            #rrm-columns .rrm-col-head-left{flex:0 0 auto;}
             #rrm-columns .rrm-col-count{opacity:.7;}
+            #redditGuestPanel #rrm-columns .rrm-col-ctl{flex:0 0 auto;cursor:pointer;font-size:10px;font-weight:700;
+              color:#cfcfd6;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
+              border-radius:999px;padding:2px 9px;user-select:none;white-space:nowrap;
+              transition:background 120ms ease,color 120ms ease,border-color 120ms ease;}
+            #redditGuestPanel #rrm-columns .rrm-col-ctl:hover{background:rgba(255,255,255,.18);color:#fff;
+              border-color:rgba(255,255,255,.3);}
+            #redditGuestPanel #rrm-columns .rrm-row-rating{flex:0 0 auto;box-sizing:border-box;width:46px;height:26px;
+              padding:0 4px;text-align:center;border-radius:8px;border:1px solid rgba(255,255,255,.14);
+              background:rgba(0,0,0,.22);color:#f4f4f5;font-family:inherit;font-size:11px;font-weight:700;outline:none;}
+            #redditGuestPanel #rrm-columns .rrm-row-rating:focus{border-color:rgba(255,176,0,.72);}
             #rrm-columns .rrm-col-list{flex:1;min-height:0;overflow:auto;padding:6px;display:flex;flex-direction:column;
               gap:4px;scrollbar-width:thin;}
             #rrm-columns .rrm-col-empty{padding:8px 6px;color:#7a7a82;font-size:11px;}
@@ -3117,9 +3169,22 @@
           const matchQuery = n => !q
             || (n.label || '').toLowerCase().includes(q)
             || (n.url || '').toLowerCase().includes(q);
+          const byName = (a, b) => (a.label || '').localeCompare(b.label || '');
           const list = allNodes
             .filter(n => n.type === type && matchQuery(n))
-            .sort((a, b) => (a.label || '').localeCompare(b.label || ''));
+            .sort((a, b) => {
+              if (sortMode === 'added') {
+                // Most recently added first; fall back to name for ties.
+                return (b.first || 0) - (a.first || 0) || byName(a, b);
+              }
+              if (sortMode === 'rating') {
+                // Highest rating first; unrated items sink to the bottom.
+                const ra = Number.isFinite(Number(a.rating)) ? Number(a.rating) : -Infinity;
+                const rb = Number.isFinite(Number(b.rating)) ? Number(b.rating) : -Infinity;
+                return rb - ra || byName(a, b);
+              }
+              return byName(a, b);
+            });
           colsEl.innerHTML = '';
           const col = document.createElement('div');
           col.className = 'rrm-col';
@@ -3127,8 +3192,20 @@
           const head = document.createElement('div');
           head.className = 'rrm-col-head';
           head.style.color = COLORS[type];
-          head.innerHTML = `<span class="rrm-dot" style="background:${COLORS[type]}"></span>${titles[type]} `
+          const headLeft = document.createElement('span');
+          headLeft.className = 'rrm-col-head-left';
+          headLeft.innerHTML = `<span class="rrm-dot" style="background:${COLORS[type]}"></span>${titles[type]} `
             + `<span class="rrm-col-count">${list.length}</span>`;
+          const sortBtn = document.createElement('span');
+          sortBtn.className = 'rrm-col-ctl rrm-col-sort';
+          sortBtn.textContent = `Sort: ${SORT_LABELS[sortMode]}`;
+          sortBtn.title = 'Click to cycle the sort order (name / date added / rating)';
+          sortBtn.addEventListener('click', cycleSort);
+          const headSpacer = document.createElement('span');
+          headSpacer.style.flex = '1';
+          head.appendChild(headLeft);
+          head.appendChild(headSpacer);
+          head.appendChild(sortBtn);
           col.appendChild(head);
           const listEl = document.createElement('div');
           listEl.className = 'rrm-col-list';
@@ -3175,6 +3252,21 @@
           link.title = n.url + (n.visited ? '' : '  (not visited)') + '\n' + scanSummaryText(n.id);
           link.addEventListener('click', (e) => { e.preventDefault(); openNodeCurrentTab(n.url); });
 
+          const rating = document.createElement('input');
+          rating.type = 'text';
+          rating.className = 'rrm-row-rating';
+          rating.inputMode = 'decimal';
+          rating.placeholder = '–';
+          rating.title = 'Your rating (type any number)';
+          if (Number.isFinite(Number(n.rating))) rating.value = String(n.rating);
+          // Don't let a click on the field bubble up to the row/link handlers.
+          rating.addEventListener('click', (e) => e.stopPropagation());
+          rating.addEventListener('change', () => {
+            setRating(n.id, rating.value);
+            // Re-sort if the rating order is active; otherwise leave the list put.
+            if (sortMode === 'rating') renderGraph();
+          });
+
           const openCur = document.createElement('button');
           openCur.className = 'rrm-row-btn';
           openCur.textContent = '↗';
@@ -3189,6 +3281,7 @@
 
           row.appendChild(chk);
           row.appendChild(link);
+          row.appendChild(rating);
           row.appendChild(openCur);
           row.appendChild(rm);
           return row;
