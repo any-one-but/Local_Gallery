@@ -2864,6 +2864,8 @@ img[data-rotate-key].rotatingThumbFade {
     auto-fill,
     minmax(calc(var(--folder-grid-min) * var(--thumb-scale-folder)), 1fr)
   );
+  justify-content: stretch;
+  align-content: flex-start;
   gap: var(--preview-gutter);
 }
 
@@ -2951,6 +2953,8 @@ img[data-rotate-key].rotatingThumbFade {
     auto-fill,
     minmax(calc(var(--file-grid-min) * var(--thumb-scale-media)), 1fr)
   );
+  justify-content: stretch;
+  align-content: flex-start;
   gap: var(--preview-gutter);
 }
 
@@ -6017,16 +6021,10 @@ img[data-rotate-key].rotatingThumbFade {
       minmax(48px, 110px);
   }
   .gridFolders {
-    grid-template-columns: repeat(
-      auto-fill,
-      minmax(calc(220px * var(--thumb-scale-folder)), 1fr)
-    );
+    --folder-grid-min: 220px;
   }
   .gridFiles {
-    grid-template-columns: repeat(
-      auto-fill,
-      minmax(calc(160px * var(--thumb-scale-media)), 1fr)
-    );
+    --file-grid-min: 160px;
   }
   .gridFiles.fitInsideJustified {
     gap: max(8px, var(--preview-gutter));
@@ -16485,6 +16483,7 @@ function applyDefaultRootLandingSidebars() {
 
 window.addEventListener("resize", () => {
   if (MENU_OPEN) applyMenuPaneWidthFromOptions();
+  refreshPreviewGridTracks();
   refreshFitInsidePreviewGrids();
   scheduleGridModeCardSizing();
   updateGridModeListTopInset();
@@ -16715,6 +16714,12 @@ let CONTROL_PANE_ACTIVE_KEY = "";
   if (!targets.length) return;
   const observer = new ResizeObserver(() => {
     refreshActivePreviewMediaLayout();
+    // The preview body resizes on sidebar drag/toggle without firing a window
+    // "resize" event, so recompute the grid column count here too — otherwise
+    // the inline repeat(N, minmax(0,1fr)) tracks stay stale and the cards just
+    // shrink instead of the wrap/row length changing as the pane narrows.
+    refreshPreviewGridTracks();
+    refreshFitInsidePreviewGrids();
   });
   targets.forEach((target) => observer.observe(target));
 })();
@@ -48753,12 +48758,15 @@ function renderTagPreviewFolderEntriesInHareChunks(
 
   appendRange(initialLimit);
   container.appendChild(gridF);
+  if (useFolderFitInsideJustified) applyFitInsideJustifiedLayout(gridF);
+  else applyPreviewGridTracks(gridF);
   container.appendChild(makeSpacer());
 
   const appendNextChunk = () => {
     if (renderToken !== PREVIEW_FILES_RENDER_TOKEN) return;
     if (index >= entries.length) {
       if (useFolderFitInsideJustified) applyFitInsideJustifiedLayout(gridF);
+      else applyPreviewGridTracks(gridF);
       updatePreviewSelectionClasses();
       scheduleThumbnailDemandRefresh();
       return;
@@ -49719,6 +49727,7 @@ function swapPreviewGridRenderStage(stage) {
   releaseContainerThumbMedia(previewBodyEl);
   previewBodyEl.innerHTML = "";
   while (stage.firstChild) previewBodyEl.appendChild(stage.firstChild);
+  refreshPreviewGridTracks();
   refreshFitInsidePreviewGrids();
   return true;
 }
@@ -49948,6 +49957,7 @@ function renderPreviewSearchResults(container) {
   gridF.appendChild(frag);
   container.appendChild(gridF);
   if (useFolderFitInsideJustified) applyFitInsideJustifiedLayout(gridF);
+  else applyPreviewGridTracks(gridF);
   container.appendChild(makeSpacer());
   return { count: dirs.length };
 }
@@ -51019,6 +51029,70 @@ function refreshFitInsidePreviewGrids() {
   for (const grid of grids) applyFitInsideJustifiedLayout(grid);
 }
 
+function previewGridMinCardSizePx(grid, kind) {
+  if (!grid || typeof getComputedStyle !== "function") return 0;
+  const cs = getComputedStyle(grid);
+  const baseVar = kind === "folder" ? "--folder-grid-min" : "--file-grid-min";
+  const scaleVar =
+    kind === "folder" ? "--thumb-scale-folder" : "--thumb-scale-media";
+  const fallback = kind === "folder" ? 260 : 180;
+  const base = parseFloat(cs.getPropertyValue(baseVar) || String(fallback));
+  const scale = parseFloat(cs.getPropertyValue(scaleVar) || "1");
+  const size = (Number.isFinite(base) ? base : fallback) *
+    (Number.isFinite(scale) && scale > 0 ? scale : 1);
+  return Math.max(kind === "folder" ? 120 : 96, Math.round(size));
+}
+
+function previewGridTrackMetrics(grid, kind = "") {
+  if (!grid || !grid.classList) return;
+  const resolvedKind =
+    kind ||
+    (grid.classList.contains("gridFolders")
+      ? "folder"
+      : grid.classList.contains("gridFiles")
+        ? "file"
+        : "");
+  if (!resolvedKind) return null;
+  const cs = getComputedStyle(grid);
+  const gap = Math.max(0, parseFloat(cs.columnGap || cs.gap || "0") || 0);
+  const minCard = previewGridMinCardSizePx(grid, resolvedKind);
+  const width = Math.max(1, Number(grid.clientWidth) || 1);
+  // Treat the configured card size as a *target*, not a floor: pick the column
+  // count whose resulting card width lands closest to it. Rounding (instead of
+  // flooring) means a new column is added once cards drift ~halfway past the
+  // target, so thumbs stay near a consistent size and the wrap/row length
+  // shifts as the pane resizes — rather than a fixed column count letting each
+  // card scale up toward 2x before a column finally pops in.
+  const cols = Math.max(
+    1,
+    Math.round((width + gap) / Math.max(1, minCard + gap)),
+  );
+  const colWidth = Math.max(
+    resolvedKind === "folder" ? 120 : 96,
+    (width - gap * Math.max(0, cols - 1)) / cols,
+  );
+  return { gap, cols, colWidth, minCard, width };
+}
+
+function applyPreviewGridTracks(grid) {
+  if (!grid || !grid.classList) return;
+  if (grid.classList.contains("fitInsideJustified")) {
+    grid.style.removeProperty("grid-template-columns");
+    return;
+  }
+  const metrics = previewGridTrackMetrics(grid);
+  if (!metrics) return;
+  const track = `repeat(${metrics.cols}, minmax(0, 1fr))`;
+  if (grid.style.gridTemplateColumns !== track)
+    grid.style.gridTemplateColumns = track;
+}
+
+function refreshPreviewGridTracks() {
+  if (!previewBodyEl) return;
+  const grids = previewBodyEl.querySelectorAll(".gridFolders, .gridFiles");
+  grids.forEach((grid) => applyPreviewGridTracks(grid));
+}
+
 function clearPreviewFileVirtualizers() {
   ACTIVE_PREVIEW_FILE_VIRTUALIZERS = [];
 }
@@ -51069,23 +51143,23 @@ function shouldVirtualizePreviewFilesGrid(
 
 function measurePreviewFilesGridMetrics(grid, useSquareMediaCards = false) {
   if (!grid) return null;
-  const cs = getComputedStyle(grid);
-  const gap = Math.max(0, parseFloat(cs.rowGap || cs.gap || "0") || 0);
-  const minCard = Math.max(
-    96,
-    parseFloat(cs.getPropertyValue("--file-grid-min") || "160") *
-      (parseFloat(cs.getPropertyValue("--thumb-scale-media") || "1") || 1),
-  );
-  const width = Math.max(1, Number(grid.clientWidth) || 1);
-  const cols = Math.max(
-    1,
-    Math.floor((width + gap) / Math.max(1, minCard + gap)),
-  );
-  const colWidth = Math.max(96, (width - gap * Math.max(0, cols - 1)) / cols);
+  applyPreviewGridTracks(grid);
+  const metrics = previewGridTrackMetrics(grid, "file");
+  if (!metrics) return null;
+  const { gap, cols, colWidth } = metrics;
   const rowHeight = useSquareMediaCards
     ? Math.max(120, Math.round(colWidth))
     : Math.max(150, Math.round(colWidth * 0.75 + 74));
-  return { gap, cols, colWidth, rowHeight };
+  const rowStride = rowHeight + gap;
+  return { gap, cols, colWidth, rowHeight, rowStride };
+}
+
+function previewVirtualSkippedRowsHeight(rowCount, metrics) {
+  const count = Math.max(0, Math.round(Number(rowCount) || 0));
+  if (!count || !metrics) return 0;
+  const rowHeight = Math.max(1, Number(metrics.rowHeight) || 1);
+  const gap = Math.max(0, Number(metrics.gap) || 0);
+  return Math.max(0, count * (rowHeight + gap) - gap);
 }
 
 function offsetTopWithinAncestor(el, ancestor) {
@@ -51115,7 +51189,7 @@ function computePreviewFilesVirtualWindow(state) {
     1,
     Math.ceil(
       ((previewBodyEl.clientHeight || 1) + metrics.gap) /
-        Math.max(1, metrics.rowHeight),
+        Math.max(1, metrics.rowStride || metrics.rowHeight),
     ),
   );
   // Overscan a few rows above and below the viewport so rows are materialized
@@ -51125,7 +51199,8 @@ function computePreviewFilesVirtualWindow(state) {
   const OVERSCAN_ROWS = 4;
   const startRow = Math.max(
     0,
-    Math.floor(viewTop / Math.max(1, metrics.rowHeight)) - OVERSCAN_ROWS,
+    Math.floor(viewTop / Math.max(1, metrics.rowStride || metrics.rowHeight)) -
+      OVERSCAN_ROWS,
   );
   const endRow = Math.min(
     totalRows - 1,
@@ -51135,10 +51210,10 @@ function computePreviewFilesVirtualWindow(state) {
     metrics,
     startIndex: startRow * metrics.cols,
     endIndexExclusive: Math.min(state.ids.length, (endRow + 1) * metrics.cols),
-    topSpacerHeight: startRow * metrics.rowHeight,
-    bottomSpacerHeight: Math.max(
-      0,
-      (totalRows - endRow - 1) * metrics.rowHeight,
+    topSpacerHeight: previewVirtualSkippedRowsHeight(startRow, metrics),
+    bottomSpacerHeight: previewVirtualSkippedRowsHeight(
+      Math.max(0, totalRows - endRow - 1),
+      metrics,
     ),
   };
 }
@@ -51329,11 +51404,15 @@ function revealPendingPreviewSelectionInVirtualGrid(selectionKey) {
     if (!windowInfo || !windowInfo.metrics) return false;
     const cols = Math.max(1, Number(windowInfo.metrics.cols) || 1);
     const rowHeight = Math.max(1, Number(windowInfo.metrics.rowHeight) || 1);
+    const rowStride = Math.max(
+      1,
+      Number(windowInfo.metrics.rowStride) || rowHeight,
+    );
     const targetRow = Math.floor(itemIndex / cols);
     const gridTop = offsetTopWithinAncestor(state.grid, previewBodyEl);
     const desiredTop =
       gridTop +
-      targetRow * rowHeight -
+      targetRow * rowStride -
       Math.max(0, Math.floor((previewBodyEl.clientHeight || 0) * 0.35));
     const maxTop = Math.max(
       0,
@@ -51393,6 +51472,7 @@ function renderFilesGrid(
   if (dirNode && canReorderFilesInPreviewDir(dirNode))
     setupPreviewGridDrag(grid);
   container.appendChild(grid);
+  if (!useFitInsideJustified) applyPreviewGridTracks(grid);
 
   if (
     shouldVirtualizePreviewFilesGrid(ids, useFitInsideJustified, dirNode, {
@@ -51574,6 +51654,7 @@ function renderFolderContents(
     gridF.appendChild(fragF);
     container.appendChild(gridF);
     if (useFolderFitInsideJustified) applyFitInsideJustifiedLayout(gridF);
+    else applyPreviewGridTracks(gridF);
     container.appendChild(makeSpacer());
     hasContent = true;
   }
