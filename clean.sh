@@ -8,6 +8,21 @@ PROGRESS_BAR_WIDTH=32
 PROGRESS_BAR_MIN_WIDTH=4
 EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
 SIMILAR_ITEMS_BUCKET_NAME="_clean_similar_media"
+# czkawka similarity tuning. The scans used to run at pure defaults, which
+# leaves accuracy on the table: the default Nearest resize filter produces
+# noisy perceptual hashes that both collide distinct images (false culls) and
+# drift real near-duplicates past the threshold (missed dupes). Lanczos3 gives
+# cleaner, more representative hashes so both error modes drop; the hash size
+# and algorithm are pinned so behavior stays stable across czkawka versions.
+# For hash size 16, czkawka recommends max-difference up to 20; 8 stays fairly
+# strict while catching more real near-dupes than the default 5. Video accuracy
+# scales mainly with scan-duration, so we compare a longer window per file.
+CZKAWKA_IMAGE_HASH_SIZE=16
+CZKAWKA_IMAGE_HASH_ALG="Gradient"
+CZKAWKA_IMAGE_FILTER="Lanczos3"
+CZKAWKA_IMAGE_MAX_DIFF=8
+CZKAWKA_VIDEO_TOLERANCE=10
+CZKAWKA_VIDEO_SCAN_DURATION=20
 WAIFU2X_INSTALL_DIR="${HOME}/.local/share/local_gallery/waifu2x-ncnn-vulkan"
 WAIFU2X_RELEASE_URL_MACOS="https://github.com/nihui/waifu2x-ncnn-vulkan/releases/download/20250915/waifu2x-ncnn-vulkan-20250915-macos.zip"
 WAIFU2X_SCALE=2
@@ -21,7 +36,7 @@ STEP12_AVIF_CRF=32
 STEP12_WEBP_QUALITY=80
 STEP14_AV1_CRF=32
 STEP14_AV1_PRESET=6
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13 14)
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -583,13 +598,12 @@ step_description() {
     5) printf "Remove metadata" ;;
     6) printf "Sanitize file and folder names" ;;
     7) printf "Quarantine empty files and folders" ;;
-    8) printf "Recompress images (AVIF/WebP)" ;;
+    8) printf "Recompress media (images to AVIF/WebP, videos to AV1)" ;;
     9) printf "Convert animated GIFs to MP4" ;;
-    10) printf "Re-encode videos to AV1" ;;
-    11) printf "Upscale and denoise media" ;;
-    12) printf "Trim video starts" ;;
-    13) printf "Trim video ends" ;;
-    14) printf "Extract MP3 audio from videos" ;;
+    10) printf "Upscale and denoise media" ;;
+    11) printf "Trim video starts" ;;
+    12) printf "Trim video ends" ;;
+    13) printf "Extract MP3 audio from videos" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -603,13 +617,12 @@ step_function_name() {
     5) printf "step5_remove_metadata" ;;
     6) printf "step7_sanitize_names" ;;
     7) printf "step9_move_empty_items" ;;
-    8) printf "step11_recompress_images" ;;
+    8) printf "step_recompress_media" ;;
     9) printf "step12_convert_gifs_to_video" ;;
-    10) printf "step13_reencode_videos_av1" ;;
-    11) printf "step3_process_media" ;;
-    12) printf "step8_trim_video_lead" ;;
-    13) printf "step9_trim_video_tail" ;;
-    14) printf "step10_extract_video_audio_mp3" ;;
+    10) printf "step3_process_media" ;;
+    11) printf "step8_trim_video_lead" ;;
+    12) printf "step9_trim_video_tail" ;;
+    13) printf "step10_extract_video_audio_mp3" ;;
     *) printf "" ;;
   esac
 }
@@ -671,13 +684,6 @@ ensure_step_requirements() {
       ;;
     10)
       require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      require_cmd mv
-      require_cmd rm
-      ;;
-    11)
-      require_cmd find
       require_cmd sips
       require_cmd ffmpeg
       require_cmd ffprobe
@@ -685,17 +691,17 @@ ensure_step_requirements() {
       require_cmd rm
       ensure_waifu2x_ready || return 1
       ;;
+    11)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      ;;
     12)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
       ;;
     13)
-      require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      ;;
-    14)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
@@ -2349,7 +2355,11 @@ step6_move_similar_media() {
   move_list="$(mktemp)"
   filtered_move_list="$(mktemp)"
 
-  if ! run_with_spinner "Step 2: scanning similar images with czkawka" "$czkawka_cmd" image -d "$PWD" -e "$bucket_root_abs" -x IMAGE -f "$image_report" -W -N; then
+  if ! run_with_spinner "Step 2: scanning similar images with czkawka" "$czkawka_cmd" image \
+      -d "$PWD" -e "$bucket_root_abs" -x IMAGE \
+      -c "$CZKAWKA_IMAGE_HASH_SIZE" -g "$CZKAWKA_IMAGE_HASH_ALG" \
+      -z "$CZKAWKA_IMAGE_FILTER" -s "$CZKAWKA_IMAGE_MAX_DIFF" \
+      -f "$image_report" -W -N; then
     rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
     log_err "Czkawka image scan failed."
     exit 1
@@ -2357,7 +2367,10 @@ step6_move_similar_media() {
   phase=$((phase + 1))
   phase_note "$phase" "$phase_total" "Image similarity scan complete."
 
-  if ! run_with_spinner "Step 2: scanning similar videos with czkawka" "$czkawka_cmd" video -d "$PWD" -e "$bucket_root_abs" -x VIDEO -f "$video_report" -W -N; then
+  if ! run_with_spinner "Step 2: scanning similar videos with czkawka" "$czkawka_cmd" video \
+      -d "$PWD" -e "$bucket_root_abs" -x VIDEO \
+      -t "$CZKAWKA_VIDEO_TOLERANCE" -A "$CZKAWKA_VIDEO_SCAN_DURATION" \
+      -f "$video_report" -W -N; then
     rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
     log_err "Czkawka video scan failed."
     exit 1
@@ -2728,9 +2741,10 @@ choose_resize_height() {
 }
 
 # ---------------------------------------------------------------------------
-# Steps 8-10: extra size-reduction passes (image recompression, GIF->MP4,
-# AV1 video re-encode). All formats chosen here (AVIF, WebP, AV1, Opus, H.264)
-# play natively in the Electron/Chromium viewer. Each pass is lossy and only
+# Steps 8-9: extra size-reduction passes. Step 8 recompresses images (AVIF/
+# WebP) and re-encodes videos (AV1) in one pass; step 9 converts animated GIFs
+# to MP4. All formats chosen here (AVIF, WebP, AV1, Opus, H.264) play natively
+# in the Electron/Chromium viewer. Each pass is lossy and only
 # replaces an original when the new file is actually smaller, so re-running is
 # safe and never bloats already-optimized media.
 # ---------------------------------------------------------------------------
@@ -2968,9 +2982,18 @@ step12_convert_gifs_to_video() {
   summary_item "Approx. saved" "$(human_size "$saved_bytes")"
 }
 
-# Step 10: re-encode videos to AV1 (libsvtav1) with Opus audio in an MP4
-# container. Already-AV1 videos are skipped; originals are replaced only when
-# the AV1 version is smaller.
+# Combined recompression pass: still images to AVIF/WebP, then videos to AV1.
+# Images and videos are disjoint file sets encoded with the same AV1 family of
+# codecs, and there is no workflow that wants to recompress only one, so they
+# run together as a single menu step.
+step_recompress_media() {
+  step11_recompress_images
+  step13_reencode_videos_av1
+}
+
+# Video half of the combined recompress step: re-encode videos to AV1
+# (libsvtav1) with Opus audio in an MP4 container. Already-AV1 videos are
+# skipped; originals are replaced only when the AV1 version is smaller.
 step13_reencode_videos_av1() {
   local files=()
   local file ext base out tmp codec oldsize newsize enc_ok
@@ -3004,14 +3027,14 @@ step13_reencode_videos_av1() {
     if [[ "$codec" == "av1" ]]; then
       skipped_av1=$((skipped_av1 + 1))
       progress=$((progress + 1))
-      progress_draw "Step 10 AV1" "$progress" "$total"
+      progress_draw "Step 8 AV1" "$progress" "$total"
       continue
     fi
 
     if [[ -e "$out" && "$out" != "$file" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 10 AV1" "$progress" "$total"
+      progress_draw "Step 8 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3027,7 +3050,7 @@ step13_reencode_videos_av1() {
       failed=$((failed + 1))
       log_err "AV1 re-encode failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 10 AV1" "$progress" "$total"
+      progress_draw "Step 8 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3037,7 +3060,7 @@ step13_reencode_videos_av1() {
       rm -f "$tmp"
       nogain=$((nogain + 1))
       progress=$((progress + 1))
-      progress_draw "Step 10 AV1" "$progress" "$total"
+      progress_draw "Step 8 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3050,7 +3073,7 @@ step13_reencode_videos_av1() {
     fi
     converted=$((converted + 1))
     progress=$((progress + 1))
-    progress_draw "Step 10 AV1" "$progress" "$total"
+    progress_draw "Step 8 AV1" "$progress" "$total"
   done
 
   log_info "Step 10 AV1 re-encode summary:"
@@ -3076,7 +3099,7 @@ main() {
   ui_box_top
   ui_box_line "SELECT STEPS TO RUN" "$C_BOLD$C_WHITE"
   ui_box_sep
-  ui_box_line "$(printf '  %2s   %s' "0" "Core cleanup (steps 1-10)")"
+  ui_box_line "$(printf '  %2s   %s' "0" "Core cleanup (steps 1-9)")"
   for num in "${STEP_ORDER[@]}"; do
     ui_box_line "$(printf '  %2d   %s' "$num" "$(step_description "$num")")"
   done
@@ -3085,7 +3108,7 @@ main() {
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
-    selected=(1 2 3 4 5 6 7 8 9 10)
+    selected=(1 2 3 4 5 6 7 8 9)
   else
     IFS=',' read -r -a raw <<< "$input"
     for token in "${raw[@]+"${raw[@]}"}"; do
@@ -3126,7 +3149,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 14 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 13 ]]; then
       log_warn "Skipping out-of-range step: $num"
     fi
   done
@@ -3153,9 +3176,9 @@ main() {
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
     case "$num" in
       4) choose_resize_height ;;
-      11) choose_step3_upscale_options ;;
-      12) choose_step8_trim_seconds ;;
-      13) choose_step9_trim_end_seconds ;;
+      10) choose_step3_upscale_options ;;
+      11) choose_step8_trim_seconds ;;
+      12) choose_step9_trim_end_seconds ;;
     esac
   done
 
