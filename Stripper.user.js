@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.05
+// @version      00.17.08
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/Stripper.user.js
@@ -301,6 +301,8 @@
       const BLOB_TIMEOUT_MS = 120000;
       const LISTING_LIMIT = 100;
       const USER_AGENT_NOTE = 'Stripper userscript';
+      const REDDIT_SUBSCRIPTION_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
+      const REDDIT_SUBSCRIPTION_SYNC_DELAY_MS = 900;
     
       const imgRE = /\.(?:avif|bmp|gif|jpe?g|png|webp)(?:$|[?#])/i;
       const vidRE = /\.(?:m4v|mov|mp4|webm)(?:$|[?#])/i;
@@ -932,6 +934,7 @@
           logLine(added
             ? `Rabbithole: saved ${added} subreddit${added === 1 ? '' : 's'}.`
             : 'Rabbithole: no subreddits to add.');
+          if (added && rabbithole.syncWithReddit) rabbithole.syncWithReddit({ force: true, reason: 'saved-subreddits' });
         });
 
         ui.collapseBtn.addEventListener('click', (e) => {
@@ -957,6 +960,7 @@
         ui.pageRangeBtn.addEventListener('click', () => downloadSelectedPageArchives());
         ui.dateRangeBtn.addEventListener('click', () => downloadSelectedDateArchives());
         installPageChangeObserver();
+        installRedditSubscriptionClickSync();
         document.addEventListener('keydown', handleGlobalKeydown, true);
 
         // The saved list is mounted into the main body; the mode switcher decides
@@ -968,6 +972,7 @@
         logLine('Ready. Open a profile or post to scan, or a subreddit to add.');
         syncUi();
         rabbithole.refreshButton();
+        if (rabbithole.syncWithReddit) rabbithole.syncWithReddit({ reason: 'startup' });
       }
 
       function installPageChangeObserver() {
@@ -1012,6 +1017,26 @@
 
         window.__stripperPageChangePoll = setInterval(() => schedule(false), 500);
         schedule(true);
+      }
+
+      function installRedditSubscriptionClickSync() {
+        if (window.__stripperSubscriptionClickSync) return;
+        window.__stripperSubscriptionClickSync = true;
+        document.addEventListener('click', evt => {
+          if (!evt || !evt.target || !rabbithole || !rabbithole.syncWithReddit) return;
+          const el = evt.target.closest && evt.target.closest('button, a, [role="button"]');
+          if (!el || el.closest('#redditGuestPanel')) return;
+          const label = [
+            el.textContent,
+            el.getAttribute && el.getAttribute('aria-label'),
+            el.getAttribute && el.getAttribute('title')
+          ].join(' ').toLowerCase();
+          if (!/\b(?:join|joined|leave|follow|following|unfollow)\b/.test(label)) return;
+          clearTimeout(window.__stripperSubscriptionClickSyncTimer);
+          window.__stripperSubscriptionClickSyncTimer = setTimeout(() => {
+            rabbithole.syncWithReddit({ force: true, reason: 'reddit-subscription-click' });
+          }, 2200);
+        }, true);
       }
 
       function refreshForCurrentLocation(force) {
@@ -1505,6 +1530,7 @@
             logLine(added
               ? `Rabbithole: saved r/${s.name}.`
               : `Rabbithole: could not add r/${s.name}.`);
+            if (added && rabbithole.syncWithReddit) rabbithole.syncWithReddit({ force: true, reason: 'saved-subreddit' });
           });
 
           row.appendChild(link);
@@ -1518,10 +1544,14 @@
       function addCurrentContextToSaved(context) {
         const node = scannedRabbitholeNode(context);
         if (!node) return false;
-        return rabbithole.addNode(node, true);
+        const added = rabbithole.addNode(node, true);
+        if (added && (node.type === 'user' || node.type === 'sub') && rabbithole.syncWithReddit) {
+          rabbithole.syncWithReddit({ force: true, reason: 'saved-current' });
+        }
+        return added;
       }
 
-      function removeCurrentSavedItem() {
+      async function removeCurrentSavedItem() {
         if (state.busy) return;
         const context = scanContextFromLocation();
         const id = scannedNodeId(context);
@@ -1538,6 +1568,9 @@
             : `post ${context.postId}`;
         logLine(`Removed saved ${label}.`);
         syncUi();
+        if ((context.type === 'subreddit' || context.type === 'profile') && rabbithole.unsubscribeSavedNode) {
+          await rabbithole.unsubscribeSavedNode(id, label);
+        }
       }
 
       function toggleCurrentProfileBlock() {
@@ -2267,6 +2300,68 @@
           });
         });
       }
+
+      let redditMePromise = null;
+      async function redditMe() {
+        if (!redditMePromise) {
+          const url = new URL('/api/me.json', location.origin);
+          redditMePromise = requestJson(url.href).then(json => {
+            const data = json && json.data ? json.data : {};
+            return {
+              name: normalizeRedditUsername(data.name || ''),
+              modhash: String(data.modhash || data.modhashes || '').trim()
+            };
+          }).catch(err => {
+            redditMePromise = null;
+            throw err;
+          });
+        }
+        return redditMePromise;
+      }
+
+      async function requestRedditForm(path, fields) {
+        let me = null;
+        try { me = await redditMe(); } catch (err) {}
+        return new Promise((resolve, reject) => {
+          const body = new URLSearchParams(fields || {});
+          if (me && me.modhash && !body.has('uh')) body.set('uh', me.modhash);
+          const headers = {
+            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': USER_AGENT_NOTE
+          };
+          if (me && me.modhash) headers['X-Modhash'] = me.modhash;
+          const url = new URL(path, location.origin);
+          try {
+            GM_xmlhttpRequest({
+              method: 'POST',
+              url: url.href,
+              anonymous: false,
+              headers,
+              data: body.toString(),
+              timeout: 45000,
+              onload: res => {
+                if (res.status < 200 || res.status >= 300) {
+                  reject(new Error(`HTTP ${res.status}`));
+                  return;
+                }
+                let parsed = null;
+                try { parsed = res.responseText ? JSON.parse(res.responseText) : null; } catch (err) {}
+                const errors = parsed && parsed.json && Array.isArray(parsed.json.errors) ? parsed.json.errors : [];
+                if (errors.length) {
+                  reject(new Error(errors.map(e => Array.isArray(e) ? (e[1] || e[0]) : String(e)).filter(Boolean).join('; ') || 'Reddit rejected the request'));
+                  return;
+                }
+                resolve(parsed || {});
+              },
+              onerror: () => reject(new Error('network error')),
+              ontimeout: () => reject(new Error('request timeout'))
+            });
+          } catch (err) {
+            reject(err);
+          }
+        });
+      }
     
       function parseHeader(headers, name) {
         if (!headers) return '';
@@ -2611,10 +2706,13 @@
         const SORT_KEY = 'rrm_sort_mode';         // 'name' | 'added' | 'rating'
         const SORT_MODES = ['name', 'added', 'rating'];
         const SORT_LABELS = { name: 'Name', added: 'Date added', rating: 'Rating' };
+        const REDDIT_SYNC_STATE_KEY = 'rrm_reddit_subscription_sync_v1';
         let sortMode = (() => {
           const v = GM_getValue(SORT_KEY, 'name');
           return SORT_MODES.includes(v) ? v : 'name';
         })();
+        let redditSyncRunning = false;
+        let redditSyncQueuedForce = false;
 
         // -------------------------------------------------------------- classify
         function classify(href) {
@@ -2879,6 +2977,271 @@
           return changes;
         }
 
+        // ---------------------------------------------------------- Reddit sync
+        // Keep saved users/subreddits and Reddit follows/subscriptions aligned.
+        // Existing saved items are joined/followed once; after that, leaving or
+        // unfollowing on Reddit removes the saved copy instead of re-adding it.
+        function logSync(text) {
+          try { logLine(text); } catch (e) {}
+        }
+
+        function setFromList(values) {
+          return new Set((Array.isArray(values) ? values : [])
+            .map(value => String(value || '').trim().toLowerCase())
+            .filter(Boolean));
+        }
+
+        function remoteSnapshotFromState(state) {
+          const remote = state && state.remote ? state.remote : {};
+          return {
+            sub: setFromList(remote.sub),
+            user: setFromList(remote.user)
+          };
+        }
+
+        function remoteSnapshotToJson(remote) {
+          return {
+            sub: Array.from(remote.sub || []).sort(),
+            user: Array.from(remote.user || []).sort()
+          };
+        }
+
+        function normalizeSubredditName(name) {
+          return String(name || '')
+            .trim()
+            .replace(/^\/?r\//i, '')
+            .replace(/^r_/i, '')
+            .toLowerCase();
+        }
+
+        function targetFromSavedNode(n) {
+          if (!n || !n.id) return null;
+          if (n.type === 'user') {
+            const idName = String(n.id || '').replace(/^user:/i, '');
+            const labelName = String(n.label || '').replace(/^u\//i, '').replace(/^\/?user\//i, '');
+            const name = normalizeRedditUsername(idName || labelName);
+            if (!name) return null;
+            return {
+              kind: 'user',
+              key: name,
+              srName: `u_${name}`,
+              node: { type: 'user', id: `user:${name}`, label: `u/${name}`, url: `${location.origin}/user/${encodeURIComponent(name)}/` }
+            };
+          }
+          if (n.type === 'sub') {
+            const idName = String(n.id || '').replace(/^sub:/i, '');
+            const labelName = String(n.label || '').replace(/^r\//i, '');
+            const name = normalizeSubredditName(idName || labelName);
+            if (!name) return null;
+            return {
+              kind: 'sub',
+              key: name,
+              srName: name,
+              node: { type: 'sub', id: `sub:${name}`, label: `r/${name}`, url: `${location.origin}/r/${encodeURIComponent(name)}/` }
+            };
+          }
+          return null;
+        }
+
+        function targetFromSavedId(id) {
+          const text = String(id || '').trim();
+          if (/^user:/i.test(text)) return targetFromSavedNode({ id: text, type: 'user' });
+          if (/^sub:/i.test(text)) return targetFromSavedNode({ id: text, type: 'sub' });
+          return null;
+        }
+
+        function targetFromRedditSubscription(data) {
+          if (!data) return null;
+          const display = String(data.display_name || '').trim();
+          const prefixed = String(data.display_name_prefixed || '').trim();
+          const userName = (() => {
+            const candidates = [prefixed, display];
+            for (const value of candidates) {
+              const text = String(value || '').trim();
+              let m = text.match(/^u\/([^/]+)$/i);
+              if (m) return m[1];
+              m = text.match(/^u_([^/]+)$/i);
+              if (m) return m[1];
+            }
+            return '';
+          })();
+          if (userName) {
+            const name = normalizeRedditUsername(userName);
+            if (!name) return null;
+            return {
+              kind: 'user',
+              key: name,
+              srName: `u_${name}`,
+              node: { type: 'user', id: `user:${name}`, label: `u/${name}`, url: `${location.origin}/user/${encodeURIComponent(name)}/` }
+            };
+          }
+          const name = normalizeSubredditName(display || prefixed);
+          if (!name) return null;
+          return {
+            kind: 'sub',
+            key: name,
+            srName: name,
+            node: { type: 'sub', id: `sub:${name}`, label: `r/${name}`, url: `${location.origin}/r/${encodeURIComponent(name)}/` }
+          };
+        }
+
+        async function loadRedditSubscriptionTargets() {
+          const targets = [];
+          const remote = { sub: new Set(), user: new Set() };
+          let after = '';
+          let pages = 0;
+          while (pages < MAX_API_PAGES) {
+            pages++;
+            const url = new URL('/subreddits/mine/subscriber.json', location.origin);
+            url.searchParams.set('limit', '100');
+            url.searchParams.set('raw_json', '1');
+            if (after) url.searchParams.set('after', after);
+            const json = await requestJson(url.href);
+            const children = json && json.data && Array.isArray(json.data.children) ? json.data.children : [];
+            children.forEach(child => {
+              const target = targetFromRedditSubscription(child && child.data);
+              if (!target) return;
+              const set = remote[target.kind];
+              if (set.has(target.key)) return;
+              set.add(target.key);
+              targets.push(target);
+            });
+            after = json && json.data ? json.data.after : '';
+            if (!after || !children.length) break;
+            await delay(REDDIT_SUBSCRIPTION_SYNC_DELAY_MS);
+          }
+          return { targets, remote };
+        }
+
+        async function subscribeRedditTarget(target) {
+          await requestRedditForm('/api/subscribe', {
+            action: 'sub',
+            sr_name: target.srName,
+            skip_initial_defaults: 'true',
+            api_type: 'json'
+          });
+        }
+
+        async function unsubscribeRedditTarget(target) {
+          await requestRedditForm('/api/subscribe', {
+            action: 'unsub',
+            sr_name: target.srName,
+            api_type: 'json'
+          });
+        }
+
+        function updateRemoteSnapshotTarget(target, subscribed) {
+          if (!target || !target.kind || !target.key) return;
+          const state = safeParse(REDDIT_SYNC_STATE_KEY) || {};
+          const remote = remoteSnapshotFromState(state);
+          if (subscribed) remote[target.kind].add(target.key);
+          else remote[target.kind].delete(target.key);
+          safeSet(REDDIT_SYNC_STATE_KEY, JSON.stringify({
+            ...state,
+            ts: Date.now(),
+            remote: remoteSnapshotToJson(remote)
+          }));
+        }
+
+        async function unsubscribeSavedNode(id, label, options) {
+          const opts = options || {};
+          const target = targetFromSavedId(id);
+          if (!target) return;
+          const display = label || (target.kind === 'user' ? `u/${target.key}` : `r/${target.key}`);
+          try {
+            await unsubscribeRedditTarget(target);
+            updateRemoteSnapshotTarget(target, false);
+            logSync(`Reddit sync: unsubscribed/unfollowed ${display}.`);
+          } catch (err) {
+            logSync(`Reddit sync could not unsubscribe/unfollow ${display}: ${errorMessage(err)}`);
+          }
+          await delay(REDDIT_SUBSCRIPTION_SYNC_DELAY_MS);
+          if (!opts.skipSync) syncWithReddit({ force: true, reason: 'local-unsave' });
+        }
+
+        async function syncWithReddit(options) {
+          const opts = options || {};
+          const force = !!opts.force;
+          if (redditSyncRunning) {
+            redditSyncQueuedForce = redditSyncQueuedForce || force;
+            return;
+          }
+          const state = safeParse(REDDIT_SYNC_STATE_KEY);
+          const last = state && Number(state.ts) || 0;
+          if (!force && last && Date.now() - last < REDDIT_SUBSCRIPTION_SYNC_INTERVAL_MS) return;
+
+          redditSyncRunning = true;
+          let imported = 0;
+          let pushed = 0;
+          let removed = 0;
+          let failed = 0;
+          try {
+            logSync('Syncing saved users/subreddits with Reddit follows/subscriptions...');
+            const me = await redditMe().catch(() => null);
+            const previousRemote = remoteSnapshotFromState(state);
+            const synced = await loadRedditSubscriptionTargets();
+            synced.targets.forEach(target => {
+              if (hasNode(target.node.id)) return;
+              upsertNode(target.node, true);
+              imported++;
+            });
+
+            const queued = [];
+            const queuedKeys = new Set();
+            loadGraph().nodes.forEach(n => {
+              const target = targetFromSavedNode(n);
+              if (!target) return;
+              if (target.kind === 'user' && me && me.name && target.key === me.name) return;
+              if (synced.remote[target.kind].has(target.key)) return;
+              if (previousRemote[target.kind].has(target.key)) {
+                removeNodes([target.node.id]);
+                removed++;
+                return;
+              }
+              const dedupe = `${target.kind}:${target.key}`;
+              if (queuedKeys.has(dedupe)) return;
+              queuedKeys.add(dedupe);
+              queued.push(target);
+            });
+
+            for (const target of queued) {
+              try {
+                await subscribeRedditTarget(target);
+                synced.remote[target.kind].add(target.key);
+                pushed++;
+              } catch (err) {
+                failed++;
+                const label = target.kind === 'user' ? `u/${target.key}` : `r/${target.key}`;
+                logSync(`Reddit sync could not subscribe to ${label}: ${errorMessage(err)}`);
+              }
+              await delay(REDDIT_SUBSCRIPTION_SYNC_DELAY_MS);
+            }
+
+            safeSet(REDDIT_SYNC_STATE_KEY, JSON.stringify({
+              ts: Date.now(),
+              imported,
+              pushed,
+              removed,
+              failed,
+              remote: remoteSnapshotToJson(synced.remote)
+            }));
+            if (imported || pushed || removed || failed) {
+              logSync(`Reddit sync complete: saved ${imported}, followed/joined ${pushed}, removed ${removed}${failed ? `, ${failed} failed` : ''}.`);
+            } else {
+              logSync('Reddit sync complete: already in sync.');
+            }
+            if (isWindowOpen()) renderGraph(); else refreshButton();
+          } catch (err) {
+            logSync(`Reddit sync skipped: ${errorMessage(err)}`);
+          } finally {
+            redditSyncRunning = false;
+            if (redditSyncQueuedForce) {
+              redditSyncQueuedForce = false;
+              syncWithReddit({ force: true, reason: 'queued' });
+            }
+          }
+        }
+
         // ------------------------------------------------------------ export / import
         // Manual only. No background publishing or importing — the saved list
         // lives purely in this install's own GM storage so resetting/deleting
@@ -2907,6 +3270,7 @@
             const changes = mergeBridge(data);
             if (changes) { bumpRev(); }
             try { logLine(`Rabbithole: imported ${changes} new item${changes === 1 ? '' : 's'} from file.`); } catch (e) {}
+            if (changes) syncWithReddit({ force: true, reason: 'import' });
             renderGraph();
           };
           reader.readAsText(file);
@@ -3044,8 +3408,18 @@
           const search = container.querySelector('#rrm-search');
           search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); renderGraph(); });
 
-          container.querySelector('[data-act="reset"]').onclick = () => {
-            if (confirm('Erase the entire saved list?')) { resetAll(); renderGraph(); }
+          container.querySelector('[data-act="reset"]').onclick = async () => {
+            if (confirm('Erase the entire saved list and unsubscribe/unfollow saved users and subreddits on Reddit?')) {
+              const savedIds = loadGraph().nodes
+                .filter(n => n && (n.type === 'user' || n.type === 'sub'))
+                .map(n => ({ id: n.id, label: (n.label || '').replace(/\n/g, ' ') }));
+              resetAll();
+              renderGraph();
+              for (const saved of savedIds) {
+                await unsubscribeSavedNode(saved.id, saved.label, { skipSync: true });
+              }
+              syncWithReddit({ force: true, reason: 'reset' });
+            }
           };
           const fileInput = container.querySelector('#rrm-file');
           container.querySelector('[data-act="export"]').onclick = exportData;
@@ -3277,7 +3651,13 @@
           rm.className = 'rrm-row-btn rm';
           rm.textContent = '×';
           rm.title = 'Remove node';
-          rm.addEventListener('click', () => { removeNodes([n.id]); renderGraph(); });
+          rm.addEventListener('click', async () => {
+            removeNodes([n.id]);
+            renderGraph();
+            if (n.type === 'user' || n.type === 'sub') {
+              await unsubscribeSavedNode(n.id, (n.label || '').replace(/\n/g, ' '));
+            }
+          });
 
           row.appendChild(chk);
           row.appendChild(link);
@@ -3313,7 +3693,7 @@
           }
         }
 
-        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, hiddenProfileNames, refreshBlockedPanel: renderBlockedPanel };
+        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, hiddenProfileNames, refreshBlockedPanel: renderBlockedPanel, syncWithReddit, unsubscribeSavedNode };
       })();
 
       if (window.__stripperRrmLoaded) { /* avoid double saved-list bootstrap if injected twice */ }
