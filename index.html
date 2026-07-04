@@ -8290,8 +8290,8 @@ function buildDefaultThumbnailVisibilityOptions() {
 //   Clean    = title + menu button, no badges
 //   Detailed = title + menu button + all badges (size, counts, item type)
 const THUMBNAIL_PRESET_ITEMS = Object.freeze([
-  { value: "minimal", label: "Minimal" },
-  { value: "clean", label: "Clean" },
+  { value: "minimal", label: "Image only" },
+  { value: "clean", label: "Title only" },
   { value: "detailed", label: "Detailed" },
 ]);
 const THUMBNAIL_PRESET_BADGE_FIELDS = Object.freeze([
@@ -14377,6 +14377,27 @@ function getThumbnailTitleSizeFromOptions(opt = null) {
   );
 }
 
+// Set the title size for every card kind at once. The per-kind keys are
+// materialized (they default to the global value on normalize), so they'd
+// otherwise shadow a change to the global-only key — set all of them together
+// so the toggle really affects all titles.
+function setThumbnailTitleSizeEverywhere(size) {
+  if (!WS.meta) return "small";
+  const normalized = normalizeThumbnailTitleSizeValue(size, "small");
+  const next = {
+    thumbnailTitleSize: normalized,
+    previewFileThumbnailTitleSize: normalized,
+    previewRootFolderThumbnailTitleSize: normalized,
+    previewSubfolderThumbnailTitleSize: normalized,
+    previewTagThumbnailTitleSize: normalized,
+  };
+  WS.meta.options = normalizeOptions(
+    Object.assign({}, WS.meta.options || {}, next),
+  );
+  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
+  return normalized;
+}
+
 function previewThumbnailTitleSizeOptionKey(kind) {
   const target = String(kind || "");
   if (target === "file") return "previewFileThumbnailTitleSize";
@@ -15009,6 +15030,7 @@ const KEYBIND_SECTIONS = [
   { id: "folderActions", label: "Folder Actions" },
   { id: "playback", label: "Playback" },
   { id: "appearance", label: "Appearance & Presets" },
+  { id: "thumbnails", label: "Thumbnail Cards" },
   { id: "filenames", label: "Filenames" },
 ];
 
@@ -15218,10 +15240,82 @@ const KEYBIND_ACTIONS = [
     section: "appearance",
   },
   {
+    id: "toggleForceTitleCaps",
+    label: "Force Title Case",
+    hint: "Toggle Title Case for displayed names.",
+    section: "filenames",
+  },
+  {
+    id: "toggleShowPositionNumbers",
+    label: "Position number prefixes",
+    hint: "Toggle position-number prefixes on displayed names.",
+    section: "filenames",
+  },
+  {
     id: "toggleHideBeforeLastDash",
     label: "Trim before last dash",
     hint: "Toggle trimming before the last dash.",
     section: "filenames",
+  },
+  {
+    id: "cycleInitialOpenSidebars",
+    label: "Cycle initial open sidebars",
+    hint: "Cycle which side panes open automatically after loading a root.",
+    section: "panes",
+  },
+  {
+    id: "toggleFloatTags",
+    label: "Float tags",
+    hint: "Toggle the blank spacer row separating tag folders from regular folders.",
+    section: "panes",
+  },
+  {
+    id: "toggleGifsIgnoreProcessing",
+    label: "GIFs ignore processing",
+    hint: "Toggle keeping GIFs unfiltered when media filters/overlays are on.",
+    section: "filters",
+  },
+  {
+    id: "cycleVideoSkipStep",
+    label: "Cycle video skip step",
+    hint: "Cycle how far left/right seek jumps move videos.",
+    section: "playback",
+  },
+  {
+    id: "cycleVideoEndBehavior",
+    label: "Cycle video end behavior",
+    hint: "Cycle what happens when a video reaches the end.",
+    section: "playback",
+  },
+  {
+    id: "cycleThumbPresetFilePane",
+    label: "Cycle File pane cards",
+    hint: "Cycle the detail preset for File pane rows.",
+    section: "thumbnails",
+  },
+  {
+    id: "cycleThumbPresetFile",
+    label: "Cycle File cards",
+    hint: "Cycle the detail preset for file cards in the preview grid.",
+    section: "thumbnails",
+  },
+  {
+    id: "cycleThumbPresetFolder",
+    label: "Cycle Folder cards",
+    hint: "Cycle the detail preset for folder cards in the preview grid.",
+    section: "thumbnails",
+  },
+  {
+    id: "cycleThumbPresetTag",
+    label: "Cycle Tag cards",
+    hint: "Cycle the detail preset for tag cards in the preview grid.",
+    section: "thumbnails",
+  },
+  {
+    id: "toggleThumbnailTitleSize",
+    label: "Large title text",
+    hint: "Toggle all item titles between the large title size and the smaller detail-text size.",
+    section: "thumbnails",
   },
   {
     id: "scoreUpSelection",
@@ -19678,7 +19772,6 @@ ${makeCheckRow("Quick navigation", "When opening a folder that only contains fil
 ${makeSelectRow("Initial Open Sidebars", "Which side panes open automatically after loading a root.", "opt_initialOpenSidebars", String(opt.initialOpenSidebars || "both"), initialSidebarsModes)}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
-${makeCheckRow("Clean item names", "Tidy displayed names: Title Case, position-number prefixes, and trimming before the last dash, all together.", "opt_cleanItemNames", !!opt.forceTitleCaps && !!opt.showPositionNumbersInNames && !!opt.hideBeforeLastDashInFileNames)}
 ${makeActionRow(
   "Workspace",
   "Refresh the current writable root from disk.",
@@ -19695,6 +19788,7 @@ ${makeSelectRow("File pane cards", "How much detail rows in the File pane show."
 ${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
+${makeCheckRow("Large title text", "Show all item titles at the larger title size. Off matches the smaller detail-text size.", "opt_thumbnailTitleSize", getThumbnailTitleSizeFromOptions(opt) === "large")}
           `,
     },
     reveal: {
@@ -20413,6 +20507,11 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   bindThumbnailPresetSelect("opt_thumbPreset_tag", (value) =>
     applyThumbnailPresetForKinds("tag", value),
   );
+  bindMenuToggleButton("opt_thumbnailTitleSize", (enabled) => {
+    setThumbnailTitleSizeEverywhere(enabled ? "large" : "small");
+    setOptionsStatus("Saved");
+    applyOptionsEverywhere(false);
+  });
   colorOverlayRows.forEach((row) => {
     if (row.showToggle !== false) {
       bindCheck(row.enabledId, row.enabledKey, () => {
@@ -20654,20 +20753,9 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     return raw === "loop" || raw === "next" || raw === "stop" ? raw : "loop";
   });
   bindCheck("opt_showTagFolderSpacerRow", "showTagFolderSpacerRow");
-  // "Clean item names" toggles the three display-name transforms together.
-  bindMenuToggleButton("opt_cleanItemNames", (enabled) => {
-    const next = {
-      forceTitleCaps: !!enabled,
-      showPositionNumbersInNames: !!enabled,
-      hideBeforeLastDashInFileNames: !!enabled,
-    };
-    WS.meta.options = normalizeOptions(
-      Object.assign({}, WS.meta.options || {}, next),
-    );
-    metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
-    setOptionsStatus("Saved");
-    applyOptionsEverywhere(false);
-  });
+  // Filename display transforms (Title Case, position numbers, trim before last
+  // dash) are exposed as bindable control actions only — see the "filenames"
+  // KEYBIND_ACTIONS and handleExtrasKeybindAction.
   bindActionBtn("opt_appearancePresetPromptConfirm", () => {
     const presetName = readAppearancePresetPromptInput();
     const promptMode = String(
@@ -36520,6 +36608,15 @@ function enterSelectedDirectory() {
   clearBulkTagPlaceholder();
   FAST_NAV.mark();
   WS.view.previewFolderBridgeReturnState = null;
+  // Descending into a folder from the file pane abandons any single-file grid
+  // preview bridge. A stale bridge here makes closing a quick-nav media folder
+  // (esp. when the file pane was already closed, so no auto-restore state is
+  // captured) hit the file-selection close branch and only close to the folder
+  // grid instead of stepping out — quick nav appearing to be "off". Other
+  // open helpers already clear this on entry; keep it consistent here too.
+  WS.view.returnToPreviewPaneAfterFileClose = false;
+  WS.view.previewFileSelectionBridgeActive = false;
+  WS.view.previewFileBridgeReturnState = null;
 
   // When called from the grid, keep selection active in the preview pane.
   const enteringFromGrid =
@@ -46579,6 +46676,16 @@ function enterMediaFolderWithQuickNavigation(node) {
     kind: "dir",
     node,
   });
+  // Quick nav establishes its own folder-level return via the preview-folder
+  // bridge (below). Any leftover single-file selection bridge from a prior
+  // grid file-open is a *different*, conflicting return mechanism: if it were
+  // still active, closing this media would hit the file-selection branch in
+  // handleClosedFilePaneNavigationAction and only close to the folder grid
+  // instead of reopening the sidebars and stepping out (quick nav appearing
+  // to be "off"). Clear it so the quick-nav bridge is the sole return path.
+  WS.view.returnToPreviewPaneAfterFileClose = false;
+  WS.view.previewFileSelectionBridgeActive = false;
+  WS.view.previewFileBridgeReturnState = null;
   pushSimulatedTagViewContextForPath(node?.path || "");
   const gridReturnState = captureViewerCloseRestoreState({
     activePane: "preview",
@@ -54106,6 +54213,40 @@ const ANIMATED_FILTER_CYCLE = [
   { value: "videos", label: "Videos only" },
 ];
 
+const INITIAL_OPEN_SIDEBARS_CYCLE = [
+  { value: "file", label: "File pane" },
+  { value: "settings", label: "Settings pane" },
+  { value: "both", label: "Both panes" },
+  { value: "none", label: "None" },
+];
+
+const VIDEO_SKIP_STEP_CYCLE = [
+  { value: "1", label: "1 second" },
+  { value: "3", label: "3 seconds" },
+  { value: "5", label: "5 seconds" },
+  { value: "10", label: "10 seconds" },
+  { value: "15", label: "15 seconds" },
+  { value: "30", label: "30 seconds" },
+];
+
+// Cycle a per-kind thumbnail detail preset (Minimal → Clean → Detailed) using
+// the same detect/apply helpers the settings dropdowns use, then refresh the
+// grid and open settings pane. Mirrors bindThumbnailPresetSelect's apply path.
+function cycleThumbnailPresetKeybindAction(currentPreset, applyFn, label) {
+  const values = THUMBNAIL_PRESET_ITEMS.map((entry) => entry.value);
+  const idx = values.indexOf(String(currentPreset || ""));
+  const next = values[(idx >= 0 ? idx + 1 : 0) % values.length];
+  applyFn(next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  renderDirectoriesPane(true);
+  persistDirtyMetadataNow().catch(() => {});
+  showStatusMessage(
+    `${label}: ${labelForCycleValue(THUMBNAIL_PRESET_ITEMS, next)}`,
+  );
+  return true;
+}
+
 function cycleFilterMode() {
   const m = WS.view && WS.view.filterMode;
   WS.view.filterMode =
@@ -54591,11 +54732,84 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Force Title Case: ${next ? "On" : "Off"}`);
       return true;
     }
+    case "toggleShowPositionNumbers": {
+      const next = toggleOptionValue("showPositionNumbersInNames");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(`Position number prefixes: ${next ? "On" : "Off"}`);
+      return true;
+    }
     case "toggleHideBeforeLastDash": {
       const next = toggleOptionValue("hideBeforeLastDashInFileNames");
       refreshLiveSettingsPaneFromKeyboardAction();
       applyOptionsEverywhere(false);
       showStatusMessage(`Trim before last dash: ${next ? "On" : "Off"}`);
+      return true;
+    }
+    case "cycleInitialOpenSidebars": {
+      const next = cycleOptionValue(
+        "initialOpenSidebars",
+        INITIAL_OPEN_SIDEBARS_CYCLE,
+      );
+      refreshLiveSettingsPaneFromKeyboardAction();
+      showStatusMessage(
+        `Initial open sidebars: ${labelForCycleValue(INITIAL_OPEN_SIDEBARS_CYCLE, next)}`,
+      );
+      return true;
+    }
+    case "toggleFloatTags": {
+      const next = toggleOptionValue("showTagFolderSpacerRow");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(`Float tags: ${next ? "On" : "Off"}`);
+      return true;
+    }
+    case "toggleGifsIgnoreProcessing": {
+      const next = toggleOptionValue("gifsIgnoreProcessing");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyMediaFilterFromOptions();
+      showStatusMessage(`GIFs ignore processing: ${next ? "On" : "Off"}`);
+      return true;
+    }
+    case "cycleVideoSkipStep": {
+      const next = cycleOptionValue("videoSkipStep", VIDEO_SKIP_STEP_CYCLE);
+      refreshLiveSettingsPaneFromKeyboardAction();
+      showStatusMessage(
+        `Video skip step: ${labelForCycleValue(VIDEO_SKIP_STEP_CYCLE, next)}`,
+      );
+      return true;
+    }
+    case "cycleThumbPresetFilePane":
+      return cycleThumbnailPresetKeybindAction(
+        detectFilePaneThumbnailPreset(),
+        (value) => applyFilePaneThumbnailPreset(value),
+        "File pane cards",
+      );
+    case "cycleThumbPresetFile":
+      return cycleThumbnailPresetKeybindAction(
+        detectThumbnailPresetForKinds("file"),
+        (value) => applyThumbnailPresetForKinds("file", value),
+        "File cards",
+      );
+    case "cycleThumbPresetFolder":
+      return cycleThumbnailPresetKeybindAction(
+        detectThumbnailPresetForKinds(["rootFolder", "subfolder"]),
+        (value) => applyThumbnailPresetForKinds(["rootFolder", "subfolder"], value),
+        "Folder cards",
+      );
+    case "cycleThumbPresetTag":
+      return cycleThumbnailPresetKeybindAction(
+        detectThumbnailPresetForKinds("tag"),
+        (value) => applyThumbnailPresetForKinds("tag", value),
+        "Tag cards",
+      );
+    case "toggleThumbnailTitleSize": {
+      const next =
+        getThumbnailTitleSizeFromOptions() === "large" ? "small" : "large";
+      setThumbnailTitleSizeEverywhere(next);
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(`Large title text: ${next === "large" ? "On" : "Off"}`);
       return true;
     }
     default:
