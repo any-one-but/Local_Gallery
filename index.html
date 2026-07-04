@@ -3818,6 +3818,15 @@ img[data-rotate-key].rotatingThumbFade {
 .dirInlinePreview.thumbLoaded {
   animation: thumbDecodedFadeIn 150ms ease-out;
 }
+/* A thumbnail whose asset already decoded once this session (a rebuild, or a
+   scroll-back re-show) reveals instantly with no fade. The 150ms fade is a nice
+   first-appearance touch, but replaying it every time the pane is torn down and
+   rebuilt is exactly the flashing/flicker seen when doing lots of actions. */
+.thumb.thumbLoadedInstant,
+.folderThumb.thumbLoadedInstant,
+.dirInlinePreview.thumbLoadedInstant {
+  opacity: 1;
+}
 @keyframes thumbStagedSafetyReveal {
   to { opacity: 1; }
 }
@@ -16792,6 +16801,19 @@ let BANIC_STATE = {
   quad: [],
   slideshowWasActive: false,
 };
+// Panic mode must survive a WebView reload (the content process can crash and
+// auto-reload — the "blank then content reappears" hiccup — which would drop
+// BANIC_ACTIVE back to false and flash hidden content back on screen). Persist
+// the flag and, on boot, raise the opaque cover *synchronously* before anything
+// renders. BANIC_ACTIVE is set here too so the normal video/autoplay guards
+// (which all check BANIC_ACTIVE) keep playback silent behind the cover.
+const BANIC_PERSIST_KEY = "lg.banic.active";
+try {
+  if (localStorage.getItem(BANIC_PERSIST_KEY) === "1") {
+    BANIC_ACTIVE = true;
+    banicOverlayEl.classList.add("active");
+  }
+} catch {}
 /* =========================================================
        Status/progress helpers
        ========================================================= */
@@ -17091,6 +17113,10 @@ function applyBanicState(active) {
     else exitFullscreenIfNeeded();
   }
   BANIC_ACTIVE = active;
+  try {
+    if (active) localStorage.setItem(BANIC_PERSIST_KEY, "1");
+    else localStorage.removeItem(BANIC_PERSIST_KEY);
+  } catch {}
 
   if (BANIC_ACTIVE) {
     BANIC_STATE.preview = captureVideoState(previewVideoEl);
@@ -56652,6 +56678,7 @@ function registerThumbEl(el, src, opts = null) {
   // when the thumbnail loads.
   el.classList.add("thumbPending");
   el.classList.remove("thumbLoaded");
+  el.classList.remove("thumbLoadedInstant");
   if (!el.__thumbBound) {
     el.__thumbBound = true;
     const settled = () => onThumbLoadSettled(el);
@@ -56793,6 +56820,12 @@ function thumbActiveCounts() {
   return { img, video };
 }
 
+// Sources (asset URLs) that have decoded at least once this session. A source
+// in here has already had its first-appearance fade, so on any later reveal
+// (pane rebuild, scroll-back) we snap it in with no animation — killing the
+// per-rebuild flicker without changing when thumbnails actually load.
+const REVEALED_THUMB_SRCS = new Set();
+
 function onThumbLoadSettled(el) {
   if (!el || !el.dataset) return;
   THUMB_LOADING.delete(el);
@@ -56802,7 +56835,16 @@ function onThumbLoadSettled(el) {
   const decoded =
     thumbElKind(el) === "video" ? true : (Number(el.naturalWidth) || 0) > 0;
   if (decoded) {
-    el.classList.add("thumbLoaded");
+    const src = String(el.dataset.thumbSrc || "");
+    if (src && REVEALED_THUMB_SRCS.has(src)) {
+      // Already shown once — reveal instantly, no fade replay.
+      el.classList.add("thumbLoadedInstant");
+      el.classList.remove("thumbLoaded");
+    } else {
+      if (src) REVEALED_THUMB_SRCS.add(src);
+      el.classList.add("thumbLoaded");
+      el.classList.remove("thumbLoadedInstant");
+    }
     el.classList.remove("thumbPending");
   }
   pumpThumbQueue();
@@ -56816,10 +56858,13 @@ function evictThumbEl(el) {
   if (thumbElKind(el) === "video") stopCachedMediaElement(el);
   else { try { el.removeAttribute("src"); } catch {} }
   el.dataset.thumbState = "idle";
-  // Re-hide: a re-shown (scrolled-back) thumbnail fades in again instead of
-  // briefly showing the now-src-less broken image.
+  // Re-hide: a re-shown (scrolled-back) thumbnail reveals again instead of
+  // briefly showing the now-src-less broken image. Clear the instant-reveal
+  // class too, or the transparent-hold (thumbPending) would be overridden and
+  // the src-less element could flash a broken image.
   el.classList.add("thumbPending");
   el.classList.remove("thumbLoaded");
+  el.classList.remove("thumbLoadedInstant");
 }
 
 function onThumbIntersect(entries) {
