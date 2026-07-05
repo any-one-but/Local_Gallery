@@ -27044,6 +27044,16 @@ async function ensureInternalTrashDirectoryForRootHandle(rootHandle) {
 
 async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
   const silent = !!(opts && (opts.silent || opts.noLoader || opts.skipLoader));
+  // A rebuild of the *same* already-open root (refresh, add content, storage
+  // toggle, processing, ...) should never dump the user back at the root's first
+  // item. Detect that case up front (same handle identity as the loaded root)
+  // and snapshot the current directory + selection + view so we can restore it
+  // after the tree is rebuilt. A genuinely fresh open (Choose Root with a new
+  // handle, or opts.freshOpen) keeps the default root-landing behaviour.
+  const preserveView =
+    !(opts && opts.freshOpen) &&
+    !!(WS.root && WS.root.fsHandle && WS.root.fsHandle === rootHandle);
+  const preservedState = preserveView ? snapshotRefreshState() : null;
   if (!silent) {
     holdBusyOverlay();
     showBlockingLoaderOverlay("Opening root folder...", "Preparing workspace...");
@@ -27247,11 +27257,19 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     WS.view.randomCache = new Map();
     WS.view.randomFolderCache = new Map();
 
-    WS.nav.dirNode = WS.root;
-    // Open one level "above root" so the root's folders are shown in the preview
-    // grid (mirrors leaveDirectory()'s at-root behaviour) instead of descending
-    // into the first child.
-    WS.view.aboveRootView = showRootViewEnabled();
+    if (preservedState) {
+      // Same-root rebuild: put the panes back exactly where they were instead
+      // of landing on the root's first item.
+      restoreRefreshViewState(preservedState.view);
+      WS.nav.dirNode =
+        WS.dirByPath.get(preservedState.dirPath || "") || WS.root;
+    } else {
+      WS.nav.dirNode = WS.root;
+      // Open one level "above root" so the root's folders are shown in the
+      // preview grid (mirrors leaveDirectory()'s at-root behaviour) instead of
+      // descending into the first child.
+      WS.view.aboveRootView = showRootViewEnabled();
+    }
     syncActivePaneWithLayout();
     syncBulkSelectionForCurrentDir();
     syncFavoritesUi();
@@ -27261,14 +27279,25 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
       updateBlockingLoaderOverlay("Preparing folder view...", "Building folder and file rows...");
       await waitForBusyOverlayPaint();
     }
+    if (
+      preservedState &&
+      (WS.view.dirSearchPinned || String(WS.view.dirSearchQuery || "").trim())
+    ) {
+      computeDirectorySearchResults();
+    }
     rebuildDirectoriesEntries();
     primeTagDerivedCachesForDir(WS.root);
-    WS.nav.selectedIndex = 0;
-    WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+    if (preservedState) {
+      const restoredIdx = restoreRefreshSelection(preservedState.entryKey);
+      WS.nav.selectedIndex = findNearestSelectableIndex(restoredIdx, 1);
+    } else {
+      WS.nav.selectedIndex = 0;
+      WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+    }
     syncPreviewToSelection({ force: true });
     primeDirectoryNavManifests(WS.root);
     syncPinnedHotNavigationDirectories(WS.root);
-    applyDefaultRootLandingSidebars();
+    if (!preservedState) applyDefaultRootLandingSidebars();
 
     if (!silent) {
       await prepareNavigationSnapshot(
