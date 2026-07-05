@@ -2153,7 +2153,15 @@ img[data-rotate-key].rotatingThumbFade {
 
 .dropdownMenu .dropdownMenuSubmenuCaret {
   flex: 0 0 auto;
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropdownMenu .dropdownMenuSubmenuCaret svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .dropdownMenu .dropdownMenuSubmenuPanel {
@@ -41186,6 +41194,11 @@ async function addContentToDirectoryViaPicker(dirNode, pickKind = "files") {
   return count > 0;
 }
 
+// Lucide chevron-right, used as the flyout indicator on every item-menu
+// submenu trigger (Thumbnail / Media type / Aspect ratio / Filters).
+const SUBMENU_CHEVRON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>';
+
 function createDropdownMenuSubmenu(label, items) {
   const buttons = Array.isArray(items) ? items.filter(Boolean) : [];
   if (!buttons.length) return null;
@@ -41204,7 +41217,7 @@ function createDropdownMenuSubmenu(label, items) {
   const caretSpan = document.createElement("span");
   caretSpan.className = "dropdownMenuSubmenuCaret";
   caretSpan.setAttribute("aria-hidden", "true");
-  caretSpan.textContent = ">";
+  caretSpan.innerHTML = SUBMENU_CHEVRON_SVG;
 
   trigger.appendChild(labelSpan);
   trigger.appendChild(caretSpan);
@@ -41245,7 +41258,7 @@ function buildDropdownMenuSubmenuHtml(label, buttonsHtml) {
         <div class="dropdownMenuSubmenu">
           <button type="button" class="dropdownMenuSubmenuTrigger" aria-haspopup="menu">
             <span>${escapeHtml(String(label || ""))}</span>
-            <span class="dropdownMenuSubmenuCaret" aria-hidden="true">&gt;</span>
+            <span class="dropdownMenuSubmenuCaret" aria-hidden="true">${SUBMENU_CHEVRON_SVG}</span>
           </button>
           <div class="dropdownMenu dropdownMenuSubmenuPanel">
             ${buttonsHtml}
