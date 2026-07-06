@@ -5931,13 +5931,21 @@ img[data-rotate-key].rotatingThumbFade {
   margin-top: -2px;
 }
 
-.thumbCropEditorPreviewWrap {
+/* The frame owns the sizing/aspect and does NOT clip, so the corner grab
+   circles can extend past the cropped viewport and stay fully clickable. */
+.thumbCropEditorPreviewFrame {
   --editor-ar: 1;
   width: min(100%, calc(68vh * var(--editor-ar)));
   max-width: 100%;
   aspect-ratio: var(--editor-ar);
   max-height: 68vh;
   position: relative;
+  align-self: center;
+}
+
+.thumbCropEditorPreviewWrap {
+  position: absolute;
+  inset: 0;
   border-radius: 14px;
   overflow: hidden;
   border: 0;
@@ -5946,7 +5954,16 @@ img[data-rotate-key].rotatingThumbFade {
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
-  align-self: center;
+}
+
+/* Overlays the viewport exactly but is not clipped; only the handles inside
+   catch pointer events, so interior clicks fall through to the pan surface. */
+.thumbCropEditorHandleLayer {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 6;
 }
 
 .thumbCropEditorPreviewWrap.dragging {
@@ -5962,10 +5979,21 @@ img[data-rotate-key].rotatingThumbFade {
   left: 0;
   top: 0;
   pointer-events: none;
+  /* Composited <video>/<canvas> layers ignore the wrap's overflow clipping in
+     WebKit, so they must round their own corners to match the squircle viewport
+     (otherwise their square bright corners poke out past the dimming). */
+  border-radius: 14px;
 }
 
 .thumbCropEditorPreviewVideo {
   background: #000;
+}
+
+/* The video element is only a decode source; a canvas painted with completed
+   frames sits opaque on top of it so the user never sees intermediate/black
+   seek states. Matches the image editor's neutral backdrop before a frame lands. */
+.thumbCropEditorPreviewCanvas {
+  background: var(--color1-primary);
 }
 
 .thumbCropEditorShade {
@@ -5978,20 +6006,21 @@ img[data-rotate-key].rotatingThumbFade {
   position: absolute;
   border: 2px solid rgba(255, 255, 255, 0.9);
   box-shadow: none;
-  border-radius: 10px;
+  border-radius: 18px;
   pointer-events: none;
 }
 
 .thumbCropEditorResizeHandle {
   position: absolute;
-  width: 52px;
-  height: 52px;
+  width: 76px;
+  height: 76px;
   padding: 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
+  /* Plain rectangular hit area (no clip-path) — clip-path hit-testing made the
+     grab zone flicker between interactable and not as the cursor moved. */
   transform: translate(-50%, -50%);
-  z-index: 6;
   pointer-events: auto;
   touch-action: none;
   cursor: nwse-resize;
@@ -6046,6 +6075,10 @@ img[data-rotate-key].rotatingThumbFade {
   grid-template-columns: minmax(160px, 1fr);
   align-items: center;
   gap: 0;
+  /* Sit above the corner grab layer (z-index 6) so handles that overflow the
+     viewport toward the bottom can never intercept clicks on this slider. */
+  position: relative;
+  z-index: 7;
 }
 
 .thumbCropEditorFrameLabel {
@@ -6067,6 +6100,10 @@ img[data-rotate-key].rotatingThumbFade {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 2px;
+  /* Above the corner grab layer (z-index 6) so overflowing handles can't cover
+     the Reset / Cancel / Save buttons. */
+  position: relative;
+  z-index: 7;
 }
 
 .thumbCropEditorActions > button {
@@ -59889,7 +59926,7 @@ function openThumbnailCropEditor(rec) {
     ? metaGetVideoThumbnailTimeForRecord(rec)
     : null;
   const mediaHtml = isVideoEditor
-    ? `<video class="thumbCropEditorPreviewFull thumbCropEditorPreviewVideo" src="${escapeHtml(previewSrc)}" preload="metadata" playsinline muted></video>`
+    ? `<video class="thumbCropEditorPreviewFull thumbCropEditorPreviewVideo" src="${escapeHtml(previewSrc)}" preload="metadata" playsinline muted></video><canvas class="thumbCropEditorPreviewFull thumbCropEditorPreviewCanvas" aria-hidden="true"></canvas>`
     : `<img class="thumbCropEditorPreviewFull" src="${escapeHtml(previewSrc)}" alt="" />`;
   const frameControlHtml = isVideoEditor
     ? `
@@ -59904,17 +59941,21 @@ function openThumbnailCropEditor(rec) {
   overlay.tabIndex = -1;
   overlay.innerHTML = `
         <div class="thumbCropEditorPanel" role="dialog" aria-modal="true" aria-label="Edit thumbnail">
-          <div class="thumbCropEditorPreviewWrap">
-            ${mediaHtml}
-            <div class="thumbCropEditorShade" data-crop-shade="top"></div>
-            <div class="thumbCropEditorShade" data-crop-shade="left"></div>
-            <div class="thumbCropEditorShade" data-crop-shade="right"></div>
-            <div class="thumbCropEditorShade" data-crop-shade="bottom"></div>
-            <div class="thumbCropEditorCropBox" data-crop-box="1"></div>
-            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="nw" aria-label="Resize crop viewport from top left" tabindex="-1"></button>
-            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="ne" aria-label="Resize crop viewport from top right" tabindex="-1"></button>
-            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="sw" aria-label="Resize crop viewport from bottom left" tabindex="-1"></button>
-            <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="se" aria-label="Resize crop viewport from bottom right" tabindex="-1"></button>
+          <div class="thumbCropEditorPreviewFrame">
+            <div class="thumbCropEditorPreviewWrap">
+              ${mediaHtml}
+              <div class="thumbCropEditorShade" data-crop-shade="top"></div>
+              <div class="thumbCropEditorShade" data-crop-shade="left"></div>
+              <div class="thumbCropEditorShade" data-crop-shade="right"></div>
+              <div class="thumbCropEditorShade" data-crop-shade="bottom"></div>
+              <div class="thumbCropEditorCropBox" data-crop-box="1"></div>
+            </div>
+            <div class="thumbCropEditorHandleLayer" aria-hidden="true">
+              <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="nw" aria-label="Resize crop viewport from top left" tabindex="-1"></button>
+              <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="ne" aria-label="Resize crop viewport from top right" tabindex="-1"></button>
+              <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="sw" aria-label="Resize crop viewport from bottom left" tabindex="-1"></button>
+              <button type="button" class="thumbCropEditorResizeHandle" data-crop-handle="resize" data-crop-corner="se" aria-label="Resize crop viewport from bottom right" tabindex="-1"></button>
+            </div>
           </div>
           ${frameControlHtml}
           <div class="thumbCropEditorHiddenControls" aria-hidden="true">
@@ -59936,10 +59977,17 @@ function openThumbnailCropEditor(rec) {
   THUMB_CROP_EDITOR = overlay;
 
   const panel = overlay.querySelector(".thumbCropEditorPanel");
+  const previewFrame = overlay.querySelector(".thumbCropEditorPreviewFrame");
   const previewWrap = overlay.querySelector(".thumbCropEditorPreviewWrap");
-  const previewMedia = overlay.querySelector(".thumbCropEditorPreviewFull");
-  const previewImage = isVideoEditor ? null : previewMedia;
-  const previewVideo = isVideoEditor ? previewMedia : null;
+  const previewImage = isVideoEditor
+    ? null
+    : overlay.querySelector("img.thumbCropEditorPreviewFull");
+  const previewVideo = isVideoEditor
+    ? overlay.querySelector("video.thumbCropEditorPreviewVideo")
+    : null;
+  const previewCanvas = isVideoEditor
+    ? overlay.querySelector("canvas.thumbCropEditorPreviewCanvas")
+    : null;
   const cropBox = overlay.querySelector('[data-crop-box="1"]');
   const shadeTop = overlay.querySelector('[data-crop-shade="top"]');
   const shadeLeft = overlay.querySelector('[data-crop-shade="left"]');
@@ -59964,8 +60012,8 @@ function openThumbnailCropEditor(rec) {
   const getEditorAspect = () => normalizePreviewAspect(editorAspect, 4 / 3);
   const applyEditorAspect = (nextAspect) => {
     editorAspect = normalizePreviewAspect(nextAspect, getEditorAspect());
-    if (previewWrap)
-      previewWrap.style.setProperty("--editor-ar", String(editorAspect));
+    if (previewFrame)
+      previewFrame.style.setProperty("--editor-ar", String(editorAspect));
   };
   const getCurrent = () =>
     normalizeThumbCropValue({
@@ -60054,14 +60102,98 @@ function openThumbnailCropEditor(rec) {
     rangeFrame.value = String(safeValue);
     updateEditorVideoFrameLabel(safeValue);
   };
-  const seekEditorVideoToTime = (timeValue) => {
+  // Paint the currently decoded video frame onto the display canvas. The raw
+  // <video> is only a decode source hidden under this canvas; drawing solely on
+  // settled frames means the user always sees a complete frame (the previous
+  // one is retained until the next lands) instead of black/artifact flicker.
+  const drawEditorVideoFrame = () => {
+    if (!previewVideo || !previewCanvas) return;
+    const vw = Number(previewVideo.videoWidth) || 0;
+    const vh = Number(previewVideo.videoHeight) || 0;
+    if (!(vw > 0 && vh > 0)) return;
+    if (previewCanvas.width !== vw) previewCanvas.width = vw;
+    if (previewCanvas.height !== vh) previewCanvas.height = vh;
+    const ctx = previewCanvas.getContext("2d");
+    if (!ctx) return;
+    try {
+      ctx.drawImage(previewVideo, 0, 0, vw, vh);
+    } catch {}
+  };
+  // Serialize seeks: only one seek may be in flight at a time. Rapid slider
+  // scrubbing otherwise stacks overlapping seeks, which WKWebView renders as
+  // partially-decoded (artifact-covered) or fully black frames. We always keep
+  // the most recently requested time and apply it once the prior seek settles.
+  // A watchdog guarantees we never deadlock waiting for a "seeked" that a
+  // no-op/failed seek never fires (which previously froze the preview).
+  // While actively dragging we use fastSeek() (jump to nearest keyframe, no
+  // full inter-frame decode) so long videos scrub responsively instead of
+  // stalling on a slow precise seek per frame. When the user settles, a precise
+  // seek lands the exact chosen frame. currentTime is the fallback if the UA
+  // lacks fastSeek.
+  const canFastSeek =
+    !!previewVideo && typeof previewVideo.fastSeek === "function";
+  let editorSeekPending = null; // { time, live }
+  let editorSeekInFlight = false;
+  let editorSeekWatchdog = null;
+  const clearEditorSeekWatchdog = () => {
+    if (editorSeekWatchdog) {
+      try {
+        clearTimeout(editorSeekWatchdog);
+      } catch {}
+      editorSeekWatchdog = null;
+    }
+  };
+  const finishEditorSeek = () => {
+    clearEditorSeekWatchdog();
+    editorSeekInFlight = false;
+    drawEditorVideoFrame();
+    if (editorSeekPending !== null) applyEditorPendingSeek();
+  };
+  const applyEditorPendingSeek = () => {
+    if (!previewVideo || editorSeekPending === null) return;
+    const target = Number(editorSeekPending.time);
+    const live = !!editorSeekPending.live;
+    editorSeekPending = null;
+    const cur = Number(previewVideo.currentTime) || 0;
+    // Already sitting on the target frame with data decoded — just repaint.
+    if (previewVideo.readyState >= 2 && Math.abs(cur - target) < 0.002) {
+      editorSeekInFlight = false;
+      clearEditorSeekWatchdog();
+      drawEditorVideoFrame();
+      return;
+    }
+    editorSeekInFlight = true;
+    clearEditorSeekWatchdog();
+    editorSeekWatchdog = setTimeout(() => {
+      editorSeekWatchdog = null;
+      // The seek never reported back; recover so scrubbing keeps working.
+      editorSeekInFlight = false;
+      drawEditorVideoFrame();
+      if (editorSeekPending !== null) applyEditorPendingSeek();
+    }, 1500);
+    try {
+      if (live && canFastSeek) {
+        previewVideo.fastSeek(target);
+      } else {
+        previewVideo.currentTime = target;
+      }
+    } catch {
+      try {
+        previewVideo.currentTime = target;
+      } catch {
+        editorSeekInFlight = false;
+        clearEditorSeekWatchdog();
+      }
+    }
+  };
+  const seekEditorVideoToTime = (timeValue, live = false) => {
     if (!previewVideo) return;
     const clamped = clampEditorVideoTime(timeValue);
     if (!Number.isFinite(clamped)) return;
     syncEditorVideoTimeToSlider(clamped);
-    try {
-      previewVideo.currentTime = clamped;
-    } catch {}
+    editorSeekPending = { time: clamped, live };
+    if (editorSeekInFlight) return;
+    applyEditorPendingSeek();
   };
   const updateEditorVideoFrameRange = () => {
     if (!rangeFrame) return;
@@ -60166,9 +60298,14 @@ function openThumbnailCropEditor(rec) {
   [rangeX, rangeY, rangeZoom, rangeFrame].forEach((el) => {
     if (!el) return;
     if (el === rangeFrame) {
+      // Dragging => fast keyframe scrub; releasing (change) => precise land.
       el.addEventListener("input", () => {
         const nextTime = getCurrentEditorVideoTime();
-        if (Number.isFinite(nextTime)) seekEditorVideoToTime(nextTime);
+        if (Number.isFinite(nextTime)) seekEditorVideoToTime(nextTime, true);
+      });
+      el.addEventListener("change", () => {
+        const nextTime = getCurrentEditorVideoTime();
+        if (Number.isFinite(nextTime)) seekEditorVideoToTime(nextTime, false);
       });
       return;
     }
@@ -60216,13 +60353,31 @@ function openThumbnailCropEditor(rec) {
       const initial = Number.isFinite(savedVideoFrameTime)
         ? clampEditorVideoTime(savedVideoFrameTime)
         : getDefaultEditorVideoTime();
-      seekEditorVideoToTime(initial);
+      // Fast keyframe seek so the preview shows something immediately even when
+      // the saved frame is deep into a long file (avoids the black-on-open),
+      // then a precise seek lands the exact saved frame. The precise pending
+      // seek is harmlessly superseded if the user starts scrubbing first.
+      seekEditorVideoToTime(initial, true);
+      window.setTimeout(() => {
+        if (THUMB_CROP_EDITOR === overlay) seekEditorVideoToTime(initial, false);
+      }, 350);
       applyPreview();
     });
     previewVideo.addEventListener("seeked", () => {
-      syncEditorVideoTimeToSlider(previewVideo.currentTime || 0);
+      // Paint the freshly settled frame and, if a newer target arrived while
+      // this seek was running, chase it. The slider keeps showing the user's
+      // latest request rather than snapping back to the just-settled frame.
+      finishEditorSeek();
     });
-    previewVideo.addEventListener("loadeddata", applyPreview);
+    previewVideo.addEventListener("loadeddata", () => {
+      drawEditorVideoFrame();
+      applyPreview();
+    });
+    previewVideo.addEventListener("error", () => {
+      // Never leave the pipeline stuck waiting on a load/seek that failed.
+      clearEditorSeekWatchdog();
+      editorSeekInFlight = false;
+    });
   }
   applyPreview();
 
