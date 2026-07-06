@@ -643,6 +643,66 @@ body.directories-files-only #directoriesHeader {
 }
 
 /* =========================================================
+       Stacked title layout
+       ---------------------------------------------------------
+       In "stacked" mode #titlePaneTop (path / info / search) is
+       reparented into #stackedTitleHost inside the file pane. The
+       full-width top bar (#titlePane) is hidden so its grid row
+       collapses to 0 and the preview pane fills the whole height.
+       Because the title now lives inside the file pane, it hides
+       together with the pane and never leaves an orphaned row that
+       could mis-size the preview.
+       ========================================================= */
+#stackedTitleHost {
+  display: none;
+}
+#app[data-title-layout="stacked"] #titlePane {
+  display: none;
+}
+#app[data-title-layout="stacked"] #stackedTitleHost {
+  display: block;
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  background: var(--color1-secondary);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+#app[data-title-layout="stacked"] #stackedTitleHost #titlePaneTop {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  height: auto;
+  gap: 8px;
+}
+#app[data-title-layout="stacked"] #stackedTitleHost #titleMain {
+  order: 1;
+  width: 100%;
+  flex: 0 0 auto;
+}
+#app[data-title-layout="stacked"] #stackedTitleHost #titleBtns {
+  order: 2;
+  width: 100%;
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+#app[data-title-layout="stacked"] #stackedTitleHost #titleInfo {
+  max-width: 100%;
+  width: 100%;
+}
+#app[data-title-layout="stacked"] #stackedTitleHost #directoriesSearchRow {
+  order: 3;
+  width: 100%;
+  max-width: none;
+  flex: 0 0 auto;
+  margin: 0;
+  justify-content: stretch;
+}
+/* Without the full-width top bar the pane divider runs the whole height. */
+#app[data-title-layout="stacked"] #divider {
+  top: 0;
+}
+
+/* =========================================================
        Layout shell
        ========================================================= */
 #layout {
@@ -7074,6 +7134,7 @@ textarea:focus-visible {
              File Pane
              ========================================================= -->
           <div id="directoriesPane">
+            <div id="stackedTitleHost"></div>
             <div id="directoriesHeader">
               <div id="directoriesHeaderTop">
                 <div class="title">File</div>
@@ -8581,6 +8642,7 @@ function defaultOptions() {
     directoriesPaneOpen: false,
     initialOpenSidebars: "both",
     thumbnailSize: "medium",
+    titleLayout: "topbar",
     filePaneViewMode: "list",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
@@ -9028,6 +9090,10 @@ function normalizeOptions(o) {
       src.thumbnailSize === "large"
         ? src.thumbnailSize
         : d.thumbnailSize,
+    titleLayout:
+      src.titleLayout === "topbar" || src.titleLayout === "stacked"
+        ? src.titleLayout
+        : d.titleLayout,
     filePaneViewMode: "list",
     includeHiddenItemsInStats:
       typeof src.includeHiddenItemsInStats === "boolean"
@@ -14568,6 +14634,31 @@ function applyDisplaySizesFromOptions() {
   root.style.setProperty("--thumb-scale-folder", String(scaleMult));
 }
 
+// Title layout: "topbar" keeps the path/search/info in the full-width bar across
+// the top of the window (the default). "stacked" reparents that same content
+// (#titlePaneTop) into the file pane itself so it sits above the file list and
+// is bound to the file pane's lifecycle. Because it becomes a real child of the
+// file pane, closing the file pane removes it and the preview pane fills the
+// window naturally — no orphaned title row is left to mis-size the preview.
+function applyTitleLayoutFromOptions() {
+  const appEl = document.getElementById("app");
+  if (!appEl) return;
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  const layout = opt && opt.titleLayout === "stacked" ? "stacked" : "topbar";
+  appEl.setAttribute("data-title-layout", layout);
+  const titlePaneTop = document.getElementById("titlePaneTop");
+  if (titlePaneTop) {
+    const desiredHost =
+      layout === "stacked"
+        ? document.getElementById("stackedTitleHost")
+        : document.getElementById("titlePane");
+    if (desiredHost && titlePaneTop.parentElement !== desiredHost) {
+      desiredHost.appendChild(titlePaneTop);
+    }
+  }
+  updateGridModeListTopInset();
+}
+
 function applyDirectoryMiniThumbSizeFromOptions() { }
 
 function applyDirectoryFileThumbLayoutFromOptions() { }
@@ -14673,6 +14764,7 @@ function applyLoadedOptionsToDocument() {
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
   applyDisplaySizesFromOptions();
+  applyTitleLayoutFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
   applyDirectoryFolderCardLayoutFromOptions();
@@ -14698,6 +14790,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
     applyThumbFitFromOptions();
     applyThumbnailTitleSizeFromOptions();
     applyDisplaySizesFromOptions();
+    applyTitleLayoutFromOptions();
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
     applyDirectoryFolderCardLayoutFromOptions();
@@ -14720,6 +14813,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
   applyDisplaySizesFromOptions();
+  applyTitleLayoutFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
   applyDirectoryFolderCardLayoutFromOptions();
@@ -19396,6 +19490,10 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "medium", label: "Medium" },
     { value: "large", label: "Large" },
   ];
+  const titleLayoutModes = [
+    { value: "topbar", label: "Top bar" },
+    { value: "stacked", label: "Stacked" },
+  ];
   const videoSkipModes = [
     { value: "1", label: "1 second" },
     { value: "3", label: "3 seconds" },
@@ -19789,6 +19887,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeSelectRow("Initial Open Sidebars", "Which side panes open automatically after loading a root.", "opt_initialOpenSidebars", String(opt.initialOpenSidebars || "both"), initialSidebarsModes)}
 ${makeSelectRow("Thumbnail size", "How large media thumbnails are in the preview grid.", "opt_thumbnailSize", String(opt.thumbnailSize || "medium"), thumbnailSizeModes)}
+${makeSelectRow("Title layout", "Top bar keeps the path and search in a bar across the top. Stacked moves them above the file pane, showing only when the file pane is open.", "opt_titleLayout", String(opt.titleLayout || "topbar"), titleLayoutModes)}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeActionRow(
@@ -20490,6 +20589,10 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   bindSelect("opt_thumbnailSize", "thumbnailSize", false, null, (val) => {
     const raw = String(val || "").trim().toLowerCase();
     return raw === "small" || raw === "large" ? raw : "medium";
+  });
+  bindSelect("opt_titleLayout", "titleLayout", false, null, (val) => {
+    const raw = String(val || "").trim().toLowerCase();
+    return raw === "stacked" ? "stacked" : "topbar";
   });
   bindCheck("opt_muteMessages", "muteMessages");
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
@@ -23929,6 +24032,7 @@ function metaApplyFromLog(log) {
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyDisplaySizesFromOptions();
+  applyTitleLayoutFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDescriptionVisibilityFromOptions();
   applyInteractionModeFromOptions();
