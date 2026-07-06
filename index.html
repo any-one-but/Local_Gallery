@@ -2042,7 +2042,11 @@ img[data-rotate-key].rotatingThumbFade {
   align-items: center;
   justify-content: center;
   font-family: inherit;
-  border-radius: var(--ui-control-radius);
+  /* Squircle (rounded square) rather than a near-circle so the menu button
+     sits squarely inside item cards and thumbs. On the 22px button this reads
+     as a clear rounded square; the settings dropdown trigger keeps its own
+     radius via the higher-specificity #optionsBody/#keybindsBody rule. */
+  border-radius: 6px;
   border: 0;
   background: var(--ui-control-bg);
   color: var(--color0-primary);
