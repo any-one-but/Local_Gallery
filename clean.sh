@@ -1325,14 +1325,16 @@ step4_resize_media() {
   while IFS= read -r -d '' file; do
     images+=("$file")
   done < <(
-    find . -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.gif" \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.gif" \
                       -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.heic" \) -print0
   )
 
   while IFS= read -r -d '' file; do
     videos+=("$file")
   done < <(
-    find . -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.m4v" -o -iname "*.mkv" \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.m4v" -o -iname "*.mkv" \
                       -o -iname "*.webm" -o -iname "*.avi" \) -print0
   )
 
@@ -1463,7 +1465,8 @@ step5_remove_metadata() {
   while IFS= read -r -d '' file; do
     files+=("$file")
   done < <(
-    find . -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.heic" \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.heic" \
                       -o -iname "*.mp4" -o -iname "*.mov" -o -iname "*.m4v" -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.avi" \) -print0
   )
 
@@ -2807,7 +2810,8 @@ step11_recompress_images() {
   while IFS= read -r -d '' file; do
     files+=("$file")
   done < <(
-    find . -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \
                       -o -iname "*.bmp" -o -iname "*.tif" -o -iname "*.tiff" \
                       -o -iname "*.webp" -o -iname "*.avif" \) -print0
   )
@@ -3005,7 +3009,8 @@ step13_reencode_videos_av1() {
   while IFS= read -r -d '' file; do
     files+=("$file")
   done < <(
-    find . -type f \( -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" \
                       -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.avi" \) -print0
   )
 
