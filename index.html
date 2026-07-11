@@ -8694,6 +8694,7 @@ function defaultOptions() {
     storeVideoFiles: false,
     muteMessages: false,
     quickNavigation: true,
+    weightRandomJumpsByScore: "off",
     showUntaggedFolder: false,
     showListCardExtraInfo: true,
     showScores: true,
@@ -9174,6 +9175,10 @@ function normalizeOptions(o) {
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
         : d.quickNavigation,
+    weightRandomJumpsByScore: normalizeWeightRandomJumpsByScoreMode(
+      src.weightRandomJumpsByScore,
+      d.weightRandomJumpsByScore,
+    ),
     showUntaggedFolder:
       typeof src.showUntaggedFolder === "boolean"
         ? src.showUntaggedFolder
@@ -19535,6 +19540,12 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "topbar", label: "Top bar" },
     { value: "stacked", label: "Stacked" },
   ];
+  const weightRandomJumpsByScoreModes = [
+    { value: "off", label: "Off" },
+    { value: "light", label: "Light" },
+    { value: "medium", label: "Medium" },
+    { value: "heavy", label: "Heavy" },
+  ];
   const videoSkipModes = [
     { value: "1", label: "1 second" },
     { value: "3", label: "3 seconds" },
@@ -19926,6 +19937,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       title: "General",
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
+${makeSelectRow("Weight random jumps by score", "Random set and file jumps favor higher-scored folders (files use their parent folder's score). Light: score 1 is twice as likely as score 0, score 22 is 23× as likely; negative scores are proportionally less likely. Medium and Heavy give the score double and triple that pull.", "opt_weightRandomJumpsByScore", weightRandomJumpsByScoreMode(), weightRandomJumpsByScoreModes)}
 ${makeSelectRow("Initial Open Sidebars", "Which side panes open automatically after loading a root.", "opt_initialOpenSidebars", String(opt.initialOpenSidebars || "both"), initialSidebarsModes)}
 ${makeSelectRow("Thumbnail size", "How large media thumbnails are in the preview grid.", "opt_thumbnailSize", String(opt.thumbnailSize || "medium"), thumbnailSizeModes)}
 ${makeSelectRow("Title layout", "Top bar keeps the path and search in a bar across the top. Stacked moves them above the file pane, showing only when the file pane is open.", "opt_titleLayout", String(opt.titleLayout || "topbar"), titleLayoutModes)}
@@ -20623,6 +20635,17 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   bindCheck("opt_quickNavigation", "quickNavigation", (enabled) => {
     showStatusMessage(`Quick navigation: ${enabled ? "On" : "Off"}`, "quick-navigation");
   });
+  bindSelect(
+    "opt_weightRandomJumpsByScore",
+    "weightRandomJumpsByScore",
+    false,
+    (val) => {
+      const mode = normalizeWeightRandomJumpsByScoreMode(val);
+      const label = mode.charAt(0).toUpperCase() + mode.slice(1);
+      showStatusMessage(`Weight random jumps by score: ${label}`);
+    },
+    (val) => normalizeWeightRandomJumpsByScoreMode(val),
+  );
   bindSelect("opt_initialOpenSidebars", "initialOpenSidebars", false, null, (val) => {
     const raw = String(val || "").trim().toLowerCase();
     return raw === "file" || raw === "settings" || raw === "none" ? raw : "both";
@@ -31665,6 +31688,38 @@ function tortoiseNavigationEnabled() {
 function quickNavigationEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.quickNavigation);
+}
+
+// Map of dropdown mode → score-strength multiplier. Defined as a hoisted
+// function (not a top-level const) because normalizeOptions runs while the WS
+// object literal is being built, long before this point in the script — a
+// `const` here would be in its temporal dead zone and throw.
+function weightRandomJumpsByScoreMultipliers() {
+  return { off: 0, light: 1, medium: 2, heavy: 3 };
+}
+
+function normalizeWeightRandomJumpsByScoreMode(raw, fallback = "off") {
+  // Legacy boolean form (pre-dropdown): true → light, false → off.
+  if (raw === true) return "light";
+  if (raw === false) return "off";
+  const v = String(raw || "").trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(
+    weightRandomJumpsByScoreMultipliers(),
+    v,
+  )
+    ? v
+    : fallback;
+}
+
+function weightRandomJumpsByScoreMode() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return normalizeWeightRandomJumpsByScoreMode(opt && opt.weightRandomJumpsByScore);
+}
+
+// 0 when off; otherwise how strongly a folder's score bends the odds
+// (Light 1×, Medium 2×, Heavy 3×). See scoreWeightForRandomJump.
+function weightRandomJumpsByScoreMultiplier() {
+  return weightRandomJumpsByScoreMultipliers()[weightRandomJumpsByScoreMode()] || 0;
 }
 
 function showUntaggedFolderEnabled() {
@@ -46791,8 +46846,40 @@ function pickRandomFirstFileJumpTarget(sourceDirNode) {
   });
   if (!eligible.length) return null;
 
+  const multiplier = weightRandomJumpsByScoreMultiplier();
+  if (multiplier > 0) {
+    return pickWeightedByScore(eligible, multiplier) || null;
+  }
+
   const idx = Math.floor(Math.random() * eligible.length);
   return eligible[idx] || null;
+}
+
+// Weight for the score-weighted random pool. Score 0 is the baseline (1).
+// A positive score s makes a folder (1 + m·s)× as likely as baseline; a
+// negative score is the inverse, 1 / (1 + m·|s|). The strength m is set by the
+// dropdown: Light 1×, Medium 2×, Heavy 3×. So at Light score 1 is 2× baseline
+// and score 22 is 23×; at Medium score 1 is 3×; at Heavy score 1 is 4×.
+function scoreWeightForRandomJump(score, multiplier) {
+  const s = Number.isFinite(score) ? score : 0;
+  const m = Number.isFinite(multiplier) ? multiplier : 1;
+  return s >= 0 ? 1 + m * s : 1 / (1 - m * s);
+}
+
+function pickWeightedByScore(dirs, multiplier) {
+  let total = 0;
+  const weights = dirs.map((dir) => {
+    const w = scoreWeightForRandomJump(metaGetScore(dir?.path || ""), multiplier);
+    total += w;
+    return w;
+  });
+  if (!(total > 0)) return dirs[Math.floor(Math.random() * dirs.length)] || null;
+  let r = Math.random() * total;
+  for (let i = 0; i < dirs.length; i++) {
+    r -= weights[i];
+    if (r < 0) return dirs[i] || null;
+  }
+  return dirs[dirs.length - 1] || null;
 }
 
 function jumpToNextFolderFirstFile() {
