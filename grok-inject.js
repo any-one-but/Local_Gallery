@@ -100,102 +100,39 @@
     true,
   );
 
-  // Written against the real DOM (grok.com is Next.js + Tailwind + shadcn/ui).
-  // Its own stylesheets are served from cdn.grok.com, i.e. cross-origin, so they
-  // can be overridden but never read — hence literal values here rather than
-  // anything derived from the page.
+  // A palette swap, and deliberately nothing more.
   //
-  // Selector strategy: prefer the semantic hooks Grok already exposes — the ids
-  // #grok-app-root / #grok-content-area, the classes .message-bubble /
-  // .response-content-markdown / .action-buttons, and shadcn's data-state
-  // attributes. Hashed build classes are never targeted. Where a Tailwind
-  // arbitrary-variant class is the only handle, [class*=] matches it as a plain
-  // substring, which sidesteps escaping the brackets and slashes.
+  // An earlier version also restyled type and hid the sidebar, the timeline
+  // scrubber and the nav cluster. That was the wrong trade: every `display:none`
+  // is a bet that a selector still matches what we think it matches, and losing
+  // that bet leaves the page unnavigable — a much worse failure than Grok simply
+  // looking like Grok. Colour rules cannot do that. The worst a wrong colour can
+  // do is look bad, and Cmd/Ctrl+Shift+G turns the sheet off anyway.
   //
-  // Every hiding rule fails *safe*: if Grok renames something the rule stops
-  // matching and the element simply comes back. Nothing here can break the page
-  // by matching the wrong thing.
+  // So: no `display:none`, no layout, no font-family. Grok is Next.js +
+  // Tailwind and serves its CSS from cdn.grok.com, i.e. cross-origin, so its
+  // tokens can be overridden but never read — hence literal values here.
+  //
+  // Everything below targets element names and our own id only. Nothing depends
+  // on a Grok class name, so a redeploy cannot silently break it.
   var CSS = [
     ":root {",
     "  --lg-font: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', system-ui, -apple-system, 'Segoe UI', sans-serif;",
-    "  --lg-mono: ui-monospace, 'IBM Plex Mono', SFMono-Regular, Menlo, monospace;",
     "  --lg-bg: #15171c;",
     "  --lg-surface: #1d2027;",
     "  --lg-raised: #2a2e37;",
     "  --lg-ink: #e7eaf0;",
     "  --lg-ink-dim: #9aa1ad;",
-    "  --lg-accent: #4d90ff;",
     "}",
 
-    // Surfaces. Grok paints its own background on several nested wrappers, so
-    // the html/body override alone leaves patches of the original colour.
+    // Grok paints its own background on several nested wrappers, so this tints
+    // the page rather than fully recolouring it. That is the intended ceiling:
+    // chasing every surface means chasing their class names again.
     "html, body {",
     "  background-color: var(--lg-bg) !important;",
     "  color: var(--lg-ink) !important;",
     "}",
 
-    // Type. The two rules are a pair and neither works alone: excluding a
-    // subtree from the first only stops it being *set*, it still inherits the
-    // rounded face from an ancestor. So anything that must stay monospace has
-    // to be excluded above AND set explicitly below.
-    //
-    // Monaco is named in full because "monaco" does not contain the substring
-    // "mono" — [class*='mono'] misses it. Grok loads it (vs/editor/editor.main
-    // .css) for code artifacts, and it positions its cursor by monospace
-    // character width, so a proportional face there breaks the editor outright.
-    "body *:not(i, code, pre, kbd, samp, [class*='mono'], .monaco-editor, .monaco-editor *) {",
-    "  font-family: var(--lg-font) !important;",
-    "}",
-    "code, pre, kbd, samp, [class*='mono'], .monaco-editor, .monaco-editor * {",
-    "  font-family: var(--lg-mono) !important;",
-    "}",
-
-    // Prose. Grok's own metrics are already generous (16px/28px), so this only
-    // takes the glare off: its near-white #fcfcfc on a dark surface is what
-    // reads as harsh over a long answer, not the size or the leading.
-    ".response-content-markdown, .response-content-markdown p, .response-content-markdown li, .response-content-markdown h1, .response-content-markdown h2, .response-content-markdown h3 {",
-    "  color: var(--lg-ink) !important;",
-    // Undoes the tracking-[-0.1px] set on <body>.
-    "  letter-spacing: normal !important;",
-    "}",
-    ".response-content-markdown p, .response-content-markdown li {",
-    "  line-height: 1.8 !important;",
-    "}",
-
-    // Fewer non-chat elements. Each of these is a distinct piece of furniture
-    // around the conversation, hidden narrowly rather than by killing a wrapper.
-
-    // The sidebar rail, but only while collapsed: shadcn flips data-state to
-    // "expanded" on the same element, so the trigger (which lives outside the
-    // sidebar, in the content area) still opens it and the chat list stays
-    // reachable. Hiding it outright would strand you in one conversation.
-    "div[data-side='left'][data-state='collapsed'][data-collapsible='icon'] {",
-    "  display: none !important;",
-    "}",
-
-    // The floating timeline scrubber pinned to the right edge of the chat.
-    "div[class*='@[860px]/chat:flex'] {",
-    "  display: none !important;",
-    "}",
-
-    // The button cluster in the top-right of the nav bar.
-    "div[class*='@container/nav'] div[class*='flex-row'][class*='shrink-0'] {",
-    "  display: none !important;",
-    "}",
-
-    // Per-message toolbars (copy, retry, thumbs). Kept, but revealed on hover
-    // instead of sitting under every message — Grok pins them permanently on
-    // the last response. The row keeps its height so nothing jumps on hover.
-    "div[id^='response-'] .action-buttons {",
-    "  opacity: 0 !important;",
-    "  transition: opacity 0.15s ease !important;",
-    "}",
-    "div[id^='response-']:hover .action-buttons,",
-    "div[id^='response-']:focus-within .action-buttons {",
-    "  opacity: 1 !important;",
-    "}",
-
-    // Accent + selection.
     "::selection {",
     "  background: rgba(77, 144, 255, 0.35) !important;",
     "  color: var(--lg-ink) !important;",
@@ -215,6 +152,7 @@
     "}",
 
     // The window has no decorations, so nothing on screen says how to leave.
+    // Our own element, so styling it is not an override of anything.
     "#" + HINT_ID + " {",
     "  position: fixed !important;",
     "  right: 14px !important;",
