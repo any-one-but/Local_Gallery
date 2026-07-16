@@ -15532,13 +15532,13 @@ const KEYBIND_ACTIONS = [
   {
     id: "openInTab",
     label: "Open in tab",
-    hint: "Open the selected item in a new tab.",
+    hint: "Open the selected folder, album, tag, or file in a new tab.",
     section: "panes",
   },
   {
     id: "openInNewTabs",
     label: "Open in new tabs",
-    hint: `Open everything inside the selected folder in its own background tab (up to ${OPEN_IN_NEW_TABS_LIMIT}).`,
+    hint: `Open everything inside the selected folder, album, or tag in its own background tab (up to ${OPEN_IN_NEW_TABS_LIMIT}).`,
     section: "panes",
   },
   {
@@ -28615,12 +28615,31 @@ function tabLabelForDirPath(dirPath) {
   return displayFolderSegmentName(seg) || seg;
 }
 
-// A tab is named for its preview location — the folder or file the preview pane
-// shows — not for its file pane directory, which sits a level above it.
+// Tag/album portals carry a synthetic "@tag-<suffix>" path that is meaningless
+// in a tooltip. Present them as "<origin folder>/<label>" instead, which reads
+// like every other tab's path and lets the duplicate-name qualifier walk their
+// ancestors exactly as it does for a folder.
+function tagPortalDisplayPath(node) {
+  const base = String(node?._tagPreviewOriginPath || node?.parent?.path || "");
+  const label = String(node?.name || "");
+  if (!label) return base;
+  return base ? `${base}/${label}` : label;
+}
+
+function tabLocationForDirNode(dir) {
+  if (!dir) return null;
+  if (dir._skipTagFilters)
+    return { label: dirDisplayName(dir) || "Tag", path: tagPortalDisplayPath(dir) };
+  return { label: dirDisplayName(dir) || "root", path: String(dir.path || "") };
+}
+
+// A tab is named for its preview location — the folder, album/tag portal, or
+// file the preview pane shows — not for its file pane directory, which sits a
+// level above it.
 //
 // The active tab reads the live WS.preview so its name tracks browsing without
 // re-capturing; inactive tabs read the previewState in their snapshot, which
-// capturePreviewRestoreState() records for both panes. Returns the raw path
+// capturePreviewRestoreState() records for both panes. Returns the path
 // alongside the label for the tooltip and for parent-qualifying duplicates.
 function tabPreviewLocation(item) {
   if (!item) return { label: "", path: "" };
@@ -28632,10 +28651,7 @@ function tabPreviewLocation(item) {
         label: fileDisplayNameForRecord(rec),
         path: String(rec.relPath || ""),
       };
-    const dir = getPreviewTargetDir();
-    if (dir)
-      return { label: dirDisplayName(dir) || "root", path: String(dir.path || "") };
-    return { label: tabLabelForDirPath(""), path: "" };
+    return tabLocationForDirNode(getPreviewTargetDir()) || { label: tabLabelForDirPath(""), path: "" };
   }
 
   const state = item.state;
@@ -28650,8 +28666,18 @@ function tabPreviewLocation(item) {
     // File is gone (renamed/trashed since capture) — fall back to its folder.
   }
   if (preview && preview.kind === "tag-dir") {
-    const tag = String(preview.tag || preview.mode || "");
-    if (tag) return { label: displayFolderSegmentName(tag) || tag, path: tag };
+    // Rebuild the portal node so the label comes from the same place the rest of
+    // the UI gets it: an album's name, a tag's name, or "Favorites"/"Hidden"/…
+    // for the specials. (preview.tag is empty for albums and specials, so it
+    // cannot be used directly.)
+    const node = makeTagPreviewNodeForContext(
+      String(preview.mode || ""),
+      String(preview.tag || ""),
+      String(preview.originPath || ""),
+      String(preview.album || ""),
+    );
+    const location = tabLocationForDirNode(node);
+    if (location) return location;
   }
   const dirPath =
     preview && preview.kind === "dir"
@@ -28751,26 +28777,55 @@ function makeRootTabState() {
 // the item selected. So opening X in a tab yields a tab named X.
 // (OPEN_IN_NEW_TABS_LIMIT is declared up with KEYBIND_ACTIONS, which reads it.)
 
+// A nav/grid entry as an open-in-tab target. Albums, tags and the special
+// buckets (Favorites/Hidden/Untagged/Storage) are all "tag" entries and are
+// openable locations in their own right; only the bulk-tag placeholder isn't.
+function tabTargetForEntry(entry) {
+  if (!entry || entry.placeholder) return null;
+  if (entry.kind === "dir" && entry.node) return { kind: "dir", node: entry.node };
+  if (entry.kind === "tag")
+    return tagEntrySelectionKey(entry) ? { kind: "tag", entry } : null;
+  if (entry.kind === "file" && WS.fileById.has(String(entry.id || "")))
+    return { kind: "file", id: String(entry.id) };
+  return null;
+}
+
+// Resolve a grid selection key back to its entry via the previewed folder's own
+// item list, rather than reading it off the rendered card — the entry object
+// carries the album/tag/special fields a bare "tag:…" key can't round-trip.
+function previewGridEntryForSelectionKey(key) {
+  const previewDir = getPreviewTargetDir();
+  if (!previewDir || !key) return null;
+  const entries = getPreviewFolderAndFileEntries(previewDir, { includeFiles: false });
+  const folderEntries = Array.isArray(entries.folderEntries)
+    ? entries.folderEntries
+    : [];
+  for (const entry of folderEntries) {
+    if (entryKeyForSelection(entry) === key) return entry;
+  }
+  return null;
+}
+
 // The item to act on. The app has two selection cursors, so honour the active
 // pane: the grid's selected card when the preview pane is active, otherwise the
 // file pane's selected entry.
 function openInTabSelectionTarget() {
   if (WS.view.activePane === "preview") {
     const key = String(WS.view.previewSelectedKey || "");
-    if (key.startsWith("dir:")) {
-      const node = WS.dirByPath.get(key.slice(4));
-      if (node) return { kind: "dir", node };
-    } else if (key.startsWith("file:")) {
+    if (key.startsWith("file:")) {
       const id = key.slice(5);
       if (WS.fileById.has(id)) return { kind: "file", id };
+    } else if (key) {
+      const target = tabTargetForEntry(previewGridEntryForSelectionKey(key));
+      if (target) return target;
+      // Cards built outside the folder's entry list (e.g. the root trash row).
+      if (key.startsWith("dir:")) {
+        const node = WS.dirByPath.get(key.slice(4));
+        if (node) return { kind: "dir", node };
+      }
     }
   }
-  const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
-  if (entry && entry.kind === "dir" && entry.node)
-    return { kind: "dir", node: entry.node };
-  if (entry && entry.kind === "file" && WS.fileById.has(String(entry.id || "")))
-    return { kind: "file", id: String(entry.id) };
-  return null;
+  return tabTargetForEntry(WS.nav.entries[WS.nav.selectedIndex] || null);
 }
 
 // Built from scratch rather than captureViewerCloseRestoreState() so opening 30
@@ -28794,6 +28849,21 @@ function makeLocationTabState(target, baseView = null) {
       entryKey = "";
     }
     previewState = { kind: "dir", path: String(node.path || "") };
+  } else if (target.kind === "tag") {
+    // A portal is anchored to a real folder, so the tab sits in that folder with
+    // the album/tag entry selected and the portal in the preview. The
+    // previewState is produced by capturePreviewRestoreState() rather than
+    // hand-rolled, so it matches the "tag-dir" shape the restore expects.
+    const node = makeTagPreviewNode(target.entry);
+    const base =
+      node?.parent ||
+      WS.dirByPath.get(String(target.entry?.originPath || "")) ||
+      WS.root;
+    dirPath = String(base?.path || "");
+    entryKey = entryKeyForSelection(target.entry);
+    previewState = node
+      ? capturePreviewRestoreState({ kind: "dir", dirNode: node, fileId: null })
+      : null;
   } else {
     const rec = WS.fileById.get(target.id);
     dirPath = String(rec?.dirPath || "");
@@ -28818,9 +28888,10 @@ function makeLocationTabState(target, baseView = null) {
   };
 }
 
-// The sub-items of a folder, as the preview grid shows them (so filters and
-// hidden/trash visibility are respected). Tag/portal cards and the bulk-tag
-// placeholder are skipped: they are groupings, not locations in the tree.
+// The sub-items of a folder or portal, as the preview grid shows them (so
+// filters and hidden/trash visibility are respected). Works for a tag/album
+// portal node too, whose sub-items are its member folders and, for an album,
+// its tags.
 function openableSubItemTargets(dirNode) {
   if (!dirNode) return [];
   const entries = getPreviewFolderAndFileEntries(dirNode, { includeFiles: true });
@@ -28829,8 +28900,8 @@ function openableSubItemTargets(dirNode) {
     ? entries.folderEntries
     : [];
   for (const entry of folderEntries) {
-    if (!entry || entry.kind !== "dir" || !entry.node || entry.placeholder) continue;
-    out.push({ kind: "dir", node: entry.node });
+    const target = tabTargetForEntry(entry);
+    if (target) out.push(target);
   }
   const fileIds = Array.isArray(entries.fileIds) ? entries.fileIds : [];
   for (const id of fileIds) {
@@ -28838,6 +28909,26 @@ function openableSubItemTargets(dirNode) {
     if (key && WS.fileById.has(key)) out.push({ kind: "file", id: key });
   }
   return out;
+}
+
+// The node whose contents a target exposes: a folder directly, a portal via its
+// synthetic node. Files have no sub-items.
+function subItemSourceNodeForTarget(target) {
+  if (!target) return null;
+  if (target.kind === "dir") return target.node || null;
+  if (target.kind === "tag") return makeTagPreviewNode(target.entry);
+  return null;
+}
+
+function tabTargetLabel(target) {
+  if (!target) return "This item";
+  if (target.kind === "tag") {
+    const node = makeTagPreviewNode(target.entry);
+    return (node && dirDisplayName(node)) || "This album";
+  }
+  if (target.kind === "dir") return dirDisplayName(target.node) || "This folder";
+  const rec = WS.fileById.get(String(target.id || ""));
+  return (rec && fileDisplayNameForRecord(rec)) || "This file";
 }
 
 function openInTabAction() {
@@ -28871,12 +28962,13 @@ function openInNewTabsAction() {
     showStatusMessage("Nothing selected to open.");
     return false;
   }
-  if (target.kind !== "dir") {
-    showStatusMessage("Only folders have sub-items to open.");
+  const label = tabTargetLabel(target);
+  const sourceNode = subItemSourceNodeForTarget(target);
+  if (!sourceNode) {
+    showStatusMessage("Only folders, albums and tags have sub-items to open.");
     return false;
   }
-  const label = dirDisplayName(target.node) || "This folder";
-  const targets = openableSubItemTargets(target.node);
+  const targets = openableSubItemTargets(sourceNode);
   if (!targets.length) {
     showStatusMessage(`${label} has nothing inside to open.`);
     return false;
