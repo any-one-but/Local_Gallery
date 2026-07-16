@@ -74,6 +74,8 @@ Three panes rendered via CSS grid in `#app`:
 
 Only one tab is live: **the active tab's `state` is `null`**, because its state *is* `WS.view`/`WS.nav`. Switching captures the outgoing tab (`captureActiveTabState()`) and restores the incoming one (`restoreViewerCloseState(state, { preferCachedEntries: true })`). Inactive tabs are inert plain objects — no DOM, no timers, no thumbnails — so N tabs cost O(1).
 
+A tab is named for its **preview location** (see "Which pane is the location"), not its file pane directory — so a tab whose `state.dirPath` is `Gamma` is named `Nested` when its preview shows `Gamma/Nested`. `tabPreviewLocation()` resolves that: the active tab reads live `WS.preview` so its name tracks browsing without re-capturing, while inactive tabs read the `previewState` in their snapshot. `computeTabLabels()` then qualifies ambiguous names with as many ancestor folders as it takes to make them distinct (one parent is often not enough — `Alpha/Nested/n1.png` and `Gamma/Nested/n1.png` share theirs); tabs on the genuinely same location keep matching names. `syncActiveTabLabel()` patches only changed label text on navigation instead of rebuilding the strip.
+
 Two invariants to preserve when touching this:
 - **Paths.** Tab snapshots store raw path strings, so `updateViewStatePathsForRename()` loops `WS.tabs.items` and re-keys them; without it a renamed/moved/trashed folder teleports that tab to root.
 - **Node refs.** Snapshot `navEntries` hold live `DirNode`s. `resetWorkspace()` bumps `NAV_ENTRY_RESTORE_REVISION` (via `invalidateDirMetricsCaches()`), which makes `restoreNavEntriesFromViewerCloseState()` reject stale caches and rebuild. Don't bypass that revision check.
@@ -105,6 +107,17 @@ This is the conceptual model the keyboard/grid navigation is built on. Keep it i
 - **The preview pane is always exactly one level below the file pane.** It renders the contents of the *currently selected child* (`WS.preview.dirNode` = the selected folder), shown as the "grid". The grid is a UX fudge that makes browsing feel like a second interaction mode, but structurally the preview is always one directory deeper than the file pane. `WS.view.previewSelectedKey` is the selected card *within* that grid — a second, independent selection cursor from the file pane's.
 
 So at any moment: file pane = directory **D**, selected child = **C**, preview = **C's contents**, grid cursor = some item inside C.
+
+### Which pane is "the location"
+
+The two roles are split, and the distinction matters:
+
+- **`WS.nav.dirNode` is authoritative for *navigation*** — what the file pane lists, what the keyboard moves through, what `leaveDirectory()` steps out of.
+- **The preview pane is authoritative for *the location you are at*** — what the title pane path and the tab names report. That is the folder or file the preview currently shows (**C**, or a single file inside it), i.e. one level *below* `WS.nav.dirNode`.
+
+So with the file pane at **D** and **C** selected, the title reads the path to **C**, not **D**; if a file is previewed, the title reads the path to that file and the tab is named for the file. `getPreviewLocationPathText()` builds that path and `previewLocationDirNode()` resolves the folder that qualifies it; `getCurrentTitleText()` / `getCurrentTitleInfoText()` / `computeTabLabels()` all read through them, so path, metrics, and tab name always describe the same place.
+
+One trap: for a previewed **file**, `WS.preview.dirNode` is the *context it was opened from*, not necessarily its parent. In a portal grid (tag/favorites/hidden) that context genuinely is the location and wins. In a plain folder it merely holds the last previewed folder and lags the selection — arrowing off a subfolder onto a file sibling would otherwise report the file as living inside that subfolder. `previewLocationDirNode()` prefers the file's own folder there.
 
 ### Quick navigation (auto-closing the sidebars for media folders)
 

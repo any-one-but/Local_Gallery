@@ -14830,7 +14830,7 @@ function renderTabBar() {
   bar.textContent = "";
   if (!WS.tabs || WS.tabs.items.length < 2) return;
 
-  const labels = computeTabLabels();
+  const locations = computeTabLabels();
   WS.tabs.items.forEach((item, i) => {
     const tab = document.createElement("div");
     tab.className = "tabItem";
@@ -14840,11 +14840,11 @@ function renderTabBar() {
     const isActive = item.id === WS.tabs.activeId;
     tab.classList.toggle("active", isActive);
     tab.setAttribute("aria-selected", isActive ? "true" : "false");
-    tab.title = tabDisplayTitle(item);
+    tab.title = locations[i].path;
 
     const label = document.createElement("span");
     label.className = "tabItemLabel";
-    label.textContent = labels[i];
+    label.textContent = locations[i].label;
     tab.appendChild(label);
 
     const close = document.createElement("button");
@@ -14893,26 +14893,50 @@ function renderTabBar() {
   }
 }
 
-// Folder names alone collide constantly in a media library (every "Nested",
-// "Scans", "2024"...), and two identical tabs defeat the point of having
-// several locations open. Where a bare name is ambiguous, qualify it with its
-// parent folder; unique names stay short.
+// Names collide constantly in a media library (every "Nested", "Scans",
+// "2024", every "n1.png"), and identical tabs defeat the point of having
+// several locations open. Ambiguous names take on as many ancestor folders as
+// it takes to tell them apart — one parent is often not enough, since
+// Alpha/Nested/n1.png and Gamma/Nested/n1.png share their parent too. Unique
+// names stay bare. Tabs on the genuinely same location keep matching names.
+// Returns { label, path } per tab, resolving each location once.
+const TAB_LABEL_MAX_QUALIFY_DEPTH = 6;
+
 function computeTabLabels() {
-  const bases = WS.tabs.items.map((item) => tabDisplayLabel(item));
-  const counts = new Map();
-  for (const base of bases) counts.set(base, (counts.get(base) || 0) + 1);
-  return bases.map((base, i) => {
-    if ((counts.get(base) || 0) < 2) return base;
-    const parts = String(tabDisplayTitle(WS.tabs.items[i]) || "")
-      .split("/")
-      .filter(Boolean);
-    const parent = parts.length >= 2 ? parts[parts.length - 2] : "";
-    if (!parent) return base;
-    return `${displayFolderSegmentName(parent) || parent}/${base}`;
-  });
+  const locations = WS.tabs.items.map((item) => tabPreviewLocation(item));
+  // Ancestors of each location, nearest last (the final path segment is the
+  // location itself, so it is not an ancestor).
+  const ancestors = locations.map((loc) =>
+    String(loc.path || "").split("/").filter(Boolean).slice(0, -1),
+  );
+  const labels = locations.map((loc) => loc.label);
+
+  for (let depth = 1; depth <= TAB_LABEL_MAX_QUALIFY_DEPTH; depth++) {
+    const counts = new Map();
+    for (const label of labels) counts.set(label, (counts.get(label) || 0) + 1);
+    if (!labels.some((label) => (counts.get(label) || 0) > 1)) break;
+
+    let changed = false;
+    for (let i = 0; i < labels.length; i++) {
+      if ((counts.get(labels[i]) || 0) < 2) continue;
+      if (depth > ancestors[i].length) continue; // fully qualified already
+      const prefix = ancestors[i]
+        .slice(ancestors[i].length - depth)
+        .map((seg) => displayFolderSegmentName(seg) || seg)
+        .join("/");
+      const next = prefix ? `${prefix}/${locations[i].label}` : locations[i].label;
+      if (next !== labels[i]) {
+        labels[i] = next;
+        changed = true;
+      }
+    }
+    if (!changed) break; // nothing left to disambiguate with
+  }
+
+  return locations.map((loc, i) => ({ label: labels[i], path: loc.path }));
 }
 
-// Keeps tab labels in sync with the file pane as you navigate, patching only
+// Keeps tab names in sync with the preview pane as you navigate, patching only
 // the text that actually changed instead of rebuilding the strip. Runs over
 // every tab because navigating one tab can resolve or create a name collision
 // with another; the list is short, so this is far cheaper than a re-render.
@@ -14922,12 +14946,12 @@ function syncActiveTabLabel() {
   if (!bar) return;
   const els = bar.querySelectorAll(".tabItem");
   if (els.length !== WS.tabs.items.length) return;
-  const labels = computeTabLabels();
+  const locations = computeTabLabels();
   for (let i = 0; i < els.length; i++) {
     const labelEl = els[i].querySelector(".tabItemLabel");
-    if (labelEl && labelEl.textContent !== labels[i]) labelEl.textContent = labels[i];
-    const nextTitle = tabDisplayTitle(WS.tabs.items[i]);
-    if (els[i].title !== nextTitle) els[i].title = nextTitle;
+    if (labelEl && labelEl.textContent !== locations[i].label)
+      labelEl.textContent = locations[i].label;
+    if (els[i].title !== locations[i].path) els[i].title = locations[i].path;
   }
   // Reached only with 2+ tabs open, i.e. exactly when tab state is persisted.
   scheduleTabsPersist();
@@ -17817,9 +17841,8 @@ function buildPortalAwareDirectoryPathText(path) {
   return `${baseText} / ${relativeText}`;
 }
 
-function getPreviewPathText() {
+function dirPathTextForNode(previewDir) {
   if (!WS.root) return "—";
-  const previewDir = getPreviewTargetDir();
   if (!previewDir) return "—";
   if (previewDir._skipTagFilters) {
     return (
@@ -17839,6 +17862,10 @@ function getPreviewPathText() {
     (path && buildPortalAwareDirectoryPathText(path)) ||
     (path ? displayPath(path) || "root" : "root")
   );
+}
+
+function getPreviewPathText() {
+  return dirPathTextForNode(getPreviewTargetDir());
 }
 
 function collectUniqueTitleMetricNodes(nodes) {
@@ -17962,50 +17989,10 @@ function getTitlePaneScoreForNodes(nodes) {
   return total;
 }
 
-function getDirectoriesTitleInfoLabel() {
-  if (!WS.root) return "—";
-  if (WS.view.aboveRootView) return dirDisplayName(WS.root) || "root";
-  if (isViewingTagFolder()) {
-    if (WS.view.tagFolderActiveMode === "favorites") return "Favorites";
-    if (WS.view.tagFolderActiveMode === "hidden") return "Hidden";
-    if (WS.view.tagFolderActiveMode === "storage") return STORAGE_UI_LABEL;
-    if (WS.view.tagFolderActiveMode === "untagged") return "Untagged";
-    if (WS.view.tagFolderActiveMode === "album") {
-      return displayTagFolderLabel(String(WS.view.tagFolderActiveAlbum || "")) || "Album";
-    }
-    return (
-      displayTagFolderLabel(String(WS.view.tagFolderActiveTag || "")) || "Tag"
-    );
-  }
-  if (searchResultsVisibleInDirectoriesPane()) return "Search";
-  if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "Favorites";
-  if (WS.view.hiddenMode && WS.view.hiddenRootActive) return "Hidden";
-  if (!WS.nav.dirNode) return "—";
-  return dirDisplayName(WS.nav.dirNode) || "root";
-}
-
-function getDirectoriesTitleInfoContext() {
-  const title = getDirectoriesTitleInfoLabel();
-  if (!WS.root) return { title, nodes: [], folderCountMode: "collection" };
-  if (WS.view.aboveRootView)
-    return { title, nodes: [WS.root], folderCountMode: "directChildren" };
-  if (isViewingTagFolder()) {
-    return { title, nodes: getDirsForTagFolderView(), folderCountMode: "collection" };
-  }
-  if (searchResultsVisibleInDirectoriesPane()) {
-    return { title, nodes: Array.isArray(WS.view.searchResults) ? WS.view.searchResults : [], folderCountMode: "collection" };
-  }
-  if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-    return { title, nodes: getAllFavoriteDirs(), folderCountMode: "collection" };
-  }
-  if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
-    return { title, nodes: getAllHiddenDirs(), folderCountMode: "collection" };
-  }
-  return { title, nodes: WS.nav.dirNode ? [WS.nav.dirNode] : [], folderCountMode: "directChildren" };
-}
-
+// Metrics for the preview location, resolved the same way as its path text so
+// the two never describe different folders.
 function getPreviewTitleInfoContext() {
-  const previewDir = getPreviewTargetDir();
+  const previewDir = previewLocationDirNode();
   const title = previewDir
     ? dirDisplayName(previewDir) || "root"
     : "—";
@@ -18017,10 +18004,46 @@ function getPreviewTitleInfoContext() {
   return { title, nodes: [previewDir], folderCountMode: "directChildren" };
 }
 
+// The preview pane is the authoritative location: whatever it currently shows
+// — a folder's contents, or a single file — is where you are. Note this sits a
+// level below WS.nav.dirNode (see the navigation model in CLAUDE.md), so the
+// title and tab names deliberately track the preview, not the file pane.
+function getPreviewLocationFileRecord() {
+  if (!WS.preview || WS.preview.kind !== "file") return null;
+  const id = String(WS.preview.fileId || "");
+  return (id && WS.fileById.get(id)) || null;
+}
+
+// The folder that qualifies the preview location.
+//
+// For a file, WS.preview.dirNode is the *context* it was opened from, which is
+// not always its parent. In a portal grid (tag/favorites/hidden) that context is
+// genuinely where you are, so it wins. In a plain folder it merely holds the
+// last previewed folder and lags the selection — arrowing off a subfolder onto a
+// file sibling would otherwise report the file as living inside that subfolder.
+// There, the file's own folder is authoritative.
+function previewLocationDirNode() {
+  const context = getPreviewTargetDir();
+  const rec = getPreviewLocationFileRecord();
+  if (!rec) return context;
+  if (context && context._skipTagFilters) return context;
+  return WS.dirByPath.get(String(rec.dirPath || "")) || context;
+}
+
+// Path text of the preview location. When a file is open it is the location, so
+// its name is the last segment rather than its containing folder's.
+function getPreviewLocationPathText() {
+  const dirText = dirPathTextForNode(previewLocationDirNode());
+  const rec = getPreviewLocationFileRecord();
+  if (!rec) return dirText;
+  const name = fileDisplayNameForRecord(rec);
+  if (!name) return dirText;
+  if (!dirText || dirText === "—") return name;
+  return `${dirText}/${name}`;
+}
+
 function getCurrentTitleInfoText() {
-  const context = isCompactTitleLayout()
-    ? getPreviewTitleInfoContext()
-    : getDirectoriesTitleInfoContext();
+  const context = getPreviewTitleInfoContext();
   const title = String(context?.title || "—") || "—";
   const nodes = collectUniqueTitleMetricNodes(context?.nodes || []);
   if (!nodes.length) return title;
@@ -18051,10 +18074,7 @@ function getCurrentTitleInfoText() {
 }
 
 function getCurrentTitleText() {
-  const path = isCompactTitleLayout()
-    ? getPreviewPathText()
-    : getDirectoriesPathText();
-  return path || "—";
+  return getPreviewLocationPathText() || "—";
 }
 
 function updateTitleLabel() {
@@ -28530,35 +28550,60 @@ function captureActiveTabState() {
   item.state = captureViewerCloseRestoreState();
 }
 
-function tabDisplayLabelForState(state) {
-  const dirPath = String((state && state.dirPath) || "");
-  if (!dirPath) return WS.root?.name || "Root";
-  const node = WS.dirByPath.get(dirPath);
-  if (node) return displayFolderSegmentName(node.name || "") || node.name || dirPath;
-  const seg = dirPath.split("/").filter(Boolean).pop() || dirPath;
+function tabLabelForDirPath(dirPath) {
+  const path = String(dirPath || "");
+  if (!path) return WS.root ? dirDisplayName(WS.root) || "root" : "root";
+  const node = WS.dirByPath.get(path);
+  if (node) return dirDisplayName(node) || "root";
+  const seg = path.split("/").filter(Boolean).pop() || path;
   return displayFolderSegmentName(seg) || seg;
 }
 
-// The active tab renders from the live nav state rather than its (stale)
-// stored snapshot, so its label tracks navigation without re-capturing.
-function tabDisplayLabel(item) {
-  if (!item) return "";
+// A tab is named for its preview location — the folder or file the preview pane
+// shows — not for its file pane directory, which sits a level above it.
+//
+// The active tab reads the live WS.preview so its name tracks browsing without
+// re-capturing; inactive tabs read the previewState in their snapshot, which
+// capturePreviewRestoreState() records for both panes. Returns the raw path
+// alongside the label for the tooltip and for parent-qualifying duplicates.
+function tabPreviewLocation(item) {
+  if (!item) return { label: "", path: "" };
+
   if (item.id === WS.tabs.activeId) {
-    const node = WS.nav.dirNode;
-    if (node) {
-      return (
-        displayFolderSegmentName(node.name || "") || node.name || WS.root?.name || "Root"
-      );
-    }
+    const rec = getPreviewLocationFileRecord();
+    if (rec)
+      return {
+        label: fileDisplayNameForRecord(rec),
+        path: String(rec.relPath || ""),
+      };
+    const dir = getPreviewTargetDir();
+    if (dir)
+      return { label: dirDisplayName(dir) || "root", path: String(dir.path || "") };
+    return { label: tabLabelForDirPath(""), path: "" };
   }
-  return tabDisplayLabelForState(item.state);
+
+  const state = item.state;
+  const preview = state && state.previewState;
+  if (preview && preview.kind === "file") {
+    const rec = WS.fileById.get(String(preview.fileId || ""));
+    if (rec)
+      return {
+        label: fileDisplayNameForRecord(rec),
+        path: String(rec.relPath || ""),
+      };
+    // File is gone (renamed/trashed since capture) — fall back to its folder.
+  }
+  if (preview && preview.kind === "tag-dir") {
+    const tag = String(preview.tag || preview.mode || "");
+    if (tag) return { label: displayFolderSegmentName(tag) || tag, path: tag };
+  }
+  const dirPath =
+    preview && preview.kind === "dir"
+      ? String(preview.path || "")
+      : String((preview && preview.dirPath) || (state && state.dirPath) || "");
+  return { label: tabLabelForDirPath(dirPath), path: dirPath };
 }
 
-function tabDisplayTitle(item) {
-  if (!item) return "";
-  if (item.id === WS.tabs.activeId) return String(WS.nav.dirNode?.path || "");
-  return String((item.state && item.state.dirPath) || "");
-}
 
 function activateTab(id, opts = null) {
   const options = opts && typeof opts === "object" ? opts : {};
@@ -37897,33 +37942,6 @@ function goDirUp() {
   )
     return;
   leaveDirectory();
-}
-
-function getDirectoriesPathText() {
-  if (!WS.root) return "—";
-  if (WS.view.aboveRootView) return "root";
-  if (isViewingTagFolder()) {
-    return (
-      buildTagContextPathText(
-        String(WS.view.tagFolderActiveMode || ""),
-        String(WS.view.tagFolderActiveTag || ""),
-        String(WS.view.tagFolderOriginPath || ""),
-        String(WS.view.tagFolderActiveAlbum || ""),
-      ) ||
-      dirDisplayName(WS.root) ||
-      "root"
-    );
-  }
-  if (searchResultsVisibleInDirectoriesPane()) return "search";
-  if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "favorites";
-  if (WS.view.hiddenMode && WS.view.hiddenRootActive) return "hidden";
-  if (!WS.nav.dirNode) return "—";
-  if (WS.nav.dirNode === WS.root) return dirDisplayName(WS.root) || "root";
-  const p = WS.nav.dirNode.path
-    ? buildPortalAwareDirectoryPathText(String(WS.nav.dirNode.path || "")) ||
-      displayPath(WS.nav.dirNode.path)
-    : "root";
-  return p || "root";
 }
 
 function toggleFavoritesMode() {
