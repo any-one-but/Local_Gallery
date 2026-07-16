@@ -15536,6 +15536,12 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
+    id: "toggleGrokWindow",
+    label: "Toggle Grok",
+    hint: "Show or hide the Grok window over the app. Esc closes it.",
+    section: "panes",
+  },
+  {
     id: "openInNewTabs",
     label: "Open in new tabs",
     hint: `Open everything inside the selected folder, album, or tag in its own background tab (up to ${OPEN_IN_NEW_TABS_LIMIT}).`,
@@ -15852,6 +15858,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "closeTab",
   "openInTab",
   "openInNewTabs",
+  "toggleGrokWindow",
   "cycleFilter",
   "cycleFolderSort",
   "toggleAnimatedFilters",
@@ -15930,6 +15937,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   closeTab: "",
   openInTab: "",
   openInNewTabs: "",
+  toggleGrokWindow: "Cmd+g",
   randomFirstFileJump: "r",
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
@@ -55950,6 +55958,37 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
   return changed;
 }
 
+// The Grok window lives entirely in Rust (src-tauri/src/grok.rs) — it is a
+// separate native window, so there is no DOM here to toggle. Closing is handled
+// on that side too: once it has focus this window sees no keys at all, so Esc
+// is caught by the script injected into the page.
+function toggleGrokWindowKeybindAction() {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) {
+    showStatusMessage("Grok needs the desktop app.");
+    return false;
+  }
+  // Forwarded so the page can close itself with the same combo: once the Grok
+  // window has focus, this window stops receiving keys entirely.
+  // KEYBIND_INDEX is key -> id and is rebuilt whenever bindings change, so
+  // reversing it always yields the live, normalized combo.
+  let closeKey = "";
+  for (const [key, id] of KEYBIND_INDEX) {
+    if (id === "toggleGrokWindow") {
+      closeKey = key;
+      break;
+    }
+  }
+  invoke("toggle_grok_window", { closeKey })
+    .then((visible) => {
+      if (!visible) showStatusMessage("Grok closed.");
+    })
+    .catch((err) => {
+      showStatusMessage(`Grok failed: ${err}`);
+    });
+  return true;
+}
+
 function refreshWorkspaceKeybindAction() {
   if (!WS.meta || !WS.meta.fsRootHandle) {
     showStatusMessage("Refresh requires a writable folder.");
@@ -56003,6 +56042,8 @@ function handleExtrasKeybindAction(action) {
       return toggleSettingsAndDirectoriesPanesKeybindAction();
     case "refreshWorkspace":
       return refreshWorkspaceKeybindAction();
+    case "toggleGrokWindow":
+      return toggleGrokWindowKeybindAction();
     case "newTab":
       return createTab();
     case "duplicateTab":

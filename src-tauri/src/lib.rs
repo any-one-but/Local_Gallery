@@ -9,6 +9,7 @@
 //! macOS QuickLook), replacing the Electron `<video>`/canvas/ffmpeg approach.
 
 mod fs;
+mod grok;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -376,7 +377,20 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
                 }
             }
 
-            builder.build()?;
+            let main_window = builder.build()?;
+
+            // The Grok window is a macOS child window: it follows the parent
+            // when it moves, but not when it resizes, and neither on Windows.
+            // Re-sync on both so it stays exactly over the app.
+            let grok_handle = app.handle().clone();
+            main_window.on_window_event(move |event| {
+                if matches!(
+                    event,
+                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_)
+                ) {
+                    grok::sync_grok_bounds(&grok_handle);
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -384,6 +398,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             dev_report,
             generate_thumbnail,
             write_download_file,
+            grok::toggle_grok_window,
             fs::pick_root,
             fs::scan_dir,
             fs::path_kind,
@@ -403,8 +418,16 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             fs::pick_import_folders,
             fs::import_files
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|handle, event| {
+            // Quitting with the Grok window open still has to record where it
+            // was. ExitRequested fires while the windows are alive, so the
+            // webview URL is still readable here; RunEvent::Exit is too late.
+            if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+                grok::save_grok_url(handle);
+            }
+        });
 }
 
 #[cfg(test)]
