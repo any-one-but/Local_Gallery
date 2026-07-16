@@ -329,6 +329,7 @@ fn write_download_file(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             init_ffmpeg_path(app.handle());
             // Build the main window in Rust so we can inject our init scripts

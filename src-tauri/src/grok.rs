@@ -9,6 +9,7 @@
 //! why, and for how the close sentinel works.
 
 use std::path::PathBuf;
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, Url, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
@@ -27,20 +28,58 @@ const GROK_CLOSE_URL: &str = "https://local-gallery.invalid/close";
 /// an OAuth callback, an error page, some redirector — is dropped in favour of
 /// the last good URL, so a session can't be resumed into a dead end.
 /// x.com is included because the sign-in flow lives there.
-fn is_restorable_url(url: &Url) -> bool {
-    if url.scheme() != "https" {
-        return false;
-    }
+fn is_grok_host(url: &Url) -> bool {
     match url.host_str() {
+        // The leading-dot checks are what stop a lookalike like
+        // grok.com.evil.com matching on a bare suffix test.
         Some(host) => {
             let host = host.trim_start_matches("www.");
-            host == "grok.com"
-                || host.ends_with(".grok.com")
-                || host == "x.com"
-                || host.ends_with(".x.com")
+            host == "grok.com" || host.ends_with(".grok.com")
         }
         None => false,
     }
+}
+
+fn is_x_host(url: &Url) -> bool {
+    match url.host_str() {
+        Some(host) => {
+            let host = host.trim_start_matches("www.");
+            host == "x.com" || host.ends_with(".x.com")
+        }
+        None => false,
+    }
+}
+
+fn is_restorable_url(url: &Url) -> bool {
+    url.scheme() == "https" && (is_grok_host(url) || is_x_host(url))
+}
+
+/// A Grok link sitting in the clipboard, if there is one.
+///
+/// This is the escape hatch, and the whole feature: copy a Grok URL anywhere,
+/// hit the toggle, and the window opens there instead of the saved location.
+/// Nothing to configure and nothing to clear afterwards.
+///
+/// Deliberately narrower than `is_restorable_url`, which also allows x.com so a
+/// half-finished sign-in can resume. Here x.com would mean any copied tweet
+/// link hijacks the window, so this is grok.com only. https only, too: a
+/// `javascript:`, `data:` or `file:` URL would otherwise be a script-injection
+/// or local-file-read primitive aimed at a webview that runs our init script —
+/// and the clipboard is not a trusted source, it is whatever was copied last.
+fn parse_grok_link(text: &str) -> Option<Url> {
+    let url = Url::parse(text.trim()).ok()?;
+    if url.scheme() != "https" {
+        return None;
+    }
+    if !is_grok_host(&url) {
+        return None;
+    }
+    Some(url)
+}
+
+fn clipboard_grok_link(app: &AppHandle) -> Option<Url> {
+    let text = app.clipboard().read_text().ok()?;
+    parse_grok_link(&text)
 }
 
 fn grok_url_file(app: &AppHandle) -> Result<PathBuf, String> {
@@ -132,12 +171,17 @@ fn hide_grok(app: &AppHandle) {
     }
 }
 
-fn build_grok_window(app: &AppHandle, close_key: Option<&str>) -> Result<(), String> {
+fn build_grok_window(
+    app: &AppHandle,
+    close_key: Option<&str>,
+    override_url: Option<Url>,
+) -> Result<(), String> {
     let main = app
         .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "main window missing".to_string())?;
 
-    let url = saved_grok_url(app).unwrap_or_else(|| {
+    // Clipboard link beats the saved location beats the default.
+    let url = override_url.or_else(|| saved_grok_url(app)).unwrap_or_else(|| {
         Url::parse(GROK_URL).expect("GROK_URL is a compile-time constant and parses")
     });
 
@@ -192,6 +236,9 @@ fn build_grok_window(app: &AppHandle, close_key: Option<&str>) -> Result<(), Str
 /// page can close itself with the same combo. The window is built lazily and
 /// then kept alive and merely hidden, so the logged-in session and the open
 /// conversation survive toggling.
+///
+/// A Grok link in the clipboard wins over the saved location, so copying a URL
+/// and hitting the toggle takes you straight there.
 #[tauri::command]
 pub fn toggle_grok_window(app: AppHandle, close_key: Option<String>) -> Result<bool, String> {
     let key = close_key.as_deref().filter(|k| !k.is_empty());
@@ -205,13 +252,28 @@ pub fn toggle_grok_window(app: AppHandle, close_key: Option<String>) -> Result<b
         // baked-in prelude only reruns on a page load. eval is one-directional
         // (Rust -> page) and needs no IPC capability, so it is safe here.
         let _ = grok.eval(close_key_prelude(key));
+
+        // Only navigate if the clipboard points somewhere else: a link tends to
+        // sit in the clipboard for a while, and re-navigating on every toggle
+        // would reload the same page and throw away its scroll each time.
+        if let Some(url) = clipboard_grok_link(&app) {
+            let already_there = grok.url().map(|current| current == url).unwrap_or(false);
+            if !already_there {
+                // Save first — navigating drops the current location, which is
+                // still where the user was, so it stays the fallback.
+                save_grok_url(&app);
+                grok.navigate(url)
+                    .map_err(|e| format!("grok navigate: {e}"))?;
+            }
+        }
         place_over_main(&app, &grok);
         grok.show().map_err(|e| e.to_string())?;
         grok.set_focus().map_err(|e| e.to_string())?;
         return Ok(true);
     }
 
-    build_grok_window(&app, key)?;
+    let target = clipboard_grok_link(&app);
+    build_grok_window(&app, key, target)?;
     Ok(true)
 }
 
@@ -242,6 +304,37 @@ mod tests {
         assert!(!restorable("https://notgrok.com/"));
         assert!(!restorable("https://grok.com.evil.com/"));
         assert!(!restorable("file:///etc/passwd"));
+    }
+
+    #[test]
+    fn clipboard_takes_grok_links() {
+        assert!(parse_grok_link("https://grok.com/chat/abc-123").is_some());
+        assert!(parse_grok_link("https://grok.com/").is_some());
+        assert!(parse_grok_link("https://www.grok.com/chat/x").is_some());
+        // Copied text picks up stray whitespace and newlines constantly.
+        assert!(parse_grok_link("  https://grok.com/chat/x\n").is_some());
+    }
+
+    #[test]
+    fn clipboard_ignores_everything_else() {
+        // The overwhelmingly common case: the clipboard holds something that is
+        // not a link at all, and the toggle must just open normally.
+        assert!(parse_grok_link("").is_none());
+        assert!(parse_grok_link("some copied prose").is_none());
+        assert!(parse_grok_link("/Users/jo/Pictures/cat.png").is_none());
+        assert!(parse_grok_link("https://example.com/").is_none());
+        // x.com is restorable (sign-in lives there) but must NOT be taken from
+        // the clipboard, or every copied tweet link hijacks the window.
+        assert!(parse_grok_link("https://x.com/i/grok").is_none());
+        // Lookalike hosts a bare suffix test would wrongly accept.
+        assert!(parse_grok_link("https://grok.com.evil.com/").is_none());
+        assert!(parse_grok_link("https://notgrok.com/").is_none());
+        // The clipboard is untrusted input; these schemes would be a script
+        // injection or local-file read aimed at the Grok webview.
+        assert!(parse_grok_link("javascript:alert(1)").is_none());
+        assert!(parse_grok_link("data:text/html,<script>alert(1)</script>").is_none());
+        assert!(parse_grok_link("file:///etc/passwd").is_none());
+        assert!(parse_grok_link("http://grok.com/").is_none(), "plain http");
     }
 
     #[test]
