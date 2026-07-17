@@ -15458,6 +15458,12 @@ const KEYBIND_ACTIONS = [
     section: "random",
   },
   {
+    id: "cycleWeightRandomJumpsByScore",
+    label: "Cycle random jump weighting",
+    hint: "Cycle how strongly random jumps favor higher-scored folders.",
+    section: "random",
+  },
+  {
     id: "cycleFilter",
     label: "Cycle media filter",
     hint: "Cycle the root-wide media filter.",
@@ -15644,6 +15650,12 @@ const KEYBIND_ACTIONS = [
     section: "thumbnails",
   },
   {
+    id: "cycleThumbnailSize",
+    label: "Cycle thumbnail size",
+    hint: "Cycle how large media thumbnails are in the preview grid.",
+    section: "thumbnails",
+  },
+  {
     id: "scoreUpSelection",
     label: "Increase folder score",
     hint: "Increase score for selected/current folder(s).",
@@ -15821,6 +15833,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
   toggleRandomFolderSort: "Cmd+r",
+  cycleWeightRandomJumpsByScore: "",
+  cycleThumbnailSize: "",
   cycleFilter: "f",
   slideshow: "v",
   panic: "g",
@@ -55493,6 +55507,19 @@ const ANIMATED_FILTER_CYCLE = [
   { value: "videos", label: "Videos only" },
 ];
 
+const WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE = [
+  { value: "off", label: "Off" },
+  { value: "light", label: "Light" },
+  { value: "medium", label: "Medium" },
+  { value: "heavy", label: "Heavy" },
+];
+
+const THUMBNAIL_SIZE_CYCLE = [
+  { value: "small", label: "Small" },
+  { value: "medium", label: "Medium" },
+  { value: "large", label: "Large" },
+];
+
 const VIDEO_SKIP_STEP_CYCLE = [
   { value: "1", label: "1 second" },
   { value: "3", label: "3 seconds" },
@@ -56027,6 +56054,26 @@ function handleExtrasKeybindAction(action) {
       refreshLiveSettingsPaneFromKeyboardAction();
       applyMediaFilterFromOptions();
       showStatusMessage(`GIFs ignore processing: ${next ? "On" : "Off"}`);
+      return true;
+    }
+    case "cycleWeightRandomJumpsByScore": {
+      const next = cycleOptionValue(
+        "weightRandomJumpsByScore",
+        WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE,
+      );
+      refreshLiveSettingsPaneFromKeyboardAction();
+      showStatusMessage(
+        `Weight random jumps by score: ${labelForCycleValue(WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE, next)}`,
+      );
+      return true;
+    }
+    case "cycleThumbnailSize": {
+      const next = cycleOptionValue("thumbnailSize", THUMBNAIL_SIZE_CYCLE);
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(
+        `Thumbnail size: ${labelForCycleValue(THUMBNAIL_SIZE_CYCLE, next)}`,
+      );
       return true;
     }
     case "cycleVideoSkipStep": {
