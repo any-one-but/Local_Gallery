@@ -303,11 +303,11 @@ body.cursor-hidden * {
   height: 100%;
   width: 100%;
   display: grid;
-  grid-template-columns: min(320px, 28vw) 1fr;
+  grid-template-columns: 1fr;
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
-    "title title"
-    "dirs preview";
+    "title"
+    "preview";
   gap: 0;
   padding: 0;
   align-items: stretch;
@@ -328,9 +328,6 @@ body.cursor-hidden * {
   to { visibility: visible; }
 }
 
-#app.sidebar-closed {
-  grid-template-columns: 0 1fr;
-}
 
 #app.no-root-selected #controlPane {
   display: none !important;
@@ -340,12 +337,13 @@ body.cursor-hidden * {
   display: none !important;
 }
 
-#app.sidebar-closed #directoriesPane {
-  width: 0;
-  min-width: 0;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
+/* Preview-only UI: the directories pane and divider are permanently
+   retired. The (hidden) pane elements remain as inert render targets. */
+#directoriesPane {
+  display: none !important;
+}
+#divider {
+  display: none !important;
 }
 
 /* old pseudo-divider left in place for legacy; hidden now to allow real divider element */
@@ -538,13 +536,11 @@ input[type="file"] {
 /* =========================================================
        Title Pane
        ========================================================= */
-/* The top bar hosts the tab strip only. It collapses its grid row entirely
-   unless 2+ tabs are open, so a single-tab window has no top bar at all. */
+/* The top bar hosts the path / search / info row, with the tab strip on a
+   second row underneath. The tab row collapses unless 2+ tabs are open. */
 #titlePane {
   position: relative;
   z-index: 200;
-  height: var(--compact-title-bar-h);
-  min-height: var(--compact-title-bar-h);
   padding: 0 8px;
   background: var(--color1-secondary);
   border-radius: 0;
@@ -552,14 +548,18 @@ input[type="file"] {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
   width: 100%;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
   grid-area: title;
 }
 
-#app:not(.tabs-multi) #titlePane {
+#app:not(.tabs-multi) #tabBar {
   display: none;
+}
+#app.tabs-multi #tabBar {
+  height: var(--compact-title-bar-h);
+  flex: 0 0 var(--compact-title-bar-h);
 }
 
 /* =========================================================
@@ -687,22 +687,22 @@ input[type="file"] {
   box-shadow: none;
 }
 
+/* Path aligned left, search centered, info aligned right. The 1fr side
+   columns keep the search bar truly centered regardless of side widths. */
 #titlePaneTop {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 560px) minmax(0, 1fr);
   align-items: center;
-  justify-content: flex-start;
-  flex-wrap: nowrap;
   width: 100%;
   min-width: 0;
   gap: 12px;
-  height: 100%;
+  height: var(--compact-title-bar-h);
+  flex: 0 0 var(--compact-title-bar-h);
 }
 
 #titleMain {
-  order: 1;
-  width: auto;
-  flex: 0 1 auto;
+  justify-self: start;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   display: flex;
@@ -721,15 +721,12 @@ input[type="file"] {
 }
 
 #directoriesSearchRow {
-  order: 2;
   display: flex;
   gap: 6px;
   align-items: center;
-  justify-content: flex-end;
-  flex: 1 1 420px;
-  width: auto;
-  max-width: 560px;
-  margin: 0 auto;
+  justify-content: stretch;
+  width: 100%;
+  min-width: 0;
 }
 
 #directoriesSearchRow input {
@@ -737,9 +734,8 @@ input[type="file"] {
 }
 
 #titleBtns {
-  order: 3;
-  width: auto;
-  flex: 0 1 auto;
+  justify-self: end;
+  width: 100%;
   min-width: 0;
   display: flex;
   gap: 8px;
@@ -773,57 +769,6 @@ body.directories-files-only #directoriesHeader {
   display: none !important;
 }
 
-/* =========================================================
-       Stacked title
-       ---------------------------------------------------------
-       #titlePaneTop (path / info / search) lives in #stackedTitleHost
-       inside the file pane. Because the title is a real child of the
-       file pane, it hides together with the pane and never leaves an
-       orphaned row that could mis-size the preview. The full-width top
-       bar is reserved for the tab strip.
-       ========================================================= */
-#stackedTitleHost {
-  display: block;
-  flex: 0 0 auto;
-  padding: 10px 12px;
-  background: var(--color1-secondary);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
-}
-#stackedTitleHost #titlePaneTop {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  height: auto;
-  gap: 8px;
-}
-#stackedTitleHost #titleMain {
-  order: 1;
-  width: 100%;
-  flex: 0 0 auto;
-}
-#stackedTitleHost #titleBtns {
-  order: 2;
-  width: 100%;
-  flex: 0 0 auto;
-  justify-content: flex-start;
-  overflow: hidden;
-}
-#stackedTitleHost #titleInfo {
-  max-width: 100%;
-  width: 100%;
-}
-#stackedTitleHost #directoriesSearchRow {
-  order: 3;
-  width: 100%;
-  max-width: none;
-  flex: 0 0 auto;
-  margin: 0;
-  justify-content: stretch;
-}
-/* Without a visible top bar the pane divider runs the whole height. */
-#app:not(.tabs-multi) #divider {
-  top: 0;
-}
 
 /* =========================================================
        Layout shell
@@ -863,12 +808,7 @@ body.directories-files-only #directoriesHeader {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  grid-area: dirs;
   overflow: hidden;
-}
-
-#app.sidebar-closed #divider {
-  display: none !important;
 }
 
 #directoriesHeader {
@@ -6246,12 +6186,6 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 @media (max-width: 900px) {
-  #app {
-    grid-template-columns: min(300px, 42vw) 1fr;
-  }
-  #app::before {
-    left: min(300px, 42vw);
-  }
   .dirDetailsHeader,
 .dirDetailsRow {
     grid-template-columns:
@@ -7266,11 +7200,26 @@ textarea:focus-visible {
       <!-- =========================================================
          Title Pane
          ========================================================= -->
-      <!-- The top bar is the tab strip and nothing else. It only appears when
-           2+ tabs are open (#app.tabs-multi). The path/search/info row
-           (#titlePaneTop) lives permanently in #stackedTitleHost inside the
-           file pane, so it hides together with that pane. -->
+      <!-- The top bar hosts the path / search / info row (always visible with
+           a root open) with the tab strip below it (tab row only appears when
+           2+ tabs are open, #app.tabs-multi). -->
       <div id="titlePane">
+        <div id="titlePaneTop">
+          <div id="titleMain">
+            <h1 id="titleLabel">—</h1>
+          </div>
+          <div id="directoriesSearchRow">
+            <input
+              id="directoriesSearchInput"
+              class="tagEditInput"
+              type="text"
+              placeholder="Search folder"
+            />
+          </div>
+          <div id="titleBtns">
+            <div id="titleInfo">—</div>
+          </div>
+        </div>
         <div id="tabBar"></div>
       </div>
       <input
@@ -7287,24 +7236,6 @@ textarea:focus-visible {
              File Pane
              ========================================================= -->
           <div id="directoriesPane">
-            <div id="stackedTitleHost">
-              <div id="titlePaneTop">
-                <div id="titleMain">
-                  <h1 id="titleLabel">—</h1>
-                </div>
-                <div id="directoriesSearchRow">
-                  <input
-                    id="directoriesSearchInput"
-                    class="tagEditInput"
-                    type="text"
-                    placeholder="Search folder"
-                  />
-                </div>
-                <div id="titleBtns">
-                  <div id="titleInfo">—</div>
-                </div>
-              </div>
-            </div>
             <div id="directoriesHeader">
               <div id="directoriesHeaderTop">
                 <div class="title">File</div>
@@ -14092,10 +14023,10 @@ function relPathDisplayName(relPath, opts = null) {
   return out.join("/") || "";
 }
 
-function directoriesPaneOpenEnabled(opt = null) {
-  if (!WS.root) return false;
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !(src && src.directoriesPaneOpen === false);
+function directoriesPaneOpenEnabled() {
+  // Preview-only UI: the file pane sidebar is permanently retired. The
+  // preview grid (plus tabs) is the only interaction surface.
+  return false;
 }
 
 function thumbnailLoadingEnabled(opt = null) { }
@@ -15494,15 +15425,9 @@ const KEYBIND_ACTIONS = [
     section: "navigation",
   },
   {
-    id: "toggleDirectoriesPane",
-    label: "File pane",
-    hint: "Open or close the File pane sidebar.",
-    section: "panes",
-  },
-  {
     id: "toggleSettingsAndDirectoriesPanes",
-    label: "Settings + File panes",
-    hint: "Toggle both panes; if only one is open, close the open one.",
+    label: "Settings pane",
+    hint: "Open or close the Settings pane.",
     section: "panes",
   },
   {
@@ -15850,7 +15775,6 @@ function paneKeybindActions(presets = null) {
 
 const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleQuickNavigation",
-  "toggleDirectoriesPane",
   "toggleSettingsAndDirectoriesPanes",
   "refreshWorkspace",
   "newTab",
@@ -15927,7 +15851,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   enterDir: "e",
   prevFolder: "Cmd+w",
   nextFolder: "Cmd+s",
-  toggleDirectoriesPane: "Tab",
   toggleSettingsAndDirectoriesPanes: "Space",
   refreshWorkspace: "",
   // Cmd+w / Cmd+s are already prevFolder / nextFolder, so closeTab must not
@@ -55726,15 +55649,6 @@ function toggleFilePaneViewMode() {
   return setFilePaneViewMode("list");
 }
 
-function toggleDirectoriesPaneKeybindAction() {
-  if (!WS.meta) return false;
-  if (VIEWER_MODE) return false;
-  const nextOpen = !directoriesPaneOpenEnabled();
-  if (!setDirectoriesPaneOpenKeybindState(nextOpen)) return false;
-  showStatusMessage(`File pane: ${nextOpen ? "Open" : "Closed"}`, "pane-toggles");
-  return true;
-}
-
 function setDirectoriesPaneOpenKeybindState(nextOpen) {
   if (!setDirectoriesPaneOpenValue(nextOpen)) return false;
   if (nextOpen) {
@@ -55927,35 +55841,14 @@ function refreshLiveSettingsPaneFromKeyboardAction() {
 function toggleSettingsAndDirectoriesPanesKeybindAction() {
   if (!WS.meta) return false;
   if (VIEWER_MODE) return false;
-  const directoriesOpen = directoriesPaneOpenEnabled();
-  const settingsOpen = !!MENU_OPEN;
-  let changed = false;
-
-  if (directoriesOpen !== settingsOpen) {
-    if (directoriesOpen)
-      changed = setDirectoriesPaneOpenKeybindState(false) || changed;
-    if (settingsOpen) {
-      closeMenu();
-      changed = true;
-    }
-    if (changed)
-      showStatusMessage("Settings + File panes: Closed open pane.", "pane-toggles");
-    return changed;
-  }
-
-  const nextOpen = !directoriesOpen;
-  changed = setDirectoriesPaneOpenKeybindState(nextOpen) || changed;
-  if (nextOpen) {
-    openMenu(MENU_LAST_TAB || "general");
-    syncSidePaneWidthsToSmallerSide();
-    changed = true;
-  } else if (settingsOpen) {
+  if (MENU_OPEN) {
     closeMenu();
-    changed = true;
+    showStatusMessage("Settings pane: Closed", "pane-toggles");
+  } else {
+    openMenu(MENU_LAST_TAB || "general");
+    showStatusMessage("Settings pane: Open", "pane-toggles");
   }
-  if (changed)
-    showStatusMessage(`Settings + File panes: ${nextOpen ? "Open" : "Closed"}`, "pane-toggles");
-  return changed;
+  return true;
 }
 
 // The Grok window lives entirely in Rust (src-tauri/src/grok.rs) — it is a
@@ -56034,8 +55927,6 @@ function handleExtrasKeybindAction(action) {
     return true;
   }
   switch (action) {
-    case "toggleDirectoriesPane":
-      return toggleDirectoriesPaneKeybindAction();
     case "toggleFilePaneView":
       return setFilePaneViewMode("list");
     case "toggleSettingsAndDirectoriesPanes":
@@ -57238,20 +57129,10 @@ function refreshAfterDirectoriesPaneToggle(
   kickImageThumbsForPreview();
 }
 
-function setDirectoriesPaneOpenValue(nextOpen) {
-  if (!WS.meta) return false;
-  const normalizedOpen = !!nextOpen;
-  if (directoriesPaneOpenEnabled() === normalizedOpen) return false;
-  if (!normalizedOpen) rememberClosedFilePaneWidthSnapshot();
-  WS.meta.options = normalizeOptions(
-    Object.assign({}, WS.meta.options || {}, {
-      directoriesPaneOpen: normalizedOpen,
-    }),
-  );
-  metaMarkDirty(META_DOC_IDS.prefGeneral);
-  applyInteractionModeFromOptions();
-  applyPaneDividerFromOptions();
-  return true;
+function setDirectoriesPaneOpenValue() {
+  // Preview-only UI: the file pane no longer exists, so its open state can
+  // never change (directoriesPaneOpenEnabled() is hard-wired false).
+  return false;
 }
 
 function handlePreviewPaneAction(action, inFilePreview) {
