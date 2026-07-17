@@ -2819,7 +2819,6 @@ img[data-rotate-key].rotatingThumbFade {
 
 #previewBody.preview-grid {
   padding: var(--preview-gutter);
-  scroll-padding: calc(var(--preview-gutter) + var(--ui-preview-selection-stroke, 2px) + 6px);
 }
 
 #previewBody.preview-placeholder {
@@ -8743,6 +8742,7 @@ function defaultOptions() {
     storeGifFiles: false,
     storeVideoFiles: false,
     muteMessages: false,
+    fullScreenMedia: true,
     quickNavigation: true,
     weightRandomJumpsByScore: "off",
     showUntaggedFolder: false,
@@ -9188,6 +9188,10 @@ function normalizeOptions(o) {
       typeof src.muteMessages === "boolean"
         ? src.muteMessages
         : d.muteMessages,
+    fullScreenMedia:
+      typeof src.fullScreenMedia === "boolean"
+        ? src.fullScreenMedia
+        : d.fullScreenMedia,
     quickNavigation:
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
@@ -15508,6 +15512,12 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
+    id: "toggleFullScreenMedia",
+    label: "Full Screen Media",
+    hint: "Toggle whether opened media uses the full app frame or stays inside the preview pane.",
+    section: "panes",
+  },
+  {
     id: "toggleQuickNavigation",
     label: "Quick navigation",
     hint: "When opening a folder that only contains files, enter its media immediately.",
@@ -15741,6 +15751,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleShowUntaggedFolder",
   "toggleShowStorageFolder",
   "toggleMuteMessages",
+  "toggleFullScreenMedia",
 ]);
 const GENERAL_KEYBIND_ACTION_ID_SET = new Set(GENERAL_KEYBIND_ACTION_IDS);
 
@@ -15819,6 +15830,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleShowUntaggedFolder: "u",
   toggleShowStorageFolder: "Cmd+Shift+s",
   toggleQuickNavigation: "",
+  toggleFullScreenMedia: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
   renameSelection: "",
@@ -20115,6 +20127,7 @@ ${makeCheckRow("Quick navigation", "When opening a folder that only contains fil
 ${makeSelectRow("Weight random jumps by score", "Random set and file jumps favor higher-scored folders (files use their parent folder's score). Light: score 1 is twice as likely as score 0, score 22 is 23× as likely; negative scores are proportionally less likely. Medium and Heavy give the score double and triple that pull.", "opt_weightRandomJumpsByScore", weightRandomJumpsByScoreMode(), weightRandomJumpsByScoreModes)}
 ${makeSelectRow("Thumbnail size", "How large media thumbnails are in the preview grid.", "opt_thumbnailSize", String(opt.thumbnailSize || "medium"), thumbnailSizeModes)}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
+${makeCheckRow("Full Screen Media", "Show opened media using the full app frame instead of keeping it inside the preview pane.", "opt_fullScreenMedia", fullScreenMediaEnabled())}
 ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeActionRow(
   "Workspace",
@@ -20824,6 +20837,11 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     return raw === "small" || raw === "large" ? raw : "medium";
   });
   bindCheck("opt_muteMessages", "muteMessages");
+  bindCheck("opt_fullScreenMedia", "fullScreenMedia", (enabled) => {
+    syncPreviewMediaModeClass();
+    refreshActivePreviewMediaLayout({ immediate: true });
+    showStatusMessage(`Full Screen Media: ${enabled ? "On" : "Off"}`);
+  });
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
     invalidateDirMetricsCaches();
     if (!enabled && WS.view.tagFolderActiveMode === "untagged") {
@@ -37079,49 +37097,21 @@ function isPreviewTopRowCard(card) {
   return rect.top <= minTop + 2;
 }
 
-function previewRevealInsetPx() {
-  if (!previewBodyEl || typeof getComputedStyle !== "function") return 8;
-  const bodyStyle = getComputedStyle(previewBodyEl);
+function previewRevealStrokeInsetPx() {
+  if (typeof getComputedStyle !== "function") return 4;
   const rootStyle = getComputedStyle(document.documentElement);
-  const paddingTop = parseFloat(bodyStyle.paddingTop || "0");
   const stroke = parseFloat(
     rootStyle.getPropertyValue("--ui-preview-selection-stroke") || "0",
   );
-  return Math.max(8, (Number.isFinite(stroke) ? stroke : 2) + 6, paddingTop * 0.25);
+  return Math.max(4, (Number.isFinite(stroke) ? stroke : 2) + 2);
 }
 
-function previewAdjacentNavigationRowRect(targetRect, direction) {
-  if (!targetRect || !previewBodyEl) return null;
-  const cards = getPreviewSelectableCards();
-  if (!cards.length) return null;
-  const tolerance = Math.max(
-    4,
-    Math.min(48, Math.max(1, targetRect.height || 1) * 0.35),
-  );
-  let rowTop = direction > 0
-    ? Number.POSITIVE_INFINITY
-    : Number.NEGATIVE_INFINITY;
-  for (let i = 0; i < cards.length; i++) {
-    const rect = getPreviewCardRelativeRect(cards[i]);
-    if (!rect) continue;
-    if (direction > 0) {
-      if (rect.top > targetRect.top + tolerance && rect.top < rowTop)
-        rowTop = rect.top;
-    } else if (rect.top < targetRect.top - tolerance && rect.top > rowTop) {
-      rowTop = rect.top;
-    }
-  }
-  if (!Number.isFinite(rowTop)) return null;
-  let top = Number.POSITIVE_INFINITY;
-  let bottom = Number.NEGATIVE_INFINITY;
-  for (let i = 0; i < cards.length; i++) {
-    const rect = getPreviewCardRelativeRect(cards[i]);
-    if (!rect || Math.abs(rect.top - rowTop) > tolerance) continue;
-    top = Math.min(top, rect.top);
-    bottom = Math.max(bottom, rect.bottom);
-  }
-  if (!Number.isFinite(top) || !Number.isFinite(bottom)) return null;
-  return { top, bottom };
+function previewRevealBottomInsetPx() {
+  if (!previewBodyEl || typeof getComputedStyle !== "function") return 6;
+  const bodyStyle = getComputedStyle(previewBodyEl);
+  const gutter = parseFloat(bodyStyle.paddingTop || "0");
+  const gutterInset = Number.isFinite(gutter) && gutter > 0 ? gutter : 0;
+  return Math.max(6, previewRevealStrokeInsetPx(), gutterInset);
 }
 
 function revealPreviewCard(card = null) {
@@ -37144,20 +37134,16 @@ function revealPreviewCard(card = null) {
     viewLeft + Math.max(1, Number(previewBodyEl.clientWidth) || 1);
   let nextTop = viewTop;
   let nextLeft = viewLeft;
-  const inset = previewRevealInsetPx();
+  const topInset = previewRevealStrokeInsetPx();
+  const bottomInset = previewRevealBottomInsetPx();
   if (isPreviewTopRowCard(target)) nextTop = 0;
-  else if (rect.top < viewTop + inset) {
-    const previousRow = previewAdjacentNavigationRowRect(rect, -1);
-    nextTop = previousRow ? previousRow.top - inset : rect.top - inset;
-  } else if (rect.bottom > viewBottom - inset) {
-    const nextRow = previewAdjacentNavigationRowRect(rect, 1);
-    nextTop = nextRow
-      ? nextRow.bottom - previewBodyEl.clientHeight + inset
-      : rect.bottom - previewBodyEl.clientHeight + inset;
-  }
-  if (rect.left < viewLeft + inset) nextLeft = rect.left - inset;
-  else if (rect.right > viewRight - inset)
-    nextLeft = rect.right - previewBodyEl.clientWidth + inset;
+  else if (rect.top < viewTop + topInset) nextTop = rect.top - topInset;
+  else if (rect.bottom > viewBottom - bottomInset)
+    nextTop = rect.bottom - previewBodyEl.clientHeight + bottomInset;
+  const sideInset = topInset;
+  if (rect.left < viewLeft + sideInset) nextLeft = rect.left - sideInset;
+  else if (rect.right > viewRight - sideInset)
+    nextLeft = rect.right - previewBodyEl.clientWidth + sideInset;
   previewBodyEl.scrollTop = Math.max(0, Math.min(maxTop, nextTop));
   previewBodyEl.scrollLeft = Math.max(0, Math.min(maxLeft, nextLeft));
 }
@@ -37679,6 +37665,7 @@ function previewPaneFolderJump(action) {
 }
 
 function openSelectedPreviewItem() {
+  if (!ensurePreviewSelectionForCurrentTarget(false)) return false;
   const card = findSelectedPreviewCard();
   const openAction =
     card && typeof card.__previewOpenAction === "function"
@@ -48335,14 +48322,32 @@ function getBreadcrumbNodesForDir(dirNode) {
   return nodes;
 }
 
+function fullScreenMediaEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !(src && src.fullScreenMedia === false);
+}
+
+function syncPreviewMediaModeClass(mode = null) {
+  const appEl = document.getElementById("app");
+  if (!appEl) return;
+  const activeMode =
+    mode ||
+    (previewBodyEl && previewBodyEl.classList.contains("preview-file")
+      ? "file"
+      : "");
+  appEl.classList.toggle(
+    "preview-media-mode",
+    activeMode === "file" && fullScreenMediaEnabled(),
+  );
+}
+
 function setPreviewBodyMode(mode) {
   if (!previewBodyEl) return;
   previewBodyEl.classList.toggle("preview-file", mode === "file");
   previewBodyEl.classList.toggle("preview-grid", mode === "grid");
   previewBodyEl.classList.remove("preview-expanded");
   previewBodyEl.classList.toggle("preview-placeholder", mode === "placeholder");
-  const appEl = document.getElementById("app");
-  if (appEl) appEl.classList.toggle("preview-media-mode", mode === "file");
+  syncPreviewMediaModeClass(mode);
 }
 
 function ensureThumbUrl(rec, opts = null) { }
@@ -55970,6 +55975,14 @@ function handleExtrasKeybindAction(action) {
     case "toggleMuteMessages":
       setMuteMessagesEnabled(!muteMessagesEnabled());
       return true;
+    case "toggleFullScreenMedia": {
+      const next = toggleOptionValue("fullScreenMedia");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      syncPreviewMediaModeClass();
+      refreshActivePreviewMediaLayout({ immediate: true });
+      showStatusMessage(`Full Screen Media: ${next ? "On" : "Off"}`);
+      return true;
+    }
     case "toggleQuickNavigation": {
       const next = toggleOptionValue("quickNavigation");
       refreshLiveSettingsPaneFromKeyboardAction();
