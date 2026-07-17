@@ -10,12 +10,43 @@
 
 mod fs;
 mod grok;
+mod settings;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tauri::Manager;
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    Manager,
+};
+
+const SETTINGS_MENU_ID: &str = "settings";
+
+#[cfg(target_os = "macos")]
+fn install_macos_settings_menu(app: &tauri::App) -> tauri::Result<()> {
+    let menu = Menu::default(app.handle())?;
+    if let Some(app_submenu) = menu
+        .items()?
+        .first()
+        .and_then(|item| item.as_submenu())
+    {
+        let settings = MenuItem::with_id(
+            app.handle(),
+            SETTINGS_MENU_ID,
+            "Settings…",
+            true,
+            Some("CmdOrCtrl+,"),
+        )?;
+        let separator = PredefinedMenuItem::separator(app.handle())?;
+        // About, separator, Settings, separator, Services… is the conventional
+        // macOS application-menu ordering.
+        app_submenu.insert(&settings, 2)?;
+        app_submenu.insert(&separator, 3)?;
+    }
+    app.set_menu(menu)?;
+    Ok(())
+}
 
 fn hash_str(s: &str) -> u64 {
     let mut h = DefaultHasher::new();
@@ -330,8 +361,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == SETTINGS_MENU_ID {
+                let _ = settings::show_settings_window(app, None);
+            }
+        })
         .setup(|app| {
             init_ffmpeg_path(app.handle());
+            #[cfg(target_os = "macos")]
+            install_macos_settings_menu(app)?;
             // Build the main window in Rust so we can inject our init scripts
             // before index.html's own scripts run:
             //  - tauri-bridge.js  -> window.electronAPI shim
@@ -404,6 +442,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             dev_report,
             generate_thumbnail,
             write_download_file,
+            settings::open_settings_window,
             grok::toggle_grok_window,
             fs::pick_root,
             fs::scan_dir,

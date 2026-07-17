@@ -7228,6 +7228,57 @@ textarea:focus-visible {
   box-shadow: none !important;
 }
 
+/* A real Settings WebviewWindow loads this same document with a native
+   initialization flag. Keep one settings implementation, but present only the
+   menu surface in that window; the gallery chrome remains in the main window. */
+html.settings-window,
+html.settings-window body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+html.settings-window #app {
+  display: block;
+  width: 100%;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+}
+html.settings-window #titlePane,
+html.settings-window #openWritableInput,
+html.settings-window #directoriesPane,
+html.settings-window #previewMainStack,
+html.settings-window #menuDivider {
+  display: none !important;
+}
+html.settings-window #layout,
+html.settings-window #shell,
+html.settings-window #previewPane,
+html.settings-window #previewContent {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+html.settings-window #menuOverlay.active {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100% !important;
+  max-width: none;
+  min-width: 0;
+  height: 100%;
+}
+html.settings-window #previewContent:not(.menu-open)::before {
+  content: "Loading Settings\2026";
+  display: grid;
+  flex: 1 1 auto;
+  place-items: center;
+  color: var(--color0-secondary);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
 </style>
   <!-- END: inlined from ./styles.css -->
   </head>
@@ -7742,6 +7793,30 @@ textarea:focus-visible {
 
 
 
+
+const IS_SETTINGS_WINDOW = !!window.__LG_SETTINGS_WINDOW__;
+if (IS_SETTINGS_WINDOW) {
+  document.documentElement.classList.add("settings-window");
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (
+        String(event.key || "").toLowerCase() !== "w" ||
+        !event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      ) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const currentWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+      if (currentWindow && typeof currentWindow.close === "function") {
+        currentWindow.close().catch(() => {});
+      }
+    },
+    true,
+  );
+}
 
 window.addEventListener("error", (event) => {
   try {
@@ -15068,6 +15143,7 @@ const SAFE_KEY_VALUES = (() => {
   for (let i = 0; i < 10; i++) out.push(String(i));
   out.push("Space");
   out.push("Tab");
+  out.push(",");
   out.push("ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown");
   return out;
 })();
@@ -15387,8 +15463,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "toggleSettingsAndDirectoriesPanes",
-    label: "Settings pane",
-    hint: "Open or close the Settings pane.",
+    label: "Settings window",
+    hint: "Open the Settings window.",
     section: "panes",
   },
   {
@@ -15819,7 +15895,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   enterDir: "e",
   prevFolder: "Cmd+w",
   nextFolder: "Cmd+s",
-  toggleSettingsAndDirectoriesPanes: "Space",
+  toggleSettingsAndDirectoriesPanes: "Cmd+,",
   refreshWorkspace: "",
   // Cmd+w / Cmd+s are already prevFolder / nextFolder, so closeTab must not
   // claim the browser-conventional Cmd+w. Left unbound for the user to choose.
@@ -15974,6 +16050,7 @@ function normalizeKeybinds(log, presets = null) {
   migrateIfKeyMatches("seekForward", "Command+e", "c");
   migrateIfKeyMatches("seekForward", "e", "c");
   migrateIfKeyMatches("playPause", "Space", "x");
+  migrateIfKeyMatches("toggleSettingsAndDirectoriesPanes", "Space", "Cmd+,");
   migrateIfKeyMatches("toggleAnimatedFilters", "5", "Command+i");
   migrateIfKeyMatches("toggleAnimatedFilters", "6", "Command+i");
   migrateIfKeyMatches("favoriteSelection", "Ctrl+f", "f");
@@ -18215,7 +18292,26 @@ function syncPreviewContentLayoutAfterMenuToggle() {
   refreshActivePreviewMediaLayout({ immediate: true });
 }
 
+function requestSettingsWindow(tabId = "general") {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) {
+    showStatusMessage("Settings needs the desktop app.");
+    return false;
+  }
+  const tab = String(tabId || "general");
+  const flush =
+    typeof flushPendingMetadataSaveNow === "function"
+      ? flushPendingMetadataSaveNow()
+      : Promise.resolve();
+  Promise.resolve(flush)
+    .catch(() => {})
+    .then(() => invoke("open_settings_window", { tab }))
+    .catch((err) => showStatusMessage(`Settings failed: ${err}`));
+  return true;
+}
+
 function openMenu(tabId) {
+  if (!IS_SETTINGS_WINDOW) return requestSettingsWindow(tabId);
   MENU_OPEN = true;
   const appEl = document.getElementById("app");
   if (appEl) {
@@ -18249,7 +18345,19 @@ function closeMenu() {
   if (menuOverlay) menuOverlay.classList.remove("active");
   if (previewContentEl) previewContentEl.classList.remove("menu-open");
   syncPreviewContentLayoutAfterMenuToggle();
+  if (IS_SETTINGS_WINDOW) {
+    const currentWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+    if (currentWindow && typeof currentWindow.close === "function") {
+      currentWindow.close().catch(() => {});
+    }
+  }
 }
+
+window.__lgOpenSettingsTab = (tabId) => {
+  const tab = String(tabId || "general");
+  if (IS_SETTINGS_WINDOW) openMenu(tab);
+  else requestSettingsWindow(tab);
+};
 
 if (optionsBtn) optionsBtn.addEventListener("click", () => openMenu());
 menuTabButtons.forEach((btn) => {
@@ -25090,6 +25198,164 @@ function metaApplyDocLogById(docId, log) {
   }
 }
 
+/* Settings runs in a second webview, so its in-memory WS object is distinct
+   from the gallery's. Tauri app events keep metadata live in both directions;
+   each side also saves received documents so closing either window during the
+   normal save debounce cannot lose the last edit. */
+const SETTINGS_METADATA_SYNC_EVENT = "local-gallery-metadata-sync";
+const SETTINGS_METADATA_SYNC_DOC_IDS = Object.freeze([
+  META_DOC_IDS.scores,
+  META_DOC_IDS.scoreHistory,
+  META_DOC_IDS.dailyJournals,
+  META_DOC_IDS.tags,
+  META_DOC_IDS.tagAlbums,
+  META_DOC_IDS.appearancePresets,
+  META_DOC_IDS.appearanceAssignments,
+  META_DOC_IDS.prefGeneral,
+  META_DOC_IDS.prefNotifications,
+  META_DOC_IDS.prefAppearance,
+  META_DOC_IDS.prefPlayback,
+  META_DOC_IDS.prefThumbnails,
+  META_DOC_IDS.prefFilenames,
+  META_DOC_IDS.prefControls,
+  META_DOC_IDS.keybinds,
+]);
+const SETTINGS_METADATA_SYNC_SENDER =
+  `${IS_SETTINGS_WINDOW ? "settings" : "main"}-${Date.now()}-${Math.random()}`;
+let SETTINGS_METADATA_SYNC_READY = false;
+let SETTINGS_METADATA_SYNC_APPLYING = false;
+let SETTINGS_METADATA_SYNC_PENDING_DOCS = null;
+let SETTINGS_METADATA_SYNC_TIMER = 0;
+const SETTINGS_METADATA_SYNC_DIRTY_IDS = new Set();
+
+function settingsMetadataSyncDocIds() {
+  return SETTINGS_METADATA_SYNC_DOC_IDS.slice();
+}
+
+function emitSettingsMetadataSync(payload) {
+  const emit = window.__TAURI__?.event?.emit;
+  if (typeof emit !== "function") return;
+  emit(
+    SETTINGS_METADATA_SYNC_EVENT,
+    Object.assign({ sender: SETTINGS_METADATA_SYNC_SENDER }, payload || {}),
+  ).catch(() => {});
+}
+
+function broadcastSettingsMetadataDocuments(docIds = null) {
+  if (!SETTINGS_METADATA_SYNC_READY || !WS.meta || !WS.root) return;
+  const requested = Array.isArray(docIds) && docIds.length
+    ? docIds
+    : settingsMetadataSyncDocIds();
+  const docs = {};
+  for (let i = 0; i < requested.length; i++) {
+    const docId = String(requested[i] || "");
+    if (!SETTINGS_METADATA_SYNC_DOC_IDS.includes(docId)) continue;
+    const log = metaDocObjectForId(docId);
+    if (log) docs[docId] = log;
+  }
+  if (Object.keys(docs).length) {
+    emitSettingsMetadataSync({ kind: "documents", docs });
+  }
+}
+
+function scheduleSettingsMetadataBroadcast(docIds = null) {
+  if (
+    SETTINGS_METADATA_SYNC_APPLYING ||
+    !SETTINGS_METADATA_SYNC_READY ||
+    !WS.root
+  ) return;
+  const ids = Array.isArray(docIds) && docIds.length
+    ? docIds
+    : settingsMetadataSyncDocIds();
+  ids.forEach((docId) => {
+    const id = String(docId || "");
+    if (SETTINGS_METADATA_SYNC_DOC_IDS.includes(id)) {
+      SETTINGS_METADATA_SYNC_DIRTY_IDS.add(id);
+    }
+  });
+  if (SETTINGS_METADATA_SYNC_TIMER) return;
+  SETTINGS_METADATA_SYNC_TIMER = setTimeout(() => {
+    SETTINGS_METADATA_SYNC_TIMER = 0;
+    const pending = Array.from(SETTINGS_METADATA_SYNC_DIRTY_IDS);
+    SETTINGS_METADATA_SYNC_DIRTY_IDS.clear();
+    broadcastSettingsMetadataDocuments(pending);
+  }, 0);
+}
+
+function refreshAfterSettingsMetadataSync(docIds) {
+  const ids = new Set(docIds || []);
+  rebuildKeybindIndex();
+  if (IS_SETTINGS_WINDOW) applyLoadedOptionsToDocument();
+  else applyOptionsEverywhere(false);
+  if (MENU_OPEN) {
+    setMenuTab(
+      isMenuTabAvailable(MENU_ACTIVE_TAB) ? MENU_ACTIVE_TAB : "general",
+    );
+  }
+  if (ids.has(META_DOC_IDS.scoreHistory) && MENU_ACTIVE_TAB === "calendar") {
+    renderCalendarUi();
+  }
+  syncButtons();
+  syncMetaButtons();
+}
+
+function applySettingsMetadataDocuments(docs) {
+  if (!docs || typeof docs !== "object" || !WS.root) return;
+  const docIds = Object.keys(docs).filter(
+    (docId) => SETTINGS_METADATA_SYNC_DOC_IDS.includes(docId),
+  );
+  if (!docIds.length) return;
+  SETTINGS_METADATA_SYNC_APPLYING = true;
+  try {
+    for (let i = 0; i < docIds.length; i++) {
+      const docId = docIds[i];
+      metaApplyDocLogById(docId, docs[docId]);
+    }
+    metaTrackDirtyDocIds(docIds);
+    metaScheduleSave();
+    refreshAfterSettingsMetadataSync(docIds);
+  } finally {
+    SETTINGS_METADATA_SYNC_APPLYING = false;
+  }
+}
+
+function settingsWorkspaceDidLoad() {
+  SETTINGS_METADATA_SYNC_READY = true;
+  if (SETTINGS_METADATA_SYNC_PENDING_DOCS) {
+    const pending = SETTINGS_METADATA_SYNC_PENDING_DOCS;
+    SETTINGS_METADATA_SYNC_PENDING_DOCS = null;
+    applySettingsMetadataDocuments(pending);
+  }
+  emitSettingsMetadataSync({ kind: "request" });
+  if (IS_SETTINGS_WINDOW) {
+    openMenu(window.__LG_SETTINGS_INITIAL_TAB__ || MENU_LAST_TAB || "general");
+  }
+}
+
+async function initializeSettingsMetadataSync() {
+  const listen = window.__TAURI__?.event?.listen;
+  if (typeof listen !== "function") return;
+  try {
+    await listen(SETTINGS_METADATA_SYNC_EVENT, (event) => {
+      const payload = event && event.payload;
+      if (!payload || payload.sender === SETTINGS_METADATA_SYNC_SENDER) return;
+      if (payload.kind === "request") {
+        broadcastSettingsMetadataDocuments();
+        return;
+      }
+      if (payload.kind !== "documents" || !payload.docs) return;
+      if (!SETTINGS_METADATA_SYNC_READY || !WS.root) {
+        SETTINGS_METADATA_SYNC_PENDING_DOCS = Object.assign(
+          SETTINGS_METADATA_SYNC_PENDING_DOCS || {},
+          payload.docs,
+        );
+        return;
+      }
+      applySettingsMetadataDocuments(payload.docs);
+    });
+  } catch {}
+}
+
 function metaGetTrashRestoreInfo(trashPath) {
   const normalized = normalizeWorkspaceRelPath(trashPath);
   return normalized ? WS.meta.trashItemsByPath.get(normalized) || null : null;
@@ -25193,6 +25459,7 @@ function metaTrackDirtyDocIds(docIds = null) {
     WS.meta.dirtyDocIds.add(docId);
   }
   WS.meta.dirty = !!WS.meta.dirtyDocIds.size;
+  scheduleSettingsMetadataBroadcast(targetIds);
 }
 
 function metaMarkDirty(...docIds) {
@@ -27721,15 +27988,18 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
       updateBlockingLoaderOverlay("Rendering folder view...", "Populating files and preview panes...");
       await waitForBusyOverlayPaint();
     }
-    renderDirectoriesPane();
-    renderPreviewPane(true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-    scheduleWorkspaceNavigationWarm(WS.root, 1000);
-    startVideoThumbWarm();
+    if (!IS_SETTINGS_WINDOW) {
+      renderDirectoriesPane();
+      renderPreviewPane(true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      scheduleWorkspaceNavigationWarm(WS.root, 1000);
+      startVideoThumbWarm();
+    }
     syncMetaButtons();
     initDirHistory();
+    settingsWorkspaceDidLoad();
   } finally {
     if (!silent) {
       releaseBusyOverlayHold({ hide: true });
@@ -27738,7 +28008,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     }
     // Kick the passive thumbnail loader now the panes have their final size, so
     // thumbnails start loading on startup without needing a navigation nudge.
-    scheduleInitialThumbnailPrime();
+    if (!IS_SETTINGS_WINDOW) scheduleInitialThumbnailPrime();
   }
 }
 
@@ -27867,6 +28137,7 @@ async function buildWorkspaceFromFileList(fileList) {
   scheduleWorkspaceNavigationWarm(WS.root, 1000);
   syncMetaButtons();
   initDirHistory();
+  settingsWorkspaceDidLoad();
   showStatusMessage("Loaded folder in read-only mode.");
   return true;
 }
@@ -55803,15 +56074,13 @@ function refreshLiveSettingsPaneFromKeyboardAction() {
 
 function toggleSettingsAndDirectoriesPanesKeybindAction() {
   if (!WS.meta) return false;
-  if (VIEWER_MODE) return false;
-  if (MENU_OPEN) {
-    closeMenu();
-    showStatusMessage("Settings pane: Closed", "pane-toggles");
-  } else {
+  if (IS_SETTINGS_WINDOW) {
     openMenu(MENU_LAST_TAB || "general");
-    showStatusMessage("Settings pane: Open", "pane-toggles");
+    return true;
   }
-  return true;
+  const opened = requestSettingsWindow(MENU_LAST_TAB || "general");
+  if (opened) showStatusMessage("Settings opened.", "pane-toggles");
+  return opened;
 }
 
 // The Grok window lives entirely in Rust (src-tauri/src/grok.rs) — it is a
@@ -61834,6 +62103,7 @@ resetThumbnailRuntimeStateV3();
        ========================================================= */
 
 if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
+initializeSettingsMetadataSync();
 applyOptionsEverywhere(false);
 rebuildKeybindIndex();
 renderDirectoriesPane();

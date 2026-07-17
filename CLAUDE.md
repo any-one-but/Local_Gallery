@@ -26,6 +26,7 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~58k line mono
   - `tauri.conf.json` — product, build (before*Command runs sync-frontend + prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
   - `src/main.rs` — thin binary entry.
   - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
+  - `src/settings.rs` — owns the native Settings window lifecycle. It opens a second decorated webview, loading the same document in settings-only mode; the two webviews synchronize preference metadata through Tauri app events.
   - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, etc. All heavy work uses spawn_blocking.
   - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
 - `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile) + `__lg` dev helpers (ping, requestThumb, assetUrl) over Tauri invoke.
@@ -65,6 +66,12 @@ Three panes rendered via CSS grid in `#app`:
 1. **Title Pane** (`#titlePane`) — the tab strip (`#tabBar`), and nothing else. Its grid row collapses unless 2+ tabs are open (`#app.tabs-multi`), so a single-tab window has no top bar. The folder title / info / search row (`#titlePaneTop`) lives in `#stackedTitleHost` inside the file pane, so it hides together with that pane.
 2. **List/Directories Pane** (`#directoriesPane`) — folder tree + file list for the active directory.
 3. **Preview Pane** (`#previewPane`) — media viewer (image/video/gif) with a control bar (`#controlPane`).
+
+Settings is no longer a fourth pane in the main layout. `Cmd+,` and the native
+macOS application menu open a separate `settings` WebviewWindow. The document's
+`IS_SETTINGS_WINDOW` mode hides the gallery chrome and expands `#menuOverlay` to
+fill that window; metadata document events keep the main and Settings `WS`
+instances live-synchronized.
 
 `renderPreviewPane()` (line ~46577) is the main re-render entry point for the preview side. The directories/file list side is rebuilt through `rebuildDirectoriesEntries()` and related helpers.
 
