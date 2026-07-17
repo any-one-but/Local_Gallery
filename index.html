@@ -8139,7 +8139,7 @@ function makeDirNode(name, parent) {
     recursiveItemCount: 0,
     recursiveImageCount: 0,
     recursiveVideoCount: 0,
-    recursiveGifCount: 0,
+    recursiveTextCount: 0,
     recursiveSizeBytes: 0,
     loadState: "loaded",
     summary: null,
@@ -8162,7 +8162,7 @@ function resetDirectoryDerivedStatsForNode(node) {
   node.recursiveItemCount = 0;
   node.recursiveImageCount = 0;
   node.recursiveVideoCount = 0;
-  node.recursiveGifCount = 0;
+  node.recursiveTextCount = 0;
   node.recursiveSizeBytes = 0;
 }
 
@@ -8187,14 +8187,14 @@ function rebuildDirectoryDerivedIndex(rootNode = null) {
     let fileCount = fileIds.length;
     let imageCount = 0;
     let videoCount = 0;
-    let gifCount = 0;
+    let textCount = 0;
     let sizeBytes = 0;
     for (let i = 0; i < fileIds.length; i++) {
       const rec = WS.fileById.get(String(fileIds[i] || ""));
       if (!rec) continue;
       if (rec.type === "video") videoCount++;
       else if (rec.type === "image") imageCount++;
-      if (String(rec.ext || "").toLowerCase() === ".gif") gifCount++;
+      else if (rec.type === "markdown") textCount++;
       const fileSize = Number(rec.size);
       if (Number.isFinite(fileSize) && fileSize > 0) sizeBytes += fileSize;
     }
@@ -8207,7 +8207,7 @@ function rebuildDirectoryDerivedIndex(rootNode = null) {
       folderCount += Number(child?.recursiveFolderCount || 0);
       imageCount += Number(child?.recursiveImageCount || 0);
       videoCount += Number(child?.recursiveVideoCount || 0);
-      gifCount += Number(child?.recursiveGifCount || 0);
+      textCount += Number(child?.recursiveTextCount || 0);
       sizeBytes += Number(child?.recursiveSizeBytes || 0);
     }
 
@@ -8218,7 +8218,7 @@ function rebuildDirectoryDerivedIndex(rootNode = null) {
     node.recursiveItemCount = fileCount + folderCount;
     node.recursiveImageCount = imageCount;
     node.recursiveVideoCount = videoCount;
-    node.recursiveGifCount = gifCount;
+    node.recursiveTextCount = textCount;
     node.recursiveSizeBytes = sizeBytes;
   };
 
@@ -8750,7 +8750,7 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Hidden & special views", id: "visibility-toggles", label: "Hidden / Trash / Storage / Untagged toggles", hint: "Notifications that announce special entries being shown, hidden, revealed, or blank-row adjusted.", optionKey: "notifyVisibilityToggles" }),
   Object.freeze({ section: "Hidden & special views", id: "quick-navigation", label: "Quick navigation toggle", hint: "Quick navigation on/off messages.", optionKey: "notifyQuickNavigation" }),
 
-  Object.freeze({ section: "Cycling actions", id: "cycle-filter", label: "Media filter cycle", hint: "The action that cycles the root-wide media filter: All / Images / Videos / GIFs.", optionKey: "notifyCycleFilter" }),
+  Object.freeze({ section: "Cycling actions", id: "cycle-filter", label: "Media filter cycle", hint: "The action that cycles the root-wide media filter: All / Images / Videos / Text.", optionKey: "notifyCycleFilter" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-animated-filters", label: "Animated filter cycle", hint: "The action that cycles animated filters off/on/videos-only.", optionKey: "notifyCycleAnimatedFilters" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-folder-sort", label: "Folder sort cycle", hint: "The action that cycles folder sort modes.", optionKey: "notifyCycleFolderSort" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-video-end", label: "Video-end behavior cycle", hint: "The action that cycles what videos do when they end.", optionKey: "notifyCycleVideoEnd" }),
@@ -8812,7 +8812,6 @@ function defaultOptions() {
     halationOverlayEnabled: true,
     halationOverlayIntensity: null,
     animatedMediaFilters: "on",
-    gifsIgnoreProcessing: false,
     ghostingOverlayEnabled: true,
     ghostingOverlayIntensity: null,
     lineDamageOverlayEnabled: true,
@@ -8842,7 +8841,6 @@ function defaultOptions() {
     showTrashFolder: true,
     showStorageFolder: true,
     storeImageFiles: false,
-    storeGifFiles: false,
     storeVideoFiles: false,
     muteMessages: false,
     fullScreenMedia: true,
@@ -9279,10 +9277,6 @@ function normalizeOptions(o) {
       typeof src.storeImageFiles === "boolean"
         ? src.storeImageFiles
         : d.storeImageFiles,
-    storeGifFiles:
-      typeof src.storeGifFiles === "boolean"
-        ? src.storeGifFiles
-        : d.storeGifFiles,
     storeVideoFiles:
       typeof src.storeVideoFiles === "boolean"
         ? src.storeVideoFiles
@@ -9396,10 +9390,6 @@ function normalizeOptions(o) {
       src.animatedMediaFilters,
       d.animatedMediaFilters,
     ),
-    gifsIgnoreProcessing:
-      typeof src.gifsIgnoreProcessing === "boolean"
-        ? src.gifsIgnoreProcessing
-        : d.gifsIgnoreProcessing,
     ghostingOverlayEnabled,
     ghostingOverlayIntensity,
     lineDamageOverlayEnabled,
@@ -9803,7 +9793,6 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     [].concat(APPEARANCE_SLIDER_OPTION_KEYS, [
       "activeAppearancePresetId",
       "animatedMediaFilters",
-      "gifsIgnoreProcessing",
     ]),
   ),
   playback: Object.freeze([
@@ -10942,8 +10931,7 @@ function buildAppearancePresetCacheKey() {
       : "";
     return `${direct}###${stackSig}`;
   })();
-  const gifsIgnore = gifsIgnoreProcessingEnabled() ? "gif:1" : "gif:0";
-  return `${serializeAppearanceValues(currentValues)}###${presetSig}###${folderSig}###${tagSig}###${tagFilterSig}###${activeContextSig}###${gifsIgnore}`;
+  return `${serializeAppearanceValues(currentValues)}###${presetSig}###${folderSig}###${tagSig}###${tagFilterSig}###${activeContextSig}`;
 }
 
 function resolveDirPathForAppearanceTarget(target) {
@@ -11694,11 +11682,6 @@ function animatedMediaFiltersEnabledForType(type) {
 
 function thumbFiltersEnabled() { }
 
-function gifsIgnoreProcessingEnabled() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return !!(opt && opt.gifsIgnoreProcessing);
-}
-
 function isGifRecord(rec) {
   const ext = String(rec?.ext || "").toLowerCase();
   if (ext === ".gif") return true;
@@ -11709,7 +11692,7 @@ function isGifRecord(rec) {
 function mediaProcessingEnabledForTarget(target) {
   if (typeof target === "undefined" || target === null) return true;
   if (target && typeof target === "object") {
-    if (isGifRecord(target) && gifsIgnoreProcessingEnabled()) return false;
+    if (isGifRecord(target)) return false;
   }
   return true;
 }
@@ -12986,7 +12969,6 @@ function renderFilteredToCanvas(
 const MediaFilterEngine = (() => {
   const surfaces = new Map();
   let rafId = null;
-  const GIF_FRAME_FALLBACK_MS = 100;
 
   const VERTEX_SHADER_SOURCE = `
     attribute vec2 a_pos;
@@ -13301,146 +13283,6 @@ const MediaFilterEngine = (() => {
     };
   }
 
-  function closeGifBitmap(bitmap) {
-    if (!bitmap) return;
-    try {
-      if (typeof bitmap.close === "function") bitmap.close();
-    } catch {}
-  }
-
-  function gifDecodeSupported() {
-    return (
-      typeof ImageDecoder === "function" &&
-      typeof fetch === "function" &&
-      typeof createImageBitmap === "function"
-    );
-  }
-
-  function clearGifState(surface) {
-    if (!surface || !surface.gifState) return;
-    const state = surface.gifState;
-    surface.gifState = null;
-    closeGifBitmap(state.bitmap);
-    state.bitmap = null;
-    try {
-      if (state.decoder && typeof state.decoder.close === "function")
-        state.decoder.close();
-    } catch {}
-    state.decoder = null;
-  }
-
-  function ensureGifState(surface, mediaEl) {
-    if (!surface || !mediaEl || !gifDecodeSupported()) return null;
-    const src = String(mediaEl.currentSrc || mediaEl.src || "").trim();
-    if (!src) return null;
-    const existing = surface.gifState;
-    if (existing && existing.src === src) return existing;
-
-    clearGifState(surface);
-    const state = {
-      src,
-      decoder: null,
-      bitmap: null,
-      frameCount: 0,
-      nextFrameIndex: 0,
-      nextDue: 0,
-      loading: true,
-      decoding: false,
-      unsupported: false,
-    };
-    surface.gifState = state;
-
-    (async () => {
-      let blob = null;
-      try {
-        const res = await fetch(src, { cache: "force-cache" });
-        if (!res || !res.ok) throw new Error("gif_fetch_failed");
-        blob = await res.blob();
-      } catch {
-        if (surface.gifState === state) state.unsupported = true;
-        return;
-      }
-      if (surface.gifState !== state) return;
-      try {
-        state.decoder = new ImageDecoder({ data: blob, type: "image/gif" });
-        if (state.decoder.tracks && state.decoder.tracks.ready)
-          await state.decoder.tracks.ready;
-      } catch {
-        if (surface.gifState === state) state.unsupported = true;
-        return;
-      }
-      if (surface.gifState !== state) return;
-      const fc = Number(state.decoder?.tracks?.selectedTrack?.frameCount || 0);
-      state.frameCount = Number.isFinite(fc) && fc > 0 ? fc : 0;
-      state.nextFrameIndex = 0;
-      state.nextDue = 0;
-      requestRender();
-    })().finally(() => {
-      if (surface.gifState === state) state.loading = false;
-    });
-
-    return state;
-  }
-
-  function scheduleGifFrameDecode(surface, time) {
-    const state = surface && surface.gifState;
-    if (
-      !state ||
-      state.unsupported ||
-      state.loading ||
-      state.decoding ||
-      !state.decoder
-    )
-      return;
-    if (Number.isFinite(state.nextDue) && state.nextDue > 0 && time < state.nextDue)
-      return;
-    state.decoding = true;
-    const frameIndex = Number.isFinite(state.nextFrameIndex)
-      ? Math.max(0, state.nextFrameIndex | 0)
-      : 0;
-    const decoder = state.decoder;
-
-    (async () => {
-      let decoded = null;
-      try {
-        decoded = await decoder.decode({ frameIndex });
-      } catch {
-        if (surface.gifState !== state) return;
-        state.nextFrameIndex = 0;
-        state.nextDue = performance.now() + GIF_FRAME_FALLBACK_MS;
-        return;
-      }
-      if (surface.gifState !== state) {
-        try { decoded?.image?.close?.(); } catch {}
-        return;
-      }
-      const frame = decoded && decoded.image ? decoded.image : null;
-      const durationUs = Number(frame?.duration || 0);
-      let bitmap = null;
-      if (frame) {
-        try { bitmap = await createImageBitmap(frame); } catch {}
-        try { frame.close(); } catch {}
-      }
-      if (surface.gifState !== state) {
-        closeGifBitmap(bitmap);
-        return;
-      }
-      if (bitmap) {
-        closeGifBitmap(state.bitmap);
-        state.bitmap = bitmap;
-      }
-      if (state.frameCount > 0)
-        state.nextFrameIndex = (frameIndex + 1) % state.frameCount;
-      else state.nextFrameIndex = frameIndex + 1;
-      const durationMs =
-        durationUs > 0 ? Math.max(8, durationUs / 1000) : GIF_FRAME_FALLBACK_MS;
-      state.nextDue = performance.now() + durationMs;
-      requestRender();
-    })().finally(() => {
-      if (surface.gifState === state) state.decoding = false;
-    });
-  }
-
   function updateEngineState() {
     const appEl = document.getElementById("app");
     if (!appEl) return;
@@ -13507,7 +13349,6 @@ const MediaFilterEngine = (() => {
       cleanImageBitmap: null,
       cleanImageLoading: false,
       cleanImagePath: null,
-      gifState: null,
     };
     surfaces.set(name, surface);
     return surface;
@@ -13528,7 +13369,6 @@ const MediaFilterEngine = (() => {
 
   function bindMediaEvents(surface, el) {
     if (!el || surface.mediaEl === el) return;
-    clearGifState(surface);
     if (surface.mediaEl && surface.bound) {
       surface.mediaEl.removeEventListener("load", requestRender);
       surface.mediaEl.removeEventListener("loadedmetadata", requestRender);
@@ -13646,7 +13486,6 @@ const MediaFilterEngine = (() => {
       surface.videoFrameToken++;
       surface.videoFrameActive = false;
     }
-    if (type !== "image") clearGifState(surface);
     updateEngineState();
     requestRender();
   }
@@ -13661,7 +13500,6 @@ const MediaFilterEngine = (() => {
     surface.videoFrameActive = false;
     surface.videoFrameToken++;
     surface.nextVideoRenderAt = 0;
-    clearGifState(surface);
     if (surface.cleanImageBitmap) {
       try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
       surface.cleanImageBitmap = null;
@@ -13688,7 +13526,6 @@ const MediaFilterEngine = (() => {
     surface.awaitingFreshFrame = false;
     surface.videoFrameActive = false;
     surface.videoFrameToken++;
-    clearGifState(surface);
     if (surface.cleanImageBitmap) {
       try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
       surface.cleanImageBitmap = null;
@@ -13737,19 +13574,6 @@ const MediaFilterEngine = (() => {
 
   function drawSurface(surface, time) {
     let overlayCfg = resolveMediaOverlayConfigForSurface(surface);
-    if (shouldPreferNativeGifPlayback(surface.target, overlayCfg)) {
-      if (surface.canvas) {
-        surface.canvas.style.display = "none";
-        surface.canvas.classList.remove("ready");
-      }
-      if (surface.mediaEl) {
-        surface.mediaEl.classList.remove("mediaHidden");
-        try { surface.mediaEl.style.removeProperty("filter"); } catch {}
-      }
-      surface.hasDrawn = false;
-      surface.awaitingFreshFrame = false;
-      return false;
-    }
     if (!overlayCfg) {
       if (surface.canvas) {
         surface.canvas.style.display = "none";
@@ -13768,9 +13592,6 @@ const MediaFilterEngine = (() => {
 
     const el = surface.mediaEl;
     const isVideo = surface.type === "video";
-    const isGifImage =
-      !isVideo && String(el.getAttribute("data-is-gif") || "") === "1";
-    if (!isGifImage) clearGifState(surface);
 
     let drawSource = el;
     let srcW = isVideo ? el.videoWidth : el.naturalWidth;
@@ -13789,18 +13610,7 @@ const MediaFilterEngine = (() => {
       return false;
     }
 
-    if (isGifImage) {
-      const gifState = ensureGifState(surface, el);
-      if (gifState && !gifState.unsupported) {
-        scheduleGifFrameDecode(surface, time);
-        if (gifState.bitmap && gifState.bitmap.width > 0 && gifState.bitmap.height > 0) {
-          drawSource = gifState.bitmap;
-          srcW = drawSource.width;
-          srcH = drawSource.height;
-        }
-      }
-    }
-    if (!isVideo && !isGifImage && window.electronAPI && window.electronAPI.isTauri) {
+    if (!isVideo && window.electronAPI && window.electronAPI.isTauri) {
       if (surface.cleanImageBitmap && surface.cleanImageBitmap.width > 0) {
         drawSource = surface.cleanImageBitmap;
         srcW = drawSource.width;
@@ -13949,7 +13759,6 @@ const MediaFilterEngine = (() => {
       if (!el.paused) return true;
       return needsAnim;
     }
-    if (isGifImage) return true;
     return needsAnim;
   }
 
@@ -14698,11 +14507,6 @@ function mediaFilterEnabled() {
   return anyMediaFilterEnabled();
 }
 
-function shouldPreferNativeGifPlayback(target = undefined) {
-  if (!isGifRecord(target)) return false;
-  return gifsIgnoreProcessingEnabled();
-}
-
 function formatBytes(bytes) {
   const n = Number(bytes);
   if (!Number.isFinite(n) || n <= 0) return "0 B";
@@ -14735,7 +14539,7 @@ function syncMediaFilterSurface(
     }
   }
   const overlayCfg = resolveMediaOverlayConfigForTarget(processingTarget);
-  if (shouldPreferNativeGifPlayback(processingTarget, overlayCfg)) {
+  if (isGifRecord(processingTarget)) {
     mediaEl.classList.remove("mediaHidden");
     MediaFilterEngine.detach(surfaceName);
     return;
@@ -14783,7 +14587,7 @@ function clearMediaFilterSurface(surfaceName, mediaEl) {
 
 function shouldHoldPreviewFilteredFrameForTarget(target) {
   if (!target || !anyMediaFilterEnabled()) return false;
-  if (shouldPreferNativeGifPlayback(target)) return false;
+  if (isGifRecord(target)) return false;
   if (!resolveMediaOverlayConfigForTarget(target)) return false;
   return MediaFilterEngine.hasSurfaceDrawn("preview");
 }
@@ -15710,12 +15514,6 @@ const KEYBIND_ACTIONS = [
     label: "Float tags",
     hint: "Toggle the blank spacer row separating tag folders from regular folders.",
     section: "panes",
-  },
-  {
-    id: "toggleGifsIgnoreProcessing",
-    label: "GIFs ignore processing",
-    hint: "Toggle keeping GIFs unfiltered when media filters/overlays are on.",
-    section: "filters",
   },
   {
     id: "cycleVideoSkipStep",
@@ -17491,7 +17289,6 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasCtx("randomfoldersort")) return "random-folder-sort";
 
   if (hasCtx("scrub")) return "scrub";
-  if (hasCtx("gif")) return "gif";
   if (hasCtx("putback", "movefolderswithundotash", "movetotrash", "trash")) return "trash";
   if (hasCtx("loosesetmerge", "setmerge", "merge")) return "merge";
   if (hasCtx("sanitize", "rename")) return "rename";
@@ -19904,7 +19701,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "all", label: "All" },
     { value: "images", label: "Images" },
     { value: "videos", label: "Videos" },
-    { value: "gifs", label: "GIFs" },
+    { value: "text", label: "Text" },
   ];
   const animatedFilterModes = [
     { value: "off", label: "Off" },
@@ -20322,7 +20119,6 @@ ${buildOverlayRowsHtml(colorOverlayRows)}
   </h3>
 ${buildOverlayRowsHtml(effectOverlayRows)}
 ${makeSelectRow("Animated filters", "Control animation for grain.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
-${makeCheckRow("GIFs ignore processing", "Keep GIFs playing unfiltered when media filters/overlays are enabled.", "opt_gifsIgnoreProcessing", !!opt.gifsIgnoreProcessing)}
 </div>
           `,
     },
@@ -21264,9 +21060,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     },
     (val) => normalizeAnimatedMediaFiltersValue(val, "on"),
   );
-  bindCheck("opt_gifsIgnoreProcessing", "gifsIgnoreProcessing", () => {
-    applyMediaFilterFromOptions();
-  });
   bindSelect("opt_videoSkipStep", "videoSkipStep", false, null, (val) => {
     const parsed = parseInt(String(val || "").trim(), 10);
     return Number.isFinite(parsed) && parsed > 0 ? String(parsed) : "5";
@@ -22969,7 +22762,7 @@ function clearTagThumbnailStateByMatch(matchFn) { }
 const TAG_MEDIA_FILTER_MEDIA_TYPES = Object.freeze([
   "images",
   "videos",
-  "gifs",
+  "text",
 ]);
 // Aspect-ratio filtering was removed; tag content filters only cover media type.
 const TAG_MEDIA_FILTER_TYPES = Object.freeze(
@@ -22996,6 +22789,27 @@ function normalizeTagMediaFilterValue(value) {
     addType(value);
   }
   return TAG_MEDIA_FILTER_TYPES.filter((type) => enabled.has(type));
+}
+
+function migrateLegacyTagMediaFilterValue(value) {
+  const legacyTypes = ["images", "videos", "gifs"];
+  const hidden = new Set(
+    Array.isArray(value)
+      ? value.map((type) => String(type || "").trim().toLowerCase())
+      : [],
+  );
+  const hasLegacyFilter = legacyTypes.some((type) => hidden.has(type));
+  if (!hasLegacyFilter) return normalizeTagMediaFilterValue(value);
+  const shownImages = !hidden.has("images") || !hidden.has("gifs");
+  const shownVideos = !hidden.has("videos");
+  const migrated = [];
+  if (!shownImages) migrated.push("images");
+  if (!shownVideos) migrated.push("videos");
+  // A non-empty legacy filter was a restricted media view. Text was not an
+  // option then, so keep that restriction intact instead of unexpectedly
+  // adding Markdown files to an existing Images-only/Videos-only selection.
+  migrated.push("text");
+  return normalizeTagMediaFilterValue(migrated);
 }
 
 function combineTagMediaFilterValues(...values) {
@@ -23063,7 +22877,7 @@ function tagMediaFilterAxisSelection(value, axis) {
 function tagMediaFilterTypeLabel(type) {
   if (type === "images") return "images";
   if (type === "videos") return "videos";
-  if (type === "gifs") return "GIFs";
+  if (type === "text") return "text";
   if (type === "portrait") return "portrait";
   if (type === "square") return "square";
   if (type === "landscape") return "landscape";
@@ -24678,7 +24492,7 @@ function metaMakeTagsDocObject() {
     }
   }
   return {
-    schema: 1,
+    schema: 2,
     updatedAt: Date.now(),
     folders,
     tagByFp,
@@ -25043,9 +24857,9 @@ function metaApplyTagsDocLog(log) {
       : {};
   for (const rawKey of Object.keys(tagMediaFilterByKey)) {
     const key = String(rawKey || "");
-    const filterValue = normalizeTagMediaFilterValue(
-      tagMediaFilterByKey[rawKey],
-    );
+    const filterValue = Number(log.schema) >= 2
+      ? normalizeTagMediaFilterValue(tagMediaFilterByKey[rawKey])
+      : migrateLegacyTagMediaFilterValue(tagMediaFilterByKey[rawKey]);
     if (!key || !filterValue.length) continue;
     WS.meta.tagMediaFilterByKey.set(key, filterValue);
   }
@@ -26509,7 +26323,7 @@ function catalogEmptyMediaAspectCounts() {
   return {
     images: catalogEmptyAspectCounts(),
     videos: catalogEmptyAspectCounts(),
-    gifs: catalogEmptyAspectCounts(),
+    text: catalogEmptyAspectCounts(),
   };
 }
 
@@ -26518,7 +26332,7 @@ function catalogCloneMediaAspectCounts(counts) {
   return {
     images: catalogCloneAspectCounts(src.images),
     videos: catalogCloneAspectCounts(src.videos),
-    gifs: catalogCloneAspectCounts(src.gifs),
+    text: catalogCloneAspectCounts(src.text),
   };
 }
 
@@ -26535,15 +26349,15 @@ function catalogAddMediaAspectCounts(target, source) {
   if (!target || !source) return target;
   catalogAddAspectCounts(target.images, source.images);
   catalogAddAspectCounts(target.videos, source.videos);
-  catalogAddAspectCounts(target.gifs, source.gifs);
+  catalogAddAspectCounts(target.text, source.text);
   return target;
 }
 
 function catalogRecordMediaBucketFromDescriptor(desc) {
   if (!desc) return "";
-  if (String(desc.ext || "").toLowerCase() === ".gif") return "gifs";
   if (desc.type === "video") return "videos";
   if (desc.type === "image") return "images";
+  if (desc.type === "markdown") return "text";
   return "";
 }
 
@@ -26794,9 +26608,18 @@ function applyCatalogSummaryToDirNode(node, summary) {
   node.recursiveFileCount = Math.max(0, Number(summary.recursiveFileCount) || 0);
   node.recursiveFolderCount = Math.max(0, Number(summary.recursiveFolderCount) || 0);
   node.recursiveItemCount = Math.max(0, Number(summary.recursiveItemCount) || 0);
-  node.recursiveImageCount = Math.max(0, Number(summary.recursiveImageCount) || 0);
-  node.recursiveVideoCount = Math.max(0, Number(summary.recursiveVideoCount) || 0);
-  node.recursiveGifCount = Math.max(0, Number(summary.recursiveGifCount) || 0);
+  node.recursiveImageCount = catalogSummaryMediaBucketCountForTagFilter(
+    summary,
+    "images",
+  );
+  node.recursiveVideoCount = catalogSummaryMediaBucketCountForTagFilter(
+    summary,
+    "videos",
+  );
+  node.recursiveTextCount = catalogSummaryMediaBucketCountForTagFilter(
+    summary,
+    "text",
+  );
   node.recursiveSizeBytes = Math.max(0, Number(summary.recursiveSizeBytes) || 0);
   if (!node.loadState) node.loadState = "summary";
   if (summary.leadFile) registerCatalogFileDescriptor(summary.leadFile, {
@@ -26944,7 +26767,7 @@ function emptyCatalogFolderSummary(path, rootName = "") {
     recursiveItemCount: 0,
     recursiveImageCount: 0,
     recursiveVideoCount: 0,
-    recursiveGifCount: 0,
+    recursiveTextCount: 0,
     recursiveSizeBytes: 0,
     directAspectCounts: catalogEmptyAspectCounts(),
     recursiveAspectCounts: catalogEmptyAspectCounts(),
@@ -27129,13 +26952,13 @@ function buildCatalogSummaryFromDirectEntries(path, childDirPaths, files) {
   const recursiveMediaAspectCounts = catalogEmptyMediaAspectCounts();
   let recursiveImageCount = 0;
   let recursiveVideoCount = 0;
-  let recursiveGifCount = 0;
+  let recursiveTextCount = 0;
   let recursiveSizeBytes = 0;
   for (let i = 0; i < directFiles.length; i++) {
     const file = directFiles[i];
     if (file.type === "video") recursiveVideoCount++;
-    else recursiveImageCount++;
-    if (String(file.ext || "").toLowerCase() === ".gif") recursiveGifCount++;
+    else if (file.type === "image") recursiveImageCount++;
+    else if (file.type === "markdown") recursiveTextCount++;
     recursiveSizeBytes += Math.max(0, Number(file.size) || 0);
     catalogIncrementAspectStats(directAspectCounts, directMediaAspectCounts, file);
     catalogIncrementAspectStats(recursiveAspectCounts, recursiveMediaAspectCounts, file);
@@ -27147,9 +26970,18 @@ function buildCatalogSummaryFromDirectEntries(path, childDirPaths, files) {
     if (!child) continue;
     recursiveFileCount += Math.max(0, Number(child.recursiveFileCount) || 0);
     recursiveFolderCount += Math.max(0, Number(child.recursiveFolderCount) || 0);
-    recursiveImageCount += Math.max(0, Number(child.recursiveImageCount) || 0);
-    recursiveVideoCount += Math.max(0, Number(child.recursiveVideoCount) || 0);
-    recursiveGifCount += Math.max(0, Number(child.recursiveGifCount) || 0);
+    recursiveImageCount += catalogSummaryMediaBucketCountForTagFilter(
+      child,
+      "images",
+    );
+    recursiveVideoCount += catalogSummaryMediaBucketCountForTagFilter(
+      child,
+      "videos",
+    );
+    recursiveTextCount += catalogSummaryMediaBucketCountForTagFilter(
+      child,
+      "text",
+    );
     recursiveSizeBytes += Math.max(0, Number(child.recursiveSizeBytes) || 0);
     catalogAddAspectCounts(recursiveAspectCounts, child.recursiveAspectCounts);
     catalogAddMediaAspectCounts(recursiveMediaAspectCounts, child.recursiveMediaAspectCounts);
@@ -27171,7 +27003,7 @@ function buildCatalogSummaryFromDirectEntries(path, childDirPaths, files) {
     recursiveItemCount: recursiveFileCount + recursiveFolderCount,
     recursiveImageCount,
     recursiveVideoCount,
-    recursiveGifCount,
+    recursiveTextCount,
     recursiveSizeBytes,
     directAspectCounts,
     recursiveAspectCounts,
@@ -28274,7 +28106,8 @@ function snapshotRefreshState() {
 
 function normalizeMediaFilterMode(value) {
   const mode = String(value || "");
-  return ["all", "images", "videos", "gifs"].includes(mode) ? mode : "all";
+  if (mode === "gifs") return "images";
+  return ["all", "images", "videos", "text"].includes(mode) ? mode : "all";
 }
 
 function restoreRefreshViewState(viewState) {
@@ -31429,8 +31262,8 @@ async function finalizeAspectRatiosAndStorageForLoadedWorkspace(opts = null) {
 function recordMediaFilterType(rec) {
   if (!rec) return "";
   if (rec.type === "video") return "videos";
-  if (isGifRecord(rec)) return "gifs";
   if (rec.type === "image") return "images";
+  if (rec.type === "markdown") return "text";
   return "";
 }
 
@@ -31594,7 +31427,7 @@ function passesFilter(rec) {
   let mediaPass = true;
   if (m === "images") mediaPass = rec.type === "image";
   else if (m === "videos") mediaPass = rec.type === "video";
-  else if (m === "gifs") mediaPass = rec.ext === ".gif";
+  else if (m === "text") mediaPass = rec.type === "markdown";
   if (!mediaPass) return false;
   return recordPassesAspectRatioFilter(rec);
 }
@@ -31614,7 +31447,7 @@ function catalogSummaryFileCountForFilter(summary, filterMode = "all", aspectMod
   const mode = String(filterMode || "all");
   const aspect = normalizeAspectRatioFilterMode(aspectMode);
   if (aspect !== "all") {
-    if (mode === "images" || mode === "videos" || mode === "gifs") {
+    if (mode === "images" || mode === "videos" || mode === "text") {
       const mediaAspect =
         summary.recursiveMediaAspectCounts &&
         typeof summary.recursiveMediaAspectCounts === "object"
@@ -31629,11 +31462,11 @@ function catalogSummaryFileCountForFilter(summary, filterMode = "all", aspectMod
     return catalogAspectFilteredCount(aspectCounts, aspect);
   }
   if (mode === "images")
-    return Math.max(0, Number(summary.recursiveImageCount) || 0);
+    return catalogSummaryMediaBucketCountForTagFilter(summary, "images");
   if (mode === "videos")
-    return Math.max(0, Number(summary.recursiveVideoCount) || 0);
-  if (mode === "gifs")
-    return Math.max(0, Number(summary.recursiveGifCount) || 0);
+    return catalogSummaryMediaBucketCountForTagFilter(summary, "videos");
+  if (mode === "text")
+    return catalogSummaryMediaBucketCountForTagFilter(summary, "text");
   return Math.max(0, Number(summary.recursiveFileCount) || 0);
 }
 
@@ -31656,7 +31489,7 @@ function catalogSummaryFileCountForTagMediaFilter(summary, filterValue) {
   const allowedAspects = ["portrait", "square", "landscape"].filter(
     (bucket) => !hiddenAspectBuckets.includes(bucket),
   );
-  const visibleBuckets = ["images", "gifs", "videos"].filter(
+  const visibleBuckets = ["images", "videos", "text"].filter(
     (bucket) => !hidden.includes(bucket),
   );
   if (!visibleBuckets.length) return 0;
@@ -31668,7 +31501,7 @@ function catalogSummaryFileCountForTagMediaFilter(summary, filterValue) {
       : null;
   if (hiddenAspectBuckets.length && !mediaAspectCounts) {
     const hasMediaTypeFilter = hidden.some(
-      (value) => value === "images" || value === "gifs" || value === "videos",
+      (value) => value === "images" || value === "videos" || value === "text",
     );
     const aspectCounts =
       summary.recursiveAspectCounts && typeof summary.recursiveAspectCounts === "object"
@@ -31712,10 +31545,43 @@ function catalogAspectFilteredCountForAllowedBuckets(counts, allowedAspects) {
   return count;
 }
 
+function catalogAspectCountsTotal(counts) {
+  if (!counts || typeof counts !== "object") return 0;
+  return ["portrait", "square", "landscape", "unknown"].reduce(
+    (total, key) => total + Math.max(0, Number(counts[key]) || 0),
+    0,
+  );
+}
+
 function catalogSummaryMediaBucketCountForTagFilter(summary, mediaBucket, allowedAspects = null) {
   if (!summary) return 0;
   const bucket = normalizeMediaTypeStorageType(mediaBucket);
   if (!bucket) return 0;
+  if (
+    bucket === "text" &&
+    Object.prototype.hasOwnProperty.call(summary, "recursiveTextCount") &&
+    !(Array.isArray(allowedAspects) && allowedAspects.length)
+  ) {
+    return Math.max(0, Number(summary.recursiveTextCount) || 0);
+  }
+  if (
+    bucket === "text" &&
+    !Object.prototype.hasOwnProperty.call(summary, "recursiveTextCount")
+  ) {
+    // Catalog schema 1 counted Markdown inside recursiveImageCount, but its
+    // media-aspect buckets still separated real images and videos. Derive the
+    // missing text total so existing catalogs gain Text filtering without a
+    // costly full workspace reindex.
+    const mediaCounts = summary.recursiveMediaAspectCounts || {};
+    const imageCount = catalogAspectCountsTotal(mediaCounts.images);
+    const videoCount = catalogAspectCountsTotal(mediaCounts.videos);
+    return Math.max(
+      0,
+      Math.max(0, Number(summary.recursiveFileCount) || 0) -
+        imageCount -
+        videoCount,
+    );
+  }
   const mediaAspectCounts =
     summary.recursiveMediaAspectCounts &&
     typeof summary.recursiveMediaAspectCounts === "object"
@@ -31732,18 +31598,16 @@ function catalogSummaryMediaBucketCountForTagFilter(summary, mediaBucket, allowe
     return count;
   }
   if (bucket === "videos") return Math.max(0, Number(summary.recursiveVideoCount) || 0);
-  if (bucket === "gifs") return Math.max(0, Number(summary.recursiveGifCount) || 0);
-  const imageCount = Math.max(0, Number(summary.recursiveImageCount) || 0);
-  const gifCount = Math.max(0, Number(summary.recursiveGifCount) || 0);
-  return Math.max(0, imageCount - gifCount);
+  if (bucket === "text") return Math.max(0, Number(summary.recursiveTextCount) || 0);
+  return Math.max(0, Number(summary.recursiveImageCount) || 0);
 }
 
 function catalogSummaryMediaBucketsForGlobalFilterMode(filterMode) {
   const mode = String(filterMode || "all");
   if (mode === "videos") return ["videos"];
-  if (mode === "gifs") return ["gifs"];
-  if (mode === "images") return ["images", "gifs"];
-  return ["images", "gifs", "videos"];
+  if (mode === "images") return ["images"];
+  if (mode === "text") return ["text"];
+  return ["images", "videos", "text"];
 }
 
 function catalogSummaryHasVisibleRecordForTagEntry(summary, entry) {
@@ -33114,15 +32978,14 @@ function anyAspectRatioStorageEnabled(options = null) {
 
 const MEDIA_TYPE_STORAGE_OPTION_BY_TYPE = Object.freeze({
   images: "storeImageFiles",
-  gifs: "storeGifFiles",
   videos: "storeVideoFiles",
 });
 
 function normalizeMediaTypeStorageType(type) {
   const raw = String(type || "").trim().toLowerCase();
   if (raw === "image" || raw === "images") return "images";
-  if (raw === "gif" || raw === "gifs") return "gifs";
   if (raw === "video" || raw === "videos") return "videos";
+  if (raw === "text" || raw === "markdown") return "text";
   return "";
 }
 
@@ -33146,8 +33009,8 @@ function anyMediaTypeStorageEnabled(options = null) {
 function mediaTypeStorageLabel(type) {
   const normalized = normalizeMediaTypeStorageType(type);
   if (normalized === "images") return "Image";
-  if (normalized === "gifs") return "GIF";
   if (normalized === "videos") return "Video";
+  if (normalized === "text") return "Text";
   return "Media";
 }
 
@@ -49565,7 +49428,6 @@ function seedPreviewViewportWithRecordHint(rec) {
     configurePreviewMediaElementForMaxQuality(previewImgEl);
     previewImgEl.dataset.previewFileId = String(rec.id || "");
     previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
-    previewImgEl.setAttribute("data-is-gif", isGifRecord(rec) ? "1" : "0");
     previewImgEl.classList.add("ready");
     if (holdFilteredFrame) previewImgEl.classList.add("mediaHidden");
     else previewImgEl.classList.remove("mediaHidden");
@@ -50659,7 +50521,7 @@ function renderPreviewViewerItem(idx) {
       applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
       previewImgEl.classList.remove("mediaHidden");
     } else {
-      applyPendingFilmCornerMask(previewImgEl, rec.dirPath || "");
+      applyPendingFilmCornerMask(previewImgEl, rec);
       applyScrollImageProcessingFallback(previewImgEl, rec, "none");
       syncMediaFilterSurface(
         "preview",
@@ -50691,8 +50553,6 @@ function renderPreviewViewerItem(idx) {
   previewImgEl.style.display = "block";
   if (holdFilteredFrame) previewImgEl.classList.add("mediaHidden");
   else previewImgEl.classList.remove("mediaHidden");
-  const previewIsGif = isGifRecord(rec);
-  previewImgEl.setAttribute("data-is-gif", previewIsGif ? "1" : "0");
   previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
   if (!same) {
     const swapToken = (PREVIEW_IMAGE_SWAP_TOKEN = (PREVIEW_IMAGE_SWAP_TOKEN + 1) >>> 0);
@@ -50715,7 +50575,7 @@ function renderPreviewViewerItem(idx) {
     applyScrollImageProcessingFallback(previewImgEl, rec, previewMode);
     previewImgEl.classList.remove("mediaHidden");
   } else {
-    applyPendingFilmCornerMask(previewImgEl, rec.dirPath || "");
+    applyPendingFilmCornerMask(previewImgEl, rec);
     applyScrollImageProcessingFallback(previewImgEl, rec, "none");
     syncMediaFilterSurface(
       "preview",
@@ -50744,7 +50604,7 @@ function renderPreviewViewerItem(idx) {
         applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
         previewImgEl.classList.remove("mediaHidden");
       } else {
-        applyPendingFilmCornerMask(previewImgEl, rec.dirPath || "");
+        applyPendingFilmCornerMask(previewImgEl, rec);
         applyScrollImageProcessingFallback(previewImgEl, rec, "none");
         syncMediaFilterSurface(
           "preview",
@@ -55827,8 +55687,6 @@ function renderViewerItem(idx) {
   const same = viewerImgEl.src === src;
   if (!same) viewerImgEl.src = src;
   viewerImgEl.style.display = "block";
-  const viewerIsGif = isGifRecord(rec);
-  viewerImgEl.setAttribute("data-is-gif", viewerIsGif ? "1" : "0");
   viewerImgEl.setAttribute("data-dir-path", rec.dirPath || "");
   const viewerMode = detectScrollImageMode(rec, viewerImgEl);
   applyScrollImageMode(viewport, viewerImgEl, viewerMode, !same);
@@ -55838,7 +55696,7 @@ function renderViewerItem(idx) {
     applyScrollImageProcessingFallback(viewerImgEl, rec, viewerMode);
     viewerImgEl.classList.remove("mediaHidden");
   } else {
-    applyPendingFilmCornerMask(viewerImgEl, rec.dirPath || "");
+    applyPendingFilmCornerMask(viewerImgEl, rec);
     applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
     syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
   }
@@ -55854,7 +55712,7 @@ function renderViewerItem(idx) {
         applyScrollImageProcessingFallback(viewerImgEl, rec, imageMode);
         viewerImgEl.classList.remove("mediaHidden");
       } else {
-        applyPendingFilmCornerMask(viewerImgEl, rec.dirPath || "");
+        applyPendingFilmCornerMask(viewerImgEl, rec);
         applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
         syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
       }
@@ -56339,7 +56197,7 @@ function cycleFilterMode() {
       : m === "images"
         ? "videos"
         : m === "videos"
-          ? "gifs"
+          ? "text"
           : "all";
   applyViewModesEverywhere(true);
   refreshLiveSettingsPaneFromKeyboardAction();
@@ -56828,13 +56686,6 @@ function handleExtrasKeybindAction(action) {
       refreshLiveSettingsPaneFromKeyboardAction();
       applyOptionsEverywhere(false);
       showStatusMessage(`Float tags: ${next ? "On" : "Off"}`);
-      return true;
-    }
-    case "toggleGifsIgnoreProcessing": {
-      const next = toggleOptionValue("gifsIgnoreProcessing");
-      refreshLiveSettingsPaneFromKeyboardAction();
-      applyMediaFilterFromOptions();
-      showStatusMessage(`GIFs ignore processing: ${next ? "On" : "Off"}`);
       return true;
     }
     case "cycleWeightRandomJumpsByScore": {
