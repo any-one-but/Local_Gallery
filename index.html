@@ -33514,52 +33514,6 @@ function sortDirsForTagEntryContainer(dirs, entry) {
   return mode ? sortDirsByMode(dirs, mode) : dirs;
 }
 
-function sortTagEntriesByMode(entries, requestedMode) {
-  const out = Array.isArray(entries) ? entries.slice() : [];
-  const mode = normalizeContainerSortMode(requestedMode);
-  if (!mode || mode === "name") {
-    return out.sort((a, b) =>
-      compareIndexedNames(
-        String(a?.label || a?.tag || a?.album || ""),
-        String(b?.label || b?.tag || b?.album || ""),
-      ),
-    );
-  }
-  const sizeMemo = new Map();
-  const metricsByEntry = new Map();
-  const metricsFor = (entry) => {
-    if (!metricsByEntry.has(entry)) {
-      metricsByEntry.set(entry, getTagEntryAggregateMetrics(entry, sizeMemo));
-    }
-    return metricsByEntry.get(entry);
-  };
-  out.sort((a, b) => {
-    const ma = metricsFor(a);
-    const mb = metricsFor(b);
-    let valueA = 0;
-    let valueB = 0;
-    if (mode === "score") {
-      valueA = Number(ma.score) || 0;
-      valueB = Number(mb.score) || 0;
-    } else if (mode === "efficiency") {
-      valueA = (Number(ma.score) || 0) / Math.max(1, Number(ma.fileCount) || 0);
-      valueB = (Number(mb.score) || 0) / Math.max(1, Number(mb.fileCount) || 0);
-    } else if (mode === "size-desc") {
-      valueA = Number(ma.sizeBytes) || 0;
-      valueB = Number(mb.sizeBytes) || 0;
-    } else if (mode === "count-recursive") {
-      valueA = (Number(ma.folderCount) || 0) + (Number(ma.fileCount) || 0);
-      valueB = (Number(mb.folderCount) || 0) + (Number(mb.fileCount) || 0);
-    }
-    if (valueA !== valueB) return valueB - valueA;
-    return compareIndexedNames(
-      String(a?.label || a?.tag || a?.album || ""),
-      String(b?.label || b?.tag || b?.album || ""),
-    );
-  });
-  return out;
-}
-
 function fastTagScopeSortKey() {
   const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
   const randomOn = randomSortAffectsFolders() ? "1" : "0";
@@ -33835,13 +33789,9 @@ function getAlbumEntriesForTagForBaseNode(baseNode, tagName) {
   const basePath = String(baseNode.path || "");
   const albumGroups = collectAlbumTagGroupsForScope(basePath);
   const entries = albumGroups.get(tag) || [];
-  const parentEntry = { kind: "tag", tag, originPath: basePath };
-  const mode = metaGetTagContainerSortMode(tagThumbnailKeyForEntry(parentEntry));
-  return mode
-    ? sortTagEntriesByMode(entries, mode)
-    : entries.slice().sort((a, b) =>
-        String(a.album || "").localeCompare(String(b.album || "")),
-      );
+  return entries.slice().sort((a, b) =>
+    compareIndexedNames(String(a.album || ""), String(b.album || "")),
+  );
 }
 
 function getDirectDirsForAlbumForBaseNode(baseNode, albumName) {
@@ -34057,14 +34007,13 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     }
   }
 
-  const folderSortMode = effectiveContainerSortModeForDir(dirNode);
-  const sortedEntries = folderSortMode
-    ? sortTagEntriesByMode(entries, folderSortMode)
-    : entries;
-  if (cacheKey) TAG_FOLDER_ENTRIES_CACHE.set(cacheKey, sortedEntries);
+  // Virtual tag and album tiles stay in their name-based grouping order. A
+  // container sort override applies only to the real folders/files beneath
+  // those tiles, not to the virtual containers themselves.
+  if (cacheKey) TAG_FOLDER_ENTRIES_CACHE.set(cacheKey, entries);
   return placeholderEntry
-    ? [placeholderEntry].concat(sortedEntries)
-    : sortedEntries;
+    ? [placeholderEntry].concat(entries)
+    : entries;
 }
 
 function getTagFolderEntries() {
@@ -34169,19 +34118,8 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
       albumTag: true,
     });
   }
-  const albumEntry = {
-    kind: "tag",
-    album,
-    originPath: basePath,
-  };
-  const containerMode = metaGetTagContainerSortMode(
-    tagThumbnailKeyForEntry(albumEntry),
-  );
-  const sortedOut = containerMode
-    ? sortTagEntriesByMode(out, containerMode)
-    : out;
-  if (cacheKey) TAG_ALBUM_TAG_ENTRIES_CACHE.set(cacheKey, sortedOut);
-  return sortedOut;
+  if (cacheKey) TAG_ALBUM_TAG_ENTRIES_CACHE.set(cacheKey, out);
+  return out;
 }
 
 function getDirsForTagFolderView() {
@@ -42733,7 +42671,6 @@ function openTagContextMenu(context) {
     kind: "tag",
     entry: tagEntryForThumb,
   });
-  if (sortSubmenu) menu.appendChild(sortSubmenu);
   if (isAlbumEntry) {
     appendTagMenuTwoColRow(
       menu,
@@ -42773,6 +42710,7 @@ function openTagContextMenu(context) {
       );
     }
   }
+  if (sortSubmenu) menu.appendChild(sortSubmenu);
   if (canAppearancePreset) {
     const filtersSubmenu = buildAppearancePresetSubmenu({
       currentPresetId: assignedAppearancePresetId,
@@ -43545,9 +43483,12 @@ function buildFolderActionMenuDom(
     kind: "dir",
     node: state.dirNode,
   });
-  if (sortSubmenu) menuEl.appendChild(sortSubmenu);
+  const appendSortEntry = () => {
+    if (sortSubmenu) menuEl.appendChild(sortSubmenu);
+  };
   if (state.isTrashPutBackOnly) {
     menuEl.appendChild(makeBtn("Remove from trash", "put-back", !state.canPutBack));
+    appendSortEntry();
     return;
   }
   if (state.isStorageRestricted) {
@@ -43566,9 +43507,11 @@ function buildFolderActionMenuDom(
         "destructiveAction",
       ),
     );
+    appendSortEntry();
     return;
   }
   if (state.isRootNode) {
+    appendSortEntry();
     appendFiltersEntry();
     menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
     return;
@@ -43587,6 +43530,7 @@ function buildFolderActionMenuDom(
     makeBtn("Store", "send-to-storage", !state.canSendToStorage),
     makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"),
   );
+  appendSortEntry();
   appendFiltersEntry();
   const thumbnailButtons = [];
   if (state.showUseDefaultThumbnail)
@@ -47167,33 +47111,36 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           showSetRandomThumbnail,
         });
         const folderMenuTarget = { kind: "dir", node: entry.node };
-        const folderMenuLeadHtml =
-          buildItemInfoDropdownHtml(folderMenuTarget) +
+        const folderMenuInfoHtml = buildItemInfoDropdownHtml(folderMenuTarget);
+        const folderMenuSortHtml =
           buildContainerSortSubmenuHtml(folderMenuTarget);
         // Menu (three dot / ⋯) for single-folder actions.
         let menuButtons = "";
         let menuTitle = "Folder menu";
         if (isRootNode) {
           menuButtons = `
-                ${folderMenuLeadHtml}
+                ${folderMenuInfoHtml}
+                ${folderMenuSortHtml}
                 <button type="button" data-action="appearance-preset-set">Filters</button>
                 ${folderThumbnailMenuHtml}
                 <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
               `;
         } else if (folderMenuState.isTrashPutBackOnly) {
           menuButtons = `
-                ${folderMenuLeadHtml}
+                ${folderMenuInfoHtml}
                 <button type="button" data-action="put-back"${folderMenuState.canPutBack ? "" : " disabled"}>Remove from trash</button>
+                ${folderMenuSortHtml}
               `;
         } else if (folderMenuState.isStorageRestricted) {
           menuButtons = `
-                ${folderMenuLeadHtml}
+                ${folderMenuInfoHtml}
                 <button type="button" data-action="remove-from-storage"${folderMenuState.canRemoveFromStorage ? "" : " disabled"}>Remove from storage</button>
                 <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
+                ${folderMenuSortHtml}
               `;
         } else {
           menuButtons = `
-                ${folderMenuLeadHtml}
+                ${folderMenuInfoHtml}
                 <button type="button" data-action="tag">Tag</button>
                 <button type="button" data-action="album">Album</button>
                 <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
@@ -47201,6 +47148,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="send-to-storage"${folderMenuState.canSendToStorage ? "" : " disabled"}>Store</button>
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
+                ${folderMenuSortHtml}
                 <button type="button" data-action="appearance-preset-set">Filters</button>
                 ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
                 ${folderThumbnailMenuHtml}
@@ -48859,6 +48807,10 @@ async function navigateToDirectory(node) {
     enterMediaFolderWithQuickNavigation(node);
     return;
   }
+  // A folder opened from a tag/album preview is a portal into the real tree.
+  // Capture that virtual context before changing WS.nav.dirNode so its sort
+  // override continues through this folder and all descendants.
+  pushSimulatedTagViewContextForPath(node.path || "", getPreviewTargetDir());
   const previewBridgeOpen = !!(
     String(WS.view?.activePane || "") === "preview" &&
     getPreviewTargetDir()?._skipTagFilters
@@ -51898,7 +51850,16 @@ function getPreviewFolderAndFileEntriesCore(dirNode, opts = null) {
       };
     }
     const album = String(dirNode._tagPreviewAlbum || "");
-    const directDirs = getDirectDirsForAlbumForBaseNode(baseNode, album);
+    const albumEntry = {
+      kind: "tag",
+      album,
+      label: album,
+      originPath: String(baseNode?.path || ""),
+    };
+    const directDirs = filterTagEntryDirsByVisibleRecords(
+      getDirectDirsForAlbumForBaseNode(baseNode, album),
+      albumEntry,
+    );
     return {
       folderEntries: getTagEntriesForAlbumForBaseNode(baseNode, album).concat(
         directDirs.map((node) => ({ kind: "dir", node })),
