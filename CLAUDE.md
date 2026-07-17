@@ -62,11 +62,34 @@ The `WS` object (defined at line ~14915) is the single global workspace state:
 ### UI layout
 
 Three panes rendered via CSS grid in `#app`:
-1. **Title Pane** (`#titlePane`) — current folder title and search bar.
+1. **Title Pane** (`#titlePane`) — the tab strip (`#tabBar`), and nothing else. Its grid row collapses unless 2+ tabs are open (`#app.tabs-multi`), so a single-tab window has no top bar. The folder title / info / search row (`#titlePaneTop`) lives in `#stackedTitleHost` inside the file pane, so it hides together with that pane.
 2. **List/Directories Pane** (`#directoriesPane`) — folder tree + file list for the active directory.
 3. **Preview Pane** (`#previewPane`) — media viewer (image/video/gif) with a control bar (`#controlPane`).
 
 `renderPreviewPane()` (line ~46577) is the main re-render entry point for the preview side. The directories/file list side is rebuilt through `rebuildDirectoriesEntries()` and related helpers.
+
+### Tabs
+
+`WS.tabs` (`{ items: [{id, state}], activeId, seq }`) holds the open tabs. A tab's `state` is a `captureViewerCloseRestoreState()` snapshot — the same shape the viewer-close and preview-folder bridges use — so a tab restores the whole browsing location (file pane dir + selection + scroll, preview contents, grid cursor, filters, search, tag portal stack).
+
+Only one tab is live: **the active tab's `state` is `null`**, because its state *is* `WS.view`/`WS.nav`. Switching captures the outgoing tab (`captureActiveTabState()`) and restores the incoming one (`restoreViewerCloseState(state, { preferCachedEntries: true })`). Inactive tabs are inert plain objects — no DOM, no timers, no thumbnails — so N tabs cost O(1).
+
+A tab is named for its **preview location** (see "Which pane is the location"), not its file pane directory — so a tab whose `state.dirPath` is `Gamma` is named `Nested` when its preview shows `Gamma/Nested`. `tabPreviewLocation()` resolves that: the active tab reads live `WS.preview` so its name tracks browsing without re-capturing, while inactive tabs read the `previewState` in their snapshot. `computeTabLabels()` then qualifies ambiguous names with as many ancestor folders as it takes to make them distinct (one parent is often not enough — `Alpha/Nested/n1.png` and `Gamma/Nested/n1.png` share theirs); tabs on the genuinely same location keep matching names. `syncActiveTabLabel()` patches only changed label text on navigation instead of rebuilding the strip.
+
+Three invariants to preserve when touching this:
+- **Paths.** Tab snapshots store raw path strings, so `updateViewStatePathsForRename()` loops `WS.tabs.items` and re-keys them; without it a renamed/moved/trashed folder teleports that tab to root.
+- **Node refs.** Snapshot `navEntries` hold live `DirNode`s. `resetWorkspace()` bumps `NAV_ENTRY_RESTORE_REVISION` (via `invalidateDirMetricsCaches()`), which makes `restoreNavEntriesFromViewerCloseState()` reject stale caches and rebuild. Don't bypass that revision check.
+- **Preview context must not leak between tabs.** `WS.preview` is global. `restoreViewerCloseState()` by default only restores the captured `previewState` when `activePane === "preview"`, and otherwise re-derives it from the selection — but that derivation reads the *live* `WS.preview` for a previewed file's context (`currentFilePreviewContextDir()`), which mid-switch is still the **outgoing tab's**. The incoming file then resolves against a folder it isn't in: `previewFileIdVisibleInContext()` fails and the pane shows the wrong file, or "No visible file" when the leaked folder has nothing passing the filter. Tabs therefore pass `restorePreviewForAnyPane: true`, which restores the snapshot's context directly (and clears `WS.preview` first when there is nothing to restore). `resolveFilePreviewContextDir()` additionally guards the restore: an empty `dirPath` means "no context captured" but is also root's key, so a plain-folder context is trusted only when it really is the file's own folder (portal contexts are trusted as-is).
+
+`seedTabsForWorkspace()` runs once per workspace build (all three of `buildWorkspaceFromDirectoryHandle` / `buildWorkspaceFromFiles` / `buildWorkspaceFromFileList`). It takes the same-root refresh carry-over, else the persisted set from `tabs.log.json`, else a single default tab. Only a real tab set (2+) is persisted; with one tab an empty doc is written so startup keeps its root-landing behaviour.
+
+Actions: `newTab` (root, default `Cmd+t`), `duplicateTab`, `closeTab`, `openInTab`, `openInNewTabs` — all bindable. `Cmd+1`–`Cmd+9` jump by index (`Cmd+9` = last) and are **reserved**, handled directly in the global keydown listener rather than via `KEYBIND_ACTIONS`.
+
+`openInTab` / `openInNewTabs` build their tabs with `makeLocationTabState()`, which places a tab *at* an item — preview shows it, so the tab is named for it. They target the grid's card when the preview pane is active, else the file pane's selection (`openInTabSelectionTarget()`). `openInTab` switches to the new tab; `openInNewTabs` opens every sub-item as a background tab and stays put, capped by `OPEN_IN_NEW_TABS_LIMIT` (30) — over that it is refused outright with an alert rather than partially opened. Sub-items are whatever the grid shows for that item (`openableSubItemTargets()`), so filters and hidden/trash visibility are respected.
+
+**Three target kinds** (`tabTargetForEntry()`): `dir`, `file`, and `tag` — where `tag` covers albums, tags, and the special buckets (Favorites/Hidden/Untagged/Storage), since those are all `kind: "tag"` entries. Only the bulk-tag placeholder is not openable. A portal tab is anchored to the real folder the entry belongs to (`entry.originPath`): the file pane sits there with the album/tag entry selected and the portal in the preview, so no `tagNavStack` is needed — that stack is for *entering* a portal, whereas a tab is merely located *at* one. Its `previewState` comes from `capturePreviewRestoreState()` so it matches the `tag-dir` shape `restoreViewerCloseState()` already knows how to rebuild (via `makeTagPreviewNodeForContext()`). `openInNewTabs` on an album therefore yields a tab per tag, and on a tag a tab per member folder.
+
+Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<base>/@tag-<suffix>` that must never surface in a tooltip (`tagPortalDisplayPath()` presents `<origin>/<label>` instead), and `previewState.tag` is **empty** for albums and specials, so a tab's label must be taken from the rebuilt node's name rather than that field.
 
 ### Companion scripts
 
@@ -91,6 +114,17 @@ This is the conceptual model the keyboard/grid navigation is built on. Keep it i
 - **The preview pane is always exactly one level below the file pane.** It renders the contents of the *currently selected child* (`WS.preview.dirNode` = the selected folder), shown as the "grid". The grid is a UX fudge that makes browsing feel like a second interaction mode, but structurally the preview is always one directory deeper than the file pane. `WS.view.previewSelectedKey` is the selected card *within* that grid — a second, independent selection cursor from the file pane's.
 
 So at any moment: file pane = directory **D**, selected child = **C**, preview = **C's contents**, grid cursor = some item inside C.
+
+### Which pane is "the location"
+
+The two roles are split, and the distinction matters:
+
+- **`WS.nav.dirNode` is authoritative for *navigation*** — what the file pane lists, what the keyboard moves through, what `leaveDirectory()` steps out of.
+- **The preview pane is authoritative for *the location you are at*** — what the title pane path and the tab names report. That is the folder or file the preview currently shows (**C**, or a single file inside it), i.e. one level *below* `WS.nav.dirNode`.
+
+So with the file pane at **D** and **C** selected, the title reads the path to **C**, not **D**; if a file is previewed, the title reads the path to that file and the tab is named for the file. `getPreviewLocationPathText()` builds that path and `previewLocationDirNode()` resolves the folder that qualifies it; `getCurrentTitleText()` / `getCurrentTitleInfoText()` / `computeTabLabels()` all read through them, so path, metrics, and tab name always describe the same place.
+
+One trap: for a previewed **file**, `WS.preview.dirNode` is the *context it was opened from*, not necessarily its parent. In a portal grid (tag/favorites/hidden) that context genuinely is the location and wins. In a plain folder it merely holds the last previewed folder and lags the selection — arrowing off a subfolder onto a file sibling would otherwise report the file as living inside that subfolder. `previewLocationDirNode()` prefers the file's own folder there.
 
 ### Quick navigation (auto-closing the sidebars for media folders)
 

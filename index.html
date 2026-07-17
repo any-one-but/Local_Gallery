@@ -538,12 +538,14 @@ input[type="file"] {
 /* =========================================================
        Title Pane
        ========================================================= */
+/* The top bar hosts the tab strip only. It collapses its grid row entirely
+   unless 2+ tabs are open, so a single-tab window has no top bar at all. */
 #titlePane {
   position: relative;
   z-index: 200;
   height: var(--compact-title-bar-h);
   min-height: var(--compact-title-bar-h);
-  padding: 0 12px;
+  padding: 0 8px;
   background: var(--color1-secondary);
   border-radius: 0;
   border: 0;
@@ -554,6 +556,135 @@ input[type="file"] {
   align-items: center;
   gap: 12px;
   grid-area: title;
+}
+
+#app:not(.tabs-multi) #titlePane {
+  display: none;
+}
+
+/* =========================================================
+       Tab strip
+       ========================================================= */
+#tabBar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+#tabBar::-webkit-scrollbar {
+  display: none;
+}
+
+.tabItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  font-family: var(--font-rounded);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.005em;
+  color: var(--color0-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+.tabItem:hover {
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+}
+.tabItem.active {
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+}
+.tabItem:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.tabItemLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Close affordance stays out of the way until the tab is hovered or active,
+   but always occupies its slot so labels never shift. */
+.tabItemClose {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--color0-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background 0.16s ease,
+    opacity 0.16s ease;
+}
+.tabItem:hover .tabItemClose,
+.tabItem.active .tabItemClose {
+  opacity: 1;
+}
+.tabItemClose:hover {
+  background: var(--ui-control-hover-bg);
+  color: var(--color0-primary);
+}
+.tabItemClose:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: var(--ui-focus-ring);
+}
+
+#tabNewBtn {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--color0-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  cursor: pointer;
+}
+#tabNewBtn:hover {
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  transform: none;
+  box-shadow: none;
 }
 
 #titlePaneTop {
@@ -643,53 +774,45 @@ body.directories-files-only #directoriesHeader {
 }
 
 /* =========================================================
-       Stacked title layout
+       Stacked title
        ---------------------------------------------------------
-       In "stacked" mode #titlePaneTop (path / info / search) is
-       reparented into #stackedTitleHost inside the file pane. The
-       full-width top bar (#titlePane) is hidden so its grid row
-       collapses to 0 and the preview pane fills the whole height.
-       Because the title now lives inside the file pane, it hides
-       together with the pane and never leaves an orphaned row that
-       could mis-size the preview.
+       #titlePaneTop (path / info / search) lives in #stackedTitleHost
+       inside the file pane. Because the title is a real child of the
+       file pane, it hides together with the pane and never leaves an
+       orphaned row that could mis-size the preview. The full-width top
+       bar is reserved for the tab strip.
        ========================================================= */
 #stackedTitleHost {
-  display: none;
-}
-#app[data-title-layout="stacked"] #titlePane {
-  display: none;
-}
-#app[data-title-layout="stacked"] #stackedTitleHost {
   display: block;
   flex: 0 0 auto;
   padding: 10px 12px;
   background: var(--color1-secondary);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
-#app[data-title-layout="stacked"] #stackedTitleHost #titlePaneTop {
+#stackedTitleHost #titlePaneTop {
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
   height: auto;
   gap: 8px;
 }
-#app[data-title-layout="stacked"] #stackedTitleHost #titleMain {
+#stackedTitleHost #titleMain {
   order: 1;
   width: 100%;
   flex: 0 0 auto;
 }
-#app[data-title-layout="stacked"] #stackedTitleHost #titleBtns {
+#stackedTitleHost #titleBtns {
   order: 2;
   width: 100%;
   flex: 0 0 auto;
   justify-content: flex-start;
   overflow: hidden;
 }
-#app[data-title-layout="stacked"] #stackedTitleHost #titleInfo {
+#stackedTitleHost #titleInfo {
   max-width: 100%;
   width: 100%;
 }
-#app[data-title-layout="stacked"] #stackedTitleHost #directoriesSearchRow {
+#stackedTitleHost #directoriesSearchRow {
   order: 3;
   width: 100%;
   max-width: none;
@@ -697,8 +820,8 @@ body.directories-files-only #directoriesHeader {
   margin: 0;
   justify-content: stretch;
 }
-/* Without the full-width top bar the pane divider runs the whole height. */
-#app[data-title-layout="stacked"] #divider {
+/* Without a visible top bar the pane divider runs the whole height. */
+#app:not(.tabs-multi) #divider {
   top: 0;
 }
 
@@ -7143,23 +7266,12 @@ textarea:focus-visible {
       <!-- =========================================================
          Title Pane
          ========================================================= -->
+      <!-- The top bar is the tab strip and nothing else. It only appears when
+           2+ tabs are open (#app.tabs-multi). The path/search/info row
+           (#titlePaneTop) lives permanently in #stackedTitleHost inside the
+           file pane, so it hides together with that pane. -->
       <div id="titlePane">
-        <div id="titlePaneTop">
-          <div id="titleMain">
-            <h1 id="titleLabel">—</h1>
-          </div>
-          <div id="directoriesSearchRow">
-            <input
-              id="directoriesSearchInput"
-              class="tagEditInput"
-              type="text"
-              placeholder="Search folder"
-            />
-          </div>
-          <div id="titleBtns">
-            <div id="titleInfo">—</div>
-          </div>
-        </div>
+        <div id="tabBar"></div>
       </div>
       <input
         id="openWritableInput"
@@ -7175,7 +7287,24 @@ textarea:focus-visible {
              File Pane
              ========================================================= -->
           <div id="directoriesPane">
-            <div id="stackedTitleHost"></div>
+            <div id="stackedTitleHost">
+              <div id="titlePaneTop">
+                <div id="titleMain">
+                  <h1 id="titleLabel">—</h1>
+                </div>
+                <div id="directoriesSearchRow">
+                  <input
+                    id="directoriesSearchInput"
+                    class="tagEditInput"
+                    type="text"
+                    placeholder="Search folder"
+                  />
+                </div>
+                <div id="titleBtns">
+                  <div id="titleInfo">—</div>
+                </div>
+              </div>
+            </div>
             <div id="directoriesHeader">
               <div id="directoriesHeaderTop">
                 <div class="title">File</div>
@@ -8683,7 +8812,6 @@ function defaultOptions() {
     directoriesPaneOpen: false,
     initialOpenSidebars: "both",
     thumbnailSize: "medium",
-    titleLayout: "topbar",
     filePaneViewMode: "list",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
@@ -9132,10 +9260,6 @@ function normalizeOptions(o) {
       src.thumbnailSize === "large"
         ? src.thumbnailSize
         : d.thumbnailSize,
-    titleLayout:
-      src.titleLayout === "topbar" || src.titleLayout === "stacked"
-        ? src.titleLayout
-        : d.titleLayout,
     filePaneViewMode: "list",
     includeHiddenItemsInStats:
       typeof src.includeHiddenItemsInStats === "boolean"
@@ -9609,6 +9733,7 @@ const META_DOC_IDS = Object.freeze({
   prefFilenames: "prefFilenames",
   prefControls: "prefControls",
   keybinds: "keybinds",
+  tabs: "tabs",
 });
 
 const META_DOC_FILE_NAMES = Object.freeze({
@@ -9630,6 +9755,7 @@ const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.prefFilenames]: "preferences.filenames.log.json",
   [META_DOC_IDS.prefControls]: "preferences.controls.log.json",
   [META_DOC_IDS.keybinds]: "keyboard-configuration.log.json",
+  [META_DOC_IDS.tabs]: "tabs.log.json",
 });
 
 const META_LOCAL_KEY_PREFIXES = Object.freeze({
@@ -9651,6 +9777,7 @@ const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.prefFilenames]: "LocalGalleryPreferencesFilenamesV2",
   [META_DOC_IDS.prefControls]: "LocalGalleryPreferencesControlsV2",
   [META_DOC_IDS.keybinds]: "LocalGalleryKeyboard",
+  [META_DOC_IDS.tabs]: "LocalGalleryTabsV1",
 });
 
 const META_ALL_DOC_IDS = Object.freeze([
@@ -9672,6 +9799,7 @@ const META_ALL_DOC_IDS = Object.freeze([
   META_DOC_IDS.prefFilenames,
   META_DOC_IDS.prefControls,
   META_DOC_IDS.keybinds,
+  META_DOC_IDS.tabs,
 ]);
 
 const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
@@ -14680,29 +14808,153 @@ function applyDisplaySizesFromOptions() {
   root.style.setProperty("--thumb-scale-folder", String(scaleMult));
 }
 
-// Title layout: "topbar" keeps the path/search/info in the full-width bar across
-// the top of the window (the default). "stacked" reparents that same content
-// (#titlePaneTop) into the file pane itself so it sits above the file list and
-// is bound to the file pane's lifecycle. Because it becomes a real child of the
-// file pane, closing the file pane removes it and the preview pane fills the
-// window naturally — no orphaned title row is left to mis-size the preview.
-function applyTitleLayoutFromOptions() {
+// The full-width top bar is the tab strip, and only appears once a second tab
+// exists (.tabs-multi). The path/search/info row lives in the file pane, so
+// closing that pane takes the title with it and the preview fills the window —
+// no orphaned title row is left to mis-size the preview.
+function applyTabBarLayout() {
   const appEl = document.getElementById("app");
   if (!appEl) return;
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  const layout = opt && opt.titleLayout === "stacked" ? "stacked" : "topbar";
-  appEl.setAttribute("data-title-layout", layout);
-  const titlePaneTop = document.getElementById("titlePaneTop");
-  if (titlePaneTop) {
-    const desiredHost =
-      layout === "stacked"
-        ? document.getElementById("stackedTitleHost")
-        : document.getElementById("titlePane");
-    if (desiredHost && titlePaneTop.parentElement !== desiredHost) {
-      desiredHost.appendChild(titlePaneTop);
-    }
-  }
+  const multi = !!(WS.tabs && WS.tabs.items && WS.tabs.items.length > 1);
+  appEl.classList.toggle("tabs-multi", multi);
   updateGridModeListTopInset();
+}
+
+// Rebuilds the strip from scratch. Cheap by construction: it only runs on tab
+// add/remove/switch, never on navigation — the active tab's label is refreshed
+// in place by updateTitleLabel() as you browse.
+function renderTabBar() {
+  applyTabBarLayout();
+  const bar = document.getElementById("tabBar");
+  if (!bar) return;
+  bar.textContent = "";
+  if (!WS.tabs || WS.tabs.items.length < 2) return;
+
+  const locations = computeTabLabels();
+  WS.tabs.items.forEach((item, i) => {
+    const tab = document.createElement("div");
+    tab.className = "tabItem";
+    tab.dataset.tabId = item.id;
+    tab.setAttribute("role", "tab");
+    tab.tabIndex = 0;
+    const isActive = item.id === WS.tabs.activeId;
+    tab.classList.toggle("active", isActive);
+    tab.setAttribute("aria-selected", isActive ? "true" : "false");
+    tab.title = locations[i].path;
+
+    const label = document.createElement("span");
+    label.className = "tabItemLabel";
+    label.textContent = locations[i].label;
+    tab.appendChild(label);
+
+    const close = document.createElement("button");
+    close.className = "tabItemClose";
+    close.type = "button";
+    close.textContent = "×";
+    close.title = "Close tab";
+    close.setAttribute("aria-label", "Close tab");
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTab(item.id);
+    });
+    tab.appendChild(close);
+
+    tab.addEventListener("click", () => activateTab(item.id));
+    tab.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        e.stopPropagation();
+        activateTab(item.id);
+      }
+    });
+    // Middle-click closes, matching browser convention.
+    tab.addEventListener("auxclick", (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      closeTab(item.id);
+    });
+    bar.appendChild(tab);
+  });
+
+  const addBtn = document.createElement("button");
+  addBtn.id = "tabNewBtn";
+  addBtn.type = "button";
+  addBtn.textContent = "+";
+  addBtn.title = "New tab";
+  addBtn.setAttribute("aria-label", "New tab");
+  addBtn.addEventListener("click", () => createTab());
+  bar.appendChild(addBtn);
+
+  const activeEl = bar.querySelector(".tabItem.active");
+  if (activeEl && activeEl.scrollIntoView) {
+    try {
+      activeEl.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } catch {}
+  }
+}
+
+// Names collide constantly in a media library (every "Nested", "Scans",
+// "2024", every "n1.png"), and identical tabs defeat the point of having
+// several locations open. Ambiguous names take on as many ancestor folders as
+// it takes to tell them apart — one parent is often not enough, since
+// Alpha/Nested/n1.png and Gamma/Nested/n1.png share their parent too. Unique
+// names stay bare. Tabs on the genuinely same location keep matching names.
+// Returns { label, path } per tab, resolving each location once.
+const TAB_LABEL_MAX_QUALIFY_DEPTH = 6;
+
+function computeTabLabels() {
+  const locations = WS.tabs.items.map((item) => tabPreviewLocation(item));
+  // Ancestors of each location, nearest last (the final path segment is the
+  // location itself, so it is not an ancestor).
+  const ancestors = locations.map((loc) =>
+    String(loc.path || "").split("/").filter(Boolean).slice(0, -1),
+  );
+  const labels = locations.map((loc) => loc.label);
+
+  for (let depth = 1; depth <= TAB_LABEL_MAX_QUALIFY_DEPTH; depth++) {
+    const counts = new Map();
+    for (const label of labels) counts.set(label, (counts.get(label) || 0) + 1);
+    if (!labels.some((label) => (counts.get(label) || 0) > 1)) break;
+
+    let changed = false;
+    for (let i = 0; i < labels.length; i++) {
+      if ((counts.get(labels[i]) || 0) < 2) continue;
+      if (depth > ancestors[i].length) continue; // fully qualified already
+      const prefix = ancestors[i]
+        .slice(ancestors[i].length - depth)
+        .map((seg) => displayFolderSegmentName(seg) || seg)
+        .join("/");
+      const next = prefix ? `${prefix}/${locations[i].label}` : locations[i].label;
+      if (next !== labels[i]) {
+        labels[i] = next;
+        changed = true;
+      }
+    }
+    if (!changed) break; // nothing left to disambiguate with
+  }
+
+  return locations.map((loc, i) => ({ label: labels[i], path: loc.path }));
+}
+
+// Keeps tab names in sync with the preview pane as you navigate, patching only
+// the text that actually changed instead of rebuilding the strip. Runs over
+// every tab because navigating one tab can resolve or create a name collision
+// with another; the list is short, so this is far cheaper than a re-render.
+function syncActiveTabLabel() {
+  if (!WS.tabs || WS.tabs.items.length < 2) return;
+  const bar = document.getElementById("tabBar");
+  if (!bar) return;
+  const els = bar.querySelectorAll(".tabItem");
+  if (els.length !== WS.tabs.items.length) return;
+  const locations = computeTabLabels();
+  for (let i = 0; i < els.length; i++) {
+    const labelEl = els[i].querySelector(".tabItemLabel");
+    if (labelEl && labelEl.textContent !== locations[i].label)
+      labelEl.textContent = locations[i].label;
+    if (els[i].title !== locations[i].path) els[i].title = locations[i].path;
+  }
+  // Reached only with 2+ tabs open, i.e. exactly when tab state is persisted.
+  scheduleTabsPersist();
 }
 
 function applyDirectoryMiniThumbSizeFromOptions() { }
@@ -14810,7 +15062,7 @@ function applyLoadedOptionsToDocument() {
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
   applyDisplaySizesFromOptions();
-  applyTitleLayoutFromOptions();
+  applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
   applyDirectoryFolderCardLayoutFromOptions();
@@ -14836,7 +15088,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
     applyThumbFitFromOptions();
     applyThumbnailTitleSizeFromOptions();
     applyDisplaySizesFromOptions();
-    applyTitleLayoutFromOptions();
+    applyTabBarLayout();
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
     applyDirectoryFolderCardLayoutFromOptions();
@@ -14859,7 +15111,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
   applyDisplaySizesFromOptions();
-  applyTitleLayoutFromOptions();
+  applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
   applyDirectoryFolderCardLayoutFromOptions();
@@ -15187,6 +15439,11 @@ const KEYBIND_SECTIONS = [
   { id: "filenames", label: "Filenames" },
 ];
 
+// Firm cap on "Open in new tabs". Anything with more sub-items than this is
+// refused outright rather than partially opened. Declared here because
+// KEYBIND_ACTIONS below reads it for the action's hint.
+const OPEN_IN_NEW_TABS_LIMIT = 30;
+
 const KEYBIND_ACTIONS = [
   {
     id: "selectUp",
@@ -15252,6 +15509,42 @@ const KEYBIND_ACTIONS = [
     id: "refreshWorkspace",
     label: "Refresh workspace",
     hint: "Refresh the loaded writable folder from disk.",
+    section: "panes",
+  },
+  {
+    id: "newTab",
+    label: "New tab",
+    hint: "Open a new tab at the root folder.",
+    section: "panes",
+  },
+  {
+    id: "duplicateTab",
+    label: "Duplicate tab",
+    hint: "Open a new tab at the current location.",
+    section: "panes",
+  },
+  {
+    id: "closeTab",
+    label: "Close tab",
+    hint: "Close the current tab. Cmd+1 through Cmd+9 jump between tabs.",
+    section: "panes",
+  },
+  {
+    id: "openInTab",
+    label: "Open in tab",
+    hint: "Open the selected folder, album, tag, or file in a new tab.",
+    section: "panes",
+  },
+  {
+    id: "toggleGrokWindow",
+    label: "Toggle Grok",
+    hint: "Show or hide the Grok window over the app. Esc closes it.",
+    section: "panes",
+  },
+  {
+    id: "openInNewTabs",
+    label: "Open in new tabs",
+    hint: `Open everything inside the selected folder, album, or tag in its own background tab (up to ${OPEN_IN_NEW_TABS_LIMIT}).`,
     section: "panes",
   },
   {
@@ -15560,6 +15853,12 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleDirectoriesPane",
   "toggleSettingsAndDirectoriesPanes",
   "refreshWorkspace",
+  "newTab",
+  "duplicateTab",
+  "closeTab",
+  "openInTab",
+  "openInNewTabs",
+  "toggleGrokWindow",
   "cycleFilter",
   "cycleFolderSort",
   "toggleAnimatedFilters",
@@ -15631,6 +15930,14 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleDirectoriesPane: "Tab",
   toggleSettingsAndDirectoriesPanes: "Space",
   refreshWorkspace: "",
+  // Cmd+w / Cmd+s are already prevFolder / nextFolder, so closeTab must not
+  // claim the browser-conventional Cmd+w. Left unbound for the user to choose.
+  newTab: "Cmd+t",
+  duplicateTab: "",
+  closeTab: "",
+  openInTab: "",
+  openInNewTabs: "",
+  toggleGrokWindow: "Cmd+g",
   randomFirstFileJump: "r",
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
@@ -15947,6 +16254,9 @@ const WS = {
     appearancePresets: defaultAppearancePresets(),
     keybinds: defaultKeybinds(defaultAppearancePresets()),
     gridKeybinds: defaultGridKeybinds(),
+    // Raw tabs.log.json contents, held until the tree exists so paths can be
+    // resolved against WS.dirByPath (see seedTabsForWorkspace).
+    tabsLog: null,
   },
 
   view: {
@@ -16027,6 +16337,17 @@ const WS = {
     previewSelectAnchorKey: "",
     previewSelectedKey: "",
     previewSelectionContextKey: "",
+  },
+
+  // Open tabs. Each item is { id, state } where state is a
+  // captureViewerCloseRestoreState() snapshot, or null for the active tab —
+  // the active tab's state *is* WS.view/WS.nav, so it is only snapshotted on
+  // the way out. Lives here rather than on WS.view because resetWorkspace()
+  // clears WS.view wholesale.
+  tabs: {
+    items: [],
+    activeId: "",
+    seq: 0,
   },
 
   // List Pane navigation state
@@ -16229,9 +16550,18 @@ function resetWorkspace() {
   WS.meta.appearancePresets = defaultAppearancePresets();
   WS.meta.keybinds = defaultKeybinds(WS.meta.appearancePresets);
   WS.meta.gridKeybinds = defaultGridKeybinds();
+  // Cleared so a previous root's tabs can never leak into the next one; the
+  // incoming root's own tabs.log.json repopulates it during metaInit.
+  WS.meta.tabsLog = null;
   if (WS.meta.saveTimer) {
     clearTimeout(WS.meta.saveTimer);
     WS.meta.saveTimer = null;
+  }
+  if (TABS_PERSIST_TIMER) {
+    try {
+      clearTimeout(TABS_PERSIST_TIMER);
+    } catch {}
+    TABS_PERSIST_TIMER = 0;
   }
 
   applyDefaultViewFromOptions();
@@ -16241,6 +16571,10 @@ function resetWorkspace() {
   WS.view.randomCache = new Map();
   WS.view.randomFolderMode = false;
   WS.view.randomFolderCache = new Map();
+  // Manual file orders are session state, and one of their keys ("session-path::")
+  // is not workspace-scoped — leaving the map behind pins the same relative paths
+  // in the next workspace opened. Drop it with the rest of the workspace.
+  WS.view.fileOrderByDirPath = new Map();
   WS.view.slideshowModeIndex = 0;
   WS.view.slideshowActive = false;
   WS.view.appearancePresetDraftName = "";
@@ -16311,6 +16645,11 @@ function resetWorkspace() {
   WS.nav.dirNode = null;
   WS.nav.entries = [];
   WS.nav.selectedIndex = 0;
+
+  // A new root means a new tab set. Same-root refreshes re-seed this afterwards
+  // from the tabs they preserved (see buildWorkspaceFromDirectoryHandle).
+  WS.tabs.items = [];
+  WS.tabs.activeId = "";
 
   applyPreviewState(null);
   clearPreviewSelectionState("none");
@@ -17531,9 +17870,8 @@ function buildPortalAwareDirectoryPathText(path) {
   return `${baseText} / ${relativeText}`;
 }
 
-function getPreviewPathText() {
+function dirPathTextForNode(previewDir) {
   if (!WS.root) return "—";
-  const previewDir = getPreviewTargetDir();
   if (!previewDir) return "—";
   if (previewDir._skipTagFilters) {
     return (
@@ -17553,6 +17891,10 @@ function getPreviewPathText() {
     (path && buildPortalAwareDirectoryPathText(path)) ||
     (path ? displayPath(path) || "root" : "root")
   );
+}
+
+function getPreviewPathText() {
+  return dirPathTextForNode(getPreviewTargetDir());
 }
 
 function collectUniqueTitleMetricNodes(nodes) {
@@ -17676,50 +18018,10 @@ function getTitlePaneScoreForNodes(nodes) {
   return total;
 }
 
-function getDirectoriesTitleInfoLabel() {
-  if (!WS.root) return "—";
-  if (WS.view.aboveRootView) return dirDisplayName(WS.root) || "root";
-  if (isViewingTagFolder()) {
-    if (WS.view.tagFolderActiveMode === "favorites") return "Favorites";
-    if (WS.view.tagFolderActiveMode === "hidden") return "Hidden";
-    if (WS.view.tagFolderActiveMode === "storage") return STORAGE_UI_LABEL;
-    if (WS.view.tagFolderActiveMode === "untagged") return "Untagged";
-    if (WS.view.tagFolderActiveMode === "album") {
-      return displayTagFolderLabel(String(WS.view.tagFolderActiveAlbum || "")) || "Album";
-    }
-    return (
-      displayTagFolderLabel(String(WS.view.tagFolderActiveTag || "")) || "Tag"
-    );
-  }
-  if (searchResultsVisibleInDirectoriesPane()) return "Search";
-  if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "Favorites";
-  if (WS.view.hiddenMode && WS.view.hiddenRootActive) return "Hidden";
-  if (!WS.nav.dirNode) return "—";
-  return dirDisplayName(WS.nav.dirNode) || "root";
-}
-
-function getDirectoriesTitleInfoContext() {
-  const title = getDirectoriesTitleInfoLabel();
-  if (!WS.root) return { title, nodes: [], folderCountMode: "collection" };
-  if (WS.view.aboveRootView)
-    return { title, nodes: [WS.root], folderCountMode: "directChildren" };
-  if (isViewingTagFolder()) {
-    return { title, nodes: getDirsForTagFolderView(), folderCountMode: "collection" };
-  }
-  if (searchResultsVisibleInDirectoriesPane()) {
-    return { title, nodes: Array.isArray(WS.view.searchResults) ? WS.view.searchResults : [], folderCountMode: "collection" };
-  }
-  if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-    return { title, nodes: getAllFavoriteDirs(), folderCountMode: "collection" };
-  }
-  if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
-    return { title, nodes: getAllHiddenDirs(), folderCountMode: "collection" };
-  }
-  return { title, nodes: WS.nav.dirNode ? [WS.nav.dirNode] : [], folderCountMode: "directChildren" };
-}
-
+// Metrics for the preview location, resolved the same way as its path text so
+// the two never describe different folders.
 function getPreviewTitleInfoContext() {
-  const previewDir = getPreviewTargetDir();
+  const previewDir = previewLocationDirNode();
   const title = previewDir
     ? dirDisplayName(previewDir) || "root"
     : "—";
@@ -17731,10 +18033,46 @@ function getPreviewTitleInfoContext() {
   return { title, nodes: [previewDir], folderCountMode: "directChildren" };
 }
 
+// The preview pane is the authoritative location: whatever it currently shows
+// — a folder's contents, or a single file — is where you are. Note this sits a
+// level below WS.nav.dirNode (see the navigation model in CLAUDE.md), so the
+// title and tab names deliberately track the preview, not the file pane.
+function getPreviewLocationFileRecord() {
+  if (!WS.preview || WS.preview.kind !== "file") return null;
+  const id = String(WS.preview.fileId || "");
+  return (id && WS.fileById.get(id)) || null;
+}
+
+// The folder that qualifies the preview location.
+//
+// For a file, WS.preview.dirNode is the *context* it was opened from, which is
+// not always its parent. In a portal grid (tag/favorites/hidden) that context is
+// genuinely where you are, so it wins. In a plain folder it merely holds the
+// last previewed folder and lags the selection — arrowing off a subfolder onto a
+// file sibling would otherwise report the file as living inside that subfolder.
+// There, the file's own folder is authoritative.
+function previewLocationDirNode() {
+  const context = getPreviewTargetDir();
+  const rec = getPreviewLocationFileRecord();
+  if (!rec) return context;
+  if (context && context._skipTagFilters) return context;
+  return WS.dirByPath.get(String(rec.dirPath || "")) || context;
+}
+
+// Path text of the preview location. When a file is open it is the location, so
+// its name is the last segment rather than its containing folder's.
+function getPreviewLocationPathText() {
+  const dirText = dirPathTextForNode(previewLocationDirNode());
+  const rec = getPreviewLocationFileRecord();
+  if (!rec) return dirText;
+  const name = fileDisplayNameForRecord(rec);
+  if (!name) return dirText;
+  if (!dirText || dirText === "—") return name;
+  return `${dirText}/${name}`;
+}
+
 function getCurrentTitleInfoText() {
-  const context = isCompactTitleLayout()
-    ? getPreviewTitleInfoContext()
-    : getDirectoriesTitleInfoContext();
+  const context = getPreviewTitleInfoContext();
   const title = String(context?.title || "—") || "—";
   const nodes = collectUniqueTitleMetricNodes(context?.nodes || []);
   if (!nodes.length) return title;
@@ -17765,15 +18103,13 @@ function getCurrentTitleInfoText() {
 }
 
 function getCurrentTitleText() {
-  const path = isCompactTitleLayout()
-    ? getPreviewPathText()
-    : getDirectoriesPathText();
-  return path || "—";
+  return getPreviewLocationPathText() || "—";
 }
 
 function updateTitleLabel() {
   if (titleLabel) titleLabel.textContent = getCurrentTitleText();
   if (titleInfo) titleInfo.textContent = getCurrentTitleInfoText();
+  syncActiveTabLabel();
 }
 
 function syncMetaButtons() {
@@ -19536,10 +19872,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "medium", label: "Medium" },
     { value: "large", label: "Large" },
   ];
-  const titleLayoutModes = [
-    { value: "topbar", label: "Top bar" },
-    { value: "stacked", label: "Stacked" },
-  ];
   const weightRandomJumpsByScoreModes = [
     { value: "off", label: "Off" },
     { value: "light", label: "Light" },
@@ -19940,7 +20272,6 @@ ${makeCheckRow("Quick navigation", "When opening a folder that only contains fil
 ${makeSelectRow("Weight random jumps by score", "Random set and file jumps favor higher-scored folders (files use their parent folder's score). Light: score 1 is twice as likely as score 0, score 22 is 23× as likely; negative scores are proportionally less likely. Medium and Heavy give the score double and triple that pull.", "opt_weightRandomJumpsByScore", weightRandomJumpsByScoreMode(), weightRandomJumpsByScoreModes)}
 ${makeSelectRow("Initial Open Sidebars", "Which side panes open automatically after loading a root.", "opt_initialOpenSidebars", String(opt.initialOpenSidebars || "both"), initialSidebarsModes)}
 ${makeSelectRow("Thumbnail size", "How large media thumbnails are in the preview grid.", "opt_thumbnailSize", String(opt.thumbnailSize || "medium"), thumbnailSizeModes)}
-${makeSelectRow("Title layout", "Top bar keeps the path and search in a bar across the top. Stacked moves them above the file pane, showing only when the file pane is open.", "opt_titleLayout", String(opt.titleLayout || "topbar"), titleLayoutModes)}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeActionRow(
@@ -20654,10 +20985,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     const raw = String(val || "").trim().toLowerCase();
     return raw === "small" || raw === "large" ? raw : "medium";
   });
-  bindSelect("opt_titleLayout", "titleLayout", false, null, (val) => {
-    const raw = String(val || "").trim().toLowerCase();
-    return raw === "stacked" ? "stacked" : "topbar";
-  });
   bindCheck("opt_muteMessages", "muteMessages");
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
     invalidateDirMetricsCaches();
@@ -21018,8 +21345,7 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
       const dirSortSelectEl = $("opt_dirSortMode");
       if (!dirSortSelectEl) return;
       WS.meta.dirSortMode = normalizeDirSortMode(dirSortSelectEl.value);
-      clearTagEntryDerivedCaches();
-      invalidateDirSortMetricsCache();
+      invalidateDirSortOrderCaches();
       metaMarkDirty(META_DOC_IDS.prefGeneral);
       setOptionsStatus("Saved");
       applyFolderSortModeEverywhere(true);
@@ -21630,8 +21956,10 @@ function applyScoreMutationRender(focusPath = "") {
     setCalendarStatus("Saved");
   }
   if (WS.meta.dirSortMode === "score") {
-    clearTagEntryDerivedCaches();
-    invalidateDirSortMetricsCache();
+    // A score edit reorders folders under score sort, so it invalidates cached
+    // orderings exactly like a sort-mode change does — including the nav-entry
+    // snapshots keyed on NAV_ENTRY_RESTORE_REVISION.
+    invalidateDirSortOrderCaches();
     rebuildDirectoriesEntries();
     const idx = findDirEntryIndexByPath(String(focusPath || ""));
     WS.nav.selectedIndex = findNearestSelectableIndex(
@@ -24096,7 +24424,7 @@ function metaApplyFromLog(log) {
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyDisplaySizesFromOptions();
-  applyTitleLayoutFromOptions();
+  applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDescriptionVisibilityFromOptions();
   applyInteractionModeFromOptions();
@@ -24546,6 +24874,8 @@ function metaDocObjectForId(docId) {
       return metaMakePreferenceSectionLogObject(docId);
     case META_DOC_IDS.keybinds:
       return metaMakeKeybindsLogObject();
+    case META_DOC_IDS.tabs:
+      return metaMakeTabsLogObject();
     default:
       return null;
   }
@@ -24885,6 +25215,9 @@ function metaApplyDocLogById(docId, log) {
       return;
     case META_DOC_IDS.keybinds:
       metaApplyKeybindsLog(log);
+      return;
+    case META_DOC_IDS.tabs:
+      metaApplyTabsDocLog(log);
       return;
   }
 }
@@ -25415,6 +25748,7 @@ function metaInitForCurrentWorkspace(opts = null) {
         META_DOC_IDS.aspectRatios,
         META_DOC_IDS.appearanceAssignments,
         META_DOC_IDS.keybinds,
+        META_DOC_IDS.tabs,
       ];
       const splitDocs = [];
       for (let i = 0; i < loadOrder.length; i++) {
@@ -25521,6 +25855,7 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     META_DOC_IDS.aspectRatios,
     META_DOC_IDS.appearanceAssignments,
     META_DOC_IDS.keybinds,
+    META_DOC_IDS.tabs,
   ];
   const splitDocs = [];
   for (let i = 0; i < loadOrder.length; i++) {
@@ -25694,6 +26029,7 @@ async function buildWorkspaceFromFiles(fileList) {
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
   applyDefaultRootLandingSidebars();
+  seedTabsForWorkspace();
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -27237,6 +27573,26 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     !(opts && opts.freshOpen) &&
     !!(WS.root && WS.root.fsHandle && WS.root.fsHandle === rootHandle);
   const preservedState = preserveView ? snapshotRefreshState() : null;
+  // Tabs survive a same-root rebuild. resetWorkspace() clears WS.tabs, so hold
+  // the list here and re-seed it after the tree is rebuilt. Cached navEntries
+  // are dropped because they reference DirNodes the rebuild replaces — the
+  // NAV_ENTRY_RESTORE_REVISION bump in resetWorkspace() would reject them
+  // anyway, but dropping them here keeps the stale nodes from being retained.
+  const preservedTabs = preserveView
+    ? {
+        activeId: String(WS.tabs.activeId || ""),
+        seq: Number(WS.tabs.seq) || 0,
+        items: WS.tabs.items.map((item) => ({
+          id: item.id,
+          state: item.state
+            ? Object.assign(cloneViewerCloseRestoreState(item.state), {
+                navEntries: [],
+                navEntriesRevision: -1,
+              })
+            : null,
+        })),
+      }
+    : null;
   if (!silent) {
     holdBusyOverlay();
     showBlockingLoaderOverlay("Opening root folder...", "Preparing workspace...");
@@ -27481,6 +27837,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     primeDirectoryNavManifests(WS.root);
     syncPinnedHotNavigationDirectories(WS.root);
     if (!preservedState) applyDefaultRootLandingSidebars();
+    seedTabsForWorkspace(preservedTabs);
 
     if (!silent) {
       await prepareNavigationSnapshot(
@@ -27627,6 +27984,7 @@ async function buildWorkspaceFromFileList(fileList) {
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
   applyDefaultRootLandingSidebars();
+  seedTabsForWorkspace();
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -28020,6 +28378,24 @@ function restoreNavEntriesFromViewerCloseState(state) {
   return !!WS.nav.entries.length;
 }
 
+// The context captured for a file preview is the folder it was *opened from*,
+// which is not always the file's parent. Two things make it unsafe to restore
+// verbatim: an empty dirPath means "no context was captured", but it is also
+// root's key, so it silently resolves to root; and a plain folder context can
+// have gone stale. Restoring a context the file isn't in makes
+// previewFileIdVisibleInContext() fail and the pane render "No visible file".
+//
+// Portal contexts (tag/favorites/hidden) are the location and are trusted as-is.
+// A plain folder is trusted only when it really is the file's own folder.
+function resolveFilePreviewContextDir(previewState, fileId) {
+  const captured = WS.dirByPath.get(String(previewState?.dirPath || "")) || null;
+  if (captured && captured._skipTagFilters) return captured;
+  const rec = WS.fileById.get(String(fileId || ""));
+  const own = WS.dirByPath.get(String(rec?.dirPath || "")) || null;
+  if (captured && own && captured === own) return captured;
+  return own || captured;
+}
+
 function restoreViewerCloseState(state, opts = null) {
   if (!state || !WS.root) return false;
   const options = opts && typeof opts === "object" ? opts : {};
@@ -28027,6 +28403,16 @@ function restoreViewerCloseState(state, opts = null) {
   const deferDirectoriesRender = !!options.deferDirectoriesRender;
   const hideBusyAfterDeferredRender = !!options.hideBusyAfterDeferredRender;
   const preserveViewFilters = !!options.preserveViewFilters;
+  // Restore the captured preview even when the file pane is the active pane.
+  //
+  // The viewer-close and bridge callers only care about the preview when they
+  // land back in it, and re-deriving it from the selection is equivalent for
+  // them — they resume the same view they left. Tabs are different: the derive
+  // path reads the *live* WS.preview for a previewed file's context (see
+  // currentFilePreviewContextDir), which on a tab switch is still the outgoing
+  // tab's. The snapshot already records the right context, so tabs restore it
+  // directly instead. Opt-in, to leave the bridge paths' behaviour untouched.
+  const restorePreviewForAnyPane = !!options.restorePreviewForAnyPane;
   const currentFilterMode = normalizeMediaFilterMode(WS.view?.filterMode);
   const currentAspectRatioFilterMode = normalizeAspectRatioFilterMode(
     WS.view?.aspectRatioFilterMode,
@@ -28073,7 +28459,7 @@ function restoreViewerCloseState(state, opts = null) {
   const previewState = clonePreviewRestoreState(state.previewState);
   const previewContextKey = String(state.previewContextKey || "");
   let restoredPreview = false;
-  if (WS.view.activePane === "preview") {
+  if (restorePreviewForAnyPane || WS.view.activePane === "preview") {
     if (previewState && previewState.kind === "tag-dir") {
       const previewNode = makeTagPreviewNodeForContext(
         previewState.mode || "",
@@ -28097,7 +28483,7 @@ function restoreViewerCloseState(state, opts = null) {
       if (previewFileId && WS.fileById.has(previewFileId)) {
         applyPreviewState({
           kind: "file",
-          dirNode: WS.dirByPath.get(String(previewState.dirPath || "")) || null,
+          dirNode: resolveFilePreviewContextDir(previewState, previewFileId),
           fileId: previewFileId,
         });
         restoredPreview = true;
@@ -28121,7 +28507,14 @@ function restoreViewerCloseState(state, opts = null) {
       }
     }
   }
-  if (!restoredPreview) syncPreviewToSelection();
+  if (!restoredPreview) {
+    // Nothing captured to restore (e.g. a fresh root tab). WS.preview still holds
+    // the *outgoing* tab's target, and currentFilePreviewContextDir() reads it to
+    // pick a previewed file's context — so clear it first, or that tab's folder
+    // leaks in and the file resolves against a folder it isn't in.
+    if (restorePreviewForAnyPane) applyPreviewState(null);
+    syncPreviewToSelection();
+  }
   WS.view.pendingPreviewSelectionKey = String(
     state.pendingPreviewSelectionKey ||
       (WS.view.activePane === "preview" ? state.previewSelectedKey || "" : ""),
@@ -28168,6 +28561,694 @@ function restoreViewerCloseState(state, opts = null) {
     });
   }
   return true;
+}
+
+// =========================================================
+// Tabs
+// ---------------------------------------------------------
+// A tab is a captureViewerCloseRestoreState() snapshot — the same shape the
+// viewer-close and preview-folder bridges already use — so a tab restores the
+// whole browsing location (file pane dir + selection + scroll, preview pane
+// contents, grid cursor, filters, search, tag portal stack).
+//
+// Only one tab is ever live: the active tab has state === null because its
+// state *is* WS.view/WS.nav. Switching captures the outgoing tab and restores
+// the incoming one. Inactive tabs are inert plain objects — no DOM, no timers,
+// no thumbnails — so N tabs cost O(1) work.
+// =========================================================
+function makeTabId() {
+  WS.tabs.seq = (Number(WS.tabs.seq) || 0) + 1;
+  return `tab-${WS.tabs.seq}`;
+}
+
+function tabIndexById(id) {
+  const key = String(id || "");
+  if (!key) return -1;
+  return WS.tabs.items.findIndex((item) => item && item.id === key);
+}
+
+function activeTabItem() {
+  const idx = tabIndexById(WS.tabs.activeId);
+  return idx >= 0 ? WS.tabs.items[idx] : null;
+}
+
+// Guarantees a single active tab exists. Safe to call repeatedly.
+function ensureTabsInitialized() {
+  if (!WS.tabs.items.length) {
+    const id = makeTabId();
+    WS.tabs.items = [{ id, state: null }];
+    WS.tabs.activeId = id;
+    return;
+  }
+  if (tabIndexById(WS.tabs.activeId) < 0) {
+    WS.tabs.activeId = WS.tabs.items[0].id;
+  }
+}
+
+// Snapshot the live view into the active tab. The active tab is the only one
+// whose stored state is allowed to be stale, so this must run before anything
+// that navigates away from it.
+function captureActiveTabState() {
+  const item = activeTabItem();
+  if (!item) return;
+  item.state = captureViewerCloseRestoreState();
+}
+
+function tabLabelForDirPath(dirPath) {
+  const path = String(dirPath || "");
+  if (!path) return WS.root ? dirDisplayName(WS.root) || "root" : "root";
+  const node = WS.dirByPath.get(path);
+  if (node) return dirDisplayName(node) || "root";
+  const seg = path.split("/").filter(Boolean).pop() || path;
+  return displayFolderSegmentName(seg) || seg;
+}
+
+// Tag/album portals carry a synthetic "@tag-<suffix>" path that is meaningless
+// in a tooltip. Present them as "<origin folder>/<label>" instead, which reads
+// like every other tab's path and lets the duplicate-name qualifier walk their
+// ancestors exactly as it does for a folder.
+function tagPortalDisplayPath(node) {
+  const base = String(node?._tagPreviewOriginPath || node?.parent?.path || "");
+  const label = String(node?.name || "");
+  if (!label) return base;
+  return base ? `${base}/${label}` : label;
+}
+
+function tabLocationForDirNode(dir) {
+  if (!dir) return null;
+  if (dir._skipTagFilters)
+    return { label: dirDisplayName(dir) || "Tag", path: tagPortalDisplayPath(dir) };
+  return { label: dirDisplayName(dir) || "root", path: String(dir.path || "") };
+}
+
+// A tab is named for its preview location — the folder, album/tag portal, or
+// file the preview pane shows — not for its file pane directory, which sits a
+// level above it.
+//
+// The active tab reads the live WS.preview so its name tracks browsing without
+// re-capturing; inactive tabs read the previewState in their snapshot, which
+// capturePreviewRestoreState() records for both panes. Returns the path
+// alongside the label for the tooltip and for parent-qualifying duplicates.
+function tabPreviewLocation(item) {
+  if (!item) return { label: "", path: "" };
+
+  if (item.id === WS.tabs.activeId) {
+    const rec = getPreviewLocationFileRecord();
+    if (rec)
+      return {
+        label: fileDisplayNameForRecord(rec),
+        path: String(rec.relPath || ""),
+      };
+    return tabLocationForDirNode(getPreviewTargetDir()) || { label: tabLabelForDirPath(""), path: "" };
+  }
+
+  const state = item.state;
+  const preview = state && state.previewState;
+  if (preview && preview.kind === "file") {
+    const rec = WS.fileById.get(String(preview.fileId || ""));
+    if (rec)
+      return {
+        label: fileDisplayNameForRecord(rec),
+        path: String(rec.relPath || ""),
+      };
+    // File is gone (renamed/trashed since capture) — fall back to its folder.
+  }
+  if (preview && preview.kind === "tag-dir") {
+    // Rebuild the portal node so the label comes from the same place the rest of
+    // the UI gets it: an album's name, a tag's name, or "Favorites"/"Hidden"/…
+    // for the specials. (preview.tag is empty for albums and specials, so it
+    // cannot be used directly.)
+    const node = makeTagPreviewNodeForContext(
+      String(preview.mode || ""),
+      String(preview.tag || ""),
+      String(preview.originPath || ""),
+      String(preview.album || ""),
+    );
+    const location = tabLocationForDirNode(node);
+    if (location) return location;
+  }
+  const dirPath =
+    preview && preview.kind === "dir"
+      ? String(preview.path || "")
+      : String((preview && preview.dirPath) || (state && state.dirPath) || "");
+  return { label: tabLabelForDirPath(dirPath), path: dirPath };
+}
+
+
+function activateTab(id, opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  ensureTabsInitialized();
+  const targetIdx = tabIndexById(id);
+  if (targetIdx < 0) return false;
+  const target = WS.tabs.items[targetIdx];
+  if (target.id === WS.tabs.activeId && !options.force) return false;
+  if (!WS.root) return false;
+
+  captureActiveTabState();
+  WS.tabs.activeId = target.id;
+  const state = target.state;
+  target.state = null;
+  if (state) {
+    restoreViewerCloseState(state, {
+      preferCachedEntries: true,
+      restorePreviewForAnyPane: true,
+    });
+  }
+  renderTabBar();
+  markTabsDirty();
+  return true;
+}
+
+function activateTabByIndex(index) {
+  ensureTabsInitialized();
+  if (WS.tabs.items.length < 2) return false;
+  const idx = Number(index);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= WS.tabs.items.length) return false;
+  return activateTab(WS.tabs.items[idx].id);
+}
+
+// A view state carrying the current filters but none of the portal/search modes
+// (tag folder, favorites, hidden, search). A tab opened at a plain location must
+// not inherit, say, an active search root from the tab it was opened from —
+// those modes describe a different place than the location we are landing on.
+function plainLocationViewState(view) {
+  return Object.assign({}, view || {}, {
+    aboveRootView: false,
+    tagFolderActiveMode: "",
+    tagFolderActiveTag: "",
+    tagFolderActiveAlbum: "",
+    tagFolderOriginPath: "",
+    favoritesMode: false,
+    favoritesRootActive: false,
+    favoritesAnchorPath: "",
+    hiddenMode: false,
+    hiddenRootActive: false,
+    hiddenAnchorPath: "",
+    dirSearchPinned: false,
+    previewSearchActive: false,
+    dirSearchQuery: "",
+    searchRootActive: false,
+    searchRootPath: "",
+    searchAnchorPath: "",
+    searchEntryRootPath: "",
+    searchRootIsFavorites: false,
+    searchRootIsHidden: false,
+  });
+}
+
+// Snapshot of a brand-new tab sitting at the root, mirroring the root landing
+// state a fresh workspace open produces (see buildWorkspaceFromDirectoryHandle).
+function makeRootTabState() {
+  const base = captureViewerCloseRestoreState();
+  return Object.assign(base, {
+    dirPath: String(WS.root?.path || ""),
+    entryKey: "",
+    view: Object.assign(plainLocationViewState(base.view), {
+      aboveRootView: showRootViewEnabled(),
+    }),
+    tagNavStack: [],
+    activePane: "directories",
+    directoriesScrollTop: 0,
+    navEntries: [],
+    navEntriesRevision: -1,
+    previewState: null,
+    pendingPreviewSelectionKey: "",
+    previewContextKey: "",
+    previewSelectedKey: "",
+    previewFolderBridgeReturnState: null,
+  });
+}
+
+// ---- Open in tab(s) --------------------------------------------------
+// A tab is "located at" an item when the preview pane shows it (see "Which pane
+// is the location"), which means the file pane sits at the item's parent with
+// the item selected. So opening X in a tab yields a tab named X.
+// (OPEN_IN_NEW_TABS_LIMIT is declared up with KEYBIND_ACTIONS, which reads it.)
+
+// A nav/grid entry as an open-in-tab target. Albums, tags and the special
+// buckets (Favorites/Hidden/Untagged/Storage) are all "tag" entries and are
+// openable locations in their own right; only the bulk-tag placeholder isn't.
+function tabTargetForEntry(entry) {
+  if (!entry || entry.placeholder) return null;
+  if (entry.kind === "dir" && entry.node) return { kind: "dir", node: entry.node };
+  if (entry.kind === "tag")
+    return tagEntrySelectionKey(entry) ? { kind: "tag", entry } : null;
+  if (entry.kind === "file" && WS.fileById.has(String(entry.id || "")))
+    return { kind: "file", id: String(entry.id) };
+  return null;
+}
+
+// Resolve a grid selection key back to its entry via the previewed folder's own
+// item list, rather than reading it off the rendered card — the entry object
+// carries the album/tag/special fields a bare "tag:…" key can't round-trip.
+function previewGridEntryForSelectionKey(key) {
+  const previewDir = getPreviewTargetDir();
+  if (!previewDir || !key) return null;
+  const entries = getPreviewFolderAndFileEntries(previewDir, { includeFiles: false });
+  const folderEntries = Array.isArray(entries.folderEntries)
+    ? entries.folderEntries
+    : [];
+  for (const entry of folderEntries) {
+    if (entryKeyForSelection(entry) === key) return entry;
+  }
+  return null;
+}
+
+// The item to act on. The app has two selection cursors, so honour the active
+// pane: the grid's selected card when the preview pane is active, otherwise the
+// file pane's selected entry.
+function openInTabSelectionTarget() {
+  if (WS.view.activePane === "preview") {
+    const key = String(WS.view.previewSelectedKey || "");
+    if (key.startsWith("file:")) {
+      const id = key.slice(5);
+      if (WS.fileById.has(id)) return { kind: "file", id };
+    } else if (key) {
+      const target = tabTargetForEntry(previewGridEntryForSelectionKey(key));
+      if (target) return target;
+      // Cards built outside the folder's entry list (e.g. the root trash row).
+      if (key.startsWith("dir:")) {
+        const node = WS.dirByPath.get(key.slice(4));
+        if (node) return { kind: "dir", node };
+      }
+    }
+  }
+  return tabTargetForEntry(WS.nav.entries[WS.nav.selectedIndex] || null);
+}
+
+// Built from scratch rather than captureViewerCloseRestoreState() so opening 30
+// at once doesn't re-snapshot the nav entries 30 times. navEntries is left empty
+// so the restore rebuilds them for the target directory.
+function makeLocationTabState(target, baseView = null) {
+  const view = plainLocationViewState(baseView || snapshotRefreshState().view);
+  let dirPath = "";
+  let entryKey = "";
+  let previewState = null;
+
+  if (target.kind === "dir") {
+    const node = target.node;
+    const parent = node.parent || null;
+    if (parent) {
+      dirPath = String(parent.path || "");
+      entryKey = `dir:${String(node.path || "")}`;
+    } else {
+      // The root has no parent to sit above, so land in it instead.
+      dirPath = String(node.path || "");
+      entryKey = "";
+    }
+    previewState = { kind: "dir", path: String(node.path || "") };
+  } else if (target.kind === "tag") {
+    // A portal is anchored to a real folder, so the tab sits in that folder with
+    // the album/tag entry selected and the portal in the preview. The
+    // previewState is produced by capturePreviewRestoreState() rather than
+    // hand-rolled, so it matches the "tag-dir" shape the restore expects.
+    const node = makeTagPreviewNode(target.entry);
+    const base =
+      node?.parent ||
+      WS.dirByPath.get(String(target.entry?.originPath || "")) ||
+      WS.root;
+    dirPath = String(base?.path || "");
+    entryKey = entryKeyForSelection(target.entry);
+    previewState = node
+      ? capturePreviewRestoreState({ kind: "dir", dirNode: node, fileId: null })
+      : null;
+  } else {
+    const rec = WS.fileById.get(target.id);
+    dirPath = String(rec?.dirPath || "");
+    entryKey = `file:${String(target.id)}`;
+    previewState = { kind: "file", fileId: String(target.id), dirPath };
+  }
+
+  return {
+    dirPath,
+    entryKey,
+    view,
+    tagNavStack: [],
+    activePane: "directories",
+    directoriesScrollTop: 0,
+    navEntries: [],
+    navEntriesRevision: -1,
+    previewState,
+    pendingPreviewSelectionKey: "",
+    previewContextKey: "",
+    previewSelectedKey: "",
+    previewFolderBridgeReturnState: null,
+  };
+}
+
+// The sub-items of a folder or portal, as the preview grid shows them (so
+// filters and hidden/trash visibility are respected). Works for a tag/album
+// portal node too, whose sub-items are its member folders and, for an album,
+// its tags.
+function openableSubItemTargets(dirNode) {
+  if (!dirNode) return [];
+  const entries = getPreviewFolderAndFileEntries(dirNode, { includeFiles: true });
+  const out = [];
+  const folderEntries = Array.isArray(entries.folderEntries)
+    ? entries.folderEntries
+    : [];
+  for (const entry of folderEntries) {
+    const target = tabTargetForEntry(entry);
+    if (target) out.push(target);
+  }
+  const fileIds = Array.isArray(entries.fileIds) ? entries.fileIds : [];
+  for (const id of fileIds) {
+    const key = String(id || "");
+    if (key && WS.fileById.has(key)) out.push({ kind: "file", id: key });
+  }
+  return out;
+}
+
+// The node whose contents a target exposes: a folder directly, a portal via its
+// synthetic node. Files have no sub-items.
+function subItemSourceNodeForTarget(target) {
+  if (!target) return null;
+  if (target.kind === "dir") return target.node || null;
+  if (target.kind === "tag") return makeTagPreviewNode(target.entry);
+  return null;
+}
+
+function tabTargetLabel(target) {
+  if (!target) return "This item";
+  if (target.kind === "tag") {
+    const node = makeTagPreviewNode(target.entry);
+    return (node && dirDisplayName(node)) || "This album";
+  }
+  if (target.kind === "dir") return dirDisplayName(target.node) || "This folder";
+  const rec = WS.fileById.get(String(target.id || ""));
+  return (rec && fileDisplayNameForRecord(rec)) || "This file";
+}
+
+function openInTabAction() {
+  if (!WS.root) return false;
+  ensureTabsInitialized();
+  const target = openInTabSelectionTarget();
+  if (!target) {
+    showStatusMessage("Nothing selected to open.");
+    return false;
+  }
+  captureActiveTabState();
+  const state = makeLocationTabState(target);
+  const id = makeTabId();
+  const insertAt = tabIndexById(WS.tabs.activeId) + 1;
+  // state stays null on the item: it becomes active, so its state is the live view.
+  WS.tabs.items.splice(insertAt, 0, { id, state: null });
+  WS.tabs.activeId = id;
+  restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
+  renderTabBar();
+  markTabsDirty();
+  return true;
+}
+
+// Opens every sub-item in its own background tab — you cannot follow 30 tabs at
+// once, so the current tab stays put.
+function openInNewTabsAction() {
+  if (!WS.root) return false;
+  ensureTabsInitialized();
+  const target = openInTabSelectionTarget();
+  if (!target) {
+    showStatusMessage("Nothing selected to open.");
+    return false;
+  }
+  const label = tabTargetLabel(target);
+  const sourceNode = subItemSourceNodeForTarget(target);
+  if (!sourceNode) {
+    showStatusMessage("Only folders, albums and tags have sub-items to open.");
+    return false;
+  }
+  const targets = openableSubItemTargets(sourceNode);
+  if (!targets.length) {
+    showStatusMessage(`${label} has nothing inside to open.`);
+    return false;
+  }
+  if (targets.length > OPEN_IN_NEW_TABS_LIMIT) {
+    showAlertDialog(
+      `${label} has ${targets.length} items. Opening more than ${OPEN_IN_NEW_TABS_LIMIT} tabs at once isn't allowed.`,
+    );
+    return true;
+  }
+
+  captureActiveTabState();
+  const baseView = snapshotRefreshState().view;
+  let insertAt = tabIndexById(WS.tabs.activeId) + 1;
+  for (const subTarget of targets) {
+    WS.tabs.items.splice(insertAt++, 0, {
+      id: makeTabId(),
+      state: makeLocationTabState(subTarget, baseView),
+    });
+  }
+  renderTabBar();
+  markTabsDirty();
+  showStatusMessage(
+    `Opened ${targets.length} ${targets.length === 1 ? "tab" : "tabs"}.`,
+  );
+  return true;
+}
+
+// duplicate:true clones the current location so you can branch off without
+// losing your place; otherwise the new tab opens at the root.
+function createTab(opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  if (!WS.root) return false;
+  ensureTabsInitialized();
+  captureActiveTabState();
+
+  const state = options.duplicate
+    ? cloneViewerCloseRestoreState(activeTabItem()?.state)
+    : makeRootTabState();
+  const id = makeTabId();
+  const activeIdx = tabIndexById(WS.tabs.activeId);
+  const insertAt = activeIdx >= 0 ? activeIdx + 1 : WS.tabs.items.length;
+  // state stays null: the new tab becomes active, so its state is the live view.
+  WS.tabs.items.splice(insertAt, 0, { id, state: null });
+  WS.tabs.activeId = id;
+  if (state) {
+    restoreViewerCloseState(state, {
+      preferCachedEntries: true,
+      restorePreviewForAnyPane: true,
+    });
+  }
+  renderTabBar();
+  markTabsDirty();
+  return true;
+}
+
+// Closing the active tab lands on the right neighbour, else the left. Closing
+// the last remaining tab is a no-op — the strip is already hidden.
+function closeTab(id) {
+  ensureTabsInitialized();
+  if (WS.tabs.items.length < 2) return false;
+  const idx = tabIndexById(id || WS.tabs.activeId);
+  if (idx < 0) return false;
+  const wasActive = WS.tabs.items[idx].id === WS.tabs.activeId;
+  WS.tabs.items.splice(idx, 1);
+  if (wasActive) {
+    const nextItem = WS.tabs.items[idx] || WS.tabs.items[idx - 1];
+    WS.tabs.activeId = nextItem ? nextItem.id : "";
+    const state = nextItem ? nextItem.state : null;
+    if (nextItem) nextItem.state = null;
+    if (state) {
+      restoreViewerCloseState(state, {
+        preferCachedEntries: true,
+        restorePreviewForAnyPane: true,
+      });
+    }
+  }
+  renderTabBar();
+  markTabsDirty();
+  return true;
+}
+
+// ---- Tab persistence -------------------------------------------------
+// Only durable identity is written: navEntries (live DirNode refs) and the
+// revision counter are session-scoped and always rebuilt on load.
+function serializeTabState(state) {
+  if (!state || typeof state !== "object") return null;
+  const previewState = clonePreviewRestoreState(state.previewState);
+  if (previewState && previewState.kind === "file") {
+    // fileId is name::lastModified::size::relPath, so editing the file on disk
+    // between sessions changes it. relPath is the stable half — keep it so the
+    // id can be re-resolved on load.
+    const rec = WS.fileById.get(String(previewState.fileId || ""));
+    previewState.relPath = String(rec?.relPath || "");
+  }
+  return {
+    dirPath: String(state.dirPath || ""),
+    entryKey: String(state.entryKey || ""),
+    view: state.view && typeof state.view === "object" ? Object.assign({}, state.view) : null,
+    tagNavStack: Array.isArray(state.tagNavStack)
+      ? state.tagNavStack.map((frame) =>
+          frame && typeof frame === "object" ? Object.assign({}, frame) : frame,
+        )
+      : [],
+    activePane: state.activePane === "preview" ? "preview" : "directories",
+    directoriesScrollTop: Number(state.directoriesScrollTop) || 0,
+    previewState,
+    pendingPreviewSelectionKey: String(state.pendingPreviewSelectionKey || ""),
+    previewContextKey: String(state.previewContextKey || ""),
+    previewSelectedKey: String(state.previewSelectedKey || ""),
+  };
+}
+
+function fileIdForRelPathInDir(dirPath, relPath) {
+  const targetRel = String(relPath || "");
+  if (!targetRel) return "";
+  const node = WS.dirByPath.get(String(dirPath || ""));
+  const ids = node && Array.isArray(node.childrenFiles) ? node.childrenFiles : null;
+  if (ids) {
+    for (const id of ids) {
+      const rec = WS.fileById.get(id);
+      if (rec && String(rec.relPath || "") === targetRel) return id;
+    }
+  }
+  return "";
+}
+
+function deserializeTabState(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const dirPath = String(raw.dirPath || "");
+  // Tabs pointing at folders that no longer exist are dropped.
+  if (dirPath && !WS.dirByPath.has(dirPath)) return null;
+  const state = cloneViewerCloseRestoreState({
+    dirPath,
+    entryKey: String(raw.entryKey || ""),
+    view: raw.view,
+    tagNavStack: raw.tagNavStack,
+    activePane: raw.activePane,
+    directoriesScrollTop: raw.directoriesScrollTop,
+    navEntries: [],
+    navEntriesRevision: -1,
+    previewState: raw.previewState,
+    pendingPreviewSelectionKey: raw.pendingPreviewSelectionKey,
+    previewContextKey: raw.previewContextKey,
+    previewSelectedKey: raw.previewSelectedKey,
+    previewFolderBridgeReturnState: null,
+  });
+  const rawPreview = raw.previewState;
+  if (state.previewState && state.previewState.kind === "file" && rawPreview) {
+    const resolved = fileIdForRelPathInDir(
+      state.previewState.dirPath,
+      rawPreview.relPath,
+    );
+    if (resolved) state.previewState.fileId = resolved;
+    else if (!WS.fileById.has(state.previewState.fileId)) state.previewState = null;
+  }
+  return state;
+}
+
+// Only a real tab set (2+) is persisted. With a single tab there is no tab bar
+// and nothing tab-shaped to restore, so an empty doc is written and startup
+// keeps its existing root-landing behaviour.
+function metaMakeTabsLogObject() {
+  ensureTabsInitialized();
+  const activeId = String(WS.tabs.activeId || "");
+  if (WS.tabs.items.length < 2) {
+    return { schema: 1, updatedAt: Date.now(), activeId: "", tabs: [] };
+  }
+  return {
+    schema: 1,
+    updatedAt: Date.now(),
+    activeId,
+    tabs: WS.tabs.items.map((item) => ({
+      id: String(item.id || ""),
+      // The active tab's stored state is stale by design (its state is the live
+      // view), so snapshot it fresh on the way out to disk.
+      state: serializeTabState(
+        item.id === activeId ? captureViewerCloseRestoreState() : item.state,
+      ),
+    })),
+  };
+}
+
+function metaApplyTabsDocLog(log) {
+  // Held raw until the tree exists; seedTabsForWorkspace() resolves it against
+  // WS.dirByPath, which is not populated when docs are loaded.
+  WS.meta.tabsLog = log && typeof log === "object" ? log : null;
+}
+
+function loadPersistedTabsForWorkspace() {
+  const log = WS.meta && WS.meta.tabsLog;
+  if (!log || !Array.isArray(log.tabs) || !log.tabs.length) return null;
+  // Ids are regenerated rather than trusted from disk, so they can never
+  // collide with ids minted later in the session.
+  const items = [];
+  let activeId = "";
+  for (const raw of log.tabs) {
+    if (!raw || typeof raw !== "object") continue;
+    const state = deserializeTabState(raw.state);
+    if (!state) continue;
+    const id = makeTabId();
+    if (String(raw.id || "") === String(log.activeId || "")) activeId = id;
+    items.push({ id, state });
+  }
+  if (!items.length) return null;
+  return {
+    items,
+    activeId: activeId || items[0].id,
+    seq: Number(WS.tabs.seq) || items.length,
+  };
+}
+
+function markTabsDirty() {
+  if (!WS.meta) return;
+  metaMarkDirty(META_DOC_IDS.tabs);
+}
+
+// Navigation is the hottest path in the app, and the metadata save debounce is
+// only 500ms — marking tabs dirty on every folder change would write
+// tabs.log.json constantly. Coalesce browsing into a single write once the user
+// settles. Resetting a timer per render is negligible next to the render itself.
+let TABS_PERSIST_TIMER = 0;
+function scheduleTabsPersist() {
+  if (!WS.root || !WS.meta) return;
+  if (TABS_PERSIST_TIMER) {
+    try {
+      clearTimeout(TABS_PERSIST_TIMER);
+    } catch {}
+  }
+  TABS_PERSIST_TIMER = setTimeout(() => {
+    TABS_PERSIST_TIMER = 0;
+    markTabsDirty();
+  }, 4000);
+}
+
+// Called once per workspace build, after the tree and root landing state exist.
+// preservedTabs is the same-root refresh carry-over; on a genuinely fresh open
+// it is null and the persisted tab list (tabs.log.json) is used instead. Either
+// way the result is at least one tab, with the active one applied to the view.
+function seedTabsForWorkspace(preservedTabs = null) {
+  if (!WS.root) return;
+  const seeded =
+    preservedTabs && Array.isArray(preservedTabs.items) && preservedTabs.items.length
+      ? preservedTabs
+      : loadPersistedTabsForWorkspace();
+
+  if (seeded && Array.isArray(seeded.items) && seeded.items.length) {
+    WS.tabs.items = seeded.items;
+    WS.tabs.activeId = String(seeded.activeId || "");
+    // Never decreases: a lower seq could re-mint an id that is still in use.
+    WS.tabs.seq = Math.max(
+      Number(seeded.seq) || 0,
+      Number(WS.tabs.seq) || 0,
+      WS.tabs.items.length,
+    );
+    ensureTabsInitialized();
+    // On a same-root refresh the active tab's state is null (an active tab's
+    // state is the live view), so nothing is restored here and the caller's own
+    // preservedState restore stands. Only a persisted-tab restore, where every
+    // tab arrives with a state, applies one.
+    const active = activeTabItem();
+    if (active && active.state) {
+      const state = active.state;
+      active.state = null;
+      restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
+    }
+  } else {
+    WS.tabs.items = [];
+    WS.tabs.activeId = "";
+    ensureTabsInitialized();
+  }
+  renderTabBar();
 }
 
 async function refreshWorkspaceFromRootHandle() {
@@ -28569,6 +29650,16 @@ function updateViewStatePathsForRename(oldPrefix, newPrefix) {
     oldPrefix,
     newPrefix,
   );
+
+  // Background tabs hold the same snapshot shape, so they need the same
+  // re-keying or a renamed/moved/trashed folder teleports that tab to root.
+  // The active tab is skipped: its state is the live WS.view being remapped here.
+  if (WS.tabs && Array.isArray(WS.tabs.items)) {
+    for (const item of WS.tabs.items) {
+      if (!item || !item.state) continue;
+      remapViewerCloseRestoreStatePaths(item.state, oldPrefix, newPrefix);
+    }
+  }
 
   WS.view.pendingPreviewSelectionKey = remapSelectionKeyForPathPrefix(
     WS.view.pendingPreviewSelectionKey,
@@ -29350,6 +30441,18 @@ function invalidateDirItemCountCache() {
   DIR_ITEM_COUNT_CACHE_FILTER_MODE = "";
 }
 
+// Everything a folder-sort-mode change must invalidate. The revision bump is the
+// load-bearing part: cached nav-entry snapshots (captureViewerCloseRestoreState)
+// and saved tag-frame orders are keyed off it, so without it, closing a file that
+// was opened before the sort changed restores WS.nav.entries in the *old* order —
+// and since every later capture re-snapshots those stale entries, the folder stays
+// stuck in the old order until the app restarts.
+function invalidateDirSortOrderCaches() {
+  NAV_ENTRY_RESTORE_REVISION++;
+  invalidateDirSortMetricsCache();
+  clearTagEntryDerivedCaches();
+}
+
 function invalidateDirMetricsCaches() {
   NAV_ENTRY_RESTORE_REVISION++;
   invalidateDirSortMetricsCache();
@@ -30022,6 +31125,7 @@ function getRandomOrderForDirs(dirs) {
     const byPath = new Map(
       list.map((node) => [String(node?.path || ""), node]),
     );
+    const cachedSet = new Set(cachedPaths.map((p) => String(p || "")));
     const ordered = [];
     cachedPaths.forEach((p) => {
       const node = byPath.get(String(p || ""));
@@ -30029,7 +31133,7 @@ function getRandomOrderForDirs(dirs) {
     });
     list.forEach((node) => {
       const p = String(node?.path || "");
-      if (!cachedPaths.includes(p)) ordered.push(node);
+      if (!cachedSet.has(p)) ordered.push(node);
     });
     if (ordered.length === list.length) return ordered;
   }
@@ -30106,6 +31210,7 @@ function sortDirCollectionForDisplay(dirs, key = "collection") {
     if (WS.view.randomFolderCache && WS.view.randomFolderCache.has(cacheKey)) {
       const cachedPaths = WS.view.randomFolderCache.get(cacheKey) || [];
       const byPath = new Map(out.map((node) => [String(node?.path || ""), node]));
+      const cachedSet = new Set(cachedPaths.map((p) => String(p || "")));
       const ordered = [];
       cachedPaths.forEach((p) => {
         const node = byPath.get(String(p || ""));
@@ -30113,7 +31218,7 @@ function sortDirCollectionForDisplay(dirs, key = "collection") {
       });
       out.forEach((node) => {
         const p = String(node?.path || "");
-        if (!cachedPaths.includes(p)) ordered.push(node);
+        if (!cachedSet.has(p)) ordered.push(node);
       });
       if (ordered.length === out.length) return ordered;
     }
@@ -30542,12 +31647,18 @@ function getOrderedFileIdsForDir(dirNode, includeChildren = false) {
   if (!dirNode) return [];
   let ids = [];
 
-  if (applySessionFileOrderForDir(dirNode)) {
+  // Random file sort is an explicit view-mode override and must outrank a pinned
+  // manual order. Otherwise any folder that was ever reordered (drag, reverse, or
+  // the index/rename tool) silently ignores the shuffle: applySessionFileOrderForDir
+  // re-pins preserveOrder on every read, so the folder stays stuck for the rest of
+  // the session and only an app restart clears it. Toggling random off falls through
+  // to the pinned order below, so nothing is lost.
+  if (randomSortAffectsFiles()) {
+    ids = getRandomOrderForDir(dirNode);
+  } else if (applySessionFileOrderForDir(dirNode)) {
     ids = dirNode.childrenFiles.slice();
   } else if (dirNode.preserveOrder) {
     ids = dirNode.childrenFiles.slice();
-  } else if (randomSortAffectsFiles()) {
-    ids = getRandomOrderForDir(dirNode);
   } else {
     ids = dirNode.childrenFiles.slice();
     ids.sort((a, b) =>
@@ -32050,6 +33161,7 @@ function fastSortDirsForTagScope(dirs, key = "tag-scope") {
     if (WS.view.randomFolderCache && WS.view.randomFolderCache.has(cacheKey)) {
       const cachedPaths = WS.view.randomFolderCache.get(cacheKey) || [];
       const byPath = new Map(out.map((node) => [String(node?.path || ""), node]));
+      const cachedSet = new Set(cachedPaths.map((path) => String(path || "")));
       const ordered = [];
       cachedPaths.forEach((path) => {
         const node = byPath.get(String(path || ""));
@@ -32057,7 +33169,7 @@ function fastSortDirsForTagScope(dirs, key = "tag-scope") {
       });
       out.forEach((node) => {
         const path = String(node?.path || "");
-        if (!cachedPaths.includes(path)) ordered.push(node);
+        if (!cachedSet.has(path)) ordered.push(node);
       });
       if (ordered.length === out.length) return ordered;
     }
@@ -37169,33 +38281,6 @@ function goDirUp() {
   )
     return;
   leaveDirectory();
-}
-
-function getDirectoriesPathText() {
-  if (!WS.root) return "—";
-  if (WS.view.aboveRootView) return "root";
-  if (isViewingTagFolder()) {
-    return (
-      buildTagContextPathText(
-        String(WS.view.tagFolderActiveMode || ""),
-        String(WS.view.tagFolderActiveTag || ""),
-        String(WS.view.tagFolderOriginPath || ""),
-        String(WS.view.tagFolderActiveAlbum || ""),
-      ) ||
-      dirDisplayName(WS.root) ||
-      "root"
-    );
-  }
-  if (searchResultsVisibleInDirectoriesPane()) return "search";
-  if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "favorites";
-  if (WS.view.hiddenMode && WS.view.hiddenRootActive) return "hidden";
-  if (!WS.nav.dirNode) return "—";
-  if (WS.nav.dirNode === WS.root) return dirDisplayName(WS.root) || "root";
-  const p = WS.nav.dirNode.path
-    ? buildPortalAwareDirectoryPathText(String(WS.nav.dirNode.path || "")) ||
-      displayPath(WS.nav.dirNode.path)
-    : "root";
-  return p || "root";
 }
 
 function toggleFavoritesMode() {
@@ -48415,8 +49500,25 @@ document.addEventListener("pointerup", (ev) => {
 window.addEventListener("resize", () => {
   applyFloatingControlPanePosition();
 });
+// The only thing in the control pane that advances on its own is video playback
+// position, so the 4Hz poll only earns its keep while a video is mounted. With no
+// video it was still doing ~15 unconditional DOM writes per tick, forever, including
+// while the window was hidden — pure background heat. Every other input it reflects
+// (nav availability, mute, skip step) changes through syncButtons(), which calls
+// syncControlPaneState() directly; the slow idle tick below is just a safety net so a
+// freshly-mounted video can't sit unsynced.
+let CONTROL_PANE_IDLE_TICKS = 0;
 if (typeof window !== "undefined") {
-  window.setInterval(syncControlPaneState, 250);
+  window.setInterval(() => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    if (getControlPaneVideo()) {
+      CONTROL_PANE_IDLE_TICKS = 0;
+    } else {
+      CONTROL_PANE_IDLE_TICKS = (CONTROL_PANE_IDLE_TICKS + 1) % 4;
+      if (CONTROL_PANE_IDLE_TICKS !== 0) return;
+    }
+    syncControlPaneState();
+  }, 250);
 }
 syncControlPaneState();
 
@@ -54298,6 +55400,11 @@ function syncButtons() {
 
 function refreshViewerItemsForLiveFolderSort() {
   if (!VIEWER_MODE || !viewerDirNode) return false;
+  // The viewer is an overlay on top of a live file pane, so re-sort the pane's
+  // entries too. Skipping this leaves WS.nav.entries in the pre-change order, and
+  // closing the viewer restores exactly that stale list (see restoreViewerCloseState
+  // with preferCachedEntries) — the folder comes back sorted the old way.
+  rebuildDirectoriesEntries();
   const currentItem = viewerItems[viewerIndex] || null;
   const nextItems = buildViewerItemsForDir(viewerDirNode);
   if (!nextItems.length) return true;
@@ -54851,6 +55958,37 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
   return changed;
 }
 
+// The Grok window lives entirely in Rust (src-tauri/src/grok.rs) — it is a
+// separate native window, so there is no DOM here to toggle. Closing is handled
+// on that side too: once it has focus this window sees no keys at all, so Esc
+// is caught by the script injected into the page.
+function toggleGrokWindowKeybindAction() {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) {
+    showStatusMessage("Grok needs the desktop app.");
+    return false;
+  }
+  // Forwarded so the page can close itself with the same combo: once the Grok
+  // window has focus, this window stops receiving keys entirely.
+  // KEYBIND_INDEX is key -> id and is rebuilt whenever bindings change, so
+  // reversing it always yields the live, normalized combo.
+  let closeKey = "";
+  for (const [key, id] of KEYBIND_INDEX) {
+    if (id === "toggleGrokWindow") {
+      closeKey = key;
+      break;
+    }
+  }
+  invoke("toggle_grok_window", { closeKey })
+    .then((visible) => {
+      if (!visible) showStatusMessage("Grok closed.");
+    })
+    .catch((err) => {
+      showStatusMessage(`Grok failed: ${err}`);
+    });
+  return true;
+}
+
 function refreshWorkspaceKeybindAction() {
   if (!WS.meta || !WS.meta.fsRootHandle) {
     showStatusMessage("Refresh requires a writable folder.");
@@ -54904,6 +56042,14 @@ function handleExtrasKeybindAction(action) {
       return toggleSettingsAndDirectoriesPanesKeybindAction();
     case "refreshWorkspace":
       return refreshWorkspaceKeybindAction();
+    case "toggleGrokWindow":
+      return toggleGrokWindowKeybindAction();
+    case "newTab":
+      return createTab();
+    case "duplicateTab":
+      return createTab({ duplicate: true });
+    case "closeTab":
+      return closeTab();
     case "toggleAnimatedFilters": {
       const next = cycleOptionValue(
         "animatedMediaFilters",
@@ -54924,8 +56070,7 @@ function handleExtrasKeybindAction(action) {
         WS.meta.dirSortMode,
         scoreInterfaceEnabled(),
       );
-      clearTagEntryDerivedCaches();
-      invalidateDirSortMetricsCache();
+      invalidateDirSortOrderCaches();
       metaMarkDirty(META_DOC_IDS.prefGeneral);
       refreshLiveSettingsPaneFromKeyboardAction();
       applyFolderSortModeEverywhere(true);
@@ -55821,6 +56966,10 @@ function handleSelectionKeybindAction(action) {
       return toggleFavoriteSelection();
     case "renameSelection":
       return startRenameSelection();
+    case "openInTab":
+      return openInTabAction();
+    case "openInNewTabs":
+      return openInNewTabsAction();
     default:
       return false;
   }
@@ -56452,6 +57601,21 @@ window.addEventListener("blur", () => {
   clearModifierKeyState();
 });
 
+// An external file dropped anywhere outside a drop target would make the
+// WebView navigate to that file, replacing the app. Internal reorder drags
+// carry "text/plain" (never "Files"), so they are untouched.
+window.addEventListener("dragover", (e) => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "none";
+  }
+});
+window.addEventListener("drop", (e) => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) {
+    e.preventDefault();
+  }
+});
+
 // Hard-coded menu toggle: ` / ~ opens the last-used menu tab.
 document.addEventListener(
   "keydown",
@@ -56510,6 +57674,18 @@ document.addEventListener("keydown", (e) => {
       } catch {}
       return;
     }
+  }
+
+  // Cmd+1..Cmd+9 jump between tabs. Reserved rather than bindable, so they are
+  // matched here ahead of keybindActionFor() and never appear in KEYBIND_ACTIONS.
+  // Cmd+9 goes to the last tab (browser convention). Bare 1..5 remain the
+  // appearance presets — these require Cmd, so they don't collide.
+  const tabJumpMatch = /^Cmd\+([1-9])$/.exec(key);
+  if (tabJumpMatch && !isTextInputTarget(e.target) && !VIEWER_MODE) {
+    e.preventDefault();
+    const n = Number(tabJumpMatch[1]);
+    activateTabByIndex(n === 9 ? WS.tabs.items.length - 1 : n - 1);
+    return;
   }
 
   const action = keybindActionFor(key);
@@ -57206,14 +58382,22 @@ function registerThumbEl(el, src, opts = null) {
 // ---- Tauri: native downscaled thumbnails -------------------------------
 // Under Tauri, route lazy <img> thumbnails through the Rust thumbnail cache so
 // grids load small JPEGs instead of full-resolution media. Bulletproof: if a
-// cached thumb isn't ready we return "" and the caller uses the full-media src
-// (current behavior), then we swap in the lighter thumbnail once generated —
-// the element is never worse than today. The full-size viewer bypasses
-// assignThumbSrc, so it stays full-resolution.
+// cached thumb isn't ready we fall back to a placeholder (or, for small files, the
+// original), then swap in the lighter thumbnail once generated. The full-size viewer
+// bypasses assignThumbSrc, so it stays full-resolution.
 const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
 const TAURI_THUMB_EDGE = 512;
-// 1x1 transparent gif — used for not-yet-generated video thumbnails so an <img>
-// never tries to load the video file itself (which it can't render).
+// Above this, a tile must NOT fall back to the original while its thumb generates.
+// TAURI_THUMB_INDEX is in-memory only, so every session starts cold and every tile
+// takes the fallback path at least once — and the fallback used to be the full-res
+// original. A 24MP photo decodes to ~100MB of bitmap; six of those in flight (see
+// THUMB_MAX_IMG_CONCURRENT), replaced continuously as you scroll, pegs the decoder
+// threads and cooks the machine for a picture that is about to be thrown away and
+// replaced by a 512px JPEG anyway. Below the threshold the original is already
+// thumbnail-sized, so decoding it is cheap and the progressive preview is free.
+const TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES = 1024 * 1024;
+// 1x1 transparent gif — used for not-yet-generated thumbnails so an <img> never
+// tries to load a video file (which it can't render) or a huge original.
 const TAURI_TRANSPARENT_PX =
   "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
 function tauriThumbnailsActive() {
@@ -57273,16 +58457,24 @@ function tauriThumbForImgEl(el) {
       })
       .catch(() => { el.__tauriThumbPending = false; });
   }
-  // Image: keep showing the full-res src (progressive) until the thumb swaps in.
-  // Video: an <img> can't render the video file, so show a transparent pixel
-  // until the generated frame arrives.
+  // Nothing cached yet; the request above is in flight. Video: an <img> can't render
+  // the video file, so hold a transparent pixel. Image: hold a transparent pixel too
+  // unless the original is small enough to decode for free — see
+  // TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES. Returning "" here makes assignThumbSrc
+  // fall back to dataset.thumbSrc, which is the full-resolution original.
   const colF = getCurrentColorFilterCssForTarget(rec);
   if (colF) {
     try { el.style.filter = colF; } catch {}
   } else {
     try { el.style.removeProperty("filter"); } catch {}
   }
-  return rec.type === "video" ? TAURI_TRANSPARENT_PX : "";
+  if (rec.type === "video") return TAURI_TRANSPARENT_PX;
+  const bytes = Number(rec.size);
+  const cheapToDecode =
+    Number.isFinite(bytes) &&
+    bytes > 0 &&
+    bytes <= TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES;
+  return cheapToDecode ? "" : TAURI_TRANSPARENT_PX;
 }
 
 // Post-render pass for inline folder/tag lead thumbnails (img.dirInlinePreview /
