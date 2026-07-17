@@ -837,7 +837,7 @@ body.directories-files-only #directoriesHeader {
 }
 
 /* =========================================================
-       File Pane
+      Retired Directory Pane
        ========================================================= */
 #directoriesPane {
   width: 100%;
@@ -2819,6 +2819,7 @@ img[data-rotate-key].rotatingThumbFade {
 
 #previewBody.preview-grid {
   padding: var(--preview-gutter);
+  scroll-padding: calc(var(--preview-gutter) + var(--ui-preview-selection-stroke, 2px) + 6px);
 }
 
 #previewBody.preview-placeholder {
@@ -7270,7 +7271,7 @@ textarea:focus-visible {
       <div id="layout">
         <div id="shell">
           <!-- =========================================================
-             File Pane
+             Retired Directory Pane
              ========================================================= -->
           <div id="directoriesPane">
             <div id="directoriesHeader">
@@ -8245,36 +8246,28 @@ function thumbnailVisibilityKindSpecs() {
     {
       kind: "file",
       label: "File cards",
-      directoriesLabel: "File cards in File pane",
       previewPrefix: "previewFileThumbnail",
-      directoriesPrefix: "directoriesFileCard",
       legacyTitleKey: "showFileThumbnailTitles",
       legacyMenuHiddenKey: "hideFileThumbnailMenuButton",
     },
     {
       kind: "rootFolder",
       label: "Root folder cards",
-      directoriesLabel: "Root folder cards in File pane",
       previewPrefix: "previewRootFolderThumbnail",
-      directoriesPrefix: "directoriesRootFolderCard",
       legacyTitleKey: "showRootFolderThumbnailTitles",
       legacyMenuHiddenKey: "hideRootFolderThumbnailMenuButton",
     },
     {
       kind: "subfolder",
       label: "Subfolder cards",
-      directoriesLabel: "Subfolder cards in File pane",
       previewPrefix: "previewSubfolderThumbnail",
-      directoriesPrefix: "directoriesSubfolderCard",
       legacyTitleKey: "showSubfolderThumbnailTitles",
       legacyMenuHiddenKey: "hideSubfolderThumbnailMenuButton",
     },
     {
       kind: "tag",
       label: "Tag cards",
-      directoriesLabel: "Tag cards in File pane",
       previewPrefix: "previewTagThumbnail",
-      directoriesPrefix: "directoriesTagCard",
       legacyTitleKey: "showTagThumbnailTitles",
       legacyMenuHiddenKey: "hideTagAndRootFolderThumbnailMenuButton",
     },
@@ -8364,11 +8357,7 @@ function thumbnailVisibilityExtraInfoOptionKey(kind) {
 }
 
 function thumbnailVisibilityDirectoriesOptionKey(kind, field) {
-  if (!thumbnailVisibilityFieldSupported("directories", kind, field)) return "";
-  if (field === "title" || field === "menuButton") return "";
-  const spec = thumbnailVisibilityKindSpec(kind);
-  const suffix = thumbnailVisibilityFieldSuffix(field);
-  return suffix ? `${spec.directoriesPrefix}${suffix}` : "";
+  return "";
 }
 
 function thumbnailVisibilityOptionKeys() {
@@ -8550,38 +8539,6 @@ function detectThumbnailPresetForKinds(kinds) {
   return "minimal";
 }
 
-function applyFilePaneThumbnailPreset(preset) {
-  if (!WS.meta) return;
-  const p = String(preset || "detailed").toLowerCase();
-  const showExtra = p !== "minimal";
-  const wantBadges = p === "detailed";
-  const next = { showListCardExtraInfo: showExtra };
-  const kinds = ["file", "rootFolder", "subfolder", "tag"];
-  kinds.forEach((kind) => {
-    THUMBNAIL_PRESET_BADGE_FIELDS.forEach((field) => {
-      const key = thumbnailVisibilityDirectoriesOptionKey(kind, field);
-      if (key) next[key] = wantBadges;
-    });
-  });
-  WS.meta.options = normalizeOptions(
-    Object.assign({}, WS.meta.options || {}, next),
-  );
-  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
-}
-
-function detectFilePaneThumbnailPreset() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : {};
-  if (!opt.showListCardExtraInfo) return "minimal";
-  const kinds = ["file", "rootFolder", "subfolder", "tag"];
-  const anyBadge = kinds.some((kind) =>
-    THUMBNAIL_PRESET_BADGE_FIELDS.some((field) => {
-      const key = thumbnailVisibilityDirectoriesOptionKey(kind, field);
-      return key && !!opt[key];
-    }),
-  );
-  return anyBadge ? "detailed" : "clean";
-}
-
 function normalizeThumbnailVisibilityOptions(src, fallbacks) {
   const source = src && typeof src === "object" ? src : {};
   const fallbackState =
@@ -8687,7 +8644,7 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Library & workspace", id: "workspace-refresh", label: "Workspace refresh", hint: "Refresh start, completion, failure, and unavailable messages.", optionKey: "notifyWorkspaceRefresh" }),
   Object.freeze({ section: "Library & workspace", id: "storage", label: "Storage portal messages", hint: "Storage portal and storage-management messages that are not just the visibility toggle.", optionKey: "notifyStorage" }),
 
-  Object.freeze({ section: "Panes & surfaces", id: "pane-toggles", label: "Pane / surface toggles", hint: "File pane, title pane, settings pane, and preview background toggle messages.", optionKey: "notifyPaneToggles" }),
+  Object.freeze({ section: "Panes & surfaces", id: "pane-toggles", label: "Pane / surface toggles", hint: "Title pane, settings pane, and preview background toggle messages.", optionKey: "notifyPaneToggles" }),
   Object.freeze({ section: "Hidden & special views", id: "visibility-toggles", label: "Hidden / Trash / Storage / Untagged toggles", hint: "Notifications that announce special entries being shown, hidden, revealed, or blank-row adjusted.", optionKey: "notifyVisibilityToggles" }),
   Object.freeze({ section: "Hidden & special views", id: "quick-navigation", label: "Quick navigation toggle", hint: "Quick navigation on/off messages.", optionKey: "notifyQuickNavigation" }),
 
@@ -8777,10 +8734,7 @@ function defaultOptions() {
     colorScheme: "retro",
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
-    directoriesPaneOpen: false,
-    initialOpenSidebars: "both",
     thumbnailSize: "medium",
-    filePaneViewMode: "list",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
     showTrashFolder: true,
@@ -8792,7 +8746,6 @@ function defaultOptions() {
     quickNavigation: true,
     weightRandomJumpsByScore: "off",
     showUntaggedFolder: false,
-    showListCardExtraInfo: true,
     showScores: true,
     showFolderItemCount: true,
     showFolderSize: true,
@@ -9018,20 +8971,6 @@ function normalizeOptions(o) {
     videoEndBehaviorRaw === "stop"
       ? videoEndBehaviorRaw
       : d.videoEndBehavior;
-  const legacyInteractionModeRaw = String(src.interactionMode || "")
-    .trim()
-    .toLowerCase();
-  const legacyInteractionMode =
-    legacyInteractionModeRaw === "pane" || legacyInteractionModeRaw === "grid"
-      ? legacyInteractionModeRaw
-      : "";
-  const filePaneViewModeRaw = String(src.filePaneViewMode || "")
-    .trim()
-    .toLowerCase();
-  const filePaneViewMode =
-    filePaneViewModeRaw === "thumbnail" || filePaneViewModeRaw === "list"
-      ? filePaneViewModeRaw
-      : d.filePaneViewMode;
   const previewModeRaw = String(src.previewMode || "")
     .trim()
     .toLowerCase();
@@ -9209,26 +9148,12 @@ function normalizeOptions(o) {
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
       return d.menuPaneWidthPx;
     })(),
-    directoriesPaneOpen:
-      typeof src.directoriesPaneOpen === "boolean"
-        ? src.directoriesPaneOpen
-        : legacyInteractionMode
-          ? legacyInteractionMode === "pane"
-          : d.directoriesPaneOpen,
-    initialOpenSidebars:
-      src.initialOpenSidebars === "file" ||
-      src.initialOpenSidebars === "settings" ||
-      src.initialOpenSidebars === "both" ||
-      src.initialOpenSidebars === "none"
-        ? src.initialOpenSidebars
-        : d.initialOpenSidebars,
     thumbnailSize:
       src.thumbnailSize === "small" ||
       src.thumbnailSize === "medium" ||
       src.thumbnailSize === "large"
         ? src.thumbnailSize
         : d.thumbnailSize,
-    filePaneViewMode: "list",
     includeHiddenItemsInStats:
       typeof src.includeHiddenItemsInStats === "boolean"
         ? src.includeHiddenItemsInStats
@@ -9275,10 +9200,6 @@ function normalizeOptions(o) {
       typeof src.showUntaggedFolder === "boolean"
         ? src.showUntaggedFolder
         : d.showUntaggedFolder,
-    showListCardExtraInfo:
-      typeof src.showListCardExtraInfo === "boolean"
-        ? src.showListCardExtraInfo
-        : d.showListCardExtraInfo,
     showScores,
     showFolderItemCount,
     showFolderSize,
@@ -9297,7 +9218,6 @@ function normalizeOptions(o) {
     thumbnailLoading: false,
     imageThumbSize: "placeholder",
     videoThumbSize: "placeholder",
-    filePaneViewMode: "list",
     forceTitleCaps:
       typeof src.forceTitleCaps === "boolean"
         ? src.forceTitleCaps
@@ -9810,7 +9730,6 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   ]),
   controls: Object.freeze([
     "muteMessages",
-    "showListCardExtraInfo",
   ]),
 });
 
@@ -14776,10 +14695,8 @@ function applyDisplaySizesFromOptions() {
   root.style.setProperty("--thumb-scale-folder", String(scaleMult));
 }
 
-// The full-width top bar is the tab strip, and only appears once a second tab
-// exists (.tabs-multi). The path/search/info row lives in the file pane, so
-// closing that pane takes the title with it and the preview fills the window —
-// no orphaned title row is left to mis-size the preview.
+// The title pane hosts the path/search/info row and the tab strip. The tab row
+// appears once a second tab exists (.tabs-multi).
 function applyTabBarLayout() {
   const appEl = document.getElementById("app");
   if (!appEl) return;
@@ -14939,7 +14856,10 @@ function applyNaturalAspectThumbnailModeFromOptions() { }
 
 function setActivePane(nextPane, opts = null) {
   if (!WS.view) return false;
-  const pane = nextPane === "preview" ? "preview" : "directories";
+  const pane =
+    nextPane === "preview" || !directoriesPaneOpenEnabled()
+      ? "preview"
+      : "directories";
   const prev =
     WS.view.activePane === "preview" || WS.view.activePane === "directories"
       ? WS.view.activePane
@@ -15090,7 +15010,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
   canonicalizeActiveDirectoryReferences();
-  syncPreviewToSelection();
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(true, true);
   applyPaneDividerFromOptions();
@@ -15428,7 +15348,7 @@ const KEYBIND_ACTIONS = [
   {
     id: "selectLeft",
     label: "Left selection",
-    hint: "Move selection left in the preview grid, or switch to the file pane.",
+    hint: "Move selection left in the preview grid.",
     section: "navigation",
   },
   {
@@ -15590,7 +15510,7 @@ const KEYBIND_ACTIONS = [
   {
     id: "toggleQuickNavigation",
     label: "Quick navigation",
-    hint: "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.",
+    hint: "When opening a folder that only contains files, enter its media immediately.",
     section: "navigation",
   },
   {
@@ -15666,12 +15586,6 @@ const KEYBIND_ACTIONS = [
     section: "filenames",
   },
   {
-    id: "cycleInitialOpenSidebars",
-    label: "Cycle initial open sidebars",
-    hint: "Cycle which side panes open automatically after loading a root.",
-    section: "panes",
-  },
-  {
     id: "toggleFloatTags",
     label: "Float tags",
     hint: "Toggle the blank spacer row separating tag folders from regular folders.",
@@ -15694,12 +15608,6 @@ const KEYBIND_ACTIONS = [
     label: "Cycle video end behavior",
     hint: "Cycle what happens when a video reaches the end.",
     section: "playback",
-  },
-  {
-    id: "cycleThumbPresetFilePane",
-    label: "Cycle File pane cards",
-    hint: "Cycle the detail preset for File pane rows.",
-    section: "thumbnails",
   },
   {
     id: "cycleThumbPresetFile",
@@ -15994,8 +15902,6 @@ function normalizeKeybinds(log, presets = null) {
   const bindings = defaultKeybinds(presets);
   const byId = new Map(bindings.map((b) => [b.id, b]));
   let legacyRandomJumpKey = "";
-  let legacyQuickNavigationKey = "";
-  let sawFilePaneViewBinding = false;
   const migrateIfKeyMatches = (id, legacyKey, nextKey) => {
     const binding = byId.get(id);
     if (!binding) return;
@@ -16014,9 +15920,6 @@ function normalizeKeybinds(log, presets = null) {
         legacyRandomJumpKey = key;
         continue;
       }
-      // v8: Quick navigation is a real keybind action, not a legacy alias.
-      // Let it fall through so saved bindings persist by id.
-      if (id === "toggleFilePaneView") sawFilePaneViewBinding = true;
       if (!byId.has(id)) continue;
       if (KEYBIND_LOCKED_IDS.has(id)) continue;
       byId.get(id).key = key;
@@ -16028,7 +15931,7 @@ function normalizeKeybinds(log, presets = null) {
       firstJumpBinding.key = legacyRandomJumpKey;
     }
   }
-  // v8: Do not migrate saved Quick navigation bindings onto File Pane View.
+  // v8: Do not migrate saved Quick navigation bindings onto retired pane actions.
   // selectLeft/selectRight restored (v1.6.0 layout); leaveDir/enterDir
   // moved back to q/e — undo the earlier migration that sent them to a/d.
   migrateIfKeyMatches("leaveDir", "a", "q");
@@ -16293,7 +16196,7 @@ const WS = {
     gridSelectionByContext: new Map(),
     closedFilePaneWidthPx: 0,
     filePaneEnterAutoClosedPanes: null,
-    activePane: "directories",
+    activePane: "preview",
     previewSelectAnchorKey: "",
     previewSelectedKey: "",
     previewSelectionContextKey: "",
@@ -16979,10 +16882,7 @@ function fitRootLandingSidePaneWidths() {
   const appHeight = Math.max(1, Number(appEl?.clientHeight || window.innerHeight) || 1);
   const dividerPx = Math.max(0, menuPaneDividerWidthPx());
 
-  // v15: the previous v14 interpretation gave EACH side pane a 3:2 portrait
-  // footprint, so opening both panes could consume most of the app width. Treat
-  // the two side panes together as the 3:2 portrait block, then split that block
-  // into a compact file pane plus a slightly wider settings pane.
+  // Legacy sizing helper retained for the settings pane on root landing.
   const minPreviewWidth = Math.max(360, Math.round(appWidth * 0.36));
   const minLeft = Math.max(220, Math.min(320, Math.round(appWidth * 0.18)));
   const minMenu = Math.max(300, Math.min(380, Math.round(appWidth * 0.22)));
@@ -17020,20 +16920,9 @@ function fitRootLandingSidePaneWidths() {
 }
 
 function applyDefaultRootLandingSidebars() {
-  if (!WS.meta || !WS.root) return;
-  const mode =
-    (WS.meta.options && WS.meta.options.initialOpenSidebars) || "both";
-  const wantFilePane = mode === "both" || mode === "file";
-  const wantSettingsPane = mode === "both" || mode === "settings";
-  if (setDirectoriesPaneOpenValue(wantFilePane)) syncActivePaneWithLayout();
-  if (wantSettingsPane) {
-    if (!MENU_OPEN) openMenu("general");
-    else setMenuTab(MENU_ACTIVE_TAB || MENU_LAST_TAB || "general");
-  } else if (MENU_OPEN) {
-    closeMenu();
-  }
-  fitRootLandingSidePaneWidths();
-  requestAnimationFrame(() => fitRootLandingSidePaneWidths());
+  // Preview-only UI: nothing auto-opens on root landing. The settings pane
+  // stays closed until explicitly opened.
+  if (MENU_OPEN) fitRootLandingSidePaneWidths();
 }
 
 window.addEventListener("resize", () => {
@@ -17455,7 +17344,7 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasMsg("quick navigation:")) return "quick-navigation";
   if (hasMsg("reveal hidden items:", "trash folder:", "storage folder:", "untagged folder:", "blank row after tag folders:"))
     return "visibility-toggles";
-  if (hasMsg("file pane:", "title layout:", "settings + file panes:", "preview media uses pane background:"))
+  if (hasMsg("title layout:", "settings pane:", "preview media uses pane background:"))
     return "pane-toggles";
 
   if (hasCtx("cycleaspectratiofiltermode", "setaspectratiofiltermode")) return "cycle-aspect-ratio-filter";
@@ -17494,7 +17383,7 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasMsg("refreshing workspace", "refresh complete", "refresh failed", "refresh already running", "refresh requires"))
     return "workspace-refresh";
   if (hasMsg("random set jump", "random file jump")) return "navigation-jump";
-  if (hasMsg("filter:", "file pane:", "title layout:", "settings + file panes:"))
+  if (hasMsg("filter:", "title layout:", "settings pane:"))
     return "pane-toggles";
   if (hasMsg("tag ", "tag album", "album", "hid tag", "unhid tag", "created tag", "no folders contain that tag", "no items contain that tag", "no tags updated", "no tags selected", "removed tag '", "untagged") )
     return "tags";
@@ -19821,12 +19710,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "muted", label: "Muted" },
     { value: "unmuted", label: "Unmuted" },
   ];
-  const initialSidebarsModes = [
-    { value: "file", label: "File pane" },
-    { value: "settings", label: "Settings pane" },
-    { value: "both", label: "Both panes" },
-    { value: "none", label: "None" },
-  ];
   const thumbnailSizeModes = [
     { value: "small", label: "Small" },
     { value: "medium", label: "Medium" },
@@ -20228,12 +20111,11 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     general: {
       title: "General",
       rows: `
-${makeCheckRow("Quick navigation", "When opening a folder that only contains files, close the side panes immediately; exiting restores panes and goes up a folder.", "opt_quickNavigation", quickNavigationEnabled())}
+${makeCheckRow("Quick navigation", "When opening a folder that only contains files, enter its media immediately.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeSelectRow("Weight random jumps by score", "Random set and file jumps favor higher-scored folders (files use their parent folder's score). Light: score 1 is twice as likely as score 0, score 22 is 23× as likely; negative scores are proportionally less likely. Medium and Heavy give the score double and triple that pull.", "opt_weightRandomJumpsByScore", weightRandomJumpsByScoreMode(), weightRandomJumpsByScoreModes)}
-${makeSelectRow("Initial Open Sidebars", "Which side panes open automatically after loading a root.", "opt_initialOpenSidebars", String(opt.initialOpenSidebars || "both"), initialSidebarsModes)}
 ${makeSelectRow("Thumbnail size", "How large media thumbnails are in the preview grid.", "opt_thumbnailSize", String(opt.thumbnailSize || "medium"), thumbnailSizeModes)}
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
-${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the file pane and preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
+${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
 ${makeActionRow(
   "Workspace",
   "Refresh the current writable root from disk.",
@@ -20246,7 +20128,6 @@ ${makeActionRow(
     thumbnails: {
       title: "Thumbnails",
       rows: `
-${makeSelectRow("File pane cards", "How much detail rows in the File pane show.", "opt_thumbPreset_filepane", detectFilePaneThumbnailPreset(), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
@@ -20917,6 +20798,7 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     invalidateDirMetricsCaches();
     navigateOutOfStorageIfHidden();
     rebuildDirectoriesEntries();
+    preserveActivePreviewTargetDuringDirectoriesRefresh();
     renderDirectoriesPane(true);
     renderPreviewPane(false, true);
     syncButtons();
@@ -20937,10 +20819,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     },
     (val) => normalizeWeightRandomJumpsByScoreMode(val),
   );
-  bindSelect("opt_initialOpenSidebars", "initialOpenSidebars", false, null, (val) => {
-    const raw = String(val || "").trim().toLowerCase();
-    return raw === "file" || raw === "settings" || raw === "none" ? raw : "both";
-  });
   bindSelect("opt_thumbnailSize", "thumbnailSize", false, null, (val) => {
     const raw = String(val || "").trim().toLowerCase();
     return raw === "small" || raw === "large" ? raw : "medium";
@@ -20952,6 +20830,7 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
       exitTagFolderView();
     }
     rebuildDirectoriesEntries();
+    preserveActivePreviewTargetDuringDirectoriesRefresh();
     renderDirectoriesPane(true);
     renderPreviewPane(false, true);
     syncButtons();
@@ -20962,7 +20841,7 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     "opt_clickSelectedRotatingThumbTeleports",
     "clickSelectedRotatingThumbTeleports",
   );
-  // Thumbnail detail presets (one dropdown per card kind, plus File pane).
+  // Thumbnail detail presets (one dropdown per preview card kind).
   const bindThumbnailPresetSelect = (id, apply) => {
     bindStandaloneSelect(id, (value) => {
       apply(value);
@@ -20972,9 +20851,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
       persistDirtyMetadataNow().catch(() => {});
     });
   };
-  bindThumbnailPresetSelect("opt_thumbPreset_filepane", (value) =>
-    applyFilePaneThumbnailPreset(value),
-  );
   bindThumbnailPresetSelect("opt_thumbPreset_file", (value) =>
     applyThumbnailPresetForKinds("file", value),
   );
@@ -28065,7 +27941,6 @@ function restoreRefreshSelection(entryKey) {
 }
 
 function captureViewerCloseRestoreState(opts = null) {
-  const options = opts && typeof opts === "object" ? opts : {};
   const snap = snapshotRefreshState();
   const previewContextKey = currentPreviewSelectionContextKeyFromState();
   const tagNavStack = Array.isArray(WS.view && WS.view.tagNavStack)
@@ -28080,9 +27955,7 @@ function captureViewerCloseRestoreState(opts = null) {
     ),
     view: snap.view ? Object.assign({}, snap.view) : null,
     tagNavStack,
-    activePane: String(
-      options.activePane || WS.view.activePane || "directories",
-    ),
+    activePane: "preview",
     directoriesScrollTop: getDirectoriesScrollTop(),
     navEntries: Array.isArray(WS.nav.entries) ? WS.nav.entries.slice() : [],
     navEntriesRevision: NAV_ENTRY_RESTORE_REVISION,
@@ -28177,8 +28050,7 @@ function cloneViewerCloseRestoreState(state) {
           )
           .filter(Boolean)
       : [],
-    activePane:
-      state.activePane === "directories" ? "directories" : "preview",
+    activePane: "preview",
     directoriesScrollTop: Number(state.directoriesScrollTop) || 0,
     navEntries: Array.isArray(state.navEntries)
       ? state.navEntries.map(cloneNavEntryForRestore).filter(Boolean)
@@ -28727,7 +28599,7 @@ function makeRootTabState() {
       aboveRootView: showRootViewEnabled(),
     }),
     tagNavStack: [],
-    activePane: "directories",
+    activePane: "preview",
     directoriesScrollTop: 0,
     navEntries: [],
     navEntriesRevision: -1,
@@ -28740,9 +28612,8 @@ function makeRootTabState() {
 }
 
 // ---- Open in tab(s) --------------------------------------------------
-// A tab is "located at" an item when the preview pane shows it (see "Which pane
-// is the location"), which means the file pane sits at the item's parent with
-// the item selected. So opening X in a tab yields a tab named X.
+// A tab is "located at" an item when the preview pane shows it, so opening X in
+// a tab yields a tab named X.
 // (OPEN_IN_NEW_TABS_LIMIT is declared up with KEYBIND_ACTIONS, which reads it.)
 
 // A nav/grid entry as an open-in-tab target. Albums, tags and the special
@@ -28844,7 +28715,7 @@ function makeLocationTabState(target, baseView = null) {
     entryKey,
     view,
     tagNavStack: [],
-    activePane: "directories",
+    activePane: "preview",
     directoriesScrollTop: 0,
     navEntries: [],
     navEntriesRevision: -1,
@@ -37208,6 +37079,51 @@ function isPreviewTopRowCard(card) {
   return rect.top <= minTop + 2;
 }
 
+function previewRevealInsetPx() {
+  if (!previewBodyEl || typeof getComputedStyle !== "function") return 8;
+  const bodyStyle = getComputedStyle(previewBodyEl);
+  const rootStyle = getComputedStyle(document.documentElement);
+  const paddingTop = parseFloat(bodyStyle.paddingTop || "0");
+  const stroke = parseFloat(
+    rootStyle.getPropertyValue("--ui-preview-selection-stroke") || "0",
+  );
+  return Math.max(8, (Number.isFinite(stroke) ? stroke : 2) + 6, paddingTop * 0.25);
+}
+
+function previewAdjacentNavigationRowRect(targetRect, direction) {
+  if (!targetRect || !previewBodyEl) return null;
+  const cards = getPreviewSelectableCards();
+  if (!cards.length) return null;
+  const tolerance = Math.max(
+    4,
+    Math.min(48, Math.max(1, targetRect.height || 1) * 0.35),
+  );
+  let rowTop = direction > 0
+    ? Number.POSITIVE_INFINITY
+    : Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < cards.length; i++) {
+    const rect = getPreviewCardRelativeRect(cards[i]);
+    if (!rect) continue;
+    if (direction > 0) {
+      if (rect.top > targetRect.top + tolerance && rect.top < rowTop)
+        rowTop = rect.top;
+    } else if (rect.top < targetRect.top - tolerance && rect.top > rowTop) {
+      rowTop = rect.top;
+    }
+  }
+  if (!Number.isFinite(rowTop)) return null;
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < cards.length; i++) {
+    const rect = getPreviewCardRelativeRect(cards[i]);
+    if (!rect || Math.abs(rect.top - rowTop) > tolerance) continue;
+    top = Math.min(top, rect.top);
+    bottom = Math.max(bottom, rect.bottom);
+  }
+  if (!Number.isFinite(top) || !Number.isFinite(bottom)) return null;
+  return { top, bottom };
+}
+
 function revealPreviewCard(card = null) {
   const target = card || findSelectedPreviewCard();
   const rect = getPreviewCardRelativeRect(target);
@@ -37228,13 +37144,20 @@ function revealPreviewCard(card = null) {
     viewLeft + Math.max(1, Number(previewBodyEl.clientWidth) || 1);
   let nextTop = viewTop;
   let nextLeft = viewLeft;
+  const inset = previewRevealInsetPx();
   if (isPreviewTopRowCard(target)) nextTop = 0;
-  else if (rect.top < viewTop) nextTop = rect.top;
-  else if (rect.bottom > viewBottom)
-    nextTop = rect.bottom - previewBodyEl.clientHeight;
-  if (rect.left < viewLeft) nextLeft = rect.left;
-  else if (rect.right > viewRight)
-    nextLeft = rect.right - previewBodyEl.clientWidth;
+  else if (rect.top < viewTop + inset) {
+    const previousRow = previewAdjacentNavigationRowRect(rect, -1);
+    nextTop = previousRow ? previousRow.top - inset : rect.top - inset;
+  } else if (rect.bottom > viewBottom - inset) {
+    const nextRow = previewAdjacentNavigationRowRect(rect, 1);
+    nextTop = nextRow
+      ? nextRow.bottom - previewBodyEl.clientHeight + inset
+      : rect.bottom - previewBodyEl.clientHeight + inset;
+  }
+  if (rect.left < viewLeft + inset) nextLeft = rect.left - inset;
+  else if (rect.right > viewRight - inset)
+    nextLeft = rect.right - previewBodyEl.clientWidth + inset;
   previewBodyEl.scrollTop = Math.max(0, Math.min(maxTop, nextTop));
   previewBodyEl.scrollLeft = Math.max(0, Math.min(maxLeft, nextLeft));
 }
@@ -38952,10 +38875,7 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
     !(src && src.showItemTypeLabel === false) ||
     !(src && src.showScores === false);
   const showExtraInfo = resolveExtraInfoValue(fallbackExtraInfo);
-  const showDirectoryExtraInfo =
-    surface === "directories"
-      ? src.showListCardExtraInfo !== false
-      : showExtraInfo;
+  const showDirectoryExtraInfo = showExtraInfo;
   const showPreviewField = (field, fallback = true) =>
     showExtraInfo &&
     supportsPreview(field) &&
@@ -47995,15 +47915,12 @@ function dirNodeIsMediaOnlyForQuickNavigation(node) {
 }
 
 function enterMediaFolderWithQuickNavigation(node) {
-  // Opening a media folder from the grid descends the file pane two (or more)
-  // directory levels below where it started: the file pane is at the grid's
-  // parent, the grid shows a subfolder, and the user picked a media folder
-  // inside that subfolder. To put the media fullscreen the authoritative
-  // directory must become the media folder itself.
+  // Opening a media folder from the grid makes that media folder the active
+  // navigation context so its files can be previewed immediately.
   //
   // Capture the full pre-open browsing state (current directory, the selected
   // child, the previewed subfolder, and the grid selection = this media
-  // folder) BEFORE descending, so that closing can jump both panes back to it
+  // folder) BEFORE descending, so that closing can jump back to it
   // in one step and keep this folder selected in the grid. This is the same
   // bridge mechanism navigateToDirectory() uses for regular folders.
   const restoreState = captureQuickNavigationDirectoryEnterRestoreState({
@@ -48014,9 +47931,8 @@ function enterMediaFolderWithQuickNavigation(node) {
   // bridge (below). Any leftover single-file selection bridge from a prior
   // grid file-open is a *different*, conflicting return mechanism: if it were
   // still active, closing this media would hit the file-selection branch in
-  // handleClosedFilePaneNavigationAction and only close to the folder grid
-  // instead of reopening the sidebars and stepping out (quick nav appearing
-  // to be "off"). Clear it so the quick-nav bridge is the sole return path.
+  // handleClosedFilePaneNavigationAction and only close to the folder grid.
+  // Clear it so the quick-nav bridge is the sole return path.
   WS.view.returnToPreviewPaneAfterFileClose = false;
   WS.view.previewFileSelectionBridgeActive = false;
   WS.view.previewFileBridgeReturnState = null;
@@ -48027,10 +47943,8 @@ function enterMediaFolderWithQuickNavigation(node) {
   });
   // Descending into a real folder exits any tag/album/favorites/hidden/search
   // view that the path ran through. Without this, rebuildDirectoriesEntries
-  // would still build the (now-irrelevant) tag/virtual list — leaving the file
-  // pane empty, the preview blank, and the sidebars unable to auto-close
-  // (since the entries don't look like a media-only folder). Mirrors the
-  // context handling in enterSelectedDirectory.
+  // would still build the (now-irrelevant) tag/virtual list and leave the
+  // preview blank. Mirrors the context handling in enterSelectedDirectory.
   if (isViewingTagFolder()) {
     WS.view.tagFolderActiveMode = "";
     WS.view.tagFolderActiveTag = "";
@@ -55569,13 +55483,6 @@ const ANIMATED_FILTER_CYCLE = [
   { value: "videos", label: "Videos only" },
 ];
 
-const INITIAL_OPEN_SIDEBARS_CYCLE = [
-  { value: "file", label: "File pane" },
-  { value: "settings", label: "Settings pane" },
-  { value: "both", label: "Both panes" },
-  { value: "none", label: "None" },
-];
-
 const VIDEO_SKIP_STEP_CYCLE = [
   { value: "1", label: "1 second" },
   { value: "3", label: "3 seconds" },
@@ -55666,24 +55573,6 @@ function cycleOptionValue(key, list) {
 function labelForCycleValue(list, value) {
   const entry = list.find((item) => item.value === value);
   return entry ? entry.label : String(value || "");
-}
-
-function setFilePaneViewMode(mode) {
-  if (!WS.meta) return false;
-  if (WS.meta.options && WS.meta.options.filePaneViewMode !== "list") {
-    setOptionValue("filePaneViewMode", "list");
-  }
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyInteractionModeFromOptions();
-  renderDirectoriesPane(true);
-  renderPreviewPane(false, true);
-  syncButtons();
-  showStatusMessage("File pane view: List View", "pane-toggles");
-  return true;
-}
-
-function toggleFilePaneViewMode() {
-  return setFilePaneViewMode("list");
 }
 
 function setDirectoriesPaneOpenKeybindState(nextOpen) {
@@ -55964,8 +55853,6 @@ function handleExtrasKeybindAction(action) {
     return true;
   }
   switch (action) {
-    case "toggleFilePaneView":
-      return setFilePaneViewMode("list");
     case "toggleSettingsAndDirectoriesPanes":
       return toggleSettingsAndDirectoriesPanesKeybindAction();
     case "refreshWorkspace":
@@ -56056,6 +55943,7 @@ function handleExtrasKeybindAction(action) {
       if (!next && WS.view.tagFolderActiveMode === "untagged")
         exitTagFolderView();
       rebuildDirectoriesEntries();
+      preserveActivePreviewTargetDuringDirectoriesRefresh();
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
       syncButtons();
@@ -56070,6 +55958,7 @@ function handleExtrasKeybindAction(action) {
       refreshLiveSettingsPaneFromKeyboardAction();
       navigateOutOfStorageIfHidden();
       rebuildDirectoriesEntries();
+      preserveActivePreviewTargetDuringDirectoriesRefresh();
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
       syncButtons();
@@ -56108,17 +55997,6 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Trim before last dash: ${next ? "On" : "Off"}`);
       return true;
     }
-    case "cycleInitialOpenSidebars": {
-      const next = cycleOptionValue(
-        "initialOpenSidebars",
-        INITIAL_OPEN_SIDEBARS_CYCLE,
-      );
-      refreshLiveSettingsPaneFromKeyboardAction();
-      showStatusMessage(
-        `Initial open sidebars: ${labelForCycleValue(INITIAL_OPEN_SIDEBARS_CYCLE, next)}`,
-      );
-      return true;
-    }
     case "toggleFloatTags": {
       const next = toggleOptionValue("showTagFolderSpacerRow");
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -56141,12 +56019,6 @@ function handleExtrasKeybindAction(action) {
       );
       return true;
     }
-    case "cycleThumbPresetFilePane":
-      return cycleThumbnailPresetKeybindAction(
-        detectFilePaneThumbnailPreset(),
-        (value) => applyFilePaneThumbnailPreset(value),
-        "File pane cards",
-      );
     case "cycleThumbPresetFile":
       return cycleThumbnailPresetKeybindAction(
         detectThumbnailPresetForKinds("file"),
@@ -57412,8 +57284,8 @@ function handleClosedFilePaneNavigationAction(action) {
         closeFilePreviewToFolder();
         return true;
       }
-      // If this folder was opened from the grid (sidebars already closed), a
-      // grid return state was captured: jump both panes back to the grid view
+      // If this folder was opened from the grid, a grid return state was
+      // captured: jump back to the grid view
       // with the folder kept selected. Otherwise step up one level, keeping the
       // folder you just left selected.
       if (WS.view.previewFolderBridgeReturnState) {
