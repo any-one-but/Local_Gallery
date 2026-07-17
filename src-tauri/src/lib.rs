@@ -347,6 +347,11 @@ pub fn run() {
             .title("Local Gallery")
             .inner_size(1100.0, 750.0)
             .resizable(true)
+            // Tauri's native drag-drop handler claims every drag before WebKit
+            // sees it (wry skips the super call when the handler returns true),
+            // which kills HTML5 dragover/drop — the thumbnail reorder drags.
+            // Nothing listens to tauri://drag-drop, so disable it outright.
+            .disable_drag_drop_handler()
             .initialization_script(bridge)
             .initialization_script(fs_shim);
 

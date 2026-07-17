@@ -57601,6 +57601,21 @@ window.addEventListener("blur", () => {
   clearModifierKeyState();
 });
 
+// An external file dropped anywhere outside a drop target would make the
+// WebView navigate to that file, replacing the app. Internal reorder drags
+// carry "text/plain" (never "Files"), so they are untouched.
+window.addEventListener("dragover", (e) => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "none";
+  }
+});
+window.addEventListener("drop", (e) => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) {
+    e.preventDefault();
+  }
+});
+
 // Hard-coded menu toggle: ` / ~ opens the last-used menu tab.
 document.addEventListener(
   "keydown",
