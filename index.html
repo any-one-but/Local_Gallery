@@ -537,15 +537,18 @@ input[type="file"] {
        Title Pane
        ========================================================= */
 /* The top bar hosts the path / search / info row, with the tab strip on a
-   second row underneath. The tab row collapses unless 2+ tabs are open. */
+   second row underneath. The tab row collapses unless 2+ tabs are open.
+   Styled like a browser frame: the bar uses the deeper window color
+   (--color1-primary) while the active tab shares the preview pane surface
+   (--color1-secondary) and melds into it with no seam. */
 #titlePane {
   position: relative;
   z-index: 200;
   padding: 0 8px;
-  background: var(--color1-secondary);
+  background: var(--color1-primary);
   border-radius: 0;
   border: 0;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  box-shadow: none;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -568,8 +571,8 @@ input[type="file"] {
 #tabBar {
   display: flex;
   flex-direction: row;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-end;
+  gap: 8px;
   width: 100%;
   min-width: 0;
   height: 100%;
@@ -581,15 +584,20 @@ input[type="file"] {
   display: none;
 }
 
+/* Chrome-style tabs: anchored to the bottom edge of the bar, rounded only on
+   top. The active tab wears the preview pane surface color and connects to it
+   seamlessly (no divider under the bar). */
 .tabItem {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 220px;
-  height: 26px;
-  padding: 0 4px 0 10px;
+  height: 34px;
+  margin: 0;
+  padding: 0 6px 0 12px;
   font-family: var(--font-rounded);
   font-size: 12px;
   font-weight: 800;
@@ -597,7 +605,7 @@ input[type="file"] {
   color: var(--color0-secondary);
   background: transparent;
   border: 0;
-  border-radius: var(--ui-control-radius);
+  border-radius: 10px 10px 0 0;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -610,8 +618,36 @@ input[type="file"] {
   color: var(--color0-primary);
 }
 .tabItem.active {
-  background: var(--color1-primary);
+  background: var(--color1-secondary);
   color: var(--color0-primary);
+}
+/* Inverted-radius fillets that curve the active tab's bottom corners outward
+   into the preview surface, exactly like modern Chrome. Drawn as small squares
+   whose outer arc is transparent and inner region is the tab color. */
+.tabItem.active::before,
+.tabItem.active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+}
+.tabItem.active::before {
+  left: -10px;
+  background: radial-gradient(
+    circle at 0 0,
+    transparent 10px,
+    var(--color1-secondary) 10.5px
+  );
+}
+.tabItem.active::after {
+  right: -10px;
+  background: radial-gradient(
+    circle at 100% 0,
+    transparent 10px,
+    var(--color1-secondary) 10.5px
+  );
 }
 .tabItem:focus-visible {
   outline: none;
@@ -665,6 +701,7 @@ input[type="file"] {
 
 #tabNewBtn {
   flex: 0 0 auto;
+  align-self: center;
   width: 26px;
   height: 26px;
   display: flex;
