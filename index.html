@@ -4675,6 +4675,147 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 /* =========================================================
+       Keyboard Shortcuts Help (read-only overlay)
+       ========================================================= */
+#keybindHelpOverlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(6px);
+  z-index: 29500;
+}
+#keybindHelpOverlay.active {
+  display: flex;
+}
+#keybindHelpCard {
+  width: min(980px, calc(100vw - 48px));
+  max-height: min(88vh, 820px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--color0-primary);
+  background: var(--color1-secondary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: calc(var(--ui-control-radius) + 6px);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.5);
+}
+#keybindHelpHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--color1-tertiary);
+}
+#keybindHelpTitle {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+#keybindHelpHint {
+  margin: 5px 0 0;
+  color: var(--color0-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+#keybindHelpCloseBtn {
+  flex: 0 0 auto;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  color: var(--color0-primary);
+  background: var(--ui-control-bg);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+#keybindHelpCloseBtn:hover {
+  background: var(--ui-control-hover-bg);
+}
+#keybindHelpCloseBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+#keybindHelpBody {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 22px 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: start;
+  gap: 22px 28px;
+}
+.keybindHelpSection {
+  min-width: 0;
+}
+.keybindHelpSectionTitle {
+  margin: 0 0 7px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--color1-tertiary);
+  color: var(--color0-primary);
+  font-size: 13px;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+.keybindHelpRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 28px;
+  padding: 3px 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.keybindHelpAction {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.keybindHelpKey {
+  max-width: 180px;
+  padding: 3px 7px;
+  overflow: hidden;
+  color: var(--color0-primary);
+  background: var(--ui-control-bg);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.keybindHelpKey.unassigned {
+  color: var(--color0-secondary);
+  font-family: inherit;
+  font-style: italic;
+}
+@media (max-width: 620px) {
+  #keybindHelpOverlay {
+    padding: 12px;
+  }
+  #keybindHelpCard {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+  #keybindHelpHeader,
+  #keybindHelpBody {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  #keybindHelpBody {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
        Menu Sidebar
        ========================================================= */
 #menuOverlay {
@@ -7630,6 +7771,34 @@ html.settings-window #previewContent:not(.menu-open)::before {
             </button>
           </div>
         </div>
+      </div>
+
+      <!-- =========================================================
+         Keyboard Shortcuts Help (read-only overlay)
+         ========================================================= -->
+      <div id="keybindHelpOverlay" aria-hidden="true">
+        <section
+          id="keybindHelpCard"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="keybindHelpTitle"
+        >
+          <header id="keybindHelpHeader">
+            <div>
+              <h2 id="keybindHelpTitle">Keyboard shortcuts</h2>
+              <p id="keybindHelpHint">Press / again or Escape to close.</p>
+            </div>
+            <button
+              id="keybindHelpCloseBtn"
+              type="button"
+              aria-label="Close keyboard shortcuts"
+              title="Close"
+            >
+              ×
+            </button>
+          </header>
+          <div id="keybindHelpBody"></div>
+        </section>
       </div>
     </div>
 
@@ -16533,10 +16702,116 @@ const keybindsBodyEl = $("keybindsBody");
 const keybindsResetBtn = $("keybindsResetBtn");
 const keybindsOpenWritableBtn = $("keybindsOpenWritableBtn");
 const keybindsStatusLabel = $("keybindsStatusLabel");
+const keybindHelpOverlayEl = $("keybindHelpOverlay");
+const keybindHelpBodyEl = $("keybindHelpBody");
+const keybindHelpCloseBtn = $("keybindHelpCloseBtn");
 const calendarBodyEl = $("calendarBody");
 const calendarOpenWritableBtn = $("calendarOpenWritableBtn");
 const calendarDeleteAllBtn = $("calendarDeleteAllBtn");
 const calendarStatusLabel = $("calendarStatusLabel");
+
+let keybindHelpPreviousFocusEl = null;
+
+function keybindHelpIsOpen() {
+  return !!(
+    keybindHelpOverlayEl && keybindHelpOverlayEl.classList.contains("active")
+  );
+}
+
+function currentKeybindHelpBindings() {
+  const paneBindings =
+    WS.meta && Array.isArray(WS.meta.keybinds)
+      ? syncPaneKeybindBindingsWithCurrentActions(false)
+      : defaultKeybinds(WS.meta && WS.meta.appearancePresets);
+  const gridBindings =
+    WS.meta && Array.isArray(WS.meta.gridKeybinds)
+      ? WS.meta.gridKeybinds
+      : defaultGridKeybinds();
+  const gridById = new Map(
+    gridBindings.map((binding) => [String(binding?.id || ""), binding]),
+  );
+  const normalizedGridBindings = GRID_KEYBIND_ACTIONS.map((action) =>
+    Object.assign({}, action, gridById.get(action.id) || {}),
+  );
+  return {
+    pane: paneBindings.filter(
+      (binding) =>
+        binding &&
+        !binding.hiddenInUi &&
+        !isLockedKeybindAction(binding.id),
+    ),
+    grid: normalizedGridBindings.filter((binding) => binding && binding.id),
+  };
+}
+
+function renderKeybindHelpOverlay() {
+  if (!keybindHelpBodyEl) return;
+  const bindings = currentKeybindHelpBindings();
+  const bySection = new Map();
+  for (const binding of bindings.pane.concat(bindings.grid)) {
+    const sectionId = String(binding.section || "");
+    if (!bySection.has(sectionId)) bySection.set(sectionId, []);
+    bySection.get(sectionId).push(binding);
+  }
+  const sectionSpecs = KEYBIND_SECTIONS.concat(GRID_KEYBIND_SECTIONS);
+  keybindHelpBodyEl.innerHTML = sectionSpecs
+    .map((section) => {
+      const sectionBindings = bySection.get(section.id) || [];
+      if (!sectionBindings.length) return "";
+      const rows = sectionBindings
+        .map((binding) => {
+          const normalizedKey = normalizeKeyValue(binding.key || "");
+          const label = normalizedKey ? keyLabel(normalizedKey) : "Unassigned";
+          return `<div class="keybindHelpRow"><span class="keybindHelpAction">${escapeHtml(binding.label || binding.id)}</span><span class="keybindHelpKey${normalizedKey ? "" : " unassigned"}" title="${escapeHtml(label)}">${escapeHtml(label)}</span></div>`;
+        })
+        .join("");
+      return `<section class="keybindHelpSection"><h3 class="keybindHelpSectionTitle">${escapeHtml(section.label)}</h3>${rows}</section>`;
+    })
+    .join("");
+}
+
+function showKeybindHelpOverlay() {
+  if (!keybindHelpOverlayEl) return false;
+  renderKeybindHelpOverlay();
+  keybindHelpPreviousFocusEl = document.activeElement;
+  keybindHelpOverlayEl.classList.add("active");
+  keybindHelpOverlayEl.setAttribute("aria-hidden", "false");
+  try {
+    keybindHelpCloseBtn?.focus();
+  } catch {}
+  return true;
+}
+
+function hideKeybindHelpOverlay() {
+  if (!keybindHelpOverlayEl) return false;
+  const wasOpen = keybindHelpIsOpen();
+  keybindHelpOverlayEl.classList.remove("active");
+  keybindHelpOverlayEl.setAttribute("aria-hidden", "true");
+  if (wasOpen && keybindHelpPreviousFocusEl?.isConnected) {
+    try {
+      keybindHelpPreviousFocusEl.focus();
+    } catch {}
+  }
+  keybindHelpPreviousFocusEl = null;
+  return wasOpen;
+}
+
+function toggleKeybindHelpOverlay() {
+  return keybindHelpIsOpen()
+    ? hideKeybindHelpOverlay()
+    : showKeybindHelpOverlay();
+}
+
+if (keybindHelpCloseBtn) {
+  keybindHelpCloseBtn.addEventListener("click", () => {
+    hideKeybindHelpOverlay();
+  });
+}
+if (keybindHelpOverlayEl) {
+  keybindHelpOverlayEl.addEventListener("click", (e) => {
+    if (e.target === keybindHelpOverlayEl) hideKeybindHelpOverlay();
+  });
+}
 
 function defaultMenuPaneWidth() {
   return Math.max(340, Math.min(496, Math.round(window.innerWidth * 0.32)));
@@ -58102,6 +58377,44 @@ window.addEventListener("drop", (e) => {
     e.preventDefault();
   }
 });
+
+// Forward slash is a fixed, read-only shortcut reference. While it is open,
+// stop application keybinds from firing behind the modal overlay.
+document.addEventListener(
+  "keydown",
+  (e) => {
+    const noCommandModifiers = !e.metaKey && !e.ctrlKey && !e.altKey;
+    const isHelpToggle =
+      String(e.key || "") === "/" && noCommandModifiers && !e.shiftKey && !e.repeat;
+    const isPlainEscape =
+      String(e.key || "") === "Escape" && noCommandModifiers && !e.shiftKey;
+
+    if (keybindHelpIsOpen()) {
+      if (isHelpToggle || isPlainEscape) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        hideKeybindHelpOverlay();
+        return;
+      }
+      e.stopImmediatePropagation();
+      return;
+    }
+
+    if (!isHelpToggle) return;
+    if (
+      busyOverlayActive() ||
+      confirmDialogIsOpen() ||
+      KEYBIND_CAPTURE_ACTION_ID ||
+      BANIC_ACTIVE ||
+      isTextInputTarget(e.target)
+    )
+      return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    toggleKeybindHelpOverlay();
+  },
+  true,
+);
 
 // Command+, is a fixed macOS application shortcut. Handling it before the
 // configurable keybind dispatcher also makes the toggle work while the
