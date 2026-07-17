@@ -27959,6 +27959,7 @@ function restoreRefreshSelection(entryKey) {
 }
 
 function captureViewerCloseRestoreState(opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
   const snap = snapshotRefreshState();
   const previewContextKey = currentPreviewSelectionContextKeyFromState();
   const tagNavStack = Array.isArray(WS.view && WS.view.tagNavStack)
@@ -27973,7 +27974,7 @@ function captureViewerCloseRestoreState(opts = null) {
     ),
     view: snap.view ? Object.assign({}, snap.view) : null,
     tagNavStack,
-    activePane: "preview",
+    activePane: options.activePane === "directories" ? "directories" : "preview",
     directoriesScrollTop: getDirectoriesScrollTop(),
     navEntries: Array.isArray(WS.nav.entries) ? WS.nav.entries.slice() : [],
     navEntriesRevision: NAV_ENTRY_RESTORE_REVISION,
@@ -36967,8 +36968,8 @@ function parsePreviewFileSelectionKey(key) {
 function findPreviewSelectableCardByKey(key) {
   const targetKey = String(key || "");
   if (!targetKey || !previewBodyEl) return null;
-  const exact = previewBodyEl.querySelector(
-    `[data-preview-item-key="${cssEscapeValue(targetKey)}"]`,
+  const exact = getPreviewSelectableCards().find(
+    (card) => String(card?.dataset?.previewItemKey || "") === targetKey,
   );
   if (exact) return exact;
   if (targetKey.startsWith("dir:")) {
@@ -37671,9 +37672,30 @@ function openSelectedPreviewItem() {
     card && typeof card.__previewOpenAction === "function"
       ? card.__previewOpenAction
       : null;
-  if (!openAction) return false;
-  openAction();
-  return true;
+  if (openAction) {
+    openAction();
+    return true;
+  }
+  const kind = String(card?.dataset?.previewItemKind || "");
+  if (kind === "dir") {
+    const path = previewDirPathForCard(card);
+    const node = path ? WS.dirByPath.get(path) || null : null;
+    if (!node) return false;
+    navigateFromPreviewFolderCard(node);
+    return true;
+  }
+  if (kind === "file") {
+    const id = previewFileIdForCard(card);
+    const rec = id ? WS.fileById.get(id) || null : null;
+    if (!rec) return false;
+    openPreviewFileFromPreviewCard(rec);
+    return true;
+  }
+  if (kind === "tag" && card && card.__previewTagEntry) {
+    openPreviewTagFolderEntry(card.__previewTagEntry);
+    return true;
+  }
+  return false;
 }
 
 function handlePreviewCardSelection(card, openAction, e = null) {
@@ -48021,49 +48043,29 @@ async function navigateToDirectory(node) {
   if (previewFolderReturnState && node.path) {
     previewFolderReturnState.entryKey = `dir:${String(node.path || "")}`;
   }
-  if (!adoptPreviewParentIntoDirectoriesPane(getPreviewTargetDir())) {
-    WS.nav.dirNode = node.parent || WS.nav.dirNode || WS.root || node;
-    WS.view.aboveRootView = false;
-    syncBulkSelectionForCurrentDir();
-    syncFavoritesUi();
-    syncHiddenUi();
-    syncTagUiForCurrentDir();
-    rebuildDirectoriesEntries();
-  }
-
   if (searchSessionActive() && WS.view.searchRootActive) {
     enterSearchResultContext(node.path || "");
   }
 
   if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
     WS.view.favoritesRootActive = false;
-    WS.view.favoritesAnchorPath = WS.nav.dirNode?.path || node.path || "";
+    WS.view.favoritesAnchorPath = node.path || "";
   }
 
   if (WS.view.hiddenMode && WS.view.hiddenRootActive) {
     WS.view.hiddenRootActive = false;
-    WS.view.hiddenAnchorPath = WS.nav.dirNode?.path || node.path || "";
+    WS.view.hiddenAnchorPath = node.path || "";
   }
 
-  let targetIdx = findDirEntryIndexByPath(node.path || "");
-  if (targetIdx < 0 && node.parent && node.parent !== WS.nav.dirNode) {
-    WS.nav.dirNode = node.parent;
-    WS.view.aboveRootView = false;
-    syncBulkSelectionForCurrentDir();
-    syncFavoritesUi();
-    syncHiddenUi();
-    syncTagUiForCurrentDir();
-    rebuildDirectoriesEntries();
-    targetIdx = findDirEntryIndexByPath(node.path || "");
-  }
-  WS.nav.selectedIndex = findNearestSelectableIndex(
-    targetIdx >= 0 ? targetIdx : 0,
-    1,
-  );
-  const selectedEntry =
-    targetIdx >= 0 ? WS.nav.entries[WS.nav.selectedIndex] || null : null;
-  if (selectedEntry) applyPreviewState(previewStateForEntry(selectedEntry));
-  else applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
+  WS.nav.dirNode = node;
+  WS.view.aboveRootView = false;
+  syncBulkSelectionForCurrentDir();
+  syncFavoritesUi();
+  syncHiddenUi();
+  syncTagUiForCurrentDir();
+  rebuildDirectoriesEntries();
+  WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
+  applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
   resetPreviewPaneForEnteredTarget();
   renderSelectedFilePreviewBeforeDirectoryPreparation();
   WS.view.previewFolderBridgeReturnState = previewFolderReturnState;
@@ -48090,7 +48092,10 @@ async function navigateToDirectory(node) {
 
 function navigateFromPreviewFolderCard(node) {
   if (!node) return;
-  navigateToDirectory(node).catch(() => {});
+  navigateToDirectory(node).catch((error) => {
+    console.error("Preview folder open failed.", error);
+    showStatusMessage("Could not open that folder.");
+  });
 }
 
 function adoptPreviewParentIntoDirectoriesPane(targetDir) {
