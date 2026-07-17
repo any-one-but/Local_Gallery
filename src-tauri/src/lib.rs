@@ -363,7 +363,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .on_menu_event(|app, event| {
             if event.id().as_ref() == SETTINGS_MENU_ID {
-                let _ = settings::show_settings_window(app, None);
+                let _ = settings::toggle_settings_window(app, None);
             }
         })
         .setup(|app| {
@@ -443,6 +443,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             generate_thumbnail,
             write_download_file,
             settings::open_settings_window,
+            settings::toggle_settings_window_command,
             grok::toggle_grok_window,
             fs::pick_root,
             fs::scan_dir,

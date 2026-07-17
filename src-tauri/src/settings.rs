@@ -63,7 +63,31 @@ pub fn show_settings_window(app: &AppHandle, initial_tab: Option<&str>) -> Resul
     Ok(())
 }
 
+/// Toggles the Settings window as a single native macOS window.
+///
+/// Closing instead of merely hiding it keeps the next open deterministic: the
+/// document is rebuilt with the latest metadata sent by the gallery window.
+pub fn toggle_settings_window(
+    app: &AppHandle,
+    initial_tab: Option<&str>,
+) -> Result<bool, String> {
+    if let Some(window) = app.get_webview_window(SETTINGS_LABEL) {
+        window.close().map_err(|e| e.to_string())?;
+        return Ok(false);
+    }
+    show_settings_window(app, initial_tab)?;
+    Ok(true)
+}
+
 #[tauri::command]
 pub fn open_settings_window(app: AppHandle, tab: Option<String>) -> Result<(), String> {
     show_settings_window(&app, tab.as_deref())
+}
+
+#[tauri::command]
+pub fn toggle_settings_window_command(
+    app: AppHandle,
+    tab: Option<String>,
+) -> Result<bool, String> {
+    toggle_settings_window(&app, tab.as_deref())
 }

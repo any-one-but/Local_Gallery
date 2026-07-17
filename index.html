@@ -2343,6 +2343,34 @@ img[data-rotate-key].rotatingThumbFade {
   display: flex;
 }
 
+.dropdownMenu .dropdownMenuItemInfoCard {
+  width: min(290px, calc(100vw - 28px));
+  min-width: 220px;
+  padding: 10px 11px;
+  gap: 7px;
+  white-space: normal;
+  color: var(--color0-primary);
+}
+
+.dropdownMenuItemInfoRow {
+  display: grid;
+  grid-template-columns: minmax(58px, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.dropdownMenuItemInfoLabel {
+  opacity: 0.62;
+}
+
+.dropdownMenuItemInfoValue {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .dropdownMenu button.destructiveAction {
   color: var(--item-menu-trash-color);
 }
@@ -16197,6 +16225,8 @@ const WS = {
     dirAppearancePresetIds: new Map(),
     pendingDirAppearancePresetIds: new Map(),
     tagAppearancePresetIds: new Map(),
+    containerSortByFolderPath: new Map(),
+    containerSortByTagKey: new Map(),
     fileThumbCrop: new Map(),
     videoThumbTime: new Map(),
     aspectRatios: new Map(),
@@ -16494,6 +16524,8 @@ function resetWorkspace() {
   WS.meta.dirAppearancePresetIds.clear();
   WS.meta.pendingDirAppearancePresetIds.clear();
   WS.meta.tagAppearancePresetIds.clear();
+  WS.meta.containerSortByFolderPath.clear();
+  WS.meta.containerSortByTagKey.clear();
   WS.meta.fileThumbCrop.clear();
   WS.meta.videoThumbTime.clear();
   WS.meta.aspectRatios.clear();
@@ -18305,7 +18337,7 @@ function requestSettingsWindow(tabId = "general") {
       : Promise.resolve();
   Promise.resolve(flush)
     .catch(() => {})
-    .then(() => invoke("open_settings_window", { tab }))
+    .then(() => invoke("toggle_settings_window_command", { tab }))
     .catch((err) => showStatusMessage(`Settings failed: ${err}`));
   return true;
 }
@@ -22802,6 +22834,12 @@ function getAllTagAppearancePresetStateKeys() {
       if (raw) out.add(raw);
     }
   }
+  if (WS.meta && WS.meta.containerSortByTagKey) {
+    for (const key of WS.meta.containerSortByTagKey.keys()) {
+      const raw = String(key || "");
+      if (raw) out.add(raw);
+    }
+  }
   return Array.from(out);
 }
 
@@ -22809,28 +22847,38 @@ function rekeyTagAppearancePresetState(oldKey, newKey) {
   const source = String(oldKey || "");
   const target = String(newKey || "");
   if (!source || !target || source === target) return false;
-  if (
-    !WS.meta ||
-    !WS.meta.tagAppearancePresetIds ||
-    !WS.meta.tagAppearancePresetIds.has(source)
-  )
-    return false;
-  const presetId = normalizeAppearancePresetIdValue(
-    WS.meta.tagAppearancePresetIds.get(source),
-  );
-  if (!WS.meta.tagAppearancePresetIds.has(target) && presetId) {
-    WS.meta.tagAppearancePresetIds.set(target, presetId);
+  if (!WS.meta) return false;
+  let changed = false;
+  if (WS.meta.tagAppearancePresetIds?.has(source)) {
+    const presetId = normalizeAppearancePresetIdValue(
+      WS.meta.tagAppearancePresetIds.get(source),
+    );
+    if (!WS.meta.tagAppearancePresetIds.has(target) && presetId) {
+      WS.meta.tagAppearancePresetIds.set(target, presetId);
+    }
+    WS.meta.tagAppearancePresetIds.delete(source);
+    metaTrackDirtyDocIds([META_DOC_IDS.appearanceAssignments]);
+    changed = true;
   }
-  WS.meta.tagAppearancePresetIds.delete(source);
-  metaTrackDirtyDocIds([META_DOC_IDS.appearanceAssignments]);
-  return true;
+  if (WS.meta.containerSortByTagKey?.has(source)) {
+    const mode = normalizeContainerSortMode(
+      WS.meta.containerSortByTagKey.get(source),
+    );
+    if (!WS.meta.containerSortByTagKey.has(target) && mode) {
+      WS.meta.containerSortByTagKey.set(target, mode);
+    }
+    WS.meta.containerSortByTagKey.delete(source);
+    metaTrackDirtyDocIds([META_DOC_IDS.prefGeneral]);
+    changed = true;
+  }
+  return changed;
 }
 
 function clearTagAppearancePresetStateByMatch(matchFn) {
   if (
     typeof matchFn !== "function" ||
     !WS.meta ||
-    !WS.meta.tagAppearancePresetIds
+    (!WS.meta.tagAppearancePresetIds && !WS.meta.containerSortByTagKey)
   )
     return false;
   const keys = getAllTagAppearancePresetStateKeys();
@@ -22838,9 +22886,15 @@ function clearTagAppearancePresetStateByMatch(matchFn) {
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
     if (!key || !matchFn(key)) continue;
-    if (WS.meta.tagAppearancePresetIds.delete(key)) changed = true;
+    if (WS.meta.tagAppearancePresetIds?.delete(key)) {
+      metaTrackDirtyDocIds([META_DOC_IDS.appearanceAssignments]);
+      changed = true;
+    }
+    if (WS.meta.containerSortByTagKey?.delete(key)) {
+      metaTrackDirtyDocIds([META_DOC_IDS.prefGeneral]);
+      changed = true;
+    }
   }
-  if (changed) metaTrackDirtyDocIds([META_DOC_IDS.appearanceAssignments]);
   return changed;
 }
 
@@ -24787,6 +24841,16 @@ function metaMakePreferenceSectionLogObject(docId) {
   };
   if (docId === META_DOC_IDS.prefGeneral) {
     out.dirSortMode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
+    out.containerSortByFolderPath = Object.fromEntries(
+      Array.from(WS.meta.containerSortByFolderPath || []).filter(
+        ([, mode]) => !!normalizeContainerSortMode(mode),
+      ),
+    );
+    out.containerSortByTagKey = Object.fromEntries(
+      Array.from(WS.meta.containerSortByTagKey || []).filter(
+        ([key, mode]) => String(key || "") && normalizeContainerSortMode(mode),
+      ),
+    );
   }
   return out;
 }
@@ -25104,6 +25168,29 @@ function metaApplyPreferenceSectionDocLog(docId, log) {
     WS.meta.dirSortMode = normalizeDirSortMode(
       log.dirSortMode || WS.meta.dirSortMode,
     );
+    WS.meta.containerSortByFolderPath.clear();
+    const folderSorts =
+      log.containerSortByFolderPath &&
+      typeof log.containerSortByFolderPath === "object"
+        ? log.containerSortByFolderPath
+        : {};
+    for (const rawPath of Object.keys(folderSorts)) {
+      const path = normalizeDirPathValue(rawPath);
+      const mode = normalizeContainerSortMode(folderSorts[rawPath]);
+      if (!mode || (!path && rawPath !== "")) continue;
+      WS.meta.containerSortByFolderPath.set(path, mode);
+    }
+    WS.meta.containerSortByTagKey.clear();
+    const tagSorts =
+      log.containerSortByTagKey && typeof log.containerSortByTagKey === "object"
+        ? log.containerSortByTagKey
+        : {};
+    for (const rawKey of Object.keys(tagSorts)) {
+      const key = String(rawKey || "");
+      const mode = normalizeContainerSortMode(tagSorts[rawKey]);
+      if (!key || !mode) continue;
+      WS.meta.containerSortByTagKey.set(key, mode);
+    }
   }
   metaMergeOptionsPartial(log.options || null);
 }
@@ -29883,6 +29970,11 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
     oldPrefix,
     newPrefix,
   );
+  WS.meta.containerSortByFolderPath = remapPathMapKeys(
+    WS.meta.containerSortByFolderPath,
+    oldPrefix,
+    newPrefix,
+  );
   WS.meta.dirThumbPresets = remapPathMapValues(
     WS.meta.dirThumbPresets,
     oldPrefix,
@@ -29937,6 +30029,7 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
       }),
     );
   }
+  metaTrackDirtyDocIds([META_DOC_IDS.prefGeneral]);
 }
 
 function applyRenameInMemory(dirNode, newName) {
@@ -30659,6 +30752,124 @@ function cycleDirSortMode(mode, includeScoreUi = true) {
   return values[(idx >= 0 ? idx + 1 : 0) % values.length];
 }
 
+function containerSortModeOptions() {
+  return [{ value: "", label: "None" }].concat(dirSortModeOptions());
+}
+
+function normalizeContainerSortMode(mode) {
+  const raw = String(mode || "");
+  return dirSortModeOptions().some((option) => option.value === raw) ? raw : "";
+}
+
+function metaGetFolderContainerSortMode(path) {
+  if (!WS.meta || !WS.meta.containerSortByFolderPath) return "";
+  return normalizeContainerSortMode(
+    WS.meta.containerSortByFolderPath.get(normalizeDirPathValue(path)),
+  );
+}
+
+function metaSetFolderContainerSortMode(path, mode) {
+  if (!WS.meta || !WS.meta.containerSortByFolderPath) return false;
+  const normalizedPath = normalizeDirPathValue(path);
+  const next = normalizeContainerSortMode(mode);
+  const previous = metaGetFolderContainerSortMode(normalizedPath);
+  if (previous === next) return false;
+  if (next) WS.meta.containerSortByFolderPath.set(normalizedPath, next);
+  else WS.meta.containerSortByFolderPath.delete(normalizedPath);
+  invalidateDirSortOrderCaches();
+  metaMarkDirty(META_DOC_IDS.prefGeneral);
+  return true;
+}
+
+function metaGetTagContainerSortMode(tagKey) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.containerSortByTagKey) return "";
+  return normalizeContainerSortMode(WS.meta.containerSortByTagKey.get(key));
+}
+
+function metaSetTagContainerSortMode(tagKey, mode) {
+  const key = String(tagKey || "");
+  if (!key || !WS.meta || !WS.meta.containerSortByTagKey) return false;
+  const next = normalizeContainerSortMode(mode);
+  const previous = metaGetTagContainerSortMode(key);
+  if (previous === next) return false;
+  if (next) WS.meta.containerSortByTagKey.set(key, next);
+  else WS.meta.containerSortByTagKey.delete(key);
+  invalidateDirSortOrderCaches();
+  metaMarkDirty(META_DOC_IDS.prefGeneral);
+  return true;
+}
+
+function effectiveFolderContainerSortMode(dirNode) {
+  let node = dirNode || null;
+  while (node) {
+    const path = String(node.path || "");
+    const mode = metaGetFolderContainerSortMode(path);
+    if (mode) return mode;
+    node = node.parent || null;
+  }
+  return "";
+}
+
+function tagContainerSortModeForContext(modeRaw, tagRaw, albumRaw, originRaw) {
+  const mode = String(modeRaw || "");
+  if (!mode) return "";
+  const entry = {
+    kind: "tag",
+    special:
+      mode === "favorites" || mode === "untagged" || mode === "hidden" || mode === "storage"
+        ? mode
+        : "",
+    tag: mode === "tag" ? String(tagRaw || "") : "",
+    album: mode === "album" ? String(albumRaw || "") : "",
+    originPath: String(originRaw || ""),
+  };
+  const direct = metaGetTagContainerSortMode(tagThumbnailKeyForEntry(entry));
+  if (direct) return direct;
+  if (mode === "tag" && albumRaw) {
+    return metaGetTagContainerSortMode(
+      tagThumbnailKeyForAlbum(albumRaw, originRaw),
+    );
+  }
+  return "";
+}
+
+function activeTagContainerSortMode() {
+  if (!WS.view) return "";
+  const direct = tagContainerSortModeForContext(
+    WS.view.tagFolderActiveMode,
+    WS.view.tagFolderActiveTag,
+    WS.view.tagFolderActiveAlbum,
+    WS.view.tagFolderOriginPath,
+  );
+  if (direct) return direct;
+  const currentPath = String(WS.nav?.dirNode?.path || "");
+  const stack = Array.isArray(WS.view.tagNavStack)
+    ? WS.view.tagNavStack
+    : [];
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const frame = stack[i];
+    if (!frame || frame.type !== "tag-view") continue;
+    if (
+      currentPath &&
+      !findMatchingVirtualPortalRootPath(frame, currentPath)
+    )
+      continue;
+    const inherited = tagContainerSortModeForContext(
+      frame.mode,
+      frame.tag,
+      frame.album,
+      frame.originPath,
+    );
+    if (inherited) return inherited;
+  }
+  return "";
+}
+
+function effectiveContainerSortModeForDir(dirNode) {
+  return activeTagContainerSortMode() || effectiveFolderContainerSortMode(dirNode);
+}
+
 function buildDirSortMetrics() {
   if (DIR_SORT_METRICS_CACHE) return DIR_SORT_METRICS_CACHE;
   const sizeByPath = new Map();
@@ -31283,13 +31494,9 @@ function getRandomOrderForDirs(dirs) {
   return shuffled;
 }
 
-function sortDirsForDisplay(dirs) {
+function sortDirsByMode(dirs, requestedMode) {
   const out = Array.isArray(dirs) ? dirs.slice() : [];
-  if (randomSortAffectsFolders() && out.length) {
-    const parentPath = String(out[0]?.parent?.path || "");
-    if (parentPath) return getRandomOrderForDirs(out);
-  }
-  const sortMode = normalizeDirSortMode(WS.meta.dirSortMode);
+  const sortMode = normalizeDirSortMode(requestedMode);
   if (sortMode === "score") {
     out.sort((a, b) => {
       const sa = metaGetScore(a?.path || "");
@@ -31338,6 +31545,20 @@ function sortDirsForDisplay(dirs) {
   return out;
 }
 
+function sortDirsForDisplay(dirs) {
+  const out = Array.isArray(dirs) ? dirs.slice() : [];
+  const parentNode = out.length ? out[0]?.parent || null : null;
+  const containerSortMode = effectiveContainerSortModeForDir(parentNode);
+  if (!containerSortMode && randomSortAffectsFolders() && out.length) {
+    const parentPath = String(parentNode?.path || "");
+    if (parentPath || parentNode === WS.root) return getRandomOrderForDirs(out);
+  }
+  return sortDirsByMode(
+    out,
+    containerSortMode || normalizeDirSortMode(WS.meta.dirSortMode),
+  );
+}
+
 function sortDirCollectionForDisplay(dirs, key = "collection") {
   const out = Array.isArray(dirs) ? dirs.slice() : [];
   if (randomSortAffectsFolders() && out.length) {
@@ -31364,7 +31585,7 @@ function sortDirCollectionForDisplay(dirs, key = "collection") {
     }
     return shuffled;
   }
-  return sortDirsForDisplay(out);
+  return sortDirsByMode(out, normalizeDirSortMode(WS.meta.dirSortMode));
 }
 
 function passesFilter(rec) {
@@ -31781,6 +32002,7 @@ function getOrderedFileIdsForDir(dirNode, includeChildren = false) {
   dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode) return [];
   let ids = [];
+  const containerSortMode = effectiveContainerSortModeForDir(dirNode);
 
   // Random file sort is an explicit view-mode override and must outrank a pinned
   // manual order. Otherwise any folder that was ever reordered (drag, reverse, or
@@ -31788,7 +32010,19 @@ function getOrderedFileIdsForDir(dirNode, includeChildren = false) {
   // re-pins preserveOrder on every read, so the folder stays stuck for the rest of
   // the session and only an app restart clears it. Toggling random off falls through
   // to the pinned order below, so nothing is lost.
-  if (randomSortAffectsFiles()) {
+  if (containerSortMode) {
+    ids = dirNode.childrenFiles.slice();
+    ids.sort((a, b) => {
+      const recordA = WS.fileById.get(a);
+      const recordB = WS.fileById.get(b);
+      if (containerSortMode === "size-desc") {
+        const sizeA = Math.max(0, Number(recordA?.size) || 0);
+        const sizeB = Math.max(0, Number(recordB?.size) || 0);
+        if (sizeA !== sizeB) return sizeB - sizeA;
+      }
+      return compareIndexedNames(recordA?.name || "", recordB?.name || "");
+    });
+  } else if (randomSortAffectsFiles()) {
     ids = getRandomOrderForDir(dirNode);
   } else if (applySessionFileOrderForDir(dirNode)) {
     ids = dirNode.childrenFiles.slice();
@@ -33260,6 +33494,69 @@ function filterTagEntryDirsByVisibleRecords(nodes, entry) {
     seen.add(path);
     out.push(node);
   }
+  const containerMode = tagContainerSortModeForEntry(entry);
+  return containerMode ? sortDirsByMode(out, containerMode) : out;
+}
+
+function tagContainerSortModeForEntry(entry) {
+  const direct = metaGetTagContainerSortMode(tagThumbnailKeyForEntry(entry));
+  if (direct) return direct;
+  if (entry?.tag && entry?.album) {
+    return metaGetTagContainerSortMode(
+      tagThumbnailKeyForAlbum(entry.album, entry.originPath || ""),
+    );
+  }
+  return "";
+}
+
+function sortDirsForTagEntryContainer(dirs, entry) {
+  const mode = tagContainerSortModeForEntry(entry);
+  return mode ? sortDirsByMode(dirs, mode) : dirs;
+}
+
+function sortTagEntriesByMode(entries, requestedMode) {
+  const out = Array.isArray(entries) ? entries.slice() : [];
+  const mode = normalizeContainerSortMode(requestedMode);
+  if (!mode || mode === "name") {
+    return out.sort((a, b) =>
+      compareIndexedNames(
+        String(a?.label || a?.tag || a?.album || ""),
+        String(b?.label || b?.tag || b?.album || ""),
+      ),
+    );
+  }
+  const sizeMemo = new Map();
+  const metricsByEntry = new Map();
+  const metricsFor = (entry) => {
+    if (!metricsByEntry.has(entry)) {
+      metricsByEntry.set(entry, getTagEntryAggregateMetrics(entry, sizeMemo));
+    }
+    return metricsByEntry.get(entry);
+  };
+  out.sort((a, b) => {
+    const ma = metricsFor(a);
+    const mb = metricsFor(b);
+    let valueA = 0;
+    let valueB = 0;
+    if (mode === "score") {
+      valueA = Number(ma.score) || 0;
+      valueB = Number(mb.score) || 0;
+    } else if (mode === "efficiency") {
+      valueA = (Number(ma.score) || 0) / Math.max(1, Number(ma.fileCount) || 0);
+      valueB = (Number(mb.score) || 0) / Math.max(1, Number(mb.fileCount) || 0);
+    } else if (mode === "size-desc") {
+      valueA = Number(ma.sizeBytes) || 0;
+      valueB = Number(mb.sizeBytes) || 0;
+    } else if (mode === "count-recursive") {
+      valueA = (Number(ma.folderCount) || 0) + (Number(ma.fileCount) || 0);
+      valueB = (Number(mb.folderCount) || 0) + (Number(mb.fileCount) || 0);
+    }
+    if (valueA !== valueB) return valueB - valueA;
+    return compareIndexedNames(
+      String(a?.label || a?.tag || a?.album || ""),
+      String(b?.label || b?.tag || b?.album || ""),
+    );
+  });
   return out;
 }
 
@@ -33538,9 +33835,13 @@ function getAlbumEntriesForTagForBaseNode(baseNode, tagName) {
   const basePath = String(baseNode.path || "");
   const albumGroups = collectAlbumTagGroupsForScope(basePath);
   const entries = albumGroups.get(tag) || [];
-  return entries.slice().sort((a, b) =>
-    String(a.album || "").localeCompare(String(b.album || "")),
-  );
+  const parentEntry = { kind: "tag", tag, originPath: basePath };
+  const mode = metaGetTagContainerSortMode(tagThumbnailKeyForEntry(parentEntry));
+  return mode
+    ? sortTagEntriesByMode(entries, mode)
+    : entries.slice().sort((a, b) =>
+        String(a.album || "").localeCompare(String(b.album || "")),
+      );
 }
 
 function getDirectDirsForAlbumForBaseNode(baseNode, albumName) {
@@ -33756,8 +34057,14 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     }
   }
 
-  if (cacheKey) TAG_FOLDER_ENTRIES_CACHE.set(cacheKey, entries);
-  return placeholderEntry ? [placeholderEntry].concat(entries) : entries;
+  const folderSortMode = effectiveContainerSortModeForDir(dirNode);
+  const sortedEntries = folderSortMode
+    ? sortTagEntriesByMode(entries, folderSortMode)
+    : entries;
+  if (cacheKey) TAG_FOLDER_ENTRIES_CACHE.set(cacheKey, sortedEntries);
+  return placeholderEntry
+    ? [placeholderEntry].concat(sortedEntries)
+    : sortedEntries;
 }
 
 function getTagFolderEntries() {
@@ -33862,8 +34169,19 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
       albumTag: true,
     });
   }
-  if (cacheKey) TAG_ALBUM_TAG_ENTRIES_CACHE.set(cacheKey, out);
-  return out;
+  const albumEntry = {
+    kind: "tag",
+    album,
+    originPath: basePath,
+  };
+  const containerMode = metaGetTagContainerSortMode(
+    tagThumbnailKeyForEntry(albumEntry),
+  );
+  const sortedOut = containerMode
+    ? sortTagEntriesByMode(out, containerMode)
+    : out;
+  if (cacheKey) TAG_ALBUM_TAG_ENTRIES_CACHE.set(cacheKey, sortedOut);
+  return sortedOut;
 }
 
 function getDirsForTagFolderView() {
@@ -33925,7 +34243,21 @@ function getDirsForTagFolderView() {
     ));
   }
   if (mode === "storage") {
-    return setCached(sortDirCollectionForDisplay(getAllStorageDirNodes(), `tag-folder-storage:${basePath}`));
+    const entry = {
+      kind: "tag",
+      special: "storage",
+      label: STORAGE_UI_LABEL,
+      originPath: basePath,
+    };
+    return setCached(
+      sortDirsForTagEntryContainer(
+        sortDirCollectionForDisplay(
+          getAllStorageDirNodes(),
+          `tag-folder-storage:${basePath}`,
+        ),
+        entry,
+      ),
+    );
   }
   if (mode === "album") {
     const album = normalizeTagAlbumName(WS.view.tagFolderActiveAlbum || "");
@@ -33991,7 +34323,21 @@ function getDirsForTagViewFrame(frame) {
         originPath: String(baseNode.path || ""),
       },
     );
-  if (frame.mode === "storage") return sortDirCollectionForDisplay(getAllStorageDirNodes(), `tag-frame-storage:${String(baseNode.path || "")}`);
+  if (frame.mode === "storage") {
+    const entry = {
+      kind: "tag",
+      special: "storage",
+      label: STORAGE_UI_LABEL,
+      originPath: String(baseNode.path || ""),
+    };
+    return sortDirsForTagEntryContainer(
+      sortDirCollectionForDisplay(
+        getAllStorageDirNodes(),
+        `tag-frame-storage:${String(baseNode.path || "")}`,
+      ),
+      entry,
+    );
+  }
   if (frame.mode === "album")
     return filterTagEntryDirsByVisibleRecords(
       getDirectDirsForAlbumForBaseNode(baseNode, frame.album || ""),
@@ -34063,7 +34409,13 @@ function getDirsForTagEntry(entry) {
       return out;
     }
     if (entry.special === "storage") {
-      const out = sortDirCollectionForDisplay(getAllStorageDirNodes(), `tag-entry-storage:${originPath}`);
+      const out = sortDirsForTagEntryContainer(
+        sortDirCollectionForDisplay(
+          getAllStorageDirNodes(),
+          `tag-entry-storage:${originPath}`,
+        ),
+        entry,
+      );
       if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
       return out;
     }
@@ -42372,6 +42724,16 @@ function openTagContextMenu(context) {
   closeTagContextMenu();
   closeActionMenus();
   const menu = tagActionMenuEl;
+  const infoDropdown = createItemInfoDropdown({
+    kind: "tag",
+    entry: tagEntryForThumb,
+  });
+  if (infoDropdown) menu.appendChild(infoDropdown);
+  const sortSubmenu = createContainerSortSubmenu({
+    kind: "tag",
+    entry: tagEntryForThumb,
+  });
+  if (sortSubmenu) menu.appendChild(sortSubmenu);
   if (isAlbumEntry) {
     appendTagMenuTwoColRow(
       menu,
@@ -42384,10 +42746,8 @@ function openTagContextMenu(context) {
       }),
       createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
     );
-    appendTagMenuTwoColRow(
-      menu,
+    menu.appendChild(
       createTagMenuButton("Delete", () => handleTagMenuAction("delete")),
-      createTagMenuSpacerButton(),
     );
   } else {
     appendTagMenuTwoColRow(
@@ -42770,6 +43130,174 @@ function buildDropdownMenuSubmenuHtml(label, buttonsHtml) {
       `;
 }
 
+function itemInfoRowsForTarget(target) {
+  const item = target && typeof target === "object" ? target : null;
+  if (!item) return [];
+  if (item.kind === "dir") {
+    const node = item.node || null;
+    if (!node) return [];
+    const path = String(node.path || "");
+    const tags = metaGetUserTags(path);
+    const album = metaGetAlbumForPath(path);
+    return [
+      ["Name", dirUiLabel(node) || displayName(node.name) || "Root"],
+      ["Type", folderItemTypeLabelForNode(node)],
+      ["Location", displayPath(path) || "Root"],
+      ["Folders", String(getDirectFolderCountForNode(node))],
+      ["Files", String(getRecursiveFileCountForNode(node))],
+      ["Size", formatBytes(getDirRecursiveSizeBytesForNode(node, new Map()))],
+      ["Score", String(metaGetScore(path) || 0)],
+      ["Tags", tags.length ? tags.join(", ") : "None"],
+      ["Album", album || "None"],
+    ];
+  }
+  if (item.kind === "file") {
+    const rec = item.record || null;
+    if (!rec) return [];
+    const modified = Math.max(0, Number(rec.lastModified) || 0);
+    return [
+      ["Name", fileDisplayNameForRecord(rec) || String(rec.name || "")],
+      ["Type", fileItemTypeLabelForRecord(rec)],
+      ["Location", displayRelPath(rec.relPath || rec.dirPath || "") || "Root"],
+      ["Size", formatBytes(Math.max(0, Number(rec.size) || 0))],
+      ["Modified", modified ? new Date(modified).toLocaleString() : "Unknown"],
+    ];
+  }
+  if (item.kind === "tag") {
+    const entry = item.entry || null;
+    if (!entry) return [];
+    const metrics = getTagEntryAggregateMetrics(entry, new Map());
+    const rows = [
+      ["Name", String(entry.label || entry.tag || entry.album || "")],
+      ["Type", tagItemTypeLabelForEntry(entry)],
+      ["Location", displayPath(entry.originPath || "") || "Root"],
+      ["Folders", String(Math.max(0, Number(metrics.folderCount) || 0))],
+      ["Files", String(Math.max(0, Number(metrics.fileCount) || 0))],
+      ["Size", formatBytes(Math.max(0, Number(metrics.sizeBytes) || 0))],
+      ["Score", String(Number(metrics.score) || 0)],
+    ];
+    if (entry.album && entry.tag) rows.push(["Album", String(entry.album)]);
+    return rows;
+  }
+  return [];
+}
+
+function createItemInfoDropdown(target) {
+  const rows = itemInfoRowsForTarget(target);
+  if (!rows.length) return null;
+  const wrap = document.createElement("div");
+  wrap.className = "dropdownMenuSubmenu dropdownMenuItemInfo";
+  wrap.addEventListener("click", (e) => e.stopPropagation());
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "dropdownMenuSubmenuTrigger";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.innerHTML = `<span>Item Info</span><span class="dropdownMenuSubmenuCaret" aria-hidden="true">${SUBMENU_CHEVRON_SVG}</span>`;
+  const panel = document.createElement("div");
+  panel.className =
+    "dropdownMenu dropdownMenuSubmenuPanel dropdownMenuItemInfoCard";
+  rows.forEach(([label, value]) => {
+    const row = document.createElement("div");
+    row.className = "dropdownMenuItemInfoRow";
+    const key = document.createElement("span");
+    key.className = "dropdownMenuItemInfoLabel";
+    key.textContent = String(label || "");
+    const shown = document.createElement("span");
+    shown.className = "dropdownMenuItemInfoValue";
+    shown.textContent = String(value == null ? "" : value);
+    row.appendChild(key);
+    row.appendChild(shown);
+    panel.appendChild(row);
+  });
+  wrap.appendChild(trigger);
+  wrap.appendChild(panel);
+  return wrap;
+}
+
+function buildItemInfoDropdownHtml(target) {
+  const rows = itemInfoRowsForTarget(target);
+  if (!rows.length) return "";
+  const rowsHtml = rows
+    .map(
+      ([label, value]) => `
+        <div class="dropdownMenuItemInfoRow">
+          <span class="dropdownMenuItemInfoLabel">${escapeHtml(String(label || ""))}</span>
+          <span class="dropdownMenuItemInfoValue">${escapeHtml(String(value == null ? "" : value))}</span>
+        </div>`,
+    )
+    .join("");
+  return `
+    <div class="dropdownMenuSubmenu dropdownMenuItemInfo">
+      <button type="button" class="dropdownMenuSubmenuTrigger" aria-haspopup="dialog">
+        <span>Item Info</span>
+        <span class="dropdownMenuSubmenuCaret" aria-hidden="true">${SUBMENU_CHEVRON_SVG}</span>
+      </button>
+      <div class="dropdownMenu dropdownMenuSubmenuPanel dropdownMenuItemInfoCard">
+        ${rowsHtml}
+      </div>
+    </div>`;
+}
+
+function containerSortModeForTarget(target) {
+  if (!target) return "";
+  if (target.kind === "dir")
+    return metaGetFolderContainerSortMode(target.node?.path || "");
+  if (target.kind === "tag")
+    return metaGetTagContainerSortMode(tagThumbnailKeyForEntry(target.entry));
+  return "";
+}
+
+function setContainerSortModeForTarget(target, mode) {
+  if (!target) return false;
+  if (target.kind === "dir")
+    return metaSetFolderContainerSortMode(target.node?.path || "", mode);
+  if (target.kind === "tag")
+    return metaSetTagContainerSortMode(
+      tagThumbnailKeyForEntry(target.entry),
+      mode,
+    );
+  return false;
+}
+
+function applyContainerSortSelection(target, mode) {
+  const next = normalizeContainerSortMode(mode);
+  const changed = setContainerSortModeForTarget(target, next);
+  closeTagContextMenu();
+  closeActionMenus();
+  if (!changed) return false;
+  applyFolderSortModeEverywhere(true);
+  showStatusMessage(
+    `Container sort: ${next ? dirSortModeLabel(next) : "None"}.`,
+  );
+  return true;
+}
+
+function createContainerSortSubmenu(target) {
+  const current = containerSortModeForTarget(target);
+  const buttons = containerSortModeOptions().map((option) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = `${option.value === current ? "●" : "○"} ${option.label}`;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      applyContainerSortSelection(target, option.value);
+    });
+    return btn;
+  });
+  return createDropdownMenuSubmenu("Sort", buttons);
+}
+
+function buildContainerSortSubmenuHtml(target) {
+  const current = containerSortModeForTarget(target);
+  const buttonsHtml = containerSortModeOptions()
+    .map(
+      (option) =>
+        `<button type="button" data-action="container-sort:${escapeHtml(option.value || "none")}">${option.value === current ? "●" : "○"} ${escapeHtml(option.label)}</button>`,
+    )
+    .join("");
+  return buildDropdownMenuSubmenuHtml("Sort", buttonsHtml);
+}
+
 function buildFolderThumbnailSubmenuHtml(options) {
   const cfg = options || {};
   let buttonsHtml = "";
@@ -42834,6 +43362,9 @@ function openPreviewFileActionMenu(rec, opts = {}) {
     });
     return btn;
   };
+
+  const infoDropdown = createItemInfoDropdown({ kind: "file", record: rec });
+  if (infoDropdown) menu.appendChild(infoDropdown);
 
   const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
   if (!trashTargetPath) {
@@ -42908,6 +43439,7 @@ function buildFolderMenuState(dirNode) {
   const hasRandomCandidate =
     !isStorageGhost && !!randomThumbnailCandidateForDirNode(dirNode);
   return {
+    dirNode,
     path: p,
     isRootNode,
     isTrashRootPortal,
@@ -43004,6 +43536,16 @@ function buildFolderActionMenuDom(
     menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
   };
   if (state.isTrashRootPortal) return;
+  const infoDropdown = createItemInfoDropdown({
+    kind: "dir",
+    node: state.dirNode,
+  });
+  if (infoDropdown) menuEl.appendChild(infoDropdown);
+  const sortSubmenu = createContainerSortSubmenu({
+    kind: "dir",
+    node: state.dirNode,
+  });
+  if (sortSubmenu) menuEl.appendChild(sortSubmenu);
   if (state.isTrashPutBackOnly) {
     menuEl.appendChild(makeBtn("Remove from trash", "put-back", !state.canPutBack));
     return;
@@ -43081,6 +43623,14 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   const isRootNode = !!node && node === WS.root;
   const isStorageRestricted = isStorageStubDirNode(node) || (!!p && metaHasStorage(p));
   if (!node || (!p && !isRootNode) || !action) return false;
+  if (String(action).startsWith("container-sort:")) {
+    const rawMode = String(action).slice("container-sort:".length);
+    applyContainerSortSelection(
+      { kind: "dir", node },
+      rawMode === "none" ? "" : rawMode,
+    );
+    return true;
+  }
   if (
     isStorageRestricted &&
     action !== "remove-from-storage" &&
@@ -43701,9 +44251,13 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     return btn;
   };
   const appendTwoCol = (leftBtn, rightBtn) => {
+    if (!rightBtn) {
+      if (leftBtn) menu.appendChild(leftBtn);
+      return;
+    }
     const row = document.createElement("div");
     row.className = "menuTwoColRow";
-    row.appendChild(leftBtn);
+    if (leftBtn) row.appendChild(leftBtn);
     row.appendChild(rightBtn);
     menu.appendChild(row);
   };
@@ -43917,7 +44471,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         );
         finalizeBulkSelectionAction();
       })
-    : createTagMenuSpacerButton();
+    : null;
   appendTwoCol(previewBulkTagDeleteBtn, previewBulkTagHideBtn);
 
   if (singleRegularTagEntry) {
@@ -44146,17 +44700,6 @@ function createTagMenuButton(label, onClick, disabled = false, className = "") {
     if (btn.disabled) return;
     onClick();
   });
-  return btn;
-}
-
-function createTagMenuSpacerButton() {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.disabled = true;
-  btn.tabIndex = -1;
-  btn.setAttribute("aria-hidden", "true");
-  btn.style.visibility = "hidden";
-  btn.textContent = "";
   return btn;
 }
 
@@ -45248,7 +45791,7 @@ function renderDirectoriesActionHeader() {
           );
           finalizeBulkSelectionAction();
         })
-      : createTagMenuSpacerButton();
+      : null;
     directoriesActionMenuEl.appendChild(
       makeTwoColRow(deleteBtn, hideBtn),
     );
@@ -46623,26 +47166,34 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           showSetNoThumbnail,
           showSetRandomThumbnail,
         });
+        const folderMenuTarget = { kind: "dir", node: entry.node };
+        const folderMenuLeadHtml =
+          buildItemInfoDropdownHtml(folderMenuTarget) +
+          buildContainerSortSubmenuHtml(folderMenuTarget);
         // Menu (three dot / ⋯) for single-folder actions.
         let menuButtons = "";
         let menuTitle = "Folder menu";
         if (isRootNode) {
           menuButtons = `
+                ${folderMenuLeadHtml}
                 <button type="button" data-action="appearance-preset-set">Filters</button>
                 ${folderThumbnailMenuHtml}
                 <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
               `;
         } else if (folderMenuState.isTrashPutBackOnly) {
           menuButtons = `
+                ${folderMenuLeadHtml}
                 <button type="button" data-action="put-back"${folderMenuState.canPutBack ? "" : " disabled"}>Remove from trash</button>
               `;
         } else if (folderMenuState.isStorageRestricted) {
           menuButtons = `
+                ${folderMenuLeadHtml}
                 <button type="button" data-action="remove-from-storage"${folderMenuState.canRemoveFromStorage ? "" : " disabled"}>Remove from storage</button>
                 <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
               `;
         } else {
           menuButtons = `
+                ${folderMenuLeadHtml}
                 <button type="button" data-action="tag">Tag</button>
                 <button type="button" data-action="album">Album</button>
                 <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
@@ -46889,8 +47440,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const canLooseSetMerge = !!WS.meta.fsRootHandle;
         const fileTrashTargetPath = trashTopLevelItemPathForFileRecord(rec);
         const fileMenuButtons = fileTrashTargetPath
-          ? `<button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from trash</button>`
+          ? `${buildItemInfoDropdownHtml({ kind: "file", record: rec })}<button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from trash</button>`
           : `
+                  ${buildItemInfoDropdownHtml({ kind: "file", record: rec })}
                   ${buildFileThumbnailSubmenuHtml(
                     getThumbnailMenuTargetsForRecord(rec),
                     !!rec,
@@ -56075,8 +56627,7 @@ function refreshLiveSettingsPaneFromKeyboardAction() {
 function toggleSettingsAndDirectoriesPanesKeybindAction() {
   if (!WS.meta) return false;
   if (IS_SETTINGS_WINDOW) {
-    openMenu(MENU_LAST_TAB || "general");
-    return true;
+    return requestSettingsWindow(MENU_LAST_TAB || "general");
   }
   const opened = requestSettingsWindow(MENU_LAST_TAB || "general");
   if (opened) showStatusMessage("Settings opened.", "pane-toggles");
@@ -57740,22 +58291,24 @@ window.addEventListener("drop", (e) => {
   }
 });
 
-// Hard-coded menu toggle: ` / ~ opens the last-used menu tab.
+// Command+, is a fixed macOS application shortcut. Handling it before the
+// configurable keybind dispatcher also makes the toggle work while the
+// secondary Settings webview itself has focus.
 document.addEventListener(
   "keydown",
   (e) => {
-    if (busyOverlayActive()) {
-      e.preventDefault();
+    if (
+      String(e.key || "") !== "," ||
+      !e.metaKey ||
+      e.ctrlKey ||
+      e.altKey ||
+      e.shiftKey ||
+      e.repeat
+    )
       return;
-    }
-    if (e.defaultPrevented) return;
-    if (e.repeat) return;
-    if (e.code !== "Backquote") return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (VIEWER_MODE && isQuadPlaybackMode()) return;
-    if (isTextInputTarget(e.target)) return;
     e.preventDefault();
-    toggleMenuForTab(MENU_LAST_TAB || "general");
+    e.stopImmediatePropagation();
+    requestSettingsWindow(MENU_LAST_TAB || "general");
   },
   true,
 );
