@@ -23894,7 +23894,9 @@ async function rebuildWorkspaceAfterStorageStateChange() {
     return true;
   }
   if (Array.isArray(LAST_LOADED_FILE_LIST) && LAST_LOADED_FILE_LIST.length) {
-    return await buildWorkspaceFromFileList(LAST_LOADED_FILE_LIST);
+    return await buildWorkspaceFromFileList(LAST_LOADED_FILE_LIST, {
+      preserveView: true,
+    });
   }
   showStatusMessage("Reload the current folder to apply storage changes.");
   return false;
@@ -26273,7 +26275,11 @@ async function metaReapplyFsScoresAndTags() {
   if (tagsLog) metaApplyTagsDocLog(tagsLog);
 }
 
-async function buildWorkspaceFromFiles(fileList) {
+async function buildWorkspaceFromFiles(fileList, opts = null) {
+  // A same-root rebuild (storage toggle / add-content refresh) must not teleport
+  // the user to the root's first item — capture the location before the reset.
+  const preserveView = !!(opts && opts.preserveView && WS.root);
+  const preservedState = preserveView ? captureSameRootRebuildState() : null;
   resetWorkspace();
   clearWorkspaceEmptyState();
 
@@ -26346,22 +26352,26 @@ async function buildWorkspaceFromFiles(fileList) {
   await finalizeAspectRatiosAndStorageForLoadedWorkspace();
   rebuildDirectoryDerivedIndex();
 
-  // Initialize List Pane at root listing
-  WS.nav.dirNode = WS.root;
-  WS.view.aboveRootView = false;
-  syncActivePaneWithLayout();
-  syncBulkSelectionForCurrentDir();
-  syncFavoritesUi();
-  syncTagUiForCurrentDir();
-  rebuildDirectoriesEntries();
-  primeTagDerivedCachesForDir(WS.root);
-  WS.nav.selectedIndex = 0;
-  WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection({ force: true });
+  // Initialize List Pane at root listing (or restore the pre-rebuild location).
+  if (preservedState) {
+    applySameRootRebuildLocation(preservedState);
+  } else {
+    WS.nav.dirNode = WS.root;
+    WS.view.aboveRootView = false;
+    syncActivePaneWithLayout();
+    syncBulkSelectionForCurrentDir();
+    syncFavoritesUi();
+    syncTagUiForCurrentDir();
+    rebuildDirectoriesEntries();
+    primeTagDerivedCachesForDir(WS.root);
+    WS.nav.selectedIndex = 0;
+    WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+    syncPreviewToSelection({ force: true });
+  }
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
-  applyDefaultRootLandingSidebars();
-  seedTabsForWorkspace();
+  if (!preservedState) applyDefaultRootLandingSidebars();
+  seedTabsForWorkspace(preservedState ? preservedState.tabs : null);
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -27923,6 +27933,10 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     !(opts && opts.freshOpen) &&
     !!(WS.root && WS.root.fsHandle && WS.root.fsHandle === rootHandle);
   const preservedState = preserveView ? snapshotRefreshState() : null;
+  // Capture the exact previewed location (the "location you are at") before the
+  // tree is torn down, so a same-root rebuild restores it verbatim instead of
+  // snapping the preview to the file-pane selection.
+  if (preservedState) preservedState.previewState = capturePreviewRestoreState();
   // Tabs survive a same-root rebuild. resetWorkspace() clears WS.tabs, so hold
   // the list here and re-seed it after the tree is rebuilt. Cached navEntries
   // are dropped because they reference DirNodes the rebuild replaces — the
@@ -28183,7 +28197,18 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
       WS.nav.selectedIndex = 0;
       WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
     }
-    syncPreviewToSelection({ force: true });
+    // Restore the exact previewed location when it still exists; only fall back
+    // to deriving it from the selection when the captured target is gone (e.g.
+    // the previewed folder is the one just sent to storage). This keeps a
+    // storage toggle / refresh from teleporting the preview.
+    if (
+      !(
+        preservedState &&
+        applyCapturedPreviewStateAfterRebuild(preservedState.previewState)
+      )
+    ) {
+      syncPreviewToSelection({ force: true });
+    }
     primeDirectoryNavManifests(WS.root);
     syncPinnedHotNavigationDirectories(WS.root);
     if (!preservedState) applyDefaultRootLandingSidebars();
@@ -28227,11 +28252,15 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
   }
 }
 
-async function buildWorkspaceFromFileList(fileList) {
+async function buildWorkspaceFromFileList(fileList, opts = null) {
   const files = Array.from(fileList || []).filter(Boolean);
   if (!files.length) return false;
   const workspaceStorageKey = String(computeWorkspaceSeedForFileList(files) >>> 0);
   const storedPaths = preloadStoragePathsForFileList(files);
+  // A same-root rebuild (e.g. the non-fs storage toggle fallback) must preserve
+  // the location instead of teleporting to the root's first item.
+  const preserveView = !!(opts && opts.preserveView && WS.root);
+  const preservedState = preserveView ? captureSameRootRebuildState() : null;
   LAST_LOADED_FILE_LIST = files.slice();
 
   resetWorkspace();
@@ -28323,21 +28352,25 @@ async function buildWorkspaceFromFileList(fileList) {
   await finalizeAspectRatiosAndStorageForLoadedWorkspace();
   rebuildDirectoryDerivedIndex();
 
-  WS.nav.dirNode = WS.root;
-  WS.view.aboveRootView = false;
-  syncActivePaneWithLayout();
-  syncBulkSelectionForCurrentDir();
-  syncFavoritesUi();
-  syncTagUiForCurrentDir();
-  rebuildDirectoriesEntries();
-  primeTagDerivedCachesForDir(WS.root);
-  WS.nav.selectedIndex = 0;
-  WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  syncPreviewToSelection();
+  if (preservedState) {
+    applySameRootRebuildLocation(preservedState);
+  } else {
+    WS.nav.dirNode = WS.root;
+    WS.view.aboveRootView = false;
+    syncActivePaneWithLayout();
+    syncBulkSelectionForCurrentDir();
+    syncFavoritesUi();
+    syncTagUiForCurrentDir();
+    rebuildDirectoriesEntries();
+    primeTagDerivedCachesForDir(WS.root);
+    WS.nav.selectedIndex = 0;
+    WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+    syncPreviewToSelection();
+  }
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
-  applyDefaultRootLandingSidebars();
-  seedTabsForWorkspace();
+  if (!preservedState) applyDefaultRootLandingSidebars();
+  seedTabsForWorkspace(preservedState ? preservedState.tabs : null);
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -28552,6 +28585,95 @@ function clonePreviewRestoreState(state) {
     };
   }
   return null;
+}
+
+// Resolve a capturePreviewRestoreState() snapshot back into WS.preview after a
+// full workspace rebuild (storage toggle, add content, refresh — anything that
+// goes through buildWorkspaceFrom*). Returns true only when the captured
+// location still exists and was applied, so the caller can fall back to
+// deriving the preview from the selection. Mirrors the previewState branches of
+// restoreViewerCloseState() so a rebuild restores the exact previewed location
+// instead of teleporting to whatever the file-pane selection resolves to.
+function applyCapturedPreviewStateAfterRebuild(previewState) {
+  const st = clonePreviewRestoreState(previewState);
+  if (!st) return false;
+  if (st.kind === "tag-dir") {
+    const node = makeTagPreviewNodeForContext(
+      st.mode || "",
+      st.tag || "",
+      st.originPath || "",
+      st.album || "",
+    );
+    if (!node) return false;
+    applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
+    return true;
+  }
+  if (st.kind === "dir") {
+    const node = WS.dirByPath.get(String(st.path || "")) || null;
+    if (!node) return false;
+    applyPreviewState({ kind: "dir", dirNode: node, fileId: null });
+    return true;
+  }
+  if (st.kind === "file") {
+    const fid = String(st.fileId || "");
+    if (!fid || !WS.fileById.has(fid)) return false;
+    applyPreviewState({
+      kind: "file",
+      dirNode: resolveFilePreviewContextDir(st, fid),
+      fileId: fid,
+    });
+    return true;
+  }
+  return false;
+}
+
+// Snapshot everything a same-root workspace rebuild (storage toggle, add
+// content, refresh via a file list) must restore so it does not dump the user
+// back at the root's first item: the authoritative directory + selection + view
+// flags, the exact previewed location, and the open tab set. Captured before the
+// tree is torn down; the previewed location is re-applied with
+// applyCapturedPreviewStateAfterRebuild() and the tabs via seedTabsForWorkspace().
+function captureSameRootRebuildState() {
+  const state = snapshotRefreshState();
+  state.previewState = capturePreviewRestoreState();
+  state.tabs = {
+    activeId: String(WS.tabs.activeId || ""),
+    seq: Number(WS.tabs.seq) || 0,
+    items: WS.tabs.items.map((item) => ({
+      id: item.id,
+      state: item.state
+        ? Object.assign(cloneViewerCloseRestoreState(item.state), {
+            navEntries: [],
+            navEntriesRevision: -1,
+          })
+        : null,
+    })),
+  };
+  return state;
+}
+
+// Re-apply the directory + selection + previewed location captured by
+// captureSameRootRebuildState() after the tree has been rebuilt. The preview is
+// restored verbatim when its target still exists; only when it is gone (e.g. the
+// previewed folder is the one just sent to storage) do we derive it from the
+// restored selection.
+function applySameRootRebuildLocation(preservedState) {
+  restoreRefreshViewState(preservedState.view);
+  WS.nav.dirNode = WS.dirByPath.get(preservedState.dirPath || "") || WS.root;
+  syncActivePaneWithLayout();
+  syncBulkSelectionForCurrentDir();
+  syncFavoritesUi();
+  syncTagUiForCurrentDir();
+  if (WS.view.dirSearchPinned || String(WS.view.dirSearchQuery || "").trim()) {
+    computeDirectorySearchResults();
+  }
+  rebuildDirectoriesEntries();
+  primeTagDerivedCachesForDir(WS.root);
+  const restoredIdx = restoreRefreshSelection(preservedState.entryKey);
+  WS.nav.selectedIndex = findNearestSelectableIndex(restoredIdx, 1);
+  if (!applyCapturedPreviewStateAfterRebuild(preservedState.previewState)) {
+    syncPreviewToSelection({ force: true });
+  }
 }
 
 function cloneViewerCloseRestoreState(state) {
@@ -30453,17 +30575,17 @@ function canonicalizeActiveDirectoryReferences() {
 }
 
 function refreshCurrentViewAfterCatalogMutation(opts = null) {
-  const options = opts && typeof opts === "object" ? opts : {};
-  const preservePreviewTarget = !!options.preservePreviewTarget;
   canonicalizeActiveDirectoryReferences();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
   canonicalizeActiveDirectoryReferences();
-  if (!(preservePreviewTarget && previewTargetStillResolvable())) {
-    syncPreviewToSelection({ force: true });
-  } else {
-    canonicalizeActiveDirectoryReferences();
-  }
+  // Preserve the preview location across the mutation whenever what it shows
+  // still exists (e.g. trashing/moving some *other* folder must not teleport
+  // you). Only when the previewed target is gone do we re-derive from the
+  // selection. This used to require callers to opt in via preservePreviewTarget
+  // and otherwise force-snapped the preview to the selection.
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
+  canonicalizeActiveDirectoryReferences();
   renderDirectoriesPane(true);
   renderPreviewPane(true, true);
   syncButtons();
@@ -36330,7 +36452,13 @@ function getVisibleSiblingDirsForSlide(dirNode) {
 
   const p = dirNode?.parent;
   if (!p) return [];
-  return getChildDirsForNodeBase(p);
+  // Plain-folder browsing: album-member folders live in their album, not the
+  // parent directory, so they must not appear as siblings here. Excluding them
+  // keeps every special nav action (slides, next/prev folder, random set/file
+  // jumps) from teleporting into a folder that is only reachable via its album.
+  // When actually browsing an album, the tag-view branches above return the
+  // album's members directly, so they still slide/jump within the album.
+  return getChildDirsForNode(p);
 }
 
 function searchSessionActive() {
@@ -37528,8 +37656,19 @@ function previewTargetStillResolvable() {
   return false;
 }
 
+// The preview pane is "the location you are at". A background refresh — a
+// setting toggled by keybind, a sort/filter change, a folder moved to
+// trash/storage, any catalog mutation — must never teleport it. As long as
+// what the preview is showing still exists, keep it exactly where it is,
+// regardless of which pane is focused (the old activePane === "preview" gate
+// meant any refresh while the file pane was focused snapped the preview back to
+// the selection, often landing on the first folder in root). Only when the
+// preview target is genuinely gone do we fall back to deriving it from the
+// file-pane selection. Intentional navigation (arrow keys, entering a folder)
+// updates the preview through its own syncPreviewToSelection calls, so this
+// only governs incidental refreshes.
 function preserveActivePreviewTargetDuringDirectoriesRefresh() {
-  if (WS.view?.activePane === "preview" && previewTargetStillResolvable()) {
+  if (previewTargetStillResolvable()) {
     return false;
   }
   syncPreviewToSelection();
@@ -56332,11 +56471,7 @@ function applyViewModesEverywhere(animate = false) {
 
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-  if (
-    !(WS.view && WS.view.activePane === "preview" && previewTargetStillResolvable())
-  ) {
-    syncPreviewToSelection({ force: true });
-  }
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
 
   renderDirectoriesPane(true);
   renderPreviewPane(animate, true);
@@ -56423,11 +56558,7 @@ function applyRandomSortModeEverywhere(animate = false) {
   }
   const fallbackIndex = nextIndex >= 0 ? nextIndex : WS.nav.selectedIndex;
   WS.nav.selectedIndex = findNearestSelectableIndex(fallbackIndex, 1);
-  if (
-    !(WS.view && WS.view.activePane === "preview" && previewTargetStillResolvable())
-  ) {
-    syncPreviewToSelection();
-  }
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(animate, true);
   syncButtons();
