@@ -8276,6 +8276,20 @@ function remapPathSet(src, oldPrefix, newPrefix) {
   return next;
 }
 
+// Remap without replacing the Set object. The live bulk-selection sets are
+// aliases into the per-directory selection maps (syncBulkSelectionForCurrentDir);
+// swapping in a fresh Set breaks that aliasing, so a later clear empties the
+// detached copy while the map keeps the stale pre-move paths forever.
+function remapPathSetInPlace(set, oldPrefix, newPrefix) {
+  if (!set || !set.size || !oldPrefix) return set;
+  const remapped = Array.from(set, (p) =>
+    remapPathPrefix(oldPrefix, newPrefix, p),
+  );
+  set.clear();
+  for (const p of remapped) set.add(p);
+  return set;
+}
+
 function remapPathMapKeys(src, oldPrefix, newPrefix) {
   const next = new Map();
   for (const [key, value] of src || []) {
@@ -21629,6 +21643,13 @@ function finalizeBulkSelectionAction() {
   }
   WS.view.bulkSelectMode = false;
   clearBulkTagSelection();
+  // Rows and cards keep their baked-in highlight class until a full rebuild
+  // (selection changes only patch DOM in place), so strip it directly —
+  // otherwise a bulk action that re-rendered mid-flight (e.g. put back from
+  // trash) leaves ghost borders no click can remove.
+  document.querySelectorAll(".bulkSelected").forEach((el) => {
+    el.classList.remove("bulkSelected");
+  });
 }
 
 function hasBulkSelection() {
@@ -29964,11 +29985,14 @@ function updateViewStatePathsForRename(oldPrefix, newPrefix) {
     oldPrefix,
     newPrefix,
   );
-  WS.view.bulkTagSelectedPaths = remapPathSet(
-    WS.view.bulkTagSelectedPaths,
-    oldPrefix,
-    newPrefix,
-  );
+  // Remap the stored folder-path selections of every context, in place so the
+  // live WS.view.bulkTagSelectedPaths alias into this map stays intact.
+  for (const set of WS.view.bulkTagSelectionsByDir.values()) {
+    remapPathSetInPlace(set, oldPrefix, newPrefix);
+  }
+  // Idempotent when the live set is one of the map sets above; still needed
+  // when it isn't aliased (e.g. restored from a snapshot).
+  remapPathSetInPlace(WS.view.bulkTagSelectedPaths, oldPrefix, newPrefix);
 
   remapViewerCloseRestoreStatePaths(
     WS.view.previewFolderBridgeReturnState,
@@ -30195,11 +30219,13 @@ function applyDirectoryMoveInMemory(dirNode, newParentNode, newName) {
 }
 
 function remapFileSelectionIds(idMap) {
-  const next = new Set();
-  for (const id of WS.view.bulkFileSelectedIds || []) {
-    next.add(idMap.get(id) || id);
-  }
-  WS.view.bulkFileSelectedIds = next;
+  // In place: the live set is an alias into bulkFileSelectionsByDir, and
+  // replacing it would leave the map holding the stale pre-move ids.
+  const set = WS.view.bulkFileSelectedIds;
+  if (!set || !set.size) return;
+  const remapped = Array.from(set, (id) => idMap.get(id) || id);
+  set.clear();
+  for (const id of remapped) set.add(id);
 }
 
 function remapIdValue(idMap, value) {
@@ -37874,13 +37900,19 @@ function updatePreviewSelectionClasses() {
     }
     return;
   }
+  // Gate on bulkSelectMode: with the mode off, set contents are not a
+  // selection (hasBulkSelection is false, actions and click-to-clear ignore
+  // them), so painting them would show unremovable ghost borders.
+  const canBulk = !!(WS.view && WS.view.bulkSelectMode);
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
     const kind = String(card?.dataset?.previewItemKind || "");
     const key = String(card?.dataset?.previewItemKey || "");
     const selected = String(card?.dataset?.previewItemKey || "") === activeKey;
     let bulkSelected = false;
-    if (kind === "dir") {
+    if (!canBulk) {
+      bulkSelected = false;
+    } else if (kind === "dir") {
       const p = previewDirPathForCard(card);
       bulkSelected = !!p && WS.view.bulkTagSelectedPaths.has(p);
     } else if (kind === "file") {
@@ -48970,6 +49002,18 @@ async function navigateToDirectory(node) {
   if (previewFolderReturnState && node.path) {
     previewFolderReturnState.entryKey = `dir:${String(node.path || "")}`;
   }
+  // Descending into a real folder exits any tag/album view the path ran
+  // through (the return bridge captured above still restores it on close).
+  // Without this, rebuildDirectoriesEntries keeps building the tag/virtual
+  // list — and for a root-scoped album (originPath ""), getTagFolderBaseNode
+  // falls back to the just-entered folder, leaving the file pane empty.
+  // Mirrors enterMediaFolderWithQuickNavigation / enterSelectedDirectory.
+  if (isViewingTagFolder()) {
+    WS.view.tagFolderActiveMode = "";
+    WS.view.tagFolderActiveTag = "";
+    WS.view.tagFolderActiveAlbum = "";
+    WS.view.tagFolderOriginPath = "";
+  }
   if (searchSessionActive() && WS.view.searchRootActive) {
     enterSearchResultContext(node.path || "");
   }
@@ -52710,7 +52754,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     const p = String(dirNode?.path || "");
     const nm = dirUiLabel(dirNode);
     card.className = "folderCard folderThumbCard";
-    card.style.cursor = "default";
+    card.style.cursor = "pointer";
     card.__previewDirNode = dirNode || null;
     if (p) card.dataset.dirPath = p;
     if (p) card.dataset.previewItemKey = `dir:${p}`;
@@ -52752,6 +52796,29 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     top.appendChild(menuWrap);
     meta.appendChild(top);
     card.appendChild(meta);
+    // Storage stubs cannot be opened, but they must stay selectable — plain,
+    // Cmd/Ctrl, and Shift clicks all route through the shared selection
+    // handler so bulk actions (untag from storage, move to trash) work here.
+    const canBulkSelect = WS.view.bulkSelectMode && canUseBulkSelection();
+    if (
+      isGridInteractionMode() &&
+      !!p &&
+      canBulkSelect &&
+      WS.view.bulkTagSelectedPaths.has(p)
+    ) {
+      card.classList.add("bulkSelected");
+    }
+    card.addEventListener("click", (e) => {
+      if (e.defaultPrevented) return;
+      const target = e.target;
+      if (target && target.closest && target.closest(".dirMenu")) return;
+      handlePreviewCardSelection(card, card.__previewOpenAction, e);
+    });
+    card.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openPreviewFolderActionMenu(dirNode, { x: e.clientX, y: e.clientY });
+    });
     return card;
   }
   const visibility = previewThumbnailVisibilityForDirNode(dirNode);
