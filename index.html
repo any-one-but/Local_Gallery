@@ -4384,6 +4384,28 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0;
 }
 
+/* Preserve the last visible media frame while the next preview video is
+   decoding. This sits above both the raw media and the filtered WebGL canvas,
+   then disappears on the incoming video's first presented frame. */
+#filePreviewViewport .previewVideoTransitionFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: none;
+  background: #000;
+  pointer-events: none;
+  z-index: 3;
+}
+
+#app.preview-media-pane-background
+  #filePreviewViewport
+  .previewVideoTransitionFrame {
+  background: transparent;
+}
+
 #viewerQuadGrid {
   display: none;
   width: 100%;
@@ -17282,6 +17304,8 @@ let PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
 let PREVIEW_FILE_OBJECT_WARM_TOKEN = 0;
 let LOADED_THUMB_RELEASE_TIMER = 0;
 let previewVideoEl = null;
+let previewVideoTransitionCanvas = null;
+let PREVIEW_VIDEO_TRANSITION_TOKEN = 0;
 let PREVIEW_VIDEO_POSTER_TIMER = 0;
 let PREVIEW_VIDEO_POSTER_TOKEN = 0;
 let previewFolderEl = null;
@@ -38472,62 +38496,6 @@ function movePreviewSelectionByDirection(direction) {
   return setPreviewSelectionCard(best.card, { activate: true });
 }
 
-function movePreviewSelectionAcrossFolderEdge(step) {
-  if (!WS.root) return false;
-  const selectedKey = String((WS.view && WS.view.previewSelectedKey) || "");
-  if (!selectedKey.startsWith("file:")) return false;
-  const selectedFileId = String(selectedKey.slice(5) || "");
-  if (!selectedFileId) return false;
-  const targetDir = getPreviewTargetDir();
-  if (!targetDir || targetDir._skipTagFilters) return false;
-  const targetFileIds = getPreviewFileIdsForDir(targetDir, false);
-  const targetFileIdx = targetFileIds.indexOf(selectedFileId);
-  if (targetFileIdx < 0) return false;
-  const targetFileNextIdx = targetFileIdx + (step < 0 ? -1 : 1);
-  if (targetFileNextIdx >= 0 && targetFileNextIdx < targetFileIds.length) {
-    return setPreviewSelectionKey(`file:${targetFileIds[targetFileNextIdx]}`, {
-      activate: true,
-    });
-  }
-  const navPath = String(WS.nav.dirNode?.path || "");
-  const targetPath = String(targetDir.path || "");
-  if (navPath !== targetPath) {
-    const nextDir =
-      step < 0
-        ? getPrevSiblingDirWithFiles(targetDir)
-        : getNextSiblingDirWithFiles(targetDir);
-    if (!nextDir) return false;
-    const nextFileIds = getPreviewFileIdsForDir(nextDir, false);
-    if (!nextFileIds.length) return false;
-    const nextFileId =
-      step < 0
-        ? nextFileIds[nextFileIds.length - 1]
-        : nextFileIds[0];
-    if (!nextFileId) return false;
-    applyPreviewState({ kind: "dir", dirNode: nextDir, fileId: null });
-    WS.view.pendingPreviewSelectionKey = `file:${String(nextFileId || "")}`;
-    renderPreviewPane(true, true);
-    activatePreviewPaneSelection();
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-    return true;
-  }
-  const selectedIdx = findFileEntryIndexById(selectedFileId);
-  if (selectedIdx < 0) return false;
-  WS.nav.selectedIndex = findNearestSelectableIndex(selectedIdx, 1);
-  const slide = slideStepFileInternal(step < 0 ? -1 : 1);
-  if (!slide.moved) return false;
-  renderDirectoriesPane(true);
-  renderPreviewPane(!!slide.dirChanged, true);
-  if (WS.view.activePane === "preview") activatePreviewPaneSelection();
-  else updatePreviewSelectionClasses();
-  syncButtons();
-  kickVideoThumbsForPreview();
-  kickImageThumbsForPreview();
-  return true;
-}
-
 function jumpPreviewTargetToDirectoryFile(dirNode, mode = "first") {
   if (!dirNode || dirNode._skipTagFilters) return false;
   const fileIds = getPreviewFileIdsForDir(dirNode, false);
@@ -49153,6 +49121,8 @@ function setPreviewBodyMode(mode) {
   previewBodyEl.classList.toggle("preview-grid", mode === "grid");
   previewBodyEl.classList.remove("preview-expanded");
   previewBodyEl.classList.toggle("preview-placeholder", mode === "placeholder");
+  if (mode !== "file" && previewVideoTransitionCanvas)
+    previewVideoTransitionCanvas.style.display = "none";
   syncPreviewMediaModeClass(mode);
 }
 
@@ -49447,29 +49417,298 @@ function schedulePreviewVideoPosterRequest(rec, delayMs = 900) {
   }, Math.max(0, Number(delayMs) || 0));
 }
 
-async function preloadMediaRecord(rec, aggressive) {
-  if (!rec) return;
-  if (!rec.file) await ensureFileObjectForRecord(rec);
-  const url = ensureMediaUrl(rec);
-  if (!url) return;
-  if (PRELOAD_CACHE.has(url)) return;
-  if (rec.type === "image") {
-    const img = new Image();
-    img.src = url;
-    PRELOAD_CACHE.set(url, img);
-    return;
+function ensurePreviewVideoTransitionCanvas() {
+  if (!previewViewportBox) return null;
+  if (!previewVideoTransitionCanvas) {
+    previewVideoTransitionCanvas = document.createElement("canvas");
+    previewVideoTransitionCanvas.className = "previewVideoTransitionFrame";
+    previewVideoTransitionCanvas.setAttribute("aria-hidden", "true");
   }
-  const vid = document.createElement("video");
-  prepareMediaElementForCanvas(vid);
-  vid.preload = "auto";
-  vid.muted = true;
-  normalizeVideoPlaybackRate(vid);
-  vid.playsInline = true;
-  vid.src = url;
+  if (!previewViewportBox.contains(previewVideoTransitionCanvas))
+    previewViewportBox.appendChild(previewVideoTransitionCanvas);
+  return previewVideoTransitionCanvas;
+}
+
+function capturePreviewVideoTransitionFrame() {
+  const canvas = ensurePreviewVideoTransitionCanvas();
+  if (!canvas || !previewViewportBox) return false;
+
+  // During very fast stepping the previous transition frame may still be the
+  // only visible frame. Retain it until the newly-selected video presents.
+  if (canvas.style.display === "block") return true;
+
+  let source = null;
+  const filteredCanvases = previewViewportBox.querySelectorAll(
+    ".mediaCanvas.ready:not(.videoCanvasStale)",
+  );
+  for (let i = filteredCanvases.length - 1; i >= 0; i--) {
+    const candidate = filteredCanvases[i];
+    if (candidate.style.display === "none" || !candidate.width || !candidate.height)
+      continue;
+    source = candidate;
+    break;
+  }
+  if (
+    !source &&
+    previewVideoEl &&
+    previewVideoEl.style.display !== "none" &&
+    previewVideoEl.readyState >= 2 &&
+    previewVideoEl.videoWidth > 0 &&
+    previewVideoEl.videoHeight > 0
+  ) {
+    source = previewVideoEl;
+  }
+  if (
+    !source &&
+    previewImgEl &&
+    previewImgEl.style.display !== "none" &&
+    previewImgEl.complete &&
+    previewImgEl.naturalWidth > 0 &&
+    previewImgEl.naturalHeight > 0
+  ) {
+    source = previewImgEl;
+  }
+  if (!source) return false;
+
+  const cssWidth = Math.max(1, previewViewportBox.clientWidth || 0);
+  const cssHeight = Math.max(1, previewViewportBox.clientHeight || 0);
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
+  const pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
+  if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+  if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+  const ctx = canvas.getContext("2d", { alpha: true });
+  if (!ctx) return false;
+
   try {
-    vid.load();
-  } catch {}
-  PRELOAD_CACHE.set(url, vid);
+    ctx.clearRect(0, 0, pixelWidth, pixelHeight);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, pixelWidth, pixelHeight);
+    if (source.tagName === "CANVAS") {
+      ctx.drawImage(source, 0, 0, pixelWidth, pixelHeight);
+    } else {
+      const sourceWidth =
+        source.tagName === "VIDEO" ? source.videoWidth : source.naturalWidth;
+      const sourceHeight =
+        source.tagName === "VIDEO" ? source.videoHeight : source.naturalHeight;
+      const scale = Math.min(cssWidth / sourceWidth, cssHeight / sourceHeight);
+      const drawWidth = sourceWidth * scale * dpr;
+      const drawHeight = sourceHeight * scale * dpr;
+      const drawX = (pixelWidth - drawWidth) / 2;
+      const drawY = (pixelHeight - drawHeight) / 2;
+      ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+    }
+  } catch {
+    return false;
+  }
+  canvas.style.display = "block";
+  return true;
+}
+
+function beginPreviewVideoTransition(rec) {
+  const token = ++PREVIEW_VIDEO_TRANSITION_TOKEN;
+  const canvas = ensurePreviewVideoTransitionCanvas();
+  if (!rec || rec.type !== "video") {
+    if (canvas) canvas.style.display = "none";
+    return token;
+  }
+  const currentId = String(previewVideoEl?.dataset?.previewFileId || "");
+  if (currentId && currentId === String(rec.id || "")) return token;
+  if (!capturePreviewVideoTransitionFrame() && canvas)
+    canvas.style.display = "none";
+  return token;
+}
+
+function revealPreviewVideoFrame(videoEl, fileId, transitionToken) {
+  if (!videoEl || videoEl !== previewVideoEl) return false;
+  if (String(videoEl.dataset.previewFileId || "") !== String(fileId || ""))
+    return false;
+  if (String(WS.preview?.fileId || "") !== String(fileId || "")) return false;
+  if (Number(transitionToken) !== PREVIEW_VIDEO_TRANSITION_TOKEN) return false;
+  videoEl.classList.add("ready");
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (videoEl !== previewVideoEl) return;
+      if (String(WS.preview?.fileId || "") !== String(fileId || "")) return;
+      if (Number(transitionToken) !== PREVIEW_VIDEO_TRANSITION_TOKEN) return;
+      if (previewVideoTransitionCanvas)
+        previewVideoTransitionCanvas.style.display = "none";
+    });
+  });
+  return true;
+}
+
+function armPreviewVideoFirstFrame(videoEl, fileId, transitionToken, autoplay) {
+  if (!videoEl) return;
+  const token = Number(transitionToken) || 0;
+  videoEl.__lgPreviewFrameToken = token;
+  const reveal = () => {
+    if (videoEl.__lgPreviewFrameToken !== token) return;
+    revealPreviewVideoFrame(videoEl, fileId, token);
+  };
+  if (
+    autoplay &&
+    typeof videoEl.requestVideoFrameCallback === "function"
+  ) {
+    if (videoEl.__lgPreviewFrameCallbackToken === token) return;
+    videoEl.__lgPreviewFrameCallbackToken = token;
+    try {
+      videoEl.requestVideoFrameCallback(() => {
+        if (videoEl.__lgPreviewFrameCallbackToken === token)
+          videoEl.__lgPreviewFrameCallbackToken = 0;
+        reveal();
+      });
+      return;
+    } catch {}
+  }
+  if (videoEl.readyState >= 2) requestAnimationFrame(reveal);
+}
+
+function resetPreviewVideoTransientHandlers(videoEl) {
+  if (!videoEl) return;
+  videoEl.onloadeddata = null;
+  videoEl.oncanplay = null;
+  videoEl.onplaying = null;
+  videoEl.onended = null;
+  videoEl.onerror = null;
+}
+
+function wirePreviewVideoElement(videoEl) {
+  if (!videoEl) return null;
+  prepareMediaElementForCanvas(videoEl);
+  configurePreviewMediaElementForMaxQuality(videoEl);
+  videoEl.controls = false;
+  videoEl.preload = "auto";
+  videoEl.playsInline = true;
+  normalizeVideoPlaybackRate(videoEl);
+  if (!videoEl.poster) videoEl.poster = BLACK_POSTER_URL;
+  if (videoEl.__lgPreviewVideoWired) return videoEl;
+  videoEl.__lgPreviewVideoWired = true;
+  [
+    "loadedmetadata",
+    "durationchange",
+    "timeupdate",
+    "play",
+    "pause",
+    "volumechange",
+    "ended",
+    "emptied",
+  ].forEach((eventName) => {
+    videoEl.addEventListener(eventName, () => {
+      if (videoEl === previewVideoEl) syncControlPaneState();
+    });
+  });
+  const markPreviewVideoStarted = () => {
+    if (videoEl !== previewVideoEl) return;
+    const fileId = String(videoEl.dataset.previewFileId || "");
+    if (!fileId || String(WS.preview?.fileId || "") !== fileId) return;
+    revealPreviewVideoFrame(
+      videoEl,
+      fileId,
+      Number(videoEl.__lgPreviewFrameToken) || PREVIEW_VIDEO_TRANSITION_TOKEN,
+    );
+    const rec = WS.fileById.get(fileId) || null;
+    if (rec && rec.type === "video") schedulePreviewVideoPosterRequest(rec);
+  };
+  videoEl.addEventListener("playing", markPreviewVideoStarted);
+  videoEl.addEventListener("timeupdate", markPreviewVideoStarted);
+  return videoEl;
+}
+
+function trimPreloadMediaCache() {
+  if (!(PRELOAD_CACHE instanceof Map)) return;
+  const maxItems = preloadMode() === "ultra" ? 12 : 8;
+  while (PRELOAD_CACHE.size > maxItems) {
+    const first = PRELOAD_CACHE.entries().next();
+    if (first.done) break;
+    const [url, mediaEl] = first.value;
+    PRELOAD_CACHE.delete(url);
+    if (mediaEl !== previewVideoEl) stopCachedMediaElement(mediaEl);
+  }
+}
+
+function cachePreviewVideoElement(videoEl) {
+  if (!videoEl || !(PRELOAD_CACHE instanceof Map)) return false;
+  const src = String(videoEl.currentSrc || videoEl.getAttribute("src") || "");
+  if (!src) return false;
+  resetPreviewVideoTransientHandlers(videoEl);
+  try { videoEl.pause(); } catch {}
+  try { videoEl.currentTime = 0; } catch {}
+  videoEl.muted = true;
+  videoEl.autoplay = false;
+  videoEl.loop = false;
+  videoEl.style.display = "none";
+  videoEl.classList.remove("ready", "mediaHidden");
+  videoEl.style.removeProperty("filter");
+  delete videoEl.dataset.previewFileId;
+  videoEl.removeAttribute("data-dir-path");
+  const existing = PRELOAD_CACHE.get(src);
+  if (existing && existing !== videoEl) stopCachedMediaElement(existing);
+  PRELOAD_CACHE.delete(src);
+  PRELOAD_CACHE.set(src, videoEl);
+  trimPreloadMediaCache();
+  return true;
+}
+
+function promotePreloadedPreviewVideo(rec) {
+  if (!rec || rec.type !== "video" || !(PRELOAD_CACHE instanceof Map))
+    return false;
+  const src = ensureMediaUrl(rec) || "";
+  if (!src) return false;
+  const warmed = PRELOAD_CACHE.get(src);
+  if (!warmed || String(warmed.tagName || "").toLowerCase() !== "video")
+    return false;
+  PRELOAD_CACHE.delete(src);
+  if (warmed === previewVideoEl) return warmed.readyState >= 2;
+
+  const outgoing = previewVideoEl;
+  resetPreviewVideoTransientHandlers(warmed);
+  wirePreviewVideoElement(warmed);
+  warmed.style.display = "none";
+  warmed.classList.remove("ready", "mediaHidden");
+  if (outgoing && outgoing.parentElement === previewViewportBox) {
+    previewViewportBox.replaceChild(warmed, outgoing);
+  } else if (previewFolderEl && previewFolderEl.parentElement === previewViewportBox) {
+    previewViewportBox.insertBefore(warmed, previewFolderEl);
+  } else {
+    previewViewportBox.appendChild(warmed);
+  }
+  previewVideoEl = warmed;
+  if (outgoing && outgoing !== warmed && !cachePreviewVideoElement(outgoing))
+    stopCachedMediaElement(outgoing);
+  ensurePreviewVideoTransitionCanvas();
+  return warmed.readyState >= 2;
+}
+
+async function preloadMediaRecord(rec, aggressive) {
+  if (!rec || rec.__lgPreviewPreloadPending) return;
+  rec.__lgPreviewPreloadPending = true;
+  try {
+    if (!rec.file) await ensureFileObjectForRecord(rec);
+    const url = ensureMediaUrl(rec);
+    if (!url || PRELOAD_CACHE.has(url)) return;
+    if (rec.type === "image") {
+      const img = new Image();
+      img.src = url;
+      PRELOAD_CACHE.set(url, img);
+      trimPreloadMediaCache();
+      return;
+    }
+    const vid = document.createElement("video");
+    prepareMediaElementForCanvas(vid);
+    vid.preload = "auto";
+    vid.muted = true;
+    normalizeVideoPlaybackRate(vid);
+    vid.playsInline = true;
+    vid.src = url;
+    PRELOAD_CACHE.set(url, vid);
+    trimPreloadMediaCache();
+    try {
+      vid.load();
+    } catch {}
+  } finally {
+    rec.__lgPreviewPreloadPending = false;
+  }
 }
 
 function preloadMode() {
@@ -49487,21 +49726,28 @@ function preloadNextMedia(items, startIdx) {
   if (mode === "off") return;
   if (!Array.isArray(items) || !items.length) return;
   const aggressive = mode === "ultra";
-  const count = aggressive ? 3 : 1;
-  let idx = startIdx;
-  let found = 0;
-  let guard = 0;
-  while (found < count && guard < items.length * 2) {
-    idx = (idx + 1) % items.length;
-    const it = items[idx];
-    if (it && !it.isFolder) {
-      const rec = WS.fileById.get(it.id);
-      if (rec) {
-        preloadMediaRecord(rec, aggressive);
-        found++;
+  const perDirection = aggressive ? 4 : 2;
+  const seen = new Set();
+  const currentItem = items[startIdx] || null;
+  if (currentItem && !currentItem.isFolder)
+    seen.add(String(currentItem.id || ""));
+  for (const direction of [1, -1]) {
+    let idx = startIdx;
+    let found = 0;
+    let guard = 0;
+    while (found < perDirection && guard < items.length * 2) {
+      idx = (idx + direction + items.length) % items.length;
+      const it = items[idx];
+      if (it && !it.isFolder && !seen.has(String(it.id || ""))) {
+        seen.add(String(it.id || ""));
+        const rec = WS.fileById.get(it.id);
+        if (rec) {
+          preloadMediaRecord(rec, aggressive);
+          found++;
+        }
       }
+      guard++;
     }
-    guard++;
   }
 }
 
@@ -49522,38 +49768,11 @@ function ensurePreviewFileElements() {
     previewViewportBox.appendChild(previewImgEl);
   }
   if (!previewVideoEl) {
-    previewVideoEl = document.createElement("video");
-    prepareMediaElementForCanvas(previewVideoEl);
-    configurePreviewMediaElementForMaxQuality(previewVideoEl);
-    previewVideoEl.controls = false;
-    previewVideoEl.preload = "auto";
-    previewVideoEl.playsInline = true;
+    previewVideoEl = wirePreviewVideoElement(document.createElement("video"));
     previewVideoEl.autoplay = true;
     previewVideoEl.muted = false;
-    normalizeVideoPlaybackRate(previewVideoEl);
     previewVideoEl.poster = BLACK_POSTER_URL;
     previewVideoEl.style.display = "none";
-    [
-      "loadedmetadata",
-      "durationchange",
-      "timeupdate",
-      "play",
-      "pause",
-      "volumechange",
-      "ended",
-      "emptied",
-    ].forEach((eventName) => {
-      previewVideoEl.addEventListener(eventName, syncControlPaneState);
-    });
-    const markPreviewVideoStarted = () => {
-      const fileId = String(previewVideoEl.dataset.previewFileId || "");
-      if (!fileId || String(WS.preview?.fileId || "") !== fileId) return;
-      previewVideoEl.classList.add("ready");
-      const rec = WS.fileById.get(fileId) || null;
-      if (rec && rec.type === "video") schedulePreviewVideoPosterRequest(rec);
-    };
-    previewVideoEl.addEventListener("playing", markPreviewVideoStarted);
-    previewVideoEl.addEventListener("timeupdate", markPreviewVideoStarted);
     previewViewportBox.appendChild(previewVideoEl);
   }
   if (!previewFolderEl) {
@@ -49561,6 +49780,7 @@ function ensurePreviewFileElements() {
     previewFolderEl.style.display = "none";
     previewViewportBox.appendChild(previewFolderEl);
   }
+  ensurePreviewVideoTransitionCanvas();
 }
 
 function seedPreviewViewportWithRecordHint(rec) {
@@ -50336,6 +50556,8 @@ function showPreviewViewportMessage(label = "File unavailable", meta = "") {
     previewVideoEl.classList.remove("ready");
     previewVideoEl.style.display = "none";
   }
+  if (previewVideoTransitionCanvas)
+    previewVideoTransitionCanvas.style.display = "none";
   if (!previewFolderEl) return;
   previewFolderEl.style.display = "flex";
   previewFolderEl.style.flexDirection = "column";
@@ -50361,6 +50583,8 @@ function renderPreviewViewerItem(idx) {
     MediaFilterEngine.detach("preview");
     if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
     if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
+    if (previewVideoTransitionCanvas)
+      previewVideoTransitionCanvas.style.display = "none";
     return;
   }
 
@@ -50380,6 +50604,10 @@ function renderPreviewViewerItem(idx) {
     if (rec && rec.type === "video") willShowVideo = true;
     else if (rec) willShowImage = true;
   }
+  const previewVideoTransitionToken = beginPreviewVideoTransition(rec);
+  const promotedWarmPreviewVideo = willShowVideo
+    ? promotePreloadedPreviewVideo(rec)
+    : false;
   const suppressStalePreviewFrame = !!PREVIEW_SUPPRESS_STALE_FRAME_ONCE;
   PREVIEW_SUPPRESS_STALE_FRAME_ONCE = false;
   const keepPreviewImageFrame = !!(
@@ -50566,11 +50794,26 @@ function renderPreviewViewerItem(idx) {
             playPromise.catch(() => {});
         } catch {}
       }
-      if (!shouldAutoPlay) previewVideoEl.classList.add("ready");
+      armPreviewVideoFirstFrame(
+        previewVideoEl,
+        rec.id,
+        previewVideoTransitionToken,
+        shouldAutoPlay,
+      );
+      if (!shouldAutoPlay)
+        revealPreviewVideoFrame(
+          previewVideoEl,
+          rec.id,
+          previewVideoTransitionToken,
+        );
       MediaFilterEngine.requestRender();
     };
     const handlePreviewVideoStarted = () => {
-      previewVideoEl.classList.add("ready");
+      revealPreviewVideoFrame(
+        previewVideoEl,
+        rec.id,
+        previewVideoTransitionToken,
+      );
       schedulePreviewVideoPosterRequest(rec);
       handlePreviewVideoReady();
     };
@@ -50585,6 +50828,7 @@ function renderPreviewViewerItem(idx) {
 
     applyVideoPoster(previewVideoEl, rec);
     previewVideoEl.dataset.previewFileId = String(rec.id || "");
+    previewVideoEl.__lgPreviewFrameToken = previewVideoTransitionToken;
     if (shouldAutoPlay && !keepPreviewVideoElement) previewVideoEl.classList.remove("ready");
     else if (!shouldAutoPlay) previewVideoEl.classList.add("ready");
     const src = ensureMediaUrl(rec) || "";
@@ -50600,6 +50844,12 @@ function renderPreviewViewerItem(idx) {
         previewVideoEl.load();
       } catch {}
     }
+    armPreviewVideoFirstFrame(
+      previewVideoEl,
+      rec.id,
+      previewVideoTransitionToken,
+      shouldAutoPlay,
+    );
     // Direct CSS color filter on preview video for reliable application
     try {
       const oc = resolveMediaOverlayConfigForTarget(rec);
@@ -50637,8 +50887,13 @@ function renderPreviewViewerItem(idx) {
     if (previewVideoEl.readyState >= 2) {
       requestAnimationFrame(() => {
         if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
-        if (!shouldAutoPlay || !previewVideoEl.paused)
-          previewVideoEl.classList.add("ready");
+        if (promotedWarmPreviewVideo || !shouldAutoPlay || !previewVideoEl.paused)
+          armPreviewVideoFirstFrame(
+            previewVideoEl,
+            rec.id,
+            previewVideoTransitionToken,
+            shouldAutoPlay,
+          );
       });
     }
     if (shouldAutoPlay) {
@@ -58072,16 +58327,12 @@ function handlePreviewPaneAction(action, inFilePreview) {
     case "randomFileJump":
       return previewPaneFolderJump(action);
     case "selectUp":
-      if (movePreviewSelectionByDirection("up")) return true;
-      return movePreviewSelectionAcrossFolderEdge(-1);
+      return movePreviewSelectionByDirection("up");
     case "selectDown":
-      if (movePreviewSelectionByDirection("down")) return true;
-      return movePreviewSelectionAcrossFolderEdge(1);
+      return movePreviewSelectionByDirection("down");
     case "selectLeft":
-      // Left/Right are pure within-grid horizontal movement; the cross-folder
-      // edge slide is intentionally limited to Up/Down (see selectUp/selectDown)
-      // so that Left at the leftmost column always falls through to the file
-      // pane instead of sliding to the previous file/folder.
+      // Folder/grid navigation stays inside the current folder. Cross-folder
+      // sliding is only available while a file is open in the preview pane.
       if (movePreviewSelectionByDirection("left")) return true;
       if (sidebarVisible) return activateDirectoriesPaneSelection();
       return false;
@@ -60112,6 +60363,7 @@ function detachRenderedThumbnailMedia(protectedIds) {
 function releaseLoadedThumbnailMedia(opts = null) {
   const options = opts && typeof opts === "object" ? opts : {};
   const includeRendered = !!options.includeRendered;
+  const preservePreloads = !!options.preservePreloads;
   const protectedIds = collectMainMediaRecordIds();
   if (!includeRendered) {
     collectRenderedThumbnailRecordIds().forEach((id) => protectedIds.add(id));
@@ -60126,7 +60378,8 @@ function releaseLoadedThumbnailMedia(opts = null) {
 
   clearQueuedThumbnailWork();
   bumpThumbnailDemandToken();
-  result.clearedPreloadItems = clearPreloadMediaCache();
+  if (!preservePreloads)
+    result.clearedPreloadItems = clearPreloadMediaCache();
   if (includeRendered) {
     result.detachedRenderedMedia = detachRenderedThumbnailMedia(protectedIds);
   }
@@ -60169,7 +60422,9 @@ function releaseLoadedThumbnailMedia(opts = null) {
       rec.videoThumbMode = "placeholder";
       const url = String(rec.url || "");
       const isBlobUrl = rec.urlKind === "blob" || url.startsWith("blob:");
-      if (url && isBlobUrl && !protectedIds.has(id)) {
+      const isWarmPreload =
+        preservePreloads && PRELOAD_CACHE instanceof Map && PRELOAD_CACHE.has(url);
+      if (url && isBlobUrl && !protectedIds.has(id) && !isWarmPreload) {
         try { URL.revokeObjectURL(url); } catch {}
         rec.url = null;
         rec.urlKind = "";
@@ -60190,7 +60445,13 @@ function scheduleLoadedThumbnailMediaRelease(delayMs = 900) {
   }
   LOADED_THUMB_RELEASE_TIMER = setTimeout(() => {
     LOADED_THUMB_RELEASE_TIMER = 0;
-    releaseLoadedThumbnailMedia({ includeRendered: false });
+    // Adjacent preview players are intentional decode-ahead state, not stale
+    // thumbnail media. Keep them warm across the routine cleanup pass; explicit
+    // memory-pressure/reset paths still clear the cache.
+    releaseLoadedThumbnailMedia({
+      includeRendered: false,
+      preservePreloads: true,
+    });
   }, Math.max(100, Number(delayMs) || 900));
 }
 
