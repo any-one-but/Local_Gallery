@@ -43842,15 +43842,13 @@ function buildFolderActionMenuDom(
     menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
     return;
   }
-  // Tag, Album, Rename, Store, and Move to trash are intentionally absent:
-  // each has a bindable action (tagSelection / albumSelection / renameSelection
-  // / storageSelection / trashSelection), which is now the only way to invoke
-  // them. Favorite, Hide, and "Remove from album" (no keybind equivalent) stay.
+  // Tag, Album, Rename, Store, Move to trash, and Favorite are intentionally
+  // absent: each has a bindable action (tagSelection / albumSelection /
+  // renameSelection / storageSelection / trashSelection / favoriteSelection),
+  // which is now the only way to invoke them. Hide and "Remove from album" (no
+  // keybind equivalent) stay.
   if (state.canRemoveFromAlbum)
     menuEl.appendChild(makeBtn("Remove from album", "remove-from-album"));
-  menuEl.appendChild(
-    makeBtn(state.isFavorite ? "Unfavorite" : "Favorite", "favorite"),
-  );
   menuEl.appendChild(makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"));
   appendSortEntry();
   appendFiltersEntry();
@@ -47442,14 +47440,14 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         } else {
           // Trashed/stored folders never render a menu (menuHtml below gates
           // them out), so no put-back / remove-from-storage branch is needed.
-          // Tag / Album / Rename / Store / Move to trash are omitted here on
-          // purpose: they're only reachable through their bindable actions now
-          // (tagSelection / albumSelection / renameSelection / storageSelection
-          // / trashSelection). Favorite, Hide, and Remove from album stay.
+          // Tag / Album / Rename / Store / Move to trash / Favorite are omitted
+          // here on purpose: they're only reachable through their bindable
+          // actions now (tagSelection / albumSelection / renameSelection /
+          // storageSelection / trashSelection / favoriteSelection). Hide and
+          // Remove from album stay.
           menuButtons = `
                 ${folderMenuInfoHtml}
                 ${folderMenuState.canRemoveFromAlbum ? `<button type="button" data-action="remove-from-album">Remove from album</button>` : ``}
-                <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
                 ${folderMenuSortHtml}
                 <button type="button" data-action="appearance-preset-set">Filters</button>
