@@ -13969,11 +13969,24 @@ const MediaFilterEngine = (() => {
     return needsAnim;
   }
 
+  // Synchronously redraw one surface and return its canvas. The GL context uses
+  // preserveDrawingBuffer:false, so its buffer is cleared once the browser
+  // composites — a later drawImage() of the canvas (e.g. capturing a transition
+  // frame) reads black. Rendering on demand here means the caller can drawImage
+  // the result in the SAME JS tick, before the buffer is discarded.
+  const renderSurfaceNow = (name) => {
+    const surface = surfaces.get(name);
+    if (!surface || !surface.active || !surface.mediaEl) return null;
+    try { drawSurface(surface, performance.now()); } catch { return null; }
+    return surface.hasDrawn && surface.canvas ? surface.canvas : null;
+  };
+
   return {
     attach,
     detach,
     reset,
     requestRender,
+    renderSurfaceNow,
     hasSurfaceDrawn: (name) => {
       const surface = surfaces.get(name);
       return !!(surface && surface.hasDrawn);
@@ -49046,10 +49059,23 @@ function capturePreviewVideoTransitionFrame() {
   if (canvas.style.display === "block")
     return showPreviewVideoTransitionFrame(canvas);
 
-  let source = null;
-  const filteredCanvases = previewViewportBox.querySelectorAll(
-    ".mediaCanvas.ready:not(.videoCanvasStale)",
-  );
+  // Freshly redraw the active filter canvas so the drawImage() below reads real
+  // pixels. The GL context is preserveDrawingBuffer:false, so a canvas last
+  // drawn on a previous frame has had its buffer cleared by the compositor and
+  // would capture as black — which is exactly the filtered-nav flash. This must
+  // stay synchronous through to the drawImage call (no await/yield) so the fresh
+  // buffer survives.
+  let source = MediaFilterEngine.renderSurfaceNow("preview");
+  if (
+    source &&
+    (source.style.display === "none" || !source.width || !source.height)
+  )
+    source = null;
+  const filteredCanvases = source
+    ? []
+    : previewViewportBox.querySelectorAll(
+        ".mediaCanvas.ready:not(.videoCanvasStale)",
+      );
   for (let i = filteredCanvases.length - 1; i >= 0; i--) {
     const candidate = filteredCanvases[i];
     if (candidate.style.display === "none" || !candidate.width || !candidate.height)
