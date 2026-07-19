@@ -536,11 +536,7 @@ input[type="file"] {
 /* =========================================================
        Title Pane
        ========================================================= */
-/* The top bar hosts the path / search / info row, with the tab strip on a
-   second row underneath. The tab row collapses unless 2+ tabs are open.
-   Styled like a browser frame: the bar uses the deeper window color
-   (--color1-primary) while the active tab shares the preview pane surface
-   (--color1-secondary) and melds into it with no seam. */
+/* The top bar hosts the path / search / info row. */
 #titlePane {
   position: relative;
   z-index: 200;
@@ -555,173 +551,6 @@ input[type="file"] {
   align-items: stretch;
   gap: 0;
   grid-area: title;
-}
-
-#app:not(.tabs-multi) #tabBar {
-  display: none;
-}
-#app.tabs-multi #tabBar {
-  height: var(--compact-title-bar-h);
-  flex: 0 0 var(--compact-title-bar-h);
-}
-
-/* =========================================================
-       Tab strip
-       ========================================================= */
-#tabBar {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-end;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-  height: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-#tabBar::-webkit-scrollbar {
-  display: none;
-}
-
-/* Chrome-style tabs: anchored to the bottom edge of the bar, rounded only on
-   top. The active tab wears the preview pane surface color and connects to it
-   seamlessly (no divider under the bar). */
-.tabItem {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 220px;
-  height: 34px;
-  margin: 0;
-  padding: 0 6px 0 12px;
-  font-family: var(--font-rounded);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.005em;
-  color: var(--color0-secondary);
-  background: transparent;
-  border: 0;
-  border-radius: 10px 10px 0 0;
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-  transition:
-    background 0.16s ease,
-    color 0.16s ease;
-}
-.tabItem:hover {
-  background: var(--ui-control-bg);
-  color: var(--color0-primary);
-}
-.tabItem.active {
-  background: var(--color1-secondary);
-  color: var(--color0-primary);
-}
-/* Inverted-radius fillets that curve the active tab's bottom corners outward
-   into the preview surface, exactly like modern Chrome. Drawn as small squares
-   whose outer arc is transparent and inner region is the tab color. */
-.tabItem.active::before,
-.tabItem.active::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  width: 10px;
-  height: 10px;
-  pointer-events: none;
-}
-.tabItem.active::before {
-  left: -10px;
-  background: radial-gradient(
-    circle at 0 0,
-    transparent 10px,
-    var(--color1-secondary) 10.5px
-  );
-}
-.tabItem.active::after {
-  right: -10px;
-  background: radial-gradient(
-    circle at 100% 0,
-    transparent 10px,
-    var(--color1-secondary) 10.5px
-  );
-}
-.tabItem:focus-visible {
-  outline: none;
-  box-shadow: var(--ui-focus-ring);
-}
-
-.tabItemLabel {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Close affordance stays out of the way until the tab is hovered or active,
-   but always occupies its slot so labels never shift. */
-.tabItemClose {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: 13px;
-  line-height: 1;
-  font-weight: 700;
-  color: var(--color0-secondary);
-  background: transparent;
-  border: 0;
-  border-radius: var(--ui-control-radius);
-  cursor: pointer;
-  opacity: 0;
-  transition:
-    background 0.16s ease,
-    opacity 0.16s ease;
-}
-.tabItem:hover .tabItemClose,
-.tabItem.active .tabItemClose {
-  opacity: 1;
-}
-.tabItemClose:hover {
-  background: var(--ui-control-hover-bg);
-  color: var(--color0-primary);
-}
-.tabItemClose:focus-visible {
-  outline: none;
-  opacity: 1;
-  box-shadow: var(--ui-focus-ring);
-}
-
-#tabNewBtn {
-  flex: 0 0 auto;
-  align-self: center;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: 15px;
-  line-height: 1;
-  font-weight: 700;
-  color: var(--color0-secondary);
-  background: transparent;
-  border: 0;
-  border-radius: var(--ui-control-radius);
-  cursor: pointer;
-}
-#tabNewBtn:hover {
-  background: var(--ui-control-bg);
-  color: var(--color0-primary);
-  transform: none;
-  box-shadow: none;
 }
 
 /* Path aligned left, search centered, info aligned right. The 1fr side
@@ -2249,6 +2078,16 @@ img[data-rotate-key].rotatingThumbFade {
   position: fixed;
 }
 
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenLeft > .dropdownMenuSubmenuPanel {
+  right: calc(100% + 4px);
+  left: auto;
+}
+
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenRight > .dropdownMenuSubmenuPanel {
+  right: auto;
+  left: calc(100% + 4px);
+}
+
 .dropdownMenu.open {
   display: flex;
 }
@@ -2307,6 +2146,16 @@ img[data-rotate-key].rotatingThumbFade {
   width: 10px;
 }
 
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenLeft::after {
+  right: 100%;
+  left: auto;
+}
+
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenRight::after {
+  right: auto;
+  left: 100%;
+}
+
 .dropdownMenu .dropdownMenuSubmenuTrigger {
   display: flex;
   align-items: center;
@@ -2341,6 +2190,14 @@ img[data-rotate-key].rotatingThumbFade {
   width: 14px;
   height: 14px;
   display: block;
+}
+
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenLeft > .dropdownMenuSubmenuTrigger .dropdownMenuSubmenuCaret svg {
+  transform: rotate(180deg);
+}
+
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenRight > .dropdownMenuSubmenuTrigger .dropdownMenuSubmenuCaret svg {
+  transform: rotate(0deg);
 }
 
 .dropdownMenu .dropdownMenuSubmenuPanel {
@@ -7646,9 +7503,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
       <!-- =========================================================
          Title Pane
          ========================================================= -->
-      <!-- The top bar hosts the path / search / info row (always visible with
-           a root open) with the tab strip below it (tab row only appears when
-           2+ tabs are open, #app.tabs-multi). -->
+      <!-- The top bar hosts the path / search / info row. -->
       <div id="titlePane">
         <div id="titlePaneTop">
           <div id="titleMain">
@@ -7666,7 +7521,6 @@ html.settings-window #previewContent:not(.menu-open)::before {
             <div id="titleInfo">—</div>
           </div>
         </div>
-        <div id="tabBar"></div>
       </div>
       <input
         id="openWritableInput"
@@ -7925,6 +7779,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
               </div>
             </div>
             <div id="previewActionMenu" class="dropdownMenu"></div>
+            <div id="appActionMenu" class="dropdownMenu appMenu"></div>
           </div>
         </div>
       </div>
@@ -8310,12 +8165,13 @@ function isDirectChildOfInternalTrash(path) {
 function isFolderPathMovableToTrash(path) {
   if (!(WS.meta && WS.meta.fsRootHandle)) return false;
   const normalized = normalizeWorkspaceRelPath(path);
-  // Any real user folder may be trashed, at any nesting depth. Only the trash
-  // tree itself (and anything already inside it) is off-limits.
+  // Storage and Trash are mutually exclusive locations. A stored folder must
+  // be removed from Storage before it can be moved to Trash.
   return !!(
     normalized &&
     !isInternalTrashDirName(normalized) &&
-    !isPathInsideInternalTrash(normalized)
+    !isPathInsideInternalTrash(normalized) &&
+    !metaHasStorage(normalized)
   );
 }
 
@@ -10539,6 +10395,7 @@ function buildAppearancePresetChoiceMenu(menuEl, options = {}) {
     ? WS.meta.appearancePresets
     : defaultAppearancePresets();
   menuEl.innerHTML = "";
+  const buttons = [];
   const appendButton = (label, onClick, disabled = false) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -10549,7 +10406,7 @@ function buildAppearancePresetChoiceMenu(menuEl, options = {}) {
       if (btn.disabled) return;
       if (typeof onClick === "function") onClick();
     });
-    menuEl.appendChild(btn);
+    buttons.push(btn);
     return btn;
   };
   if (typeof options.onBack === "function") {
@@ -10568,6 +10425,11 @@ function buildAppearancePresetChoiceMenu(menuEl, options = {}) {
         options.onChoosePreset(presetId);
     });
   }
+  const panelItems =
+    buttons.length > 10
+      ? buttons.slice(0, 9).concat(createDropdownMenuSubmenu("More...", buttons.slice(9)))
+      : buttons;
+  panelItems.forEach((item) => menuEl.appendChild(item));
   if (typeof options.onRendered === "function") {
     requestAnimationFrame(() => options.onRendered());
   }
@@ -15010,87 +14872,22 @@ function applyDisplaySizesFromOptions() {
   root.style.setProperty("--thumb-scale-folder", String(scaleMult));
 }
 
-// The title pane hosts the path/search/info row and the tab strip. The tab row
-// appears once a second tab exists (.tabs-multi).
+// Browsing tabs are intentionally unexposed and turned off. The dormant state
+// and compatibility helpers remain below so older tabs.log.json metadata can
+// still be read safely without restoring or exposing the feature.
+const BROWSING_TABS_ENABLED = false;
+const OPEN_IN_NEW_TABS_LIMIT = 30;
+
 function applyTabBarLayout() {
   const appEl = document.getElementById("app");
   if (!appEl) return;
-  const multi = !!(WS.tabs && WS.tabs.items && WS.tabs.items.length > 1);
-  appEl.classList.toggle("tabs-multi", multi);
+  appEl.classList.remove("tabs-multi");
   updateGridModeListTopInset();
 }
 
-// Rebuilds the strip from scratch. Cheap by construction: it only runs on tab
-// add/remove/switch, never on navigation — the active tab's label is refreshed
-// in place by updateTitleLabel() as you browse.
+// Kept as an inert compatibility hook for existing internal call sites.
 function renderTabBar() {
   applyTabBarLayout();
-  const bar = document.getElementById("tabBar");
-  if (!bar) return;
-  bar.textContent = "";
-  if (!WS.tabs || WS.tabs.items.length < 2) return;
-
-  const locations = computeTabLabels();
-  WS.tabs.items.forEach((item, i) => {
-    const tab = document.createElement("div");
-    tab.className = "tabItem";
-    tab.dataset.tabId = item.id;
-    tab.setAttribute("role", "tab");
-    tab.tabIndex = 0;
-    const isActive = item.id === WS.tabs.activeId;
-    tab.classList.toggle("active", isActive);
-    tab.setAttribute("aria-selected", isActive ? "true" : "false");
-    tab.title = locations[i].path;
-
-    const label = document.createElement("span");
-    label.className = "tabItemLabel";
-    label.textContent = locations[i].label;
-    tab.appendChild(label);
-
-    const close = document.createElement("button");
-    close.className = "tabItemClose";
-    close.type = "button";
-    close.textContent = "×";
-    close.title = "Close tab";
-    close.setAttribute("aria-label", "Close tab");
-    close.addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeTab(item.id);
-    });
-    tab.appendChild(close);
-
-    tab.addEventListener("click", () => activateTab(item.id));
-    tab.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-        e.preventDefault();
-        e.stopPropagation();
-        activateTab(item.id);
-      }
-    });
-    // Middle-click closes, matching browser convention.
-    tab.addEventListener("auxclick", (e) => {
-      if (e.button !== 1) return;
-      e.preventDefault();
-      closeTab(item.id);
-    });
-    bar.appendChild(tab);
-  });
-
-  const addBtn = document.createElement("button");
-  addBtn.id = "tabNewBtn";
-  addBtn.type = "button";
-  addBtn.textContent = "+";
-  addBtn.title = "New tab";
-  addBtn.setAttribute("aria-label", "New tab");
-  addBtn.addEventListener("click", () => createTab());
-  bar.appendChild(addBtn);
-
-  const activeEl = bar.querySelector(".tabItem.active");
-  if (activeEl && activeEl.scrollIntoView) {
-    try {
-      activeEl.scrollIntoView({ block: "nearest", inline: "nearest" });
-    } catch {}
-  }
 }
 
 // Names collide constantly in a media library (every "Nested", "Scans",
@@ -15136,26 +14933,7 @@ function computeTabLabels() {
   return locations.map((loc, i) => ({ label: labels[i], path: loc.path }));
 }
 
-// Keeps tab names in sync with the preview pane as you navigate, patching only
-// the text that actually changed instead of rebuilding the strip. Runs over
-// every tab because navigating one tab can resolve or create a name collision
-// with another; the list is short, so this is far cheaper than a re-render.
-function syncActiveTabLabel() {
-  if (!WS.tabs || WS.tabs.items.length < 2) return;
-  const bar = document.getElementById("tabBar");
-  if (!bar) return;
-  const els = bar.querySelectorAll(".tabItem");
-  if (els.length !== WS.tabs.items.length) return;
-  const locations = computeTabLabels();
-  for (let i = 0; i < els.length; i++) {
-    const labelEl = els[i].querySelector(".tabItemLabel");
-    if (labelEl && labelEl.textContent !== locations[i].label)
-      labelEl.textContent = locations[i].label;
-    if (els[i].title !== locations[i].path) els[i].title = locations[i].path;
-  }
-  // Reached only with 2+ tabs open, i.e. exactly when tab state is persisted.
-  scheduleTabsPersist();
-}
+function syncActiveTabLabel() { }
 
 function applyDirectoryMiniThumbSizeFromOptions() { }
 
@@ -15646,10 +15424,103 @@ const KEYBIND_SECTIONS = [
   { id: "filenames", label: "Filenames" },
 ];
 
-// Firm cap on "Open in new tabs". Anything with more sub-items than this is
-// refused outright rather than partially opened. Declared here because
-// KEYBIND_ACTIONS below reads it for the action's hint.
-const OPEN_IN_NEW_TABS_LIMIT = 30;
+// Set this to false to restore the duplicate Settings/Controls surfaces.
+// When true, actions already available in the App or Item menu are menu-only:
+// their Settings rows are hidden and their keybinds are ignored at runtime.
+// Stored option values and binding assignments are deliberately left untouched.
+const APP_ITEM_MENU_ACTIONS_ONLY = true;
+
+const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
+  "randomFirstFileJump",
+  "randomFileJump",
+  "toggleRandomFileSort",
+  "toggleRandomFolderSort",
+  "cycleWeightRandomJumpsByScore",
+  "cycleFilter",
+  "slideshow",
+  "cycleFolderSort",
+  "toggleShowHiddenFolder",
+  "toggleShowTrashFolder",
+  "toggleShowUntaggedFolder",
+  "toggleShowStorageFolder",
+  "toggleQuickNavigation",
+  "favoriteSelection",
+  "hiddenSelection",
+  "tagSelection",
+  "albumSelection",
+  "renameSelection",
+  "cycleAppearancePresets",
+  "toggleMuteMessages",
+  "toggleFullScreenMedia",
+  "toggleFloatTags",
+  "cycleThumbnailSize",
+  "cycleThumbPresetFile",
+  "cycleThumbPresetFolder",
+  "cycleThumbPresetTag",
+  "toggleThumbnailTitleSize",
+  "cycleVideoSkipStep",
+  "cycleVideoEndBehavior",
+  "toggleAnimatedFilters",
+]);
+
+const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
+  "opt_quickNavigation",
+  "opt_weightRandomJumpsByScore",
+  "opt_showHiddenFolder",
+  "opt_showTrashFolder",
+  "opt_showStorageFolder",
+  "opt_showUntaggedFolder",
+  "opt_filterMode",
+  "opt_dirSortMode",
+  "opt_generalAppearancePreset",
+  "opt_slideshowDefault",
+  "opt_muteMessages",
+  "opt_fullScreenMedia",
+  "opt_showTagFolderSpacerRow",
+  "opt_thumbnailSize",
+  "opt_thumbPreset_file",
+  "opt_thumbPreset_folder",
+  "opt_thumbPreset_tag",
+  "opt_thumbnailTitleSize",
+  "opt_videoSkipStep",
+  "opt_videoEndBehavior",
+  "opt_animatedMediaFilters",
+]);
+
+function appItemMenuActionKeybindIsDisabled(actionId) {
+  if (!APP_ITEM_MENU_ACTIONS_ONLY) return false;
+  const id = String(actionId || "");
+  return (
+    APP_ITEM_MENU_ACTION_KEYBIND_IDS.has(id) ||
+    id.startsWith("toggleAppearancePreset:")
+  );
+}
+
+function applyAppItemMenuOnlySettingsVisibility(panel) {
+  if (!APP_ITEM_MENU_ACTIONS_ONLY || !panel) return;
+  const hideRegion = (region) => {
+    if (!region) return;
+    region.hidden = true;
+    region.style.display = "none";
+    region.setAttribute("aria-hidden", "true");
+  };
+  APP_ITEM_MENU_SETTING_CONTROL_IDS.forEach((id) => {
+    const control = panel.querySelector(`#${id}`);
+    if (!control) return;
+    const region = control.closest(".optRow") || control.parentElement;
+    hideRegion(region);
+  });
+  hideRegion(panel.querySelector('[data-settings-section="reveal"]'));
+  panel.querySelectorAll(".settingsSection").forEach((section) => {
+    const hasVisibleContent = Array.from(section.children || []).some(
+      (child) =>
+        !child.matches?.("h2") &&
+        !child.hidden &&
+        child.style?.display !== "none",
+    );
+    if (!hasVisibleContent) hideRegion(section);
+  });
+}
 
 const KEYBIND_ACTIONS = [
   {
@@ -15713,39 +15584,9 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
-    id: "newTab",
-    label: "New tab",
-    hint: "Open a new tab at the root folder.",
-    section: "panes",
-  },
-  {
-    id: "duplicateTab",
-    label: "Duplicate tab",
-    hint: "Open a new tab at the current location.",
-    section: "panes",
-  },
-  {
-    id: "closeTab",
-    label: "Close tab",
-    hint: "Close the current tab. Cmd+1 through Cmd+9 jump between tabs.",
-    section: "panes",
-  },
-  {
-    id: "openInTab",
-    label: "Open in tab",
-    hint: "Open the selected folder, album, tag, or file in a new tab.",
-    section: "panes",
-  },
-  {
     id: "toggleGrokWindow",
     label: "Toggle Grok",
     hint: "Show or hide the Grok window over the app. Esc closes it.",
-    section: "panes",
-  },
-  {
-    id: "openInNewTabs",
-    label: "Open in new tabs",
-    hint: `Open everything inside the selected folder, album, or tag in its own background tab (up to ${OPEN_IN_NEW_TABS_LIMIT}).`,
     section: "panes",
   },
   {
@@ -15881,9 +15722,21 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
+    id: "cancelMultiSelection",
+    label: "Cancel multi-selection",
+    hint: "Clear the current multi-item selection and return to single-item selection.",
+    section: "folderActions",
+  },
+  {
     id: "openItemMenu",
     label: "Open item menu",
     hint: "Open the action menu for the selected item(s).",
+    section: "folderActions",
+  },
+  {
+    id: "openAppMenu",
+    label: "Open app menu",
+    hint: "Open the app-wide action menu beside the selected item.",
     section: "folderActions",
   },
   {
@@ -16077,11 +15930,6 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleQuickNavigation",
   "toggleSettingsAndDirectoriesPanes",
   "refreshWorkspace",
-  "newTab",
-  "duplicateTab",
-  "closeTab",
-  "openInTab",
-  "openInNewTabs",
   "toggleGrokWindow",
   "cycleFilter",
   "cycleFolderSort",
@@ -16154,13 +16002,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   nextFolder: "Cmd+s",
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
-  // Cmd+w / Cmd+s are already prevFolder / nextFolder, so closeTab must not
-  // claim the browser-conventional Cmd+w. Left unbound for the user to choose.
-  newTab: "Cmd+t",
-  duplicateTab: "",
-  closeTab: "",
-  openInTab: "",
-  openInNewTabs: "",
   toggleGrokWindow: "Cmd+g",
   randomFirstFileJump: "r",
   randomFileJump: "Shift+r",
@@ -16181,6 +16022,10 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
   renameSelection: "",
+  toggleSelectionInBulk: "",
+  cancelMultiSelection: "",
+  openItemMenu: "",
+  openAppMenu: "",
   seekBack: "z",
   seekForward: "c",
   playPause: "x",
@@ -16415,7 +16260,8 @@ function rebuildKeybindIndex() {
 }
 
 function keybindActionFor(key) {
-  return KEYBIND_INDEX.get(key) || null;
+  const action = KEYBIND_INDEX.get(key) || null;
+  return appItemMenuActionKeybindIsDisabled(action) ? null : action;
 }
 
 function gridKeybindActionFor(key) {
@@ -17003,6 +16849,7 @@ function currentKeybindHelpBindings() {
       (binding) =>
         binding &&
         !binding.hiddenInUi &&
+        !appItemMenuActionKeybindIsDisabled(binding.id) &&
         !isLockedKeybindAction(binding.id),
     ),
     grid: normalizedGridBindings.filter((binding) => binding && binding.id),
@@ -17448,6 +17295,7 @@ const previewContentEl = $("previewContent");
 const previewMainStackEl = $("previewMainStack");
 const previewBodyEl = $("previewBody");
 const previewActionMenuEl = $("previewActionMenu");
+const appActionMenuEl = $("appActionMenu");
 const controlPane = $("controlPane");
 const controlPrevItemBtn = $("controlPrevItemBtn");
 const controlSkipBackBtn = $("controlSkipBackBtn");
@@ -17459,6 +17307,12 @@ const controlProgressRange = $("controlProgressRange");
 const controlTimecode = $("controlTimecode");
 if (previewActionMenuEl) {
   previewActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
+}
+if (appActionMenuEl) {
+  if (appActionMenuEl.parentElement !== document.body) {
+    document.body.appendChild(appActionMenuEl);
+  }
+  appActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
 }
 directoriesListEl.addEventListener("scroll", () => {
   if (WS.view.scrollBusyDirs) return;
@@ -17678,6 +17532,7 @@ let TAG_EDIT_PATH = null;
 let TAG_EDIT_IN_PREVIEW = false;
 let TAG_CONTEXT_MENU_STATE = null;
 let PREVIEW_CONTEXT_MENU_STATE = null;
+let APP_MENU_STATE = null;
 let SCORE_HISTORY_DAY_MENU_STATE = null;
 let DAILY_JOURNAL_STATE = null;
 let TAG_ENTRY_RENAME_STATE = null;
@@ -19842,6 +19697,7 @@ function renderKeybindsUi(scope = "pane") {
   const normalizedScope = String(scope || "pane") === "general" ? "general" : "pane";
   let visiblePaneBindings = paneBindings.filter((binding) => {
     if (!binding || binding.hiddenInUi) return false;
+    if (appItemMenuActionKeybindIsDisabled(binding.id)) return false;
     if (normalizedScope === "general" && !isGeneralKeybindActionId(binding.id))
       return false;
     return true;
@@ -19876,7 +19732,9 @@ function renderKeybindsUi(scope = "pane") {
     let out = "";
     for (const binding of list) {
       const isLocked = isAnyLockedKeybindAction(binding.id);
-      const isCapturing = !isLocked && KEYBIND_CAPTURE_ACTION_ID === binding.id;
+      const isCapturing =
+        !isLocked &&
+        KEYBIND_CAPTURE_ACTION_ID === binding.id;
       const currentLabel = keyLabel(binding.key || "");
       const lockedLabel = isLocked
         ? keyLabel(lockedKeyForAction(binding.id))
@@ -20924,6 +20782,7 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     .join("");
 
   optionsBodyEl.innerHTML = settingsSectionsHtml;
+  applyAppItemMenuOnlySettingsVisibility(optionsBodyEl);
   optionsBodyEl
     .querySelectorAll(".settingsSection > h2.menuSectionToggle")
     .forEach((headerEl) => {
@@ -24382,11 +24241,15 @@ async function rebuildWorkspaceAfterStorageStateChange() {
 }
 
 async function setStorageStateForFolderPaths(paths, enable) {
-  const list = collapseNestedFolderPaths(paths).filter(
-    (path) => path && !isPathInsideInternalTrash(path),
-  );
+  const list = collapseNestedFolderPaths(paths).filter(Boolean);
   if (!list.length) {
     showStatusMessage("No folders selected.");
+    return false;
+  }
+  if (enable && list.some((path) => isPathInsideInternalTrash(path))) {
+    showStatusMessage(
+      "Items in Trash must be put back before they can be sent to Storage.",
+    );
     return false;
   }
   let changedCount = 0;
@@ -28421,7 +28284,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
   // are dropped because they reference DirNodes the rebuild replaces — the
   // NAV_ENTRY_RESTORE_REVISION bump in resetWorkspace() would reject them
   // anyway, but dropping them here keeps the stale nodes from being retained.
-  const preservedTabs = preserveView
+  const preservedTabs = BROWSING_TABS_ENABLED && preserveView
     ? {
         activeId: String(WS.tabs.activeId || ""),
         seq: Number(WS.tabs.seq) || 0,
@@ -29547,6 +29410,17 @@ function activeTabItem() {
 
 // Guarantees a single active tab exists. Safe to call repeatedly.
 function ensureTabsInitialized() {
+  if (!BROWSING_TABS_ENABLED) {
+    const current = activeTabItem();
+    if (current && WS.tabs.items.length === 1) {
+      current.state = null;
+      return;
+    }
+    const id = makeTabId();
+    WS.tabs.items = [{ id, state: null }];
+    WS.tabs.activeId = id;
+    return;
+  }
   if (!WS.tabs.items.length) {
     const id = makeTabId();
     WS.tabs.items = [{ id, state: null }];
@@ -29562,6 +29436,7 @@ function ensureTabsInitialized() {
 // whose stored state is allowed to be stale, so this must run before anything
 // that navigates away from it.
 function captureActiveTabState() {
+  if (!BROWSING_TABS_ENABLED) return;
   const item = activeTabItem();
   if (!item) return;
   item.state = captureViewerCloseRestoreState();
@@ -29649,6 +29524,7 @@ function tabPreviewLocation(item) {
 
 
 function activateTab(id, opts = null) {
+  if (!BROWSING_TABS_ENABLED) return false;
   const options = opts && typeof opts === "object" ? opts : {};
   ensureTabsInitialized();
   const targetIdx = tabIndexById(id);
@@ -29673,6 +29549,7 @@ function activateTab(id, opts = null) {
 }
 
 function activateTabByIndex(index) {
+  if (!BROWSING_TABS_ENABLED) return false;
   ensureTabsInitialized();
   if (WS.tabs.items.length < 2) return false;
   const idx = Number(index);
@@ -29735,7 +29612,7 @@ function makeRootTabState() {
 // ---- Open in tab(s) --------------------------------------------------
 // A tab is "located at" an item when the preview pane shows it, so opening X in
 // a tab yields a tab named X.
-// (OPEN_IN_NEW_TABS_LIMIT is declared up with KEYBIND_ACTIONS, which reads it.)
+// The safety cap lives beside the disabled feature flag above.
 
 // A nav/grid entry as an open-in-tab target. Albums, tags and the special
 // buckets (Favorites/Hidden/Untagged/Storage) are all "tag" entries and are
@@ -29892,6 +29769,7 @@ function tabTargetLabel(target) {
 }
 
 function openInTabAction() {
+  if (!BROWSING_TABS_ENABLED) return false;
   if (!WS.root) return false;
   ensureTabsInitialized();
   const target = openInTabSelectionTarget();
@@ -29915,6 +29793,7 @@ function openInTabAction() {
 // Opens every sub-item in its own background tab — you cannot follow 30 tabs at
 // once, so the current tab stays put.
 function openInNewTabsAction() {
+  if (!BROWSING_TABS_ENABLED) return false;
   if (!WS.root) return false;
   ensureTabsInitialized();
   const target = openInTabSelectionTarget();
@@ -29960,6 +29839,7 @@ function openInNewTabsAction() {
 // duplicate:true clones the current location so you can branch off without
 // losing your place; otherwise the new tab opens at the root.
 function createTab(opts = null) {
+  if (!BROWSING_TABS_ENABLED) return false;
   const options = opts && typeof opts === "object" ? opts : {};
   if (!WS.root) return false;
   ensureTabsInitialized();
@@ -29988,6 +29868,7 @@ function createTab(opts = null) {
 // Closing the active tab lands on the right neighbour, else the left. Closing
 // the last remaining tab is a no-op — the strip is already hidden.
 function closeTab(id) {
+  if (!BROWSING_TABS_ENABLED) return false;
   ensureTabsInitialized();
   if (WS.tabs.items.length < 2) return false;
   const idx = tabIndexById(id || WS.tabs.activeId);
@@ -30092,6 +29973,9 @@ function deserializeTabState(raw) {
 // and nothing tab-shaped to restore, so an empty doc is written and startup
 // keeps its existing root-landing behaviour.
 function metaMakeTabsLogObject() {
+  if (!BROWSING_TABS_ENABLED) {
+    return { schema: 1, updatedAt: Date.now(), activeId: "", tabs: [] };
+  }
   ensureTabsInitialized();
   const activeId = String(WS.tabs.activeId || "");
   if (WS.tabs.items.length < 2) {
@@ -30119,6 +30003,7 @@ function metaApplyTabsDocLog(log) {
 }
 
 function loadPersistedTabsForWorkspace() {
+  if (!BROWSING_TABS_ENABLED) return null;
   const log = WS.meta && WS.meta.tabsLog;
   if (!log || !Array.isArray(log.tabs) || !log.tabs.length) return null;
   // Ids are regenerated rather than trusted from disk, so they can never
@@ -30142,6 +30027,7 @@ function loadPersistedTabsForWorkspace() {
 }
 
 function markTabsDirty() {
+  if (!BROWSING_TABS_ENABLED) return;
   if (!WS.meta) return;
   metaMarkDirty(META_DOC_IDS.tabs);
 }
@@ -30152,6 +30038,7 @@ function markTabsDirty() {
 // settles. Resetting a timer per render is negligible next to the render itself.
 let TABS_PERSIST_TIMER = 0;
 function scheduleTabsPersist() {
+  if (!BROWSING_TABS_ENABLED) return;
   if (!WS.root || !WS.meta) return;
   if (TABS_PERSIST_TIMER) {
     try {
@@ -30170,6 +30057,13 @@ function scheduleTabsPersist() {
 // way the result is at least one tab, with the active one applied to the view.
 function seedTabsForWorkspace(preservedTabs = null) {
   if (!WS.root) return;
+  if (!BROWSING_TABS_ENABLED) {
+    WS.tabs.items = [];
+    WS.tabs.activeId = "";
+    ensureTabsInitialized();
+    renderTabBar();
+    return;
+  }
   const seeded =
     preservedTabs && Array.isArray(preservedTabs.items) && preservedTabs.items.length
       ? preservedTabs
@@ -31054,6 +30948,9 @@ function canonicalizeActiveDirectoryReferences() {
 }
 
 function refreshCurrentViewAfterCatalogMutation(opts = null) {
+  // The Trash portal follows Storage's empty-state rule. If the last item was
+  // restored or deleted while the portal was open, leave it before rendering.
+  navigateOutOfTrashIfHidden();
   canonicalizeActiveDirectoryReferences();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -33976,12 +33873,21 @@ function getInternalTrashRootNode() {
   return WS.dirByPath.get(INTERNAL_TRASH_DIR_NAME) || null;
 }
 
+function internalTrashHasItems() {
+  const trashNode = getInternalTrashRootNode();
+  if (!trashNode) return false;
+  return !!(
+    (Array.isArray(trashNode.childrenDirs) && trashNode.childrenDirs.length) ||
+    (Array.isArray(trashNode.childrenFiles) && trashNode.childrenFiles.length)
+  );
+}
+
 function shouldShowRootTrashEntry(dirNode) {
   return !!(
     dirNode &&
     dirNode === WS.root &&
     showTrashFolderEnabled() &&
-    getInternalTrashRootNode()
+    internalTrashHasItems()
   );
 }
 
@@ -34080,7 +33986,7 @@ function trashItemDisplayPathForPath(path) {
 }
 
 function navigateOutOfTrashIfHidden() {
-  if (showTrashFolderEnabled()) return false;
+  if (shouldShowRootTrashEntry(WS.root)) return false;
   const navPath = String(WS.nav.dirNode?.path || "");
   const previewDirPath = String(getPreviewTargetDir()?.path || "");
   if (!isPathInsideInternalTrash(navPath) && !isPathInsideInternalTrash(previewDirPath)) {
@@ -41879,7 +41785,14 @@ async function moveFolderPathsToTrash(paths) {
     showStatusMessage("Move to trash requires a writable folder.");
     return false;
   }
-  const list = collapseNestedFolderPaths(paths).filter(
+  const requested = collapseNestedFolderPaths(paths);
+  if (requested.some((path) => metaHasStorage(path))) {
+    showStatusMessage(
+      "Items in Storage must be removed from Storage before they can be moved to Trash.",
+    );
+    return false;
+  }
+  const list = requested.filter(
     (path) => isFolderPathMovableToTrash(path),
   );
   if (!list.length) {
@@ -41924,13 +41837,6 @@ async function moveFolderPathsToTrash(paths) {
         const movedName = await uniqueDirNameInParent(trashHandle, folderName);
         const trashPath = `${INTERNAL_TRASH_DIR_NAME}/${movedName}`;
         await moveDirectoryOnDiskToParent(path, INTERNAL_TRASH_DIR_NAME, movedName);
-        const tagsBeforeMove = metaGetTags(path);
-        if (tagsBeforeMove.includes(STORAGE_TAG)) {
-          metaSetTagsForPath(
-            path,
-            tagsBeforeMove.filter((tag) => tag !== STORAGE_TAG),
-          );
-        }
         const dirNode = WS.dirByPath.get(path) || null;
         const trashRootNode =
           getInternalTrashRootNode() || ensureDirPath(INTERNAL_TRASH_DIR_NAME);
@@ -42556,18 +42462,8 @@ function closeActionMenus() {
   WS.view.fileActionMenuId = "";
   closeTagContextMenu();
   closePreviewContextMenu();
+  closeAppMenu();
   closeScoreHistoryDayMenu();
-}
-
-function findTagEntryIndexBySelectionKey(selectionKey) {
-  const key = String(selectionKey || "");
-  if (!key) return -1;
-  for (let i = 0; i < WS.nav.entries.length; i++) {
-    const entry = WS.nav.entries[i];
-    if (!entry || entry.kind !== "tag") continue;
-    if (tagEntrySelectionKey(entry) === key) return i;
-  }
-  return -1;
 }
 
 function openBulkActionMenuForSelection(anchorKey, opts = null) {
@@ -42609,57 +42505,73 @@ function openBulkActionMenuForSelection(anchorKey, opts = null) {
   } else {
     return false;
   }
-  if (WS.view.bulkActionMenuOpen && WS.view.bulkActionMenuAnchorPath === key) {
-    closeActionMenus();
-    renderDirectoriesPane(true);
-    renderPreviewPane(false, true);
-    syncButtons();
-    return true;
-  }
-  WS.view.bulkActionMenuOpen = true;
-  WS.view.bulkActionMenuAnchorPath = key;
-  WS.view.bulkActionMenuPoint = point;
-  WS.view.dirActionMenuPath = "";
-  WS.view.fileActionMenuId = "";
-  TAG_EDIT_PATH = null;
-  RENAME_EDIT_PATH = null;
-  RENAME_EDIT_FILE_ID = null;
-  clearBulkTagPlaceholder();
 
-  let idx = -1;
+  // Use the same fixed popup builders for file-pane and preview-pane bulk
+  // selections. This keeps numbering, nested overrides, and inverse actions
+  // identical no matter which pane owns the selection.
+  const anchor =
+    findDirMenuButtonForAnchorKey(key) || anchorCard;
+  const popupOptions = point
+    ? { x: point.x, y: point.y }
+    : anchor
+      ? { anchor }
+      : {};
   if (
     anchorKind === "dir" ||
     key.startsWith("dir:") ||
     key.startsWith("expanded-dir:")
   ) {
-    idx = findDirEntryIndexByPath(
-      previewDirPathForCard(anchorCard) || previewDirPathForSelectionKey(key),
-    );
-  } else if (anchorKind === "tag" || key.startsWith("tag:")) {
+    const anchorPath =
+      previewDirPathForCard(anchorCard) || previewDirPathForSelectionKey(key);
+    if (
+      previewActionMenuEl?.classList.contains("open") &&
+      PREVIEW_CONTEXT_MENU_STATE?.bulkPaths &&
+      String(PREVIEW_CONTEXT_MENU_STATE.dirPath || "") === anchorPath
+    ) {
+      closePreviewContextMenu();
+      return true;
+    }
+    openPreviewBulkFolderActionMenu(selectedDirs, anchorPath, popupOptions);
+    return true;
+  }
+  if (anchorKind === "tag" || key.startsWith("tag:")) {
+    const selectedEntries = getSelectedTagEntriesInCurrentView();
+    if (!selectedEntries.length) return false;
     const tagKey =
       previewTagFolderKeyForCard(anchorCard) ||
       (key.startsWith("tag:") ? key.slice(4) : "");
-    idx = findTagEntryIndexBySelectionKey(tagKey);
-  } else if (anchorKind === "file" || key.startsWith("file:")) {
-    const id =
+    if (
+      previewActionMenuEl?.classList.contains("open") &&
+      PREVIEW_CONTEXT_MENU_STATE?.bulkTagKeys &&
+      String(PREVIEW_CONTEXT_MENU_STATE.tagKey || "") === tagKey
+    ) {
+      closePreviewContextMenu();
+      return true;
+    }
+    openPreviewBulkTagActionMenu(selectedEntries, tagKey, popupOptions);
+    return true;
+  }
+  if (anchorKind === "file" || key.startsWith("file:")) {
+    const anchorFileId =
       previewFileIdForCard(anchorCard) ||
       (key.startsWith("file:") ? key.slice(5) : "");
-    for (let i = 0; i < WS.nav.entries.length; i++) {
-      const e = WS.nav.entries[i];
-      if (e && e.kind === "file" && String(e.id || "") === id) {
-        idx = i;
-        break;
-      }
+    if (
+      previewActionMenuEl?.classList.contains("open") &&
+      PREVIEW_CONTEXT_MENU_STATE?.bulkFileIds &&
+      String(PREVIEW_CONTEXT_MENU_STATE.fileId || "") === anchorFileId
+    ) {
+      closePreviewContextMenu();
+      return true;
     }
+    openPreviewBulkFileActionMenu(
+      getSelectedFileIdsInCurrentView(),
+      anchorFileId,
+      popupOptions,
+    );
+    return true;
   }
-  if (idx >= 0) {
-    WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
-    syncPreviewToSelection({ force: true });
-  }
-  renderDirectoriesPane(true);
-  renderPreviewPane(false, true);
-  syncButtons();
-  return true;
+
+  return false;
 }
 
 function openDirMenuForPath(path) {
@@ -42673,9 +42585,6 @@ function openDirMenuForPath(path) {
     return;
   }
   if (!p && !isRootPath) return;
-  // Trashed and stored folders have no item menu (removal is keybound now).
-  if (!isRootPath && p && (isPathInsideInternalTrash(p) || metaHasStorage(p)))
-    return;
   if (!isRootPath && openBulkActionMenuForSelection(`dir:${p}`)) return;
   WS.view.bulkActionMenuOpen = false;
   WS.view.dirActionMenuPath = isRootPath ? "__root__" : p;
@@ -42692,7 +42601,6 @@ function openDirMenuForPath(path) {
 function openFileMenuForId(fileId) {
   const id = String(fileId || "");
   if (!id) return;
-  // Files inside Trash have no item menu (put-back is keybound now).
   if (fileRecordHasNoItemMenu(WS.fileById.get(id))) return;
   if (openBulkActionMenuForSelection(`file:${id}`)) return;
   WS.view.bulkActionMenuOpen = false;
@@ -42995,8 +42903,48 @@ async function restoreDirHistoryEntry(entry) {
   });
 }
 
+function itemMenuAnchorElement(anchor) {
+  if (!anchor || !anchor.closest) return anchor || null;
+  return (
+    anchor.closest(
+      "[data-preview-item-key], .dirRow, .folderCard, .fileCard",
+    ) || anchor
+  );
+}
+
+function positionActionMenuInPreviewDock(menuEl) {
+  if (!menuEl) return;
+  if (isNumberedItemMenu(menuEl)) decorateNumberedMenuOptions(menuEl);
+  menuEl.classList.add("fixed");
+  menuEl.style.left = "0px";
+  menuEl.style.top = "0px";
+  menuEl.style.right = "auto";
+
+  const menuRect = menuEl.getBoundingClientRect();
+  const paneRect = previewPane?.getBoundingClientRect?.() || {
+    left: 0,
+    right: window.innerWidth,
+    top: 0,
+    bottom: window.innerHeight,
+  };
+  const gutter = 14;
+  const paneLeft = Math.max(gutter, paneRect.left + gutter);
+  const left = Math.max(
+    gutter,
+    Math.min(paneLeft, window.innerWidth - menuRect.width - gutter),
+  );
+  const top = Math.max(gutter, paneRect.top + gutter);
+
+  menuEl.style.left = `${left}px`;
+  menuEl.style.top = `${top}px`;
+}
+
 function positionDropdownMenu(menuBtn, menuEl) {
   if (!menuBtn || !menuEl) return;
+  if (isNumberedItemMenu(menuEl)) {
+    positionActionMenuInPreviewDock(menuEl);
+    return;
+  }
   menuEl.classList.add("fixed");
   menuEl.style.left = "0px";
   menuEl.style.top = "0px";
@@ -43023,6 +42971,7 @@ function positionDropdownMenu(menuBtn, menuEl) {
 
 function positionDropdownMenuAtPoint(menuEl, x, y) {
   if (!menuEl) return;
+  if (isNumberedItemMenu(menuEl)) decorateNumberedMenuOptions(menuEl);
   menuEl.classList.add("fixed");
   menuEl.style.left = "0px";
   menuEl.style.top = "0px";
@@ -43179,6 +43128,443 @@ function closePreviewContextMenu() {
   previewActionMenuEl.style.left = "";
   previewActionMenuEl.style.top = "";
   PREVIEW_CONTEXT_MENU_STATE = null;
+}
+
+function closeAppMenu() {
+  if (!appActionMenuEl) return;
+  appActionMenuEl.classList.remove("open", "fixed");
+  appActionMenuEl.innerHTML = "";
+  appActionMenuEl.style.left = "";
+  appActionMenuEl.style.top = "";
+  APP_MENU_STATE = null;
+}
+
+function appMenuChoiceButton(label, onClick, active = null) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent =
+    active == null ? String(label || "") : `${active ? "●" : "○"} ${label}`;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeAppMenu();
+    if (typeof onClick === "function") onClick();
+  });
+  return btn;
+}
+
+function setAppMenuFolderSortMode(mode) {
+  if (!WS.meta) return false;
+  const next = normalizeDirSortMode(mode);
+  WS.meta.dirSortMode = next;
+  invalidateDirSortOrderCaches();
+  metaMarkDirty(META_DOC_IDS.prefGeneral);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyFolderSortModeEverywhere(true);
+  showStatusMessage(`Folder sort: ${dirSortModeLabel(next)}`);
+  return true;
+}
+
+function setAppMenuMediaFilterMode(mode) {
+  if (!WS.view) return false;
+  const next = normalizeMediaFilterMode(mode);
+  WS.view.filterMode = next;
+  applyViewModesEverywhere(true);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(`Media filter: ${next}`, "cycle-filter");
+  return true;
+}
+
+function runAppMenuRandomAction(action) {
+  if (action === "toggleRandomFileSort") return toggleRandomSortMode();
+  if (action === "toggleRandomFolderSort") return toggleRandomFolderSortMode();
+  if (action !== "randomFirstFileJump" && action !== "randomFileJump")
+    return false;
+  const inFilePreview = WS.preview.kind === "file" && !!WS.preview.fileId;
+  if (inFilePreview) {
+    if (action === "randomFirstFileJump") randomFirstFileJumpFromViewer();
+    else randomFileJumpFromViewer();
+    return true;
+  }
+  if (previewPaneOwnsSelection() && previewPaneFolderJump(action)) return true;
+  if (action === "randomFirstFileJump") randomFirstFileJumpFromDirectories();
+  else randomFileJumpFromDirectories();
+  return true;
+}
+
+function setAppMenuRandomJumpWeight(mode) {
+  const next = WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.some(
+    (option) => option.value === mode,
+  )
+    ? mode
+    : "off";
+  setOptionValue("weightRandomJumpsByScore", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(
+    `Weight random jumps by score: ${labelForCycleValue(WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE, next)}`,
+  );
+  return true;
+}
+
+function setAppMenuSlideshowDelay(delayMs) {
+  const ms = Math.max(0, Number(delayMs) || 0);
+  if (!ms) {
+    stopSlideshow();
+    WS.view.slideshowModeIndex = 0;
+    showStatusMessage("Slideshow: Off");
+    return true;
+  }
+  const modeIndex = WS.view.slideshowDurations.indexOf(ms);
+  if (modeIndex >= 0) WS.view.slideshowModeIndex = modeIndex;
+  startSlideshow(ms);
+  showStatusMessage(`Slideshow: ${Math.round(ms / 1000)}s`);
+  return true;
+}
+
+function buildAppMenuChoiceSubmenu(label, options, currentValue, onChoose) {
+  const choices = Array.isArray(options) ? options : [];
+  return createDropdownMenuSubmenu(
+    label,
+    choices.map((option) =>
+      appMenuChoiceButton(
+        option.label,
+        () => onChoose(option.value),
+        String(option.value) === String(currentValue),
+      ),
+    ),
+  );
+}
+
+function setAppMenuThumbnailSize(value) {
+  const next = THUMBNAIL_SIZE_CYCLE.some(
+    (option) => option.value === value,
+  )
+    ? value
+    : "medium";
+  setOptionValue("thumbnailSize", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(
+    `Thumbnail size: ${labelForCycleValue(THUMBNAIL_SIZE_CYCLE, next)}`,
+  );
+  return true;
+}
+
+function setAppMenuThumbnailPreset(kinds, value, label) {
+  const next = THUMBNAIL_PRESET_ITEMS.some(
+    (option) => option.value === value,
+  )
+    ? value
+    : "clean";
+  applyThumbnailPresetForKinds(kinds, next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(
+    `${label}: ${labelForCycleValue(THUMBNAIL_PRESET_ITEMS, next)}`,
+  );
+  return true;
+}
+
+function setAppMenuVideoSkipStep(value) {
+  const next = VIDEO_SKIP_STEP_CYCLE.some(
+    (option) => option.value === String(value),
+  )
+    ? String(value)
+    : "5";
+  setOptionValue("videoSkipStep", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(
+    `Video skip seconds: ${labelForCycleValue(VIDEO_SKIP_STEP_CYCLE, next)}`,
+  );
+  return true;
+}
+
+function setAppMenuVideoEndBehavior(value) {
+  const next = VIDEO_END_BEHAVIOR_CYCLE.some(
+    (option) => option.value === value,
+  )
+    ? value
+    : "loop";
+  setOptionValue("videoEndBehavior", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(
+    `Video end: ${labelForCycleValue(VIDEO_END_BEHAVIOR_CYCLE, next)}`,
+  );
+  return true;
+}
+
+function setAppMenuAnimatedFilters(value) {
+  const next = normalizeAnimatedMediaFiltersValue(value, "on");
+  setOptionValue("animatedMediaFilters", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyMediaFilterFromOptions();
+  showStatusMessage(
+    `Animated filters: ${labelForCycleValue(ANIMATED_FILTER_CYCLE, next)}`,
+  );
+  return true;
+}
+
+function buildAppMenuSortSubmenu() {
+  const current = normalizeDirSortMode(WS.meta?.dirSortMode);
+  const buttons = dirSortModeOptions(scoreInterfaceEnabled()).map((option) =>
+    appMenuChoiceButton(
+      option.label,
+      () => setAppMenuFolderSortMode(option.value),
+      option.value === current,
+    ),
+  );
+  return createDropdownMenuSubmenu("Sort", buttons);
+}
+
+function buildAppMenuMediaFilterSubmenu() {
+  const current = normalizeMediaFilterMode(WS.view?.filterMode);
+  const options = [
+    { value: "all", label: "All" },
+    { value: "images", label: "Images" },
+    { value: "videos", label: "Videos" },
+    { value: "text", label: "Text" },
+  ];
+  return createDropdownMenuSubmenu(
+    "Media filter",
+    options.map((option) =>
+      appMenuChoiceButton(
+        option.label,
+        () => setAppMenuMediaFilterMode(option.value),
+        option.value === current,
+      ),
+    ),
+  );
+}
+
+function buildAppMenuRandomSubmenu() {
+  const weight = String(WS.meta?.options?.weightRandomJumpsByScore || "off");
+  const weightSubmenu = createDropdownMenuSubmenu(
+    "Jump weighting",
+    WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.map((option) =>
+      appMenuChoiceButton(
+        option.label,
+        () => setAppMenuRandomJumpWeight(option.value),
+        option.value === weight,
+      ),
+    ),
+  );
+  return createDropdownMenuSubmenu("Random actions", [
+    appMenuChoiceButton("Random set jump", () =>
+      runAppMenuRandomAction("randomFirstFileJump"),
+    ),
+    appMenuChoiceButton("Random file jump", () =>
+      runAppMenuRandomAction("randomFileJump"),
+    ),
+    appMenuChoiceButton(
+      "Random file sort",
+      () => runAppMenuRandomAction("toggleRandomFileSort"),
+      !!WS.view?.randomMode,
+    ),
+    appMenuChoiceButton(
+      "Random folder sort",
+      () => runAppMenuRandomAction("toggleRandomFolderSort"),
+      !!WS.view?.randomFolderMode,
+    ),
+    weightSubmenu,
+  ]);
+}
+
+function buildAppMenuSlideshowSubmenu() {
+  const activeDelay = WS.view?.slideshowActive
+    ? Number(WS.view.slideshowDurations[WS.view.slideshowModeIndex]) || 0
+    : 0;
+  const options = [
+    { value: 0, label: "Off" },
+    { value: 1000, label: "1 second" },
+    { value: 3000, label: "3 seconds" },
+    { value: 5000, label: "5 seconds" },
+    { value: 10000, label: "10 seconds" },
+  ];
+  return createDropdownMenuSubmenu(
+    "Slideshow mode",
+    options.map((option) =>
+      appMenuChoiceButton(
+        option.label,
+        () => setAppMenuSlideshowDelay(option.value),
+        option.value === activeDelay,
+      ),
+    ),
+  );
+}
+
+function buildAppMenuRevealSubmenu() {
+  return createDropdownMenuSubmenu("Reveal...", [
+    appMenuChoiceButton(
+      "Hidden",
+      () => handleExtrasKeybindAction("toggleShowHiddenFolder"),
+      showHiddenFolderEnabled(),
+    ),
+    appMenuChoiceButton(
+      "Storage",
+      () => handleExtrasKeybindAction("toggleShowStorageFolder"),
+      showStorageFolderEnabled(),
+    ),
+    appMenuChoiceButton(
+      "Trash",
+      () => handleExtrasKeybindAction("toggleShowTrashFolder"),
+      showTrashFolderEnabled(),
+    ),
+    appMenuChoiceButton(
+      "Untagged folder",
+      () => handleExtrasKeybindAction("toggleShowUntaggedFolder"),
+      showUntaggedFolderEnabled(),
+    ),
+  ]);
+}
+
+function buildAppMenuAppearanceSubmenu() {
+  const current = effectiveActiveAppearancePresetId();
+  const presets = Array.isArray(WS.meta?.appearancePresets)
+    ? WS.meta.appearancePresets
+    : defaultAppearancePresets();
+  const buttons = presets
+    .map((preset) => {
+      const presetId = normalizeAppearancePresetIdValue(preset?.id);
+      if (!presetId) return null;
+      return appMenuChoiceButton(
+        String(preset.name || "Preset"),
+        () => {
+          if (!applyAppearancePresetById(presetId)) return;
+          showStatusMessage(
+            `Appearance preset: ${appearancePresetDisplayName(presetId, "Default")}`,
+          );
+        },
+        presetId === current,
+      );
+    })
+    .filter(Boolean);
+  return createDropdownMenuSubmenu("Appearance filter", buttons);
+}
+
+function buildAppMenuThumbnailsSubmenu() {
+  const options = WS.meta?.options || {};
+  const thumbnailSize = String(options.thumbnailSize || "medium");
+  const filePreset = detectThumbnailPresetForKinds("file");
+  const folderPreset = detectThumbnailPresetForKinds([
+    "rootFolder",
+    "subfolder",
+  ]);
+  const tagPreset = detectThumbnailPresetForKinds("tag");
+  return createDropdownMenuSubmenu("Thumbnails", [
+    buildAppMenuChoiceSubmenu(
+      "Thumbnail size",
+      THUMBNAIL_SIZE_CYCLE,
+      thumbnailSize,
+      setAppMenuThumbnailSize,
+    ),
+    buildAppMenuChoiceSubmenu(
+      "File cards",
+      THUMBNAIL_PRESET_ITEMS,
+      filePreset,
+      (value) => setAppMenuThumbnailPreset("file", value, "File cards"),
+    ),
+    buildAppMenuChoiceSubmenu(
+      "Folder cards",
+      THUMBNAIL_PRESET_ITEMS,
+      folderPreset,
+      (value) =>
+        setAppMenuThumbnailPreset(
+          ["rootFolder", "subfolder"],
+          value,
+          "Folder cards",
+        ),
+    ),
+    buildAppMenuChoiceSubmenu(
+      "Tag cards",
+      THUMBNAIL_PRESET_ITEMS,
+      tagPreset,
+      (value) => setAppMenuThumbnailPreset("tag", value, "Tag cards"),
+    ),
+    appMenuChoiceButton(
+      "Large title text",
+      () => handleExtrasKeybindAction("toggleThumbnailTitleSize"),
+      getThumbnailTitleSizeFromOptions(options) === "large",
+    ),
+  ]);
+}
+
+function buildAppMenuMiscSubmenu() {
+  const options = WS.meta?.options || {};
+  return createDropdownMenuSubmenu("Misc", [
+    appMenuChoiceButton(
+      "Mute messages",
+      () => handleExtrasKeybindAction("toggleMuteMessages"),
+      muteMessagesEnabled(),
+    ),
+    appMenuChoiceButton(
+      "Full screen media",
+      () => handleExtrasKeybindAction("toggleFullScreenMedia"),
+      fullScreenMediaEnabled(options),
+    ),
+    appMenuChoiceButton(
+      "Float tags",
+      () => handleExtrasKeybindAction("toggleFloatTags"),
+      !!options.showTagFolderSpacerRow,
+    ),
+    buildAppMenuThumbnailsSubmenu(),
+    buildAppMenuChoiceSubmenu(
+      "Video skip seconds",
+      VIDEO_SKIP_STEP_CYCLE,
+      String(options.videoSkipStep || "5"),
+      setAppMenuVideoSkipStep,
+    ),
+    buildAppMenuChoiceSubmenu(
+      "Video end behavior",
+      VIDEO_END_BEHAVIOR_CYCLE,
+      String(options.videoEndBehavior || "loop"),
+      setAppMenuVideoEndBehavior,
+    ),
+    buildAppMenuChoiceSubmenu(
+      "Animated filters",
+      ANIMATED_FILTER_CYCLE,
+      normalizeAnimatedMediaFiltersValue(options.animatedMediaFilters, "on"),
+      setAppMenuAnimatedFilters,
+    ),
+  ]);
+}
+
+function openAppMenu(anchor) {
+  if (!appActionMenuEl || !anchor || !WS.root) return false;
+  const itemAnchor = itemMenuAnchorElement(anchor);
+  if (!itemAnchor) return false;
+  if (
+    appActionMenuEl.classList.contains("open") &&
+    APP_MENU_STATE?.anchor === itemAnchor
+  ) {
+    closeAppMenu();
+    return true;
+  }
+  closeActionMenus();
+  const menu = appActionMenuEl;
+  menu.innerHTML = "";
+  [
+    buildAppMenuSortSubmenu(),
+    buildAppMenuMediaFilterSubmenu(),
+    appMenuChoiceButton(
+      "Quick navigation",
+      () => handleExtrasKeybindAction("toggleQuickNavigation"),
+      quickNavigationEnabled(),
+    ),
+    buildAppMenuRevealSubmenu(),
+    buildAppMenuRandomSubmenu(),
+    buildAppMenuSlideshowSubmenu(),
+    buildAppMenuAppearanceSubmenu(),
+    buildAppMenuMiscSubmenu(),
+  ]
+    .filter(Boolean)
+    .forEach((item) => menu.appendChild(item));
+  const openState = { anchor: itemAnchor };
+  APP_MENU_STATE = openState;
+  requestAnimationFrame(() => {
+    if (APP_MENU_STATE !== openState) return;
+    menu.classList.add("open");
+    positionActionMenuInPreviewDock(menu);
+  });
+  return true;
 }
 
 function ensureScoreHistoryDayMenuEl() {
@@ -43362,6 +43748,10 @@ function openTagContextMenu(context) {
     !!currentAlbumContext &&
     String(currentAlbumContext.originPath || "") ===
       String(context.originPath || "");
+  const preferPane =
+    anchor && anchor.closest && anchor.closest("#previewBody")
+      ? "preview"
+      : "directories";
   const thumbMode = metaGetTagThumbnailModeByKey(tagKey);
   const tagEntryForThumb =
     context.entry && context.entry.kind === "tag"
@@ -43404,9 +43794,49 @@ function openTagContextMenu(context) {
     kind: "tag",
     entry: tagEntryForThumb,
   });
-  // Tag, Album, Rename, Delete, and Hide are all bindable selection actions.
-  // Tag/album deletion is dispatched by trashSelection, so item menus retain
-  // only the non-bindable contextual tools below.
+  const addToButtons = [];
+  if (isAlbumEntry && canTagAlbum) {
+    addToButtons.push(
+      createTagMenuButton("Tag", () => {
+        closeTagContextMenu();
+        startBulkAlbumTagging(
+          [{ album, originPath: String(context.originPath || "") }],
+          preferPane,
+        );
+      }),
+    );
+  } else if (tag && !context.special) {
+    addToButtons.push(
+      createTagMenuButton("Album", () => {
+        closeTagContextMenu();
+        beginTagAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
+      }),
+    );
+  }
+  if (canHide) {
+    addToButtons.push(
+      createTagMenuButton(isHidden ? "Unhidden" : "Hidden", () =>
+        handleTagMenuAction("hidden"),
+      ),
+    );
+  }
+  if (canDelete) {
+    addToButtons.push(
+      createTagMenuButton(
+        "Trash",
+        () => handleTagMenuAction("delete"),
+        false,
+        "destructiveAction",
+      ),
+    );
+  }
+  const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
+  if (addToSubmenu) menu.appendChild(addToSubmenu);
+  if (canRename) {
+    menu.appendChild(
+      createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
+    );
+  }
   if (canCreateInverse) {
     menu.appendChild(
       createTagMenuButton("Create inverse", () =>
@@ -43414,9 +43844,9 @@ function openTagContextMenu(context) {
       ),
     );
   }
-  if (sortSubmenu) menu.appendChild(sortSubmenu);
+  let filtersSubmenu = null;
   if (canAppearancePreset) {
-    const filtersSubmenu = buildAppearancePresetSubmenu({
+    filtersSubmenu = buildAppearancePresetSubmenu({
       currentPresetId: assignedAppearancePresetId,
       hasOverride: !!assignedAppearancePresetId,
       onChoosePreset: (presetId) => {
@@ -43436,8 +43866,8 @@ function openTagContextMenu(context) {
         );
       },
     });
-    if (filtersSubmenu) menu.appendChild(filtersSubmenu);
   }
+  let mediaTypeSubmenu = null;
   if (canMediaFilter) {
     const scopeLabel = isAlbumEntry ? "Tag album" : "Tag";
     const applyTagMediaFilter = (axisLabel, nextValue, onlyType) => {
@@ -43452,7 +43882,7 @@ function openTagContextMenu(context) {
       }
       openTagContextMenu(context);
     };
-    const mediaTypeSubmenu = buildTagMediaFilterAxisSubmenu({
+    mediaTypeSubmenu = buildTagMediaFilterAxisSubmenu({
       label: "Media type",
       axis: TAG_MEDIA_FILTER_MEDIA_TYPES,
       allLabel: "All media types",
@@ -43460,15 +43890,12 @@ function openTagContextMenu(context) {
       onApply: (nextValue, onlyType) =>
         applyTagMediaFilter("media type", nextValue, onlyType),
     });
-    if (mediaTypeSubmenu) menu.appendChild(mediaTypeSubmenu);
   }
-  if (!isTagMediaFilterValueEmpty(assignedMediaFilterValue)) {
-    menu.appendChild(
-      createTagMenuButton("Clear content filter", () =>
-        handleTagMenuAction("media-filter-clear"),
-      ),
-    );
-  }
+  const overridesSubmenu = createDropdownMenuSubmenu(
+    "Overrides",
+    [sortSubmenu, filtersSubmenu, mediaTypeSubmenu].filter(Boolean),
+  );
+  if (overridesSubmenu) menu.appendChild(overridesSubmenu);
   if (tagKey) {
     const tagThumbnailButtons = [];
     const hasTagThumbPreset = metaHasTagThumbnailPresetByKey(tagKey);
@@ -43704,9 +44131,217 @@ async function addContentToDirectoryViaPicker(dirNode, pickKind = "files") {
 const SUBMENU_CHEVRON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>';
 
+const MAX_NUMBERED_ITEM_MENU_OPTIONS = 10;
+
+function isNumberedItemMenu(menu) {
+  if (!menu || !menu.classList?.contains("dropdownMenu")) return false;
+  if (menu.classList.contains("dropdownMenuSubmenuPanel")) return false;
+  if (menu.classList.contains("optSelectMenu")) return false;
+  if (
+    menu.id === "directoriesActionMenu" ||
+    menu.id === "tagActionMenu" ||
+    menu.id === "previewActionMenu" ||
+    menu.id === "appActionMenu"
+  )
+    return true;
+  return !!menu.closest?.(".dirMenu");
+}
+
+function numberedMenuOptionsForPanel(panel) {
+  if (!panel) return [];
+  const out = [];
+  for (const child of Array.from(panel.children || [])) {
+    if (child.matches?.("button")) {
+      out.push(child);
+      continue;
+    }
+    if (child.classList?.contains("dropdownMenuSubmenu")) {
+      const trigger = child.querySelector(
+        ":scope > .dropdownMenuSubmenuTrigger",
+      );
+      if (trigger) out.push(trigger);
+      continue;
+    }
+    if (child.classList?.contains("menuTwoColRow")) {
+      out.push(...Array.from(child.querySelectorAll(":scope > button")));
+    }
+  }
+  return out.filter((btn) => !btn.hidden && btn.getAttribute("aria-hidden") !== "true");
+}
+
+function itemMenuNumberLabel(index) {
+  return index === 9 ? "0" : String(index + 1);
+}
+
+function decorateNumberedMenuPanel(panel) {
+  const options = numberedMenuOptionsForPanel(panel);
+  for (let i = 0; i < options.length; i++) {
+    const btn = options[i];
+    btn.querySelectorAll(":scope > .dropdownMenuNum").forEach((el) => el.remove());
+    btn.removeAttribute("data-menu-number");
+    btn.removeAttribute("aria-keyshortcuts");
+    if (i >= MAX_NUMBERED_ITEM_MENU_OPTIONS) continue;
+    const label = itemMenuNumberLabel(i);
+    const number = document.createElement("span");
+    number.className = "dropdownMenuNum";
+    number.setAttribute("aria-hidden", "true");
+    number.textContent = label;
+    btn.prepend(number);
+    btn.dataset.menuNumber = label;
+    btn.setAttribute("aria-keyshortcuts", label);
+  }
+}
+
+function decorateNumberedMenuOptions(menu) {
+  if (!isNumberedItemMenu(menu)) return;
+  decorateNumberedMenuPanel(menu);
+  menu
+    .querySelectorAll(".dropdownMenuSubmenuPanel")
+    .forEach((panel) => decorateNumberedMenuPanel(panel));
+}
+
+function setDropdownSubmenuOpen(submenu, open) {
+  if (!submenu) return;
+  const trigger = submenu.querySelector(
+    ":scope > .dropdownMenuSubmenuTrigger",
+  );
+  submenu.classList.toggle("submenuOpen", !!open);
+  if (!open) {
+    submenu.classList.remove("submenuOpenLeft", "submenuOpenRight");
+    const ownPanel = submenu.querySelector(
+      ":scope > .dropdownMenuSubmenuPanel",
+    );
+    if (ownPanel) ownPanel.style.top = "";
+  }
+  if (trigger) trigger.setAttribute("aria-expanded", open ? "true" : "false");
+  if (!open) {
+    submenu
+      .querySelectorAll(".dropdownMenuSubmenu.submenuOpen")
+      .forEach((nested) => setDropdownSubmenuOpen(nested, false));
+  }
+}
+
+function openDropdownSubmenuForTrigger(trigger) {
+  const submenu = trigger?.closest?.(".dropdownMenuSubmenu");
+  if (!submenu) return false;
+  const parentPanel = submenu.parentElement;
+  for (const sibling of Array.from(parentPanel?.children || [])) {
+    if (sibling !== submenu && sibling.classList?.contains("dropdownMenuSubmenu"))
+      setDropdownSubmenuOpen(sibling, false);
+  }
+  submenu.classList.remove("submenuOpenLeft", "submenuOpenRight");
+  setDropdownSubmenuOpen(submenu, true);
+  const rootMenu = submenu.closest(".dropdownMenu.open");
+  if (rootMenu) decorateNumberedMenuOptions(rootMenu);
+  const flyout = submenu.querySelector(
+    ":scope > .dropdownMenuSubmenuPanel",
+  );
+  if (rootMenu && flyout) {
+    submenu.classList.add("submenuOpenRight");
+    let flyoutRect = flyout.getBoundingClientRect();
+    const baseTop = -5;
+    let top = baseTop;
+    if (flyoutRect.bottom > window.innerHeight - 8) {
+      top -= flyoutRect.bottom - (window.innerHeight - 8);
+    }
+    if (flyoutRect.top + (top - baseTop) < 8) {
+      top += 8 - (flyoutRect.top + (top - baseTop));
+    }
+    flyout.style.top = `${Math.round(top)}px`;
+  }
+  return true;
+}
+
+function deepestOpenNumberedSubmenuPanel(menu) {
+  const openSubmenus = Array.from(
+    menu?.querySelectorAll?.(".dropdownMenuSubmenu.submenuOpen") || [],
+  ).filter((submenu) =>
+    numberedMenuOptionsForPanel(
+      submenu.querySelector(":scope > .dropdownMenuSubmenuPanel"),
+    ).length,
+  );
+  if (!openSubmenus.length) return null;
+  openSubmenus.sort((a, b) => {
+    const depth = (el) => {
+      let count = 0;
+      let cur = el;
+      while ((cur = cur.parentElement)) {
+        if (cur.classList?.contains("dropdownMenuSubmenu")) count++;
+      }
+      return count;
+    };
+    return depth(b) - depth(a);
+  });
+  return openSubmenus[0].querySelector(
+    ":scope > .dropdownMenuSubmenuPanel",
+  );
+}
+
+function openNumberedItemMenu() {
+  const menus = Array.from(document.querySelectorAll(".dropdownMenu.open"));
+  for (let i = menus.length - 1; i >= 0; i--) {
+    if (isNumberedItemMenu(menus[i])) return menus[i];
+  }
+  return null;
+}
+
+document.addEventListener(
+  "keydown",
+  (e) => {
+    const menu = openNumberedItemMenu();
+    if (!menu || isTextInputTarget(e.target)) return;
+
+    if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const activePanel = deepestOpenNumberedSubmenuPanel(menu);
+      const activeSubmenu = activePanel?.closest?.(".dropdownMenuSubmenu");
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (activeSubmenu) {
+        setDropdownSubmenuOpen(activeSubmenu, false);
+      } else {
+        const renderFilePane = !!menu.closest?.("#directoriesPane");
+        closeActionMenus();
+        if (renderFilePane) renderDirectoriesPane(true);
+      }
+      return;
+    }
+
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    const digit = /^[0-9]$/.test(String(e.key || "")) ? String(e.key) : "";
+    if (!digit) return;
+    decorateNumberedMenuOptions(menu);
+    const panel = deepestOpenNumberedSubmenuPanel(menu) || menu;
+    const option = numberedMenuOptionsForPanel(panel).find(
+      (btn) => btn.dataset.menuNumber === digit,
+    );
+    if (!option) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.repeat) return;
+    if (option.disabled) return;
+    if (option.classList.contains("dropdownMenuSubmenuTrigger")) {
+      openDropdownSubmenuForTrigger(option);
+      return;
+    }
+    option.click();
+  },
+  true,
+);
+
 function createDropdownMenuSubmenu(label, items) {
   const buttons = Array.isArray(items) ? items.filter(Boolean) : [];
   if (!buttons.length) return null;
+  const panelItems =
+    buttons.length > MAX_NUMBERED_ITEM_MENU_OPTIONS
+      ? buttons
+          .slice(0, MAX_NUMBERED_ITEM_MENU_OPTIONS - 1)
+          .concat(
+            createDropdownMenuSubmenu(
+              "More...",
+              buttons.slice(MAX_NUMBERED_ITEM_MENU_OPTIONS - 1),
+            ),
+          )
+      : buttons;
 
   const wrap = document.createElement("div");
   wrap.className = "dropdownMenuSubmenu";
@@ -43716,6 +44351,7 @@ function createDropdownMenuSubmenu(label, items) {
   trigger.type = "button";
   trigger.className = "dropdownMenuSubmenuTrigger";
   trigger.setAttribute("aria-haspopup", "menu");
+  trigger.setAttribute("aria-expanded", "false");
 
   const labelSpan = document.createElement("span");
   labelSpan.textContent = String(label || "");
@@ -43726,11 +44362,16 @@ function createDropdownMenuSubmenu(label, items) {
 
   trigger.appendChild(labelSpan);
   trigger.appendChild(caretSpan);
-  trigger.addEventListener("click", (e) => e.stopPropagation());
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = !wrap.classList.contains("submenuOpen");
+    if (open) openDropdownSubmenuForTrigger(trigger);
+    else setDropdownSubmenuOpen(wrap, false);
+  });
 
   const panel = document.createElement("div");
   panel.className = "dropdownMenu dropdownMenuSubmenuPanel";
-  for (let i = 0; i < buttons.length; i++) panel.appendChild(buttons[i]);
+  for (let i = 0; i < panelItems.length; i++) panel.appendChild(panelItems[i]);
 
   wrap.appendChild(trigger);
   wrap.appendChild(panel);
@@ -43744,7 +44385,9 @@ document.addEventListener("pointerover", (e) => {
   if (!submenu) return;
   const menu = submenu.closest && submenu.closest(".dropdownMenu.open");
   if (!menu) return;
-  submenu.classList.add("submenuOpen");
+  openDropdownSubmenuForTrigger(
+    submenu.querySelector(":scope > .dropdownMenuSubmenuTrigger"),
+  );
 });
 
 document.addEventListener("pointerout", (e) => {
@@ -43754,14 +44397,28 @@ document.addEventListener("pointerout", (e) => {
   if (!submenu) return;
   const related = e.relatedTarget;
   if (related && submenu.contains && submenu.contains(related)) return;
-  submenu.classList.remove("submenuOpen");
+  setDropdownSubmenuOpen(submenu, false);
+});
+
+// Submenus emitted as HTML use the same click behavior as DOM-built submenus.
+document.addEventListener("click", (e) => {
+  const trigger = e.target?.closest?.(".dropdownMenuSubmenuTrigger");
+  if (!trigger) return;
+  const menu = trigger.closest(".dropdownMenu.open");
+  if (!menu || !isNumberedItemMenu(menu)) return;
+  e.stopPropagation();
+  const submenu = trigger.closest(".dropdownMenuSubmenu");
+  if (!submenu) return;
+  if (submenu.classList.contains("submenuOpen"))
+    setDropdownSubmenuOpen(submenu, false);
+  else openDropdownSubmenuForTrigger(trigger);
 });
 
 function buildDropdownMenuSubmenuHtml(label, buttonsHtml) {
   if (!buttonsHtml) return "";
   return `
         <div class="dropdownMenuSubmenu">
-          <button type="button" class="dropdownMenuSubmenuTrigger" aria-haspopup="menu">
+          <button type="button" class="dropdownMenuSubmenuTrigger" aria-haspopup="menu" aria-expanded="false">
             <span>${escapeHtml(String(label || ""))}</span>
             <span class="dropdownMenuSubmenuCaret" aria-hidden="true">${SUBMENU_CHEVRON_SVG}</span>
           </button>
@@ -43770,6 +44427,23 @@ function buildDropdownMenuSubmenuHtml(label, buttonsHtml) {
           </div>
         </div>
       `;
+}
+
+function buildPaginatedDropdownMenuSubmenuHtml(label, itemHtmlList) {
+  const items = Array.isArray(itemHtmlList) ? itemHtmlList.filter(Boolean) : [];
+  if (!items.length) return "";
+  const panelItems =
+    items.length > MAX_NUMBERED_ITEM_MENU_OPTIONS
+      ? items
+          .slice(0, MAX_NUMBERED_ITEM_MENU_OPTIONS - 1)
+          .concat(
+            buildPaginatedDropdownMenuSubmenuHtml(
+              "More...",
+              items.slice(MAX_NUMBERED_ITEM_MENU_OPTIONS - 1),
+            ),
+          )
+      : items;
+  return buildDropdownMenuSubmenuHtml(label, panelItems.join(""));
 }
 
 function itemInfoRowsForTarget(target) {
@@ -43834,6 +44508,7 @@ function createItemInfoDropdown(target) {
   trigger.type = "button";
   trigger.className = "dropdownMenuSubmenuTrigger";
   trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
   trigger.innerHTML = `<span>Item Info</span><span class="dropdownMenuSubmenuCaret" aria-hidden="true">${SUBMENU_CHEVRON_SVG}</span>`;
   const panel = document.createElement("div");
   panel.className =
@@ -43870,7 +44545,7 @@ function buildItemInfoDropdownHtml(target) {
     .join("");
   return `
     <div class="dropdownMenuSubmenu dropdownMenuItemInfo">
-      <button type="button" class="dropdownMenuSubmenuTrigger" aria-haspopup="dialog">
+      <button type="button" class="dropdownMenuSubmenuTrigger" aria-haspopup="dialog" aria-expanded="false">
         <span>Item Info</span>
         <span class="dropdownMenuSubmenuCaret" aria-hidden="true">${SUBMENU_CHEVRON_SVG}</span>
       </button>
@@ -43952,24 +44627,67 @@ function buildFolderThumbnailSubmenuHtml(options) {
   return buildDropdownMenuSubmenuHtml("Thumbnail", buttonsHtml);
 }
 
+function buildFolderAddToSubmenuHtml(state) {
+  if (!state || state.isRootNode || state.isTrashRootPortal) return "";
+  const button = (label, action, disabled = false, className = "") =>
+    `<button type="button"${className ? ` class="${escapeHtml(className)}"` : ""} data-action="${escapeHtml(action)}"${disabled ? " disabled" : ""}>${escapeHtml(label)}</button>`;
+  const restricted = state.isStorageRestricted || state.isTrashItem;
+  let items = "";
+  items += button("Tag", "tag", restricted);
+  items += button("Album", "album", restricted);
+  items += button(
+    state.isFavorite ? "Remove from Favorites" : "Favorites",
+    "favorite",
+    restricted,
+  );
+  items += button(state.isHidden ? "Unhidden" : "Hidden", "hidden", restricted);
+  items += state.canRemoveFromStorage
+    ? button("Remove from Storage", "remove-from-storage")
+    : button("Storage", "send-to-storage", !state.canSendToStorage);
+  items += state.isTrashItem
+    ? button(
+        "Remove from Trash",
+        "put-back",
+        !state.canPutBack,
+        "destructiveAction",
+      )
+    : button(
+        "Trash",
+        "move-to-trash",
+        !state.canMoveToTrash,
+        "destructiveAction",
+      );
+  return buildDropdownMenuSubmenuHtml("Add To...", items);
+}
+
+function buildFolderOverridesSubmenuHtml(target, state) {
+  if (!target || !state) return "";
+  let items = buildContainerSortSubmenuHtml(target);
+  if (!state.isStorageRestricted && !state.isTrashItem) {
+    items += `<button type="button" data-action="appearance-preset-set">Filters</button>`;
+  }
+  return buildDropdownMenuSubmenuHtml("Overrides", items);
+}
+
 function buildFileThumbnailSubmenuHtml(
   thumbnailTargets,
   includeEditThumbnail = true,
 ) {
   const targets = Array.isArray(thumbnailTargets) ? thumbnailTargets : [];
-  const buttonsHtml =
-    targets
-      .map((t) => {
+  const buttonItems = targets
+    .map((t) => {
         const label = String(t?.label || "");
         const action = String(t?.action || "");
         if (!label || !action) return "";
         return `<button type="button" data-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`;
       })
-      .join("") +
-    (includeEditThumbnail
-      ? `<button type="button" data-action="edit-thumbnail">Edit thumbnail</button>`
-      : "");
-  return buildDropdownMenuSubmenuHtml("Thumbnail", buttonsHtml);
+    .filter(Boolean);
+  if (includeEditThumbnail) {
+    buttonItems.push(
+      `<button type="button" data-action="edit-thumbnail">Edit thumbnail</button>`,
+    );
+  }
+  return buildPaginatedDropdownMenuSubmenuHtml("Thumbnail", buttonItems);
 }
 
 function openPreviewFileActionMenu(rec, opts = {}) {
@@ -44010,7 +44728,11 @@ function openPreviewFileActionMenu(rec, opts = {}) {
   if (infoDropdown) menu.appendChild(infoDropdown);
 
   const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
-  if (!trashTargetPath) {
+  if (trashTargetPath) {
+    menu.appendChild(
+      makeBtn("Remove from Trash", "put-back", !WS.meta.fsRootHandle),
+    );
+  } else {
     const thumbnailTargets = getThumbnailMenuTargetsForRecord(rec);
     const thumbnailButtons = [];
     for (let i = 0; i < thumbnailTargets.length; i++) {
@@ -44026,9 +44748,8 @@ function openPreviewFileActionMenu(rec, opts = {}) {
       thumbnailButtons,
     );
     if (thumbnailSubmenu) menu.appendChild(thumbnailSubmenu);
+    menu.appendChild(makeBtn("Rename", "rename-file", !WS.meta.fsRootHandle));
   }
-  // Rename is bindable (renameSelection) and intentionally omitted here; a file
-  // in Trash never reaches this menu (openPreviewFileActionMenu bails earlier).
   PREVIEW_CONTEXT_MENU_STATE = { fileId };
 
   requestAnimationFrame(() => {
@@ -44043,22 +44764,15 @@ function openPreviewFileActionMenu(rec, opts = {}) {
   });
 }
 
-// Items inside Trash or Storage have no item menu at all. The only actions
-// those menus ever offered were the reverse operations (put back / remove from
-// storage, plus move-to-trash for stored items), and those are now keybound
-// (see trashSelection / storageSelection), so the menu would be empty. Callers
-// use these to suppress both the ⋯ button and the menu it would open.
+// The Trash root itself is a portal rather than an actionable item. Its
+// contents, stored folders, and files inside Trash still have menus so the
+// contextual inverse actions remain discoverable alongside their shortcuts.
 function folderNodeHasNoItemMenu(dirNode) {
   if (!dirNode) return false;
-  if (isTrashRootPortalNode(dirNode)) return true;
-  const p = String(dirNode.path || "");
-  if (p && isPathInsideInternalTrash(p)) return true;
-  if (isStorageStubDirNode(dirNode) || (!!p && metaHasStorage(p))) return true;
-  return false;
+  return isTrashRootPortalNode(dirNode);
 }
 function fileRecordHasNoItemMenu(rec) {
-  // A file living inside Trash: "Remove from trash" was its only menu action.
-  return !!rec && !!trashTopLevelItemPathForFileRecord(rec);
+  return false;
 }
 
 function buildFolderMenuState(dirNode) {
@@ -44130,7 +44844,10 @@ function buildFolderMenuState(dirNode) {
     canMoveToTrash:
       !isTrashRootPortal && isFolderPathMovableToTrash(p),
     canPutBack:
-      isTrashPutBackOnly && !!WS.meta.fsRootHandle && canPutBackTrashPath(p),
+      isTrashItem &&
+      !!WS.meta.fsRootHandle &&
+      !!trashTopLevelItemPathForPath(p) &&
+      canPutBackTrashPath(trashTopLevelItemPathForPath(p)),
     canSendToStorage:
       !!p &&
       !isRootNode &&
@@ -44171,25 +44888,18 @@ function buildFolderActionMenuDom(
     });
     return btn;
   };
-  const appendTwoCol = (leftBtn, rightBtn) => {
-    if (leftBtn) menuEl.appendChild(leftBtn);
-    if (rightBtn) menuEl.appendChild(rightBtn);
-  };
   // "Filters" is a preset chooser. When the caller supplies a submenu factory it
   // is rendered as a flyout submenu (matching the other item-menu filters);
   // otherwise it falls back to the action button dispatched via onAction.
-  const appendFiltersEntry = () => {
+  const makeFiltersEntry = () => {
     if (
       customHandlers &&
       typeof customHandlers.appearancePresetSubmenu === "function"
     ) {
       const submenu = customHandlers.appearancePresetSubmenu();
-      if (submenu) {
-        menuEl.appendChild(submenu);
-        return;
-      }
+      if (submenu) return submenu;
     }
-    menuEl.appendChild(makeBtn("Filters", "appearance-preset-set"));
+    return makeBtn("Filters", "appearance-preset-set");
   };
   if (state.isTrashRootPortal) return;
   const infoDropdown = createItemInfoDropdown({
@@ -44201,28 +44911,12 @@ function buildFolderActionMenuDom(
     kind: "dir",
     node: state.dirNode,
   });
-  const appendSortEntry = () => {
-    if (sortSubmenu) menuEl.appendChild(sortSubmenu);
-  };
-  // Trashed and stored items have no menu — their only actions (put back /
-  // remove from storage / move to trash) are keybound now. The openers below
-  // also bail out before showing an empty menu box.
-  if (state.isTrashPutBackOnly || state.isStorageRestricted) return;
-  if (state.isRootNode) {
-    appendSortEntry();
-    appendFiltersEntry();
-    menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
-    return;
-  }
-  // Tag, Album, Rename, Store, Move to trash, Favorite, and Hide are
-  // intentionally absent: each has a bindable action (tagSelection /
-  // albumSelection / renameSelection / storageSelection / trashSelection /
-  // favoriteSelection / hiddenSelection), which is now the only way to invoke
-  // them. "Remove from album" (no keybind equivalent) stays.
-  if (state.canRemoveFromAlbum)
-    menuEl.appendChild(makeBtn("Remove from album", "remove-from-album"));
-  appendSortEntry();
-  appendFiltersEntry();
+  const filtersEntry =
+    state.isStorageRestricted || state.isTrashItem ? null : makeFiltersEntry();
+  const overridesSubmenu = createDropdownMenuSubmenu(
+    "Overrides",
+    [sortSubmenu, filtersEntry].filter(Boolean),
+  );
   const thumbnailButtons = [];
   if (state.showUseDefaultThumbnail)
     thumbnailButtons.push(makeBtn("Use default thumbnail", "thumbnail-default"));
@@ -44234,8 +44928,60 @@ function buildFolderActionMenuDom(
     "Thumbnail",
     thumbnailButtons,
   );
+  if (state.isRootNode) {
+    if (overridesSubmenu) menuEl.appendChild(overridesSubmenu);
+    if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
+    menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
+    return;
+  }
+
+  const addToButtons = [
+    makeBtn(
+      "Tag",
+      "tag",
+      state.isStorageRestricted || state.isTrashItem,
+    ),
+    makeBtn(
+      "Album",
+      "album",
+      state.isStorageRestricted || state.isTrashItem,
+    ),
+    makeBtn(
+      state.isFavorite ? "Remove from Favorites" : "Favorites",
+      "favorite",
+      state.isStorageRestricted || state.isTrashItem,
+    ),
+    makeBtn(
+      state.isHidden ? "Unhidden" : "Hidden",
+      "hidden",
+      state.isStorageRestricted || state.isTrashItem,
+    ),
+    state.canRemoveFromStorage
+      ? makeBtn("Remove from Storage", "remove-from-storage")
+      : makeBtn("Storage", "send-to-storage", !state.canSendToStorage),
+    state.isTrashItem
+      ? makeBtn(
+          "Remove from Trash",
+          "put-back",
+          !state.canPutBack,
+          "destructiveAction",
+        )
+      : makeBtn(
+          "Trash",
+          "move-to-trash",
+          !state.canMoveToTrash,
+          "destructiveAction",
+        ),
+  ];
+  const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
+  if (addToSubmenu) menuEl.appendChild(addToSubmenu);
+  menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
+  if (state.canRemoveFromAlbum)
+    menuEl.appendChild(makeBtn("Remove from album", "remove-from-album"));
+  if (overridesSubmenu) menuEl.appendChild(overridesSubmenu);
   if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
-  menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
+  if (!state.isStorageRestricted && !state.isTrashItem)
+    menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
   if (state.canResetOrder)
     menuEl.appendChild(makeBtn("Reset order", "reset-order"));
 }
@@ -44261,8 +45007,7 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   if (
     isStorageRestricted &&
     action !== "remove-from-storage" &&
-    action !== "move-to-trash" &&
-    action !== "put-back"
+    !(action === "put-back" && isPathInsideInternalTrash(p))
   ) {
     return true;
   }
@@ -44523,16 +45268,16 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
 
   const singleSelectedDirNode =
     selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
-  // A multiselection entirely inside Trash or Storage has no menu: its only
-  // actions were put back / remove from storage / move to trash, all keybound
-  // now (trashSelection / storageSelection). Matches the single-item behavior.
-  const trashRootBulkContext =
-    selectedPaths.every((path) => !!trashTopLevelItemPathForPath(path));
-  if (trashRootBulkContext) return;
-  const storageBulkContext =
-    !!selectedDirNodes.length &&
-    selectedDirNodes.every((node) => isStorageStubDirNode(node));
-  if (storageBulkContext) return;
+  const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
+  const allTrash = selectedPaths.every((path) => isPathInsideInternalTrash(path));
+  const anyTrash = selectedPaths.some((path) => isPathInsideInternalTrash(path));
+  const isStoredPath = (path) =>
+    metaHasStorage(path) ||
+    isStorageStubDirNode(resolveDirNodeForPathOrStorageStub(path));
+  const allStorage = selectedPaths.every(isStoredPath);
+  const anyStorage = selectedPaths.some(isStoredPath);
+  const allFavorite = selectedPaths.every((path) => metaHasFavorite(path));
+  const allHidden = selectedPaths.every((path) => metaHasHidden(path));
   const anyAssignedAppearancePreset =
     !!selectedPaths.length &&
     selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
@@ -44545,9 +45290,67 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         normalizeTagAlbumName(activeAlbumRemovalContext.album || ""),
     );
 
-  // Tag / Album / Rename / Favorite / Store / Hide / Move to trash are keybound
-  // now (the *Selection actions) and intentionally omitted from the multiselect
-  // menu. Remove from album has no keybind equivalent, so it stays.
+  const addToButtons = [
+    makeBtn(
+      "Tag",
+      () => startPreviewFolderTagEdit(selectedPaths),
+      anyTrash || anyStorage,
+    ),
+    makeBtn(
+      "Album",
+      () => startBulkFolderAlbuming(selectedPaths, "preview"),
+      anyTrash || anyStorage,
+    ),
+    makeBtn(
+      allFavorite ? "Remove from Favorites" : "Favorites",
+      () => {
+        metaSetFavoriteBulk(selectedPaths, !allFavorite);
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+      },
+      anyTrash || anyStorage,
+    ),
+    makeBtn(
+      allHidden ? "Unhidden" : "Hidden",
+      () => {
+        metaSetHiddenBulk(selectedPaths, !allHidden);
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+      },
+      anyTrash || anyStorage,
+    ),
+    makeBtn(
+      allStorage ? "Remove from Storage" : "Storage",
+      async () => {
+        await setStorageStateForFolderPaths(selectedPaths, !allStorage);
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+      },
+      anyTrash,
+    ),
+    makeBtn(
+      allTrash ? "Remove from Trash" : "Trash",
+      async () => {
+        if (allTrash) await putBackTrashFolderPaths(selectedPaths);
+        else await moveFolderPathsToTrash(selectedPaths);
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+      },
+      allTrash
+        ? !WS.meta.fsRootHandle
+        : anyStorage ||
+          selectedPaths.some((path) => !isFolderPathMovableToTrash(path)),
+      true,
+      "destructiveAction",
+    ),
+  ];
+  const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
+  if (addToSubmenu) menu.appendChild(addToSubmenu);
+
+  menu.appendChild(
+    makeBtn(
+      "Rename",
+      () => startPreviewFolderRenameEdit(singleSelectedDirPath),
+      !singleSelectedDirPath || !WS.meta.fsRootHandle || anyStorage || anyTrash,
+    ),
+  );
+
   if (canRemoveSelectedFromAlbum) {
     menu.appendChild(
       makeBtn("Remove from album", () => {
@@ -44566,8 +45369,9 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       }),
     );
   }
-  {
-    const bulkFolderFiltersSubmenu = buildAppearancePresetSubmenu({
+  let bulkFolderFiltersSubmenu = null;
+  if (!anyStorage && !anyTrash) {
+    bulkFolderFiltersSubmenu = buildAppearancePresetSubmenu({
       currentPresetId:
         selectedPaths.length === 1
           ? effectiveAppearancePresetIdForMenuPath(selectedPaths[0])
@@ -44599,8 +45403,40 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
       },
     });
-    if (bulkFolderFiltersSubmenu) menu.appendChild(bulkFolderFiltersSubmenu);
   }
+
+  let bulkFolderSortSubmenu = null;
+  if (!anyStorage && !anyTrash) {
+    const currentSortModes = selectedPaths.map((path) =>
+      metaGetFolderContainerSortMode(path),
+    );
+    const commonSortMode = currentSortModes.every(
+      (mode) => mode === currentSortModes[0],
+    )
+      ? currentSortModes[0]
+      : null;
+    const sortButtons = containerSortModeOptions().map((option) =>
+      makeBtn(
+        `${commonSortMode === option.value ? "●" : "○"} ${option.label}`,
+        () => {
+          let changed = false;
+          for (const path of selectedPaths) {
+            if (metaSetFolderContainerSortMode(path, option.value)) changed = true;
+          }
+          if (!changed) return;
+          applyFolderSortModeEverywhere(true);
+          showStatusMessage(`Container sort: ${option.label}.`);
+          if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+        },
+      ),
+    );
+    bulkFolderSortSubmenu = createDropdownMenuSubmenu("Sort", sortButtons);
+  }
+  const overridesSubmenu = createDropdownMenuSubmenu(
+    "Overrides",
+    [bulkFolderSortSubmenu, bulkFolderFiltersSubmenu].filter(Boolean),
+  );
+  if (overridesSubmenu) menu.appendChild(overridesSubmenu);
 
   if (singleSelectedDirNode && singleSelectedDirNode.preserveOrder) {
     menu.appendChild(
@@ -44664,17 +45500,26 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
         .filter(Boolean),
     ),
   );
-  // Files entirely inside Trash have no menu — put-back is keybound
-  // (trashSelection) now. Matches the single-item behavior.
-  if (
+  const allTrash =
     trashTargets.length &&
     selectedRecords.length === selectedIds.length &&
-    selectedRecords.every((rec) => !!trashTopLevelItemPathForFileRecord(rec))
-  ) {
-    return;
+    selectedRecords.every((rec) => !!trashTopLevelItemPathForFileRecord(rec));
+  if (allTrash) {
+    menu.appendChild(
+      makeBtn(
+        "Remove from Trash",
+        async () => {
+          await putBackTrashFolderPaths(trashTargets);
+          finalizeBulkSelectionAction();
+        },
+        !WS.meta.fsRootHandle,
+      ),
+    );
   }
 
+  const singleFile = selectedRecords.length === 1 ? selectedRecords[0] : null;
   const canQuadPlay =
+    !allTrash &&
     selectedRecords.length === 4 &&
     selectedRecords.every((rec) => rec.type === "video");
 
@@ -44687,9 +45532,17 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
     );
   }
 
-  // Rename is keybound (renameSelection) and intentionally omitted. If nothing
-  // else applies (e.g. not a quad-video selection), there's no menu to show.
-  if (!menu.children.length) return;
+  if (!allTrash) {
+    menu.appendChild(
+      makeBtn(
+        "Rename",
+        async () => {
+          if (singleFile) startPreviewFileRenameEdit(singleFile.id);
+        },
+        !singleFile || !WS.meta.fsRootHandle,
+      ),
+    );
+  }
 
   PREVIEW_CONTEXT_MENU_STATE = {
     fileId: String(anchorFileId || ""),
@@ -44717,11 +45570,18 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
 
   const menu = previewActionMenuEl;
   menu.innerHTML = "";
-  const makeBtn = (label, onClick, closeMenu = true, disabled = false) => {
+  const makeBtn = (
+    label,
+    onClick,
+    closeMenu = true,
+    disabled = false,
+    className = "",
+  ) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = String(label || "");
     btn.disabled = !!disabled;
+    if (className) btn.className = String(className);
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       if (btn.disabled) return;
@@ -44748,18 +45608,122 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const anyAssignedTagAppearancePreset = tagAppearancePresetKeys.some((key) =>
     metaHasTagAppearancePresetByKey(key),
   );
-  const tagMediaFilterTargets = [];
-  const anyAssignedTagMediaFilter = false;
+  const tagMediaFilterTargets = tagAppearancePresetKeys.slice();
+  const albumAssignableTagEntries = selectedEntries.filter(
+    (entry) =>
+      entry &&
+      !entry.special &&
+      !entry.placeholder &&
+      !!String(entry.tag || "").trim(),
+  );
+  const taggableAlbumEntries = selectedEntries.filter(
+    (entry) =>
+      entry &&
+      !entry.special &&
+      !entry.placeholder &&
+      !String(entry.tag || "").trim() &&
+      !!normalizeTagAlbumName(entry.album || ""),
+  );
+  const hideableTagKeys = Array.from(
+    new Set(
+      selectedEntries
+        .filter(
+          (entry) =>
+            entry &&
+            !entry.special &&
+            !entry.placeholder &&
+            !!String(entry.tag || "").trim(),
+        )
+        .map((entry) => hiddenTagKeyForEntry(entry))
+        .filter(Boolean),
+    ),
+  );
+  const allHiddenTags =
+    !!hideableTagKeys.length &&
+    hideableTagKeys.every((key) => metaHasHiddenTagByKey(key));
   const singleRenameEntry =
     selectedEntries.length === 1 ? selectedEntries[0] || null : null;
+  const canSingleRename = !!(
+    singleRenameEntry &&
+    !singleRenameEntry.special &&
+    !singleRenameEntry.placeholder &&
+    (String(singleRenameEntry.tag || "").trim() ||
+      normalizeTagAlbumName(singleRenameEntry.album || ""))
+  );
   const singleRegularTagEntry =
     singleRenameEntry &&
     !singleRenameEntry.special &&
     !singleRenameEntry.placeholder &&
     !!String(singleRenameEntry.tag || "").trim() &&
     !normalizeTagAlbumName(singleRenameEntry.album || "");
-  // Tag, album, rename, delete, and hide are keybound item actions. Keep them
-  // out of both the single-item and multi-select tag/album menus.
+  const addToButtons = [];
+  if (albumAssignableTagEntries.length) {
+    addToButtons.push(
+      makeBtn("Album", async () => {
+        finalizeBulkSelectionAction();
+        beginTagAlbumAssignmentForEntries(albumAssignableTagEntries, "preview");
+      }),
+    );
+  }
+  if (taggableAlbumEntries.length) {
+    addToButtons.push(
+      makeBtn("Tag", async () => {
+        finalizeBulkSelectionAction();
+        startBulkAlbumTagging(
+          taggableAlbumEntries.map((entry) => ({
+            album: normalizeTagAlbumName(entry.album || ""),
+            originPath: String(entry.originPath || ""),
+          })),
+          "preview",
+        );
+      }),
+    );
+  }
+  if (hideableTagKeys.length) {
+    addToButtons.push(
+      makeBtn(allHiddenTags ? "Unhidden" : "Hidden", async () => {
+        let changed = false;
+        for (let i = 0; i < hideableTagKeys.length; i++) {
+          if (metaSetHiddenTagByKey(hideableTagKeys[i], !allHiddenTags))
+            changed = true;
+        }
+        if (!changed) return;
+        finalizeBulkSelectionAction();
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        showStatusMessage(
+          `${allHiddenTags ? "Unhid" : "Hid"} ${hideableTagKeys.length} tag${hideableTagKeys.length === 1 ? "" : "s"}.`,
+        );
+      }),
+    );
+  }
+  if (albumAssignableTagEntries.length || taggableAlbumEntries.length) {
+    addToButtons.push(
+      makeBtn(
+        "Trash",
+        async () => {
+          await deleteSelectedTagAlbumEntries(selectedEntries, true);
+        },
+        true,
+        false,
+        "destructiveAction",
+      ),
+    );
+  }
+  const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
+  if (addToSubmenu) menu.appendChild(addToSubmenu);
+  menu.appendChild(
+    makeBtn(
+      "Rename",
+      async () => {
+        if (!singleRenameEntry) return;
+        finalizeBulkSelectionAction();
+        beginTagRenameForEntry(singleRenameEntry, "preview");
+      },
+      true,
+      !canSingleRename,
+    ),
+  );
   if (singleRegularTagEntry) {
     menu.appendChild(
       makeBtn("Create inverse", async () => {
@@ -44769,8 +45733,9 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     );
   }
 
+  let bulkTagFiltersSubmenu = null;
   if (tagAppearancePresetKeys.length) {
-    const bulkTagFiltersSubmenu = buildAppearancePresetSubmenu({
+    bulkTagFiltersSubmenu = buildAppearancePresetSubmenu({
       currentPresetId:
         tagAppearancePresetKeys.length === 1
           ? metaGetTagAppearancePresetIdByKey(tagAppearancePresetKeys[0])
@@ -44808,79 +45773,68 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         finalizeBulkSelectionAction();
       },
     });
-    if (bulkTagFiltersSubmenu) menu.appendChild(bulkTagFiltersSubmenu);
   }
-
-  if (tagMediaFilterTargets.length) {
-    menu.appendChild(
+  let bulkTagSortSubmenu = null;
+  if (tagAppearancePresetKeys.length) {
+    const sortModes = tagAppearancePresetKeys.map((key) =>
+      metaGetTagContainerSortMode(key),
+    );
+    const commonSortMode = sortModes.every((mode) => mode === sortModes[0])
+      ? sortModes[0]
+      : null;
+    const sortButtons = containerSortModeOptions().map((option) =>
       makeBtn(
-        "Set content filter",
+        `${commonSortMode === option.value ? "●" : "○"} ${option.label}`,
         async () => {
-          const currentValue =
-            tagMediaFilterTargets.length === 1
-              ? metaGetTagMediaFilterByKey(tagMediaFilterTargets[0])
-              : [];
-          buildTagMediaFilterChoiceMenu(menu, {
-            title: "Tag content filter",
-            currentValue,
-            onBack: () => {
-              openPreviewBulkTagActionMenu(
-                selectedEntries,
-                anchorSelectionKey,
-                opts,
-              );
-            },
-            onChoose: (nextValue) => {
-              let changed = false;
-              for (let i = 0; i < tagMediaFilterTargets.length; i++) {
-                if (
-                  metaSetTagMediaFilterByKey(
-                    tagMediaFilterTargets[i],
-                    nextValue,
-                  )
-                )
-                  changed = true;
-              }
-              if (!changed) return;
-              metaScheduleSave();
-              refreshAfterTagMetadataChange();
-              showStatusMessage(
-                `Tag content filter: ${describeTagMediaFilterValue(nextValue)}.`,
-              );
-              finalizeBulkSelectionAction();
-            },
-            onRendered: () => {
-              if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
-              else
-                positionDropdownMenuAtPoint(
-                  menu,
-                  Number(opts.x) || 0,
-                  Number(opts.y) || 0,
-                );
-            },
-          });
+          let changed = false;
+          for (const key of tagAppearancePresetKeys) {
+            if (metaSetTagContainerSortMode(key, option.value)) changed = true;
+          }
+          if (!changed) return;
+          applyFolderSortModeEverywhere(true);
+          showStatusMessage(`Container sort: ${option.label}.`);
+          finalizeBulkSelectionAction();
         },
-        false,
       ),
     );
+    bulkTagSortSubmenu = createDropdownMenuSubmenu("Sort", sortButtons);
   }
-
-  if (anyAssignedTagMediaFilter) {
-    menu.appendChild(
-      makeBtn("Clear content filter", async () => {
+  let bulkTagMediaTypeSubmenu = null;
+  if (tagMediaFilterTargets.length) {
+    const currentValue =
+      tagMediaFilterTargets.length === 1
+        ? metaGetTagMediaFilterByKey(tagMediaFilterTargets[0])
+        : [];
+    bulkTagMediaTypeSubmenu = buildTagMediaFilterAxisSubmenu({
+      label: "Media type",
+      axis: TAG_MEDIA_FILTER_MEDIA_TYPES,
+      allLabel: "All media types",
+      currentValue,
+      onApply: (nextValue, onlyType) => {
+        closePreviewContextMenu();
         let changed = false;
-        for (let i = 0; i < tagMediaFilterTargets.length; i++) {
-          if (metaClearTagMediaFilterByKey(tagMediaFilterTargets[i]))
-            changed = true;
+        for (const key of tagMediaFilterTargets) {
+          if (metaSetTagMediaFilterByKey(key, nextValue)) changed = true;
         }
         if (!changed) return;
         metaScheduleSave();
         refreshAfterTagMetadataChange();
-        showStatusMessage("Tag content filter cleared.");
+        showStatusMessage(
+          `Tag media type filter: ${onlyType ? `${tagMediaFilterTypeLabel(onlyType)} only` : "all"}.`,
+        );
         finalizeBulkSelectionAction();
-      }),
-    );
+      },
+    });
   }
+  const overridesSubmenu = createDropdownMenuSubmenu(
+    "Overrides",
+    [
+      bulkTagSortSubmenu,
+      bulkTagFiltersSubmenu,
+      bulkTagMediaTypeSubmenu,
+    ].filter(Boolean),
+  );
+  if (overridesSubmenu) menu.appendChild(overridesSubmenu);
 
   PREVIEW_CONTEXT_MENU_STATE = {
     tagKey: String(anchorSelectionKey || ""),
@@ -46010,8 +46964,8 @@ function renderDirectoriesActionHeader() {
     const trashRootBulkContext =
       selectedFilesAreTrashItems &&
       selectedDirs.every((path) => !!trashTopLevelItemPathForPath(path));
-    // A selection entirely inside Trash or Storage has no menu — put back /
-    // remove from storage / move to trash are all keybound now.
+    // Legacy file-pane bulk rows defer location-only selections to the fixed
+    // preview menu and the reserved inverse location shortcuts.
     if (trashRootBulkContext) {
       WS.view.bulkActionMenuOpen = false;
       directoriesActionMenuEl.classList.remove("open");
@@ -46987,9 +47941,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         row.dataset.bulkAnchor = `dir:${p}`;
         const isFavorite = !isStorageGhost && metaHasFavorite(p);
         const isHidden = !isStorageGhost && metaHasHidden(p);
-        const assignedAppearancePresetId = isStorageGhost
-          ? ""
-          : metaGetFolderAppearancePresetId(p);
         const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
         if (sel) row.classList.add("bulkSelected");
         const canRename = !!WS.meta.fsRootHandle && !isStorageGhost;
@@ -47086,42 +48037,35 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         });
         const folderMenuTarget = { kind: "dir", node: entry.node };
         const folderMenuInfoHtml = buildItemInfoDropdownHtml(folderMenuTarget);
-        const folderMenuSortHtml =
-          buildContainerSortSubmenuHtml(folderMenuTarget);
+        const folderMenuOverridesHtml = buildFolderOverridesSubmenuHtml(
+          folderMenuTarget,
+          folderMenuState,
+        );
+        const folderMenuAddToHtml = buildFolderAddToSubmenuHtml(folderMenuState);
         // Menu (three dot / ⋯) for single-folder actions.
         let menuButtons = "";
         let menuTitle = "Folder menu";
         if (isRootNode) {
           menuButtons = `
                 ${folderMenuInfoHtml}
-                ${folderMenuSortHtml}
-                <button type="button" data-action="appearance-preset-set">Filters</button>
+                ${folderMenuOverridesHtml}
                 ${folderThumbnailMenuHtml}
                 <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
               `;
         } else {
-          // Trashed/stored folders never render a menu (menuHtml below gates
-          // them out), so no put-back / remove-from-storage branch is needed.
-          // Tag / Album / Rename / Store / Move to trash / Favorite / Hide are
-          // omitted here on purpose: they're only reachable through their
-          // bindable actions now (tagSelection / albumSelection /
-          // renameSelection / storageSelection / trashSelection /
-          // favoriteSelection / hiddenSelection). Remove from album stays.
           menuButtons = `
                 ${folderMenuInfoHtml}
+                ${folderMenuAddToHtml}
+                <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
                 ${folderMenuState.canRemoveFromAlbum ? `<button type="button" data-action="remove-from-album">Remove from album</button>` : ``}
-                ${folderMenuSortHtml}
-                <button type="button" data-action="appearance-preset-set">Filters</button>
-                ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
+                ${folderMenuOverridesHtml}
                 ${folderThumbnailMenuHtml}
-                <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
+                ${folderMenuState.isStorageRestricted || folderMenuState.isTrashItem ? `` : `<button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>`}
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
               `;
         }
         const menuHtml =
           folderMenuState.isTrashRootPortal ||
-          folderMenuState.isTrashPutBackOnly ||
-          folderMenuState.isStorageRestricted ||
           !dirVisibility.showMenuButton
           ? ""
           : `
@@ -47135,7 +48079,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 null,
                 FAVORITE_MENU_BUTTON_DISPLAY_TINT,
               )}
-              <div class="dropdownMenu${menuOpen ? " open" : ""}">
+              <div class="dropdownMenu itemActionMenu${menuOpen ? " open" : ""}">
                 ${menuButtons}
               </div>
             </div>
@@ -47352,21 +48296,25 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           canBulk && sel && selectedFilesInViewCount > 0;
         const canLooseSetMerge = !!WS.meta.fsRootHandle;
         const fileTrashTargetPath = trashTopLevelItemPathForFileRecord(rec);
-        // Rename is bindable and omitted; files in Trash render no menu at all
-        // (fileMenuHtml below is gated on !fileTrashTargetPath).
-        const fileMenuButtons = `
+        const fileMenuButtons = fileTrashTargetPath
+          ? `
+                  ${buildItemInfoDropdownHtml({ kind: "file", record: rec })}
+                  <button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from Trash</button>
+                `
+          : `
                   ${buildItemInfoDropdownHtml({ kind: "file", record: rec })}
                   ${buildFileThumbnailSubmenuHtml(
                     getThumbnailMenuTargetsForRecord(rec),
                     !!rec,
                   )}
+                  <button type="button" data-action="rename-file"${WS.meta.fsRootHandle ? "" : " disabled"}>Rename</button>
                 `;
         const fileTypeLabel = fileItemTypeLabelForRecord(
           rec || { type: isVid ? "video" : "image" },
         );
         const fileSizeLabel = formatBytes(Math.max(0, Number(rec?.size) || 0));
         const fileMenuScore = metaGetScore(rec?.dirPath || "");
-        fileMenuHtml = fileVisibility.showMenuButton && !fileTrashTargetPath
+        fileMenuHtml = fileVisibility.showMenuButton
           ? `
               <div class="dirMenu dirFileMenu">
                 ${buildThumbnailMenuButtonHtml(
@@ -47378,7 +48326,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   null,
                   FAVORITE_MENU_BUTTON_DISPLAY_TINT,
                 )}
-                <div class="dropdownMenu${fileMenuOpen ? " open" : ""}">
+                <div class="dropdownMenu itemActionMenu${fileMenuOpen ? " open" : ""}">
                   ${fileMenuButtons}
                 </div>
               </div>
@@ -48130,6 +49078,19 @@ document.addEventListener(
 
 document.addEventListener("click", async (e) => {
   const target = e.target;
+  if (APP_MENU_STATE) {
+    const anchor = APP_MENU_STATE.anchor || null;
+    if (target && target.closest && target.closest("#appActionMenu")) {
+      return;
+    }
+    if (
+      anchor &&
+      (target === anchor || (anchor.contains && anchor.contains(target)))
+    ) {
+      return;
+    }
+    closeAppMenu();
+  }
   if (TAG_CONTEXT_MENU_STATE) {
     const anchor = TAG_CONTEXT_MENU_STATE.anchor || null;
     if (target && target.closest && target.closest("#tagActionMenu")) {
@@ -48241,7 +49202,10 @@ document.addEventListener("click", async (e) => {
   const hasPreviewMenu = !!(
     previewActionMenuEl && previewActionMenuEl.classList.contains("open")
   );
-  if (!hasActionMenu && !hasPreviewMenu) return;
+  const hasAppMenu = !!(
+    appActionMenuEl && appActionMenuEl.classList.contains("open")
+  );
+  if (!hasActionMenu && !hasPreviewMenu && !hasAppMenu) return;
   if (target && target.closest) {
     if (target.closest(".dirMenu")) return;
   }
@@ -53423,7 +54387,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     card.appendChild(meta);
     // Storage stubs cannot be opened, but they must stay selectable — plain,
     // Cmd/Ctrl, and Shift clicks all route through the shared selection
-    // handler so bulk actions (untag from storage, move to trash) work here.
+    // handler so removing one or many folders from Storage still works here.
     const canBulkSelect = WS.view.bulkSelectMode && canUseBulkSelection();
     if (
       isGridInteractionMode() &&
@@ -53442,7 +54406,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     card.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      openPreviewFolderActionMenu(dirNode, { x: e.clientX, y: e.clientY });
+      openPreviewFolderActionMenu(dirNode, { anchor: card });
     });
     return card;
   }
@@ -53873,7 +54837,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
   card.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    openPreviewFolderActionMenu(dirNode, { x: e.clientX, y: e.clientY });
+    openPreviewFolderActionMenu(dirNode, { anchor: card });
   });
   return card;
 }
@@ -55321,7 +56285,7 @@ function makePreviewFileCard(
     e.preventDefault();
     e.stopPropagation();
     if (!fileId) return;
-    openPreviewFileActionMenu(rec, { x: e.clientX, y: e.clientY });
+    openPreviewFileActionMenu(rec, { anchor: card });
   });
 
   const renameInput = card.querySelector(".previewFileRenameInput");
@@ -57499,12 +58463,6 @@ function handleExtrasKeybindAction(action) {
       return refreshWorkspaceKeybindAction();
     case "toggleGrokWindow":
       return toggleGrokWindowKeybindAction();
-    case "newTab":
-      return createTab();
-    case "duplicateTab":
-      return createTab({ duplicate: true });
-    case "closeTab":
-      return closeTab();
     case "toggleAnimatedFilters": {
       const next = cycleOptionValue(
         "animatedMediaFilters",
@@ -58409,10 +59367,15 @@ async function toggleStorageSelection() {
     showStatusMessage("No items selected.");
     return false;
   }
-  if (usedBulk) finalizeBulkSelectionAction();
   const allStorage = paths.every((p) => metaHasStorage(p));
-  await setStorageStateForFolderPaths(paths, !allStorage);
-  return true;
+  if (!allStorage && paths.some((p) => isPathInsideInternalTrash(p))) {
+    showStatusMessage(
+      "Items in Trash must be put back before they can be sent to Storage.",
+    );
+    return false;
+  }
+  if (usedBulk) finalizeBulkSelectionAction();
+  return await setStorageStateForFolderPaths(paths, !allStorage);
 }
 
 async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
@@ -58516,19 +59479,22 @@ async function toggleTrashSelection() {
     showStatusMessage("No items selected.");
     return false;
   }
+  // Bidirectional, like storage: if the whole selection is already inside
+  // Trash, put it back; otherwise move it in. Storage and Trash are mutually
+  // exclusive, so a mixed or stored selection is rejected as one operation.
+  const allInTrash = paths.every((p) => isPathInsideInternalTrash(p));
+  if (!allInTrash && paths.some((p) => metaHasStorage(p))) {
+    showStatusMessage(
+      "Items in Storage must be removed from Storage before they can be moved to Trash.",
+    );
+    return false;
+  }
   if (usedBulk) finalizeBulkSelectionAction();
   closeActionMenus();
-  // Bidirectional, like storage: if the whole selection is already inside
-  // Trash, put it back; otherwise move it in. putBackTrashFolderPaths /
-  // moveFolderPathsToTrash both filter to eligible paths and report if none
-  // qualify, so no extra guard is needed here.
-  const allInTrash = paths.every((p) => isPathInsideInternalTrash(p));
   if (allInTrash) {
-    await putBackTrashFolderPaths(paths);
-  } else {
-    await moveFolderPathsToTrash(paths);
+    return await putBackTrashFolderPaths(paths);
   }
-  return true;
+  return await moveFolderPathsToTrash(paths);
 }
 
 // True when the preview grid (not the file pane) owns the current selection.
@@ -58574,6 +59540,40 @@ function toggleSelectionInBulkKeybindAction() {
   return true;
 }
 
+function cancelMultiSelectionKeybindAction() {
+  if (!WS.view.bulkSelectMode && !hasBulkSelection()) {
+    showStatusMessage("No multi-item selection to cancel.");
+    return false;
+  }
+  closeActionMenus();
+  WS.view.bulkSelectMode = true;
+  return exitBulkSelectMode();
+}
+
+function selectedItemMenuAnchor() {
+  if (previewPaneOwnsSelection()) {
+    const card = findSelectedPreviewCard();
+    if (card) return card;
+  }
+  if (!directoriesListEl) return null;
+  return (
+    directoriesListEl.querySelector(".dirRow.selected") ||
+    directoriesListEl.querySelector(
+      `.dirRow[data-entry-index="${Number(WS.nav.selectedIndex)}"]`,
+    )
+  );
+}
+
+function openAppMenuForSelectionKeybindAction() {
+  if (!WS.root || VIEWER_MODE) return false;
+  const anchor = selectedItemMenuAnchor();
+  if (!anchor) {
+    showStatusMessage("No item selected.");
+    return false;
+  }
+  return openAppMenu(anchor);
+}
+
 // Open the action menu for the current selection, choosing the pane-appropriate
 // opener (which itself upgrades to the bulk menu when a multi-selection exists).
 function openItemMenuForSelectionKeybindAction() {
@@ -58581,23 +59581,24 @@ function openItemMenuForSelectionKeybindAction() {
   if (previewPaneOwnsSelection()) {
     const card = findSelectedPreviewCard();
     if (card) {
+      const anchor = card;
       const kind = String(card.dataset?.previewItemKind || "");
       if (kind === "file") {
         const rec = WS.fileById.get(String(previewFileIdForCard(card) || ""));
         if (rec) {
-          openPreviewFileActionMenu(rec, { anchor: card });
+          openPreviewFileActionMenu(rec, { anchor });
           return true;
         }
       } else if (kind === "dir") {
         const node = WS.dirByPath.get(String(previewDirPathForCard(card) || ""));
         if (node) {
-          openPreviewFolderActionMenu(node, { anchor: card });
+          openPreviewFolderActionMenu(node, { anchor });
           return true;
         }
       } else if (kind === "tag") {
         const entry = card.__previewTagEntry || null;
         if (entry) {
-          openTagEntryContextMenu(entry, card);
+          openTagEntryContextMenu(entry, anchor);
           return true;
         }
       }
@@ -58764,12 +59765,12 @@ function handleSelectionKeybindAction(action) {
       return startRenameSelection();
     case "toggleSelectionInBulk":
       return toggleSelectionInBulkKeybindAction();
+    case "cancelMultiSelection":
+      return cancelMultiSelectionKeybindAction();
     case "openItemMenu":
       return openItemMenuForSelectionKeybindAction();
-    case "openInTab":
-      return openInTabAction();
-    case "openInNewTabs":
-      return openInNewTabsAction();
+    case "openAppMenu":
+      return openAppMenuForSelectionKeybindAction();
     default:
       return false;
   }
@@ -59483,18 +60484,6 @@ document.addEventListener("keydown", (e) => {
     }
   }
 
-  // Cmd+1..Cmd+9 jump between tabs. Reserved rather than bindable, so they are
-  // matched here ahead of keybindActionFor() and never appear in KEYBIND_ACTIONS.
-  // Cmd+9 goes to the last tab (browser convention). Bare 1..5 remain the
-  // appearance presets — these require Cmd, so they don't collide.
-  const tabJumpMatch = /^Cmd\+([1-9])$/.exec(key);
-  if (tabJumpMatch && !isTextInputTarget(e.target) && !VIEWER_MODE) {
-    e.preventDefault();
-    const n = Number(tabJumpMatch[1]);
-    activateTabByIndex(n === 9 ? WS.tabs.items.length - 1 : n - 1);
-    return;
-  }
-
   // Tab toggles the in-app Settings window. Reserved (not bindable) so it works
   // from anywhere except while typing in a field, where Tab keeps its normal
   // focus-traversal behaviour.
@@ -59512,6 +60501,7 @@ document.addEventListener("keydown", (e) => {
   // moves the selection to/from Trash, Cmd+Shift+Delete to/from Storage. macOS
   // labels the Backspace key "delete", so match both physical keys.
   if (
+    !APP_ITEM_MENU_ACTIONS_ONLY &&
     (e.metaKey || e.ctrlKey) &&
     !e.altKey &&
     (e.key === "Backspace" || e.key === "Delete") &&
@@ -59520,6 +60510,7 @@ document.addEventListener("keydown", (e) => {
     !VIEWER_MODE
   ) {
     e.preventDefault();
+    if (e.repeat) return;
     if (e.shiftKey) toggleStorageSelection();
     else toggleTrashSelection();
     return;
