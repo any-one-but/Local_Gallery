@@ -15627,6 +15627,12 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
+    id: "hiddenSelection",
+    label: "Hide selection",
+    hint: "Hide or unhide the selected item(s).",
+    section: "folderActions",
+  },
+  {
     id: "tagSelection",
     label: "Add selection to tag",
     hint: "Add the selected item(s) to a tag.",
@@ -43842,14 +43848,13 @@ function buildFolderActionMenuDom(
     menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
     return;
   }
-  // Tag, Album, Rename, Store, Move to trash, and Favorite are intentionally
-  // absent: each has a bindable action (tagSelection / albumSelection /
-  // renameSelection / storageSelection / trashSelection / favoriteSelection),
-  // which is now the only way to invoke them. Hide and "Remove from album" (no
-  // keybind equivalent) stay.
+  // Tag, Album, Rename, Store, Move to trash, Favorite, and Hide are
+  // intentionally absent: each has a bindable action (tagSelection /
+  // albumSelection / renameSelection / storageSelection / trashSelection /
+  // favoriteSelection / hiddenSelection), which is now the only way to invoke
+  // them. "Remove from album" (no keybind equivalent) stays.
   if (state.canRemoveFromAlbum)
     menuEl.appendChild(makeBtn("Remove from album", "remove-from-album"));
-  menuEl.appendChild(makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"));
   appendSortEntry();
   appendFiltersEntry();
   const thumbnailButtons = [];
@@ -44156,76 +44161,16 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
 
   const singleSelectedDirNode =
     selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
+  // A multiselection entirely inside Trash or Storage has no menu: its only
+  // actions were put back / remove from storage / move to trash, all keybound
+  // now (trashSelection / storageSelection). Matches the single-item behavior.
   const trashRootBulkContext =
     selectedPaths.every((path) => !!trashTopLevelItemPathForPath(path));
-  if (trashRootBulkContext) {
-    menu.appendChild(
-      makeBtn(
-        "Remove from trash",
-        async () => {
-          await putBackTrashFolderPaths(selectedPaths);
-          if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        },
-        !WS.meta.fsRootHandle,
-      ),
-    );
-    PREVIEW_CONTEXT_MENU_STATE = {
-      dirPath: String(anchorPath || ""),
-      bulkPaths: selectedPaths.slice(),
-    };
-    requestAnimationFrame(() => {
-      menu.classList.add("open");
-      if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
-      else
-        positionDropdownMenuAtPoint(
-          menu,
-          Number(opts.x) || 0,
-          Number(opts.y) || 0,
-        );
-    });
-    return;
-  }
+  if (trashRootBulkContext) return;
   const storageBulkContext =
     !!selectedDirNodes.length &&
     selectedDirNodes.every((node) => isStorageStubDirNode(node));
-  if (storageBulkContext) {
-    menu.appendChild(
-      makeBtn(
-        "Remove from storage",
-        async () => {
-          await setStorageStateForFolderPaths(selectedPaths, false);
-          if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        },
-      ),
-    );
-    menu.appendChild(
-      makeBtn(
-        "Move to trash",
-        async () => {
-          await moveFolderPathsToTrash(selectedPaths);
-          if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        },
-        selectedPaths.some((path) => !isFolderPathMovableToTrash(path)),
-        true,
-        "destructiveAction",
-      ),
-    );
-    PREVIEW_CONTEXT_MENU_STATE = {
-      dirPath: String(anchorPath || ""),
-      bulkPaths: selectedPaths.slice(),
-    };
-    requestAnimationFrame(() => {
-      menu.classList.add("open");
-      if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
-      else
-        positionDropdownMenuAtPoint(
-          menu,
-          Number(opts.x) || 0,
-          Number(opts.y) || 0,
-        );
-    });
-    return;
-  }
+  if (storageBulkContext) return;
   const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
   const canRenameBulk = !!singleSelectedDirPath && !!WS.meta.fsRootHandle;
   const allFavorite =
@@ -44245,57 +44190,27 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         normalizeTagAlbumName(activeAlbumRemovalContext.album || ""),
     );
 
-  appendTwoCol(
-    makeBtn("Tag", () => {
-      startPreviewFolderTagEdit(selectedPaths);
-    }),
-    makeBtn("Album", () => {
-      startBulkFolderAlbuming(selectedPaths, "preview");
-    }),
-  );
-  appendTwoCol(
-    makeBtn(
-      "Rename",
-      () => {
-        if (!singleSelectedDirPath) return;
-        startPreviewFolderRenameEdit(singleSelectedDirPath);
-      },
-      !canRenameBulk || !singleSelectedDirPath,
-    ),
-    canRemoveSelectedFromAlbum
-      ? makeBtn("Remove from album", () => {
-          let changed = false;
-          for (let i = 0; i < selectedPaths.length; i++) {
-            if (metaSetAlbumForPath(selectedPaths[i], "")) changed = true;
-          }
-          if (!changed) {
-            showStatusMessage("No folders updated.");
-            return;
-          }
-          metaScheduleSave();
-          refreshAfterTagMetadataChange();
-          showStatusMessage("Removed selected folders from album.");
-          if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        })
-      : null,
-  );
-
-  menu.appendChild(
-    makeBtn(allFavorite ? "Unfavorite" : "Favorite", () => {
-      metaSetFavoriteBulk(selectedPaths, !allFavorite);
-      if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-    }),
-  );
-  appendTwoCol(
-    makeBtn("Store", async () => {
-      await setStorageStateForFolderPaths(selectedPaths, true);
-      if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-    }),
-    makeBtn(allHidden ? "Unhide" : "Hide", () => {
-      metaSetHiddenBulk(selectedPaths, !allHidden);
-      if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-    }),
-  );
+  // Tag / Album / Rename / Favorite / Store / Hide / Move to trash are keybound
+  // now (the *Selection actions) and intentionally omitted from the multiselect
+  // menu. Remove from album has no keybind equivalent, so it stays.
+  if (canRemoveSelectedFromAlbum) {
+    menu.appendChild(
+      makeBtn("Remove from album", () => {
+        let changed = false;
+        for (let i = 0; i < selectedPaths.length; i++) {
+          if (metaSetAlbumForPath(selectedPaths[i], "")) changed = true;
+        }
+        if (!changed) {
+          showStatusMessage("No folders updated.");
+          return;
+        }
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        showStatusMessage("Removed selected folders from album.");
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+      }),
+    );
+  }
   {
     const bulkFolderFiltersSubmenu = buildAppearancePresetSubmenu({
       currentPresetId:
@@ -44342,19 +44257,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       }),
     );
   }
-
-  menu.appendChild(
-    makeBtn(
-      "Move to trash",
-      async () => {
-        await moveFolderPathsToTrash(selectedPaths);
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-      },
-      selectedPaths.some((path) => !isFolderPathMovableToTrash(path)),
-      true,
-      "destructiveAction",
-    ),
-  );
 
   PREVIEW_CONTEXT_MENU_STATE = {
     dirPath: String(anchorPath || ""),
@@ -44407,31 +44309,13 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
         .filter(Boolean),
     ),
   );
+  // Files entirely inside Trash have no menu — put-back is keybound
+  // (trashSelection) now. Matches the single-item behavior.
   if (
     trashTargets.length &&
     selectedRecords.length === selectedIds.length &&
     selectedRecords.every((rec) => !!trashTopLevelItemPathForFileRecord(rec))
   ) {
-    menu.appendChild(
-      makeBtn("Remove from trash", async () => {
-        await putBackTrashFolderPaths(trashTargets);
-        finalizeBulkSelectionAction();
-      }, !WS.meta.fsRootHandle),
-    );
-    PREVIEW_CONTEXT_MENU_STATE = {
-      fileId: String(anchorFileId || ""),
-      bulkFileIds: selectedIds.slice(),
-    };
-    requestAnimationFrame(() => {
-      menu.classList.add("open");
-      if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
-      else
-        positionDropdownMenuAtPoint(
-          menu,
-          Number(opts.x) || 0,
-          Number(opts.y) || 0,
-        );
-    });
     return;
   }
 
@@ -44455,17 +44339,9 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
     );
   }
 
-  menu.appendChild(
-    makeBtn(
-      "Rename file",
-      async () => {
-        if (singleFile && startPreviewFileRenameEdit(singleFile.id)) return;
-        startFileRenameSelection();
-      },
-      !singleFile || !WS.meta.fsRootHandle,
-    ),
-  );
-
+  // Rename is keybound (renameSelection) and intentionally omitted. If nothing
+  // else applies (e.g. not a quad-video selection), there's no menu to show.
+  if (!menu.children.length) return;
 
   PREVIEW_CONTEXT_MENU_STATE = {
     fileId: String(anchorFileId || ""),
@@ -46202,114 +46078,27 @@ function renderDirectoriesActionHeader() {
     const trashRootBulkContext =
       selectedFilesAreTrashItems &&
       selectedDirs.every((path) => !!trashTopLevelItemPathForPath(path));
+    // A selection entirely inside Trash or Storage has no menu — put back /
+    // remove from storage / move to trash are all keybound now.
     if (trashRootBulkContext) {
-      directoriesActionMenuEl.appendChild(
-        makeActionBtn("Remove from trash", async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await putBackTrashFolderPaths(
-            selectedDirs.concat(selectedFileTrashTargetsForTrashMenu),
-          );
-          finalizeBulkSelectionAction();
-        }),
-      );
-      const anchorBtn = findDirMenuButtonForAnchorKey(
-        WS.view.bulkActionMenuAnchorPath,
-      );
-      if (anchorBtn) {
-        requestAnimationFrame(() =>
-          positionDropdownMenu(anchorBtn, directoriesActionMenuEl),
-        );
-      }
+      WS.view.bulkActionMenuOpen = false;
+      directoriesActionMenuEl.classList.remove("open");
       return;
     }
     const storageBulkContext =
       !!selectedDirNodes.length &&
       selectedDirNodes.every((node) => isStorageStubDirNode(node));
     if (storageBulkContext) {
-      directoriesActionMenuEl.appendChild(
-        makeActionBtn("Remove from storage", async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await setStorageStateForFolderPaths(selectedDirs, false);
-          finalizeBulkSelectionAction();
-        }),
-      );
-      const storageMoveToTrashBtn = makeActionBtn(
-        "Move to trash",
-        async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await moveFolderPathsToTrash(selectedDirs);
-          finalizeBulkSelectionAction();
-        },
-        false,
-        "destructiveAction",
-      );
-      if (selectedDirs.some((path) => !isFolderPathMovableToTrash(path)))
-        storageMoveToTrashBtn.disabled = true;
-      directoriesActionMenuEl.appendChild(storageMoveToTrashBtn);
-      const anchorBtn = findDirMenuButtonForAnchorKey(
-        WS.view.bulkActionMenuAnchorPath,
-      );
-      if (anchorBtn) {
-        requestAnimationFrame(() =>
-          positionDropdownMenu(anchorBtn, directoriesActionMenuEl),
-        );
-      }
+      WS.view.bulkActionMenuOpen = false;
+      directoriesActionMenuEl.classList.remove("open");
       return;
     }
     const singleSelectedDirNode =
       selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
     const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
-    const canRenameBulk = !!singleSelectedDirPath && !!WS.meta.fsRootHandle;
-    const tagBtn = makeActionBtn("Tag", () => {
-      WS.view.bulkActionMenuOpen = false;
-      finalizeBulkSelectionAction();
-      startBulkTagging(selectedDirs);
-    });
-    const albumBtn = makeActionBtn("Album", () => {
-      WS.view.bulkActionMenuOpen = false;
-      finalizeBulkSelectionAction();
-      startBulkFolderAlbuming(selectedDirs);
-    });
-    const renameBtn = makeActionBtn("Rename", () => {
-      WS.view.bulkActionMenuOpen = false;
-      if (!canRenameBulk || !singleSelectedDirPath) return;
-      const idx = findDirEntryIndexByPath(singleSelectedDirPath);
-      if (idx >= 0) {
-        WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
-        syncPreviewToSelection({ force: true });
-      }
-      RENAME_EDIT_PATH = singleSelectedDirPath;
-      TAG_EDIT_PATH = null;
-      renderDirectoriesPane(true);
-      focusSelectedDirectoryInlineInput(".renameEditInput");
-    });
-    if (!canRenameBulk) renameBtn.disabled = true;
-    directoriesActionMenuEl.appendChild(makeTwoColRow(tagBtn, albumBtn));
-    directoriesActionMenuEl.appendChild(renameBtn);
-
-    const favoriteBtn = makeActionBtn(
-      allFavorite ? "Unfavorite" : "Favorite",
-      () => {
-        WS.view.bulkActionMenuOpen = false;
-        metaSetFavoriteBulk(selectedDirs, !allFavorite);
-        finalizeBulkSelectionAction();
-      },
-    );
-    directoriesActionMenuEl.appendChild(favoriteBtn);
-    directoriesActionMenuEl.appendChild(
-      makeTwoColRow(
-        makeActionBtn("Store", async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await setStorageStateForFolderPaths(selectedDirs, true);
-          finalizeBulkSelectionAction();
-        }),
-        makeActionBtn(allHidden ? "Unhide" : "Hide", () => {
-          WS.view.bulkActionMenuOpen = false;
-          metaSetHiddenBulk(selectedDirs, !allHidden);
-          finalizeBulkSelectionAction();
-        }),
-      ),
-    );
+    // Tag / Album / Rename / Favorite / Store / Hide / Move to trash are all
+    // keybound now (the *Selection actions) and intentionally omitted from the
+    // multiselect menu. Only Filters (below) remains.
 
     {
       const dirFolderFiltersSubmenu = buildAppearancePresetSubmenu({
@@ -47440,15 +47229,14 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         } else {
           // Trashed/stored folders never render a menu (menuHtml below gates
           // them out), so no put-back / remove-from-storage branch is needed.
-          // Tag / Album / Rename / Store / Move to trash / Favorite are omitted
-          // here on purpose: they're only reachable through their bindable
-          // actions now (tagSelection / albumSelection / renameSelection /
-          // storageSelection / trashSelection / favoriteSelection). Hide and
-          // Remove from album stay.
+          // Tag / Album / Rename / Store / Move to trash / Favorite / Hide are
+          // omitted here on purpose: they're only reachable through their
+          // bindable actions now (tagSelection / albumSelection /
+          // renameSelection / storageSelection / trashSelection /
+          // favoriteSelection / hiddenSelection). Remove from album stays.
           menuButtons = `
                 ${folderMenuInfoHtml}
                 ${folderMenuState.canRemoveFromAlbum ? `<button type="button" data-action="remove-from-album">Remove from album</button>` : ``}
-                <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
                 ${folderMenuSortHtml}
                 <button type="button" data-action="appearance-preset-set">Filters</button>
                 ${assignedAppearancePresetId ? `<button type="button" data-action="appearance-preset-clear">Clear media preset override</button>` : ``}
@@ -57798,6 +57586,18 @@ function toggleFavoriteSelection() {
   return true;
 }
 
+function toggleHiddenSelection() {
+  const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
+  if (!paths.length) {
+    showStatusMessage("No items selected.");
+    return false;
+  }
+  if (usedBulk) finalizeBulkSelectionAction();
+  const allHidden = paths.every((p) => metaHasHidden(p));
+  metaSetHiddenBulk(paths, !allHidden);
+  return true;
+}
+
 // "Selected item(s)" resolves to folder paths: a folder selection is used
 // directly, a file selection maps to the folders that contain the files (see
 // getFolderTargetPathsForSelectionActions). Album/storage/trash all key on
@@ -57991,6 +57791,8 @@ function handleSelectionKeybindAction(action) {
       return toggleTrashSelection();
     case "favoriteSelection":
       return toggleFavoriteSelection();
+    case "hiddenSelection":
+      return toggleHiddenSelection();
     case "renameSelection":
       return startRenameSelection();
     case "openInTab":
