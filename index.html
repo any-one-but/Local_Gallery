@@ -2131,6 +2131,63 @@ img[data-rotate-key].rotatingThumbFade {
   background: var(--color1-secondary);
 }
 
+/* Keyboard cursor inside an open item/app menu. The navigation keys move this
+   highlight instead of the file tree while a menu is open; see
+   moveMenuHighlight / the numbered-menu keydown handler. */
+.dropdownMenu button.menuKeyActive,
+.dropdownMenu:not(.optSelectMenu) button.menuKeyActive {
+  background: var(--color1-secondary);
+  box-shadow: inset 0 0 0 1px var(--color0-primary);
+}
+
+/* The app and item menus are driven from the keyboard across the whole window
+   rather than read at arm's length under a pointer, so they run at a larger
+   scale than the settings dropdowns. Selector set mirrors isNumberedItemMenu().
+   .optSelectMenu (the Settings selects) is deliberately left alone. */
+#appActionMenu,
+#appActionMenu .dropdownMenu,
+#directoriesActionMenu,
+#directoriesActionMenu .dropdownMenu,
+#tagActionMenu,
+#tagActionMenu .dropdownMenu,
+#previewActionMenu,
+#previewActionMenu .dropdownMenu,
+.dirMenu .dropdownMenu:not(.optSelectMenu) {
+  padding: 8px;
+  min-width: 264px;
+  border-radius: 14px;
+  gap: 2px;
+}
+
+#appActionMenu button,
+#directoriesActionMenu button,
+#tagActionMenu button,
+#previewActionMenu button,
+.dirMenu .dropdownMenu:not(.optSelectMenu) button {
+  font-size: 15px;
+  padding: 11px 14px;
+  border-radius: 9px;
+}
+
+#appActionMenu .dropdownMenuNum,
+#directoriesActionMenu .dropdownMenuNum,
+#tagActionMenu .dropdownMenuNum,
+#previewActionMenu .dropdownMenuNum,
+.dirMenu .dropdownMenu:not(.optSelectMenu) .dropdownMenuNum {
+  min-width: 1.1em;
+  margin-right: 12px;
+  font-size: 0.8em;
+}
+
+#appActionMenu .dropdownMenuSubmenuCaret svg,
+#directoriesActionMenu .dropdownMenuSubmenuCaret svg,
+#tagActionMenu .dropdownMenuSubmenuCaret svg,
+#previewActionMenu .dropdownMenuSubmenuCaret svg,
+.dirMenu .dropdownMenu:not(.optSelectMenu) .dropdownMenuSubmenuCaret svg {
+  width: 17px;
+  height: 17px;
+}
+
 .dropdownMenu .dropdownMenuSubmenu {
   position: relative;
   display: flex;
@@ -42454,7 +42511,34 @@ async function looseSetMergeSelectedFiles() {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Auto-close suppression
+//
+// Changing a setting from the app or an item menu must never close that menu.
+// Too many option handlers reach closeActionMenus() / closeTagContextMenu() /
+// closeAppMenu() through nested render paths (and several do it asynchronously)
+// to police each one, so activation instead opens a short window during which
+// every close is ignored. Only a deliberate user gesture — the exit key, Escape,
+// stepping left off the top level, re-toggling the menu button, or clicking
+// outside — calls allowMenuClose() to drop the window and close for real.
+// ---------------------------------------------------------------------------
+
+let MENU_AUTO_CLOSE_SUPPRESSED_UNTIL = 0;
+
+function suppressMenuAutoClose(ms = 1200) {
+  MENU_AUTO_CLOSE_SUPPRESSED_UNTIL = performance.now() + Math.max(0, ms);
+}
+
+function allowMenuClose() {
+  MENU_AUTO_CLOSE_SUPPRESSED_UNTIL = 0;
+}
+
+function menuAutoCloseSuppressed() {
+  return performance.now() < MENU_AUTO_CLOSE_SUPPRESSED_UNTIL;
+}
+
 function closeActionMenus() {
+  if (menuAutoCloseSuppressed()) return;
   WS.view.bulkActionMenuOpen = false;
   WS.view.bulkActionMenuAnchorPath = "";
   WS.view.bulkActionMenuPoint = null;
@@ -42575,6 +42659,7 @@ function openBulkActionMenuForSelection(anchorKey, opts = null) {
 }
 
 function openDirMenuForPath(path) {
+  allowMenuClose();
   const p = String(path || "");
   const isRootPath = p === "" && !!WS.root;
   if (
@@ -42599,6 +42684,7 @@ function openDirMenuForPath(path) {
 }
 
 function openFileMenuForId(fileId) {
+  allowMenuClose();
   const id = String(fileId || "");
   if (!id) return;
   if (fileRecordHasNoItemMenu(WS.fileById.get(id))) return;
@@ -42927,16 +43013,32 @@ function positionActionMenuInPreviewDock(menuEl) {
     top: 0,
     bottom: window.innerHeight,
   };
-  const gutter = 14;
-  const paneLeft = Math.max(gutter, paneRect.left + gutter);
+
+  // Anchor the menu over the first card in the grid rather than beside it, and
+  // overlap its corner slightly: a sliver of card peeking out from under the
+  // menu reads as a misalignment, so the menu swallows that corner outright.
+  const firstCard =
+    previewBodyEl?.querySelector?.(
+      ".folderCard, .fileCard, [data-preview-item-key]",
+    ) || null;
+  const cardRect = firstCard?.getBoundingClientRect?.() || null;
+  const overlap = 8;
+  const edge = 4;
+
+  const anchorLeft = cardRect
+    ? cardRect.left - overlap
+    : paneRect.left + 14;
+  const anchorTop = cardRect ? cardRect.top - overlap : paneRect.top + 14;
+
   const left = Math.max(
-    gutter,
-    Math.min(paneLeft, window.innerWidth - menuRect.width - gutter),
+    edge,
+    Math.min(anchorLeft, window.innerWidth - menuRect.width - edge),
   );
-  const top = Math.max(gutter, paneRect.top + gutter);
+  const top = Math.max(edge, anchorTop);
 
   menuEl.style.left = `${left}px`;
   menuEl.style.top = `${top}px`;
+  ensureMenuHighlight(menuEl);
 }
 
 function positionDropdownMenu(menuBtn, menuEl) {
@@ -42971,7 +43073,10 @@ function positionDropdownMenu(menuBtn, menuEl) {
 
 function positionDropdownMenuAtPoint(menuEl, x, y) {
   if (!menuEl) return;
-  if (isNumberedItemMenu(menuEl)) decorateNumberedMenuOptions(menuEl);
+  if (isNumberedItemMenu(menuEl)) {
+    decorateNumberedMenuOptions(menuEl);
+    ensureMenuHighlight(menuEl);
+  }
   menuEl.classList.add("fixed");
   menuEl.style.left = "0px";
   menuEl.style.top = "0px";
@@ -43113,6 +43218,7 @@ function gatherTagPathsForDirs(dirs) {
 }
 
 function closeTagContextMenu() {
+  if (menuAutoCloseSuppressed()) return;
   if (!tagActionMenuEl) return;
   tagActionMenuEl.classList.remove("open", "fixed");
   tagActionMenuEl.innerHTML = "";
@@ -43122,6 +43228,7 @@ function closeTagContextMenu() {
 }
 
 function closePreviewContextMenu() {
+  if (menuAutoCloseSuppressed()) return;
   if (!previewActionMenuEl) return;
   previewActionMenuEl.classList.remove("open", "fixed");
   previewActionMenuEl.innerHTML = "";
@@ -43131,6 +43238,7 @@ function closePreviewContextMenu() {
 }
 
 function closeAppMenu() {
+  if (menuAutoCloseSuppressed()) return;
   if (!appActionMenuEl) return;
   appActionMenuEl.classList.remove("open", "fixed");
   appActionMenuEl.innerHTML = "";
@@ -43139,15 +43247,29 @@ function closeAppMenu() {
   APP_MENU_STATE = null;
 }
 
-function appMenuChoiceButton(label, onClick, active = null) {
+// `closeAfter` marks the handful of entries that navigate somewhere rather than
+// change a setting — leaving the menu up over the place you just jumped to (with
+// file-tree keys still captured by the menu) would be in the way.
+function appMenuChoiceButton(label, onClick, active = null, closeAfter = false) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.textContent =
     active == null ? String(label || "") : `${active ? "●" : "○"} ${label}`;
+  // Otherwise the app menu stays open when an option is chosen so several
+  // settings can be changed in one visit; it only rebuilds itself in place so
+  // the ●/○ markers reflect the new state.
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
-    closeAppMenu();
+    if (closeAfter) {
+      allowMenuClose();
+      closeAppMenu();
+      if (typeof onClick === "function") onClick();
+      return;
+    }
+    const keyState = captureNumberedMenuKeyState(appActionMenuEl);
+    suppressMenuAutoClose();
     if (typeof onClick === "function") onClick();
+    refreshAppMenuContents(keyState);
   });
   return btn;
 }
@@ -43348,11 +43470,17 @@ function buildAppMenuRandomSubmenu() {
     ),
   );
   return createDropdownMenuSubmenu("Random actions", [
-    appMenuChoiceButton("Random set jump", () =>
-      runAppMenuRandomAction("randomFirstFileJump"),
+    appMenuChoiceButton(
+      "Random set jump",
+      () => runAppMenuRandomAction("randomFirstFileJump"),
+      null,
+      true,
     ),
-    appMenuChoiceButton("Random file jump", () =>
-      runAppMenuRandomAction("randomFileJump"),
+    appMenuChoiceButton(
+      "Random file jump",
+      () => runAppMenuRandomAction("randomFileJump"),
+      null,
+      true,
     ),
     appMenuChoiceButton(
       "Random file sort",
@@ -43527,7 +43655,37 @@ function buildAppMenuMiscSubmenu() {
   ]);
 }
 
+function buildAppMenuItems() {
+  return [
+    buildAppMenuSortSubmenu(),
+    buildAppMenuMediaFilterSubmenu(),
+    appMenuChoiceButton(
+      "Quick navigation",
+      () => handleExtrasKeybindAction("toggleQuickNavigation"),
+      quickNavigationEnabled(),
+    ),
+    buildAppMenuRevealSubmenu(),
+    buildAppMenuRandomSubmenu(),
+    buildAppMenuSlideshowSubmenu(),
+    buildAppMenuAppearanceSubmenu(),
+    buildAppMenuMiscSubmenu(),
+  ].filter(Boolean);
+}
+
+// Rebuild the open app menu without closing it, then put the keyboard cursor
+// and the open submenu chain back where they were.
+function refreshAppMenuContents(keyState) {
+  const menu = appActionMenuEl;
+  if (!menu || !APP_MENU_STATE || !menu.classList.contains("open")) return;
+  menu.innerHTML = "";
+  buildAppMenuItems().forEach((item) => menu.appendChild(item));
+  decorateNumberedMenuOptions(menu);
+  applyNumberedMenuKeyState(menu, keyState);
+  positionActionMenuInPreviewDock(menu);
+}
+
 function openAppMenu(anchor) {
+  allowMenuClose();
   if (!appActionMenuEl || !anchor || !WS.root) return false;
   const itemAnchor = itemMenuAnchorElement(anchor);
   if (!itemAnchor) return false;
@@ -43541,22 +43699,7 @@ function openAppMenu(anchor) {
   closeActionMenus();
   const menu = appActionMenuEl;
   menu.innerHTML = "";
-  [
-    buildAppMenuSortSubmenu(),
-    buildAppMenuMediaFilterSubmenu(),
-    appMenuChoiceButton(
-      "Quick navigation",
-      () => handleExtrasKeybindAction("toggleQuickNavigation"),
-      quickNavigationEnabled(),
-    ),
-    buildAppMenuRevealSubmenu(),
-    buildAppMenuRandomSubmenu(),
-    buildAppMenuSlideshowSubmenu(),
-    buildAppMenuAppearanceSubmenu(),
-    buildAppMenuMiscSubmenu(),
-  ]
-    .filter(Boolean)
-    .forEach((item) => menu.appendChild(item));
+  buildAppMenuItems().forEach((item) => menu.appendChild(item));
   const openState = { anchor: itemAnchor };
   APP_MENU_STATE = openState;
   requestAnimationFrame(() => {
@@ -43727,6 +43870,7 @@ function openScoreHistoryDayMenu(dayKey, anchor) {
 }
 
 function openTagContextMenu(context) {
+  allowMenuClose();
   if (!context || !tagActionMenuEl) return;
   const tag = String(context.tag || "").trim();
   const album = normalizeTagAlbumName(context.album || "");
@@ -43993,6 +44137,7 @@ function openTagEntryContextMenu(entry, anchor) {
 }
 
 function openPreviewContextMenu(x, y) {
+  allowMenuClose();
   if (!previewActionMenuEl) return;
   closeActionMenus();
 
@@ -44285,45 +44430,335 @@ function openNumberedItemMenu() {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Keyboard-driven menu navigation
+//
+// While an item/app menu is open the arrow keys drive a highlighted option
+// inside the menu instead of the file tree: Up/Down move within the deepest
+// open panel, Right opens the highlighted submenu and steps into it, Left
+// closes the current submenu, and Left at the top level closes the menu (you
+// walk back out toward the spine). Enter activates. The number shortcuts still
+// work and are kept as-is.
+//
+// Because the file tree must not move while a menu is open, this handler runs
+// in the capture phase and swallows every navigation key before the global
+// keydown listener sees it.
+// ---------------------------------------------------------------------------
+
+const MENU_KEY_ACTIVE_CLASS = "menuKeyActive";
+let PENDING_MENU_KEY_STATE = null;
+
+// Label of an option with the number badge and the ●/○ toggle marker removed,
+// so a state snapshot still matches its button after a toggle flipped it.
+function menuOptionLabelText(btn) {
+  if (!btn) return "";
+  const clone = btn.cloneNode(true);
+  clone.querySelectorAll(".dropdownMenuNum").forEach((el) => el.remove());
+  return String(clone.textContent || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[●○]\s*/, "");
+}
+
+function activeNumberedMenuPanel(menu) {
+  return deepestOpenNumberedSubmenuPanel(menu) || menu;
+}
+
+function clearMenuHighlight(menu) {
+  menu
+    ?.querySelectorAll?.(`.${MENU_KEY_ACTIVE_CLASS}`)
+    .forEach((el) => el.classList.remove(MENU_KEY_ACTIVE_CLASS));
+}
+
+function setMenuHighlight(menu, btn) {
+  clearMenuHighlight(menu);
+  if (!btn) return;
+  btn.classList.add(MENU_KEY_ACTIVE_CLASS);
+  try {
+    btn.scrollIntoView({ block: "nearest" });
+  } catch {}
+}
+
+function highlightedMenuOption(menu) {
+  const panel = activeNumberedMenuPanel(menu);
+  return (
+    numberedMenuOptionsForPanel(panel).find((btn) =>
+      btn.classList.contains(MENU_KEY_ACTIVE_CLASS),
+    ) || null
+  );
+}
+
+function moveMenuHighlight(menu, delta) {
+  const panel = activeNumberedMenuPanel(menu);
+  const options = numberedMenuOptionsForPanel(panel).filter(
+    (btn) => !btn.disabled,
+  );
+  if (!options.length) return;
+  const current = options.findIndex((btn) =>
+    btn.classList.contains(MENU_KEY_ACTIVE_CLASS),
+  );
+  const next =
+    current < 0
+      ? delta > 0
+        ? 0
+        : options.length - 1
+      : (current + delta + options.length) % options.length;
+  setMenuHighlight(menu, options[next]);
+}
+
+function submenuPanelForTrigger(trigger) {
+  return (
+    trigger
+      ?.closest?.(".dropdownMenuSubmenu")
+      ?.querySelector(":scope > .dropdownMenuSubmenuPanel") || null
+  );
+}
+
+// Snapshot of "where the keyboard is" in a menu, expressed as labels rather
+// than element refs so it survives the menu being torn down and rebuilt by a
+// re-render (which is how item menus refresh their ●/○ markers).
+function captureNumberedMenuKeyState(menu) {
+  if (!menu) return null;
+  const path = [];
+  let panel = menu;
+  for (;;) {
+    const openSub = Array.from(panel.children || []).find(
+      (child) =>
+        child.classList?.contains("dropdownMenuSubmenu") &&
+        child.classList.contains("submenuOpen"),
+    );
+    if (!openSub) break;
+    const trigger = openSub.querySelector(
+      ":scope > .dropdownMenuSubmenuTrigger",
+    );
+    const nextPanel = openSub.querySelector(
+      ":scope > .dropdownMenuSubmenuPanel",
+    );
+    if (!trigger || !nextPanel) break;
+    path.push(menuOptionLabelText(trigger));
+    panel = nextPanel;
+  }
+  const active = highlightedMenuOption(menu);
+  return {
+    path,
+    activeLabel: active ? menuOptionLabelText(active) : "",
+    activeIndex: active ? numberedMenuOptionsForPanel(panel).indexOf(active) : -1,
+  };
+}
+
+function applyNumberedMenuKeyState(menu, state) {
+  if (!menu || !state) return;
+  let panel = menu;
+  for (const label of state.path || []) {
+    const trigger = numberedMenuOptionsForPanel(panel).find(
+      (btn) =>
+        btn.classList.contains("dropdownMenuSubmenuTrigger") &&
+        menuOptionLabelText(btn) === label,
+    );
+    if (!trigger) break;
+    openDropdownSubmenuForTrigger(trigger);
+    const nextPanel = submenuPanelForTrigger(trigger);
+    if (!nextPanel) break;
+    panel = nextPanel;
+  }
+  if (!state.activeLabel) return;
+  const options = numberedMenuOptionsForPanel(panel);
+  // An option can rename itself when toggled ("Blank thumbnail" becomes
+  // "Rotate thumbnail"), or drop out of the menu entirely — fall back to the
+  // same slot so the cursor never silently vanishes.
+  const target =
+    options.find((btn) => menuOptionLabelText(btn) === state.activeLabel) ||
+    options[Math.min(Math.max(state.activeIndex ?? -1, 0), options.length - 1)];
+  if (target) setMenuHighlight(menu, target);
+}
+
+// Re-apply a snapshot for a few frames, because the render that rebuilds a menu
+// after an action can land one or several frames later (and sometimes twice).
+// The suppression window is re-armed on every tick so an async close arriving
+// late in that sequence still cannot take the menu down.
+function scheduleNumberedMenuKeyStateRestore(state) {
+  if (!state) return;
+  PENDING_MENU_KEY_STATE = state;
+  let frames = 0;
+  const tick = () => {
+    if (PENDING_MENU_KEY_STATE !== state) return;
+    const menu = openNumberedItemMenu();
+    if (menu) {
+      decorateNumberedMenuOptions(menu);
+      applyNumberedMenuKeyState(menu, state);
+    }
+    if (++frames < 12) {
+      suppressMenuAutoClose(400);
+      requestAnimationFrame(tick);
+    } else PENDING_MENU_KEY_STATE = null;
+  };
+  requestAnimationFrame(tick);
+}
+
+// The outermost menu an element belongs to (submenu panels are themselves
+// .dropdownMenu nodes, which isNumberedItemMenu deliberately rejects).
+function rootNumberedMenuFor(el) {
+  let found = null;
+  let cur = el?.closest?.(".dropdownMenu") || null;
+  while (cur) {
+    if (isNumberedItemMenu(cur)) found = cur;
+    cur = cur.parentElement?.closest?.(".dropdownMenu") || null;
+  }
+  return found;
+}
+
+// Every option activation — mouse or keyboard, in any of these menus — passes
+// through here first, so "changing a setting never closes the menu" holds no
+// matter which handler the option happens to be wired to.
+document.addEventListener(
+  "click",
+  (e) => {
+    const btn = e.target?.closest?.("button");
+    if (!btn) return;
+    const menu = rootNumberedMenuFor(btn);
+    if (!menu || !menu.classList.contains("open")) return;
+    if (btn.classList.contains("dropdownMenuSubmenuTrigger")) return;
+    if (btn.disabled) return;
+    if (!isStickyItemMenuAction(btn.getAttribute("data-action") || "keep")) {
+      allowMenuClose();
+      return;
+    }
+    suppressMenuAutoClose();
+    scheduleNumberedMenuKeyStateRestore(captureNumberedMenuKeyState(menu));
+  },
+  true,
+);
+
+function enterMenuSubmenuFromTrigger(menu, trigger) {
+  if (!trigger || trigger.disabled) return false;
+  if (!trigger.classList.contains("dropdownMenuSubmenuTrigger")) return false;
+  openDropdownSubmenuForTrigger(trigger);
+  const panel = submenuPanelForTrigger(trigger);
+  const first = panel
+    ? numberedMenuOptionsForPanel(panel).filter((btn) => !btn.disabled)[0]
+    : null;
+  setMenuHighlight(menu, first || trigger);
+  return true;
+}
+
+function closeNumberedMenuFromKeyboard(menu) {
+  const renderFilePane = !!menu?.closest?.("#directoriesPane");
+  PENDING_MENU_KEY_STATE = null;
+  allowMenuClose();
+  closeActionMenus();
+  if (renderFilePane) renderDirectoriesPane(true);
+}
+
+// The first option is selected as soon as a menu appears, so the exit/open keys
+// always have something to act on without an orienting keypress first. The
+// cursor also has to live in the panel the keys currently act on, so a stale
+// highlight left behind in a parent panel is pulled down into the open submenu
+// rather than treated as "already highlighted".
+function ensureMenuHighlight(menu) {
+  if (!menu || !isNumberedItemMenu(menu)) return;
+  const options = numberedMenuOptionsForPanel(activeNumberedMenuPanel(menu));
+  if (options.some((btn) => btn.classList.contains(MENU_KEY_ACTIVE_CLASS)))
+    return;
+  const first = options.filter((btn) => !btn.disabled)[0];
+  if (first) setMenuHighlight(menu, first);
+}
+
+// Left: step back out one level, or leave the menu entirely from the top level.
+function collapseOrCloseNumberedMenu(menu) {
+  const panel = deepestOpenNumberedSubmenuPanel(menu);
+  const submenu = panel?.closest?.(".dropdownMenuSubmenu");
+  if (submenu) {
+    const trigger = submenu.querySelector(
+      ":scope > .dropdownMenuSubmenuTrigger",
+    );
+    setDropdownSubmenuOpen(submenu, false);
+    setMenuHighlight(menu, trigger);
+    return;
+  }
+  closeNumberedMenuFromKeyboard(menu);
+}
+
+function activateNumberedMenuOption(menu, option) {
+  if (!option || option.disabled) return;
+  if (option.classList.contains("dropdownMenuSubmenuTrigger")) {
+    enterMenuSubmenuFromTrigger(menu, option);
+    return;
+  }
+  // Activating by number moves the cursor there too, so the highlight always
+  // sits on the option that was just chosen.
+  setMenuHighlight(menu, option);
+  // The menu deliberately stays open when an option is chosen, so remember the
+  // cursor position across whatever re-render the action triggers.
+  scheduleNumberedMenuKeyStateRestore(captureNumberedMenuKeyState(menu));
+  option.click();
+}
+
+// An open menu takes the whole keyboard. It runs on the user's own navigation
+// bindings (selectUp/Down walk the options, selectLeft/Right close and open
+// submenus, the open key activates, the exit key closes the menu outright), and
+// every other key is swallowed so nothing can reach the file tree behind it —
+// no selection move, no folder change, no bound toggle. Escape is kept as a
+// fixed way out in case the exit action is left unbound.
 document.addEventListener(
   "keydown",
   (e) => {
     const menu = openNumberedItemMenu();
     if (!menu || isTextInputTarget(e.target)) return;
 
-    if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      const activePanel = deepestOpenNumberedSubmenuPanel(menu);
-      const activeSubmenu = activePanel?.closest?.(".dropdownMenuSubmenu");
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (activeSubmenu) {
-        setDropdownSubmenuOpen(activeSubmenu, false);
-      } else {
-        const renderFilePane = !!menu.closest?.("#directoriesPane");
-        closeActionMenus();
-        if (renderFilePane) renderDirectoriesPane(true);
-      }
+    // Bare modifier presses are not commands; let them through untouched.
+    if (/^(Shift|Control|Alt|Meta)$/.test(String(e.key || ""))) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    // The user is driving again, so stop any in-flight restore from an earlier
+    // activation before it can pull the cursor back to where it used to be.
+    PENDING_MENU_KEY_STATE = null;
+
+    if (e.key === "Escape") {
+      closeNumberedMenuFromKeyboard(menu);
       return;
     }
 
-    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-    const digit = /^[0-9]$/.test(String(e.key || "")) ? String(e.key) : "";
-    if (!digit) return;
     decorateNumberedMenuOptions(menu);
-    const panel = deepestOpenNumberedSubmenuPanel(menu) || menu;
-    const option = numberedMenuOptionsForPanel(panel).find(
-      (btn) => btn.dataset.menuNumber === digit,
-    );
-    if (!option) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    if (e.repeat) return;
-    if (option.disabled) return;
-    if (option.classList.contains("dropdownMenuSubmenuTrigger")) {
-      openDropdownSubmenuForTrigger(option);
-      return;
+    ensureMenuHighlight(menu);
+
+    const key = keybindValueFromEvent(e);
+    const action = key ? keybindActionFor(key) : "";
+
+    switch (action) {
+      case "selectUp":
+        moveMenuHighlight(menu, -1);
+        return;
+      case "selectDown":
+        moveMenuHighlight(menu, 1);
+        return;
+      case "selectRight":
+        enterMenuSubmenuFromTrigger(menu, highlightedMenuOption(menu));
+        return;
+      case "selectLeft":
+        // Step back out one level; from the top level this leaves the menu.
+        collapseOrCloseNumberedMenu(menu);
+        return;
+      case "enterDir":
+        if (e.repeat) return;
+        activateNumberedMenuOption(menu, highlightedMenuOption(menu));
+        return;
+      case "leaveDir":
+        closeNumberedMenuFromKeyboard(menu);
+        return;
+      default:
+        break;
     }
-    option.click();
+
+    // Number shortcuts are kept alongside the navigation keys.
+    const digit = /^[0-9]$/.test(String(e.key || "")) ? String(e.key) : "";
+    if (!digit || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    const option = numberedMenuOptionsForPanel(
+      activeNumberedMenuPanel(menu),
+    ).find((btn) => btn.dataset.menuNumber === digit);
+    if (!option || e.repeat) return;
+    activateNumberedMenuOption(menu, option);
   },
   true,
 );
@@ -44625,6 +45060,33 @@ function buildFolderThumbnailSubmenuHtml(options) {
   if (cfg.showSetNoThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-none">Blank thumbnail</button>`;
   return buildDropdownMenuSubmenuHtml("Thumbnail", buttonsHtml);
+}
+
+// Item-menu options keep the menu open by default, so any number of settings
+// can be flipped in one visit. Only these close it: they either hand the app to
+// an inline text field (which the menu would be competing with for keys), or
+// take the item out from under the menu entirely.
+const MENU_CLOSING_ITEM_ACTIONS = new Set([
+  "rename",
+  "rename-file",
+  "tag",
+  "album",
+  "move-to-trash",
+  "put-back",
+  "remove-from-album",
+  "remove-from-tag",
+  "send-to-storage",
+  "remove-from-storage",
+  "edit-thumbnail",
+  "loose-set-merge",
+  "create-inverse",
+  "delete",
+]);
+
+function isStickyItemMenuAction(action) {
+  const raw = String(action || "");
+  if (!raw) return false;
+  return !MENU_CLOSING_ITEM_ACTIONS.has(raw);
 }
 
 function buildFolderAddToSubmenuHtml(state) {
@@ -48629,6 +49091,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           const menuPathKey = entry.node === WS.root ? "__root__" : p;
           if (p && openBulkActionMenuForSelection(`dir:${p}`)) return;
           if (WS.view.dirActionMenuPath === menuPathKey) {
+            allowMenuClose();
             closeActionMenus();
             renderDirectoriesPane(true);
             return;
@@ -48683,9 +49146,18 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               });
               return;
             }
-            closeActionMenus();
+            const sticky = isStickyItemMenuAction(action);
+            const keyState = sticky
+              ? captureNumberedMenuKeyState(menuDropdown)
+              : null;
+            if (sticky) suppressMenuAutoClose();
+            else {
+              allowMenuClose();
+              closeActionMenus();
+            }
             renderDirectoriesPane(true);
             await runFolderActionFromMenu(action, entry.node);
+            if (sticky) scheduleNumberedMenuKeyStateRestore(keyState);
           });
         });
         if (menuDropdown.classList.contains("open")) {
@@ -48788,6 +49260,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           const id = String(entry.id || "");
           if (!id) return;
           if (WS.view.fileActionMenuId === id && !WS.view.bulkActionMenuOpen) {
+            allowMenuClose();
             closeActionMenus();
             renderDirectoriesPane(true);
             return;
@@ -48806,13 +49279,22 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           btn.addEventListener("click", async (e) => {
             e.stopPropagation();
             const action = btn.getAttribute("data-action");
-            closeActionMenus();
+            const sticky = isStickyItemMenuAction(action);
+            const keyState = sticky
+              ? captureNumberedMenuKeyState(menuDropdown)
+              : null;
+            if (sticky) suppressMenuAutoClose();
+            else {
+              allowMenuClose();
+              closeActionMenus();
+            }
             renderDirectoriesPane(true);
             await runFileActionFromMenu(
               String(action || ""),
               String(entry.id || ""),
               row,
             );
+            if (sticky) scheduleNumberedMenuKeyStateRestore(keyState);
           });
         });
         if (menuDropdown.classList.contains("open")) {
@@ -49078,6 +49560,9 @@ document.addEventListener(
 
 document.addEventListener("click", async (e) => {
   const target = e.target;
+  // A click landing outside the menus is a deliberate dismissal, so it drops
+  // the auto-close suppression window an option activation may have opened.
+  if (!target?.closest?.(".dropdownMenu, .dirMenu")) allowMenuClose();
   if (APP_MENU_STATE) {
     const anchor = APP_MENU_STATE.anchor || null;
     if (target && target.closest && target.closest("#appActionMenu")) {
