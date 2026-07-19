@@ -4398,6 +4398,8 @@ img[data-rotate-key].rotatingThumbFade {
   background: #000;
   pointer-events: none;
   z-index: 3;
+  opacity: 1;
+  will-change: opacity;
 }
 
 #app.preview-media-pane-background
@@ -15674,8 +15676,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "trashSelection",
-    label: "Move selection to/from trash",
-    hint: "Move the selected item(s) into Trash, or back out if already trashed.",
+    label: "Trash/delete selection",
+    hint: "Move files and folders to or from Trash, or delete selected tags and albums.",
     section: "folderActions",
   },
   {
@@ -17306,6 +17308,7 @@ let LOADED_THUMB_RELEASE_TIMER = 0;
 let previewVideoEl = null;
 let previewVideoTransitionCanvas = null;
 let PREVIEW_VIDEO_TRANSITION_TOKEN = 0;
+let PREVIEW_VIDEO_TRANSITION_HIDE_TIMER = 0;
 let PREVIEW_VIDEO_POSTER_TIMER = 0;
 let PREVIEW_VIDEO_POSTER_TOKEN = 0;
 let previewFolderEl = null;
@@ -17444,6 +17447,7 @@ let WORKSPACE_REFRESH_IN_FLIGHT = false;
 let ACTIVE_MEDIA_SURFACE = "none";
 let CONTROL_PROGRESS_DRAGGING = false;
 let PREVIEW_VIDEO_USER_PAUSE_FILE_ID = null;
+const RESPONSIVE_VIDEO_SEEK_STATES = new WeakMap();
 
 let PREVIEW_VIDEO_PAUSE = {
   active: false,
@@ -42931,10 +42935,6 @@ function openTagContextMenu(context) {
     !!currentAlbumContext &&
     String(currentAlbumContext.originPath || "") ===
       String(context.originPath || "");
-  const preferPane =
-    anchor && anchor.closest && anchor.closest("#previewBody")
-      ? "preview"
-      : "directories";
   const thumbMode = metaGetTagThumbnailModeByKey(tagKey);
   const tagEntryForThumb =
     context.entry && context.entry.kind === "tag"
@@ -42977,44 +42977,15 @@ function openTagContextMenu(context) {
     kind: "tag",
     entry: tagEntryForThumb,
   });
-  if (isAlbumEntry) {
-    appendTagMenuTwoColRow(
-      menu,
-      createTagMenuButton("Tag", () => {
-        closeTagContextMenu();
-        startBulkAlbumTagging(
-          [{ album, originPath: String(context.originPath || "") }],
-          preferPane,
-        );
-      }),
-      createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
-    );
+  // Tag, Album, Rename, Delete, and Hide are all bindable selection actions.
+  // Tag/album deletion is dispatched by trashSelection, so item menus retain
+  // only the non-bindable contextual tools below.
+  if (canCreateInverse) {
     menu.appendChild(
-      createTagMenuButton("Delete", () => handleTagMenuAction("delete")),
-    );
-  } else {
-    appendTagMenuTwoColRow(
-      menu,
-      createTagMenuButton("Album", () => {
-        closeTagContextMenu();
-        beginTagAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
-      }),
-      createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
-    );
-    appendTagMenuTwoColRow(
-      menu,
-      createTagMenuButton("Delete", () => handleTagMenuAction("delete")),
-      createTagMenuButton(isHidden ? "Unhide" : "Hide", () =>
-        handleTagMenuAction("hidden"),
+      createTagMenuButton("Create inverse", () =>
+        handleTagMenuAction("create-inverse"),
       ),
     );
-    if (canCreateInverse) {
-      menu.appendChild(
-        createTagMenuButton("Create inverse", () =>
-          handleTagMenuAction("create-inverse"),
-        ),
-      );
-    }
   }
   if (sortSubmenu) menu.appendChild(sortSubmenu);
   if (canAppearancePreset) {
@@ -44332,35 +44303,6 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     });
     return btn;
   };
-  const appendTwoCol = (leftBtn, rightBtn) => {
-    if (!rightBtn) {
-      if (leftBtn) menu.appendChild(leftBtn);
-      return;
-    }
-    const row = document.createElement("div");
-    row.className = "menuTwoColRow";
-    if (leftBtn) row.appendChild(leftBtn);
-    row.appendChild(rightBtn);
-    menu.appendChild(row);
-  };
-
-  const albumAssignableTagEntries = selectedEntries.filter(
-    (entry) =>
-      entry &&
-      !entry.special &&
-      !entry.placeholder &&
-      String(entry.tag || "").trim(),
-  );
-  const deletableTagEntries = albumAssignableTagEntries;
-  const deletableTagAlbumEntries = selectedEntries.filter(
-    (entry) =>
-      entry &&
-      !entry.special &&
-      !entry.placeholder &&
-      !String(entry.tag || "").trim() &&
-      !!normalizeTagAlbumName(entry.album || ""),
-  );
-  const taggableAlbumEntries = deletableTagAlbumEntries;
   const presetAssignableTagEntries = selectedEntries.filter(
     (entry) =>
       entry &&
@@ -44369,23 +44311,6 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       (!!String(entry.tag || "").trim() ||
         !!normalizeTagAlbumName(entry.album || "")),
   );
-  const hideableTagEntries = selectedEntries.filter(
-    (entry) =>
-      entry &&
-      !entry.special &&
-      !entry.placeholder &&
-      !!String(entry.tag || "").trim(),
-  );
-  const hiddenTagTargets = Array.from(
-    new Set(
-      hideableTagEntries
-        .map((entry) => hiddenTagKeyForEntry(entry))
-        .filter(Boolean),
-    ),
-  );
-  const allHiddenTags =
-    !!hiddenTagTargets.length &&
-    hiddenTagTargets.every((key) => metaHasHiddenTagByKey(key));
   const tagAppearancePresetKeys = Array.from(
     new Set(
       presetAssignableTagEntries
@@ -44400,162 +44325,14 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const anyAssignedTagMediaFilter = false;
   const singleRenameEntry =
     selectedEntries.length === 1 ? selectedEntries[0] || null : null;
-  const canSingleRename =
-    !!singleRenameEntry &&
-    !singleRenameEntry.special &&
-    !singleRenameEntry.placeholder &&
-    (!!String(singleRenameEntry.tag || "").trim() ||
-      !!normalizeTagAlbumName(singleRenameEntry.album || ""));
   const singleRegularTagEntry =
     singleRenameEntry &&
     !singleRenameEntry.special &&
     !singleRenameEntry.placeholder &&
     !!String(singleRenameEntry.tag || "").trim() &&
     !normalizeTagAlbumName(singleRenameEntry.album || "");
-  const activeAlbumContext = currentTagMenuAlbumRemovalContext();
-  const canRemoveFromAlbum =
-    !!activeAlbumContext &&
-    !!albumAssignableTagEntries.length &&
-    albumAssignableTagEntries.every(
-      (entry) =>
-        String(entry.originPath || "") ===
-        String(activeAlbumContext.originPath || ""),
-    );
-
-  appendTwoCol(
-    makeBtn(
-      "Album",
-      async () => {
-        finalizeBulkSelectionAction();
-        beginTagAlbumAssignmentForEntries(albumAssignableTagEntries, "preview");
-      },
-      true,
-      !albumAssignableTagEntries.length,
-    ),
-    makeBtn(
-      "Tag",
-      async () => {
-        finalizeBulkSelectionAction();
-        startBulkAlbumTagging(
-          taggableAlbumEntries.map((entry) => ({
-            album: normalizeTagAlbumName(entry.album || ""),
-            originPath: String(entry.originPath || ""),
-          })),
-          "preview",
-        );
-      },
-      true,
-      !taggableAlbumEntries.length,
-    ),
-  );
-  menu.appendChild(
-    makeBtn(
-      "Rename",
-      async () => {
-        if (!canSingleRename || !singleRenameEntry) return;
-        finalizeBulkSelectionAction();
-        beginTagRenameForEntry(singleRenameEntry, "preview");
-      },
-      true,
-      !canSingleRename,
-    ),
-  );
-  const previewBulkTagDeleteBtn = makeBtn(
-    "Delete",
-    async () => {
-      const targetTagEntries = deletableTagEntries;
-      const targetAlbumEntries = deletableTagAlbumEntries;
-      if (!targetTagEntries.length && !targetAlbumEntries.length) {
-        showStatusMessage("No tags selected.");
-        return;
-      }
-      const byTag = new Map();
-      for (const entry of targetTagEntries) {
-        const tag = String(entry.tag || "").trim();
-        const originPath = String(entry.originPath || "");
-        if (!tag) continue;
-        const dirs = getDirsForTagEntry(entry);
-        const paths = gatherTagPathsForDirs(dirs);
-        byTag.set(`${originPath}\n${tag}`, { tag, paths, originPath });
-      }
-      const albums = [];
-      const seenAlbums = new Set();
-      for (const entry of targetAlbumEntries) {
-        const album = normalizeTagAlbumName(entry.album || "");
-        const originPath = String(entry.originPath || "");
-        const key = `${originPath}\n${album}`;
-        if (!album || seenAlbums.has(key)) continue;
-        seenAlbums.add(key);
-        albums.push({ album, originPath });
-      }
-      if (!byTag.size && !albums.length) {
-        showStatusMessage("No tags selected.");
-        return;
-      }
-      const deleteLabel =
-        byTag.size && albums.length
-          ? `Delete ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and ${albums.length} album${albums.length === 1 ? "" : "s"}?`
-          : byTag.size
-            ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
-            : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Nothing inside is deleted. Their tags and folders return to their normal place.`;
-      if (!(await showConfirmDialog(deleteLabel, { okLabel: "Delete", danger: true })))
-        return;
-      let changed = false;
-      if (byTag.size) {
-        for (const value of byTag.values()) {
-          if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
-            changed = true;
-        }
-      }
-      let deletedCount = 0;
-      let ungroupedTotal = 0;
-      for (let i = 0; i < albums.length; i++) {
-        const result = deleteTagAlbumByName(albums[i].album, albums[i].originPath);
-        if (!result.changed) continue;
-        changed = true;
-        deletedCount++;
-        ungroupedTotal += Number(result.clearedTags) || 0;
-      }
-      if (!changed) {
-        showStatusMessage(byTag.size ? "No folders updated." : "No tags updated.");
-        return;
-      }
-      metaScheduleSave();
-      refreshAfterTagMetadataChange();
-      if (byTag.size && deletedCount) {
-        showStatusMessage(
-          `Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"}.`,
-        );
-      } else if (byTag.size) {
-        showStatusMessage(`Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"}.`);
-      } else {
-        showStatusMessage(
-          `Deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
-        );
-      }
-      finalizeBulkSelectionAction();
-    },
-    true,
-    !deletableTagEntries.length && !deletableTagAlbumEntries.length,
-  );
-  const previewBulkTagHideBtn = hiddenTagTargets.length
-    ? makeBtn(allHiddenTags ? "Unhide" : "Hide", async () => {
-        let changed = false;
-        for (let i = 0; i < hiddenTagTargets.length; i++) {
-          if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTags))
-            changed = true;
-        }
-        if (!changed) return;
-        metaScheduleSave();
-        refreshAfterTagMetadataChange();
-        showStatusMessage(
-          `${allHiddenTags ? "Unhid" : "Hid"} ${hiddenTagTargets.length} tag${hiddenTagTargets.length === 1 ? "" : "s"}.`,
-        );
-        finalizeBulkSelectionAction();
-      })
-    : null;
-  appendTwoCol(previewBulkTagDeleteBtn, previewBulkTagHideBtn);
-
+  // Tag, album, rename, delete, and hide are keybound item actions. Keep them
+  // out of both the single-item and multi-select tag/album menus.
   if (singleRegularTagEntry) {
     menu.appendChild(
       makeBtn("Create inverse", async () => {
@@ -44783,12 +44560,6 @@ function createTagMenuButton(label, onClick, disabled = false, className = "") {
     onClick();
   });
   return btn;
-}
-
-function appendTagMenuTwoColRow(menu, leftBtn, rightBtn) {
-  if (!menu) return;
-  if (leftBtn) menu.appendChild(leftBtn);
-  if (rightBtn) menu.appendChild(rightBtn);
 }
 
 function removeUserTagFromPathsBulk(paths, tagName) {
@@ -45602,25 +45373,6 @@ function renderDirectoriesActionHeader() {
   const anyAssignedAppearancePreset =
     !!selectedDirs.length &&
     selectedDirs.some((p) => metaHasFolderAppearancePreset(p));
-  const albumAssignableTagEntries = selectedTagEntries.filter(
-    (entry) =>
-      entry &&
-      entry.kind === "tag" &&
-      !entry.special &&
-      !entry.placeholder &&
-      String(entry.tag || "").trim(),
-  );
-  const deletableTagEntries = albumAssignableTagEntries;
-  const deletableTagAlbumEntries = selectedTagEntries.filter(
-    (entry) =>
-      entry &&
-      entry.kind === "tag" &&
-      !entry.special &&
-      !entry.placeholder &&
-      !String(entry.tag || "").trim() &&
-      !!normalizeTagAlbumName(entry.album || ""),
-  );
-  const taggableAlbumEntries = deletableTagAlbumEntries;
   const presetAssignableTagEntries = selectedTagEntries.filter(
     (entry) =>
       entry &&
@@ -45630,28 +45382,6 @@ function renderDirectoriesActionHeader() {
       (!!String(entry.tag || "").trim() ||
         !!normalizeTagAlbumName(entry.album || "")),
   );
-  const hideableTagEntries = selectedTagEntries.filter(
-    (entry) =>
-      entry &&
-      entry.kind === "tag" &&
-      !entry.special &&
-      !entry.placeholder &&
-      !!String(entry.tag || "").trim(),
-  );
-  const hiddenTagTargets = (() => {
-    const out = [];
-    const seen = new Set();
-    for (let i = 0; i < hideableTagEntries.length; i++) {
-      const key = hiddenTagKeyForEntry(hideableTagEntries[i]);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(key);
-    }
-    return out;
-  })();
-  const allHiddenTags =
-    !!hiddenTagTargets.length &&
-    hiddenTagTargets.every((key) => metaHasHiddenTagByKey(key));
   const tagAppearancePresetKeys = (() => {
     const out = [];
     const seen = new Set();
@@ -45670,29 +45400,12 @@ function renderDirectoriesActionHeader() {
   const anyAssignedTagMediaFilter = false;
   const singleSelectedTagEntry =
     selectedTagEntries.length === 1 ? selectedTagEntries[0] || null : null;
-  const canSingleTagRename =
-    !!singleSelectedTagEntry &&
-    !singleSelectedTagEntry.special &&
-    !singleSelectedTagEntry.placeholder &&
-    (!!String(singleSelectedTagEntry.tag || "").trim() ||
-      !!normalizeTagAlbumName(singleSelectedTagEntry.album || ""));
   const singleRegularSelectedTagEntry =
     singleSelectedTagEntry &&
     !singleSelectedTagEntry.special &&
     !singleSelectedTagEntry.placeholder &&
     !!String(singleSelectedTagEntry.tag || "").trim() &&
     !normalizeTagAlbumName(singleSelectedTagEntry.album || "");
-  if (
-    !selectedDirs.length &&
-    !albumAssignableTagEntries.length &&
-    !deletableTagAlbumEntries.length &&
-    !selectedFiles.length
-  ) {
-    WS.view.bulkActionMenuOpen = false;
-    directoriesActionMenuEl.classList.remove("open");
-    return;
-  }
-
   const makeActionBtn = (label, onClick, closeMenu = true, className = "") => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -45717,152 +45430,8 @@ function renderDirectoriesActionHeader() {
   };
 
   if (selectedTagEntries.length) {
-    const albumBtn = makeActionBtn(
-      "Album",
-      () => {
-        WS.view.bulkActionMenuOpen = false;
-        finalizeBulkSelectionAction();
-        beginTagAlbumAssignmentForEntries(
-          albumAssignableTagEntries,
-          "directories",
-        );
-      },
-      true,
-    );
-    const tagAlbumBtn = makeActionBtn(
-      "Tag",
-      () => {
-        WS.view.bulkActionMenuOpen = false;
-        finalizeBulkSelectionAction();
-        startBulkAlbumTagging(
-          taggableAlbumEntries.map((entry) => ({
-            album: normalizeTagAlbumName(entry.album || ""),
-            originPath: String(entry.originPath || ""),
-          })),
-          "directories",
-        );
-      },
-      true,
-    );
-    const renameTagBtn = makeActionBtn(
-      "Rename",
-      () => {
-        WS.view.bulkActionMenuOpen = false;
-        finalizeBulkSelectionAction();
-        if (!singleSelectedTagEntry) return;
-        beginTagRenameForEntry(singleSelectedTagEntry, "directories");
-      },
-      true,
-    );
-    if (!albumAssignableTagEntries.length) albumBtn.disabled = true;
-    if (!taggableAlbumEntries.length) tagAlbumBtn.disabled = true;
-    if (!canSingleTagRename) renameTagBtn.disabled = true;
-    directoriesActionMenuEl.appendChild(
-      makeTwoColRow(
-        albumBtn,
-        tagAlbumBtn,
-      ),
-    );
-    directoriesActionMenuEl.appendChild(renameTagBtn);
-
-    const deleteBtn = makeActionBtn(
-      "Delete",
-      async () => {
-        WS.view.bulkActionMenuOpen = false;
-        const byTag = new Map();
-        for (const entry of deletableTagEntries) {
-          const tag = String(entry.tag || "").trim();
-          const originPath = String(entry.originPath || "");
-          if (!tag) continue;
-          const dirs = getDirsForTagEntry(entry);
-          const paths = gatherTagPathsForDirs(dirs);
-          const mapKey = `${originPath}\n${tag}`;
-          byTag.set(mapKey, { tag, paths, originPath });
-        }
-        const albums = [];
-        const seenAlbums = new Set();
-        for (const entry of deletableTagAlbumEntries) {
-          const album = normalizeTagAlbumName(entry.album || "");
-          const originPath = String(entry.originPath || "");
-          const key = `${originPath}\n${album}`;
-          if (!album || seenAlbums.has(key)) continue;
-          seenAlbums.add(key);
-          albums.push({ album, originPath });
-        }
-        if (!byTag.size && !albums.length) {
-          showStatusMessage("No tags selected.");
-          return;
-        }
-        const deleteLabel =
-          byTag.size && albums.length
-            ? `Delete ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and ${albums.length} album${albums.length === 1 ? "" : "s"}?`
-            : byTag.size
-              ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
-              : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Nothing inside is deleted. Their tags and folders return to their normal place.`;
-        if (!(await showConfirmDialog(deleteLabel, { okLabel: "Delete", danger: true })))
-          return;
-        let changed = false;
-        if (byTag.size) {
-          for (const value of byTag.values()) {
-            if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
-              changed = true;
-          }
-        }
-        let deletedCount = 0;
-        let ungroupedTotal = 0;
-        for (let i = 0; i < albums.length; i++) {
-          const result = deleteTagAlbumByName(
-            albums[i].album,
-            albums[i].originPath,
-          );
-          if (!result.changed) continue;
-          changed = true;
-          deletedCount++;
-          ungroupedTotal += Number(result.clearedTags) || 0;
-        }
-        if (!changed) {
-          showStatusMessage(byTag.size ? "No folders updated." : "No tags updated.");
-          return;
-        }
-        metaScheduleSave();
-        refreshAfterTagMetadataChange();
-        if (byTag.size && deletedCount) {
-          showStatusMessage(
-            `Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"}.`,
-          );
-        } else if (byTag.size) {
-          showStatusMessage(`Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"}.`);
-        } else {
-          showStatusMessage(
-            `Deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
-          );
-        }
-        finalizeBulkSelectionAction();
-      },
-      true,
-    );
-    if (!deletableTagEntries.length && !deletableTagAlbumEntries.length)
-      deleteBtn.disabled = true;
-    const hideBtn = hiddenTagTargets.length
-      ? makeActionBtn(allHiddenTags ? "Unhide" : "Hide", () => {
-          WS.view.bulkActionMenuOpen = false;
-          let changed = false;
-          for (let i = 0; i < hiddenTagTargets.length; i++) {
-            if (metaSetHiddenTagByKey(hiddenTagTargets[i], !allHiddenTags))
-              changed = true;
-          }
-          if (!changed) return;
-          metaScheduleSave();
-          refreshAfterTagMetadataChange();
-          showStatusMessage(
-            `${allHiddenTags ? "Unhid" : "Hid"} ${hiddenTagTargets.length} tag${hiddenTagTargets.length === 1 ? "" : "s"}.`,
-          );
-          finalizeBulkSelectionAction();
-        })
-      : null;
-    directoriesActionMenuEl.appendChild(
-      makeTwoColRow(deleteBtn, hideBtn),
-    );
+    // Tag, album, rename, delete, and hide stay out of item menus. The same
+    // bindable actions handle both individual and multi-selected tag entries.
     if (singleRegularSelectedTagEntry) {
       directoriesActionMenuEl.appendChild(
         makeActionBtn("Create inverse", () => {
@@ -49122,7 +48691,7 @@ function setPreviewBodyMode(mode) {
   previewBodyEl.classList.remove("preview-expanded");
   previewBodyEl.classList.toggle("preview-placeholder", mode === "placeholder");
   if (mode !== "file" && previewVideoTransitionCanvas)
-    previewVideoTransitionCanvas.style.display = "none";
+    hidePreviewVideoTransitionFrame(true);
   syncPreviewMediaModeClass(mode);
 }
 
@@ -49429,13 +48998,53 @@ function ensurePreviewVideoTransitionCanvas() {
   return previewVideoTransitionCanvas;
 }
 
+function showPreviewVideoTransitionFrame(canvas = null) {
+  const frame = canvas || ensurePreviewVideoTransitionCanvas();
+  if (!frame) return false;
+  if (PREVIEW_VIDEO_TRANSITION_HIDE_TIMER) {
+    clearTimeout(PREVIEW_VIDEO_TRANSITION_HIDE_TIMER);
+    PREVIEW_VIDEO_TRANSITION_HIDE_TIMER = 0;
+  }
+  frame.style.transition = "none";
+  frame.style.opacity = "1";
+  frame.style.display = "block";
+  return true;
+}
+
+function hidePreviewVideoTransitionFrame(immediate = false) {
+  const frame = previewVideoTransitionCanvas;
+  if (!frame) return;
+  if (PREVIEW_VIDEO_TRANSITION_HIDE_TIMER) {
+    clearTimeout(PREVIEW_VIDEO_TRANSITION_HIDE_TIMER);
+    PREVIEW_VIDEO_TRANSITION_HIDE_TIMER = 0;
+  }
+  if (immediate || frame.style.display !== "block") {
+    frame.style.transition = "none";
+    frame.style.opacity = "1";
+    frame.style.display = "none";
+    return;
+  }
+  // WKWebView can invoke requestVideoFrameCallback just before that frame is
+  // actually composited. A very short dissolve bridges that final compositor
+  // handoff instead of exposing a one-frame black flash.
+  frame.style.transition = "opacity 84ms linear";
+  frame.style.opacity = "0";
+  PREVIEW_VIDEO_TRANSITION_HIDE_TIMER = setTimeout(() => {
+    PREVIEW_VIDEO_TRANSITION_HIDE_TIMER = 0;
+    frame.style.display = "none";
+    frame.style.transition = "none";
+    frame.style.opacity = "1";
+  }, 100);
+}
+
 function capturePreviewVideoTransitionFrame() {
   const canvas = ensurePreviewVideoTransitionCanvas();
   if (!canvas || !previewViewportBox) return false;
 
   // During very fast stepping the previous transition frame may still be the
   // only visible frame. Retain it until the newly-selected video presents.
-  if (canvas.style.display === "block") return true;
+  if (canvas.style.display === "block")
+    return showPreviewVideoTransitionFrame(canvas);
 
   let source = null;
   const filteredCanvases = previewViewportBox.querySelectorAll(
@@ -49501,15 +49110,14 @@ function capturePreviewVideoTransitionFrame() {
   } catch {
     return false;
   }
-  canvas.style.display = "block";
-  return true;
+  return showPreviewVideoTransitionFrame(canvas);
 }
 
 function beginPreviewVideoTransition(rec) {
   const token = ++PREVIEW_VIDEO_TRANSITION_TOKEN;
   const canvas = ensurePreviewVideoTransitionCanvas();
   if (!rec || rec.type !== "video") {
-    if (canvas) canvas.style.display = "none";
+    if (canvas) hidePreviewVideoTransitionFrame(true);
     return token;
   }
   const currentId = String(previewVideoEl?.dataset?.previewFileId || "");
@@ -49525,14 +49133,19 @@ function revealPreviewVideoFrame(videoEl, fileId, transitionToken) {
     return false;
   if (String(WS.preview?.fileId || "") !== String(fileId || "")) return false;
   if (Number(transitionToken) !== PREVIEW_VIDEO_TRANSITION_TOKEN) return false;
+  if (
+    videoEl.readyState < 2 ||
+    !(Number(videoEl.videoWidth) > 0) ||
+    !(Number(videoEl.videoHeight) > 0)
+  )
+    return false;
   videoEl.classList.add("ready");
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (videoEl !== previewVideoEl) return;
       if (String(WS.preview?.fileId || "") !== String(fileId || "")) return;
       if (Number(transitionToken) !== PREVIEW_VIDEO_TRANSITION_TOKEN) return;
-      if (previewVideoTransitionCanvas)
-        previewVideoTransitionCanvas.style.display = "none";
+      hidePreviewVideoTransitionFrame(false);
     });
   });
   return true;
@@ -49602,10 +49215,13 @@ function wirePreviewVideoElement(videoEl) {
     if (videoEl !== previewVideoEl) return;
     const fileId = String(videoEl.dataset.previewFileId || "");
     if (!fileId || String(WS.preview?.fileId || "") !== fileId) return;
-    revealPreviewVideoFrame(
+    // `playing` can precede the first composited frame in WKWebView. Keep the
+    // transition canvas up until requestVideoFrameCallback confirms a frame.
+    armPreviewVideoFirstFrame(
       videoEl,
       fileId,
       Number(videoEl.__lgPreviewFrameToken) || PREVIEW_VIDEO_TRANSITION_TOKEN,
+      true,
     );
     const rec = WS.fileById.get(fileId) || null;
     if (rec && rec.type === "video") schedulePreviewVideoPosterRequest(rec);
@@ -49631,6 +49247,7 @@ function cachePreviewVideoElement(videoEl) {
   if (!videoEl || !(PRELOAD_CACHE instanceof Map)) return false;
   const src = String(videoEl.currentSrc || videoEl.getAttribute("src") || "");
   if (!src) return false;
+  cancelResponsiveVideoSeek(videoEl);
   resetPreviewVideoTransientHandlers(videoEl);
   try { videoEl.pause(); } catch {}
   try { videoEl.currentTime = 0; } catch {}
@@ -49811,6 +49428,7 @@ function seedPreviewViewportWithRecordHint(rec) {
       if (imgColF !== "none") previewImgEl.style.filter = imgColF; else previewImgEl.style.removeProperty("filter");
     } catch {}
     if (previewVideoEl) {
+      cancelResponsiveVideoSeek(previewVideoEl);
       try { previewVideoEl.pause(); } catch {}
       previewVideoEl.style.display = "none";
       previewVideoEl.classList.remove("ready");
@@ -50175,7 +49793,14 @@ function syncControlPaneState() {
     Number(video.duration) > 0
   );
   const duration = hasDuration ? Math.max(0, Number(video.duration) || 0) : 0;
-  const current = video ? Math.max(0, Number(video.currentTime) || 0) : 0;
+  const seekState = video ? RESPONSIVE_VIDEO_SEEK_STATES.get(video) : null;
+  const preparedTarget = Number(seekState?.preparedSeek?.target);
+  const current =
+    hasDuration && Number.isFinite(preparedTarget)
+      ? Math.max(0, Math.min(duration, preparedTarget))
+      : video
+        ? Math.max(0, Number(video.currentTime) || 0)
+        : 0;
   const canNavigate = controlPaneHasNavigablePreviewItem();
 
   syncFloatingControlPaneAvailability(hasVideo);
@@ -50233,6 +49858,466 @@ function syncControlPaneState() {
   }
 }
 
+function clearResponsiveVideoSeekWatchdog(state) {
+  if (!state || !state.watchdog) return;
+  clearTimeout(state.watchdog);
+  state.watchdog = 0;
+}
+
+function playAfterResponsiveVideoSeek(video, state) {
+  if (!video || !state || !state.resumeAfterSeek || video.ended) return;
+  try {
+    const promise = video.play();
+    if (promise && typeof promise.catch === "function") promise.catch(() => {});
+  } catch {}
+}
+
+function settleResponsiveVideoSeek(video, state) {
+  if (!video || !state || !state.inFlight) return;
+  clearResponsiveVideoSeekWatchdog(state);
+  state.inFlight = false;
+  state.activeTarget = null;
+  state.activeFast = null;
+  try { MediaFilterEngine.requestRender(); } catch {}
+  if (state.pending) {
+    applyPendingResponsiveVideoSeek(video, state);
+    return;
+  }
+  playAfterResponsiveVideoSeek(video, state);
+  state.resumeAfterSeek = false;
+  syncControlPaneState();
+}
+
+function getResponsiveVideoSeekState(video) {
+  if (!video) return null;
+  let state = RESPONSIVE_VIDEO_SEEK_STATES.get(video);
+  if (state) return state;
+  state = {
+    pending: null,
+    inFlight: false,
+    activeTarget: null,
+    activeFast: null,
+    resumeAfterSeek: false,
+    watchdog: 0,
+    token: 0,
+    preparedSeek: null,
+  };
+  RESPONSIVE_VIDEO_SEEK_STATES.set(video, state);
+  video.addEventListener("seeked", () => {
+    settleResponsiveVideoSeek(video, state);
+  });
+  video.addEventListener("emptied", () => {
+    cancelResponsiveVideoSeek(video);
+  });
+  return state;
+}
+
+function cancelResponsiveVideoSeek(video) {
+  const state = video ? RESPONSIVE_VIDEO_SEEK_STATES.get(video) : null;
+  if (!state) return;
+  disposePreparedVideoSeek(state);
+  clearResponsiveVideoSeekWatchdog(state);
+  state.pending = null;
+  state.inFlight = false;
+  state.activeTarget = null;
+  state.activeFast = null;
+  state.resumeAfterSeek = false;
+  state.token++;
+}
+
+function videoTimeIsBuffered(video, time, margin = 0.2) {
+  const ranges = video?.buffered;
+  if (!ranges) return false;
+  const target = Number(time);
+  if (!Number.isFinite(target)) return false;
+  for (let i = 0; i < ranges.length; i++) {
+    try {
+      if (target >= ranges.start(i) - margin && target <= ranges.end(i) + margin)
+        return true;
+    } catch {}
+  }
+  return false;
+}
+
+function disposePreparedVideoSeek(state, preserveElement = false) {
+  const job = state?.preparedSeek || null;
+  if (!job) return;
+  state.preparedSeek = null;
+  if (job.commitTimer) clearTimeout(job.commitTimer);
+  job.commitTimer = 0;
+  const el = job.el;
+  if (!el) return;
+  el.onloadedmetadata = null;
+  el.onseeked = null;
+  el.onerror = null;
+  if (preserveElement) return;
+  try { el.pause(); } catch {}
+  try {
+    el.removeAttribute("src");
+    el.load();
+  } catch {}
+  try { el.remove(); } catch {}
+}
+
+function preparedVideoSeekSurface(video) {
+  if (video && video === previewVideoEl && !VIEWER_MODE) return "preview";
+  if (
+    video &&
+    video === viewerVideoEl &&
+    VIEWER_MODE &&
+    !isQuadPlaybackMode()
+  )
+    return "viewer";
+  return "";
+}
+
+function preparedVideoSeekFileId(video, surface) {
+  if (surface === "preview")
+    return String(video?.dataset?.previewFileId || WS.preview?.fileId || "");
+  if (surface === "viewer") {
+    const item = viewerItems[viewerIndex] || null;
+    return item && !item.isFolder ? String(item.id || "") : "";
+  }
+  return "";
+}
+
+function preparedVideoSeekIsCurrent(video, job) {
+  if (!video || !job) return false;
+  if (job.surface === "preview") {
+    return (
+      video === previewVideoEl &&
+      !VIEWER_MODE &&
+      String(WS.preview?.fileId || "") === job.fileId &&
+      String(video.dataset.previewFileId || "") === job.fileId
+    );
+  }
+  if (job.surface === "viewer") {
+    const item = viewerItems[viewerIndex] || null;
+    return !!(
+      video === viewerVideoEl &&
+      VIEWER_MODE &&
+      item &&
+      !item.isFolder &&
+      String(item.id || "") === job.fileId
+    );
+  }
+  return false;
+}
+
+function commitPreparedVideoSeek(video, state, job, requestToken) {
+  if (
+    !state ||
+    state.preparedSeek !== job ||
+    job.requestToken !== requestToken ||
+    !preparedVideoSeekIsCurrent(video, job)
+  )
+    return false;
+
+  const prepared = job.el;
+  const outgoing = video;
+  const src = String(job.src || "");
+  const resume = !!job.resume;
+  const target = Number(job.target) || 0;
+  if (!prepared || prepared.readyState < 2) return false;
+
+  // The active and prepared elements use the same resource. Avoid allowing an
+  // older cached copy to replace the newly-decoded frame during the rerender.
+  const cached = PRELOAD_CACHE instanceof Map ? PRELOAD_CACHE.get(src) : null;
+  if (cached && cached !== prepared && cached !== outgoing) {
+    PRELOAD_CACHE.delete(src);
+    stopCachedMediaElement(cached);
+  } else if (PRELOAD_CACHE instanceof Map) {
+    PRELOAD_CACHE.delete(src);
+  }
+
+  prepared.onloadedmetadata = null;
+  prepared.onseeked = null;
+  prepared.onerror = null;
+  if (job.commitTimer) clearTimeout(job.commitTimer);
+  job.commitTimer = 0;
+  prepared.className = outgoing.className;
+  prepared.style.cssText = outgoing.style.cssText;
+  prepared.controls = outgoing.controls;
+  prepared.autoplay = outgoing.autoplay;
+  prepared.loop = outgoing.loop;
+  prepared.muted = outgoing.muted;
+  prepared.volume = outgoing.volume;
+  prepared.playbackRate = outgoing.playbackRate;
+  prepared.defaultPlaybackRate = outgoing.defaultPlaybackRate;
+  prepared.poster = outgoing.poster || BLACK_POSTER_URL;
+  prepared.onloadeddata = outgoing.onloadeddata;
+  prepared.oncanplay = outgoing.oncanplay;
+  prepared.onplaying = outgoing.onplaying;
+  prepared.onended = outgoing.onended;
+  prepared.onerror = outgoing.onerror;
+  prepared.__lgPreviewFrameToken = outgoing.__lgPreviewFrameToken;
+  prepared.setAttribute(
+    "data-dir-path",
+    outgoing.getAttribute("data-dir-path") || "",
+  );
+  if (job.surface === "preview")
+    prepared.dataset.previewFileId = job.fileId;
+
+  state.preparedSeek = null;
+  if (outgoing.parentElement) outgoing.parentElement.replaceChild(prepared, outgoing);
+  else if (job.surface === "preview" && previewViewportBox)
+    previewViewportBox.appendChild(prepared);
+  else if (job.surface === "viewer" && viewport) viewport.appendChild(prepared);
+
+  if (job.surface === "preview") {
+    previewVideoEl = wirePreviewVideoElement(prepared);
+  } else {
+    viewerVideoEl = prepared;
+  }
+  resetPreviewVideoTransientHandlers(outgoing);
+  cancelResponsiveVideoSeek(outgoing);
+  stopCachedMediaElement(outgoing);
+
+  // Reconnect the active filter surface without rerendering the viewer. The
+  // prepared element already has the decoded target and the outgoing element's
+  // item handlers, so the DOM replacement remains a single visual operation.
+  const rec = WS.fileById.get(job.fileId) || null;
+  if (rec) {
+    if (job.surface === "preview") {
+      syncMediaFilterSurface(
+        "preview",
+        previewVideoEl,
+        previewViewportBox,
+        "video",
+        rec,
+      );
+    } else {
+      syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", rec);
+    }
+  }
+  const active = job.surface === "preview" ? previewVideoEl : viewerVideoEl;
+  if (active) {
+    try {
+      if (Math.abs((Number(active.currentTime) || 0) - target) > 0.04)
+        active.currentTime = target;
+    } catch {}
+    if (resume) {
+      try {
+        const promise = active.play();
+        if (promise && typeof promise.catch === "function")
+          promise.catch(() => {});
+      } catch {}
+    } else {
+      try { active.pause(); } catch {}
+    }
+  }
+  syncControlPaneState();
+  try { MediaFilterEngine.requestRender(); } catch {}
+  return true;
+}
+
+function requestPreparedVideoSeek(video, state, target, resume) {
+  const surface = preparedVideoSeekSurface(video);
+  if (!surface || !state) return false;
+  const src = String(video.currentSrc || video.getAttribute("src") || "");
+  const fileId = preparedVideoSeekFileId(video, surface);
+  if (!src || !fileId) return false;
+
+  let job = state.preparedSeek;
+  if (!job || job.src !== src || job.fileId !== fileId) {
+    disposePreparedVideoSeek(state);
+    const el = document.createElement("video");
+    prepareMediaElementForCanvas(el);
+    el.preload = "auto";
+    el.playsInline = true;
+    el.controls = false;
+    el.autoplay = false;
+    el.muted = true;
+    el.poster = video.poster || BLACK_POSTER_URL;
+    el.style.position = "fixed";
+    el.style.left = "-2px";
+    el.style.top = "-2px";
+    el.style.width = "1px";
+    el.style.height = "1px";
+    el.style.opacity = "0";
+    el.style.pointerEvents = "none";
+    el.style.zIndex = "-1";
+    job = {
+      el,
+      src,
+      fileId,
+      surface,
+      target,
+      resume: !!resume,
+      requestToken: 0,
+      commitTimer: 0,
+    };
+    state.preparedSeek = job;
+    document.body.appendChild(el);
+    el.src = src;
+    try { el.load(); } catch {}
+  }
+
+  job.target = target;
+  job.resume = job.resume || !!resume;
+  if (job.commitTimer) {
+    clearTimeout(job.commitTimer);
+    job.commitTimer = 0;
+  }
+  const requestToken = ++job.requestToken;
+  const commit = () => {
+    if (
+      state.preparedSeek !== job ||
+      job.requestToken !== requestToken ||
+      Math.abs((Number(job.el.currentTime) || 0) - job.target) > 0.12
+    )
+      return;
+    if (typeof job.el.requestVideoFrameCallback === "function") {
+      try {
+        job.el.requestVideoFrameCallback(() =>
+          commitPreparedVideoSeek(video, state, job, requestToken),
+        );
+        if (job.commitTimer) clearTimeout(job.commitTimer);
+        job.commitTimer = setTimeout(
+          () => commitPreparedVideoSeek(video, state, job, requestToken),
+          140,
+        );
+        return;
+      } catch {}
+    }
+    commitPreparedVideoSeek(video, state, job, requestToken);
+  };
+  const seekPrepared = () => {
+    if (state.preparedSeek !== job || job.requestToken !== requestToken) return;
+    try {
+      job.el.currentTime = job.target;
+    } catch {
+      return;
+    }
+    if (!job.el.seeking && job.el.readyState >= 2)
+      requestAnimationFrame(commit);
+  };
+  job.el.onloadedmetadata = seekPrepared;
+  job.el.onseeked = commit;
+  job.el.onerror = () => {
+    if (state.preparedSeek !== job) return;
+    disposePreparedVideoSeek(state);
+    state.pending = { time: target, fast: true, resume: !!resume };
+    if (!state.inFlight) applyPendingResponsiveVideoSeek(video, state);
+  };
+  if (job.el.readyState >= 1) seekPrepared();
+  return true;
+}
+
+function applyPendingResponsiveVideoSeek(video, state) {
+  if (!video || !state || state.inFlight || !state.pending) return false;
+  const request = state.pending;
+  state.pending = null;
+  state.inFlight = true;
+  state.activeTarget = request.time;
+  state.activeFast = request.fast;
+  state.resumeAfterSeek = state.resumeAfterSeek || request.resume;
+  const token = ++state.token;
+  try {
+    if (
+      request.fast &&
+      !videoTimeIsBuffered(video, request.time) &&
+      typeof video.fastSeek === "function"
+    )
+      video.fastSeek(request.time);
+    else
+      video.currentTime = request.time;
+  } catch {
+    try {
+      video.currentTime = request.time;
+    } catch {
+      state.inFlight = false;
+      state.activeTarget = null;
+      state.activeFast = null;
+      state.resumeAfterSeek = false;
+      return false;
+    }
+  }
+
+  // WebKit can report the player as paused while it locates a distant
+  // keyframe. Reassert the pre-seek play state immediately and once settled.
+  playAfterResponsiveVideoSeek(video, state);
+  clearResponsiveVideoSeekWatchdog(state);
+  state.watchdog = setTimeout(() => {
+    if (state.token !== token) return;
+    settleResponsiveVideoSeek(video, state);
+  }, 2200);
+  requestAnimationFrame(() => {
+    if (state.token !== token || !state.inFlight) return;
+    if (!video.seeking) settleResponsiveVideoSeek(video, state);
+  });
+  return true;
+}
+
+function requestResponsiveVideoSeek(video, targetTime, options = null) {
+  if (!video) return false;
+  const duration = Number(video.duration);
+  if (!Number.isFinite(duration) || duration <= 0) return false;
+  const target = Math.max(0, Math.min(duration, Number(targetTime) || 0));
+  const opts = options && typeof options === "object" ? options : {};
+  const state = getResponsiveVideoSeekState(video);
+  if (!state) return false;
+  const resume =
+    typeof opts.resume === "boolean"
+      ? opts.resume
+      : state.resumeAfterSeek || (!video.paused && !video.ended);
+  const fast = opts.fast !== false;
+  if (
+    !videoTimeIsBuffered(video, target) &&
+    preparedVideoSeekSurface(video)
+  ) {
+    state.resumeAfterSeek = state.resumeAfterSeek || resume;
+    state.pending = null;
+    return requestPreparedVideoSeek(video, state, target, resume);
+  }
+  if (state.preparedSeek) disposePreparedVideoSeek(state);
+  if (
+    state.pending &&
+    Math.abs(Number(state.pending.time) - target) < 0.005 &&
+    state.pending.fast === fast
+  ) {
+    state.pending.resume = state.pending.resume || resume;
+    state.resumeAfterSeek = state.resumeAfterSeek || resume;
+    return true;
+  }
+  if (
+    state.inFlight &&
+    !state.pending &&
+    state.activeTarget !== null &&
+    Math.abs(Number(state.activeTarget) - target) < 0.005 &&
+    state.activeFast === fast
+  ) {
+    state.resumeAfterSeek = state.resumeAfterSeek || resume;
+    return true;
+  }
+  state.pending = {
+    time: target,
+    fast,
+    resume,
+  };
+  state.resumeAfterSeek = state.resumeAfterSeek || resume;
+  if (!state.inFlight) return applyPendingResponsiveVideoSeek(video, state);
+  return true;
+}
+
+function responsiveVideoSeekBaseTime(video) {
+  const state = video ? RESPONSIVE_VIDEO_SEEK_STATES.get(video) : null;
+  if (
+    state?.preparedSeek &&
+    Number.isFinite(Number(state.preparedSeek.target))
+  )
+    return Number(state.preparedSeek.target);
+  if (state?.pending && Number.isFinite(Number(state.pending.time)))
+    return Number(state.pending.time);
+  if (
+    state &&
+    state.activeTarget !== null &&
+    Number.isFinite(Number(state.activeTarget))
+  )
+    return Number(state.activeTarget);
+  return Math.max(0, Number(video?.currentTime) || 0);
+}
+
 function seekControlPaneVideo(deltaSeconds) {
   const video = getControlPaneVideo();
   if (!video) return false;
@@ -50240,13 +50325,9 @@ function seekControlPaneVideo(deltaSeconds) {
   if (!Number.isFinite(duration) || duration <= 0) return false;
   const next = Math.max(
     0,
-    Math.min(duration, (Number(video.currentTime) || 0) + deltaSeconds),
+    Math.min(duration, responsiveVideoSeekBaseTime(video) + deltaSeconds),
   );
-  try {
-    video.currentTime = next;
-  } catch {
-    return false;
-  }
+  if (!requestResponsiveVideoSeek(video, next, { fast: true })) return false;
   syncControlPaneState();
   return true;
 }
@@ -50260,6 +50341,7 @@ function toggleControlPanePlayPause() {
       setPreviewVideoUserPauseLock(fileId, false);
       video.play();
     } else {
+      cancelResponsiveVideoSeek(video);
       setPreviewVideoUserPauseLock(fileId, true);
       video.pause();
     }
@@ -50311,6 +50393,10 @@ if (controlProgressRange) {
     showFloatingControlPane(false);
   });
   controlProgressRange.addEventListener("pointerup", () => {
+    const video = getControlPaneVideo();
+    const next = Number(controlProgressRange.value);
+    if (video && Number.isFinite(next))
+      requestResponsiveVideoSeek(video, next, { fast: false });
     CONTROL_PROGRESS_DRAGGING = false;
     syncControlPaneState();
     scheduleFloatingControlPaneHide();
@@ -50320,12 +50406,14 @@ if (controlProgressRange) {
     if (!video) return;
     const next = Number(controlProgressRange.value);
     if (!Number.isFinite(next)) return;
-    try {
-      video.currentTime = Math.max(0, next);
-    } catch {}
+    requestResponsiveVideoSeek(video, next, { fast: true });
     syncControlPaneState();
   });
   controlProgressRange.addEventListener("change", () => {
+    const video = getControlPaneVideo();
+    const next = Number(controlProgressRange.value);
+    if (video && Number.isFinite(next))
+      requestResponsiveVideoSeek(video, next, { fast: false });
     CONTROL_PROGRESS_DRAGGING = false;
     syncControlPaneState();
     scheduleFloatingControlPaneHide();
@@ -50552,12 +50640,12 @@ function showPreviewViewportMessage(label = "File unavailable", meta = "") {
     previewImgEl.style.display = "none";
   }
   if (previewVideoEl) {
+    cancelResponsiveVideoSeek(previewVideoEl);
     try { previewVideoEl.pause(); } catch {}
     previewVideoEl.classList.remove("ready");
     previewVideoEl.style.display = "none";
   }
-  if (previewVideoTransitionCanvas)
-    previewVideoTransitionCanvas.style.display = "none";
+  if (previewVideoTransitionCanvas) hidePreviewVideoTransitionFrame(true);
   if (!previewFolderEl) return;
   previewFolderEl.style.display = "flex";
   previewFolderEl.style.flexDirection = "column";
@@ -50583,8 +50671,7 @@ function renderPreviewViewerItem(idx) {
     MediaFilterEngine.detach("preview");
     if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
     if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
-    if (previewVideoTransitionCanvas)
-      previewVideoTransitionCanvas.style.display = "none";
+    if (previewVideoTransitionCanvas) hidePreviewVideoTransitionFrame(true);
     return;
   }
 
@@ -50650,6 +50737,7 @@ function renderPreviewViewerItem(idx) {
 
   if (previewVideoEl) {
     if (!keepPreviewVideoElement) {
+      cancelResponsiveVideoSeek(previewVideoEl);
       try {
         previewVideoEl.pause();
       } catch {}
@@ -50758,6 +50846,7 @@ function renderPreviewViewerItem(idx) {
     const pauseLocked = previewVideoUserPausedFor(rec.id);
     const shouldAutoPlay = doAuto && !pauseLocked;
     if (!VIEWER_MODE && viewerVideoEl) {
+      cancelResponsiveVideoSeek(viewerVideoEl);
       try {
         viewerVideoEl.pause();
       } catch {}
@@ -50809,10 +50898,11 @@ function renderPreviewViewerItem(idx) {
       MediaFilterEngine.requestRender();
     };
     const handlePreviewVideoStarted = () => {
-      revealPreviewVideoFrame(
+      armPreviewVideoFirstFrame(
         previewVideoEl,
         rec.id,
         previewVideoTransitionToken,
+        shouldAutoPlay,
       );
       schedulePreviewVideoPosterRequest(rec);
       handlePreviewVideoReady();
@@ -50901,6 +50991,7 @@ function renderPreviewViewerItem(idx) {
         previewVideoEl.play();
       } catch {}
     } else {
+      cancelResponsiveVideoSeek(previewVideoEl);
       try {
         previewVideoEl.pause();
       } catch {}
@@ -55145,6 +55236,7 @@ function pausePreviewVideoForOverlay() {
     VIDEO_CARRY.fileId = rec.id;
     VIDEO_CARRY.time = previewVideoEl.currentTime || 0;
     VIDEO_CARRY.wasPlaying = !previewVideoEl.paused;
+    cancelResponsiveVideoSeek(previewVideoEl);
     previewVideoEl.pause();
   } catch {}
 }
@@ -55439,6 +55531,7 @@ function hideOverlay() {
   overlay.classList.remove("active");
   VIEWER_MODE = false;
   if (viewerVideoEl) {
+    cancelResponsiveVideoSeek(viewerVideoEl);
     try {
       viewerVideoEl.pause();
     } catch {}
@@ -55806,6 +55899,7 @@ function renderQuadPlaybackView() {
   viewport.classList.add("viewerQuadMode");
 
   if (viewerVideoEl) {
+    cancelResponsiveVideoSeek(viewerVideoEl);
     try {
       viewerVideoEl.pause();
     } catch {}
@@ -55940,6 +56034,7 @@ function renderViewerItem(idx) {
   const item = viewerItems[viewerIndex];
 
   if (viewerVideoEl) {
+    cancelResponsiveVideoSeek(viewerVideoEl);
     try {
       viewerVideoEl.pause();
     } catch {}
@@ -56029,6 +56124,7 @@ function renderViewerItem(idx) {
     const mode = galleryVideoMode();
     const doAuto = mode !== "off" && !BANIC_ACTIVE;
     if (previewVideoEl) {
+      cancelResponsiveVideoSeek(previewVideoEl);
       try {
         previewVideoEl.pause();
       } catch {}
@@ -56231,14 +56327,12 @@ function seekViewerVideo(deltaSeconds) {
   if (!vids.length) return;
   for (let i = 0; i < vids.length; i++) {
     const vid = vids[i];
-    try {
-      let t = (vid.currentTime || 0) + deltaSeconds;
-      if (t < 0) t = 0;
-      if (!isNaN(vid.duration) && isFinite(vid.duration) && vid.duration >= 0) {
-        if (t > vid.duration) t = vid.duration;
-      }
-      vid.currentTime = t;
-    } catch {}
+    let t = responsiveVideoSeekBaseTime(vid) + deltaSeconds;
+    if (t < 0) t = 0;
+    if (!isNaN(vid.duration) && isFinite(vid.duration) && vid.duration >= 0) {
+      if (t > vid.duration) t = vid.duration;
+    }
+    requestResponsiveVideoSeek(vid, t, { fast: true });
   }
 }
 
@@ -56254,7 +56348,10 @@ function toggleViewerVideoPlayPause() {
     }
     try {
       if (shouldPlay) vid.play();
-      else vid.pause();
+      else {
+        cancelResponsiveVideoSeek(vid);
+        vid.pause();
+      }
     } catch {}
   }
 }
@@ -57468,6 +57565,56 @@ function getFileSelectionForKeybindAction() {
   return { ids: out, usedBulk };
 }
 
+function getTagSelectionForKeybindAction() {
+  const entries = [];
+  const seen = new Set();
+  let usedBulk = false;
+  const addEntry = (entry) => {
+    if (
+      !entry ||
+      entry.kind !== "tag" ||
+      entry.special ||
+      entry.placeholder
+    )
+      return;
+    const tag = String(entry.tag || "").trim();
+    const album = normalizeTagAlbumName(entry.album || "");
+    if (!tag && !album) return;
+    const key = `${String(entry.originPath || "")}\n${tag ? `tag:${tag}` : `album:${album}`}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    entries.push(entry);
+  };
+
+  if (WS.view.bulkSelectMode) {
+    const selected = getSelectedTagEntriesInCurrentView();
+    for (let i = 0; i < selected.length; i++) addEntry(selected[i]);
+    if (entries.length)
+      return { entries, usedBulk: true, source: "bulk" };
+  }
+
+  const previewActive =
+    !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview";
+  const previewCard = findSelectedPreviewCard();
+  const previewKind = String(previewCard?.dataset?.previewItemKind || "");
+  const previewKey = String(WS.view?.previewSelectedKey || "");
+  if (
+    previewActive &&
+    (previewKind === "tag" || previewKey.startsWith("tag:"))
+  ) {
+    addEntry(previewCard?.__previewTagEntry || null);
+    if (entries.length)
+      return { entries, usedBulk, source: "preview" };
+  }
+
+  addEntry(WS.nav.entries[WS.nav.selectedIndex] || null);
+  return {
+    entries,
+    usedBulk,
+    source: entries.length ? "directories" : "",
+  };
+}
+
 function getFolderTargetPathsForSelectionActions() {
   const folderSelection = getDirectorySelectionForKeybindAction();
   if (folderSelection.paths.length) return folderSelection;
@@ -57751,6 +57898,30 @@ function toggleFavoriteSelection() {
 }
 
 function toggleHiddenSelection() {
+  const tagSelection = getTagSelectionForKeybindAction();
+  const tagKeys = Array.from(
+    new Set(
+      tagSelection.entries
+        .filter((entry) => !!String(entry?.tag || "").trim())
+        .map((entry) => hiddenTagKeyForEntry(entry))
+        .filter(Boolean),
+    ),
+  );
+  if (tagKeys.length) {
+    const allHidden = tagKeys.every((key) => metaHasHiddenTagByKey(key));
+    let changed = false;
+    for (let i = 0; i < tagKeys.length; i++) {
+      if (metaSetHiddenTagByKey(tagKeys[i], !allHidden)) changed = true;
+    }
+    if (!changed) return false;
+    if (tagSelection.usedBulk) finalizeBulkSelectionAction();
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    showStatusMessage(
+      `${allHidden ? "Unhid" : "Hid"} ${tagKeys.length} tag${tagKeys.length === 1 ? "" : "s"}.`,
+    );
+    return true;
+  }
   const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
   if (!paths.length) {
     showStatusMessage("No items selected.");
@@ -57797,7 +57968,102 @@ async function toggleStorageSelection() {
   return true;
 }
 
+async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
+  const byTag = new Map();
+  const albums = [];
+  const seenAlbums = new Set();
+
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (
+      !entry ||
+      entry.kind !== "tag" ||
+      entry.special ||
+      entry.placeholder
+    )
+      continue;
+    const tag = String(entry.tag || "").trim();
+    const album = normalizeTagAlbumName(entry.album || "");
+    const originPath = String(entry.originPath || "");
+    if (tag) {
+      const paths = gatherTagPathsForDirs(getDirsForTagEntry(entry));
+      byTag.set(`${originPath}\n${tag}`, { tag, paths, originPath });
+      continue;
+    }
+    const key = `${originPath}\n${album}`;
+    if (!album || seenAlbums.has(key)) continue;
+    seenAlbums.add(key);
+    albums.push({ album, originPath });
+  }
+
+  if (!byTag.size && !albums.length) {
+    showStatusMessage("No tags or albums selected.");
+    return false;
+  }
+
+  const deleteLabel =
+    byTag.size && albums.length
+      ? `Delete ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and ${albums.length} album${albums.length === 1 ? "" : "s"}?`
+      : byTag.size
+        ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
+        : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Nothing inside is deleted. Their tags and folders return to their normal place.`;
+  if (
+    !(await showConfirmDialog(deleteLabel, {
+      okLabel: "Delete",
+      danger: true,
+    }))
+  )
+    return false;
+
+  if (usedBulk) finalizeBulkSelectionAction();
+  closeActionMenus();
+  let changed = false;
+  for (const value of byTag.values()) {
+    if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
+      changed = true;
+  }
+  let deletedCount = 0;
+  let ungroupedTotal = 0;
+  for (let i = 0; i < albums.length; i++) {
+    const result = deleteTagAlbumByName(
+      albums[i].album,
+      albums[i].originPath,
+    );
+    if (!result.changed) continue;
+    changed = true;
+    deletedCount++;
+    ungroupedTotal += Number(result.clearedTags) || 0;
+  }
+  if (!changed) {
+    showStatusMessage(byTag.size ? "No folders updated." : "No tags updated.");
+    return false;
+  }
+
+  metaScheduleSave();
+  refreshAfterTagMetadataChange();
+  if (byTag.size && deletedCount) {
+    showStatusMessage(
+      `Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"}.`,
+    );
+  } else if (byTag.size) {
+    showStatusMessage(
+      `Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"}.`,
+    );
+  } else {
+    showStatusMessage(
+      `Deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"} and ungrouped ${ungroupedTotal} tag${ungroupedTotal === 1 ? "" : "s"}.`,
+    );
+  }
+  return true;
+}
+
 async function toggleTrashSelection() {
+  const tagSelection = getTagSelectionForKeybindAction();
+  if (tagSelection.entries.length) {
+    return deleteSelectedTagAlbumEntries(
+      tagSelection.entries,
+      tagSelection.usedBulk,
+    );
+  }
   const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
   if (!paths.length) {
     showStatusMessage("No items selected.");
@@ -59889,7 +60155,10 @@ function stopCachedMediaElement(el) {
   if (!el) return false;
   const tag = String(el.tagName || "").toLowerCase();
   try {
-    if (tag === "video") el.pause();
+    if (tag === "video") {
+      cancelResponsiveVideoSeek(el);
+      el.pause();
+    }
   } catch {}
   try {
     if (tag === "video" || tag === "img") {
