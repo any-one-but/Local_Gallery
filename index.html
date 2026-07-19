@@ -49140,33 +49140,14 @@ function revealPreviewVideoFrame(videoEl, fileId, transitionToken) {
   )
     return false;
   videoEl.classList.add("ready");
-  // When a filter is active the video is mediaHidden and the WebGL canvas is
-  // what's actually on screen. The video's frame callback fires before that
-  // canvas has re-rendered the new clip, so hiding the held transition frame now
-  // would expose a black gap until the filter canvas draws (the flicker that is
-  // far worse with filters on). Hold the transition frame until the filter
-  // surface has actually drawn, bounded so a stalled/paused filter can't pin it.
-  const rec = WS.fileById.get(String(fileId || "")) || null;
-  const filteredSurface =
-    !!rec &&
-    mediaOverlayConfigHasVisualEffect(resolveMediaOverlayConfigForTarget(rec));
-  let framesWaited = 0;
-  const tryHideTransition = () => {
-    if (videoEl !== previewVideoEl) return;
-    if (String(WS.preview?.fileId || "") !== String(fileId || "")) return;
-    if (Number(transitionToken) !== PREVIEW_VIDEO_TRANSITION_TOKEN) return;
-    if (
-      filteredSurface &&
-      !MediaFilterEngine.hasSurfaceDrawn("preview") &&
-      framesWaited < 40
-    ) {
-      framesWaited++;
-      requestAnimationFrame(tryHideTransition);
-      return;
-    }
-    hidePreviewVideoTransitionFrame(false);
-  };
-  requestAnimationFrame(() => requestAnimationFrame(tryHideTransition));
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (videoEl !== previewVideoEl) return;
+      if (String(WS.preview?.fileId || "") !== String(fileId || "")) return;
+      if (Number(transitionToken) !== PREVIEW_VIDEO_TRANSITION_TOKEN) return;
+      hidePreviewVideoTransitionFrame(false);
+    });
+  });
   return true;
 }
 
