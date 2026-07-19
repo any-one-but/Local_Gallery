@@ -43655,13 +43655,8 @@ function openPreviewFileActionMenu(rec, opts = {}) {
     );
     if (thumbnailSubmenu) menu.appendChild(thumbnailSubmenu);
   }
-  if (trashTargetPath) {
-    menu.appendChild(
-      makeBtn("Remove from trash", "put-back", !WS.meta.fsRootHandle),
-    );
-  } else {
-    menu.appendChild(makeBtn("Rename", "rename-file"));
-  }
+  // Rename is bindable (renameSelection) and intentionally omitted here; a file
+  // in Trash never reaches this menu (openPreviewFileActionMenu bails earlier).
   PREVIEW_CONTEXT_MENU_STATE = { fileId };
 
   requestAnimationFrame(() => {
@@ -43847,20 +43842,16 @@ function buildFolderActionMenuDom(
     menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
     return;
   }
-  appendTwoCol(
-    makeBtn("Tag", "tag"),
-    makeBtn("Album", "album"),
-  );
-  menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
+  // Tag, Album, Rename, Store, and Move to trash are intentionally absent:
+  // each has a bindable action (tagSelection / albumSelection / renameSelection
+  // / storageSelection / trashSelection), which is now the only way to invoke
+  // them. Favorite, Hide, and "Remove from album" (no keybind equivalent) stay.
   if (state.canRemoveFromAlbum)
     menuEl.appendChild(makeBtn("Remove from album", "remove-from-album"));
   menuEl.appendChild(
     makeBtn(state.isFavorite ? "Unfavorite" : "Favorite", "favorite"),
   );
-  appendTwoCol(
-    makeBtn("Store", "send-to-storage", !state.canSendToStorage),
-    makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"),
-  );
+  menuEl.appendChild(makeBtn(state.isHidden ? "Unhide" : "Hide", "hidden"));
   appendSortEntry();
   appendFiltersEntry();
   const thumbnailButtons = [];
@@ -43878,14 +43869,6 @@ function buildFolderActionMenuDom(
   menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
   if (state.canResetOrder)
     menuEl.appendChild(makeBtn("Reset order", "reset-order"));
-  menuEl.appendChild(
-    makeBtn(
-      "Move to trash",
-      "move-to-trash",
-      !state.canMoveToTrash,
-      "destructiveAction",
-    ),
-  );
 }
 
 function waitForNextPaint() {
@@ -47456,28 +47439,17 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 ${folderThumbnailMenuHtml}
                 <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
               `;
-        } else if (folderMenuState.isTrashPutBackOnly) {
-          menuButtons = `
-                ${folderMenuInfoHtml}
-                <button type="button" data-action="put-back"${folderMenuState.canPutBack ? "" : " disabled"}>Remove from trash</button>
-                ${folderMenuSortHtml}
-              `;
-        } else if (folderMenuState.isStorageRestricted) {
-          menuButtons = `
-                ${folderMenuInfoHtml}
-                <button type="button" data-action="remove-from-storage"${folderMenuState.canRemoveFromStorage ? "" : " disabled"}>Remove from storage</button>
-                <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
-                ${folderMenuSortHtml}
-              `;
         } else {
+          // Trashed/stored folders never render a menu (menuHtml below gates
+          // them out), so no put-back / remove-from-storage branch is needed.
+          // Tag / Album / Rename / Store / Move to trash are omitted here on
+          // purpose: they're only reachable through their bindable actions now
+          // (tagSelection / albumSelection / renameSelection / storageSelection
+          // / trashSelection). Favorite, Hide, and Remove from album stay.
           menuButtons = `
                 ${folderMenuInfoHtml}
-                <button type="button" data-action="tag">Tag</button>
-                <button type="button" data-action="album">Album</button>
-                <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
                 ${folderMenuState.canRemoveFromAlbum ? `<button type="button" data-action="remove-from-album">Remove from album</button>` : ``}
                 <button type="button" data-action="favorite">${isFavorite ? "Unfavorite" : "Favorite"}</button>
-                <button type="button" data-action="send-to-storage"${folderMenuState.canSendToStorage ? "" : " disabled"}>Store</button>
                 <button type="button" data-action="hidden">${isHidden ? "Unhide" : "Hide"}</button>
                 ${folderMenuSortHtml}
                 <button type="button" data-action="appearance-preset-set">Filters</button>
@@ -47485,7 +47457,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 ${folderThumbnailMenuHtml}
                 <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
-                <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
               `;
         }
         const menuHtml =
@@ -47722,15 +47693,14 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           canBulk && sel && selectedFilesInViewCount > 0;
         const canLooseSetMerge = !!WS.meta.fsRootHandle;
         const fileTrashTargetPath = trashTopLevelItemPathForFileRecord(rec);
-        const fileMenuButtons = fileTrashTargetPath
-          ? `${buildItemInfoDropdownHtml({ kind: "file", record: rec })}<button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from trash</button>`
-          : `
+        // Rename is bindable and omitted; files in Trash render no menu at all
+        // (fileMenuHtml below is gated on !fileTrashTargetPath).
+        const fileMenuButtons = `
                   ${buildItemInfoDropdownHtml({ kind: "file", record: rec })}
                   ${buildFileThumbnailSubmenuHtml(
                     getThumbnailMenuTargetsForRecord(rec),
                     !!rec,
                   )}
-                  <button type="button" data-action="rename-file">Rename</button>
                 `;
         const fileTypeLabel = fileItemTypeLabelForRecord(
           rec || { type: isVid ? "video" : "image" },
