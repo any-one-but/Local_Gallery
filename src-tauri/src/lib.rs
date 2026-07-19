@@ -31,12 +31,14 @@ fn install_macos_settings_menu(app: &tauri::App) -> tauri::Result<()> {
         .first()
         .and_then(|item| item.as_submenu())
     {
+        // No accelerator: Settings is the in-app floating window toggled with
+        // Tab, and Cmd+, is intentionally disabled.
         let settings = MenuItem::with_id(
             app.handle(),
             SETTINGS_MENU_ID,
             "Settings…",
             true,
-            Some("CmdOrCtrl+,"),
+            None::<&str>,
         )?;
         let separator = PredefinedMenuItem::separator(app.handle())?;
         // About, separator, Settings, separator, Services… is the conventional
@@ -363,7 +365,11 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .on_menu_event(|app, event| {
             if event.id().as_ref() == SETTINGS_MENU_ID {
-                let _ = settings::toggle_settings_window(app, None);
+                // Settings now lives inside the main window as an in-app
+                // floating panel; toggle it via the web layer.
+                if let Some(main) = app.get_webview_window("main") {
+                    let _ = main.eval("window.__lgToggleSettings && window.__lgToggleSettings();");
+                }
             }
         })
         .setup(|app| {

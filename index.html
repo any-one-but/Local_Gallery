@@ -7472,6 +7472,155 @@ html.settings-window #previewContent:not(.menu-open)::before {
   letter-spacing: 0.01em;
 }
 
+/* =========================================================
+       In-app Settings window (floating, draggable, resizable)
+
+       The main window renders Settings as a floating panel inside the app
+       instead of a separate OS window. It overlays the gallery (position:
+       fixed, out of the pane flex flow) so opening is instant — the same
+       document, no second webview to load. Geometry (position + size) is set
+       inline by the drag/resize controller and persisted to localStorage.
+       ========================================================= */
+#menuOverlay.menu-floating {
+  position: fixed;
+  /* Above the fullscreen viewer (#overlay, 9999) so Tab can summon Settings
+     even over fullscreen media. The panic overlay (10000) closes it instead of
+     stacking, and toasts/confirm dialogs still sit above. */
+  z-index: 10001;
+  min-width: 360px;
+  min-height: 320px;
+  max-width: none;
+  width: 720px;
+  height: 640px;
+  border: 1px solid var(--color1-tertiary);
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  background: var(--color1-secondary);
+  flex: 0 0 auto;
+}
+#menuOverlay.menu-floating:not(.active) {
+  display: none;
+}
+#menuOverlay.menu-floating.active {
+  display: flex;
+  flex-direction: column;
+}
+#menuOverlay.menu-floating #menuCard {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Title bar doubles as the drag handle; hidden unless floating. */
+#menuTitleBar {
+  display: none;
+}
+#menuOverlay.menu-floating #menuTitleBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 8px 8px 14px;
+  cursor: move;
+  user-select: none;
+  background: var(--color1-primary);
+  border-bottom: 1px solid var(--color1-tertiary);
+}
+#menuTitleBar .menuTitleLabel {
+  flex: 1 1 auto;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+  pointer-events: none;
+}
+#menuTitleClose {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+#menuTitleClose:hover {
+  background: var(--ui-control-hover-bg);
+}
+
+/* Edge/corner resize handles; only interactive while floating. */
+.menuResizeHandle {
+  display: none;
+}
+#menuOverlay.menu-floating .menuResizeHandle {
+  display: block;
+  position: absolute;
+  z-index: 2;
+  touch-action: none;
+}
+#menuOverlay.menu-floating .menuResizeHandle[data-resize="n"] {
+  top: -3px;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+#menuOverlay.menu-floating .menuResizeHandle[data-resize="s"] {
+  bottom: -3px;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+#menuOverlay.menu-floating .menuResizeHandle[data-resize="e"] {
+  top: 10px;
+  bottom: 10px;
+  right: -3px;
+  width: 8px;
+  cursor: ew-resize;
+}
+#menuOverlay.menu-floating .menuResizeHandle[data-resize="w"] {
+  top: 10px;
+  bottom: 10px;
+  left: -3px;
+  width: 8px;
+  cursor: ew-resize;
+}
+#menuOverlay.menu-floating .menuResizeHandle[data-resize="ne"] {
+  top: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+#menuOverlay.menu-floating .menuResizeHandle[data-resize="nw"] {
+  top: -4px;
+  left: -4px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+#menuOverlay.menu-floating .menuResizeHandle[data-resize="se"] {
+  bottom: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+#menuOverlay.menu-floating .menuResizeHandle[data-resize="sw"] {
+  bottom: -4px;
+  left: -4px;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+
 </style>
   <!-- END: inlined from ./styles.css -->
   </head>
@@ -7618,6 +7767,17 @@ html.settings-window #previewContent:not(.menu-open)::before {
               </div>
               <div id="menuDivider" title="Drag to resize menu"></div>
               <div id="menuOverlay">
+                <div id="menuTitleBar" title="Drag to move">
+                  <span class="menuTitleLabel">Settings</span>
+                  <button
+                    id="menuTitleClose"
+                    type="button"
+                    title="Close settings"
+                    aria-label="Close settings"
+                  >
+                    ✕
+                  </button>
+                </div>
                 <div id="menuCard">
                   <div id="menuHeader">
                     <div id="menuTabs" role="tablist" aria-label="Menu tabs">
@@ -7738,6 +7898,14 @@ html.settings-window #previewContent:not(.menu-open)::before {
                     </section>
                   </div>
                 </div>
+                <div class="menuResizeHandle" data-resize="n"></div>
+                <div class="menuResizeHandle" data-resize="s"></div>
+                <div class="menuResizeHandle" data-resize="e"></div>
+                <div class="menuResizeHandle" data-resize="w"></div>
+                <div class="menuResizeHandle" data-resize="ne"></div>
+                <div class="menuResizeHandle" data-resize="nw"></div>
+                <div class="menuResizeHandle" data-resize="se"></div>
+                <div class="menuResizeHandle" data-resize="sw"></div>
               </div>
             </div>
             <div id="previewActionMenu" class="dropdownMenu"></div>
@@ -15067,8 +15235,11 @@ function applyInteractionModeFromOptions() {
   appEl.classList.remove("file-pane-thumbnail-view");
   appEl.classList.add("file-pane-list-view");
   appEl.classList.add("title-layout-pane");
-  appEl.classList.toggle("menu-pane-open", !!MENU_OPEN);
-  appEl.classList.toggle("no-side-panes", !sidebarOpen && !MENU_OPEN);
+  // The in-app Settings window floats over the app (position: fixed) and never
+  // occupies a pane, so only the legacy Settings-only window reserves layout.
+  const menuOccupiesPane = !!MENU_OPEN && IS_SETTINGS_WINDOW;
+  appEl.classList.toggle("menu-pane-open", menuOccupiesPane);
+  appEl.classList.toggle("no-side-panes", !sidebarOpen && !menuOccupiesPane);
   appEl.classList.remove("preview-media-pane-background");
   syncActivePaneWithLayout();
   updateGridModeListTopInset();
@@ -15516,7 +15687,7 @@ const KEYBIND_ACTIONS = [
   {
     id: "toggleSettingsAndDirectoriesPanes",
     label: "Settings window",
-    hint: "Open the Settings window.",
+    hint: "Toggle the in-app Settings window (also bound to Tab).",
     section: "panes",
   },
   {
@@ -15965,7 +16136,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   enterDir: "e",
   prevFolder: "Cmd+w",
   nextFolder: "Cmd+s",
-  toggleSettingsAndDirectoriesPanes: "Cmd+,",
+  toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
   // Cmd+w / Cmd+s are already prevFolder / nextFolder, so closeTab must not
   // claim the browser-conventional Cmd+w. Left unbound for the user to choose.
@@ -16120,7 +16291,10 @@ function normalizeKeybinds(log, presets = null) {
   migrateIfKeyMatches("seekForward", "Command+e", "c");
   migrateIfKeyMatches("seekForward", "e", "c");
   migrateIfKeyMatches("playPause", "Space", "x");
-  migrateIfKeyMatches("toggleSettingsAndDirectoriesPanes", "Space", "Cmd+,");
+  // Settings is now the in-app window toggled with Tab; Cmd+, is disabled, so
+  // clear any previously-saved binding onto this action.
+  migrateIfKeyMatches("toggleSettingsAndDirectoriesPanes", "Space", "");
+  migrateIfKeyMatches("toggleSettingsAndDirectoriesPanes", "Cmd+,", "");
   migrateIfKeyMatches("toggleAnimatedFilters", "5", "Command+i");
   migrateIfKeyMatches("toggleAnimatedFilters", "6", "Command+i");
   migrateIfKeyMatches("favoriteSelection", "Ctrl+f", "f");
@@ -16894,6 +17068,9 @@ function defaultMenuPaneWidth() {
 
 function applyMenuPaneWidthFromOptions() {
   if (!menuOverlay) return;
+  // The floating in-app window sizes itself; the pane width only applies to the
+  // legacy Settings-only window.
+  if (!IS_SETTINGS_WINDOW) return;
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   const raw = Number(opt && opt.menuPaneWidthPx);
   const contentWidth = Math.max(
@@ -16913,6 +17090,8 @@ function applyMenuPaneWidthFromOptions() {
 
 function setMenuPaneWidthPx(widthPx, save = true) {
   if (!menuOverlay || !WS.meta) return 0;
+  // No-op for the floating in-app window (it manages its own geometry).
+  if (!IS_SETTINGS_WINDOW) return 0;
   const contentWidth = Math.max(
     0,
     Number(
@@ -17829,6 +18008,7 @@ function clearQuadPlaybackSession() {
 
 function applyBanicState(active) {
   if (active === BANIC_ACTIVE) return;
+  if (active && MENU_OPEN) closeMenu();
   if (active && document.fullscreenElement) {
     if (VIEWER_MODE) hideOverlay();
     else exitFullscreenIfNeeded();
@@ -18475,36 +18655,246 @@ function syncPreviewContentLayoutAfterMenuToggle() {
   refreshActivePreviewMediaLayout({ immediate: true });
 }
 
+// Kept for the legacy Settings-only WebviewWindow mode (IS_SETTINGS_WINDOW) and
+// for callers that still expect an "open settings" entry point. In the main
+// window there is no native window anymore: Settings is the in-app floating
+// panel, so this just opens it.
 function requestSettingsWindow(tabId = "general") {
-  const invoke = window.__TAURI__?.core?.invoke;
-  if (!invoke) {
-    showStatusMessage("Settings needs the desktop app.");
-    return false;
-  }
-  const tab = String(tabId || "general");
-  const flush =
-    typeof flushPendingMetadataSaveNow === "function"
-      ? flushPendingMetadataSaveNow()
-      : Promise.resolve();
-  Promise.resolve(flush)
-    .catch(() => {})
-    .then(() => invoke("toggle_settings_window_command", { tab }))
-    .catch((err) => showStatusMessage(`Settings failed: ${err}`));
+  openMenu(tabId);
   return true;
 }
 
-function openMenu(tabId) {
-  if (!IS_SETTINGS_WINDOW) return requestSettingsWindow(tabId);
-  MENU_OPEN = true;
-  const appEl = document.getElementById("app");
-  if (appEl) {
-    appEl.classList.add("menu-pane-open");
-    appEl.classList.remove("no-side-panes");
+/* =========================================================
+       Floating Settings window (drag + resize + geometry)
+       ========================================================= */
+
+const SETTINGS_WINDOW_MIN_W = 360;
+const SETTINGS_WINDOW_MIN_H = 320;
+const SETTINGS_WINDOW_GEOMETRY_KEY = "lg.settingsWindowGeometry";
+const settingsWindowGeometry = { left: 0, top: 0, width: 720, height: 640 };
+let settingsWindowGeometryLoaded = false;
+
+function settingsFloatingEnabled() {
+  return !IS_SETTINGS_WINDOW;
+}
+
+function settingsWindowViewportBounds() {
+  return {
+    w: Math.max(SETTINGS_WINDOW_MIN_W, window.innerWidth || 0),
+    h: Math.max(SETTINGS_WINDOW_MIN_H, window.innerHeight || 0),
+  };
+}
+
+function loadSettingsWindowGeometry() {
+  if (settingsWindowGeometryLoaded) return;
+  settingsWindowGeometryLoaded = true;
+  try {
+    const raw = window.localStorage?.getItem(SETTINGS_WINDOW_GEOMETRY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        if (Number.isFinite(parsed.width))
+          settingsWindowGeometry.width = parsed.width;
+        if (Number.isFinite(parsed.height))
+          settingsWindowGeometry.height = parsed.height;
+        if (Number.isFinite(parsed.left))
+          settingsWindowGeometry.left = parsed.left;
+        if (Number.isFinite(parsed.top)) settingsWindowGeometry.top = parsed.top;
+        settingsWindowGeometry.placed = true;
+      }
+    }
+  } catch {}
+}
+
+function saveSettingsWindowGeometry() {
+  try {
+    window.localStorage?.setItem(
+      SETTINGS_WINDOW_GEOMETRY_KEY,
+      JSON.stringify({
+        left: Math.round(settingsWindowGeometry.left),
+        top: Math.round(settingsWindowGeometry.top),
+        width: Math.round(settingsWindowGeometry.width),
+        height: Math.round(settingsWindowGeometry.height),
+      }),
+    );
+  } catch {}
+}
+
+// Keep the window fully inside the app viewport. Called on open, drag, resize,
+// and window resize so it can never end up off-screen or larger than the app.
+function clampSettingsWindowGeometry() {
+  const bounds = settingsWindowViewportBounds();
+  const g = settingsWindowGeometry;
+  g.width = Math.max(SETTINGS_WINDOW_MIN_W, Math.min(g.width, bounds.w));
+  g.height = Math.max(SETTINGS_WINDOW_MIN_H, Math.min(g.height, bounds.h));
+  g.left = Math.max(0, Math.min(g.left, bounds.w - g.width));
+  g.top = Math.max(0, Math.min(g.top, bounds.h - g.height));
+}
+
+function applySettingsWindowGeometry() {
+  if (!menuOverlay) return;
+  clampSettingsWindowGeometry();
+  const g = settingsWindowGeometry;
+  menuOverlay.style.left = `${Math.round(g.left)}px`;
+  menuOverlay.style.top = `${Math.round(g.top)}px`;
+  menuOverlay.style.width = `${Math.round(g.width)}px`;
+  menuOverlay.style.height = `${Math.round(g.height)}px`;
+}
+
+// On first open (or if never placed) centre the window in the app.
+function ensureSettingsWindowGeometry() {
+  loadSettingsWindowGeometry();
+  if (!settingsWindowGeometry.placed) {
+    const bounds = settingsWindowViewportBounds();
+    settingsWindowGeometry.width = Math.min(
+      settingsWindowGeometry.width,
+      bounds.w - 40,
+    );
+    settingsWindowGeometry.height = Math.min(
+      settingsWindowGeometry.height,
+      bounds.h - 40,
+    );
+    settingsWindowGeometry.left = Math.round(
+      (bounds.w - settingsWindowGeometry.width) / 2,
+    );
+    settingsWindowGeometry.top = Math.round(
+      (bounds.h - settingsWindowGeometry.height) / 2,
+    );
+    settingsWindowGeometry.placed = true;
   }
-  if (menuOverlay) menuOverlay.classList.add("active");
-  if (previewContentEl) previewContentEl.classList.add("menu-open");
+  applySettingsWindowGeometry();
+}
+
+function initSettingsFloatingWindow() {
+  if (!settingsFloatingEnabled() || !menuOverlay) return;
+  const titleBar = document.getElementById("menuTitleBar");
+  const closeBtn = document.getElementById("menuTitleClose");
+  const handles = menuOverlay.querySelectorAll(".menuResizeHandle");
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (MENU_OPEN) closeMenu();
+    });
+  }
+
+  // Dragging the title bar moves the whole window (pointer capture so the drag
+  // survives fast cursor moves and the pointer leaving the bar).
+  if (titleBar) {
+    titleBar.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest("#menuTitleClose")) return;
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startLeft = settingsWindowGeometry.left;
+      const startTop = settingsWindowGeometry.top;
+      try {
+        titleBar.setPointerCapture(e.pointerId);
+      } catch {}
+      const onMove = (ev) => {
+        settingsWindowGeometry.left = startLeft + (ev.clientX - startX);
+        settingsWindowGeometry.top = startTop + (ev.clientY - startY);
+        applySettingsWindowGeometry();
+      };
+      const onUp = () => {
+        titleBar.removeEventListener("pointermove", onMove);
+        titleBar.removeEventListener("pointerup", onUp);
+        titleBar.removeEventListener("pointercancel", onUp);
+        saveSettingsWindowGeometry();
+      };
+      titleBar.addEventListener("pointermove", onMove);
+      titleBar.addEventListener("pointerup", onUp);
+      titleBar.addEventListener("pointercancel", onUp);
+    });
+  }
+
+  handles.forEach((handle) => {
+    const dir = handle.dataset.resize || "";
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const start = Object.assign({}, settingsWindowGeometry);
+      const bounds = settingsWindowViewportBounds();
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {}
+      const onMove = (ev) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        const g = settingsWindowGeometry;
+        if (dir.includes("e")) {
+          g.width = Math.max(
+            SETTINGS_WINDOW_MIN_W,
+            Math.min(start.width + dx, bounds.w - start.left),
+          );
+        }
+        if (dir.includes("s")) {
+          g.height = Math.max(
+            SETTINGS_WINDOW_MIN_H,
+            Math.min(start.height + dy, bounds.h - start.top),
+          );
+        }
+        if (dir.includes("w")) {
+          const right = start.left + start.width;
+          const nextLeft = Math.min(
+            Math.max(0, start.left + dx),
+            right - SETTINGS_WINDOW_MIN_W,
+          );
+          g.left = nextLeft;
+          g.width = right - nextLeft;
+        }
+        if (dir.includes("n")) {
+          const bottom = start.top + start.height;
+          const nextTop = Math.min(
+            Math.max(0, start.top + dy),
+            bottom - SETTINGS_WINDOW_MIN_H,
+          );
+          g.top = nextTop;
+          g.height = bottom - nextTop;
+        }
+        applySettingsWindowGeometry();
+      };
+      const onUp = () => {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        saveSettingsWindowGeometry();
+      };
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
+    });
+  });
+
+  window.addEventListener("resize", () => {
+    if (!MENU_OPEN) return;
+    applySettingsWindowGeometry();
+    saveSettingsWindowGeometry();
+  });
+}
+
+function openMenu(tabId) {
+  MENU_OPEN = true;
+  const floating = settingsFloatingEnabled();
+  const appEl = document.getElementById("app");
+  if (floating) {
+    if (menuOverlay) menuOverlay.classList.add("menu-floating", "active");
+    ensureSettingsWindowGeometry();
+  } else {
+    if (appEl) {
+      appEl.classList.add("menu-pane-open");
+      appEl.classList.remove("no-side-panes");
+    }
+    if (menuOverlay) menuOverlay.classList.add("active");
+    if (previewContentEl) previewContentEl.classList.add("menu-open");
+  }
   refreshMenuTabAvailability();
-  applyMenuPaneWidthFromOptions();
+  if (!floating) applyMenuPaneWidthFromOptions();
   const next = isMenuTabAvailable(tabId)
     ? tabId
     : MENU_HAS_OPENED
@@ -18513,11 +18903,12 @@ function openMenu(tabId) {
   MENU_HAS_OPENED = true;
   setMenuTab(next);
   applyMenuTransientFocusBehavior(menuCard || menuOverlay);
-  syncPreviewContentLayoutAfterMenuToggle();
+  if (!floating) syncPreviewContentLayoutAfterMenuToggle();
 }
 
 function closeMenu() {
   if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
+  const wasFloating = MENU_OPEN && settingsFloatingEnabled();
   MENU_OPEN = false;
   const appEl = document.getElementById("app");
   if (appEl) {
@@ -18527,7 +18918,7 @@ function closeMenu() {
   KEYBIND_CAPTURE_ACTION_ID = "";
   if (menuOverlay) menuOverlay.classList.remove("active");
   if (previewContentEl) previewContentEl.classList.remove("menu-open");
-  syncPreviewContentLayoutAfterMenuToggle();
+  if (!wasFloating) syncPreviewContentLayoutAfterMenuToggle();
   if (IS_SETTINGS_WINDOW) {
     const currentWindow = window.__TAURI__?.window?.getCurrentWindow?.();
     if (currentWindow && typeof currentWindow.close === "function") {
@@ -18536,13 +18927,20 @@ function closeMenu() {
   }
 }
 
+// Tab toggles the in-app Settings window (see the global keydown handler).
+function toggleSettingsWindow(tabId) {
+  if (MENU_OPEN) closeMenu();
+  else openMenu(tabId || MENU_LAST_TAB || "general");
+}
+window.__lgToggleSettings = () => toggleSettingsWindow();
+
 window.__lgOpenSettingsTab = (tabId) => {
   const tab = String(tabId || "general");
-  if (IS_SETTINGS_WINDOW) openMenu(tab);
-  else requestSettingsWindow(tab);
+  openMenu(tab);
 };
 
 if (optionsBtn) optionsBtn.addEventListener("click", () => openMenu());
+initSettingsFloatingWindow();
 menuTabButtons.forEach((btn) => {
   btn.setAttribute("tabindex", "-1");
   btn.addEventListener("click", () => {
@@ -56997,12 +57395,10 @@ function refreshLiveSettingsPaneFromKeyboardAction() {
 
 function toggleSettingsAndDirectoriesPanesKeybindAction() {
   if (!WS.meta) return false;
-  if (IS_SETTINGS_WINDOW) {
-    return requestSettingsWindow(MENU_LAST_TAB || "general");
-  }
-  const opened = requestSettingsWindow(MENU_LAST_TAB || "general");
-  if (opened) showStatusMessage("Settings opened.", "pane-toggles");
-  return opened;
+  // Secondary (bindable) path to the in-app Settings window; Tab is the primary
+  // reserved toggle.
+  toggleSettingsWindow(MENU_LAST_TAB || "general");
+  return true;
 }
 
 // The Grok window lives entirely in Rust (src-tauri/src/grok.rs) — it is a
@@ -58934,27 +59330,8 @@ document.addEventListener(
   true,
 );
 
-// Command+, is a fixed macOS application shortcut. Handling it before the
-// configurable keybind dispatcher also makes the toggle work while the
-// secondary Settings webview itself has focus.
-document.addEventListener(
-  "keydown",
-  (e) => {
-    if (
-      String(e.key || "") !== "," ||
-      !e.metaKey ||
-      e.ctrlKey ||
-      e.altKey ||
-      e.shiftKey ||
-      e.repeat
-    )
-      return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    requestSettingsWindow(MENU_LAST_TAB || "general");
-  },
-  true,
-);
+// Command+, is intentionally disabled: Settings is the in-app floating window
+// toggled with Tab (see the global keydown handler). No Cmd+, listener.
 
 document.addEventListener("keydown", (e) => {
   if (busyOverlayActive()) {
@@ -59005,6 +59382,19 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     const n = Number(tabJumpMatch[1]);
     activateTabByIndex(n === 9 ? WS.tabs.items.length - 1 : n - 1);
+    return;
+  }
+
+  // Tab toggles the in-app Settings window. Reserved (not bindable) so it works
+  // from anywhere except while typing in a field, where Tab keeps its normal
+  // focus-traversal behaviour.
+  if (
+    key === "Tab" &&
+    settingsFloatingEnabled() &&
+    !isTextInputTarget(e.target)
+  ) {
+    e.preventDefault();
+    toggleSettingsWindow();
     return;
   }
 

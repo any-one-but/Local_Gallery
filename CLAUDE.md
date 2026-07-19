@@ -26,7 +26,7 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~58k line mono
   - `tauri.conf.json` — product, build (before*Command runs sync-frontend + prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
   - `src/main.rs` — thin binary entry.
   - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
-  - `src/settings.rs` — owns the native Settings window lifecycle. It opens a second decorated webview, loading the same document in settings-only mode; the two webviews synchronize preference metadata through Tauri app events.
+  - `src/settings.rs` — legacy native Settings-window lifecycle (a second decorated webview loading the same document in settings-only mode, `IS_SETTINGS_WINDOW`). **No longer the primary path:** Settings is now an in-app floating window (see below). This module and its `open_settings_window` / `toggle_settings_window_command` invoke commands are retained but unused by the main flow.
   - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, etc. All heavy work uses spawn_blocking.
   - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
 - `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile) + `__lg` dev helpers (ping, requestThumb, assetUrl) over Tauri invoke.
@@ -67,11 +67,26 @@ Three panes rendered via CSS grid in `#app`:
 2. **List/Directories Pane** (`#directoriesPane`) — folder tree + file list for the active directory.
 3. **Preview Pane** (`#previewPane`) — media viewer (image/video/gif) with a control bar (`#controlPane`).
 
-Settings is no longer a fourth pane in the main layout. `Cmd+,` and the native
-macOS application menu open a separate `settings` WebviewWindow. The document's
-`IS_SETTINGS_WINDOW` mode hides the gallery chrome and expands `#menuOverlay` to
-fill that window; metadata document events keep the main and Settings `WS`
-instances live-synchronized.
+Settings is an **in-app floating window**, not an OS window: `#menuOverlay`
+gets the `menu-floating` class and becomes a `position: fixed` panel overlaying
+the app (z-index above the fullscreen viewer). It has a `#menuTitleBar` drag
+handle (with a ✕ close button) and eight `.menuResizeHandle` edge/corner
+handles; geometry is clamped to the app viewport and persisted to
+`localStorage` (`lg.settingsWindowGeometry`). Because it is the same document,
+opening is instant — there is no second webview to load. `openMenu()` /
+`closeMenu()` drive it; the drag/resize/geometry controller is
+`initSettingsFloatingWindow()` and friends (near `openMenu`).
+
+Toggle it with **Tab** (reserved, handled directly in the global keydown
+listener alongside `Cmd+1`–`Cmd+9`, so it is not a bindable action). **`Cmd+,`
+is intentionally disabled** — the default `toggleSettingsAndDirectoriesPanes`
+binding is empty and the old dedicated Cmd+, listener was removed. The macOS
+application-menu "Settings…" item has no accelerator and routes to the in-app
+window via `window.__lgToggleSettings()` (evaluated from `on_menu_event`).
+
+The legacy separate-`settings`-WebviewWindow mode (`IS_SETTINGS_WINDOW`) still
+exists in the document but is no longer used; in that mode `#menuOverlay` fills
+the window and metadata document events sync the main/Settings `WS` instances.
 
 `renderPreviewPane()` (line ~46577) is the main re-render entry point for the preview side. The directories/file list side is rebuilt through `rebuildDirectoriesEntries()` and related helpers.
 
