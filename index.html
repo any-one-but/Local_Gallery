@@ -64,6 +64,9 @@
   --ui-selection-fill-strong: rgba(255, 255, 255, 0.22);
   --ui-preview-selection-shadow: none;
   --ui-preview-selection-stroke: 3px;
+  /* Doubled stroke for an item that is BOTH the active selection and a member
+     of the multi-item selection -- see the combined-state block below. */
+  --ui-preview-selection-stroke-strong: 6px;
   --ui-control-bg: rgba(255, 255, 255, 0.06);
   --ui-control-hover-bg: rgba(255, 255, 255, 0.12);
   --ui-control-active-bg: var(--ui-selection-fill-strong);
@@ -2167,6 +2170,21 @@ img[data-rotate-key].rotatingThumbFade {
   font-size: 15px;
   padding: 11px 14px;
   border-radius: 9px;
+}
+
+/* Bold heading at the top of the app menu naming the current selection. Not an
+   option -- it is never focusable and never takes the keyboard cursor. */
+.dropdownMenuTitle {
+  padding: 6px 14px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color0-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--ui-control-bg);
+  margin-bottom: 6px;
+  pointer-events: none;
 }
 
 #appActionMenu .dropdownMenuNum,
@@ -7551,6 +7569,68 @@ html.settings-window #previewContent:not(.menu-open)::before {
   cursor: nesw-resize;
 }
 
+/* ---------------------------------------------------------------------------
+   Selection states
+   Three distinct looks, so an item that is both the active selection and part
+   of a multi-item selection is never mistaken for either one alone:
+     - active only        accent outline, elevated, no selection fill
+     - multi-select only  accent outline plus the selection fill
+     - both               the stronger fill AND a doubled accent outline
+   These come last so they win over the per-family rules above.
+   --------------------------------------------------------------------------- */
+
+.gridFiles .fileCard.previewSelected.bulkSelected,
+.gridFolders .folderCard.folderThumbCard.previewSelected.bulkSelected,
+.gridFolders .folderCard.folderThumbCard.selected.bulkSelected {
+  z-index: 3;
+  outline: var(--ui-preview-selection-stroke-strong) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  background: var(--ui-selection-fill-strong);
+}
+
+.gridFolders .previewTagFolderCard.previewSelected.bulkSelected .dirSquareCard {
+  outline: var(--ui-preview-selection-stroke-strong) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  background: var(--ui-selection-fill-strong);
+}
+
+/* File-pane rows: bulk members read as fill only; the active row inside a
+   multi-selection additionally gets the doubled accent outline. */
+.dirRow.selected.bulkSelected {
+  outline: var(--ui-preview-selection-stroke-strong) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: -3px;
+  background: var(--ui-selection-fill-strong);
+}
+
+.dirRow.folderRow.folderSquareCard.selected.bulkSelected .dirSquareCard,
+.dirRow.fileRow.fileThumbCardRow.selected.bulkSelected .dirFileThumbCard {
+  outline: var(--ui-preview-selection-stroke-strong) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: -3px;
+  background: var(--ui-selection-fill-strong);
+}
+
+/* The item menu now lives inside the app menu, so the per-item menu button is
+   no longer a button -- it stays only as the score/favorite badge. It takes no
+   pointer input and has no interactive affordance at all: no hover, active or
+   focus response, and full opacity -- it is a badge, not a dimmed-out control,
+   which is also why it never carries the `disabled` attribute. */
+.thumbMenuBtnInert,
+.thumbMenuBtnInert:hover,
+.thumbMenuBtnInert:active,
+.thumbMenuBtnInert:focus,
+.thumbMenuBtnInert:focus-visible {
+  pointer-events: none;
+  cursor: default;
+  opacity: 1;
+  transform: none;
+  box-shadow: none;
+  transition: none;
+}
+
 </style>
   <!-- END: inlined from ./styles.css -->
   </head>
@@ -8284,10 +8364,15 @@ function displayName(name) {
 }
 
 function displayTagFolderLabel(name) {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  let out = String(name || "");
-  if (opt && opt.forceTitleCaps) out = toTitleCaps(out);
-  return out;
+  return String(name || "");
+}
+
+// Title-cases a string. Used for generated type/special labels only -- display
+// names are shown verbatim (the old forceTitleCaps option was removed).
+function toTitleCaps(str) {
+  return String(str || "").replace(/\w\S*/g, (txt) => {
+    return txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase();
+  });
 }
 
 function splitNameExt(name) {
@@ -8295,12 +8380,6 @@ function splitNameExt(name) {
   const i = raw.lastIndexOf(".");
   if (i <= 0) return { base: raw, ext: "" };
   return { base: raw.slice(0, i), ext: raw.slice(i) };
-}
-
-function toTitleCaps(str) {
-  return String(str || "").replace(/\w\S*/g, (txt) => {
-    return txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase();
-  });
 }
 
 function applyDisplayNameRules(name, opt, ctx = null) {
@@ -8317,7 +8396,6 @@ function applyDisplayNameRules(name, opt, ctx = null) {
     const idx = out.indexOf("_");
     if (idx >= 0) out = out.slice(0, idx);
   }
-  if (opt && opt.forceTitleCaps) out = toTitleCaps(out);
   return out;
 }
 
@@ -9166,7 +9244,6 @@ function defaultOptions() {
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
     thumbnailLoading: false,
-    forceTitleCaps: true,
     showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
     hideFileExtensionsInFileNames: true,
@@ -9623,10 +9700,6 @@ function normalizeOptions(o) {
     thumbnailLoading: false,
     imageThumbSize: "placeholder",
     videoThumbSize: "placeholder",
-    forceTitleCaps:
-      typeof src.forceTitleCaps === "boolean"
-        ? src.forceTitleCaps
-        : d.forceTitleCaps,
     showPositionNumbersInNames:
       typeof src.showPositionNumbersInNames === "boolean"
         ? src.showPositionNumbersInNames
@@ -10120,7 +10193,6 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     ].concat(thumbnailVisibilityOptionKeys()),
   ),
   filenames: Object.freeze([
-    "forceTitleCaps",
     "showPositionNumbersInNames",
     "showTagFolderSpacerRow",
     "hideFileExtensionsInFileNames",
@@ -14509,6 +14581,17 @@ function configureThumbnailMenuButton(
     favoriteDisplay,
   );
   btn.title = String(title || "");
+  // With the item menu folded into the app menu there is nothing for this
+  // button to open, so it stays as a badge. It is deliberately NOT `disabled`:
+  // that would pull in the sheet's disabled-button dimming and render it
+  // translucent. pointer-events:none already makes it unclickable, and
+  // tabindex/aria keep it out of the tab order and the a11y tree.
+  if (separateItemMenuDisabled()) {
+    btn.classList.add("thumbMenuBtnInert");
+    btn.tabIndex = -1;
+    btn.setAttribute("aria-hidden", "true");
+    btn.title = "";
+  }
 }
 
 function buildThumbnailMenuButtonHtml(
@@ -14528,8 +14611,14 @@ function buildThumbnailMenuButtonHtml(
       opt,
       favoriteDisplay,
     ),
-  )}" title="${escapeHtml(String(title || ""))}"${
-    disabled ? " disabled" : ""
+  )}${separateItemMenuDisabled() ? " thumbMenuBtnInert" : ""}" title="${escapeHtml(
+    separateItemMenuDisabled() ? "" : String(title || ""),
+  )}"${
+    separateItemMenuDisabled()
+      ? ' tabindex="-1" aria-hidden="true"'
+      : disabled
+        ? " disabled"
+        : ""
   }>${thumbnailMenuButtonLabelHtml(
     scoreValue,
     isFavorite,
@@ -15482,14 +15571,24 @@ const KEYBIND_SECTIONS = [
 ];
 
 // Set this to false to restore the duplicate Settings/Controls surfaces.
-// When true, actions already available in the App or Item menu are menu-only:
-// their Settings rows are hidden and their keybinds are ignored at runtime.
-// Stored option values and binding assignments are deliberately left untouched.
+// When true, actions already available in the app menu are menu-only: their
+// Settings rows are hidden and their keybinds are ignored at runtime. Stored
+// option values and binding assignments are deliberately left untouched.
+// Favorite selection and the two random jumps are intentionally absent -- they
+// are worth a direct key even though the menu also offers them.
 const APP_ITEM_MENU_ACTIONS_ONLY = true;
 
+// The item menu is no longer a surface of its own: it lives inside the app menu
+// as the "Selected Item(s)" section, so there is a single bound key for
+// everything. Set this to true to bring the standalone menus back (their
+// builders are still used by the app menu, so only the entry points are gated).
+const SEPARATE_ITEM_MENU_ENABLED = false;
+
+function separateItemMenuDisabled() {
+  return !SEPARATE_ITEM_MENU_ENABLED;
+}
+
 const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
-  "randomFirstFileJump",
-  "randomFileJump",
   "toggleRandomFileSort",
   "toggleRandomFolderSort",
   "cycleWeightRandomJumpsByScore",
@@ -15501,7 +15600,6 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "toggleShowUntaggedFolder",
   "toggleShowStorageFolder",
   "toggleQuickNavigation",
-  "favoriteSelection",
   "hiddenSelection",
   "tagSelection",
   "albumSelection",
@@ -15518,6 +15616,11 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "cycleVideoSkipStep",
   "cycleVideoEndBehavior",
   "toggleAnimatedFilters",
+  // Newly surfaced in the app menu.
+  "toggleGrokWindow",
+  "refreshWorkspace",
+  "toggleShowPositionNumbers",
+  "toggleHideBeforeLastDash",
 ]);
 
 const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
@@ -15629,14 +15732,8 @@ const KEYBIND_ACTIONS = [
     section: "navigation",
   },
   {
-    id: "toggleSettingsAndDirectoriesPanes",
-    label: "Settings window",
-    hint: "Toggle the in-app Settings window (also bound to Tab).",
-    section: "panes",
-  },
-  {
     id: "refreshWorkspace",
-    label: "Refresh workspace",
+    label: "Refresh App",
     hint: "Refresh the loaded writable folder from disk.",
     section: "panes",
   },
@@ -15785,12 +15882,6 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
-    id: "openItemMenu",
-    label: "Open item menu",
-    hint: "Open the action menu for the selected item(s).",
-    section: "folderActions",
-  },
-  {
     id: "openAppMenu",
     label: "Open app menu",
     hint: "Open the app-wide action menu beside the selected item.",
@@ -15831,12 +15922,6 @@ const KEYBIND_ACTIONS = [
     label: "Cycle Presets",
     hint: "Cycle appearance presets alphabetically, with Default first.",
     section: "appearance",
-  },
-  {
-    id: "toggleForceTitleCaps",
-    label: "Force Title Case",
-    hint: "Toggle Title Case for displayed names.",
-    section: "filenames",
   },
   {
     id: "toggleShowPositionNumbers",
@@ -15985,7 +16070,6 @@ function paneKeybindActions(presets = null) {
 
 const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleQuickNavigation",
-  "toggleSettingsAndDirectoriesPanes",
   "refreshWorkspace",
   "toggleGrokWindow",
   "cycleFilter",
@@ -16081,7 +16165,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   renameSelection: "",
   toggleSelectionInBulk: "",
   cancelMultiSelection: "",
-  openItemMenu: "",
   openAppMenu: "",
   seekBack: "z",
   seekForward: "c",
@@ -20763,13 +20846,6 @@ ${makeSelectRow("Thumbnail size", "How large media thumbnails are in the preview
 ${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Full Screen Media", "Show opened media using the full app frame instead of keeping it inside the preview pane.", "opt_fullScreenMedia", fullScreenMediaEnabled())}
 ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
-${makeActionRow(
-  "Workspace",
-  "Refresh the current writable root from disk.",
-  `
-  <button type="button" id="opt_refresh_workspace"${!WS.meta.fsRootHandle ? " disabled" : ""}>Refresh Workspace</button>
-`,
-)}
           `,
     },
     thumbnails: {
@@ -21630,10 +21706,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     },
     (val) => normalizeAppearancePresetIdValue(val),
   );
-  bindActionBtn("opt_refresh_workspace", () => {
-    refreshWorkspaceKeybindAction();
-    setOptionsStatus("Saved");
-  });
   optionsBodyEl
     .querySelectorAll("[data-appearance-preset-apply]")
     .forEach((btn) => {
@@ -42659,6 +42731,7 @@ function openBulkActionMenuForSelection(anchorKey, opts = null) {
 }
 
 function openDirMenuForPath(path) {
+  if (separateItemMenuDisabled()) return;
   allowMenuClose();
   const p = String(path || "");
   const isRootPath = p === "" && !!WS.root;
@@ -42684,6 +42757,7 @@ function openDirMenuForPath(path) {
 }
 
 function openFileMenuForId(fileId) {
+  if (separateItemMenuDisabled()) return;
   allowMenuClose();
   const id = String(fileId || "");
   if (!id) return;
@@ -43619,6 +43693,14 @@ function buildAppMenuMiscSubmenu() {
   const options = WS.meta?.options || {};
   return createDropdownMenuSubmenu("Misc", [
     appMenuChoiceButton(
+      "Quick navigation",
+      () => handleExtrasKeybindAction("toggleQuickNavigation"),
+      quickNavigationEnabled(),
+    ),
+    buildAppMenuRandomSubmenu(),
+    buildAppMenuSlideshowSubmenu(),
+    buildAppMenuFileNameSubmenu(),
+    appMenuChoiceButton(
       "Mute messages",
       () => handleExtrasKeybindAction("toggleMuteMessages"),
       muteMessagesEnabled(),
@@ -43655,20 +43737,286 @@ function buildAppMenuMiscSubmenu() {
   ]);
 }
 
+function buildAppMenuFileNameSubmenu() {
+  const options = WS.meta?.options || {};
+  return createDropdownMenuSubmenu("File Name", [
+    appMenuChoiceButton(
+      "Position number prefixes",
+      () => handleExtrasKeybindAction("toggleShowPositionNumbers"),
+      !!options.showPositionNumbersInNames,
+    ),
+    appMenuChoiceButton(
+      "Trim before last dash",
+      () => handleExtrasKeybindAction("toggleHideBeforeLastDash"),
+      !!options.hideBeforeLastDashInFileNames,
+    ),
+  ]);
+}
+
+// What the app menu's first section acts on. The multi-item (bulk) selection
+// wins when there is one; otherwise it is whichever single item the active pane
+// has selected, using the same pane-priority rule the item menu used before it
+// was folded in here.
+function appMenuSelectionTarget() {
+  if (!WS.root) return null;
+  if (hasBulkSelection()) {
+    const paths = getSelectedPathsInCurrentDir();
+    const tagKeys = getSelectedTagFolderKeysInCurrentView();
+    const fileIds = getSelectedFileIdsInCurrentView();
+    const count = paths.length + tagKeys.length + fileIds.length;
+    if (count > 1) {
+      return {
+        kind: "bulk",
+        count,
+        paths,
+        fileIds,
+        entries: getSelectedTagEntriesInCurrentView(),
+      };
+    }
+  }
+  if (previewPaneOwnsSelection()) {
+    const card = findSelectedPreviewCard();
+    const kind = String(card?.dataset?.previewItemKind || "");
+    if (kind === "file") {
+      const rec = WS.fileById.get(String(previewFileIdForCard(card) || ""));
+      if (rec) return { kind: "file", rec, card };
+    } else if (kind === "dir") {
+      const node = WS.dirByPath.get(String(previewDirPathForCard(card) || ""));
+      if (node) return { kind: "dir", node, card };
+    } else if (kind === "tag") {
+      const entry = card.__previewTagEntry || null;
+      if (entry) return { kind: "tag", entry, card };
+    }
+  }
+  const entry = WS.nav.entries[Number(WS.nav.selectedIndex)] || null;
+  if (entry?.kind === "dir" && entry.node)
+    return { kind: "dir", node: entry.node };
+  if (entry?.kind === "file") {
+    const rec = WS.fileById.get(String(entry.id || ""));
+    if (rec) return { kind: "file", rec };
+  }
+  if (entry?.kind === "tag") return { kind: "tag", entry };
+  return null;
+}
+
+function appMenuSelectionSummary() {
+  const target = appMenuSelectionTarget();
+  if (!target) return { target: null, title: "No selection", label: "Selection" };
+  if (target.kind === "bulk") {
+    return {
+      target,
+      title: `${target.count} Selected Items`,
+      label: "Selected Items",
+    };
+  }
+  let name = "";
+  if (target.kind === "dir")
+    name = dirUiLabel(target.node) || displayName(target.node.name) || "Root";
+  else if (target.kind === "file")
+    name = displayName(target.rec.name) || String(target.rec.name || "");
+  else if (target.kind === "tag")
+    name =
+      String(target.entry.label || target.entry.tag || target.entry.album || "") ||
+      "Tag";
+  return { target, title: name || "Selected Item", label: "Selected Item" };
+}
+
+// An item sitting in Trash or Storage has no meaningful item menu -- almost
+// every action is refused for it anyway. Returns the one action that does
+// apply, so the app menu can offer that single button in place of the whole
+// "Selected Item" dropdown.
+function selectedItemQuarantineAction(target) {
+  if (!target) return null;
+  const paths = [];
+  if (target.kind === "dir") paths.push(String(target.node?.path || ""));
+  else if (target.kind === "file") {
+    if (!target.rec) return null;
+    const trashPath = trashTopLevelItemPathForFileRecord(target.rec);
+    if (trashPath) return { label: "Remove from Trash", kind: "trash", target };
+    // A file is "in storage" by virtue of its folder, so ask the folder --
+    // resolved through the tree rather than by comparing raw path strings.
+    const ownDir = WS.dirByPath.get(String(target.rec.dirPath || "")) || null;
+    if (!ownDir) return null;
+    paths.push(String(ownDir.path || ""));
+  } else if (target.kind === "bulk") {
+    paths.push(...target.paths);
+  } else return null;
+
+  const real = paths.filter(Boolean);
+  if (!real.length) return null;
+  // trashTopLevelItemPathForPath() is what put-back actually operates on, so it
+  // is also the right test: it rejects the Trash root portal itself, which is a
+  // container rather than something that can be removed from Trash.
+  if (real.every((p) => !!trashTopLevelItemPathForPath(p)))
+    return { label: "Remove from Trash", kind: "trash", target };
+  if (
+    real.every(
+      (p) =>
+        metaHasStorage(p) ||
+        isStorageStubDirNode(resolveDirNodeForPathOrStorageStub(p)),
+    )
+  )
+    return { label: "Remove from Storage", kind: "storage", target };
+  return null;
+}
+
+function buildSelectedItemQuarantineButton(quarantine) {
+  return appMenuChoiceButton(quarantine.label, () => {
+    const target = quarantine.target;
+    if (quarantine.kind === "trash") {
+      if (target.kind === "file") {
+        runFileActionFromMenu("put-back", String(target.rec?.id || ""));
+        return;
+      }
+      const paths =
+        target.kind === "bulk"
+          ? target.paths
+          : [String(target.node?.path || "")];
+      const trashPaths = paths
+        .map((p) => trashTopLevelItemPathForPath(p))
+        .filter(Boolean);
+      if (trashPaths.length) putBackTrashFolderPaths(trashPaths);
+      return;
+    }
+    const paths =
+      target.kind === "bulk"
+        ? target.paths
+        : [String(target.node?.path || target.rec?.dirPath || "")].filter(
+            Boolean,
+          );
+    if (paths.length) setStorageStateForFolderPaths(paths, false);
+  });
+}
+
+// The whole item menu, hosted as the app menu's first submenu. The per-kind
+// builders write into a detached container, so these are the same entries the
+// standalone item menus show rather than a reimplementation of them.
+function buildSelectedItemMenuSubmenu(summary) {
+  const target = summary?.target;
+  if (!target) return null;
+  const host = document.createElement("div");
+  host.className = "dropdownMenu dropdownMenuSubmenuPanel";
+
+  if (target.kind === "dir") {
+    const node = target.node;
+    const p = String(node.path || "");
+    if (folderNodeHasNoItemMenu(node)) return null;
+    const menuState = buildFolderMenuState(node);
+    buildFolderActionMenuDom(
+      host,
+      menuState,
+      (action) => {
+        if (action === "tag") {
+          startPreviewFolderTagEdit([p]);
+          return;
+        }
+        if (action === "rename") {
+          startPreviewFolderRenameEdit(p);
+          return;
+        }
+        runFolderActionFromMenu(action, node).catch(() => {});
+      },
+      {
+        appearancePresetSubmenu: () =>
+          buildAppearancePresetSubmenu({
+            currentPresetId: menuState.assignedAppearancePresetId,
+            hasOverride: !!menuState.assignedAppearancePresetId,
+            onChoosePreset: (presetId) => {
+              if (!metaSetFolderAppearancePresetId(p, presetId)) return;
+              refreshAfterProcessingMetadataChange();
+              showStatusMessage(
+                `Folder media preset: ${appearancePresetDisplayName(presetId)}.`,
+              );
+            },
+            onClear: () => {
+              if (!metaClearFolderAppearancePreset(p)) return;
+              refreshAfterProcessingMetadataChange();
+              showStatusMessage("Folder media preset reset.");
+            },
+          }),
+      },
+    );
+  } else if (target.kind === "file") {
+    if (!target.rec || fileRecordHasNoItemMenu(target.rec)) return null;
+    const fileId = String(target.rec.id || "");
+    buildFileActionMenuDom(host, target.rec, (action) =>
+      runFileActionFromMenu(action, fileId),
+    );
+  } else if (target.kind === "tag") {
+    const entry = target.entry;
+    if (entry.placeholder) return null;
+    openTagContextMenu({
+      entry,
+      tag: String(entry.tag || ""),
+      album: String(entry.album || ""),
+      tagKey: tagThumbnailKeyForEntry(entry),
+      special: entry.special || "",
+      label: String(entry.label || entry.tag || ""),
+      anchor: target.card || selectedItemMenuAnchor(),
+      paths: gatherTagPathsForDirs(getDirsForTagEntry(entry)),
+      originPath: String(entry.originPath || ""),
+      container: host,
+    });
+  } else if (target.kind === "bulk") {
+    if (target.paths.length) {
+      openPreviewBulkFolderActionMenu(target.paths, target.paths[0], {
+        container: host,
+      });
+    } else if (target.fileIds.length) {
+      openPreviewBulkFileActionMenu(target.fileIds, target.fileIds[0], {
+        container: host,
+      });
+    } else if (target.entries.length) {
+      openPreviewBulkTagActionMenu(target.entries, "", { container: host });
+    }
+  }
+
+  const items = Array.from(host.children);
+  items.forEach((el) => host.removeChild(el));
+  return createDropdownMenuSubmenu(summary.label, items);
+}
+
+// The bold heading at the top of the app menu. Not a button, so
+// numberedMenuOptionsForPanel skips it and it can never take the cursor.
+function buildAppMenuTitleElement(summary) {
+  const el = document.createElement("div");
+  el.className = "dropdownMenuTitle";
+  el.setAttribute("aria-hidden", "true");
+  el.textContent = summary.title;
+  return el;
+}
+
 function buildAppMenuItems() {
+  const summary = appMenuSelectionSummary();
+  // An item in Trash or Storage gets the one action that applies to it in place
+  // of the whole "Selected Item" dropdown.
+  const quarantine = selectedItemQuarantineAction(summary.target);
+  const selectedEntry = quarantine
+    ? buildSelectedItemQuarantineButton(quarantine)
+    : buildSelectedItemMenuSubmenu(summary);
   return [
+    buildAppMenuTitleElement(summary),
+    // Always first.
+    selectedEntry,
+    // Opens something in front of the app, so it closes the menu.
+    appMenuChoiceButton(
+      "Open Grok",
+      () => handleExtrasKeybindAction("toggleGrokWindow"),
+      null,
+      true,
+    ),
+    buildAppMenuAppearanceSubmenu(),
     buildAppMenuSortSubmenu(),
     buildAppMenuMediaFilterSubmenu(),
-    appMenuChoiceButton(
-      "Quick navigation",
-      () => handleExtrasKeybindAction("toggleQuickNavigation"),
-      quickNavigationEnabled(),
-    ),
     buildAppMenuRevealSubmenu(),
-    buildAppMenuRandomSubmenu(),
-    buildAppMenuSlideshowSubmenu(),
-    buildAppMenuAppearanceSubmenu(),
     buildAppMenuMiscSubmenu(),
+    // Always last.
+    appMenuChoiceButton(
+      "Refresh App",
+      () => handleExtrasKeybindAction("refreshWorkspace"),
+      null,
+      true,
+    ),
   ].filter(Boolean);
 }
 
@@ -43926,9 +44274,16 @@ function openTagContextMenu(context) {
     tagEntryForThumb,
   );
   const tagThumbIsRotating = tagThumbnailUsesRotationByKey(tagKey);
-  closeTagContextMenu();
-  closeActionMenus();
-  const menu = tagActionMenuEl;
+  // When a container is supplied the entries are being hosted somewhere else
+  // (the app menu's "Selected Item" section), so the standalone tag menu is
+  // neither cleared nor opened -- only TAG_CONTEXT_MENU_STATE is set, which is
+  // what handleTagMenuAction reads.
+  const hostContainer = context.container || null;
+  if (!hostContainer) {
+    closeTagContextMenu();
+    closeActionMenus();
+  }
+  const menu = hostContainer || tagActionMenuEl;
   const infoDropdown = createItemInfoDropdown({
     kind: "tag",
     entry: tagEntryForThumb,
@@ -44092,6 +44447,7 @@ function openTagContextMenu(context) {
     canAppearancePreset,
     canMediaFilter,
   };
+  if (hostContainer) return;
   requestAnimationFrame(() => {
     menu.classList.add("open");
     positionDropdownMenu(anchor, menu);
@@ -44099,6 +44455,7 @@ function openTagContextMenu(context) {
 }
 
 function openTagEntryContextMenu(entry, anchor) {
+  if (separateItemMenuDisabled()) return false;
   if (!entry || entry.kind !== "tag" || !anchor) return false;
   if (entry.placeholder) return false;
   const selectionKey = tagEntrySelectionKey(entry);
@@ -44740,7 +45097,10 @@ document.addEventListener(
         // Step back out one level; from the top level this leaves the menu.
         collapseOrCloseNumberedMenu(menu);
         return;
+      // The key that opened the menu doubles as an activate key once it is
+      // open, so either that or the open-folder key works.
       case "enterDir":
+      case "openAppMenu":
         if (e.repeat) return;
         activateNumberedMenuOption(menu, highlightedMenuOption(menu));
         return;
@@ -45152,7 +45512,55 @@ function buildFileThumbnailSubmenuHtml(
   return buildPaginatedDropdownMenuSubmenuHtml("Thumbnail", buttonItems);
 }
 
+// Container-based twin of buildFolderActionMenuDom: appends a single file's
+// item-menu entries to menuEl and routes every activation through onAction.
+// Shared by the preview context menu and the app menu's "Selected Item" section.
+function buildFileActionMenuDom(menuEl, rec, onAction) {
+  if (!menuEl || !rec || typeof onAction !== "function") return;
+  const makeBtn = (label, action, disabled = false) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = String(label || "");
+    btn.disabled = !!disabled;
+    btn.setAttribute("data-action", String(action || ""));
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (btn.disabled) return;
+      onAction(String(action || ""));
+    });
+    return btn;
+  };
+
+  const infoDropdown = createItemInfoDropdown({ kind: "file", record: rec });
+  if (infoDropdown) menuEl.appendChild(infoDropdown);
+
+  const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
+  if (trashTargetPath) {
+    menuEl.appendChild(
+      makeBtn("Remove from Trash", "put-back", !WS.meta.fsRootHandle),
+    );
+    return;
+  }
+  const thumbnailTargets = getThumbnailMenuTargetsForRecord(rec);
+  const thumbnailButtons = [];
+  for (let i = 0; i < thumbnailTargets.length; i++) {
+    const target = thumbnailTargets[i];
+    const label = String((target && target.label) || "");
+    const targetAction = String((target && target.action) || "");
+    if (!label || !targetAction) continue;
+    thumbnailButtons.push(makeBtn(label, targetAction));
+  }
+  thumbnailButtons.push(makeBtn("Edit thumbnail", "edit-thumbnail"));
+  const thumbnailSubmenu = createDropdownMenuSubmenu(
+    "Thumbnail",
+    thumbnailButtons,
+  );
+  if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
+  menuEl.appendChild(makeBtn("Rename", "rename-file", !WS.meta.fsRootHandle));
+}
+
 function openPreviewFileActionMenu(rec, opts = {}) {
+  if (separateItemMenuDisabled() && !opts.container) return;
   if (!previewActionMenuEl || !rec) return;
   if (fileRecordHasNoItemMenu(rec)) return;
   const fileId = String(rec.id || "");
@@ -45169,51 +45577,17 @@ function openPreviewFileActionMenu(rec, opts = {}) {
     openPreviewBulkFileActionMenu(selectedIds, fileId, opts);
     return;
   }
-  closeActionMenus();
+  const hostContainer = opts.container || null;
+  if (!hostContainer) closeActionMenus();
 
-  const menu = previewActionMenuEl;
-  const makeBtn = (label, action, disabled = false) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = String(label || "");
-    btn.disabled = !!disabled;
-    btn.setAttribute("data-action", String(action || ""));
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      closePreviewContextMenu();
-      await runFileActionFromMenu(String(action || ""), fileId);
-    });
-    return btn;
-  };
+  const menu = hostContainer || previewActionMenuEl;
+  buildFileActionMenuDom(menu, rec, (action) => {
+    if (!hostContainer) closePreviewContextMenu();
+    return runFileActionFromMenu(action, fileId);
+  });
+  if (!hostContainer) PREVIEW_CONTEXT_MENU_STATE = { fileId };
 
-  const infoDropdown = createItemInfoDropdown({ kind: "file", record: rec });
-  if (infoDropdown) menu.appendChild(infoDropdown);
-
-  const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
-  if (trashTargetPath) {
-    menu.appendChild(
-      makeBtn("Remove from Trash", "put-back", !WS.meta.fsRootHandle),
-    );
-  } else {
-    const thumbnailTargets = getThumbnailMenuTargetsForRecord(rec);
-    const thumbnailButtons = [];
-    for (let i = 0; i < thumbnailTargets.length; i++) {
-      const target = thumbnailTargets[i];
-      const label = String(target && target.label || "");
-      const targetAction = String(target && target.action || "");
-      if (!label || !targetAction) continue;
-      thumbnailButtons.push(makeBtn(label, targetAction));
-    }
-    thumbnailButtons.push(makeBtn("Edit thumbnail", "edit-thumbnail"));
-    const thumbnailSubmenu = createDropdownMenuSubmenu(
-      "Thumbnail",
-      thumbnailButtons,
-    );
-    if (thumbnailSubmenu) menu.appendChild(thumbnailSubmenu);
-    menu.appendChild(makeBtn("Rename", "rename-file", !WS.meta.fsRootHandle));
-  }
-  PREVIEW_CONTEXT_MENU_STATE = { fileId };
-
+  if (hostContainer) return;
   requestAnimationFrame(() => {
     menu.classList.add("open");
     if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
@@ -45703,10 +46077,13 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     .map((p) => resolveDirNodeForPathOrStorageStub(p))
     .filter(Boolean);
   if (!selectedDirNodes.length) return;
-  closeActionMenus();
+  // A supplied container means the entries are being hosted elsewhere (the app
+  // menu's "Selected Item(s)" section) rather than shown as a standalone menu.
+  const hostContainer = opts.container || null;
+  if (!hostContainer) closeActionMenus();
 
-  const menu = previewActionMenuEl;
-  menu.innerHTML = "";
+  const menu = hostContainer || previewActionMenuEl;
+  if (!hostContainer) menu.innerHTML = "";
   const makeBtn = (
     label,
     onClick,
@@ -45915,6 +46292,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     dirPath: String(anchorPath || ""),
     bulkPaths: selectedPaths.slice(),
   };
+  if (hostContainer) return;
   requestAnimationFrame(() => {
     menu.classList.add("open");
     if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
@@ -45937,10 +46315,13 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
     .map((id) => WS.fileById.get(id))
     .filter(Boolean);
   if (!selectedRecords.length) return;
-  closeActionMenus();
+  // A supplied container means the entries are being hosted elsewhere (the app
+  // menu's "Selected Item(s)" section) rather than shown as a standalone menu.
+  const hostContainer = opts.container || null;
+  if (!hostContainer) closeActionMenus();
 
-  const menu = previewActionMenuEl;
-  menu.innerHTML = "";
+  const menu = hostContainer || previewActionMenuEl;
+  if (!hostContainer) menu.innerHTML = "";
   const makeBtn = (label, onClick, disabled = false) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -46010,6 +46391,7 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
     fileId: String(anchorFileId || ""),
     bulkFileIds: selectedIds.slice(),
   };
+  if (hostContainer) return;
   requestAnimationFrame(() => {
     menu.classList.add("open");
     if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
@@ -46028,10 +46410,13 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     ? entries.filter((entry) => entry && entry.kind === "tag")
     : [];
   if (!selectedEntries.length) return;
-  closeActionMenus();
+  // A supplied container means the entries are being hosted elsewhere (the app
+  // menu's "Selected Item(s)" section) rather than shown as a standalone menu.
+  const hostContainer = opts.container || null;
+  if (!hostContainer) closeActionMenus();
 
-  const menu = previewActionMenuEl;
-  menu.innerHTML = "";
+  const menu = hostContainer || previewActionMenuEl;
+  if (!hostContainer) menu.innerHTML = "";
   const makeBtn = (
     label,
     onClick,
@@ -46304,6 +46689,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       .map((entry) => String(tagEntrySelectionKey(entry) || ""))
       .filter(Boolean),
   };
+  if (hostContainer) return;
   requestAnimationFrame(() => {
     menu.classList.add("open");
     if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
@@ -46317,6 +46703,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
 }
 
 function openPreviewFolderActionMenu(dirNode, opts = {}) {
+  if (separateItemMenuDisabled() && !opts.container) return;
   if (!previewActionMenuEl || !dirNode) return;
   if (folderNodeHasNoItemMenu(dirNode)) return;
   const p = String(dirNode.path || "");
@@ -46335,10 +46722,13 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
     return;
   }
 
-  closeActionMenus();
+  // A supplied container means the entries are being hosted elsewhere (the app
+  // menu's "Selected Item(s)" section) rather than shown as a standalone menu.
+  const hostContainer = opts.container || null;
+  if (!hostContainer) closeActionMenus();
 
-  const menu = previewActionMenuEl;
-  menu.innerHTML = "";
+  const menu = hostContainer || previewActionMenuEl;
+  if (!hostContainer) menu.innerHTML = "";
   const menuState = buildFolderMenuState(dirNode);
   buildFolderActionMenuDom(
     menu,
@@ -46379,6 +46769,7 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
   );
 
   PREVIEW_CONTEXT_MENU_STATE = { dirPath: p };
+  if (hostContainer) return;
   requestAnimationFrame(() => {
     menu.classList.add("open");
     if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
@@ -59067,13 +59458,6 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Quick navigation: ${next ? "On" : "Off"}`, "quick-navigation");
       return true;
     }
-    case "toggleForceTitleCaps": {
-      const next = toggleOptionValue("forceTitleCaps");
-      refreshLiveSettingsPaneFromKeyboardAction();
-      applyOptionsEverywhere(false);
-      showStatusMessage(`Force Title Case: ${next ? "On" : "Off"}`);
-      return true;
-    }
     case "toggleShowPositionNumbers": {
       const next = toggleOptionValue("showPositionNumbersInNames");
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -59846,23 +60230,6 @@ function startAlbumSelectionEdit() {
   return true;
 }
 
-async function toggleStorageSelection() {
-  const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
-  if (!paths.length) {
-    showStatusMessage("No items selected.");
-    return false;
-  }
-  const allStorage = paths.every((p) => metaHasStorage(p));
-  if (!allStorage && paths.some((p) => isPathInsideInternalTrash(p))) {
-    showStatusMessage(
-      "Items in Trash must be put back before they can be sent to Storage.",
-    );
-    return false;
-  }
-  if (usedBulk) finalizeBulkSelectionAction();
-  return await setStorageStateForFolderPaths(paths, !allStorage);
-}
-
 async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
   const byTag = new Map();
   const albums = [];
@@ -59951,37 +60318,6 @@ async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
   return true;
 }
 
-async function toggleTrashSelection() {
-  const tagSelection = getTagSelectionForKeybindAction();
-  if (tagSelection.entries.length) {
-    return deleteSelectedTagAlbumEntries(
-      tagSelection.entries,
-      tagSelection.usedBulk,
-    );
-  }
-  const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
-  if (!paths.length) {
-    showStatusMessage("No items selected.");
-    return false;
-  }
-  // Bidirectional, like storage: if the whole selection is already inside
-  // Trash, put it back; otherwise move it in. Storage and Trash are mutually
-  // exclusive, so a mixed or stored selection is rejected as one operation.
-  const allInTrash = paths.every((p) => isPathInsideInternalTrash(p));
-  if (!allInTrash && paths.some((p) => metaHasStorage(p))) {
-    showStatusMessage(
-      "Items in Storage must be removed from Storage before they can be moved to Trash.",
-    );
-    return false;
-  }
-  if (usedBulk) finalizeBulkSelectionAction();
-  closeActionMenus();
-  if (allInTrash) {
-    return await putBackTrashFolderPaths(paths);
-  }
-  return await moveFolderPathsToTrash(paths);
-}
-
 // True when the preview grid (not the file pane) owns the current selection.
 function previewPaneOwnsSelection() {
   return !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview";
@@ -60057,58 +60393,6 @@ function openAppMenuForSelectionKeybindAction() {
     return false;
   }
   return openAppMenu(anchor);
-}
-
-// Open the action menu for the current selection, choosing the pane-appropriate
-// opener (which itself upgrades to the bulk menu when a multi-selection exists).
-function openItemMenuForSelectionKeybindAction() {
-  if (!WS.root || VIEWER_MODE) return false;
-  if (previewPaneOwnsSelection()) {
-    const card = findSelectedPreviewCard();
-    if (card) {
-      const anchor = card;
-      const kind = String(card.dataset?.previewItemKind || "");
-      if (kind === "file") {
-        const rec = WS.fileById.get(String(previewFileIdForCard(card) || ""));
-        if (rec) {
-          openPreviewFileActionMenu(rec, { anchor });
-          return true;
-        }
-      } else if (kind === "dir") {
-        const node = WS.dirByPath.get(String(previewDirPathForCard(card) || ""));
-        if (node) {
-          openPreviewFolderActionMenu(node, { anchor });
-          return true;
-        }
-      } else if (kind === "tag") {
-        const entry = card.__previewTagEntry || null;
-        if (entry) {
-          openTagEntryContextMenu(entry, anchor);
-          return true;
-        }
-      }
-    }
-  }
-  const entry = WS.nav.entries[Number(WS.nav.selectedIndex)] || null;
-  if (entry && entry.kind === "dir") {
-    openDirMenuForPath(String(entry.node?.path || ""));
-    return true;
-  }
-  if (entry && entry.kind === "file") {
-    openFileMenuForId(String(entry.id || ""));
-    return true;
-  }
-  if (entry && entry.kind === "tag") {
-    const rowEl = directoriesListEl
-      ? directoriesListEl.querySelector(".dirRow.selected")
-      : null;
-    if (rowEl) {
-      openTagEntryContextMenu(entry, rowEl);
-      return true;
-    }
-  }
-  showStatusMessage("No item selected.");
-  return false;
 }
 
 function startFolderRenameSelection() {
@@ -60252,8 +60536,6 @@ function handleSelectionKeybindAction(action) {
       return toggleSelectionInBulkKeybindAction();
     case "cancelMultiSelection":
       return cancelMultiSelectionKeybindAction();
-    case "openItemMenu":
-      return openItemMenuForSelectionKeybindAction();
     case "openAppMenu":
       return openAppMenuForSelectionKeybindAction();
     default:
@@ -60979,25 +61261,6 @@ document.addEventListener("keydown", (e) => {
   ) {
     e.preventDefault();
     toggleSettingsWindow();
-    return;
-  }
-
-  // Trash and Store are reserved (not bindable) and both toggle: Cmd+Delete
-  // moves the selection to/from Trash, Cmd+Shift+Delete to/from Storage. macOS
-  // labels the Backspace key "delete", so match both physical keys.
-  if (
-    !APP_ITEM_MENU_ACTIONS_ONLY &&
-    (e.metaKey || e.ctrlKey) &&
-    !e.altKey &&
-    (e.key === "Backspace" || e.key === "Delete") &&
-    !isTextInputTarget(e.target) &&
-    WS.root &&
-    !VIEWER_MODE
-  ) {
-    e.preventDefault();
-    if (e.repeat) return;
-    if (e.shiftKey) toggleStorageSelection();
-    else toggleTrashSelection();
     return;
   }
 
