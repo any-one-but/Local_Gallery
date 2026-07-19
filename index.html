@@ -50288,7 +50288,13 @@ function requestResponsiveVideoSeek(video, targetTime, options = null) {
       ? opts.resume
       : state.resumeAfterSeek || (!video.paused && !video.ended);
   const fast = opts.fast !== false;
+  // The prepared-seek path keeps the live video playing while an offscreen clone
+  // reloads the source and seeks to the (unbuffered) target, then swaps it in.
+  // That's smooth for scrubbing, but for a skip it defers the jump until the
+  // clone catches up — the "pauses and lags instead of jumping" behavior. Skip
+  // callers pass { direct: true } to force an immediate native seek instead.
   if (
+    !opts.direct &&
     !videoTimeIsBuffered(video, target) &&
     preparedVideoSeekSurface(video)
   ) {
@@ -50296,6 +50302,8 @@ function requestResponsiveVideoSeek(video, targetTime, options = null) {
     state.pending = null;
     return requestPreparedVideoSeek(video, state, target, resume);
   }
+  // A fresh direct request supersedes any in-flight prepared seek.
+  if (opts.direct && state.preparedSeek) disposePreparedVideoSeek(state);
   if (state.preparedSeek) disposePreparedVideoSeek(state);
   if (
     state.pending &&
@@ -50353,7 +50361,8 @@ function seekControlPaneVideo(deltaSeconds) {
     0,
     Math.min(duration, responsiveVideoSeekBaseTime(video) + deltaSeconds),
   );
-  if (!requestResponsiveVideoSeek(video, next, { fast: true })) return false;
+  if (!requestResponsiveVideoSeek(video, next, { fast: true, direct: true }))
+    return false;
   syncControlPaneState();
   return true;
 }
@@ -56358,7 +56367,7 @@ function seekViewerVideo(deltaSeconds) {
     if (!isNaN(vid.duration) && isFinite(vid.duration) && vid.duration >= 0) {
       if (t > vid.duration) t = vid.duration;
     }
-    requestResponsiveVideoSeek(vid, t, { fast: true });
+    requestResponsiveVideoSeek(vid, t, { fast: true, direct: true });
   }
 }
 
