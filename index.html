@@ -15646,8 +15646,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "trashSelection",
-    label: "Move selection to trash",
-    hint: "Move the selected item(s) to Trash.",
+    label: "Move selection to/from trash",
+    hint: "Move the selected item(s) into Trash, or back out if already trashed.",
     section: "folderActions",
   },
   {
@@ -42268,6 +42268,9 @@ function openDirMenuForPath(path) {
     return;
   }
   if (!p && !isRootPath) return;
+  // Trashed and stored folders have no item menu (removal is keybound now).
+  if (!isRootPath && p && (isPathInsideInternalTrash(p) || metaHasStorage(p)))
+    return;
   if (!isRootPath && openBulkActionMenuForSelection(`dir:${p}`)) return;
   WS.view.bulkActionMenuOpen = false;
   WS.view.dirActionMenuPath = isRootPath ? "__root__" : p;
@@ -42284,6 +42287,8 @@ function openDirMenuForPath(path) {
 function openFileMenuForId(fileId) {
   const id = String(fileId || "");
   if (!id) return;
+  // Files inside Trash have no item menu (put-back is keybound now).
+  if (fileRecordHasNoItemMenu(WS.fileById.get(id))) return;
   if (openBulkActionMenuForSelection(`file:${id}`)) return;
   WS.view.bulkActionMenuOpen = false;
   WS.view.dirActionMenuPath = "";
@@ -43597,6 +43602,7 @@ function buildFileThumbnailSubmenuHtml(
 
 function openPreviewFileActionMenu(rec, opts = {}) {
   if (!previewActionMenuEl || !rec) return;
+  if (fileRecordHasNoItemMenu(rec)) return;
   const fileId = String(rec.id || "");
   if (shouldUsePreviewBulkFileMenu(fileId)) {
     openPreviewBulkFileActionMenu(
@@ -43668,6 +43674,24 @@ function openPreviewFileActionMenu(rec, opts = {}) {
         Number(opts.y) || 0,
       );
   });
+}
+
+// Items inside Trash or Storage have no item menu at all. The only actions
+// those menus ever offered were the reverse operations (put back / remove from
+// storage, plus move-to-trash for stored items), and those are now keybound
+// (see trashSelection / storageSelection), so the menu would be empty. Callers
+// use these to suppress both the ⋯ button and the menu it would open.
+function folderNodeHasNoItemMenu(dirNode) {
+  if (!dirNode) return false;
+  if (isTrashRootPortalNode(dirNode)) return true;
+  const p = String(dirNode.path || "");
+  if (p && isPathInsideInternalTrash(p)) return true;
+  if (isStorageStubDirNode(dirNode) || (!!p && metaHasStorage(p))) return true;
+  return false;
+}
+function fileRecordHasNoItemMenu(rec) {
+  // A file living inside Trash: "Remove from trash" was its only menu action.
+  return !!rec && !!trashTopLevelItemPathForFileRecord(rec);
 }
 
 function buildFolderMenuState(dirNode) {
@@ -43813,30 +43837,10 @@ function buildFolderActionMenuDom(
   const appendSortEntry = () => {
     if (sortSubmenu) menuEl.appendChild(sortSubmenu);
   };
-  if (state.isTrashPutBackOnly) {
-    menuEl.appendChild(makeBtn("Remove from trash", "put-back", !state.canPutBack));
-    appendSortEntry();
-    return;
-  }
-  if (state.isStorageRestricted) {
-    menuEl.appendChild(
-      makeBtn(
-        "Remove from storage",
-        "remove-from-storage",
-        !state.canRemoveFromStorage,
-      ),
-    );
-    menuEl.appendChild(
-      makeBtn(
-        "Move to trash",
-        "move-to-trash",
-        !state.canMoveToTrash,
-        "destructiveAction",
-      ),
-    );
-    appendSortEntry();
-    return;
-  }
+  // Trashed and stored items have no menu — their only actions (put back /
+  // remove from storage / move to trash) are keybound now. The openers below
+  // also bail out before showing an empty menu box.
+  if (state.isTrashPutBackOnly || state.isStorageRestricted) return;
   if (state.isRootNode) {
     appendSortEntry();
     appendFiltersEntry();
@@ -44887,7 +44891,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
 
 function openPreviewFolderActionMenu(dirNode, opts = {}) {
   if (!previewActionMenuEl || !dirNode) return;
-  if (isTrashRootPortalNode(dirNode)) return;
+  if (folderNodeHasNoItemMenu(dirNode)) return;
   const p = String(dirNode.path || "");
   if (!p) return;
   if (shouldUsePreviewBulkFolderMenu(p)) {
@@ -47484,7 +47488,11 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 <button type="button" class="destructiveAction" data-action="move-to-trash"${folderMenuState.canMoveToTrash ? "" : " disabled"}>Move to trash</button>
               `;
         }
-        const menuHtml = folderMenuState.isTrashRootPortal || !dirVisibility.showMenuButton
+        const menuHtml =
+          folderMenuState.isTrashRootPortal ||
+          folderMenuState.isTrashPutBackOnly ||
+          folderMenuState.isStorageRestricted ||
+          !dirVisibility.showMenuButton
           ? ""
           : `
               <div class="dirMenu">
@@ -47729,7 +47737,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         );
         const fileSizeLabel = formatBytes(Math.max(0, Number(rec?.size) || 0));
         const fileMenuScore = metaGetScore(rec?.dirPath || "");
-        fileMenuHtml = fileVisibility.showMenuButton
+        fileMenuHtml = fileVisibility.showMenuButton && !fileTrashTargetPath
           ? `
               <div class="dirMenu dirFileMenu">
                 ${buildThumbnailMenuButtonHtml(
@@ -53159,7 +53167,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
       : "metaBlock compact";
     if (thumbOverlayMode) forcePreviewPaneThumbTitleBar(meta);
     const showPreviewFolderMenuBtn =
-      visibility.showMenuButton && !isTrashRootPortalNode(dirNode);
+      visibility.showMenuButton && !folderNodeHasNoItemMenu(dirNode);
     let menuWrap = null;
     if (showPreviewFolderMenuBtn) {
       menuWrap = document.createElement("div");
@@ -54666,7 +54674,8 @@ function makePreviewFileCard(
   );
   const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
   const fileMenuScore = metaGetScore(rec?.dirPath || "");
-  const showPreviewFileMenuBtn = !!fileId && visibility.showMenuButton;
+  const showPreviewFileMenuBtn =
+    !!fileId && visibility.showMenuButton && !fileRecordHasNoItemMenu(rec);
   const fileMetaBits = [];
   if (showItemTypeLabel) fileMetaBits.push(fileItemTypeLabelForRecord(rec));
   if (showItemCount) fileMetaBits.push("1 item");
@@ -57856,7 +57865,7 @@ async function toggleStorageSelection() {
   return true;
 }
 
-async function moveSelectionToTrash() {
+async function toggleTrashSelection() {
   const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
   if (!paths.length) {
     showStatusMessage("No items selected.");
@@ -57864,9 +57873,16 @@ async function moveSelectionToTrash() {
   }
   if (usedBulk) finalizeBulkSelectionAction();
   closeActionMenus();
-  // moveFolderPathsToTrash already filters to movable paths and reports if none
+  // Bidirectional, like storage: if the whole selection is already inside
+  // Trash, put it back; otherwise move it in. putBackTrashFolderPaths /
+  // moveFolderPathsToTrash both filter to eligible paths and report if none
   // qualify, so no extra guard is needed here.
-  await moveFolderPathsToTrash(paths);
+  const allInTrash = paths.every((p) => isPathInsideInternalTrash(p));
+  if (allInTrash) {
+    await putBackTrashFolderPaths(paths);
+  } else {
+    await moveFolderPathsToTrash(paths);
+  }
   return true;
 }
 
@@ -58004,7 +58020,7 @@ function handleSelectionKeybindAction(action) {
     case "storageSelection":
       return toggleStorageSelection();
     case "trashSelection":
-      return moveSelectionToTrash();
+      return toggleTrashSelection();
     case "favoriteSelection":
       return toggleFavoriteSelection();
     case "renameSelection":
