@@ -15628,7 +15628,7 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "hiddenSelection",
-    label: "Hide selection",
+    label: "Hide/unhide selection",
     hint: "Hide or unhide the selected item(s).",
     section: "folderActions",
   },
@@ -44154,10 +44154,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     });
     return btn;
   };
-  const appendTwoCol = (leftBtn, rightBtn) => {
-    if (leftBtn) menu.appendChild(leftBtn);
-    if (rightBtn) menu.appendChild(rightBtn);
-  };
 
   const singleSelectedDirNode =
     selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
@@ -44171,16 +44167,9 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     !!selectedDirNodes.length &&
     selectedDirNodes.every((node) => isStorageStubDirNode(node));
   if (storageBulkContext) return;
-  const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
-  const canRenameBulk = !!singleSelectedDirPath && !!WS.meta.fsRootHandle;
-  const allFavorite =
-    !!selectedPaths.length && selectedPaths.every((p) => metaHasFavorite(p));
-  const allHidden =
-    !!selectedPaths.length && selectedPaths.every((p) => metaHasHidden(p));
   const anyAssignedAppearancePreset =
     !!selectedPaths.length &&
     selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
-  const activeTagRemovalContext = currentFolderMenuTagRemovalContext();
   const activeAlbumRemovalContext = currentFolderMenuAlbumRemovalContext();
   const canRemoveSelectedFromAlbum =
     !!activeAlbumRemovalContext &&
@@ -44319,13 +44308,6 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
     return;
   }
 
-  const singleFile = selectedRecords.length === 1 ? selectedRecords[0] : null;
-  const allSameDir =
-    selectedRecords.length > 0 &&
-    selectedRecords.every(
-      (rec) =>
-        String(rec.dirPath || "") === String(selectedRecords[0].dirPath || ""),
-    );
   const canQuadPlay =
     selectedRecords.length === 4 &&
     selectedRecords.every((rec) => rec.type === "video");
@@ -45649,11 +45631,6 @@ function renderDirectoriesActionHeader() {
 
   if (!menuOpen) return;
 
-  const allFavorite =
-    !!selectedDirs.length && selectedDirs.every((p) => metaHasFavorite(p));
-  const allHidden =
-    !!selectedDirs.length && selectedDirs.every((p) => metaHasHidden(p));
-  const activeFolderTagRemovalContext = currentFolderMenuTagRemovalContext();
   const anyAssignedAppearancePreset =
     !!selectedDirs.length &&
     selectedDirs.some((p) => metaHasFolderAppearancePreset(p));
@@ -45737,15 +45714,6 @@ function renderDirectoriesActionHeader() {
     !singleSelectedTagEntry.placeholder &&
     !!String(singleSelectedTagEntry.tag || "").trim() &&
     !normalizeTagAlbumName(singleSelectedTagEntry.album || "");
-  const activeAlbumTagContext = currentTagMenuAlbumRemovalContext();
-  const canRemoveSelectedTagsFromAlbum =
-    !!activeAlbumTagContext &&
-    !!albumAssignableTagEntries.length &&
-    albumAssignableTagEntries.every(
-      (entry) =>
-        String(entry.originPath || "") ===
-        String(activeAlbumTagContext.originPath || ""),
-    );
   if (
     !selectedDirs.length &&
     !albumAssignableTagEntries.length &&
@@ -46093,9 +46061,6 @@ function renderDirectoriesActionHeader() {
       directoriesActionMenuEl.classList.remove("open");
       return;
     }
-    const singleSelectedDirNode =
-      selectedDirNodes.length === 1 ? selectedDirNodes[0] : null;
-    const singleSelectedDirPath = String(singleSelectedDirNode?.path || "");
     // Tag / Album / Rename / Favorite / Store / Hide / Move to trash are all
     // keybound now (the *Selection actions) and intentionally omitted from the
     // multiselect menu. Only Filters (below) remains.
@@ -46139,67 +46104,10 @@ function renderDirectoriesActionHeader() {
       if (dirFolderFiltersSubmenu)
         directoriesActionMenuEl.appendChild(dirFolderFiltersSubmenu);
     }
-
-    const moveToTrashBtn = makeActionBtn(
-      "Move to trash",
-      async () => {
-        WS.view.bulkActionMenuOpen = false;
-        await moveFolderPathsToTrash(selectedDirs);
-        finalizeBulkSelectionAction();
-      },
-      true,
-      "destructiveAction",
-    );
-    if (
-      selectedDirs.some((path) => !isFolderPathMovableToTrash(path))
-    ) {
-      moveToTrashBtn.disabled = true;
-    }
-    directoriesActionMenuEl.appendChild(moveToTrashBtn);
   }
 
   if (selectedFiles.length) {
     const selectedFileRecords = getSelectedFileRecordsInCurrentView();
-    const selectedFileTrashTargets = Array.from(
-      new Set(
-        selectedFileRecords
-          .map((rec) => trashTopLevelItemPathForFileRecord(rec))
-          .filter(Boolean),
-      ),
-    );
-    if (
-      selectedFileTrashTargets.length &&
-      selectedFileRecords.length === selectedFiles.length &&
-      selectedFileRecords.every(
-        (rec) => !!trashTopLevelItemPathForFileRecord(rec),
-      )
-    ) {
-      directoriesActionMenuEl.appendChild(
-        makeActionBtn("Remove from trash", async () => {
-          WS.view.bulkActionMenuOpen = false;
-          await putBackTrashFolderPaths(selectedFileTrashTargets);
-          finalizeBulkSelectionAction();
-        }),
-      );
-      const anchorBtn = findDirMenuButtonForAnchorKey(
-        WS.view.bulkActionMenuAnchorPath,
-      );
-      if (anchorBtn) {
-        requestAnimationFrame(() =>
-          positionDropdownMenu(anchorBtn, directoriesActionMenuEl),
-        );
-      }
-      return;
-    }
-    const singleFile =
-      selectedFileRecords.length === 1 ? selectedFileRecords[0] : null;
-    const allSameDir =
-      selectedFileRecords.length > 0 &&
-      selectedFileRecords.every(
-        (rec) =>
-          String(rec.dirPath || "") ===
-          String(selectedFileRecords[0].dirPath || ""),
-      );
     const canQuadPlay =
       selCount === 4 &&
       selectedFileRecords.length === 4 &&
@@ -46213,14 +46121,15 @@ function renderDirectoriesActionHeader() {
         }),
       );
     }
+  }
 
-    const renameBtn = makeActionBtn("Rename file", () => {
-      WS.view.bulkActionMenuOpen = false;
-      startFileRenameSelection();
-    });
-    if (!singleFile || !WS.meta.fsRootHandle) renameBtn.disabled = true;
-    directoriesActionMenuEl.appendChild(renameBtn);
-
+  // Some selections (most notably files outside quad playback) have no
+  // remaining contextual menu actions after the bindable actions are removed.
+  // Keep the menu closed instead of displaying an empty popup.
+  if (!directoriesActionMenuEl.children.length) {
+    WS.view.bulkActionMenuOpen = false;
+    directoriesActionMenuEl.classList.remove("open");
+    return;
   }
 
   const anchorBtn = findDirMenuButtonForAnchorKey(
@@ -57601,7 +57510,7 @@ function toggleHiddenSelection() {
 // "Selected item(s)" resolves to folder paths: a folder selection is used
 // directly, a file selection maps to the folders that contain the files (see
 // getFolderTargetPathsForSelectionActions). Album/storage/trash all key on
-// folders, so they share that resolver with favorite above.
+// folders, so they share that resolver with favorite and hidden above.
 function startAlbumSelectionEdit() {
   const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
   if (!paths.length) {
