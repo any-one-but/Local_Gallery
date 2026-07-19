@@ -15622,14 +15622,32 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "favoriteSelection",
-    label: "Favorite folder selection",
-    hint: "Favorite or unfavorite selected/current folder(s).",
+    label: "Favorite selection",
+    hint: "Favorite or unfavorite the selected item(s).",
     section: "folderActions",
   },
   {
     id: "tagSelection",
-    label: "Tag folder selection",
-    hint: "Start tag edit for selected/current folder(s).",
+    label: "Add selection to tag",
+    hint: "Add the selected item(s) to a tag.",
+    section: "folderActions",
+  },
+  {
+    id: "albumSelection",
+    label: "Add selection to album",
+    hint: "Add the selected item(s) to an album.",
+    section: "folderActions",
+  },
+  {
+    id: "storageSelection",
+    label: "Add selection to storage",
+    hint: "Add or remove the selected item(s) from Storage.",
+    section: "folderActions",
+  },
+  {
+    id: "trashSelection",
+    label: "Move selection to trash",
+    hint: "Move the selected item(s) to Trash.",
     section: "folderActions",
   },
   {
@@ -57794,12 +57812,61 @@ function startTagSelectionEdit() {
 function toggleFavoriteSelection() {
   const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
   if (!paths.length) {
-    showStatusMessage("No folders selected.");
+    showStatusMessage("No items selected.");
     return false;
   }
   if (usedBulk) finalizeBulkSelectionAction();
   const allFavorite = paths.every((p) => metaHasFavorite(p));
   metaSetFavoriteBulk(paths, !allFavorite);
+  return true;
+}
+
+// "Selected item(s)" resolves to folder paths: a folder selection is used
+// directly, a file selection maps to the folders that contain the files (see
+// getFolderTargetPathsForSelectionActions). Album/storage/trash all key on
+// folders, so they share that resolver with favorite above.
+function startAlbumSelectionEdit() {
+  const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
+  if (!paths.length) {
+    showStatusMessage("No items selected.");
+    return false;
+  }
+  // Open the album placeholder UI in whichever pane the user is working in,
+  // matching how the bulk action menus invoke startBulkFolderAlbuming.
+  const fromPreview =
+    !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview";
+  if (usedBulk) finalizeBulkSelectionAction();
+  closeActionMenus();
+  RENAME_EDIT_PATH = null;
+  RENAME_EDIT_FILE_ID = null;
+  TAG_EDIT_PATH = null;
+  startBulkFolderAlbuming(paths, fromPreview ? "preview" : "directories");
+  return true;
+}
+
+async function toggleStorageSelection() {
+  const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
+  if (!paths.length) {
+    showStatusMessage("No items selected.");
+    return false;
+  }
+  if (usedBulk) finalizeBulkSelectionAction();
+  const allStorage = paths.every((p) => metaHasStorage(p));
+  await setStorageStateForFolderPaths(paths, !allStorage);
+  return true;
+}
+
+async function moveSelectionToTrash() {
+  const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
+  if (!paths.length) {
+    showStatusMessage("No items selected.");
+    return false;
+  }
+  if (usedBulk) finalizeBulkSelectionAction();
+  closeActionMenus();
+  // moveFolderPathsToTrash already filters to movable paths and reports if none
+  // qualify, so no extra guard is needed here.
+  await moveFolderPathsToTrash(paths);
   return true;
 }
 
@@ -57932,6 +57999,12 @@ function handleSelectionKeybindAction(action) {
       return applyFolderScoreSelectionAction(-1);
     case "tagSelection":
       return startTagSelectionEdit();
+    case "albumSelection":
+      return startAlbumSelectionEdit();
+    case "storageSelection":
+      return toggleStorageSelection();
+    case "trashSelection":
+      return moveSelectionToTrash();
     case "favoriteSelection":
       return toggleFavoriteSelection();
     case "renameSelection":
