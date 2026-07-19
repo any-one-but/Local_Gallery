@@ -47099,7 +47099,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             const cropClass = cropStyle
               ? " thumbCropApplied thumbCropAbsolute"
               : "";
-            squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+            squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
           }
         } else if (tagThumbIsRotating && tagPool.length) {
           const rec = pickRotatingPreviewRecordForKey(tagRotateKey, tagPool);
@@ -47110,7 +47110,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             });
             const previewAspect = getPreviewAspectForRecord(rec);
             if (previewSrc) {
-              squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+              squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
             }
           }
         } else if (tagThumbMode === "single" && tagPool.length) {
@@ -47122,7 +47122,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             });
             const previewAspect = getPreviewAspectForRecord(rec);
             if (previewSrc) {
-              squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+              squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
             }
           }
         } else if (
@@ -47140,7 +47140,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               });
               const previewAspect = getPreviewAspectForRecord(rec);
               if (previewSrc) {
-                squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
               }
             }
           } else {
@@ -47172,7 +47172,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   continue;
                 }
                 quadHtml.push(
-                  `<div class="dirTagQuadCell"><img class="dirInlinePreview thumbPending dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
+                  `<div class="dirTagQuadCell"><img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
                 );
               }
               if (quadHtml.length) {
@@ -47383,7 +47383,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             const cropClass = cropStyle
               ? " thumbCropApplied thumbCropAbsolute"
               : "";
-            inlinePreviewHtml = `<img class="dirInlinePreview thumbPending${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}"${rotateAttr} src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+            inlinePreviewHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)}${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}"${rotateAttr} src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
           }
         }
         const sc = isStorageGhost ? 0 : metaGetScore(p);
@@ -47531,7 +47531,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   const cropClass = cropStyle
                     ? " thumbCropApplied thumbCropAbsolute"
                     : "";
-                  rootPortalMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+                  rootPortalMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
                 }
               } else if (rootThumbIsRotating && rootPool.length) {
                 const rootRotateKey = `root:${rootScope}:rotate`;
@@ -47547,7 +47547,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   });
                   const previewAspect = getPreviewAspectForRecord(rec);
                   if (previewSrc) {
-                    rootPortalMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(rootRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                    rootPortalMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-rotate-key="${escapeHtml(rootRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
                   }
                 }
               } else if (rootMode === "single" && rootPool.length) {
@@ -47560,7 +47560,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                   });
                   const previewAspect = getPreviewAspectForRecord(rec);
                   if (previewSrc) {
-                    rootPortalMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                    rootPortalMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
                   }
                 }
               } else if (
@@ -47582,7 +47582,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                     });
                     const previewAspect = getPreviewAspectForRecord(rec);
                     if (previewSrc) {
-                      rootPortalMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+                      rootPortalMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
                     }
                   }
                 } else {
@@ -47617,7 +47617,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                       }
                       if (!squareAspectRec) squareAspectRec = slotRec;
                       quadHtml.push(
-                        `<div class="dirTagQuadCell"><img class="dirInlinePreview thumbPending dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
+                        `<div class="dirTagQuadCell"><img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
                       );
                     }
                     if (quadHtml.length)
@@ -47749,7 +47749,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               const cropClass = cropStyle
                 ? " thumbCropApplied thumbCropAbsolute"
                 : "";
-              inlinePreviewHtml = `<img class="dirInlinePreview thumbPending${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+              inlinePreviewHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)}${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
             }
           }
           const fileMediaHtml = inlinePreviewHtml
@@ -52566,7 +52566,7 @@ function buildPreviewTagCardMarkup(entry) {
         const cropClass = cropStyle
           ? " thumbCropApplied thumbCropAbsolute"
           : "";
-        squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+        squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
       }
     } else if (tagThumbIsRotating && tagPool.length) {
       const rec = pickRotatingPreviewRecordForKey(tagRotateKey, tagPool);
@@ -52577,7 +52577,7 @@ function buildPreviewTagCardMarkup(entry) {
         });
         const previewAspect = getPreviewAspectForRecord(rec);
         if (previewSrc) {
-          squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+          squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-rotate-key="${escapeHtml(tagRotateKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
         }
       }
     } else if (tagThumbMode === "single" && tagPool.length) {
@@ -52589,7 +52589,7 @@ function buildPreviewTagCardMarkup(entry) {
         });
         const previewAspect = getPreviewAspectForRecord(rec);
         if (previewSrc) {
-          squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+          squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
         }
       }
     } else if (tagAllowsRotation && tagThumbMode === "quad" && tagPool.length) {
@@ -52603,7 +52603,7 @@ function buildPreviewTagCardMarkup(entry) {
           });
           const previewAspect = getPreviewAspectForRecord(rec);
           if (previewSrc) {
-            squareMediaHtml = `<img class="dirInlinePreview thumbPending dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
+            squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-rotate-key="${escapeHtml(singleKey)}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" />`;
           }
         }
       } else {
@@ -52635,7 +52635,7 @@ function buildPreviewTagCardMarkup(entry) {
               continue;
             }
             quadHtml.push(
-              `<div class="dirTagQuadCell"><img class="dirInlinePreview thumbPending dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
+              `<div class="dirTagQuadCell"><img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagQuadThumb" data-rotate-key="${escapeHtml(String(slot.key || ""))}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};" /></div>`,
             );
           }
           if (quadHtml.length)
@@ -59358,13 +59358,25 @@ function registerThumbEl(el, src, opts = null) {
   el.dataset.thumbKind = kind;
   el.dataset.thumbSrc = src;
   el.dataset.thumbState = "idle";
-  // Hold the not-yet-decoded element transparent so a src-less <img> never
-  // flashes the browser's broken-image icon; it fades in once it actually
-  // decodes (see onThumbLoadSettled). This is purely visual and does not change
-  // when the thumbnail loads.
-  el.classList.add("thumbPending");
-  el.classList.remove("thumbLoaded");
-  el.classList.remove("thumbLoadedInstant");
+  if (REVEALED_THUMB_SRCS.has(src)) {
+    // This source already decoded once this session, so the browser still has
+    // the bitmap cached. A pane rebuild recreates the element, but holding it
+    // transparent (thumbPending) until an async load event re-reveals it makes
+    // the whole grid blink to blank on every rebuild — the flicker seen when
+    // toggling settings or doing lots of actions. Start it opaque instead so it
+    // paints straight from cache with no fade and no blink.
+    el.classList.remove("thumbPending");
+    el.classList.remove("thumbLoaded");
+    el.classList.add("thumbLoadedInstant");
+  } else {
+    // Hold the not-yet-decoded element transparent so a src-less <img> never
+    // flashes the browser's broken-image icon; it fades in once it actually
+    // decodes (see onThumbLoadSettled). This is purely visual and does not change
+    // when the thumbnail loads.
+    el.classList.add("thumbPending");
+    el.classList.remove("thumbLoaded");
+    el.classList.remove("thumbLoadedInstant");
+  }
   if (!el.__thumbBound) {
     el.__thumbBound = true;
     const settled = () => onThumbLoadSettled(el);
@@ -59672,6 +59684,17 @@ try {
 function prewarmNavigationCorridor() {}
 
 
+// The initial class for an inline thumbnail's <img>. A source that already
+// decoded once this session is still in the browser cache, so emit it opaque
+// (thumbLoadedInstant) rather than transparent (thumbPending): on a directories
+// rebuild it paints straight from cache with no one-frame blank and no fade.
+// First-time sources stay thumbPending so they never flash a broken image.
+function inlineThumbInitClass(src) {
+  return src && REVEALED_THUMB_SRCS.has(String(src))
+    ? "thumbLoadedInstant"
+    : "thumbPending";
+}
+
 // Inline thumbnails (.dirInlinePreview — custom folder/tag/album thumbs) set
 // their src directly in markup and bypass the passive loader, so they have no
 // per-element load hook. They render with class "thumbPending" (held invisible)
@@ -59681,7 +59704,24 @@ function prewarmNavigationCorridor() {}
 // event is ever missed.
 function revealInlineThumb(el) {
   if (!el || !el.classList || !el.classList.contains("thumbPending")) return;
-  el.classList.add("thumbLoaded");
+  // Same anti-flicker rule as the passive grid loader (see onThumbLoadSettled):
+  // the 150ms fade is a nice first-appearance touch, but replaying it every
+  // time the directories pane is torn down and rebuilt is exactly the constant
+  // flicker seen when toggling settings. Once a source has decoded once this
+  // session, snap it back instantly on later rebuilds instead of re-fading.
+  const src = String(el.currentSrc || el.src || "");
+  const decoded = (Number(el.naturalWidth) || 0) > 0;
+  if (src && decoded && REVEALED_THUMB_SRCS.has(src)) {
+    el.classList.add("thumbLoadedInstant");
+    el.classList.remove("thumbLoaded");
+  } else {
+    // Only record sources that actually decoded, so a broken thumb never gets
+    // marked "revealed" (matches onThumbLoadSettled). A first decode still gets
+    // the one-time fade; an error keeps the old reveal-anyway behavior.
+    if (src && decoded) REVEALED_THUMB_SRCS.add(src);
+    el.classList.add("thumbLoaded");
+    el.classList.remove("thumbLoadedInstant");
+  }
   el.classList.remove("thumbPending");
 }
 function onInlineThumbSettled(e) {
