@@ -2310,8 +2310,8 @@ img[data-rotate-key].rotatingThumbFade {
 .dropdownMenu .dropdownMenuSubmenuTrigger {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 0;
 }
 
 .dropdownMenu .dropdownMenuSubmenuCaret {
@@ -2319,6 +2319,22 @@ img[data-rotate-key].rotatingThumbFade {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+/* Contextual number shown at the start of each item-menu option. While a menu
+   (or open submenu) is showing, the matching number key triggers that option;
+   see decorateNumberedMenuOptions / the number-key keydown handler. */
+.dropdownMenuNum {
+  display: inline-block;
+  flex: 0 0 auto;
+  min-width: 0.95em;
+  margin-right: 8px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85em;
+  opacity: 0.45;
 }
 
 .dropdownMenu .dropdownMenuSubmenuCaret svg {
@@ -15853,21 +15869,21 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
-    id: "storageSelection",
-    label: "Add selection to storage",
-    hint: "Add or remove the selected item(s) from Storage.",
-    section: "folderActions",
-  },
-  {
-    id: "trashSelection",
-    label: "Trash/delete selection",
-    hint: "Move files and folders to or from Trash, or delete selected tags and albums.",
-    section: "folderActions",
-  },
-  {
     id: "renameSelection",
     label: "Rename selected item",
     hint: "Start renaming the selected item.",
+    section: "folderActions",
+  },
+  {
+    id: "toggleSelectionInBulk",
+    label: "Add/remove to multi-selection",
+    hint: "Add or remove the current item from the multi-item selection (keyboard equivalent of Cmd-clicking it).",
+    section: "folderActions",
+  },
+  {
+    id: "openItemMenu",
+    label: "Open item menu",
+    hint: "Open the action menu for the selected item(s).",
     section: "folderActions",
   },
   {
@@ -58515,6 +58531,100 @@ async function toggleTrashSelection() {
   return true;
 }
 
+// True when the preview grid (not the file pane) owns the current selection.
+function previewPaneOwnsSelection() {
+  return !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview";
+}
+
+// Keyboard equivalent of Cmd-clicking the current item: toggle it in/out of the
+// multi-item (bulk) selection. Works in both the preview grid and the file pane.
+function toggleSelectionInBulkKeybindAction() {
+  if (!WS.root || VIEWER_MODE) return false;
+  if (previewPaneOwnsSelection()) {
+    const card = findSelectedPreviewCard();
+    if (!card) {
+      showStatusMessage("No item selected.");
+      return false;
+    }
+    if (!WS.view.bulkSelectMode) {
+      WS.view.bulkSelectMode = true;
+      addPreviewCardBulkSelection(card);
+    } else {
+      togglePreviewCardBulkSelection(card);
+    }
+    if (!hasBulkSelection()) WS.view.bulkSelectMode = false;
+    refreshBulkSelectionUiFromPreview();
+    return true;
+  }
+  const idx = Number(WS.nav.selectedIndex);
+  const entry = WS.nav.entries[idx] || null;
+  if (!entry || !isSelectableEntry(entry)) {
+    showStatusMessage("No item selected.");
+    return false;
+  }
+  if (!WS.view.bulkSelectMode) {
+    WS.view.bulkSelectMode = true;
+    addEntrySelection(entry);
+  } else {
+    toggleEntrySelection(entry);
+  }
+  if (!hasBulkSelection()) WS.view.bulkSelectMode = false;
+  WS.view.dirSelectAnchorIndex = idx;
+  setDirectoriesSelection(idx, { keepScroll: true });
+  return true;
+}
+
+// Open the action menu for the current selection, choosing the pane-appropriate
+// opener (which itself upgrades to the bulk menu when a multi-selection exists).
+function openItemMenuForSelectionKeybindAction() {
+  if (!WS.root || VIEWER_MODE) return false;
+  if (previewPaneOwnsSelection()) {
+    const card = findSelectedPreviewCard();
+    if (card) {
+      const kind = String(card.dataset?.previewItemKind || "");
+      if (kind === "file") {
+        const rec = WS.fileById.get(String(previewFileIdForCard(card) || ""));
+        if (rec) {
+          openPreviewFileActionMenu(rec, { anchor: card });
+          return true;
+        }
+      } else if (kind === "dir") {
+        const node = WS.dirByPath.get(String(previewDirPathForCard(card) || ""));
+        if (node) {
+          openPreviewFolderActionMenu(node, { anchor: card });
+          return true;
+        }
+      } else if (kind === "tag") {
+        const entry = card.__previewTagEntry || null;
+        if (entry) {
+          openTagEntryContextMenu(entry, card);
+          return true;
+        }
+      }
+    }
+  }
+  const entry = WS.nav.entries[Number(WS.nav.selectedIndex)] || null;
+  if (entry && entry.kind === "dir") {
+    openDirMenuForPath(String(entry.node?.path || ""));
+    return true;
+  }
+  if (entry && entry.kind === "file") {
+    openFileMenuForId(String(entry.id || ""));
+    return true;
+  }
+  if (entry && entry.kind === "tag") {
+    const rowEl = directoriesListEl
+      ? directoriesListEl.querySelector(".dirRow.selected")
+      : null;
+    if (rowEl) {
+      openTagEntryContextMenu(entry, rowEl);
+      return true;
+    }
+  }
+  showStatusMessage("No item selected.");
+  return false;
+}
+
 function startFolderRenameSelection() {
   const { paths, usedBulk } = getDirectorySelectionForKeybindAction();
   if (!paths.length) {
@@ -58646,16 +58756,16 @@ function handleSelectionKeybindAction(action) {
       return startTagSelectionEdit();
     case "albumSelection":
       return startAlbumSelectionEdit();
-    case "storageSelection":
-      return toggleStorageSelection();
-    case "trashSelection":
-      return toggleTrashSelection();
     case "favoriteSelection":
       return toggleFavoriteSelection();
     case "hiddenSelection":
       return toggleHiddenSelection();
     case "renameSelection":
       return startRenameSelection();
+    case "toggleSelectionInBulk":
+      return toggleSelectionInBulkKeybindAction();
+    case "openItemMenu":
+      return openItemMenuForSelectionKeybindAction();
     case "openInTab":
       return openInTabAction();
     case "openInNewTabs":
@@ -59395,6 +59505,23 @@ document.addEventListener("keydown", (e) => {
   ) {
     e.preventDefault();
     toggleSettingsWindow();
+    return;
+  }
+
+  // Trash and Store are reserved (not bindable) and both toggle: Cmd+Delete
+  // moves the selection to/from Trash, Cmd+Shift+Delete to/from Storage. macOS
+  // labels the Backspace key "delete", so match both physical keys.
+  if (
+    (e.metaKey || e.ctrlKey) &&
+    !e.altKey &&
+    (e.key === "Backspace" || e.key === "Delete") &&
+    !isTextInputTarget(e.target) &&
+    WS.root &&
+    !VIEWER_MODE
+  ) {
+    e.preventDefault();
+    if (e.shiftKey) toggleStorageSelection();
+    else toggleTrashSelection();
     return;
   }
 
