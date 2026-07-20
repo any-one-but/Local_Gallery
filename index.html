@@ -7473,8 +7473,7 @@ textarea:focus-visible {
   flex: 0 0 auto;
 }
 .settingsSection.collapsed .menuSectionChevron,
-.keybindSectionGroup.collapsed .menuSectionChevron,
-.filtersAdvanced.collapsed .menuSectionChevron {
+.keybindSectionGroup.collapsed .menuSectionChevron {
   transform: rotate(-90deg);
 }
 .settingsSection.collapsed > :not(h2) {
@@ -7505,26 +7504,10 @@ textarea:focus-visible {
    spacing/padding; the card's own padding then centers the title.
    (ID-prefixed so it beats the !important header rules above.) */
 #optionsBody .settingsSection.collapsed > h2.menuSectionToggle,
-#keybindsBody .keybindSectionGroup.collapsed > h2.menuSectionToggle,
-.filtersAdvanced.collapsed > h3.menuSectionToggle {
+#keybindsBody .keybindSectionGroup.collapsed > h2.menuSectionToggle {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
   padding-bottom: 0 !important;
-}
-
-/* Filters tab: Advanced disclosure for additive/effect overlays. */
-.filtersAdvanced {
-  margin-top: 6px;
-}
-.filtersAdvanced > h3.menuSectionToggle {
-  margin: 6px 4px 8px;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  color: var(--color0-secondary);
-}
-.filtersAdvanced.collapsed > :not(h3) {
-  display: none !important;
 }
 
 /* --- Single active selection across panes ---
@@ -7967,15 +7950,6 @@ html.settings-window #previewContent:not(.menu-open)::before {
                       <button
                         type="button"
                         class="miniBtn menuTabBtn"
-                        data-tab="general"
-                        role="tab"
-                        aria-controls="menuTabOptions"
-                      >
-                        Settings
-                      </button>
-                      <button
-                        type="button"
-                        class="miniBtn menuTabBtn"
                         data-tab="controls"
                         role="tab"
                         aria-controls="menuTabKeybinds"
@@ -7993,34 +7967,12 @@ html.settings-window #previewContent:not(.menu-open)::before {
                       </button>
                     </div>
                   </div>
-                  <!-- Tab ids (general / controls / calendar) come from the
+                  <!-- Tab ids (controls / calendar) come from the
                        #menuTabs buttons above and drive setMenuTab(); each panel's
                        data-tab below names the same tab so markup stays consistent.
-                       The element ids (menuTabOptions/menuTabKeybinds/menuTabCalendar)
+                       The element ids (menuTabKeybinds/menuTabCalendar)
                        are what the JS panel map and aria-controls reference. -->
                   <div id="menuBody">
-                    <section
-                      id="menuTabOptions"
-                      class="menuTabPanel"
-                      data-tab="general"
-                      role="tabpanel"
-                    >
-                      <div id="optionsBody"></div>
-                      <div id="optionsFooter">
-                        <div class="left">
-                          <span class="label" id="optionsStatusLabel">—</span>
-                        </div>
-                        <div class="right">
-                          <button
-                            id="openWritableBtn"
-                            type="button"
-                            class="miniBtn"
-                          >
-                            Reveal Media Folder
-                          </button>
-                        </div>
-                      </div>
-                    </section>
                     <section
                       id="menuTabKeybinds"
                       class="menuTabPanel"
@@ -15414,7 +15366,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
     if (!MENU_OPEN) return;
     applyMenuPaneWidthFromOptions();
     setMenuTab(
-      isMenuTabAvailable(MENU_ACTIVE_TAB) ? MENU_ACTIVE_TAB : "general",
+      isMenuTabAvailable(MENU_ACTIVE_TAB) ? MENU_ACTIVE_TAB : "controls",
     );
   };
   if (!WS.root) {
@@ -17153,7 +17105,6 @@ const menuCard = $("menuCard");
 const menuHeader = $("menuHeader");
 const menuTabs = $("menuTabs");
 const menuDivider = $("menuDivider");
-const menuTabOptions = $("menuTabOptions");
 const menuTabKeybinds = $("menuTabKeybinds");
 const menuTabCalendar = $("menuTabCalendar");
 
@@ -17481,15 +17432,14 @@ function measuredElementOuterWidthPx(el) {
 
 function preferredMenuPaneWidthForCurrentTabPx() {
   if (!menuOverlay || !MENU_OPEN) return defaultMenuPaneWidth();
-  const activePanelId = MENU_PANEL_BY_TAB[MENU_ACTIVE_TAB || "general"] || "options";
-  const panel = menuTabPanels[activePanelId] || menuTabOptions || menuOverlay;
+  const activePanelId =
+    MENU_PANEL_BY_TAB[MENU_ACTIVE_TAB || "controls"] || "controls";
+  const panel = menuTabPanels[activePanelId] || menuTabKeybinds || menuOverlay;
   if (!panel) return defaultMenuPaneWidth();
   const body =
-    activePanelId === "options"
-      ? optionsBodyEl
-      : activePanelId === "controls"
-        ? keybindsBodyEl
-        : calendarBodyEl;
+    activePanelId === "controls"
+      ? keybindsBodyEl
+      : calendarBodyEl;
   const bodyStyle = body ? getComputedStyle(body) : null;
   const bodyPad = bodyStyle
     ? (parseFloat(bodyStyle.paddingLeft) || 0) + (parseFloat(bodyStyle.paddingRight) || 0)
@@ -17528,11 +17478,9 @@ function preferredMenuPaneWidthForCurrentTabPx() {
   });
 
   const footer =
-    activePanelId === "options"
-      ? document.getElementById("optionsFooter")
-      : activePanelId === "controls"
-        ? document.getElementById("keybindsFooter")
-        : document.getElementById("calendarFooter");
+    activePanelId === "controls"
+      ? document.getElementById("keybindsFooter")
+      : document.getElementById("calendarFooter");
   if (footer) {
     needed = Math.max(needed, measuredElementOuterWidthPx(footer) + 10);
   }
@@ -17901,12 +17849,11 @@ let RENAME_EDIT_FILE_ID = null;
 let RENAME_BUSY = false;
 
 let MENU_OPEN = false;
-let MENU_ACTIVE_TAB = "general";
-let MENU_LAST_TAB = "general";
+let MENU_ACTIVE_TAB = "controls";
+let MENU_LAST_TAB = "controls";
 let MENU_HAS_OPENED = false;
 let PREVIEW_MEDIA_LAYOUT_RAF = 0;
 const MENU_TAB_SCROLL = {
-  general: 0,
   controls: 0,
   calendar: 0,
 };
@@ -18660,12 +18607,10 @@ function syncMetaButtons() {
 }
 
 const MENU_TAB_IDS = [
-  "general",
   "controls",
   "calendar",
 ];
 const MENU_PANEL_BY_TAB = {
-  general: "options",
   controls: "controls",
   calendar: "calendar",
 };
@@ -18673,12 +18618,10 @@ const menuTabButtons = menuTabs
   ? Array.from(menuTabs.querySelectorAll(".menuTabBtn"))
   : [];
 const menuTabPanels = {
-  options: menuTabOptions,
   controls: menuTabKeybinds,
   calendar: menuTabCalendar,
 };
 const menuScrollTargets = {
-  general: optionsBodyEl,
   controls: keybindsBodyEl,
   calendar: calendarBodyEl,
 };
@@ -18803,7 +18746,7 @@ function applyMenuTransientFocusBehavior(root = null) {
 
 function setMenuTab(tabId) {
   refreshMenuTabAvailability();
-  const nextCandidate = isMenuTabAvailable(tabId) ? tabId : "general";
+  const nextCandidate = isMenuTabAvailable(tabId) ? tabId : "controls";
   const next = nextCandidate;
   if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
   if (isKeybindMenuTab(MENU_ACTIVE_TAB) && !isKeybindMenuTab(next))
@@ -18818,7 +18761,7 @@ function setMenuTab(tabId) {
     btn.setAttribute("tabindex", "-1");
   });
 
-  const activePanelId = MENU_PANEL_BY_TAB[next] || "options";
+  const activePanelId = MENU_PANEL_BY_TAB[next] || "controls";
   Object.entries(menuTabPanels).forEach(([id, panel]) => {
     if (!panel) return;
     const active = id === activePanelId;
@@ -18886,7 +18829,7 @@ function syncPreviewContentLayoutAfterMenuToggle() {
 // for callers that still expect an "open settings" entry point. In the main
 // window there is no native window anymore: Settings is the in-app floating
 // panel, so this just opens it.
-function requestSettingsWindow(tabId = "general") {
+function requestSettingsWindow(tabId = "controls") {
   openMenu(tabId);
   return true;
 }
@@ -19126,7 +19069,7 @@ function openMenu(tabId) {
     ? tabId
     : MENU_HAS_OPENED
       ? MENU_LAST_TAB
-      : "general";
+      : "controls";
   MENU_HAS_OPENED = true;
   setMenuTab(next);
   applyMenuTransientFocusBehavior(menuCard || menuOverlay);
@@ -19157,12 +19100,12 @@ function closeMenu() {
 // Tab toggles the in-app Settings window (see the global keydown handler).
 function toggleSettingsWindow(tabId) {
   if (MENU_OPEN) closeMenu();
-  else openMenu(tabId || MENU_LAST_TAB || "general");
+  else openMenu(tabId || MENU_LAST_TAB || "controls");
 }
 window.__lgToggleSettings = () => toggleSettingsWindow();
 
 window.__lgOpenSettingsTab = (tabId) => {
-  const tab = String(tabId || "general");
+  const tab = String(tabId || "controls");
   openMenu(tab);
 };
 
@@ -19171,7 +19114,7 @@ initSettingsFloatingWindow();
 menuTabButtons.forEach((btn) => {
   btn.setAttribute("tabindex", "-1");
   btn.addEventListener("click", () => {
-    const tab = btn.dataset.tab || "general";
+    const tab = btn.dataset.tab || "controls";
     setMenuTab(tab);
   });
 });
@@ -21082,21 +21025,6 @@ ${makeCheckRow("Storage folder", "Show or hide the Storage folder entry.", "opt_
 ${makeCheckRow("Untagged folder", "Show or hide the Untagged tag folder entry.", "opt_showUntaggedFolder", showUntaggedFolderEnabled())}
           `,
     },
-    appearance: {
-      title: "Filters",
-      rows: `
-${buildFilterPresetManagerHtml()}
-${buildOverlayRowsHtml(colorOverlayRows)}
-<div class="filtersAdvanced${menuSectionCollapsed("filters:advanced") ? " collapsed" : ""}">
-  <h3 class="menuSectionToggle" data-collapse-key="filters:advanced">
-    <span class="menuSectionToggleLabel">Advanced</span>
-    <span class="menuSectionChevron" aria-hidden="true">▾</span>
-  </h3>
-${buildOverlayRowsHtml(effectOverlayRows)}
-${makeSelectRow("Animated filters", "Control animation for grain.", "opt_animatedMediaFilters", String(opt.animatedMediaFilters || "on"), animatedFilterModes)}
-</div>
-          `,
-    },
     playback: {
       title: "Playback",
       rows: `
@@ -21109,7 +21037,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   const settingsSectionOrder = [
     "general",
     "thumbnails",
-    "appearance",
     "playback",
     "reveal",
   ];
@@ -21139,15 +21066,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
         headerEl,
         headerEl.getAttribute("data-collapse-key") || "",
         ".settingsSection",
-      );
-    });
-  optionsBodyEl
-    .querySelectorAll(".filtersAdvanced > h3.menuSectionToggle")
-    .forEach((headerEl) => {
-      bindCollapsibleSectionHeader(
-        headerEl,
-        headerEl.getAttribute("data-collapse-key") || "",
-        ".filtersAdvanced",
       );
     });
   if (requestedSection && requestedSection !== "general") {
@@ -26181,7 +26099,7 @@ function refreshAfterSettingsMetadataSync(docIds) {
   else applyOptionsEverywhere(false);
   if (MENU_OPEN) {
     setMenuTab(
-      isMenuTabAvailable(MENU_ACTIVE_TAB) ? MENU_ACTIVE_TAB : "general",
+      isMenuTabAvailable(MENU_ACTIVE_TAB) ? MENU_ACTIVE_TAB : "controls",
     );
   }
   if (ids.has(META_DOC_IDS.scoreHistory) && MENU_ACTIVE_TAB === "calendar") {
@@ -26220,7 +26138,7 @@ function settingsWorkspaceDidLoad() {
   }
   emitSettingsMetadataSync({ kind: "request" });
   if (IS_SETTINGS_WINDOW) {
-    openMenu(window.__LG_SETTINGS_INITIAL_TAB__ || MENU_LAST_TAB || "general");
+    openMenu(window.__LG_SETTINGS_INITIAL_TAB__ || MENU_LAST_TAB || "controls");
   }
 }
 
@@ -60118,7 +60036,7 @@ function captureQuickNavigationDirectoryEnterRestoreState(entry = null) {
   return {
     restoreDirectoriesPane: true,
     restoreSettingsPane: !!MENU_OPEN,
-    settingsTab: String(MENU_ACTIVE_TAB || MENU_LAST_TAB || "general"),
+    settingsTab: String(MENU_ACTIVE_TAB || MENU_LAST_TAB || "controls"),
     activePane:
       WS.view && WS.view.activePane === "preview" ? "preview" : "directories",
     goUpOnRestore: true,
@@ -60173,7 +60091,7 @@ function captureFilePaneEnterAutoRestoreState(entry = null) {
   return {
     restoreDirectoriesPane: true,
     restoreSettingsPane: !!MENU_OPEN,
-    settingsTab: String(MENU_ACTIVE_TAB || MENU_LAST_TAB || "general"),
+    settingsTab: String(MENU_ACTIVE_TAB || MENU_LAST_TAB || "controls"),
     activePane:
       WS.view && WS.view.activePane === "preview" ? "preview" : "directories",
   };
@@ -60184,7 +60102,7 @@ function closePanesForFilePaneEnterAutoRestore(restoreState) {
   WS.view.filePaneEnterAutoClosedPanes = {
     restoreDirectoriesPane: !!restoreState.restoreDirectoriesPane,
     restoreSettingsPane: !!restoreState.restoreSettingsPane,
-    settingsTab: String(restoreState.settingsTab || MENU_LAST_TAB || "general"),
+    settingsTab: String(restoreState.settingsTab || MENU_LAST_TAB || "controls"),
     activePane:
       restoreState.activePane === "preview" ? "preview" : "directories",
     goUpOnRestore: !!restoreState.goUpOnRestore,
@@ -60212,7 +60130,7 @@ function restorePanesClosedByFilePaneEnter() {
     setDirectoriesPaneOpenKeybindState(true);
   }
   if (restoreState.restoreSettingsPane && !MENU_OPEN) {
-    openMenu(String(restoreState.settingsTab || MENU_LAST_TAB || "general"));
+    openMenu(String(restoreState.settingsTab || MENU_LAST_TAB || "controls"));
   }
   if (restoreState.restoreDirectoriesPane && restoreState.restoreSettingsPane && MENU_OPEN) {
     syncSidePaneWidthsToSmallerSide();
@@ -60241,7 +60159,7 @@ function restorePanesClosedByFilePaneEnter() {
 
 function refreshLiveSettingsPaneFromKeyboardAction() {
   if (!MENU_OPEN) return;
-  const activeTab = String(MENU_ACTIVE_TAB || "general");
+  const activeTab = String(MENU_ACTIVE_TAB || "controls");
   if (!isMenuTabAvailable(activeTab)) return;
   if (activeTab === "controls") {
     const savedTop = Number(keybindsBodyEl?.scrollTop || 0) || 0;
@@ -60273,7 +60191,7 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
   if (!WS.meta) return false;
   // Secondary (bindable) path to the in-app Settings window; Tab is the primary
   // reserved toggle.
-  toggleSettingsWindow(MENU_LAST_TAB || "general");
+  toggleSettingsWindow(MENU_LAST_TAB || "controls");
   return true;
 }
 
