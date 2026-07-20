@@ -2853,14 +2853,23 @@ img[data-rotate-key].rotatingThumbFade {
   padding: var(--preview-gutter);
 }
 
-/* Preview grids are direct children of a column-flex scroller after their
-   staged startup render. Keep them at their natural content height so flexbox
-   cannot squeeze every row into the initial viewport and progressively
-   re-expand it as keyboard navigation reveals later cards. */
+/* Keep both the hidden startup stage and the live preview grids at their
+   natural content height. Otherwise the column-flex preview can squeeze the
+   staged rows into its first viewport, then progressively re-expand them as
+   keyboard navigation reveals later cards (the "accordion" effect). */
+#previewBody.preview-grid > .previewGridRenderStage,
 #previewBody.preview-grid > .gridFolders,
 #previewBody.preview-grid > .gridFiles {
   flex: 0 0 auto;
   width: 100%;
+  min-height: max-content;
+}
+
+#previewBody.preview-grid .gridFolders,
+#previewBody.preview-grid .gridFiles {
+  flex-shrink: 0;
+  min-height: max-content;
+  grid-auto-rows: max-content;
 }
 
 #previewBody.preview-placeholder {
@@ -6303,42 +6312,51 @@ img[data-rotate-key].rotatingThumbFade {
   background: var(--color1-primary);
 }
 
-.thumbCropEditorShade {
-  position: absolute;
-  background: rgba(0, 0, 0, 0.54);
-  pointer-events: none;
-}
-
 .thumbCropEditorCropBox {
   position: absolute;
   border: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: none;
+  /* One large outside shadow creates the dimmed region. Because it follows the
+     crop box itself, the clear opening has exactly the same rounded squircle
+     corners instead of the square seams made by four separate shade panels. */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.54);
   border-radius: 18px;
   pointer-events: none;
 }
 
 .thumbCropEditorResizeHandle {
   position: absolute;
-  width: 76px;
-  height: 76px;
+  width: 64px;
+  height: 64px;
   padding: 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
-  /* Plain rectangular hit area (no clip-path) — clip-path hit-testing made the
-     grab zone flicker between interactable and not as the cursor moved. */
+  /* A generous plain hit area plus a visible center marker makes the corner
+     easy to acquire. No clip-path is used because WebKit's clipped hit-testing
+     flickers around the edge during a drag. */
   transform: translate(-50%, -50%);
   pointer-events: auto;
   touch-action: none;
   cursor: nwse-resize;
   box-shadow: none;
   outline: none;
-  opacity: 0;
+  opacity: 1;
 }
 
 .thumbCropEditorResizeHandle::after {
-  display: none;
-  content: none;
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 3px solid rgba(255, 255, 255, 0.96);
+  border-radius: 7px;
+  background: rgba(10, 12, 16, 0.66);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+  transition: transform 90ms ease, background 90ms ease;
 }
 
 .thumbCropEditorResizeHandle:hover,
@@ -6346,7 +6364,18 @@ img[data-rotate-key].rotatingThumbFade {
   background: transparent;
   box-shadow: none;
   outline: none;
-  opacity: 0;
+  opacity: 1;
+}
+
+.thumbCropEditorResizeHandle:hover::after,
+.thumbCropEditorResizeHandle.isActive::after {
+  background: rgba(255, 255, 255, 0.26);
+  transform: translate(-50%, -50%) scale(1.18);
+}
+
+.thumbCropEditorPreviewFrame.cropResizeActive
+ .thumbCropEditorResizeHandle:not(.isActive) {
+  pointer-events: none;
 }
 
 .thumbCropEditorResizeHandle[data-crop-corner="nw"],
@@ -54736,7 +54765,9 @@ function makePreviewGridRenderStage() {
   stage.style.visibility = "hidden";
   stage.style.pointerEvents = "none";
   stage.style.width = "100%";
-  stage.style.minHeight = "1px";
+  stage.style.flex = "0 0 auto";
+  stage.style.alignSelf = "stretch";
+  stage.style.minHeight = "max-content";
   return stage;
 }
 
@@ -61324,15 +61355,30 @@ function handleClosedFilePaneNavigationAction(action) {
 }
 
 function handleThumbnailViewportArrowKey(e, action) {
-  if (!e || action || !WS.root || VIEWER_MODE || THUMB_CROP_EDITOR)
-    return false;
-  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
+  if (!e || !WS.root || VIEWER_MODE || THUMB_CROP_EDITOR) return false;
   if (isTextInputTarget(e.target)) return false;
+  const key = normalizeBaseKeyValue(e.key);
+  const commandOnly =
+    !!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+  if (commandOnly && (key === "ArrowUp" || key === "ArrowDown")) {
+    const zoomStep =
+      typeof THUMB_VIEWPORT_ZOOM_STEP_RESTORED === "number"
+        ? THUMB_VIEWPORT_ZOOM_STEP_RESTORED
+        : 0.2;
+    return zoomSelectedThumbnailViewport(
+      key === "ArrowUp" ? zoomStep : -zoomStep,
+      {
+        consumeAtLimit: true,
+        quietNoTarget: true,
+        quietSuccess: true,
+      },
+    );
+  }
+  if (action || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
   const step =
     typeof THUMB_VIEWPORT_NUDGE_STEP_RESTORED === "number"
       ? THUMB_VIEWPORT_NUDGE_STEP_RESTORED
       : 8;
-  const key = normalizeBaseKeyValue(e.key);
   if (key === "ArrowLeft") {
     return nudgeSelectedThumbnailViewport(-step, 0, {
       quietNoTarget: true,
@@ -64917,6 +64963,7 @@ function getSelectedThumbnailSourceRecord() {
 }
 
 const THUMB_VIEWPORT_NUDGE_STEP_RESTORED = 8;
+const THUMB_VIEWPORT_ZOOM_STEP_RESTORED = 0.2;
 
 function nudgeSelectedThumbnailViewport(dx, dy, opts = null) {
   const options = opts && typeof opts === "object" ? opts : {};
@@ -64941,6 +64988,33 @@ function nudgeSelectedThumbnailViewport(dx, dy, opts = null) {
   metaSetFileThumbnailCropForRecord(rec, next);
   refreshThumbnailUiAfterMetadataChange();
   if (!options.quietSuccess) showStatusMessage("Thumbnail viewport updated.");
+  return true;
+}
+
+function zoomSelectedThumbnailViewport(delta, opts = null) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  const rec = getSelectedThumbnailSourceRecord();
+  if (!rec) {
+    if (!options.quietNoTarget)
+      showStatusMessage("Selected item has no editable thumbnail source.");
+    return false;
+  }
+  const step = Number(delta) || 0;
+  if (!step) return false;
+  const current = normalizeThumbCropValue(
+    metaGetFileThumbnailCropForRecord(rec) || { x: 50, y: 50, zoom: 1 },
+  );
+  const next = normalizeThumbCropValue({
+    x: current.x,
+    y: current.y,
+    zoom: Math.round((current.zoom + step) * 100) / 100,
+  });
+  if (Math.abs(next.zoom - current.zoom) < 0.0001)
+    return !!options.consumeAtLimit;
+  metaSetFileThumbnailCropForRecord(rec, next);
+  refreshThumbnailUiAfterMetadataChange();
+  if (!options.quietSuccess)
+    showStatusMessage(`Thumbnail zoom: ${next.zoom.toFixed(2)}×.`);
   return true;
 }
 
@@ -65098,10 +65172,6 @@ function openThumbnailCropEditor(rec) {
           <div class="thumbCropEditorPreviewFrame">
             <div class="thumbCropEditorPreviewWrap">
               ${mediaHtml}
-              <div class="thumbCropEditorShade" data-crop-shade="top"></div>
-              <div class="thumbCropEditorShade" data-crop-shade="left"></div>
-              <div class="thumbCropEditorShade" data-crop-shade="right"></div>
-              <div class="thumbCropEditorShade" data-crop-shade="bottom"></div>
               <div class="thumbCropEditorCropBox" data-crop-box="1"></div>
             </div>
             <div class="thumbCropEditorHandleLayer" aria-hidden="true">
@@ -65143,10 +65213,6 @@ function openThumbnailCropEditor(rec) {
     ? overlay.querySelector("canvas.thumbCropEditorPreviewCanvas")
     : null;
   const cropBox = overlay.querySelector('[data-crop-box="1"]');
-  const shadeTop = overlay.querySelector('[data-crop-shade="top"]');
-  const shadeLeft = overlay.querySelector('[data-crop-shade="left"]');
-  const shadeRight = overlay.querySelector('[data-crop-shade="right"]');
-  const shadeBottom = overlay.querySelector('[data-crop-shade="bottom"]');
   const resizeHandles = Array.from(
     overlay.querySelectorAll('[data-crop-handle="resize"]'),
   );
@@ -65182,8 +65248,6 @@ function openThumbnailCropEditor(rec) {
     const top = Number(overlayWin.topPct) || 0;
     const width = Number(overlayWin.widthPct) || 0;
     const height = Number(overlayWin.heightPct) || 0;
-    const right = Math.max(0, 100 - (left + width));
-    const bottom = Math.max(0, 100 - (top + height));
     if (valX) valX.textContent = String(Math.round(cur.x));
     if (valY) valY.textContent = String(Math.round(cur.y));
     if (valZoom) valZoom.textContent = cur.zoom.toFixed(2);
@@ -65192,30 +65256,6 @@ function openThumbnailCropEditor(rec) {
       cropBox.style.top = `${top}%`;
       cropBox.style.width = `${width}%`;
       cropBox.style.height = `${height}%`;
-    }
-    if (shadeTop) {
-      shadeTop.style.left = "0%";
-      shadeTop.style.top = "0%";
-      shadeTop.style.width = "100%";
-      shadeTop.style.height = `${top}%`;
-    }
-    if (shadeBottom) {
-      shadeBottom.style.left = "0%";
-      shadeBottom.style.top = `${top + height}%`;
-      shadeBottom.style.width = "100%";
-      shadeBottom.style.height = `${bottom}%`;
-    }
-    if (shadeLeft) {
-      shadeLeft.style.left = "0%";
-      shadeLeft.style.top = `${top}%`;
-      shadeLeft.style.width = `${left}%`;
-      shadeLeft.style.height = `${height}%`;
-    }
-    if (shadeRight) {
-      shadeRight.style.left = `${left + width}%`;
-      shadeRight.style.top = `${top}%`;
-      shadeRight.style.width = `${right}%`;
-      shadeRight.style.height = `${height}%`;
     }
     if (resizeHandles.length) {
       for (let i = 0; i < resizeHandles.length; i++) {
@@ -65689,10 +65729,13 @@ function openThumbnailCropEditor(rec) {
         try {
           handle.releasePointerCapture(e.pointerId);
         } catch {}
+        handle?.classList?.remove("isActive");
         resizeGesture = null;
         previewWrap.classList.remove("resizing");
+        previewFrame?.classList?.remove("cropResizeActive");
       };
       const onResizePointerDown = (e) => {
+        if (resizeGesture) return;
         if (e.pointerType === "mouse" && e.button !== 0) return;
         const handle = e.currentTarget;
         const corner = String(
@@ -65728,12 +65771,16 @@ function openThumbnailCropEditor(rec) {
             (startCornerV - anchorV) * wrapSize.height,
           ),
         );
+        const startVectorX = (startCornerU - anchorU) * wrapSize.width;
+        const startVectorY = (startCornerV - anchorV) * wrapSize.height;
         resizeGesture = {
           pointerId: e.pointerId,
           handle,
           corner,
           startCrop,
           startDist,
+          startVectorX,
+          startVectorY,
           anchorPx,
           anchorU,
           anchorV,
@@ -65741,21 +65788,27 @@ function openThumbnailCropEditor(rec) {
         try {
           handle.setPointerCapture(e.pointerId);
         } catch {}
+        handle.classList.add("isActive");
         previewWrap.classList.add("resizing");
+        previewFrame?.classList?.add("cropResizeActive");
         e.preventDefault();
         e.stopPropagation();
       };
       const onResizePointerMove = (e) => {
         if (!resizeGesture || e.pointerId !== resizeGesture.pointerId) return;
         const pos = pointerPosInWrap(e);
-        const dist = Math.max(
+        const currentVectorX = pos.x - resizeGesture.anchorPx.x;
+        const currentVectorY = pos.y - resizeGesture.anchorPx.y;
+        const startDistanceSquared = Math.max(
           1,
-          Math.hypot(
-            pos.x - resizeGesture.anchorPx.x,
-            pos.y - resizeGesture.anchorPx.y,
-          ),
+          resizeGesture.startDist * resizeGesture.startDist,
         );
-        const scale = dist / Math.max(1, resizeGesture.startDist);
+        const scale = Math.max(
+          0.2,
+          (currentVectorX * resizeGesture.startVectorX +
+            currentVectorY * resizeGesture.startVectorY) /
+            startDistanceSquared,
+        );
         const nextZoom = Math.min(
           4,
           Math.max(
