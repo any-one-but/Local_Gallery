@@ -2170,6 +2170,8 @@ img[data-rotate-key].rotatingThumbFade {
    .optSelectMenu (the Settings selects) is deliberately left alone. */
 #appActionMenu,
 #appActionMenu .dropdownMenu,
+#filterActionMenu,
+#filterActionMenu .dropdownMenu,
 #directoriesActionMenu,
 #directoriesActionMenu .dropdownMenu,
 #tagActionMenu,
@@ -2184,6 +2186,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 #appActionMenu button,
+#filterActionMenu button,
 #directoriesActionMenu button,
 #tagActionMenu button,
 #previewActionMenu button,
@@ -2209,6 +2212,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 #appActionMenu .dropdownMenuNum,
+#filterActionMenu .dropdownMenuNum,
 #directoriesActionMenu .dropdownMenuNum,
 #tagActionMenu .dropdownMenuNum,
 #previewActionMenu .dropdownMenuNum,
@@ -2219,12 +2223,101 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 #appActionMenu .dropdownMenuSubmenuCaret svg,
+#filterActionMenu .dropdownMenuSubmenuCaret svg,
 #directoriesActionMenu .dropdownMenuSubmenuCaret svg,
 #tagActionMenu .dropdownMenuSubmenuCaret svg,
 #previewActionMenu .dropdownMenuSubmenuCaret svg,
 .dirMenu .dropdownMenu:not(.optSelectMenu) .dropdownMenuSubmenuCaret svg {
   width: 17px;
   height: 17px;
+}
+
+/* The filter menu deliberately uses a different grammar from the app menu:
+   one vertically scrolling sheet, with horizontal cells for values/actions.
+   Keyboard state classes are applied by the filter menu's own controller. */
+#filterActionMenu {
+  width: min(720px, calc(100vw - 16px));
+  max-width: min(720px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+}
+
+#filterActionMenu .filterMenuSectionLabel {
+  padding: 10px 10px 5px;
+  color: var(--color0-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#filterActionMenu .filterMenuFlatRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  align-items: stretch;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+}
+
+#filterActionMenu .filterMenuPresetRow {
+  grid-template-columns: minmax(180px, 1fr) repeat(3, auto);
+}
+
+#filterActionMenu .filterMenuRenameRow {
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+#filterActionMenu .filterMenuFlatRow.filterMenuRowActive {
+  background: color-mix(in srgb, var(--color1-secondary) 62%, transparent);
+}
+
+#filterActionMenu button.filterMenuCell {
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 14px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+#filterActionMenu button.filterMenuPrimaryCell {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+#filterActionMenu button.filterMenuCell.filterMenuCellActive {
+  background: var(--color1-secondary);
+  box-shadow: inset 0 0 0 1px var(--color0-primary);
+}
+
+#filterActionMenu button.filterMenuValueCell {
+  min-width: 92px;
+  font-variant-numeric: tabular-nums;
+}
+
+#filterActionMenu button.filterMenuValueCell.filterMenuValueEditing {
+  background: var(--color0-primary);
+  color: var(--color1-primary);
+}
+
+#filterActionMenu .filterMenuRenameInput {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--color0-primary);
+  border-radius: 9px;
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  font: inherit;
+}
+
+#filterActionMenu .filterMenuRenameHint {
+  align-self: center;
+  padding: 0 8px;
+  color: var(--color0-secondary);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .dropdownMenu .dropdownMenuSubmenu {
@@ -8012,6 +8105,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
             </div>
             <div id="previewActionMenu" class="dropdownMenu"></div>
             <div id="appActionMenu" class="dropdownMenu appMenu"></div>
+            <div id="filterActionMenu" class="dropdownMenu filterMenu"></div>
           </div>
         </div>
       </div>
@@ -16019,6 +16113,12 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
+    id: "openFilterMenu",
+    label: "Toggle filter menu",
+    hint: "Open or close the keyboard-driven filter and preset menu.",
+    section: "filters",
+  },
+  {
     id: "seekBack",
     label: "Video skip backward",
     hint: "Seek video backward.",
@@ -16207,6 +16307,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "cycleFolderSort",
   "toggleAnimatedFilters",
   "cycleAppearancePresets",
+  "openFilterMenu",
   "toggleRandomFileSort",
   "toggleRandomFolderSort",
   "randomFirstFileJump",
@@ -16298,6 +16399,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   selectRangeInBulk: "",
   cancelMultiSelection: "",
   openAppMenu: "",
+  openFilterMenu: "",
   seekBack: "z",
   seekForward: "c",
   playPause: "x",
@@ -17568,6 +17670,7 @@ const previewMainStackEl = $("previewMainStack");
 const previewBodyEl = $("previewBody");
 const previewActionMenuEl = $("previewActionMenu");
 const appActionMenuEl = $("appActionMenu");
+const filterActionMenuEl = $("filterActionMenu");
 const controlPane = $("controlPane");
 const controlPrevItemBtn = $("controlPrevItemBtn");
 const controlSkipBackBtn = $("controlSkipBackBtn");
@@ -17585,6 +17688,12 @@ if (appActionMenuEl) {
     document.body.appendChild(appActionMenuEl);
   }
   appActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
+}
+if (filterActionMenuEl) {
+  if (filterActionMenuEl.parentElement !== document.body) {
+    document.body.appendChild(filterActionMenuEl);
+  }
+  filterActionMenuEl.addEventListener("click", (e) => e.stopPropagation());
 }
 directoriesListEl.addEventListener("scroll", () => {
   if (WS.view.scrollBusyDirs) return;
@@ -17805,6 +17914,7 @@ let TAG_EDIT_IN_PREVIEW = false;
 let TAG_CONTEXT_MENU_STATE = null;
 let PREVIEW_CONTEXT_MENU_STATE = null;
 let APP_MENU_STATE = null;
+let FILTER_MENU_STATE = null;
 let SCORE_HISTORY_DAY_MENU_STATE = null;
 let DAILY_JOURNAL_STATE = null;
 let TAG_ENTRY_RENAME_STATE = null;
@@ -42768,6 +42878,7 @@ function closeActionMenus() {
   closeTagContextMenu();
   closePreviewContextMenu();
   closeAppMenu();
+  closeFilterMenu();
   closeScoreHistoryDayMenu();
 }
 
@@ -43471,6 +43582,16 @@ function closeAppMenu() {
   appActionMenuEl.style.left = "";
   appActionMenuEl.style.top = "";
   APP_MENU_STATE = null;
+}
+
+function closeFilterMenu() {
+  if (menuAutoCloseSuppressed()) return;
+  if (!filterActionMenuEl) return;
+  filterActionMenuEl.classList.remove("open", "fixed");
+  filterActionMenuEl.innerHTML = "";
+  filterActionMenuEl.style.left = "";
+  filterActionMenuEl.style.top = "";
+  FILTER_MENU_STATE = null;
 }
 
 // `closeAfter` marks the handful of entries that navigate somewhere rather than
@@ -44279,8 +44400,8 @@ function buildAppMenuTitleElement(summary) {
 }
 
 function buildAppMenuItems() {
-  const previousBuildMode = BUILDING_NAVIGATION_ONLY_APP_MENU;
-  BUILDING_NAVIGATION_ONLY_APP_MENU = true;
+  const previousBuildMode = BUILDING_NAVIGATION_ONLY_ACTION_MENU;
+  BUILDING_NAVIGATION_ONLY_ACTION_MENU = true;
   try {
     const summary = appMenuSelectionSummary();
     // An item in Trash or Storage gets the one action that applies to it in place
@@ -44307,7 +44428,7 @@ function buildAppMenuItems() {
       ),
     ].filter(Boolean);
   } finally {
-    BUILDING_NAVIGATION_ONLY_APP_MENU = previousBuildMode;
+    BUILDING_NAVIGATION_ONLY_ACTION_MENU = previousBuildMode;
   }
 }
 
@@ -44347,6 +44468,773 @@ function openAppMenu(anchor) {
     positionActionMenuInPreviewDock(menu);
   });
   return true;
+}
+
+// Keyboard-only mirror of the Filters section in Settings. It deliberately has
+// its own flat row/column syntax: Right enters a value cell, Up/Down edit in 5%
+// steps, and Left returns to vertical row navigation.
+const FILTER_MENU_COLOR_CONTROLS = Object.freeze([
+  {
+    label: "Brightness",
+    key: "brightnessOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.brightness,
+    neutral: 0,
+  },
+  {
+    label: "Contrast",
+    key: "contrastOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.contrast,
+    neutral: 0,
+  },
+  {
+    label: "Saturation",
+    key: "saturationOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.saturation,
+    neutral: 0,
+  },
+  {
+    label: "Temperature",
+    key: "warmthOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.warmth,
+    neutral: 0,
+  },
+  {
+    label: "Hue shift",
+    key: "hueShiftOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.hueShift,
+    neutral: 0,
+  },
+  {
+    label: "Black crush",
+    key: "blackCrushOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.blackCrush,
+    neutral: 0,
+  },
+  {
+    label: "White crush",
+    key: "whiteCrushOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.whiteCrush,
+    neutral: 0,
+  },
+  {
+    label: "Color crush",
+    key: "colorCrushOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.colorCrush,
+    neutral: 0,
+  },
+]);
+
+const FILTER_MENU_EFFECT_CONTROLS = Object.freeze([
+  {
+    label: "Pixelation",
+    key: "pixelateOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.pixelate,
+    neutral: OVERLAY_SLIDER_LIMITS.pixelate.min,
+  },
+  {
+    label: "Blur",
+    key: "blurOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.blur,
+    neutral: 0,
+  },
+  {
+    label: "Chromatic aberration",
+    key: "chromaOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.chroma,
+    neutral: 0,
+  },
+  {
+    label: "Grain",
+    key: "grainOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.grain,
+    neutral: 0,
+  },
+  {
+    label: "Vignette",
+    key: "vignetteOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.vignette,
+    neutral: 0,
+  },
+  {
+    label: "Film corners",
+    key: "filmCornerOverlayIntensity",
+    limits: OVERLAY_SLIDER_LIMITS.filmCorner,
+    neutral: 0,
+  },
+]);
+
+const FILTER_MENU_ANIMATED_OPTIONS = Object.freeze([
+  { value: "off", label: "Off" },
+  { value: "on", label: "On" },
+  { value: "videos", label: "Videos only" },
+]);
+
+function filterMenuControlPercent(control, value) {
+  if (!control || value == null || value === "") return 0;
+  const limits = control.limits || { min: 0, max: 1 };
+  const min = Number(limits.min);
+  const max = Number(limits.max);
+  const neutral = Number(control.neutral);
+  const raw = Math.min(max, Math.max(min, Number(value) || 0));
+  if (raw >= neutral) {
+    return ((raw - neutral) / Math.max(0.000001, max - neutral)) * 100;
+  }
+  return -((neutral - raw) / Math.max(0.000001, neutral - min)) * 100;
+}
+
+function filterMenuControlValueForPercent(control, percent) {
+  const limits = control?.limits || { min: 0, max: 1 };
+  const min = Number(limits.min);
+  const max = Number(limits.max);
+  const neutral = Number(control?.neutral);
+  const minPercent = neutral > min ? -100 : 0;
+  const roundedPercent = Math.round((Number(percent) || 0) / 5) * 5;
+  const nextPercent = Math.min(100, Math.max(minPercent, roundedPercent));
+  if (Math.abs(nextPercent) < 0.000001) return null;
+  const raw =
+    nextPercent > 0
+      ? neutral + ((max - neutral) * nextPercent) / 100
+      : neutral + ((neutral - min) * nextPercent) / 100;
+  return Number(Math.min(max, Math.max(min, raw)).toFixed(6));
+}
+
+function filterMenuControlLabel(control) {
+  const value = WS.meta?.options?.[control.key];
+  const percent =
+    value == null || value === ""
+      ? 0
+      : Math.round(filterMenuControlPercent(control, value) / 5) * 5;
+  return `${percent > 0 ? "+" : ""}${percent}%`;
+}
+
+function setFilterMenuControlPercent(control, percent) {
+  if (!WS.meta || !control?.key) return false;
+  const nextValue = filterMenuControlValueForPercent(control, percent);
+  WS.meta.options = normalizeOptions(
+    Object.assign({}, WS.meta.options || {}, { [control.key]: nextValue }),
+  );
+  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys([control.key]));
+  setOptionsStatus("Saved");
+  applyMediaFilterFromOptions({ deferThumbSync: true });
+  syncActiveAppearancePresetSelection(WS.meta.options);
+  updateAppearancePresetUiState();
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(
+    `${control.label}: ${filterMenuControlLabel(control)}`,
+    "filter-menu",
+  );
+  return true;
+}
+
+function adjustFilterMenuControl(control, direction) {
+  const current = filterMenuControlPercent(
+    control,
+    WS.meta?.options?.[control.key],
+  );
+  return setFilterMenuControlPercent(
+    control,
+    Math.round(current / 5) * 5 + (direction < 0 ? -5 : 5),
+  );
+}
+
+function setFilterMenuAnimatedMode(mode) {
+  if (!WS.meta) return false;
+  const next = normalizeAnimatedMediaFiltersValue(mode, "on");
+  WS.meta.options = normalizeOptions(
+    Object.assign({}, WS.meta.options || {}, { animatedMediaFilters: next }),
+  );
+  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(["animatedMediaFilters"]));
+  setOptionsStatus("Saved");
+  applyMediaFilterFromOptions();
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(
+    `Animated filters: ${labelForCycleValue(FILTER_MENU_ANIMATED_OPTIONS, next)}`,
+    "filter-menu",
+  );
+  return true;
+}
+
+function filterMenuFlatCell(label, cellKey, onActivate, options = null) {
+  const config = options && typeof options === "object" ? options : {};
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className =
+    `filterMenuCell${config.primary ? " filterMenuPrimaryCell" : ""}` +
+    `${config.value ? " filterMenuValueCell" : ""}`;
+  btn.textContent = String(label || "");
+  btn.dataset.filterMenuCell = String(cellKey || "");
+  btn.disabled = !!config.disabled;
+  btn.setAttribute("data-action", "keep");
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (btn.disabled || !FILTER_MENU_STATE) return;
+    suppressMenuAutoClose();
+    const row = btn.closest("[data-filter-menu-row]");
+    FILTER_MENU_STATE.rowKey = String(row?.dataset?.filterMenuRow || "");
+    FILTER_MENU_STATE.cellKey = String(cellKey || "");
+    FILTER_MENU_STATE.editingValue = !!config.value;
+    applyFilterMenuKeyboardSelection(filterActionMenuEl);
+    if (typeof onActivate === "function") onActivate();
+  });
+  return btn;
+}
+
+function filterMenuFlatRow(rowKey, kind = "") {
+  const row = document.createElement("div");
+  row.className = "filterMenuFlatRow";
+  row.dataset.filterMenuRow = String(rowKey || "");
+  row.dataset.filterMenuKind = String(kind || "");
+  return row;
+}
+
+function filterMenuSectionLabel(label) {
+  const el = document.createElement("div");
+  el.className = "filterMenuSectionLabel";
+  el.textContent = String(label || "");
+  el.setAttribute("aria-hidden", "true");
+  return el;
+}
+
+function filterMenuPresetActionApply(presetId) {
+  if (!applyAppearancePresetById(presetId)) return false;
+  FILTER_MENU_STATE.confirmDeletePresetId = "";
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(
+    `Filter preset: ${appearancePresetDisplayName(presetId, "Default")}`,
+    "filter-menu",
+  );
+  refreshFilterMenuContents();
+  return true;
+}
+
+function filterMenuPresetActionUpdate(presetId) {
+  const preset = getAppearancePresetById(presetId);
+  if (!preset || !updateAppearancePresetFromCurrent(presetId)) return false;
+  FILTER_MENU_STATE.confirmDeletePresetId = "";
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(`Updated filter preset '${preset.name}'.`, "filter-menu");
+  refreshFilterMenuContents();
+  return true;
+}
+
+function startFilterMenuPresetRename(presetId) {
+  const preset = getAppearancePresetById(presetId);
+  if (!preset || presetId === BUILTIN_NULL_APPEARANCE_PRESET_ID) return false;
+  FILTER_MENU_STATE.renamingPresetId = presetId;
+  FILTER_MENU_STATE.renameDraft = String(preset.name || "");
+  FILTER_MENU_STATE.confirmDeletePresetId = "";
+  refreshFilterMenuContents();
+  return true;
+}
+
+function cancelFilterMenuPresetRename() {
+  if (!FILTER_MENU_STATE) return;
+  FILTER_MENU_STATE.renamingPresetId = "";
+  FILTER_MENU_STATE.renameDraft = "";
+  FILTER_MENU_STATE.cellKey = "rename";
+  refreshFilterMenuContents();
+}
+
+function commitFilterMenuPresetRename(presetId) {
+  if (!FILTER_MENU_STATE) return false;
+  const result = renameAppearancePresetById(
+    presetId,
+    FILTER_MENU_STATE.renameDraft,
+  );
+  if (!result.ok) {
+    if (result.reason === "missing-name")
+      showStatusMessage("Enter a preset name first.");
+    else if (result.reason === "reserved-name")
+      showStatusMessage("'Default' is reserved.");
+    else if (result.reason === "duplicate-name")
+      showStatusMessage("Another preset already uses that name.");
+    else if (result.reason === "unchanged")
+      cancelFilterMenuPresetRename();
+    else showStatusMessage("Preset was not renamed.");
+    return false;
+  }
+  FILTER_MENU_STATE.renamingPresetId = "";
+  FILTER_MENU_STATE.renameDraft = "";
+  FILTER_MENU_STATE.cellKey = "rename";
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(
+    `Renamed filter preset to '${result.preset?.name || "Preset"}'.`,
+    "filter-menu",
+  );
+  refreshFilterMenuContents();
+  return true;
+}
+
+function filterMenuPresetActionDelete(presetId) {
+  if (!FILTER_MENU_STATE) return false;
+  if (FILTER_MENU_STATE.confirmDeletePresetId !== presetId) {
+    FILTER_MENU_STATE.confirmDeletePresetId = presetId;
+    refreshFilterMenuContents();
+    showStatusMessage("Press Open again to confirm preset deletion.");
+    return true;
+  }
+  const preset = getAppearancePresetById(presetId);
+  const name = String(preset?.name || "Preset");
+  if (!preset || !deleteAppearancePresetById(presetId)) return false;
+  FILTER_MENU_STATE.confirmDeletePresetId = "";
+  FILTER_MENU_STATE.rowKey = "preset-create";
+  FILTER_MENU_STATE.cellKey = "create";
+  applyOptionsEverywhere(true);
+  showStatusMessage(`Deleted filter preset '${name}'.`, "filter-menu");
+  refreshFilterMenuContents();
+  return true;
+}
+
+function filterMenuCreatePreset() {
+  const preset = createAppearancePresetFromCurrent(
+    nextNewAppearancePresetName(),
+  );
+  if (!preset || !FILTER_MENU_STATE) return false;
+  FILTER_MENU_STATE.rowKey = `preset:${preset.id}`;
+  FILTER_MENU_STATE.cellKey = "apply";
+  FILTER_MENU_STATE.confirmDeletePresetId = "";
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(`Created filter preset '${preset.name}'.`, "filter-menu");
+  refreshFilterMenuContents();
+  return true;
+}
+
+function buildFilterMenuPresetRow(preset) {
+  const presetId = normalizeAppearancePresetIdValue(preset?.id);
+  if (!presetId) return null;
+  const row = filterMenuFlatRow(`preset:${presetId}`, "preset");
+  row.classList.add("filterMenuPresetRow");
+  const isDefault = presetId === BUILTIN_NULL_APPEARANCE_PRESET_ID;
+  const isActive =
+    currentAppearanceBucket() !== "editing" &&
+    effectiveActiveAppearancePresetId() === presetId;
+  const presetName = normalizeAppearancePresetName(preset?.name, "Preset");
+
+  if (FILTER_MENU_STATE?.renamingPresetId === presetId) {
+    row.classList.add("filterMenuRenameRow");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "filterMenuRenameInput";
+    input.value = String(FILTER_MENU_STATE.renameDraft || presetName);
+    input.setAttribute("aria-label", `Rename ${presetName}`);
+    input.addEventListener("click", (e) => e.stopPropagation());
+    input.addEventListener("input", () => {
+      if (FILTER_MENU_STATE) FILTER_MENU_STATE.renameDraft = input.value;
+    });
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitFilterMenuPresetRename(presetId);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancelFilterMenuPresetRename();
+      }
+    });
+    const hint = document.createElement("div");
+    hint.className = "filterMenuRenameHint";
+    hint.textContent = "Enter saves · Esc cancels";
+    row.append(input, hint);
+    return row;
+  }
+
+  row.appendChild(
+    filterMenuFlatCell(
+      `${isActive ? "●" : "○"} ${presetName}`,
+      "apply",
+      () => filterMenuPresetActionApply(presetId),
+      { primary: true },
+    ),
+  );
+  row.appendChild(
+    filterMenuFlatCell(
+      "Update",
+      "update",
+      () => filterMenuPresetActionUpdate(presetId),
+      { disabled: isDefault },
+    ),
+  );
+  row.appendChild(
+    filterMenuFlatCell(
+      "Rename",
+      "rename",
+      () => startFilterMenuPresetRename(presetId),
+      { disabled: isDefault },
+    ),
+  );
+  const confirming = FILTER_MENU_STATE?.confirmDeletePresetId === presetId;
+  row.appendChild(
+    filterMenuFlatCell(
+      confirming ? "Confirm delete" : "Delete",
+      "delete",
+      () => filterMenuPresetActionDelete(presetId),
+      { disabled: isDefault },
+    ),
+  );
+  return row;
+}
+
+function buildFilterMenuControlRow(control) {
+  const rowKey = `filter:${control.key}`;
+  const row = filterMenuFlatRow(rowKey, "filter");
+  row.dataset.filterControlKey = control.key;
+  row.appendChild(
+    filterMenuFlatCell(control.label, "label", null, { primary: true }),
+  );
+  row.appendChild(
+    filterMenuFlatCell(filterMenuControlLabel(control), "value", null, {
+      value: true,
+    }),
+  );
+  return row;
+}
+
+function buildFilterMenuAnimatedRow() {
+  const row = filterMenuFlatRow("filter:animated", "animated");
+  const current = normalizeAnimatedMediaFiltersValue(
+    WS.meta?.options?.animatedMediaFilters,
+    "on",
+  );
+  row.appendChild(
+    filterMenuFlatCell("Animated filters", "label", null, { primary: true }),
+  );
+  row.appendChild(
+    filterMenuFlatCell(
+      labelForCycleValue(FILTER_MENU_ANIMATED_OPTIONS, current),
+      "value",
+      null,
+      { value: true },
+    ),
+  );
+  return row;
+}
+
+function filterMenuRows(menu = filterActionMenuEl) {
+  return Array.from(menu?.querySelectorAll?.("[data-filter-menu-row]") || [])
+    .filter((row) => filterMenuCells(row).length);
+}
+
+function filterMenuCells(row) {
+  return Array.from(
+    row?.querySelectorAll?.("button[data-filter-menu-cell]") || [],
+  ).filter((btn) => !btn.disabled && !btn.hidden);
+}
+
+function applyFilterMenuKeyboardSelection(menu = filterActionMenuEl) {
+  if (!menu || !FILTER_MENU_STATE) return;
+  if (FILTER_MENU_STATE.renamingPresetId) {
+    menu.querySelectorAll(".filterMenuRowActive").forEach((el) =>
+      el.classList.remove("filterMenuRowActive"),
+    );
+    const renameRow = menu.querySelector(
+      `[data-filter-menu-row="preset:${cssEscapeValue(FILTER_MENU_STATE.renamingPresetId)}"]`,
+    );
+    renameRow?.classList.add("filterMenuRowActive");
+    return;
+  }
+  const rows = filterMenuRows(menu);
+  if (!rows.length) return;
+  let rowIndex = rows.findIndex(
+    (row) => row.dataset.filterMenuRow === FILTER_MENU_STATE.rowKey,
+  );
+  if (rowIndex < 0) {
+    rowIndex = Math.min(
+      Math.max(Number(FILTER_MENU_STATE.rowIndex) || 0, 0),
+      rows.length - 1,
+    );
+  }
+  const row = rows[rowIndex];
+  const cells = filterMenuCells(row);
+  let cellIndex = cells.findIndex(
+    (cell) => cell.dataset.filterMenuCell === FILTER_MENU_STATE.cellKey,
+  );
+  if (cellIndex < 0) {
+    cellIndex = Math.min(
+      Math.max(Number(FILTER_MENU_STATE.cellIndex) || 0, 0),
+      cells.length - 1,
+    );
+  }
+  const cell = cells[cellIndex];
+  FILTER_MENU_STATE.rowIndex = rowIndex;
+  FILTER_MENU_STATE.cellIndex = cellIndex;
+  FILTER_MENU_STATE.rowKey = String(row.dataset.filterMenuRow || "");
+  FILTER_MENU_STATE.cellKey = String(cell?.dataset?.filterMenuCell || "");
+  const valueKind =
+    row.dataset.filterMenuKind === "filter" ||
+    row.dataset.filterMenuKind === "animated";
+  FILTER_MENU_STATE.editingValue = !!(
+    FILTER_MENU_STATE.editingValue &&
+    valueKind &&
+    FILTER_MENU_STATE.cellKey === "value"
+  );
+  menu.querySelectorAll(".filterMenuRowActive").forEach((el) =>
+    el.classList.remove("filterMenuRowActive"),
+  );
+  menu.querySelectorAll(".filterMenuCellActive").forEach((el) =>
+    el.classList.remove("filterMenuCellActive", "filterMenuValueEditing"),
+  );
+  row.classList.add("filterMenuRowActive");
+  cell?.classList.add("filterMenuCellActive");
+  if (FILTER_MENU_STATE.editingValue)
+    cell?.classList.add("filterMenuValueEditing");
+  try {
+    row.scrollIntoView({ block: "nearest" });
+  } catch {}
+}
+
+function focusFilterMenuRenameInput() {
+  if (!FILTER_MENU_STATE?.renamingPresetId) return;
+  requestAnimationFrame(() => {
+    const input = filterActionMenuEl?.querySelector?.(
+      ".filterMenuRenameInput",
+    );
+    if (!input) return;
+    try {
+      input.focus();
+      input.select();
+    } catch {}
+  });
+}
+
+function buildFilterMenuItems() {
+  const title = document.createElement("div");
+  title.className = "dropdownMenuTitle";
+  title.setAttribute("aria-hidden", "true");
+  title.textContent = "Filter menu";
+  const items = [title, filterMenuSectionLabel("Presets")];
+  getAppearancePresetCycleList().forEach((preset) => {
+    const row = buildFilterMenuPresetRow(preset);
+    if (row) items.push(row);
+  });
+  const createRow = filterMenuFlatRow("preset-create", "create");
+  createRow.appendChild(
+    filterMenuFlatCell("Create new preset", "create", filterMenuCreatePreset, {
+      primary: true,
+    }),
+  );
+  items.push(createRow, filterMenuSectionLabel("Filters"));
+  FILTER_MENU_COLOR_CONTROLS.concat(FILTER_MENU_EFFECT_CONTROLS).forEach(
+    (control) => items.push(buildFilterMenuControlRow(control)),
+  );
+  items.push(buildFilterMenuAnimatedRow());
+  return items;
+}
+
+function refreshFilterMenuContents() {
+  const menu = filterActionMenuEl;
+  if (!menu || !FILTER_MENU_STATE || !menu.classList.contains("open")) return;
+  menu.innerHTML = "";
+  buildFilterMenuItems().forEach((item) => menu.appendChild(item));
+  applyFilterMenuKeyboardSelection(menu);
+  positionActionMenuInPreviewDock(menu);
+  focusFilterMenuRenameInput();
+}
+
+function openFilterMenu() {
+  allowMenuClose();
+  if (!filterActionMenuEl || !WS.root || VIEWER_MODE) return false;
+  if (filterActionMenuEl.classList.contains("open")) {
+    closeFilterMenu();
+    return true;
+  }
+  closeActionMenus();
+  const menu = filterActionMenuEl;
+  menu.innerHTML = "";
+  buildFilterMenuItems().forEach((item) => menu.appendChild(item));
+  const openState = {
+    rowIndex: 0,
+    cellIndex: 0,
+    rowKey: "",
+    cellKey: "",
+    editingValue: false,
+    confirmDeletePresetId: "",
+    renamingPresetId: "",
+    renameDraft: "",
+  };
+  FILTER_MENU_STATE = openState;
+  requestAnimationFrame(() => {
+    if (FILTER_MENU_STATE !== openState) return;
+    menu.classList.add("open");
+    positionActionMenuInPreviewDock(menu);
+    applyFilterMenuKeyboardSelection(menu);
+  });
+  return true;
+}
+
+function currentFilterMenuRowAndCells() {
+  if (!FILTER_MENU_STATE) return { row: null, cells: [], cell: null };
+  const rows = filterMenuRows();
+  const row =
+    rows.find(
+      (candidate) =>
+        candidate.dataset.filterMenuRow === FILTER_MENU_STATE.rowKey,
+    ) || rows[FILTER_MENU_STATE.rowIndex] || null;
+  const cells = filterMenuCells(row);
+  const cell =
+    cells.find(
+      (candidate) =>
+        candidate.dataset.filterMenuCell === FILTER_MENU_STATE.cellKey,
+    ) || cells[FILTER_MENU_STATE.cellIndex] || null;
+  return { row, cells, cell };
+}
+
+function moveFilterMenuRow(direction) {
+  if (!FILTER_MENU_STATE) return false;
+  const rows = filterMenuRows();
+  if (!rows.length) return false;
+  const current = currentFilterMenuRowAndCells();
+  const currentIndex = Math.max(0, rows.indexOf(current.row));
+  const nextIndex =
+    (currentIndex + (direction < 0 ? -1 : 1) + rows.length) % rows.length;
+  const nextRow = rows[nextIndex];
+  const nextCells = filterMenuCells(nextRow);
+  const nextKind = String(nextRow.dataset.filterMenuKind || "");
+  const keepColumn = nextKind === "preset";
+  const nextCellIndex = keepColumn
+    ? Math.min(FILTER_MENU_STATE.cellIndex, nextCells.length - 1)
+    : 0;
+  FILTER_MENU_STATE.rowIndex = nextIndex;
+  FILTER_MENU_STATE.cellIndex = Math.max(0, nextCellIndex);
+  FILTER_MENU_STATE.rowKey = String(nextRow.dataset.filterMenuRow || "");
+  FILTER_MENU_STATE.cellKey = String(
+    nextCells[FILTER_MENU_STATE.cellIndex]?.dataset?.filterMenuCell || "",
+  );
+  FILTER_MENU_STATE.editingValue = false;
+  const canceledDelete = !!FILTER_MENU_STATE.confirmDeletePresetId;
+  FILTER_MENU_STATE.confirmDeletePresetId = "";
+  if (canceledDelete) refreshFilterMenuContents();
+  else applyFilterMenuKeyboardSelection();
+  return true;
+}
+
+function moveFilterMenuColumn(direction) {
+  if (!FILTER_MENU_STATE) return false;
+  const { row, cells, cell } = currentFilterMenuRowAndCells();
+  if (!row || !cells.length) return false;
+  const kind = String(row.dataset.filterMenuKind || "");
+  const currentIndex = Math.max(0, cells.indexOf(cell));
+  if (kind === "filter" || kind === "animated") {
+    if (direction > 0 && currentIndex === 0) {
+      FILTER_MENU_STATE.cellIndex = Math.min(1, cells.length - 1);
+      FILTER_MENU_STATE.cellKey = String(
+        cells[FILTER_MENU_STATE.cellIndex]?.dataset?.filterMenuCell || "",
+      );
+      FILTER_MENU_STATE.editingValue = true;
+      applyFilterMenuKeyboardSelection();
+      return true;
+    }
+    if (direction < 0 && currentIndex > 0) {
+      FILTER_MENU_STATE.cellIndex = 0;
+      FILTER_MENU_STATE.cellKey = String(
+        cells[0]?.dataset?.filterMenuCell || "",
+      );
+      FILTER_MENU_STATE.editingValue = false;
+      applyFilterMenuKeyboardSelection();
+      return true;
+    }
+    return false;
+  }
+  const nextIndex = Math.min(
+    cells.length - 1,
+    Math.max(0, currentIndex + (direction < 0 ? -1 : 1)),
+  );
+  if (nextIndex === currentIndex) return false;
+  FILTER_MENU_STATE.cellIndex = nextIndex;
+  FILTER_MENU_STATE.cellKey = String(
+    cells[nextIndex]?.dataset?.filterMenuCell || "",
+  );
+  FILTER_MENU_STATE.editingValue = false;
+  const leavingDelete =
+    !!FILTER_MENU_STATE.confirmDeletePresetId &&
+    FILTER_MENU_STATE.cellKey !== "delete";
+  if (leavingDelete) {
+    FILTER_MENU_STATE.confirmDeletePresetId = "";
+    refreshFilterMenuContents();
+  } else {
+    applyFilterMenuKeyboardSelection();
+  }
+  return true;
+}
+
+function stepFilterMenuEditedValue(direction) {
+  if (!FILTER_MENU_STATE?.editingValue) return false;
+  const { row } = currentFilterMenuRowAndCells();
+  if (!row) return false;
+  const kind = String(row.dataset.filterMenuKind || "");
+  if (kind === "filter") {
+    const key = String(row.dataset.filterControlKey || "");
+    const control = FILTER_MENU_COLOR_CONTROLS.concat(
+      FILTER_MENU_EFFECT_CONTROLS,
+    ).find((candidate) => candidate.key === key);
+    if (!control) return false;
+    adjustFilterMenuControl(control, direction);
+    refreshFilterMenuContents();
+    return true;
+  }
+  if (kind === "animated") {
+    const current = normalizeAnimatedMediaFiltersValue(
+      WS.meta?.options?.animatedMediaFilters,
+      "on",
+    );
+    const currentIndex = Math.max(
+      0,
+      FILTER_MENU_ANIMATED_OPTIONS.findIndex(
+        (option) => option.value === current,
+      ),
+    );
+    const nextIndex =
+      (currentIndex +
+        (direction < 0 ? -1 : 1) +
+        FILTER_MENU_ANIMATED_OPTIONS.length) %
+      FILTER_MENU_ANIMATED_OPTIONS.length;
+    setFilterMenuAnimatedMode(FILTER_MENU_ANIMATED_OPTIONS[nextIndex].value);
+    refreshFilterMenuContents();
+    return true;
+  }
+  return false;
+}
+
+function activateFilterMenuCell() {
+  if (!FILTER_MENU_STATE) return false;
+  const { row, cell } = currentFilterMenuRowAndCells();
+  if (!row || !cell) return false;
+  const kind = String(row.dataset.filterMenuKind || "");
+  if (kind === "filter" || kind === "animated") return false;
+  cell.click();
+  return true;
+}
+
+function handleFilterMenuKeyboardAction(action, event) {
+  if (!FILTER_MENU_STATE || !filterActionMenuEl?.classList.contains("open"))
+    return false;
+  switch (action) {
+    case "selectUp":
+      if (FILTER_MENU_STATE.editingValue)
+        return stepFilterMenuEditedValue(1);
+      return moveFilterMenuRow(-1);
+    case "selectDown":
+      if (FILTER_MENU_STATE.editingValue)
+        return stepFilterMenuEditedValue(-1);
+      return moveFilterMenuRow(1);
+    case "selectRight":
+      return moveFilterMenuColumn(1);
+    case "selectLeft":
+      return moveFilterMenuColumn(-1);
+    case "enterDir":
+      if (event?.repeat) return true;
+      return activateFilterMenuCell();
+    case "openAppMenu":
+      if (event?.repeat) return true;
+      openAppMenuForSelectionKeybindAction();
+      return true;
+    case "openFilterMenu":
+    case "leaveDir":
+      if (event?.repeat) return true;
+      closeNumberedMenuFromKeyboard(filterActionMenuEl);
+      return true;
+    default:
+      return true;
+  }
 }
 
 function ensureScoreHistoryDayMenuEl() {
@@ -44923,13 +45811,16 @@ const SUBMENU_CHEVRON_SVG =
 
 const MAX_NUMBERED_ITEM_MENU_OPTIONS = 10;
 
-// The unified app menu is navigation-only. It deliberately keeps the older
-// menu helpers for cursor movement and submenu traversal, but does not expose
-// number labels, digit activation, or ten-option pagination.
-let BUILDING_NAVIGATION_ONLY_APP_MENU = false;
+// The app and filter menus are navigation-only. They deliberately keep the
+// older menu helpers for cursor movement and submenu traversal, but do not
+// expose number labels, digit activation, or ten-option pagination.
+let BUILDING_NAVIGATION_ONLY_ACTION_MENU = false;
 
-function isNavigationOnlyAppMenu(menu) {
-  return !!menu && menu.id === "appActionMenu";
+function isNavigationOnlyActionMenu(menu) {
+  return !!(
+    menu &&
+    (menu.id === "appActionMenu" || menu.id === "filterActionMenu")
+  );
 }
 
 function isNumberedItemMenu(menu) {
@@ -44940,7 +45831,8 @@ function isNumberedItemMenu(menu) {
     menu.id === "directoriesActionMenu" ||
     menu.id === "tagActionMenu" ||
     menu.id === "previewActionMenu" ||
-    menu.id === "appActionMenu"
+    menu.id === "appActionMenu" ||
+    menu.id === "filterActionMenu"
   )
     return true;
   return !!menu.closest?.(".dirMenu");
@@ -44993,7 +45885,7 @@ function decorateNumberedMenuPanel(panel) {
 
 function decorateNumberedMenuOptions(menu) {
   if (!isNumberedItemMenu(menu)) return;
-  if (isNavigationOnlyAppMenu(menu)) {
+  if (isNavigationOnlyActionMenu(menu)) {
     menu.querySelectorAll(".dropdownMenuNum").forEach((el) => el.remove());
     menu.querySelectorAll("[data-menu-number]").forEach((option) => {
       option.removeAttribute("data-menu-number");
@@ -45122,6 +46014,11 @@ function menuOptionLabelText(btn) {
     .replace(/^[●○]\s*/, "");
 }
 
+function menuOptionStateKey(btn) {
+  const explicit = String(btn?.dataset?.menuStateKey || "");
+  return explicit || menuOptionLabelText(btn);
+}
+
 function activeNumberedMenuPanel(menu) {
   return deepestOpenNumberedSubmenuPanel(menu) || menu;
 }
@@ -45197,13 +46094,13 @@ function captureNumberedMenuKeyState(menu) {
       ":scope > .dropdownMenuSubmenuPanel",
     );
     if (!trigger || !nextPanel) break;
-    path.push(menuOptionLabelText(trigger));
+    path.push(menuOptionStateKey(trigger));
     panel = nextPanel;
   }
   const active = highlightedMenuOption(menu);
   return {
     path,
-    activeLabel: active ? menuOptionLabelText(active) : "",
+    activeLabel: active ? menuOptionStateKey(active) : "",
     activeIndex: active ? numberedMenuOptionsForPanel(panel).indexOf(active) : -1,
   };
 }
@@ -45215,7 +46112,7 @@ function applyNumberedMenuKeyState(menu, state) {
     const trigger = numberedMenuOptionsForPanel(panel).find(
       (btn) =>
         btn.classList.contains("dropdownMenuSubmenuTrigger") &&
-        menuOptionLabelText(btn) === label,
+        menuOptionStateKey(btn) === label,
     );
     if (!trigger) break;
     openDropdownSubmenuForTrigger(trigger);
@@ -45229,7 +46126,7 @@ function applyNumberedMenuKeyState(menu, state) {
   // "Rotate thumbnail"), or drop out of the menu entirely — fall back to the
   // same slot so the cursor never silently vanishes.
   const target =
-    options.find((btn) => menuOptionLabelText(btn) === state.activeLabel) ||
+    options.find((btn) => menuOptionStateKey(btn) === state.activeLabel) ||
     options[Math.min(Math.max(state.activeIndex ?? -1, 0), options.length - 1)];
   if (target) setMenuHighlight(menu, target);
 }
@@ -45279,6 +46176,7 @@ document.addEventListener(
     if (!btn) return;
     const menu = rootNumberedMenuFor(btn);
     if (!menu || !menu.classList.contains("open")) return;
+    if (menu.id === "filterActionMenu") return;
     if (btn.classList.contains("dropdownMenuSubmenuTrigger")) return;
     if (btn.disabled) return;
     if (!isStickyItemMenuAction(btn.getAttribute("data-action") || "keep")) {
@@ -45388,6 +46286,11 @@ document.addEventListener(
     const key = keybindValueFromEvent(e);
     const action = key ? keybindActionFor(key) : "";
 
+    if (menu.id === "filterActionMenu") {
+      handleFilterMenuKeyboardAction(action, e);
+      return;
+    }
+
     switch (action) {
       case "selectUp":
         moveMenuHighlight(menu, -1);
@@ -45402,12 +46305,28 @@ document.addEventListener(
         // Step back out one level; from the top level this leaves the menu.
         collapseOrCloseNumberedMenu(menu);
         return;
-      // The key that opened the menu doubles as an activate key once it is
-      // open, so either that or the open-folder key works.
+      // The app-menu key retains its older activate behavior while that menu is
+      // open. The filter menu uses the regular open-folder action to activate;
+      // pressing its own toggle again closes it.
       case "enterDir":
-      case "openAppMenu":
         if (e.repeat) return;
         activateNumberedMenuOption(menu, highlightedMenuOption(menu));
+        return;
+      case "openAppMenu":
+        if (e.repeat) return;
+        if (menu.id === "filterActionMenu") {
+          openAppMenuForSelectionKeybindAction();
+          return;
+        }
+        activateNumberedMenuOption(menu, highlightedMenuOption(menu));
+        return;
+      case "openFilterMenu":
+        if (e.repeat) return;
+        if (menu.id === "filterActionMenu") {
+          closeNumberedMenuFromKeyboard(menu);
+          return;
+        }
+        openFilterMenu();
         return;
       case "leaveDir":
         closeNumberedMenuFromKeyboard(menu);
@@ -45416,8 +46335,8 @@ document.addEventListener(
         break;
     }
 
-    // The app menu is intentionally driven only by the navigation actions.
-    if (isNavigationOnlyAppMenu(menu)) return;
+    // The app and filter menus are driven only by navigation actions.
+    if (isNavigationOnlyActionMenu(menu)) return;
 
     // Other legacy context menus retain their number shortcuts.
     const digit = /^[0-9]$/.test(String(e.key || "")) ? String(e.key) : "";
@@ -45435,7 +46354,7 @@ function createDropdownMenuSubmenu(label, items, iconKey = "") {
   const buttons = Array.isArray(items) ? items.filter(Boolean) : [];
   if (!buttons.length) return null;
   const panelItems =
-    !BUILDING_NAVIGATION_ONLY_APP_MENU &&
+    !BUILDING_NAVIGATION_ONLY_ACTION_MENU &&
     buttons.length > MAX_NUMBERED_ITEM_MENU_OPTIONS
       ? buttons
           .slice(0, MAX_NUMBERED_ITEM_MENU_OPTIONS - 1)
@@ -45544,7 +46463,7 @@ function buildPaginatedDropdownMenuSubmenuHtml(label, itemHtmlList) {
   const items = Array.isArray(itemHtmlList) ? itemHtmlList.filter(Boolean) : [];
   if (!items.length) return "";
   const panelItems =
-    !BUILDING_NAVIGATION_ONLY_APP_MENU &&
+    !BUILDING_NAVIGATION_ONLY_ACTION_MENU &&
     items.length > MAX_NUMBERED_ITEM_MENU_OPTIONS
       ? items
           .slice(0, MAX_NUMBERED_ITEM_MENU_OPTIONS - 1)
@@ -50362,6 +51281,12 @@ document.addEventListener("click", async (e) => {
     }
     closeAppMenu();
   }
+  if (FILTER_MENU_STATE) {
+    if (target && target.closest && target.closest("#filterActionMenu")) {
+      return;
+    }
+    closeFilterMenu();
+  }
   if (TAG_CONTEXT_MENU_STATE) {
     const anchor = TAG_CONTEXT_MENU_STATE.anchor || null;
     if (target && target.closest && target.closest("#tagActionMenu")) {
@@ -50476,7 +51401,11 @@ document.addEventListener("click", async (e) => {
   const hasAppMenu = !!(
     appActionMenuEl && appActionMenuEl.classList.contains("open")
   );
-  if (!hasActionMenu && !hasPreviewMenu && !hasAppMenu) return;
+  const hasFilterMenu = !!(
+    filterActionMenuEl && filterActionMenuEl.classList.contains("open")
+  );
+  if (!hasActionMenu && !hasPreviewMenu && !hasAppMenu && !hasFilterMenu)
+    return;
   if (target && target.closest) {
     if (target.closest(".dirMenu")) return;
   }
@@ -60995,6 +61924,8 @@ function handleSelectionKeybindAction(action) {
       return cancelMultiSelectionKeybindAction();
     case "openAppMenu":
       return openAppMenuForSelectionKeybindAction();
+    case "openFilterMenu":
+      return openFilterMenu();
     default:
       return false;
   }
