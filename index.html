@@ -9314,6 +9314,7 @@ function defaultOptions() {
     filmCornerOverlayEnabled: true,
     filmCornerOverlayIntensity: null,
     colorScheme: "retro",
+    lightMode: false,
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     thumbnailSize: "medium",
@@ -9527,6 +9528,8 @@ function normalizeOptions(o) {
         : d.thumbnailStyle
     : "cropped";
   const colorScheme = "retro";
+  const lightMode =
+    typeof src.lightMode === "boolean" ? src.lightMode : d.lightMode;
   const videoAudioRaw = String(
     src.videoAudio ?? src.videoGallery ?? src.videoPreview ?? "",
   )
@@ -9725,6 +9728,7 @@ function normalizeOptions(o) {
     // Slideshow always cycles through speeds; the dropdown was removed.
     slideshowDefault: "cycle",
     colorScheme,
+    lightMode,
     menuPaneWidthPx: (function () {
       const v = parseFloat(src.menuPaneWidthPx);
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
@@ -14470,9 +14474,11 @@ function applyDefaultViewFromOptions() {
 function applyColorSchemeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
-  // The app ships a single fixed look (warm, dim, legible). The light/dark
-  // toggle was removed; "retro90s-dark" is the one and only theme.
-  root.setAttribute("data-theme", "retro90s-dark");
+  // Two fixed looks: the dark slate default ("retro90s-dark") and the warm
+  // cream light theme ("retro90s"), flipped by the lightMode option (cycled
+  // from the app menu's Basics section).
+  const lightMode = !!WS.meta?.options?.lightMode;
+  root.setAttribute("data-theme", lightMode ? "retro90s" : "retro90s-dark");
   root.setAttribute("data-retro", "off");
 }
 
@@ -43754,6 +43760,25 @@ function setAppMenuAnimatedFilters(value) {
   return true;
 }
 
+function setAppMenuLightMode(enabled) {
+  if (!WS.meta) return false;
+  WS.meta.options = normalizeOptions(
+    Object.assign({}, WS.meta.options || {}, { lightMode: !!enabled }),
+  );
+  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(["lightMode"]));
+  applyColorSchemeFromOptions();
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(`Theme: ${enabled ? "Light" : "Dark"}`);
+  return true;
+}
+
+function buildAppMenuThemeButton() {
+  const light = !!WS.meta?.options?.lightMode;
+  return appMenuChoiceButton(`Theme: ${light ? "Light" : "Dark"}`, () =>
+    setAppMenuLightMode(!light),
+  );
+}
+
 function buildAppMenuSortButton() {
   const current = normalizeDirSortMode(WS.meta?.dirSortMode);
   return appMenuChoiceButton(
@@ -43984,6 +44009,7 @@ function buildAppMenuBasicsSubmenu() {
       () => handleExtrasKeybindAction("toggleFloatTags"),
       !!options.showTagFolderSpacerRow,
     ),
+    buildAppMenuThemeButton(),
   ]);
 }
 
