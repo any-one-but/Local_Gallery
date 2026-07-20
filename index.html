@@ -2319,15 +2319,6 @@ img[data-rotate-key].rotatingThumbFade {
   z-index: 20001;
 }
 
-/* The app menu has no numbered-page size limit. Long root and flyout panels
-   stay as one navigation list and scroll inside the viewport instead. */
-#appActionMenu,
-#appActionMenu .dropdownMenuSubmenuPanel {
-  max-height: calc(100vh - 16px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
 .dropdownMenu .dropdownMenuSubmenu:hover > .dropdownMenuSubmenuPanel,
 .dropdownMenu .dropdownMenuSubmenu:focus-within > .dropdownMenuSubmenuPanel,
 .dropdownMenu .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuPanel {
