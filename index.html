@@ -2334,6 +2334,28 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
 }
 
+.dropdownMenu .dropdownMenuItemInfoHeader {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 240px;
+  box-sizing: border-box;
+  padding: 5px 7px 10px;
+  margin-bottom: 6px;
+  gap: 5px;
+  border-bottom: 1px solid var(--ui-control-bg);
+  white-space: normal;
+  color: var(--color0-primary);
+  pointer-events: none;
+  user-select: none;
+}
+
+.dropdownMenuItemInfoHeaderTitle {
+  margin-bottom: 1px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .dropdownMenuItemInfoRow {
   display: grid;
   grid-template-columns: minmax(58px, auto) minmax(0, 1fr);
@@ -8408,11 +8430,14 @@ function displayName(name) {
 }
 
 function displayTagFolderLabel(name) {
-  return String(name || "");
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  let out = String(name || "");
+  if (opt && opt.forceTitleCaps) out = toTitleCaps(out);
+  return out;
 }
 
-// Title-cases a string. Used for generated type/special labels only -- display
-// names are shown verbatim (the old forceTitleCaps option was removed).
+// Title-cases a generated label or, when Force title caps is enabled, a
+// displayed item name.
 function toTitleCaps(str) {
   return String(str || "").replace(/\w\S*/g, (txt) => {
     return txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase();
@@ -8440,6 +8465,7 @@ function applyDisplayNameRules(name, opt, ctx = null) {
     const idx = out.indexOf("_");
     if (idx >= 0) out = out.slice(0, idx);
   }
+  if (opt && opt.forceTitleCaps) out = toTitleCaps(out);
   return out;
 }
 
@@ -9288,6 +9314,7 @@ function defaultOptions() {
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
     thumbnailLoading: false,
+    forceTitleCaps: true,
     showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
     hideFileExtensionsInFileNames: true,
@@ -9744,6 +9771,10 @@ function normalizeOptions(o) {
     thumbnailLoading: false,
     imageThumbSize: "placeholder",
     videoThumbSize: "placeholder",
+    forceTitleCaps:
+      typeof src.forceTitleCaps === "boolean"
+        ? src.forceTitleCaps
+        : d.forceTitleCaps,
     showPositionNumbersInNames:
       typeof src.showPositionNumbersInNames === "boolean"
         ? src.showPositionNumbersInNames
@@ -10237,6 +10268,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     ].concat(thumbnailVisibilityOptionKeys()),
   ),
   filenames: Object.freeze([
+    "forceTitleCaps",
     "showPositionNumbersInNames",
     "showTagFolderSpacerRow",
     "hideFileExtensionsInFileNames",
@@ -15653,7 +15685,7 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "cycleFilter",
   "slideshow",
   "cycleFolderSort",
-  "toggleShowHiddenFolder",
+  // Reveal hidden items remains directly bindable even in menu-only mode.
   "toggleShowTrashFolder",
   "toggleShowUntaggedFolder",
   "toggleShowStorageFolder",
@@ -21892,9 +21924,8 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     return raw === "loop" || raw === "next" || raw === "stop" ? raw : "loop";
   });
   bindCheck("opt_showTagFolderSpacerRow", "showTagFolderSpacerRow");
-  // Filename display transforms (Title Case, position numbers, trim before last
-  // dash) are exposed as bindable control actions only — see the "filenames"
-  // KEYBIND_ACTIONS and handleExtrasKeybindAction.
+  // Filename display transforms are controlled from the app menu; the legacy
+  // settings-pane controls remain intentionally absent.
   bindActionBtn("opt_appearancePresetPromptConfirm", () => {
     const presetName = readAppearancePresetPromptInput();
     const promptMode = String(
@@ -43621,16 +43652,16 @@ function buildAppMenuMediaFilterButton() {
 
 function buildAppMenuRandomSubmenu() {
   const weight = String(WS.meta?.options?.weightRandomJumpsByScore || "off");
-  const weightSubmenu = createDropdownMenuSubmenu(
-    "Jump weighting",
-    WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.map((option) =>
-      appMenuChoiceButton(
-        option.label,
-        () => setAppMenuRandomJumpWeight(option.value),
-        option.value === weight,
-      ),
-    ),
+  const weightIndex = WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.findIndex(
+    (option) => option.value === weight,
   );
+  const currentWeight =
+    WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE[weightIndex >= 0 ? weightIndex : 0];
+  const nextWeight =
+    WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE[
+      (weightIndex >= 0 ? weightIndex + 1 : 1) %
+        WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.length
+    ];
   return createDropdownMenuSubmenu("Random actions", [
     appMenuChoiceButton(
       "Random set jump",
@@ -43654,7 +43685,10 @@ function buildAppMenuRandomSubmenu() {
       () => runAppMenuRandomAction("toggleRandomFolderSort"),
       !!WS.view?.randomFolderMode,
     ),
-    weightSubmenu,
+    appMenuChoiceButton(
+      `Jump weighting: ${currentWeight.label}`,
+      () => setAppMenuRandomJumpWeight(nextWeight.value),
+    ),
   ]);
 }
 
@@ -43707,27 +43741,19 @@ function buildAppMenuRevealSubmenu() {
 }
 
 function buildAppMenuAppearanceSubmenu() {
-  const current = effectiveActiveAppearancePresetId();
-  const presets = Array.isArray(WS.meta?.appearancePresets)
-    ? WS.meta.appearancePresets
-    : defaultAppearancePresets();
-  const buttons = presets
-    .map((preset) => {
-      const presetId = normalizeAppearancePresetIdValue(preset?.id);
-      if (!presetId) return null;
-      return appMenuChoiceButton(
-        String(preset.name || "Preset"),
-        () => {
-          if (!applyAppearancePresetById(presetId)) return;
-          showStatusMessage(
-            `Appearance preset: ${appearancePresetDisplayName(presetId, "Default")}`,
-          );
-        },
-        presetId === current,
-      );
-    })
-    .filter(Boolean);
-  return createDropdownMenuSubmenu("Appearance filter", buttons);
+  const options = WS.meta?.options || {};
+  return createDropdownMenuSubmenu("Appearance filter", [
+    appMenuChoiceButton(
+      `Preset: ${currentAppearanceStatusLabel(options)}`,
+      cycleAppearancePresetKeybindAction,
+    ),
+    buildAppMenuChoiceSubmenu(
+      "Animated filters",
+      ANIMATED_FILTER_CYCLE,
+      normalizeAnimatedMediaFiltersValue(options.animatedMediaFilters, "on"),
+      setAppMenuAnimatedFilters,
+    ),
+  ]);
 }
 
 function buildAppMenuThumbnailKindSubmenu(label, kinds, iconKey) {
@@ -43770,6 +43796,7 @@ function buildAppMenuThumbnailsSubmenu() {
       thumbnailSize,
       setAppMenuThumbnailSize,
     ),
+    buildAppMenuFilenameSubmenu(),
     buildAppMenuThumbnailKindSubmenu("Files", "file", "file"),
     buildAppMenuThumbnailKindSubmenu(
       "Folders",
@@ -43780,17 +43807,32 @@ function buildAppMenuThumbnailsSubmenu() {
   ]);
 }
 
+function buildAppMenuVideoSettingsSubmenu(options = null) {
+  const current = options || WS.meta?.options || {};
+  return createDropdownMenuSubmenu("Video settings", [
+    buildAppMenuChoiceSubmenu(
+      "Video skip seconds",
+      VIDEO_SKIP_STEP_CYCLE,
+      String(current.videoSkipStep || "5"),
+      setAppMenuVideoSkipStep,
+    ),
+    buildAppMenuChoiceSubmenu(
+      "Video end behavior",
+      VIDEO_END_BEHAVIOR_CYCLE,
+      String(current.videoEndBehavior || "loop"),
+      setAppMenuVideoEndBehavior,
+    ),
+  ]);
+}
+
 function buildAppMenuMiscSubmenu() {
   const options = WS.meta?.options || {};
-  return createDropdownMenuSubmenu("Misc", [
+  return createDropdownMenuSubmenu("Miscellaneous", [
     appMenuChoiceButton(
       "Quick navigation",
       () => handleExtrasKeybindAction("toggleQuickNavigation"),
       quickNavigationEnabled(),
     ),
-    buildAppMenuRandomSubmenu(),
-    buildAppMenuSlideshowButton(),
-    buildAppMenuFileNameSubmenu(),
     appMenuChoiceButton(
       "Mute messages",
       () => handleExtrasKeybindAction("toggleMuteMessages"),
@@ -43806,31 +43848,21 @@ function buildAppMenuMiscSubmenu() {
       () => handleExtrasKeybindAction("toggleFloatTags"),
       !!options.showTagFolderSpacerRow,
     ),
+    buildAppMenuSlideshowButton(),
+    buildAppMenuRandomSubmenu(),
     buildAppMenuThumbnailsSubmenu(),
-    buildAppMenuChoiceSubmenu(
-      "Video skip seconds",
-      VIDEO_SKIP_STEP_CYCLE,
-      String(options.videoSkipStep || "5"),
-      setAppMenuVideoSkipStep,
-    ),
-    buildAppMenuChoiceSubmenu(
-      "Video end behavior",
-      VIDEO_END_BEHAVIOR_CYCLE,
-      String(options.videoEndBehavior || "loop"),
-      setAppMenuVideoEndBehavior,
-    ),
-    buildAppMenuChoiceSubmenu(
-      "Animated filters",
-      ANIMATED_FILTER_CYCLE,
-      normalizeAnimatedMediaFiltersValue(options.animatedMediaFilters, "on"),
-      setAppMenuAnimatedFilters,
-    ),
+    buildAppMenuVideoSettingsSubmenu(options),
   ]);
 }
 
-function buildAppMenuFileNameSubmenu() {
+function buildAppMenuFilenameSubmenu() {
   const options = WS.meta?.options || {};
-  return createDropdownMenuSubmenu("File Name", [
+  return createDropdownMenuSubmenu("Filename", [
+    appMenuChoiceButton(
+      "Force title caps",
+      () => handleExtrasKeybindAction("toggleForceTitleCaps"),
+      !!options.forceTitleCaps,
+    ),
     appMenuChoiceButton(
       "Position number prefixes",
       () => handleExtrasKeybindAction("toggleShowPositionNumbers"),
@@ -44062,6 +44094,7 @@ function buildSelectedItemMenuSubmenu(summary) {
     }
   }
 
+  promoteItemInfoDropdownToHeader(host);
   const items = Array.from(host.children);
   items.forEach((el) => host.removeChild(el));
   return createDropdownMenuSubmenu(summary.label, items);
@@ -45450,6 +45483,33 @@ function createItemInfoDropdown(target) {
   wrap.appendChild(trigger);
   wrap.appendChild(panel);
   return wrap;
+}
+
+// Inside the app menu's Selected Item submenu, Item Info is always visible as
+// a passive header. Moving the already-rendered rows keeps the standalone item
+// menu's flyout intact while ensuring keyboard navigation starts at the first
+// real action below the header.
+function promoteItemInfoDropdownToHeader(menuEl) {
+  if (!menuEl) return null;
+  const infoDropdown = Array.from(menuEl.children || []).find((child) =>
+    child.classList?.contains("dropdownMenuItemInfo"),
+  );
+  const infoCard = infoDropdown?.querySelector?.(
+    ":scope > .dropdownMenuItemInfoCard",
+  );
+  if (!infoDropdown || !infoCard) return null;
+
+  const header = document.createElement("section");
+  header.className = "dropdownMenuItemInfoHeader";
+  header.setAttribute("aria-label", "Item Info");
+
+  const title = document.createElement("div");
+  title.className = "dropdownMenuItemInfoHeaderTitle";
+  title.textContent = "Item Info";
+  header.appendChild(title);
+  Array.from(infoCard.children || []).forEach((row) => header.appendChild(row));
+  infoDropdown.replaceWith(header);
+  return header;
 }
 
 function buildItemInfoDropdownHtml(target) {
@@ -59591,6 +59651,13 @@ function handleExtrasKeybindAction(action) {
       const next = toggleOptionValue("quickNavigation");
       refreshLiveSettingsPaneFromKeyboardAction();
       showStatusMessage(`Quick navigation: ${next ? "On" : "Off"}`, "quick-navigation");
+      return true;
+    }
+    case "toggleForceTitleCaps": {
+      const next = toggleOptionValue("forceTitleCaps");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(`Force title caps: ${next ? "On" : "Off"}`);
       return true;
     }
     case "toggleShowPositionNumbers": {
