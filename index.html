@@ -15735,8 +15735,8 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "cycleVideoSkipStep",
   "cycleVideoEndBehavior",
   "toggleAnimatedFilters",
-  // Newly surfaced in the app menu.
-  "toggleGrokWindow",
+  // Newly surfaced in the app menu. toggleGrokWindow is deliberately absent:
+  // Grok has no menu entry, so its keybind is the only way in.
   "refreshWorkspace",
   "toggleShowPositionNumbers",
   "toggleHideBeforeLastDash",
@@ -43958,14 +43958,17 @@ function buildAppMenuVideoSettingsSubmenu(options = null) {
   ]);
 }
 
-function buildAppMenuMiscSubmenu() {
+// The everyday view controls, gathered directly under the selected item.
+function buildAppMenuBasicsSubmenu() {
   const options = WS.meta?.options || {};
-  return createDropdownMenuSubmenu("Miscellaneous", [
+  return createDropdownMenuSubmenu("Basics", [
     appMenuChoiceButton(
       "Quick navigation",
       () => handleExtrasKeybindAction("toggleQuickNavigation"),
       quickNavigationEnabled(),
     ),
+    buildAppMenuSortButton(),
+    buildAppMenuMediaFilterButton(),
     appMenuChoiceButton(
       "Mute messages",
       () => handleExtrasKeybindAction("toggleMuteMessages"),
@@ -43981,6 +43984,12 @@ function buildAppMenuMiscSubmenu() {
       () => handleExtrasKeybindAction("toggleFloatTags"),
       !!options.showTagFolderSpacerRow,
     ),
+  ]);
+}
+
+function buildAppMenuMiscSubmenu() {
+  const options = WS.meta?.options || {};
+  return createDropdownMenuSubmenu("Miscellaneous", [
     buildAppMenuSlideshowButton(),
     buildAppMenuRandomSubmenu(),
     buildAppMenuThumbnailsSubmenu(),
@@ -44258,16 +44267,9 @@ function buildAppMenuItems() {
       buildAppMenuTitleElement(summary),
       // Always first.
       selectedEntry,
-      // Opens something in front of the app, so it closes the menu.
-      appMenuChoiceButton(
-        "Open Grok",
-        () => handleExtrasKeybindAction("toggleGrokWindow"),
-        null,
-        true,
-      ),
+      // Always second.
+      buildAppMenuBasicsSubmenu(),
       buildAppMenuAppearanceSubmenu(),
-      buildAppMenuSortButton(),
-      buildAppMenuMediaFilterButton(),
       buildAppMenuRevealSubmenu(),
       buildAppMenuMiscSubmenu(),
       // Always last.

@@ -15,11 +15,11 @@ npm run release:patch  # Bump patch version, commit, push, and tauri build
 
 Tauri requires Rust + Cargo. The npm tauri:* scripts ensure cargo is on PATH.
 
-No test suite in the JS; `cd src-tauri && cargo test` runs the Rust unit tests (fs + thumbnail generation).
+No test suite in the JS; `cd src-tauri && cargo test` runs the Rust unit tests (there is no workspace Cargo.toml at the repo root): `fs` (scan/rename/import/metadata migration), `grok` (URL and clipboard handling), and `lib` (thumbnail generation, ffmpeg video-timing parsing).
 
 ## Architecture
 
-Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~58k line monolith) lives in the web layer; OS/filesystem/thumbnail work is in native Rust.
+Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line monolith) lives in the web layer; OS/filesystem/thumbnail work is in native Rust.
 
 **Key layers:**
 - `src-tauri/` — the Rust backend crate:
@@ -28,8 +28,9 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~58k line mono
   - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
   - `src/settings.rs` — legacy native Settings-window lifecycle (a second decorated webview loading the same document in settings-only mode, `IS_SETTINGS_WINDOW`). **No longer the primary path:** Settings is now an in-app floating window (see below). This module and its `open_settings_window` / `toggle_settings_window_command` invoke commands are retained but unused by the main flow.
   - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, etc. All heavy work uses spawn_blocking.
+  - `probe_video_timing` (in `lib.rs`) — shells out to ffmpeg and parses duration + frame rate out of its stderr. Backs frame-accurate video thumbnail stepping; see "Thumbnail editing from the keyboard".
   - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
-- `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile) + `__lg` dev helpers (ping, requestThumb, assetUrl) over Tauri invoke.
+- `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile) + `__lg` dev helpers (ping, requestThumb, assetUrl, generateThumbnail, probeVideoTiming) over Tauri invoke.
 - `tauri-fs-shim.js` — injected: overrides `window.showDirectoryPicker` and implements TauriDirHandle / TauriFileHandle / TauriWritable on top of Rust fs commands so the existing handle-based workspace builder runs unchanged. Also grants asset scopes and remembers rootPath for thumbs.
 - `index.html` (root) — the entire application. Two auto-generated inlined blocks (do not hand-edit the delimiters):
   - `<!-- BEGIN: inlined from ./styles.css -->`
@@ -50,7 +51,7 @@ The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web 
 
 ### Core data model (`WS` global)
 
-The `WS` object (defined at line ~14915) is the single global workspace state:
+The `WS` object (`const WS = {`, search for it) is the single global workspace state:
 
 - `WS.root` / `WS.dirByPath` — directory tree. Nodes are `DirNode` objects created by `makeDirNode()`. The tree is built from file handles obtained via the File System Access API.
 - `WS.fileById` — `Map<id, FileRecord>`. Each `FileRecord` holds `{ id, file, name, relPath, dirPath, ext, type, url, thumbUrl, videoThumbUrl, ... }`. Object URLs are created on demand and revoked when the workspace resets.
@@ -88,7 +89,116 @@ The legacy separate-`settings`-WebviewWindow mode (`IS_SETTINGS_WINDOW`) still
 exists in the document but is no longer used; in that mode `#menuOverlay` fills
 the window and metadata document events sync the main/Settings `WS` instances.
 
-`renderPreviewPane()` (line ~46577) is the main re-render entry point for the preview side. The directories/file list side is rebuilt through `rebuildDirectoriesEntries()` and related helpers.
+Settings deliberately does **not** duplicate what the app menu already offers.
+`APP_ITEM_MENU_ACTIONS_ONLY = true` makes those actions menu-only: rows listed in
+`APP_ITEM_MENU_SETTING_CONTROL_IDS` are hidden from the Settings pane, and
+actions in `APP_ITEM_MENU_ACTION_KEYBIND_IDS` are dropped from the Controls tab
+and ignored at runtime by `keybindActionFor()`. Stored option values and binding
+assignments are left untouched, so flipping the flag to `false` restores both
+surfaces. A few actions are intentionally *absent* from that set — favorite
+selection and the random jumps are worth a direct key even though the menu also
+offers them. The Settings window's own Tab shortcut is hard-baked and not
+bindable.
+
+`renderPreviewPane()` is the main re-render entry point for the preview side. The directories/file list side is rebuilt through `rebuildDirectoriesEntries()` and related helpers.
+
+**Gotcha:** because the document is one giant script, several functions are declared more than once (`nudgeSelectedThumbnailViewport` has three declarations — two stubs and the real one). Hoisting means the **last** declaration wins, so when editing a function, `grep -c` for it first and make sure you are changing the one that survives.
+
+### The app menu (the single command surface)
+
+Almost every action and setting is reached through one keyboard-driven menu
+(`#appActionMenu`, built by `buildAppMenuItems()`), opened by the bindable
+`openAppMenu` action. It is positioned over the **first card in the preview
+grid**, deliberately overlapping its corner so no sliver of the card shows
+underneath (`positionActionMenuInPreviewDock`).
+
+**The item menu no longer exists as its own surface.** It is folded in as the
+first section, `Selected Item` / `N Selected Items`. `SEPARATE_ITEM_MENU_ENABLED
+= false` gates every standalone entry point (`openDirMenuForPath`,
+`openFileMenuForId`, `openTagEntryContextMenu`, `openPreviewFolderActionMenu`,
+`openPreviewFileActionMenu`) — the keybind is gone, right-click is inert, and the
+per-item `⋯` button renders only as the score/favorite badge
+(`.thumbMenuBtnInert`; it carries no `disabled` attribute, since that would pull
+in the sheet's disabled-button dimming). The gate checks `!opts.container`, so
+the *same builders* still populate the app menu's section rather than a
+reimplementation that could drift.
+
+Menu order is fixed: title, `Selected Item(s)` **always first**, `Basics`
+**always second**, Appearance filter, Reveal, Miscellaneous, Refresh App
+**always last**. `Basics` holds the everyday view controls (quick navigation,
+sort, media filter, mute messages, full screen media, float tags); Grok has no
+menu entry at all and is reached only through its keybind.
+
+- The bold heading (`.dropdownMenuTitle`) names the selection; it is not a
+  button, so the option walker skips it and it can never take the cursor.
+- `appMenuSelectionTarget()` resolves what the section acts on — the bulk
+  selection when there is one, else the single item the active pane has
+  selected. `selectedItemQuarantineAction()` replaces the whole dropdown with a
+  single `Remove from Trash` / `Remove from Storage` button for an item in
+  either, tested via `trashTopLevelItemPathForPath()` so the Trash root portal
+  (a container, not a removable item) is correctly excluded.
+
+**Keyboard model.** An open menu takes the whole keyboard: the handler runs in
+the capture phase, `preventDefault` + `stopImmediatePropagation`s every key, and
+dispatches only its own actions, so nothing reaches the file tree behind it.
+
+- Navigation uses the **user's own bindings**, not hardcoded keys:
+  `selectUp`/`selectDown` walk options, `selectRight`/`selectLeft` open and close
+  submenus (left at the top level leaves the menu, "back out toward the spine"),
+  `enterDir` **or** `openAppMenu` activates, `leaveDir` closes outright. Escape
+  is a fixed way out if the exit action is unbound.
+- **Arrow keys are reserved for value editing**, never navigation.
+- The first option is selected as soon as the menu opens (`ensureMenuHighlight`),
+  and the cursor is pulled into an open submenu rather than stranded in the
+  parent panel.
+- The app menu is **navigation-only** (`isNavigationOnlyAppMenu`): no number
+  labels, no digit activation, no ten-option `More...` pagination. Legacy
+  context menus still get all three.
+
+**Multi-choice options are cycle buttons, not submenus.** A row reads
+`Label: CurrentValue` and advances on activation — `menuCycleChoiceState` +
+`buildAppMenuCycleButton` (and `createCyclingItemMenuButton`,
+`createAppearancePresetCycleButton`, `createContainerSortCycleButton`,
+`createTagMediaFilterAxisCycleButton` for the legacy menus).
+
+**Changing a setting never closes the menu.** Policing each option handler was
+never going to be complete — several reach `closeActionMenus()` through nested
+and async render paths — so activation opens a suppression window
+(`suppressMenuAutoClose`) during which `closeActionMenus` / `closeAppMenu` /
+`closeTagContextMenu` / `closePreviewContextMenu` all no-op. Only a deliberate
+gesture calls `allowMenuClose()`: the exit key, Escape, stepping left off the top
+level, re-toggling the menu button, clicking outside, or opening a menu. A
+document-level **capture** click listener routes every option through this, so it
+holds for mouse and keyboard alike. Item-menu options stick by default; only
+`MENU_CLOSING_ITEM_ACTIONS` (inline text edits, and actions that remove the item)
+still close.
+
+**Rebuild-safe cursor.** Menus are rebuilt in place to refresh their ●/○ markers.
+`captureNumberedMenuKeyState()` snapshots the open-submenu chain and cursor **by
+label** (with an index fallback, since a toggled option can rename itself), and
+`scheduleNumberedMenuKeyStateRestore()` re-applies it for a few frames because
+the rebuilding render can land late. Any subsequent keypress cancels the pending
+restore — otherwise it yanks the cursor back after the user has moved on.
+
+### Thumbnail editing from the keyboard
+
+Reserved `Cmd`-arrow shortcuts edit the selected item's thumbnail in place
+(`handleThumbnailViewportArrowKey`, which bails while a menu is open, a text
+input is focused, or the crop editor is up):
+
+- `Cmd+↑/↓` — zoom the thumbnail viewport (`zoomSelectedThumbnailViewport`).
+- `Cmd+←/→` — step the **video** thumbnail frame. Images do nothing, but the
+  shortcut is still consumed so it cannot leak into navigation or browser
+  history.
+- Bare arrows nudge the viewport.
+
+Frame stepping is frame-accurate rather than time-based: `getVideoThumbnailTiming`
+resolves duration and frame rate (mounted `<video>` first, else the native
+`probe_video_timing`, else `VIDEO_THUMB_FRAME_RATE_FALLBACK`), cached in
+`VIDEO_THUMB_TIMING_CACHE`. Held keys accelerate via `videoThumbnailFrameRampCount`
+(1 frame, ramping to 72 after ~320ms of hold), and requests are coalesced through
+`drainVideoThumbnailFrameSeekQueue` so a fast hold does not queue hundreds of
+seeks.
 
 ### Tabs
 
