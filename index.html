@@ -4046,6 +4046,16 @@ img[data-rotate-key].rotatingThumbFade {
 .fileCard.dragging {
   opacity: 0.6;
 }
+/* Keyboard grab-to-reorder: the "lifted" file that the selection keys move. */
+.fileCard.previewCardGrabbed {
+  position: relative;
+  z-index: 3;
+  outline: 2px dashed var(--anchor-internal-color2-primary);
+  outline-offset: 2px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transform: scale(1.04);
+  transition: transform 0.08s ease;
+}
 .fileCard.drag-hidden {
   opacity: 0;
   pointer-events: none;
@@ -15866,6 +15876,12 @@ const KEYBIND_ACTIONS = [
     section: "navigation",
   },
   {
+    id: "grabReorderItem",
+    label: "Grab to reorder",
+    hint: "Pick up the selected grid file; the selection keys then move it. Press again (or Esc) to drop.",
+    section: "navigation",
+  },
+  {
     id: "enterDir",
     label: "Open selection",
     hint: "Open the selected item.",
@@ -16301,6 +16317,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   selectDown: "s",
   selectLeft: "a",
   selectRight: "d",
+  grabReorderItem: "",
   leaveDir: "q",
   enterDir: "e",
   prevFolder: "Cmd+w",
@@ -16815,6 +16832,7 @@ function revokeAllObjectURLs() {
 }
 
 function resetWorkspace() {
+  GRAB_REORDER_STATE = null;
   revokeAllObjectURLs();
   resetVideoThumbCacheState();
   THUMBNAIL_URL_RECORD_IDS.clear();
@@ -19741,7 +19759,7 @@ function buildScoreHistoryMonthPageHtml(monthKey, dayMap) {
     totalEvents += count;
     totalDelta += delta;
     const hasScore = !!count;
-    const hasJournal = metaHasDailyJournal(dayKey);
+    const hasJournal = metaDailyJournalHasUserContent(dayKey);
     const heatClass = hasScore ? scoreHistoryHeatClass(delta) : "";
     const deltaShown = delta > 0 ? `+${delta}` : String(delta);
     const titleParts = [
@@ -24087,6 +24105,10 @@ function setBulkTagPlaceholder(
   preferPane = "",
 ) {
   clearBulkTagPlaceholder();
+  // The name input this launches must not be left covered by the app menu it
+  // was invoked from; drop the suppression window and close the menu first.
+  allowMenuClose();
+  closeActionMenus();
   const rawType = String(placeholderType || "tag");
   const type =
     rawType === "album" ||
@@ -24115,21 +24137,28 @@ function setBulkTagPlaceholder(
   }
   if (!unique.length) return false;
   const prefersPreview = String(preferPane || "").toLowerCase() === "preview";
+  // For plain folder tagging, seed the input with the tags every selected item
+  // already shares, so the user can edit or bulk-remove them (not just add).
+  // Commit diffs against this baseline; other placeholder types keep their
+  // plain "new name" prompt.
+  const commonTags = type === "tag" ? commonUserTagsForPaths(unique) : [];
+  const effectiveLabel = commonTags.length ? commonTags.join(", ") : label;
   BULK_TAG_PLACEHOLDER = {
     type,
-    label: label,
+    label: effectiveLabel,
     count: unique.length,
     preferPane: prefersPreview ? "preview" : "directories",
   };
   TAG_ENTRY_RENAME_STATE = {
     tag: "",
-    label,
+    label: effectiveLabel,
     paths: type === "tag" || type === "folderAlbum" ? unique.slice() : [],
     tags: type === "album" ? unique.slice() : [],
     albumTargets: type === "albumTag" ? unique.slice() : [],
     originPath: type === "album" ? String(originPath || "") : "",
     placeholder: true,
     placeholderType: type,
+    commonTags: type === "tag" ? commonTags : undefined,
   };
   rebuildDirectoriesEntries();
   // When tagging from the preview pane, keep the file pane's current selection
@@ -24203,6 +24232,34 @@ function cancelTagEntryRename() {
 function commitTagEntryRename(inputEl) {
   if (!TAG_ENTRY_RENAME_STATE || !inputEl) return;
   const state = TAG_ENTRY_RENAME_STATE;
+  // Bulk folder tagging seeded with the shared tags: commit is a diff against
+  // that baseline. Tags deleted from the field are removed from every selected
+  // item, tags added are added to every item, and each item's own unique tags
+  // are untouched. An empty field is valid here -- it strips the shared tags.
+  if (
+    state.placeholder &&
+    state.placeholderType === "tag" &&
+    Array.isArray(state.commonTags)
+  ) {
+    TAG_ENTRY_RENAME_STATE = null;
+    clearBulkTagPlaceholder();
+    const committed = normalizeTagsFromText(inputEl.value || "");
+    const committedSet = new Set(committed);
+    const baseline = normalizeTagList(state.commonTags);
+    const baselineSet = new Set(baseline);
+    const removed = baseline.filter((t) => !committedSet.has(t));
+    const added = committed.filter((t) => !baselineSet.has(t));
+    const changed = metaApplyBulkUserTagDiff(state.paths, removed, added);
+    if (!changed) {
+      showStatusMessage("No tags updated.");
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      return;
+    }
+    finalizeBulkSelectionAction();
+    return;
+  }
   const desired = normalizeTag(inputEl.value || "");
   if (!desired) {
     showStatusMessage("Tag name cannot be empty.");
@@ -24408,6 +24465,72 @@ function metaAddUserTagsBulk(paths, tagsToAdd) {
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
+}
+
+// The user tags shared by every path in the set (their intersection), used to
+// seed the bulk tag editor so common tags can be removed in one action.
+function commonUserTagsForPaths(paths) {
+  const list = Array.from(
+    new Set((paths || []).map((p) => String(p || "")).filter(Boolean)),
+  );
+  if (!list.length) return [];
+  let common = null;
+  for (let i = 0; i < list.length; i++) {
+    const tags = new Set(metaGetUserTags(list[i]));
+    if (common === null) {
+      common = tags;
+    } else {
+      for (const t of Array.from(common)) if (!tags.has(t)) common.delete(t);
+    }
+    if (!common.size) return [];
+  }
+  return common ? normalizeTagList(Array.from(common)) : [];
+}
+
+// Apply a tag delta to many folders at once: strip `removeTags`, add `addTags`,
+// leaving each folder's reserved tags and its own unique user tags intact.
+function metaApplyBulkUserTagDiff(paths, removeTags, addTags) {
+  const remove = new Set(normalizeTagList(removeTags));
+  const add = normalizeTagList(addTags).filter((t) => !isReservedFolderTag(t));
+  const list = Array.from(
+    new Set((paths || []).map((p) => String(p || "")).filter(Boolean)),
+  );
+  if (!list.length || (!remove.size && !add.length)) return false;
+
+  let changed = false;
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    const existing = metaGetTags(p);
+    const reserved = existing.filter((t) => isReservedFolderTag(t));
+    const curUser = existing.filter((t) => !isReservedFolderTag(t));
+    const nextUser = normalizeTagList(
+      curUser.filter((t) => !remove.has(t)).concat(add),
+    );
+    const merged = normalizeTagList(reserved.concat(nextUser));
+    const before = normalizeTagList(WS.meta.dirTags.get(p) || existing);
+    if (before.length === merged.length && before.every((t, idx) => t === merged[idx]))
+      continue;
+    WS.meta.dirTags.set(p, merged);
+    changed = true;
+  }
+  if (!changed) return false;
+
+  metaMarkDirty(META_DOC_IDS.tags);
+  invalidateDirMetricsCaches();
+  TAG_EDIT_PATH = null;
+  syncFavoritesUi();
+  syncHiddenUi();
+  syncTagUiForCurrentDir();
+  rebuildDirectoriesEntries();
+  WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+  metaScheduleSave();
+  return true;
 }
 
 function metaSetFavoriteBulk(paths, enable) {
@@ -25322,6 +25445,30 @@ function metaSetDailyJournal(dateKey, markdown) {
 
 function metaHasDailyJournal(dateKey) {
   return !!metaGetDailyJournal(dateKey).trim();
+}
+
+// A day whose journal holds only the "## <root>" headings auto-appended when a
+// score changes (with nothing written under them) is not a real journal entry,
+// so it should not earn the calendar's journal dot. Returns true only when some
+// non-blank line survives after those auto-headings are removed. The score-
+// history scan is skipped for the common empty-journal case.
+function metaDailyJournalHasUserContent(dateKey) {
+  const markdown = metaGetDailyJournal(dateKey);
+  if (!markdown.trim()) return false;
+  const autoHeadings = new Set();
+  const rows = getRootScoreHistoryLinesForDateKey(dateKey, true);
+  for (let i = 0; i < rows.length; i++) {
+    const heading = markdownHeadingForRootScoreLine(rows[i]).trim().toLowerCase();
+    if (heading) autoHeadings.add(heading);
+  }
+  const lines = markdown.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = String(lines[i] || "").trim();
+    if (!line) continue;
+    if (autoHeadings.has(line.toLowerCase())) continue;
+    return true;
+  }
+  return false;
 }
 
 function metaGetDailyJournalDateKeys() {
@@ -39113,6 +39260,182 @@ function movePreviewSelectionByDirection(direction) {
   return setPreviewSelectionCard(best.card, { activate: true });
 }
 
+// ---------------------------------------------------------------------------
+// Grab-to-reorder: a keyboard-only port of the drag-drop file rearrange. The
+// bindable `grabReorderItem` action lifts the selected grid file; while lifted,
+// the ordinary selection keys move the file itself (nearest file neighbour in
+// that direction, via the same 2D scoring the cursor uses) instead of moving
+// the cursor. It reuses reorderFilesInDir -- the exact primitive the mouse drag
+// commits -- so ordering, persistence and the reorder guards stay identical.
+// ---------------------------------------------------------------------------
+let GRAB_REORDER_STATE = null;
+
+function grabReorderDirectionForAction(action) {
+  if (action === "selectUp") return "up";
+  if (action === "selectDown") return "down";
+  if (action === "selectLeft") return "left";
+  if (action === "selectRight") return "right";
+  return "";
+}
+
+function clearGrabbedPreviewCardVisual() {
+  if (!previewBodyEl) return;
+  previewBodyEl
+    .querySelectorAll(".previewCardGrabbed")
+    .forEach((el) => el.classList.remove("previewCardGrabbed"));
+}
+
+function markGrabbedPreviewCard() {
+  clearGrabbedPreviewCardVisual();
+  if (!GRAB_REORDER_STATE || !previewBodyEl) return;
+  const cards = getPreviewSelectableCards();
+  for (let i = 0; i < cards.length; i++) {
+    if (
+      String(previewFileIdForCard(cards[i]) || "") === GRAB_REORDER_STATE.fileId
+    ) {
+      cards[i].classList.add("previewCardGrabbed");
+      break;
+    }
+  }
+}
+
+function dropGrabReorder(announce = false) {
+  if (!GRAB_REORDER_STATE) return false;
+  GRAB_REORDER_STATE = null;
+  clearGrabbedPreviewCardVisual();
+  if (announce) showStatusMessage("Dropped.");
+  return true;
+}
+
+function startGrabReorder() {
+  if (!WS.root || VIEWER_MODE) return false;
+  if (WS.preview.kind === "file" && WS.preview.fileId) {
+    showStatusMessage("Grab-to-reorder works in the grid, not on an open file.");
+    return false;
+  }
+  const previewActive =
+    !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
+  if (!previewActive) {
+    showStatusMessage("Select a file in the grid to grab.");
+    return false;
+  }
+  const card = findSelectedPreviewCard();
+  if (!card || String(card.dataset?.previewItemKind || "") !== "file") {
+    showStatusMessage("Select a file to grab.");
+    return false;
+  }
+  const fileId = String(previewFileIdForCard(card) || "");
+  const dirNode = getPreviewTargetDir();
+  if (!fileId || !dirNode || !canReorderFilesInDir(dirNode)) {
+    showStatusMessage("These files can't be reordered here.");
+    return false;
+  }
+  GRAB_REORDER_STATE = { fileId, dirPath: String(dirNode.path || "") };
+  markGrabbedPreviewCard();
+  showStatusMessage("Grabbed — selection keys move it, grab key or Esc drops.");
+  return true;
+}
+
+function toggleGrabReorderKeybindAction() {
+  if (GRAB_REORDER_STATE) return dropGrabReorder(true);
+  return startGrabReorder();
+}
+
+function moveGrabbedPreviewFile(direction) {
+  const st = GRAB_REORDER_STATE;
+  if (!st || !direction) return false;
+  const dirNode = getPreviewTargetDir();
+  // Context changed underneath the grab (folder switch, etc.): drop it rather
+  // than reorder the wrong folder.
+  if (!dirNode || String(dirNode.path || "") !== st.dirPath) {
+    dropGrabReorder(false);
+    return false;
+  }
+  if (!canReorderFilesInDir(dirNode)) {
+    dropGrabReorder(false);
+    return false;
+  }
+  const metrics = getPreviewSelectableCardMetrics();
+  if (!metrics.length) return false;
+  const selected =
+    metrics.find(
+      (m) => String(previewFileIdForCard(m.card) || "") === st.fileId,
+    ) || metrics.find((m) => m.card === findSelectedPreviewCard());
+  if (!selected) return false;
+
+  let best = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < metrics.length; i++) {
+    const m = metrics[i];
+    if (!m || m.card === selected.card) continue;
+    if (String(m.card.dataset?.previewItemKind || "") !== "file") continue;
+    const dx = m.cx - selected.cx;
+    const dy = m.cy - selected.cy;
+    const ax = Math.abs(dx);
+    const ay = Math.abs(dy);
+    let primary = 0;
+    let secondary = 0;
+    let valid = false;
+    if (direction === "up" && dy < -2) {
+      valid = true;
+      primary = -dy;
+      secondary = ax;
+    } else if (direction === "down" && dy > 2) {
+      valid = true;
+      primary = dy;
+      secondary = ax;
+    } else if (direction === "left" && dx < -2) {
+      valid = true;
+      primary = -dx;
+      secondary = ay;
+    } else if (direction === "right" && dx > 2) {
+      valid = true;
+      primary = dx;
+      secondary = ay;
+    }
+    if (!valid) continue;
+    const score = primary * 1000 + secondary;
+    if (score < bestScore) {
+      bestScore = score;
+      best = m;
+    }
+  }
+  if (!best) return false;
+
+  const targetId = String(previewFileIdForCard(best.card) || "");
+  if (!targetId || targetId === st.fileId) return false;
+  const ids = getPreviewFolderAndFileEntries(dirNode, {
+    includeFiles: true,
+    useCurrentViewEntries: true,
+  }).fileIds;
+  const grabIdx = ids.indexOf(st.fileId);
+  const targIdx = ids.indexOf(targetId);
+  if (grabIdx < 0 || targIdx < 0) return false;
+  const placeAfter = targIdx > grabIdx;
+  if (
+    !reorderFilesInDir(dirNode, st.fileId, targetId, placeAfter, {
+      visibleIds: ids,
+    })
+  )
+    return false;
+
+  // Keep the moved file selected so the cursor rides along. Update the order
+  // and file-pane state WITHOUT letting syncAfterDirOrderChange run its own
+  // animated preview render (renderPreview:false) -- exactly like the mouse
+  // drop path. That animated staged re-render, restarted on every move, is
+  // what left the grid blank; repaint the grid once, non-animated, instead.
+  WS.view.previewSelectedKey = `file:${st.fileId}`;
+  WS.view.pendingPreviewSelectionKey = `file:${st.fileId}`;
+  syncAfterDirOrderChange(null, {
+    preserveSelection: true,
+    preservePreviewTarget: true,
+    renderPreview: false,
+  });
+  renderPreviewPane(false, true);
+  markGrabbedPreviewCard();
+  return true;
+}
+
 function jumpPreviewTargetToDirectoryFile(dirNode, mode = "first") {
   if (!dirNode || dirNode._skipTagFilters) return false;
   const fileIds = getPreviewFileIdsForDir(dirNode, false);
@@ -44030,7 +44353,63 @@ function buildAppMenuMiscSubmenu() {
     buildAppMenuRandomSubmenu(),
     buildAppMenuThumbnailsSubmenu(),
     buildAppMenuVideoSettingsSubmenu(options),
+    buildAppMenuReverseFilesButton(),
   ]);
+}
+
+// Import external files/folders into the current location (the folder the
+// preview pane is showing), folded in from the old background context menu.
+// Omitted for locations that cannot be imported into -- tag/virtual portals
+// and the internal trash -- so it never appears as a dead submenu.
+function buildAppMenuAddItemsSubmenu() {
+  const importTarget = importableDirectoryForNode(getPreviewTargetDir());
+  if (!importTarget) return null;
+  return createDropdownMenuSubmenu("Add items", [
+    appMenuChoiceButton(
+      "Add folders...",
+      () => addContentToDirectoryViaPicker(importTarget, "folders"),
+      null,
+      true,
+    ),
+    appMenuChoiceButton(
+      "Add files...",
+      () => addContentToDirectoryViaPicker(importTarget, "files"),
+      null,
+      true,
+    ),
+  ]);
+}
+
+// Reverse the file order of the current location (not the selected item),
+// matching the old background menu: disabled -- and so skipped by the keyboard
+// walker -- whenever the location cannot be reordered or has fewer than two
+// files.
+function buildAppMenuReverseFilesButton() {
+  const dirNode = getPreviewTargetDir();
+  const ids = dirNode
+    ? getPreviewFolderAndFileEntries(dirNode, {
+        includeFiles: true,
+        useCurrentViewEntries: true,
+      }).fileIds
+    : [];
+  const canReverse =
+    !!dirNode && canReorderFilesInDir(dirNode) && ids.length > 1;
+  const btn = appMenuChoiceButton(
+    "Reverse file order",
+    () => {
+      if (!canReverse) return;
+      if (reverseFilesInDir(dirNode, { visibleIds: ids })) {
+        syncAfterDirOrderChange(null, {
+          preserveSelection: true,
+          preservePreviewTarget: true,
+        });
+      }
+    },
+    null,
+    true,
+  );
+  if (!canReverse) btn.disabled = true;
+  return btn;
 }
 
 function buildAppMenuFilenameSubmenu() {
@@ -44307,6 +44686,7 @@ function buildAppMenuItems() {
       buildAppMenuBasicsSubmenu(),
       buildAppMenuAppearanceSubmenu(),
       buildAppMenuRevealSubmenu(),
+      buildAppMenuAddItemsSubmenu(),
       buildAppMenuMiscSubmenu(),
       // Always last.
       appMenuChoiceButton(
@@ -44359,6 +44739,21 @@ function openAppMenu(anchor) {
     positionActionMenuInPreviewDock(menu);
   });
   return true;
+}
+
+// Open the app menu from a background right-click. Unlike the bindable toggle,
+// a right-click should always land on an open menu, so any currently-open
+// instance is closed first (this also prevents the same-anchor toggle-shut
+// path from firing when two clicks land on the same background element).
+function openBackgroundAppMenu(e) {
+  if (!WS.root || VIEWER_MODE) return false;
+  const anchor =
+    (e && e.target instanceof Element ? e.target : null) ||
+    previewBodyEl ||
+    document.body;
+  allowMenuClose();
+  closeAppMenu();
+  return openAppMenu(anchor);
 }
 
 // The controls shown in the app menu's Appearance filter submenu. A missing
@@ -45246,60 +45641,10 @@ function openTagEntryContextMenu(entry, anchor) {
   return true;
 }
 
-function openPreviewContextMenu(x, y) {
-  allowMenuClose();
-  if (!previewActionMenuEl) return;
-  closeActionMenus();
-
-  const dirNode = getPreviewTargetDir();
-  const ids = dirNode
-    ? getPreviewFolderAndFileEntries(dirNode, {
-        includeFiles: true,
-        useCurrentViewEntries: true,
-      }).fileIds
-    : [];
-  const canReverse =
-    !!dirNode && canReorderFilesInDir(dirNode) && ids.length > 1;
-
-  const menu = previewActionMenuEl;
-  const importTarget = importableDirectoryForNode(dirNode);
-  const makeImportBtn = (label, pickKind) => {
-    const importBtn = document.createElement("button");
-    importBtn.type = "button";
-    importBtn.textContent = label;
-    if (!importTarget) importBtn.disabled = true;
-    importBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      closePreviewContextMenu();
-      if (importTarget) addContentToDirectoryViaPicker(importTarget, pickKind);
-    });
-    return importBtn;
-  };
-  menu.appendChild(makeImportBtn("Add folders...", "folders"));
-  menu.appendChild(makeImportBtn("Add files...", "files"));
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.textContent = "Reverse file order";
-  if (!canReverse) btn.disabled = true;
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (!canReverse) return;
-    if (reverseFilesInDir(dirNode, { visibleIds: ids })) {
-      syncAfterDirOrderChange(null, {
-        preserveSelection: true,
-        preservePreviewTarget: true,
-      });
-    }
-    closePreviewContextMenu();
-  });
-  menu.appendChild(btn);
-  PREVIEW_CONTEXT_MENU_STATE = { dirPath: String(dirNode?.path || "") };
-
-  requestAnimationFrame(() => {
-    menu.classList.add("open");
-    positionDropdownMenuAtPoint(menu, x, y);
-  });
-}
+// The standalone background context menu was folded into the app menu: the
+// preview/chrome background right-click now opens the app menu (see
+// openBackgroundAppMenu), whose "Add items" submenu and Miscellaneous section
+// carry the old Add folders/files and Reverse file order actions.
 
 // "Add content" imports external files into the folder the PREVIEW pane is
 // showing (the location the user is looking at), so only real on-disk folders
@@ -55275,6 +55620,10 @@ previewBodyEl.addEventListener("scroll", () => {
   scheduleThumbnailDemandRefresh();
 });
 
+// Right-clicking the empty preview background opens the app menu -- the single
+// command surface the old background context menu was folded into (its Add
+// folders/files and Reverse file order now live in the "Add items" submenu and
+// under Miscellaneous). Cards and the file viewport keep their own handling.
 previewBodyEl.addEventListener("contextmenu", (e) => {
   const target = e.target;
   if (target && target.closest) {
@@ -55284,13 +55633,13 @@ previewBodyEl.addEventListener("contextmenu", (e) => {
   }
   e.preventDefault();
   e.stopPropagation();
-  openPreviewContextMenu(e.clientX, e.clientY);
+  openBackgroundAppMenu(e);
 });
 
 // Right-clicking any pane background (title pane, control bar, file pane
-// empty space, app chrome) opens the same background menu as the preview
-// grid, so "Add content" is reachable anywhere. Targets with their own
-// context menus preventDefault before this bubble listener runs.
+// empty space, app chrome) opens the same app menu, so the location's import
+// and reverse actions are reachable anywhere. Targets with their own context
+// menus preventDefault before this bubble listener runs.
 document.addEventListener("contextmenu", (e) => {
   if (e.defaultPrevented) return;
   if (!WS.root) return;
@@ -55305,7 +55654,7 @@ document.addEventListener("contextmenu", (e) => {
     if (target.closest("#menuOverlay")) return;
   }
   e.preventDefault();
-  openPreviewContextMenu(e.clientX, e.clientY);
+  openBackgroundAppMenu(e);
 });
 
 function makeSpacer(extraClass = "") {
@@ -60275,6 +60624,8 @@ function handleExtrasKeybindAction(action) {
       return toggleSettingsAndDirectoriesPanesKeybindAction();
     case "refreshWorkspace":
       return refreshWorkspaceKeybindAction();
+    case "grabReorderItem":
+      return toggleGrabReorderKeybindAction();
     case "toggleGrokWindow":
       return toggleGrokWindowKeybindAction();
     case "toggleAnimatedFilters": {
@@ -60948,6 +61299,10 @@ function startPreviewFolderTagEdit(paths) {
   // Clear any active bulk selection (paths are already captured) so callers like
   // the preview context menu behave the same as the tag keybind.
   if (WS.view && WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+  // Drop the menu-close suppression window so the tag input is never left
+  // covered by the app menu it was launched from (it opens the suppression
+  // window on activation, which otherwise makes closeActionMenus a no-op).
+  allowMenuClose();
   closeActionMenus();
   RENAME_EDIT_PATH = null;
   RENAME_EDIT_FILE_ID = null;
@@ -61739,6 +62094,7 @@ async function closeFilePreviewToFolder() {
 }
 
 function handleBackAction() {
+  if (dropGrabReorder(true)) return true;
   if (MENU_OPEN) {
     closeMenu();
     return true;
@@ -62344,6 +62700,19 @@ document.addEventListener("keydown", (e) => {
   }
 
   if (isTextInputTarget(e.target)) return;
+
+  // While a grid file is grabbed for reorder, the selection keys move it
+  // instead of the cursor. Any other action (except the grab toggle itself,
+  // which drops it below) ends the grab and then runs normally.
+  if (GRAB_REORDER_STATE) {
+    const grabDir = grabReorderDirectionForAction(action);
+    if (grabDir) {
+      e.preventDefault();
+      moveGrabbedPreviewFile(grabDir);
+      return;
+    }
+    if (action !== "grabReorderItem") dropGrabReorder(false);
+  }
 
   if (handleExtrasKeybindAction(action)) {
     e.preventDefault();

@@ -124,10 +124,20 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Selected Item(s)` **always first**, `Basics`
-**always second**, Appearance filter, Reveal, Miscellaneous, Refresh App
-**always last**. `Basics` holds the everyday view controls (quick navigation,
-sort, media filter, mute messages, full screen media, float tags); Grok has no
-menu entry at all and is reached only through its keybind.
+**always second**, Appearance filter, Reveal, `Add items`, Miscellaneous,
+Refresh App **always last**. `Basics` holds the everyday view controls (quick
+navigation, sort, media filter, mute messages, full screen media, float tags);
+Grok has no menu entry at all and is reached only through its keybind.
+
+The old standalone background context menu (Add folders/files, Reverse file
+order) was folded into the app menu: a right-click on the preview grid or any
+pane background now opens the app menu (`openBackgroundAppMenu`) instead of a
+separate `previewActionMenuEl` popup. `Add items` (import folders/files into the
+current location) is omitted when the location can't be imported into (portals,
+trash); `Reverse file order` lives under `Miscellaneous` and acts on the current
+location, disabled when it can't be reordered. Both resolve the location via
+`getPreviewTargetDir()`, not the selected item. The bulk-selection right-click
+still uses `previewActionMenuEl`.
 
 - The bold heading (`.dropdownMenuTitle`) names the selection; it is not a
   button, so the option walker skips it and it can never take the cursor.
@@ -199,6 +209,35 @@ resolves duration and frame rate (mounted `<video>` first, else the native
 (1 frame, ramping to 72 after ~320ms of hold), and requests are coalesced through
 `drainVideoThumbnailFrameSeekQueue` so a fast hold does not queue hundreds of
 seeks.
+
+### Grab-to-reorder (keyboard file rearrange)
+
+The mouse drag-reorder has a keyboard-only twin driven by the bindable
+`grabReorderItem` action (default unbound). It "lifts" the selected preview-grid
+file into `GRAB_REORDER_STATE`; while lifted, the ordinary selection keys
+(`selectUp/Down/Left/Right`) call `moveGrabbedPreviewFile()` — which finds the
+nearest *file* neighbour in that direction with the same 2D scoring the cursor
+uses and commits through `reorderFilesInDir` (the exact primitive the mouse drop
+uses), so ordering/persistence/guards stay identical. The moved file keeps the
+selection so the cursor travels with it, and `.previewCardGrabbed` marks it.
+Interception lives in the global keydown handler (after the text-input guard):
+directions move, the grab key toggles the lift, Esc drops it (via
+`handleBackAction`), and any other action drops it and then runs normally. It is
+grid-only (refused while a file is open in the viewer) and is cleared by
+`resetWorkspace()`.
+
+### Bulk tagging with shared tags
+
+When more than one item is tagged at once, the bulk tag input
+(`setBulkTagPlaceholder`, type `"tag"`) is seeded with the tags every selected
+item shares (`commonUserTagsForPaths`), stored on `TAG_ENTRY_RENAME_STATE.commonTags`.
+Commit (`commitTagEntryRename`) then diffs the field against that baseline via
+`metaApplyBulkUserTagDiff`: tags deleted from the field are removed from every
+item, tags added are added to every item, and each item's own unique tags are
+left untouched — so shared tags can be bulk-removed, not just added. An empty
+field is valid (strips the shared tags). Launching any tag/album name input also
+drops the menu-close suppression window and closes the app menu first, so the
+menu never covers the input.
 
 ### Tabs
 
