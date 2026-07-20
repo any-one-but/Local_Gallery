@@ -2227,18 +2227,6 @@ img[data-rotate-key].rotatingThumbFade {
   height: 17px;
 }
 
-/* Filter values stay in the Appearance filter submenu, but use a deliberate
-   two-part row. The normal menu cursor selects the setting; moving Right makes
-   the value pill the active editing surface without opening another flyout. */
-#appActionMenu button.appMenuFilterControl {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  text-align: left;
-}
-
 /* The appearance list is intentionally dense enough to keep the complete
    filter bank on screen while retaining the app menu's spacing and type scale. */
 #appActionMenu .appMenuAppearancePanel > button,
@@ -2247,29 +2235,53 @@ img[data-rotate-key].rotatingThumbFade {
   font-size: 14px;
 }
 
+/* Filter settings are one keyboard row with two visual columns. Up/Down keep
+   the cursor in the name column; Right moves the same menu highlight onto the
+   value column for editing, and Left moves it back. */
+#appActionMenu .appMenuAppearancePanel > button.appMenuFilterControl {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 72px;
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  padding: 2px;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+#appActionMenu button.appMenuFilterControl:hover:not(:disabled),
+#appActionMenu button.appMenuFilterControl:focus-visible,
+#appActionMenu button.appMenuFilterControl.menuKeyActive,
+#appActionMenu button.appMenuFilterControl.appMenuFilterEditing {
+  background: transparent;
+  box-shadow: none;
+}
+
 #appActionMenu .appMenuFilterLabel {
   min-width: 0;
+  padding: 7px 9px;
+  border-radius: 9px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 #appActionMenu .appMenuFilterValue {
-  min-width: 58px;
-  padding: 3px 8px;
-  border: 1px solid transparent;
-  border-radius: 7px;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 9px;
   color: var(--color0-secondary);
-  font-size: 0.88em;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
+#appActionMenu button.appMenuFilterControl.menuKeyActive:not(.appMenuFilterEditing) .appMenuFilterLabel,
+#appActionMenu button.appMenuFilterControl:hover:not(:disabled):not(.appMenuFilterEditing) .appMenuFilterLabel,
+#appActionMenu button.appMenuFilterControl:focus-visible:not(.appMenuFilterEditing) .appMenuFilterLabel,
 #appActionMenu button.appMenuFilterEditing .appMenuFilterValue {
-  border-color: var(--color0-primary);
-  background: var(--color0-primary);
-  color: var(--color1-primary);
-  box-shadow: 0 0 0 2px var(--color1-primary);
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
 }
 
 #appActionMenu .appMenuPresetRenameRow {
@@ -44564,6 +44576,7 @@ function filterMenuControlLabel(control) {
 
 function setFilterMenuControlPercent(control, percent) {
   if (!WS.meta || !control?.key) return false;
+  const editingTargetId = currentAppMenuAppearancePresetId();
   const nextValue = filterMenuControlValueForPercent(control, percent);
   WS.meta.options = normalizeOptions(
     Object.assign({}, WS.meta.options || {}, { [control.key]: nextValue }),
@@ -44572,6 +44585,18 @@ function setFilterMenuControlPercent(control, percent) {
   setOptionsStatus("Saved");
   applyMediaFilterFromOptions({ deferThumbSync: true });
   syncActiveAppearancePresetSelection(WS.meta.options);
+  const editingTarget = getAppearancePresetById(editingTargetId);
+  if (
+    editingTarget &&
+    !effectiveActiveAppearancePresetId() &&
+    appearanceValuesEqual(
+      currentAppearanceValuesFromOptions(WS.meta.options),
+      editingTarget.values || {},
+    )
+  ) {
+    WS.meta.options.activeAppearancePresetId = editingTargetId;
+    if (WS.view) WS.view.appearancePresetEditingId = editingTargetId;
+  }
   updateAppearancePresetUiState();
   refreshLiveSettingsPaneFromKeyboardAction();
   showStatusMessage(
@@ -44598,6 +44623,18 @@ function currentAppMenuAppearancePresetId() {
   );
 }
 
+function appMenuAppearancePresetHasUnsavedChanges(presetId = null) {
+  const id =
+    normalizeAppearancePresetIdValue(presetId) ||
+    currentAppMenuAppearancePresetId();
+  const preset = getAppearancePresetById(id);
+  if (!preset) return false;
+  return !appearanceValuesEqual(
+    currentAppearanceValuesFromOptions(WS.meta?.options),
+    preset.values || {},
+  );
+}
+
 function updateCurrentAppMenuAppearancePreset() {
   const presetId = currentAppMenuAppearancePresetId();
   const preset = getAppearancePresetById(presetId);
@@ -44605,6 +44642,19 @@ function updateCurrentAppMenuAppearancePreset() {
   APP_MENU_PRESET_DELETE_CONFIRM_ID = "";
   refreshLiveSettingsPaneFromKeyboardAction();
   showStatusMessage(`Updated filter preset '${preset.name}'.`);
+  return true;
+}
+
+function revertCurrentAppMenuAppearancePreset() {
+  const presetId = currentAppMenuAppearancePresetId();
+  const preset = getAppearancePresetById(presetId);
+  if (!preset || !appMenuAppearancePresetHasUnsavedChanges(presetId))
+    return false;
+  if (!applyAppearancePresetById(presetId)) return false;
+  APP_MENU_PRESET_RENAME_STATE = null;
+  APP_MENU_PRESET_DELETE_CONFIRM_ID = "";
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(`Reverted changes to filter preset '${preset.name}'.`);
   return true;
 }
 
@@ -44734,13 +44784,21 @@ function focusAppMenuPresetRenameInput() {
 
 function buildAppMenuPresetHybridSubmenu(options = null) {
   const presetId = currentAppMenuAppearancePresetId();
+  const hasUnsavedChanges =
+    appMenuAppearancePresetHasUnsavedChanges(presetId);
   const editable =
     !!getAppearancePresetById(presetId) &&
     presetId !== BUILTIN_NULL_APPEARANCE_PRESET_ID;
-  const updateBtn = appMenuChoiceButton(
-    "Update",
-    updateCurrentAppMenuAppearancePreset,
-  );
+  const updateBtn =
+    editable && hasUnsavedChanges
+      ? appMenuChoiceButton("Update", updateCurrentAppMenuAppearancePreset)
+      : null;
+  const revertBtn = hasUnsavedChanges
+    ? appMenuChoiceButton(
+        "Revert changes",
+        revertCurrentAppMenuAppearancePreset,
+      )
+    : null;
   const renameBtn = appMenuChoiceButton(
     "Rename",
     startCurrentAppMenuPresetRename,
@@ -44750,16 +44808,18 @@ function buildAppMenuPresetHybridSubmenu(options = null) {
     confirming ? "Confirm delete" : "Delete",
     deleteCurrentAppMenuAppearancePreset,
   );
-  updateBtn.disabled = !editable;
   renameBtn.disabled = !editable;
   deleteBtn.disabled = !editable;
-  updateBtn.dataset.menuStateKey = "appearance-preset-update";
+  if (updateBtn)
+    updateBtn.dataset.menuStateKey = "appearance-preset-update";
+  if (revertBtn)
+    revertBtn.dataset.menuStateKey = "appearance-preset-revert";
   renameBtn.dataset.menuStateKey = "appearance-preset-rename";
   deleteBtn.dataset.menuStateKey = "appearance-preset-delete";
   const renameRow = editable ? buildAppMenuPresetRenameRow(presetId) : null;
   return createDropdownMenuSubmenu(
     `Preset: ${currentAppearanceStatusLabel(options)}`,
-    [renameRow, updateBtn, renameBtn, deleteBtn],
+    [renameRow, updateBtn, revertBtn, renameBtn, deleteBtn],
     "",
     {
       stateKey: "appearance-preset",
