@@ -1575,6 +1575,27 @@ img[data-rotate-key].rotatingThumbFade {
   stroke: currentColor;
 }
 
+.thumbnailTitleWithIcon {
+  display: flex !important;
+  align-items: center;
+  gap: 0.42em;
+  min-width: 0;
+}
+
+.thumbnailTitleWithIcon .thumbnailTitleTypeIcon {
+  width: 0.95em;
+  height: 0.95em;
+  opacity: 0.82;
+}
+
+.thumbnailTitleWithIcon .thumbnailTitleText {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .dirIcon .appIcon {
   width: 18px;
   height: 18px;
@@ -2238,6 +2259,19 @@ img[data-rotate-key].rotatingThumbFade {
   gap: 0;
 }
 
+.dropdownMenuSubmenuLabelWithIcon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
+  width: 1.1em;
+  height: 1.1em;
+  opacity: 0.82;
+}
+
 .dropdownMenu .dropdownMenuSubmenuCaret {
   flex: 0 0 auto;
   display: inline-flex;
@@ -2283,6 +2317,15 @@ img[data-rotate-key].rotatingThumbFade {
   min-width: 0;
   max-width: calc(100vw - 16px);
   z-index: 20001;
+}
+
+/* The app menu has no numbered-page size limit. Long root and flyout panels
+   stay as one navigation list and scroll inside the viewport instead. */
+#appActionMenu,
+#appActionMenu .dropdownMenuSubmenuPanel {
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .dropdownMenu .dropdownMenuSubmenu:hover > .dropdownMenuSubmenuPanel,
@@ -2795,6 +2838,16 @@ img[data-rotate-key].rotatingThumbFade {
 
 #previewBody.preview-grid {
   padding: var(--preview-gutter);
+}
+
+/* Preview grids are direct children of a column-flex scroller after their
+   staged startup render. Keep them at their natural content height so flexbox
+   cannot squeeze every row into the initial viewport and progressively
+   re-expand it as keyboard navigation reveals later cards. */
+#previewBody.preview-grid > .gridFolders,
+#previewBody.preview-grid > .gridFiles {
+  flex: 0 0 auto;
+  width: 100%;
 }
 
 #previewBody.preview-placeholder {
@@ -14378,6 +14431,7 @@ function applyTagFolderTitleColorsFromOptions() {
 }
 
 const APP_ICON_SVGS = Object.freeze({
+  file: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-icon lucide-file"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5Z"/><polyline points="14 2 14 8 20 8"/></svg>',
   image: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image-icon lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
   video: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-film-icon lucide-film"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>',
   folder: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-icon lucide-folder"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
@@ -14450,6 +14504,19 @@ function setAppIcon(el, iconKey) {
   if (!el) return;
   el.textContent = "";
   el.innerHTML = appIconHtml(iconKey);
+}
+
+function thumbnailTitleHtml(iconKey, label) {
+  return (
+    `${appIconHtml(iconKey, "thumbnailTitleTypeIcon")}` +
+    `<span class="thumbnailTitleText">${escapeHtml(String(label || ""))}</span>`
+  );
+}
+
+function setThumbnailTitle(el, iconKey, label) {
+  if (!el) return;
+  el.classList.add("thumbnailTitleWithIcon");
+  el.innerHTML = thumbnailTitleHtml(iconKey, label);
 }
 
 function iconKeyForRecordType(type) {
@@ -15876,6 +15943,12 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
+    id: "selectRangeInBulk",
+    label: "Select multiple items in range",
+    hint: "Select every item from the multi-selection anchor through the current item (keyboard equivalent of Shift-clicking it).",
+    section: "folderActions",
+  },
+  {
     id: "cancelMultiSelection",
     label: "Cancel multi-selection",
     hint: "Clear the current multi-item selection and return to single-item selection.",
@@ -16164,6 +16237,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   tagSelection: "Shift+t",
   renameSelection: "",
   toggleSelectionInBulk: "",
+  selectRangeInBulk: "",
   cancelMultiSelection: "",
   openAppMenu: "",
   seekBack: "z",
@@ -43108,7 +43182,10 @@ function positionActionMenuInPreviewDock(menuEl) {
     edge,
     Math.min(anchorLeft, window.innerWidth - menuRect.width - edge),
   );
-  const top = Math.max(edge, anchorTop);
+  const top = Math.max(
+    edge,
+    Math.min(anchorTop, window.innerHeight - menuRect.height - edge),
+  );
 
   menuEl.style.left = `${left}px`;
   menuEl.style.top = `${top}px`;
@@ -43460,6 +43537,29 @@ function setAppMenuThumbnailPreset(kinds, value, label) {
   return true;
 }
 
+function setAppMenuThumbnailTitleSize(kinds, size, label) {
+  if (!WS.meta) return false;
+  const list = Array.isArray(kinds) ? kinds : [kinds];
+  const next = normalizeThumbnailTitleSizeValue(size, "small");
+  const values = {};
+  list.forEach((kind) => {
+    const key = previewThumbnailTitleSizeOptionKey(kind);
+    if (key) values[key] = next;
+  });
+  const keys = Object.keys(values);
+  if (!keys.length) return false;
+  WS.meta.options = normalizeOptions(
+    Object.assign({}, WS.meta.options || {}, values),
+  );
+  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(keys));
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(
+    `${label} large title text: ${next === "large" ? "On" : "Off"}`,
+  );
+  return true;
+}
+
 function setAppMenuVideoSkipStep(value) {
   const next = VIDEO_SKIP_STEP_CYCLE.some(
     (option) => option.value === String(value),
@@ -43499,19 +43599,18 @@ function setAppMenuAnimatedFilters(value) {
   return true;
 }
 
-function buildAppMenuSortSubmenu() {
+function buildAppMenuSortButton() {
   const current = normalizeDirSortMode(WS.meta?.dirSortMode);
-  const buttons = dirSortModeOptions(scoreInterfaceEnabled()).map((option) =>
-    appMenuChoiceButton(
-      option.label,
-      () => setAppMenuFolderSortMode(option.value),
-      option.value === current,
-    ),
+  return appMenuChoiceButton(
+    `Sort: ${dirSortModeLabel(current)}`,
+    () =>
+      setAppMenuFolderSortMode(
+        cycleDirSortMode(current, scoreInterfaceEnabled()),
+      ),
   );
-  return createDropdownMenuSubmenu("Sort", buttons);
 }
 
-function buildAppMenuMediaFilterSubmenu() {
+function buildAppMenuMediaFilterButton() {
   const current = normalizeMediaFilterMode(WS.view?.filterMode);
   const options = [
     { value: "all", label: "All" },
@@ -43519,15 +43618,13 @@ function buildAppMenuMediaFilterSubmenu() {
     { value: "videos", label: "Videos" },
     { value: "text", label: "Text" },
   ];
-  return createDropdownMenuSubmenu(
-    "Media filter",
-    options.map((option) =>
-      appMenuChoiceButton(
-        option.label,
-        () => setAppMenuMediaFilterMode(option.value),
-        option.value === current,
-      ),
-    ),
+  const currentIndex = options.findIndex((option) => option.value === current);
+  const currentOption = options[currentIndex >= 0 ? currentIndex : 0];
+  const nextOption =
+    options[(currentIndex >= 0 ? currentIndex + 1 : 1) % options.length];
+  return appMenuChoiceButton(
+    `Media filter: ${currentOption.label}`,
+    () => setAppMenuMediaFilterMode(nextOption.value),
   );
 }
 
@@ -43570,7 +43667,7 @@ function buildAppMenuRandomSubmenu() {
   ]);
 }
 
-function buildAppMenuSlideshowSubmenu() {
+function buildAppMenuSlideshowButton() {
   const activeDelay = WS.view?.slideshowActive
     ? Number(WS.view.slideshowDurations[WS.view.slideshowModeIndex]) || 0
     : 0;
@@ -43581,15 +43678,15 @@ function buildAppMenuSlideshowSubmenu() {
     { value: 5000, label: "5 seconds" },
     { value: 10000, label: "10 seconds" },
   ];
-  return createDropdownMenuSubmenu(
-    "Slideshow mode",
-    options.map((option) =>
-      appMenuChoiceButton(
-        option.label,
-        () => setAppMenuSlideshowDelay(option.value),
-        option.value === activeDelay,
-      ),
-    ),
+  const currentIndex = options.findIndex(
+    (option) => option.value === activeDelay,
+  );
+  const currentOption = options[currentIndex >= 0 ? currentIndex : 0];
+  const nextOption =
+    options[(currentIndex >= 0 ? currentIndex + 1 : 1) % options.length];
+  return appMenuChoiceButton(
+    `Slideshow mode: ${currentOption.label}`,
+    () => setAppMenuSlideshowDelay(nextOption.value),
   );
 }
 
@@ -43642,15 +43739,39 @@ function buildAppMenuAppearanceSubmenu() {
   return createDropdownMenuSubmenu("Appearance filter", buttons);
 }
 
+function buildAppMenuThumbnailKindSubmenu(label, kinds, iconKey) {
+  const list = Array.isArray(kinds) ? kinds : [kinds];
+  const preset = detectThumbnailPresetForKinds(list);
+  const largeTitleText = list.every(
+    (kind) => getPreviewThumbnailTitleSizeForKind(kind) === "large",
+  );
+  return createDropdownMenuSubmenu(
+    label,
+    [
+      buildAppMenuChoiceSubmenu(
+        "Level of detail",
+        THUMBNAIL_PRESET_ITEMS,
+        preset,
+        (value) => setAppMenuThumbnailPreset(list, value, label),
+      ),
+      appMenuChoiceButton(
+        "Large title text",
+        () =>
+          setAppMenuThumbnailTitleSize(
+            list,
+            largeTitleText ? "small" : "large",
+            label,
+          ),
+        largeTitleText,
+      ),
+    ],
+    iconKey,
+  );
+}
+
 function buildAppMenuThumbnailsSubmenu() {
   const options = WS.meta?.options || {};
   const thumbnailSize = String(options.thumbnailSize || "medium");
-  const filePreset = detectThumbnailPresetForKinds("file");
-  const folderPreset = detectThumbnailPresetForKinds([
-    "rootFolder",
-    "subfolder",
-  ]);
-  const tagPreset = detectThumbnailPresetForKinds("tag");
   return createDropdownMenuSubmenu("Thumbnails", [
     buildAppMenuChoiceSubmenu(
       "Thumbnail size",
@@ -43658,34 +43779,13 @@ function buildAppMenuThumbnailsSubmenu() {
       thumbnailSize,
       setAppMenuThumbnailSize,
     ),
-    buildAppMenuChoiceSubmenu(
-      "File cards",
-      THUMBNAIL_PRESET_ITEMS,
-      filePreset,
-      (value) => setAppMenuThumbnailPreset("file", value, "File cards"),
+    buildAppMenuThumbnailKindSubmenu("Files", "file", "file"),
+    buildAppMenuThumbnailKindSubmenu(
+      "Folders",
+      ["rootFolder", "subfolder"],
+      "folder",
     ),
-    buildAppMenuChoiceSubmenu(
-      "Folder cards",
-      THUMBNAIL_PRESET_ITEMS,
-      folderPreset,
-      (value) =>
-        setAppMenuThumbnailPreset(
-          ["rootFolder", "subfolder"],
-          value,
-          "Folder cards",
-        ),
-    ),
-    buildAppMenuChoiceSubmenu(
-      "Tag cards",
-      THUMBNAIL_PRESET_ITEMS,
-      tagPreset,
-      (value) => setAppMenuThumbnailPreset("tag", value, "Tag cards"),
-    ),
-    appMenuChoiceButton(
-      "Large title text",
-      () => handleExtrasKeybindAction("toggleThumbnailTitleSize"),
-      getThumbnailTitleSizeFromOptions(options) === "large",
-    ),
+    buildAppMenuThumbnailKindSubmenu("Tags", "tag", "tag"),
   ]);
 }
 
@@ -43698,7 +43798,7 @@ function buildAppMenuMiscSubmenu() {
       quickNavigationEnabled(),
     ),
     buildAppMenuRandomSubmenu(),
-    buildAppMenuSlideshowSubmenu(),
+    buildAppMenuSlideshowButton(),
     buildAppMenuFileNameSubmenu(),
     appMenuChoiceButton(
       "Mute messages",
@@ -43987,37 +44087,43 @@ function buildAppMenuTitleElement(summary) {
 }
 
 function buildAppMenuItems() {
-  const summary = appMenuSelectionSummary();
-  // An item in Trash or Storage gets the one action that applies to it in place
-  // of the whole "Selected Item" dropdown.
-  const quarantine = selectedItemQuarantineAction(summary.target);
-  const selectedEntry = quarantine
-    ? buildSelectedItemQuarantineButton(quarantine)
-    : buildSelectedItemMenuSubmenu(summary);
-  return [
-    buildAppMenuTitleElement(summary),
-    // Always first.
-    selectedEntry,
-    // Opens something in front of the app, so it closes the menu.
-    appMenuChoiceButton(
-      "Open Grok",
-      () => handleExtrasKeybindAction("toggleGrokWindow"),
-      null,
-      true,
-    ),
-    buildAppMenuAppearanceSubmenu(),
-    buildAppMenuSortSubmenu(),
-    buildAppMenuMediaFilterSubmenu(),
-    buildAppMenuRevealSubmenu(),
-    buildAppMenuMiscSubmenu(),
-    // Always last.
-    appMenuChoiceButton(
-      "Refresh App",
-      () => handleExtrasKeybindAction("refreshWorkspace"),
-      null,
-      true,
-    ),
-  ].filter(Boolean);
+  const previousBuildMode = BUILDING_NAVIGATION_ONLY_APP_MENU;
+  BUILDING_NAVIGATION_ONLY_APP_MENU = true;
+  try {
+    const summary = appMenuSelectionSummary();
+    // An item in Trash or Storage gets the one action that applies to it in place
+    // of the whole "Selected Item" dropdown.
+    const quarantine = selectedItemQuarantineAction(summary.target);
+    const selectedEntry = quarantine
+      ? buildSelectedItemQuarantineButton(quarantine)
+      : buildSelectedItemMenuSubmenu(summary);
+    return [
+      buildAppMenuTitleElement(summary),
+      // Always first.
+      selectedEntry,
+      // Opens something in front of the app, so it closes the menu.
+      appMenuChoiceButton(
+        "Open Grok",
+        () => handleExtrasKeybindAction("toggleGrokWindow"),
+        null,
+        true,
+      ),
+      buildAppMenuAppearanceSubmenu(),
+      buildAppMenuSortButton(),
+      buildAppMenuMediaFilterButton(),
+      buildAppMenuRevealSubmenu(),
+      buildAppMenuMiscSubmenu(),
+      // Always last.
+      appMenuChoiceButton(
+        "Refresh App",
+        () => handleExtrasKeybindAction("refreshWorkspace"),
+        null,
+        true,
+      ),
+    ].filter(Boolean);
+  } finally {
+    BUILDING_NAVIGATION_ONLY_APP_MENU = previousBuildMode;
+  }
 }
 
 // Rebuild the open app menu without closing it, then put the keyboard cursor
@@ -44635,6 +44741,15 @@ const SUBMENU_CHEVRON_SVG =
 
 const MAX_NUMBERED_ITEM_MENU_OPTIONS = 10;
 
+// The unified app menu is navigation-only. It deliberately keeps the older
+// menu helpers for cursor movement and submenu traversal, but does not expose
+// number labels, digit activation, or ten-option pagination.
+let BUILDING_NAVIGATION_ONLY_APP_MENU = false;
+
+function isNavigationOnlyAppMenu(menu) {
+  return !!menu && menu.id === "appActionMenu";
+}
+
 function isNumberedItemMenu(menu) {
   if (!menu || !menu.classList?.contains("dropdownMenu")) return false;
   if (menu.classList.contains("dropdownMenuSubmenuPanel")) return false;
@@ -44696,6 +44811,14 @@ function decorateNumberedMenuPanel(panel) {
 
 function decorateNumberedMenuOptions(menu) {
   if (!isNumberedItemMenu(menu)) return;
+  if (isNavigationOnlyAppMenu(menu)) {
+    menu.querySelectorAll(".dropdownMenuNum").forEach((el) => el.remove());
+    menu.querySelectorAll("[data-menu-number]").forEach((option) => {
+      option.removeAttribute("data-menu-number");
+      option.removeAttribute("aria-keyshortcuts");
+    });
+    return;
+  }
   decorateNumberedMenuPanel(menu);
   menu
     .querySelectorAll(".dropdownMenuSubmenuPanel")
@@ -44794,8 +44917,8 @@ function openNumberedItemMenu() {
 // inside the menu instead of the file tree: Up/Down move within the deepest
 // open panel, Right opens the highlighted submenu and steps into it, Left
 // closes the current submenu, and Left at the top level closes the menu (you
-// walk back out toward the spine). Enter activates. The number shortcuts still
-// work and are kept as-is.
+// walk back out toward the spine). Enter activates. Legacy context menus keep
+// their number shortcuts; the unified app menu intentionally does not.
 //
 // Because the file tree must not move while a menu is open, this handler runs
 // in the capture phase and swallows every navigation key before the global
@@ -45041,7 +45164,7 @@ function activateNumberedMenuOption(menu, option) {
     enterMenuSubmenuFromTrigger(menu, option);
     return;
   }
-  // Activating by number moves the cursor there too, so the highlight always
+  // Activating an option moves the cursor there too, so the highlight always
   // sits on the option that was just chosen.
   setMenuHighlight(menu, option);
   // The menu deliberately stays open when an option is chosen, so remember the
@@ -45111,7 +45234,10 @@ document.addEventListener(
         break;
     }
 
-    // Number shortcuts are kept alongside the navigation keys.
+    // The app menu is intentionally driven only by the navigation actions.
+    if (isNavigationOnlyAppMenu(menu)) return;
+
+    // Other legacy context menus retain their number shortcuts.
     const digit = /^[0-9]$/.test(String(e.key || "")) ? String(e.key) : "";
     if (!digit || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
     const option = numberedMenuOptionsForPanel(
@@ -45123,10 +45249,11 @@ document.addEventListener(
   true,
 );
 
-function createDropdownMenuSubmenu(label, items) {
+function createDropdownMenuSubmenu(label, items, iconKey = "") {
   const buttons = Array.isArray(items) ? items.filter(Boolean) : [];
   if (!buttons.length) return null;
   const panelItems =
+    !BUILDING_NAVIGATION_ONLY_APP_MENU &&
     buttons.length > MAX_NUMBERED_ITEM_MENU_OPTIONS
       ? buttons
           .slice(0, MAX_NUMBERED_ITEM_MENU_OPTIONS - 1)
@@ -45149,7 +45276,14 @@ function createDropdownMenuSubmenu(label, items) {
   trigger.setAttribute("aria-expanded", "false");
 
   const labelSpan = document.createElement("span");
-  labelSpan.textContent = String(label || "");
+  if (iconKey) {
+    labelSpan.className = "dropdownMenuSubmenuLabelWithIcon";
+    labelSpan.innerHTML =
+      `${appIconHtml(iconKey, "dropdownMenuItemTypeIcon")}` +
+      `<span>${escapeHtml(String(label || ""))}</span>`;
+  } else {
+    labelSpan.textContent = String(label || "");
+  }
   const caretSpan = document.createElement("span");
   caretSpan.className = "dropdownMenuSubmenuCaret";
   caretSpan.setAttribute("aria-hidden", "true");
@@ -45228,6 +45362,7 @@ function buildPaginatedDropdownMenuSubmenuHtml(label, itemHtmlList) {
   const items = Array.isArray(itemHtmlList) ? itemHtmlList.filter(Boolean) : [];
   if (!items.length) return "";
   const panelItems =
+    !BUILDING_NAVIGATION_ONLY_APP_MENU &&
     items.length > MAX_NUMBERED_ITEM_MENU_OPTIONS
       ? items
           .slice(0, MAX_NUMBERED_ITEM_MENU_OPTIONS - 1)
@@ -54995,10 +55130,11 @@ function buildPreviewTagCardMarkup(entry) {
         : "dirSquareNameTag";
   const inlineTagTitleCompact =
     showTagThumbnailTitle && !renameActive && !showTagTextMeta;
+  const tagTitleIconKey = getTagEntryIconKey(entry);
   const topNameHtml = renameActive
     ? `<input class="tagEditInput tagEntryRenameInput renameEditInput dirSquareRenameInput" type="text" value="${escapeHtml(TAG_ENTRY_RENAME_STATE.label || label)}" placeholder="${escapeHtml(label)}" />`
     : showTagThumbnailTitle && !inlineTagTitleCompact
-      ? `<span class="dirSquareName ${tagTitleClass}" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`
+      ? `<span class="dirSquareName ${tagTitleClass} thumbnailTitleWithIcon" title="${escapeHtml(labelDisplay)}">${thumbnailTitleHtml(tagTitleIconKey, labelDisplay)}</span>`
       : "";
   const typeBadgeHtml =
     !menuOnlyTagCard && showItemTypeLabel
@@ -55010,7 +55146,7 @@ function buildPreviewTagCardMarkup(entry) {
       ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">${appIconHtml("hidden")}</span>`
       : "";
   const countMetaHtml = inlineTagTitleCompact
-    ? `<span class="dirSquareName ${tagTitleClass} dirSquareNameInlineCompact" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`
+    ? `<span class="dirSquareName ${tagTitleClass} dirSquareNameInlineCompact thumbnailTitleWithIcon" title="${escapeHtml(labelDisplay)}">${thumbnailTitleHtml(tagTitleIconKey, labelDisplay)}</span>`
     : !menuOnlyTagCard && tagSummaryBits.length
       ? `<div class="dirSquareMeta">${escapeHtml(tagSummaryBits.join(" • "))}</div>`
       : "";
@@ -55239,7 +55375,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     name.style.textOverflow = "clip";
     name.style.overflowWrap = "anywhere";
     name.style.wordBreak = "break-word";
-    name.textContent = nm;
+    setThumbnailTitle(name, "storage", nm);
     name.title = nm;
     top.appendChild(name);
     const menuWrap = document.createElement("div");
@@ -55523,7 +55659,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     ) {
       const name = document.createElement("div");
       name.className = "name";
-      name.textContent = nm;
+      setThumbnailTitle(name, iconKey, nm);
       name.title = nm;
       top.appendChild(name);
     } else if (isRenameEditing) {
@@ -55581,7 +55717,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     if (!menuOnlyOverlayMeta && inlineFolderTitleCompact) {
       const inlineName = document.createElement("div");
       inlineName.className = "name thumbOverlayNameInlineCompact";
-      inlineName.textContent = nm;
+      setThumbnailTitle(inlineName, iconKey, nm);
       inlineName.title = nm;
       bottom.appendChild(inlineName);
     }
@@ -57022,7 +57158,11 @@ function makePreviewFileCard(
       } else if (showFileThumbnailTitle && !inlineFileTitleCompact) {
         const name = document.createElement("div");
         name.className = "name";
-        name.textContent = fileDisplayLabel || "—";
+        setThumbnailTitle(
+          name,
+          iconKeyForRecordType(rec.type),
+          fileDisplayLabel || "—",
+        );
         name.title = relPathDisplayName(rec.relPath || rec.name || "", {
           finalPrefix: displayPositionPrefix(displayPosition),
         });
@@ -57047,7 +57187,11 @@ function makePreviewFileCard(
       if (!menuOnlyOverlayMeta && inlineFileTitleCompact && !isRenameEditing) {
         const inlineName = document.createElement("div");
         inlineName.className = "name previewThumbOverlayNameInlineCompact";
-        inlineName.textContent = fileDisplayLabel || "—";
+        setThumbnailTitle(
+          inlineName,
+          iconKeyForRecordType(rec.type),
+          fileDisplayLabel || "—",
+        );
         inlineName.title = relPathDisplayName(rec.relPath || rec.name || "", {
           finalPrefix: displayPositionPrefix(displayPosition),
         });
@@ -60340,6 +60484,9 @@ function toggleSelectionInBulkKeybindAction() {
       togglePreviewCardBulkSelection(card);
     }
     if (!hasBulkSelection()) WS.view.bulkSelectMode = false;
+    WS.view.previewSelectAnchorKey = String(
+      card.dataset.previewItemKey || "",
+    );
     refreshBulkSelectionUiFromPreview();
     return true;
   }
@@ -60358,6 +60505,45 @@ function toggleSelectionInBulkKeybindAction() {
   if (!hasBulkSelection()) WS.view.bulkSelectMode = false;
   WS.view.dirSelectAnchorIndex = idx;
   setDirectoriesSelection(idx, { keepScroll: true });
+  return true;
+}
+
+// Keyboard equivalent of Shift-clicking the current item. The anchor is the
+// item most recently used by the Cmd-click-style action (or the current item
+// when no anchor has been established yet), matching the pointer behavior in
+// both selection surfaces.
+function selectRangeInBulkKeybindAction() {
+  if (!WS.root || VIEWER_MODE) return false;
+  if (previewPaneOwnsSelection()) {
+    const card = findSelectedPreviewCard();
+    const targetKey = String(card?.dataset?.previewItemKey || "");
+    if (!card || !targetKey) {
+      showStatusMessage("No item selected.");
+      return false;
+    }
+    const anchorKey = String(
+      WS.view.previewSelectAnchorKey || targetKey,
+    );
+    addPreviewSelectionRange(anchorKey, targetKey, true);
+    WS.view.previewSelectAnchorKey = targetKey;
+    setPreviewSelectionKey(targetKey, { activate: true });
+    refreshBulkSelectionUiFromPreview();
+    return true;
+  }
+
+  const targetIndex = Number(WS.nav.selectedIndex);
+  const entry = WS.nav.entries[targetIndex] || null;
+  if (!entry || !isSelectableEntry(entry)) {
+    showStatusMessage("No item selected.");
+    return false;
+  }
+  const anchorIndex =
+    WS.view.dirSelectAnchorIndex >= 0
+      ? WS.view.dirSelectAnchorIndex
+      : targetIndex;
+  selectEntryRange(anchorIndex, targetIndex);
+  WS.view.dirSelectAnchorIndex = targetIndex;
+  setDirectoriesSelection(targetIndex, { keepScroll: true });
   return true;
 }
 
@@ -60534,6 +60720,8 @@ function handleSelectionKeybindAction(action) {
       return startRenameSelection();
     case "toggleSelectionInBulk":
       return toggleSelectionInBulkKeybindAction();
+    case "selectRangeInBulk":
+      return selectRangeInBulkKeybindAction();
     case "cancelMultiSelection":
       return cancelMultiSelectionKeybindAction();
     case "openAppMenu":
