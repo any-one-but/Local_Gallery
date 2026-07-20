@@ -170,6 +170,81 @@ fn ffmpeg_thumb(ff: &Path, src: &Path, out_path: &Path, seek: f64, edge: u32) ->
     run(0.0)
 }
 
+#[derive(serde::Serialize)]
+struct VideoTiming {
+    duration: f64,
+    frame_rate: f64,
+}
+
+fn parse_ffmpeg_video_timing(stderr: &str) -> VideoTiming {
+    let mut duration = 0.0;
+    let mut frame_rate = 0.0;
+    for line in stderr.lines() {
+        if duration <= 0.0 {
+            if let Some(raw) = line
+                .split("Duration:")
+                .nth(1)
+                .and_then(|tail| tail.split(',').next())
+            {
+                let parts: Vec<&str> = raw.trim().split(':').collect();
+                if parts.len() == 3 {
+                    let hours = parts[0].parse::<f64>().unwrap_or(0.0);
+                    let minutes = parts[1].parse::<f64>().unwrap_or(0.0);
+                    let seconds = parts[2].parse::<f64>().unwrap_or(0.0);
+                    duration = hours * 3600.0 + minutes * 60.0 + seconds;
+                }
+            }
+        }
+        if frame_rate <= 0.0 && line.contains("Video:") {
+            let tokens: Vec<&str> = line.split_whitespace().collect();
+            for pair in tokens.windows(2) {
+                if pair[1].trim_matches(',') != "fps" {
+                    continue;
+                }
+                frame_rate = pair[0]
+                    .trim_matches(',')
+                    .parse::<f64>()
+                    .unwrap_or(0.0);
+                if frame_rate > 0.0 {
+                    break;
+                }
+            }
+        }
+    }
+    VideoTiming {
+        duration: if duration.is_finite() { duration.max(0.0) } else { 0.0 },
+        frame_rate: if frame_rate.is_finite() && frame_rate > 0.0 {
+            frame_rate.clamp(1.0, 480.0)
+        } else {
+            0.0
+        },
+    }
+}
+
+#[tauri::command]
+async fn probe_video_timing(path: String) -> Result<VideoTiming, String> {
+    let ff = find_ffmpeg().ok_or_else(|| "ffmpeg unavailable".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let src = PathBuf::from(&path);
+        if !src.is_file() {
+            return Err(format!("not a file: {path}"));
+        }
+        let output = Command::new(ff)
+            .args(["-hide_banner", "-i"])
+            .arg(&src)
+            .output()
+            .map_err(|e| format!("video probe failed: {e}"))?;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let timing = parse_ffmpeg_video_timing(&stderr);
+        if timing.duration <= 0.0 && timing.frame_rate <= 0.0 {
+            return Err("video timing unavailable".to_string());
+        }
+        Ok(timing)
+    })
+    .await
+    .map_err(|e| format!("video probe task failed: {e}"))?
+}
+
 /// Generate (and disk-cache) a thumbnail for a media file; returns the absolute
 /// path to the cached image. The cache key is path+size+mtime+edge+frame, so
 /// repeat calls short-circuit and edits/frame-changes invalidate. Images use the
@@ -447,6 +522,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             ping,
             dev_report,
             generate_thumbnail,
+            probe_video_timing,
             write_download_file,
             settings::open_settings_window,
             settings::toggle_settings_window_command,
@@ -515,5 +591,15 @@ mod tests {
             thumb.width(),
             thumb.height()
         );
+    }
+
+    #[test]
+    fn parses_ffmpeg_video_timing() {
+        let timing = parse_ffmpeg_video_timing(
+            "Duration: 00:01:23.45, start: 0.000000, bitrate: 2000 kb/s\n\
+             Stream #0:0: Video: h264, yuv420p, 1920x1080, 59.94 fps, 60 tbr",
+        );
+        assert!((timing.duration - 83.45).abs() < 0.001);
+        assert!((timing.frame_rate - 59.94).abs() < 0.001);
     }
 }

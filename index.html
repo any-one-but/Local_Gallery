@@ -24527,6 +24527,13 @@ async function setStorageStateForFolderPaths(paths, enable) {
   await persistDirtyMetadataNow();
   const rebuilt = await rebuildWorkspaceAfterStorageStateChange();
   if (!rebuilt) return false;
+  if (navigateOutOfStorageIfHidden()) {
+    renderDirectoriesPane(true);
+    renderPreviewPane(true, true);
+    syncButtons();
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+  }
   showStatusMessage(
     `${enable ? "Sent" : "Removed"} ${changedCount} folder${changedCount === 1 ? "" : "s"} ${enable ? "to" : "from"} storage.`,
   );
@@ -29389,16 +29396,22 @@ function restorePreviewFolderBridgeState() {
   return restoreViewerCloseState(state, { preserveViewFilters: true });
 }
 
-// While a quick-nav media folder is previewing fullscreen, the user can move to
-// a different folder (prev/next folder, random jump), which updates
-// WS.nav.dirNode. The bridge return state still points its grid selection at
-// the folder originally entered, so on exit re-point it to the folder actually
-// exited (WS.nav.dirNode) and, if that folder lives under a different parent,
-// re-anchor the restored grid to that parent so its card exists.
+// While a folder or its media is previewing, the user can move to a different
+// folder (prev/next folder, random jump). The bridge return state still points
+// its grid selection at the folder originally entered, so on exit re-point it
+// to the folder actually being shown and, if that folder lives under a
+// different parent, re-anchor the restored grid to that parent so its card
+// exists. Folder-grid jumps only update WS.preview; media jumps also synchronize
+// WS.nav, so prefer the preview target and use the navigation target as a
+// fallback for virtual preview contexts.
 function syncGridReturnStateToExitedFolder() {
   const state = WS.view && WS.view.previewFolderBridgeReturnState;
   if (!state) return;
-  const cur = WS.nav.dirNode;
+  const previewTarget = getPreviewTargetDir();
+  const cur =
+    previewTarget && !previewTarget._skipTagFilters
+      ? previewTarget
+      : WS.nav.dirNode;
   if (!cur || cur === WS.root || !cur.path) return;
   const curKey = `dir:${String(cur.path || "")}`;
   state.pendingPreviewSelectionKey = curKey;
@@ -31202,9 +31215,10 @@ function canonicalizeActiveDirectoryReferences() {
 }
 
 function refreshCurrentViewAfterCatalogMutation(opts = null) {
-  // The Trash portal follows Storage's empty-state rule. If the last item was
-  // restored or deleted while the portal was open, leave it before rendering.
+  // Empty system portals disappear from the root, so leave either one before
+  // rendering instead of letting selection recovery enter a neighboring folder.
   navigateOutOfTrashIfHidden();
+  navigateOutOfStorageIfHidden();
   canonicalizeActiveDirectoryReferences();
   rebuildDirectoriesEntries();
   WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
@@ -34246,13 +34260,30 @@ function navigateOutOfTrashIfHidden() {
   if (!isPathInsideInternalTrash(navPath) && !isPathInsideInternalTrash(previewDirPath)) {
     return false;
   }
-  exitTagFolderView(false);
+  return navigateToTopLevelRootAfterSystemPortalDisappears();
+}
+
+function navigateToTopLevelRootAfterSystemPortalDisappears() {
+  if (!WS.root) return false;
+  cancelPendingNavigationRender();
+  allowMenuClose();
+  closeActionMenus();
+  clearTagNavigationStack();
+  WS.view.tagFolderActiveMode = "";
+  WS.view.tagFolderActiveTag = "";
+  WS.view.tagFolderActiveAlbum = "";
+  WS.view.tagFolderOriginPath = "";
   WS.view.favoritesRootActive = false;
   WS.view.hiddenRootActive = false;
   WS.view.searchRootActive = false;
   WS.view.previewSearchActive = false;
   WS.nav.dirNode = WS.root;
-  WS.view.aboveRootView = false;
+  WS.view.aboveRootView = showRootViewEnabled();
+  WS.view.previewFolderBridgeReturnState = null;
+  WS.view.previewFileSelectionBridgeActive = false;
+  WS.view.previewFileBridgeReturnState = null;
+  WS.view.pendingPreviewSelectionKey = "";
+  WS.view.previewSelectedKey = "";
   TAG_EDIT_PATH = null;
   RENAME_EDIT_PATH = null;
   RENAME_EDIT_FILE_ID = null;
@@ -34268,31 +34299,18 @@ function navigateOutOfTrashIfHidden() {
 }
 
 function navigateOutOfStorageIfHidden() {
-  if (showStorageFolderEnabled()) return false;
+  const storagePortalAvailable =
+    showStorageFolderEnabled() && getAllStorageDirNodes().length > 0;
+  if (storagePortalAvailable) return false;
   const viewingStoragePortal =
     isViewingTagFolder() && WS.view.tagFolderActiveMode === "storage";
   const navStorage = isStorageStubDirNode(WS.nav.dirNode);
-  const previewStorage = isStorageStubDirNode(getPreviewTargetDir());
+  const previewTarget = getPreviewTargetDir();
+  const previewStorage =
+    isStorageStubDirNode(previewTarget) ||
+    String(previewTarget?._tagPreviewMode || "") === "storage";
   if (!viewingStoragePortal && !navStorage && !previewStorage) return false;
-  exitTagFolderView(false);
-  WS.view.favoritesRootActive = false;
-  WS.view.hiddenRootActive = false;
-  WS.view.searchRootActive = false;
-  WS.view.previewSearchActive = false;
-  WS.nav.dirNode = WS.root;
-  WS.view.aboveRootView = false;
-  TAG_EDIT_PATH = null;
-  RENAME_EDIT_PATH = null;
-  RENAME_EDIT_FILE_ID = null;
-  clearBulkTagPlaceholder();
-  syncBulkSelectionForCurrentDir();
-  syncFavoritesUi();
-  syncHiddenUi();
-  syncTagUiForCurrentDir();
-  rebuildDirectoriesEntries();
-  WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
-  syncPreviewToSelection({ force: true });
-  return true;
+  return navigateToTopLevelRootAfterSystemPortalDisappears();
 }
 
 function getUntaggedDirsForNode(dirNode) {
@@ -43558,6 +43576,92 @@ function buildAppMenuChoiceSubmenu(label, options, currentValue, onChoose) {
   );
 }
 
+function menuCycleChoiceState(options, currentValue, mixed = false) {
+  const choices = Array.isArray(options) ? options.filter(Boolean) : [];
+  if (!choices.length) return null;
+  const currentIndex = choices.findIndex(
+    (option) => String(option.value) === String(currentValue),
+  );
+  const currentOption = choices[currentIndex >= 0 ? currentIndex : 0];
+  const nextOption = choices[
+    mixed ? 0 : currentIndex >= 0 ? (currentIndex + 1) % choices.length : 0
+  ];
+  return {
+    currentLabel: mixed ? "Mixed" : String(currentOption.label || ""),
+    nextValue: nextOption.value,
+  };
+}
+
+function buildAppMenuCycleButton(label, options, currentValue, onChoose) {
+  const state = menuCycleChoiceState(options, currentValue);
+  if (!state || typeof onChoose !== "function") return null;
+  return appMenuChoiceButton(`${label}: ${state.currentLabel}`, () =>
+    onChoose(state.nextValue),
+  );
+}
+
+function createCyclingItemMenuButton(
+  label,
+  options,
+  currentValue,
+  onChoose,
+  mixed = false,
+) {
+  let state = menuCycleChoiceState(options, currentValue, mixed);
+  if (!state || typeof onChoose !== "function") return null;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = `${label}: ${state.currentLabel}`;
+  btn.setAttribute("data-action", "keep");
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const hostedInAppMenu = !!btn.closest("#appActionMenu");
+    const keyState = hostedInAppMenu
+      ? captureNumberedMenuKeyState(appActionMenuEl)
+      : null;
+    if (hostedInAppMenu) suppressMenuAutoClose();
+    onChoose(state.nextValue);
+    if (hostedInAppMenu) {
+      refreshAppMenuContents(keyState);
+    } else {
+      state = menuCycleChoiceState(options, state.nextValue);
+      if (state) btn.textContent = `${label}: ${state.currentLabel}`;
+    }
+  });
+  return btn;
+}
+
+function appearancePresetMenuCycleOptions() {
+  return [
+    { value: "", label: "None" },
+    ...getAppearancePresetCycleList().map((preset) => ({
+      value: normalizeAppearancePresetIdValue(preset && preset.id),
+      label: normalizeAppearancePresetName(preset && preset.name, "Preset"),
+    })),
+  ].filter((option, index) => index === 0 || !!option.value);
+}
+
+function createAppearancePresetCycleButton(options = {}) {
+  const hasOverride = !!options.hasOverride;
+  const currentPresetId = hasOverride
+    ? normalizeAppearancePresetIdValue(options.currentPresetId)
+    : "";
+  return createCyclingItemMenuButton(
+    String(options.label || "Filters"),
+    appearancePresetMenuCycleOptions(),
+    currentPresetId,
+    (presetId) => {
+      if (!presetId && typeof options.onClear === "function") {
+        options.onClear();
+        return;
+      }
+      if (typeof options.onChoosePreset === "function")
+        options.onChoosePreset(presetId);
+    },
+    !!options.mixed,
+  );
+}
+
 function setAppMenuThumbnailSize(value) {
   const next = THUMBNAIL_SIZE_CYCLE.some(
     (option) => option.value === value,
@@ -43776,7 +43880,7 @@ function buildAppMenuAppearanceSubmenu() {
       `Preset: ${currentAppearanceStatusLabel(options)}`,
       cycleAppearancePresetKeybindAction,
     ),
-    buildAppMenuChoiceSubmenu(
+    buildAppMenuCycleButton(
       "Animated filters",
       ANIMATED_FILTER_CYCLE,
       normalizeAnimatedMediaFiltersValue(options.animatedMediaFilters, "on"),
@@ -43794,7 +43898,7 @@ function buildAppMenuThumbnailKindSubmenu(label, kinds, iconKey) {
   return createDropdownMenuSubmenu(
     label,
     [
-      buildAppMenuChoiceSubmenu(
+      buildAppMenuCycleButton(
         "Level of detail",
         THUMBNAIL_PRESET_ITEMS,
         preset,
@@ -43819,7 +43923,7 @@ function buildAppMenuThumbnailsSubmenu() {
   const options = WS.meta?.options || {};
   const thumbnailSize = String(options.thumbnailSize || "medium");
   return createDropdownMenuSubmenu("Thumbnails", [
-    buildAppMenuChoiceSubmenu(
+    buildAppMenuCycleButton(
       "Thumbnail size",
       THUMBNAIL_SIZE_CYCLE,
       thumbnailSize,
@@ -43839,13 +43943,13 @@ function buildAppMenuThumbnailsSubmenu() {
 function buildAppMenuVideoSettingsSubmenu(options = null) {
   const current = options || WS.meta?.options || {};
   return createDropdownMenuSubmenu("Video settings", [
-    buildAppMenuChoiceSubmenu(
+    buildAppMenuCycleButton(
       "Video skip seconds",
       VIDEO_SKIP_STEP_CYCLE,
       String(current.videoSkipStep || "5"),
       setAppMenuVideoSkipStep,
     ),
-    buildAppMenuChoiceSubmenu(
+    buildAppMenuCycleButton(
       "Video end behavior",
       VIDEO_END_BEHAVIOR_CYCLE,
       String(current.videoEndBehavior || "loop"),
@@ -44069,8 +44173,8 @@ function buildSelectedItemMenuSubmenu(summary) {
         runFolderActionFromMenu(action, node).catch(() => {});
       },
       {
-        appearancePresetSubmenu: () =>
-          buildAppearancePresetSubmenu({
+        appearancePresetCycleButton: () =>
+          createAppearancePresetCycleButton({
             currentPresetId: menuState.assignedAppearancePresetId,
             hasOverride: !!menuState.assignedAppearancePresetId,
             onChoosePreset: (presetId) => {
@@ -44448,7 +44552,7 @@ function openTagContextMenu(context) {
     entry: tagEntryForThumb,
   });
   if (infoDropdown) menu.appendChild(infoDropdown);
-  const sortSubmenu = createContainerSortSubmenu({
+  const sortEntry = createContainerSortCycleButton({
     kind: "tag",
     entry: tagEntryForThumb,
   });
@@ -44502,13 +44606,12 @@ function openTagContextMenu(context) {
       ),
     );
   }
-  let filtersSubmenu = null;
+  let filtersEntry = null;
   if (canAppearancePreset) {
-    filtersSubmenu = buildAppearancePresetSubmenu({
+    filtersEntry = createAppearancePresetCycleButton({
       currentPresetId: assignedAppearancePresetId,
       hasOverride: !!assignedAppearancePresetId,
       onChoosePreset: (presetId) => {
-        closeTagContextMenu();
         if (!metaSetTagAppearancePresetIdByKey(tagKey, presetId)) return;
         refreshAfterProcessingMetadataChange();
         showStatusMessage(
@@ -44516,7 +44619,6 @@ function openTagContextMenu(context) {
         );
       },
       onClear: () => {
-        closeTagContextMenu();
         if (!metaClearTagAppearancePresetByKey(tagKey)) return;
         refreshAfterProcessingMetadataChange();
         showStatusMessage(
@@ -44525,7 +44627,7 @@ function openTagContextMenu(context) {
       },
     });
   }
-  let mediaTypeSubmenu = null;
+  let mediaTypeEntry = null;
   if (canMediaFilter) {
     const scopeLabel = isAlbumEntry ? "Tag album" : "Tag";
     const applyTagMediaFilter = (axisLabel, nextValue, onlyType) => {
@@ -44538,12 +44640,11 @@ function openTagContextMenu(context) {
           : "all";
         showStatusMessage(`${scopeLabel} ${axisLabel} filter: ${onlyText}.`);
       }
-      openTagContextMenu(context);
     };
-    mediaTypeSubmenu = buildTagMediaFilterAxisSubmenu({
+    mediaTypeEntry = createTagMediaFilterAxisCycleButton({
       label: "Media type",
       axis: TAG_MEDIA_FILTER_MEDIA_TYPES,
-      allLabel: "All media types",
+      allLabel: "All",
       currentValue: assignedMediaFilterValue,
       onApply: (nextValue, onlyType) =>
         applyTagMediaFilter("media type", nextValue, onlyType),
@@ -44551,7 +44652,7 @@ function openTagContextMenu(context) {
   }
   const overridesSubmenu = createDropdownMenuSubmenu(
     "Overrides",
-    [sortSubmenu, filtersSubmenu, mediaTypeSubmenu].filter(Boolean),
+    [sortEntry, filtersEntry, mediaTypeEntry].filter(Boolean),
   );
   if (overridesSubmenu) menu.appendChild(overridesSubmenu);
   if (tagKey) {
@@ -45614,6 +45715,23 @@ function createContainerSortSubmenu(target) {
   return createDropdownMenuSubmenu("Sort", buttons);
 }
 
+function createContainerSortCycleButton(target) {
+  const current = containerSortModeForTarget(target);
+  return createCyclingItemMenuButton(
+    "Sort",
+    containerSortModeOptions(),
+    current,
+    (mode) => {
+      const next = normalizeContainerSortMode(mode);
+      if (!setContainerSortModeForTarget(target, next)) return;
+      applyFolderSortModeEverywhere(true);
+      showStatusMessage(
+        `Container sort: ${next ? dirSortModeLabel(next) : "None"}.`,
+      );
+    },
+  );
+}
+
 function buildContainerSortSubmenuHtml(target) {
   const current = containerSortModeForTarget(target);
   const buttonsHtml = containerSortModeOptions()
@@ -45939,16 +46057,15 @@ function buildFolderActionMenuDom(
     });
     return btn;
   };
-  // "Filters" is a preset chooser. When the caller supplies a submenu factory it
-  // is rendered as a flyout submenu (matching the other item-menu filters);
-  // otherwise it falls back to the action button dispatched via onAction.
+  // "Filters" is a preset cycle. The caller supplies the contextual persistence
+  // callbacks; older unhosted surfaces can still fall back to their action path.
   const makeFiltersEntry = () => {
     if (
       customHandlers &&
-      typeof customHandlers.appearancePresetSubmenu === "function"
+      typeof customHandlers.appearancePresetCycleButton === "function"
     ) {
-      const submenu = customHandlers.appearancePresetSubmenu();
-      if (submenu) return submenu;
+      const button = customHandlers.appearancePresetCycleButton();
+      if (button) return button;
     }
     return makeBtn("Filters", "appearance-preset-set");
   };
@@ -45958,7 +46075,7 @@ function buildFolderActionMenuDom(
     node: state.dirNode,
   });
   if (infoDropdown) menuEl.appendChild(infoDropdown);
-  const sortSubmenu = createContainerSortSubmenu({
+  const sortEntry = createContainerSortCycleButton({
     kind: "dir",
     node: state.dirNode,
   });
@@ -45966,7 +46083,7 @@ function buildFolderActionMenuDom(
     state.isStorageRestricted || state.isTrashItem ? null : makeFiltersEntry();
   const overridesSubmenu = createDropdownMenuSubmenu(
     "Overrides",
-    [sortSubmenu, filtersEntry].filter(Boolean),
+    [sortEntry, filtersEntry].filter(Boolean),
   );
   const thumbnailButtons = [];
   if (state.showUseDefaultThumbnail)
@@ -46332,9 +46449,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   const anyStorage = selectedPaths.some(isStoredPath);
   const allFavorite = selectedPaths.every((path) => metaHasFavorite(path));
   const allHidden = selectedPaths.every((path) => metaHasHidden(path));
-  const anyAssignedAppearancePreset =
-    !!selectedPaths.length &&
-    selectedPaths.some((p) => metaHasFolderAppearancePreset(p));
   const activeAlbumRemovalContext = currentFolderMenuAlbumRemovalContext();
   const canRemoveSelectedFromAlbum =
     !!activeAlbumRemovalContext &&
@@ -46423,16 +46537,18 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       }),
     );
   }
-  let bulkFolderFiltersSubmenu = null;
+  let bulkFolderFiltersEntry = null;
   if (!anyStorage && !anyTrash) {
-    bulkFolderFiltersSubmenu = buildAppearancePresetSubmenu({
-      currentPresetId:
-        selectedPaths.length === 1
-          ? effectiveAppearancePresetIdForMenuPath(selectedPaths[0])
-          : "",
-      hasOverride: anyAssignedAppearancePreset,
+    const presetIds = selectedPaths.map((path) =>
+      metaGetFolderAppearancePresetId(path),
+    );
+    const mixedPresets = !presetIds.every((id) => id === presetIds[0]);
+    const currentPresetId = mixedPresets ? "" : presetIds[0] || "";
+    bulkFolderFiltersEntry = createAppearancePresetCycleButton({
+      currentPresetId,
+      hasOverride: mixedPresets || !!currentPresetId,
+      mixed: mixedPresets,
       onChoosePreset: (presetId) => {
-        closePreviewContextMenu();
         let changed = false;
         for (let i = 0; i < selectedPaths.length; i++) {
           if (metaSetFolderAppearancePresetId(selectedPaths[i], presetId))
@@ -46443,10 +46559,8 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         showStatusMessage(
           `Folder media preset: ${appearancePresetDisplayName(presetId)}.`,
         );
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
       },
       onClear: () => {
-        closePreviewContextMenu();
         let changed = false;
         for (let i = 0; i < selectedPaths.length; i++) {
           if (metaClearFolderAppearancePreset(selectedPaths[i])) changed = true;
@@ -46454,12 +46568,11 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         if (!changed) return;
         refreshAfterProcessingMetadataChange();
         showStatusMessage("Folder media preset reset to inherited.");
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
       },
     });
   }
 
-  let bulkFolderSortSubmenu = null;
+  let bulkFolderSortEntry = null;
   if (!anyStorage && !anyTrash) {
     const currentSortModes = selectedPaths.map((path) =>
       metaGetFolderContainerSortMode(path),
@@ -46469,26 +46582,27 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     )
       ? currentSortModes[0]
       : null;
-    const sortButtons = containerSortModeOptions().map((option) =>
-      makeBtn(
-        `${commonSortMode === option.value ? "●" : "○"} ${option.label}`,
-        () => {
-          let changed = false;
-          for (const path of selectedPaths) {
-            if (metaSetFolderContainerSortMode(path, option.value)) changed = true;
-          }
-          if (!changed) return;
-          applyFolderSortModeEverywhere(true);
-          showStatusMessage(`Container sort: ${option.label}.`);
-          if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-        },
-      ),
+    bulkFolderSortEntry = createCyclingItemMenuButton(
+      "Sort",
+      containerSortModeOptions(),
+      commonSortMode || "",
+      (mode) => {
+        let changed = false;
+        for (const path of selectedPaths) {
+          if (metaSetFolderContainerSortMode(path, mode)) changed = true;
+        }
+        if (!changed) return;
+        applyFolderSortModeEverywhere(true);
+        showStatusMessage(
+          `Container sort: ${mode ? dirSortModeLabel(mode) : "None"}.`,
+        );
+      },
+      commonSortMode == null,
     );
-    bulkFolderSortSubmenu = createDropdownMenuSubmenu("Sort", sortButtons);
   }
   const overridesSubmenu = createDropdownMenuSubmenu(
     "Overrides",
-    [bulkFolderSortSubmenu, bulkFolderFiltersSubmenu].filter(Boolean),
+    [bulkFolderSortEntry, bulkFolderFiltersEntry].filter(Boolean),
   );
   if (overridesSubmenu) menu.appendChild(overridesSubmenu);
 
@@ -46667,9 +46781,6 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         .filter(Boolean),
     ),
   );
-  const anyAssignedTagAppearancePreset = tagAppearancePresetKeys.some((key) =>
-    metaHasTagAppearancePresetByKey(key),
-  );
   const tagMediaFilterTargets = tagAppearancePresetKeys.slice();
   const albumAssignableTagEntries = selectedEntries.filter(
     (entry) =>
@@ -46795,16 +46906,18 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     );
   }
 
-  let bulkTagFiltersSubmenu = null;
+  let bulkTagFiltersEntry = null;
   if (tagAppearancePresetKeys.length) {
-    bulkTagFiltersSubmenu = buildAppearancePresetSubmenu({
-      currentPresetId:
-        tagAppearancePresetKeys.length === 1
-          ? metaGetTagAppearancePresetIdByKey(tagAppearancePresetKeys[0])
-          : "",
-      hasOverride: anyAssignedTagAppearancePreset,
+    const presetIds = tagAppearancePresetKeys.map((key) =>
+      metaGetTagAppearancePresetIdByKey(key),
+    );
+    const mixedPresets = !presetIds.every((id) => id === presetIds[0]);
+    const currentPresetId = mixedPresets ? "" : presetIds[0] || "";
+    bulkTagFiltersEntry = createAppearancePresetCycleButton({
+      currentPresetId,
+      hasOverride: mixedPresets || !!currentPresetId,
+      mixed: mixedPresets,
       onChoosePreset: (presetId) => {
-        closePreviewContextMenu();
         let changed = false;
         for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
           if (
@@ -46820,10 +46933,8 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         showStatusMessage(
           `Tag media preset: ${appearancePresetDisplayName(presetId)}.`,
         );
-        finalizeBulkSelectionAction();
       },
       onClear: () => {
-        closePreviewContextMenu();
         let changed = false;
         for (let i = 0; i < tagAppearancePresetKeys.length; i++) {
           if (metaClearTagAppearancePresetByKey(tagAppearancePresetKeys[i]))
@@ -46832,11 +46943,10 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         if (!changed) return;
         refreshAfterProcessingMetadataChange();
         showStatusMessage("Tag media preset reset.");
-        finalizeBulkSelectionAction();
       },
     });
   }
-  let bulkTagSortSubmenu = null;
+  let bulkTagSortEntry = null;
   if (tagAppearancePresetKeys.length) {
     const sortModes = tagAppearancePresetKeys.map((key) =>
       metaGetTagContainerSortMode(key),
@@ -46844,38 +46954,47 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     const commonSortMode = sortModes.every((mode) => mode === sortModes[0])
       ? sortModes[0]
       : null;
-    const sortButtons = containerSortModeOptions().map((option) =>
-      makeBtn(
-        `${commonSortMode === option.value ? "●" : "○"} ${option.label}`,
-        async () => {
-          let changed = false;
-          for (const key of tagAppearancePresetKeys) {
-            if (metaSetTagContainerSortMode(key, option.value)) changed = true;
-          }
-          if (!changed) return;
-          applyFolderSortModeEverywhere(true);
-          showStatusMessage(`Container sort: ${option.label}.`);
-          finalizeBulkSelectionAction();
-        },
+    bulkTagSortEntry = createCyclingItemMenuButton(
+      "Sort",
+      containerSortModeOptions(),
+      commonSortMode || "",
+      (mode) => {
+        let changed = false;
+        for (const key of tagAppearancePresetKeys) {
+          if (metaSetTagContainerSortMode(key, mode)) changed = true;
+        }
+        if (!changed) return;
+        applyFolderSortModeEverywhere(true);
+        showStatusMessage(
+          `Container sort: ${mode ? dirSortModeLabel(mode) : "None"}.`,
+        );
+      },
+      commonSortMode == null,
+    );
+  }
+  let bulkTagMediaTypeEntry = null;
+  if (tagMediaFilterTargets.length) {
+    const mediaSelections = tagMediaFilterTargets.map((key) =>
+      tagMediaFilterAxisSelection(
+        metaGetTagMediaFilterByKey(key),
+        TAG_MEDIA_FILTER_MEDIA_TYPES,
       ),
     );
-    bulkTagSortSubmenu = createDropdownMenuSubmenu("Sort", sortButtons);
-  }
-  let bulkTagMediaTypeSubmenu = null;
-  if (tagMediaFilterTargets.length) {
-    const currentValue =
-      tagMediaFilterTargets.length === 1
-        ? metaGetTagMediaFilterByKey(tagMediaFilterTargets[0])
-        : [];
-    bulkTagMediaTypeSubmenu = buildTagMediaFilterAxisSubmenu({
-      label: "Media type",
-      axis: TAG_MEDIA_FILTER_MEDIA_TYPES,
-      allLabel: "All media types",
-      currentValue,
-      onApply: (nextValue, onlyType) => {
-        closePreviewContextMenu();
+    const mixedMediaTypes = !mediaSelections.every(
+      (selection) => selection === mediaSelections[0],
+    );
+    bulkTagMediaTypeEntry = createCyclingItemMenuButton(
+      "Media type",
+      tagMediaFilterAxisCycleOptions(TAG_MEDIA_FILTER_MEDIA_TYPES, "All"),
+      mixedMediaTypes ? "" : mediaSelections[0] || "",
+      (onlyType) => {
         let changed = false;
         for (const key of tagMediaFilterTargets) {
+          const nextValue = setTagMediaFilterAxis(
+            metaGetTagMediaFilterByKey(key),
+            TAG_MEDIA_FILTER_MEDIA_TYPES,
+            onlyType || null,
+          );
           if (metaSetTagMediaFilterByKey(key, nextValue)) changed = true;
         }
         if (!changed) return;
@@ -46884,16 +47003,16 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         showStatusMessage(
           `Tag media type filter: ${onlyType ? `${tagMediaFilterTypeLabel(onlyType)} only` : "all"}.`,
         );
-        finalizeBulkSelectionAction();
       },
-    });
+      mixedMediaTypes,
+    );
   }
   const overridesSubmenu = createDropdownMenuSubmenu(
     "Overrides",
     [
-      bulkTagSortSubmenu,
-      bulkTagFiltersSubmenu,
-      bulkTagMediaTypeSubmenu,
+      bulkTagSortEntry,
+      bulkTagFiltersEntry,
+      bulkTagMediaTypeEntry,
     ].filter(Boolean),
   );
   if (overridesSubmenu) menu.appendChild(overridesSubmenu);
@@ -46961,12 +47080,11 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
       runFolderActionFromMenu(action, dirNode).catch(() => {});
     },
     {
-      appearancePresetSubmenu: () =>
-        buildAppearancePresetSubmenu({
+      appearancePresetCycleButton: () =>
+        createAppearancePresetCycleButton({
           currentPresetId: menuState.assignedAppearancePresetId,
           hasOverride: !!menuState.assignedAppearancePresetId,
           onChoosePreset: (presetId) => {
-            closePreviewContextMenu();
             if (!metaSetFolderAppearancePresetId(p, presetId)) return;
             refreshAfterProcessingMetadataChange();
             showStatusMessage(
@@ -46974,7 +47092,6 @@ function openPreviewFolderActionMenu(dirNode, opts = {}) {
             );
           },
           onClear: () => {
-            closePreviewContextMenu();
             if (!metaClearFolderAppearancePreset(p)) return;
             refreshAfterProcessingMetadataChange();
             showStatusMessage("Folder media preset reset.");
@@ -47481,9 +47598,44 @@ function deleteTagAlbumByName(albumName, scopePath = null) {
   return { changed, clearedTags, album };
 }
 
-// Single-select flyout submenu (one axis: media type or aspect ratio) for the
-// tag context menu, styled like the Thumbnail submenu. Picking an option
-// restricts the tag/album to show only that one type; "All" clears the axis.
+function tagMediaFilterAxisCycleOptions(axis, allLabel = "All") {
+  return [
+    { value: "", label: String(allLabel || "All") },
+    ...(Array.isArray(axis) ? axis : []).map((type) => {
+      const rawLabel = tagMediaFilterTypeLabel(type);
+      return {
+        value: type,
+        label: rawLabel
+          ? `${rawLabel.charAt(0).toUpperCase()}${rawLabel.slice(1)}`
+          : String(type || ""),
+      };
+    }),
+  ];
+}
+
+function createTagMediaFilterAxisCycleButton(opts) {
+  const cfg = opts || {};
+  const axis = Array.isArray(cfg.axis) ? cfg.axis : [];
+  const currentValue = normalizeTagMediaFilterValue(cfg.currentValue);
+  const onApply = typeof cfg.onApply === "function" ? cfg.onApply : null;
+  if (!axis.length || !onApply) return null;
+  const selected = tagMediaFilterAxisSelection(currentValue, axis);
+  return createCyclingItemMenuButton(
+    String(cfg.label || "Media type"),
+    tagMediaFilterAxisCycleOptions(axis, cfg.allLabel),
+    selected,
+    (onlyType) =>
+      onApply(
+        setTagMediaFilterAxis(currentValue, axis, onlyType || null),
+        onlyType || "",
+      ),
+    !!cfg.mixed,
+  );
+}
+
+// Legacy single-select flyout variant retained for non-navigation surfaces.
+// Picking an option restricts the tag/album to show only that one type; "All"
+// clears the axis.
 function buildTagMediaFilterAxisSubmenu(opts) {
   const cfg = opts || {};
   const label = String(cfg.label || "");
@@ -61191,7 +61343,10 @@ function handlePreviewPaneAction(action, inFilePreview) {
     case "selectRight":
       return movePreviewSelectionByDirection("right");
     case "leaveDir": {
-      if (restorePreviewFolderBridgeState()) return true;
+      if (WS.view.previewFolderBridgeReturnState) {
+        syncGridReturnStateToExitedFolder();
+        if (restorePreviewFolderBridgeState()) return true;
+      }
       const beforeState = {
         navPath: String(WS.nav.dirNode?.path || ""),
         aboveRoot: !!WS.view.aboveRootView,
@@ -61357,6 +61512,7 @@ function handleClosedFilePaneNavigationAction(action) {
 function handleThumbnailViewportArrowKey(e, action) {
   if (!e || !WS.root || VIEWER_MODE || THUMB_CROP_EDITOR) return false;
   if (isTextInputTarget(e.target)) return false;
+  if (openNumberedItemMenu()) return false;
   const key = normalizeBaseKeyValue(e.key);
   const commandOnly =
     !!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
@@ -61365,7 +61521,7 @@ function handleThumbnailViewportArrowKey(e, action) {
       typeof THUMB_VIEWPORT_ZOOM_STEP_RESTORED === "number"
         ? THUMB_VIEWPORT_ZOOM_STEP_RESTORED
         : 0.2;
-    return zoomSelectedThumbnailViewport(
+    zoomSelectedThumbnailViewport(
       key === "ArrowUp" ? zoomStep : -zoomStep,
       {
         consumeAtLimit: true,
@@ -61373,6 +61529,15 @@ function handleThumbnailViewportArrowKey(e, action) {
         quietSuccess: true,
       },
     );
+    // Keep these fixed shortcuts from falling through to navigation when the
+    // selected item has no editable thumbnail or has reached a zoom limit.
+    return true;
+  }
+  if (commandOnly && (key === "ArrowLeft" || key === "ArrowRight")) {
+    seekSelectedVideoThumbnailFrame(key === "ArrowLeft" ? -1 : 1, !!e.repeat);
+    // Images intentionally do nothing, but the fixed shortcut remains consumed
+    // so it cannot leak through to navigation or a browser history action.
+    return true;
   }
   if (action || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
   const step =
@@ -61412,6 +61577,21 @@ function shouldReserveAppKeybindBeforeBrowser(e) {
   if (!e || e.defaultPrevented) return false;
   if (busyOverlayActive()) return true;
   if (isTextInputTarget(e.target)) return false;
+  const baseKey = normalizeBaseKeyValue(e.key);
+  const commandThumbnailEdit =
+    !!WS.root &&
+    !VIEWER_MODE &&
+    !THUMB_CROP_EDITOR &&
+    !openNumberedItemMenu() &&
+    !!e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !e.shiftKey &&
+    (baseKey === "ArrowUp" ||
+      baseKey === "ArrowDown" ||
+      baseKey === "ArrowLeft" ||
+      baseKey === "ArrowRight");
+  if (commandThumbnailEdit) return true;
   const key = keybindValueFromEvent(e);
   if (!key) return false;
   return !!keybindActionFor(key);
@@ -61439,6 +61619,14 @@ document.addEventListener(
   "keyup",
   (e) => {
     syncModifierKeyStateFromEvent(e);
+    const baseKey = normalizeBaseKeyValue(e.key);
+    if (
+      baseKey === "ArrowLeft" ||
+      baseKey === "ArrowRight" ||
+      baseKey === "Meta"
+    ) {
+      resetVideoThumbnailFrameSeekHold();
+    }
   },
   true,
 );
@@ -63788,6 +63976,7 @@ function upgradeContainerPreviewVideoThumbs(container, opts = null) {
 function resetThumbnailRuntimeStateV3() {
   try { clearQueuedThumbnailWork(); } catch {}
   try { closeThumbnailCropEditor(); } catch {}
+  try { resetVideoThumbnailFrameSeekRuntime(); } catch {}
   try {
     if (LOADED_THUMB_RELEASE_TIMER) clearTimeout(LOADED_THUMB_RELEASE_TIMER);
     LOADED_THUMB_RELEASE_TIMER = 0;
@@ -64936,15 +65125,63 @@ function getSelectedThumbnailSourceRecordFromUi() {
     if (!container || !container.querySelector) return null;
     const selected = container.querySelector(".previewSelected, .dirRow.selected");
     if (!selected || !selected.querySelector) return null;
+    const selectedFileId = String(
+      selected.dataset?.fileId ||
+        selected.querySelector("[data-file-id]")?.dataset?.fileId ||
+        "",
+    );
+    if (selectedFileId) {
+      const selectedFile = WS.fileById.get(selectedFileId) || null;
+      if (selectedFile) return selectedFile;
+    }
     const img = selected.querySelector("[data-dir-preview-id]");
-    const recId = String(img && img.dataset && img.dataset.dirPreviewId || "");
+    const recId = String(
+      (img && img.dataset && img.dataset.dirPreviewId) || "",
+    );
     return recId ? WS.fileById.get(recId) || null : null;
   };
   return resolveFromContainer(previewBodyEl) || resolveFromContainer(directoriesListEl);
 }
 
+function getSelectedPreviewThumbnailSourceRecord() {
+  const previewOwnsSelection =
+    !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview";
+  if (!previewOwnsSelection) return null;
+  if (WS.preview?.kind === "file" && WS.preview.fileId) {
+    return WS.fileById.get(String(WS.preview.fileId)) || null;
+  }
+  const card = findSelectedPreviewCard();
+  if (!card) return null;
+  const kind = String(card.dataset?.previewItemKind || "");
+  const displayedPreviewId = String(
+    card.querySelector?.("[data-dir-preview-id]")?.dataset?.dirPreviewId || "",
+  );
+  if (displayedPreviewId) {
+    const displayedRecord = WS.fileById.get(displayedPreviewId) || null;
+    if (displayedRecord) return displayedRecord;
+  }
+  if (kind === "file") {
+    const fileId = previewFileIdForCard(card);
+    return fileId ? WS.fileById.get(fileId) || null : null;
+  }
+  if (kind === "tag") {
+    return getTagThumbnailReferenceRecord(card.__previewTagEntry || null);
+  }
+  if (kind !== "dir") return null;
+  const path = previewDirPathForCard(card);
+  const node = WS.dirByPath.get(String(path || "")) ||
+    (!path ? WS.root : null);
+  if (!node) return null;
+  if (node === WS.root && WS.view?.aboveRootView)
+    return getRootThumbnailReferenceRecord(node);
+  const leadInfo = getDisplayLeadPreviewForDir(node, "dir");
+  return leadInfo && leadInfo.record ? leadInfo.record : null;
+}
+
 function getSelectedThumbnailSourceRecord() {
   if (!WS.root || !WS.nav || !Array.isArray(WS.nav.entries)) return null;
+  const previewRec = getSelectedPreviewThumbnailSourceRecord();
+  if (previewRec) return previewRec;
   const uiRec = getSelectedThumbnailSourceRecordFromUi();
   if (uiRec) return uiRec;
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
@@ -64962,12 +65199,301 @@ function getSelectedThumbnailSourceRecord() {
   return null;
 }
 
+function getSelectedEditableThumbnailSourceRecord() {
+  const rec = getSelectedThumbnailSourceRecord();
+  return rec && (rec.type === "image" || rec.type === "video") ? rec : null;
+}
+
 const THUMB_VIEWPORT_NUDGE_STEP_RESTORED = 8;
 const THUMB_VIEWPORT_ZOOM_STEP_RESTORED = 0.2;
+const VIDEO_THUMB_FRAME_RATE_FALLBACK = 30;
+const VIDEO_THUMB_FRAME_REFRESH_INTERVAL_MS = 160;
+const VIDEO_THUMB_TIMING_CACHE = new Map();
+const VIDEO_THUMB_FRAME_SEEK_STATE = {
+  recId: "",
+  direction: 0,
+  startedAt: 0,
+  lastEventAt: 0,
+  pendingFrames: 0,
+  processing: false,
+};
+let VIDEO_THUMB_FRAME_REFRESH_TIMER = 0;
+let VIDEO_THUMB_FRAME_REFRESH_RECORD = null;
+let VIDEO_THUMB_FRAME_LAST_REFRESH_AT = 0;
+
+function videoThumbnailTimingCacheKey(rec) {
+  if (!rec) return "";
+  return [
+    String(rec.id || rec.relPath || ""),
+    String(rec.size || 0),
+    String(rec.lastModified || 0),
+  ].join("@@");
+}
+
+function mountedVideoDurationForRecord(rec) {
+  if (!rec) return 0;
+  if (
+    previewVideoEl &&
+    String(WS.preview?.fileId || "") === String(rec.id || "")
+  ) {
+    const duration = Number(previewVideoEl.duration);
+    if (Number.isFinite(duration) && duration > 0) return duration;
+  }
+  const escapedId =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(String(rec.id || ""))
+      : String(rec.id || "").replace(/["\\]/g, "\\$&");
+  const mounted = escapedId
+    ? document.querySelector(
+        `video[data-dir-preview-id="${escapedId}"], video[data-file-id="${escapedId}"]`,
+      )
+    : null;
+  const duration = Number(mounted?.duration);
+  return Number.isFinite(duration) && duration > 0 ? duration : 0;
+}
+
+function probeVideoTimingInBrowser(rec) {
+  return new Promise((resolve) => {
+    const src = rec ? ensureMediaUrl(rec) || "" : "";
+    if (!src) {
+      resolve({ duration: 0, frameRate: VIDEO_THUMB_FRAME_RATE_FALLBACK });
+      return;
+    }
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    let settled = false;
+    let timer = 0;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      const duration = Number(video.duration);
+      try {
+        video.removeAttribute("src");
+        video.load();
+      } catch {}
+      resolve({
+        duration: Number.isFinite(duration) && duration > 0 ? duration : 0,
+        frameRate: VIDEO_THUMB_FRAME_RATE_FALLBACK,
+      });
+    };
+    video.addEventListener("loadedmetadata", finish, { once: true });
+    video.addEventListener("error", finish, { once: true });
+    timer = setTimeout(finish, 1800);
+    try {
+      video.src = src;
+      video.load();
+    } catch {
+      finish();
+    }
+  });
+}
+
+async function getVideoThumbnailTiming(rec) {
+  const key = videoThumbnailTimingCacheKey(rec);
+  if (!key) {
+    return { duration: 0, frameRate: VIDEO_THUMB_FRAME_RATE_FALLBACK };
+  }
+  if (VIDEO_THUMB_TIMING_CACHE.has(key))
+    return await VIDEO_THUMB_TIMING_CACHE.get(key);
+  const promise = (async () => {
+    let duration = mountedVideoDurationForRecord(rec);
+    let frameRate = 0;
+    const nativePath = nativePathForRecord(rec);
+    if (
+      nativePath &&
+      window.__lg &&
+      typeof window.__lg.probeVideoTiming === "function"
+    ) {
+      try {
+        const timing = await window.__lg.probeVideoTiming(nativePath);
+        const nativeDuration = Number(timing?.duration);
+        const nativeFrameRate = Number(
+          timing?.frameRate ?? timing?.frame_rate,
+        );
+        if (Number.isFinite(nativeDuration) && nativeDuration > 0)
+          duration = nativeDuration;
+        if (Number.isFinite(nativeFrameRate) && nativeFrameRate > 0)
+          frameRate = nativeFrameRate;
+      } catch {}
+    }
+    if (!(duration > 0) || !(frameRate > 0)) {
+      const browserTiming = await probeVideoTimingInBrowser(rec);
+      if (!(duration > 0) && Number(browserTiming.duration) > 0)
+        duration = Number(browserTiming.duration);
+      if (!(frameRate > 0) && Number(browserTiming.frameRate) > 0)
+        frameRate = Number(browserTiming.frameRate);
+    }
+    return {
+      duration: Number.isFinite(duration) ? Math.max(0, duration) : 0,
+      frameRate: Number.isFinite(frameRate)
+        ? Math.min(480, Math.max(1, frameRate))
+        : VIDEO_THUMB_FRAME_RATE_FALLBACK,
+    };
+  })();
+  VIDEO_THUMB_TIMING_CACHE.set(key, promise);
+  const timing = await promise;
+  VIDEO_THUMB_TIMING_CACHE.set(key, timing);
+  return timing;
+}
+
+function invalidateVideoThumbnailFrameRecord(rec) {
+  if (!rec || rec.type !== "video") return;
+  if (rec.videoThumbUrl) {
+    try {
+      URL.revokeObjectURL(rec.videoThumbUrl);
+    } catch {}
+  }
+  rec.videoThumbUrl = null;
+  rec.videoThumbMode = null;
+  enqueueVideoThumb(rec);
+  videoThumbCacheEnqueue(rec);
+}
+
+function flushVideoThumbnailFrameRefresh() {
+  VIDEO_THUMB_FRAME_REFRESH_TIMER = 0;
+  const rec = VIDEO_THUMB_FRAME_REFRESH_RECORD;
+  VIDEO_THUMB_FRAME_REFRESH_RECORD = null;
+  if (!rec || rec.type !== "video") return;
+  VIDEO_THUMB_FRAME_LAST_REFRESH_AT = performance.now();
+  invalidateVideoThumbnailFrameRecord(rec);
+  clearPreviewThumbTargetCache();
+  renderDirectoriesPane(true);
+  // A full-file video preview may be playing; refreshing that pane for a
+  // thumbnail-only edit would restart playback on every held-key tick.
+  if (WS.preview?.kind === "dir") renderPreviewPane(false, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+}
+
+function scheduleVideoThumbnailFrameRefresh(rec, immediate = false) {
+  if (!rec || rec.type !== "video") return;
+  VIDEO_THUMB_FRAME_REFRESH_RECORD = rec;
+  if (VIDEO_THUMB_FRAME_REFRESH_TIMER) return;
+  const elapsed = performance.now() - VIDEO_THUMB_FRAME_LAST_REFRESH_AT;
+  const delay = immediate
+    ? 0
+    : Math.max(0, VIDEO_THUMB_FRAME_REFRESH_INTERVAL_MS - elapsed);
+  VIDEO_THUMB_FRAME_REFRESH_TIMER = setTimeout(
+    flushVideoThumbnailFrameRefresh,
+    delay,
+  );
+}
+
+function videoThumbnailFrameRampCount(heldMs) {
+  const rampSeconds = Math.max(0, (Number(heldMs) - 320) / 1000);
+  return Math.min(
+    72,
+    Math.max(1, Math.round(1 + Math.pow(rampSeconds * 1.45, 1.7))),
+  );
+}
+
+function defaultVideoThumbnailFrameTime(duration) {
+  const safeDuration = Math.max(0, Number(duration) || 0);
+  return Math.max(0, Math.min(0.1, safeDuration * 0.02));
+}
+
+async function drainVideoThumbnailFrameSeekQueue() {
+  const state = VIDEO_THUMB_FRAME_SEEK_STATE;
+  if (state.processing) return;
+  state.processing = true;
+  try {
+    while (state.pendingFrames) {
+      const recId = String(state.recId || "");
+      const rec = recId ? WS.fileById.get(recId) || null : null;
+      const frameDelta = state.pendingFrames;
+      state.pendingFrames = 0;
+      if (!rec || rec.type !== "video") continue;
+      const timing = await getVideoThumbnailTiming(rec);
+      if (recId !== String(state.recId || "")) continue;
+      const frameRate = Math.min(
+        480,
+        Math.max(1, Number(timing.frameRate) || VIDEO_THUMB_FRAME_RATE_FALLBACK),
+      );
+      const duration = Math.max(0, Number(timing.duration) || 0);
+      const savedTime = metaGetVideoThumbnailTimeForRecord(rec);
+      const currentTime = Number.isFinite(savedTime)
+        ? savedTime
+        : defaultVideoThumbnailFrameTime(duration);
+      const currentFrame = Math.max(0, Math.round(currentTime * frameRate));
+      const lastFrame = duration > 0
+        ? Math.max(0, Math.floor(Math.max(0, duration - 0.05) * frameRate))
+        : Number.MAX_SAFE_INTEGER;
+      const nextFrame = Math.max(
+        0,
+        Math.min(lastFrame, currentFrame + frameDelta),
+      );
+      const nextTime = nextFrame / frameRate;
+      const changed = metaSetVideoThumbnailTimeForRecord(
+        rec,
+        nextTime,
+        duration || null,
+      );
+      if (!changed) continue;
+      scheduleVideoThumbnailFrameRefresh(rec, !state.lastEventAt);
+      showStatusMessage(
+        `Video thumbnail frame: ${formatThumbnailEditorTimeLabel(nextTime)}`,
+        "thumbnail-frame",
+      );
+    }
+  } finally {
+    state.processing = false;
+    if (state.pendingFrames) drainVideoThumbnailFrameSeekQueue();
+  }
+}
+
+function seekSelectedVideoThumbnailFrame(direction, isRepeat = false) {
+  const rec = getSelectedEditableThumbnailSourceRecord();
+  if (!rec || rec.type !== "video") return false;
+  const state = VIDEO_THUMB_FRAME_SEEK_STATE;
+  const nextDirection = direction < 0 ? -1 : 1;
+  const now = performance.now();
+  const continuesHold = !!(
+    isRepeat &&
+    state.recId === String(rec.id || "") &&
+    state.direction === nextDirection &&
+    now - state.lastEventAt < 1000
+  );
+  if (!continuesHold) {
+    state.recId = String(rec.id || "");
+    state.direction = nextDirection;
+    state.startedAt = now;
+    state.pendingFrames = 0;
+  }
+  const frameCount = isRepeat
+    ? videoThumbnailFrameRampCount(now - state.startedAt)
+    : 1;
+  state.pendingFrames += nextDirection * frameCount;
+  state.lastEventAt = now;
+  drainVideoThumbnailFrameSeekQueue();
+  return true;
+}
+
+function resetVideoThumbnailFrameSeekHold() {
+  const state = VIDEO_THUMB_FRAME_SEEK_STATE;
+  state.direction = 0;
+  state.startedAt = 0;
+  state.lastEventAt = 0;
+}
+
+function resetVideoThumbnailFrameSeekRuntime() {
+  resetVideoThumbnailFrameSeekHold();
+  VIDEO_THUMB_FRAME_SEEK_STATE.recId = "";
+  VIDEO_THUMB_FRAME_SEEK_STATE.pendingFrames = 0;
+  VIDEO_THUMB_TIMING_CACHE.clear();
+  VIDEO_THUMB_FRAME_REFRESH_RECORD = null;
+  if (VIDEO_THUMB_FRAME_REFRESH_TIMER) {
+    clearTimeout(VIDEO_THUMB_FRAME_REFRESH_TIMER);
+    VIDEO_THUMB_FRAME_REFRESH_TIMER = 0;
+  }
+}
 
 function nudgeSelectedThumbnailViewport(dx, dy, opts = null) {
   const options = opts && typeof opts === "object" ? opts : {};
-  const rec = getSelectedThumbnailSourceRecord();
+  const rec = getSelectedEditableThumbnailSourceRecord();
   if (!rec) {
     if (!options.quietNoTarget)
       showStatusMessage("Selected item has no editable thumbnail source.");
@@ -64993,7 +65519,7 @@ function nudgeSelectedThumbnailViewport(dx, dy, opts = null) {
 
 function zoomSelectedThumbnailViewport(delta, opts = null) {
   const options = opts && typeof opts === "object" ? opts : {};
-  const rec = getSelectedThumbnailSourceRecord();
+  const rec = getSelectedEditableThumbnailSourceRecord();
   if (!rec) {
     if (!options.quietNoTarget)
       showStatusMessage("Selected item has no editable thumbnail source.");

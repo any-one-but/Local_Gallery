@@ -95,6 +95,9 @@
   window.__lg.generateThumbnail = function (path, maxEdge) {
     return invoke("generate_thumbnail", { path: String(path), maxEdge: maxEdge || 512 });
   };
+  window.__lg.probeVideoTiming = function (path) {
+    return invoke("probe_video_timing", { path: String(path || "") });
+  };
   window.__lg.assetUrl = assetUrl;
 
   // Request a disk-cached downscaled thumbnail for a media file; resolves to an
