@@ -2223,6 +2223,19 @@ img[data-rotate-key].rotatingThumbFade {
   pointer-events: none;
 }
 
+/* The message line on the app-menu "Are You Sure?" page: a muted, wrapping
+   subtitle above the Yes / No options. Not a button, so the cursor skips it. */
+.appMenuConfirmMessage {
+  padding: 2px 14px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--color0-secondary);
+  white-space: normal;
+  max-width: 340px;
+  pointer-events: none;
+}
+
 #appActionMenu .dropdownMenuNum,
 #directoriesActionMenu .dropdownMenuNum,
 #tagActionMenu .dropdownMenuNum,
@@ -18010,6 +18023,10 @@ let TAG_EDIT_IN_PREVIEW = false;
 let TAG_CONTEXT_MENU_STATE = null;
 let PREVIEW_CONTEXT_MENU_STATE = null;
 let APP_MENU_STATE = null;
+// When set, the app menu shows an "Are You Sure?" confirmation page instead of
+// its normal contents. Holds { title, message, confirmLabel, danger, resolve }.
+// showAppMenuConfirm() drives it; the Yes/No buttons settle the promise.
+let APP_MENU_CONFIRM = null;
 let APP_MENU_FILTER_EDIT_KEY = "";
 // Controls submenu edit state: the control row whose Assign/Clear options are
 // open, which of those two is focused (0 = Assign, 1 = Clear), and the control
@@ -44033,6 +44050,16 @@ function closePreviewContextMenu() {
 function closeAppMenu() {
   if (menuAutoCloseSuppressed()) return;
   if (!appActionMenuEl) return;
+  // Closing the menu with a confirm still pending (exit key / Escape / click
+  // outside) counts as "No". settleAppMenuConfirm clears the state before it
+  // calls closeAppMenu, so this only fires for an un-answered confirm.
+  if (APP_MENU_CONFIRM) {
+    const c = APP_MENU_CONFIRM;
+    APP_MENU_CONFIRM = null;
+    try {
+      c.resolve(false);
+    } catch {}
+  }
   appActionMenuEl.classList.remove("open", "fixed");
   appActionMenuEl.innerHTML = "";
   appActionMenuEl.style.left = "";
@@ -44830,6 +44857,9 @@ function buildAppMenuItems() {
   const previousBuildMode = BUILDING_NAVIGATION_ONLY_ACTION_MENU;
   BUILDING_NAVIGATION_ONLY_ACTION_MENU = true;
   try {
+    // A pending confirmation replaces the whole menu with the "Are You Sure?"
+    // page (Yes / No), navigated the same way as any other app-menu options.
+    if (APP_MENU_CONFIRM) return buildAppMenuConfirmPageItems();
     const summary = appMenuSelectionSummary();
     // An item in Trash or Storage gets the one action that applies to it in place
     // of the whole "Selected Item" dropdown.
@@ -44869,6 +44899,91 @@ function buildAppMenuItems() {
   } finally {
     BUILDING_NAVIGATION_ONLY_ACTION_MENU = previousBuildMode;
   }
+}
+
+// The "Are You Sure?" page contents: a title, an optional message line, and the
+// Yes / No options. Title and message are non-buttons, so the option walker
+// skips them and the cursor lands on Yes.
+function buildAppMenuConfirmPageItems() {
+  const c = APP_MENU_CONFIRM;
+  if (!c) return [];
+  const title = document.createElement("div");
+  title.className = "dropdownMenuTitle";
+  title.setAttribute("aria-hidden", "true");
+  title.textContent = c.title || "Are You Sure?";
+  const items = [title];
+  if (c.message) {
+    const msg = document.createElement("div");
+    msg.className = "appMenuConfirmMessage";
+    msg.setAttribute("aria-hidden", "true");
+    msg.textContent = c.message;
+    items.push(msg);
+  }
+  const yes = document.createElement("button");
+  yes.type = "button";
+  yes.textContent = c.confirmLabel || "Yes";
+  if (c.danger) yes.classList.add("destructiveAction");
+  yes.addEventListener("click", (e) => {
+    e.stopPropagation();
+    settleAppMenuConfirm(true);
+  });
+  const no = document.createElement("button");
+  no.type = "button";
+  no.textContent = "No";
+  no.addEventListener("click", (e) => {
+    e.stopPropagation();
+    settleAppMenuConfirm(false);
+  });
+  items.push(yes, no);
+  return items;
+}
+
+// Render the confirm page into the (already open) app menu and put the cursor on
+// the first option (Yes).
+function renderAppMenuConfirmPage() {
+  const menu = appActionMenuEl;
+  if (!menu || !APP_MENU_CONFIRM) return;
+  menu.innerHTML = "";
+  menu.classList.add("appMenuDrillDown");
+  buildAppMenuConfirmPageItems().forEach((el) => menu.appendChild(el));
+  decorateNumberedMenuOptions(menu);
+  ensureMenuHighlight(menu);
+  positionActionMenuInPreviewDock(menu);
+}
+
+// Resolve a pending confirm and close the page. Clearing APP_MENU_CONFIRM first
+// makes closeAppMenu's own settle-on-close a no-op, so the promise resolves once.
+function settleAppMenuConfirm(value) {
+  const c = APP_MENU_CONFIRM;
+  if (!c) return;
+  APP_MENU_CONFIRM = null;
+  allowMenuClose();
+  closeAppMenu();
+  try {
+    c.resolve(!!value);
+  } catch {}
+}
+
+// Promise-based confirmation shown as an app-menu page (Yes / No). Drop-in for
+// showConfirmDialog in flows that run while the app menu is open; falls back to
+// the legacy dialog when it is not (e.g. a keybind-triggered action).
+function showAppMenuConfirm(message, opts = {}) {
+  const options = opts && typeof opts === "object" ? opts : {};
+  if (!appActionMenuEl || !appActionMenuEl.classList.contains("open")) {
+    return showConfirmDialog(message, options);
+  }
+  return new Promise((resolve) => {
+    APP_MENU_CONFIRM = {
+      title: "Are You Sure?",
+      message: String(message == null ? "" : message),
+      confirmLabel: options.okLabel || "Yes",
+      danger: options.danger !== false,
+      resolve,
+    };
+    // Hold the menu open through the async caller's await; Yes/No reopen the gate.
+    suppressMenuAutoClose();
+    renderAppMenuConfirmPage();
+  });
 }
 
 // Rebuild the open app menu without closing it, then put the keyboard cursor
@@ -46093,16 +46208,8 @@ function openTagContextMenu(context) {
       ),
     );
   }
-  if (canDelete) {
-    addToButtons.push(
-      createTagMenuButton(
-        "Trash",
-        () => handleTagMenuAction("delete"),
-        false,
-        "destructiveAction",
-      ),
-    );
-  }
+  // Deleting a tag/album is NOT an "Add To" target -- it has a dedicated red
+  // "Delete" button at the bottom of this menu (appended below).
   const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
   if (addToSubmenu) menu.appendChild(addToSubmenu);
   if (canRename) {
@@ -46196,6 +46303,18 @@ function openTagContextMenu(context) {
       tagThumbnailButtons,
     );
     if (tagThumbnailSubmenu) menu.appendChild(tagThumbnailSubmenu);
+  }
+  // Bespoke red "Delete" as the last action. It confirms through the app-menu
+  // "Are You Sure?" page (see handleTagMenuAction's "delete" case).
+  if (canDelete) {
+    menu.appendChild(
+      createTagMenuButton(
+        "Delete",
+        () => handleTagMenuAction("delete"),
+        false,
+        "destructiveAction",
+      ),
+    );
   }
   TAG_CONTEXT_MENU_STATE = {
     tag,
@@ -47804,6 +47923,9 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   }
   if (action === "send-to-storage") {
     if (isRootNode || !p) return true;
+    const name = node.name || "this folder";
+    if (!(await showAppMenuConfirm(`Move '${name}' to Storage?`, { danger: false })))
+      return true;
     await setStorageStateForFolderPaths([p], true);
     return true;
   }
@@ -47814,6 +47936,9 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   }
   if (action === "move-to-trash") {
     if (isRootNode || !isFolderPathMovableToTrash(p)) return true;
+    const name = node.name || "this folder";
+    if (!(await showAppMenuConfirm(`Move '${name}' to Trash?`, { danger: true })))
+      return true;
     await moveFolderPathsToTrash([p]);
     return true;
   }
@@ -48111,6 +48236,15 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     makeBtn(
       allStorage ? "Remove from Storage" : "Storage",
       async () => {
+        const n = selectedPaths.length;
+        if (
+          !allStorage &&
+          !(await showAppMenuConfirm(
+            `Move ${n} item${n === 1 ? "" : "s"} to Storage?`,
+            { danger: false },
+          ))
+        )
+          return;
         await setStorageStateForFolderPaths(selectedPaths, !allStorage);
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
       },
@@ -48119,6 +48253,15 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     makeBtn(
       allTrash ? "Remove from Trash" : "Trash",
       async () => {
+        const n = selectedPaths.length;
+        if (
+          !allTrash &&
+          !(await showAppMenuConfirm(
+            `Move ${n} item${n === 1 ? "" : "s"} to Trash?`,
+            { danger: true },
+          ))
+        )
+          return;
         if (allTrash) await putBackTrashFolderPaths(selectedPaths);
         else await moveFolderPathsToTrash(selectedPaths);
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
@@ -49387,9 +49530,9 @@ async function handleTagMenuAction(action) {
   if (action === "delete") {
     if (!ctx.canDelete) return;
     if (isAlbumEntry) {
-      const confirmed = await showConfirmDialog(
+      const confirmed = await showAppMenuConfirm(
         `Delete album '${label}'? Nothing inside is deleted. Its tags and folders just return to their normal place.`,
-        { okLabel: "Delete", danger: true },
+        { danger: true },
       );
       if (!confirmed) return;
       const result = deleteTagAlbumByName(album, ctx.originPath);
@@ -49424,8 +49567,7 @@ async function handleTagMenuAction(action) {
     const confirmPrompt = paths.length
       ? `Remove tag '${label}' from these folders?`
       : `Remove tag '${label}' from ${taggedAlbums.length} album${taggedAlbums.length === 1 ? "" : "s"}?`;
-    const confirmed = await showConfirmDialog(confirmPrompt, {
-      okLabel: "Remove",
+    const confirmed = await showAppMenuConfirm(confirmPrompt, {
       danger: true,
     });
     if (!confirmed) return;
@@ -62244,8 +62386,7 @@ async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
         ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
         : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Nothing inside is deleted. Their tags and folders return to their normal place.`;
   if (
-    !(await showConfirmDialog(deleteLabel, {
-      okLabel: "Delete",
+    !(await showAppMenuConfirm(deleteLabel, {
       danger: true,
     }))
   )
