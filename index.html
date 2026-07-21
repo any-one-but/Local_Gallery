@@ -16028,9 +16028,6 @@ const KEYBIND_ACTIONS = [
     label: "Toggle Grok",
     hint: "Show or hide the Grok window over the app. Esc closes it.",
     section: "panes",
-    // Feature off for now — keep the action id for later, but hide it from
-    // Controls and leave it unbound (handler is a no-op while disabled).
-    hiddenInUi: true,
   },
   {
     id: "randomFirstFileJump",
@@ -16448,7 +16445,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   nextFolder: "Cmd+s",
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
-  toggleGrokWindow: "",
+  toggleGrokWindow: "Cmd+g",
   randomFirstFileJump: "r",
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
@@ -61266,15 +61263,11 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
   return true;
 }
 
-// Flip to true to restore the embedded Grok window (Cmd+g / Controls bind).
-const GROK_WINDOW_ENABLED = false;
-
 // The Grok window lives entirely in Rust (src-tauri/src/grok.rs) — it is a
 // separate native window, so there is no DOM here to toggle. Closing is handled
 // on that side too: once it has focus this window sees no keys at all, so Esc
 // is caught by the script injected into the page.
 function toggleGrokWindowKeybindAction() {
-  if (!GROK_WINDOW_ENABLED) return false;
   const invoke = window.__TAURI__?.core?.invoke;
   if (!invoke) {
     showStatusMessage("Grok needs the desktop app.");
