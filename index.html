@@ -2293,9 +2293,19 @@ img[data-rotate-key].rotatingThumbFade {
 
 #appActionMenu button.appMenuFilterControl.menuKeyActive:not(.appMenuFilterEditing) .appMenuFilterLabel,
 #appActionMenu button.appMenuFilterControl:hover:not(:disabled):not(.appMenuFilterEditing) .appMenuFilterLabel,
-#appActionMenu button.appMenuFilterControl:focus-visible:not(.appMenuFilterEditing) .appMenuFilterLabel,
+#appActionMenu button.appMenuFilterControl:focus-visible:not(.appMenuFilterEditing) .appMenuFilterLabel {
+  /* The keyboard selection here uses the same accent highlight as every other
+     app-menu item (was a one-off grey surface tint). */
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--color0-primary);
+}
+
 #appActionMenu button.appMenuFilterEditing .appMenuFilterValue {
-  background: var(--color1-secondary);
+  /* The editing/value highlight uses the regular accent, never a special
+     surface tint (which read wrong in the light theme). */
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--color0-primary);
 }
 
@@ -2444,6 +2454,15 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
   pointer-events: none;
   user-select: none;
+}
+
+/* When Item Info sits at the bottom of the section, the divider goes above it. */
+.dropdownMenu .dropdownMenuItemInfoHeader.dropdownMenuItemInfoFooter {
+  padding: 10px 7px 5px;
+  margin-bottom: 0;
+  margin-top: 6px;
+  border-bottom: 0;
+  border-top: 1px solid var(--ui-control-bg);
 }
 
 .dropdownMenuItemInfoHeaderTitle {
@@ -6308,7 +6327,10 @@ img[data-rotate-key].rotatingThumbFade {
   position: fixed;
   inset: 0;
   background: #000;
-  z-index: 10000;
+  /* Above the app menu / dropdowns (20000/20001) and the settings window so the
+     black cover hides the entire app screen. Kept below the confirm/alert
+     dialog (30000), which is meant to stay visible over panic. */
+  z-index: 25000;
   display: none;
 }
 
@@ -8031,11 +8053,19 @@ html.settings-window #previewContent:not(.menu-open)::before {
        elevated surface shade only — never the blue anchor accent. */
     #appActionMenu button.appMenuControlRow.menuKeyActive:not(.appMenuControlEditing) .appMenuControlName,
     #appActionMenu button.appMenuControlRow:hover:not(:disabled):not(.appMenuControlEditing) .appMenuControlName,
-    #appActionMenu button.appMenuControlRow:focus-visible:not(.appMenuControlEditing) .appMenuControlName,
+    #appActionMenu button.appMenuControlRow:focus-visible:not(.appMenuControlEditing) .appMenuControlName {
+      /* Match the regular app-menu accent selection (was a one-off grey tint). */
+      background: var(--accent-soft);
+      box-shadow: inset 0 0 0 1px var(--accent);
+      color: var(--color0-primary);
+    }
     #appActionMenu button.appMenuControlRow.appMenuControlEditing.appMenuControlCol0 .appMenuControlAssign,
     #appActionMenu button.appMenuControlRow.appMenuControlEditing.appMenuControlCol1 .appMenuControlClear,
     #appActionMenu button.appMenuControlRow.appMenuControlEditing .appMenuControlAssign.appMenuControlCapturing {
-      background: var(--color1-secondary);
+      /* Assign/clear/capture highlight uses the regular accent, never a special
+         surface tint (which read wrong in the light theme). */
+      background: var(--accent-soft);
+      box-shadow: inset 0 0 0 1px var(--accent);
       color: var(--color0-primary);
     }
   </style>
@@ -16424,7 +16454,7 @@ const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   selectRight: "d",
   leaveDir: "q",
   enterDir: "e",
-  openAppMenu: "Tab",
+  openAppMenu: "f",
   scoreUpSelection: "=",
   scoreDownSelection: "-",
 });
@@ -16467,7 +16497,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleRandomFolderSort: "Cmd+r",
   cycleWeightRandomJumpsByScore: "",
   cycleThumbnailSize: "",
-  // Media filter is menu-only; f is free (app menu is hard-coded to Tab).
+  // Media filter is menu-only. The app menu opens with F (openAppMenu, locked).
   cycleFilter: "",
   slideshow: "v",
   panic: "g",
@@ -16484,7 +16514,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleSelectionInBulk: "",
   selectRangeInBulk: "",
   cancelMultiSelection: "",
-  openAppMenu: "Tab",
+  openAppMenu: "f",
   seekBack: "z",
   seekForward: "c",
   playPause: "x",
@@ -44878,7 +44908,12 @@ function buildSelectedItemMenuSubmenu(summary) {
     }
   }
 
-  promoteItemInfoDropdownToHeader(host);
+  const infoBlock = promoteItemInfoDropdownToHeader(host);
+  if (infoBlock) {
+    // Item Info sits at the bottom of the section, under the options.
+    infoBlock.classList.add("dropdownMenuItemInfoFooter");
+    host.appendChild(infoBlock);
+  }
   const items = Array.from(host.children);
   items.forEach((el) => host.removeChild(el));
   return createDropdownMenuSubmenu(summary.label, items);
@@ -63332,8 +63367,27 @@ document.addEventListener(
   true,
 );
 
+// PANIC always wins. This runs on `window` in the capture phase, so it fires
+// before every document-level handler — the app menu, the daily journal, the
+// confirm dialog, the search-focus grab — none of which can swallow it
+// (they stopImmediatePropagation on `document`, one hop below `window`). The
+// one exception is an in-progress keybind capture, where the keypress must be
+// recorded as the new binding instead of triggering panic.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (KEYBIND_CAPTURE_ACTION_ID || APP_MENU_CONTROLS_CAPTURE_ID) return;
+    const key = keybindValueFromEvent(e);
+    if (!key || keybindActionFor(key) !== "panic") return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    applyBanicState(!BANIC_ACTIVE);
+  },
+  true,
+);
+
 // Command+, is intentionally disabled: there is no Settings pane; the app menu
-// is hard-coded to Tab (openAppMenu). No Cmd+, listener.
+// opens with the locked F key (openAppMenu). No Cmd+, listener.
 
 document.addEventListener("keydown", (e) => {
   if (busyOverlayActive()) {
@@ -63375,9 +63429,9 @@ document.addEventListener("keydown", (e) => {
     }
   }
 
-  // Tab is bound to openAppMenu (hard-coded). No special-case Settings toggle —
-  // the settings pane is gone. While typing, Tab keeps normal focus traversal
-  // because the action handlers below bail on text inputs.
+  // The app menu opens with the locked F key (openAppMenu). No special-case
+  // Settings toggle — the settings pane is gone. While typing, letter keys keep
+  // normal input because the action handlers below bail on text inputs.
   const action = keybindActionFor(key);
   if (!isTextInputTarget(e.target) && actionNeedsImmediateNavigationPriority(action)) {
     noteResponsiveNavigationInteraction("user-navigation", RESPONSIVE_NAV_MEDIA_MS);
