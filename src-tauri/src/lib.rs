@@ -31,18 +31,19 @@ fn install_macos_settings_menu(app: &tauri::App) -> tauri::Result<()> {
         .first()
         .and_then(|item| item.as_submenu())
     {
-        // No accelerator: Settings is the in-app floating window toggled with
-        // Tab, and Cmd+, is intentionally disabled.
+        // No accelerator: the app menu is hard-coded to Tab in the web layer.
+        // Cmd+, stays disabled. This menu item opens the in-app command menu
+        // (Controls / History / Appearance live there; there is no Settings pane).
         let settings = MenuItem::with_id(
             app.handle(),
             SETTINGS_MENU_ID,
-            "Settings…",
+            "App Menu…",
             true,
             None::<&str>,
         )?;
         let separator = PredefinedMenuItem::separator(app.handle())?;
-        // About, separator, Settings, separator, Services… is the conventional
-        // macOS application-menu ordering.
+        // About, separator, App Menu, separator, Services… keeps the usual
+        // macOS application-menu slot formerly occupied by Settings.
         app_submenu.insert(&settings, 2)?;
         app_submenu.insert(&separator, 3)?;
     }
@@ -440,8 +441,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .on_menu_event(|app, event| {
             if event.id().as_ref() == SETTINGS_MENU_ID {
-                // Settings now lives inside the main window as an in-app
-                // floating panel; toggle it via the web layer.
+                // Opens the in-app command menu (Settings pane is gone).
                 if let Some(main) = app.get_webview_window("main") {
                     let _ = main.eval("window.__lgToggleSettings && window.__lgToggleSettings();");
                 }

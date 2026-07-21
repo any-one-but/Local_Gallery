@@ -7883,6 +7883,79 @@ html.settings-window #previewContent:not(.menu-open)::before {
       position: relative;
       z-index: 1;
     }
+
+    /* Controls: wide scrollable list. Each row is three visual columns — name,
+       assign (shows current key or "Assign"), and clear (only when bound).
+       Up/Down keep the cursor in the name column; Right moves it onto assign
+       then clear; Left moves back. Column focus uses the same surface highlight
+       as the appearance filter (never the blue selection accent). */
+    #appActionMenu .appMenuControlsPanel {
+      min-width: 480px;
+      max-width: 600px;
+      max-height: min(74vh, 600px);
+      overflow-y: auto;
+    }
+    #appActionMenu .appMenuControlsPanel > button.appMenuControlRow {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) minmax(88px, auto) minmax(64px, auto);
+      align-items: stretch;
+      gap: 3px;
+      width: 100%;
+      padding: 2px;
+      background: transparent;
+      box-shadow: none;
+      text-align: left;
+    }
+    /* Kill the whole-row menuKeyActive blue/inset so only the active column
+       cell is tinted (appearance-filter pattern). */
+    #appActionMenu button.appMenuControlRow:hover:not(:disabled),
+    #appActionMenu button.appMenuControlRow:focus-visible,
+    #appActionMenu button.appMenuControlRow.menuKeyActive,
+    #appActionMenu button.appMenuControlRow.appMenuControlEditing,
+    #appActionMenu .dropdownMenu button.appMenuControlRow.menuKeyActive,
+    #appActionMenu .dropdownMenu:not(.optSelectMenu) button.appMenuControlRow.menuKeyActive {
+      background: transparent !important;
+      box-shadow: none !important;
+      transform: none;
+    }
+    #appActionMenu .appMenuControlName,
+    #appActionMenu .appMenuControlAssign,
+    #appActionMenu .appMenuControlClear {
+      min-width: 0;
+      padding: 7px 9px;
+      border-radius: 9px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #appActionMenu .appMenuControlAssign,
+    #appActionMenu .appMenuControlClear {
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      color: var(--color0-secondary);
+    }
+    #appActionMenu .appMenuControlAssign.appMenuControlKeyEmpty {
+      font-style: italic;
+      opacity: 0.7;
+    }
+    #appActionMenu .appMenuControlClear.appMenuControlClearEmpty {
+      visibility: hidden;
+    }
+    /* Locked (hard-coded WASD/QE/Tab) rows are greyed and inert — no "Locked" label. */
+    #appActionMenu .appMenuControlRow.appMenuControlLocked {
+      opacity: 0.5;
+    }
+    /* Column focus: name when scrolling, assign/clear when editing. Uses the
+       elevated surface shade only — never the blue anchor accent. */
+    #appActionMenu button.appMenuControlRow.menuKeyActive:not(.appMenuControlEditing) .appMenuControlName,
+    #appActionMenu button.appMenuControlRow:hover:not(:disabled):not(.appMenuControlEditing) .appMenuControlName,
+    #appActionMenu button.appMenuControlRow:focus-visible:not(.appMenuControlEditing) .appMenuControlName,
+    #appActionMenu button.appMenuControlRow.appMenuControlEditing.appMenuControlCol0 .appMenuControlAssign,
+    #appActionMenu button.appMenuControlRow.appMenuControlEditing.appMenuControlCol1 .appMenuControlClear,
+    #appActionMenu button.appMenuControlRow.appMenuControlEditing .appMenuControlAssign.appMenuControlCapturing {
+      background: var(--color1-secondary);
+      color: var(--color0-primary);
+    }
   </style>
   </head>
 
@@ -7902,7 +7975,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
               id="directoriesSearchInput"
               class="tagEditInput"
               type="text"
-              placeholder="Search folder"
+              placeholder="Press / to search…"
             />
           </div>
           <div id="titleBtns">
@@ -8023,107 +8096,6 @@ html.settings-window #previewContent:not(.menu-open)::before {
                   </div>
                 </div>
               </div>
-              <div id="menuDivider" title="Drag to resize menu"></div>
-              <div id="menuOverlay">
-                <div id="menuTitleBar" title="Drag to move">
-                  <span class="menuTitleLabel">Settings</span>
-                  <button
-                    id="menuTitleClose"
-                    type="button"
-                    title="Close settings"
-                    aria-label="Close settings"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div id="menuCard">
-                  <div id="menuHeader">
-                    <div id="menuTabs" role="tablist" aria-label="Menu tabs">
-                      <button
-                        type="button"
-                        class="miniBtn menuTabBtn"
-                        data-tab="controls"
-                        role="tab"
-                        aria-controls="menuTabKeybinds"
-                      >
-                        Controls
-                      </button>
-                    </div>
-                  </div>
-                  <!-- Tab ids (controls / calendar) come from the
-                       #menuTabs buttons above and drive setMenuTab(); each panel's
-                       data-tab below names the same tab so markup stays consistent.
-                       The element ids (menuTabKeybinds/menuTabCalendar)
-                       are what the JS panel map and aria-controls reference. -->
-                  <div id="menuBody">
-                    <section
-                      id="menuTabKeybinds"
-                      class="menuTabPanel"
-                      data-tab="controls"
-                      role="tabpanel"
-                    >
-                      <div id="keybindsBody"></div>
-                      <div id="keybindsFooter">
-                        <div class="left">
-                          <span class="label" id="keybindsStatusLabel">—</span>
-                        </div>
-                        <div class="right">
-                          <button
-                            id="keybindsResetBtn"
-                            type="button"
-                            class="miniBtn"
-                          >
-                            Reset defaults
-                          </button>
-                          <button
-                            id="keybindsOpenWritableBtn"
-                            type="button"
-                            class="miniBtn"
-                          >
-                            Reveal Media Folder
-                          </button>
-                        </div>
-                      </div>
-                    </section>
-                    <section
-                      id="menuTabCalendar"
-                      class="menuTabPanel"
-                      data-tab="calendar"
-                      role="tabpanel"
-                    >
-                      <div id="calendarBody"></div>
-                      <div id="calendarFooter">
-                        <div class="left">
-                          <span class="label" id="calendarStatusLabel">—</span>
-                        </div>
-                        <div class="right">
-                          <button
-                            id="calendarDeleteAllBtn"
-                            type="button"
-                            class="miniBtn"
-                          >
-                            Delete all logs
-                          </button>
-                          <button
-                            id="calendarOpenWritableBtn"
-                            type="button"
-                            class="miniBtn"
-                          >
-                            Reveal Media Folder
-                          </button>
-                        </div>
-                      </div>
-                    </section>
-                  </div>
-                </div>
-                <div class="menuResizeHandle" data-resize="n"></div>
-                <div class="menuResizeHandle" data-resize="s"></div>
-                <div class="menuResizeHandle" data-resize="e"></div>
-                <div class="menuResizeHandle" data-resize="w"></div>
-                <div class="menuResizeHandle" data-resize="ne"></div>
-                <div class="menuResizeHandle" data-resize="nw"></div>
-                <div class="menuResizeHandle" data-resize="se"></div>
-                <div class="menuResizeHandle" data-resize="sw"></div>
               </div>
             </div>
             <div id="previewActionMenu" class="dropdownMenu"></div>
@@ -16137,7 +16109,7 @@ const KEYBIND_ACTIONS = [
   {
     id: "openAppMenu",
     label: "Open app menu",
-    hint: "Open the app-wide action menu beside the selected item.",
+    hint: "Toggle the app-wide action menu beside the selected item. Hard-coded to Tab.",
     section: "folderActions",
   },
   {
@@ -16361,7 +16333,16 @@ function generalKeybindActionSortIndex(actionId) {
   return GENERAL_KEYBIND_ACTION_IDS.length + 1000;
 }
 
+// Hard-coded keys cannot be reassigned in the Controls menu.
+// WASD/QE are navigation; Tab is the app menu; =/- are score. F is free.
 const KEYBIND_LOCKED_ACTIONS = Object.freeze({
+  selectUp: "w",
+  selectLeft: "a",
+  selectDown: "s",
+  selectRight: "d",
+  leaveDir: "q",
+  enterDir: "e",
+  openAppMenu: "Tab",
   scoreUpSelection: "=",
   scoreDownSelection: "-",
 });
@@ -16404,7 +16385,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleRandomFolderSort: "Cmd+r",
   cycleWeightRandomJumpsByScore: "",
   cycleThumbnailSize: "",
-  cycleFilter: "f",
+  // Media filter is menu-only; f is free (app menu is hard-coded to Tab).
+  cycleFilter: "",
   slideshow: "v",
   panic: "g",
   cycleFolderSort: "t",
@@ -16420,7 +16402,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleSelectionInBulk: "",
   selectRangeInBulk: "",
   cancelMultiSelection: "",
-  openAppMenu: "",
+  openAppMenu: "Tab",
   seekBack: "z",
   seekForward: "c",
   playPause: "x",
@@ -16538,8 +16520,10 @@ function normalizeKeybinds(log, presets = null) {
   migrateIfKeyMatches("selectLeft", "", "a");
   migrateIfKeyMatches("selectRight", "", "d");
   migrateIfKeyMatches("randomFirstFileJump", "x", "r");
-  migrateIfKeyMatches("cycleFilter", "Command+f", "f");
-  migrateIfKeyMatches("cycleFilter", "Command+x", "f");
+  // App menu is Tab (was F); free f and drop legacy cycleFilter f binds.
+  migrateIfKeyMatches("cycleFilter", "Command+f", "");
+  migrateIfKeyMatches("cycleFilter", "Command+x", "");
+  migrateIfKeyMatches("cycleFilter", "f", "");
   migrateIfKeyMatches("slideshow", "v", "v");
   migrateIfKeyMatches("slideshow", "Command+Shift+x", "v");
   migrateIfKeyMatches("seekBack", "Command+q", "z");
@@ -16547,13 +16531,14 @@ function normalizeKeybinds(log, presets = null) {
   migrateIfKeyMatches("seekForward", "Command+e", "c");
   migrateIfKeyMatches("seekForward", "e", "c");
   migrateIfKeyMatches("playPause", "Space", "x");
-  // Settings is now the in-app window toggled with Tab; Cmd+, is disabled, so
-  // clear any previously-saved binding onto this action.
+  // Settings pane is gone; clear any leftover binding for the retired action.
   migrateIfKeyMatches("toggleSettingsAndDirectoriesPanes", "Space", "");
   migrateIfKeyMatches("toggleSettingsAndDirectoriesPanes", "Cmd+,", "");
+  migrateIfKeyMatches("toggleSettingsAndDirectoriesPanes", "Tab", "");
   migrateIfKeyMatches("toggleAnimatedFilters", "5", "Command+i");
   migrateIfKeyMatches("toggleAnimatedFilters", "6", "Command+i");
-  migrateIfKeyMatches("favoriteSelection", "Ctrl+f", "f");
+  migrateIfKeyMatches("favoriteSelection", "Ctrl+f", "Cmd+f");
+  migrateIfKeyMatches("favoriteSelection", "f", "Cmd+f");
   applyFixedKeybinds(bindings);
   enforceUniqueKeybinds(bindings, KEYBIND_LOCKED_IDS);
   return { bindings };
@@ -17926,6 +17911,24 @@ let TAG_CONTEXT_MENU_STATE = null;
 let PREVIEW_CONTEXT_MENU_STATE = null;
 let APP_MENU_STATE = null;
 let APP_MENU_FILTER_EDIT_KEY = "";
+// Controls submenu edit state: the control row whose Assign/Clear options are
+// open, which of those two is focused (0 = Assign, 1 = Clear), and the control
+// currently waiting for a captured key.
+let APP_MENU_CONTROLS_EDIT_ID = "";
+let APP_MENU_CONTROLS_EDIT_BTN = 0;
+let APP_MENU_CONTROLS_CAPTURE_ID = "";
+// WASD (move) + QE (open/exit) + Tab (app menu) are hard-coded: listed first,
+// greyed, non-editable, and their keys can't be assigned to anything else.
+const APP_MENU_CONTROLS_HARDCODED_IDS = Object.freeze([
+  "selectUp",
+  "selectLeft",
+  "selectDown",
+  "selectRight",
+  "leaveDir",
+  "enterDir",
+  "openAppMenu",
+]);
+const APP_MENU_CONTROLS_HARDCODED_SET = new Set(APP_MENU_CONTROLS_HARDCODED_IDS);
 let APP_MENU_PRESET_RENAME_STATE = null;
 let APP_MENU_PRESET_DELETE_CONFIRM_ID = "";
 let SCORE_HISTORY_DAY_MENU_STATE = null;
@@ -18915,12 +18918,9 @@ function syncPreviewContentLayoutAfterMenuToggle() {
   refreshActivePreviewMediaLayout({ immediate: true });
 }
 
-// Kept for the legacy Settings-only WebviewWindow mode (IS_SETTINGS_WINDOW) and
-// for callers that still expect an "open settings" entry point. In the main
-// window there is no native window anymore: Settings is the in-app floating
-// panel, so this just opens it.
-function requestSettingsWindow(tabId = "controls") {
-  openMenu(tabId);
+// Legacy "open settings" entry point — Settings is gone; open the app menu.
+function requestSettingsWindow(_tabId = "controls") {
+  toggleSettingsWindow();
   return true;
 }
 
@@ -19138,76 +19138,51 @@ function initSettingsFloatingWindow() {
   });
 }
 
-function openMenu(tabId) {
-  MENU_OPEN = true;
-  const floating = settingsFloatingEnabled();
-  const appEl = document.getElementById("app");
-  if (floating) {
-    if (menuOverlay) menuOverlay.classList.add("menu-floating", "active");
-    ensureSettingsWindowGeometry();
-  } else {
-    if (appEl) {
-      appEl.classList.add("menu-pane-open");
-      appEl.classList.remove("no-side-panes");
-    }
-    if (menuOverlay) menuOverlay.classList.add("active");
-    if (previewContentEl) previewContentEl.classList.add("menu-open");
-  }
-  refreshMenuTabAvailability();
-  if (!floating) applyMenuPaneWidthFromOptions();
-  const next = isMenuTabAvailable(tabId)
-    ? tabId
-    : MENU_HAS_OPENED
-      ? MENU_LAST_TAB
-      : "controls";
-  MENU_HAS_OPENED = true;
-  setMenuTab(next);
-  applyMenuTransientFocusBehavior(menuCard || menuOverlay);
-  if (!floating) syncPreviewContentLayoutAfterMenuToggle();
+// Settings pane removed — openMenu/closeMenu are inert. Callers that used to
+// open Settings should go through toggleSettingsWindow / the app menu.
+function openMenu(_tabId) {
+  MENU_OPEN = false;
+  KEYBIND_CAPTURE_ACTION_ID = "";
 }
 
 function closeMenu() {
-  if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
-  const wasFloating = MENU_OPEN && settingsFloatingEnabled();
   MENU_OPEN = false;
+  KEYBIND_CAPTURE_ACTION_ID = "";
   const appEl = document.getElementById("app");
   if (appEl) {
     appEl.classList.remove("menu-pane-open");
     appEl.classList.toggle("no-side-panes", !directoriesPaneOpenEnabled());
   }
-  KEYBIND_CAPTURE_ACTION_ID = "";
-  if (menuOverlay) menuOverlay.classList.remove("active");
   if (previewContentEl) previewContentEl.classList.remove("menu-open");
-  if (!wasFloating) syncPreviewContentLayoutAfterMenuToggle();
-  if (IS_SETTINGS_WINDOW) {
-    const currentWindow = window.__TAURI__?.window?.getCurrentWindow?.();
-    if (currentWindow && typeof currentWindow.close === "function") {
-      currentWindow.close().catch(() => {});
-    }
-  }
 }
 
-// Tab toggles the in-app Settings window (see the global keydown handler).
-function toggleSettingsWindow(tabId) {
-  if (MENU_OPEN) closeMenu();
-  else openMenu(tabId || MENU_LAST_TAB || "controls");
+// Settings pane is gone. These entry points open the app menu instead (Controls
+// / History / Appearance all live there now).
+function toggleSettingsWindow(_tabId) {
+  if (typeof openAppMenuForSelectionKeybindAction === "function") {
+    openAppMenuForSelectionKeybindAction();
+  }
 }
 window.__lgToggleSettings = () => toggleSettingsWindow();
 
-window.__lgOpenSettingsTab = (tabId) => {
-  const tab = String(tabId || "controls");
-  openMenu(tab);
+window.__lgOpenSettingsTab = (_tabId) => {
+  toggleSettingsWindow();
 };
 
-if (optionsBtn) optionsBtn.addEventListener("click", () => openMenu());
+if (optionsBtn) {
+  optionsBtn.addEventListener("click", () => toggleSettingsWindow());
+}
+// menuOverlay is removed; floating-window init is a no-op when the node is gone.
 initSettingsFloatingWindow();
-menuTabButtons.forEach((btn) => {
-  btn.setAttribute("tabindex", "-1");
-  btn.addEventListener("click", () => {
-    const tab = btn.dataset.tab || "controls";
-    setMenuTab(tab);
+if (menuTabButtons && menuTabButtons.length) {
+  menuTabButtons.forEach((btn) => {
+    btn.setAttribute("tabindex", "-1");
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab || "controls";
+      setMenuTab(tab);
+    });
   });
-});
+}
 
 /* =========================================================
        Keybinds panel
@@ -43888,6 +43863,9 @@ function closeAppMenu() {
   appActionMenuEl.style.top = "";
   APP_MENU_STATE = null;
   APP_MENU_FILTER_EDIT_KEY = "";
+  APP_MENU_CONTROLS_EDIT_ID = "";
+  APP_MENU_CONTROLS_EDIT_BTN = 0;
+  APP_MENU_CONTROLS_CAPTURE_ID = "";
   APP_MENU_PRESET_RENAME_STATE = null;
   APP_MENU_PRESET_DELETE_CONFIRM_ID = "";
 }
@@ -44780,6 +44758,7 @@ function buildAppMenuItems() {
       buildAppMenuAddItemsSubmenu(),
       buildAppMenuMiscSubmenu(),
       buildAppMenuHistorySubmenu(),
+      buildAppMenuControlsSubmenu(),
       // Always last.
       appMenuChoiceButton(
         "Refresh App",
@@ -44803,6 +44782,14 @@ function refreshAppMenuContents(keyState) {
   decorateNumberedMenuOptions(menu);
   applyNumberedMenuKeyState(menu, keyState);
   applyAppMenuFilterEditVisuals();
+  // Rebuild can wipe the Controls edit/capture pills; re-apply them in place.
+  if (APP_MENU_CONTROLS_EDIT_ID || APP_MENU_CONTROLS_CAPTURE_ID) {
+    refreshAllAppMenuControlRows();
+    const editRow = appMenuControlRowEl(
+      APP_MENU_CONTROLS_EDIT_ID || APP_MENU_CONTROLS_CAPTURE_ID,
+    );
+    if (editRow) setMenuHighlight(menu, editRow);
+  }
   positionActionMenuInPreviewDock(menu);
   focusAppMenuPresetRenameInput();
 }
@@ -45504,6 +45491,241 @@ function buildAppMenuHistorySubmenu() {
     buildAppMenuStatsSubmenu(),
     buildAppMenuCalendarSubmenu(),
   ]);
+}
+
+// ---------------------------------------------------------------------------
+// Controls submenu: keybind list replacing the settings Controls tab. Modeled
+// on the appearance-filter menu -- three columns (name / assign / clear),
+// scroll the names, move right onto assign then clear, move left to go back.
+// Hard-coded WASD/QE/Tab come first, greyed and non-editable. Menu-only / hidden
+// actions stay in the data model but are not listed here.
+// ---------------------------------------------------------------------------
+
+function appMenuControlBindings() {
+  const all =
+    WS.meta && Array.isArray(WS.meta.keybinds)
+      ? syncPaneKeybindBindingsWithCurrentActions(false)
+      : defaultKeybinds(WS.meta && WS.meta.appearancePresets);
+  // Keep disabled/hidden actions in KEYBIND_ACTIONS + persistence; only skip
+  // them in this UI (same filter the old Settings Controls tab used).
+  return all.filter(
+    (b) =>
+      b &&
+      !b.hiddenInUi &&
+      !appItemMenuActionKeybindIsDisabled(b.id),
+  );
+}
+
+function appMenuControlBindingById(id) {
+  return appMenuControlBindings().find((b) => b && b.id === String(id || "")) || null;
+}
+
+// A key can't be assigned to an ordinary action if it's one of the hard-coded
+// nav/app-menu keys or a locked score key (=/-). Those all live in
+// KEYBIND_LOCKED_ACTIONS now, so one check covers them.
+function appMenuControlKeyReserved(key, excludeId) {
+  return isKeyReservedForLockedAction(key, excludeId);
+}
+
+function appMenuControlHasClearColumn(binding, locked) {
+  if (locked) return false;
+  return !!(binding && normalizeKeyValue(binding.key || ""));
+}
+
+// Set a control row's classes + three-column content from its binding and the
+// current edit/capture state. Used both to build a row and to refresh one (or
+// all) in place -- rebuilding the whole menu on every keystroke loses the open
+// submenu / cursor, so edits update the DOM directly, like the appearance filter.
+function applyAppMenuControlRow(btn, binding, locked) {
+  btn.classList.toggle("appMenuControlLocked", !!locked);
+  btn.disabled = !!locked;
+  const editing = !locked && APP_MENU_CONTROLS_EDIT_ID === binding.id;
+  const hasClear = appMenuControlHasClearColumn(binding, locked);
+  // If clear vanished (just unbound), snap focus back onto assign.
+  if (editing && APP_MENU_CONTROLS_EDIT_BTN > 0 && !hasClear) {
+    APP_MENU_CONTROLS_EDIT_BTN = 0;
+  }
+  btn.classList.toggle("appMenuControlEditing", editing);
+  btn.classList.toggle("appMenuControlCol0", editing && APP_MENU_CONTROLS_EDIT_BTN === 0);
+  btn.classList.toggle("appMenuControlCol1", editing && APP_MENU_CONTROLS_EDIT_BTN === 1);
+  const capturing =
+    editing && APP_MENU_CONTROLS_CAPTURE_ID === binding.id;
+
+  const nameHtml = `<span class="appMenuControlName">${escapeHtml(binding.label || binding.id)}</span>`;
+
+  let assignHtml;
+  if (locked) {
+    const fixed = lockedKeyForAction(binding.id);
+    const keyText = keyLabel(fixed || binding.key || "") || "—";
+    assignHtml = `<span class="appMenuControlAssign">${escapeHtml(keyText)}</span>`;
+  } else if (capturing) {
+    assignHtml = `<span class="appMenuControlAssign appMenuControlCapturing">Press key…</span>`;
+  } else if (binding.key) {
+    assignHtml = `<span class="appMenuControlAssign">${escapeHtml(keyLabel(binding.key))}</span>`;
+  } else {
+    assignHtml = `<span class="appMenuControlAssign appMenuControlKeyEmpty">Assign</span>`;
+  }
+
+  // Locked rows keep the third column empty; greying alone signals non-editable.
+  let clearHtml;
+  if (!locked && hasClear) {
+    clearHtml = `<span class="appMenuControlClear">Clear</span>`;
+  } else {
+    clearHtml = `<span class="appMenuControlClear appMenuControlClearEmpty" aria-hidden="true">Clear</span>`;
+  }
+
+  btn.innerHTML = nameHtml + assignHtml + clearHtml;
+}
+
+function buildAppMenuControlButton(binding, locked) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "appMenuControlRow";
+  btn.dataset.appMenuControl = String(binding.id || "");
+  btn.dataset.menuStateKey = `control:${binding.id}`;
+  btn.setAttribute("data-action", "keep");
+  applyAppMenuControlRow(btn, binding, locked);
+  return btn;
+}
+
+function appMenuControlRowIsLocked(id) {
+  return APP_MENU_CONTROLS_HARDCODED_SET.has(id) || isAnyLockedKeybindAction(id);
+}
+
+function appMenuControlRowEl(id) {
+  if (!appActionMenuEl || !id) return null;
+  const key = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(String(id)) : String(id);
+  return appActionMenuEl.querySelector(`.appMenuControlRow[data-app-menu-control="${key}"]`);
+}
+
+function renderAppMenuControlRow(id) {
+  const row = appMenuControlRowEl(id);
+  const binding = appMenuControlBindingById(id);
+  if (row && binding) applyAppMenuControlRow(row, binding, appMenuControlRowIsLocked(id));
+}
+
+// After a key change (which can swap a key off another row) refresh every row.
+function refreshAllAppMenuControlRows() {
+  if (!appActionMenuEl) return;
+  appActionMenuEl.querySelectorAll(".appMenuControlRow").forEach((row) => {
+    const id = String(row.dataset.appMenuControl || "");
+    const binding = appMenuControlBindingById(id);
+    if (binding) applyAppMenuControlRow(row, binding, appMenuControlRowIsLocked(id));
+  });
+}
+
+function buildAppMenuControlsSubmenu() {
+  const bindings = appMenuControlBindings();
+  const byId = new Map(bindings.map((b) => [String(b.id || ""), b]));
+  const hardcoded = APP_MENU_CONTROLS_HARDCODED_IDS.map((id) => byId.get(id)).filter(Boolean);
+  const rest = bindings.filter((b) => b && !APP_MENU_CONTROLS_HARDCODED_SET.has(b.id));
+  const buttons = [];
+  for (const b of hardcoded) buttons.push(buildAppMenuControlButton(b, true));
+  for (const b of rest) buttons.push(buildAppMenuControlButton(b, isAnyLockedKeybindAction(b.id)));
+  const submenu = createDropdownMenuSubmenu("Controls", buttons);
+  submenu
+    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
+    ?.classList?.add("appMenuControlsPanel");
+  return submenu;
+}
+
+function startAppMenuControlsEdit(id) {
+  const actionId = String(id || "");
+  if (!actionId || appMenuControlRowIsLocked(actionId)) return false;
+  APP_MENU_CONTROLS_EDIT_ID = actionId;
+  APP_MENU_CONTROLS_EDIT_BTN = 0;
+  APP_MENU_CONTROLS_CAPTURE_ID = "";
+  suppressMenuAutoClose();
+  const row = appMenuControlRowEl(actionId);
+  if (row) setMenuHighlight(appActionMenuEl, row);
+  renderAppMenuControlRow(actionId);
+  return true;
+}
+
+function stopAppMenuControlsEdit() {
+  const id = APP_MENU_CONTROLS_EDIT_ID;
+  if (!id) return false;
+  APP_MENU_CONTROLS_EDIT_ID = "";
+  APP_MENU_CONTROLS_EDIT_BTN = 0;
+  APP_MENU_CONTROLS_CAPTURE_ID = "";
+  renderAppMenuControlRow(id);
+  return true;
+}
+
+// Keys for an open Controls edit/capture state. Returns true when handled.
+function handleAppMenuControlsKey(menu, action, e) {
+  if (menu.id !== "appActionMenu") return false;
+
+  // Capture mode: the next key becomes this control's binding.
+  if (APP_MENU_CONTROLS_CAPTURE_ID) {
+    const id = APP_MENU_CONTROLS_CAPTURE_ID;
+    if (e.key === "Escape") {
+      APP_MENU_CONTROLS_CAPTURE_ID = "";
+      renderAppMenuControlRow(id);
+      return true;
+    }
+    const key = keybindValueFromEvent(e);
+    if (!key) return true; // bare modifier press, keep waiting
+    APP_MENU_CONTROLS_CAPTURE_ID = "";
+    if (appMenuControlKeyReserved(key, id)) {
+      showStatusMessage("That key is reserved.");
+    } else {
+      const result = assignKeybindForAction(id, key);
+      if (!result.ok) showStatusMessage(result.message || "Unable to update keybind.");
+    }
+    refreshAllAppMenuControlRows();
+    return true;
+  }
+
+  // Edit mode: cursor is on the assign (col 0) or clear (col 1) column.
+  if (APP_MENU_CONTROLS_EDIT_ID) {
+    const id = APP_MENU_CONTROLS_EDIT_ID;
+    const binding = appMenuControlBindingById(id);
+    const hasClear = appMenuControlHasClearColumn(binding, false);
+    switch (action) {
+      case "selectRight":
+        if (APP_MENU_CONTROLS_EDIT_BTN === 0 && hasClear) {
+          APP_MENU_CONTROLS_EDIT_BTN = 1;
+          renderAppMenuControlRow(id);
+        }
+        return true;
+      case "selectLeft":
+        if (APP_MENU_CONTROLS_EDIT_BTN > 0) {
+          APP_MENU_CONTROLS_EDIT_BTN = 0;
+          renderAppMenuControlRow(id);
+        } else {
+          stopAppMenuControlsEdit();
+        }
+        return true;
+      case "selectUp":
+        stopAppMenuControlsEdit();
+        moveMenuHighlight(menu, -1);
+        return true;
+      case "selectDown":
+        stopAppMenuControlsEdit();
+        moveMenuHighlight(menu, 1);
+        return true;
+      case "enterDir":
+        if (e.repeat) return true;
+        if (APP_MENU_CONTROLS_EDIT_BTN === 1 && hasClear) {
+          assignKeybindForAction(id, "");
+          // Stay on the row in assign column after clearing.
+          APP_MENU_CONTROLS_EDIT_BTN = 0;
+          refreshAllAppMenuControlRows();
+        } else {
+          APP_MENU_CONTROLS_CAPTURE_ID = id;
+          renderAppMenuControlRow(id);
+        }
+        return true;
+      case "openAppMenu":
+      case "leaveDir":
+        closeNumberedMenuFromKeyboard(menu);
+        return true;
+      default:
+        return true; // swallow other keys while editing
+    }
+  }
+  return false;
 }
 
 // The open Calendar submenu's panel, if one is open (its grid has no button
@@ -46261,6 +46483,21 @@ function setMenuHighlight(menu, btn) {
   if (!btn) return;
   btn.classList.add(MENU_KEY_ACTIVE_CLASS);
   try {
+    // Controls panel: locked (disabled) rows sit above the first selectable
+    // entry. scrollIntoView on that first entry only brings *it* into view, so
+    // the locked header disappears and wrap-around can't recover it. When the
+    // cursor is on the first selectable control, pin the panel scroll to the
+    // true top so the greyed keys stay readable.
+    const controlsPanel = btn.closest?.(".appMenuControlsPanel");
+    if (controlsPanel) {
+      const selectable = numberedMenuOptionsForPanel(controlsPanel).filter(
+        (option) => !option.disabled,
+      );
+      if (selectable[0] === btn) {
+        controlsPanel.scrollTop = 0;
+        return;
+      }
+    }
     btn.scrollIntoView({ block: "nearest" });
   } catch {}
 }
@@ -46458,7 +46695,10 @@ function ensureMenuHighlight(menu) {
 
 // Left: step back out one level, or leave the menu entirely from the top level.
 function collapseOrCloseNumberedMenu(menu) {
-  if (menu?.id === "appActionMenu") stopAppMenuFilterEdit();
+  if (menu?.id === "appActionMenu") {
+    stopAppMenuFilterEdit();
+    stopAppMenuControlsEdit();
+  }
   const panel = deepestOpenNumberedSubmenuPanel(menu);
   const submenu = panel?.closest?.(".dropdownMenuSubmenu");
   if (submenu) {
@@ -46514,6 +46754,14 @@ document.addEventListener(
     // activation before it can pull the cursor back to where it used to be.
     PENDING_MENU_KEY_STATE = null;
 
+    // While capturing a keybind for a Controls row, every key -- including
+    // Escape (which cancels) -- goes to the capture handler, not the menu's
+    // normal Escape-closes-menu path.
+    if (menu.id === "appActionMenu" && APP_MENU_CONTROLS_CAPTURE_ID) {
+      handleAppMenuControlsKey(menu, "", e);
+      return;
+    }
+
     if (e.key === "Escape") {
       closeNumberedMenuFromKeyboard(menu);
       return;
@@ -46551,6 +46799,12 @@ document.addEventListener(
       return;
     }
 
+    // Controls submenu: while a row's Assign/Clear options are open (or a key is
+    // being captured), route keys there instead of the normal option walker.
+    if (handleAppMenuControlsKey(menu, action, e)) {
+      return;
+    }
+
     switch (action) {
       case "selectUp":
         moveMenuHighlight(menu, -1);
@@ -46565,6 +46819,11 @@ document.addEventListener(
             highlighted.click();
             return;
           }
+          // A control row opens its Assign/Clear options instead of a submenu.
+          if (highlighted?.dataset?.appMenuControl) {
+            startAppMenuControlsEdit(highlighted.dataset.appMenuControl);
+            return;
+          }
           enterMenuSubmenuFromTrigger(menu, highlighted);
         }
         return;
@@ -46572,15 +46831,23 @@ document.addEventListener(
         // Step back out one level; from the top level this leaves the menu.
         collapseOrCloseNumberedMenu(menu);
         return;
-      // The app-menu key retains its older activate behavior while that menu is
-      // open; the regular open-folder action activates the same selection.
+      // Enter activates the highlighted option; the app-menu key (Tab) instead
+      // toggles the menu shut while it is open, rather than confirming.
       case "enterDir":
         if (e.repeat) return;
-        activateNumberedMenuOption(menu, highlightedMenuOption(menu));
+        {
+          const highlighted = highlightedMenuOption(menu);
+          // Control rows: Enter opens Assign/Clear (same as selectRight), since
+          // they have no click action of their own.
+          if (highlighted?.dataset?.appMenuControl) {
+            startAppMenuControlsEdit(highlighted.dataset.appMenuControl);
+            return;
+          }
+          activateNumberedMenuOption(menu, highlighted);
+        }
         return;
       case "openAppMenu":
-        if (e.repeat) return;
-        activateNumberedMenuOption(menu, highlightedMenuOption(menu));
+        closeNumberedMenuFromKeyboard(menu);
         return;
       case "leaveDir":
         closeNumberedMenuFromKeyboard(menu);
@@ -60275,7 +60542,7 @@ function syncButtons() {
       }
       return "folder";
     })();
-    directoriesSearchInput.placeholder = `Search ${placeholderName}`;
+    directoriesSearchInput.placeholder = `Press / to search… ${placeholderName}`;
   }
   if (directoriesSearchClearBtn) {
     const enabled =
@@ -62837,46 +63104,40 @@ window.addEventListener("drop", (e) => {
   }
 });
 
-// Forward slash is a fixed, read-only shortcut reference. While it is open,
-// stop application keybinds from firing behind the modal overlay.
+// The slash / question-mark key focuses the folder search bar so it can be
+// typed into without the mouse. (It used to open a keybind reference overlay;
+// that has been retired — controls now live in the app menu's Controls submenu.)
 document.addEventListener(
   "keydown",
   (e) => {
     const noCommandModifiers = !e.metaKey && !e.ctrlKey && !e.altKey;
-    const isHelpToggle =
-      String(e.key || "") === "/" && noCommandModifiers && !e.shiftKey && !e.repeat;
-    const isPlainEscape =
-      String(e.key || "") === "Escape" && noCommandModifiers && !e.shiftKey;
-
-    if (keybindHelpIsOpen()) {
-      if (isHelpToggle || isPlainEscape) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        hideKeybindHelpOverlay();
-        return;
-      }
-      e.stopImmediatePropagation();
-      return;
-    }
-
-    if (!isHelpToggle) return;
+    const isSearchFocus =
+      (String(e.key || "") === "/" || String(e.key || "") === "?") &&
+      noCommandModifiers &&
+      !e.repeat;
+    if (!isSearchFocus) return;
     if (
       busyOverlayActive() ||
       confirmDialogIsOpen() ||
       KEYBIND_CAPTURE_ACTION_ID ||
+      APP_MENU_CONTROLS_CAPTURE_ID ||
       BANIC_ACTIVE ||
       isTextInputTarget(e.target)
     )
       return;
+    if (!directoriesSearchInput) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    toggleKeybindHelpOverlay();
+    directoriesSearchInput.focus();
+    try {
+      directoriesSearchInput.select();
+    } catch {}
   },
   true,
 );
 
-// Command+, is intentionally disabled: Settings is the in-app floating window
-// toggled with Tab (see the global keydown handler). No Cmd+, listener.
+// Command+, is intentionally disabled: there is no Settings pane; the app menu
+// is hard-coded to Tab (openAppMenu). No Cmd+, listener.
 
 document.addEventListener("keydown", (e) => {
   if (busyOverlayActive()) {
@@ -62918,19 +63179,9 @@ document.addEventListener("keydown", (e) => {
     }
   }
 
-  // Tab toggles the in-app Settings window. Reserved (not bindable) so it works
-  // from anywhere except while typing in a field, where Tab keeps its normal
-  // focus-traversal behaviour.
-  if (
-    key === "Tab" &&
-    settingsFloatingEnabled() &&
-    !isTextInputTarget(e.target)
-  ) {
-    e.preventDefault();
-    toggleSettingsWindow();
-    return;
-  }
-
+  // Tab is bound to openAppMenu (hard-coded). No special-case Settings toggle —
+  // the settings pane is gone. While typing, Tab keeps normal focus traversal
+  // because the action handlers below bail on text inputs.
   const action = keybindActionFor(key);
   if (!isTextInputTarget(e.target) && actionNeedsImmediateNavigationPriority(action)) {
     noteResponsiveNavigationInteraction("user-navigation", RESPONSIVE_NAV_MEDIA_MS);
