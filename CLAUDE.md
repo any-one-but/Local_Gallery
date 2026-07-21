@@ -130,14 +130,65 @@ navigation, sort, media filter, mute messages, full screen media, float tags);
 Grok has no menu entry at all and is reached only through its keybind.
 
 The old standalone background context menu (Add folders/files, Reverse file
-order) was folded into the app menu: a right-click on the preview grid or any
-pane background now opens the app menu (`openBackgroundAppMenu`) instead of a
-separate `previewActionMenuEl` popup. `Add items` (import folders/files into the
+order) was folded into the app menu. `Add items` (import folders/files into the
 current location) is omitted when the location can't be imported into (portals,
 trash); `Reverse file order` lives under `Miscellaneous` and acts on the current
 location, disabled when it can't be reordered. Both resolve the location via
-`getPreviewTargetDir()`, not the selected item. The bulk-selection right-click
-still uses `previewActionMenuEl`.
+`getPreviewTargetDir()`, not the selected item.
+
+### Keyboard-only interaction
+
+The app is being moved off the cursor. A `#keyboardOnlyModeStyles` block sets
+`pointer-events: none` on the preview/file grid cards (`[data-preview-item-key]`)
+and on `#appActionMenu`, so selecting cards, entering folders, hover states, and
+mouse drag-reorder are all keyboard-only, and the app menu is navigated only by
+its bindable key (its scroll container keeps pointer events so the wheel still
+scrolls). **Right-click opens nothing** anywhere — the two background
+`contextmenu` handlers just suppress the native menu; item/tag/bulk context
+menus were already inert (`SEPARATE_ITEM_MENU_ENABLED = false`). The **Settings
+floating window (`#menuOverlay`) is the one surface left fully cursor-interactive**
+(and native right-click still works inside real text inputs and Settings for
+copy/paste). Removed cursor features: the mouse thumbnail **crop-editor window**
+(`openThumbnailCropEditor` early-returns; keyboard Cmd+arrow editing stays — see
+below — and the "Edit thumbnail" menu entries are gone) and the four-video
+**quad/gallery playback** (`openQuadPlaybackForRecords` is an inert stub; its
+"Play" menu branches were removed).
+
+### History in the app menu (Stats / Calendar)
+
+Score history was pulled out of the settings pane entirely (its "Stats" tab —
+id `calendar`, the `#calendarBody` panel — is gone; `MENU_TAB_IDS` is now just
+`controls`, and the panel element is left in the DOM but unreachable so
+`renderCalendarUi` stays a harmless no-op) and rebuilt as **real app-menu
+submenus** under a top-level **`History`** entry (between Miscellaneous and
+Refresh App) → **Stats / Calendar** (`buildAppMenuHistorySubmenu`). They are
+navigated by the keyboard like any other app-menu submenu, not as overlays.
+Their panels are widened past the normal menu width and height-capped with
+scroll (`.appMenuStatsPanel`, `.appMenuCalendar`) so long lists don't run off
+the screen and days have room.
+
+- **Stats** (`buildAppMenuStatsSubmenu`): one view-only `<button class="appMenuStatsRow">`
+  per root folder (name + score + reused `.statsLedgerScoreBar`), sorted by score.
+  The buttons are walked by the normal option cursor but do nothing on activate.
+- **Calendar** (`buildAppMenuCalendarSubmenu`): a compact `.appMenuCalendar` month
+  grid (`buildHistoryCalendarMonthsHtml`) passed as the submenu's single non-button
+  item, so the normal option walker finds no options in its panel. The app-menu
+  keydown handler special-cases it via `handleAppMenuCalendarKey`: when
+  `appMenuActiveCalendarPanel` finds an open calendar panel, the movement keys
+  walk the day cells (±1 / ±7, `APP_MENU_CALENDAR_SELECTED_DAY` remembers the
+  cursor across rebuilds, default today), the enter key closes the app menu and
+  opens that day's `openDailyJournalEditor`, and the exit key steps back to the
+  History submenu (a manual `setDropdownSubmenuOpen(false)` since the generic
+  collapse skips a panel with no options). The day cursor
+  (`.appMenuCalendarDaySelected`) uses the same blue as the regular preview
+  selection (`var(--anchor-internal-color2-primary)`).
+
+The **daily journal editor** has no close button — Escape (its capture handler)
+is the only way out.
+
+The **confirm/alert dialog** (`showConfirmDialog`) answers to the user's own
+keybinds: the key bound to `enterDir` confirms ("yes"), the key bound to
+`leaveDir`/`back` cancels ("no"), alongside the hardcoded Enter/Escape.
 
 - The bold heading (`.dropdownMenuTitle`) names the selection; it is not a
   button, so the option walker skips it and it can never take the cursor.

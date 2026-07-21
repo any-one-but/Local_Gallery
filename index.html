@@ -7802,6 +7802,88 @@ html.settings-window #previewContent:not(.menu-open)::before {
 
 </style>
   <!-- END: inlined from ./styles.css -->
+  <style id="keyboardOnlyModeStyles">
+    /* Keyboard-only interaction pass. The preview/file grid and the app menu are
+       display-only to the cursor: selecting cards, entering folders, hover
+       states, and mouse drag-reorder all happen through the keyboard now. The
+       cards themselves get pointer-events:none (which also kills their hover
+       styles and cursor:pointer), while their scroll container keeps pointer
+       events so the wheel still scrolls. The Settings floating window
+       (#menuOverlay) is deliberately left fully cursor-interactive. */
+    #previewBody [data-preview-item-key] {
+      pointer-events: none !important;
+    }
+    #appActionMenu {
+      pointer-events: none !important;
+    }
+
+    /* History in the app menu (Miscellaneous -> History -> Stats / Calendar):
+       real submenu panels, not overlays. */
+
+    /* Stats: a wider-than-usual, scrollable panel so the rows have room and the
+       list never runs off the bottom of the screen. */
+    #appActionMenu .appMenuStatsPanel {
+      min-width: 400px;
+      max-width: 520px;
+      max-height: min(72vh, 560px);
+      overflow-y: auto;
+    }
+    #appActionMenu .appMenuStatsRow {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: "name score" "bar bar";
+      gap: 6px 14px;
+      align-items: center;
+      text-align: left;
+      width: 100%;
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+    #appActionMenu .appMenuStatsName {
+      grid-area: name;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #appActionMenu .appMenuStatsScore {
+      grid-area: score;
+      opacity: 0.75;
+      font-variant-numeric: tabular-nums;
+    }
+    #appActionMenu .appMenuStatsRow .statsLedgerScoreBar {
+      grid-area: bar;
+      width: 100%;
+      margin-top: 2px;
+    }
+
+    /* Calendar: a scrollable month grid, a touch wider than a normal menu so
+       each day has room to breathe. */
+    #appActionMenu .appMenuCalendar {
+      width: 380px;
+      max-width: 380px;
+      max-height: min(68vh, 520px);
+      overflow: auto;
+      padding: 4px;
+    }
+    #appActionMenu .appMenuCalendar .scoreHistoryMonth {
+      margin: 0 0 12px;
+    }
+    #appActionMenu .appMenuCalendar .scoreHistoryCalendarGrid {
+      gap: 3px;
+    }
+    #appActionMenu .appMenuCalendar .scoreHistoryCalendarDay {
+      min-height: 40px;
+      font-size: 12px;
+    }
+    /* The day cursor uses the same blue as the regular selection border. */
+    #appActionMenu .appMenuCalendar .scoreHistoryCalendarDay.appMenuCalendarDaySelected {
+      outline: 2px solid var(--anchor-internal-color2-primary);
+      outline-offset: -2px;
+      position: relative;
+      z-index: 1;
+    }
+  </style>
   </head>
 
   <body>
@@ -7965,15 +8047,6 @@ html.settings-window #previewContent:not(.menu-open)::before {
                         aria-controls="menuTabKeybinds"
                       >
                         Controls
-                      </button>
-                      <button
-                        type="button"
-                        class="miniBtn menuTabBtn"
-                        data-tab="calendar"
-                        role="tab"
-                        aria-controls="menuTabCalendar"
-                      >
-                        Stats
                       </button>
                     </div>
                   </div>
@@ -18626,7 +18699,6 @@ function syncMetaButtons() {
 
 const MENU_TAB_IDS = [
   "controls",
-  "calendar",
 ];
 const MENU_PANEL_BY_TAB = {
   controls: "controls",
@@ -26766,12 +26838,31 @@ function showConfirmDialog(message, opts = {}) {
       if (e.target === overlayEl) settle(dismissValue);
     };
     const onKeyDown = (e) => {
-      if (e.key === "Escape") {
+      // The confirm ("yes, do it") and cancel ("no") options answer to the
+      // user's own enter/exit keybinds, not just hardcoded Enter/Escape: the
+      // key bound to enterDir confirms, the key bound to leaveDir/back cancels.
+      const bindKey =
+        typeof keybindValueFromEvent === "function"
+          ? keybindValueFromEvent(e)
+          : "";
+      const boundAction = bindKey ? keybindActionFor(bindKey) : "";
+      const isConfirmKey = e.key === "Enter" || boundAction === "enterDir";
+      const isCancelKey =
+        e.key === "Escape" ||
+        boundAction === "leaveDir" ||
+        boundAction === "back";
+      if (isCancelKey) {
         e.preventDefault();
         e.stopPropagation();
         settle(dismissValue);
-      } else if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-        // Activate the focused button (so a focused Cancel cancels); default to OK.
+      } else if (isConfirmKey) {
+        // Enter / the enter keybind always confirms (an alert's only outcome is
+        // dismissal, which is its confirm value too).
+        e.preventDefault();
+        e.stopPropagation();
+        settle(true);
+      } else if (e.key === " " || e.key === "Spacebar") {
+        // Space still activates whichever button is focused (default OK).
         e.preventDefault();
         e.stopPropagation();
         settle(document.activeElement === cancelBtn ? false : true);
@@ -44688,6 +44779,7 @@ function buildAppMenuItems() {
       buildAppMenuRevealSubmenu(),
       buildAppMenuAddItemsSubmenu(),
       buildAppMenuMiscSubmenu(),
+      buildAppMenuHistorySubmenu(),
       // Always last.
       appMenuChoiceButton(
         "Refresh App",
@@ -44739,21 +44831,6 @@ function openAppMenu(anchor) {
     positionActionMenuInPreviewDock(menu);
   });
   return true;
-}
-
-// Open the app menu from a background right-click. Unlike the bindable toggle,
-// a right-click should always land on an open menu, so any currently-open
-// instance is closed first (this also prevents the same-anchor toggle-shut
-// path from firing when two clicks land on the same background element).
-function openBackgroundAppMenu(e) {
-  if (!WS.root || VIEWER_MODE) return false;
-  const anchor =
-    (e && e.target instanceof Element ? e.target : null) ||
-    previewBodyEl ||
-    document.body;
-  allowMenuClose();
-  closeAppMenu();
-  return openAppMenu(anchor);
 }
 
 // The controls shown in the app menu's Appearance filter submenu. A missing
@@ -45260,14 +45337,12 @@ function openDailyJournalEditor(dateKey) {
     <section class="dailyJournalDialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(scoreHistoryDateLabel(key))} journal">
       <div class="dailyJournalHeader">
         <div class="dailyJournalTitle">${escapeHtml(scoreHistoryDateLabel(key))} Journal</div>
-        <button type="button" class="dailyJournalCloseBtn" aria-label="Close journal">${dailyJournalCloseIconHtml()}</button>
       </div>
       <textarea class="dailyJournalEditor" spellcheck="true" autocomplete="off" autocapitalize="sentences"></textarea>
     </section>
   `;
   document.body.appendChild(overlay);
   const textarea = overlay.querySelector(".dailyJournalEditor");
-  const closeBtn = overlay.querySelector(".dailyJournalCloseBtn");
   DAILY_JOURNAL_STATE = { dateKey: key, textarea };
   if (textarea) {
     textarea.value = metaGetDailyJournal(key);
@@ -45278,13 +45353,6 @@ function openDailyJournalEditor(dateKey) {
     requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-    });
-  }
-  if (closeBtn) {
-    closeBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeDailyJournalEditor();
     });
   }
   overlay.addEventListener("click", (e) => {
@@ -45299,7 +45367,10 @@ document.addEventListener(
   "keydown",
   (e) => {
     if (!DAILY_JOURNAL_STATE) return;
-    e.stopPropagation();
+    // Fully own the keyboard while the journal is open (stopImmediatePropagation,
+    // not just stopPropagation) so the History calendar overlay's own capture
+    // listener underneath doesn't double-handle the same Escape and close too.
+    e.stopImmediatePropagation();
     if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       closeDailyJournalEditor();
@@ -45307,6 +45378,234 @@ document.addEventListener(
   },
   true,
 );
+
+// ---------------------------------------------------------------------------
+// History in the app menu (Miscellaneous -> History -> Stats / Calendar). Both
+// are real app-menu submenu panels navigated by the keyboard like the rest of
+// the menu: Stats is a list of root folders (name + score bar, view-only);
+// Calendar is a compact month grid whose day cursor the movement keys walk and
+// whose enter key opens that day's journal.
+// ---------------------------------------------------------------------------
+
+function buildHistoryCalendarMonthsHtml() {
+  const history = normalizeScoreHistoryList(
+    WS.meta && Array.isArray(WS.meta.scoreHistory) ? WS.meta.scoreHistory : [],
+  );
+  WS.meta.scoreHistory = history;
+  const includeHidden = includeHiddenItemsInStatsEnabled();
+  const hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext();
+  const grouped = new Map();
+  for (let i = 0; i < history.length; i++) {
+    const rows = getRootScoreHistoryLinesForEntry(history[i], includeHidden, hiddenContext);
+    for (let j = 0; j < rows.length; j++) {
+      const dayKey = scoreHistoryDateKey(rows[j].at);
+      const monthKey = scoreHistoryMonthKeyFromDateKey(dayKey);
+      if (!monthKey) continue;
+      if (!grouped.has(monthKey)) grouped.set(monthKey, new Map());
+      const monthDays = grouped.get(monthKey);
+      const current = monthDays.get(dayKey) || { delta: 0, count: 0 };
+      current.delta += Number(rows[j].delta) || 0;
+      current.count += 1;
+      monthDays.set(dayKey, current);
+    }
+  }
+  const journalDateKeys = metaGetDailyJournalDateKeys();
+  for (let i = 0; i < journalDateKeys.length; i++) {
+    const dayKey = journalDateKeys[i];
+    const monthKey = scoreHistoryMonthKeyFromDateKey(dayKey);
+    if (!monthKey) continue;
+    if (!grouped.has(monthKey)) grouped.set(monthKey, new Map());
+    const monthDays = grouped.get(monthKey);
+    if (!monthDays.has(dayKey)) monthDays.set(dayKey, { delta: 0, count: 0 });
+  }
+  // Always render the current month (even with no activity) so today has a cell
+  // and is visible when the calendar opens scrolled to the bottom.
+  const currentMonthKey = scoreHistoryMonthKeyFromDateKey(scoreHistoryDateKey(Date.now()));
+  if (currentMonthKey && !grouped.has(currentMonthKey)) grouped.set(currentMonthKey, new Map());
+  const monthKeys = Array.from(grouped.keys()).sort((a, b) =>
+    String(a).localeCompare(String(b)),
+  );
+  return monthKeys.length
+    ? monthKeys
+        .map((monthKey) => buildScoreHistoryMonthPageHtml(monthKey, grouped.get(monthKey)))
+        .join("")
+    : `<div class="scoreHistoryEmpty">No score changes logged yet.</div>`;
+}
+
+// -- Stats submenu: one view-only button per root folder (name + score bar) ---
+
+function buildAppMenuStatsFolderButton(row, maxAbsScore) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "appMenuStatsRow";
+  const score = Number(row.score) || 0;
+  const widthPct = Math.max(0, Math.min(50, (Math.abs(score) / maxAbsScore) * 50));
+  const leftPct = score >= 0 ? 50 : Math.max(0, 50 - widthPct);
+  const sign = score >= 0 ? "positive" : "negative";
+  const scoreText = score > 0 ? `+${score}` : String(score);
+  btn.innerHTML = `
+    <span class="appMenuStatsName" title="${escapeHtml(row.path || "(root)")}">${escapeHtml(row.name || "(root)")}</span>
+    <span class="appMenuStatsScore">${escapeHtml(scoreText)}</span>
+    <span class="statsLedgerScoreBar" aria-hidden="true">
+      <span class="statsLedgerScoreAxis"></span>
+      <span class="statsLedgerScoreFill ${sign}" style="left:${leftPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%;"></span>
+    </span>
+  `;
+  // View-only: nothing can be done to a root folder from here.
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  return btn;
+}
+
+function buildAppMenuStatsSubmenu() {
+  const includeHidden = includeHiddenItemsInStatsEnabled();
+  const hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext();
+  const rootRows = getVisibleRootFolderScoreRows(includeHidden, hiddenContext);
+  if (!rootRows.length) return null;
+  const sorted = rootRows
+    .slice()
+    .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+  const maxAbsScore = Math.max(1, ...sorted.map((r) => Math.abs(Number(r.score) || 0)));
+  const submenu = createDropdownMenuSubmenu(
+    "Stats",
+    sorted.map((row) => buildAppMenuStatsFolderButton(row, maxAbsScore)),
+  );
+  submenu
+    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
+    ?.classList?.add("appMenuStatsPanel");
+  return submenu;
+}
+
+// -- Calendar submenu: a compact month grid as an app-menu panel -------------
+
+// Remembered so the day cursor survives an app-menu rebuild; defaults to today.
+let APP_MENU_CALENDAR_SELECTED_DAY = "";
+
+function buildAppMenuCalendarSubmenu() {
+  const cal = document.createElement("div");
+  cal.className = "appMenuCalendar";
+  cal.innerHTML = buildHistoryCalendarMonthsHtml();
+  const cells = Array.from(cal.querySelectorAll("[data-score-history-day]"));
+  if (cells.length) {
+    const keys = cells.map((c) => String(c.getAttribute("data-score-history-day") || ""));
+    let idx = APP_MENU_CALENDAR_SELECTED_DAY ? keys.indexOf(APP_MENU_CALENDAR_SELECTED_DAY) : -1;
+    if (idx < 0) idx = keys.indexOf(scoreHistoryDateKey(Date.now()));
+    if (idx < 0) idx = cells.length - 1;
+    cells[idx].classList.add("appMenuCalendarDaySelected");
+    APP_MENU_CALENDAR_SELECTED_DAY = keys[idx];
+  }
+  return createDropdownMenuSubmenu("Calendar", [cal]);
+}
+
+function buildAppMenuHistorySubmenu() {
+  return createDropdownMenuSubmenu("History", [
+    buildAppMenuStatsSubmenu(),
+    buildAppMenuCalendarSubmenu(),
+  ]);
+}
+
+// The open Calendar submenu's panel, if one is open (its grid has no button
+// options, so it is found by its .appMenuCalendar marker rather than the normal
+// option walker).
+function appMenuActiveCalendarPanel(menu) {
+  const openSubs = Array.from(
+    menu?.querySelectorAll?.(".dropdownMenuSubmenu.submenuOpen") || [],
+  );
+  for (const sub of openSubs) {
+    const panel = sub.querySelector(":scope > .dropdownMenuSubmenuPanel");
+    if (panel && panel.querySelector(":scope > .appMenuCalendar")) return panel;
+  }
+  return null;
+}
+
+function appMenuCalendarDayCells(panel) {
+  const cal = panel.querySelector(":scope > .appMenuCalendar") || panel;
+  return Array.from(cal.querySelectorAll("[data-score-history-day]"));
+}
+
+function applyAppMenuCalendarSelectionIndex(panel, idx, scroll) {
+  const cells = appMenuCalendarDayCells(panel);
+  panel
+    .querySelectorAll(".appMenuCalendarDaySelected")
+    .forEach((el) => el.classList.remove("appMenuCalendarDaySelected"));
+  const cell = cells[idx];
+  if (!cell) return;
+  cell.classList.add("appMenuCalendarDaySelected");
+  APP_MENU_CALENDAR_SELECTED_DAY = String(cell.getAttribute("data-score-history-day") || "");
+  if (scroll) cell.scrollIntoView({ block: "nearest" });
+}
+
+function ensureAppMenuCalendarSelection(panel) {
+  const cells = appMenuCalendarDayCells(panel);
+  if (!cells.length) return -1;
+  let idx = cells.findIndex((c) => c.classList.contains("appMenuCalendarDaySelected"));
+  if (idx >= 0) return idx;
+  const keys = cells.map((c) => String(c.getAttribute("data-score-history-day") || ""));
+  idx = APP_MENU_CALENDAR_SELECTED_DAY ? keys.indexOf(APP_MENU_CALENDAR_SELECTED_DAY) : -1;
+  if (idx < 0) idx = keys.indexOf(scoreHistoryDateKey(Date.now()));
+  if (idx < 0) idx = cells.length - 1;
+  applyAppMenuCalendarSelectionIndex(panel, idx, false);
+  return idx;
+}
+
+function moveAppMenuCalendarSelection(panel, delta) {
+  const cells = appMenuCalendarDayCells(panel);
+  if (!cells.length) return;
+  let idx = ensureAppMenuCalendarSelection(panel);
+  idx = Math.max(0, Math.min(cells.length - 1, idx + delta));
+  applyAppMenuCalendarSelectionIndex(panel, idx, true);
+}
+
+// Handle a key for an open Calendar panel. Returns true when it owned the key
+// (the movement keys walk days, the enter key opens the day's journal, the exit
+// key steps back to the History submenu). Called from the app-menu keydown
+// handler, which has already preventDefault'd/stopped the event.
+function handleAppMenuCalendarKey(menu, action, e) {
+  const panel = appMenuActiveCalendarPanel(menu);
+  if (!panel) return false;
+  ensureAppMenuCalendarSelection(panel);
+  switch (action) {
+    case "selectLeft":
+      moveAppMenuCalendarSelection(panel, -1);
+      return true;
+    case "selectRight":
+      moveAppMenuCalendarSelection(panel, 1);
+      return true;
+    case "selectUp":
+      moveAppMenuCalendarSelection(panel, -7);
+      return true;
+    case "selectDown":
+      moveAppMenuCalendarSelection(panel, 7);
+      return true;
+    case "enterDir":
+    case "openAppMenu": {
+      if (e.repeat) return true;
+      const day = String(
+        panel
+          .querySelector(".appMenuCalendarDaySelected")
+          ?.getAttribute("data-score-history-day") || "",
+      );
+      allowMenuClose();
+      closeAppMenu();
+      if (day) openDailyJournalEditor(day);
+      return true;
+    }
+    case "leaveDir": {
+      // Step back out of the calendar to the History submenu (the calendar has
+      // no button options, so the generic collapse would skip it).
+      const sub = panel.closest(".dropdownMenuSubmenu");
+      const trigger = sub?.querySelector(":scope > .dropdownMenuSubmenuTrigger");
+      if (sub) setDropdownSubmenuOpen(sub, false);
+      if (trigger) setMenuHighlight(menu, trigger);
+      return true;
+    }
+    default:
+      // Swallow anything else while the calendar owns the menu.
+      return true;
+  }
+}
 
 function renderScoreHistoryDayMenu(dayKey) {
   const key = String(dayKey || "");
@@ -45641,10 +45940,10 @@ function openTagEntryContextMenu(entry, anchor) {
   return true;
 }
 
-// The standalone background context menu was folded into the app menu: the
-// preview/chrome background right-click now opens the app menu (see
-// openBackgroundAppMenu), whose "Add items" submenu and Miscellaneous section
-// carry the old Add folders/files and Reverse file order actions.
+// The standalone background context menu was folded into the app menu (its Add
+// folders/files and Reverse file order live in the "Add items" submenu and
+// under Miscellaneous). Right-click opens nothing now -- the app menu is reached
+// only through its bindable key.
 
 // "Add content" imports external files into the folder the PREVIEW pane is
 // showing (the location the user is looking at), so only real on-disk folders
@@ -45865,6 +46164,16 @@ function openDropdownSubmenuForTrigger(trigger) {
       top += 8 - (flyoutRect.top + (top - baseTop));
     }
     flyout.style.top = `${Math.round(top)}px`;
+  }
+  // The Calendar panel renders months oldest -> newest, so today sits at the
+  // bottom: open it scrolled all the way down so today is always in view.
+  const calEl = flyout?.querySelector?.(":scope > .appMenuCalendar");
+  if (calEl) {
+    const scrollToBottom = () => {
+      calEl.scrollTop = calEl.scrollHeight;
+    };
+    scrollToBottom();
+    requestAnimationFrame(scrollToBottom);
   }
   return true;
 }
@@ -46233,6 +46542,13 @@ document.addEventListener(
         default:
           return;
       }
+    }
+
+    // When the History -> Calendar panel is open, the movement keys walk its day
+    // grid and the enter key opens the day's journal instead of the normal
+    // option walker.
+    if (menu.id === "appActionMenu" && handleAppMenuCalendarKey(menu, action, e)) {
+      return;
     }
 
     switch (action) {
@@ -46742,11 +47058,8 @@ function buildFileThumbnailSubmenuHtml(
         return `<button type="button" data-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`;
       })
     .filter(Boolean);
-  if (includeEditThumbnail) {
-    buttonItems.push(
-      `<button type="button" data-action="edit-thumbnail">Edit thumbnail</button>`,
-    );
-  }
+  // "Edit thumbnail" (the removed mouse crop-editor window) is no longer offered;
+  // thumbnails are edited with the keyboard. Other thumbnail actions remain.
   return buildPaginatedDropdownMenuSubmenuHtml("Thumbnail", buttonItems);
 }
 
@@ -46788,7 +47101,8 @@ function buildFileActionMenuDom(menuEl, rec, onAction) {
     if (!label || !targetAction) continue;
     thumbnailButtons.push(makeBtn(label, targetAction));
   }
-  thumbnailButtons.push(makeBtn("Edit thumbnail", "edit-thumbnail"));
+  // "Edit thumbnail" (the removed mouse crop editor) is intentionally omitted;
+  // keyboard Cmd+arrow editing replaces it.
   const thumbnailSubmenu = createDropdownMenuSubmenu(
     "Thumbnail",
     thumbnailButtons,
@@ -47595,19 +47909,6 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
   }
 
   const singleFile = selectedRecords.length === 1 ? selectedRecords[0] : null;
-  const canQuadPlay =
-    !allTrash &&
-    selectedRecords.length === 4 &&
-    selectedRecords.every((rec) => rec.type === "video");
-
-  if (canQuadPlay) {
-    menu.appendChild(
-      makeBtn("Play", async () => {
-        openQuadPlaybackForRecords(selectedRecords, true);
-        finalizeBulkSelectionAction();
-      }),
-    );
-  }
 
   if (!allTrash) {
     menu.appendChild(
@@ -49149,22 +49450,6 @@ function renderDirectoriesActionHeader() {
     }
   }
 
-  if (selectedFiles.length) {
-    const selectedFileRecords = getSelectedFileRecordsInCurrentView();
-    const canQuadPlay =
-      selCount === 4 &&
-      selectedFileRecords.length === 4 &&
-      selectedFileRecords.every((rec) => rec.type === "video");
-
-    if (canQuadPlay) {
-      directoriesActionMenuEl.appendChild(
-        makeActionBtn("Play", () => {
-          WS.view.bulkActionMenuOpen = false;
-          openQuadPlaybackForRecords(selectedFileRecords, true);
-        }),
-      );
-    }
-  }
 
   // Some selections (most notably files outside quad playback) have no
   // remaining contextual menu actions after the bindable actions are removed.
@@ -55620,41 +55905,27 @@ previewBodyEl.addEventListener("scroll", () => {
   scheduleThumbnailDemandRefresh();
 });
 
-// Right-clicking the empty preview background opens the app menu -- the single
-// command surface the old background context menu was folded into (its Add
-// folders/files and Reverse file order now live in the "Add items" submenu and
-// under Miscellaneous). Cards and the file viewport keep their own handling.
+// Right-click opens no menu anywhere now: every action lives in the
+// keyboard-driven app menu. Just suppress the native context menu over the
+// preview surface.
 previewBodyEl.addEventListener("contextmenu", (e) => {
-  const target = e.target;
-  if (target && target.closest) {
-    if (target.closest(".fileCard")) return;
-    if (target.closest(".folderCard")) return;
-    if (target.closest("#filePreviewViewport")) return;
-  }
   e.preventDefault();
   e.stopPropagation();
-  openBackgroundAppMenu(e);
 });
 
-// Right-clicking any pane background (title pane, control bar, file pane
-// empty space, app chrome) opens the same app menu, so the location's import
-// and reverse actions are reachable anywhere. Targets with their own context
-// menus preventDefault before this bubble listener runs.
+// App-wide: right-click never opens a menu. Suppress the native context menu on
+// the app's own chrome, but leave real text inputs and the Settings window
+// (which keeps full cursor interaction) alone so native copy/paste still works
+// there.
 document.addEventListener("contextmenu", (e) => {
   if (e.defaultPrevented) return;
-  if (!WS.root) return;
   const target = e.target instanceof Element ? e.target : null;
   if (target && target.closest) {
-    if (target.closest("button, a, input, textarea, select, [contenteditable=\"true\"]"))
+    if (target.closest("input, textarea, select, [contenteditable=\"true\"]"))
       return;
-    if (target.closest(".fileCard, .folderCard, .previewTagFolderCard, .dirRow"))
-      return;
-    if (target.closest("#filePreviewViewport")) return;
-    if (target.closest(".dropdownMenu")) return;
     if (target.closest("#menuOverlay")) return;
   }
   e.preventDefault();
-  openBackgroundAppMenu(e);
 });
 
 function makeSpacer(extraClass = "") {
@@ -66589,6 +66860,10 @@ function closeThumbnailCropEditor() {
 }
 
 function openThumbnailCropEditor(rec) {
+  // The mouse-driven crop editor window has been removed; thumbnails are edited
+  // with the keyboard (Cmd+arrows -- see handleThumbnailViewportArrowKey). The
+  // dead builder below is left in place but is never entered.
+  return false;
   const targetLabel = "this file";
   if (!rec) return false;
   const isVideoEditor = rec.type === "video";
