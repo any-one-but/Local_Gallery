@@ -44535,19 +44535,18 @@ function buildAppMenuAddItemsSubmenu() {
 // walker -- whenever the location cannot be reordered or has fewer than two
 // files.
 // Reverse the file order inside the given folder -- the selected item, not the
-// current location. Returns null without a folder; disabled when the folder has
-// fewer than two reorderable files.
+// current location. Returns null (so the option does not appear at all) unless
+// the folder actually has two or more reorderable files.
 function buildAppMenuReverseFilesButton(dirNode) {
   if (!dirNode) return null;
   const ids = getPreviewFolderAndFileEntries(dirNode, {
     includeFiles: true,
     useCurrentViewEntries: false,
   }).fileIds;
-  const canReverse = canReorderFilesInDir(dirNode) && ids.length > 1;
-  const btn = appMenuChoiceButton(
+  if (!canReorderFilesInDir(dirNode) || ids.length < 2) return null;
+  return appMenuChoiceButton(
     "Reverse file order",
     () => {
-      if (!canReverse) return;
       if (reverseFilesInDir(dirNode, { visibleIds: ids })) {
         syncAfterDirOrderChange(null, {
           preserveSelection: true,
@@ -44558,8 +44557,6 @@ function buildAppMenuReverseFilesButton(dirNode) {
     null,
     true,
   );
-  if (!canReverse) btn.disabled = true;
-  return btn;
 }
 
 function buildAppMenuFilenameSubmenu() {
