@@ -9467,7 +9467,7 @@ function defaultOptions() {
     betaDirFileThumbFullCard: true,
     betaDirFolderSquareCard: true,
     previewMode: "grid",
-    videoSkipStep: "5",
+    videoSkipStep: "10",
     preloadNextMode: "on",
     videoEndBehavior: "loop",
     slideshowDefault: "cycle",
@@ -9739,23 +9739,11 @@ function normalizeOptions(o) {
     videoAudioRaw === "muted" || videoAudioRaw === "unmuted"
       ? videoAudioRaw
       : d.videoAudio;
-  const videoSkipStepParsed = parseInt(
-    String(src.videoSkipStep || "").trim(),
-    10,
-  );
-  const videoSkipStep =
-    Number.isFinite(videoSkipStepParsed) && videoSkipStepParsed > 0
-      ? String(videoSkipStepParsed)
-      : d.videoSkipStep;
-  const videoEndBehaviorRaw = String(src.videoEndBehavior || "")
-    .trim()
-    .toLowerCase();
-  const videoEndBehavior =
-    videoEndBehaviorRaw === "loop" ||
-    videoEndBehaviorRaw === "next" ||
-    videoEndBehaviorRaw === "stop"
-      ? videoEndBehaviorRaw
-      : d.videoEndBehavior;
+  // Video settings are retired as user-configurable options: skip is fixed at
+  // 10 seconds and playback always loops. (The stored/raw values are ignored,
+  // same pattern as previewMode below.)
+  const videoSkipStep = "10";
+  const videoEndBehavior = "loop";
   const previewModeRaw = String(src.previewMode || "")
     .trim()
     .toLowerCase();
@@ -44138,21 +44126,6 @@ function setAppMenuRandomJumpWeight(mode) {
   return true;
 }
 
-function setAppMenuSlideshowDelay(delayMs) {
-  const ms = Math.max(0, Number(delayMs) || 0);
-  if (!ms) {
-    stopSlideshow();
-    WS.view.slideshowModeIndex = 0;
-    showStatusMessage("Slideshow: Off");
-    return true;
-  }
-  const modeIndex = WS.view.slideshowDurations.indexOf(ms);
-  if (modeIndex >= 0) WS.view.slideshowModeIndex = modeIndex;
-  startSlideshow(ms);
-  showStatusMessage(`Slideshow: ${Math.round(ms / 1000)}s`);
-  return true;
-}
-
 function buildAppMenuChoiceSubmenu(label, options, currentValue, onChoose) {
   const choices = Array.isArray(options) ? options : [];
   return createDropdownMenuSubmenu(
@@ -44306,34 +44279,6 @@ function setAppMenuThumbnailTitleSize(kinds, size, label) {
   return true;
 }
 
-function setAppMenuVideoSkipStep(value) {
-  const next = VIDEO_SKIP_STEP_CYCLE.some(
-    (option) => option.value === String(value),
-  )
-    ? String(value)
-    : "5";
-  setOptionValue("videoSkipStep", next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(
-    `Video skip seconds: ${labelForCycleValue(VIDEO_SKIP_STEP_CYCLE, next)}`,
-  );
-  return true;
-}
-
-function setAppMenuVideoEndBehavior(value) {
-  const next = VIDEO_END_BEHAVIOR_CYCLE.some(
-    (option) => option.value === value,
-  )
-    ? value
-    : "loop";
-  setOptionValue("videoEndBehavior", next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(
-    `Video end: ${labelForCycleValue(VIDEO_END_BEHAVIOR_CYCLE, next)}`,
-  );
-  return true;
-}
-
 function setAppMenuAnimatedFilters(value) {
   const next = normalizeAnimatedMediaFiltersValue(value, "on");
   setOptionValue("animatedMediaFilters", next);
@@ -44435,29 +44380,6 @@ function buildAppMenuRandomSubmenu() {
   ]);
 }
 
-function buildAppMenuSlideshowButton() {
-  const activeDelay = WS.view?.slideshowActive
-    ? Number(WS.view.slideshowDurations[WS.view.slideshowModeIndex]) || 0
-    : 0;
-  const options = [
-    { value: 0, label: "Off" },
-    { value: 1000, label: "1 second" },
-    { value: 3000, label: "3 seconds" },
-    { value: 5000, label: "5 seconds" },
-    { value: 10000, label: "10 seconds" },
-  ];
-  const currentIndex = options.findIndex(
-    (option) => option.value === activeDelay,
-  );
-  const currentOption = options[currentIndex >= 0 ? currentIndex : 0];
-  const nextOption =
-    options[(currentIndex >= 0 ? currentIndex + 1 : 1) % options.length];
-  return appMenuChoiceButton(
-    `Slideshow mode: ${currentOption.label}`,
-    () => setAppMenuSlideshowDelay(nextOption.value),
-  );
-}
-
 function buildAppMenuRevealSubmenu() {
   return createDropdownMenuSubmenu("Reveal...", [
     appMenuChoiceButton(
@@ -44555,24 +44477,6 @@ function buildAppMenuThumbnailsSubmenu() {
   ]);
 }
 
-function buildAppMenuVideoSettingsSubmenu(options = null) {
-  const current = options || WS.meta?.options || {};
-  return createDropdownMenuSubmenu("Video settings", [
-    buildAppMenuCycleButton(
-      "Video skip seconds",
-      VIDEO_SKIP_STEP_CYCLE,
-      String(current.videoSkipStep || "5"),
-      setAppMenuVideoSkipStep,
-    ),
-    buildAppMenuCycleButton(
-      "Video end behavior",
-      VIDEO_END_BEHAVIOR_CYCLE,
-      String(current.videoEndBehavior || "loop"),
-      setAppMenuVideoEndBehavior,
-    ),
-  ]);
-}
-
 // The everyday view controls, gathered directly under the selected item.
 function buildAppMenuBasicsSubmenu() {
   const options = WS.meta?.options || {};
@@ -44603,17 +44507,6 @@ function buildAppMenuBasicsSubmenu() {
   ]);
 }
 
-function buildAppMenuMiscSubmenu() {
-  const options = WS.meta?.options || {};
-  return createDropdownMenuSubmenu("Miscellaneous", [
-    buildAppMenuSlideshowButton(),
-    buildAppMenuRandomSubmenu(),
-    buildAppMenuThumbnailsSubmenu(),
-    buildAppMenuVideoSettingsSubmenu(options),
-    buildAppMenuReverseFilesButton(),
-  ]);
-}
-
 // Import external files/folders into the current location (the folder the
 // preview pane is showing), folded in from the old background context menu.
 // Omitted for locations that cannot be imported into -- tag/virtual portals
@@ -44641,16 +44534,16 @@ function buildAppMenuAddItemsSubmenu() {
 // matching the old background menu: disabled -- and so skipped by the keyboard
 // walker -- whenever the location cannot be reordered or has fewer than two
 // files.
-function buildAppMenuReverseFilesButton() {
-  const dirNode = getPreviewTargetDir();
-  const ids = dirNode
-    ? getPreviewFolderAndFileEntries(dirNode, {
-        includeFiles: true,
-        useCurrentViewEntries: true,
-      }).fileIds
-    : [];
-  const canReverse =
-    !!dirNode && canReorderFilesInDir(dirNode) && ids.length > 1;
+// Reverse the file order inside the given folder -- the selected item, not the
+// current location. Returns null without a folder; disabled when the folder has
+// fewer than two reorderable files.
+function buildAppMenuReverseFilesButton(dirNode) {
+  if (!dirNode) return null;
+  const ids = getPreviewFolderAndFileEntries(dirNode, {
+    includeFiles: true,
+    useCurrentViewEntries: false,
+  }).fileIds;
+  const canReverse = canReorderFilesInDir(dirNode) && ids.length > 1;
   const btn = appMenuChoiceButton(
     "Reverse file order",
     () => {
@@ -44908,6 +44801,13 @@ function buildSelectedItemMenuSubmenu(summary) {
     }
   }
 
+  // "Reverse file order" is the last action for a single selected folder, acting
+  // on that folder's own files. Not offered for files, tags, or bulk selections.
+  if (target.kind === "dir" && target.node) {
+    const reverseBtn = buildAppMenuReverseFilesButton(target.node);
+    if (reverseBtn) host.appendChild(reverseBtn);
+  }
+
   const infoBlock = promoteItemInfoDropdownToHeader(host);
   if (infoBlock) {
     // Item Info sits at the bottom of the section, under the options.
@@ -44948,8 +44848,17 @@ function buildAppMenuItems() {
       buildAppMenuBasicsSubmenu(),
       buildAppMenuAppearanceSubmenu(),
       buildAppMenuRevealSubmenu(),
-      buildAppMenuAddItemsSubmenu(),
-      buildAppMenuMiscSubmenu(),
+      // "Add items" (import folders/files into the current preview location) is
+      // turned OFF here on purpose -- it is rarely used. The builder
+      // (buildAppMenuAddItemsSubmenu) is kept in the code below; drop it back
+      // into this list to bring the option back.
+      // Miscellaneous is no longer a submenu -- its items live inline here.
+      // Slideshow mode and the Video settings controls have been retired (video
+      // is fixed to loop / 10s skip in sanitizeOptions). "Reverse file order"
+      // moved into the single Selected Item menu (it now acts on the selected
+      // folder, not the current location).
+      buildAppMenuRandomSubmenu(),
+      buildAppMenuThumbnailsSubmenu(),
       buildAppMenuHistorySubmenu(),
       buildAppMenuControlsSubmenu(),
       // Always last.
