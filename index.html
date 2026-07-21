@@ -7817,6 +7817,73 @@ html.settings-window #previewContent:not(.menu-open)::before {
       pointer-events: none !important;
     }
 
+    /* App menu drill-down: stay one panel thick. Entering a section replaces
+       the current list in place (no flyout cascade). Left exits one level. */
+    #appActionMenu.appMenuDrillDown {
+      overflow-x: hidden;
+      max-width: min(600px, calc(100vw - 16px));
+    }
+    #appActionMenu.appMenuDrillDown .appMenuDrillHeader {
+      padding: 6px 10px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      opacity: 0.65;
+      pointer-events: none;
+      user-select: none;
+    }
+    /* Open submenus unwrap into the same column instead of flying out. */
+    #appActionMenu.appMenuDrillDown .dropdownMenuSubmenu.submenuOpen {
+      display: contents;
+    }
+    #appActionMenu.appMenuDrillDown .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuTrigger {
+      display: none !important;
+    }
+    #appActionMenu.appMenuDrillDown .dropdownMenuSubmenuPanel {
+      position: static !important;
+      left: auto !important;
+      right: auto !important;
+      top: auto !important;
+      width: 100%;
+      min-width: 0;
+      max-width: none;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      box-shadow: none;
+      background: transparent;
+      display: none;
+      z-index: auto;
+    }
+    /* Only keyboard-opened levels show (not :hover / :focus-within). */
+    #appActionMenu.appMenuDrillDown .dropdownMenuSubmenu:hover > .dropdownMenuSubmenuPanel,
+    #appActionMenu.appMenuDrillDown .dropdownMenuSubmenu:focus-within > .dropdownMenuSubmenuPanel {
+      display: none;
+    }
+    #appActionMenu.appMenuDrillDown .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuPanel {
+      display: flex;
+      flex-direction: column;
+      gap: inherit;
+    }
+    /* Hide siblings of the open path so only the current level is visible. */
+    #appActionMenu.appMenuDrillDown:has(> .dropdownMenuSubmenu.submenuOpen)
+      > :not(.dropdownMenuSubmenu.submenuOpen):not(.appMenuDrillHeader) {
+      display: none !important;
+    }
+    #appActionMenu.appMenuDrillDown
+      .dropdownMenuSubmenuPanel:has(> .dropdownMenuSubmenu.submenuOpen)
+      > :not(.dropdownMenuSubmenu.submenuOpen) {
+      display: none !important;
+    }
+    /* Nested wide panels (Controls / Stats / Calendar) size the single column. */
+    #appActionMenu.appMenuDrillDown .appMenuControlsPanel,
+    #appActionMenu.appMenuDrillDown .appMenuStatsPanel,
+    #appActionMenu.appMenuDrillDown .appMenuCalendar {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
     /* History in the app menu (Miscellaneous -> History -> Stats / Calendar):
        real submenu panels, not overlays. */
 
@@ -7975,7 +8042,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
               id="directoriesSearchInput"
               class="tagEditInput"
               type="text"
-              placeholder="Press / to search…"
+              placeholder="Press / to search"
             />
           </div>
           <div id="titleBtns">
@@ -15961,6 +16028,9 @@ const KEYBIND_ACTIONS = [
     label: "Toggle Grok",
     hint: "Show or hide the Grok window over the app. Esc closes it.",
     section: "panes",
+    // Feature off for now — keep the action id for later, but hide it from
+    // Controls and leave it unbound (handler is a no-op while disabled).
+    hiddenInUi: true,
   },
   {
     id: "randomFirstFileJump",
@@ -16378,7 +16448,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   nextFolder: "Cmd+s",
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
-  toggleGrokWindow: "Cmd+g",
+  toggleGrokWindow: "",
   randomFirstFileJump: "r",
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
@@ -43615,47 +43685,123 @@ function itemMenuAnchorElement(anchor) {
 function positionActionMenuInPreviewDock(menuEl) {
   if (!menuEl) return;
   if (isNumberedItemMenu(menuEl)) decorateNumberedMenuOptions(menuEl);
+  if (menuEl.id === "appActionMenu") {
+    menuEl.classList.add("appMenuDrillDown");
+    syncAppMenuDrillHeader(menuEl);
+  }
   menuEl.classList.add("fixed");
   menuEl.style.left = "0px";
   menuEl.style.top = "0px";
   menuEl.style.right = "auto";
 
   const menuRect = menuEl.getBoundingClientRect();
-  const paneRect = previewPane?.getBoundingClientRect?.() || {
-    left: 0,
-    right: window.innerWidth,
-    top: 0,
-    bottom: window.innerHeight,
-  };
+  const edge = 4;
+  const gap = 8;
 
-  // Anchor the menu over the first card in the grid rather than beside it, and
-  // overlap its corner slightly: a sliver of card peeking out from under the
-  // menu reads as a misalignment, so the menu swallows that corner outright.
-  const firstCard =
+  // Prefer the currently selected item (app-menu anchor). Fall back to the
+  // first preview card only when no selection anchor is available.
+  const anchorEl =
+    (menuEl.id === "appActionMenu" && APP_MENU_STATE?.anchor) ||
+    selectedItemMenuAnchor() ||
     previewBodyEl?.querySelector?.(
       ".folderCard, .fileCard, [data-preview-item-key]",
-    ) || null;
-  const cardRect = firstCard?.getBoundingClientRect?.() || null;
-  const overlap = 8;
-  const edge = 4;
+    ) ||
+    null;
+  const cardRect = anchorEl?.getBoundingClientRect?.() || null;
 
-  const anchorLeft = cardRect
-    ? cardRect.left - overlap
-    : paneRect.left + 14;
-  const anchorTop = cardRect ? cardRect.top - overlap : paneRect.top + 14;
+  let left;
+  let top;
+  if (cardRect) {
+    // Top edge of the menu lines up with the top edge of the thumbnail.
+    top = cardRect.top;
+    // Prefer the right side of the item; fall back to the left if it would
+    // overflow the viewport.
+    const rightLeft = cardRect.right + gap;
+    const leftLeft = cardRect.left - menuRect.width - gap;
+    if (rightLeft + menuRect.width <= window.innerWidth - edge) {
+      left = rightLeft;
+    } else if (leftLeft >= edge) {
+      left = leftLeft;
+    } else {
+      // Neither side fits fully — pick whichever side has more room.
+      const roomRight = window.innerWidth - edge - rightLeft;
+      const roomLeft = cardRect.left - edge;
+      left = roomRight >= roomLeft ? rightLeft : leftLeft;
+    }
+  } else {
+    const paneRect = previewPane?.getBoundingClientRect?.() || {
+      left: 0,
+      top: 0,
+    };
+    left = (paneRect.left || 0) + 14;
+    top = (paneRect.top || 0) + 14;
+  }
 
-  const left = Math.max(
+  left = Math.max(
     edge,
-    Math.min(anchorLeft, window.innerWidth - menuRect.width - edge),
+    Math.min(left, window.innerWidth - menuRect.width - edge),
   );
-  const top = Math.max(
+  top = Math.max(
     edge,
-    Math.min(anchorTop, window.innerHeight - menuRect.height - edge),
+    Math.min(top, window.innerHeight - menuRect.height - edge),
   );
 
   menuEl.style.left = `${left}px`;
   menuEl.style.top = `${top}px`;
   ensureMenuHighlight(menuEl);
+}
+
+// Non-interactive level label shown while drilled into an app-menu section.
+function syncAppMenuDrillHeader(menu) {
+  if (!menu || menu.id !== "appActionMenu") return;
+  const openSubs = Array.from(
+    menu.querySelectorAll(".dropdownMenuSubmenu.submenuOpen"),
+  );
+  // Deepest open submenu by nesting depth.
+  let deepest = null;
+  let deepestDepth = -1;
+  for (const sub of openSubs) {
+    let depth = 0;
+    let cur = sub;
+    while ((cur = cur.parentElement)) {
+      if (cur.classList?.contains("dropdownMenuSubmenu")) depth++;
+    }
+    if (depth > deepestDepth) {
+      deepestDepth = depth;
+      deepest = sub;
+    }
+  }
+  let header = menu.querySelector(":scope > .appMenuDrillHeader");
+  if (!deepest) {
+    if (header) header.remove();
+    return;
+  }
+  const trigger = deepest.querySelector(
+    ":scope > .dropdownMenuSubmenuTrigger",
+  );
+  // Prefer the text label, stripping any caret/icon chrome.
+  let label = "";
+  if (trigger) {
+    const labelEl =
+      trigger.querySelector(".dropdownMenuSubmenuLabelWithIcon span:last-child") ||
+      trigger.querySelector("span:not(.dropdownMenuSubmenuCaret):not(.dropdownMenuNum)");
+    label = String(
+      (labelEl && labelEl.textContent) || trigger.textContent || "",
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  if (!label) {
+    if (header) header.remove();
+    return;
+  }
+  if (!header) {
+    header = document.createElement("div");
+    header.className = "appMenuDrillHeader";
+    header.setAttribute("aria-hidden", "true");
+    menu.insertBefore(header, menu.firstChild);
+  }
+  header.textContent = label;
 }
 
 function positionDropdownMenu(menuBtn, menuEl) {
@@ -44778,6 +44924,7 @@ function refreshAppMenuContents(keyState) {
   const menu = appActionMenuEl;
   if (!menu || !APP_MENU_STATE || !menu.classList.contains("open")) return;
   menu.innerHTML = "";
+  menu.classList.add("appMenuDrillDown");
   buildAppMenuItems().forEach((item) => menu.appendChild(item));
   decorateNumberedMenuOptions(menu);
   applyNumberedMenuKeyState(menu, keyState);
@@ -44809,6 +44956,7 @@ function openAppMenu(anchor) {
   closeActionMenus();
   const menu = appActionMenuEl;
   menu.innerHTML = "";
+  menu.classList.add("appMenuDrillDown");
   buildAppMenuItems().forEach((item) => menu.appendChild(item));
   const openState = { anchor: itemAnchor };
   APP_MENU_STATE = openState;
@@ -45816,11 +45964,12 @@ function handleAppMenuCalendarKey(menu, action, e) {
     }
     case "leaveDir": {
       // Step back out of the calendar to the History submenu (the calendar has
-      // no button options, so the generic collapse would skip it).
+      // no button options, so the option walker alone would skip it).
       const sub = panel.closest(".dropdownMenuSubmenu");
       const trigger = sub?.querySelector(":scope > .dropdownMenuSubmenuTrigger");
       if (sub) setDropdownSubmenuOpen(sub, false);
       if (trigger) setMenuHighlight(menu, trigger);
+      if (menu.id === "appActionMenu") positionActionMenuInPreviewDock(menu);
       return true;
     }
     default:
@@ -46357,6 +46506,12 @@ function setDropdownSubmenuOpen(submenu, open) {
       .querySelectorAll(".dropdownMenuSubmenu.submenuOpen")
       .forEach((nested) => setDropdownSubmenuOpen(nested, false));
   }
+  const rootMenu = submenu.closest?.("#appActionMenu.open");
+  if (rootMenu) {
+    syncAppMenuDrillHeader(rootMenu);
+    // Width can change when a wide section (Controls/Stats) opens or closes.
+    positionActionMenuInPreviewDock(rootMenu);
+  }
 }
 
 function openDropdownSubmenuForTrigger(trigger) {
@@ -46374,7 +46529,10 @@ function openDropdownSubmenuForTrigger(trigger) {
   const flyout = submenu.querySelector(
     ":scope > .dropdownMenuSubmenuPanel",
   );
-  if (rootMenu && flyout) {
+  const isAppMenu = !!(rootMenu && rootMenu.id === "appActionMenu");
+  // Legacy context menus still fly out beside the trigger. The app menu is a
+  // single-column drill-down, so it skips the side-panel placement entirely.
+  if (rootMenu && flyout && !isAppMenu) {
     submenu.classList.add("submenuOpenRight");
     let flyoutRect = flyout.getBoundingClientRect();
     const baseTop = -5;
@@ -46396,6 +46554,10 @@ function openDropdownSubmenuForTrigger(trigger) {
     };
     scrollToBottom();
     requestAnimationFrame(scrollToBottom);
+  }
+  if (isAppMenu) {
+    syncAppMenuDrillHeader(rootMenu);
+    positionActionMenuInPreviewDock(rootMenu);
   }
   return true;
 }
@@ -46699,14 +46861,36 @@ function collapseOrCloseNumberedMenu(menu) {
     stopAppMenuFilterEdit();
     stopAppMenuControlsEdit();
   }
-  const panel = deepestOpenNumberedSubmenuPanel(menu);
-  const submenu = panel?.closest?.(".dropdownMenuSubmenu");
+  // Prefer the deepest open submenu by DOM nesting (including empty panels
+  // like Calendar) so left always steps back one level in the app menu.
+  let submenu = null;
+  if (menu?.id === "appActionMenu") {
+    const openSubs = Array.from(
+      menu.querySelectorAll(".dropdownMenuSubmenu.submenuOpen") || [],
+    );
+    openSubs.sort((a, b) => {
+      const depth = (el) => {
+        let count = 0;
+        let cur = el;
+        while ((cur = cur.parentElement)) {
+          if (cur.classList?.contains("dropdownMenuSubmenu")) count++;
+        }
+        return count;
+      };
+      return depth(b) - depth(a);
+    });
+    submenu = openSubs[0] || null;
+  } else {
+    const panel = deepestOpenNumberedSubmenuPanel(menu);
+    submenu = panel?.closest?.(".dropdownMenuSubmenu") || null;
+  }
   if (submenu) {
     const trigger = submenu.querySelector(
       ":scope > .dropdownMenuSubmenuTrigger",
     );
     setDropdownSubmenuOpen(submenu, false);
     setMenuHighlight(menu, trigger);
+    if (menu.id === "appActionMenu") positionActionMenuInPreviewDock(menu);
     return;
   }
   closeNumberedMenuFromKeyboard(menu);
@@ -60542,7 +60726,7 @@ function syncButtons() {
       }
       return "folder";
     })();
-    directoriesSearchInput.placeholder = `Press / to search… ${placeholderName}`;
+    directoriesSearchInput.placeholder = `Press / to search ${placeholderName}`;
   }
   if (directoriesSearchClearBtn) {
     const enabled =
@@ -61082,11 +61266,15 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
   return true;
 }
 
+// Flip to true to restore the embedded Grok window (Cmd+g / Controls bind).
+const GROK_WINDOW_ENABLED = false;
+
 // The Grok window lives entirely in Rust (src-tauri/src/grok.rs) — it is a
 // separate native window, so there is no DOM here to toggle. Closing is handled
 // on that side too: once it has focus this window sees no keys at all, so Esc
 // is caught by the script injected into the page.
 function toggleGrokWindowKeybindAction() {
+  if (!GROK_WINDOW_ENABLED) return false;
   const invoke = window.__TAURI__?.core?.invoke;
   if (!invoke) {
     showStatusMessage("Grok needs the desktop app.");
