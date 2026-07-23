@@ -34942,6 +34942,10 @@ function getFastTagScopeModel(dirNode) {
       untagged: [],
       hidden: [],
       albumStats: new Map(),
+      groupScores: new Map(),
+      favoritesScore: 0,
+      untaggedScore: 0,
+      hiddenScore: 0,
     };
   }
 
@@ -34952,19 +34956,35 @@ function getFastTagScopeModel(dirNode) {
   const hidden = [];
   const albumStats = new Map();
   const scopePath = String(dirNode?.path || "");
+  // Aggregate scores accumulated in this same pass so tag/album rows can show a
+  // score equal to the sum of their content's scores without a second sweep.
+  const groupScores = new Map();
+  let favoritesScore = 0;
+  let untaggedScore = 0;
+  let hiddenScore = 0;
 
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
     const childPath = String(child?.path || "");
     if (!childPath) continue;
+    const childScore = Number(metaGetScore(childPath)) || 0;
     const directAlbum = metaGetAlbumForPath(childPath);
-    if (metaHasFavorite(childPath)) favorites.push(child);
-    if (metaHasHidden(childPath)) hidden.push(child);
+    if (metaHasFavorite(childPath)) {
+      favorites.push(child);
+      favoritesScore += childScore;
+    }
+    if (metaHasHidden(childPath)) {
+      hidden.push(child);
+      hiddenScore += childScore;
+    }
     const tags = metaGetUserTags(childPath);
     // A folder that lives inside an album is contained there, not loose in the
     // parent, so it must not surface in the parent's "Untagged" bucket. It stays
     // discoverable through its own tags/Favorites, which are cross-cutting refs.
-    if (!tags.length && !directAlbum) untagged.push(child);
+    if (!tags.length && !directAlbum) {
+      untagged.push(child);
+      untaggedScore += childScore;
+    }
     const seenTags = new Set();
     for (let t = 0; t < tags.length; t++) {
       const tag = String(tags[t] || "");
@@ -34976,6 +34996,7 @@ function getFastTagScopeModel(dirNode) {
         groups.set(tag, list);
       }
       list.push(child);
+      groupScores.set(tag, (groupScores.get(tag) || 0) + childScore);
       const album = metaGetTagAlbumForTag(tag, scopePath);
       if (album) {
         let bucket = albumStats.get(album);
@@ -34985,6 +35006,7 @@ function getFastTagScopeModel(dirNode) {
             folderPaths: new Set(),
             directFolderPaths: new Set(),
             dirs: [],
+            score: 0,
           };
           albumStats.set(album, bucket);
         }
@@ -34992,6 +35014,7 @@ function getFastTagScopeModel(dirNode) {
         if (!bucket.folderPaths.has(childPath)) {
           bucket.folderPaths.add(childPath);
           bucket.dirs.push(child);
+          bucket.score += childScore;
         }
       }
     }
@@ -35003,6 +35026,7 @@ function getFastTagScopeModel(dirNode) {
           folderPaths: new Set(),
           directFolderPaths: new Set(),
           dirs: [],
+          score: 0,
         };
         albumStats.set(directAlbum, bucket);
       }
@@ -35010,11 +35034,23 @@ function getFastTagScopeModel(dirNode) {
       if (!bucket.folderPaths.has(childPath)) {
         bucket.folderPaths.add(childPath);
         bucket.dirs.push(child);
+        bucket.score += childScore;
       }
     }
   }
 
-  const model = { children, groups, favorites, untagged, hidden, albumStats };
+  const model = {
+    children,
+    groups,
+    favorites,
+    untagged,
+    hidden,
+    albumStats,
+    groupScores,
+    favoritesScore,
+    untaggedScore,
+    hiddenScore,
+  };
   TAG_SCOPE_MODEL_CACHE.set(cacheKey, model);
   return model;
 }
@@ -35727,13 +35763,35 @@ function fastTagEntryFolderCount(entry) {
   return 0;
 }
 
+// Sum of member-folder scores for a tag/album (or Favorites/Hidden/Untagged)
+// row, read from the cached fast scope model so it costs no extra sweep. Storage
+// stays neutral, matching the full-metrics path. Albums use the normalized name,
+// like getDirsForTagEntry.
+function fastTagEntryScoreSum(entry) {
+  if (!entry || entry.kind !== "tag") return 0;
+  if (entry.special === "storage") return 0;
+  const originPath = String(entry.originPath || "");
+  const dirNode = WS.dirByPath.get(originPath) || WS.nav.dirNode;
+  if (!dirNode) return 0;
+  const model = getFastTagScopeModel(dirNode);
+  if (entry.special === "favorites") return Number(model.favoritesScore) || 0;
+  if (entry.special === "hidden") return Number(model.hiddenScore) || 0;
+  if (entry.special === "untagged") return Number(model.untaggedScore) || 0;
+  if (entry.album && !entry.tag) {
+    const bucket = model.albumStats.get(normalizeTagAlbumName(entry.album));
+    return bucket ? Number(bucket.score) || 0 : 0;
+  }
+  if (entry.tag) return Number(model.groupScores.get(String(entry.tag))) || 0;
+  return 0;
+}
+
 function lightweightTagEntryMetrics(entry) {
   const folderCount = fastTagEntryFolderCount(entry);
   return {
     dirs: [],
     folderCount,
     fileCount: 0,
-    score: 0,
+    score: fastTagEntryScoreSum(entry),
     sizeBytes: 0,
   };
 }
