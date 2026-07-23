@@ -26,22 +26,24 @@
   --radius-sm: 2px;
   --radius-pill: 4px;
 
-  /* Neutral dark palette. color0 = ink, color1 = surface. */
-  --color0-primary: #eceef1;   /* near-white text */
-  --color0-secondary: #9a9da4;
-  --color0-tertirary: #5f626a;
+  /* Azure dark palette. color0 = ink, color1 = surface. (Azure is the app's
+     single theme; the Light mode toggle flips to the azure-light variant in the
+     retro90s block.) */
+  --color0-primary: hsl(210, 45%, 92%);   /* near-white text */
+  --color0-secondary: hsl(210, 35%, 70%);
+  --color0-tertirary: hsl(210, 25%, 50%);
 
-  --color1-primary: #121317;   /* app background */
-  --color1-primary-transparent: rgba(18, 19, 23, 0.86);
-  --color1-secondary: #1a1b20; /* raised surfaces: cards, menus, dropdowns */
-  --color1-secondary-transparent: rgba(26, 27, 32, 0.82);
-  --color1-tertiary: #26272e;  /* separators, hover shade */
+  --color1-primary: hsl(210, 35%, 10%);   /* app background */
+  --color1-primary-transparent: hsla(210, 35%, 10%, 0.86);
+  --color1-secondary: hsl(210, 30%, 16%); /* raised surfaces: cards, menus, dropdowns */
+  --color1-secondary-transparent: hsla(210, 30%, 16%, 0.82);
+  --color1-tertiary: hsl(210, 22%, 22%);  /* separators, hover shade */
 
   /* Signature accent — the single hue that highlights across the whole app. */
-  --accent: #3b7bff;
-  --accent-strong: #5a90ff;    /* hover / pressed */
-  --accent-soft: rgba(59, 123, 255, 0.16); /* tinted fills */
-  --anchor-internal-color2-primary: #6fa0ff;
+  --accent: hsl(35, 95%, 55%);
+  --accent-strong: hsl(35, 95%, 63%);    /* hover / pressed */
+  --accent-soft: hsla(35, 95%, 55%, 0.16); /* tinted fills */
+  --anchor-internal-color2-primary: hsl(35, 95%, 55%);
   --palette-accent: var(--accent);
   --palette-accent-text: #ffffff;
   --palette-accent-outline: var(--accent);
@@ -91,9 +93,9 @@
   /* Selection: a clean, tight accent border. No glow, no blur. */
   --ui-focus-ring: 0 0 0 2px var(--accent);
   --ui-selection-outline: var(--accent);
-  --ui-selection-outline-soft: rgba(59, 123, 255, 0.35);
-  --ui-selection-fill: rgba(59, 123, 255, 0.10);
-  --ui-selection-fill-strong: rgba(59, 123, 255, 0.18);
+  --ui-selection-outline-soft: hsla(35, 95%, 55%, 0.32);
+  --ui-selection-fill: hsla(35, 95%, 55%, 0.12);
+  --ui-selection-fill-strong: hsla(35, 95%, 55%, 0.20);
   --ui-preview-selection-shadow: none;
   --ui-preview-selection-stroke: 2px;
   /* Doubled stroke for an item that is BOTH the active selection and a member
@@ -211,23 +213,23 @@
   --folder-meta-font: 12px;
 }
 
-/* Light theme = clean neutral paper. A near-white surface, ink-grey text, and
-   the same signature blue. Crisp and architectural rather than warm/cream. */
+/* Light theme = Azure light. Soft blue paper, deep-blue ink, warm amber accent
+   (the light variant of the app's single Azure theme; flipped in by Light mode). */
 :root[data-theme="retro90s"] {
-  --color0-primary: #17181b;   /* ink */
-  --color0-secondary: #61646c;
-  --color0-tertirary: #9a9da6;
+  --color0-primary: hsl(212, 58%, 18%);   /* ink */
+  --color0-secondary: hsl(211, 30%, 36%);
+  --color0-tertirary: hsl(210, 18%, 53%);
 
-  --color1-primary: #fbfbfc;   /* paper background */
-  --color1-primary-transparent: rgba(251, 251, 252, 0.9);
-  --color1-secondary: #ffffff; /* raised surfaces */
-  --color1-secondary-transparent: rgba(255, 255, 255, 0.85);
-  --color1-tertiary: #eeeff1;  /* separators, hover shade */
+  --color1-primary: hsl(204, 100%, 98%);   /* paper background */
+  --color1-primary-transparent: hsla(204, 100%, 98%, 0.9);
+  --color1-secondary: hsl(205, 72%, 90%); /* raised surfaces */
+  --color1-secondary-transparent: hsla(205, 72%, 90%, 0.85);
+  --color1-tertiary: hsl(206, 38%, 82%);  /* separators, hover shade */
 
-  --accent: #2f6bff;
-  --accent-strong: #1f52d6;
-  --accent-soft: rgba(47, 107, 255, 0.12);
-  --anchor-internal-color2-primary: #2f6bff;
+  --accent: hsl(29, 90%, 42%);
+  --accent-strong: hsl(29, 90%, 34%);
+  --accent-soft: hsla(29, 90%, 42%, 0.12);
+  --anchor-internal-color2-primary: hsl(29, 90%, 42%);
   --palette-accent: var(--accent);
   --palette-accent-text: #ffffff;
   --palette-accent-outline: var(--accent);
@@ -237,21 +239,21 @@
   --hairline-strong: rgba(0, 0, 0, 0.14);
   --overlay-shadow: 0 12px 40px rgba(20, 22, 30, 0.16);
 
-  --tag-include-bg: #e4ecff;
-  --tag-include-border: transparent;
-  --tag-include-color: #2247a8;
-  --tag-exclude-bg: #fde4e4;
-  --tag-exclude-border: transparent;
-  --tag-exclude-color: #a63232;
+  --tag-include-bg: #cfe8ff;
+  --tag-include-border: #5aa9f8;
+  --tag-include-color: #0f3f73;
+  --tag-exclude-bg: #ffdcb8;
+  --tag-exclude-border: #ee9c47;
+  --tag-exclude-color: #7c3e00;
   --stats-score-positive-color: #e5484d;
   --stats-score-negative-color: #6e56cf;
   --item-menu-trash-color: var(--stats-score-positive-color);
 
   --ui-focus-ring: 0 0 0 2px var(--accent);
   --ui-selection-outline: var(--accent);
-  --ui-selection-outline-soft: rgba(47, 107, 255, 0.30);
-  --ui-selection-fill: rgba(47, 107, 255, 0.08);
-  --ui-selection-fill-strong: rgba(47, 107, 255, 0.16);
+  --ui-selection-outline-soft: hsla(29, 90%, 42%, 0.30);
+  --ui-selection-fill: hsla(29, 90%, 42%, 0.10);
+  --ui-selection-fill-strong: hsla(29, 90%, 42%, 0.18);
   --ui-preview-selection-shadow: none;
   --ui-control-bg: rgba(20, 22, 30, 0.05);
   --ui-control-hover-bg: rgba(20, 22, 30, 0.09);
@@ -6986,15 +6988,15 @@ remove the outer app frame. */
 /* Interactive surfaces for the unified warm-dim look. Raised surfaces sit a
    touch lighter than the background; controls use soft light overlays. */
 :root {
-  --color1-secondary: #1a1b20;
-  --color1-secondary-transparent: rgba(26, 27, 32, 0.62);
+  --color1-secondary: hsl(210, 30%, 16%);
+  --color1-secondary-transparent: hsla(210, 30%, 16%, 0.62);
   --ui-control-bg: rgba(255, 255, 255, 0.06);
   --ui-control-hover-bg: rgba(255, 255, 255, 0.12);
 }
 
 :root[data-theme="retro90s-dark"] {
-  --color1-secondary: #1a1b20;
-  --color1-secondary-transparent: rgba(26, 27, 32, 0.92);
+  --color1-secondary: hsl(210, 30%, 16%);
+  --color1-secondary-transparent: hsla(210, 30%, 16%, 0.92);
   --ui-control-bg: rgba(255, 255, 255, 0.07);
   --ui-control-hover-bg: rgba(255, 255, 255, 0.13);
 }
@@ -14692,9 +14694,9 @@ function applyDefaultViewFromOptions() {
 function applyColorSchemeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
-  // Two fixed looks: the dark slate default ("retro90s-dark") and the warm
-  // cream light theme ("retro90s"), flipped by the lightMode option (cycled
-  // from the app menu's Basics section).
+  // Azure is the app's single theme, in two variants: the dark slate default
+  // ("retro90s-dark") and the light azure paper ("retro90s"), flipped by the
+  // Light mode toggle (cycled from the app menu's Basics section).
   const lightMode = !!WS.meta?.options?.lightMode;
   root.setAttribute("data-theme", lightMode ? "retro90s" : "retro90s-dark");
   root.setAttribute("data-retro", "off");
@@ -15935,19 +15937,17 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "toggleRandomFileSort",
   "toggleRandomFolderSort",
   "cycleWeightRandomJumpsByScore",
-  "cycleFilter",
   "slideshow",
-  "cycleFolderSort",
-  // Reveal hidden items remains directly bindable even in menu-only mode.
-  "toggleShowTrashFolder",
-  "toggleShowUntaggedFolder",
-  "toggleShowStorageFolder",
-  "toggleQuickNavigation",
+  // Deliberately NOT gated (so they appear in the Controls list and can be bound
+  // to keys, while still remaining app-menu items): the media filter cycle
+  // (cycleFilter), the folder sort cycle (cycleFolderSort), the quick-navigation
+  // toggle (toggleQuickNavigation), the appearance-preset cycle
+  // (cycleAppearancePresets), and the Storage/Trash/Untagged reveal toggles.
+  // Reveal Hidden was already exposed.
   "hiddenSelection",
   "tagSelection",
   "albumSelection",
   "renameSelection",
-  "cycleAppearancePresets",
   "toggleMuteMessages",
   "toggleFullScreenMedia",
   "toggleFloatTags",
@@ -44370,6 +44370,8 @@ function setAppMenuLightMode(enabled) {
   return true;
 }
 
+// The single theme (Azure) flips between its dark and light variant. The button
+// cycles that light/dark state.
 function buildAppMenuThemeButton() {
   const light = !!WS.meta?.options?.lightMode;
   return appMenuChoiceButton(`Theme: ${light ? "Light" : "Dark"}`, () =>
