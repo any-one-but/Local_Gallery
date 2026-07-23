@@ -63522,10 +63522,17 @@ document.addEventListener(
 // (they stopImmediatePropagation on `document`, one hop below `window`). The
 // one exception is an in-progress keybind capture, where the keypress must be
 // recorded as the new binding instead of triggering panic.
+//
+// The panic key is often a bare letter (default "g"), so the sole place it must
+// NOT fire is while typing into a text field — otherwise that letter can never
+// be typed and the app is unusable. When the target is a text input we return
+// without preventing default or stopping propagation, so the key types normally
+// and the document-level handler (which also guards text inputs) leaves it be.
 window.addEventListener(
   "keydown",
   (e) => {
     if (KEYBIND_CAPTURE_ACTION_ID || APP_MENU_CONTROLS_CAPTURE_ID) return;
+    if (isTextInputTarget(e.target)) return;
     const key = keybindValueFromEvent(e);
     if (!key || keybindActionFor(key) !== "panic") return;
     e.preventDefault();
@@ -63607,6 +63614,9 @@ document.addEventListener("keydown", (e) => {
   }
 
   if (action === "panic") {
+    // Never let the panic key fire while typing — a bare-letter binding would
+    // otherwise be un-typeable. Any other context still panics.
+    if (isTextInputTarget(e.target)) return;
     e.preventDefault();
     applyBanicState(!BANIC_ACTIVE);
     return;
