@@ -6702,11 +6702,16 @@ remove the outer app frame. */
 }
 
 
-/* v4: force preview-pane thumbnail title strips to use one translucent overlay treatment.
+/* v4: force preview-pane thumbnail title strips to use one opaque, theme-matched treatment.
    This targets the right-side preview pane directly, including cropped square cards, natural-aspect cards, folders, tags, and compact inline-title variants. */
 :root {
-  --preview-pane-thumb-title-bar-bg: rgba(0, 0, 0, 0.34);
-  --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.92);
+  /* Opaque strip matched to the active theme's raised-surface color, with text
+     in the theme's foreground ink so it always contrasts (dark text in light
+     mode, light text in dark mode). These custom properties resolve lazily at
+     each use site, so they track --color1-secondary / --color0-primary as the
+     theme flips. */
+  --preview-pane-thumb-title-bar-bg: var(--color1-secondary);
+  --preview-pane-thumb-title-bar-fg: var(--color0-primary);
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta,
@@ -6735,6 +6740,18 @@ remove the outer app frame. */
 #previewPane .dirSquareOverlay *,
 #previewPane .dirFileOverlay * {
   color: var(--preview-pane-thumb-title-bar-fg) !important;
+}
+
+/* Exception to the overlay `*` color override above: a favorited item's badge is
+   a solid blue accent pill, so its score text and heart must stay white in every
+   theme — the theme foreground (dark ink in light mode) would be unreadable on
+   the blue fill. The badge class is repeated only to raise specificity past the
+   `*` override's own !important (which reaches up to five classes deep). */
+#previewPane .dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint,
+#previewPane .dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint.dirMenuBtnScoreFavoriteTint *,
+#previewPane .dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint,
+#previewPane .dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint.dirMenuBtnFavoriteTint * {
+  color: #fff !important;
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMetaMenuOnly,
