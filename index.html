@@ -18023,6 +18023,10 @@ let TAG_EDIT_IN_PREVIEW = false;
 let TAG_CONTEXT_MENU_STATE = null;
 let PREVIEW_CONTEXT_MENU_STATE = null;
 let APP_MENU_STATE = null;
+// The app menu's on-screen position is fixed at open time and reused for every
+// in-place rebuild, so activating an option never jumps the menu (a detached
+// anchor would otherwise measure as 0,0 and fling it to the top-left corner).
+let APP_MENU_DOCK_POS = null;
 // When set, the app menu shows an "Are You Sure?" confirmation page instead of
 // its normal contents. Holds { title, message, confirmLabel, danger, resolve }.
 // showAppMenuConfirm() drives it; the Yes/No buttons settle the promise.
@@ -43729,10 +43733,11 @@ function itemMenuAnchorElement(anchor) {
   );
 }
 
-function positionActionMenuInPreviewDock(menuEl) {
+function positionActionMenuInPreviewDock(menuEl, opts = {}) {
   if (!menuEl) return;
   if (isNumberedItemMenu(menuEl)) decorateNumberedMenuOptions(menuEl);
-  if (menuEl.id === "appActionMenu") {
+  const isAppMenu = menuEl.id === "appActionMenu";
+  if (isAppMenu) {
     menuEl.classList.add("appMenuDrillDown");
     syncAppMenuDrillHeader(menuEl);
   }
@@ -43745,16 +43750,37 @@ function positionActionMenuInPreviewDock(menuEl) {
   const edge = 4;
   const gap = 8;
 
+  const clampToViewport = (l, t) => {
+    l = Math.max(edge, Math.min(l, window.innerWidth - menuRect.width - edge));
+    t = Math.max(edge, Math.min(t, window.innerHeight - menuRect.height - edge));
+    return [l, t];
+  };
+
+  // The app menu is docked once, at open time, and then held there through every
+  // in-place rebuild. Reusing the stored corner (re-clamped to the current menu
+  // size) keeps it from jumping when an activated option detaches its anchor.
+  if (isAppMenu && !opts.reanchor && APP_MENU_DOCK_POS) {
+    const [l, t] = clampToViewport(APP_MENU_DOCK_POS.left, APP_MENU_DOCK_POS.top);
+    menuEl.style.left = `${l}px`;
+    menuEl.style.top = `${t}px`;
+    ensureMenuHighlight(menuEl);
+    return;
+  }
+
   // Prefer the currently selected item (app-menu anchor). Fall back to the
   // first preview card only when no selection anchor is available.
   const anchorEl =
-    (menuEl.id === "appActionMenu" && APP_MENU_STATE?.anchor) ||
+    (isAppMenu && APP_MENU_STATE?.anchor) ||
     selectedItemMenuAnchor() ||
     previewBodyEl?.querySelector?.(
       ".folderCard, .fileCard, [data-preview-item-key]",
     ) ||
     null;
-  const cardRect = anchorEl?.getBoundingClientRect?.() || null;
+  const anchorRect = anchorEl?.getBoundingClientRect?.() || null;
+  // A detached anchor measures as an all-zero rect; treat that as "no anchor" so
+  // we fall back to the pane instead of pinning the menu at 0,0 (top-left).
+  const cardRect =
+    anchorRect && (anchorRect.width || anchorRect.height) ? anchorRect : null;
 
   let left;
   let top;
@@ -43784,14 +43810,11 @@ function positionActionMenuInPreviewDock(menuEl) {
     top = (paneRect.top || 0) + 14;
   }
 
-  left = Math.max(
-    edge,
-    Math.min(left, window.innerWidth - menuRect.width - edge),
-  );
-  top = Math.max(
-    edge,
-    Math.min(top, window.innerHeight - menuRect.height - edge),
-  );
+  [left, top] = clampToViewport(left, top);
+
+  // Remember where the app menu landed so later rebuilds reuse this corner
+  // instead of re-anchoring (and possibly jumping) each time.
+  if (isAppMenu) APP_MENU_DOCK_POS = { left, top };
 
   menuEl.style.left = `${left}px`;
   menuEl.style.top = `${top}px`;
@@ -44065,6 +44088,7 @@ function closeAppMenu() {
   appActionMenuEl.style.left = "";
   appActionMenuEl.style.top = "";
   APP_MENU_STATE = null;
+  APP_MENU_DOCK_POS = null;
   APP_MENU_FILTER_EDIT_KEY = "";
   APP_MENU_CONTROLS_EDIT_ID = "";
   APP_MENU_CONTROLS_EDIT_BTN = 0;
@@ -45028,10 +45052,11 @@ function openAppMenu(anchor) {
   buildAppMenuItems().forEach((item) => menu.appendChild(item));
   const openState = { anchor: itemAnchor };
   APP_MENU_STATE = openState;
+  APP_MENU_DOCK_POS = null;
   requestAnimationFrame(() => {
     if (APP_MENU_STATE !== openState) return;
     menu.classList.add("open");
-    positionActionMenuInPreviewDock(menu);
+    positionActionMenuInPreviewDock(menu, { reanchor: true });
   });
   return true;
 }
@@ -64203,6 +64228,16 @@ function registerThumbEl(el, src, opts = null) {
 // bypasses assignThumbSrc, so it stays full-resolution.
 const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
 const TAURI_THUMB_EDGE = 512;
+// Feature flag: full-quality thumbnails. When on, image tiles render the
+// original media itself instead of a 512px generated JPEG, and video tiles use
+// the largest frame the Rust generator will produce (an <img> can't play the
+// video, so a still frame is unavoidable — but a full-res one). This trades the
+// downscaled-thumbnail memory/decode savings for pixel-perfect grid tiles; flip
+// to false to return to the lightweight 512px pipeline.
+const FULL_QUALITY_THUMBNAILS = true;
+// Rust clamps generate_thumbnail's edge to 2048, so that is "full quality" for a
+// generated video frame.
+const FULL_QUALITY_VIDEO_THUMB_EDGE = 2048;
 // Above this, a tile must NOT fall back to the original while its thumb generates.
 // TAURI_THUMB_INDEX is in-memory only, so every session starts cold and every tile
 // takes the fallback path at least once — and the fallback used to be the full-res
@@ -64232,6 +64267,18 @@ function tauriThumbForImgEl(el) {
   if (!recId) return "";
   const rec = WS.fileById.get(recId);
   if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
+  // Full-quality mode: an image tile paints the original media itself, so there
+  // is no generated thumbnail to wait on. (Videos still fall through to a
+  // generated frame below — an <img> can't render the video file.)
+  if (FULL_QUALITY_THUMBNAILS && rec.type === "image") {
+    const colF = getCurrentColorFilterCssForTarget(rec);
+    if (colF) {
+      try { el.style.filter = colF; } catch {}
+    } else {
+      try { el.style.removeProperty("filter"); } catch {}
+    }
+    return String(ensureMediaUrl(rec) || "");
+  }
   const path = nativePathForRecord(rec);
   if (!path) return "";
   // Honor the user's chosen video thumbnail frame (backwards-compatible with the
@@ -64239,7 +64286,11 @@ function tauriThumbForImgEl(el) {
   const frameTime =
     rec.type === "video" ? metaGetVideoThumbnailTimeForRecord(rec) : null;
   const ftKey = Number.isFinite(frameTime) ? Math.round(frameTime * 1000) : "d";
-  const key = `${path}::${TAURI_THUMB_EDGE}::${ftKey}`;
+  const thumbEdge =
+    FULL_QUALITY_THUMBNAILS && rec.type === "video"
+      ? FULL_QUALITY_VIDEO_THUMB_EDGE
+      : TAURI_THUMB_EDGE;
+  const key = `${path}::${thumbEdge}::${ftKey}`;
   const cached = TAURI_THUMB_INDEX.get(key);
   if (cached) {
     const colF = getCurrentColorFilterCssForTarget(rec);
@@ -64253,7 +64304,7 @@ function tauriThumbForImgEl(el) {
   if (!el.__tauriThumbPending) {
     el.__tauriThumbPending = true;
     window.__lg
-      .requestThumb(path, TAURI_THUMB_EDGE, frameTime)
+      .requestThumb(path, thumbEdge, frameTime)
       .then((url) => {
         el.__tauriThumbPending = false;
         if (!url) return;
