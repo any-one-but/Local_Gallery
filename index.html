@@ -336,7 +336,9 @@ body.cursor-hidden * {
   /* Hidden during boot so the half-built skeleton isn't shown while this large
      inline document parses/executes (most visible in the packaged build). The
      init code reveals it (adds .appBooted) once the UI is built; the keyframe is
-     a pure-CSS safety that reveals after a few seconds even if init never runs. */
+     a pure-CSS safety that reveals after a few seconds even if init never runs.
+     #bootSplash (outside #app) stays visible the whole time so the blank isn't
+     a dead screen. */
   visibility: hidden;
   animation: appBootRevealSafety 0s linear 6s forwards;
 }
@@ -346,6 +348,33 @@ body.cursor-hidden * {
 }
 @keyframes appBootRevealSafety {
   to { visibility: visible; }
+}
+
+/* Boot splash: first paint feedback while the monolith parses/executes and the
+   managed library auto-opens. Lives outside #app so it is not visibility-hidden
+   with the half-built skeleton. Pure HTML/CSS — no JS required to appear.
+   Visuals match #busyOverlay (spinner + Loading on the theme surface). */
+#bootSplash {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--color1-primary, hsl(210, 35%, 10%));
+  color: var(--color0-secondary, hsl(210, 35%, 70%));
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  transition: opacity 0.28s ease;
+  pointer-events: auto;
+}
+#bootSplash.bootSplashDone {
+  opacity: 0;
+  pointer-events: none;
+}
+body.bootSplashGone #bootSplash {
+  display: none;
 }
 
 
@@ -4726,54 +4755,49 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 /* =========================================================
-       Busy Overlay
+       Busy Overlay — same look as #bootSplash: solid theme surface,
+       spinner + "Loading". No dim scrim, no path/progress detail.
        ========================================================= */
 #busyOverlay {
   position: fixed;
   inset: 0;
+  z-index: 10000;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  background: rgba(0, 0, 0, 0.75);
+  gap: 14px;
+  background: var(--color1-primary, hsl(210, 35%, 10%));
+  color: var(--color0-secondary, hsl(210, 35%, 70%));
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease;
-  z-index: 10000;
+  transition: opacity 0.28s ease;
 }
 #busyOverlay.active {
   opacity: 1;
   pointer-events: auto;
 }
-.busySpinner {
-  width: 48px;
-  height: 48px;
+.busySpinner,
+.bootSplashSpinner {
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  border: 4px solid rgba(255, 255, 255, 0.2);
-  border-top-color: var(--on-media-fg);
-  animation: spin 0.9s linear infinite;
+  border: 3px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--accent, hsl(35, 95%, 55%));
+  animation: spin 0.85s linear infinite;
 }
-#busyLabel {
+#busyLabel,
+.bootSplashLabel {
   font-size: 12px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--on-media-fg);
+  color: var(--color0-secondary, hsl(210, 35%, 70%));
   text-align: center;
 }
+/* Detail line retired — kept in the DOM only so old setters don't throw. */
 #busyDetail {
-  min-height: 2.7em;
-  max-width: min(70vw, 720px);
-  padding: 0 16px;
-  font-size: 12px;
-  line-height: 1.35;
-  letter-spacing: 0.01em;
-  color: var(--on-media-fg);
-  text-align: center;
-  white-space: pre-line;
-  text-transform: none;
-  overflow-wrap: anywhere;
-  white-space: pre-line;
+  display: none !important;
 }
 @keyframes spin {
   from {
@@ -8097,6 +8121,12 @@ html.settings-window #previewContent:not(.menu-open)::before {
   </head>
 
   <body>
+    <!-- Visible immediately while #app stays hidden and the script runs; JS
+         dismisses it once the managed library is open (or boot finishes). -->
+    <div id="bootSplash" role="status" aria-live="polite" aria-busy="true">
+      <div class="bootSplashSpinner" aria-hidden="true"></div>
+      <div class="bootSplashLabel">Loading</div>
+    </div>
     <div id="app">
       <!-- =========================================================
          Title Pane
@@ -8260,10 +8290,10 @@ html.settings-window #previewContent:not(.menu-open)::before {
       <!-- =========================================================
          Busy (Overlay)
          ========================================================= -->
-      <div id="busyOverlay">
-        <div class="busySpinner"></div>
-        <div id="busyLabel">Working...</div>
-        <div id="busyDetail"></div>
+      <div id="busyOverlay" role="status" aria-live="polite" aria-busy="false">
+        <div class="busySpinner" aria-hidden="true"></div>
+        <div id="busyLabel">Loading</div>
+        <div id="busyDetail" hidden></div>
       </div>
 
       <!-- =========================================================
@@ -16214,20 +16244,20 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "toggleSelectionInBulk",
-    label: "Add/remove to multi-selection",
-    hint: "Add or remove the current item from the multi-item selection (keyboard equivalent of Cmd-clicking it).",
+    label: "Add/remove to bulk selection",
+    hint: "Add or remove the current item from the bulk selection (keyboard equivalent of Cmd-clicking it).",
     section: "folderActions",
   },
   {
     id: "selectRangeInBulk",
-    label: "Select multiple items in range",
-    hint: "Select every item from the multi-selection anchor through the current item (keyboard equivalent of Shift-clicking it).",
+    label: "Select range in bulk selection",
+    hint: "Select every item from the bulk selection anchor through the current item (keyboard equivalent of Shift-clicking it).",
     section: "folderActions",
   },
   {
     id: "cancelMultiSelection",
-    label: "Cancel multi-selection",
-    hint: "Clear the current multi-item selection and return to single-item selection.",
+    label: "Cancel bulk selection",
+    hint: "Clear the current bulk selection and return to single-item selection.",
     section: "folderActions",
   },
   {
@@ -26881,12 +26911,16 @@ function releaseBusyOverlayHold(options = null) {
   }
 }
 
-function showBusyOverlay(text, detail = "") {
-  if (!tortoiseNavigationEnabled()) return;
+// Busy overlay is a fixed "Loading" + spinner screen (same as boot splash).
+// Callers may still pass label/detail for API compatibility; both are ignored.
+function showBusyOverlay(_text, _detail = "") {
   BUSY_OVERLAY_PENDING_HIDE = false;
-  if (busyLabel) busyLabel.textContent = text || "Working...";
-  if (busyDetail) busyDetail.textContent = detail || "";
-  if (busyOverlay) busyOverlay.classList.add("active");
+  if (busyLabel) busyLabel.textContent = "Loading";
+  if (busyDetail) busyDetail.textContent = "";
+  if (busyOverlay) {
+    busyOverlay.classList.add("active");
+    busyOverlay.setAttribute("aria-busy", "true");
+  }
 }
 
 function hideBusyOverlay(force = false) {
@@ -26896,11 +26930,13 @@ function hideBusyOverlay(force = false) {
   }
   BUSY_OVERLAY_PENDING_HIDE = false;
   if (busyDetail) busyDetail.textContent = "";
-  if (busyOverlay) busyOverlay.classList.remove("active");
+  if (busyOverlay) {
+    busyOverlay.classList.remove("active");
+    busyOverlay.setAttribute("aria-busy", "false");
+  }
 }
 
 function busyOverlayActive() {
-  if (!tortoiseNavigationEnabled()) return false;
   return !!(busyOverlay && busyOverlay.classList.contains("active"));
 }
 
@@ -27554,17 +27590,20 @@ async function readExistingCatalogForRootHandle(rootHandle) {
   }
 }
 
-function showBlockingLoaderOverlay(label, detail = "") {
-  BUSY_OVERLAY_PENDING_HIDE = false;
-  if (busyLabel) busyLabel.textContent = label || "Working...";
-  if (busyDetail) busyDetail.textContent = detail || "";
-  if (busyOverlay) busyOverlay.classList.add("active");
+function showBlockingLoaderOverlay(_label, _detail = "") {
+  showBusyOverlay();
 }
 
-function updateBlockingLoaderOverlay(label, detail = "") {
+function updateBlockingLoaderOverlay(_label, _detail = "") {
+  // Keep the overlay up, but never rewrite the label with paths/progress —
+  // the busy screen is fixed "Loading" only.
   BUSY_OVERLAY_PENDING_HIDE = false;
-  if (label && busyLabel) busyLabel.textContent = label;
-  if (busyDetail) busyDetail.textContent = detail || "";
+  if (busyLabel) busyLabel.textContent = "Loading";
+  if (busyDetail) busyDetail.textContent = "";
+  if (busyOverlay && !busyOverlay.classList.contains("active")) {
+    busyOverlay.classList.add("active");
+    busyOverlay.setAttribute("aria-busy", "true");
+  }
 }
 
 function hideBlockingLoaderOverlay() {
@@ -27576,24 +27615,18 @@ async function waitForBusyOverlayPaint() {
   if (typeof waitForNextPaint === "function") await waitForNextPaint();
 }
 
-function formatBusyProgressDetail(countText = "", path = "") {
-  const countLine = String(countText || "").trim();
-  const pathLine = String(path || "").trim();
-  if (countLine && pathLine) return `${countLine}
-${displayPath(pathLine)}`;
-  if (countLine) return countLine;
-  if (pathLine) return displayPath(pathLine);
+function formatBusyProgressDetail(_countText = "", _path = "") {
   return "";
 }
 
-function updateBusyProgress(label, countText = "", path = "", force = false, state = null) {
+function updateBusyProgress(_label, _countText = "", _path = "", force = false, state = null) {
   const tracker = state && typeof state === "object" ? state : null;
   if (tracker) {
     const now = Date.now();
     if (!force && now - Number(tracker.lastUpdate || 0) < 80) return;
     tracker.lastUpdate = now;
   }
-  updateBlockingLoaderOverlay(label, formatBusyProgressDetail(countText, path));
+  updateBlockingLoaderOverlay();
 }
 
 function catalogEmptyAspectCounts() {
@@ -31900,13 +31933,23 @@ async function openFixedAppMediaFolder() {
 
 // On load (after shims and UI wiring), try the fixed media folder in Tauri mode.
 // If it fails the classic "Choose Root" buttons still allow manual action.
+// The boot splash stays up until this settles so a multi-second silent open
+// still has feedback (see dismissBootSplash).
 (function tryAutoOpenManagedLibrary() {
-  // Run as soon as possible for instant startup (no delay, no loading UI).
-  // Use 0 timeout so DOM elements are ready but no visible flash/settle delay.
+  // Use 0 timeout so DOM elements are ready but no extra settle delay.
   setTimeout(() => {
-    if (typeof WS !== "undefined" && (!WS || !WS.root)) {
-      openFixedAppMediaFolder().catch(() => {});
-    }
+    const run = async () => {
+      try {
+        if (typeof WS !== "undefined" && (!WS || !WS.root)) {
+          await openFixedAppMediaFolder();
+        }
+      } catch {
+        // openFixedAppMediaFolder already logs; still dismiss the splash.
+      } finally {
+        dismissBootSplash();
+      }
+    };
+    run();
   }, 0);
 })();
 
@@ -44796,7 +44839,14 @@ function appMenuSelectionTarget() {
       const rec = WS.fileById.get(String(previewFileIdForCard(card) || ""));
       if (rec) return { kind: "file", rec, card };
     } else if (kind === "dir") {
-      const node = WS.dirByPath.get(String(previewDirPathForCard(card) || ""));
+      // Storage portal rows are stubs and may not live in dirByPath — resolve
+      // through the storage-aware helper so a single stored folder still gets
+      // a real selection target (and the quarantine Remove action).
+      const path = String(previewDirPathForCard(card) || "");
+      const node =
+        resolveDirNodeForPathOrStorageStub(path) ||
+        WS.dirByPath.get(path) ||
+        null;
       if (node) return { kind: "dir", node, card };
     } else if (kind === "tag") {
       const entry = card.__previewTagEntry || null;
@@ -44806,6 +44856,10 @@ function appMenuSelectionTarget() {
   const entry = WS.nav.entries[Number(WS.nav.selectedIndex)] || null;
   if (entry?.kind === "dir" && entry.node)
     return { kind: "dir", node: entry.node };
+  if (entry?.kind === "dir" && entry.path) {
+    const node = resolveDirNodeForPathOrStorageStub(String(entry.path || ""));
+    if (node) return { kind: "dir", node };
+  }
   if (entry?.kind === "file") {
     const rec = WS.fileById.get(String(entry.id || ""));
     if (rec) return { kind: "file", rec };
@@ -44836,41 +44890,85 @@ function appMenuSelectionSummary() {
   return { target, title: name || "Selected Item", label: "Selected Item" };
 }
 
+// True when a folder path is a removable Trash top-level item (not the Trash
+// portal itself). Matches what putBackTrashFolderPaths actually accepts.
+function pathIsTrashQuarantine(path) {
+  return !!trashTopLevelItemPathForPath(path);
+}
+
+// True when a folder path is in Storage (tag or stub). Storage is folder-level.
+function pathIsStorageQuarantine(path) {
+  const p = String(path || "");
+  if (!p) return false;
+  if (metaHasStorage(p)) return true;
+  return isStorageStubDirNode(resolveDirNodeForPathOrStorageStub(p));
+}
+
+function fileRecordIsTrashQuarantine(rec) {
+  return !!trashTopLevelItemPathForFileRecord(rec);
+}
+
+function fileRecordIsStorageQuarantine(rec) {
+  if (!rec) return false;
+  // A file is "in storage" by virtue of its parent folder (including stubs that
+  // are not loaded into dirByPath).
+  return pathIsStorageQuarantine(String(rec.dirPath || ""));
+}
+
 // An item sitting in Trash or Storage has no meaningful item menu -- almost
 // every action is refused for it anyway. Returns the one action that does
 // apply, so the app menu can offer that single button in place of the whole
-// "Selected Item" dropdown.
+// "Selected Item(s)" submenu (single or bulk).
 function selectedItemQuarantineAction(target) {
   if (!target) return null;
-  const paths = [];
-  if (target.kind === "dir") paths.push(String(target.node?.path || ""));
-  else if (target.kind === "file") {
-    if (!target.rec) return null;
-    const trashPath = trashTopLevelItemPathForFileRecord(target.rec);
-    if (trashPath) return { label: "Remove from Trash", kind: "trash", target };
-    // A file is "in storage" by virtue of its folder, so ask the folder --
-    // resolved through the tree rather than by comparing raw path strings.
-    const ownDir = WS.dirByPath.get(String(target.rec.dirPath || "")) || null;
-    if (!ownDir) return null;
-    paths.push(String(ownDir.path || ""));
-  } else if (target.kind === "bulk") {
-    paths.push(...target.paths);
-  } else return null;
 
-  const real = paths.filter(Boolean);
-  if (!real.length) return null;
-  // trashTopLevelItemPathForPath() is what put-back actually operates on, so it
-  // is also the right test: it rejects the Trash root portal itself, which is a
-  // container rather than something that can be removed from Trash.
-  if (real.every((p) => !!trashTopLevelItemPathForPath(p)))
-    return { label: "Remove from Trash", kind: "trash", target };
-  if (
-    real.every(
-      (p) =>
-        metaHasStorage(p) ||
-        isStorageStubDirNode(resolveDirNodeForPathOrStorageStub(p)),
-    )
-  )
+  if (target.kind === "dir") {
+    if (isTrashRootPortalNode(target.node)) return null;
+    const p = String(target.node?.path || "");
+    if (!p) return null;
+    if (pathIsTrashQuarantine(p))
+      return { label: "Remove from Trash", kind: "trash", target };
+    if (pathIsStorageQuarantine(p) || isStorageStubDirNode(target.node))
+      return { label: "Remove from Storage", kind: "storage", target };
+    return null;
+  }
+
+  if (target.kind === "file") {
+    if (!target.rec) return null;
+    if (fileRecordIsTrashQuarantine(target.rec))
+      return { label: "Remove from Trash", kind: "trash", target };
+    if (fileRecordIsStorageQuarantine(target.rec))
+      return { label: "Remove from Storage", kind: "storage", target };
+    return null;
+  }
+
+  if (target.kind !== "bulk") return null;
+
+  const paths = Array.isArray(target.paths)
+    ? target.paths.map((p) => String(p || "")).filter(Boolean)
+    : [];
+  const fileIds = Array.isArray(target.fileIds)
+    ? target.fileIds.map((id) => String(id || "")).filter(Boolean)
+    : [];
+  const recs = fileIds.map((id) => WS.fileById.get(id)).filter(Boolean);
+  // Incomplete bulk (missing file records) — fall back to the full submenu.
+  if (fileIds.length && recs.length !== fileIds.length) return null;
+  if (!paths.length && !recs.length) return null;
+
+  // Every selected unit must be the same quarantine kind (all trash, or all
+  // storage). Mixed or non-quarantine bulk keeps the normal Selected Items menu.
+  let allTrash = true;
+  let allStorage = true;
+  for (let i = 0; i < paths.length; i++) {
+    if (!pathIsTrashQuarantine(paths[i])) allTrash = false;
+    if (!pathIsStorageQuarantine(paths[i])) allStorage = false;
+  }
+  for (let i = 0; i < recs.length; i++) {
+    if (!fileRecordIsTrashQuarantine(recs[i])) allTrash = false;
+    if (!fileRecordIsStorageQuarantine(recs[i])) allStorage = false;
+  }
+  if (allTrash) return { label: "Remove from Trash", kind: "trash", target };
+  if (allStorage)
     return { label: "Remove from Storage", kind: "storage", target };
   return null;
 }
@@ -44883,24 +44981,51 @@ function buildSelectedItemQuarantineButton(quarantine) {
         runFileActionFromMenu("put-back", String(target.rec?.id || ""));
         return;
       }
-      const paths =
-        target.kind === "bulk"
-          ? target.paths
-          : [String(target.node?.path || "")];
-      const trashPaths = paths
-        .map((p) => trashTopLevelItemPathForPath(p))
-        .filter(Boolean);
-      if (trashPaths.length) putBackTrashFolderPaths(trashPaths);
+      const trashPaths = new Set();
+      if (target.kind === "bulk") {
+        (target.paths || []).forEach((p) => {
+          const t = trashTopLevelItemPathForPath(p);
+          if (t) trashPaths.add(t);
+        });
+        (target.fileIds || []).forEach((id) => {
+          const rec = WS.fileById.get(String(id || ""));
+          const t = rec ? trashTopLevelItemPathForFileRecord(rec) : "";
+          if (t) trashPaths.add(t);
+        });
+      } else {
+        const t = trashTopLevelItemPathForPath(String(target.node?.path || ""));
+        if (t) trashPaths.add(t);
+      }
+      if (trashPaths.size) {
+        putBackTrashFolderPaths(Array.from(trashPaths));
+        if (target.kind === "bulk") finalizeBulkSelectionAction();
+      }
       return;
     }
-    const paths =
-      target.kind === "bulk"
-        ? target.paths
-        : [String(target.node?.path || target.rec?.dirPath || "")].filter(
-            Boolean,
-          );
-    if (paths.length) setStorageStateForFolderPaths(paths, false);
-  });
+    // Storage is folder-level: single file → its parent folder; bulk files →
+    // unique parent folders that are in storage.
+    const paths = new Set();
+    if (target.kind === "bulk") {
+      (target.paths || []).forEach((p) => {
+        if (pathIsStorageQuarantine(p)) paths.add(String(p));
+      });
+      (target.fileIds || []).forEach((id) => {
+        const rec = WS.fileById.get(String(id || ""));
+        const dirPath = String(rec?.dirPath || "");
+        if (dirPath && pathIsStorageQuarantine(dirPath)) paths.add(dirPath);
+      });
+    } else if (target.kind === "file") {
+      const dirPath = String(target.rec?.dirPath || "");
+      if (dirPath) paths.add(dirPath);
+    } else {
+      const p = String(target.node?.path || "");
+      if (p) paths.add(p);
+    }
+    if (paths.size) {
+      setStorageStateForFolderPaths(Array.from(paths), false);
+      if (target.kind === "bulk") finalizeBulkSelectionAction();
+    }
+  }, null, true);
 }
 
 // The whole item menu, hosted as the app menu's first submenu. The per-kind
@@ -45022,8 +45147,8 @@ function buildAppMenuItems() {
     // page (Yes / No), navigated the same way as any other app-menu options.
     if (APP_MENU_CONFIRM) return buildAppMenuConfirmPageItems();
     const summary = appMenuSelectionSummary();
-    // An item in Trash or Storage gets the one action that applies to it in place
-    // of the whole "Selected Item" dropdown.
+    // Trash / Storage selection: no Selected Item(s) submenu — only the single
+    // "Remove from Trash/Storage" action in that slot (single or bulk).
     const quarantine = selectedItemQuarantineAction(summary.target);
     const selectedEntry = quarantine
       ? buildSelectedItemQuarantineButton(quarantine)
@@ -46916,12 +47041,18 @@ function moveMenuHighlight(menu, delta) {
   const current = options.findIndex((btn) =>
     btn.classList.contains(MENU_KEY_ACTIVE_CLASS),
   );
-  const next =
-    current < 0
-      ? delta > 0
-        ? 0
-        : options.length - 1
-      : (current + delta + options.length) % options.length;
+  // Controls is a long scrollable list — clamp at the ends so Up/Down (and the
+  // wheel, which routes through the same highlight move) stop instead of
+  // wrapping around. Shorter menus still wrap.
+  const clampAtEnds = !!panel?.classList?.contains("appMenuControlsPanel");
+  let next;
+  if (current < 0) {
+    next = delta > 0 ? 0 : options.length - 1;
+  } else if (clampAtEnds) {
+    next = Math.max(0, Math.min(options.length - 1, current + delta));
+  } else {
+    next = (current + delta + options.length) % options.length;
+  }
   setMenuHighlight(menu, options[next]);
 }
 
@@ -62725,7 +62856,7 @@ function selectRangeInBulkKeybindAction() {
 
 function cancelMultiSelectionKeybindAction() {
   if (!WS.view.bulkSelectMode && !hasBulkSelection()) {
-    showStatusMessage("No multi-item selection to cancel.");
+    showStatusMessage("No bulk selection to cancel.");
     return false;
   }
   closeActionMenus();
@@ -68445,10 +68576,29 @@ ensureThumbnailServiceHeartbeat();
 
 // UI is fully built — reveal it (it was hidden during boot to avoid showing the
 // half-initialized skeleton). One rAF lets init's own layout callbacks settle
-// first, so the very first visible frame is the finished UI.
+// first, so the very first visible frame is the finished UI. The boot splash
+// still covers the screen until the managed library auto-open finishes (or the
+// safety timeout below fires if that path never runs).
+function dismissBootSplash() {
+  const el = document.getElementById("bootSplash");
+  if (!el || el.classList.contains("bootSplashDone")) return;
+  el.classList.add("bootSplashDone");
+  el.setAttribute("aria-busy", "false");
+  window.setTimeout(() => {
+    try {
+      document.body.classList.add("bootSplashGone");
+    } catch {}
+    try {
+      el.remove();
+    } catch {}
+  }, 320);
+}
+
 requestAnimationFrame(() => {
   const appEl = document.getElementById("app");
   if (appEl) appEl.classList.add("appBooted");
+  // Hard cap: never leave the splash up if auto-open hung or was skipped.
+  window.setTimeout(dismissBootSplash, 12000);
 });
 
   

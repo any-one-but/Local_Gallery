@@ -466,6 +466,10 @@ pub fn run() {
             .title("Local Gallery")
             .inner_size(1100.0, 750.0)
             .resizable(true)
+            // Launch in OS fullscreen so the gallery fills the display on open
+            // (user can leave fullscreen via the usual system shortcut / green
+            // button). The inner_size above is only the non-fullscreen fallback.
+            .fullscreen(true)
             // Tauri's native drag-drop handler claims every drag before WebKit
             // sees it (wry skips the super call when the handler returns true),
             // which kills HTML5 dragover/drop — the thumbnail reorder drags.
