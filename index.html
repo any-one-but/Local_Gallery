@@ -9327,13 +9327,44 @@ function getThumbTitleStripOpacityFromOptions(opt = null) {
   );
 }
 
-// Which thumbnail pipeline the grid uses. See FULL_QUALITY_THUMBNAILS_DEFAULT
-// and tauriThumbForImgEl for what each mode actually paints.
+// Default for workspaces that have never set fullResThumbnails. Must live above
+// defaultOptions() / META_GENERAL_PREFERENCE_OPTION_KEYS (which call it at
+// init). See tauriThumbForImgEl for what each mode paints.
+const FULL_QUALITY_THUMBNAILS_DEFAULT = true;
+
+// Which thumbnail pipeline the grid uses.
 function fullResThumbnailsEnabled(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return typeof src?.fullResThumbnails === "boolean"
     ? src.fullResThumbnails
     : FULL_QUALITY_THUMBNAILS_DEFAULT;
+}
+
+// Persist, drop in-memory thumb URLs, then Refresh App so every tile rebuilds
+// under the new pipeline (full-res originals vs 512px generated JPEGs).
+function applyFullResThumbnailsModeChange(enabled) {
+  const on = !!enabled;
+  showStatusMessage(
+    `Full resolution thumbnails: ${on ? "On" : "Off"}`,
+    "full-res-thumbnails",
+  );
+  try {
+    if (typeof TAURI_THUMB_INDEX !== "undefined" && TAURI_THUMB_INDEX?.clear) {
+      TAURI_THUMB_INDEX.clear();
+    }
+  } catch {}
+  const kickRefresh = () => {
+    if (!WS.meta?.fsRootHandle) return;
+    refreshWorkspaceKeybindAction();
+  };
+  // Save first so a refresh / crash keeps the new value.
+  if (typeof persistDirtyMetadataNow === "function") {
+    persistDirtyMetadataNow()
+      .catch(() => {})
+      .finally(kickRefresh);
+  } else {
+    kickRefresh();
+  }
 }
 
 function applyThumbnailPresetForKinds(kinds, preset) {
@@ -21139,6 +21170,7 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
     thumbnails: {
       title: "Thumbnails",
       rows: `
+${makeCheckRow("Full resolution", "Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
 ${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
@@ -21858,6 +21890,12 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     (val) => showStatusMessage(`Title strip: ${val}%`),
     (val) => normalizeThumbTitleStripOpacityValue(val),
   );
+  // Not listed in APP_ITEM_MENU_SETTING_CONTROL_IDS so the Thumbnails settings
+  // section stays reachable under APP_ITEM_MENU_ACTIONS_ONLY (the other thumb
+  // controls are menu-only). Changing it forces a Refresh App.
+  bindCheck("opt_fullResThumbnails", "fullResThumbnails", (enabled) => {
+    applyFullResThumbnailsModeChange(enabled);
+  });
   colorOverlayRows.forEach((row) => {
     if (row.showToggle !== false) {
       bindCheck(row.enabledId, row.enabledKey, () => {
@@ -44337,6 +44375,16 @@ function setAppMenuThumbTitleStripOpacity(value) {
   return true;
 }
 
+function setAppMenuFullResThumbnails(enabled) {
+  if (!WS.meta) return false;
+  const next = !!enabled;
+  if (fullResThumbnailsEnabled() === next) return true;
+  setOptionValue("fullResThumbnails", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyFullResThumbnailsModeChange(next);
+  return true;
+}
+
 function setAppMenuThumbnailPreset(kinds, value, label) {
   const next = THUMBNAIL_PRESET_ITEMS.some(
     (option) => option.value === value,
@@ -44502,7 +44550,16 @@ function buildAppMenuThumbnailKindCycleButton(label, kinds, iconKey) {
 function buildAppMenuThumbnailsSubmenu() {
   const options = WS.meta?.options || {};
   const thumbnailSize = String(options.thumbnailSize || "medium");
+  const fullRes = fullResThumbnailsEnabled(options);
   return createDropdownMenuSubmenu("Thumbnails", [
+    // closeAfter: switching pipelines forces a workspace refresh, so leave the
+    // menu rather than rebuild ●/○ over a tree that is about to be replaced.
+    appMenuChoiceButton(
+      "Full resolution",
+      () => setAppMenuFullResThumbnails(!fullRes),
+      fullRes,
+      true,
+    ),
     buildAppMenuCycleButton(
       "Thumbnail size",
       THUMBNAIL_SIZE_CYCLE,
@@ -64278,15 +64335,13 @@ function registerThumbEl(el, src, opts = null) {
 // bypasses assignThumbSrc, so it stays full-resolution.
 const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
 const TAURI_THUMB_EDGE = 512;
-// Full-quality thumbnails, now user-switchable (Thumbnails > Full resolution).
-// When on, image tiles render the original media itself instead of a 512px
-// generated JPEG, and video tiles use the largest frame the Rust generator will
-// produce (an <img> can't play the video, so a still frame is unavoidable — but
-// a full-res one). When off, both go back through the lightweight 512px
-// pipeline. This trades the downscaled-thumbnail memory/decode savings for
-// pixel-perfect grid tiles. The constant is only the default for a workspace
-// that has never set the option.
-const FULL_QUALITY_THUMBNAILS_DEFAULT = true;
+// Full-quality thumbnails are user-switchable (Settings → Thumbnails → Full
+// resolution, and the app-menu Thumbnails submenu). When on, image tiles paint
+// the original media itself instead of a 512px generated JPEG, and video tiles
+// use the largest frame the Rust generator will produce (an <img> can't play
+// the video, so a still frame is unavoidable — but a full-res one). When off,
+// both go through the lightweight 512px pipeline. Default lives next to
+// fullResThumbnailsEnabled (FULL_QUALITY_THUMBNAILS_DEFAULT).
 // Rust clamps generate_thumbnail's edge to 2048, so that is "full quality" for a
 // generated video frame.
 const FULL_QUALITY_VIDEO_THUMB_EDGE = 2048;
