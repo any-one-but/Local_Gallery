@@ -16065,13 +16065,13 @@ const KEYBIND_ACTIONS = [
   {
     id: "prevFolder",
     label: "Previous folder",
-    hint: "Jump to the previous folder and focus its first file.",
+    hint: "In a folder grid, jump to the top of the current column. In a media folder, jump to the previous sibling folder's first file.",
     section: "navigation",
   },
   {
     id: "nextFolder",
     label: "Next folder",
-    hint: "Jump to the next folder and focus its first file.",
+    hint: "In a folder grid, jump to the bottom of the current column. In a media folder, jump to the next sibling folder's first file.",
     section: "navigation",
   },
   {
@@ -39744,14 +39744,80 @@ function jumpPreviewTargetToDirectoryFile(dirNode, mode = "first") {
   return true;
 }
 
+// Prev/next folder double as column-edge jumps when the current location is a
+// folder grid (contains folders / is not a media-only folder) and no media is
+// open — so large parent folders can be scanned without walking every card.
+// Media folders and open-file views keep the sibling-folder jump.
+function currentLocationSupportsFolderColumnEdgeJump(dirNode = null) {
+  if (VIEWER_MODE) return false;
+  if (WS.preview?.kind === "file" && WS.preview.fileId) return false;
+  const node = dirNode || getPreviewTargetDir();
+  if (!node || node._skipTagFilters) return false;
+  if (dirNodeIsMediaOnlyForQuickNavigation(node)) return false;
+  if (!previewThumbnailSelectionEnabled()) return false;
+  // Need a live grid with at least one selectable card to jump within.
+  return getPreviewSelectableCards().length > 0;
+}
+
+function movePreviewSelectionToColumnEdge(edge) {
+  if (edge !== "top" && edge !== "bottom") return false;
+  if (!ensurePreviewSelectionForCurrentTarget(false)) return false;
+  const metrics = getPreviewSelectableCardMetrics();
+  if (!metrics.length) return false;
+  const selectedCard = findSelectedPreviewCard();
+  const activeKey = String((WS.view && WS.view.previewSelectedKey) || "");
+  const selected =
+    metrics.find((m) => m.card === selectedCard) ||
+    metrics.find((m) => m.key === activeKey) ||
+    metrics[0];
+  if (!selected) return false;
+
+  // Column match uses the same “near enough center-x” idea as lateral grid
+  // movement: half a card width, with a small floor so thin cards still group.
+  const selectedRect = getPreviewCardRelativeRect(selected.card);
+  const colTol = Math.max(8, (selectedRect?.width || 40) * 0.45);
+  const sameCol = [];
+  for (let i = 0; i < metrics.length; i++) {
+    const m = metrics[i];
+    if (!m) continue;
+    if (Math.abs(m.cx - selected.cx) > colTol) continue;
+    // Keep expanded headers out of the column-edge target set — they are
+    // section chrome, not grid cells in the same sense as folder/file cards.
+    if (isExpandedPreviewHeaderCard(m.card)) continue;
+    sameCol.push(m);
+  }
+  if (!sameCol.length) return false;
+
+  let best = sameCol[0];
+  for (let i = 1; i < sameCol.length; i++) {
+    const m = sameCol[i];
+    if (edge === "top" ? m.cy < best.cy : m.cy > best.cy) best = m;
+  }
+  if (!best?.card) return false;
+  if (best.card === selected.card) {
+    // Already at the edge — still consume the key so it doesn't fall through
+    // to a sibling-folder jump the user didn't intend.
+    revealPreviewCard(best.card);
+    return true;
+  }
+  return setPreviewSelectionCard(best.card, { activate: true });
+}
+
+function tryFolderJumpColumnEdgeInCurrentLocation(edge) {
+  if (!currentLocationSupportsFolderColumnEdgeJump()) return false;
+  return movePreviewSelectionToColumnEdge(edge);
+}
+
 function previewPaneFolderJump(action) {
   const sourceDir = getPreviewTargetDir();
   if (!sourceDir || sourceDir._skipTagFilters) return false;
   if (action === "prevFolder") {
+    if (tryFolderJumpColumnEdgeInCurrentLocation("top")) return true;
     const dir = getPrevSiblingDirWithFiles(sourceDir);
     return !!dir && jumpPreviewTargetToDirectoryFile(dir, "first");
   }
   if (action === "nextFolder") {
+    if (tryFolderJumpColumnEdgeInCurrentLocation("bottom")) return true;
     const dir = getNextSiblingDirWithFiles(sourceDir);
     return !!dir && jumpPreviewTargetToDirectoryFile(dir, "first");
   }
@@ -52677,6 +52743,9 @@ function pickWeightedByScore(dirs, multiplier) {
 
 function jumpToNextFolderFirstFile() {
   if (!canUseFolderJumpActions()) return;
+  // Same dual role as previewPaneFolderJump: column-edge within a folder grid,
+  // sibling media jump otherwise.
+  if (tryFolderJumpColumnEdgeInCurrentLocation("bottom")) return;
   const nextDir = getNextSiblingDirWithFiles(WS.nav.dirNode);
   if (!nextDir) return;
   jumpToDirectoryFirstFile(nextDir);
@@ -52684,6 +52753,7 @@ function jumpToNextFolderFirstFile() {
 
 function jumpToPrevFolderFirstFile() {
   if (!canUseFolderJumpActions()) return;
+  if (tryFolderJumpColumnEdgeInCurrentLocation("top")) return;
   const prevDir = getPrevSiblingDirWithFiles(WS.nav.dirNode);
   if (!prevDir) return;
   jumpToDirectoryFirstFile(prevDir);
