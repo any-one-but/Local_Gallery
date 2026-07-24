@@ -6701,7 +6701,17 @@ remove the outer app frame. */
 /* v4: force preview-pane thumbnail title strips to use one translucent overlay treatment.
    This targets the right-side preview pane directly, including cropped square cards, natural-aspect cards, folders, tags, and compact inline-title variants. */
 :root {
-  --preview-pane-thumb-title-bar-bg: rgba(0, 0, 0, 0.34);
+  /* The strip is the theme's raised-surface color faded toward clear.
+     --thumb-title-strip-opacity is rewritten from the Title strip setting
+     (0%–100% in tens); at 0% the media shows straight through, at 100% the
+     strip is the solid theme color. Both vars resolve at each use site, so the
+     mix tracks --color1-secondary as the theme flips. */
+  --thumb-title-strip-opacity: 30%;
+  --preview-pane-thumb-title-bar-bg: color-mix(
+    in srgb,
+    var(--color1-secondary) var(--thumb-title-strip-opacity),
+    transparent
+  );
   --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.92);
 }
 
@@ -9289,6 +9299,32 @@ const THUMBNAIL_PRESET_BADGE_FIELDS = Object.freeze([
   "itemType",
 ]);
 
+// How solid the title strip under a thumbnail is, in ten steps: 0% is clear
+// (the media shows straight through) and 100% is the theme's raised-surface
+// color, so the strip matches whichever theme is active rather than being a
+// fixed black scrim. Written out as the --thumb-title-strip-opacity percentage
+// that --preview-pane-thumb-title-bar-bg mixes with.
+const THUMB_TITLE_STRIP_OPACITY_CYCLE = Object.freeze(
+  Array.from({ length: 11 }, (unused, step) => {
+    const pct = step * 10;
+    return Object.freeze({ value: String(pct), label: `${pct}%` });
+  }),
+);
+
+function normalizeThumbTitleStripOpacityValue(value, fallback = "30") {
+  const n = Number.parseFloat(value);
+  if (!Number.isFinite(n)) return String(fallback);
+  const clamped = Math.max(0, Math.min(100, n));
+  return String(Math.round(clamped / 10) * 10);
+}
+
+function getThumbTitleStripOpacityFromOptions(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return normalizeThumbTitleStripOpacityValue(
+    src ? src.thumbTitleStripOpacity : null,
+  );
+}
+
 function applyThumbnailPresetForKinds(kinds, preset) {
   if (!WS.meta) return;
   const list = Array.isArray(kinds) ? kinds : [kinds];
@@ -9562,6 +9598,7 @@ function defaultOptions() {
     hideBeforeLastDashInFileNames: true,
     hideAfterFirstUnderscoreInFileNames: true,
     clickSelectedRotatingThumbTeleports: false,
+    thumbTitleStripOpacity: "30",
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "row7",
     thumbnailScaleAspect: "row7",
@@ -10009,6 +10046,10 @@ function normalizeOptions(o) {
       typeof src.clickSelectedRotatingThumbTeleports === "boolean"
         ? src.clickSelectedRotatingThumbTeleports
         : d.clickSelectedRotatingThumbTeleports,
+    thumbTitleStripOpacity: normalizeThumbTitleStripOpacityValue(
+      src.thumbTitleStripOpacity,
+      d.thumbTitleStripOpacity,
+    ),
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,
@@ -10458,6 +10499,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   thumbnails: Object.freeze(
     [
       "clickSelectedRotatingThumbTeleports",
+      "thumbTitleStripOpacity",
       "thumbnailStyle",
       "thumbnailScaleCropped",
       "thumbnailScaleAspect",
@@ -15426,6 +15468,7 @@ function applyLoadedOptionsToDocument() {
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
+  applyThumbTitleStripOpacityFromOptions();
   applyDisplaySizesFromOptions();
   applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
@@ -15452,6 +15495,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
     applyMediaFilterFromOptions();
     applyThumbFitFromOptions();
     applyThumbnailTitleSizeFromOptions();
+    applyThumbTitleStripOpacityFromOptions();
     applyDisplaySizesFromOptions();
     applyTabBarLayout();
     applyDirectoryMiniThumbSizeFromOptions();
@@ -15475,6 +15519,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
+  applyThumbTitleStripOpacityFromOptions();
   applyDisplaySizesFromOptions();
   applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
@@ -15845,6 +15890,7 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "cycleThumbPresetFile",
   "cycleThumbPresetFolder",
   "cycleThumbPresetTag",
+  "cycleThumbTitleStripOpacity",
   "cycleVideoSkipStep",
   "cycleVideoEndBehavior",
   "toggleAnimatedFilters",
@@ -15873,6 +15919,7 @@ const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_thumbPreset_file",
   "opt_thumbPreset_folder",
   "opt_thumbPreset_tag",
+  "opt_thumbTitleStripOpacity",
   "opt_videoSkipStep",
   "opt_videoEndBehavior",
   "opt_animatedMediaFilters",
@@ -16218,6 +16265,12 @@ const KEYBIND_ACTIONS = [
     id: "cycleThumbnailSize",
     label: "Cycle thumbnail size",
     hint: "Cycle how large media thumbnails are in the preview grid.",
+    section: "thumbnails",
+  },
+  {
+    id: "cycleThumbTitleStripOpacity",
+    label: "Cycle title strip",
+    hint: "Cycle the title strip from clear to the theme's surface color in tenths.",
     section: "thumbnails",
   },
   {
@@ -21077,6 +21130,7 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
 ${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
+${makeSelectRow("Title strip", "How solid the title strip under a thumbnail is: 0% is clear, 100% is the theme's surface color.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), THUMB_TITLE_STRIP_OPACITY_CYCLE)}
           `,
     },
     reveal: {
@@ -21784,6 +21838,13 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   );
   bindThumbnailPresetSelect("opt_thumbPreset_tag", (value) =>
     applyThumbnailPresetForKinds("tag", value),
+  );
+  bindSelect(
+    "opt_thumbTitleStripOpacity",
+    "thumbTitleStripOpacity",
+    false,
+    (val) => showStatusMessage(`Title strip: ${val}%`),
+    (val) => normalizeThumbTitleStripOpacityValue(val),
   );
   colorOverlayRows.forEach((row) => {
     if (row.showToggle !== false) {
@@ -23165,12 +23226,22 @@ function hiddenTagKeyForTag(tagName, scopePath = null) {
   return tagThumbnailKeyForTag(tagName, scopePath);
 }
 
+// Albums hide through the same hiddenTagKeys set as tags, keyed by the album
+// key rather than the tag key, so persistence, rekeying, and the badge/menu
+// plumbing all work on albums without a parallel store.
+function hiddenTagKeyForAlbum(albumName, scopePath = null) {
+  return tagThumbnailKeyForAlbum(albumName, scopePath);
+}
+
 function hiddenTagKeyForEntry(entry) {
   if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
     return "";
+  // A tag that lives inside an album carries both fields; it hides as a tag.
   const tag = normalizeTag(entry.tag || "");
-  if (!tag) return "";
-  return hiddenTagKeyForTag(tag, String(entry.originPath || ""));
+  if (tag) return hiddenTagKeyForTag(tag, String(entry.originPath || ""));
+  const album = normalizeTagAlbumName(entry.album || "");
+  if (album) return hiddenTagKeyForAlbum(album, String(entry.originPath || ""));
+  return "";
 }
 
 function metaHasHidden(path) {
@@ -23181,6 +23252,20 @@ function metaHasHidden(path) {
   const userTags = metaGetUserTags(normalizedPath);
   for (let i = 0; i < userTags.length; i++) {
     if (metaHasHiddenTagByKey(hiddenTagKeyForTag(userTags[i], scopePath)))
+      return true;
+  }
+  // A hidden album hides everything it holds: folders placed in it directly and
+  // folders that carry one of its tags. With no visible members left the album
+  // tile itself drops out of the grid, exactly as a hidden tag's does.
+  const directAlbum = metaGetAlbumForPath(normalizedPath);
+  if (
+    directAlbum &&
+    metaHasHiddenTagByKey(hiddenTagKeyForAlbum(directAlbum, scopePath))
+  )
+    return true;
+  for (let i = 0; i < userTags.length; i++) {
+    const album = metaGetTagAlbumForTag(userTags[i], scopePath);
+    if (album && metaHasHiddenTagByKey(hiddenTagKeyForAlbum(album, scopePath)))
       return true;
   }
   return false;
@@ -23654,6 +23739,23 @@ function getAllHiddenTagStateKeys() {
     }
   }
   return Array.from(out);
+}
+
+// Tags and albums hide through the same action, so a mixed batch gets the
+// neutral noun rather than mislabelling half of it.
+function hiddenToggleNounForEntries(entries) {
+  const list = Array.isArray(entries) ? entries : [];
+  let tags = 0;
+  let albums = 0;
+  for (let i = 0; i < list.length; i++) {
+    const entry = list[i];
+    if (!entry) continue;
+    if (String(entry.tag || "").trim()) tags++;
+    else if (normalizeTagAlbumName(entry.album || "")) albums++;
+  }
+  if (albums && !tags) return "album";
+  if (tags && !albums) return "tag";
+  return "item";
 }
 
 function metaHasHiddenTagByKey(tagKey) {
@@ -44222,6 +44324,15 @@ function setAppMenuThumbnailSize(value) {
   return true;
 }
 
+function setAppMenuThumbTitleStripOpacity(value) {
+  const next = normalizeThumbTitleStripOpacityValue(value);
+  setOptionValue("thumbTitleStripOpacity", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(`Title strip: ${next}%`);
+  return true;
+}
+
 function setAppMenuThumbnailPreset(kinds, value, label) {
   const next = THUMBNAIL_PRESET_ITEMS.some(
     (option) => option.value === value,
@@ -44423,6 +44534,12 @@ function buildAppMenuThumbnailsSubmenu() {
       THUMBNAIL_SIZE_CYCLE,
       thumbnailSize,
       setAppMenuThumbnailSize,
+    ),
+    buildAppMenuCycleButton(
+      "Title strip",
+      THUMB_TITLE_STRIP_OPACITY_CYCLE,
+      getThumbTitleStripOpacityFromOptions(options),
+      setAppMenuThumbTitleStripOpacity,
     ),
     buildAppMenuFilenameSubmenu(),
     buildAppMenuThumbnailKindCycleButton("Files", "file", "file"),
@@ -46051,7 +46168,7 @@ function openTagContextMenu(context) {
   const canRename = !context.special && (!!tag || isAlbumEntry);
   const canDelete = !context.special && (!!tag || isAlbumEntry);
   const canTagAlbum = isAlbumEntry;
-  const canHide = !!tag && !context.special;
+  const canHide = !context.special && (!!tag || isAlbumEntry);
   const canCreateInverse = !!tag && !context.special && !isAlbumEntry;
   const currentAlbumContext = currentTagMenuAlbumRemovalContext();
   const canRemoveFromAlbum =
@@ -48482,20 +48599,18 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       !String(entry.tag || "").trim() &&
       !!normalizeTagAlbumName(entry.album || ""),
   );
-  const hideableTagKeys = Array.from(
-    new Set(
-      selectedEntries
-        .filter(
-          (entry) =>
-            entry &&
-            !entry.special &&
-            !entry.placeholder &&
-            !!String(entry.tag || "").trim(),
-        )
-        .map((entry) => hiddenTagKeyForEntry(entry))
-        .filter(Boolean),
-    ),
+  const hideableEntries = selectedEntries.filter(
+    (entry) =>
+      entry &&
+      !entry.special &&
+      !entry.placeholder &&
+      (!!String(entry.tag || "").trim() ||
+        !!normalizeTagAlbumName(entry.album || "")),
   );
+  const hideableTagKeys = Array.from(
+    new Set(hideableEntries.map((entry) => hiddenTagKeyForEntry(entry)).filter(Boolean)),
+  );
+  const hideableNoun = hiddenToggleNounForEntries(hideableEntries);
   const allHiddenTags =
     !!hideableTagKeys.length &&
     hideableTagKeys.every((key) => metaHasHiddenTagByKey(key));
@@ -48550,7 +48665,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         metaScheduleSave();
         refreshAfterTagMetadataChange();
         showStatusMessage(
-          `${allHiddenTags ? "Unhid" : "Hid"} ${hideableTagKeys.length} tag${hideableTagKeys.length === 1 ? "" : "s"}.`,
+          `${allHiddenTags ? "Unhid" : "Hid"} ${hideableTagKeys.length} ${hideableNoun}${hideableTagKeys.length === 1 ? "" : "s"}.`,
         );
       }),
     );
@@ -49097,6 +49212,11 @@ function renameTagAlbumByName(albumName, newName, scopePath = null) {
     tagThumbnailKeyForAlbum,
     rekeyTagMediaFilterState,
   );
+  rekeyAlbumScopedState(
+    getAllHiddenTagStateKeys(),
+    hiddenTagKeyForAlbum,
+    rekeyHiddenTagState,
+  );
   return changed;
 }
 
@@ -49266,6 +49386,22 @@ function deleteTagAlbumByName(albumName, scopePath = null) {
     changed = true;
   if (
     clearTagMediaFilterStateByMatch((key) => {
+      const parsed = parseTagThumbnailStructuredKey(key);
+      if (
+        !parsed ||
+        parsed.kind !== "album" ||
+        String(parsed.value || "") !== album
+      )
+        return false;
+      if (scopePath == null) return true;
+      return parsed.scoped
+        ? parsed.scopePath === normalizedScope
+        : !hasScopedAssignments;
+    })
+  )
+    changed = true;
+  if (
+    clearHiddenTagStateByMatch((key) => {
       const parsed = parseTagThumbnailStructuredKey(key);
       if (
         !parsed ||
@@ -49535,7 +49671,9 @@ async function handleTagMenuAction(action) {
     if (!metaSetHiddenTagByKey(tagKey, !ctx.isHidden)) return;
     metaScheduleSave();
     refreshAfterTagMetadataChange();
-    showStatusMessage(`${ctx.isHidden ? "Unhid" : "Hid"} tag '${label}'.`);
+    showStatusMessage(
+      `${ctx.isHidden ? "Unhid" : "Hid"} ${isAlbumEntry ? "album" : "tag"} '${label}'.`,
+    );
     return;
   }
   if (action === "appearance-preset-clear") {
@@ -61544,6 +61682,16 @@ function handleExtrasKeybindAction(action) {
       );
       return true;
     }
+    case "cycleThumbTitleStripOpacity": {
+      const next = cycleOptionValue(
+        "thumbTitleStripOpacity",
+        THUMB_TITLE_STRIP_OPACITY_CYCLE,
+      );
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(`Title strip: ${next}%`);
+      return true;
+    }
     case "cycleVideoSkipStep": {
       const next = cycleOptionValue("videoSkipStep", VIDEO_SKIP_STEP_CYCLE);
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -62213,15 +62361,21 @@ function toggleFavoriteSelection() {
 
 function toggleHiddenSelection() {
   const tagSelection = getTagSelectionForKeybindAction();
+  // Albums hide alongside tags here: hiddenTagKeyForEntry resolves whichever
+  // one the entry is, so an album selection no longer falls through to the
+  // folder-path branch below (which could never act on it).
+  const hideableEntries = tagSelection.entries.filter(
+    (entry) =>
+      !!String(entry?.tag || "").trim() ||
+      !!normalizeTagAlbumName(entry?.album || ""),
+  );
   const tagKeys = Array.from(
     new Set(
-      tagSelection.entries
-        .filter((entry) => !!String(entry?.tag || "").trim())
-        .map((entry) => hiddenTagKeyForEntry(entry))
-        .filter(Boolean),
+      hideableEntries.map((entry) => hiddenTagKeyForEntry(entry)).filter(Boolean),
     ),
   );
   if (tagKeys.length) {
+    const noun = hiddenToggleNounForEntries(hideableEntries);
     const allHidden = tagKeys.every((key) => metaHasHiddenTagByKey(key));
     let changed = false;
     for (let i = 0; i < tagKeys.length; i++) {
@@ -62232,7 +62386,7 @@ function toggleHiddenSelection() {
     metaScheduleSave();
     refreshAfterTagMetadataChange();
     showStatusMessage(
-      `${allHidden ? "Unhid" : "Hid"} ${tagKeys.length} tag${tagKeys.length === 1 ? "" : "s"}.`,
+      `${allHidden ? "Unhid" : "Hid"} ${tagKeys.length} ${noun}${tagKeys.length === 1 ? "" : "s"}.`,
     );
     return true;
   }
@@ -63955,6 +64109,14 @@ function applyThumbFitFromOptions() {
   root.style.setProperty("--thumb-bg", "transparent");
   root.style.setProperty("--thumb-filter", "none");
   root.removeAttribute("data-natural-thumb-cards");
+}
+function applyThumbTitleStripOpacityFromOptions() {
+  const root = document.documentElement;
+  if (!root) return;
+  root.style.setProperty(
+    "--thumb-title-strip-opacity",
+    `${getThumbTitleStripOpacityFromOptions()}%`,
+  );
 }
 function applyThumbnailTitleSizeFromOptions() {
   const root = document.documentElement;
