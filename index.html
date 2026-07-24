@@ -3093,8 +3093,8 @@ img[data-rotate-key].rotatingThumbFade {
   border: 0;
   border-top: 1px solid var(--color1-tertiary);
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur, none);
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur, none);
   opacity: 1;
   overflow: hidden;
 }
@@ -6703,18 +6703,21 @@ remove the outer app frame. */
 /* v4: force preview-pane thumbnail title strips to use one translucent overlay treatment.
    This targets the right-side preview pane directly, including cropped square cards, natural-aspect cards, folders, tags, and compact inline-title variants. */
 :root {
-  /* The strip is the theme's raised-surface color faded toward clear.
-     --thumb-title-strip-opacity is rewritten from the Title strip setting
-     (0%–100% in tens); at 0% the media shows straight through, at 100% the
-     strip is the solid theme color. Both vars resolve at each use site, so the
-     mix tracks --color1-secondary as the theme flips. */
+  /* The strip is the theme's raised-surface color faded toward clear, with a
+     frosted-glass blur that scales with the same Title strip setting.
+     --thumb-title-strip-opacity / --thumb-title-strip-blur are rewritten from
+     options (0%–100% in tens); at 0% the media shows straight through with no
+     blur, at 100% the strip is solid theme color with max blur. Both color
+     vars resolve at each use site, so the mix tracks --color1-secondary. */
   --thumb-title-strip-opacity: 30%;
+  --thumb-title-strip-blur: 4.2px;
   --preview-pane-thumb-title-bar-bg: color-mix(
     in srgb,
     var(--color1-secondary) var(--thumb-title-strip-opacity),
     transparent
   );
   --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.92);
+  --preview-pane-thumb-title-bar-blur: blur(var(--thumb-title-strip-blur));
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta,
@@ -6729,8 +6732,8 @@ remove the outer app frame. */
   background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
   opacity: 1 !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
   border-top: 0 !important;
 }
@@ -6755,8 +6758,7 @@ remove the outer app frame. */
   box-shadow: none !important;
 }
 
-/* v5: exact fix for previewItemPlaceholderInfoBar — this is the preview-pane thumbnail title bar.
-   Match the regular thumbnail title bar color instead of the old translucent/blurred overlay. */
+/* v5: preview-pane placeholder title bar — same frosted strip as regular thumbs. */
 #previewPane .previewItemPlaceholderInfoBar,
 #previewBody .previewItemPlaceholderInfoBar,
 .previewItemPlaceholder.hasThumbnail .previewItemPlaceholderInfoBar {
@@ -6766,8 +6768,8 @@ remove the outer app frame. */
   color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary)) !important;
   border-top: 0 !important;
   box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur, none) !important;
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur, none) !important;
   opacity: 1 !important;
 }
 
@@ -6921,6 +6923,8 @@ remove the outer app frame. */
   background-image: none !important;
   box-shadow: none !important;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
 }
 
 #previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta *,
@@ -9305,13 +9309,18 @@ const THUMBNAIL_PRESET_BADGE_FIELDS = Object.freeze([
 // (the media shows straight through) and 100% is the theme's raised-surface
 // color, so the strip matches whichever theme is active rather than being a
 // fixed black scrim. Written out as the --thumb-title-strip-opacity percentage
-// that --preview-pane-thumb-title-bar-bg mixes with.
+// that --preview-pane-thumb-title-bar-bg mixes with. Frosted-glass blur scales
+// with the same percentage (see THUMB_TITLE_STRIP_BLUR_MAX_PX).
 const THUMB_TITLE_STRIP_OPACITY_CYCLE = Object.freeze(
   Array.from({ length: 11 }, (unused, step) => {
     const pct = step * 10;
     return Object.freeze({ value: String(pct), label: `${pct}%` });
   }),
 );
+// Backdrop blur at 100% strip opacity. Intermediate steps scale linearly so a
+// translucent strip softens the media behind it (frosted glass) instead of
+// reading as a flat tint.
+const THUMB_TITLE_STRIP_BLUR_MAX_PX = 14;
 
 function normalizeThumbTitleStripOpacityValue(value, fallback = "30") {
   const n = Number.parseFloat(value);
@@ -9325,6 +9334,13 @@ function getThumbTitleStripOpacityFromOptions(opt = null) {
   return normalizeThumbTitleStripOpacityValue(
     src ? src.thumbTitleStripOpacity : null,
   );
+}
+
+function thumbTitleStripBlurPxForOpacity(opacityPct) {
+  const n = Number.parseFloat(opacityPct);
+  const pct = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+  // One decimal keeps the CSS value stable across the 10% steps without long floats.
+  return Math.round((pct / 100) * THUMB_TITLE_STRIP_BLUR_MAX_PX * 10) / 10;
 }
 
 // Default for workspaces that have never set fullResThumbnails. Must live above
@@ -21170,11 +21186,11 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
     thumbnails: {
       title: "Thumbnails",
       rows: `
-${makeCheckRow("Full resolution", "Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
 ${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
-${makeSelectRow("Title strip", "How solid the title strip under a thumbnail is: 0% is clear, 100% is the theme's surface color.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), THUMB_TITLE_STRIP_OPACITY_CYCLE)}
+${makeSelectRow("Title strip", "How solid the frosted title strip under a thumbnail is: 0% is clear, 100% is the theme's surface color. Blur rises with opacity so translucent strips read like frosted glass.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), THUMB_TITLE_STRIP_OPACITY_CYCLE)}
+${makeCheckRow("Full resolution", "Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
     reveal: {
@@ -44552,14 +44568,6 @@ function buildAppMenuThumbnailsSubmenu() {
   const thumbnailSize = String(options.thumbnailSize || "medium");
   const fullRes = fullResThumbnailsEnabled(options);
   return createDropdownMenuSubmenu("Thumbnails", [
-    // closeAfter: switching pipelines forces a workspace refresh, so leave the
-    // menu rather than rebuild ●/○ over a tree that is about to be replaced.
-    appMenuChoiceButton(
-      "Full resolution",
-      () => setAppMenuFullResThumbnails(!fullRes),
-      fullRes,
-      true,
-    ),
     buildAppMenuCycleButton(
       "Thumbnail size",
       THUMBNAIL_SIZE_CYCLE,
@@ -44571,6 +44579,14 @@ function buildAppMenuThumbnailsSubmenu() {
       THUMB_TITLE_STRIP_OPACITY_CYCLE,
       getThumbTitleStripOpacityFromOptions(options),
       setAppMenuThumbTitleStripOpacity,
+    ),
+    // closeAfter: switching pipelines forces a workspace refresh, so leave the
+    // menu rather than rebuild ●/○ over a tree that is about to be replaced.
+    appMenuChoiceButton(
+      "Full resolution",
+      () => setAppMenuFullResThumbnails(!fullRes),
+      fullRes,
+      true,
     ),
     buildAppMenuFilenameSubmenu(),
     buildAppMenuThumbnailKindCycleButton("Files", "file", "file"),
@@ -50436,15 +50452,18 @@ function forcePreviewPaneThumbTitleBar(meta) {
     meta.style.setProperty("background-color", "transparent", "important");
     meta.style.setProperty("background-image", "none", "important");
     meta.style.setProperty("border-top", "0", "important");
+    meta.style.setProperty("backdrop-filter", "none", "important");
+    meta.style.setProperty("-webkit-backdrop-filter", "none", "important");
     return;
   }
+  const blur = "var(--preview-pane-thumb-title-bar-blur, none)";
   if (meta.closest && meta.closest(".folderMediaPreviewGrid")) {
     meta.style.setProperty("background", "var(--preview-pane-thumb-title-bar-bg)", "important");
     meta.style.setProperty("background-color", "var(--preview-pane-thumb-title-bar-bg)", "important");
     meta.style.setProperty("background-image", "none", "important");
     meta.style.setProperty("opacity", "1", "important");
-    meta.style.setProperty("backdrop-filter", "none", "important");
-    meta.style.setProperty("-webkit-backdrop-filter", "none", "important");
+    meta.style.setProperty("backdrop-filter", blur, "important");
+    meta.style.setProperty("-webkit-backdrop-filter", blur, "important");
     meta.style.setProperty("box-shadow", "none", "important");
     meta.style.setProperty("border-top", "0", "important");
     meta.style.setProperty("color", "var(--preview-pane-thumb-title-bar-fg)", "important");
@@ -50454,8 +50473,8 @@ function forcePreviewPaneThumbTitleBar(meta) {
   meta.style.setProperty("background-color", "var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary))", "important");
   meta.style.setProperty("background-image", "none", "important");
   meta.style.setProperty("opacity", "1", "important");
-  meta.style.setProperty("backdrop-filter", "none", "important");
-  meta.style.setProperty("-webkit-backdrop-filter", "none", "important");
+  meta.style.setProperty("backdrop-filter", blur, "important");
+  meta.style.setProperty("-webkit-backdrop-filter", blur, "important");
   meta.style.setProperty("box-shadow", "none", "important");
   meta.style.setProperty("border-top", "0", "important");
   meta.style.setProperty("color", "var(--preview-pane-thumb-title-bar-fg, var(--color0-primary))", "important");
@@ -64151,9 +64170,11 @@ function applyThumbFitFromOptions() {
 function applyThumbTitleStripOpacityFromOptions() {
   const root = document.documentElement;
   if (!root) return;
+  const pct = getThumbTitleStripOpacityFromOptions();
+  root.style.setProperty("--thumb-title-strip-opacity", `${pct}%`);
   root.style.setProperty(
-    "--thumb-title-strip-opacity",
-    `${getThumbTitleStripOpacityFromOptions()}%`,
+    "--thumb-title-strip-blur",
+    `${thumbTitleStripBlurPxForOpacity(pct)}px`,
   );
 }
 function applyThumbnailTitleSizeFromOptions() {
