@@ -3115,15 +3115,15 @@ img[data-rotate-key].rotatingThumbFade {
   gap: 10px;
   box-sizing: border-box;
   padding: clamp(10px, 2.2vmin, 22px) clamp(12px, 2.6vmin, 26px);
-  background: var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary));
-  background-color: var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary));
+  background: var(--preview-pane-thumb-title-bar-bg);
+  background-color: var(--preview-pane-thumb-title-bar-bg);
   background-image: none;
-  color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary));
+  color: var(--preview-pane-thumb-title-bar-fg);
   border: 0;
-  border-top: 1px solid var(--color1-tertiary);
+  border-top: 0;
   box-shadow: none;
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur, none);
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur, none);
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
   opacity: 1;
   overflow: hidden;
 }
@@ -4201,37 +4201,38 @@ img[data-rotate-key].rotatingThumbFade {
    would otherwise render the browser's broken-image icon + alt filename). They
    fade in once decoded. With background warming most thumbnails are already
    decoded before they scroll into view, so this transition is rarely seen. */
-/* v1.6.43-speed loading with a soft reveal: thumbnails load at full speed but
-   are held transparent until they actually decode, then fade in — so fast
-   scrolling shows a quiet empty slot that softly resolves, never a broken-image
-   icon. This is purely visual; it does not delay when a thumbnail loads. */
+/* Pending thumbs stay an opaque dark tile (primary fill, opacity 1). The old
+   opacity:0 hold punched a hole under the frosted title strip so the bar
+   composited against whatever was behind (card/selection fill) and read fully
+   solid until decode — the "selected strip goes opaque for a second" bug.
+   Empty/broken-image chrome is suppressed via font-size/color; the CSS
+   background fills the box until the bitmap paints. */
 .thumb.thumbPending,
 .folderThumb.thumbPending,
 .dirInlinePreview.thumbPending {
-  opacity: 0;
+  opacity: 1;
+  background: var(--color1-primary) !important;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
 }
-/* Inline thumbnails carry their src in the markup, so they will load; reveal
-   after 2s as a safety net in case a cached load/error event fired before the
-   delegated listener attached. (Passive-loader thumbs are src-less until
-   observed and must NOT get a timed reveal, or they'd flash broken.) */
 .dirInlinePreview.thumbPending {
-  animation: thumbStagedSafetyReveal 0s linear 2s forwards;
+  animation: none;
 }
+/* No opacity fade on reveal — a 0→1 fade re-opened the strip hole for ~150ms. */
 .thumb.thumbLoaded,
 .folderThumb.thumbLoaded,
-.dirInlinePreview.thumbLoaded {
-  animation: thumbDecodedFadeIn 150ms ease-out;
-}
-/* A thumbnail whose asset already decoded once this session (a rebuild, or a
-   scroll-back re-show) reveals instantly with no fade. The 150ms fade is a nice
-   first-appearance touch, but replaying it every time the pane is torn down and
-   rebuilt is exactly the flashing/flicker seen when doing lots of actions. */
+.dirInlinePreview.thumbLoaded,
 .thumb.thumbLoadedInstant,
 .folderThumb.thumbLoadedInstant,
 .dirInlinePreview.thumbLoadedInstant {
   opacity: 1;
+  animation: none;
 }
 @keyframes thumbStagedSafetyReveal {
+  to { opacity: 1; }
+}
+@keyframes thumbDecodedFadeIn {
   to { opacity: 1; }
 }
 
@@ -6746,18 +6747,18 @@ remove the outer app frame. */
 }
 
 
-/* v4: thumbnail title strips — fixed frosted treatment (30% surface + light
-   blur). Not user-configurable. color-mix uses transparent so media shows
-   through; cards use a dark underlay (not secondary) so a still-loading
-   transparent thumb doesn't composite translucent secondary over secondary
-   and read as fully opaque until the image decodes. */
+/* v4: thumbnail title strips — fixed frosted treatment (~30% surface + blur).
+   Not user-configurable. Tint is a color-mix against primary (not pure
+   transparent) so unloaded/pending media cannot make the bar read solid
+   secondary. Slight residual transparency + backdrop-filter keeps the glass
+   feel once the thumb is painted. Never fall back to solid secondary. */
 :root {
   --thumb-title-strip-opacity: 30%;
   --thumb-title-strip-blur: 4.2px;
   --preview-pane-thumb-title-bar-bg: color-mix(
     in srgb,
-    var(--color1-secondary) var(--thumb-title-strip-opacity),
-    transparent
+    var(--color1-secondary) 48%,
+    color-mix(in srgb, var(--color1-primary) 55%, transparent)
   );
   --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.92);
   --preview-pane-thumb-title-bar-blur: blur(var(--thumb-title-strip-blur));
@@ -6805,14 +6806,14 @@ remove the outer app frame. */
 #previewPane .previewItemPlaceholderInfoBar,
 #previewBody .previewItemPlaceholderInfoBar,
 .previewItemPlaceholder.hasThumbnail .previewItemPlaceholderInfoBar {
-  background: var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary)) !important;
-  background-color: var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary)) !important;
+  background: var(--preview-pane-thumb-title-bar-bg) !important;
+  background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
-  color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary)) !important;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
   border-top: 0 !important;
   box-shadow: none !important;
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur, none) !important;
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur, none) !important;
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
   opacity: 1 !important;
 }
 
@@ -39249,6 +39250,17 @@ function setPreviewSelectionCard(card, opts = null) {
     if (!(opts && opts.activate === false)) setActivePane("preview");
   }
   updatePreviewSelectionClasses();
+  // Re-assert frosted strip paint on the newly selected card. Virtualized /
+  // freshly-created cards can briefly inherit a solid rule before force is
+  // applied; selection is when users notice the flash most.
+  try {
+    const metas = card.querySelectorAll?.(
+      ".previewThumbOverlayMeta, .thumbOverlayMeta, .dirSquareOverlay, .dirFileOverlay",
+    );
+    if (metas && metas.length) {
+      metas.forEach((meta) => forcePreviewPaneThumbTitleBar(meta));
+    }
+  } catch {}
   if (!(opts && opts.skipReveal)) revealPreviewCard(card);
   return true;
 }
@@ -50639,6 +50651,16 @@ function forcePreviewPaneThumbTitleBar(meta) {
 function renderDirectoriesPane(keepScroll = false, opts = null) {
   const suppressSelectionReveal = !!(opts && opts.suppressSelectionReveal);
   syncThumbFilterKeyWithCurrentAppearanceContext();
+  // Preview-only UI: the file pane is permanently closed. Rebuilding its full
+  // DOM on every folder open/close was pure overhead (~thousands of nodes) and
+  // the main reason navigation still felt sluggish after earlier speed work.
+  if (!directoriesPaneOpenEnabled()) {
+    try {
+      updateTitleLabel();
+    } catch {}
+    LAST_DIRECTORIES_SCROLL_CONTEXT = directoriesScrollContextKey();
+    return;
+  }
   const nextContextKey = directoriesScrollContextKey();
   const contextChanged = nextContextKey !== LAST_DIRECTORIES_SCROLL_CONTEXT;
   const preserveScroll = !!keepScroll && !contextChanged;
@@ -64458,22 +64480,19 @@ function registerThumbEl(el, src, opts = null) {
   el.dataset.thumbState = "idle";
   if (REVEALED_THUMB_SRCS.has(src)) {
     // This source already decoded once this session, so the browser still has
-    // the bitmap cached. A pane rebuild recreates the element, but holding it
-    // transparent (thumbPending) until an async load event re-reveals it makes
-    // the whole grid blink to blank on every rebuild — the flicker seen when
-    // toggling settings or doing lots of actions. Start it opaque instead so it
-    // paints straight from cache with no fade and no blink.
+    // the bitmap cached. Start it opaque so rebuilds don't blink blank.
     el.classList.remove("thumbPending");
     el.classList.remove("thumbLoaded");
     el.classList.add("thumbLoadedInstant");
   } else {
-    // Hold the not-yet-decoded element transparent so a src-less <img> never
-    // flashes the browser's broken-image icon; it fades in once it actually
-    // decodes (see onThumbLoadSettled). This is purely visual and does not change
-    // when the thumbnail loads.
+    // Opaque dark pending tile (see .thumbPending CSS). Never opacity:0 — that
+    // punched a hole under the frosted title strip until decode completed.
     el.classList.add("thumbPending");
     el.classList.remove("thumbLoaded");
     el.classList.remove("thumbLoadedInstant");
+    try {
+      el.alt = "";
+    } catch {}
   }
   if (!el.__thumbBound) {
     el.__thumbBound = true;
@@ -64675,15 +64694,10 @@ function onThumbLoadSettled(el) {
     thumbElKind(el) === "video" ? true : (Number(el.naturalWidth) || 0) > 0;
   if (decoded) {
     const src = String(el.dataset.thumbSrc || "");
-    if (src && REVEALED_THUMB_SRCS.has(src)) {
-      // Already shown once — reveal instantly, no fade replay.
-      el.classList.add("thumbLoadedInstant");
-      el.classList.remove("thumbLoaded");
-    } else {
-      if (src) REVEALED_THUMB_SRCS.add(src);
-      el.classList.add("thumbLoaded");
-      el.classList.remove("thumbLoadedInstant");
-    }
+    if (src) REVEALED_THUMB_SRCS.add(src);
+    // Always snap opaque — never re-run a 0→1 fade under the title strip.
+    el.classList.add("thumbLoadedInstant");
+    el.classList.remove("thumbLoaded");
     el.classList.remove("thumbPending");
   }
   pumpThumbQueue();
