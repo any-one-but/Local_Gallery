@@ -11750,6 +11750,11 @@ function contextualAppearancePresetIdForTagContext(
   const contextTag = normalizeTag(tag || "");
   const contextAlbum = normalizeTagAlbumName(album || "");
   const scopePath = normalizeDirPathValue(originPath);
+  if (contextMode === "gallery" && contextTag) {
+    return metaGetTagAppearancePresetIdByKey(
+      tagThumbnailKeyForGallery(contextTag),
+    );
+  }
   if (contextMode === "tag" && contextTag) {
     const tagPresetId = metaGetTagAppearancePresetIdByKey(
       tagThumbnailKeyForTag(contextTag, scopePath),
@@ -11775,6 +11780,9 @@ function contextualTagMediaFilterForTagContext(mode, tag, album, originPath) {
   const contextMode = String(mode || "");
   const contextTag = normalizeTag(tag || "");
   const contextAlbum = normalizeTagAlbumName(album || "");
+  if (contextMode === "gallery" && contextTag) {
+    return metaGetTagMediaFilterByKey(tagThumbnailKeyForGallery(contextTag));
+  }
   const scopePath = normalizeDirPathValue(originPath);
   if (contextMode === "tag" && contextTag) {
     const values = [
@@ -11878,6 +11886,13 @@ function currentActiveTagFolderContext() {
     if (!album) return null;
     return { mode, tag: "", album, originPath };
   }
+  if (mode === "gallery") {
+    const gallery = normalizeGalleryName(
+      (WS.view && WS.view.tagFolderActiveTag) || "",
+    );
+    if (!gallery) return null;
+    return { mode, tag: gallery, album: "", gallery, originPath: "" };
+  }
   return null;
 }
 
@@ -11893,9 +11908,21 @@ function currentFolderMenuAlbumRemovalContext() {
   return context;
 }
 
+function currentFolderMenuGalleryRemovalContext() {
+  const context = currentActiveTagFolderContext();
+  if (!context || context.mode !== "gallery" || !context.gallery) return null;
+  return context;
+}
+
 function currentTagMenuAlbumRemovalContext() {
   const context = currentActiveTagFolderContext();
   if (!context || context.mode !== "album" || !context.album) return null;
+  return context;
+}
+
+function currentTagMenuGalleryRemovalContext() {
+  const context = currentActiveTagFolderContext();
+  if (!context || context.mode !== "gallery" || !context.gallery) return null;
   return context;
 }
 
@@ -11903,6 +11930,11 @@ function getPortalRootPathsForTagContext(mode, tag, album, originPath) {
   const contextMode = String(mode || "");
   const contextTag = normalizeTag(tag || "");
   const contextAlbum = normalizeTagAlbumName(album || "");
+  if (contextMode === "gallery" && contextTag) {
+    return getDirectDirsForGallery(contextTag)
+      .map((node) => String(node?.path || ""))
+      .filter(Boolean);
+  }
   const scopePath = normalizeDirPathValue(originPath);
   const baseNode = WS.dirByPath.get(scopePath) || null;
   if (!baseNode) return [];
@@ -14798,6 +14830,7 @@ const APP_ICON_SVGS = Object.freeze({
   folder: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-icon lucide-folder"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
   tag: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-tag-icon lucide-tag"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>',
   album: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-album-icon lucide-album"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><polyline points="11 3 11 11 14 8 17 11 17 3"/></svg>',
+  gallery: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-gallery-thumbnails-icon lucide-gallery-thumbnails"><rect width="18" height="14" x="3" y="3" rx="2"/><path d="M4 21h1"/><path d="M9 21h1"/><path d="M14 21h1"/><path d="M19 21h1"/></svg>',
   favorite: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart-icon lucide-heart"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
   hidden: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-off-icon lucide-eye-off"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>',
   untagged: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-badge-icon lucide-badge"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/></svg>',
@@ -14892,6 +14925,7 @@ function iconKeyForDirNode(node) {
   if (node && node._skipTagFilters) {
     const mode = String(node._tagPreviewMode || "");
     if (mode === "album") return "album";
+    if (mode === "gallery") return "gallery";
     if (mode === "favorites") return "favorite";
     if (mode === "hidden") return "hidden";
     if (mode === "untagged") return "untagged";
@@ -15980,6 +16014,7 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "hiddenSelection",
   "tagSelection",
   "albumSelection",
+  "gallerySelection",
   "renameSelection",
   "toggleMuteMessages",
   "toggleFullScreenMedia",
@@ -16241,6 +16276,12 @@ const KEYBIND_ACTIONS = [
     id: "albumSelection",
     label: "Add selection to album",
     hint: "Add the selected item(s) to an album.",
+    section: "folderActions",
+  },
+  {
+    id: "gallerySelection",
+    label: "Add selection to gallery",
+    hint: "Add the selected item(s) to a gallery.",
     section: "folderActions",
   },
   {
@@ -16560,6 +16601,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleFullScreenMedia: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
+  gallerySelection: "",
   renameSelection: "",
   toggleSelectionInBulk: "",
   selectRangeInBulk: "",
@@ -16837,6 +16879,11 @@ const WS = {
     tagAlbumByTag: new Map(),
     folderAlbumByPath: new Map(),
     albumTagsByAlbum: new Map(),
+    folderGalleriesByPath: new Map(),
+    galleryMemberTagsByGallery: new Map(),
+    galleryMemberAlbumsByGallery: new Map(),
+    galleryUserTagsByGallery: new Map(),
+    galleryAlbumByGallery: new Map(),
     trashItemsByPath: new Map(),
     hiddenTagKeys: new Set(),
     tagMediaFilterByKey: new Map(),
@@ -17137,6 +17184,11 @@ function resetWorkspace() {
   WS.meta.tagAlbumByTag.clear();
   WS.meta.folderAlbumByPath.clear();
   WS.meta.albumTagsByAlbum.clear();
+  WS.meta.folderGalleriesByPath.clear();
+  WS.meta.galleryMemberTagsByGallery.clear();
+  WS.meta.galleryMemberAlbumsByGallery.clear();
+  WS.meta.galleryUserTagsByGallery.clear();
+  WS.meta.galleryAlbumByGallery.clear();
   WS.meta.trashItemsByPath.clear();
   WS.meta.hiddenTagKeys.clear();
   WS.meta.tagMediaFilterByKey.clear();
@@ -18550,6 +18602,8 @@ function tagContextLabel(mode, tag, album = "") {
   if (normalizedMode === "favorites") return "Favorites";
   if (normalizedMode === "untagged") return "Untagged";
   if (normalizedMode === "hidden") return "Hidden";
+  if (normalizedMode === "gallery")
+    return displayTagFolderLabel(String(tag || "").trim()) || "Gallery";
   const albumLabel = displayTagFolderLabel(String(album || "").trim());
   if (normalizedMode === "album") return albumLabel || "Album";
   const tagLabel = displayTagFolderLabel(String(tag || "").trim());
@@ -18681,6 +18735,16 @@ function collectUniqueTitleMetricNodes(nodes) {
 function getActiveTagPreviewMetricNodes(previewDir) {
   if (!previewDir || !previewDir._skipTagFilters) return [];
   const mode = String(previewDir._tagPreviewMode || "");
+  if (mode === "gallery") {
+    return getDirsForTagEntry({
+      kind: "tag",
+      gallery: String(
+        previewDir._tagPreviewGallery || previewDir._tagPreviewTag || "",
+      ),
+      label: String(previewDir.name || "Gallery"),
+      originPath: "",
+    });
+  }
   if (mode === "album") {
     const baseNode =
       WS.dirByPath.get(String(previewDir._tagPreviewOriginPath || "")) ||
@@ -22989,6 +23053,10 @@ function normalizeTagAlbumName(name) {
   return normalizeTag(name);
 }
 
+function normalizeGalleryName(name) {
+  return normalizeTag(name);
+}
+
 function normalizeTagAlbumScopePath(scopePath) {
   return normalizeDirPathValue(scopePath);
 }
@@ -23283,6 +23351,145 @@ function metaSetUserTagsForAlbum(albumName, scopePath, userTags) {
   return true;
 }
 
+function metaGetGalleriesForPath(path) {
+  const p = normalizeDirPathValue(path);
+  if (!p || !WS.meta || !WS.meta.folderGalleriesByPath) return [];
+  return normalizeTagList(WS.meta.folderGalleriesByPath.get(p)).map(
+    normalizeGalleryName,
+  );
+}
+
+function metaSetGalleriesForPath(path, galleries) {
+  const p = normalizeDirPathValue(path);
+  if (!p || !WS.meta || !WS.meta.folderGalleriesByPath) return false;
+  const next = normalizeTagList(galleries).map(normalizeGalleryName).filter(Boolean);
+  const current = metaGetGalleriesForPath(p);
+  if (arraysEqual(current, next)) return false;
+  if (next.length) WS.meta.folderGalleriesByPath.set(p, next);
+  else WS.meta.folderGalleriesByPath.delete(p);
+  metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaAddGalleryForPath(path, galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery) return false;
+  const current = metaGetGalleriesForPath(path);
+  if (current.includes(gallery)) return false;
+  return metaSetGalleriesForPath(path, current.concat([gallery]));
+}
+
+function metaGetMemberTagsForGallery(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryMemberTagsByGallery) return [];
+  return normalizeTagList(WS.meta.galleryMemberTagsByGallery.get(gallery));
+}
+
+function metaSetMemberTagsForGallery(galleryName, tags) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryMemberTagsByGallery) return false;
+  const next = normalizeTagList(tags).filter((tag) => !isReservedFolderTag(tag));
+  const current = metaGetMemberTagsForGallery(gallery);
+  if (arraysEqual(current, next)) return false;
+  if (next.length) WS.meta.galleryMemberTagsByGallery.set(gallery, next);
+  else WS.meta.galleryMemberTagsByGallery.delete(gallery);
+  metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaGetMemberAlbumsForGallery(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryMemberAlbumsByGallery) return [];
+  return normalizeTagList(WS.meta.galleryMemberAlbumsByGallery.get(gallery)).map(
+    normalizeTagAlbumName,
+  );
+}
+
+function metaSetMemberAlbumsForGallery(galleryName, albums) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryMemberAlbumsByGallery) return false;
+  const next = normalizeTagList(albums).map(normalizeTagAlbumName).filter(Boolean);
+  const current = metaGetMemberAlbumsForGallery(gallery);
+  if (arraysEqual(current, next)) return false;
+  if (next.length) WS.meta.galleryMemberAlbumsByGallery.set(gallery, next);
+  else WS.meta.galleryMemberAlbumsByGallery.delete(gallery);
+  metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaGetUserTagsForGallery(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryUserTagsByGallery) return [];
+  return normalizeTagList(WS.meta.galleryUserTagsByGallery.get(gallery)).filter(
+    (tag) => !isReservedFolderTag(tag),
+  );
+}
+
+function metaSetUserTagsForGallery(galleryName, tags) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryUserTagsByGallery) return false;
+  const next = normalizeTagList(tags)
+    .filter((tag) => !isReservedFolderTag(tag))
+    .filter((tag) => tag !== gallery);
+  const current = metaGetUserTagsForGallery(gallery);
+  if (arraysEqual(current, next)) return false;
+  if (next.length) WS.meta.galleryUserTagsByGallery.set(gallery, next);
+  else WS.meta.galleryUserTagsByGallery.delete(gallery);
+  metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaGetAlbumForGallery(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryAlbumByGallery) return "";
+  return normalizeTagAlbumName(WS.meta.galleryAlbumByGallery.get(gallery));
+}
+
+function metaSetAlbumForGallery(galleryName, albumName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryAlbumByGallery) return false;
+  const album = normalizeTagAlbumName(albumName);
+  if (album && album === gallery) return false;
+  const prev = metaGetAlbumForGallery(gallery);
+  if (!album) {
+    if (!WS.meta.galleryAlbumByGallery.has(gallery)) return false;
+    WS.meta.galleryAlbumByGallery.delete(gallery);
+  } else {
+    if (prev === album) return false;
+    WS.meta.galleryAlbumByGallery.set(gallery, album);
+  }
+  metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function getAllGalleryNames() {
+  const out = new Set();
+  if (!WS.meta) return [];
+  if (WS.meta.folderGalleriesByPath) {
+    for (const galleries of WS.meta.folderGalleriesByPath.values()) {
+      normalizeTagList(galleries).forEach((gallery) => out.add(gallery));
+    }
+  }
+  [
+    WS.meta.galleryMemberTagsByGallery,
+    WS.meta.galleryMemberAlbumsByGallery,
+    WS.meta.galleryUserTagsByGallery,
+    WS.meta.galleryAlbumByGallery,
+  ].forEach((map) => {
+    if (!map) return;
+    for (const key of map.keys()) {
+      const gallery = normalizeGalleryName(key);
+      if (gallery) out.add(gallery);
+    }
+  });
+  return Array.from(out).sort((a, b) => String(a).localeCompare(String(b)));
+}
+
 function tagAlbumHasScopedAssignmentsForScope(scopePath) {
   if (!WS.meta || !WS.meta.tagAlbumByTag) return false;
   const normalizedScope = normalizeTagAlbumScopePath(scopePath);
@@ -23329,6 +23536,39 @@ function hiddenTagKeyForAlbum(albumName, scopePath = null) {
   return tagThumbnailKeyForAlbum(albumName, scopePath);
 }
 
+function hiddenTagKeyForGallery(galleryName) {
+  return tagThumbnailKeyForGallery(galleryName);
+}
+
+function hiddenContentVisibleInCurrentView() {
+  return !!(
+    WS.view.hiddenMode ||
+    showHiddenFolderEnabled() ||
+    (isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden")
+  );
+}
+
+function galleryIsHiddenFromCurrentView(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  return !!(
+    gallery &&
+    !hiddenContentVisibleInCurrentView() &&
+    metaHasHiddenTagByKey(hiddenTagKeyForGallery(gallery))
+  );
+}
+
+function getHiddenGalleryNames() {
+  const out = [];
+  if (!WS.meta || !WS.meta.hiddenTagKeys) return out;
+  for (const rawKey of WS.meta.hiddenTagKeys.values()) {
+    const parsed = parseTagThumbnailStructuredKey(rawKey);
+    if (!parsed || parsed.kind !== "gallery") continue;
+    const gallery = normalizeGalleryName(parsed.value || "");
+    if (gallery && !out.includes(gallery)) out.push(gallery);
+  }
+  return out;
+}
+
 function hiddenTagKeyForEntry(entry) {
   if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
     return "";
@@ -23337,6 +23577,8 @@ function hiddenTagKeyForEntry(entry) {
   if (tag) return hiddenTagKeyForTag(tag, String(entry.originPath || ""));
   const album = normalizeTagAlbumName(entry.album || "");
   if (album) return hiddenTagKeyForAlbum(album, String(entry.originPath || ""));
+  const gallery = normalizeGalleryName(entry.gallery || "");
+  if (gallery) return hiddenTagKeyForGallery(gallery);
   return "";
 }
 
@@ -23363,6 +23605,26 @@ function metaHasHidden(path) {
     const album = metaGetTagAlbumForTag(userTags[i], scopePath);
     if (album && metaHasHiddenTagByKey(hiddenTagKeyForAlbum(album, scopePath)))
       return true;
+  }
+  // A hidden gallery hides all of its content just like a hidden tag or album.
+  // Gallery membership can be direct or inherited through a member tag/album.
+  const hiddenGalleries = getHiddenGalleryNames();
+  if (hiddenGalleries.length) {
+    const directGalleries = new Set(metaGetGalleriesForPath(normalizedPath));
+    const folderAlbums = new Set();
+    if (directAlbum) folderAlbums.add(directAlbum);
+    for (let i = 0; i < userTags.length; i++) {
+      const album = metaGetTagAlbumForTag(userTags[i], scopePath);
+      if (album) folderAlbums.add(album);
+    }
+    for (let i = 0; i < hiddenGalleries.length; i++) {
+      const gallery = hiddenGalleries[i];
+      if (directGalleries.has(gallery)) return true;
+      const memberTags = metaGetMemberTagsForGallery(gallery);
+      if (memberTags.some((tag) => userTags.includes(tag))) return true;
+      const memberAlbums = metaGetMemberAlbumsForGallery(gallery);
+      if (memberAlbums.some((album) => folderAlbums.has(album))) return true;
+    }
   }
   return false;
 }
@@ -23697,6 +23959,11 @@ function tagThumbnailKeyForAlbum(albumName, scopePath = null) {
   return `tag-album-scope:${encodeURIComponent(album)}:${encodeURIComponent(scopeKey)}`;
 }
 
+function tagThumbnailKeyForGallery(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  return gallery ? `tag-gallery:${gallery}` : "";
+}
+
 function parseTagThumbnailStructuredKey(tagKey) {
   const key = String(tagKey || "");
   if (!key) return null;
@@ -23734,6 +24001,11 @@ function parseTagThumbnailStructuredKey(tagKey) {
     const tag = normalizeTag(key.slice(4));
     if (!tag) return null;
     return { kind: "tag", value: tag, scopePath: "", scoped: false };
+  }
+  if (key.startsWith("tag-gallery:")) {
+    const gallery = normalizeGalleryName(key.slice("tag-gallery:".length));
+    if (!gallery) return null;
+    return { kind: "gallery", value: gallery, scopePath: "", scoped: false };
   }
   if (key.startsWith("tag-album:")) {
     const album = normalizeTagAlbumName(key.slice("tag-album:".length));
@@ -23843,14 +24115,17 @@ function hiddenToggleNounForEntries(entries) {
   const list = Array.isArray(entries) ? entries : [];
   let tags = 0;
   let albums = 0;
+  let galleries = 0;
   for (let i = 0; i < list.length; i++) {
     const entry = list[i];
     if (!entry) continue;
     if (String(entry.tag || "").trim()) tags++;
     else if (normalizeTagAlbumName(entry.album || "")) albums++;
+    else if (normalizeGalleryName(entry.gallery || "")) galleries++;
   }
-  if (albums && !tags) return "album";
-  if (tags && !albums) return "tag";
+  if (galleries && !albums && !tags) return "gallery";
+  if (albums && !tags && !galleries) return "album";
+  if (tags && !albums && !galleries) return "tag";
   return "item";
 }
 
@@ -24120,6 +24395,9 @@ function tagThumbnailKeyForEntry(entry) {
   if (entry.album && !entry.tag) {
     return tagThumbnailKeyForAlbum(entry.album, scopePath);
   }
+  if (entry.gallery && !entry.tag && !entry.album) {
+    return tagThumbnailKeyForGallery(entry.gallery);
+  }
   return tagThumbnailKeyForTag(entry.tag || "", scopePath);
 }
 
@@ -24335,6 +24613,30 @@ function startBulkAlbumTagging(albumTargets, preferPane = "") {
     return;
 }
 
+function startBulkGallerying(targets, preferPane = "") {
+  if (
+    canUseBulkTagPlaceholderUi() &&
+    setBulkTagPlaceholder(targets, "New gallery", "gallery", "", preferPane)
+  )
+    return;
+}
+
+function startBulkGalleryTagging(galleries, preferPane = "") {
+  if (
+    canUseBulkTagPlaceholderUi() &&
+    setBulkTagPlaceholder(galleries, "New tag folder", "galleryTag", "", preferPane)
+  )
+    return;
+}
+
+function startBulkGalleryAlbuming(galleries, preferPane = "") {
+  if (
+    canUseBulkTagPlaceholderUi() &&
+    setBulkTagPlaceholder(galleries, "New album", "galleryAlbum", "", preferPane)
+  )
+    return;
+}
+
 function setBulkTagPlaceholder(
   items,
   label = "New tag folder",
@@ -24351,7 +24653,10 @@ function setBulkTagPlaceholder(
   const type =
     rawType === "album" ||
     rawType === "folderAlbum" ||
-    rawType === "albumTag"
+    rawType === "albumTag" ||
+    rawType === "gallery" ||
+    rawType === "galleryTag" ||
+    rawType === "galleryAlbum"
       ? rawType
       : "tag";
   let unique = [];
@@ -24368,6 +24673,38 @@ function setBulkTagPlaceholder(
       seen.add(key);
       unique.push({ album, originPath: targetOriginPath });
     }
+  } else if (type === "gallery") {
+    const seen = new Set();
+    const arr = Array.isArray(items) ? items : [];
+    for (let i = 0; i < arr.length; i++) {
+      const item = arr[i];
+      if (typeof item === "string") {
+        const path = normalizeDirPathValue(item);
+        const key = path ? `dir:${path}` : "";
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        unique.push({ kind: "dir", path });
+        continue;
+      }
+      const kind = String(item?.kind || "");
+      if (kind === "tag") {
+        const tag = normalizeTag(item.tag || "");
+        const key = tag ? `tag:${tag}` : "";
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        unique.push({ kind: "tag", tag });
+      } else if (kind === "album") {
+        const album = normalizeTagAlbumName(item.album || "");
+        const key = album ? `album:${album}` : "";
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        unique.push({ kind: "album", album });
+      }
+    }
+  } else if (type === "galleryTag" || type === "galleryAlbum") {
+    unique = Array.from(
+      new Set((items || []).map(normalizeGalleryName).filter(Boolean)),
+    );
   } else {
     unique = Array.from(
       new Set((items || []).map((p) => String(p || ""))),
@@ -24393,6 +24730,9 @@ function setBulkTagPlaceholder(
     paths: type === "tag" || type === "folderAlbum" ? unique.slice() : [],
     tags: type === "album" ? unique.slice() : [],
     albumTargets: type === "albumTag" ? unique.slice() : [],
+    galleryTargets: type === "gallery" ? unique.slice() : [],
+    galleries:
+      type === "galleryTag" || type === "galleryAlbum" ? unique.slice() : [],
     originPath: type === "album" ? String(originPath || "") : "",
     placeholder: true,
     placeholderType: type,
@@ -24444,11 +24784,39 @@ function beginTagEntryRename(renameState, preferPane = "") {
   return true;
 }
 
+function tagEntryRenameStateIsAlbum(state) {
+  if (!state) return false;
+  const album = normalizeTagAlbumName(state.album || "");
+  const tag = normalizeTag(state.tag || "");
+  // Album entries hosted inside a gallery also carry the containing gallery's
+  // name. The album field identifies the item being renamed; gallery is only
+  // contextual in that case.
+  return !!album && !tag;
+}
+
+function tagEntryRenameStateIsGallery(state) {
+  if (!state) return false;
+  const gallery = normalizeGalleryName(state.gallery || "");
+  const tag = normalizeTag(state.tag || "");
+  const album = normalizeTagAlbumName(state.album || "");
+  return !!gallery && !tag && !album;
+}
+
 function tagEntryRenameValueFromState(state) {
   if (!state) return "";
   if (state.placeholder) return String(state.label || "");
-  if (state.isAlbumEntry) return String(state.album || state.label || "");
+  if (tagEntryRenameStateIsAlbum(state))
+    return String(state.album || state.label || "");
+  if (tagEntryRenameStateIsGallery(state))
+    return String(state.gallery || state.label || "");
   return String(state.tag || state.label || "");
+}
+
+function finishTagEntryRenameRender() {
+  TAG_ENTRY_RENAME_STATE = null;
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
 }
 
 function cancelTagEntryRename() {
@@ -24461,10 +24829,7 @@ function cancelTagEntryRename() {
     syncButtons();
     return;
   }
-  TAG_ENTRY_RENAME_STATE = null;
-  renderDirectoriesPane(true);
-  renderPreviewPane(false, true);
-  syncButtons();
+  finishTagEntryRenameRender();
 }
 
 function commitTagEntryRename(inputEl) {
@@ -24507,6 +24872,14 @@ function commitTagEntryRename(inputEl) {
     return;
   }
   const isPlaceholder = !!state.placeholder;
+  const isAlbumRename = tagEntryRenameStateIsAlbum(state);
+  const isGalleryRename = tagEntryRenameStateIsGallery(state);
+  const oldGalleryName = normalizeGalleryName(state.gallery || "");
+  const desiredGalleryName = normalizeGalleryName(desired);
+  const galleryMergeTargetExists =
+    isGalleryRename &&
+    desiredGalleryName !== oldGalleryName &&
+    getAllGalleryNames().includes(desiredGalleryName);
   TAG_ENTRY_RENAME_STATE = null;
   if (
     !isPlaceholder &&
@@ -24551,24 +24924,64 @@ function commitTagEntryRename(inputEl) {
         syncButtons();
         return;
       }
+    } else if (state.placeholderType === "gallery") {
+      const changed = assignTargetsToGalleryBulk(state.galleryTargets, desired);
+      if (!changed) {
+        showStatusMessage("No items updated.");
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        return;
+      }
+    } else if (state.placeholderType === "galleryTag") {
+      const changed = addUserTagsToGalleryBulk(state.galleries, [desired]);
+      if (!changed) {
+        showStatusMessage("No galleries updated.");
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        return;
+      }
+    } else if (state.placeholderType === "galleryAlbum") {
+      const changed = assignAlbumForGalleriesBulk(state.galleries, desired);
+      if (!changed) {
+        showStatusMessage("No galleries updated.");
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        return;
+      }
     } else {
       metaAddUserTagsBulk(state.paths, [desired]);
     }
     finalizeBulkSelectionAction();
     return;
   }
-  const changed = state.isAlbumEntry
+  const changed = isAlbumRename
     ? renameTagAlbumByName(state.album, desired, state.originPath)
-    : renameTagForPaths(state.tag, desired, state.paths, state.originPath);
+    : isGalleryRename
+      ? renameGalleryByName(state.gallery, desired)
+      : renameTagForPaths(state.tag, desired, state.paths, state.originPath);
   if (!changed) {
     showStatusMessage(
-      state.isAlbumEntry ? "No tag albums updated." : "No folders updated.",
+      isGalleryRename
+        ? "Gallery could not be renamed."
+        : isAlbumRename
+          ? "No tag albums updated."
+          : "No folders updated.",
     );
-    renderDirectoriesPane(true);
+    finishTagEntryRenameRender();
     return;
   }
   metaScheduleSave();
   refreshAfterTagMetadataChange();
+  if (isGalleryRename) {
+    showStatusMessage(
+      galleryMergeTargetExists
+        ? `Merged gallery '${oldGalleryName}' into '${desiredGalleryName}'.`
+        : `Renamed gallery '${oldGalleryName}' to '${desiredGalleryName}'.`,
+    );
+  }
 }
 
 function assignTagAlbumForTagsBulk(tags, albumName, scopePath = null) {
@@ -24644,6 +25057,53 @@ function addUserTagsToAlbumsBulk(albumTargets, tagsToAdd) {
   refreshAfterTagMetadataChange();
   showStatusMessage(
     `Tagged ${changedCount} album${changedCount === 1 ? "" : "s"}.`,
+  );
+  return true;
+}
+
+function assignTargetsToGalleryBulk(targets, galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery) return false;
+  const list = Array.isArray(targets) ? targets : [];
+  let changed = false;
+  let changedCount = 0;
+  const addTags = [];
+  const addAlbums = [];
+  for (let i = 0; i < list.length; i++) {
+    const target = list[i] || {};
+    const kind = String(target.kind || "");
+    if (kind === "dir") {
+      if (metaAddGalleryForPath(target.path, gallery)) {
+        changed = true;
+        changedCount++;
+      }
+    } else if (kind === "tag") {
+      const tag = normalizeTag(target.tag || "");
+      if (tag) addTags.push(tag);
+    } else if (kind === "album") {
+      const album = normalizeTagAlbumName(target.album || "");
+      if (album) addAlbums.push(album);
+    }
+  }
+  if (addTags.length) {
+    const next = normalizeTagList(metaGetMemberTagsForGallery(gallery).concat(addTags));
+    if (metaSetMemberTagsForGallery(gallery, next)) {
+      changed = true;
+      changedCount += addTags.length;
+    }
+  }
+  if (addAlbums.length) {
+    const next = normalizeTagList(metaGetMemberAlbumsForGallery(gallery).concat(addAlbums));
+    if (metaSetMemberAlbumsForGallery(gallery, next)) {
+      changed = true;
+      changedCount += addAlbums.length;
+    }
+  }
+  if (!changed) return false;
+  metaScheduleSave();
+  refreshAfterTagMetadataChange();
+  showStatusMessage(
+    `Added ${changedCount} item${changedCount === 1 ? "" : "s"} to gallery '${gallery}'.`,
   );
   return true;
 }
@@ -25799,6 +26259,11 @@ function metaMakeTagAlbumsDocObject() {
   const tagAlbumByTag = {};
   const folderAlbumByPath = {};
   const albumTagsByAlbum = {};
+  const folderGalleriesByPath = {};
+  const galleryMemberTagsByGallery = {};
+  const galleryMemberAlbumsByGallery = {};
+  const galleryUserTagsByGallery = {};
+  const galleryAlbumByGallery = {};
   if (WS.meta && WS.meta.tagAlbumByTag) {
     for (const [tagKeyRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
       const parsed = parseTagAlbumMembershipKey(tagKeyRaw);
@@ -25826,12 +26291,59 @@ function metaMakeTagAlbumsDocObject() {
       albumTagsByAlbum[parsed.key] = tags;
     }
   }
+  if (WS.meta && WS.meta.folderGalleriesByPath) {
+    for (const [pathRaw, galleriesRaw] of WS.meta.folderGalleriesByPath.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      const galleries = normalizeTagList(galleriesRaw).map(normalizeGalleryName).filter(Boolean);
+      if (!path || !galleries.length) continue;
+      folderGalleriesByPath[path] = galleries;
+    }
+  }
+  if (WS.meta && WS.meta.galleryMemberTagsByGallery) {
+    for (const [galleryRaw, tagsRaw] of WS.meta.galleryMemberTagsByGallery.entries()) {
+      const gallery = normalizeGalleryName(galleryRaw);
+      const tags = normalizeTagList(tagsRaw).filter((tag) => !isReservedFolderTag(tag));
+      if (!gallery || !tags.length) continue;
+      galleryMemberTagsByGallery[gallery] = tags;
+    }
+  }
+  if (WS.meta && WS.meta.galleryMemberAlbumsByGallery) {
+    for (const [galleryRaw, albumsRaw] of WS.meta.galleryMemberAlbumsByGallery.entries()) {
+      const gallery = normalizeGalleryName(galleryRaw);
+      const albums = normalizeTagList(albumsRaw).map(normalizeTagAlbumName).filter(Boolean);
+      if (!gallery || !albums.length) continue;
+      galleryMemberAlbumsByGallery[gallery] = albums;
+    }
+  }
+  if (WS.meta && WS.meta.galleryUserTagsByGallery) {
+    for (const [galleryRaw, tagsRaw] of WS.meta.galleryUserTagsByGallery.entries()) {
+      const gallery = normalizeGalleryName(galleryRaw);
+      const tags = normalizeTagList(tagsRaw)
+        .filter((tag) => !isReservedFolderTag(tag))
+        .filter((tag) => tag !== gallery);
+      if (!gallery || !tags.length) continue;
+      galleryUserTagsByGallery[gallery] = tags;
+    }
+  }
+  if (WS.meta && WS.meta.galleryAlbumByGallery) {
+    for (const [galleryRaw, albumRaw] of WS.meta.galleryAlbumByGallery.entries()) {
+      const gallery = normalizeGalleryName(galleryRaw);
+      const album = normalizeTagAlbumName(albumRaw);
+      if (!gallery || !album || album === gallery) continue;
+      galleryAlbumByGallery[gallery] = album;
+    }
+  }
   return {
-    schema: 2,
+    schema: 3,
     updatedAt: Date.now(),
     tagAlbumByTag,
     folderAlbumByPath,
     albumTagsByAlbum,
+    folderGalleriesByPath,
+    galleryMemberTagsByGallery,
+    galleryMemberAlbumsByGallery,
+    galleryUserTagsByGallery,
+    galleryAlbumByGallery,
   };
 }
 
@@ -26165,6 +26677,11 @@ function metaApplyTagAlbumsDocLog(log) {
   WS.meta.tagAlbumByTag.clear();
   WS.meta.folderAlbumByPath.clear();
   WS.meta.albumTagsByAlbum.clear();
+  WS.meta.folderGalleriesByPath.clear();
+  WS.meta.galleryMemberTagsByGallery.clear();
+  WS.meta.galleryMemberAlbumsByGallery.clear();
+  WS.meta.galleryUserTagsByGallery.clear();
+  WS.meta.galleryAlbumByGallery.clear();
   const tagAlbumByTag =
     log.tagAlbumByTag && typeof log.tagAlbumByTag === "object"
       ? log.tagAlbumByTag
@@ -26197,6 +26714,64 @@ function metaApplyTagAlbumsDocLog(log) {
       .filter((tag) => tag !== parsed.album);
     if (!tags.length) continue;
     WS.meta.albumTagsByAlbum.set(parsed.key, tags);
+  }
+  const folderGalleriesByPath =
+    log.folderGalleriesByPath && typeof log.folderGalleriesByPath === "object"
+      ? log.folderGalleriesByPath
+      : {};
+  for (const rawPath of Object.keys(folderGalleriesByPath)) {
+    const path = normalizeDirPathValue(rawPath);
+    const galleries = normalizeTagList(folderGalleriesByPath[rawPath])
+      .map(normalizeGalleryName)
+      .filter(Boolean);
+    if (!path || !galleries.length) continue;
+    WS.meta.folderGalleriesByPath.set(path, galleries);
+  }
+  const galleryMemberTagsByGallery =
+    log.galleryMemberTagsByGallery && typeof log.galleryMemberTagsByGallery === "object"
+      ? log.galleryMemberTagsByGallery
+      : {};
+  for (const rawGallery of Object.keys(galleryMemberTagsByGallery)) {
+    const gallery = normalizeGalleryName(rawGallery);
+    const tags = normalizeTagList(galleryMemberTagsByGallery[rawGallery]).filter(
+      (tag) => !isReservedFolderTag(tag),
+    );
+    if (!gallery || !tags.length) continue;
+    WS.meta.galleryMemberTagsByGallery.set(gallery, tags);
+  }
+  const galleryMemberAlbumsByGallery =
+    log.galleryMemberAlbumsByGallery && typeof log.galleryMemberAlbumsByGallery === "object"
+      ? log.galleryMemberAlbumsByGallery
+      : {};
+  for (const rawGallery of Object.keys(galleryMemberAlbumsByGallery)) {
+    const gallery = normalizeGalleryName(rawGallery);
+    const albums = normalizeTagList(galleryMemberAlbumsByGallery[rawGallery])
+      .map(normalizeTagAlbumName)
+      .filter(Boolean);
+    if (!gallery || !albums.length) continue;
+    WS.meta.galleryMemberAlbumsByGallery.set(gallery, albums);
+  }
+  const galleryUserTagsByGallery =
+    log.galleryUserTagsByGallery && typeof log.galleryUserTagsByGallery === "object"
+      ? log.galleryUserTagsByGallery
+      : {};
+  for (const rawGallery of Object.keys(galleryUserTagsByGallery)) {
+    const gallery = normalizeGalleryName(rawGallery);
+    const tags = normalizeTagList(galleryUserTagsByGallery[rawGallery])
+      .filter((tag) => !isReservedFolderTag(tag))
+      .filter((tag) => tag !== gallery);
+    if (!gallery || !tags.length) continue;
+    WS.meta.galleryUserTagsByGallery.set(gallery, tags);
+  }
+  const galleryAlbumByGallery =
+    log.galleryAlbumByGallery && typeof log.galleryAlbumByGallery === "object"
+      ? log.galleryAlbumByGallery
+      : {};
+  for (const rawGallery of Object.keys(galleryAlbumByGallery)) {
+    const gallery = normalizeGalleryName(rawGallery);
+    const album = normalizeTagAlbumName(galleryAlbumByGallery[rawGallery]);
+    if (!gallery || !album || album === gallery) continue;
+    WS.meta.galleryAlbumByGallery.set(gallery, album);
   }
   invalidateDirMetricsCaches();
 }
@@ -31249,6 +31824,16 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
     oldPrefix,
     newPrefix,
   );
+  WS.meta.folderGalleriesByPath = remapPathMapKeys(
+    WS.meta.folderGalleriesByPath,
+    oldPrefix,
+    newPrefix,
+  );
+  WS.meta.folderAlbumByPath = remapPathMapKeys(
+    WS.meta.folderAlbumByPath,
+    oldPrefix,
+    newPrefix,
+  );
   WS.meta.dirFingerprints = remapPathMapKeys(
     WS.meta.dirFingerprints,
     oldPrefix,
@@ -35197,13 +35782,125 @@ function getDirectDirsForAlbumForBaseNode(baseNode, albumName) {
   return sortDirCollectionForDisplay(out, `album-direct:${String(baseNode.path || "")}:${album}`);
 }
 
+function getDirectDirsForGallery(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.folderGalleriesByPath) return [];
+  if (galleryIsHiddenFromCurrentView(gallery)) return [];
+  const out = [];
+  for (const [pathRaw, galleriesRaw] of WS.meta.folderGalleriesByPath.entries()) {
+    const path = normalizeDirPathValue(pathRaw);
+    if (!path) continue;
+    const galleries = normalizeTagList(galleriesRaw).map(normalizeGalleryName);
+    if (!galleries.includes(gallery)) continue;
+    const node = WS.dirByPath.get(path);
+    if (node) out.push(node);
+  }
+  return sortDirCollectionForDisplay(out, `gallery-direct:${gallery}`);
+}
+
+function getGalleryMemberTagEntries(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery) return [];
+  if (galleryIsHiddenFromCurrentView(gallery)) return [];
+  return metaGetMemberTagsForGallery(gallery).map((tag) => ({
+    kind: "tag",
+    tag,
+    label: tag,
+    originPath: "",
+    gallery,
+    galleryMember: true,
+    count: filterTagEntryDirsByVisibleRecords(
+      (gatherTagGroupsForDir(WS.root).get(tag) || []),
+      { kind: "tag", tag, label: tag, originPath: "" },
+    ).length,
+  }));
+}
+
+function getGalleryMemberAlbumEntries(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.root) return [];
+  if (galleryIsHiddenFromCurrentView(gallery)) return [];
+  return metaGetMemberAlbumsForGallery(gallery).map((album) => {
+    const stats = getFastTagScopeModel(WS.root).albumStats.get(album);
+    const dirs =
+      stats && Array.isArray(stats.dirs)
+        ? stats.dirs
+        : getDirectDirsForAlbumForBaseNode(WS.root, album);
+    return {
+      kind: "tag",
+      album,
+      label: album,
+      originPath: "",
+      gallery,
+      galleryMember: true,
+      count: filterTagEntryDirsByVisibleRecords(
+        dirs,
+        { kind: "tag", album, label: album, originPath: "" },
+      ).length,
+    };
+  });
+}
+
+function getGalleryEntriesForRoot() {
+  if (!WS.root) return [];
+  const names = getAllGalleryNames();
+  const out = [];
+  for (let i = 0; i < names.length; i++) {
+    const gallery = normalizeGalleryName(names[i]);
+    if (!gallery) continue;
+    if (galleryIsHiddenFromCurrentView(gallery)) continue;
+    const entry = {
+      kind: "tag",
+      gallery,
+      label: gallery,
+      originPath: "",
+    };
+    const dirs = getDirsForTagEntry(entry);
+    const memberCount =
+      metaGetMemberTagsForGallery(gallery).length +
+      metaGetMemberAlbumsForGallery(gallery).length;
+    if (!dirs.length && !memberCount) continue;
+    out.push(Object.assign(entry, { count: dirs.length + memberCount }));
+  }
+  return out;
+}
+
+function getGalleryEntriesForTag(tagName) {
+  const tag = normalizeTag(tagName);
+  if (!tag) return [];
+  return getAllGalleryNames()
+    .filter((gallery) => !galleryIsHiddenFromCurrentView(gallery))
+    .filter((gallery) => metaGetUserTagsForGallery(gallery).includes(tag))
+    .map((gallery) => {
+      const entry = { kind: "tag", gallery, label: gallery, originPath: "" };
+      const dirs = getDirsForTagEntry(entry);
+      return Object.assign(entry, { count: dirs.length });
+    });
+}
+
+function getGalleryEntriesForAlbum(albumName) {
+  const album = normalizeTagAlbumName(albumName);
+  if (!album) return [];
+  return getAllGalleryNames()
+    .filter((gallery) => !galleryIsHiddenFromCurrentView(gallery))
+    .filter((gallery) => metaGetAlbumForGallery(gallery) === album)
+    .map((gallery) => {
+      const entry = { kind: "tag", gallery, label: gallery, originPath: "" };
+      const dirs = getDirsForTagEntry(entry);
+      return Object.assign(entry, { count: dirs.length });
+    });
+}
+
 function buildBulkTagPlaceholderEntry() {
   if (!BULK_TAG_PLACEHOLDER) return null;
   const rawType = String(BULK_TAG_PLACEHOLDER.type || "tag");
   const type =
     rawType === "album" ||
     rawType === "folderAlbum" ||
-    rawType === "albumTag"
+    rawType === "albumTag" ||
+    rawType === "gallery" ||
+    rawType === "galleryTag" ||
+    rawType === "galleryAlbum"
       ? rawType
       : "tag";
   const fallbackLabel =
@@ -35211,7 +35908,11 @@ function buildBulkTagPlaceholderEntry() {
       ? "New tag album"
       : type === "folderAlbum"
         ? "New album"
-        : "New tag folder";
+        : type === "gallery"
+          ? "New gallery"
+          : type === "galleryAlbum"
+            ? "New album"
+          : "New tag folder";
   return {
     kind: "tag",
     label: BULK_TAG_PLACEHOLDER.label || fallbackLabel,
@@ -35279,6 +35980,10 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       });
     }
   }
+  if (dirNode === WS.root) {
+    const galleries = getGalleryEntriesForRoot();
+    for (let i = 0; i < galleries.length; i++) entries.push(galleries[i]);
+  }
   if (showUntaggedFolderEnabled()) {
     const untaggedEntry = {
       kind: "tag",
@@ -35307,7 +36012,39 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
   // must still gate this block in, otherwise it would never render an entry and
   // become unreachable/undeletable.
   const albumStats = collectTagAlbumStatsForGroups(tagGroups, originPath);
-  if (tagGroups.size || albumTagGroups.size || albumStats.size) {
+  const galleryEntriesByTag =
+    dirNode === WS.root
+      ? new Map(
+          getAllGalleryNames().reduce((pairs, gallery) => {
+            if (galleryIsHiddenFromCurrentView(gallery)) return pairs;
+            metaGetUserTagsForGallery(gallery).forEach((tag) => {
+              if (!pairs.has(tag)) pairs.set(tag, []);
+              pairs.get(tag).push(gallery);
+            });
+            return pairs;
+          }, new Map()),
+        )
+      : new Map();
+  const galleryEntriesByAlbum =
+    dirNode === WS.root
+      ? new Map(
+          getAllGalleryNames().reduce((pairs, gallery) => {
+            if (galleryIsHiddenFromCurrentView(gallery)) return pairs;
+            const album = metaGetAlbumForGallery(gallery);
+            if (!album) return pairs;
+            if (!pairs.has(album)) pairs.set(album, []);
+            pairs.get(album).push(gallery);
+            return pairs;
+          }, new Map()),
+        )
+      : new Map();
+  if (
+    tagGroups.size ||
+    albumTagGroups.size ||
+    albumStats.size ||
+    galleryEntriesByTag.size ||
+    galleryEntriesByAlbum.size
+  ) {
     if (albumStats.size) {
       const sortedAlbums = Array.from(albumStats.keys()).sort((a, b) =>
         String(a).localeCompare(String(b)),
@@ -35355,20 +36092,44 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
                 ),
               ).length
             : 0;
-        if (!visibleTagCount && !visibleDirectFolderCount) continue;
+        const galleryCount = (galleryEntriesByAlbum.get(album) || []).length;
+        if (!visibleTagCount && !visibleDirectFolderCount && !galleryCount)
+          continue;
         entries.push({
           kind: "tag",
           album,
           label: album,
-          count: visibleAlbumDirs.length,
+          count: visibleAlbumDirs.length + galleryCount,
           tagCount: visibleTagCount,
+          galleryCount,
+          originPath,
+        });
+      }
+    }
+    if (galleryEntriesByAlbum.size) {
+      const sortedGalleryAlbums = Array.from(galleryEntriesByAlbum.keys()).sort(
+        (a, b) => String(a).localeCompare(String(b)),
+      );
+      for (let i = 0; i < sortedGalleryAlbums.length; i++) {
+        const album = sortedGalleryAlbums[i];
+        if (albumStats.has(album)) continue;
+        const galleries = galleryEntriesByAlbum.get(album) || [];
+        if (!galleries.length) continue;
+        entries.push({
+          kind: "tag",
+          album,
+          label: album,
+          count: galleries.length,
+          galleryCount: galleries.length,
           originPath,
         });
       }
     }
     const sorted = Array.from(
       new Set(
-        Array.from(tagGroups.keys()).concat(Array.from(albumTagGroups.keys())),
+        Array.from(tagGroups.keys())
+          .concat(Array.from(albumTagGroups.keys()))
+          .concat(Array.from(galleryEntriesByTag.keys())),
       ),
     ).sort((a, b) =>
       String(a).localeCompare(String(b)),
@@ -35377,6 +36138,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       if (metaGetTagAlbumForTag(tag, originPath)) continue;
       const nodes = tagGroups.get(tag) || [];
       const taggedAlbums = albumTagGroups.get(tag) || [];
+      const taggedGalleries = galleryEntriesByTag.get(tag) || [];
       const tagEntry = {
         kind: "tag",
         tag,
@@ -35384,13 +36146,15 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
         originPath,
       };
       const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
-      if (!visibleNodes.length && !taggedAlbums.length) continue;
+      if (!visibleNodes.length && !taggedAlbums.length && !taggedGalleries.length)
+        continue;
       entries.push({
         kind: "tag",
         tag,
         label: tag,
-        count: visibleNodes.length + taggedAlbums.length,
+        count: visibleNodes.length + taggedAlbums.length + taggedGalleries.length,
         albumCount: taggedAlbums.length,
+        galleryCount: taggedGalleries.length,
         originPath,
       });
     }
@@ -35451,12 +36215,23 @@ function getTagEntriesForTagFolderView() {
   if (mode === "album") {
     const album = normalizeTagAlbumName(WS.view.tagFolderActiveAlbum || "");
     if (!album) return [];
-    return getTagEntriesForAlbumForBaseNode(baseNode, album);
+    return getTagEntriesForAlbumForBaseNode(baseNode, album).concat(
+      baseNode === WS.root ? getGalleryEntriesForAlbum(album) : [],
+    );
   }
   if (mode === "tag") {
     const tag = normalizeTag(WS.view.tagFolderActiveTag || "");
     if (!tag) return [];
-    return getAlbumEntriesForTagForBaseNode(baseNode, tag);
+    return getAlbumEntriesForTagForBaseNode(baseNode, tag).concat(
+      baseNode === WS.root ? getGalleryEntriesForTag(tag) : [],
+    );
+  }
+  if (mode === "gallery") {
+    const gallery = normalizeGalleryName(WS.view.tagFolderActiveTag || "");
+    if (!gallery) return [];
+    return getGalleryMemberAlbumEntries(gallery).concat(
+      getGalleryMemberTagEntries(gallery),
+    );
   }
   return [];
 }
@@ -35600,6 +36375,21 @@ function getDirsForTagFolderView() {
       ),
     );
   }
+  if (mode === "gallery") {
+    const gallery = normalizeGalleryName(WS.view.tagFolderActiveTag || "");
+    if (!gallery) return setCached([]);
+    return setCached(
+      filterTagEntryDirsByVisibleRecords(
+        getDirectDirsForGallery(gallery),
+        {
+          kind: "tag",
+          gallery,
+          label: gallery,
+          originPath: "",
+        },
+      ),
+    );
+  }
   const tag = String(WS.view.tagFolderActiveTag || "");
   if (!tag) return setCached([]);
   return setCached(filterTagEntryDirsByVisibleRecords(
@@ -35675,6 +36465,19 @@ function getDirsForTagViewFrame(frame) {
         originPath: String(baseNode.path || ""),
       },
     );
+  if (frame.mode === "gallery") {
+    const gallery = normalizeGalleryName(frame.tag || "");
+    if (!gallery) return [];
+    return filterTagEntryDirsByVisibleRecords(
+      getDirectDirsForGallery(gallery),
+      {
+        kind: "tag",
+        gallery,
+        label: gallery,
+        originPath: "",
+      },
+    );
+  }
   const tag = String(frame.tag || "");
   if (!tag) return [];
   return filterTagEntryDirsByVisibleRecords(
@@ -35707,6 +36510,16 @@ function getDirsForTagEntry(entry) {
     const albumStats = scopeModel.albumStats.get(album);
     const out = albumStats && Array.isArray(albumStats.dirs) ? albumStats.dirs : [];
     const filtered = filterTagEntryDirsByVisibleRecords(out, entry);
+    if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, filtered);
+    return filtered;
+  }
+  if (entry.gallery && !entry.tag && !entry.album) {
+    const gallery = normalizeGalleryName(entry.gallery);
+    if (!gallery) return [];
+    const filtered = filterTagEntryDirsByVisibleRecords(
+      getDirectDirsForGallery(gallery),
+      entry,
+    );
     if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, filtered);
     return filtered;
   }
@@ -35796,6 +36609,7 @@ function createInverseTagForEntry(entry) {
 function getTagEntryIconKey(entry) {
   if (!entry || entry.kind !== "tag") return "tag";
   if (entry.album && !entry.tag) return "album";
+  if (entry.gallery && !entry.tag && !entry.album) return "gallery";
   if (entry.special === "favorites") return "favorite";
   if (entry.special === "hidden") return "hidden";
   if (entry.special === "storage") return "storage";
@@ -35831,6 +36645,14 @@ function fastTagEntryScoreSum(entry) {
   if (entry.album && !entry.tag) {
     const bucket = model.albumStats.get(normalizeTagAlbumName(entry.album));
     return bucket ? Number(bucket.score) || 0 : 0;
+  }
+  if (entry.gallery && !entry.tag && !entry.album) {
+    const dirs = getDirectDirsForGallery(entry.gallery);
+    let score = 0;
+    for (let i = 0; i < dirs.length; i++) {
+      score += Number(metaGetScore(dirs[i]?.path || "")) || 0;
+    }
+    return score;
   }
   if (entry.tag) return Number(model.groupScores.get(String(entry.tag))) || 0;
   return 0;
@@ -36625,6 +37447,9 @@ function tagThumbnailLabelForKey(tagKey) {
         ? `Album ${value} in ${scopeLabel}`
         : `Album ${value}`;
     }
+    if (parsed.kind === "gallery") {
+      return value ? `Gallery ${value}` : "Gallery";
+    }
   }
   if (key === rootThumbnailKey()) return "Root";
   if (key.startsWith("special:favorites:")) {
@@ -36896,16 +37721,21 @@ function makeTagPreviewNode(entry) {
     WS.nav.dirNode;
   if (!entry || !baseNode) return null;
   const isAlbumEntry = !!entry.album && !entry.tag;
+  const isGalleryEntry = !!entry.gallery && !entry.tag && !entry.album;
   const mode = entry.special
     ? String(entry.special || "")
     : isAlbumEntry
       ? "album"
-      : "tag";
-  const label = String(entry.label || entry.tag || entry.special || "Tag");
+      : isGalleryEntry
+        ? "gallery"
+        : "tag";
+  const label = String(entry.label || entry.tag || entry.gallery || entry.special || "Tag");
   const pathSuffix = entry.special
     ? entry.special
     : isAlbumEntry
       ? `album-${String(entry.album || "")}`
+      : isGalleryEntry
+        ? `gallery-${String(entry.gallery || "")}`
       : entry.tag || "tag";
   const safeSuffix = String(pathSuffix || "tag").replace(/[\/\\]/g, "_");
   const virtualPath = `${String(baseNode.path || "")}/@tag-${safeSuffix}`;
@@ -36924,7 +37754,8 @@ function makeTagPreviewNode(entry) {
     path: virtualPath,
     _skipTagFilters: true,
     _tagPreviewMode: mode,
-    _tagPreviewTag: String(entry.tag || ""),
+    _tagPreviewTag: String(isGalleryEntry ? entry.gallery || "" : entry.tag || ""),
+    _tagPreviewGallery: String(entry.gallery || ""),
     _tagPreviewSpecial: String(entry.special || ""),
     _tagPreviewAlbum: String(entry.album || ""),
     _tagPreviewOriginPath: String(baseNode.path || originPath),
@@ -36933,6 +37764,7 @@ function makeTagPreviewNode(entry) {
 
 function findTagEntryIndexInEntries(entries, mode, tag, album = "") {
   const albumKey = normalizeTagAlbumName(album);
+  const galleryKey = normalizeGalleryName(tag);
   const list = Array.isArray(entries) ? entries : [];
   for (let i = 0; i < list.length; i++) {
     const entry = list[i];
@@ -36943,6 +37775,14 @@ function findTagEntryIndexInEntries(entries, mode, tag, album = "") {
       entry.album &&
       !entry.tag &&
       normalizeTagAlbumName(entry.album) === albumKey
+    )
+      return i;
+    if (
+      mode === "gallery" &&
+      entry.gallery &&
+      !entry.tag &&
+      !entry.album &&
+      normalizeGalleryName(entry.gallery) === galleryKey
     )
       return i;
     if (mode === "tag" && entry.tag && entry.tag === tag) {
@@ -37036,6 +37876,9 @@ function makeTagPreviewNodeForContext(mode, tag, originPath, album = "") {
   } else if (mode === "album") {
     entry.album = String(album || "");
     entry.label = String(album || "") || "Album";
+  } else if (mode === "gallery") {
+    entry.gallery = String(tag || "");
+    entry.label = String(tag || "") || "Gallery";
   } else if (mode === "tag") {
     entry.tag = String(tag || "");
     entry.album = String(album || "");
@@ -37226,6 +38069,7 @@ function tagViewFrameForVirtualTagNode(tagNode, selectedDirPath) {
   const validModes = [
     "tag",
     "album",
+    "gallery",
     "favorites",
     "hidden",
     "untagged",
@@ -37233,7 +38077,10 @@ function tagViewFrameForVirtualTagNode(tagNode, selectedDirPath) {
   ];
   const mode = validModes.includes(modeRaw) ? modeRaw : "";
   if (!mode) return null;
-  const tag = mode === "tag" ? String(tagNode._tagPreviewTag || "") : "";
+  const tag =
+    mode === "tag" || mode === "gallery"
+      ? String(tagNode._tagPreviewTag || tagNode._tagPreviewGallery || "")
+      : "";
   const album =
     mode === "album" || mode === "tag"
       ? String(tagNode._tagPreviewAlbum || "")
@@ -37252,6 +38099,8 @@ function tagViewFrameForVirtualTagNode(tagNode, selectedDirPath) {
     entry.special = mode;
   } else if (mode === "album") {
     entry.album = album;
+  } else if (mode === "gallery") {
+    entry.gallery = tag;
   } else {
     entry.tag = tag;
     entry.album = album;
@@ -37464,8 +38313,16 @@ function openTagFolderEntry(entry) {
   pruneStaleTagEntryFramesForPath(basePath);
   const album = String(entry.album || "");
   const isAlbumEntry = !!album && !entry.tag && !entry.special;
-  const mode = entry.special ? entry.special : isAlbumEntry ? "album" : "tag";
-  const tag = mode === "tag" ? entry.tag || "" : "";
+  const gallery = normalizeGalleryName(entry.gallery || "");
+  const isGalleryEntry = !!gallery && !entry.tag && !album && !entry.special;
+  const mode = entry.special
+    ? entry.special
+    : isAlbumEntry
+      ? "album"
+      : isGalleryEntry
+        ? "gallery"
+        : "tag";
+  const tag = mode === "tag" ? entry.tag || "" : mode === "gallery" ? gallery : "";
   const selectedIndexSourceEntries =
     !rebaseToDifferentDir && Array.isArray(WS.nav.entries) && WS.nav.entries.length
       ? WS.nav.entries
@@ -40615,6 +41472,10 @@ function tagEntrySelectionKey(entry) {
     const album = normalizeTagAlbumName(entry.album);
     return album ? `tag-album:${scope}:${album}` : "";
   }
+  if (entry.gallery && !entry.tag && !entry.album) {
+    const gallery = normalizeGalleryName(entry.gallery);
+    return gallery ? `tag-gallery:${gallery}` : "";
+  }
   if (entry.special) {
     if (entry.special === "favorites") {
       return tagThumbnailKeyForEntry(entry);
@@ -40629,12 +41490,21 @@ function tagEntrySelectionKey(entry) {
 function isTagEntryRenameActive(entry, state = TAG_ENTRY_RENAME_STATE) {
   if (!entry || entry.kind !== "tag" || entry.special || !state) return false;
   if (entry.placeholder) return !!state.placeholder;
-  if (state.isAlbumEntry) {
+  if (tagEntryRenameStateIsAlbum(state)) {
     return (
       !!entry.album &&
       !entry.tag &&
       normalizeTagAlbumName(entry.album || "") ===
         normalizeTagAlbumName(state.album || state.label || "")
+    );
+  }
+  if (tagEntryRenameStateIsGallery(state)) {
+    return (
+      !!entry.gallery &&
+      !entry.tag &&
+      !entry.album &&
+      normalizeGalleryName(entry.gallery || "") ===
+        normalizeGalleryName(state.gallery || state.label || "")
     );
   }
   return !!entry.tag && String(entry.tag || "") === String(state.tag || "");
@@ -40878,6 +41748,8 @@ function currentFilePreviewContextDir() {
           : "",
       album: mode === "album" ? String(WS.view.tagFolderActiveAlbum || "") : "",
       tag: mode === "tag" ? String(WS.view.tagFolderActiveTag || "") : "",
+      gallery:
+        mode === "gallery" ? String(WS.view.tagFolderActiveTag || "") : "",
       label:
         mode === "favorites"
           ? "Favorites"
@@ -40887,6 +41759,8 @@ function currentFilePreviewContextDir() {
               ? "Untagged"
               : mode === "album"
                 ? String(WS.view.tagFolderActiveAlbum || "Album")
+                : mode === "gallery"
+                  ? String(WS.view.tagFolderActiveTag || "Gallery")
                 : String(WS.view.tagFolderActiveTag || "Tag"),
     };
     return makeTagPreviewNode(entry) || WS.nav.dirNode || WS.root || null;
@@ -41188,6 +42062,7 @@ function tagItemTypeLabelForEntry(entry) {
     return toTitleCaps(special || "Tag");
   }
   if (entry.album && !entry.tag) return "Album";
+  if (entry.gallery && !entry.tag && !entry.album) return "Gallery";
   return "Tag";
 }
 
@@ -44864,7 +45739,7 @@ function appMenuSelectionSummary() {
     name = displayName(target.rec.name) || String(target.rec.name || "");
   else if (target.kind === "tag")
     name =
-      String(target.entry.label || target.entry.tag || target.entry.album || "") ||
+      String(target.entry.label || target.entry.tag || target.entry.album || target.entry.gallery || "") ||
       "Tag";
   return { target, title: name || "Selected Item", label: "Selected Item" };
 }
@@ -45068,9 +45943,10 @@ function buildSelectedItemMenuSubmenu(summary) {
       entry,
       tag: String(entry.tag || ""),
       album: String(entry.album || ""),
+      gallery: String(entry.gallery || ""),
       tagKey: tagThumbnailKeyForEntry(entry),
       special: entry.special || "",
-      label: String(entry.label || entry.tag || ""),
+      label: String(entry.label || entry.tag || entry.album || entry.gallery || ""),
       anchor: target.card || selectedItemMenuAnchor(),
       paths: gatherTagPathsForDirs(getDirsForTagEntry(entry)),
       originPath: String(entry.originPath || ""),
@@ -46377,15 +47253,17 @@ function openTagContextMenu(context) {
   if (!context || !tagActionMenuEl) return;
   const tag = String(context.tag || "").trim();
   const album = normalizeTagAlbumName(context.album || "");
+  const gallery = normalizeGalleryName(context.gallery || "");
   const tagKey = String(context.tagKey || "").trim();
   const paths = Array.isArray(context.paths) ? context.paths : [];
   const anchor = context.anchor;
   if (!tagKey || !anchor) return;
   const isAlbumEntry = !!album && !tag && !context.special;
-  const canRename = !context.special && (!!tag || isAlbumEntry);
-  const canDelete = !context.special && (!!tag || isAlbumEntry);
+  const isGalleryEntry = !!gallery && !tag && !album && !context.special;
+  const canRename = !context.special && (!!tag || isAlbumEntry || isGalleryEntry);
+  const canDelete = !context.special && (!!tag || isAlbumEntry || isGalleryEntry);
   const canTagAlbum = isAlbumEntry;
-  const canHide = !context.special && (!!tag || isAlbumEntry);
+  const canHide = !context.special && (!!tag || isAlbumEntry || isGalleryEntry);
   const canCreateInverse = !!tag && !context.special && !isAlbumEntry;
   const currentAlbumContext = currentTagMenuAlbumRemovalContext();
   const canRemoveFromAlbum =
@@ -46395,6 +47273,13 @@ function openTagContextMenu(context) {
     !!currentAlbumContext &&
     String(currentAlbumContext.originPath || "") ===
       String(context.originPath || "");
+  const currentGalleryContext = currentTagMenuGalleryRemovalContext();
+  const canRemoveFromGallery =
+    !context.special &&
+    !isGalleryEntry &&
+    !!currentGalleryContext &&
+    !!normalizeGalleryName(currentGalleryContext.gallery || "") &&
+    !!(tag || isAlbumEntry);
   const preferPane =
     anchor && anchor.closest && anchor.closest("#previewBody")
       ? "preview"
@@ -46407,17 +47292,18 @@ function openTagContextMenu(context) {
           kind: "tag",
           tag: String(context.tag || ""),
           album: normalizeTagAlbumName(context.album || ""),
+          gallery: normalizeGalleryName(context.gallery || ""),
           special: String(context.special || ""),
-          label: String(context.label || context.tag || context.album || "Tag"),
+          label: String(context.label || context.tag || context.album || context.gallery || "Tag"),
           originPath: String(
             context.originPath || WS.nav?.dirNode?.path || "",
           ),
           placeholder: false,
         };
   const canAppearancePreset =
-    !!tagKey && !context.special && (!!tag || isAlbumEntry);
+    !!tagKey && !context.special && (!!tag || isAlbumEntry || isGalleryEntry);
   const canMediaFilter =
-    !!tagKey && !context.special && (!!tag || isAlbumEntry);
+    !!tagKey && !context.special && (!!tag || isAlbumEntry || isGalleryEntry);
   const isHidden = canHide && metaHasHiddenTagByKey(tagKey);
   const assignedAppearancePresetId = canAppearancePreset
     ? metaGetTagAppearancePresetIdByKey(tagKey)
@@ -46459,11 +47345,36 @@ function openTagContextMenu(context) {
         );
       }),
     );
+    addToButtons.push(
+      createTagMenuButton("Gallery", () => {
+        closeTagContextMenu();
+        beginGalleryAssignmentForEntries([tagEntryForThumb], preferPane);
+      }),
+    );
+  } else if (isGalleryEntry) {
+    addToButtons.push(
+      createTagMenuButton("Tag", () => {
+        closeTagContextMenu();
+        startBulkGalleryTagging([gallery], preferPane);
+      }),
+    );
+    addToButtons.push(
+      createTagMenuButton("Album", () => {
+        closeTagContextMenu();
+        startBulkGalleryAlbuming([gallery], preferPane);
+      }),
+    );
   } else if (tag && !context.special) {
     addToButtons.push(
       createTagMenuButton("Album", () => {
         closeTagContextMenu();
         beginTagAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
+      }),
+    );
+    addToButtons.push(
+      createTagMenuButton("Gallery", () => {
+        closeTagContextMenu();
+        beginGalleryAssignmentForEntries([tagEntryForThumb], preferPane);
       }),
     );
   }
@@ -46490,8 +47401,16 @@ function openTagContextMenu(context) {
       ),
     );
   }
+  if (canRemoveFromGallery) {
+    menu.appendChild(
+      createTagMenuButton("Remove from gallery", () =>
+        handleTagMenuAction("remove-from-gallery"),
+      ),
+    );
+  }
   let filtersEntry = null;
   if (canAppearancePreset) {
+    const scopeLabel = isGalleryEntry ? "Gallery" : isAlbumEntry ? "Tag album" : "Tag";
     filtersEntry = createAppearancePresetCycleButton({
       currentPresetId: assignedAppearancePresetId,
       hasOverride: !!assignedAppearancePresetId,
@@ -46499,21 +47418,19 @@ function openTagContextMenu(context) {
         if (!metaSetTagAppearancePresetIdByKey(tagKey, presetId)) return;
         refreshAfterProcessingMetadataChange();
         showStatusMessage(
-          `${isAlbumEntry ? "Tag album" : "Tag"} media preset: ${appearancePresetDisplayName(presetId)}.`,
+          `${scopeLabel} media preset: ${appearancePresetDisplayName(presetId)}.`,
         );
       },
       onClear: () => {
         if (!metaClearTagAppearancePresetByKey(tagKey)) return;
         refreshAfterProcessingMetadataChange();
-        showStatusMessage(
-          `${isAlbumEntry ? "Tag album" : "Tag"} media preset reset.`,
-        );
+        showStatusMessage(`${scopeLabel} media preset reset.`);
       },
     });
   }
   let mediaTypeEntry = null;
   if (canMediaFilter) {
-    const scopeLabel = isAlbumEntry ? "Tag album" : "Tag";
+    const scopeLabel = isGalleryEntry ? "Gallery" : isAlbumEntry ? "Tag album" : "Tag";
     const applyTagMediaFilter = (axisLabel, nextValue, onlyType) => {
       const changed = metaSetTagMediaFilterByKey(tagKey, nextValue);
       if (changed) {
@@ -46585,12 +47502,14 @@ function openTagContextMenu(context) {
   TAG_CONTEXT_MENU_STATE = {
     tag,
     album,
+    gallery,
     isAlbumEntry,
+    isGalleryEntry,
     special: String(context.special || ""),
     entry: tagEntryForThumb,
     tagKey,
     anchor,
-    label: context.label || tag || album,
+    label: context.label || tag || album || gallery,
     paths: paths.slice(),
     originPath: String(context.originPath || ""),
     canRename,
@@ -46599,6 +47518,7 @@ function openTagContextMenu(context) {
     canHide,
     canCreateInverse,
     canRemoveFromAlbum,
+    canRemoveFromGallery,
     isHidden,
     canAppearancePreset,
     canMediaFilter,
@@ -46639,9 +47559,10 @@ function openTagEntryContextMenu(entry, anchor) {
     entry,
     tag: String(entry.tag || ""),
     album: String(entry.album || ""),
+    gallery: String(entry.gallery || ""),
     tagKey,
     special: entry.special || "",
-    label: String(entry.label || entry.tag || ""),
+    label: String(entry.label || entry.tag || entry.album || entry.gallery || ""),
     anchor,
     paths,
     originPath: String(entry.originPath || ""),
@@ -47584,7 +48505,7 @@ function itemInfoRowsForTarget(target) {
     if (!entry) return [];
     const metrics = getTagEntryAggregateMetrics(entry, new Map());
     const rows = [
-      ["Name", String(entry.label || entry.tag || entry.album || "")],
+      ["Name", String(entry.label || entry.tag || entry.album || entry.gallery || "")],
       ["Type", tagItemTypeLabelForEntry(entry)],
       ["Location", displayPath(entry.originPath || "") || "Root"],
       ["Folders", String(Math.max(0, Number(metrics.folderCount) || 0))],
@@ -47806,6 +48727,7 @@ function buildFolderAddToSubmenuHtml(state) {
   let items = "";
   items += button("Tag", "tag", restricted);
   items += button("Album", "album", restricted);
+  items += button("Gallery", "gallery", restricted);
   items += button(
     state.isFavorite ? "Remove from Favorites" : "Favorites",
     "favorite",
@@ -47978,6 +48900,8 @@ function buildFolderMenuState(dirNode) {
     !isStorageGhost && !isRootNode ? currentFolderMenuTagRemovalContext() : null;
   const currentAlbumRemovalContext =
     !isStorageGhost && !isRootNode ? currentFolderMenuAlbumRemovalContext() : null;
+  const currentGalleryRemovalContext =
+    !isStorageGhost && !isRootNode ? currentFolderMenuGalleryRemovalContext() : null;
   const folderThumbMode = isRootNode
     ? getRootThumbnailMode()
     : metaGetFolderThumbnailMode(p);
@@ -48008,10 +48932,16 @@ function buildFolderMenuState(dirNode) {
     canResetOrder,
     currentTagRemovalContext,
     currentAlbumRemovalContext,
+    currentGalleryRemovalContext,
     canRemoveFromAlbum:
       !!currentAlbumRemovalContext &&
       normalizeTagAlbumName(currentAlbumRemovalContext.album || "") ===
         metaGetAlbumForPath(p),
+    canRemoveFromGallery:
+      !!currentGalleryRemovalContext &&
+      metaGetGalleriesForPath(p).includes(
+        normalizeGalleryName(currentGalleryRemovalContext.gallery || ""),
+      ),
     showUseDefaultThumbnail:
       !isStorageGhost &&
       (hasPreset ||
@@ -48129,6 +49059,11 @@ function buildFolderActionMenuDom(
       state.isStorageRestricted || state.isTrashItem,
     ),
     makeBtn(
+      "Gallery",
+      "gallery",
+      state.isStorageRestricted || state.isTrashItem,
+    ),
+    makeBtn(
       state.isFavorite ? "Remove from Favorites" : "Favorites",
       "favorite",
       state.isStorageRestricted || state.isTrashItem,
@@ -48160,6 +49095,8 @@ function buildFolderActionMenuDom(
   menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
   if (state.canRemoveFromAlbum)
     menuEl.appendChild(makeBtn("Remove from album", "remove-from-album"));
+  if (state.canRemoveFromGallery)
+    menuEl.appendChild(makeBtn("Remove from gallery", "remove-from-gallery"));
   if (overridesSubmenu) menuEl.appendChild(overridesSubmenu);
   if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
   if (!state.isStorageRestricted && !state.isTrashItem)
@@ -48241,6 +49178,13 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     startBulkFolderAlbuming([p], fromPreview ? "preview" : "directories");
     return true;
   }
+  if (action === "gallery") {
+    if (isRootNode || !p) return true;
+    const fromPreview =
+      !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview";
+    startBulkGallerying([p], fromPreview ? "preview" : "directories");
+    return true;
+  }
   if (action === "remove-from-tag") {
     const tagContext = currentFolderMenuTagRemovalContext();
     if (!tagContext || !p) return true;
@@ -48267,6 +49211,22 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     refreshAfterTagMetadataChange();
     showStatusMessage(
       `Removed folder from album '${displayTagFolderLabel(albumContext.album)}'.`,
+    );
+    return true;
+  }
+  if (action === "remove-from-gallery") {
+    const galleryContext = currentFolderMenuGalleryRemovalContext();
+    if (!galleryContext || !p) return true;
+    const gallery = normalizeGalleryName(galleryContext.gallery || "");
+    const next = metaGetGalleriesForPath(p).filter((item) => item !== gallery);
+    if (!metaSetGalleriesForPath(p, next)) {
+      showStatusMessage("No folders updated.");
+      return true;
+    }
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    showStatusMessage(
+      `Removed folder from gallery '${displayTagFolderLabel(gallery)}'.`,
     );
     return true;
   }
@@ -48484,6 +49444,15 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         metaGetAlbumForPath(p) ===
         normalizeTagAlbumName(activeAlbumRemovalContext.album || ""),
     );
+  const activeGalleryRemovalContext = currentFolderMenuGalleryRemovalContext();
+  const activeGalleryRemovalName = normalizeGalleryName(
+    activeGalleryRemovalContext && activeGalleryRemovalContext.gallery,
+  );
+  const canRemoveSelectedFromGallery =
+    !!activeGalleryRemovalName &&
+    selectedPaths.some((p) =>
+      metaGetGalleriesForPath(p).includes(activeGalleryRemovalName),
+    );
 
   const addToButtons = [
     makeBtn(
@@ -48494,6 +49463,11 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     makeBtn(
       "Album",
       () => startBulkFolderAlbuming(selectedPaths, "preview"),
+      anyTrash || anyStorage,
+    ),
+    makeBtn(
+      "Gallery",
+      () => startBulkGallerying(selectedPaths, "preview"),
       anyTrash || anyStorage,
     ),
     makeBtn(
@@ -48578,6 +49552,27 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         metaScheduleSave();
         refreshAfterTagMetadataChange();
         showStatusMessage("Removed selected folders from album.");
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+      }),
+    );
+  }
+  if (canRemoveSelectedFromGallery) {
+    menu.appendChild(
+      makeBtn("Remove from gallery", () => {
+        let changed = false;
+        for (let i = 0; i < selectedPaths.length; i++) {
+          const next = metaGetGalleriesForPath(selectedPaths[i]).filter(
+            (item) => item !== activeGalleryRemovalName,
+          );
+          if (metaSetGalleriesForPath(selectedPaths[i], next)) changed = true;
+        }
+        if (!changed) {
+          showStatusMessage("No folders updated.");
+          return;
+        }
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        showStatusMessage("Removed selected folders from gallery.");
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
       }),
     );
@@ -48804,7 +49799,8 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       !entry.special &&
       !entry.placeholder &&
       (!!String(entry.tag || "").trim() ||
-        !!normalizeTagAlbumName(entry.album || "")),
+        !!normalizeTagAlbumName(entry.album || "") ||
+        !!normalizeGalleryName(entry.gallery || "")),
   );
   const tagAppearancePresetKeys = Array.from(
     new Set(
@@ -48829,13 +49825,26 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       !String(entry.tag || "").trim() &&
       !!normalizeTagAlbumName(entry.album || ""),
   );
+  const galleryAssignableEntries = selectedEntries.filter((entry) =>
+    !!galleryTargetForTagEntry(entry),
+  );
+  const taggableGalleryEntries = selectedEntries.filter(
+    (entry) =>
+      entry &&
+      !entry.special &&
+      !entry.placeholder &&
+      !String(entry.tag || "").trim() &&
+      !normalizeTagAlbumName(entry.album || "") &&
+      !!normalizeGalleryName(entry.gallery || ""),
+  );
   const hideableEntries = selectedEntries.filter(
     (entry) =>
       entry &&
       !entry.special &&
       !entry.placeholder &&
       (!!String(entry.tag || "").trim() ||
-        !!normalizeTagAlbumName(entry.album || "")),
+        !!normalizeTagAlbumName(entry.album || "") ||
+        !!normalizeGalleryName(entry.gallery || "")),
   );
   const hideableTagKeys = Array.from(
     new Set(hideableEntries.map((entry) => hiddenTagKeyForEntry(entry)).filter(Boolean)),
@@ -48851,7 +49860,8 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     !singleRenameEntry.special &&
     !singleRenameEntry.placeholder &&
     (String(singleRenameEntry.tag || "").trim() ||
-      normalizeTagAlbumName(singleRenameEntry.album || ""))
+      normalizeTagAlbumName(singleRenameEntry.album || "") ||
+      normalizeGalleryName(singleRenameEntry.gallery || ""))
   );
   const singleRegularTagEntry =
     singleRenameEntry &&
@@ -48882,6 +49892,38 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       }),
     );
   }
+  if (galleryAssignableEntries.length) {
+    addToButtons.push(
+      makeBtn("Gallery", async () => {
+        finalizeBulkSelectionAction();
+        beginGalleryAssignmentForEntries(galleryAssignableEntries, "preview");
+      }),
+    );
+  }
+  if (taggableGalleryEntries.length) {
+    addToButtons.push(
+      makeBtn("Tag", async () => {
+        finalizeBulkSelectionAction();
+        startBulkGalleryTagging(
+          taggableGalleryEntries.map((entry) =>
+            normalizeGalleryName(entry.gallery || ""),
+          ),
+          "preview",
+        );
+      }),
+    );
+    addToButtons.push(
+      makeBtn("Album", async () => {
+        finalizeBulkSelectionAction();
+        startBulkGalleryAlbuming(
+          taggableGalleryEntries.map((entry) =>
+            normalizeGalleryName(entry.gallery || ""),
+          ),
+          "preview",
+        );
+      }),
+    );
+  }
   if (hideableTagKeys.length) {
     addToButtons.push(
       makeBtn(allHiddenTags ? "Unhidden" : "Hidden", async () => {
@@ -48900,7 +49942,11 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       }),
     );
   }
-  if (albumAssignableTagEntries.length || taggableAlbumEntries.length) {
+  if (
+    albumAssignableTagEntries.length ||
+    taggableAlbumEntries.length ||
+    taggableGalleryEntries.length
+  ) {
     addToButtons.push(
       makeBtn(
         "Trash",
@@ -49209,20 +50255,82 @@ function beginTagAlbumAssignmentForEntries(entries, preferPane = "directories") 
   return true;
 }
 
+function galleryTargetForTagEntry(entry) {
+  if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
+    return null;
+  const tag = normalizeTag(entry.tag || "");
+  if (tag) return { kind: "tag", tag };
+  const album = normalizeTagAlbumName(entry.album || "");
+  if (album) return { kind: "album", album };
+  return null;
+}
+
+function beginGalleryAssignmentForEntries(entries, preferPane = "directories") {
+  const targets = (Array.isArray(entries) ? entries : [])
+    .map(galleryTargetForTagEntry)
+    .filter(Boolean);
+  if (!targets.length) {
+    showStatusMessage("No tags or albums selected.");
+    return false;
+  }
+  startBulkGallerying(targets, preferPane);
+  return true;
+}
+
+function addUserTagsToGalleryBulk(galleries, tagsToAdd) {
+  const add = normalizeTagList(tagsToAdd).filter(
+    (tag) => !isReservedFolderTag(tag),
+  );
+  if (!add.length) return false;
+  const names = Array.from(
+    new Set((galleries || []).map(normalizeGalleryName).filter(Boolean)),
+  );
+  let changed = false;
+  for (let i = 0; i < names.length; i++) {
+    const gallery = names[i];
+    const next = normalizeTagList(metaGetUserTagsForGallery(gallery).concat(add));
+    if (metaSetUserTagsForGallery(gallery, next)) changed = true;
+  }
+  if (!changed) return false;
+  metaScheduleSave();
+  refreshAfterTagMetadataChange();
+  showStatusMessage(`Tagged ${names.length} gallery${names.length === 1 ? "" : "s"}.`);
+  return true;
+}
+
+function assignAlbumForGalleriesBulk(galleries, albumName) {
+  const album = normalizeTagAlbumName(albumName);
+  if (!album) return false;
+  const names = Array.from(
+    new Set((galleries || []).map(normalizeGalleryName).filter(Boolean)),
+  );
+  let changed = false;
+  for (let i = 0; i < names.length; i++) {
+    if (metaSetAlbumForGallery(names[i], album)) changed = true;
+  }
+  if (!changed) return false;
+  metaScheduleSave();
+  refreshAfterTagMetadataChange();
+  showStatusMessage(`Assigned ${names.length} gallery${names.length === 1 ? "" : "s"} to album '${album}'.`);
+  return true;
+}
+
 function beginTagRenameForEntry(entry, preferPane = "directories") {
   if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
     return false;
   const tag = String(entry.tag || "").trim();
   const album = normalizeTagAlbumName(entry.album || "");
+  const gallery = normalizeGalleryName(entry.gallery || "");
   const isAlbumEntry = !!album && !tag;
-  if (!tag && !isAlbumEntry) return false;
-  const label = String(entry.label || entry.tag || album || tag);
+  const isGalleryEntry = !!gallery && !tag && !album;
+  if (!tag && !isAlbumEntry && !isGalleryEntry) return false;
+  const label = String(entry.label || entry.tag || album || gallery || tag);
   const paths = gatherTagPathsForDirs(getDirsForTagEntry(entry));
   const baseNode =
     WS.dirByPath.get(String(entry.originPath || "")) || WS.nav.dirNode || WS.root;
   const taggedAlbums =
     tag && !isAlbumEntry ? getAlbumEntriesForTagForBaseNode(baseNode, tag) : [];
-  if (!paths.length && !taggedAlbums.length && !isAlbumEntry) {
+  if (!paths.length && !taggedAlbums.length && !isAlbumEntry && !isGalleryEntry) {
     showStatusMessage("No items contain that tag.");
     return false;
   }
@@ -49230,10 +50338,12 @@ function beginTagRenameForEntry(entry, preferPane = "directories") {
     {
       tag,
       album,
+      gallery,
       label,
       paths,
       originPath: String(entry.originPath || ""),
       isAlbumEntry,
+      isGalleryEntry,
     },
     preferPane,
   );
@@ -49357,7 +50467,78 @@ function renameTagForPaths(tag, newName, paths, scopePath = null) {
         changed = true;
     }
   }
+  if (WS.meta && WS.meta.galleryMemberTagsByGallery instanceof Map) {
+    for (const [galleryRaw, tagsRaw] of Array.from(
+      WS.meta.galleryMemberTagsByGallery.entries(),
+    )) {
+      const tags = normalizeTagList(tagsRaw);
+      if (!tags.includes(normalizedOld)) continue;
+      const next = tags.map((tag) =>
+        tag === normalizedOld ? normalizedNew : tag,
+      );
+      if (metaSetMemberTagsForGallery(galleryRaw, next)) changed = true;
+    }
+  }
+  if (WS.meta && WS.meta.galleryUserTagsByGallery instanceof Map) {
+    for (const [galleryRaw, tagsRaw] of Array.from(
+      WS.meta.galleryUserTagsByGallery.entries(),
+    )) {
+      const tags = normalizeTagList(tagsRaw);
+      if (!tags.includes(normalizedOld)) continue;
+      const next = tags.map((tag) =>
+        tag === normalizedOld ? normalizedNew : tag,
+      );
+      if (metaSetUserTagsForGallery(galleryRaw, next)) changed = true;
+    }
+  }
   return changed;
+}
+
+function tagAlbumExistsInScope(albumName, scopePath = null) {
+  const album = normalizeTagAlbumName(albumName || "");
+  if (!album || !WS.meta) return false;
+  const normalizedScope = normalizeTagAlbumScopePath(scopePath);
+  const scopeMatches = (candidateScope) =>
+    scopePath == null || String(candidateScope || "") === normalizedScope;
+
+  if (WS.meta.tagAlbumByTag instanceof Map) {
+    for (const [tagKeyRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
+      const parsed = parseTagAlbumMembershipKey(tagKeyRaw);
+      if (
+        parsed &&
+        scopeMatches(parsed.scopePath) &&
+        normalizeTagAlbumName(albumRaw) === album
+      )
+        return true;
+    }
+  }
+  if (WS.meta.folderAlbumByPath instanceof Map) {
+    for (const [pathRaw, albumRaw] of WS.meta.folderAlbumByPath.entries()) {
+      if (normalizeTagAlbumName(albumRaw) !== album) continue;
+      if (scopeMatches(hiddenTagScopePathForDirPath(pathRaw))) return true;
+    }
+  }
+  if (WS.meta.albumTagsByAlbum instanceof Map) {
+    for (const albumKeyRaw of WS.meta.albumTagsByAlbum.keys()) {
+      const parsed = parseAlbumTagMembershipKey(albumKeyRaw);
+      if (parsed && parsed.album === album && scopeMatches(parsed.scopePath))
+        return true;
+    }
+  }
+  if (scopeMatches("")) {
+    if (WS.meta.galleryMemberAlbumsByGallery instanceof Map) {
+      for (const albumsRaw of WS.meta.galleryMemberAlbumsByGallery.values()) {
+        const albums = normalizeTagList(albumsRaw).map(normalizeTagAlbumName);
+        if (albums.includes(album)) return true;
+      }
+    }
+    if (WS.meta.galleryAlbumByGallery instanceof Map) {
+      for (const albumRaw of WS.meta.galleryAlbumByGallery.values()) {
+        if (normalizeTagAlbumName(albumRaw) === album) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function renameTagAlbumByName(albumName, newName, scopePath = null) {
@@ -49365,6 +50546,7 @@ function renameTagAlbumByName(albumName, newName, scopePath = null) {
   const normalizedNew = normalizeTagAlbumName(newName || "");
   if (!normalizedOld || !normalizedNew || normalizedOld === normalizedNew)
     return false;
+  const normalizedScope = normalizeTagAlbumScopePath(scopePath);
   let changed = false;
   if (WS.meta && WS.meta.tagAlbumByTag instanceof Map) {
     for (const [tagKeyRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
@@ -49386,6 +50568,11 @@ function renameTagAlbumByName(albumName, newName, scopePath = null) {
     )) {
       const assignedAlbum = normalizeTagAlbumName(albumRaw);
       if (assignedAlbum !== normalizedOld) continue;
+      if (
+        scopePath != null &&
+        hiddenTagScopePathForDirPath(pathRaw) !== normalizedScope
+      )
+        continue;
       if (metaSetAlbumForPath(pathRaw, normalizedNew)) changed = true;
     }
   }
@@ -49406,6 +50593,26 @@ function renameTagAlbumByName(albumName, newName, scopePath = null) {
         changed = true;
       if (metaSetUserTagsForAlbum(parsed.album, parsed.scopePath, []))
         changed = true;
+    }
+  }
+  if (WS.meta && WS.meta.galleryMemberAlbumsByGallery instanceof Map) {
+    for (const [galleryRaw, albumsRaw] of Array.from(
+      WS.meta.galleryMemberAlbumsByGallery.entries(),
+    )) {
+      const albums = normalizeTagList(albumsRaw).map(normalizeTagAlbumName);
+      if (!albums.includes(normalizedOld)) continue;
+      const next = albums.map((album) =>
+        album === normalizedOld ? normalizedNew : album,
+      );
+      if (metaSetMemberAlbumsForGallery(galleryRaw, next)) changed = true;
+    }
+  }
+  if (WS.meta && WS.meta.galleryAlbumByGallery instanceof Map) {
+    for (const [galleryRaw, albumRaw] of Array.from(
+      WS.meta.galleryAlbumByGallery.entries(),
+    )) {
+      if (normalizeTagAlbumName(albumRaw) !== normalizedOld) continue;
+      if (metaSetAlbumForGallery(galleryRaw, normalizedNew)) changed = true;
     }
   }
   const rekeyAlbumScopedState = (keys, buildKey, rekeyFn) => {
@@ -49447,6 +50654,86 @@ function renameTagAlbumByName(albumName, newName, scopePath = null) {
     hiddenTagKeyForAlbum,
     rekeyHiddenTagState,
   );
+  return changed;
+}
+
+function renameGalleryByName(galleryName, newName) {
+  const oldGallery = normalizeGalleryName(galleryName);
+  const newGallery = normalizeGalleryName(newName);
+  if (!oldGallery || !newGallery || oldGallery === newGallery) return false;
+  let changed = false;
+  if (WS.meta && WS.meta.folderGalleriesByPath instanceof Map) {
+    for (const [pathRaw, galleriesRaw] of Array.from(
+      WS.meta.folderGalleriesByPath.entries(),
+    )) {
+      const galleries = normalizeTagList(galleriesRaw).map((gallery) =>
+        gallery === oldGallery ? newGallery : gallery,
+      );
+      if (metaSetGalleriesForPath(pathRaw, galleries)) changed = true;
+    }
+  }
+  const mergeListMapEntry = (map, normalizeValues) => {
+    if (!(map instanceof Map) || !map.has(oldGallery)) return false;
+    const source = normalizeValues(map.get(oldGallery));
+    const target = normalizeValues(map.get(newGallery));
+    const merged = normalizeValues(target.concat(source));
+    if (merged.length) map.set(newGallery, merged);
+    else map.delete(newGallery);
+    map.delete(oldGallery);
+    return true;
+  };
+  if (
+    mergeListMapEntry(
+      WS.meta.galleryMemberTagsByGallery,
+      (values) =>
+        normalizeTagList(values).filter((tag) => !isReservedFolderTag(tag)),
+    )
+  )
+    changed = true;
+  if (
+    mergeListMapEntry(
+      WS.meta.galleryMemberAlbumsByGallery,
+      (values) =>
+        normalizeTagList(values).map(normalizeTagAlbumName).filter(Boolean),
+    )
+  )
+    changed = true;
+  if (
+    mergeListMapEntry(
+      WS.meta.galleryUserTagsByGallery,
+      (values) =>
+        normalizeTagList(values)
+          .filter((tag) => !isReservedFolderTag(tag))
+          .filter((tag) => tag !== newGallery),
+    )
+  )
+    changed = true;
+  if (
+    WS.meta.galleryAlbumByGallery instanceof Map &&
+    WS.meta.galleryAlbumByGallery.has(oldGallery)
+  ) {
+    const sourceAlbum = normalizeTagAlbumName(
+      WS.meta.galleryAlbumByGallery.get(oldGallery),
+    );
+    const targetAlbum = normalizeTagAlbumName(
+      WS.meta.galleryAlbumByGallery.get(newGallery),
+    );
+    if (!targetAlbum && sourceAlbum && sourceAlbum !== newGallery) {
+      WS.meta.galleryAlbumByGallery.set(newGallery, sourceAlbum);
+    }
+    WS.meta.galleryAlbumByGallery.delete(oldGallery);
+    changed = true;
+  }
+  const oldKey = tagThumbnailKeyForGallery(oldGallery);
+  const newKey = tagThumbnailKeyForGallery(newGallery);
+  if (rekeyTagThumbnailState(oldKey, newKey)) changed = true;
+  if (rekeyTagAppearancePresetState(oldKey, newKey)) changed = true;
+  if (rekeyTagMediaFilterState(oldKey, newKey)) changed = true;
+  if (rekeyHiddenTagState(oldKey, newKey)) changed = true;
+  if (changed) {
+    metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+    invalidateDirMetricsCaches();
+  }
   return changed;
 }
 
@@ -49523,6 +50810,36 @@ function deleteTagFromPaths(tag, paths, scopePath = null) {
         changed = true;
     }
   }
+  if (WS.meta && WS.meta.galleryMemberTagsByGallery instanceof Map) {
+    for (const [galleryRaw, tagsRaw] of Array.from(
+      WS.meta.galleryMemberTagsByGallery.entries(),
+    )) {
+      const tags = normalizeTagList(tagsRaw);
+      if (!tags.includes(normalized)) continue;
+      if (
+        metaSetMemberTagsForGallery(
+          galleryRaw,
+          tags.filter((tag) => tag !== normalized),
+        )
+      )
+        changed = true;
+    }
+  }
+  if (WS.meta && WS.meta.galleryUserTagsByGallery instanceof Map) {
+    for (const [galleryRaw, tagsRaw] of Array.from(
+      WS.meta.galleryUserTagsByGallery.entries(),
+    )) {
+      const tags = normalizeTagList(tagsRaw);
+      if (!tags.includes(normalized)) continue;
+      if (
+        metaSetUserTagsForGallery(
+          galleryRaw,
+          tags.filter((tag) => tag !== normalized),
+        )
+      )
+        changed = true;
+    }
+  }
   return changed;
 }
 
@@ -49580,6 +50897,29 @@ function deleteTagAlbumByName(albumName, scopePath = null) {
       }
       if (metaSetUserTagsForAlbum(parsed.album, parsed.scopePath, []))
         changed = true;
+    }
+  }
+  if (WS.meta && WS.meta.galleryMemberAlbumsByGallery instanceof Map) {
+    for (const [galleryRaw, albumsRaw] of Array.from(
+      WS.meta.galleryMemberAlbumsByGallery.entries(),
+    )) {
+      const albums = normalizeTagList(albumsRaw).map(normalizeTagAlbumName);
+      if (!albums.includes(album)) continue;
+      if (
+        metaSetMemberAlbumsForGallery(
+          galleryRaw,
+          albums.filter((item) => item !== album),
+        )
+      )
+        changed = true;
+    }
+  }
+  if (WS.meta && WS.meta.galleryAlbumByGallery instanceof Map) {
+    for (const [galleryRaw, albumRaw] of Array.from(
+      WS.meta.galleryAlbumByGallery.entries(),
+    )) {
+      if (normalizeTagAlbumName(albumRaw) !== album) continue;
+      if (metaSetAlbumForGallery(galleryRaw, "")) changed = true;
     }
   }
   if (
@@ -49647,6 +50987,38 @@ function deleteTagAlbumByName(albumName, scopePath = null) {
   )
     changed = true;
   return { changed, clearedTags, album };
+}
+
+function deleteGalleryByName(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery) return false;
+  let changed = false;
+  if (WS.meta && WS.meta.folderGalleriesByPath instanceof Map) {
+    for (const [pathRaw, galleriesRaw] of Array.from(
+      WS.meta.folderGalleriesByPath.entries(),
+    )) {
+      const next = normalizeTagList(galleriesRaw).filter((item) => item !== gallery);
+      if (metaSetGalleriesForPath(pathRaw, next)) changed = true;
+    }
+  }
+  [
+    WS.meta.galleryMemberTagsByGallery,
+    WS.meta.galleryMemberAlbumsByGallery,
+    WS.meta.galleryUserTagsByGallery,
+    WS.meta.galleryAlbumByGallery,
+  ].forEach((map) => {
+    if (map && map.delete(gallery)) changed = true;
+  });
+  const galleryKey = tagThumbnailKeyForGallery(gallery);
+  if (clearTagThumbnailStateByMatch((key) => key === galleryKey)) changed = true;
+  if (clearTagAppearancePresetStateByMatch((key) => key === galleryKey)) changed = true;
+  if (clearTagMediaFilterStateByMatch((key) => key === galleryKey)) changed = true;
+  if (clearHiddenTagStateByMatch((key) => key === galleryKey)) changed = true;
+  if (changed) {
+    metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
+    invalidateDirMetricsCaches();
+  }
+  return changed;
 }
 
 function tagMediaFilterAxisCycleOptions(axis, allLabel = "All") {
@@ -49770,9 +51142,11 @@ async function handleTagMenuAction(action) {
   closeTagContextMenu();
   const tag = ctx.tag || "";
   const album = normalizeTagAlbumName(ctx.album || "");
+  const gallery = normalizeGalleryName(ctx.gallery || "");
   const isAlbumEntry = !!ctx.isAlbumEntry && !!album;
+  const isGalleryEntry = !!ctx.isGalleryEntry && !!gallery;
   const tagKey = String(ctx.tagKey || "");
-  const label = ctx.label || tag || album;
+  const label = ctx.label || tag || album || gallery;
   const paths = ctx.paths || [];
   if (action === "rename") {
     if (!ctx.canRename) return;
@@ -49783,10 +51157,10 @@ async function handleTagMenuAction(action) {
       WS.nav.dirNode ||
       WS.root;
     const renameTaggedAlbums =
-      tag && !isAlbumEntry
+      tag && !isAlbumEntry && !isGalleryEntry
         ? getAlbumEntriesForTagForBaseNode(renameBaseNode, tag)
         : [];
-    if (!paths.length && !isAlbumEntry && !renameTaggedAlbums.length) {
+    if (!paths.length && !isAlbumEntry && !isGalleryEntry && !renameTaggedAlbums.length) {
       showStatusMessage("No items contain that tag.");
       return;
     }
@@ -49794,10 +51168,12 @@ async function handleTagMenuAction(action) {
       {
         tag,
         album,
+        gallery,
         label,
         paths,
         originPath: String(ctx.originPath || ""),
         isAlbumEntry,
+        isGalleryEntry,
       },
       ctx.anchor && ctx.anchor.closest && ctx.anchor.closest("#previewBody")
         ? "preview"
@@ -49805,7 +51181,7 @@ async function handleTagMenuAction(action) {
     );
     return;
   }
-    if (action === "remove-from-album") {
+  if (action === "remove-from-album") {
     if (!ctx.canRemoveFromAlbum) return;
     const albumContext = currentTagMenuAlbumRemovalContext();
     if (!albumContext) return;
@@ -49825,8 +51201,52 @@ async function handleTagMenuAction(action) {
     );
     return;
   }
+  if (action === "remove-from-gallery") {
+    if (!ctx.canRemoveFromGallery) return;
+    const galleryContext = currentTagMenuGalleryRemovalContext();
+    const galleryName = normalizeGalleryName(galleryContext && galleryContext.gallery);
+    if (!galleryName) return;
+    let changed = false;
+    if (tag) {
+      const next = metaGetMemberTagsForGallery(galleryName).filter(
+        (item) => item !== tag,
+      );
+      changed = metaSetMemberTagsForGallery(galleryName, next);
+    } else if (isAlbumEntry) {
+      const next = metaGetMemberAlbumsForGallery(galleryName).filter(
+        (item) => item !== album,
+      );
+      changed = metaSetMemberAlbumsForGallery(galleryName, next);
+    }
+    if (!changed) {
+      showStatusMessage("No galleries updated.");
+      return;
+    }
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    showStatusMessage(
+      `Removed '${displayTagFolderLabel(label)}' from gallery '${displayTagFolderLabel(galleryName)}'.`,
+    );
+    return;
+  }
   if (action === "delete") {
     if (!ctx.canDelete) return;
+    if (isGalleryEntry) {
+      const confirmed = await showAppMenuConfirm(
+        `Delete gallery '${label}'? Nothing inside is deleted. Its folders, tags, and albums just return to their normal place.`,
+        { danger: true },
+      );
+      if (!confirmed) return;
+      const changed = deleteGalleryByName(gallery);
+      if (!changed) {
+        showStatusMessage("No galleries updated.");
+        return;
+      }
+      metaScheduleSave();
+      refreshAfterTagMetadataChange();
+      showStatusMessage(`Deleted gallery '${label}'.`);
+      return;
+    }
     if (isAlbumEntry) {
       const confirmed = await showAppMenuConfirm(
         `Delete album '${label}'? Nothing inside is deleted. Its tags and folders just return to their normal place.`,
@@ -49902,7 +51322,7 @@ async function handleTagMenuAction(action) {
     metaScheduleSave();
     refreshAfterTagMetadataChange();
     showStatusMessage(
-      `${ctx.isHidden ? "Unhid" : "Hid"} ${isAlbumEntry ? "album" : "tag"} '${label}'.`,
+      `${ctx.isHidden ? "Unhid" : "Hid"} ${isGalleryEntry ? "gallery" : isAlbumEntry ? "album" : "tag"} '${label}'.`,
     );
     return;
   }
@@ -49911,7 +51331,7 @@ async function handleTagMenuAction(action) {
     if (!metaClearTagAppearancePresetByKey(tagKey)) return;
     refreshAfterProcessingMetadataChange();
     showStatusMessage(
-      `${isAlbumEntry ? "Tag album" : "Tag"} media preset reset.`,
+      `${isGalleryEntry ? "Gallery" : isAlbumEntry ? "Tag album" : "Tag"} media preset reset.`,
     );
     return;
   }
@@ -49921,7 +51341,7 @@ async function handleTagMenuAction(action) {
     metaScheduleSave();
     refreshAfterTagMetadataChange();
     showStatusMessage(
-      `${isAlbumEntry ? "Tag album" : "Tag"} content filter cleared.`,
+      `${isGalleryEntry ? "Gallery" : isAlbumEntry ? "Tag album" : "Tag"} content filter cleared.`,
     );
     return;
   }
@@ -49930,7 +51350,7 @@ async function handleTagMenuAction(action) {
     if (resetTagThumbnailToDefaultByKey(tagKey)) {
       refreshThumbnailUiAfterMetadataChange();
       showStatusMessage(
-        `${isAlbumEntry ? "Tag album" : "Tag"} thumbnail reset to default.`,
+        `${isGalleryEntry ? "Gallery" : isAlbumEntry ? "Tag album" : "Tag"} thumbnail reset to default.`,
       );
     }
     return;
@@ -49940,7 +51360,7 @@ async function handleTagMenuAction(action) {
     if (metaSetTagThumbnailModeByKey(tagKey, "none")) {
       refreshThumbnailUiAfterMetadataChange();
       showStatusMessage(
-        `${isAlbumEntry ? "Tag album" : "Tag"} thumbnail blanked.`,
+        `${isGalleryEntry ? "Gallery" : isAlbumEntry ? "Tag album" : "Tag"} thumbnail blanked.`,
       );
     }
     return;
@@ -49950,7 +51370,7 @@ async function handleTagMenuAction(action) {
     if (metaSetTagThumbnailRotateByKey(tagKey)) {
       refreshThumbnailUiAfterMetadataChange();
       showStatusMessage(
-        `${isAlbumEntry ? "Tag album" : "Tag"} thumbnail set to rotate.`,
+        `${isGalleryEntry ? "Gallery" : isAlbumEntry ? "Tag album" : "Tag"} thumbnail set to rotate.`,
       );
     }
     return;
@@ -50033,7 +51453,8 @@ function renderDirectoriesActionHeader() {
       !entry.special &&
       !entry.placeholder &&
       (!!String(entry.tag || "").trim() ||
-        !!normalizeTagAlbumName(entry.album || "")),
+        !!normalizeTagAlbumName(entry.album || "") ||
+        !!normalizeGalleryName(entry.gallery || "")),
   );
   const tagAppearancePresetKeys = (() => {
     const out = [];
@@ -50906,7 +52327,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     const renameActive = isTagEntry && isTagEntryRenameActive(entry);
     if (isTagEntry) {
       const tagVisibility = directoriesThumbnailVisibilityForKind("tag");
-      const label = String(entry.label || entry.tag || "Tag");
+      const label = String(entry.label || entry.tag || entry.album || entry.gallery || "Tag");
       const labelDisplay = displayTagFolderLabel(label);
       const countText = getTagEntryCountText(entry);
       const iconHtml = getTagEntryDisplayIcon(entry);
@@ -50965,6 +52386,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         ? `tag:${tagRotateScope}:special:${entry.special}`
         : entry.album && !entry.tag
           ? `tag:${tagRotateScope}:album:${String(entry.album || "")}`
+          : entry.gallery && !entry.tag && !entry.album
+            ? `tag:${tagRotateScope}:gallery:${String(entry.gallery || "")}`
           : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
       let squareMediaHtml = `<div class="dirSquareFallback">${iconHtml}</div>`;
       if (tagThumbMode !== "none") {
@@ -51081,6 +52504,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           ? "dirSquareNameTagFavorite"
           : entry.album && !entry.tag
             ? "dirSquareNameTagAlbum"
+            : entry.gallery && !entry.tag && !entry.album
+              ? "dirSquareNameTagAlbum"
             : "dirSquareNameTag";
       const showTagThumbnailTitle = true;
       const showTagTextMeta =
@@ -51319,6 +52744,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 ${folderMenuAddToHtml}
                 <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
                 ${folderMenuState.canRemoveFromAlbum ? `<button type="button" data-action="remove-from-album">Remove from album</button>` : ``}
+                ${folderMenuState.canRemoveFromGallery ? `<button type="button" data-action="remove-from-gallery">Remove from gallery</button>` : ``}
                 ${folderMenuOverridesHtml}
                 ${folderThumbnailMenuHtml}
                 ${folderMenuState.isStorageRestricted || folderMenuState.isTrashItem ? `` : `<button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>`}
@@ -53127,13 +54553,23 @@ function adoptPreviewParentIntoDirectoriesPane(targetDir) {
     const mode =
       modeRaw === "album" ||
       modeRaw === "tag" ||
+      modeRaw === "gallery" ||
       modeRaw === "favorites" ||
       modeRaw === "hidden" ||
       modeRaw === "untagged" ||
       modeRaw === "storage"
         ? modeRaw
         : "";
-    const tag = mode === "tag" ? String(parentTarget._tagPreviewTag || "") : "";
+    const tag =
+      mode === "tag"
+        ? String(parentTarget._tagPreviewTag || "")
+        : mode === "gallery"
+          ? String(
+              parentTarget._tagPreviewGallery ||
+                parentTarget._tagPreviewTag ||
+                "",
+            )
+          : "";
     const album =
       mode === "album" || mode === "tag"
         ? String(parentTarget._tagPreviewAlbum || "")
@@ -53229,8 +54665,15 @@ async function openPreviewTagFolderEntry(entry) {
     ? String(entry.special || "")
     : entry.album && !entry.tag
       ? "album"
+      : entry.gallery && !entry.tag && !entry.album
+        ? "gallery"
       : "tag";
-  const tag = mode === "tag" ? String(entry.tag || "") : "";
+  const tag =
+    mode === "tag"
+      ? String(entry.tag || "")
+      : mode === "gallery"
+        ? String(entry.gallery || "")
+        : "";
   const album = String(entry.album || "");
   const targetIdx = findTagEntryIndex(mode, tag, album);
   WS.nav.selectedIndex = findNearestSelectableIndex(
@@ -56044,6 +57487,10 @@ function tagEntryForPreviewPlaceholderNode(dirNode) {
     entry.special = mode;
   } else if (mode === "album") {
     entry.album = String(dirNode._tagPreviewAlbum || dirNode.name || "");
+  } else if (mode === "gallery") {
+    entry.gallery = String(
+      dirNode._tagPreviewGallery || dirNode._tagPreviewTag || dirNode.name || "",
+    );
   } else {
     entry.tag = String(dirNode._tagPreviewTag || dirNode.name || "");
     entry.album = String(dirNode._tagPreviewAlbum || "");
@@ -56866,6 +58313,10 @@ function getPreviewFolderAndFileEntriesCore(dirNode, opts = null) {
         mode === "storage"
       ) {
         entry.special = mode;
+      } else if (mode === "gallery") {
+        entry.gallery = String(
+          dirNode._tagPreviewGallery || dirNode._tagPreviewTag || "",
+        );
       } else {
         entry.tag = String(dirNode._tagPreviewTag || "");
         entry.album = String(dirNode._tagPreviewAlbum || "");
@@ -56876,6 +58327,10 @@ function getPreviewFolderAndFileEntriesCore(dirNode, opts = null) {
               baseNode,
               String(dirNode._tagPreviewTag || ""),
             )
+          : mode === "gallery"
+            ? getGalleryMemberAlbumEntries(entry.gallery).concat(
+                getGalleryMemberTagEntries(entry.gallery),
+              )
           : [];
       const dirs = getDirsForTagEntry(entry);
       return {
@@ -57214,7 +58669,7 @@ function buildPreviewTagCardMarkup(entry) {
   const showItemTypeLabel = visibility.showItemTypeLabel;
   const showTagThumbnailTitles = visibility.showTitle;
   const naturalThumbCards = naturalAspectThumbnailCardsEnabled();
-  const label = String(entry.label || entry.tag || "Tag");
+  const label = String(entry.label || entry.tag || entry.album || entry.gallery || "Tag");
   const labelDisplay = displayTagFolderLabel(label);
   const countText = getTagEntryCountText(entry);
   const iconHtml = getTagEntryDisplayIcon(entry);
@@ -57261,6 +58716,8 @@ function buildPreviewTagCardMarkup(entry) {
     ? `tag:${tagRotateScope}:special:${entry.special}`
     : entry.album && !entry.tag
       ? `tag:${tagRotateScope}:album:${String(entry.album || "")}`
+      : entry.gallery && !entry.tag && !entry.album
+        ? `tag:${tagRotateScope}:gallery:${String(entry.gallery || "")}`
       : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
   const renameActive = isTagEntryRenameActive(entry);
 
@@ -62254,8 +63711,11 @@ function getTagSelectionForKeybindAction() {
       return;
     const tag = String(entry.tag || "").trim();
     const album = normalizeTagAlbumName(entry.album || "");
-    if (!tag && !album) return;
-    const key = `${String(entry.originPath || "")}\n${tag ? `tag:${tag}` : `album:${album}`}`;
+    const gallery = normalizeGalleryName(entry.gallery || "");
+    if (!tag && !album && !gallery) return;
+    const key = gallery
+      ? `gallery:${gallery}`
+      : `${String(entry.originPath || "")}\n${tag ? `tag:${tag}` : `album:${album}`}`;
     if (seen.has(key)) return;
     seen.add(key);
     entries.push(entry);
@@ -62485,16 +63945,20 @@ function startPreviewTagRenameEdit(entry) {
     return false;
   const tag = String(entry.tag || "").trim();
   const album = normalizeTagAlbumName(entry.album || "");
+  const gallery = normalizeGalleryName(entry.gallery || "");
   const isAlbumEntry = !!album && !tag;
-  if (!tag && !isAlbumEntry) return false;
-  const label = String(entry.label || entry.tag || album || tag);
+  const isGalleryEntry = !!gallery && !tag && !album;
+  if (!tag && !isAlbumEntry && !isGalleryEntry) return false;
+  const label = String(entry.label || entry.tag || album || gallery || tag);
   const paths = gatherTagPathsForDirs(getDirsForTagEntry(entry));
   // A tag may hold only albums and no folders; renaming still has to work.
   const baseNode =
     WS.dirByPath.get(String(entry.originPath || "")) || WS.nav.dirNode || WS.root;
   const taggedAlbums =
-    tag && !isAlbumEntry ? getAlbumEntriesForTagForBaseNode(baseNode, tag) : [];
-  if (!paths.length && !isAlbumEntry && !taggedAlbums.length) {
+    tag && !isAlbumEntry && !isGalleryEntry
+      ? getAlbumEntriesForTagForBaseNode(baseNode, tag)
+      : [];
+  if (!paths.length && !isAlbumEntry && !isGalleryEntry && !taggedAlbums.length) {
     showStatusMessage("No items contain that tag.");
     return false;
   }
@@ -62502,10 +63966,12 @@ function startPreviewTagRenameEdit(entry) {
     {
       tag,
       album,
+      gallery,
       label,
       paths,
       originPath: String(entry.originPath || ""),
       isAlbumEntry,
+      isGalleryEntry,
     },
     "preview",
   );
@@ -62584,7 +64050,8 @@ function toggleHiddenSelection() {
   const hideableEntries = tagSelection.entries.filter(
     (entry) =>
       !!String(entry?.tag || "").trim() ||
-      !!normalizeTagAlbumName(entry?.album || ""),
+      !!normalizeTagAlbumName(entry?.album || "") ||
+      !!normalizeGalleryName(entry?.gallery || ""),
   );
   const tagKeys = Array.from(
     new Set(
@@ -62641,10 +64108,53 @@ function startAlbumSelectionEdit() {
   return true;
 }
 
+function startGallerySelectionEdit() {
+  const folderSelection = getFolderTargetPathsForSelectionActions();
+  const tagSelection = getTagSelectionForKeybindAction();
+  const targets = [];
+  const seen = new Set();
+  for (let i = 0; i < folderSelection.paths.length; i++) {
+    const path = normalizeDirPathValue(folderSelection.paths[i]);
+    const key = path ? `dir:${path}` : "";
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    targets.push({ kind: "dir", path });
+  }
+  for (let i = 0; i < tagSelection.entries.length; i++) {
+    const target = galleryTargetForTagEntry(tagSelection.entries[i]);
+    if (!target) continue;
+    const key =
+      target.kind === "tag"
+        ? `tag:${target.tag}`
+        : target.kind === "album"
+          ? `album:${target.album}`
+          : "";
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    targets.push(target);
+  }
+  if (!targets.length) {
+    showStatusMessage("No items selected.");
+    return false;
+  }
+  const fromPreview =
+    !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview";
+  if (folderSelection.usedBulk || tagSelection.usedBulk)
+    finalizeBulkSelectionAction();
+  closeActionMenus();
+  RENAME_EDIT_PATH = null;
+  RENAME_EDIT_FILE_ID = null;
+  TAG_EDIT_PATH = null;
+  startBulkGallerying(targets, fromPreview ? "preview" : "directories");
+  return true;
+}
+
 async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
   const byTag = new Map();
   const albums = [];
   const seenAlbums = new Set();
+  const galleries = [];
+  const seenGalleries = new Set();
 
   for (const entry of Array.isArray(entries) ? entries : []) {
     if (
@@ -62656,10 +64166,17 @@ async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
       continue;
     const tag = String(entry.tag || "").trim();
     const album = normalizeTagAlbumName(entry.album || "");
+    const gallery = normalizeGalleryName(entry.gallery || "");
     const originPath = String(entry.originPath || "");
     if (tag) {
       const paths = gatherTagPathsForDirs(getDirsForTagEntry(entry));
       byTag.set(`${originPath}\n${tag}`, { tag, paths, originPath });
+      continue;
+    }
+    if (gallery) {
+      if (seenGalleries.has(gallery)) continue;
+      seenGalleries.add(gallery);
+      galleries.push(gallery);
       continue;
     }
     const key = `${originPath}\n${album}`;
@@ -62668,17 +64185,19 @@ async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
     albums.push({ album, originPath });
   }
 
-  if (!byTag.size && !albums.length) {
-    showStatusMessage("No tags or albums selected.");
+  if (!byTag.size && !albums.length && !galleries.length) {
+    showStatusMessage("No tags, albums, or galleries selected.");
     return false;
   }
 
+  const deleteParts = [];
+  if (byTag.size) deleteParts.push(`${byTag.size} tag${byTag.size === 1 ? "" : "s"}`);
+  if (albums.length) deleteParts.push(`${albums.length} album${albums.length === 1 ? "" : "s"}`);
+  if (galleries.length) deleteParts.push(`${galleries.length} galler${galleries.length === 1 ? "y" : "ies"}`);
   const deleteLabel =
-    byTag.size && albums.length
-      ? `Delete ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and ${albums.length} album${albums.length === 1 ? "" : "s"}?`
-      : byTag.size
-        ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
-        : `Delete ${albums.length} selected album${albums.length === 1 ? "" : "s"}? Nothing inside is deleted. Their tags and folders return to their normal place.`;
+    byTag.size && !albums.length && !galleries.length
+      ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
+      : `Delete ${deleteParts.join(" and ")}? Nothing inside is deleted. Their folders, tags, and albums return to their normal place.`;
   if (
     !(await showAppMenuConfirm(deleteLabel, {
       danger: true,
@@ -62705,6 +64224,12 @@ async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
     deletedCount++;
     ungroupedTotal += Number(result.clearedTags) || 0;
   }
+  let deletedGalleryCount = 0;
+  for (let i = 0; i < galleries.length; i++) {
+    if (!deleteGalleryByName(galleries[i])) continue;
+    changed = true;
+    deletedGalleryCount++;
+  }
   if (!changed) {
     showStatusMessage(byTag.size ? "No folders updated." : "No tags updated.");
     return false;
@@ -62712,7 +64237,11 @@ async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
 
   metaScheduleSave();
   refreshAfterTagMetadataChange();
-  if (byTag.size && deletedCount) {
+  if (deletedGalleryCount) {
+    showStatusMessage(
+      `Deleted ${deletedGalleryCount} galler${deletedGalleryCount === 1 ? "y" : "ies"}.`,
+    );
+  } else if (byTag.size && deletedCount) {
     showStatusMessage(
       `Removed ${byTag.size} tag${byTag.size === 1 ? "" : "s"} and deleted ${deletedCount} album${deletedCount === 1 ? "" : "s"}.`,
     );
@@ -62952,12 +64481,15 @@ function startRenameSelection() {
       {
         tag: String(currentEntry.tag || "").trim(),
         album: normalizeTagAlbumName(currentEntry.album || ""),
+        gallery: normalizeGalleryName(currentEntry.gallery || ""),
         label: String(
-          currentEntry.label || currentEntry.tag || currentEntry.album || "",
+          currentEntry.label || currentEntry.tag || currentEntry.album || currentEntry.gallery || "",
         ),
         paths: gatherTagPathsForDirs(getDirsForTagEntry(currentEntry)),
         originPath: String(currentEntry.originPath || ""),
         isAlbumEntry: !!currentEntry.album && !currentEntry.tag,
+        isGalleryEntry:
+          !!currentEntry.gallery && !currentEntry.tag && !currentEntry.album,
       },
       "directories",
     );
@@ -62978,6 +64510,8 @@ function handleSelectionKeybindAction(action) {
       return startTagSelectionEdit();
     case "albumSelection":
       return startAlbumSelectionEdit();
+    case "gallerySelection":
+      return startGallerySelectionEdit();
     case "favoriteSelection":
       return toggleFavoriteSelection();
     case "hiddenSelection":
