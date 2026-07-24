@@ -22487,7 +22487,18 @@ function getBulkSelectionKey() {
   if (isViewingTagFolder()) {
     return `tag:${String(WS.view.tagFolderActiveMode || "")}:${String(WS.view.tagFolderActiveTag || "")}:${String(WS.view.tagFolderActiveAlbum || "")}:${String(WS.view.tagFolderOriginPath || "")}`;
   }
-  if (searchResultsVisibleInDirectoriesPane()) return "search";
+  if (searchSessionActive() && WS.view.searchRootActive) {
+    const rootType = WS.view.searchRootIsFavorites
+      ? "favorites"
+      : WS.view.searchRootIsHidden
+        ? "hidden"
+        : "folder";
+    const rootPath = String(WS.view.searchRootPath || "");
+    const query = String(WS.view.dirSearchQuery || "")
+      .trim()
+      .toLowerCase();
+    return `search:${rootType}:${rootPath}:${query}`;
+  }
   if (WS.view.favoritesMode && WS.view.favoritesRootActive) return "favorites";
   if (WS.view.hiddenMode && WS.view.hiddenRootActive) return "hidden";
   const dn = WS.nav.dirNode;
@@ -38451,6 +38462,17 @@ function searchSessionActive() {
   );
 }
 
+function directorySearchInteractionActive() {
+  return !!(
+    WS.view &&
+    (WS.view.dirSearchPinned ||
+      WS.view.previewSearchActive ||
+      String(WS.view.dirSearchQuery || "").trim() ||
+      (directoriesSearchInput &&
+        document.activeElement === directoriesSearchInput))
+  );
+}
+
 function searchResultsVisibleInPreviewPane() {
   return !!(
     searchSessionActive() &&
@@ -38601,8 +38623,14 @@ function compactPreviewSearchActive() {
 }
 
 function clearDirectorySearchUi() {
+  finalizeBulkSelectionAction();
   cancelDirectorySearch();
-  if (directoriesSearchInput) directoriesSearchInput.value = "";
+  if (directoriesSearchInput) {
+    directoriesSearchInput.value = "";
+    try {
+      directoriesSearchInput.blur();
+    } catch {}
+  }
 
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
@@ -53936,6 +53964,12 @@ document.addEventListener("click", (e) => {
   const target = e.target;
   if (target && target.closest) {
     if (target.closest("#directoriesSearchRow")) return;
+    if (
+      target.closest(
+        "#appActionMenu, #previewActionMenu, #tagContextMenu, #menuOverlay, .dirMenu",
+      )
+    )
+      return;
     if (target.closest(".dirRow")) return;
     if (target.closest("[data-preview-item-key]")) return;
     if (target.closest(".folderCard")) return;
@@ -53956,6 +53990,8 @@ if (directoriesSearchInput) {
     const reuseExistingRoot =
       searchSessionActive() &&
       !!WS.view.previewSearchActive === !!searchInPreview;
+
+    finalizeBulkSelectionAction();
 
     WS.view.dirSearchPinned = true;
     WS.view.previewSearchActive = !!searchInPreview;
@@ -54005,6 +54041,8 @@ if (directoriesSearchInput) {
 
     TAG_EDIT_PATH = null;
     clearBulkTagPlaceholder();
+    WS.view.dirSelectAnchorIndex = -1;
+    WS.view.previewSelectAnchorKey = "";
     syncBulkSelectionForCurrentDir();
 
     if (searchResultsVisibleInPreviewPane()) {
@@ -58601,7 +58639,8 @@ function renderPreviewSearchResults(container) {
   const dirs = Array.isArray(WS.view.searchResults)
     ? WS.view.searchResults.slice()
     : [];
-  if (!dirs.length) {
+  const placeholderEntry = buildBulkTagPlaceholderEntry();
+  if (!dirs.length && !placeholderEntry) {
     container.innerHTML = `<div class="label" style="padding:10px;">No matching folders.</div>`;
     return { count: 0 };
   }
@@ -58626,6 +58665,11 @@ function renderPreviewSearchResults(container) {
   const useFolderFitInsideJustified = folderPreviewThumbUsesContainMode();
   if (useFolderFitInsideJustified) gridF.classList.add("fitInsideJustified");
   const frag = document.createDocumentFragment();
+
+  if (placeholderEntry) {
+    frag.appendChild(makeTagPreviewCard(placeholderEntry));
+    if (dirs.length) frag.appendChild(makePreviewTagSpacer());
+  }
 
   for (let i = 0; i < directDirs.length; i++) {
     const dirNode = directDirs[i];
@@ -64752,6 +64796,10 @@ function handleBackAction() {
     renderDirectoriesPane(true);
     return true;
   }
+  if (directorySearchInteractionActive()) {
+    clearDirectorySearchUi();
+    return true;
+  }
   if (VIEWER_MODE) {
     hideOverlay();
     return true;
@@ -65222,18 +65270,23 @@ document.addEventListener(
       noCommandModifiers &&
       !e.repeat;
     if (!isSearchFocus) return;
+    const searchIsActive = directorySearchInteractionActive();
     if (
       busyOverlayActive() ||
       confirmDialogIsOpen() ||
       KEYBIND_CAPTURE_ACTION_ID ||
       APP_MENU_CONTROLS_CAPTURE_ID ||
       BANIC_ACTIVE ||
-      isTextInputTarget(e.target)
+      (isTextInputTarget(e.target) && !searchIsActive)
     )
       return;
     if (!directoriesSearchInput) return;
     e.preventDefault();
     e.stopImmediatePropagation();
+    if (searchIsActive) {
+      clearDirectorySearchUi();
+      return;
+    }
     directoriesSearchInput.focus();
     try {
       directoriesSearchInput.select();
