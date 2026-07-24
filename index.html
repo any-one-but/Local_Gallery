@@ -26,9 +26,9 @@
   --radius-sm: 2px;
   --radius-pill: 4px;
 
-  /* Azure dark palette. color0 = ink, color1 = surface. (Azure is the app's
-     single theme; the Light mode toggle flips to the azure-light variant in the
-     retro90s block.) */
+  /* Azure dark palette. color0 = ink, color1 = surface. (Azure dark is the
+     app's only theme. The azure-light rules in the retro90s block below are
+     kept but unreachable -- nothing sets data-theme="retro90s".) */
   --color0-primary: hsl(210, 45%, 92%);   /* near-white text */
   --color0-secondary: hsl(210, 35%, 70%);
   --color0-tertirary: hsl(210, 25%, 50%);
@@ -207,8 +207,10 @@
   --folder-meta-font: 12px;
 }
 
-/* Light theme = Azure light. Soft blue paper, deep-blue ink, warm amber accent
-   (the light variant of the app's single Azure theme; flipped in by Light mode). */
+/* Light theme = Azure light. Soft blue paper, deep-blue ink, warm amber accent.
+   RETIRED: nothing sets data-theme="retro90s" any more, so this block and the
+   other [data-theme="retro90s"] rules never apply. They are kept so the light
+   variant can be brought back by restoring the Theme toggle. */
 :root[data-theme="retro90s"] {
   --color0-primary: hsl(212, 58%, 18%);   /* ink */
   --color0-secondary: hsl(211, 30%, 36%);
@@ -8998,9 +9000,9 @@ function normalizeColorSchemeValue(value, fallback = "retro") {
 // retro, classic, verdant, synthwave, azure, ember, amber and OLED-dark color
 // schemes) were removed in this release. v01.06.51 is the LAST version to
 // include them. The app now ships a single fixed look (the former "default"),
-// with the Light Mode toggle still switching its light/dark variant. To revive
-// the old schemes, check out v01.06.51 or earlier. (This is unrelated to the
-// "Filter preset" media-overlay presets, which remain.)
+// dark only -- the Light Mode toggle and its lightMode option were removed too.
+// To revive the old schemes, check out v01.06.51 or earlier. (This is unrelated
+// to the "Filter preset" media-overlay presets, which remain.)
 
 function normalizeThumbRenderModeValue(value, fallback = "medium") {
   const raw = String(value == null ? "" : value)
@@ -9325,6 +9327,15 @@ function getThumbTitleStripOpacityFromOptions(opt = null) {
   );
 }
 
+// Which thumbnail pipeline the grid uses. See FULL_QUALITY_THUMBNAILS_DEFAULT
+// and tauriThumbForImgEl for what each mode actually paints.
+function fullResThumbnailsEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return typeof src?.fullResThumbnails === "boolean"
+    ? src.fullResThumbnails
+    : FULL_QUALITY_THUMBNAILS_DEFAULT;
+}
+
 function applyThumbnailPresetForKinds(kinds, preset) {
   if (!WS.meta) return;
   const list = Array.isArray(kinds) ? kinds : [kinds];
@@ -9487,7 +9498,7 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Random navigation & sorting", id: "random-folder-sort", label: "Random folder sort toggle", hint: "Random folder ordering on/off messages.", optionKey: "notifyRandomFolderSort" }),
 
   Object.freeze({ section: "Playback", id: "playback", label: "Slideshow / gallery mode", hint: "Slideshow status and gallery-mode messages.", optionKey: "notifyPlayback" }),
-  Object.freeze({ section: "Appearance & filenames", id: "appearance-display", label: "Light mode / filename display", hint: "Light mode and filename-format toggle messages.", optionKey: "notifyAppearanceDisplay" }),
+  Object.freeze({ section: "Appearance & filenames", id: "appearance-display", label: "Filename display", hint: "Filename-format toggle messages.", optionKey: "notifyAppearanceDisplay" }),
   Object.freeze({ section: "Appearance & filenames", id: "appearance-presets", label: "Appearance presets", hint: "Preset apply, save, delete, and preset-selection messages.", optionKey: "notifyAppearancePresets" }),
 
   Object.freeze({ section: "Tags & albums", id: "tags", label: "Tags / albums / hidden tags", hint: "Tag editing, album, and hidden-tag messages.", optionKey: "notifyTags" }),
@@ -9560,7 +9571,6 @@ function defaultOptions() {
     filmCornerOverlayEnabled: true,
     filmCornerOverlayIntensity: null,
     colorScheme: "retro",
-    lightMode: false,
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     thumbnailSize: "medium",
@@ -9599,6 +9609,7 @@ function defaultOptions() {
     hideAfterFirstUnderscoreInFileNames: true,
     clickSelectedRotatingThumbTeleports: false,
     thumbTitleStripOpacity: "30",
+    fullResThumbnails: FULL_QUALITY_THUMBNAILS_DEFAULT,
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "row7",
     thumbnailScaleAspect: "row7",
@@ -9770,8 +9781,6 @@ function normalizeOptions(o) {
         : d.thumbnailStyle
     : "cropped";
   const colorScheme = "retro";
-  const lightMode =
-    typeof src.lightMode === "boolean" ? src.lightMode : d.lightMode;
   const videoAudioRaw = String(
     src.videoAudio ?? src.videoGallery ?? src.videoPreview ?? "",
   )
@@ -9938,7 +9947,6 @@ function normalizeOptions(o) {
     // Slideshow always cycles through speeds; the dropdown was removed.
     slideshowDefault: "cycle",
     colorScheme,
-    lightMode,
     menuPaneWidthPx: (function () {
       const v = parseFloat(src.menuPaneWidthPx);
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
@@ -10050,6 +10058,10 @@ function normalizeOptions(o) {
       src.thumbTitleStripOpacity,
       d.thumbTitleStripOpacity,
     ),
+    fullResThumbnails:
+      typeof src.fullResThumbnails === "boolean"
+        ? src.fullResThumbnails
+        : d.fullResThumbnails,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,
@@ -10500,6 +10512,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     [
       "clickSelectedRotatingThumbTeleports",
       "thumbTitleStripOpacity",
+      "fullResThumbnails",
       "thumbnailStyle",
       "thumbnailScaleCropped",
       "thumbnailScaleAspect",
@@ -14679,11 +14692,10 @@ function applyDefaultViewFromOptions() {
 function applyColorSchemeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
-  // Azure is the app's single theme, in two variants: the dark slate default
-  // ("retro90s-dark") and the light azure paper ("retro90s"), flipped by the
-  // Light mode toggle (cycled from the app menu's Basics section).
-  const lightMode = !!WS.meta?.options?.lightMode;
-  root.setAttribute("data-theme", lightMode ? "retro90s" : "retro90s-dark");
+  // Azure dark ("retro90s-dark") is the app's only theme. The light variant's
+  // rules ("retro90s") are still in the stylesheet but nothing sets that
+  // attribute any more -- the Theme toggle and the lightMode option are gone.
+  root.setAttribute("data-theme", "retro90s-dark");
   root.setAttribute("data-retro", "off");
 }
 
@@ -44178,21 +44190,13 @@ function setAppMenuMediaFilterMode(mode) {
   return true;
 }
 
+// Only the two random-sort toggles are reachable from the menu; the jumps
+// themselves are keybind-only (see buildAppMenuRandomSubmenu). The keybind
+// path runs through handleExtrasKeybindAction, not this.
 function runAppMenuRandomAction(action) {
   if (action === "toggleRandomFileSort") return toggleRandomSortMode();
   if (action === "toggleRandomFolderSort") return toggleRandomFolderSortMode();
-  if (action !== "randomFirstFileJump" && action !== "randomFileJump")
-    return false;
-  const inFilePreview = WS.preview.kind === "file" && !!WS.preview.fileId;
-  if (inFilePreview) {
-    if (action === "randomFirstFileJump") randomFirstFileJumpFromViewer();
-    else randomFileJumpFromViewer();
-    return true;
-  }
-  if (previewPaneOwnsSelection() && previewPaneFolderJump(action)) return true;
-  if (action === "randomFirstFileJump") randomFirstFileJumpFromDirectories();
-  else randomFileJumpFromDirectories();
-  return true;
+  return false;
 }
 
 function setAppMenuRandomJumpWeight(mode) {
@@ -44359,27 +44363,6 @@ function setAppMenuAnimatedFilters(value) {
   return true;
 }
 
-function setAppMenuLightMode(enabled) {
-  if (!WS.meta) return false;
-  WS.meta.options = normalizeOptions(
-    Object.assign({}, WS.meta.options || {}, { lightMode: !!enabled }),
-  );
-  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(["lightMode"]));
-  applyColorSchemeFromOptions();
-  refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(`Theme: ${enabled ? "Light" : "Dark"}`);
-  return true;
-}
-
-// The single theme (Azure) flips between its dark and light variant. The button
-// cycles that light/dark state.
-function buildAppMenuThemeButton() {
-  const light = !!WS.meta?.options?.lightMode;
-  return appMenuChoiceButton(`Theme: ${light ? "Light" : "Dark"}`, () =>
-    setAppMenuLightMode(!light),
-  );
-}
-
 function buildAppMenuSortButton() {
   const current = normalizeDirSortMode(WS.meta?.dirSortMode);
   return appMenuChoiceButton(
@@ -44421,19 +44404,10 @@ function buildAppMenuRandomSubmenu() {
       (weightIndex >= 0 ? weightIndex + 1 : 1) %
         WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.length
     ];
+  // The two jumps are keybind-only on purpose: they are one-shot navigations
+  // you repeat, and walking into the menu to fire one is always worse than the
+  // key. Only the persistent random settings live here.
   return createDropdownMenuSubmenu("Random actions", [
-    appMenuChoiceButton(
-      "Random set jump",
-      () => runAppMenuRandomAction("randomFirstFileJump"),
-      null,
-      true,
-    ),
-    appMenuChoiceButton(
-      "Random file jump",
-      () => runAppMenuRandomAction("randomFileJump"),
-      null,
-      true,
-    ),
     appMenuChoiceButton(
       "Random file sort",
       () => runAppMenuRandomAction("toggleRandomFileSort"),
@@ -44552,17 +44526,18 @@ function buildAppMenuThumbnailsSubmenu() {
   ]);
 }
 
-// The everyday view controls, gathered directly under the selected item.
+// The everyday view controls, gathered directly under the selected item. The
+// two cycles lead, then the on/off toggles run together in one block.
 function buildAppMenuBasicsSubmenu() {
   const options = WS.meta?.options || {};
   return createDropdownMenuSubmenu("Basics", [
+    buildAppMenuSortButton(),
+    buildAppMenuMediaFilterButton(),
     appMenuChoiceButton(
       "Quick navigation",
       () => handleExtrasKeybindAction("toggleQuickNavigation"),
       quickNavigationEnabled(),
     ),
-    buildAppMenuSortButton(),
-    buildAppMenuMediaFilterButton(),
     appMenuChoiceButton(
       "Mute messages",
       () => handleExtrasKeybindAction("toggleMuteMessages"),
@@ -44578,7 +44553,6 @@ function buildAppMenuBasicsSubmenu() {
       () => handleExtrasKeybindAction("toggleFloatTags"),
       !!options.showTagFolderSpacerRow,
     ),
-    buildAppMenuThemeButton(),
   ]);
 }
 
@@ -48008,7 +47982,14 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   }
   if (action === "album") {
     if (isRootNode || !p) return true;
-    startBulkFolderAlbuming([p]);
+    // Pick the pane the way startAlbumSelectionEdit and the bulk album action
+    // already do. Defaulting to the file pane put the naming placeholder in a
+    // list the user was not looking at (and, with the preview one level below
+    // the file pane, could not be looking at) while yanking the file-pane
+    // selection to index 0 -- so a single folder looked like it did nothing.
+    const fromPreview =
+      !directoriesPaneOpenEnabled() || WS.view?.activePane === "preview";
+    startBulkFolderAlbuming([p], fromPreview ? "preview" : "directories");
     return true;
   }
   if (action === "remove-from-tag") {
@@ -64297,13 +64278,15 @@ function registerThumbEl(el, src, opts = null) {
 // bypasses assignThumbSrc, so it stays full-resolution.
 const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
 const TAURI_THUMB_EDGE = 512;
-// Feature flag: full-quality thumbnails. When on, image tiles render the
-// original media itself instead of a 512px generated JPEG, and video tiles use
-// the largest frame the Rust generator will produce (an <img> can't play the
-// video, so a still frame is unavoidable — but a full-res one). This trades the
-// downscaled-thumbnail memory/decode savings for pixel-perfect grid tiles; flip
-// to false to return to the lightweight 512px pipeline.
-const FULL_QUALITY_THUMBNAILS = true;
+// Full-quality thumbnails, now user-switchable (Thumbnails > Full resolution).
+// When on, image tiles render the original media itself instead of a 512px
+// generated JPEG, and video tiles use the largest frame the Rust generator will
+// produce (an <img> can't play the video, so a still frame is unavoidable — but
+// a full-res one). When off, both go back through the lightweight 512px
+// pipeline. This trades the downscaled-thumbnail memory/decode savings for
+// pixel-perfect grid tiles. The constant is only the default for a workspace
+// that has never set the option.
+const FULL_QUALITY_THUMBNAILS_DEFAULT = true;
 // Rust clamps generate_thumbnail's edge to 2048, so that is "full quality" for a
 // generated video frame.
 const FULL_QUALITY_VIDEO_THUMB_EDGE = 2048;
@@ -64336,10 +64319,11 @@ function tauriThumbForImgEl(el) {
   if (!recId) return "";
   const rec = WS.fileById.get(recId);
   if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
-  // Full-quality mode: an image tile paints the original media itself, so there
-  // is no generated thumbnail to wait on. (Videos still fall through to a
+  const fullRes = fullResThumbnailsEnabled();
+  // Full-resolution mode: an image tile paints the original media itself, so
+  // there is no generated thumbnail to wait on. (Videos still fall through to a
   // generated frame below — an <img> can't render the video file.)
-  if (FULL_QUALITY_THUMBNAILS && rec.type === "image") {
+  if (fullRes && rec.type === "image") {
     const colF = getCurrentColorFilterCssForTarget(rec);
     if (colF) {
       try { el.style.filter = colF; } catch {}
@@ -64356,7 +64340,7 @@ function tauriThumbForImgEl(el) {
     rec.type === "video" ? metaGetVideoThumbnailTimeForRecord(rec) : null;
   const ftKey = Number.isFinite(frameTime) ? Math.round(frameTime * 1000) : "d";
   const thumbEdge =
-    FULL_QUALITY_THUMBNAILS && rec.type === "video"
+    fullRes && rec.type === "video"
       ? FULL_QUALITY_VIDEO_THUMB_EDGE
       : TAURI_THUMB_EDGE;
   const key = `${path}::${thumbEdge}::${ftKey}`;
