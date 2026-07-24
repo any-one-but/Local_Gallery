@@ -23391,18 +23391,121 @@ function metaAddGalleryForPath(path, galleryName) {
   return metaSetGalleriesForPath(path, current.concat([gallery]));
 }
 
-function metaGetMemberTagsForGallery(galleryName) {
-  const gallery = normalizeGalleryName(galleryName);
-  if (!gallery || !WS.meta || !WS.meta.galleryMemberTagsByGallery) return [];
-  return normalizeTagList(WS.meta.galleryMemberTagsByGallery.get(gallery));
+function normalizeGalleryMemberTargets(values, valueKey) {
+  const key = valueKey === "album" ? "album" : "tag";
+  const list = Array.isArray(values) ? values : [];
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < list.length; i++) {
+    const raw = list[i];
+    const name =
+      key === "album"
+        ? normalizeTagAlbumName(
+            raw && typeof raw === "object" ? raw.album : raw,
+          )
+        : normalizeTag(raw && typeof raw === "object" ? raw.tag : raw);
+    if (!name || (key === "tag" && isReservedFolderTag(name))) continue;
+    const originPath = normalizeTagAlbumScopePath(
+      raw && typeof raw === "object" ? raw.originPath : "",
+    );
+    const identity = `${originPath}\n${name}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    out.push({ [key]: name, originPath });
+  }
+  return out;
 }
 
-function metaSetMemberTagsForGallery(galleryName, tags) {
+function legacyGalleryMemberTargetScopes(nameRaw, valueKey) {
+  const key = valueKey === "album" ? "album" : "tag";
+  const name =
+    key === "album"
+      ? normalizeTagAlbumName(nameRaw)
+      : normalizeTag(nameRaw);
+  const scopes = new Set();
+  if (!name || !WS.meta) return scopes;
+
+  if (key === "tag") {
+    const addTaggedFolderScopes = (entries) => {
+      if (!(entries instanceof Map)) return;
+      for (const [pathRaw, tagsRaw] of entries.entries()) {
+        if (!normalizeTagList(tagsRaw).includes(name)) continue;
+        scopes.add(hiddenTagScopePathForDirPath(pathRaw));
+      }
+    };
+    addTaggedFolderScopes(WS.meta.dirTags);
+    addTaggedFolderScopes(WS.meta.pendingTagsByPath);
+    if (WS.meta.albumTagsByAlbum instanceof Map) {
+      for (const [albumKeyRaw, tagsRaw] of WS.meta.albumTagsByAlbum.entries()) {
+        const parsed = parseAlbumTagMembershipKey(albumKeyRaw);
+        if (parsed && normalizeTagList(tagsRaw).includes(name))
+          scopes.add(parsed.scopePath);
+      }
+    }
+    if (WS.meta.galleryUserTagsByGallery instanceof Map) {
+      for (const tagsRaw of WS.meta.galleryUserTagsByGallery.values()) {
+        if (normalizeTagList(tagsRaw).includes(name)) scopes.add("");
+      }
+    }
+    return scopes;
+  }
+
+  if (WS.meta.folderAlbumByPath instanceof Map) {
+    for (const [pathRaw, albumRaw] of WS.meta.folderAlbumByPath.entries()) {
+      if (normalizeTagAlbumName(albumRaw) === name)
+        scopes.add(hiddenTagScopePathForDirPath(pathRaw));
+    }
+  }
+  if (WS.meta.tagAlbumByTag instanceof Map) {
+    for (const [tagKeyRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
+      const parsed = parseTagAlbumMembershipKey(tagKeyRaw);
+      if (parsed && normalizeTagAlbumName(albumRaw) === name)
+        scopes.add(parsed.scopePath);
+    }
+  }
+  if (WS.meta.albumTagsByAlbum instanceof Map) {
+    for (const albumKeyRaw of WS.meta.albumTagsByAlbum.keys()) {
+      const parsed = parseAlbumTagMembershipKey(albumKeyRaw);
+      if (parsed && parsed.album === name) scopes.add(parsed.scopePath);
+    }
+  }
+  if (WS.meta.galleryAlbumByGallery instanceof Map) {
+    for (const albumRaw of WS.meta.galleryAlbumByGallery.values()) {
+      if (normalizeTagAlbumName(albumRaw) === name) scopes.add("");
+    }
+  }
+  return scopes;
+}
+
+function migrateLegacyGalleryMemberTargets(values, valueKey) {
+  const key = valueKey === "album" ? "album" : "tag";
+  const list = Array.isArray(values) ? values : [];
+  const migrated = list.map((raw) => {
+    if (raw && typeof raw === "object") return raw;
+    const name =
+      key === "album" ? normalizeTagAlbumName(raw) : normalizeTag(raw);
+    if (!name) return raw;
+    const scopes = Array.from(legacyGalleryMemberTargetScopes(name, key));
+    return { [key]: name, originPath: scopes.length === 1 ? scopes[0] : "" };
+  });
+  return normalizeGalleryMemberTargets(migrated, key);
+}
+
+function metaGetMemberTagTargetsForGallery(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryMemberTagsByGallery) return [];
+  return normalizeGalleryMemberTargets(
+    WS.meta.galleryMemberTagsByGallery.get(gallery),
+    "tag",
+  );
+}
+
+function metaSetMemberTagTargetsForGallery(galleryName, targets) {
   const gallery = normalizeGalleryName(galleryName);
   if (!gallery || !WS.meta || !WS.meta.galleryMemberTagsByGallery) return false;
-  const next = normalizeTagList(tags).filter((tag) => !isReservedFolderTag(tag));
-  const current = metaGetMemberTagsForGallery(gallery);
-  if (arraysEqual(current, next)) return false;
+  const next = normalizeGalleryMemberTargets(targets, "tag");
+  const current = metaGetMemberTagTargetsForGallery(gallery);
+  if (JSON.stringify(current) === JSON.stringify(next)) return false;
   if (next.length) WS.meta.galleryMemberTagsByGallery.set(gallery, next);
   else WS.meta.galleryMemberTagsByGallery.delete(gallery);
   metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
@@ -23410,25 +23513,54 @@ function metaSetMemberTagsForGallery(galleryName, tags) {
   return true;
 }
 
-function metaGetMemberAlbumsForGallery(galleryName) {
-  const gallery = normalizeGalleryName(galleryName);
-  if (!gallery || !WS.meta || !WS.meta.galleryMemberAlbumsByGallery) return [];
-  return normalizeTagList(WS.meta.galleryMemberAlbumsByGallery.get(gallery)).map(
-    normalizeTagAlbumName,
+function metaGetMemberTagsForGallery(galleryName) {
+  return normalizeTagList(
+    metaGetMemberTagTargetsForGallery(galleryName).map((target) => target.tag),
   );
 }
 
-function metaSetMemberAlbumsForGallery(galleryName, albums) {
+function metaSetMemberTagsForGallery(galleryName, tags) {
+  return metaSetMemberTagTargetsForGallery(
+    galleryName,
+    normalizeTagList(tags).map((tag) => ({ tag, originPath: "" })),
+  );
+}
+
+function metaGetMemberAlbumTargetsForGallery(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || !WS.meta || !WS.meta.galleryMemberAlbumsByGallery) return [];
+  return normalizeGalleryMemberTargets(
+    WS.meta.galleryMemberAlbumsByGallery.get(gallery),
+    "album",
+  );
+}
+
+function metaSetMemberAlbumTargetsForGallery(galleryName, targets) {
   const gallery = normalizeGalleryName(galleryName);
   if (!gallery || !WS.meta || !WS.meta.galleryMemberAlbumsByGallery) return false;
-  const next = normalizeTagList(albums).map(normalizeTagAlbumName).filter(Boolean);
-  const current = metaGetMemberAlbumsForGallery(gallery);
-  if (arraysEqual(current, next)) return false;
+  const next = normalizeGalleryMemberTargets(targets, "album");
+  const current = metaGetMemberAlbumTargetsForGallery(gallery);
+  if (JSON.stringify(current) === JSON.stringify(next)) return false;
   if (next.length) WS.meta.galleryMemberAlbumsByGallery.set(gallery, next);
   else WS.meta.galleryMemberAlbumsByGallery.delete(gallery);
   metaTrackDirtyDocIds([META_DOC_IDS.tagAlbums]);
   invalidateDirMetricsCaches();
   return true;
+}
+
+function metaGetMemberAlbumsForGallery(galleryName) {
+  return normalizeTagList(
+    metaGetMemberAlbumTargetsForGallery(galleryName).map(
+      (target) => target.album,
+    ),
+  ).map(normalizeTagAlbumName);
+}
+
+function metaSetMemberAlbumsForGallery(galleryName, albums) {
+  return metaSetMemberAlbumTargetsForGallery(
+    galleryName,
+    normalizeTagList(albums).map((album) => ({ album, originPath: "" })),
+  );
 }
 
 function metaGetUserTagsForGallery(galleryName) {
@@ -23559,25 +23691,53 @@ function hiddenContentVisibleInCurrentView() {
   );
 }
 
+function tagIsEffectivelyHidden(tagName, scopePath = null) {
+  const tag = normalizeTag(tagName);
+  const scope = normalizeTagAlbumScopePath(scopePath);
+  if (!tag) return false;
+  if (metaHasHiddenTagByKey(hiddenTagKeyForTag(tag, scope))) return true;
+  const album = metaGetTagAlbumForTag(tag, scope);
+  return !!album && albumIsEffectivelyHidden(album, scope);
+}
+
+function albumIsEffectivelyHidden(albumName, scopePath = null) {
+  const album = normalizeTagAlbumName(albumName);
+  const scope = normalizeTagAlbumScopePath(scopePath);
+  if (!album) return false;
+  if (metaHasHiddenTagByKey(hiddenTagKeyForAlbum(album, scope))) return true;
+  return metaGetUserTagsForAlbum(album, scope).some((tag) =>
+    metaHasHiddenTagByKey(hiddenTagKeyForTag(tag, scope)),
+  );
+}
+
+function galleryIsEffectivelyHidden(galleryName) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery) return false;
+  if (metaHasHiddenTagByKey(hiddenTagKeyForGallery(gallery))) return true;
+  if (metaGetUserTagsForGallery(gallery).some((tag) =>
+    tagIsEffectivelyHidden(tag, ""),
+  ))
+    return true;
+  const album = metaGetAlbumForGallery(gallery);
+  return !!album && albumIsEffectivelyHidden(album, "");
+}
+
 function galleryIsHiddenFromCurrentView(galleryName) {
   const gallery = normalizeGalleryName(galleryName);
   return !!(
     gallery &&
     !hiddenContentVisibleInCurrentView() &&
-    metaHasHiddenTagByKey(hiddenTagKeyForGallery(gallery))
+    galleryIsEffectivelyHidden(gallery)
   );
 }
 
 function getHiddenGalleryNames() {
-  const out = [];
-  if (!WS.meta || !WS.meta.hiddenTagKeys) return out;
-  for (const rawKey of WS.meta.hiddenTagKeys.values()) {
-    const parsed = parseTagThumbnailStructuredKey(rawKey);
-    if (!parsed || parsed.kind !== "gallery") continue;
-    const gallery = normalizeGalleryName(parsed.value || "");
-    if (gallery && !out.includes(gallery)) out.push(gallery);
-  }
-  return out;
+  if (Array.isArray(EFFECTIVE_HIDDEN_GALLERY_NAMES_CACHE))
+    return EFFECTIVE_HIDDEN_GALLERY_NAMES_CACHE.slice();
+  EFFECTIVE_HIDDEN_GALLERY_NAMES_CACHE = getAllGalleryNames().filter(
+    galleryIsEffectivelyHidden,
+  );
+  return EFFECTIVE_HIDDEN_GALLERY_NAMES_CACHE.slice();
 }
 
 function hiddenTagKeyForEntry(entry) {
@@ -23600,23 +23760,14 @@ function metaHasHidden(path) {
   const scopePath = hiddenTagScopePathForDirPath(normalizedPath);
   const userTags = metaGetUserTags(normalizedPath);
   for (let i = 0; i < userTags.length; i++) {
-    if (metaHasHiddenTagByKey(hiddenTagKeyForTag(userTags[i], scopePath)))
-      return true;
+    if (tagIsEffectivelyHidden(userTags[i], scopePath)) return true;
   }
   // A hidden album hides everything it holds: folders placed in it directly and
   // folders that carry one of its tags. With no visible members left the album
   // tile itself drops out of the grid, exactly as a hidden tag's does.
   const directAlbum = metaGetAlbumForPath(normalizedPath);
-  if (
-    directAlbum &&
-    metaHasHiddenTagByKey(hiddenTagKeyForAlbum(directAlbum, scopePath))
-  )
+  if (directAlbum && albumIsEffectivelyHidden(directAlbum, scopePath))
     return true;
-  for (let i = 0; i < userTags.length; i++) {
-    const album = metaGetTagAlbumForTag(userTags[i], scopePath);
-    if (album && metaHasHiddenTagByKey(hiddenTagKeyForAlbum(album, scopePath)))
-      return true;
-  }
   // A hidden gallery hides all of its content just like a hidden tag or album.
   // Gallery membership can be direct or inherited through a member tag/album.
   const hiddenGalleries = getHiddenGalleryNames();
@@ -23631,10 +23782,22 @@ function metaHasHidden(path) {
     for (let i = 0; i < hiddenGalleries.length; i++) {
       const gallery = hiddenGalleries[i];
       if (directGalleries.has(gallery)) return true;
-      const memberTags = metaGetMemberTagsForGallery(gallery);
-      if (memberTags.some((tag) => userTags.includes(tag))) return true;
-      const memberAlbums = metaGetMemberAlbumsForGallery(gallery);
-      if (memberAlbums.some((album) => folderAlbums.has(album))) return true;
+      const memberTags = metaGetMemberTagTargetsForGallery(gallery);
+      if (
+        memberTags.some(
+          (target) =>
+            target.originPath === scopePath && userTags.includes(target.tag),
+        )
+      )
+        return true;
+      const memberAlbums = metaGetMemberAlbumTargetsForGallery(gallery);
+      if (
+        memberAlbums.some(
+          (target) =>
+            target.originPath === scopePath && folderAlbums.has(target.album),
+        )
+      )
+        return true;
     }
   }
   return false;
@@ -24700,16 +24863,18 @@ function setBulkTagPlaceholder(
       const kind = String(item?.kind || "");
       if (kind === "tag") {
         const tag = normalizeTag(item.tag || "");
-        const key = tag ? `tag:${tag}` : "";
+        const originPath = normalizeTagAlbumScopePath(item.originPath || "");
+        const key = tag ? `tag:${originPath}:${tag}` : "";
         if (!key || seen.has(key)) continue;
         seen.add(key);
-        unique.push({ kind: "tag", tag });
+        unique.push({ kind: "tag", tag, originPath });
       } else if (kind === "album") {
         const album = normalizeTagAlbumName(item.album || "");
-        const key = album ? `album:${album}` : "";
+        const originPath = normalizeTagAlbumScopePath(item.originPath || "");
+        const key = album ? `album:${originPath}:${album}` : "";
         if (!key || seen.has(key)) continue;
         seen.add(key);
-        unique.push({ kind: "album", album });
+        unique.push({ kind: "album", album, originPath });
       }
     }
   } else if (type === "galleryTag" || type === "galleryAlbum") {
@@ -24723,12 +24888,17 @@ function setBulkTagPlaceholder(
   }
   if (!unique.length) return false;
   const prefersPreview = String(preferPane || "").toLowerCase() === "preview";
-  // For plain folder tagging, seed the input with the tags every selected item
-  // already shares, so the user can edit or bulk-remove them (not just add).
-  // Commit diffs against this baseline; other placeholder types keep their
-  // plain "new name" prompt.
+  // Seed multi-membership editors with values every selected item already
+  // shares. Commits diff against these baselines so removing a shared value
+  // removes it from every target while memberships unique to one target stay.
   const commonTags = type === "tag" ? commonUserTagsForPaths(unique) : [];
-  const effectiveLabel = commonTags.length ? commonTags.join(", ") : label;
+  const commonGalleries =
+    type === "gallery" ? commonGalleryNamesForTargets(unique) : [];
+  const effectiveLabel = commonTags.length
+    ? commonTags.join(", ")
+    : commonGalleries.length
+      ? commonGalleries.join(", ")
+      : label;
   BULK_TAG_PLACEHOLDER = {
     type,
     label: effectiveLabel,
@@ -24748,6 +24918,7 @@ function setBulkTagPlaceholder(
     placeholder: true,
     placeholderType: type,
     commonTags: type === "tag" ? commonTags : undefined,
+    commonGalleries: type === "gallery" ? commonGalleries : undefined,
   };
   rebuildDirectoriesEntries();
   // When tagging from the preview pane, keep the file pane's current selection
@@ -24866,6 +25037,41 @@ function commitTagEntryRename(inputEl) {
     const changed = metaApplyBulkUserTagDiff(state.paths, removed, added);
     if (!changed) {
       showStatusMessage("No tags updated.");
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      return;
+    }
+    finalizeBulkSelectionAction();
+    return;
+  }
+  // Gallery membership is also many-to-many. The editor starts with the
+  // galleries shared by all selected folders/tags/albums, then applies only
+  // the removed and added names to every target.
+  if (
+    state.placeholder &&
+    state.placeholderType === "gallery" &&
+    Array.isArray(state.commonGalleries)
+  ) {
+    TAG_ENTRY_RENAME_STATE = null;
+    clearBulkTagPlaceholder();
+    const committed = normalizeTagsFromText(inputEl.value || "").map(
+      normalizeGalleryName,
+    );
+    const committedSet = new Set(committed);
+    const baseline = normalizeTagList(state.commonGalleries).map(
+      normalizeGalleryName,
+    );
+    const baselineSet = new Set(baseline);
+    const removed = baseline.filter((gallery) => !committedSet.has(gallery));
+    const added = committed.filter((gallery) => !baselineSet.has(gallery));
+    const changed = metaApplyBulkGalleryDiff(
+      state.galleryTargets,
+      removed,
+      added,
+    );
+    if (!changed) {
+      showStatusMessage("No galleries updated.");
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
       syncButtons();
@@ -25090,22 +25296,30 @@ function assignTargetsToGalleryBulk(targets, galleryName) {
       }
     } else if (kind === "tag") {
       const tag = normalizeTag(target.tag || "");
-      if (tag) addTags.push(tag);
+      if (tag)
+        addTags.push({
+          tag,
+          originPath: normalizeTagAlbumScopePath(target.originPath || ""),
+        });
     } else if (kind === "album") {
       const album = normalizeTagAlbumName(target.album || "");
-      if (album) addAlbums.push(album);
+      if (album)
+        addAlbums.push({
+          album,
+          originPath: normalizeTagAlbumScopePath(target.originPath || ""),
+        });
     }
   }
   if (addTags.length) {
-    const next = normalizeTagList(metaGetMemberTagsForGallery(gallery).concat(addTags));
-    if (metaSetMemberTagsForGallery(gallery, next)) {
+    const next = metaGetMemberTagTargetsForGallery(gallery).concat(addTags);
+    if (metaSetMemberTagTargetsForGallery(gallery, next)) {
       changed = true;
       changedCount += addTags.length;
     }
   }
   if (addAlbums.length) {
-    const next = normalizeTagList(metaGetMemberAlbumsForGallery(gallery).concat(addAlbums));
-    if (metaSetMemberAlbumsForGallery(gallery, next)) {
+    const next = metaGetMemberAlbumTargetsForGallery(gallery).concat(addAlbums);
+    if (metaSetMemberAlbumTargetsForGallery(gallery, next)) {
       changed = true;
       changedCount += addAlbums.length;
     }
@@ -25196,6 +25410,175 @@ function commonUserTagsForPaths(paths) {
   return common ? normalizeTagList(Array.from(common)) : [];
 }
 
+function galleryNamesForTarget(target, galleryNames = null) {
+  const item = target && typeof target === "object" ? target : null;
+  if (!item) return [];
+  const names = Array.isArray(galleryNames)
+    ? galleryNames
+    : getAllGalleryNames();
+  const kind = String(item.kind || "");
+  if (kind === "dir") {
+    const memberships = new Set(metaGetGalleriesForPath(item.path));
+    return names.filter((gallery) => memberships.has(gallery));
+  }
+  if (kind === "tag") {
+    const tag = normalizeTag(item.tag || "");
+    const originPath = normalizeTagAlbumScopePath(item.originPath || "");
+    if (!tag) return [];
+    return names.filter((gallery) =>
+      metaGetMemberTagTargetsForGallery(gallery).some(
+        (target) =>
+          target.tag === tag && target.originPath === originPath,
+      ),
+    );
+  }
+  if (kind === "album") {
+    const album = normalizeTagAlbumName(item.album || "");
+    const originPath = normalizeTagAlbumScopePath(item.originPath || "");
+    if (!album) return [];
+    return names.filter((gallery) =>
+      metaGetMemberAlbumTargetsForGallery(gallery).some(
+        (target) =>
+          target.album === album && target.originPath === originPath,
+      ),
+    );
+  }
+  return [];
+}
+
+// The galleries shared by every selected target. Gallery membership supports
+// real folders plus virtual tags and albums, so resolve each target through its
+// own metadata relation before intersecting the names.
+function commonGalleryNamesForTargets(targets) {
+  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  if (!list.length) return [];
+  const galleryNames = getAllGalleryNames();
+  let common = null;
+  for (let i = 0; i < list.length; i++) {
+    const memberships = new Set(
+      galleryNamesForTarget(list[i], galleryNames),
+    );
+    if (common === null) {
+      common = memberships;
+    } else {
+      for (const gallery of Array.from(common)) {
+        if (!memberships.has(gallery)) common.delete(gallery);
+      }
+    }
+    if (!common.size) return [];
+  }
+  return common ? Array.from(common) : [];
+}
+
+function metaApplyBulkGalleryDiff(targets, removeGalleries, addGalleries) {
+  const remove = new Set(
+    normalizeTagList(removeGalleries).map(normalizeGalleryName),
+  );
+  const add = normalizeTagList(addGalleries).map(normalizeGalleryName);
+  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  if (!list.length || (!remove.size && !add.length)) return false;
+
+  let changed = false;
+  let changedCount = 0;
+  for (let i = 0; i < list.length; i++) {
+    const target = list[i] || {};
+    const kind = String(target.kind || "");
+    let targetChanged = false;
+    if (kind === "dir") {
+      const current = metaGetGalleriesForPath(target.path);
+      const next = normalizeTagList(
+        current.filter((gallery) => !remove.has(gallery)).concat(add),
+      ).map(normalizeGalleryName);
+      targetChanged = metaSetGalleriesForPath(target.path, next);
+    } else if (kind === "tag") {
+      const tag = normalizeTag(target.tag || "");
+      const originPath = normalizeTagAlbumScopePath(target.originPath || "");
+      if (!tag) continue;
+      for (const gallery of remove) {
+        const current = metaGetMemberTagTargetsForGallery(gallery);
+        if (
+          !current.some(
+            (item) => item.tag === tag && item.originPath === originPath,
+          )
+        )
+          continue;
+        if (
+          metaSetMemberTagTargetsForGallery(
+            gallery,
+            current.filter(
+              (item) =>
+                item.tag !== tag || item.originPath !== originPath,
+            ),
+          )
+        )
+          targetChanged = true;
+      }
+      for (let j = 0; j < add.length; j++) {
+        const gallery = add[j];
+        const current = metaGetMemberTagTargetsForGallery(gallery);
+        if (
+          !current.some(
+            (item) => item.tag === tag && item.originPath === originPath,
+          ) &&
+          metaSetMemberTagTargetsForGallery(
+            gallery,
+            current.concat([{ tag, originPath }]),
+          )
+        )
+          targetChanged = true;
+      }
+    } else if (kind === "album") {
+      const album = normalizeTagAlbumName(target.album || "");
+      const originPath = normalizeTagAlbumScopePath(target.originPath || "");
+      if (!album) continue;
+      for (const gallery of remove) {
+        const current = metaGetMemberAlbumTargetsForGallery(gallery);
+        if (
+          !current.some(
+            (item) => item.album === album && item.originPath === originPath,
+          )
+        )
+          continue;
+        if (
+          metaSetMemberAlbumTargetsForGallery(
+            gallery,
+            current.filter(
+              (item) =>
+                item.album !== album || item.originPath !== originPath,
+            ),
+          )
+        )
+          targetChanged = true;
+      }
+      for (let j = 0; j < add.length; j++) {
+        const gallery = add[j];
+        const current = metaGetMemberAlbumTargetsForGallery(gallery);
+        if (
+          !current.some(
+            (item) => item.album === album && item.originPath === originPath,
+          ) &&
+          metaSetMemberAlbumTargetsForGallery(
+            gallery,
+            current.concat([{ album, originPath }]),
+          )
+        )
+          targetChanged = true;
+      }
+    }
+    if (!targetChanged) continue;
+    changed = true;
+    changedCount++;
+  }
+  if (!changed) return false;
+
+  metaScheduleSave();
+  refreshAfterTagMetadataChange();
+  showStatusMessage(
+    `Updated galleries for ${changedCount} item${changedCount === 1 ? "" : "s"}.`,
+  );
+  return true;
+}
+
 // Apply a tag delta to many folders at once: strip `removeTags`, add `addTags`,
 // leaving each folder's reserved tags and its own unique user tags intact.
 function metaApplyBulkUserTagDiff(paths, removeTags, addTags) {
@@ -25244,8 +25627,9 @@ function metaApplyBulkUserTagDiff(paths, removeTags, addTags) {
 
 function metaSetFavoriteBulk(paths, enable) {
   const list = Array.isArray(paths) ? paths : Array.from(paths || []);
-  if (!list.length) return;
+  if (!list.length) return false;
   const target = !!enable;
+  let changed = false;
   for (let i = 0; i < list.length; i++) {
     const p = String(list[i] || "");
     if (!p) continue;
@@ -25256,7 +25640,9 @@ function metaSetFavoriteBulk(paths, enable) {
       ? [FAVORITE_TAG].concat(tags.filter((t) => t !== FAVORITE_TAG))
       : tags.filter((t) => t !== FAVORITE_TAG);
     WS.meta.dirTags.set(p, normalizeTagList(next));
+    changed = true;
   }
+  if (!changed) return false;
   metaMarkDirty(META_DOC_IDS.tags);
   invalidateDirMetricsCaches();
   syncFavoritesUi();
@@ -25268,6 +25654,7 @@ function metaSetFavoriteBulk(paths, enable) {
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
+  return true;
 }
 
 function metaToggleHidden(path) {
@@ -26313,7 +26700,7 @@ function metaMakeTagAlbumsDocObject() {
   if (WS.meta && WS.meta.galleryMemberTagsByGallery) {
     for (const [galleryRaw, tagsRaw] of WS.meta.galleryMemberTagsByGallery.entries()) {
       const gallery = normalizeGalleryName(galleryRaw);
-      const tags = normalizeTagList(tagsRaw).filter((tag) => !isReservedFolderTag(tag));
+      const tags = normalizeGalleryMemberTargets(tagsRaw, "tag");
       if (!gallery || !tags.length) continue;
       galleryMemberTagsByGallery[gallery] = tags;
     }
@@ -26321,7 +26708,7 @@ function metaMakeTagAlbumsDocObject() {
   if (WS.meta && WS.meta.galleryMemberAlbumsByGallery) {
     for (const [galleryRaw, albumsRaw] of WS.meta.galleryMemberAlbumsByGallery.entries()) {
       const gallery = normalizeGalleryName(galleryRaw);
-      const albums = normalizeTagList(albumsRaw).map(normalizeTagAlbumName).filter(Boolean);
+      const albums = normalizeGalleryMemberTargets(albumsRaw, "album");
       if (!gallery || !albums.length) continue;
       galleryMemberAlbumsByGallery[gallery] = albums;
     }
@@ -26345,7 +26732,7 @@ function metaMakeTagAlbumsDocObject() {
     }
   }
   return {
-    schema: 3,
+    schema: 4,
     updatedAt: Date.now(),
     tagAlbumByTag,
     folderAlbumByPath,
@@ -26744,8 +27131,9 @@ function metaApplyTagAlbumsDocLog(log) {
       : {};
   for (const rawGallery of Object.keys(galleryMemberTagsByGallery)) {
     const gallery = normalizeGalleryName(rawGallery);
-    const tags = normalizeTagList(galleryMemberTagsByGallery[rawGallery]).filter(
-      (tag) => !isReservedFolderTag(tag),
+    const tags = migrateLegacyGalleryMemberTargets(
+      galleryMemberTagsByGallery[rawGallery],
+      "tag",
     );
     if (!gallery || !tags.length) continue;
     WS.meta.galleryMemberTagsByGallery.set(gallery, tags);
@@ -26756,9 +27144,10 @@ function metaApplyTagAlbumsDocLog(log) {
       : {};
   for (const rawGallery of Object.keys(galleryMemberAlbumsByGallery)) {
     const gallery = normalizeGalleryName(rawGallery);
-    const albums = normalizeTagList(galleryMemberAlbumsByGallery[rawGallery])
-      .map(normalizeTagAlbumName)
-      .filter(Boolean);
+    const albums = migrateLegacyGalleryMemberTargets(
+      galleryMemberAlbumsByGallery[rawGallery],
+      "album",
+    );
     if (!gallery || !albums.length) continue;
     WS.meta.galleryMemberAlbumsByGallery.set(gallery, albums);
   }
@@ -32551,6 +32940,7 @@ let TAG_FOLDER_ENTRIES_CACHE = new Map();
 let TAG_ALBUM_TAG_ENTRIES_CACHE = new Map();
 let TAG_FOLDER_VIEW_DIRS_CACHE = new Map();
 let TAG_SCOPE_MODEL_CACHE = new Map();
+let EFFECTIVE_HIDDEN_GALLERY_NAMES_CACHE = null;
 let NAV_ENTRY_RESTORE_REVISION = 0;
 
 function clearTagEntryDerivedCaches() {
@@ -32592,6 +32982,7 @@ function invalidateDirMetricsCaches() {
   invalidateDirSortMetricsCache();
   invalidateDirItemCountCache();
   clearTagEntryDerivedCaches();
+  EFFECTIVE_HIDDEN_GALLERY_NAMES_CACHE = null;
   DIR_NAV_MANIFESTS.clear();
   HOT_NAV_DIR_PATHS.clear();
   PINNED_HOT_NAV_DIR_PATHS.clear();
@@ -34507,10 +34898,20 @@ function isDirHidden(dirNode) {
 }
 
 function isDirOrAncestorHidden(dirNode) {
+  const visitedPaths = new Set();
   let cur = dirNode;
   while (cur) {
-    if (metaHasHidden(cur.path || "")) return true;
+    const path = normalizeDirPathValue(cur.path || "");
+    if (path) visitedPaths.add(path);
+    if (metaHasHidden(path)) return true;
     cur = cur.parent;
+  }
+  const path = normalizeDirPathValue(dirNode && dirNode.path);
+  const parts = path.split("/").filter(Boolean);
+  for (let i = parts.length - 1; i > 0; i--) {
+    const ancestorPath = parts.slice(0, i).join("/");
+    if (!visitedPaths.has(ancestorPath) && metaHasHidden(ancestorPath))
+      return true;
   }
   return false;
 }
@@ -35432,6 +35833,8 @@ function filterTagEntryDirsByVisibleRecords(nodes, entry) {
     const node = list[i];
     const path = String(node?.path || "");
     if (!path || seen.has(path)) continue;
+    if (!hiddenContentVisibleInCurrentView() && isDirOrAncestorHidden(node))
+      continue;
     if (!dirCanAppearUnderCurrentContentFilters(node)) continue;
     if (
       entry &&
@@ -35571,6 +35974,44 @@ function getFastTagScopeChildren(dirNode) {
     children.push(child);
   }
   return fastSortDirsForTagScope(children, String(dirNode.path || "__root__"));
+}
+
+// Container mutation must use membership, not the currently rendered result.
+// Media overrides can legitimately make a non-empty container look empty, and
+// hidden members still need to be removable when the container itself is
+// deleted. Keep this resolver free of media and hidden-visibility filtering.
+function getRawTagScopeChildren(dirNode) {
+  if (!dirNode) return [];
+  ensureDirectoryChildNodesFromCatalog(dirNode);
+  return (Array.isArray(dirNode.childrenDirs) ? dirNode.childrenDirs : []).filter(
+    (child) =>
+      child && child.type === "dir" && !isInternalTrashDirNode(child),
+  );
+}
+
+function getUnfilteredMembershipDirsForTagEntry(entry) {
+  if (!entry || entry.kind !== "tag") return [];
+  const originPath = normalizeTagAlbumScopePath(entry.originPath || "");
+  const baseNode = WS.dirByPath.get(originPath) || WS.root;
+  if (!baseNode) return [];
+  const children = getRawTagScopeChildren(baseNode);
+  if (entry.special === "favorites")
+    return children.filter((child) => metaHasFavorite(child.path || ""));
+  const tag = normalizeTag(entry.tag || "");
+  if (tag)
+    return children.filter((child) =>
+      metaGetUserTags(child.path || "").includes(tag),
+    );
+  const album = normalizeTagAlbumName(entry.album || "");
+  if (!album) return [];
+  return children.filter((child) => {
+    const path = String(child.path || "");
+    if (metaGetAlbumForPath(path) === album) return true;
+    return metaGetUserTags(path).some(
+      (memberTag) =>
+        metaGetTagAlbumForTag(memberTag, originPath) === album,
+    );
+  });
 }
 
 function getFastTagScopeModel(dirNode) {
@@ -35804,7 +36245,11 @@ function getDirectDirsForGallery(galleryName) {
     const galleries = normalizeTagList(galleriesRaw).map(normalizeGalleryName);
     if (!galleries.includes(gallery)) continue;
     const node = WS.dirByPath.get(path);
-    if (node) out.push(node);
+    if (
+      node &&
+      (hiddenContentVisibleInCurrentView() || !isDirOrAncestorHidden(node))
+    )
+      out.push(node);
   }
   return sortDirCollectionForDisplay(out, `gallery-direct:${gallery}`);
 }
@@ -35813,43 +36258,75 @@ function getGalleryMemberTagEntries(galleryName) {
   const gallery = normalizeGalleryName(galleryName);
   if (!gallery) return [];
   if (galleryIsHiddenFromCurrentView(gallery)) return [];
-  return metaGetMemberTagsForGallery(gallery).map((tag) => ({
-    kind: "tag",
-    tag,
-    label: tag,
-    originPath: "",
-    gallery,
-    galleryMember: true,
-    count: filterTagEntryDirsByVisibleRecords(
-      (gatherTagGroupsForDir(WS.root).get(tag) || []),
-      { kind: "tag", tag, label: tag, originPath: "" },
-    ).length,
-  }));
+  return metaGetMemberTagTargetsForGallery(gallery)
+    .filter(
+      (target) =>
+        hiddenContentVisibleInCurrentView() ||
+        (!tagIsEffectivelyHidden(target.tag, target.originPath) &&
+          !isDirOrAncestorHidden(
+            WS.dirByPath.get(normalizeTagAlbumScopePath(target.originPath)),
+          )),
+    )
+    .map((target) => {
+      const tag = normalizeTag(target.tag || "");
+      const originPath = normalizeTagAlbumScopePath(target.originPath || "");
+      const baseNode = WS.dirByPath.get(originPath) || WS.root;
+      const entry = {
+        kind: "tag",
+        tag,
+        label: tag,
+        originPath,
+        gallery,
+        galleryMember: true,
+      };
+      const nodes = baseNode
+        ? gatherTagGroupsForDir(baseNode).get(tag) || []
+        : [];
+      return Object.assign(entry, {
+        count: filterTagEntryDirsByVisibleRecords(nodes, entry).length,
+      });
+    });
 }
 
 function getGalleryMemberAlbumEntries(galleryName) {
   const gallery = normalizeGalleryName(galleryName);
   if (!gallery || !WS.root) return [];
   if (galleryIsHiddenFromCurrentView(gallery)) return [];
-  return metaGetMemberAlbumsForGallery(gallery).map((album) => {
-    const stats = getFastTagScopeModel(WS.root).albumStats.get(album);
-    const dirs =
-      stats && Array.isArray(stats.dirs)
-        ? stats.dirs
-        : getDirectDirsForAlbumForBaseNode(WS.root, album);
-    return {
-      kind: "tag",
-      album,
-      label: album,
-      originPath: "",
-      gallery,
-      galleryMember: true,
-      count: filterTagEntryDirsByVisibleRecords(
-        dirs,
-        { kind: "tag", album, label: album, originPath: "" },
-      ).length,
-    };
-  });
+  return metaGetMemberAlbumTargetsForGallery(gallery)
+    .filter(
+      (target) =>
+        hiddenContentVisibleInCurrentView() ||
+        (!albumIsEffectivelyHidden(target.album, target.originPath) &&
+          !isDirOrAncestorHidden(
+            WS.dirByPath.get(normalizeTagAlbumScopePath(target.originPath)),
+          )),
+    )
+    .map((target) => {
+      const album = normalizeTagAlbumName(target.album || "");
+      const originPath = normalizeTagAlbumScopePath(target.originPath || "");
+      const baseNode = WS.dirByPath.get(originPath) || WS.root;
+      const stats = baseNode
+        ? getFastTagScopeModel(baseNode).albumStats.get(album)
+        : null;
+      const dirs =
+        stats && Array.isArray(stats.dirs)
+          ? stats.dirs
+          : baseNode
+            ? getDirectDirsForAlbumForBaseNode(baseNode, album)
+            : [];
+      return {
+        kind: "tag",
+        album,
+        label: album,
+        originPath,
+        gallery,
+        galleryMember: true,
+        count: filterTagEntryDirsByVisibleRecords(
+          dirs,
+          { kind: "tag", album, label: album, originPath },
+        ).length,
+      };
+    });
 }
 
 function getGalleryEntriesForRoot() {
@@ -35868,9 +36345,10 @@ function getGalleryEntriesForRoot() {
     };
     const dirs = getDirsForTagEntry(entry);
     const memberCount =
-      metaGetMemberTagsForGallery(gallery).length +
-      metaGetMemberAlbumsForGallery(gallery).length;
-    if (!dirs.length && !memberCount) continue;
+      getGalleryMemberTagEntries(gallery).length +
+      getGalleryMemberAlbumEntries(gallery).length;
+    const directMemberCount = getDirectDirsForGallery(gallery).length;
+    if (!directMemberCount && !memberCount) continue;
     out.push(Object.assign(entry, { count: dirs.length + memberCount }));
   }
   return out;
@@ -35966,11 +36444,14 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     label: "Favorites",
     originPath,
   };
+  const favoriteMembers = visibleChildren.filter((d) =>
+    metaHasFavorite(d.path || ""),
+  );
   const favs = filterTagEntryDirsByVisibleRecords(
-    visibleChildren.filter((d) => metaHasFavorite(d.path || "")),
+    favoriteMembers,
     favoritesEntry,
   );
-  if (favs.length) {
+  if (favoriteMembers.length) {
     entries.push({
       kind: "tag",
       label: "Favorites",
@@ -36002,11 +36483,12 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       label: "Untagged",
       originPath,
     };
+    const untaggedMembers = getUntaggedDirsForNode(dirNode);
     const untagged = filterTagEntryDirsByVisibleRecords(
-      getUntaggedDirsForNode(dirNode),
+      untaggedMembers,
       untaggedEntry,
     );
-    if (untagged.length) {
+    if (untaggedMembers.length) {
       entries.push({
         kind: "tag",
         label: "Untagged",
@@ -36081,7 +36563,6 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
             .filter(Boolean),
           albumEntry,
         );
-        if (!visibleAlbumDirs.length) continue;
         let visibleTagCount = 0;
         stats.tags.forEach((tag) => {
           const tagEntry = {
@@ -36104,8 +36585,6 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
               ).length
             : 0;
         const galleryCount = (galleryEntriesByAlbum.get(album) || []).length;
-        if (!visibleTagCount && !visibleDirectFolderCount && !galleryCount)
-          continue;
         entries.push({
           kind: "tag",
           album,
@@ -36157,7 +36636,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
         originPath,
       };
       const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
-      if (!visibleNodes.length && !taggedAlbums.length && !taggedGalleries.length)
+      if (!nodes.length && !taggedAlbums.length && !taggedGalleries.length)
         continue;
       entries.push({
         kind: "tag",
@@ -36282,7 +36761,6 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
       originPath: basePath,
     };
     const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
-    if (!visibleNodes.length) continue;
     out.push({
       kind: "tag",
       tag,
@@ -47289,7 +47767,9 @@ function openTagContextMenu(context) {
   const isAlbumEntry = !!album && !tag && !context.special;
   const isGalleryEntry = !!gallery && !tag && !album && !context.special;
   const canRename = !context.special && (!!tag || isAlbumEntry || isGalleryEntry);
-  const canDelete = !context.special && (!!tag || isAlbumEntry || isGalleryEntry);
+  const canDelete =
+    context.special === "favorites" ||
+    (!context.special && (!!tag || isAlbumEntry || isGalleryEntry));
   const canTagAlbum = isAlbumEntry;
   const canHide = !context.special && (!!tag || isAlbumEntry || isGalleryEntry);
   const canCreateInverse = !!tag && !context.special && !isAlbumEntry;
@@ -47580,7 +48060,7 @@ function openTagEntryContextMenu(entry, anchor) {
   }
   if (selectionKey && openBulkActionMenuForSelection(`tag:${selectionKey}`))
     return true;
-  const dirs = getDirsForTagEntry(entry);
+  const dirs = getUnfilteredMembershipDirsForTagEntry(entry);
   const paths = gatherTagPathsForDirs(dirs);
   const tagKey = tagThumbnailKeyForEntry(entry);
   openTagContextMenu({
@@ -50287,9 +50767,10 @@ function galleryTargetForTagEntry(entry) {
   if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
     return null;
   const tag = normalizeTag(entry.tag || "");
-  if (tag) return { kind: "tag", tag };
+  const originPath = normalizeTagAlbumScopePath(entry.originPath || "");
+  if (tag) return { kind: "tag", tag, originPath };
   const album = normalizeTagAlbumName(entry.album || "");
-  if (album) return { kind: "album", album };
+  if (album) return { kind: "album", album, originPath };
   return null;
 }
 
@@ -50496,15 +50977,19 @@ function renameTagForPaths(tag, newName, paths, scopePath = null) {
     }
   }
   if (WS.meta && WS.meta.galleryMemberTagsByGallery instanceof Map) {
-    for (const [galleryRaw, tagsRaw] of Array.from(
-      WS.meta.galleryMemberTagsByGallery.entries(),
+    for (const galleryRaw of Array.from(
+      WS.meta.galleryMemberTagsByGallery.keys(),
     )) {
-      const tags = normalizeTagList(tagsRaw);
-      if (!tags.includes(normalizedOld)) continue;
-      const next = tags.map((tag) =>
-        tag === normalizedOld ? normalizedNew : tag,
+      const targets = metaGetMemberTagTargetsForGallery(galleryRaw);
+      const next = targets.map((target) =>
+        target.tag === normalizedOld &&
+        (scopePath == null ||
+          target.originPath === normalizeTagAlbumScopePath(scopePath))
+          ? Object.assign({}, target, { tag: normalizedNew })
+          : target,
       );
-      if (metaSetMemberTagsForGallery(galleryRaw, next)) changed = true;
+      if (JSON.stringify(next) === JSON.stringify(targets)) continue;
+      if (metaSetMemberTagTargetsForGallery(galleryRaw, next)) changed = true;
     }
   }
   if (WS.meta && WS.meta.galleryUserTagsByGallery instanceof Map) {
@@ -50553,13 +51038,19 @@ function tagAlbumExistsInScope(albumName, scopePath = null) {
         return true;
     }
   }
-  if (scopeMatches("")) {
-    if (WS.meta.galleryMemberAlbumsByGallery instanceof Map) {
-      for (const albumsRaw of WS.meta.galleryMemberAlbumsByGallery.values()) {
-        const albums = normalizeTagList(albumsRaw).map(normalizeTagAlbumName);
-        if (albums.includes(album)) return true;
-      }
+  if (WS.meta.galleryMemberAlbumsByGallery instanceof Map) {
+    for (const galleryRaw of WS.meta.galleryMemberAlbumsByGallery.keys()) {
+      const targets = metaGetMemberAlbumTargetsForGallery(galleryRaw);
+      if (
+        targets.some(
+          (target) =>
+            target.album === album && scopeMatches(target.originPath),
+        )
+      )
+        return true;
     }
+  }
+  if (scopeMatches("")) {
     if (WS.meta.galleryAlbumByGallery instanceof Map) {
       for (const albumRaw of WS.meta.galleryAlbumByGallery.values()) {
         if (normalizeTagAlbumName(albumRaw) === album) return true;
@@ -50624,15 +51115,18 @@ function renameTagAlbumByName(albumName, newName, scopePath = null) {
     }
   }
   if (WS.meta && WS.meta.galleryMemberAlbumsByGallery instanceof Map) {
-    for (const [galleryRaw, albumsRaw] of Array.from(
-      WS.meta.galleryMemberAlbumsByGallery.entries(),
+    for (const galleryRaw of Array.from(
+      WS.meta.galleryMemberAlbumsByGallery.keys(),
     )) {
-      const albums = normalizeTagList(albumsRaw).map(normalizeTagAlbumName);
-      if (!albums.includes(normalizedOld)) continue;
-      const next = albums.map((album) =>
-        album === normalizedOld ? normalizedNew : album,
+      const targets = metaGetMemberAlbumTargetsForGallery(galleryRaw);
+      const next = targets.map((target) =>
+        target.album === normalizedOld &&
+        (scopePath == null || target.originPath === normalizedScope)
+          ? Object.assign({}, target, { album: normalizedNew })
+          : target,
       );
-      if (metaSetMemberAlbumsForGallery(galleryRaw, next)) changed = true;
+      if (JSON.stringify(next) === JSON.stringify(targets)) continue;
+      if (metaSetMemberAlbumTargetsForGallery(galleryRaw, next)) changed = true;
     }
   }
   if (WS.meta && WS.meta.galleryAlbumByGallery instanceof Map) {
@@ -50713,16 +51207,14 @@ function renameGalleryByName(galleryName, newName) {
   if (
     mergeListMapEntry(
       WS.meta.galleryMemberTagsByGallery,
-      (values) =>
-        normalizeTagList(values).filter((tag) => !isReservedFolderTag(tag)),
+      (values) => normalizeGalleryMemberTargets(values, "tag"),
     )
   )
     changed = true;
   if (
     mergeListMapEntry(
       WS.meta.galleryMemberAlbumsByGallery,
-      (values) =>
-        normalizeTagList(values).map(normalizeTagAlbumName).filter(Boolean),
+      (values) => normalizeGalleryMemberTargets(values, "album"),
     )
   )
     changed = true;
@@ -50768,7 +51260,16 @@ function renameGalleryByName(galleryName, newName) {
 function deleteTagFromPaths(tag, paths, scopePath = null) {
   const normalized = String(tag || "");
   if (!normalized) return false;
-  const uniquePaths = Array.from(new Set((paths || []).filter((p) => p)));
+  const rawMemberPaths = gatherTagPathsForDirs(
+    getUnfilteredMembershipDirsForTagEntry({
+      kind: "tag",
+      tag: normalized,
+      originPath: normalizeTagAlbumScopePath(scopePath),
+    }),
+  );
+  const uniquePaths = Array.from(
+    new Set((paths || []).concat(rawMemberPaths).filter((p) => p)),
+  );
   let changed = false;
   for (const p of uniquePaths) {
     const tags = metaGetUserTags(p);
@@ -50839,16 +51340,19 @@ function deleteTagFromPaths(tag, paths, scopePath = null) {
     }
   }
   if (WS.meta && WS.meta.galleryMemberTagsByGallery instanceof Map) {
-    for (const [galleryRaw, tagsRaw] of Array.from(
-      WS.meta.galleryMemberTagsByGallery.entries(),
+    for (const galleryRaw of Array.from(
+      WS.meta.galleryMemberTagsByGallery.keys(),
     )) {
-      const tags = normalizeTagList(tagsRaw);
-      if (!tags.includes(normalized)) continue;
+      const targets = metaGetMemberTagTargetsForGallery(galleryRaw);
+      const next = targets.filter(
+        (target) =>
+          target.tag !== normalized ||
+          (scopePath != null &&
+            target.originPath !== normalizeTagAlbumScopePath(scopePath)),
+      );
+      if (next.length === targets.length) continue;
       if (
-        metaSetMemberTagsForGallery(
-          galleryRaw,
-          tags.filter((tag) => tag !== normalized),
-        )
+        metaSetMemberTagTargetsForGallery(galleryRaw, next)
       )
         changed = true;
     }
@@ -50928,16 +51432,18 @@ function deleteTagAlbumByName(albumName, scopePath = null) {
     }
   }
   if (WS.meta && WS.meta.galleryMemberAlbumsByGallery instanceof Map) {
-    for (const [galleryRaw, albumsRaw] of Array.from(
-      WS.meta.galleryMemberAlbumsByGallery.entries(),
+    for (const galleryRaw of Array.from(
+      WS.meta.galleryMemberAlbumsByGallery.keys(),
     )) {
-      const albums = normalizeTagList(albumsRaw).map(normalizeTagAlbumName);
-      if (!albums.includes(album)) continue;
+      const targets = metaGetMemberAlbumTargetsForGallery(galleryRaw);
+      const next = targets.filter(
+        (target) =>
+          target.album !== album ||
+          (scopePath != null && target.originPath !== normalizedScope),
+      );
+      if (next.length === targets.length) continue;
       if (
-        metaSetMemberAlbumsForGallery(
-          galleryRaw,
-          albums.filter((item) => item !== album),
-        )
+        metaSetMemberAlbumTargetsForGallery(galleryRaw, next)
       )
         changed = true;
     }
@@ -51188,7 +51694,19 @@ async function handleTagMenuAction(action) {
       tag && !isAlbumEntry && !isGalleryEntry
         ? getAlbumEntriesForTagForBaseNode(renameBaseNode, tag)
         : [];
-    if (!paths.length && !isAlbumEntry && !isGalleryEntry && !renameTaggedAlbums.length) {
+    const renameTaggedGalleries =
+      tag && renameBaseNode === WS.root
+        ? getAllGalleryNames().filter((name) =>
+            metaGetUserTagsForGallery(name).includes(tag),
+          )
+        : [];
+    if (
+      !paths.length &&
+      !isAlbumEntry &&
+      !isGalleryEntry &&
+      !renameTaggedAlbums.length &&
+      !renameTaggedGalleries.length
+    ) {
       showStatusMessage("No items contain that tag.");
       return;
     }
@@ -51235,16 +51753,19 @@ async function handleTagMenuAction(action) {
     const galleryName = normalizeGalleryName(galleryContext && galleryContext.gallery);
     if (!galleryName) return;
     let changed = false;
+    const memberOriginPath = normalizeTagAlbumScopePath(ctx.originPath || "");
     if (tag) {
-      const next = metaGetMemberTagsForGallery(galleryName).filter(
-        (item) => item !== tag,
+      const next = metaGetMemberTagTargetsForGallery(galleryName).filter(
+        (item) =>
+          item.tag !== tag || item.originPath !== memberOriginPath,
       );
-      changed = metaSetMemberTagsForGallery(galleryName, next);
+      changed = metaSetMemberTagTargetsForGallery(galleryName, next);
     } else if (isAlbumEntry) {
-      const next = metaGetMemberAlbumsForGallery(galleryName).filter(
-        (item) => item !== album,
+      const next = metaGetMemberAlbumTargetsForGallery(galleryName).filter(
+        (item) =>
+          item.album !== album || item.originPath !== memberOriginPath,
       );
-      changed = metaSetMemberAlbumsForGallery(galleryName, next);
+      changed = metaSetMemberAlbumTargetsForGallery(galleryName, next);
     }
     if (!changed) {
       showStatusMessage("No galleries updated.");
@@ -51259,6 +51780,22 @@ async function handleTagMenuAction(action) {
   }
   if (action === "delete") {
     if (!ctx.canDelete) return;
+    if (ctx.special === "favorites") {
+      const confirmed = await showAppMenuConfirm(
+        "Remove all folders from Favorites?",
+        { danger: true },
+      );
+      if (!confirmed) return;
+      const changed = metaSetFavoriteBulk(paths, false);
+      if (!changed) {
+        refreshAfterTagMetadataChange();
+        showStatusMessage("Favorites is already empty.");
+        return;
+      }
+      metaScheduleSave();
+      showStatusMessage("Cleared Favorites.");
+      return;
+    }
     if (isGalleryEntry) {
       const confirmed = await showAppMenuConfirm(
         `Delete gallery '${label}'? Nothing inside is deleted. Its folders, tags, and albums just return to their normal place.`,
@@ -51306,13 +51843,17 @@ async function handleTagMenuAction(action) {
     const taggedAlbums = tag
       ? getAlbumEntriesForTagForBaseNode(deleteBaseNode, tag)
       : [];
-    if (!paths.length && !taggedAlbums.length) {
+    const taggedGalleries =
+      tag && deleteBaseNode === WS.root
+        ? getAllGalleryNames().filter((name) =>
+            metaGetUserTagsForGallery(name).includes(tag),
+          )
+        : [];
+    if (!paths.length && !taggedAlbums.length && !taggedGalleries.length) {
       showStatusMessage("No items contain that tag.");
       return;
     }
-    const confirmPrompt = paths.length
-      ? `Remove tag '${label}' from these folders?`
-      : `Remove tag '${label}' from ${taggedAlbums.length} album${taggedAlbums.length === 1 ? "" : "s"}?`;
+    const confirmPrompt = `Remove tag '${label}' from all included folders and containers?`;
     const confirmed = await showAppMenuConfirm(confirmPrompt, {
       danger: true,
     });
@@ -64169,9 +64710,9 @@ function startGallerySelectionEdit() {
     if (!target) continue;
     const key =
       target.kind === "tag"
-        ? `tag:${target.tag}`
+        ? `tag:${String(target.originPath || "")}:${target.tag}`
         : target.kind === "album"
-          ? `album:${target.album}`
+          ? `album:${String(target.originPath || "")}:${target.album}`
           : "";
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -64213,7 +64754,9 @@ async function deleteSelectedTagAlbumEntries(entries, usedBulk = false) {
     const gallery = normalizeGalleryName(entry.gallery || "");
     const originPath = String(entry.originPath || "");
     if (tag) {
-      const paths = gatherTagPathsForDirs(getDirsForTagEntry(entry));
+      const paths = gatherTagPathsForDirs(
+        getUnfilteredMembershipDirsForTagEntry(entry),
+      );
       byTag.set(`${originPath}\n${tag}`, { tag, paths, originPath });
       continue;
     }
