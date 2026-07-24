@@ -3391,6 +3391,7 @@ img[data-rotate-key].rotatingThumbFade {
   height: 100%;
   aspect-ratio: auto;
   object-fit: cover;
+  background: transparent;
 }
 
 .gridFiles.previewSquareCards .previewThumbOverlayMeta {
@@ -3400,9 +3401,12 @@ img[data-rotate-key].rotatingThumbFade {
   bottom: 0;
   padding: 6px 8px;
   gap: 2px;
-  background: var(--color1-secondary);
-  color: var(--color0-primary);
-  border-top: 1px solid var(--color1-tertiary);
+  background: var(--preview-pane-thumb-title-bar-bg);
+  background-color: var(--preview-pane-thumb-title-bar-bg);
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  color: var(--preview-pane-thumb-title-bar-fg);
+  border-top: 0;
 }
 
 .gridFiles.previewSquareCards .previewThumbOverlayMetaMenuOnly,
@@ -3528,9 +3532,12 @@ img[data-rotate-key].rotatingThumbFade {
   bottom: 0;
   padding: 6px 8px;
   gap: 2px;
-  background: var(--color1-secondary);
-  color: var(--color0-primary);
-  border-top: 1px solid var(--color1-tertiary);
+  background: var(--preview-pane-thumb-title-bar-bg);
+  background-color: var(--preview-pane-thumb-title-bar-bg);
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  color: var(--preview-pane-thumb-title-bar-fg);
+  border-top: 0;
 }
 
 .gridFiles.previewNaturalAspectCards.fitInsideJustified
@@ -3687,9 +3694,12 @@ img[data-rotate-key].rotatingThumbFade {
   right: 0;
   bottom: 0;
   padding: 6px 8px;
-  background: var(--color1-secondary);
-  color: var(--color0-primary);
-  border-top: 1px solid var(--color1-tertiary);
+  background: var(--preview-pane-thumb-title-bar-bg);
+  background-color: var(--preview-pane-thumb-title-bar-bg);
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  color: var(--preview-pane-thumb-title-bar-fg);
+  border-top: 0;
 }
 
 .gridFiles.fitInsideJustified .metaBlock,
@@ -3735,7 +3745,8 @@ img[data-rotate-key].rotatingThumbFade {
   flex-direction: column;
   overflow: hidden;
   border-radius: 0;
-  background: var(--color1-secondary);
+  /* Same dark underlay as .fileCard — see title-strip / pending-thumb note. */
+  background: var(--color1-primary);
   box-shadow: 0 10px 30px var(--color1-primary-transparent);
 }
 
@@ -3819,9 +3830,12 @@ img[data-rotate-key].rotatingThumbFade {
   right: 0;
   bottom: 0;
   padding: 6px 8px;
-  background: var(--color1-secondary);
-  color: var(--color0-primary);
-  border-top: 1px solid var(--color1-tertiary);
+  background: var(--preview-pane-thumb-title-bar-bg);
+  background-color: var(--preview-pane-thumb-title-bar-bg);
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  color: var(--preview-pane-thumb-title-bar-fg);
+  border-top: 0;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayTopLine {
@@ -4106,7 +4120,10 @@ img[data-rotate-key].rotatingThumbFade {
   border: 1px solid var(--color1-tertiary);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: var(--color1-secondary);
+  /* Dark underlay (not raised secondary): a pending thumb is opacity:0, so the
+     frosted title strip must not composite over secondary-on-secondary or it
+     reads fully opaque until the image decodes. */
+  background: var(--color1-primary);
   box-shadow: 0 10px 30px var(--color1-primary-transparent);
   display: flex;
   flex-direction: column;
@@ -6672,7 +6689,9 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 
-/* v3: make every thumbnail title/meta strip solid, including preview-pane tag/folder/file thumbs. */
+/* v3 → v4: title/meta strips use the fixed frosted bar (not solid secondary).
+   Solid secondary here was the flash when a selected unloaded thumb still had
+   no image behind a "translucent" strip. */
 .gridFiles.previewSquareCards .previewThumbOverlayMeta,
 .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta,
 .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard .thumbOverlayMeta,
@@ -6682,10 +6701,13 @@ img[data-rotate-key].rotatingThumbFade {
 #directoriesList.gridModeList .dirFileOverlay,
 .dirSquareOverlay,
 .dirFileOverlay {
-  background: var(--color1-secondary) !important;
+  background: var(--preview-pane-thumb-title-bar-bg) !important;
+  background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
-  color: var(--color0-primary) !important;
-  border-top: 1px solid var(--color1-tertiary) !important;
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
+  border-top: 0 !important;
 }
 
 .gridFiles.previewSquareCards .previewThumbOverlayMetaMenuOnly,
@@ -6724,15 +6746,12 @@ remove the outer app frame. */
 }
 
 
-/* v4: force preview-pane thumbnail title strips to use one translucent overlay treatment.
-   This targets the right-side preview pane directly, including cropped square cards, natural-aspect cards, folders, tags, and compact inline-title variants. */
+/* v4: thumbnail title strips — fixed frosted treatment (30% surface + light
+   blur). Not user-configurable. color-mix uses transparent so media shows
+   through; cards use a dark underlay (not secondary) so a still-loading
+   transparent thumb doesn't composite translucent secondary over secondary
+   and read as fully opaque until the image decodes. */
 :root {
-  /* The strip is the theme's raised-surface color faded toward clear, with a
-     frosted-glass blur that scales with the same Title strip setting.
-     --thumb-title-strip-opacity / --thumb-title-strip-blur are rewritten from
-     options (0%–100% in tens); at 0% the media shows straight through with no
-     blur, at 100% the strip is solid theme color with max blur. Both color
-     vars resolve at each use site, so the mix tracks --color1-secondary. */
   --thumb-title-strip-opacity: 30%;
   --thumb-title-strip-blur: 4.2px;
   --preview-pane-thumb-title-bar-bg: color-mix(
@@ -6867,10 +6886,13 @@ remove the outer app frame. */
  .previewThumbOverlayMeta {
   border-top: 0 !important;
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  background: rgba(0, 0, 0, 0.34) !important;
+  background: var(--preview-pane-thumb-title-bar-bg) !important;
+  background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
   box-shadow: none !important;
-  color: var(--on-media-fg) !important;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
 }
 
 #previewPane
@@ -9335,42 +9357,25 @@ const THUMBNAIL_PRESET_BADGE_FIELDS = Object.freeze([
   "itemType",
 ]);
 
-// How solid the title strip under a thumbnail is, in ten steps: 0% is clear
-// (the media shows straight through) and 100% is the theme's raised-surface
-// color, so the strip matches whichever theme is active rather than being a
-// fixed black scrim. Written out as the --thumb-title-strip-opacity percentage
-// that --preview-pane-thumb-title-bar-bg mixes with. Frosted-glass blur scales
-// with the same percentage (see THUMB_TITLE_STRIP_BLUR_MAX_PX).
-const THUMB_TITLE_STRIP_OPACITY_CYCLE = Object.freeze(
-  Array.from({ length: 11 }, (unused, step) => {
-    const pct = step * 10;
-    return Object.freeze({ value: String(pct), label: `${pct}%` });
-  }),
-);
-// Backdrop blur at 100% strip opacity. Intermediate steps scale linearly so a
-// translucent strip softens the media behind it (frosted glass) instead of
-// reading as a flat tint.
+// Title strip frosting is hard-fixed (was a 0–100% cycle). Kept as named
+// constants so CSS :root defaults and applyThumbTitleStripOpacityFromOptions
+// stay in lockstep. Not exposed in Settings / app menu.
+const THUMB_TITLE_STRIP_OPACITY_FIXED = "30";
 const THUMB_TITLE_STRIP_BLUR_MAX_PX = 14;
+const THUMB_TITLE_STRIP_BLUR_FIXED_PX =
+  Math.round((Number(THUMB_TITLE_STRIP_OPACITY_FIXED) / 100) * THUMB_TITLE_STRIP_BLUR_MAX_PX * 10) /
+  10;
 
-function normalizeThumbTitleStripOpacityValue(value, fallback = "30") {
-  const n = Number.parseFloat(value);
-  if (!Number.isFinite(n)) return String(fallback);
-  const clamped = Math.max(0, Math.min(100, n));
-  return String(Math.round(clamped / 10) * 10);
+function normalizeThumbTitleStripOpacityValue(_value, _fallback = THUMB_TITLE_STRIP_OPACITY_FIXED) {
+  return THUMB_TITLE_STRIP_OPACITY_FIXED;
 }
 
-function getThumbTitleStripOpacityFromOptions(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return normalizeThumbTitleStripOpacityValue(
-    src ? src.thumbTitleStripOpacity : null,
-  );
+function getThumbTitleStripOpacityFromOptions(_opt = null) {
+  return THUMB_TITLE_STRIP_OPACITY_FIXED;
 }
 
-function thumbTitleStripBlurPxForOpacity(opacityPct) {
-  const n = Number.parseFloat(opacityPct);
-  const pct = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
-  // One decimal keeps the CSS value stable across the 10% steps without long floats.
-  return Math.round((pct / 100) * THUMB_TITLE_STRIP_BLUR_MAX_PX * 10) / 10;
+function thumbTitleStripBlurPxForOpacity(_opacityPct) {
+  return THUMB_TITLE_STRIP_BLUR_FIXED_PX;
 }
 
 // Default for workspaces that have never set fullResThumbnails. Must live above
@@ -9685,7 +9690,7 @@ function defaultOptions() {
     hideBeforeLastDashInFileNames: true,
     hideAfterFirstUnderscoreInFileNames: true,
     clickSelectedRotatingThumbTeleports: false,
-    thumbTitleStripOpacity: "30",
+    thumbTitleStripOpacity: THUMB_TITLE_STRIP_OPACITY_FIXED,
     fullResThumbnails: FULL_QUALITY_THUMBNAILS_DEFAULT,
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "row7",
@@ -10260,11 +10265,14 @@ let THUMBNAIL_SERVICE_ROOT_PIN_CURSOR = 0;
 // tag/album views should feel immediate, so background thumbnail repair, root
 // pin maintenance, warmers, and full preview renders are paced around it instead
 // of all trying to run in the same frame.
-const RESPONSIVE_NAV_DEFAULT_MS = 1100;
-const RESPONSIVE_NAV_TAG_ALBUM_MS = 1800;
-const RESPONSIVE_NAV_MEDIA_MS = 1400;
-const RESPONSIVE_PREVIEW_TAG_ALBUM_DELAY_MS = 90;
-const RESPONSIVE_PREVIEW_FILTERED_TAG_ALBUM_DELAY_MS = 150;
+const RESPONSIVE_NAV_DEFAULT_MS = 700;
+const RESPONSIVE_NAV_TAG_ALBUM_MS = 900;
+const RESPONSIVE_NAV_MEDIA_MS = 800;
+// Selection-driven preview rebuild used to wait 90–150ms in tag/album views;
+// that lag was very noticeable when arrowing through folders. Render on the
+// next frame instead.
+const RESPONSIVE_PREVIEW_TAG_ALBUM_DELAY_MS = 0;
+const RESPONSIVE_PREVIEW_FILTERED_TAG_ALBUM_DELAY_MS = 0;
 const PREVIEW_VIDEO_THUMB_HEAVY_COUNT = 16;
 // How many folder/tag video thumbnails are upgraded to live <video> elements in
 // the first synchronous pass (the rest trickle in via the deferred upgrader).
@@ -15979,7 +15987,6 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "cycleThumbPresetFile",
   "cycleThumbPresetFolder",
   "cycleThumbPresetTag",
-  "cycleThumbTitleStripOpacity",
   "cycleVideoSkipStep",
   "cycleVideoEndBehavior",
   "toggleAnimatedFilters",
@@ -16008,7 +16015,6 @@ const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_thumbPreset_file",
   "opt_thumbPreset_folder",
   "opt_thumbPreset_tag",
-  "opt_thumbTitleStripOpacity",
   "opt_videoSkipStep",
   "opt_videoEndBehavior",
   "opt_animatedMediaFilters",
@@ -16359,8 +16365,9 @@ const KEYBIND_ACTIONS = [
   {
     id: "cycleThumbTitleStripOpacity",
     label: "Cycle title strip",
-    hint: "Cycle the title strip from clear to the theme's surface color in tenths.",
+    hint: "Retired — title strip opacity is fixed at 30%.",
     section: "thumbnails",
+    hiddenInUi: true,
   },
   {
     id: "scoreUpSelection",
@@ -21219,7 +21226,6 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
 ${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
 ${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
-${makeSelectRow("Title strip", "How solid the frosted title strip under a thumbnail is: 0% is clear, 100% is the theme's surface color. Blur rises with opacity so translucent strips read like frosted glass.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), THUMB_TITLE_STRIP_OPACITY_CYCLE)}
 ${makeCheckRow("Full resolution", "Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
@@ -21928,13 +21934,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   );
   bindThumbnailPresetSelect("opt_thumbPreset_tag", (value) =>
     applyThumbnailPresetForKinds("tag", value),
-  );
-  bindSelect(
-    "opt_thumbTitleStripOpacity",
-    "thumbTitleStripOpacity",
-    false,
-    (val) => showStatusMessage(`Title strip: ${val}%`),
-    (val) => normalizeThumbTitleStripOpacityValue(val),
   );
   // Not listed in APP_ITEM_MENU_SETTING_CONTROL_IDS so the Thumbnails settings
   // section stays reachable under APP_ITEM_MENU_ACTIONS_ONLY (the other thumb
@@ -28834,21 +28833,21 @@ function scheduleSelectedDirectoryPreviewRefresh(dirNode, opts = null) {
     guardedRender();
   });
 
+  // Fallback only if the rAF paint was skipped (e.g. tab hidden). Keep short.
   SELECTED_DIR_PREVIEW_REFRESH.timer = setTimeout(() => {
     SELECTED_DIR_PREVIEW_REFRESH.timer = 0;
     guardedRender();
-  }, Math.max(30, Number(options.delayMs) || 70));
+  }, Math.max(16, Number(options.delayMs) || 32));
 
+  // Materialize missing media without a forced re-render cascade. The old path
+  // re-rendered at +15ms and again at +120ms after every selection change.
   SELECTED_DIR_PREVIEW_REFRESH.materializeTimer = setTimeout(() => {
     SELECTED_DIR_PREVIEW_REFRESH.materializeTimer = 0;
     Promise.resolve()
       .then(async () => {
         if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return false;
         if (!selectedDirectoryPreviewStillCurrent(node)) return false;
-        if (
-          (WS.catalog && WS.catalog.enabled) ||
-          node.loadState !== "loaded"
-        ) {
+        if (node.loadState !== "loaded") {
           try {
             await ensureDirectoryHydratedForOpen(node, {
               label: "Loading preview...",
@@ -28864,16 +28863,13 @@ function scheduleSelectedDirectoryPreviewRefresh(dirNode, opts = null) {
         return false;
       })
       .then((changed) => {
+        if (!changed) return;
         if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return;
         if (!selectedDirectoryPreviewStillCurrent(node)) return;
-        if (changed) guardedRender();
-        setTimeout(() => {
-          if (token !== SELECTED_DIR_PREVIEW_REFRESH.token) return;
-          guardedRender();
-        }, 120);
+        guardedRender();
       })
       .catch(() => {});
-  }, 15);
+  }, 40);
 }
 
 async function ensureDirectoryLoaded(dirNode, opts = null) {
@@ -28907,19 +28903,17 @@ async function ensureDirectorySubtreeLoaded(dirNode, opts = null) {
 
 async function ensureDirectoryHydratedForOpen(node, opts = null) {
   if (!node) return true;
-  const showOverlay = !(opts && opts.showOverlay === false);
-  if (showOverlay) holdBusyOverlay();
-  try {
-    await ensureDirectoryLoaded(node, opts);
-    await ensureRootChildWorkspaceThumbnailsLoaded(node, {
-      label: "Loading folder media...",
-      showOverlay,
-      hideOverlay: false,
-    });
-    return true;
-  } finally {
-    if (showOverlay) releaseBusyOverlayHold({ hide: true });
-  }
+  // Already materialized — open path must stay instant (no busy flash).
+  if (node.loadState === "loaded") return true;
+  // Hydration is currently a lightweight mark-loaded path; never raise the
+  // full-screen busy overlay for it (that made every first open feel slow).
+  await ensureDirectoryLoaded(node, opts);
+  await ensureRootChildWorkspaceThumbnailsLoaded(node, {
+    label: "Loading folder media...",
+    showOverlay: false,
+    hideOverlay: false,
+  });
+  return true;
 }
 
 async function ensureInternalTrashDirectoryForRootHandle(rootHandle) {
@@ -31683,9 +31677,11 @@ function previewFolderGridNeedsRepair(dirNode) {
   return stats.rendered <= 0 && !stats.hasLabel;
 }
 
-function schedulePreviewFolderGridRepairAfterMutation(dirNode, attempts = 2) {
+function schedulePreviewFolderGridRepairAfterMutation(dirNode, attempts = 1) {
   if (!dirNode || attempts <= 0) return;
   const targetPath = String(dirNode.path || "");
+  // One rAF repair only — the old 80ms second pass re-built the grid on every
+  // open/close even when the first paint was fine.
   requestAnimationFrame(() => {
     canonicalizeActiveDirectoryReferences();
     if (WS.preview.kind !== "dir") return;
@@ -31693,20 +31689,8 @@ function schedulePreviewFolderGridRepairAfterMutation(dirNode, attempts = 2) {
     if (currentPath !== targetPath) return;
     if (!previewFolderGridNeedsRepair(WS.preview.dirNode)) return;
     renderPreviewPane(false, true);
-    if (attempts > 1) {
-      setTimeout(() => {
-        canonicalizeActiveDirectoryReferences();
-        if (
-          WS.preview.kind === "dir" &&
-          String(WS.preview.dirNode?.path || "") === targetPath &&
-          previewFolderGridNeedsRepair(WS.preview.dirNode)
-        ) {
-          renderPreviewPane(false, true);
-          kickVideoThumbsForPreview();
-          kickImageThumbsForPreview();
-        }
-      }, 80);
-    }
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
   });
 }
 
@@ -36988,7 +36972,7 @@ function restoreTagFolderEntrySelection(ctx) {
   WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
   syncPreviewToSelection({ force: true });
   finalizeDirectoryNavigationRender({
-    animatePreview: true,
+    animatePreview: false,
     keepDirectoriesScroll: true,
   }).catch(() => {});
   return true;
@@ -37009,7 +36993,7 @@ function setTagFolderViewState(mode, tag, originPath, album = "") {
   WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
   syncPreviewToSelection({ force: true });
   finalizeDirectoryNavigationRender({
-    animatePreview: true,
+    animatePreview: false,
     keepDirectoriesScroll: true,
   })
     .then((rendered) => {
@@ -38673,7 +38657,7 @@ async function returnToSearchResults() {
     WS.view.pendingPreviewSelectionKey = target ? `dir:${target}` : "";
     setActivePane("preview");
     await finalizeDirectoryNavigationRender({
-      animatePreview: true,
+      animatePreview: false,
       keepDirectoriesScroll: true,
       recordHistory: true,
     });
@@ -38684,7 +38668,7 @@ async function returnToSearchResults() {
   WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
   syncPreviewToSelection({ force: true });
   await finalizeDirectoryNavigationRender({
-    animatePreview: true,
+    animatePreview: false,
     recordHistory: true,
   });
 }
@@ -40001,7 +39985,7 @@ function focusDirectoriesOnFileRecord(rec) {
   return !!syncDirectoriesSelectionToFileRecord(rec, {
     syncPreview: true,
     pendingDirScrollMode: "center-selected",
-    animatePreview: true,
+    animatePreview: false,
     keepPreviewScroll: true,
     recordHistory: true,
   });
@@ -40037,7 +40021,7 @@ function openPreviewFileFromPreviewCard(rec) {
     dirNode: previewContextDir || synced.dirNode || null,
     fileId,
   });
-  renderPreviewPane(true, true);
+  renderPreviewPane(false, true);
   setActivePane("directories");
   syncActivePaneWithLayout();
   updatePreviewSelectionClasses();
@@ -40058,14 +40042,15 @@ function renderSelectedFilePreviewBeforeDirectoryPreparation() {
     renderPreviewPane(false, false);
     return;
   }
-  // The same pre-render is needed when the selected first item is itself a
-  // media folder. Otherwise thumbnail preparation can leave the preview pane
-  // with no visible grid until another selection change forces a render.
+  // For folder targets: only clear the stale grid. finalizeDirectoryNavigation
+  // (called immediately after) does the real build — a full pre-render here
+  // doubled the work and made every open/close feel a frame late.
   if (WS.preview.kind === "dir" && WS.preview.dirNode) {
     resetPreviewGridRenderRecovery();
-    if (previewBodyEl) { releaseContainerThumbMedia(previewBodyEl); previewBodyEl.innerHTML = ""; }
-    renderPreviewPane(false, false);
-    schedulePreviewFolderGridRepairForCurrentTarget(3);
+    if (previewBodyEl) {
+      releaseContainerThumbMedia(previewBodyEl);
+      previewBodyEl.innerHTML = "";
+    }
   }
 }
 
@@ -40174,7 +40159,7 @@ function enterSelectedDirectory() {
     renderSelectedFilePreviewBeforeDirectoryPreparation();
     maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
     finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(entry.node, {
-      animatePreview: true,
+      animatePreview: false,
       recordHistory: true,
       activatePreviewSelection: enteringFromGrid && previewThumbnailSelectionEnabled(),
     }).catch(() => {});
@@ -40194,7 +40179,7 @@ function enterSelectedDirectory() {
     renderSelectedFilePreviewBeforeDirectoryPreparation();
     maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
     finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(entry.node, {
-      animatePreview: true,
+      animatePreview: false,
       recordHistory: true,
       activatePreviewSelection: enteringFromGrid && previewThumbnailSelectionEnabled(),
     }).catch(() => {});
@@ -40214,7 +40199,7 @@ function enterSelectedDirectory() {
     renderSelectedFilePreviewBeforeDirectoryPreparation();
     maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
     finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(entry.node, {
-      animatePreview: true,
+      animatePreview: false,
       recordHistory: true,
       activatePreviewSelection: enteringFromGrid && previewThumbnailSelectionEnabled(),
     }).catch(() => {});
@@ -40231,22 +40216,12 @@ function enterSelectedDirectory() {
   WS.nav.selectedIndex = selectionIndexForDirectoryEnter();
   syncPreviewToSelection({ force: true });
   renderSelectedFilePreviewBeforeDirectoryPreparation();
-  if (WS.preview.kind === "dir" && WS.preview.dirNode) {
-    scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
-      reason: "enter-selected-folder",
-    });
-  }
   maybeClosePanesForQuickNavigationDirectoryEnter(quickNavigationRestoreState);
+  // Single synchronous render — no pre/post-finalize refresh triple-build.
   finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(entry.node, {
-    animatePreview: true,
+    animatePreview: false,
     recordHistory: true,
     activatePreviewSelection: enteringFromGrid && previewThumbnailSelectionEnabled(),
-  }).then(() => {
-    if (WS.preview.kind === "dir" && WS.preview.dirNode) {
-      scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
-        reason: "enter-selected-folder-finalize",
-      });
-    }
   }).catch(() => {});
 }
 
@@ -42389,16 +42364,23 @@ async function finalizeDirectoryNavigationRender(opts = null) {
   }
   if (!tortoiseNavigationEnabled()) {
     renderDirectoriesPane(keepDirectoriesScroll);
-    renderPreviewPane(animatePreview, keepPreviewScroll);
+    renderPreviewPane(false, keepPreviewScroll);
     if (activatePreviewSelectionAfterRender && WS.view.activePane === "preview")
       activatePreviewPaneSelection();
     else updatePreviewSelectionClasses();
     syncButtons();
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
-    schedulePreviewFolderGridRepairForCurrentTarget(2);
+    // Repair only when the first paint actually looks empty — not on every nav.
+    if (
+      WS.preview.kind === "dir" &&
+      WS.preview.dirNode &&
+      previewFolderGridNeedsRepair(WS.preview.dirNode)
+    ) {
+      schedulePreviewFolderGridRepairForCurrentTarget(1);
+    }
     if (shouldRecordHistory) recordDirHistory();
-    if (schedulePreparedWarm) scheduleNearbyDirectoryRamWarm(snapshot, 160);
+    if (schedulePreparedWarm) scheduleNearbyDirectoryRamWarm(snapshot, 80);
     return true;
   }
   try {
@@ -43925,7 +43907,7 @@ async function restoreDirHistoryEntry(entry) {
   WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
   syncPreviewToSelection({ force: true });
   await finalizeDirectoryNavigationRender({
-    animatePreview: true,
+    animatePreview: false,
     keepDirectoriesScroll: true,
     keepPreviewScroll: true,
   });
@@ -44491,15 +44473,6 @@ function setAppMenuThumbnailSize(value) {
   return true;
 }
 
-function setAppMenuThumbTitleStripOpacity(value) {
-  const next = normalizeThumbTitleStripOpacityValue(value);
-  setOptionValue("thumbTitleStripOpacity", next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  showStatusMessage(`Title strip: ${next}%`);
-  return true;
-}
-
 function setAppMenuFullResThumbnails(enabled) {
   if (!WS.meta) return false;
   const next = !!enabled;
@@ -44682,12 +44655,6 @@ function buildAppMenuThumbnailsSubmenu() {
       THUMBNAIL_SIZE_CYCLE,
       thumbnailSize,
       setAppMenuThumbnailSize,
-    ),
-    buildAppMenuCycleButton(
-      "Title strip",
-      THUMB_TITLE_STRIP_OPACITY_CYCLE,
-      getThumbTitleStripOpacityFromOptions(options),
-      setAppMenuThumbTitleStripOpacity,
     ),
     // closeAfter: switching pipelines forces a workspace refresh, so leave the
     // menu rather than rebuild ●/○ over a tree that is about to be replaced.
@@ -50653,28 +50620,20 @@ function forcePreviewPaneThumbTitleBar(meta) {
     meta.style.setProperty("-webkit-backdrop-filter", "none", "important");
     return;
   }
-  const blur = "var(--preview-pane-thumb-title-bar-blur, none)";
-  if (meta.closest && meta.closest(".folderMediaPreviewGrid")) {
-    meta.style.setProperty("background", "var(--preview-pane-thumb-title-bar-bg)", "important");
-    meta.style.setProperty("background-color", "var(--preview-pane-thumb-title-bar-bg)", "important");
-    meta.style.setProperty("background-image", "none", "important");
-    meta.style.setProperty("opacity", "1", "important");
-    meta.style.setProperty("backdrop-filter", blur, "important");
-    meta.style.setProperty("-webkit-backdrop-filter", blur, "important");
-    meta.style.setProperty("box-shadow", "none", "important");
-    meta.style.setProperty("border-top", "0", "important");
-    meta.style.setProperty("color", "var(--preview-pane-thumb-title-bar-fg)", "important");
-    return;
-  }
-  meta.style.setProperty("background", "var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary))", "important");
-  meta.style.setProperty("background-color", "var(--preview-pane-thumb-title-bar-bg, var(--color1-secondary))", "important");
+  // Never fall back to solid secondary — that was the flash on first paint
+  // before the frosted var resolved / when media behind was still empty.
+  const blur = "var(--preview-pane-thumb-title-bar-blur)";
+  const bg = "var(--preview-pane-thumb-title-bar-bg)";
+  const fg = "var(--preview-pane-thumb-title-bar-fg)";
+  meta.style.setProperty("background", bg, "important");
+  meta.style.setProperty("background-color", bg, "important");
   meta.style.setProperty("background-image", "none", "important");
   meta.style.setProperty("opacity", "1", "important");
   meta.style.setProperty("backdrop-filter", blur, "important");
   meta.style.setProperty("-webkit-backdrop-filter", blur, "important");
   meta.style.setProperty("box-shadow", "none", "important");
   meta.style.setProperty("border-top", "0", "important");
-  meta.style.setProperty("color", "var(--preview-pane-thumb-title-bar-fg, var(--color0-primary))", "important");
+  meta.style.setProperty("color", fg, "important");
 }
 
 function renderDirectoriesPane(keepScroll = false, opts = null) {
@@ -53009,7 +52968,7 @@ function enterMediaFolderWithQuickNavigation(node) {
   WS.view.previewFolderBridgeReturnState = gridReturnState;
   maybeClosePanesForQuickNavigationDirectoryEnter(restoreState);
   finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(node, {
-    animatePreview: true,
+    animatePreview: false,
     recordHistory: true,
   }).catch(() => {});
 }
@@ -53109,7 +53068,7 @@ async function navigateToDirectory(node) {
   const useWindowedBridgePrepare =
     tortoiseNavigationEnabled() && shouldUseWindowedPreviewBridgeSnapshot();
   await finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(node, {
-    animatePreview: true,
+    animatePreview: false,
     activatePreviewSelection:
       keepPreviewPaneActive && previewThumbnailSelectionEnabled(),
     recordHistory: true,
@@ -53119,11 +53078,6 @@ async function navigateToDirectory(node) {
     showBusyBeforeRender: useWindowedBridgePrepare,
     busyLabel: "Opening preview...",
   });
-  if (WS.preview.kind === "dir" && WS.preview.dirNode) {
-    scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
-      reason: "preview-folder-card-open-finalize",
-    });
-  }
 }
 
 function navigateFromPreviewFolderCard(node) {
@@ -53272,7 +53226,7 @@ async function openPreviewTagFolderEntry(entry) {
   const useWindowedBridgePrepare =
     tortoiseNavigationEnabled() && shouldUseWindowedPreviewBridgeSnapshot();
   const rendered = await finalizeDirectoryNavigationRender({
-    animatePreview: true,
+    animatePreview: false,
     activatePreviewSelection:
       keepPreviewPaneActive && previewThumbnailSelectionEnabled(),
     prepareFull: !useWindowedBridgePrepare,
@@ -53282,11 +53236,6 @@ async function openPreviewTagFolderEntry(entry) {
     busyLabel: "Opening preview...",
   });
   if (rendered) scheduleTagFolderInitialSelectionPreviewRender();
-  if (WS.preview.kind === "dir" && WS.preview.dirNode) {
-    scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
-      reason: "preview-tag-card-open-finalize",
-    });
-  }
 }
 
 function getPreviewTargetDir() {
@@ -58528,23 +58477,13 @@ function appendVirtualGridSpacer(grid, heightPx) {
 function softenFolderMediaPreviewCardChrome(card) {
   if (!card || !card.querySelectorAll) return;
   card.classList.add("folderMediaPreviewCard");
+  // Use the same frosted title-strip treatment as the rest of the grid —
+  // a hard solid black here made navigation feel "heavy" and fought the
+  // fixed 30% glass look.
   const metas = card.querySelectorAll(".previewThumbOverlayMeta");
   metas.forEach((meta) => {
     if (!meta || !meta.style || !meta.classList) return;
-    if (meta.classList.contains("previewThumbOverlayMetaMenuOnly")) {
-      meta.style.setProperty("background", "none", "important");
-      meta.style.setProperty("background-color", "transparent", "important");
-      meta.style.setProperty("background-image", "none", "important");
-      meta.style.setProperty("border-top", "0", "important");
-      meta.style.setProperty("box-shadow", "none", "important");
-      return;
-    }
-    meta.style.setProperty("background", "rgba(0, 0, 0, 0.34)", "important");
-    meta.style.setProperty("background-color", "rgba(0, 0, 0, 0.34)", "important");
-    meta.style.setProperty("background-image", "none", "important");
-    meta.style.setProperty("border-top", "0", "important");
-    meta.style.setProperty("box-shadow", "none", "important");
-    meta.style.setProperty("color", "rgba(255, 255, 255, 0.92)", "important");
+    forcePreviewPaneThumbTitleBar(meta);
   });
 }
 
@@ -58577,11 +58516,9 @@ function updateVirtualPreviewFilesGrid(state, force = false) {
     if (!rec) continue;
     let card = prevCards.get(id);
     if (!card) {
-      const shouldAnimateCard =
-        !!state.animate && i - windowInfo.startIndex < 96;
       card = makePreviewFileCard(
         rec,
-        shouldAnimateCard,
+        false,
         state.dirNode,
         state.ids,
         state.useFitInsideJustified,
@@ -58797,13 +58734,19 @@ function renderFilesGrid(
   const visibleIds = ids.slice(0, LIMIT);
   const totalToRender = visibleIds.length;
   if (!totalToRender) return 0;
-  const ANIMATE_CARD_LIMIT = 64;
-  const FIRST_CHUNK = passiveVideoThumbs ? 12 : 36;
-  const NEXT_CHUNK = passiveVideoThumbs ? 8 : 24;
-  const firstChunkSize = Math.min(
-    totalToRender,
-    preferredImmediatePreviewRenderCount(visibleIds, FIRST_CHUNK),
-  );
+  // Prefer painting the whole visible set in one shot for typical folders —
+  // chunked rAF fill made open/close feel laggy even with only a few dozen cards.
+  const INSTANT_FULL_RENDER_LIMIT = 120;
+  const FIRST_CHUNK = passiveVideoThumbs ? 16 : 48;
+  const NEXT_CHUNK = passiveVideoThumbs ? 12 : 36;
+  const preferFullFirstPaint =
+    totalToRender <= INSTANT_FULL_RENDER_LIMIT && !passiveVideoThumbs;
+  const firstChunkSize = preferFullFirstPaint
+    ? totalToRender
+    : Math.min(
+        totalToRender,
+        preferredImmediatePreviewRenderCount(visibleIds, FIRST_CHUNK),
+      );
   let index = 0;
   let didFirstLayout = false;
 
@@ -58817,10 +58760,11 @@ function renderFilesGrid(
       index++;
       const rec = WS.fileById.get(id);
       if (!rec) continue;
-      const shouldAnimateCard = !!animate && index <= ANIMATE_CARD_LIMIT;
+      // Card enter animation kept cards at opacity:0 without a reliable
+      // remove path and cost layout for no gain during fast nav — never animate.
       const card = makePreviewFileCard(
         rec,
-        shouldAnimateCard,
+        false,
         dirNode,
         visibleIds,
         useFitInsideJustified,
@@ -58855,7 +58799,7 @@ function renderFilesGrid(
         if (!grid.isConnected) return;
         renderChunk(
           responsiveNavigationGuardActive()
-            ? Math.max(4, Math.floor(NEXT_CHUNK / 2))
+            ? Math.max(6, Math.floor(NEXT_CHUNK / 2))
             : NEXT_CHUNK,
         );
       });
@@ -61940,16 +61884,9 @@ function handleExtrasKeybindAction(action) {
       );
       return true;
     }
-    case "cycleThumbTitleStripOpacity": {
-      const next = cycleOptionValue(
-        "thumbTitleStripOpacity",
-        THUMB_TITLE_STRIP_OPACITY_CYCLE,
-      );
-      refreshLiveSettingsPaneFromKeyboardAction();
-      applyOptionsEverywhere(false);
-      showStatusMessage(`Title strip: ${next}%`);
+    case "cycleThumbTitleStripOpacity":
+      // Title strip opacity/blur is hard-fixed; ignore leftover bindings.
       return true;
-    }
     case "cycleVideoSkipStep": {
       const next = cycleOptionValue("videoSkipStep", VIDEO_SKIP_STEP_CYCLE);
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -64371,11 +64308,14 @@ function applyThumbFitFromOptions() {
 function applyThumbTitleStripOpacityFromOptions() {
   const root = document.documentElement;
   if (!root) return;
-  const pct = getThumbTitleStripOpacityFromOptions();
-  root.style.setProperty("--thumb-title-strip-opacity", `${pct}%`);
+  // Fixed 30% / 4.2px — ignore any stored preference.
+  root.style.setProperty(
+    "--thumb-title-strip-opacity",
+    `${THUMB_TITLE_STRIP_OPACITY_FIXED}%`,
+  );
   root.style.setProperty(
     "--thumb-title-strip-blur",
-    `${thumbTitleStripBlurPxForOpacity(pct)}px`,
+    `${THUMB_TITLE_STRIP_BLUR_FIXED_PX}px`,
   );
 }
 function applyThumbnailTitleSizeFromOptions() {
