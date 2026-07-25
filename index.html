@@ -25023,6 +25023,53 @@ function cancelTagEntryRename() {
   finishTagEntryRenameRender();
 }
 
+function pendingContainerOverrideKey(state, containerName) {
+  const pending = state?.pendingContainerOverrides;
+  const kind = String(pending?.containerType || "");
+  if (!kind) return "";
+  if (kind === "gallery") return tagThumbnailKeyForGallery(containerName);
+
+  let scopePath = String(state?.originPath || "");
+  if (!scopePath && Array.isArray(state?.albumTargets))
+    scopePath = String(state.albumTargets[0]?.originPath || "");
+  if (!scopePath && Array.isArray(state?.paths) && state.paths.length)
+    scopePath = hiddenTagScopePathForDirPath(state.paths[0]);
+  scopePath = normalizeTagAlbumScopePath(scopePath);
+  return kind === "album"
+    ? tagThumbnailKeyForAlbum(containerName, scopePath)
+    : tagThumbnailKeyForTag(containerName, scopePath);
+}
+
+function applyPendingContainerOverrides(state, containerName) {
+  const pending = state?.pendingContainerOverrides;
+  const key = pendingContainerOverrideKey(state, containerName);
+  if (!pending || !key) return false;
+  let changed = false;
+  if (
+    pending.sortModeTouched &&
+    metaSetTagContainerSortMode(key, pending.sortMode || "")
+  )
+    changed = true;
+  if (
+    pending.appearancePresetTouched &&
+    metaSetTagAppearancePresetIdByKey(
+      key,
+      pending.appearancePresetId || "",
+    )
+  )
+    changed = true;
+  if (pending.mediaTypeTouched) {
+    const mediaFilter = setTagMediaFilterAxis(
+      [],
+      TAG_MEDIA_FILTER_MEDIA_TYPES,
+      pending.mediaType || null,
+    );
+    if (metaSetTagMediaFilterByKey(key, mediaFilter)) changed = true;
+  }
+  if (changed) metaScheduleSave();
+  return changed;
+}
+
 function commitTagEntryRename(inputEl) {
   if (!TAG_ENTRY_RENAME_STATE || !inputEl) return;
   const state = TAG_ENTRY_RENAME_STATE;
@@ -25033,7 +25080,8 @@ function commitTagEntryRename(inputEl) {
   if (
     state.placeholder &&
     state.placeholderType === "tag" &&
-    Array.isArray(state.commonTags)
+    Array.isArray(state.commonTags) &&
+    !state.createSingleContainer
   ) {
     TAG_ENTRY_RENAME_STATE = null;
     clearBulkTagPlaceholder();
@@ -25060,7 +25108,8 @@ function commitTagEntryRename(inputEl) {
   if (
     state.placeholder &&
     state.placeholderType === "gallery" &&
-    Array.isArray(state.commonGalleries)
+    Array.isArray(state.commonGalleries) &&
+    !state.createSingleContainer
   ) {
     TAG_ENTRY_RENAME_STATE = null;
     clearBulkTagPlaceholder();
@@ -25180,6 +25229,7 @@ function commitTagEntryRename(inputEl) {
     } else {
       metaAddUserTagsBulk(state.paths, [desired]);
     }
+    applyPendingContainerOverrides(state, desired);
     finalizeBulkSelectionAction();
     return;
   }
@@ -36406,29 +36456,6 @@ function getUnfilteredContentDirsForTagEntry(entry, ancestry = null) {
         ),
       );
     }
-    if (baseNode === WS.root) {
-      const galleries = getAllGalleryNames();
-      for (let i = 0; i < galleries.length; i++) {
-        if (!metaGetUserTagsForGallery(galleries[i]).includes(tag)) continue;
-        addDirs(
-          getUnfilteredContentDirsForTagEntry(
-            { kind: "tag", gallery: galleries[i], originPath: "" },
-            nextVisited,
-          ),
-        );
-      }
-    }
-  } else if (album && baseNode === WS.root) {
-    const galleries = getAllGalleryNames();
-    for (let i = 0; i < galleries.length; i++) {
-      if (metaGetAlbumForGallery(galleries[i]) !== album) continue;
-      addDirs(
-        getUnfilteredContentDirsForTagEntry(
-          { kind: "tag", gallery: galleries[i], originPath: "" },
-          nextVisited,
-        ),
-      );
-    }
   } else if (gallery) {
     const memberTags = metaGetMemberTagTargetsForGallery(gallery);
     for (let i = 0; i < memberTags.length; i++) {
@@ -36502,6 +36529,24 @@ function galleryContentDirsForSelectionTarget(selectionTarget) {
 }
 
 function buildAddAllContentsToGalleryButton(selectionTarget) {
+  const selectedEntries =
+    selectionTarget?.kind === "tag"
+      ? [selectionTarget.entry]
+      : selectionTarget?.kind === "bulk"
+        ? selectionTarget.entries || []
+        : [];
+  if (
+    selectedEntries.some(
+      (entry) =>
+        entry &&
+        !entry.special &&
+        !entry.placeholder &&
+        !normalizeTag(entry.tag || "") &&
+        !normalizeTagAlbumName(entry.album || "") &&
+        !!normalizeGalleryName(entry.gallery || ""),
+    )
+  )
+    return null;
   const dirs = galleryContentDirsForSelectionTarget(selectionTarget);
   if (!dirs.length) return null;
   const targets = dirs.map((node) => ({
@@ -36600,17 +36645,6 @@ function tagHasUnfilteredContent(tagName, scopePath = "", ancestry = null) {
     )
       return true;
   }
-  if (baseNode === WS.root) {
-    const galleries = getAllGalleryNames();
-    for (let i = 0; i < galleries.length; i++) {
-      const gallery = galleries[i];
-      if (
-        metaGetUserTagsForGallery(gallery).includes(tag) &&
-        galleryHasUnfilteredContent(gallery, nextVisited)
-      )
-        return true;
-    }
-  }
   return false;
 }
 
@@ -36641,17 +36675,6 @@ function albumHasUnfilteredContent(
     })
   )
     return true;
-  if ((WS.dirByPath.get(scope) || WS.root) === WS.root) {
-    const galleries = getAllGalleryNames();
-    for (let i = 0; i < galleries.length; i++) {
-      const gallery = galleries[i];
-      if (
-        metaGetAlbumForGallery(gallery) === album &&
-        galleryHasUnfilteredContent(gallery, nextVisited)
-      )
-        return true;
-    }
-  }
   return false;
 }
 
@@ -37036,31 +37059,11 @@ function getGalleryEntriesForRoot() {
 }
 
 function getGalleryEntriesForTag(tagName) {
-  const tag = normalizeTag(tagName);
-  if (!tag) return [];
-  return getAllGalleryNames()
-    .filter((gallery) => !galleryIsHiddenFromCurrentView(gallery))
-    .filter((gallery) => galleryHasUnfilteredContent(gallery))
-    .filter((gallery) => metaGetUserTagsForGallery(gallery).includes(tag))
-    .map((gallery) => {
-      const entry = { kind: "tag", gallery, label: gallery, originPath: "" };
-      const dirs = getDirsForTagEntry(entry);
-      return Object.assign(entry, { count: dirs.length });
-    });
+  return [];
 }
 
 function getGalleryEntriesForAlbum(albumName) {
-  const album = normalizeTagAlbumName(albumName);
-  if (!album) return [];
-  return getAllGalleryNames()
-    .filter((gallery) => !galleryIsHiddenFromCurrentView(gallery))
-    .filter((gallery) => galleryHasUnfilteredContent(gallery))
-    .filter((gallery) => metaGetAlbumForGallery(gallery) === album)
-    .map((gallery) => {
-      const entry = { kind: "tag", gallery, label: gallery, originPath: "" };
-      const dirs = getDirsForTagEntry(entry);
-      return Object.assign(entry, { count: dirs.length });
-    });
+  return [];
 }
 
 function buildBulkTagPlaceholderEntry() {
@@ -37188,34 +37191,10 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
   // must still gate this block in, otherwise it would never render an entry and
   // become unreachable/undeletable.
   const albumStats = collectTagAlbumStatsForGroups(tagGroups, originPath);
-  const galleryEntriesByTag =
-    dirNode === WS.root
-      ? new Map(
-          getAllGalleryNames().reduce((pairs, gallery) => {
-            if (galleryIsHiddenFromCurrentView(gallery)) return pairs;
-            if (!galleryHasUnfilteredContent(gallery)) return pairs;
-            metaGetUserTagsForGallery(gallery).forEach((tag) => {
-              if (!pairs.has(tag)) pairs.set(tag, []);
-              pairs.get(tag).push(gallery);
-            });
-            return pairs;
-          }, new Map()),
-        )
-      : new Map();
-  const galleryEntriesByAlbum =
-    dirNode === WS.root
-      ? new Map(
-          getAllGalleryNames().reduce((pairs, gallery) => {
-            if (galleryIsHiddenFromCurrentView(gallery)) return pairs;
-            if (!galleryHasUnfilteredContent(gallery)) return pairs;
-            const album = metaGetAlbumForGallery(gallery);
-            if (!album) return pairs;
-            if (!pairs.has(album)) pairs.set(album, []);
-            pairs.get(album).push(gallery);
-            return pairs;
-          }, new Map()),
-        )
-      : new Map();
+  // Legacy gallery tag/album metadata can still be removed, but galleries only
+  // render as root entry points and never as children of those containers.
+  const galleryEntriesByTag = new Map();
+  const galleryEntriesByAlbum = new Map();
   if (
     tagGroups.size ||
     albumTagGroups.size ||
@@ -46506,6 +46485,142 @@ function createCyclingItemMenuButton(
   return btn;
 }
 
+function createContainerCreationOverrideCycleButton(
+  label,
+  options,
+  draft,
+  draftKey,
+) {
+  let state = menuCycleChoiceState(options, draft[draftKey] || "");
+  if (!state) return null;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.setAttribute("data-action", "keep");
+  const render = () => {
+    button.textContent = `${label}: ${state.currentLabel}`;
+  };
+  render();
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    draft[`${draftKey}Touched`] = true;
+    draft[draftKey] = state.nextValue;
+    state = menuCycleChoiceState(options, draft[draftKey]);
+    if (state) render();
+  });
+  return button;
+}
+
+function prepareContainerCreationOverrides(containerType, draft) {
+  const kind = String(containerType || "");
+  let state = TAG_ENTRY_RENAME_STATE;
+  // A single folder normally uses its inline tag editor. The explicit Create
+  // route needs the one-name placeholder so its draft overrides have a named
+  // container to attach to after the membership is written.
+  if (!state && kind === "tag" && TAG_EDIT_PATH) {
+    const path = String(TAG_EDIT_PATH || "");
+    const preferPane = TAG_EDIT_IN_PREVIEW ? "preview" : "directories";
+    TAG_EDIT_PATH = null;
+    startBulkTagging([path], preferPane);
+    state = TAG_ENTRY_RENAME_STATE;
+  }
+  if (!state?.placeholder) return false;
+  const allowedTypes = {
+    tag: new Set(["tag", "albumTag"]),
+    album: new Set(["album", "folderAlbum"]),
+    gallery: new Set(["gallery"]),
+  };
+  if (!allowedTypes[kind]?.has(String(state.placeholderType || "")))
+    return false;
+
+  state.createSingleContainer = true;
+  state.pendingContainerOverrides = {
+    containerType: kind,
+    sortMode: String(draft.sortMode || ""),
+    sortModeTouched: !!draft.sortModeTouched,
+    appearancePresetId: String(draft.appearancePresetId || ""),
+    appearancePresetTouched: !!draft.appearancePresetIdTouched,
+    mediaType: String(draft.mediaType || ""),
+    mediaTypeTouched: !!draft.mediaTypeTouched,
+  };
+  const label =
+    kind === "gallery"
+      ? "New gallery"
+      : kind === "album"
+        ? "New album"
+        : "New tag folder";
+  state.label = label;
+  if (BULK_TAG_PLACEHOLDER) BULK_TAG_PLACEHOLDER.label = label;
+  rebuildDirectoriesEntries();
+  renderDirectoriesPane(true);
+  renderPreviewPane(false, true);
+  syncButtons();
+  focusTagEntryRenameInput(BULK_TAG_PLACEHOLDER?.preferPane || "");
+  return true;
+}
+
+function createContainerAddToSubmenu(items) {
+  const enhanced = (Array.isArray(items) ? items : [])
+    .filter(Boolean)
+    .map((button) => {
+      const label = String(button?.textContent || "").trim();
+      const containerType = label.toLowerCase();
+      if (
+        button?.tagName !== "BUTTON" ||
+        button.disabled ||
+        !["tag", "album", "gallery"].includes(containerType)
+      )
+        return button;
+
+      const draft = {
+        sortMode: "",
+        appearancePresetId: "",
+        mediaType: "",
+      };
+      const sortButton = createContainerCreationOverrideCycleButton(
+        "Sort",
+        containerSortModeOptions(),
+        draft,
+        "sortMode",
+      );
+      const filtersButton = createContainerCreationOverrideCycleButton(
+        "Filters",
+        appearancePresetMenuCycleOptions(),
+        draft,
+        "appearancePresetId",
+      );
+      const mediaTypeButton = createContainerCreationOverrideCycleButton(
+        "Media type",
+        tagMediaFilterAxisCycleOptions(TAG_MEDIA_FILTER_MEDIA_TYPES, "All"),
+        draft,
+        "mediaType",
+      );
+      const createButton = document.createElement("button");
+      createButton.type = "button";
+      createButton.textContent = "Create";
+      createButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        button.click();
+        if (prepareContainerCreationOverrides(containerType, draft)) return;
+        queueMicrotask(() => {
+          prepareContainerCreationOverrides(containerType, draft);
+        });
+      });
+      return createDropdownMenuSubmenu(
+        label,
+        [sortButton, filtersButton, mediaTypeButton, createButton],
+        "",
+        {
+          stateKey: `add-to-${containerType}`,
+          onActivate: () => {
+            button.click();
+            return false;
+          },
+        },
+      );
+    });
+  return createDropdownMenuSubmenu("Add To...", enhanced);
+}
+
 function appearancePresetMenuCycleOptions() {
   return [
     { value: "", label: "None" },
@@ -48602,19 +48717,6 @@ function openTagContextMenu(context) {
         beginGalleryAssignmentForEntries([tagEntryForThumb], preferPane);
       }),
     );
-  } else if (isGalleryEntry) {
-    addToButtons.push(
-      createTagMenuButton("Tag", () => {
-        closeTagContextMenu();
-        startBulkGalleryTagging([gallery], preferPane);
-      }),
-    );
-    addToButtons.push(
-      createTagMenuButton("Album", () => {
-        closeTagContextMenu();
-        startBulkGalleryAlbuming([gallery], preferPane);
-      }),
-    );
   } else if (tag && !context.special) {
     addToButtons.push(
       createTagMenuButton("Album", () => {
@@ -48638,7 +48740,7 @@ function openTagContextMenu(context) {
   }
   // Deleting a tag/album is NOT an "Add To" target -- it has a dedicated red
   // "Delete" button at the bottom of this menu (appended below).
-  const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
+  const addToSubmenu = createContainerAddToSubmenu(addToButtons);
   if (addToSubmenu) menu.appendChild(addToSubmenu);
   if (canRename) {
     menu.appendChild(
@@ -49631,8 +49733,9 @@ function createDropdownMenuSubmenu(
         ? captureNumberedMenuKeyState(appActionMenuEl)
         : null;
       if (hostedInAppMenu) suppressMenuAutoClose();
-      config.onActivate();
-      if (hostedInAppMenu) refreshAppMenuContents(keyState);
+      const shouldRefresh = config.onActivate() !== false;
+      if (hostedInAppMenu && shouldRefresh)
+        refreshAppMenuContents(keyState);
       return;
     }
     const open = !wrap.classList.contains("submenuOpen");
@@ -50341,7 +50444,7 @@ function buildFolderActionMenuDom(
           "destructiveAction",
         ),
   ].filter(Boolean);
-  const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
+  const addToSubmenu = createContainerAddToSubmenu(addToButtons);
   if (addToSubmenu) menuEl.appendChild(addToSubmenu);
   menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
   if (state.canRemoveFromAlbum)
@@ -50782,7 +50885,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       "destructiveAction",
     ),
   ].filter(Boolean);
-  const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
+  const addToSubmenu = createContainerAddToSubmenu(addToButtons);
   if (addToSubmenu) menu.appendChild(addToSubmenu);
 
   menu.appendChild(
@@ -51083,7 +51186,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   const galleryAssignableEntries = selectedEntries.filter((entry) =>
     !!galleryTargetForTagEntry(entry),
   );
-  const taggableGalleryEntries = selectedEntries.filter(
+  const deletableGalleryEntries = selectedEntries.filter(
     (entry) =>
       entry &&
       !entry.special &&
@@ -51125,7 +51228,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     !!String(singleRenameEntry.tag || "").trim() &&
     !normalizeTagAlbumName(singleRenameEntry.album || "");
   const addToButtons = [];
-  if (albumAssignableTagEntries.length) {
+  if (!deletableGalleryEntries.length && albumAssignableTagEntries.length) {
     addToButtons.push(
       makeBtn("Album", async () => {
         finalizeBulkSelectionAction();
@@ -51133,7 +51236,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       }),
     );
   }
-  if (taggableAlbumEntries.length) {
+  if (!deletableGalleryEntries.length && taggableAlbumEntries.length) {
     addToButtons.push(
       makeBtn("Tag", async () => {
         finalizeBulkSelectionAction();
@@ -51147,35 +51250,11 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       }),
     );
   }
-  if (galleryAssignableEntries.length) {
+  if (!deletableGalleryEntries.length && galleryAssignableEntries.length) {
     addToButtons.push(
       makeBtn("Gallery", async () => {
         finalizeBulkSelectionAction();
         beginGalleryAssignmentForEntries(galleryAssignableEntries, "preview");
-      }),
-    );
-  }
-  if (taggableGalleryEntries.length) {
-    addToButtons.push(
-      makeBtn("Tag", async () => {
-        finalizeBulkSelectionAction();
-        startBulkGalleryTagging(
-          taggableGalleryEntries.map((entry) =>
-            normalizeGalleryName(entry.gallery || ""),
-          ),
-          "preview",
-        );
-      }),
-    );
-    addToButtons.push(
-      makeBtn("Album", async () => {
-        finalizeBulkSelectionAction();
-        startBulkGalleryAlbuming(
-          taggableGalleryEntries.map((entry) =>
-            normalizeGalleryName(entry.gallery || ""),
-          ),
-          "preview",
-        );
       }),
     );
   }
@@ -51200,7 +51279,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   if (
     albumAssignableTagEntries.length ||
     taggableAlbumEntries.length ||
-    taggableGalleryEntries.length
+    deletableGalleryEntries.length
   ) {
     addToButtons.push(
       makeBtn(
@@ -51214,7 +51293,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       ),
     );
   }
-  const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
+  const addToSubmenu = createContainerAddToSubmenu(addToButtons);
   if (addToSubmenu) menu.appendChild(addToSubmenu);
   menu.appendChild(
     makeBtn(
