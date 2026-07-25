@@ -1313,6 +1313,55 @@ step3_process_media() {
   esac
 }
 
+detect_display_max_height() {
+  local detected=""
+
+  if command -v system_profiler >/dev/null 2>&1; then
+    detected="$(system_profiler SPDisplaysDataType 2>/dev/null | awk '
+      /^[[:space:]]*Resolution:/ {
+        if (match($0, /[0-9]+[[:space:]]*x[[:space:]]*[0-9]+/)) {
+          dims = substr($0, RSTART, RLENGTH)
+          split(dims, parts, /x/)
+          gsub(/[[:space:]]/, "", parts[2])
+          pending = parts[2] + 0
+          if (pending > any) any = pending
+        }
+        next
+      }
+      /^[[:space:]]*Online:[[:space:]]*Yes/ {
+        if (pending > online) online = pending
+        pending = 0
+        next
+      }
+      /^[[:space:]]*Online:[[:space:]]*No/ {
+        pending = 0
+        next
+      }
+      END {
+        if (online > 0) print online
+        else if (any > 0) print any
+      }
+    ')"
+  fi
+
+  if is_int "$detected" && [[ "$detected" -gt 0 ]]; then
+    printf "%s" "$detected"
+    return 0
+  fi
+  return 1
+}
+
+set_resize_height_from_displays() {
+  local detected
+
+  if detected="$(detect_display_max_height)"; then
+    MAX_MEDIA_HEIGHT="$detected"
+    log_info "Resize max height set to ${MAX_MEDIA_HEIGHT}px from active display resolution."
+  else
+    log_warn "Could not detect display resolution. Using fallback ${MAX_MEDIA_HEIGHT}px."
+  fi
+}
+
 step4_resize_media() {
   local images=() videos=()
   local file ext base tmp
@@ -1320,6 +1369,8 @@ step4_resize_media() {
   local all_total=0 all_done=0
   local img_resized=0 img_skipped=0 img_failed=0
   local vid_resized=0 vid_skipped=0 vid_failed=0
+
+  set_resize_height_from_displays
 
   while IFS= read -r -d '' file; do
     images+=("$file")
@@ -2700,47 +2751,6 @@ step9_trim_video_tail() {
   summary_item "Failed" "$failed"
 }
 
-choose_resize_height() {
-  local choice custom
-
-  ui_box_top
-  ui_box_line "STEP 4 RESIZE  -  MAX MEDIA HEIGHT" "$C_BOLD$C_WHITE"
-  ui_box_sep
-  ui_box_line "  1   3200  (default)"
-  ui_box_line "  2   2400"
-  ui_box_line "  3   2800"
-  ui_box_line "  4   3600"
-  ui_box_line "  5   4320"
-  ui_box_line "  6   Custom"
-  ui_box_bottom
-  read -r -p "$(ui_prompt 'Select size [1]')" choice
-  choice="${choice:-1}"
-
-  case "$choice" in
-    1) MAX_MEDIA_HEIGHT=3200 ;;
-    2) MAX_MEDIA_HEIGHT=2400 ;;
-    3) MAX_MEDIA_HEIGHT=2800 ;;
-    4) MAX_MEDIA_HEIGHT=3600 ;;
-    5) MAX_MEDIA_HEIGHT=4320 ;;
-    6)
-      while true; do
-        read -r -p "$(ui_prompt 'Enter custom max height in pixels')" custom
-        if is_int "$custom" && [[ "$custom" -gt 0 ]]; then
-          MAX_MEDIA_HEIGHT="$custom"
-          break
-        fi
-        log_warn "Please enter a positive whole number."
-      done
-      ;;
-    *)
-      log_warn "Invalid choice. Using default 3200."
-      MAX_MEDIA_HEIGHT=3200
-      ;;
-  esac
-
-  log_info "Resize max height set to ${MAX_MEDIA_HEIGHT}px."
-}
-
 # ---------------------------------------------------------------------------
 # Step 8: extra size-reduction pass. Recompresses images (AVIF/WebP) and
 # re-encodes videos (AV1) in one step. (Animated GIF -> MP4 conversion lives in
@@ -3180,7 +3190,6 @@ main() {
 
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
     case "$num" in
-      4) choose_resize_height ;;
       9) choose_step3_upscale_options ;;
       10) choose_step8_trim_seconds ;;
       11) choose_step9_trim_end_seconds ;;
