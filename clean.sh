@@ -773,50 +773,49 @@ step2_convert_videos() {
   total=${#files[@]}
   if [[ "$total" -eq 0 ]]; then
     log_warn "No source videos found for conversion."
-    return 0
+  else
+    log_info "Found $total video file(s) to evaluate."
+
+    for (( i=0; i<total; i++ )); do
+      file="${files[$i]}"
+      output="${file%.*}.mp4"
+
+      if [[ -f "$output" ]]; then
+        skipped=$((skipped + 1))
+        progress=$((progress + 1))
+        progress_draw "Step 3 Convert" "$progress" "$total"
+        continue
+      fi
+
+      if ffmpeg -hide_banner -loglevel error -i "$file" -c copy -map 0 -movflags +faststart "$output"; then
+        rm -f "$file"
+        copied=$((copied + 1))
+        progress=$((progress + 1))
+        progress_draw "Step 3 Convert" "$progress" "$total"
+        continue
+      fi
+
+      if ffmpeg -hide_banner -loglevel error -i "$file" -map 0 -c:v libx264 -crf 23 -preset medium -c:a aac -movflags +faststart "$output"; then
+        rm -f "$file"
+        reencoded=$((reencoded + 1))
+        progress=$((progress + 1))
+        progress_draw "Step 3 Convert" "$progress" "$total"
+        continue
+      fi
+
+      rm -f "$output" 2>/dev/null || true
+      failed=$((failed + 1))
+      log_err "Conversion failed: $file"
+      progress=$((progress + 1))
+      progress_draw "Step 3 Convert" "$progress" "$total"
+    done
+
+    log_info "Step 3 conversion summary:"
+    summary_item "Stream copied" "$copied"
+    summary_item "Re-encoded" "$reencoded"
+    summary_item "Skipped" "$skipped"
+    summary_item "Failed" "$failed"
   fi
-
-  log_info "Found $total video file(s) to evaluate."
-
-  for (( i=0; i<total; i++ )); do
-    file="${files[$i]}"
-    output="${file%.*}.mp4"
-
-    if [[ -f "$output" ]]; then
-      skipped=$((skipped + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 3 Convert" "$progress" "$total"
-      continue
-    fi
-
-    if ffmpeg -hide_banner -loglevel error -i "$file" -c copy -map 0 -movflags +faststart "$output"; then
-      rm -f "$file"
-      copied=$((copied + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 3 Convert" "$progress" "$total"
-      continue
-    fi
-
-    if ffmpeg -hide_banner -loglevel error -i "$file" -map 0 -c:v libx264 -crf 23 -preset medium -c:a aac -movflags +faststart "$output"; then
-      rm -f "$file"
-      reencoded=$((reencoded + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 3 Convert" "$progress" "$total"
-      continue
-    fi
-
-    rm -f "$output" 2>/dev/null || true
-    failed=$((failed + 1))
-    log_err "Conversion failed: $file"
-    progress=$((progress + 1))
-    progress_draw "Step 3 Convert" "$progress" "$total"
-  done
-
-  log_info "Step 3 conversion summary:"
-  summary_item "Stream copied" "$copied"
-  summary_item "Re-encoded" "$reencoded"
-  summary_item "Skipped" "$skipped"
-  summary_item "Failed" "$failed"
 
   # Animated GIFs are just videos in a worse container, so fold their MP4
   # conversion into this same pass instead of running it as a separate step.
