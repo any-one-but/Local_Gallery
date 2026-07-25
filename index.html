@@ -24788,11 +24788,14 @@ function startBulkAlbumTagging(albumTargets, preferPane = "") {
 }
 
 function startBulkGallerying(targets, preferPane = "") {
-  if (
-    canUseBulkTagPlaceholderUi() &&
-    setBulkTagPlaceholder(targets, "New gallery", "gallery", "", preferPane)
-  )
-    return;
+  if (!canUseBulkTagPlaceholderUi()) return false;
+  return setBulkTagPlaceholder(
+    targets,
+    "New gallery",
+    "gallery",
+    "",
+    preferPane,
+  );
 }
 
 function startBulkGalleryTagging(galleries, preferPane = "") {
@@ -24861,7 +24864,13 @@ function setBulkTagPlaceholder(
         continue;
       }
       const kind = String(item?.kind || "");
-      if (kind === "tag") {
+      if (kind === "dir") {
+        const path = normalizeDirPathValue(item.path || "");
+        const key = path ? `dir:${path}` : "";
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        unique.push({ kind: "dir", path });
+      } else if (kind === "tag") {
         const tag = normalizeTag(item.tag || "");
         const originPath = normalizeTagAlbumScopePath(item.originPath || "");
         const key = tag ? `tag:${originPath}:${tag}` : "";
@@ -25468,6 +25477,305 @@ function commonGalleryNamesForTargets(targets) {
     if (!common.size) return [];
   }
   return common ? Array.from(common) : [];
+}
+
+function labelTargetForTagEntry(entry) {
+  if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
+    return null;
+  const tag = normalizeTag(entry.tag || "");
+  const originPath = normalizeTagAlbumScopePath(entry.originPath || "");
+  if (tag) return { kind: "tag", tag, originPath };
+  const album = normalizeTagAlbumName(entry.album || "");
+  if (album) return { kind: "album", album, originPath };
+  const gallery = normalizeGalleryName(entry.gallery || "");
+  if (gallery) return { kind: "gallery", gallery };
+  return null;
+}
+
+function labelTargetsForSelectionTarget(selectionTarget) {
+  const target =
+    selectionTarget && typeof selectionTarget === "object"
+      ? selectionTarget
+      : null;
+  if (!target) return [];
+  if (target.kind === "dir") {
+    const path = normalizeDirPathValue(target.node?.path || "");
+    return path ? [{ kind: "dir", path }] : [];
+  }
+  if (target.kind === "tag") {
+    const item = labelTargetForTagEntry(target.entry);
+    return item ? [item] : [];
+  }
+  if (target.kind !== "bulk") return [];
+
+  const out = [];
+  const paths = Array.isArray(target.paths) ? target.paths : [];
+  for (let i = 0; i < paths.length; i++) {
+    const path = normalizeDirPathValue(paths[i]);
+    if (path) out.push({ kind: "dir", path });
+  }
+  const entries = Array.isArray(target.entries) ? target.entries : [];
+  for (let i = 0; i < entries.length; i++) {
+    const item = labelTargetForTagEntry(entries[i]);
+    // A special container has no label membership of its own. If one appears
+    // in a mixed selection, no membership can be common to every selected item.
+    if (!item) return [];
+    out.push(item);
+  }
+  return out;
+}
+
+function directHiddenKeyForLabelTarget(target) {
+  const item = target && typeof target === "object" ? target : null;
+  if (!item) return "";
+  if (item.kind === "tag")
+    return hiddenTagKeyForTag(item.tag, item.originPath || "");
+  if (item.kind === "album")
+    return hiddenTagKeyForAlbum(item.album, item.originPath || "");
+  if (item.kind === "gallery") return hiddenTagKeyForGallery(item.gallery);
+  return "";
+}
+
+function labelMembershipsForTarget(target) {
+  const item = target && typeof target === "object" ? target : null;
+  const empty = {
+    tags: [],
+    album: "",
+    galleries: [],
+    favorite: false,
+    hidden: false,
+  };
+  if (!item) return empty;
+  if (item.kind === "dir") {
+    return {
+      tags: metaGetUserTags(item.path),
+      album: metaGetAlbumForPath(item.path),
+      galleries: metaGetGalleriesForPath(item.path),
+      favorite: metaHasFavorite(item.path),
+      // Only offer a removable direct marker. Effective hidden state inherited
+      // from a parent/container cannot be removed from this item itself.
+      hidden: metaHasLegacyHidden(item.path),
+    };
+  }
+  if (item.kind === "tag") {
+    return {
+      tags: [],
+      album: metaGetTagAlbumForTag(item.tag, item.originPath || ""),
+      galleries: galleryNamesForTarget(item),
+      favorite: false,
+      hidden: metaHasHiddenTagByKey(directHiddenKeyForLabelTarget(item)),
+    };
+  }
+  if (item.kind === "album") {
+    return {
+      tags: metaGetUserTagsForAlbum(item.album, item.originPath || ""),
+      album: "",
+      galleries: galleryNamesForTarget(item),
+      favorite: false,
+      hidden: metaHasHiddenTagByKey(directHiddenKeyForLabelTarget(item)),
+    };
+  }
+  if (item.kind === "gallery") {
+    return {
+      tags: metaGetUserTagsForGallery(item.gallery),
+      album: metaGetAlbumForGallery(item.gallery),
+      galleries: [],
+      favorite: false,
+      hidden: metaHasHiddenTagByKey(directHiddenKeyForLabelTarget(item)),
+    };
+  }
+  return empty;
+}
+
+function commonLabelMembershipsForTargets(targets) {
+  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  if (!list.length) return null;
+  const first = labelMembershipsForTarget(list[0]);
+  const commonTags = new Set(first.tags);
+  const commonGalleries = new Set(first.galleries);
+  let commonAlbum = first.album;
+  let commonFavorite = first.favorite;
+  let commonHidden = first.hidden;
+  for (let i = 1; i < list.length; i++) {
+    const memberships = labelMembershipsForTarget(list[i]);
+    const tags = new Set(memberships.tags);
+    const galleries = new Set(memberships.galleries);
+    for (const tag of Array.from(commonTags)) {
+      if (!tags.has(tag)) commonTags.delete(tag);
+    }
+    for (const gallery of Array.from(commonGalleries)) {
+      if (!galleries.has(gallery)) commonGalleries.delete(gallery);
+    }
+    if (!memberships.album || memberships.album !== commonAlbum)
+      commonAlbum = "";
+    commonFavorite = commonFavorite && memberships.favorite;
+    commonHidden = commonHidden && memberships.hidden;
+  }
+  return {
+    tags: normalizeTagList(Array.from(commonTags)),
+    album: normalizeTagAlbumName(commonAlbum),
+    galleries: Array.from(commonGalleries).sort((a, b) =>
+      String(a).localeCompare(String(b)),
+    ),
+    favorite: commonFavorite,
+    hidden: commonHidden,
+  };
+}
+
+function removeLabelMembershipFromTargets(targets, membership) {
+  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  const item = membership && typeof membership === "object" ? membership : null;
+  if (!list.length || !item) return false;
+  if (item.kind === "gallery") {
+    return metaApplyBulkGalleryDiff(list, [item.name], []);
+  }
+
+  let changed = false;
+  for (let i = 0; i < list.length; i++) {
+    const target = list[i];
+    if (item.kind === "tag") {
+      const tag = normalizeTag(item.name || "");
+      if (!tag) continue;
+      if (target.kind === "dir") {
+        const current = metaGetUserTags(target.path);
+        if (
+          current.includes(tag) &&
+          metaWriteUserTags(
+            target.path,
+            current.filter((value) => value !== tag),
+          )
+        )
+          changed = true;
+      } else if (target.kind === "album") {
+        const current = metaGetUserTagsForAlbum(
+          target.album,
+          target.originPath || "",
+        );
+        if (
+          current.includes(tag) &&
+          metaSetUserTagsForAlbum(
+            target.album,
+            target.originPath || "",
+            current.filter((value) => value !== tag),
+          )
+        )
+          changed = true;
+      } else if (target.kind === "gallery") {
+        const current = metaGetUserTagsForGallery(target.gallery);
+        if (
+          current.includes(tag) &&
+          metaSetUserTagsForGallery(
+            target.gallery,
+            current.filter((value) => value !== tag),
+          )
+        )
+          changed = true;
+      }
+    } else if (item.kind === "album") {
+      if (target.kind === "dir") {
+        if (metaSetAlbumForPath(target.path, "")) changed = true;
+      } else if (target.kind === "tag") {
+        if (metaSetTagAlbumForTag(target.tag, "", target.originPath || ""))
+          changed = true;
+      } else if (target.kind === "gallery") {
+        if (metaSetAlbumForGallery(target.gallery, "")) changed = true;
+      }
+    } else if (item.kind === "favorite" && target.kind === "dir") {
+      const tags = metaGetTags(target.path);
+      if (
+        tags.includes(FAVORITE_TAG) &&
+        metaSetTagsForPath(
+          target.path,
+          tags.filter((tag) => tag !== FAVORITE_TAG),
+        )
+      )
+        changed = true;
+    } else if (item.kind === "hidden") {
+      if (target.kind === "dir") {
+        const tags = metaGetTags(target.path);
+        if (
+          tags.includes(HIDDEN_TAG) &&
+          metaSetTagsForPath(
+            target.path,
+            tags.filter((tag) => tag !== HIDDEN_TAG),
+          )
+        )
+          changed = true;
+      } else {
+        const key = directHiddenKeyForLabelTarget(target);
+        if (key && metaSetHiddenTagByKey(key, false)) changed = true;
+      }
+    }
+  }
+  if (!changed) return false;
+  if (item.kind === "hidden") invalidateHiddenVisibilityState();
+  metaScheduleSave();
+  refreshAfterTagMetadataChange();
+  showStatusMessage(`${String(item.label || "Removed label")}.`);
+  return true;
+}
+
+function createLabelRemovalSubmenu(selectionTarget) {
+  const targets = labelTargetsForSelectionTarget(selectionTarget);
+  const common = commonLabelMembershipsForTargets(targets);
+  if (!common) return null;
+  const memberships = [];
+  for (let i = 0; i < common.tags.length; i++) {
+    const name = common.tags[i];
+    memberships.push({
+      kind: "tag",
+      name,
+      label: `Removed from tag "${name}"`,
+      buttonLabel: `Remove from tag "${name}"`,
+    });
+  }
+  if (common.album) {
+    memberships.push({
+      kind: "album",
+      name: common.album,
+      label: `Removed from album "${common.album}"`,
+      buttonLabel: `Remove from album "${common.album}"`,
+    });
+  }
+  for (let i = 0; i < common.galleries.length; i++) {
+    const name = common.galleries[i];
+    memberships.push({
+      kind: "gallery",
+      name,
+      label: `Removed from gallery "${name}"`,
+      buttonLabel: `Remove from gallery "${name}"`,
+    });
+  }
+  if (common.favorite) {
+    memberships.push({
+      kind: "favorite",
+      label: "Removed from Favorites",
+      buttonLabel: "Remove from Favorites",
+    });
+  }
+  if (common.hidden) {
+    memberships.push({
+      kind: "hidden",
+      label: "Removed from Hidden",
+      buttonLabel: "Remove from Hidden",
+    });
+  }
+  if (!memberships.length) return null;
+  const buttons = memberships.map((membership) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = membership.buttonLabel;
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      allowMenuClose();
+      closeActionMenus();
+      const changed = removeLabelMembershipFromTargets(targets, membership);
+      if (changed && selectionTarget.kind === "bulk")
+        finalizeBulkSelectionAction();
+    });
+    return button;
+  });
+  return createDropdownMenuSubmenu("Remove From...", buttons);
 }
 
 function metaApplyBulkGalleryDiff(targets, removeGalleries, addGalleries) {
@@ -35997,21 +36305,230 @@ function getUnfilteredMembershipDirsForTagEntry(entry) {
   const children = getRawTagScopeChildren(baseNode);
   if (entry.special === "favorites")
     return children.filter((child) => metaHasFavorite(child.path || ""));
+  if (entry.special === "untagged")
+    return children.filter((child) => {
+      const path = String(child.path || "");
+      return !metaGetUserTags(path).length && !metaGetAlbumForPath(path);
+    });
+  if (entry.special === "hidden")
+    return children.filter((child) => metaHasHidden(child.path || ""));
+  if (entry.special === "storage") return getAllStorageDirNodes();
   const tag = normalizeTag(entry.tag || "");
   if (tag)
     return children.filter((child) =>
       metaGetUserTags(child.path || "").includes(tag),
     );
   const album = normalizeTagAlbumName(entry.album || "");
-  if (!album) return [];
-  return children.filter((child) => {
-    const path = String(child.path || "");
-    if (metaGetAlbumForPath(path) === album) return true;
-    return metaGetUserTags(path).some(
-      (memberTag) =>
-        metaGetTagAlbumForTag(memberTag, originPath) === album,
-    );
+  if (album) {
+    return children.filter((child) => {
+      const path = String(child.path || "");
+      if (metaGetAlbumForPath(path) === album) return true;
+      return metaGetUserTags(path).some(
+        (memberTag) =>
+          metaGetTagAlbumForTag(memberTag, originPath) === album,
+      );
+    });
+  }
+  const gallery = normalizeGalleryName(entry.gallery || "");
+  if (!gallery) return [];
+  const out = [];
+  const seen = new Set();
+  const addDirs = (dirs) => {
+    for (let i = 0; i < dirs.length; i++) {
+      const node = dirs[i];
+      const path = normalizeDirPathValue(node?.path || "");
+      if (!path || seen.has(path)) continue;
+      seen.add(path);
+      out.push(node);
+    }
+  };
+  if (WS.meta && WS.meta.folderGalleriesByPath instanceof Map) {
+    for (const [pathRaw, galleriesRaw] of WS.meta.folderGalleriesByPath) {
+      const galleries = normalizeTagList(galleriesRaw).map(normalizeGalleryName);
+      if (!galleries.includes(gallery)) continue;
+      const node = WS.dirByPath.get(normalizeDirPathValue(pathRaw));
+      if (node) addDirs([node]);
+    }
+  }
+  return out;
+}
+
+function getUnfilteredContentDirsForTagEntry(entry, ancestry = null) {
+  if (!entry || entry.kind !== "tag") return [];
+  const tag = normalizeTag(entry.tag || "");
+  const album = normalizeTagAlbumName(entry.album || "");
+  const gallery = normalizeGalleryName(entry.gallery || "");
+  const originPath = normalizeTagAlbumScopePath(entry.originPath || "");
+  const identity = entry.special
+    ? `special\n${originPath}\n${String(entry.special || "")}`
+    : tag
+      ? `tag\n${originPath}\n${tag}`
+      : album
+        ? `album\n${originPath}\n${album}`
+        : gallery
+          ? `gallery\n${gallery}`
+          : "";
+  if (!identity) return [];
+  const visited = ancestry instanceof Set ? ancestry : new Set();
+  if (visited.has(identity)) return [];
+  const nextVisited = new Set(visited);
+  nextVisited.add(identity);
+
+  const out = [];
+  const seen = new Set();
+  const addDirs = (dirs) => {
+    const list = Array.isArray(dirs) ? dirs : [];
+    for (let i = 0; i < list.length; i++) {
+      const node = list[i];
+      const path = normalizeDirPathValue(node?.path || "");
+      if (!path || seen.has(path)) continue;
+      seen.add(path);
+      out.push(node);
+    }
+  };
+  addDirs(getUnfilteredMembershipDirsForTagEntry(entry));
+  if (entry.special) return out;
+
+  const baseNode = WS.dirByPath.get(originPath) || WS.root;
+  if (tag && baseNode) {
+    const taggedAlbums = getAlbumEntriesForTagForBaseNode(baseNode, tag, {
+      skipContentCheck: true,
+    });
+    for (let i = 0; i < taggedAlbums.length; i++) {
+      addDirs(
+        getUnfilteredContentDirsForTagEntry(
+          {
+            kind: "tag",
+            album: taggedAlbums[i].album,
+            originPath,
+          },
+          nextVisited,
+        ),
+      );
+    }
+    if (baseNode === WS.root) {
+      const galleries = getAllGalleryNames();
+      for (let i = 0; i < galleries.length; i++) {
+        if (!metaGetUserTagsForGallery(galleries[i]).includes(tag)) continue;
+        addDirs(
+          getUnfilteredContentDirsForTagEntry(
+            { kind: "tag", gallery: galleries[i], originPath: "" },
+            nextVisited,
+          ),
+        );
+      }
+    }
+  } else if (album && baseNode === WS.root) {
+    const galleries = getAllGalleryNames();
+    for (let i = 0; i < galleries.length; i++) {
+      if (metaGetAlbumForGallery(galleries[i]) !== album) continue;
+      addDirs(
+        getUnfilteredContentDirsForTagEntry(
+          { kind: "tag", gallery: galleries[i], originPath: "" },
+          nextVisited,
+        ),
+      );
+    }
+  } else if (gallery) {
+    const memberTags = metaGetMemberTagTargetsForGallery(gallery);
+    for (let i = 0; i < memberTags.length; i++) {
+      addDirs(
+        getUnfilteredContentDirsForTagEntry(
+          {
+            kind: "tag",
+            tag: memberTags[i].tag,
+            originPath: memberTags[i].originPath,
+          },
+          nextVisited,
+        ),
+      );
+    }
+    const memberAlbums = metaGetMemberAlbumTargetsForGallery(gallery);
+    for (let i = 0; i < memberAlbums.length; i++) {
+      addDirs(
+        getUnfilteredContentDirsForTagEntry(
+          {
+            kind: "tag",
+            album: memberAlbums[i].album,
+            originPath: memberAlbums[i].originPath,
+          },
+          nextVisited,
+        ),
+      );
+    }
+  }
+  return out;
+}
+
+function galleryContentDirsForSelectionTarget(selectionTarget) {
+  const target =
+    selectionTarget && typeof selectionTarget === "object"
+      ? selectionTarget
+      : null;
+  if (!target) return [];
+  const out = [];
+  const seen = new Set();
+  const addNode = (node) => {
+    const path = normalizeDirPathValue(node?.path || "");
+    if (!path || seen.has(path) || isInternalTrashDirNode(node)) return;
+    if (!dirHasUnfilteredIndexedMedia(node)) return;
+    seen.add(path);
+    out.push(node);
+  };
+  const addFolderContents = (node) => {
+    if (!node) return;
+    ensureDirectoryChildNodesFromCatalog(node);
+    const children = Array.isArray(node.childrenDirs) ? node.childrenDirs : [];
+    for (let i = 0; i < children.length; i++) addNode(children[i]);
+  };
+  const addTagEntryContents = (entry) => {
+    const dirs = getUnfilteredContentDirsForTagEntry(entry);
+    for (let i = 0; i < dirs.length; i++) addNode(dirs[i]);
+  };
+
+  if (target.kind === "dir") {
+    addFolderContents(target.node);
+  } else if (target.kind === "tag") {
+    addTagEntryContents(target.entry);
+  } else if (target.kind === "bulk") {
+    const paths = Array.isArray(target.paths) ? target.paths : [];
+    for (let i = 0; i < paths.length; i++) {
+      addFolderContents(resolveDirNodeForPathOrStorageStub(paths[i]));
+    }
+    const entries = Array.isArray(target.entries) ? target.entries : [];
+    for (let i = 0; i < entries.length; i++) addTagEntryContents(entries[i]);
+  }
+  return out;
+}
+
+function buildAddAllContentsToGalleryButton(selectionTarget) {
+  const dirs = galleryContentDirsForSelectionTarget(selectionTarget);
+  if (!dirs.length) return null;
+  const targets = dirs.map((node) => ({
+    kind: "dir",
+    path: String(node.path || ""),
+  }));
+  const selectedCard = selectionTarget?.card || null;
+  const selectedInPreview = !!(
+    selectedCard &&
+    selectedCard.closest &&
+    selectedCard.closest("#previewBody")
+  );
+  const preferPane =
+    !directoriesPaneOpenEnabled() ||
+    selectedInPreview ||
+    String(WS.view?.activePane || "") === "preview"
+      ? "preview"
+      : "directories";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "Add all contents to gallery";
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const started = startBulkGallerying(targets, preferPane);
+    if (!started) showStatusMessage("No child folders can be added to a gallery.");
   });
+  return button;
 }
 
 function dirHasUnfilteredIndexedMedia(dirNode, visited = null) {
@@ -46669,12 +47186,40 @@ function buildSelectedItemMenuSubmenu(summary) {
     }
   }
 
+  // The old view-context removals exposed only the album/gallery currently
+  // being viewed. The membership submenu below supersedes them with every
+  // label shared by the selection.
+  Array.from(host.children).forEach((child) => {
+    if (child.tagName !== "BUTTON") return;
+    const label = String(child.textContent || "").trim().toLowerCase();
+    if (label === "remove from album" || label === "remove from gallery")
+      child.remove();
+  });
+
   // "Reverse file order" is the last action for a single selected folder, acting
   // on that folder's own files. Not offered for files, tags, or bulk selections.
   if (target.kind === "dir" && target.node) {
     const reverseBtn = buildAppMenuReverseFilesButton(target.node);
     if (reverseBtn) host.appendChild(reverseBtn);
   }
+
+  const removeFromSubmenu = createLabelRemovalSubmenu(target);
+  if (removeFromSubmenu) {
+    const addToSubmenu = Array.from(host.children).find((child) => {
+      if (!child.classList?.contains("dropdownMenuSubmenu")) return false;
+      const trigger = child.querySelector(
+        ":scope > .dropdownMenuSubmenuTrigger",
+      );
+      return String(trigger?.textContent || "").trim().startsWith("Add To...");
+    });
+    if (addToSubmenu) addToSubmenu.after(removeFromSubmenu);
+    else host.appendChild(removeFromSubmenu);
+  }
+
+  // Flatten a selected folder/simulated container into its physical child
+  // folders. This remains the final command, below Index and other item actions.
+  const addAllContentsButton = buildAddAllContentsToGalleryButton(target);
+  if (addAllContentsButton) host.appendChild(addAllContentsButton);
 
   const infoBlock = promoteItemInfoDropdownToHeader(host);
   if (infoBlock) {
@@ -48084,9 +48629,9 @@ function openTagContextMenu(context) {
       }),
     );
   }
-  if (canHide) {
+  if (canHide && !isHidden) {
     addToButtons.push(
-      createTagMenuButton(isHidden ? "Unhidden" : "Hidden", () =>
+      createTagMenuButton("Hidden", () =>
         handleTagMenuAction("hidden"),
       ),
     );
@@ -49434,12 +49979,8 @@ function buildFolderAddToSubmenuHtml(state) {
   items += button("Tag", "tag", restricted);
   items += button("Album", "album", restricted);
   items += button("Gallery", "gallery", restricted);
-  items += button(
-    state.isFavorite ? "Remove from Favorites" : "Favorites",
-    "favorite",
-    restricted,
-  );
-  items += button(state.isHidden ? "Unhidden" : "Hidden", "hidden", restricted);
+  if (!state.isFavorite) items += button("Favorites", "favorite", restricted);
+  if (!state.isHidden) items += button("Hidden", "hidden", restricted);
   items += state.canRemoveFromStorage
     ? button("Remove from Storage", "remove-from-storage")
     : button("Storage", "send-to-storage", !state.canSendToStorage);
@@ -49769,16 +50310,20 @@ function buildFolderActionMenuDom(
       "gallery",
       state.isStorageRestricted || state.isTrashItem,
     ),
-    makeBtn(
-      state.isFavorite ? "Remove from Favorites" : "Favorites",
-      "favorite",
-      state.isStorageRestricted || state.isTrashItem,
-    ),
-    makeBtn(
-      state.isHidden ? "Unhidden" : "Hidden",
-      "hidden",
-      state.isStorageRestricted || state.isTrashItem,
-    ),
+    !state.isFavorite
+      ? makeBtn(
+          "Favorites",
+          "favorite",
+          state.isStorageRestricted || state.isTrashItem,
+        )
+      : null,
+    !state.isHidden
+      ? makeBtn(
+          "Hidden",
+          "hidden",
+          state.isStorageRestricted || state.isTrashItem,
+        )
+      : null,
     state.canRemoveFromStorage
       ? makeBtn("Remove from Storage", "remove-from-storage")
       : makeBtn("Storage", "send-to-storage", !state.canSendToStorage),
@@ -49795,7 +50340,7 @@ function buildFolderActionMenuDom(
           !state.canMoveToTrash,
           "destructiveAction",
         ),
-  ];
+  ].filter(Boolean);
   const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
   if (addToSubmenu) menuEl.appendChild(addToSubmenu);
   menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
@@ -50176,22 +50721,26 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       () => startBulkGallerying(selectedPaths, "preview"),
       anyTrash || anyStorage,
     ),
-    makeBtn(
-      allFavorite ? "Remove from Favorites" : "Favorites",
-      () => {
-        metaSetFavoriteBulk(selectedPaths, !allFavorite);
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-      },
-      anyTrash || anyStorage,
-    ),
-    makeBtn(
-      allHidden ? "Unhidden" : "Hidden",
-      () => {
-        metaSetHiddenBulk(selectedPaths, !allHidden);
-        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-      },
-      anyTrash || anyStorage,
-    ),
+    !allFavorite
+      ? makeBtn(
+          "Favorites",
+          () => {
+            metaSetFavoriteBulk(selectedPaths, true);
+            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+          },
+          anyTrash || anyStorage,
+        )
+      : null,
+    !allHidden
+      ? makeBtn(
+          "Hidden",
+          () => {
+            metaSetHiddenBulk(selectedPaths, true);
+            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+          },
+          anyTrash || anyStorage,
+        )
+      : null,
     makeBtn(
       allStorage ? "Remove from Storage" : "Storage",
       async () => {
@@ -50232,7 +50781,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       true,
       "destructiveAction",
     ),
-  ];
+  ].filter(Boolean);
   const addToSubmenu = createDropdownMenuSubmenu("Add To...", addToButtons);
   if (addToSubmenu) menu.appendChild(addToSubmenu);
 
@@ -50630,12 +51179,12 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       }),
     );
   }
-  if (hideableTagKeys.length) {
+  if (hideableTagKeys.length && !allHiddenTags) {
     addToButtons.push(
-      makeBtn(allHiddenTags ? "Unhidden" : "Hidden", async () => {
+      makeBtn("Hidden", async () => {
         let changed = false;
         for (let i = 0; i < hideableTagKeys.length; i++) {
-          if (metaSetHiddenTagByKey(hideableTagKeys[i], !allHiddenTags))
+          if (metaSetHiddenTagByKey(hideableTagKeys[i], true))
             changed = true;
         }
         if (!changed) return;
@@ -50643,7 +51192,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         metaScheduleSave();
         refreshAfterTagMetadataChange();
         showStatusMessage(
-          `${allHiddenTags ? "Unhid" : "Hid"} ${hideableTagKeys.length} ${hideableNoun}${hideableTagKeys.length === 1 ? "" : "s"}.`,
+          `Hid ${hideableTagKeys.length} ${hideableNoun}${hideableTagKeys.length === 1 ? "" : "s"}.`,
         );
       }),
     );
