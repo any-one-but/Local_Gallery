@@ -36014,6 +36014,159 @@ function getUnfilteredMembershipDirsForTagEntry(entry) {
   });
 }
 
+function dirHasUnfilteredIndexedMedia(dirNode, visited = null) {
+  if (!dirNode) return false;
+  const path = String(dirNode.path || "");
+  const seen = visited instanceof Set ? visited : new Set();
+  if (path && seen.has(path)) return false;
+  if (path) seen.add(path);
+  const summary = getCatalogSummaryForNode(dirNode);
+  if (summary)
+    return Math.max(0, Number(summary.recursiveFileCount) || 0) > 0;
+  if (
+    Array.isArray(dirNode.childrenFiles) &&
+    dirNode.childrenFiles.length > 0
+  )
+    return true;
+  if (Math.max(0, Number(dirNode.recursiveFileCount) || 0) > 0) return true;
+  const children = Array.isArray(dirNode.childrenDirs)
+    ? dirNode.childrenDirs
+    : [];
+  for (let i = 0; i < children.length; i++) {
+    if (dirHasUnfilteredIndexedMedia(children[i], seen)) return true;
+  }
+  return false;
+}
+
+function visibleRawTagScopeChildren(scopePath) {
+  const scope = normalizeTagAlbumScopePath(scopePath);
+  const baseNode = WS.dirByPath.get(scope) || WS.root;
+  if (!baseNode) return [];
+  const children = getRawTagScopeChildren(baseNode);
+  if (hiddenContentVisibleInCurrentView()) return children;
+  return children.filter((child) => !isDirOrAncestorHidden(child));
+}
+
+function tagHasUnfilteredContent(tagName, scopePath = "", ancestry = null) {
+  const tag = normalizeTag(tagName);
+  const scope = normalizeTagAlbumScopePath(scopePath);
+  if (!tag) return false;
+  const key = `tag\n${scope}\n${tag}`;
+  const visited = ancestry instanceof Set ? ancestry : new Set();
+  if (visited.has(key)) return false;
+  const nextVisited = new Set(visited);
+  nextVisited.add(key);
+
+  const children = visibleRawTagScopeChildren(scope);
+  if (
+    children.some(
+      (child) =>
+        metaGetUserTags(child.path || "").includes(tag) &&
+        dirHasUnfilteredIndexedMedia(child),
+    )
+  )
+    return true;
+
+  const baseNode = WS.dirByPath.get(scope) || WS.root;
+  const taggedAlbums = baseNode
+    ? getAlbumEntriesForTagForBaseNode(baseNode, tag, {
+        skipContentCheck: true,
+      })
+    : [];
+  for (let i = 0; i < taggedAlbums.length; i++) {
+    if (
+      albumHasUnfilteredContent(
+        taggedAlbums[i].album,
+        scope,
+        nextVisited,
+      )
+    )
+      return true;
+  }
+  if (baseNode === WS.root) {
+    const galleries = getAllGalleryNames();
+    for (let i = 0; i < galleries.length; i++) {
+      const gallery = galleries[i];
+      if (
+        metaGetUserTagsForGallery(gallery).includes(tag) &&
+        galleryHasUnfilteredContent(gallery, nextVisited)
+      )
+        return true;
+    }
+  }
+  return false;
+}
+
+function albumHasUnfilteredContent(
+  albumName,
+  scopePath = "",
+  ancestry = null,
+) {
+  const album = normalizeTagAlbumName(albumName);
+  const scope = normalizeTagAlbumScopePath(scopePath);
+  if (!album) return false;
+  const key = `album\n${scope}\n${album}`;
+  const visited = ancestry instanceof Set ? ancestry : new Set();
+  if (visited.has(key)) return false;
+  const nextVisited = new Set(visited);
+  nextVisited.add(key);
+
+  const children = visibleRawTagScopeChildren(scope);
+  if (
+    children.some((child) => {
+      const path = String(child.path || "");
+      const isMember =
+        metaGetAlbumForPath(path) === album ||
+        metaGetUserTags(path).some(
+          (tag) => metaGetTagAlbumForTag(tag, scope) === album,
+        );
+      return isMember && dirHasUnfilteredIndexedMedia(child);
+    })
+  )
+    return true;
+  if ((WS.dirByPath.get(scope) || WS.root) === WS.root) {
+    const galleries = getAllGalleryNames();
+    for (let i = 0; i < galleries.length; i++) {
+      const gallery = galleries[i];
+      if (
+        metaGetAlbumForGallery(gallery) === album &&
+        galleryHasUnfilteredContent(gallery, nextVisited)
+      )
+        return true;
+    }
+  }
+  return false;
+}
+
+function galleryHasUnfilteredContent(galleryName, ancestry = null) {
+  const gallery = normalizeGalleryName(galleryName);
+  if (!gallery || galleryIsHiddenFromCurrentView(gallery)) return false;
+  const key = `gallery\n${gallery}`;
+  const visited = ancestry instanceof Set ? ancestry : new Set();
+  if (visited.has(key)) return false;
+  const nextVisited = new Set(visited);
+  nextVisited.add(key);
+  if (getDirectDirsForGallery(gallery).some(dirHasUnfilteredIndexedMedia))
+    return true;
+  const tags = metaGetMemberTagTargetsForGallery(gallery);
+  for (let i = 0; i < tags.length; i++) {
+    if (tagHasUnfilteredContent(tags[i].tag, tags[i].originPath, nextVisited))
+      return true;
+  }
+  const albums = metaGetMemberAlbumTargetsForGallery(gallery);
+  for (let i = 0; i < albums.length; i++) {
+    if (
+      albumHasUnfilteredContent(
+        albums[i].album,
+        albums[i].originPath,
+        nextVisited,
+      )
+    )
+      return true;
+  }
+  return false;
+}
+
 function getFastTagScopeModel(dirNode) {
   const path = String(dirNode?.path || "__root__");
   const cacheKey = [
@@ -36209,15 +36362,23 @@ function collectAlbumTagGroupsForScope(scopePath = "") {
   return out;
 }
 
-function getAlbumEntriesForTagForBaseNode(baseNode, tagName) {
+function getAlbumEntriesForTagForBaseNode(baseNode, tagName, opts = null) {
   const tag = normalizeTag(tagName || "");
   if (!baseNode || !tag) return [];
   const basePath = String(baseNode.path || "");
   const albumGroups = collectAlbumTagGroupsForScope(basePath);
   const entries = albumGroups.get(tag) || [];
-  return entries.slice().sort((a, b) =>
-    compareIndexedNames(String(a.album || ""), String(b.album || "")),
-  );
+  const skipContentCheck = !!(opts && opts.skipContentCheck);
+  return entries
+    .filter(
+      (entry) =>
+        skipContentCheck ||
+        albumHasUnfilteredContent(entry.album, entry.originPath),
+    )
+    .slice()
+    .sort((a, b) =>
+      compareIndexedNames(String(a.album || ""), String(b.album || "")),
+    );
 }
 
 function getDirectDirsForAlbumForBaseNode(baseNode, albumName) {
@@ -36261,11 +36422,12 @@ function getGalleryMemberTagEntries(galleryName) {
   return metaGetMemberTagTargetsForGallery(gallery)
     .filter(
       (target) =>
-        hiddenContentVisibleInCurrentView() ||
-        (!tagIsEffectivelyHidden(target.tag, target.originPath) &&
-          !isDirOrAncestorHidden(
-            WS.dirByPath.get(normalizeTagAlbumScopePath(target.originPath)),
-          )),
+        tagHasUnfilteredContent(target.tag, target.originPath) &&
+        (hiddenContentVisibleInCurrentView() ||
+          (!tagIsEffectivelyHidden(target.tag, target.originPath) &&
+            !isDirOrAncestorHidden(
+              WS.dirByPath.get(normalizeTagAlbumScopePath(target.originPath)),
+            ))),
     )
     .map((target) => {
       const tag = normalizeTag(target.tag || "");
@@ -36295,11 +36457,12 @@ function getGalleryMemberAlbumEntries(galleryName) {
   return metaGetMemberAlbumTargetsForGallery(gallery)
     .filter(
       (target) =>
-        hiddenContentVisibleInCurrentView() ||
-        (!albumIsEffectivelyHidden(target.album, target.originPath) &&
-          !isDirOrAncestorHidden(
-            WS.dirByPath.get(normalizeTagAlbumScopePath(target.originPath)),
-          )),
+        albumHasUnfilteredContent(target.album, target.originPath) &&
+        (hiddenContentVisibleInCurrentView() ||
+          (!albumIsEffectivelyHidden(target.album, target.originPath) &&
+            !isDirOrAncestorHidden(
+              WS.dirByPath.get(normalizeTagAlbumScopePath(target.originPath)),
+            ))),
     )
     .map((target) => {
       const album = normalizeTagAlbumName(target.album || "");
@@ -36337,6 +36500,7 @@ function getGalleryEntriesForRoot() {
     const gallery = normalizeGalleryName(names[i]);
     if (!gallery) continue;
     if (galleryIsHiddenFromCurrentView(gallery)) continue;
+    if (!galleryHasUnfilteredContent(gallery)) continue;
     const entry = {
       kind: "tag",
       gallery,
@@ -36359,6 +36523,7 @@ function getGalleryEntriesForTag(tagName) {
   if (!tag) return [];
   return getAllGalleryNames()
     .filter((gallery) => !galleryIsHiddenFromCurrentView(gallery))
+    .filter((gallery) => galleryHasUnfilteredContent(gallery))
     .filter((gallery) => metaGetUserTagsForGallery(gallery).includes(tag))
     .map((gallery) => {
       const entry = { kind: "tag", gallery, label: gallery, originPath: "" };
@@ -36372,6 +36537,7 @@ function getGalleryEntriesForAlbum(albumName) {
   if (!album) return [];
   return getAllGalleryNames()
     .filter((gallery) => !galleryIsHiddenFromCurrentView(gallery))
+    .filter((gallery) => galleryHasUnfilteredContent(gallery))
     .filter((gallery) => metaGetAlbumForGallery(gallery) === album)
     .map((gallery) => {
       const entry = { kind: "tag", gallery, label: gallery, originPath: "" };
@@ -36451,7 +36617,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     favoriteMembers,
     favoritesEntry,
   );
-  if (favoriteMembers.length) {
+  if (favoriteMembers.some(dirHasUnfilteredIndexedMedia)) {
     entries.push({
       kind: "tag",
       label: "Favorites",
@@ -36488,7 +36654,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       untaggedMembers,
       untaggedEntry,
     );
-    if (untaggedMembers.length) {
+    if (untaggedMembers.some(dirHasUnfilteredIndexedMedia)) {
       entries.push({
         kind: "tag",
         label: "Untagged",
@@ -36510,6 +36676,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       ? new Map(
           getAllGalleryNames().reduce((pairs, gallery) => {
             if (galleryIsHiddenFromCurrentView(gallery)) return pairs;
+            if (!galleryHasUnfilteredContent(gallery)) return pairs;
             metaGetUserTagsForGallery(gallery).forEach((tag) => {
               if (!pairs.has(tag)) pairs.set(tag, []);
               pairs.get(tag).push(gallery);
@@ -36523,6 +36690,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       ? new Map(
           getAllGalleryNames().reduce((pairs, gallery) => {
             if (galleryIsHiddenFromCurrentView(gallery)) return pairs;
+            if (!galleryHasUnfilteredContent(gallery)) return pairs;
             const album = metaGetAlbumForGallery(gallery);
             if (!album) return pairs;
             if (!pairs.has(album)) pairs.set(album, []);
@@ -36551,6 +36719,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
             !(stats.directFolderPaths && stats.directFolderPaths.size))
         )
           continue;
+        if (!albumHasUnfilteredContent(album, originPath)) continue;
         const albumEntry = {
           kind: "tag",
           album,
@@ -36636,8 +36805,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
         originPath,
       };
       const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
-      if (!nodes.length && !taggedAlbums.length && !taggedGalleries.length)
-        continue;
+      if (!tagHasUnfilteredContent(tag, originPath)) continue;
       entries.push({
         kind: "tag",
         tag,
@@ -36761,6 +36929,7 @@ function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
       originPath: basePath,
     };
     const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
+    if (!tagHasUnfilteredContent(tag, basePath)) continue;
     out.push({
       kind: "tag",
       tag,
@@ -46388,6 +46557,32 @@ function buildSelectedItemQuarantineButton(quarantine) {
   }, null, true);
 }
 
+function pruneUnavailableSelectedItemMenuOptions(menuEl) {
+  if (!menuEl) return;
+  menuEl.querySelectorAll("button:disabled").forEach((button) => {
+    button.remove();
+  });
+  menuEl.querySelectorAll(".menuTwoColRow").forEach((row) => {
+    if (!row.querySelector("button")) row.remove();
+  });
+  const submenus = Array.from(
+    menuEl.querySelectorAll(".dropdownMenuSubmenu"),
+  ).reverse();
+  for (let i = 0; i < submenus.length; i++) {
+    const submenu = submenus[i];
+    const panel = submenu.querySelector(
+      ":scope > .dropdownMenuSubmenuPanel",
+    );
+    const hasAvailableContent = !!(
+      panel &&
+      panel.querySelector(
+        "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), .dropdownMenuItemInfoFooter, .dropdownMenuItemInfoRows",
+      )
+    );
+    if (!hasAvailableContent) submenu.remove();
+  }
+}
+
 // The whole item menu, hosted as the app menu's first submenu. The per-kind
 // builders write into a detached container, so these are the same entries the
 // standalone item menus show rather than a reimplementation of them.
@@ -46454,7 +46649,9 @@ function buildSelectedItemMenuSubmenu(summary) {
       special: entry.special || "",
       label: String(entry.label || entry.tag || entry.album || entry.gallery || ""),
       anchor: target.card || selectedItemMenuAnchor(),
-      paths: gatherTagPathsForDirs(getDirsForTagEntry(entry)),
+      paths: gatherTagPathsForDirs(
+        getUnfilteredMembershipDirsForTagEntry(entry),
+      ),
       originPath: String(entry.originPath || ""),
       container: host,
     });
@@ -46485,6 +46682,7 @@ function buildSelectedItemMenuSubmenu(summary) {
     infoBlock.classList.add("dropdownMenuItemInfoFooter");
     host.appendChild(infoBlock);
   }
+  pruneUnavailableSelectedItemMenuOptions(host);
   const items = Array.from(host.children);
   items.forEach((el) => host.removeChild(el));
   return createDropdownMenuSubmenu(summary.label, items);
