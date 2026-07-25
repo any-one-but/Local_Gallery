@@ -110,9 +110,8 @@
   --item-menu-trash-color: var(--stats-score-positive-color);
 }
 
-/* Title size is not a setting: the "Title only" preset always renders the
-   large title, every other preset the regular detail-text size. The
-   data-preview-*-title-size attributes below are written from the preset. */
+/* Title size is independent of the card-detail preset and is saved per card
+   kind. Folder controls update root-folder and subfolder cards together. */
 :root[data-preview-file-title-size="large"] .gridFiles.previewSquareCards .previewThumbOverlayMeta .name,
 :root[data-preview-file-title-size="large"]
  .gridFiles.previewNaturalAspectCards.fitInsideJustified
@@ -9691,6 +9690,10 @@ function defaultOptions() {
     hideBeforeLastDashInFileNames: true,
     hideAfterFirstUnderscoreInFileNames: true,
     clickSelectedRotatingThumbTeleports: false,
+    previewFileThumbnailTitleSize: "small",
+    previewRootFolderThumbnailTitleSize: "small",
+    previewSubfolderThumbnailTitleSize: "small",
+    previewTagThumbnailTitleSize: "small",
     thumbTitleStripOpacity: THUMB_TITLE_STRIP_OPACITY_FIXED,
     fullResThumbnails: FULL_QUALITY_THUMBNAILS_DEFAULT,
     thumbnailStyle: "cropped",
@@ -9897,6 +9900,26 @@ function normalizeOptions(o) {
   const thumbnailScaleAspect = normalizeThumbnailScaleValue(
     src.thumbnailScaleAspect,
     d.thumbnailScaleAspect,
+  );
+  const legacyThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.thumbnailTitleSize,
+    "small",
+  );
+  const previewFileThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewFileThumbnailTitleSize,
+    legacyThumbnailTitleSize,
+  );
+  const previewRootFolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewRootFolderThumbnailTitleSize,
+    legacyThumbnailTitleSize,
+  );
+  const previewSubfolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewSubfolderThumbnailTitleSize,
+    legacyThumbnailTitleSize,
+  );
+  const previewTagThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewTagThumbnailTitleSize,
+    legacyThumbnailTitleSize,
   );
   const legacyShowFolderThumbnailTitles = false;
   const __legacyShowFolderThumbnailTitlesDisabled =
@@ -10137,6 +10160,10 @@ function normalizeOptions(o) {
       typeof src.clickSelectedRotatingThumbTeleports === "boolean"
         ? src.clickSelectedRotatingThumbTeleports
         : d.clickSelectedRotatingThumbTeleports,
+    previewFileThumbnailTitleSize,
+    previewRootFolderThumbnailTitleSize,
+    previewSubfolderThumbnailTitleSize,
+    previewTagThumbnailTitleSize,
     thumbTitleStripOpacity: normalizeThumbTitleStripOpacityValue(
       src.thumbTitleStripOpacity,
       d.thumbTitleStripOpacity,
@@ -10598,6 +10625,10 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     [
       "clickSelectedRotatingThumbTeleports",
       "thumbTitleStripOpacity",
+      "previewFileThumbnailTitleSize",
+      "previewRootFolderThumbnailTitleSize",
+      "previewSubfolderThumbnailTitleSize",
+      "previewTagThumbnailTitleSize",
       "fullResThumbnails",
       "thumbnailStyle",
       "thumbnailScaleCropped",
@@ -15291,14 +15322,26 @@ function applyThumbFitFromOptions() { }
 
 function getThumbnailStyleFromOptions(opt = null) { }
 
-// Title size is not its own setting — it falls out of the detail preset.
-// "Title only" is the large-title look; every other preset uses the regular
-// detail-text size, so the two are chosen by picking the preset and nothing
-// else.
+function normalizeThumbnailTitleSizeValue(value, fallback = "small") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "large") return "large";
+  if (raw === "small") return "small";
+  return fallback === "large" ? "large" : "small";
+}
+
+function previewThumbnailTitleSizeOptionKey(kind) {
+  const target = String(kind || "");
+  if (target === "file") return "previewFileThumbnailTitleSize";
+  if (target === "rootFolder") return "previewRootFolderThumbnailTitleSize";
+  if (target === "subfolder") return "previewSubfolderThumbnailTitleSize";
+  if (target === "tag") return "previewTagThumbnailTitleSize";
+  return "";
+}
+
 function getPreviewThumbnailTitleSizeForKind(kind, opt = null) {
-  return detectThumbnailPresetForKinds(kind, opt) === "clean"
-    ? "large"
-    : "small";
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  const key = previewThumbnailTitleSizeOptionKey(kind);
+  return normalizeThumbnailTitleSizeValue(key && src ? src[key] : null, "small");
 }
 
 function getThumbnailScaleForStyle(style, opt = null) { }
@@ -21289,8 +21332,11 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
       title: "Thumbnails",
       rows: `
 ${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
+${makeCheckRow("Large file title text", "Show file titles at the larger title size.", "opt_fileThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("file", opt) === "large")}
 ${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
+${makeCheckRow("Large folder title text", "Show folder titles at the larger title size.", "opt_folderThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("rootFolder", opt) === "large" && getPreviewThumbnailTitleSizeForKind("subfolder", opt) === "large")}
 ${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
+${makeCheckRow("Large tag title text", "Show tag titles at the larger title size.", "opt_tagThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("tag", opt) === "large")}
 ${makeCheckRow("Full resolution", "Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
@@ -22000,6 +22046,27 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   bindThumbnailPresetSelect("opt_thumbPreset_tag", (value) =>
     applyThumbnailPresetForKinds("tag", value),
   );
+  bindMenuToggleButton("opt_fileThumbnailTitleSize", (enabled) => {
+    setOptionValue("previewFileThumbnailTitleSize", enabled ? "large" : "small");
+    setOptionsStatus("Saved");
+    applyOptionsEverywhere(false);
+    persistDirtyMetadataNow().catch(() => {});
+  });
+  bindMenuToggleButton("opt_folderThumbnailTitleSize", (enabled) => {
+    setOptionValues({
+      previewRootFolderThumbnailTitleSize: enabled ? "large" : "small",
+      previewSubfolderThumbnailTitleSize: enabled ? "large" : "small",
+    });
+    setOptionsStatus("Saved");
+    applyOptionsEverywhere(false);
+    persistDirtyMetadataNow().catch(() => {});
+  });
+  bindMenuToggleButton("opt_tagThumbnailTitleSize", (enabled) => {
+    setOptionValue("previewTagThumbnailTitleSize", enabled ? "large" : "small");
+    setOptionsStatus("Saved");
+    applyOptionsEverywhere(false);
+    persistDirtyMetadataNow().catch(() => {});
+  });
   // Not listed in APP_ITEM_MENU_SETTING_CONTROL_IDS so the Thumbnails settings
   // section stays reachable under APP_ITEM_MENU_ACTIONS_ONLY (the other thumb
   // controls are menu-only). Changing it forces a Refresh App.
@@ -46692,6 +46759,22 @@ function setAppMenuThumbnailPreset(kinds, value, label) {
   return true;
 }
 
+function setAppMenuThumbnailTitleSize(kinds, enabled, label) {
+  const list = Array.isArray(kinds) ? kinds : [kinds];
+  const next = enabled ? "large" : "small";
+  const values = {};
+  list.forEach((kind) => {
+    const key = previewThumbnailTitleSizeOptionKey(kind);
+    if (key) values[key] = next;
+  });
+  if (!Object.keys(values).length) return false;
+  setOptionValues(values);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(`${label} large title text: ${enabled ? "On" : "Off"}`);
+  return true;
+}
+
 function setAppMenuAnimatedFilters(value) {
   const next = normalizeAnimatedMediaFiltersValue(value, "on");
   setOptionValue("animatedMediaFilters", next);
@@ -46811,32 +46894,29 @@ function buildAppMenuAppearanceSubmenu() {
   return submenu;
 }
 
-// Each card kind is a cycle button in its own right — the level of detail is
-// the only thing there is to set, so a submenu holding a single cycle would be
-// one keypress of ceremony around it.
-function buildAppMenuThumbnailKindCycleButton(label, kinds, iconKey) {
+function buildAppMenuThumbnailKindSubmenu(label, kinds, iconKey) {
   const list = Array.isArray(kinds) ? kinds : [kinds];
   const preset = detectThumbnailPresetForKinds(list);
-  const btn = buildAppMenuCycleButton(
-    label,
-    THUMBNAIL_PRESET_ITEMS,
-    preset,
-    (value) => setAppMenuThumbnailPreset(list, value, label),
+  const largeTitleText = list.every(
+    (kind) => getPreviewThumbnailTitleSizeForKind(kind) === "large",
   );
-  // Keep the kind icon the submenu trigger used to carry. textContent is
-  // unchanged by the wrapping, so the menu's label-keyed cursor restore still
-  // finds this row.
-  if (btn && iconKey) {
-    const text = btn.textContent;
-    btn.textContent = "";
-    const labelSpan = document.createElement("span");
-    labelSpan.className = "dropdownMenuSubmenuLabelWithIcon";
-    labelSpan.innerHTML =
-      `${appIconHtml(iconKey, "dropdownMenuItemTypeIcon")}` +
-      `<span>${escapeHtml(text)}</span>`;
-    btn.appendChild(labelSpan);
-  }
-  return btn;
+  return createDropdownMenuSubmenu(
+    label,
+    [
+      buildAppMenuCycleButton(
+        "Title style",
+        THUMBNAIL_PRESET_ITEMS,
+        preset,
+        (value) => setAppMenuThumbnailPreset(list, value, label),
+      ),
+      appMenuChoiceButton(
+        "Large title text",
+        () => setAppMenuThumbnailTitleSize(list, !largeTitleText, label),
+        largeTitleText,
+      ),
+    ],
+    iconKey,
+  );
 }
 
 function buildAppMenuThumbnailsSubmenu() {
@@ -46859,13 +46939,13 @@ function buildAppMenuThumbnailsSubmenu() {
       true,
     ),
     buildAppMenuFilenameSubmenu(),
-    buildAppMenuThumbnailKindCycleButton("Files", "file", "file"),
-    buildAppMenuThumbnailKindCycleButton(
+    buildAppMenuThumbnailKindSubmenu("Files", "file", "file"),
+    buildAppMenuThumbnailKindSubmenu(
       "Folders",
       ["rootFolder", "subfolder"],
       "folder",
     ),
-    buildAppMenuThumbnailKindCycleButton("Tags", "tag", "tag"),
+    buildAppMenuThumbnailKindSubmenu("Tags", "tag", "tag"),
   ]);
 }
 
