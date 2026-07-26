@@ -212,15 +212,15 @@ pub fn get_last_root(app: tauri::AppHandle) -> Option<String> {
 }
 
 /// Returns (and creates if necessary) the single managed "Local Gallery" media folder.
-/// On macOS this defaults to ~/Pictures/Local Gallery (user-visible and convenient).
-/// Falls back to Documents/Local Gallery.
+/// Defaults to ~/Documents/Local Gallery (user-visible and local to the user).
+/// Falls back to Pictures/Local Gallery.
 #[tauri::command]
 pub fn get_media_root(app: tauri::AppHandle) -> Result<String, String> {
     let base = app
         .path()
-        .picture_dir()
-        .or_else(|_| app.path().document_dir())
-        .map_err(|e| format!("no user pictures or documents directory: {e}"))?;
+        .document_dir()
+        .or_else(|_| app.path().picture_dir())
+        .map_err(|e| format!("no user documents or pictures directory: {e}"))?;
     let dir = base.join("Local Gallery");
     std::fs::create_dir_all(&dir).map_err(|e| format!("create media dir: {e}"))?;
     Ok(dir.to_string_lossy().into_owned())

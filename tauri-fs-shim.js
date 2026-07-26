@@ -409,9 +409,9 @@
   window.__lg.assetSelfTest = assetSelfTest;
 
   // In the single-folder model the app automatically uses a fixed media folder
-  // (~/Pictures/Local Gallery or Documents equivalent) + separate app-support
-  // metadata. The old picker is still available for power users to point at
-  // a different location if they call it directly.
+  // (~/Documents/Local Gallery or Pictures fallback) with in-library metadata.
+  // The old picker is still available for power users to point at a different
+  // location if they call it directly.
 
   console.info("[tauri-fs-shim] File System Access shim installed (single managed media folder mode)");
 })();
