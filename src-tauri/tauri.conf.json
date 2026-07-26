@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Local Gallery",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "identifier": "com.anyonebut.localgallery",
   "build": {
     "beforeDevCommand": "node scripts/sync-frontend.js && node scripts/prepare-ffmpeg.js",
