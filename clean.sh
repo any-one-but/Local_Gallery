@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.8.6"
+SCRIPT_VERSION="1.8.7"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
 PROGRESS_BAR_MIN_WIDTH=4
@@ -592,8 +592,8 @@ ensure_prerequisites() {
 step_description() {
   case "${1:-}" in
     1) printf "Dedupe files" ;;
-    2) printf "Move lower-quality similar media" ;;
-    3) printf "Convert videos and animated GIFs to MP4" ;;
+    2) printf "Quarantine lower-quality similar media" ;;
+    3) printf "Convert videos/GIFs, quarantine static videos" ;;
     4) printf "Resize oversized media" ;;
     5) printf "Remove metadata" ;;
     6) printf "Sanitize file and folder names" ;;
@@ -820,6 +820,7 @@ step2_convert_videos() {
   # Animated GIFs are just videos in a worse container, so fold their MP4
   # conversion into this same pass instead of running it as a separate step.
   convert_gifs_to_mp4
+  quarantine_single_frame_videos
 }
 
 step10_extract_video_audio_mp3() {
@@ -1612,7 +1613,7 @@ step9_move_empty_items() {
   phase=$((phase + 1))
   phase_note "$phase" "$phase_total" "Quick scan complete."
   if [[ -z "$first_zero" && -z "$first_empty" ]]; then
-    log_info "No 0-byte files or empty folders found. Nothing to move."
+    log_info "No 0-byte files or empty folders found. Nothing to quarantine."
     return 0
   fi
 
@@ -1641,7 +1642,7 @@ step9_move_empty_items() {
   phase=$((phase + 1))
   phase_note "$phase" "$phase_total" "Full scan complete."
 
-  # Keep only top-most empty directories so nested empties are moved with parents.
+  # Keep only top-most empty directories so nested empties are quarantined with parents.
   if [[ "$empty_dir_count" -gt 0 ]]; then
     progress=0
   fi
@@ -1671,7 +1672,7 @@ step9_move_empty_items() {
   phase_note "$phase" "$phase_total" "Top-level empty folders selected."
 
   total=$(( zero_file_count + selected_dir_count ))
-  log_info "Moving ${zero_file_count} zero-byte file(s) and ${selected_dir_count} empty folder(s)."
+  log_info "Quarantining ${zero_file_count} zero-byte file(s) and ${selected_dir_count} empty folder(s)."
   log_info "Bucket folder: ${bucket_root}"
   mkdir -p "$bucket_root/zero_size_files" "$bucket_root/empty_folders"
 
@@ -1682,7 +1683,7 @@ step9_move_empty_items() {
       moved_files=$((moved_files + 1))
     else
       failed=$((failed + 1))
-      log_err "Failed to move file: $file"
+      log_err "Failed to quarantine file: $file"
     fi
     progress=$((progress + 1))
     progress_draw "Step 7 Empty items" "$progress" "$total"
@@ -1691,7 +1692,7 @@ step9_move_empty_items() {
   for ((i=0; i<selected_dir_count; i++)); do
     dir="${selected_empty_dirs[$i]}"
     if [[ ! -d "$dir" ]]; then
-      # Might have become non-existent after parent move; count as moved.
+      # Might have become non-existent after parent quarantine; count it.
       moved_dirs=$((moved_dirs + 1))
       progress=$((progress + 1))
       progress_draw "Step 7 Empty items" "$progress" "$total"
@@ -1701,15 +1702,15 @@ step9_move_empty_items() {
       moved_dirs=$((moved_dirs + 1))
     else
       failed=$((failed + 1))
-      log_err "Failed to move folder: $dir"
+      log_err "Failed to quarantine folder: $dir"
     fi
     progress=$((progress + 1))
     progress_draw "Step 7 Empty items" "$progress" "$total"
   done
 
   log_info "Step 7 empty-item summary:"
-  summary_item "Zero-byte files moved" "$moved_files"
-  summary_item "Empty folders moved" "$moved_dirs"
+  summary_item "Zero-byte files quarantined" "$moved_files"
+  summary_item "Empty folders quarantined" "$moved_dirs"
   summary_item "Failed" "$failed"
   summary_item "Bucket" "$bucket_root"
 }
@@ -2363,7 +2364,7 @@ step6_combine_related_folders() {
         append_unique_line "$src_abs" "$moved_registry"
       else
         folders_failed=$((folders_failed + 1))
-        log_err "Folder combine move failed: $d"
+        log_err "Folder combine quarantine failed: $d"
       fi
     done
 
@@ -2376,8 +2377,8 @@ step6_combine_related_folders() {
   printf "  - Groups planned: %d\n" "$groups_planned"
   printf "  - Groups created: %d\n" "$groups_created"
   printf "  - Groups skipped: %d\n" "$groups_skipped"
-  printf "  - Folders moved:  %d\n" "$folders_moved"
-  printf "  - Failed moves:   %d\n" "$folders_failed"
+  printf "  - Folders quarantined: %d\n" "$folders_moved"
+  printf "  - Failed quarantines:  %d\n" "$folders_failed"
 }
 
 step6_move_similar_media() {
@@ -2458,18 +2459,18 @@ step6_move_similar_media() {
   if [[ "$skipped_keep_conflicts" -lt 0 ]]; then skipped_keep_conflicts=0; fi
 
   phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Ranked similar groups and planned moves."
+  phase_note "$phase" "$phase_total" "Ranked similar groups and planned quarantines."
 
   if [[ "$total_planned_moves" -eq 0 ]]; then
     rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
-    log_info "No similar media files selected for moving."
+    log_info "No similar media files selected for quarantine."
     phase=$((phase + 1))
-    phase_note "$phase" "$phase_total" "No similar-media moves were needed."
+    phase_note "$phase" "$phase_total" "No similar-media quarantines were needed."
     return 0
   fi
 
   mkdir -p "$bucket_root/similar_images" "$bucket_root/similar_videos"
-  log_info "Moving similar media into: $bucket_root"
+  log_info "Quarantining similar media into: $bucket_root"
 
   progress=0
   while IFS= read -r rel; do
@@ -2496,7 +2497,7 @@ step6_move_similar_media() {
       moved=$((moved + 1))
     else
       failed=$((failed + 1))
-      log_err "Failed to move similar media: $rel"
+      log_err "Failed to quarantine similar media: $rel"
     fi
 
     progress=$((progress + 1))
@@ -2508,9 +2509,9 @@ step6_move_similar_media() {
   summary_item "Image groups found" "$image_groups"
   summary_item "Video groups found" "$video_groups"
   summary_item "Keepers selected" "$(( image_keep + video_keep ))"
-  summary_item "Move candidates" "$total_move_candidates"
+  summary_item "Quarantine candidates" "$total_move_candidates"
   summary_item "Skipped keep conflicts" "$skipped_keep_conflicts"
-  summary_item "Files moved" "$moved"
+  summary_item "Files quarantined" "$moved"
   summary_item "Missing or skipped" "$missing"
   summary_item "Failed" "$failed"
   summary_item "Bucket" "$bucket_root"
@@ -2994,6 +2995,101 @@ convert_gifs_to_mp4() {
   summary_item "MP4 exists (skipped)" "$skipped_existing"
   summary_item "Failed" "$failed"
   summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+}
+
+video_unique_frame_count_after_decimate() {
+  local file="$1"
+  local count
+
+  if ! count="$(ffmpeg -hide_banner -nostats -loglevel error -i "$file" -map 0:v:0 \
+      -vf mpdecimate -an -f null - -progress pipe:1 2>/dev/null \
+      | awk -F= '/^frame=/{v=$2} END{if (v ~ /^[0-9]+$/) print v}')"; then
+    return 1
+  fi
+  if ! is_int "$count"; then
+    return 1
+  fi
+  printf "%s" "$count"
+}
+
+video_is_single_frame_or_static() {
+  local file="$1"
+  local frames unique_frames
+
+  frames="$(ffprobe -v error -select_streams v:0 -count_frames \
+    -show_entries stream=nb_read_frames -of csv=p=0 "$file" 2>/dev/null | head -n 1 || true)"
+  if is_int "$frames" && [[ "$frames" -le 1 ]]; then
+    return 0
+  fi
+
+  if ! unique_frames="$(video_unique_frame_count_after_decimate "$file")"; then
+    return 2
+  fi
+  if [[ "$unique_frames" -le 1 ]]; then
+    return 0
+  fi
+  return 1
+}
+
+quarantine_single_frame_videos() {
+  local bucket_root="./${SIMILAR_ITEMS_BUCKET_NAME}"
+  local empty_bucket_root="./${EMPTY_ITEMS_BUCKET_NAME}"
+  local files=()
+  local file
+  local i total progress=0
+  local quarantined=0 kept_animated=0 unreadable=0 failed=0
+  local rc
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(
+    find . \
+      \( -path "$bucket_root" -o -path "$empty_bucket_root" \) -prune -o \
+      -type f \( -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" -o -iname "*.wmv" \
+                 -o -iname "*.flv" -o -iname "*.avi" -o -iname "*.webm" -o -iname "*.mkv" \
+                 -o -iname "*.mpg" -o -iname "*.mpeg" -o -iname "*.3gp" -o -iname "*.m2ts" \
+                 -o -iname "*.vob" -o -iname "*.ogv" -o -iname "*.gifv" \) -print0
+  )
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No video files found for static-video quarantine."
+    return 0
+  fi
+
+  log_info "Checking $total video file(s) for single-frame/no-animation content."
+  mkdir -p "$bucket_root/single_frame_videos"
+
+  for (( i=0; i<total; i++ )); do
+    file="${files[$i]}"
+    rc=0
+    video_is_single_frame_or_static "$file" || rc=$?
+    case "$rc" in
+      0)
+        if move_item_into_bucket "$file" "$bucket_root" "single_frame_videos"; then
+          quarantined=$((quarantined + 1))
+        else
+          failed=$((failed + 1))
+          log_err "Failed to quarantine static video: $file"
+        fi
+        ;;
+      1)
+        kept_animated=$((kept_animated + 1))
+        ;;
+      *)
+        unreadable=$((unreadable + 1))
+        ;;
+    esac
+    progress=$((progress + 1))
+    progress_draw "Step 3 Quarantine" "$progress" "$total"
+  done
+
+  log_info "Step 3 static-video quarantine summary:"
+  summary_item "Videos quarantined" "$quarantined"
+  summary_item "Animated/kept" "$kept_animated"
+  summary_item "Unreadable" "$unreadable"
+  summary_item "Failed" "$failed"
+  summary_item "Bucket" "$bucket_root"
 }
 
 # Combined recompression pass: still images to AVIF/WebP, then videos to AV1.
