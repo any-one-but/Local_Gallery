@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DA Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.01
+// @version      00.01.02
 // @description  DeviantArt profile, post, page, backlog, and profile-gallery downloader.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/DA_Stripper.user.js
@@ -88,14 +88,6 @@
           <button id="dasPages" type="button" disabled>Download All Pages</button>
           <button id="dasBacklog" type="button" disabled>Download Backlog</button>
         </div>
-        <div class="das-range">
-          <input id="dasPostRange" type="text" inputmode="numeric" placeholder="Posts 1-0">
-          <button id="dasPostRangeBtn" type="button" disabled>Posts</button>
-        </div>
-        <div class="das-range">
-          <input id="dasPageRange" type="text" inputmode="numeric" placeholder="Pages 1-0">
-          <button id="dasPageRangeBtn" type="button" disabled>Pages</button>
-        </div>
         <div class="das-types">
           <button class="das-chip is-on" type="button" data-kind="image" aria-checked="true">Images</button>
           <button class="das-chip is-on" type="button" data-kind="video" aria-checked="true">Videos</button>
@@ -117,10 +109,6 @@
     ui.pages = panel.querySelector('#dasPages');
     ui.backlog = panel.querySelector('#dasBacklog');
     ui.galleryList = panel.querySelector('#dasGalleryList');
-    ui.postRange = panel.querySelector('#dasPostRange');
-    ui.postRangeBtn = panel.querySelector('#dasPostRangeBtn');
-    ui.pageRange = panel.querySelector('#dasPageRange');
-    ui.pageRangeBtn = panel.querySelector('#dasPageRangeBtn');
     ui.log = panel.querySelector('#dasLog');
     ui.chips = Array.from(panel.querySelectorAll('.das-chip'));
 
@@ -129,8 +117,6 @@
     ui.posts.addEventListener('click', () => downloadPostArchives());
     ui.pages.addEventListener('click', () => downloadPageArchives());
     ui.backlog.addEventListener('click', () => downloadBacklogArchive());
-    ui.postRangeBtn.addEventListener('click', downloadSelectedPosts);
-    ui.pageRangeBtn.addEventListener('click', downloadSelectedPages);
     panel.querySelector('#dasCollapse').addEventListener('click', () => {
       panel.classList.toggle('das-collapsed');
       panel.querySelector('#dasCollapse').textContent = panel.classList.contains('das-collapsed') ? '▾' : '▴';
@@ -144,7 +130,6 @@
     });
 
     installRouteObserver();
-    installInlineGalleryDownloads();
     logLine('Ready. Open a DeviantArt profile or post.');
     syncUi();
   }
@@ -172,7 +157,6 @@
       #daStripperPanel .das-meta{display:flex;justify-content:space-between;gap:10px;color:#b7c8c2;font-weight:700}
       #daStripperPanel .das-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #daStripperPanel .das-stack{display:grid;grid-template-columns:1fr;gap:6px}
-      #daStripperPanel .das-range{display:grid;grid-template-columns:1fr 82px;gap:6px}
       #daStripperPanel input{box-sizing:border-box;width:100%;height:32px;padding:0 9px;border-radius:8px;
         border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.24);color:#f4fffb;font:700 12px/1 Arial,sans-serif;outline:none}
       #daStripperPanel input:focus{border-color:rgba(0,230,154,.62)}
@@ -194,12 +178,6 @@
       #daStripperPanel .das-log{min-height:88px;max-height:190px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.2);padding:7px;color:#b9c9c4;white-space:pre-wrap}
       #daStripperPanel .das-log div{margin:0 0 4px}
-      .das-inlineGalleryDownload{position:absolute;right:8px;bottom:8px;z-index:20;box-sizing:border-box;min-width:92px;min-height:30px;
-        padding:0 10px;border:1px solid rgba(0,230,154,.82);border-radius:999px;background:rgba(3,16,12,.88);
-        color:#effff9;font:800 11px/1 Arial,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.38);cursor:pointer}
-      .das-inlineGalleryDownload:hover{background:#00c987;color:#02100b}
-      .das-inlineGalleryDownload.is-queued{background:#8feccf;color:#02100b}
-      .das-inlineGalleryDownload.is-active{background:#00c987;color:#02100b}
     `);
   }
 
@@ -210,85 +188,8 @@
       last = location.href;
       setProgress(0);
       logLine('Page changed. Press Scan for this DeviantArt page.');
-      removeInlineGalleryDownloads();
       syncUi();
     }, 600);
-  }
-
-  function installInlineGalleryDownloads() {
-    if (window.__daStripperInlineGalleryButtons) return;
-    window.__daStripperInlineGalleryButtons = true;
-    const schedule = () => {
-      clearTimeout(window.__daStripperInlineGalleryTimer);
-      window.__daStripperInlineGalleryTimer = setTimeout(renderInlineGalleryDownloads, 180);
-    };
-    setInterval(renderInlineGalleryDownloads, 1200);
-    try {
-      const observer = new MutationObserver(schedule);
-      observer.observe(document.body, { childList: true, subtree: true });
-    } catch {}
-  }
-
-  function renderInlineGalleryDownloads() {
-    if (state.scanType !== 'profile' || !state.folders.length) {
-      removeInlineGalleryDownloads();
-      return;
-    }
-    const foldersById = new Map(state.folders.map(folder => [String(folder.id || ''), folder]).filter(entry => entry[0]));
-    const username = String(state.username || '').toLowerCase();
-    const anchors = Array.from(document.querySelectorAll('a[href*="/gallery/"]'));
-    anchors.forEach(anchor => {
-      const ref = galleryRefFromHref(anchor.href || anchor.getAttribute('href') || '');
-      if (!ref || ref.username.toLowerCase() !== username || !foldersById.has(ref.id)) return;
-      const host = inlineGalleryButtonHost(anchor);
-      if (!host) return;
-      const folder = foldersById.get(ref.id);
-      let button = Array.from(host.querySelectorAll(':scope > .das-inlineGalleryDownload'))
-        .find(item => item.dataset.folderId === ref.id);
-      if (!button) {
-        button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'das-inlineGalleryDownload';
-        button.dataset.folderId = ref.id;
-        button.addEventListener('click', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          downloadGalleryArchive(ref.id);
-        });
-        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
-        host.appendChild(button);
-      }
-      updateGalleryDownloadButton(button, folder);
-    });
-    Array.from(document.querySelectorAll('.das-inlineGalleryDownload')).forEach(button => {
-      const id = button.dataset.folderId || '';
-      if (!foldersById.has(id)) button.remove();
-      else updateGalleryDownloadButton(button, foldersById.get(id));
-    });
-  }
-
-  function removeInlineGalleryDownloads() {
-    document.querySelectorAll('.das-inlineGalleryDownload').forEach(button => button.remove());
-  }
-
-  function galleryRefFromHref(href) {
-    try {
-      const url = new URL(href, location.origin);
-      if (!/(?:^|\.)deviantart\.com$/i.test(url.hostname)) return null;
-      const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-      if (parts.length < 3 || String(parts[1] || '').toLowerCase() !== 'gallery') return null;
-      if (!/^\d+$/.test(parts[2] || '')) return null;
-      return { username: parts[0], id: String(parts[2]) };
-    } catch {
-      return null;
-    }
-  }
-
-  function inlineGalleryButtonHost(anchor) {
-    if (!anchor || !(anchor instanceof Element)) return null;
-    const imageLike = anchor.querySelector('img,picture,canvas,svg,[style*="background-image"]');
-    if (!imageLike) return null;
-    return anchor.closest('article,figure,[data-testid],div') || anchor;
   }
 
   function scanContextFromLocation() {
@@ -364,7 +265,6 @@
     galleryQueue.length = 0;
     galleryQueuedIds.clear();
     currentGalleryDownloadId = '';
-    removeInlineGalleryDownloads();
     syncUi();
   }
 
@@ -753,37 +653,6 @@
     return Array.from(grouped.values()).sort((a, b) => a.page - b.page);
   }
 
-  async function downloadSelectedPosts() {
-    if (state.busy) return;
-    const parsed = parseRangeList(ui.postRange.value, state.posts.length);
-    if (parsed.error) {
-      logLine(`Post range error: ${parsed.error}.`);
-      return;
-    }
-    const selected = state.posts.filter((_, idx) => parsed.numbers.has(idx + 1));
-    if (!selected.length) {
-      logLine('No scanned posts matched that range.');
-      return;
-    }
-    await downloadPostArchives(selected);
-  }
-
-  async function downloadSelectedPages() {
-    if (state.busy) return;
-    const maxPage = state.pages.reduce((max, page) => Math.max(max, page.page || 0), 0);
-    const parsed = parseRangeList(ui.pageRange.value, maxPage);
-    if (parsed.error) {
-      logLine(`Page range error: ${parsed.error}.`);
-      return;
-    }
-    const selected = state.pages.filter((page, idx) => parsed.numbers.has(page.page) || parsed.numbers.has(idx + 1));
-    if (!selected.length) {
-      logLine('No scanned pages matched that range.');
-      return;
-    }
-    await downloadPageArchives(selected);
-  }
-
   async function downloadPostArchives(selectedPosts, options) {
     const posts = Array.isArray(selectedPosts) ? selectedPosts : state.posts;
     const includeAllFileTypes = !!(options && options.includeAllFileTypes);
@@ -1124,26 +993,6 @@
     });
   }
 
-  function parseRangeList(raw, maxNumber) {
-    const text = String(raw || '').trim();
-    if (!text) return { numbers: new Set(), error: 'enter a range list first' };
-    const limit = Math.max(0, Number(maxNumber) || 0);
-    const out = new Set();
-    for (const part of text.split(/[\s,]+/).filter(Boolean)) {
-      const match = part.match(/^(\d+)(?:-(\d+))?$/);
-      if (!match) return { numbers: out, error: `invalid range item "${part}"` };
-      let start = Number(match[1]) || 0;
-      let end = Number(match[2] || match[1]) || 0;
-      if (start < 1 || end < 1) return { numbers: out, error: 'range numbers start at 1' };
-      if (end < start) [start, end] = [end, start];
-      if (limit && start > limit) continue;
-      end = limit ? Math.min(end, limit) : end;
-      for (let n = start; n <= end; n++) out.add(n);
-    }
-    if (!out.size) return { numbers: out, error: 'range did not match any scanned items' };
-    return { numbers: out, error: '' };
-  }
-
   function formatDownloadPath(post, file, index, globalIndex) {
     const user = sanitizeFolder(post.user || state.username || 'deviantart');
     const date = dateKey(post.published);
@@ -1340,19 +1189,7 @@
     if (ui.posts) ui.posts.disabled = state.busy || !hasPosts;
     if (ui.pages) ui.pages.disabled = state.busy || !hasPages;
     if (ui.backlog) ui.backlog.disabled = state.busy || !hasFiles;
-    if (ui.postRange) {
-      ui.postRange.placeholder = hasPosts ? `Posts 1-${state.posts.length}` : 'Posts 1-0';
-      ui.postRange.disabled = state.busy || !hasPosts;
-    }
-    if (ui.postRangeBtn) ui.postRangeBtn.disabled = state.busy || !hasPosts;
-    if (ui.pageRange) {
-      const maxPage = state.pages.reduce((max, page) => Math.max(max, page.page || 0), 0);
-      ui.pageRange.placeholder = hasPages ? `Pages 1-${maxPage}` : 'Pages 1-0';
-      ui.pageRange.disabled = state.busy || !hasPages;
-    }
-    if (ui.pageRangeBtn) ui.pageRangeBtn.disabled = state.busy || !hasPages;
     renderGalleryList();
-    renderInlineGalleryDownloads();
   }
 
   function renderGalleryList() {
