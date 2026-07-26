@@ -11841,26 +11841,30 @@ function contextualTagMediaFilterForDirPath(dirPath) {
   if (!normalized) return [];
   const collected = [];
   const activeMode = String((WS.view && WS.view.tagFolderActiveMode) || "");
-  if (activeMode === "tag") {
+  if (activeMode) {
     const originPath = String((WS.view && WS.view.tagFolderOriginPath) || "");
-    const node = WS.dirByPath.get(normalized) || null;
-    if (node && String(node.parent?.path || "") === originPath) {
-      const activeTag = normalizeTag(
-        (WS.view && WS.view.tagFolderActiveTag) || "",
+    const activeTag =
+      activeMode === "tag" || activeMode === "gallery"
+        ? String((WS.view && WS.view.tagFolderActiveTag) || "")
+        : "";
+    const activeAlbum = String((WS.view && WS.view.tagFolderActiveAlbum) || "");
+    const portalRoots = getPortalRootPathsForTagContext(
+      activeMode,
+      activeTag,
+      activeAlbum,
+      originPath,
+    );
+    for (let i = 0; i < portalRoots.length; i++) {
+      if (!isSameOrDescendantPath(normalized, portalRoots[i])) continue;
+      collected.push(
+        contextualTagMediaFilterForTagContext(
+          activeMode,
+          activeTag,
+          activeAlbum,
+          originPath,
+        ),
       );
-      if (activeTag) {
-        const userTags = metaGetUserTags(normalized);
-        if (userTags.includes(activeTag)) {
-          collected.push(
-            contextualTagMediaFilterForTagContext(
-              activeMode,
-              activeTag,
-              WS.view && WS.view.tagFolderActiveAlbum,
-              originPath,
-            ),
-          );
-        }
-      }
+      break;
     }
   }
   const stack = Array.isArray(WS.view && WS.view.tagNavStack)
@@ -11967,7 +11971,7 @@ function getPortalRootPathsForTagContext(mode, tag, album, originPath) {
       .filter(Boolean);
   }
   const scopePath = normalizeDirPathValue(originPath);
-  const baseNode = WS.dirByPath.get(scopePath) || null;
+  const baseNode = WS.dirByPath.get(scopePath) || (!scopePath ? WS.root : null);
   if (!baseNode) return [];
   const showHidden =
     WS.view.hiddenMode ||
@@ -34499,9 +34503,36 @@ function catalogSummaryMediaBucketsForGlobalFilterMode(filterMode) {
   return ["images", "videos", "text"];
 }
 
+function catalogSummaryFileCountForCurrentAndTagMediaFilters(summary, filterValue) {
+  if (!summary) return -1;
+  const hidden = normalizeTagMediaFilterValue(filterValue);
+  if (!hidden.length) return catalogSummaryFileCountForCurrentFilters(summary);
+  const buckets = catalogSummaryMediaBucketsForGlobalFilterMode(
+    WS.view && WS.view.filterMode,
+  ).filter((bucket) => !hidden.includes(bucket));
+  if (!buckets.length) return 0;
+  const aspectMode = WS.view && WS.view.aspectRatioFilterMode;
+  let total = 0;
+  for (let i = 0; i < buckets.length; i++) {
+    const count = catalogSummaryFileCountForFilter(
+      summary,
+      buckets[i],
+      aspectMode,
+    );
+    if (count < 0) return -1;
+    total += count;
+  }
+  return total;
+}
+
 function catalogSummaryHasVisibleRecordForTagEntry(summary, entry) {
   if (!summary) return null;
-  return catalogSummaryFileCountForCurrentFilters(summary) > 0;
+  return (
+    catalogSummaryFileCountForCurrentAndTagMediaFilters(
+      summary,
+      effectiveTagMediaFilterForEntry(entry),
+    ) > 0
+  );
 }
 
 function tagEntryVisibilityNeedsExactAspectScan(entry) {
@@ -34535,7 +34566,10 @@ function dirItemCount(node) {
   );
   const summary = getCatalogSummaryForNode(node);
   const summaryCount = contextualFilter.length
-    ? catalogSummaryFileCountForTagMediaFilter(summary, contextualFilter)
+    ? catalogSummaryFileCountForCurrentAndTagMediaFilters(
+        summary,
+        contextualFilter,
+      )
     : catalogSummaryFileCountForCurrentFilters(summary);
   if (summaryCount >= 0) return summaryCount;
   if (
