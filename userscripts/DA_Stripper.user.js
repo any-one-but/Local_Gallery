@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DA Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.02
+// @version      00.01.03
 // @description  DeviantArt profile, post, page, backlog, and profile-gallery downloader.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/DA_Stripper.user.js
@@ -734,7 +734,7 @@
           logLine(`Building gallery zip: ${folder.name}.`);
           await buildAndSaveArchive(
             files,
-            buildArchiveName(state.userFolder, sanitizeNamePart(folder.name) || `gallery_${folder.id || 'download'}`),
+            buildArchiveName(state.userFolder, galleryArchiveLeaf(folder)),
             setProgress
           );
           setProgress(100);
@@ -1014,6 +1014,16 @@
     return buildArchiveName(userFolder, `page_${String(pageNumber || 1).padStart(4, '0')}`);
   }
 
+  function galleryArchiveLeaf(folder) {
+    const name = sanitizeNamePart(folder && folder.name) || `gallery_${folder && folder.id || 'download'}`;
+    const firstPost = folder && Array.isArray(folder.posts) ? folder.posts[0] : null;
+    const firstFile = firstPost && Array.isArray(firstPost.files) ? firstPost.files[0] : null;
+    const fromFolder = firstFile && String(firstFile.postFolder || '').match(/^(\d{6})-(\d{6})/);
+    const date = fromFolder ? fromFolder[1] : dateKey(firstPost && firstPost.published);
+    const index = fromFolder ? fromFolder[2] : '000001';
+    return `${date}-${index}-${name}`;
+  }
+
   function splitPath(path) {
     const parts = String(path || '').replace(/\\/g, '/').split('/').filter(Boolean);
     const [userFolder, postFolder, ...rest] = parts;
@@ -1194,6 +1204,8 @@
 
   function renderGalleryList() {
     if (!ui.galleryList) return;
+    const previousRows = ui.galleryList.querySelector('.das-galleryRows');
+    const previousScrollTop = previousRows ? previousRows.scrollTop : 0;
     const folders = state.scanType === 'profile'
       ? state.folders.filter(folder => folder && Array.isArray(folder.files) && folder.files.length > 0)
       : [];
@@ -1238,6 +1250,7 @@
       rows.appendChild(row);
     });
     ui.galleryList.appendChild(rows);
+    rows.scrollTop = previousScrollTop;
   }
 
   function updateGalleryDownloadButton(button, folder) {
