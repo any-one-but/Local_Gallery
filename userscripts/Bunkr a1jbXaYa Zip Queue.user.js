@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bunkr a1jbXaYa Zip Queue
 // @namespace    local-gallery
-// @version      1.0.3
+// @version      1.0.4
 // @description  One-off queued downloader for the zip files in Bunkr album a1jbXaYa.
 // @author       jo
 // @match        https://bunkr.cr/a/a1jbXaYa*
@@ -345,7 +345,7 @@
     if (state.running) return;
     stopRequested = false;
     state.running = true;
-    log("Collecting download-page links.");
+    log("Collecting file-page links.");
 
     try {
       if (!state.items.length) {
@@ -353,16 +353,7 @@
         log(`Found ${state.items.length} zip files.`);
       }
 
-      const links = [];
-      for (const item of state.items) {
-        if (!item.warningPageUrl) {
-          item.warningPageUrl = await resolveWarningPageUrl(item.pageUrl);
-          saveState();
-          await sleep(RESOLVE_DELAY_MS);
-        }
-        links.push(item.warningPageUrl);
-        log(`Resolved ${links.length}/${state.items.length} links.`);
-      }
+      const links = state.items.map((item) => item.pageUrl);
 
       await copyToClipboard(links.join("\n"));
       log(`Copied ${links.length} links to the clipboard.`);
