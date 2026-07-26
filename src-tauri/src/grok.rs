@@ -1,23 +1,24 @@
-//! The embedded Grok window — a proof of concept.
+//! The embedded Grok webview.
 //!
-//! A second, undecorated WebviewWindow loading grok.com, parented to the main
-//! window so it sits above it and moves with it. It is a real top-level
-//! document, not an iframe: x.com/grok.com send `frame-ancestors`, and
+//! A child webview loading grok.com inside the main app window. It is a real
+//! top-level document, not an iframe: x.com/grok.com send `frame-ancestors`, and
 //! WKWebView gives us no way to strip response headers, so framing is out.
 //!
-//! The window is deliberately *not* on the IPC bridge. See grok-inject.js for
+//! The webview is deliberately *not* on the IPC bridge. See grok-inject.js for
 //! why, and for how the close sentinel works.
 
 use std::path::PathBuf;
-use tauri_plugin_clipboard_manager::ClipboardExt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, Url, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
+    webview::WebviewBuilder, AppHandle, Manager, PhysicalPosition, PhysicalSize, Url, Webview,
+    WebviewUrl,
 };
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 const GROK_LABEL: &str = "grok";
 const GROK_URL: &str = "https://grok.com/";
 const MAIN_LABEL: &str = "main";
+static GROK_VISIBLE: AtomicBool = AtomicBool::new(false);
 
 /// Navigating here is the injected script's way of asking to be closed. The
 /// navigation is always cancelled; `.invalid` is reserved by RFC 2606 and can
@@ -103,13 +104,13 @@ fn saved_grok_url(app: &AppHandle) -> Option<Url> {
     }
 }
 
-/// Records where the window currently is, so the next session reopens there.
+/// Records where the webview currently is, so the next session reopens there.
 ///
 /// Reads the live webview URL rather than tracking navigations: Grok is an SPA
 /// and moves between conversations with pushState, which `on_navigation` never
 /// sees, but WKWebView's `url` does reflect.
 pub fn save_grok_url(app: &AppHandle) {
-    let Some(grok) = app.get_webview_window(GROK_LABEL) else {
+    let Some(grok) = app.get_webview(GROK_LABEL) else {
         return;
     };
     let Ok(url) = grok.url() else {
@@ -124,36 +125,36 @@ pub fn save_grok_url(app: &AppHandle) {
     let _ = std::fs::write(&file, url.as_str());
 }
 
-/// The Grok window covers the main window's *content area* only — inner bounds,
-/// not outer — so the title bar and its traffic lights stay visible and usable.
+/// Child webview bounds are relative to the main window's content area.
 fn main_content_bounds(app: &AppHandle) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>)> {
-    let main = app.get_webview_window(MAIN_LABEL)?;
-    Some((main.inner_position().ok()?, main.inner_size().ok()?))
+    let main = app.get_window(MAIN_LABEL)?;
+    Some((PhysicalPosition::new(0, 0), main.inner_size().ok()?))
 }
 
-fn place_over_main(app: &AppHandle, grok: &WebviewWindow) {
+fn place_inside_main(app: &AppHandle, grok: &Webview) {
     if let Some((pos, size)) = main_content_bounds(app) {
         let _ = grok.set_position(pos);
         let _ = grok.set_size(size);
     }
 }
 
-/// macOS keeps a child window pinned to its parent when the parent *moves*, but
-/// not when it resizes, so lib.rs drives this from the main window's events.
+/// Keep the Grok child webview covering the app content after main-window size
+/// changes. Moves do not matter for a child webview, but the caller may send
+/// them and this remains harmless.
 pub fn sync_grok_bounds(app: &AppHandle) {
-    let Some(grok) = app.get_webview_window(GROK_LABEL) else {
+    if !GROK_VISIBLE.load(Ordering::Relaxed) {
         return;
     };
-    if !grok.is_visible().unwrap_or(false) {
+    let Some(grok) = app.get_webview(GROK_LABEL) else {
         return;
-    }
-    place_over_main(app, &grok);
+    };
+    place_inside_main(app, &grok);
 }
 
 /// The close-key spec handed to the injected script, as a JS assignment.
 ///
-/// The Grok window swallows every key while focused, so the app's own binding
-/// can never reach the main window to toggle it off — the page has to know the
+/// The Grok webview swallows every key while focused, so the app's own binding
+/// can never reach the main webview to toggle it off — the page has to know the
 /// combo itself. Injected as a global rather than invoked over IPC.
 fn close_key_prelude(close_key: Option<&str>) -> String {
     let key = close_key.unwrap_or("");
@@ -163,21 +164,25 @@ fn close_key_prelude(close_key: Option<&str>) -> String {
 
 fn hide_grok(app: &AppHandle) {
     save_grok_url(app);
-    if let Some(grok) = app.get_webview_window(GROK_LABEL) {
+    if let Some(grok) = app.get_webview(GROK_LABEL) {
         let _ = grok.hide();
     }
-    if let Some(main) = app.get_webview_window(MAIN_LABEL) {
+    GROK_VISIBLE.store(false, Ordering::Relaxed);
+    if let Some(main) = app.get_window(MAIN_LABEL) {
         let _ = main.set_focus();
+    }
+    if let Some(main_webview) = app.get_webview(MAIN_LABEL) {
+        let _ = main_webview.set_focus();
     }
 }
 
-fn build_grok_window(
+fn build_grok_webview(
     app: &AppHandle,
     close_key: Option<&str>,
     override_url: Option<Url>,
 ) -> Result<(), String> {
     let main = app
-        .get_webview_window(MAIN_LABEL)
+        .get_window(MAIN_LABEL)
         .ok_or_else(|| "main window missing".to_string())?;
 
     // Clipboard link beats the saved location beats the default.
@@ -186,17 +191,7 @@ fn build_grok_window(
     });
 
     let nav_handle = app.clone();
-    let builder = WebviewWindowBuilder::new(app, GROK_LABEL, WebviewUrl::External(url))
-        .title("Grok")
-        // No decorations means no title bar, which means no drag handle — that
-        // is what makes the window unmovable, as there is no `movable(false)`.
-        .decorations(false)
-        .resizable(false)
-        .maximizable(false)
-        .minimizable(false)
-        // Built hidden, then positioned, then shown: otherwise it flashes at
-        // the default position before the first set_position lands.
-        .visible(false)
+    let builder = WebviewBuilder::new(GROK_LABEL, WebviewUrl::External(url))
         .initialization_script(close_key_prelude(close_key))
         .initialization_script(include_str!("../../grok-inject.js"))
         .on_navigation(move |url| {
@@ -205,35 +200,26 @@ fn build_grok_window(
             }
             hide_grok(&nav_handle);
             false
-        })
-        .parent(&main)
-        .map_err(|e| format!("parenting grok window failed: {e}"))?;
+        });
 
-    let grok = builder
-        .build()
-        .map_err(|e| format!("building grok window failed: {e}"))?;
+    let (_, size) =
+        main_content_bounds(app).ok_or_else(|| "main window bounds missing".to_string())?;
+    let grok = main
+        .add_child(builder, PhysicalPosition::new(0, 0), size)
+        .map_err(|e| format!("building grok webview failed: {e}"))?;
 
-    place_over_main(app, &grok);
+    place_inside_main(app, &grok);
+    let _ = grok.set_auto_resize(true);
 
-    // Cmd+W would otherwise destroy the webview and drop the page's state. Hide
-    // instead, so toggling back returns to the same conversation and scroll.
-    let close_handle = app.clone();
-    grok.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            hide_grok(&close_handle);
-        }
-    });
-
-    grok.show().map_err(|e| e.to_string())?;
+    GROK_VISIBLE.store(true, Ordering::Relaxed);
     grok.set_focus().map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// Toggles the Grok window. Returns true when it ends up visible.
+/// Toggles the Grok child webview. Returns true when it ends up visible.
 ///
 /// `close_key` is the app's current binding for this action, forwarded so the
-/// page can close itself with the same combo. The window is built lazily and
+/// page can close itself with the same combo. The webview is built lazily and
 /// then kept alive and merely hidden, so the logged-in session and the open
 /// conversation survive toggling.
 ///
@@ -243,8 +229,8 @@ fn build_grok_window(
 pub fn toggle_grok_window(app: AppHandle, close_key: Option<String>) -> Result<bool, String> {
     let key = close_key.as_deref().filter(|k| !k.is_empty());
 
-    if let Some(grok) = app.get_webview_window(GROK_LABEL) {
-        if grok.is_visible().unwrap_or(false) {
+    if let Some(grok) = app.get_webview(GROK_LABEL) {
+        if GROK_VISIBLE.load(Ordering::Relaxed) {
             hide_grok(&app);
             return Ok(false);
         }
@@ -266,14 +252,15 @@ pub fn toggle_grok_window(app: AppHandle, close_key: Option<String>) -> Result<b
                     .map_err(|e| format!("grok navigate: {e}"))?;
             }
         }
-        place_over_main(&app, &grok);
+        place_inside_main(&app, &grok);
         grok.show().map_err(|e| e.to_string())?;
+        GROK_VISIBLE.store(true, Ordering::Relaxed);
         grok.set_focus().map_err(|e| e.to_string())?;
         return Ok(true);
     }
 
     let target = clipboard_grok_link(&app);
-    build_grok_window(&app, key, target)?;
+    build_grok_webview(&app, key, target)?;
     Ok(true)
 }
 

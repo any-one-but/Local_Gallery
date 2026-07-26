@@ -508,9 +508,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
 
             let main_window = builder.build()?;
 
-            // The Grok window is a macOS child window: it follows the parent
-            // when it moves, but not when it resizes, and neither on Windows.
-            // Re-sync on both so it stays exactly over the app.
+            // Keep the Grok child webview sized to the app content area.
             let grok_handle = app.handle().clone();
             main_window.on_window_event(move |event| {
                 if matches!(

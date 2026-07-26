@@ -18,7 +18,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # protocol-asset: lets the frontend render local files (thumbnails, media) via
 # the asset: protocol (convertFileSrc) — matches assetProtocol in tauri.conf.json.
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["protocol-asset", "unstable"] }
 tauri-plugin-dialog = "2"
 # Read the clipboard natively when opening the Grok window. Doing this in Rust
 # rather than via navigator.clipboard avoids the webview's paste permission
