@@ -2,12 +2,12 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.8.7"
+SCRIPT_VERSION="1.8.8"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
 PROGRESS_BAR_MIN_WIDTH=4
 EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
-SIMILAR_ITEMS_BUCKET_NAME="_clean_similar_media"
+SIMILAR_ITEMS_BUCKET_NAME="quarantined_media"
 # czkawka similarity tuning. The scans used to run at pure defaults, which
 # leaves accuracy on the table: the default Nearest resize filter produces
 # noisy perceptual hashes that both collide distinct images (false culls) and
@@ -36,7 +36,7 @@ STEP12_AVIF_CRF=32
 STEP12_WEBP_QUALITY=80
 STEP14_AV1_CRF=32
 STEP14_AV1_PRESET=6
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12)
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -593,7 +593,7 @@ step_description() {
   case "${1:-}" in
     1) printf "Dedupe files" ;;
     2) printf "Quarantine lower-quality similar media" ;;
-    3) printf "Convert videos/GIFs, quarantine static videos" ;;
+    3) printf "Convert videos and animated GIFs to MP4" ;;
     4) printf "Resize oversized media" ;;
     5) printf "Remove metadata" ;;
     6) printf "Sanitize file and folder names" ;;
@@ -603,6 +603,7 @@ step_description() {
     10) printf "Trim video starts" ;;
     11) printf "Trim video ends" ;;
     12) printf "Extract MP3 audio from videos" ;;
+    13) printf "Quarantine static videos and video-frame images" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -621,6 +622,7 @@ step_function_name() {
     10) printf "step8_trim_video_lead" ;;
     11) printf "step9_trim_video_tail" ;;
     12) printf "step10_extract_video_audio_mp3" ;;
+    13) printf "step13_quarantine_static_media" ;;
     *) printf "" ;;
   esac
 }
@@ -702,6 +704,13 @@ ensure_step_requirements() {
       require_cmd ffprobe
       require_cmd mv
       require_cmd rm
+      ;;
+    13)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd mkdir
       ;;
     *)
       return 1
@@ -820,7 +829,6 @@ step2_convert_videos() {
   # Animated GIFs are just videos in a worse container, so fold their MP4
   # conversion into this same pass instead of running it as a separate step.
   convert_gifs_to_mp4
-  quarantine_single_frame_videos
 }
 
 step10_extract_video_audio_mp3() {
@@ -3031,6 +3039,124 @@ video_is_single_frame_or_static() {
   return 1
 }
 
+media_first_frame_hash() {
+  local file="$1"
+  local hash
+
+  hash="$(ffmpeg -hide_banner -loglevel error -i "$file" -map 0:v:0 -frames:v 1 \
+    -vf "format=rgb24,scale=16:16:flags=area,format=gray" -f framehash -hash MD5 - 2>/dev/null \
+    | awk -F, '/^[0-9]/{gsub(/[[:space:]]/, "", $NF); print $NF; exit}' || true)"
+  if [[ -z "$hash" ]]; then
+    return 1
+  fi
+  printf "%s" "$hash"
+}
+
+append_video_frame_hashes() {
+  local file="$1"
+  local output_file="$2"
+
+  ffmpeg -hide_banner -loglevel error -i "$file" -map 0:v:0 \
+    -vf "format=rgb24,scale=16:16:flags=area,format=gray" -an -f framehash -hash MD5 - 2>/dev/null \
+    | awk -F, '/^[0-9]/{gsub(/[[:space:]]/, "", $NF); if ($NF != "") print $NF}' >> "$output_file"
+}
+
+quarantine_video_frame_images() {
+  local bucket_root="./${SIMILAR_ITEMS_BUCKET_NAME}"
+  local empty_bucket_root="./${EMPTY_ITEMS_BUCKET_NAME}"
+  local videos=()
+  local images=()
+  local video image hash
+  local video_hashes video_hashes_sorted
+  local i total progress=0
+  local scanned_videos=0 video_probe_failed=0 frame_hashes=0
+  local quarantined=0 kept=0 unreadable=0 failed=0
+
+  while IFS= read -r -d '' video; do
+    videos+=("$video")
+  done < <(
+    find . \
+      \( -path "$bucket_root" -o -path "$empty_bucket_root" \) -prune -o \
+      -type f \( -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" -o -iname "*.wmv" \
+                 -o -iname "*.flv" -o -iname "*.avi" -o -iname "*.webm" -o -iname "*.mkv" \
+                 -o -iname "*.mpg" -o -iname "*.mpeg" -o -iname "*.3gp" -o -iname "*.m2ts" \
+                 -o -iname "*.vob" -o -iname "*.ogv" -o -iname "*.gifv" \) -print0
+  )
+
+  while IFS= read -r -d '' image; do
+    images+=("$image")
+  done < <(
+    find . \
+      \( -path "$bucket_root" -o -path "$empty_bucket_root" \) -prune -o \
+      -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" \
+                 -o -iname "*.bmp" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.heic" \
+                 -o -iname "*.heif" -o -iname "*.avif" \) -print0
+  )
+
+  if [[ "${#videos[@]}" -eq 0 || "${#images[@]}" -eq 0 ]]; then
+    log_warn "No videos or still images found for video-frame image quarantine."
+    return 0
+  fi
+
+  video_hashes="$(mktemp)"
+  video_hashes_sorted="$(mktemp)"
+  : > "$video_hashes"
+
+  log_info "Indexing frames from ${#videos[@]} video file(s)."
+  for (( i=0; i<${#videos[@]}; i++ )); do
+    video="${videos[$i]}"
+    if append_video_frame_hashes "$video" "$video_hashes"; then
+      scanned_videos=$((scanned_videos + 1))
+    else
+      video_probe_failed=$((video_probe_failed + 1))
+    fi
+    progress=$((progress + 1))
+    progress_draw "Step 13 Video index" "$progress" "${#videos[@]}"
+  done
+
+  sort -u "$video_hashes" > "$video_hashes_sorted"
+  frame_hashes="$(wc -l < "$video_hashes_sorted" | tr -d ' ')"
+  if ! is_int "$frame_hashes"; then frame_hashes=0; fi
+  if [[ "$frame_hashes" -eq 0 ]]; then
+    rm -f "$video_hashes" "$video_hashes_sorted"
+    log_warn "No readable video frames found for image comparison."
+    return 0
+  fi
+
+  log_info "Comparing ${#images[@]} still image file(s) against ${frame_hashes} video frame hash(es)."
+  mkdir -p "$bucket_root/video_frame_images"
+
+  progress=0
+  total=${#images[@]}
+  for (( i=0; i<total; i++ )); do
+    image="${images[$i]}"
+    if ! hash="$(media_first_frame_hash "$image")"; then
+      unreadable=$((unreadable + 1))
+    elif grep -F -x -q -- "$hash" "$video_hashes_sorted"; then
+      if move_item_into_bucket "$image" "$bucket_root" "video_frame_images"; then
+        quarantined=$((quarantined + 1))
+      else
+        failed=$((failed + 1))
+        log_err "Failed to quarantine video-frame image: $image"
+      fi
+    else
+      kept=$((kept + 1))
+    fi
+    progress=$((progress + 1))
+    progress_draw "Step 13 Frame images" "$progress" "$total"
+  done
+
+  rm -f "$video_hashes" "$video_hashes_sorted"
+  log_info "Step 13 video-frame image quarantine summary:"
+  summary_item "Videos indexed" "$scanned_videos"
+  summary_item "Video probe failed" "$video_probe_failed"
+  summary_item "Images quarantined" "$quarantined"
+  summary_item "Images kept" "$kept"
+  summary_item "Unreadable images" "$unreadable"
+  summary_item "Failed" "$failed"
+  summary_item "Bucket" "$bucket_root"
+}
+
 quarantine_single_frame_videos() {
   local bucket_root="./${SIMILAR_ITEMS_BUCKET_NAME}"
   local empty_bucket_root="./${EMPTY_ITEMS_BUCKET_NAME}"
@@ -3081,15 +3207,20 @@ quarantine_single_frame_videos() {
         ;;
     esac
     progress=$((progress + 1))
-    progress_draw "Step 3 Quarantine" "$progress" "$total"
+    progress_draw "Step 13 Static videos" "$progress" "$total"
   done
 
-  log_info "Step 3 static-video quarantine summary:"
+  log_info "Step 13 static-video quarantine summary:"
   summary_item "Videos quarantined" "$quarantined"
   summary_item "Animated/kept" "$kept_animated"
   summary_item "Unreadable" "$unreadable"
   summary_item "Failed" "$failed"
   summary_item "Bucket" "$bucket_root"
+}
+
+step13_quarantine_static_media() {
+  quarantine_video_frame_images
+  quarantine_single_frame_videos
 }
 
 # Combined recompression pass: still images to AVIF/WebP, then videos to AV1.
@@ -3267,7 +3398,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 12 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 13 ]]; then
       log_warn "Skipping out-of-range step: $num"
     fi
   done
