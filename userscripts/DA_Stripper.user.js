@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DA Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.03
+// @version      00.01.04
 // @description  DeviantArt profile, post, page, backlog, and profile-gallery downloader.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/DA_Stripper.user.js
@@ -1021,7 +1021,7 @@
     const fromFolder = firstFile && String(firstFile.postFolder || '').match(/^(\d{6})-(\d{6})/);
     const date = fromFolder ? fromFolder[1] : dateKey(firstPost && firstPost.published);
     const index = fromFolder ? fromFolder[2] : '000001';
-    return `${date}-${index}-${name}`;
+    return `${date}-${index} - ${name}`;
   }
 
   function splitPath(path) {
