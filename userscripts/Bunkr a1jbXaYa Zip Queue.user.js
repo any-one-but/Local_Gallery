@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bunkr a1jbXaYa Zip Queue
 // @namespace    local-gallery
-// @version      1.0.2
+// @version      1.0.3
 // @description  One-off queued downloader for the zip files in Bunkr album a1jbXaYa.
 // @author       jo
 // @match        https://bunkr.cr/a/a1jbXaYa*
@@ -13,6 +13,7 @@
 // @connect      *.bunkr.cr
 // @grant        GM_xmlhttpRequest
 // @grant        GM_openInTab
+// @grant        GM_setClipboard
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -223,6 +224,7 @@
         <div id="bzq-progress-wrap"><div id="bzq-progress"></div></div>
         <div class="bzq-row">
           <button id="bzq-scan" type="button">Scan album</button>
+          <button id="bzq-copy" type="button">Copy links</button>
           <button id="bzq-start" class="primary" type="button">Start queue</button>
           <button id="bzq-pause" type="button">Pause</button>
           <button id="bzq-reset" class="danger" type="button">Reset</button>
@@ -251,6 +253,7 @@
       document.body.appendChild(show);
     });
     panel.querySelector("#bzq-scan").addEventListener("click", scanAlbum);
+    panel.querySelector("#bzq-copy").addEventListener("click", copyZipLinks);
     panel.querySelector("#bzq-start").addEventListener("click", startQueue);
     panel.querySelector("#bzq-pause").addEventListener("click", pauseQueue);
     panel.querySelector("#bzq-reset").addEventListener("click", resetQueue);
@@ -277,6 +280,7 @@
     document.querySelector("#bzq-delay").value = String(Math.round(state.delayMs / 1000));
 
     document.querySelector("#bzq-scan").disabled = state.running;
+    document.querySelector("#bzq-copy").disabled = state.running;
     document.querySelector("#bzq-start").disabled = state.running || !state.items.length || !hasPendingItems();
     document.querySelector("#bzq-pause").disabled = !state.running;
     document.querySelector("#bzq-reset").disabled = state.running;
@@ -301,31 +305,69 @@
     log("Scanning album pages.");
 
     try {
-      const firstUrl = new URL(ALBUM_PATH, location.origin).href;
-      const firstHtml = await requestText(firstUrl);
-      const firstDoc = parseHtml(firstHtml);
-      const pageUrls = getAlbumPageUrls(firstDoc, firstUrl);
-      const collected = [];
-
-      for (const pageUrl of pageUrls) {
-        const html = pageUrl === firstUrl ? firstHtml : await requestText(pageUrl);
-        collected.push(...parseAlbumItems(html, pageUrl));
-        log(`Scanned page ${pageNumber(pageUrl)} of ${pageUrls.length}.`);
-        await sleep(RESOLVE_DELAY_MS);
-      }
-
-      state.items = uniquifyNames(collected).map((item, index) => ({
-        id: item.pageUrl,
-        index,
-        name: item.name,
-        pageUrl: item.pageUrl,
-        status: "pending",
-        warningPageUrl: "",
-        error: "",
-      }));
+      state.items = await collectAlbumItems();
       log(`Found ${state.items.length} zip files.`);
     } catch (error) {
       log(`Scan failed: ${error.message || error}`);
+    } finally {
+      state.running = false;
+      saveState();
+      render();
+    }
+  }
+
+  async function collectAlbumItems() {
+    const firstUrl = new URL(ALBUM_PATH, location.origin).href;
+    const firstHtml = await requestText(firstUrl);
+    const firstDoc = parseHtml(firstHtml);
+    const pageUrls = getAlbumPageUrls(firstDoc, firstUrl);
+    const collected = [];
+
+    for (const pageUrl of pageUrls) {
+      const html = pageUrl === firstUrl ? firstHtml : await requestText(pageUrl);
+      collected.push(...parseAlbumItems(html, pageUrl));
+      log(`Scanned page ${pageNumber(pageUrl)} of ${pageUrls.length}.`);
+      await sleep(RESOLVE_DELAY_MS);
+    }
+
+    return uniquifyNames(collected).map((item, index) => ({
+      id: item.pageUrl,
+      index,
+      name: item.name,
+      pageUrl: item.pageUrl,
+      status: "pending",
+      warningPageUrl: "",
+      error: "",
+    }));
+  }
+
+  async function copyZipLinks() {
+    if (state.running) return;
+    stopRequested = false;
+    state.running = true;
+    log("Collecting download-page links.");
+
+    try {
+      if (!state.items.length) {
+        state.items = await collectAlbumItems();
+        log(`Found ${state.items.length} zip files.`);
+      }
+
+      const links = [];
+      for (const item of state.items) {
+        if (!item.warningPageUrl) {
+          item.warningPageUrl = await resolveWarningPageUrl(item.pageUrl);
+          saveState();
+          await sleep(RESOLVE_DELAY_MS);
+        }
+        links.push(item.warningPageUrl);
+        log(`Resolved ${links.length}/${state.items.length} links.`);
+      }
+
+      await copyToClipboard(links.join("\n"));
+      log(`Copied ${links.length} links to the clipboard.`);
+    } catch (error) {
+      log(`Copy failed: ${error.message || error}`);
     } finally {
       state.running = false;
       saveState();
@@ -530,6 +572,31 @@
     helperUrl.searchParams.set(HELPER_PARAM, "1");
     helperUrl.searchParams.set("bzq_name", name);
     return helperUrl.toString();
+  }
+
+  async function copyToClipboard(text) {
+    if (typeof GM_setClipboard === "function") {
+      GM_setClipboard(text, "text");
+      return;
+    }
+
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.cssText = "position:fixed;left:-9999px;top:-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const ok = document.execCommand("copy");
+    textArea.remove();
+
+    if (!ok) {
+      throw new Error("Clipboard copy was blocked by the browser.");
+    }
   }
 
   function runDownloadPageHelper() {
