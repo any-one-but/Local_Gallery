@@ -6,8 +6,8 @@ SCRIPT_VERSION="1.8.8"
 MAX_MEDIA_HEIGHT=3200
 PROGRESS_BAR_WIDTH=32
 PROGRESS_BAR_MIN_WIDTH=4
-EMPTY_ITEMS_BUCKET_NAME="_clean_empty_items"
-SIMILAR_ITEMS_BUCKET_NAME="quarantined_media"
+EMPTY_ITEMS_BUCKET_NAME="_quarantined_media"
+SIMILAR_ITEMS_BUCKET_NAME="_quarantined_media"
 # czkawka similarity tuning. The scans used to run at pure defaults, which
 # leaves accuracy on the table: the default Nearest resize filter produces
 # noisy perceptual hashes that both collide distinct images (false culls) and
