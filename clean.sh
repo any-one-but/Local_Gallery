@@ -3012,7 +3012,7 @@ step13_reencode_videos_av1() {
   local files=()
   local file ext base out tmp codec oldsize newsize enc_ok
   local i total progress=0
-  local converted=0 skipped_av1=0 nogain=0 skipped_existing=0 failed=0
+  local converted=0 skipped_av1=0 skipped_probe=0 nogain=0 skipped_existing=0 failed=0
   local saved_bytes=0
 
   while IFS= read -r -d '' file; do
@@ -3037,8 +3037,14 @@ step13_reencode_videos_av1() {
     base="${file%.*}"
     out="${base}.mp4"
 
-    codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
-      -of csv=p=0 "$file" 2>/dev/null | head -n 1)
+    if ! codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
+      -of csv=p=0 "$file" 2>/dev/null | head -n 1) || [[ -z "$codec" ]]; then
+      skipped_probe=$((skipped_probe + 1))
+      log_err "Video probe failed: $file"
+      progress=$((progress + 1))
+      progress_draw "Step 8 AV1" "$progress" "$total"
+      continue
+    fi
     if [[ "$codec" == "av1" ]]; then
       skipped_av1=$((skipped_av1 + 1))
       progress=$((progress + 1))
@@ -3094,6 +3100,7 @@ step13_reencode_videos_av1() {
   log_info "Step 8 AV1 re-encode summary:"
   summary_item "Re-encoded" "$converted"
   summary_item "Already AV1" "$skipped_av1"
+  summary_item "Probe failed" "$skipped_probe"
   summary_item "No size gain (kept)" "$nogain"
   summary_item "Name conflict (kept)" "$skipped_existing"
   summary_item "Failed" "$failed"
