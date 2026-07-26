@@ -83,7 +83,6 @@
           <button id="dasPosts" type="button" disabled>Download All Posts</button>
           <button id="dasPages" type="button" disabled>Download All Pages</button>
           <button id="dasBacklog" type="button" disabled>Download Backlog</button>
-          <button id="dasGalleries" type="button" disabled>Download Galleries</button>
         </div>
         <div class="das-range">
           <input id="dasPostRange" type="text" inputmode="numeric" placeholder="Posts 1-0">
@@ -98,6 +97,7 @@
           <button class="das-chip is-on" type="button" data-kind="video" aria-checked="true">Videos</button>
           <button class="das-chip" type="button" data-kind="text" aria-checked="false">Text</button>
         </div>
+        <div id="dasGalleryList" class="das-galleryList" hidden></div>
         <div id="dasLog" class="das-log" aria-live="polite"></div>
       </div>
     `;
@@ -112,7 +112,7 @@
     ui.posts = panel.querySelector('#dasPosts');
     ui.pages = panel.querySelector('#dasPages');
     ui.backlog = panel.querySelector('#dasBacklog');
-    ui.galleries = panel.querySelector('#dasGalleries');
+    ui.galleryList = panel.querySelector('#dasGalleryList');
     ui.postRange = panel.querySelector('#dasPostRange');
     ui.postRangeBtn = panel.querySelector('#dasPostRangeBtn');
     ui.pageRange = panel.querySelector('#dasPageRange');
@@ -125,7 +125,6 @@
     ui.posts.addEventListener('click', () => downloadPostArchives());
     ui.pages.addEventListener('click', () => downloadPageArchives());
     ui.backlog.addEventListener('click', () => downloadBacklogArchive());
-    ui.galleries.addEventListener('click', () => downloadGalleryArchives());
     ui.postRangeBtn.addEventListener('click', downloadSelectedPosts);
     ui.pageRangeBtn.addEventListener('click', downloadSelectedPages);
     panel.querySelector('#dasCollapse').addEventListener('click', () => {
@@ -141,7 +140,7 @@
     });
 
     installRouteObserver();
-    logLine('Ready. Open a DeviantArt profile, gallery folder, or post.');
+    logLine('Ready. Open a DeviantArt profile or post.');
     syncUi();
   }
 
@@ -174,6 +173,16 @@
       #daStripperPanel .das-types{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
       #daStripperPanel .das-chip{min-height:28px;font-size:11px;color:#a8bbb4}
       #daStripperPanel .das-chip.is-on{background:rgba(0,230,154,.18);border-color:rgba(0,230,154,.52);color:#ecfff9}
+      #daStripperPanel .das-galleryList{display:flex;flex-direction:column;gap:5px;padding:7px;border:1px solid rgba(255,255,255,.08);
+        border-radius:8px;background:rgba(0,0,0,.16)}
+      #daStripperPanel .das-galleryList[hidden]{display:none}
+      #daStripperPanel .das-galleryHead{display:flex;align-items:center;justify-content:space-between;gap:8px;
+        color:#d6fff2;font-weight:900}
+      #daStripperPanel .das-galleryRows{display:flex;flex-direction:column;gap:4px;max-height:170px;overflow:auto}
+      #daStripperPanel .das-galleryRow{display:grid;grid-template-columns:1fr 66px;gap:6px;align-items:center}
+      #daStripperPanel .das-galleryName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e8fff8;font-weight:700}
+      #daStripperPanel .das-galleryMeta{font-size:10px;color:#8fa49d;font-weight:700}
+      #daStripperPanel .das-galleryRow button{min-height:28px;padding:0 8px;font-size:11px}
       #daStripperPanel .das-log{min-height:88px;max-height:190px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.2);padding:7px;color:#b9c9c4;white-space:pre-wrap}
       #daStripperPanel .das-log div{margin:0 0 4px}
@@ -203,9 +212,7 @@
     }
 
     if (parts[1] && parts[1].toLowerCase() === 'gallery') {
-      const folderId = /^\d+$/.test(parts[2] || '') ? String(parts[2]) : '';
-      const folderName = folderId ? (parts[3] || `folder_${folderId}`) : 'All';
-      return { type: folderId ? 'folder' : 'profile', username: first, folderId, folderName };
+      return { type: 'profile', username: first };
     }
 
     if (parts.length === 1 || ['about', 'gallery', 'posts'].includes(String(parts[1] || '').toLowerCase())) {
@@ -225,7 +232,7 @@
     if (state.busy) return;
     const context = scanContextFromLocation();
     if (!context) {
-      logLine('This is not a DeviantArt profile, gallery folder, or post page.');
+      logLine('This is not a DeviantArt profile or post page.');
       setProgress(0);
       return;
     }
@@ -238,10 +245,6 @@
         const post = await fetchSinglePost(context);
         applyPosts([post], []);
         logLine(`Scanned post ${context.postId}.`);
-      } else if (context.type === 'folder') {
-        const folder = await fetchGalleryFolder(context.username, context.folderId, context.folderName);
-        applyPosts(folder.posts, [folder]);
-        logLine(`Scanned gallery folder "${folder.name}": ${folder.posts.length} post${folder.posts.length === 1 ? '' : 's'}.`);
       } else {
         const all = await fetchAllProfileGallery(context.username);
         applyPosts(all.posts, all.folders);
@@ -295,17 +298,6 @@
     }
     if (folders.length > MAX_FOLDERS) logLine(`Stopped gallery-folder scan at ${MAX_FOLDERS} folders.`);
     return { posts: allPages.posts, pages: allPages.pages, files: allPages.files, folders: folderResults };
-  }
-
-  async function fetchGalleryFolder(username, folderId, folderName) {
-    const result = await fetchGalleryContents(username, { folderId, folderName });
-    return {
-      id: String(folderId || ''),
-      name: folderName || (result.gallection && result.gallection.name) || 'Gallery',
-      pages: result.pages,
-      posts: result.posts,
-      files: result.files
-    };
   }
 
   async function fetchGalleryFolders(username) {
@@ -729,15 +721,23 @@
     await runSingleArchive(files, buildArchiveName(state.userFolder, `${state.userFolder}_backlog`), 'backlog');
   }
 
-  async function downloadGalleryArchives() {
-    const folders = state.folders
-      .map(folder => ({ folder, files: filterFilesByType(folder.files || []) }))
-      .filter(item => item.files.length > 0);
-    if (state.busy || !folders.length) return;
-    await runArchiveBatch(folders, 'gallery', async (item, idx, total) => {
-      logLine(`Building gallery zip ${idx}/${total}: ${item.folder.name}.`);
-      await buildAndSaveArchive(item.files, buildArchiveName(state.userFolder, sanitizeNamePart(item.folder.name) || `gallery_${idx}`));
-    });
+  async function downloadGalleryArchive(folderId) {
+    if (state.busy) return;
+    const folder = state.folders.find(item => String(item.id || '') === String(folderId || ''));
+    if (!folder) {
+      logLine('Gallery not found in the current profile scan.');
+      return;
+    }
+    const files = filterFilesByType(folder.files || []);
+    if (!files.length) {
+      logLine(`No files match the selected file types for ${folder.name}.`);
+      return;
+    }
+    await runSingleArchive(
+      files,
+      buildArchiveName(state.userFolder, sanitizeNamePart(folder.name) || `gallery_${folder.id || 'download'}`),
+      `gallery ${folder.name}`
+    );
   }
 
   async function runArchiveBatch(items, unit, fn) {
@@ -1186,14 +1186,12 @@
     const hasPosts = state.posts.length > 0;
     const hasPages = state.pages.length > 0;
     const hasFiles = state.files.length > 0;
-    const hasFolders = state.folders.length > 0;
-    if (ui.profile) ui.profile.textContent = state.username ? `${state.username}${state.scanType === 'folder' && state.context && state.context.folderName ? ` / ${state.context.folderName}` : ''}` : 'No profile scanned';
+    if (ui.profile) ui.profile.textContent = state.username || 'No profile scanned';
     if (ui.count) ui.count.textContent = overrideCount || `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
     if (ui.post) ui.post.disabled = state.busy || !hasPosts || state.scanType !== 'post';
     if (ui.posts) ui.posts.disabled = state.busy || !hasPosts;
     if (ui.pages) ui.pages.disabled = state.busy || !hasPages;
     if (ui.backlog) ui.backlog.disabled = state.busy || !hasFiles;
-    if (ui.galleries) ui.galleries.disabled = state.busy || !hasFolders;
     if (ui.postRange) {
       ui.postRange.placeholder = hasPosts ? `Posts 1-${state.posts.length}` : 'Posts 1-0';
       ui.postRange.disabled = state.busy || !hasPosts;
@@ -1205,6 +1203,56 @@
       ui.pageRange.disabled = state.busy || !hasPages;
     }
     if (ui.pageRangeBtn) ui.pageRangeBtn.disabled = state.busy || !hasPages;
+    renderGalleryList();
+  }
+
+  function renderGalleryList() {
+    if (!ui.galleryList) return;
+    const folders = state.scanType === 'profile'
+      ? state.folders.filter(folder => folder && Array.isArray(folder.files) && folder.files.length > 0)
+      : [];
+    ui.galleryList.hidden = !folders.length;
+    ui.galleryList.innerHTML = '';
+    if (!folders.length) return;
+
+    const head = document.createElement('div');
+    head.className = 'das-galleryHead';
+    const title = document.createElement('span');
+    title.textContent = 'Galleries';
+    const count = document.createElement('span');
+    count.textContent = String(folders.length);
+    head.appendChild(title);
+    head.appendChild(count);
+    ui.galleryList.appendChild(head);
+
+    const rows = document.createElement('div');
+    rows.className = 'das-galleryRows';
+    folders.forEach(folder => {
+      const row = document.createElement('div');
+      row.className = 'das-galleryRow';
+
+      const labelWrap = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'das-galleryName';
+      name.title = folder.name || 'Gallery';
+      name.textContent = folder.name || 'Gallery';
+      const meta = document.createElement('div');
+      meta.className = 'das-galleryMeta';
+      meta.textContent = `${folder.posts.length} post${folder.posts.length === 1 ? '' : 's'} · ${folder.files.length} file${folder.files.length === 1 ? '' : 's'}`;
+      labelWrap.appendChild(name);
+      labelWrap.appendChild(meta);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = 'Zip';
+      btn.disabled = state.busy;
+      btn.addEventListener('click', () => downloadGalleryArchive(folder.id));
+
+      row.appendChild(labelWrap);
+      row.appendChild(btn);
+      rows.appendChild(row);
+    });
+    ui.galleryList.appendChild(rows);
   }
 
   function logLine(text) {
