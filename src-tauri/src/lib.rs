@@ -17,7 +17,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu},
     Manager,
 };
 
@@ -25,28 +25,81 @@ const SETTINGS_MENU_ID: &str = "settings";
 
 #[cfg(target_os = "macos")]
 fn install_macos_settings_menu(app: &tauri::App) -> tauri::Result<()> {
-    let menu = Menu::default(app.handle())?;
-    if let Some(app_submenu) = menu
-        .items()?
-        .first()
-        .and_then(|item| item.as_submenu())
-    {
-        // No accelerator: the app menu is hard-coded to Tab in the web layer.
-        // Cmd+, stays disabled. This menu item opens the in-app command menu
-        // (Controls / History / Appearance live there; there is no Settings pane).
-        let settings = MenuItem::with_id(
-            app.handle(),
-            SETTINGS_MENU_ID,
-            "App Menu…",
-            true,
-            None::<&str>,
-        )?;
-        let separator = PredefinedMenuItem::separator(app.handle())?;
-        // About, separator, App Menu, separator, Services… keeps the usual
-        // macOS application-menu slot formerly occupied by Settings.
-        app_submenu.insert(&settings, 2)?;
-        app_submenu.insert(&separator, 3)?;
-    }
+    let handle = app.handle();
+    let pkg_info = app.package_info();
+    let config = app.config();
+    let about_metadata = AboutMetadata {
+        name: Some(pkg_info.name.clone()),
+        version: Some(pkg_info.version.to_string()),
+        copyright: config.bundle.copyright.clone(),
+        authors: config.bundle.publisher.clone().map(|p| vec![p]),
+        ..Default::default()
+    };
+
+    // No accelerator: the app menu is hard-coded to Tab in the web layer.
+    // Cmd+, stays disabled. This menu item opens the in-app command menu
+    // (Controls / History / Appearance live there; there is no Settings pane).
+    let settings = MenuItem::with_id(
+        handle,
+        SETTINGS_MENU_ID,
+        "App Menu…",
+        true,
+        None::<&str>,
+    )?;
+
+    let menu = Menu::with_items(
+        handle,
+        &[
+            &Submenu::with_items(
+                handle,
+                pkg_info.name.clone(),
+                true,
+                &[
+                    &PredefinedMenuItem::about(handle, None, Some(about_metadata))?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &settings,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::services(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::hide(handle, None)?,
+                    &PredefinedMenuItem::hide_others(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::quit(handle, None)?,
+                ],
+            )?,
+            &Submenu::with_items(
+                handle,
+                "Edit",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(handle, None)?,
+                    &PredefinedMenuItem::redo(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::cut(handle, None)?,
+                    &PredefinedMenuItem::copy(handle, None)?,
+                    &PredefinedMenuItem::paste(handle, None)?,
+                    &PredefinedMenuItem::select_all(handle, None)?,
+                ],
+            )?,
+            &Submenu::with_items(
+                handle,
+                "View",
+                true,
+                &[&PredefinedMenuItem::fullscreen(handle, None)?],
+            )?,
+            &Submenu::with_items(
+                handle,
+                "Window",
+                true,
+                &[
+                    &PredefinedMenuItem::minimize(handle, None)?,
+                    &PredefinedMenuItem::maximize(handle, None)?,
+                ],
+            )?,
+            &Submenu::with_items(handle, "Help", true, &[])?,
+        ],
+    )?;
+
     app.set_menu(menu)?;
     Ok(())
 }

@@ -66971,7 +66971,6 @@ const RESERVED_APP_KEYBIND_EVENTS = new WeakSet();
 function shouldReserveAppKeybindBeforeBrowser(e) {
   if (!e || e.defaultPrevented) return false;
   if (busyOverlayActive()) return true;
-  if (isTextInputTarget(e.target)) return false;
   const baseKey = normalizeBaseKeyValue(e.key);
   const commandThumbnailEdit =
     !!WS.root &&
@@ -66989,7 +66988,10 @@ function shouldReserveAppKeybindBeforeBrowser(e) {
   if (commandThumbnailEdit) return true;
   const key = keybindValueFromEvent(e);
   if (!key) return false;
-  return !!keybindActionFor(key);
+  const action = keybindActionFor(key);
+  if (!action) return false;
+  if (isTextInputTarget(e.target)) return !!(e.metaKey || e.ctrlKey || e.altKey);
+  return true;
 }
 
 window.addEventListener(
@@ -67197,7 +67199,9 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (isTextInputTarget(e.target)) return;
+  const keybindOverridesTextInput =
+    !!action && !!(e.metaKey || e.ctrlKey || e.altKey);
+  if (isTextInputTarget(e.target) && !keybindOverridesTextInput) return;
 
   // While a grid file is grabbed for reorder, the selection keys move it
   // instead of the cursor. Any other action (except the grab toggle itself,
