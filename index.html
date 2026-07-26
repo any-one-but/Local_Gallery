@@ -47228,12 +47228,35 @@ function buildAppMenuFilenameSubmenu() {
   ]);
 }
 
-// What the app menu's first section acts on. The multi-item (bulk) selection
-// wins when there is one; otherwise it is whichever single item the active pane
-// has selected, using the same pane-priority rule the item menu used before it
-// was folded in here.
+function currentOpenMediaFileRecordForAppMenu() {
+  if (VIEWER_MODE) {
+    const item = viewerItems[viewerIndex] || null;
+    if (item && !item.isFolder && item.id) {
+      return WS.fileById.get(String(item.id || "")) || null;
+    }
+  }
+  if (WS.preview && WS.preview.kind === "file" && WS.preview.fileId) {
+    return WS.fileById.get(String(WS.preview.fileId || "")) || null;
+  }
+  return null;
+}
+
+function currentOpenMediaContextDirForAppMenu() {
+  if (VIEWER_MODE && viewerDirNode) return viewerDirNode;
+  if (WS.preview && WS.preview.kind === "file" && WS.preview.dirNode)
+    return WS.preview.dirNode;
+  return null;
+}
+
+// What the app menu's first section acts on. An open media file wins so the app
+// menu follows what the user is looking at; otherwise the multi-item (bulk)
+// selection wins when there is one. After that it is whichever single item the
+// active pane has selected, using the same pane-priority rule the item menu used
+// before it was folded in here.
 function appMenuSelectionTarget() {
   if (!WS.root) return null;
+  const openMediaRec = currentOpenMediaFileRecordForAppMenu();
+  if (openMediaRec) return { kind: "file", rec: openMediaRec };
   if (hasBulkSelection()) {
     const paths = getSelectedPathsInCurrentDir();
     const tagKeys = getSelectedTagFolderKeysInCurrentView();
@@ -66127,6 +66150,24 @@ function cancelMultiSelectionKeybindAction() {
 }
 
 function selectedItemMenuAnchor() {
+  const openMediaRec = currentOpenMediaFileRecordForAppMenu();
+  if (openMediaRec && directoriesListEl) {
+    const row = directoriesListEl.querySelector(
+      `.dirRow[data-file-id="${cssEscapeValue(openMediaRec.id)}"]`,
+    );
+    if (row) return row;
+    if (VIEWER_MODE) {
+      if (viewerVideoEl && viewerVideoEl.style.display !== "none")
+        return viewerVideoEl;
+      if (viewerImgEl && viewerImgEl.style.display !== "none")
+        return viewerImgEl;
+      if (viewport) return viewport;
+    }
+    if (previewVideoEl && previewVideoEl.style.display !== "none")
+      return previewVideoEl;
+    if (previewImgEl && previewImgEl.style.display !== "none")
+      return previewImgEl;
+  }
   if (previewPaneOwnsSelection()) {
     const card = findSelectedPreviewCard();
     if (card) return card;
@@ -66140,8 +66181,24 @@ function selectedItemMenuAnchor() {
   );
 }
 
+function syncOpenMediaSelectionForAppMenu() {
+  const rec = currentOpenMediaFileRecordForAppMenu();
+  if (!rec) return false;
+  const contextDir = currentOpenMediaContextDirForAppMenu();
+  syncDirectoriesSelectionToFileRecord(rec, {
+    syncPreview: false,
+    renderPreview: false,
+    pendingDirScrollMode: "center-selected",
+    recordHistory: false,
+    simulatedTagSourceDir: contextDir,
+  });
+  updatePreviewSelectionClasses();
+  return true;
+}
+
 function openAppMenuForSelectionKeybindAction() {
-  if (!WS.root || VIEWER_MODE) return false;
+  if (!WS.root) return false;
+  syncOpenMediaSelectionForAppMenu();
   const anchor = selectedItemMenuAnchor();
   if (!anchor) {
     showStatusMessage("No item selected.");
@@ -67113,6 +67170,7 @@ document.addEventListener("keydown", (e) => {
       action === "seekForward" ||
       action === "playPause" ||
       action === "muteToggle" ||
+      action === "openAppMenu" ||
       action === "toggleAnimatedFilters" ||
       action === "cycleAppearancePresets" ||
       isAppearancePresetKeybindAction(action);
