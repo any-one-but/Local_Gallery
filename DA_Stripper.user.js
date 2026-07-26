@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DA Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.00
-// @description  DeviantArt profile, gallery-folder, page, backlog, and post downloader.
+// @version      00.01.01
+// @description  DeviantArt profile, post, page, backlog, and profile-gallery downloader.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/DA_Stripper.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/DA_Stripper.user.js
@@ -61,6 +61,10 @@
   };
 
   const ui = {};
+  const galleryQueue = [];
+  const galleryQueuedIds = new Set();
+  let galleryDownloadActive = false;
+  let currentGalleryDownloadId = '';
 
   function init() {
     injectStyle();
@@ -140,6 +144,7 @@
     });
 
     installRouteObserver();
+    installInlineGalleryDownloads();
     logLine('Ready. Open a DeviantArt profile or post.');
     syncUi();
   }
@@ -161,8 +166,9 @@
       #daStripperPanel button:hover:not(:disabled){background:rgba(0,230,154,.16);border-color:rgba(0,230,154,.48)}
       #daStripperPanel button:disabled{opacity:.42;cursor:default}
       #daStripperPanel #dasScan{background:#00c987;color:#02100b;border-color:#00e59b}
-      #daStripperPanel .das-progress{height:7px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
-      #daStripperPanel #dasFill{height:100%;width:0;background:linear-gradient(90deg,#00e59b,#6ee7ff);transition:width 120ms ease}
+      #daStripperPanel .das-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
+        border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
+      #daStripperPanel #dasFill{display:block;height:10px;min-height:10px;width:0;background:linear-gradient(90deg,#00e59b,#6ee7ff);transition:width 120ms ease}
       #daStripperPanel .das-meta{display:flex;justify-content:space-between;gap:10px;color:#b7c8c2;font-weight:700}
       #daStripperPanel .das-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #daStripperPanel .das-stack{display:grid;grid-template-columns:1fr;gap:6px}
@@ -179,13 +185,21 @@
       #daStripperPanel .das-galleryHead{display:flex;align-items:center;justify-content:space-between;gap:8px;
         color:#d6fff2;font-weight:900}
       #daStripperPanel .das-galleryRows{display:flex;flex-direction:column;gap:4px;max-height:170px;overflow:auto}
-      #daStripperPanel .das-galleryRow{display:grid;grid-template-columns:1fr 66px;gap:6px;align-items:center}
+      #daStripperPanel .das-galleryRow{display:grid;grid-template-columns:1fr 86px;gap:6px;align-items:center}
       #daStripperPanel .das-galleryName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e8fff8;font-weight:700}
       #daStripperPanel .das-galleryMeta{font-size:10px;color:#8fa49d;font-weight:700}
       #daStripperPanel .das-galleryRow button{min-height:28px;padding:0 8px;font-size:11px}
+      #daStripperPanel .das-galleryRow button.is-queued{color:#02100b;background:#8feccf;border-color:#8feccf}
+      #daStripperPanel .das-galleryRow button.is-active{color:#02100b;background:#00c987;border-color:#00e59b}
       #daStripperPanel .das-log{min-height:88px;max-height:190px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.2);padding:7px;color:#b9c9c4;white-space:pre-wrap}
       #daStripperPanel .das-log div{margin:0 0 4px}
+      .das-inlineGalleryDownload{position:absolute;right:8px;bottom:8px;z-index:20;box-sizing:border-box;min-width:92px;min-height:30px;
+        padding:0 10px;border:1px solid rgba(0,230,154,.82);border-radius:999px;background:rgba(3,16,12,.88);
+        color:#effff9;font:800 11px/1 Arial,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.38);cursor:pointer}
+      .das-inlineGalleryDownload:hover{background:#00c987;color:#02100b}
+      .das-inlineGalleryDownload.is-queued{background:#8feccf;color:#02100b}
+      .das-inlineGalleryDownload.is-active{background:#00c987;color:#02100b}
     `);
   }
 
@@ -196,8 +210,85 @@
       last = location.href;
       setProgress(0);
       logLine('Page changed. Press Scan for this DeviantArt page.');
+      removeInlineGalleryDownloads();
       syncUi();
     }, 600);
+  }
+
+  function installInlineGalleryDownloads() {
+    if (window.__daStripperInlineGalleryButtons) return;
+    window.__daStripperInlineGalleryButtons = true;
+    const schedule = () => {
+      clearTimeout(window.__daStripperInlineGalleryTimer);
+      window.__daStripperInlineGalleryTimer = setTimeout(renderInlineGalleryDownloads, 180);
+    };
+    setInterval(renderInlineGalleryDownloads, 1200);
+    try {
+      const observer = new MutationObserver(schedule);
+      observer.observe(document.body, { childList: true, subtree: true });
+    } catch {}
+  }
+
+  function renderInlineGalleryDownloads() {
+    if (state.scanType !== 'profile' || !state.folders.length) {
+      removeInlineGalleryDownloads();
+      return;
+    }
+    const foldersById = new Map(state.folders.map(folder => [String(folder.id || ''), folder]).filter(entry => entry[0]));
+    const username = String(state.username || '').toLowerCase();
+    const anchors = Array.from(document.querySelectorAll('a[href*="/gallery/"]'));
+    anchors.forEach(anchor => {
+      const ref = galleryRefFromHref(anchor.href || anchor.getAttribute('href') || '');
+      if (!ref || ref.username.toLowerCase() !== username || !foldersById.has(ref.id)) return;
+      const host = inlineGalleryButtonHost(anchor);
+      if (!host) return;
+      const folder = foldersById.get(ref.id);
+      let button = Array.from(host.querySelectorAll(':scope > .das-inlineGalleryDownload'))
+        .find(item => item.dataset.folderId === ref.id);
+      if (!button) {
+        button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'das-inlineGalleryDownload';
+        button.dataset.folderId = ref.id;
+        button.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          downloadGalleryArchive(ref.id);
+        });
+        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        host.appendChild(button);
+      }
+      updateGalleryDownloadButton(button, folder);
+    });
+    Array.from(document.querySelectorAll('.das-inlineGalleryDownload')).forEach(button => {
+      const id = button.dataset.folderId || '';
+      if (!foldersById.has(id)) button.remove();
+      else updateGalleryDownloadButton(button, foldersById.get(id));
+    });
+  }
+
+  function removeInlineGalleryDownloads() {
+    document.querySelectorAll('.das-inlineGalleryDownload').forEach(button => button.remove());
+  }
+
+  function galleryRefFromHref(href) {
+    try {
+      const url = new URL(href, location.origin);
+      if (!/(?:^|\.)deviantart\.com$/i.test(url.hostname)) return null;
+      const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+      if (parts.length < 3 || String(parts[1] || '').toLowerCase() !== 'gallery') return null;
+      if (!/^\d+$/.test(parts[2] || '')) return null;
+      return { username: parts[0], id: String(parts[2]) };
+    } catch {
+      return null;
+    }
+  }
+
+  function inlineGalleryButtonHost(anchor) {
+    if (!anchor || !(anchor instanceof Element)) return null;
+    const imageLike = anchor.querySelector('img,picture,canvas,svg,[style*="background-image"]');
+    if (!imageLike) return null;
+    return anchor.closest('article,figure,[data-testid],div') || anchor;
   }
 
   function scanContextFromLocation() {
@@ -270,6 +361,10 @@
     state.folders = [];
     state.files = [];
     state.log = [];
+    galleryQueue.length = 0;
+    galleryQueuedIds.clear();
+    currentGalleryDownloadId = '';
+    removeInlineGalleryDownloads();
     syncUi();
   }
 
@@ -722,7 +817,15 @@
   }
 
   async function downloadGalleryArchive(folderId) {
-    if (state.busy) return;
+    const id = String(folderId || '');
+    if (state.busy && !galleryDownloadActive) {
+      logLine('Finish the current scan or non-gallery download before queueing a gallery.');
+      return;
+    }
+    if (currentGalleryDownloadId === id || galleryQueuedIds.has(id)) {
+      logLine('That gallery is already queued.');
+      return;
+    }
     const folder = state.folders.find(item => String(item.id || '') === String(folderId || ''));
     if (!folder) {
       logLine('Gallery not found in the current profile scan.');
@@ -733,11 +836,53 @@
       logLine(`No files match the selected file types for ${folder.name}.`);
       return;
     }
-    await runSingleArchive(
-      files,
-      buildArchiveName(state.userFolder, sanitizeNamePart(folder.name) || `gallery_${folder.id || 'download'}`),
-      `gallery ${folder.name}`
-    );
+    galleryQueue.push(id);
+    galleryQueuedIds.add(id);
+    logLine(`Queued gallery ${folder.name}.`);
+    syncUi();
+    processGalleryQueue();
+  }
+
+  async function processGalleryQueue() {
+    if (galleryDownloadActive) return;
+    galleryDownloadActive = true;
+    try {
+      while (galleryQueue.length) {
+        const id = galleryQueue.shift();
+        galleryQueuedIds.delete(id);
+        const folder = state.folders.find(item => String(item.id || '') === String(id || ''));
+        if (!folder) continue;
+        const files = filterFilesByType(folder.files || []);
+        if (!files.length) {
+          logLine(`Skipped ${folder.name}; no files match the selected file types.`);
+          continue;
+        }
+        currentGalleryDownloadId = id;
+        setBusy(true, 'Downloading...');
+        setProgress(0);
+        syncUi();
+        try {
+          logLine(`Building gallery zip: ${folder.name}.`);
+          await buildAndSaveArchive(
+            files,
+            buildArchiveName(state.userFolder, sanitizeNamePart(folder.name) || `gallery_${folder.id || 'download'}`),
+            setProgress
+          );
+          setProgress(100);
+          logLine(`Downloaded gallery ${folder.name}.`);
+        } catch (err) {
+          logLine(`Gallery download failed for ${folder.name}: ${errorMessage(err)}`);
+        } finally {
+          currentGalleryDownloadId = '';
+          await delay(FILE_DELAY_MS);
+        }
+      }
+    } finally {
+      galleryDownloadActive = false;
+      currentGalleryDownloadId = '';
+      setBusy(false);
+      syncUi();
+    }
   }
 
   async function runArchiveBatch(items, unit, fn) {
@@ -1188,7 +1333,10 @@
     const hasFiles = state.files.length > 0;
     if (ui.profile) ui.profile.textContent = state.username || 'No profile scanned';
     if (ui.count) ui.count.textContent = overrideCount || `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
-    if (ui.post) ui.post.disabled = state.busy || !hasPosts || state.scanType !== 'post';
+    if (ui.post) {
+      ui.post.hidden = state.scanType !== 'post';
+      ui.post.disabled = state.busy || !hasPosts || state.scanType !== 'post';
+    }
     if (ui.posts) ui.posts.disabled = state.busy || !hasPosts;
     if (ui.pages) ui.pages.disabled = state.busy || !hasPages;
     if (ui.backlog) ui.backlog.disabled = state.busy || !hasFiles;
@@ -1204,6 +1352,7 @@
     }
     if (ui.pageRangeBtn) ui.pageRangeBtn.disabled = state.busy || !hasPages;
     renderGalleryList();
+    renderInlineGalleryDownloads();
   }
 
   function renderGalleryList() {
@@ -1244,8 +1393,7 @@
 
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.textContent = 'Zip';
-      btn.disabled = state.busy;
+      updateGalleryDownloadButton(btn, folder);
       btn.addEventListener('click', () => downloadGalleryArchive(folder.id));
 
       row.appendChild(labelWrap);
@@ -1253,6 +1401,26 @@
       rows.appendChild(row);
     });
     ui.galleryList.appendChild(rows);
+  }
+
+  function updateGalleryDownloadButton(button, folder) {
+    if (!button || !folder) return;
+    const id = String(folder.id || '');
+    button.classList.toggle('is-active', currentGalleryDownloadId === id);
+    button.classList.toggle('is-queued', galleryQueuedIds.has(id));
+    let text = 'Download';
+    let disabled = state.busy && !galleryDownloadActive;
+    if (currentGalleryDownloadId === id) {
+      text = 'Downloading';
+      disabled = true;
+    } else if (galleryQueuedIds.has(id)) {
+      text = 'Queued';
+      disabled = true;
+    }
+    if (button.textContent !== text) button.textContent = text;
+    if (button.disabled !== disabled) button.disabled = disabled;
+    const title = `${text} ${folder.name || 'gallery'}`;
+    if (button.title !== title) button.title = title;
   }
 
   function logLine(text) {
