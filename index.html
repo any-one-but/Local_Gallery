@@ -11732,6 +11732,16 @@ function buildAppearancePresetCacheKey() {
           .sort()
           .join("||")
       : "";
+  const folderFilterSig =
+    WS.meta && WS.meta.folderMediaFilterByPath
+      ? Array.from(WS.meta.folderMediaFilterByPath.entries())
+          .map(
+            ([path, filterValue]) =>
+              `${normalizeDirPathValue(path)}=>${normalizeTagMediaFilterValue(filterValue).join(",")}`,
+          )
+          .sort()
+          .join("||")
+      : "";
   const activeContextSig = (() => {
     const direct = [
       String((WS.view && WS.view.tagFolderActiveMode) || ""),
@@ -11757,7 +11767,7 @@ function buildAppearancePresetCacheKey() {
       : "";
     return `${direct}###${stackSig}`;
   })();
-  return `${serializeAppearanceValues(currentValues)}###${presetSig}###${folderSig}###${tagSig}###${tagFilterSig}###${activeContextSig}`;
+  return `${serializeAppearanceValues(currentValues)}###${presetSig}###${folderSig}###${tagSig}###${tagFilterSig}###${folderFilterSig}###${activeContextSig}`;
 }
 
 function resolveDirPathForAppearanceTarget(target) {
@@ -11838,8 +11848,7 @@ function contextualTagMediaFilterForTagContext(mode, tag, album, originPath) {
 
 function contextualTagMediaFilterForDirPath(dirPath) {
   const normalized = normalizeDirPathValue(dirPath);
-  if (!normalized) return [];
-  const collected = [];
+  const collected = [nearestFolderMediaFilterForPath(normalized)];
   const activeMode = String((WS.view && WS.view.tagFolderActiveMode) || "");
   if (activeMode) {
     const originPath = String((WS.view && WS.view.tagFolderOriginPath) || "");
@@ -16934,6 +16943,7 @@ const WS = {
     trashItemsByPath: new Map(),
     hiddenTagKeys: new Set(),
     tagMediaFilterByKey: new Map(),
+    folderMediaFilterByPath: new Map(),
     dirThumbPresets: new Map(),
     pendingDirThumbPresets: new Map(),
     dirAppearancePresetIds: new Map(),
@@ -17239,6 +17249,7 @@ function resetWorkspace() {
   WS.meta.trashItemsByPath.clear();
   WS.meta.hiddenTagKeys.clear();
   WS.meta.tagMediaFilterByKey.clear();
+  WS.meta.folderMediaFilterByPath.clear();
   WS.meta.dirThumbPresets.clear();
   WS.meta.pendingDirThumbPresets.clear();
   WS.meta.dirAppearancePresetIds.clear();
@@ -24719,6 +24730,48 @@ function metaClearTagMediaFilterByKey(tagKey) {
   return metaSetTagMediaFilterByKey(tagKey, []);
 }
 
+function metaGetFolderMediaFilter(path) {
+  const p = normalizeDirPathValue(path);
+  if (!WS.meta || !WS.meta.folderMediaFilterByPath) return [];
+  return normalizeTagMediaFilterValue(WS.meta.folderMediaFilterByPath.get(p));
+}
+
+function metaSetFolderMediaFilter(path, value) {
+  const p = normalizeDirPathValue(path);
+  if (!WS.meta || !WS.meta.folderMediaFilterByPath) return false;
+  if (!p && p !== "") return false;
+  if (p !== "" && !WS.dirByPath.has(p)) return false;
+  const next = normalizeTagMediaFilterValue(value);
+  const prev = metaGetFolderMediaFilter(p);
+  if (tagMediaFilterValuesEqual(prev, next)) return false;
+  if (next.length) WS.meta.folderMediaFilterByPath.set(p, next);
+  else WS.meta.folderMediaFilterByPath.delete(p);
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaClearFolderMediaFilter(path) {
+  return metaSetFolderMediaFilter(path, []);
+}
+
+function metaHasFolderMediaFilter(path) {
+  return metaGetFolderMediaFilter(path).length > 0;
+}
+
+function nearestFolderMediaFilterForPath(path) {
+  if (!WS.meta || !WS.meta.folderMediaFilterByPath) return [];
+  let current = normalizeDirPathValue(path);
+  for (;;) {
+    const filter = metaGetFolderMediaFilter(current);
+    if (filter.length) return filter;
+    if (!current) break;
+    const idx = current.lastIndexOf("/");
+    current = idx >= 0 ? current.slice(0, idx) : "";
+  }
+  return [];
+}
+
 function collectDescendantDirPaths(path) {
   const p = String(path || "");
   const start = WS.dirByPath && WS.dirByPath.get(p);
@@ -26245,6 +26298,7 @@ function metaMakeTagsLogObject() {
   const folders = {};
   const tagByFp = {};
   const hiddenTagByKey = {};
+  const folderMediaFilterByPath = {};
   const thumbnailByFolder = {};
   const mediaPresetByFolder = {};
   const mediaPresetByTagContext = {};
@@ -26286,6 +26340,16 @@ function metaMakeTagsLogObject() {
         WS.meta.dirAppearancePresetIds.get(path),
       );
       if (presetId) mediaPresetByFolder[path] = presetId;
+    }
+    if (
+      WS.meta &&
+      WS.meta.folderMediaFilterByPath &&
+      WS.meta.folderMediaFilterByPath.has(path)
+    ) {
+      const filterValue = normalizeTagMediaFilterValue(
+        WS.meta.folderMediaFilterByPath.get(path),
+      );
+      if (filterValue.length) folderMediaFilterByPath[path] = filterValue;
     }
     if (tags && tags.length && canRestoreTagsByFingerprintForPath(path, fp)) {
       const k = String(fp >>> 0);
@@ -26393,6 +26457,7 @@ function metaMakeTagsLogObject() {
     mediaPresetByFolder,
     mediaPresetByTagContext,
     hiddenTagByKey,
+    folderMediaFilterByPath,
     tagThumbnailModeByTag: thumbnailState.tagThumbnailModeByTag,
     tagThumbnailByTag: thumbnailState.tagThumbnailByTag,
     tagAlbumByTag,
@@ -26674,6 +26739,21 @@ function metaApplyTagsLog(log) {
     const tagKey = String(rawTagKey || "");
     if (!tagKey || !hiddenTagByKey[rawTagKey]) continue;
     WS.meta.hiddenTagKeys.add(tagKey);
+  }
+
+  WS.meta.folderMediaFilterByPath.clear();
+  const folderMediaFilterByPath =
+    log.folderMediaFilterByPath && typeof log.folderMediaFilterByPath === "object"
+      ? log.folderMediaFilterByPath
+      : {};
+  for (const rawPath of Object.keys(folderMediaFilterByPath)) {
+    const path = normalizeDirPathValue(rawPath);
+    const filterValue = normalizeTagMediaFilterValue(
+      folderMediaFilterByPath[rawPath],
+    );
+    if ((!path && path !== "") || !filterValue.length) continue;
+    if (path && !WS.dirByPath.has(path)) continue;
+    WS.meta.folderMediaFilterByPath.set(path, filterValue);
   }
 
   WS.meta.tagThumbModes.clear();
@@ -27031,6 +27111,7 @@ function metaMakeTagsDocObject() {
   const folders = {};
   const tagByFp = {};
   const hiddenTagByKey = {};
+  const folderMediaFilterByPath = {};
   const tagMediaFilterByKey = {};
   for (const [path] of WS.dirByPath.entries()) {
     const fp = WS.meta.dirFingerprints.get(path) || 0;
@@ -27061,6 +27142,14 @@ function metaMakeTagsDocObject() {
       hiddenTagByKey[tagKey] = true;
     }
   }
+  if (WS.meta && WS.meta.folderMediaFilterByPath) {
+    for (const [pathRaw, filterValueRaw] of WS.meta.folderMediaFilterByPath.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      const filterValue = normalizeTagMediaFilterValue(filterValueRaw);
+      if ((!path && path !== "") || !filterValue.length) continue;
+      folderMediaFilterByPath[path] = filterValue.slice();
+    }
+  }
   if (WS.meta && WS.meta.tagMediaFilterByKey) {
     for (const [
       tagKeyRaw,
@@ -27078,6 +27167,7 @@ function metaMakeTagsDocObject() {
     folders,
     tagByFp,
     hiddenTagByKey,
+    folderMediaFilterByPath,
     tagMediaFilterByKey,
   };
 }
@@ -27481,6 +27571,21 @@ function metaApplyTagsDocLog(log) {
     const key = String(rawKey || "");
     if (!key || !hiddenTagByKey[rawKey]) continue;
     WS.meta.hiddenTagKeys.add(key);
+  }
+
+  WS.meta.folderMediaFilterByPath.clear();
+  const folderMediaFilterByPath =
+    log.folderMediaFilterByPath && typeof log.folderMediaFilterByPath === "object"
+      ? log.folderMediaFilterByPath
+      : {};
+  for (const rawPath of Object.keys(folderMediaFilterByPath)) {
+    const path = normalizeDirPathValue(rawPath);
+    const filterValue = normalizeTagMediaFilterValue(
+      folderMediaFilterByPath[rawPath],
+    );
+    if ((!path && path !== "") || !filterValue.length) continue;
+    if (path && !WS.dirByPath.has(path)) continue;
+    WS.meta.folderMediaFilterByPath.set(path, filterValue);
   }
 
   WS.meta.tagMediaFilterByKey.clear();
@@ -30145,6 +30250,7 @@ function collectSelectedDirectoryPreviewFileIds(dirNode, limit = 160) {
     const rec = WS.fileById.get(id);
     if (!rec || (rec.type !== "image" && rec.type !== "video")) continue;
     if (!passesFilter(rec)) continue;
+    if (!recordPassesContextualTagMediaFilterForDir(rec, node)) continue;
     seen.add(id);
     out.push(id);
   }
@@ -32663,6 +32769,11 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
     oldPrefix,
     newPrefix,
   );
+  WS.meta.folderMediaFilterByPath = remapPathMapKeys(
+    WS.meta.folderMediaFilterByPath,
+    oldPrefix,
+    newPrefix,
+  );
   WS.meta.dirFingerprints = remapPathMapKeys(
     WS.meta.dirFingerprints,
     oldPrefix,
@@ -34525,12 +34636,15 @@ function catalogSummaryFileCountForCurrentAndTagMediaFilters(summary, filterValu
   return total;
 }
 
-function catalogSummaryHasVisibleRecordForTagEntry(summary, entry) {
+function catalogSummaryHasVisibleRecordForTagEntry(summary, entry, dirNode = null) {
   if (!summary) return null;
   return (
     catalogSummaryFileCountForCurrentAndTagMediaFilters(
       summary,
-      effectiveTagMediaFilterForEntry(entry),
+      combineTagMediaFilterValues(
+        nearestFolderMediaFilterForPath(String(dirNode?.path || "")),
+        effectiveTagMediaFilterForEntry(entry),
+      ),
     ) > 0
   );
 }
@@ -34607,6 +34721,7 @@ function dirItemCount(node) {
 
 function dirCanAppearUnderCurrentContentFilters(dirNode) {
   if (!dirNode || dirNode.type !== "dir") return false;
+  if (metaHasFolderMediaFilter(dirNode.path || "")) return true;
   if (dirItemCount(dirNode) > 0) return true;
   if (dirNode.fsHandle && dirNode.loadState !== "loaded") return true;
   return !!(isStorageStubDirNode(dirNode) && !getCatalogSummaryForNode(dirNode));
@@ -36232,9 +36347,10 @@ function dirHasVisibleRecordForTagEntry(dirNode, entry) {
   if (!dirNode || !entry || entry.kind !== "tag") return false;
   const dirPath = String(dirNode.path || "");
   const entryKey = tagEntryDerivedCacheKey(entry);
+  const folderMediaFilterKey = nearestFolderMediaFilterForPath(dirPath).join(",");
   const cacheKey = `${entryKey}@@${dirPath}@@${effectiveFilterCacheKey()}@@${String(
     effectiveTagMediaFilterForEntry(entry).join(","),
-  )}`;
+  )}@@folder:${folderMediaFilterKey}`;
   if (cacheKey && TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.has(cacheKey)) {
     return !!TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.get(cacheKey);
   }
@@ -36253,7 +36369,11 @@ function dirHasVisibleRecordForTagEntry(dirNode, entry) {
   // with the whole folder tree. The catalog summary is the lightweight truth for
   // media type/aspect availability, so use it even when the node is loaded.
   if (summary) {
-    const summaryVisible = catalogSummaryHasVisibleRecordForTagEntry(summary, entry);
+    const summaryVisible = catalogSummaryHasVisibleRecordForTagEntry(
+      summary,
+      entry,
+      dirNode,
+    );
     if (summaryVisible != null) {
       visible = !!summaryVisible;
       if (cacheKey) TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.set(cacheKey, visible);
@@ -36299,6 +36419,7 @@ function filterTagEntryDirsByVisibleRecords(nodes, entry) {
       entry &&
       entry.kind === "tag" &&
       !entry.special &&
+      !metaHasFolderMediaFilter(path) &&
       !dirHasVisibleRecordForTagEntry(node, entry)
     )
       continue;
@@ -38011,8 +38132,29 @@ function recordPassesTagEntryFilter(rec, entry) {
   return (
     !!rec &&
     passesFilter(rec) &&
+    recordPassesFolderMediaFilterForDir(rec, rec.dirPath || "") &&
     recordPassesTagMediaFilter(rec, effectiveTagMediaFilterForEntry(entry))
   );
+}
+
+function recordPassesFolderMediaFilterForDir(rec, dirNodeOrPath) {
+  if (!rec) return false;
+  const dirPath =
+    typeof dirNodeOrPath === "string"
+      ? dirNodeOrPath
+      : String(dirNodeOrPath?.path || rec.dirPath || "");
+  const filter = nearestFolderMediaFilterForPath(dirPath);
+  return !filter.length || recordPassesTagMediaFilter(rec, filter);
+}
+
+function recordPassesContextualTagMediaFilterForDir(rec, dirNodeOrPath) {
+  if (!rec) return false;
+  const dirPath =
+    typeof dirNodeOrPath === "string"
+      ? dirNodeOrPath
+      : String(dirNodeOrPath?.path || rec.dirPath || "");
+  const filter = contextualTagMediaFilterForDirPath(dirPath);
+  return !filter.length || recordPassesTagMediaFilter(rec, filter);
 }
 
 const ROTATING_PREVIEW_POOLS = new Map();
@@ -40819,7 +40961,7 @@ function previewFileIdVisibleInContext(fileId, dirNode = null) {
   const contextPath = String(contextDir.path || "");
   const recDirPath = String(rec.dirPath || "");
   if (!contextDir._skipTagFilters && contextPath && contextPath === recDirPath) {
-    return true;
+    return recordPassesContextualTagMediaFilterForDir(rec, contextDir);
   }
 
   let items = [];
@@ -50148,6 +50290,66 @@ function buildContainerSortSubmenuHtml(target) {
   return buildDropdownMenuSubmenuHtml("Sort", buttonsHtml);
 }
 
+function folderMediaFilterAxisSelectionForPath(path) {
+  return tagMediaFilterAxisSelection(
+    metaGetFolderMediaFilter(path),
+    TAG_MEDIA_FILTER_MEDIA_TYPES,
+  );
+}
+
+function folderMediaFilterCycleOptions() {
+  return tagMediaFilterAxisCycleOptions(TAG_MEDIA_FILTER_MEDIA_TYPES, "All");
+}
+
+function applyFolderMediaFilterSelection(dirNode, onlyType) {
+  const path = String(dirNode?.path || "");
+  const isRootNode = !!dirNode && dirNode === WS.root;
+  if (!dirNode || (!path && !isRootNode)) return false;
+  const nextValue = setTagMediaFilterAxis(
+    metaGetFolderMediaFilter(path),
+    TAG_MEDIA_FILTER_MEDIA_TYPES,
+    onlyType || null,
+  );
+  const changed = metaSetFolderMediaFilter(path, nextValue);
+  closeTagContextMenu();
+  closeActionMenus();
+  if (!changed) return false;
+  metaScheduleSave(META_DOC_IDS.tags);
+  refreshAfterTagMetadataChange();
+  showStatusMessage(
+    `Folder media type filter: ${onlyType ? `${tagMediaFilterTypeLabel(onlyType)} only` : "all"}.`,
+  );
+  return true;
+}
+
+function createFolderMediaFilterCycleButton(dirNode) {
+  const path = String(dirNode?.path || "");
+  const isRootNode = !!dirNode && dirNode === WS.root;
+  if (!dirNode || (!path && !isRootNode)) return null;
+  return createCyclingItemMenuButton(
+    "Media type",
+    folderMediaFilterCycleOptions(),
+    folderMediaFilterAxisSelectionForPath(path),
+    (onlyType) => {
+      applyFolderMediaFilterSelection(dirNode, onlyType || "");
+    },
+  );
+}
+
+function buildFolderMediaFilterSubmenuHtml(dirNode) {
+  const path = String(dirNode?.path || "");
+  const isRootNode = !!dirNode && dirNode === WS.root;
+  if (!dirNode || (!path && !isRootNode)) return "";
+  const current = folderMediaFilterAxisSelectionForPath(path);
+  const buttonsHtml = folderMediaFilterCycleOptions()
+    .map(
+      (option) =>
+        `<button type="button" data-action="folder-media-type:${escapeHtml(option.value || "all")}">${option.value === current ? "●" : "○"} ${escapeHtml(option.label)}</button>`,
+    )
+    .join("");
+  return buildDropdownMenuSubmenuHtml("Media type", buttonsHtml);
+}
+
 function buildFolderThumbnailSubmenuHtml(options) {
   const cfg = options || {};
   let buttonsHtml = "";
@@ -50222,6 +50424,7 @@ function buildFolderOverridesSubmenuHtml(target, state) {
   let items = buildContainerSortSubmenuHtml(target);
   if (!state.isStorageRestricted && !state.isTrashItem) {
     items += `<button type="button" data-action="appearance-preset-set">Filters</button>`;
+    items += buildFolderMediaFilterSubmenuHtml(state.dirNode);
   }
   return buildDropdownMenuSubmenuHtml("Overrides", items);
 }
@@ -50487,11 +50690,15 @@ function buildFolderActionMenuDom(
     kind: "dir",
     node: state.dirNode,
   });
+  const mediaTypeEntry =
+    state.isStorageRestricted || state.isTrashItem
+      ? null
+      : createFolderMediaFilterCycleButton(state.dirNode);
   const filtersEntry =
     state.isStorageRestricted || state.isTrashItem ? null : makeFiltersEntry();
   const overridesSubmenu = createDropdownMenuSubmenu(
     "Overrides",
-    [sortEntry, filtersEntry].filter(Boolean),
+    [sortEntry, filtersEntry, mediaTypeEntry].filter(Boolean),
   );
   const thumbnailButtons = [];
   if (state.showUseDefaultThumbnail)
@@ -50589,6 +50796,11 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
       { kind: "dir", node },
       rawMode === "none" ? "" : rawMode,
     );
+    return true;
+  }
+  if (String(action).startsWith("folder-media-type:")) {
+    const rawType = String(action).slice("folder-media-type:".length);
+    applyFolderMediaFilterSelection(node, rawType === "all" ? "" : rawType);
     return true;
   }
   if (
@@ -51112,9 +51324,41 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       commonSortMode == null,
     );
   }
+  let bulkFolderMediaTypeEntry = null;
+  if (!anyStorage && !anyTrash) {
+    const mediaSelections = selectedPaths.map((path) =>
+      folderMediaFilterAxisSelectionForPath(path),
+    );
+    const mixedMediaTypes = !mediaSelections.every(
+      (selection) => selection === mediaSelections[0],
+    );
+    bulkFolderMediaTypeEntry = createCyclingItemMenuButton(
+      "Media type",
+      folderMediaFilterCycleOptions(),
+      mixedMediaTypes ? "" : mediaSelections[0] || "",
+      (onlyType) => {
+        let changed = false;
+        for (const path of selectedPaths) {
+          const nextValue = setTagMediaFilterAxis(
+            metaGetFolderMediaFilter(path),
+            TAG_MEDIA_FILTER_MEDIA_TYPES,
+            onlyType || null,
+          );
+          if (metaSetFolderMediaFilter(path, nextValue)) changed = true;
+        }
+        if (!changed) return;
+        metaScheduleSave(META_DOC_IDS.tags);
+        refreshAfterTagMetadataChange();
+        showStatusMessage(
+          `Folder media type filter: ${onlyType ? `${tagMediaFilterTypeLabel(onlyType)} only` : "all"}.`,
+        );
+      },
+      mixedMediaTypes,
+    );
+  }
   const overridesSubmenu = createDropdownMenuSubmenu(
     "Overrides",
-    [bulkFolderSortEntry, bulkFolderFiltersEntry].filter(Boolean),
+    [bulkFolderSortEntry, bulkFolderFiltersEntry, bulkFolderMediaTypeEntry].filter(Boolean),
   );
   if (overridesSubmenu) menu.appendChild(overridesSubmenu);
 
@@ -57146,7 +57390,10 @@ function ensureViewerFromPreviewFileId(fileId) {
   const contextDirContainsFile = (dirNode) => {
     if (!dirNode) return false;
     if (!dirNode._skipTagFilters) {
-      return String(dirNode.path || "") === String(p || "");
+      return (
+        String(dirNode.path || "") === String(p || "") &&
+        recordPassesContextualTagMediaFilterForDir(rec, dirNode)
+      );
     }
     const items = buildViewerItemsForDir(dirNode);
     for (let i = 0; i < items.length; i++) {
