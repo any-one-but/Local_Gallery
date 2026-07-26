@@ -4434,6 +4434,10 @@ img[data-rotate-key].rotatingThumbFade {
   margin-left: auto;
   margin-right: auto;
 }
+#filePreviewViewport.readingScrollMode.tallScrollMode img.tallScrollImage {
+  width: 100%;
+  max-width: 100%;
+}
 #filePreviewViewport.wideScrollMode {
   overflow-x: auto;
   overflow-y: hidden;
@@ -4441,13 +4445,25 @@ img[data-rotate-key].rotatingThumbFade {
   justify-content: flex-start;
 }
 #filePreviewViewport.wideScrollMode img.wideScrollImage {
+  flex: 0 0 auto;
   width: auto;
   height: 100%;
+  min-width: auto;
   max-width: none;
   max-height: 100%;
   object-fit: contain;
   border-radius: 0;
   box-shadow: none;
+}
+#filePreviewViewport.readingScrollMode.wideScrollMode img.wideScrollImage {
+  flex: 0 0 auto;
+  width: auto;
+  height: 100%;
+  min-width: auto;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  transform-origin: left center;
 }
 #filePreviewViewport .mediaCanvas {
   position: absolute;
@@ -4493,6 +4509,9 @@ img[data-rotate-key].rotatingThumbFade {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+#viewerInner.readingScrollModeActive {
+  padding: 0;
 }
 
 #viewerViewport {
@@ -4554,6 +4573,10 @@ img[data-rotate-key].rotatingThumbFade {
   margin-left: auto;
   margin-right: auto;
 }
+#viewerViewport.readingScrollMode.tallScrollMode img.tallScrollImage {
+  width: 100%;
+  max-width: 100%;
+}
 #viewerViewport.wideScrollMode {
   overflow-x: auto;
   overflow-y: hidden;
@@ -4561,13 +4584,25 @@ img[data-rotate-key].rotatingThumbFade {
   justify-content: flex-start;
 }
 #viewerViewport.wideScrollMode img.wideScrollImage {
+  flex: 0 0 auto;
   width: auto;
   height: 100%;
+  min-width: auto;
   max-width: none;
   max-height: 100%;
   object-fit: contain;
   border-radius: 0;
   box-shadow: none;
+}
+#viewerViewport.readingScrollMode.wideScrollMode img.wideScrollImage {
+  flex: 0 0 auto;
+  width: auto;
+  height: 100%;
+  min-width: auto;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  transform-origin: left center;
 }
 #viewerViewport .mediaCanvas {
   position: absolute;
@@ -9664,6 +9699,7 @@ function defaultOptions() {
     storeVideoFiles: false,
     muteMessages: false,
     fullScreenMedia: true,
+    readingMode: false,
     quickNavigation: true,
     weightRandomJumpsByScore: "off",
     showUntaggedFolder: false,
@@ -10098,6 +10134,8 @@ function normalizeOptions(o) {
       typeof src.fullScreenMedia === "boolean"
         ? src.fullScreenMedia
         : d.fullScreenMedia,
+    readingMode:
+      typeof src.readingMode === "boolean" ? src.readingMode : d.readingMode,
     quickNavigation:
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
@@ -16305,6 +16343,12 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
+    id: "toggleReadingMode",
+    label: "Reading mode",
+    hint: "Toggle comic/book-style image viewing where navigation keys scroll before changing files.",
+    section: "panes",
+  },
+  {
     id: "toggleQuickNavigation",
     label: "Quick navigation",
     hint: "When opening a folder that only contains files, enter its media immediately.",
@@ -16570,6 +16614,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleShowStorageFolder",
   "toggleMuteMessages",
   "toggleFullScreenMedia",
+  "toggleReadingMode",
 ]);
 const GENERAL_KEYBIND_ACTION_ID_SET = new Set(GENERAL_KEYBIND_ACTION_IDS);
 
@@ -16655,6 +16700,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleShowStorageFolder: "Cmd+Shift+s",
   toggleQuickNavigation: "",
   toggleFullScreenMedia: "",
+  toggleReadingMode: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
   gallerySelection: "",
@@ -19182,7 +19228,12 @@ function refreshActivePreviewMediaLayout() {
     if (!rec || !previewViewportBox) return;
     if (previewImgEl && previewImgEl.style.display !== "none") {
       const mode = detectScrollImageMode(rec, previewImgEl);
-      applyScrollImageMode(previewViewportBox, previewImgEl, mode, false);
+      applyScrollImageMode(
+        previewViewportBox,
+        previewImgEl,
+        mode,
+        !!(opts && opts.resetScroll),
+      );
       applyScrollImageProcessingFallback(previewImgEl, rec, mode);
     }
     MediaFilterEngine.requestRender();
@@ -47199,6 +47250,11 @@ function buildAppMenuBasicsSubmenu() {
       fullScreenMediaEnabled(options),
     ),
     appMenuChoiceButton(
+      "Reading mode",
+      () => handleExtrasKeybindAction("toggleReadingMode"),
+      readingModeEnabled(options),
+    ),
+    appMenuChoiceButton(
       "Float tags",
       () => handleExtrasKeybindAction("toggleFloatTags"),
       !!options.showTagFolderSpacerRow,
@@ -56619,6 +56675,11 @@ function fullScreenMediaEnabled(opt = null) {
   return !(src && src.fullScreenMedia === false);
 }
 
+function readingModeEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(src && src.readingMode === true);
+}
+
 function syncPreviewMediaModeClass(mode = null) {
   const appEl = document.getElementById("app");
   if (!appEl) return;
@@ -58538,16 +58599,28 @@ function detectScrollImageMode(rec, imgEl) {
   if (!rec || rec.type !== "image") return "none";
   if (isGifRecord(rec)) return "none";
   const aspect = getImageAspectForScrollDetect(rec, imgEl);
+  if (readingModeEnabled()) return aspect < 1 ? "tall" : "wide";
   if (aspect <= 1 / SCROLL_IMAGE_EXTREME_RATIO) return "tall";
   if (aspect >= SCROLL_IMAGE_EXTREME_RATIO) return "wide";
   return "none";
 }
 
+function predictScrollImageModeForRecord(rec) {
+  return detectScrollImageMode(rec, null);
+}
+
 function applyScrollImageMode(containerEl, imgEl, mode, resetScroll = false) {
   const normalizedMode = mode === "tall" || mode === "wide" ? mode : "none";
+  const readingMode = readingModeEnabled() && normalizedMode !== "none";
   if (containerEl) {
     containerEl.classList.toggle("tallScrollMode", normalizedMode === "tall");
     containerEl.classList.toggle("wideScrollMode", normalizedMode === "wide");
+    containerEl.classList.toggle("readingScrollMode", readingMode);
+    if (containerEl.id === "viewerViewport") {
+      const viewerInnerEl = document.getElementById("viewerInner");
+      if (viewerInnerEl)
+        viewerInnerEl.classList.toggle("readingScrollModeActive", readingMode);
+    }
 
     if (normalizedMode === "tall") {
       const h = Math.max(1, Number(containerEl.clientHeight || 0));
@@ -58570,6 +58643,169 @@ function applyScrollImageMode(containerEl, imgEl, mode, resetScroll = false) {
     imgEl.classList.toggle("tallScrollImage", normalizedMode === "tall");
     imgEl.classList.toggle("wideScrollImage", normalizedMode === "wide");
   }
+}
+
+function revealImageAfterReadingLayout(imgEl, isCurrent) {
+  if (!imgEl) return;
+  const reveal = () => {
+    if (typeof isCurrent === "function" && !isCurrent()) return;
+    imgEl.style.removeProperty("visibility");
+    imgEl.classList.add("ready");
+    MediaFilterEngine.requestRender();
+  };
+  if (readingModeEnabled()) requestAnimationFrame(reveal);
+  else reveal();
+}
+
+const READING_SCROLL_ACTION_DIRECTIONS = Object.freeze({
+  selectLeft: -1,
+  selectRight: 1,
+});
+const READING_SCROLL_EDGE_EPSILON = 2;
+const READING_SCROLL_SPEED_PX_PER_SEC = 720;
+let READING_SCROLL_HOLD = {
+  key: "",
+  action: "",
+  direction: 0,
+  axis: "",
+  raf: 0,
+  lastTime: 0,
+  blockedUntilRelease: false,
+};
+
+function resetReadingModeScrollHold() {
+  if (READING_SCROLL_HOLD.raf) {
+    cancelAnimationFrame(READING_SCROLL_HOLD.raf);
+  }
+  READING_SCROLL_HOLD = {
+    key: "",
+    action: "",
+    direction: 0,
+    axis: "",
+    raf: 0,
+    lastTime: 0,
+    blockedUntilRelease: false,
+  };
+}
+
+function activeReadingModeImageContext() {
+  if (!readingModeEnabled()) return null;
+  if (VIEWER_MODE) {
+    if (isQuadPlaybackMode()) return null;
+    const item = viewerItems[viewerIndex] || null;
+    if (!item || item.isFolder) return null;
+    const rec = WS.fileById.get(item.id);
+    if (!rec || rec.type !== "image" || isGifRecord(rec)) return null;
+    if (!viewport || !viewerImgEl || viewerImgEl.style.display === "none")
+      return null;
+    const mode = detectScrollImageMode(rec, viewerImgEl);
+    if (mode !== "tall" && mode !== "wide") return null;
+    return { containerEl: viewport, imgEl: viewerImgEl, mode };
+  }
+  if (!WS.preview || WS.preview.kind !== "file" || !WS.preview.fileId)
+    return null;
+  const rec = WS.fileById.get(String(WS.preview.fileId || ""));
+  if (!rec || rec.type !== "image" || isGifRecord(rec)) return null;
+  if (!previewViewportBox || !previewImgEl || previewImgEl.style.display === "none")
+    return null;
+  const mode = detectScrollImageMode(rec, previewImgEl);
+  if (mode !== "tall" && mode !== "wide") return null;
+  return { containerEl: previewViewportBox, imgEl: previewImgEl, mode };
+}
+
+function readingModeScrollAxisForContext(ctx) {
+  return ctx && ctx.mode === "wide" ? "x" : ctx && ctx.mode === "tall" ? "y" : "";
+}
+
+function readingModeScrollMetrics(containerEl, axis) {
+  if (!containerEl) return null;
+  const position =
+    axis === "x"
+      ? Number(containerEl.scrollLeft || 0)
+      : Number(containerEl.scrollTop || 0);
+  const max =
+    axis === "x"
+      ? Math.max(0, Number(containerEl.scrollWidth || 0) - Number(containerEl.clientWidth || 0))
+      : Math.max(0, Number(containerEl.scrollHeight || 0) - Number(containerEl.clientHeight || 0));
+  return { position, max };
+}
+
+function readingModeCanScroll(containerEl, axis, direction) {
+  const metrics = readingModeScrollMetrics(containerEl, axis);
+  if (!metrics || metrics.max <= READING_SCROLL_EDGE_EPSILON) return false;
+  if (direction < 0) return metrics.position > READING_SCROLL_EDGE_EPSILON;
+  return metrics.position < metrics.max - READING_SCROLL_EDGE_EPSILON;
+}
+
+function stepReadingModeScroll(time) {
+  const hold = READING_SCROLL_HOLD;
+  const ctx = activeReadingModeImageContext();
+  if (!hold.key || !ctx || hold.blockedUntilRelease) {
+    resetReadingModeScrollHold();
+    return;
+  }
+  const axis = readingModeScrollAxisForContext(ctx);
+  if (!axis || axis !== hold.axis) {
+    resetReadingModeScrollHold();
+    return;
+  }
+  const now = Number(time) || performance.now();
+  const prev = hold.lastTime || now;
+  const dt = Math.max(0, Math.min(0.05, (now - prev) / 1000));
+  hold.lastTime = now;
+  const delta = Math.max(1, READING_SCROLL_SPEED_PX_PER_SEC * dt) * hold.direction;
+  if (axis === "x") ctx.containerEl.scrollLeft += delta;
+  else ctx.containerEl.scrollTop += delta;
+  if (!readingModeCanScroll(ctx.containerEl, axis, hold.direction)) {
+    hold.blockedUntilRelease = true;
+    hold.raf = 0;
+    return;
+  }
+  hold.raf = requestAnimationFrame(stepReadingModeScroll);
+}
+
+function handleReadingModeNavigationKey(e, action) {
+  const direction = READING_SCROLL_ACTION_DIRECTIONS[action] || 0;
+  if (!direction) return false;
+  const ctx = activeReadingModeImageContext();
+  if (!ctx) {
+    resetReadingModeScrollHold();
+    return false;
+  }
+  const axis = readingModeScrollAxisForContext(ctx);
+  if (!axis) return false;
+  const key = keybindValueFromEvent(e);
+  if (
+    READING_SCROLL_HOLD.key === key &&
+    READING_SCROLL_HOLD.action === action &&
+    READING_SCROLL_HOLD.blockedUntilRelease
+  ) {
+    e.preventDefault();
+    return true;
+  }
+  if (!readingModeCanScroll(ctx.containerEl, axis, direction)) {
+    resetReadingModeScrollHold();
+    e.preventDefault();
+    return true;
+  }
+  e.preventDefault();
+  if (
+    READING_SCROLL_HOLD.key !== key ||
+    READING_SCROLL_HOLD.action !== action ||
+    READING_SCROLL_HOLD.axis !== axis
+  ) {
+    resetReadingModeScrollHold();
+    READING_SCROLL_HOLD.key = key;
+    READING_SCROLL_HOLD.action = action;
+    READING_SCROLL_HOLD.direction = direction;
+    READING_SCROLL_HOLD.axis = axis;
+    READING_SCROLL_HOLD.lastTime = 0;
+    READING_SCROLL_HOLD.blockedUntilRelease = false;
+  }
+  if (!READING_SCROLL_HOLD.raf) {
+    READING_SCROLL_HOLD.raf = requestAnimationFrame(stepReadingModeScroll);
+  }
+  return true;
 }
 
 function scrollImageFallbackCssFilter(rec, mode) {
@@ -58611,6 +58847,7 @@ function showPreviewViewportMessage(label = "File unavailable", meta = "") {
   ensurePreviewFileElements();
   if (previewImgEl) {
     previewImgEl.classList.remove("ready");
+    previewImgEl.style.removeProperty("visibility");
     previewImgEl.style.display = "none";
   }
   if (previewVideoEl) {
@@ -58636,9 +58873,9 @@ function showPreviewViewportMessage(label = "File unavailable", meta = "") {
 
 function renderPreviewViewerItem(idx) {
   ensurePreviewFileElements();
-  applyScrollImageMode(previewViewportBox, previewImgEl, "none");
 
   if (!viewerItems.length) {
+    applyScrollImageMode(previewViewportBox, previewImgEl, "none");
     if (previewImgEl) previewImgEl.style.display = "none";
     if (previewVideoEl) previewVideoEl.style.display = "none";
     if (previewFolderEl) previewFolderEl.style.display = "none";
@@ -58665,6 +58902,7 @@ function renderPreviewViewerItem(idx) {
     if (rec && rec.type === "video") willShowVideo = true;
     else if (rec) willShowImage = true;
   }
+  if (!willShowImage) applyScrollImageMode(previewViewportBox, previewImgEl, "none");
   const previewVideoTransitionToken = beginPreviewVideoTransition(rec);
   const promotedWarmPreviewVideo = willShowVideo
     ? promotePreloadedPreviewVideo(rec)
@@ -58727,6 +58965,7 @@ function renderPreviewViewerItem(idx) {
     if (!keepPreviewImageFrame && !keepPreviewFilterFrame && !holdPreviewImageFrame) {
       previewImgEl.classList.remove("ready");
       previewImgEl.style.display = "none";
+      previewImgEl.style.removeProperty("visibility");
       delete previewImgEl.dataset.previewFileId;
       if (willShowImage) previewImgEl.removeAttribute("src");
       clearPendingFilmCornerMask(previewImgEl);
@@ -58981,10 +59220,14 @@ function renderPreviewViewerItem(idx) {
       String(WS.preview.fileId || "") !== String(rec.id || "")
     )
       return false;
-    previewImgEl.classList.add("ready");
-    previewImgEl.style.display = "block";
     const imageMode = detectScrollImageMode(rec, previewImgEl);
-    applyScrollImageMode(previewViewportBox, previewImgEl, imageMode, false);
+    applyScrollImageMode(
+      previewViewportBox,
+      previewImgEl,
+      imageMode,
+      readingModeEnabled() && !same,
+    );
+    previewImgEl.style.display = "block";
     if (imageMode !== "none") {
       clearMediaFilterSurface("preview", previewImgEl);
       applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
@@ -59000,7 +59243,13 @@ function renderPreviewViewerItem(idx) {
         rec,
       );
     }
-    MediaFilterEngine.requestRender();
+    revealImageAfterReadingLayout(
+      previewImgEl,
+      () =>
+        String(previewImgEl.dataset.previewFileId || "") ===
+          String(rec.id || "") &&
+        String(WS.preview.fileId || "") === String(rec.id || ""),
+    );
     return true;
   };
   previewImgEl.onload = finalizePreviewImageFrame;
@@ -59019,25 +59268,33 @@ function renderPreviewViewerItem(idx) {
   const same = previewImgEl.src === src;
   const holdFilteredFrame = shouldHoldPreviewFilteredFrameForTarget(rec);
   previewImgEl.dataset.previewFileId = String(rec.id || "");
-  previewImgEl.style.display = "block";
+  const initialPreviewMode = same
+    ? detectScrollImageMode(rec, previewImgEl)
+    : predictScrollImageModeForRecord(rec);
+  applyScrollImageMode(
+    previewViewportBox,
+    previewImgEl,
+    initialPreviewMode,
+    readingModeEnabled() && !same,
+  );
   if (holdFilteredFrame) previewImgEl.classList.add("mediaHidden");
   else previewImgEl.classList.remove("mediaHidden");
   previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
   if (!same) {
-    const swapToken = (PREVIEW_IMAGE_SWAP_TOKEN = (PREVIEW_IMAGE_SWAP_TOKEN + 1) >>> 0);
+    PREVIEW_IMAGE_SWAP_TOKEN = (PREVIEW_IMAGE_SWAP_TOKEN + 1) >>> 0;
     clearPendingFilmCornerMask(previewImgEl);
     previewImgEl.dataset.previewFileId = String(rec.id || "");
-    previewImgEl.classList.add("ready");
+    previewImgEl.classList.remove("ready");
+    if (readingModeEnabled()) previewImgEl.style.visibility = "hidden";
+    else previewImgEl.style.removeProperty("visibility");
+    previewImgEl.style.display = "block";
     previewImgEl.src = src;
-    if (swapToken === PREVIEW_IMAGE_SWAP_TOKEN) {
-      requestAnimationFrame(finalizePreviewImageFrame);
-    }
     preloadNextMedia(viewerItems, viewerIndex);
     return;
   }
-  previewImgEl.classList.add("ready");
-  const previewMode = detectScrollImageMode(rec, previewImgEl);
-  applyScrollImageMode(previewViewportBox, previewImgEl, previewMode, false);
+  previewImgEl.style.removeProperty("visibility");
+  previewImgEl.style.display = "block";
+  const previewMode = initialPreviewMode;
   if (previewMode !== "none") {
     clearPendingFilmCornerMask(previewImgEl);
     clearMediaFilterSurface("preview", previewImgEl);
@@ -59054,6 +59311,12 @@ function renderPreviewViewerItem(idx) {
       rec,
     );
   }
+  revealImageAfterReadingLayout(
+    previewImgEl,
+    () =>
+      String(previewImgEl.dataset.previewFileId || "") === String(rec.id || "") &&
+      String(WS.preview.fileId || "") === String(rec.id || ""),
+  );
 
   if (previewImgEl.complete && previewImgEl.naturalWidth > 0) {
     requestAnimationFrame(() => {
@@ -59063,10 +59326,9 @@ function renderPreviewViewerItem(idx) {
         String(WS.preview.fileId || "") !== String(rec.id || "")
       )
         return;
-      previewImgEl.style.display = "block";
-      previewImgEl.classList.add("ready");
       const imageMode = detectScrollImageMode(rec, previewImgEl);
       applyScrollImageMode(previewViewportBox, previewImgEl, imageMode, false);
+      previewImgEl.style.display = "block";
       if (imageMode !== "none") {
         clearPendingFilmCornerMask(previewImgEl);
         clearMediaFilterSurface("preview", previewImgEl);
@@ -59083,6 +59345,13 @@ function renderPreviewViewerItem(idx) {
           rec,
         );
       }
+      revealImageAfterReadingLayout(
+        previewImgEl,
+        () =>
+          String(previewImgEl.dataset.previewFileId || "") ===
+            String(rec.id || "") &&
+          String(WS.preview.fileId || "") === String(rec.id || ""),
+      );
     });
   }
   preloadNextMedia(viewerItems, viewerIndex);
@@ -63543,6 +63812,7 @@ function hideOverlay() {
     } catch {}
     viewerImgEl.classList.remove("ready");
     viewerImgEl.classList.remove("mediaHidden");
+    viewerImgEl.style.removeProperty("visibility");
     clearPendingFilmCornerMask(viewerImgEl);
     viewerImgEl.style.display = "none";
   }
@@ -63899,6 +64169,7 @@ function renderQuadPlaybackView() {
   }
   if (viewerImgEl) {
     viewerImgEl.classList.remove("ready");
+    viewerImgEl.style.removeProperty("visibility");
     viewerImgEl.style.display = "none";
     clearPendingFilmCornerMask(viewerImgEl);
   }
@@ -64013,7 +64284,6 @@ function renderViewerItem(idx) {
     viewerQuadGridEl.classList.remove("active");
   }
   viewport.classList.remove("viewerQuadMode");
-  applyScrollImageMode(viewport, viewerImgEl, "none");
 
   const n = viewerItems.length;
   let i = idx;
@@ -64051,6 +64321,7 @@ function renderViewerItem(idx) {
   );
 
   if (item.isFolder) {
+    applyScrollImageMode(viewport, viewerImgEl, "none");
     viewerFolderEl.style.display = "flex";
     viewerFolderEl.style.flexDirection = "column";
     viewerFolderEl.style.alignItems = "center";
@@ -64111,6 +64382,7 @@ function renderViewerItem(idx) {
   });
 
   if (rec.type === "video") {
+    applyScrollImageMode(viewport, viewerImgEl, "none");
     const mode = galleryVideoMode();
     const doAuto = mode !== "off" && !BANIC_ACTIVE;
     if (previewVideoEl) {
@@ -64184,9 +64456,14 @@ function renderViewerItem(idx) {
   }
 
   viewerImgEl.onload = () => {
-    viewerImgEl.classList.add("ready");
     const imageMode = detectScrollImageMode(rec, viewerImgEl);
-    applyScrollImageMode(viewport, viewerImgEl, imageMode, false);
+    applyScrollImageMode(
+      viewport,
+      viewerImgEl,
+      imageMode,
+      readingModeEnabled() && !same,
+    );
+    viewerImgEl.style.display = "block";
     if (imageMode !== "none") {
       clearMediaFilterSurface("viewer", viewerImgEl);
       applyScrollImageProcessingFallback(viewerImgEl, rec, imageMode);
@@ -64195,15 +64472,34 @@ function renderViewerItem(idx) {
       applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
       syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
     }
-    MediaFilterEngine.requestRender();
+    revealImageAfterReadingLayout(
+      viewerImgEl,
+      () => {
+        const activeItem = viewerItems[viewerIndex] || null;
+        return !!(
+          activeItem &&
+          !activeItem.isFolder &&
+          String(activeItem.id || "") === String(rec.id || "")
+        );
+      },
+    );
   };
   const src = ensureMediaUrl(rec) || "";
   const same = viewerImgEl.src === src;
-  if (!same) viewerImgEl.src = src;
-  viewerImgEl.style.display = "block";
   viewerImgEl.setAttribute("data-dir-path", rec.dirPath || "");
-  const viewerMode = detectScrollImageMode(rec, viewerImgEl);
+  const viewerMode = same
+    ? detectScrollImageMode(rec, viewerImgEl)
+    : predictScrollImageModeForRecord(rec);
   applyScrollImageMode(viewport, viewerImgEl, viewerMode, !same);
+  if (!same) {
+    viewerImgEl.classList.remove("ready");
+    if (readingModeEnabled()) viewerImgEl.style.visibility = "hidden";
+    else viewerImgEl.style.removeProperty("visibility");
+    viewerImgEl.src = src;
+  } else {
+    viewerImgEl.style.removeProperty("visibility");
+  }
+  viewerImgEl.style.display = "block";
   if (viewerMode !== "none") {
     clearPendingFilmCornerMask(viewerImgEl);
     clearMediaFilterSurface("viewer", viewerImgEl);
@@ -64217,9 +64513,9 @@ function renderViewerItem(idx) {
 
   if (viewerImgEl.complete && viewerImgEl.naturalWidth > 0) {
     requestAnimationFrame(() => {
-      viewerImgEl.classList.add("ready");
       const imageMode = detectScrollImageMode(rec, viewerImgEl);
       applyScrollImageMode(viewport, viewerImgEl, imageMode, false);
+      viewerImgEl.style.display = "block";
       if (imageMode !== "none") {
         clearPendingFilmCornerMask(viewerImgEl);
         clearMediaFilterSurface("viewer", viewerImgEl);
@@ -64230,6 +64526,17 @@ function renderViewerItem(idx) {
         applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
         syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
       }
+      revealImageAfterReadingLayout(
+        viewerImgEl,
+        () => {
+          const activeItem = viewerItems[viewerIndex] || null;
+          return !!(
+            activeItem &&
+            !activeItem.isFolder &&
+            String(activeItem.id || "") === String(rec.id || "")
+          );
+        },
+      );
     });
   }
   preloadNextMedia(viewerItems, viewerIndex);
@@ -65153,6 +65460,15 @@ function handleExtrasKeybindAction(action) {
       syncPreviewMediaModeClass();
       refreshActivePreviewMediaLayout({ immediate: true });
       showStatusMessage(`Full Screen Media: ${next ? "On" : "Off"}`);
+      return true;
+    }
+    case "toggleReadingMode": {
+      const next = toggleOptionValue("readingMode");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      refreshActivePreviewMediaLayout({ immediate: true, resetScroll: true });
+      if (VIEWER_MODE) renderViewerItem(viewerIndex);
+      resetReadingModeScrollHold();
+      showStatusMessage(`Reading mode: ${next ? "On" : "Off"}`);
       return true;
     }
     case "toggleQuickNavigation": {
@@ -67067,7 +67383,15 @@ document.addEventListener(
   "keyup",
   (e) => {
     syncModifierKeyStateFromEvent(e);
+    const key = keybindValueFromEvent(e);
     const baseKey = normalizeBaseKeyValue(e.key);
+    const holdBaseKey = parseKeybindValue(READING_SCROLL_HOLD.key).key;
+    if (
+      (key && key === READING_SCROLL_HOLD.key) ||
+      (baseKey && holdBaseKey && baseKey === holdBaseKey)
+    ) {
+      resetReadingModeScrollHold();
+    }
     if (
       baseKey === "ArrowLeft" ||
       baseKey === "ArrowRight" ||
@@ -67081,6 +67405,7 @@ document.addEventListener(
 
 window.addEventListener("blur", () => {
   clearModifierKeyState();
+  resetReadingModeScrollHold();
 });
 
 // An external file dropped anywhere outside a drop target would make the
@@ -67329,6 +67654,7 @@ document.addEventListener("keydown", (e) => {
           return;
       }
     }
+    if (handleReadingModeNavigationKey(e, action)) return;
     switch (action) {
       case "selectUp":
         e.preventDefault();
@@ -67428,6 +67754,8 @@ document.addEventListener("keydown", (e) => {
   const inFilePreview = WS.preview.kind === "file" && !!WS.preview.fileId;
   const previewPaneActive =
     !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
+
+  if (inFilePreview && handleReadingModeNavigationKey(e, action)) return;
 
   if (
     action === "enterDir" &&
