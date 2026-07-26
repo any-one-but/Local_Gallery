@@ -1,19 +1,18 @@
 // ==UserScript==
 // @name         Bunkr a1jbXaYa Zip Queue
 // @namespace    local-gallery
-// @version      1.0.1
+// @version      1.0.2
 // @description  One-off queued downloader for the zip files in Bunkr album a1jbXaYa.
 // @author       jo
 // @match        https://bunkr.cr/a/a1jbXaYa*
 // @match        https://balbums.st/a/a1jbXaYa*
+// @match        https://dl.bunkr.cr/file/*
 // @connect      bunkr.cr
 // @connect      balbums.st
 // @connect      dl.bunkr.cr
 // @connect      *.bunkr.cr
-// @connect      glb-apisign.cdn.cr
-// @connect      *.cdn.cr
 // @grant        GM_xmlhttpRequest
-// @grant        GM_download
+// @grant        GM_openInTab
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -21,15 +20,21 @@
   "use strict";
 
   const ALBUM_PATH = "/a/a1jbXaYa";
-  const STORE_KEY = "bunkr-a1jbXaYa-zip-queue-v2";
+  const STORE_KEY = "bunkr-a1jbXaYa-zip-queue-v3";
   const DEFAULT_DELAY_MS = 30000;
   const RESOLVE_DELAY_MS = 900;
   const DIRECT_DOWNLOAD_RE = /https?:\/\/[^"'\s<>]*\/file\/\d+/i;
-  const SIGN_SERVICE_URL = "https://glb-apisign.cdn.cr/sign";
+  const HELPER_PARAM = "bzq_auto";
+  const HELPER_CLOSE_DELAY_MS = 10000;
 
   let state = loadState();
   let stopRequested = false;
   let renderTimer = null;
+
+  if (location.hostname === "dl.bunkr.cr") {
+    runDownloadPageHelper();
+    return;
+  }
 
   normalizeInterruptedState();
   injectPanel();
@@ -223,7 +228,7 @@
           <button id="bzq-reset" class="danger" type="button">Reset</button>
         </div>
         <label class="bzq-row">
-          <span class="bzq-muted">Pause between files</span>
+          <span class="bzq-muted">Launch one file every</span>
           <input id="bzq-delay" type="number" min="0" step="5">
           <span class="bzq-muted">seconds</span>
         </label>
@@ -315,7 +320,7 @@
         name: item.name,
         pageUrl: item.pageUrl,
         status: "pending",
-        downloadUrl: "",
+        warningPageUrl: "",
         error: "",
       }));
       log(`Found ${state.items.length} zip files.`);
@@ -348,14 +353,14 @@
           saveState();
           render();
 
-          item.downloadUrl = await resolveDirectDownloadUrl(item.pageUrl);
+          item.warningPageUrl = await resolveWarningPageUrl(item.pageUrl);
           await sleep(RESOLVE_DELAY_MS);
 
           item.status = "downloading";
           item.startedAt = new Date().toISOString();
           saveState();
           render();
-          log(`Downloading ${item.index + 1}/${state.items.length}: ${item.name}`);
+          log(`Launching ${item.index + 1}/${state.items.length}: ${item.name}`);
 
           await downloadFile(item);
 
@@ -363,7 +368,7 @@
           item.finishedAt = new Date().toISOString();
           saveState();
           render();
-          log(`Finished ${item.index + 1}/${state.items.length}: ${item.name}`);
+          log(`Launched ${item.index + 1}/${state.items.length}: ${item.name}`);
         } catch (error) {
           item.status = "failed";
           item.error = String(error && error.message ? error.message : error);
@@ -433,7 +438,7 @@
     return items;
   }
 
-  async function resolveDirectDownloadUrl(filePageUrl) {
+  async function resolveWarningPageUrl(filePageUrl) {
     const html = await requestText(filePageUrl);
     const doc = parseHtml(html);
     const buttonHref = doc.querySelector('a[href*="dl.bunkr.cr/file/"], a[href*="/file/"]')?.href || "";
@@ -444,70 +449,26 @@
       throw new Error("No direct download button found.");
     }
 
-    return resolveSignedCdnUrl(warningPageUrl, filePageUrl);
-  }
-
-  async function resolveSignedCdnUrl(warningPageUrl, referrerUrl) {
-    const warningHtml = await requestText(warningPageUrl);
-    const warningDoc = parseHtml(warningHtml);
-    const downloadButton = warningDoc.querySelector("#download-btn[data-id]");
-    const fileId = downloadButton?.getAttribute("data-id") || new URL(warningPageUrl).pathname.match(/\/file\/(\d+)/)?.[1] || "";
-
-    if (!fileId) {
-      throw new Error("No warning-page file id found.");
-    }
-
-    const apiUrl = new URL("/api/_001_v2", warningPageUrl).href;
-    const meta = await requestJson(apiUrl, {
-      method: "POST",
-      body: JSON.stringify({ id: fileId }),
-      headers: { "Content-Type": "application/json" },
-      referrer: referrerUrl,
-    });
-
-    if (!meta || !meta.mediafiles || !meta.path) {
-      throw new Error("Download metadata did not include a media path.");
-    }
-
-    const rawUrl = new URL(String(meta.mediafiles) + String(meta.path));
-    const originalName = meta.original || warningDoc.querySelector("h1")?.textContent?.trim() || "";
-    if (originalName) rawUrl.searchParams.set("n", originalName);
-
-    const signed = await requestJson(`${SIGN_SERVICE_URL}?path=${encodeURIComponent(decodeURIComponent(rawUrl.pathname))}`, {
-      referrer: warningPageUrl,
-    });
-
-    if (!signed || !signed.token || !signed.ex) {
-      throw new Error("Signing service did not return a token.");
-    }
-
-    rawUrl.searchParams.set("token", signed.token);
-    rawUrl.searchParams.set("ex", signed.ex);
-
-    return rawUrl.toString();
+    return warningPageUrl;
   }
 
   function downloadFile(item) {
     return new Promise((resolve, reject) => {
-      if (typeof GM_download !== "function") {
-        openDownloadFallback(item.downloadUrl);
+      const helperUrl = addHelperParams(item.warningPageUrl, item.name);
+
+      if (typeof GM_openInTab === "function") {
+        GM_openInTab(helperUrl, { active: false, insert: true, setParent: true });
         resolve();
         return;
       }
 
-      try {
-        GM_download({
-          url: item.downloadUrl,
-          name: item.name,
-          saveAs: false,
-          conflictAction: "uniquify",
-          onload: () => resolve(),
-          onerror: (error) => reject(new Error(downloadErrorMessage(error))),
-          ontimeout: () => reject(new Error("Download timed out.")),
-        });
-      } catch (error) {
-        reject(error);
+      const opened = window.open(helperUrl, "_blank", "noopener");
+      if (opened) {
+        resolve();
+        return;
       }
+
+      reject(new Error("The browser blocked the helper tab. Allow popups for this site and resume the queue."));
     });
   }
 
@@ -539,53 +500,6 @@
     });
   }
 
-  function requestJson(url, options = {}) {
-    return new Promise((resolve, reject) => {
-      const method = options.method || "GET";
-      const headers = Object.assign({ Accept: "application/json" }, options.headers || {});
-
-      if (typeof GM_xmlhttpRequest === "function") {
-        GM_xmlhttpRequest({
-          method,
-          url,
-          timeout: 45000,
-          headers,
-          data: options.body,
-          anonymous: true,
-          onload: (response) => {
-            if (response.status < 200 || response.status >= 400) {
-              reject(new Error(`HTTP ${response.status} for ${url}`));
-              return;
-            }
-
-            try {
-              resolve(JSON.parse(response.responseText));
-            } catch (error) {
-              reject(new Error(`Invalid JSON from ${url}: ${error.message}`));
-            }
-          },
-          onerror: () => reject(new Error(`Request failed for ${url}`)),
-          ontimeout: () => reject(new Error(`Request timed out for ${url}`)),
-        });
-        return;
-      }
-
-      fetch(url, {
-        method,
-        headers,
-        body: options.body,
-        credentials: "omit",
-        referrer: options.referrer,
-      })
-        .then((response) => {
-          if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
-          return response.json();
-        })
-        .then(resolve)
-        .catch(reject);
-    });
-  }
-
   function parseHtml(html) {
     return new DOMParser().parseFromString(html, "text/html");
   }
@@ -611,22 +525,41 @@
     });
   }
 
-  function openDownloadFallback(url) {
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.target = "_blank";
-    anchor.rel = "noopener";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
+  function addHelperParams(url, name) {
+    const helperUrl = new URL(url);
+    helperUrl.searchParams.set(HELPER_PARAM, "1");
+    helperUrl.searchParams.set("bzq_name", name);
+    return helperUrl.toString();
   }
 
-  function downloadErrorMessage(error) {
-    if (!error) return "Unknown download error.";
-    if (typeof error === "string") return error;
-    if (error.error) return error.error;
-    if (error.details) return error.details;
-    return JSON.stringify(error);
+  function runDownloadPageHelper() {
+    if (new URL(location.href).searchParams.get(HELPER_PARAM) !== "1") return;
+
+    const status = document.createElement("div");
+    status.textContent = "Bunkr queue: waiting for download button...";
+    status.style.cssText = "position:fixed;left:16px;bottom:16px;z-index:2147483647;background:#111827;color:#f9fafb;border:1px solid #374151;border-radius:8px;padding:10px 12px;font:13px system-ui;box-shadow:0 12px 32px rgba(0,0,0,.35)";
+    document.documentElement.appendChild(status);
+
+    const clickWhenReady = () => {
+      const button = document.querySelector("#download-btn");
+      if (!button) {
+        window.setTimeout(clickWhenReady, 250);
+        return;
+      }
+
+      status.textContent = "Bunkr queue: clicking final download button...";
+      window.setTimeout(() => {
+        button.click();
+        status.textContent = "Bunkr queue: download started.";
+        window.setTimeout(() => window.close(), HELPER_CLOSE_DELAY_MS);
+      }, 750);
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", clickWhenReady, { once: true });
+    } else {
+      clickWhenReady();
+    }
   }
 
   function pageNumber(url) {
