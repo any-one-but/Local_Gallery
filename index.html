@@ -31421,19 +31421,20 @@ function restorePreviewFolderBridgeState() {
 // While a folder or its media is previewing, the user can move to a different
 // folder (prev/next folder, random jump). The bridge return state still points
 // its grid selection at the folder originally entered, so on exit re-point it
-// to the folder actually being shown and, if that folder lives under a
-// different parent, re-anchor the restored grid to that parent so its card
-// exists. Folder-grid jumps only update WS.preview; media jumps also synchronize
-// WS.nav, so prefer the preview target and use the navigation target as a
-// fallback for virtual preview contexts.
-function syncGridReturnStateToExitedFolder() {
+// to the folder actually being left and, if that folder lives under a different
+// parent, re-anchor the restored grid to that parent so its card exists. Folder
+// grid jumps only update WS.preview; direct leave actions pass the current
+// navigation folder because it is the authoritative exit target.
+function syncGridReturnStateToExitedFolder(exitDirNode = null) {
   const state = WS.view && WS.view.previewFolderBridgeReturnState;
   if (!state) return;
+  const explicitExitDir =
+    exitDirNode && !exitDirNode._skipTagFilters ? exitDirNode : null;
   const previewTarget = getPreviewTargetDir();
+  const previewExitDir =
+    previewTarget && !previewTarget._skipTagFilters ? previewTarget : null;
   const cur =
-    previewTarget && !previewTarget._skipTagFilters
-      ? previewTarget
-      : WS.nav.dirNode;
+    previewExitDir || explicitExitDir || WS.nav.dirNode;
   if (!cur || cur === WS.root || !cur.path) return;
   const curKey = `dir:${String(cur.path || "")}`;
   state.pendingPreviewSelectionKey = curKey;
@@ -41588,6 +41589,15 @@ function ensurePreviewSelectionForCurrentTarget(reset = false) {
     ? cards.find((card) => String(card?.dataset?.previewItemKey || "") === key)
     : null;
   if (!selectedCard) {
+    const pendingKey = String(
+      (WS.view && WS.view.pendingPreviewSelectionKey) || "",
+    );
+    if (pendingKey) {
+      WS.view.previewSelectionContextKey = contextKey;
+      WS.view.previewSelectedKey = pendingKey;
+      updatePreviewSelectionClasses();
+      return true;
+    }
     const shouldRespectScroll =
       !!previewBodyEl &&
       ((previewBodyEl.scrollTop || 0) > 0 ||
@@ -42718,11 +42728,15 @@ function goDirHistory(delta) {
 
 function goDirUp() {
   const previewTarget = getPreviewTargetDir();
+  const previewExitTarget =
+    previewTarget && !previewTarget._skipTagFilters
+      ? previewTarget
+      : WS.nav.dirNode;
   if (
     String(WS.view.activePane || "") === "preview" &&
-    previewTarget &&
-    !previewTarget._skipTagFilters &&
-    tryRestoreTagDirectoryContext(String(previewTarget.path || ""), {
+    previewExitTarget &&
+    !previewExitTarget._skipTagFilters &&
+    tryRestoreTagDirectoryContext(String(previewExitTarget.path || ""), {
       previewPortalRestore: true,
     })
   )
@@ -59468,6 +59482,27 @@ function shouldChunkTagPreviewForHare(dirNode, folderEntries, fileIds) {
   return entries.length > threshold;
 }
 
+function preferredImmediatePreviewFolderRenderCount(entries, fallbackCount) {
+  const baseCount = Math.max(1, Math.floor(Number(fallbackCount) || 1));
+  const list = Array.isArray(entries) ? entries : [];
+  if (!list.length) return baseCount;
+  const pendingKey = String(WS.view?.pendingPreviewSelectionKey || "");
+  if (!pendingKey.startsWith("dir:")) return baseCount;
+  const pendingPath = pendingKey.slice(4);
+  if (!pendingPath) return baseCount;
+  for (let i = 0; i < list.length; i++) {
+    const entry = list[i];
+    if (
+      entry &&
+      entry.kind === "dir" &&
+      String(entry.node?.path || "") === pendingPath
+    ) {
+      return Math.max(baseCount, i + 1);
+    }
+  }
+  return baseCount;
+}
+
 function renderTagPreviewFolderEntriesInHareChunks(
   dirNode,
   container,
@@ -59551,7 +59586,9 @@ function renderTagPreviewFolderEntriesInHareChunks(
     return true;
   };
 
-  appendRange(initialLimit);
+  appendRange(
+    preferredImmediatePreviewFolderRenderCount(entries, initialLimit),
+  );
   container.appendChild(gridF);
   if (useFolderFitInsideJustified) applyFitInsideJustifiedLayout(gridF);
   else applyPreviewGridTracks(gridF);
@@ -65218,7 +65255,7 @@ function restorePanesClosedByFilePaneEnter() {
     //    direct child of the current directory, so a single step up restores
     //    the pre-open view.
     if (WS.view.previewFolderBridgeReturnState) {
-      syncGridReturnStateToExitedFolder();
+      syncGridReturnStateToExitedFolder(WS.nav.dirNode);
       restorePreviewFolderBridgeState();
     } else {
       leaveDirectory();
@@ -67106,7 +67143,7 @@ function handlePreviewPaneAction(action, inFilePreview) {
       return movePreviewSelectionByDirection("right");
     case "leaveDir": {
       if (WS.view.previewFolderBridgeReturnState) {
-        syncGridReturnStateToExitedFolder();
+        syncGridReturnStateToExitedFolder(WS.nav.dirNode);
         if (restorePreviewFolderBridgeState()) return true;
       }
       const beforeState = {
@@ -67121,10 +67158,14 @@ function handlePreviewPaneAction(action, inFilePreview) {
         hiddenRootActive: !!WS.view.hiddenRootActive,
       };
       const previewTarget = getPreviewTargetDir();
+      const exitTarget =
+        previewTarget && !previewTarget._skipTagFilters
+          ? previewTarget
+          : WS.nav.dirNode;
       if (
-        previewTarget &&
-        !previewTarget._skipTagFilters &&
-        tryRestoreTagDirectoryContext(String(previewTarget.path || ""), {
+        exitTarget &&
+        !exitTarget._skipTagFilters &&
+        tryRestoreTagDirectoryContext(String(exitTarget.path || ""), {
           previewPortalRestore: true,
         })
       )
@@ -67247,7 +67288,7 @@ function handleClosedFilePaneNavigationAction(action) {
       // with the folder kept selected. Otherwise step up one level, keeping the
       // folder you just left selected.
       if (WS.view.previewFolderBridgeReturnState) {
-        syncGridReturnStateToExitedFolder();
+        syncGridReturnStateToExitedFolder(WS.nav.dirNode);
         if (restorePreviewFolderBridgeState()) return true;
       }
       WS.view.pendingPreviewSelectionKey = entryKeyForSelection(
