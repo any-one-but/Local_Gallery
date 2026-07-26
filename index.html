@@ -26281,6 +26281,13 @@ function metaMakeScoresLogObject() {
     const fp = WS.meta.dirFingerprints.get(path) || 0;
     folders[path] = { score: metaGetScore(path), fp: fp >>> 0 };
   }
+  if (WS.meta && WS.meta.pendingDirScores) {
+    for (const [pathRaw, scoreRaw] of WS.meta.pendingDirScores.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      if (!path || folders[path]) continue;
+      folders[path] = { score: Number(scoreRaw) | 0, fp: 0 };
+    }
+  }
   return {
     schema: 2,
     updatedAt: Date.now(),
@@ -26354,6 +26361,17 @@ function metaMakeTagsLogObject() {
     if (tags && tags.length && canRestoreTagsByFingerprintForPath(path, fp)) {
       const k = String(fp >>> 0);
       if (!tagByFp[k]) tagByFp[k] = tags.slice();
+    }
+  }
+  if (WS.meta && WS.meta.pendingDirAppearancePresetIds) {
+    for (const [
+      pathRaw,
+      presetIdRaw,
+    ] of WS.meta.pendingDirAppearancePresetIds.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      const presetId = normalizeAppearancePresetIdValue(presetIdRaw);
+      if (!path || !presetId || mediaPresetByFolder[path]) continue;
+      mediaPresetByFolder[path] = presetId;
     }
   }
   if (WS.meta && WS.meta.tagThumbModes) {
@@ -26508,6 +26526,26 @@ function metaMakeLogObject() {
       if (!tagByFp[k]) tagByFp[k] = tags.slice();
     }
   }
+  if (WS.meta && WS.meta.pendingDirScores) {
+    for (const [pathRaw, scoreRaw] of WS.meta.pendingDirScores.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      if (!path || folders[path]) continue;
+      folders[path] = { score: Number(scoreRaw) | 0, fp: 0, tags: [] };
+    }
+  }
+  if (WS.meta && WS.meta.pendingTagsByPath) {
+    for (const [pathRaw, tagsRaw] of WS.meta.pendingTagsByPath.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      if (!path) continue;
+      const tags = normalizeTagList(tagsRaw);
+      if (!tags.length) continue;
+      if (folders[path]) {
+        folders[path].tags = tags;
+      } else {
+        folders[path] = { score: 0, fp: 0, tags };
+      }
+    }
+  }
   return {
     schema: 2,
     updatedAt: Date.now(),
@@ -26541,6 +26579,7 @@ function metaApplyScoresLog(log) {
 
   const claimed = new Set();
   WS.meta.dirScores.clear();
+  WS.meta.pendingDirScores = new Map();
 
   for (const [path, node] of WS.dirByPath.entries()) {
     const fp = WS.meta.dirFingerprints.get(path) || 0;
@@ -26566,6 +26605,10 @@ function metaApplyScoresLog(log) {
       }
     }
     WS.meta.dirScores.set(path, 0);
+  }
+  for (const [path, entry] of oldByPath.entries()) {
+    if (claimed.has(path) || WS.dirByPath.has(path)) continue;
+    WS.meta.pendingDirScores.set(path, Number(entry?.score) | 0);
   }
 }
 
@@ -26695,6 +26738,7 @@ function metaApplyTagsLog(log) {
   }
 
   WS.meta.dirAppearancePresetIds.clear();
+  WS.meta.pendingDirAppearancePresetIds = new Map();
   const mediaPresetByFolder =
     log.mediaPresetByFolder && typeof log.mediaPresetByFolder === "object"
       ? log.mediaPresetByFolder
@@ -26711,8 +26755,11 @@ function metaApplyTagsLog(log) {
     )
       continue;
     if (!normalizedDirPath && !WS.dirByPath.has("")) continue;
-    if (!WS.dirByPath.has(normalizedDirPath)) continue;
-    WS.meta.dirAppearancePresetIds.set(normalizedDirPath, presetId);
+    if (WS.dirByPath.has(normalizedDirPath)) {
+      WS.meta.dirAppearancePresetIds.set(normalizedDirPath, presetId);
+    } else if (normalizedDirPath) {
+      WS.meta.pendingDirAppearancePresetIds.set(normalizedDirPath, presetId);
+    }
   }
 
   WS.meta.tagAppearancePresetIds.clear();
@@ -26752,7 +26799,6 @@ function metaApplyTagsLog(log) {
       folderMediaFilterByPath[rawPath],
     );
     if ((!path && path !== "") || !filterValue.length) continue;
-    if (path && !WS.dirByPath.has(path)) continue;
     WS.meta.folderMediaFilterByPath.set(path, filterValue);
   }
 
@@ -26939,6 +26985,7 @@ function metaApplyFromLog(log) {
 
   const claimed = new Set();
   WS.meta.dirScores.clear();
+  WS.meta.pendingDirScores = new Map();
 
   for (const [path, node] of WS.dirByPath.entries()) {
     const fp = WS.meta.dirFingerprints.get(path) || 0;
@@ -26965,6 +27012,10 @@ function metaApplyFromLog(log) {
     }
     WS.meta.dirScores.set(path, 0);
   }
+  for (const [path, entry] of oldByPath.entries()) {
+    if (claimed.has(path) || WS.dirByPath.has(path)) continue;
+    WS.meta.pendingDirScores.set(path, Number(entry?.score) | 0);
+  }
 
   WS.meta.dirTags.clear();
   for (const [path, node] of WS.dirByPath.entries()) {
@@ -26981,6 +27032,7 @@ function metaApplyFromLog(log) {
   }
 
   WS.meta.dirAppearancePresetIds.clear();
+  WS.meta.pendingDirAppearancePresetIds = new Map();
   if (cleanupLegacyProcessingDisabledMetadata()) {
     metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   }
@@ -27584,7 +27636,6 @@ function metaApplyTagsDocLog(log) {
       folderMediaFilterByPath[rawPath],
     );
     if ((!path && path !== "") || !filterValue.length) continue;
-    if (path && !WS.dirByPath.has(path)) continue;
     WS.meta.folderMediaFilterByPath.set(path, filterValue);
   }
 
