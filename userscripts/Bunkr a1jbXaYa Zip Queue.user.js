@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bunkr a1jbXaYa Zip Queue
 // @namespace    local-gallery
-// @version      1.0.0
+// @version      1.0.1
 // @description  One-off queued downloader for the zip files in Bunkr album a1jbXaYa.
 // @author       jo
 // @match        https://bunkr.cr/a/a1jbXaYa*
@@ -10,6 +10,8 @@
 // @connect      balbums.st
 // @connect      dl.bunkr.cr
 // @connect      *.bunkr.cr
+// @connect      glb-apisign.cdn.cr
+// @connect      *.cdn.cr
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
 // @run-at       document-idle
@@ -19,10 +21,11 @@
   "use strict";
 
   const ALBUM_PATH = "/a/a1jbXaYa";
-  const STORE_KEY = "bunkr-a1jbXaYa-zip-queue-v1";
+  const STORE_KEY = "bunkr-a1jbXaYa-zip-queue-v2";
   const DEFAULT_DELAY_MS = 30000;
   const RESOLVE_DELAY_MS = 900;
   const DIRECT_DOWNLOAD_RE = /https?:\/\/[^"'\s<>]*\/file\/\d+/i;
+  const SIGN_SERVICE_URL = "https://glb-apisign.cdn.cr/sign";
 
   let state = loadState();
   let stopRequested = false;
@@ -345,10 +348,8 @@
           saveState();
           render();
 
-          if (!item.downloadUrl) {
-            item.downloadUrl = await resolveDirectDownloadUrl(item.pageUrl);
-            await sleep(RESOLVE_DELAY_MS);
-          }
+          item.downloadUrl = await resolveDirectDownloadUrl(item.pageUrl);
+          await sleep(RESOLVE_DELAY_MS);
 
           item.status = "downloading";
           item.startedAt = new Date().toISOString();
@@ -437,13 +438,53 @@
     const doc = parseHtml(html);
     const buttonHref = doc.querySelector('a[href*="dl.bunkr.cr/file/"], a[href*="/file/"]')?.href || "";
     const matchedHref = html.match(DIRECT_DOWNLOAD_RE)?.[0] || "";
-    const directUrl = buttonHref || matchedHref;
+    const warningPageUrl = buttonHref || matchedHref;
 
-    if (!directUrl) {
+    if (!warningPageUrl) {
       throw new Error("No direct download button found.");
     }
 
-    return directUrl;
+    return resolveSignedCdnUrl(warningPageUrl, filePageUrl);
+  }
+
+  async function resolveSignedCdnUrl(warningPageUrl, referrerUrl) {
+    const warningHtml = await requestText(warningPageUrl);
+    const warningDoc = parseHtml(warningHtml);
+    const downloadButton = warningDoc.querySelector("#download-btn[data-id]");
+    const fileId = downloadButton?.getAttribute("data-id") || new URL(warningPageUrl).pathname.match(/\/file\/(\d+)/)?.[1] || "";
+
+    if (!fileId) {
+      throw new Error("No warning-page file id found.");
+    }
+
+    const apiUrl = new URL("/api/_001_v2", warningPageUrl).href;
+    const meta = await requestJson(apiUrl, {
+      method: "POST",
+      body: JSON.stringify({ id: fileId }),
+      headers: { "Content-Type": "application/json" },
+      referrer: referrerUrl,
+    });
+
+    if (!meta || !meta.mediafiles || !meta.path) {
+      throw new Error("Download metadata did not include a media path.");
+    }
+
+    const rawUrl = new URL(String(meta.mediafiles) + String(meta.path));
+    const originalName = meta.original || warningDoc.querySelector("h1")?.textContent?.trim() || "";
+    if (originalName) rawUrl.searchParams.set("n", originalName);
+
+    const signed = await requestJson(`${SIGN_SERVICE_URL}?path=${encodeURIComponent(decodeURIComponent(rawUrl.pathname))}`, {
+      referrer: warningPageUrl,
+    });
+
+    if (!signed || !signed.token || !signed.ex) {
+      throw new Error("Signing service did not return a token.");
+    }
+
+    rawUrl.searchParams.set("token", signed.token);
+    rawUrl.searchParams.set("ex", signed.ex);
+
+    return rawUrl.toString();
   }
 
   function downloadFile(item) {
@@ -492,6 +533,53 @@
         .then((response) => {
           if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
           return response.text();
+        })
+        .then(resolve)
+        .catch(reject);
+    });
+  }
+
+  function requestJson(url, options = {}) {
+    return new Promise((resolve, reject) => {
+      const method = options.method || "GET";
+      const headers = Object.assign({ Accept: "application/json" }, options.headers || {});
+
+      if (typeof GM_xmlhttpRequest === "function") {
+        GM_xmlhttpRequest({
+          method,
+          url,
+          timeout: 45000,
+          headers,
+          data: options.body,
+          anonymous: true,
+          onload: (response) => {
+            if (response.status < 200 || response.status >= 400) {
+              reject(new Error(`HTTP ${response.status} for ${url}`));
+              return;
+            }
+
+            try {
+              resolve(JSON.parse(response.responseText));
+            } catch (error) {
+              reject(new Error(`Invalid JSON from ${url}: ${error.message}`));
+            }
+          },
+          onerror: () => reject(new Error(`Request failed for ${url}`)),
+          ontimeout: () => reject(new Error(`Request timed out for ${url}`)),
+        });
+        return;
+      }
+
+      fetch(url, {
+        method,
+        headers,
+        body: options.body,
+        credentials: "omit",
+        referrer: options.referrer,
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+          return response.json();
         })
         .then(resolve)
         .catch(reject);
