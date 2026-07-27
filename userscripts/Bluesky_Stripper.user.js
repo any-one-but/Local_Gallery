@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Bluesky Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.00
-// @description  Bluesky account, follow-list, post-text, image, and video downloader.
+// @version      00.01.01
+// @description  Bluesky account post-text, image, and video downloader.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Bluesky_Stripper.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Bluesky_Stripper.user.js
@@ -45,8 +45,7 @@
   const BACKOFF_BASE = 800;
   const BLOB_TIMEOUT_MS = 180000;
   const HLS_TIMEOUT_MS = 240000;
-  const SAVED_KEY = 'BlueskyStripper.savedAccounts.v1';
-  const SCAN_CACHE_PREFIX = 'BlueskyStripper.scanCache.v1:';
+  const SCAN_CACHE_PREFIX = 'BlueskyStripper.scanCache.v2:';
   const SCAN_CACHE_MAX_ENTRIES = 24;
   const SCAN_CACHE_MAX_BYTES = 4 * 1024 * 1024;
   const SCAN_CACHE_MAX_ENTRY_BYTES = 1.5 * 1024 * 1024;
@@ -65,7 +64,6 @@
     posts: [],
     pages: [],
     files: [],
-    follows: [],
     countTextOverride: '',
     fileProgressOverride: '',
     loadedScanCacheKey: ''
@@ -82,20 +80,11 @@
     panel.innerHTML = `
       <div class="bs-head">
         <span class="bs-title">Bluesky Stripper</span>
-        <span id="bsSavedCount" class="bs-pill" hidden></span>
         <button id="bsCollapse" class="bs-iconBtn" type="button" title="Collapse">^</button>
       </div>
-      <div class="bs-modes">
-        <button class="bs-modeBtn is-active" type="button" data-mode="download">Download</button>
-        <button class="bs-modeBtn" type="button" data-mode="saved">Tracked</button>
-      </div>
       <div class="bs-body">
-        <section id="bsDownloadView" class="bs-view">
+        <section class="bs-view">
           <button id="bsScan" type="button">Scan</button>
-          <div class="bs-trackRow">
-            <button id="bsTrack" type="button">Track Profile</button>
-            <button id="bsRemoveTrack" type="button" disabled>Remove</button>
-          </div>
           <div class="bs-progress"><div id="bsFill"></div></div>
           <div class="bs-meta">
             <span id="bsProfile">No account scanned</span>
@@ -124,32 +113,14 @@
             <button class="bs-chip is-on" type="button" role="checkbox" data-kind="video" aria-checked="true">Videos</button>
             <button class="bs-chip" type="button" role="checkbox" data-kind="text" aria-checked="false">Text</button>
           </div>
-          <div id="bsFollows" class="bs-follows" hidden>
-            <div class="bs-followsHead">
-              <span>Follows</span>
-              <span id="bsFollowCount" class="bs-subtle"></span>
-              <button id="bsTrackFollows" class="bs-smallBtn" type="button" title="Track all scanned follows">+</button>
-            </div>
-            <div id="bsFollowList" class="bs-list"></div>
-          </div>
           <div id="bsLog" class="bs-log" aria-live="polite"></div>
-        </section>
-        <section id="bsSavedView" class="bs-view" hidden>
-          <div class="bs-savedHead">
-            <input id="bsSavedSearch" type="text" placeholder="Filter tracked accounts">
-            <button id="bsRefreshSaved" class="bs-smallBtn" type="button" title="Refresh">Refresh</button>
-          </div>
-          <div id="bsSavedList" class="bs-list"></div>
         </section>
       </div>
     `;
     document.body.appendChild(panel);
 
     ui.panel = panel;
-    ui.savedCount = panel.querySelector('#bsSavedCount');
     ui.scan = panel.querySelector('#bsScan');
-    ui.track = panel.querySelector('#bsTrack');
-    ui.removeTrack = panel.querySelector('#bsRemoveTrack');
     ui.fill = panel.querySelector('#bsFill');
     ui.profile = panel.querySelector('#bsProfile');
     ui.count = panel.querySelector('#bsCount');
@@ -164,20 +135,9 @@
     ui.dateRange = panel.querySelector('#bsDateRange');
     ui.dateRangeBtn = panel.querySelector('#bsDateRangeBtn');
     ui.chips = Array.from(panel.querySelectorAll('.bs-chip'));
-    ui.follows = panel.querySelector('#bsFollows');
-    ui.followCount = panel.querySelector('#bsFollowCount');
-    ui.followList = panel.querySelector('#bsFollowList');
-    ui.trackFollows = panel.querySelector('#bsTrackFollows');
     ui.log = panel.querySelector('#bsLog');
-    ui.downloadView = panel.querySelector('#bsDownloadView');
-    ui.savedView = panel.querySelector('#bsSavedView');
-    ui.savedSearch = panel.querySelector('#bsSavedSearch');
-    ui.savedList = panel.querySelector('#bsSavedList');
-    ui.modeBtns = Array.from(panel.querySelectorAll('.bs-modeBtn'));
 
     ui.scan.addEventListener('click', scanCurrent);
-    ui.track.addEventListener('click', trackCurrentProfile);
-    ui.removeTrack.addEventListener('click', removeCurrentProfile);
     ui.post.addEventListener('click', () => downloadPostArchives(state.posts.slice(0, 1), { includeAllFileTypes: true }));
     ui.posts.addEventListener('click', () => downloadPostArchives());
     ui.pages.addEventListener('click', () => downloadPageArchives());
@@ -185,15 +145,9 @@
     ui.postRangeBtn.addEventListener('click', () => downloadSelectedPostArchives());
     ui.pageRangeBtn.addEventListener('click', () => downloadSelectedPageArchives());
     ui.dateRangeBtn.addEventListener('click', () => downloadSelectedDateArchives());
-    ui.trackFollows.addEventListener('click', trackScannedFollows);
-    ui.savedSearch.addEventListener('input', renderSavedList);
-    panel.querySelector('#bsRefreshSaved').addEventListener('click', renderSavedList);
     panel.querySelector('#bsCollapse').addEventListener('click', () => {
       panel.classList.toggle('bs-collapsed');
       panel.querySelector('#bsCollapse').textContent = panel.classList.contains('bs-collapsed') ? 'v' : '^';
-    });
-    ui.modeBtns.forEach(btn => {
-      btn.addEventListener('click', () => setMode(btn.dataset.mode));
     });
     ui.chips.forEach(chip => {
       chip.addEventListener('click', () => {
@@ -205,7 +159,6 @@
 
     installRouteObserver();
     logLine('Ready. Open a Bluesky profile or post.');
-    renderSavedList();
     syncUi();
   }
 
@@ -217,22 +170,19 @@
         font:12px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;overflow:hidden}
       #bskyStripperPanel,#bskyStripperPanel *{box-sizing:border-box}
       #bskyStripperPanel.bs-collapsed{height:auto}
-      #bskyStripperPanel.bs-collapsed .bs-body,#bskyStripperPanel.bs-collapsed .bs-modes{display:none}
+      #bskyStripperPanel.bs-collapsed .bs-body{display:none}
       #bskyStripperPanel .bs-head{height:38px;display:flex;align-items:center;gap:8px;padding:0 10px;
         border-bottom:1px solid rgba(255,255,255,.1);background:#0b1826;cursor:default}
       #bskyStripperPanel .bs-title{flex:1;font-weight:900;color:#7cc7ff}
-      #bskyStripperPanel .bs-pill{padding:2px 7px;border-radius:999px;background:rgba(30,144,255,.2);color:#dff2ff;font-weight:800;font-size:10px}
       #bskyStripperPanel .bs-iconBtn{width:28px;height:28px;min-height:28px;padding:0}
-      #bskyStripperPanel .bs-modes{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 10px 0}
       #bskyStripperPanel .bs-body{display:flex;flex-direction:column;gap:8px;padding:10px;min-height:0;overflow:auto}
       #bskyStripperPanel .bs-view{display:flex;flex-direction:column;gap:8px;min-height:0}
-      #bskyStripperPanel .bs-view[hidden],#bskyStripperPanel .bs-follows[hidden]{display:none}
       #bskyStripperPanel button{appearance:none;width:100%;min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.14);
         border-radius:8px;background:rgba(255,255,255,.08);color:#f4f9ff;font:700 12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;cursor:pointer}
       #bskyStripperPanel button:hover:not(:disabled){background:rgba(30,144,255,.18);border-color:rgba(124,199,255,.55)}
       #bskyStripperPanel button:disabled{opacity:.42;cursor:default}
-      #bskyStripperPanel #bsScan,.bs-modeBtn.is-active{background:#178bff;color:#fff;border-color:#7cc7ff}
-      #bskyStripperPanel .bs-trackRow,.bs-rangeRow,.bs-savedHead{display:grid;grid-template-columns:1fr 96px;gap:6px}
+      #bskyStripperPanel #bsScan{background:#178bff;color:#fff;border-color:#7cc7ff}
+      #bskyStripperPanel .bs-rangeRow{display:grid;grid-template-columns:1fr 96px;gap:6px}
       #bskyStripperPanel .bs-stack{display:grid;grid-template-columns:1fr;gap:6px}
       #bskyStripperPanel input{box-sizing:border-box;width:100%;height:32px;padding:0 9px;border-radius:8px;
         border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.24);color:#f4f9ff;font:700 12px/1 Arial,sans-serif;outline:none}
@@ -244,29 +194,10 @@
       #bskyStripperPanel .bs-types{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
       #bskyStripperPanel .bs-chip{min-height:28px;font-size:11px;color:#b8c4ce}
       #bskyStripperPanel .bs-chip.is-on{background:rgba(30,144,255,.2);border-color:rgba(124,199,255,.55);color:#f4f9ff}
-      #bskyStripperPanel .bs-follows{display:flex;flex-direction:column;gap:5px;padding:7px;border:1px solid rgba(255,255,255,.08);
-        border-radius:8px;background:rgba(0,0,0,.16)}
-      #bskyStripperPanel .bs-followsHead{display:grid;grid-template-columns:1fr auto 32px;gap:6px;align-items:center;color:#dff2ff;font-weight:900}
-      #bskyStripperPanel .bs-subtle{color:#9bb5ca;font-size:10px;font-weight:800}
-      #bskyStripperPanel .bs-list{display:flex;flex-direction:column;gap:5px;max-height:220px;overflow:auto}
-      #bskyStripperPanel .bs-row{display:grid;grid-template-columns:1fr 38px 38px;gap:6px;align-items:center}
-      #bskyStripperPanel .bs-rowText{min-width:0;display:flex;flex-direction:column;gap:1px;overflow:hidden}
-      #bskyStripperPanel .bs-rowName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eef8ff;font-weight:800}
-      #bskyStripperPanel .bs-rowMeta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#91aabe;font-size:10px;font-weight:700}
-      #bskyStripperPanel .bs-row button,#bskyStripperPanel .bs-smallBtn{min-height:28px;padding:0 8px;font-size:11px}
       #bskyStripperPanel .bs-log{min-height:92px;max-height:190px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.2);padding:7px;color:#c2d4e4;white-space:pre-wrap}
       #bskyStripperPanel .bs-log div{margin:0 0 4px}
     `);
-  }
-
-  function setMode(mode) {
-    const selected = mode === 'saved' ? 'saved' : 'download';
-    ui.mode = selected;
-    ui.downloadView.hidden = selected !== 'download';
-    ui.savedView.hidden = selected !== 'saved';
-    ui.modeBtns.forEach(btn => btn.classList.toggle('is-active', btn.dataset.mode === selected));
-    if (selected === 'saved') renderSavedList();
   }
 
   function installRouteObserver() {
@@ -327,11 +258,10 @@
         rawPosts = await fetchSinglePost(profile, context.rkey);
         logLine(`Fetched post ${context.rkey}.`);
       } else {
-        const feed = await fetchAuthorFeed(context.actor);
+        const feed = await fetchAuthorFeed(context.actor, profile.did || '');
         rawPosts = feed.posts;
-        state.follows = await fetchFollows(context.actor);
-        renderFollowsPanel();
-        logLine(`Fetched ${rawPosts.length} post${rawPosts.length === 1 ? '' : 's'} and ${state.follows.length} followed account${state.follows.length === 1 ? '' : 's'}.`);
+        if (feed.skipped) logLine(`Ignored ${feed.skipped} repost/unrelated feed item${feed.skipped === 1 ? '' : 's'}.`);
+        logLine(`Fetched ${rawPosts.length} post${rawPosts.length === 1 ? '' : 's'} by @${state.handle}.`);
       }
 
       const built = buildDownloadSetFromRawPosts(rawPosts);
@@ -365,11 +295,9 @@
     state.posts = [];
     state.pages = [];
     state.files = [];
-    state.follows = [];
     state.countTextOverride = '';
     state.fileProgressOverride = '';
     state.loadedScanCacheKey = '';
-    renderFollowsPanel();
     syncUi();
   }
 
@@ -378,8 +306,9 @@
     return await requestJson(url);
   }
 
-  async function fetchAuthorFeed(actor) {
+  async function fetchAuthorFeed(actor, expectedDid) {
     const posts = [];
+    let skipped = 0;
     let cursor = '';
     let page = 0;
     while (page < MAX_API_PAGES) {
@@ -394,7 +323,13 @@
       const json = await requestJson(url.href);
       const feed = Array.isArray(json && json.feed) ? json.feed : [];
       feed.forEach(item => {
-        if (item && item.post) posts.push({ ...item.post, __bsPage: page, __bsFeedItem: item });
+        const post = item && item.post;
+        const postDid = post && post.author && post.author.did ? String(post.author.did) : '';
+        if (post && (!expectedDid || postDid === expectedDid)) {
+          posts.push({ ...post, __bsPage: page });
+        } else if (post) {
+          skipped++;
+        }
       });
       cursor = json && json.cursor ? String(json.cursor) : '';
       setProgress(Math.min(72, page * 6));
@@ -402,7 +337,7 @@
       await delay(API_DELAY_MS);
     }
     if (page >= MAX_API_PAGES) logLine(`Stopped at ${MAX_API_PAGES} API pages.`);
-    return { posts };
+    return { posts, skipped };
   }
 
   async function fetchSinglePost(profile, rkey) {
@@ -413,25 +348,6 @@
     url.searchParams.append('uris', uri);
     const json = await requestJson(url.href);
     return Array.isArray(json && json.posts) ? json.posts.map(post => ({ ...post, __bsPage: 1 })) : [];
-  }
-
-  async function fetchFollows(actor) {
-    const follows = [];
-    let cursor = '';
-    let page = 0;
-    while (page < MAX_API_PAGES) {
-      page++;
-      const url = xrpcUrl('app.bsky.graph.getFollows', { actor, limit: LISTING_LIMIT });
-      if (cursor) url.searchParams.set('cursor', cursor);
-      const json = await requestJson(url.href);
-      const rows = Array.isArray(json && json.follows) ? json.follows : [];
-      rows.forEach(row => follows.push(normalizeFollow(row)));
-      cursor = json && json.cursor ? String(json.cursor) : '';
-      setProgress(Math.min(90, 72 + page * 3));
-      if (!cursor || !rows.length) break;
-      await delay(API_DELAY_MS);
-    }
-    return follows.filter(f => f.did || f.handle);
   }
 
   function normalizePost(raw) {
@@ -985,215 +901,13 @@
     });
   }
 
-  function trackCurrentProfile() {
-    const context = scanContextFromLocation();
-    if (!context) {
-      logLine('Open a Bluesky profile or post to track it.');
-      return;
-    }
-    const actor = state.handle || context.actor;
-    const saved = loadSavedAccounts();
-    const id = normalizeActor(state.did || actor);
-    if (!id) return;
-    saved[id] = {
-      did: state.did || '',
-      handle: normalizeActor(actor),
-      displayName: state.displayName || '',
-      url: `https://bsky.app/profile/${encodeURIComponent(actor)}`,
-      savedAt: Date.now()
-    };
-    saveSavedAccounts(saved);
-    renderSavedList();
-    syncUi();
-    logLine(`Tracking @${actor}.`);
-  }
-
-  function removeCurrentProfile() {
-    const context = scanContextFromLocation();
-    if (!context) return;
-    const saved = loadSavedAccounts();
-    const key = savedAccountKeyForContext(context);
-    if (!key || !saved[key]) {
-      logLine('This profile is not tracked.');
-      return;
-    }
-    const label = saved[key].handle || context.actor;
-    delete saved[key];
-    saveSavedAccounts(saved);
-    renderSavedList();
-    syncUi();
-    logLine(`Removed @${label} from tracked accounts.`);
-  }
-
-  function trackScannedFollows() {
-    if (!state.follows.length) {
-      logLine('No follows were scanned.');
-      return;
-    }
-    const saved = loadSavedAccounts();
-    let added = 0;
-    state.follows.forEach(follow => {
-      const key = normalizeActor(follow.did || follow.handle);
-      if (!key || savedAccountExistingKey(saved, follow)) return;
-      saved[key] = { ...follow, savedAt: Date.now(), url: `https://bsky.app/profile/${encodeURIComponent(follow.handle || follow.did)}` };
-      added++;
-    });
-    saveSavedAccounts(saved);
-    renderSavedList();
-    syncUi();
-    logLine(added ? `Tracked ${added} followed account${added === 1 ? '' : 's'}.` : 'All scanned follows were already tracked.');
-  }
-
-  function renderFollowsPanel() {
-    if (!ui.follows) return;
-    const follows = state.follows || [];
-    if (!follows.length) {
-      ui.follows.hidden = true;
-      ui.followList.innerHTML = '';
-      return;
-    }
-    const saved = loadSavedAccounts();
-    ui.followCount.textContent = String(follows.length);
-    ui.followList.innerHTML = '';
-    follows.slice(0, 160).forEach(follow => {
-      ui.followList.appendChild(accountRow(follow, saved, true));
-    });
-    ui.follows.hidden = false;
-  }
-
-  function renderSavedList() {
-    if (!ui.savedList) return;
-    const query = String(ui.savedSearch && ui.savedSearch.value || '').trim().toLowerCase();
-    const saved = loadSavedAccounts();
-    const rows = Object.values(saved)
-      .filter(row => !query || [row.handle, row.displayName, row.did].join(' ').toLowerCase().includes(query))
-      .sort((a, b) => String(a.handle || a.did).localeCompare(String(b.handle || b.did)));
-    ui.savedCount.hidden = rows.length === 0;
-    ui.savedCount.textContent = rows.length;
-    ui.savedList.innerHTML = '';
-    if (!rows.length) {
-      const empty = document.createElement('div');
-      empty.className = 'bs-rowMeta';
-      empty.textContent = query ? 'No tracked accounts match.' : 'No tracked accounts yet.';
-      ui.savedList.appendChild(empty);
-      return;
-    }
-    rows.forEach(row => ui.savedList.appendChild(accountRow(row, saved, false)));
-  }
-
-  function accountRow(account, saved, fromFollows) {
-    const row = document.createElement('div');
-    row.className = 'bs-row';
-    const text = document.createElement('div');
-    text.className = 'bs-rowText';
-    const name = document.createElement('div');
-    name.className = 'bs-rowName';
-    name.textContent = account.handle ? `@${account.handle}` : account.did || 'unknown';
-    const meta = document.createElement('div');
-    meta.className = 'bs-rowMeta';
-    meta.textContent = account.displayName || account.description || account.did || '';
-    text.appendChild(name);
-    text.appendChild(meta);
-
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.textContent = 'Open';
-    open.title = `Open ${account.handle || account.did}`;
-    open.addEventListener('click', () => {
-      location.href = `https://bsky.app/profile/${encodeURIComponent(account.handle || account.did)}`;
-    });
-
-    const action = document.createElement('button');
-    action.type = 'button';
-    const key = normalizeActor(account.did || account.handle);
-    const isSaved = !!savedAccountExistingKey(saved, account);
-    if (fromFollows) {
-      action.textContent = isSaved ? 'On' : '+';
-      action.disabled = isSaved;
-      action.title = isSaved ? 'Already tracked' : 'Track account';
-      action.addEventListener('click', () => {
-        const current = loadSavedAccounts();
-        if (key) {
-          current[key] = { ...account, savedAt: Date.now(), url: `https://bsky.app/profile/${encodeURIComponent(account.handle || account.did)}` };
-          saveSavedAccounts(current);
-          renderFollowsPanel();
-          renderSavedList();
-          syncUi();
-        }
-      });
-    } else {
-      action.textContent = 'X';
-      action.title = 'Remove tracked account';
-      action.addEventListener('click', () => {
-        const current = loadSavedAccounts();
-        if (key) delete current[key];
-        saveSavedAccounts(current);
-        renderSavedList();
-        syncUi();
-      });
-    }
-
-    row.appendChild(text);
-    row.appendChild(open);
-    row.appendChild(action);
-    return row;
-  }
-
-  function loadSavedAccounts() {
-    try {
-      const raw = typeof GM_getValue === 'function' ? GM_getValue(SAVED_KEY, '{}') : localStorage.getItem(SAVED_KEY);
-      const parsed = JSON.parse(raw || '{}');
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-
-  function saveSavedAccounts(value) {
-    const raw = JSON.stringify(value || {});
-    try {
-      if (typeof GM_setValue === 'function') GM_setValue(SAVED_KEY, raw);
-      else localStorage.setItem(SAVED_KEY, raw);
-    } catch {}
-  }
-
-  function savedAccountKeyForContext(context) {
-    const saved = loadSavedAccounts();
-    const did = normalizeActor(state.did || '');
-    if (did && saved[did]) return did;
-    const actor = normalizeActor((state.handle || context.actor || ''));
-    if (!actor) return '';
-    const direct = Object.keys(saved).find(key => normalizeActor(key) === actor || normalizeActor(saved[key] && saved[key].handle) === actor);
-    return direct || '';
-  }
-
-  function savedAccountExistingKey(saved, account) {
-    const did = normalizeActor(account && account.did);
-    const handle = normalizeActor(account && account.handle);
-    return Object.keys(saved || {}).find(key => {
-      const row = saved[key] || {};
-      return (did && (normalizeActor(key) === did || normalizeActor(row.did) === did)) ||
-        (handle && (normalizeActor(key) === handle || normalizeActor(row.handle) === handle));
-    }) || '';
-  }
-
-  function isCurrentProfileTracked() {
-    const context = scanContextFromLocation();
-    if (!context) return false;
-    return !!savedAccountKeyForContext(context);
-  }
-
   function syncUi() {
     const context = scanContextFromLocation();
     const hasFiles = state.files.length > 0;
     const hasPosts = state.posts.length > 0;
     const hasPages = state.pages.length > 0;
     const isPost = state.scanType === 'post';
-    const tracked = isCurrentProfileTracked();
     ui.scan.disabled = state.busy || !context;
-    ui.track.disabled = state.busy || !context || tracked;
-    ui.track.textContent = tracked ? 'Tracked' : 'Track Profile';
-    ui.removeTrack.disabled = state.busy || !tracked;
     ui.post.disabled = state.busy || !hasPosts || !isPost;
     ui.posts.disabled = state.busy || !hasPosts;
     ui.pages.disabled = state.busy || !hasPages || isPost;
@@ -1280,15 +994,6 @@
 
   function normalizeActor(actor) {
     return String(actor || '').trim().replace(/^@/, '').toLowerCase();
-  }
-
-  function normalizeFollow(row) {
-    return {
-      did: row && row.did ? String(row.did) : '',
-      handle: normalizeActor(row && row.handle),
-      displayName: row && row.displayName ? String(row.displayName) : '',
-      description: row && row.description ? String(row.description) : ''
-    };
   }
 
   function postIdFromUri(uri) {
@@ -1552,8 +1257,7 @@
       userFolder: state.userFolder,
       posts: state.posts,
       pages: state.pages,
-      files: state.files,
-      follows: state.follows
+      files: state.files
     };
   }
 
@@ -1568,11 +1272,9 @@
     state.posts = safeArray(payload.posts);
     state.pages = safeArray(payload.pages);
     state.files = safeArray(payload.files);
-    state.follows = safeArray(payload.follows);
     state.loadedScanCacheKey = cacheKey;
     state.countTextOverride = '';
     state.fileProgressOverride = '';
-    renderFollowsPanel();
     setProgress(100);
     syncUi();
   }
