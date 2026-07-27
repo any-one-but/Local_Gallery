@@ -8677,105 +8677,6 @@ const GRID_CROPPED_COLS_BY_SCALE = Object.freeze({
   row4: 4,
   row3: 3,
 });
-const UNEXPOSED_FEATURES = Object.freeze({
-  tags: true,
-  albums: true,
-  galleries: true,
-  favorites: true,
-  score: true,
-  hidden: true,
-  history: true,
-  journal: true,
-  storage: true,
-  trash: true,
-  indexing: true,
-  itemOverrides: true,
-});
-
-function advancedModeEnabled(opt = null) {
-  let src = opt;
-  if (!src) {
-    try {
-      src = WS.meta && WS.meta.options ? WS.meta.options : null;
-    } catch {
-      src = null;
-    }
-  }
-  return !!(src && src.advancedMode === true);
-}
-
-function simpleModeEnabled(opt = null) {
-  return !advancedModeEnabled(opt);
-}
-
-function bulkSelectionEnabled() {
-  return advancedModeEnabled();
-}
-
-function randomSortInterfaceEnabled() {
-  return advancedModeEnabled();
-}
-
-function sortControlsEnabled() {
-  return advancedModeEnabled();
-}
-
-function thumbnailSettingsInterfaceEnabled() {
-  return advancedModeEnabled();
-}
-
-function featureExposed(feature) {
-  if (advancedModeEnabled()) return true;
-  return !(UNEXPOSED_FEATURES && UNEXPOSED_FEATURES[feature]);
-}
-
-function collectionInterfaceEnabled() {
-  return tagInterfaceEnabled();
-}
-
-function tagInterfaceEnabled() {
-  return featureExposed("tags");
-}
-
-function albumInterfaceEnabled() {
-  return featureExposed("albums");
-}
-
-function galleryInterfaceEnabled() {
-  return featureExposed("galleries");
-}
-
-function favoritesInterfaceEnabled() {
-  return featureExposed("favorites");
-}
-
-function storageInterfaceEnabled() {
-  return featureExposed("storage");
-}
-
-function trashInterfaceEnabled() {
-  return featureExposed("trash");
-}
-
-function hiddenInterfaceEnabled() {
-  return featureExposed("hidden");
-}
-
-function indexInterfaceEnabled() {
-  return featureExposed("indexing");
-}
-
-function historyInterfaceEnabled() {
-  return featureExposed("history");
-}
-
-function journalInterfaceEnabled() {
-  return featureExposed("journal") && historyInterfaceEnabled();
-}
-
-function itemOverridesInterfaceEnabled() {
-  return featureExposed("itemOverrides");
-}
 
 let LAST_LOADED_FILE_LIST = [];
 
@@ -9519,15 +9420,7 @@ const FULL_QUALITY_THUMBNAILS_DEFAULT = true;
 
 // Which thumbnail pipeline the grid uses.
 function fullResThumbnailsEnabled(opt = null) {
-  if (simpleModeEnabled(opt)) return false;
-  let src = opt;
-  if (!src) {
-    try {
-      src = WS.meta && WS.meta.options ? WS.meta.options : null;
-    } catch {
-      src = null;
-    }
-  }
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return typeof src?.fullResThumbnails === "boolean"
     ? src.fullResThumbnails
     : FULL_QUALITY_THUMBNAILS_DEFAULT;
@@ -9587,7 +9480,6 @@ function applyThumbnailPresetForKinds(kinds, preset) {
 }
 
 function detectThumbnailPresetForKinds(kinds, options = null) {
-  if (!thumbnailSettingsInterfaceEnabled()) return "clean";
   const list = Array.isArray(kinds) ? kinds : [kinds];
   const opt =
     options || (WS.meta && WS.meta.options ? WS.meta.options : {}) || {};
@@ -9704,32 +9596,6 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
   return out;
 }
 
-function forceTitleOnlyThumbnailVisibilityOptions(out) {
-  if (!out || typeof out !== "object") return out;
-  const specs = thumbnailVisibilityKindSpecs();
-  const badgeFields = [
-    "itemCount",
-    "folderCount",
-    "fileCount",
-    "size",
-    "score",
-    "itemType",
-  ];
-  specs.forEach((spec) => {
-    const extraKey = thumbnailVisibilityExtraInfoOptionKey(spec.kind);
-    if (extraKey) out[extraKey] = false;
-    const titleKey = thumbnailVisibilityPreviewOptionKey(spec.kind, "title");
-    if (titleKey) out[titleKey] = true;
-    const menuKey = thumbnailVisibilityPreviewOptionKey(spec.kind, "menuButton");
-    if (menuKey) out[menuKey] = true;
-    badgeFields.forEach((field) => {
-      const key = thumbnailVisibilityPreviewOptionKey(spec.kind, field);
-      if (key) out[key] = false;
-    });
-  });
-  return out;
-}
-
 const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Library & workspace", id: "workspace-load", label: "Folder loading / read-only state", hint: "Folder picker, load-folder, and read-only status messages.", optionKey: "notifyWorkspaceLoad" }),
   Object.freeze({ section: "Library & workspace", id: "workspace-refresh", label: "Workspace refresh", hint: "Refresh start, completion, failure, and unavailable messages.", optionKey: "notifyWorkspaceRefresh" }),
@@ -9824,7 +9690,6 @@ function defaultOptions() {
     colorScheme: "retro",
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
-    advancedMode: false,
     thumbnailSize: "medium",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
@@ -9882,7 +9747,6 @@ function defaultOptions() {
 function normalizeOptions(o) {
   const d = defaultOptions();
   const src = o && typeof o === "object" ? o : {};
-  const advancedMode = src.advancedMode === true;
   const activeAppearancePresetId =
     String(src.activeAppearancePresetId || "").trim() || null;
   const normalizeOptionalClampedNumber = (value, min, max) => {
@@ -10065,40 +9929,34 @@ function normalizeOptions(o) {
     src.videoThumbSize,
     d.videoThumbSize,
   );
-  const thumbnailScaleCropped = advancedMode
-    ? normalizeThumbnailScaleValue(src.thumbnailScaleCropped, d.thumbnailScaleCropped)
-    : "row10";
-  const thumbnailScaleAspect = advancedMode
-    ? normalizeThumbnailScaleValue(src.thumbnailScaleAspect, d.thumbnailScaleAspect)
-    : "row10";
+  const thumbnailScaleCropped = normalizeThumbnailScaleValue(
+    src.thumbnailScaleCropped,
+    d.thumbnailScaleCropped,
+  );
+  const thumbnailScaleAspect = normalizeThumbnailScaleValue(
+    src.thumbnailScaleAspect,
+    d.thumbnailScaleAspect,
+  );
   const legacyThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
     src.thumbnailTitleSize,
     "small",
   );
-  const previewFileThumbnailTitleSize = advancedMode
-    ? normalizeThumbnailTitleSizeValue(
-        src.previewFileThumbnailTitleSize,
-        legacyThumbnailTitleSize,
-      )
-    : "small";
-  const previewRootFolderThumbnailTitleSize = advancedMode
-    ? normalizeThumbnailTitleSizeValue(
-        src.previewRootFolderThumbnailTitleSize,
-        legacyThumbnailTitleSize,
-      )
-    : "small";
-  const previewSubfolderThumbnailTitleSize = advancedMode
-    ? normalizeThumbnailTitleSizeValue(
-        src.previewSubfolderThumbnailTitleSize,
-        legacyThumbnailTitleSize,
-      )
-    : "small";
-  const previewTagThumbnailTitleSize = advancedMode
-    ? normalizeThumbnailTitleSizeValue(
-        src.previewTagThumbnailTitleSize,
-        legacyThumbnailTitleSize,
-      )
-    : "small";
+  const previewFileThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewFileThumbnailTitleSize,
+    legacyThumbnailTitleSize,
+  );
+  const previewRootFolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewRootFolderThumbnailTitleSize,
+    legacyThumbnailTitleSize,
+  );
+  const previewSubfolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewSubfolderThumbnailTitleSize,
+    legacyThumbnailTitleSize,
+  );
+  const previewTagThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
+    src.previewTagThumbnailTitleSize,
+    legacyThumbnailTitleSize,
+  );
   const legacyShowFolderThumbnailTitles = false;
   const __legacyShowFolderThumbnailTitlesDisabled =
     typeof src.showFolderThumbnailTitles === "boolean"
@@ -10201,8 +10059,6 @@ function normalizeOptions(o) {
       },
     },
   );
-  if (!advancedMode)
-    forceTitleOnlyThumbnailVisibilityOptions(normalizedThumbnailVisibility);
   const collapsedSections = (() => {
     const raw =
       src && typeof src.collapsedSections === "object" && src.collapsedSections
@@ -10238,14 +10094,12 @@ function normalizeOptions(o) {
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
       return d.menuPaneWidthPx;
     })(),
-    advancedMode,
-    thumbnailSize: advancedMode
-      ? src.thumbnailSize === "small" ||
-        src.thumbnailSize === "medium" ||
-        src.thumbnailSize === "large"
+    thumbnailSize:
+      src.thumbnailSize === "small" ||
+      src.thumbnailSize === "medium" ||
+      src.thumbnailSize === "large"
         ? src.thumbnailSize
-        : d.thumbnailSize
-      : "small",
+        : d.thumbnailSize,
     includeHiddenItemsInStats:
       typeof src.includeHiddenItemsInStats === "boolean"
         ? src.includeHiddenItemsInStats
@@ -10272,21 +10126,16 @@ function normalizeOptions(o) {
       typeof src.storeVideoFiles === "boolean"
         ? src.storeVideoFiles
         : d.storeVideoFiles,
-    muteMessages: advancedMode
-      ? typeof src.muteMessages === "boolean"
+    muteMessages:
+      typeof src.muteMessages === "boolean"
         ? src.muteMessages
-        : d.muteMessages
-      : false,
-    fullScreenMedia: advancedMode
-      ? typeof src.fullScreenMedia === "boolean"
+        : d.muteMessages,
+    fullScreenMedia:
+      typeof src.fullScreenMedia === "boolean"
         ? src.fullScreenMedia
-        : d.fullScreenMedia
-      : true,
-    readingMode: advancedMode
-      ? typeof src.readingMode === "boolean"
-        ? src.readingMode
-        : d.readingMode
-      : false,
+        : d.fullScreenMedia,
+    readingMode:
+      typeof src.readingMode === "boolean" ? src.readingMode : d.readingMode,
     quickNavigation:
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
@@ -10325,11 +10174,10 @@ function normalizeOptions(o) {
       typeof src.showPositionNumbersInNames === "boolean"
         ? src.showPositionNumbersInNames
         : d.showPositionNumbersInNames,
-    showTagFolderSpacerRow: advancedMode
-      ? typeof src.showTagFolderSpacerRow === "boolean"
+    showTagFolderSpacerRow:
+      typeof src.showTagFolderSpacerRow === "boolean"
         ? src.showTagFolderSpacerRow
-        : d.showTagFolderSpacerRow
-      : true,
+        : d.showTagFolderSpacerRow,
     hideFileExtensionsInFileNames:
       typeof src.hideFileExtensionsInFileNames === "boolean"
         ? src.hideFileExtensionsInFileNames
@@ -10358,11 +10206,10 @@ function normalizeOptions(o) {
       src.thumbTitleStripOpacity,
       d.thumbTitleStripOpacity,
     ),
-    fullResThumbnails: advancedMode
-      ? typeof src.fullResThumbnails === "boolean"
+    fullResThumbnails:
+      typeof src.fullResThumbnails === "boolean"
         ? src.fullResThumbnails
-        : d.fullResThumbnails
-      : false,
+        : d.fullResThumbnails,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,
@@ -14862,7 +14709,6 @@ function displayPositionNumbersInNamesEnabled() {
 }
 
 function showTagFolderSpacerRowEnabled() {
-  if (simpleModeEnabled()) return true;
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.showTagFolderSpacerRow);
 }
@@ -15210,9 +15056,7 @@ function thumbnailMenuButtonLabelHtml(
     ? formatThumbnailMenuButtonScoreValue(scoreValue)
     : "";
   const useFavoriteIcon =
-    favoritesInterfaceEnabled() &&
-    isFavorite &&
-    favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_ICON;
+    isFavorite && favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_ICON;
   if (!scoreText) return useFavoriteIcon ? favoriteMenuButtonLabel(opt) : "⋯";
   return `
     <span class="dirMenuBtnScoreLabel${isFavorite ? " dirMenuBtnScoreLabelFavorite" : ""}">
@@ -15240,15 +15084,14 @@ function thumbnailMenuButtonClassName(
   );
   const showScore = thumbnailMenuButtonShowsScore(scoreValue, opt);
   if (showScore) classes.push("dirMenuBtnScoreVisible");
-  const showFavorite = favoritesInterfaceEnabled() && isFavorite;
-  if (showFavorite && !showScore) {
+  if (isFavorite && !showScore) {
     classes.push(
       favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_TINT
         ? "dirMenuBtnFavoriteTint"
         : "dirMenuBtnFavorite",
     );
   }
-  if (showFavorite && showScore) {
+  if (isFavorite && showScore) {
     classes.push(
       favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_TINT
         ? "dirMenuBtnScoreFavoriteTint"
@@ -15268,14 +15111,6 @@ function configureThumbnailMenuButton(
   favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
 ) {
   if (!btn) return;
-  if (!thumbnailMenuButtonBadgesEnabled()) {
-    btn.hidden = true;
-    btn.style.display = "none";
-    btn.tabIndex = -1;
-    btn.setAttribute("aria-hidden", "true");
-    btn.title = "";
-    return;
-  }
   btn.className = thumbnailMenuButtonClassName(
     extraClasses,
     scoreValue,
@@ -15290,6 +15125,11 @@ function configureThumbnailMenuButton(
     favoriteDisplay,
   );
   btn.title = String(title || "");
+  // With the item menu folded into the app menu there is nothing for this
+  // button to open, so it stays as a badge. It is deliberately NOT `disabled`:
+  // that would pull in the sheet's disabled-button dimming and render it
+  // translucent. pointer-events:none already makes it unclickable, and
+  // tabindex/aria keep it out of the tab order and the a11y tree.
   if (separateItemMenuDisabled()) {
     btn.classList.add("thumbMenuBtnInert");
     btn.tabIndex = -1;
@@ -15307,7 +15147,6 @@ function buildThumbnailMenuButtonHtml(
   opt = null,
   favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
 ) {
-  if (!thumbnailMenuButtonBadgesEnabled()) return "";
   return `<button class="${escapeHtml(
     thumbnailMenuButtonClassName(
       extraClasses,
@@ -15551,15 +15390,12 @@ function previewThumbnailTitleSizeOptionKey(kind) {
 }
 
 function getPreviewThumbnailTitleSizeForKind(kind, opt = null) {
-  if (simpleModeEnabled(opt)) return "small";
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   const key = previewThumbnailTitleSizeOptionKey(kind);
   return normalizeThumbnailTitleSizeValue(key && src ? src[key] : null, "small");
 }
 
-function getThumbnailScaleForStyle(style, opt = null) {
-  return "row10";
-}
+function getThumbnailScaleForStyle(style, opt = null) { }
 
 function getCurrentColorFilterCssForTarget(target) {
   const oc = resolveMediaOverlayConfigForTarget(target);
@@ -15568,13 +15404,9 @@ function getCurrentColorFilterCssForTarget(target) {
   return cfs.length ? cfs.join(" ") : "";
 }
 
-function getActiveThumbnailScale(opt = null) {
-  return "row10";
-}
+function getActiveThumbnailScale(opt = null) { }
 
-function getActiveThumbnailScaleMultiplier(opt = null) {
-  return 1;
-}
+function getActiveThumbnailScaleMultiplier(opt = null) { }
 
 function applyThumbnailTitleSizeFromOptions() { }
 
@@ -15683,8 +15515,7 @@ function applyDisplaySizesFromOptions() {
   // every grid mode (uniform, folder, and natural-aspect "rubber-band" rows)
   // shifts by the same factor while keeping its flexible wrapping behavior.
   const scaleMult = getActiveThumbnailScaleMultiplier(opt);
-  if (simpleModeEnabled(opt)) root.setAttribute("data-media-size", "small");
-  else root.removeAttribute("data-media-size");
+  root.removeAttribute("data-media-size");
   root.setAttribute("data-folder-size", "small");
   root.style.setProperty("--thumb-scale-media", String(scaleMult));
   root.style.setProperty("--thumb-scale-folder", String(scaleMult));
@@ -16251,11 +16082,7 @@ const KEYBIND_SECTIONS = [
 // option values and binding assignments are deliberately left untouched.
 // Favorite selection and the two random jumps are intentionally absent -- they
 // are worth a direct key even though the menu also offers them.
-const APP_ITEM_MENU_ACTIONS_ONLY_IN_SIMPLE_MODE = true;
-
-function appItemMenuActionsOnlyEnabled() {
-  return APP_ITEM_MENU_ACTIONS_ONLY_IN_SIMPLE_MODE;
-}
+const APP_ITEM_MENU_ACTIONS_ONLY = true;
 
 // The item menu is no longer a surface of its own: it lives inside the app menu
 // as the "Selected Item(s)" section, so there is a single bound key for
@@ -16264,11 +16091,7 @@ function appItemMenuActionsOnlyEnabled() {
 const SEPARATE_ITEM_MENU_ENABLED = false;
 
 function separateItemMenuDisabled() {
-  return simpleModeEnabled() || !SEPARATE_ITEM_MENU_ENABLED;
-}
-
-function thumbnailMenuButtonBadgesEnabled() {
-  return advancedModeEnabled();
+  return !SEPARATE_ITEM_MENU_ENABLED;
 }
 
 const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
@@ -16327,45 +16150,9 @@ const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_animatedMediaFilters",
 ]);
 
-const UNEXPOSED_KEYBIND_ACTION_IDS = new Set([
-  "cycleFolderSort",
-  "cycleWeightRandomJumpsByScore",
-  "cycleThumbnailSize",
-  "cycleThumbPresetFile",
-  "cycleThumbPresetFolder",
-  "cycleThumbPresetTag",
-  "toggleRandomFileSort",
-  "toggleRandomFolderSort",
-  "toggleShowHiddenFolder",
-  "toggleShowTrashFolder",
-  "toggleShowStorageFolder",
-  "toggleShowUntaggedFolder",
-  "toggleMuteMessages",
-  "toggleFullScreenMedia",
-  "toggleReadingMode",
-  "toggleFloatTags",
-  "tagSelection",
-  "hiddenSelection",
-  "albumSelection",
-  "gallerySelection",
-  "favoriteSelection",
-  "toggleSelectionInBulk",
-  "selectRangeInBulk",
-  "cancelMultiSelection",
-  "scoreUpSelection",
-  "scoreDownSelection",
-]);
-
-function keybindActionUnexposed(actionId) {
-  if (advancedModeEnabled()) return false;
-  const id = String(actionId || "");
-  return UNEXPOSED_KEYBIND_ACTION_IDS.has(id);
-}
-
 function appItemMenuActionKeybindIsDisabled(actionId) {
+  if (!APP_ITEM_MENU_ACTIONS_ONLY) return false;
   const id = String(actionId || "");
-  if (keybindActionUnexposed(id)) return true;
-  if (!appItemMenuActionsOnlyEnabled()) return false;
   return (
     APP_ITEM_MENU_ACTION_KEYBIND_IDS.has(id) ||
     id.startsWith("toggleAppearancePreset:")
@@ -16373,7 +16160,7 @@ function appItemMenuActionKeybindIsDisabled(actionId) {
 }
 
 function applyAppItemMenuOnlySettingsVisibility(panel) {
-  if (!appItemMenuActionsOnlyEnabled() || !panel) return;
+  if (!APP_ITEM_MENU_ACTIONS_ONLY || !panel) return;
   const hideRegion = (region) => {
     if (!region) return;
     region.hidden = true;
@@ -18531,7 +18318,6 @@ function clamp01(x) {
 }
 
 function muteMessagesEnabled() {
-  if (simpleModeEnabled()) return false;
   const opt =
     WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
   return !!opt.muteMessages;
@@ -19216,9 +19002,7 @@ function getCurrentTitleInfoText() {
   );
   if (isViewingTagFolder() && WS.view.tagFolderActiveMode === "storage") {
     const folderCount = nodes.length;
-    return scoreInterfaceEnabled()
-      ? `${folderCount} ${folderCount === 1 ? "Folder" : "Folders"} • ${scoreSegment}`
-      : `${folderCount} ${folderCount === 1 ? "Folder" : "Folders"}`;
+    return `${folderCount} ${folderCount === 1 ? "Folder" : "Folders"} • ${scoreSegment}`;
   }
   const sizeMemo = new Map();
   const folderCountMode =
@@ -19236,12 +19020,7 @@ function getCurrentTitleInfoText() {
     fileCount += getRecursiveFileCountForNode(node);
     sizeBytes += getDirRecursiveSizeBytesForNode(node, sizeMemo);
   }
-  const parts = [
-    formatFolderFileCountSegment(folderCount, fileCount),
-    formatBytes(sizeBytes),
-  ];
-  if (scoreInterfaceEnabled()) parts.push(scoreSegment);
-  return parts.join(" • ");
+  return `${formatFolderFileCountSegment(folderCount, fileCount)} • ${formatBytes(sizeBytes)} • ${scoreSegment}`;
 }
 
 function getCurrentTitleText() {
@@ -21609,10 +21388,10 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, enter its media immediately.", "opt_quickNavigation", quickNavigationEnabled())}
 ${makeSelectRow("Weight random jumps by score", "Random set and file jumps favor higher-scored folders (files use their parent folder's score). Light: score 1 is twice as likely as score 0, score 22 is 23× as likely; negative scores are proportionally less likely. Medium and Heavy give the score double and triple that pull.", "opt_weightRandomJumpsByScore", weightRandomJumpsByScoreMode(), weightRandomJumpsByScoreModes)}
-${advancedModeEnabled(opt) ? makeSelectRow("Thumbnail size", "How large media thumbnails are in the preview grid.", "opt_thumbnailSize", String(opt.thumbnailSize || "medium"), thumbnailSizeModes) : ""}
-${advancedModeEnabled(opt) ? makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled()) : ""}
-${advancedModeEnabled(opt) ? makeCheckRow("Full Screen Media", "Show opened media using the full app frame instead of keeping it inside the preview pane.", "opt_fullScreenMedia", fullScreenMediaEnabled()) : ""}
-${advancedModeEnabled(opt) ? makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow) : ""}
+${makeSelectRow("Thumbnail size", "How large media thumbnails are in the preview grid.", "opt_thumbnailSize", String(opt.thumbnailSize || "medium"), thumbnailSizeModes)}
+${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
+${makeCheckRow("Full Screen Media", "Show opened media using the full app frame instead of keeping it inside the preview pane.", "opt_fullScreenMedia", fullScreenMediaEnabled())}
+${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
           `,
     },
     thumbnails: {
@@ -21622,8 +21401,8 @@ ${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.",
 ${makeCheckRow("Large file title text", "Show file titles at the larger title size.", "opt_fileThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("file", opt) === "large")}
 ${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
 ${makeCheckRow("Large folder title text", "Show folder titles at the larger title size.", "opt_folderThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("rootFolder", opt) === "large" && getPreviewThumbnailTitleSizeForKind("subfolder", opt) === "large")}
-${tagInterfaceEnabled() ? makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS) : ""}
-${tagInterfaceEnabled() ? makeCheckRow("Large tag title text", "Show tag titles at the larger title size.", "opt_tagThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("tag", opt) === "large") : ""}
+${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
+${makeCheckRow("Large tag title text", "Show tag titles at the larger title size.", "opt_tagThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("tag", opt) === "large")}
 ${makeCheckRow("Full resolution", "Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
@@ -21647,10 +21426,10 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   const requestedSection = sections[sectionTab] ? String(sectionTab) : "";
   const settingsSectionOrder = [
     "general",
-    advancedModeEnabled(opt) ? "thumbnails" : "",
+    "thumbnails",
     "playback",
     "reveal",
-  ].filter(Boolean);
+  ];
   const settingsSectionsHtml = settingsSectionOrder
     .map((id) => {
       const section = sections[id];
@@ -22897,7 +22676,6 @@ function finalizeBulkSelectionAction() {
 }
 
 function hasBulkSelection() {
-  if (!bulkSelectionEnabled()) return false;
   return !!(
     WS.view &&
     WS.view.bulkSelectMode &&
@@ -24010,7 +23788,6 @@ function pathIsFavoriteFolder(path) {
 }
 
 function metaHasLegacyHidden(path) {
-  if (!hiddenInterfaceEnabled()) return false;
   const tags = metaGetTags(path);
   return tags.includes(HIDDEN_TAG);
 }
@@ -24040,7 +23817,6 @@ function hiddenTagKeyForGallery(galleryName) {
 }
 
 function hiddenContentVisibleInCurrentView() {
-  if (!hiddenInterfaceEnabled()) return false;
   return !!(
     WS.view.hiddenMode ||
     showHiddenFolderEnabled() ||
@@ -24049,7 +23825,6 @@ function hiddenContentVisibleInCurrentView() {
 }
 
 function tagIsEffectivelyHidden(tagName, scopePath = null) {
-  if (!hiddenInterfaceEnabled()) return false;
   const tag = normalizeTag(tagName);
   const scope = normalizeTagAlbumScopePath(scopePath);
   if (!tag) return false;
@@ -24059,7 +23834,6 @@ function tagIsEffectivelyHidden(tagName, scopePath = null) {
 }
 
 function albumIsEffectivelyHidden(albumName, scopePath = null) {
-  if (!hiddenInterfaceEnabled()) return false;
   const album = normalizeTagAlbumName(albumName);
   const scope = normalizeTagAlbumScopePath(scopePath);
   if (!album) return false;
@@ -24070,7 +23844,6 @@ function albumIsEffectivelyHidden(albumName, scopePath = null) {
 }
 
 function galleryIsEffectivelyHidden(galleryName) {
-  if (!hiddenInterfaceEnabled()) return false;
   const gallery = normalizeGalleryName(galleryName);
   if (!gallery) return false;
   if (metaHasHiddenTagByKey(hiddenTagKeyForGallery(gallery))) return true;
@@ -24114,7 +23887,6 @@ function hiddenTagKeyForEntry(entry) {
 }
 
 function metaHasHidden(path) {
-  if (!hiddenInterfaceEnabled()) return false;
   const normalizedPath = normalizeDirPathValue(path);
   if (!normalizedPath) return metaHasLegacyHidden(normalizedPath);
   if (metaHasLegacyHidden(normalizedPath)) return true;
@@ -24257,7 +24029,6 @@ function dirUiLabel(node) {
 }
 
 function metaGetFolderAppearancePresetId(path) {
-  if (!itemOverridesInterfaceEnabled()) return "";
   const p = normalizeDirPathValue(path);
   if (!WS.meta || !WS.meta.dirAppearancePresetIds) return "";
   const raw = WS.meta.dirAppearancePresetIds.has(p)
@@ -24310,7 +24081,6 @@ function collectLegacyProcessingDisabledPathsFromLog(log) {
 }
 
 function nearestFolderAppearancePresetIdForPath(path) {
-  if (!itemOverridesInterfaceEnabled()) return "";
   if (!WS.meta || !WS.meta.dirAppearancePresetIds) return "";
   const normalized = normalizeDirPathValue(path);
   const node = WS.dirByPath && WS.dirByPath.get(normalized);
@@ -24667,7 +24437,6 @@ function hiddenToggleNounForEntries(entries) {
 }
 
 function metaHasHiddenTagByKey(tagKey) {
-  if (!hiddenInterfaceEnabled()) return false;
   const key = String(tagKey || "");
   return !!(
     key &&
@@ -24678,7 +24447,6 @@ function metaHasHiddenTagByKey(tagKey) {
 }
 
 function metaSetHiddenTagByKey(tagKey, enable) {
-  if (!hiddenInterfaceEnabled()) return false;
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.hiddenTagKeys) return false;
   const next = !!enable;
@@ -24957,7 +24725,6 @@ function tagThumbnailUsesRotationByKey(tagKey) { }
 function metaSetTagThumbnailRotateByKey(tagKey) { }
 
 function metaGetTagAppearancePresetIdByKey(tagKey) {
-  if (!itemOverridesInterfaceEnabled()) return "";
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagAppearancePresetIds) return "";
   const id = normalizeAppearancePresetIdValue(
@@ -24988,7 +24755,6 @@ function metaClearTagAppearancePresetByKey(tagKey) {
 }
 
 function metaGetTagMediaFilterByKey(tagKey) {
-  if (!itemOverridesInterfaceEnabled()) return [];
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return [];
   return normalizeTagMediaFilterValue(WS.meta.tagMediaFilterByKey.get(key));
@@ -25016,7 +24782,6 @@ function metaClearTagMediaFilterByKey(tagKey) {
 }
 
 function metaGetFolderMediaFilter(path) {
-  if (!itemOverridesInterfaceEnabled()) return [];
   const p = normalizeDirPathValue(path);
   if (!WS.meta || !WS.meta.folderMediaFilterByPath) return [];
   return normalizeTagMediaFilterValue(WS.meta.folderMediaFilterByPath.get(p));
@@ -25046,7 +24811,6 @@ function metaHasFolderMediaFilter(path) {
 }
 
 function nearestFolderMediaFilterForPath(path) {
-  if (!itemOverridesInterfaceEnabled()) return [];
   if (!WS.meta || !WS.meta.folderMediaFilterByPath) return [];
   let current = normalizeDirPathValue(path);
   for (;;) {
@@ -25161,7 +24925,6 @@ function canUseBulkTagPlaceholderUi() {
 }
 
 function startBulkTagging(paths, preferPane = "") {
-  if (!tagInterfaceEnabled()) return;
   if (
     canUseBulkTagPlaceholderUi() &&
     setBulkTagPlaceholder(paths, "New tag folder", "tag", "", preferPane)
@@ -25170,7 +24933,6 @@ function startBulkTagging(paths, preferPane = "") {
 }
 
 function startBulkTagAlbuming(tags, originPath = "", preferPane = "") {
-  if (!albumInterfaceEnabled()) return;
   if (
     canUseBulkTagPlaceholderUi() &&
     setBulkTagPlaceholder(
@@ -25185,7 +24947,6 @@ function startBulkTagAlbuming(tags, originPath = "", preferPane = "") {
 }
 
 function startBulkFolderAlbuming(paths, preferPane = "") {
-  if (!albumInterfaceEnabled()) return;
   if (
     canUseBulkTagPlaceholderUi() &&
     setBulkTagPlaceholder(paths, "New album", "folderAlbum", "", preferPane)
@@ -25194,7 +24955,6 @@ function startBulkFolderAlbuming(paths, preferPane = "") {
 }
 
 function startBulkAlbumTagging(albumTargets, preferPane = "") {
-  if (!albumInterfaceEnabled()) return;
   if (
     canUseBulkTagPlaceholderUi() &&
     setBulkTagPlaceholder(albumTargets, "New tag folder", "albumTag", "", preferPane)
@@ -25203,7 +24963,6 @@ function startBulkAlbumTagging(albumTargets, preferPane = "") {
 }
 
 function startBulkGallerying(targets, preferPane = "") {
-  if (!galleryInterfaceEnabled()) return false;
   if (!canUseBulkTagPlaceholderUi()) return false;
   return setBulkTagPlaceholder(
     targets,
@@ -25215,7 +24974,6 @@ function startBulkGallerying(targets, preferPane = "") {
 }
 
 function startBulkGalleryTagging(galleries, preferPane = "") {
-  if (!galleryInterfaceEnabled()) return;
   if (
     canUseBulkTagPlaceholderUi() &&
     setBulkTagPlaceholder(galleries, "New tag folder", "galleryTag", "", preferPane)
@@ -25224,7 +24982,6 @@ function startBulkGalleryTagging(galleries, preferPane = "") {
 }
 
 function startBulkGalleryAlbuming(galleries, preferPane = "") {
-  if (!galleryInterfaceEnabled()) return;
   if (
     canUseBulkTagPlaceholderUi() &&
     setBulkTagPlaceholder(galleries, "New album", "galleryAlbum", "", preferPane)
@@ -25254,19 +25011,6 @@ function setBulkTagPlaceholder(
     rawType === "galleryAlbum"
       ? rawType
       : "tag";
-  if (type === "tag" && !tagInterfaceEnabled()) return false;
-  if (
-    (type === "album" || type === "folderAlbum" || type === "albumTag") &&
-    !albumInterfaceEnabled()
-  )
-    return false;
-  if (
-    (type === "gallery" ||
-      type === "galleryTag" ||
-      type === "galleryAlbum") &&
-    !galleryInterfaceEnabled()
-  )
-    return false;
   let unique = [];
   if (type === "album") {
     unique = normalizeTagList(items).filter((tag) => !isReservedFolderTag(tag));
@@ -26107,11 +25851,6 @@ function removeLabelMembershipFromTargets(targets, membership) {
   const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
   const item = membership && typeof membership === "object" ? membership : null;
   if (!list.length || !item) return false;
-  if (item.kind === "tag" && !tagInterfaceEnabled()) return false;
-  if (item.kind === "album" && !albumInterfaceEnabled()) return false;
-  if (item.kind === "gallery" && !galleryInterfaceEnabled()) return false;
-  if (item.kind === "favorite" && !favoritesInterfaceEnabled()) return false;
-  if (item.kind === "hidden" && !hiddenInterfaceEnabled()) return false;
   if (item.kind === "gallery") {
     return metaApplyBulkGalleryDiff(list, [item.name], []);
   }
@@ -26206,44 +25945,40 @@ function createLabelRemovalSubmenu(selectionTarget) {
   const common = commonLabelMembershipsForTargets(targets);
   if (!common) return null;
   const memberships = [];
-  if (tagInterfaceEnabled()) {
-    for (let i = 0; i < common.tags.length; i++) {
-      const name = common.tags[i];
-      memberships.push({
-        kind: "tag",
-        name,
-        label: `Removed from tag "${name}"`,
-        buttonLabel: `Remove from tag "${name}"`,
-      });
-    }
+  for (let i = 0; i < common.tags.length; i++) {
+    const name = common.tags[i];
+    memberships.push({
+      kind: "tag",
+      name,
+      label: `Removed from tag "${name}"`,
+      buttonLabel: `Remove from tag "${name}"`,
+    });
   }
-  if (albumInterfaceEnabled() && common.album) {
-      memberships.push({
-        kind: "album",
-        name: common.album,
-        label: `Removed from album "${common.album}"`,
-        buttonLabel: `Remove from album "${common.album}"`,
-      });
+  if (common.album) {
+    memberships.push({
+      kind: "album",
+      name: common.album,
+      label: `Removed from album "${common.album}"`,
+      buttonLabel: `Remove from album "${common.album}"`,
+    });
   }
-  if (galleryInterfaceEnabled()) {
-    for (let i = 0; i < common.galleries.length; i++) {
-      const name = common.galleries[i];
-      memberships.push({
-        kind: "gallery",
-        name,
-        label: `Removed from gallery "${name}"`,
-        buttonLabel: `Remove from gallery "${name}"`,
-      });
-    }
+  for (let i = 0; i < common.galleries.length; i++) {
+    const name = common.galleries[i];
+    memberships.push({
+      kind: "gallery",
+      name,
+      label: `Removed from gallery "${name}"`,
+      buttonLabel: `Remove from gallery "${name}"`,
+    });
   }
-  if (favoritesInterfaceEnabled() && common.favorite) {
+  if (common.favorite) {
     memberships.push({
       kind: "favorite",
       label: "Removed from Favorites",
       buttonLabel: "Remove from Favorites",
     });
   }
-  if (hiddenInterfaceEnabled() && common.hidden) {
+  if (common.hidden) {
     memberships.push({
       kind: "hidden",
       label: "Removed from Hidden",
@@ -26456,7 +26191,6 @@ function metaSetFavoriteBulk(paths, enable) {
 }
 
 function metaToggleHidden(path) {
-  if (!hiddenInterfaceEnabled()) return;
   const p = String(path || "");
   if (!p) return;
   const tags = metaGetTags(p);
@@ -26479,7 +26213,6 @@ function metaToggleHidden(path) {
 }
 
 function metaSetHiddenBulk(paths, enable) {
-  if (!hiddenInterfaceEnabled()) return;
   const list = Array.isArray(paths) ? paths : Array.from(paths || []);
   if (!list.length) return;
   const target = !!enable;
@@ -33926,7 +33659,6 @@ function byName(a, b) {
 }
 
 function dirSortModeOptions(includeScoreUi = true) {
-  if (!sortControlsEnabled()) return [{ value: "name", label: "Name" }];
   const options = [
     { value: "name", label: "Name" },
     { value: "score", label: "Score" },
@@ -33941,9 +33673,8 @@ function dirSortModeOptions(includeScoreUi = true) {
 }
 
 function normalizeDirSortMode(mode) {
-  if (!sortControlsEnabled()) return "name";
   const raw = String(mode || "");
-  const allowed = dirSortModeOptions(scoreInterfaceEnabled()).map((opt) => opt.value);
+  const allowed = dirSortModeOptions().map((opt) => opt.value);
   if (allowed.includes(raw)) return raw;
   return "name";
 }
@@ -33955,7 +33686,6 @@ function dirSortModeLabel(mode) {
 }
 
 function cycleDirSortMode(mode, includeScoreUi = true) {
-  if (!sortControlsEnabled()) return "name";
   const values = dirSortModeOptions(includeScoreUi).map((opt) => opt.value);
   const current = normalizeDirSortMode(mode);
   const idx = values.indexOf(current);
@@ -34077,7 +33807,6 @@ function activeTagContainerSortMode() {
 }
 
 function effectiveContainerSortModeForDir(dirNode) {
-  if (!itemOverridesInterfaceEnabled()) return "";
   return activeTagContainerSortMode() || effectiveFolderContainerSortMode(dirNode);
 }
 
@@ -34158,11 +33887,11 @@ function buildDirSortMetrics() {
 }
 
 function randomSortAffectsFiles() {
-  return randomSortInterfaceEnabled() && !!WS.view.randomMode;
+  return !!WS.view.randomMode;
 }
 
 function randomSortAffectsFolders() {
-  return randomSortInterfaceEnabled() && !!WS.view.randomFolderMode;
+  return !!WS.view.randomFolderMode;
 }
 
 
@@ -36360,19 +36089,16 @@ function includeHiddenItemsInStatsEnabled() {
 }
 
 function showHiddenFolderEnabled() {
-  if (!hiddenInterfaceEnabled()) return false;
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.showHiddenFolder);
 }
 
 function showTrashFolderEnabled() {
-  if (!trashInterfaceEnabled()) return false;
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.showTrashFolder);
 }
 
 function showStorageFolderEnabled() {
-  if (!storageInterfaceEnabled()) return false;
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.showStorageFolder);
 }
@@ -36491,7 +36217,8 @@ function weightRandomJumpsByScoreMultiplier() {
 }
 
 function showUntaggedFolderEnabled() {
-  return false;
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.showUntaggedFolder);
 }
 
 function getInternalTrashRootNode() {
@@ -37127,7 +36854,6 @@ function galleryContentDirsForSelectionTarget(selectionTarget) {
 }
 
 function buildAddAllContentsToGalleryButton(selectionTarget) {
-  if (!galleryInterfaceEnabled()) return null;
   const selectedEntries =
     selectionTarget?.kind === "tag"
       ? [selectionTarget.entry]
@@ -37666,7 +37392,6 @@ function getGalleryEntriesForAlbum(albumName) {
 }
 
 function buildBulkTagPlaceholderEntry() {
-  if (!collectionInterfaceEnabled()) return null;
   if (!BULK_TAG_PLACEHOLDER) return null;
   const rawType = String(BULK_TAG_PLACEHOLDER.type || "tag");
   const type =
@@ -37704,11 +37429,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
   if (isPathInsideInternalTrash(dirNode.path || "")) return [];
 
   const options = opts && typeof opts === "object" ? opts : null;
-  const collectionsVisible = tagInterfaceEnabled();
-  const albumsVisible = albumInterfaceEnabled();
-  const galleriesVisible = galleryInterfaceEnabled();
-  const includePlaceholder =
-    collectionsVisible && !(options && options.includePlaceholder === false);
+  const includePlaceholder = !(options && options.includePlaceholder === false);
   const placeholderEntry = includePlaceholder
     ? buildBulkTagPlaceholderEntry()
     : null;
@@ -37734,27 +37455,21 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     label: "Favorites",
     originPath,
   };
-  if (favoritesInterfaceEnabled()) {
-    const favoriteMembers = visibleChildren.filter((d) =>
-      metaHasFavorite(d.path || ""),
-    );
-    const favs = filterTagEntryDirsByVisibleRecords(
-      favoriteMembers,
-      favoritesEntry,
-    );
-    if (favoriteMembers.some(dirHasUnfilteredIndexedMedia)) {
-      entries.push({
-        kind: "tag",
-        label: "Favorites",
-        special: "favorites",
-        count: favs.length,
-        originPath,
-      });
-    }
-  }
-  if (!collectionsVisible) {
-    if (cacheKey) TAG_FOLDER_ENTRIES_CACHE.set(cacheKey, entries);
-    return entries;
+  const favoriteMembers = visibleChildren.filter((d) =>
+    metaHasFavorite(d.path || ""),
+  );
+  const favs = filterTagEntryDirsByVisibleRecords(
+    favoriteMembers,
+    favoritesEntry,
+  );
+  if (favoriteMembers.some(dirHasUnfilteredIndexedMedia)) {
+    entries.push({
+      kind: "tag",
+      label: "Favorites",
+      special: "favorites",
+      count: favs.length,
+      originPath,
+    });
   }
   if (dirNode === WS.root && showStorageFolderEnabled()) {
     const stored = getAllStorageDirNodes();
@@ -37768,7 +37483,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       });
     }
   }
-  if (galleriesVisible && dirNode === WS.root) {
+  if (dirNode === WS.root) {
     const galleries = getGalleryEntriesForRoot();
     for (let i = 0; i < galleries.length; i++) entries.push(galleries[i]);
   }
@@ -37795,16 +37510,12 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     }
   }
   const tagGroups = gatherTagGroupsForDir(dirNode);
-  const albumTagGroups = albumsVisible
-    ? collectAlbumTagGroupsForScope(originPath)
-    : new Map();
+  const albumTagGroups = collectAlbumTagGroupsForScope(originPath);
   // albumStats includes albums built purely from direct folder membership
   // (folderAlbumByPath), not just from tags, so an album containing only folders
   // must still gate this block in, otherwise it would never render an entry and
   // become unreachable/undeletable.
-  const albumStats = albumsVisible
-    ? collectTagAlbumStatsForGroups(tagGroups, originPath)
-    : new Map();
+  const albumStats = collectTagAlbumStatsForGroups(tagGroups, originPath);
   // Legacy gallery tag/album metadata can still be removed, but galleries only
   // render as root entry points and never as children of those containers.
   const galleryEntriesByTag = new Map();
@@ -37816,7 +37527,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     galleryEntriesByTag.size ||
     galleryEntriesByAlbum.size
   ) {
-    if (albumsVisible && albumStats.size) {
+    if (albumStats.size) {
       const sortedAlbums = Array.from(albumStats.keys()).sort((a, b) =>
         String(a).localeCompare(String(b)),
       );
@@ -37875,7 +37586,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
         });
       }
     }
-    if (galleriesVisible && galleryEntriesByAlbum.size) {
+    if (galleryEntriesByAlbum.size) {
       const sortedGalleryAlbums = Array.from(galleryEntriesByAlbum.keys()).sort(
         (a, b) => String(a).localeCompare(String(b)),
       );
@@ -37906,10 +37617,8 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     for (const tag of sorted) {
       if (metaGetTagAlbumForTag(tag, originPath)) continue;
       const nodes = tagGroups.get(tag) || [];
-      const taggedAlbums = albumsVisible ? albumTagGroups.get(tag) || [] : [];
-      const taggedGalleries = galleriesVisible
-        ? galleryEntriesByTag.get(tag) || []
-        : [];
+      const taggedAlbums = albumTagGroups.get(tag) || [];
+      const taggedGalleries = galleryEntriesByTag.get(tag) || [];
       const tagEntry = {
         kind: "tag",
         tag,
@@ -37955,18 +37664,6 @@ function getTagFolderEntries() {
   });
 }
 
-function tagFolderModeExposed(modeRaw) {
-  const mode = String(modeRaw || "");
-  if (mode === "hidden") return hiddenInterfaceEnabled();
-  if (mode === "favorites") return favoritesInterfaceEnabled();
-  if (mode === "storage") return storageInterfaceEnabled();
-  if (mode === "untagged") return false;
-  if (mode === "tag") return tagInterfaceEnabled();
-  if (mode === "album") return albumInterfaceEnabled();
-  if (mode === "gallery") return galleryInterfaceEnabled();
-  return true;
-}
-
 function primeTagDerivedCachesForDir(dirNode) {
   if (!dirNode || dirNode._skipTagFilters) return;
   const entries = getTagFolderEntriesForDir(dirNode, {
@@ -37994,8 +37691,6 @@ function getTagEntriesForTagFolderView() {
   if (!isViewingTagFolder()) return [];
   const baseNode = getTagFolderBaseNode();
   const mode = String(WS.view.tagFolderActiveMode || "");
-  if (mode === "favorites" && !favoritesInterfaceEnabled()) return [];
-  if (!tagFolderModeExposed(mode)) return [];
   if (mode === "album") {
     const album = normalizeTagAlbumName(WS.view.tagFolderActiveAlbum || "");
     if (!album) return [];
@@ -38006,7 +37701,9 @@ function getTagEntriesForTagFolderView() {
   if (mode === "tag") {
     const tag = normalizeTag(WS.view.tagFolderActiveTag || "");
     if (!tag) return [];
-    return [];
+    return getAlbumEntriesForTagForBaseNode(baseNode, tag).concat(
+      baseNode === WS.root ? getGalleryEntriesForTag(tag) : [],
+    );
   }
   if (mode === "gallery") {
     const gallery = normalizeGalleryName(WS.view.tagFolderActiveTag || "");
@@ -38073,8 +37770,6 @@ function getDirsForTagFolderView() {
   const baseNode = getTagFolderBaseNode();
   if (!baseNode) return [];
   const mode = String(WS.view.tagFolderActiveMode || "");
-  if (mode === "favorites" && !favoritesInterfaceEnabled()) return [];
-  if (!tagFolderModeExposed(mode)) return [];
   const basePath = String(baseNode.path || "");
   const cacheKey = [
     basePath || "__root__",
@@ -38190,8 +37885,6 @@ function getDirsForTagFolderView() {
 
 function getDirsForTagViewFrame(frame) {
   if (!frame) return [];
-  if (frame.mode === "favorites" && !favoritesInterfaceEnabled()) return [];
-  if (!tagFolderModeExposed(frame.mode)) return [];
   const baseNode = WS.dirByPath.get(String(frame.originPath || "")) || WS.root;
   if (!baseNode) return [];
   const scopeModel = getFastTagScopeModel(baseNode);
@@ -40488,16 +40181,6 @@ function computeDirectorySearchResults() {
     }
   };
 
-  if (WS.view.searchRootIsFavorites && !favoritesInterfaceEnabled()) {
-    WS.view.searchRootIsFavorites = false;
-    WS.view.searchRootFavorites = [];
-    WS.view.searchRootPath = "";
-  }
-  if (WS.view.searchRootIsHidden && !hiddenInterfaceEnabled()) {
-    WS.view.searchRootIsHidden = false;
-    WS.view.searchRootHidden = [];
-    WS.view.searchRootPath = "";
-  }
   if (WS.view.searchRootIsFavorites) {
     const roots = Array.isArray(WS.view.searchRootFavorites)
       ? WS.view.searchRootFavorites
@@ -40535,12 +40218,6 @@ function computeDirectorySearchResults() {
 
 function syncFavoritesUi() {
   if (favoritesBtn) {
-    if (!favoritesInterfaceEnabled()) {
-      favoritesBtn.hidden = true;
-      favoritesBtn.setAttribute("aria-hidden", "true");
-      favoritesBtn.disabled = true;
-      return;
-    }
     const n = WS.root ? getAllFavoriteDirs().length : 0;
     favoritesBtn.textContent = `Favorites${n ? ` (${n})` : ""}`;
     favoritesBtn.classList.toggle("active", !!WS.view.favoritesMode);
@@ -40550,12 +40227,6 @@ function syncFavoritesUi() {
 
 function syncHiddenUi() {
   if (hiddenBtn) {
-    if (!hiddenInterfaceEnabled()) {
-      hiddenBtn.hidden = true;
-      hiddenBtn.setAttribute("aria-hidden", "true");
-      hiddenBtn.disabled = true;
-      return;
-    }
     const n = WS.root ? getAllHiddenDirs().length : 0;
     hiddenBtn.textContent = `Hidden${n ? ` (${n})` : ""}`;
     hiddenBtn.classList.toggle("active", !!WS.view.hiddenMode);
@@ -40640,18 +40311,6 @@ function rebuildDirectoriesEntries(opts = null) {
   if (WS.view.aboveRootView && !showRootViewEnabled()) {
     WS.view.aboveRootView = false;
   }
-  if (WS.view.favoritesMode && !favoritesInterfaceEnabled()) {
-    WS.view.favoritesMode = false;
-    WS.view.favoritesRootActive = false;
-    WS.view.favoritesAnchorPath = "";
-    WS.view.favoritesReturnState = null;
-  }
-  if (WS.view.hiddenMode && !hiddenInterfaceEnabled()) {
-    WS.view.hiddenMode = false;
-    WS.view.hiddenRootActive = false;
-    WS.view.hiddenAnchorPath = "";
-    WS.view.hiddenReturnState = null;
-  }
   if (WS.view.aboveRootView && WS.nav.dirNode === WS.root) {
     nextEntries.push({ kind: "dir", node: WS.root });
     finish();
@@ -40659,22 +40318,15 @@ function rebuildDirectoriesEntries(opts = null) {
   }
 
   if (isViewingTagFolder()) {
-    if (!tagFolderModeExposed(WS.view.tagFolderActiveMode)) {
-      WS.view.tagFolderActiveMode = "";
-      WS.view.tagFolderActiveTag = "";
-      WS.view.tagFolderActiveAlbum = "";
-      WS.view.tagFolderOriginPath = "";
-    } else {
-      const placeholderEntry = buildBulkTagPlaceholderEntry();
-      if (placeholderEntry) nextEntries.push(placeholderEntry);
-      const virtualTagEntries = getTagEntriesForTagFolderView();
-      for (let i = 0; i < virtualTagEntries.length; i++)
-        nextEntries.push(virtualTagEntries[i]);
-      const nodes = getDirsForTagFolderView();
-      for (const d of nodes) nextEntries.push({ kind: "dir", node: d });
-      finish();
-      return;
-    }
+    const placeholderEntry = buildBulkTagPlaceholderEntry();
+    if (placeholderEntry) nextEntries.push(placeholderEntry);
+    const virtualTagEntries = getTagEntriesForTagFolderView();
+    for (let i = 0; i < virtualTagEntries.length; i++)
+      nextEntries.push(virtualTagEntries[i]);
+    const nodes = getDirsForTagFolderView();
+    for (const d of nodes) nextEntries.push({ kind: "dir", node: d });
+    finish();
+    return;
   }
 
   if (searchResultsVisibleInDirectoriesPane()) {
@@ -40688,13 +40340,6 @@ function rebuildDirectoriesEntries(opts = null) {
   }
 
   if (WS.view.favoritesMode && WS.view.favoritesRootActive) {
-    if (!favoritesInterfaceEnabled()) {
-      WS.view.favoritesMode = false;
-      WS.view.favoritesRootActive = false;
-      WS.view.favoritesAnchorPath = "";
-      finish();
-      return;
-    }
     const placeholderEntry = buildBulkTagPlaceholderEntry();
     if (placeholderEntry) nextEntries.push(placeholderEntry);
     const dirs = getAllFavoriteDirs();
@@ -42654,9 +42299,8 @@ function handlePreviewCardSelection(card, openAction, e = null) {
     return;
   }
   const priorSelectedKey = String(WS.view.previewSelectedKey || "");
-  const bulkEnabled = bulkSelectionEnabled();
-  const isCmdOrCtrl = bulkEnabled && eventCmdOrCtrlHeld(e);
-  const isShift = bulkEnabled && eventShiftHeld(e);
+  const isCmdOrCtrl = eventCmdOrCtrlHeld(e);
+  const isShift = eventShiftHeld(e);
 
   if (isShift && isCmdOrCtrl) {
     const anchorKey = String(
@@ -43116,7 +42760,6 @@ function goDirUp() {
 }
 
 function toggleFavoritesMode() {
-  if (!favoritesInterfaceEnabled()) return;
   if (!WS.root) return;
   clearTagNavigationStack();
   WS.view.aboveRootView = false;
@@ -43199,7 +42842,6 @@ function toggleFavoritesMode() {
 }
 
 function toggleHiddenMode() {
-  if (!hiddenInterfaceEnabled()) return;
   if (!WS.root) return;
   clearTagNavigationStack();
   WS.view.aboveRootView = false;
@@ -43283,7 +42925,6 @@ function toggleHiddenMode() {
 }
 
 function canUseBulkSelection() {
-  if (!bulkSelectionEnabled()) return false;
   if (!WS.root) return false;
   if (WS.nav.dirNode) return true;
   if (searchResultsVisibleInDirectoriesPane()) return true;
@@ -43746,7 +43387,7 @@ function shouldDeferPreviewRenderForCurrentSelection() {
 }
 
 function scoreInterfaceEnabled(opt = null) {
-  return featureExposed("score");
+  return true;
 }
 
 function folderDepthRelativeToWorkspaceRoot(dirNode) {
@@ -46404,17 +46045,8 @@ function openFileMenuForId(fileId) {
 async function runFileActionFromMenu(action, fileId, rowEl = null) {
   const id = String(fileId || "");
   if (!id || !action) return false;
-  const rawAction = String(action || "");
-  if (
-    (rawAction === "edit-thumbnail" ||
-      rawAction.startsWith("set-folder-thumbnail-target:") ||
-      rawAction.startsWith("set-tag-thumbnail:")) &&
-    !itemOverridesInterfaceEnabled()
-  )
-    return true;
-  if (rawAction === "put-back" && !trashInterfaceEnabled()) return true;
 
-  if (rawAction === "loose-set-merge") {
+  if (action === "loose-set-merge") {
     if (!WS.meta.fsRootHandle) {
       showStatusMessage("Loose Set Merge requires a writable folder.");
       return true;
@@ -46429,14 +46061,14 @@ async function runFileActionFromMenu(action, fileId, rowEl = null) {
     return true;
   }
 
-  if (rawAction === "put-back") {
+  if (action === "put-back") {
     const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
     if (!trashTargetPath) return true;
     await putBackTrashFolderPaths([trashTargetPath]);
     return true;
   }
 
-  if (rawAction === "rename-file") {
+  if (action === "rename-file") {
     if (!WS.meta.fsRootHandle) {
       showStatusMessage("Renaming files requires a writable folder.");
       return true;
@@ -46458,18 +46090,18 @@ async function runFileActionFromMenu(action, fileId, rowEl = null) {
     return true;
   }
 
-  if (rawAction === "edit-thumbnail") {
+  if (action === "edit-thumbnail") {
     openThumbnailCropEditor(rec);
     return true;
   }
 
-  const folderThumbnailTarget = parseFolderThumbnailAction(rawAction);
+  const folderThumbnailTarget = parseFolderThumbnailAction(action);
   if (folderThumbnailTarget !== null) {
     setFolderThumbnailTargetFromRecord(rec, folderThumbnailTarget);
     return true;
   }
 
-  const tagThumbnailTarget = parseTagThumbnailAction(rawAction);
+  const tagThumbnailTarget = parseTagThumbnailAction(action);
   if (tagThumbnailTarget) {
     setTagThumbnailFromRecordByKey(rec, tagThumbnailTarget);
     return true;
@@ -47286,16 +46918,7 @@ function prepareContainerCreationOverrides(containerType, draft) {
 }
 
 function createContainerAddToSubmenu(items) {
-  const rawItems = (Array.isArray(items) ? items : []).filter(Boolean);
-  if (rawItems.length === 1) {
-    const only = rawItems[0];
-    const label = String(only?.textContent || "").trim().toLowerCase();
-    if (only?.tagName === "BUTTON" && label === "tag") {
-      only.textContent = "Add to tag";
-      return only;
-    }
-  }
-  const enhanced = rawItems
+  const enhanced = (Array.isArray(items) ? items : [])
     .filter(Boolean)
     .map((button) => {
       const label = String(button?.textContent || "").trim();
@@ -47455,43 +47078,8 @@ function setAppMenuAnimatedFilters(value) {
   return true;
 }
 
-function setAppMenuAdvancedMode(enabled) {
-  if (!WS.meta) return false;
-  const next = !!enabled;
-  if (advancedModeEnabled() === next) return true;
-  setOptionValue("advancedMode", next);
-  showStatusMessage(`${next ? "Advanced" : "Simple"} mode. Refreshing...`);
-  const refresh = () => {
-    refreshWorkspaceKeybindAction();
-  };
-  if (typeof persistDirtyMetadataNow === "function") {
-    persistDirtyMetadataNow()
-      .catch(() => {})
-      .finally(refresh);
-  } else {
-    refresh();
-  }
-  return true;
-}
-
-function buildAppMenuModeButton() {
-  const advanced = advancedModeEnabled();
-  return appMenuChoiceButton(
-    `Mode: ${advanced ? "Advanced" : "Simple"}`,
-    () => setAppMenuAdvancedMode(!advanced),
-    advanced,
-    true,
-  );
-}
-
 function buildAppMenuSortButton() {
-  if (!sortControlsEnabled()) return null;
-  const normalized = normalizeDirSortMode(WS.meta?.dirSortMode);
-  const current =
-    scoreInterfaceEnabled() ||
-    (normalized !== "score" && normalized !== "efficiency")
-      ? normalized
-      : "name";
+  const current = normalizeDirSortMode(WS.meta?.dirSortMode);
   return appMenuChoiceButton(
     `Sort: ${dirSortModeLabel(current)}`,
     () =>
@@ -47520,7 +47108,6 @@ function buildAppMenuMediaFilterButton() {
 }
 
 function buildAppMenuRandomSubmenu() {
-  if (!randomSortInterfaceEnabled()) return null;
   const weight = String(WS.meta?.options?.weightRandomJumpsByScore || "off");
   const weightIndex = WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.findIndex(
     (option) => option.value === weight,
@@ -47546,26 +47133,36 @@ function buildAppMenuRandomSubmenu() {
       () => runAppMenuRandomAction("toggleRandomFolderSort"),
       !!WS.view?.randomFolderMode,
     ),
-    scoreInterfaceEnabled()
-      ? appMenuChoiceButton(
-          `Jump weighting: ${currentWeight.label}`,
-          () => setAppMenuRandomJumpWeight(nextWeight.value),
-        )
-      : null,
+    appMenuChoiceButton(
+      `Jump weighting: ${currentWeight.label}`,
+      () => setAppMenuRandomJumpWeight(nextWeight.value),
+    ),
   ]);
 }
 
 function buildAppMenuRevealSubmenu() {
-  const items = [
-    hiddenInterfaceEnabled()
-      ? appMenuChoiceButton(
-          "Hidden",
-          () => handleExtrasKeybindAction("toggleShowHiddenFolder"),
-          showHiddenFolderEnabled(),
-        )
-      : null,
-  ].filter(Boolean);
-  return items.length ? createDropdownMenuSubmenu("Reveal...", items) : null;
+  return createDropdownMenuSubmenu("Reveal...", [
+    appMenuChoiceButton(
+      "Hidden",
+      () => handleExtrasKeybindAction("toggleShowHiddenFolder"),
+      showHiddenFolderEnabled(),
+    ),
+    appMenuChoiceButton(
+      "Storage",
+      () => handleExtrasKeybindAction("toggleShowStorageFolder"),
+      showStorageFolderEnabled(),
+    ),
+    appMenuChoiceButton(
+      "Trash",
+      () => handleExtrasKeybindAction("toggleShowTrashFolder"),
+      showTrashFolderEnabled(),
+    ),
+    appMenuChoiceButton(
+      "Untagged folder",
+      () => handleExtrasKeybindAction("toggleShowUntaggedFolder"),
+      showUntaggedFolderEnabled(),
+    ),
+  ]);
 }
 
 function buildAppMenuAppearanceSubmenu() {
@@ -47615,7 +47212,6 @@ function buildAppMenuThumbnailKindSubmenu(label, kinds, iconKey) {
 }
 
 function buildAppMenuThumbnailsSubmenu() {
-  if (!thumbnailSettingsInterfaceEnabled()) return null;
   const options = WS.meta?.options || {};
   const thumbnailSize = String(options.thumbnailSize || "medium");
   const fullRes = fullResThumbnailsEnabled(options);
@@ -47641,9 +47237,7 @@ function buildAppMenuThumbnailsSubmenu() {
       ["rootFolder", "subfolder"],
       "folder",
     ),
-    collectionInterfaceEnabled()
-      ? buildAppMenuThumbnailKindSubmenu("Tags", "tag", "tag")
-      : null,
+    buildAppMenuThumbnailKindSubmenu("Tags", "tag", "tag"),
   ]);
 }
 
@@ -47659,35 +47253,26 @@ function buildAppMenuBasicsSubmenu() {
       () => handleExtrasKeybindAction("toggleQuickNavigation"),
       quickNavigationEnabled(),
     ),
-    advancedModeEnabled(options)
-      ? appMenuChoiceButton(
-          "Mute messages",
-          () => handleExtrasKeybindAction("toggleMuteMessages"),
-          muteMessagesEnabled(),
-        )
-      : null,
-    advancedModeEnabled(options)
-      ? appMenuChoiceButton(
-          "Full screen media",
-          () => handleExtrasKeybindAction("toggleFullScreenMedia"),
-          fullScreenMediaEnabled(options),
-        )
-      : null,
-    advancedModeEnabled(options)
-      ? appMenuChoiceButton(
-          "Reading mode",
-          () => handleExtrasKeybindAction("toggleReadingMode"),
-          readingModeEnabled(options),
-        )
-      : null,
-    advancedModeEnabled(options)
-      ? appMenuChoiceButton(
-          "Float tags",
-          () => handleExtrasKeybindAction("toggleFloatTags"),
-          !!options.showTagFolderSpacerRow,
-        )
-      : null,
-    buildAppMenuModeButton(),
+    appMenuChoiceButton(
+      "Mute messages",
+      () => handleExtrasKeybindAction("toggleMuteMessages"),
+      muteMessagesEnabled(),
+    ),
+    appMenuChoiceButton(
+      "Full screen media",
+      () => handleExtrasKeybindAction("toggleFullScreenMedia"),
+      fullScreenMediaEnabled(options),
+    ),
+    appMenuChoiceButton(
+      "Reading mode",
+      () => handleExtrasKeybindAction("toggleReadingMode"),
+      readingModeEnabled(options),
+    ),
+    appMenuChoiceButton(
+      "Float tags",
+      () => handleExtrasKeybindAction("toggleFloatTags"),
+      !!options.showTagFolderSpacerRow,
+    ),
   ]);
 }
 
@@ -47903,26 +47488,18 @@ function selectedItemQuarantineAction(target) {
     const p = String(target.node?.path || "");
     if (!p) return null;
     if (pathIsTrashQuarantine(p))
-      return trashInterfaceEnabled()
-        ? { label: "Remove from Trash", kind: "trash", target }
-        : null;
+      return { label: "Remove from Trash", kind: "trash", target };
     if (pathIsStorageQuarantine(p) || isStorageStubDirNode(target.node))
-      return storageInterfaceEnabled()
-        ? { label: "Remove from Storage", kind: "storage", target }
-        : null;
+      return { label: "Remove from Storage", kind: "storage", target };
     return null;
   }
 
   if (target.kind === "file") {
     if (!target.rec) return null;
     if (fileRecordIsTrashQuarantine(target.rec))
-      return trashInterfaceEnabled()
-        ? { label: "Remove from Trash", kind: "trash", target }
-        : null;
+      return { label: "Remove from Trash", kind: "trash", target };
     if (fileRecordIsStorageQuarantine(target.rec))
-      return storageInterfaceEnabled()
-        ? { label: "Remove from Storage", kind: "storage", target }
-        : null;
+      return { label: "Remove from Storage", kind: "storage", target };
     return null;
   }
 
@@ -47951,12 +47528,9 @@ function selectedItemQuarantineAction(target) {
     if (!fileRecordIsTrashQuarantine(recs[i])) allTrash = false;
     if (!fileRecordIsStorageQuarantine(recs[i])) allStorage = false;
   }
-  if (allTrash && trashInterfaceEnabled())
-    return { label: "Remove from Trash", kind: "trash", target };
+  if (allTrash) return { label: "Remove from Trash", kind: "trash", target };
   if (allStorage)
-    return storageInterfaceEnabled()
-      ? { label: "Remove from Storage", kind: "storage", target }
-      : null;
+    return { label: "Remove from Storage", kind: "storage", target };
   return null;
 }
 
@@ -48045,7 +47619,6 @@ function pruneUnavailableSelectedItemMenuOptions(menuEl) {
 // builders write into a detached container, so these are the same entries the
 // standalone item menus show rather than a reimplementation of them.
 function buildSelectedItemMenuSubmenu(summary) {
-  if (simpleModeEnabled()) return null;
   const target = summary?.target;
   if (!target) return null;
   const host = document.createElement("div");
@@ -48098,12 +47671,6 @@ function buildSelectedItemMenuSubmenu(summary) {
     );
   } else if (target.kind === "tag") {
     const entry = target.entry;
-    if (entry?.special === "favorites" && !favoritesInterfaceEnabled()) return null;
-    if (entry?.special === "hidden" && !hiddenInterfaceEnabled()) return null;
-    if (entry?.special && entry.special !== "favorites") return null;
-    if (entry?.special !== "favorites" && !tagInterfaceEnabled()) return null;
-    if (entry?.album && !albumInterfaceEnabled()) return null;
-    if (entry?.gallery && !galleryInterfaceEnabled()) return null;
     if (entry.placeholder) return null;
     openTagContextMenu({
       entry,
@@ -48130,7 +47697,6 @@ function buildSelectedItemMenuSubmenu(summary) {
         container: host,
       });
     } else if (target.entries.length) {
-      if (!tagInterfaceEnabled()) return null;
       openPreviewBulkTagActionMenu(target.entries, "", { container: host });
     }
   }
@@ -48200,17 +47766,17 @@ function buildAppMenuItems() {
     // page (Yes / No), navigated the same way as any other app-menu options.
     if (APP_MENU_CONFIRM) return buildAppMenuConfirmPageItems();
     const summary = appMenuSelectionSummary();
-    const quarantine = advancedModeEnabled()
-      ? selectedItemQuarantineAction(summary.target)
-      : null;
+    // Trash / Storage selection: no Selected Item(s) submenu — only the single
+    // "Remove from Trash/Storage" action in that slot (single or bulk).
+    const quarantine = selectedItemQuarantineAction(summary.target);
     const selectedEntry = quarantine
       ? buildSelectedItemQuarantineButton(quarantine)
-      : advancedModeEnabled()
-        ? buildSelectedItemMenuSubmenu(summary)
-        : null;
+      : buildSelectedItemMenuSubmenu(summary);
     return [
       buildAppMenuTitleElement(summary),
+      // Always first.
       selectedEntry,
+      // Always second.
       buildAppMenuBasicsSubmenu(),
       buildAppMenuAppearanceSubmenu(),
       buildAppMenuRevealSubmenu(),
@@ -48223,7 +47789,6 @@ function buildAppMenuItems() {
       // is fixed to loop / 10s skip in sanitizeOptions). "Reverse file order"
       // moved into the single Selected Item menu (it now acts on the selected
       // folder, not the current location).
-      simpleModeEnabled() ? buildAppMenuFilenameSubmenu() : null,
       buildAppMenuRandomSubmenu(),
       buildAppMenuThumbnailsSubmenu(),
       buildAppMenuHistorySubmenu(),
@@ -48868,7 +48433,6 @@ function closeDailyJournalEditor() {
 }
 
 function openDailyJournalEditor(dateKey) {
-  if (!journalInterfaceEnabled()) return false;
   const key = normalizeDailyJournalDateKey(dateKey);
   if (!key) return;
   closeScoreHistoryDayMenu();
@@ -49005,7 +48569,6 @@ function buildAppMenuStatsFolderButton(row, maxAbsScore) {
 }
 
 function buildAppMenuStatsSubmenu() {
-  if (!historyInterfaceEnabled() || !scoreInterfaceEnabled()) return null;
   const includeHidden = includeHiddenItemsInStatsEnabled();
   const hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext();
   const rootRows = getVisibleRootFolderScoreRows(includeHidden, hiddenContext);
@@ -49030,7 +48593,6 @@ function buildAppMenuStatsSubmenu() {
 let APP_MENU_CALENDAR_SELECTED_DAY = "";
 
 function buildAppMenuCalendarSubmenu() {
-  if (!historyInterfaceEnabled()) return null;
   const cal = document.createElement("div");
   cal.className = "appMenuCalendar";
   cal.innerHTML = buildHistoryCalendarMonthsHtml();
@@ -49047,7 +48609,6 @@ function buildAppMenuCalendarSubmenu() {
 }
 
 function buildAppMenuHistorySubmenu() {
-  if (!historyInterfaceEnabled()) return null;
   return createDropdownMenuSubmenu("History", [
     buildAppMenuStatsSubmenu(),
     buildAppMenuCalendarSubmenu(),
@@ -49392,7 +48953,6 @@ function handleAppMenuCalendarKey(menu, action, e) {
 }
 
 function renderScoreHistoryDayMenu(dayKey) {
-  if (!historyInterfaceEnabled()) return null;
   const key = String(dayKey || "");
   const menu = ensureScoreHistoryDayMenuEl();
   const rows = getRootScoreHistoryLinesForDateKey(key);
@@ -49433,26 +48993,20 @@ function renderScoreHistoryDayMenu(dayKey) {
     <div class="scoreHistoryDayMenuList">
       ${linesHtml}
     </div>
-    ${
-      journalInterfaceEnabled()
-        ? `<button
-            type="button"
-            class="scoreHistoryDayMenuJournalBtn"
-            data-score-history-journal-day="${escapeHtml(key)}"
-          >Journal</button>`
-        : ""
-    }
+    <button
+      type="button"
+      class="scoreHistoryDayMenuJournalBtn"
+      data-score-history-journal-day="${escapeHtml(key)}"
+    >Journal</button>
   `;
   return menu;
 }
 
 function openScoreHistoryDayMenu(dayKey, anchor) {
-  if (!historyInterfaceEnabled()) return;
   const key = String(dayKey || "");
   if (!key || !anchor) return;
   closeActionMenus();
   const menu = renderScoreHistoryDayMenu(key);
-  if (!menu) return;
   SCORE_HISTORY_DAY_MENU_STATE = { dayKey: key, anchor };
   menu.classList.add("open");
   positionScoreHistoryDayMenu(anchor, menu);
@@ -49461,15 +49015,9 @@ function openScoreHistoryDayMenu(dayKey, anchor) {
 function openTagContextMenu(context) {
   allowMenuClose();
   if (!context || !tagActionMenuEl) return;
-  if (context.special === "favorites" && !favoritesInterfaceEnabled()) return;
-  if (context.special === "hidden" && !hiddenInterfaceEnabled()) return;
-  if (context.special && context.special !== "favorites") return;
-  if (context.special !== "favorites" && !tagInterfaceEnabled()) return;
   const tag = String(context.tag || "").trim();
   const album = normalizeTagAlbumName(context.album || "");
   const gallery = normalizeGalleryName(context.gallery || "");
-  if (album && !albumInterfaceEnabled()) return;
-  if (gallery && !galleryInterfaceEnabled()) return;
   const tagKey = String(context.tagKey || "").trim();
   const paths = Array.isArray(context.paths) ? context.paths : [];
   const anchor = context.anchor;
@@ -49480,15 +49028,11 @@ function openTagContextMenu(context) {
   const canDelete =
     context.special === "favorites" ||
     (!context.special && (!!tag || isAlbumEntry || isGalleryEntry));
-  const canTagAlbum = albumInterfaceEnabled() && isAlbumEntry;
-  const canHide =
-    hiddenInterfaceEnabled() &&
-    !context.special &&
-    (!!tag || isAlbumEntry || isGalleryEntry);
+  const canTagAlbum = isAlbumEntry;
+  const canHide = !context.special && (!!tag || isAlbumEntry || isGalleryEntry);
   const canCreateInverse = !!tag && !context.special && !isAlbumEntry;
   const currentAlbumContext = currentTagMenuAlbumRemovalContext();
   const canRemoveFromAlbum =
-    albumInterfaceEnabled() &&
     !!tag &&
     !context.special &&
     !isAlbumEntry &&
@@ -49497,7 +49041,6 @@ function openTagContextMenu(context) {
       String(context.originPath || "");
   const currentGalleryContext = currentTagMenuGalleryRemovalContext();
   const canRemoveFromGallery =
-    galleryInterfaceEnabled() &&
     !context.special &&
     !isGalleryEntry &&
     !!currentGalleryContext &&
@@ -49568,20 +49111,20 @@ function openTagContextMenu(context) {
         );
       }),
     );
-    if (galleryInterfaceEnabled()) addToButtons.push(
+    addToButtons.push(
       createTagMenuButton("Gallery", () => {
         closeTagContextMenu();
         beginGalleryAssignmentForEntries([tagEntryForThumb], preferPane);
       }),
     );
   } else if (tag && !context.special) {
-    if (albumInterfaceEnabled()) addToButtons.push(
+    addToButtons.push(
       createTagMenuButton("Album", () => {
         closeTagContextMenu();
         beginTagAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
       }),
     );
-    if (galleryInterfaceEnabled()) addToButtons.push(
+    addToButtons.push(
       createTagMenuButton("Gallery", () => {
         closeTagContextMenu();
         beginGalleryAssignmentForEntries([tagEntryForThumb], preferPane);
@@ -50687,22 +50230,17 @@ function itemInfoRowsForTarget(target) {
     const path = String(node.path || "");
     const tags = metaGetUserTags(path);
     const album = metaGetAlbumForPath(path);
-    const rows = [
+    return [
       ["Name", dirUiLabel(node) || displayName(node.name) || "Root"],
       ["Type", folderItemTypeLabelForNode(node)],
       ["Location", displayPath(path) || "Root"],
       ["Folders", String(getDirectFolderCountForNode(node))],
       ["Files", String(getRecursiveFileCountForNode(node))],
       ["Size", formatBytes(getDirRecursiveSizeBytesForNode(node, new Map()))],
+      ["Score", String(metaGetScore(path) || 0)],
+      ["Tags", tags.length ? tags.join(", ") : "None"],
+      ["Album", album || "None"],
     ];
-    if (scoreInterfaceEnabled()) rows.push(["Score", String(metaGetScore(path) || 0)]);
-    if (tagInterfaceEnabled()) {
-      rows.push(["Tags", tags.length ? tags.join(", ") : "None"]);
-    }
-    if (albumInterfaceEnabled()) {
-      rows.push(["Album", album || "None"]);
-    }
-    return rows;
   }
   if (item.kind === "file") {
     const rec = item.record || null;
@@ -50727,11 +50265,9 @@ function itemInfoRowsForTarget(target) {
       ["Folders", String(Math.max(0, Number(metrics.folderCount) || 0))],
       ["Files", String(Math.max(0, Number(metrics.fileCount) || 0))],
       ["Size", formatBytes(Math.max(0, Number(metrics.sizeBytes) || 0))],
+      ["Score", String(Number(metrics.score) || 0)],
     ];
-    if (scoreInterfaceEnabled())
-      rows.push(["Score", String(Number(metrics.score) || 0)]);
-    if (albumInterfaceEnabled() && entry.album && entry.tag)
-      rows.push(["Album", String(entry.album)]);
+    if (entry.album && entry.tag) rows.push(["Album", String(entry.album)]);
     return rows;
   }
   return [];
@@ -50959,7 +50495,6 @@ function buildFolderMediaFilterSubmenuHtml(dirNode) {
 }
 
 function buildFolderThumbnailSubmenuHtml(options) {
-  if (!itemOverridesInterfaceEnabled()) return "";
   const cfg = options || {};
   let buttonsHtml = "";
   if (cfg.showUseDefaultThumbnail)
@@ -51003,52 +50538,32 @@ function buildFolderAddToSubmenuHtml(state) {
   const button = (label, action, disabled = false, className = "") =>
     `<button type="button"${className ? ` class="${escapeHtml(className)}"` : ""} data-action="${escapeHtml(action)}"${disabled ? " disabled" : ""}>${escapeHtml(label)}</button>`;
   const restricted = state.isStorageRestricted || state.isTrashItem;
-  const items = [];
-  if (tagInterfaceEnabled()) {
-    items.push(button("Tag", "tag", restricted));
-  }
-  if (albumInterfaceEnabled()) {
-    items.push(button("Album", "album", restricted));
-  }
-  if (galleryInterfaceEnabled()) {
-    items.push(button("Gallery", "gallery", restricted));
-  }
-  if (favoritesInterfaceEnabled() && !state.isFavorite)
-    items.push(button("Favorites", "favorite", restricted));
-  if (hiddenInterfaceEnabled() && !state.isHidden)
-    items.push(button("Hidden", "hidden", restricted));
-  if (storageInterfaceEnabled()) {
-    items.push(state.canRemoveFromStorage
-      ? button("Remove from Storage", "remove-from-storage")
-      : button("Storage", "send-to-storage", !state.canSendToStorage));
-  }
-  if (trashInterfaceEnabled()) {
-    items.push(state.isTrashItem
-      ? button(
-          "Remove from Trash",
-          "put-back",
-          !state.canPutBack,
-          "destructiveAction",
-        )
-      : button(
-          "Trash",
-          "move-to-trash",
-          !state.canMoveToTrash,
-          "destructiveAction",
-        ));
-  }
-  const filtered = items.filter(Boolean);
-  if (filtered.length === 1 && tagInterfaceEnabled()) {
-    const only = filtered[0];
-    if (/data-action="tag"/.test(only)) {
-      return button("Add to tag", "tag", restricted);
-    }
-  }
-  return buildDropdownMenuSubmenuHtml("Add To...", filtered.join(""));
+  let items = "";
+  items += button("Tag", "tag", restricted);
+  items += button("Album", "album", restricted);
+  items += button("Gallery", "gallery", restricted);
+  if (!state.isFavorite) items += button("Favorites", "favorite", restricted);
+  if (!state.isHidden) items += button("Hidden", "hidden", restricted);
+  items += state.canRemoveFromStorage
+    ? button("Remove from Storage", "remove-from-storage")
+    : button("Storage", "send-to-storage", !state.canSendToStorage);
+  items += state.isTrashItem
+    ? button(
+        "Remove from Trash",
+        "put-back",
+        !state.canPutBack,
+        "destructiveAction",
+      )
+    : button(
+        "Trash",
+        "move-to-trash",
+        !state.canMoveToTrash,
+        "destructiveAction",
+      );
+  return buildDropdownMenuSubmenuHtml("Add To...", items);
 }
 
 function buildFolderOverridesSubmenuHtml(target, state) {
-  if (!itemOverridesInterfaceEnabled()) return "";
   if (!target || !state) return "";
   let items = buildContainerSortSubmenuHtml(target);
   if (!state.isStorageRestricted && !state.isTrashItem) {
@@ -51062,7 +50577,6 @@ function buildFileThumbnailSubmenuHtml(
   thumbnailTargets,
   includeEditThumbnail = true,
 ) {
-  if (!itemOverridesInterfaceEnabled()) return "";
   const targets = Array.isArray(thumbnailTargets) ? thumbnailTargets : [];
   const buttonItems = targets
     .map((t) => {
@@ -51100,17 +50614,13 @@ function buildFileActionMenuDom(menuEl, rec, onAction) {
   if (infoDropdown) menuEl.appendChild(infoDropdown);
 
   const trashTargetPath = trashTopLevelItemPathForFileRecord(rec);
-  if (trashTargetPath && trashInterfaceEnabled()) {
+  if (trashTargetPath) {
     menuEl.appendChild(
       makeBtn("Remove from Trash", "put-back", !WS.meta.fsRootHandle),
     );
     return;
-  } else if (trashTargetPath) {
-    return;
   }
-  const thumbnailTargets = itemOverridesInterfaceEnabled()
-    ? getThumbnailMenuTargetsForRecord(rec)
-    : [];
+  const thumbnailTargets = getThumbnailMenuTargetsForRecord(rec);
   const thumbnailButtons = [];
   for (let i = 0; i < thumbnailTargets.length; i++) {
     const target = thumbnailTargets[i];
@@ -51121,12 +50631,10 @@ function buildFileActionMenuDom(menuEl, rec, onAction) {
   }
   // "Edit thumbnail" (the removed mouse crop editor) is intentionally omitted;
   // keyboard Cmd+arrow editing replaces it.
-  const thumbnailSubmenu = itemOverridesInterfaceEnabled()
-    ? createDropdownMenuSubmenu(
-        "Thumbnail",
-        thumbnailButtons,
-      )
-    : null;
+  const thumbnailSubmenu = createDropdownMenuSubmenu(
+    "Thumbnail",
+    thumbnailButtons,
+  );
   if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
   menuEl.appendChild(makeBtn("Rename", "rename-file", !WS.meta.fsRootHandle));
 }
@@ -51190,8 +50698,7 @@ function buildFolderMenuState(dirNode) {
   const isTrashItem = !isTrashRootPortal && isPathInsideInternalTrash(p);
   const isStorageGhost = isStorageStubDirNode(dirNode) || (!!p && metaHasStorage(p));
   const isTrashPutBackOnly = isTrashItem && !!trashTopLevelItemPathForPath(p);
-  const isFavorite =
-    favoritesInterfaceEnabled() && !isStorageGhost && metaHasFavorite(p);
+  const isFavorite = !isStorageGhost && metaHasFavorite(p);
   const isHidden = !isStorageGhost && metaHasHidden(p);
   const assignedAppearancePresetId =
     isRootNode || isStorageGhost
@@ -51333,12 +50840,10 @@ function buildFolderActionMenuDom(
       : createFolderMediaFilterCycleButton(state.dirNode);
   const filtersEntry =
     state.isStorageRestricted || state.isTrashItem ? null : makeFiltersEntry();
-  const overridesSubmenu = itemOverridesInterfaceEnabled()
-    ? createDropdownMenuSubmenu(
-        "Overrides",
-        [sortEntry, filtersEntry, mediaTypeEntry].filter(Boolean),
-      )
-    : null;
+  const overridesSubmenu = createDropdownMenuSubmenu(
+    "Overrides",
+    [sortEntry, filtersEntry, mediaTypeEntry].filter(Boolean),
+  );
   const thumbnailButtons = [];
   if (state.showUseDefaultThumbnail)
     thumbnailButtons.push(makeBtn("Use default thumbnail", "thumbnail-default"));
@@ -51346,91 +50851,74 @@ function buildFolderActionMenuDom(
     thumbnailButtons.push(makeBtn("Rotate thumbnail", "thumbnail-rotate"));
   if (state.showSetNoThumbnail)
     thumbnailButtons.push(makeBtn("Blank thumbnail", "thumbnail-none"));
-  const thumbnailSubmenu = itemOverridesInterfaceEnabled()
-    ? createDropdownMenuSubmenu(
-        "Thumbnail",
-        thumbnailButtons,
-      )
-    : null;
+  const thumbnailSubmenu = createDropdownMenuSubmenu(
+    "Thumbnail",
+    thumbnailButtons,
+  );
   if (state.isRootNode) {
     if (overridesSubmenu) menuEl.appendChild(overridesSubmenu);
     if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
-    if (indexInterfaceEnabled())
-      menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
+    menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
     return;
   }
 
   const addToButtons = [
-    tagInterfaceEnabled()
-      ? makeBtn(
-          "Tag",
-          "tag",
-          state.isStorageRestricted || state.isTrashItem,
-        )
-      : null,
-    albumInterfaceEnabled()
-      ? makeBtn(
-          "Album",
-          "album",
-          state.isStorageRestricted || state.isTrashItem,
-        )
-      : null,
-    galleryInterfaceEnabled()
-      ? makeBtn(
-          "Gallery",
-          "gallery",
-          state.isStorageRestricted || state.isTrashItem,
-        )
-      : null,
-    favoritesInterfaceEnabled() && !state.isFavorite
+    makeBtn(
+      "Tag",
+      "tag",
+      state.isStorageRestricted || state.isTrashItem,
+    ),
+    makeBtn(
+      "Album",
+      "album",
+      state.isStorageRestricted || state.isTrashItem,
+    ),
+    makeBtn(
+      "Gallery",
+      "gallery",
+      state.isStorageRestricted || state.isTrashItem,
+    ),
+    !state.isFavorite
       ? makeBtn(
           "Favorites",
           "favorite",
           state.isStorageRestricted || state.isTrashItem,
         )
       : null,
-    hiddenInterfaceEnabled() && !state.isHidden
+    !state.isHidden
       ? makeBtn(
           "Hidden",
           "hidden",
           state.isStorageRestricted || state.isTrashItem,
         )
       : null,
-    storageInterfaceEnabled() && state.canRemoveFromStorage
+    state.canRemoveFromStorage
       ? makeBtn("Remove from Storage", "remove-from-storage")
-      : storageInterfaceEnabled()
-        ? makeBtn("Storage", "send-to-storage", !state.canSendToStorage)
-        : null,
-    trashInterfaceEnabled() && state.isTrashItem
+      : makeBtn("Storage", "send-to-storage", !state.canSendToStorage),
+    state.isTrashItem
       ? makeBtn(
           "Remove from Trash",
           "put-back",
           !state.canPutBack,
           "destructiveAction",
         )
-      : trashInterfaceEnabled()
-        ? makeBtn(
-            "Trash",
-            "move-to-trash",
-            !state.canMoveToTrash,
-            "destructiveAction",
-          )
-        : null,
+      : makeBtn(
+          "Trash",
+          "move-to-trash",
+          !state.canMoveToTrash,
+          "destructiveAction",
+        ),
   ].filter(Boolean);
   const addToSubmenu = createContainerAddToSubmenu(addToButtons);
   if (addToSubmenu) menuEl.appendChild(addToSubmenu);
   menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
-  if (albumInterfaceEnabled() && state.canRemoveFromAlbum)
+  if (state.canRemoveFromAlbum)
     menuEl.appendChild(makeBtn("Remove from album", "remove-from-album"));
-  if (galleryInterfaceEnabled() && state.canRemoveFromGallery)
+  if (state.canRemoveFromGallery)
     menuEl.appendChild(makeBtn("Remove from gallery", "remove-from-gallery"));
   if (overridesSubmenu) menuEl.appendChild(overridesSubmenu);
   if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
-  if (
-    indexInterfaceEnabled() &&
-    !state.isStorageRestricted &&
-    !state.isTrashItem
-  )
+  if (!state.isStorageRestricted && !state.isTrashItem)
     menuEl.appendChild(makeBtn("Index", "index", !state.canIndex));
   if (state.canResetOrder)
     menuEl.appendChild(makeBtn("Reset order", "reset-order"));
@@ -51446,61 +50934,16 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   const isRootNode = !!node && node === WS.root;
   const isStorageRestricted = isStorageStubDirNode(node) || (!!p && metaHasStorage(p));
   if (!node || (!p && !isRootNode) || !action) return false;
-  const rawAction = String(action || "");
-  if (
-    (rawAction === "tag" || rawAction === "remove-from-tag") &&
-    !tagInterfaceEnabled()
-  )
-    return true;
-  if (
-    (rawAction === "album" || rawAction === "remove-from-album") &&
-    !albumInterfaceEnabled()
-  )
-    return true;
-  if (
-    (rawAction === "gallery" || rawAction === "remove-from-gallery") &&
-    !galleryInterfaceEnabled()
-  )
-    return true;
-  if (rawAction === "favorite" && !favoritesInterfaceEnabled()) return true;
-  if (rawAction === "hidden" && !hiddenInterfaceEnabled()) return true;
-  if (rawAction === "index" && !indexInterfaceEnabled()) return true;
-  if (
-    (rawAction === "score-up" || rawAction === "score-down") &&
-    !scoreInterfaceEnabled()
-  )
-    return true;
-  if (
-    (rawAction === "send-to-storage" || rawAction === "remove-from-storage") &&
-    !storageInterfaceEnabled()
-  )
-    return true;
-  if (
-    (rawAction === "move-to-trash" || rawAction === "put-back") &&
-    !trashInterfaceEnabled()
-  )
-    return true;
-  if (
-    (rawAction === "container-sort:" ||
-      rawAction.startsWith("container-sort:") ||
-      rawAction.startsWith("folder-media-type:") ||
-      rawAction === "appearance-preset-clear" ||
-      rawAction === "thumbnail-default" ||
-      rawAction === "thumbnail-none" ||
-      rawAction === "thumbnail-rotate") &&
-    !itemOverridesInterfaceEnabled()
-  )
-    return true;
-  if (rawAction.startsWith("container-sort:")) {
-    const rawMode = rawAction.slice("container-sort:".length);
+  if (String(action).startsWith("container-sort:")) {
+    const rawMode = String(action).slice("container-sort:".length);
     applyContainerSortSelection(
       { kind: "dir", node },
       rawMode === "none" ? "" : rawMode,
     );
     return true;
   }
-  if (rawAction.startsWith("folder-media-type:")) {
-    const rawType = rawAction.slice("folder-media-type:".length);
+  if (String(action).startsWith("folder-media-type:")) {
+    const rawType = String(action).slice("folder-media-type:".length);
     applyFolderMediaFilterSelection(node, rawType === "all" ? "" : rawType);
     return true;
   }
@@ -51816,8 +51259,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   const allStorage = selectedPaths.every(isStoredPath);
   const anyStorage = selectedPaths.some(isStoredPath);
   const allFavorite = selectedPaths.every((path) => metaHasFavorite(path));
-  const allHidden =
-    hiddenInterfaceEnabled() && selectedPaths.every((path) => metaHasHidden(path));
+  const allHidden = selectedPaths.every((path) => metaHasHidden(path));
   const activeAlbumRemovalContext = currentFolderMenuAlbumRemovalContext();
   const canRemoveSelectedFromAlbum =
     !!activeAlbumRemovalContext &&
@@ -51837,28 +51279,22 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     );
 
   const addToButtons = [
-    tagInterfaceEnabled()
-      ? makeBtn(
-          "Tag",
-          () => startPreviewFolderTagEdit(selectedPaths),
-          anyTrash || anyStorage,
-        )
-      : null,
-    albumInterfaceEnabled()
-      ? makeBtn(
-          "Album",
-          () => startBulkFolderAlbuming(selectedPaths, "preview"),
-          anyTrash || anyStorage,
-        )
-      : null,
-    galleryInterfaceEnabled()
-      ? makeBtn(
-          "Gallery",
-          () => startBulkGallerying(selectedPaths, "preview"),
-          anyTrash || anyStorage,
-        )
-      : null,
-    favoritesInterfaceEnabled() && !allFavorite
+    makeBtn(
+      "Tag",
+      () => startPreviewFolderTagEdit(selectedPaths),
+      anyTrash || anyStorage,
+    ),
+    makeBtn(
+      "Album",
+      () => startBulkFolderAlbuming(selectedPaths, "preview"),
+      anyTrash || anyStorage,
+    ),
+    makeBtn(
+      "Gallery",
+      () => startBulkGallerying(selectedPaths, "preview"),
+      anyTrash || anyStorage,
+    ),
+    !allFavorite
       ? makeBtn(
           "Favorites",
           () => {
@@ -51868,7 +51304,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
           anyTrash || anyStorage,
         )
       : null,
-    hiddenInterfaceEnabled() && !allHidden
+    !allHidden
       ? makeBtn(
           "Hidden",
           () => {
@@ -51878,8 +51314,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
           anyTrash || anyStorage,
         )
       : null,
-    storageInterfaceEnabled()
-      ? makeBtn(
+    makeBtn(
       allStorage ? "Remove from Storage" : "Storage",
       async () => {
         const n = selectedPaths.length;
@@ -51895,10 +51330,8 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
       },
       anyTrash,
-    )
-      : null,
-    trashInterfaceEnabled()
-      ? makeBtn(
+    ),
+    makeBtn(
       allTrash ? "Remove from Trash" : "Trash",
       async () => {
         const n = selectedPaths.length;
@@ -51920,8 +51353,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
           selectedPaths.some((path) => !isFolderPathMovableToTrash(path)),
       true,
       "destructiveAction",
-    )
-      : null,
+    ),
   ].filter(Boolean);
   const addToSubmenu = createContainerAddToSubmenu(addToButtons);
   if (addToSubmenu) menu.appendChild(addToSubmenu);
@@ -51934,7 +51366,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     ),
   );
 
-  if (albumInterfaceEnabled() && canRemoveSelectedFromAlbum) {
+  if (canRemoveSelectedFromAlbum) {
     menu.appendChild(
       makeBtn("Remove from album", () => {
         let changed = false;
@@ -51952,7 +51384,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       }),
     );
   }
-  if (galleryInterfaceEnabled() && canRemoveSelectedFromGallery) {
+  if (canRemoveSelectedFromGallery) {
     menu.appendChild(
       makeBtn("Remove from gallery", () => {
         let changed = false;
@@ -52068,12 +51500,10 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       mixedMediaTypes,
     );
   }
-  const overridesSubmenu = itemOverridesInterfaceEnabled()
-    ? createDropdownMenuSubmenu(
-        "Overrides",
-        [bulkFolderSortEntry, bulkFolderFiltersEntry, bulkFolderMediaTypeEntry].filter(Boolean),
-      )
-    : null;
+  const overridesSubmenu = createDropdownMenuSubmenu(
+    "Overrides",
+    [bulkFolderSortEntry, bulkFolderFiltersEntry, bulkFolderMediaTypeEntry].filter(Boolean),
+  );
   if (overridesSubmenu) menu.appendChild(overridesSubmenu);
 
   if (singleSelectedDirNode && singleSelectedDirNode.preserveOrder) {
@@ -52146,7 +51576,7 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
     trashTargets.length &&
     selectedRecords.length === selectedIds.length &&
     selectedRecords.every((rec) => !!trashTopLevelItemPathForFileRecord(rec));
-  if (allTrash && trashInterfaceEnabled()) {
+  if (allTrash) {
     menu.appendChild(
       makeBtn(
         "Remove from Trash",
@@ -52191,7 +51621,6 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
 }
 
 function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
-  if (!tagInterfaceEnabled()) return;
   if (!previewActionMenuEl) return;
   const selectedEntries = Array.isArray(entries)
     ? entries.filter((entry) => entry && entry.kind === "tag")
@@ -52241,50 +51670,42 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     ),
   );
   const tagMediaFilterTargets = tagAppearancePresetKeys.slice();
-  const albumAssignableTagEntries = albumInterfaceEnabled()
-    ? selectedEntries.filter(
-        (entry) =>
-          entry &&
-          !entry.special &&
-          !entry.placeholder &&
-          !!String(entry.tag || "").trim(),
-      )
-    : [];
-  const taggableAlbumEntries = albumInterfaceEnabled()
-    ? selectedEntries.filter(
-        (entry) =>
-          entry &&
-          !entry.special &&
-          !entry.placeholder &&
-          !String(entry.tag || "").trim() &&
-          !!normalizeTagAlbumName(entry.album || ""),
-      )
-    : [];
-  const galleryAssignableEntries = galleryInterfaceEnabled()
-    ? selectedEntries.filter((entry) => !!galleryTargetForTagEntry(entry))
-    : [];
-  const deletableGalleryEntries = galleryInterfaceEnabled()
-    ? selectedEntries.filter(
-        (entry) =>
-          entry &&
-          !entry.special &&
-          !entry.placeholder &&
-          !String(entry.tag || "").trim() &&
-          !normalizeTagAlbumName(entry.album || "") &&
-          !!normalizeGalleryName(entry.gallery || ""),
-      )
-    : [];
-  const hideableEntries = hiddenInterfaceEnabled()
-    ? selectedEntries.filter(
-        (entry) =>
-          entry &&
-          !entry.special &&
-          !entry.placeholder &&
-          (!!String(entry.tag || "").trim() ||
-            !!normalizeTagAlbumName(entry.album || "") ||
-            !!normalizeGalleryName(entry.gallery || "")),
-      )
-    : [];
+  const albumAssignableTagEntries = selectedEntries.filter(
+    (entry) =>
+      entry &&
+      !entry.special &&
+      !entry.placeholder &&
+      !!String(entry.tag || "").trim(),
+  );
+  const taggableAlbumEntries = selectedEntries.filter(
+    (entry) =>
+      entry &&
+      !entry.special &&
+      !entry.placeholder &&
+      !String(entry.tag || "").trim() &&
+      !!normalizeTagAlbumName(entry.album || ""),
+  );
+  const galleryAssignableEntries = selectedEntries.filter((entry) =>
+    !!galleryTargetForTagEntry(entry),
+  );
+  const deletableGalleryEntries = selectedEntries.filter(
+    (entry) =>
+      entry &&
+      !entry.special &&
+      !entry.placeholder &&
+      !String(entry.tag || "").trim() &&
+      !normalizeTagAlbumName(entry.album || "") &&
+      !!normalizeGalleryName(entry.gallery || ""),
+  );
+  const hideableEntries = selectedEntries.filter(
+    (entry) =>
+      entry &&
+      !entry.special &&
+      !entry.placeholder &&
+      (!!String(entry.tag || "").trim() ||
+        !!normalizeTagAlbumName(entry.album || "") ||
+        !!normalizeGalleryName(entry.gallery || "")),
+  );
   const hideableTagKeys = Array.from(
     new Set(hideableEntries.map((entry) => hiddenTagKeyForEntry(entry)).filter(Boolean)),
   );
@@ -52398,7 +51819,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
   }
 
   let bulkTagFiltersEntry = null;
-  if (itemOverridesInterfaceEnabled() && tagAppearancePresetKeys.length) {
+  if (tagAppearancePresetKeys.length) {
     const presetIds = tagAppearancePresetKeys.map((key) =>
       metaGetTagAppearancePresetIdByKey(key),
     );
@@ -52438,7 +51859,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     });
   }
   let bulkTagSortEntry = null;
-  if (itemOverridesInterfaceEnabled() && tagAppearancePresetKeys.length) {
+  if (tagAppearancePresetKeys.length) {
     const sortModes = tagAppearancePresetKeys.map((key) =>
       metaGetTagContainerSortMode(key),
     );
@@ -52464,7 +51885,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     );
   }
   let bulkTagMediaTypeEntry = null;
-  if (itemOverridesInterfaceEnabled() && tagMediaFilterTargets.length) {
+  if (tagMediaFilterTargets.length) {
     const mediaSelections = tagMediaFilterTargets.map((key) =>
       tagMediaFilterAxisSelection(
         metaGetTagMediaFilterByKey(key),
@@ -53581,41 +53002,15 @@ async function handleTagMenuAction(action) {
   const ctx = TAG_CONTEXT_MENU_STATE;
   if (!ctx) return;
   closeTagContextMenu();
-  const rawAction = String(action || "");
-  if (!tagInterfaceEnabled()) return;
-  if (
-    (rawAction === "appearance-preset-clear" ||
-      rawAction === "media-filter-clear" ||
-      rawAction === "thumbnail-default" ||
-      rawAction === "thumbnail-none" ||
-      rawAction === "thumbnail-rotate") &&
-    !itemOverridesInterfaceEnabled()
-  )
-    return;
   const tag = ctx.tag || "";
   const album = normalizeTagAlbumName(ctx.album || "");
   const gallery = normalizeGalleryName(ctx.gallery || "");
   const isAlbumEntry = !!ctx.isAlbumEntry && !!album;
   const isGalleryEntry = !!ctx.isGalleryEntry && !!gallery;
-  if (ctx.special === "favorites" && !favoritesInterfaceEnabled()) return;
-  if (ctx.special === "hidden" && !hiddenInterfaceEnabled()) return;
-  if (isAlbumEntry && !albumInterfaceEnabled()) return;
-  if (isGalleryEntry && !galleryInterfaceEnabled()) return;
-  if (rawAction === "hidden" && !hiddenInterfaceEnabled()) return;
-  if (
-    (rawAction === "remove-from-album" || isAlbumEntry) &&
-    !albumInterfaceEnabled()
-  )
-    return;
-  if (
-    (rawAction === "remove-from-gallery" || isGalleryEntry) &&
-    !galleryInterfaceEnabled()
-  )
-    return;
   const tagKey = String(ctx.tagKey || "");
   const label = ctx.label || tag || album || gallery;
   const paths = ctx.paths || [];
-  if (rawAction === "rename") {
+  if (action === "rename") {
     if (!ctx.canRename) return;
     // A tag may hold only albums (albumTagsByAlbum) and no folders; renaming still
     // has to work since renameTagForPaths re-keys the tag inside albums too.
@@ -53624,11 +53019,11 @@ async function handleTagMenuAction(action) {
       WS.nav.dirNode ||
       WS.root;
     const renameTaggedAlbums =
-      albumInterfaceEnabled() && tag && !isAlbumEntry && !isGalleryEntry
+      tag && !isAlbumEntry && !isGalleryEntry
         ? getAlbumEntriesForTagForBaseNode(renameBaseNode, tag)
         : [];
     const renameTaggedGalleries =
-      galleryInterfaceEnabled() && tag && renameBaseNode === WS.root
+      tag && renameBaseNode === WS.root
         ? getAllGalleryNames().filter((name) =>
             metaGetUserTagsForGallery(name).includes(tag),
           )
@@ -53773,12 +53168,11 @@ async function handleTagMenuAction(action) {
       WS.dirByPath.get(String(ctx.originPath || "")) ||
       WS.nav.dirNode ||
       WS.root;
-    const taggedAlbums =
-      tag && albumInterfaceEnabled()
-        ? getAlbumEntriesForTagForBaseNode(deleteBaseNode, tag)
-        : [];
+    const taggedAlbums = tag
+      ? getAlbumEntriesForTagForBaseNode(deleteBaseNode, tag)
+      : [];
     const taggedGalleries =
-      galleryInterfaceEnabled() && tag && deleteBaseNode === WS.root
+      tag && deleteBaseNode === WS.root
         ? getAllGalleryNames().filter((name) =>
             metaGetUserTagsForGallery(name).includes(tag),
           )
@@ -54066,7 +53460,7 @@ function renderDirectoriesActionHeader() {
       directoriesActionMenuEl.appendChild(dirTagFiltersSubmenu);
   }
 
-  if (itemOverridesInterfaceEnabled() && tagMediaFilterTargets.length) {
+  if (tagMediaFilterTargets.length) {
     directoriesActionMenuEl.appendChild(
       makeActionBtn(
         "Set content filter",
@@ -54119,7 +53513,7 @@ function renderDirectoriesActionHeader() {
     );
   }
 
-  if (itemOverridesInterfaceEnabled() && anyAssignedTagMediaFilter) {
+  if (anyAssignedTagMediaFilter) {
     directoriesActionMenuEl.appendChild(
       makeActionBtn("Clear content filter", () => {
         WS.view.bulkActionMenuOpen = false;
@@ -54179,7 +53573,7 @@ function renderDirectoriesActionHeader() {
     // keybound now (the *Selection actions) and intentionally omitted from the
     // multiselect menu. Only Filters (below) remains.
 
-    if (itemOverridesInterfaceEnabled()) {
+    {
       const dirFolderFiltersSubmenu = buildAppearancePresetSubmenu({
         currentPresetId:
           selectedDirs.length === 1
@@ -54989,8 +54383,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         }
       }
       const canOpenTagMenu = !entry.placeholder && !!tagThumbKey;
-      const tagMenuHtml =
-        tagVisibility.showMenuButton && thumbnailMenuButtonBadgesEnabled()
+      const tagMenuHtml = tagVisibility.showMenuButton
         ? `
             <div class="dirMenu dirTagMenu">
               ${buildThumbnailMenuButtonHtml(
@@ -55129,8 +54522,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const lightweightFolderThumb =
           shouldUseLightweightTagAlbumThumbnailsForNode(entry.node);
         row.dataset.bulkAnchor = `dir:${p}`;
-        const isFavorite =
-          favoritesInterfaceEnabled() && !isStorageGhost && metaHasFavorite(p);
+        const isFavorite = !isStorageGhost && metaHasFavorite(p);
         const isHidden = !isStorageGhost && metaHasHidden(p);
         const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
         if (sel) row.classList.add("bulkSelected");
@@ -55241,25 +54633,24 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 ${folderMenuInfoHtml}
                 ${folderMenuOverridesHtml}
                 ${folderThumbnailMenuHtml}
-                ${indexInterfaceEnabled() ? `<button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>` : ``}
+                <button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>
               `;
         } else {
           menuButtons = `
                 ${folderMenuInfoHtml}
                 ${folderMenuAddToHtml}
                 <button type="button" data-action="rename"${canRename ? "" : " disabled"}>Rename</button>
-                ${albumInterfaceEnabled() && folderMenuState.canRemoveFromAlbum ? `<button type="button" data-action="remove-from-album">Remove from album</button>` : ``}
-                ${galleryInterfaceEnabled() && folderMenuState.canRemoveFromGallery ? `<button type="button" data-action="remove-from-gallery">Remove from gallery</button>` : ``}
+                ${folderMenuState.canRemoveFromAlbum ? `<button type="button" data-action="remove-from-album">Remove from album</button>` : ``}
+                ${folderMenuState.canRemoveFromGallery ? `<button type="button" data-action="remove-from-gallery">Remove from gallery</button>` : ``}
                 ${folderMenuOverridesHtml}
                 ${folderThumbnailMenuHtml}
-                ${indexInterfaceEnabled() && !folderMenuState.isStorageRestricted && !folderMenuState.isTrashItem ? `<button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>` : ``}
+                ${folderMenuState.isStorageRestricted || folderMenuState.isTrashItem ? `` : `<button type="button" data-action="index"${canIndex ? "" : " disabled"}>Index</button>`}
                 ${canResetOrder ? `<button type="button" data-action="reset-order">Reset order</button>` : ``}
               `;
         }
         const menuHtml =
           folderMenuState.isTrashRootPortal ||
-          !dirVisibility.showMenuButton ||
-          !thumbnailMenuButtonBadgesEnabled()
+          !dirVisibility.showMenuButton
           ? ""
           : `
               <div class="dirMenu">
@@ -55474,8 +54865,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const fileVisibility = directoriesThumbnailVisibilityForKind("file");
         const isVid = rec?.type === "video";
         const fileIconKey = appIconKeyForType(rec?.type);
-        const isFavorite =
-          favoritesInterfaceEnabled() && pathIsFavoriteFolder(rec?.dirPath || "");
+        const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
         const sel =
           canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
         if (sel) row.classList.add("bulkSelected");
@@ -55493,7 +54883,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const fileMenuButtons = fileTrashTargetPath
           ? `
                   ${buildItemInfoDropdownHtml({ kind: "file", record: rec })}
-                  ${trashInterfaceEnabled() ? `<button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from Trash</button>` : ""}
+                  <button type="button" data-action="put-back"${WS.meta.fsRootHandle ? "" : " disabled"}>Remove from Trash</button>
                 `
           : `
                   ${buildItemInfoDropdownHtml({ kind: "file", record: rec })}
@@ -55508,8 +54898,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         );
         const fileSizeLabel = formatBytes(Math.max(0, Number(rec?.size) || 0));
         const fileMenuScore = metaGetScore(rec?.dirPath || "");
-        fileMenuHtml =
-          fileVisibility.showMenuButton && thumbnailMenuButtonBadgesEnabled()
+        fileMenuHtml = fileVisibility.showMenuButton
           ? `
               <div class="dirMenu dirFileMenu">
                 ${buildThumbnailMenuButtonHtml(
@@ -55721,9 +55110,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     row.addEventListener("click", (e) => {
       closeActionMenus();
       const priorSelectedIndex = WS.nav.selectedIndex;
-      const bulkEnabled = bulkSelectionEnabled();
-      const isCmdOrCtrl = bulkEnabled && eventCmdOrCtrlHeld(e);
-      const isShift = bulkEnabled && eventShiftHeld(e);
+      const isCmdOrCtrl = eventCmdOrCtrlHeld(e);
+      const isShift = eventShiftHeld(e);
       if (!isShift && !isCmdOrCtrl && idx === WS.nav.selectedIndex) {
         if (teleportFromRotatingThumbnail(entry, row)) return;
       }
@@ -57297,13 +56685,11 @@ function getBreadcrumbNodesForDir(dirNode) {
 }
 
 function fullScreenMediaEnabled(opt = null) {
-  if (simpleModeEnabled(opt)) return true;
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return !(src && src.fullScreenMedia === false);
 }
 
 function readingModeEnabled(opt = null) {
-  if (simpleModeEnabled(opt)) return false;
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return !!(src && src.readingMode === true);
 }
@@ -61589,8 +60975,7 @@ function buildPreviewTagCardMarkup(entry) {
   }
 
   const canOpenTagMenu = !entry.placeholder && !!tagThumbKey;
-  const showTagMenuButton =
-    canOpenTagMenu && visibility.showMenuButton && thumbnailMenuButtonBadgesEnabled();
+  const showTagMenuButton = canOpenTagMenu && visibility.showMenuButton;
   const showTagThumbnailTitle = showTagThumbnailTitles || renameActive;
   const showTagTextMeta = !!tagSummaryBits.length || showItemTypeLabel;
   const menuOnlyTagCard =
@@ -61938,7 +61323,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     !folderPreviewMediaThumbnailsEnabled();
   const sc = metaGetScore(dirNode?.path || "");
   const scoreMode = "hidden";
-  const isFavorite = favoritesInterfaceEnabled() && metaHasFavorite(p);
+  const isFavorite = metaHasFavorite(p);
   const isHidden = metaHasHidden(p);
   const totalFolderCount = lightweightFolderThumb
     ? 0
@@ -62086,9 +61471,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
       : "metaBlock compact";
     if (thumbOverlayMode) forcePreviewPaneThumbTitleBar(meta);
     const showPreviewFolderMenuBtn =
-      visibility.showMenuButton &&
-      !folderNodeHasNoItemMenu(dirNode) &&
-      thumbnailMenuButtonBadgesEnabled();
+      visibility.showMenuButton && !folderNodeHasNoItemMenu(dirNode);
     let menuWrap = null;
     if (showPreviewFolderMenuBtn) {
       menuWrap = document.createElement("div");
@@ -63588,14 +62971,10 @@ function makePreviewFileCard(
     fileDisplayNameForRecord(rec),
     displayPosition,
   );
-  const isFavorite =
-    favoritesInterfaceEnabled() && pathIsFavoriteFolder(rec?.dirPath || "");
+  const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
   const fileMenuScore = metaGetScore(rec?.dirPath || "");
   const showPreviewFileMenuBtn =
-    !!fileId &&
-    visibility.showMenuButton &&
-    !fileRecordHasNoItemMenu(rec) &&
-    thumbnailMenuButtonBadgesEnabled();
+    !!fileId && visibility.showMenuButton && !fileRecordHasNoItemMenu(rec);
   const fileMetaBits = [];
   if (showItemTypeLabel) fileMetaBits.push(fileItemTypeLabelForRecord(rec));
   if (showItemCount) fileMetaBits.push("1 item");
@@ -65566,7 +64945,6 @@ function applyRandomSortModeEverywhere(animate = false) {
 }
 
 function toggleRandomSortMode() {
-  if (!randomSortInterfaceEnabled()) return false;
   if (!WS.root) return false;
   WS.view.randomMode = !WS.view.randomMode;
   if (WS.view.randomMode) {
@@ -65581,7 +64959,6 @@ function toggleRandomSortMode() {
 }
 
 function toggleRandomFolderSortMode() {
-  if (!randomSortInterfaceEnabled()) return false;
   if (!WS.root) return false;
   WS.view.randomFolderMode = !WS.view.randomFolderMode;
   if (WS.view.randomFolderMode) {
@@ -65701,7 +65078,7 @@ function toggleOptionValue(key) {
 }
 
 function setMuteMessagesEnabled(enabled) {
-  const next = advancedModeEnabled() ? !!enabled : false;
+  const next = !!enabled;
   const prev = muteMessagesEnabled();
   if (prev === next) return next;
   setOptionValue("muteMessages", next);
@@ -65984,7 +65361,6 @@ function forceThumbnailDemandRefreshNow() { }
 
 function handleExtrasKeybindAction(action) {
   if (!action || !WS.meta) return false;
-  if (keybindActionUnexposed(action)) return false;
   const presetId = appearancePresetIdFromKeybindAction(action);
   if (presetId) {
     const preset = getAppearancePresetById(presetId);
@@ -66771,8 +66147,6 @@ function startPreviewTagRenameEdit(entry) {
   const gallery = normalizeGalleryName(entry.gallery || "");
   const isAlbumEntry = !!album && !tag;
   const isGalleryEntry = !!gallery && !tag && !album;
-  if (isAlbumEntry && !albumInterfaceEnabled()) return false;
-  if (isGalleryEntry && !galleryInterfaceEnabled()) return false;
   if (!tag && !isAlbumEntry && !isGalleryEntry) return false;
   const label = String(entry.label || entry.tag || album || gallery || tag);
   const paths = gatherTagPathsForDirs(getDirsForTagEntry(entry));
@@ -66780,7 +66154,7 @@ function startPreviewTagRenameEdit(entry) {
   const baseNode =
     WS.dirByPath.get(String(entry.originPath || "")) || WS.nav.dirNode || WS.root;
   const taggedAlbums =
-    tag && albumInterfaceEnabled() && !isAlbumEntry && !isGalleryEntry
+    tag && !isAlbumEntry && !isGalleryEntry
       ? getAlbumEntriesForTagForBaseNode(baseNode, tag)
       : [];
   if (!paths.length && !isAlbumEntry && !isGalleryEntry && !taggedAlbums.length) {
@@ -66814,7 +66188,6 @@ function applyFolderScoreSelectionAction(delta) {
 }
 
 function startTagSelectionEdit() {
-  if (!tagInterfaceEnabled()) return false;
   const { paths, usedBulk, source } = getDirectorySelectionForKeybindAction();
   if (!paths.length) {
     showStatusMessage("No folders selected.");
@@ -66857,7 +66230,6 @@ function startTagSelectionEdit() {
 }
 
 function toggleFavoriteSelection() {
-  if (!favoritesInterfaceEnabled()) return false;
   const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
   if (!paths.length) {
     showStatusMessage("No items selected.");
@@ -66870,7 +66242,6 @@ function toggleFavoriteSelection() {
 }
 
 function toggleHiddenSelection() {
-  if (!hiddenInterfaceEnabled()) return false;
   const tagSelection = getTagSelectionForKeybindAction();
   // Albums hide alongside tags here: hiddenTagKeyForEntry resolves whichever
   // one the entry is, so an album selection no longer falls through to the
@@ -66918,7 +66289,6 @@ function toggleHiddenSelection() {
 // getFolderTargetPathsForSelectionActions). Album/storage/trash all key on
 // folders, so they share that resolver with favorite and hidden above.
 function startAlbumSelectionEdit() {
-  if (!albumInterfaceEnabled()) return false;
   const { paths, usedBulk } = getFolderTargetPathsForSelectionActions();
   if (!paths.length) {
     showStatusMessage("No items selected.");
@@ -66938,7 +66308,6 @@ function startAlbumSelectionEdit() {
 }
 
 function startGallerySelectionEdit() {
-  if (!galleryInterfaceEnabled()) return false;
   const folderSelection = getFolderTargetPathsForSelectionActions();
   const tagSelection = getTagSelectionForKeybindAction();
   const targets = [];
@@ -67097,7 +66466,6 @@ function previewPaneOwnsSelection() {
 // Keyboard equivalent of Cmd-clicking the current item: toggle it in/out of the
 // multi-item (bulk) selection. Works in both the preview grid and the file pane.
 function toggleSelectionInBulkKeybindAction() {
-  if (!bulkSelectionEnabled()) return false;
   if (!WS.root || VIEWER_MODE) return false;
   if (previewPaneOwnsSelection()) {
     const card = findSelectedPreviewCard();
@@ -67141,7 +66509,6 @@ function toggleSelectionInBulkKeybindAction() {
 // when no anchor has been established yet), matching the pointer behavior in
 // both selection surfaces.
 function selectRangeInBulkKeybindAction() {
-  if (!bulkSelectionEnabled()) return false;
   if (!WS.root || VIEWER_MODE) return false;
   if (previewPaneOwnsSelection()) {
     const card = findSelectedPreviewCard();
@@ -67177,7 +66544,6 @@ function selectRangeInBulkKeybindAction() {
 }
 
 function cancelMultiSelectionKeybindAction() {
-  if (!bulkSelectionEnabled()) return false;
   if (!WS.view.bulkSelectMode && !hasBulkSelection()) {
     showStatusMessage("No bulk selection to cancel.");
     return false;
@@ -67370,7 +66736,6 @@ function startRenameSelection() {
 
 function handleSelectionKeybindAction(action) {
   if (!action || !WS.root || VIEWER_MODE) return false;
-  if (keybindActionUnexposed(action)) return false;
   switch (action) {
     case "scoreUpSelection":
       return applyFolderScoreSelectionAction(1);
@@ -68751,24 +68116,8 @@ function getActiveThumbnailScaleMultiplier(opt = null) {
   if (size === "large") return 1.3;
   return 1;
 }
-function getThumbnailScaleForStyle(style = "cropped", opt = null) {
-  if (simpleModeEnabled(opt)) return "row10";
-  const options =
-    opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  const targetStyle = String(style || getThumbnailStyleFromOptions(options));
-  return normalizeThumbnailScaleValue(
-    targetStyle === "aspect"
-      ? options && options.thumbnailScaleAspect
-      : options && options.thumbnailScaleCropped,
-    "row7",
-  );
-}
-function getActiveThumbnailScale(opt = null) {
-  if (simpleModeEnabled(opt)) return "row10";
-  const options =
-    opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return getThumbnailScaleForStyle(getThumbnailStyleFromOptions(options), options);
-}
+function getThumbnailScaleForStyle() { return "row7"; }
+function getActiveThumbnailScale() { return "row7"; }
 function applyThumbFitFromOptions() {
   const root = document.documentElement;
   if (!root) return;
@@ -71467,32 +70816,30 @@ function getThumbnailMenuTargetsForRecord(rec) {
     const scopeNode = cur.parent || WS.root || null;
     const scopePath = String(scopeNode && scopeNode.path || "");
     const scopeLabel = thumbnailMenuScopeLabel(scopeNode);
-    if (collectionInterfaceEnabled()) {
-      const tags = metaGetUserTags(cur.path || "");
-      for (let i = 0; i < tags.length; i++) {
-        const tag = normalizeTag(tags[i] || "");
-        if (!tag) continue;
-        const key = tagThumbnailKeyForTag(tag, scopePath);
-        if (key && !seenTags.has(key)) {
-          seenTags.add(key);
-          out.push({
-            action: tagThumbnailActionForKey(key),
-            label: `Set '${tag}' thumbnail in ${scopeLabel}`,
-          });
-        }
-        const album = metaGetTagAlbumForTag(tag, scopePath);
-        const albumKey = tagThumbnailKeyForAlbum(album, scopePath);
-        if (album && albumKey && !seenTags.has(albumKey)) {
-          seenTags.add(albumKey);
-          out.push({
-            action: tagThumbnailActionForKey(albumKey),
-            label: `Set album '${album}' thumbnail in ${scopeLabel}`,
-          });
-        }
+    const tags = metaGetUserTags(cur.path || "");
+    for (let i = 0; i < tags.length; i++) {
+      const tag = normalizeTag(tags[i] || "");
+      if (!tag) continue;
+      const key = tagThumbnailKeyForTag(tag, scopePath);
+      if (key && !seenTags.has(key)) {
+        seenTags.add(key);
+        out.push({
+          action: tagThumbnailActionForKey(key),
+          label: `Set '${tag}' thumbnail in ${scopeLabel}`,
+        });
+      }
+      const album = metaGetTagAlbumForTag(tag, scopePath);
+      const albumKey = tagThumbnailKeyForAlbum(album, scopePath);
+      if (album && albumKey && !seenTags.has(albumKey)) {
+        seenTags.add(albumKey);
+        out.push({
+          action: tagThumbnailActionForKey(albumKey),
+          label: `Set album '${album}' thumbnail in ${scopeLabel}`,
+        });
       }
     }
 
-    if (favoritesInterfaceEnabled() && metaHasFavorite(cur.path || "")) {
+    if (metaHasFavorite(cur.path || "")) {
       const scopeKey = tagThumbnailScopeKeyFromPath(scopePath);
       const key = `special:favorites:${scopeKey}`;
       if (!seenTags.has(key)) {
