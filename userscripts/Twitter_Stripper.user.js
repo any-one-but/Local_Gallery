@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.01
+// @version      00.01.02
 // @description  Twitter/X account post-text, image, and video downloader.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Twitter_Stripper.user.js
@@ -53,10 +53,11 @@
 
   const JSZip = window.JSZip;
   const FALLBACK_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
-  const API_DELAY_MS = 550;
+  const API_DELAY_MS = 1500;
   const FILE_DELAY_MS = 220;
-  const MAX_API_PAGES = 300;
-  const LISTING_LIMIT = 100;
+  const MAX_API_PAGES = 40;
+  const LISTING_LIMIT = 40;
+  const MAX_CAPTURED_RESPONSES_PER_OP = 16;
   const MAX_RETRIES = 2;
   const BACKOFF_BASE = 800;
   const BLOB_TIMEOUT_MS = 180000;
@@ -235,14 +236,21 @@
     const origFetch = window.fetch;
     if (typeof origFetch === 'function') {
       window.fetch = function (input, initArg) {
+        let url = '';
         try {
           const init = initArg || {};
-          const url = typeof input === 'string' ? input : (input && input.url) || '';
+          url = typeof input === 'string' ? input : (input && input.url) || '';
           const method = init.method || (input && input.method) || 'GET';
           const headers = init.headers || (input && input.headers);
           rememberRequest(url, method, headers, init.body);
         } catch {}
-        return origFetch.apply(this, arguments);
+        const promise = origFetch.apply(this, arguments);
+        try {
+          if (/\/(?:i\/api\/)?graphql\//.test(String(url || ''))) {
+            promise.then(res => captureFetchResponse(url, res)).catch(() => {});
+          }
+        } catch {}
+        return promise;
       };
       captured.origFetch = origFetch;
     }
@@ -264,8 +272,26 @@
         try {
           if (this.__twCap) rememberRequest(this.__twCap.url, this.__twCap.method, this.__twCap.headers, body);
         } catch {}
+        try {
+          this.addEventListener('load', () => {
+            try {
+              const cap = this.__twCap || {};
+              if (!/\/(?:i\/api\/)?graphql\//.test(String(cap.url || ''))) return;
+              const text = typeof this.responseText === 'string' ? this.responseText : '';
+              const json = safeJsonParse(text);
+              if (json) rememberResponse(cap.url, json);
+            } catch {}
+          }, { once: true });
+        } catch {}
         return origSend.apply(this, arguments);
       };
+    } catch {}
+  }
+
+  function captureFetchResponse(url, res) {
+    try {
+      if (!res || !res.ok || typeof res.clone !== 'function') return;
+      res.clone().json().then(json => rememberResponse(url, json)).catch(() => {});
     } catch {}
   }
 
@@ -277,10 +303,11 @@
       if (!match) return;
       const queryId = match[1];
       const opName = match[2];
+      const requestMethod = String(method || 'GET').toUpperCase();
       let variables;
       let features;
       let fieldToggles;
-      if (String(method || 'GET').toUpperCase() === 'GET') {
+      if (requestMethod === 'GET') {
         const u = new URL(url, location.origin);
         variables = safeJsonParse(u.searchParams.get('variables'));
         features = safeJsonParse(u.searchParams.get('features'));
@@ -290,12 +317,36 @@
         if (parsed) { variables = parsed.variables; features = parsed.features; fieldToggles = parsed.fieldToggles; }
       }
       const prev = captured.ops[opName] || {};
+      const hasPayloadTemplate = !!(variables || features || fieldToggles);
       captured.ops[opName] = {
         opName,
         queryId: queryId || prev.queryId || '',
+        method: requestMethod !== 'GET' || hasPayloadTemplate || !prev.method ? requestMethod : prev.method,
         variables: variables || prev.variables || {},
         features: features || prev.features || null,
-        fieldToggles: fieldToggles || prev.fieldToggles || null
+        fieldToggles: fieldToggles || prev.fieldToggles || null,
+        responses: prev.responses || []
+      };
+    } catch {}
+  }
+
+  function rememberResponse(url, json) {
+    try {
+      const match = String(url).match(/\/graphql\/([^/]+)\/([^/?#]+)/);
+      if (!match || !json) return;
+      const opName = match[2];
+      const u = new URL(url, location.origin);
+      const variables = safeJsonParse(u.searchParams.get('variables')) || {};
+      const prev = captured.ops[opName] || { opName, queryId: match[1], variables: {}, responses: [] };
+      const responses = (prev.responses || []).slice(-MAX_CAPTURED_RESPONSES_PER_OP + 1);
+      responses.push({ at: Date.now(), variables, json });
+      captured.ops[opName] = {
+        ...prev,
+        opName,
+        queryId: prev.queryId || match[1] || '',
+        method: prev.method || 'GET',
+        variables: Object.keys(prev.variables || {}).length ? prev.variables : variables,
+        responses
       };
     } catch {}
   }
@@ -352,40 +403,46 @@
       throw new Error(`X has not run "${opName}" on this page yet — reload the page, let it load, then Scan`);
     }
     const vars = Object.assign({}, tmpl.variables, variablesOverride || {});
+    const method = String(tmpl.method || 'GET').toUpperCase();
     const u = new URL(`${location.protocol}//${location.host}/i/api/graphql/${tmpl.queryId}/${opName}`);
-    u.searchParams.set('variables', JSON.stringify(vars));
-    if (tmpl.features) u.searchParams.set('features', JSON.stringify(tmpl.features));
-    if (tmpl.fieldToggles) u.searchParams.set('fieldToggles', JSON.stringify(tmpl.fieldToggles));
+    const request = { method, credentials: 'include', headers: apiHeaders() };
+    if (method === 'POST') {
+      request.headers['content-type'] = 'application/json';
+      request.body = JSON.stringify({
+        variables: vars,
+        features: tmpl.features || undefined,
+        fieldToggles: tmpl.fieldToggles || undefined
+      });
+    } else {
+      u.searchParams.set('variables', JSON.stringify(vars));
+      if (tmpl.features) u.searchParams.set('features', JSON.stringify(tmpl.features));
+      if (tmpl.fieldToggles) u.searchParams.set('fieldToggles', JSON.stringify(tmpl.fieldToggles));
+    }
     const doFetch = captured.origFetch || window.fetch;
-    const res = await doFetch(u.href, { method: 'GET', credentials: 'include', headers: apiHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const res = await doFetch(u.href, request);
+    if (!res.ok) throw httpError(res.status, res.headers && res.headers.get && res.headers.get('retry-after'));
     return res.json();
   }
 
   async function resolveUser(screenName) {
+    const capturedUser = findCapturedUser(screenName);
+    if (capturedUser) return capturedUser;
     const json = await apiGraphql('UserByScreenName', { screen_name: screenName });
     const result = json && json.data && json.data.user && json.data.user.result;
     if (!result || (result.__typename && result.__typename !== 'User')) {
       throw new Error(result && result.__typename ? `account is ${result.__typename}` : 'account not found');
     }
-    const legacy = result.legacy || {};
-    const core = result.core || {};
-    return {
-      restId: result.rest_id || '',
-      handle: legacy.screen_name || core.screen_name || screenName,
-      name: legacy.name || core.name || ''
-    };
+    return userInfoFromResult(result, screenName);
   }
 
-  async function fetchUserTweets(restId) {
+  async function fetchUserTweets(restId, actor) {
     const opNames = userTimelineOperationNames();
     if (!opNames.length) {
       throw new Error('X has not run a user timeline request on this page yet — open the profile/media tab, let it load, then Scan');
     }
     const posts = [];
     const seen = new Set();
-    for (const opName of opNames) {
-      const batch = await fetchUserTimelineOperation(restId, opName);
+    const addPosts = batch => {
       let added = 0;
       for (const post of batch) {
         const id = String(post && post.id || '');
@@ -394,6 +451,35 @@
         posts.push(post);
         added++;
       }
+      return added;
+    };
+
+    const capturedBatch = capturedTimelinePosts(restId, actor);
+    if (capturedBatch.length) {
+      const added = addPosts(capturedBatch);
+      if (added) {
+        logLine(`Used ${added} post${added === 1 ? '' : 's'} already loaded by X.`);
+        logLine('Skipping extra profile API pages to avoid X rate limits. Scroll/load more on the profile, then Scan again for more.');
+        return posts;
+      }
+    }
+
+    for (const opName of opNames) {
+      let batch = [];
+      try {
+        batch = await fetchUserTimelineOperation(restId, opName);
+      } catch (err) {
+        if (isHttpStatus(err, 429)) {
+          if (posts.length) {
+            logLine(`X rate-limited extra ${opName} pages; using the posts already found.`);
+            return posts;
+          }
+          throw new Error(rateLimitMessage(err));
+        }
+        throw err;
+      }
+      let added = 0;
+      added = addPosts(batch);
       if (added) logLine(`${opName} added ${added} post${added === 1 ? '' : 's'}.`);
       if (posts.some(post => post.files.some(file => file.kind !== 'text')) && opName === 'UserMedia') break;
     }
@@ -402,12 +488,83 @@
 
   function userTimelineOperationNames() {
     const preferred = ['UserMedia', 'UserTweets', 'UserTweetsAndReplies'];
-    const out = preferred.filter(name => captured.ops[name] && captured.ops[name].queryId);
+    const hasOperation = name => {
+      const op = captured.ops[name];
+      return op && (op.queryId || (Array.isArray(op.responses) && op.responses.length));
+    };
+    const out = preferred.filter(hasOperation);
     Object.keys(captured.ops).forEach(name => {
       if (!/^User(?:Media|Tweets)/.test(name) || out.includes(name)) return;
-      if (captured.ops[name] && captured.ops[name].queryId) out.push(name);
+      if (hasOperation(name)) out.push(name);
     });
     return out;
+  }
+
+  function findCapturedUser(screenName) {
+    const wanted = normalizeActor(screenName);
+    const byName = captured.ops.UserByScreenName;
+    const userResponses = (byName && byName.responses) || [];
+    for (let i = userResponses.length - 1; i >= 0; i--) {
+      const entry = userResponses[i] || {};
+      const vars = entry.variables || {};
+      const result = entry.json && entry.json.data && entry.json.data.user && entry.json.data.user.result;
+      if (!result || (result.__typename && result.__typename !== 'User')) continue;
+      const info = userInfoFromResult(result, screenName);
+      const asked = normalizeActor(vars.screen_name || vars.screenName || '');
+      if (!wanted || asked === wanted || normalizeActor(info.handle) === wanted) return info;
+    }
+
+    const timelineUser = findCapturedTimelineUser(wanted);
+    return timelineUser || null;
+  }
+
+  function findCapturedTimelineUser(actor) {
+    if (!actor) return null;
+    const opNames = userTimelineOperationNames();
+    for (const opName of opNames) {
+      const responses = (captured.ops[opName] && captured.ops[opName].responses) || [];
+      for (let i = responses.length - 1; i >= 0; i--) {
+        const parsed = parseTimeline(responses[i].json);
+        for (const result of parsed.tweets) {
+          const userResult = userResultFromTweet(result);
+          if (!userResult) continue;
+          const info = userInfoFromResult(userResult, actor);
+          if (normalizeActor(info.handle) === actor) return info;
+        }
+      }
+    }
+    return null;
+  }
+
+  function userInfoFromResult(result, fallbackHandle) {
+    const legacy = (result && result.legacy) || {};
+    const core = (result && result.core) || {};
+    return {
+      restId: (result && result.rest_id) || '',
+      handle: legacy.screen_name || core.screen_name || fallbackHandle || '',
+      name: legacy.name || core.name || ''
+    };
+  }
+
+  function capturedTimelinePosts(restId, actor) {
+    const posts = [];
+    const seen = new Set();
+    const opNames = userTimelineOperationNames();
+    for (const opName of opNames) {
+      const responses = (captured.ops[opName] && captured.ops[opName].responses) || [];
+      responses.forEach((entry, idx) => {
+        const parsed = parseTimeline(entry && entry.json);
+        parsed.tweets.forEach(result => {
+          if (!tweetBelongsToUser(result, restId, actor)) return;
+          const post = tweetToPost(result, idx + 1);
+          const id = String(post && post.id || '');
+          if (!id || seen.has(id)) return;
+          seen.add(id);
+          posts.push(post);
+        });
+      });
+    }
+    return posts;
   }
 
   async function fetchUserTimelineOperation(restId, opName) {
@@ -588,6 +745,21 @@
     if (result.__typename === 'TweetWithVisibilityResults' && result.tweet) return result.tweet;
     if (result.tweet && result.tweet.legacy && !result.legacy) return result.tweet;
     return result;
+  }
+
+  function userResultFromTweet(result) {
+    const tweet = unwrapTweet(result);
+    return tweet && tweet.core && tweet.core.user_results && tweet.core.user_results.result;
+  }
+
+  function tweetBelongsToUser(result, restId, actor) {
+    const wantedId = String(restId || '');
+    const wantedActor = normalizeActor(actor);
+    const userResult = userResultFromTweet(result);
+    if (!userResult) return !wantedId && !wantedActor;
+    if (wantedId && String(userResult.rest_id || '') === wantedId) return true;
+    const info = userInfoFromResult(userResult, actor);
+    return !!wantedActor && normalizeActor(info.handle) === wantedActor;
   }
 
   function tweetToPost(result, page) {
@@ -832,15 +1004,34 @@
         }
         logLine(`Fetched tweet ${context.id}.`);
       } else {
-        const user = await resolveUser(context.actor);
+        let user = findCapturedUser(context.actor);
+        if (!user) {
+          try {
+            user = await resolveUser(context.actor);
+          } catch (err) {
+            if (!isHttpStatus(err, 429)) throw err;
+            const capturedBatch = capturedTimelinePosts('', context.actor);
+            if (!capturedBatch.length) throw new Error(rateLimitMessage(err));
+            mediaPosts = capturedBatch;
+            const first = mediaPosts[0] || {};
+            user = {
+              restId: '',
+              handle: first.user || context.actor,
+              name: first.displayName || ''
+            };
+            logLine('X rate-limited account lookup; using timeline data already loaded on this page.');
+          }
+        }
         state.actor = context.actor;
-        state.restId = user.restId;
+        state.restId = user.restId || '';
         state.handle = user.handle || context.actor;
         state.displayName = user.name || '';
         state.userFolder = sanitizeUserFolder(state.handle || context.actor);
         logLine(`Resolved @${state.handle}.`);
-        if (!user.restId) throw new Error('could not resolve the account id');
-        mediaPosts = await fetchUserTweets(user.restId);
+        if (!mediaPosts.length) {
+          if (!user.restId) throw new Error('could not resolve the account id');
+          mediaPosts = await fetchUserTweets(user.restId, context.actor);
+        }
         logLine(`Fetched ${mediaPosts.length} media/text post${mediaPosts.length === 1 ? '' : 's'} by @${state.handle}.`);
       }
 
@@ -1713,6 +1904,23 @@
 
   function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function httpError(status, retryAfter) {
+    const err = new Error(`HTTP ${status}`);
+    err.status = Number(status) || 0;
+    err.retryAfter = retryAfter || '';
+    return err;
+  }
+
+  function isHttpStatus(err, status) {
+    return !!err && Number(err.status) === Number(status);
+  }
+
+  function rateLimitMessage(err) {
+    const wait = Number(err && err.retryAfter) || 0;
+    const suffix = wait > 0 ? ` X asked to retry after about ${wait} second${wait === 1 ? '' : 's'}.` : '';
+    return `X rate-limited the profile API. Wait a while, or scroll/load more of the profile so the scanner can use data already loaded on the page.${suffix}`;
   }
 
   function errorMessage(err) {
