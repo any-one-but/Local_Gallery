@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.00
+// @version      00.01.01
 // @description  Twitter/X account post-text, image, and video downloader.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Twitter_Stripper.user.js
@@ -49,6 +49,7 @@
   // status) before you press Scan.
   const captured = { bearer: '', ops: Object.create(null) };
   installNetworkCapture();
+  harvestGraphqlFromPerformance();
 
   const JSZip = window.JSZip;
   const FALLBACK_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
@@ -299,6 +300,18 @@
     } catch {}
   }
 
+  function harvestGraphqlFromPerformance() {
+    try {
+      const entries = performance && typeof performance.getEntriesByType === 'function'
+        ? performance.getEntriesByType('resource')
+        : [];
+      entries.forEach(entry => {
+        const name = entry && entry.name ? String(entry.name) : '';
+        if (/\/(?:i\/api\/)?graphql\//.test(name)) rememberRequest(name, 'GET', null, null);
+      });
+    } catch {}
+  }
+
   function headerGet(headers, name) {
     if (!headers) return '';
     const lower = String(name).toLowerCase();
@@ -365,16 +378,51 @@
   }
 
   async function fetchUserTweets(restId) {
+    const opNames = userTimelineOperationNames();
+    if (!opNames.length) {
+      throw new Error('X has not run a user timeline request on this page yet — open the profile/media tab, let it load, then Scan');
+    }
+    const posts = [];
+    const seen = new Set();
+    for (const opName of opNames) {
+      const batch = await fetchUserTimelineOperation(restId, opName);
+      let added = 0;
+      for (const post of batch) {
+        const id = String(post && post.id || '');
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        posts.push(post);
+        added++;
+      }
+      if (added) logLine(`${opName} added ${added} post${added === 1 ? '' : 's'}.`);
+      if (posts.some(post => post.files.some(file => file.kind !== 'text')) && opName === 'UserMedia') break;
+    }
+    return posts;
+  }
+
+  function userTimelineOperationNames() {
+    const preferred = ['UserMedia', 'UserTweets', 'UserTweetsAndReplies'];
+    const out = preferred.filter(name => captured.ops[name] && captured.ops[name].queryId);
+    Object.keys(captured.ops).forEach(name => {
+      if (!/^User(?:Media|Tweets)/.test(name) || out.includes(name)) return;
+      if (captured.ops[name] && captured.ops[name].queryId) out.push(name);
+    });
+    return out;
+  }
+
+  async function fetchUserTimelineOperation(restId, opName) {
     const posts = [];
     let cursor = '';
     let page = 0;
     let emptyStreak = 0;
+    const tmplVars = (captured.ops[opName] && captured.ops[opName].variables) || {};
     while (page < MAX_API_PAGES) {
       page++;
       const vars = { userId: restId };
+      if (Object.prototype.hasOwnProperty.call(tmplVars, 'count') || opName === 'UserMedia') vars.count = LISTING_LIMIT;
       if (cursor) vars.cursor = cursor;
-      logLine(`Loading tweets page ${page}${cursor ? '...' : '.'}`);
-      const json = await apiGraphql('UserTweets', vars);
+      logLine(`Loading ${opName} page ${page}${cursor ? '...' : '.'}`);
+      const json = await apiGraphql(opName, vars);
       const parsed = parseTimeline(json);
       let added = 0;
       parsed.tweets.forEach(result => {
@@ -441,22 +489,63 @@
       result.timeline_v2 ||
       result.timeline
     );
-    const instructions = (timeline && timeline.instructions) || [];
+    const root = timeline || json;
     const tweets = [];
+    const seenTweets = new Set();
     let cursor = '';
-    const pushResult = r => { if (r) tweets.push(r); };
-    const setCursor = c => { if (c) cursor = c; };
-    instructions.forEach(ins => {
-      if (!ins) return;
-      if (ins.type === 'TimelineAddEntries' && Array.isArray(ins.entries)) {
-        ins.entries.forEach(entry => collectEntry(entry, pushResult, setCursor));
-      } else if (ins.type === 'TimelinePinEntry' && ins.entry) {
-        collectEntry(ins.entry, pushResult, setCursor);
-      } else if (ins.type === 'TimelineAddToModule' && Array.isArray(ins.moduleItems)) {
-        ins.moduleItems.forEach(mi => pushResult(tweetResultFrom(mi && mi.item && mi.item.itemContent)));
-      }
-    });
+    const pushResult = r => {
+      if (!r) return;
+      const tweet = unwrapTweet(r);
+      const id = tweet && (tweet.rest_id || (tweet.legacy && tweet.legacy.id_str));
+      const key = id || JSON.stringify(r).slice(0, 80);
+      if (seenTweets.has(key)) return;
+      seenTweets.add(key);
+      tweets.push(r);
+    };
+    const setCursor = c => {
+      const value = String(c || '');
+      if (value) cursor = value;
+    };
+    collectTimelinePayload(root, pushResult, setCursor, 0);
     return { tweets, cursor };
+  }
+
+  function collectTimelinePayload(value, push, setCursor, depth) {
+    if (!value || depth > 28) return;
+    if (Array.isArray(value)) {
+      value.forEach(item => collectTimelinePayload(item, push, setCursor, depth + 1));
+      return;
+    }
+    if (typeof value !== 'object') return;
+
+    const cursorType = String(value.cursorType || value.cursor_type || '').toLowerCase();
+    if ((cursorType === 'bottom' || cursorType === 'showmorethreads') && value.value) {
+      setCursor(value.value);
+    }
+    const entryId = String(value.entryId || value.entry_id || '');
+    if (entryId.startsWith('cursor-bottom') && value.content && value.content.value) {
+      setCursor(value.content.value);
+    }
+
+    const direct = tweetResultFrom(value);
+    if (direct) push(direct);
+
+    if (value.tweet_results && value.tweet_results.result) {
+      push(value.tweet_results.result);
+    }
+    if (value.tweetResult && value.tweetResult.result) {
+      push(value.tweetResult.result);
+    }
+
+    for (const key of Object.keys(value)) {
+      if (key === 'tweet_results' || key === 'tweetResult') continue;
+      const child = value[key];
+      if (!child || typeof child !== 'object') continue;
+      // Quoted/retweeted tweets are metadata for a timeline item, not account
+      // posts for the scan. Keep the walk on timeline containers and modules.
+      if (key === 'quoted_status_result' || key === 'retweeted_status_result') continue;
+      collectTimelinePayload(child, push, setCursor, depth + 1);
+    }
   }
 
   function collectEntry(entry, push, setCursor) {
@@ -475,6 +564,13 @@
     if (Array.isArray(content.items)) {
       content.items.forEach(it => {
         const ic = it && it.item && it.item.itemContent;
+        if (ic && ic.cursorType === 'Bottom' && ic.value) { setCursor(ic.value); return; }
+        push(tweetResultFrom(ic));
+      });
+    }
+    if (Array.isArray(content.moduleItems)) {
+      content.moduleItems.forEach(mi => {
+        const ic = mi && mi.item && mi.item.itemContent;
         if (ic && ic.cursorType === 'Bottom' && ic.value) { setCursor(ic.value); return; }
         push(tweetResultFrom(ic));
       });
@@ -522,7 +618,7 @@
     };
     post.title = postTitle(post.text, id);
 
-    const files = extractMediaFiles(legacy);
+    const files = extractMediaFiles(tweet);
     const md = buildPostTextFile(post, files.length > 0);
     if (md) files.push(md);
     if (!files.length) return null;
@@ -535,9 +631,10 @@
     return r && r.text ? String(r.text) : '';
   }
 
-  function extractMediaFiles(legacy) {
-    const media = (legacy.extended_entities && legacy.extended_entities.media) ||
-      (legacy.entities && legacy.entities.media) || [];
+  function extractMediaFiles(tweetOrLegacy) {
+    const tweet = tweetOrLegacy && tweetOrLegacy.legacy ? tweetOrLegacy : null;
+    const legacy = tweet ? tweet.legacy : (tweetOrLegacy || {});
+    const media = collectMediaItems(tweet, legacy);
     const out = [];
     const seen = new Set();
     const add = (url, label, mime, ext) => {
@@ -550,32 +647,103 @@
     };
     (Array.isArray(media) ? media : []).forEach((m, idx) => {
       if (!m) return;
-      const type = String(m.type || '').toLowerCase();
-      if (type === 'photo' || (!type && m.media_url_https)) {
-        const url = imageOrigUrl(m.media_url_https || m.media_url);
+      const type = mediaItemType(m);
+      if (type === 'photo' || (!type && mediaImageUrl(m))) {
+        const url = imageOrigUrl(mediaImageUrl(m));
         add(url, `image_${pad3(idx + 1)}`, 'image/jpeg', getUrlExt(url) || 'jpg');
       } else if (type === 'video' || type === 'animated_gif') {
-        const variant = bestVideoVariant(m.video_info && m.video_info.variants);
+        const variant = bestVideoVariant(mediaVideoVariants(m));
         const label = `${type === 'animated_gif' ? 'gif' : 'video'}_${pad3(idx + 1)}`;
         if (variant) add(variant.url, label, 'video/mp4', 'mp4');
-        else if (m.media_url_https) add(imageOrigUrl(m.media_url_https), `${label}_thumb`, 'image/jpeg', 'jpg');
+        else if (mediaImageUrl(m)) add(imageOrigUrl(mediaImageUrl(m)), `${label}_thumb`, 'image/jpeg', 'jpg');
       }
     });
     return out;
   }
 
+  function collectMediaItems(tweet, legacy) {
+    const out = [];
+    const pushMany = value => {
+      if (Array.isArray(value)) value.forEach(item => { if (item) out.push(item); });
+    };
+    if (legacy) {
+      pushMany(legacy.extended_entities && legacy.extended_entities.media);
+      pushMany(legacy.entities && legacy.entities.media);
+      pushMany(legacy.mediaDetails);
+      pushMany(legacy.media_details);
+    }
+    if (tweet) {
+      pushMany(tweet.mediaDetails);
+      pushMany(tweet.media_details);
+      pushMany(tweet.mediaItems);
+      pushMany(tweet.media_items);
+      pushMany(tweet.extended_entities && tweet.extended_entities.media);
+      pushMany(tweet.entities && tweet.entities.media);
+    }
+    const seen = new Set();
+    return out.filter(item => {
+      const key = String(item.media_key || item.mediaKey || item.id_str || item.id || mediaImageUrl(item) || JSON.stringify(item).slice(0, 80));
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function mediaItemType(item) {
+    const raw = String(item && (item.type || item.media_type || item.mediaType || item.__typename) || '').toLowerCase();
+    if (raw.includes('animated')) return 'animated_gif';
+    if (raw.includes('video')) return 'video';
+    if (raw.includes('photo') || raw.includes('image')) return 'photo';
+    return raw;
+  }
+
+  function mediaImageUrl(item) {
+    if (!item) return '';
+    const candidates = [
+      item.media_url_https,
+      item.media_url,
+      item.mediaUrlHttps,
+      item.mediaUrl,
+      item.preview_image_url,
+      item.previewImageUrl,
+      item.url
+    ];
+    for (const candidate of candidates) {
+      const url = String(candidate || '');
+      if (/\/\/(?:pbs|video)\.twimg\.com\//i.test(url) || /\/\/[^/]*twimg\.com\//i.test(url)) return url;
+    }
+    return '';
+  }
+
+  function mediaVideoVariants(item) {
+    if (!item) return [];
+    const info = item.video_info || item.videoInfo || item.video || {};
+    return info.variants || item.variants || [];
+  }
+
   function bestVideoVariant(variants) {
     if (!Array.isArray(variants)) return null;
-    const mp4 = variants.filter(v => v && v.url && String(v.content_type || '').toLowerCase() === 'video/mp4');
+    const mp4 = variants.filter(v => v && v.url && String(v.content_type || v.contentType || '').toLowerCase() === 'video/mp4');
     if (!mp4.length) return null;
     mp4.sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
     return mp4[0];
   }
 
   function imageOrigUrl(url) {
-    const base = String(url || '').split('?')[0].split('#')[0];
-    if (!base) return '';
-    return `${base}?name=orig`;
+    const raw = String(url || '').trim();
+    if (!raw) return '';
+    try {
+      const u = new URL(raw, location.origin);
+      const format = u.searchParams.get('format') || getUrlExt(u.href);
+      u.hash = '';
+      u.search = '';
+      if (/\/media\//i.test(u.pathname) && format && !/\.[a-z0-9]{2,5}$/i.test(u.pathname)) {
+        return `${u.href}?format=${encodeURIComponent(format)}&name=orig`;
+      }
+      return `${u.href}?name=orig`;
+    } catch {}
+    const base = raw.split('?')[0].split('#')[0];
+    return base ? `${base}?name=orig` : '';
   }
 
   function stripTrailingMediaUrl(text) {
@@ -630,6 +798,7 @@
 
   async function scanCurrent() {
     if (state.busy) return;
+    harvestGraphqlFromPerformance();
     const context = scanContextFromLocation();
     if (!context) {
       logLine('This page is not an X profile or tweet.');
