@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Stripper
+// @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
 // @version      00.17.08
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
@@ -300,7 +300,7 @@
       const BACKOFF_BASE = 900;
       const BLOB_TIMEOUT_MS = 120000;
       const LISTING_LIMIT = 100;
-      const USER_AGENT_NOTE = 'Stripper userscript';
+      const USER_AGENT_NOTE = 'Reddit Stripper userscript';
       const REDDIT_SUBSCRIPTION_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
       const REDDIT_SUBSCRIPTION_SYNC_DELAY_MS = 900;
     
@@ -812,7 +812,7 @@
         panel.id = 'redditGuestPanel';
         panel.innerHTML = `
           <div class="rg-header">
-            <span class="rg-title">Stripper</span>
+            <span class="rg-title">Reddit Stripper</span>
             <span id="rgMapCount" class="rg-mapCount" title="Saved Rabbithole items" hidden></span>
             <button id="rgCollapseBtn" class="rg-collapseBtn" type="button" title="Collapse">▴</button>
           </div>
