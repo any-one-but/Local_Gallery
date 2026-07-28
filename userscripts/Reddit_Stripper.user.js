@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.08
+// @version      00.17.09
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Reddit_Stripper.user.js
@@ -95,7 +95,10 @@
         : localStorage.getItem(storageKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      if (!parsed || parsed.version !== 1 || !parsed.payload) return null;
+      // v2 = pages numbered oldest-first. v1 payloads hold pre-built page
+      // archives under the old newest-first numbering, so they are rejected
+      // rather than mixed in; the next scan overwrites them in place.
+      if (!parsed || parsed.version !== 2 || !parsed.payload) return null;
       return parsed;
     } catch {
       return null;
@@ -107,7 +110,7 @@
     try {
       const storageKey = STRIPPER_SCAN_CACHE_PREFIX + cacheKey;
       const serialized = JSON.stringify({
-        version: 1,
+        version: 2,
         savedAt: Date.now(),
         payload
       });
@@ -1741,6 +1744,15 @@
     
         if (page >= MAX_API_PAGES) {
           logLine(`Stopped at ${MAX_API_PAGES} API pages.`);
+        }
+        // Reddit pages newest-first, so the fetch order runs backwards through
+        // time. Flip the numbering so page 1 is the oldest batch and the number
+        // climbs with recency, matching how the posts themselves accumulate.
+        // (When the scan is cut short by MAX_API_PAGES, page 1 is the oldest
+        // batch actually fetched — the only "oldest" available.)
+        const fetchedPages = posts.reduce((max, post) => Math.max(max, Number(post.__rgPage) || 1), 1);
+        for (const post of posts) {
+          post.__rgPage = fetchedPages - (Number(post.__rgPage) || 1) + 1;
         }
         return posts;
       }
