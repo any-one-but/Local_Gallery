@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.02.05
+// @version 01.02.06
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -1274,7 +1274,9 @@ const parsers = {
         parseTitle: () => {
             const emojisPattern =
                   /[\u{1f300}-\u{1f5ff}\u{1f900}-\u{1f9ff}\u{1f600}-\u{1f64f}\u{1f680}-\u{1f6ff}\u{2600}-\u{26ff}\u{2700}-\u{27bf}\u{1f191}-\u{1f251}\u{1f004}\u{1f0cf}\u{1f170}-\u{1f171}\u{1f17e}-\u{1f17f}\u{1f18e}\u{3030}\u{2b50}\u{2b55}\u{2934}-\u{2935}\u{2b05}-\u{2b07}\u{2b1b}-\u{2b1c}\u{3297}\u{3299}\u{303d}\u{00a9}\u{00ae}\u{2122}\u{23f3}\u{24c2}\u{23e9}-\u{23ef}\u{25b6}\u{23f8}-\u{23fa}]/gu;
-            let parsed = h.stripTags(['a', 'span'], h.element('.p-title-value').innerHTML).replace('/\n/g', '');
+            const titleEl = h.element('.p-title-value') || h.element('h1') || h.element('title');
+            let parsed = titleEl ? h.stripTags(['a', 'span'], titleEl.innerHTML || titleEl.textContent || '') : document.title;
+            parsed = parsed.replace('/\n/g', '');
             return !settings.naming.allowEmojis ? parsed.replace(emojisPattern, settings.naming.invalidCharSubstitute).trim() : parsed.trim();
         },
         /**
@@ -1283,10 +1285,21 @@ const parsers = {
      * @returns {{pageNumber: string, post, spoilers: *, footer: HTMLElement, contentContainer: Element, textContent: (*|string|string), postId: string, postNumber: string, content: (*|string|string|string)}}
      */
         parsePost: post => {
-            const messageContent = post.parentNode.parentNode.querySelector('.message-content > .message-userContent');
-            const footer = post.parentNode.parentNode.querySelector('footer');
+            const postRoot = post.closest('.message') || post.closest('.message-main') || post;
+            const messageMain = postRoot.matches('.message-main') ? postRoot : postRoot.querySelector('.message-main');
+            const messageContent =
+                postRoot.querySelector('.message-content > .message-userContent') ||
+                postRoot.querySelector('.message-userContent') ||
+                postRoot.querySelector('.bbWrapper') ||
+                messageMain?.querySelector('.bbWrapper') ||
+                messageMain;
+
+            if (!messageContent) {
+                return null;
+            }
+
+            const footer = postRoot.querySelector('footer');
             const messageContentClone = messageContent.cloneNode(true);
-            const postRoot = post.closest('.message') || post;
             const timeEl = postRoot.querySelector('time.u-dt') || postRoot.querySelector('time');
             let postDate = null;
             if (timeEl) {
@@ -1299,9 +1312,19 @@ const parsers = {
                 }
             }
 
-            const postIdAnchor = post.querySelector('li:last-of-type > a');
-            const postId = /(?<=\/post-).*/i.exec(postIdAnchor.getAttribute('href'))[0];
-            const postNumber = postIdAnchor.textContent.replace('#', '').trim();
+            const postIdAnchor =
+                post.querySelector('li:last-of-type > a') ||
+                postRoot.querySelector('a[href*="/post-"]') ||
+                postRoot.querySelector('a[href*="#post-"]') ||
+                postRoot.querySelector('a[href*="post-"]');
+            const postIdHref = postIdAnchor?.getAttribute('href') || '';
+            const postIdMatch = /post-(\d+)/i.exec(postIdHref) || /post-(\d+)/i.exec(postRoot.id || '');
+            const postId =
+                (postIdMatch && postIdMatch[1]) ||
+                postRoot.getAttribute('data-content') ||
+                postRoot.id ||
+                `post-${Math.round(Math.random() * Number.MAX_SAFE_INTEGER)}`;
+            const postNumber = (postIdAnchor?.textContent || postId).replace('#', '').trim();
 
             // Remove the following from the post content:
             // 1. Quotes.
@@ -8350,40 +8373,58 @@ if (needZipBlob) {
  * @param post
  */
 const addDuplicateTabLink = post => {
+    const source = post.parentNode?.querySelector('.u-concealed');
+    const target = post.parentNode?.querySelector('.message-attribution-main');
+    if (!source || !target) {
+        return;
+    }
+
     const span = document.createElement('span');
     span.innerHTML = '<i class="fa fa-copy"></i> Duplicate Tab';
 
-    const dupTabLI = post.parentNode.querySelector('.u-concealed').cloneNode(true);
+    const dupTabLI = source.cloneNode(true);
     dupTabLI.setAttribute('class', 'duplicate-tab');
 
     const anchor = dupTabLI.querySelector('a');
+    if (!anchor) {
+        return;
+    }
     anchor.style.color = 'rgb(138, 138, 138)';
     anchor.setAttribute('target', '_blank');
-    anchor.querySelector('time').remove();
+    anchor.querySelector('time')?.remove();
     anchor.parentNode.style.marginLeft = '10px';
     anchor.append(span);
 
-    post.parentNode.querySelector('.message-attribution-main').append(dupTabLI);
+    target.append(dupTabLI);
 };
 
 /**
  * @param post
  */
 const addShowDownloadPageBtnLink = post => {
+    const source = post.parentNode?.querySelector('.u-concealed');
+    const target = post.parentNode?.querySelector('.message-attribution-main');
+    if (!source || !target) {
+        return;
+    }
+
     const span = document.createElement('span');
     span.innerHTML = '<i class="fa fa-arrow-up"></i> Download Page';
 
-    const dupTabLI = post.parentNode.querySelector('.u-concealed').cloneNode(true);
+    const dupTabLI = source.cloneNode(true);
     dupTabLI.setAttribute('class', 'show-download-page');
 
     const anchor = dupTabLI.querySelector('a');
+    if (!anchor) {
+        return;
+    }
     anchor.style.color = 'rgb(138, 138, 138)';
     anchor.setAttribute('href', '#download-page');
-    anchor.querySelector('time').remove();
+    anchor.querySelector('time')?.remove();
     anchor.parentNode.style.marginLeft = '10px';
     anchor.append(span);
 
-    post.parentNode.querySelector('.message-attribution-main').append(dupTabLI);
+    target.append(dupTabLI);
 };
 
 // TODO: Extract to ui.js
@@ -8399,7 +8440,12 @@ const addDownloadPageButton = () => {
 
     downloadAllButton.appendChild(buttonTextSpan);
 
-    const buttonGroup = h.element('.buttonGroup');
+    const buttonGroup =
+        h.element('.buttonGroup') ||
+        h.element('.p-title-pageAction') ||
+        h.element('.block-outer-opposite') ||
+        h.element('.p-body-header') ||
+        document.body;
     buttonGroup.prepend(downloadAllButton);
 
     return downloadAllButton;
@@ -8873,10 +8919,7 @@ const fetchNextPage = async () => {
         const sentinel = infiniteScrollState.sentinel;
         doc.querySelectorAll(POST_SEL).forEach(post => {
             box.insertBefore(post, sentinel);
-            const attribution = post.querySelector('.message-attribution-opposite');
-            if (attribution) {
-                registerPost(attribution);
-            }
+            registerPostsIn(post);
         });
         infiniteScrollState.nextURL = getNextPageUrl(doc);
         if (!infiniteScrollState.nextURL) {
@@ -8889,6 +8932,21 @@ const fetchNextPage = async () => {
     } finally {
         infiniteScrollState.busy = false;
     }
+};
+
+const findPostRegistrationTargets = (container = document) => {
+    const attributionTargets = [...container.querySelectorAll('.message-attribution-opposite')];
+    if (attributionTargets.length) {
+        return attributionTargets;
+    }
+
+    return [...container.querySelectorAll('.message-main')];
+};
+
+const registerPostsIn = (container = document) => {
+    findPostRegistrationTargets(container).forEach(post => {
+        registerPost(post);
+    });
 };
 
 const registerPost = post => {
@@ -9037,9 +9095,7 @@ const registerPost = post => {
 
         init.injectCustomStyles();
 
-        h.elements('.message-attribution-opposite').forEach(post => {
-            registerPost(post);
-        });
+        registerPostsIn(document);
 
         refreshDownloadPageTooltip();
         setupFilterToggles();
