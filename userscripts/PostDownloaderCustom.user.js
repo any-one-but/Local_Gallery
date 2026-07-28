@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.02.06
+// @version 01.02.07
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -15,6 +15,7 @@
 // @match https://simpcity.hk/threads/*
 // @match https://simpcity.rs/threads/*
 // @match https://simpcity.ax/threads/*
+// @match https://xbunker.cc/*
 // @match https://*.xbunker.cc/*
 // @match https://gofile.io/*
 // @require https://unpkg.com/@popperjs/core@2
@@ -1596,7 +1597,9 @@ a.setAttribute('data-url', finalUrl);
                 url = url.replace(/&amp;/g, '&');
                 url = url.split(/[\s"'<>]/)[0].trim();
                 // Normalize scheme so the same link in different representations dedupes cleanly.
-                if (url && !/^https?:\/\//i.test(url)) {
+                if (/^\/\//.test(url)) {
+                    url = `https:${url}`;
+                } else if (url && !/^https?:\/\//i.test(url)) {
                     url = `https://${url}`;
                 }
 
@@ -1772,6 +1775,7 @@ const ui = {
         createPostDownloadButton: () => {
             const downloadPostBtn = document.createElement('a');
             downloadPostBtn.setAttribute('href', '#');
+            downloadPostBtn.setAttribute('class', 'xfpd-download-post-button');
             downloadPostBtn.innerHTML = '🡳 Download';
 
             return downloadPostBtn;
@@ -1779,15 +1783,17 @@ const ui = {
         /**
      * @returns {HTMLLIElement}
      */
-        createPostDownloadButtonContainer: () => {
-            return document.createElement('li');
+        createPostDownloadButtonContainer: post => {
+            const container = document.createElement(post?.matches?.('.message-main') ? 'div' : 'li');
+            container.setAttribute('class', 'xfpd-download-post-button-container');
+            return container;
         },
         /**
      * @param post
      * @returns {{container: HTMLLIElement, btn: HTMLAnchorElement}}
      */
         addDownloadPostButton: post => {
-            const btnDownloadPostContainer = ui.buttons.createPostDownloadButtonContainer();
+            const btnDownloadPostContainer = ui.buttons.createPostDownloadButtonContainer(post);
             const btnDownloadPost = ui.buttons.createPostDownloadButton();
             btnDownloadPostContainer.appendChild(btnDownloadPost);
             post.prepend(btnDownloadPostContainer);
@@ -2231,7 +2237,28 @@ const init = {
             marginClasses.push(`.m-t-${i} {margin-top: ${i}px;}`);
         }
 
-        customStyles.textContent = marginClasses.join('\n');
+        customStyles.textContent = `
+            ${marginClasses.join('\n')}
+            .xfpd-download-post-button-container {
+                display: block;
+                margin: 0 0 10px 0;
+            }
+            .xfpd-download-post-button {
+                display: inline-block;
+                background-color: #3DB7C7;
+                color: #fff !important;
+                padding: 6px 10px;
+                border-radius: 4px;
+                font-weight: 700;
+                line-height: 1.2;
+                text-decoration: none !important;
+            }
+            .xfpd-download-post-button:hover {
+                background-color: #2a9bab;
+                color: #fff !important;
+                text-decoration: none !important;
+            }
+        `;
         document.head.append(customStyles);
     },
 };
@@ -2296,7 +2323,7 @@ const hosts = [
     ['Imagevenue:image', [/!!https?:\/\/(www.)?imagevenue\.com\/(.{8})/]],
     ['Imgvb:image', [/imgvb.com\/images\//, /imgvb.com\/album/]],
     ['Imgbox:image', [/(thumbs|images)(\d+)?.imgbox.com\//, /imgbox.com\/g\//]],
-    ['Img.mobi:image', [/!!(?<=href=")https?:\/\/(www\.)?img\.mobi\/.*?(?=")/]],
+    ['Img.mobi:image', [/!!(?<=href=")(https?:)?\/\/(www\.)?img\.mobi\/.*?(?=")/]],
     ['Onlyfans:image', [/public.onlyfans.com\/files/]],
     ['Reddit:image', [/(\w+)?.redd.it/]],
     ['Pomf2:File', [/pomf2.lain.la/]],
@@ -8566,6 +8593,7 @@ const POST_WRAP_SEL = '.block--messages .block-body';
 const POST_SEL = '.message';
 const NEXT_SEL = 'a.pageNav-jump--next';
 const NAV_SEL = 'nav.pageNavWrapper';
+const isXbunkerPage = () => /(^|\.)xbunker\.cc$/i.test(location.hostname);
 const MEDIA_SEL = `
     div.bbImageWrapper,
     img,
@@ -8935,6 +8963,10 @@ const fetchNextPage = async () => {
 };
 
 const findPostRegistrationTargets = (container = document) => {
+    if (isXbunkerPage()) {
+        return [...container.querySelectorAll('.message-main')];
+    }
+
     const attributionTargets = [...container.querySelectorAll('.message-attribution-opposite')];
     if (attributionTargets.length) {
         return attributionTargets;
@@ -9078,27 +9110,33 @@ const registerPost = post => {
         }
     });
 
-    document.addEventListener('DOMContentLoaded', async () => {
-
-
-        try {
-            const { source, status } = await h.http.get('https://api.redgifs.com/v2/auth/temporary', {}, {}, 'text');
-            if (status !== 200) { throw new Error(`HTTP ${status}`); }
-            if (h.contains('token', source)) {
-                const token = JSON.parse(source).token;
-                GM_setValue('redgifs_token', token);
-            }
-        } catch (e) {
-            console.error('Error getting temporary redgifs auth token:');
-            console.error(e);
-        }
-
+    const startPostDownloader = async () => {
         init.injectCustomStyles();
 
         registerPostsIn(document);
 
+        if (!isXbunkerPage()) {
+            try {
+                const { source, status } = await h.http.get('https://api.redgifs.com/v2/auth/temporary', {}, {}, 'text');
+                if (status !== 200) { throw new Error(`HTTP ${status}`); }
+                if (h.contains('token', source)) {
+                    const token = JSON.parse(source).token;
+                    GM_setValue('redgifs_token', token);
+                }
+            } catch (e) {
+                console.error('Error getting temporary redgifs auth token:');
+                console.error(e);
+            }
+        }
+
         refreshDownloadPageTooltip();
         setupFilterToggles();
         refreshFilters();
-    });
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startPostDownloader, { once: true });
+    } else {
+        startPostDownloader();
+    }
 })();
