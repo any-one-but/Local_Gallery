@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.02.09
+// @version 01.02.10
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -1870,8 +1870,8 @@ const ui = {
                     return `
           <form
             id="downloader-page-config-form"
-            class="menu-content"
-            style="padding: 5px 10px; background: ${backgroundColor}; color: #d9d9d9; width:300px; min-width: 300px;"
+            class="menu-content xfpd-download-menu"
+            style="padding: 5px 10px; background: ${backgroundColor} !important; color: #d9d9d9 !important; width:300px; min-width: 300px;"
           >
             ${innerHTML}
           </form>
@@ -1889,8 +1889,8 @@ const ui = {
                     return `
           <form
             id="download-config-form-${postId}"
-            class="menu-content"
-            style="user-select: none; padding: 5px 10px; background: ${backgroundColor}; color: #d9d9d9; width:300px; min-width: 300px;"
+            class="menu-content xfpd-download-menu"
+            style="user-select: none; padding: 5px 10px; background: ${backgroundColor} !important; color: #d9d9d9 !important; width:300px; min-width: 300px;"
           >
             ${innerHTML}
           </form>
@@ -2252,6 +2252,17 @@ const init = {
             .xfpd-download-post-button-container {
                 display: block;
                 margin: 0 0 10px 0;
+            }
+            .tippy-box[data-theme~=transparent] .xfpd-download-menu,
+            .xfpd-download-menu {
+                background: #2B2B2B !important;
+                color: #d9d9d9 !important;
+            }
+            .xfpd-download-menu .menu-row,
+            .xfpd-download-menu label,
+            .xfpd-download-menu .iconic-label,
+            .xfpd-download-menu span {
+                color: inherit !important;
             }
         `;
         document.head.append(customStyles);
