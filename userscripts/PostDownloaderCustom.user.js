@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.02.04
+// @version 01.02.05
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -15,6 +15,7 @@
 // @match https://simpcity.hk/threads/*
 // @match https://simpcity.rs/threads/*
 // @match https://simpcity.ax/threads/*
+// @match https://*.xbunker.cc/*
 // @match https://gofile.io/*
 // @require https://unpkg.com/@popperjs/core@2
 // @require https://unpkg.com/tippy.js@6
@@ -102,6 +103,8 @@
 // @connect selti-delivery.ru
 // @connect cuckcapital.cr
 // @connect imgbox.com
+// @connect img.mobi
+// @connect *.img.mobi
 // @connect pixhost.to
 // @connect pomf2.lain.la
 // @connect pornhub.com
@@ -2270,6 +2273,7 @@ const hosts = [
     ['Imagevenue:image', [/!!https?:\/\/(www.)?imagevenue\.com\/(.{8})/]],
     ['Imgvb:image', [/imgvb.com\/images\//, /imgvb.com\/album/]],
     ['Imgbox:image', [/(thumbs|images)(\d+)?.imgbox.com\//, /imgbox.com\/g\//]],
+    ['Img.mobi:image', [/!!(?<=href=")https?:\/\/(www\.)?img\.mobi\/.*?(?=")/]],
     ['Onlyfans:image', [/public.onlyfans.com\/files/]],
     ['Reddit:image', [/(\w+)?.redd.it/]],
     ['Pomf2:File', [/pomf2.lain.la/]],
@@ -2704,6 +2708,29 @@ const resolvers = [
     ],
 
     [[/i\.ibb\.co\/[a-zA-Z0-9-_.]+/, /:!([a-z](\d+)?\.)?ibb.co\/album\/[a-zA-Z0-9_.-]+/], url => url],
+    [
+        [/img\.mobi\//],
+        async (url, http, passwords, postId) => {
+            const { dom } = await http.get(url);
+            const downloadLink =
+                dom?.querySelector('.header-content-right a.btn-download.default') ||
+                dom?.querySelector('.header-content-right a.btn-download') ||
+                dom?.querySelector('a.btn-download.default') ||
+                dom?.querySelector('a.btn-download');
+            const href = downloadLink?.getAttribute('href');
+
+            if (!href) {
+                log.host.error(postId, `::Could not find direct image download link::: ${url}`, 'img.mobi');
+                return null;
+            }
+
+            try {
+                return new URL(href, url).href;
+            } catch (e) {
+                return href;
+            }
+        },
+    ],
     [
         [/([a-z](\d+)?\.)?ibb.co\/album\/[a-zA-Z0-9_.-]+/],
         async (url, http) => {
