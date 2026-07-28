@@ -41954,7 +41954,20 @@ function movePreviewSelectionByDirection(direction) {
       best = m;
     }
   }
-  if (!best) return false;
+  if (!best) return movePreviewSelectionInVirtualGrid(direction);
+  // A virtualized file grid only keeps its window in the DOM, so the nearest
+  // card above the top of that window is whatever un-virtualized grid sits
+  // above it — the folders row. Taking it would silently skip every row that
+  // has not been materialized yet, so step inside the grid whenever the id
+  // list still has somewhere to go; the fallback returns false at the real
+  // first/last item and the cross-grid move stands.
+  if (
+    (direction === "up" || direction === "down") &&
+    previewGridOwningCard(selected.card) !== previewGridOwningCard(best.card) &&
+    movePreviewSelectionInVirtualGrid(direction)
+  ) {
+    return true;
+  }
   if (
     direction === "up" &&
     isExpandedPreviewHeaderCard(best.card) &&
@@ -56797,14 +56810,18 @@ function ensurePreviewImageSrc(rec) {
   return ensureMediaUrl(rec) || "";
 }
 
+// Returns the in-flight read so callers that want the blob *before* the user
+// arrives (neighbour preloading) can await it; the display path still fires
+// and forgets.
 function kickUpgradePreviewImageToFullRes(rec) {
-  if (!previewImageNeedsFullResBlobUpgrade(rec)) return;
-  if (rec.previewFullResUrl || rec.previewFullResLoading) return;
+  if (!previewImageNeedsFullResBlobUpgrade(rec)) return null;
+  if (rec.previewFullResUrl) return null;
+  if (rec.previewFullResLoading) return rec.previewFullResPromise || null;
   const p = nativePathForRecord(rec);
-  if (!p) return;
+  if (!p) return null;
   const id = String(rec.id || "");
   rec.previewFullResLoading = true;
-  (async () => {
+  const pending = (async () => {
     try {
       const arr = await window.__TAURI__.core.invoke("read_file_bytes", { path: p });
       const blob = new Blob([new Uint8Array(arr)]);
@@ -56830,9 +56847,14 @@ function kickUpgradePreviewImageToFullRes(rec) {
       }
     } catch {
     } finally {
-      if (String(rec.id || "") === id) rec.previewFullResLoading = false;
+      if (String(rec.id || "") === id) {
+        rec.previewFullResLoading = false;
+        rec.previewFullResPromise = null;
+      }
     }
   })();
+  rec.previewFullResPromise = pending;
+  return pending;
 }
 
 function retryNativePreviewMediaAsBlob(rec) {
@@ -57334,20 +57356,55 @@ function promotePreloadedPreviewVideo(rec) {
   return warmed.readyState >= 2;
 }
 
-async function preloadMediaRecord(rec, aggressive) {
+async function preloadMediaRecord(rec, aggressive, opts = null) {
   if (!rec || rec.__lgPreviewPreloadPending) return;
+  const options = opts && typeof opts === "object" ? opts : {};
   rec.__lgPreviewPreloadPending = true;
   try {
     if (!rec.file) await ensureFileObjectForRecord(rec);
-    const url = ensureMediaUrl(rec);
-    if (!url || PRELOAD_CACHE.has(url)) return;
+    // "Immediate" means one arrow press away in either direction. Those two
+    // get the expensive treatment -- the full-res byte read below and the
+    // eager decode further down -- while the rest of the preload window keeps
+    // to a plain fetch. A decoded bitmap is width * height * 4 bytes, so on a
+    // folder of very large stills, decoding the whole window up front would
+    // trade the stall for hundreds of megabytes.
+    const immediate = !!options.immediate;
+    // The viewer swaps to the full-res blob under Tauri, so read those bytes
+    // here rather than paying for the IPC round trip at the moment the user
+    // arrows onto the file.
+    if (immediate) {
+      try {
+        await kickUpgradePreviewImageToFullRes(rec);
+      } catch {}
+    }
     if (rec.type === "image") {
-      const img = new Image();
-      img.src = url;
-      PRELOAD_CACHE.set(url, img);
-      trimPreloadMediaCache();
+      // Warm every URL the viewer might reach for -- the asset URL and, once
+      // the upgrade above has landed, the full-res blob it swaps to.
+      const urls = [];
+      const assetUrl = ensureMediaUrl(rec);
+      if (assetUrl) urls.push(assetUrl);
+      if (rec.previewFullResUrl && !urls.includes(rec.previewFullResUrl))
+        urls.push(rec.previewFullResUrl);
+      for (const imageUrl of urls) {
+        if (PRELOAD_CACHE.has(imageUrl)) continue;
+        const img = new Image();
+        img.src = imageUrl;
+        PRELOAD_CACHE.set(imageUrl, img);
+        trimPreloadMediaCache();
+        // Fetching a high-resolution still is the cheap half; decoding it is
+        // what stalls the frame, and a plain preload leaves that to the first
+        // paint of the real <img>. decode() runs it now, off the critical
+        // path, so landing on this neighbour is a paint, not a decode.
+        if (immediate) {
+          try {
+            await img.decode();
+          } catch {}
+        }
+      }
       return;
     }
+    const url = ensureMediaUrl(rec);
+    if (!url || PRELOAD_CACHE.has(url)) return;
     const vid = document.createElement("video");
     prepareMediaElementForCanvas(vid);
     vid.preload = "auto";
@@ -57396,7 +57453,11 @@ function preloadNextMedia(items, startIdx) {
         seen.add(String(it.id || ""));
         const rec = WS.fileById.get(it.id);
         if (rec) {
-          preloadMediaRecord(rec, aggressive);
+          // Only the file one step away in each direction gets the full-res
+          // read and the eager decode -- that is the one a single arrow press
+          // lands on, and both are large enough that doing them for the whole
+          // window would trade the stall for memory.
+          preloadMediaRecord(rec, aggressive, { immediate: found === 0 });
           found++;
         }
       }
@@ -60158,6 +60219,19 @@ function renderMarkdownToHtml(src) {
 }
 
 function renderPreviewPane(animate = false, keepScroll = false) {
+  // One render pass = one set of grid track measurements (see
+  // PREVIEW_GRID_METRICS_BATCH). The pass has many early returns and can
+  // re-enter itself on the "previewed file is filtered out" fallback, so the
+  // batch is depth-counted and released in a finally.
+  beginPreviewGridMetricsBatch();
+  try {
+    return renderPreviewPaneBody(animate, keepScroll);
+  } finally {
+    endPreviewGridMetricsBatch();
+  }
+}
+
+function renderPreviewPaneBody(animate = false, keepScroll = false) {
   clearPreviewFileVirtualizers();
   syncThumbFilterKeyWithCurrentAppearanceContext();
   const previewRenderToken = nextPreviewFilesRenderToken();
@@ -61920,6 +61994,39 @@ function previewGridMinCardSizePx(grid, kind) {
   return Math.max(kind === "folder" ? 120 : 96, Math.round(size));
 }
 
+// Track metrics are read with getComputedStyle + clientWidth, and both flush
+// pending style/layout. One preview render asks for them several times (once
+// per grid while the cards are being built, once more per grid after the
+// staged swap), and every read lands immediately after a fresh batch of DOM
+// mutations — so each one pays for a full style recalc plus layout of the
+// just-built subtree. Nothing the metrics depend on (pane width, the
+// --*-grid-min / --thumb-scale-* variables) can change inside one synchronous
+// render pass, so the result is cached for the length of that pass and dropped
+// when it unwinds.
+const PREVIEW_GRID_METRICS_BATCH = { depth: 0, byKind: new Map() };
+
+function beginPreviewGridMetricsBatch() {
+  if (!PREVIEW_GRID_METRICS_BATCH.depth) PREVIEW_GRID_METRICS_BATCH.byKind.clear();
+  PREVIEW_GRID_METRICS_BATCH.depth++;
+}
+
+function endPreviewGridMetricsBatch() {
+  PREVIEW_GRID_METRICS_BATCH.depth = Math.max(
+    0,
+    PREVIEW_GRID_METRICS_BATCH.depth - 1,
+  );
+  if (!PREVIEW_GRID_METRICS_BATCH.depth)
+    PREVIEW_GRID_METRICS_BATCH.byKind.clear();
+}
+
+// Grids nested inside an expanded folder section can be narrower than the pane,
+// so only the pane-width grids share a cache entry.
+function previewGridMetricsCacheKey(grid, resolvedKind) {
+  if (!PREVIEW_GRID_METRICS_BATCH.depth) return "";
+  if (!grid.closest || grid.closest(".expandedSection")) return "";
+  return resolvedKind;
+}
+
 function previewGridTrackMetrics(grid, kind = "") {
   if (!grid || !grid.classList) return;
   const resolvedKind =
@@ -61930,6 +62037,9 @@ function previewGridTrackMetrics(grid, kind = "") {
         ? "file"
         : "");
   if (!resolvedKind) return null;
+  const cacheKey = previewGridMetricsCacheKey(grid, resolvedKind);
+  if (cacheKey && PREVIEW_GRID_METRICS_BATCH.byKind.has(cacheKey))
+    return PREVIEW_GRID_METRICS_BATCH.byKind.get(cacheKey);
   const cs = getComputedStyle(grid);
   const gap = Math.max(0, parseFloat(cs.columnGap || cs.gap || "0") || 0);
   const minCard = previewGridMinCardSizePx(grid, resolvedKind);
@@ -61948,7 +62058,9 @@ function previewGridTrackMetrics(grid, kind = "") {
     resolvedKind === "folder" ? 120 : 96,
     (width - gap * Math.max(0, cols - 1)) / cols,
   );
-  return { gap, cols, colWidth, minCard, width };
+  const metrics = { gap, cols, colWidth, minCard, width };
+  if (cacheKey) PREVIEW_GRID_METRICS_BATCH.byKind.set(cacheKey, metrics);
+  return metrics;
 }
 
 function applyPreviewGridTracks(grid) {
@@ -62007,14 +62119,22 @@ function shouldVirtualizePreviewFilesGrid(
   const hasVideos = previewFileIdsContainVideos(list);
   const threshold = hasVideos
     ? options.folderMediaPreviewGrid
-      ? 48
-      : 72
+      ? 32
+      : 48
     : options.folderMediaPreviewGrid
-      ? 120
-      : 220;
+      ? 64
+      : 96;
   if (list.length < threshold) return false;
   if (useFitInsideJustified) return false;
-  if (dirNode && canReorderFilesInPreviewDir(dirNode)) return false;
+  // Reorderable folders used to opt out of virtualization because the mouse
+  // drag-reorder needed every card in the DOM to hit-test against. That drag
+  // is gone (keyboard-only mode puts pointer-events:none on every card), and
+  // its keyboard replacement -- moveGrabbedPreviewFile -- scores only the
+  // *rendered* card metrics and moves one neighbour at a time, which the
+  // window's overscan rows always cover. Keeping the opt-out meant the common
+  // case (a plain folder you can reorder) rebuilt every card on open/exit:
+  // a 200-item folder paid ~6 rAF frames of card building and full-subtree
+  // layout instead of the ~48 cards a viewport actually shows.
   return true;
 }
 
@@ -62062,10 +62182,18 @@ function computePreviewFilesVirtualWindow(state) {
   );
   const gridTop = offsetTopWithinAncestor(state.grid, previewBodyEl);
   const viewTop = Math.max(0, (previewBodyEl.scrollTop || 0) - gridTop);
+  // A render can land while the pane has no measurable height (hidden tab,
+  // sidebars mid-toggle, the very first paint). Measuring 0 there would freeze
+  // the grid at a one-row window with nothing left to trigger a refresh, so
+  // fall back to the window height and let the next refresh correct it.
+  const viewportHeight = Math.max(
+    1,
+    Number(previewBodyEl.clientHeight) || Number(window.innerHeight) || 1,
+  );
   const viewportRows = Math.max(
     1,
     Math.ceil(
-      ((previewBodyEl.clientHeight || 1) + metrics.gap) /
+      (viewportHeight + metrics.gap) /
         Math.max(1, metrics.rowStride || metrics.rowHeight),
     ),
   );
@@ -62234,8 +62362,30 @@ function updateVirtualPreviewFilesGrid(state, force = false) {
 
 function registerPreviewFileVirtualizer(state) {
   if (!state) return;
+  ensurePreviewBodySizeObserver();
   ACTIVE_PREVIEW_FILE_VIRTUALIZERS.push(state);
   updateVirtualPreviewFilesGrid(state, true);
+}
+
+// Now that virtualization covers ordinary folders and not just the huge ones,
+// every way the pane can change size has to reach the window calculation.
+// Chasing individual call sites (sidebar toggles, menu drags, viewer close,
+// window resize) is how a grid ends up stuck at whatever size it was first
+// measured at, so observe the pane itself.
+let PREVIEW_BODY_SIZE_OBSERVER = null;
+
+function ensurePreviewBodySizeObserver() {
+  if (PREVIEW_BODY_SIZE_OBSERVER || !previewBodyEl) return;
+  if (typeof ResizeObserver !== "function") return;
+  PREVIEW_BODY_SIZE_OBSERVER = new ResizeObserver(() => {
+    schedulePreviewVirtualGridRefresh();
+    scheduleThumbnailDemandRefresh();
+  });
+  try {
+    PREVIEW_BODY_SIZE_OBSERVER.observe(previewBodyEl);
+  } catch {
+    PREVIEW_BODY_SIZE_OBSERVER = null;
+  }
 }
 
 function schedulePreviewVirtualGridRefresh() {
@@ -62247,6 +62397,44 @@ function schedulePreviewVirtualGridRefresh() {
     for (let i = 0; i < list.length; i++)
       updateVirtualPreviewFilesGrid(list[i], false);
   });
+}
+
+function previewGridOwningCard(card) {
+  return card && card.closest ? card.closest(".gridFiles, .gridFolders") : null;
+}
+
+// Directional moves score the *rendered* cards, so a step toward a row the
+// virtualizer has not materialized yet finds no candidate and the cursor just
+// stalls. The overscan rows normally hide that, but a held arrow key outruns
+// the scroll -> rAF -> materialize chain. When a move comes up empty, walk the
+// virtualizer's own id list instead and materialize the target directly.
+function movePreviewSelectionInVirtualGrid(direction) {
+  if (!ACTIVE_PREVIEW_FILE_VIRTUALIZERS.length) return false;
+  const target = parsePreviewFileSelectionKey(
+    String((WS.view && WS.view.previewSelectedKey) || ""),
+  );
+  if (!target || !target.fileId || target.dirPath) return false;
+  for (let i = 0; i < ACTIVE_PREVIEW_FILE_VIRTUALIZERS.length; i++) {
+    const state = ACTIVE_PREVIEW_FILE_VIRTUALIZERS[i];
+    if (!state || !Array.isArray(state.ids) || !state.grid) continue;
+    if (state.grid.closest && state.grid.closest(".expandedSection")) continue;
+    const index = state.ids.indexOf(target.fileId);
+    if (index < 0) continue;
+    const windowInfo = computePreviewFilesVirtualWindow(state);
+    const cols = Math.max(1, Number(windowInfo?.metrics?.cols) || 1);
+    let next = index;
+    if (direction === "down") next = index + cols;
+    else if (direction === "up") next = index - cols;
+    else if (direction === "right") next = index + 1;
+    else if (direction === "left") next = index - 1;
+    if (next === index || next < 0 || next >= state.ids.length) return false;
+    const nextKey = `file:${state.ids[next]}`;
+    if (!revealPendingPreviewSelectionInVirtualGrid(nextKey)) return false;
+    const card = findPreviewSelectableCardByKey(nextKey);
+    if (!card) return false;
+    return setPreviewSelectionCard(card, { activate: true });
+  }
+  return false;
 }
 
 function revealPendingPreviewSelectionInVirtualGrid(selectionKey) {
