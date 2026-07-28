@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.02.08
+// @version 01.02.09
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -1676,8 +1676,7 @@ const ui = {
    * @returns {string}
    */
     getTooltipBackgroundColor: () => {
-        const scheme = document.documentElement.dataset.colorScheme;
-        return scheme === 'dark' ? '#2B2B2B' : '#EDF0F3';
+        return '#2B2B2B';
     },
 
     /**
@@ -1872,7 +1871,7 @@ const ui = {
           <form
             id="downloader-page-config-form"
             class="menu-content"
-            style="padding: 5px 10px; background: ${backgroundColor};width:300px; min-width: 300px;"
+            style="padding: 5px 10px; background: ${backgroundColor}; color: #d9d9d9; width:300px; min-width: 300px;"
           >
             ${innerHTML}
           </form>
@@ -1891,7 +1890,7 @@ const ui = {
           <form
             id="download-config-form-${postId}"
             class="menu-content"
-            style="user-select: none; padding: 5px 10px; background: ${backgroundColor};width:300px; min-width: 300px;"
+            style="user-select: none; padding: 5px 10px; background: ${backgroundColor}; color: #d9d9d9; width:300px; min-width: 300px;"
           >
             ${innerHTML}
           </form>
