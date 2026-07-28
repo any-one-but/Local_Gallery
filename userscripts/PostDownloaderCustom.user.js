@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.02.07
+// @version 01.02.08
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -1772,13 +1772,24 @@ const ui = {
         /**
      * @returns {HTMLAnchorElement}
      */
-        createPostDownloadButton: () => {
+        createPostDownloadButton: post => {
             const downloadPostBtn = document.createElement('a');
             downloadPostBtn.setAttribute('href', '#');
-            downloadPostBtn.setAttribute('class', 'xfpd-download-post-button');
-            downloadPostBtn.innerHTML = '🡳 Download';
+            if (post?.matches?.('.message-main')) {
+                downloadPostBtn.setAttribute('class', 'button--link button rippleButton xfpd-download-post-button');
+                ui.buttons.setPostDownloadButtonText(downloadPostBtn, '🡳 Download');
+            } else {
+                downloadPostBtn.innerHTML = '🡳 Download';
+            }
 
             return downloadPostBtn;
+        },
+        setPostDownloadButtonText: (button, text) => {
+            if (button?.classList?.contains('button')) {
+                button.innerHTML = `<span class="button-text">${text}</span>`;
+            } else {
+                button.innerHTML = text;
+            }
         },
         /**
      * @returns {HTMLLIElement}
@@ -1794,7 +1805,7 @@ const ui = {
      */
         addDownloadPostButton: post => {
             const btnDownloadPostContainer = ui.buttons.createPostDownloadButtonContainer(post);
-            const btnDownloadPost = ui.buttons.createPostDownloadButton();
+            const btnDownloadPost = ui.buttons.createPostDownloadButton(post);
             btnDownloadPostContainer.appendChild(btnDownloadPost);
             post.prepend(btnDownloadPostContainer);
 
@@ -2197,7 +2208,7 @@ const ui = {
                                         .filter(host => host.enabled && host.resources.length)
                                         .reduce((acc, host) => acc + host.resources.length, 0);
 
-                                        btnDownloadPost.innerHTML = `🡳 Download (${totalDownloadableResources}/${totalResources})`;
+                                        ui.buttons.setPostDownloadButtonText(btnDownloadPost, `🡳 Download (${totalDownloadableResources}/${totalResources})`);
 
                                         if (parsedHosts.length > 1) {
                                             const toggleAllHostsCheckbox = h.element(`#settings-toggle-all-hosts-${postId}`);
@@ -2242,21 +2253,6 @@ const init = {
             .xfpd-download-post-button-container {
                 display: block;
                 margin: 0 0 10px 0;
-            }
-            .xfpd-download-post-button {
-                display: inline-block;
-                background-color: #3DB7C7;
-                color: #fff !important;
-                padding: 6px 10px;
-                border-radius: 4px;
-                font-weight: 700;
-                line-height: 1.2;
-                text-decoration: none !important;
-            }
-            .xfpd-download-post-button:hover {
-                background-color: #2a9bab;
-                color: #fff !important;
-                text-decoration: none !important;
             }
         `;
         document.head.append(customStyles);
@@ -9010,7 +9006,7 @@ const registerPost = post => {
     const { btn: btnDownloadPost } = ui.buttons.addDownloadPostButton(post);
     const totalResources = parsedHosts.reduce((acc, host) => acc + host.resources.length, 0);
     const checkedLength = getTotalDownloadableResourcesForPostCB(parsedHosts);
-    btnDownloadPost.innerHTML = `🡳 Download (${checkedLength}/${totalResources})`;
+    ui.buttons.setPostDownloadButtonText(btnDownloadPost, `🡳 Download (${checkedLength}/${totalResources})`);
 
     const { el: statusText } = ui.labels.status.createStatusLabel();
     const filePBar = ui.pBars.createFileProgressBar();
