@@ -41593,19 +41593,25 @@ function ensurePreviewSelectionForCurrentTarget(reset = false) {
       (WS.view && WS.view.pendingPreviewSelectionKey) || "",
     );
     if (pendingKey) {
-      WS.view.previewSelectionContextKey = contextKey;
-      WS.view.previewSelectedKey = pendingKey;
-      updatePreviewSelectionClasses();
-      return true;
+      const pendingCard = findPreviewSelectableCardByKey(pendingKey);
+      if (pendingCard) {
+        selectedCard = pendingCard;
+        key = String(pendingCard?.dataset?.previewItemKey || pendingKey);
+        WS.view.pendingPreviewSelectionKey = "";
+      } else {
+        WS.view.pendingPreviewSelectionKey = "";
+      }
     }
-    const shouldRespectScroll =
-      !!previewBodyEl &&
-      ((previewBodyEl.scrollTop || 0) > 0 ||
-        (previewBodyEl.scrollLeft || 0) > 0);
-    selectedCard = shouldRespectScroll
-      ? findFirstVisiblePreviewCard() || cards[0]
-      : cards[0];
-    key = String(selectedCard?.dataset?.previewItemKey || "");
+    if (!selectedCard) {
+      const shouldRespectScroll =
+        !!previewBodyEl &&
+        ((previewBodyEl.scrollTop || 0) > 0 ||
+          (previewBodyEl.scrollLeft || 0) > 0);
+      selectedCard = shouldRespectScroll
+        ? findFirstVisiblePreviewCard() || cards[0]
+        : cards[0];
+      key = String(selectedCard?.dataset?.previewItemKey || "");
+    }
   }
   WS.view.previewSelectionContextKey = contextKey;
   WS.view.previewSelectedKey = key;
@@ -42624,6 +42630,13 @@ function leaveDirectory() {
   TAG_EDIT_PATH = null;
   clearBulkTagPlaceholder();
   FAST_NAV.mark();
+  if (
+    String(WS.view?.activePane || "") === "preview" &&
+    WS.view.previewFolderBridgeReturnState
+  ) {
+    syncGridReturnStateToExitedFolder(WS.nav.dirNode);
+    if (restorePreviewFolderBridgeState()) return;
+  }
   WS.view.previewFolderBridgeReturnState = null;
 
   if (WS.view.aboveRootView) return;
@@ -42732,6 +42745,13 @@ function goDirUp() {
     previewTarget && !previewTarget._skipTagFilters
       ? previewTarget
       : WS.nav.dirNode;
+  if (
+    String(WS.view?.activePane || "") === "preview" &&
+    WS.view.previewFolderBridgeReturnState
+  ) {
+    syncGridReturnStateToExitedFolder(previewExitTarget);
+    if (restorePreviewFolderBridgeState()) return;
+  }
   if (
     String(WS.view.activePane || "") === "preview" &&
     previewExitTarget &&
@@ -57350,7 +57370,7 @@ async function preloadMediaRecord(rec, aggressive) {
     }
     const vid = document.createElement("video");
     prepareMediaElementForCanvas(vid);
-    vid.preload = "auto";
+    vid.preload = aggressive ? "auto" : "metadata";
     vid.muted = true;
     normalizeVideoPlaybackRate(vid);
     vid.playsInline = true;
