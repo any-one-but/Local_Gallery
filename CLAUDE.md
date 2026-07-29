@@ -315,7 +315,7 @@ Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<b
 
 ### Companion scripts
 
-- **`clean.sh`** — standalone Bash utility run separately against a media folder. 11 optional processing steps: dedupe (`fdupes`), similar-media culling (`czkawka`), video conversion (`ffmpeg`), resize, metadata removal (`mat2`), name sanitization, empty-item quarantine, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming. Not invoked by the Tauri app.
+- **`clean.sh`** — standalone Bash utility run separately against a media folder. 10 optional processing steps; step 1 bundles four passes (dedupe via `fdupes`, similar-media culling via `czkawka`, name sanitization, empty-item quarantine), followed by video conversion (`ffmpeg`), resize, metadata removal (`mat2`), recompression, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming, MP3 extraction, static-media quarantine. Not invoked by the Tauri app.
 - **`*.user.js`** — Tampermonkey/Violentmonkey userscripts bundled alongside the app for downloading media from external sites into the gallery folder. They are independent of the app.
 - `scripts/sync-frontend.js` — copies root index.html -> frontend/ (run automatically by Tauri beforeDev/beforeBuild).
 - `scripts/prepare-ffmpeg.js` — copies ffmpeg-static binary into src-tauri/resources (for bundled video thumbnailing).
