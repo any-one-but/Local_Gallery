@@ -3,11 +3,12 @@
 set -euo pipefail
 
 SCRIPT_VERSION="1.10.0"
-# Flat vertical cap for the resize step. Deliberately a constant and not
-# detected from the connected display: screen height is a fact about the desk,
-# not about the library, so probing it made the same folder come out different
-# depending on which machine cleaned it.
+# Fallback cap for the resize step if the connected display resolution cannot
+# be detected. Normal runs replace this with the highest-resolution active
+# monitor, measured by pixel count.
 MAX_MEDIA_HEIGHT=3200
+MAX_MEDIA_WIDTH=0
+MAX_MEDIA_PIXELS=0
 PROGRESS_BAR_WIDTH=32
 PROGRESS_BAR_MIN_WIDTH=4
 EMPTY_ITEMS_BUCKET_NAME="_quarantined_media"
@@ -35,7 +36,19 @@ STEP3_MEDIA_MODE="images"
 STEP3_CPU_FALLBACK=1
 STEP8_TRIM_SECONDS=10
 STEP9_TRIM_END_SECONDS=10
-STEP_ORDER=(1 2 3 4 6 7 8 9 10)
+STEP12_IMAGE_FORMAT="avif"
+# AVIF encode tuning for the recompress step. The image path stages through a
+# Lanczos3 resize and hands off to avifenc/libaom. Quality is libavif's own
+# 0..100 scale (100 = lossless), not a CRF; higher is better. sharpyuv uses a
+# better RGB-to-YUV420 conversion but is off by default because it is unmeasured
+# here.
+STEP12_AVIF_QUALITY=45
+STEP12_AVIF_SPEED=6
+STEP12_AVIF_SHARPYUV=0
+STEP12_WEBP_QUALITY=80
+STEP14_AV1_CRF=32
+STEP14_AV1_PRESET=6
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -371,6 +384,20 @@ find_czkawka_command() {
   return 1
 }
 
+find_magick_command() {
+  if command -v magick >/dev/null 2>&1; then
+    printf "magick"
+    return 0
+  fi
+  # ImageMagick 6 shipped the resizer as 'convert'; IM7 renamed it to 'magick'
+  # and keeps 'convert' only as a compatibility shim. Accept either.
+  if command -v convert >/dev/null 2>&1; then
+    printf "convert"
+    return 0
+  fi
+  return 1
+}
+
 find_waifu2x_command() {
   if [[ -x "${WAIFU2X_INSTALL_DIR}/waifu2x-ncnn-vulkan" ]]; then
     printf "%s/waifu2x-ncnn-vulkan" "${WAIFU2X_INSTALL_DIR}"
@@ -540,6 +567,23 @@ ensure_prerequisites() {
     missing_labels+=("czkawka")
     missing_formulas+=("czkawka")
   fi
+  # The recompress step's still-image encoder depends on which output format is
+  # configured, so only pull the chain that will actually be used.
+  if [[ "$STEP12_IMAGE_FORMAT" == "webp" ]]; then
+    if ! command -v cwebp >/dev/null 2>&1; then
+      missing_labels+=("cwebp (formula: webp)")
+      missing_formulas+=("webp")
+    fi
+  else
+    if ! command -v avifenc >/dev/null 2>&1; then
+      missing_labels+=("avifenc (formula: libavif)")
+      missing_formulas+=("libavif")
+    fi
+    if ! find_magick_command >/dev/null 2>&1; then
+      missing_labels+=("magick (formula: imagemagick)")
+      missing_formulas+=("imagemagick")
+    fi
+  fi
   if [[ "${#missing_labels[@]}" -eq 0 ]]; then
     log_ok "All prerequisite tools are installed."
     return 0
@@ -582,6 +626,12 @@ ensure_prerequisites() {
   command -v ffprobe >/dev/null 2>&1 || still_missing+=("ffprobe")
   command -v mat2    >/dev/null 2>&1 || still_missing+=("mat2")
   find_czkawka_command >/dev/null 2>&1 || still_missing+=("czkawka")
+  if [[ "$STEP12_IMAGE_FORMAT" == "webp" ]]; then
+    command -v cwebp >/dev/null 2>&1 || still_missing+=("cwebp")
+  else
+    command -v avifenc >/dev/null 2>&1 || still_missing+=("avifenc")
+    find_magick_command >/dev/null 2>&1 || still_missing+=("magick")
+  fi
   if [[ "${#still_missing[@]}" -gt 0 ]]; then
     log_err "Still missing after install: ${still_missing[*]}"
     exit 1
@@ -596,6 +646,7 @@ step_description() {
     2) printf "Convert videos and animated GIFs to MP4" ;;
     3) printf "Resize oversized media" ;;
     4) printf "Remove metadata" ;;
+    5) printf "Recompress media (images to AVIF/WebP, videos to AV1)" ;;
     6) printf "Upscale and denoise media" ;;
     7) printf "Trim video starts" ;;
     8) printf "Trim video ends" ;;
@@ -611,6 +662,7 @@ step_function_name() {
     2) printf "step2_convert_videos" ;;
     3) printf "step4_resize_media" ;;
     4) printf "step4_remove_metadata" ;;
+    5) printf "step_recompress_media" ;;
     6) printf "step3_process_media" ;;
     7) printf "step8_trim_video_lead" ;;
     8) printf "step9_trim_video_tail" ;;
@@ -652,6 +704,18 @@ ensure_step_requirements() {
       ;;
     4)
       require_cmd mat2
+      ;;
+    5)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      if [[ "$STEP12_IMAGE_FORMAT" == "webp" ]]; then
+        ensure_cwebp_ready || return 1
+      else
+        ensure_avif_tools_ready || return 1
+      fi
       ;;
     6)
       require_cmd find
@@ -1311,26 +1375,162 @@ step3_process_media() {
   esac
 }
 
+detect_largest_active_display() {
+  local detected=""
+
+  if command -v system_profiler >/dev/null 2>&1; then
+    detected="$(system_profiler SPDisplaysDataType 2>/dev/null | awk '
+      function consider_online() {
+        if (pending_pixels > online_pixels) {
+          online_pixels = pending_pixels
+          online_w = pending_w
+          online_h = pending_h
+        }
+        pending_w = 0
+        pending_h = 0
+        pending_pixels = 0
+      }
+      /^[[:space:]]*Resolution:/ {
+        if (match($0, /[0-9]+[[:space:]]*x[[:space:]]*[0-9]+/)) {
+          dims = substr($0, RSTART, RLENGTH)
+          split(dims, parts, /x/)
+          gsub(/[[:space:]]/, "", parts[1])
+          gsub(/[[:space:]]/, "", parts[2])
+          pending_w = parts[1] + 0
+          pending_h = parts[2] + 0
+          pending_pixels = pending_w * pending_h
+          if (pending_pixels > any_pixels) {
+            any_pixels = pending_pixels
+            any_w = pending_w
+            any_h = pending_h
+          }
+        }
+        next
+      }
+      /^[[:space:]]*Online:[[:space:]]*Yes/ {
+        consider_online()
+        next
+      }
+      /^[[:space:]]*Online:[[:space:]]*No/ {
+        pending_w = 0
+        pending_h = 0
+        pending_pixels = 0
+        next
+      }
+      END {
+        if (online_pixels > 0) print online_w, online_h, online_pixels
+        else if (any_pixels > 0) print any_w, any_h, any_pixels
+      }
+    ')"
+  fi
+
+  if [[ "$detected" =~ ^[0-9]+[[:space:]][0-9]+[[:space:]][0-9]+$ ]]; then
+    printf "%s" "$detected"
+    return 0
+  fi
+  return 1
+}
+
+set_resize_limit_from_displays() {
+  local detected
+
+  if [[ "$MAX_MEDIA_PIXELS" -gt 0 ]]; then
+    return 0
+  fi
+
+  if detected="$(detect_largest_active_display)"; then
+    read -r MAX_MEDIA_WIDTH MAX_MEDIA_HEIGHT MAX_MEDIA_PIXELS <<< "$detected"
+    log_info "Resize limit set to ${MAX_MEDIA_WIDTH}x${MAX_MEDIA_HEIGHT} (${MAX_MEDIA_PIXELS} pixels) from the largest active display."
+  else
+    MAX_MEDIA_PIXELS=0
+    log_warn "Could not detect display resolution. Using fallback ${MAX_MEDIA_HEIGHT}px height cap."
+  fi
+}
+
+media_resize_target_dimensions() {
+  local w="$1" h="$2" even="${3:-0}"
+  local max_pixels="${MAX_MEDIA_PIXELS:-0}"
+
+  if ! is_int "$w" || ! is_int "$h" || [[ "$w" -le 0 || "$h" -le 0 ]]; then
+    return 1
+  fi
+
+  if is_int "$max_pixels" && [[ "$max_pixels" -gt 0 ]]; then
+    if [[ $(( w * h )) -le "$max_pixels" ]]; then
+      return 1
+    fi
+    awk -v w="$w" -v h="$h" -v max="$max_pixels" -v even="$even" 'BEGIN {
+      scale = sqrt(max / (w * h));
+      nw = int(w * scale);
+      nh = int(h * scale);
+      if (nw < 1) nw = 1;
+      if (nh < 1) nh = 1;
+      if (even) {
+        nw = int(nw / 2) * 2;
+        nh = int(nh / 2) * 2;
+        if (nw < 2) nw = 2;
+        if (nh < 2) nh = 2;
+      }
+      while (nw * nh > max && nw > 1 && nh > 1) {
+        if (w >= h) {
+          nw -= even ? 2 : 1;
+          nh = int(nw * h / w);
+        } else {
+          nh -= even ? 2 : 1;
+          nw = int(nh * w / h);
+        }
+        if (even) {
+          nw = int(nw / 2) * 2;
+          nh = int(nh / 2) * 2;
+          if (nw < 2) nw = 2;
+          if (nh < 2) nh = 2;
+        }
+      }
+      print nw, nh;
+    }'
+    return 0
+  fi
+
+  if [[ "$h" -le "$MAX_MEDIA_HEIGHT" ]]; then
+    return 1
+  fi
+  awk -v w="$w" -v h="$h" -v max_h="$MAX_MEDIA_HEIGHT" -v even="$even" 'BEGIN {
+    nw = int(w * max_h / h);
+    nh = max_h;
+    if (nw < 1) nw = 1;
+    if (even) {
+      nw = int(nw / 2) * 2;
+      nh = int(nh / 2) * 2;
+      if (nw < 2) nw = 2;
+      if (nh < 2) nh = 2;
+    }
+    print nw, nh;
+  }'
+}
+
 step4_resize_media() {
   local images=() videos=()
-  local file ext base tmp
-  local i total w h nw
-  local max_height="$MAX_MEDIA_HEIGHT"
+  local file ext base tmp dims
+  local i total w h nw nh
   local all_total=0 all_done=0
   local img_resized=0 img_skipped=0 img_failed=0
   local vid_resized=0 vid_skipped=0 vid_failed=0
 
+  set_resize_limit_from_displays
+
   while IFS= read -r -d '' file; do
     images+=("$file")
   done < <(
-    find . -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.gif" \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.gif" \
                       -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.heic" \) -print0
   )
 
   while IFS= read -r -d '' file; do
     videos+=("$file")
   done < <(
-    find . -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.m4v" -o -iname "*.mkv" \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.m4v" -o -iname "*.mkv" \
                       -o -iname "*.webm" -o -iname "*.avi" \) -print0
   )
 
@@ -1342,7 +1542,11 @@ step4_resize_media() {
 
   total=${#images[@]}
   if [[ "$total" -gt 0 ]]; then
-    log_info "Checking $total image file(s) for height > ${max_height}px."
+    if [[ "$MAX_MEDIA_PIXELS" -gt 0 ]]; then
+      log_info "Checking $total image file(s) for resolution > ${MAX_MEDIA_PIXELS} pixels."
+    else
+      log_info "Checking $total image file(s) for height > ${MAX_MEDIA_HEIGHT}px."
+    fi
     for (( i=0; i<total; i++ )); do
       file="${images[$i]}"
 
@@ -1354,16 +1558,15 @@ step4_resize_media() {
         progress_draw "Step 3 Resize" "$all_done" "$all_total"
         continue
       fi
-      if [[ "$h" -le "$max_height" ]]; then
+      if ! dims="$(media_resize_target_dimensions "$w" "$h" 0)"; then
         img_skipped=$((img_skipped + 1))
         all_done=$((all_done + 1))
         progress_draw "Step 3 Resize" "$all_done" "$all_total"
         continue
       fi
 
-      nw=$(( w * max_height / h ))
-      [[ "$nw" -lt 1 ]] && nw=1
-      if sips -z "$max_height" "$nw" "$file" >/dev/null 2>&1; then
+      read -r nw nh <<< "$dims"
+      if sips -z "$nh" "$nw" "$file" >/dev/null 2>&1; then
         img_resized=$((img_resized + 1))
       else
         img_failed=$((img_failed + 1))
@@ -1381,7 +1584,11 @@ step4_resize_media() {
     progress_draw "Step 3 Resize" "$all_done" "$all_total"
   fi
   if [[ "$total" -gt 0 ]]; then
-    log_info "Checking $total video file(s) for height > ${max_height}px."
+    if [[ "$MAX_MEDIA_PIXELS" -gt 0 ]]; then
+      log_info "Checking $total video file(s) for resolution > ${MAX_MEDIA_PIXELS} pixels."
+    else
+      log_info "Checking $total video file(s) for height > ${MAX_MEDIA_HEIGHT}px."
+    fi
     for (( i=0; i<total; i++ )); do
       file="${videos[$i]}"
 
@@ -1393,16 +1600,14 @@ step4_resize_media() {
         progress_draw "Step 3 Resize" "$all_done" "$all_total"
         continue
       fi
-      if [[ "$h" -le "$max_height" ]]; then
+      if ! dims="$(media_resize_target_dimensions "$w" "$h" 1)"; then
         vid_skipped=$((vid_skipped + 1))
         all_done=$((all_done + 1))
         progress_draw "Step 3 Resize" "$all_done" "$all_total"
         continue
       fi
 
-      nw=$(( w * max_height / h ))
-      nw=$(( (nw / 2) * 2 ))
-      [[ "$nw" -lt 2 ]] && nw=2
+      read -r nw nh <<< "$dims"
       ext=$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')
       base="${file%.*}"
       tmp="${base}.resize-tmp.$$.$ext"
@@ -1410,13 +1615,13 @@ step4_resize_media() {
 
       case "$ext" in
         mp4|m4v)
-          ffmpeg -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${max_height}" -map 0 -c:v libx264 -crf 18 -preset medium -c:a copy -c:s copy -movflags +faststart "$tmp"
+          ffmpeg -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${nh}" -map 0 -c:v libx264 -crf 18 -preset medium -c:a copy -c:s copy -movflags +faststart "$tmp"
           ;;
         mov|mkv|avi)
-          ffmpeg -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${max_height}" -map 0 -c:v libx264 -crf 18 -preset medium -c:a copy -c:s copy "$tmp"
+          ffmpeg -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${nh}" -map 0 -c:v libx264 -crf 18 -preset medium -c:a copy -c:s copy "$tmp"
           ;;
         webm)
-          ffmpeg -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${max_height}" -map 0 -c:v libvpx-vp9 -crf 32 -b:v 0 -c:a copy -c:s copy "$tmp"
+          ffmpeg -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${nh}" -map 0 -c:v libvpx-vp9 -crf 32 -b:v 0 -c:a copy -c:s copy "$tmp"
           ;;
         *)
           vid_skipped=$((vid_skipped + 1))
@@ -1442,7 +1647,12 @@ step4_resize_media() {
   fi
 
   log_info "Step 3 resize summary:"
-  summary_item "Max height" "${max_height}px"
+  if [[ "$MAX_MEDIA_PIXELS" -gt 0 ]]; then
+    summary_item "Max display" "${MAX_MEDIA_WIDTH}x${MAX_MEDIA_HEIGHT}"
+    summary_item "Max resolution" "${MAX_MEDIA_PIXELS} pixels"
+  else
+    summary_item "Max height" "${MAX_MEDIA_HEIGHT}px"
+  fi
   summary_item "Images resized" "$img_resized"
   summary_item "Images skipped" "$img_skipped"
   summary_item "Images failed" "$img_failed"
@@ -2717,6 +2927,242 @@ human_size() {
   }'
 }
 
+# Offer to install cwebp (Homebrew formula: webp) for the WebP recompress path.
+ensure_cwebp_ready() {
+  local ans
+  if command -v cwebp >/dev/null 2>&1; then
+    return 0
+  fi
+  ui_section "CWEBP REQUIRED"
+  printf "   WebP recompression needs the 'cwebp' tool (Homebrew formula: webp).\n"
+  read -r -p "$(ui_prompt 'Install cwebp via Homebrew now? [Y/n]')" ans
+  ans="${ans:-Y}"
+  if [[ ! "$ans" =~ ^[Yy]$ ]]; then
+    log_err "Cannot run WebP recompression without cwebp."
+    return 1
+  fi
+  load_homebrew_env || true
+  if ! command -v brew >/dev/null 2>&1; then
+    log_err "Homebrew not available; cannot install cwebp."
+    return 1
+  fi
+  brew install webp || return 1
+  load_homebrew_env || true
+  command -v cwebp >/dev/null 2>&1
+}
+
+# Offer to install the AVIF encode chain: avifenc (Homebrew formula: libavif)
+# and magick (formula: imagemagick).
+ensure_avif_tools_ready() {
+  local ans label formula
+  local missing_labels=()
+  local missing_formulas=()
+
+  if ! command -v avifenc >/dev/null 2>&1; then
+    missing_labels+=("avifenc (Homebrew formula: libavif)")
+    missing_formulas+=("libavif")
+  fi
+  if ! find_magick_command >/dev/null 2>&1; then
+    missing_labels+=("magick (Homebrew formula: imagemagick)")
+    missing_formulas+=("imagemagick")
+  fi
+
+  if [[ "${#missing_labels[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  ui_section "AVIF ENCODER REQUIRED"
+  printf "   AVIF recompression needs a Lanczos resizer and the libaom encoder.\n"
+  for label in "${missing_labels[@]+"${missing_labels[@]}"}"; do
+    printf "   %s%s%s %s\n" "$C_YELLOW" "$G_BULL" "$C_RESET" "$label"
+  done
+  read -r -p "$(ui_prompt 'Install missing AVIF tools via Homebrew now? [Y/n]')" ans
+  ans="${ans:-Y}"
+  if [[ ! "$ans" =~ ^[Yy]$ ]]; then
+    log_err "Cannot run AVIF recompression without avifenc and magick."
+    return 1
+  fi
+
+  load_homebrew_env || true
+  if ! command -v brew >/dev/null 2>&1; then
+    log_err "Homebrew not available; cannot install AVIF tools."
+    return 1
+  fi
+
+  for formula in "${missing_formulas[@]+"${missing_formulas[@]}"}"; do
+    if brew list --formula "$formula" >/dev/null 2>&1; then
+      log_info "Formula already installed: $formula"
+      continue
+    fi
+    log_info "Installing $formula via Homebrew..."
+    brew install "$formula" || return 1
+  done
+
+  load_homebrew_env || true
+  if ! command -v avifenc >/dev/null 2>&1 || ! find_magick_command >/dev/null 2>&1; then
+    log_err "AVIF tools are still missing after install."
+    return 1
+  fi
+  return 0
+}
+
+avif_resize_geometry() {
+  if [[ "${MAX_MEDIA_PIXELS:-0}" -gt 0 ]]; then
+    printf "%s@>" "$MAX_MEDIA_PIXELS"
+  else
+    printf "x%s>" "$MAX_MEDIA_HEIGHT"
+  fi
+}
+
+# Two-stage AVIF encode. ImageMagick does a Lanczos3 shrink-only resize, then
+# avifenc/libaom does the compression; the PNG hand-off exists because avifenc
+# has no scaler of its own.
+encode_image_to_avif() {
+  local src="$1"
+  local dst="$2"
+  local magick_cmd stage rc=0 resize_geometry
+  local sharp_flag=()
+
+  magick_cmd="$(find_magick_command 2>/dev/null)" || return 1
+  command -v avifenc >/dev/null 2>&1 || return 1
+  [[ "$STEP12_AVIF_SHARPYUV" -eq 1 ]] && sharp_flag=(--sharpyuv)
+  resize_geometry="$(avif_resize_geometry)"
+
+  stage="$(mktemp "${TMPDIR:-/tmp}/local_gallery_avif.XXXXXX")"
+  rm -f "$stage"
+  stage="${stage}.png"
+
+  if ! "$magick_cmd" "$src" -colorspace sRGB -filter Lanczos \
+       -resize "$resize_geometry" -depth 8 -strip "$stage" >/dev/null 2>&1 \
+     || [[ ! -s "$stage" ]]; then
+    rm -f "$stage"
+    return 1
+  fi
+
+  if ! avifenc -q "$STEP12_AVIF_QUALITY" -s "$STEP12_AVIF_SPEED" -y 420 -j all \
+       --cicp 1/13/6 --range full \
+       --ignore-exif --ignore-xmp --ignore-icc \
+       "${sharp_flag[@]+"${sharp_flag[@]}"}" \
+       "$stage" "$dst" >/dev/null 2>&1; then
+    rc=1
+  fi
+
+  rm -f "$stage"
+  return "$rc"
+}
+
+# Step 5 image half: re-encode still images to AVIF (default) or WebP.
+step11_recompress_images() {
+  local files=()
+  local file ext base out tmp target oldsize newsize enc_ok
+  local i total progress=0
+  local converted=0 skipped_same=0 nogain=0 skipped_existing=0 failed=0
+  local saved_bytes=0
+
+  set_resize_limit_from_displays
+  target="$STEP12_IMAGE_FORMAT"
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \
+                      -o -iname "*.bmp" -o -iname "*.tif" -o -iname "*.tiff" \
+                      -o -iname "*.webp" -o -iname "*.avif" \) -print0
+  )
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No images found to recompress."
+    return 0
+  fi
+
+  if [[ "$target" == "avif" ]]; then
+    log_info "Recompressing $total image(s) to AVIF (Lanczos3 shrink-only, quality ${STEP12_AVIF_QUALITY}, speed ${STEP12_AVIF_SPEED}). Originals are replaced only when smaller."
+  else
+    log_info "Recompressing $total image(s) to ${target} (quality ${STEP12_WEBP_QUALITY}). Originals are replaced only when smaller."
+  fi
+
+  for (( i=0; i<total; i++ )); do
+    file="${files[$i]}"
+    ext=$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')
+    base="${file%.*}"
+
+    if [[ "$ext" == "$target" ]]; then
+      skipped_same=$((skipped_same + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 5 Recompress" "$progress" "$total"
+      continue
+    fi
+
+    out="${base}.${target}"
+    if [[ -e "$out" && "$out" != "$file" ]]; then
+      # A different file already owns the target name; don't clobber it.
+      skipped_existing=$((skipped_existing + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 5 Recompress" "$progress" "$total"
+      continue
+    fi
+
+    tmp="${base}.recompress-tmp.$$.${target}"
+    rm -f "$tmp"
+
+    enc_ok=1
+    if [[ "$target" == "avif" ]]; then
+      encode_image_to_avif "$file" "$tmp" || enc_ok=0
+    else
+      cwebp -quiet -q "$STEP12_WEBP_QUALITY" "$file" -o "$tmp" >/dev/null 2>&1 || enc_ok=0
+    fi
+
+    if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
+      rm -f "$tmp"
+      failed=$((failed + 1))
+      log_err "Recompress failed: $file"
+      progress=$((progress + 1))
+      progress_draw "Step 5 Recompress" "$progress" "$total"
+      continue
+    fi
+
+    oldsize=$(file_size "$file")
+    newsize=$(file_size "$tmp")
+    if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
+      rm -f "$tmp"
+      nogain=$((nogain + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 5 Recompress" "$progress" "$total"
+      continue
+    fi
+
+    mv -f "$tmp" "$out"
+    if [[ "$out" != "$file" ]]; then
+      rm -f "$file"
+    fi
+    if is_int "$oldsize" && is_int "$newsize"; then
+      saved_bytes=$(( saved_bytes + oldsize - newsize ))
+    fi
+    converted=$((converted + 1))
+    progress=$((progress + 1))
+    progress_draw "Step 5 Recompress" "$progress" "$total"
+  done
+
+  log_info "Step 5 recompress summary:"
+  summary_item "Format" "$target"
+  if [[ "$target" == "avif" ]]; then
+    summary_item "Encoder" "avifenc q${STEP12_AVIF_QUALITY} s${STEP12_AVIF_SPEED} 4:2:0"
+    if [[ "${MAX_MEDIA_PIXELS:-0}" -gt 0 ]]; then
+      summary_item "Resize limit" "${MAX_MEDIA_PIXELS} pixels"
+    else
+      summary_item "Resize filter" "Lanczos3 (max ${MAX_MEDIA_HEIGHT}px)"
+    fi
+  fi
+  summary_item "Converted" "$converted"
+  summary_item "No size gain (kept)" "$nogain"
+  summary_item "Already ${target}" "$skipped_same"
+  summary_item "Name conflict (kept)" "$skipped_existing"
+  summary_item "Failed" "$failed"
+  summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+}
+
 # GIF-to-MP4 sub-pass of the video conversion step (no longer a standalone
 # menu step). Animated GIFs become muted MP4; static GIFs are left alone.
 convert_gifs_to_mp4() {
@@ -3022,6 +3468,113 @@ step13_quarantine_static_media() {
   quarantine_single_frame_videos
 }
 
+# Combined recompression pass: still images to AVIF/WebP, then videos to AV1.
+step_recompress_media() {
+  step11_recompress_images
+  step13_reencode_videos_av1
+}
+
+# Step 5 video half: re-encode videos to AV1 (libsvtav1) with Opus audio in an
+# MP4 container. Already-AV1 videos are skipped; originals are replaced only
+# when the AV1 version is smaller.
+step13_reencode_videos_av1() {
+  local files=()
+  local file base out tmp codec oldsize newsize enc_ok
+  local i total progress=0
+  local converted=0 skipped_av1=0 skipped_probe=0 nogain=0 skipped_existing=0 failed=0
+  local saved_bytes=0
+
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" \
+                      -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.avi" \) -print0
+  )
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No videos found to re-encode."
+    return 0
+  fi
+
+  log_info "Re-encoding $total video(s) to AV1 (CRF ${STEP14_AV1_CRF}, preset ${STEP14_AV1_PRESET}). Originals replaced only when smaller."
+
+  for (( i=0; i<total; i++ )); do
+    file="${files[$i]}"
+    base="${file%.*}"
+    out="${base}.mp4"
+
+    if ! codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
+      -of csv=p=0 "$file" 2>/dev/null | head -n 1) || [[ -z "$codec" ]]; then
+      skipped_probe=$((skipped_probe + 1))
+      log_err "Video probe failed: $file"
+      progress=$((progress + 1))
+      progress_draw "Step 5 AV1" "$progress" "$total"
+      continue
+    fi
+    if [[ "$codec" == "av1" ]]; then
+      skipped_av1=$((skipped_av1 + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 5 AV1" "$progress" "$total"
+      continue
+    fi
+
+    if [[ -e "$out" && "$out" != "$file" ]]; then
+      skipped_existing=$((skipped_existing + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 5 AV1" "$progress" "$total"
+      continue
+    fi
+
+    tmp="${base}.av1-tmp.$$.mp4"
+    rm -f "$tmp"
+    enc_ok=1
+    ffmpeg -hide_banner -loglevel error -y -i "$file" -map 0:v:0 -map 0:a? \
+      -c:v libsvtav1 -crf "$STEP14_AV1_CRF" -preset "$STEP14_AV1_PRESET" \
+      -c:a libopus -b:a 96k -movflags +faststart "$tmp" >/dev/null 2>&1 || enc_ok=0
+
+    if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
+      rm -f "$tmp"
+      failed=$((failed + 1))
+      log_err "AV1 re-encode failed: $file"
+      progress=$((progress + 1))
+      progress_draw "Step 5 AV1" "$progress" "$total"
+      continue
+    fi
+
+    oldsize=$(file_size "$file")
+    newsize=$(file_size "$tmp")
+    if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
+      rm -f "$tmp"
+      nogain=$((nogain + 1))
+      progress=$((progress + 1))
+      progress_draw "Step 5 AV1" "$progress" "$total"
+      continue
+    fi
+
+    mv -f "$tmp" "$out"
+    if [[ "$out" != "$file" ]]; then
+      rm -f "$file"
+    fi
+    if is_int "$oldsize" && is_int "$newsize"; then
+      saved_bytes=$(( saved_bytes + oldsize - newsize ))
+    fi
+    converted=$((converted + 1))
+    progress=$((progress + 1))
+    progress_draw "Step 5 AV1" "$progress" "$total"
+  done
+
+  log_info "Step 5 AV1 re-encode summary:"
+  summary_item "Re-encoded" "$converted"
+  summary_item "Already AV1" "$skipped_av1"
+  summary_item "Probe failed" "$skipped_probe"
+  summary_item "No size gain (kept)" "$nogain"
+  summary_item "Name conflict (kept)" "$skipped_existing"
+  summary_item "Failed" "$failed"
+  summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+}
+
 main() {
   local input token confirm
   local selected=() raw=() invalid=()
@@ -3036,7 +3589,7 @@ main() {
   ui_box_top
   ui_box_line "SELECT STEPS TO RUN" "$C_BOLD$C_WHITE"
   ui_box_sep
-  ui_box_line "$(printf '  %2s   %s' "0" "Core cleanup (steps 1-4)")"
+  ui_box_line "$(printf '  %2s   %s' "0" "Core cleanup (steps 1-5)")"
   for num in "${STEP_ORDER[@]}"; do
     ui_box_line "$(printf '  %2d   %s' "$num" "$(step_description "$num")")"
   done
@@ -3045,7 +3598,7 @@ main() {
   input="${input// /}"
 
   if [[ "$input" == "0" ]]; then
-    selected=(1 2 3 4)
+    selected=(1 2 3 4 5)
   else
     IFS=',' read -r -a raw <<< "$input"
     for token in "${raw[@]+"${raw[@]}"}"; do
