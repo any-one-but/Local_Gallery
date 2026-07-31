@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.09
+// @version      00.17.10
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Reddit_Stripper.user.js
@@ -270,6 +270,23 @@
     const marker = parts[0].toLowerCase();
     if (marker !== 'user' && marker !== 'u') return '';
     return normalizeRedditUsername(decodeURIComponent(parts[1] || ''));
+  }
+
+  function normalizeSubredditName(name) {
+    return String(name || '')
+      .trim()
+      .replace(/^\/?r\//i, '')
+      .replace(/^r_/i, '')
+      .toLowerCase();
+  }
+
+  function subredditNameFromHref(href) {
+    let url;
+    try { url = new URL(href, location.origin); } catch { return ''; }
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length < 2) return '';
+    if (parts[0].toLowerCase() !== 'r') return '';
+    return normalizeSubredditName(decodeURIComponent(parts[1] || ''));
   }
 
   function loadStripperBlockedUsers() {
@@ -1067,19 +1084,37 @@
         return nodes.filter(post => !nodes.some(other => other !== post && other.contains(post)));
       }
 
+      // The subreddit whose own listing page we are on, if any. Checking off a
+      // subreddit hides it from other feeds but must not blank out the sub when
+      // you deliberately open it — the same way a blocked user's own profile
+      // still shows their posts.
+      function currentFeedSubredditName() {
+        const parts = location.pathname.split('/').filter(Boolean);
+        if (parts.length < 2 || String(parts[0]).toLowerCase() !== 'r') return '';
+        return normalizeSubredditName(decodeURIComponent(parts[1] || ''));
+      }
+
       function filterBlockedProfilePosts() {
         const blocked = loadStripperBlockedUsers();
-        if (typeof rabbithole !== 'undefined' && rabbithole.hiddenProfileNames) {
-          rabbithole.hiddenProfileNames().forEach(name => blocked.add(name));
+        const blockedSubs = new Set();
+        if (typeof rabbithole !== 'undefined') {
+          if (rabbithole.hiddenProfileNames) rabbithole.hiddenProfileNames().forEach(name => blocked.add(name));
+          if (rabbithole.hiddenSubredditNames) rabbithole.hiddenSubredditNames().forEach(name => blockedSubs.add(name));
         }
-        const hasBlocks = blocked.size > 0;
+        const currentSub = currentFeedSubredditName();
+        if (currentSub) blockedSubs.delete(currentSub);
+        const hasBlocks = blocked.size > 0 || blockedSubs.size > 0;
         const shouldFilter = hasBlocks && isBlockedFeedLocation();
         feedPostCandidates().forEach(post => {
           const author = postAuthorName(post);
-          const hide = shouldFilter && author && blocked.has(author);
-          post.classList.toggle('stripperBlockedProfilePost', !!hide);
-          if (hide) post.setAttribute('data-stripper-blocked-author', author);
+          const subreddit = blockedSubs.size ? postSubredditName(post) : '';
+          const hideAuthor = shouldFilter && author && blocked.has(author);
+          const hideSub = shouldFilter && subreddit && blockedSubs.has(subreddit);
+          post.classList.toggle('stripperBlockedProfilePost', !!(hideAuthor || hideSub));
+          if (hideAuthor) post.setAttribute('data-stripper-blocked-author', author);
           else post.removeAttribute('data-stripper-blocked-author');
+          if (hideSub) post.setAttribute('data-stripper-blocked-subreddit', subreddit);
+          else post.removeAttribute('data-stripper-blocked-subreddit');
         });
       }
 
@@ -1093,6 +1128,26 @@
         const links = post.querySelectorAll ? post.querySelectorAll('a[href*="/user/"], a[href*="/u/"]') : [];
         for (const link of links) {
           const name = profileNameFromHref(link.href || link.getAttribute('href') || '');
+          if (name) return name;
+        }
+        return '';
+      }
+
+      function postSubredditName(post) {
+        if (!post) return '';
+        const attrSub = post.getAttribute && (post.getAttribute('subreddit-prefixed-name')
+          || post.getAttribute('subreddit-name') || post.getAttribute('data-subreddit'));
+        if (attrSub) return normalizeSubredditName(attrSub);
+        const permalink = post.getAttribute && post.getAttribute('permalink');
+        const fromPermalink = permalink && subredditNameFromHref(permalink);
+        if (fromPermalink) return fromPermalink;
+        const subEl = post.querySelector && post.querySelector('[subreddit-prefixed-name], [subreddit-name], [data-subreddit]');
+        const nestedSub = subEl && (subEl.getAttribute('subreddit-prefixed-name')
+          || subEl.getAttribute('subreddit-name') || subEl.getAttribute('data-subreddit'));
+        if (nestedSub) return normalizeSubredditName(nestedSub);
+        const links = post.querySelectorAll ? post.querySelectorAll('a[href*="/r/"]') : [];
+        for (const link of links) {
+          const name = subredditNameFromHref(link.href || link.getAttribute('href') || '');
           if (name) return name;
         }
         return '';
@@ -2812,6 +2867,18 @@
           return out;
         }
 
+        function hiddenSubredditNames() {
+          const out = new Set();
+          loadGraph().nodes.forEach(n => {
+            if (!n || n.type !== 'sub' || !n.scraped) return;
+            const fromId = String(n.id || '').replace(/^sub:/, '');
+            const fromLabel = String(n.label || '').replace(/^r\//i, '');
+            const name = normalizeSubredditName(fromId || fromLabel);
+            if (name) out.add(name);
+          });
+          return out;
+        }
+
         function countNodes() {
           let n = 0;
           for (const k of GM_listValues()) if (k.startsWith(NS + 'n:')) n++;
@@ -3016,14 +3083,6 @@
             sub: Array.from(remote.sub || []).sort(),
             user: Array.from(remote.user || []).sort()
           };
-        }
-
-        function normalizeSubredditName(name) {
-          return String(name || '')
-            .trim()
-            .replace(/^\/?r\//i, '')
-            .replace(/^r_/i, '')
-            .toLowerCase();
         }
 
         function targetFromSavedNode(n) {
@@ -3622,11 +3681,13 @@
           chk.type = 'checkbox';
           chk.className = 'rrm-row-chk';
           chk.checked = !!n.scraped;
-          chk.title = n.type === 'user' ? 'Hide this profile in feeds' : 'Cross off (mark scraped)';
+          chk.title = n.type === 'user' ? 'Hide this profile in feeds'
+            : n.type === 'sub' ? 'Hide this subreddit in feeds'
+            : 'Cross off (mark scraped)';
           chk.addEventListener('change', () => {
             setScraped(n.id, chk.checked);
             renderGraph();
-            if (n.type === 'user') filterBlockedProfilePosts();
+            if (n.type === 'user' || n.type === 'sub') filterBlockedProfilePosts();
           });
 
           const link = document.createElement('a');
@@ -3705,7 +3766,7 @@
           }
         }
 
-        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, hiddenProfileNames, refreshBlockedPanel: renderBlockedPanel, syncWithReddit, unsubscribeSavedNode };
+        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, hiddenProfileNames, hiddenSubredditNames, refreshBlockedPanel: renderBlockedPanel, syncWithReddit, unsubscribeSavedNode };
       })();
 
       if (window.__stripperRrmLoaded) { /* avoid double saved-list bootstrap if injected twice */ }
