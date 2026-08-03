@@ -8,11 +8,16 @@
     font: 13px/1.4 -apple-system, system-ui, sans-serif; overflow: hidden; }
   #app { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr auto;
     height: 100%; gap: 1px; background: #000; }
-  .pane { position: relative; overflow: auto; background: #111;
+  .pane { position: relative; overflow: hidden; background: #111;
     display: flex; align-items: center; justify-content: center; }
-  .pane img, .pane video { display: block; max-width: 100%; max-height: 100%; }
-  /* actual-pixels mode: media at native size, pane scrolls */
-  .pane.native img, .pane.native video { max-width: none; max-height: none; }
+  /* The stage is the viewport; media is transformed inside it, so the whole
+     image surface is reachable (a flex-centered overflow:auto pane can only
+     scroll toward bottom-right, clipping the top-left off). */
+  .stage { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+  .stage img, .stage video { position: absolute; top: 0; left: 0;
+    display: block; transform-origin: 0 0; will-change: transform; }
+  .stage.grab { cursor: grab; }
+  .stage.grabbing { cursor: grabbing; }
   .label { position: absolute; top: 6px; left: 6px; padding: 2px 7px; border-radius: 4px;
     background: rgba(0,0,0,.6); font-size: 11px; pointer-events: none; z-index: 2;
     white-space: nowrap; max-width: calc(100% - 12px); overflow: hidden; text-overflow: ellipsis; }
@@ -31,7 +36,8 @@
   <div class="pane" id="paneA"><button class="pick" data-side="A">Pick folder A</button></div>
   <div class="pane" id="paneB"><button class="pick" data-side="B">Pick folder B</button></div>
   <div id="bar">
-    <span class="name muted" id="name">Pick two folders. <kbd>←</kbd> <kbd>→</kbd> to step, click media to toggle 1:1.</span>
+    <span class="name muted" id="name">Pick two folders. <kbd>←</kbd> <kbd>→</kbd> step · scroll zoom · drag pan · click 1:1 · <kbd>0</kbd> fit</span>
+    <span class="muted" id="zoom"></span>
     <span class="muted" id="count"></span>
   </div>
 </div>
@@ -41,11 +47,105 @@ const MEDIA = /\.(jpe?g|png|gif|webp|avif|bmp|svg|mp4|webm|mov|mkv|m4v|ogg)$/i;
 const VIDEO = /\.(mp4|webm|mov|mkv|m4v|ogg)$/i;
 
 const side = {
-  A: { pane: document.getElementById('paneA'), files: new Map(), url: null },
-  B: { pane: document.getElementById('paneB'), files: new Map(), url: null },
+  A: { pane: document.getElementById('paneA'), files: new Map(), url: null,
+       stage: null, media: null, natW: 0, natH: 0 },
+  B: { pane: document.getElementById('paneB'), files: new Map(), url: null,
+       stage: null, media: null, natW: 0, natH: 0 },
 };
 let order = [];   // base names (no extension) in play, sorted
 let idx = 0;
+
+// ---- shared viewport -------------------------------------------------------
+// One view drives both panes. Zoom is relative to each pane's own fit scale and
+// the centre is in normalised image coords (0..1), so the two sides stay on the
+// same region even when compression changed the pixel dimensions.
+const MIN_ZOOM = 1, MAX_ZOOM = 40;
+const view = { zoom: 1, cx: 0.5, cy: 0.5 };
+
+const sides = () => [side.A, side.B];
+
+// Geometry a side would render with, given the current view.
+function geom(s) {
+  const r = s.stage.getBoundingClientRect();
+  if (!s.media || !s.natW || !s.natH) return null;
+  const base = Math.min(r.width / s.natW, r.height / s.natH, 1);
+  const scale = base * view.zoom;
+  const w = s.natW * scale, h = s.natH * scale;
+  // Overflowing axes follow the shared centre; fitting axes stay centred.
+  const ox = w <= r.width ? (r.width - w) / 2 : r.width / 2 - view.cx * w;
+  const oy = h <= r.height ? (r.height - h) / 2 : r.height / 2 - view.cy * h;
+  return { r, base, scale, w, h, ox, oy };
+}
+
+// Keep the centre inside the range that shows only real pixels, intersecting
+// the constraints of every pane that is currently overflowing.
+function clampView() {
+  view.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.zoom));
+  let loX = 0, hiX = 1, loY = 0, hiY = 1;
+  for (const s of sides()) {
+    if (!s.media || !s.natW || !s.natH) continue;
+    const r = s.stage.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    const scale = Math.min(r.width / s.natW, r.height / s.natH, 1) * view.zoom;
+    const w = s.natW * scale, h = s.natH * scale;
+    if (w > r.width) {
+      const m = r.width / (2 * w);
+      loX = Math.max(loX, m); hiX = Math.min(hiX, 1 - m);
+    }
+    if (h > r.height) {
+      const m = r.height / (2 * h);
+      loY = Math.max(loY, m); hiY = Math.min(hiY, 1 - m);
+    }
+  }
+  view.cx = loX > hiX ? (loX + hiX) / 2 : Math.min(hiX, Math.max(loX, view.cx));
+  view.cy = loY > hiY ? (loY + hiY) / 2 : Math.min(hiY, Math.max(loY, view.cy));
+}
+
+function applyView() {
+  for (const s of sides()) {
+    if (!s.stage) continue;
+    const g = geom(s);
+    if (!g) { s.stage.classList.remove('grab', 'grabbing'); continue; }
+    s.media.style.transform =
+      'translate(' + g.ox.toFixed(2) + 'px,' + g.oy.toFixed(2) + 'px) scale(' + g.scale + ')';
+    // Past 2x, show the actual pixels — smoothing hides the artefacts we came to compare.
+    s.media.style.imageRendering = g.scale >= 2 ? 'pixelated' : 'auto';
+    const pannable = g.w > g.r.width + 0.5 || g.h > g.r.height + 0.5;
+    s.stage.classList.toggle('grab', pannable);
+    if (!pannable) s.stage.classList.remove('grabbing');
+  }
+  const z = document.getElementById('zoom');
+  if (z) z.textContent = order.length ? Math.round(view.zoom * 100) + '%' : '';
+}
+
+function setView(next) { Object.assign(view, next); clampView(); applyView(); }
+
+// Zoom about a point in stage-local pixels, so what is under the cursor stays put.
+function zoomAt(s, px, py, nextZoom) {
+  nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
+  const g = s && geom(s);
+  if (!g) { setView({ zoom: nextZoom }); return; }
+  const ix = (px - g.ox) / g.w;          // normalised image coords under the pointer
+  const iy = (py - g.oy) / g.h;
+  const nw = s.natW * g.base * nextZoom, nh = s.natH * g.base * nextZoom;
+  setView({
+    zoom: nextZoom,
+    cx: ix + (g.r.width / 2 - px) / nw,
+    cy: iy + (g.r.height / 2 - py) / nh,
+  });
+}
+
+function panBy(dxPx, dyPx, s) {
+  const g = (s && geom(s)) || sides().map(geom).find(Boolean);
+  if (!g) return;
+  setView({ cx: view.cx - dxPx / g.w, cy: view.cy - dyPx / g.h });
+}
+
+// 1:1 zoom for a side is whatever undoes its fit scale.
+function nativeZoomFor(s) {
+  const g = s && geom(s);
+  return g ? Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, 1 / g.base)) : 1;
+}
 
 const stem = n => n.replace(/\.[^.]+$/, '');   // filename without extension
 
@@ -72,14 +172,19 @@ function rebuildOrder() {
 async function showIn(which, base) {
   const s = side[which];
   if (s.url) { URL.revokeObjectURL(s.url); s.url = null; }
-  s.pane.classList.remove('native');
   s.pane.innerHTML = '';
+  s.media = null; s.natW = 0; s.natH = 0;
+  s.stage = document.createElement('div');
+  s.stage.className = 'stage';
+  s.stage.dataset.side = which;
+  s.pane.appendChild(s.stage);
   const entry = base != null && s.files.get(base);
   if (!entry) {
     const b = document.createElement('button');
     b.className = 'pick'; b.dataset.side = which;
     b.textContent = s.files.size ? 'missing: ' + base : 'Pick folder ' + which;
     s.pane.appendChild(b);
+    applyView();
     return;
   }
   const name = entry.name;
@@ -89,11 +194,17 @@ async function showIn(which, base) {
   if (VIDEO.test(name)) {
     el = document.createElement('video');
     el.src = s.url; el.controls = true; el.muted = true; el.loop = true;
+    el.addEventListener('loadedmetadata', () => setNatural(s, el.videoWidth, el.videoHeight));
     el.play().catch(() => {});
   } else {
-    el = document.createElement('img'); el.src = s.url;
+    el = document.createElement('img');
+    el.draggable = false;
+    el.addEventListener('load', () => setNatural(s, el.naturalWidth, el.naturalHeight));
+    el.src = s.url;
+    if (el.complete && el.naturalWidth) setNatural(s, el.naturalWidth, el.naturalHeight);
   }
-  s.pane.appendChild(el);
+  s.media = el;
+  s.stage.appendChild(el);
   const ext = (name.match(/\.[^.]+$/) || [''])[0];
   const lbl = document.createElement('div');
   lbl.className = 'label';
@@ -101,6 +212,17 @@ async function showIn(which, base) {
     ? (file.size / 1024).toFixed(0) + ' KB'
     : (file.size / 1048576).toFixed(2) + ' MB');
   s.pane.appendChild(lbl);
+  applyView();
+}
+
+// Media lays out at native pixels; the transform does all the scaling.
+function setNatural(s, w, h) {
+  if (!w || !h || s.media == null) return;
+  s.natW = w; s.natH = h;
+  s.media.style.width = w + 'px';
+  s.media.style.height = h + 'px';
+  clampView();
+  applyView();
 }
 
 function render() {
@@ -109,12 +231,13 @@ function render() {
   const nameEl = document.getElementById('name');
   const countEl = document.getElementById('count');
   if (!order.length) {
-    nameEl.textContent = 'Pick two folders. ← → to step, click media to toggle 1:1.';
+    nameEl.textContent = 'Pick two folders. ← → step · scroll zoom · drag pan · click 1:1 · 0 fit';
     nameEl.className = 'name muted'; countEl.textContent = '';
   } else {
     nameEl.textContent = name; nameEl.className = 'name';
     countEl.textContent = (idx + 1) + ' / ' + order.length;
   }
+  applyView();
 }
 
 function step(d) {
@@ -124,14 +247,100 @@ function step(d) {
 }
 
 document.addEventListener('keydown', e => {
+  if (e.shiftKey && e.key.startsWith('Arrow')) {         // shift+arrows pan
+    const d = 80;
+    if (e.key === 'ArrowRight') panBy(-d, 0);
+    else if (e.key === 'ArrowLeft') panBy(d, 0);
+    else if (e.key === 'ArrowDown') panBy(0, -d);
+    else panBy(0, d);
+    e.preventDefault();
+    return;
+  }
   if (e.key === 'ArrowRight') { step(1); e.preventDefault(); }
   else if (e.key === 'ArrowLeft') { step(-1); e.preventDefault(); }
+  else if (e.key === '+' || e.key === '=') { zoomCentred(view.zoom * 1.25); e.preventDefault(); }
+  else if (e.key === '-' || e.key === '_') { zoomCentred(view.zoom / 1.25); e.preventDefault(); }
+  else if (e.key === '0') { setView({ zoom: 1, cx: 0.5, cy: 0.5 }); e.preventDefault(); }
+  else if (e.key === '1') {                              // 1:1 actual pixels
+    const s = sides().find(x => x.media && x.natW);
+    zoomCentred(nativeZoomFor(s)); e.preventDefault();
+  }
 });
 
-document.addEventListener('click', e => {
-  const b = e.target.closest('.pick');
-  if (b) { pick(b.dataset.side); return; }
-  const media = e.target.closest('img, video');
-  if (media) media.parentElement.classList.toggle('native');  // toggle 1:1 pixels
+function zoomCentred(nextZoom) {
+  const s = sides().find(x => x.media && x.natW);
+  if (!s) { setView({ zoom: nextZoom }); return; }
+  const r = s.stage.getBoundingClientRect();
+  zoomAt(s, r.width / 2, r.height / 2, nextZoom);
+}
+
+const hit = (e, sel) => (e.target && e.target.closest) ? e.target.closest(sel) : null;
+
+// Wheel / trackpad pinch: zoom about the cursor.
+document.addEventListener('wheel', e => {
+  const stage = hit(e, '.stage');
+  if (!stage) return;
+  const s = side[stage.dataset.side];
+  if (!s || !s.media) return;
+  e.preventDefault();
+  const r = stage.getBoundingClientRect();
+  const k = e.ctrlKey ? 0.01 : 0.0022;                   // pinch reports finer deltas
+  zoomAt(s, e.clientX - r.left, e.clientY - r.top, view.zoom * Math.exp(-e.deltaY * k));
+}, { passive: false });
+
+// Drag to pan. Engages past a small threshold so video controls and the 1:1
+// click toggle still work.
+let drag = null;
+document.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const stage = hit(e, '.stage');
+  const s = stage && side[stage.dataset.side];
+  if (!s || !s.media) return;
+  drag = { s, stage, id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
 });
+document.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved) {
+    if (Math.abs(dx) + Math.abs(dy) < 4) return;
+    const g = geom(drag.s);
+    if (!g || (g.w <= g.r.width + 0.5 && g.h <= g.r.height + 0.5)) { drag = null; return; }
+    drag.moved = true;
+    drag.stage.classList.add('grabbing');
+    drag.stage.setPointerCapture(drag.id);
+  }
+  drag.x = e.clientX; drag.y = e.clientY;
+  panBy(dx, dy, drag.s);
+  e.preventDefault();
+});
+document.addEventListener('pointerup', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  if (drag.moved) {
+    drag.stage.classList.remove('grabbing');
+    try { drag.stage.releasePointerCapture(drag.id); } catch {}
+    suppressClick = true;
+  }
+  drag = null;
+});
+document.addEventListener('pointercancel', () => {
+  if (drag && drag.moved) drag.stage.classList.remove('grabbing');
+  drag = null;
+});
+
+let suppressClick = false;
+document.addEventListener('click', e => {
+  if (suppressClick) { suppressClick = false; return; }
+  const b = hit(e, '.pick');
+  if (b) { pick(b.dataset.side); return; }
+  if (hit(e, 'video')) return;                           // leave the video controls alone
+  const stage = hit(e, '.stage');
+  const s = stage && side[stage.dataset.side];
+  if (!s || !s.media) return;
+  const r = stage.getBoundingClientRect();
+  const native = nativeZoomFor(s);
+  // Toggle between fit and 1:1, anchored where the click landed.
+  zoomAt(s, e.clientX - r.left, e.clientY - r.top, view.zoom > 1.001 ? 1 : native);
+});
+
+addEventListener('resize', () => { clampView(); applyView(); });
 </script>
