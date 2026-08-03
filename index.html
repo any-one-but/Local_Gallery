@@ -4418,6 +4418,14 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 1;
 }
 
+#filePreviewViewport img.pendingFilmCorners,
+#filePreviewViewport video.pendingFilmCorners,
+#viewerViewport img.pendingFilmCorners,
+#viewerViewport video.pendingFilmCorners {
+  border-radius: var(--pending-film-corner-radius, 8%);
+  overflow: hidden;
+}
+
 #filePreviewViewport img:not(.mediaHidden),
 #filePreviewViewport video:not(.mediaHidden) {
   image-rendering: auto;
@@ -4559,10 +4567,6 @@ img[data-rotate-key].rotatingThumbFade {
 #viewerViewport video.ready {
   opacity: 1;
 }
-#viewerViewport img.pendingFilmCorners,
-#viewerViewport video.pendingFilmCorners {
-  border-radius: var(--pending-film-corner-radius, 8%);
-}
 #viewerViewport.tallScrollMode {
   overflow-y: auto;
   overflow-x: hidden;
@@ -4631,9 +4635,9 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0;
 }
 
-/* Preserve the last visible media frame while the next preview video is
+/* Preserve the last visible media frame while the next preview item is
    decoding. This sits above both the raw media and the filtered WebGL canvas,
-   then disappears on the incoming video's first presented frame. */
+   then disappears once the incoming item has a presentable frame. */
 #filePreviewViewport .previewVideoTransitionFrame {
   position: absolute;
   inset: 0;
@@ -12293,6 +12297,53 @@ function mediaOverlayConfigHasVisualEffect(cfg) {
   return false;
 }
 
+function mediaOverlayConfigRequiresProcessingPipeline(cfg) {
+  if (!cfg) return false;
+  const pipelineKeys = [
+    "temperature",
+    "colorCrush",
+    "blackCrush",
+    "whiteCrush",
+    "halation",
+    "ghosting",
+    "lineDamage",
+    "pixelate",
+    "upscale",
+    "upscaler",
+    "chroma",
+    "grain",
+    "vignette",
+  ];
+  for (let i = 0; i < pipelineKeys.length; i++) {
+    if (Math.abs(Number(cfg[pipelineKeys[i]]) || 0) > 0.0001) return true;
+  }
+  return false;
+}
+
+function mediaOverlayConfigColorFilterCss(cfg) {
+  if (!cfg || !Array.isArray(cfg.colorFilters) || !cfg.colorFilters.length)
+    return "";
+  return cfg.colorFilters.join(" ");
+}
+
+function mediaOverlayConfigDirectFilterCss(cfg) {
+  const parts = [];
+  const colorFilter = mediaOverlayConfigColorFilterCss(cfg);
+  if (colorFilter) parts.push(colorFilter);
+  const blur = Number(cfg && cfg.blur);
+  if (Number.isFinite(blur) && blur > 0.0001) {
+    parts.push(`blur(${clampNumber(blur, 0, OVERLAY_SLIDER_LIMITS.blur.max, 0).toFixed(2)}px)`);
+  }
+  return parts.join(" ");
+}
+
+function targetRequiresMediaProcessingPipeline(target) {
+  if (isGifRecord(target)) return false;
+  return mediaOverlayConfigRequiresProcessingPipeline(
+    resolveMediaOverlayConfigForTarget(target),
+  );
+}
+
 function drawBlurredCanvasToScratch(
   sourceCanvas,
   scratchCanvas,
@@ -12430,8 +12481,33 @@ function computeContainRect(srcW, srcH, dstW, dstH) {
 }
 
 const PREVIEW_RENDER_MAX_PIXELS_IMAGE = 24000000;
+const PREVIEW_RENDER_MAX_PIXELS_IMAGE_FILTERED = 10000000;
 const PREVIEW_RENDER_MAX_PIXELS_VIDEO = 18000000;
 const PREVIEW_RENDER_MAX_PIXELS_VIDEO_LIVE = 14000000;
+
+function mediaOverlayStillImageProfile(overlayCfg) {
+  if (!mediaOverlayConfigRequiresProcessingPipeline(overlayCfg)) {
+    return { maxPixels: PREVIEW_RENDER_MAX_PIXELS_IMAGE };
+  }
+  let cost = 0;
+  if (
+    Math.abs(Number(overlayCfg.temperature) || 0) > 0.0001 ||
+    Number(overlayCfg.colorCrush || 0) > 0.0001 ||
+    Number(overlayCfg.blackCrush || 0) > 0.0001 ||
+    Number(overlayCfg.whiteCrush || 0) > 0.0001
+  )
+    cost += 1.8;
+  if (Number(overlayCfg.chroma || 0) > 0.0001) cost += 1.8;
+  if (Number(overlayCfg.blur || 0) > 0.0001)
+    cost += Number(overlayCfg.blur || 0) > 2 ? 2.2 : 1.2;
+  if (Number(overlayCfg.pixelate || 0) > 0.0001) cost += 0.4;
+  if (Number(overlayCfg.grain || 0) > 0.0001) cost += 0.7;
+  if (Number(overlayCfg.vignette || 0) > 0.0001) cost += 0.25;
+  if (Number(overlayCfg.cornerRadius || 0) > 0.0001) cost += 0.25;
+  if (cost >= 4) return { maxPixels: 6000000 };
+  if (cost >= 2) return { maxPixels: 8000000 };
+  return { maxPixels: PREVIEW_RENDER_MAX_PIXELS_IMAGE_FILTERED };
+}
 
 function previewPaneUpscaleAmountForSurface(surface, overlayCfg) {
   if (!surface || String(surface.name || "") === "preview") return 0;
@@ -12461,7 +12537,8 @@ function previewRenderMaxPixels(surface, isVideo, isVideoPlaying, overlayCfg) {
       ? PREVIEW_RENDER_MAX_PIXELS_VIDEO_LIVE
       : PREVIEW_RENDER_MAX_PIXELS_VIDEO;
   }
-  return isVideo ? PREVIEW_RENDER_MAX_PIXELS_VIDEO : PREVIEW_RENDER_MAX_PIXELS_IMAGE;
+  if (isVideo) return PREVIEW_RENDER_MAX_PIXELS_VIDEO;
+  return mediaOverlayStillImageProfile(overlayCfg).maxPixels;
 }
 
 function computePreviewRenderScale(
@@ -14325,6 +14402,8 @@ const MediaFilterEngine = (() => {
       cleanImageBitmap: null,
       cleanImageLoading: false,
       cleanImagePath: null,
+      uploadCanvas: null,
+      uploadCtx: null,
     };
     surfaces.set(name, surface);
     return surface;
@@ -14400,6 +14479,8 @@ const MediaFilterEngine = (() => {
     if (targetChanged) {
       const preserveFilteredFrame =
         !!(
+          (type === "video" ||
+            (type === "image" && targetRequiresMediaProcessingPipeline(target))) &&
           surface.canvas &&
           surface.hasDrawn &&
           surface.canvas.classList.contains("ready")
@@ -14411,13 +14492,13 @@ const MediaFilterEngine = (() => {
       }
       if (surface.glState) surface.glState.hasPrev = false;
     }
-    if (type === "image" && window.electronAPI && window.electronAPI.isTauri) {
-      kickLoadCleanImageForSurface(surface, target);
-    }
     if (mediaEl) {
       if (surface.hasDrawn && surface.canvas && surface.canvas.classList.contains("ready"))
         mediaEl.classList.add("mediaHidden");
-      else mediaEl.classList.remove("mediaHidden");
+      else {
+        if (type === "image") applyDirectMediaCssEffectsForTarget(mediaEl, target);
+        mediaEl.classList.remove("mediaHidden");
+      }
     }
     if (type === "video" && mediaEl && typeof mediaEl.requestVideoFrameCallback === "function") {
       surface.videoFrameActive = true;
@@ -14490,6 +14571,9 @@ const MediaFilterEngine = (() => {
       }
       if (surface.glState) surface.glState.hasPrev = false;
     }
+    if (!preserveFrame && surface.uploadCanvas) {
+      resizeCanvasBuffer(surface.uploadCanvas, 1, 1);
+    }
     updateEngineState();
   }
 
@@ -14514,6 +14598,9 @@ const MediaFilterEngine = (() => {
     }
     surface.canvas = null;
     surface.glState = null;
+    if (surface.uploadCanvas) resizeCanvasBuffer(surface.uploadCanvas, 1, 1);
+    surface.uploadCanvas = null;
+    surface.uploadCtx = null;
     updateEngineState();
   }
 
@@ -14544,6 +14631,35 @@ const MediaFilterEngine = (() => {
     configureTexture(gl, state.sourceTexture);
   }
 
+  function prepareStillImageUploadSource(surface, drawSource, srcW, srcH, maxPixels) {
+    const sourcePixels =
+      Math.max(1, Number(srcW) || 1) * Math.max(1, Number(srcH) || 1);
+    const pixelBudget = Math.max(1, Number(maxPixels) || 1);
+    if (!surface || !drawSource || !(sourcePixels > pixelBudget * 1.35)) {
+      return { source: drawSource, width: srcW, height: srcH };
+    }
+    if (!surface.uploadCanvas) {
+      surface.uploadCanvas = document.createElement("canvas");
+      surface.uploadCtx =
+        surface.uploadCanvas.getContext("2d", {
+          alpha: true,
+          desynchronized: true,
+        }) || surface.uploadCanvas.getContext("2d", { alpha: true });
+    }
+    const ctx = surface.uploadCtx;
+    if (!ctx) return { source: drawSource, width: srcW, height: srcH };
+    const scale = Math.sqrt(pixelBudget / sourcePixels);
+    const nextW = Math.max(1, Math.round(srcW * scale));
+    const nextH = Math.max(1, Math.round(srcH * scale));
+    resizeCanvasBuffer(surface.uploadCanvas, nextW, nextH);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, nextW, nextH);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(drawSource, 0, 0, nextW, nextH);
+    return { source: surface.uploadCanvas, width: nextW, height: nextH };
+  }
+
   function uniform1f(gl, location, value) {
     if (location) gl.uniform1f(location, Number(value) || 0);
   }
@@ -14558,6 +14674,7 @@ const MediaFilterEngine = (() => {
       if (surface.mediaEl) {
         surface.mediaEl.classList.remove("mediaHidden");
         try { surface.mediaEl.style.removeProperty("filter"); } catch {}
+        clearPendingFilmCornerMask(surface.mediaEl);
       }
       surface.hasDrawn = false;
       surface.awaitingFreshFrame = false;
@@ -14591,8 +14708,6 @@ const MediaFilterEngine = (() => {
         drawSource = surface.cleanImageBitmap;
         srcW = drawSource.width;
         srcH = drawSource.height;
-      } else {
-        kickLoadCleanImageForSurface(surface, surface.target);
       }
     }
 
@@ -14600,7 +14715,7 @@ const MediaFilterEngine = (() => {
     const ch = surface.container.clientHeight || 0;
     if (!cw || !ch || !(srcW > 0) || !(srcH > 0)) return false;
 
-    const sourceCrop = { sx: 0, sy: 0, sw: srcW, sh: srcH };
+    let sourceCrop = { sx: 0, sy: 0, sw: srcW, sh: srcH };
     const croppedSrcW = Math.max(1, Number(sourceCrop.sw || srcW || 1));
     const croppedSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
     const rect = computeContainRect(croppedSrcW, croppedSrcH, cw, ch);
@@ -14643,11 +14758,37 @@ const MediaFilterEngine = (() => {
       surface.glState.hasPrev = false;
     }
 
+    if (!isVideo) {
+      const uploadMaxPixels = Math.max(
+        1,
+        Math.round(Math.max(1, rect.w * renderDpr)) *
+          Math.round(Math.max(1, rect.h * renderDpr)),
+      );
+      try {
+        const staged = prepareStillImageUploadSource(
+          surface,
+          drawSource,
+          srcW,
+          srcH,
+          uploadMaxPixels,
+        );
+        drawSource = staged.source;
+        srcW = staged.width;
+        srcH = staged.height;
+      } catch {}
+    }
+
+    sourceCrop = { sx: 0, sy: 0, sw: srcW, sh: srcH };
+    const uploadSrcW = Math.max(1, Number(sourceCrop.sw || srcW || 1));
+    const uploadSrcH = Math.max(1, Number(sourceCrop.sh || srcH || 1));
+
     const state = surface.glState;
     const gl = state.gl;
     try {
       uploadSourceTexture(surface, drawSource);
     } catch {
+      if (!isVideo && window.electronAPI && window.electronAPI.isTauri)
+        kickLoadCleanImageForSurface(surface, surface.target);
       if (!surface.hasDrawn) {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
@@ -14675,7 +14816,7 @@ const MediaFilterEngine = (() => {
     gl.uniform2f(state.uniforms.u_canvas, pixelW, pixelH);
     gl.uniform2f(state.uniforms.u_source, srcW, srcH);
     gl.uniform2f(state.uniforms.u_cropOrigin, sourceCrop.sx || 0, sourceCrop.sy || 0);
-    gl.uniform2f(state.uniforms.u_cropSize, croppedSrcW, croppedSrcH);
+    gl.uniform2f(state.uniforms.u_cropSize, uploadSrcW, uploadSrcH);
     gl.uniform2f(
       state.uniforms.u_destOrigin,
       rect.x * renderDpr,
@@ -14706,7 +14847,9 @@ const MediaFilterEngine = (() => {
     uniform1f(gl, state.uniforms.u_grain, overlayCfg.grain);
     uniform1f(gl, state.uniforms.u_vignette, overlayCfg.vignette);
     uniform1f(gl, state.uniforms.u_cornerRadius, overlayCfg.cornerRadius);
-    uniform1f(gl, state.uniforms.u_animated, animatedMediaFiltersEnabledForType(surface.type) ? 1 : 0);
+    const filterAnimationEnabled =
+      isVideo && animatedMediaFiltersEnabledForType(surface.type);
+    uniform1f(gl, state.uniforms.u_animated, filterAnimationEnabled ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     gl.activeTexture(gl.TEXTURE1);
@@ -14725,10 +14868,11 @@ const MediaFilterEngine = (() => {
     if (surface.mediaEl) {
       surface.mediaEl.classList.add("mediaHidden");
       try { surface.mediaEl.style.removeProperty("filter"); } catch {}
+      clearPendingFilmCornerMask(surface.mediaEl);
     }
 
     const needsAnim =
-      animatedMediaFiltersEnabledForType(surface.type) &&
+      filterAnimationEnabled &&
       !!overlayCfg.grain;
     if (isVideo) {
       if (surface.videoFrameActive) return false;
@@ -15283,12 +15427,7 @@ function applyMediaFilterFromOptions(options = null) {
   else appEl.removeAttribute("data-media-filter");
   const root = document.documentElement;
   if (root) {
-    let thumbF = "none";
-    const oc = MEDIA_OVERLAY_STATE;
-    if (oc) {
-      const cfs = Array.isArray(oc.colorFilters) && oc.colorFilters.length ? oc.colorFilters.join(" ") : "none";
-      if (cfs !== "none") thumbF = cfs;
-    }
+    const thumbF = mediaOverlayConfigColorFilterCss(MEDIA_OVERLAY_STATE) || "none";
     root.style.setProperty("--thumb-filter", thumbF);
   }
   MEDIA_FILTER_STATE.mode = filter || "off";
@@ -15317,16 +15456,29 @@ function applyMediaFilterFromOptions(options = null) {
   if (!filtersActive) {
     MediaFilterEngine.reset("preview");
     MediaFilterEngine.reset("viewer");
-    if (previewImgEl) previewImgEl.classList.remove("mediaHidden");
-    if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
-    if (viewerImgEl) viewerImgEl.classList.remove("mediaHidden");
-    if (viewerVideoEl) viewerVideoEl.classList.remove("mediaHidden");
+    if (previewImgEl) {
+      previewImgEl.classList.remove("mediaHidden");
+      clearPendingFilmCornerMask(previewImgEl);
+    }
+    if (previewVideoEl) {
+      previewVideoEl.classList.remove("mediaHidden");
+      clearPendingFilmCornerMask(previewVideoEl);
+    }
+    if (viewerImgEl) {
+      viewerImgEl.classList.remove("mediaHidden");
+      clearPendingFilmCornerMask(viewerImgEl);
+    }
+    if (viewerVideoEl) {
+      viewerVideoEl.classList.remove("mediaHidden");
+      clearPendingFilmCornerMask(viewerVideoEl);
+    }
     const quadSlots = getQuadPlaybackSlots();
     for (let i = 0; i < quadSlots.length; i++) {
       const slot = quadSlots[i];
       if (!slot || !slot.videoEl) continue;
       MediaFilterEngine.reset(slot.surfaceName);
       slot.videoEl.classList.remove("mediaHidden");
+      clearPendingFilmCornerMask(slot.videoEl);
     }
     applyScrollImageProcessingFallback(previewImgEl, null, "none");
     applyScrollImageProcessingFallback(viewerImgEl, null, "none");
@@ -15422,14 +15574,8 @@ function applyMediaFilterFromOptions(options = null) {
   // filters inside the filter engine so combined effects are not double-applied.
   try {
     const pTarget = WS.preview && WS.preview.kind === "file" && WS.preview.fileId ? WS.fileById.get(WS.preview.fileId) : null;
-    const oc = resolveMediaOverlayConfigForTarget(pTarget);
-    const pColF = (oc && Array.isArray(oc.colorFilters) && oc.colorFilters.length) ? oc.colorFilters.join(" ") : "none";
-    if (previewImgEl) {
-      if (pColF !== "none") previewImgEl.style.filter = pColF; else previewImgEl.style.removeProperty("filter");
-    }
-    if (previewVideoEl) {
-      if (pColF !== "none") previewVideoEl.style.filter = pColF; else previewVideoEl.style.removeProperty("filter");
-    }
+    applyDirectMediaCssEffectsForTarget(previewImgEl, pTarget);
+    applyDirectMediaCssEffectsForTarget(previewVideoEl, pTarget);
   } catch {}
 
   if (deferThumbSync) scheduleMountedThumbColorFilterSync();
@@ -15465,10 +15611,34 @@ function getPreviewThumbnailTitleSizeForKind(kind, opt = null) {
 function getThumbnailScaleForStyle(style, opt = null) { }
 
 function getCurrentColorFilterCssForTarget(target) {
-  const oc = resolveMediaOverlayConfigForTarget(target);
-  if (!oc) return "";
-  const cfs = Array.isArray(oc.colorFilters) && oc.colorFilters.length ? oc.colorFilters : [];
-  return cfs.length ? cfs.join(" ") : "";
+  return mediaOverlayConfigColorFilterCss(
+    resolveMediaOverlayConfigForTarget(target),
+  );
+}
+
+function applyCssColorFilterForTarget(mediaEl, target) {
+  if (!mediaEl) return "";
+  const cssFilter = getCurrentColorFilterCssForTarget(target);
+  if (cssFilter) {
+    mediaEl.style.filter = cssFilter;
+  } else {
+    mediaEl.style.removeProperty("filter");
+  }
+  return cssFilter;
+}
+
+function applyDirectMediaCssEffectsForTarget(mediaEl, target) {
+  if (!mediaEl) return "";
+  const cssFilter = mediaOverlayConfigDirectFilterCss(
+    resolveMediaOverlayConfigForTarget(target),
+  );
+  if (cssFilter) {
+    mediaEl.style.filter = cssFilter;
+  } else {
+    mediaEl.style.removeProperty("filter");
+  }
+  applyPendingFilmCornerMask(mediaEl, target);
+  return cssFilter;
 }
 
 function getActiveThumbnailScale(opt = null) { }
@@ -15523,12 +15693,15 @@ function syncMediaFilterSurface(
   const overlayCfg = resolveMediaOverlayConfigForTarget(processingTarget);
   if (isGifRecord(processingTarget)) {
     mediaEl.classList.remove("mediaHidden");
+    mediaEl.style.removeProperty("filter");
+    clearPendingFilmCornerMask(mediaEl);
     MediaFilterEngine.detach(surfaceName);
     return;
   }
   const needsProcessingPipeline =
-    mediaOverlayConfigHasVisualEffect(overlayCfg);
+    mediaOverlayConfigRequiresProcessingPipeline(overlayCfg);
   if (!needsProcessingPipeline) {
+    applyDirectMediaCssEffectsForTarget(mediaEl, processingTarget);
     mediaEl.classList.remove("mediaHidden");
     MediaFilterEngine.detach(surfaceName);
     return;
@@ -15570,7 +15743,7 @@ function clearMediaFilterSurface(surfaceName, mediaEl) {
 function shouldHoldPreviewFilteredFrameForTarget(target) {
   if (!target || !anyMediaFilterEnabled()) return false;
   if (isGifRecord(target)) return false;
-  if (!resolveMediaOverlayConfigForTarget(target)) return false;
+  if (!targetRequiresMediaProcessingPipeline(target)) return false;
   return MediaFilterEngine.hasSurfaceDrawn("preview");
 }
 
@@ -57229,7 +57402,13 @@ function capturePreviewVideoTransitionFrame() {
       const drawHeight = sourceHeight * scale * dpr;
       const drawX = (pixelWidth - drawWidth) / 2;
       const drawY = (pixelHeight - drawHeight) / 2;
+      const computedFilter =
+        typeof getComputedStyle === "function"
+          ? getComputedStyle(source).filter
+          : "";
+      ctx.filter = computedFilter && computedFilter !== "none" ? computedFilter : "none";
       ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+      ctx.filter = "none";
     }
   } catch {
     return false;
@@ -57240,12 +57419,19 @@ function capturePreviewVideoTransitionFrame() {
 function beginPreviewVideoTransition(rec) {
   const token = ++PREVIEW_VIDEO_TRANSITION_TOKEN;
   const canvas = ensurePreviewVideoTransitionCanvas();
-  if (!rec || rec.type !== "video") {
+  if (!rec || (rec.type !== "video" && rec.type !== "image")) {
     if (canvas) hidePreviewVideoTransitionFrame(true);
     return token;
   }
-  const currentId = String(previewVideoEl?.dataset?.previewFileId || "");
-  if (currentId && currentId === String(rec.id || "")) return token;
+  const currentEl = rec.type === "video" ? previewVideoEl : previewImgEl;
+  const currentId = String(currentEl?.dataset?.previewFileId || "");
+  if (
+    currentId &&
+    currentId === String(rec.id || "") &&
+    currentEl &&
+    currentEl.style.display !== "none"
+  )
+    return token;
   if (!capturePreviewVideoTransitionFrame() && canvas)
     canvas.style.display = "none";
   return token;
@@ -57546,11 +57732,7 @@ function seedPreviewViewportWithRecordHint(rec) {
       previewImgEl.src = hintSrc;
     }
     // Ensure color filters are applied directly to preview media via CSS (reliable path, like thumbs)
-    try {
-      const oc = resolveMediaOverlayConfigForTarget(rec);
-      const imgColF = (oc && Array.isArray(oc.colorFilters) && oc.colorFilters.length) ? oc.colorFilters.join(" ") : "none";
-      if (imgColF !== "none") previewImgEl.style.filter = imgColF; else previewImgEl.style.removeProperty("filter");
-    } catch {}
+    try { applyDirectMediaCssEffectsForTarget(previewImgEl, rec); } catch {}
     if (previewVideoEl) {
       cancelResponsiveVideoSeek(previewVideoEl);
       try { previewVideoEl.pause(); } catch {}
@@ -57597,11 +57779,7 @@ function seedPreviewViewportWithRecordHint(rec) {
       } catch {}
     }
     // Ensure color filters via CSS on preview video
-    try {
-      const oc = resolveMediaOverlayConfigForTarget(rec);
-      const vColF = (oc && Array.isArray(oc.colorFilters) && oc.colorFilters.length) ? oc.colorFilters.join(" ") : "none";
-      if (vColF !== "none") previewVideoEl.style.filter = vColF; else previewVideoEl.style.removeProperty("filter");
-    } catch {}
+    try { applyDirectMediaCssEffectsForTarget(previewVideoEl, rec); } catch {}
     if (previewImgEl) {
       previewImgEl.style.display = "none";
       previewImgEl.classList.remove("ready");
@@ -58746,13 +58924,14 @@ function applyScrollImageMode(containerEl, imgEl, mode, resetScroll = false) {
   }
 }
 
-function revealImageAfterReadingLayout(imgEl, isCurrent) {
+function revealImageAfterReadingLayout(imgEl, isCurrent, onReveal = null) {
   if (!imgEl) return;
   const reveal = () => {
     if (typeof isCurrent === "function" && !isCurrent()) return;
     imgEl.style.removeProperty("visibility");
     imgEl.classList.add("ready");
     MediaFilterEngine.requestRender();
+    if (typeof onReveal === "function") onReveal();
   };
   if (readingModeEnabled()) requestAnimationFrame(reveal);
   else reveal();
@@ -58921,10 +59100,7 @@ function scrollImageFallbackCssFilter(rec, mode) {
       ? MEDIA_FILTER_CONFIGS[filterMode]
       : null;
   const baseCfg = scaleBaseFilterConfig(baseCfgRaw, intensity);
-  const overlayColorFilter =
-    Array.isArray(overlayCfg.colorFilters) && overlayCfg.colorFilters.length
-      ? overlayCfg.colorFilters.join(" ")
-      : "none";
+  const overlayColorFilter = mediaOverlayConfigColorFilterCss(overlayCfg) || "none";
   const colorFilter =
     overlayColorFilter && overlayColorFilter !== "none"
       ? overlayColorFilter
@@ -59255,11 +59431,7 @@ function renderPreviewViewerItem(idx) {
       shouldAutoPlay,
     );
     // Direct CSS color filter on preview video for reliable application
-    try {
-      const oc = resolveMediaOverlayConfigForTarget(rec);
-      const vColF = (oc && Array.isArray(oc.colorFilters) && oc.colorFilters.length) ? oc.colorFilters.join(" ") : "none";
-      if (vColF !== "none") previewVideoEl.style.filter = vColF; else previewVideoEl.style.removeProperty("filter");
-    } catch {}
+    try { applyDirectMediaCssEffectsForTarget(previewVideoEl, rec); } catch {}
     // Explicit play kick helps eliminate the initial 1-2s hesitation on first
     // selection under Tauri/WKWebView (was instant with direct file: in Electron).
     if (shouldAutoPlay) {
@@ -59350,6 +59522,7 @@ function renderPreviewViewerItem(idx) {
         String(previewImgEl.dataset.previewFileId || "") ===
           String(rec.id || "") &&
         String(WS.preview.fileId || "") === String(rec.id || ""),
+      () => hidePreviewVideoTransitionFrame(false),
     );
     return true;
   };
@@ -59381,9 +59554,9 @@ function renderPreviewViewerItem(idx) {
   if (holdFilteredFrame) previewImgEl.classList.add("mediaHidden");
   else previewImgEl.classList.remove("mediaHidden");
   previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
+  try { applyDirectMediaCssEffectsForTarget(previewImgEl, rec); } catch {}
   if (!same) {
     PREVIEW_IMAGE_SWAP_TOKEN = (PREVIEW_IMAGE_SWAP_TOKEN + 1) >>> 0;
-    clearPendingFilmCornerMask(previewImgEl);
     previewImgEl.dataset.previewFileId = String(rec.id || "");
     previewImgEl.classList.remove("ready");
     if (readingModeEnabled()) previewImgEl.style.visibility = "hidden";
@@ -59417,6 +59590,7 @@ function renderPreviewViewerItem(idx) {
     () =>
       String(previewImgEl.dataset.previewFileId || "") === String(rec.id || "") &&
       String(WS.preview.fileId || "") === String(rec.id || ""),
+    () => hidePreviewVideoTransitionFrame(false),
   );
 
   if (previewImgEl.complete && previewImgEl.naturalWidth > 0) {
@@ -59452,6 +59626,7 @@ function renderPreviewViewerItem(idx) {
           String(previewImgEl.dataset.previewFileId || "") ===
             String(rec.id || "") &&
           String(WS.preview.fileId || "") === String(rec.id || ""),
+        () => hidePreviewVideoTransitionFrame(false),
       );
     });
   }
