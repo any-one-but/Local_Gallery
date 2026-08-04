@@ -8,6 +8,8 @@
 //! whole port hinges on — native thumbnailing for images (and video via
 //! macOS QuickLook), replacing the Electron `<video>`/canvas/ffmpeg approach.
 
+mod claude;
+mod embedded_web;
 mod fs;
 mod grok;
 mod settings;
@@ -561,14 +563,15 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
 
             let main_window = builder.build()?;
 
-            // Keep the Grok child webview sized to the app content area.
-            let grok_handle = app.handle().clone();
+            // Keep the embedded child webviews sized to the app content area.
+            let embedded_handle = app.handle().clone();
             main_window.on_window_event(move |event| {
                 if matches!(
                     event,
                     tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_)
                 ) {
-                    grok::sync_grok_bounds(&grok_handle);
+                    grok::sync_grok_bounds(&embedded_handle);
+                    claude::sync_claude_bounds(&embedded_handle);
                 }
             });
             Ok(())
@@ -582,6 +585,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             settings::open_settings_window,
             settings::toggle_settings_window_command,
             grok::toggle_grok_window,
+            claude::toggle_claude_window,
             fs::pick_root,
             fs::scan_dir,
             fs::path_kind,
@@ -604,11 +608,12 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|handle, event| {
-            // Quitting with the Grok window open still has to record where it
-            // was. ExitRequested fires while the windows are alive, so the
+            // Quitting with an embedded window open still has to record where
+            // it was. ExitRequested fires while the windows are alive, so the
             // webview URL is still readable here; RunEvent::Exit is too late.
             if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
                 grok::save_grok_url(handle);
+                claude::save_claude_url(handle);
             }
         });
 }

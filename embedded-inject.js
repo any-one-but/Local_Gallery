@@ -1,21 +1,27 @@
-// Injected as an initialization_script into the Grok webview (see
-// src-tauri/src/grok.rs). Runs before grok.com's own scripts on every load.
+// Injected as an initialization_script into every embedded site webview (see
+// src-tauri/src/embedded_web.rs — Grok and Claude both use this file). Runs
+// before the host page's own scripts on every load.
 //
-// Gives the embedded Grok webview a local close shortcut.
+// Gives the embedded webview a local close shortcut.
 //
 // The close path is a cancelled navigation, not a Tauri invoke, and that is
-// deliberate. Opening the IPC bridge to grok.com would require a capability
-// with `remote.urls`, and app commands are callable by any webview that has the
-// bridge — so a script on grok.com (or content the model renders into the page)
-// could reach fs::remove_path. A sentinel URL costs one navigation handler and
-// keeps the bridge shut.
+// deliberate. Opening the IPC bridge to a third-party host would require a
+// capability with `remote.urls`, and app commands are callable by any webview
+// that has the bridge — so a script on that host (or content the model renders
+// into the page) could reach fs::remove_path. A sentinel URL costs one
+// navigation handler and keeps the bridge shut.
+//
+// Rust bakes the two globals this reads into the page: __lgEmbedCloseKey (the
+// app's current binding for this window's toggle) and __lgEmbedCloseUrl (this
+// window's own sentinel).
 (function () {
   "use strict";
 
-  var CLOSE_URL = "https://local-gallery.invalid/close";
   function requestClose() {
+    var url = window.__lgEmbedCloseUrl;
+    if (typeof url !== "string" || !url) return;
     try {
-      window.location.href = CLOSE_URL;
+      window.location.href = url;
     } catch (e) {
       /* navigation is cancelled by the Rust side; errors here are noise */
     }
@@ -23,7 +29,7 @@
 
   // Mirrors normalizeKeyValue()'s output format from index.html: modifiers in
   // Cmd/Ctrl/Alt/Shift order joined by "+", base key last (e.g. "Cmd+g").
-  // Rust bakes the app's current binding into window.__lgGrokCloseKey — this
+  // Rust bakes the app's current binding into window.__lgEmbedCloseKey — this
   // webview has focus whenever it is up, so the main webview never sees the key
   // and cannot toggle it off. The page has to close itself.
   function parseCloseKey(spec) {
@@ -57,7 +63,7 @@
   }
 
   function matchesCloseKey(e) {
-    var spec = parseCloseKey(window.__lgGrokCloseKey);
+    var spec = parseCloseKey(window.__lgEmbedCloseKey);
     if (!spec) return false;
     if (!!e.metaKey !== spec.cmd) return false;
     if (!!e.ctrlKey !== spec.ctrl) return false;

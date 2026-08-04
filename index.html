@@ -16639,8 +16639,9 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "cycleVideoSkipStep",
   "cycleVideoEndBehavior",
   "toggleAnimatedFilters",
-  // Newly surfaced in the app menu. toggleGrokWindow is deliberately absent:
-  // Grok has no menu entry, so its keybind is the only way in.
+  // Newly surfaced in the app menu. toggleGrokWindow and toggleClaudeWindow are
+  // deliberately absent: neither has a menu entry, so their keybinds are the
+  // only way in.
   "refreshWorkspace",
   "toggleShowPositionNumbers",
   "toggleHideBeforeLastDash",
@@ -16769,6 +16770,12 @@ const KEYBIND_ACTIONS = [
     id: "toggleGrokWindow",
     label: "Toggle Grok",
     hint: "Show or hide Grok inside the app. Esc closes it.",
+    section: "panes",
+  },
+  {
+    id: "toggleClaudeWindow",
+    label: "Toggle Claude",
+    hint: "Show or hide Claude inside the app. Esc closes it.",
     section: "panes",
   },
   {
@@ -17124,6 +17131,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleQuickNavigation",
   "refreshWorkspace",
   "toggleGrokWindow",
+  "toggleClaudeWindow",
   "cycleFilter",
   "cycleFolderSort",
   "toggleAnimatedFilters",
@@ -17207,6 +17215,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
   toggleGrokWindow: "Cmd+g",
+  toggleClaudeWindow: "Cmd+j",
   randomFirstFileJump: "r",
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
@@ -66402,35 +66411,52 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
   return true;
 }
 
-// The Grok window lives entirely in Rust (src-tauri/src/grok.rs) — it is a
-// separate native window, so there is no DOM here to toggle. Closing is handled
-// on that side too: once it has focus this window sees no keys at all, so Esc
-// is caught by the script injected into the page.
-function toggleGrokWindowKeybindAction() {
+// The Grok and Claude windows live entirely in Rust (src-tauri/src/grok.rs,
+// src-tauri/src/claude.rs, on the shared embedded_web.rs) — they are separate
+// native webviews, so there is no DOM here to toggle. Closing is handled on
+// that side too: once one has focus this window sees no keys at all, so Esc is
+// caught by the script injected into the page.
+function toggleEmbeddedSiteWindowKeybindAction(actionId, command, name) {
   const invoke = window.__TAURI__?.core?.invoke;
   if (!invoke) {
-    showStatusMessage("Grok needs the desktop app.");
+    showStatusMessage(`${name} needs the desktop app.`);
     return false;
   }
-  // Forwarded so the page can close itself with the same combo: once the Grok
-  // window has focus, this window stops receiving keys entirely.
+  // Forwarded so the page can close itself with the same combo: once the
+  // embedded window has focus, this window stops receiving keys entirely.
   // KEYBIND_INDEX is key -> id and is rebuilt whenever bindings change, so
   // reversing it always yields the live, normalized combo.
   let closeKey = "";
   for (const [key, id] of KEYBIND_INDEX) {
-    if (id === "toggleGrokWindow") {
+    if (id === actionId) {
       closeKey = key;
       break;
     }
   }
-  invoke("toggle_grok_window", { closeKey })
+  invoke(command, { closeKey })
     .then((visible) => {
-      if (!visible) showStatusMessage("Grok closed.");
+      if (!visible) showStatusMessage(`${name} closed.`);
     })
     .catch((err) => {
-      showStatusMessage(`Grok failed: ${err}`);
+      showStatusMessage(`${name} failed: ${err}`);
     });
   return true;
+}
+
+function toggleGrokWindowKeybindAction() {
+  return toggleEmbeddedSiteWindowKeybindAction(
+    "toggleGrokWindow",
+    "toggle_grok_window",
+    "Grok",
+  );
+}
+
+function toggleClaudeWindowKeybindAction() {
+  return toggleEmbeddedSiteWindowKeybindAction(
+    "toggleClaudeWindow",
+    "toggle_claude_window",
+    "Claude",
+  );
 }
 
 function refreshWorkspaceKeybindAction() {
@@ -66486,6 +66512,8 @@ function handleExtrasKeybindAction(action) {
       return toggleGrabReorderKeybindAction();
     case "toggleGrokWindow":
       return toggleGrokWindowKeybindAction();
+    case "toggleClaudeWindow":
+      return toggleClaudeWindowKeybindAction();
     case "toggleAnimatedFilters": {
       const next = cycleOptionValue(
         "animatedMediaFilters",
