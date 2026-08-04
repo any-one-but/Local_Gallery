@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.14
+// @version      01.13.15
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -1436,6 +1436,30 @@ const DEFAULT_OPTIONS = {
   showGroupsSection: true,
   showClearAllIndexCachesBtn: true
 };
+const LOCKED_HIDDEN_OPTIONS = Object.freeze({
+  specialDownloadBehavior: 'off',
+  specialDownloadValue: SPECIAL_DOWNLOAD_VALUE_DEFAULT,
+  durationIndexing: false,
+  galleryPreloadAll: false,
+  globalRequestDelayEnabled: true,
+  globalRequestDelayMs: 1000,
+  videoDurationProbeConcurrency: 5,
+  downloadAcrossProfiles: false,
+  stopClearsQueue: true,
+  showLocalGalleryBtn: false,
+  showDownloadPostLinksBtn: false,
+  showFileInput: false,
+  showAttachmentInput: false,
+  showGalleryBtn: true,
+  showPageBtn: true,
+  showMediaBtn: true,
+  showPreviewBtn: true,
+  showPageInput: true,
+  showPostInput: true,
+  showClearIndexCacheBtn: true,
+  showProgressBar: true,
+  showGroupsSection: false
+});
 const DOWNLOAD_MODE_LABELS = {
   queue_flat: 'Archive by queue',
   post: 'Archive by post',
@@ -1453,10 +1477,16 @@ function clampInt(value, min, max, fallback) {
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
 }
+function applyLockedHiddenOptions(out) {
+  if (!out || typeof out !== 'object') return out;
+  Object.assign(out, LOCKED_HIDDEN_OPTIONS);
+  out.downloadTabKeybinds = normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS);
+  return out;
+}
 function normalizeOptions(opt) {
   const out = Object.assign({}, DEFAULT_OPTIONS);
   out.downloadTabKeybinds = normalizeDownloadTabKeybinds(DEFAULT_DOWNLOAD_TAB_KEYBINDS);
-  if (!opt || typeof opt !== 'object') return out;
+  if (!opt || typeof opt !== 'object') return applyLockedHiddenOptions(out);
   if (typeof opt.downloadMode === 'string') {
     if (DOWNLOAD_MODE_LABELS[opt.downloadMode]) out.downloadMode = opt.downloadMode;
   }
@@ -1499,7 +1529,7 @@ function normalizeOptions(opt) {
   if (typeof opt.showProgressBar === 'boolean') out.showProgressBar = opt.showProgressBar;
   if (typeof opt.showGroupsSection === 'boolean') out.showGroupsSection = opt.showGroupsSection;
   if (typeof opt.showClearAllIndexCachesBtn === 'boolean') out.showClearAllIndexCachesBtn = opt.showClearAllIndexCachesBtn;
-  return out;
+  return applyLockedHiddenOptions(out);
 }
 function loadOptions() {
   let parsed = null;
@@ -1507,6 +1537,7 @@ function loadOptions() {
   return normalizeOptions(parsed);
 }
 function saveOptions() {
+  applyLockedHiddenOptions(PG_OPTIONS);
   try { localStorage.setItem(PG_OPTIONS_KEY, JSON.stringify(PG_OPTIONS)); } catch {}
 }
 let PG_OPTIONS = loadOptions();
@@ -1572,7 +1603,7 @@ let MENU_ACTIVE_TAB = 'downloads';
 let MENU_LAST_TAB = 'downloads';
 let MENU_HAS_OPENED = false;
 const MENU_TAB_SCROLL = { downloads: 0, queue: 0, info: 0, options: 0, keybinds: 0, errors: 0 };
-const MENU_TAB_IDS = ['downloads', 'queue', 'info', 'options', 'keybinds', 'errors'];
+const MENU_TAB_IDS = ['downloads', 'queue', 'info', 'options', 'errors'];
 const MENU_WINDOW_STATE = { x: null, y: null, width: null, height: null };
 const MENU_DEFAULT_WIDTH = 100;
 const MENU_DEFAULT_HEIGHT = 550;
@@ -2739,6 +2770,14 @@ async function hydrateGroupsFromBrowserCache(profileKey) {
 }
 
 function loadGroupsForProfile(profileKey) {
+  if (!SHOW_GROUPS_SECTION) {
+    PG_GROUPS = [];
+    PG_SELECTED_GROUP_IDS = new Set();
+    PG_LAST_SELECTED_GROUP_ID = '';
+    GROUPS_CACHE_LOADING_KEY = '';
+    GROUPS_PROFILE_KEY = profileKey || null;
+    return PG_GROUPS;
+  }
   if (!profileKey) {
     PG_GROUPS = [];
     PG_SELECTED_GROUP_IDS = new Set();
@@ -2770,6 +2809,7 @@ function loadGroupsForProfile(profileKey) {
 }
 
 function saveGroupsForProfile() {
+  if (!SHOW_GROUPS_SECTION) return;
   if (!GROUPS_PROFILE_KEY) return;
   const key = groupsKey(GROUPS_PROFILE_KEY);
   if (!key) return;
@@ -2779,6 +2819,7 @@ function saveGroupsForProfile() {
 }
 
 function deleteGroupById(groupId) {
+  if (!SHOW_GROUPS_SECTION) return false;
   if (!groupId) return false;
   const idx = PG_GROUPS.findIndex(g => g && g.id === groupId);
   if (idx < 0) return false;
@@ -2791,6 +2832,7 @@ function deleteGroupById(groupId) {
 }
 
 function handleRenameGroup(groupId) {
+  if (!SHOW_GROUPS_SECTION) return false;
   if (!groupId) return false;
   const group = PG_GROUPS.find(g => g && g.id === groupId);
   if (!group) return false;
@@ -2815,6 +2857,7 @@ function handleRenameGroup(groupId) {
 }
 
 function clearGroupsForProfile() {
+  if (!SHOW_GROUPS_SECTION) return;
   PG_GROUPS = [];
   PG_SELECTED_GROUP_IDS = new Set();
   PG_LAST_SELECTED_GROUP_ID = '';
@@ -2825,8 +2868,8 @@ function clearGroupsForProfile() {
 function saveFilterState(){
   const fPages = $('#fPages')?.value || '';
   const fPosts = $('#fPosts')?.value || '';
-  const fFiles = $('#fFiles')?.value || '';
-  const fAttach = $('#fAttach')?.value || '';
+  const fFiles = '';
+  const fAttach = '';
   const state = { pages:fPages, posts:fPosts, files:fFiles, attach:fAttach, media:MEDIA_MODE || 'all' };
   try { localStorage.setItem(filterKey(), JSON.stringify(state)); } catch {}
 }
@@ -2840,9 +2883,9 @@ function restoreFilterState(){
   const fPosts = $('#fPosts');
   if (fPosts) fPosts.value = state.posts || '';
   const fFiles = $('#fFiles');
-  if (fFiles) fFiles.value = state.files || '';
+  if (fFiles) fFiles.value = '';
   const fAttach = $('#fAttach');
-  if (fAttach) fAttach.value = state.attach || '';
+  if (fAttach) fAttach.value = '';
   if (state.media && typeof state.media === 'string') {
     MEDIA_MODE = state.media;
   }
@@ -3373,10 +3416,14 @@ function setHudItemVisible(id, visible) {
   const el = document.getElementById(id);
   if (!el) return;
   el.style.display = visible ? '' : 'none';
+  if ('disabled' in el) el.disabled = !visible;
+  if (!visible && (id === 'fFiles' || id === 'fAttach')) el.value = '';
 }
 
 function syncHudElementVisibility() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
+  setHudItemVisible('addQueueBtn', false);
+  setHudItemVisible('pauseBtn', false);
   setHudItemVisible('localGalleryBtn', opt.showLocalGalleryBtn !== false);
   setHudItemVisible('downloadPostLinksBtn', opt.showDownloadPostLinksBtn === true);
   setHudItemVisible('galleryBtn', opt.showGalleryBtn !== false);
@@ -3474,6 +3521,7 @@ function rebuildDownloadTabKeybindLookup(bindings) {
 
 function applyOptions() {
   const opt = PG_OPTIONS || DEFAULT_OPTIONS;
+  applyLockedHiddenOptions(opt);
   const prevDuration = DURATION_FEATURE_ENABLED;
   const prevHideEmptyPosts = HIDE_POSTS_WITH_NO_ATTACHMENTS;
   DOWNLOAD_MODE = (opt.downloadMode && DOWNLOAD_MODE_LABELS[opt.downloadMode]) ? opt.downloadMode : DEFAULT_OPTIONS.downloadMode;
@@ -3648,37 +3696,9 @@ function renderOptionsUi() {
     <div class="pg-opt-section">
       <div class="pg-opt-section-title">Downloads</div>
       ${makeSelectRow('Download Mode', 'Archive by post/queue or loose files by post/queue.', 'pg_opt_downloadMode', DOWNLOAD_MODE_VALUES, opt.downloadMode || DEFAULT_OPTIONS.downloadMode, DOWNLOAD_MODE_LABELS)}
-      ${makeSelectRow('Special Download Behavior', 'Optional vertical-slice behavior for oversized profiles/posts.', 'pg_opt_specialDownloadBehavior', SPECIAL_DOWNLOAD_BEHAVIOR_VALUES, opt.specialDownloadBehavior || DEFAULT_OPTIONS.specialDownloadBehavior, SPECIAL_DOWNLOAD_BEHAVIOR_LABELS)}
-      ${makeNumberRow('Special Behavior Value (X)', 'Used by the selected special behavior. Example: Smattering uses 1/X files per post.', 'pg_opt_specialDownloadValue', opt.specialDownloadValue, 1, 999)}
-      ${makeCheckRow('Video duration indexing', 'Enable duration filters and video duration indexing.', 'pg_opt_durationIndexing', !!opt.durationIndexing)}
-      ${makeCheckRow('Gallery preloading', 'Preload filtered media before opening the gallery.', 'pg_opt_galleryPreloadAll', !!opt.galleryPreloadAll)}
       ${makeNumberRow('Parallel download limit', 'Maximum simultaneous downloads.', 'pg_opt_parallelDownloadLimit', opt.parallelDownloadLimit, 1, 10)}
-      ${makeCheckRow('Global request delay', 'Apply one shared delay between all fetches and download starts.', 'pg_opt_globalRequestDelayEnabled', !!opt.globalRequestDelayEnabled)}
-      ${makeNumberRow('Global request delay (ms)', 'Milliseconds to wait between outbound fetch/download requests.', 'pg_opt_globalRequestDelayMs', opt.globalRequestDelayMs, 0, 60000)}
-      ${makeNumberRow('Video index concurrency', 'Maximum simultaneous video metadata probes.', 'pg_opt_videoDurationProbeConcurrency', opt.videoDurationProbeConcurrency, 1, 10)}
-      ${makeCheckRow('Download Across Profiles', 'Keep queue and filters when navigating between profiles.', 'pg_opt_downloadAcrossProfiles', !!opt.downloadAcrossProfiles)}
       ${makeCheckRow('Retry on stall/timeout', 'When a download stalls or takes too long, abort and retry (default on).', 'pg_opt_timeoutRetries', opt.timeoutRetries !== false)}
-      ${makeCheckRow('Stop button clears queue', 'When stopping downloads, clear the queue (default on).', 'pg_opt_stopClearsQueue', opt.stopClearsQueue !== false)}
       ${makeCheckRow('Auto-hide posts with no attachments', 'Automatically hide posts that have zero indexed attachments.', 'pg_opt_hidePostsWithNoAttachments', !!opt.hidePostsWithNoAttachments)}
-    </div>
-
-    <div class="pg-opt-section">
-      <div class="pg-opt-section-title">HUD</div>
-      <div class="pg-opt-block">
-        ${makeCheckInline('Local Gallery', 'pg_opt_showLocalGalleryBtn', opt.showLocalGalleryBtn !== false)}
-        ${makeCheckInline('Download Post Links', 'pg_opt_showDownloadPostLinksBtn', opt.showDownloadPostLinksBtn === true)}
-        ${makeCheckInline('Gallery', 'pg_opt_showGalleryBtn', opt.showGalleryBtn !== false)}
-        ${makeCheckInline('Page', 'pg_opt_showPageBtn', opt.showPageBtn !== false)}
-        ${makeCheckInline('Media Filter', 'pg_opt_showMediaBtn', opt.showMediaBtn !== false)}
-        ${makeCheckInline('Preview', 'pg_opt_showPreviewBtn', opt.showPreviewBtn !== false)}
-        ${makeCheckInline('Clear Index Cache', 'pg_opt_showClearIndexCacheBtn', opt.showClearIndexCacheBtn !== false)}
-        ${makeCheckInline('Page input', 'pg_opt_showPageInput', opt.showPageInput !== false)}
-        ${makeCheckInline('Post input', 'pg_opt_showPostInput', opt.showPostInput !== false)}
-        ${makeCheckInline('File input', 'pg_opt_showFileInput', opt.showFileInput !== false)}
-        ${makeCheckInline('Attachment input', 'pg_opt_showAttachmentInput', opt.showAttachmentInput !== false)}
-        ${makeCheckInline('Progress bar', 'pg_opt_showProgressBar', opt.showProgressBar !== false)}
-        ${makeCheckInline('Groups section', 'pg_opt_showGroupsSection', opt.showGroupsSection !== false)}
-      </div>
     </div>
 
     <div class="pg-opt-section">
@@ -3845,6 +3865,7 @@ function readTextFile(file) {
 }
 
 function handleExportGroups() {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -3874,6 +3895,7 @@ function handleExportGroups() {
 }
 
 function handleImportGroups() {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -3885,6 +3907,7 @@ function handleImportGroups() {
 }
 
 async function handleImportGroupsFile(file) {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -3920,6 +3943,7 @@ async function handleImportGroupsFile(file) {
 }
 
 function handleDeleteSelectedGroups() {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -3949,6 +3973,7 @@ function handleDeleteSelectedGroups() {
 }
 
 function handleDownloadSelectedGroups() {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -4738,7 +4763,7 @@ function buildMenu() {
           <button type="button" class="pgMenuTabBtn" data-tab="queue" role="tab" aria-controls="pgMenuTabQueue">Queue</button>
           <button type="button" class="pgMenuTabBtn" data-tab="info" role="tab" aria-controls="pgMenuTabInfo">Info</button>
           <button type="button" class="pgMenuTabBtn" data-tab="options" role="tab" aria-controls="pgMenuTabOptions">Options</button>
-          <button type="button" class="pgMenuTabBtn" data-tab="keybinds" role="tab" aria-controls="pgMenuTabKeybinds">Keybinds</button>
+          <button type="button" class="pgMenuTabBtn" data-tab="keybinds" role="tab" aria-controls="pgMenuTabKeybinds" hidden>Keybinds</button>
           <button type="button" class="pgMenuTabBtn" data-tab="errors" role="tab" aria-controls="pgMenuTabErrors">Error Log</button>
         </div>
         <button id="pgMenuCollapseBtn" type="button" aria-label="Collapse menu">▾</button>
@@ -4763,7 +4788,7 @@ function buildMenu() {
             </div>
           </div>
         </section>
-        <section id="pgMenuTabKeybinds" class="pgMenuTabPanel" data-tab="keybinds" role="tabpanel">
+        <section id="pgMenuTabKeybinds" class="pgMenuTabPanel" data-tab="keybinds" role="tabpanel" hidden>
           <div id="pgMenuKeybindsBody"></div>
         </section>
         <section id="pgMenuTabErrors" class="pgMenuTabPanel" data-tab="errors" role="tabpanel">
@@ -5454,6 +5479,7 @@ function buildQueueArchiveItem(files, userFolder, queueFolder, retryKey, meta, m
 }
 
 function buildGroupQueueItem(group, idx) {
+  if (!SHOW_GROUPS_SECTION) return null;
   if (!group || !Array.isArray(group.files) || group.files.length === 0) return null;
   const groupTitle = inferGroupTitle(group.name, group.earliestPostFolder);
   const files = group.files.slice();
@@ -5474,6 +5500,7 @@ function buildGroupQueueItem(group, idx) {
 }
 
 function queueGroupDownload(group, idx) {
+  if (!SHOW_GROUPS_SECTION) return false;
   const item = buildGroupQueueItem(group, idx);
   if (!item) {
     setStatus('Group has no files to download', 'error');
@@ -5487,6 +5514,7 @@ function queueGroupDownload(group, idx) {
 }
 
 function queueAllGroupDownloads(groups) {
+  if (!SHOW_GROUPS_SECTION) return false;
   if (!Array.isArray(groups) || groups.length === 0) return false;
   const items = [];
   groups.forEach((group, idx) => {
@@ -7103,8 +7131,8 @@ async function handleFilter() {
 
   const pagesRaw = $('#fPages')?.value || '';
   const postsRaw = $('#fPosts')?.value || '';
-  const filesRaw = $('#fFiles')?.value || '';
-  const attachRaw = $('#fAttach')?.value || '';
+  const filesRaw = '';
+  const attachRaw = '';
   const durRaw = $('#fDur')?.value || '';
   const parsedPosts = parseIndices(postsRaw);
   if (postsRaw.trim() && (!parsedPosts || parsedPosts.size === 0)) { if (st) st.textContent = 'Invalid posts'; scheduleHUD(); return; }
@@ -7432,6 +7460,7 @@ async function handleDownloadInfo() {
 }
 
 async function handleDownloadPostLinks() {
+  if (PG_OPTIONS && PG_OPTIONS.showDownloadPostLinksBtn === false) return;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -7504,6 +7533,7 @@ async function handleDownloadPostLinks() {
 }
 
 async function handleCreateGroup() {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -7511,7 +7541,7 @@ async function handleCreateGroup() {
   }
 
   const postsRaw = $('#fPosts')?.value || '';
-  const filesRaw = $('#fFiles')?.value || '';
+  const filesRaw = '';
   const parsedPosts = parseIndices(postsRaw);
   if (postsRaw.trim() && (!parsedPosts || parsedPosts.size === 0)) {
     setStatus('Invalid posts', 'error');
@@ -7558,6 +7588,7 @@ async function handleCreateGroup() {
 }
 
 async function handleCreatePageExtentGroups() {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -7639,6 +7670,7 @@ async function handleCreatePageExtentGroups() {
 }
 
 function handleClearGroups() {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -7654,6 +7686,7 @@ function handleClearGroups() {
 }
 
 function handleRenameMostRecentGroup() {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -7685,6 +7718,7 @@ function handleRenameMostRecentGroup() {
 }
 
 function handleDownloadAllGroups() {
+  if (!SHOW_GROUPS_SECTION) return false;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('No profile detected', 'error');
@@ -7817,6 +7851,7 @@ async function queueFiltered() {
 }
 
 async function handleAddToQueueBtn() {
+  return;
   const profileKey = getProfileKeyFromLocation();
   if (!profileKey) {
     setStatus('Open a profile page to add filtered files', 'error');
@@ -7834,6 +7869,7 @@ async function handleAddToQueueBtn() {
 }
 
 function handlePauseBtn() {
+  return;
   if (!DL_ACTIVE) {
     const { downloading, queued } = getCounts();
     if (downloading + queued > 0) {
@@ -8058,6 +8094,7 @@ function runKeybindAction(fn) {
 }
 
 function triggerDownloadTabKeybindAction(actionId) {
+  return false;
   switch (actionId) {
     case 'download_toggle':
       runKeybindAction(() => handleDlBtn());
@@ -9094,6 +9131,7 @@ async function handleGalleryToggle() {
 }
 
 function handleLocalGalleryBtn() {
+  return;
   const url = 'https://any-one-but.github.io/Local_Gallery/';
   try {
     const w = window.open(url, '_blank', 'noopener');
