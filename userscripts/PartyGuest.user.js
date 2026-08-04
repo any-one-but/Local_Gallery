@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.22
+// @version      01.13.23
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -4473,6 +4473,8 @@ function remountPartyGuestUi() {
   } else {
     ensurePartyGuestOverlayRoots();
     removeOrphanPartyGuestControls();
+    bindExistingPartyGuestMenu();
+    bindPartyGuestHudControls();
   }
   if (wasOpen) openMenu(tab);
 }
@@ -5042,14 +5044,47 @@ function clickPartyGuestControlDirectly(target) {
     case 'pgInfoDownloadBtn':
       handleDownloadInfo();
       return true;
+    case 'pgRetryFailedBtn':
+      handleRetryFailedFiles();
+      return true;
+    case 'pg_opt_clearAllIndexCachesBtn':
+      handleClearAllIndexCachesBtn();
+      return true;
   }
   return false;
+}
+
+function handlePartyGuestDelegatedClick(ev) {
+  if (!ev || !ev.target) return;
+  if (!clickPartyGuestControlDirectly(ev.target)) return;
+  ev.preventDefault();
+  ev.stopImmediatePropagation();
+}
+
+function handlePartyGuestDelegatedInput(ev) {
+  if (!ev || !ev.target || !ev.target.closest) return;
+  const input = ev.target.closest('#pgMenuCard input, #pgMenuCard textarea, #pgMenuCard select');
+  if (!input) return;
+  switch (input.id) {
+    case 'fPosts':
+      syncPageAllButtonState();
+      scheduleFilter();
+      return;
+    case 'fPages':
+    case 'fFiles':
+    case 'fAttach':
+    case 'fDur':
+      scheduleFilter();
+      return;
+  }
 }
 
 function registerMenuEventIsolation(card) {
   if (!card || card.dataset.pgEventIsolationReady) return;
   card.dataset.pgEventIsolationReady = '1';
   let lastDirectClickAt = 0;
+  card.addEventListener('click', handlePartyGuestDelegatedClick, true);
+  card.addEventListener('input', handlePartyGuestDelegatedInput, true);
   const stopAtPanel = ev => {
     if (!ev || !ev.target) return;
     if (ev.type === 'pointerdown' || ev.type === 'mousedown' || ev.type === 'click' || ev.type === 'touchend') {
@@ -5077,9 +5112,19 @@ function registerMenuEventIsolation(card) {
   }, true);
 }
 
+function bindExistingPartyGuestMenu() {
+  const menuCard = document.getElementById('pgMenuCard');
+  const menuHeader = document.getElementById('pgMenuHeader');
+  registerMenuEventIsolation(menuCard);
+  registerMenuWindow(menuCard, menuHeader);
+  registerMenuResizeHandles(menuCard);
+  initMenuTabs();
+}
+
 function buildMenu() {
   if (document.getElementById('pgMenuOverlay')) {
     ensurePartyGuestOverlayRoots();
+    bindExistingPartyGuestMenu();
     return;
   }
   const overlay = document.createElement('div');
@@ -5125,16 +5170,12 @@ function buildMenu() {
   document.body.appendChild(overlay);
   ensurePartyGuestOverlayRoots();
 
-  const menuCard = document.getElementById('pgMenuCard');
-  const menuHeader = document.getElementById('pgMenuHeader');
-  registerMenuEventIsolation(menuCard);
-  registerMenuWindow(menuCard, menuHeader);
-  registerMenuResizeHandles(menuCard);
-  initMenuTabs();
+  bindExistingPartyGuestMenu();
   if (document.getElementById('partyHUD')) {
     ensureDownloadsUi();
   }
 
+  const menuCard = document.getElementById('pgMenuCard');
   if (menuCard && !menuCard.dataset.pgScrollGuard) {
     menuCard.dataset.pgScrollGuard = '1';
     const scrollSelector = '#pgMenuDownloadsBody, #pgMenuInfoBody, #pgMenuOptionsBody, #pgMenuKeybindsBody, #pgMenuErrorBody';
@@ -5207,10 +5248,73 @@ function closeMenu() {
 
 window.addEventListener('resize', () => applyMenuWindowState());
 
+function bindPartyGuestHudControls() {
+  const dlBtn = $('#dlBtn');
+  if (dlBtn) dlBtn.onclick = handleDlBtn;
+
+  const addQueueBtn = $('#addQueueBtn');
+  if (addQueueBtn) addQueueBtn.onclick = handleAddToQueueBtn;
+
+  const pauseBtn = $('#pauseBtn');
+  if (pauseBtn) pauseBtn.onclick = handlePauseBtn;
+
+  const downloadPostLinksBtn = $('#downloadPostLinksBtn');
+  if (downloadPostLinksBtn) downloadPostLinksBtn.onclick = handleDownloadPostLinks;
+
+  const galleryBtn = $('#galleryBtn');
+  if (galleryBtn) galleryBtn.onclick = handleGalleryToggle;
+
+  const localGalleryBtn = $('#localGalleryBtn');
+  if (localGalleryBtn) localGalleryBtn.onclick = handleLocalGalleryBtn;
+
+  const btnMedia = $('#btnMedia');
+  if (btnMedia) {
+    btnMedia.textContent = mediaModeLabel(MEDIA_MODE);
+    btnMedia.onclick = () => cycleMediaMode();
+  }
+
+  const filterBtn = $('#filterBtn');
+  if (filterBtn) {
+    filterBtn.onclick = handlePreviewToggle;
+  }
+
+  const btnPageAll = $('#btnPageAll');
+  if (btnPageAll) btnPageAll.onclick = handlePageAllBtn;
+
+  const clearFiltersBtn = $('#clearFiltersBtn');
+  if (clearFiltersBtn) clearFiltersBtn.onclick = handleClearFilters;
+
+  const clearIndexCacheBtn = $('#clearIndexCacheBtn');
+  if (clearIndexCacheBtn) clearIndexCacheBtn.onclick = handleClearIndexCacheBtn;
+
+  const bindInput = (id, fn) => {
+    const input = document.getElementById(id);
+    if (!input || input.dataset.pgInputBound) return;
+    input.dataset.pgInputBound = '1';
+    input.addEventListener('input', fn);
+  };
+
+  bindInput('fPosts', () => {
+    syncPageAllButtonState();
+    scheduleFilter();
+  });
+  bindInput('fPages', scheduleFilter);
+  bindInput('fFiles', scheduleFilter);
+  bindInput('fAttach', scheduleFilter);
+  bindInput('fDur', scheduleFilter);
+}
+
 function buildHUD() {
   if ($('#partyHUD')) {
     ensurePartyGuestOverlayRoots();
+    bindPartyGuestHudControls();
     applyOptions();
+    requestAnimationFrame(syncFilterBoxWidth);
+    requestAnimationFrame(syncFilterBoxVisibility);
+    requestAnimationFrame(syncProgressBarVisibility);
+    requestAnimationFrame(updatePauseButtonState);
+    requestAnimationFrame(lockMediaButtonWidth);
+    requestAnimationFrame(lockPreviewButtonWidth);
     return;
   }
 
@@ -5264,59 +5368,15 @@ function buildHUD() {
   document.body.appendChild(w);
   ensurePartyGuestOverlayRoots();
 
-  $('#dlBtn').onclick = handleDlBtn;
-  const addQueueBtn = $('#addQueueBtn');
-  if (addQueueBtn) addQueueBtn.onclick = handleAddToQueueBtn;
-  const pauseBtn = $('#pauseBtn');
-  if (pauseBtn) pauseBtn.onclick = handlePauseBtn;
-
-  const downloadPostLinksBtn = $('#downloadPostLinksBtn');
-  if (downloadPostLinksBtn) downloadPostLinksBtn.onclick = handleDownloadPostLinks;
-
-  const galleryBtn = $('#galleryBtn');
-  if (galleryBtn) galleryBtn.onclick = handleGalleryToggle;
-
-  const localGalleryBtn = $('#localGalleryBtn');
-  if (localGalleryBtn) localGalleryBtn.onclick = handleLocalGalleryBtn;
-
   restoreFilterState();
-
-  const btnMedia = $('#btnMedia');
-  if (btnMedia) btnMedia.textContent = mediaModeLabel(MEDIA_MODE);
-  if (btnMedia) btnMedia.onclick = () => cycleMediaMode();
 
   const filterBtn = $('#filterBtn');
   if (filterBtn) {
     PREVIEW_MODE = false;
     filterBtn.textContent = 'Preview';
     filterBtn.classList.remove('clear');
-    filterBtn.onclick = handlePreviewToggle;
   }
-
-  const btnPageAll = $('#btnPageAll');
-  if (btnPageAll) btnPageAll.onclick = handlePageAllBtn;
-  const clearFiltersBtn = $('#clearFiltersBtn');
-  if (clearFiltersBtn) clearFiltersBtn.onclick = handleClearFilters;
-  const clearIndexCacheBtn = $('#clearIndexCacheBtn');
-  if (clearIndexCacheBtn) clearIndexCacheBtn.onclick = handleClearIndexCacheBtn;
-
-  const postsInput = $('#fPosts');
-  if (postsInput) postsInput.addEventListener('input', () => {
-    syncPageAllButtonState();
-    scheduleFilter();
-  });
-
-  const pagesInput = $('#fPages');
-  if (pagesInput) pagesInput.addEventListener('input', scheduleFilter);
-
-  const filesInput = $('#fFiles');
-  if (filesInput) filesInput.addEventListener('input', scheduleFilter);
-
-  const attachInput = $('#fAttach');
-  if (attachInput) attachInput.addEventListener('input', scheduleFilter);
-
-  const durInput = $('#fDur');
-  if (durInput) durInput.addEventListener('input', scheduleFilter);
+  bindPartyGuestHudControls();
 
   const hudRow = document.getElementById('hudRow');
   if (hudRow && 'ResizeObserver' in window) {
