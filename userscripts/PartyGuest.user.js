@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.13
+// @version      01.13.14
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -209,6 +209,30 @@ GM_addStyle(`
   width: 30px;
   padding: 6px;
   font-size: 14px;
+}
+
+#pgMenuCard #partyHUD {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  z-index: auto;
+  width: 100%;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#pgMenuCard #hudRow {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+#pgMenuCard #hudRow > button {
+  flex: 0 0 auto;
 }
 
 .pg-hud-section {
@@ -4316,19 +4340,26 @@ function ensureKeybindsUi() {
 
 function ensurePartyGuestOverlayRoots() {
   if (!document.body) return;
-  ['pgMenuOverlay', 'partyHUD'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el && el.parentElement !== document.body) {
-      document.body.appendChild(el);
-    }
-  });
+  const overlay = document.getElementById('pgMenuOverlay');
+  if (overlay && overlay.parentElement !== document.body) {
+    document.body.appendChild(overlay);
+  }
+  const hud = document.getElementById('partyHUD');
+  const downloadsBody = document.getElementById('pgMenuDownloadsBody');
+  if (hud && downloadsBody && hud.parentElement !== downloadsBody) {
+    downloadsBody.insertBefore(hud, downloadsBody.firstChild);
+  } else if (hud && !downloadsBody && hud.parentElement !== document.body) {
+    document.body.appendChild(hud);
+  }
 }
 
 function renderDownloadsUi() {
   const body = document.getElementById('pgMenuDownloadsBody');
   if (!body) return;
+  const hud = document.getElementById('partyHUD');
+  if (hud && hud.parentElement === body) hud.remove();
   body.innerHTML = '';
-  ensurePartyGuestOverlayRoots();
+  if (hud) body.appendChild(hud);
   if (SHOW_GROUPS_SECTION) {
     const groupsWrap = document.createElement('div');
     groupsWrap.className = 'pg-hud-section';
