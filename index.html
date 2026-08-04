@@ -3480,13 +3480,17 @@ img[data-rotate-key].rotatingThumbFade {
   align-self: flex-end;
 }
 
+.gridFiles.previewSquareCards .previewThumbOverlayMenu {
+  transform: translate(-3px, -2px);
+}
+
 .gridFiles.previewSquareCards .previewThumbOverlayMenuBtn {
-  min-width: 22px;
-  width: 22px;
-  height: 22px;
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   font-size: 16px;
-  border-radius: var(--menu-button-radius);
+  border-radius: 8px;
 }
 
 .gridFiles.previewSquareCards .previewThumbOverlayMeta .name,
@@ -3577,15 +3581,17 @@ img[data-rotate-key].rotatingThumbFade {
  .previewThumbOverlayMenu {
   margin-left: auto;
   align-self: flex-end;
+  transform: translate(-3px, -2px);
 }
 
 .gridFiles.previewNaturalAspectCards.fitInsideJustified
  .previewThumbOverlayMenuBtn {
-  min-width: 22px;
-  width: 22px;
-  height: 22px;
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   font-size: 16px;
+  border-radius: 8px;
 }
 
 .gridFiles.previewNaturalAspectCards.fitInsideJustified
@@ -3907,15 +3913,16 @@ img[data-rotate-key].rotatingThumbFade {
  .thumbOverlayMenu {
   margin-left: 0;
   align-self: center;
+  transform: translate(-3px, -2px);
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtn {
-  min-width: 22px;
-  width: 22px;
-  height: 22px;
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   font-size: 16px;
-  border-radius: var(--menu-button-radius);
+  border-radius: 8px;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard
@@ -4480,7 +4487,13 @@ img[data-rotate-key].rotatingThumbFade {
   object-fit: contain;
   transform-origin: left center;
 }
-#filePreviewViewport .mediaCanvas {
+/* .mediaHoldCanvas is the retained copy of the last filtered frame. It sits in
+   the same box as the live WebGL canvas and takes over whenever that canvas has
+   no valid frame for the current target (its GL buffer is discarded by the
+   compositor the moment it is presented). Geometry must match .mediaCanvas
+   exactly or the handover shifts the picture. */
+#filePreviewViewport .mediaCanvas,
+#filePreviewViewport .mediaHoldCanvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -4493,10 +4506,16 @@ img[data-rotate-key].rotatingThumbFade {
   transition: none;
 }
 
-#app.preview-media-pane-background #filePreviewViewport .mediaCanvas {
+#filePreviewViewport .mediaHoldCanvas {
+  pointer-events: none;
+}
+
+#app.preview-media-pane-background #filePreviewViewport .mediaCanvas,
+#app.preview-media-pane-background #filePreviewViewport .mediaHoldCanvas {
   background: transparent;
 }
-#filePreviewViewport .mediaCanvas.ready {
+#filePreviewViewport .mediaCanvas.ready,
+#filePreviewViewport .mediaHoldCanvas.ready {
   opacity: 1;
 }
 
@@ -4615,7 +4634,8 @@ img[data-rotate-key].rotatingThumbFade {
   object-fit: contain;
   transform-origin: left center;
 }
-#viewerViewport .mediaCanvas {
+#viewerViewport .mediaCanvas,
+#viewerViewport .mediaHoldCanvas {
   position: absolute;
   inset: 0;
   max-width: 100%;
@@ -4627,7 +4647,11 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0;
   transition: none;
 }
-#viewerViewport .mediaCanvas.ready {
+#viewerViewport .mediaHoldCanvas {
+  pointer-events: none;
+}
+#viewerViewport .mediaCanvas.ready,
+#viewerViewport .mediaHoldCanvas.ready {
   opacity: 1;
 }
 #filePreviewViewport .mediaCanvas.videoCanvasStale,
@@ -4635,10 +4659,57 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0;
 }
 
+/* TEMPORARY DIAGNOSTIC — see "media layer visualiser" in the script. Remove
+   this block together with LG_DEBUG_MEDIA_LAYERS. Cyan = the raw media element
+   is on screen (CSS-only appearance, i.e. the "drained" look). Green = the live
+   WebGL canvas is presenting the correct filtered output. */
+html.lgDebugMediaLayers #filePreviewViewport img:not(.mediaHidden),
+html.lgDebugMediaLayers #filePreviewViewport video:not(.mediaHidden),
+html.lgDebugMediaLayers #viewerViewport img:not(.mediaHidden),
+html.lgDebugMediaLayers #viewerViewport video:not(.mediaHidden) {
+  outline: 10px solid #00e5ff;
+  outline-offset: -10px;
+}
+html.lgDebugMediaLayers #filePreviewViewport .mediaCanvas.ready,
+html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
+  outline: 10px solid #00ff6a;
+  outline-offset: -10px;
+}
+#lgDebugLayerHud {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 2147483647;
+  pointer-events: none;
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  color: #eee;
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 6px 9px;
+  min-width: 160px;
+}
+
 /* Preserve the last visible media frame while the next preview item is
    decoding. This sits above both the raw media and the filtered WebGL canvas,
    then disappears once the incoming item has a presentable frame. */
 #filePreviewViewport .previewVideoTransitionFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: none;
+  background: #000;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 1;
+  will-change: opacity;
+}
+
+#viewerViewport .viewerTransitionFrame {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -11214,6 +11285,9 @@ function markAppearanceStateChanged(invalidateThumbs = true, options = null) {
 }
 
 function applyAppearancePresetById(presetId, options = {}) {
+  // Nothing may write appearance values into the live options while the system
+  // is off, so no stray surface can re-arm a filter.
+  if (!APPEARANCE_FILTERS_ENABLED) return false;
   const id = normalizeAppearancePresetIdValue(presetId);
   const preset = getAppearancePresetById(id);
   if (!preset) return false;
@@ -11582,7 +11656,26 @@ function firstPresentOverlayValue(opt, ...keys) {
   return keys.length ? opt[keys[0]] : null;
 }
 
+// ===========================================================================
+// Appearance filter master switch.
+//
+// Set to true to bring the whole appearance/media-filter system back. While it
+// is false:
+//   * no overlay config is ever produced, so nothing (preview, viewer,
+//     thumbnails, snapshots) can apply a colour filter, blur or film-corner
+//     mask to media -- every resolver below returns null/false at the source;
+//   * the "Appearance filter" submenu is dropped from the app menu, along with
+//     the per-folder / per-tag "Filters" preset overrides and the bulk ones;
+//   * the per-preset "Toggle preset: ..." keybind actions disappear from the
+//     Controls tab and are ignored at runtime.
+//
+// Stored data is deliberately left untouched -- saved presets, per-folder and
+// per-tag assignments and the option values all stay on disk, so flipping this
+// back to true restores exactly what was there.
+const APPEARANCE_FILTERS_ENABLED = false;
+
 function buildMediaOverlayConfigFromOptions(opt) {
+  if (!APPEARANCE_FILTERS_ENABLED) return null;
   if (!opt) return null;
   const colorFilters = [];
   const brightnessAmount = optionalOverlayAmount(
@@ -12186,6 +12279,7 @@ function resolveAppearanceValuesForTarget(target) {
 }
 
 function resolveMediaOverlayConfigForTarget(target) {
+  if (!APPEARANCE_FILTERS_ENABLED) return null;
   if (!mediaProcessingEnabledForTarget(target)) return null;
   const presetId = resolveAppearancePresetIdForTarget(target);
   if (presetId) {
@@ -12233,6 +12327,7 @@ function resolveMediaOverlayConfigForSurface(surface) {
 }
 
 function resolveFolderOnlyMediaOverlayConfigForTarget(target) {
+  if (!APPEARANCE_FILTERS_ENABLED) return null;
   if (!mediaProcessingEnabledForTarget(target)) return null;
   const dirPath = resolveDirPathForAppearanceTarget(target);
   const folderPresetId = nearestFolderAppearancePresetIdForPath(dirPath);
@@ -12440,6 +12535,7 @@ function capScaleForPixelBudget(width, height, maxPixels) {
 
 
 function anyMediaFilterEnabled() {
+  if (!APPEARANCE_FILTERS_ENABLED) return false;
   if (
     MEDIA_OVERLAY_STATE ||
     buildMediaOverlayConfigFromOptions(
@@ -14022,6 +14118,10 @@ function renderFilteredToCanvas(
 const MediaFilterEngine = (() => {
   const surfaces = new Map();
   let rafId = null;
+  // Upper bound on how long a retained filtered frame may stand in for media
+  // that never presents. Generous enough for a slow video to spin up, short
+  // enough that a broken file does not strand the pane on the previous picture.
+  const HOLD_FRAME_MAX_MS = 4000;
 
   const VERTEX_SHADER_SOURCE = `
     attribute vec2 a_pos;
@@ -14404,9 +14504,115 @@ const MediaFilterEngine = (() => {
       cleanImagePath: null,
       uploadCanvas: null,
       uploadCtx: null,
+      holdCanvas: null,
+      holdCtx: null,
+      holdActive: false,
+      holdTimer: 0,
     };
     surfaces.set(name, surface);
     return surface;
+  }
+
+  // ---- Retained filtered frame ("hold canvas") ----------------------------
+  //
+  // The GL context is preserveDrawingBuffer:false, so the compositor wipes the
+  // WebGL canvas the moment it has presented it. `hasDrawn` + the .ready class
+  // therefore did NOT preserve anything across a file change: the canvas stayed
+  // on screen at opacity 1 as a fully TRANSPARENT layer, and what the user
+  // actually saw was the media element underneath it — the same outgoing
+  // picture with only the cheap CSS approximation on it. Grain, vignette,
+  // crush and contrast vanished a frame after the last draw, which is the
+  // "colour drain on the outgoing media" while the next file loads.
+  //
+  // A plain 2D canvas does retain its pixels indefinitely. So at the exact
+  // moment we would otherwise abandon the surface, we render one final frame
+  // (buffer still valid in this tick), blit it into that 2D canvas, and show
+  // that instead. The outgoing frame the user keeps looking at is then the real
+  // filtered frame, pixel for pixel, for as long as the next file needs. It
+  // costs one blit per navigation rather than one per rendered frame.
+  function ensureHoldCanvas(surface) {
+    if (!surface.holdCanvas) {
+      surface.holdCanvas = document.createElement("canvas");
+      surface.holdCanvas.className = "mediaHoldCanvas";
+      surface.holdCanvas.setAttribute("aria-hidden", "true");
+      surface.holdCtx = surface.holdCanvas.getContext("2d", { alpha: true });
+    }
+    if (surface.container && !surface.container.contains(surface.holdCanvas)) {
+      surface.container.appendChild(surface.holdCanvas);
+    }
+    return surface.holdCtx ? surface.holdCanvas : null;
+  }
+
+  function captureHoldFrame(surface) {
+    if (!surface || !surface.active || !surface.mediaEl || !surface.canvas) return false;
+    // Refresh the drawing buffer in THIS tick — anything drawn on an earlier
+    // frame has already been discarded by the compositor.
+    try {
+      if (!drawSurface(surface, performance.now()) && !surface.hasDrawn) return false;
+    } catch {
+      return false;
+    }
+    if (!surface.hasDrawn) return false;
+    const src = surface.canvas;
+    const w = Number(src.width) || 0;
+    const h = Number(src.height) || 0;
+    if (!(w > 0) || !(h > 0)) return false;
+    const hold = ensureHoldCanvas(surface);
+    if (!hold) return false;
+    if (hold.width !== w) hold.width = w;
+    if (hold.height !== h) hold.height = h;
+    try {
+      surface.holdCtx.setTransform(1, 0, 0, 1, 0, 0);
+      surface.holdCtx.clearRect(0, 0, w, h);
+      surface.holdCtx.drawImage(src, 0, 0, w, h);
+    } catch {
+      return false;
+    }
+    paintDebugMediaLayer(hold, "hold");
+    hold.style.display = "block";
+    hold.classList.add("ready");
+    surface.holdActive = true;
+    // The live canvas is empty from here on; let the retained copy do the work.
+    src.style.display = "none";
+    src.classList.remove("ready");
+    // Safety net: if the incoming media never presents (missing file, decode
+    // failure), the retained frame must not strand the pane on the previous
+    // picture forever.
+    if (surface.holdTimer) clearTimeout(surface.holdTimer);
+    surface.holdTimer = setTimeout(() => {
+      surface.holdTimer = 0;
+      releaseHoldFrame(surface);
+    }, HOLD_FRAME_MAX_MS);
+    return true;
+  }
+
+  // Called the instant the surface has a real frame for its CURRENT target, so
+  // the swap is a straight cut between two correctly filtered frames — never a
+  // dissolve through an unfiltered one.
+  function releaseHoldFrame(surface) {
+    if (!surface) return;
+    if (surface.holdTimer) {
+      clearTimeout(surface.holdTimer);
+      surface.holdTimer = 0;
+    }
+    if (!surface.holdActive) return;
+    surface.holdActive = false;
+    if (!surface.holdCanvas) return;
+    surface.holdCanvas.classList.remove("ready");
+    surface.holdCanvas.style.display = "none";
+  }
+
+  function destroyHoldFrame(surface) {
+    if (!surface) return;
+    if (surface.holdTimer) {
+      clearTimeout(surface.holdTimer);
+      surface.holdTimer = 0;
+    }
+    surface.holdActive = false;
+    if (surface.holdCanvas && surface.holdCanvas.parentElement)
+      surface.holdCanvas.parentElement.removeChild(surface.holdCanvas);
+    surface.holdCanvas = null;
+    surface.holdCtx = null;
   }
 
   function ensureCanvas(surface) {
@@ -14477,28 +14683,31 @@ const MediaFilterEngine = (() => {
       return;
     }
     if (targetChanged) {
-      const preserveFilteredFrame =
-        !!(
-          (type === "video" ||
-            (type === "image" && targetRequiresMediaProcessingPipeline(target))) &&
-          surface.canvas &&
-          surface.hasDrawn &&
-          surface.canvas.classList.contains("ready")
-        );
-      surface.hasDrawn = preserveFilteredFrame;
-      if (surface.canvas && !preserveFilteredFrame) {
+      // The retained hold frame is the only thing that actually survives a
+      // composite, so it -- not the live canvas -- decides whether there is a
+      // frame worth keeping on screen while the new target loads.
+      surface.hasDrawn = surface.holdActive;
+      if (surface.holdActive) ensureHoldCanvas(surface);
+      else if (surface.canvas) {
         surface.canvas.style.display = "none";
         surface.canvas.classList.remove("ready");
       }
       if (surface.glState) surface.glState.hasPrev = false;
     }
     if (mediaEl) {
-      if (surface.hasDrawn && surface.canvas && surface.canvas.classList.contains("ready"))
+      // Always keep the CSS approximation of this target's appearance on the
+      // source element -- images and video alike, and whether or not it is
+      // currently hidden behind the canvas. It costs nothing while hidden and
+      // guarantees that any frame in which the element is visible (canvas not
+      // drawn yet, decode still pending, GL unavailable) is already colour
+      // graded rather than raw.
+      syncMediaElementAppearance(mediaEl, target, "none");
+      if (
+        surface.holdActive ||
+        (surface.canvas && surface.canvas.classList.contains("ready"))
+      )
         mediaEl.classList.add("mediaHidden");
-      else {
-        if (type === "image") applyDirectMediaCssEffectsForTarget(mediaEl, target);
-        mediaEl.classList.remove("mediaHidden");
-      }
+      else mediaEl.classList.remove("mediaHidden");
     }
     if (type === "video" && mediaEl && typeof mediaEl.requestVideoFrameCallback === "function") {
       surface.videoFrameActive = true;
@@ -14551,6 +14760,11 @@ const MediaFilterEngine = (() => {
     const surface = surfaces.get(name);
     if (!surface) return;
     const preserveFrame = !!(options && options.preserveFrame);
+    // Snapshot the live frame into the retained 2D canvas while the surface is
+    // still active and the GL buffer is still valid -- one tick later it is
+    // gone. This is what actually makes preserveFrame preserve anything.
+    if (preserveFrame && !surface.holdActive) captureHoldFrame(surface);
+    if (!preserveFrame) releaseHoldFrame(surface);
     surface.active = false;
     surface.target = null;
     surface.awaitingFreshFrame = false;
@@ -14570,6 +14784,8 @@ const MediaFilterEngine = (() => {
         surface.canvas.classList.remove("ready");
       }
       if (surface.glState) surface.glState.hasPrev = false;
+    } else {
+      surface.hasDrawn = surface.holdActive;
     }
     if (!preserveFrame && surface.uploadCanvas) {
       resizeCanvasBuffer(surface.uploadCanvas, 1, 1);
@@ -14592,6 +14808,7 @@ const MediaFilterEngine = (() => {
     }
     surface.cleanImageLoading = false;
     surface.cleanImagePath = null;
+    destroyHoldFrame(surface);
     if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
     if (surface.canvas && surface.canvas.parentElement) {
       surface.canvas.parentElement.removeChild(surface.canvas);
@@ -14673,8 +14890,7 @@ const MediaFilterEngine = (() => {
       }
       if (surface.mediaEl) {
         surface.mediaEl.classList.remove("mediaHidden");
-        try { surface.mediaEl.style.removeProperty("filter"); } catch {}
-        clearPendingFilmCornerMask(surface.mediaEl);
+        syncMediaElementAppearance(surface.mediaEl, surface.target, "none");
       }
       surface.hasDrawn = false;
       surface.awaitingFreshFrame = false;
@@ -14865,10 +15081,18 @@ const MediaFilterEngine = (() => {
     surface.canvas.classList.remove("videoCanvasStale");
     surface.hasDrawn = true;
     surface.awaitingFreshFrame = false;
+    // The live canvas now holds a real frame for the CURRENT target, so drop
+    // the retained one in the same tick. Both are fully filtered, so this is a
+    // straight cut between two graded frames -- never a dissolve through an
+    // ungraded one.
+    releaseHoldFrame(surface);
     if (surface.mediaEl) {
+      // Hide the source element behind the canvas but LEAVE its CSS appearance
+      // in place. Stripping it here was the main blink: the element is opacity:0
+      // so the filter costs nothing, yet the moment anything un-hid it again --
+      // the next file change, a not-ready draw, a detach -- it painted raw,
+      // unfiltered media for a frame or two before the canvas caught up.
       surface.mediaEl.classList.add("mediaHidden");
-      try { surface.mediaEl.style.removeProperty("filter"); } catch {}
-      clearPendingFilmCornerMask(surface.mediaEl);
     }
 
     const needsAnim =
@@ -14903,6 +15127,18 @@ const MediaFilterEngine = (() => {
     hasSurfaceDrawn: (name) => {
       const surface = surfaces.get(name);
       return !!(surface && surface.hasDrawn);
+    },
+    // The retained filtered frame, as a 2D canvas whose pixels persist. This is
+    // the only trustworthy record of what the surface last put on screen.
+    holdFrameCanvas: (name) => {
+      const surface = surfaces.get(name);
+      return surface && surface.holdActive && surface.holdCanvas
+        ? surface.holdCanvas
+        : null;
+    },
+    releaseHoldFrame: (name) => {
+      const surface = surfaces.get(name);
+      if (surface) releaseHoldFrame(surface);
     },
   };
 })();
@@ -15456,32 +15692,23 @@ function applyMediaFilterFromOptions(options = null) {
   if (!filtersActive) {
     MediaFilterEngine.reset("preview");
     MediaFilterEngine.reset("viewer");
-    if (previewImgEl) {
-      previewImgEl.classList.remove("mediaHidden");
-      clearPendingFilmCornerMask(previewImgEl);
-    }
-    if (previewVideoEl) {
-      previewVideoEl.classList.remove("mediaHidden");
-      clearPendingFilmCornerMask(previewVideoEl);
-    }
-    if (viewerImgEl) {
-      viewerImgEl.classList.remove("mediaHidden");
-      clearPendingFilmCornerMask(viewerImgEl);
-    }
-    if (viewerVideoEl) {
-      viewerVideoEl.classList.remove("mediaHidden");
-      clearPendingFilmCornerMask(viewerVideoEl);
-    }
+    // With every filter off the resolved appearance is empty, so one sync per
+    // element clears filter and corner mask together (and updates the cached
+    // key, so the next sync after a re-enable is not skipped as a no-op).
+    const clearedMediaEls = [previewImgEl, previewVideoEl, viewerImgEl, viewerVideoEl];
     const quadSlots = getQuadPlaybackSlots();
     for (let i = 0; i < quadSlots.length; i++) {
       const slot = quadSlots[i];
       if (!slot || !slot.videoEl) continue;
       MediaFilterEngine.reset(slot.surfaceName);
-      slot.videoEl.classList.remove("mediaHidden");
-      clearPendingFilmCornerMask(slot.videoEl);
+      clearedMediaEls.push(slot.videoEl);
     }
-    applyScrollImageProcessingFallback(previewImgEl, null, "none");
-    applyScrollImageProcessingFallback(viewerImgEl, null, "none");
+    for (let i = 0; i < clearedMediaEls.length; i++) {
+      const el = clearedMediaEls[i];
+      if (!el) continue;
+      el.classList.remove("mediaHidden");
+      syncMediaElementAppearance(el, null, "none");
+    }
     appEl.removeAttribute("data-media-filter-engine");
   } else {
     const activeViewerItem =
@@ -15572,10 +15799,17 @@ function applyMediaFilterFromOptions(options = null) {
 
   // Keep direct media fallback paths in sync; canvas-rendered paths apply color
   // filters inside the filter engine so combined effects are not double-applied.
+  // A tall/wide scroll image keeps the scroll variant of the appearance (colour
+  // only, no corner mask) — re-asserting the plain one here would round the
+  // corners of a scrolling image every time a slider moved.
   try {
     const pTarget = WS.preview && WS.preview.kind === "file" && WS.preview.fileId ? WS.fileById.get(WS.preview.fileId) : null;
-    applyDirectMediaCssEffectsForTarget(previewImgEl, pTarget);
-    applyDirectMediaCssEffectsForTarget(previewVideoEl, pTarget);
+    syncMediaElementAppearance(
+      previewImgEl,
+      pTarget,
+      previewImgEl ? detectScrollImageMode(pTarget, previewImgEl) : "none",
+    );
+    syncMediaElementAppearance(previewVideoEl, pTarget, "none");
   } catch {}
 
   if (deferThumbSync) scheduleMountedThumbColorFilterSync();
@@ -15627,18 +15861,68 @@ function applyCssColorFilterForTarget(mediaEl, target) {
   return cssFilter;
 }
 
-function applyDirectMediaCssEffectsForTarget(mediaEl, target) {
-  if (!mediaEl) return "";
-  const cssFilter = mediaOverlayConfigDirectFilterCss(
-    resolveMediaOverlayConfigForTarget(target),
-  );
-  if (cssFilter) {
-    mediaEl.style.filter = cssFilter;
-  } else {
-    mediaEl.style.removeProperty("filter");
+// ---------------------------------------------------------------------------
+// Media appearance: one writer, applied idempotently.
+//
+// The CSS-level part of an appearance preset (colour filters, blur, the film
+// corner mask) used to be written by four different helpers, each of which
+// cleared the property before deciding what to put back. Because those helpers
+// run from different frames (src assignment, `load`, a rAF follow-up, the WebGL
+// engine's draw pass), a file change would clear the filter in one frame and
+// restore it in the next -- which is exactly the on/off blink.
+//
+// syncMediaElementAppearance() is now the only writer. The value it produces is
+// a pure function of the element's current target, it is cached on the element,
+// and it is only ever *replaced*, never cleared-then-reapplied. Re-asserting it
+// as often as we like is therefore free and cannot blink.
+const MEDIA_APPEARANCE_STATE_KEY = "lgAppearance";
+
+function mediaAppearanceStateForTarget(target, scrollMode = "none") {
+  const scrolling = !!(scrollMode && scrollMode !== "none");
+  if (scrolling) {
+    // Tall/wide scroll images bypass the canvas entirely and get a colour-only
+    // CSS approximation (no blur, no corner mask -- the image is cropped by the
+    // scroll viewport, so rounding its corners would clip content).
+    const css = scrollImageFallbackCssFilter(target, scrollMode);
+    return { filter: css && css !== "none" ? css : "", cornerPct: 0 };
   }
-  applyPendingFilmCornerMask(mediaEl, target);
-  return cssFilter;
+  const cfg = resolveMediaOverlayConfigForTarget(target);
+  const cornerRadius = Number((cfg && cfg.cornerRadius) || 0);
+  return {
+    filter: mediaOverlayConfigDirectFilterCss(cfg) || "",
+    cornerPct: cornerRadius > 0 ? Math.max(0, Math.min(50, cornerRadius * 100)) : 0,
+  };
+}
+
+function syncMediaElementAppearance(mediaEl, target, scrollMode = "none") {
+  if (!mediaEl) return "";
+  const next = mediaAppearanceStateForTarget(target, scrollMode);
+  const key = `${next.filter}|${next.cornerPct}`;
+  if (mediaEl.dataset[MEDIA_APPEARANCE_STATE_KEY] === key) return next.filter;
+  if (next.filter) mediaEl.style.filter = next.filter;
+  else mediaEl.style.removeProperty("filter");
+  if (next.cornerPct > 0) {
+    mediaEl.style.setProperty(
+      "--pending-film-corner-radius",
+      `${next.cornerPct}%`,
+    );
+    mediaEl.classList.add("pendingFilmCorners");
+  } else {
+    mediaEl.classList.remove("pendingFilmCorners");
+    mediaEl.style.removeProperty("--pending-film-corner-radius");
+  }
+  mediaEl.dataset[MEDIA_APPEARANCE_STATE_KEY] = key;
+  return next.filter;
+}
+
+// Anything that writes filter/corner state behind syncMediaElementAppearance's
+// back must drop the cached key, or the next sync will skip as a no-op.
+function invalidateMediaElementAppearance(mediaEl) {
+  if (mediaEl && mediaEl.dataset) delete mediaEl.dataset[MEDIA_APPEARANCE_STATE_KEY];
+}
+
+function applyDirectMediaCssEffectsForTarget(mediaEl, target) {
+  return syncMediaElementAppearance(mediaEl, target, "none");
 }
 
 function getActiveThumbnailScale(opt = null) { }
@@ -15692,9 +15976,11 @@ function syncMediaFilterSurface(
   }
   const overlayCfg = resolveMediaOverlayConfigForTarget(processingTarget);
   if (isGifRecord(processingTarget)) {
+    // GIFs opt out of every appearance effect; the sync resolves to an empty
+    // appearance for them, so this clears through the same cached path instead
+    // of stomping the inline style behind its back.
+    syncMediaElementAppearance(mediaEl, processingTarget, "none");
     mediaEl.classList.remove("mediaHidden");
-    mediaEl.style.removeProperty("filter");
-    clearPendingFilmCornerMask(mediaEl);
     MediaFilterEngine.detach(surfaceName);
     return;
   }
@@ -15720,18 +16006,11 @@ function clearPendingFilmCornerMask(mediaEl) {
   if (!mediaEl) return;
   mediaEl.classList.remove("pendingFilmCorners");
   mediaEl.style.removeProperty("--pending-film-corner-radius");
+  invalidateMediaElementAppearance(mediaEl);
 }
 
 function applyPendingFilmCornerMask(mediaEl, processingTarget = null) {
-  if (!mediaEl) return;
-  clearPendingFilmCornerMask(mediaEl);
-  const overlayCfg = resolveMediaOverlayConfigForTarget(processingTarget);
-  if (!overlayCfg) return;
-  const cornerRadius = Number((overlayCfg && overlayCfg.cornerRadius) || 0);
-  if (!(cornerRadius > 0)) return;
-  const pct = Math.max(0, Math.min(50, cornerRadius * 100));
-  mediaEl.style.setProperty("--pending-film-corner-radius", `${pct}%`);
-  mediaEl.classList.add("pendingFilmCorners");
+  syncMediaElementAppearance(mediaEl, processingTarget, "none");
 }
 
 function clearMediaFilterSurface(surfaceName, mediaEl) {
@@ -16800,6 +17079,7 @@ function appearancePresetKeybindActionId(presetId) {
 }
 
 function appearancePresetIdFromKeybindAction(actionId) {
+  if (!APPEARANCE_FILTERS_ENABLED) return "";
   const raw = String(actionId || "");
   if (!raw.startsWith(APPEARANCE_PRESET_KEYBIND_ACTION_PREFIX)) return "";
   return normalizeAppearancePresetIdValue(
@@ -16808,10 +17088,14 @@ function appearancePresetIdFromKeybindAction(actionId) {
 }
 
 function isAppearancePresetKeybindAction(actionId) {
+  if (!APPEARANCE_FILTERS_ENABLED) return false;
   return !!appearancePresetIdFromKeybindAction(actionId);
 }
 
 function getAppearancePresetKeybindActions(presets = null) {
+  // No "Toggle preset: ..." rows in the Controls tab while the system is off.
+  // Existing bindings stay in the stored config, untouched.
+  if (!APPEARANCE_FILTERS_ENABLED) return [];
   const source = Array.isArray(presets) ? presets : defaultAppearancePresets();
   const out = [];
   for (let i = 0; i < source.length; i++) {
@@ -18288,6 +18572,9 @@ let viewerVideoEl = null;
 let viewerFolderEl = null;
 let viewerQuadGridEl = null;
 let viewerQuadSlots = [];
+let viewerTransitionCanvas = null;
+let VIEWER_TRANSITION_TOKEN = 0;
+let VIEWER_TRANSITION_HIDE_TIMER = 0;
 let QUAD_PLAYBACK = { active: false, fileIds: [], activeId: "", muted: false };
 
 let DIR_HANDLE_CACHE = new Map();
@@ -31968,7 +32255,10 @@ function ensureTabsInitialized() {
 function captureActiveTabState() {
   if (!BROWSING_TABS_ENABLED) return;
   const item = activeTabItem();
-  if (!item) return;
+  if (!item) {
+    hideViewerTransitionFrame(true);
+    return;
+  }
   item.state = captureViewerCloseRestoreState();
 }
 
@@ -47251,6 +47541,8 @@ function appearancePresetMenuCycleOptions() {
 }
 
 function createAppearancePresetCycleButton(options = {}) {
+  // No per-folder / per-tag / bulk "Filters" override while the system is off.
+  if (!APPEARANCE_FILTERS_ENABLED) return null;
   const hasOverride = !!options.hasOverride;
   const currentPresetId = hasOverride
     ? normalizeAppearancePresetIdValue(options.currentPresetId)
@@ -47426,6 +47718,9 @@ function buildAppMenuRevealSubmenu() {
 }
 
 function buildAppMenuAppearanceSubmenu() {
+  // Dropped from the app menu entirely while the system is off. The caller
+  // filters nulls out of its item list.
+  if (!APPEARANCE_FILTERS_ENABLED) return null;
   const options = WS.meta?.options || {};
   const submenu = createDropdownMenuSubmenu("Appearance filter", [
     buildAppMenuPresetHybridSubmenu(options),
@@ -51075,6 +51370,9 @@ function buildFolderActionMenuDom(
   // "Filters" is a preset cycle. The caller supplies the contextual persistence
   // callbacks; older unhosted surfaces can still fall back to their action path.
   const makeFiltersEntry = () => {
+    // The cycle button returns null while the appearance system is off; the
+    // legacy action fallback must not step in and re-add the row.
+    if (!APPEARANCE_FILTERS_ENABLED) return null;
     if (
       customHandlers &&
       typeof customHandlers.appearancePresetCycleButton === "function"
@@ -57321,14 +57619,265 @@ function hidePreviewVideoTransitionFrame(immediate = false) {
   }, 100);
 }
 
+function hidePreviewVideoTransitionFrameAfterPaint(isCurrent = null) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (typeof isCurrent === "function" && !isCurrent()) return;
+      hidePreviewVideoTransitionFrame(false);
+    });
+  });
+}
+
+// ===========================================================================
+// TEMPORARY DIAGNOSTIC — media layer visualiser.
+//
+// Set LG_DEBUG_MEDIA_LAYERS to false (or call __lgDebugLayers(false) at
+// runtime) to turn this off. Delete this whole block once the colour-drain
+// question is settled.
+//
+// Every layer that can sit between "the filtered frame you were looking at"
+// and "the filtered frame you should be looking at" is painted a flat colour
+// with a label, so it is obvious which one is actually on screen during a
+// media change, and for how long:
+//
+//   PURPLE  MASK — the outgoing-media snapshot shown while the next file loads
+//   ORANGE  HOLD — the retained filtered frame
+//   CYAN outline    the RAW media element is visible (CSS-only appearance —
+//                   this is the layer that would look "drained")
+//   GREEN outline   the live WebGL canvas is presenting (correct output)
+//
+// The HUD in the top-left reports live visibility plus, per layer, how many
+// times it appeared and the total milliseconds it was on screen.
+// ===========================================================================
+let LG_DEBUG_MEDIA_LAYERS = false;
+
+const LG_DEBUG_LAYER_PAINT = {
+  mask: { fill: "#7A00FF", label: "MASK" },
+  hold: { fill: "#FF7A00", label: "HOLD" },
+};
+
+function paintDebugMediaLayer(canvas, kind) {
+  if (!LG_DEBUG_MEDIA_LAYERS || !canvas) return false;
+  const style = LG_DEBUG_LAYER_PAINT[kind];
+  if (!style) return false;
+  let ctx = null;
+  try { ctx = canvas.getContext("2d"); } catch { return false; }
+  if (!ctx) return false;
+  try {
+    // Keep the debug fill a true flat colour rather than a graded one.
+    canvas.style.removeProperty("filter");
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.filter = "none";
+    ctx.fillStyle = style.fill;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const size = Math.max(20, Math.round(canvas.height * 0.06));
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `700 ${size}px -apple-system, system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(style.label, canvas.width / 2, canvas.height / 2);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+const LG_DEBUG_LAYER_STATS = {
+  MASK: { on: false, since: 0, count: 0, ms: 0 },
+  HOLD: { on: false, since: 0, count: 0, ms: 0 },
+  RAW: { on: false, since: 0, count: 0, ms: 0 },
+  GL: { on: false, since: 0, count: 0, ms: 0 },
+};
+let LG_DEBUG_LAYER_LOG = [];
+let LG_DEBUG_LAYER_HUD = null;
+let LG_DEBUG_LAYER_RAF = 0;
+
+function lgDebugLayerVisible(name) {
+  const box = VIEWER_MODE && typeof viewport !== "undefined" && viewport
+    ? viewport
+    : previewViewportBox;
+  if (!box) return false;
+  const shown = (el) =>
+    !!(el && el.style.display !== "none" && Number(getComputedStyle(el).opacity) > 0.01);
+  if (name === "MASK") {
+    const el = VIEWER_MODE ? (typeof viewerTransitionCanvas !== "undefined" ? viewerTransitionCanvas : null) : previewVideoTransitionCanvas;
+    return shown(el);
+  }
+  if (name === "HOLD") return shown(box.querySelector(".mediaHoldCanvas.ready"));
+  if (name === "GL") return shown(box.querySelector(".mediaCanvas.ready"));
+  if (name === "RAW") {
+    const els = box.querySelectorAll("img, video");
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i];
+      if (el.classList.contains("mediaHidden")) continue;
+      if (shown(el)) return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+function lgDebugLayerTick() {
+  LG_DEBUG_LAYER_RAF = 0;
+  if (!LG_DEBUG_MEDIA_LAYERS) return;
+  const now = performance.now();
+  const names = ["MASK", "HOLD", "RAW", "GL"];
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i];
+    const st = LG_DEBUG_LAYER_STATS[name];
+    const on = lgDebugLayerVisible(name);
+    if (on && !st.on) {
+      st.on = true;
+      st.since = now;
+      st.count++;
+      LG_DEBUG_LAYER_LOG.push(`${name} on`);
+    } else if (!on && st.on) {
+      const dur = Math.round(now - st.since);
+      st.on = false;
+      st.ms += dur;
+      LG_DEBUG_LAYER_LOG[LG_DEBUG_LAYER_LOG.length - 1] = `${name} ${dur}ms`;
+    }
+  }
+  if (LG_DEBUG_LAYER_LOG.length > 14) LG_DEBUG_LAYER_LOG = LG_DEBUG_LAYER_LOG.slice(-14);
+  if (LG_DEBUG_LAYER_HUD) {
+    const row = (name, colour) => {
+      const st = LG_DEBUG_LAYER_STATS[name];
+      let extra = "";
+      if (name === "MASK" && st.on && PREVIEW_TRANSITION_FRAME_AT)
+        extra = `  age ${Math.round(now - PREVIEW_TRANSITION_FRAME_AT)}ms`;
+      return `<div style="color:${colour}">${st.on ? "●" : "○"} ${name.padEnd(5)} x${String(st.count).padEnd(4)} ${st.ms}ms${extra}</div>`;
+    };
+    LG_DEBUG_LAYER_HUD.innerHTML =
+      row("MASK", "#c79bff") +
+      row("HOLD", "#ffb066") +
+      row("RAW", "#66e5ff") +
+      row("GL", "#66ff9e") +
+      `<div style="opacity:.8;margin-top:6px;border-top:1px solid #444;padding-top:4px">ctx.filter: ${LG_DEBUG_CANVAS_FILTER_SUPPORT}</div>` +
+      `<div style="opacity:.65;margin-top:4px;border-top:1px solid #444;padding-top:4px">${LG_DEBUG_LAYER_LOG.join("<br>")}</div>`;
+  }
+  LG_DEBUG_LAYER_RAF = requestAnimationFrame(lgDebugLayerTick);
+}
+
+function lgDebugLayersSetEnabled(on) {
+  LG_DEBUG_MEDIA_LAYERS = !!on;
+  const root = document.documentElement;
+  if (root) root.classList.toggle("lgDebugMediaLayers", LG_DEBUG_MEDIA_LAYERS);
+  if (!LG_DEBUG_MEDIA_LAYERS) {
+    if (LG_DEBUG_LAYER_RAF) cancelAnimationFrame(LG_DEBUG_LAYER_RAF);
+    LG_DEBUG_LAYER_RAF = 0;
+    if (LG_DEBUG_LAYER_HUD && LG_DEBUG_LAYER_HUD.parentElement)
+      LG_DEBUG_LAYER_HUD.parentElement.removeChild(LG_DEBUG_LAYER_HUD);
+    LG_DEBUG_LAYER_HUD = null;
+    return false;
+  }
+  if (!LG_DEBUG_LAYER_HUD) {
+    LG_DEBUG_LAYER_HUD = document.createElement("div");
+    LG_DEBUG_LAYER_HUD.id = "lgDebugLayerHud";
+    document.body.appendChild(LG_DEBUG_LAYER_HUD);
+  }
+  if (!LG_DEBUG_CANVAS_FILTER_SUPPORT)
+    LG_DEBUG_CANVAS_FILTER_SUPPORT = lgDebugProbeCanvasFilterSupport();
+  if (!LG_DEBUG_LAYER_RAF) LG_DEBUG_LAYER_RAF = requestAnimationFrame(lgDebugLayerTick);
+  return true;
+}
+
+// The mask bakes an element's appearance in with `ctx.filter = <css filter>`.
+// If the engine ignores ctx.filter, every mask captured from a raw element is
+// completely UNFILTERED — which would show up as the outgoing media losing its
+// grade for the whole load. Chromium supports it; WKWebView is the question, so
+// probe it for real rather than assuming.
+function lgDebugProbeCanvasFilterSupport() {
+  try {
+    const c = document.createElement("canvas");
+    c.width = 4;
+    c.height = 4;
+    const ctx = c.getContext("2d");
+    if (!ctx) return "no-2d-context";
+    if (!("filter" in ctx)) return "UNSUPPORTED (no ctx.filter property)";
+    const src = document.createElement("canvas");
+    src.width = 4;
+    src.height = 4;
+    const sctx = src.getContext("2d");
+    sctx.fillStyle = "#ff0000";
+    sctx.fillRect(0, 0, 4, 4);
+    ctx.filter = "hue-rotate(120deg) saturate(2)";
+    ctx.drawImage(src, 0, 0);
+    ctx.filter = "none";
+    const d = ctx.getImageData(2, 2, 1, 1).data;
+    const changed = !(d[0] > 200 && d[1] < 60 && d[2] < 60);
+    return changed
+      ? `ok (red -> rgb(${d[0]},${d[1]},${d[2]}))`
+      : `IGNORED (red stayed rgb(${d[0]},${d[1]},${d[2]}))`;
+  } catch (e) {
+    return "probe-failed: " + (e && e.message ? e.message : e);
+  }
+}
+let LG_DEBUG_CANVAS_FILTER_SUPPORT = "";
+
+function lgDebugLayersReset() {
+  const names = ["MASK", "HOLD", "RAW", "GL"];
+  for (let i = 0; i < names.length; i++)
+    LG_DEBUG_LAYER_STATS[names[i]] = { on: false, since: 0, count: 0, ms: 0 };
+  LG_DEBUG_LAYER_LOG = [];
+  return "reset";
+}
+
+try {
+  window.__lgDebugLayers = lgDebugLayersSetEnabled;
+  window.__lgDebugLayersReset = lgDebugLayersReset;
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", () => lgDebugLayersSetEnabled(LG_DEBUG_MEDIA_LAYERS), { once: true });
+  else lgDebugLayersSetEnabled(LG_DEBUG_MEDIA_LAYERS);
+} catch {}
+
+// A transition snapshot must composite exactly like the media it stands in for,
+// or the hand-over reads as the picture changing appearance.
+//
+// It CANNOT do that by baking the grade in with `ctx.filter` during drawImage:
+// WKWebView — the engine this app actually ships on — has no `filter` property
+// on CanvasRenderingContext2D at all, so that assignment is silently dropped and
+// the snapshot comes out completely ungraded. (Chromium implements it, which is
+// why this survived browser-based testing for so long.)
+//
+// CSS `filter` on the canvas *element* is universally supported, so mirror the
+// source element's own computed filter onto the snapshot instead. Pass a null
+// source for canvas-derived pixels, which are already graded.
+let PREVIEW_TRANSITION_FRAME_AT = 0;
+let VIEWER_TRANSITION_FRAME_AT = 0;
+// How long a snapshot may keep standing in when no fresh one can be taken.
+// Long enough to bridge one slow decode, short enough that a held-down next
+// key cannot drag a frame from several files back across the whole run.
+const PREVIEW_TRANSITION_FRAME_MAX_AGE_MS = 400;
+
+function applyTransitionFrameSourceFilter(canvas, sourceEl) {
+  if (!canvas) return "";
+  let cssFilter = "";
+  let radius = "";
+  if (sourceEl && typeof getComputedStyle === "function") {
+    try {
+      const cs = getComputedStyle(sourceEl);
+      cssFilter = cs.filter && cs.filter !== "none" ? cs.filter : "";
+      radius = cs.borderRadius && cs.borderRadius !== "0px" ? cs.borderRadius : "";
+    } catch {}
+  }
+  if (cssFilter) canvas.style.filter = cssFilter;
+  else canvas.style.removeProperty("filter");
+  // The film-corner mask is a border-radius on the media element; carry it over
+  // so a rounded frame does not square off for the length of the transition.
+  if (radius) {
+    canvas.style.borderRadius = radius;
+    canvas.style.overflow = "hidden";
+  } else {
+    canvas.style.removeProperty("border-radius");
+    canvas.style.removeProperty("overflow");
+  }
+  return cssFilter;
+}
+
 function capturePreviewVideoTransitionFrame() {
   const canvas = ensurePreviewVideoTransitionCanvas();
   if (!canvas || !previewViewportBox) return false;
-
-  // During very fast stepping the previous transition frame may still be the
-  // only visible frame. Retain it until the newly-selected video presents.
-  if (canvas.style.display === "block")
-    return showPreviewVideoTransitionFrame(canvas);
 
   // Freshly redraw the active filter canvas so the drawImage() below reads real
   // pixels. The GL context is preserveDrawingBuffer:false, so a canvas last
@@ -57342,18 +57891,21 @@ function capturePreviewVideoTransitionFrame() {
     (source.style.display === "none" || !source.width || !source.height)
   )
     source = null;
-  const filteredCanvases = source
-    ? []
-    : previewViewportBox.querySelectorAll(
-        ".mediaCanvas.ready:not(.videoCanvasStale)",
-      );
-  for (let i = filteredCanvases.length - 1; i >= 0; i--) {
-    const candidate = filteredCanvases[i];
-    if (candidate.style.display === "none" || !candidate.width || !candidate.height)
-      continue;
-    source = candidate;
-    break;
+  // If the surface has already been retargeted, renderSurfaceNow() is null and
+  // the live canvas is an empty husk -- but the retained hold frame is a 2D
+  // canvas whose pixels persist, and it is exactly what the user is looking at.
+  // Prefer it over re-deriving the frame from the raw element, which would bake
+  // in only the cheap CSS approximation and lose the whole optical pipeline.
+  if (!source) {
+    const held = MediaFilterEngine.holdFrameCanvas("preview");
+    if (held && held.width > 0 && held.height > 0) source = held;
   }
+  // NOTE: there is deliberately no fallback to a bare `.mediaCanvas.ready`
+  // here. If renderSurfaceNow() declined, that canvas is exactly the one whose
+  // GL buffer the compositor has already discarded, so drawImage()-ing it
+  // captures transparent black — a mask that flashes instead of masking.
+  // renderSurfaceNow (live) and the retained hold frame are the only canvases
+  // whose pixels are guaranteed real.
   if (
     !source &&
     previewVideoEl &&
@@ -57374,7 +57926,23 @@ function capturePreviewVideoTransitionFrame() {
   ) {
     source = previewImgEl;
   }
-  if (!source) return false;
+  if (!source) {
+    // Nothing current is snapshot-able. Retaining a RECENT mask keeps fast
+    // stepping from flashing black, but the old code retained it unconditionally
+    // AND re-showed it via showPreviewVideoTransitionFrame() -- which resets
+    // transition:none/opacity:1. Held down, every hop yanked one ancient capture
+    // back to full opacity while the previous hop's 84ms fade was still running,
+    // so media from several files back flickered on and off over the media you
+    // were actually browsing. Leave the frame strictly alone here: an in-flight
+    // fade completes instead of being snapped back, and a stale one ages out.
+    if (
+      canvas.style.display === "block" &&
+      performance.now() - PREVIEW_TRANSITION_FRAME_AT <
+        PREVIEW_TRANSITION_FRAME_MAX_AGE_MS
+    )
+      return true;
+    return false;
+  }
 
   const cssWidth = Math.max(1, previewViewportBox.clientWidth || 0);
   const cssHeight = Math.max(1, previewViewportBox.clientHeight || 0);
@@ -57391,7 +57959,10 @@ function capturePreviewVideoTransitionFrame() {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, pixelWidth, pixelHeight);
     if (source.tagName === "CANVAS") {
+      // Canvas sources (the live GL output, or the retained hold frame) already
+      // contain graded pixels.
       ctx.drawImage(source, 0, 0, pixelWidth, pixelHeight);
+      applyTransitionFrameSourceFilter(canvas, null);
     } else {
       const sourceWidth =
         source.tagName === "VIDEO" ? source.videoWidth : source.naturalWidth;
@@ -57402,17 +57973,14 @@ function capturePreviewVideoTransitionFrame() {
       const drawHeight = sourceHeight * scale * dpr;
       const drawX = (pixelWidth - drawWidth) / 2;
       const drawY = (pixelHeight - drawHeight) / 2;
-      const computedFilter =
-        typeof getComputedStyle === "function"
-          ? getComputedStyle(source).filter
-          : "";
-      ctx.filter = computedFilter && computedFilter !== "none" ? computedFilter : "none";
       ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
-      ctx.filter = "none";
+      applyTransitionFrameSourceFilter(canvas, source);
     }
   } catch {
     return false;
   }
+  PREVIEW_TRANSITION_FRAME_AT = performance.now();
+  paintDebugMediaLayer(canvas, "mask");
   return showPreviewVideoTransitionFrame(canvas);
 }
 
@@ -57449,6 +58017,9 @@ function revealPreviewVideoFrame(videoEl, fileId, transitionToken) {
     !(Number(videoEl.videoHeight) > 0)
   )
     return false;
+  const rec = WS.fileById.get(String(fileId || "")) || null;
+  if (!targetRequiresMediaProcessingPipeline(rec))
+    videoEl.classList.remove("mediaHidden");
   videoEl.classList.add("ready");
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -57567,6 +58138,7 @@ function cachePreviewVideoElement(videoEl) {
   videoEl.style.display = "none";
   videoEl.classList.remove("ready", "mediaHidden");
   videoEl.style.removeProperty("filter");
+  invalidateMediaElementAppearance(videoEl);
   delete videoEl.dataset.previewFileId;
   videoEl.removeAttribute("data-dir-path");
   const existing = PRELOAD_CACHE.get(src);
@@ -57727,12 +58299,11 @@ function seedPreviewViewportWithRecordHint(rec) {
     previewImgEl.classList.add("ready");
     if (holdFilteredFrame) previewImgEl.classList.add("mediaHidden");
     else previewImgEl.classList.remove("mediaHidden");
-    previewImgEl.style.display = "block";
+    try { applyDirectMediaCssEffectsForTarget(previewImgEl, rec); } catch {}
     if (String(previewImgEl.getAttribute("src") || "") !== String(hintSrc)) {
       previewImgEl.src = hintSrc;
     }
-    // Ensure color filters are applied directly to preview media via CSS (reliable path, like thumbs)
-    try { applyDirectMediaCssEffectsForTarget(previewImgEl, rec); } catch {}
+    previewImgEl.style.display = "block";
     if (previewVideoEl) {
       cancelResponsiveVideoSeek(previewVideoEl);
       try { previewVideoEl.pause(); } catch {}
@@ -57759,7 +58330,8 @@ function seedPreviewViewportWithRecordHint(rec) {
     previewVideoEl.muted = mode === "muted" || BANIC_ACTIVE || VIEWER_MODE;
     if (holdFilteredFrame) previewVideoEl.classList.add("mediaHidden");
     else previewVideoEl.classList.remove("mediaHidden");
-    previewVideoEl.style.display = "block";
+    // Ensure color filters via CSS on preview video before the element is visible.
+    try { applyDirectMediaCssEffectsForTarget(previewVideoEl, rec); } catch {}
     // Start loading the video src as early as possible (selection hint time)
     // so decode starts before full render. This reduces the first-select lag
     // under Tauri asset protocol (was faster with direct file:// in Electron).
@@ -57778,8 +58350,7 @@ function seedPreviewViewportWithRecordHint(rec) {
           playPromise.catch(() => {});
       } catch {}
     }
-    // Ensure color filters via CSS on preview video
-    try { applyDirectMediaCssEffectsForTarget(previewVideoEl, rec); } catch {}
+    previewVideoEl.style.display = "block";
     if (previewImgEl) {
       previewImgEl.style.display = "none";
       previewImgEl.classList.remove("ready");
@@ -59111,13 +59682,7 @@ function scrollImageFallbackCssFilter(rec, mode) {
 }
 
 function applyScrollImageProcessingFallback(imgEl, rec, mode) {
-  if (!imgEl) return;
-  const cssFilter = scrollImageFallbackCssFilter(rec, mode);
-  if (cssFilter && cssFilter !== "none") {
-    imgEl.style.filter = cssFilter;
-  } else {
-    imgEl.style.removeProperty("filter");
-  }
+  syncMediaElementAppearance(imgEl, rec, mode);
 }
 
 function showPreviewViewportMessage(label = "File unavailable", meta = "") {
@@ -59223,6 +59788,15 @@ function renderPreviewViewerItem(idx) {
     rec &&
     String(previewVideoEl.dataset.previewFileId || "") === String(rec.id || "")
   );
+  const holdPreviewVideoElementDuringRetarget = !!(
+    !suppressStalePreviewFrame &&
+    mediaFilterEnabled() &&
+    willShowVideo &&
+    previewVideoEl &&
+    previewVideoEl.style.display !== "none" &&
+    rec &&
+    String(previewVideoEl.dataset.previewFileId || "") !== String(rec.id || "")
+  );
 
   if (previewVideoEl) {
     if (!keepPreviewVideoElement) {
@@ -59231,6 +59805,8 @@ function renderPreviewViewerItem(idx) {
         previewVideoEl.pause();
       } catch {}
       previewVideoEl.classList.remove("ready");
+      if (holdPreviewVideoElementDuringRetarget)
+        previewVideoEl.classList.add("mediaHidden");
     }
     if (!willShowVideo) {
       previewVideoEl.style.display = "none";
@@ -59249,10 +59825,20 @@ function renderPreviewViewerItem(idx) {
     } else if (keepPreviewFilterFrame || holdPreviewImageFrame) {
       previewImgEl.classList.add("ready");
       previewImgEl.style.display = "block";
+      if (holdPreviewImageFrame && mediaFilterEnabled())
+        previewImgEl.classList.add("mediaHidden");
     }
   }
   if (previewFolderEl) previewFolderEl.style.display = "none";
-  const preservePreviewFrame = keepPreviewFilterFrame || holdPreviewImageFrame;
+  // Retargeting the surface must never drop the frame already on the canvas:
+  // clearing it exposes the source element (or nothing) until the next file has
+  // decoded, which reads as the filter switching itself off and back on. The
+  // video cases hold their frame for the same reason the image cases do.
+  const preservePreviewFrame =
+    keepPreviewFilterFrame ||
+    holdPreviewImageFrame ||
+    keepPreviewVideoElement ||
+    holdPreviewVideoElementDuringRetarget;
   MediaFilterEngine.detach("preview", { preserveFrame: preservePreviewFrame });
   if (!preservePreviewFrame) {
     if (previewVideoEl) previewVideoEl.classList.remove("mediaHidden");
@@ -59444,10 +60030,10 @@ function renderPreviewViewerItem(idx) {
     // preset optical filters/overlays) gets processed without extra delay.
     try { MediaFilterEngine.requestRender(); } catch {}
     previewVideoEl.style.display = "block";
-    if (holdFilteredFrame) previewVideoEl.classList.add("mediaHidden");
+    if (holdFilteredFrame || holdPreviewVideoElementDuringRetarget)
+      previewVideoEl.classList.add("mediaHidden");
     else previewVideoEl.classList.remove("mediaHidden");
     previewVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
-    applyPendingFilmCornerMask(previewVideoEl, rec.dirPath || "");
     syncMediaFilterSurface(
       "preview",
       previewVideoEl,
@@ -59455,6 +60041,8 @@ function renderPreviewViewerItem(idx) {
       "video",
       rec,
     );
+    if (holdPreviewVideoElementDuringRetarget)
+      previewVideoEl.classList.add("mediaHidden");
 
     applyVideoCarryToElement(previewVideoEl, rec.id, {
       allowPlay: !pauseLocked,
@@ -59500,14 +60088,11 @@ function renderPreviewViewerItem(idx) {
       imageMode,
       readingModeEnabled() && !same,
     );
-    previewImgEl.style.display = "block";
     if (imageMode !== "none") {
       clearMediaFilterSurface("preview", previewImgEl);
       applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
       previewImgEl.classList.remove("mediaHidden");
     } else {
-      applyPendingFilmCornerMask(previewImgEl, rec);
-      applyScrollImageProcessingFallback(previewImgEl, rec, "none");
       syncMediaFilterSurface(
         "preview",
         previewImgEl,
@@ -59516,13 +60101,20 @@ function renderPreviewViewerItem(idx) {
         rec,
       );
     }
+    previewImgEl.style.display = "block";
     revealImageAfterReadingLayout(
       previewImgEl,
       () =>
         String(previewImgEl.dataset.previewFileId || "") ===
           String(rec.id || "") &&
         String(WS.preview.fileId || "") === String(rec.id || ""),
-      () => hidePreviewVideoTransitionFrame(false),
+      () =>
+        hidePreviewVideoTransitionFrameAfterPaint(
+          () =>
+            String(previewImgEl.dataset.previewFileId || "") ===
+              String(rec.id || "") &&
+            String(WS.preview.fileId || "") === String(rec.id || ""),
+        ),
     );
     return true;
   };
@@ -59551,7 +60143,8 @@ function renderPreviewViewerItem(idx) {
     initialPreviewMode,
     readingModeEnabled() && !same,
   );
-  if (holdFilteredFrame) previewImgEl.classList.add("mediaHidden");
+  if (holdFilteredFrame || (holdPreviewImageFrame && mediaFilterEnabled()))
+    previewImgEl.classList.add("mediaHidden");
   else previewImgEl.classList.remove("mediaHidden");
   previewImgEl.setAttribute("data-dir-path", rec.dirPath || "");
   try { applyDirectMediaCssEffectsForTarget(previewImgEl, rec); } catch {}
@@ -59561,13 +60154,12 @@ function renderPreviewViewerItem(idx) {
     previewImgEl.classList.remove("ready");
     if (readingModeEnabled()) previewImgEl.style.visibility = "hidden";
     else previewImgEl.style.removeProperty("visibility");
-    previewImgEl.style.display = "block";
     previewImgEl.src = src;
+    previewImgEl.style.display = "block";
     preloadNextMedia(viewerItems, viewerIndex);
     return;
   }
   previewImgEl.style.removeProperty("visibility");
-  previewImgEl.style.display = "block";
   const previewMode = initialPreviewMode;
   if (previewMode !== "none") {
     clearPendingFilmCornerMask(previewImgEl);
@@ -59575,8 +60167,6 @@ function renderPreviewViewerItem(idx) {
     applyScrollImageProcessingFallback(previewImgEl, rec, previewMode);
     previewImgEl.classList.remove("mediaHidden");
   } else {
-    applyPendingFilmCornerMask(previewImgEl, rec);
-    applyScrollImageProcessingFallback(previewImgEl, rec, "none");
     syncMediaFilterSurface(
       "preview",
       previewImgEl,
@@ -59585,12 +60175,19 @@ function renderPreviewViewerItem(idx) {
       rec,
     );
   }
+  previewImgEl.style.display = "block";
   revealImageAfterReadingLayout(
     previewImgEl,
     () =>
       String(previewImgEl.dataset.previewFileId || "") === String(rec.id || "") &&
       String(WS.preview.fileId || "") === String(rec.id || ""),
-    () => hidePreviewVideoTransitionFrame(false),
+    () =>
+      hidePreviewVideoTransitionFrameAfterPaint(
+        () =>
+          String(previewImgEl.dataset.previewFileId || "") ===
+            String(rec.id || "") &&
+          String(WS.preview.fileId || "") === String(rec.id || ""),
+      ),
   );
 
   if (previewImgEl.complete && previewImgEl.naturalWidth > 0) {
@@ -59603,15 +60200,12 @@ function renderPreviewViewerItem(idx) {
         return;
       const imageMode = detectScrollImageMode(rec, previewImgEl);
       applyScrollImageMode(previewViewportBox, previewImgEl, imageMode, false);
-      previewImgEl.style.display = "block";
       if (imageMode !== "none") {
         clearPendingFilmCornerMask(previewImgEl);
         clearMediaFilterSurface("preview", previewImgEl);
         applyScrollImageProcessingFallback(previewImgEl, rec, imageMode);
         previewImgEl.classList.remove("mediaHidden");
       } else {
-        applyPendingFilmCornerMask(previewImgEl, rec);
-        applyScrollImageProcessingFallback(previewImgEl, rec, "none");
         syncMediaFilterSurface(
           "preview",
           previewImgEl,
@@ -59620,13 +60214,20 @@ function renderPreviewViewerItem(idx) {
           rec,
         );
       }
+      previewImgEl.style.display = "block";
       revealImageAfterReadingLayout(
         previewImgEl,
         () =>
           String(previewImgEl.dataset.previewFileId || "") ===
             String(rec.id || "") &&
           String(WS.preview.fileId || "") === String(rec.id || ""),
-        () => hidePreviewVideoTransitionFrame(false),
+        () =>
+          hidePreviewVideoTransitionFrameAfterPaint(
+            () =>
+              String(previewImgEl.dataset.previewFileId || "") ===
+                String(rec.id || "") &&
+              String(WS.preview.fileId || "") === String(rec.id || ""),
+          ),
       );
     });
   }
@@ -63919,6 +64520,183 @@ function openGalleryFromViewerState(requestFullscreen) {
   return openGalleryFromDirectoriesSelection(requestFullscreen);
 }
 
+function ensureViewerTransitionCanvas() {
+  if (!viewport) return null;
+  if (!viewerTransitionCanvas) {
+    viewerTransitionCanvas = document.createElement("canvas");
+    viewerTransitionCanvas.className = "viewerTransitionFrame";
+    viewerTransitionCanvas.setAttribute("aria-hidden", "true");
+  }
+  if (!viewport.contains(viewerTransitionCanvas))
+    viewport.appendChild(viewerTransitionCanvas);
+  return viewerTransitionCanvas;
+}
+
+function showViewerTransitionFrame(canvas = null) {
+  const frame = canvas || ensureViewerTransitionCanvas();
+  if (!frame) return false;
+  if (VIEWER_TRANSITION_HIDE_TIMER) {
+    clearTimeout(VIEWER_TRANSITION_HIDE_TIMER);
+    VIEWER_TRANSITION_HIDE_TIMER = 0;
+  }
+  frame.style.transition = "none";
+  frame.style.opacity = "1";
+  frame.style.display = "block";
+  return true;
+}
+
+function hideViewerTransitionFrame(immediate = false) {
+  const frame = viewerTransitionCanvas;
+  if (!frame) return;
+  if (VIEWER_TRANSITION_HIDE_TIMER) {
+    clearTimeout(VIEWER_TRANSITION_HIDE_TIMER);
+    VIEWER_TRANSITION_HIDE_TIMER = 0;
+  }
+  if (immediate || frame.style.display !== "block") {
+    frame.style.transition = "none";
+    frame.style.opacity = "1";
+    frame.style.display = "none";
+    return;
+  }
+  frame.style.transition = "opacity 84ms linear";
+  frame.style.opacity = "0";
+  VIEWER_TRANSITION_HIDE_TIMER = setTimeout(() => {
+    VIEWER_TRANSITION_HIDE_TIMER = 0;
+    frame.style.display = "none";
+    frame.style.transition = "none";
+    frame.style.opacity = "1";
+  }, 100);
+}
+
+function hideViewerTransitionFrameAfterPaint(token, isCurrent = null) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (Number(token) !== VIEWER_TRANSITION_TOKEN) return;
+      if (typeof isCurrent === "function" && !isCurrent()) return;
+      hideViewerTransitionFrame(false);
+    });
+  });
+}
+
+function sourceDimensionsForSnapshot(source) {
+  if (!source) return null;
+  const tag = String(source.tagName || "").toUpperCase();
+  if (tag === "CANVAS") {
+    return {
+      width: Number(source.width) || 0,
+      height: Number(source.height) || 0,
+      drawFull: true,
+    };
+  }
+  if (tag === "VIDEO") {
+    return {
+      width: Number(source.videoWidth) || 0,
+      height: Number(source.videoHeight) || 0,
+    };
+  }
+  return {
+    width: Number(source.naturalWidth) || 0,
+    height: Number(source.naturalHeight) || 0,
+  };
+}
+
+function drawViewerSnapshotSource(ctx, source, pixelWidth, pixelHeight, dpr) {
+  const dims = sourceDimensionsForSnapshot(source);
+  if (!dims || !(dims.width > 0) || !(dims.height > 0)) return false;
+  if (dims.drawFull) {
+    // Canvas-derived pixels are already graded.
+    ctx.drawImage(source, 0, 0, pixelWidth, pixelHeight);
+    applyTransitionFrameSourceFilter(ctx.canvas, null);
+    return true;
+  }
+  const cssWidth = pixelWidth / dpr;
+  const cssHeight = pixelHeight / dpr;
+  const scale = Math.min(cssWidth / dims.width, cssHeight / dims.height);
+  const drawWidth = dims.width * scale * dpr;
+  const drawHeight = dims.height * scale * dpr;
+  const drawX = (pixelWidth - drawWidth) / 2;
+  const drawY = (pixelHeight - drawHeight) / 2;
+  // ctx.filter does not exist in WKWebView; grade the snapshot with a CSS
+  // filter on the canvas element instead. See applyTransitionFrameSourceFilter.
+  ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+  applyTransitionFrameSourceFilter(ctx.canvas, source);
+  return true;
+}
+
+function captureViewerTransitionFrame() {
+  if (!VIEWER_MODE || isQuadPlaybackMode() || !viewport) return false;
+  const canvas = ensureViewerTransitionCanvas();
+  if (!canvas) return false;
+
+  let source = MediaFilterEngine.renderSurfaceNow("viewer");
+  if (
+    source &&
+    (source.style.display === "none" || !source.width || !source.height)
+  )
+    source = null;
+  // Same rule as the preview capture: a bare `.mediaCanvas.ready` is not a
+  // usable source once the surface has been retargeted, because its GL buffer
+  // has already been discarded by the compositor. The retained hold frame is
+  // the persistent copy of that same filtered picture.
+  if (!source) {
+    const held = MediaFilterEngine.holdFrameCanvas("viewer");
+    if (held && held.width > 0 && held.height > 0) source = held;
+  }
+  if (
+    !source &&
+    viewerVideoEl &&
+    viewerVideoEl.style.display !== "none" &&
+    viewerVideoEl.readyState >= 2 &&
+    viewerVideoEl.videoWidth > 0 &&
+    viewerVideoEl.videoHeight > 0
+  ) {
+    source = viewerVideoEl;
+  }
+  if (
+    !source &&
+    viewerImgEl &&
+    viewerImgEl.style.display !== "none" &&
+    viewerImgEl.complete &&
+    viewerImgEl.naturalWidth > 0 &&
+    viewerImgEl.naturalHeight > 0
+  ) {
+    source = viewerImgEl;
+  }
+  if (!source) {
+    // Same retention rule as the preview capture: hold a recent snapshot, but
+    // never re-show an ageing one (see capturePreviewVideoTransitionFrame).
+    if (
+      canvas.style.display === "block" &&
+      performance.now() - VIEWER_TRANSITION_FRAME_AT <
+        PREVIEW_TRANSITION_FRAME_MAX_AGE_MS
+    )
+      return true;
+    return false;
+  }
+
+  const cssWidth = Math.max(1, viewport.clientWidth || 0);
+  const cssHeight = Math.max(1, viewport.clientHeight || 0);
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
+  const pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
+  if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+  if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+  const ctx = canvas.getContext("2d", { alpha: true });
+  if (!ctx) return false;
+  try {
+    ctx.clearRect(0, 0, pixelWidth, pixelHeight);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, pixelWidth, pixelHeight);
+    if (!drawViewerSnapshotSource(ctx, source, pixelWidth, pixelHeight, dpr))
+      return false;
+  } catch {
+    return false;
+  }
+  VIEWER_TRANSITION_FRAME_AT = performance.now();
+  paintDebugMediaLayer(canvas, "mask");
+  return showViewerTransitionFrame(canvas);
+}
+
 function ensureViewerElements() {
   if (!viewerImgEl) {
     viewerImgEl = document.createElement("img");
@@ -64509,7 +65287,7 @@ function renderQuadPlaybackView() {
     };
 
     applyVideoPoster(slot.videoEl, rec);
-    applyPendingFilmCornerMask(slot.videoEl, rec.dirPath || "");
+    applyPendingFilmCornerMask(slot.videoEl, rec);
     const src = ensureMediaUrl(rec) || "";
     const same = slot.videoEl.src === src;
     if (!same) {
@@ -64574,6 +65352,7 @@ function renderViewerItem(idx) {
       viewerVideoEl.classList.remove("mediaHidden");
       clearPendingFilmCornerMask(viewerVideoEl);
     }
+    hideViewerTransitionFrame(true);
     return;
   }
 
@@ -64591,6 +65370,9 @@ function renderViewerItem(idx) {
   viewerIndex = i;
 
   const item = viewerItems[viewerIndex];
+  const viewerTransitionToken = ++VIEWER_TRANSITION_TOKEN;
+  const viewerTransitionActive =
+    mediaFilterEnabled() && captureViewerTransitionFrame();
 
   if (viewerVideoEl) {
     cancelResponsiveVideoSeek(viewerVideoEl);
@@ -64668,11 +65450,25 @@ function renderViewerItem(idx) {
         : dirUiLabel(item.dirNode) || "",
       viewerDisplayPositions.dirPositions.get(String(item.dirNode?.path || "")),
     );
+    if (viewerTransitionActive)
+      hideViewerTransitionFrameAfterPaint(viewerTransitionToken);
     return;
   }
 
   const rec = WS.fileById.get(item.id);
-  if (!rec) return;
+  if (!rec) {
+    hideViewerTransitionFrame(true);
+    return;
+  }
+  const viewerRecordStillCurrent = (candidate) => {
+    const activeItem = viewerItems[viewerIndex] || null;
+    return !!(
+      candidate &&
+      activeItem &&
+      !activeItem.isFolder &&
+      String(activeItem.id || "") === String(candidate.id || "")
+    );
+  };
 
   filenameEl.textContent = relPathDisplayName(rec.relPath || rec.name || "", {
     finalPrefix: displayPositionPrefix(
@@ -64712,8 +65508,16 @@ function renderViewerItem(idx) {
       viewerVideoEl.loop = false;
     }
     viewerVideoEl.onloadeddata = () => {
+      if (!viewerRecordStillCurrent(rec)) return;
+      try { applyDirectMediaCssEffectsForTarget(viewerVideoEl, rec); } catch {}
+      syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", rec);
       viewerVideoEl.classList.add("ready");
       MediaFilterEngine.requestRender();
+      if (viewerTransitionActive)
+        hideViewerTransitionFrameAfterPaint(
+          viewerTransitionToken,
+          () => viewerRecordStillCurrent(rec),
+        );
     };
 
     applyVideoPoster(viewerVideoEl, rec);
@@ -64725,14 +65529,16 @@ function renderViewerItem(idx) {
         viewerVideoEl.load();
       } catch {}
     }
-    viewerVideoEl.style.display = "block";
     viewerVideoEl.setAttribute("data-dir-path", rec.dirPath || "");
-    applyPendingFilmCornerMask(viewerVideoEl, rec.dirPath || "");
-    syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", rec);
+    if (same) {
+      try { applyDirectMediaCssEffectsForTarget(viewerVideoEl, rec); } catch {}
+      syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", rec);
+    }
+    viewerVideoEl.style.display = "block";
 
     applyVideoCarryToElement(viewerVideoEl, rec.id);
 
-    if (viewerVideoEl.readyState >= 2) {
+    if (same && viewerVideoEl.readyState >= 2) {
       requestAnimationFrame(() => {
         const activeItem = viewerItems[viewerIndex] || null;
         if (
@@ -64741,8 +65547,15 @@ function renderViewerItem(idx) {
           String(activeItem.id || "") !== String(rec.id || "")
         )
           return;
+        try { applyDirectMediaCssEffectsForTarget(viewerVideoEl, rec); } catch {}
+        syncMediaFilterSurface("viewer", viewerVideoEl, viewport, "video", rec);
         viewerVideoEl.classList.add("ready");
         MediaFilterEngine.requestRender();
+        if (viewerTransitionActive)
+          hideViewerTransitionFrameAfterPaint(
+            viewerTransitionToken,
+            () => viewerRecordStillCurrent(rec),
+          );
       });
     }
     if (doAuto) {
@@ -64755,6 +65568,8 @@ function renderViewerItem(idx) {
   }
 
   viewerImgEl.onload = () => {
+    if (!viewerRecordStillCurrent(rec)) return;
+    try { applyDirectMediaCssEffectsForTarget(viewerImgEl, rec); } catch {}
     const imageMode = detectScrollImageMode(rec, viewerImgEl);
     applyScrollImageMode(
       viewport,
@@ -64762,15 +65577,14 @@ function renderViewerItem(idx) {
       imageMode,
       readingModeEnabled() && !same,
     );
-    viewerImgEl.style.display = "block";
     if (imageMode !== "none") {
       clearMediaFilterSurface("viewer", viewerImgEl);
       applyScrollImageProcessingFallback(viewerImgEl, rec, imageMode);
       viewerImgEl.classList.remove("mediaHidden");
     } else {
-      applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
       syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
     }
+    viewerImgEl.style.display = "block";
     revealImageAfterReadingLayout(
       viewerImgEl,
       () => {
@@ -64781,6 +65595,13 @@ function renderViewerItem(idx) {
           String(activeItem.id || "") === String(rec.id || "")
         );
       },
+      () => {
+        if (viewerTransitionActive)
+          hideViewerTransitionFrameAfterPaint(
+            viewerTransitionToken,
+            () => viewerRecordStillCurrent(rec),
+          );
+      },
     );
   };
   const src = ensureMediaUrl(rec) || "";
@@ -64790,41 +65611,51 @@ function renderViewerItem(idx) {
     ? detectScrollImageMode(rec, viewerImgEl)
     : predictScrollImageModeForRecord(rec);
   applyScrollImageMode(viewport, viewerImgEl, viewerMode, !same);
+  if (same) {
+    try { applyDirectMediaCssEffectsForTarget(viewerImgEl, rec); } catch {}
+  }
   if (!same) {
     viewerImgEl.classList.remove("ready");
     if (readingModeEnabled()) viewerImgEl.style.visibility = "hidden";
     else viewerImgEl.style.removeProperty("visibility");
     viewerImgEl.src = src;
+    viewerImgEl.style.display = "block";
+    preloadNextMedia(viewerItems, viewerIndex);
+    return;
   } else {
     viewerImgEl.style.removeProperty("visibility");
   }
-  viewerImgEl.style.display = "block";
   if (viewerMode !== "none") {
     clearPendingFilmCornerMask(viewerImgEl);
     clearMediaFilterSurface("viewer", viewerImgEl);
     applyScrollImageProcessingFallback(viewerImgEl, rec, viewerMode);
     viewerImgEl.classList.remove("mediaHidden");
   } else {
-    applyPendingFilmCornerMask(viewerImgEl, rec);
-    applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
     syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
   }
+  viewerImgEl.style.display = "block";
 
   if (viewerImgEl.complete && viewerImgEl.naturalWidth > 0) {
     requestAnimationFrame(() => {
+      const activeItem = viewerItems[viewerIndex] || null;
+      if (
+        !activeItem ||
+        activeItem.isFolder ||
+        String(activeItem.id || "") !== String(rec.id || "")
+      )
+        return;
+      try { applyDirectMediaCssEffectsForTarget(viewerImgEl, rec); } catch {}
       const imageMode = detectScrollImageMode(rec, viewerImgEl);
       applyScrollImageMode(viewport, viewerImgEl, imageMode, false);
-      viewerImgEl.style.display = "block";
       if (imageMode !== "none") {
         clearPendingFilmCornerMask(viewerImgEl);
         clearMediaFilterSurface("viewer", viewerImgEl);
         applyScrollImageProcessingFallback(viewerImgEl, rec, imageMode);
         viewerImgEl.classList.remove("mediaHidden");
       } else {
-        applyPendingFilmCornerMask(viewerImgEl, rec);
-        applyScrollImageProcessingFallback(viewerImgEl, rec, "none");
         syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
       }
+      viewerImgEl.style.display = "block";
       revealImageAfterReadingLayout(
         viewerImgEl,
         () => {
@@ -64834,6 +65665,13 @@ function renderViewerItem(idx) {
             !activeItem.isFolder &&
             String(activeItem.id || "") === String(rec.id || "")
           );
+        },
+        () => {
+          if (viewerTransitionActive)
+            hideViewerTransitionFrameAfterPaint(
+              viewerTransitionToken,
+              () => viewerRecordStillCurrent(rec),
+            );
         },
       );
     });
