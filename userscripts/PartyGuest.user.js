@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.20
+// @version      01.13.21
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -4513,6 +4513,11 @@ function remountPartyGuestUi() {
 function ensurePartyGuestOverlayRoots() {
   if (!document.body) return;
   const overlay = document.getElementById('pgMenuOverlay');
+  if (overlay) {
+    overlay.setAttribute('data-keep', '');
+    overlay.setAttribute('data-partyguest', 'overlay');
+    overlay.setAttribute('hx-disable', '');
+  }
   if (overlay && overlay.parentElement !== document.body) {
     document.body.appendChild(overlay);
   }
@@ -4529,6 +4534,9 @@ function renderDownloadsUi() {
   const body = document.getElementById('pgMenuDownloadsBody');
   if (!body) return;
   const hud = document.getElementById('partyHUD');
+  if (!SHOW_GROUPS_SECTION && hud && hud.parentElement === body && body.children.length === 1) {
+    return;
+  }
   if (hud && hud.parentElement === body) hud.remove();
   body.innerHTML = '';
   if (hud) body.appendChild(hud);
@@ -4911,16 +4919,39 @@ function getPartyGuestFormControl(target) {
   return el;
 }
 
+let PARTY_GUEST_FOCUS_TARGET = null;
+let PARTY_GUEST_FOCUS_UNTIL = 0;
+
+function clearPartyGuestFocusTarget() {
+  PARTY_GUEST_FOCUS_TARGET = null;
+  PARTY_GUEST_FOCUS_UNTIL = 0;
+}
+
+function refocusPartyGuestFormControl(el) {
+  if (!el || !el.isConnected || Date.now() > PARTY_GUEST_FOCUS_UNTIL) return;
+  const active = document.activeElement;
+  if (active === el) return;
+  if (active && active.closest && active.closest('#pgMenuCard input, #pgMenuCard textarea, #pgMenuCard select')) return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    try { el.focus(); } catch {}
+  }
+}
+
 function focusPartyGuestFormControl(target) {
   const el = getPartyGuestFormControl(target);
-  if (!el) return;
-  requestAnimationFrame(() => {
-    try {
-      if (document.activeElement !== el) el.focus({ preventScroll: true });
-    } catch {
-      try { el.focus(); } catch {}
-    }
-  });
+  if (!el) {
+    clearPartyGuestFocusTarget();
+    return;
+  }
+  PARTY_GUEST_FOCUS_TARGET = el;
+  PARTY_GUEST_FOCUS_UNTIL = Date.now() + 1200;
+  refocusPartyGuestFormControl(el);
+  requestAnimationFrame(() => refocusPartyGuestFormControl(el));
+  setTimeout(() => refocusPartyGuestFormControl(el), 25);
+  setTimeout(() => refocusPartyGuestFormControl(el), 100);
+  setTimeout(() => refocusPartyGuestFormControl(el), 250);
 }
 
 function dispatchPartyGuestControlInput(el, inputType, data) {
@@ -5025,13 +5056,66 @@ function recoverPartyGuestInputKeydown(ev) {
   }
 }
 
+function clickPartyGuestControlDirectly(target) {
+  if (!target || !target.closest) return false;
+  const btn = target.closest('#pgMenuCard button');
+  if (!btn || btn.disabled) return false;
+  const tab = btn.classList.contains('pgMenuTabBtn') ? (btn.dataset.tab || '') : '';
+  if (tab) {
+    setMenuTab(tab);
+    return true;
+  }
+  switch (btn.id) {
+    case 'pgMenuCollapseBtn':
+      toggleMenuCollapsed();
+      return true;
+    case 'pgOptionsDoneBtn':
+      setMenuCollapsed(true);
+      return true;
+    case 'pgOptionsResetBtn':
+      resetOptionsToDefaults();
+      return true;
+    case 'dlBtn':
+      handleDlBtn();
+      return true;
+    case 'galleryBtn':
+      handleGalleryToggle();
+      return true;
+    case 'filterBtn':
+      handlePreviewToggle();
+      return true;
+    case 'clearIndexCacheBtn':
+      handleClearIndexCacheBtn();
+      return true;
+    case 'btnMedia':
+      cycleMediaMode();
+      return true;
+    case 'btnPageAll':
+      handlePageAllBtn();
+      return true;
+    case 'clearFiltersBtn':
+      handleClearFilters();
+      return true;
+    case 'pgInfoDownloadBtn':
+      handleDownloadInfo();
+      return true;
+  }
+  return false;
+}
+
 function registerMenuEventIsolation(card) {
   if (!card || card.dataset.pgEventIsolationReady) return;
   card.dataset.pgEventIsolationReady = '1';
+  let lastDirectClickAt = 0;
   const stopAtPanel = ev => {
     if (!ev || !ev.target) return;
     if (ev.type === 'pointerdown' || ev.type === 'mousedown' || ev.type === 'click' || ev.type === 'touchend') {
       focusPartyGuestFormControl(ev.target);
+    }
+    if (ev.type === 'click' && ev.defaultPrevented && Date.now() - lastDirectClickAt > 150) {
+      if (clickPartyGuestControlDirectly(ev.target)) {
+        lastDirectClickAt = Date.now();
+      }
     }
     recoverPartyGuestInputKeydown(ev);
     if (ev.type === 'keydown' && ev.key === 'Escape') {
@@ -5048,6 +5132,10 @@ function registerMenuEventIsolation(card) {
   ].forEach(type => {
     card.addEventListener(type, stopAtPanel, false);
   });
+  card.addEventListener('focusout', () => {
+    const el = PARTY_GUEST_FOCUS_TARGET;
+    if (el) setTimeout(() => refocusPartyGuestFormControl(el), 0);
+  }, true);
 }
 
 function buildMenu() {
@@ -9462,6 +9550,33 @@ function isPartyGuestUiNode(node) {
     || !!(node.closest && node.closest('#pgMenuOverlay, #partyHUD'));
 }
 
+function nodeContainsPartyGuestRoot(node) {
+  if (!node || node.nodeType !== 1) return false;
+  if (node.id === 'pgMenuOverlay' || node.id === 'partyHUD') return true;
+  return !!(node.querySelector && node.querySelector('#pgMenuOverlay, #partyHUD'));
+}
+
+function mutationNeedsOverlayRootGuard(muts) {
+  for (const m of muts) {
+    if (m.type !== 'childList') continue;
+    for (const node of m.removedNodes || []) {
+      if (nodeContainsPartyGuestRoot(node)) return true;
+    }
+    for (const node of m.addedNodes || []) {
+      if (!nodeContainsPartyGuestRoot(node)) continue;
+      const overlay = node.id === 'pgMenuOverlay'
+        ? node
+        : (node.querySelector && node.querySelector('#pgMenuOverlay'));
+      const hud = node.id === 'partyHUD'
+        ? node
+        : (node.querySelector && node.querySelector('#partyHUD'));
+      if (overlay && overlay.parentElement !== document.body) return true;
+      if (hud && !hud.closest('#pgMenuDownloadsBody')) return true;
+    }
+  }
+  return false;
+}
+
 function handlePartyGuestPageSettled(root) {
   ensurePartyGuestStyles();
   remountPartyGuestUi();
@@ -9513,7 +9628,9 @@ const scheduleOverlayRootGuard = () => {
     remountPartyGuestUi();
   });
 };
-const overlayRootObserver = new MutationObserver(scheduleOverlayRootGuard);
+const overlayRootObserver = new MutationObserver(muts => {
+  if (mutationNeedsOverlayRootGuard(muts)) scheduleOverlayRootGuard();
+});
 overlayRootObserver.observe(document.body, { childList: true, subtree: true });
 
 const optimizerObserver = new MutationObserver(muts => {
