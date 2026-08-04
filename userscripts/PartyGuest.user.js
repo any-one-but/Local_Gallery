@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.12
+// @version      01.13.13
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -209,30 +209,6 @@ GM_addStyle(`
   width: 30px;
   padding: 6px;
   font-size: 14px;
-}
-
-#pgMenuCard #partyHUD {
-  position: relative;
-  left: auto;
-  bottom: auto;
-  transform: none;
-  z-index: auto;
-  width: 100%;
-  max-width: none;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-#pgMenuCard #hudRow {
-  flex-wrap: wrap;
-  overflow: visible;
-}
-
-#pgMenuCard #hudRow > button {
-  flex: 0 0 auto;
 }
 
 .pg-hud-section {
@@ -3035,6 +3011,7 @@ function handleProfileContextChange(){
 }
 
 function onUrlChange(){
+  ensurePartyGuestOverlayRoots();
   const href = location.href;
   if (href === lastUrl) return;
   lastUrl = href;
@@ -4337,14 +4314,21 @@ function ensureKeybindsUi() {
   restoreMenuTabScroll('keybinds');
 }
 
+function ensurePartyGuestOverlayRoots() {
+  if (!document.body) return;
+  ['pgMenuOverlay', 'partyHUD'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.parentElement !== document.body) {
+      document.body.appendChild(el);
+    }
+  });
+}
+
 function renderDownloadsUi() {
   const body = document.getElementById('pgMenuDownloadsBody');
   if (!body) return;
-  const hud = document.getElementById('partyHUD');
   body.innerHTML = '';
-  if (hud) {
-    body.appendChild(hud);
-  }
+  ensurePartyGuestOverlayRoots();
   if (SHOW_GROUPS_SECTION) {
     const groupsWrap = document.createElement('div');
     groupsWrap.className = 'pg-hud-section';
@@ -4708,7 +4692,10 @@ function initMenuTabs() {
 }
 
 function buildMenu() {
-  if (document.getElementById('pgMenuOverlay')) return;
+  if (document.getElementById('pgMenuOverlay')) {
+    ensurePartyGuestOverlayRoots();
+    return;
+  }
   const overlay = document.createElement('div');
   overlay.id = 'pgMenuOverlay';
   overlay.innerHTML = `
@@ -4759,6 +4746,7 @@ function buildMenu() {
     </div>
   `;
   document.body.appendChild(overlay);
+  ensurePartyGuestOverlayRoots();
 
   const collapseBtn = document.getElementById('pgMenuCollapseBtn');
   if (collapseBtn) collapseBtn.addEventListener('click', () => toggleMenuCollapsed());
@@ -4861,6 +4849,7 @@ window.addEventListener('resize', () => applyMenuWindowState());
 
 function buildHUD() {
   if ($('#partyHUD')) {
+    ensurePartyGuestOverlayRoots();
     applyOptions();
     return;
   }
@@ -4913,6 +4902,7 @@ function buildHUD() {
     </div>
   `;
   document.body.appendChild(w);
+  ensurePartyGuestOverlayRoots();
 
   $('#dlBtn').onclick = handleDlBtn;
   const addQueueBtn = $('#addQueueBtn');
@@ -9097,6 +9087,18 @@ fileObserver.observe(document.body, { childList: true, subtree: true });
 
 const attachmentObserver = new MutationObserver(debounce(injectAttachmentCounts, 100));
 attachmentObserver.observe(document.body, { childList: true, subtree: true });
+
+let overlayRootGuardScheduled = false;
+const scheduleOverlayRootGuard = () => {
+  if (overlayRootGuardScheduled) return;
+  overlayRootGuardScheduled = true;
+  requestAnimationFrame(() => {
+    overlayRootGuardScheduled = false;
+    ensurePartyGuestOverlayRoots();
+  });
+};
+const overlayRootObserver = new MutationObserver(scheduleOverlayRootGuard);
+overlayRootObserver.observe(document.body, { childList: true, subtree: true });
 
 const optimizerObserver = new MutationObserver(muts => {
   for (const m of muts) {
