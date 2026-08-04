@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.18
+// @version      01.13.19
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -287,12 +287,13 @@ body.pg-menu-open {
   float: right;
   display: none;
   background: transparent;
-  z-index: 20;
+  z-index: 10001;
   width: min(360px, 38vw);
   min-width: 300px;
   max-width: calc(100vw - 24px);
   margin: 0 0 16px 16px;
   pointer-events: auto;
+  isolation: isolate;
 }
 
 #pgMenuOverlay.active {
@@ -301,6 +302,7 @@ body.pg-menu-open {
 
 #pgMenuCard {
   position: relative;
+  z-index: 1;
   pointer-events: auto;
   resize: none;
   overflow: hidden;
@@ -4872,6 +4874,27 @@ function initMenuTabs() {
   updateErrorTabBadge();
 }
 
+function registerMenuEventIsolation(card) {
+  if (!card || card.dataset.pgEventIsolationReady) return;
+  card.dataset.pgEventIsolationReady = '1';
+  const stopAtPanel = ev => {
+    if (!ev || !ev.target) return;
+    if (ev.type === 'keydown' && ev.key === 'Escape') {
+      ev.preventDefault();
+      toggleMenuCollapsed();
+    }
+    ev.stopPropagation();
+  };
+  [
+    'pointerdown', 'pointerup', 'pointercancel',
+    'mousedown', 'mouseup', 'click', 'dblclick',
+    'touchstart', 'touchend', 'input', 'change',
+    'keydown', 'keyup', 'keypress'
+  ].forEach(type => {
+    card.addEventListener(type, stopAtPanel, false);
+  });
+}
+
 function buildMenu() {
   if (document.getElementById('pgMenuOverlay')) {
     ensurePartyGuestOverlayRoots();
@@ -4940,6 +4963,7 @@ function buildMenu() {
 
   const menuCard = document.getElementById('pgMenuCard');
   const menuHeader = document.getElementById('pgMenuHeader');
+  registerMenuEventIsolation(menuCard);
   registerMenuWindow(menuCard, menuHeader);
   registerMenuResizeHandles(menuCard);
   initMenuTabs();
